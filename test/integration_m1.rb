@@ -133,4 +133,28 @@ test "the schema DSL and migrations are reachable from the entry point" do
   Cybertrain::Schema.reset!
 end
 
+class CreateNotesMigration < Cybertrain::Migration::Base
+  def change
+    create_table(:notes) do |t|
+      t.string(:title, null: false)
+      t.timestamps
+    end
+    add_index(:notes, [:title])
+  end
+end
+
+test "the migrator applies a migration and the dumper reads it back" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  migrator = Cybertrain::DB::Migrator.new(conn)
+  Cybertrain::Migration.reset!
+  Cybertrain::Migration.register("20260925000000", CreateNotesMigration.new)
+  applied = migrator.migrate(Cybertrain::Migration.all)
+  assert_equal 1, applied
+  assert_equal ["20260925000000"], migrator.applied_versions
+  dumped = Cybertrain::DB::SchemaDumper.dump_to_ruby(conn)
+  assert_includes dumped, "create_table \"notes\""
+  assert_includes dumped, "index_notes_on_title"
+  conn.close
+end
+
 Cybertrain::Test.run!

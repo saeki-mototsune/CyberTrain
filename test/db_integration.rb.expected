@@ -1,0 +1,9 @@
+== 20260101000000 CreateNotes: migrating
+done
+ok   bin/db migrate builds the database and dumps a typed db/schema.rb
+ok   the migrator reports status next to controllers and responses
+ok   a controller with stored blocks reads the migrated table
+== 20260101000000 CreateNotes: reverting
+done
+ok   bin/db rollback drops the table and rewrites db/schema.rb
+4 tests, 13 assertions, 0 failures

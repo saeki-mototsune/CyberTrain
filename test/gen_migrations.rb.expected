@@ -1,0 +1,14 @@
+ok   emits a require_relative + register pair per migration file, sorted by version
+ok   the fixture's checked-in gen/migrations.rb is what the emitter produces
+ok   migration_files lists db/migrate/*.rb sorted by file name
+ok   migration_files is empty when db/migrate does not exist
+ok   version_of / name_of split the timestamp prefix
+wrote gen/routes.rb
+wrote gen/controllers.rb
+wrote gen/migrations.rb
+wrote gen/app.rb
+ok   runner writes gen/migrations.rb when db/migrate exists
+ok   runner --check is fresh once gen/migrations.rb is written
+stale: gen/migrations.rb
+ok   runner --check reports gen/migrations.rb stale after a new migration file appears
+8 tests, 11 assertions, 0 failures

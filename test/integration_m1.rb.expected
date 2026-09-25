@@ -5,4 +5,7 @@ ok   the Server serves the same App over a socket
 ok   the database layer opens a pooled in-memory SQLite connection
 ok   controller, session, flash and CSRF work together through the stack
 ok   the schema DSL and migrations are reachable from the entry point
-6 tests, 23 assertions, 0 failures
+== 20260925000000 CreateNotesMigration: migrating
+done
+ok   the migrator applies a migration and the dumper reads it back
+7 tests, 27 assertions, 0 failures

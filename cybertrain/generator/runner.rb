@@ -6,6 +6,7 @@ require "cybertrain/generator/manifest"
 require "cybertrain/schema"
 require "cybertrain/generator/model_scan"
 require "cybertrain/generator/models_emitter"
+require "cybertrain/generator/migrations_emitter"
 
 module Cybertrain
   module Gen
@@ -20,6 +21,9 @@ module Cybertrain
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
           ["gen/controllers.rb", ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"))]
         ]
+        # gen/migrations.rb only once an app has a db/migrate directory (a
+        # fixture or test tree with no db/ at all skips it entirely).
+        outputs << ["gen/migrations.rb", MigrationsEmitter.emit(root)] if File.directory?("#{root}/db/migrate")
         # gen/models/<model>.rb per table once db/schema.rb has been loaded.
         schema = Cybertrain::Schema.current
         stale = 0

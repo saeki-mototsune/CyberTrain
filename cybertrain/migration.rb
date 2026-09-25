@@ -143,40 +143,40 @@ module Cybertrain
       # `Array#<<` return here would fight their `nil`/object returns and
       # corrupt one of them. See spikes/NOTES.md rule 10.
       def drop_table(name)
-        @operations << Operation.for_drop_table(name)
+        @operations << Operation.for_drop_table(name.to_s)
         nil
       end
 
       def add_column(table, name, type, null: true, default: nil, limit: 0)
-        @operations << Operation.for_add_column(table, name, type, null, default, limit)
+        @operations << Operation.for_add_column(table.to_s, name.to_s, type, null, default, limit)
         nil
       end
 
       def remove_column(table, name)
-        @operations << Operation.for_remove_column(table, name)
+        @operations << Operation.for_remove_column(table.to_s, name.to_s)
         nil
       end
 
       def rename_column(table, from, to)
-        @operations << Operation.for_rename_column(table, from, to)
+        @operations << Operation.for_rename_column(table.to_s, from.to_s, to.to_s)
         nil
       end
 
       def add_index(table, columns, unique: false, name: "")
         cols = columns.map { |c| c.to_s }
-        @operations << Operation.for_add_index(table, cols, unique, name)
+        @operations << Operation.for_add_index(table.to_s, cols, unique, name.to_s)
         nil
       end
 
       def remove_index(table, columns)
         cols = columns.map { |c| c.to_s }
-        @operations << Operation.for_remove_index(table, cols)
+        @operations << Operation.for_remove_index(table.to_s, cols)
         nil
       end
 
       def add_reference(table, name, null: false, foreign_key: true)
         column_name = "#{name}_id"
-        @operations << Operation.for_add_reference(table, column_name, null)
+        @operations << Operation.for_add_reference(table.to_s, column_name, null)
         if foreign_key
           to_table = Cybertrain::Schema.pluralize(name.to_s)
           @operations << Operation.for_add_foreign_key(table, to_table, column_name)
@@ -187,7 +187,7 @@ module Cybertrain
       def add_foreign_key(from_table, to_table, column: "")
         col = column
         col = "#{Cybertrain::Schema.singularize(to_table.to_s)}_id" if col == ""
-        @operations << Operation.for_add_foreign_key(from_table, to_table, col)
+        @operations << Operation.for_add_foreign_key(from_table.to_s, to_table.to_s, col.to_s)
         nil
       end
 

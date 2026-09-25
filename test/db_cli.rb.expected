@@ -1,0 +1,48 @@
+ok   database_path defaults to storage/<env>.sqlite3
+ok   an absolute CYBERTRAIN_DATABASE is used as is
+usage: db (migrate|rollback [N]|status|schema:dump|create)
+unknown command: explode
+usage: db (migrate|rollback [N]|status|schema:dump|create)
+ok   no arguments or an unknown command prints usage and returns 1
+db status failed: database does not exist: tmp/db_cli_test/storage/test.sqlite3 (run `db migrate` or `db create`)
+ok   status on a missing database fails with exit code 1 instead of creating it
+created tmp/db_cli_test/storage/test.sqlite3
+database already exists: tmp/db_cli_test/storage/test.sqlite3
+ok   create makes the database file and its directory
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   migrate applies every registered migration and writes db/schema.rb
+Status  Migration ID    Migration Name
+    up  20260101000000  CreatePosts
+    up  20260101000100  CreateComments
+ok   status lists each migration as up
+== 20260101000100 CreateComments: reverting
+done
+Status  Migration ID    Migration Name
+    up  20260101000000  CreatePosts
+  down  20260101000100  CreateComments
+ok   rollback reverts the newest migration and rewrites db/schema.rb
+ok   schema:dump rewrites db/schema.rb from the database
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000100 CreateComments: reverting
+done
+== 20260101000000 CreatePosts: reverting
+done
+ok   rollback 2 after re-migrating returns to an empty schema
+ok   an empty CYBERTRAIN_DATABASE counts as unset
+db rollback: N must be a positive integer, got "abc"
+usage: db (migrate|rollback [N]|status|schema:dump|create)
+db rollback: N must be a positive integer, got "0"
+usage: db (migrate|rollback [N]|status|schema:dump|create)
+db rollback: N must be a positive integer, got "-1"
+usage: db (migrate|rollback [N]|status|schema:dump|create)
+ok   rollback N accepts only a positive integer
+db rollback failed: no migration for applied version 4 (was its file in db/migrate deleted or renamed?)
+Status  Migration ID    Migration Name
+  down  20260101000000  CreatePosts
+  down  20260101000100  CreateComments
+ok   rollback fails with exit code 1 when an applied version has no migration
+13 tests, 37 assertions, 0 failures

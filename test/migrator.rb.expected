@@ -1,0 +1,108 @@
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   migrate applies pending migrations in order and records their versions
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   status reports up/down per migration in the order given
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   a second migrate call is a no-op
+== 20260101000000 CreatePosts: migrating
+done
+ok   pending excludes already-applied versions
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000100 CreateComments: reverting
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   rollback drops the last applied migration, and re-migrating restores it
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000100 CreateComments: reverting
+done
+== 20260101000000 CreatePosts: reverting
+done
+ok   rollback(steps: 2) reverts both migrations back to empty
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000200 AddSlugToPosts: migrating
+done
+== 20260101000200 AddSlugToPosts: reverting
+done
+ok   rollback uses a migration's own down when it defines up/down
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000300 BrokenMigration: migrating
+ok   a failing migration rolls back its transaction and records nothing
+ok   SqliteDDL.statements for :create_table includes the table and its indexes
+ok   SqliteDDL.statements for :create_table with references emits the foreign key inline
+ok   SqliteDDL.create_table declares a SQL type per schema type
+ok   SqliteDDL.statements for :drop_table
+ok   SqliteDDL.statements for :add_column
+ok   SqliteDDL.statements for :remove_column
+ok   SqliteDDL.statements for :rename_column
+ok   SqliteDDL.statements for :add_index
+ok   SqliteDDL.statements for :remove_index
+ok   SqliteDDL.statements for :add_reference adds the column and its index
+ok   SqliteDDL.statements for :add_foreign_key raises IrreversibleMigration
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000400 CreateNotes: migrating
+done
+== 20260101000500 AddPostToNotes: migrating
+done
+ok   a default add_reference adds the column, its index and the foreign key
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000400 CreateNotes: migrating
+done
+== 20260101000600 AddStandaloneForeignKey: migrating
+ok   a standalone add_foreign_key still raises IrreversibleMigration and records nothing
+ok   SqliteDDL folds an add_foreign_key that directly follows its add_reference
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000700 IndexPostsByTitle: migrating
+done
+== 20260101000700 IndexPostsByTitle: reverting
+done
+ok   rolling back add_index with name: drops the named index
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000800 IndexPostsByViews: migrating
+done
+== 20260101000900 DropViewsIndex: migrating
+done
+== 20260101000900 DropViewsIndex: reverting
+done
+== 20260101000800 IndexPostsByViews: reverting
+done
+ok   remove_index by columns finds a named index on those columns
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   rollback raises when the newest applied version has no migration
+25 tests, 81 assertions, 0 failures

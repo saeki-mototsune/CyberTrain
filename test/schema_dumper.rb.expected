@@ -1,0 +1,32 @@
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   dump reproduces tables, columns, types, null and defaults
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   dump excludes schema_migrations and sqlite_* tables and never lists the id column
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   dump reproduces indexes and foreign keys
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   dump takes its version from the newest applied migration
+ok   a database no migrator has touched dumps version 0 and no tables
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   dump_to_ruby renders the db/schema.rb text
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   the dumped schema loads back into an identical dump
+7 tests, 28 assertions, 0 failures
