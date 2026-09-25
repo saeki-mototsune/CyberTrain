@@ -129,7 +129,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 決定: `TCPServer` で accept、接続ごとにグリーンスレッド 1 本。HTTP パース、keep-alive、chunked をフレームワーク内の Ruby で書く。TLS と HTTP/2 は逆プロキシ（nginx / Caddy）に任せる。プロセスは 1 つ、ワーカー数は `SPINEL_WORKERS` に従う。
 - 理由: 全体が Spinel の Ruby だけで閉じ、`spin build` 一発で単一バイナリになる。Roundhouse が同構成で実運用済み。
 - 却下: C の HTTP ライブラリを FFI で使う（ポインタ寿命の手動管理、ビルド依存）、CGI / FastCGI（プロセス起動が毎回、またはどのみちソケットが要る）。
-- 帰結: サーバは「accept したソケットから Request を作り Response を書き戻す」小さなインターフェースの裏に置き、後から picohttpparser を spin パッケージの `.c` として同梱し `ffi_func` で差し替えられるようにする。prefork は Spinel 側が未完成と明言しているので扱わない。
+- 帰結: サーバは「accept したソケットから Request を作り Response を書き戻す」小さなインターフェースの裏に置き、後から picohttpparser を spin パッケージの `.c` として同梱し `ffi_func` で差し替えられるようにする。prefork は Spinel 側が未完成と明言しているので扱わない。スパイク 5 で確定した実装規則: (1) すべての `readpartial` の直前に `sock.wait_readable(timeout)` を呼ぶ（nil ならアイドルタイムアウト）。素の `readpartial` は `read(2)` で OS ワーカーを止め、他の接続の I/O を止める。(2) ソケットを `Thread.new` の引数で渡さず、`def spawn_conn(sock); Thread.new { serve(sock) }; end` のようにメソッド引数をクロージャで捕まえる（引数渡しは静的型を失う）。(3) I/O 中心の負荷では `SPINEL_WORKERS=1` の方が速く（54〜58k rps 対 25〜45k）、`config.workers` で既定を 1 にし環境変数で上書き可能にする。テンプレートと SQLite が入った後に再計測する。
 
 ### D6. 型付きの Request / Response、Rack 非互換
 
@@ -274,7 +274,7 @@ ERB のタグ: `<% %>`、`<%= %>`（エスケープ）、`<%== %>`（非エス�
 | 2 | 非リテラル `send` がリテラル名に dispatch できるか、戻り値の型、`instance_exec` のブロック形 | **結果**: `send` は動くが 128 リテラル制限で実アプリでは無効。`instance_exec(&stored)` は不可。→ D8 / D9 を生成 `case` 文方式に改訂済み |
 | 3 | **タグ付き共用体 `Value` を持つ木構造インタプリタが型推論を通り、100 行のテンプレート × 1 万回の描画速度が出るか** | **結果**: 通る。単相 `INode` AST + 素の多相値で手書きの 1.54 倍、CRuby の 3.2 倍速。`Value` ラッパは不採用 |
 | 4 | 基底 `Relation` と `PostRelation` で `first` が `Post \| nil` に推論され、複数モデルで型が広がらないか | **結果**: 推論される。基底の抽象スタブ、setter が `nil` を返す形、キャストメソッド経由の nullable 属性が必須 |
-| 5 | `TCPServer` + グリーンスレッド + keep-alive で 100 同時接続、レイテンシ、issue #4528 の再現有無 | `SPINEL_WORKERS` の既定値調整、または接続数上限の導入 |
+| 5 | `TCPServer` + グリーンスレッド + keep-alive で 100 同時接続、レイテンシ、issue #4528 の再現有無 | **結果**: c=100 keep-alive で 52〜58k req/s（`SPINEL_WORKERS=1`）、p99 ≤ 2 ms。無言接続があっても他は止まらない。ただし `readpartial` の直前に必ず `wait_readable(timeout)` を呼ぶこと（素の `readpartial` は OS ワーカーを占有して #4528 と同じ停止を起こす） |
 | 6 | SQLite FFI の open / prepare / bind / step / column、`blocking: true`、`SizedQueue` プールの複数スレッド利用、WAL | **結果**: 動作。静的 `ffi_buffer` の競合クラッシュを `malloc` スクラッチで回避 |
 | 7 | `execv` の FFI、`trap` の可否、`SO_REUSEADDR` | **結果**: すべて動作（`trap("HUP")` 実機確認、execv シム、同一ポート即時再バインド）。D12 確定 |
 | 8 | `openssl` / `digest` の HMAC、`json`、`cgi` の `escapeHTML`、`uri` のクエリ解析 | **結果**: json / uri / securerandom / base64 / strscan / stringio は動作。`cgi` はこのタグに存在せず、HTML エスケープは自前。HMAC は `Digest::SHA256` の上に自前実装 |

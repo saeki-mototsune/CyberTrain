@@ -10,7 +10,7 @@ disposable and will be deleted once the framework covers it.
 | 2 | Non-literal `send`, `instance_exec` | **`send` unusable at app scale** (desugar disabled above 128 symbol/string literals). **`instance_exec(&stored)` never compiles.** Blocks take the receiver explicitly; symbol callbacks go through generated `case` tables. |
 | 3 | Runtime template interpreter | **Go.** Monomorphic `INode` AST + plain polymorphic Ruby values: 203 µs per 32 KB render, 1.54x a hand-written compiled renderer, 3.2x faster than CRuby running the same interpreter. |
 | 4 | Per-model Relation typing | **Go.** Per-model relation subclasses give `first`/`find` a typed nullable `Post`; four compiler workarounds below. |
-| 5 | TCPServer + green threads | pending |
+| 5 | TCPServer + green threads | **Go.** Keep-alive HTTP/1.1, one green thread per connection: 52-58k req/s at c=100 (`SPINEL_WORKERS=1`), p99 ≤ 2 ms; idle/silent connections do not stall others **provided every `readpartial` is preceded by `wait_readable(timeout)`** (a bare `readpartial` blocks the OS worker: that is issue #4528). |
 | 6 | SQLite FFI + pool | **Go.** All bindings work; `-1` literal is `SQLITE_TRANSIENT`; static `ffi_buffer` out-params crash under threads, use `malloc`ed scratch per call. |
 | 7 | trap / execv / SO_REUSEADDR | **Go.** `trap("HUP")` fires in compiled binaries; execv via a 6-line `ffi_source` shim keeps the PID; same port rebinds immediately. |
 | 8 | stdlib packages | **Go.** json, openssl (HMAC needs Homebrew OpenSSL on the link path), securerandom, base64, uri, strscan, stringio all work. `cgi` is absent at this tag. |
@@ -61,6 +61,19 @@ disposable and will be deleted once the framework covers it.
     where `io` is sometimes `STDOUT` and sometimes a `StringIO` raises
     NoMethodError for one branch). Keep such handles in separate typed slots
     and branch explicitly (`if @io then @io.puts(line) else STDOUT.puts(line) end`).
+20. Sockets: never call `readpartial` without `sock.wait_readable(timeout)`
+    immediately before it (`readpartial` is a raw blocking `read(2)` that holds
+    the OS worker and never yields; `wait_readable` parks the green thread and
+    its nil return is the idle timeout). `IO#gets` parks correctly. `SO_RCVTIMEO`
+    is unusable (setsockopt takes Integers only).
+21. Never pass a socket as a `Thread.new` argument (`Thread.new(sock) { |c| ... }`
+    loses its static type: "undefined method 'wait_readable' for TCPSocket").
+    Spawn through a method whose parameter the closure captures:
+    `def spawn_conn(sock); Thread.new { serve(sock) }; end`.
+22. For I/O-bound servers `SPINEL_WORKERS=1` was faster (54-58k rps) than the
+    10-worker default (25-45k rps) and had no 40-80 ms stalls; set it from the
+    binary (`ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]`) before
+    the first `Thread.new`, and re-measure once templates and SQLite add CPU work.
 18. A `@@class_variable` assigned directly inside a `module Foo` block (e.g.
     `module Foo; @@x = Bar.new; end`) mis-compiles as soon as some earlier
     required file has already opened `module Foo` elsewhere: the C compile
@@ -79,6 +92,7 @@ disposable and will be deleted once the framework covers it.
 
 ## Numbers worth remembering
 
+- HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.
 - Template render (32 KB page, 50 posts): hand-written 122-136 µs, interpreter 203 µs.
 - HTML escape: byte scan with fast path 506 ns / 2 strings; `gsub` with a Hash 587 ns; `each_char` 2541 ns.
 - SQLite: 1.5 M inserts/s inside one transaction, ~70 K/s autocommit; pool of 4 serving 8 threads: ~55 K statements/s.
