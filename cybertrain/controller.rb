@@ -312,6 +312,12 @@ module Cybertrain
         end
         return nil
       end
+      # A missing or empty required parameter is the client's fault: answer
+      # 400 like Rails instead of letting it surface as a 500.
+      if class_name == "Cybertrain::Params::ParameterMissing"
+        render(plain: e.message, status: 400)
+        return nil
+      end
       raise e
     end
 

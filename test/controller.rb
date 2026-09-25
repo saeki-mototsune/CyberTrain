@@ -51,6 +51,11 @@ class PostsController < ApplicationController
   after_action :stamp
   before_action(only: [:edit]) { |c| c.extra }
 
+  def require_post
+    params.require(:post)
+    render plain: "unreachable"
+  end
+
   def index
     TRAIL << "index"
     render plain: "all posts"
@@ -397,6 +402,15 @@ test "status_code maps symbols and passes integers through" do
   assert_equal 422, Cybertrain::Controller.status_code(:unprocessable_entity)
   assert_equal 418, Cybertrain::Controller.status_code(418)
   assert_raises("ArgumentError") { Cybertrain::Controller.status_code(:teapot) }
+end
+
+test "a missing required param answers 400 Bad Request" do
+  ctx = build_ctx(false)
+  ctx.params.set_value("other", "1")
+  controller = PostsController.new(ctx)
+  controller.process(:require_post) { |c| c.require_post }
+  assert_equal 400, ctx.response.status
+  assert_includes ctx.response.body, "param is missing or the value is empty: post"
 end
 
 Cybertrain::Test.run!
