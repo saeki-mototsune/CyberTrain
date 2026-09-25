@@ -91,7 +91,8 @@ module Cybertrain
 
           ```sh
           cybertrain generate scaffold post title:string body:text
-          spin run db migrate    # apply db/migrate, rewrite db/schema.rb
+          spin run gen           # pick up the new migration (gen/migrations.rb)
+          spin run db -- migrate # apply db/migrate, rewrite db/schema.rb
           spin run gen           # regenerate gen/ from db/schema.rb, config/routes.rb and app/
           spin run server        # http://127.0.0.1:3000
           ```

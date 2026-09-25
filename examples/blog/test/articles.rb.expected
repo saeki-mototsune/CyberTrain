@@ -1,0 +1,18 @@
+== 20260925174942 CreateArticles: migrating
+done
+== 20260925174943 CreateComments: migrating
+done
+ok   GET / renders the articles index
+ok   GET /articles lists every article with a link to it
+ok   GET /articles/new renders the form with a CSRF token
+ok   POST /articles creates an article and redirects to it with a notice
+ok   POST /articles without the CSRF token is rejected
+ok   POST /articles with a blank title re-renders the form with errors
+ok   POST /articles with a short body reports the length error
+ok   GET /articles/:id shows the article
+ok   GET /articles/:id/edit renders the form with the article's values
+ok   PATCH /articles/:id (POST with _method) updates and redirects with a notice
+ok   PATCH /articles/:id with invalid values re-renders the edit form
+ok   DELETE /articles/:id (POST with _method) destroys and redirects to the index
+ok   a missing article is 404
+13 tests, 66 assertions, 0 failures

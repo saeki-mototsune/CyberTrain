@@ -1,0 +1,13 @@
+== 20260925174942 CreateArticles: migrating
+done
+== 20260925174943 CreateComments: migrating
+done
+ok   the article page lists its comments and has a comment form
+ok   POST /articles/:article_id/comments adds a comment and redirects back to the article
+ok   a comment without a commenter is not saved and the article page says why
+ok   a comment posted without the CSRF token is rejected
+ok   DELETE /articles/:article_id/comments/:id (POST with _method) removes the comment
+ok   a comment is only reachable through its own article
+ok   comments on a missing article are 404
+ok   comments have no pages of their own
+8 tests, 40 assertions, 0 failures

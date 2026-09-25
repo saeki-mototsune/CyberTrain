@@ -111,6 +111,18 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes read("blog/.gitignore"), "/storage/*.sqlite3*"
 end
 
+# `spin run db migrate` would run bin/db with no arguments (spin passes
+# arguments to the program only after `--`), and bin/db.rb only knows the
+# migrations gen/migrations.rb lists, so a new one needs `spin run gen` first.
+test "README.md gives the working migrate sequence" do
+  readme = read("blog/README.md")
+  assert_includes readme, "spin run db -- migrate"
+  assert_nil readme.index("spin run db migrate")
+  gen = readme.index("spin run gen")
+  migrate = readme.index("spin run db -- migrate")
+  assert gen < migrate, "spin run gen must come before the migrate step"
+end
+
 test "CLI new --path expands a relative DIR against the current directory" do
   assert_equal 0, Cybertrain::CLI.run(["new", "shop", "--path", "../../cybertrain"])
   # spin resolves `path =` from the app's directory, so the CLI writes the

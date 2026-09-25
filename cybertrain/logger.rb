@@ -51,8 +51,12 @@ module Cybertrain
       if @io
         @io.puts(line)
       else
+        # Flushed per line: a server's stdout is usually a pipe or a file,
+        # where it is block-buffered (test/logger_flush.rb).
         STDOUT.puts(line)
+        STDOUT.flush
       end
+      nil # not the flush's value: Spinel types it as a File but emits void
     end
   end
 

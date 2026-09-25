@@ -1,0 +1,2 @@
+ok   the default logger's lines reach a redirected stdout while the process runs
+1 tests, 1 assertions, 0 failures

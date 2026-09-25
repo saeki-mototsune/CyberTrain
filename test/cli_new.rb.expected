@@ -26,6 +26,7 @@ ok   bin/server.rb boots the application
 ok   bin/gen.rb and bin/db.rb drive the generator and the migrator
 ok   the layout renders csrf_meta_tags, the flash and yield
 ok   application_controller.rb and config/app.rb are ready to edit
+ok   README.md gives the working migrate sequence
 create spin.toml
 create .gitignore
 create README.md
@@ -156,4 +157,4 @@ Usage:
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-14 tests, 61 assertions, 0 failures
+15 tests, 64 assertions, 0 failures
