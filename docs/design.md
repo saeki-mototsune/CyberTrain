@@ -149,7 +149,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - コールバック（スパイク 2 の結果で改訂）: 公式構文は Rails と同じシンボル形 `before_action :set_post, only: [:show, :edit]`。宣言はクラス名をキーにした実行時データ（`Hash<String, Array<Callback>>`）に積み、継承チェーンは `Controller.chain_for(self.class)` で `superclass` を明示的に辿る。呼び出しは `send` ではなく、ジェネレータが `app/controllers/**/*.rb` を字句走査して拾った `before_action :name` / `after_action :name` / `rescue_from X, with: :name` の名前から、コントローラごとに `def run_callback(name); case name; when :set_post then set_post; else super; end; end` を `gen/controllers.rb` に生成して dispatch する。ブロック形も提供するが、`instance_exec` が使えないためブロックはコントローラを引数で受け取る: `before_action(only: [:show]) { |c| c.set_post }`。暗黙 `self` のブロック形は提供しない。
 - `params`: 型付き `Params` クラス。`params[:id]` は `String | nil`、`params[:post]` は子 `Params`、配列値は `params.list(:ids)`。`params.require(:post).permit(:title, :body)` は `Hash<Symbol, String>` 相当を返し、モデルの生成済み `assign_attributes` に渡す。MVP で permit できる値は文字列のみ。
 - render / redirect: `render :new`（リテラルシンボル）、`render json: post`（生成 `to_json`）、`render plain:`、`head :not_found`、`redirect_to post_path(post)`、`redirect_to posts_path, status: :see_other`。action が何もしなければ action 名のテンプレートを暗黙 render する。
-- session: クッキーストアのみ。値は `String` だけ。`openssl` / `digest` の HMAC で署名し、改竄は捨てる。`flash[:notice]` / `flash.now[:alert]` は session 上に載せる。
+- session: クッキーストアのみ。値は `String` だけ。HMAC-SHA256 で署名し、改竄は捨てる。HMAC はランタイム同梱の `Digest::SHA256.digest`（`digest` パッケージ、外部リンク不要）の上に Ruby で実装する（動作確認済み）。`openssl` パッケージは Homebrew の OpenSSL をリンクパスに要求するため使わない。`flash[:notice]` / `flash.now[:alert]` は session 上に載せる。
 - CSRF: 既定で有効。トークンを session に持ち、フォームヘルパーが hidden field を出し、GET 以外で検証する。
 - 例外: `rescue_from RecordNotFound, with: :not_found`（生成 `run_callback` 経由）または `rescue_from(RecordNotFound) { |c, e| c.head :not_found }`。例外クラスは `e.class.name` の文字列比較で照合する。開発時のエラーページは例外クラス・メッセージ・テンプレート名と行のみ。スタックトレースは Spinel の制約で出せない。
 - MVP 外: `respond_to` / format、streaming、`helper_method`、`layout` の動的切り替え（`application` 固定）。
@@ -159,24 +159,27 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 決定: `app/views/**/*.html.erb` を実行時に読んで AST にパースし、フレームワークのインタプリタが評価する。開発時は mtime を見て変更があれば再パース、production では初回だけパースしてキャッシュ。テンプレートはバイナリの外に置く。
 - 理由: ビュー編集は開発で最も回数の多いサイクルであり、そこに再コンパイルを挟みたくない（コンパイル済み ERB 案はこの理由で却下）。Spinel に `eval` はないので、実行時に動かせるのは「ERB の見た目をした、文法を自分で定義したテンプレート言語」だけである。両立はできない。
 - 式の文法（Ruby の部分集合、第 7 章に詳細）: リテラル、`@ivar`、ローカル変数、メソッド呼び出し（位置引数・キーワード引数）、`&.`、演算子、文字列補間、`if / elsif / else / unless / end`、`each do |x|` / `each_with_index`、`form_with ... do |f|`。ブロックはこの 2 種類だけ。
-- 値の表現: `Value` というタグ付き共用体（nil / bool / Integer / Float / String / SafeString / Array / Hash / Time / Model）。
+- 値の表現（スパイク 3 の結果で改訂）: 明示的な `Value` ラッパクラスは作らず、素の多相 Ruby 値（nil / bool / Integer / Float / String / SafeString / Array / Hash / Time / Model）をそのまま `Hash<String, 多相>` の環境に入れる。ラッパは中間結果ごとに割り当てを増やすだけで、`read_attribute` が多相値を返す以上ボクシングは減らない（実測 203 µs 対 298 µs）。
+- AST の表現（スパイク 3 の結果）: パーサはノードごとのクラスで読みやすく書き、パース後に 1 回だけ「整数 kind + 型付きスロット」の単相 `INode` に変換して評価する。クラス階層のまま評価すると多相 dispatch が毎回発生して 2.7 倍遅い。値の `case` では `when Time` を `when Array` より先に置く（多相スロットの Time は `Array` にもマッチする）。
 - モデルへのアクセス: 属性と関連は schema 由来の生成コード `read_attribute(:title)` / `read_association(:comments)` で名前解決する。手書きメソッドは、ジェネレータが `app/models/**/*.rb` を字句走査して引数なしの `def name` を拾い、モデルごとに `def call_view_method(name); case name; when :summary then summary; ... end; end` を生成することでテンプレートから呼べる（`view_methods` 宣言は不要。非リテラル `send` は 128 リテラル制限のため使わない）。
 - `@post` の受け渡し: D4 の字句走査で `gen/view_assigns.rb` に `{ "post" => @post, ... }` を吐く（既定）。`render :show, locals: { post: @post }` の明示渡しも併用できる。
 - パーシャル: Rails 7.1 の strict locals 構文 `<%# locals: (post:) %>` を採用する。`<%= render "form", post: @post %>` はリテラル名のみ。
 - レイアウト: `application` 固定。`<%= yield %>` と `content_for :title` / `yield :title`（`Hash<Symbol, String>`）。
 - エスケープ: `<%= %>` は既定でエスケープ、`<%== %>` と `raw` で無効化。ヘルパーの戻り値は `SafeString`（String のサブクラスではないラッパ）。
 - ヘルパー（組み込み）: `link_to`、`button_to`、`form_with(model:)` と `f.label` / `f.text_field` / `f.text_area` / `f.submit`、`render`、`pluralize`、`truncate`、`number_*`、`time_ago_in_words`。URL ヘルパーと polymorphic path は routes 由来の生成 `case` 文で解決する（`form_with(model: [@post, @comment])` は routes に存在する組だけ生成）。
-- 代償: テンプレート内の任意 Ruby は書けない。テンプレートの型エラーは実行時（開発時のエラーページ）で出る。速度はコンパイル済みより落ちるが、インタプリタ自体が C にコンパイルされるので CRuby の ERB より遅くはならない見込み（スパイクで測る）。
-- 将来: 同じ AST から Ruby メソッドを吐くコンパイルバックエンドを足せば、production だけコンパイル済みにして速度・型検査・単一ファイル化を取り戻せる。パーサを共有するので意味のずれは抑えられる。MVP には入れない。
+- 代償: テンプレート内の任意 Ruby は書けない。テンプレートの型エラーは実行時（開発時のエラーページ）で出る。速度は実測で、32 KB のページ描画が手書きコンパイル済み 122〜136 µs に対しインタプリタ 203 µs（1.54 倍）。同じインタプリタを CRuby で動かすより 3.2 倍速い。
+- 将来: 同じ AST から Ruby メソッドを吐くコンパイルバックエンドを足せば、production だけコンパイル済みにして型検査と単一ファイル化を取り戻せる。速度面では 1.54 倍差しかないので必須ではない。MVP には入れない。
 
 ### D10. モデル
 
 - 真実の源の流れ: `db/migrate/*.rb`（`create_table`、`add_column`、`add_reference`、`add_index` の DSL）→ `spin run db migrate` が適用 → DB から `db/schema.rb` をダンプ → ジェネレータが `gen/models/*.rb` を吐く。マイグレーションはアプリ定数を含まないデータ DSL なので `bin/db.rb` にそのまま取り込める。
 - モデルごとの生成物: `attr_accessor`（schema の型から `String | nil`、`Integer | nil`、`Time | nil` などが推論される代入コード付き）、`read_attribute` / `write_attribute` / `assign_attributes` の `case` 文、`from_row`、`to_json`、`attribute_names`、外部キー由来の関連（`Comment#post`、`Post#comments`）。
-- Relation はモデルごとに生成: `Post.where(...)` は `PostRelation`、`.first` は `Post | nil`、`.to_a` は `Array<Post>`。SQL 組み立ては基底 `Cybertrain::Relation`、実体化だけ生成側で型付けする。汎用 Relation の共有は要素型が `Post | Comment | ...` に広がる恐れがあるため避ける。
+- Relation はモデルごとに生成（スパイク 4 で理由を修正）: `Post.where(...)` は `PostRelation`、`.first` / `.find` / `.find_by` は箱詰めなしの `Post | nil` に推論される（`rows` → `Post.from_row(rs[0])` の形で書く）。`to_a` はどの設計でも多相配列（Spinel はユーザオブジェクトの配列を常に poly_array にする）で、これは正しく動く。汎用 Relation でも `case rec when Post` や共用体への直接呼び出しは動くので、モデルごとの生成は「型付き `first`」と生成コードの読みやすさのために選ぶ。基底 `Cybertrain::Relation` の setter は `nil` を返し、`PostRelation` が `def where(h) = (add_where(h); self)` で型を付け直す（基底で `self` を返すと基底型に推論される）。
+- 属性のキャスト（スパイク 4 で判明した必須事項）: `from_row` / `assign_attributes` は `Cast.int` / `Cast.str` / `Cast.str_or_nil` / `Cast.time_or_nil` などのキャストメソッドを通す。nil 初期化した ivar に `Time` を直接代入するとミスコンパイルする（nil が `Time.at(0)` として読める）。非 null の Integer / String は `0` / `""` で初期化し `to_i` / `to_s` でキャストする。
+- 基底クラスの抽象スタブ（スパイク 4 で判明した必須事項）: `Cybertrain::Model` は生成側が上書きするフック（`read_attribute`、`assign_attributes`、`run_before_save` など）をすべて `def read_attribute(name) = nil` の形で宣言しておく。宣言がないと Spinel 2026.09.12 はコード生成でクラッシュする。
 - API（ActiveRecord の部分集合）: `find`、`find_by`、`where(hash)`、`where("sql ?", bind)`、`order`、`limit`、`offset`、`first` / `last` / `all` / `count` / `exists?`、`new` / `create` / `save` / `save!` / `update` / `destroy`、`persisted?`、timestamps 自動更新。動的ファインダ（`find_by_title`）は提供しない。scope は `def self.published = where(published: true)` の普通のクラスメソッド。
-- validations / callbacks: `validates :title, presence: true, length: { minimum: 5 }` は検証器の配列に積み、`valid?` が `read_attribute` 経由で評価する。`errors.full_messages` / `errors[:title]` / `errors.any?`。`before_save { }` / `after_create { }` はブロック。
-- アダプタ: SQLite（FFI）のみ。`Adapter` インターフェースの裏に置き、`execute(sql, binds)` が行の配列を返す。接続は `SizedQueue` によるプール（初期値はワーカー数）、WAL モードと busy_timeout を既定で設定、`sqlite3_step` は `blocking: true`。PostgreSQL は libpq の FFI で後日。
+- validations / callbacks: `validates :title, presence: true, length: { minimum: 5 }` は生成された `model_name` 文字列をキーにした登録簿に積み、`valid?` が `read_attribute` 経由で評価する。`errors.full_messages` / `errors[:title]` / `errors.any?` を提供。コールバックはレコードを引数に取るブロック `before_save { |r| r.title = r.title.strip }`（`instance_exec` が使えないため、暗黙 `self` の形は提供しない）。
+- アダプタ: SQLite（FFI）のみ。`Connection#execute(sql, binds)` が `Array<Hash<String, Integer | Float | String | nil>>` を返す（スパイク 6 でこの型が混在しても正しく動くことを確認）。接続は `SizedQueue` によるプール（初期値はワーカー数）、WAL モード・busy_timeout・foreign_keys を既定で設定、`sqlite3_step` / `prepare` / `exec` は `blocking: true`。`sqlite3_bind_text` の破棄関数には整数リテラル `-1`（SQLITE_TRANSIENT）を渡す。`sqlite3_open_v2` / `prepare_v2` の出力ポインタは静的 `ffi_buffer` を使わず、呼び出しごとに `malloc(8)` した領域を使う（静的バッファはスレッド間で競合して SIGSEGV する。スパイク 6 で再現と修正を確認）。複数行の書き込みは `BEGIN` / `COMMIT` で包む（自動コミットの 20 倍速い）。PostgreSQL は libpq の FFI で後日。
 - MVP 外: `has_many :through`、`includes` / `preload`、`pluck`、モデル API の `transaction`、enum、STI、polymorphic 関連、`dependent:`。
 
 ### D11. 名前、パッケージ構成、雛形
@@ -269,12 +272,12 @@ ERB のタグ: `<% %>`、`<%= %>`（エスケープ）、`<%== %>`（非エス�
 | --- | --- | --- |
 | 1 | `spinel` / `spin` の導入、`spinel --help` の最適化レベル、2,000 行規模のコンパイル時間 | 開発ループ（D12）の体感を再評価 |
 | 2 | 非リテラル `send` がリテラル名に dispatch できるか、戻り値の型、`instance_exec` のブロック形 | **結果**: `send` は動くが 128 リテラル制限で実アプリでは無効。`instance_exec(&stored)` は不可。→ D8 / D9 を生成 `case` 文方式に改訂済み |
-| 3 | **タグ付き共用体 `Value` を持つ木構造インタプリタが型推論を通り、100 行のテンプレート × 1 万回の描画速度が出るか** | D9 をコンパイル済み ERB（監視・再ビルド方式）に戻す。最大のリスク |
-| 4 | 基底 `Relation` と `PostRelation` で `first` が `Post \| nil` に推論され、複数モデルで型が広がらないか | Relation を生成テンプレートで全量複製する |
+| 3 | **タグ付き共用体 `Value` を持つ木構造インタプリタが型推論を通り、100 行のテンプレート × 1 万回の描画速度が出るか** | **結果**: 通る。単相 `INode` AST + 素の多相値で手書きの 1.54 倍、CRuby の 3.2 倍速。`Value` ラッパは不採用 |
+| 4 | 基底 `Relation` と `PostRelation` で `first` が `Post \| nil` に推論され、複数モデルで型が広がらないか | **結果**: 推論される。基底の抽象スタブ、setter が `nil` を返す形、キャストメソッド経由の nullable 属性が必須 |
 | 5 | `TCPServer` + グリーンスレッド + keep-alive で 100 同時接続、レイテンシ、issue #4528 の再現有無 | `SPINEL_WORKERS` の既定値調整、または接続数上限の導入 |
-| 6 | SQLite FFI の open / prepare / bind / step / column、`blocking: true`、`SizedQueue` プールの複数スレッド利用、WAL | 接続をスレッドローカルに変更 |
+| 6 | SQLite FFI の open / prepare / bind / step / column、`blocking: true`、`SizedQueue` プールの複数スレッド利用、WAL | **結果**: 動作。静的 `ffi_buffer` の競合クラッシュを `malloc` スクラッチで回避 |
 | 7 | `execv` の FFI、`trap` の可否、`SO_REUSEADDR` | **結果**: すべて動作（`trap("HUP")` 実機確認、execv シム、同一ポート即時再バインド）。D12 確定 |
-| 8 | `openssl` / `digest` の HMAC、`json`、`cgi` の `escapeHTML`、`uri` のクエリ解析 | 自前実装で代替 |
+| 8 | `openssl` / `digest` の HMAC、`json`、`cgi` の `escapeHTML`、`uri` のクエリ解析 | **結果**: json / uri / securerandom / base64 / strscan / stringio は動作。`cgi` はこのタグに存在せず、HTML エスケープは自前。HMAC は `Digest::SHA256` の上に自前実装 |
 
 go / no-go: 2 と 3 の結果で D8 / D9 を確定してから M1 に進む。
 
