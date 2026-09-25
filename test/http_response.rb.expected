@@ -1,0 +1,16 @@
+ok   defaults
+ok   status_text falls back to Unknown
+ok   header lookup is case-insensitive
+ok   set_header replaces a header set with different case
+ok   to_http exact bytes for a small body
+ok   to_http keeps set headers and an explicit content type
+ok   head_only omits the body but keeps Content-Length
+ok   cookies are emitted as separate Set-Cookie lines
+ok   redirect sets 302, Location and performed
+ok   redirect accepts a status
+ok   set_header rejects CR or LF in the value
+ok   redirect rejects a Location with CR or LF (no response splitting)
+ok   add_cookie rejects CR or LF
+ok   set_header replacing a header keeps its position
+ok   performed! marks the response
+15 tests, 40 assertions, 0 failures

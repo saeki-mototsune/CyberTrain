@@ -1,0 +1,92 @@
+<%# locals: (posts:) %>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title><%= @title %></title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<header class="site-header">
+  <nav>
+    <ul>
+<% @nav.each do |item| %>
+      <li><%== link_to(item.fetch("label"), item.fetch("url")) %></li>
+<% end %>
+    </ul>
+  </nav>
+  <h1><%= @title.upcase %></h1>
+  <p class="count"><%= pluralize(@posts.size, "post") %></p>
+</header>
+<main>
+<% @posts.each do |post| %>
+  <article id="post-<%= post.id %>" class="post">
+    <header>
+      <h2><%= post.title %></h2>
+<% if post.author != nil %>
+      <p class="byline">by <%= post.author %></p>
+<% else %>
+      <p class="byline">by anonymous</p>
+<% end %>
+      <p class="date"><%= post.created_at.year %></p>
+    </header>
+    <div class="body">
+      <%= post.body %>
+    </div>
+    <footer>
+<% if post.comments.empty? %>
+      <p class="comments none">No comments yet</p>
+<% elsif post.comments.size == 1 %>
+      <p class="comments one">1 comment</p>
+<% else %>
+      <p class="comments many"><%= post.comments.size %> comments</p>
+<% end %>
+      <ul class="comment-list">
+<% post.comments.each do |c| %>
+        <li><strong><%= c.author %></strong>: <%= c.body %></li>
+<% end %>
+      </ul>
+<% if post.published && !(post.title == "") %>
+      <span class="badge">published</span>
+<% else %>
+      <span class="badge draft">draft</span>
+<% end %>
+      <a href="/posts/<%= post.id %>">Read more</a>
+    </footer>
+  </article>
+<% end %>
+</main>
+<aside class="sidebar">
+  <section class="about">
+    <h3>About</h3>
+    <p>This blog is a benchmark fixture.</p>
+    <p>It has static markup to look like a real page.</p>
+  </section>
+  <section class="archive">
+    <h3>Archive</h3>
+    <ul>
+      <li><a href="/archive/2026/1">2026-1</a></li>
+      <li><a href="/archive/2026/2">2026-2</a></li>
+      <li><a href="/archive/2026/3">2026-3</a></li>
+      <li><a href="/archive/2026/4">2026-4</a></li>
+      <li><a href="/archive/2026/5">2026-5</a></li>
+      <li><a href="/archive/2026/6">2026-6</a></li>
+      <li><a href="/archive/2026/7">2026-7</a></li>
+      <li><a href="/archive/2026/8">2026-8</a></li>
+      <li><a href="/archive/2026/9">2026-9</a></li>
+      <li><a href="/archive/2026/10">2026-10</a></li>
+      <li><a href="/archive/2026/11">2026-11</a></li>
+      <li><a href="/archive/2026/12">2026-12</a></li>
+    </ul>
+  </section>
+  <section class="stats">
+    <p>Total: <%= @posts.size %></p>
+    <p>Owner: <%= @owner.name %></p>
+  </section>
+</aside>
+<footer class="site-footer">
+  <p>Rendered by cybertrain</p>
+  <p><%= @footer_note %></p>
+</footer>
+</body>
+</html>

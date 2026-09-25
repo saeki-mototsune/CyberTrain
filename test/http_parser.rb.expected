@@ -1,0 +1,13 @@
+ok   parses a complete GET head with mixed-case headers and extra spaces
+ok   duplicate headers are joined with a comma
+ok   a header value may contain colons
+ok   head_end returns nil for an incomplete buffer
+ok   head_end returns the index of the blank line
+ok   bad request line raises ParseError
+ok   header line without a colon raises ParseError
+ok   header names with whitespace before the colon or inside are rejected
+ok   a bare CR inside a header line is rejected
+ok   empty lines before the request line are ignored
+ok   HTTP/1.0 is accepted
+ok   HTTP/2.0 raises ParseError
+12 tests, 35 assertions, 0 failures

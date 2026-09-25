@@ -1,0 +1,30 @@
+Hello
+SELECT * FROM posts WHERE title = ? AND id = ? ORDER BY id LIMIT 2 OFFSET 1
+HELLO
+110
+2023
+10
+p2.body nil? true created_at nil? true
+none nil? true
+none&.title=nil
+1 Hello "first body" v+1=11
+3 Third "b3" v+1=1
+2 World nil v+1=4
+post count=3 exists=false
+3
+comment 1 by alice on post 'Hello'
+  1 "alice" nice
+  2 nil anon
+comments of post1: 2
+no comment nil? true
+tag ruby w=1.5
+tag spinel w=nil
+2.5
+2
+bad.save=false title='x'
+["Title is too short (minimum is 3 characters)"]
+1
+good.save=true title='long title' errors.any?=false
+cm.save=false author=anonymous msgs=["Body can't be blank"]
+tag valid? true
+read_attribute: Hello 10 "first body" nil

@@ -1,0 +1,11 @@
+ok   escape converts all five special characters
+ok   escape leaves safe text untouched
+ok   out(nil) is an empty string
+ok   out(SafeString) is not escaped
+ok   out(String) is escaped
+ok   out(Integer) and friends use to_s
+ok   SafeString#+ escapes the plain half
+ok   SafeString#+ with another SafeString does not double-escape
+ok   SafeString#html_safe? is true
+ok   SafeString#== compares by string value
+10 tests, 15 assertions, 0 failures

@@ -1,0 +1,15 @@
+ok   target splits into path and query_string
+ok   query_string is empty when absent
+ok   header lookup is case-insensitive
+ok   header lookup works for headers given in mixed case
+ok   content_length parses the header and defaults to 0
+ok   content_type keeps only the media type
+ok   keep_alive? for HTTP/1.1
+ok   keep_alive? for HTTP/1.0
+ok   keep_alive? matches Connection tokens exactly, not substrings
+ok   content_length of an overlong all-digit value is at least Int64 max
+ok   method predicates
+ok   override_method! upper-cases the new method
+ok   cookie_header returns the Cookie header or empty string
+ok   body and headers are exposed
+14 tests, 52 assertions, 0 failures

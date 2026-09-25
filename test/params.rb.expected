@@ -1,0 +1,16 @@
+ok   set_value stores and reads a scalar
+ok   add_list_value builds a list, absent key returns empty array
+ok   child! creates and returns a nested Params, nested() never stores
+ok   key? is true for scalars, lists and nested params
+ok   keys lists scalars, then lists, then nested, each in insertion order
+ok   set_path assembles nested params from a Query.split_key-shaped path
+ok   require returns the nested Params when present and non-empty
+ok   require raises ParameterMissing when absent or empty
+ok   permit returns only listed scalar keys that are present
+ok   merge! lets the other Params win on conflicts
+ok   merge! deep-merges nested Params, keeping receiver-only keys
+ok   merge! does not alias other's lists or nested params
+ok   merge! preserves keys/inspect ordering: receiver order first, then other's new keys
+ok   a name can only be one kind at a time: last write wins, like Rack
+ok   to_h returns only scalars, empty? and inspect are deterministic
+15 tests, 48 assertions, 0 failures

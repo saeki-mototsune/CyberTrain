@@ -1,0 +1,9 @@
+ok   info logs at the default :info level
+ok   debug is silent at :info level
+ok   debug prints once the level is lowered to :debug
+ok   warn and error always print
+ok   raising the level silences lower-severity messages
+ok   Cybertrain.logger returns the same object twice
+ok   Cybertrain.logger= swaps the process-wide logger
+ok   an unrecognized level falls back to :info instead of raising
+8 tests, 11 assertions, 0 failures

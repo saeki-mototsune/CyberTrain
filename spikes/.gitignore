@@ -1,0 +1,9 @@
+# spike build outputs
+*.c
+*.rbs
+*.json
+*.log
+*.o
+*.sqlite3*
+*.dSYM/
+/*/build/
