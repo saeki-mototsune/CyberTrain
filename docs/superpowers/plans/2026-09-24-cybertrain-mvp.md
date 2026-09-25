@@ -86,14 +86,23 @@ Tasks 1, 2, 3 have no dependencies on each other and run in parallel. Tasks 4 an
     def initialize(str); def to_s; def to_str; def html_safe?; def ==(other); def +(other) # other String|SafeString -> SafeString (escapes plain String)
   end
   class Cybertrain::Logger
-    def initialize(io = STDOUT, level = :info)   # levels :debug < :info < :warn < :error
+    def initialize(io = nil, level = :info)   # levels :debug < :info < :warn < :error; io nil -> writes to STDOUT
     def debug(msg); def info(msg); def warn(msg); def error(msg)   # prints "[INFO] msg" when enabled
     attr_accessor :level
   end
   module Cybertrain
-    def self.logger; def self.logger=(l)   # process-wide logger (default Logger.new(STDOUT))
+    def self.logger; def self.logger=(l)   # process-wide logger (default Logger.new)
   end
   ```
+
+  Spinel quirk: never construct `Logger.new(STDOUT)` or `Logger.new(STDERR)`
+  explicitly, and never let a program build both a `Logger.new` (default,
+  writes to STDOUT internally) and a `Logger.new(some_stringio)` while
+  passing an explicit IO literal at either call site -- Spinel cannot union
+  a real IO handle with StringIO behind one polymorphic `@io.puts` call
+  site. Always call `Logger.new` (no args, or `Logger.new(nil, level)`) for
+  stdout logging, and `Logger.new(some_io_or_stringio, level)` only for a
+  StringIO/file sink. See `spikes/NOTES.md` rule 18.
 
 - [ ] **Step 1: Write `test/html.rb`** covering: escape of all five characters, escape leaves safe text untouched, `out(nil) == ""`, `out(SafeString) ` unescaped, `out("<b>")` escaped, `out(42) == "42"`, `SafeString + "x<"` escapes the plain half, `html_safe?` true.
 - [ ] **Step 2: Write `test/logger.rb`** using `require "stringio"`: a `StringIO` sink receives `[INFO] hello` for `info`, nothing for `debug` at level `:info`, `[WARN]`/`[ERROR]` lines; `Cybertrain.logger` returns the same object twice; `Cybertrain.logger = custom` swaps it.
@@ -808,3 +817,125 @@ Runs after Wave M2a is integrated. Three independent chains run in parallel: **1
 
 - [ ] **Step 1: tests.** Migrator: two migrations (create posts; create comments with references) on `:memory:`: `migrate` applies both, `applied_versions`, `status`, second `migrate` is a no-op, `rollback` drops comments, re-migrate; the SQL for each operation kind (assert `SqliteDDL.statements` strings). SchemaDumper: after migrating, `dump` reproduces the tables/columns/null/indexes/foreign keys and `dump_to_ruby` equals the expected schema.rb text (heredoc). gen_migrations: emitter output for two fixture file names.
 - [ ] **Step 2: Implement; snapshots; `spin test` green.**
+
+---
+
+## Wave M3 — Application boot, dev loop, CLI, example app
+
+Runs after Wave M2b is integrated. Order: **15** first (everything else boots through it), then **16** and **17** in parallel, then **18**, then **19**.
+
+### Task 15: Config and Application boot
+
+**Files:**
+- Create: `cybertrain/config.rb`, `cybertrain/application.rb`
+- Modify: `cybertrain/db/cli.rb` (use `Cybertrain.config.database_path` when available)
+- Test: `test/application.rb`
+
+**Interfaces:**
+- Consumes: every middleware, `Router`, `Server`, `DB`, `Views`, `Gen::Routes.build`/`path_for` (generated, referenced only through arguments).
+- Produces:
+  ```ruby
+  class Cybertrain::Config
+    attr_accessor :env, :host, :port, :database_path, :secret_key_base, :views_root, :public_root, :layout, :log_level, :session_cookie_name, :session_max_age, :pool_size, :static_files, :csrf
+    def initialize            # env = ENV["CYBERTRAIN_ENV"] || "development"; host "127.0.0.1"; port 3000 (ENV["PORT"]); database_path "storage/#{env}.sqlite3" (ENV["CYBERTRAIN_DATABASE"]); secret_key_base ENV["CYBERTRAIN_SECRET_KEY_BASE"] or "" ; views_root "app/views"; public_root "public"; layout "layouts/application"; log_level :info; session_cookie_name "_cybertrain_session"; session_max_age 1209600; pool_size 4; static_files true; csrf true
+    def development?; def test?; def production?
+    def resolve_secret!       # production: raise "CYBERTRAIN_SECRET_KEY_BASE is not set" when empty; other envs: read or create tmp/secret_key (64 hex chars)
+  end
+  module Cybertrain
+    def self.config; def self.configure { |c| }   # config/app.rb calls Cybertrain.configure do |c| c.port = 3000 end
+    def self.env
+  end
+  class Cybertrain::Application
+    def initialize(router:, url_resolver:, config: Cybertrain.config)   # router: Cybertrain::Router already filled by Gen::Routes.build; url_resolver: lambda
+    def stack                 # Middleware: RequestLogger (unless log_level :none) -> Static (if static_files) -> MethodOverride -> SessionStore -> CsrfProtection (if csrf) -> router
+    def boot                  # config.resolve_secret!; DB.connect(config.database_path, size: pool_size) unless connected; Views.configure(views_root, cache: !development?); Views.url_resolver = url_resolver; Views.layout_name = layout; Cybertrain.logger.level = log_level; returns self
+    def call(ctx)             # stack.call(ctx) (for tests)
+    def server                # Cybertrain::Server.new(stack, host:, port:)
+    def run                   # boot; server.run (Task 16 wraps this with the dev loop)
+  end
+  ```
+  The generated app's `bin/server.rb`:
+  ```ruby
+  require "cybertrain"
+  require_relative "../config/app"
+  require_relative "../gen/app"
+  app = Cybertrain::Application.new(router: Gen::Routes.build(Cybertrain::Router.new), url_resolver: ->(name, args) { Gen::Routes.path_for(name, args) })
+  app.run
+  ```
+
+- [ ] **Step 1: `test/application.rb`.** Config defaults per env (set `ENV` is read-only in Spinel? verify; otherwise construct Config and assign); `resolve_secret!` creates `tmp/secret_key` in test env and raises in production with empty secret; `Application#call` through the full stack with a hand-built Router: a GET renders, a POST without CSRF token is 403, a POST with the token (fetched via a GET route that returns `csrf_token`) passes; session cookie round trip through `Test::Client`; static file served from a temp public root.
+- [ ] **Step 2: Implement; snapshot; `spin test` green.**
+
+### Task 16: Development loop — watcher, rebuild, self-exec, dev error page
+
+**Files:**
+- Create: `cybertrain/dev.rb`, `cybertrain/dev/watcher.rb`, `cybertrain/dev/rebuilder.rb`, `cybertrain/dev/reexec.rb`, `cybertrain/dev/error_page.rb`
+- Modify: `cybertrain/application.rb` (`run` installs the dev loop in development)
+- Test: `test/dev_watcher.rb`, `test/dev_error_page.rb` (rebuild/exec are exercised manually and by `examples/blog` in Task 18)
+- Reference: `spikes/07_process_control/08_full_loop_gen1.rb`, `09_full_loop_gen2.rb`
+
+**Interfaces:**
+- Produces:
+  ```ruby
+  class Cybertrain::Dev::Watcher
+    def initialize(globs, interval = 0.5)   # Array<String> of Dir.glob patterns
+    def snapshot                            # Hash<String, Integer> path -> mtime as Integer
+    def changed?                            # compares with the previous snapshot, updates it, returns true when any path was added/removed/modified
+    def start { |changed_paths| }           # spawns a Thread polling every interval; yields the changed paths
+    def stop
+  end
+  class Cybertrain::Dev::Rebuilder
+    def initialize(root, target = "server", log_path = "tmp/rebuild.log")
+    def rebuild                             # system("spin run gen > log 2>&1 && spin build #{target} >> log 2>&1"); returns true/false; stores File.read(log) into last_output
+    attr_reader :last_output, :last_failed
+  end
+  module Cybertrain::Dev::Reexec            # ffi_source shim sp_reexec(path, arg) as in the spike; def self.exec_self(binary_path, port) never returns on success
+  class Cybertrain::Dev::ErrorPage < Cybertrain::Middleware
+    def initialize(app, rebuilder = nil)    # rescues StandardError from the inner app -> 500 with an HTML page: exception class, message, request line, and for Cybertrain::Template::RuntimeError/SyntaxError the template name and line; when rebuilder.last_failed, prepends a red "Build failed" banner with rebuilder.last_output (escaped) to every response body of type text/html
+  end
+  class Cybertrain::Application
+    def run   # development: wrap stack in Dev::ErrorPage; start Watcher over app/**/*.rb, config/**/*.rb, db/schema.rb, gen/**/*.rb; on change -> Rebuilder#rebuild; on success Process.kill("HUP", Process.pid); trap("HUP") { server.stop; Dev::Reexec.exec_self(File.expand_path($0), server.port.to_s) }; production: plain server.run. SIGTERM: server.stop then exit 0 in both.
+  end
+  ```
+
+- [ ] **Step 1: tests.** Watcher: temp dir with two files, `changed?` false at first, true after touching one (write a new content), true after adding a file, false again afterwards. ErrorPage: an inner middleware raising `RuntimeError, "boom"` yields 500 HTML containing "RuntimeError" and "boom" escaped; a Template::RuntimeError message "posts/show.html.erb:12: undefined method" appears with the line; a rebuilder stub with `last_failed = true` injects the banner into a 200 HTML response and not into a JSON response.
+- [ ] **Step 2: Implement; snapshots; `spin test` green. Then verify manually with `examples/blog` in Task 18 (edit a controller, see the rebuild + re-exec in the log, request the changed page).**
+
+### Task 17: The `cybertrain` CLI — `new` and `generate scaffold`
+
+**Files:**
+- Create: `bin/cybertrain.rb`, `cybertrain/cli.rb`, `cybertrain/cli/new_app.rb`, `cybertrain/cli/scaffold.rb`, `cybertrain/cli/templates.rb`
+- Test: `test/cli_new.rb`, `test/cli_scaffold.rb`
+
+**Interfaces:**
+- Produces:
+  ```ruby
+  module Cybertrain::CLI
+    def self.run(argv)   # "new NAME [--path DIR|--version V]" | "generate scaffold NAME field:type ... [parent:references]" | "version" | "help"; returns exit code
+  end
+  module Cybertrain::CLI::NewApp
+    def self.create(name, framework_dep)   # writes: spin.toml ([dependencies] cybertrain = { path = "<abs or rel path>" } or version), .gitignore (build/ storage/*.sqlite3* tmp/ log/), config/app.rb, config/routes.rb (`Cybertrain::Routes.draw do\nend`), db/schema.rb (`Cybertrain::Schema.define(version: "0") do |s|\nend`), db/migrate/.keep, app/controllers/application_controller.rb, app/models/.keep, app/views/layouts/application.html.erb (with csrf_meta_tags, flash rendering, yield), app/helpers/.keep, public/404.html, public/500.html, public/style.css (small stylesheet used by scaffold views), storage/.keep, tmp/.keep, gen/.keep, bin/server.rb, bin/gen.rb, bin/db.rb, test/.keep, README.md; prints "create <path>" per file
+  end
+  module Cybertrain::CLI::Scaffold
+    def self.generate(root, name, fields)  # fields Array<"title:string">; writes db/migrate/<timestamp>_create_<plural>.rb (create_table with columns + references + timestamps), app/models/<name>.rb (validates presence for the first string field), app/controllers/<plural>_controller.rb (index show new edit create update destroy with before_action :set_<name>, strong params, redirects with notice, `status: :unprocessable_entity` on failure), app/views/<plural>/{index,show,new,edit,_form}.html.erb, and inserts `  resources :<plural>` after `Cybertrain::Routes.draw do` in config/routes.rb (idempotent); timestamp from Time.now.utc.strftime("%Y%m%d%H%M%S") unless ENV["CYBERTRAIN_TIMESTAMP"] is set (tests set it)
+  end
+  ```
+  Distribution: `spin install` (in the framework repo) builds `bin/cybertrain.rb` and copies it to `~/.local/bin/cybertrain`; CI runs `spin build` to prove it compiles.
+
+- [ ] **Step 1: tests.** `cli_new.rb`: create into a temp dir, assert the file list and that `config/routes.rb`/`bin/server.rb` contents match the plan. `cli_scaffold.rb`: on a fresh temp app run scaffold `post title:string body:text` and `comment commenter:string body:text post:references` with a fixed timestamp; assert the migration text, the controller text (exact), the route lines inserted once even when run twice, and the view files exist with the expected form fields.
+- [ ] **Step 2: Implement; snapshots; `spin test` green.**
+
+### Task 18: `examples/blog` — the acceptance app
+
+**Files:**
+- Create: `examples/blog/**` produced by `cybertrain new blog` + two scaffolds, then edited to match Rails' Getting Started: `Article` (title, body; validates title presence, body length minimum 10), `Comment` (commenter, body, article:references), nested `resources :articles do resources :comments, only: [:create, :destroy] end`, comments form and list on `articles/show.html.erb`, `root "articles#index"`.
+- Test: `examples/blog/test/articles.rb`, `examples/blog/test/comments.rb` (integration through `Cybertrain::Test::Client` against the app's stack with a test database `storage/test.sqlite3` migrated in the test setup via `Cybertrain::DB::Migrator`).
+- Modify: `.github/workflows/ci.yml` already runs `spin run gen`, the freshness diff, and `spin test` for the example.
+
+- [ ] **Step 1: Generate the app with the CLI, `spin run gen`, `spin run db migrate`, `spin build`, run `build/bin/server` and exercise it with curl: index, new, create (with the CSRF token from the form), show, edit, update, destroy, comment create/destroy, validation failure re-renders the form with errors, flash notices appear after redirects, 404 for a missing article.**
+- [ ] **Step 2: Write the two integration tests covering every flow in Step 1; commit `gen/` outputs.**
+- [ ] **Step 3: Dev loop smoke: start with `CYBERTRAIN_ENV=development spin run server`, edit `app/views/articles/index.html.erb` (no rebuild) and `app/controllers/articles_controller.rb` (rebuild + re-exec), confirm both changes are served.**
+
+### Task 19: Documentation
+
+- [ ] Rewrite `README.md`: what cybertrain is, requirements, `spin install` for the CLI, `cybertrain new`, the blog walkthrough (Rails Getting Started mapped 1:1), the template language subset, the Spinel constraints that shape the API (`before_action :sym` via generated dispatch, callbacks with explicit receiver, no console, no reloading of Ruby without rebuild), deployment (binary + `app/views` + `public` + `storage`), and a "differences from Rails" table. Keep `docs/design.md` as the design record; add `docs/template-language.md` (the grammar from design.md section 7 in English with examples).
