@@ -1,0 +1,18 @@
+ok   change records operations in call order
+ok   add_reference records an add_reference operation and, by default, an add_foreign_key operation
+ok   add_reference(foreign_key: false) records only the add_reference operation
+ok   add_foreign_key defaults its column to singularize(to_table) + _id
+ok   inverse of create_table is drop_table
+ok   inverse of add_column is remove_column
+ok   inverse of add_index is remove_index
+ok   inverse of rename_column reverses the direction
+ok   inverse raises IrreversibleMigration for a kind with no automatic down
+ok   register/all order migrations by version regardless of registration order
+ok   self.version / self.version_string are per-subclass
+ok   up resets operations, so calling it twice does not duplicate them
+ok   down on a change-only migration replays the inverse operations in reverse order
+ok   down resets operations, so calling it twice does not duplicate them
+ok   down raises IrreversibleMigration when change recorded a non-invertible operation
+ok   add_index accepts Symbol columns
+ok   add_index name: overrides the derived name, for symmetry with Definition#add_index
+17 tests, 49 assertions, 0 failures

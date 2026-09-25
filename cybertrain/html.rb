@@ -82,10 +82,15 @@ module Cybertrain
     # Concatenating with a plain String escapes it first, so building up a
     # SafeString piece by piece never lets unsafe content slip through.
     def +(other)
-      case other
-      when SafeString then SafeString.new(@str + other.to_s)
-      else SafeString.new(@str + Html.escape(other))
-      end
+      # Built in two steps: a case expression whose branches both construct
+      # a SafeString fails to compile when SafeString gets Spinel's unboxed
+      # value-type layout (every SafeString in the program travelling only
+      # as a keyword argument).
+      piece = case other
+              when SafeString then other.to_s
+              else Html.escape(other)
+              end
+      SafeString.new(@str + piece)
     end
   end
 end

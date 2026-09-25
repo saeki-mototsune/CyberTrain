@@ -1,0 +1,4 @@
+ok   mint on GET, round-trip the cookie, POST with the body token passes
+ok   POST without the body token is rejected even with a valid session cookie
+ok   POST with the token via the header passes without a body param
+3 tests, 7 assertions, 0 failures

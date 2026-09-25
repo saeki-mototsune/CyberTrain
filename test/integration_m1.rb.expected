@@ -3,4 +3,6 @@ ok   the entry point exposes every M1 feature
 ok   an App routes a request through the default stack
 ok   the Server serves the same App over a socket
 ok   the database layer opens a pooled in-memory SQLite connection
-4 tests, 15 assertions, 0 failures
+ok   controller, session, flash and CSRF work together through the stack
+ok   the schema DSL and migrations are reachable from the entry point
+6 tests, 23 assertions, 0 failures

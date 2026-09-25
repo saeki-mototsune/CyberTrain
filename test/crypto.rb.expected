@@ -1,0 +1,6 @@
+ok   hmac_hex is deterministic and 64 hex chars
+ok   hmac_hex differs for a different key or a different message
+ok   hmac_hex handles a long key and non-ASCII UTF-8 data without raising
+ok   secure_compare is true only for equal strings of equal length
+ok   random_token returns distinct hex strings of the requested byte length
+5 tests, 76 assertions, 0 failures

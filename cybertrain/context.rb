@@ -9,6 +9,7 @@ module Cybertrain
   class Context
     attr_reader :request, :response
     attr_accessor :params, :route_params, :route_name
+    attr_accessor :session, :flash   # set by SessionStore; nil when the middleware is absent
 
     def initialize(request)
       @request = request
@@ -16,6 +17,8 @@ module Cybertrain
       @params = Params.new
       @route_params = {}
       @route_name = ""
+      @session = nil
+      @flash = nil
     end
   end
 end

@@ -1,0 +1,14 @@
+ok   create_table records columns with type, null and default
+ok   references adds an implicit foreign key column, index and foreign key
+ok   references can skip the foreign key
+ok   tables are kept sorted by name regardless of declaration order
+ok   add_index and add_foreign_key can be declared outside create_table
+ok   Schema.current remembers the last defined schema; reset! clears it
+ok   Dumper.to_ruby renders the blog schema deterministically
+ok   Dumper.to_ruby renders unique:, default:, limit: and an index declared outside create_table
+ok   Dumper.to_ruby escapes backslash, double-quote and # in a default
+ok   the dumped form of an index round-trips through Definition#add_index
+ok   add_index accepts Symbol columns
+ok   add_index raises ArgumentError for an unknown table
+ok   add_foreign_key raises ArgumentError for an unknown table
+13 tests, 41 assertions, 0 failures

@@ -1,0 +1,10 @@
+ok   a GET always passes, even without a token
+ok   a POST without a token is rejected
+ok   a POST with the right token in the urlencoded body passes
+ok   a POST with the right token in the query string passes
+ok   a POST with the right token via the header passes
+ok   a POST with the wrong token in the body is rejected
+ok   an empty session token is treated as missing
+ok   token_for mints a token once and reuses it
+ok   token_for marks the session changed and stores the token under TOKEN_KEY
+9 tests, 21 assertions, 0 failures

@@ -1,0 +1,15 @@
+ok   round trip dump/load
+ok   tampered signature loads empty
+ok   wrong secret loads empty
+ok   garbage loads empty
+ok   tampered payload with recomputed signature over garbage JSON loads empty
+ok   changed? starts false
+ok   changed? true after a new write
+ok   changed? false when the same value is written again
+ok   changed? after delete
+ok   key?, keys and clear
+ok   SessionStore's Set-Cookie loads back to the value the chain wrote
+ok   a request carrying that cookie sees the value
+ok   flash round-trips through SessionStore: request 1 sets, request 2 sees, request 3 is empty
+ok   an unchanged session sets no cookie
+14 tests, 36 assertions, 0 failures

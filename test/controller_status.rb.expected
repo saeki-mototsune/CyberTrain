@@ -1,0 +1,8 @@
+ok   before_action { |c| c.head :forbidden } sends 403
+ok   before_action { |c| c.redirect_to ..., status: :see_other } sends 303
+ok   before_action { |c| c.render plain:, status: :forbidden } sends 403
+ok   rescue_from(X) { |c, e| c.head :not_found } sends 404
+ok   an Integer status from a block passes through
+ok   redirect_to from a block defaults to 302
+ok   an unknown status Symbol from a block is an ArgumentError
+7 tests, 12 assertions, 0 failures

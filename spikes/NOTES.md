@@ -93,6 +93,39 @@ disposable and will be deleted once the framework covers it.
 28. `URI.decode_www_form_component` on a malformed escape (`%ZZ`, a trailing
     `%`) raises under CRuby but silently decodes under Spinel; validate escapes
     (`%` followed by two hex digits) before decoding when both must agree.
+30. Calls made from inside a stored block do not widen the callee's parameter
+    types: a parameter typed `sp_int` from direct call sites silently receives a
+    Symbol's internal id when a stored Proc passes `:forbidden`. Give such
+    parameters a polymorphic default (`DEFAULT = [200, :ok][0]`) so they stay
+    boxed, and narrow with `case value when Integer ... else ... end`.
+31. `yield self` in a base-class method called on subclass instances fails at
+    the C level (the yield parameter is typed as the base). Take `&block` and
+    call `block.call(self)` from an ordinary method instead of yielding.
+32. A `begin/rescue => e` inside a yielding method that is called from a block
+    nested in another block gets a polymorphic `e` slot and fails to compile.
+    Keep begin/rescue in a non-yielding method that receives the block as a Proc.
+33. `JSON::ParserError` is not a `StandardError` in the runtime's exception
+    table: write `rescue JSON::ParserError, StandardError`.
+34. Rule 10 is stronger than stated: two methods sharing a name on unrelated
+    classes whose return types differ (`add_index` returning an Index vs an
+    Array) corrupt inference even when no polymorphic receiver exists, with the
+    backend error "emit_boxed_text: cannot box type". Same name ⇒ same return type.
+35. Mutating an object received as a plain parameter through `obj[k] = v` can
+    silently do nothing once the caller sits behind a middleware chain (the
+    parameter widened); put the mutation in a typed instance method on the
+    object (`session.csrf_token!`) and call that.
+36. Requiring a middleware whose `#call` is never reachable (never wired into a
+    chain) can miscompile unrelated files (dead-code inference gap). Programs
+    that require the whole framework must exercise the stack they require.
+37. A Hash constant with Symbol keys and Integer values looked up with a
+    polymorphic key returns a boxed value; accumulate into a typed local and
+    `.to_i` on every branch to keep the result `sp_int`.
+38. A class method cannot call a protected/private instance method of an
+    instance it holds; expose a public method instead.
+39. `SafeString#+` must build its result in two steps (compute the piece, then
+    `SafeString.new`): a case expression whose branches both construct the
+    result fails under the unboxed value-type layout that SafeString gets when
+    it only ever travels as a keyword argument.
 29. Once `SafeString` (to_s/to_str) is in the program, `String#include?` with
     a polymorphic argument mis-dispatches even after narrowing the receiver;
     `String#index(needle.to_s)` works. Iterating a nullable Hash with

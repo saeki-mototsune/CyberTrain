@@ -1,0 +1,4 @@
+ok   CsrfProtection required but never instantiated still compiles and runs
+ok   a stack built with csrf: false never touches CsrfProtection at run time
+ok   a stack built with csrf: true still enforces the token
+3 tests, 3 assertions, 0 failures

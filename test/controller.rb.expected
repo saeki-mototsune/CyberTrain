@@ -1,0 +1,26 @@
+ok   callbacks run base class first, then subclass, then the action, then after callbacks
+ok   only: limits a callback to the listed actions
+ok   except: skips a callback for the listed actions
+ok   a before callback that redirects halts the chain
+ok   after callbacks run after the action
+ok   render plain: sends text/plain
+ok   render json: generates JSON with application/json
+ok   render html: escapes a String but not a SafeString
+ok   render content_type: overrides the default
+ok   render with a template name goes through render_template
+ok   render with two bodies is an ArgumentError
+ok   head :no_content sends an empty body
+ok   redirect_to with a symbolic status
+ok   before_action { |c| c.head :forbidden } sends 403
+ok   before_action { |c| c.redirect_to ..., status: :see_other } sends 303
+ok   rescue_from(X) { |c, e| c.head :not_found } sends 404
+ok   rescue_from with: handles the exception through run_callback
+ok   rescue_from with a block receives the controller and the exception
+ok   an exception without a handler propagates out of process
+ok   an action that renders nothing raises MissingTemplate
+ok   an unknown callback name raises UnknownCallback
+ok   process runs from a stored route handler
+ok   chain_for and rescues_for walk the class hierarchy
+ok   Callback#applies? honours only and except
+ok   status_code maps symbols and passes integers through
+25 tests, 66 assertions, 0 failures

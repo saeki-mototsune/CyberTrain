@@ -1,0 +1,7 @@
+ok   value set in request 1 visible in request 2 and gone in request 3
+ok   flash.now is visible only in the current request
+ok   []= queues for the next request, not the current one
+ok   each iterates current values in insertion order
+ok   keys and empty?
+ok   store does not touch the session when nothing was queued
+6 tests, 14 assertions, 0 failures

@@ -71,4 +71,66 @@ test "the database layer opens a pooled in-memory SQLite connection" do
   assert_equal "2026-01-02T03:04:05Z", Cybertrain::Cast.iso8601(Time.utc(2026, 1, 2, 3, 4, 5))
 end
 
+# A controller wired the way gen/routes.rb will wire it, behind the session
+# and CSRF middleware, so the whole M2a surface compiles and runs together.
+class NotesController < Cybertrain::Controller
+  before_action :remember_visit
+
+  def index
+    seen = session["visits"]
+    notice = flash[:notice]
+    render plain: "visits=#{seen.nil? ? "0" : seen} notice=#{notice.nil? ? "-" : notice} token=#{Cybertrain::CsrfProtection.token_for(session)}"
+  end
+
+  def create
+    flash[:notice] = "created #{params[:title]}"
+    redirect_to "/notes", status: :see_other
+  end
+
+  def run_callback(name)
+    case name
+    when :remember_visit then remember_visit
+    else super
+    end
+  end
+
+  def remember_visit
+    count = session["visits"]
+    session["visits"] = (count.nil? ? 1 : count.to_i + 1).to_s
+  end
+end
+
+test "controller, session, flash and CSRF work together through the stack" do
+  router = Cybertrain::Router.new
+  router.get("/notes", "notes") { |ctx| NotesController.new(ctx).process(:index) { |c| c.index } }
+  router.post("/notes", "notes") { |ctx| NotesController.new(ctx).process(:create) { |c| c.create } }
+  csrf = Cybertrain::CsrfProtection.new(router)
+  stack = Cybertrain::SessionStore.new(csrf, secret: "integration-secret")
+  client = Cybertrain::Test::Client.new(stack)
+
+  first = client.get("/notes")
+  assert_response first, :ok
+  assert_includes first.body, "visits=1 notice=-"
+  token = first.body.split("token=")[1]
+
+  assert_response client.post("/notes", { "title" => "x" }), :forbidden
+  created = client.post("/notes", { "title" => "x", "authenticity_token" => token })
+  assert_redirected_to created, "/notes"
+  after = client.follow_redirect!
+  assert_includes after.body, "visits=3 notice=created x"
+  assert_includes client.get("/notes").body, "visits=4 notice=-"
+end
+
+test "the schema DSL and migrations are reachable from the entry point" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table("posts") do |t|
+      t.string("title", null: false)
+      t.timestamps
+    end
+  end
+  assert_equal ["posts"], definition.tables.map { |t| t.name }
+  assert_includes Cybertrain::Schema::Dumper.to_ruby(definition), "create_table \"posts\""
+  Cybertrain::Schema.reset!
+end
+
 Cybertrain::Test.run!
