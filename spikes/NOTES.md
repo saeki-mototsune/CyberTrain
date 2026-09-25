@@ -74,6 +74,15 @@ disposable and will be deleted once the framework covers it.
     10-worker default (25-45k rps) and had no 40-80 ms stalls; set it from the
     binary (`ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]`) before
     the first `Thread.new`, and re-measure once templates and SQLite add CPU work.
+23. `spin test --regen` writes `.expected` from CRuby's output; `spin test` diffs
+    the Spinel binary against it. Tests must therefore be CRuby/Spinel-portable;
+    FFI tests get their snapshot from the compiled binary
+    (`./build/test/<name> > test/<name>.rb.expected`). CRuby is only needed for
+    `--regen`, never for `spin test` with committed snapshots.
+24. `spin test` compiles the test program with `--require-gate`; a test must
+    `require "cybertrain/test"` itself or `test "..."` fails to compile with an
+    'unsupported call' error.
+25. `String#to_i` saturates at 2**63-1 instead of promoting to Bignum.
 18. A `@@class_variable` assigned directly inside a `module Foo` block (e.g.
     `module Foo; @@x = Bar.new; end`) mis-compiles as soon as some earlier
     required file has already opened `module Foo` elsewhere: the C compile
