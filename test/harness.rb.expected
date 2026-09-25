@@ -1,0 +1,5 @@
+ok   assert_equal passes on equal values
+ok   assert_includes on strings and arrays
+ok   assert_raises returns the message and checks the class name
+ok   refute and assert_nil
+4 tests, 11 assertions, 0 failures
