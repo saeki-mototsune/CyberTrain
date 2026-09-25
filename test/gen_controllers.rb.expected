@@ -1,0 +1,12 @@
+ok   scan_source finds the class line, ivars and callbacks
+ok   ivars are unique in first-seen order and skip comparisons
+ok   every target of a multiple assignment is an ivar
+ok   commented lines are ignored
+ok   callbacks: several symbols, all three kinds, rescue_from with:
+ok   a file without a class line scans to nil
+ok   the class named after the file wins
+ok   scan_dir reads every controller sorted by file
+ok   emit writes view_assigns and run_callback per controller
+ok   emit puts parents first and inherits their ivars
+ok   a namespaced controller is emitted inside its modules
+11 tests, 21 assertions, 0 failures

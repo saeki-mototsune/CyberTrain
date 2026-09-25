@@ -1,0 +1,4 @@
+ok   the checked-in fixture output is fresh
+ok   gen/controllers.rb nests the namespaced class in its module
+ok   a namespaced controller dispatches with its callbacks and ivars
+3 tests, 5 assertions, 0 failures

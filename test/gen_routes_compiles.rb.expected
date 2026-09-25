@@ -1,0 +1,16 @@
+ok   the checked-in fixture output is fresh
+ok   root dispatches to posts#index and runs inherited callbacks
+ok   the new action runs new_action
+ok   show runs set_post through run_callback and uses url helpers
+ok   rescue_from with: dispatches through run_callback
+ok   create redirects with an Integer helper argument
+ok   update redirects to a *_url helper
+ok   PUT, DELETE, edit, member and collection routes dispatch
+ok   nested routes reach the nested controller
+ok   custom get route and Cybertrain.url_root
+ok   unknown paths are 404
+ok   path_for resolves helpers by name
+ok   the router knows the route names
+ok   gen/app.rb loads the generated models next to the controllers
+ok   view_assigns exposes the scanned ivars
+15 tests, 37 assertions, 0 failures
