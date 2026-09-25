@@ -1,0 +1,21 @@
+ok   config defaults in development
+ok   environment variables override the config defaults
+ok   an empty CYBERTRAIN_DATABASE counts as unset
+ok   resolve_secret! creates the secret key file in the test env and reuses it
+ok   resolve_secret! keeps an explicit secret_key_base
+ok   resolve_secret! raises in production when the secret is empty
+ok   Cybertrain.configure fills the process-wide config
+ok   DB::CLI.database_path follows Cybertrain.config once it is loaded
+ok   the stack is RequestLogger, Static, MethodOverride, SessionStore, CsrfProtection, Router
+ok   log_level :none, static_files and csrf switch their middleware off
+ok   boot connects the database, configures views and resolves the secret
+ok   a GET renders a template inside the layout
+ok   a POST without the CSRF token is forbidden
+ok   a POST with the token from the page passes
+ok   a _method=delete POST reaches the DELETE route
+ok   the session cookie round trips
+ok   a static file is served from the public root
+ok   path helpers in templates call the url_resolver
+ok   a method-returned Gen::Routes-style url_resolver keeps its route names
+ok   the server listens on the configured host and port
+20 tests, 72 assertions, 0 failures

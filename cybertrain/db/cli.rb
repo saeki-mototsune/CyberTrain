@@ -3,6 +3,7 @@ require "cybertrain/db/connection"
 require "cybertrain/db/migrator"
 require "cybertrain/db/schema_dumper"
 require "cybertrain/migration"
+require "cybertrain/config"
 
 module Cybertrain
   module DB
@@ -10,12 +11,11 @@ module Cybertrain
     # calls: `require "cybertrain"; require_relative "../gen/migrations";
     # exit(Cybertrain::DB::CLI.run(ARGV))`.
     #
-    # Cybertrain.config (Task 15) does not exist yet, so the database path
-    # is read directly from ENV: ENV["CYBERTRAIN_DATABASE"], or
-    # "storage/#{env}.sqlite3" with env from ENV["CYBERTRAIN_ENV"] ||
-    # "development". Once Task 15 lands this should read
-    # Cybertrain.config.database_path instead (see the plan's note on
-    # cybertrain/db/cli.rb under Task 15's Files: Modify).
+    # The database is Cybertrain.config.database_path once the app has
+    # loaded its config (config/app.rb calling Cybertrain.configure);
+    # otherwise the same defaults Config uses, read from ENV on every call:
+    # ENV["CYBERTRAIN_DATABASE"], or "storage/#{env}.sqlite3" with env from
+    # ENV["CYBERTRAIN_ENV"] || "development".
     module CLI
       def self.run(argv, root = ".")
         return usage if argv.empty?
@@ -75,9 +75,9 @@ module Cybertrain
       # An empty CYBERTRAIN_DATABASE counts as unset (it would otherwise
       # resolve to the app root directory itself).
       def self.database_path
-        env = ENV["CYBERTRAIN_ENV"] || "development"
-        configured = ENV["CYBERTRAIN_DATABASE"] || ""
-        configured == "" ? "storage/#{env}.sqlite3" : configured
+        return Cybertrain.config.database_path if Cybertrain.config_loaded?
+
+        Config.default_database_path(Config.default_env)
       end
 
       # An absolute CYBERTRAIN_DATABASE is used as is; a relative one (and

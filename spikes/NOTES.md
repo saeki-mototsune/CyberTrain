@@ -141,6 +141,12 @@ disposable and will be deleted once the framework covers it.
     own files, so every subsystem also needs one test program that requires
     the whole framework next to it (test/template_integration.rb) and
     exercises the stored-block paths (rule 36).
+42. A lambda literal (or a local holding one) passed as a **keyword argument**
+    is not marked escaping (src/analyze_pass.c ignores KeywordHashNode), so its
+    parameters keep the Integer default and it silently receives garbage when
+    called later (`url_resolver: ->(name, args) { ... }` gave name = 4295868465).
+    Pass lambdas positionally, as `&block`, or return them from a method
+    (`Gen::Routes.url_resolver`).
 29. Once `SafeString` (to_s/to_str) is in the program, `String#include?` with
     a polymorphic argument mis-dispatches even after narrowing the receiver;
     `String#index(needle.to_s)` works. Iterating a nullable Hash with

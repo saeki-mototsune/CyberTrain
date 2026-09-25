@@ -8,4 +8,5 @@ ok   the schema DSL and migrations are reachable from the entry point
 == 20260925000000 CreateNotesMigration: migrating
 done
 ok   the migrator applies a migration and the dumper reads it back
-7 tests, 27 assertions, 0 failures
+ok   an Application boots the full stack from config
+8 tests, 30 assertions, 0 failures

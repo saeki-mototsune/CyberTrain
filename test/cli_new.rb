@@ -68,7 +68,7 @@ test "bin/server.rb boots the application" do
 
     app = Cybertrain::Application.new(
       router: Gen::Routes.build(Cybertrain::Router.new),
-      url_resolver: ->(name, args) { Gen::Routes.path_for(name, args) }
+      url_resolver: Gen::Routes.url_resolver
     )
     app.run
   RUBY
@@ -84,6 +84,7 @@ test "bin/gen.rb and bin/db.rb drive the generator and the migrator" do
   RUBY
   assert_equal <<~RUBY, read("blog/bin/db.rb")
     require "cybertrain"
+    require_relative "../config/app"
     require_relative "../gen/migrations"
 
     exit(Cybertrain::DB::CLI.run(ARGV))

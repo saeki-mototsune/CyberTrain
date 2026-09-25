@@ -48,6 +48,7 @@ module Cybertrain
           out << "    def self.path_for(name, args)\n"
           out << "      raise ArgumentError, \"unknown route helper '\#{name}'\"\n"
           out << "    end\n"
+          out << url_resolver_source
           return out
         end
 
@@ -64,6 +65,22 @@ module Cybertrain
         end
         out << "      else raise ArgumentError, \"unknown route helper '\#{name}'\"\n"
         out << "      end\n"
+        out << "    end\n"
+        out << url_resolver_source
+        out
+      end
+
+      # The lambda Cybertrain::Application takes as url_resolver:. It is
+      # returned from a method on purpose: a lambda literal passed as a
+      # keyword argument is not marked escaping by Spinel 2026.09.12, so its
+      # parameters keep the Integer default and every helper receives a
+      # garbage route name (spikes/NOTES.md rule 42).
+      def self.url_resolver_source
+        out = +""
+        out << "\n"
+        out << "    # Pass this to Cybertrain::Application.new(url_resolver: Gen::Routes.url_resolver).\n"
+        out << "    def self.url_resolver\n"
+        out << "      ->(name, args) { path_for(name, args) }\n"
         out << "    end\n"
         out
       end

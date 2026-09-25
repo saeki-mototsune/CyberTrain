@@ -157,4 +157,28 @@ test "the migrator applies a migration and the dumper reads it back" do
   conn.close
 end
 
+def integration_url_resolver
+  ->(name, args) { name == "notes_path" ? "/notes" : "/#{name}/#{args.size}" }
+end
+
+test "an Application boots the full stack from config" do
+  Cybertrain.configure do |c|
+    c.env = "test"
+    c.database_path = ":memory:"
+    c.secret_key_base = "integration-secret-key-base"
+    c.log_level = :warn
+    c.static_files = false
+  end
+  router = Cybertrain::Router.new
+  router.get("/app", "app") { |ctx| ctx.response.body = "booted #{Cybertrain::Views.url_resolver.call("notes_path", [])}" }
+  application = Cybertrain::Application.new(router: router, url_resolver: integration_url_resolver)
+  application.boot
+  client = Cybertrain::Test::Client.new(application)
+  res = client.get("/app")
+  assert_response res, :ok
+  assert_equal "booted /notes", res.body
+  assert_response client.post("/app", { "x" => "1" }), :forbidden
+  Cybertrain::DB.disconnect
+end
+
 Cybertrain::Test.run!

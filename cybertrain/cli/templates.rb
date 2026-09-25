@@ -109,7 +109,8 @@ module Cybertrain
           # Environment variables (PORT, CYBERTRAIN_ENV, CYBERTRAIN_DATABASE,
           # CYBERTRAIN_SECRET_KEY_BASE) are read before this block runs.
           Cybertrain.configure do |c|
-            c.port = 3000
+            # c.port = 3000
+            # c.workers = 1
           end
         RUBY
       end
@@ -206,7 +207,7 @@ module Cybertrain
 
           app = Cybertrain::Application.new(
             router: Gen::Routes.build(Cybertrain::Router.new),
-            url_resolver: ->(name, args) { Gen::Routes.path_for(name, args) }
+            url_resolver: Gen::Routes.url_resolver
           )
           app.run
         RUBY
@@ -225,6 +226,7 @@ module Cybertrain
       def self.bin_db
         <<~RUBY
           require "cybertrain"
+          require_relative "../config/app"
           require_relative "../gen/migrations"
 
           exit(Cybertrain::DB::CLI.run(ARGV))

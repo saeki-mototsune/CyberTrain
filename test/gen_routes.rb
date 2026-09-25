@@ -372,6 +372,11 @@ test "emitted source for a small route set" do
           else raise ArgumentError, "unknown route helper '#{name}'"
           end
         end
+
+        # Pass this to Cybertrain::Application.new(url_resolver: Gen::Routes.url_resolver).
+        def self.url_resolver
+          ->(name, args) { path_for(name, args) }
+        end
       end
 
       module UrlHelpers
