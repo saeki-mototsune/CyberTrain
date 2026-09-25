@@ -1,0 +1,10 @@
+ok   the checked-in gen/models files match the emitter (fixture stale otherwise)
+ok   scan_dir finds Post and its summary view method
+ok   write_all writes every model file under gen/models
+ok   create and find through the generated classes
+ok   column defaults become initial values and reach the database
+ok   validations from app/models/post.rb apply to the generated class
+ok   belongs_to and has_many associations
+ok   call_view_method reaches the scanned summary
+ok   to_json of a generated model
+9 tests, 34 assertions, 0 failures

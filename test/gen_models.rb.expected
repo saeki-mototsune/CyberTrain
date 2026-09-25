@@ -1,0 +1,24 @@
+ok   model_class_name singularizes and camelizes the table name
+ok   file_name is the singular table name
+ok   posts emits exactly the Post shape of test/model.rb
+ok   comments emits exactly the Comment shape of test/model.rb
+ok   flags emits exactly the Flag shape of test/model.rb
+ok   model_name and column_names lines
+ok   casts per column follow type and null
+ok   def post (belongs_to) and def comments (has_many)
+ok   read_association case covers belongs_to and has_many
+ok   call_view_method with a scanned summary
+ok   integer, float, boolean, date and datetime casts
+ok   initial values: zero values for NOT NULL, nil for nullable, SQL defaults applied
+ok   string defaults are emitted as escaped Ruby literals
+ok   a nullable foreign key and a foreign key to a differently named column
+ok   two foreign keys to one table get distinct has_many names
+ok   view methods that collide with columns or associations are skipped
+ok   scan_source finds the class name and arity-0 instance methods
+ok   scan_source returns nil without a class line
+ok   scan_source accepts a bare class reopening
+ok   scan_source skips class << self, nested classes and later classes
+ok   scan_source inside a module stops at the class's own end
+ok   view_methods_for picks the scanned methods of one model
+ok   outputs maps gen/models paths to sources for every table
+23 tests, 94 assertions, 0 failures
