@@ -1,4 +1,5 @@
 require "cybertrain/config"
+require "cybertrain/version"
 require "cybertrain/logger"
 require "cybertrain/middleware"
 require "cybertrain/router"
@@ -99,6 +100,7 @@ module Cybertrain
       ENV["SPINEL_WORKERS"] = @config.workers.to_s
       port = Application.port_argument(ARGV)
       @config.port = port if port > 0
+      print_boot_banner
       if @config.development?
         serve_development(Dev::Rebuilder.new(Dir.pwd))
       else
@@ -159,6 +161,21 @@ module Cybertrain
     end
 
     private
+
+    # Printed once, straight to STDOUT (not through Cybertrain.logger, which
+    # a quiet log_level could silence): the same "is it up, and where"
+    # message Rails/Puma print on boot. Flushed immediately since Spinel
+    # block-buffers a redirected STDOUT until exit (spikes/NOTES.md).
+    def print_boot_banner
+      c = @config
+      puts "=> Booting cybertrain #{Cybertrain::VERSION}"
+      puts "=> #{c.env} environment (#{c.workers} worker#{c.workers == 1 ? "" : "s"})"
+      puts "=> Watching app/, config/ and db/schema.rb for changes" if c.development?
+      puts "* Listening on http://#{c.host}:#{c.port}"
+      puts "Use Ctrl-C to stop"
+      STDOUT.flush
+      nil
+    end
 
     # The stack the server runs: wrapped in Dev::ErrorPage in development.
     def front_app
