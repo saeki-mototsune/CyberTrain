@@ -45,6 +45,11 @@ cybertrain は、matz の Ruby AOT コンパイラ **Spinel** の上で動く、
 - 型付き配列は要素型の混在を拒否する。混在させるとタグ付き共用体（poly）になる。
 - `nil` と `String` が混ざると nullable String になる。
 - ユーザ定義の `#hash` / `#eql?` は Hash キーで呼ばれない。
+- （スパイク 2 で判明）`instance_exec(&stored_block)` / `instance_eval(&stored_block)` は、保存済みブロックに対してはどの形でもコンパイルできない（ブロックはクラス本体時点の `self` で固定される）。リテラルブロックを直接渡す形だけ動く。
+- （スパイク 2 で判明）非リテラル `send` は「プログラム中の Symbol / String リテラルが 128 個以下」のときだけ desugar される（`src/analyze_desugar.c`）。実アプリは確実に超えるので、フレームワークは非リテラル `send` と非リテラル `respond_to?` を一切使わない。
+- （スパイク 2 で判明）インスタンスメソッドから `self.class.foo` を呼ぶとき、`foo` が基底クラスにしか定義されていないと `self` が静的な基底クラスに束縛される（サイレントなミスコンパイル）。クラスを引数で明示的に渡すか、全サブクラスで `foo` を上書きする（生成コードの `self.table_name` など）。
+- （スパイク 2 で判明）`Method` オブジェクトを配列に入れて `call` すると実行時 `NoMethodError`。コレクションに入れるのは lambda にする。
+- （ハーネス実装で判明）多相な受け手に多相な引数で `include?` を呼ぶと誤った結果になる。`case` で受け手の型を絞ってから呼ぶ。
 - ソケット読み取りで停止したグリーンスレッドが他の I/O を止める不具合（issue #4528）は close 済みだが、ワーカー数と同時接続数の関係で劣化する報告があった。
 - Roundhouse の Spinel ターゲットは「接続ごとにグリーンスレッド、Spinel 自身のネットワーク層、`-lsqlite3` リンク、prefork は未完成」で実運用している。
 
@@ -110,7 +115,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 決定: アプリ側の `bin/gen.rb` をアプリごとにコンパイルして `spin run gen` で実行する。入力は次の 3 つに限る。
   1. `db/schema.rb`（`create_table` DSL を実行して表データを得る）
   2. `config/routes.rb`（`resources` などを実行して経路データを得る）
-  3. `app/controllers/**/*.rb` の**字句走査**（正規表現で `@name =` 代入と `class X < Y` 行を拾う。構文解析はしない）
+  3. `app/controllers/**/*.rb` と `app/models/**/*.rb` の**字句走査**（正規表現で `@name =` 代入、`class X < Y` 行、`before_action :name` / `after_action :name` / `rescue_from X, with: :name`、モデルの引数なし `def name` を拾う。構文解析はしない）
   さらに `app/` 配下のファイル一覧から `gen/app.rb`（`require_relative` 一覧）を生成する。
 - 理由: Spinel には Ruby パーサが公開されていない。`bin/gen.rb` がモデルを `require_relative` すると、生成前の属性メソッドを呼ぶモデルでジェネレータ自身がコンパイルできない（鶏と卵）。入力をデータに限ればこの問題が構造的に消える。ivar の字句走査は例外だが、コントローラを変えたときはどのみち再コンパイルするので開発体験を損なわない。
 - 却下: CRuby + Prism のスクリプト（開発機に CRuby が必須になり、二つのランタイムを抱える）。
@@ -141,12 +146,12 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 
 ### D8. コントローラ
 
-- コールバック: ブロックが公式構文。`before_action { set_post }`、`before_action(only: [:show, :edit]) { ... }`。実行時は `instance_exec` のブロック形で呼ぶ。`before_action :set_post` のシンボル形は、非リテラル `send` の動作をスパイクで確認できた場合に限り追加する。
+- コールバック（スパイク 2 の結果で改訂）: 公式構文は Rails と同じシンボル形 `before_action :set_post, only: [:show, :edit]`。宣言はクラス名をキーにした実行時データ（`Hash<String, Array<Callback>>`）に積み、継承チェーンは `Controller.chain_for(self.class)` で `superclass` を明示的に辿る。呼び出しは `send` ではなく、ジェネレータが `app/controllers/**/*.rb` を字句走査して拾った `before_action :name` / `after_action :name` / `rescue_from X, with: :name` の名前から、コントローラごとに `def run_callback(name); case name; when :set_post then set_post; else super; end; end` を `gen/controllers.rb` に生成して dispatch する。ブロック形も提供するが、`instance_exec` が使えないためブロックはコントローラを引数で受け取る: `before_action(only: [:show]) { |c| c.set_post }`。暗黙 `self` のブロック形は提供しない。
 - `params`: 型付き `Params` クラス。`params[:id]` は `String | nil`、`params[:post]` は子 `Params`、配列値は `params.list(:ids)`。`params.require(:post).permit(:title, :body)` は `Hash<Symbol, String>` 相当を返し、モデルの生成済み `assign_attributes` に渡す。MVP で permit できる値は文字列のみ。
 - render / redirect: `render :new`（リテラルシンボル）、`render json: post`（生成 `to_json`）、`render plain:`、`head :not_found`、`redirect_to post_path(post)`、`redirect_to posts_path, status: :see_other`。action が何もしなければ action 名のテンプレートを暗黙 render する。
 - session: クッキーストアのみ。値は `String` だけ。`openssl` / `digest` の HMAC で署名し、改竄は捨てる。`flash[:notice]` / `flash.now[:alert]` は session 上に載せる。
 - CSRF: 既定で有効。トークンを session に持ち、フォームヘルパーが hidden field を出し、GET 以外で検証する。
-- 例外: `rescue_from(RecordNotFound) { head :not_found }` のブロック形。開発時のエラーページは例外クラス・メッセージ・テンプレート名と行のみ。スタックトレースは Spinel の制約で出せない。
+- 例外: `rescue_from RecordNotFound, with: :not_found`（生成 `run_callback` 経由）または `rescue_from(RecordNotFound) { |c, e| c.head :not_found }`。例外クラスは `e.class.name` の文字列比較で照合する。開発時のエラーページは例外クラス・メッセージ・テンプレート名と行のみ。スタックトレースは Spinel の制約で出せない。
 - MVP 外: `respond_to` / format、streaming、`helper_method`、`layout` の動的切り替え（`application` 固定）。
 
 ### D9. ビューは「ERB 構文の実行時解釈テンプレート言語」
@@ -155,7 +160,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 理由: ビュー編集は開発で最も回数の多いサイクルであり、そこに再コンパイルを挟みたくない（コンパイル済み ERB 案はこの理由で却下）。Spinel に `eval` はないので、実行時に動かせるのは「ERB の見た目をした、文法を自分で定義したテンプレート言語」だけである。両立はできない。
 - 式の文法（Ruby の部分集合、第 7 章に詳細）: リテラル、`@ivar`、ローカル変数、メソッド呼び出し（位置引数・キーワード引数）、`&.`、演算子、文字列補間、`if / elsif / else / unless / end`、`each do |x|` / `each_with_index`、`form_with ... do |f|`。ブロックはこの 2 種類だけ。
 - 値の表現: `Value` というタグ付き共用体（nil / bool / Integer / Float / String / SafeString / Array / Hash / Time / Model）。
-- モデルへのアクセス: 属性と関連は schema 由来の生成コード `read_attribute(:title)` / `read_association(:comments)` で名前解決する。手書きメソッドをテンプレートから呼ぶには、モデル側で `view_methods :summary` と宣言する。これは非リテラル `send` の仕様に依存するのでスパイクで検証する。
+- モデルへのアクセス: 属性と関連は schema 由来の生成コード `read_attribute(:title)` / `read_association(:comments)` で名前解決する。手書きメソッドは、ジェネレータが `app/models/**/*.rb` を字句走査して引数なしの `def name` を拾い、モデルごとに `def call_view_method(name); case name; when :summary then summary; ... end; end` を生成することでテンプレートから呼べる（`view_methods` 宣言は不要。非リテラル `send` は 128 リテラル制限のため使わない）。
 - `@post` の受け渡し: D4 の字句走査で `gen/view_assigns.rb` に `{ "post" => @post, ... }` を吐く（既定）。`render :show, locals: { post: @post }` の明示渡しも併用できる。
 - パーシャル: Rails 7.1 の strict locals 構文 `<%# locals: (post:) %>` を採用する。`<%= render "form", post: @post %>` はリテラル名のみ。
 - レイアウト: `application` 固定。`<%= yield %>` と `content_for :title` / `yield :title`（`Hash<Symbol, String>`）。
@@ -184,7 +189,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 ### D12. 開発ループ: サーバが自分で再ビルドして自分を置き換える
 
 - 決定: `bin/server.rb` が `CYBERTRAIN_ENV=development` のときだけ監視モードになる。監視対象は `app/**/*.rb`、`config/`、`db/schema.rb`。mtime を 0.5 秒間隔でポーリング。`app/views/**/*.erb` は監視対象外（テンプレートエンジンが自分で再読み込み）。
-- 変更を検知したら `spin run gen && spin build server` を `system` で実行し、成功したら listen ソケットを閉じて libc の `execv` を FFI で呼び、新しいバイナリに自分を置き換える。`SO_REUSEADDR` を立てる。
+- 変更を検知したら `spin run gen && spin build server` を `system` で実行し、成功したら自分に `SIGHUP` を送る。`trap("HUP")` のハンドラ（スパイク 7 で実機動作を確認）が listen ソケットを閉じ、`ffi_source` の 6 行の C シム `sp_reexec(path, port_arg)` 経由で `execv` を呼んで新しいバイナリに自分を置き換える。PID は変わらない。元の listen ソケットに `SO_REUSEADDR` を立てておけば、新プロセスは同じポートを即座に再バインドできる（スパイク 7 で確認）。ポートなどの引き継ぎ状態は argv で渡す。
 - ビルド失敗でサーバは死なない。旧バイナリのまま動き続け、コンパイラの stderr を保持して次のリクエストで開発用エラーページとして返す。
 - マイグレーションは自動で流さない。`spin run db migrate` の結果 `db/schema.rb` が変わることで再ビルドが走る。
 - production: 監視もビルドも無効。バイナリ、`storage/*.sqlite3`、`app/views/`、`public/` を同梱して配布する。ビューを外部ファイルに置く決定の帰結として、バイナリ単体では動かない。
@@ -227,7 +232,8 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 | --- | --- | --- |
 | `db/schema.rb` | `gen/models/<model>.rb` | `attr_accessor`、`read_attribute` / `write_attribute` / `assign_attributes` の `case`、`from_row`、`to_json`、`attribute_names`、外部キー由来の関連、`<Model>Relation` |
 | `config/routes.rb` | `gen/routes.rb` | 経路表、dispatch の `case`、`*_path` / `*_url`、polymorphic path の `case` |
-| `app/controllers/**/*.rb`（字句走査） | `gen/view_assigns.rb` | コントローラごとの `view_assigns` メソッド（open class） |
+| `app/controllers/**/*.rb`（字句走査） | `gen/controllers.rb` | コントローラごとの `view_assigns` と `run_callback(name)` の `case`（open class） |
+| `app/models/**/*.rb`（字句走査） | `gen/models/<model>.rb` に追記 | モデルごとの `call_view_method(name)` の `case`（引数なし `def` のみ） |
 | `app/` のファイル一覧 | `gen/app.rb` | `require_relative` 一覧 |
 
 生成物はすべてコミットする。CI で `spin run gen` 後に `git diff --exit-code gen/` を実行し、鮮度を検査する。
@@ -262,12 +268,12 @@ ERB のタグ: `<% %>`、`<%= %>`（エスケープ）、`<%== %>`（非エス�
 | # | 検証項目 | 落ちた場合 |
 | --- | --- | --- |
 | 1 | `spinel` / `spin` の導入、`spinel --help` の最適化レベル、2,000 行規模のコンパイル時間 | 開発ループ（D12）の体感を再評価 |
-| 2 | 非リテラル `send` がリテラル名に dispatch できるか、戻り値の型、`instance_exec` のブロック形 | `view_methods` を生成 `case` 文に変更。コールバックのシンボル形は提供しない |
+| 2 | 非リテラル `send` がリテラル名に dispatch できるか、戻り値の型、`instance_exec` のブロック形 | **結果**: `send` は動くが 128 リテラル制限で実アプリでは無効。`instance_exec(&stored)` は不可。→ D8 / D9 を生成 `case` 文方式に改訂済み |
 | 3 | **タグ付き共用体 `Value` を持つ木構造インタプリタが型推論を通り、100 行のテンプレート × 1 万回の描画速度が出るか** | D9 をコンパイル済み ERB（監視・再ビルド方式）に戻す。最大のリスク |
 | 4 | 基底 `Relation` と `PostRelation` で `first` が `Post \| nil` に推論され、複数モデルで型が広がらないか | Relation を生成テンプレートで全量複製する |
 | 5 | `TCPServer` + グリーンスレッド + keep-alive で 100 同時接続、レイテンシ、issue #4528 の再現有無 | `SPINEL_WORKERS` の既定値調整、または接続数上限の導入 |
 | 6 | SQLite FFI の open / prepare / bind / step / column、`blocking: true`、`SizedQueue` プールの複数スレッド利用、WAL | 接続をスレッドローカルに変更 |
-| 7 | `execv` の FFI、`trap` の可否、`SO_REUSEADDR` | 監視を別プロセスに分離 |
+| 7 | `execv` の FFI、`trap` の可否、`SO_REUSEADDR` | **結果**: すべて動作（`trap("HUP")` 実機確認、execv シム、同一ポート即時再バインド）。D12 確定 |
 | 8 | `openssl` / `digest` の HMAC、`json`、`cgi` の `escapeHTML`、`uri` のクエリ解析 | 自前実装で代替 |
 
 go / no-go: 2 と 3 の結果で D8 / D9 を確定してから M1 に進む。
