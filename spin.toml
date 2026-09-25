@@ -1,0 +1,4 @@
+# cybertrain: a Rails-like web application framework for the Spinel AOT compiler.
+[package]
+name = "cybertrain"
+version = "0.1.0"

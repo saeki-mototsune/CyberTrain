@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  SPINEL_TAG: "2026.09.12"
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Spinel toolchain
+        id: spinel-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local
+          key: spinel-${{ env.SPINEL_TAG }}-${{ runner.os }}-${{ runner.arch }}-v1
+
+      - name: Install SQLite headers (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libssl-dev
+
+      - name: Build Spinel
+        if: steps.spinel-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "$SPINEL_TAG" https://github.com/matz/spinel.git /tmp/spinel
+          cd /tmp/spinel
+          make deps
+          make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
+          make install PREFIX="$HOME/.local"
+
+      - name: Framework tests
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          spinel --version
+          spin test
+
+      - name: Generated code is fresh (examples/blog)
+        if: hashFiles('examples/blog/spin.toml') != ''
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cd examples/blog
+          spin run gen
+          git diff --exit-code -- gen/
+
+      - name: Example app tests
+        if: hashFiles('examples/blog/spin.toml') != ''
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cd examples/blog
+          spin test
