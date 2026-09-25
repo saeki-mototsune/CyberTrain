@@ -58,4 +58,17 @@ test "the Server serves the same App over a socket" do
   assert_includes raw, "pong"
 end
 
+test "the database layer opens a pooled in-memory SQLite connection" do
+  Cybertrain::DB.connect(":memory:", size: 1)
+  Cybertrain::DB.with do |c|
+    c.execute("CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT)")
+    c.execute("INSERT INTO notes (body) VALUES (?)", ["hello"])
+    rows = c.execute("SELECT id, body FROM notes")
+    assert_equal 1, rows.size
+    assert_equal "hello", rows[0]["body"]
+  end
+  Cybertrain::DB.disconnect
+  assert_equal "2026-01-02T03:04:05Z", Cybertrain::Cast.iso8601(Time.utc(2026, 1, 2, 3, 4, 5))
+end
+
 Cybertrain::Test.run!

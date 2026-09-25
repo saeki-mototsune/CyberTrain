@@ -1,0 +1,36 @@
+ok   Cast converts to non-null Integer, String and Float
+ok   Cast nullable helpers keep nil and blank form input as nil
+ok   Cast.bool accepts true/false, 1/0 and form strings
+ok   Cast.time_or_nil parses both SQLite datetime formats
+ok   Cast.time_or_nil returns nil for well-formed but out-of-range values
+ok   Cast.to_sql turns Time and booleans into SQLite values
+ok   Errors collects messages per attribute in insertion order
+ok   Relation builds SQL from where, order, limit and offset
+ok   count and size respect limit and offset
+ok   exists? respects offset and limit
+ok   first and last pick from the limit/offset window
+ok   Post.new(title: ...).save inserts and sets id and created_at
+ok   Post.find(id) returns a typed record
+ok   Post.find(999) raises RecordNotFound with a message
+ok   where chains order, limit and offset
+ok   first on an empty relation is nil
+ok   count and exists?
+ok   validations: save returns false and fills errors.full_messages
+ok   save! raises RecordInvalid
+ok   update
+ok   destroy
+ok   destroy on a new record deletes nothing and returns false
+ok   reload
+ok   before_save callback runs
+ok   after_create runs once
+ok   comments association through comments.post_id
+ok   read_association and call_view_method dispatch by name
+ok   to_json exact string
+ok   to_json keeps booleans as true/false and floats as numbers
+ok   columns named after SQL keywords are quoted
+ok   ==
+ok   to_param
+ok   nullable body round trips nil and String
+ok   created_at is a Time after reload
+ok   assign_attributes with String keys from Params#permit
+35 tests, 237 assertions, 0 failures

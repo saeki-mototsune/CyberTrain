@@ -2,4 +2,5 @@
 ok   the entry point exposes every M1 feature
 ok   an App routes a request through the default stack
 ok   the Server serves the same App over a socket
-3 tests, 12 assertions, 0 failures
+ok   the database layer opens a pooled in-memory SQLite connection
+4 tests, 15 assertions, 0 failures

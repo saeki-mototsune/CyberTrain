@@ -1,0 +1,22 @@
+ok   creates a table
+ok   binds Integer, Float, String, nil, true and Time and reads back Ruby types
+ok   a Time bind in another zone is stored as the UTC ISO string
+ok   round-trips unicode text
+ok   changes counts the rows touched by the last UPDATE
+ok   last_insert_id returns the new row id
+ok   a syntax error raises DB::Error including the SQL
+ok   transaction commits
+ok   transaction rolls back when the block raises and re-raises
+ok   nested transaction joins the outer one
+ok   a failed COMMIT rolls back and the next transaction works
+ok   the block's exception survives when SQLite already rolled back
+ok   PRAGMA table_info and foreign_key_list rows
+ok   SELECT name, sql FROM sqlite_master
+ok   close marks the connection closed
+ok   a closed connection raises instead of touching the freed handle
+ok   an unopenable path raises with SQLite's error message
+ok   DB.with before DB.connect raises not connected
+ok   DB.connect(":memory:") shares one database across DB.with calls
+ok   pool: 8 threads x 100 inserts through DB.with
+ok   DB.connect, DB.with and DB.disconnect
+21 tests, 86 assertions, 0 failures
