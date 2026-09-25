@@ -1,0 +1,10 @@
+ok   an action that renders nothing renders its template inside the layout
+ok   view_assigns feed the template's instance variables
+ok   render :new, status: :unprocessable_entity
+ok   render partial: renders _form without the layout
+ok   render layout: false
+ok   render locals: override view_assigns
+ok   a missing template propagates as Cybertrain::Template::MissingTemplate
+ok   no layout is applied when the layout file does not exist
+ok   controller_path and view_env
+9 tests, 26 assertions, 0 failures

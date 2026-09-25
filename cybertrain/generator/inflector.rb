@@ -33,7 +33,10 @@ module Cybertrain
 
     # "PostsController" -> "posts_controller"; "HTMLParser" -> "html_parser".
     def self.underscore(str)
-      chars = str.gsub("::", "/").chars
+      # Two steps: in a threaded program a collection inside `chars` freed the
+      # unnamed gsub result it was splitting ("Post" came back as "").
+      path = str.gsub("::", "/")
+      chars = path.chars
       out = +""
       chars.each_with_index do |ch, i|
         if upper?(ch)

@@ -1,5 +1,6 @@
 ok   a model callback runs and its record renders in a template
 ok   a controller with before_action and rescue_from blocks renders through the stack
+ok   a form rendered by form_with posts back through CSRF, re-renders with errors, then redirects with a flash
 ok   the default App stack and the Server still work with templates required
 ok   the schema DSL is reachable next to the template engine
-4 tests, 20 assertions, 0 failures
+5 tests, 41 assertions, 0 failures

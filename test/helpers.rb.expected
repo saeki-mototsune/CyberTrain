@@ -1,0 +1,16 @@
+ok   path helpers raise until the app installs a url_resolver
+ok   h and raw
+ok   link_to escapes its text and its href
+ok   button_to emits the hidden _method and the authenticity token
+ok   csrf_meta_tags and csrf_token read the session token
+ok   flash, params and request_path come from the controller
+ok   pluralize picks singular or plural
+ok   truncate shortens long text with an ellipsis
+ok   number_with_delimiter groups thousands
+ok   time_ago_in_words buckets
+ok   render a partial with strict locals
+ok   content_for and yield :title
+ok   url helpers go through the url_resolver with name and args
+ok   url_for derives the route name from the model
+ok   an unknown helper is a RuntimeError
+15 tests, 66 assertions, 0 failures

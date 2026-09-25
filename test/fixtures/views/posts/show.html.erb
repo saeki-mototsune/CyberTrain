@@ -1,0 +1,4 @@
+<% content_for :title do %>Post: <%= @post.title %><% end %>
+<% if flash[:notice] %><p class="notice"><%= flash[:notice] %></p><% end %>
+<h1><%= @post.title %></h1>
+<%= link_to "Edit", edit_post_path(@post) %>

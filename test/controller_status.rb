@@ -1,6 +1,11 @@
 require "cybertrain/test"
 require "cybertrain/controller"
 
+# cybertrain/controller pulls in cybertrain/model and the SQLite FFI bindings
+# (through the template helpers), so this program no longer runs under CRuby:
+# take its snapshot from the compiled binary, never `spin test --regen`
+# (spikes/NOTES.md rule 23).
+
 # Regression test for symbolic statuses passed from stored blocks.
 #
 # Spinel 2026.09.12 types a method parameter from the direct call sites only:

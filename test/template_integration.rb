@@ -10,6 +10,11 @@
 # blocks, model callbacks) next to a render, and the rest of the stack it
 # requires (rule 36: required-but-unreachable code can miscompile).
 #
+# NotesController renders the way an app does: implicit and explicit
+# renders through Cybertrain::Views with the layout, partials with strict
+# locals, form_with/FormBuilder, link_to and flash, driven through
+# SessionStore + CsrfProtection by Cybertrain::Test::Client.
+#
 # It links SQLite through FFI, so it cannot run under CRuby: its snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23).
 require "cybertrain"
@@ -124,29 +129,56 @@ class IntegrationHelpers < Cybertrain::Template::HelperBase
   end
 end
 
-VIEWS = Cybertrain::Template::Engine.new("test/fixtures/views")
-
 def page_env
   env = {}
-  env["__content_title"] = "Notes"
   env["posts"] = Note.all.order("id").to_a
   env
 end
 
-# ---- a controller with stored blocks that renders a template --------------
+# ---- a controller with stored blocks that renders through Views ----------
+
+# Stands in for the app's generated Gen::Routes.path_for and records the
+# route names templates asked for.
+ROUTE_CALLS = []
+
+def note_id(v)
+  case v
+  when Cybertrain::Model then v.to_param
+  else ""
+  end
+end
+
+Cybertrain::Views.configure("test/fixtures/views", cache: true)
+Cybertrain::Views.url_resolver = lambda do |name, args|
+  ROUTE_CALLS << name
+  case name
+  when "notes_path" then "/notes"
+  when "new_note_path" then "/notes/new"
+  when "note_path" then "/notes/#{note_id(args[0])}"
+  else raise "no route #{name}"
+  end
+end
 
 class NotesController < Cybertrain::Controller
   before_action { |c| c.response.set_header("X-Before", "block") }
   rescue_from(KeyError) { |c, e| c.render plain: "missing #{e.message}", status: :not_found }
 
   def index
-    html = VIEWS.render_with_layout("posts/index", "layouts/application", page_env, IntegrationHelpers.new)
-    render html: Cybertrain::SafeString.new(html)
+    @notes = Note.all.order("id").to_a
+  end
+
+  def new_action
+    @note = Note.new
   end
 
   def create
-    Note.create(title: params[:title].to_s)
-    redirect_to "/notes", status: :see_other
+    @note = Note.new(title: params.nested(:note)[:title].to_s)
+    if @note.save
+      flash[:notice] = "Note created"
+      redirect_to "/notes", status: :see_other
+    else
+      render :new, status: :unprocessable_entity
+    end
   end
 
   def token
@@ -155,6 +187,11 @@ class NotesController < Cybertrain::Controller
 
   def missing
     raise KeyError, "the key"
+  end
+
+  # What gen/controllers.rb emits for this class.
+  def view_assigns
+    { "notes" => @notes, "note" => @note }
   end
 end
 
@@ -177,30 +214,78 @@ test "a model callback runs and its record renders in a template" do
   assert_equal "notes/inline:1: no routes", assert_raises("Cybertrain::Template::RuntimeError") { render_inline("<%= no_routes %>") }
 end
 
-test "a controller with before_action and rescue_from blocks renders through the stack" do
+# The token form_with printed into the page.
+def form_token(body)
+  marker = "name=\"authenticity_token\" value=\""
+  i = body.index(marker)
+  return "" if i.nil?
+
+  start = i + marker.length
+  body[start, body.index("\"", start).to_i - start]
+end
+
+def notes_client
   router = Cybertrain::Router.new
   router.get("/notes", "notes") { |ctx| NotesController.new(ctx).process(:index) { |c| c.index } }
+  router.get("/notes/new", "new_note") { |ctx| NotesController.new(ctx).process(:new) { |c| c.new_action } }
   router.post("/notes", "notes") { |ctx| NotesController.new(ctx).process(:create) { |c| c.create } }
   router.get("/token", "token") { |ctx| NotesController.new(ctx).process(:token) { |c| c.token } }
   router.get("/missing", "missing") { |ctx| NotesController.new(ctx).process(:missing) { |c| c.missing } }
   stack = Cybertrain::SessionStore.new(Cybertrain::CsrfProtection.new(router), secret: "template-integration")
-  client = Cybertrain::Test::Client.new(stack)
+  Cybertrain::Test::Client.new(stack)
+end
 
+test "a controller with before_action and rescue_from blocks renders through the stack" do
+  client = notes_client
   page = client.get("/notes")
   assert_response page, :ok
   assert_equal "block", page.header("x-before")
+  assert_equal "text/html; charset=utf-8", page.header("content-type")
+  assert_includes page.body, "<!DOCTYPE html>"
   assert_includes page.body, "<head><title>Notes</title></head>"
-  assert_includes page.body, "<li>first &lt;note&gt; (2 comments)</li>"
+  assert_includes page.body, "<li><a href=\"/notes/1\">first &lt;note&gt;</a> (2 comments)</li>"
   token = client.get("/token").body
-  assert_response client.post("/notes", { "title" => "second" }), :forbidden
-  created = client.post("/notes", { "title" => " second ", "authenticity_token" => token })
+  assert_response client.post("/notes", { "note[title]" => "second" }), :forbidden
+  created = client.post("/notes", { "note[title]" => " second ", "authenticity_token" => token })
   assert_redirected_to created, "/notes"
-  assert_includes client.follow_redirect!.body, "<li>second (2 comments)</li>"
+  assert_includes client.follow_redirect!.body, "<li><a href=\"/notes/2\">second</a> (2 comments)</li>"
 
   missing = client.get("/missing")
   assert_response missing, :not_found
   assert_equal "missing the key", missing.body
   assert_equal "block", missing.header("x-before")
+end
+
+test "a form rendered by form_with posts back through CSRF, re-renders with errors, then redirects with a flash" do
+  client = notes_client
+  ROUTE_CALLS.clear
+  page = client.get("/notes/new")
+  assert_response page, :ok
+  assert_includes page.body, "<head><title>New note</title></head>"
+  assert_includes page.body, "<h1>New note</h1>"
+  assert_includes page.body, "<form action=\"/notes\" method=\"post\"><input type=\"hidden\" name=\"authenticity_token\""
+  assert_includes page.body, "<label for=\"note_title\">Title</label>"
+  assert_includes page.body, "<input type=\"text\" name=\"note[title]\" id=\"note_title\" value=\"\">"
+  assert_includes page.body, "<input type=\"submit\" name=\"commit\" value=\"Create Note\">"
+  assert_includes page.body, "<a href=\"/notes\">Back</a>"
+  assert_equal ["notes_path", "notes_path"], ROUTE_CALLS
+  token = form_token(page.body)
+  assert_equal 64, token.length
+
+  # Validation fails before before_save strips the title, so the form shows it as typed.
+  invalid = client.post("/notes", { "note[title]" => "   ", "authenticity_token" => token })
+  assert_response invalid, :unprocessable_entity
+  assert_includes invalid.body, "<p class=\"errors\">Title can&#39;t be blank</p>"
+  assert_includes invalid.body, "<label for=\"note_title\" class=\"field_with_errors\">Title</label>"
+  assert_includes invalid.body, "<input type=\"text\" name=\"note[title]\" id=\"note_title\" value=\"   \" class=\"field_with_errors\">"
+
+  created = client.post("/notes", { "note[title]" => "third <one>", "authenticity_token" => form_token(invalid.body) })
+  assert_redirected_to created, "/notes"
+  index = client.follow_redirect!
+  assert_includes index.body, "<p class=\"notice\">Note created</p>"
+  assert_includes index.body, "<li><a href=\"/notes/3\">third &lt;one&gt;</a> (2 comments)</li>"
+  assert_includes index.body, "<a href=\"/notes/new\">New note</a>"
+  refute client.get("/notes").body.index("Note created"), "the flash lasts one request"
 end
 
 test "the default App stack and the Server still work with templates required" do

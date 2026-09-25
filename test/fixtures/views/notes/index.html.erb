@@ -1,0 +1,6 @@
+<% content_for :title do %>Notes<% end %>
+<% if flash[:notice] %><p class="notice"><%= flash[:notice] %></p><% end %>
+<ul>
+<% @notes.each do |note| %><%= render "note", note: note %><% end %>
+</ul>
+<%= link_to "New note", new_note_path %>

@@ -9,6 +9,11 @@ require_relative "fixtures/gen_namespaced/config/routes"
 # `module Admin` itself, because it loads before app/controllers.
 require_relative "fixtures/gen_namespaced/gen/app"
 
+# cybertrain/controller pulls in cybertrain/model and the SQLite FFI bindings
+# (through the template helpers), so this program no longer runs under CRuby:
+# take its snapshot from the compiled binary, never `spin test --regen`
+# (spikes/NOTES.md rule 23).
+
 FIXTURE = "test/fixtures/gen_namespaced"
 
 def fixture_outputs

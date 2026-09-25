@@ -525,10 +525,10 @@ module Cybertrain
       def build(tokens)
         tokens.each do |t|
           case t.kind
-          when :text then @stack.last.frame_target << TextNode.new(t.text)
-          when :output then output(t.text, false, t.line)
-          when :output_raw then output(t.text, true, t.line)
-          when :code then statement(t.text, t.line)
+          when :text then @stack.last.frame_target << TextNode.new(t.tag_text)
+          when :output then output(t.tag_text, false, t.line)
+          when :output_raw then output(t.tag_text, true, t.line)
+          when :code then statement(t.tag_text, t.line)
           end
         end
         if @stack.size > 1

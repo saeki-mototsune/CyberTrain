@@ -1,0 +1,4 @@
+<% content_for :title do %>New note<% end %>
+<h1>New note</h1>
+<%= render "form", note: @note %>
+<%= link_to "Back", notes_path %>

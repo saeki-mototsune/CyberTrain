@@ -2,6 +2,9 @@ require "json"
 require "cybertrain/context"
 require "cybertrain/html"
 require "cybertrain/callback"
+require "cybertrain/views"
+require "cybertrain/template/helpers"
+require "cybertrain/generator/inflector"
 
 module Cybertrain
   class MissingTemplate < StandardError
@@ -145,22 +148,73 @@ module Cybertrain
       raise UnknownCallback, "unknown callback :#{name} in #{self.class.name} (run `spin run gen`)"
     end
 
+    # The implicit render after an action that rendered nothing:
+    # app/views/<controller_path>/<action>.html.erb inside the layout.
     def default_render(action)
-      raise MissingTemplate, "no template for #{self.class.name}##{action}"
+      raise MissingTemplate, "no template for #{self.class.name}##{action}" if Views.engine.nil?
+
+      render_template(action.to_s)
     end
 
-    def render_template(name)
-      raise MissingTemplate, "no template #{name} for #{self.class.name}"
+    # The instance variables templates can read, as { "post" => @post };
+    # gen/controllers.rb overrides it in every controller.
+    def view_assigns
+      {}
     end
 
-    # Exactly one of template, plain:, html: or json:.
-    def render(template = nil, plain: nil, html: nil, json: nil, status: DEFAULT_STATUS, content_type: nil)
+    # What a template sees: view_assigns, then the locals (extra, keyed by
+    # String), then flash (a Hash of the current messages), params and the
+    # directory partials are looked up in.
+    def view_env(extra)
+      env = {}
+      assigns = view_assigns
+      assigns.each_key { |key| env[key] = assigns[key] }
+      extra.each_key { |key| env[key] = extra[key] }
+      env["flash"] = Template::Helpers.flash_messages(flash)
+      env["params"] = @params
+      path = controller_path
+      env["__template_dir"] = path
+      env["__controller_path"] = path
+      env
+    end
+
+    # "posts" for PostsController.
+    def controller_path
+      name = Inflector.underscore(self.class.name)
+      name.end_with?("_controller") ? name[0, name.length - 11] : name
+    end
+
+    # Renders <controller_path>/<name> with the process-wide Views engine,
+    # inside Views.layout_name when that layout exists and layout is true.
+    def render_template(name, locals = {}, layout: true)
+      engine = Views.engine
+      raise MissingTemplate, "no template #{name} for #{self.class.name}" if engine.nil?
+
+      path = "#{controller_path}/#{name}"
+      env = view_env(string_keys(locals))
+      helpers = Template::Helpers.new(self)
+      frame = Views.layout_name
+      if layout && !frame.empty? && engine.exists?(frame)
+        send_html(engine.render_with_layout(path, frame, env, helpers))
+      else
+        send_html(engine.render(path, env, helpers))
+      end
+    end
+
+    # Exactly one of template, plain:, html:, json: or partial:.
+    #
+    #   render :new, status: :unprocessable_entity
+    #   render :show, layout: false
+    #   render partial: "form", locals: { post: @post }   (never a layout)
+    def render(template = nil, plain: nil, html: nil, json: nil, status: DEFAULT_STATUS, content_type: nil,
+               partial: nil, locals: {}, layout: true)
       given = 0
       given += 1 unless template.nil?
       given += 1 unless plain.nil?
       given += 1 unless html.nil?
       given += 1 unless json.nil?
-      raise ArgumentError, "render needs exactly one of template, plain:, html:, json:" if given != 1
+      given += 1 unless partial.nil?
+      raise ArgumentError, "render needs exactly one of template, plain:, html:, json:, partial:" if given != 1
 
       @response.status = Controller.status_code(status)
       if !plain.nil?
@@ -172,8 +226,10 @@ module Cybertrain
       elsif !json.nil?
         @response.body = json_body(json)
         @response.content_type = "application/json; charset=utf-8"
+      elsif !partial.nil?
+        render_partial(partial.to_s, locals)
       else
-        render_template(template.to_s)
+        render_template(template.to_s, locals, layout: layout)
       end
       @response.content_type = content_type unless content_type.nil?
       @response.performed!
@@ -257,6 +313,31 @@ module Cybertrain
         return nil
       end
       raise e
+    end
+
+    def render_partial(name, locals)
+      engine = Views.engine
+      raise MissingTemplate, "no partial #{name} for #{self.class.name}" if engine.nil?
+
+      path = Template::Helpers.partial_path(controller_path, name)
+      given = string_keys(locals)
+      Template::Helpers.check_locals(engine.template(path), given.keys)
+      send_html(engine.render(path, view_env(given), Template::Helpers.new(self)))
+    end
+
+    def send_html(body)
+      @response.body = body
+      @response.content_type = "text/html; charset=utf-8"
+      @response.performed!
+      nil
+    end
+
+    # `locals: { post: @post }` comes with Symbol keys; templates look
+    # names up by String.
+    def string_keys(locals)
+      out = {}
+      locals.each_key { |key| out[key.to_s] = locals[key] }
+      out
     end
 
     # A String is taken to be JSON already.

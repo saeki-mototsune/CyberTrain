@@ -1,0 +1,10 @@
+ok   form_with a new record posts to the collection path
+ok   form_with a persisted record patches the member path
+ok   form_with url: and method: without a model
+ok   form_with a nested [parent, child] model
+ok   text_field escapes the value
+ok   label, text_area, hidden_field, number_field and check_box
+ok   fields with errors get the field_with_errors class
+ok   submit defaults to Create or Update by persisted?
+ok   an unknown builder method is a RuntimeError
+9 tests, 20 assertions, 0 failures

@@ -19,6 +19,13 @@ module Cybertrain
         @text = text
         @line = line
       end
+
+      # The framework reads a tag's source through tag_text: a `t.text` call
+      # also matches Schema::Table#text (the `t.text :body` DSL) once both
+      # files are in one program, which widened every tag's source to an
+      # untyped value and silently dropped keyword arguments such as
+      # `render "form", post: @post` (spikes/NOTES.md rule 41).
+      def tag_text = @text
     end
 
     module Lexer
@@ -167,7 +174,7 @@ module Cybertrain
       def self.locals_comment(tokens)
         tokens.each do |t|
           return "" if t.line > 1
-          return t.text if t.kind == :comment && t.text.start_with?("locals:")
+          return t.tag_text if t.kind == :comment && t.tag_text.start_with?("locals:")
         end
         ""
       end
