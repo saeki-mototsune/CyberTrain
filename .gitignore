@@ -1,0 +1,14 @@
+# repo-level overrides of the global ignore
+!/docs
+
+# spin / spinel outputs
+build/
+*.o
+*.dSYM/
+
+# app runtime data
+storage/*.sqlite3*
+tmp/
+log/
+
+.DS_Store
