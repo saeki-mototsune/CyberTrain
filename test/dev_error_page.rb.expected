@@ -1,0 +1,20 @@
+ok   an exception from the inner app becomes a 500 HTML page
+ok   the error page shows the request line
+ok   the error page names any exception class
+ok   a template runtime error shows the template name and line
+ok   a template syntax error shows its location
+ok   an error without a template location shows no template line
+ok   template_location splits a template error message
+ok   template_location wants the location at the very start of the message
+ok   the error page replaces every header the failed action had set
+ok   a successful response passes through untouched
+ok   a failed build injects the banner into an HTML response
+ok   the banner is prepended when the page has no body tag
+ok   the banner is not injected into a JSON response
+ok   the banner is not injected into bodyless responses
+ok   the error page carries the banner too
+ok   no banner once a later build succeeds
+ok   the rebuild command runs gen then build in the app root, logging to tmp/rebuild.log
+ok   a failing rebuild keeps the command output
+ok   shell_quote escapes single quotes
+19 tests, 59 assertions, 0 failures
