@@ -511,3 +511,300 @@ Findings from spike 2 that every task here obeys: `instance_exec(&stored_block)`
 
 - [ ] **Step 1: tests.** Schema: define the blog schema (posts with title/body/timestamps, comments with references :post and commenter/body), assert columns/types/null/defaults, the implicit `post_id` column + index + foreign key, `Dumper.to_ruby` round trip (dump → evaluate the dumped text? not possible at runtime; instead assert the exact dumped text against a heredoc). Migration: a `CreatePosts` subclass with `change` recording create_table + add_index, `operations` order, `inverse` of each kind, IrreversibleMigration for remove_column, `register`/`all` ordering by version.
 - [ ] **Step 2: Implement; snapshots; `spin test` green.**
+
+---
+
+## Wave M2b — Database, models, templates
+
+Runs after Wave M2a is integrated. Three independent chains run in parallel: **10 → 14**, **11a → 11b**, **12 → 13**. Everything here follows `spikes/NOTES.md` rules 1–17; the spike programs named in each task are the proven shapes (copy their patterns, not their code).
+
+### Task 10: SQLite connection and pool
+
+**Files:**
+- Create: `cybertrain/db.rb`, `cybertrain/db/sqlite_ffi.rb`, `cybertrain/db/connection.rb`, `cybertrain/db/pool.rb`
+- Test: `test/db_sqlite.rb`
+- Reference: `spikes/06_sqlite_pool/sqlite3_lib.rb`, `spikes/06_sqlite_pool/adapter.rb`, `spikes/06_sqlite_pool/pool_test.rb`
+
+**Interfaces:**
+- Produces:
+  ```ruby
+  module Cybertrain::DB::SQLite3           # ffi_lib "sqlite3"; every ffi_func/ffi_const the connection needs (open_v2, close, prepare_v2, step, reset, finalize, bind_int64/double/text/null, column_count/name/type/int64/double/text, changes, last_insert_rowid, errmsg, exec; malloc/free; ffi_read_ptr :read_ptr, 0). prepare/step/exec are blocking: true. bind_text passes -1 (SQLITE_TRANSIENT) as the destructor.
+  class Cybertrain::DB::Error < StandardError; end
+  class Cybertrain::DB::Connection
+    def initialize(path)                  # OPEN_READWRITE|OPEN_CREATE; then PRAGMA journal_mode=WAL (not for ":memory:"), busy_timeout=5000, foreign_keys=ON. Out-pointers use malloc(8) scratch per call, never a static ffi_buffer.
+    attr_reader :path
+    def execute(sql, binds = [])          # -> Array<Hash<String, value>>; value Integer|Float|String|nil; TEXT copied out with `txt + ""`; binds dispatched: nil -> bind_null, Integer -> bind_int64, Float -> bind_double, true/false -> 1/0, Time -> ISO8601 UTC string, else to_s -> bind_text. Raises Error "<errmsg> (sql: <sql>)" on any non-OK rc; always finalizes the statement (ensure).
+    def exec_script(sql)                  # sqlite3_exec for multi-statement DDL; raises Error
+    def changes                           # Integer rows changed by the last statement
+    def last_insert_id                    # Integer
+    def transaction                       # yields; BEGIN before, COMMIT after, ROLLBACK and re-raise on exception; nested calls just yield (depth counter)
+    def close; def closed?
+  end
+  class Cybertrain::DB::Pool
+    def initialize(path, size = 4)        # opens `size` Connections into a SizedQueue
+    def with                              # yields a Connection; checks it back in an ensure block
+    def size; def close_all
+  end
+  module Cybertrain::DB
+    def self.connect(path, size: 4)       # creates and installs the process-wide pool; returns it
+    def self.pool; def self.pool=(p); def self.connected?
+    def self.with(&block)                 # pool.with
+    def self.disconnect
+  end
+  ```
+
+- [ ] **Step 1: `test/db_sqlite.rb`.** Using `:memory:` for most cases and `tmp/db_sqlite_test.sqlite3` (deleted first) for the pool: create table; insert with Integer/Float/String/nil/true/Time binds and read them back with the right Ruby types (`Integer`, `Float`, `String`, nil, `1`, the ISO string); unicode text round trip; `changes` after UPDATE; `last_insert_id`; a syntax error raises `DB::Error` including the SQL; `transaction` commits; `transaction` rolls back when the block raises (count unchanged) and re-raises; nested transaction; `PRAGMA table_info(posts)` and `PRAGMA foreign_key_list(comments)` rows; `SELECT name, sql FROM sqlite_master`; pool: 8 threads × 100 inserts through `DB.with`, final count 800; `DB.connect`/`DB.with`/`DB.disconnect`.
+- [ ] **Step 2: Implement.** Run the pool case both with default `SPINEL_WORKERS` and `SPINEL_WORKERS=1`.
+- [ ] **Step 3: `spin test --regen test/db_sqlite.rb`; `spin test` green.**
+
+### Task 11a: Model runtime base — Cast, Errors, Validator, Model, Relation
+
+**Files:**
+- Create: `cybertrain/cast.rb`, `cybertrain/errors.rb`, `cybertrain/validator.rb`, `cybertrain/model.rb`, `cybertrain/relation.rb`
+- Test: `test/model.rb` (defines hand-written `Post`/`PostRelation`/`Comment`/`CommentRelation` exactly as Task 11b will generate them — this test is the executable specification of the generated shape)
+- Reference: `spikes/04_relation_typing/orm5.rb`
+
+**Interfaces:**
+- Consumes: `Cybertrain::DB` (Task 10), `require "json"`.
+- Produces:
+  ```ruby
+  module Cybertrain::Cast
+    def self.int(v); def self.int_or_nil(v); def self.str(v); def self.str_or_nil(v); def self.float(v); def self.float_or_nil(v); def self.bool(v); def self.bool_or_nil(v)   # bool accepts true/false/1/0/"1"/"0"/"true"/"false"/"on"/""
+    def self.time_or_nil(v)     # Time -> itself; Integer -> Time.at(v).utc; String "YYYY-MM-DDTHH:MM:SSZ" or "YYYY-MM-DD HH:MM:SS" -> Time.utc(...); else nil
+    def self.to_sql(v)          # Time -> "YYYY-MM-DDTHH:MM:SSZ" (UTC); true/false -> 1/0; nil/Integer/Float/String pass through
+    def self.iso8601(time)      # Time -> String
+  end
+  class Cybertrain::Errors
+    def initialize; def add(attr, message); def [](attr); def any?; def empty?; def count; def clear; def key?(attr); def keys
+    def full_messages           # ["Title can't be blank"]: humanized attr (capitalize, underscores to spaces) + " " + message
+    def each                    # yields (attr Symbol, message String) in insertion order
+  end
+  class Cybertrain::Validator
+    attr_reader :attr, :kind, :minimum, :maximum, :allow_blank   # kind :presence | :length ; minimum/maximum Integer (-1 when unset)
+    def validate(record)        # appends to record.errors: presence -> "can't be blank" when value nil or blank String; length -> "is too short (minimum is N characters)" / "is too long (maximum is N characters)" (skips nil unless presence also fails)
+  end
+  class Cybertrain::RecordNotFound < StandardError; end
+  class Cybertrain::RecordInvalid < StandardError; end
+  class Cybertrain::Model
+    VALIDATORS = {}   # Hash<String, Array<Validator>> keyed by model_name
+    CALLBACKS = {}    # Hash<String, Array<Proc>> keyed by "#{model_name}:#{kind}" ; kinds before_validation, before_save, after_save, before_create, after_create, before_update, after_update, before_destroy, after_destroy ; blocks take the record
+    def self.validates(attr, presence: false, length: nil)     # length: Hash<Symbol,Integer> with :minimum/:maximum ; registers under self.name
+    def self.before_save(&b); def self.after_save(&b); def self.before_create(&b); def self.after_create(&b); def self.before_update(&b); def self.after_update(&b); def self.before_destroy(&b); def self.after_destroy(&b); def self.before_validation(&b)
+    def self.validators_for(model_name); def self.callbacks_for(model_name, kind)
+    # --- abstract hooks the generated subclass overrides (stubs are mandatory: NOTES rule 3) ---
+    def self.table_name = ""; def self.column_names = [] ; def model_name = ""      # model_name returns a String literal per generated class
+    def read_attribute(name) = nil; def write_attribute(name, value) = nil; def assign_attributes(attrs) = self   # attrs Hash with String or Symbol keys (normalize with k.to_s)
+    def to_row = {}              # Hash<String, value> of every column except id, values through Cast.to_sql
+    def load_row(row) = nil      # sets every ivar from a DB row (casts) and marks persisted
+    def read_association(name) = nil; def call_view_method(name) = nil
+    # --- concrete ---
+    attr_reader :id, :errors     # id Integer (0 when new)
+    def initialize               # @id = 0; @persisted = false; @errors = Errors.new (generated initialize(attrs = {}) calls super() then assigns)
+    def set_id(v); def mark_persisted!
+    def persisted?; def new_record?; def to_param   # id.to_s
+    def valid?                   # before_validation callbacks, errors.clear, run validators_for(model_name)
+    def save                     # before_save; valid? or return false; before_create/before_update; INSERT (sets id, created_at/updated_at when columns exist) or UPDATE ... WHERE id = ?; after_create/after_update; after_save; true
+    def save!                    # raises RecordInvalid with errors.full_messages.join(", ")
+    def update(attrs)            # assign_attributes then save
+    def destroy                  # before_destroy; DELETE; @persisted = false; after_destroy; true
+    def reload                   # re-select by id and load_row
+    def ==(other)                # same class name and same non-zero id
+    def attributes               # Hash<String, value> including id (via read_attribute over column_names)
+    def as_json; def to_json     # attributes with Time as ISO8601; JSON.generate
+    def self.now_string          # Cast.iso8601(Time.now.utc)
+  end
+  class Cybertrain::Relation
+    def initialize(table)        # @wheres Array<String>, @binds Array<value> (seeded typed: [0]; then clear), @order "" , @limit -1, @offset 0
+    def add_where(hash)          # Hash<Symbol, value>: nil -> "col IS NULL", Array -> "col IN (?,?)", else "col = ?"; returns nil
+    def add_where_sql(sql, binds) # raw fragment + binds; returns nil
+    def set_order(order); def set_limit(n); def set_offset(n)   # return nil (subclass wrappers return self)
+    def to_sql                   # SELECT * FROM t [WHERE a AND b] [ORDER BY o] [LIMIT n] [OFFSET m]
+    def binds
+    def rows                     # DB.with { |c| c.execute(to_sql, binds) }
+    def count                    # SELECT COUNT(*) with the same WHERE
+    def exists?; def delete_all  # -> Integer
+    def first_row                # rows of limit(1) -> Hash|nil
+    def last_row                 # ORDER BY id DESC when no order
+  end
+  ```
+  The generated per-model shape that `test/model.rb` hand-writes (Task 11b emits exactly this):
+  ```ruby
+  class PostRelation < Cybertrain::Relation
+    def where(h) = (add_where(h); self); def where_sql(s, b = []) = (add_where_sql(s, b); self)
+    def order(o) = (set_order(o); self); def limit(n) = (set_limit(n); self); def offset(n) = (set_offset(n); self)
+    def to_a; out = Array.new(0) { Post.new }; rows.each { |r| out << Post.from_row(r) }; out; end
+    def each(&blk) = to_a.each(&blk)
+    def first; r = first_row; return nil if r.nil?; Post.from_row(r); end
+    def last;  r = last_row;  return nil if r.nil?; Post.from_row(r); end
+    def find_by(h) = where(h).first
+    def find(id); rec = where(id: id).first; raise Cybertrain::RecordNotFound, "Couldn't find Post with id=#{id}" if rec.nil?; rec; end
+    def size = count
+  end
+  class Post < Cybertrain::Model
+    def self.table_name = "posts"
+    def self.column_names = ["id", "title", "body", "created_at", "updated_at"]
+    def model_name = "Post"
+    attr_accessor :title, :body, :created_at, :updated_at
+    def initialize(attrs = {}); super(); @title = ""; @body = nil; @created_at = nil; @updated_at = nil; assign_attributes(attrs); end
+    def self.from_row(row); rec = Post.new; rec.load_row(row); rec; end
+    def load_row(row); set_id(Cybertrain::Cast.int(row["id"])); @title = Cybertrain::Cast.str(row["title"]); @body = Cybertrain::Cast.str_or_nil(row["body"]); @created_at = Cybertrain::Cast.time_or_nil(row["created_at"]); @updated_at = Cybertrain::Cast.time_or_nil(row["updated_at"]); mark_persisted!; nil; end
+    def read_attribute(name); case name; when :id then @id; when :title then @title; when :body then @body; when :created_at then @created_at; when :updated_at then @updated_at; else nil; end; end
+    def write_attribute(name, value); case name; when :title then @title = Cybertrain::Cast.str(value); when :body then @body = Cybertrain::Cast.str_or_nil(value); when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value); when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value); end; nil; end
+    def assign_attributes(attrs); attrs.each { |k, v| write_attribute(k.to_s.to_sym, v) }; self; end   # NOTE: k.to_s.to_sym on a literal-free name — Spinel interns at runtime; verify it compiles, else write_attribute takes a String and the case uses strings
+    def to_row; { "title" => Cybertrain::Cast.to_sql(@title), "body" => Cybertrain::Cast.to_sql(@body), "created_at" => Cybertrain::Cast.to_sql(@created_at), "updated_at" => Cybertrain::Cast.to_sql(@updated_at) }; end
+    def self.all = PostRelation.new("posts"); def self.where(h) = all.where(h); def self.order(o) = all.order(o); def self.limit(n) = all.limit(n)
+    def self.find(id) = all.find(id); def self.find_by(h) = all.find_by(h); def self.first = all.first; def self.last = all.last; def self.count = all.count
+    def self.create(attrs = {}); rec = Post.new(attrs); rec.save; rec; end
+    def comments = CommentRelation.new("comments").where(post_id: @id).to_a     # has_many from comments.post_id
+    def read_association(name); case name; when :comments then comments; else nil; end; end
+    def call_view_method(name); case name; when :summary then summary; else nil; end; end   # arity-0 defs found in app/models/post.rb
+  end
+  ```
+  **Decide the `write_attribute` key type early:** if `k.to_s.to_sym` does not compile or interns wrongly, make `write_attribute(name)` take a String and the `case` compare Strings; `read_attribute(name)` keeps Symbols (the template interpreter calls it with Symbols).
+
+- [ ] **Step 1: `test/model.rb`.** Connect to `:memory:`, create the posts/comments tables with raw SQL, then: `Post.new(title: "x").save` inserts and sets id/created_at; `Post.find(id)` returns typed record; `Post.find(999)` raises RecordNotFound with message; `where` chaining `order`/`limit`/`offset`; `first` on empty → nil; `count`/`exists?`; validations (`validates :title, presence: true, length: { minimum: 3 }` declared in the test on Post): `save` false + `errors.full_messages`, `save!` raises RecordInvalid; `update`; `destroy`; `reload`; `before_save { |r| r.title = r.title.strip }` runs; `after_create` runs once; `comments` association through `comments.post_id`; `to_json` exact string; `==`; `to_param`; nullable `body` round trips nil and String; `created_at` is a Time after reload; `assign_attributes` with String keys from `Params#permit`.
+- [ ] **Step 2: Implement; snapshot; `spin test` green.**
+
+### Task 11b: Model generator
+
+**Files:**
+- Create: `cybertrain/generator/models_emitter.rb`, `cybertrain/generator/model_scan.rb`
+- Modify: `cybertrain/generator/runner.rb` (write `gen/models/<model>.rb` per table when `Cybertrain::Schema.current` is set), `cybertrain/generator/manifest.rb` (already lists gen/models/*)
+- Test: `test/gen_models.rb`, `test/gen_models_compiles.rb` (+ fixture `test/fixtures/gen_app/db/schema.rb`, `test/fixtures/gen_app/app/models/post.rb`, and the checked-in emitted `test/fixtures/gen_app/gen/models/*.rb` regenerated-and-compared by the test)
+
+**Interfaces:**
+- Consumes: `Cybertrain::Schema::Definition/Table/Column/ForeignKey` (Task 9), `Cybertrain::Inflector` (Task 8), the exact class shape specified in Task 11a.
+- Produces:
+  ```ruby
+  module Cybertrain::Gen::ModelScan
+    def self.scan_source(file, source)   # -> ModelInfo(class_name, view_methods Array<String> = names of `def name` with no parameters and not starting with "self.", excluding names that collide with column names)
+    def self.scan_dir(dir)               # Array<ModelInfo>
+  end
+  module Cybertrain::Gen::ModelsEmitter
+    def self.model_class_name(table)     # "posts" -> "Post" (singularize + camelize)
+    def self.emit(table, definition, view_methods)   # -> source of gen/models/<singular>.rb: `<Model>Relation` + `<Model>` exactly as Task 11a specifies; column types map: string/text -> str (null: false) or str_or_nil; integer -> int / int_or_nil; float -> float / float_or_nil; boolean -> bool / bool_or_nil; datetime/date -> time_or_nil / str_or_nil(date); belongs_to for each FK column `x_id` -> `def x` (find_by id) ; has_many for each other table's FK pointing here -> `def <plural>`; read_association case over both; call_view_method case over view_methods (empty case body `else nil` when none)
+    def self.file_name(table)            # "posts" -> "post.rb"
+  end
+  ```
+
+- [ ] **Step 1: tests.** `gen_models.rb`: from the blog schema assert the emitted source for `posts` and `comments` contains the exact lines for `model_name`, `column_names`, casts per column, `def post` / `def comments`, the `read_association` case, and `call_view_method` with a scanned `summary`. `gen_models_compiles.rb`: require the checked-in fixture outputs plus the fixture `app/models/post.rb` (which reopens `Post` with `validates :title, presence: true` and `def summary = title[0, 3]`), connect `:memory:`, create tables from `Cybertrain::Schema` via raw SQL in the test, and drive create/find/association/`call_view_method(:summary)`/`to_json` to prove the generated code compiles and runs.
+- [ ] **Step 2: Implement; snapshots; `spin test` green.**
+
+### Task 12: Template engine core
+
+**Files:**
+- Create: `cybertrain/template.rb`, `cybertrain/template/lexer.rb`, `cybertrain/template/ast.rb`, `cybertrain/template/parser.rb`, `cybertrain/template/inode.rb`, `cybertrain/template/interpreter.rb`, `cybertrain/template/engine.rb`
+- Test: `test/template_lexer.rb`, `test/template_parser.rb`, `test/template_interpreter.rb`, `test/template_engine.rb` (+ fixtures under `test/fixtures/views/`)
+- Reference: `spikes/03_value_interpreter/interp_mono.rb`, `tparse.rb` and design.md section 7 (the language)
+
+**Interfaces:**
+- Consumes: `Cybertrain::Html.escape`, `Cybertrain::SafeString`, `Cybertrain::Model` hooks (`read_attribute`, `read_association`, `call_view_method`, `persisted?`, `new_record?`, `to_param`, `errors`), `Cybertrain::Errors`, `Cybertrain::Params`.
+- Produces:
+  ```ruby
+  class Cybertrain::Template::SyntaxError < StandardError; end     # message "<name>:<line>: <what>"
+  class Cybertrain::Template::RuntimeError < StandardError; end    # "<name>:<line>: undefined method 'x' for String" etc.
+  class Cybertrain::Template::Token; attr_reader :kind, :text, :line   # kinds :text, :code, :output, :output_raw, :comment
+  module Cybertrain::Template::Lexer; def self.tokenize(source, name)  # handles <% %>, <%= %>, <%== %>, <%# %>, <%- -%> trimming, %%> escape; a "locals: (a:, b:)" comment on line 1 is exposed via Template#locals
+  # AST (class-per-node, parser output): Node base; TextNode(text); OutputNode(expr, raw); IfNode(cond, then_nodes, elsif_pairs, else_nodes); UnlessNode; EachNode(iter_expr, vars Array<String>, body_nodes); BlockCallNode(call_expr, params Array<String>, body_nodes) for `helper(...) do |f| ... end` (and `<%= form_with ... do |f| %>`); expressions: StrLit, IntLit, FloatLit, SymLit, NilLit, TrueLit, FalseLit, ArrayLit(items), HashLit(pairs Array<[String, expr]>), IVar(name), LVar(name), Call(recv|nil, name String, args, kwargs Array<[String, expr]>, safe_nav), BinOp(op String, left, right), NotNode(expr), Ternary(cond, a, b), Interp(parts Array<expr|StrLit>), IndexNode(recv, index)
+  module Cybertrain::Template::Parser; def self.parse(tokens, name) # -> Array<Node> (body); expression grammar per design.md section 7 with Ruby precedence (?: < || < && < == != < < > <= >= < + - < * / % < unary ! < call/index/&.); `if/elsif/else/unless/end`, `x.each do |a, b| ... end`, `x.each_with_index`, `helper(...) do |f| ... end`; anything else raises SyntaxError with line
+  class Cybertrain::Template::INode      # monomorphic node: kind Integer, str String, int Integer, flt Float, sym Symbol, a INode, b INode, c INode, kids Array<INode>, kids2 Array<INode>, names Array<String>, pairs Array<String> ; constants K_TEXT, K_OUT, K_OUT_RAW, K_IF, K_UNLESS, K_EACH, K_BLOCK_CALL, K_STR, K_INT, K_FLOAT, K_SYM, K_NIL, K_TRUE, K_FALSE, K_ARRAY, K_HASH, K_IVAR, K_LVAR, K_CALL, K_AND, K_OR, K_EQ, K_NEQ, K_LT, K_GT, K_LE, K_GE, K_ADD, K_SUB, K_MUL, K_DIV, K_MOD, K_NOT, K_TERNARY, K_INTERP, K_INDEX ; LEAF / NO_KIDS sentinels (never nil children)
+  module Cybertrain::Template::Compile; def self.convert(nodes)  # Array<Node> -> Array<INode>
+  class Cybertrain::Template::Template; attr_reader :name, :nodes, :locals, :source_path   # locals Array<String> from the strict-locals comment ("" for none)
+  class Cybertrain::Template::Interpreter
+    def initialize(helpers)              # helpers: Cybertrain::Template::HelperBase (Task 13 defines the concrete one; this task ships HelperBase with `call(name, args, kwargs, block, interp, env)` raising RuntimeError "undefined helper", `block` being an INode body or nil)
+    def render(template, env)            # env Hash<String, value> ("post" => rec, "posts" => [..], "f" => builder ...); returns String (the output buffer, `+""`)
+    def eval_expr(node, env)             # -> value
+    def call_method(recv, name_sym, name_str, args, kwargs, node)   # dispatch table: String (upcase downcase capitalize strip size length empty? to_s to_i include? start_with? end_with? + ==), Integer/Float (+ - * / % to_s zero? positive? abs), true/false/nil (to_s nil? !), Time (year month day hour min sec strftime to_s) — Time BEFORE Array — Array (size length empty? first last any? include? join reverse), Hash ([] key? size empty? fetch), SafeString (to_s html_safe?), Errors (any? empty? count full_messages [] key?), Params ([] key?), Model (persisted? new_record? to_param errors id, then read_attribute(sym) unless nil, then read_association(sym) unless nil, then call_view_method(sym); a nil result for an unknown name raises RuntimeError "undefined method 'x' for Post" only when name is not a column — implement via a `respond_to_name?` hook: Model gets `def attribute_or_method?(sym) = false` stub that generated code overrides); unknown -> RuntimeError
+    def truthy?(v)                       # Ruby truthiness
+    def to_output(v)                     # nil -> "", SafeString -> raw, String -> escape, other -> escape(to_s)
+  end
+  class Cybertrain::Template::Engine
+    def initialize(root, cache: true)    # root "app/views"
+    def template(name)                   # "posts/show.html.erb" or "posts/show" (adds .html.erb) -> Template; parses on first use; when cache is false re-reads when File.mtime changed; raises Cybertrain::Template::MissingTemplate (define it here) with the looked-up path
+    def exists?(name)
+    def render(name, env, helpers)       # -> String
+    def render_with_layout(name, layout, env, helpers)   # renders name, then layout with env["__content"] = output; the layout's `<%= yield %>` reads it (parser treats bare `yield` as Call name "yield"; interpreter resolves to env["__content"]) and `<%= yield :title %>` / `content_for` read env["__content_title"] set by the content_for helper
+    def clear_cache!
+  end
+  ```
+
+- [ ] **Step 1: tests.** Lexer: all tag kinds, trimming, line numbers, locals comment. Parser: precedence (`a + b * c`, `!x && y`, `a == b ? "x" : "y"`), calls with args/kwargs/safe-nav, each with two vars, if/elsif/else, unless, block call, syntax errors with line numbers (`<% if %>` without end, unknown token). Interpreter: literals, string interpolation, ivar/lvar lookup, arithmetic/comparison/boolean ops with truthiness, each over Array and Hash (`|k, v|`), Time methods (Time before Array!), Model dispatch through a hand-written Post (`read_attribute`, `read_association`, `call_view_method`), `errors.full_messages`, unknown method → RuntimeError with template line, escaping vs raw, nil prints "". Engine: fixtures under `test/fixtures/views/` (`posts/index.html.erb` with a loop, `layouts/application.html.erb` with `yield`, `posts/_form.html.erb` with a strict-locals comment), cache off re-reads after a rewrite (write a temp copy, render, modify, render again), MissingTemplate.
+- [ ] **Step 2: Implement. Precompute the method Symbol per call node at parse time. Keep frequent kinds first in the dispatch chain (K_TEXT, K_OUT, K_CALL, K_LVAR, K_IVAR).**
+- [ ] **Step 3: `spin test --regen` the four; `spin test` green.**
+
+### Task 13: View helpers, form builder, controller rendering
+
+**Files:**
+- Create: `cybertrain/template/helpers.rb`, `cybertrain/template/form_builder.rb`, `cybertrain/views.rb`
+- Modify: `cybertrain/controller.rb` (`render_template`, `default_render`, `render partial:`, `view_assigns` hook)
+- Test: `test/helpers.rb`, `test/form_builder.rb`, `test/controller_views.rb` (+ fixtures under `test/fixtures/views/`)
+
+**Interfaces:**
+- Consumes: Task 12 (`Interpreter`, `Engine`, `HelperBase`, `INode`), Task 6 (`Controller`), Task 7 (`Flash`, `CsrfProtection.token_for`), `Cybertrain::Html`, `Cybertrain::Model`.
+- Produces:
+  ```ruby
+  module Cybertrain::Views
+    def self.engine; def self.engine=(e); def self.configure(root, cache:)   # process-wide Engine
+    def self.url_resolver=(lambda); def self.url_resolver                  # ->(name String, args Array<value>) { String } installed by the app from generated code (Gen::Routes.path_for); default raises "no routes"
+    def self.layout_name; def self.layout_name=(n)                          # "layouts/application"
+  end
+  class Cybertrain::Template::Helpers < Cybertrain::Template::HelperBase
+    def initialize(controller)   # controller Cybertrain::Controller|nil (nil in unit tests)
+    def call(name, args, kwargs, block, interp, env)   # dispatch by name String:
+      # "h"/"escape" -> String ; "raw" -> SafeString ; "link_to"(text, path, class:, method:, data_confirm:) -> SafeString <a> (method: :delete -> data-turbo-method? no: emits a <form> button like button_to; keep `method:` unsupported → SyntaxError) ; "button_to"(text, path, method: :post) -> SafeString <form method="post" action=...><input type="hidden" name="_method" value="delete"><input type="hidden" name="authenticity_token" ...><button>text</button></form> ; "form_with"(model:, url:, method:, class:) with block -> renders <form> + hidden _method/authenticity_token + block body with env["f"] = FormBuilder (the block's single param name is used); "render"(partial String, **locals) -> renders "<dir>/_<partial>" where dir = current template dir (env["__template_dir"]), locals merged into a copy of env (strict locals enforced: missing required local raises) ; "pluralize"(n, word) ; "truncate"(s, length: 30) ; "number_with_delimiter"(n) ; "time_ago_in_words"(t) ; "content_for"(name Symbol) with block -> stores env["__content_<name>"] and returns "" ; "yield"(name?) ; "csrf_meta_tags" ; "csrf_token" ; "flash" -> the Flash object ; "params" ; "request_path" ; any "<x>_path"/"<x>_url" -> Views.url_resolver.call(name, args); "url_for"(model or String) -> polymorphic via url_resolver with name derived from the model: "#{underscore(model_name)}_path"
+      # unknown -> RuntimeError "undefined helper 'x'"
+  end
+  class Cybertrain::FormBuilder
+    def initialize(model, helpers)   # model Cybertrain::Model|nil
+    def call_method(name_sym, args, kwargs)   # used by the interpreter for `f.xxx`: label(attr, text = humanized), text_field(attr, class:, placeholder:), text_area(attr, rows: 4), hidden_field(attr), number_field, check_box(attr), submit(text = "Save Post"/"Update Post" by persisted?) ; inputs are named "<param_key>[attr]" where param_key = underscore(model_name); values from model.read_attribute(attr) escaped; fields for attrs with errors get class "field_with_errors"
+  end
+  class Cybertrain::Controller
+    def view_assigns                 # base returns {} (Hash<String, value> seeded typed); gen/controllers.rb overrides
+    def view_env(extra)              # view_assigns + extra + "flash"/"params"/"__template_dir"/"__controller_path"
+    def controller_path              # "posts" from "PostsController" (Inflector.underscore minus _controller); "admin/posts" is out of scope
+    def render_template(name, locals = {})   # Engine.render_with_layout("#{controller_path}/#{name}", Views.layout_name (if exists), env, Helpers.new(self)); sets text/html, performed
+    def default_render(action)       # render_template(action.to_s)
+    def render(template = nil, plain:, html:, json:, status:, content_type:, partial: nil, locals: {}, layout: true)   # extended: `render :new, status: :unprocessable_entity`, `render partial: "form", locals: {...}` (no layout), `layout: false`
+  end
+  ```
+
+- [ ] **Step 1: tests.** Helpers: `link_to` escaping of text and attribute; `button_to` emits hidden `_method` and token; `pluralize(1, "comment")`/`(2, ...)`; `truncate`; `time_ago_in_words` buckets; `render "form", post: rec` with strict locals; `content_for`/`yield :title`; `url_resolver` stub called with name and args for `post_path(post)` and `edit_post_path(post)` and `posts_path`. FormBuilder: `form_with(model: new_post)` → `action="/posts" method="post"`; persisted → `action="/posts/7"` + hidden `_method=patch`; `text_field :title` value escaping; error class; `submit` default labels. Controller views: a `PostsController` whose `show` sets `@post` and does nothing else → implicit render of `test/fixtures/views/posts/show.html.erb` inside the layout; `render :new, status: :unprocessable_entity`; `render partial:`; `layout: false`; MissingTemplate → error propagates as `Cybertrain::Template::MissingTemplate`.
+- [ ] **Step 2: Implement; snapshots; `spin test` green.**
+
+### Task 14: Migrator, schema dumper, migrations manifest, `bin/db`
+
+**Files:**
+- Create: `cybertrain/db/sqlite_ddl.rb`, `cybertrain/db/migrator.rb`, `cybertrain/db/schema_dumper.rb`, `cybertrain/generator/migrations_emitter.rb`, `cybertrain/db/cli.rb`
+- Modify: `cybertrain/generator/runner.rb` (also writes `gen/migrations.rb` from `db/migrate/*.rb` file names)
+- Test: `test/migrator.rb`, `test/schema_dumper.rb`, `test/gen_migrations.rb`
+
+**Interfaces:**
+- Consumes: Task 9 (`Schema::*`, `Migration::*`), Task 10 (`DB::Connection`), Task 8 (`Inflector`).
+- Produces:
+  ```ruby
+  module Cybertrain::DB::SqliteDDL
+    def self.create_table(table)            # Schema::Table -> "CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, ..., FOREIGN KEY (post_id) REFERENCES posts(id))" ; types: string/text -> TEXT, integer -> INTEGER, float -> REAL, boolean -> INTEGER, datetime/date -> TEXT
+    def self.statements(op)                 # Migration::Operation -> Array<String> (create_table also emits its indexes; add_column -> ALTER TABLE ADD COLUMN; remove_column -> ALTER TABLE DROP COLUMN; rename_column -> ALTER TABLE RENAME COLUMN; add_index/remove_index; add_reference -> add column + index; drop_table; add_foreign_key -> raises IrreversibleMigration "SQLite cannot add a foreign key to an existing table; declare it in create_table")
+  end
+  class Cybertrain::DB::Migrator
+    def initialize(connection)              # ensures schema_migrations(version TEXT PRIMARY KEY)
+    def applied_versions                    # Array<String> sorted
+    def pending(migrations)                 # Array<[version, migration]>
+    def migrate(migrations)                 # runs each pending migration's change/up ops inside a transaction, records the version; prints "== <version> <ClassName>: migrating" / "done"; returns count
+    def rollback(migrations, steps = 1)     # inverse ops of the last applied versions (uses down when defined)
+    def status(migrations)                  # Array<[status "up"/"down", version, name]>
+  end
+  module Cybertrain::DB::SchemaDumper
+    def self.dump(connection)               # introspects sqlite_master + PRAGMA table_info/index_list/index_info/foreign_key_list into a Schema::Definition (excluding schema_migrations, sqlite_* tables); version = max applied version
+    def self.dump_to_ruby(connection)       # Schema::Dumper.to_ruby(dump(connection))
+  end
+  module Cybertrain::Gen::MigrationsEmitter
+    def self.emit(root)                     # gen/migrations.rb: for each db/migrate/<version>_<name>.rb sorted: require_relative "../db/migrate/<file>" and Cybertrain::Migration.register("<version>", <CamelName>.new)
+  end
+  module Cybertrain::DB::CLI
+    def self.run(argv, root = ".")          # subcommands: migrate | rollback [N] | status | schema:dump | create ; DB path from Cybertrain.config (Task 15) or ENV["CYBERTRAIN_DATABASE"] or "storage/#{env}.sqlite3"; after migrate/rollback writes db/schema.rb via SchemaDumper; returns exit code. bin/db.rb in an app: require "cybertrain"; require_relative "../gen/migrations"; exit(Cybertrain::DB::CLI.run(ARGV))
+  end
+  ```
+
+- [ ] **Step 1: tests.** Migrator: two migrations (create posts; create comments with references) on `:memory:`: `migrate` applies both, `applied_versions`, `status`, second `migrate` is a no-op, `rollback` drops comments, re-migrate; the SQL for each operation kind (assert `SqliteDDL.statements` strings). SchemaDumper: after migrating, `dump` reproduces the tables/columns/null/indexes/foreign keys and `dump_to_ruby` equals the expected schema.rb text (heredoc). gen_migrations: emitter output for two fixture file names.
+- [ ] **Step 2: Implement; snapshots; `spin test` green.**
