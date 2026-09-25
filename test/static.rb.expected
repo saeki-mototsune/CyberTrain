@@ -1,0 +1,9 @@
+ok   serves a file with the content type from its extension
+ok   an unknown extension is served as octet-stream
+ok   a directory serves its index.html
+ok   a missing file falls through to the next app
+ok   dot-dot segments are rejected
+ok   a malformed percent-escape falls through instead of raising
+ok   only GET and HEAD are served
+ok   HEAD keeps Content-Length but sends no body
+8 tests, 33 assertions, 0 failures

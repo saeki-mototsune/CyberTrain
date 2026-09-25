@@ -1,0 +1,186 @@
+require "uri"
+require "cybertrain/middleware"
+require "cybertrain/http/query"
+
+module Cybertrain
+  # One routing table entry: "GET /posts/:id/edit" plus a name for path
+  # helpers and the handler the Router calls with the Context.
+  class Route
+    attr_reader :verb, :pattern, :segments, :name, :handler
+
+    def initialize(verb, pattern, name, handler)
+      @verb = verb.upcase
+      @pattern = pattern
+      @segments = pattern.split("/").reject(&:empty?)
+      @name = name
+      @handler = handler
+    end
+
+    # The captured ":name" segments when verb and path match, nil otherwise.
+    # A HEAD request is answered by the GET route (the Server drops the body).
+    def match(verb, path_segments)
+      return nil unless verb == @verb || (verb == "HEAD" && @verb == "GET")
+      return nil unless path_segments.size == @segments.size
+
+      captured = {}
+      @segments.each_with_index do |seg, i|
+        if seg.start_with?(":")
+          captured[seg[1..-1].to_s] = path_segments[i]
+        elsif seg != path_segments[i]
+          return nil
+        end
+      end
+      captured
+    end
+
+    # Fills the ":name" segments from params: path({ "id" => "1" }) -> "/posts/1/edit".
+    def path(params)
+      return "/" if @segments.empty?
+
+      out = +""
+      @segments.each do |seg|
+        out << "/"
+        if seg.start_with?(":")
+          key = seg[1..-1].to_s
+          value = params[key]
+          raise ArgumentError, "missing :#{key} for route #{@pattern}" if value.nil? || value.empty?
+
+          out << Router.escape_segment(value)
+        else
+          out << seg
+        end
+      end
+      out
+    end
+  end
+
+  # The end of the middleware chain: finds the first route matching the
+  # request, fills ctx.params / route_params / route_name and runs the
+  # route's handler. Unmatched requests get a plain-text 404.
+  class Router < Middleware
+    def initialize
+      super(nil)
+      @routes = []
+    end
+
+    def routes
+      @routes
+    end
+
+    def add(verb, pattern, name = "", &handler)
+      route = Route.new(verb, pattern, name, handler)
+      @routes << route
+      route
+    end
+
+    def get(pattern, name = "", &handler)
+      add("GET", pattern, name, &handler)
+    end
+
+    def post(pattern, name = "", &handler)
+      add("POST", pattern, name, &handler)
+    end
+
+    def patch(pattern, name = "", &handler)
+      add("PATCH", pattern, name, &handler)
+    end
+
+    def put(pattern, name = "", &handler)
+      add("PUT", pattern, name, &handler)
+    end
+
+    def delete(pattern, name = "", &handler)
+      add("DELETE", pattern, name, &handler)
+    end
+
+    def path_for(name, params = {})
+      @routes.each do |route|
+        return route.path(params) if route.name == name
+      end
+      nil
+    end
+
+    def call(ctx)
+      request = ctx.request
+      segments = Router.split_path(request.path)
+      @routes.each do |route|
+        captured = route.match(request.method, segments)
+        next if captured.nil?
+
+        ctx.route_params = captured
+        ctx.route_name = route.name
+        ctx.params = assemble_params(request, captured)
+        route.handler.call(ctx)
+        return nil
+      end
+      not_found(ctx.response)
+      nil
+    end
+
+    # "/posts/1/" -> ["posts", "1"]; each segment is percent-decoded, but a
+    # "+" stays a plus (it only means space in query strings and forms).
+    # A segment with a malformed escape ("%ZZ", a trailing "%" or "%2") is
+    # kept literal: CRuby's decoder raises ArgumentError on it while Spinel's
+    # silently yields a NUL byte, so neither runtime ever sees it.
+    def self.split_path(path)
+      segments = []
+      path.split("/").each do |seg|
+        next if seg.empty?
+
+        if seg.include?("%") && valid_escapes?(seg)
+          segments << URI.decode_www_form_component(seg.gsub("+", "%2B"))
+        else
+          segments << seg
+        end
+      end
+      segments
+    end
+
+    # True when every "%" in `seg` is followed by two hex digits.
+    def self.valid_escapes?(seg)
+      n = seg.bytesize
+      i = 0
+      while i < n
+        if seg.getbyte(i).to_i == 37
+          return false if i + 2 >= n
+          return false unless hex_byte?(seg.getbyte(i + 1).to_i) && hex_byte?(seg.getbyte(i + 2).to_i)
+
+          i += 3
+        else
+          i += 1
+        end
+      end
+      true
+    end
+
+    # 0-9, A-F, a-f as a byte value.
+    def self.hex_byte?(b)
+      (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102)
+    end
+
+    # Percent-encodes a value for use as one path segment ("a b" -> "a%20b").
+    def self.escape_segment(value)
+      URI.encode_www_form_component(value).gsub("+", "%20")
+    end
+
+    private
+
+    # Later sources win: query string, then the form body, then the route.
+    def assemble_params(request, captured)
+      params = Query.parse(request.query_string)
+      params.merge!(Query.parse(request.body)) if request.form?
+      # NOTE(Spinel): not `captured.each { |k, v| ... }` -- captured comes from
+      # the nullable Route#match, and with a user-defined #to_s in the program
+      # (SafeString) the pair's key reaches Params#set_value as a boxed value
+      # and the C build fails. Iterating the keys keeps them typed String.
+      captured.each_key { |k| params.set_value(k, captured[k].to_s) }
+      params
+    end
+
+    def not_found(response)
+      response.status = 404
+      response.content_type = "text/plain; charset=utf-8"
+      response.body = "Not Found"
+    end
+  end
+end

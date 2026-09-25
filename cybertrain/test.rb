@@ -83,14 +83,19 @@ def assert_nil(actual)
 end
 
 # `include?` on a polymorphic receiver mis-dispatches under Spinel 2026.09.12
-# when the argument is also polymorphic, so the receiver is narrowed first.
+# when the argument is also polymorphic (and String#include? does so as soon
+# as SafeString is in the program), so the receiver is narrowed first and the
+# String case goes through #index.
 def assert_includes(haystack, needle)
   Cybertrain::Test.count_assertion
-  found = case haystack
-          when String then haystack.include?(needle.to_s)
-          when Array then haystack.include?(needle)
-          else false
-          end
+  found = false
+  case haystack
+  when String
+    n = needle.to_s
+    found = !haystack.index(n).nil?
+  when Array
+    found = haystack.include?(needle)
+  end
   unless found
     flunk("expected #{haystack.inspect} to include #{needle.inspect}")
   end

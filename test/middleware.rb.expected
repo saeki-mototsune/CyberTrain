@@ -1,0 +1,14 @@
+ok   a chain of two middlewares runs in order around the app
+ok   a middleware that does not call super halts the chain
+ok   the base middleware without a next app does nothing
+ok   app is reassignable to splice a chain
+ok   RequestLogger logs Started and Completed lines
+ok   RequestLogger reports the final status
+ok   RequestLogger logs Completed 500 and re-raises when the app raises
+ok   MethodOverride turns a form POST with _method=delete into DELETE
+ok   MethodOverride reads _method from the query string and ignores case
+ok   MethodOverride ignores unknown methods and non-POST requests
+ok   MethodOverride ignores _method in a body that is not a form
+ok   App runs the default stack down to the router
+ok   App without logging writes nothing to its logger
+13 tests, 32 assertions, 0 failures

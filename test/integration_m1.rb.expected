@@ -1,3 +1,5 @@
 [INFO] m1 ok
 ok   the entry point exposes every M1 feature
-1 tests, 4 assertions, 0 failures
+ok   an App routes a request through the default stack
+ok   the Server serves the same App over a socket
+3 tests, 12 assertions, 0 failures

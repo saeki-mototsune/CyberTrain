@@ -1,0 +1,22 @@
+ok   port 0 binds an ephemeral port
+ok   two keep-alive requests on one socket get two responses
+ok   pipelined requests are answered in order
+ok   Connection: close closes the socket after one response
+ok   HTTP/1.0 without keep-alive closes after one response
+ok   HEAD returns headers with Content-Length and no body
+ok   POST with a Content-Length body is echoed back
+ok   malformed request line gets 400 and the connection closes
+ok   an oversized head gets 400 and the connection closes
+ok   a body over max_body_bytes gets 413 and the connection closes
+ok   a Content-Length too large for an Integer gets 413
+ok   a zero-padded Content-Length is read as its value
+ok   a head over max_head_bytes with no blank line yet gets 400
+ok   a pipelined multibyte body is framed by bytes, not characters
+ok   chunked transfer encoding gets 411 and the connection closes
+ok   an invalid Content-Length gets 400
+ok   an exception in the app gets 500 and the connection stays usable
+ok   an idle keep-alive connection is closed after read_timeout
+ok   a failed accept is logged and the server keeps accepting
+ok   stop makes the port refuse connections
+ok   run serves until stop is called
+21 tests, 56 assertions, 0 failures

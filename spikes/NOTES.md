@@ -83,6 +83,21 @@ disposable and will be deleted once the framework covers it.
     `require "cybertrain/test"` itself or `test "..."` fails to compile with an
     'unsupported call' error.
 25. `String#to_i` saturates at 2**63-1 instead of promoting to Bignum.
+26. `obj.attr += x` (an operator-assignment on a method call) does not compile
+    inside a block or lambda ("unsupported expression: CallOperatorWriteNode");
+    write `obj.attr = obj.attr + x`. It is fine at top level and in method bodies.
+27. Socket buffers are byte strings under CRuby (ASCII-8BIT) but character
+    strings under Spinel: use `byteindex`/`byteslice`/`bytesize` for every
+    offset into a network buffer, never `index`/`[]`/`size`, or multibyte
+    bodies shift the framing of pipelined requests.
+28. `URI.decode_www_form_component` on a malformed escape (`%ZZ`, a trailing
+    `%`) raises under CRuby but silently decodes under Spinel; validate escapes
+    (`%` followed by two hex digits) before decoding when both must agree.
+29. Once `SafeString` (to_s/to_str) is in the program, `String#include?` with
+    a polymorphic argument mis-dispatches even after narrowing the receiver;
+    `String#index(needle.to_s)` works. Iterating a nullable Hash with
+    `each { |k, v| }` into a typed String sink can also box the key
+    (`each_key { |k| h[k].to_s }` does not).
 18. A `@@class_variable` assigned directly inside a `module Foo` block (e.g.
     `module Foo; @@x = Bar.new; end`) mis-compiles as soon as some earlier
     required file has already opened `module Foo` elsewhere: the C compile

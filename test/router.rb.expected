@@ -1,0 +1,18 @@
+ok   static path matches
+ok   root path matches
+ok   dynamic segment is captured into route_params and params
+ok   first matching route wins
+ok   verb selects the route
+ok   HEAD is answered by the GET route
+ok   trailing slash and repeated slashes are ignored
+ok   segments are percent-decoded, plus stays a plus
+ok   a segment with a malformed percent-escape stays literal
+ok   split_path drops empty segments and decodes
+ok   path_for builds paths from route names
+ok   Route#path raises ArgumentError when a segment is missing
+ok   Route#match returns captures or nil
+ok   unmatched request gets a plain-text 404
+ok   params assembly order is query < form < route
+ok   form body is ignored unless the request is a form
+ok   route params and escaped output work in one program
+17 tests, 52 assertions, 0 failures

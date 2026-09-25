@@ -1,0 +1,16 @@
+ok   get returns the response and keeps it as the last response
+ok   assert_response(:not_found) on an unknown path
+ok   the cookie jar carries Set-Cookie into the next request
+ok   a Max-Age=0 cookie is removed from the jar
+ok   extra headers reach the request
+ok   post sends params as a form body
+ok   patch, put and delete reach their routes
+ok   request is the generic entry point
+ok   follow_redirect! GETs the Location of the last response
+ok   follow_redirect! strips the scheme and host of an absolute Location
+ok   follow_redirect! raises when the last response is not a redirect
+ok   assert_redirected_to fails on a non-redirect or another location
+ok   MethodOverride turns a POST with _method=delete into DELETE
+ok   a bare Router works as the client's app
+ok   status symbols map to codes
+15 tests, 55 assertions, 0 failures
