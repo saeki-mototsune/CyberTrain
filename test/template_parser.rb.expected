@@ -1,0 +1,23 @@
+ok   text and output
+ok   comments produce no nodes
+ok   literals
+ok   string escapes and interpolation
+ok   variables
+ok   precedence: a + b * c
+ok   precedence: !x && y
+ok   precedence: a == b ? x : y
+ok   method calls with args, kwargs and safe navigation
+ok   calls without parentheses
+ok   indexing
+ok   each with one and two vars
+ok   if / elsif / else
+ok   unless / else
+ok   nested blocks
+ok   block call
+ok   statements and assignment
+ok   syntax error: if without end
+ok   syntax error: if without condition
+ok   syntax error: unknown token
+ok   syntax error: stray end, else and elsif
+ok   syntax error: unsupported constructs
+22 tests, 89 assertions, 0 failures

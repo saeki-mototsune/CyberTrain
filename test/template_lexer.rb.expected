@@ -1,0 +1,17 @@
+ok   plain text is one text token
+ok   empty source has no tokens
+ok   all tag kinds
+ok   tag code is stripped
+ok   line numbers count newlines before each token
+ok   a code tag alone on its line swallows its indentation and newline
+ok   a comment tag alone on its line is trimmed like a code tag
+ok   output tags are never trimmed automatically
+ok   a code tag sharing its line with text is not trimmed
+ok   explicit <%- -%> trimming
+ok   <%% is a literal <% and %%> inside a tag is a literal %>
+ok   unterminated tag is a SyntaxError with the line
+ok   locals comment on line 1 declares strict locals
+ok   empty locals comment means no locals are allowed
+ok   no locals comment is not strict
+ok   malformed locals comment is a SyntaxError
+16 tests, 32 assertions, 0 failures

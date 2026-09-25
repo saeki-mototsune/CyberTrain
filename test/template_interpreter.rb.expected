@@ -1,0 +1,32 @@
+ok   literals
+ok   string interpolation
+ok   ivar and lvar lookup
+ok   an unknown local is a helper call
+ok   arithmetic
+ok   comparison
+ok   boolean operators and truthiness
+ok   if / elsif / else / unless
+ok   each over an Array
+ok   each over a Hash
+ok   block parameters shadow and are restored
+ok   each on a non-collection is a RuntimeError
+ok   assignment
+ok   a local first assigned inside a block is local to the block
+ok   a Ruby comment filling a code tag is ignored
+ok   Time methods (Time before Array)
+ok   String, Integer, Float, Array and Hash methods
+ok   safe navigation
+ok   Model dispatch: read_attribute, read_association, call_view_method
+ok   errors.full_messages
+ok   Params lookup
+ok   unknown method is a RuntimeError with the template line
+ok   helper errors get the template line
+ok   any StandardError from a helper is relocated to the template line
+ok   a template SyntaxError from a helper keeps its own location
+ok   object methods go to the helpers and their errors are relocated
+ok   a helper can render another template on the same interpreter
+ok   helpers get args, kwargs and blocks
+ok   escaping vs raw
+ok   nil prints nothing
+ok   yield reads the layout content slots
+31 tests, 117 assertions, 0 failures

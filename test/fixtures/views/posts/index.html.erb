@@ -1,0 +1,10 @@
+<h1>Posts</h1>
+<% if @posts.empty? %>
+<p>No posts yet.</p>
+<% else %>
+<ul>
+  <% @posts.each do |post| %>
+  <li><%= post.title %> (<%= post.comments.size %> comments)</li>
+  <% end %>
+</ul>
+<% end %>

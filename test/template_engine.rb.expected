@@ -1,0 +1,9 @@
+ok   renders a template with a loop inside the layout
+ok   renders without a layout
+ok   strict locals come from the line-1 comment
+ok   names with and without the extension are the same template
+ok   a missing template raises MissingTemplate with the path
+ok   cache off re-reads a template after a rewrite
+ok   cache on keeps the first parse until clear_cache!
+ok   errors name the template file and line
+8 tests, 29 assertions, 0 failures

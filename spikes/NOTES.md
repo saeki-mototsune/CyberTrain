@@ -126,6 +126,21 @@ disposable and will be deleted once the framework covers it.
     `SafeString.new`): a case expression whose branches both construct the
     result fails under the unboxed value-type layout that SafeString gets when
     it only ever travels as a keyword argument.
+40. Never define an instance method named `call` whose arity differs from the
+    program's `Proc#call` sites (a 6-argument `HelperBase#call(name, args,
+    kwargs, block, interp, env)` made every stored block in the same program
+    fail at run time with "NoMethodError: undefined method 'call' for an
+    instance of Proc": before_action/rescue_from blocks, model callbacks; a
+    1-argument `call(env)` like the middleware's is harmless). Entry points
+    that are not Rack-style `call(env)` get distinctive names (`helper_call`).
+41. Rules 10/34 apply across files that never meet at run time: an
+    `attr_accessor :target` holding an Array<Node> (template parser) next to
+    `RequestHead#target` (a String, cybertrain/http/parser.rb) stops the
+    compiler with "no implicit conversion of TextNode into String" as soon
+    as both files are in one program. Each per-feature test requires only its
+    own files, so every subsystem also needs one test program that requires
+    the whole framework next to it (test/template_integration.rb) and
+    exercises the stored-block paths (rule 36).
 29. Once `SafeString` (to_s/to_str) is in the program, `String#include?` with
     a polymorphic argument mis-dispatches even after narrowing the receiver;
     `String#index(needle.to_s)` works. Iterating a nullable Hash with
