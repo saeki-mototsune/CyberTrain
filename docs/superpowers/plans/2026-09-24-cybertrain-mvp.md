@@ -939,3 +939,18 @@ Runs after Wave M2b is integrated. Order: **15** first (everything else boots th
 ### Task 19: Documentation
 
 - [ ] Rewrite `README.md`: what cybertrain is, requirements, `spin install` for the CLI, `cybertrain new`, the blog walkthrough (Rails Getting Started mapped 1:1), the template language subset, the Spinel constraints that shape the API (`before_action :sym` via generated dispatch, callbacks with explicit receiver, no console, no reloading of Ruby without rebuild), deployment (binary + `app/views` + `public` + `storage`), and a "differences from Rails" table. Keep `docs/design.md` as the design record; add `docs/template-language.md` (the grammar from design.md section 7 in English with examples).
+
+---
+
+## As built: deviations from the interfaces above (read before Tasks 15-19)
+
+- **Routes DSL**: the top level of `Cybertrain::Routes.draw do ... end` is receiverless (`root`, `resources`, `get`), but every nested block takes the mapper explicitly: `resources :posts do |posts| posts.resources :comments, only: [:create, :destroy]; posts.member { |m| m.get "preview" } end` (Spinel's instance_eval trampoline works only for a flat block). `resources` defaults `only:`/`except:` to nil.
+- **The `new` action** is defined as `def new_action` in controllers (an instance method named `new` breaks `Klass.new(ctx)` under Spinel); routes, `action_name`, `default_render` and templates still call it `new`. The scaffold emits `def new_action`.
+- **Generated routes** require the runtime helper `cybertrain/generator/url_support.rb` (`Cybertrain::Gen.param/segment`, `Cybertrain.url_root`); `Gen::Routes.path_for(name, args)` lives in `Gen::Routes` and accepts both `x_path` and `x_url` names; `class Cybertrain::Controller; include ::Gen::UrlHelpers; end` is emitted.
+- **Controller**: `head(status = DEFAULT_STATUS)`, `render(..., status: DEFAULT_STATUS)` and `redirect_to(..., status: DEFAULT_REDIRECT_STATUS)` use polymorphic default constants so Symbols passed from stored blocks are honoured (NOTES rule 30); `render :sym` calls `render_template("sym")` with a String; `Controller#rescued_exception` exposes the exception to `with:` handlers; `action_name` is a String.
+- **Session**: `Session#csrf_token!`, `Session#flash_payload`/`flash_payload=`/`clear_flash!` are the typed mutators the middleware uses (NOTES rule 35); `CsrfProtection` reads the token from the form body/query itself (never from `ctx.params`).
+- **Logger**: `Cybertrain::Logger.new(io = nil, level = :info)`; pass a `StringIO` or nothing (never `STDOUT`).
+- **Templates iterate Arrays, not Relations**: controllers assign `@posts = Post.all.to_a`.
+- **Schema/Migration**: DSL mutators return nil; `add_index(..., name: "")` override; `Operation.for_add_foreign_key` stores the column in `name`.
+- **Model**: `Model#model_name` is a generated String literal per model and keys the validator/callback registries; `Model.validates(attr, presence:, length:)` takes keyword args; callbacks are `before_save { |r| ... }`.
+- **CLI**: `cybertrain new NAME [--path DIR | --version V]` (a relative DIR is expanded against the cwd), `cybertrain generate|g scaffold NAME field[:type] ... [parent:references]`; `bin/cybertrain.rb` sets `Cybertrain::CLI.framework_root` because `__dir__` in a required file resolves to the main file's directory under Spinel.
