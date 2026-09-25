@@ -1,0 +1,52 @@
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/server.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_posts.rb
+create app/models/post.rb
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+route resources :posts
+create db/migrate/20260925120001_create_comments.rb
+create app/models/comment.rb
+create app/controllers/comments_controller.rb
+create app/views/comments/index.html.erb
+create app/views/comments/show.html.erb
+create app/views/comments/new.html.erb
+create app/views/comments/edit.html.erb
+create app/views/comments/_form.html.erb
+route resources :comments
+ok   layouts/application parses
+ok   posts/index parses
+ok   posts/show parses
+ok   posts/new parses
+ok   posts/edit parses
+ok   posts/_form parses
+ok   comments/index parses
+ok   comments/show parses
+ok   comments/new parses
+ok   comments/edit parses
+ok   comments/_form parses
+ok   the form partials declare their strict locals
+12 tests, 15 assertions, 0 failures

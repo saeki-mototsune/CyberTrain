@@ -1,0 +1,128 @@
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/server.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_posts.rb
+create app/models/post.rb
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+route resources :posts
+ok   scaffold writes the migration, model, controller and views
+ok   the migration creates the table with its columns and timestamps
+ok   the model validates presence of the first string field
+ok   the controller follows the Rails scaffold shape
+ok   the views use the template subset and the form builder
+create db/migrate/20260925120001_create_comments.rb
+create app/models/comment.rb
+create app/controllers/comments_controller.rb
+create app/views/comments/index.html.erb
+create app/views/comments/show.html.erb
+create app/views/comments/new.html.erb
+create app/views/comments/edit.html.erb
+create app/views/comments/_form.html.erb
+route resources :comments
+ok   a references field becomes t.references, a post_id input and a permitted param
+create db/migrate/20260925120002_create_products.rb
+create app/models/product.rb
+create app/controllers/products_controller.rb
+create app/views/products/index.html.erb
+create app/views/products/show.html.erb
+create app/views/products/new.html.erb
+create app/views/products/edit.html.erb
+create app/views/products/_form.html.erb
+route resources :products
+ok   other field types map to their form inputs
+identical db/migrate/20260925120000_create_posts.rb
+identical app/models/post.rb
+identical app/controllers/posts_controller.rb
+identical app/views/posts/index.html.erb
+identical app/views/posts/show.html.erb
+identical app/views/posts/new.html.erb
+identical app/views/posts/edit.html.erb
+identical app/views/posts/_form.html.erb
+identical route resources :posts
+ok   routes are inserted once, even when the scaffold runs twice
+exist db/migrate/20260925120000_create_posts.rb
+exist app/models/post.rb
+exist app/controllers/posts_controller.rb
+exist app/views/posts/index.html.erb
+exist app/views/posts/show.html.erb
+identical app/views/posts/new.html.erb
+identical app/views/posts/edit.html.erb
+exist app/views/posts/_form.html.erb
+identical route resources :posts
+ok   an existing file is never overwritten
+create db/migrate/20260925120003_create_counters.rb
+create app/models/counter.rb
+create app/controllers/counters_controller.rb
+create app/views/counters/index.html.erb
+create app/views/counters/show.html.erb
+create app/views/counters/new.html.erb
+create app/views/counters/edit.html.erb
+create app/views/counters/_form.html.erb
+route resources :counters
+ok   a model without string fields gets no validation
+ok   migration versions stay unique and increasing
+error: unknown type 'strang' for name (use string, text, integer, float, boolean, date, datetime, references)
+error: duplicate column 'name'
+error: duplicate column 'post_id'
+error: 'id' is a column every table already has
+error: 'created_at' is a column every table already has
+error: 'updated_at' is a column every table already has
+error: 'class' is a Ruby keyword and cannot name a field
+error: 'end' is a Ruby keyword and cannot name a field
+error: 'self' is a Ruby keyword and cannot name a field
+error: bad field 'a:string:index': use name:type (modifiers such as :index are not supported)
+error: bad field 'a:string:': use name:type (modifiers such as :index are not supported)
+error: bad field name 'Title'
+error: 'class' is a Ruby keyword and cannot name a resource
+error: ./config/routes.rb not found: run this inside a cybertrain app
+error: usage: cybertrain generate scaffold NAME field:type ...
+error: only `generate scaffold` is supported
+ok   bad input is rejected before anything is written
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/server.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+error: ./config/routes.rb has no `Cybertrain::Routes.draw do` line
+ok   a routes file without the draw line is rejected before anything is written
+ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
+14 tests, 114 assertions, 0 failures

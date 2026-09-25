@@ -1,0 +1,159 @@
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/server.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+ok   new writes the app skeleton and returns the created paths
+ok   spin.toml names the package and references the framework
+ok   config/routes.rb and db/schema.rb are empty DSL blocks
+ok   bin/server.rb boots the application
+ok   bin/gen.rb and bin/db.rb drive the generator and the migrator
+ok   the layout renders csrf_meta_tags, the flash and yield
+ok   application_controller.rb and config/app.rb are ready to edit
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/server.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+ok   CLI new --path expands a relative DIR against the current directory
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/server.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+ok   CLI new --path keeps an absolute DIR and works for a nested app dir
+error: pass either --path or --version, not both
+ok   CLI new rejects --path together with --version
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/server.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+ok   CLI new --version writes an index constraint
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/server.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+ok   CLI new defaults to the framework's own absolute path
+error: blog already exists
+error: 'Bad Name' is not a valid app name (lowercase letters, digits and _)
+error: usage: cybertrain new NAME [--path DIR | --version V]
+ok   CLI new refuses an existing directory and a bad name
+cybertrain 0.1.0
+Usage:
+  cybertrain new NAME [--path DIR | --version V]
+      Create an application in NAME. Its spin.toml depends on the
+      framework at DIR (relative to the current directory; written as
+      an absolute path; default: this cybertrain's own checkout) or on
+      the index version constraint V.
+  cybertrain generate scaffold NAME field:type ... [parent:references]
+      Add a resource to the application in the current directory.
+      Types: string, text, integer, float, boolean, date, datetime, references (default string).
+  cybertrain version
+  cybertrain help
+Unknown command 'frobnicate'
+Usage:
+  cybertrain new NAME [--path DIR | --version V]
+      Create an application in NAME. Its spin.toml depends on the
+      framework at DIR (relative to the current directory; written as
+      an absolute path; default: this cybertrain's own checkout) or on
+      the index version constraint V.
+  cybertrain generate scaffold NAME field:type ... [parent:references]
+      Add a resource to the application in the current directory.
+      Types: string, text, integer, float, boolean, date, datetime, references (default string).
+  cybertrain version
+  cybertrain help
+Usage:
+  cybertrain new NAME [--path DIR | --version V]
+      Create an application in NAME. Its spin.toml depends on the
+      framework at DIR (relative to the current directory; written as
+      an absolute path; default: this cybertrain's own checkout) or on
+      the index version constraint V.
+  cybertrain generate scaffold NAME field:type ... [parent:references]
+      Add a resource to the application in the current directory.
+      Types: string, text, integer, float, boolean, date, datetime, references (default string).
+  cybertrain version
+  cybertrain help
+ok   CLI version, help and unknown commands
+14 tests, 61 assertions, 0 failures
