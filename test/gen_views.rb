@@ -45,6 +45,13 @@ test "with --embed-views every view is a literal and production becomes the defa
   assert_includes source, "ENV[\"CYBERTRAIN_ENV\"] = \"production\" if (ENV[\"CYBERTRAIN_ENV\"] || \"\").empty?\n"
 end
 
+test "with --embed-views and no app/views, the table is still typed empty, not a bare {}" do
+  source = Cybertrain::Gen::ViewsEmitter.emit("#{FIXTURE}/no_such_dir", true)
+  assert_includes source, "SOURCES = { \"\" => \"\" }\n"
+  assert_includes source, "SOURCES.delete(\"\")\n"
+  assert_includes source, "ENV[\"CYBERTRAIN_ENV\"] = \"production\" if (ENV[\"CYBERTRAIN_ENV\"] || \"\").empty?\n"
+end
+
 # A throwaway app tree for the runner integration test below. Built at
 # top level (not inside a `test` block: Dir.mktmpdir's return type is
 # polymorphic on whether a block is given, and Spinel does not widen that

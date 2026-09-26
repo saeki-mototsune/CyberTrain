@@ -19,25 +19,40 @@ module Cybertrain
       def self.emit_empty
         HEADER +
           "# Empty: this build reads app/views/ from disk. `spin run gen -- --embed-views`\n" \
-          "# (what `cybertrain build` runs) fills it and the binary stops reading disk.\n" \
-          "module Gen\n" \
+          "# (what `cybertrain build` runs) fills it and the binary stops reading disk.\n" +
+          empty_sources_module
+      end
+
+      def self.emit_embedded(root)
+        dir = "#{root}/app/views"
+        files = view_files(dir)
+        buf = +HEADER
+        if files.size == 0
+          # No views to embed: still a typed empty Hash (seed-then-delete),
+          # never a bare `{}` -- an untyped empty Hash literal risks a
+          # Spinel compile failure (spikes/NOTES.md rule 9).
+          buf << empty_sources_module
+        else
+          buf << "module Gen\n  module Views\n    SOURCES = {\n"
+          files.each do |rel|
+            buf << "      #{literal(rel)} => #{literal(File.read("#{dir}/#{rel}"))},\n"
+          end
+          buf << "    }\n  end\nend\n"
+        end
+        buf << "ENV[\"CYBERTRAIN_ENV\"] = \"production\" if (ENV[\"CYBERTRAIN_ENV\"] || \"\").empty?\n"
+        buf
+      end
+
+      # The typed-empty `Gen::Views::SOURCES` table (seed-then-delete, per
+      # spikes/NOTES.md rule 9), shared by the plain-empty build and an
+      # embedded build with nothing under app/views.
+      def self.empty_sources_module
+        "module Gen\n" \
           "  module Views\n" \
           "    SOURCES = { \"\" => \"\" }\n" \
           "    SOURCES.delete(\"\")\n" \
           "  end\n" \
           "end\n"
-      end
-
-      def self.emit_embedded(root)
-        dir = "#{root}/app/views"
-        buf = +HEADER
-        buf << "module Gen\n  module Views\n    SOURCES = {\n"
-        view_files(dir).each do |rel|
-          buf << "      #{literal(rel)} => #{literal(File.read("#{dir}/#{rel}"))},\n"
-        end
-        buf << "    }\n  end\nend\n"
-        buf << "ENV[\"CYBERTRAIN_ENV\"] = \"production\" if (ENV[\"CYBERTRAIN_ENV\"] || \"\").empty?\n"
-        buf
       end
 
       # A double-quoted literal Spinel and CRuby read back to the same
