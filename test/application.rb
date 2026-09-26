@@ -1,7 +1,8 @@
 # Cybertrain::Config and Cybertrain::Application: config defaults and
-# environment overrides, the secret, and a booted Application serving
-# requests through its full middleware stack (RequestLogger -> Static ->
-# MethodOverride -> SessionStore -> CsrfProtection -> Router) with
+# environment overrides, the secret, the production stack (ErrorPages in
+# front), and a booted Application serving requests through its full
+# middleware stack (RequestLogger -> Static -> MethodOverride ->
+# SessionStore -> CsrfProtection -> Router) with
 # Cybertrain::Test::Client -- every middleware the program requires is
 # exercised (spikes/NOTES.md rule 36).
 #
@@ -98,6 +99,7 @@ test "config defaults in development" do
   assert_equal "_cybertrain_session", c.session_cookie_name
   assert_equal 1209600, c.session_max_age
   assert_equal 4, c.pool_size
+  refute c.session_secure
   assert c.static_files
   assert c.csrf
   assert_equal 1, c.workers
@@ -115,6 +117,7 @@ test "environment variables override the config defaults" do
   with_database = Cybertrain::Config.new
   restore_config_env
   assert c.production?
+  assert c.session_secure
   assert_equal 8080, c.port
   assert_equal "storage/production.sqlite3", c.database_path
   assert_equal "from-env", c.secret_key_base
@@ -251,6 +254,22 @@ test "log_level :none, static_files and csrf switch their middleware off" do
   c.secret_key_base = "bare-secret"
   bare = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/bare/#{name}" }, config: c)
   assert_equal ["Cybertrain::MethodOverride", "Cybertrain::SessionStore", "Cybertrain::Router"], stack_names(bare)
+end
+
+test "production puts ErrorPages outermost" do
+  c = Cybertrain::Config.new
+  c.env = "production"
+  c.log_level = :none
+  c.static_files = false
+  c.csrf = false
+  c.secret_key_base = "production-secret"
+  prod = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/prod/#{name}" }, config: c)
+  assert_equal ["Cybertrain::ErrorPages", "Cybertrain::MethodOverride", "Cybertrain::SessionStore", "Cybertrain::Router"], stack_names(prod)
+  # Run it once too (spikes/NOTES.md rule 36). There is no public/404.html
+  # under the framework root, so the Router's plain text stays.
+  res = Cybertrain::Test::Client.new(prod).get("/nowhere")
+  assert_response res, :not_found
+  assert_equal "Not Found", res.body
 end
 
 test "boot connects the database, configures views and resolves the secret" do

@@ -9,11 +9,14 @@ module Cybertrain
   # Set-Cookie afterward -- but only when something actually changed, so an
   # ordinary read-only request does not churn the cookie on every hit.
   class SessionStore < Middleware
-    def initialize(app, secret:, cookie_name: "_cybertrain_session", max_age: 1209600)
+    # secure: true adds the Secure attribute, so browsers only send the
+    # cookie back over HTTPS (Config#session_secure: on in production).
+    def initialize(app, secret:, cookie_name: "_cybertrain_session", max_age: 1209600, secure: false)
       super(app)
       @secret = secret
       @cookie_name = cookie_name
       @max_age = max_age
+      @secure = secure
     end
 
     def call(ctx)
@@ -26,7 +29,8 @@ module Cybertrain
 
       Flash.store(ctx.flash, ctx.session)
       if ctx.session.changed?
-        set_cookie = Cookies.serialize(@cookie_name, Session.dump(ctx.session, @secret), max_age: @max_age)
+        set_cookie = Cookies.serialize(@cookie_name, Session.dump(ctx.session, @secret), max_age: @max_age,
+                                                                                         secure: @secure)
         ctx.response.add_cookie(set_cookie)
       end
       result

@@ -335,4 +335,24 @@ test "run serves until stop is called" do
   refute runner.alive?
 end
 
+test "request_stop (what the TERM trap calls) makes run return without joining" do
+  server = Cybertrain::Server.new(ServerTestApp.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  port = server.port
+  c = RawClient.new(port)
+  assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
+  c.close
+  server.request_stop
+  runner.join
+  refute runner.alive?
+  refused = false
+  begin
+    TCPSocket.new("127.0.0.1", port).close
+  rescue Errno::ECONNREFUSED
+    refused = true
+  end
+  assert refused, "expected the connection to be refused after request_stop"
+end
+
 Cybertrain::Test.run!

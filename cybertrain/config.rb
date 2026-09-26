@@ -12,8 +12,8 @@ module Cybertrain
     SECRET_LENGTH = 64
 
     attr_accessor :env, :host, :port, :database_path, :secret_key_base, :views_root, :public_root, :layout,
-                  :log_level, :session_cookie_name, :session_max_age, :pool_size, :static_files, :csrf,
-                  :workers, :secret_key_path
+                  :log_level, :session_cookie_name, :session_max_age, :session_secure, :pool_size, :static_files,
+                  :csrf, :workers, :secret_key_path
 
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
     # empty one counts as unset). Shared with DB::CLI.
@@ -39,6 +39,10 @@ module Cybertrain
       @log_level = :info
       @session_cookie_name = "_cybertrain_session"
       @session_max_age = 1209600
+      # The session cookie's Secure attribute: on in production, which is
+      # expected to sit behind a TLS-terminating proxy; off elsewhere, where
+      # the server is reached over plain http://.
+      @session_secure = production?
       @pool_size = 4
       @static_files = true
       @csrf = true

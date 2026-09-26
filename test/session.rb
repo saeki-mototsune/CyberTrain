@@ -208,6 +208,18 @@ test "flash round-trips through SessionStore: request 1 sets, request 2 sees, re
   assert_equal "", reader3.seen
 end
 
+test "the session cookie is Secure only when SessionStore is built with secure: true" do
+  plain = Cybertrain::SessionStore.new(SessionWriter.new, secret: SECRET)
+  plain_ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
+  plain.call(plain_ctx)
+  refute plain_ctx.response.cookies[0].include?("Secure")
+
+  secure = Cybertrain::SessionStore.new(SessionWriter.new, secret: SECRET, secure: true)
+  secure_ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
+  secure.call(secure_ctx)
+  assert secure_ctx.response.cookies[0].end_with?("; Secure")
+end
+
 test "an unchanged session sets no cookie" do
   store = Cybertrain::SessionStore.new(SessionReader.new, secret: SECRET)
   req = Cybertrain::Request.new("GET", "/", {}, "")

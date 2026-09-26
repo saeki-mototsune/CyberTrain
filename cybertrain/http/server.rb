@@ -69,9 +69,18 @@ module Cybertrain
     # Stops accepting: the accept thread notices within ACCEPT_POLL seconds
     # and closes the listener. Connections already open finish on their own.
     def stop
-      @running = false
+      request_stop
       thread = @accept_thread
       thread.join unless thread.nil?
+      nil
+    end
+
+    # What a signal handler may call: only clears the flag the accept loop
+    # polls, so #run returns within ACCEPT_POLL seconds. Spinel runs a trap
+    # block straight from its C signal handler, where #stop's Thread#join
+    # is not async-signal-safe.
+    def request_stop
+      @running = false
       nil
     end
 

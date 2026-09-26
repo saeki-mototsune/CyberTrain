@@ -8,6 +8,7 @@ require "cybertrain/middleware/static"
 require "cybertrain/middleware/method_override"
 require "cybertrain/middleware/session_store"
 require "cybertrain/middleware/csrf_protection"
+require "cybertrain/middleware/error_pages"
 require "cybertrain/http/server"
 require "cybertrain/db"
 require "cybertrain/views"
@@ -48,9 +49,10 @@ module Cybertrain
       @serving = false
     end
 
-    # RequestLogger (unless log_level :none) -> Static (if static_files) ->
-    # MethodOverride -> SessionStore -> CsrfProtection (if csrf) -> router.
-    # Built on first use, after boot has resolved the session secret.
+    # ErrorPages (in production) -> RequestLogger (unless log_level :none) ->
+    # Static (if static_files) -> MethodOverride -> SessionStore ->
+    # CsrfProtection (if csrf) -> router. Built on first use, after boot has
+    # resolved the session secret.
     def stack
       built = @stack
       if built.nil?
@@ -105,7 +107,7 @@ module Cybertrain
         serve_development(Dev::Rebuilder.new(Dir.pwd))
       else
         srv = server
-        trap("TERM") { srv.stop }
+        trap("TERM") { srv.request_stop }
         srv.run
       end
       nil
@@ -131,7 +133,7 @@ module Cybertrain
     def serve_development(rebuilder)
       @rebuilder = rebuilder
       srv = server
-      trap("TERM") { srv.stop }
+      trap("TERM") { srv.request_stop }
       trap("HUP") { request_restart }
       watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"])
       watcher.start { |paths| rebuild_after_change(rebuilder, paths) }
@@ -234,10 +236,11 @@ module Cybertrain
       app = @router
       app = CsrfProtection.new(app) if c.csrf
       app = SessionStore.new(app, secret: c.resolve_secret!, cookie_name: c.session_cookie_name,
-                                  max_age: c.session_max_age)
+                                  max_age: c.session_max_age, secure: c.session_secure)
       app = MethodOverride.new(app)
       app = Static.new(app, c.public_root) if c.static_files
       app = RequestLogger.new(app) unless c.log_level == :none
+      app = ErrorPages.new(app, c.public_root) if c.production?
       app
     end
   end
