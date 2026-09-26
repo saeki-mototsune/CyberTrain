@@ -20,7 +20,7 @@ TREE_FILES.each do |f|
   File.write("#{ROOT}/#{f}", "class #{name} < #{parent}\nend\n")
 end
 
-GENERATED = ["gen/routes.rb", "gen/controllers.rb", "gen/app.rb"]
+GENERATED = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/app.rb"]
 
 # Test.run! exits the process, so the tree is removed at exit.
 at_exit do

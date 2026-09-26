@@ -7,6 +7,7 @@ require "cybertrain/schema"
 require "cybertrain/generator/model_scan"
 require "cybertrain/generator/models_emitter"
 require "cybertrain/generator/migrations_emitter"
+require "cybertrain/generator/views_emitter"
 
 module Cybertrain
   module Gen
@@ -14,12 +15,16 @@ module Cybertrain
     # A file whose content would not change is left alone (its mtime too).
     # With --check nothing is written; each out-of-date file is reported as
     # "stale: <path>" and the exit code is 1.
+    # `--embed-views` writes gen/views.rb with the app/views tree instead
+    # of an empty table.
     module Runner
       def self.run(root, argv)
         check = argv.include?("--check")
+        embed = argv.include?("--embed-views")
         outputs = [
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
-          ["gen/controllers.rb", ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"))]
+          ["gen/controllers.rb", ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"))],
+          ["gen/views.rb", ViewsEmitter.emit(root, embed)]
         ]
         # gen/migrations.rb only once an app has a db/migrate directory (a
         # fixture or test tree with no db/ at all skips it entirely).

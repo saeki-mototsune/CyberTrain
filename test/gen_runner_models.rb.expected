@@ -1,5 +1,6 @@
 wrote gen/routes.rb
 wrote gen/controllers.rb
+wrote gen/views.rb
 wrote gen/models/comment.rb
 wrote gen/models/post.rb
 wrote gen/app.rb
@@ -9,6 +10,7 @@ stale: gen/models/tag.rb
 stale: gen/app.rb
 identical gen/routes.rb
 identical gen/controllers.rb
+identical gen/views.rb
 identical gen/models/comment.rb
 identical gen/models/post.rb
 wrote gen/models/tag.rb
@@ -18,9 +20,10 @@ stale: gen/models/tag.rb
 stale: gen/app.rb
 identical gen/routes.rb
 identical gen/controllers.rb
+identical gen/views.rb
 identical gen/models/comment.rb
 identical gen/models/post.rb
 removed gen/models/tag.rb
 wrote gen/app.rb
 ok   a dropped table's gen/models file is reported stale, then removed
-4 tests, 19 assertions, 0 failures
+4 tests, 20 assertions, 0 failures

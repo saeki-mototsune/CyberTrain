@@ -5,6 +5,7 @@ ok   migration_files is empty when db/migrate does not exist
 ok   version_of / name_of split the timestamp prefix
 wrote gen/routes.rb
 wrote gen/controllers.rb
+wrote gen/views.rb
 wrote gen/migrations.rb
 wrote gen/app.rb
 ok   runner writes gen/migrations.rb when db/migrate exists

@@ -2,10 +2,12 @@ ok   manifest lists gen, then app models, controllers and helpers
 ok   manifest for the fixture app
 wrote gen/routes.rb
 wrote gen/controllers.rb
+wrote gen/views.rb
 wrote gen/app.rb
 ok   runner writes the three gen files
 identical gen/routes.rb
 identical gen/controllers.rb
+identical gen/views.rb
 identical gen/app.rb
 ok   runner leaves unchanged files alone
 ok   runner --check passes when gen is fresh
@@ -13,6 +15,7 @@ stale: gen/routes.rb
 stale: gen/app.rb
 wrote gen/routes.rb
 identical gen/controllers.rb
+identical gen/views.rb
 wrote gen/app.rb
 ok   runner --check reports stale files and writes nothing
 6 tests, 13 assertions, 0 failures
