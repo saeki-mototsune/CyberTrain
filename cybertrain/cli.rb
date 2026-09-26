@@ -1,6 +1,7 @@
-# The `cybertrain` command (bin/cybertrain.rb):
+# The `cybertrain` command: exe/cybertrain under CRuby (the gem), or
+# bin/cybertrain.rb built by spin (`spin install` from a checkout).
 #
-#   cybertrain new NAME [--path DIR | --version V]
+#   cybertrain new NAME [--path DIR | --version V] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references]
 #   cybertrain version | help
 require "cybertrain/version"
@@ -12,32 +13,20 @@ module Cybertrain
   module CLI
     USAGE = <<~TEXT
       Usage:
-        cybertrain new NAME [--path DIR | --version V]
-            Create an application in NAME. Its spin.toml depends on the
-            framework at DIR (relative to the current directory; written as
-            an absolute path; default: this cybertrain's own checkout) or on
-            the index version constraint V.
+        cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+            Create an application in NAME, then run `spin lock` and
+            `spin run gen` in it (skipped with --skip-spin). Its spin.toml
+            depends on this cybertrain's release by default:
+              git tag v#{Cybertrain::VERSION} of #{Cybertrain::REPOSITORY}
+            --path DIR: the framework checkout at DIR (relative to the
+            current directory; written as an absolute path).
+            --version V: the index version constraint V.
         cybertrain generate scaffold NAME field:type ... [parent:references]
             Add a resource to the application in the current directory.
             Types: #{Field::TYPES.join(", ")} (default string).
         cybertrain version
         cybertrain help
     TEXT
-
-    # The framework checkout `cybertrain new` points apps at when neither
-    # --path nor --version is given. bin/cybertrain.rb sets it from its own
-    # __dir__: under Spinel __dir__ is always the *main* file's directory, so
-    # this file cannot compute it itself. A module ivar, not a @@class
-    # variable (spikes/NOTES.md rule 18).
-    @framework_root = ""
-
-    def self.framework_root
-      @framework_root
-    end
-
-    def self.framework_root=(dir)
-      @framework_root = dir
-    end
 
     # Returns the process exit code.
     def self.run(argv)
@@ -62,17 +51,21 @@ module Cybertrain
     end
 
     def self.run_new(argv)
-      raise InvalidArgument, "usage: cybertrain new NAME [--path DIR | --version V]" if argv.size < 2
+      raise InvalidArgument, "usage: cybertrain new NAME [--path DIR | --version V] [--skip-spin]" if argv.size < 2
 
       dir = argv[1]
       raise InvalidArgument, "'#{File.basename(dir)}' is not a valid app name (lowercase letters, digits and _)" unless Templates.identifier?(File.basename(dir))
       raise InvalidArgument, "#{dir} already exists" if File.exist?(dir)
 
       NewApp.create(dir, framework_dep(argv))
-      0
+      return 0 if argv.include?("--skip-spin")
+
+      NewApp.bootstrap(dir) ? 0 : 1
     end
 
-    # The spin.toml value of the `cybertrain =` dependency.
+    # The spin.toml value of the `cybertrain =` dependency. By default the
+    # release tag matching this CLI, so the templates it just wrote and the
+    # framework the app builds against are the same version.
     # A relative --path is expanded against the current directory: spin
     # resolves `path =` from the new app's directory, not from where the
     # command ran.
@@ -82,9 +75,8 @@ module Cybertrain
       raise InvalidArgument, "pass either --path or --version, not both" unless path == "" || version == ""
       return "\"#{version}\"" unless version == ""
       return "{ path = \"#{File.expand_path(path, Dir.pwd)}\" }" unless path == ""
-      raise InvalidArgument, "cannot tell where the framework is: pass --path DIR" if @framework_root == ""
 
-      "{ path = \"#{@framework_root}\" }"
+      "{ git = \"#{Cybertrain::REPOSITORY}\", ref = \"v#{Cybertrain::VERSION}\" }"
     end
 
     # The value after `--flag`, or "" when the flag is absent.

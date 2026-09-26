@@ -44,6 +44,32 @@ module Cybertrain
         end
         created
       end
+
+      # What `rails new` does with `bundle install`: resolve and lock the
+      # framework (fetching it into spin's cache, ~/.cache/spin), then write
+      # gen/ so `spin build` works straight away. Without spin on PATH it
+      # only says what to run later. Returns false when a step failed.
+      def self.bootstrap(dir)
+        unless system("command -v spin > /dev/null 2>&1")
+          puts "skip spin lock / spin run gen: `spin` is not on PATH"
+          puts "  install Spinel (https://github.com/matz/spinel), then: #{bootstrap_command(dir)}"
+          return true
+        end
+
+        puts "run    spin lock && spin run gen"
+        return true if system(bootstrap_command(dir))
+
+        puts "error: bootstrapping #{dir} failed; fix the cause, then run: #{bootstrap_command(dir)}"
+        false
+      end
+
+      def self.bootstrap_command(dir)
+        "cd #{shell_quote(dir)} && spin lock && spin run gen"
+      end
+
+      def self.shell_quote(text)
+        "'#{text.gsub("'", "'\\\\''")}'"
+      end
     end
   end
 end

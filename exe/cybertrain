@@ -1,0 +1,7 @@
+#!/usr/bin/env ruby
+# The `cybertrain` command as installed by `gem install cybertrain`: the CLI
+# sources are plain Ruby that also run under CRuby (bin/cybertrain.rb is the
+# same entry point, compiled by spin).
+require "cybertrain/cli"
+
+exit(Cybertrain::CLI.run(ARGV))

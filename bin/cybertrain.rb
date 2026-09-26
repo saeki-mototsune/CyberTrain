@@ -1,5 +1,5 @@
-# The `cybertrain` command; `spin install` puts it in ~/.local/bin.
+# The `cybertrain` command, built by spin; `spin install` puts it in
+# ~/.local/bin. The gem ships the same CLI as exe/cybertrain for CRuby.
 require "cybertrain/cli"
 
-Cybertrain::CLI.framework_root = File.expand_path("..", __dir__)
 exit(Cybertrain::CLI.run(ARGV))
