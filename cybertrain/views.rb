@@ -34,6 +34,12 @@ module Cybertrain
       nil
     end
 
+    # Production: the templates `spin run gen -- --embed-views` compiled in.
+    def self.configure_embedded(sources)
+      @engine = Template::Engine.embedded(sources)
+      nil
+    end
+
     def self.layout_name
       @layout_name
     end

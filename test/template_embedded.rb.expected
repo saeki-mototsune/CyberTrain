@@ -1,0 +1,7 @@
+ok   renders a page and its partial from the embedded table
+ok   renders inside the embedded layout
+ok   names with and without the extension are the same template, parsed once
+ok   the template name is the key, so errors keep the name:line shape
+ok   a missing embedded template says so
+ok   Views.configure_embedded installs an embedded engine
+6 tests, 14 assertions, 0 failures
