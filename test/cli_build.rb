@@ -44,6 +44,7 @@ end
 test "build embeds the views, builds, then restores the empty table" do
   assert_equal ["spin run gen -- --embed-views", "spin build blog", "spin run gen"], Cybertrain::CLI::Build.commands("blog")
   assert_equal ["spin run gen", "spin run db -- migrate", "spin run gen"], Cybertrain::CLI::Build.migration_commands
+  assert_equal "'a'\\''b'", Cybertrain::CLI::Build.shell_quote("a'b")
 end
 
 test "assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/" do
@@ -61,6 +62,15 @@ test "assemble copies the binary and public/ into dist/ and keeps storage/ and t
   refute File.exist?("dist/public/stale.css")
   assert_equal "keep me", File.read("dist/storage/production.sqlite3")
   assert File.directory?("dist/tmp")
+end
+
+test "assemble removes a symlink in dist/public without following it" do
+  Dir.mkdir("outside")
+  File.write("outside/keep.txt", "keep")
+  File.symlink("#{ROOT}/outside", "dist/public/linked")
+  Cybertrain::CLI::Build.assemble(".", "blog")
+  assert_equal "keep", File.read("outside/keep.txt")
+  refute File.exist?("dist/public/linked")
 end
 
 test "assemble fails clearly when the binary is missing" do

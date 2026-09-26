@@ -38,17 +38,23 @@ module Cybertrain
       # Runs the build in root and assembles dist/. Returns the exit code.
       def self.run(root, name)
         steps = commands(name)
-        ok = run_in(root, steps[0]) && run_in(root, steps[1])
-        # Always put gen/views.rb back to the empty table, even after a failure.
-        restored = run_in(root, steps[2])
+        ok = false
+        restored = false
+        begin
+          ok = run_in(root, steps[0]) && run_in(root, steps[1])
+        ensure
+          # Always put gen/views.rb back to the empty table, even after a
+          # failure or Ctrl-C.
+          restored = run_in(root, steps[2])
+        end
         return 1 unless ok && restored
 
-        written = assemble(root, name)
+        assemble(root, name)
         puts ""
         puts "dist/#{name}       (production by default)"
         puts "dist/public/"
         puts "run:  cd dist && ./#{name} migrate && ./#{name}"
-        written.size > 0 ? 0 : 1
+        0
       end
 
       def self.run_in(root, command)
@@ -79,7 +85,13 @@ module Cybertrain
         ["dist/#{name}", "dist/public/", "dist/storage/", "dist/tmp/"]
       end
 
+      # A symlink is removed itself, never followed: its target may be
+      # dist/storage/ or outside dist/.
       def self.rm_tree(path)
+        if File.symlink?(path)
+          File.delete(path)
+          return nil
+        end
         return nil unless File.exist?(path)
 
         if File.directory?(path)
