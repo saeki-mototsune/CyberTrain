@@ -367,7 +367,9 @@ Other attributes with fixed, overridable defaults: `host` (`"127.0.0.1"`),
 assets, or let a reverse proxy serve it) and `storage/` (the SQLite file),
 `CYBERTRAIN_ENV=production` and `CYBERTRAIN_SECRET_KEY_BASE` set. The binary
 speaks plain HTTP/1.1 only; put nginx/Caddy in front for TLS and HTTP/2. The
-watcher/rebuild loop never runs in production.
+watcher/rebuild loop never runs in production. [docs/deploy.md](docs/deploy.md)
+(Japanese) walks through it end to end: `cybertrain new`, an Ubuntu server,
+systemd, Caddy with HTTPS, redeploys, rollbacks and backups.
 
 ## Testing an app
 
