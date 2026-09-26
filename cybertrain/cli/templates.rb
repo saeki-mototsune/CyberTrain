@@ -76,6 +76,7 @@ module Cybertrain
       def self.gitignore
         <<~TEXT
           /build/
+          /dist/
           /storage/*.sqlite3*
           /tmp/*
           !/tmp/.keep
@@ -83,7 +84,7 @@ module Cybertrain
         TEXT
       end
 
-      def self.readme(title)
+      def self.readme(title, package)
         <<~MARKDOWN
           # #{title}
 
@@ -91,16 +92,20 @@ module Cybertrain
 
           ```sh
           cybertrain generate scaffold post title:string body:text
-          spin run gen           # pick up the new migration (gen/migrations.rb)
-          spin run db -- migrate # apply db/migrate, rewrite db/schema.rb
-          spin run gen           # regenerate gen/ from db/schema.rb, config/routes.rb and app/
-          spin run server        # http://127.0.0.1:3000
+          cybertrain migration   # gen, apply db/migrate, gen again
+          cybertrain server      # http://127.0.0.1:3000
+          cybertrain build       # dist/: the binary (views embedded) + public/
           ```
 
-          Run `spin run gen` after changing the schema, the routes or a
-          controller's instance variables and callbacks, and commit `gen/`.
-          Views under `app/views/` are read at run time: edit them without
-          rebuilding.
+          `spin run gen` (which `migration`, `server` and `build` run for you)
+          regenerates `gen/` from db/schema.rb, config/routes.rb and app/;
+          commit `gen/`. In development views under `app/views/` are read at
+          run time: edit them without rebuilding. `cybertrain db status` and
+          `cybertrain db rollback 1` reach the other database commands.
+
+          To deploy, copy `dist/` to a machine with the same OS and CPU, then
+          `cd dist && ./#{package} migrate && ./#{package}` (production by default;
+          set CYBERTRAIN_SECRET_KEY_BASE).
         MARKDOWN
       end
 
@@ -204,17 +209,18 @@ module Cybertrain
         CSS
       end
 
-      def self.bin_server
+      def self.bin_app(package)
         <<~RUBY
           require "cybertrain"
-          require_relative "../config/app"
+          require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
+          require_relative "../config/app"     # so it comes before the config
           require_relative "../gen/app"
+          require_relative "../gen/migrations"
 
-          app = Cybertrain::Application.new(
-            router: Gen::Routes.build(Cybertrain::Router.new),
-            url_resolver: Gen::Routes.url_resolver
-          )
-          app.run
+          exit(Cybertrain::Main.run("#{package}", ARGV,
+                                    router: Gen::Routes.build(Cybertrain::Router.new),
+                                    url_resolver: Gen::Routes.url_resolver,
+                                    views: Gen::Views::SOURCES))
         RUBY
       end
 
@@ -225,16 +231,6 @@ module Cybertrain
           require_relative "../db/schema"
 
           exit(Cybertrain::Gen::Runner.run(".", ARGV))
-        RUBY
-      end
-
-      def self.bin_db
-        <<~RUBY
-          require "cybertrain"
-          require_relative "../config/app"
-          require_relative "../gen/migrations"
-
-          exit(Cybertrain::DB::CLI.run(ARGV))
         RUBY
       end
 

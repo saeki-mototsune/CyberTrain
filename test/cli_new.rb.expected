@@ -12,9 +12,8 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/blog.rb
 create bin/gen.rb
-create bin/db.rb
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -22,11 +21,11 @@ create test/.keep
 ok   new writes the app skeleton and returns the created paths
 ok   spin.toml names the package and references the framework
 ok   config/routes.rb and db/schema.rb are empty DSL blocks
-ok   bin/server.rb boots the application
-ok   bin/gen.rb and bin/db.rb drive the generator and the migrator
+ok   bin/blog.rb is the app's one binary: server, migrate, db
+ok   bin/gen.rb drives the generator
 ok   the layout renders csrf_meta_tags, the flash and yield
 ok   application_controller.rb and config/app.rb are ready to edit
-ok   README.md gives the working migrate sequence
+ok   README.md gives the cybertrain command sequence
 create spin.toml
 create .gitignore
 create README.md
@@ -41,9 +40,8 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/shop.rb
 create bin/gen.rb
-create bin/db.rb
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -63,9 +61,8 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/store.rb
 create bin/gen.rb
-create bin/db.rb
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -87,9 +84,8 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/wiki.rb
 create bin/gen.rb
-create bin/db.rb
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -109,9 +105,8 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/notes.rb
 create bin/gen.rb
-create bin/db.rb
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -167,4 +162,4 @@ Usage:
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-16 tests, 66 assertions, 0 failures
+16 tests, 68 assertions, 0 failures
