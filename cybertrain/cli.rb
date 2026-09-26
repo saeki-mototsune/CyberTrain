@@ -28,7 +28,7 @@ module Cybertrain
             Types: #{Field::TYPES.join(", ")} (default string).
         cybertrain migration
             Generate, apply pending migrations, generate again
-            (spin run gen; spin run NAME -- migrate; spin run gen).
+            (spin run gen; spin run db -- migrate; spin run gen).
         cybertrain db COMMAND...
             Any database command: status, rollback [N], schema:dump, create.
         cybertrain server
@@ -46,8 +46,8 @@ module Cybertrain
       case command
       when "new" then run_new(argv)
       when "generate", "g" then run_generate(argv)
-      when "migration" then run_in_app { |name| run_all(Build.migration_commands(name)) }
-      when "db" then run_in_app { |name| run_all(["spin run #{name} -- db #{db_args(argv)}"]) }
+      when "migration" then run_in_app { |_name| run_all(Build.migration_commands) }
+      when "db" then run_in_app { |_name| run_all(["spin run db -- #{db_args(argv)}"]) }
       when "server" then run_in_app { |name| run_all(["spin run #{name}"]) }
       when "build" then run_in_app { |name| Build.run(".", name) }
       when "version", "--version", "-v"

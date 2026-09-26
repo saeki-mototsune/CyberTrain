@@ -30,7 +30,7 @@ EXPECTED_FILES = [
   "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep",
   "app/views/layouts/application.html.erb",
   "public/404.html", "public/500.html", "public/style.css",
-  "bin/blog.rb", "bin/gen.rb",
+  "bin/blog.rb", "bin/gen.rb", "bin/db.rb",
   "gen/.keep", "storage/.keep", "tmp/.keep", "test/.keep"
 ]
 
@@ -83,8 +83,17 @@ test "bin/gen.rb drives the generator" do
 
     exit(Cybertrain::Gen::Runner.run(".", ARGV))
   RUBY
-  refute File.exist?("blog/bin/db.rb")
   refute File.exist?("blog/bin/server.rb")
+end
+
+test "bin/db.rb runs migrations in development without the app's models" do
+  assert_equal <<~RUBY, read("blog/bin/db.rb")
+    require "cybertrain"
+    require_relative "../config/app"
+    require_relative "../gen/migrations"
+
+    exit(Cybertrain::DB::CLI.run(ARGV))
+  RUBY
 end
 
 test "the layout renders csrf_meta_tags, the flash and yield" do
@@ -113,6 +122,7 @@ test "README.md gives the cybertrain command sequence" do
   assert_includes readme, "cybertrain migration"
   assert_includes readme, "cybertrain server"
   assert_includes readme, "cybertrain build"
+  assert_includes readme, "bin/db.rb"
   assert_nil readme.index("spin run db")
 end
 

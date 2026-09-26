@@ -43,7 +43,7 @@ end
 
 test "build embeds the views, builds, then restores the empty table" do
   assert_equal ["spin run gen -- --embed-views", "spin build blog", "spin run gen"], Cybertrain::CLI::Build.commands("blog")
-  assert_equal ["spin run gen", "spin run blog -- migrate", "spin run gen"], Cybertrain::CLI::Build.migration_commands("blog")
+  assert_equal ["spin run gen", "spin run db -- migrate", "spin run gen"], Cybertrain::CLI::Build.migration_commands
 end
 
 test "assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/" do

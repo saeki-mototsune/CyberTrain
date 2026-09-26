@@ -102,6 +102,8 @@ module Cybertrain
           commit `gen/`. In development views under `app/views/` are read at
           run time: edit them without rebuilding. `cybertrain db status` and
           `cybertrain db rollback 1` reach the other database commands.
+          `cybertrain migration` runs migrations through `bin/db.rb`; a
+          deployed `dist/#{package}` runs them with `./#{package} migrate`.
 
           To deploy, copy `dist/` to a machine with the same OS and CPU, then
           `cd dist && ./#{package} migrate && ./#{package}` (production by default;
@@ -231,6 +233,17 @@ module Cybertrain
           require_relative "../db/schema"
 
           exit(Cybertrain::Gen::Runner.run(".", ARGV))
+        RUBY
+      end
+
+      # Development only, so migrations run before gen/models exist; production uses `./NAME migrate`.
+      def self.bin_db
+        <<~RUBY
+          require "cybertrain"
+          require_relative "../config/app"
+          require_relative "../gen/migrations"
+
+          exit(Cybertrain::DB::CLI.run(ARGV))
         RUBY
       end
 

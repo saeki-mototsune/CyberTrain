@@ -32,6 +32,7 @@ module Cybertrain
           ["public/style.css", Templates.style_css],
           ["bin/#{package}.rb", Templates.bin_app(package)],
           ["bin/gen.rb", Templates.bin_gen],
+          ["bin/db.rb", Templates.bin_db],
           ["gen/.keep", ""],
           ["storage/.keep", ""],
           ["tmp/.keep", ""],

@@ -14,6 +14,7 @@ create public/500.html
 create public/style.css
 create bin/blog.rb
 create bin/gen.rb
+create bin/db.rb
 create gen/.keep
 create storage/.keep
 create tmp/.keep

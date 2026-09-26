@@ -66,6 +66,15 @@ exit(Cybertrain::Main.run("blog", ARGV,
 
 `Application.port_argument(ARGV)` は Main から渡される argv を見るよう引数化する。
 
+### 3.1 修正（2026-09-26 実装時）
+
+開発時のマイグレーションは `bin/db.rb`（cybertrain + config/app + gen/migrations だけを読む）で
+走らせる。`cybertrain migration` は `spin run gen` → `spin run db -- migrate` → `spin run gen`、
+`cybertrain db ARGS...` は `spin run db -- ARGS...`。理由: `bin/<name>.rb` は gen/app 経由で
+コントローラとモデルを読み込むが、`gen/models/<model>.rb` はスキーマにテーブルができて初めて
+生成されるため、scaffold 直後の最初のマイグレーションはこのバイナリではコンパイルできない。
+`./<name> migrate` は本番用（schema がコミット済み）として残し、`dist/` の配布物は 1 バイナリのまま。
+
 ## 4. views の埋め込み
 
 ### 4.1 Engine

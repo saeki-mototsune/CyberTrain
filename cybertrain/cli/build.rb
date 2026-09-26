@@ -1,5 +1,5 @@
 # `cybertrain build`: dist/ = the app binary with app/views embedded, plus
-# public/. Also the command lists `cybertrain migration` runs. Plain Ruby:
+# public/. Also the command list `cybertrain migration` runs. Plain Ruby:
 # runs under CRuby (the gem) and compiles under Spinel (spin install).
 module Cybertrain
   module CLI
@@ -29,8 +29,10 @@ module Cybertrain
         ["spin run gen -- --embed-views", "spin build #{name}", "spin run gen"]
       end
 
-      def self.migration_commands(name)
-        ["spin run gen", "spin run #{name} -- migrate", "spin run gen"]
+      # Through bin/db.rb: the app binary cannot compile before the first
+      # migration has produced gen/models.
+      def self.migration_commands
+        ["spin run gen", "spin run db -- migrate", "spin run gen"]
       end
 
       # Runs the build in root and assembles dist/. Returns the exit code.
