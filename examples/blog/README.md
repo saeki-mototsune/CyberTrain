@@ -22,13 +22,15 @@ cybertrain generate scaffold comment commenter:string body:text article:referenc
   `form_with(model: [@article, @comment])`).
 
 ```sh
-spin run gen           # gen/ from config/routes.rb, db/schema.rb, app/
-spin run db -- migrate # storage/development.sqlite3, rewrites db/schema.rb
-spin run server        # http://127.0.0.1:3000 (PORT=4000 to change it)
+cybertrain migration   # spin run gen; spin run db -- migrate; spin run gen
+cybertrain server      # http://127.0.0.1:3000 (PORT=4000 to change it)
+cybertrain build       # dist/blog (views embedded) + dist/public/
 spin test              # test/articles.rb, test/comments.rb against storage/test.sqlite3
 ```
 
 Run `spin run gen` after changing the schema, the routes or a
 controller's instance variables and callbacks, and commit `gen/`
 (`spin run gen -- --check` reports stale files). Views under
-`app/views/` are read at run time: edit them without rebuilding.
+`app/views/` are read at run time: edit them without rebuilding. A
+production binary (`cybertrain build`, or `CYBERTRAIN_ENV=production`)
+renders only the views embedded at build time.
