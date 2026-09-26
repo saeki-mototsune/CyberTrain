@@ -22,6 +22,11 @@ class ServerTestApp < Cybertrain::Middleware
       res.body = req.body
     when "/boom"
       raise "kaboom"
+    when "/slow"
+      $slow_started = true
+      sleep 1
+      res.content_type = "text/plain"
+      res.body = "slow done"
     else
       res.status = 404
       res.body = "Not Found"
@@ -111,6 +116,10 @@ class RawClient
     @buf << @sock.readpartial(16384)
   end
 end
+
+# Set by /slow once the app has the request, so a test can stop the server
+# while that request is in flight.
+$slow_started = false
 
 # Fails the first accept with EMFILE, as when descriptors run out, then
 # accepts normally: the accept loop must log it and keep going.
@@ -353,6 +362,79 @@ test "request_stop (what the TERM trap calls) makes run return without joining" 
     refused = true
   end
   assert refused, "expected the connection to be refused after request_stop"
+end
+
+# The client side of a graceful-shutdown test: the port refuses connections.
+def port_refused?(port)
+  TCPSocket.new("127.0.0.1", port).close
+  false
+rescue Errno::ECONNREFUSED
+  true
+end
+
+test "request_stop waits for a request in flight and answers it completely" do
+  server = Cybertrain::Server.new(ServerTestApp.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  port = server.port
+  c = RawClient.new(port)
+  $slow_started = false
+  c.send_raw("GET /slow HTTP/1.1\r\nHost: t\r\n\r\n")
+  sleep 0.01 until $slow_started
+  server.request_stop
+  sleep 0.3
+  # the listener is closed, but run is still draining the slow request
+  assert port_refused?(port), "expected the connection to be refused while draining"
+  assert runner.alive?
+  assert_equal 1, server.open_connections
+  res = c.read_response(false)
+  assert_equal "HTTP/1.1 200 OK", res.status_line
+  assert_equal "slow done", res.body
+  assert_equal "close", res.header("connection")
+  assert c.closed_by_server?
+  c.close
+  runner.join
+  refute runner.alive?
+  assert_equal 0, server.open_connections
+end
+
+test "an idle keep-alive connection does not hold up shutdown" do
+  server = Cybertrain::Server.new(ServerTestApp.new, port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                     logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  assert_equal "keep-alive", c.get("/hello").header("connection")
+  started = Time.now
+  server.request_stop
+  runner.join
+  elapsed = Time.now - started
+  assert elapsed < 1.0, "run took #{elapsed}s to return with one idle connection"
+  assert c.closed_by_server?
+  assert_equal 0, server.open_connections
+  c.close
+end
+
+test "drain_timeout bounds the wait for a request that takes too long" do
+  log = StringIO.new
+  server = Cybertrain::Server.new(ServerTestApp.new, port: 0, drain_timeout: 0.3,
+                                                     logger: Cybertrain::Logger.new(log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  $slow_started = false
+  c.send_raw("GET /slow HTTP/1.1\r\nHost: t\r\n\r\n")
+  sleep 0.01 until $slow_started
+  started = Time.now
+  server.request_stop
+  runner.join
+  elapsed = Time.now - started
+  assert elapsed < 0.9, "run took #{elapsed}s with drain_timeout 0.3"
+  assert_includes log.string, "[WARN] shutting down with 1 connection(s) still open"
+  # the request still completes on its own thread; wait for it so its
+  # response does not outlive the test
+  assert_equal "slow done", c.read_response(false).body
+  c.close
 end
 
 Cybertrain::Test.run!

@@ -373,8 +373,10 @@ session cookie is `Secure` in production, so serve it over HTTPS). In
 production an exception answers 500 and a bare error response (the router's
 plain-text 404, `head :not_found`, `render plain:`) is replaced by
 `public/<status>.html` when that file exists; errors an action renders as HTML
-or JSON pass through. `SIGTERM` stops accepting and exits. The
-watcher/rebuild loop never runs in production. [docs/deploy.md](docs/deploy.md)
+or JSON pass through. `SIGTERM` stops accepting, lets requests already in
+flight finish (answered with `Connection: close`; idle keep-alive connections
+are closed at once) and exits when they are done, or after the server's
+`drain_timeout` (10 s). The watcher/rebuild loop never runs in production. [docs/deploy.md](docs/deploy.md)
 (Japanese) walks through it end to end: `cybertrain new`, an Ubuntu server,
 systemd, Caddy with HTTPS, redeploys, rollbacks and backups.
 

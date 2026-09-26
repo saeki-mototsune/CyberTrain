@@ -12,7 +12,13 @@ module Cybertrain
   # that turns each Context into a Response.
   #
   #   server = Cybertrain::Server.new(app, port: 3000)
-  #   server.run   # blocks until server.stop
+  #   server.run   # blocks until server.stop, then drains open connections
+  #
+  # Graceful shutdown (docs/design.md D14): #request_stop (the TERM trap) or
+  # #stop closes the listener; requests already being processed get their
+  # response (with Connection: close), idle keep-alive connections are
+  # closed, and #run returns once every connection is gone or drain_timeout
+  # seconds have passed.
   class Server
     # Raised while reading a request the server refuses to process; serve
     # answers with this status and closes the connection.
@@ -26,23 +32,32 @@ module Cybertrain
     end
 
     READ_CHUNK = 16384
-    # How often the accept loop checks whether #stop was called.
+    # How often the accept loop, an idle keep-alive connection and the drain
+    # check whether #stop was called.
     ACCEPT_POLL = 0.1
 
     # port is the bound port once #start has run (the ephemeral one with port: 0).
     attr_reader :host, :port
 
-    def initialize(app, host: "127.0.0.1", port: 3000, read_timeout: 15,
+    # drain_timeout bounds how long #run and #stop wait for requests in
+    # flight; keep it below the process manager's stop timeout (systemd's
+    # TimeoutStopSec, 15 s in docs/deploy.md).
+    def initialize(app, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
                    max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: Cybertrain.logger)
       @app = app
       @host = host
       @port = port
       @read_timeout = read_timeout
+      @drain_timeout = drain_timeout
       @max_head_bytes = max_head_bytes
       @max_body_bytes = max_body_bytes
       @logger = logger
       @running = false
       @accept_thread = nil
+      # Connections accepted and not yet closed. Counted under @lock: with
+      # SPINEL_WORKERS > 1 connection threads run in parallel.
+      @lock = Mutex.new
+      @open_count = 0
     end
 
     # Binds, listens and spawns the accept thread; returns once listening.
@@ -58,33 +73,62 @@ module Cybertrain
       nil
     end
 
-    # Starts the server and blocks until #stop is called.
+    # Starts the server and blocks until #stop or #request_stop is called
+    # and the open connections have drained.
     def run
       start
       thread = @accept_thread
       thread.join unless thread.nil?
+      drain
       nil
     end
 
     # Stops accepting: the accept thread notices within ACCEPT_POLL seconds
-    # and closes the listener. Connections already open finish on their own.
+    # and closes the listener. Returns once the connections still open have
+    # finished their current request (at most drain_timeout seconds).
     def stop
       request_stop
       thread = @accept_thread
       thread.join unless thread.nil?
+      drain
       nil
     end
 
+    # Connections accepted and not yet closed.
+    def open_connections
+      count = 0
+      @lock.synchronize { count = @open_count }
+      count
+    end
+
     # What a signal handler may call: only clears the flag the accept loop
-    # polls, so #run returns within ACCEPT_POLL seconds. Spinel runs a trap
-    # block straight from its C signal handler, where #stop's Thread#join
-    # is not async-signal-safe.
+    # and the connections poll, so #run stops accepting within ACCEPT_POLL
+    # seconds and then drains. Spinel runs a trap block straight from its C
+    # signal handler, where #stop's Thread#join, the drain's sleep and the
+    # Mutex are not async-signal-safe.
     def request_stop
       @running = false
       nil
     end
 
     private
+
+    # Waits, in ordinary thread context, until every connection has closed
+    # or drain_timeout seconds have passed. Whatever is still open then is
+    # cut off when the process exits.
+    def drain
+      started = Time.now
+      remaining = open_connections
+      while remaining > 0
+        if Time.now - started >= @drain_timeout
+          @logger.warn("shutting down with #{remaining} connection(s) still open after #{@drain_timeout}s")
+          break
+        end
+        sleep ACCEPT_POLL
+        remaining = open_connections
+      end
+      nil
+    end
 
     def spawn_acceptor(listener)
       Thread.new { accept_loop(listener) }
@@ -117,14 +161,25 @@ module Cybertrain
 
     # NOTES rule 21: the socket must reach the thread through this method's
     # parameter, never as a Thread.new argument (it would lose its type).
+    # Counted here, on the accept thread, so that once #run has joined it
+    # the drain sees every connection; serve's ensure uncounts it.
     def spawn_connection(sock)
+      @lock.synchronize { @open_count += 1 }
       Thread.new { serve(sock) }
+    end
+
+    def connection_closed
+      @lock.synchronize { @open_count -= 1 }
+      nil
     end
 
     # One connection: read a head, read its body, run the app, write the
     # response, and loop while the client keeps the connection alive.
     # Every readpartial is preceded by wait_readable (NOTES rule 20); a nil
     # wait means the client has been silent for read_timeout seconds.
+    # Once the server is stopping, a connection idle between requests closes
+    # (head_readable?) and a response ends the loop (respond answers
+    # Connection: close).
     #
     # `while true` rather than `loop do`: inside a `loop` block Spinel drops
     # the ivars of a raised exception (Rejected#status reads 0) and skips
@@ -140,7 +195,7 @@ module Cybertrain
         idx = buf.byteindex(HttpParser::HEAD_END)
         while idx.nil?
           raise Rejected.new(400) if buf.bytesize > @max_head_bytes
-          return if sock.wait_readable(@read_timeout).nil?
+          return unless head_readable?(sock, buf.empty?)
 
           buf << sock.readpartial(READ_CHUNK)
           idx = buf.byteindex(HttpParser::HEAD_END)
@@ -177,9 +232,30 @@ module Cybertrain
       @logger.error("connection error: #{e.class.name}: #{e.message}")
     ensure
       sock.close unless sock.closed?
+      connection_closed
     end
 
-    # Runs the app and writes its response; true when the connection stays open.
+    # Waits for more of a request head; false once the client has been silent
+    # for read_timeout seconds. A connection with nothing buffered is idle
+    # between requests: it waits in ACCEPT_POLL slices so that it also gives
+    # up as soon as the server is stopping instead of holding up the drain.
+    def head_readable?(sock, idle)
+      return !sock.wait_readable(@read_timeout).nil? unless idle
+
+      started = Time.now
+      while @running
+        waited = Time.now - started
+        return false if waited >= @read_timeout
+
+        slice = @read_timeout - waited
+        slice = ACCEPT_POLL if slice > ACCEPT_POLL
+        return true unless sock.wait_readable(slice).nil?
+      end
+      false
+    end
+
+    # Runs the app and writes its response; true when the connection stays
+    # open, which it does not once the server is stopping.
     def respond(sock, request)
       ctx = Context.new(request)
       response = ctx.response
@@ -189,7 +265,7 @@ module Cybertrain
         @logger.error("#{e.class.name}: #{e.message}")
         response = error_response(500)
       end
-      keep_alive = request.keep_alive?
+      keep_alive = request.keep_alive? && @running
       response.set_header("Connection", keep_alive ? "keep-alive" : "close")
       sock.write(response.to_http(request.head?))
       keep_alive

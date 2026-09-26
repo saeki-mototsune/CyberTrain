@@ -20,4 +20,7 @@ ok   a failed accept is logged and the server keeps accepting
 ok   stop makes the port refuse connections
 ok   run serves until stop is called
 ok   request_stop (what the TERM trap calls) makes run return without joining
-22 tests, 59 assertions, 0 failures
+ok   request_stop waits for a request in flight and answers it completely
+ok   an idle keep-alive connection does not hold up shutdown
+ok   drain_timeout bounds the wait for a request that takes too long
+25 tests, 75 assertions, 0 failures
