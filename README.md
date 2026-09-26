@@ -29,6 +29,8 @@ Rails" below.
   in [.github/workflows/ci.yml](.github/workflows/ci.yml)); untested against
   other versions.
 - A C toolchain (`cc`) — Spinel compiles every program to C.
+- Ruby 3.2+ and RubyGems, for the `cybertrain` command only (applications
+  never run on CRuby).
 - SQLite 3 headers/library (`libsqlite3-dev` on Debian/Ubuntu; present with
   Xcode's command line tools on macOS) — models use Spinel's FFI directly,
   not a gem. Building Spinel itself also needs OpenSSL's headers
@@ -51,21 +53,28 @@ touch SQLite through FFI take theirs from the compiled binary instead
 ## Installing the CLI
 
 ```sh
-spin install                      # builds bin/cybertrain.rb -> ~/.local/bin/cybertrain
+gem install cybertrain
 ```
 
-or, without touching `PATH`:
+The `cybertrain` command is plain Ruby and the gem runs it under CRuby
+(3.2 or newer); the framework itself is not in the gem. Two commands:
+`cybertrain new NAME` scaffolds an application, `cybertrain generate
+scaffold NAME field:type ...` (alias `g scaffold`) adds a resource to one.
 
-```sh
-spin build cybertrain
-build/bin/cybertrain help
-```
+`cybertrain new` points the app's `spin.toml` at the release matching the
+CLI — `cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain",
+ref = "v0.1.0" }` — then runs `spin lock` (spin fetches the framework into
+its cache, `~/.cache/spin/packages/`, and pins the commit in `spin.lock`)
+and `spin run gen`, much as `rails new` runs `bundle install`. Nothing of
+the framework is copied into the app; commit `spin.toml` and `spin.lock`.
+`--skip-spin` leaves both steps for later, `--path DIR` depends on a local
+checkout instead, and `--version V` on an index version once cybertrain is
+on a `spin-index`.
 
-One binary, two real commands: `cybertrain new NAME` scaffolds an
-application, `cybertrain generate scaffold NAME field:type ...` (alias `g
-scaffold`) adds a resource to one. `cybertrain new` points the app's
-`spin.toml` at this checkout by default; pass `--path DIR` for a different
-checkout, or `--version V` once cybertrain is on a `spin-index`.
+Working on cybertrain itself, run the CLI from the checkout (`spin install`
+builds `bin/cybertrain.rb` into `~/.local/bin/cybertrain`; `ruby -I.
+bin/cybertrain.rb` also works) and create apps against it with `cybertrain
+new NAME --path ~/src/cybertrain` (wherever the checkout is).
 
 ## Walkthrough: building a blog
 
@@ -78,6 +87,7 @@ articles and comments.
 ```sh
 cybertrain new blog
 cd blog
+spin build            # works right away: `new` already locked the framework and ran `spin run gen`
 ```
 
 ```
@@ -431,6 +441,18 @@ snapshot comes from the compiled binary instead: `spin test test/<name>.rb &&
 - [Roundhouse](https://github.com/rubys/roundhouse) (Sam Ruby) — transpiles
   *existing* Rails apps to Spinel. cybertrain is not that: it's a native
   framework you write directly against, not a compatibility layer.
+
+## Releasing
+
+The gem and the framework are released from the same tag, and `cybertrain
+new` depends on the tag `v` + `Cybertrain::VERSION`, so the tag must exist
+before the gem is pushed:
+
+1. Bump `Cybertrain::VERSION` (`cybertrain/version.rb`) and `version` in
+   `spin.toml` together (CI checks they match); spin caches a git
+   dependency by that version.
+2. Merge to `main`, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
+3. `gem build cybertrain.gemspec && gem push cybertrain-0.1.0.gem`.
 
 ## License
 

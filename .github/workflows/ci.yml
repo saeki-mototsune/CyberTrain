@@ -43,6 +43,29 @@ jobs:
           spinel --version
           spin test
 
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      # The gem ships the CLI only; it must run under CRuby and bring every
+      # file it requires (cybertrain.gemspec lists them by hand).
+      - name: Gem CLI (CRuby) scaffolds an app that builds
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          version=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::VERSION')
+          grep -q "^version = \"$version\"$" spin.toml || { echo "spin.toml version != Cybertrain::VERSION ($version)"; exit 1; }
+          gem build cybertrain.gemspec --output /tmp/cybertrain.gem
+          gem install --local /tmp/cybertrain.gem
+          mkdir -p /tmp/gem-e2e && cd /tmp/gem-e2e
+          cybertrain version
+          cybertrain new shop --path "$GITHUB_WORKSPACE"
+          cd shop
+          cybertrain generate scaffold product name:string price:integer
+          spin run gen
+          spin run db -- migrate
+          spin run gen
+          spin build
+
       - name: Generated code is fresh (examples/blog)
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |

@@ -45,10 +45,14 @@ Ubuntu / Debian:
 
 ```sh
 sudo apt update
-sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev
+sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev ruby-full
 ```
 
 macOS: `xcode-select --install`（C コンパイラと SQLite が入ります）。
+
+`cybertrain` コマンドは gem で入れるので、手元にだけ Ruby 3.2 以上が要ります（アプリ自体は
+Ruby 無しで動きます）。Ubuntu 24.04 の `ruby-full` は 3.2 です。macOS 付属の Ruby は古いので、
+Homebrew（`brew install ruby`）や rbenv・mise などで入れてください。
 
 ### 1-2. Spinel をインストールする
 
@@ -73,9 +77,7 @@ spinel --version
 ### 1-3. cybertrain の CLI をインストールする
 
 ```sh
-git clone https://github.com/saeki-mototsune/cybertrain.git ~/src/cybertrain
-cd ~/src/cybertrain
-spin install          # bin/cybertrain.rb をビルドして ~/.local/bin/cybertrain に置く
+gem install cybertrain
 cybertrain version
 ```
 
@@ -92,18 +94,10 @@ cd notes
 git init -b main
 ```
 
-### 2-2. フレームワークをアプリのリポジトリに固定する
+### 2-2. フレームワークの参照を確認する
 
-`cybertrain new` が書く `spin.toml` は、フレームワークを **手元のチェックアウトの絶対パス**
-（例: `/home/you/src/cybertrain`）で参照しています。このままだとサーバーでビルドできないので、
-フレームワークを git submodule としてアプリに入れ、相対パスで参照するように変えます。
-使うフレームワークのコミットもこれで固定されます。
-
-```sh
-git submodule add https://github.com/saeki-mototsune/cybertrain.git vendor/cybertrain
-```
-
-`spin.toml` を次の内容にします（`[dependencies]` の 1 行だけが変わります）。
+`cybertrain new` は `spin.toml` に、CLI と同じバージョンのフレームワーク（GitHub のタグ）を
+書きます。
 
 ```toml
 [package]
@@ -111,8 +105,13 @@ name = "notes"
 version = "0.1.0"
 
 [dependencies]
-cybertrain = { path = "vendor/cybertrain" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.1.0" }
 ```
+
+続けて `new` が `spin lock` と `spin run gen` を実行しています。フレームワークは spin の
+キャッシュ（`~/.cache/spin/packages/`）に取得され、使うコミットは `spin.lock` に固定されます。
+アプリのリポジトリにフレームワークのコードは入りません。`spin.toml` と `spin.lock` を
+コミットしておけば、サーバーでも同じコミットでビルドされます（Gemfile.lock と同じ役割です）。
 
 ### 2-3. 画面を作る
 
@@ -268,7 +267,7 @@ spinel --version
 ### 3-5. デプロイキー
 
 サーバーがアプリの private リポジトリを読めるように、読み取り専用のデプロイキーを作ります
-（フレームワークの submodule は公開リポジトリなので鍵は不要です）。
+（フレームワークは spin が `spin.lock` のコミットを公開リポジトリから取得するので鍵は不要です）。
 
 ```sh
 ssh-keygen -t ed25519 -N "" -C "deploy@notes.example.com" -f ~/.ssh/id_ed25519
@@ -408,7 +407,6 @@ echo "==> $REF を取得: $release"
 git clone --quiet "$REPO" "$release"
 cd "$release"
 git checkout --quiet "$REF"
-git submodule update --init --quiet
 
 echo "==> gen/ が最新か確認"
 spin run gen -- --check
@@ -603,17 +601,20 @@ sudo systemctl start notes
 
 手元で:
 
+`spin.toml` の `ref` を新しいタグ（例: `"v0.2.0"`）に書き換え、`gem install cybertrain` で
+CLI も同じバージョンにそろえてから:
+
 ```sh
-git -C vendor/cybertrain pull origin main    # またはタグ・コミットを checkout
-spin run gen                                 # 生成コードがフレームワークに合わせて変わることがある
-spin test                                    # テストを書いているなら
-spin run server                              # 動作確認
+spin lock          # 新しいタグのコミットを spin.lock に固定する
+spin run gen       # 生成コードがフレームワークに合わせて変わることがある
+spin test          # テストを書いているなら
+spin run server    # 動作確認
 git add -A && git commit -m "Update cybertrain"
 git push
 ```
 
 そのあと普段どおりデプロイします。フレームワークが要求する Spinel のバージョン
-（`vendor/cybertrain/.github/workflows/ci.yml` の `SPINEL_TAG`）が上がっていたら、手元とサーバー
+（そのタグの [`.github/workflows/ci.yml`](https://github.com/saeki-mototsune/cybertrain/blob/main/.github/workflows/ci.yml) の `SPINEL_TAG`）が上がっていたら、手元とサーバー
 （3-4）の両方で Spinel を入れ直してからデプロイしてください。
 
 ### 秘密鍵を変える

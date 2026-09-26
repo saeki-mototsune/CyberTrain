@@ -12,3 +12,6 @@ tmp/
 log/
 
 .DS_Store
+
+# gem build output
+*.gem

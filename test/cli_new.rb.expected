@@ -116,18 +116,22 @@ create gen/.keep
 create storage/.keep
 create tmp/.keep
 create test/.keep
-ok   CLI new defaults to the framework's own absolute path
+ok   CLI new defaults to this version's release tag
+ok   new bootstraps the app with spin lock and spin run gen
 error: blog already exists
 error: 'Bad Name' is not a valid app name (lowercase letters, digits and _)
-error: usage: cybertrain new NAME [--path DIR | --version V]
+error: usage: cybertrain new NAME [--path DIR | --version V] [--skip-spin]
 ok   CLI new refuses an existing directory and a bad name
 cybertrain 0.1.0
 Usage:
-  cybertrain new NAME [--path DIR | --version V]
-      Create an application in NAME. Its spin.toml depends on the
-      framework at DIR (relative to the current directory; written as
-      an absolute path; default: this cybertrain's own checkout) or on
-      the index version constraint V.
+  cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+      Create an application in NAME, then run `spin lock` and
+      `spin run gen` in it (skipped with --skip-spin). Its spin.toml
+      depends on this cybertrain's release by default:
+        git tag v0.1.0 of https://github.com/saeki-mototsune/cybertrain
+      --path DIR: the framework checkout at DIR (relative to the
+      current directory; written as an absolute path).
+      --version V: the index version constraint V.
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
@@ -135,26 +139,32 @@ Usage:
   cybertrain help
 Unknown command 'frobnicate'
 Usage:
-  cybertrain new NAME [--path DIR | --version V]
-      Create an application in NAME. Its spin.toml depends on the
-      framework at DIR (relative to the current directory; written as
-      an absolute path; default: this cybertrain's own checkout) or on
-      the index version constraint V.
+  cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+      Create an application in NAME, then run `spin lock` and
+      `spin run gen` in it (skipped with --skip-spin). Its spin.toml
+      depends on this cybertrain's release by default:
+        git tag v0.1.0 of https://github.com/saeki-mototsune/cybertrain
+      --path DIR: the framework checkout at DIR (relative to the
+      current directory; written as an absolute path).
+      --version V: the index version constraint V.
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
   cybertrain version
   cybertrain help
 Usage:
-  cybertrain new NAME [--path DIR | --version V]
-      Create an application in NAME. Its spin.toml depends on the
-      framework at DIR (relative to the current directory; written as
-      an absolute path; default: this cybertrain's own checkout) or on
-      the index version constraint V.
+  cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+      Create an application in NAME, then run `spin lock` and
+      `spin run gen` in it (skipped with --skip-spin). Its spin.toml
+      depends on this cybertrain's release by default:
+        git tag v0.1.0 of https://github.com/saeki-mototsune/cybertrain
+      --path DIR: the framework checkout at DIR (relative to the
+      current directory; written as an absolute path).
+      --version V: the index version constraint V.
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-15 tests, 64 assertions, 0 failures
+16 tests, 66 assertions, 0 failures

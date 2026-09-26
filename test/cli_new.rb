@@ -124,7 +124,7 @@ test "README.md gives the working migrate sequence" do
 end
 
 test "CLI new --path expands a relative DIR against the current directory" do
-  assert_equal 0, Cybertrain::CLI.run(["new", "shop", "--path", "../../cybertrain"])
+  assert_equal 0, Cybertrain::CLI.run(["new", "shop", "--path", "../../cybertrain", "--skip-spin"])
   # spin resolves `path =` from the app's directory, so the CLI writes the
   # absolute path the user meant (relative to where they ran the command).
   expected = File.join(File.dirname(File.dirname(Dir.pwd)), "cybertrain")
@@ -134,7 +134,7 @@ test "CLI new --path expands a relative DIR against the current directory" do
 end
 
 test "CLI new --path keeps an absolute DIR and works for a nested app dir" do
-  assert_equal 0, Cybertrain::CLI.run(["new", "sub/store", "--path", "/opt/cybertrain"])
+  assert_equal 0, Cybertrain::CLI.run(["new", "sub/store", "--path", "/opt/cybertrain", "--skip-spin"])
   assert_includes read("sub/store/spin.toml"), "cybertrain = { path = \"/opt/cybertrain\" }"
   assert_includes read("sub/store/spin.toml"), "name = \"store\""
 end
@@ -145,14 +145,21 @@ test "CLI new rejects --path together with --version" do
 end
 
 test "CLI new --version writes an index constraint" do
-  assert_equal 0, Cybertrain::CLI.run(["new", "wiki", "--version", "~> 0.1"])
+  assert_equal 0, Cybertrain::CLI.run(["new", "wiki", "--version", "~> 0.1", "--skip-spin"])
   assert_includes read("wiki/spin.toml"), "cybertrain = \"~> 0.1\""
 end
 
-test "CLI new defaults to the framework's own absolute path" do
-  Cybertrain::CLI.framework_root = "/opt/cybertrain"
-  assert_equal 0, Cybertrain::CLI.run(["new", "notes"])
-  assert_includes read("notes/spin.toml"), "cybertrain = { path = \"/opt/cybertrain\" }"
+# The default is the release this CLI belongs to, so the templates it wrote
+# and the framework the app compiles against are the same version.
+test "CLI new defaults to this version's release tag" do
+  assert_equal 0, Cybertrain::CLI.run(["new", "notes", "--skip-spin"])
+  assert_includes read("notes/spin.toml"),
+                  "cybertrain = { git = \"https://github.com/saeki-mototsune/cybertrain\", ref = \"v#{Cybertrain::VERSION}\" }"
+end
+
+test "new bootstraps the app with spin lock and spin run gen" do
+  assert_equal "cd 'notes' && spin lock && spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("notes")
+  assert_equal "cd 'it'\\''s' && spin lock && spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("it's")
 end
 
 test "CLI new refuses an existing directory and a bad name" do
