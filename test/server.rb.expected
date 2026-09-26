@@ -19,4 +19,5 @@ ok   an idle keep-alive connection is closed after read_timeout
 ok   a failed accept is logged and the server keeps accepting
 ok   stop makes the port refuse connections
 ok   run serves until stop is called
-21 tests, 56 assertions, 0 failures
+ok   request_stop (what the TERM trap calls) makes run return without joining
+22 tests, 59 assertions, 0 failures

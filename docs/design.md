@@ -215,9 +215,10 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 静的ファイル: `public/` をミドルウェアで配信。拡張子 → Content-Type の表のみ。production では逆プロキシに配信させることを推奨。
 - JSON: `json` パッケージ。`render json:` と、`application/json` のリクエストボディの `params` 取り込みに限る。
 - ログ: 標準出力に 1 リクエスト 2 行（`Started GET "/posts"`、`Completed 200 in 3ms`）。`Cybertrain.logger` に `info` / `warn` / `error`。
-- エラーページ: production は `public/404.html` / `public/500.html`、development は診断ページ。
+- エラーページ: production は `public/404.html` / `public/500.html`（最外周の `ErrorPages` ミドルウェア。例外は 500 にし、本文が空・Content-Type なし・`text/plain` のエラー応答を `public/<status>.html` に差し替える。アクションが HTML / JSON で描画したエラーはそのまま）、development は診断ページ。
+- セッション Cookie: production では `Secure` 属性を付ける（`Config#session_secure`、既定は `production?`）。
 - 安全側の既定: 出力エスケープ、CSRF、署名クッキー、SQL は常にバインド変数、`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`。
-- 終了処理: `SIGTERM` で listen を止め、処理中のリクエストを待って終了。`trap` が使えなければ libc の `signal` を FFI で呼ぶ。
+- 終了処理: `SIGTERM` で listen を止め、処理中のリクエストを待って終了。`trap` が使えなければ libc の `signal` を FFI で呼ぶ。trap ブロックは C のシグナルハンドラから直接呼ばれるので、ハンドラはフラグを落とすだけ（`Server#request_stop`）にし、`Thread#join` などは通常のスレッド文脈で行う。
 - i18n なし。バリデーションメッセージは英語固定。
 
 ## 5. リクエストの流れ
@@ -342,4 +343,4 @@ blog/
 - 第 10 章のマイルストーン M0〜M5 はすべて到達した。第 2.2 節の合格基準は `examples/blog`（Article + Comment、サーバサイド HTML、SQLite、`spin build` で単一バイナリ）で満たし、統合テスト 21 ケースと、フレームワーク自身の `spin test` 57 プログラムが通過している。
 - 開発ループ（D12）は実機で確認済み: ビュー編集は再ビルドなしで即時反映、コントローラ編集は約 24 秒（`spin run gen` + `spin build server`）で再ビルドされ、同じ PID のまま `execv` で新バイナリに置き換わった。
 - 実装で判明した Spinel の制約 42 項目は `spikes/NOTES.md` に、計画との差分は `docs/superpowers/plans/2026-09-24-cybertrain-mvp.md` 末尾の「As built」節にある。利用者向けの説明は `README.md` と `docs/template-language.md`。
-- 既知の未対応: strict locals の既定値構文（`<%# locals: (comment: nil) %>`）、`Model#attribute_or_method?` が常に true（typo した属性名が空文字で描画される）、`spin run db migrate` は `--` が必要（`spin run db -- migrate`）、`SPINEL_GC_STRESS=1` 下で最初の `form_with` が空文字を返す事象（Spinel 側のルーティング問題の疑い）。
+- 既知の未対応: strict locals の既定値構文（`<%# locals: (comment: nil) %>`）、`Model#attribute_or_method?` が常に true（typo した属性名が空文字で描画される）、`spin run db migrate` は `--` が必要（`spin run db -- migrate`）、`SPINEL_GC_STRESS=1` 下で最初の `form_with` が空文字を返す事象（Spinel 側のルーティング問題の疑い）、`SIGTERM` 時に処理中のリクエストを待たない（listen を止めた後、メインスレッドが戻った時点でプロセスが終わる）。

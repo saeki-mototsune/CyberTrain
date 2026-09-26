@@ -112,6 +112,10 @@ module Cybertrain
           Cybertrain.configure do |c|
             # c.port = 3000
             # c.workers = 1
+
+            # Production marks the session cookie Secure (HTTPS only). Turn it
+            # off only if production is really served over plain http://.
+            # c.session_secure = false
           end
         RUBY
       end

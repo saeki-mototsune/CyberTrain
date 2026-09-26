@@ -179,8 +179,15 @@ build/bin/server
 ```
 
 `=> Watching app/, config/ and db/schema.rb for changes` の行が**出ていない**ことを確認して
-ください（出ていたら開発モードで動いています）。ブラウザで一通り触ったら `Ctrl-C` で止め、
-環境変数を戻します。
+ください（出ていたら開発モードで動いています）。
+
+ブラウザでは **http://localhost:3000** を開いて一通り触ります。本番モードのセッション Cookie には
+`Secure` 属性が付くので、ブラウザは HTTPS でしか送り返しません。例外として Chrome と Firefox は
+`localhost` を安全な接続として扱うのでそのまま試せますが、`127.0.0.1` で開いたり他のブラウザを
+使ったりすると、フォーム送信が `Invalid authenticity token`（403）になります。本番では Caddy が
+HTTPS にするので問題ありません。
+
+試し終わったら `Ctrl-C` で止め、環境変数を戻します。
 
 ```sh
 unset CYBERTRAIN_ENV CYBERTRAIN_SECRET_KEY_BASE CYBERTRAIN_DATABASE
@@ -484,30 +491,11 @@ notes.example.com {
 	}
 
 	handle {
-		reverse_proxy 127.0.0.1:3000 {
-			# アプリの 404 / 500 は素のテキストなので、public/ の HTML に差し替える
-			@notfound status 404
-			handle_response @notfound {
-				root * /srv/notes/current/public
-				rewrite * /404.html
-				file_server {
-					status 404
-				}
-			}
-			@servererror status 500
-			handle_response @servererror {
-				root * /srv/notes/current/public
-				rewrite * /500.html
-				file_server {
-					status 500
-				}
-			}
-		}
+		reverse_proxy 127.0.0.1:3000
 	}
 
 	# アプリが落ちている・再起動中（502 など）のとき
 	handle_errors {
-		root * /srv/notes/current/public
 		rewrite * /500.html
 		file_server
 	}
@@ -516,6 +504,10 @@ EOF
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 ```
+
+アプリの 404 / 500 は、アプリ自身が本番モードで `public/404.html` / `public/500.html` を返すので、
+Caddy 側で差し替える必要はありません。Caddy の `handle_errors` は、アプリに繋がらないとき
+（再起動中など）用です。
 
 最初のアクセスで Caddy が Let's Encrypt から証明書を取ります（DNS が向いていて、80/443 が
 開いている必要があります）。HTTP へのアクセスは自動で HTTPS にリダイレクトされます。
@@ -647,16 +639,16 @@ git push
 | ブラウザで 500.html が出続ける | アプリが落ちている。`journalctl -u notes -n 50` を見る |
 | 証明書が取れない | DNS がサーバーを向いているか、80/443 が開いているか。`journalctl -u caddy` を見る |
 | 静的ファイルが 403 / 404 | `/srv/notes` の権限（`chmod 711`）と、ファイルが `public/` にあるか |
+| フォーム送信が 403 `Invalid authenticity token` になる・フラッシュが出ない | HTTP で開いている。本番のセッション Cookie は `Secure` なので HTTPS でしか届かない。`https://` で開く（どうしても HTTP で運用するなら `config/app.rb` で `c.session_secure = false`） |
 
 ## いまの cybertrain の制約（本番で気にしておくこと）
 
 - **DB は SQLite だけ**です。サーバー 1 台・1 プロセスで動かす前提で、横に並べることはできません。
-- **セッション Cookie に `Secure` 属性が付きません**（設定もありません）。Caddy で HTTP を HTTPS に
-  リダイレクトしているので通常のアクセスは HTTPS になりますが、サイト全体を HTTPS に固定したい
-  場合は、動作を確認した後で Caddyfile のサイトブロックに
-  `header Strict-Transport-Security "max-age=31536000"` を足してください。
-- アプリ自身は `public/404.html` / `public/500.html` を返しません（素のテキストを返します）。
-  この文書では Caddy が差し替えています。
+- **再起動（デプロイ）の瞬間に処理中だったリクエストは待たずに切れます**。SIGTERM で受け付けを
+  止めたあと、処理中の接続の完了は待たずにプロセスが終わります。
+- HTTPS に固定したい場合は、動作を確認した後で Caddyfile のサイトブロックに
+  `header Strict-Transport-Security "max-age=31536000"` を足してください（セッション Cookie は
+  本番では `Secure` 付きです）。
 - 認証（ログイン）機能はフレームワークにありません。公開前に、誰が書き込めるべきかを考えてください。
 - ビューは初回アクセス時にパースされてキャッシュされます。ビューだけの変更でも、本番では
   デプロイ（再起動）が必要です。

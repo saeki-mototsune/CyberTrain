@@ -1,0 +1,9 @@
+ok   a success passes through untouched
+ok   the Router's plain-text 404 becomes public/404.html
+ok   an empty 404 (head :not_found) becomes public/404.html
+ok   a 404 the action rendered as HTML is kept
+ok   a 404 the action rendered as JSON is kept
+ok   a status with no page keeps its body
+ok   an exception is logged and becomes public/500.html without the action's headers or cookies
+ok   without the page files the plain-text bodies stay
+8 tests, 22 assertions, 0 failures

@@ -360,13 +360,20 @@ end
 Other attributes with fixed, overridable defaults: `host` (`"127.0.0.1"`),
 `views_root` (`"app/views"`), `public_root` (`"public"`), `layout`
 (`"layouts/application"`), `log_level` (`:info`), `session_cookie_name`,
-`session_max_age` (2 weeks), `pool_size` (4), `static_files`/`csrf` (`true`).
+`session_max_age` (2 weeks), `session_secure` (`true` in production, which
+marks the session cookie `Secure`; `false` elsewhere), `pool_size` (4),
+`static_files`/`csrf` (`true`).
 
 **Deployment:** `spin build server` produces `build/bin/server`. Ship it with
 `app/views/` (read at request time, never compiled in), `public/` (static
 assets, or let a reverse proxy serve it) and `storage/` (the SQLite file),
 `CYBERTRAIN_ENV=production` and `CYBERTRAIN_SECRET_KEY_BASE` set. The binary
-speaks plain HTTP/1.1 only; put nginx/Caddy in front for TLS and HTTP/2. The
+speaks plain HTTP/1.1 only; put nginx/Caddy in front for TLS and HTTP/2 (the
+session cookie is `Secure` in production, so serve it over HTTPS). In
+production an exception answers 500 and a bare error response (the router's
+plain-text 404, `head :not_found`, `render plain:`) is replaced by
+`public/<status>.html` when that file exists; errors an action renders as HTML
+or JSON pass through. `SIGTERM` stops accepting and exits. The
 watcher/rebuild loop never runs in production. [docs/deploy.md](docs/deploy.md)
 (Japanese) walks through it end to end: `cybertrain new`, an Ubuntu server,
 systemd, Caddy with HTTPS, redeploys, rollbacks and backups.
