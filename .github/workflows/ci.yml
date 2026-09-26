@@ -49,7 +49,7 @@ jobs:
 
       # The gem ships the CLI only; it must run under CRuby and bring every
       # file it requires (cybertrain.gemspec lists them by hand).
-      - name: Gem CLI (CRuby) scaffolds an app that builds
+      - name: Gem CLI (CRuby) scaffolds an app, builds dist/ and serves it
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           version=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::VERSION')
@@ -61,10 +61,17 @@ jobs:
           cybertrain new shop --path "$GITHUB_WORKSPACE"
           cd shop
           cybertrain generate scaffold product name:string price:integer
-          spin run gen
-          spin run db -- migrate
-          spin run gen
-          spin build
+          cybertrain migration
+          cybertrain db status
+          cybertrain build
+          test -x dist/shop
+          cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./shop migrate
+          CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3999 ./shop > server.log 2>&1 &
+          sleep 2
+          curl -fsS http://127.0.0.1:3999/products > /dev/null
+          curl -fsS http://127.0.0.1:3999/style.css > /dev/null
+          grep -q "production environment" server.log
+          kill %1
 
       - name: Generated code is fresh (examples/blog)
         if: hashFiles('examples/blog/spin.toml') != ''

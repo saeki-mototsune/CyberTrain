@@ -7,17 +7,16 @@
 
 ```
 ブラウザ ──HTTPS──▶ Caddy (:443, 証明書を自動取得)
-                     ├─ public/ の静的ファイルは Caddy が直接返す
-                     └─ それ以外 ──HTTP──▶ build/bin/server (127.0.0.1:3000, systemd)
-                                              ├─ app/views/ を実行時に読む
+                     ├─ public/ は dist/public/。静的ファイルは Caddy が直接返す
+                     └─ それ以外 ──HTTP──▶ dist/notes (127.0.0.1:3000, systemd)
                                               └─ /srv/notes/shared/production.sqlite3
 ```
 
-- アプリは Spinel で 1 本のネイティブバイナリ（`build/bin/server`）にコンパイルされます。
-  ただしビュー（`app/views/`）と `public/` は実行時にディスクから読むので、バイナリ単体では
-  動きません。**リポジトリをまるごとサーバーに置き、サーバー上でビルドする**のがこの
-  チュートリアルのやり方です（サーバーと同じ OS・libc でビルドすることにもなり、一番
-  ハマりにくい）。
+- アプリは `cybertrain build` で 1 本のネイティブバイナリ（`dist/notes`）にコンパイルされます。
+  ビュー（`app/views/`）はビルド時にバイナリへ埋め込まれ、`public/` は `dist/public/` に
+  コピーされます。バイナリはシステムの SQLite（と libc）にリンクするので、動かすマシンと同じ
+  OS・CPU でビルドする必要があります。そのため**リポジトリをサーバーに置き、サーバー上で
+  ビルドする**のがこのチュートリアルのやり方です（一番ハマりにくい）。
 - サーバーは TLS と HTTP/2 を話さないので、前段に Caddy を置きます。
 - DB は SQLite 1 ファイルです。サーバー 1 台構成が前提です。
 
@@ -50,8 +49,8 @@ sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev ruby-full
 
 macOS: `xcode-select --install`（C コンパイラと SQLite が入ります）。
 
-`cybertrain` コマンドは gem で入れるので、手元にだけ Ruby 3.2 以上が要ります（アプリ自体は
-Ruby 無しで動きます）。Ubuntu 24.04 の `ruby-full` は 3.2 です。macOS 付属の Ruby は古いので、
+`cybertrain` コマンドは gem で入れるので、Ruby 3.2 以上が要ります（サーバーでも
+`cybertrain build` を使うので入れます。アプリ自体は Ruby 無しで動きます）。Ubuntu 24.04 の `ruby-full` は 3.2 です。macOS 付属の Ruby は古いので、
 Homebrew（`brew install ruby`）や rbenv・mise などで入れてください。
 
 ### 1-2. Spinel をインストールする
@@ -128,18 +127,21 @@ Cybertrain::Routes.draw do
 end
 ```
 
-生成 → マイグレーション → 再生成の順に実行します。
+マイグレーションを流します。
 
 ```sh
-spin run gen             # 新しいマイグレーションを gen/migrations.rb に取り込む
-spin run db -- migrate   # storage/development.sqlite3 を作り、db/schema.rb を書き直す
-spin run gen             # db/schema.rb と routes から gen/ を作り直す
+cybertrain migration
 ```
+
+中身は生成 → マイグレーション → 再生成の 3 段です。`spin run gen` で新しいマイグレーションを
+`gen/migrations.rb` に取り込み、`spin run db -- migrate`（開発用の `bin/db.rb`）で
+`storage/development.sqlite3` を作って `db/schema.rb` を書き直し、もう一度 `spin run gen` で
+`db/schema.rb` と routes から `gen/` を作り直します。
 
 ### 2-4. 手元で動かす
 
 ```sh
-spin run server
+cybertrain server
 ```
 
 http://127.0.0.1:3000 を開き、ノートの作成・編集・削除ができることを確かめます。
@@ -161,13 +163,17 @@ Cybertrain.url_root = "https://notes.example.com" if Cybertrain.config.productio
 サーバーに行く前に、手元で本番と同じ起動のしかたを一度試しておくと、設定漏れに早く気づけます。
 
 ```sh
-spin build server
-export CYBERTRAIN_ENV=production
+cybertrain build
 export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"
 export CYBERTRAIN_DATABASE="$PWD/storage/rehearsal.sqlite3"
-spin run db -- migrate
-build/bin/server
+dist/notes migrate
+dist/notes
 ```
+
+`cybertrain build` はビューを埋め込んだバイナリ `dist/notes` と `dist/public/` を作ります。
+ビルドしたバイナリは既定で本番モードなので、`CYBERTRAIN_ENV` を設定する必要はありません
+（開発モードで動かしたいときだけ `CYBERTRAIN_ENV=development` を付けます）。
+`dist/notes migrate` はバイナリに組み込まれたマイグレーションを `CYBERTRAIN_DATABASE` に流します。
 
 起動時の表示が次のようになっていれば OK です。
 
@@ -189,9 +195,11 @@ HTTPS にするので問題ありません。
 試し終わったら `Ctrl-C` で止め、環境変数を戻します。
 
 ```sh
-unset CYBERTRAIN_ENV CYBERTRAIN_SECRET_KEY_BASE CYBERTRAIN_DATABASE
+unset CYBERTRAIN_SECRET_KEY_BASE CYBERTRAIN_DATABASE
 rm -f storage/rehearsal.sqlite3*
 ```
+
+`dist/` は `cybertrain new` の `.gitignore` に入っているのでコミットされません。
 
 ### 2-7. コミットして GitHub に置く
 
@@ -226,7 +234,7 @@ AAAA も）を登録します。第 6 部で Caddy が証明書を取るとき�
 
 ```sh
 sudo apt update && sudo apt -y upgrade
-sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev sqlite3 ufw
+sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev sqlite3 ufw ruby-full
 
 sudo ufw allow OpenSSH
 sudo ufw allow 80,443/tcp
@@ -264,6 +272,15 @@ source ~/.bashrc
 spinel --version
 ```
 
+続けて `cybertrain` コマンドを `notes` ユーザーのホームに入れます（デプロイスクリプトが
+`cybertrain build` を使います）。
+
+```sh
+gem install --user-install cybertrain
+ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
+cybertrain version
+```
+
 ### 3-5. デプロイキー
 
 サーバーがアプリの private リポジトリを読めるように、読み取り専用のデプロイキーを作ります
@@ -294,7 +311,7 @@ chmod 700 ~/shared ~/backups
 exit    # notes ユーザーを抜けて、sudo できるユーザーに戻る
 ```
 
-- `~/releases/<日時>/` … デプロイごとのチェックアウト（ビルド結果もここ）
+- `~/releases/<日時>/` … デプロイごとのチェックアウト（ビルド結果の `dist/` もここ）
 - `~/current` … 動かすリリースへのシンボリックリンク
 - `~/shared/` … リリースをまたいで残すもの（SQLite の DB）
 
@@ -323,7 +340,7 @@ sudo chmod 640 /etc/notes/notes.env
 
 | 変数 | 意味 |
 | --- | --- |
-| `CYBERTRAIN_ENV=production` | **必須**。これがないと開発モードで起動し、ファイル監視と再ビルドまで始めます |
+| `CYBERTRAIN_ENV=production` | `cybertrain build` のバイナリは既定で本番モードなので省略できますが、明示しておきます。`development` にすると開発モードで起動し、ファイル監視と再ビルドまで始めます |
 | `CYBERTRAIN_SECRET_KEY_BASE` | **必須**。変えると全員のセッションが切れます |
 | `CYBERTRAIN_DATABASE` | DB ファイル。リリースをまたいで残るよう `shared/` に置きます |
 | `PORT` | 待ち受けポート。Caddy の設定と合わせます |
@@ -346,9 +363,9 @@ After=network.target
 Type=simple
 User=notes
 Group=notes
-WorkingDirectory=/srv/notes/current
+WorkingDirectory=/srv/notes/current/dist
 EnvironmentFile=/etc/notes/notes.env
-ExecStart=/srv/notes/current/build/bin/server
+ExecStart=/srv/notes/current/dist/notes
 Restart=always
 RestartSec=2
 TimeoutStopSec=15
@@ -368,8 +385,11 @@ sudo systemctl enable notes
 
 ここではまだ起動しません（`/srv/notes/current` がまだないため）。最初のデプロイで起動します。
 
-- `WorkingDirectory` が重要です。サーバーは `app/views/` と `public/` を**作業ディレクトリからの
-  相対パス**で読みます。
+- `WorkingDirectory` が重要です。サーバーは `public/` と `storage/`（`CYBERTRAIN_DATABASE` を
+  指定しないときの DB の置き場）を**作業ディレクトリからの相対パス**で解決します。ビューは
+  バイナリに埋め込まれているので、ディスクからは読みません。ここでは DB を
+  `CYBERTRAIN_DATABASE` で `/srv/notes/shared/` に置くので、書き込みが要るのは
+  `ReadWritePaths` のそこだけです。
 - ログは標準出力に出るので、journald（`journalctl -u notes`）に集まります。
 - 停止は SIGTERM で、受け付けを止め、処理中のリクエストに応答し終えてから終了します（最大 10 秒。
   `TimeoutStopSec=15` はこれより長くしてあります）。
@@ -412,11 +432,11 @@ git checkout --quiet "$REF"
 echo "==> gen/ が最新か確認"
 spin run gen -- --check
 
-echo "==> ビルド"
-spin build server
+echo "==> ビルド（ビューを埋め込んだ dist/notes と dist/public/）"
+cybertrain build
 
 echo "==> マイグレーション"
-spin run db -- migrate
+dist/notes migrate
 
 echo "==> 切り替えて再起動"
 ln -sfn "$release" "$ROOT/current.new"
@@ -481,7 +501,7 @@ sudo apt install -y caddy
 sudo tee /etc/caddy/Caddyfile > /dev/null <<'EOF'
 notes.example.com {
 	encode zstd gzip
-	root * /srv/notes/current/public
+	root * /srv/notes/current/dist/public
 
 	# public/ にあるファイルは Caddy が直接返す
 	@static file
@@ -504,7 +524,7 @@ caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 ```
 
-アプリの 404 / 500 は、アプリ自身が本番モードで `public/404.html` / `public/500.html` を返すので、
+アプリの 404 / 500 は、アプリ自身が本番モードで `dist/public/404.html` / `dist/public/500.html` を返すので、
 Caddy 側で差し替える必要はありません。Caddy の `handle_errors` は、アプリに繋がらないとき
 （再起動中など）用です。
 
@@ -565,10 +585,9 @@ sudo /usr/bin/systemctl restart notes
 
 ```sh
 cd ~/current                                  # 切り替え前（新しい方）のリリース
-export PATH="$HOME/.local/bin:$PATH"
 set -a; . /etc/notes/notes.env; set +a
-spin run db -- status                         # 適用済みのマイグレーションを確認
-spin run db -- rollback 1                     # 戻す数を指定
+dist/notes db status                          # 適用済みのマイグレーションを確認
+dist/notes db rollback 1                      # 戻す数を指定
 ```
 
 ### バックアップ
@@ -603,13 +622,14 @@ sudo systemctl start notes
 手元で:
 
 `spin.toml` の `ref` を新しいタグ（例: `"v0.2.0"`）に書き換え、`gem install cybertrain` で
-CLI も同じバージョンにそろえてから:
+CLI も同じバージョンにそろえてから（サーバーの `notes` ユーザーでも
+`gem install --user-install cybertrain` で CLI を更新します）:
 
 ```sh
 spin lock          # 新しいタグのコミットを spin.lock に固定する
 spin run gen       # 生成コードがフレームワークに合わせて変わることがある
 spin test          # テストを書いているなら
-spin run server    # 動作確認
+cybertrain server  # 動作確認
 git add -A && git commit -m "Update cybertrain"
 git push
 ```
@@ -631,16 +651,18 @@ git push
 | 症状 | 原因と対処 |
 | --- | --- |
 | 起動ログに `CYBERTRAIN_SECRET_KEY_BASE is not set` | `/etc/notes/notes.env` がない・読めない・値が空。`EnvironmentFile=` のパスと、ファイルの所有者 `root:notes`・権限 `640` を確認 |
-| 起動ログに `=> development environment` や `Watching app/...` | `CYBERTRAIN_ENV=production` が渡っていない。開発モードでは `spin` で再ビルドしようとするので、必ず直す |
-| `status=203/EXEC` で起動しない | `/srv/notes/current/build/bin/server` がない。`~/deploy.sh` が最後まで成功しているか確認 |
-| 500 になり、ログに `Missing template app/views/...` が出る | 作業ディレクトリが違う。ユニットの `WorkingDirectory=/srv/notes/current` を確認 |
+| 起動ログに `=> development environment` や `Watching app/...` | `/etc/notes/notes.env` の `CYBERTRAIN_ENV` が `production` 以外になっている。開発モードでは `app/views/` をディスクから読み、`spin` で再ビルドしようとするので、必ず直す |
+| `status=203/EXEC` で起動しない | `/srv/notes/current/dist/notes` がない。`~/deploy.sh` が最後まで成功しているか確認 |
+| 起動ログに `error: views are not embedded in this binary` | ビューを埋め込まずにビルドしたバイナリ（`spin build notes` の `build/bin/notes` など）を本番モードで起動している。`cybertrain build` で作った `dist/notes` を使う |
+| 500 になり、ログに `Missing template ...` が出る | ビルド時に `app/views/` に無かったテンプレート。`cybertrain build` をやり直す |
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
 | デプロイが `stale: gen/...` で止まる | 手元で `spin run gen` して `gen/` をコミットし忘れている |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーの `~/.local/bin` に Spinel が入っていない（3-4） |
+| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |
 | ブラウザで 500.html が出続ける | アプリが落ちている。`journalctl -u notes -n 50` を見る |
 | 証明書が取れない | DNS がサーバーを向いているか、80/443 が開いているか。`journalctl -u caddy` を見る |
-| 静的ファイルが 403 / 404 | `/srv/notes` の権限（`chmod 711`）と、ファイルが `public/` にあるか |
+| 静的ファイルが 403 / 404 | `/srv/notes` の権限（`chmod 711`）と、ファイルが `dist/public/` にあるか（`cybertrain build` が `public/` からコピーする） |
 | フォーム送信が 403 `Invalid authenticity token` になる・フラッシュが出ない | HTTP で開いている。本番のセッション Cookie は `Secure` なので HTTPS でしか届かない。`https://` で開く（どうしても HTTP で運用するなら `config/app.rb` で `c.session_secure = false`） |
 
 ## いまの cybertrain の制約（本番で気にしておくこと）
@@ -654,5 +676,5 @@ git push
   `header Strict-Transport-Security "max-age=31536000"` を足してください（セッション Cookie は
   本番では `Secure` 付きです）。
 - 認証（ログイン）機能はフレームワークにありません。公開前に、誰が書き込めるべきかを考えてください。
-- ビューは初回アクセス時にパースされてキャッシュされます。ビューだけの変更でも、本番では
-  デプロイ（再起動）が必要です。
+- ビューはビルド時にバイナリへ埋め込まれます。ビューだけの変更でも、本番ではデプロイ
+  （再ビルドと再起動）が必要です。

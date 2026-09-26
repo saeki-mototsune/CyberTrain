@@ -3,8 +3,8 @@
 cybertrain is a Rails-shaped web application framework written natively for
 [Spinel](https://github.com/matz/spinel), matz's ahead-of-time Ruby compiler.
 There is no Rack, no gems at runtime, and no Ruby interpreter in the deployed
-artifact: `spin build` compiles an application — controllers, models, views
-and the framework itself — into a single native binary. Where Rails leans on
+artifact: `cybertrain build` compiles an application — controllers, models,
+views and the framework itself — into a single native binary. Where Rails leans on
 runtime metaprogramming (`method_missing`, `define_method`, `eval`) for
 `before_action :set_post` or `Post.where(title: "x")`, cybertrain gets the
 same vocabulary by generating plain, committed Ruby from `db/schema.rb` and
@@ -57,9 +57,23 @@ gem install cybertrain
 ```
 
 The `cybertrain` command is plain Ruby and the gem runs it under CRuby
-(3.2 or newer); the framework itself is not in the gem. Two commands:
-`cybertrain new NAME` scaffolds an application, `cybertrain generate
-scaffold NAME field:type ...` (alias `g scaffold`) adds a resource to one.
+(3.2 or newer); the framework itself is not in the gem. Its commands
+(`cybertrain help` prints them):
+
+- `cybertrain new NAME` creates an application in NAME, then runs `spin
+  lock` and `spin run gen` in it.
+- `cybertrain generate scaffold NAME field:type ...` (alias `g scaffold`)
+  adds a resource to the application in the current directory.
+- `cybertrain migration` generates, applies pending migrations, and
+  generates again (`spin run gen; spin run db -- migrate; spin run gen`).
+- `cybertrain db COMMAND...` runs any database command: `status`,
+  `rollback [N]`, `schema:dump`, `create`.
+- `cybertrain server` starts the development server (`spin run NAME`).
+- `cybertrain build` builds NAME with `app/views/` embedded and assembles
+  `dist/` (the binary, `public/`, `storage/`, `tmp/`).
+
+`migration`, `db`, `server` and `build` run inside an application; NAME is
+the `[package] name` in its `spin.toml`.
 
 `cybertrain new` points the app's `spin.toml` at the release matching the
 CLI — `cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain",
@@ -87,7 +101,7 @@ articles and comments.
 ```sh
 cybertrain new blog
 cd blog
-spin build            # works right away: `new` already locked the framework and ran `spin run gen`
+cybertrain server            # works right away: `new` already locked the framework and ran `spin run gen`
 ```
 
 ```
@@ -95,9 +109,21 @@ blog/
   spin.toml  config/app.rb  config/routes.rb
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
-  public/  bin/server.rb  bin/gen.rb  bin/db.rb
+  public/  bin/blog.rb  bin/gen.rb  bin/db.rb
   gen/  storage/  tmp/  test/
 ```
+
+`bin/blog.rb` is the application's one entry point, the program `spin build
+blog` compiles: `./blog` serves, `./blog migrate` and `./blog db status`
+manage the database. `bin/gen.rb` runs the generator (`spin run gen`), and
+`bin/db.rb` runs the migrator during development (`cybertrain migration`
+uses it, since `bin/blog.rb` cannot compile until the first migration has
+generated `gen/models/`). `gen/` already holds `views.rb`, the committed,
+empty table of embedded views (see "How it works").
+
+Apps created before `cybertrain build` existed have `bin/server.rb` and
+no `bin/<name>.rb`: copy `bin/<name>.rb` from a fresh `cybertrain new` (with
+the same NAME), delete `bin/server.rb` and run `spin run gen`.
 
 `ApplicationController` starts with the one thing every controller inherits:
 
@@ -181,10 +207,13 @@ end
 ### Generate, migrate, run
 
 ```sh
-spin run gen          # reads db/schema.rb + config/routes.rb, scans app/, writes gen/
-spin run db -- migrate   # applies db/migrate/*.rb, rewrites db/schema.rb (arguments go after --)
-spin run server       # http://127.0.0.1:3000
+cybertrain migration     # spin run gen; spin run db -- migrate; spin run gen
+cybertrain server        # http://127.0.0.1:3000; rebuilds on Ruby edits, views reload without a rebuild
 ```
+
+`spin run gen` reads `db/schema.rb` and `config/routes.rb`, scans `app/` and
+writes `gen/`; `spin run db -- migrate` applies `db/migrate/*.rb` and
+rewrites `db/schema.rb`.
 
 Re-run `spin run gen` (and commit `gen/`) after touching the schema, routes,
 or a controller/model's callbacks and ivars — the dev server does this for
@@ -277,6 +306,21 @@ child routes to the nested collection (`article_comments_path`), a persisted
 one to the nested member (`article_comment_path`) — generated into
 `gen/routes.rb` from the nested `resources` block above.
 
+### Build for deployment
+
+```sh
+cybertrain build
+```
+
+writes `dist/`: `dist/blog`, the app compiled with every `app/views/`
+template embedded (rendered from memory, error messages still say
+`articles/show.html.erb:12`), `dist/public/`, and empty `dist/storage/` and
+`dist/tmp/`. Copy `dist/` to a machine with the same OS and CPU (the binary
+links the system SQLite) and run `./blog migrate && ./blog`; a built binary
+is production by default (`CYBERTRAIN_ENV` overrides). Set
+`CYBERTRAIN_SECRET_KEY_BASE`. Static files can also be served by the reverse
+proxy from `dist/public/` — see [docs/deploy.md](docs/deploy.md).
+
 ## How it works
 
 **Build-time code generation.** `spin run gen` (`bin/gen.rb`) executes
@@ -289,17 +333,24 @@ zero-argument `def`s. From that it writes plain, readable Ruby under `gen/`:
 `gen/models/<name>.rb` (accessors, casts, finders, FK-derived associations),
 `gen/routes.rb` (route table, dispatcher, `*_path`/`*_url` helpers),
 `gen/controllers.rb` (`view_assigns` and `run_callback` per controller),
-`gen/migrations.rb` and `gen/app.rb` (the `require_relative` manifest).
+`gen/migrations.rb`, `gen/views.rb` (the embedded views table, empty unless
+building for deployment) and `gen/app.rb` (the `require_relative` manifest).
 `gen/` is committed, not gitignored — `spin build`/`spin test` have no hook
 to generate first, so the checked-in output has to already be what compiles.
 CI re-runs `spin run gen` and fails on a diff, so stale generated code can't
 merge.
 
 **Views are interpreted, not compiled.** `app/views/**/*.html.erb` files look
-like Rails ERB but are read from disk, parsed into an AST at request time
-(cached after first parse in production; re-parsed on change in
-development), then walked by a tree-walking interpreter — Spinel has no
-`eval`, so this is a closed grammar (literals, `@ivar`/local lookups, calls
+like Rails ERB but are parsed into an AST at request time, then walked by a
+tree-walking interpreter. Where the source comes from depends on the mode:
+in development (and test) the engine reads `app/views/` from disk and
+re-parses a template when it changes, so view edits need no rebuild.
+`cybertrain build` runs `spin run gen -- --embed-views`, which writes every
+template's source into `gen/views.rb` as a string table for that one `spin
+build`, then runs `spin run gen` again to restore the empty table that is
+committed; the production binary renders only that table (parsing each
+template once) and refuses to boot when it is empty (`error: views are not
+embedded in this binary`). Spinel has no `eval`, so this is a closed grammar (literals, `@ivar`/local lookups, calls
 through fixed per-type dispatch tables, `if`/`unless`,
 `each`/`each_with_index`/one helper block), not real Ruby. Full grammar,
 helpers and gaps: [docs/template-language.md](docs/template-language.md).
@@ -316,10 +367,11 @@ faster and stall-free for this I/O-bound shape at 100 concurrent connections.
 and foreign keys on; every query is bound, never interpolated. It's the only
 adapter today (PostgreSQL via `libpq` FFI is noted as possible future work).
 
-**The development loop.** `spin run server` in `development` (the default
-`CYBERTRAIN_ENV`) also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`
+**The development loop.** `cybertrain server` (`spin run NAME`) in
+`development` (the default `CYBERTRAIN_ENV`, except in a binary from
+`cybertrain build`) also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`
 and `gen/**/*.rb` every half second (views are excluded — the engine reloads
-those itself). A change runs `spin run gen && spin build server` in the
+those itself). A change runs `spin run gen && spin build NAME` in the
 background; success sends the server `SIGHUP`, whose handler stops listening
 and `execv`s the new binary on the same port and PID, invisible to a client
 mid-session. A failed build keeps serving the old binary and banners the
@@ -330,7 +382,7 @@ compiler output on every HTML response. None of this loads in production.
 | Rails | cybertrain |
 | --- | --- |
 | `rails console` | No console — Spinel has no `eval` |
-| Edit code, the running app picks it up | Ruby needs a rebuild; `spin run server` in development does this for you (rebuild, `SIGHUP`, `execv`) |
+| Edit code, the running app picks it up | Ruby needs a rebuild; `cybertrain server` in development does this for you (rebuild, `SIGHUP`, `execv`) |
 | Edit a view, no reload needed | Same — views are parsed from disk per request in development |
 | `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |
 | `before_action { do_thing }` (implicit `self`) | `before_action { \|c\| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |
@@ -361,7 +413,7 @@ end
 
 | Variable | Attribute | Default |
 | --- | --- | --- |
-| `CYBERTRAIN_ENV` | `env` | `"development"` (also `"test"`, `"production"`) |
+| `CYBERTRAIN_ENV` | `env` | `"development"`; `"production"` in a binary from `cybertrain build` (also `"test"`) |
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | required in production; dev/test auto-generate one into `tmp/secret_key` |
@@ -374,10 +426,12 @@ Other attributes with fixed, overridable defaults: `host` (`"127.0.0.1"`),
 marks the session cookie `Secure`; `false` elsewhere), `pool_size` (4),
 `static_files`/`csrf` (`true`).
 
-**Deployment:** `spin build server` produces `build/bin/server`. Ship it with
-`app/views/` (read at request time, never compiled in), `public/` (static
-assets, or let a reverse proxy serve it) and `storage/` (the SQLite file),
-`CYBERTRAIN_ENV=production` and `CYBERTRAIN_SECRET_KEY_BASE` set. The binary
+**Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
+with the views embedded, `dist/public/` (static assets, or let a reverse
+proxy serve it), and `dist/storage/` (the SQLite file by default) and
+`dist/tmp/`. Run it from `dist/` with `CYBERTRAIN_SECRET_KEY_BASE` set;
+it is production unless `CYBERTRAIN_ENV` says otherwise, and `./NAME
+migrate` applies the migrations compiled into it. The binary
 speaks plain HTTP/1.1 only; put nginx/Caddy in front for TLS and HTTP/2 (the
 session cookie is `Secure` in production, so serve it over HTTPS). In
 production an exception answers 500 and a bare error response (the router's
