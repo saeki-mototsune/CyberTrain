@@ -3,6 +3,7 @@
 
 # spin / spinel outputs
 build/
+dist/
 *.o
 *.dSYM/
 

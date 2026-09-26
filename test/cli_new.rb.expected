@@ -130,6 +130,16 @@ Usage:
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
+  cybertrain migration
+      Generate, apply pending migrations, generate again
+      (spin run gen; spin run NAME -- migrate; spin run gen).
+  cybertrain db COMMAND...
+      Any database command: status, rollback [N], schema:dump, create.
+  cybertrain server
+      Start the development server (spin run NAME).
+  cybertrain build
+      Build NAME with app/views embedded and assemble dist/
+      (the binary, public/, storage/, tmp/).
   cybertrain version
   cybertrain help
 Unknown command 'frobnicate'
@@ -145,6 +155,16 @@ Usage:
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
+  cybertrain migration
+      Generate, apply pending migrations, generate again
+      (spin run gen; spin run NAME -- migrate; spin run gen).
+  cybertrain db COMMAND...
+      Any database command: status, rollback [N], schema:dump, create.
+  cybertrain server
+      Start the development server (spin run NAME).
+  cybertrain build
+      Build NAME with app/views embedded and assemble dist/
+      (the binary, public/, storage/, tmp/).
   cybertrain version
   cybertrain help
 Usage:
@@ -159,6 +179,16 @@ Usage:
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
+  cybertrain migration
+      Generate, apply pending migrations, generate again
+      (spin run gen; spin run NAME -- migrate; spin run gen).
+  cybertrain db COMMAND...
+      Any database command: status, rollback [N], schema:dump, create.
+  cybertrain server
+      Start the development server (spin run NAME).
+  cybertrain build
+      Build NAME with app/views embedded and assemble dist/
+      (the binary, public/, storage/, tmp/).
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands

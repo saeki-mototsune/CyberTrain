@@ -3,11 +3,13 @@
 #
 #   cybertrain new NAME [--path DIR | --version V] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references]
+#   cybertrain migration | db COMMAND... | server | build
 #   cybertrain version | help
 require "cybertrain/version"
 require "cybertrain/cli/templates"
 require "cybertrain/cli/new_app"
 require "cybertrain/cli/scaffold"
+require "cybertrain/cli/build"
 
 module Cybertrain
   module CLI
@@ -24,6 +26,16 @@ module Cybertrain
         cybertrain generate scaffold NAME field:type ... [parent:references]
             Add a resource to the application in the current directory.
             Types: #{Field::TYPES.join(", ")} (default string).
+        cybertrain migration
+            Generate, apply pending migrations, generate again
+            (spin run gen; spin run NAME -- migrate; spin run gen).
+        cybertrain db COMMAND...
+            Any database command: status, rollback [N], schema:dump, create.
+        cybertrain server
+            Start the development server (spin run NAME).
+        cybertrain build
+            Build NAME with app/views embedded and assemble dist/
+            (the binary, public/, storage/, tmp/).
         cybertrain version
         cybertrain help
     TEXT
@@ -34,6 +46,10 @@ module Cybertrain
       case command
       when "new" then run_new(argv)
       when "generate", "g" then run_generate(argv)
+      when "migration" then run_in_app { |name| run_all(Build.migration_commands(name)) }
+      when "db" then run_in_app { |name| run_all(["spin run #{name} -- db #{db_args(argv)}"]) }
+      when "server" then run_in_app { |name| run_all(["spin run #{name}"]) }
+      when "build" then run_in_app { |name| Build.run(".", name) }
       when "version", "--version", "-v"
         puts "cybertrain #{Cybertrain::VERSION}"
         0
@@ -86,6 +102,34 @@ module Cybertrain
       raise InvalidArgument, "#{flag} needs a value" if i + 1 >= argv.size
 
       argv[i + 1]
+    end
+
+    # Commands that need the app: its name comes from ./spin.toml.
+    def self.run_in_app
+      name = Build.app_name(".")
+      if name == ""
+        puts "error: no spin.toml with a [package] name here; run this inside a cybertrain application"
+        return 1
+      end
+      yield name
+    end
+
+    # Runs each command in turn; stops at the first failure.
+    def self.run_all(commands)
+      status = 0
+      commands.each do |command|
+        puts "run    #{command}"
+        unless system(command)
+          status = 1
+          break
+        end
+      end
+      status
+    end
+
+    # The words after `db`, each shell-quoted.
+    def self.db_args(argv)
+      argv[1, argv.size - 1].map { |arg| Build.shell_quote(arg) }.join(" ")
     end
 
     def self.run_generate(argv)

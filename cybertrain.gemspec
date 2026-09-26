@@ -32,6 +32,7 @@ Gem::Specification.new do |spec|
     "cybertrain/cli/new_app.rb",
     "cybertrain/cli/scaffold.rb",
     "cybertrain/cli/templates.rb",
+    "cybertrain/cli/build.rb",
     "cybertrain/generator/inflector.rb",
     "exe/cybertrain",
     "README.md"
