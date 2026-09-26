@@ -3,6 +3,8 @@ module Cybertrain
     # Regenerates gen/ and rebuilds the server binary of the application in
     # root, logging both steps' stdout and stderr to log_path (relative to
     # root unless absolute). ErrorPage shows last_output while last_failed.
+    # target is the app's bin/<name>.rb executable (the package name);
+    # "server" only as a default for tests.
     class Rebuilder
       attr_reader :root, :target, :log_path, :last_output, :last_failed
 

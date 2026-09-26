@@ -16,7 +16,8 @@ require "cybertrain/dev"
 
 module Cybertrain
   # The booted application: config, database, views and the middleware
-  # stack in front of the generated router. bin/server.rb builds one:
+  # stack in front of the generated router. bin/<name>.rb builds one and
+  # hands it Cybertrain::Main's argv (Task 4):
   #
   #   module Gen::Routes
   #     def self.url_resolver = ->(name, args) { path_for(name, args) }
@@ -24,9 +25,16 @@ module Cybertrain
   #
   #   app = Cybertrain::Application.new(
   #     router: Gen::Routes.build(Cybertrain::Router.new),
-  #     url_resolver: Gen::Routes.url_resolver
+  #     url_resolver: Gen::Routes.url_resolver,
+  #     views: Gen::Views::SOURCES,
+  #     name: "<name>"
   #   )
-  #   app.run
+  #   app.run(argv)
+  #
+  # `views` is the table `spin run gen -- --embed-views` writes to
+  # gen/views.rb; production refuses to boot when it is empty
+  # (.embedded_views_missing?). `name` is the `spin build` target and the
+  # binary (build/bin/<name>) the development loop rebuilds and execs.
   #
   # Do NOT write the resolver as a lambda literal in the keyword position
   # (`url_resolver: ->(name, args) { ... }`), nor pass a local holding one:
@@ -38,15 +46,31 @@ module Cybertrain
   class Application
     attr_reader :config, :router
 
-    def initialize(router:, url_resolver:, config: Cybertrain.config)
+    def initialize(router:, url_resolver:, views: Application.no_views, name: "server", config: Cybertrain.config)
       @router = router
       @url_resolver = url_resolver
+      @views = views
+      @name = name
       @config = config
       @stack = nil
       @server = nil
       @rebuilder = nil
       @restart_requested = false
       @serving = false
+    end
+
+    # A typed empty table (spikes/NOTES.md rule 9): the default for a
+    # binary built without `--embed-views`.
+    def self.no_views
+      none = { "" => "" }
+      none.delete("")
+      none
+    end
+
+    # Production renders only embedded views (gen/views.rb written by
+    # `spin run gen -- --embed-views`); a plain build has an empty table.
+    def self.embedded_views_missing?(config, views)
+      config.production? && views.empty?
     end
 
     # ErrorPages (in production) -> RequestLogger (unless log_level :none) ->
@@ -64,9 +88,18 @@ module Cybertrain
 
     def boot
       c = @config
+      if Application.embedded_views_missing?(c, @views)
+        puts "error: views are not embedded in this binary; build with `cybertrain build` (or run with CYBERTRAIN_ENV=development)"
+        STDOUT.flush
+        exit(1)
+      end
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
-      Views.configure(c.views_root, cache: !c.development?)
+      if c.production?
+        Views.configure_embedded(@views)
+      else
+        Views.configure(c.views_root, cache: !c.development?)
+      end
       Views.url_resolver = @url_resolver
       Views.layout_name = c.layout
       Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
@@ -88,23 +121,24 @@ module Cybertrain
       built
     end
 
-    # Boots and serves until SIGTERM.
-    def run
+    # Boots and serves until SIGTERM. argv: [] or ["<port>"] (Main passes
+    # what follows the `server` word; the dev loop's execv passes the port).
+    def run(argv)
       boot
-      serve
+      serve(argv)
     end
 
     # Starts the server and blocks until it is stopped. SPINEL_WORKERS must
     # be set before the first Thread.new starts the scheduler (NOTES rule 22).
     # A port given as the first argument wins over the config: that is how
     # the development loop hands its port to the binary it execs.
-    def serve
+    def serve(argv)
       ENV["SPINEL_WORKERS"] = @config.workers.to_s
-      port = Application.port_argument(ARGV)
+      port = Application.port_argument(argv)
       @config.port = port if port > 0
       print_boot_banner
       if @config.development?
-        serve_development(Dev::Rebuilder.new(Dir.pwd))
+        serve_development(Dev::Rebuilder.new(Dir.pwd, @name))
       else
         srv = server
         trap("TERM") { srv.request_stop }
