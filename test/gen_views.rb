@@ -16,10 +16,37 @@ test "literal escapes what a double-quoted Ruby string needs and nothing else" d
   assert_equal "\"こんにちは\"", Cybertrain::Gen::ViewsEmitter.literal("こんにちは")
 end
 
-test "view_files lists every file under app/views, sorted, relative" do
+test "literal writes other control bytes as \\u00XX" do
+  assert_equal "\"a\\u0000b\\u001Bc\\u007F\"", Cybertrain::Gen::ViewsEmitter.literal("a\u0000b\u001bc\u007f")
+  assert_equal "\"日\\u0000本\"", Cybertrain::Gen::ViewsEmitter.literal("日\u0000本")
+end
+
+test "view_files lists every .erb under app/views, sorted, relative, skipping dotfiles and other files" do
   assert_equal ["layouts/application.html.erb", "pages/hello.html.erb"],
                Cybertrain::Gen::ViewsEmitter.view_files("#{FIXTURE}/app/views")
   assert_equal 0, Cybertrain::Gen::ViewsEmitter.view_files("#{FIXTURE}/no_such_dir").size
+end
+
+# Built at top level for the same reason as RUNNER_ROOT below (rule 30).
+WALK_ROOT = Dir.mktmpdir("cybertrain-view-files")
+Dir.mkdir("#{WALK_ROOT}/pages")
+Dir.mkdir("#{WALK_ROOT}/.git")
+File.write("#{WALK_ROOT}/pages/a.html.erb", "a")
+File.write("#{WALK_ROOT}/pages/.a.html.erb.swp", "swap")
+File.write("#{WALK_ROOT}/.git/b.html.erb", "hidden dir")
+File.symlink(WALK_ROOT, "#{WALK_ROOT}/pages/loop")
+
+at_exit do
+  ["pages/loop", "pages/a.html.erb", "pages/.a.html.erb.swp", ".git/b.html.erb"].each do |f|
+    File.delete("#{WALK_ROOT}/#{f}") if File.symlink?("#{WALK_ROOT}/#{f}") || File.exist?("#{WALK_ROOT}/#{f}")
+  end
+  Dir.rmdir("#{WALK_ROOT}/pages")
+  Dir.rmdir("#{WALK_ROOT}/.git")
+  Dir.rmdir(WALK_ROOT)
+end
+
+test "view_files skips hidden directories, swap files and symlinked directories" do
+  assert_equal ["pages/a.html.erb"], Cybertrain::Gen::ViewsEmitter.view_files(WALK_ROOT)
 end
 
 test "without --embed-views the table is empty and the env is untouched" do

@@ -55,16 +55,37 @@ module Cybertrain
           "end\n"
       end
 
+      HEX = "0123456789ABCDEF"
+
       # A double-quoted literal Spinel and CRuby read back to the same
-      # bytes: only the six characters that need escaping are escaped;
-      # UTF-8 passes through raw (verified by spike, 2026-09-26).
+      # bytes: backslash, `"` and `#` are escaped, newline, return and tab
+      # become \n \r \t, every other control byte (< 0x20, 0x7f) becomes
+      # \u00XX (NUL is \u0000); UTF-8 passes through raw (both verified by
+      # spike, 2026-09-26).
       def self.literal(text)
-        escaped = text.gsub("\\", "\\\\\\\\").gsub("\"", "\\\"").gsub("#", "\\#")
-                      .gsub("\n", "\\n").gsub("\r", "\\r").gsub("\t", "\\t")
-        "\"#{escaped}\""
+        buf = +"\""
+        text.each_char do |c|
+          if c == "\\" then buf << "\\\\"
+          elsif c == "\"" then buf << "\\\""
+          elsif c == "#" then buf << "\\#"
+          elsif c == "\n" then buf << "\\n"
+          elsif c == "\r" then buf << "\\r"
+          elsif c == "\t" then buf << "\\t"
+          elsif c.bytesize == 1 && (c.bytes[0] < 0x20 || c.bytes[0] == 0x7f)
+            b = c.bytes[0]
+            buf << "\\u00" << HEX[b / 16] << HEX[b % 16]
+          else
+            buf << c
+          end
+        end
+        buf << "\""
+        buf
       end
 
-      # Every regular file under dir, as sorted paths relative to dir.
+      # Every template (*.erb) under dir, as sorted paths relative to dir.
+      # Dotfiles (.DS_Store, editor swap files) and other files are left
+      # out: the engine only looks up .erb keys. A symlinked directory is
+      # not descended into (no cycles).
       def self.view_files(dir)
         files = Array.new(0) { "" }
         collect(dir, "", files)
@@ -77,9 +98,11 @@ module Cybertrain
         Dir.children(dir).sort.each do |entry|
           path = "#{dir}/#{entry}"
           rel = prefix == "" ? entry : "#{prefix}/#{entry}"
+          next if entry.start_with?(".")
+
           if File.directory?(path)
-            collect(path, rel, files)
-          else
+            collect(path, rel, files) unless File.symlink?(path)
+          elsif entry.end_with?(".erb")
             files << rel
           end
         end
