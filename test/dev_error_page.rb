@@ -219,7 +219,7 @@ test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
   log = "#{root}/tmp/rebuild.log"
   Dir.mkdir(root) unless File.directory?(root)
   Dir.mkdir("#{root}/tmp") unless File.directory?("#{root}/tmp")
-  File.write("#{root}/tmp/cybertrain-build.lock", "")
+  File.write("#{root}/tmp/cybertrain-build.lock", Process.pid.to_s)
   File.delete(log) if File.exist?(log)
   r = Cybertrain::Dev::Rebuilder.new(root, "server", log)
   refute r.rebuild
@@ -227,9 +227,35 @@ test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
   assert r.last_skipped
   assert_equal "cybertrain build in progress; rebuild skipped — save the file again once it finishes", r.last_output
   refute File.exist?(log)
+  # once the build is over the banner says so instead of "in progress"
+  File.delete("#{root}/tmp/cybertrain-build.lock")
+  assert r.last_skipped
+  assert_equal "cybertrain build finished; save a file to rebuild", r.last_output
   r.record_build(true, "")
   refute r.last_skipped
-  File.delete("#{root}/tmp/cybertrain-build.lock")
+  assert_equal "", r.last_output
+  Dir.rmdir("#{root}/tmp")
+  Dir.rmdir(root)
+end
+
+test "a lock whose build process is gone is stale: removed and ignored" do
+  Dir.mkdir("tmp") unless File.directory?("tmp")
+  root = File.expand_path("tmp/dev_error_page_stale_root")
+  lock = "#{root}/tmp/cybertrain-build.lock"
+  Dir.mkdir(root) unless File.directory?(root)
+  Dir.mkdir("#{root}/tmp") unless File.directory?("#{root}/tmp")
+  r = Cybertrain::Dev::Rebuilder.new(root, "server", "#{root}/tmp/rebuild.log")
+  refute r.build_in_progress?
+  File.write(lock, "2147483647")
+  refute r.build_in_progress?
+  refute File.exist?(lock)
+  File.write(lock, Process.pid.to_s)
+  assert r.build_in_progress?
+  assert File.exist?(lock)
+  # a lock that records no PID cannot be told stale, so it counts as held
+  File.write(lock, "")
+  assert r.build_in_progress?
+  File.delete(lock)
   Dir.rmdir("#{root}/tmp")
   Dir.rmdir(root)
 end

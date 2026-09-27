@@ -327,7 +327,8 @@ proxy from `dist/public/` — see [docs/deploy.md](docs/deploy.md).
 A running `cybertrain server` skips its rebuilds while `cybertrain build` is
 in progress (the build holds `tmp/cybertrain-build.lock`, since both write
 `build/bin/blog`), logs the skip, and rebuilds as usual on the next save
-once the build has finished.
+once the build has finished. The lock records the build's PID; one left
+behind by a killed build is ignored and removed.
 
 ## How it works
 

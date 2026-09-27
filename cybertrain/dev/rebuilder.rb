@@ -6,11 +6,13 @@ module Cybertrain
     # target is the app's bin/<name>.rb executable (the package name);
     # "server" only as a default for tests. While `cybertrain build` holds
     # root/tmp/cybertrain-build.lock (both write build/bin/<target>), #rebuild
-    # runs nothing: it fails with last_skipped set and a message that says so.
+    # runs nothing: it fails with last_skipped set and last_output saying so
+    # (and, once the lock is gone, that the build has finished).
     class Rebuilder
-      attr_reader :root, :target, :log_path, :last_output, :last_failed, :last_skipped
+      attr_reader :root, :target, :log_path, :last_failed, :last_skipped
 
       SKIPPED_MESSAGE = "cybertrain build in progress; rebuild skipped — save the file again once it finishes"
+      FINISHED_MESSAGE = "cybertrain build finished; save a file to rebuild"
 
       def initialize(root, target = "server", log_path = "tmp/rebuild.log")
         @root = root
@@ -23,8 +25,8 @@ module Cybertrain
 
       # Runs `spin run gen && spin build <target>` in root; true on success.
       def rebuild
-        if File.exist?(lock_path)
-          record_build(false, SKIPPED_MESSAGE)
+        if build_in_progress?
+          @last_failed = true
           @last_skipped = true
           return false
         end
@@ -35,6 +37,15 @@ module Cybertrain
         ok
       end
 
+      # The compiler output of the last build, or, after a skipped rebuild,
+      # what the developer should do about it: the text follows the lock,
+      # so the banner stops saying "in progress" once the build is over.
+      def last_output
+        return @last_output unless @last_skipped
+
+        build_in_progress? ? SKIPPED_MESSAGE : FINISHED_MESSAGE
+      end
+
       # Remembers the outcome of a build (what #rebuild does after running).
       def record_build(success, output)
         @last_failed = !success
@@ -43,9 +54,37 @@ module Cybertrain
         nil
       end
 
-      # Created by `cybertrain build` for the duration of its steps.
+      # Created by `cybertrain build`, holding its PID, until dist/ is
+      # assembled.
       def lock_path
         File.expand_path("tmp/cybertrain-build.lock", @root)
+      end
+
+      # True while a `cybertrain build` holds the lock. A lock whose PID no
+      # longer runs (the build was killed, the machine rebooted) is stale:
+      # it is deleted and ignored, so the loop does not stay stuck until
+      # someone removes it by hand. A lock recording no PID counts as held.
+      def build_in_progress?
+        path = lock_path
+        return false unless File.exist?(path)
+
+        pid = File.read(path).strip
+        return true if pid.empty? || !pid.bytes.all? { |b| b >= 48 && b <= 57 }
+        return true if Rebuilder.process_alive?(pid.to_i)
+
+        File.delete(path) if File.exist?(path)
+        false
+      end
+
+      # Signal 0 probes without delivering anything; EPERM means the process
+      # exists but belongs to someone else.
+      def self.process_alive?(pid)
+        Process.kill(0, pid)
+        true
+      rescue Errno::ESRCH
+        false
+      rescue Errno::EPERM
+        true
       end
 
       # The brace group sends a failing `cd` to the log as well.
