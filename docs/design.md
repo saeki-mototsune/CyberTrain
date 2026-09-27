@@ -267,7 +267,7 @@ ERB のタグ: `<% %>`、`<%= %>`（エスケープ）、`<%== %>`（非エス�
 
 ## 9. 未検証の前提とスパイク計画（M0）
 
-`spikes/` に小さな Spinel プログラムを置き、`2026.09.12` で検証する。
+`spikes/` に小さな Spinel プログラムを置き、`2026.09.12` で検証する。（結果は `spikes/NOTES.md`。プログラム自体は検証後に削除した）
 
 | # | 検証項目 | 落ちた場合 |
 | --- | --- | --- |
@@ -317,7 +317,7 @@ cybertrain/
   script/regen-snapshot
   test/                     # spin test（.expected をコミット）
   examples/blog/            # 合格基準のアプリ
-  spikes/                   # M0 のスパイクと NOTES.md
+  spikes/NOTES.md           # M0 スパイクの記録（プログラム自体は検証後に削除。git 履歴にある）
   README.md  docs/design.md  docs/deploy.md  docs/template-language.md  docs/superpowers/
   .github/workflows/ci.yml
 ```

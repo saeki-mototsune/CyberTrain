@@ -1,7 +1,7 @@
 # Cybertrain::DB::SQLite3 -- the raw SQLite C API, bound through Spinel FFI.
 #
 # Only Cybertrain::DB::Connection talks to this module. Two FFI rules from
-# spikes/06_sqlite_pool apply to every caller:
+# spike 6 (spikes/NOTES.md) apply to every caller:
 #
 # * Out-parameters (the db handle from open_v2, the statement from
 #   prepare_v2) go through a fresh `malloc(8)` scratch slot per call, read

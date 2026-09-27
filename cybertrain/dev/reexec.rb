@@ -1,7 +1,7 @@
 module Cybertrain
   module Dev
     # Replaces the running server with a freshly built binary, keeping the
-    # PID (spikes/07_process_control). The C shim passes the port as argv[1].
+    # PID (spike 7 in spikes/NOTES.md). The C shim passes the port as argv[1].
     #
     # Before execv it unblocks every signal, because exec inherits the
     # calling thread's signal mask: were HUP blocked there, the new process

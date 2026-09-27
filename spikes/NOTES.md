@@ -1,8 +1,9 @@
 # M0 spike verdicts (Spinel 2026.09.12)
 
 Throwaway programs under `spikes/` answered the design questions in
-`docs/design.md` section 9. This file is the durable record; the code is
-disposable and will be deleted once the framework covers it.
+`docs/design.md` section 9. This file is the durable record; the programs
+themselves were deleted once the framework covered them (`git log -- spikes/`
+finds the commit that removed them).
 
 | # | Question | Verdict |
 | --- | --- | --- |
