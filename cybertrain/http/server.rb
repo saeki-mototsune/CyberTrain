@@ -9,13 +9,17 @@ require "cybertrain/logger"
 module Cybertrain
   # Raised by Server#start when the listener cannot bind: another process
   # holds the port (EADDRINUSE; Spinel's TCPServer.new reports it as
-  # ECONNREFUSED) or the port is privileged (EACCES). The message is what
-  # Application#serve prints before exiting.
+  # ECONNREFUSED) or the port is privileged (EACCES, its own reason so the
+  # operator does not hunt for a process that is not there). The message is
+  # what Application#serve prints before exiting.
   class PortInUse < StandardError
     attr_reader :port
 
-    def initialize(host, port)
-      super("port #{port} on #{host} is already in use (stop the other server or set PORT)")
+    IN_USE = "is already in use (stop the other server or set PORT)"
+    PERMISSION_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"
+
+    def initialize(host, port, reason = IN_USE)
+      super("port #{port} on #{host} #{reason}")
       @port = port
     end
   end
@@ -128,10 +132,12 @@ module Cybertrain
     private
 
     # The bind failures a busy or privileged port produces, turned into one
-    # PortInUse whose message names the host and port.
+    # PortInUse whose message names the host, the port and the reason.
     def bind_listener
       TCPServer.new(@host, @port)
-    rescue Errno::EADDRINUSE, Errno::EACCES, Errno::ECONNREFUSED
+    rescue Errno::EACCES
+      raise PortInUse.new(@host, @port, PortInUse::PERMISSION_DENIED)
+    rescue Errno::EADDRINUSE, Errno::ECONNREFUSED
       raise PortInUse.new(@host, @port)
     end
 

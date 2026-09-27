@@ -452,4 +452,12 @@ test "start raises Cybertrain::PortInUse when the port is already bound" do
   first.stop
 end
 
+test "PortInUse names the reason the port could not be bound" do
+  denied = Cybertrain::PortInUse.new("127.0.0.1", 80, Cybertrain::PortInUse::PERMISSION_DENIED)
+  assert_equal "port 80 on 127.0.0.1 cannot be bound: permission denied (ports below 1024 need root or a capability)", denied.message
+  assert_equal 80, denied.port
+  busy = Cybertrain::PortInUse.new("127.0.0.1", 3000)
+  assert_equal "port 3000 on 127.0.0.1 is already in use (stop the other server or set PORT)", busy.message
+end
+
 Cybertrain::Test.run!
