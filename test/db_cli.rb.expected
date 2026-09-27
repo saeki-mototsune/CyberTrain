@@ -1,5 +1,11 @@
 ok   database_path defaults to storage/<env>.sqlite3
 ok   an absolute CYBERTRAIN_DATABASE is used as is
+ok   :memory: and file: URIs are SQLite names, not files under the root
+created :memory:
+Status  Migration ID    Migration Name
+  down  20260101000000  CreatePosts
+  down  20260101000100  CreateComments
+ok   create and status on :memory: leave no file named :memory: behind
 usage: db (migrate|rollback [N]|status|schema:dump|create)
 unknown command: explode
 usage: db (migrate|rollback [N]|status|schema:dump|create)
@@ -32,6 +38,12 @@ done
 == 20260101000000 CreatePosts: reverting
 done
 ok   rollback 2 after re-migrating returns to an empty schema
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+schema dump skipped (no db/ directory here)
+ok   migrate skips the schema dump when the root has no db/ directory
 ok   an empty CYBERTRAIN_DATABASE counts as unset
 db rollback: N must be a positive integer, got "abc"
 usage: db (migrate|rollback [N]|status|schema:dump|create)
@@ -45,4 +57,4 @@ Status  Migration ID    Migration Name
   down  20260101000000  CreatePosts
   down  20260101000100  CreateComments
 ok   rollback fails with exit code 1 when an applied version has no migration
-13 tests, 37 assertions, 0 failures
+16 tests, 47 assertions, 0 failures

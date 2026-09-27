@@ -10,6 +10,11 @@ Usage:
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
   ./blog help
+Usage:
+  ./blog [server [PORT]]   start the server
+  ./blog migrate           apply pending migrations
+  ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
+  ./blog help
 ok   help prints the usage for this app and exits 0
 Unknown command 'frobnicate'
 Usage:
@@ -18,11 +23,12 @@ Usage:
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
   ./blog help
 ok   an unknown word prints the usage and exits 1
-created ./:memory:
+created :memory:
 Status  Migration ID    Migration Name
 db rollback: N must be a positive integer, got "x"
 usage: db (migrate|rollback [N]|status|schema:dump|create)
 usage: db (migrate|rollback [N]|status|schema:dump|create)
 ok   db passes its arguments to DB::CLI
+schema dump skipped (no db/ directory here)
 ok   migrate is db migrate
-6 tests, 18 assertions, 0 failures
+6 tests, 19 assertions, 0 failures

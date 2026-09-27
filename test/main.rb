@@ -6,11 +6,11 @@ require "cybertrain/main"
 # is not exercised here (it would listen); Application covers it. The db
 # and migrate branches go through DB::CLI.run with its default root "."
 # (Main passes none), so this program runs from a fresh temp directory
-# instead of the framework's own root -- otherwise ":memory:" (which
-# DB::CLI.resolved_path turns into the literal file "./:memory:", not
-# SQLite's special in-memory name) would create a stray database next to
-# this repository. It also links SQLite through FFI, so its snapshot comes
-# from the compiled binary (spikes/NOTES.md rule 23).
+# instead of the framework's own root, where migrate would otherwise find
+# the repository's own db/ and dump a schema into it. The database is
+# SQLite's in-memory ":memory:", which DB::CLI passes through unchanged.
+# It also links SQLite through FFI, so its snapshot comes from the
+# compiled binary (spikes/NOTES.md rule 23).
 TMP = Dir.mktmpdir("cybertrain-main")
 Dir.chdir(TMP)
 
@@ -60,6 +60,7 @@ end
 test "help prints the usage for this app and exits 0" do
   assert_equal 0, run(["help"])
   assert_equal 0, run(["--help"])
+  assert_equal 0, run(["-h"])
 end
 
 test "an unknown word prints the usage and exits 1" do
