@@ -33,19 +33,33 @@ Cybertrain::Migration.register("20260101000000", CreatePosts.new)
 # A fixed app root (not Dir.mktmpdir) so the paths the CLI prints are
 # deterministic in the snapshot.
 ROOT = "tmp/db_cli_test"
+# A second root without a db/ directory (a deployed dist/): migrate there
+# must not create one.
+NODB_ROOT = "tmp/db_cli_test_nodb"
 ENV.delete("CYBERTRAIN_DATABASE")
 ENV["CYBERTRAIN_ENV"] = "test"
 
-def remove_app_root
-  ["storage/test.sqlite3-wal", "storage/test.sqlite3-shm", "storage/test.sqlite3", "db/schema.rb"].each do |f|
-    File.delete("#{ROOT}/#{f}") if File.exist?("#{ROOT}/#{f}")
+# The ":memory:" entries only exist when resolved_path regresses to a file
+# under the root; removing them keeps a rerun from tripping over them.
+def remove_root(root)
+  ["storage/test.sqlite3-wal", "storage/test.sqlite3-shm", "storage/test.sqlite3", "db/schema.rb",
+   "missing.sqlite3-wal", "missing.sqlite3-shm", "missing.sqlite3",
+   ":memory:-wal", ":memory:-shm", ":memory:"].each do |f|
+    File.delete("#{root}/#{f}") if File.exist?("#{root}/#{f}")
   end
-  ["storage", "db", ""].each { |d| Dir.rmdir("#{ROOT}/#{d}") if Dir.exist?("#{ROOT}/#{d}") }
+  ["storage", "db", ""].each { |d| Dir.rmdir("#{root}/#{d}") if Dir.exist?("#{root}/#{d}") }
+end
+
+def remove_app_root
+  remove_root(ROOT)
+  remove_root(NODB_ROOT)
 end
 
 remove_app_root
 Dir.mkdir("tmp") unless Dir.exist?("tmp")
 Dir.mkdir(ROOT)
+Dir.mkdir("#{ROOT}/db")
+Dir.mkdir(NODB_ROOT)
 at_exit { remove_app_root }
 
 def run_db(*argv)
@@ -60,6 +74,44 @@ end
 test "an absolute CYBERTRAIN_DATABASE is used as is" do
   ENV["CYBERTRAIN_DATABASE"] = "/var/db/app.sqlite3"
   assert_equal "/var/db/app.sqlite3", Cybertrain::DB::CLI.resolved_path(ROOT)
+  ENV.delete("CYBERTRAIN_DATABASE")
+end
+
+test ":memory: and file: URIs are SQLite names, not files under the root" do
+  ENV["CYBERTRAIN_DATABASE"] = ":memory:"
+  assert_equal ":memory:", Cybertrain::DB::CLI.resolved_path(ROOT)
+  ENV["CYBERTRAIN_DATABASE"] = "file:blog?mode=memory&cache=shared"
+  assert_equal "file:blog?mode=memory&cache=shared", Cybertrain::DB::CLI.resolved_path(ROOT)
+  ENV.delete("CYBERTRAIN_DATABASE")
+end
+
+test "create and status on :memory: leave no file named :memory: behind" do
+  ENV["CYBERTRAIN_DATABASE"] = ":memory:"
+  assert_equal 0, run_db("create")
+  assert_equal 0, run_db("status")
+  refute File.exist?("#{ROOT}/:memory:")
+  refute File.exist?(":memory:")
+  ENV.delete("CYBERTRAIN_DATABASE")
+end
+
+test "a file: URI with mode=memory is opened as a URI, never as a file of that name" do
+  ENV["CYBERTRAIN_DATABASE"] = "file:db_cli_shared?mode=memory&cache=shared"
+  assert_equal 0, run_db("create")
+  assert_equal 0, run_db("status")
+  refute File.exist?("file:db_cli_shared?mode=memory&cache=shared")
+  refute File.exist?("db_cli_shared")
+  ENV.delete("CYBERTRAIN_DATABASE")
+end
+
+# The URI names a file in a directory that exists, so only the open flags
+# keep SQLite from creating it.
+test "status on a file: URI naming a missing file fails with exit code 1 instead of creating it" do
+  ENV["CYBERTRAIN_DATABASE"] = "file:#{ROOT}/missing.sqlite3"
+  assert_equal 1, run_db("status")
+  assert_equal 1, run_db("rollback")
+  assert_equal 1, run_db("schema:dump")
+  refute File.exist?("#{ROOT}/missing.sqlite3")
+  refute File.exist?("#{ROOT}/missing.sqlite3-wal")
   ENV.delete("CYBERTRAIN_DATABASE")
 end
 
@@ -111,6 +163,18 @@ test "rollback 2 after re-migrating returns to an empty schema" do
   schema = File.read("#{ROOT}/db/schema.rb")
   assert_includes schema, "version: \"0\""
   refute schema.include?("create_table")
+end
+
+test "migrate skips the schema dump when the root has no db/ directory" do
+  assert_equal 0, Cybertrain::DB::CLI.run(["migrate"], NODB_ROOT)
+  assert File.exist?("#{NODB_ROOT}/storage/test.sqlite3")
+  refute Dir.exist?("#{NODB_ROOT}/db")
+  refute File.exist?("#{NODB_ROOT}/db/schema.rb")
+end
+
+test "an explicit schema:dump where there is no db/ directory returns 1" do
+  assert_equal 1, Cybertrain::DB::CLI.run(["schema:dump"], NODB_ROOT)
+  refute Dir.exist?("#{NODB_ROOT}/db")
 end
 
 test "an empty CYBERTRAIN_DATABASE counts as unset" do

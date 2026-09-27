@@ -1,0 +1,2 @@
+ok   a template with control bytes round-trips byte for byte
+1 tests, 2 assertions, 0 failures

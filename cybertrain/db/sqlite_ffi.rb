@@ -24,6 +24,7 @@ module Cybertrain
 
       ffi_const :OPEN_READWRITE, 0x00000002
       ffi_const :OPEN_CREATE, 0x00000004
+      ffi_const :OPEN_URI, 0x00000040
 
       # sqlite3_column_type results.
       ffi_const :INTEGER, 1

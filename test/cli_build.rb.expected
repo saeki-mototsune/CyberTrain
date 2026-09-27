@@ -2,7 +2,18 @@ ok   app_name reads [package] name from spin.toml
 ok   build embeds the views, builds, then restores the empty table
 ok   server generates first and passes an optional port
 error: PORT must be a number
+error: PORT must be a number
 ok   server rejects a PORT that is not a number
+error: unexpected argument 'extra'
+ok   server rejects anything after PORT
+
+dist/blog       (production by default)
+dist/public/
+run:  cd dist && ./blog migrate && ./blog
+ok   build runs the three steps under tmp/cybertrain-build.lock, then assembles dist/
+ok   a failed spin build still restores gen/views.rb, skips assemble and exits 1
+warning: gen/views.rb still holds the embedded views; run spin run gen
+ok   a failed restore exits 1, warns about gen/views.rb and releases the lock
 ok   assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/
 ok   assemble removes a symlink in dist/public without following it
 ok   assemble fails clearly when the binary is missing
@@ -11,4 +22,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-8 tests, 31 assertions, 0 failures
+12 tests, 53 assertions, 0 failures

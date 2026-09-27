@@ -7,6 +7,26 @@ require "cybertrain/middleware"
 require "cybertrain/logger"
 
 module Cybertrain
+  # Raised by Server#start when the listener cannot bind: another process
+  # holds the port (EADDRINUSE, or under Spinel a busy privileged port's
+  # ECONNREFUSED) or the port is privileged and out of reach (CRuby's EACCES,
+  # or under Spinel the same ECONNREFUSED reclassified by bind_listener's
+  # privileged_denied? since the exception class alone cannot tell the two
+  # apart there) -- its own reason so the operator does not hunt for a
+  # process that is not there. The message is what Application#serve prints
+  # before exiting.
+  class PortInUse < StandardError
+    attr_reader :port
+
+    IN_USE = "is already in use (stop the other server or set PORT)"
+    PERMISSION_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"
+
+    def initialize(host, port, reason = IN_USE)
+      super("port #{port} on #{host} #{reason}")
+      @port = port
+    end
+  end
+
   # A pure-Ruby HTTP/1.1 server: one TCPServer, one green thread per
   # connection, keep-alive and pipelining, and a Middleware (usually an App)
   # that turns each Context into a Response.
@@ -61,11 +81,12 @@ module Cybertrain
     end
 
     # Binds, listens and spawns the accept thread; returns once listening.
+    # Raises PortInUse when the port cannot be bound.
     def start
       # spikes/NOTES.md rule 22: one worker is faster for an I/O-bound server.
       # It must be set before the first Thread.new starts the scheduler.
       ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]
-      listener = TCPServer.new(@host, @port)
+      listener = bind_listener
       listener.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, 1)
       @port = listener.addr[1]
       @running = true
@@ -77,6 +98,13 @@ module Cybertrain
     # and the open connections have drained.
     def run
       start
+      wait
+    end
+
+    # Blocks until #stop or #request_stop is called and the open
+    # connections have drained; #start must have run (Application starts
+    # first so a bind failure surfaces before the boot banner).
+    def wait
       thread = @accept_thread
       thread.join unless thread.nil?
       drain
@@ -112,6 +140,30 @@ module Cybertrain
     end
 
     private
+
+    # The bind failures a busy or privileged port produces, turned into one
+    # PortInUse whose message names the host, the port and the reason.
+    #
+    # CRuby raises Errno::EACCES for a privileged port bound without root, so
+    # that rescue is kept. Spinel's TCPServer.new instead raises the same
+    # Errno::ECONNREFUSED a busy port would (a compiled binary really run on
+    # PORT=80 as a non-root user printed the "already in use" message), so the
+    # exception class cannot tell the two apart there. privileged_denied?
+    # decides from context instead: a port below 1024 refused to a non-root
+    # process is a permission problem, not a competing listener, because the
+    # kernel checks the capability before it checks whether the port is free.
+    def bind_listener
+      TCPServer.new(@host, @port)
+    rescue Errno::EACCES
+      raise PortInUse.new(@host, @port, PortInUse::PERMISSION_DENIED)
+    rescue Errno::EADDRINUSE, Errno::ECONNREFUSED
+      reason = privileged_denied? ? PortInUse::PERMISSION_DENIED : PortInUse::IN_USE
+      raise PortInUse.new(@host, @port, reason)
+    end
+
+    def privileged_denied?
+      @port < 1024 && Process.uid != 0
+    end
 
     # Waits, in ordinary thread context, until every connection has closed
     # or drain_timeout seconds have passed. Whatever is still open then is

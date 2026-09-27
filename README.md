@@ -48,7 +48,8 @@ Spinel, since they find test methods by reflection and an ahead-of-time
 compiler has nothing to reflect on at run time. `spin test --regen
 test/<name>.rb` rewrites a snapshot from CRuby's output; a few tests that
 touch SQLite through FFI take theirs from the compiled binary instead
-([spikes/NOTES.md](spikes/NOTES.md), rule 23).
+([spikes/NOTES.md](spikes/NOTES.md), rule 23); `script/regen-snapshot
+test/<name>.rb` does that build-then-capture step for you and prints the diff stat.
 
 ## Installing the CLI
 
@@ -323,9 +324,11 @@ is production by default (`CYBERTRAIN_ENV` overrides). Set
 `CYBERTRAIN_SECRET_KEY_BASE`. Static files can also be served by the reverse
 proxy from `dist/public/` — see [docs/deploy.md](docs/deploy.md).
 
-A running `cybertrain server` does not rebuild when `cybertrain build`
-rewrites `gen/views.rb`, but both write `build/bin/blog`: stop the server
-before building for deployment.
+A running `cybertrain server` skips its rebuilds while `cybertrain build` is
+in progress (the build holds `tmp/cybertrain-build.lock`, since both write
+`build/bin/blog`), logs the skip, and rebuilds as usual on the next save
+once the build has finished. The lock records the build's PID; one left
+behind by a killed build is ignored and removed.
 
 ## How it works
 

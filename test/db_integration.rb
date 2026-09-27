@@ -47,6 +47,8 @@ end
 remove_app_root
 Dir.mkdir("tmp") unless Dir.exist?("tmp")
 Dir.mkdir(ROOT)
+# DB::CLI dumps db/schema.rb only where a db/ directory already exists.
+Dir.mkdir("#{ROOT}/db")
 at_exit { remove_app_root }
 
 class NotesController < Cybertrain::Controller
