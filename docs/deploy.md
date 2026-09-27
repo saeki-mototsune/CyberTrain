@@ -166,13 +166,14 @@ Cybertrain.url_root = "https://notes.example.com" if Cybertrain.config.productio
 cybertrain build
 export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"
 export CYBERTRAIN_DATABASE="$PWD/dist/storage/rehearsal.sqlite3"
-cd dist && ./notes migrate && ./notes
+(cd dist && ./notes migrate && ./notes)
 ```
 
 `cybertrain build` はビューを埋め込んだバイナリ `dist/notes` と `dist/public/` を作ります。
-本番では systemd が `dist/` を作業ディレクトリにしてバイナリを起動する（3-6）ので、リハーサルも
+本番では systemd が `dist/` を作業ディレクトリにしてバイナリを起動する（5-1）ので、リハーサルも
 `dist/` に入ってから `./notes` を実行します。このとき `storage/` と `public/` はアプリ直下ではなく
-`dist/` にあるコピーが使われます。
+`dist/` にあるコピーが使われます。サブシェル `( ... )` で入るので、止めたあとのシェルは
+アプリ直下のままです。
 ビルドしたバイナリは既定で本番モードなので、`CYBERTRAIN_ENV` を設定する必要はありません
 （開発モードで動かしたいときだけ `CYBERTRAIN_ENV=development` を付けます）。
 `./notes migrate` はバイナリに組み込まれたマイグレーションを `CYBERTRAIN_DATABASE` に流します。
@@ -198,7 +199,7 @@ HTTPS にするので問題ありません。
 
 ```sh
 unset CYBERTRAIN_SECRET_KEY_BASE CYBERTRAIN_DATABASE
-rm -f storage/rehearsal.sqlite3*
+rm -f dist/storage/rehearsal.sqlite3*
 ```
 
 `dist/` は `cybertrain new` の `.gitignore` に入っているのでコミットされません。
