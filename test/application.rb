@@ -272,6 +272,41 @@ test "production puts ErrorPages outermost" do
   assert_equal "Not Found", res.body
 end
 
+test "production refuses to boot without embedded views" do
+  c = Cybertrain::Config.new
+  c.env = "production"
+  c.secret_key_base = "production-secret"
+  none = { "" => "" }
+  none.delete("")
+  assert Cybertrain::Application.embedded_views_missing?(c, none)
+  some = { "pages/index.html.erb" => "<p>hi</p>\n" }
+  refute Cybertrain::Application.embedded_views_missing?(c, some)
+  c.env = "development"
+  refute Cybertrain::Application.embedded_views_missing?(c, none)
+end
+
+test "production boots on the embedded table, development on app/views" do
+  c = Cybertrain::Config.new
+  c.env = "production"
+  c.database_path = ":memory:"
+  c.secret_key_base = "production-secret"
+  c.log_level = :none
+  some = { "pages/index.html.erb" => "<p>embedded</p>\n" }
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/" }, views: some, config: c).boot
+  assert Cybertrain::Views.engine.exists?("pages/index")
+  refute Cybertrain::Views.engine.exists?("layouts/application")
+  d = Cybertrain::Config.new
+  d.env = "development"
+  d.database_path = ":memory:"
+  d.secret_key_base = "dev-secret"
+  d.log_level = :none
+  d.views_root = "test/fixtures/views"
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/" }, views: some, config: d).boot
+  assert Cybertrain::Views.engine.exists?("layouts/application")
+  refute Cybertrain::Views.engine.exists?("pages/index")
+  APP.boot # Views/logger are process-wide (spikes/NOTES.md rule 18); restore APP's own config for the tests below.
+end
+
 test "boot connects the database, configures views and resolves the secret" do
   assert Cybertrain::DB.connected?
   refute Cybertrain::Views.engine.nil?

@@ -12,7 +12,7 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/blog.rb
 create bin/gen.rb
 create bin/db.rb
 create gen/.keep
@@ -22,11 +22,12 @@ create test/.keep
 ok   new writes the app skeleton and returns the created paths
 ok   spin.toml names the package and references the framework
 ok   config/routes.rb and db/schema.rb are empty DSL blocks
-ok   bin/server.rb boots the application
-ok   bin/gen.rb and bin/db.rb drive the generator and the migrator
+ok   bin/blog.rb is the app's one binary: server, migrate, db
+ok   bin/gen.rb drives the generator
+ok   bin/db.rb runs migrations in development without the app's models
 ok   the layout renders csrf_meta_tags, the flash and yield
 ok   application_controller.rb and config/app.rb are ready to edit
-ok   README.md gives the working migrate sequence
+ok   README.md gives the cybertrain command sequence
 create spin.toml
 create .gitignore
 create README.md
@@ -41,7 +42,7 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/shop.rb
 create bin/gen.rb
 create bin/db.rb
 create gen/.keep
@@ -63,7 +64,7 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/store.rb
 create bin/gen.rb
 create bin/db.rb
 create gen/.keep
@@ -87,7 +88,7 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/wiki.rb
 create bin/gen.rb
 create bin/db.rb
 create gen/.keep
@@ -109,7 +110,7 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/notes.rb
 create bin/gen.rb
 create bin/db.rb
 create gen/.keep
@@ -135,6 +136,17 @@ Usage:
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
+  cybertrain migration
+      Generate, apply pending migrations, generate again
+      (spin run gen; spin run db -- migrate; spin run gen).
+  cybertrain db COMMAND...
+      Any database command: status, rollback [N], schema:dump, create.
+  cybertrain server [PORT]
+      Generate, then start the development server
+      (spin run gen; spin run NAME [-- PORT]; default port 3000).
+  cybertrain build
+      Build NAME with app/views embedded and assemble dist/
+      (the binary, public/, storage/, tmp/).
   cybertrain version
   cybertrain help
 Unknown command 'frobnicate'
@@ -150,6 +162,17 @@ Usage:
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
+  cybertrain migration
+      Generate, apply pending migrations, generate again
+      (spin run gen; spin run db -- migrate; spin run gen).
+  cybertrain db COMMAND...
+      Any database command: status, rollback [N], schema:dump, create.
+  cybertrain server [PORT]
+      Generate, then start the development server
+      (spin run gen; spin run NAME [-- PORT]; default port 3000).
+  cybertrain build
+      Build NAME with app/views embedded and assemble dist/
+      (the binary, public/, storage/, tmp/).
   cybertrain version
   cybertrain help
 Usage:
@@ -164,7 +187,18 @@ Usage:
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
+  cybertrain migration
+      Generate, apply pending migrations, generate again
+      (spin run gen; spin run db -- migrate; spin run gen).
+  cybertrain db COMMAND...
+      Any database command: status, rollback [N], schema:dump, create.
+  cybertrain server [PORT]
+      Generate, then start the development server
+      (spin run gen; spin run NAME [-- PORT]; default port 3000).
+  cybertrain build
+      Build NAME with app/views embedded and assemble dist/
+      (the binary, public/, storage/, tmp/).
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-16 tests, 66 assertions, 0 failures
+17 tests, 70 assertions, 0 failures

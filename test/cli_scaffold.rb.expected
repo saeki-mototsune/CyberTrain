@@ -12,7 +12,7 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/blog.rb
 create bin/gen.rb
 create bin/db.rb
 create gen/.keep
@@ -115,7 +115,7 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
-create bin/server.rb
+create bin/broken.rb
 create bin/gen.rb
 create bin/db.rb
 create gen/.keep

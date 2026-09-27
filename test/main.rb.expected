@@ -1,0 +1,28 @@
+ok   server_args keeps only a port
+ok   server? recognises the bare, named and port forms
+Usage:
+  ./blog [server [PORT]]   start the server
+  ./blog migrate           apply pending migrations
+  ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
+  ./blog help
+Usage:
+  ./blog [server [PORT]]   start the server
+  ./blog migrate           apply pending migrations
+  ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
+  ./blog help
+ok   help prints the usage for this app and exits 0
+Unknown command 'frobnicate'
+Usage:
+  ./blog [server [PORT]]   start the server
+  ./blog migrate           apply pending migrations
+  ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
+  ./blog help
+ok   an unknown word prints the usage and exits 1
+created ./:memory:
+Status  Migration ID    Migration Name
+db rollback: N must be a positive integer, got "x"
+usage: db (migrate|rollback [N]|status|schema:dump|create)
+usage: db (migrate|rollback [N]|status|schema:dump|create)
+ok   db passes its arguments to DB::CLI
+ok   migrate is db migrate
+6 tests, 18 assertions, 0 failures

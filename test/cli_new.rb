@@ -30,7 +30,7 @@ EXPECTED_FILES = [
   "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep",
   "app/views/layouts/application.html.erb",
   "public/404.html", "public/500.html", "public/style.css",
-  "bin/server.rb", "bin/gen.rb", "bin/db.rb",
+  "bin/blog.rb", "bin/gen.rb", "bin/db.rb",
   "gen/.keep", "storage/.keep", "tmp/.keep", "test/.keep"
 ]
 
@@ -60,21 +60,22 @@ test "config/routes.rb and db/schema.rb are empty DSL blocks" do
   assert_equal "Cybertrain::Schema.define(version: \"0\") do |s|\nend\n", read("blog/db/schema.rb")
 end
 
-test "bin/server.rb boots the application" do
-  assert_equal <<~RUBY, read("blog/bin/server.rb")
+test "bin/blog.rb is the app's one binary: server, migrate, db" do
+  assert_equal <<~RUBY, read("blog/bin/blog.rb")
     require "cybertrain"
-    require_relative "../config/app"
+    require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
+    require_relative "../config/app"     # so it comes before the config
     require_relative "../gen/app"
+    require_relative "../gen/migrations"
 
-    app = Cybertrain::Application.new(
-      router: Gen::Routes.build(Cybertrain::Router.new),
-      url_resolver: Gen::Routes.url_resolver
-    )
-    app.run
+    exit(Cybertrain::Main.run("blog", ARGV,
+                              router: Gen::Routes.build(Cybertrain::Router.new),
+                              url_resolver: Gen::Routes.url_resolver,
+                              views: Gen::Views::SOURCES))
   RUBY
 end
 
-test "bin/gen.rb and bin/db.rb drive the generator and the migrator" do
+test "bin/gen.rb drives the generator" do
   assert_equal <<~RUBY, read("blog/bin/gen.rb")
     require "cybertrain/generator"
     require_relative "../config/routes"
@@ -82,6 +83,10 @@ test "bin/gen.rb and bin/db.rb drive the generator and the migrator" do
 
     exit(Cybertrain::Gen::Runner.run(".", ARGV))
   RUBY
+  refute File.exist?("blog/bin/server.rb")
+end
+
+test "bin/db.rb runs migrations in development without the app's models" do
   assert_equal <<~RUBY, read("blog/bin/db.rb")
     require "cybertrain"
     require_relative "../config/app"
@@ -109,18 +114,16 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes read("blog/config/app.rb"), "Cybertrain.configure do |c|"
   assert_includes read("blog/.gitignore"), "/build/"
   assert_includes read("blog/.gitignore"), "/storage/*.sqlite3*"
+  assert_includes read("blog/.gitignore"), "/dist/"
 end
 
-# `spin run db migrate` would run bin/db with no arguments (spin passes
-# arguments to the program only after `--`), and bin/db.rb only knows the
-# migrations gen/migrations.rb lists, so a new one needs `spin run gen` first.
-test "README.md gives the working migrate sequence" do
+test "README.md gives the cybertrain command sequence" do
   readme = read("blog/README.md")
-  assert_includes readme, "spin run db -- migrate"
-  assert_nil readme.index("spin run db migrate")
-  gen = readme.index("spin run gen")
-  migrate = readme.index("spin run db -- migrate")
-  assert gen < migrate, "spin run gen must come before the migrate step"
+  assert_includes readme, "cybertrain migration"
+  assert_includes readme, "cybertrain server"
+  assert_includes readme, "cybertrain build"
+  assert_includes readme, "bin/db.rb"
+  assert_nil readme.index("spin run db")
 end
 
 test "CLI new --path expands a relative DIR against the current directory" do

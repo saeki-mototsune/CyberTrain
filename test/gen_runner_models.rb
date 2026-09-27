@@ -19,7 +19,7 @@ APP_FILES = [
   "app/controllers/pages_controller.rb",
   "app/controllers/posts_controller.rb"
 ]
-GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
+GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
 DIRS = ["app", "app/models", "app/controllers", "gen", "gen/models"]
 Dir.mkdir("#{ROOT}/app")
 Dir.mkdir("#{ROOT}/app/models")

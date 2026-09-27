@@ -3,9 +3,13 @@
 #   engine = Cybertrain::Template::Engine.new("app/views", cache: false)
 #   html = engine.render_with_layout("posts/index", "layouts/application", env, helpers)
 #
-# Templates live outside the binary and are parsed at run time. With
-# `cache: true` (production) each file is parsed once; with `cache: false`
-# (development) a file is re-parsed whenever its mtime or size changes.
+# Templates are parsed at run time. Two sources:
+#   Engine.new("app/views", cache: false)   -- files under a root; with
+#     `cache: true` (production) each file is parsed once, with `cache: false`
+#     (development) a file is re-parsed whenever its mtime or size changes.
+#   Engine.embedded(sources)                -- a Hash of "posts/index.html.erb"
+#     => source, generated into the binary by `spin run gen -- --embed-views`;
+#     parsed once, never re-read.
 require "cybertrain/html"
 require "cybertrain/template/lexer"
 require "cybertrain/template/parser"
@@ -48,6 +52,8 @@ module Cybertrain
       def initialize(root, cache: true)
         @root = root
         @cache = cache
+        # nil: read files under root. A Hash: the embedded table.
+        @sources = nil
         # Typed empty Hashes (spikes/NOTES.md rule 9).
         @templates = { "" => Template.new("", INode.list, Array.new(0) { "" }, false, "") }
         @templates.delete("")
@@ -55,10 +61,23 @@ module Cybertrain
         @stamps.delete("")
       end
 
-      # "posts/show" and "posts/show.html.erb" name the same file.
+      # An engine over an embedded table (Gen::Views::SOURCES).
+      def self.embedded(sources)
+        engine = Engine.new("", cache: true)
+        engine.sources = sources
+        engine
+      end
+
+      def sources=(table)
+        @sources = table
+      end
+
+      # "posts/show" and "posts/show.html.erb" name the same template.
       def template(name)
         key = file_name(name)
         cached = @templates[key]
+        sources = @sources
+        return embedded_template(key, cached, sources) unless sources.nil?
         return cached if @cache && !cached.nil?
 
         path = File.join(@root, key)
@@ -74,7 +93,11 @@ module Cybertrain
       end
 
       def exists?(name)
-        File.exist?(File.join(@root, file_name(name)))
+        key = file_name(name)
+        sources = @sources
+        return sources.key?(key) unless sources.nil?
+
+        File.exist?(File.join(@root, key))
       end
 
       def render(name, env, helpers)
@@ -99,6 +122,20 @@ module Cybertrain
       end
 
       private
+
+      # Embedded sources never change while the process runs: parsed once,
+      # whatever `cache` says. The key doubles as source_path so error
+      # messages read "posts/show.html.erb:12: ..." exactly as from disk.
+      def embedded_template(key, cached, sources)
+        return cached unless cached.nil?
+
+        source = sources[key]
+        raise MissingTemplate, "Missing template #{key} (embedded)" if source.nil?
+
+        parsed = Template.parse(source, key, key)
+        @templates[key] = parsed
+        parsed
+      end
 
       def file_name(name)
         name.end_with?(".erb") ? name : "#{name}.html.erb"

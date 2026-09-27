@@ -1,4 +1,5 @@
 /build/
+/dist/
 /storage/*.sqlite3*
 /tmp/*
 /log/

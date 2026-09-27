@@ -4,5 +4,5 @@ ok   a template error is a 500 page naming the template and line
 ok   a controller exception is a 500 page with the escaped message
 ok   a failed build puts its output on every HTML page but not on JSON
 ok   static files still pass through the development stack
-ok   the rebuilder targets the app's build/bin/server
+ok   the rebuilder targets the app's build/bin/blog
 7 tests, 27 assertions, 0 failures

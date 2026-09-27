@@ -2,7 +2,7 @@
 # test/comments.rb). `spin test` runs only test/*.rb, so this file is
 # required, not run.
 #
-# The app is built the way bin/server.rb builds it, in the test
+# The app is built the way bin/blog.rb builds it, in the test
 # environment, against a fresh storage/test.sqlite3 migrated from
 # gen/migrations.rb. The database is compiled in through FFI, so these
 # programs do not run under CRuby: their snapshots come from the compiled

@@ -83,7 +83,7 @@ Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
 APP = Cybertrain::Application.new(router: router, url_resolver: DevRoutes.url_resolver, config: config)
 APP.boot
 
-REBUILDER = Cybertrain::Dev::Rebuilder.new(File.expand_path(ROOT))
+REBUILDER = Cybertrain::Dev::Rebuilder.new(File.expand_path(ROOT), "blog")
 # What Application#serve_development puts in front of the stack.
 CLIENT = Cybertrain::Test::Client.new(Cybertrain::Dev::ErrorPage.new(APP.stack, REBUILDER))
 
@@ -139,8 +139,8 @@ test "static files still pass through the development stack" do
   assert_equal "User-agent: *\n", res.body
 end
 
-test "the rebuilder targets the app's build/bin/server" do
-  assert_equal File.expand_path("#{ROOT}/build/bin/server"), REBUILDER.binary_path
+test "the rebuilder targets the app's build/bin/blog" do
+  assert_equal File.expand_path("#{ROOT}/build/bin/blog"), REBUILDER.binary_path
   assert_equal File.expand_path("#{ROOT}/tmp/rebuild.log"), REBUILDER.log_file
 end
 
