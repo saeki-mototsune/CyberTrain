@@ -6,6 +6,15 @@ Status  Migration ID    Migration Name
   down  20260101000000  CreatePosts
   down  20260101000100  CreateComments
 ok   create and status on :memory: leave no file named :memory: behind
+created file:db_cli_shared?mode=memory&cache=shared
+Status  Migration ID    Migration Name
+  down  20260101000000  CreatePosts
+  down  20260101000100  CreateComments
+ok   a file: URI with mode=memory is opened as a URI, never as a file of that name
+db status failed: cannot open database file:tmp/db_cli_test/missing.sqlite3: unable to open database file (rc 14)
+db rollback failed: cannot open database file:tmp/db_cli_test/missing.sqlite3: unable to open database file (rc 14)
+db schema:dump failed: cannot open database file:tmp/db_cli_test/missing.sqlite3: unable to open database file (rc 14)
+ok   status on a file: URI naming a missing file fails with exit code 1 instead of creating it
 usage: db (migrate|rollback [N]|status|schema:dump|create)
 unknown command: explode
 usage: db (migrate|rollback [N]|status|schema:dump|create)
@@ -44,6 +53,8 @@ done
 done
 schema dump skipped (no db/ directory here)
 ok   migrate skips the schema dump when the root has no db/ directory
+schema dump skipped (no db/ directory here)
+ok   an explicit schema:dump where there is no db/ directory returns 1
 ok   an empty CYBERTRAIN_DATABASE counts as unset
 db rollback: N must be a positive integer, got "abc"
 usage: db (migrate|rollback [N]|status|schema:dump|create)
@@ -57,4 +68,4 @@ Status  Migration ID    Migration Name
   down  20260101000000  CreatePosts
   down  20260101000100  CreateComments
 ok   rollback fails with exit code 1 when an applied version has no migration
-16 tests, 47 assertions, 0 failures
+19 tests, 58 assertions, 0 failures

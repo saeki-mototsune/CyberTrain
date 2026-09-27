@@ -9,12 +9,18 @@ module Cybertrain
     class Connection
       attr_reader :path
 
-      def initialize(path)
+      # path is a file name, ":memory:" or a "file:" URI (OPEN_URI makes
+      # SQLite read the URI form whether or not the library was compiled
+      # with SQLITE_USE_URI). With create: false a missing file is refused
+      # by SQLite itself (SQLITE_CANTOPEN -> DB::Error) instead of created.
+      def initialize(path, create: true)
         @path = path
         @closed = false
         @transaction_depth = 0
+        flags = SQLite3::OPEN_READWRITE | SQLite3::OPEN_URI
+        flags |= SQLite3::OPEN_CREATE if create
         scratch = SQLite3.malloc(8)
-        rc = SQLite3.sqlite3_open_v2(path, scratch, SQLite3::OPEN_READWRITE | SQLite3::OPEN_CREATE, nil)
+        rc = SQLite3.sqlite3_open_v2(path, scratch, flags, nil)
         @db = SQLite3.read_ptr(scratch)
         SQLite3.free(scratch)
         if rc != SQLite3::OK

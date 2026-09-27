@@ -43,6 +43,7 @@ ENV["CYBERTRAIN_ENV"] = "test"
 # under the root; removing them keeps a rerun from tripping over them.
 def remove_root(root)
   ["storage/test.sqlite3-wal", "storage/test.sqlite3-shm", "storage/test.sqlite3", "db/schema.rb",
+   "missing.sqlite3-wal", "missing.sqlite3-shm", "missing.sqlite3",
    ":memory:-wal", ":memory:-shm", ":memory:"].each do |f|
     File.delete("#{root}/#{f}") if File.exist?("#{root}/#{f}")
   end
@@ -90,6 +91,27 @@ test "create and status on :memory: leave no file named :memory: behind" do
   assert_equal 0, run_db("status")
   refute File.exist?("#{ROOT}/:memory:")
   refute File.exist?(":memory:")
+  ENV.delete("CYBERTRAIN_DATABASE")
+end
+
+test "a file: URI with mode=memory is opened as a URI, never as a file of that name" do
+  ENV["CYBERTRAIN_DATABASE"] = "file:db_cli_shared?mode=memory&cache=shared"
+  assert_equal 0, run_db("create")
+  assert_equal 0, run_db("status")
+  refute File.exist?("file:db_cli_shared?mode=memory&cache=shared")
+  refute File.exist?("db_cli_shared")
+  ENV.delete("CYBERTRAIN_DATABASE")
+end
+
+# The URI names a file in a directory that exists, so only the open flags
+# keep SQLite from creating it.
+test "status on a file: URI naming a missing file fails with exit code 1 instead of creating it" do
+  ENV["CYBERTRAIN_DATABASE"] = "file:#{ROOT}/missing.sqlite3"
+  assert_equal 1, run_db("status")
+  assert_equal 1, run_db("rollback")
+  assert_equal 1, run_db("schema:dump")
+  refute File.exist?("#{ROOT}/missing.sqlite3")
+  refute File.exist?("#{ROOT}/missing.sqlite3-wal")
   ENV.delete("CYBERTRAIN_DATABASE")
 end
 
@@ -148,6 +170,11 @@ test "migrate skips the schema dump when the root has no db/ directory" do
   assert File.exist?("#{NODB_ROOT}/storage/test.sqlite3")
   refute Dir.exist?("#{NODB_ROOT}/db")
   refute File.exist?("#{NODB_ROOT}/db/schema.rb")
+end
+
+test "an explicit schema:dump where there is no db/ directory returns 1" do
+  assert_equal 1, Cybertrain::DB::CLI.run(["schema:dump"], NODB_ROOT)
+  refute Dir.exist?("#{NODB_ROOT}/db")
 end
 
 test "an empty CYBERTRAIN_DATABASE counts as unset" do
