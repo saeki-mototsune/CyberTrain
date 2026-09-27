@@ -213,6 +213,27 @@ test "a failing rebuild keeps the command output" do
   File.delete(log) if File.exist?(log)
 end
 
+test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
+  Dir.mkdir("tmp") unless File.directory?("tmp")
+  root = File.expand_path("tmp/dev_error_page_locked_root")
+  log = "#{root}/tmp/rebuild.log"
+  Dir.mkdir(root) unless File.directory?(root)
+  Dir.mkdir("#{root}/tmp") unless File.directory?("#{root}/tmp")
+  File.write("#{root}/tmp/cybertrain-build.lock", "")
+  File.delete(log) if File.exist?(log)
+  r = Cybertrain::Dev::Rebuilder.new(root, "server", log)
+  refute r.rebuild
+  assert r.last_failed
+  assert r.last_skipped
+  assert_equal "cybertrain build in progress; rebuild skipped — save the file again once it finishes", r.last_output
+  refute File.exist?(log)
+  r.record_build(true, "")
+  refute r.last_skipped
+  File.delete("#{root}/tmp/cybertrain-build.lock")
+  Dir.rmdir("#{root}/tmp")
+  Dir.rmdir(root)
+end
+
 test "shell_quote escapes single quotes" do
   assert_equal "'it'\\''s'", Cybertrain::Dev::Rebuilder.shell_quote("it's")
 end
