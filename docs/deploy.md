@@ -284,8 +284,9 @@ ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
 cybertrain version
 ```
 
-`-v` はアプリの `spin.toml` の `ref`（タグ `v0.1.0`）と同じバージョンにそろえてください。古い CLI の
-`spin run gen` は `--embed-views` を知らないため、できあがったバイナリは本番モードで起動を拒否します。
+`-v` はアプリの `spin.toml` の `ref`（タグ `v0.1.0`）と同じバージョンにそろえてください。CLI と
+`spin.lock` が固定するフレームワーク（`spin run gen` はそのフレームワーク自身の generator を
+実行します）は対で更新するものなので、バージョンがずれるとビルドや起動が失敗します。
 
 ### 3-5. デプロイキー
 
@@ -630,8 +631,8 @@ sudo systemctl start notes
 `spin.toml` の `ref` を新しいタグ（例: `"v0.2.0"`）に書き換え、`gem install cybertrain` で
 CLI も同じバージョンにそろえてから（サーバーの `notes` ユーザーでも
 `gem install --user-install cybertrain -v 0.2.0` のように、`spin.toml` のタグと同じバージョンを
-指定して CLI を更新します。バージョンがずれると `spin run gen` が `--embed-views` を知らず、
-ビルドしたバイナリが本番モードで起動を拒否します）:
+指定して CLI を更新します。CLI と `spin.lock` が固定するフレームワークは対で更新するものなので、
+バージョンがずれるとビルドや起動が失敗します）:
 
 ```sh
 spin lock          # 新しいタグのコミットを spin.lock に固定する

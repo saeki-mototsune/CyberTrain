@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-26-cli-build-embedded-views-design.md` (Japanese; authoritative). Spinel constraints: `spikes/NOTES.md` (42 rules).
 
+> **Historical (2026-09-27):** this plan was executed on 2026-09-26; the code and `docs/superpowers/specs/2026-09-26-cli-build-embedded-views-design.md` §8 (as built) are authoritative. Deviations from the tasks below: development migrations run through `bin/db.rb` (kept), so `cybertrain migration` is `spin run gen; spin run db -- migrate; spin run gen` and `Build.migration_commands` takes no name; the CLI uses `system`, not `exec`; `gen/views.rb` embeds only `*.erb`; a build lock (`tmp/cybertrain-build.lock`) and atomic `dist/` replacement were added in PR #5.
+
 ## Global Constraints
 
 - Every file under `cybertrain/` compiles under Spinel: no `send` with computed names, no `instance_exec`, no `FileUtils`, no `Dir.glob`; typed empty containers seed-then-delete (`{ "" => "" }; h.delete("")`, `Array.new(0) { "" }`) — spikes/NOTES.md rule 9.

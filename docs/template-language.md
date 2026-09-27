@@ -1,6 +1,6 @@
 # Cybertrain Template Language Reference
 
-Cybertrain views (`app/views/**/*.html.erb`) look like Rails ERB but are not Ruby: they are read from disk at request time, tokenized and parsed into an AST, compiled once into a flat node tree, and walked by a tree-walking interpreter. The pipeline lives in `cybertrain/template/`:
+Cybertrain views (`app/views/**/*.html.erb`) look like Rails ERB but are not Ruby: they are parsed at run time (from `app/views/` on disk in development and test; in a production binary from the string table `cybertrain build` embeds via `gen/views.rb`), tokenized and parsed into an AST, compiled once into a flat node tree, and walked by a tree-walking interpreter. The pipeline lives in `cybertrain/template/`:
 
 | File | Role |
 | --- | --- |
@@ -11,7 +11,7 @@ Cybertrain views (`app/views/**/*.html.erb`) look like Rails ERB but are not Rub
 | `interpreter.rb` | Walks `INode`s against an `env` (`Hash<String, value>`); owns every per-type "what methods exist" table |
 | `helpers.rb` | `link_to`, `form_with`, `render`, `pluralize`, ... — everything a template calls without a receiver |
 | `form_builder.rb` | The `f` yielded by `form_with(...) do \|f\| ... end` |
-| `engine.rb` | Finds `.html.erb` files on disk, parses (and optionally caches) them, renders with a layout |
+| `engine.rb` | Loads `.html.erb` sources — from disk under a root, or from the embedded `gen/views.rb` table (`Engine.embedded`) — parses (and optionally caches) them, renders with a layout |
 
 This document describes exactly what that pipeline accepts and executes. Where it disagrees with `docs/design.md` section 7 (the original spec draft) or with what a Rails developer would expect, the code wins, and this document says so (search for "**As built**").
 
@@ -268,7 +268,7 @@ With a model, fields are named `post[title]`/`id="post_title"` (`Inflector.under
 
 ### File resolution (`engine.rb`)
 
-`"posts/show"` and `"posts/show.html.erb"` name the same file. With `cache: true` (production) a file parses once and is kept; with `cache: false` (development) the engine re-reads and re-parses it whenever its mtime or size changes. A missing file raises `Cybertrain::Template::MissingTemplate` with the full path attempted.
+`"posts/show"` and `"posts/show.html.erb"` name the same template. Development reads `app/views/` from disk with `cache: false` (a file is re-read and re-parsed whenever its mtime or size changes); the test environment reads from disk with `cache: true` (parsed once). A production binary never touches disk: `cybertrain build` runs `spin run gen -- --embed-views`, which writes every `*.erb` under `app/views/` (dotfiles and symlinked directories skipped) into `gen/views.rb`, and `Engine.embedded(sources)` parses each entry once (error messages keep the same `posts/show.html.erb:12` shape); a binary whose table is empty refuses to boot in production. A missing template raises `Cybertrain::Template::MissingTemplate` — `"Missing template <full path>"` from disk, `"Missing template posts/nope.html.erb (embedded)"` from the table.
 
 ## 9. Errors
 

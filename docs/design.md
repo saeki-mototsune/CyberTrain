@@ -2,7 +2,7 @@
 
 - 状態: 合意済み（2026-09-24 の grilling セッションで 15 項目を確認）
 - 対象: Spinel `2026.09.12` リリース
-- 次の工程: M0 スパイク（第 9 章）。本文書の「未検証の前提」が確認できるまで、M1 以降には着手しない。
+- 実装状況: 第 13 章（M0〜M5 はすべて到達。以降の変更は各決定の改訂注記（「2026-09-26 改訂」など）と第 13 章に記録）
 
 ## 0. 一言でいうと
 
@@ -162,7 +162,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 値の表現（スパイク 3 の結果で改訂）: 明示的な `Value` ラッパクラスは作らず、素の多相 Ruby 値（nil / bool / Integer / Float / String / SafeString / Array / Hash / Time / Model）をそのまま `Hash<String, 多相>` の環境に入れる。ラッパは中間結果ごとに割り当てを増やすだけで、`read_attribute` が多相値を返す以上ボクシングは減らない（実測 203 µs 対 298 µs）。
 - AST の表現（スパイク 3 の結果）: パーサはノードごとのクラスで読みやすく書き、パース後に 1 回だけ「整数 kind + 型付きスロット」の単相 `INode` に変換して評価する。クラス階層のまま評価すると多相 dispatch が毎回発生して 2.7 倍遅い。値の `case` では `when Time` を `when Array` より先に置く（多相スロットの Time は `Array` にもマッチする）。
 - モデルへのアクセス: 属性と関連は schema 由来の生成コード `read_attribute(:title)` / `read_association(:comments)` で名前解決する。手書きメソッドは、ジェネレータが `app/models/**/*.rb` を字句走査して引数なしの `def name` を拾い、モデルごとに `def call_view_method(name); case name; when :summary then summary; ... end; end` を生成することでテンプレートから呼べる（`view_methods` 宣言は不要。非リテラル `send` は 128 リテラル制限のため使わない）。
-- `@post` の受け渡し: D4 の字句走査で `gen/view_assigns.rb` に `{ "post" => @post, ... }` を吐く（既定）。`render :show, locals: { post: @post }` の明示渡しも併用できる。
+- `@post` の受け渡し: D4 の字句走査で `gen/controllers.rb` にコントローラごとの `view_assigns`（`{ "post" => @post, ... }`）を吐く（既定）。`render :show, locals: { post: @post }` の明示渡しも併用できる。
 - パーシャル: Rails 7.1 の strict locals 構文 `<%# locals: (post:) %>` を採用する。`<%= render "form", post: @post %>` はリテラル名のみ。
 - レイアウト: `application` 固定。`<%= yield %>` と `content_for :title` / `yield :title`（`Hash<Symbol, String>`）。
 - エスケープ: `<%= %>` は既定でエスケープ、`<%== %>` と `raw` で無効化。ヘルパーの戻り値は `SafeString`（String のサブクラスではないラッパ）。
@@ -172,7 +172,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 
 ### D10. モデル
 
-- 真実の源の流れ: `db/migrate/*.rb`（`create_table`、`add_column`、`add_reference`、`add_index` の DSL）→ `spin run db migrate` が適用 → DB から `db/schema.rb` をダンプ → ジェネレータが `gen/models/*.rb` を吐く。マイグレーションはアプリ定数を含まないデータ DSL なので `bin/db.rb` にそのまま取り込める。
+- 真実の源の流れ: `db/migrate/*.rb`（`create_table`、`add_column`、`add_reference`、`add_index` の DSL）→ `spin run db -- migrate`（`cybertrain migration`）が適用 → DB から `db/schema.rb` をダンプ → ジェネレータが `gen/models/*.rb` を吐く。マイグレーションはアプリ定数を含まないデータ DSL なので `bin/db.rb` にそのまま取り込める。
 - モデルごとの生成物: `attr_accessor`（schema の型から `String | nil`、`Integer | nil`、`Time | nil` などが推論される代入コード付き）、`read_attribute` / `write_attribute` / `assign_attributes` の `case` 文、`from_row`、`to_json`、`attribute_names`、外部キー由来の関連（`Comment#post`、`Post#comments`）。
 - Relation はモデルごとに生成（スパイク 4 で理由を修正）: `Post.where(...)` は `PostRelation`、`.first` / `.find` / `.find_by` は箱詰めなしの `Post | nil` に推論される（`rows` → `Post.from_row(rs[0])` の形で書く）。`to_a` はどの設計でも多相配列（Spinel はユーザオブジェクトの配列を常に poly_array にする）で、これは正しく動く。汎用 Relation でも `case rec when Post` や共用体への直接呼び出しは動くので、モデルごとの生成は「型付き `first`」と生成コードの読みやすさのために選ぶ。基底 `Cybertrain::Relation` の setter は `nil` を返し、`PostRelation` が `def where(h) = (add_where(h); self)` で型を付け直す（基底で `self` を返すと基底型に推論される）。
 - 属性のキャスト（スパイク 4 で判明した必須事項）: `from_row` / `assign_attributes` は `Cast.int` / `Cast.str` / `Cast.str_or_nil` / `Cast.time_or_nil` などのキャストメソッドを通す。nil 初期化した ivar に `Time` を直接代入するとミスコンパイルする（nil が `Time.at(0)` として読める）。非 null の Integer / String は `0` / `""` で初期化し `to_i` / `to_s` でキャストする。
@@ -185,16 +185,16 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 ### D11. 名前、パッケージ構成、雛形
 
 - 名前は `cybertrain`、ライセンスは MIT。
-- フレームワークは spin のライブラリパッケージ（`spin new cybertrain --lib` の配置）。`spin.toml` の `[package] name = "cybertrain"`、入口 `cybertrain.rb`、機能ごとに `cybertrain/server.rb`、`router.rb`、`template.rb`、`model.rb`、`sqlite.rb`、`generator.rb` などに分割。`native/` を将来の `.c` 用に予約。アプリからは GitHub のタグを `{ git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }` で参照し、`spin.lock` でコミットを固定する（フレームワークのコードはアプリに置かない）。`matz/spin-index` への登録後は `--version` 指定も使える。
+- フレームワークは spin のライブラリパッケージ（`spin new cybertrain --lib` の配置）。`spin.toml` の `[package] name = "cybertrain"`、入口 `cybertrain.rb`、機能ごとに `cybertrain/http/`、`router.rb`、`template/`、`model.rb`、`db/`、`generator/` などに分割（第 11 章）。C は `ffi_source` でファイル内に書く（`dev/reexec.rb`）。アプリからは GitHub のタグを `{ git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }` で参照し、`spin.lock` でコミットを固定する（フレームワークのコードはアプリに置かない）。`matz/spin-index` への登録後は `--version` 指定も使える。
 - CLI はフレームワーク側の `bin/cybertrain.rb`（spin でビルド）と、同じソースを CRuby で動かす gem（`gem install cybertrain`、`exe/cybertrain`）の 2 通りで配る。spin には索引からツールを入れるコマンドがまだ無く（`spin install` はローカルのソースのみ）、利用者の Rails 開発者は Ruby を持っているため、配布は gem を主とする。gem には CLI とそれが require するファイルだけを入れ、フレームワーク本体は入れない。役割は `cybertrain new blog` の雛形生成と `cybertrain generate scaffold post title:string body:text` のコード生成のみ。（2026-09-26 改訂: 役割は `new`、`generate scaffold`、`migration`、`db`、`server`、`build`。後の 4 つはアプリのディレクトリで `spin run gen` / `spin run db` / `spin run NAME` / `spin build NAME` を順に呼ぶ薄いラッパ。第 13 章）`new` は既定で CLI と同じバージョンのタグを依存に書き、`rails new` の `bundle install` にあたる `spin lock` と `spin run gen` まで実行する（`--skip-spin` で省略）。gem とフレームワークは同じタグからリリースする。
 - アプリの雛形と bin は第 11 章。ビルドは `spin run gen` → `spin build` の 2 段。（2026-09-26 改訂: 配布用ビルドは `cybertrain build` → `dist/`。`spin run gen -- --embed-views` → `spin build NAME` → `spin run gen` で空の表に戻し、バイナリと `public/` を `dist/` にまとめる。第 13 章）
 
 ### D12. 開発ループ: サーバが自分で再ビルドして自分を置き換える
 
-- 決定: アプリの入口（当初 server 用の bin、2026-09-26 から `bin/<name>.rb`）が `CYBERTRAIN_ENV=development` のときだけ監視モードになる。監視対象は `app/**/*.rb`、`config/`、`db/schema.rb`。mtime を 0.5 秒間隔でポーリング。`app/views/**/*.erb` は監視対象外（テンプレートエンジンが自分で再読み込み）。
-- 変更を検知したら `spin run gen && spin build <name>` を `system` で実行し、成功したら自分に `SIGHUP` を送る。`trap("HUP")` のハンドラ（スパイク 7 で実機動作を確認）が listen ソケットを閉じ、`ffi_source` の 6 行の C シム `sp_reexec(path, port_arg)` 経由で `execv` を呼んで新しいバイナリに自分を置き換える。PID は変わらない。元の listen ソケットに `SO_REUSEADDR` を立てておけば、新プロセスは同じポートを即座に再バインドできる（スパイク 7 で確認）。ポートなどの引き継ぎ状態は argv で渡す。
+- 決定: アプリの入口（当初 server 用の bin、2026-09-26 から `bin/<name>.rb`）が `CYBERTRAIN_ENV=development` のときだけ監視モードになる。監視対象は `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb`（再ビルド自身が書き換えた `gen/` は基準に吸収し、`gen/views.rb` は無視する。`cybertrain/dev.rb`）。mtime を 0.5 秒間隔でポーリング。`app/views/**/*.erb` は監視対象外（テンプレートエンジンが自分で再読み込み）。
+- 変更を検知したら `spin run gen && spin build <name>` を `system` で実行し、成功したら自分に `SIGHUP` を送る。`trap("HUP")` のハンドラ（スパイク 7 で実機動作を確認）が listen ソケットを閉じ、`ffi_source` の 6 行の C シム `sp_reexec(path, port_arg)` 経由で `execv` を呼んで新しいバイナリに自分を置き換える。PID は変わらない。元の listen ソケットに `SO_REUSEADDR` を立てておけば、新プロセスは同じポートを即座に再バインドできる（スパイク 7 で確認）。ポートなどの引き継ぎ状態は argv で渡す。（2026-09-27 注記: 実装は `SIGHUP` を送らず、再ビルドに成功したウォッチャースレッドが `trap("HUP")` と同じ再起動フラグを直接立てる（外部からの `kill -HUP` も同じ経路）。監視スレッドが listener を止め、`Server#wait` が戻ったあとメインスレッドが `execv` を呼ぶ。`cybertrain/application.rb`）
 - ビルド失敗でサーバは死なない。旧バイナリのまま動き続け、コンパイラの stderr を保持して次のリクエストで開発用エラーページとして返す。
-- マイグレーションは自動で流さない。`spin run db migrate` の結果 `db/schema.rb` が変わることで再ビルドが走る。
+- マイグレーションは自動で流さない。`spin run db -- migrate` の結果 `db/schema.rb` が変わることで再ビルドが走る。
 - production: 監視もビルドも無効。production はビューを `cybertrain build`（`spin run gen -- --embed-views`）がバイナリに埋め込んだものだけを描画し、development は `app/views/` をディスクから読む。`cybertrain build` はそのバイナリと `public/` を `dist/` にまとめる（第 13 章）。（2026-09-26 改訂: 当初は `app/views/` を同梱して配布し、バイナリ単体では動かない設計だった）
 - 却下: 別プロセスの監視ツール（構成が増える）。
 
@@ -202,7 +202,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 
 - `spin test` の仕組み（`test/*.rb` の各ファイルが 1 プログラム、stdout を `.expected` と diff）に合わせ、`Cybertrain::Test` を用意する。`test "saves a post" do ... end` を配列に積んで順に実行、決定的な形式で出力、失敗があれば非ゼロ終了。アサーションは `assert`、`assert_equal`、`assert_nil`、`assert_raises`、`assert_includes`。
 - アプリのテストは model、controller / integration（`get "/posts"`、`post "/posts", params: {...}`、`assert_response :ok`、`assert_redirected_to`、`assert_includes response.body, "..."`。ソケット不使用）、テンプレート（エンジンに文字列を渡す）の 3 種類。
-- テスト用 DB は `storage/test.sqlite3`。各テストをアダプタ層の `BEGIN` / `ROLLBACK` で包む。
+- テスト用 DB は `storage/test.sqlite3`。各テストをアダプタ層の `BEGIN` / `ROLLBACK` で包む。（2026-09-27 改訂: トランザクションで各テストを包む仕組みは未実装。`examples/blog/test/support/blog_test.rb` はテスト開始時に `storage/test.sqlite3` を作り直してマイグレーションし、各テストの前にテーブルを `delete_all` で空にする）
 - テストプログラムは領域ごとに 1 ファイル（`test/models.rb`、`test/controllers.rb`）。`spin test` はファイルごとにアプリ全体をコンパイルする。
 - フレームワーク自身のテストは `.expected` をコミットして CRuby 非依存にする。
 - CI は GitHub Actions、Spinel `2026.09.12` を固定、ubuntu / macOS の 2 ジョブ。`examples/blog` の integration テストを回す。
@@ -226,8 +226,8 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。
 2. ミドルウェア連鎖: ログ → 静的ファイル → `_method` 上書き → session（署名クッキーの復号）→ CSRF 検証 → ルーター。
 3. ルーターは `gen/routes.rb` の経路表を走査し、一致した経路の dispatch 節を呼ぶ: `PostsController.new(ctx).process(:show) { |c| c.show }`。
-4. `process` は `before_action` ブロックを `instance_exec` し、アクション本体を呼び、render も redirect も起きていなければ action 名のテンプレートを暗黙 render する。
-5. render はテンプレートエンジンに `view_assigns`（生成済み）、ヘルパー群、`Value` 化した値を渡して描画し、レイアウトで包む。
+4. `process` は `before_action` を順に実行し（シンボル形は生成された `run_callback(name)` の `case`、ブロック形はコントローラを引数に `block.call(self)`。render / redirect した時点で連鎖は止まる）、アクション本体を呼び、render も redirect も起きていなければ action 名のテンプレートを暗黙 render し、最後に `after_action` を実行する。
+5. render はテンプレートエンジンに `view_assigns`（生成済み）と locals、ヘルパー群を渡し、素の多相値の環境で描画してレイアウトで包む。
 6. `Response` をソケットに書き戻す。keep-alive なら次のリクエストを待つ。
 
 ## 6. ジェネレータの入出力
@@ -297,22 +297,29 @@ go / no-go: 2 と 3 の結果で D8 / D9 を確定してから M1 に進む。
 
 ```
 cybertrain/
-  spin.toml                 # [package] name = "cybertrain"
-  cybertrain.rb             # 入口
+  spin.toml  cybertrain.rb  cybertrain.gemspec    # gem には CLI とその require だけ
   cybertrain/
-    server.rb  request.rb  response.rb  middleware.rb
-    router.rb  controller.rb  params.rb  session.rb
-    template/               # lexer.rb  parser.rb  interpreter.rb  helpers.rb  value.rb
-    model.rb  relation.rb  validations.rb  migration.rb
-    sqlite.rb               # FFI アダプタ
-    generator/              # schema.rb  routes.rb  view_assigns.rb  manifest.rb
-    test.rb                 # Cybertrain::Test
-  bin/cybertrain.rb         # new / generate
-  native/                   # 将来の .c
+    main.rb  application.rb  config.rb  views.rb  version.rb   # bin/<name>.rb の入口と起動
+    db.rb  dev.rb  generator.rb  template.rb  schema.rb   # 各サブディレクトリの require 入口
+    router.rb  controller.rb  params.rb  session.rb  flash.rb  callback.rb  errors.rb  context.rb
+    middleware.rb  app.rb   # Middleware 基底クラスと既定のスタック（App）
+    http/        # server.rb  parser.rb  request.rb  response.rb  query.rb  cookies.rb
+    middleware/  # request_logger  static  method_override  session_store  csrf_protection  error_pages
+    template/    # lexer  parser  ast  inode  interpreter  helpers  form_builder  engine
+    model.rb  relation.rb  validator.rb  cast.rb  migration.rb
+    schema/      # table.rb  definition.rb  dumper.rb（db/schema.rb の DSL）
+    db/          # sqlite_ffi.rb  connection.rb  pool.rb  migrator.rb  schema_dumper.rb  sqlite_ddl.rb  cli.rb  error.rb
+    generator/   # runner.rb  routes_dsl.rb  *_emitter.rb  model_scan.rb  controller_scan.rb  manifest.rb  inflector.rb  url_support.rb
+    dev/         # watcher.rb  rebuilder.rb  reexec.rb  error_page.rb（D12）
+    cli.rb  cli/ # new_app.rb  scaffold.rb  templates.rb  build.rb
+    test.rb  test/client.rb  html.rb  crypto.rb  logger.rb
+  bin/cybertrain.rb  exe/cybertrain   # CLI（spin install / gem）
+  script/regen-snapshot
   test/                     # spin test（.expected をコミット）
   examples/blog/            # 合格基準のアプリ
-  spikes/                   # M0
-  docs/design.md            # 本文書
+  spikes/                   # M0 のスパイクと NOTES.md
+  README.md  docs/design.md  docs/deploy.md  docs/template-language.md  docs/superpowers/
+  .github/workflows/ci.yml
 ```
 
 アプリ（`cybertrain new blog` が生成）:
@@ -320,13 +327,15 @@ cybertrain/
 ```
 blog/
   spin.toml                 # [dependencies] cybertrain = ...
-  app/controllers/  app/models/  app/views/
+  spin.lock                 # spin lock が書く（examples/blog は path 依存なので無し）
+  .gitignore  README.md
+  app/controllers/  app/models/  app/views/  app/helpers/
   config/routes.rb  config/app.rb
   db/migrate/  db/schema.rb
-  gen/                      # コミットする生成物（models/ routes.rb view_assigns.rb views.rb app.rb）
+  gen/                      # app.rb  controllers.rb  migrations.rb  models/  routes.rb  views.rb
   bin/blog.rb  bin/gen.rb  bin/db.rb   # blog.rb: server / migrate / db、db.rb: 開発時のマイグレーション
-  test/models.rb  test/controllers.rb
-  public/  storage/  tmp/
+  test/                     # 雛形は .keep のみ（examples/blog では articles.rb comments.rb support/blog_test.rb）
+  public/  storage/  tmp/   # build/ と dist/ は .gitignore
 ```
 
 ## 12. 参考
@@ -344,4 +353,5 @@ blog/
 - 開発ループ（D12）は実機で確認済み: ビュー編集は再ビルドなしで即時反映、コントローラ編集は約 24 秒（`spin run gen` + `spin build`。当時のビルド対象は server 用の bin）で再ビルドされ、同じ PID のまま `execv` で新バイナリに置き換わった。
 - 実装で判明した Spinel の制約 42 項目は `spikes/NOTES.md` に、計画との差分は `docs/superpowers/plans/2026-09-24-cybertrain-mvp.md` 末尾の「As built」節にある。利用者向けの説明は `README.md` と `docs/template-language.md`。
 - 既知の未対応: strict locals の既定値構文（`<%# locals: (comment: nil) %>`）、`Model#attribute_or_method?` が常に true（typo した属性名が空文字で描画される）、`spin run db migrate` は `--` が必要（`spin run db -- migrate`）、`SPINEL_GC_STRESS=1` 下で最初の `form_with` が空文字を返す事象（Spinel 側のルーティング問題の疑い）。
-- 2026-09-26: アプリの入口を `bin/<name>.rb`（`Cybertrain::Main`: server / migrate / db）に統合。`spin run gen` は `gen/views.rb` を常に書き、`--embed-views` で `app/views/` を文字列テーブルとして埋め込む。本番は埋め込みテーブルのみを描画し（`Template::Engine.embedded`）、空なら起動を拒否する。`cybertrain migration` / `server` / `build` を追加、`build` は `dist/`（バイナリ + public/）を組み立てる。開発時のマイグレーション用に `bin/db.rb` は残す（`bin/<name>.rb` は `gen/app` を読むため、最初のマイグレーションで `gen/models/` ができるまでコンパイルできない。`cybertrain migration` は `spin run db -- migrate` を使い、本番は `dist/<name> migrate`）。設計: docs/superpowers/specs/2026-09-26-cli-build-embedded-views-design.md。クロスビルドと public/ の埋め込みはスコープ外。
+- 2026-09-26: アプリの入口を `bin/<name>.rb`（`Cybertrain::Main`: server / migrate / db）に統合。`spin run gen` は `gen/views.rb` を常に書き、`--embed-views` で `app/views/` を文字列テーブルとして埋め込む。本番は埋め込みテーブルのみを描画し（`Template::Engine.embedded`）、空なら起動を拒否する。`cybertrain migration` / `db` / `server` / `build` を追加、`build` は `dist/`（バイナリ、public/、無ければ storage/ と tmp/）を組み立てる。開発時のマイグレーション用に `bin/db.rb` は残す（`bin/<name>.rb` は `gen/app` を読むため、最初のマイグレーションで `gen/models/` ができるまでコンパイルできない。`cybertrain migration` は `spin run db -- migrate` を使い、本番は `dist/<name> migrate`）。設計: docs/superpowers/specs/2026-09-26-cli-build-embedded-views-design.md、計画: docs/superpowers/plans/2026-09-26-cli-build-embedded-views.md。クロスビルドと public/ の埋め込みはスコープ外。
+- 2026-09-27（PR #5 まで）: CLI は gem（`gem install cybertrain`、`cybertrain new` は同じタグを依存に書く。D11）でも配布。`cybertrain build` は `tmp/cybertrain-build.lock`（PID 入り）を dist/ の組み立てが終わるまで持ち、`dist/<name>` と `dist/public/` を rename で差し替える（`.public.old`）。開発サーバはロック中の再ビルドを飛ばしてログに出し、死んだ PID や 30 分以上古いロックは消して無視する。ポートを bind できないときは `PortInUse`（使用中 / 権限なし）を stdout に出して終了コード 1。`schema:dump` は `db/` があるところでだけ書く（無ければ終了コード 1）。`script/regen-snapshot` を追加。`spin test` は 64 プログラム。

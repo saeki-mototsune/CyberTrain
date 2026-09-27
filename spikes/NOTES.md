@@ -57,10 +57,15 @@ disposable and will be deleted once the framework covers it.
     miscompiles once an earlier required file has already opened the module
     (C error "incompatible pointer to integer conversion"). Use a module-level
     `@instance_variable` with `def self.x` accessors instead.
+    Reduced repro: `module Cy; module H; end; end; module Cy; class L; end;
+    @@logger = L.new; def self.logger; @@logger; end; end` ->
+    `use of undeclared identifier 'cvar_Cy_logger'`.
 19. `STDOUT` and a `StringIO` cannot share one polymorphic call site (`io.puts`
     where `io` is sometimes `STDOUT` and sometimes a `StringIO` raises
     NoMethodError for one branch). Keep such handles in separate typed slots
     and branch explicitly (`if @io then @io.puts(line) else STDOUT.puts(line) end`).
+    (`cybertrain/logger.rb`: never pass STDOUT/STDERR as a constructor
+    argument next to a StringIO-accepting call site.)
 20. Sockets: never call `readpartial` without `sock.wait_readable(timeout)`
     immediately before it (`readpartial` is a raw blocking `read(2)` that holds
     the OS worker and never yields; `wait_readable` parks the green thread and
@@ -93,6 +98,11 @@ disposable and will be deleted once the framework covers it.
 28. `URI.decode_www_form_component` on a malformed escape (`%ZZ`, a trailing
     `%`) raises under CRuby but silently decodes under Spinel; validate escapes
     (`%` followed by two hex digits) before decoding when both must agree.
+29. Once `SafeString` (to_s/to_str) is in the program, `String#include?` with
+    a polymorphic argument mis-dispatches even after narrowing the receiver;
+    `String#index(needle.to_s)` works. Iterating a nullable Hash with
+    `each { |k, v| }` into a typed String sink can also box the key
+    (`each_key { |k| h[k].to_s }` does not).
 30. Calls made from inside a stored block do not widen the callee's parameter
     types: a parameter typed `sp_int` from direct call sites silently receives a
     Symbol's internal id when a stored Proc passes `:forbidden`. Give such
@@ -147,26 +157,6 @@ disposable and will be deleted once the framework covers it.
     called later (`url_resolver: ->(name, args) { ... }` gave name = 4295868465).
     Pass lambdas positionally, as `&block`, or return them from a method
     (`Gen::Routes.url_resolver`).
-29. Once `SafeString` (to_s/to_str) is in the program, `String#include?` with
-    a polymorphic argument mis-dispatches even after narrowing the receiver;
-    `String#index(needle.to_s)` works. Iterating a nullable Hash with
-    `each { |k, v| }` into a typed String sink can also box the key
-    (`each_key { |k| h[k].to_s }` does not).
-18. A `@@class_variable` assigned directly inside a `module Foo` block (e.g.
-    `module Foo; @@x = Bar.new; end`) mis-compiles as soon as some earlier
-    required file has already opened `module Foo` elsewhere: the C compile
-    fails with `incompatible pointer to integer conversion assigning to
-    'sp_int' ... from 'sp_Bar *'`. Reduced repro: `module Cy; module H; end;
-    end; module Cy; class L; end; @@logger = L.new; def self.logger;
-    @@logger; end; end` -> `use of undeclared identifier 'cvar_Cy_logger'`.
-    Use a module-level `@instance_variable` with `self.foo`/`self.foo=`
-    accessors instead; that form is unaffected by prior requires. Also:
-    Spinel cannot union a real IO handle (STDOUT/STDERR) with StringIO
-    behind one polymorphic call site (e.g. `@io.puts` where `@io` is
-    sometimes STDOUT and sometimes a StringIO) -- keep an IO-typed ivar
-    `nil`-or-StringIO and branch explicitly to the STDOUT constant, never
-    pass STDOUT/STDERR as an explicit constructor argument alongside a
-    StringIO-accepting call site (`cybertrain/logger.rb`).
 
 ## Numbers worth remembering
 
