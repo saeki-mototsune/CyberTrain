@@ -98,6 +98,13 @@ module Cybertrain
     # and the open connections have drained.
     def run
       start
+      wait
+    end
+
+    # Blocks until #stop or #request_stop is called and the open
+    # connections have drained; #start must have run (Application starts
+    # first so a bind failure surfaces before the boot banner).
+    def wait
       thread = @accept_thread
       thread.join unless thread.nil?
       drain

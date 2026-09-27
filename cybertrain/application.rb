@@ -139,13 +139,17 @@ module Cybertrain
       ENV["SPINEL_WORKERS"] = @config.workers.to_s
       port = Application.port_argument(argv)
       @config.port = port if port > 0
+      # The rebuilder must exist before #server builds the stack (front_app
+      # wraps it in Dev::ErrorPage only when one is set).
+      @rebuilder = Dev::Rebuilder.new(Dir.pwd, @name) if @config.development?
+      srv = server
+      srv.start # bind first: a PortInUse error must not come after the banner
       print_boot_banner
       if @config.development?
-        serve_development(Dev::Rebuilder.new(Dir.pwd, @name))
+        serve_development(srv)
       else
-        srv = server
         trap("TERM") { srv.request_stop }
-        srv.run
+        srv.wait
       end
       nil
     rescue PortInUse => e
@@ -171,16 +175,15 @@ module Cybertrain
     # Known limitation: the exec'd process takes a fresh watcher baseline,
     # so a source edit saved during the successful build (after gen ran)
     # is only picked up by the next change.
-    def serve_development(rebuilder)
-      @rebuilder = rebuilder
-      srv = server
+    def serve_development(srv)
+      rebuilder = @rebuilder
       trap("TERM") { srv.request_stop }
       trap("HUP") { request_restart }
       watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"], Dev::IGNORED)
       watcher.start { |paths| rebuild_after_change(rebuilder, paths) }
       @serving = true
       spawn_restart_monitor(srv)
-      srv.run
+      srv.wait
       @serving = false
       exec_new_build(srv, rebuilder) if @restart_requested
       nil
