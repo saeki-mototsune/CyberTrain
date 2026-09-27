@@ -4,4 +4,12 @@
 # same entry point, compiled by spin).
 require "cybertrain/cli"
 
-exit(Cybertrain::CLI.run(ARGV))
+# Ctrl-C reaches the whole process group: the child (`spin run NAME`, a
+# build) stops itself, and CRuby raises Interrupt out of `system` here.
+# Build.run's ensure has restored gen/views.rb by the time it arrives.
+begin
+  status = Cybertrain::CLI.run(ARGV)
+rescue Interrupt
+  status = 130
+end
+exit(status)
