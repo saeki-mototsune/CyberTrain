@@ -190,7 +190,7 @@ test "DB::CLI.database_path follows Cybertrain.config once it is loaded" do
   assert_equal ":memory:", Cybertrain::DB::CLI.database_path
 end
 
-# ---- the Application, as bin/server.rb builds it --------------------------
+# ---- the Application, as Cybertrain::Main builds it for bin/<name>.rb -----
 
 class PagesController < Cybertrain::Controller
   def index
@@ -222,11 +222,12 @@ router.get("/visit", "visit") { |ctx| PagesController.new(ctx).process(:visit) {
 router.post("/notes", "notes") { |ctx| PagesController.new(ctx).process(:create) { |c| c.create } }
 router.delete("/notes/:id", "note") { |ctx| PagesController.new(ctx).process(:destroy) { |c| c.destroy } }
 
-# Exactly the bin/server.rb shape. NOTE(Spinel 2026.09.12): a lambda
-# literal written as a keyword argument is not seen as escaping, so its
-# parameters keep the no-evidence Integer default and read garbage when the
-# template helpers call it (`name` arrives as 0). This resolver ignores its
-# arguments; see the path-helper test below for the working shape.
+# The Application Cybertrain::Main builds for bin/<name>.rb, minus views:
+# and name:. NOTE(Spinel 2026.09.12): a lambda literal written as a keyword
+# argument is not seen as escaping, so its parameters keep the no-evidence
+# Integer default and read garbage when the template helpers call it (`name`
+# arrives as 0). This resolver ignores its arguments; see the path-helper
+# test below for the working shape.
 APP = Cybertrain::Application.new(router: router, url_resolver: ->(n, a) { "/" })
 APP.boot
 CLIENT = Cybertrain::Test::Client.new(APP)

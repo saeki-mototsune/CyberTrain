@@ -1,7 +1,8 @@
 # Cybertrain::Migration -- the migration DSL (Cybertrain::Migration::Base)
 # and the recorded-operation data it produces. This is a pure data model:
-# nothing here talks to a database. The SQLite migrator that walks
-# `Operation#kind` and issues DDL is Wave M2b's `cybertrain/db/migrator.rb`.
+# nothing here talks to a database. The SQLite adapter that turns
+# `Operation#kind` into DDL is `cybertrain/db/sqlite_ddl.rb`; the migrator
+# that issues it is `cybertrain/db/migrator.rb`.
 require "cybertrain/schema"
 
 module Cybertrain
@@ -232,7 +233,8 @@ module Cybertrain
       end
     end
 
-    # The registry gen/migrations.rb (Task 14) fills with one `register`
+    # The registry gen/migrations.rb (written by
+    # cybertrain/generator/migrations_emitter.rb) fills with one `register`
     # call per migration file, in file order; `all` always hands them back
     # sorted by version so the migrator applies them in the right order
     # regardless of registration order. Seeded with its element type per

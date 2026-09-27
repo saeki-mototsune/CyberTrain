@@ -8,8 +8,10 @@ require "cybertrain/router"
 # real production stack order (SessionStore -> CsrfProtection -> Router,
 # per docs/superpowers/plans/2026-09-24-cybertrain-mvp.md line 850) through
 # Cybertrain::Test::Client the way a real form POST arrives, with the token
-# minted through a route handler block (the shape Task 12's form helpers
-# will call it from) rather than a hand-built Context.
+# minted through a route handler block (the shape the form helpers in
+# cybertrain/template/helpers.rb mint it from: Helpers#csrf_token ->
+# Session#csrf_token!, which token_for delegates to) rather than a
+# hand-built Context.
 #
 # This also stands in as the "does the shape the framework actually
 # produces compile" check the review asked for: a conditionally-included

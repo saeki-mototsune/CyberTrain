@@ -7,8 +7,10 @@ require "cybertrain/config"
 
 module Cybertrain
   module DB
-    # Cybertrain::DB::CLI -- the `bin/db.rb` entry point an app's binary
-    # calls: `require "cybertrain"; require_relative "../gen/migrations";
+    # Cybertrain::DB::CLI -- the database commands behind `./<name> migrate`
+    # and `./<name> db ...` (Cybertrain::Main) and, in development,
+    # bin/db.rb: `require "cybertrain"; require_relative "../config/app";
+    # require_relative "../gen/migrations";
     # exit(Cybertrain::DB::CLI.run(ARGV))`.
     #
     # The database is Cybertrain.config.database_path once the app has

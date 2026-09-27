@@ -132,9 +132,10 @@ module Cybertrain
     # be set before the first Thread.new starts the scheduler (NOTES rule 22).
     # A port given as the first argument wins over the config: that is how
     # the development loop hands its port to the binary it execs.
-    # A port that cannot be bound (Server raises PortInUse) is reported on
-    # STDOUT, under the banner, and exits 1: without this the process died
-    # with a misleading "Connection refused".
+    # A port that cannot be bound (Server raises PortInUse, for a busy port or
+    # a privileged one) is reported on STDOUT in place of the boot banner (the
+    # listener is bound before it prints) and exits 1: without this the
+    # process died with a misleading "Connection refused".
     def serve(argv)
       ENV["SPINEL_WORKERS"] = @config.workers.to_s
       port = Application.port_argument(argv)
@@ -169,7 +170,7 @@ module Cybertrain
     # (sp_sig_c_handler), where Thread#join, allocation, IO and execv are
     # not async-signal-safe. A successful rebuild (on the watcher thread)
     # and an external `kill -HUP` both only set a flag; the restart monitor
-    # thread stops the server, and once Server#run returns the main thread
+    # thread stops the server, and once Server#wait returns the main thread
     # execs the new binary.
     #
     # Known limitation: the exec'd process takes a fresh watcher baseline,
@@ -256,8 +257,7 @@ module Cybertrain
     # The only place the development loop stops the server for a restart:
     # turns request_restart (a rebuild or SIGHUP) into Server#stop within
     # 0.2 s, and ends quietly when the server stops for another reason
-    # (SIGTERM). It sleeps before its first check so that Server#run has
-    # started the accept thread by the time it calls Server#stop.
+    # (SIGTERM).
     def monitor_restart(srv)
       while @serving
         sleep 0.2
@@ -267,7 +267,7 @@ module Cybertrain
       nil
     end
 
-    # On the main thread, after Server#run has returned: the listener is
+    # On the main thread, after Server#wait has returned: the listener is
     # closed, so the new process can bind the port again.
     def exec_new_build(srv, rebuilder)
       binary = rebuilder.binary_path

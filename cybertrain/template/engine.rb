@@ -124,8 +124,10 @@ module Cybertrain
       private
 
       # Embedded sources never change while the process runs: parsed once,
-      # whatever `cache` says. The key doubles as source_path so error
-      # messages read "posts/show.html.erb:12: ..." exactly as from disk.
+      # whatever `cache` says. The key is passed as the template name, which
+      # every error message prefixes, so they read "posts/show.html.erb:12: ..."
+      # exactly as from disk; having no file behind it, the key is its
+      # source_path too.
       def embedded_template(key, cached, sources)
         return cached unless cached.nil?
 

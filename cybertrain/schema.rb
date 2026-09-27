@@ -8,7 +8,8 @@
 #   end
 #
 # `define` builds a Definition and remembers it as `Schema.current` for the
-# generator (Task 8's schema_reader) to read back later in the same process.
+# generator (Gen::Runner, cybertrain/generator/runner.rb) to read back later
+# in the same process.
 require "cybertrain/schema/table"
 require "cybertrain/schema/definition"
 
@@ -37,17 +38,16 @@ module Cybertrain
       @current = nil
     end
 
-    # Minimal, private-in-spirit inflector used only by TableDef#references
-    # and Definition#add_foreign_key to guess a table name from a singular
-    # reference name and vice versa. Deliberately not the real Inflector:
-    # Task 8 ships `Cybertrain::Inflector` with the full rule table and
-    # irregulars, and callers should move to that once it exists --
-    # TODO(Task 8): switch TableDef#references, Definition#add_foreign_key
-    # and Migration::Base#add_reference/#add_foreign_key to
-    # Cybertrain::Inflector once it lands, so there are not two diverging
-    # inflectors. Handles only the shapes the blog schema needs: trailing
-    # "s"/"x"/"z"/"ch"/"sh" -> "es", "y"/"ies", and the plain "s" default;
-    # irregulars ("person" -> "people") are out of scope here.
+    # Minimal, private-in-spirit inflector used only by TableDef#references,
+    # Definition#add_foreign_key and Migration::Base#add_reference/
+    # #add_foreign_key to guess a table name from a singular reference name
+    # and vice versa. It predates Cybertrain::Inflector
+    # (cybertrain/generator/inflector.rb, which has the full rule table and
+    # irregulars). TODO: switch those three callers to Cybertrain::Inflector
+    # so there are not two diverging inflectors. Handles only the shapes the
+    # blog schema needs: trailing "s"/"x"/"z"/"ch"/"sh" -> "es", "y"/"ies",
+    # and the plain "s" default; irregulars ("person" -> "people") are out of
+    # scope here.
     def self.pluralize(word)
       w = word.to_s
       last_index = w.length - 1

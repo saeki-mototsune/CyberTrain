@@ -18,8 +18,8 @@ require "cybertrain/router"
 #     run time, so `CsrfProtection.new` is never *executed*, only present
 #     as a reachable call site in the source.
 #   - `CsrfProtection.token_for(ctx.session)` called from inside a Router
-#     block, i.e. from a route handler (the shape Task 12's form helpers
-#     use) -- see test/csrf_chain.rb.
+#     block, i.e. from a route handler (the shape the form helpers in
+#     cybertrain/template/helpers.rb use) -- see test/csrf_chain.rb.
 #   - The real production stack, SessionStore -> CsrfProtection -> Router,
 #     built and called end to end -- see test/csrf_chain.rb.
 #

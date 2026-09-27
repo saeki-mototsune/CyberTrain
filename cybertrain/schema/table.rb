@@ -1,7 +1,7 @@
 # Cybertrain::Schema::{Column,Index,ForeignKey,Table,TableDef} -- the plain
 # data objects a schema is made of, plus the `t` builder that `create_table`
 # yields. Everything here is pure in-memory data: no database, no SQL
-# generation (that belongs to the SQLite adapter, Wave M2b).
+# generation (that belongs to cybertrain/db/sqlite_ddl.rb).
 module Cybertrain
   module Schema
     class Column
@@ -137,8 +137,8 @@ module Cybertrain
 
       # Adds "<name>_id" (Integer), an index on it, and -- unless
       # `foreign_key: false` -- a foreign key to the pluralized table name
-      # ("post" -> "posts"). Task 8's Inflector will replace
-      # Cybertrain::Schema's minimal pluralize once it lands.
+      # ("post" -> "posts"). Uses Cybertrain::Schema.pluralize rather than
+      # Cybertrain::Inflector; see the TODO in cybertrain/schema.rb.
       def references(name, null: false, foreign_key: true)
         column_name = "#{name}_id"
         push_column(column_name, :integer, null, nil, 0)
