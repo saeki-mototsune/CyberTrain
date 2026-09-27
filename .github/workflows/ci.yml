@@ -64,10 +64,11 @@ jobs:
           cybertrain migration
           cybertrain db status
           cybertrain build
+          spin run gen -- --check
           test -x dist/shop
           cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./shop migrate
           CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3999 ./shop > server.log 2>&1 &
-          sleep 2
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3999/products > /dev/null && break; sleep 0.5; done
           curl -fsS http://127.0.0.1:3999/products > /dev/null
           curl -fsS http://127.0.0.1:3999/style.css > /dev/null
           grep -q "production environment" server.log

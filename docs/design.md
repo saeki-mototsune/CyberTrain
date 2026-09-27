@@ -186,8 +186,8 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 
 - 名前は `cybertrain`、ライセンスは MIT。
 - フレームワークは spin のライブラリパッケージ（`spin new cybertrain --lib` の配置）。`spin.toml` の `[package] name = "cybertrain"`、入口 `cybertrain.rb`、機能ごとに `cybertrain/server.rb`、`router.rb`、`template.rb`、`model.rb`、`sqlite.rb`、`generator.rb` などに分割。`native/` を将来の `.c` 用に予約。アプリからは GitHub のタグを `{ git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }` で参照し、`spin.lock` でコミットを固定する（フレームワークのコードはアプリに置かない）。`matz/spin-index` への登録後は `--version` 指定も使える。
-- CLI はフレームワーク側の `bin/cybertrain.rb`（spin でビルド）と、同じソースを CRuby で動かす gem（`gem install cybertrain`、`exe/cybertrain`）の 2 通りで配る。spin には索引からツールを入れるコマンドがまだ無く（`spin install` はローカルのソースのみ）、利用者の Rails 開発者は Ruby を持っているため、配布は gem を主とする。gem には CLI とそれが require するファイルだけを入れ、フレームワーク本体は入れない。役割は `cybertrain new blog` の雛形生成と `cybertrain generate scaffold post title:string body:text` のコード生成のみ。`new` は既定で CLI と同じバージョンのタグを依存に書き、`rails new` の `bundle install` にあたる `spin lock` と `spin run gen` まで実行する（`--skip-spin` で省略）。gem とフレームワークは同じタグからリリースする。
-- アプリの雛形と bin は第 11 章。ビルドは `spin run gen` → `spin build` の 2 段。
+- CLI はフレームワーク側の `bin/cybertrain.rb`（spin でビルド）と、同じソースを CRuby で動かす gem（`gem install cybertrain`、`exe/cybertrain`）の 2 通りで配る。spin には索引からツールを入れるコマンドがまだ無く（`spin install` はローカルのソースのみ）、利用者の Rails 開発者は Ruby を持っているため、配布は gem を主とする。gem には CLI とそれが require するファイルだけを入れ、フレームワーク本体は入れない。役割は `cybertrain new blog` の雛形生成と `cybertrain generate scaffold post title:string body:text` のコード生成のみ。（2026-09-26 改訂: 役割は `new`、`generate scaffold`、`migration`、`db`、`server`、`build`。後の 4 つはアプリのディレクトリで `spin run gen` / `spin run db` / `spin run NAME` / `spin build NAME` を順に呼ぶ薄いラッパ。第 13 章）`new` は既定で CLI と同じバージョンのタグを依存に書き、`rails new` の `bundle install` にあたる `spin lock` と `spin run gen` まで実行する（`--skip-spin` で省略）。gem とフレームワークは同じタグからリリースする。
+- アプリの雛形と bin は第 11 章。ビルドは `spin run gen` → `spin build` の 2 段。（2026-09-26 改訂: 配布用ビルドは `cybertrain build` → `dist/`。`spin run gen -- --embed-views` → `spin build NAME` → `spin run gen` で空の表に戻し、バイナリと `public/` を `dist/` にまとめる。第 13 章）
 
 ### D12. 開発ループ: サーバが自分で再ビルドして自分を置き換える
 

@@ -180,3 +180,23 @@ exit(Cybertrain::Main.run("blog", ARGV,
 - e2e（手動 + CI）: `examples/blog` で `cybertrain build` → `cd dist && ./blog migrate &&
   ./blog` を production で起動し、curl で index と、壊したテンプレートのエラー行が
   ログに出ることを確認する。
+
+## 8. 実装後の差分（as built, 2026-09-26）
+
+- Engine は `sources:` キーワードではなく `Engine.embedded(sources)`、Views は
+  `Views.configure_embedded(sources)` で埋め込み表を受け取る（Spinel で nil を取りうる
+  キーワード引数を避けるため）。
+- 開発時のマイグレーション用に `bin/db.rb` を残した（§3.1）。`cybertrain migration` は
+  `spin run gen; spin run db -- migrate; spin run gen`、`dist/NAME migrate` は本番用。
+- CLI は `exec` ではなく `system` で spin を呼ぶ。Ctrl-C で CRuby が `system` から上げる
+  `Interrupt` は gem の入口 `exe/cybertrain` で受け、バックトレースなしで終了コード 130 に
+  する（`Build.run` の `ensure` による空テーブルへの復元はその前に走る）。
+- `cybertrain server [PORT]` は先に `spin run gen` を実行し、PORT があれば
+  `spin run NAME -- PORT` で渡す（数字以外は `error: PORT must be a number`）。
+- `gen/views.rb` に埋め込むのは `app/views/` 以下の `*.erb` だけ。ドットファイル・
+  ドットディレクトリとシンボリックリンクのディレクトリは辿らず、改行・復帰・タブ以外の
+  制御バイトは `\u00XX` で書く。
+- `gen/views.rb` は開発ループの再ビルドの契機にならない（`Dev::IGNORED`）。
+  以前は `cybertrain build` が書き換えると起動中の `cybertrain server` が再ビルドし、
+  その `spin run gen` が埋め込み中の表を空に戻していた。ただし両者とも
+  `build/bin/NAME` を書くので、配布用ビルドの前にサーバは止める（README に記載）。
