@@ -57,8 +57,10 @@ module Cybertrain
         end
       end
 
-      # Exists while the steps run: the development server (Dev::Rebuilder)
-      # skips its rebuilds meanwhile, since both write build/bin/<name>.
+      # Holds this process's PID while the steps run and dist/ is assembled:
+      # the development server (Dev::Rebuilder) skips its rebuilds
+      # meanwhile, since both write build/bin/<name>, and treats a lock
+      # whose PID is gone (a killed build) as stale.
       def self.lock_path(root)
         "#{root}/tmp/cybertrain-build.lock"
       end
@@ -68,23 +70,29 @@ module Cybertrain
         steps = commands(name)
         ok = false
         restored = false
+        code = 1
         Templates.mkdir_p("#{root}/tmp")
-        File.write(lock_path(root), "")
+        File.write(lock_path(root), Process.pid.to_s)
         begin
-          ok = runner.run_step(root, steps[0]) && runner.run_step(root, steps[1])
-        ensure
-          # Always put gen/views.rb back to the empty table, even after a
-          # failure or Ctrl-C; the lock is released only once that has run.
           begin
+            ok = runner.run_step(root, steps[0]) && runner.run_step(root, steps[1])
+          ensure
+            # Always put gen/views.rb back to the empty table, even after a
+            # failure or Ctrl-C.
             restored = runner.run_step(root, steps[2])
             puts "warning: gen/views.rb still holds the embedded views; run spin run gen" unless restored
-          ensure
-            File.delete(lock_path(root)) if File.exist?(lock_path(root))
           end
+          if ok && restored
+            assemble(root, name)
+            code = 0
+          end
+        ensure
+          # Released only once dist/ holds the new binary: assemble reads
+          # build/bin/<name>, which a dev rebuild would be writing.
+          File.delete(lock_path(root)) if File.exist?(lock_path(root))
         end
-        return 1 unless ok && restored
+        return 1 unless code == 0
 
-        assemble(root, name)
         puts ""
         puts "dist/#{name}       (production by default)"
         puts "dist/public/"
@@ -101,8 +109,10 @@ module Cybertrain
       # created when missing and never emptied (a database and the secret
       # key can live there). Each copy lands in a dist/.*.tmp entry first and
       # is renamed into place: a running dist/<name> keeps its old file
-      # (writing over a running binary fails with ETXTBSY on Linux) and
-      # dist/public/ is never missing in between.
+      # (writing over a running binary fails with ETXTBSY on Linux), and the
+      # old dist/public/ steps aside to dist/.public.old between two renames
+      # (rename cannot replace a non-empty directory), so dist/public/ is
+      # missing only for that instant rather than for the whole copy.
       def self.assemble(root, name)
         binary = "#{root}/build/bin/#{name}"
         raise InvalidArgument, "build/bin/#{name} is missing: `spin build #{name}` did not produce it" unless File.exist?(binary)
@@ -111,9 +121,11 @@ module Cybertrain
         Templates.mkdir_p(dist)
         binary_tmp = "#{dist}/.#{name}.tmp"
         public_tmp = "#{dist}/.public.tmp"
+        public_old = "#{dist}/.public.old"
         # Leftovers of an interrupted earlier run.
         rm_tree(binary_tmp)
         rm_tree(public_tmp)
+        rm_tree(public_old)
 
         copy_command = "cp #{shell_quote(binary)} #{shell_quote(binary_tmp)}"
         raise InvalidArgument, "could not copy #{binary} to dist/" unless system(copy_command)
@@ -126,8 +138,10 @@ module Cybertrain
         else
           Dir.mkdir(public_tmp)
         end
-        rm_tree("#{dist}/public")
-        File.rename(public_tmp, "#{dist}/public")
+        public_dir = "#{dist}/public"
+        File.rename(public_dir, public_old) if File.exist?(public_dir) || File.symlink?(public_dir)
+        File.rename(public_tmp, public_dir)
+        rm_tree(public_old)
 
         Templates.mkdir_p("#{dist}/storage")
         Templates.mkdir_p("#{dist}/tmp")

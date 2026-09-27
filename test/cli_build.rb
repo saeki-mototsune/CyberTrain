@@ -70,7 +70,8 @@ test "server rejects anything after PORT" do
 end
 
 # Stands in for the three spin commands: records each one with whether the
-# build lock was held while it ran, and fails the one named `failing`.
+# build lock (holding this process's PID) was held while it ran, and fails
+# the one named `failing`.
 class FakeRunner < Cybertrain::CLI::Build::Runner
   attr_reader :log
 
@@ -80,7 +81,11 @@ class FakeRunner < Cybertrain::CLI::Build::Runner
   end
 
   def run_step(root, command)
-    lock = File.exist?("#{root}/tmp/cybertrain-build.lock") ? "locked" : "unlocked"
+    path = "#{root}/tmp/cybertrain-build.lock"
+    lock = "unlocked"
+    if File.exist?(path)
+      lock = File.read(path) == Process.pid.to_s ? "locked" : "locked by #{File.read(path).inspect}"
+    end
     @log << "#{command} (#{lock})"
     command != @failing
   end
@@ -122,6 +127,8 @@ test "assemble copies the binary and public/ into dist/ and keeps storage/ and t
   File.write("dist/.blog.tmp", "stale binary")
   Dir.mkdir("dist/.public.tmp")
   File.write("dist/.public.tmp/old.css", "stale")
+  Dir.mkdir("dist/.public.old")
+  File.write("dist/.public.old/older.css", "stale")
   written = Cybertrain::CLI::Build.assemble(".", "blog")
   assert_equal ["dist/blog", "dist/public/", "dist/storage/", "dist/tmp/"], written
   assert_equal "#!/bin/sh\necho built\n", File.read("dist/blog")
@@ -134,6 +141,7 @@ test "assemble copies the binary and public/ into dist/ and keeps storage/ and t
   assert File.directory?("dist/tmp")
   refute File.exist?("dist/.blog.tmp")
   refute File.exist?("dist/.public.tmp")
+  refute File.exist?("dist/.public.old")
   assert_equal "", Dir.children("dist").select { |child| child.start_with?(".") }.join(",")
 end
 
