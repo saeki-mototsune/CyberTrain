@@ -1,6 +1,7 @@
 # Cybertrain::Schema::Definition -- what `Cybertrain::Schema.define do |s|
 # ... end` builds: an ordered set of tables plus any indexes/foreign keys
 # declared outside a `create_table` block.
+require "cybertrain/generator/inflector"
 require "cybertrain/schema/table"
 
 module Cybertrain
@@ -46,7 +47,7 @@ module Cybertrain
       # the table is unknown, for the same reason as `add_index` above.
       def add_foreign_key(from_table, to_table, column: "")
         col = column
-        col = "#{Cybertrain::Schema.singularize(to_table.to_s)}_id" if col == ""
+        col = "#{Cybertrain::Inflector.singularize(to_table.to_s)}_id" if col == ""
         target = table(from_table)
         raise ArgumentError, "unknown table #{from_table.to_s}" if target.nil?
         foreign_key = ForeignKey.new(from_table, col, to_table)

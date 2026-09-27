@@ -86,6 +86,24 @@ test "add_foreign_key defaults its column to singularize(to_table) + _id" do
   assert_equal "post_id", op.name
 end
 
+test "add_reference and add_foreign_key inflect irregular and compound names through Cybertrain::Inflector" do
+  migration = AddCommentsTable.new
+  migration.add_reference("comments", "person")
+  migration.add_reference("comments", "blog_post")
+  migration.add_foreign_key("comments", "people")
+  migration.add_foreign_key("comments", "blog_posts")
+  ops = migration.operations
+  assert_equal 6, ops.size
+  assert_equal "people", ops[1].to_table
+  assert_equal "person_id", ops[1].name
+  assert_equal "blog_posts", ops[3].to_table
+  assert_equal "blog_post_id", ops[3].name
+  assert_equal "people", ops[4].to_table
+  assert_equal "person_id", ops[4].name
+  assert_equal "blog_posts", ops[5].to_table
+  assert_equal "blog_post_id", ops[5].name
+end
+
 test "inverse of create_table is drop_table" do
   migration = CreatePosts.new
   migration.up

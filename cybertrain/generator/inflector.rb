@@ -1,7 +1,9 @@
 module Cybertrain
-  # The handful of Rails inflections the generators need. Singular/plural
-  # forms come from a small irregulars table plus English suffix rules;
-  # a word that is in neither simply gets the rules ("octopus" -> "octopuses").
+  # The handful of Rails inflections the generators, Schema and Migration
+  # need. Singular/plural forms come from a small irregulars table plus
+  # English suffix rules; a word in neither gets the rules ("box" -> "boxes",
+  # and a singular already ending in "s" is left alone unless it is in
+  # ES_WORDS).
   module Inflector
     IRREGULARS = {
       "person" => "people", "man" => "men", "woman" => "women",

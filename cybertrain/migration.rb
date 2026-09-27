@@ -179,7 +179,7 @@ module Cybertrain
         column_name = "#{name}_id"
         @operations << Operation.for_add_reference(table.to_s, column_name, null)
         if foreign_key
-          to_table = Cybertrain::Schema.pluralize(name.to_s)
+          to_table = Cybertrain::Inflector.pluralize(name.to_s)
           @operations << Operation.for_add_foreign_key(table, to_table, column_name)
         end
         nil
@@ -187,7 +187,7 @@ module Cybertrain
 
       def add_foreign_key(from_table, to_table, column: "")
         col = column
-        col = "#{Cybertrain::Schema.singularize(to_table.to_s)}_id" if col == ""
+        col = "#{Cybertrain::Inflector.singularize(to_table.to_s)}_id" if col == ""
         @operations << Operation.for_add_foreign_key(from_table.to_s, to_table.to_s, col.to_s)
         nil
       end
