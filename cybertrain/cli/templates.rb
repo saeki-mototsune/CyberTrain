@@ -93,7 +93,7 @@ module Cybertrain
           ```sh
           cybertrain generate scaffold post title:string body:text
           cybertrain migration   # gen, apply db/migrate, gen again
-          cybertrain server      # http://127.0.0.1:3000
+          cybertrain server      # http://127.0.0.1:3000 (`cybertrain server 4000` for another port)
           cybertrain build       # dist/: the binary (views embedded) + public/
           ```
 

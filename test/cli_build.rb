@@ -47,6 +47,22 @@ test "build embeds the views, builds, then restores the empty table" do
   assert_equal "'a'\\''b'", Cybertrain::CLI::Build.shell_quote("a'b")
 end
 
+test "server generates first and passes an optional port" do
+  assert_equal ["spin run gen", "spin run blog"], Cybertrain::CLI::Build.server_commands("blog", "")
+  assert_equal ["spin run gen", "spin run blog -- 4000"], Cybertrain::CLI::Build.server_commands("blog", "4000")
+  assert Cybertrain::CLI::Build.port?("4000")
+  assert Cybertrain::CLI::Build.port?("65535")
+  refute Cybertrain::CLI::Build.port?("65536")
+  refute Cybertrain::CLI::Build.port?("")
+  refute Cybertrain::CLI::Build.port?("80a")
+  refute Cybertrain::CLI::Build.port?("-1")
+  refute Cybertrain::CLI::Build.port?("000080000")
+end
+
+test "server rejects a PORT that is not a number" do
+  assert_equal 1, Cybertrain::CLI.run(["server", "abc"])
+end
+
 test "assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/" do
   Dir.mkdir("dist")
   Dir.mkdir("dist/storage")

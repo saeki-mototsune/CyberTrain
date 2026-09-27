@@ -141,8 +141,9 @@ Usage:
       (spin run gen; spin run db -- migrate; spin run gen).
   cybertrain db COMMAND...
       Any database command: status, rollback [N], schema:dump, create.
-  cybertrain server
-      Start the development server (spin run NAME).
+  cybertrain server [PORT]
+      Generate, then start the development server
+      (spin run gen; spin run NAME [-- PORT]; default port 3000).
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
@@ -166,8 +167,9 @@ Usage:
       (spin run gen; spin run db -- migrate; spin run gen).
   cybertrain db COMMAND...
       Any database command: status, rollback [N], schema:dump, create.
-  cybertrain server
-      Start the development server (spin run NAME).
+  cybertrain server [PORT]
+      Generate, then start the development server
+      (spin run gen; spin run NAME [-- PORT]; default port 3000).
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
@@ -190,8 +192,9 @@ Usage:
       (spin run gen; spin run db -- migrate; spin run gen).
   cybertrain db COMMAND...
       Any database command: status, rollback [N], schema:dump, create.
-  cybertrain server
-      Start the development server (spin run NAME).
+  cybertrain server [PORT]
+      Generate, then start the development server
+      (spin run gen; spin run NAME [-- PORT]; default port 3000).
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).

@@ -1,5 +1,8 @@
 ok   app_name reads [package] name from spin.toml
 ok   build embeds the views, builds, then restores the empty table
+ok   server generates first and passes an optional port
+error: PORT must be a number
+ok   server rejects a PORT that is not a number
 ok   assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/
 ok   assemble removes a symlink in dist/public without following it
 ok   assemble fails clearly when the binary is missing
@@ -8,4 +11,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-6 tests, 21 assertions, 0 failures
+8 tests, 31 assertions, 0 failures

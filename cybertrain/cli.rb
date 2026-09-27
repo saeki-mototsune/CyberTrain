@@ -3,7 +3,7 @@
 #
 #   cybertrain new NAME [--path DIR | --version V] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references]
-#   cybertrain migration | db COMMAND... | server | build
+#   cybertrain migration | db COMMAND... | server [PORT] | build
 #   cybertrain version | help
 require "cybertrain/version"
 require "cybertrain/cli/templates"
@@ -31,8 +31,9 @@ module Cybertrain
             (spin run gen; spin run db -- migrate; spin run gen).
         cybertrain db COMMAND...
             Any database command: status, rollback [N], schema:dump, create.
-        cybertrain server
-            Start the development server (spin run NAME).
+        cybertrain server [PORT]
+            Generate, then start the development server
+            (spin run gen; spin run NAME [-- PORT]; default port 3000).
         cybertrain build
             Build NAME with app/views embedded and assemble dist/
             (the binary, public/, storage/, tmp/).
@@ -48,7 +49,7 @@ module Cybertrain
       when "generate", "g" then run_generate(argv)
       when "migration" then run_in_app { |_name| run_all(Build.migration_commands) }
       when "db" then run_in_app { |_name| run_all(["spin run db -- #{db_args(argv)}"]) }
-      when "server" then run_in_app { |name| run_all(["spin run #{name}"]) }
+      when "server" then run_in_app { |name| run_server(name, argv) }
       when "build" then run_in_app { |name| Build.run(".", name) }
       when "version", "--version", "-v"
         puts "cybertrain #{Cybertrain::VERSION}"
@@ -125,6 +126,16 @@ module Cybertrain
         end
       end
       status
+    end
+
+    # `cybertrain server [PORT]`.
+    def self.run_server(name, argv)
+      port = argv.size > 1 ? argv[1] : ""
+      unless port == "" || Build.port?(port)
+        puts "error: PORT must be a number"
+        return 1
+      end
+      run_all(Build.server_commands(name, port))
     end
 
     # The words after `db`, each shell-quoted.

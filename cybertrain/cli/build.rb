@@ -1,5 +1,5 @@
 # `cybertrain build`: dist/ = the app binary with app/views embedded, plus
-# public/. Also the command list `cybertrain migration` runs. Plain Ruby:
+# public/. Also the command lists `cybertrain migration` and `server` run. Plain Ruby:
 # runs under CRuby (the gem) and compiles under Spinel (spin install).
 module Cybertrain
   module CLI
@@ -33,6 +33,20 @@ module Cybertrain
       # migration has produced gen/models.
       def self.migration_commands
         ["spin run gen", "spin run db -- migrate", "spin run gen"]
+      end
+
+      # port is "" (the app's default, 3000) or a port? string.
+      def self.server_commands(name, port)
+        run = port == "" ? "spin run #{name}" : "spin run #{name} -- #{port}"
+        ["spin run gen", run]
+      end
+
+      # All digits and at most 65535.
+      def self.port?(text)
+        return false if text.empty? || text.size > 5
+        return false unless text.bytes.all? { |b| b >= 48 && b <= 57 }
+
+        text.to_i <= 65535
       end
 
       # Runs the build in root and assembles dist/. Returns the exit code.

@@ -68,7 +68,9 @@ The `cybertrain` command is plain Ruby and the gem runs it under CRuby
   generates again (`spin run gen; spin run db -- migrate; spin run gen`).
 - `cybertrain db COMMAND...` runs any database command: `status`,
   `rollback [N]`, `schema:dump`, `create`.
-- `cybertrain server` starts the development server (`spin run NAME`).
+- `cybertrain server [PORT]` generates, then starts the development server
+  (`spin run gen; spin run NAME`, or `spin run NAME -- PORT`; default port
+  3000).
 - `cybertrain build` builds NAME with `app/views/` embedded and assembles
   `dist/` (the binary, `public/`, `storage/`, `tmp/`).
 
@@ -321,6 +323,10 @@ is production by default (`CYBERTRAIN_ENV` overrides). Set
 `CYBERTRAIN_SECRET_KEY_BASE`. Static files can also be served by the reverse
 proxy from `dist/public/` — see [docs/deploy.md](docs/deploy.md).
 
+A running `cybertrain server` does not rebuild when `cybertrain build`
+rewrites `gen/views.rb`, but both write `build/bin/blog`: stop the server
+before building for deployment.
+
 ## How it works
 
 **Build-time code generation.** `spin run gen` (`bin/gen.rb`) executes
@@ -367,11 +373,11 @@ faster and stall-free for this I/O-bound shape at 100 concurrent connections.
 and foreign keys on; every query is bound, never interpolated. It's the only
 adapter today (PostgreSQL via `libpq` FFI is noted as possible future work).
 
-**The development loop.** `cybertrain server` (`spin run NAME`) in
+**The development loop.** `cybertrain server` (`spin run gen`, then `spin run NAME`) in
 `development` (the default `CYBERTRAIN_ENV`, except in a binary from
 `cybertrain build`) also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`
 and `gen/**/*.rb` every half second (views are excluded — the engine reloads
-those itself). A change runs `spin run gen && spin build NAME` in the
+those itself — and so is `gen/views.rb`, empty in development). A change runs `spin run gen && spin build NAME` in the
 background; success sends the server `SIGHUP`, whose handler stops listening
 and `execv`s the new binary on the same port and PID, invisible to a client
 mid-session. A failed build keeps serving the old binary and banners the
