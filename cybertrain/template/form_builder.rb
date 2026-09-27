@@ -66,9 +66,8 @@ module Cybertrain
 
     # model: a Cybertrain::Model, or nil for `form_with url: ...` (fields are
     # then named after the attribute alone).
-    def initialize(model, helpers)
+    def initialize(model)
       @model = model
-      @helpers = helpers
       @scope = model.nil? ? "" : Inflector.underscore(model.model_name)
     end
 

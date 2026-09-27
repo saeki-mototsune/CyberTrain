@@ -1,12 +1,11 @@
 # `cybertrain new blog`: writes the skeleton of an application package.
 require "cybertrain/generator/inflector"
 require "cybertrain/cli/templates"
+require "cybertrain/cli/build"
 
 module Cybertrain
   module CLI
     module NewApp
-      KEEP_DIRS = ["db/migrate", "app/models", "app/helpers", "gen", "storage", "tmp", "test"]
-
       # dir is the directory to create ("blog" or "path/to/blog"; its last
       # component names the package). framework_dep is the TOML value that
       # spin.toml's `cybertrain =` line gets: `{ path = "/abs/cybertrain" }` or
@@ -64,11 +63,7 @@ module Cybertrain
       end
 
       def self.bootstrap_command(dir)
-        "cd #{shell_quote(dir)} && spin lock && spin run gen"
-      end
-
-      def self.shell_quote(text)
-        "'#{text.gsub("'", "'\\\\''")}'"
+        "cd #{Build.shell_quote(dir)} && spin lock && spin run gen"
       end
     end
   end

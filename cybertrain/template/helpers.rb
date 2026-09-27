@@ -195,7 +195,7 @@ module Cybertrain
         buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
         buf << ">"
         buf << hidden_fields(verb)
-        buf << interp.capture(block, env, FormBuilder.new(record, self))
+        buf << interp.capture(block, env, FormBuilder.new(record))
         buf << "</form>"
         SafeString.new(buf)
       end

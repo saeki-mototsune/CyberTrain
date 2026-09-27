@@ -8,7 +8,7 @@ module Cybertrain
   # method that returned self would be typed as the base (spikes/NOTES.md
   # rule 5), which is why these setters return nil.
   class Relation
-    attr_reader :table, :binds
+    attr_reader :binds
 
     # NOTE: blocks passed to Cybertrain::DB.with below read locals, never
     # ivars: an ivar inside such a block compiles to C with no receiver.

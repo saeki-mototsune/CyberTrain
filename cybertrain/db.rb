@@ -21,10 +21,6 @@ module Cybertrain
       @pool
     end
 
-    def self.pool=(pool)
-      @pool = pool
-    end
-
     def self.connected?
       !@pool.nil?
     end

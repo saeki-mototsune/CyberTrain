@@ -45,7 +45,6 @@ module Cybertrain
       ffi_func :sqlite3_bind_text, [:ptr, :int, :str, :int, :ptr], :int
       ffi_func :sqlite3_bind_null, [:ptr, :int], :int
       ffi_func :sqlite3_step, [:ptr], :int, blocking: true
-      ffi_func :sqlite3_reset, [:ptr], :int
       ffi_func :sqlite3_finalize, [:ptr], :int
 
       ffi_func :sqlite3_column_count, [:ptr], :int

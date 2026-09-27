@@ -1,5 +1,4 @@
 require "cybertrain/test"
-require "cybertrain/middleware"
 require "cybertrain/context"
 require "cybertrain/http/request"
 require "cybertrain/http/response"

@@ -25,10 +25,6 @@ module Cybertrain
       @engine
     end
 
-    def self.engine=(engine)
-      @engine = engine
-    end
-
     def self.configure(root, cache: true)
       @engine = Template::Engine.new(root, cache: cache)
       nil

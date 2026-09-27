@@ -9,7 +9,7 @@ module Cybertrain
     # runs nothing: it fails with last_skipped set and last_output saying so
     # (and, once the lock is gone, that the build has finished).
     class Rebuilder
-      attr_reader :root, :target, :log_path, :last_failed, :last_skipped
+      attr_reader :log_path, :last_failed, :last_skipped
 
       SKIPPED_MESSAGE = "cybertrain build in progress (tmp/cybertrain-build.lock); " \
                         "rebuild skipped — save the file again once it finishes"

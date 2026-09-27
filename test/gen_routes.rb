@@ -1,5 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/generator"
+require "cybertrain/generator/url_support"
 
 # The blog routes from the Rails Getting Started guide, in the form
 # config/routes.rb uses: receiverless calls at the top of the draw block,
