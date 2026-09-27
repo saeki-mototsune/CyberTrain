@@ -92,6 +92,19 @@ test "files outside the patterns are ignored" do
   refute w.changed?
 end
 
+test "ignored paths never count as a change" do
+  reset_root
+  Dir.mkdir("#{ROOT}/gen")
+  File.write("#{ROOT}/gen/views.rb", "# empty\n")
+  w = Cybertrain::Dev::Watcher.new(["#{ROOT}/gen/**/*.rb"], 0.05, ["#{ROOT}/gen/"], ["#{ROOT}/gen/views.rb"])
+  assert_equal [], w.snapshot.keys
+  pause
+  File.write("#{ROOT}/gen/views.rb", "# embedded\n")
+  refute w.changed?
+  File.write("#{ROOT}/gen/routes.rb", "# routes\n")
+  assert_equal ["#{ROOT}/gen/routes.rb"], w.changed_paths
+end
+
 test "changed_paths lists what was added, modified and removed" do
   reset_root
   w = watcher

@@ -8,14 +8,17 @@ module Cybertrain
     #   watcher.start { |paths| rebuild(paths) }
     #
     # generated lists path prefixes ("gen/") of files the start block itself
-    # rewrites: see #start.
+    # rewrites: see #start. ignored lists exact paths the patterns match but
+    # that never count as a change (gen/views.rb, which `cybertrain build`
+    # rewrites and the development binary does not use).
     class Watcher
-      attr_reader :globs, :interval, :generated
+      attr_reader :globs, :interval, :generated, :ignored
 
-      def initialize(globs, interval = 0.5, generated = [])
+      def initialize(globs, interval = 0.5, generated = [], ignored = [])
         @globs = globs
         @interval = interval
         @generated = generated
+        @ignored = ignored
         @previous = snapshot
         @running = false
         @thread = nil
@@ -29,6 +32,8 @@ module Cybertrain
         stamps.delete("") # a typed empty Hash (spikes/NOTES.md rule 9)
         @globs.each do |pattern|
           Dir.glob(pattern).each do |path|
+            next if @ignored.include?(path)
+
             stamp = Watcher.mtime_stamp(path)
             stamps[path] = stamp if stamp >= 0
           end

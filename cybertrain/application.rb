@@ -17,7 +17,7 @@ require "cybertrain/dev"
 module Cybertrain
   # The booted application: config, database, views and the middleware
   # stack in front of the generated router. bin/<name>.rb builds one and
-  # hands it Cybertrain::Main's argv (Task 4):
+  # hands it Cybertrain::Main's argv:
   #
   #   module Gen::Routes
   #     def self.url_resolver = ->(name, args) { path_for(name, args) }
@@ -169,7 +169,7 @@ module Cybertrain
       srv = server
       trap("TERM") { srv.request_stop }
       trap("HUP") { request_restart }
-      watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"])
+      watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"], Dev::IGNORED)
       watcher.start { |paths| rebuild_after_change(rebuilder, paths) }
       @serving = true
       spawn_restart_monitor(srv)

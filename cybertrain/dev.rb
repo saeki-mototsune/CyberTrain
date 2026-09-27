@@ -13,5 +13,10 @@ module Cybertrain
     # The files whose changes trigger a rebuild. Views are not among them:
     # the template engine rereads those by itself in development.
     WATCHED = ["app/**/*.rb", "config/**/*.rb", "db/schema.rb", "gen/**/*.rb"]
+
+    # Matched by WATCHED but never a reason to rebuild: gen/views.rb is the
+    # empty table in development, and `cybertrain build` fills and restores
+    # it while a development server may be running.
+    IGNORED = ["gen/views.rb"]
   end
 end
