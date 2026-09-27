@@ -1,0 +1,32 @@
+#!/bin/sh
+# Regenerate the .expected snapshot of test programs that link SQLite/FFI and
+# therefore cannot run under CRuby (so "spin test --regen" is not an option).
+# For each file it runs "spin test <file>" to build ./build/test/<name> (the
+# exit status is ignored: the current snapshot may well be stale), captures the
+# binary's stdout into test/<name>.rb.expected and prints the git diff --stat
+# of that snapshot so you can review what changed.
+#
+# usage: script/regen-snapshot test/<name>.rb [...]
+set -u
+
+if [ "$#" -eq 0 ]; then
+  echo "usage: script/regen-snapshot test/<name>.rb [...]" >&2
+  exit 2
+fi
+
+cd "$(dirname "$0")/.." || exit 1
+
+status=0
+for file in "$@"; do
+  name=$(basename "$file" .rb)
+  spin test "$file" || true
+  bin="./build/test/$name"
+  if [ ! -x "$bin" ]; then
+    echo "regen-snapshot: $bin was not built" >&2
+    status=1
+    continue
+  fi
+  "$bin" > "test/$name.rb.expected"
+  git diff --stat -- "test/$name.rb.expected"
+done
+exit "$status"

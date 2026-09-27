@@ -165,15 +165,17 @@ Cybertrain.url_root = "https://notes.example.com" if Cybertrain.config.productio
 ```sh
 cybertrain build
 export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"
-export CYBERTRAIN_DATABASE="$PWD/storage/rehearsal.sqlite3"
-dist/notes migrate
-dist/notes
+export CYBERTRAIN_DATABASE="$PWD/dist/storage/rehearsal.sqlite3"
+cd dist && ./notes migrate && ./notes
 ```
 
 `cybertrain build` はビューを埋め込んだバイナリ `dist/notes` と `dist/public/` を作ります。
+本番では systemd が `dist/` を作業ディレクトリにしてバイナリを起動する（3-6）ので、リハーサルも
+`dist/` に入ってから `./notes` を実行します。このとき `storage/` と `public/` はアプリ直下ではなく
+`dist/` にあるコピーが使われます。
 ビルドしたバイナリは既定で本番モードなので、`CYBERTRAIN_ENV` を設定する必要はありません
 （開発モードで動かしたいときだけ `CYBERTRAIN_ENV=development` を付けます）。
-`dist/notes migrate` はバイナリに組み込まれたマイグレーションを `CYBERTRAIN_DATABASE` に流します。
+`./notes migrate` はバイナリに組み込まれたマイグレーションを `CYBERTRAIN_DATABASE` に流します。
 
 起動時の表示が次のようになっていれば OK です。
 
@@ -276,10 +278,13 @@ spinel --version
 `cybertrain build` を使います）。
 
 ```sh
-gem install --user-install cybertrain
+gem install --user-install cybertrain -v 0.1.0
 ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
 cybertrain version
 ```
+
+`-v` はアプリの `spin.toml` の `ref`（タグ `v0.1.0`）と同じバージョンにそろえてください。古い CLI の
+`spin run gen` は `--embed-views` を知らないため、できあがったバイナリは本番モードで起動を拒否します。
 
 ### 3-5. デプロイキー
 
@@ -623,7 +628,9 @@ sudo systemctl start notes
 
 `spin.toml` の `ref` を新しいタグ（例: `"v0.2.0"`）に書き換え、`gem install cybertrain` で
 CLI も同じバージョンにそろえてから（サーバーの `notes` ユーザーでも
-`gem install --user-install cybertrain` で CLI を更新します）:
+`gem install --user-install cybertrain -v 0.2.0` のように、`spin.toml` のタグと同じバージョンを
+指定して CLI を更新します。バージョンがずれると `spin run gen` が `--embed-views` を知らず、
+ビルドしたバイナリが本番モードで起動を拒否します）:
 
 ```sh
 spin lock          # 新しいタグのコミットを spin.lock に固定する
@@ -658,7 +665,7 @@ git push
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
 | デプロイが `stale: gen/...` で止まる | 手元で `spin run gen` して `gen/` をコミットし忘れている |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーの `~/.local/bin` に Spinel が入っていない（3-4） |
-| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain`） |
+| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.1.0`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |
 | ブラウザで 500.html が出続ける | アプリが落ちている。`journalctl -u notes -n 50` を見る |
 | 証明書が取れない | DNS がサーバーを向いているか、80/443 が開いているか。`journalctl -u caddy` を見る |
