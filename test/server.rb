@@ -460,4 +460,31 @@ test "PortInUse names the reason the port could not be bound" do
   assert_equal "port 3000 on 127.0.0.1 is already in use (stop the other server or set PORT)", busy.message
 end
 
+# Exercises the real, compiled bind path (not a hand-built PortInUse): under
+# Spinel, TCPServer.new on port 80 without root raises Errno::ECONNREFUSED,
+# the same exception a busy port raises, so this is the only way to catch a
+# regression where bind_listener's privileged_denied? stops reclassifying it
+# and the operator sees "already in use" for a port that was never in use.
+test "starting a server on port 80 as non-root reports permission denied" do
+  if Process.uid == 0
+    puts "skip: port 80 permission test needs a non-root user (running as root)"
+  else
+    listening = true
+    begin
+      probe = TCPSocket.new("127.0.0.1", 80)
+      probe.close
+    rescue StandardError
+      listening = false
+    end
+    if listening
+      puts "skip: port 80 permission test needs the port free (something is already listening on 80)"
+    else
+      priv_server = Cybertrain::Server.new(ServerTestApp.new, host: "127.0.0.1", port: 80,
+                                                               logger: Cybertrain::Logger.new($log, :info))
+      message = assert_raises("Cybertrain::PortInUse") { priv_server.start }
+      assert_equal "port 80 on 127.0.0.1 cannot be bound: permission denied (ports below 1024 need root or a capability)", message
+    end
+  end
+end
+
 Cybertrain::Test.run!

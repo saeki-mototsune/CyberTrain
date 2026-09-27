@@ -8,10 +8,13 @@ require "cybertrain/logger"
 
 module Cybertrain
   # Raised by Server#start when the listener cannot bind: another process
-  # holds the port (EADDRINUSE; Spinel's TCPServer.new reports it as
-  # ECONNREFUSED) or the port is privileged (EACCES, its own reason so the
-  # operator does not hunt for a process that is not there). The message is
-  # what Application#serve prints before exiting.
+  # holds the port (EADDRINUSE, or under Spinel a busy privileged port's
+  # ECONNREFUSED) or the port is privileged and out of reach (CRuby's EACCES,
+  # or under Spinel the same ECONNREFUSED reclassified by bind_listener's
+  # privileged_denied? since the exception class alone cannot tell the two
+  # apart there) -- its own reason so the operator does not hunt for a
+  # process that is not there. The message is what Application#serve prints
+  # before exiting.
   class PortInUse < StandardError
     attr_reader :port
 
@@ -133,12 +136,26 @@ module Cybertrain
 
     # The bind failures a busy or privileged port produces, turned into one
     # PortInUse whose message names the host, the port and the reason.
+    #
+    # CRuby raises Errno::EACCES for a privileged port bound without root, so
+    # that rescue is kept. Spinel's TCPServer.new instead raises the same
+    # Errno::ECONNREFUSED a busy port would (a compiled binary really run on
+    # PORT=80 as a non-root user printed the "already in use" message), so the
+    # exception class cannot tell the two apart there. privileged_denied?
+    # decides from context instead: a port below 1024 refused to a non-root
+    # process is a permission problem, not a competing listener, because the
+    # kernel checks the capability before it checks whether the port is free.
     def bind_listener
       TCPServer.new(@host, @port)
     rescue Errno::EACCES
       raise PortInUse.new(@host, @port, PortInUse::PERMISSION_DENIED)
     rescue Errno::EADDRINUSE, Errno::ECONNREFUSED
-      raise PortInUse.new(@host, @port)
+      reason = privileged_denied? ? PortInUse::PERMISSION_DENIED : PortInUse::IN_USE
+      raise PortInUse.new(@host, @port, reason)
+    end
+
+    def privileged_denied?
+      @port < 1024 && Process.uid != 0
     end
 
     # Waits, in ordinary thread context, until every connection has closed

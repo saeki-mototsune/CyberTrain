@@ -25,4 +25,5 @@ ok   an idle keep-alive connection does not hold up shutdown
 ok   drain_timeout bounds the wait for a request that takes too long
 ok   start raises Cybertrain::PortInUse when the port is already bound
 ok   PortInUse names the reason the port could not be bound
-27 tests, 82 assertions, 0 failures
+ok   starting a server on port 80 as non-root reports permission denied
+28 tests, 84 assertions, 0 failures
