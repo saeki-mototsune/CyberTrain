@@ -81,7 +81,8 @@ finds the commit that removed them).
     binary (`ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]`) before
     the first `Thread.new`, and re-measure once templates and SQLite add CPU work.
 23. `spin test --regen` writes `.expected` from CRuby's output; `spin test` diffs
-    the Spinel binary against it. Tests must therefore be CRuby/Spinel-portable;
+    the Spinel binary's output (stdout and stderr merged) against it. Tests must
+    therefore be CRuby/Spinel-portable;
     FFI tests get their snapshot from the compiled binary
     (`./build/test/<name> > test/<name>.rb.expected`). CRuby is only needed for
     `--regen`, never for `spin test` with committed snapshots.
