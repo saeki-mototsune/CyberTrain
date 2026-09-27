@@ -324,9 +324,10 @@ is production by default (`CYBERTRAIN_ENV` overrides). Set
 `CYBERTRAIN_SECRET_KEY_BASE`. Static files can also be served by the reverse
 proxy from `dist/public/` — see [docs/deploy.md](docs/deploy.md).
 
-A running `cybertrain server` does not rebuild when `cybertrain build`
-rewrites `gen/views.rb`, but both write `build/bin/blog`: stop the server
-before building for deployment.
+A running `cybertrain server` skips its rebuilds while `cybertrain build` is
+in progress (the build holds `tmp/cybertrain-build.lock`, since both write
+`build/bin/blog`), logs the skip, and rebuilds as usual on the next save
+once the build has finished.
 
 ## How it works
 

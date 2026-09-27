@@ -16,5 +16,6 @@ ok   the error page carries the banner too
 ok   no banner once a later build succeeds
 ok   the rebuild command runs gen then build in the app root, logging to tmp/rebuild.log
 ok   a failing rebuild keeps the command output
+ok   no rebuild while cybertrain build holds tmp/cybertrain-build.lock
 ok   shell_quote escapes single quotes
-19 tests, 59 assertions, 0 failures
+20 tests, 65 assertions, 0 failures

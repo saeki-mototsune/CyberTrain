@@ -238,6 +238,8 @@ module Cybertrain
       if rebuilder.rebuild
         logger.info("Build succeeded; restarting")
         request_restart
+      elsif rebuilder.last_skipped
+        logger.info(rebuilder.last_output)
       else
         logger.error("Build failed; still serving the previous build (see #{rebuilder.log_path})")
       end

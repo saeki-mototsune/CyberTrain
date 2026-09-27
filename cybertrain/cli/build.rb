@@ -41,25 +41,46 @@ module Cybertrain
         ["spin run gen", run]
       end
 
-      # All digits and at most 65535.
+      # All digits, 1 to 65535 (the app reads 0 as "no port").
       def self.port?(text)
         return false if text.empty? || text.size > 5
         return false unless text.bytes.all? { |b| b >= 48 && b <= 57 }
 
-        text.to_i <= 65535
+        text.to_i >= 1 && text.to_i <= 65535
+      end
+
+      # Runs one build step (a spin command) in root; true when it succeeds.
+      # Build.run takes a Runner so tests can stand in for spin.
+      class Runner
+        def run_step(root, command)
+          Build.run_in(root, command)
+        end
+      end
+
+      # Exists while the steps run: the development server (Dev::Rebuilder)
+      # skips its rebuilds meanwhile, since both write build/bin/<name>.
+      def self.lock_path(root)
+        "#{root}/tmp/cybertrain-build.lock"
       end
 
       # Runs the build in root and assembles dist/. Returns the exit code.
-      def self.run(root, name)
+      def self.run(root, name, runner = Runner.new)
         steps = commands(name)
         ok = false
         restored = false
+        Templates.mkdir_p("#{root}/tmp")
+        File.write(lock_path(root), "")
         begin
-          ok = run_in(root, steps[0]) && run_in(root, steps[1])
+          ok = runner.run_step(root, steps[0]) && runner.run_step(root, steps[1])
         ensure
           # Always put gen/views.rb back to the empty table, even after a
-          # failure or Ctrl-C.
-          restored = run_in(root, steps[2])
+          # failure or Ctrl-C; the lock is released only once that has run.
+          begin
+            restored = runner.run_step(root, steps[2])
+            puts "warning: gen/views.rb still holds the embedded views; run spin run gen" unless restored
+          ensure
+            File.delete(lock_path(root)) if File.exist?(lock_path(root))
+          end
         end
         return 1 unless ok && restored
 
@@ -78,24 +99,38 @@ module Cybertrain
 
       # Copies build/bin/<name> and public/ into dist/; storage/ and tmp/ are
       # created when missing and never emptied (a database and the secret
-      # key can live there).
+      # key can live there). Each copy lands in a dist/.*.tmp entry first and
+      # is renamed into place: a running dist/<name> keeps its old file
+      # (writing over a running binary fails with ETXTBSY on Linux) and
+      # dist/public/ is never missing in between.
       def self.assemble(root, name)
         binary = "#{root}/build/bin/#{name}"
         raise InvalidArgument, "build/bin/#{name} is missing: `spin build #{name}` did not produce it" unless File.exist?(binary)
 
-        Templates.mkdir_p("#{root}/dist")
-        copy_command = "cp #{shell_quote(binary)} #{shell_quote("#{root}/dist/#{name}")}"
+        dist = "#{root}/dist"
+        Templates.mkdir_p(dist)
+        binary_tmp = "#{dist}/.#{name}.tmp"
+        public_tmp = "#{dist}/.public.tmp"
+        # Leftovers of an interrupted earlier run.
+        rm_tree(binary_tmp)
+        rm_tree(public_tmp)
+
+        copy_command = "cp #{shell_quote(binary)} #{shell_quote(binary_tmp)}"
         raise InvalidArgument, "could not copy #{binary} to dist/" unless system(copy_command)
 
-        rm_tree("#{root}/dist/public")
+        File.rename(binary_tmp, "#{dist}/#{name}")
+
         if File.directory?("#{root}/public")
-          public_command = "cp -R #{shell_quote("#{root}/public")} #{shell_quote("#{root}/dist/public")}"
+          public_command = "cp -R #{shell_quote("#{root}/public")} #{shell_quote(public_tmp)}"
           raise InvalidArgument, "could not copy public/ to dist/" unless system(public_command)
         else
-          Dir.mkdir("#{root}/dist/public")
+          Dir.mkdir(public_tmp)
         end
-        Templates.mkdir_p("#{root}/dist/storage")
-        Templates.mkdir_p("#{root}/dist/tmp")
+        rm_tree("#{dist}/public")
+        File.rename(public_tmp, "#{dist}/public")
+
+        Templates.mkdir_p("#{dist}/storage")
+        Templates.mkdir_p("#{dist}/tmp")
         ["dist/#{name}", "dist/public/", "dist/storage/", "dist/tmp/"]
       end
 

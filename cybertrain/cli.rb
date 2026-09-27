@@ -135,6 +135,10 @@ module Cybertrain
         puts "error: PORT must be a number"
         return 1
       end
+      if argv.size > 2
+        puts "error: unexpected argument '#{argv[2]}'"
+        return 1
+      end
       run_all(Build.server_commands(name, port))
     end
 
