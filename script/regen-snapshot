@@ -4,7 +4,9 @@
 # For each file it runs "spin test <file>" to build ./build/test/<name> (the
 # exit status is ignored: the current snapshot may well be stale), captures the
 # binary's stdout into test/<name>.rb.expected and prints the git diff --stat
-# of that snapshot so you can review what changed.
+# of that snapshot so you can review what changed. The old binary is removed
+# first, so a compile failure leaves no binary to run ("was not built", exit 1)
+# instead of turning a stale one's output into the new snapshot.
 #
 # usage: script/regen-snapshot test/<name>.rb [...]
 set -u
@@ -19,8 +21,9 @@ cd "$(dirname "$0")/.." || exit 1
 status=0
 for file in "$@"; do
   name=$(basename "$file" .rb)
-  spin test "$file" || true
   bin="./build/test/$name"
+  rm -f "$bin"
+  spin test "$file" || true
   if [ ! -x "$bin" ]; then
     echo "regen-snapshot: $bin was not built" >&2
     status=1
