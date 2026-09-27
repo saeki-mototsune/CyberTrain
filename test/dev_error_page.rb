@@ -225,7 +225,8 @@ test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
   refute r.rebuild
   assert r.last_failed
   assert r.last_skipped
-  assert_equal "cybertrain build in progress; rebuild skipped — save the file again once it finishes", r.last_output
+  assert_equal "cybertrain build in progress (tmp/cybertrain-build.lock); " \
+               "rebuild skipped — save the file again once it finishes", r.last_output
   refute File.exist?(log)
   # once the build is over the banner says so instead of "in progress"
   File.delete("#{root}/tmp/cybertrain-build.lock")
@@ -256,6 +257,26 @@ test "a lock whose build process is gone is stale: removed and ignored" do
   File.write(lock, "")
   assert r.build_in_progress?
   File.delete(lock)
+  Dir.rmdir("#{root}/tmp")
+  Dir.rmdir(root)
+end
+
+test "a lock older than 30 minutes is stale even with a live PID: age wins over aliveness" do
+  Dir.mkdir("tmp") unless File.directory?("tmp")
+  root = File.expand_path("tmp/dev_error_page_old_lock_root")
+  lock = "#{root}/tmp/cybertrain-build.lock"
+  Dir.mkdir(root) unless File.directory?(root)
+  Dir.mkdir("#{root}/tmp") unless File.directory?("#{root}/tmp")
+  r = Cybertrain::Dev::Rebuilder.new(root, "server", "#{root}/tmp/rebuild.log")
+  # this test's own PID is alive, so without the age bound the lock would
+  # be read as held forever (the failure mode: a reused PID after a
+  # SIGKILLed build)
+  File.write(lock, Process.pid.to_s)
+  assert r.build_in_progress?
+  old = Time.now - 31 * 60
+  File.utime(old, old, lock)
+  refute r.build_in_progress?
+  refute File.exist?(lock)
   Dir.rmdir("#{root}/tmp")
   Dir.rmdir(root)
 end

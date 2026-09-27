@@ -11,8 +11,15 @@ module Cybertrain
     class Rebuilder
       attr_reader :root, :target, :log_path, :last_failed, :last_skipped
 
-      SKIPPED_MESSAGE = "cybertrain build in progress; rebuild skipped — save the file again once it finishes"
+      SKIPPED_MESSAGE = "cybertrain build in progress (tmp/cybertrain-build.lock); " \
+                        "rebuild skipped — save the file again once it finishes"
       FINISHED_MESSAGE = "cybertrain build finished; save a file to rebuild"
+
+      # A lock older than this is presumed abandoned (the build that held it
+      # was SIGKILLed, or the machine rebooted) rather than genuinely
+      # long-running, so build_in_progress? stops honoring it. Long enough
+      # that no real `cybertrain build` should ever hit it.
+      STALE_LOCK_AGE = 30 * 60
 
       def initialize(root, target = "server", log_path = "tmp/rebuild.log")
         @root = root
@@ -63,10 +70,18 @@ module Cybertrain
       # True while a `cybertrain build` holds the lock. A lock whose PID no
       # longer runs (the build was killed, the machine rebooted) is stale:
       # it is deleted and ignored, so the loop does not stay stuck until
-      # someone removes it by hand. A lock recording no PID counts as held.
+      # someone removes it by hand. A lock recording no PID counts as held,
+      # unless it is also older than STALE_LOCK_AGE: without the age bound, a
+      # PID a SIGKILLed build once held can be reused by an unrelated process
+      # and read as still alive, wedging rebuilds forever.
       def build_in_progress?
         path = lock_path
         return false unless File.exist?(path)
+
+        if Time.now - File.mtime(path) >= STALE_LOCK_AGE
+          File.delete(path) if File.exist?(path)
+          return false
+        end
 
         pid = File.read(path).strip
         return true if pid.empty? || !pid.bytes.all? { |b| b >= 48 && b <= 57 }
