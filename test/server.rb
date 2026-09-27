@@ -437,4 +437,19 @@ test "drain_timeout bounds the wait for a request that takes too long" do
   c.close
 end
 
+test "start raises Cybertrain::PortInUse when the port is already bound" do
+  first = Cybertrain::Server.new(ServerTestApp.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  first.start
+  port = first.port
+  second = Cybertrain::Server.new(ServerTestApp.new, port: port, logger: Cybertrain::Logger.new($log, :info))
+  message = assert_raises("Cybertrain::PortInUse") { second.start }
+  assert_equal "port #{port} on 127.0.0.1 is already in use (stop the other server or set PORT)", message
+  assert_equal port, second.port
+  # the first server is unaffected
+  c = RawClient.new(port)
+  assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
+  c.close
+  first.stop
+end
+
 Cybertrain::Test.run!
