@@ -132,6 +132,9 @@ module Cybertrain
     # be set before the first Thread.new starts the scheduler (NOTES rule 22).
     # A port given as the first argument wins over the config: that is how
     # the development loop hands its port to the binary it execs.
+    # A port that cannot be bound (Server raises PortInUse) is reported on
+    # STDOUT, under the banner, and exits 1: without this the process died
+    # with a misleading "Connection refused".
     def serve(argv)
       ENV["SPINEL_WORKERS"] = @config.workers.to_s
       port = Application.port_argument(argv)
@@ -145,6 +148,10 @@ module Cybertrain
         srv.run
       end
       nil
+    rescue PortInUse => e
+      puts "error: #{e.message}"
+      STDOUT.flush
+      exit(1)
     end
 
     # The development loop (docs/design.md D12): requests go through
