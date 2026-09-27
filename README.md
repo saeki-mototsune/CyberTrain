@@ -48,7 +48,8 @@ Spinel, since they find test methods by reflection and an ahead-of-time
 compiler has nothing to reflect on at run time. `spin test --regen
 test/<name>.rb` rewrites a snapshot from CRuby's output; a few tests that
 touch SQLite through FFI take theirs from the compiled binary instead
-([spikes/NOTES.md](spikes/NOTES.md), rule 23).
+([spikes/NOTES.md](spikes/NOTES.md), rule 23); `script/regen-snapshot
+test/<name>.rb` does that build-then-capture step for you and prints the diff stat.
 
 ## Installing the CLI
 

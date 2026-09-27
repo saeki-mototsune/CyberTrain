@@ -195,7 +195,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 変更を検知したら `spin run gen && spin build <name>` を `system` で実行し、成功したら自分に `SIGHUP` を送る。`trap("HUP")` のハンドラ（スパイク 7 で実機動作を確認）が listen ソケットを閉じ、`ffi_source` の 6 行の C シム `sp_reexec(path, port_arg)` 経由で `execv` を呼んで新しいバイナリに自分を置き換える。PID は変わらない。元の listen ソケットに `SO_REUSEADDR` を立てておけば、新プロセスは同じポートを即座に再バインドできる（スパイク 7 で確認）。ポートなどの引き継ぎ状態は argv で渡す。
 - ビルド失敗でサーバは死なない。旧バイナリのまま動き続け、コンパイラの stderr を保持して次のリクエストで開発用エラーページとして返す。
 - マイグレーションは自動で流さない。`spin run db migrate` の結果 `db/schema.rb` が変わることで再ビルドが走る。
-- production: 監視もビルドも無効。バイナリ、`storage/*.sqlite3`、`app/views/`、`public/` を同梱して配布する。ビューを外部ファイルに置く決定の帰結として、バイナリ単体では動かない。（2026-09-26 改訂: `cybertrain build` がビューを埋め込んだバイナリと `public/` を `dist/` にまとめる。第 13 章）
+- production: 監視もビルドも無効。production はビューを `cybertrain build`（`spin run gen -- --embed-views`）がバイナリに埋め込んだものだけを描画し、development は `app/views/` をディスクから読む。`cybertrain build` はそのバイナリと `public/` を `dist/` にまとめる（第 13 章）。（2026-09-26 改訂: 当初は `app/views/` を同梱して配布し、バイナリ単体では動かない設計だった）
 - 却下: 別プロセスの監視ツール（構成が増える）。
 
 ### D13. テストと CI
