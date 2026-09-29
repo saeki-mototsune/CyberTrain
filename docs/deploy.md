@@ -104,7 +104,7 @@ name = "notes"
 version = "0.1.0"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.1.0" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.1.1" }
 ```
 
 続けて `new` が `spin lock` と `spin run gen` を実行しています。フレームワークは spin の
@@ -181,7 +181,7 @@ export CYBERTRAIN_DATABASE="$PWD/dist/storage/rehearsal.sqlite3"
 起動時の表示が次のようになっていれば OK です。
 
 ```
-=> Booting cybertrain 0.1.0
+=> Booting cybertrain 0.1.1
 => production environment (1 worker)
 * Listening on http://127.0.0.1:3000
 ```
@@ -279,12 +279,12 @@ spinel --version
 `cybertrain build` を使います）。
 
 ```sh
-gem install --user-install cybertrain -v 0.1.0
+gem install --user-install cybertrain -v 0.1.1
 ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
 cybertrain version
 ```
 
-`-v` はアプリの `spin.toml` の `ref`（タグ `v0.1.0`）と同じバージョンにそろえてください。CLI と
+`-v` はアプリの `spin.toml` の `ref`（タグ `v0.1.1`）と同じバージョンにそろえてください。CLI と
 `spin.lock` が固定するフレームワーク（`spin run gen` はそのフレームワーク自身の generator を
 実行します）は対で更新するものなので、バージョンがずれるとビルドや起動が失敗します。
 
@@ -667,7 +667,7 @@ git push
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
 | デプロイが `stale: gen/...` で止まる | 手元で `spin run gen` して `gen/` をコミットし忘れている |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーの `~/.local/bin` に Spinel が入っていない（3-4） |
-| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.1.0`） |
+| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.1.1`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |
 | ブラウザで 500.html が出続ける | アプリが落ちている。`journalctl -u notes -n 50` を見る |
 | 証明書が取れない | DNS がサーバーを向いているか、80/443 が開いているか。`journalctl -u caddy` を見る |

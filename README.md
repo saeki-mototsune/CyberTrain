@@ -80,7 +80,7 @@ the `[package] name` in its `spin.toml`.
 
 `cybertrain new` points the app's `spin.toml` at the release matching the
 CLI — `cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain",
-ref = "v0.1.0" }` — then runs `spin lock` (spin fetches the framework into
+ref = "v0.1.1" }` — then runs `spin lock` (spin fetches the framework into
 its cache, `~/.cache/spin/packages/`, and pins the commit in `spin.lock`)
 and `spin run gen`, much as `rails new` runs `bundle install`. Nothing of
 the framework is copied into the app; commit `spin.toml` and `spin.lock`.
@@ -521,8 +521,8 @@ before the gem is pushed:
 1. Bump `Cybertrain::VERSION` (`cybertrain/version.rb`) and `version` in
    `spin.toml` together (CI checks they match); spin caches a git
    dependency by that version.
-2. Merge to `main`, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
-3. `gem build cybertrain.gemspec && gem push cybertrain-0.1.0.gem`.
+2. Merge to `main`, then tag and push: `git tag v0.1.1 && git push origin v0.1.1`.
+3. `gem build cybertrain.gemspec && gem push cybertrain-0.1.1.gem`.
 
 ## License
 
