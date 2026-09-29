@@ -1,3 +1,14 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="site/assets/brand/lockup-stacked-dark.svg">
+    <img alt="CyberTrain" src="site/assets/brand/lockup-stacked-light.svg" width="360">
+  </picture>
+</p>
+<p align="center">
+  <a href="https://saeki-mototsune.github.io/CyberTrain/">Homepage</a> ·
+  <a href="https://saeki-mototsune.github.io/CyberTrain/tutorial.html">Tutorial</a>
+</p>
+
 # cybertrain
 
 cybertrain is a Rails-shaped web application framework written natively for
@@ -501,6 +512,11 @@ exactly this and prints the diff stat).
 
 ## Learn more
 
+- [Homepage](https://saeki-mototsune.github.io/CyberTrain/) and
+  [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) —
+  the source lives in [site/](site/), published by
+  [.github/workflows/pages.yml](.github/workflows/pages.yml); the logo files and
+  brand notes are in [site/assets/brand/](site/assets/brand/BRAND.md).
 - [docs/design.md](docs/design.md) — the design record (Japanese): every
   decision, what was rejected and why, and the Spinel constraints behind it.
 - [docs/template-language.md](docs/template-language.md) — the full template
