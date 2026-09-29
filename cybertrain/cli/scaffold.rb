@@ -92,6 +92,13 @@ module Cybertrain
         @fields = fields
       end
 
+      # The index route helper's name without _path, as Rails' scaffold
+      # names it: the plural, or "<plural>_index" for a word that is its own
+      # plural (sheep_index_path), matching the routes DSL.
+      def index_helper
+        @plural == @singular ? "#{@plural}_index" : @plural
+      end
+
       # The column the model validates for presence ("" when there is none).
       def first_string_field
         @fields.each { |f| return f.field_name if f.field_type == "string" }

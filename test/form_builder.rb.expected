@@ -7,4 +7,5 @@ ok   label, text_area, hidden_field, number_field and check_box
 ok   fields with errors get the field_with_errors class
 ok   submit defaults to Create or Update by persisted?
 ok   an unknown builder method is a RuntimeError
-9 tests, 20 assertions, 0 failures
+ok   form_with a new record whose name is its own plural posts to <plural>_index
+10 tests, 22 assertions, 0 failures

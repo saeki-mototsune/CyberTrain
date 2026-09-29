@@ -39,6 +39,19 @@ class BlogComment < Cybertrain::Model
   end
 end
 
+# A word that is its own plural: Rails names its collection route
+# sheep_index (ActiveModel::Name#route_key), as the routes DSL does.
+class Sheep < Cybertrain::Model
+  def model_name = "Sheep"
+
+  def read_attribute(name)
+    case name
+    when :id then @id
+    else nil
+    end
+  end
+end
+
 def route_param(v)
   case v
   when Cybertrain::Model then v.to_param
@@ -51,6 +64,8 @@ Cybertrain::Views.url_resolver = lambda do |name, args|
   when "posts_path" then "/posts"
   when "post_path" then "/posts/#{route_param(args[0])}"
   when "post_blog_comments_path" then "/posts/#{route_param(args[0])}/blog_comments"
+  when "sheep_index_path" then "/sheep"
+  when "post_sheep_index_path" then "/posts/#{route_param(args[0])}/sheep"
   else raise "no route #{name}"
   end
 end
@@ -65,6 +80,7 @@ def render_inline(src, post)
   env = {}
   env["post"] = post
   env["comment"] = BlogComment.new
+  env["sheep"] = Sheep.new
   template = Cybertrain::Template::Template.parse(src, "posts/_form")
   Cybertrain::Template::Interpreter.new(helpers).render(template, env)
 end
@@ -142,6 +158,13 @@ end
 test "an unknown builder method is a RuntimeError" do
   msg = assert_raises("RuntimeError") { render_inline("<%= form_with model: post do |f| %>\n<%= f.color_wheel :title %><% end %>", new_post) }
   assert_equal "posts/_form:2: undefined method 'color_wheel' for FormBuilder", msg
+end
+
+test "form_with a new record whose name is its own plural posts to <plural>_index" do
+  html = render_inline("<%= form_with(model: sheep) do |f| %>|<% end %>", new_post)
+  assert_equal "<form action=\"/sheep\" method=\"post\">#{TOKEN}|</form>", html
+  html = render_inline("<%= form_with(model: [post, sheep]) do |f| %>|<% end %>", saved_post)
+  assert_equal "<form action=\"/posts/7/sheep\" method=\"post\">#{TOKEN}|</form>", html
 end
 
 Cybertrain::Test.run!

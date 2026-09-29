@@ -326,7 +326,7 @@ module Cybertrain
             def destroy
               @#{s}.destroy
               flash[:notice] = "#{human} was successfully destroyed."
-              redirect_to #{p}_path, status: :see_other
+              redirect_to #{res.index_helper}_path, status: :see_other
             end
 
             private
@@ -371,7 +371,7 @@ module Cybertrain
         end
         buf << "<p>\n"
         buf << "  <%= link_to \"Edit this #{words}\", edit_#{s}_path(@#{s}) %> |\n"
-        buf << "  <%= link_to \"Back to #{res.plural.tr("_", " ")}\", #{res.plural}_path %>\n"
+        buf << "  <%= link_to \"Back to #{res.plural.tr("_", " ")}\", #{res.index_helper}_path %>\n"
         buf << "</p>\n\n"
         buf << "<%= button_to \"Destroy this #{words}\", #{s}_path(@#{s}), method: :delete %>\n"
         buf
@@ -382,7 +382,7 @@ module Cybertrain
         buf = +""
         buf << "<h1>New #{s.tr("_", " ")}</h1>\n\n"
         buf << "<%= render \"form\", #{s}: @#{s} %>\n\n"
-        buf << "<p><%= link_to \"Back to #{res.plural.tr("_", " ")}\", #{res.plural}_path %></p>\n"
+        buf << "<p><%= link_to \"Back to #{res.plural.tr("_", " ")}\", #{res.index_helper}_path %></p>\n"
         buf
       end
 
@@ -393,7 +393,7 @@ module Cybertrain
         buf << "<%= render \"form\", #{s}: @#{s} %>\n\n"
         buf << "<p>\n"
         buf << "  <%= link_to \"Show this #{s.tr("_", " ")}\", #{s}_path(@#{s}) %> |\n"
-        buf << "  <%= link_to \"Back to #{res.plural.tr("_", " ")}\", #{res.plural}_path %>\n"
+        buf << "  <%= link_to \"Back to #{res.plural.tr("_", " ")}\", #{res.index_helper}_path %>\n"
         buf << "</p>\n"
         buf
       end
