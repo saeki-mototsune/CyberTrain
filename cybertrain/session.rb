@@ -1,4 +1,3 @@
-require "cybertrain/context"
 require "cybertrain/crypto"
 require "base64"
 require "json"
@@ -61,8 +60,8 @@ module Cybertrain
     # statically at every call site; a free function
     # `CsrfProtection.token_for(session)` widened `session` to an untyped
     # poly value once it was called through a real SessionStore -> Context
-    # chain, so `session[TOKEN_KEY] = token` silently did nothing (see
-    # docs/superpowers/plans -- Task 7 review).
+    # chain, so `session[TOKEN_KEY] = token` silently did nothing
+    # (regression tests: test/csrf_chain.rb, test/csrf_conditional.rb).
     def csrf_token!
       token = @data[CSRF_TOKEN_KEY]
       if token.nil? || token.empty?

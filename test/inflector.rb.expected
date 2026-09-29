@@ -1,0 +1,10 @@
+ok   pluralize turns every Rails singular into its plural, keeping a capital
+ok   singularize turns every Rails plural into its singular, keeping a capital
+ok   pluralize leaves a plural alone and singularize a singular
+ok   irregulars inflect both ways, are idempotent and keep the first letter's case
+ok   uncountables stay put, also at the end of a phrase but not after an underscore
+ok   the empty string stays empty
+ok   compound names inflect their last word
+ok   underscore matches Rails
+ok   camelize matches Rails
+9 tests, 826 assertions, 0 failures

@@ -12,8 +12,6 @@ module Cybertrain
     # that never count as a change (gen/views.rb, which `cybertrain build`
     # rewrites and the development binary does not use).
     class Watcher
-      attr_reader :globs, :interval, :generated, :ignored
-
       def initialize(globs, interval = 0.5, generated = [], ignored = [])
         @globs = globs
         @interval = interval

@@ -198,5 +198,8 @@ exit(Cybertrain::Main.run("blog", ARGV,
   制御バイトは `\u00XX` で書く。
 - `gen/views.rb` は開発ループの再ビルドの契機にならない（`Dev::IGNORED`）。
   以前は `cybertrain build` が書き換えると起動中の `cybertrain server` が再ビルドし、
-  その `spin run gen` が埋め込み中の表を空に戻していた。ただし両者とも
-  `build/bin/NAME` を書くので、配布用ビルドの前にサーバは止める（README に記載）。
+  その `spin run gen` が埋め込み中の表を空に戻していた。両者とも `build/bin/NAME` を
+  書くので、`cybertrain build` は `tmp/cybertrain-build.lock`（PID 入り）を dist/ の
+  組み立てが終わるまで持ち、開発サーバはその間の再ビルドを飛ばしてログに出す
+  （PR #5、2026-09-27 マージ。死んだ PID や 30 分以上古いロックは消して無視する）。
+  サーバを止める必要はない（README に記載）。

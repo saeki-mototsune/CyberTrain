@@ -1,5 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/generator"
+require "cybertrain/generator/url_support"
 
 # The blog routes from the Rails Getting Started guide, in the form
 # config/routes.rb uses: receiverless calls at the top of the draw block,
@@ -19,48 +20,6 @@ end
 # One "VERB /pattern controller#action name" line per spec.
 def route_lines(specs)
   specs.map { |s| "#{s.verb} #{s.pattern} #{s.controller}##{s.action} #{s.name}".rstrip }
-end
-
-# --- Inflector ---------------------------------------------------------
-
-test "camelize turns snake_case into CamelCase" do
-  assert_equal "PostsController", Cybertrain::Inflector.camelize("posts_controller")
-  assert_equal "CreatePosts", Cybertrain::Inflector.camelize("create_posts")
-  assert_equal "Post", Cybertrain::Inflector.camelize("post")
-  assert_equal "Admin::Posts", Cybertrain::Inflector.camelize("admin/posts")
-end
-
-test "underscore turns CamelCase into snake_case" do
-  assert_equal "posts_controller", Cybertrain::Inflector.underscore("PostsController")
-  assert_equal "post", Cybertrain::Inflector.underscore("Post")
-  assert_equal "html_parser", Cybertrain::Inflector.underscore("HTMLParser")
-  assert_equal "admin/posts", Cybertrain::Inflector.underscore("Admin::Posts")
-end
-
-test "singularize applies irregulars, then suffix rules" do
-  assert_equal "post", Cybertrain::Inflector.singularize("posts")
-  assert_equal "comment", Cybertrain::Inflector.singularize("comments")
-  assert_equal "person", Cybertrain::Inflector.singularize("people")
-  assert_equal "category", Cybertrain::Inflector.singularize("categories")
-  assert_equal "box", Cybertrain::Inflector.singularize("boxes")
-  assert_equal "status", Cybertrain::Inflector.singularize("statuses")
-  assert_equal "address", Cybertrain::Inflector.singularize("addresses")
-  assert_equal "news", Cybertrain::Inflector.singularize("news")
-  assert_equal "blog_post", Cybertrain::Inflector.singularize("blog_posts")
-  assert_equal "sales_person", Cybertrain::Inflector.singularize("sales_people")
-  assert_equal "post", Cybertrain::Inflector.singularize("post")
-end
-
-test "pluralize is the inverse" do
-  assert_equal "posts", Cybertrain::Inflector.pluralize("post")
-  assert_equal "people", Cybertrain::Inflector.pluralize("person")
-  assert_equal "categories", Cybertrain::Inflector.pluralize("category")
-  assert_equal "days", Cybertrain::Inflector.pluralize("day")
-  assert_equal "boxes", Cybertrain::Inflector.pluralize("box")
-  assert_equal "statuses", Cybertrain::Inflector.pluralize("status")
-  assert_equal "addresses", Cybertrain::Inflector.pluralize("address")
-  assert_equal "sheep", Cybertrain::Inflector.pluralize("sheep")
-  assert_equal "blog_posts", Cybertrain::Inflector.pluralize("blog_post")
 end
 
 # --- Routes DSL --------------------------------------------------------
@@ -252,7 +211,7 @@ test "an action or controller that is not a Ruby name raises" do
   assert_equal "controller 'Pages' is not a valid controller path (GET /x)", message
 end
 
-test "an uncountable resource names its collection <plural>_index" do
+test "a resource whose singular is its plural names its collection <plural>_index" do
   Cybertrain::Routes.reset!
   Cybertrain::Routes.draw do
     resources :news do |news|

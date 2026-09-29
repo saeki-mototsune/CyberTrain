@@ -1,7 +1,8 @@
 # The `cybertrain` command as a gem. Only the CLI (`new`, `generate
-# scaffold`) ships here and runs under CRuby; the framework itself is a spin
-# package that `cybertrain new` points the app's spin.toml at (the git tag
-# v#{VERSION}), so the two are released from the same tag.
+# scaffold`, `migration`, `db`, `server`, `build`) ships here and runs under
+# CRuby; the framework itself is a spin package that `cybertrain new` points
+# the app's spin.toml at (the git tag v#{VERSION}), so the two are released
+# from the same tag.
 require_relative "cybertrain/version"
 
 Gem::Specification.new do |spec|
@@ -12,8 +13,9 @@ Gem::Specification.new do |spec|
   spec.description = <<~TEXT
     cybertrain is a Rails-shaped web framework written for Spinel, which
     compiles an application into a native binary. This gem installs the
-    `cybertrain` command (`cybertrain new`, `cybertrain generate scaffold`);
-    building and running an application needs Spinel's `spin` on PATH.
+    `cybertrain` command (`cybertrain new`, `generate scaffold`,
+    `migration`, `db`, `server`, `build`); building and running an
+    application needs Spinel's `spin` on PATH.
   TEXT
   spec.license = "MIT"
   spec.homepage = Cybertrain::REPOSITORY

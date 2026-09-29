@@ -61,6 +61,34 @@ test "references adds an implicit foreign key column, index and foreign key" do
   assert_equal "posts", fk.to_table
 end
 
+test "references and add_foreign_key inflect irregular and compound names through Cybertrain::Inflector" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "people" do |t|
+      t.string "name", null: false
+    end
+    s.create_table "blog_posts" do |t|
+      t.string "title", null: false
+    end
+    s.create_table "comments" do |t|
+      t.references :person
+      t.references :blog_post
+    end
+    s.add_foreign_key "comments", "people"
+    s.add_foreign_key "comments", "blog_posts"
+  end
+
+  comments = definition.table("comments")
+  assert_equal 4, comments.references.size
+  assert_equal "person_id", comments.references[0].column
+  assert_equal "people", comments.references[0].to_table
+  assert_equal "blog_post_id", comments.references[1].column
+  assert_equal "blog_posts", comments.references[1].to_table
+  assert_equal "person_id", comments.references[2].column
+  assert_equal "people", comments.references[2].to_table
+  assert_equal "blog_post_id", comments.references[3].column
+  assert_equal "blog_posts", comments.references[3].to_table
+end
+
 test "references can skip the foreign key" do
   definition = Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "comments" do |t|

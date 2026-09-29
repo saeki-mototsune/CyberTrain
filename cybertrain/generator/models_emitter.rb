@@ -39,7 +39,9 @@ module Cybertrain
       end
 
       # Writes every gen/models file under `root`; returns the relative paths.
-      # (Entry point for Gen::Runner, which Task 8 owns.)
+      # (Gen::Runner does not use this: it goes through `outputs` + sync_file
+      # so unchanged files keep their mtime and --check works. Kept for
+      # test/gen_models_compiles.rb.)
       def self.write_all(root, definition, infos)
         Dir.mkdir(root + "/gen") unless Dir.exist?(root + "/gen")
         Dir.mkdir(root + "/gen/models") unless Dir.exist?(root + "/gen/models")

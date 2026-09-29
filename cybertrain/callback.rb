@@ -4,7 +4,7 @@ module Cybertrain
   # table; block callbacks receive the controller as their argument, because
   # Spinel cannot instance_exec a stored block.
   class Callback
-    attr_reader :kind, :name, :block, :only, :except
+    attr_reader :kind, :name, :block
 
     def initialize(kind, name, block, only, except)
       @kind = kind

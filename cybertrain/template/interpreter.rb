@@ -19,15 +19,16 @@ module Cybertrain
   # TODO(integrator): this stub belongs in cybertrain/model.rb, with the
   # model generator emitting the override (columns, associations, view
   # methods) and the default flipped to false. Until then a misspelt name on a
-  # generated model renders empty instead of raising (recorded as a known gap
-  # in the plan's "As built" section).
+  # generated model renders empty instead of raising (a known gap, listed in
+  # docs/design.md section 13).
   class Model
     def attribute_or_method?(name) = true
   end
 
   module Template
     # What templates call without a receiver (link_to, form_with, render ...).
-    # Task 13's Helpers subclass implements the real set.
+    # Template::Helpers (cybertrain/template/helpers.rb) implements the real
+    # set.
     class HelperBase
       # block: the K_BLOCK_CALL INode for `helper do |f| ... end`, else nil;
       # render its body with interp.capture(block, env, arg).
@@ -237,7 +238,6 @@ module Cybertrain
           undefined(node, name_str, "nil")
         when true, false
           return recv.to_s if name_sym == :to_s
-          return !recv if name_sym == :!
           undefined(node, name_str, recv.to_s)
         else
           result = nil
@@ -661,8 +661,6 @@ module Cybertrain
         when :include? then !s.index(string_arg(args, 0, node, name)).nil?
         when :start_with? then s.start_with?(string_arg(args, 0, node, name))
         when :end_with? then s.end_with?(string_arg(args, 0, node, name))
-        when :+ then s + string_arg(args, 0, node, name)
-        when :== then !args.empty? && s == args[0]
         else undefined(node, name, "String")
         end
       end
@@ -676,11 +674,6 @@ module Cybertrain
         when :positive? then n > 0
         when :negative? then n < 0
         when :abs then n.abs
-        when :+ then arithmetic(INode::K_ADD, "+", n, args[0], node)
-        when :- then arithmetic(INode::K_SUB, "-", n, args[0], node)
-        when :* then arithmetic(INode::K_MUL, "*", n, args[0], node)
-        when :/ then arithmetic(INode::K_DIV, "/", n, args[0], node)
-        when :% then arithmetic(INode::K_MOD, "%", n, args[0], node)
         else undefined(node, name, "Integer")
         end
       end
@@ -697,11 +690,6 @@ module Cybertrain
         when :round then args.empty? ? f.round : f.round(int_arg(args, 0, node, name))
         when :floor then f.floor
         when :ceil then f.ceil
-        when :+ then arithmetic(INode::K_ADD, "+", f, args[0], node)
-        when :- then arithmetic(INode::K_SUB, "-", f, args[0], node)
-        when :* then arithmetic(INode::K_MUL, "*", f, args[0], node)
-        when :/ then arithmetic(INode::K_DIV, "/", f, args[0], node)
-        when :% then arithmetic(INode::K_MOD, "%", f, args[0], node)
         else undefined(node, name, "Float")
         end
       end

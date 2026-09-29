@@ -16,10 +16,6 @@ module Cybertrain
       def self.parse(tokens, name)
         TreeBuilder.new(name).build(tokens)
       end
-
-      def self.parse_expression(source, name, line)
-        ExprParser.new(source, name, line).parse_all
-      end
     end
 
     # One token of an expression. `spaced` records whitespace before it,

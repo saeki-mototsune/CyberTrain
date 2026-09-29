@@ -13,20 +13,15 @@ module Cybertrain
   end
 
   # Parses the head (request line + header lines) of an HTTP/1.x request.
-  # The Server reads from the socket until head_end finds the blank line,
-  # then hands everything before it to parse_head. Percent-decoding of the
-  # target is left to Query and the Router.
+  # The Server scans its socket buffer for HEAD_END (byteindex) and hands
+  # everything before it to parse_head. Percent-decoding of the target is
+  # left to Query and the Router.
   class HttpParser
     class ParseError < StandardError
     end
 
     HEAD_END = "\r\n\r\n"
     SUPPORTED_VERSIONS = ["HTTP/1.1", "HTTP/1.0"]
-
-    # Index of the blank line that ends the head, or nil while incomplete.
-    def self.head_end(buffer)
-      buffer.index(HEAD_END)
-    end
 
     def self.parse_head(head)
       lines = head.split("\r\n")

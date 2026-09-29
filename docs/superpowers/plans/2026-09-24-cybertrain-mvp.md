@@ -10,6 +10,8 @@
 
 **Spec:** `docs/design.md` (Japanese; authoritative). Spike verdicts: `spikes/NOTES.md`.
 
+> **Historical:** executed 2026-09-24..25; deviations are in the "As built" section at the end. Later changes (one `bin/<name>.rb` entry with `Cybertrain::Main`, `cybertrain migration/db/server/build`, `dist/` with embedded views — `docs/design.md` §13 and `docs/superpowers/specs/2026-09-26-cli-build-embedded-views-design.md`; gem distribution — `docs/design.md` D11) supersede this file where they disagree; the code wins.
+
 ## Global Constraints
 
 - Everything under `cybertrain/`, `bin/`, `test/`, `examples/` must compile with `spinel --require-gate` (what `spin build`/`spin test` use). Verify with `spin test` (framework) or `spin build` (apps), never with CRuby alone.

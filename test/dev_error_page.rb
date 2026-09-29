@@ -1,5 +1,6 @@
 # Cybertrain::Dev::ErrorPage (the development diagnostics middleware) and
-# the bits of Cybertrain::Dev::Rebuilder it reads. Runs under CRuby too: no
+# Cybertrain::Dev::Rebuilder: its command, the cybertrain-build lock, and the
+# last_failed/last_output the page reads. Runs under CRuby too: no
 # FFI is required here (cybertrain/dev/reexec is left out on purpose).
 require "stringio"
 require "cybertrain/logger"

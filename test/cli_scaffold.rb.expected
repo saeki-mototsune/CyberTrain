@@ -124,5 +124,15 @@ create tmp/.keep
 create test/.keep
 error: ./config/routes.rb has no `Cybertrain::Routes.draw do` line
 ok   a routes file without the draw line is rejected before anything is written
+create db/migrate/20260925120004_create_sheep.rb
+create app/models/sheep.rb
+create app/controllers/sheep_controller.rb
+create app/views/sheep/index.html.erb
+create app/views/sheep/show.html.erb
+create app/views/sheep/new.html.erb
+create app/views/sheep/edit.html.erb
+create app/views/sheep/_form.html.erb
+route resources :sheep
+ok   a name that is its own plural links and redirects to <plural>_index_path
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-14 tests, 114 assertions, 0 failures
+15 tests, 121 assertions, 0 failures

@@ -465,9 +465,19 @@ end
 # the same exception a busy port raises, so this is the only way to catch a
 # regression where bind_listener's privileged_denied? stops reclassifying it
 # and the operator sees "already in use" for a port that was never in use.
+#
+# spin test captures the program's stdout AND stderr (2>&1) and diffs them
+# against the snapshot, so a skip line on either stream breaks the run. The
+# two skip branches (root, or port 80 already taken) therefore write their
+# reason to $log (the test's StringIO) and make two placeholder assertions,
+# the number the real path makes, so the "N tests, M assertions" summary is
+# byte-identical on every path.
 test "starting a server on port 80 as non-root reports permission denied" do
   if Process.uid == 0
-    puts "skip: port 80 permission test needs a non-root user (running as root)"
+    $log.puts "skip: port 80 permission test needs a non-root user (running as root)"
+    assert_equal 0, Process.uid
+    # what Server#privileged_denied? computes for root: not a permission problem
+    assert_equal false, (80 < 1024 && Process.uid != 0)
   else
     listening = true
     begin
@@ -477,7 +487,9 @@ test "starting a server on port 80 as non-root reports permission denied" do
       listening = false
     end
     if listening
-      puts "skip: port 80 permission test needs the port free (something is already listening on 80)"
+      $log.puts "skip: port 80 permission test needs the port free (something is already listening on 80)"
+      assert listening, "probe connected to 127.0.0.1:80"
+      assert_equal 0, $log.string.index("skip: port 80 permission test needs the port free").to_i
     else
       priv_server = Cybertrain::Server.new(ServerTestApp.new, host: "127.0.0.1", port: 80,
                                                                logger: Cybertrain::Logger.new($log, :info))

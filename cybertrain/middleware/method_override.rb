@@ -8,10 +8,6 @@ module Cybertrain
   class MethodOverride < Middleware
     ALLOWED = ["PATCH", "PUT", "DELETE"]
 
-    def initialize(app)
-      super(app)
-    end
-
     def call(ctx)
       request = ctx.request
       if request.post?

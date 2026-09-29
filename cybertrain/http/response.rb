@@ -82,10 +82,10 @@ module Cybertrain
     end
 
     # Content-Length is always computed from the body; a HEAD response
-    # (head_only) keeps it but leaves the body out. Accepted deviation (per
-    # the plan): Content-Length and the default Content-Type are emitted for
-    # 204 and 304 too, although RFC 9110 section 8.6 forbids Content-Length
-    # in a 204.
+    # (head_only) keeps it but leaves the body out. Accepted deviation:
+    # Content-Length and the default Content-Type are emitted for 204 and
+    # 304 too, although RFC 9110 section 8.6 forbids Content-Length in a
+    # 204.
     def to_http(head_only = false)
       out = +"HTTP/1.1 #{@status} #{status_text}\r\n"
       out << "Content-Type: #{DEFAULT_CONTENT_TYPE}\r\n" if header_key("content-type").nil?

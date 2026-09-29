@@ -268,6 +268,18 @@ test "a routes file without the draw line is rejected before anything is written
   refute File.exist?("broken/app/views/tags")
 end
 
+test "a name that is its own plural links and redirects to <plural>_index_path" do
+  Cybertrain::CLI::Scaffold.generate("blog", "sheep", ["name:string"])
+  controller = read("blog/app/controllers/sheep_controller.rb")
+  assert_includes controller, "class SheepController < ApplicationController"
+  assert_includes controller, "redirect_to sheep_index_path, status: :see_other"
+  assert_includes controller, "redirect_to sheep_path(@sheep), status: :see_other"
+  ["show", "new", "edit"].each do |view|
+    assert_includes read("blog/app/views/sheep/#{view}.html.erb"), "sheep_index_path"
+  end
+  assert_includes read("blog/config/routes.rb"), "resources :sheep"
+end
+
 test "the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP" do
   assert_equal "20260925120000", Cybertrain::CLI::Scaffold.timestamp
   ENV.delete("CYBERTRAIN_TIMESTAMP")

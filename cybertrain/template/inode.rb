@@ -203,7 +203,6 @@ module Cybertrain
           t
         when SymLit
           t = node(INode::K_SYM, 0)
-          t.istr = n.sym_name
           t.isym = n.sym_name.to_sym
           t
         when NilLit then node(INode::K_NIL, 0)

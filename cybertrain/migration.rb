@@ -1,7 +1,8 @@
 # Cybertrain::Migration -- the migration DSL (Cybertrain::Migration::Base)
 # and the recorded-operation data it produces. This is a pure data model:
-# nothing here talks to a database. The SQLite migrator that walks
-# `Operation#kind` and issues DDL is Wave M2b's `cybertrain/db/migrator.rb`.
+# nothing here talks to a database. The SQLite adapter that turns
+# `Operation#kind` into DDL is `cybertrain/db/sqlite_ddl.rb`; the migrator
+# that issues it is `cybertrain/db/migrator.rb`.
 require "cybertrain/schema"
 
 module Cybertrain
@@ -178,7 +179,7 @@ module Cybertrain
         column_name = "#{name}_id"
         @operations << Operation.for_add_reference(table.to_s, column_name, null)
         if foreign_key
-          to_table = Cybertrain::Schema.pluralize(name.to_s)
+          to_table = Cybertrain::Inflector.pluralize(name.to_s)
           @operations << Operation.for_add_foreign_key(table, to_table, column_name)
         end
         nil
@@ -186,7 +187,7 @@ module Cybertrain
 
       def add_foreign_key(from_table, to_table, column: "")
         col = column
-        col = "#{Cybertrain::Schema.singularize(to_table.to_s)}_id" if col == ""
+        col = "#{Cybertrain::Inflector.singularize(to_table.to_s)}_id" if col == ""
         @operations << Operation.for_add_foreign_key(from_table.to_s, to_table.to_s, col.to_s)
         nil
       end
@@ -232,7 +233,8 @@ module Cybertrain
       end
     end
 
-    # The registry gen/migrations.rb (Task 14) fills with one `register`
+    # The registry gen/migrations.rb (written by
+    # cybertrain/generator/migrations_emitter.rb) fills with one `register`
     # call per migration file, in file order; `all` always hands them back
     # sorted by version so the migrator applies them in the right order
     # regardless of registration order. Seeded with its element type per

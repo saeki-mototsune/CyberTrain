@@ -126,7 +126,8 @@ empty table of embedded views (see "How it works").
 
 Apps created before `cybertrain build` existed have `bin/server.rb` and
 no `bin/<name>.rb`: copy `bin/<name>.rb` from a fresh `cybertrain new` (with
-the same NAME), delete `bin/server.rb` and run `spin run gen`.
+the same NAME), delete `bin/server.rb`, add `/dist/` to `.gitignore` (the old
+template did not ignore it) and run `spin run gen`.
 
 `ApplicationController` starts with the one thing every controller inherits:
 
@@ -352,8 +353,8 @@ merge.
 **Views are interpreted, not compiled.** `app/views/**/*.html.erb` files look
 like Rails ERB but are parsed into an AST at request time, then walked by a
 tree-walking interpreter. Where the source comes from depends on the mode:
-in development (and test) the engine reads `app/views/` from disk and
-re-parses a template when it changes, so view edits need no rebuild.
+in development (and test) the engine reads `app/views/` from disk, and in
+development re-parses a template when it changes, so view edits need no rebuild.
 `cybertrain build` runs `spin run gen -- --embed-views`, which writes every
 template's source into `gen/views.rb` as a string table for that one `spin
 build`, then runs `spin run gen` again to restore the empty table that is
@@ -381,9 +382,10 @@ adapter today (PostgreSQL via `libpq` FFI is noted as possible future work).
 `cybertrain build`) also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`
 and `gen/**/*.rb` every half second (views are excluded — the engine reloads
 those itself — and so is `gen/views.rb`, empty in development). A change runs `spin run gen && spin build NAME` in the
-background; success sends the server `SIGHUP`, whose handler stops listening
-and `execv`s the new binary on the same port and PID, invisible to a client
-mid-session. A failed build keeps serving the old binary and banners the
+background; success requests a restart (the same flag an external `kill -HUP`
+sets): a monitor thread stops the listener and drains open requests, then the
+main thread `execv`s the new binary on the same port and PID, invisible to a
+client mid-session. A failed build keeps serving the old binary and banners the
 compiler output on every HTML response. None of this loads in production.
 
 ## Differences from Rails
@@ -391,7 +393,7 @@ compiler output on every HTML response. None of this loads in production.
 | Rails | cybertrain |
 | --- | --- |
 | `rails console` | No console — Spinel has no `eval` |
-| Edit code, the running app picks it up | Ruby needs a rebuild; `cybertrain server` in development does this for you (rebuild, `SIGHUP`, `execv`) |
+| Edit code, the running app picks it up | Ruby needs a rebuild; `cybertrain server` in development does this for you (rebuild, stop, `execv`) |
 | Edit a view, no reload needed | Same — views are parsed from disk per request in development |
 | `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |
 | `before_action { do_thing }` (implicit `self`) | `before_action { \|c\| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |
@@ -489,10 +491,13 @@ assert_response res, :see_other
 extraction, against a freshly migrated `storage/test.sqlite3`.
 
 Run with `spin test`: it compiles each `test/*.rb` into its own program and
-diffs stdout against `test/<name>.rb.expected`. Regenerate with `spin test
+diffs its output (stdout and stderr together) against `test/<name>.rb.expected`. Regenerate with `spin test
 --regen test/<name>.rb`; FFI/database tests can't run under CRuby, so their
-snapshot comes from the compiled binary instead: `spin test test/<name>.rb &&
-./build/test/<name> > test/<name>.rb.expected`.
+snapshot comes from the compiled binary instead: `rm -f build/test/<name>;
+spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected`
+(`spin test` exits non-zero while the snapshot is stale, so do not chain with
+`&&`; in the framework checkout, `script/regen-snapshot test/<name>.rb` does
+exactly this and prints the diff stat).
 
 ## Learn more
 

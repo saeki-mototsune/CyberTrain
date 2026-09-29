@@ -195,7 +195,7 @@ module Cybertrain
         buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
         buf << ">"
         buf << hidden_fields(verb)
-        buf << interp.capture(block, env, FormBuilder.new(record, self))
+        buf << interp.capture(block, env, FormBuilder.new(record))
         buf << "</form>"
         SafeString.new(buf)
       end
@@ -213,6 +213,15 @@ module Cybertrain
         end
       end
 
+      # The collection route name for a model key, as ActiveModel::Name#route_key
+      # builds it: the plural, or "<plural>_index" when the word is its own
+      # plural (sheep_index_path; the routes DSL names that collection the
+      # same way).
+      def self.route_key(singular)
+        plural = Inflector.pluralize(singular)
+        plural == singular ? "#{plural}_index" : plural
+      end
+
       # posts_path / post_path(post); nested: post_comments_path(post).
       def form_action(model)
         case model
@@ -220,9 +229,7 @@ module Cybertrain
           return url_for(model) if model.persisted?
 
           # Bound step by step (see FormBuilder.humanize).
-          singular = model_key(model)
-          plural = Inflector.pluralize(singular)
-          route("#{plural}_path", [])
+          route("#{Helpers.route_key(model_key(model))}_path", [])
         when Array then url_for(model)
         else raise ArgumentError, "form_with needs model: or url:"
         end
@@ -289,8 +296,7 @@ module Cybertrain
           when Cybertrain::Model
             last = i == items.size - 1
             if last && item.new_record?
-              key = model_key(item)
-              name << Inflector.pluralize(key)
+              name << Helpers.route_key(model_key(item))
             else
               name << model_key(item)
               route_args << item
