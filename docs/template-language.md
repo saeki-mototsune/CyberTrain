@@ -209,7 +209,7 @@ Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matc
 | `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | see section 8 |
 | `h`, `escape` | `h(text)` | escapes; a `SafeString` passes through unescaped |
 | `raw` | `raw(text)` | wraps text in a `SafeString` (prints unescaped) |
-| `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`; `pluralize(2, "mouse")` → `"2 mice"` (built-in irregulars); explicit third arg always wins |
+| `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`; `pluralize(2, "mouse")` → `"2 mice"` (Rails' default English inflections, via `Cybertrain::Inflector`; app-defined inflections are not supported); explicit third arg always wins |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
 | `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`; `-1000` → `"-1,000"`; `1234.5` → `"1,234.5"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails-style buckets, no seconds precision: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |

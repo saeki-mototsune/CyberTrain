@@ -104,8 +104,8 @@ module Cybertrain
         collection_path = "#{@path_prefix}/#{plural}"
         member_path = "#{collection_path}/:id"
         member_name = @name_prefix + singular
-        # An uncountable word (news, sheep) would give index and show the
-        # same name; Rails names the collection news_index.
+        # A word whose singular is itself (sheep, news) would give index and
+        # show the same name; Rails names the collection news_index.
         collection_name = @name_prefix + plural + (singular == plural ? "_index" : "")
 
         unless block.nil?

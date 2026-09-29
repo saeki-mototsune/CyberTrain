@@ -1,7 +1,3 @@
-ok   camelize turns snake_case into CamelCase
-ok   underscore turns CamelCase into snake_case
-ok   singularize applies irregulars, then suffix rules
-ok   pluralize is the inverse
 ok   blog routes come out in Rails order
 ok   resources only: and except: pick actions
 ok   member and collection routes precede the standard ones
@@ -12,7 +8,7 @@ ok   verb helpers default as: from the path
 ok   names derived from a path become method-name prefixes
 ok   a name that is not a method-name prefix raises
 ok   an action or controller that is not a Ruby name raises
-ok   an uncountable resource names its collection <plural>_index
+ok   a resource whose singular is its plural names its collection <plural>_index
 ok   a duplicate route name raises
 ok   a route outside resources needs to:
 ok   reset! forgets drawn routes
@@ -24,4 +20,4 @@ ok   emitted path_for resolves helper names with positional args
 ok   emitted source for a small route set
 ok   emitted source with no named routes still parses
 ok   Gen.param and Gen.segment turn helper arguments into path segments
-26 tests, 86 assertions, 0 failures
+22 tests, 58 assertions, 0 failures
