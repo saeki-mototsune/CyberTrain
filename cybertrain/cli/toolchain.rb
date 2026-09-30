@@ -202,7 +202,10 @@ module Cybertrain
             tail(log_path, 25).each { |line| puts "  | #{line}" }
             return false
           end
-          system("rm -rf #{shell_quote(src_dir)}") unless ENV["CYBERTRAIN_KEEP_SRC"].to_s == "1"
+          unless ENV["CYBERTRAIN_KEEP_SRC"].to_s == "1"
+            system("rm -rf #{shell_quote(src_dir)}")
+            system("rmdir #{shell_quote(File.dirname(src_dir))} 2>/dev/null")
+          end
           unless usable?(bin_dir)
             puts "error: the install finished but #{bin_dir} does not hold spinel #{tag} and spin (see #{log_path})"
             return false
