@@ -3,7 +3,7 @@
 #
 #   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references]
-#   cybertrain db migrate | db COMMAND... | server [PORT] | build
+#   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
 #   cybertrain setup [--force] | doctor | version | help
 #
 # Every command that runs spin first puts a Spinel of the pinned release on
@@ -44,10 +44,14 @@ module Cybertrain
         cybertrain build
             Build NAME with app/views embedded and assemble dist/
             (the binary, public/, storage/, tmp/).
+        cybertrain spin ARGS...
+            Run spin with the pinned Spinel, from any directory
+            (cybertrain spin test; cybertrain spin run gen -- --check).
         cybertrain setup [--force]
             Install Spinel #{Cybertrain::SPINEL_TAG} into ~/.cybertrain (CYBERTRAIN_HOME)
-            unless a spinel of that release is already on PATH. The commands
-            above do this by themselves the first time they need spin.
+            unless a spinel of that release is already on PATH, and print
+            the PATH line for ~/.cybertrain/bin. The commands above do the
+            install by themselves the first time they need spin.
         cybertrain doctor
             Check the C toolchain, the SQLite headers and the Spinel install.
         cybertrain version
@@ -64,8 +68,9 @@ module Cybertrain
       when "db" then run_in_app { |_name| run_db(argv) }
       when "server" then run_in_app { |name| run_server(name, argv) }
       when "build" then run_in_app { |name| Toolchain.ensure! ? Build.run(".", name) : 1 }
-      when "setup" then Toolchain.setup(argv.include?("--force"))
-      when "doctor" then Toolchain.doctor
+      when "spin" then run_spin_passthrough(argv)
+      when "setup" then Toolchain.setup(argv[1, argv.size - 1])
+      when "doctor" then run_doctor(argv)
       when "version", "--version", "-v"
         puts "cybertrain #{Cybertrain::VERSION}"
         0
@@ -164,6 +169,27 @@ module Cybertrain
         end
       end
       status
+    end
+
+    # `cybertrain spin ARGS...`: spin from the pinned toolchain, wherever
+    # the command runs (an application directory or not).
+    def self.run_spin_passthrough(argv)
+      args = argv[1, argv.size - 1]
+      if args.empty?
+        puts "usage: cybertrain spin ARGS... (for example: cybertrain spin test)"
+        return 1
+      end
+      return 1 unless Toolchain.ensure!
+
+      system((["spin"] + args.map { |arg| Build.quote_arg(arg) }).join(" ")) ? 0 : 1
+    end
+
+    def self.run_doctor(argv)
+      if argv.size > 1
+        puts "usage: cybertrain doctor"
+        return 1
+      end
+      Toolchain.doctor
     end
 
     # `cybertrain db COMMAND...`.

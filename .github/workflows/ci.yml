@@ -18,10 +18,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          # The gem end-to-end step below clones this checkout as a git
-          # dependency, which a shallow repository cannot serve.
-          fetch-depth: 0
 
       - uses: ruby/setup-ruby@v1
         with:
@@ -46,11 +42,14 @@ jobs:
           gem install --local --no-document /tmp/cybertrain.gem
           cybertrain version
 
-      - name: Cache Spinel toolchain
-        uses: actions/cache@v4
+      # The key names the runner image too: a toolchain built on one image
+      # is not assumed to run on the next.
+      - name: Restore the Spinel toolchain
+        id: spinel-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cybertrain/spinel
-          key: spinel-${{ env.SPINEL_TAG }}-${{ runner.os }}-${{ runner.arch }}-v2
+          key: spinel-${{ env.SPINEL_TAG }}-${{ runner.os }}-${{ env.ImageOS }}-${{ runner.arch }}-v3
 
       # `cybertrain setup` is how users get Spinel, so CI gets it the same
       # way: a cache miss builds the release, a hit verifies it.
@@ -58,7 +57,16 @@ jobs:
         run: |
           cybertrain doctor
           cybertrain setup
-          echo "$HOME/.cybertrain/spinel/$SPINEL_TAG/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cybertrain/bin" >> "$GITHUB_PATH"
+
+      # Saved right after the build, so a failure later in the job does not
+      # cost the next run another build.
+      - name: Save the Spinel toolchain
+        if: steps.spinel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cybertrain/spinel
+          key: ${{ steps.spinel-cache.outputs.cache-primary-key }}
 
       - name: Framework tests
         run: |
@@ -75,7 +83,7 @@ jobs:
           cybertrain db migrate
           cybertrain db status
           cybertrain build
-          spin run gen -- --check
+          cybertrain spin run gen -- --check
           test -x dist/shop
           cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./shop migrate
           CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3999 ./shop > server.log 2>&1 &
@@ -86,11 +94,11 @@ jobs:
           kill %1
 
       # What `cybertrain new` does for users: the framework as a git
-      # dependency that spin fetches and locks (here this checkout, on a
-      # branch, instead of the release tag).
+      # dependency that spin fetches and locks (here this checkout, at a
+      # local tag, instead of the release tag).
       - name: Gem CLI resolves the framework as a git dependency
         run: |
-          git -C "$GITHUB_WORKSPACE" branch -f ci-e2e HEAD
+          git -C "$GITHUB_WORKSPACE" tag -f ci-e2e HEAD
           mkdir -p /tmp/gem-e2e-git && cd /tmp/gem-e2e-git
           cybertrain new gitshop --git "file://$GITHUB_WORKSPACE" --ref ci-e2e
           cd gitshop
@@ -98,7 +106,7 @@ jobs:
           test -f spin.lock
           cybertrain generate scaffold item name:string
           cybertrain db migrate
-          spin run gen -- --check
+          cybertrain spin run gen -- --check
 
       - name: Generated code is fresh (examples/blog)
         if: hashFiles('examples/blog/spin.toml') != ''

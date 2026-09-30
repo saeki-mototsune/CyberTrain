@@ -164,6 +164,10 @@ create tmp/.keep
 create test/.keep
 ok   CLI new defaults to this version's release tag
 ok   new bootstraps the app with spin lock and spin run gen
+usage: cybertrain spin ARGS... (for example: cybertrain spin test)
+usage: cybertrain doctor
+usage: cybertrain setup [--force]
+ok   CLI spin needs arguments
 error: blog already exists
 error: 'Bad Name' is not a valid app name (lowercase letters, digits and _)
 error: usage: cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
@@ -195,10 +199,14 @@ Usage:
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain spin ARGS...
+      Run spin with the pinned Spinel, from any directory
+      (cybertrain spin test; cybertrain spin run gen -- --check).
   cybertrain setup [--force]
       Install Spinel 2026.09.12 into ~/.cybertrain (CYBERTRAIN_HOME)
-      unless a spinel of that release is already on PATH. The commands
-      above do this by themselves the first time they need spin.
+      unless a spinel of that release is already on PATH, and print
+      the PATH line for ~/.cybertrain/bin. The commands above do the
+      install by themselves the first time they need spin.
   cybertrain doctor
       Check the C toolchain, the SQLite headers and the Spinel install.
   cybertrain version
@@ -230,10 +238,14 @@ Usage:
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain spin ARGS...
+      Run spin with the pinned Spinel, from any directory
+      (cybertrain spin test; cybertrain spin run gen -- --check).
   cybertrain setup [--force]
       Install Spinel 2026.09.12 into ~/.cybertrain (CYBERTRAIN_HOME)
-      unless a spinel of that release is already on PATH. The commands
-      above do this by themselves the first time they need spin.
+      unless a spinel of that release is already on PATH, and print
+      the PATH line for ~/.cybertrain/bin. The commands above do the
+      install by themselves the first time they need spin.
   cybertrain doctor
       Check the C toolchain, the SQLite headers and the Spinel install.
   cybertrain version
@@ -264,13 +276,17 @@ Usage:
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain spin ARGS...
+      Run spin with the pinned Spinel, from any directory
+      (cybertrain spin test; cybertrain spin run gen -- --check).
   cybertrain setup [--force]
       Install Spinel 2026.09.12 into ~/.cybertrain (CYBERTRAIN_HOME)
-      unless a spinel of that release is already on PATH. The commands
-      above do this by themselves the first time they need spin.
+      unless a spinel of that release is already on PATH, and print
+      the PATH line for ~/.cybertrain/bin. The commands above do the
+      install by themselves the first time they need spin.
   cybertrain doctor
       Check the C toolchain, the SQLite headers and the Spinel install.
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-18 tests, 78 assertions, 0 failures
+19 tests, 82 assertions, 0 failures

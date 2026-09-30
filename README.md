@@ -46,8 +46,8 @@ when a required one is missing it also prints the install command for your
 platform.
 
 The framework has no separate test runner; it tests itself. `spin` comes
-with Spinel: `cybertrain setup` prints the `export PATH=...` line that puts
-the copy it installs on `PATH` (or use a Spinel that is already on `PATH`):
+with Spinel: run it as `cybertrain spin test`, or put the copy `cybertrain`
+installs on `PATH` (`cybertrain setup` prints the `export PATH=...` line):
 
 ```sh
 spin test
@@ -94,6 +94,8 @@ commands (`cybertrain help` prints them):
   3000).
 - `cybertrain build` builds NAME with `app/views/` embedded and assembles
   `dist/` (the binary, `public/`, `storage/`, `tmp/`).
+- `cybertrain spin ARGS...` runs `spin` with the pinned Spinel from any
+  directory (`cybertrain spin test`, `cybertrain spin run gen -- --check`).
 - `cybertrain setup [--force]` installs Spinel `2026.09.12` into
   `~/.cybertrain` unless a `spinel` of that release is already on `PATH`;
   `--force` rebuilds the copy under `~/.cybertrain`.
@@ -104,7 +106,7 @@ commands (`cybertrain help` prints them):
 `db`, `server` and `build` run inside an application; NAME is the
 `[package] name` in its `spin.toml`.
 
-Every command that runs `spin` (`new`, `db`, `server`, `build`) first makes
+Every command that runs `spin` (`new`, `db`, `server`, `build`, `spin`) first makes
 sure a Spinel of the release in `Cybertrain::SPINEL_TAG` is available. A
 `spinel` on `PATH` (with a `spin`) whose `spinel --version` reports that
 release is used as it is; otherwise the copy `cybertrain` keeps under
@@ -119,10 +121,12 @@ which and prints the install command for your platform before it starts. A
 
 `cybertrain setup` does the same on request and, whenever its own copy is
 the one in use, prints the line that puts it on `PATH`, for running `spin`
-yourself:
+yourself (`~/.cybertrain/bin` holds `spinel` and `spin` links to the release
+in use, so the line survives a release bump; `cybertrain spin ...` needs no
+`PATH` at all):
 
 ```sh
-export PATH="$HOME/.cybertrain/spinel/2026.09.12/bin:$PATH"
+export PATH="$HOME/.cybertrain/bin:$PATH"
 ```
 
 Two environment variables override all this: `CYBERTRAIN_HOME` replaces

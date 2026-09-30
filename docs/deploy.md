@@ -95,12 +95,14 @@ cybertrain setup
 Spinel を 1 行ずつ表示します。足りないものは `MISSING` と表示され、インストールのコマンドが続きます）。
 
 `cybertrain new`・`db`・`server`・`build` は、この Spinel を自分で見つけて使うので、PATH の設定は要りません。
-`spin` を直接実行するとき（このチュートリアルでは 2-7 の `spin run gen -- --check` と、第 7 部の
-`spin lock`・`spin test` など）だけ、PATH に通します（zsh なら `~/.zshrc`）。`cybertrain setup` は、
-自分が入れた Spinel を使う場合に、同じ内容の `export PATH=...` の行を表示します。
+`spin` を直接実行したいときは `cybertrain spin ...`（例: `cybertrain spin run gen -- --check`）でも
+動きます。それでも `spin` をそのまま打ちたい場合だけ、`~/.cybertrain/bin` を PATH に通します（zsh なら
+`~/.zshrc`）。`~/.cybertrain/bin` には現在使っているリリースへの `spinel`・`spin` のリンクが置かれるので、
+リリースが上がっても書き換えは要りません。`cybertrain setup` は、自分が入れた Spinel を使う場合に、
+同じ内容の `export PATH=...` の行を表示します。
 
 ```sh
-echo 'export PATH="$HOME/.cybertrain/spinel/2026.09.12/bin:$PATH"' >> ~/.bashrc
+echo 'export PATH="$HOME/.cybertrain/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 spinel --version
 ```
@@ -483,7 +485,7 @@ REPO=git@github.com:YOUR_GITHUB/notes.git
 REF="${1:-main}"
 KEEP=5   # 残すリリースの数
 
-export PATH="$HOME/.cybertrain/spinel/2026.09.12/bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.cybertrain/bin:$HOME/.local/bin:$PATH"
 set -a; . /etc/notes/notes.env; set +a
 
 release="$ROOT/releases/$(date +%Y%m%d%H%M%S)"
@@ -515,9 +517,9 @@ EOF
 chmod 700 ~/deploy.sh
 ```
 
-`PATH` の先頭に `~/.cybertrain/spinel/2026.09.12/bin` を入れているのは、`gen/` の確認で `spin` を直接
-呼ぶためです（`cybertrain build` は Spinel を自分で見つけます）。3-4 で入れた Spinel のリリースと
-同じ番号にしてください。
+`PATH` の先頭に `~/.cybertrain/bin` を入れているのは、`gen/` の確認で `spin` を直接呼ぶためです
+（`cybertrain build` は Spinel を自分で見つけます）。`~/.cybertrain/bin` は `cybertrain setup` が
+現在のリリースに向けて張り直すリンクなので、Spinel のリリースが上がっても書き換えは要りません。
 
 途中のどこかで失敗した場合（`gen/` が古い、コンパイルエラー、マイグレーション失敗）は、
 `current` を切り替える前に止まるので、動いているアプリには影響しません。
@@ -707,8 +709,8 @@ git push
 そのあと普段どおりデプロイします。新しい `cybertrain` が固定している Spinel のリリース
 （`Cybertrain::SPINEL_TAG`。そのタグの [`.github/workflows/ci.yml`](https://github.com/saeki-mototsune/cybertrain/blob/main/.github/workflows/ci.yml) の `SPINEL_TAG` と同じもの）が上がっていたら、
 上のコマンドの前に `cybertrain setup` で入れ直してください。新しいリリースは
-`~/.cybertrain/spinel/<リリース>/` に入り、古いリリースはそのまま残ります。手元の PATH の行（1-3）と、
-サーバーの `deploy.sh`（5-3）の PATH の行にある `2026.09.12` も、新しいリリースに書き換えます。
+`~/.cybertrain/spinel/<リリース>/` に入り、古いリリースはそのまま残ります。`~/.cybertrain/bin` の
+リンクは新しいリリースに張り直されるので、PATH の行（1-3、5-3）はそのままで構いません。
 サーバーでは `gem install` のあとに `notes` ユーザーで `cybertrain setup` を実行しておくと（3-4）、
 デプロイの途中でビルドを待たずに済みます。
 
@@ -731,7 +733,7 @@ git push
 | 500 になり、ログに `Missing template ...` が出る | ビルド時に `app/views/` に無かったテンプレート。`cybertrain build` をやり直す |
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
 | デプロイが `stale: gen/...` で止まる | 手元で `spin run gen` して `gen/` をコミットし忘れている |
-| `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` の `~/.cybertrain/spinel/2026.09.12/bin` が実際の入れ先と違う（5-3） |
+| `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
 | `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.2.0`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |
 | ブラウザで 500.html が出続ける | アプリが落ちている。`journalctl -u notes -n 50` を見る |

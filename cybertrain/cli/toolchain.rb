@@ -1,28 +1,36 @@
 # The Spinel toolchain the CLI runs `spin` with. `cybertrain new`, `db`,
-# `server` and `build` call Toolchain.ensure! before their first spin
-# command: it uses a `spinel`/`spin` of the pinned release already on PATH,
-# or the copy it keeps under ~/.cybertrain, or builds that copy from the
-# release tag (git clone, make deps, make, make install), the same steps CI
-# runs. `cybertrain setup` does it explicitly; `cybertrain doctor` reports.
+# `server`, `build` and `spin` call Toolchain.ensure! before their first
+# spin command: it uses a `spinel`/`spin` of the pinned release already on
+# PATH, or the copy it keeps under ~/.cybertrain, or builds that copy from
+# the release tag (git clone, make deps, make, make install), the same steps
+# CI runs. `cybertrain setup` does it explicitly; `cybertrain doctor`
+# reports.
 #
 # Plain Ruby: runs under CRuby (the gem) and compiles under Spinel
-# (bin/cybertrain.rb), so it shells out with `system` and reads files
-# instead of using Open3, RbConfig or Etc.
+# (bin/cybertrain.rb), so it shells out with `system` and backticks and
+# reads files instead of using Open3, RbConfig or Etc.
 require "cybertrain/version"
 
 module Cybertrain
   module CLI
     module Toolchain
       SPINEL_GIT = "https://github.com/matz/spinel.git"
+      STALE_LOCK_SECONDS = 7200
+      LOCK_WAIT_SECONDS = 3600
 
       # ---- locations -----------------------------------------------------
 
-      # CYBERTRAIN_HOME, or ~/.cybertrain.
+      # CYBERTRAIN_HOME, or ~/.cybertrain, as an absolute path (a leading
+      # `~` and relative paths are expanded). "" when neither CYBERTRAIN_HOME
+      # nor HOME is set.
       def self.home
         dir = ENV["CYBERTRAIN_HOME"].to_s
-        return dir unless dir == ""
+        base = ENV["HOME"].to_s
+        dir = File.join(base, ".cybertrain") if dir == "" && base != ""
+        return "" if dir == ""
+        return "" if dir.start_with?("~") && base == ""
 
-        File.join(ENV["HOME"].to_s, ".cybertrain")
+        File.expand_path(dir)
       end
 
       def self.tag
@@ -36,6 +44,18 @@ module Cybertrain
 
       def self.bin_dir
         File.join(prefix, "bin")
+      end
+
+      # ~/.cybertrain/bin: `spinel` and `spin` symlinks to the managed release
+      # in use, so one PATH entry keeps working across a SPINEL_TAG bump.
+      def self.stable_bin_dir
+        File.join(home, "bin")
+      end
+
+      # Written when an install finished and checked out; a half-updated
+      # prefix (an interrupted `setup --force`) has none and is rebuilt.
+      def self.stamp
+        File.join(prefix, ".cybertrain-complete")
       end
 
       def self.src_dir
@@ -52,15 +72,16 @@ module Cybertrain
 
       # ---- discovery -----------------------------------------------------
 
-      # The release inside the parentheses of `spinel --version`:
-      # "spinel 112bae85c1a2 (2026.09.12) [cc ...]" -> "2026.09.12". "" when
-      # the line has no such field.
+      # The release inside the parentheses of `spinel --version`, which come
+      # before the compiler field: "spinel 112bae85c1a2 (2026.09.12) [cc
+      # (Ubuntu 13.3.0) 13.3.0]" -> "2026.09.12". "" when there is none.
       def self.release_of(version_line)
-        open = version_line.index("(")
-        close = version_line.index(")")
+        head = version_line.split(" [")[0].to_s
+        open = head.index("(")
+        close = head.index(")")
         return "" if open.nil? || close.nil? || close <= open
 
-        version_line[open + 1, close - open - 1].to_s
+        head[open + 1, close - open - 1].to_s
       end
 
       # The release the spinel binary at `path` reports; "" when it cannot run.
@@ -79,28 +100,45 @@ module Cybertrain
         release_at(spinel) == tag
       end
 
-      # The spinel found on PATH ("" when none) and its release.
-      def self.spinel_on_path
-        sh_read("command -v spinel")
+      # The managed copy is complete and of the pinned release.
+      def self.managed_ok?
+        usable?(bin_dir) && File.exist?(stamp)
       end
 
-      # A spinel of the pinned release, with spin, is already on PATH.
+      # The spinel PATH resolves to, as an absolute path; "" when none.
+      def self.spinel_on_path
+        found = sh_read("command -v spinel")
+        found == "" ? "" : File.expand_path(found)
+      end
+
+      # A spinel of the pinned release, with the spin from the same
+      # directory, is already on PATH.
       def self.on_path?
         spinel = spinel_on_path
         return false if spinel == ""
-        return false if sh_read("command -v spin") == ""
+
+        spin = sh_read("command -v spin")
+        return false if spin == ""
+        return false unless File.dirname(File.expand_path(spin)) == File.dirname(spinel)
 
         release_at(spinel) == tag
       end
 
-      # The bin directory named by CYBERTRAIN_SPINEL_HOME: the prefix's bin/,
-      # or the directory itself when it holds spinel directly. "" when unset.
+      # The bin directory CYBERTRAIN_SPINEL_HOME names, absolute: the
+      # prefix's bin/, or the directory itself when it holds spinel directly.
+      # "" when the variable is unset.
       def self.explicit_bin_dir
         given = ENV["CYBERTRAIN_SPINEL_HOME"].to_s
         return "" if given == ""
+
+        given = File.expand_path(given)
         return given if File.file?(File.join(given, "spinel"))
 
         File.join(given, "bin")
+      end
+
+      def self.explicit_error(explicit)
+        "error: CYBERTRAIN_SPINEL_HOME=#{ENV["CYBERTRAIN_SPINEL_HOME"]} has no spinel #{tag} and spin in #{explicit}"
       end
 
       # ---- ensuring ------------------------------------------------------
@@ -114,27 +152,36 @@ module Cybertrain
         unless explicit == ""
           return use(explicit) if usable?(explicit)
 
-          puts "error: CYBERTRAIN_SPINEL_HOME=#{ENV["CYBERTRAIN_SPINEL_HOME"]} has no spinel #{tag} and spin in #{explicit}"
+          puts explicit_error(explicit)
           return false
         end
         return true if on_path?
-        return use(bin_dir) if usable?(bin_dir)
-
-        note_other_release
+        return use(bin_dir) if managed_ok?
         return false unless install(false)
 
         use(bin_dir)
       end
 
-      # `cybertrain setup [--force]`: the exit code.
-      def self.setup(force)
+      # `cybertrain setup [--force]`, given the words after `setup`: the
+      # exit code.
+      def self.setup(args)
+        force = false
+        args.each do |arg|
+          if arg == "--force"
+            force = true
+          else
+            puts "usage: cybertrain setup [--force]"
+            return 1
+          end
+        end
         explicit = explicit_bin_dir
         unless explicit == ""
+          puts "note: --force is ignored while CYBERTRAIN_SPINEL_HOME is set" if force
           if usable?(explicit)
             puts "spinel #{tag} is in #{explicit} (CYBERTRAIN_SPINEL_HOME); nothing to install"
             return 0
           end
-          puts "error: CYBERTRAIN_SPINEL_HOME=#{ENV["CYBERTRAIN_SPINEL_HOME"]} has no spinel #{tag} and spin in #{explicit}"
+          puts explicit_error(explicit)
           puts "  unset it to let cybertrain install its own copy under #{prefix}"
           return 1
         end
@@ -143,24 +190,13 @@ module Cybertrain
           puts "nothing to install"
           return 0
         end
-        if !force && usable?(bin_dir)
+        if !force && managed_ok?
+          link_stable_bin
           puts "spinel #{tag} is installed in #{bin_dir}; nothing to install (--force rebuilds it)"
           print_path_hint
           return 0
         end
-
-        note_other_release
-        return 1 unless install(force)
-
-        puts ""
-        puts "installed spinel #{tag} in #{bin_dir}"
-        print_path_hint
-        0
-      end
-
-      def self.print_path_hint
-        puts "cybertrain uses it by itself; to run spin directly:"
-        puts "  export PATH=\"#{bin_dir}:$PATH\""
+        install(force) ? 0 : 1
       end
 
       def self.use(dir)
@@ -168,17 +204,37 @@ module Cybertrain
         true
       end
 
-      # A spinel of another release on PATH is left alone, and said so once
-      # (the framework is tested against one release).
-      def self.note_other_release
+      # Points ~/.cybertrain/bin/{spinel,spin} at the managed release.
+      def self.link_stable_bin
+        return unless system("mkdir -p #{shell_quote(stable_bin_dir)} 2>/dev/null")
+
+        ["spinel", "spin"].each do |name|
+          system("ln -sfn #{shell_quote(File.join(bin_dir, name))} #{shell_quote(File.join(stable_bin_dir, name))} 2>/dev/null")
+        end
+      end
+
+      def self.print_path_hint
+        puts "cybertrain uses it by itself; `cybertrain spin ...` runs spin with it, or put it on PATH:"
+        puts "  export PATH=\"#{stable_bin_dir}:$PATH\""
+      end
+
+      # The note for a spinel of another release on PATH, which is left
+      # alone (the framework is tested against one release); "" when PATH
+      # has none or has the pinned one.
+      def self.other_release_note
         spinel = spinel_on_path
-        return if spinel == ""
+        return "" if spinel == ""
 
         release = release_at(spinel)
-        return if release == tag
+        return "" if release == tag
 
         shown = release == "" ? "an unknown release" : "release #{release}"
-        puts "note: #{spinel} is #{shown}; cybertrain #{Cybertrain::VERSION} is pinned to Spinel #{tag} and keeps its own copy in #{prefix}"
+        "note: #{spinel} is #{shown}; cybertrain #{Cybertrain::VERSION} is pinned to Spinel #{tag} and keeps its own copy in #{prefix}"
+      end
+
+      def self.note_other_release
+        note = other_release_note
+        puts note unless note == ""
       end
 
       # ---- installing ----------------------------------------------------
@@ -186,20 +242,34 @@ module Cybertrain
       # Builds and installs the pinned release into prefix. Returns false
       # after printing why when a prerequisite is missing or a step fails.
       def self.install(force)
+        if home == ""
+          puts "error: neither CYBERTRAIN_HOME nor HOME is set; cybertrain needs one of them to keep Spinel in"
+          return false
+        end
+        unless prefix.match(/[\s'"`$\\;&|<>()*?]/).nil?
+          puts "error: Spinel's Makefile cannot install into #{prefix}; set CYBERTRAIN_HOME to a path without spaces, quotes or $"
+          return false
+        end
         problems = missing_requirements
         unless problems.empty?
           puts "error: cannot build Spinel #{tag}: missing #{problems.join(", ")}"
           install_hints.each { |line| puts "  #{line}" }
           return false
         end
+        note_other_release
         return false unless take_lock
 
         begin
-          return true if !force && usable?(bin_dir) # another process finished it while we waited
+          return true if !force && managed_ok? # another process finished it while we waited
 
           puts "Installing Spinel #{tag} into #{prefix} (one-time; a few minutes)"
           puts "  log: #{log_path}"
-          system("mkdir -p #{shell_quote(File.dirname(log_path))} #{shell_quote(File.dirname(src_dir))}")
+          File.delete(stamp) if File.exist?(stamp)
+          system("mkdir -p #{shell_quote(File.dirname(log_path))} #{shell_quote(File.dirname(src_dir))} 2>/dev/null")
+          unless File.directory?(File.dirname(log_path)) && File.directory?(File.dirname(src_dir))
+            puts "error: cannot write under #{home}; set CYBERTRAIN_HOME to a writable directory"
+            return false
+          end
           system("rm -rf #{shell_quote(src_dir)}")
           File.write(log_path, "")
           steps = [
@@ -224,38 +294,84 @@ module Cybertrain
             puts "error: the install finished but #{bin_dir} does not hold spinel #{tag} and spin (see #{log_path})"
             return false
           end
+          File.write(stamp, "#{tag}\n")
+          link_stable_bin
+          puts ""
+          puts "installed spinel #{tag} in #{bin_dir}"
+          print_path_hint
           true
         ensure
           release_lock
         end
       end
 
-      # One build at a time per home: a directory as the lock (mkdir is
-      # atomic), holding the builder's PID so a lock left by a killed build
-      # is recognised and taken over.
+      # One build at a time per home. The lock is a directory holding the
+      # builder's pid, taken by renaming a staging directory (already
+      # holding the pid) onto the lock path: rename is atomic and refuses to
+      # replace a non-empty directory, so a lock is never seen half-made. A
+      # lock whose pid is gone or invalid, or older than STALE_LOCK_SECONDS,
+      # is moved aside and taken over.
       def self.take_lock
-        system("mkdir -p #{shell_quote(File.dirname(lock_dir))}")
+        parent = File.dirname(lock_dir)
+        unless system("mkdir -p #{shell_quote(parent)} 2>/dev/null") && File.directory?(parent)
+          puts "error: cannot create #{parent}; set CYBERTRAIN_HOME to a writable directory"
+          return false
+        end
+        staging = "#{lock_dir}.#{Process.pid}"
+        system("rm -rf #{shell_quote(staging)}")
+        begin
+          Dir.mkdir(staging)
+          File.write(File.join(staging, "pid"), Process.pid.to_s)
+        rescue StandardError
+          puts "error: cannot write in #{parent}; set CYBERTRAIN_HOME to a writable directory"
+          return false
+        end
         waited = 0
-        until system("mkdir #{shell_quote(lock_dir)} 2>/dev/null")
-          pid = lock_pid
-          if pid == "" || !system("kill -0 #{pid} 2>/dev/null")
-            system("rm -rf #{shell_quote(lock_dir)}")
+        while true
+          taken = false
+          begin
+            File.rename(staging, lock_dir)
+            taken = true
+          rescue StandardError
+            taken = false # held by someone: rename cannot replace a non-empty directory
+          end
+          return true if taken
+
+          if lock_stale?
+            aside = "#{lock_dir}.stale.#{Process.pid}"
+            begin
+              File.rename(lock_dir, aside)
+              system("rm -rf #{shell_quote(aside)}")
+            rescue StandardError
+              nil # another waiter moved it first
+            end
             next
           end
-          puts "another cybertrain (pid #{pid}) is installing Spinel #{tag}; waiting" if waited == 0
-          if waited >= 3600
-            puts "error: gave up waiting for pid #{pid}; remove #{lock_dir} if it is stale"
+          puts "another cybertrain (pid #{lock_pid}) is installing Spinel #{tag}; waiting (remove #{lock_dir} if no build is running)" if waited == 0
+          if waited >= LOCK_WAIT_SECONDS
+            puts "error: gave up waiting for pid #{lock_pid}; remove #{lock_dir} if it is stale"
+            system("rm -rf #{shell_quote(staging)}")
             return false
           end
           sleep 5
           waited += 5
         end
-        File.write(File.join(lock_dir, "pid"), Process.pid.to_s)
-        true
+      end
+
+      # The lock exists but its holder is gone, unrecorded, or has held it
+      # for longer than a build can take.
+      def self.lock_stale?
+        return false unless File.directory?(lock_dir)
+
+        pid = lock_pid
+        return true if pid.match(/\A[1-9][0-9]*\z/).nil?
+        return true unless system("kill -0 #{pid} 2>/dev/null")
+
+        Time.now.to_i - File.mtime(lock_dir).to_i > STALE_LOCK_SECONDS
       end
 
       def self.release_lock
-        system("rm -rf #{shell_quote(lock_dir)}")
+        system("rm -rf #{shell_quote(lock_dir)}") if lock_pid == Process.pid.to_s
       end
 
       def self.lock_pid
@@ -273,9 +389,14 @@ module Cybertrain
 
       # ---- requirements --------------------------------------------------
 
+      # The C compiler command, possibly with arguments ("ccache gcc").
       def self.cc
         given = ENV["CC"].to_s
         given == "" ? "cc" : given
+      end
+
+      def self.cc_program
+        cc.split(" ")[0].to_s
       end
 
       def self.have_command?(name)
@@ -285,10 +406,13 @@ module Cybertrain
       # A C program using `include` and `link` compiles and links: the
       # header and the library are both installed.
       def self.compiles?(include, body, link)
-        base = File.join(tmpdir, "cybertrain-probe-#{Process.pid}")
-        File.write("#{base}.c", "#include <#{include}>\nint main(void) { return #{body}; }\n")
-        ok = system("#{cc} #{shell_quote("#{base}.c")} -o #{shell_quote(base)} #{link} > /dev/null 2>&1")
-        system("rm -f #{shell_quote("#{base}.c")} #{shell_quote(base)}")
+        dir = sh_read("mktemp -d 2>/dev/null")
+        return false if dir == ""
+
+        source = File.join(dir, "probe.c")
+        File.write(source, "#include <#{include}>\nint main(void) { return #{body}; }\n")
+        ok = system("#{cc} #{shell_quote(source)} -o #{shell_quote(File.join(dir, "probe"))} #{link} > /dev/null 2>&1")
+        system("rm -rf #{shell_quote(dir)}")
         ok
       end
 
@@ -313,11 +437,25 @@ module Cybertrain
       # package, which cybertrain does not use.
       def self.missing_requirements
         missing = Array.new(0) { "" }
+        if platform == "darwin" && !system("xcode-select -p > /dev/null 2>&1")
+          missing << "the Xcode Command Line Tools (xcode-select --install)"
+          return missing
+        end
         missing << "git" unless have_command?("git")
         missing << "make" unless have_command?("make")
         missing << "curl" unless have_command?("curl")
-        missing << "a C compiler (#{cc})" unless have_command?(cc)
-        missing << "the SQLite 3 headers and library" if have_command?(cc) && !sqlite_ok?
+        missing_app_requirements.each { |name| missing << name }
+        missing
+      end
+
+      # What building an application needs even once Spinel is installed.
+      def self.missing_app_requirements
+        missing = Array.new(0) { "" }
+        unless have_command?(cc_program)
+          missing << "a C compiler (#{cc})"
+          return missing
+        end
+        missing << "the SQLite 3 headers and library" unless sqlite_ok?
         missing
       end
 
@@ -361,48 +499,61 @@ module Cybertrain
 
       # ---- doctor --------------------------------------------------------
 
-      # `cybertrain doctor`: prints one line per check; the exit code is 1
-      # when a Spinel build could not start here.
+      # `cybertrain doctor`: prints one line per check. The exit code is 0
+      # when a Spinel of the pinned release is usable and applications can
+      # be built, or when nothing stops `cybertrain setup` from building
+      # one; 1 otherwise.
       def self.doctor
         puts "cybertrain #{Cybertrain::VERSION}, pinned to Spinel #{tag}"
-        puts "home      #{home}"
+        puts "home      #{home == "" ? "(unset: set CYBERTRAIN_HOME or HOME)" : home}"
         report("git", have_command?("git"), sh_read("command -v git"))
         report("make", have_command?("make"), sh_read("command -v make"))
         report("curl", have_command?("curl"), sh_read("command -v curl"))
-        report("cc", have_command?(cc), sh_read("#{shell_quote(cc)} --version 2>/dev/null | head -n 1"))
-        if have_command?(cc)
+        report("cc", have_command?(cc_program), sh_read("#{cc} --version 2>/dev/null | head -n 1"))
+        if have_command?(cc_program)
           report("sqlite3", sqlite_ok?, sqlite_ok? ? "headers and library found" : "sqlite3.h or -lsqlite3 missing")
           if openssl_ok?
             report("openssl", true, "headers and library found")
           else
-            puts "openssl   --   not found: Spinel builds without its openssl package, which cybertrain does not use"
+            info("openssl", "not found: Spinel builds without its openssl package, which cybertrain does not use")
           end
         end
-        doctor_spinel
-        problems = missing_requirements
+        ready = doctor_spinel
+        problems = ready ? missing_app_requirements : missing_requirements
+        problems << "a usable CYBERTRAIN_SPINEL_HOME" if !ready && explicit_bin_dir != ""
         return 0 if problems.empty?
 
         puts ""
         puts "missing: #{problems.join(", ")}"
-        install_hints.each { |line| puts "  #{line}" }
+        install_hints.each { |line| puts "  #{line}" } unless ready
         1
       end
 
+      # The spinel lines; true when one of the pinned release is usable.
       def self.doctor_spinel
         explicit = explicit_bin_dir
         unless explicit == ""
-          report("spinel", usable?(explicit), "CYBERTRAIN_SPINEL_HOME -> #{explicit} (#{release_label(File.join(explicit, "spinel"))})")
-          return
+          ok = usable?(explicit)
+          report("spinel", ok, "#{explicit} (CYBERTRAIN_SPINEL_HOME, #{release_label(File.join(explicit, "spinel"))})")
+          return ok
         end
+        found = false
         on_path = spinel_on_path
         if on_path != ""
-          report("spinel", on_path?, "#{on_path} on PATH (#{release_label(on_path)})")
+          if on_path?
+            report("spinel", true, "#{on_path} on PATH (#{release_label(on_path)})")
+            found = true
+          else
+            info("spinel", "#{on_path} on PATH is #{release_label(on_path)}; not used (pinned to #{tag})")
+          end
         end
-        if usable?(bin_dir)
+        if managed_ok?
           report("spinel", true, "#{bin_dir} (managed, #{tag})")
-        elsif on_path == ""
-          puts "spinel    --   not installed; `cybertrain setup` builds #{tag} into #{prefix}"
+          found = true
+        elsif !found
+          info("spinel", "not installed; `cybertrain setup` builds #{tag} into #{prefix}")
         end
+        found
       end
 
       def self.release_label(spinel)
@@ -411,24 +562,19 @@ module Cybertrain
       end
 
       def self.report(name, ok, detail)
-        puts "#{name.ljust(9)} #{ok ? "ok" : "MISSING"}   #{detail}"
+        puts "#{name.ljust(9)} #{(ok ? "ok" : "MISSING").ljust(7)}   #{detail}"
+      end
+
+      def self.info(name, detail)
+        puts "#{name.ljust(9)} #{"--".ljust(7)}   #{detail}"
       end
 
       # ---- shell helpers -------------------------------------------------
 
-      def self.tmpdir
-        dir = ENV["TMPDIR"].to_s
-        dir == "" ? "/tmp" : dir
-      end
-
       # stdout of a shell command (a pipeline or an `a || b` list too),
       # stripped; "" on failure.
       def self.sh_read(command)
-        out = File.join(tmpdir, "cybertrain-sh-#{Process.pid}")
-        system("(#{command}) > #{shell_quote(out)} 2>/dev/null")
-        text = File.exist?(out) ? File.read(out).strip : ""
-        File.delete(out) if File.exist?(out)
-        text
+        `(#{command}) 2>/dev/null`.strip
       end
 
       def self.tail(path, count)

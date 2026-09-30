@@ -174,6 +174,13 @@ end
 test "new bootstraps the app with spin lock and spin run gen" do
   assert_equal "cd 'notes' && spin lock && spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("notes")
   assert_equal "cd 'it'\\''s' && spin lock && spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("it's")
+  assert_equal "cd 'notes' && cybertrain spin lock && cybertrain spin run gen", Cybertrain::CLI::NewApp.recovery_command("notes")
+end
+
+test "CLI spin needs arguments" do
+  assert_equal 1, Cybertrain::CLI.run(["spin"])
+  assert_equal 1, Cybertrain::CLI.run(["doctor", "extra"])
+  assert_equal 1, Cybertrain::CLI.run(["setup", "--frce"])
 end
 
 test "CLI new refuses an existing directory and a bad name" do
