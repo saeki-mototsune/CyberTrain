@@ -22,7 +22,7 @@ cybertrain generate scaffold comment commenter:string body:text article:referenc
   `form_with(model: [@article, @comment])`).
 
 ```sh
-cybertrain migration   # spin run gen; spin run db -- migrate; spin run gen
+cybertrain db migrate  # spin run gen; spin run db -- migrate; spin run gen
 cybertrain server      # http://127.0.0.1:3000 (`cybertrain server 4000`, or PORT=4000, to change it)
 cybertrain build       # dist/blog (views embedded) + dist/public/
 spin test              # test/articles.rb, test/comments.rb against storage/test.sqlite3

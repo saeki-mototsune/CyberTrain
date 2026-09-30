@@ -25,18 +25,29 @@ Rails" below.
 
 ## Requirements
 
-- Spinel `2026.09.12`, with `spinel` and `spin` on `PATH` (see `SPINEL_TAG`
-  in [.github/workflows/ci.yml](.github/workflows/ci.yml)); untested against
-  other versions.
-- A C toolchain (`cc`) — Spinel compiles every program to C.
-- Ruby 3.2+ and RubyGems, for the `cybertrain` command only (applications
-  never run on CRuby).
+- Spinel `2026.09.12` (`Cybertrain::SPINEL_TAG`, the same release as
+  `SPINEL_TAG` in [.github/workflows/ci.yml](.github/workflows/ci.yml));
+  untested against other versions. You do not install it by hand: the
+  `cybertrain` command builds that release into `~/.cybertrain` the first
+  time it needs it (`cybertrain setup` does that on request), unless a
+  `spinel` of that release is already on `PATH` — see "Installing the CLI".
+- To build it: a C toolchain (`cc`, or the compiler `CC` names) and `make`
+  — Spinel compiles every program to C — plus `git` and `curl`.
 - SQLite 3 headers/library (`libsqlite3-dev` on Debian/Ubuntu; present with
   Xcode's command line tools on macOS) — models use Spinel's FFI directly,
-  not a gem. Building Spinel itself also needs OpenSSL's headers
-  (`libssl-dev`); cybertrain itself does not link OpenSSL.
+  not a gem.
+- Ruby 3.2+ and RubyGems, for the `cybertrain` command only (applications
+  never run on CRuby).
+- OpenSSL's headers (`libssl-dev`) are optional: without them Spinel builds
+  without its `openssl` package, which cybertrain does not use.
 
-The framework has no separate test runner; it tests itself:
+`cybertrain doctor` checks these tools and headers and the Spinel install;
+when a required one is missing it also prints the install command for your
+platform.
+
+The framework has no separate test runner; it tests itself. `spin` comes
+with Spinel: `cybertrain setup` prints the `export PATH=...` line that puts
+the copy it installs on `PATH` (or use a Spinel that is already on `PATH`):
 
 ```sh
 spin test
@@ -55,38 +66,88 @@ test/<name>.rb` does that build-then-capture step for you and prints the diff st
 
 ```sh
 gem install cybertrain
+cybertrain new blog    # also installs Spinel, the first time (a few minutes)
+cd blog
+cybertrain g scaffold article title:string body:text
+cybertrain db migrate
+cybertrain server      # http://127.0.0.1:3000
+cybertrain build       # production: dist/
 ```
 
 The `cybertrain` command is plain Ruby and the gem runs it under CRuby
-(3.2 or newer); the framework itself is not in the gem. Its commands
-(`cybertrain help` prints them):
+(3.2 or newer); neither the framework nor Spinel is in the gem. Its
+commands (`cybertrain help` prints them):
 
-- `cybertrain new NAME` creates an application in NAME, then runs `spin
-  lock` and `spin run gen` in it.
+- `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]]
+  [--skip-spin]` creates an application in NAME, then runs `spin lock` and
+  `spin run gen` in it, installing Spinel first when it is needed.
 - `cybertrain generate scaffold NAME field:type ...` (alias `g scaffold`)
   adds a resource to the application in the current directory.
-- `cybertrain migration` generates, applies pending migrations, and
-  generates again (`spin run gen; spin run db -- migrate; spin run gen`).
-- `cybertrain db COMMAND...` runs any database command: `status`,
-  `rollback [N]`, `schema:dump`, `create`.
+- `cybertrain db migrate` generates, applies pending migrations, and
+  generates again (`spin run gen; spin run db -- migrate; spin run gen`);
+  `cybertrain migration` is kept as an alias.
+- `cybertrain db COMMAND...` runs any other database command after `spin
+  run gen`: `status`, `rollback [N]` (which generates again afterwards),
+  `schema:dump`, `create`.
 - `cybertrain server [PORT]` generates, then starts the development server
   (`spin run gen; spin run NAME`, or `spin run NAME -- PORT`; default port
   3000).
 - `cybertrain build` builds NAME with `app/views/` embedded and assembles
   `dist/` (the binary, `public/`, `storage/`, `tmp/`).
+- `cybertrain setup [--force]` installs Spinel `2026.09.12` into
+  `~/.cybertrain` unless a `spinel` of that release is already on `PATH`;
+  `--force` rebuilds the copy under `~/.cybertrain`.
+- `cybertrain doctor` checks the C toolchain, the SQLite headers and the
+  Spinel install.
+- `cybertrain version` prints the version.
 
-`migration`, `db`, `server` and `build` run inside an application; NAME is
-the `[package] name` in its `spin.toml`.
+`db`, `server` and `build` run inside an application; NAME is the
+`[package] name` in its `spin.toml`.
 
-`cybertrain new` points the app's `spin.toml` at the release matching the
-CLI — `cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain",
-ref = "v0.1.1" }` — then runs `spin lock` (spin fetches the framework into
-its cache, `~/.cache/spin/packages/`, and pins the commit in `spin.lock`)
-and `spin run gen`, much as `rails new` runs `bundle install`. Nothing of
-the framework is copied into the app; commit `spin.toml` and `spin.lock`.
-`--skip-spin` leaves both steps for later, `--path DIR` depends on a local
-checkout instead, and `--version V` on an index version once cybertrain is
-on a `spin-index`.
+Every command that runs `spin` (`new`, `db`, `server`, `build`) first makes
+sure a Spinel of the release in `Cybertrain::SPINEL_TAG` is available. A
+`spinel` on `PATH` (with a `spin`) whose `spinel --version` reports that
+release is used as it is; otherwise the copy `cybertrain` keeps under
+`~/.cybertrain/spinel/2026.09.12/` is used; otherwise `cybertrain` builds
+that copy from the release tag (`git clone`, `make deps`, `make -j`, `make
+install PREFIX=...`), once, in a few minutes. The build log is
+`~/.cybertrain/log/spinel-2026.09.12-build.log` (its last lines are printed
+if a step fails); if a tool the build needs is missing, `cybertrain` says
+which and prints the install command for your platform before it starts. A
+`spinel` of another release on `PATH` is never used or touched:
+`cybertrain` keeps its own copy (and says so when it installs it).
+
+`cybertrain setup` does the same on request and, whenever its own copy is
+the one in use, prints the line that puts it on `PATH`, for running `spin`
+yourself:
+
+```sh
+export PATH="$HOME/.cybertrain/spinel/2026.09.12/bin:$PATH"
+```
+
+Two environment variables override all this: `CYBERTRAIN_HOME` replaces
+`~/.cybertrain`, and `CYBERTRAIN_SPINEL_HOME=PREFIX` forces an existing
+install — `cybertrain` then uses the `spinel` and `spin` in `PREFIX/bin` (or
+in `PREFIX` itself, if `spinel` is directly in it) and stops with an error
+if they are not that release.
+
+`cybertrain new` writes the application with its `spin.toml` pointing at
+the release matching the CLI (`cybertrain = { git =
+"https://github.com/saeki-mototsune/cybertrain", ref = "v0.2.0" }`), makes
+sure Spinel is installed, then runs `spin lock` (spin fetches the framework
+into its cache, `~/.cache/spin/packages/`, and pins the commit in
+`spin.lock`) and `spin run gen`, much as `rails new` runs `bundle install`,
+and prints the next steps. Nothing of the framework is copied into the app;
+commit `spin.toml` and `spin.lock`. If Spinel or one of the two `spin`
+steps fails, the files stay, `new` exits with 1 and prints what to run once
+the cause is fixed (for Spinel: `cybertrain setup`, then `spin lock && spin
+run gen` in the new directory).
+
+`--skip-spin` only writes the files: no Spinel install, no `spin lock`, no
+`spin run gen`. `--path DIR` depends on a local checkout instead,
+`--git URL [--ref R]` on the framework at URL (at branch or tag R), and
+`--version V` on an index version once cybertrain is on a `spin-index`.
+Give only one of `--path`, `--version` and `--git`; `--ref` needs `--git`.
 
 Working on cybertrain itself, run the CLI from the checkout (`spin install`
 builds `bin/cybertrain.rb` into `~/.local/bin/cybertrain`; `ruby -I.
@@ -119,7 +180,7 @@ blog/
 `bin/blog.rb` is the application's one entry point, the program `spin build
 blog` compiles: `./blog` serves, `./blog migrate` and `./blog db status`
 manage the database. `bin/gen.rb` runs the generator (`spin run gen`), and
-`bin/db.rb` runs the migrator during development (`cybertrain migration`
+`bin/db.rb` runs the migrator during development (`cybertrain db migrate`
 uses it, since `bin/blog.rb` cannot compile until the first migration has
 generated `gen/models/`). `gen/` already holds `views.rb`, the committed,
 empty table of embedded views (see "How it works").
@@ -211,7 +272,7 @@ end
 ### Generate, migrate, run
 
 ```sh
-cybertrain migration     # spin run gen; spin run db -- migrate; spin run gen
+cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen
 cybertrain server        # http://127.0.0.1:3000; rebuilds on Ruby edits, views reload without a rebuild
 ```
 
@@ -227,6 +288,7 @@ you automatically (see "How it works").
 
 ```sh
 cybertrain generate scaffold comment commenter:string body:text article:references
+cybertrain db migrate    # the scaffold wrote a migration for the comments table
 ```
 
 `article:references` adds an `article_id` column, index and foreign key —
@@ -521,8 +583,13 @@ before the gem is pushed:
 1. Bump `Cybertrain::VERSION` (`cybertrain/version.rb`) and `version` in
    `spin.toml` together (CI checks they match); spin caches a git
    dependency by that version.
-2. Merge to `main`, then tag and push: `git tag v0.1.1 && git push origin v0.1.1`.
-3. `gem build cybertrain.gemspec && gem push cybertrain-0.1.1.gem`.
+2. Merge to `main`, then tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
+3. `gem build cybertrain.gemspec && gem push cybertrain-0.2.0.gem`.
+
+`Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
+release `cybertrain setup` installs. It must equal `SPINEL_TAG` in
+[.github/workflows/ci.yml](.github/workflows/ci.yml), which CI checks, so
+change the two together when the framework moves to another Spinel release.
 
 ## License
 

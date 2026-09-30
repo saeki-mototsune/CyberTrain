@@ -128,14 +128,24 @@ module Cybertrain
 
       # `cybertrain setup [--force]`: the exit code.
       def self.setup(force)
-        if !force && ENV["CYBERTRAIN_SPINEL_HOME"].to_s == "" && on_path?
+        explicit = explicit_bin_dir
+        unless explicit == ""
+          if usable?(explicit)
+            puts "spinel #{tag} is in #{explicit} (CYBERTRAIN_SPINEL_HOME); nothing to install"
+            return 0
+          end
+          puts "error: CYBERTRAIN_SPINEL_HOME=#{ENV["CYBERTRAIN_SPINEL_HOME"]} has no spinel #{tag} and spin in #{explicit}"
+          puts "  unset it to let cybertrain install its own copy under #{prefix}"
+          return 1
+        end
+        if !force && on_path?
           puts "spinel #{tag} is on PATH: #{spinel_on_path}"
           puts "nothing to install"
           return 0
         end
         if !force && usable?(bin_dir)
-          puts "spinel #{tag} is installed in #{bin_dir}"
-          puts "nothing to install (--force rebuilds it)"
+          puts "spinel #{tag} is installed in #{bin_dir}; nothing to install (--force rebuilds it)"
+          print_path_hint
           return 0
         end
 
@@ -144,9 +154,13 @@ module Cybertrain
 
         puts ""
         puts "installed spinel #{tag} in #{bin_dir}"
+        print_path_hint
+        0
+      end
+
+      def self.print_path_hint
         puts "cybertrain uses it by itself; to run spin directly:"
         puts "  export PATH=\"#{bin_dir}:$PATH\""
-        0
       end
 
       def self.use(dir)
