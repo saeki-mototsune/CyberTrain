@@ -119,7 +119,7 @@ end
 
 test "README.md gives the cybertrain command sequence" do
   readme = read("blog/README.md")
-  assert_includes readme, "cybertrain migration"
+  assert_includes readme, "cybertrain db migrate"
   assert_includes readme, "cybertrain server"
   assert_includes readme, "cybertrain build"
   assert_includes readme, "bin/db.rb"
@@ -150,6 +150,17 @@ end
 test "CLI new --version writes an index constraint" do
   assert_equal 0, Cybertrain::CLI.run(["new", "wiki", "--version", "~> 0.1", "--skip-spin"])
   assert_includes read("wiki/spin.toml"), "cybertrain = \"~> 0.1\""
+end
+
+test "CLI new --git writes a git dependency, with or without --ref" do
+  assert_equal 0, Cybertrain::CLI.run(["new", "fork", "--git", "https://example.com/x/cybertrain", "--skip-spin"])
+  assert_includes read("fork/spin.toml"), "cybertrain = { git = \"https://example.com/x/cybertrain\" }"
+  assert_equal 0, Cybertrain::CLI.run(["new", "pinned", "--git", "https://example.com/x/cybertrain", "--ref", "main", "--skip-spin"])
+  assert_includes read("pinned/spin.toml"), "cybertrain = { git = \"https://example.com/x/cybertrain\", ref = \"main\" }"
+  assert_equal 1, Cybertrain::CLI.run(["new", "bad", "--ref", "main", "--skip-spin"])
+  refute File.exist?("bad")
+  assert_equal 1, Cybertrain::CLI.run(["new", "bad", "--git", "https://example.com/x/cybertrain", "--path", "/opt/cybertrain", "--skip-spin"])
+  refute File.exist?("bad")
 end
 
 # The default is the release this CLI belongs to, so the templates it wrote

@@ -2,6 +2,7 @@
 require "cybertrain/generator/inflector"
 require "cybertrain/cli/templates"
 require "cybertrain/cli/build"
+require "cybertrain/cli/toolchain"
 
 module Cybertrain
   module CLI
@@ -46,13 +47,14 @@ module Cybertrain
 
       # What `rails new` does with `bundle install`: resolve and lock the
       # framework (fetching it into spin's cache, ~/.cache/spin), then write
-      # gen/ so `spin build` works straight away. Without spin on PATH it
-      # only says what to run later. Returns false when a step failed.
+      # gen/ so `spin build` works straight away. Installs Spinel first when
+      # this machine has none of the pinned release (Toolchain.ensure!).
+      # Returns false when a step failed.
       def self.bootstrap(dir)
-        unless system("command -v spin > /dev/null 2>&1")
-          puts "skip spin lock / spin run gen: `spin` is not on PATH"
-          puts "  install Spinel (https://github.com/matz/spinel), then: #{bootstrap_command(dir)}"
-          return true
+        unless Toolchain.ensure!
+          puts "skip spin lock / spin run gen: Spinel #{Cybertrain::SPINEL_TAG} is not available"
+          puts "  fix the problem above (`cybertrain doctor` lists the checks), then: cybertrain setup && #{bootstrap_command(dir)}"
+          return false
         end
 
         puts "run    spin lock && spin run gen"

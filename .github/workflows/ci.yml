@@ -5,6 +5,8 @@ on:
   pull_request:
 
 env:
+  # Must equal Cybertrain::SPINEL_TAG (checked below): the release the CLI
+  # installs and the framework is tested against.
   SPINEL_TAG: "2026.09.12"
 
 jobs:
@@ -16,52 +18,61 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache Spinel toolchain
-        id: spinel-cache
-        uses: actions/cache@v4
         with:
-          path: ~/.local
-          key: spinel-${{ env.SPINEL_TAG }}-${{ runner.os }}-${{ runner.arch }}-v1
-
-      - name: Install SQLite headers (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libssl-dev
-
-      - name: Build Spinel
-        if: steps.spinel-cache.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch "$SPINEL_TAG" https://github.com/matz/spinel.git /tmp/spinel
-          cd /tmp/spinel
-          make deps
-          make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
-          make install PREFIX="$HOME/.local"
-
-      - name: Framework tests
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          spinel --version
-          spin test
+          # The gem end-to-end step below clones this checkout as a git
+          # dependency, which a shallow repository cannot serve.
+          fetch-depth: 0
 
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
 
-      # The gem ships the CLI only; it must run under CRuby and bring every
-      # file it requires (cybertrain.gemspec lists them by hand).
-      - name: Gem CLI (CRuby) scaffolds an app, builds dist/ and serves it
+      - name: Install SQLite headers (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libssl-dev
+
+      - name: Version and Spinel tag are pinned in one place
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
           version=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::VERSION')
           grep -q "^version = \"$version\"$" spin.toml || { echo "spin.toml version != Cybertrain::VERSION ($version)"; exit 1; }
+          tag=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::SPINEL_TAG')
+          test "$tag" = "$SPINEL_TAG" || { echo "Cybertrain::SPINEL_TAG ($tag) != CI SPINEL_TAG ($SPINEL_TAG)"; exit 1; }
+
+      # The gem ships the CLI only; it must run under CRuby and bring every
+      # file it requires (cybertrain.gemspec lists them by hand).
+      - name: Build and install the gem
+        run: |
           gem build cybertrain.gemspec --output /tmp/cybertrain.gem
-          gem install --local /tmp/cybertrain.gem
-          mkdir -p /tmp/gem-e2e && cd /tmp/gem-e2e
+          gem install --local --no-document /tmp/cybertrain.gem
           cybertrain version
+
+      - name: Cache Spinel toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.cybertrain/spinel
+          key: spinel-${{ env.SPINEL_TAG }}-${{ runner.os }}-${{ runner.arch }}-v2
+
+      # `cybertrain setup` is how users get Spinel, so CI gets it the same
+      # way: a cache miss builds the release, a hit verifies it.
+      - name: Install Spinel with cybertrain setup
+        run: |
+          cybertrain doctor
+          cybertrain setup
+          echo "$HOME/.cybertrain/spinel/$SPINEL_TAG/bin" >> "$GITHUB_PATH"
+
+      - name: Framework tests
+        run: |
+          spinel --version
+          spin test
+
+      - name: Gem CLI scaffolds an app, migrates, builds dist/ and serves it
+        run: |
+          mkdir -p /tmp/gem-e2e && cd /tmp/gem-e2e
           cybertrain new shop --path "$GITHUB_WORKSPACE"
           cd shop
+          test -f spin.lock
           cybertrain generate scaffold product name:string price:integer
-          cybertrain migration
+          cybertrain db migrate
           cybertrain db status
           cybertrain build
           spin run gen -- --check
@@ -74,10 +85,24 @@ jobs:
           grep -q "production environment" server.log
           kill %1
 
+      # What `cybertrain new` does for users: the framework as a git
+      # dependency that spin fetches and locks (here this checkout, on a
+      # branch, instead of the release tag).
+      - name: Gem CLI resolves the framework as a git dependency
+        run: |
+          git -C "$GITHUB_WORKSPACE" branch -f ci-e2e HEAD
+          mkdir -p /tmp/gem-e2e-git && cd /tmp/gem-e2e-git
+          cybertrain new gitshop --git "file://$GITHUB_WORKSPACE" --ref ci-e2e
+          cd gitshop
+          grep -q 'ref = "ci-e2e"' spin.toml
+          test -f spin.lock
+          cybertrain generate scaffold item name:string
+          cybertrain db migrate
+          spin run gen -- --check
+
       - name: Generated code is fresh (examples/blog)
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
           cd examples/blog
           spin run gen
           git diff --exit-code -- gen/
@@ -85,6 +110,5 @@ jobs:
       - name: Example app tests
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
           cd examples/blog
           spin test

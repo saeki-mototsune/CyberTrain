@@ -1,5 +1,8 @@
 ok   app_name reads [package] name from spin.toml
 ok   build embeds the views, builds, then restores the empty table
+ok   db commands generate first, and again after migrate and rollback
+usage: cybertrain db (migrate|rollback [N]|status|schema:dump|create)
+ok   db without a command prints its usage
 ok   server generates first and passes an optional port
 error: PORT must be a number
 error: PORT must be a number
@@ -22,4 +25,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-12 tests, 53 assertions, 0 failures
+14 tests, 61 assertions, 0 failures

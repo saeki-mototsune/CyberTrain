@@ -1,5 +1,5 @@
 # `cybertrain build`: dist/ = the app binary with app/views embedded, plus
-# public/. Also the command lists `cybertrain migration` and `server` run. Plain Ruby:
+# public/. Also the command lists `cybertrain db` and `server` run. Plain Ruby:
 # runs under CRuby (the gem) and compiles under Spinel (spin install).
 module Cybertrain
   module CLI
@@ -29,10 +29,28 @@ module Cybertrain
         ["spin run gen -- --embed-views", "spin build #{name}", "spin run gen"]
       end
 
-      # Through bin/db.rb: the app binary cannot compile before the first
-      # migration has produced gen/models.
+      # `cybertrain db ARGS`, through bin/db.rb (the app binary cannot compile
+      # before the first migration has produced gen/models). bin/db.rb only
+      # knows the migrations gen/migrations.rb lists, so gen runs first;
+      # migrate and rollback rewrite db/schema.rb, which gen/models is
+      # derived from, so gen runs again after them.
+      def self.db_commands(args)
+        words = args.map { |arg| quote_arg(arg) }.join(" ")
+        commands = ["spin run gen", "spin run db -- #{words}"]
+        commands << "spin run gen" if args[0] == "migrate" || args[0] == "rollback"
+        commands
+      end
+
+      # `cybertrain migration`: the same as `cybertrain db migrate`.
       def self.migration_commands
-        ["spin run gen", "spin run db -- migrate", "spin run gen"]
+        db_commands(["migrate"])
+      end
+
+      # A word sh reads as itself stays bare; anything else is single-quoted.
+      def self.quote_arg(text)
+        return text if !text.empty? && text.match(/\A[A-Za-z0-9_:.\/-]+\z/)
+
+        shell_quote(text)
       end
 
       # port is "" (the app's default, 3000) or a port? string.
