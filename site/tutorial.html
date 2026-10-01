@@ -281,7 +281,7 @@
       <p>There is no <code>instance_exec</code> on a stored block, so a block callback receives the controller (or the record) as an argument: <code>before_action { |c| c.do_thing }</code>, not <code>before_action { do_thing }</code>. Actions and callbacks are called by their literal name, never <code>send</code>.</p>
     </aside>
     <p>The scaffold writes the full controller with <code>index</code>, <code>show</code>, <code>edit</code>, <code>update</code> and <code>destroy</code> too; the excerpt above omits them. In <code>index</code>, <code>@articles = Article.all.to_a</code>: the <code>.to_a</code> is required.</p>
-    <p class="note">Instance variables are found by a lexical scan of <code>@ivar =</code>, so re-run <code>spin run gen</code> after adding one; the development server does this for you.</p>
+    <p class="note">Instance variables are found by a lexical scan of <code>@ivar =</code>, so re-run <code>cybertrain spin run gen</code> after adding one; the development server does this for you.</p>
   </section>
 
   <section class="step" id="run" aria-labelledby="h-run">
@@ -304,7 +304,7 @@
 <span class="ln">Use Ctrl-C to stop</span></code></pre>
 </figure>
     <ul class="points">
-      <li>Re-run <code>spin run gen</code> and commit <code>gen/</code> after touching the schema, routes, or a controller's or model's callbacks and ivars. The development server does this for you.</li>
+      <li>Re-run <code>cybertrain spin run gen</code> and commit <code>gen/</code> after touching the schema, routes, or a controller's or model's callbacks and ivars. The development server does this for you.</li>
       <li>Change the port with <code>cybertrain server 4000</code> (or <code>PORT=4000</code>).</li>
       <li><code>cybertrain db</code> adds the <code>--</code> that <code>spin run db</code> needs before its arguments; <code>cybertrain db status</code> and the other database commands work the same way.</li>
     </ul>
@@ -522,13 +522,13 @@
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain spin test</span></code></pre>
 </figure>
-    <p><code>cybertrain spin test</code> runs <code>spin test</code> with the pinned Spinel; with the toolchain on <code>PATH</code> (<a href="#requirements">step 00</a>), <code>spin test</code> does the same. It compiles each <code>test/*.rb</code> into its own program and diffs its output (stdout and stderr together) against a committed <code>test/&lt;name&gt;.rb.expected</code> snapshot. Files in <code>test/support/</code> are required, not run. To write a snapshot, with <code>spin</code> on <code>PATH</code>:</p>
+    <p><code>cybertrain spin test</code> runs <code>spin test</code> with the pinned Spinel; with the toolchain on <code>PATH</code> (<a href="#requirements">step 00</a>), <code>spin test</code> does the same. It compiles each <code>test/*.rb</code> into its own program and diffs its output (stdout and stderr together) against a committed <code>test/&lt;name&gt;.rb.expected</code> snapshot. Files in <code>test/support/</code> are required, not run. To write a snapshot:</p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">spin test --regen test/&lt;name&gt;.rb</span>
-<span class="ln cmd">rm -f build/test/&lt;name&gt;; spin test test/&lt;name&gt;.rb; ./build/test/&lt;name&gt; &gt; test/&lt;name&gt;.rb.expected</span></code></pre>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain spin test --regen test/&lt;name&gt;.rb</span>
+<span class="ln cmd">rm -f build/test/&lt;name&gt;; cybertrain spin test test/&lt;name&gt;.rb; ./build/test/&lt;name&gt; &gt; test/&lt;name&gt;.rb.expected</span></code></pre>
 </figure>
-    <p class="note"><code>--regen</code> writes the snapshot from CRuby's output. Tests that touch SQLite through FFI can't run under CRuby, so their snapshot comes from the compiled binary (the second line above). <code>spin test</code> exits non-zero while a snapshot is stale, so do not chain with <code>&amp;&amp;</code>. Tests that cannot run under CRuby need this snapshot before <code>spin test</code> can pass; other tests without a snapshot are compared with CRuby's output.</p>
+    <p class="note"><code>--regen</code> writes the snapshot from CRuby's output. Tests that touch SQLite through FFI can't run under CRuby, so their snapshot comes from the compiled binary (the second line above). <code>cybertrain spin test</code> exits non-zero while a snapshot is stale, so do not chain with <code>&amp;&amp;</code>. Tests that cannot run under CRuby need this snapshot before <code>cybertrain spin test</code> can pass; other tests without a snapshot are compared with CRuby's output.</p>
   </section>
 
   <section class="step" id="ship" aria-labelledby="h-ship">

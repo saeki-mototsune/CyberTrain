@@ -68,8 +68,8 @@ cybertrain spin test
 compiles and runs every program under `test/` and diffs its output against a
 committed `test/<name>.rb.expected` snapshot — minitest/RSpec can't run under
 Spinel, since they find test methods by reflection and an ahead-of-time
-compiler has nothing to reflect on at run time. `spin test --regen
-test/<name>.rb` rewrites a snapshot from CRuby's output; a few tests that
+compiler has nothing to reflect on at run time. `cybertrain spin test
+--regen test/<name>.rb` rewrites a snapshot from CRuby's output; a few tests that
 touch SQLite through FFI take theirs from the compiled binary instead
 ([spikes/NOTES.md](spikes/NOTES.md), rule 23); `script/regen-snapshot
 test/<name>.rb` does that build-then-capture step for you and prints the diff stat.
@@ -205,7 +205,7 @@ empty table of embedded views (see "How it works").
 Apps created before `cybertrain build` existed have `bin/server.rb` and
 no `bin/<name>.rb`: copy `bin/<name>.rb` from a fresh `cybertrain new` (with
 the same NAME), delete `bin/server.rb`, add `/dist/` to `.gitignore` (the old
-template did not ignore it) and run `spin run gen`.
+template did not ignore it) and run `cybertrain spin run gen`.
 
 `ApplicationController` starts with the one thing every controller inherits:
 
@@ -297,8 +297,8 @@ cybertrain server        # http://127.0.0.1:3000; rebuilds on Ruby edits, views 
 writes `gen/`; `spin run db -- migrate` applies `db/migrate/*.rb` and
 rewrites `db/schema.rb`.
 
-Re-run `spin run gen` (and commit `gen/`) after touching the schema, routes,
-or a controller/model's callbacks and ivars — the dev server does this for
+Re-run `cybertrain spin run gen` (and commit `gen/`) after touching the
+schema, routes, or a controller/model's callbacks and ivars — the dev server does this for
 you automatically (see "How it works").
 
 ### Add comments, nested under articles
@@ -569,13 +569,14 @@ assert_response res, :see_other
 `test/support/blog_test.rb`) show the full pattern, including token
 extraction, against a freshly migrated `storage/test.sqlite3`.
 
-Run with `spin test`: it compiles each `test/*.rb` into its own program and
-diffs its output (stdout and stderr together) against `test/<name>.rb.expected`. Regenerate with `spin test
---regen test/<name>.rb`; FFI/database tests can't run under CRuby, so their
-snapshot comes from the compiled binary instead: `rm -f build/test/<name>;
+Run with `cybertrain spin test`: it compiles each `test/*.rb` into its own
+program and diffs its output (stdout and stderr together) against
+`test/<name>.rb.expected`. Regenerate with `cybertrain spin test --regen
+test/<name>.rb`; FFI/database tests can't run under CRuby, so their snapshot
+comes from the compiled binary instead: `rm -f build/test/<name>; cybertrain
 spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected`
-(`spin test` exits non-zero while the snapshot is stale, so do not chain with
-`&&`; in the framework checkout, `script/regen-snapshot test/<name>.rb` does
+(`cybertrain spin test` exits non-zero while the snapshot is stale, so do not
+chain with `&&`; in the framework checkout, `script/regen-snapshot test/<name>.rb` does
 exactly this and prints the diff stat).
 
 ## Learn more
