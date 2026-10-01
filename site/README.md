@@ -20,8 +20,9 @@ python3 -m http.server -d site 8000   # http://localhost:8000
 Publishing: [.github/workflows/pages.yml](../.github/workflows/pages.yml)
 deploys this directory to GitHub Pages on every push to `main` that touches
 it. One-time setup in the repository settings: Pages → Build and deployment →
-Source: **GitHub Actions**. All links are relative, so the site works from the
-`/CyberTrain/` project path.
+Source: **GitHub Actions**. Links between the pages and to their assets are
+relative, so the site works from the `/CyberTrain/` project path (the `og:image`
+URLs are absolute, as social previews require).
 
 Content rule: every command, code block and claim on these pages comes from
 [README.md](../README.md), [examples/blog](../examples/blog) or

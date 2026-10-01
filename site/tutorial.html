@@ -528,9 +528,9 @@
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain spin test --regen test/&lt;name&gt;.rb</span>
-<span class="ln cmd">rm -f build/test/&lt;name&gt;; cybertrain spin test test/&lt;name&gt;.rb; ./build/test/&lt;name&gt; &gt; test/&lt;name&gt;.rb.expected 2&gt;&amp;1</span></code></pre>
+<span class="ln cmd">rm -f build/test/&lt;name&gt;; cybertrain spin test test/&lt;name&gt;.rb; [ -x build/test/&lt;name&gt; ] &amp;&amp; ./build/test/&lt;name&gt; &gt; test/&lt;name&gt;.rb.expected 2&gt;&amp;1</span></code></pre>
 </figure>
-    <p class="note"><code>--regen</code> writes the snapshot from CRuby's output. Tests that touch SQLite through FFI can't run under CRuby, so their snapshot comes from the compiled binary (the second line above). <code>cybertrain spin test</code> exits non-zero while a snapshot is stale, so do not chain with <code>&amp;&amp;</code>. Tests that cannot run under CRuby need this snapshot before <code>cybertrain spin test</code> can pass; other tests without a snapshot are compared with CRuby's output.</p>
+    <p class="note"><code>--regen</code> writes the snapshot from CRuby's output. Tests that touch SQLite through FFI can't run under CRuby, so their snapshot comes from the compiled binary (the second line above). <code>cybertrain spin test</code> exits non-zero while a snapshot is stale, so it is followed by <code>;</code>, not <code>&amp;&amp;</code>; the <code>[ -x ]</code> check skips the capture when the compile failed, so the old snapshot is kept. Tests that cannot run under CRuby need this snapshot before <code>cybertrain spin test</code> can pass; other tests without a snapshot are compared with CRuby's output.</p>
   </section>
 
   <section class="step" id="ship" aria-labelledby="h-ship">
