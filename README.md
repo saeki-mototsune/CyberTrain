@@ -144,8 +144,8 @@ into its cache, `~/.cache/spin/packages/`, and pins the commit in
 and prints the next steps. Nothing of the framework is copied into the app;
 commit `spin.toml` and `spin.lock`. If Spinel or one of the two `spin`
 steps fails, the files stay, `new` exits with 1 and prints what to run once
-the cause is fixed (for Spinel: `cybertrain setup`, then `spin lock && spin
-run gen` in the new directory).
+the cause is fixed (for Spinel: `cybertrain setup`, then `cybertrain spin
+lock && cybertrain spin run gen` in the new directory).
 
 `--skip-spin` only writes the files: no Spinel install, no `spin lock`, no
 `spin run gen`. `--path DIR` depends on a local checkout instead,
