@@ -263,7 +263,7 @@ rm -f dist/storage/rehearsal.sqlite3*
 コミット前に鮮度を確認します。
 
 ```sh
-spin run gen -- --check   # 何も出ず終了コード 0 なら最新
+cybertrain spin run gen -- --check   # 何も出ず終了コード 0 なら最新
 git add -A
 git commit -m "Create notes"
 ```
@@ -626,7 +626,7 @@ sudo -iu notes /srv/notes/deploy.sh v1.2.0   # タグやコミットを指定す
 ```
 
 手元での変更の流れは開発時と同じです。スキーマ・ルート・コントローラのコールバックやインスタンス
-変数を変えたら `spin run gen` をしてから `gen/` ごとコミットしてください（忘れるとデプロイが
+変数を変えたら `cybertrain spin run gen` をしてから `gen/` ごとコミットしてください（忘れるとデプロイが
 `gen/ が最新か確認` で止まります）。
 
 再起動の間（数秒）は Caddy が 500.html を返します。
@@ -698,10 +698,10 @@ CLI も同じバージョンにそろえてから（サーバーの `notes` ユ�
 バージョンがずれるとビルドや起動が失敗します）:
 
 ```sh
-spin lock          # 新しいタグのコミットを spin.lock に固定する
-spin run gen       # 生成コードがフレームワークに合わせて変わることがある
-spin test          # テストを書いているなら
-cybertrain server  # 動作確認
+cybertrain spin lock      # 新しいタグのコミットを spin.lock に固定する
+cybertrain spin run gen   # 生成コードがフレームワークに合わせて変わることがある
+cybertrain spin test      # テストを書いているなら
+cybertrain server         # 動作確認
 git add -A && git commit -m "Update cybertrain"
 git push
 ```
@@ -732,7 +732,7 @@ git push
 | 起動ログに `error: views are not embedded in this binary` | ビューを埋め込まずにビルドしたバイナリ（`spin build notes` の `build/bin/notes` など）を本番モードで起動している。`cybertrain build` で作った `dist/notes` を使う |
 | 500 になり、ログに `Missing template ...` が出る | ビルド時に `app/views/` に無かったテンプレート。`cybertrain build` をやり直す |
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
-| デプロイが `stale: gen/...` で止まる | 手元で `spin run gen` して `gen/` をコミットし忘れている |
+| デプロイが `stale: gen/...` で止まる | 手元で `cybertrain spin run gen` して `gen/` をコミットし忘れている |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
 | `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.2.0`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |

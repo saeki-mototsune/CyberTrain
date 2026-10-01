@@ -25,12 +25,12 @@ cybertrain generate scaffold comment commenter:string body:text article:referenc
 cybertrain db migrate  # spin run gen; spin run db -- migrate; spin run gen
 cybertrain server      # http://127.0.0.1:3000 (`cybertrain server 4000`, or PORT=4000, to change it)
 cybertrain build       # dist/blog (views embedded) + dist/public/
-spin test              # test/articles.rb, test/comments.rb against storage/test.sqlite3
+cybertrain spin test   # test/articles.rb, test/comments.rb against storage/test.sqlite3
 ```
 
-Run `spin run gen` after changing the schema, the routes or a
+Run `cybertrain spin run gen` after changing the schema, the routes or a
 controller's instance variables and callbacks, and commit `gen/`
-(`spin run gen -- --check` reports stale files). Views under
+(`cybertrain spin run gen -- --check` reports stale files). Views under
 `app/views/` are read at run time: edit them without rebuilding. A
 production binary (`cybertrain build`, or `CYBERTRAIN_ENV=production`)
 renders only the views embedded at build time.

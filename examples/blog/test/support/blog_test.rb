@@ -6,7 +6,7 @@
 # environment, against a fresh storage/test.sqlite3 migrated from
 # gen/migrations.rb. The database is compiled in through FFI, so these
 # programs do not run under CRuby: their snapshots come from the compiled
-# binaries (`./build/test/articles > test/articles.rb.expected`).
+# binaries (`./build/test/articles > test/articles.rb.expected 2>&1`).
 ENV["CYBERTRAIN_ENV"] = "test"
 
 require "cybertrain"

@@ -1,3 +1,14 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="site/assets/brand/lockup-stacked-dark.svg">
+    <img alt="CyberTrain" src="site/assets/brand/lockup-stacked-light.svg" width="360">
+  </picture>
+</p>
+<p align="center">
+  <a href="https://saeki-mototsune.github.io/CyberTrain/">Homepage</a> ·
+  <a href="https://saeki-mototsune.github.io/CyberTrain/tutorial.html">Tutorial</a>
+</p>
+
 # cybertrain
 
 cybertrain is a Rails-shaped web application framework written natively for
@@ -57,8 +68,8 @@ cybertrain spin test
 compiles and runs every program under `test/` and diffs its output against a
 committed `test/<name>.rb.expected` snapshot — minitest/RSpec can't run under
 Spinel, since they find test methods by reflection and an ahead-of-time
-compiler has nothing to reflect on at run time. `spin test --regen
-test/<name>.rb` rewrites a snapshot from CRuby's output; a few tests that
+compiler has nothing to reflect on at run time. `cybertrain spin test
+--regen test/<name>.rb` rewrites a snapshot from CRuby's output; a few tests that
 touch SQLite through FFI take theirs from the compiled binary instead
 ([spikes/NOTES.md](spikes/NOTES.md), rule 23); `script/regen-snapshot
 test/<name>.rb` does that build-then-capture step for you and prints the diff stat.
@@ -194,7 +205,7 @@ empty table of embedded views (see "How it works").
 Apps created before `cybertrain build` existed have `bin/server.rb` and
 no `bin/<name>.rb`: copy `bin/<name>.rb` from a fresh `cybertrain new` (with
 the same NAME), delete `bin/server.rb`, add `/dist/` to `.gitignore` (the old
-template did not ignore it) and run `spin run gen`.
+template did not ignore it) and run `cybertrain spin run gen`.
 
 `ApplicationController` starts with the one thing every controller inherits:
 
@@ -286,8 +297,8 @@ cybertrain server        # http://127.0.0.1:3000; rebuilds on Ruby edits, views 
 writes `gen/`; `spin run db -- migrate` applies `db/migrate/*.rb` and
 rewrites `db/schema.rb`.
 
-Re-run `spin run gen` (and commit `gen/`) after touching the schema, routes,
-or a controller/model's callbacks and ivars — the dev server does this for
+Re-run `cybertrain spin run gen` (and commit `gen/`) after touching the
+schema, routes, or a controller/model's callbacks and ivars — the dev server does this for
 you automatically (see "How it works").
 
 ### Add comments, nested under articles
@@ -528,7 +539,7 @@ systemd, Caddy with HTTPS, redeploys, rollbacks and backups.
 App tests are plain Spinel programs under `test/`, like the framework's own:
 
 ```ruby
-require "cybertrain/test"
+require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
 
 test "title must be present" do
   article = Article.new(body: "a body long enough to pass length")
@@ -543,32 +554,47 @@ full HTTP flows, `Cybertrain::Test::Client` drives an app in-process (no
 socket) with a cookie jar, so sessions and CSRF behave as behind a browser:
 
 ```ruby
-require "cybertrain/test/client"
+require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
 
-client = Cybertrain::Test::Client.new(BLOG)
-client.get("/articles/new")
-res = client.post("/articles", "article[title]" => "Hello",
-                                "article[body]" => "I am on Rails!",
-                                "authenticity_token" => token)  # from the rendered form
-assert_redirected_to res, "/articles/1"
-assert_response res, :see_other
+test "POST /articles creates an article and redirects to it" do
+  client = Cybertrain::Test::Client.new(BLOG)
+  client.get("/articles/new")
+  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
+                                   "article[title]" => "Hello Rails",
+                                   "article[body]" => "I am on Rails! This is my first article." })
+  assert_redirected_to res, BlogTest.article_path(Article.last)
+  assert_response res, :see_other
+end
 ```
 
-`examples/blog/test/articles.rb`/`comments.rb` (setup in
-`test/support/blog_test.rb`) show the full pattern, including token
-extraction, against a freshly migrated `storage/test.sqlite3`.
+Both snippets start from the example's helper,
+[`examples/blog/test/support/blog_test.rb`](examples/blog/test/support/blog_test.rb):
+copy it into an app's `test/support/`, where files are required, not run.
+It migrates a fresh `storage/test.sqlite3`, boots the app as `BLOG`, loads
+`Cybertrain::Test` and its client, and reads the CSRF token out of the last
+rendered form (`BlogTest.form_token`). End each test file with
+`Cybertrain::Test.run!`; `examples/blog/test/articles.rb` and `comments.rb`
+show the full pattern.
 
-Run with `spin test`: it compiles each `test/*.rb` into its own program and
-diffs its output (stdout and stderr together) against `test/<name>.rb.expected`. Regenerate with `spin test
---regen test/<name>.rb`; FFI/database tests can't run under CRuby, so their
-snapshot comes from the compiled binary instead: `rm -f build/test/<name>;
-spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected`
-(`spin test` exits non-zero while the snapshot is stale, so do not chain with
-`&&`; in the framework checkout, `script/regen-snapshot test/<name>.rb` does
-exactly this and prints the diff stat).
+Run with `cybertrain spin test`: it compiles each `test/*.rb` into its own
+program and diffs its output (stdout and stderr together) against
+`test/<name>.rb.expected`. Regenerate with `cybertrain spin test --regen
+test/<name>.rb`; FFI/database tests can't run under CRuby, so their snapshot
+comes from the compiled binary instead: `rm -f build/test/<name>; cybertrain
+spin test test/<name>.rb; [ -x build/test/<name> ] && ./build/test/<name> >
+test/<name>.rb.expected 2>&1` (`cybertrain spin test` exits non-zero while the
+snapshot is stale, so it is followed by `;`, not `&&`; the `[ -x ]` check skips
+the capture when the compile failed, so the old snapshot is kept; in the
+framework checkout, `script/regen-snapshot test/<name>.rb` does exactly this and
+prints the diff stat).
 
 ## Learn more
 
+- [Homepage](https://saeki-mototsune.github.io/CyberTrain/) and
+  [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) —
+  the source lives in [site/](site/), published by
+  [.github/workflows/pages.yml](.github/workflows/pages.yml); the logo files and
+  brand notes are in [site/assets/brand/](site/assets/brand/BRAND.md).
 - [docs/design.md](docs/design.md) — the design record (Japanese): every
   decision, what was rejected and why, and the Spinel constraints behind it.
 - [docs/template-language.md](docs/template-language.md) — the full template

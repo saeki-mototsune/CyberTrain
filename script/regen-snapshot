@@ -3,7 +3,8 @@
 # therefore cannot run under CRuby (so "spin test --regen" is not an option).
 # For each file it runs "spin test <file>" to build ./build/test/<name> (the
 # exit status is ignored: the current snapshot may well be stale), captures the
-# binary's stdout into test/<name>.rb.expected and prints the git diff --stat
+# binary's stdout and stderr, which spin test compares together, into
+# test/<name>.rb.expected and prints the git diff --stat
 # of that snapshot so you can review what changed. The old binary is removed
 # first, so a compile failure leaves no binary to run ("was not built", exit 1)
 # instead of turning a stale one's output into the new snapshot.
@@ -29,7 +30,7 @@ for file in "$@"; do
     status=1
     continue
   fi
-  "$bin" > "test/$name.rb.expected"
+  "$bin" > "test/$name.rb.expected" 2>&1
   git diff --stat -- "test/$name.rb.expected"
 done
 exit "$status"
