@@ -485,7 +485,7 @@
     <h3 class="sub">A model test</h3>
     <figure class="code" data-lang="ruby">
 <figcaption><span class="code-path">test/<wbr>articles.rb (snippet)</span><span class="code-lang">ruby</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: test/articles.rb (snippet)"><code><span class="ln"><span class="k">require</span> <span class="s">"cybertrain/test"</span></span>
+<pre tabindex="0" role="region" aria-label="Code: test/articles.rb (snippet)"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/blog_test"</span>   <span class="c"># the app, BLOG and Cybertrain::Test</span></span>
 <span class="ln"></span>
 <span class="ln">test <span class="s">"title must be present"</span> <span class="k">do</span></span>
 <span class="ln">  article = <span class="t">Article</span>.new(<span class="y">body:</span> <span class="s">"a body long enough to pass length"</span>)</span>
@@ -497,23 +497,25 @@
     <h3 class="sub">A full HTTP flow</h3>
     <figure class="code" data-lang="ruby">
 <figcaption><span class="code-path">test/<wbr>articles.rb (snippet)</span><span class="code-lang">ruby</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: test/articles.rb (snippet)"><code><span class="ln"><span class="k">require</span> <span class="s">"cybertrain/test/client"</span></span>
+<pre tabindex="0" role="region" aria-label="Code: test/articles.rb (snippet)"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/blog_test"</span>   <span class="c"># the app, BLOG and Cybertrain::Test</span></span>
 <span class="ln"></span>
-<span class="ln">client = <span class="t">Cybertrain</span>::<span class="t">Test</span>::<span class="t">Client</span>.new(<span class="t">BLOG</span>)</span>
-<span class="ln">client.get(<span class="s">"/articles/new"</span>)</span>
-<span class="ln">res = client.post(<span class="s">"/articles"</span>, <span class="s">"article[title]"</span> =&gt; <span class="s">"Hello"</span>,</span>
-<span class="ln">                                <span class="s">"article[body]"</span> =&gt; <span class="s">"I am on Rails!"</span>,</span>
-<span class="ln">                                <span class="s">"authenticity_token"</span> =&gt; token)  <span class="c"># from the rendered form</span></span>
-<span class="ln">assert_redirected_to res, <span class="s">"/articles/1"</span></span>
-<span class="ln">assert_response res, <span class="y">:see_other</span></span></code></pre>
+<span class="ln">test <span class="s">"POST /articles creates an article and redirects to it"</span> <span class="k">do</span></span>
+<span class="ln">  client = <span class="t">Cybertrain</span>::<span class="t">Test</span>::<span class="t">Client</span>.new(<span class="t">BLOG</span>)</span>
+<span class="ln">  client.get(<span class="s">"/articles/new"</span>)</span>
+<span class="ln">  res = client.post(<span class="s">"/articles"</span>, { <span class="s">"authenticity_token"</span> =&gt; <span class="t">BlogTest</span>.form_token(client),</span>
+<span class="ln">                                   <span class="s">"article[title]"</span> =&gt; <span class="s">"Hello Rails"</span>,</span>
+<span class="ln">                                   <span class="s">"article[body]"</span> =&gt; <span class="s">"I am on Rails! This is my first article."</span> })</span>
+<span class="ln">  assert_redirected_to res, <span class="t">BlogTest</span>.article_path(<span class="t">Article</span>.last)</span>
+<span class="ln">  assert_response res, <span class="y">:see_other</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
 </figure>
     <p><code>Cybertrain::Test::Client</code> drives an app in-process (no socket) with a cookie jar, so sessions and CSRF behave as behind a browser. Requests without the token get a 403.</p>
     <aside class="callout" aria-label="What the snippets leave out">
       <p class="callout-k">Before it compiles</p>
       <h3>What the snippets leave out</h3>
       <ul>
-        <li>End the file with <code>Cybertrain::Test.run!</code>, and <code>require "cybertrain/test"</code> (or a helper that does) yourself; otherwise <code>test "..."</code> fails to compile.</li>
-        <li><code>BLOG</code> and <code>token</code> come from <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/examples/blog/test/support/blog_test.rb" rel="noopener"><code>examples/blog/test/support/blog_test.rb</code></a>, which migrates a fresh <code>storage/test.sqlite3</code>, builds the app and extracts the CSRF token from a rendered form.</li>
+        <li><code>support/blog_test</code> is <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/examples/blog/test/support/blog_test.rb" rel="noopener"><code>examples/blog/test/support/blog_test.rb</code></a>: copy it into your app&rsquo;s <code>test/support/</code>, where files are required, not run. It migrates a fresh <code>storage/test.sqlite3</code>, boots the app as <code>BLOG</code>, loads <code>Cybertrain::Test</code> and its client, and gives you <code>BlogTest.form_token</code> (the CSRF token of the last rendered form) and <code>BlogTest.article_path</code>.</li>
+        <li>End the file with <code>Cybertrain::Test.run!</code>, which runs the tests and prints the lines the snapshot compares.</li>
         <li>Set <code>c.log_level = :none if c.test?</code> in <code>config/app.rb</code> to keep request logs out of the compared output.</li>
       </ul>
     </aside>

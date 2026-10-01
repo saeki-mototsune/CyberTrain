@@ -539,7 +539,7 @@ systemd, Caddy with HTTPS, redeploys, rollbacks and backups.
 App tests are plain Spinel programs under `test/`, like the framework's own:
 
 ```ruby
-require "cybertrain/test"
+require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
 
 test "title must be present" do
   article = Article.new(body: "a body long enough to pass length")
@@ -554,20 +554,27 @@ full HTTP flows, `Cybertrain::Test::Client` drives an app in-process (no
 socket) with a cookie jar, so sessions and CSRF behave as behind a browser:
 
 ```ruby
-require "cybertrain/test/client"
+require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
 
-client = Cybertrain::Test::Client.new(BLOG)
-client.get("/articles/new")
-res = client.post("/articles", "article[title]" => "Hello",
-                                "article[body]" => "I am on Rails!",
-                                "authenticity_token" => token)  # from the rendered form
-assert_redirected_to res, "/articles/1"
-assert_response res, :see_other
+test "POST /articles creates an article and redirects to it" do
+  client = Cybertrain::Test::Client.new(BLOG)
+  client.get("/articles/new")
+  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
+                                   "article[title]" => "Hello Rails",
+                                   "article[body]" => "I am on Rails! This is my first article." })
+  assert_redirected_to res, BlogTest.article_path(Article.last)
+  assert_response res, :see_other
+end
 ```
 
-`examples/blog/test/articles.rb`/`comments.rb` (setup in
-`test/support/blog_test.rb`) show the full pattern, including token
-extraction, against a freshly migrated `storage/test.sqlite3`.
+Both snippets start from the example's helper,
+[`examples/blog/test/support/blog_test.rb`](examples/blog/test/support/blog_test.rb):
+copy it into an app's `test/support/`, where files are required, not run.
+It migrates a fresh `storage/test.sqlite3`, boots the app as `BLOG`, loads
+`Cybertrain::Test` and its client, and reads the CSRF token out of the last
+rendered form (`BlogTest.form_token`). End each test file with
+`Cybertrain::Test.run!`; `examples/blog/test/articles.rb` and `comments.rb`
+show the full pattern.
 
 Run with `cybertrain spin test`: it compiles each `test/*.rb` into its own
 program and diffs its output (stdout and stderr together) against
