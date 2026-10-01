@@ -1,21 +1,25 @@
 # The `cybertrain` command: exe/cybertrain under CRuby (the gem), or
 # bin/cybertrain.rb built by spin (`spin install` from a checkout).
 #
-#   cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+#   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references]
-#   cybertrain migration | db COMMAND... | server [PORT] | build
-#   cybertrain version | help
+#   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
+#   cybertrain setup [--force] | doctor | version | help
+#
+# Every command that runs spin first puts a Spinel of the pinned release on
+# PATH (Toolchain.ensure!), installing it under ~/.cybertrain the first time.
 require "cybertrain/version"
 require "cybertrain/cli/templates"
 require "cybertrain/cli/new_app"
 require "cybertrain/cli/scaffold"
 require "cybertrain/cli/build"
+require "cybertrain/cli/toolchain"
 
 module Cybertrain
   module CLI
     USAGE = <<~TEXT
       Usage:
-        cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+        cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
             Create an application in NAME, then run `spin lock` and
             `spin run gen` in it (skipped with --skip-spin). Its spin.toml
             depends on this cybertrain's release by default:
@@ -23,20 +27,33 @@ module Cybertrain
             --path DIR: the framework checkout at DIR (relative to the
             current directory; written as an absolute path).
             --version V: the index version constraint V.
+            --git URL [--ref R]: the framework at URL, at branch or tag R.
         cybertrain generate scaffold NAME field:type ... [parent:references]
             Add a resource to the application in the current directory.
             Types: #{Field::TYPES.join(", ")} (default string).
-        cybertrain migration
+        cybertrain db migrate
             Generate, apply pending migrations, generate again
             (spin run gen; spin run db -- migrate; spin run gen).
         cybertrain db COMMAND...
-            Any database command: status, rollback [N], schema:dump, create.
+            Any other database command, after `spin run gen`: status,
+            rollback [N] (generates again afterwards), schema:dump, create.
+            `cybertrain migration` is the same as `cybertrain db migrate`.
         cybertrain server [PORT]
             Generate, then start the development server
             (spin run gen; spin run NAME [-- PORT]; default port 3000).
         cybertrain build
             Build NAME with app/views embedded and assemble dist/
             (the binary, public/, storage/, tmp/).
+        cybertrain spin ARGS...
+            Run spin with the pinned Spinel, from any directory
+            (cybertrain spin test; cybertrain spin run gen -- --check).
+        cybertrain setup [--force]
+            Install Spinel #{Cybertrain::SPINEL_TAG} into ~/.cybertrain (CYBERTRAIN_HOME)
+            unless a spinel of that release is already on PATH, and print
+            the PATH line for ~/.cybertrain/bin. The commands above do the
+            install by themselves the first time they need spin.
+        cybertrain doctor
+            Check the C toolchain, the SQLite headers and the Spinel install.
         cybertrain version
         cybertrain help
     TEXT
@@ -47,10 +64,13 @@ module Cybertrain
       case command
       when "new" then run_new(argv)
       when "generate", "g" then run_generate(argv)
-      when "migration" then run_in_app { |_name| run_all(Build.migration_commands) }
-      when "db" then run_in_app { |_name| run_all(["spin run db -- #{db_args(argv)}"]) }
+      when "migration" then run_in_app { |_name| run_spin(Build.db_commands(["migrate"])) }
+      when "db" then run_in_app { |_name| run_db(argv) }
       when "server" then run_in_app { |name| run_server(name, argv) }
-      when "build" then run_in_app { |name| Build.run(".", name) }
+      when "build" then run_in_app { |name| Toolchain.ensure! ? Build.run(".", name) : 1 }
+      when "spin" then run_spin_passthrough(argv)
+      when "setup" then Toolchain.setup(argv[1, argv.size - 1])
+      when "doctor" then run_doctor(argv)
       when "version", "--version", "-v"
         puts "cybertrain #{Cybertrain::VERSION}"
         0
@@ -68,7 +88,7 @@ module Cybertrain
     end
 
     def self.run_new(argv)
-      raise InvalidArgument, "usage: cybertrain new NAME [--path DIR | --version V] [--skip-spin]" if argv.size < 2
+      raise InvalidArgument, "usage: cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]" if argv.size < 2
 
       dir = argv[1]
       raise InvalidArgument, "'#{File.basename(dir)}' is not a valid app name (lowercase letters, digits and _)" unless Templates.identifier?(File.basename(dir))
@@ -76,8 +96,15 @@ module Cybertrain
 
       NewApp.create(dir, framework_dep(argv))
       return 0 if argv.include?("--skip-spin")
+      return 1 unless NewApp.bootstrap(dir)
 
-      NewApp.bootstrap(dir) ? 0 : 1
+      puts ""
+      puts "next:"
+      puts "  cd #{Build.quote_arg(dir)}"
+      puts "  cybertrain generate scaffold article title:string body:text"
+      puts "  cybertrain db migrate"
+      puts "  cybertrain server"
+      0
     end
 
     # The spin.toml value of the `cybertrain =` dependency. By default the
@@ -89,20 +116,41 @@ module Cybertrain
     def self.framework_dep(argv)
       path = option(argv, "--path")
       version = option(argv, "--version")
-      raise InvalidArgument, "pass either --path or --version, not both" unless path == "" || version == ""
-      return "\"#{version}\"" unless version == ""
-      return "{ path = \"#{File.expand_path(path, Dir.pwd)}\" }" unless path == ""
+      git = option(argv, "--git")
+      ref = option(argv, "--ref")
+      given = 0
+      given += 1 unless path == ""
+      given += 1 unless version == ""
+      given += 1 unless git == ""
+      raise InvalidArgument, "pass only one of --path, --version and --git" if given > 1
+      raise InvalidArgument, "--ref needs --git" if ref != "" && git == ""
+      return toml_string(version) unless version == ""
+      return "{ path = #{toml_string(File.expand_path(path, Dir.pwd))} }" unless path == ""
+      return "{ git = #{toml_string(git)} }" if git != "" && ref == ""
+      return "{ git = #{toml_string(git)}, ref = #{toml_string(ref)} }" unless git == ""
 
       "{ git = \"#{Cybertrain::REPOSITORY}\", ref = \"v#{Cybertrain::VERSION}\" }"
     end
 
-    # The value after `--flag`, or "" when the flag is absent.
+    # `value` as a TOML basic string: `\` and `"` escaped. Control
+    # characters are refused rather than encoded: no path, URL or git ref
+    # needs one, and spin.toml stays readable.
+    def self.toml_string(value)
+      raise InvalidArgument, "control characters are not allowed in --path, --version, --git or --ref" unless value.bytes.all? { |b| b >= 32 && b != 127 }
+
+      "\"#{value.gsub("\\", "\\\\\\\\").gsub("\"", "\\\"")}\""
+    end
+
+    # The value after `--flag`, or "" when the flag is absent. An empty
+    # value, or another option in the value's place, means it is missing.
     def self.option(argv, flag)
       i = argv.index(flag)
       return "" if i.nil?
-      raise InvalidArgument, "#{flag} needs a value" if i + 1 >= argv.size
 
-      argv[i + 1]
+      value = i + 1 < argv.size ? argv[i + 1] : ""
+      raise InvalidArgument, "#{flag} needs a value" if value == "" || value.start_with?("--")
+
+      value
     end
 
     # Commands that need the app: its name comes from ./spin.toml.
@@ -115,7 +163,14 @@ module Cybertrain
       yield name
     end
 
-    # Runs each command in turn; stops at the first failure.
+    # Runs spin commands in turn once a Spinel of the pinned release is on
+    # PATH; stops at the first failure.
+    def self.run_spin(commands)
+      return 1 unless Toolchain.ensure!
+
+      run_all(commands)
+    end
+
     def self.run_all(commands)
       status = 0
       commands.each do |command|
@@ -126,6 +181,37 @@ module Cybertrain
         end
       end
       status
+    end
+
+    # `cybertrain spin ARGS...`: spin from the pinned toolchain, wherever
+    # the command runs (an application directory or not).
+    def self.run_spin_passthrough(argv)
+      args = argv[1, argv.size - 1]
+      if args.empty?
+        puts "usage: cybertrain spin ARGS... (for example: cybertrain spin test)"
+        return 1
+      end
+      return 1 unless Toolchain.ensure!
+
+      system((["spin"] + args.map { |arg| Build.quote_arg(arg) }).join(" ")) ? 0 : 1
+    end
+
+    def self.run_doctor(argv)
+      if argv.size > 1
+        puts "usage: cybertrain doctor"
+        return 1
+      end
+      Toolchain.doctor
+    end
+
+    # `cybertrain db COMMAND...`.
+    def self.run_db(argv)
+      args = argv[1, argv.size - 1]
+      if args.empty?
+        puts "usage: cybertrain db (migrate|rollback [N]|status|schema:dump|create)"
+        return 1
+      end
+      run_spin(Build.db_commands(args))
     end
 
     # `cybertrain server [PORT]`.
@@ -139,12 +225,7 @@ module Cybertrain
         puts "error: unexpected argument '#{argv[2]}'"
         return 1
       end
-      run_all(Build.server_commands(name, port))
-    end
-
-    # The words after `db`, each shell-quoted.
-    def self.db_args(argv)
-      argv[1, argv.size - 1].map { |arg| Build.shell_quote(arg) }.join(" ")
+      run_spin(Build.server_commands(name, port))
     end
 
     def self.run_generate(argv)
