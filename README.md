@@ -581,7 +581,7 @@ program and diffs its output (stdout and stderr together) against
 `test/<name>.rb.expected`. Regenerate with `cybertrain spin test --regen
 test/<name>.rb`; FFI/database tests can't run under CRuby, so their snapshot
 comes from the compiled binary instead: `rm -f build/test/<name>; cybertrain
-spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected`
+spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`
 (`cybertrain spin test` exits non-zero while the snapshot is stale, so do not
 chain with `&&`; in the framework checkout, `script/regen-snapshot test/<name>.rb` does
 exactly this and prints the diff stat).

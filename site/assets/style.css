@@ -552,8 +552,21 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
 @media print {
+  /* The site is dark on screen; on paper every colour flips to dark ink on white.
+     The tokens carry most of it; the rules below cover the colours written out. */
+  :root { color-scheme: light; --bg: #fff; --bg-raise: #fff; --surface: #f2f2f2; --surface-2: #ebebeb; --line: #cfcfcf; --line-2: #a8a8a8; --ui: #8a8a8a; --ink: #111; --ink-2: #333; --ink-3: #555; --accent: #7a5c1f; --focus: #7a5c1f; }
   .site-header, .toc, .copy, .tab-list { display: none; }
   body { background: #fff; color: #000; }
+  .code pre { color: #222; -webkit-mask-image: none; mask-image: none; }
+  .code .k, .code .v, .code .t { color: #000; }
+  .code .c, .code .d, .code .h { color: #555; }
+  .code .s { color: #6b4f1d; }
+  .code .y { color: #2c4660; }
+  .dg .tb { fill: #fff; }
+  .dg .tb2 { fill: #c8c8c8; }
+  .dg .bg-inv path { fill: #fff; }
+  .dg .bg-inv text { fill: #111; }
+  .hero-mark::before, .hero-mark::after { background: var(--line); }
 }
 .cmp-full td:nth-child(2) code { color: var(--ink); }
 @media (max-width: 899px) { html:has(body.tutorial) { scroll-padding-top: 92px; } }
