@@ -47,6 +47,20 @@ test "build embeds the views, builds, then restores the empty table" do
   assert_equal "'a'\\''b'", Cybertrain::CLI::Build.shell_quote("a'b")
 end
 
+test "db commands generate first, and again after migrate and rollback" do
+  assert_equal ["spin run gen", "spin run db -- migrate", "spin run gen"], Cybertrain::CLI::Build.db_commands(["migrate"])
+  assert_equal ["spin run gen", "spin run db -- rollback 2", "spin run gen"], Cybertrain::CLI::Build.db_commands(["rollback", "2"])
+  assert_equal ["spin run gen", "spin run db -- status"], Cybertrain::CLI::Build.db_commands(["status"])
+  assert_equal ["spin run gen", "spin run db -- schema:dump"], Cybertrain::CLI::Build.db_commands(["schema:dump"])
+  assert_equal ["spin run gen", "spin run db -- 'a b' ''"], Cybertrain::CLI::Build.db_commands(["a b", ""])
+  assert_equal "migrate", Cybertrain::CLI::Build.quote_arg("migrate")
+  assert_equal "'x;y'", Cybertrain::CLI::Build.quote_arg("x;y")
+end
+
+test "db without a command prints its usage" do
+  assert_equal 1, Cybertrain::CLI.run(["db"])
+end
+
 test "server generates first and passes an optional port" do
   assert_equal ["spin run gen", "spin run blog"], Cybertrain::CLI::Build.server_commands("blog", "")
   assert_equal ["spin run gen", "spin run blog -- 4000"], Cybertrain::CLI::Build.server_commands("blog", "4000")

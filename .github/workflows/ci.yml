@@ -5,6 +5,8 @@ on:
   pull_request:
 
 env:
+  # Must equal Cybertrain::SPINEL_TAG (checked below): the release the CLI
+  # installs and the framework is tested against.
   SPINEL_TAG: "2026.09.12"
 
 jobs:
@@ -17,54 +19,77 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Spinel toolchain
-        id: spinel-cache
-        uses: actions/cache@v4
+      - uses: ruby/setup-ruby@v1
         with:
-          path: ~/.local
-          key: spinel-${{ env.SPINEL_TAG }}-${{ runner.os }}-${{ runner.arch }}-v1
+          ruby-version: "3.3"
 
       - name: Install SQLite headers (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libssl-dev
 
-      - name: Build Spinel
-        if: steps.spinel-cache.outputs.cache-hit != 'true'
+      - name: Version and Spinel tag are pinned in one place
         run: |
-          git clone --depth 1 --branch "$SPINEL_TAG" https://github.com/matz/spinel.git /tmp/spinel
-          cd /tmp/spinel
-          make deps
-          make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
-          make install PREFIX="$HOME/.local"
-
-      - name: Framework tests
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          spinel --version
-          spin test
-
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
+          version=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::VERSION')
+          grep -q "^version = \"$version\"$" spin.toml || { echo "spin.toml version != Cybertrain::VERSION ($version)"; exit 1; }
+          tag=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::SPINEL_TAG')
+          test "$tag" = "$SPINEL_TAG" || { echo "Cybertrain::SPINEL_TAG ($tag) != CI SPINEL_TAG ($SPINEL_TAG)"; exit 1; }
 
       # The gem ships the CLI only; it must run under CRuby and bring every
       # file it requires (cybertrain.gemspec lists them by hand).
-      - name: Gem CLI (CRuby) scaffolds an app, builds dist/ and serves it
+      - name: Build and install the gem
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          version=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::VERSION')
-          grep -q "^version = \"$version\"$" spin.toml || { echo "spin.toml version != Cybertrain::VERSION ($version)"; exit 1; }
           gem build cybertrain.gemspec --output /tmp/cybertrain.gem
-          gem install --local /tmp/cybertrain.gem
-          mkdir -p /tmp/gem-e2e && cd /tmp/gem-e2e
+          gem install --local --no-document /tmp/cybertrain.gem
           cybertrain version
+
+      # The key names the runner image too: a toolchain built on one image
+      # is not assumed to run on the next. ImageOS and ImageVersion are
+      # variables of the runner process, not of the expression context, so
+      # a step copies them into an output first.
+      - name: Name the runner image
+        id: image
+        run: echo "id=${ImageOS:-unknown}-${ImageVersion:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the Spinel toolchain
+        id: spinel-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cybertrain/spinel
+          key: spinel-${{ env.SPINEL_TAG }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v3
+
+      # `cybertrain setup` is how users get Spinel, so CI gets it the same
+      # way: a cache miss builds the release, a hit verifies it.
+      - name: Install Spinel with cybertrain setup
+        run: |
+          cybertrain doctor
+          cybertrain setup
+          echo "$HOME/.cybertrain/bin" >> "$GITHUB_PATH"
+
+      # Saved right after the build, so a failure later in the job does not
+      # cost the next run another build.
+      - name: Save the Spinel toolchain
+        if: steps.spinel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cybertrain/spinel
+          key: ${{ steps.spinel-cache.outputs.cache-primary-key }}
+
+      - name: Framework tests
+        run: |
+          spinel --version
+          spin test
+
+      - name: Gem CLI scaffolds an app, migrates, builds dist/ and serves it
+        run: |
+          mkdir -p /tmp/gem-e2e && cd /tmp/gem-e2e
           cybertrain new shop --path "$GITHUB_WORKSPACE"
           cd shop
+          test -f spin.lock
           cybertrain generate scaffold product name:string price:integer
-          cybertrain migration
+          cybertrain db migrate
           cybertrain db status
           cybertrain build
-          spin run gen -- --check
+          cybertrain spin run gen -- --check
           test -x dist/shop
           cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./shop migrate
           CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3999 ./shop > server.log 2>&1 &
@@ -74,10 +99,24 @@ jobs:
           grep -q "production environment" server.log
           kill %1
 
+      # What `cybertrain new` does for users: the framework as a git
+      # dependency that spin fetches and locks (here this checkout, at a
+      # local tag, instead of the release tag).
+      - name: Gem CLI resolves the framework as a git dependency
+        run: |
+          git -C "$GITHUB_WORKSPACE" tag -f ci-e2e HEAD
+          mkdir -p /tmp/gem-e2e-git && cd /tmp/gem-e2e-git
+          cybertrain new gitshop --git "file://$GITHUB_WORKSPACE" --ref ci-e2e
+          cd gitshop
+          grep -q 'ref = "ci-e2e"' spin.toml
+          test -f spin.lock
+          cybertrain generate scaffold item name:string
+          cybertrain db migrate
+          cybertrain spin run gen -- --check
+
       - name: Generated code is fresh (examples/blog)
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
           cd examples/blog
           spin run gen
           git diff --exit-code -- gen/
@@ -85,6 +124,5 @@ jobs:
       - name: Example app tests
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
           cd examples/blog
           spin test

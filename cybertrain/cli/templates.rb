@@ -92,17 +92,17 @@ module Cybertrain
 
           ```sh
           cybertrain generate scaffold post title:string body:text
-          cybertrain migration   # gen, apply db/migrate, gen again
+          cybertrain db migrate  # gen, apply db/migrate, gen again
           cybertrain server      # http://127.0.0.1:3000 (`cybertrain server 4000` for another port)
           cybertrain build       # dist/: the binary (views embedded) + public/
           ```
 
-          `spin run gen` (which `migration`, `server` and `build` run for you)
+          `spin run gen` (which `db`, `server` and `build` run for you)
           regenerates `gen/` from db/schema.rb, config/routes.rb and app/;
           commit `gen/`. In development views under `app/views/` are read at
           run time: edit them without rebuilding. `cybertrain db status` and
           `cybertrain db rollback 1` reach the other database commands.
-          `cybertrain migration` runs migrations through `bin/db.rb`; a
+          `cybertrain db migrate` runs migrations through `bin/db.rb`; a
           deployed `dist/#{package}` runs them with `./#{package} migrate`.
 
           To deploy, copy `dist/` to a machine with the same OS and CPU, then

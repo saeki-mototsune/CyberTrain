@@ -72,7 +72,7 @@ create storage/.keep
 create tmp/.keep
 create test/.keep
 ok   CLI new --path keeps an absolute DIR and works for a nested app dir
-error: pass either --path or --version, not both
+error: pass only one of --path, --version and --git
 ok   CLI new rejects --path together with --version
 create spin.toml
 create .gitignore
@@ -110,6 +110,76 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
+create bin/fork.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/pinned.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+error: --ref needs --git
+error: --git needs a value
+error: --git needs a value
+error: pass only one of --path, --version and --git
+ok   CLI new --git writes a git dependency, with or without --ref
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create bin/odd.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+error: control characters are not allowed in --path, --version, --git or --ref
+ok   CLI new writes dependency values as TOML strings
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
 create bin/notes.rb
 create bin/gen.rb
 create bin/db.rb
@@ -119,86 +189,129 @@ create tmp/.keep
 create test/.keep
 ok   CLI new defaults to this version's release tag
 ok   new bootstraps the app with spin lock and spin run gen
+usage: cybertrain spin ARGS... (for example: cybertrain spin test)
+usage: cybertrain doctor
+usage: cybertrain setup [--force]
+ok   CLI spin needs arguments
 error: blog already exists
 error: 'Bad Name' is not a valid app name (lowercase letters, digits and _)
-error: usage: cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+error: usage: cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 ok   CLI new refuses an existing directory and a bad name
-cybertrain 0.1.1
+cybertrain 0.2.0
 Usage:
-  cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+  cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
       Create an application in NAME, then run `spin lock` and
       `spin run gen` in it (skipped with --skip-spin). Its spin.toml
       depends on this cybertrain's release by default:
-        git tag v0.1.1 of https://github.com/saeki-mototsune/cybertrain
+        git tag v0.2.0 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
       --version V: the index version constraint V.
+      --git URL [--ref R]: the framework at URL, at branch or tag R.
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
-  cybertrain migration
+  cybertrain db migrate
       Generate, apply pending migrations, generate again
       (spin run gen; spin run db -- migrate; spin run gen).
   cybertrain db COMMAND...
-      Any database command: status, rollback [N], schema:dump, create.
+      Any other database command, after `spin run gen`: status,
+      rollback [N] (generates again afterwards), schema:dump, create.
+      `cybertrain migration` is the same as `cybertrain db migrate`.
   cybertrain server [PORT]
       Generate, then start the development server
       (spin run gen; spin run NAME [-- PORT]; default port 3000).
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain spin ARGS...
+      Run spin with the pinned Spinel, from any directory
+      (cybertrain spin test; cybertrain spin run gen -- --check).
+  cybertrain setup [--force]
+      Install Spinel 2026.09.12 into ~/.cybertrain (CYBERTRAIN_HOME)
+      unless a spinel of that release is already on PATH, and print
+      the PATH line for ~/.cybertrain/bin. The commands above do the
+      install by themselves the first time they need spin.
+  cybertrain doctor
+      Check the C toolchain, the SQLite headers and the Spinel install.
   cybertrain version
   cybertrain help
 Unknown command 'frobnicate'
 Usage:
-  cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+  cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
       Create an application in NAME, then run `spin lock` and
       `spin run gen` in it (skipped with --skip-spin). Its spin.toml
       depends on this cybertrain's release by default:
-        git tag v0.1.1 of https://github.com/saeki-mototsune/cybertrain
+        git tag v0.2.0 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
       --version V: the index version constraint V.
+      --git URL [--ref R]: the framework at URL, at branch or tag R.
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
-  cybertrain migration
+  cybertrain db migrate
       Generate, apply pending migrations, generate again
       (spin run gen; spin run db -- migrate; spin run gen).
   cybertrain db COMMAND...
-      Any database command: status, rollback [N], schema:dump, create.
+      Any other database command, after `spin run gen`: status,
+      rollback [N] (generates again afterwards), schema:dump, create.
+      `cybertrain migration` is the same as `cybertrain db migrate`.
   cybertrain server [PORT]
       Generate, then start the development server
       (spin run gen; spin run NAME [-- PORT]; default port 3000).
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain spin ARGS...
+      Run spin with the pinned Spinel, from any directory
+      (cybertrain spin test; cybertrain spin run gen -- --check).
+  cybertrain setup [--force]
+      Install Spinel 2026.09.12 into ~/.cybertrain (CYBERTRAIN_HOME)
+      unless a spinel of that release is already on PATH, and print
+      the PATH line for ~/.cybertrain/bin. The commands above do the
+      install by themselves the first time they need spin.
+  cybertrain doctor
+      Check the C toolchain, the SQLite headers and the Spinel install.
   cybertrain version
   cybertrain help
 Usage:
-  cybertrain new NAME [--path DIR | --version V] [--skip-spin]
+  cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
       Create an application in NAME, then run `spin lock` and
       `spin run gen` in it (skipped with --skip-spin). Its spin.toml
       depends on this cybertrain's release by default:
-        git tag v0.1.1 of https://github.com/saeki-mototsune/cybertrain
+        git tag v0.2.0 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
       --version V: the index version constraint V.
+      --git URL [--ref R]: the framework at URL, at branch or tag R.
   cybertrain generate scaffold NAME field:type ... [parent:references]
       Add a resource to the application in the current directory.
       Types: string, text, integer, float, boolean, date, datetime, references (default string).
-  cybertrain migration
+  cybertrain db migrate
       Generate, apply pending migrations, generate again
       (spin run gen; spin run db -- migrate; spin run gen).
   cybertrain db COMMAND...
-      Any database command: status, rollback [N], schema:dump, create.
+      Any other database command, after `spin run gen`: status,
+      rollback [N] (generates again afterwards), schema:dump, create.
+      `cybertrain migration` is the same as `cybertrain db migrate`.
   cybertrain server [PORT]
       Generate, then start the development server
       (spin run gen; spin run NAME [-- PORT]; default port 3000).
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain spin ARGS...
+      Run spin with the pinned Spinel, from any directory
+      (cybertrain spin test; cybertrain spin run gen -- --check).
+  cybertrain setup [--force]
+      Install Spinel 2026.09.12 into ~/.cybertrain (CYBERTRAIN_HOME)
+      unless a spinel of that release is already on PATH, and print
+      the PATH line for ~/.cybertrain/bin. The commands above do the
+      install by themselves the first time they need spin.
+  cybertrain doctor
+      Check the C toolchain, the SQLite headers and the Spinel install.
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-17 tests, 70 assertions, 0 failures
+20 tests, 92 assertions, 0 failures

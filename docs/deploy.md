@@ -30,7 +30,7 @@
 | ドメイン | `notes.example.com` |
 | アプリの GitHub リポジトリ（private で可） | `YOUR_GITHUB/notes` |
 | サーバー | Ubuntu 24.04 LTS、x86-64 か arm64、メモリ 1GB 以上 |
-| Spinel のバージョン | `2026.09.12`（[CI](../.github/workflows/ci.yml) の `SPINEL_TAG` と同じもの） |
+| Spinel のバージョン | `2026.09.12`（`cybertrain setup` が入れるもの。[CI](../.github/workflows/ci.yml) の `SPINEL_TAG` と同じもの） |
 
 ---
 
@@ -40,6 +40,10 @@
 
 ### 1-1. 必要なパッケージ
 
+Spinel は 1-3 で `cybertrain` コマンドが自分でビルドして入れます。Spinel のビルドには C コンパイラ・
+make・git・curl が、アプリのビルドには SQLite のヘッダ／ライブラリが要ります。`cybertrain setup` は
+両方がそろっているか先に確かめるので、ここで入れておきます。
+
 Ubuntu / Debian:
 
 ```sh
@@ -47,15 +51,69 @@ sudo apt update
 sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev ruby-full
 ```
 
-macOS: `xcode-select --install`（C コンパイラと SQLite が入ります）。
+macOS: `xcode-select --install`（C コンパイラ、make、git、curl と SQLite のヘッダが入ります）。
+
+OpenSSL（`libssl-dev`、macOS なら `brew install openssl@3`）は必須ではありません。無くても Spinel は
+openssl パッケージ抜きでビルドされ、cybertrain はそれを使いません。
 
 `cybertrain` コマンドは gem で入れるので、Ruby 3.2 以上が要ります（サーバーでも
 `cybertrain build` を使うので入れます。アプリ自体は Ruby 無しで動きます）。Ubuntu 24.04 の `ruby-full` は 3.2 です。macOS 付属の Ruby は古いので、
 Homebrew（`brew install ruby`）や rbenv・mise などで入れてください。
 
-### 1-2. Spinel をインストールする
+### 1-2. cybertrain の CLI をインストールする
 
-CI と同じ手順です。`~/.local` に `spinel` と `spin` が入ります。
+```sh
+gem install cybertrain
+cybertrain version
+```
+
+gem に入っているのは `cybertrain` コマンドだけです（フレームワークも Spinel も入っていません）。
+Spinel は次の 1-3 で、このコマンドが入れます。
+
+### 1-3. Spinel をインストールする
+
+```sh
+cybertrain setup
+```
+
+`cybertrain` が固定している Spinel `2026.09.12` を、GitHub のリリースタグからビルドして
+`~/.cybertrain/spinel/2026.09.12/` に入れます（`git clone` → `make deps` → `make -j` →
+`make install`）。初回だけで、数分かかります（4 コアのマシンで 3 分前後でした。`make -j` は CPU の数だけ
+並列に動くので、CPU が少ないほど長くかかります）。CI も Spinel を同じ `cybertrain setup` で入れています。
+
+- 足りない道具（git・make・curl・C コンパイラ・SQLite のヘッダ／ライブラリ）があると、ビルドを始める前に
+  何が足りないかとインストールのコマンドを表示して止まります。
+- 各手順の出力はログ `~/.cybertrain/log/spinel-2026.09.12-build.log` に書かれます。途中で失敗したときは
+  ログの末尾が表示されます。
+- すでに入っている場合（`~/.cybertrain` にある、または同じリリースの `spinel` が PATH にある）は、
+  `nothing to install` と表示して何もしません。`~/.cybertrain` のものを作り直したいときは
+  `cybertrain setup --force` です。
+- 入れ先 `~/.cybertrain/spinel/2026.09.12/` は約 13 MB です（Linux x86-64 で確認した値）。ビルド中だけ、
+  ソースと中間ファイルが `~/.cybertrain/src/spinel-2026.09.12/` に 90 MB ほどでき、成功すると削除されます。
+
+前提が足りているかは `cybertrain doctor` で確認できます（git・make・curl・cc・SQLite・OpenSSL と
+Spinel を 1 行ずつ表示します。足りないものは `MISSING` と表示され、インストールのコマンドが続きます）。
+
+`cybertrain new`・`db`・`server`・`build` は、この Spinel を自分で見つけて使うので、PATH の設定は要りません。
+`spin` を直接実行したいときは `cybertrain spin ...`（例: `cybertrain spin run gen -- --check`）でも
+動きます。それでも `spin` をそのまま打ちたい場合だけ、`~/.cybertrain/bin` を PATH に通します（zsh なら
+`~/.zshrc`）。`~/.cybertrain/bin` には現在使っているリリースへの `spinel`・`spin` のリンクが置かれるので、
+リリースが上がっても書き換えは要りません。`cybertrain setup` は、自分が入れた Spinel を使う場合に、
+同じ内容の `export PATH=...` の行を表示します。
+
+```sh
+echo 'export PATH="$HOME/.cybertrain/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+spinel --version
+```
+
+括弧の中が `2026.09.12` になっていれば OK です
+（`spinel 112bae85c1a2 (2026.09.12) [cc ...]` のように表示されます）。
+
+**補足: 手動で入れる場合**
+
+`cybertrain setup` を使わず、Spinel を自分でビルドして入れることもできます。手順は `cybertrain setup` と
+同じです。
 
 ```sh
 git clone --depth 1 --branch 2026.09.12 https://github.com/matz/spinel.git ~/src/spinel
@@ -65,20 +123,13 @@ make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
 make install PREFIX="$HOME/.local"
 ```
 
-`~/.local/bin` に PATH を通します（zsh なら `~/.zshrc`）。
+入れたものを `cybertrain` に使わせるには、次のどちらかにします。
 
-```sh
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-spinel --version
-```
-
-### 1-3. cybertrain の CLI をインストールする
-
-```sh
-gem install cybertrain
-cybertrain version
-```
+- `~/.local/bin` に PATH を通す（`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`）。
+  `spinel --version` が `2026.09.12` なら、`cybertrain` は PATH 上のそれをそのまま使います。別のリリース
+  だと使わず、`cybertrain` が自分用のものを `~/.cybertrain` に入れます。
+- 環境変数で入れ先を指定する（`~/.bashrc` に `export CYBERTRAIN_SPINEL_HOME="$HOME/.local"` を書きます）。
+  そこの `spinel` が `2026.09.12` でなければ、エラーで止まります。
 
 ---
 
@@ -93,6 +144,8 @@ cd notes
 git init -b main
 ```
 
+1-3 で Spinel を入れてあれば `cybertrain new` はそれをそのまま使います（まだなら、最初に入れます）。
+
 ### 2-2. フレームワークの参照を確認する
 
 `cybertrain new` は `spin.toml` に、CLI と同じバージョンのフレームワーク（GitHub のタグ）を
@@ -104,7 +157,7 @@ name = "notes"
 version = "0.1.0"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.1.1" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.2.0" }
 ```
 
 続けて `new` が `spin lock` と `spin run gen` を実行しています。フレームワークは spin の
@@ -130,7 +183,7 @@ end
 マイグレーションを流します。
 
 ```sh
-cybertrain migration
+cybertrain db migrate
 ```
 
 中身は生成 → マイグレーション → 再生成の 3 段です。`spin run gen` で新しいマイグレーションを
@@ -181,7 +234,7 @@ export CYBERTRAIN_DATABASE="$PWD/dist/storage/rehearsal.sqlite3"
 起動時の表示が次のようになっていれば OK です。
 
 ```
-=> Booting cybertrain 0.1.1
+=> Booting cybertrain 0.2.0
 => production environment (1 worker)
 * Listening on http://127.0.0.1:3000
 ```
@@ -256,37 +309,43 @@ sudo useradd --system --create-home --home-dir /srv/notes --shell /bin/bash note
 sudo chmod 711 /srv/notes    # Caddy が public/ まで辿れるように（中身の一覧は見せない）
 ```
 
-### 3-4. `notes` ユーザーで Spinel をインストールする
+### 3-4. `notes` ユーザーで cybertrain と Spinel をインストールする
 
 ```sh
 sudo -iu notes
 ```
 
-以降、**第 3 部の終わりまで `notes` ユーザーのシェル**で作業します。手順は 1-2 と同じです。
+以降、**第 3 部の終わりまで `notes` ユーザーのシェル**で作業します。手順は 1-2、1-3 と同じで、先に
+`cybertrain` コマンド、次に Spinel の順です。Ruby は 3-2 の `ruby-full` で入っています。
+
+まず `cybertrain` コマンドを `notes` ユーザーのホームに入れます（デプロイスクリプトが
+`cybertrain build` を使います）。実行ファイルは gem のディレクトリに入るので、`~/.local/bin` に
+リンクを置いて PATH に通します。
 
 ```sh
-git clone --depth 1 --branch 2026.09.12 https://github.com/matz/spinel.git ~/spinel-src
-cd ~/spinel-src
-make deps
-make -j"$(nproc)"
-make install PREFIX="$HOME/.local"
+gem install --user-install cybertrain -v 0.2.0
+mkdir -p ~/.local/bin
+ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
-spinel --version
-```
-
-続けて `cybertrain` コマンドを `notes` ユーザーのホームに入れます（デプロイスクリプトが
-`cybertrain build` を使います）。
-
-```sh
-gem install --user-install cybertrain -v 0.1.1
-ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
 cybertrain version
 ```
 
-`-v` はアプリの `spin.toml` の `ref`（タグ `v0.1.1`）と同じバージョンにそろえてください。CLI と
+`-v` はアプリの `spin.toml` の `ref`（タグ `v0.2.0`）と同じバージョンにそろえてください。CLI と
 `spin.lock` が固定するフレームワーク（`spin run gen` はそのフレームワーク自身の generator を
 実行します）は対で更新するものなので、バージョンがずれるとビルドや起動が失敗します。
+
+続けて、同じ `notes` ユーザーで Spinel を入れます。
+
+```sh
+cybertrain setup
+```
+
+1-3 と同じ処理で、初回だけ数分かかります（CPU が少ないサーバーほど長くかかります）。Spinel は `notes`
+ユーザーの `~/.cybertrain/spinel/2026.09.12/`（ここでは `/srv/notes/.cybertrain/spinel/2026.09.12/`。
+約 13 MB）に入り、ログは `~/.cybertrain/log/spinel-2026.09.12-build.log` に残ります。ビルド中だけ、
+ソースと中間ファイルが `~/.cybertrain/src/` に 90 MB ほどできます（成功すると削除されます）。3-2 で
+入れたパッケージで前提はそろっていますが、足りないと言われたら `cybertrain doctor` で確認してください。
 
 ### 3-5. デプロイキー
 
@@ -426,7 +485,7 @@ REPO=git@github.com:YOUR_GITHUB/notes.git
 REF="${1:-main}"
 KEEP=5   # 残すリリースの数
 
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/.cybertrain/bin:$HOME/.local/bin:$PATH"
 set -a; . /etc/notes/notes.env; set +a
 
 release="$ROOT/releases/$(date +%Y%m%d%H%M%S)"
@@ -457,6 +516,10 @@ echo "==> 完了: $(git rev-parse --short HEAD)"
 EOF
 chmod 700 ~/deploy.sh
 ```
+
+`PATH` の先頭に `~/.cybertrain/bin` を入れているのは、`gen/` の確認で `spin` を直接呼ぶためです
+（`cybertrain build` は Spinel を自分で見つけます）。`~/.cybertrain/bin` は `cybertrain setup` が
+現在のリリースに向けて張り直すリンクなので、Spinel のリリースが上がっても書き換えは要りません。
 
 途中のどこかで失敗した場合（`gen/` が古い、コンパイルエラー、マイグレーション失敗）は、
 `current` を切り替える前に止まるので、動いているアプリには影響しません。
@@ -628,9 +691,9 @@ sudo systemctl start notes
 
 手元で:
 
-`spin.toml` の `ref` を新しいタグ（例: `"v0.2.0"`）に書き換え、`gem install cybertrain` で
+`spin.toml` の `ref` を新しいタグ（例: `"v0.3.0"`）に書き換え、`gem install cybertrain` で
 CLI も同じバージョンにそろえてから（サーバーの `notes` ユーザーでも
-`gem install --user-install cybertrain -v 0.2.0` のように、`spin.toml` のタグと同じバージョンを
+`gem install --user-install cybertrain -v 0.3.0` のように、`spin.toml` のタグと同じバージョンを
 指定して CLI を更新します。CLI と `spin.lock` が固定するフレームワークは対で更新するものなので、
 バージョンがずれるとビルドや起動が失敗します）:
 
@@ -643,9 +706,13 @@ git add -A && git commit -m "Update cybertrain"
 git push
 ```
 
-そのあと普段どおりデプロイします。フレームワークが要求する Spinel のバージョン
-（そのタグの [`.github/workflows/ci.yml`](https://github.com/saeki-mototsune/cybertrain/blob/main/.github/workflows/ci.yml) の `SPINEL_TAG`）が上がっていたら、手元とサーバー
-（3-4）の両方で Spinel を入れ直してからデプロイしてください。
+そのあと普段どおりデプロイします。新しい `cybertrain` が固定している Spinel のリリース
+（`Cybertrain::SPINEL_TAG`。そのタグの [`.github/workflows/ci.yml`](https://github.com/saeki-mototsune/cybertrain/blob/main/.github/workflows/ci.yml) の `SPINEL_TAG` と同じもの）が上がっていたら、
+上のコマンドの前に `cybertrain setup` で入れ直してください。新しいリリースは
+`~/.cybertrain/spinel/<リリース>/` に入り、古いリリースはそのまま残ります。`~/.cybertrain/bin` の
+リンクは新しいリリースに張り直されるので、PATH の行（1-3、5-3）はそのままで構いません。
+サーバーでは `gem install` のあとに `notes` ユーザーで `cybertrain setup` を実行しておくと（3-4）、
+デプロイの途中でビルドを待たずに済みます。
 
 ### 秘密鍵を変える
 
@@ -666,8 +733,8 @@ git push
 | 500 になり、ログに `Missing template ...` が出る | ビルド時に `app/views/` に無かったテンプレート。`cybertrain build` をやり直す |
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
 | デプロイが `stale: gen/...` で止まる | 手元で `spin run gen` して `gen/` をコミットし忘れている |
-| `spin: command not found`（デプロイ時） | `notes` ユーザーの `~/.local/bin` に Spinel が入っていない（3-4） |
-| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.1.1`） |
+| `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
+| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.2.0`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |
 | ブラウザで 500.html が出続ける | アプリが落ちている。`journalctl -u notes -n 50` を見る |
 | 証明書が取れない | DNS がサーバーを向いているか、80/443 が開いているか。`journalctl -u caddy` を見る |
