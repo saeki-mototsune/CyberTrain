@@ -21,7 +21,7 @@
 <script src="assets/site.js" defer></script>
 
 <title>Getting started: the blog · CyberTrain</title>
-<meta name="description" content="Build the Rails Getting Started blog, articles with comments, with CyberTrain: scaffold, migrate, nest routes, test with Cybertrain::Test and ship with spin build server.">
+<meta name="description" content="Build the Rails Getting Started blog, articles with comments, with CyberTrain: scaffold, migrate, nest routes, test with Cybertrain::Test and build for deployment with cybertrain build.">
 <meta property="og:title" content="Getting started with CyberTrain: the blog">
 <meta property="og:description" content="Mirrors Rails' own Getting Started: a blog with articles and comments, built with CyberTrain on Spinel.">
 </head>
@@ -49,11 +49,11 @@
   <header class="doc-hero">
     <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Tutorial</span></p>
     <h1>Getting started: the&nbsp;blog</h1>
-    <p class="doc-intro">Mirrors Rails' own <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a>: a blog with articles and comments. You will scaffold articles, add validations, nest comments under them, write a test that drives the app in-process, and build the server binary. The finished app is <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>, exercised by CI on Linux and macOS.</p>
+    <p class="doc-intro">Mirrors Rails' own <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a>: a blog with articles and comments. You will scaffold articles, add validations, nest comments under them, write a test that drives the app in-process, and build the app into a deployable <code>dist/</code> folder. The finished app is <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>, exercised by CI on Linux and macOS.</p>
     <dl class="doc-meta">
-      <div><dt>You need</dt><dd>Spinel <code>2026.09.12</code>, <code>cc</code>, SQLite 3 headers <a class="meta-link" href="#requirements">Step 00</a></dd></div>
-      <div><dt>You start from</dt><dd>A checkout of the CyberTrain repository</dd></div>
-      <div><dt>You finish with</dt><dd><code>build/bin/server</code></dd></div>
+      <div><dt>You need</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, SQLite 3 headers (Spinel <code>2026.09.12</code> is installed for you) <a class="meta-link" href="#requirements">Step 00</a></dd></div>
+      <div><dt>You start from</dt><dd><code>gem install cybertrain</code></dd></div>
+      <div><dt>You finish with</dt><dd><code>dist/blog</code></dd></div>
     </dl>
   </header>
 </div>
@@ -77,7 +77,7 @@
       <li><a href="#comments-controller"><span class="toc-n">10</span>The CommentsController</a></li>
       <li><a href="#views"><span class="toc-n">11</span>Views and partials</a></li>
       <li><a href="#test"><span class="toc-n">12</span>Test it</a></li>
-      <li><a href="#ship"><span class="toc-n">13</span>Ship it</a></li>
+      <li><a href="#ship"><span class="toc-n">13</span>Build for deployment</a></li>
       <li class="toc-x"><a href="#things-to-know"><span class="toc-n">+</span>Things to know</a></li>
       <li class="toc-x"><a href="#differences"><span class="toc-n">+</span>Differences from Rails</a></li>
       <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>Where next</a></li>
@@ -88,32 +88,27 @@
   <article class="doc-body">
 
   <section class="step" id="requirements" aria-labelledby="h-requirements">
-    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Setup <span aria-hidden="true">&middot;</span> Spinel, <code>cc</code>, SQLite</p>
+    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Setup <span aria-hidden="true">&middot;</span> Ruby, <code>cc</code>, SQLite</p>
     <h2 id="h-requirements"><span class="step-num" aria-hidden="true">00</span>Requirements</h2>
-    <p class="why"><span class="why-k">Why</span><span class="why-t">CyberTrain compiles through Spinel to C, so it needs the toolchain and the SQLite headers.</span></p>
+    <p class="why"><span class="why-k">Why</span><span class="why-t">CyberTrain compiles through Spinel to C, so it needs a C toolchain and the SQLite headers; the <code>cybertrain</code> command is a gem, so it needs Ruby.</span></p>
     <ul class="checklist">
-      <li>Spinel <code>2026.09.12</code>, with <code>spinel</code> and <code>spin</code> on <code>PATH</code>. Untested against other versions.</li>
-      <li>A C toolchain (<code>cc</code>).</li>
+      <li>Ruby 3.2+ and RubyGems, for the <code>cybertrain</code> command only; applications never run on CRuby.</li>
+      <li>Spinel <code>2026.09.12</code>, untested against other versions. You do not install it by hand: the first command that needs it builds that release into <code>~/.cybertrain</code> (a few minutes, once), unless a <code>spinel</code> of that release is already on <code>PATH</code>.</li>
+      <li>A C toolchain (<code>cc</code>, or the compiler <code>CC</code> names) and <code>make</code>, plus <code>git</code> and <code>curl</code>, to build Spinel, which compiles every program to C.</li>
       <li>SQLite 3 headers and library: <code>libsqlite3-dev</code> on Debian/Ubuntu; present with Xcode's command line tools on macOS.</li>
-      <li>Building Spinel itself also needs OpenSSL headers (<code>libssl-dev</code>). CyberTrain does not link OpenSSL.</li>
+      <li>OpenSSL headers (<code>libssl-dev</code>) are optional: without them Spinel builds without its <code>openssl</code> package, which CyberTrain does not use.</li>
     </ul>
+    <p><code>cybertrain doctor</code> checks these tools and headers and the Spinel install; when a required one is missing it also prints the install command for your platform.</p>
     <details class="ci">
-      <summary><span class="ci-t">How CI builds Spinel</span><span class="ci-d">The Linux steps from the CI workflow, with SPINEL_TAG filled in</span></summary>
+      <summary><span class="ci-t">How CyberTrain installs Spinel</span><span class="ci-d">What happens the first time a command needs <code>spin</code></span></summary>
       <div class="ci-body">
-    <figure class="code" data-lang="shell">
-<figcaption><span class="code-path">terminal &mdash; Linux, any directory</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; how CI builds Spinel"><code><span class="ln cmd">sudo apt-get update &amp;&amp; sudo apt-get install -y libsqlite3-dev libssl-dev</span>
-<span class="ln cmd">git clone --depth 1 --branch <span class="s">"2026.09.12"</span> https://github.com/matz/spinel.git /tmp/spinel</span>
-<span class="ln cmd">cd /tmp/spinel</span>
-<span class="ln cmd">make deps</span>
-<span class="ln cmd">make -j<span class="s">"$(nproc 2&gt;/dev/null || sysctl -n hw.ncpu)"</span></span>
-<span class="ln cmd">make install PREFIX=<span class="s">"$HOME/.local"</span></span></code></pre>
-</figure>
-    <p>Then put the installed binaries on your <code>PATH</code>, as CI does:</p>
+    <p><code>cybertrain new</code>, <code>db</code>, <code>server</code>, <code>build</code> and <code>spin</code> first look for Spinel <code>2026.09.12</code>: a <code>spinel</code> and <code>spin</code> of that release already on <code>PATH</code>, else the copy under <code>~/.cybertrain/spinel/2026.09.12/</code>, else they build that copy from the Spinel release tag (<code>git clone</code>, <code>make deps</code>, <code>make -j</code>, <code>make install</code>), once, in a few minutes. The log is <code>~/.cybertrain/log/spinel-2026.09.12-build.log</code>; if a tool the build needs is missing, <code>cybertrain</code> says which and prints the install command for your platform before it starts.</p>
+    <p><code>cybertrain setup</code> does the same on request (<code>--force</code> rebuilds the copy under <code>~/.cybertrain</code>) and, when its own copy is the one in use, prints the line that puts it on your <code>PATH</code>, for running <code>spin</code> yourself:</p>
 <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; any directory</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal, any directory"><code><span class="ln cmd">export PATH=<span class="s">"$HOME/.local/bin:$PATH"</span></span></code></pre>
+<pre tabindex="0" role="region" aria-label="Code: terminal, any directory"><code><span class="ln cmd">export PATH=<span class="s">"$HOME/.cybertrain/bin:$PATH"</span></span></code></pre>
 </figure>
+    <p><code>~/.cybertrain/bin</code> holds <code>spinel</code> and <code>spin</code> links to the release in use. Without it on <code>PATH</code>, <code>cybertrain spin ARGS...</code> runs <code>spin</code> with that release from any directory. <code>CYBERTRAIN_HOME</code> replaces <code>~/.cybertrain</code>, and <code>CYBERTRAIN_SPINEL_HOME=PREFIX</code> uses the Spinel installed in <code>PREFIX</code> instead (it must be that release). A <code>spinel</code> of another release on <code>PATH</code> is never used or touched.</p>
       </div>
     </details>
   </section>
@@ -121,41 +116,66 @@
   <section class="step" id="install" aria-labelledby="h-install">
     <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Setup <span aria-hidden="true">&middot;</span> the <code>cybertrain</code> CLI</p>
     <h2 id="h-install"><span class="step-num" aria-hidden="true">01</span>Install the CLI</h2>
-    <p class="why"><span class="why-k">Why</span><span class="why-t"><code>cybertrain</code> is the one binary that creates apps and scaffolds resources.</span></p>
-    <p>Run this from a checkout of the CyberTrain repository:</p>
+    <p class="why"><span class="why-k">Why</span><span class="why-t"><code>cybertrain</code> is the command that creates apps, scaffolds resources, migrates, serves and builds.</span></p>
+    <p>The first line installs it from RubyGems. The rest is the whole tutorial at a glance; the steps below take it one command at a time.</p>
     <figure class="code" data-lang="shell">
-<figcaption><span class="code-path">terminal &mdash; CyberTrain checkout</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; CyberTrain checkout"><code><span class="ln cmd">spin install                      <span class="c"># builds bin/cybertrain.rb -&gt; ~/.local/bin/cybertrain</span></span></code></pre>
+<figcaption><span class="code-path">terminal &mdash; any directory, then&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; any directory, then blog/"><code><span class="ln cmd">gem install cybertrain</span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># installs Spinel 2026.09.12 the first time (a few minutes)</span></span>
+<span class="ln cmd">cd blog</span>
+<span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
+<span class="ln cmd">cybertrain db migrate</span>
+<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000</span></span>
+<span class="ln cmd">cybertrain build             <span class="c"># production: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span></code></pre>
 </figure>
-    <p>Or, without touching <code>PATH</code>:</p>
-    <figure class="code" data-lang="shell">
-<figcaption><span class="code-path">terminal &mdash; CyberTrain checkout</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; CyberTrain checkout"><code><span class="ln cmd">spin build cybertrain</span>
-<span class="ln cmd">build/bin/cybertrain help</span></code></pre>
-</figure>
-    <p>One binary, two real commands: <code>cybertrain new NAME</code> scaffolds an application, <code>cybertrain generate scaffold NAME field:type ...</code> (alias <code>g scaffold</code>) adds a resource to one. There are also <code>cybertrain version</code> and <code>cybertrain help</code>.</p>
-    <p class="note"><code>cybertrain new</code> points the app's <code>spin.toml</code> at this checkout by default; pass <code>--path DIR</code> for a different checkout, or <code>--version V</code> once cybertrain is on a <code>spin-index</code>.</p>
+    <p>The <code>cybertrain</code> command is plain Ruby and the gem runs it under CRuby (3.2 or newer); neither the framework nor Spinel is in the gem. Its commands (<code>cybertrain help</code> prints them):</p>
+    <ul class="points">
+      <li><code>cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]</code> creates an application in NAME, then runs <code>spin lock</code> and <code>spin run gen</code> in it, installing Spinel first when it is needed.</li>
+      <li><code>cybertrain generate scaffold NAME field:type ...</code> (alias <code>g scaffold</code>) adds a resource to the application in the current directory.</li>
+      <li><code>cybertrain db migrate</code> generates, applies pending migrations, and generates again (<code>spin run gen; spin run db -- migrate; spin run gen</code>); <code>cybertrain migration</code> is kept as an alias.</li>
+      <li><code>cybertrain db COMMAND...</code> runs any other database command after <code>spin run gen</code>: <code>status</code>, <code>rollback [N]</code> (which generates again afterwards), <code>schema:dump</code>, <code>create</code>.</li>
+      <li><code>cybertrain server [PORT]</code> generates, then starts the development server (<code>spin run gen; spin run NAME</code>, or <code>spin run NAME -- PORT</code>; default port 3000).</li>
+      <li><code>cybertrain build</code> builds NAME with <code>app/views/</code> embedded and assembles <code>dist/</code> (the binary, <code>public/</code>, <code>storage/</code>, <code>tmp/</code>).</li>
+      <li><code>cybertrain spin ARGS...</code> runs <code>spin</code> with the pinned Spinel, from any directory: <code>cybertrain spin test</code>, <code>cybertrain spin run gen -- --check</code>.</li>
+      <li><code>cybertrain setup [--force]</code> installs Spinel <code>2026.09.12</code> into <code>~/.cybertrain</code> unless a <code>spinel</code> of that release is already on <code>PATH</code>; <code>--force</code> rebuilds the copy under <code>~/.cybertrain</code>.</li>
+      <li><code>cybertrain doctor</code> checks the C toolchain, the SQLite headers and the Spinel install.</li>
+      <li><code>cybertrain version</code> prints the version (<code>cybertrain 0.2.0</code>); <code>cybertrain help</code> prints the usage.</li>
+    </ul>
+    <p class="note"><code>db</code>, <code>server</code> and <code>build</code> run inside an application; NAME is the <code>[package] name</code> in its <code>spin.toml</code>.</p>
   </section>
 
   <section class="step" id="new-app" aria-labelledby="h-new-app">
     <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>You write <span aria-hidden="true">&middot;</span> <code>blog/</code></p>
     <h2 id="h-new-app"><span class="step-num" aria-hidden="true">02</span>Create the application</h2>
-    <p class="why"><span class="why-k">Why</span><span class="why-t">You get the Rails directory conventions plus the three <code>bin/</code> entry points that <code>spin run</code> uses.</span></p>
+    <p class="why"><span class="why-k">Why</span><span class="why-t">You get the Rails directory conventions plus three <code>bin/</code> programs: <code>bin/blog.rb</code> (the app), <code>bin/gen.rb</code> (the generator) and <code>bin/db.rb</code> (development migrations).</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; any directory</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code: terminal, any directory"><code><span class="ln cmd">cybertrain new blog</span>
 <span class="ln cmd">cd blog</span></code></pre>
 </figure>
-    <p>App names use lowercase letters, digits and <code>_</code>. The generated tree:</p>
+    <p><code>cybertrain new</code> writes the application with its <code>spin.toml</code> pointing at the release matching the CLI:</p>
+    <figure class="code" data-lang="toml">
+<figcaption><span class="code-path">spin.toml</span><span class="code-lang">toml</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: spin.toml"><code><span class="ln">[package]</span>
+<span class="ln">name = <span class="s">"blog"</span></span>
+<span class="ln">version = <span class="s">"0.1.0"</span></span>
+<span class="ln"></span>
+<span class="ln">[dependencies]</span>
+<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.0"</span> }</span></code></pre>
+</figure>
+    <p>Then it makes sure Spinel is installed (the first time, that means building Spinel <code>2026.09.12</code> into <code>~/.cybertrain</code>: a few minutes, once; see <a href="#requirements">step 00</a>) and runs <code>spin lock</code> (spin fetches the framework into its cache, <code>~/.cache/spin/packages/</code>, and pins the commit in <code>spin.lock</code>) and <code>spin run gen</code>, much as <code>rails new</code> runs <code>bundle install</code>, so <code>cybertrain server</code> works right away. It ends by printing the next steps. Nothing of the framework is copied into the app; commit <code>spin.toml</code> and <code>spin.lock</code>.</p>
+    <p class="note">If Spinel or one of the two <code>spin</code> steps fails, the files stay, <code>new</code> exits with 1 and prints what to run once the cause is fixed (for Spinel: <code>cybertrain setup</code>, then <code>cybertrain spin lock &amp;&amp; cybertrain spin run gen</code> in the new directory). <code>--skip-spin</code> only writes the files; <code>--path DIR</code> depends on a local checkout instead, <code>--git URL [--ref R]</code> on the framework at URL (at branch or tag R), and <code>--version V</code> on an index version once <code>cybertrain</code> is on a <code>spin-index</code>.</p>
+    <p>App names use lowercase letters, digits and <code>_</code>, starting with a letter. The generated tree:</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">blog/</span><span class="code-lang">text</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code: blog/"><code><span class="ln">blog/</span>
 <span class="ln">  spin.toml  config/app.rb  config/routes.rb</span>
 <span class="ln">  db/schema.rb  db/migrate/</span>
 <span class="ln">  app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/</span>
-<span class="ln">  public/  bin/server.rb  bin/gen.rb  bin/db.rb</span>
+<span class="ln">  public/  bin/blog.rb  bin/gen.rb  bin/db.rb</span>
 <span class="ln">  gen/  storage/  tmp/  test/</span></code></pre>
 </figure>
+    <p><code>bin/blog.rb</code> is the application's one entry point, the program <code>spin build blog</code> compiles: <code>./blog</code> serves, <code>./blog migrate</code> and <code>./blog db status</code> manage the database. <code>bin/gen.rb</code> runs the generator (<code>spin run gen</code>), and <code>bin/db.rb</code> runs the migrator during development (<code>cybertrain db migrate</code> uses it, since <code>bin/blog.rb</code> cannot compile until the first migration has generated <code>gen/models/</code>). <code>gen/</code> already holds <code>views.rb</code>, the committed, empty table of embedded views.</p>
     <p><code>ApplicationController</code> starts like this, so a missing record maps to a 404 through <code>rescue_from</code>:</p>
     <figure class="code" data-lang="ruby">
 <figcaption><span class="code-path">app/<wbr>controllers/<wbr>application_controller.rb</span><span class="code-lang">ruby</span></figcaption>
@@ -179,7 +199,7 @@
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain generate scaffold article title:string body:text</span></code></pre>
 </figure>
-    <p>It writes a migration, a model, a controller and five views (<code>index</code>, <code>show</code>, <code>new</code>, <code>edit</code>, <code>_form</code>), and inserts <code>resources :articles</code> into <code>config/routes.rb</code>. Field types are <code>string</code>, <code>text</code>, <code>integer</code>, <code>float</code>, <code>boolean</code>, <code>date</code>, <code>datetime</code> and <code>references</code>; the default is <code>string</code>.</p>
+    <p>It writes a migration, a model, a controller and five views (<code>index</code>, <code>show</code>, <code>new</code>, <code>edit</code>, <code>_form</code>), and inserts <code>resources :articles</code> into <code>config/routes.rb</code>. Field types are <code>string</code>, <code>text</code>, <code>integer</code>, <code>float</code>, <code>boolean</code>, <code>date</code>, <code>datetime</code> and <code>references</code>; the default is <code>string</code>. The quick start's <code>cybertrain g scaffold</code> is the same command.</p>
     <p class="note">Existing files are never overwritten: each file is reported as <code>create</code>, <code>identical</code> or <code>exist</code>.</p>
   </section>
 
@@ -195,7 +215,7 @@
 <span class="ln">  resources <span class="y">:articles</span></span>
 <span class="ln"><span class="k">end</span></span></code></pre>
 </figure>
-    <p class="note">Routes are read at build time. After editing them, run <code>spin run gen</code>; the development server does this for you.</p>
+    <p class="note">Routes are read at build time: <code>spin run gen</code> turns them into <code>gen/routes.rb</code>. <code>cybertrain server</code>, <code>cybertrain db migrate</code> and <code>cybertrain build</code> run it for you.</p>
   </section>
 
   <section class="step" id="validations" aria-labelledby="h-validations">
@@ -261,29 +281,37 @@
       <p>There is no <code>instance_exec</code> on a stored block, so a block callback receives the controller (or the record) as an argument: <code>before_action { |c| c.do_thing }</code>, not <code>before_action { do_thing }</code>. Actions and callbacks are called by their literal name, never <code>send</code>.</p>
     </aside>
     <p>The scaffold writes the full controller with <code>index</code>, <code>show</code>, <code>edit</code>, <code>update</code> and <code>destroy</code> too; the excerpt above omits them. In <code>index</code>, <code>@articles = Article.all.to_a</code>: the <code>.to_a</code> is required.</p>
-    <p class="note">Instance variables are found by a lexical scan of <code>@ivar =</code>, so re-run <code>spin run gen</code> after adding one.</p>
+    <p class="note">Instance variables are found by a lexical scan of <code>@ivar =</code>, so re-run <code>spin run gen</code> after adding one; the development server does this for you.</p>
   </section>
 
   <section class="step" id="run" aria-labelledby="h-run">
-    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Build time, then run time <span aria-hidden="true">&middot;</span> <code>gen/</code> &rarr; <code>build/bin/server</code></p>
+    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Build time, then run time <span aria-hidden="true">&middot;</span> <code>gen/</code> &rarr; <code>build/bin/blog</code></p>
     <h2 id="h-run"><span class="step-num" aria-hidden="true">07</span>Generate, migrate, run</h2>
     <p class="why"><span class="why-k">Why</span><span class="why-t">Turn schema and routes into <code>gen/</code>, create the SQLite database, start the server.</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">spin run gen          <span class="c"># reads db/schema.rb + config/routes.rb, scans app/, writes gen/</span></span>
-<span class="ln cmd">spin run db -- migrate   <span class="c"># applies db/migrate/*.rb, rewrites db/schema.rb (arguments go after --)</span></span>
-<span class="ln cmd">spin run server       <span class="c"># http://127.0.0.1:3000</span></span></code></pre>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain db migrate    <span class="c"># spin run gen; spin run db -- migrate; spin run gen</span></span>
+<span class="ln cmd">cybertrain server        <span class="c"># http://127.0.0.1:3000; rebuilds on Ruby edits, views reload without a rebuild</span></span></code></pre>
 </figure>
-    <p class="note">On a brand-new scaffold, run <code>spin run gen</code> once more after <code>migrate</code> so <code>gen/</code> picks up the rewritten <code>db/schema.rb</code>.</p>
+    <p><code>spin run gen</code> reads <code>db/schema.rb</code> and <code>config/routes.rb</code>, scans <code>app/</code> and writes <code>gen/</code>; <code>spin run db -- migrate</code> applies <code>db/migrate/*.rb</code> and rewrites <code>db/schema.rb</code>. The order matters: the first <code>spin run gen</code> puts the new migration into <code>gen/migrations.rb</code>, which <code>bin/db.rb</code> requires, and the second builds the models from the rewritten <code>db/schema.rb</code>.</p>
+    <p><code>cybertrain server</code> prints each <code>spin</code> command it runs, then the app's boot banner. The first start compiles the app, so it takes a while:</p>
+    <figure class="code" data-lang="text">
+<figcaption><span class="code-path">output &mdash; cybertrain server</span><span class="code-lang">text</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: output of cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.2.0</span>
+<span class="ln">=&gt; development environment (1 worker)</span>
+<span class="ln">=&gt; Watching app/, config/ and db/schema.rb for changes</span>
+<span class="ln">* Listening on http://127.0.0.1:3000</span>
+<span class="ln">Use Ctrl-C to stop</span></code></pre>
+</figure>
     <ul class="points">
-      <li>The <code>--</code> before <code>migrate</code> is required: arguments go after <code>--</code>.</li>
       <li>Re-run <code>spin run gen</code> and commit <code>gen/</code> after touching the schema, routes, or a controller's or model's callbacks and ivars. The development server does this for you.</li>
-      <li>Change the port with <code>PORT=4000</code>.</li>
+      <li>Change the port with <code>cybertrain server 4000</code> (or <code>PORT=4000</code>).</li>
+      <li><code>cybertrain db</code> adds the <code>--</code> that <code>spin run db</code> needs before its arguments; <code>cybertrain db status</code> and the other database commands work the same way.</li>
     </ul>
     <aside class="callout" aria-label="Spinel rule: no console">
       <p class="callout-k">Spinel rule</p>
       <h3>There is no console</h3>
-      <p><code>rails console</code> has no counterpart: Spinel has no <code>eval</code>. Ruby changes need a rebuild, which <code>spin run server</code> does for you in development (rebuild, <code>SIGHUP</code>, <code>execv</code>). Views are parsed from disk per request, so editing one needs no rebuild.</p>
+      <p><code>rails console</code> has no counterpart: Spinel has no <code>eval</code>. Ruby changes need a rebuild, which <code>cybertrain server</code> does for you in development (rebuild, stop, <code>execv</code>). In development views are parsed from disk per request, so editing one needs no rebuild; <code>cybertrain build</code> embeds them for production.</p>
     </aside>
   </section>
 
@@ -293,7 +321,8 @@
     <p class="why"><span class="why-k">Why</span><span class="why-t">The <code>references</code> type gives you the foreign key that the association is derived from.</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain generate scaffold comment commenter:string body:text article:references</span></code></pre>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain generate scaffold comment commenter:string body:text article:references</span>
+<span class="ln cmd">cybertrain db migrate    <span class="c"># the scaffold wrote a migration for the comments table</span></span></code></pre>
 </figure>
     <p><code>article:references</code> adds an <code>article_id</code> column, index and foreign key — enough for <code>Article</code>/<code>Comment</code> to get their association; there's no <code>has_many</code>/<code>belongs_to</code> to write, <code>spin run gen</code> reads it off the foreign key. The resulting schema:</p>
     <figure class="code" data-lang="ruby">
@@ -310,7 +339,7 @@
 <span class="ln"></span>
 <span class="ln">  s.add_foreign_key <span class="s">"comments"</span>, <span class="s">"articles"</span>, <span class="y">column:</span> <span class="s">"article_id"</span></span></code></pre>
 </figure>
-    <p>The scaffold inserts an independent <code>resources :comments</code> line, which the next step replaces. Run <code>spin run gen</code> and <code>spin run db -- migrate</code> again for the new table.</p>
+    <p>The scaffold inserts an independent <code>resources :comments</code> line, which the next step replaces.</p>
     <aside class="callout" aria-label="Deleting an article with comments">
       <p class="callout-k">From the finished example</p>
       <h3>Deleting an article with comments</h3>
@@ -397,7 +426,7 @@
   </section>
 
   <section class="step" id="views" aria-labelledby="h-views">
-    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Run time <span aria-hidden="true">&middot;</span> <code>app/views/</code>, read at run time</p>
+    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Run time <span aria-hidden="true">&middot;</span> <code>app/views/</code>, read from disk in development, embedded by <code>cybertrain build</code></p>
     <h2 id="h-views"><span class="step-num" aria-hidden="true">11</span>Views and partials</h2>
     <p class="why"><span class="why-k">Why</span><span class="why-t">The article page lists its comments and ends with a form bound to <code>[@article, @comment]</code>.</span></p>
     <p>First, delete the now-unreachable <code>index</code>, <code>show</code>, <code>new</code> and <code>edit</code> comment views, and give <code>ArticlesController#show</code> a blank <code>@comment</code>:</p>
@@ -450,7 +479,7 @@
   </section>
 
   <section class="step" id="test" aria-labelledby="h-test">
-    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Build time <span aria-hidden="true">&middot;</span> <code>spin test</code></p>
+    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Build time <span aria-hidden="true">&middot;</span> <code>cybertrain spin test</code></p>
     <h2 id="h-test"><span class="step-num" aria-hidden="true">12</span>Test it</h2>
     <p class="why"><span class="why-k">Why</span><span class="why-t">minitest and RSpec find tests by reflection, which an ahead-of-time compiler cannot do, so CyberTrain ships <code>Cybertrain::Test</code>.</span></p>
     <h3 class="sub">A model test</h3>
@@ -491,43 +520,46 @@
     <h3 class="sub">Run the tests</h3>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">spin test</span></code></pre>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain spin test</span></code></pre>
 </figure>
-    <p><code>spin test</code> compiles and runs every program under <code>test/</code> and diffs its output against a committed <code>test/&lt;name&gt;.rb.expected</code> snapshot. Files in <code>test/support/</code> are required, not run. To write a snapshot:</p>
+    <p><code>cybertrain spin test</code> runs <code>spin test</code> with the pinned Spinel; with the toolchain on <code>PATH</code> (<a href="#requirements">step 00</a>), <code>spin test</code> does the same. It compiles each <code>test/*.rb</code> into its own program and diffs its output (stdout and stderr together) against a committed <code>test/&lt;name&gt;.rb.expected</code> snapshot. Files in <code>test/support/</code> are required, not run. To write a snapshot, with <code>spin</code> on <code>PATH</code>:</p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">spin test --regen test/&lt;name&gt;.rb</span>
-<span class="ln cmd">spin test test/&lt;name&gt;.rb &amp;&amp; ./build/test/&lt;name&gt; &gt; test/&lt;name&gt;.rb.expected</span></code></pre>
+<span class="ln cmd">rm -f build/test/&lt;name&gt;; spin test test/&lt;name&gt;.rb; ./build/test/&lt;name&gt; &gt; test/&lt;name&gt;.rb.expected</span></code></pre>
 </figure>
-    <p class="note"><code>--regen</code> writes the snapshot from CRuby's output. Tests that touch SQLite through FFI can't run under CRuby, so their snapshot comes from the compiled binary (the second command). Every test needs its <code>.expected</code> file before <code>spin test</code> can pass.</p>
+    <p class="note"><code>--regen</code> writes the snapshot from CRuby's output. Tests that touch SQLite through FFI can't run under CRuby, so their snapshot comes from the compiled binary (the second line above). <code>spin test</code> exits non-zero while a snapshot is stale, so do not chain with <code>&amp;&amp;</code>. Tests that cannot run under CRuby need this snapshot before <code>spin test</code> can pass; other tests without a snapshot are compared with CRuby's output.</p>
   </section>
 
   <section class="step" id="ship" aria-labelledby="h-ship">
-    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Run time <span aria-hidden="true">&middot;</span> <code>build/bin/server</code></p>
-    <h2 id="h-ship"><span class="step-num" aria-hidden="true">13</span>Ship it</h2>
-    <p class="why"><span class="why-k">Why</span><span class="why-t">One command builds the server binary.</span></p>
+    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Run time <span aria-hidden="true">&middot;</span> <code>dist/blog</code></p>
+    <h2 id="h-ship"><span class="step-num" aria-hidden="true">13</span>Build for deployment</h2>
+    <p class="why"><span class="why-k">Why</span><span class="why-t">One command builds the app into a deployable <code>dist/</code> folder, with every view embedded.</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">spin build server</span></code></pre>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain build</span></code></pre>
 </figure>
-    <p>This produces <code>build/bin/server</code>. The binary alone does not run. What you ship:</p>
+    <p>This writes <code>dist/</code>: the app binary with every view embedded, plus the files it uses beside it. It runs <code>spin run gen -- --embed-views</code>, <code>spin build blog</code> and <code>spin run gen</code> (which puts the committed, empty <code>gen/views.rb</code> back, even after a failure or Ctrl-C), then assembles:</p>
     <ul class="ship-grid">
-      <li class="ship-bin"><code>build/bin/server</code><span>the compiled framework, controllers, models and template interpreter</span></li>
-      <li><code>app/views/</code><span>read at request time, never compiled in</span></li>
-      <li><code>public/</code><span>static assets, or let a reverse proxy serve it</span></li>
-      <li><code>storage/</code><span>the SQLite file</span></li>
+      <li class="ship-bin"><code>dist/blog</code><span>the compiled framework, controllers, models and template interpreter, with every view embedded</span></li>
+      <li><code>dist/public/</code><span>static assets and error pages, or let a reverse proxy serve it</span></li>
+      <li><code>dist/storage/</code><span>created empty; the SQLite file by default (a rebuild never empties it)</span></li>
+      <li><code>dist/tmp/</code><span>created empty (a rebuild never empties it)</span></li>
     </ul>
-    <p>Set <code>CYBERTRAIN_ENV=production</code> and <code>CYBERTRAIN_SECRET_KEY_BASE</code>. For illustration:</p>
+    <p>Copy <code>dist/</code> to a machine with the same OS and CPU (the binary links the system SQLite) and run it there. A built binary is production by default (<code>CYBERTRAIN_ENV</code> overrides). Set <code>CYBERTRAIN_SECRET_KEY_BASE</code>; for illustration:</p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; production host</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; production host"><code><span class="ln cmd">CYBERTRAIN_ENV=production CYBERTRAIN_SECRET_KEY_BASE=&lt;your secret&gt; PORT=3000 ./build/bin/server</span></code></pre>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; production host"><code><span class="ln cmd">cd dist</span>
+<span class="ln cmd">export CYBERTRAIN_SECRET_KEY_BASE=<span class="s">"$(openssl rand -hex 32)"</span></span>
+<span class="ln cmd">./blog migrate &amp;&amp; ./blog</span></code></pre>
 </figure>
+    <p><code>./blog migrate</code> applies the migrations compiled into the binary, and <code>./blog db status</code> shows their status; <code>PORT</code> sets the port. Keep the secret the same across restarts: changing it ends every session.</p>
     <p><code>Cybertrain::Config</code> reads the environment first; <code>config/app.rb</code> overrides:</p>
     <div class="table-scroll" role="region" aria-label="Environment variables" tabindex="0">
     <table class="env">
       <thead><tr><th scope="col">Variable</th><th scope="col">Attribute</th><th scope="col">Default</th></tr></thead>
       <tbody>
-        <tr><td data-label="Variable"><code>CYBERTRAIN_ENV</code></td><td data-label="Attribute"><code>env</code></td><td data-label="Default"><code>"development"</code> (also <code>"test"</code>, <code>"production"</code>)</td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_ENV</code></td><td data-label="Attribute"><code>env</code></td><td data-label="Default"><code>"development"</code>; <code>"production"</code> in a binary from <code>cybertrain build</code> (also <code>"test"</code>)</td></tr>
         <tr><td data-label="Variable"><code>PORT</code></td><td data-label="Attribute"><code>port</code></td><td data-label="Default"><code>3000</code></td></tr>
         <tr><td data-label="Variable"><code>CYBERTRAIN_DATABASE</code></td><td data-label="Attribute"><code>database_path</code></td><td data-label="Default"><code>storage/#{env}.sqlite3</code></td></tr>
         <tr><td data-label="Variable"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="Attribute"><code>secret_key_base</code></td><td data-label="Default">required in production; dev/test auto-generate one into <code>tmp/secret_key</code></td></tr>
@@ -544,11 +576,14 @@
 <span class="ln"><span class="k">end</span></span></code></pre>
 </figure>
     <ul class="points">
-      <li>The server speaks plain HTTP/1.1: put nginx or Caddy in front for TLS and HTTP/2.</li>
+      <li>The server speaks plain HTTP/1.1: put nginx or Caddy in front for TLS and HTTP/2. The session cookie is <code>Secure</code> in production, so serve it over HTTPS (set <code>c.session_secure = false</code> in <code>config/app.rb</code> only if production really is plain http).</li>
       <li>Production refuses to start without <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</li>
+      <li>In production an exception answers 500, and a bare error response (the router's plain-text 404, <code>head :not_found</code>, <code>render plain:</code>) is replaced by <code>public/&lt;status&gt;.html</code> when that file exists; <code>cybertrain new</code> writes <code>404.html</code> and <code>500.html</code>.</li>
+      <li><code>SIGTERM</code> stops accepting, lets requests in flight finish and exits when they are done, or after the server's <code>drain_timeout</code> (10 s).</li>
       <li>The default bind host is <code>127.0.0.1</code>; <code>host</code> is a <code>Config</code> attribute that <code>config/app.rb</code> can set.</li>
-      <li>The watcher and rebuild loop never run in production.</li>
+      <li>The watcher and rebuild loop never run in production. A running <code>cybertrain server</code> skips its rebuilds while <code>cybertrain build</code> holds <code>tmp/cybertrain-build.lock</code>.</li>
     </ul>
+    <p class="note"><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><code>docs/deploy.md</code></a> (Japanese) walks through it end to end: <code>cybertrain new</code>, an Ubuntu server, systemd, Caddy with HTTPS, redeploys, rollbacks and backups.</p>
   </section>
 
   <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">
@@ -563,6 +598,8 @@
       <li>No <code>namespace</code>, <code>respond_to</code>/formats, <code>constraints</code> or <code>mount</code>; <code>render json:</code> is minimal.</li>
       <li>Only the first string field gets a default presence validation in a scaffolded model.</li>
       <li>The generator uses a lexical scan (regexes), not a parser, over <code>app/controllers</code> and <code>app/models</code>.</li>
+      <li>Views are embedded at build time: a view-only change needs <code>cybertrain build</code> and a restart before it reaches production.</li>
+      <li>Build <code>dist/</code> on the same OS and CPU as the machine that runs it: the binary links the system SQLite.</li>
       <li><code>SPINEL_WORKERS</code> defaults to <code>1</code>.</li>
       <li>Only Spinel <code>2026.09.12</code> is tested.</li>
     </ul>
@@ -577,7 +614,7 @@
         <thead><tr><th scope="col" class="cmp-rails">Rails</th><th scope="col" class="cmp-ct"><svg class="cmp-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg><span>CyberTrain</span></th></tr></thead>
         <tbody>
           <tr><td data-label="Rails"><code>rails console</code></td><td data-label="CyberTrain">No console — Spinel has no <code>eval</code></td></tr>
-          <tr><td data-label="Rails">Edit code, the running app picks it up</td><td data-label="CyberTrain">Ruby needs a rebuild; <code>spin run server</code> in development does this for you (rebuild, <code>SIGHUP</code>, <code>execv</code>)</td></tr>
+          <tr><td data-label="Rails">Edit code, the running app picks it up</td><td data-label="CyberTrain">Ruby needs a rebuild; <code>cybertrain server</code> in development does this for you (rebuild, stop, <code>execv</code>)</td></tr>
           <tr><td data-label="Rails">Edit a view, no reload needed</td><td data-label="CyberTrain">Same — views are parsed from disk per request in development</td></tr>
           <tr><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (<code>new</code> would shadow <code>Klass.new(ctx)</code>)</td></tr>
           <tr><td data-label="Rails"><code>before_action { do_thing }</code> (implicit <code>self</code>)</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code> — no <code>instance_exec</code> on a stored block, so callbacks take the controller/record explicitly</td></tr>
@@ -602,8 +639,10 @@
     <ul class="next-list">
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">The finished app, with its tests.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/template-language.md" rel="noopener"><span class="next-t"><code>docs/template-language.md</code></span><span class="next-d">The template language reference.</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><span class="next-t"><code>docs/deploy.md</code></span><span class="next-d">Deploying to a server, end to end (Japanese).</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/design.md" rel="noopener"><span class="next-t"><code>docs/design.md</code></span><span class="next-d">The design document (Japanese).</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain#differences-from-rails" rel="noopener"><span class="next-t">Differences from Rails</span><span class="next-d">The full table in the README.</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/spikes/NOTES.md" rel="noopener"><span class="next-t"><code>spikes/NOTES.md</code></span><span class="next-d">Spikes and the compiler constraints they found.</span></a></li>
       <li><a href="https://github.com/matz/spinel" rel="noopener"><span class="next-t">Spinel</span><span class="next-d">matz's ahead-of-time Ruby compiler.</span></a></li>
       <li><a href="index.html"><span class="next-t">CyberTrain home</span><span class="next-d">Overview, features and how it works.</span></a></li>
     </ul>
@@ -635,6 +674,7 @@
         <ul>
           <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/design.md" rel="noopener">docs/design.md</a></li>
           <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/template-language.md" rel="noopener">docs/template-language.md</a></li>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener">docs/deploy.md (Japanese)</a></li>
         </ul>
       </nav>
       <nav aria-label="Related projects">

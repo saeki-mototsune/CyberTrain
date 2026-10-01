@@ -150,6 +150,11 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 .code pre:focus-visible { outline-offset: -2px; -webkit-mask-image: none; mask-image: none; }
 .code pre code { font-size: inherit; overflow-wrap: normal; white-space: pre; }
 .ln.cmd::before { content: "$ "; color: var(--ink-3); user-select: none; -webkit-user-select: none; }
+/* A trailing shell comment that does not fit wraps in its own column (continuation
+   lines hang after "# "), or moves under its command when fewer than 20 columns are
+   left, instead of running off the right edge. Lines without a comment are unchanged. */
+.code .ln.cmd:has(> .c) { display: inline-flex; flex-wrap: wrap; max-width: 100%; }
+.code .ln.cmd:has(> .c) > .c { flex: 1 0 20ch; white-space: pre-wrap; padding-left: 2ch; text-indent: -2ch; }
 .code .out { color: var(--ink-2); }
 .code .c { color: #8C8C8C; }
 .code .k { color: #FFFFFF; font-weight: 600; }
@@ -538,7 +543,7 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 .toc a { min-height: 40px; align-items: center; padding-block: 4px; }
 .toc { padding-block: 24px; }
 .toc-x:first-of-type { margin-top: 6px; padding-top: 6px; }
-.foot-cols a { display: inline-flex; align-items: center; min-height: 40px; }
+.foot-cols a { display: inline-flex; align-items: center; min-height: 40px; padding-block: 4px; }
 .foot-cols li + li { margin-top: 0; }
 .tab-list button:not([aria-selected="true"]) { color: var(--ink-2); }
 @media (max-width: 767px) {
