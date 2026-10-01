@@ -246,6 +246,73 @@ test "the build lock is a directory holding the builder's pid, taken atomically"
   ENV["CYBERTRAIN_HOME"] = ""
 end
 
+test "a lock is removed only by the one process holding its reclaim marker" do
+  reset_env
+  ENV["CYBERTRAIN_HOME"] = "home3"
+  lock = here("home3/spinel/#{TAG}.lock")
+  # A stale lock another process has marked is left to that process ...
+  mkdir_p(File.join(lock, "reclaim"))
+  File.write(File.join(lock, "pid"), "999999999")
+  assert Toolchain.lock_stale?
+  refute Toolchain.reclaim_stale_lock
+  assert File.directory?(File.join(lock, "reclaim"))
+  rm_tree(lock)
+  # ... an unmarked stale one is taken over, through the marker ...
+  mkdir_p(lock)
+  File.write(File.join(lock, "pid"), "999999999")
+  assert Toolchain.reclaim_stale_lock
+  refute File.exist?(lock)
+  refute File.exist?("#{lock}.old.#{Process.pid}")
+  # ... and a live one is neither taken nor left marked.
+  assert Toolchain.take_lock
+  refute Toolchain.reclaim_stale_lock
+  assert_equal Process.pid.to_s, Toolchain.lock_pid
+  refute File.exist?(File.join(lock, "reclaim"))
+  # The age of a lock is its pid file's, which a marker does not renew.
+  assert Toolchain.mark_lock
+  refute Toolchain.lock_stale?
+  Toolchain.unmark_lock
+  # The holder cannot release a lock a taker-over has marked.
+  mkdir_p(File.join(lock, "reclaim"))
+  Toolchain.release_lock
+  assert File.directory?(lock)
+  assert_equal Process.pid.to_s, Toolchain.lock_pid
+  # Once the lock is someone else's, the holder stops its build.
+  assert Toolchain.holding_lock?
+  File.write(File.join(lock, "pid"), "999999999")
+  refute Toolchain.holding_lock?
+  rm_tree(lock)
+  ENV["CYBERTRAIN_HOME"] = ""
+end
+
+test "setup needs a home for the managed copy, and a directory PATH can hold" do
+  reset_env
+  ENV["PATH"] = "empty"
+  ENV["HOME"] = ""
+  assert_equal "a directory to keep Spinel in (set CYBERTRAIN_HOME or HOME)", Toolchain.home_problem
+  refute Toolchain.managed_ok?
+  assert_includes Toolchain.doctor_problems(false), "a directory to keep Spinel in (set CYBERTRAIN_HOME or HOME)"
+  assert_nil Toolchain.doctor_problems(true).index("a directory to keep Spinel in (set CYBERTRAIN_HOME or HOME)")
+  refute Toolchain.install(false)
+  ENV["CYBERTRAIN_HOME"] = "odd:home"
+  assert_equal "a CYBERTRAIN_HOME without spaces, quotes, $ or : in its path (now #{here("odd:home")})", Toolchain.home_problem
+  assert_includes Toolchain.doctor_problems(false), Toolchain.home_problem
+  ENV["CYBERTRAIN_HOME"] = "home"
+  assert_equal "", Toolchain.home_problem
+  assert_nil Toolchain.doctor_problems(false).index("")
+  ENV["CYBERTRAIN_SPINEL_HOME"] = "missing"
+  assert_includes Toolchain.doctor_problems(false), "a usable CYBERTRAIN_SPINEL_HOME"
+  ENV["CYBERTRAIN_SPINEL_HOME"] = ""
+  assert_equal "", Toolchain.path_problem("good")
+  assert_equal "odd:dir cannot go on PATH: its name contains ':'", Toolchain.path_problem("odd:dir")
+  refute Toolchain.use("odd:dir")
+  assert_equal "empty", ENV["PATH"]
+  assert Toolchain.use("good")
+  assert_equal "good:empty", ENV["PATH"]
+  ENV["HOME"] = ORIGINAL_HOME
+  ENV["CYBERTRAIN_HOME"] = ""
+end
+
 test "tail, jobs, quoting and hints" do
   reset_env
   File.write("log.txt", "one\ntwo\nthree\nfour\n")

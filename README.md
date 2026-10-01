@@ -130,8 +130,9 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 ```
 
 Two environment variables override all this: `CYBERTRAIN_HOME` replaces
-`~/.cybertrain`, and `CYBERTRAIN_SPINEL_HOME=PREFIX` forces an existing
-install — `cybertrain` then uses the `spinel` and `spin` in `PREFIX/bin` (or
+`~/.cybertrain` (a path without spaces, quotes, `$` or `:`, which Spinel's
+Makefile and `PATH` cannot take), and `CYBERTRAIN_SPINEL_HOME=PREFIX` forces
+an existing install — `cybertrain` then uses the `spinel` and `spin` in `PREFIX/bin` (or
 in `PREFIX` itself, if `spinel` is directly in it) and stops with an error
 if they are not that release.
 

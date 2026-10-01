@@ -155,6 +155,29 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
+create bin/odd.rb
+create bin/gen.rb
+create bin/db.rb
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+error: control characters are not allowed in --path, --version, --git or --ref
+ok   CLI new writes dependency values as TOML strings
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
 create bin/notes.rb
 create bin/gen.rb
 create bin/db.rb
@@ -289,4 +312,4 @@ Usage:
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-19 tests, 82 assertions, 0 failures
+20 tests, 88 assertions, 0 failures

@@ -124,12 +124,21 @@ module Cybertrain
       given += 1 unless git == ""
       raise InvalidArgument, "pass only one of --path, --version and --git" if given > 1
       raise InvalidArgument, "--ref needs --git" if ref != "" && git == ""
-      return "\"#{version}\"" unless version == ""
-      return "{ path = \"#{File.expand_path(path, Dir.pwd)}\" }" unless path == ""
-      return "{ git = \"#{git}\" }" if git != "" && ref == ""
-      return "{ git = \"#{git}\", ref = \"#{ref}\" }" unless git == ""
+      return toml_string(version) unless version == ""
+      return "{ path = #{toml_string(File.expand_path(path, Dir.pwd))} }" unless path == ""
+      return "{ git = #{toml_string(git)} }" if git != "" && ref == ""
+      return "{ git = #{toml_string(git)}, ref = #{toml_string(ref)} }" unless git == ""
 
       "{ git = \"#{Cybertrain::REPOSITORY}\", ref = \"v#{Cybertrain::VERSION}\" }"
+    end
+
+    # `value` as a TOML basic string: `\` and `"` escaped. Control
+    # characters are refused rather than encoded: no path, URL or git ref
+    # needs one, and spin.toml stays readable.
+    def self.toml_string(value)
+      raise InvalidArgument, "control characters are not allowed in --path, --version, --git or --ref" unless value.bytes.all? { |b| b >= 32 && b != 127 }
+
+      "\"#{value.gsub("\\", "\\\\\\\\").gsub("\"", "\\\"")}\""
     end
 
     # The value after `--flag`, or "" when the flag is absent.

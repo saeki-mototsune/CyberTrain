@@ -12,5 +12,9 @@ ok   install refuses to start without the build tools, before touching anything
 error: cannot create /proc/cybertrain-test/spinel; set CYBERTRAIN_HOME to a writable directory
 ok   install refuses a home it cannot write, without hanging
 ok   the build lock is a directory holding the builder's pid, taken atomically
+ok   a lock is removed only by the one process holding its reclaim marker
+error: cannot build Spinel 2026.09.12: missing a directory to keep Spinel in (set CYBERTRAIN_HOME or HOME)
+error: odd:dir cannot go on PATH: its name contains ':'
+ok   setup needs a home for the managed copy, and a directory PATH can hold
 ok   tail, jobs, quoting and hints
-11 tests, 80 assertions, 0 failures
+13 tests, 112 assertions, 0 failures

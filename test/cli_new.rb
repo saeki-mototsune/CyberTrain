@@ -163,6 +163,17 @@ test "CLI new --git writes a git dependency, with or without --ref" do
   refute File.exist?("bad")
 end
 
+# A quote or a backslash in a path, URL or ref must not break spin.toml;
+# a control character is refused before anything is written.
+test "CLI new writes dependency values as TOML strings" do
+  assert_equal "\"plain\"", Cybertrain::CLI.toml_string("plain")
+  assert_equal "\"a\\\"b\\\\c\"", Cybertrain::CLI.toml_string("a\"b\\c")
+  assert_equal 0, Cybertrain::CLI.run(["new", "odd", "--git", "file:///srv/my \"repos\"/cybertrain", "--ref", "v0.2.0", "--skip-spin"])
+  assert_includes read("odd/spin.toml"), "cybertrain = { git = \"file:///srv/my \\\"repos\\\"/cybertrain\", ref = \"v0.2.0\" }"
+  assert_equal 1, Cybertrain::CLI.run(["new", "bad", "--git", "https://example.com/x/cybertrain", "--ref", "main\n", "--skip-spin"])
+  refute File.exist?("bad")
+end
+
 # The default is the release this CLI belongs to, so the templates it wrote
 # and the framework the app compiles against are the same version.
 test "CLI new defaults to this version's release tag" do
