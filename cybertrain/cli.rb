@@ -100,7 +100,7 @@ module Cybertrain
 
       puts ""
       puts "next:"
-      puts "  cd #{dir}"
+      puts "  cd #{Build.quote_arg(dir)}"
       puts "  cybertrain generate scaffold article title:string body:text"
       puts "  cybertrain db migrate"
       puts "  cybertrain server"

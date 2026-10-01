@@ -191,9 +191,9 @@ module Cybertrain
           return 0
         end
         if !force && managed_ok?
-          link_stable_bin
+          linked = link_stable_bin
           puts "spinel #{tag} is installed in #{bin_dir}; nothing to install (--force rebuilds it)"
-          print_path_hint
+          print_path_hint(linked)
           return 0
         end
         install(force) ? 0 : 1
@@ -204,18 +204,30 @@ module Cybertrain
         true
       end
 
-      # Points ~/.cybertrain/bin/{spinel,spin} at the managed release.
+      # Points ~/.cybertrain/bin/{spinel,spin} at the managed release. False
+      # when the directory or a link could not be written (the toolchain
+      # itself still works: cybertrain puts bin_dir on PATH by itself).
       def self.link_stable_bin
-        return unless system("mkdir -p #{shell_quote(stable_bin_dir)} 2>/dev/null")
+        return false unless system("mkdir -p #{shell_quote(stable_bin_dir)} 2>/dev/null")
 
+        ok = true
         ["spinel", "spin"].each do |name|
-          system("ln -sfn #{shell_quote(File.join(bin_dir, name))} #{shell_quote(File.join(stable_bin_dir, name))} 2>/dev/null")
+          ok = false unless system("ln -sfn #{shell_quote(File.join(bin_dir, name))} #{shell_quote(File.join(stable_bin_dir, name))} 2>/dev/null")
         end
+        ok
       end
 
-      def self.print_path_hint
-        puts "cybertrain uses it by itself; `cybertrain spin ...` runs spin with it, or put it on PATH:"
-        puts "  export PATH=\"#{stable_bin_dir}:$PATH\""
+      # `linked`: whether link_stable_bin succeeded; otherwise the hint names
+      # the release directory itself.
+      def self.print_path_hint(linked)
+        if linked
+          puts "cybertrain uses it by itself; `cybertrain spin ...` runs spin with it, or put it on PATH:"
+          puts "  export PATH=\"#{stable_bin_dir}:$PATH\""
+        else
+          puts "cybertrain uses it by itself; `cybertrain spin ...` runs spin with it."
+          puts "note: could not write the links in #{stable_bin_dir}; to run spin directly, put the release on PATH:"
+          puts "  export PATH=\"#{bin_dir}:$PATH\""
+        end
       end
 
       # The note for a spinel of another release on PATH, which is left
@@ -295,10 +307,10 @@ module Cybertrain
             return false
           end
           File.write(stamp, "#{tag}\n")
-          link_stable_bin
+          linked = link_stable_bin
           puts ""
           puts "installed spinel #{tag} in #{bin_dir}"
-          print_path_hint
+          print_path_hint(linked)
           true
         ensure
           release_lock
