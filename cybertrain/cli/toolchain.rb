@@ -702,7 +702,7 @@ module Cybertrain
 
         puts ""
         puts "missing: #{problems.join(", ")}"
-        install_hints.each { |line| puts "  #{line}" } unless ready
+        install_hints.each { |line| puts "  #{line}" }
         1
       end
 
@@ -765,9 +765,10 @@ module Cybertrain
       # ---- shell helpers -------------------------------------------------
 
       # stdout of a shell command (a pipeline or an `a || b` list too),
-      # stripped; "" on failure.
+      # stripped; "" when the command fails, whatever it printed (a spinel
+      # that prints its version and then dies is not a usable one).
       def self.sh_read(command)
-        `(#{command}) 2>/dev/null`.strip
+        `out=$( (#{command}) 2>/dev/null ) && printf '%s' "$out"`.strip
       end
 
       def self.tail(path, count)

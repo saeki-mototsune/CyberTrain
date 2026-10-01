@@ -127,6 +127,10 @@ test "usable? wants an executable spinel and spin of the pinned release" do
   File.write("notexec/spinel", "#!/bin/sh\necho \"spinel x (#{TAG})\"\n")
   File.write("notexec/spin", "#!/bin/sh\n")
   refute Toolchain.usable?("notexec")
+  # A spinel that prints the right release and then fails does not count.
+  fake_toolchain("broken", TAG)
+  File.write("broken/spinel", "#!/bin/sh\necho \"spinel x (#{TAG})\"\nexit 1\n")
+  refute Toolchain.usable?("broken")
 end
 
 test "a spinel of the pinned release on PATH is used as it is" do
@@ -339,6 +343,8 @@ test "tail, jobs, quoting and hints" do
   assert_equal "a b|c", Toolchain.sh_read("echo 'a b|c'")
   assert_equal "second", Toolchain.sh_read("false || echo second")
   assert_equal "", Toolchain.sh_read("no-such-command-cybertrain 2>/dev/null")
+  assert_equal "", Toolchain.sh_read("echo partial; false")
+  assert_equal "100%", Toolchain.sh_read("echo 100%")
   assert Toolchain.install_hints.size >= 1
 end
 

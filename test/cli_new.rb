@@ -161,6 +161,8 @@ test "CLI new --git writes a git dependency, with or without --ref" do
   refute File.exist?("bad")
   assert_equal 1, Cybertrain::CLI.run(["new", "bad", "--git", "--ref", "main", "--skip-spin"])
   refute File.exist?("bad")
+  assert_equal 1, Cybertrain::CLI.run(["new", "bad", "--git", "", "--skip-spin"])
+  refute File.exist?("bad")
   assert_equal 1, Cybertrain::CLI.run(["new", "bad", "--git", "https://example.com/x/cybertrain", "--path", "/opt/cybertrain", "--skip-spin"])
   refute File.exist?("bad")
 end

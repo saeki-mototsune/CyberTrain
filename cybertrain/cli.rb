@@ -141,14 +141,16 @@ module Cybertrain
       "\"#{value.gsub("\\", "\\\\\\\\").gsub("\"", "\\\"")}\""
     end
 
-    # The value after `--flag`, or "" when the flag is absent. Another
-    # option in the value's place means the value is missing.
+    # The value after `--flag`, or "" when the flag is absent. An empty
+    # value, or another option in the value's place, means it is missing.
     def self.option(argv, flag)
       i = argv.index(flag)
       return "" if i.nil?
-      raise InvalidArgument, "#{flag} needs a value" if i + 1 >= argv.size || argv[i + 1].start_with?("--")
 
-      argv[i + 1]
+      value = i + 1 < argv.size ? argv[i + 1] : ""
+      raise InvalidArgument, "#{flag} needs a value" if value == "" || value.start_with?("--")
+
+      value
     end
 
     # Commands that need the app: its name comes from ./spin.toml.

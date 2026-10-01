@@ -140,6 +140,7 @@ create tmp/.keep
 create test/.keep
 error: --ref needs --git
 error: --git needs a value
+error: --git needs a value
 error: pass only one of --path, --version and --git
 ok   CLI new --git writes a git dependency, with or without --ref
 create spin.toml
@@ -313,4 +314,4 @@ Usage:
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-20 tests, 90 assertions, 0 failures
+20 tests, 92 assertions, 0 failures
