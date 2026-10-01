@@ -474,7 +474,7 @@
     <aside class="callout" aria-label="Views are a closed grammar">
       <p class="callout-k">Spinel rule</p>
       <h3>Views are a closed grammar, not Ruby</h3>
-      <p>Spinel has no <code>eval</code>, so templates are interpreted against a fixed grammar. <code>link_to</code> has no <code>method:</code> option; use <code>button_to</code>. <code>each</code> takes one or two block parameters. A strict-locals comment such as <code>&lt;%# locals: (comment:) %&gt;</code> takes no default values. A partial gets a copy of the caller's environment, so <code>@article</code> is visible in <code>comments/_form</code>. See <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/template-language.md" rel="noopener"><code>docs/template-language.md</code></a>.</p>
+      <p>Spinel has no <code>eval</code>, so templates are interpreted against a fixed grammar. <code>link_to</code> has no <code>method:</code> option; use <code>button_to</code>. <code>each</code> takes one or two block parameters. A strict-locals comment such as <code>&lt;%# locals: (comment:) %&gt;</code> takes no default values. A partial gets a copy of the caller's environment, so <code>@article</code> is visible in <code>comments/_form</code>.</p>
     </aside>
   </section>
 
@@ -585,7 +585,6 @@
       <li>The default bind host is <code>127.0.0.1</code>; <code>host</code> is a <code>Config</code> attribute that <code>config/app.rb</code> can set.</li>
       <li>The watcher and rebuild loop never run in production. A running <code>cybertrain server</code> skips its rebuilds while <code>cybertrain build</code> holds <code>tmp/cybertrain-build.lock</code>.</li>
     </ul>
-    <p class="note"><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><code>docs/deploy.md</code></a> (Japanese) walks through it end to end: <code>cybertrain new</code>, an Ubuntu server, systemd, Caddy with HTTPS, redeploys, rollbacks and backups.</p>
   </section>
 
   <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">
@@ -595,7 +594,7 @@
       <li>Sessions hold Strings only, in an HMAC-signed cookie.</li>
       <li>SQLite only, through Spinel&rsquo;s FFI.</li>
       <li>No backtraces: errors show class, message, request line and template name/line.</li>
-      <li>A misspelled attribute in a view renders blank instead of raising; the <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/template-language.md" rel="noopener">template language reference</a> tracks this as a known gap.</li>
+      <li>A misspelled attribute in a view renders blank instead of raising; this is a known gap.</li>
       <li>Associations come from schema foreign keys only; no <code>has_many :through</code>, <code>includes</code>, <code>pluck</code>, <code>dependent:</code>, enums, STI or polymorphic associations.</li>
       <li>No <code>namespace</code>, <code>respond_to</code>/formats, <code>constraints</code> or <code>mount</code>; <code>render json:</code> is minimal.</li>
       <li>Only the first string field gets a default presence validation in a scaffolded model.</li>
@@ -621,7 +620,7 @@
           <tr><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (<code>new</code> would shadow <code>Klass.new(ctx)</code>)</td></tr>
           <tr><td data-label="Rails"><code>before_action { do_thing }</code> (implicit <code>self</code>)</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code> — no <code>instance_exec</code> on a stored block, so callbacks take the controller/record explicitly</td></tr>
           <tr><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code> — nested blocks take the mapper explicitly</td></tr>
-          <tr><td data-label="Rails">ERB compiles to a method; any object, any method</td><td data-label="CyberTrain">Interpreted against a fixed grammar/dispatch table — <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/template-language.md" rel="noopener">docs/template-language.md</a></td></tr>
+          <tr><td data-label="Rails">ERB compiles to a method; any object, any method</td><td data-label="CyberTrain">Interpreted against a fixed grammar/dispatch table</td></tr>
           <tr><td data-label="Rails">Session holds any marshalled object</td><td data-label="CyberTrain">Session values are Strings only, HMAC-signed cookie</td></tr>
           <tr><td data-label="Rails">Many database adapters</td><td data-label="CyberTrain">SQLite only, via FFI</td></tr>
           <tr><td data-label="Rails"><code>has_many :through</code>, <code>includes</code>, <code>pluck</code>, <code>dependent:</code>, enums, STI, polymorphic associations</td><td data-label="CyberTrain">Not implemented; associations come from schema foreign keys only</td></tr>
@@ -629,10 +628,10 @@
           <tr><td data-label="Rails">Full backtrace on an exception</td><td data-label="CyberTrain">Class, message, request line, template name/line — Spinel exposes no backtraces</td></tr>
           <tr><td data-label="Rails">Rack, its middleware, and any gem in a <code>Gemfile</code></td><td data-label="CyberTrain">No Rack compatibility; a small fixed middleware set; Spinel's own <code>spin-index</code>, limited to what compiles under its Ruby subset</td></tr>
           <tr><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code> — reflection-based runners can't work ahead-of-time</td></tr>
-          <tr><td data-label="Rails">Auth, mailers, jobs, ActionCable, asset pipeline, i18n</td><td data-label="CyberTrain">Not built (MVP non-goals, <code>docs/design.md</code> §2.3)</td></tr>
+          <tr><td data-label="Rails">Auth, mailers, jobs, ActionCable, asset pipeline, i18n</td><td data-label="CyberTrain">Not built (outside the MVP)</td></tr>
         </tbody>
       </table>
-      <p class="cmp-foot">Not exhaustive — <code>docs/design.md</code> §8 (<span lang="ja" class="ja">"捨てたもの"</span>) is the fuller record.</p>
+      <p class="cmp-foot">Not exhaustive.</p>
     </div>
   </section>
 
@@ -640,9 +639,7 @@
     <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>Where next</h2>
     <ul class="next-list">
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">The finished app, with its tests.</span></a></li>
-      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/template-language.md" rel="noopener"><span class="next-t"><code>docs/template-language.md</code></span><span class="next-d">The template language reference.</span></a></li>
-      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><span class="next-t"><code>docs/deploy.md</code></span><span class="next-d">Deploying to a server, end to end (Japanese).</span></a></li>
-      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/design.md" rel="noopener"><span class="next-t"><code>docs/design.md</code></span><span class="next-d">The design document (Japanese).</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener"><span class="next-t">CyberTrain on GitHub</span><span class="next-d">The source, the README and releases.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain#differences-from-rails" rel="noopener"><span class="next-t">Differences from Rails</span><span class="next-d">The full table in the README.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/spikes/NOTES.md" rel="noopener"><span class="next-t"><code>spikes/NOTES.md</code></span><span class="next-d">Spikes and the compiler constraints they found.</span></a></li>
       <li><a href="https://github.com/matz/spinel" rel="noopener"><span class="next-t">Spinel</span><span class="next-d">matz's ahead-of-time Ruby compiler.</span></a></li>
@@ -669,14 +666,6 @@
           <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
           <li><a href="tutorial.html">Tutorial</a></li>
           <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
-        </ul>
-      </nav>
-      <nav aria-label="Documentation">
-        <p class="foot-h">Docs</p>
-        <ul>
-          <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/design.md" rel="noopener">docs/design.md</a></li>
-          <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/template-language.md" rel="noopener">docs/template-language.md</a></li>
-          <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener">docs/deploy.md (Japanese)</a></li>
         </ul>
       </nav>
       <nav aria-label="Related projects">
