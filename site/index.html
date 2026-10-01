@@ -212,9 +212,40 @@
   </div></div>
 </section>
 
+<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">Framework and CLI</p></div>
+    <div class="sec-body">
+      <h2 id="parts-h">One name, two parts.</h2>
+      <p class="lead"><code>gem install cybertrain</code> installs a command, not the framework. The framework is a Spinel package that your app depends on and compiles in. The gem gives you the <code>cybertrain</code> command, which creates the app, installs Spinel and runs Spinel&rsquo;s tools for you.</p>
+    </div>
+    <div class="sec-full parts">
+      <article class="part" aria-labelledby="part-fw">
+        <div class="part-head"><p class="part-k">Spinel package</p><h3 id="part-fw">The framework</h3></div>
+        <p class="part-what">The library your app is built on.</p>
+        <div class="part-fact"><p class="fact-k">What is in it</p><p>The HTTP server, routing and controllers, sessions and CSRF protection, the template interpreter, SQLite models and migrations, and the code generator behind <code>spin run gen</code>.</p></div>
+        <div class="part-fact"><p class="fact-k">How you get it</p><p>You don&rsquo;t install it. Your app&rsquo;s <code>spin.toml</code> names the release tag <code>v0.2.0</code> of this repository, and <code>spin lock</code> fetches it into spin&rsquo;s cache and pins the commit in <code>spin.lock</code>. Nothing is copied into your app.</p></div>
+        <div class="part-fact"><p class="fact-k">Where it runs</p><p>Inside your app. Spinel compiles it together with your code ahead of time; it never runs on CRuby.</p></div>
+        <div class="part-fact"><p class="fact-k">In dist/blog</p><p><span class="pill pill-on">Compiled in</span>It is the part of CyberTrain that ships.</p></div>
+      </article>
+      <article class="part" aria-labelledby="part-cli">
+        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli">The <code>cybertrain</code> command</h3></div>
+        <p class="part-what">The tool that creates, builds and runs your app.</p>
+        <div class="part-fact"><p class="fact-k">What is in it</p><p>The <code>cybertrain</code> command only: <code>new</code>, <code>generate scaffold</code>, <code>db migrate</code>, <code>server</code>, <code>build</code>, <code>spin</code>, <code>setup</code> and <code>doctor</code>. Neither the framework nor Spinel is in the gem.</p></div>
+        <div class="part-fact"><p class="fact-k">How you get it</p><p><code>gem install cybertrain</code>. On first use it builds the pinned Spinel release, <code>2026.09.12</code>, into <code>~/.cybertrain</code>, unless that release is already on your <code>PATH</code>.</p></div>
+        <div class="part-fact"><p class="fact-k">Where it runs</p><p>On your machine, under CRuby 3.2 or newer. It calls Spinel&rsquo;s <code>spin</code> tool for you, so you don&rsquo;t have to.</p></div>
+        <div class="part-fact"><p class="fact-k">In dist/blog</p><p><span class="pill">Not shipped</span>The binary runs without Ruby, the gem or Spinel.</p></div>
+      </article>
+    </div>
+    <div class="sec-full">
+      <p class="footnote">Both are released from the same tag, so their versions match: the 0.2.0 gem writes apps that depend on framework <code>v0.2.0</code>. To move an app to a new release, update the gem, point <code>spin.toml</code> at the new tag, then run <code>cybertrain spin lock</code> and <code>cybertrain spin run gen</code>.</p>
+    </div>
+  </div></div>
+</section>
+
 <section class="sec" id="how-it-works" aria-labelledby="how-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">How it works</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">How it works</p></div>
     <div class="sec-body">
       <h2 id="how-h">The metaprogramming happens once, at build time.</h2>
       <p class="lead">Spinel compiles ahead of time and has no <code>eval</code>. So where Rails reaches for <code>method_missing</code> and <code>define_method</code> at runtime, <code>spin run gen</code> writes plain Ruby you can read and commit, and only the views are interpreted.</p>
@@ -245,7 +276,7 @@
 
 <section class="sec" id="rails-vs-cybertrain" aria-labelledby="cmp-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">Rails vs CyberTrain</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">Rails vs CyberTrain</p></div>
     <div class="sec-body">
       <h2 id="cmp-h">Same vocabulary. Different rules, written down.</h2>
       <p class="lead">An ahead-of-time compiler changes a few habits. These are the ones you meet first.</p>
@@ -277,7 +308,7 @@
 
 <section class="sec" id="requirements" aria-labelledby="req-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">Before you start</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">06</span><p class="sec-label">Before you start</p></div>
     <div class="sec-body">
       <h2 id="req-h">What you need on your machine.</h2>
     <dl class="reqs">

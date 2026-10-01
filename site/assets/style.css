@@ -209,6 +209,30 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 .feature .feat-ref code { font-size: 1em; color: var(--ink-3); overflow-wrap: anywhere; }
 .feature code, .not-list code, .steps code { color: var(--ink); }
 
+/* ---------- framework and CLI ---------- */
+/* Two columns with the same rows in the same order, so each fact sits beside its
+   counterpart: the rows come from a subgrid shared by both columns. */
+.parts { margin-top: 48px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(6, auto); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.part { display: grid; grid-template-rows: subgrid; grid-row: span 6; min-width: 0; padding: 28px 32px 30px; border-left: 1px solid var(--line); }
+.part:first-child { padding-left: 0; border-left: 0; }
+.part:last-child { padding-right: 0; }
+.part-k { font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.part h3 { margin-top: 10px; font-size: clamp(22px, 2.1vw, 30px); line-height: 1.12; font-weight: 500; font-stretch: 125%; letter-spacing: -.015em; }
+.part h3 code { font-size: .92em; color: var(--ink); }
+.part-what { margin-top: 12px; font-size: 17px; line-height: 1.5; color: var(--ink); max-width: 44ch; }
+.part-fact { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.fact-k { font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.part-fact p + p { margin-top: 6px; font-size: 15px; line-height: 1.6; color: var(--ink-2); max-width: 58ch; }
+.part code { color: var(--ink); }
+/* Whether the part ends up in the deployed binary: gold when it does. */
+.pill { display: inline-block; margin-right: 8px; padding: 3px 8px; border: 1px solid var(--line-2); font-family: var(--mono); font-size: 11px; line-height: 1.4; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); vertical-align: 1px; }
+.pill-on { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 767px) {
+  .parts { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; border-bottom: 0; }
+  .part, .part:first-child, .part:last-child { display: block; padding: 24px 0 28px; border-left: 0; border-bottom: 1px solid var(--line); }
+  .part-k, .fact-k, .pill { font-size: 14px; letter-spacing: .04em; }
+}
+
 /* ---------- 04 how it works ---------- */
 .diagram { margin-top: 48px; }
 .dg { display: block; width: 100%; height: auto; overflow: visible; }
