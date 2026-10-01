@@ -268,10 +268,24 @@ test "a lock is removed only by the one process holding its reclaim marker" do
   refute Toolchain.reclaim_stale_lock
   assert_equal Process.pid.to_s, Toolchain.lock_pid
   refute File.exist?(File.join(lock, "reclaim"))
-  # The age of a lock is its pid file's, which a marker does not renew.
+  # A marker in a live lock does not make it stale.
   assert Toolchain.mark_lock
   refute Toolchain.lock_stale?
   Toolchain.unmark_lock
+  # The holder is known by pid and start time: the same pid started at
+  # another time is a different process (when ps can tell; without it, the
+  # pid existing has to do).
+  start = Toolchain.process_start(Process.pid.to_s)
+  assert_equal start, Toolchain.lock_start
+  assert Toolchain.holder_alive?(Process.pid.to_s, start)
+  assert Toolchain.holder_alive?(Process.pid.to_s, "")
+  assert_equal start == "", Toolchain.holder_alive?(Process.pid.to_s, "Thu Jan  1 00:00:00 1970")
+  refute Toolchain.holder_alive?("999999999", "")
+  refute Toolchain.holder_alive?("999999999", start)
+  File.write(File.join(lock, "start"), "Thu Jan  1 00:00:00 1970")
+  assert_equal start != "", Toolchain.lock_stale?
+  File.write(File.join(lock, "start"), start)
+  refute Toolchain.lock_stale?
   # The holder cannot release a lock a taker-over has marked.
   mkdir_p(File.join(lock, "reclaim"))
   Toolchain.release_lock

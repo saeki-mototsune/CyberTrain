@@ -46,11 +46,12 @@ when a required one is missing it also prints the install command for your
 platform.
 
 The framework has no separate test runner; it tests itself. `spin` comes
-with Spinel: run it as `cybertrain spin test`, or put the copy `cybertrain`
-installs on `PATH` (`cybertrain setup` prints the `export PATH=...` line):
+with Spinel, and `cybertrain spin` runs the copy `cybertrain` installs
+without touching `PATH` (or put that copy on `PATH` with the `export
+PATH=...` line `cybertrain setup` prints, and call `spin` directly):
 
 ```sh
-spin test
+cybertrain spin test
 ```
 
 compiles and runs every program under `test/` and diffs its output against a

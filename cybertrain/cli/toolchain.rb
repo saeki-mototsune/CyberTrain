@@ -15,7 +15,6 @@ module Cybertrain
   module CLI
     module Toolchain
       SPINEL_GIT = "https://github.com/matz/spinel.git"
-      STALE_LOCK_SECONDS = 7200
       LOCK_WAIT_SECONDS = 3600
 
       # ---- locations -----------------------------------------------------
@@ -360,13 +359,13 @@ module Cybertrain
         true
       end
 
-      # False, after explaining, when another cybertrain took the lock over
-      # (which happens after STALE_LOCK_SECONDS): this build stops instead
-      # of racing it into the same prefix.
+      # False, after explaining, when this process no longer holds the lock
+      # (someone removed it by hand and another cybertrain took it): this
+      # build stops instead of racing the other into the same prefix.
       def self.still_holding_lock
         return true if holding_lock?
 
-        puts "error: another cybertrain took over the build of Spinel #{tag} (this one held #{lock_dir} too long); stopping"
+        puts "error: #{lock_dir} is no longer this cybertrain's lock (another build of Spinel #{tag} took it over); stopping"
         false
       end
 
@@ -379,15 +378,14 @@ module Cybertrain
       # holding the pid) onto the lock path: rename is atomic and refuses to
       # replace a non-empty directory, so a lock is never seen half-made.
       #
-      # A lock whose pid is gone or invalid, or older than
-      # STALE_LOCK_SECONDS, is stale and gets taken over. Removing a lock,
-      # whether by its holder or by a waiter taking it over, first needs the
-      # `reclaim` marker inside it: an atomic mkdir that only one process
-      # wins per lock directory. A waiter that saw a stale lock therefore
-      # cannot move a fresh lock that replaced it in the meantime (it holds
-      # no marker in that one), and it checks the staleness again once it
-      # holds the marker, when nothing else can touch the directory. A
-      # marker left behind by a killed process keeps that lock in place
+      # A lock whose holder is gone (lock_stale?) gets taken over. Removing
+      # a lock, whether by its holder or by a waiter taking it over, first
+      # needs the `reclaim` marker inside it: an atomic mkdir that only one
+      # process wins per lock directory. A waiter that saw a stale lock
+      # therefore cannot move a fresh lock that replaced it in the meantime
+      # (it holds no marker in that one), and it checks the staleness again
+      # once it holds the marker, when nothing else can touch the directory.
+      # A marker left behind by a killed process keeps that lock in place
       # until someone removes the lock by hand, as the waiting message says.
       def self.take_lock
         parent = File.dirname(lock_dir)
@@ -400,6 +398,7 @@ module Cybertrain
         begin
           Dir.mkdir(staging)
           File.write(File.join(staging, "pid"), Process.pid.to_s)
+          File.write(File.join(staging, "start"), process_start(Process.pid.to_s))
         rescue StandardError
           puts "error: cannot write in #{parent}; set CYBERTRAIN_HOME to a writable directory"
           return false
@@ -483,27 +482,36 @@ module Cybertrain
         true
       end
 
-      # The lock exists but its holder is gone, unrecorded, or has held it
-      # for longer than a build can take. The age is the pid file's, not the
-      # directory's: a marker made inside the directory would renew that.
+      # The lock exists but its holder is gone or unrecorded. A holder that
+      # is alive keeps the lock however long its build takes: waiters wait
+      # LOCK_WAIT_SECONDS, then say which lock to remove by hand.
       def self.lock_stale?
         return false unless File.directory?(lock_dir)
 
         pid = lock_pid
         return true if pid.match(/\A[1-9][0-9]*\z/).nil?
-        return true unless system("kill -0 #{pid} 2>/dev/null")
 
-        lock_age > STALE_LOCK_SECONDS
+        !holder_alive?(pid, lock_start)
       end
 
-      # Seconds since the lock's pid file was written; 0 when the lock went
-      # away while being looked at (another process removed it).
-      def self.lock_age
-        begin
-          Time.now.to_i - File.mtime(File.join(lock_dir, "pid")).to_i
-        rescue StandardError
-          0
-        end
+      # Whether the process that took the lock is still running. When ps can
+      # say when pid started, that must be the start time the lock recorded:
+      # a pid another process got after the holder died is not the holder.
+      # Without ps, or without a recorded start, the pid existing has to do.
+      def self.holder_alive?(pid, start)
+        now = process_start(pid)
+        return now == start unless now == "" || start == ""
+
+        # An explicit Boolean: under Spinel 2026.09.12 a method that returns
+        # `now == start` on one path and system's result on another returns
+        # false for the latter.
+        system("kill -0 #{pid} 2>/dev/null") ? true : false
+      end
+
+      # When pid started, as ps prints it; "" when there is no such process,
+      # or no ps that can tell.
+      def self.process_start(pid)
+        sh_read("ps -o lstart= -p #{pid}")
       end
 
       # Releases the lock this process holds. Like any removal it needs the
@@ -530,10 +538,18 @@ module Cybertrain
         end
       end
 
-      # The pid recorded in the lock; "" when there is none (or the lock
-      # went away while being looked at).
+      # The pid recorded in the lock, and its holder's start time; "" when
+      # there is none (or the lock went away while being looked at).
       def self.lock_pid
-        path = File.join(lock_dir, "pid")
+        lock_file("pid")
+      end
+
+      def self.lock_start
+        lock_file("start")
+      end
+
+      def self.lock_file(name)
+        path = File.join(lock_dir, name)
         return "" unless File.exist?(path)
 
         begin
@@ -573,7 +589,7 @@ module Cybertrain
 
         source = File.join(dir, "probe.c")
         File.write(source, "#include <#{include}>\nint main(void) { return #{body}; }\n")
-        ok = system("#{cc} #{shell_quote(source)} -o #{shell_quote(File.join(dir, "probe"))} #{link} > /dev/null 2>&1")
+        ok = system("#{cc} #{shell_quote(source)} -o #{shell_quote(File.join(dir, "probe"))} #{link} > /dev/null 2>&1") ? true : false
         system("rm -rf #{shell_quote(dir)}")
         ok
       end

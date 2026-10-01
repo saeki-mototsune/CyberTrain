@@ -17,4 +17,4 @@ error: cannot build Spinel 2026.09.12: missing a directory to keep Spinel in (se
 error: odd:dir cannot go on PATH: its name contains ':'
 ok   setup needs a home for the managed copy, and a directory PATH can hold
 ok   tail, jobs, quoting and hints
-13 tests, 112 assertions, 0 failures
+13 tests, 120 assertions, 0 failures

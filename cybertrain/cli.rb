@@ -141,11 +141,12 @@ module Cybertrain
       "\"#{value.gsub("\\", "\\\\\\\\").gsub("\"", "\\\"")}\""
     end
 
-    # The value after `--flag`, or "" when the flag is absent.
+    # The value after `--flag`, or "" when the flag is absent. Another
+    # option in the value's place means the value is missing.
     def self.option(argv, flag)
       i = argv.index(flag)
       return "" if i.nil?
-      raise InvalidArgument, "#{flag} needs a value" if i + 1 >= argv.size
+      raise InvalidArgument, "#{flag} needs a value" if i + 1 >= argv.size || argv[i + 1].start_with?("--")
 
       argv[i + 1]
     end
