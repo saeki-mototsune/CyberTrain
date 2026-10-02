@@ -9,8 +9,10 @@ ok   Query.decode (shared by Query and Cookies) decodes clean escapes
 ok   MAX_PAIRS pairs parse, one more raises QueryTooMany
 ok   empty segments count towards MAX_PAIRS but are still skipped
 ok   a body of one non-ASCII character and many '&' is refused as QueryTooMany, not scanned quadratically
+ok   4000 segments after a non-ASCII character parse by byte offsets (O(body), not O(MAX_PAIRS x body))
+ok   multibyte keys and values survive the byte-offset cut, whatever the segment boundaries
 ok   20000 key kind flips complete and keep the last write
 ok   flips within one parse keep Rack's last-write-wins
 ok   set_path and merge! handle a 5000 level chain iteratively
 ok   QueryMalformed (an undecodable percent-escape under CRuby) is a client fault: 400, not 500
-15 tests, 49 assertions, 0 failures
+17 tests, 57 assertions, 0 failures

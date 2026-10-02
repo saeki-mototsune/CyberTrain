@@ -45,32 +45,39 @@ module Cybertrain
 
     # A cursor scan, like split_key: the segments are cut out one at a time
     # and QueryTooMany is raised as soon as the (MAX_PAIRS + 1)th segment starts,
-    # so a hostile body costs O(MAX_PAIRS) work however long it is.
+    # so a hostile body costs O(MAX_PAIRS) calls however long it is.
     # (`split("&")` would first materialise every pair of a 10 MB body of
     # "&", three times per request.) EVERY segment counts, an empty one
-    # ("a=1&&b=2") included: `s.index("&", pos)` and `s[pos, n]` take
-    # character offsets, an O(pos) scan once the string has a non-ASCII
-    # character (always, under Spinel, which indexes by character: see
-    # Server#serve), so a body of one e-acute and 200 000 "&" that skipped
-    # its empty segments uncounted was quadratic (11 s on CRuby) and never
-    # reached QueryTooMany. Counting them bounds the scan at MAX_PAIRS + 1
-    # segments. Not byteindex/byteslice: Spinel's support for them on this
-    # path is unverified (NOTES rule 27 uses them on socket buffers only).
+    # ("a=1&&b=2") included: a body of one e-acute and 200 000 "&" that
+    # skipped its empty segments uncounted never reached QueryTooMany.
+    # Counting them caps the calls at MAX_PAIRS + 1, but each call must also
+    # be cheap, or the cap is only on the count: `s.index("&", pos)` and
+    # `s[pos, n]` take character offsets, an O(pos) scan once the string has a
+    # non-ASCII character (always, under Spinel, which indexes by character),
+    # so 4000 segments of 2.5 KB after one e-acute scanned ~5 MB each (18 s on
+    # CRuby for a 10 MB body). So the offsets here are bytes: byteindex,
+    # byteslice and bytesize are O(1) to position and O(segment) to cut, and
+    # Server#serve already frames its socket buffer with them under Spinel
+    # (NOTES rule 27). Every offset is 0 or just after an ASCII "&", so it is
+    # always on a character boundary and a multibyte value is never split.
+    # `str` may be ASCII-8BIT (a socket buffer under CRuby) or UTF-8 (Spinel);
+    # the byte methods give the same answers on both. add_pair then works on
+    # one segment only, so the whole parse is O(body) + O(MAX_PAIRS).
     # Empty segments are still skipped, not parsed, so "a=1&&b=2" and a
     # trailing "&" give the same Params as before.
     def self.parse(str)
       params = Params.new
       s = str.to_s
-      len = s.length
+      len = s.bytesize
       count = 0
       pos = 0
       while pos < len
-        amp = s.index("&", pos)
+        amp = s.byteindex("&", pos)
         stop = amp.nil? ? len : amp
         count += 1
         raise QueryTooMany, "too many parameters (limit #{MAX_PAIRS})" if count > MAX_PAIRS
 
-        add_pair(params, s[pos, stop - pos]) if stop > pos
+        add_pair(params, s.byteslice(pos, stop - pos).to_s) if stop > pos
         pos = stop + 1
       end
       params

@@ -98,6 +98,32 @@ test "a body of one non-ASCII character and many '&' is refused as QueryTooMany,
   assert_equal ["k\u00e9"], Cybertrain::Query.parse("k\u00e9=1&&").keys
 end
 
+test "4000 segments after a non-ASCII character parse by byte offsets (O(body), not O(MAX_PAIRS x body))" do
+  # Character offsets into a non-ASCII String are O(pos), so 4000 segments of
+  # 600 bytes took seconds on CRuby (18 s at 10 MB) until Query.parse cut by
+  # bytes. Built with a loop and << so it is the same on both runtimes;
+  # asserted on the result only.
+  body = +"k\u00e9=first"
+  i = 1
+  while i < 4000
+    body << "&k" << i.to_s << "=" << ("v" * 600)
+    i += 1
+  end
+  params = Cybertrain::Query.parse(body)
+  assert_equal 4000, params.keys.length
+  assert_equal "first", params["k\u00e9"]
+  assert_equal 600, params["k3999"].length
+  assert_equal "v", params["k1"][0, 1]
+end
+
+test "multibyte keys and values survive the byte-offset cut, whatever the segment boundaries" do
+  params = Cybertrain::Query.parse("\u00e9=\u00e9\u00e9&&%C3%A9x=%E3%81%82&\u3042=1&")
+  assert_equal ["\u00e9", "\u00e9x", "\u3042"], params.keys
+  assert_equal "\u00e9\u00e9", params["\u00e9"]
+  assert_equal "\u3042", params["\u00e9x"]
+  assert_equal "1", params["\u3042"]
+end
+
 test "20000 key kind flips complete and keep the last write" do
   n = 20000
   # 40000 pairs would be over MAX_PAIRS, so drive Params directly with the
