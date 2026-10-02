@@ -98,7 +98,9 @@ Then run the smoke test: `bash playground/smoke.sh cybertrain-playground:local`
 Stages: `cli-src` (internal: exactly the files `cybertrain.gemspec`
 packages, so that a change to the framework alone keeps the gem and Spinel
 layers cached), `toolchain` (packages, the user, the CLI gem, Spinel, the
-mirror) and `playground` (the scripts and the blog).
+mirror), `playground` (the scripts and the blog) and `web` (the hosted
+playground's session image, built on `playground`; see "The web stage"
+below).
 
 The blog is the tutorial after steps 02, 03, 04 and 07 (`cybertrain new
 blog`, the article scaffold, the root route, `cybertrain db migrate`) plus
@@ -259,6 +261,9 @@ whoever has the editor's address has the session, terminal included. Logs
 name a session only by its handle (the first 16 hex digits of the SHA-256 of
 its id), never by an id or a network address.
 
+Deployment and operation (Kamal, Cloudflare, the host's firewall, the stop
+switch, abuse): [deploy/README.md](deploy/README.md), in Japanese.
+
 ### On this machine
 
 ```sh
@@ -303,8 +308,32 @@ bash playground/dev/e2e.sh                                            # the whol
 - If `10.250.0.0/16` clashes with a VPN, set `PLAY_SUBNET_POOL` (both
   services read it).
 
-Deployment and operation (Kamal, Cloudflare, the host's firewall, the stop
-switch, abuse): [deploy/README.md](deploy/README.md), in Japanese.
+### The end-to-end test
+
+`bash playground/dev/e2e.sh` tests the whole stack on this machine's
+Docker: the router and the control plane built from this checkout
+(`dev/compose.yml` as a project of its own, `ctplay-e2e`, on port 18080,
+with a 180 s TTL and two sessions at most) and real sessions of
+`PLAY_SESSION_IMAGE` (default `cybertrain-playground-web:local`). It needs
+bash 3.2 or newer, docker with compose v2, curl and `sha256sum` or
+`shasum`; it prints one line per check, then `e2e: N passed, M failed`, and
+exits 0 only when every check passes (2 when it cannot start). It took
+198 s on the Apple M5, plus its first build of the router and control-plane
+images.
+
+| ID | Checks |
+| --- | --- |
+| E1-E7 | The entry page says 2 of 2 sessions are free and `status.json` says `"live":0`; `POST /sessions` answers 303 to the editor within 30 s; the editor answers with the workbench and its headers (`Referrer-Policy`, `X-Robots-Tag`, `frame-ancestors 'self'`); its WebSocket handshake is 101 from its own origin and 403 from another; the preview answers with `no-store`, `noindex` and `frame-ancestors *.play.localhost:*`, and the banner names it; a form on the preview host gets a `SameSite=Lax` cookie without `Secure` and a 303 to the new article; `3000-<session id>` is the 502 page and `<preview id>` alone the 404 page |
+| E8 | From a session, once the probe has reached the router's port 80: no internet, no DNS (`example.com`, `ctplay-control`), no metadata service, no host address (docker0's ports, a listener on the host) and no other session, where a refused connection counts as a way out; the router drops the session's own request; no host interface has an address in the pool |
+| E9 | Inside a session: uid 1000, no capabilities, no new privileges, read-only root, writable `/workspace`, 1536 MiB, 512 pids, 1 CPU, no Docker socket, no IPv6 address but loopback's |
+| E10 | A second client gets a session, a third the 503 "full" page with `Retry-After: 60`; Docker holds exactly 2 sessions |
+| E11 | The same client gets 429; a session just ended with `playctl end` answers the 404 page within 5 s, and a live session the router was cut from within 3 s (the check that fails without the Caddyfile's `keepalive off`); every `playctl end` succeeds; the third creation in the window gets the 429 rate page |
+| E12 | Another origin and a same-site request get 403; `Origin: null` from the entry page passes the origin check (and meets the per-client 429); a small request body gets the control plane's 413 ("No request body is accepted."), 1 MiB with a declared length 413, 1 MiB chunked the router's "Request body too large" |
+| E13 | Unknown hosts get the 404 page, `/internal/sessions` through the router the router's own 404 page; the router asks no outside resolver (`--dns 127.0.0.1`) and forwards nothing (`ip_forward` 0) |
+| E14-E15 | `docker restart` of the control plane succeeds and `status.json` counts the live session again within 10 s, its editor answering; a re-created router (a new container) reaches it within 10 s |
+| E16-E17 | `playctl pause` shows on the entry page and refuses with 503, `resume` accepts, `kill-all` leaves no session and no network; with the router stopped, a creation after a successful `resume` gets 503 "It is starting up" and leaves nothing |
+| E18 | A session ends at its TTL: its `expires-at` label is 180 s after `created-at`, its editor is the 404 page between 5 s before and 15 s after `expires-at`, and no labelled container or network is left |
+| E19 | The control plane's log holds exactly five creations and none of their ten ids, no client address and no other 32-hex token |
 
 ## Smoke test
 
@@ -330,8 +359,8 @@ server started by hand (D4) and the offline app (B3).
 
 `bash playground/web-smoke.sh IMAGE` tests the `web` stage the same way
 (bash 3.2 or newer and docker; 80 s on the Apple M5 above: the two checks
-that wait, for a session's end and for code-server's idle timeout, run
-beside the others, two compiles among them). Its session runs with the
+that wait for a session's end and for code-server's idle timeout run
+alongside the others, which include two compiles). Its session runs with the
 control plane's flags on an `--internal` network of its own, where a helper
 container of the same image plays the router. The flags between
 `# BEGIN hardened run` and `# END hardened run` must equal
@@ -345,31 +374,6 @@ container of the same image plays the router. The flags between
 | W8-W10 | `playground-server` serves port 3000 to the network and its banner shows the preview URL and the end; a model edit rebuilds on the read-only root (a short body then answers 422); with no network, `cybertrain new` and a build work in `/workspace` |
 | W11 | Read-only root, no capabilities, no new privileges, the four tmpfs sizes |
 | W12-W13 | A session stops and disappears by itself 60 seconds after `PLAYGROUND_ENDS_AT`, and at code-server's idle timeout when no browser ever came |
-
-`bash playground/dev/e2e.sh` tests the whole stack on this machine's
-Docker: the router and the control plane built from this checkout
-(`dev/compose.yml` as a project of its own, `ctplay-e2e`, on port 18080,
-with a 180 s TTL and two sessions at most) and real sessions of
-`PLAY_SESSION_IMAGE` (default `cybertrain-playground-web:local`). It needs
-bash 3.2 or newer, docker with compose v2, curl and `sha256sum` or
-`shasum`; it prints one line per check, then `e2e: N passed, M failed`, and
-exits 0 only when every check passes (2 when it cannot start). It took
-198 s on the Apple M5, plus its first build of the router and control-plane
-images. Its IDs are its own: its E1 is not the E1 above.
-
-| ID | Checks |
-| --- | --- |
-| E1-E7 | The entry page says 2 of 2 sessions are free and `status.json` says `"live":0`; `POST /sessions` answers 303 to the editor within 30 s; the editor answers with the workbench and its headers (`Referrer-Policy`, `X-Robots-Tag`, `frame-ancestors 'self'`); its WebSocket handshake is 101 from its own origin and 403 from another; the preview answers with `no-store`, `noindex` and `frame-ancestors *.play.localhost:*`, and the banner names it; a form on the preview host gets a `SameSite=Lax` cookie without `Secure` and a 303 to the new article; `3000-<session id>` is the 502 page and `<preview id>` alone the 404 page |
-| E8 | From a session, once the probe has reached the router's port 80: no internet, no DNS (`example.com`, `ctplay-control`), no metadata service, no host address (docker0's ports, a listener on the host) and no other session, where a refused connection counts as a way out; the router drops the session's own request; no host interface has an address in the pool |
-| E9 | Inside a session: uid 1000, no capabilities, no new privileges, read-only root, writable `/workspace`, 1536 MiB, 512 pids, 1 CPU, no Docker socket, no IPv6 address but loopback's |
-| E10 | A second client gets a session, a third the 503 "full" page with `Retry-After: 60`; Docker holds exactly 2 sessions |
-| E11 | The same client gets 429; a session just ended with `playctl end` answers the 404 page within 5 s, and a live session the router was cut from within 3 s (the check that fails without the Caddyfile's `keepalive off`); every `playctl end` succeeds; the third creation in the window gets the 429 rate page |
-| E12 | Another origin and a same-site request get 403; `Origin: null` from the entry page passes the origin check (and meets the per-client 429); a small request body gets the control plane's 413 ("No request body is accepted."), 1 MiB with a declared length 413, 1 MiB chunked the router's "Request body too large" |
-| E13 | Unknown hosts get the 404 page, `/internal/sessions` through the router the router's own 404 page; the router asks no outside resolver (`--dns 127.0.0.1`) and forwards nothing (`ip_forward` 0) |
-| E14-E15 | `docker restart` of the control plane succeeds and `status.json` counts the live session again within 10 s, its editor answering; a re-created router (a new container) reaches it within 10 s |
-| E16-E17 | `playctl pause` shows on the entry page and refuses with 503, `resume` accepts, `kill-all` leaves no session and no network; with the router stopped, a creation after a successful `resume` gets 503 "It is starting up" and leaves nothing |
-| E18 | A session ends at its TTL: its `expires-at` label is 180 s after `created-at`, its editor is the 404 page between 5 s before and 15 s after `expires-at`, and no labelled container or network is left |
-| E19 | The control plane's log holds exactly five creations and none of their ten ids, no client address and no other 32-hex token |
 
 ## CI and publishing
 
