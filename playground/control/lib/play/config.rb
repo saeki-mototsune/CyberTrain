@@ -100,7 +100,7 @@ module Play
     end
 
     # The address POST /sessions redirects to (spec §5.2): the editor opens
-    # the blog and, rendered, its guide.
+    # the blog and its guide, as text, so that the preview opens beside it.
     def editor_url(sid)
       origin = "#{scheme}://#{sid}.#{domain}#{port_suffix}"
       guide = "vscode-remote://#{sid}.#{domain}#{port_suffix}/workspace/blog/PLAYGROUND.md"

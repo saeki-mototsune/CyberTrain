@@ -45,6 +45,25 @@ class SessionsTest < Minitest::Test
     assert inspected && removed, "the network ctplay-n-#{handle} was not removed"
   end
 
+  # Runs the block with Ruby's default external encoding set to ENCODING, as
+  # LANG would set it (US-ASCII when LANG is unset). Ruby warns about the
+  # change under -w, so the change itself is made quietly.
+  def with_default_external(encoding)
+    before = Encoding.default_external
+    quietly { Encoding.default_external = encoding }
+    yield
+  ensure
+    quietly { Encoding.default_external = before }
+  end
+
+  def quietly
+    verbose = $VERBOSE
+    $VERBOSE = nil
+    yield
+  ensure
+    $VERBOSE = verbose
+  end
+
   # ---- creation ----------------------------------------------------------
 
   def test_create_lists_creates_attaches_runs_then_waits_for_the_router
@@ -94,6 +113,16 @@ class SessionsTest < Minitest::Test
     assert_equal [:paused, 300, "Maintenance until 14:00 UTC"], [refusal.reason, refusal.retry_after, refusal.message]
     assert_empty @docker.calls
     assert_includes @log.string, "play event=refused reason=paused live=0/5\n"
+  end
+
+  def test_a_pause_message_in_japanese_is_read_whatever_lang_says
+    File.write(File.join(sessions.config.data_dir, "paused"), "メンテナンス中、14:00 UTC まで\n")
+    with_default_external(Encoding::US_ASCII) do
+      refusal = sessions.create("203.0.113.7")
+      assert_equal [:paused, "メンテナンス中、14:00 UTC まで"], [refusal.reason, refusal.message]
+      assert_equal "メンテナンス中、14:00 UTC まで", sessions.closed_message
+      assert sessions.status[:paused]
+    end
   end
 
   def test_full_counts_starting_containers_too
@@ -237,6 +266,54 @@ class SessionsTest < Minitest::Test
     refute_includes @log.string, "event=ended"
   end
 
+  # ---- docker output as arguments -----------------------------------------------
+
+  def test_a_router_listing_word_that_is_not_an_id_reaches_no_command
+    @docker.default("ps routers", FakeDocker.ok("#{ROUTER}\n--alias=evil\n"))
+    created = sessions.create("203.0.113.7")
+    assert_kind_of Play::Sessions::Created, created
+    @docker.default("ps sessions", FakeDocker.ok(container(created.handle, "running")))
+    @docker.default("network ls", FakeDocker.ok(network(created.handle)))
+    @docker.default("ps routers", FakeDocker.ok("#{ROUTER}\n--alias=evil\nr2\n"))
+    sessions.reap
+    assert_equal [ROUTER, "r2"], @docker.calls_for("network connect").map(&:last)
+    refute(@docker.calls.any? { |argv| argv.include?("--alias=evil") })
+    assert_equal 2, @log.string.scan("play event=dropped step=routers count=1\n").size
+    refute_includes @log.string, "evil"
+  end
+
+  def test_a_listing_byte_that_is_not_utf8_is_dropped_without_raising
+    # Without LANG, Ruby labels docker's output US-ASCII.
+    @docker.default("ps routers", FakeDocker.ok("#{ROUTER}\n\xFFr2\n".dup.force_encoding(Encoding::US_ASCII)))
+    assert_kind_of Play::Sessions::Created, sessions.create("203.0.113.7")
+    assert_equal [ROUTER], @docker.calls_for("network connect").map(&:last)
+    assert_includes @log.string, "play event=dropped step=routers count=1\n"
+  end
+
+  def test_an_attachment_that_is_not_an_id_is_skipped_and_the_teardown_stays_failed
+    @docker.default("network inspect", FakeDocker.ok("#{ROUTER} -x "))
+    @docker.on("network rm", FakeDocker.fail("Error response from daemon: error while removing network: network ctplay-n-x has active endpoints"))
+    refute sessions.teardown("a" * 16, reason: "ttl")
+    assert_equal [Play::Templates.network_disconnect(handle: "a" * 16, container: ROUTER)], @docker.calls_for("network disconnect")
+    refute(@docker.calls.any? { |argv| argv.include?("-x") })
+    assert_includes @log.string, "play event=dropped step=inspect handle=#{"a" * 16} count=1\n"
+    assert_match(/play event=docker_error step=network_rm handle=a{16} status=1 /, @log.string)
+    refute_includes @log.string, "event=ended"
+
+    # Its labels stay, so the reaper tries again.
+    @docker.default("network ls", FakeDocker.ok(network("a" * 16, created: @clock.now - 61)))
+    sessions.reap
+    assert_equal 2, @docker.calls_for("network rm").size
+    assert_includes @log.string, "play event=ended handle=#{"a" * 16} reason=orphan age_s=61\n"
+  end
+
+  def test_docker_stats_names_each_session_from_its_checked_handle
+    @docker.default("ps sessions", FakeDocker.ok("c1\t-x\trunning\t#{"a" * 16}\t#{@clock.now - 100}\t#{@clock.now + 1700}\n"))
+    @docker.default("network ls", FakeDocker.ok(network("a" * 16)))
+    sessions.reap
+    assert_equal [Play::Templates.stats(["ctplay-s-#{"a" * 16}"])], @docker.calls_for("stats")
+  end
+
   # ---- the reaper -------------------------------------------------------------
 
   def test_reap_removes_expired_and_stopped_sessions
@@ -263,6 +340,113 @@ class SessionsTest < Minitest::Test
     sessions.reap
     assert_includes @log.string, "play event=ended handle=#{created.handle} reason=idle"
     assert_empty sessions.internal_list
+  end
+
+  def test_a_session_ready_between_the_listings_is_not_ended_as_idle
+    created = nil
+    @docker.default("network ls", lambda do |_argv|
+      next FakeDocker.ok("") if created # the creation's own listing
+
+      # A creation runs to the end after the pass listed the containers:
+      # its network is in the network listing, its container is not.
+      created = :creating
+      created = sessions.create("203.0.113.7")
+      FakeDocker.ok(network(created.handle, created: @clock.now))
+    end)
+    assert sessions.reap
+    assert_kind_of Play::Sessions::Created, created
+    refute_includes @log.string, "event=ended"
+    assert_equal [[created.handle, "203.0.113.7"]], sessions.internal_list.map { |s| s.values_at(:handle, :client) }
+  end
+
+  def test_a_session_ready_during_a_pass_keeps_its_record_and_its_client
+    created = nil
+    @docker.default("ps routers", lambda do |_argv|
+      unless created
+        # A creation runs to the end after the pass listed the containers
+        # and the networks: neither listing has it.
+        created = :creating
+        created = sessions.create("203.0.113.7")
+      end
+      FakeDocker.ok("#{ROUTER}\n")
+    end)
+    assert sessions.reap
+    assert_equal [[created.handle, "203.0.113.7"]], sessions.internal_list.map { |s| s.values_at(:handle, :client) }
+    assert_equal :per_ip, sessions.create("203.0.113.7").reason
+  end
+
+  def test_a_failed_teardown_of_a_failed_creation_is_retried_by_the_next_pass
+    # Not ready within the first creation's second (five probes), ready on
+    # the next creation's first probe.
+    @probe = FakeProbe.new(ready_after: 6)
+    s = sessions("PLAY_MAX_SESSIONS" => "1", "PLAY_READY_TIMEOUT" => "1")
+    @docker.on("rm", FakeDocker.fail("Error response from daemon: removal of container ctplay-s-x is already in progress"))
+    assert_equal :failed, s.create("203.0.113.7").reason
+    handle = handle_of_last_network
+    refute_includes @log.string, "event=ended"
+
+    # Docker still runs it: it holds the only slot until a pass removes it.
+    @docker.default("ps sessions", FakeDocker.ok(container(handle, "running")))
+    @docker.default("network ls", FakeDocker.ok(network(handle)))
+    assert_equal :full, s.create("198.51.100.1").reason
+    assert s.reap
+    assert_equal [Play::Templates.remove_container(handle: handle)] * 2, @docker.calls_for("rm")
+    assert_includes @log.string, "play event=ended handle=#{handle} reason=failed age_s=1\n"
+    @docker.default("ps sessions", FakeDocker.ok(""))
+    @docker.default("network ls", FakeDocker.ok(""))
+    assert_kind_of Play::Sessions::Created, s.create("198.51.100.1")
+  end
+
+  def test_a_teardown_that_left_only_the_network_is_retried_for_its_reason
+    created = sessions.create("203.0.113.7")
+    @docker.default("ps sessions", FakeDocker.ok(container(created.handle, "running", expires: @clock.now)))
+    @docker.default("network ls", FakeDocker.ok(network(created.handle)))
+    @docker.on("network rm", FakeDocker.fail("Error response from daemon: error while removing network: network ctplay-n-x has active endpoints"))
+    sessions.reap
+    refute_includes @log.string, "event=ended"
+
+    # The container is gone; the network is left for the next pass.
+    @docker.default("ps sessions", FakeDocker.ok(""))
+    sessions.reap
+    assert_equal ["play event=ended handle=#{created.handle} reason=ttl age_s=0"],
+                 @log.string.lines.map(&:chomp).grep(/event=ended/)
+  end
+
+  def test_a_pass_leaves_a_teardown_that_is_still_running_to_it
+    created = sessions.create("203.0.113.7")
+    @docker.default("ps sessions", FakeDocker.ok(container(created.handle, "running")))
+    @docker.default("network ls", FakeDocker.ok(network(created.handle)))
+    # A pass runs while another thread's teardown of the session waits on
+    # its `docker rm`.
+    @docker.on("rm", lambda do |_argv|
+      sessions.reap
+      FakeDocker.ok
+    end)
+    assert sessions.teardown(created.handle, reason: "killed")
+    assert_equal 1, @docker.calls_for("rm").size
+    assert_equal ["play event=ended handle=#{created.handle} reason=killed age_s=0"],
+                 @log.string.lines.map(&:chomp).grep(/event=ended/)
+  end
+
+  def test_a_teardown_that_fails_during_a_pass_is_retried_by_the_next_one_only
+    created = sessions.create("203.0.113.7")
+    @docker.default("network ls", FakeDocker.ok(network(created.handle)))
+    failed = nil
+    @docker.default("ps sessions", lambda do |_argv|
+      if failed.nil?
+        # Another thread's teardown begins after the pass took its snapshot,
+        # and its `docker rm` fails.
+        @docker.on("rm", FakeDocker.fail("Error response from daemon: removal of container ctplay-s-x is already in progress"))
+        failed = !sessions.teardown(created.handle, reason: "killed")
+      end
+      FakeDocker.ok(container(created.handle, "running"))
+    end)
+    sessions.reap
+    assert failed
+    assert_equal 1, @docker.calls_for("rm").size, "the pass left the session to the teardown that began during it"
+    sessions.reap
+    assert_equal 2, @docker.calls_for("rm").size
+    assert_includes @log.string, "play event=ended handle=#{created.handle} reason=killed age_s=0\n"
   end
 
   def test_reap_attaches_every_running_router_once

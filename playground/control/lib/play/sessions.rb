@@ -14,7 +14,9 @@ module Play
   # in the argv of `docker run` and in the editor URL it returns, and never in
   # a record or a log line.
   class Sessions
-    Session = Struct.new(:handle, :subnet, :created_at, :expires_at, :client, :state, :cpu, :memory, :hot)
+    # reason: why it is ending, set when its teardown begins; the reaper
+    # repeats a failed teardown for that reason.
+    Session = Struct.new(:handle, :subnet, :created_at, :expires_at, :client, :state, :cpu, :memory, :hot, :reason)
     Created = Struct.new(:editor_url, :handle)
     Refusal = Struct.new(:reason, :retry_after, :message, :ends_at)
 
@@ -32,6 +34,12 @@ module Play
     OVERLAP = /Pool overlaps/i
     NO_IMAGE = /No such image/i
     ALREADY = /already exists/i
+    # A container id or name as Docker writes them: the only docker output
+    # that becomes an argv element, and none of it reads as a flag.
+    CONTAINER_REF = /\A[A-Za-z0-9][A-Za-z0-9_.-]*\z/
+    # Where a handle stands for a pass of the reaper when nobody is ending
+    # it (#standing): the pass may end it, attach routers to it, sample it.
+    NOT_ENDING = %i[in_progress settled unknown].freeze
 
     attr_reader :config
 
@@ -50,6 +58,7 @@ module Play
       @limits = Limits.new(limit: config.create_limit, window: config.create_window, clock: clock)
       @records = {}
       @connected = Hash.new { |hash, handle| hash[handle] = [] }
+      @tearing_down = Set.new # handles whose teardown runs now, in any thread
       @unusable = []
       @mutex = Mutex.new
       @unavailable = nil
@@ -75,8 +84,10 @@ module Play
     end
 
     # The operator's message from playctl pause, or nil when not paused.
+    # Read as UTF-8 whatever LANG says, and scrubbed: it may be in any
+    # language.
     def pause_message
-      text = File.read(paused_path).strip
+      text = File.read(paused_path, encoding: Encoding::UTF_8).scrub.strip
       text.empty? ? "For maintenance" : text[0].upcase + text[1..]
     rescue Errno::ENOENT
       nil
@@ -142,10 +153,16 @@ module Play
 
     # Removes the session HANDLE: its container, every attachment of its
     # network, the network. Each step counts "absent" as done. Returns true
-    # when nothing is left; on false the labels stay and the reaper retries.
+    # when nothing is left; on false the labels stay and the reaper retries
+    # (a record of HANDLE keeps REASON for that). While it runs, the reaper's
+    # passes leave HANDLE to it.
     def teardown(handle, reason:, created_at: nil)
       session = @mutex.synchronize do
-        @records[handle]&.tap { |s| s.state = :ending }
+        @tearing_down << handle
+        @records[handle]&.tap do |s|
+          s.state = :ending
+          s.reason = reason
+        end
       end
       return false unless remove_everything(handle)
 
@@ -158,6 +175,8 @@ module Play
       fields[:age_s] = @clock.now - born if born
       @log.event("ended", **fields)
       true
+    ensure
+      @mutex.synchronize { @tearing_down.delete(handle) }
     end
 
     # Every labelled session (playctl kill-all, and the reaper when it finds
@@ -188,6 +207,10 @@ module Play
     # One pass (spec §5.8). Returns true when it reached Docker.
     def reap
       check_availability if @unavailable && due?(@last_availability, AVAILABILITY_EVERY)
+      # The record states before the listings: a creation that completes
+      # while the pass runs is judged by them (#standing), since the
+      # listings may predate its network or its container.
+      before = @mutex.synchronize { @records.transform_values(&:state) }
       containers = list_containers
       networks = list_networks
       routers = list_routers
@@ -195,32 +218,31 @@ module Play
 
       now = @clock.now
       killing = File.exist?(kill_path)
-      creating = @mutex.synchronize { @records.select { |_, s| s.state == :creating }.keys }
+      ended = Set.new
       done = true
 
       containers.each do |c|
-        reason = if killing then "killed"
-                 elsif c[:expires_at] <= now then "ttl"
-                 elsif c[:state] != "running" && !creating.include?(c[:handle]) then "exited"
-                 end
-        done &= teardown(c[:handle], reason: reason, created_at: c[:created_at]) if reason
+        reason = container_reason(c, standing(c[:handle], before), killing, now)
+        next unless reason
+
+        ended << c[:handle]
+        done &= teardown(c[:handle], reason: reason, created_at: c[:created_at])
       end
 
       with_container = containers.to_set { |c| c[:handle] }
       networks.each do |n|
         next if with_container.include?(n[:handle])
 
-        known = @mutex.synchronize { @records[n[:handle]] }
-        reason = if killing then "killed"
-                 elsif known && known.state != :creating then "idle"
-                 elsif known.nil? && now - n[:created_at] >= ORPHAN_GRACE then "orphan"
-                 end
-        done &= teardown(n[:handle], reason: reason, created_at: n[:created_at]) if reason
+        reason = network_reason(n, standing(n[:handle], before), killing, now)
+        next unless reason
+
+        ended << n[:handle]
+        done &= teardown(n[:handle], reason: reason, created_at: n[:created_at])
       end
 
-      alive = killing ? [] : containers.select { |c| c[:state] == "running" && c[:expires_at] > now }
+      alive = killing ? [] : containers.select { |c| alive?(c, before, ended, now) }
       attach_routers(alive, routers)
-      reconcile(containers, networks, alive)
+      reconcile(containers, networks, alive, before)
       collect_stats(alive) if due?(@last_stats, STATS_EVERY)
       File.delete(kill_path) if killing && done
       @last_reap_ok = @clock.monotonic
@@ -272,7 +294,7 @@ module Play
       result = docker(Templates.list_routers(@config), LIST_TIMEOUT)
       return listing_failed("routers", result) unless result.ok?
 
-      result.stdout.split
+      container_refs(result.stdout, "routers")
     end
 
     # {container name => [cpu %, memory]} from one `docker stats` sample.
@@ -441,12 +463,76 @@ module Play
       result = docker(Templates.network_containers(handle: handle), CREATE_TIMEOUT)
       return result.stderr.match?(ABSENT) || step_failed("inspect", handle, result) unless result.ok?
 
-      result.stdout.split.each do |container|
+      container_refs(result.stdout, "inspect", handle).each do |container|
         detached = docker(Templates.network_disconnect(handle: handle, container: container), CREATE_TIMEOUT)
         return step_failed("disconnect", handle, detached) unless detached.ok? || detached.stderr.match?(ABSENT)
       end
       result = docker(Templates.network_remove(handle: handle), CREATE_TIMEOUT)
       result.ok? || result.stderr.match?(ABSENT) || step_failed("network_rm", handle, result)
+    end
+
+    # Where the session HANDLE stands for this pass of the reaper, from
+    # BEFORE (the record states taken before the listings) and its record
+    # now:
+    # :being_ended - a teardown of it runs now, or began during the pass:
+    #                left to whoever is ending it
+    # :retry       - its teardown failed before the pass: ended again, for
+    #                the reason that teardown recorded
+    # :gone        - its record went during the pass: ended meanwhile
+    # :in_progress - a creation under way before the listings or begun since,
+    #                which they may predate: never ended as exited or idle,
+    #                never forgotten or adopted
+    # :settled     - known and not creating before the listings: what they
+    #                lack is really gone
+    # :unknown     - no record, before or now: a restart, or the other
+    #                control plane's session
+    def standing(handle, before)
+      @mutex.synchronize do
+        record = @records[handle]
+        if @tearing_down.include?(handle) then :being_ended
+        elsif record.nil? then before.key?(handle) ? :gone : :unknown
+        elsif [nil, :creating].include?(before[handle]) then :in_progress
+        elsif record.state == :ending then before[handle] == :ending ? :retry : :being_ended
+        else :settled
+        end
+      end
+    end
+
+    # Why the pass ends container C, or nil.
+    def container_reason(c, standing, killing, now)
+      return recorded_reason(c[:handle]) if standing == :retry
+      return unless NOT_ENDING.include?(standing)
+
+      if killing then "killed"
+      elsif c[:expires_at] <= now then "ttl"
+      elsif c[:state] != "running" && standing != :in_progress then "exited"
+      end
+    end
+
+    # Why the pass ends network N, which has no container, or nil. A known
+    # session whose container ended by itself (code-server's idle timeout,
+    # or the container's own end) is `idle`; a network nobody here knows is
+    # an `orphan` once it is old enough not to be the other control plane's
+    # creation in progress during a deploy.
+    def network_reason(n, standing, killing, now)
+      return recorded_reason(n[:handle]) if standing == :retry
+      return unless NOT_ENDING.include?(standing)
+
+      if killing then "killed"
+      elsif standing == :settled then "idle"
+      elsif standing == :unknown && now - n[:created_at] >= ORPHAN_GRACE then "orphan"
+      end
+    end
+
+    def recorded_reason(handle)
+      @mutex.synchronize { @records[handle]&.reason }
+    end
+
+    # A running, unexpired container that this pass did not end and that
+    # nobody is ending: its network gets every router, its record the stats.
+    def alive?(c, before, ended, now)
+      c[:state] == "running" && c[:expires_at] > now && !ended.include?(c[:handle]) &&
+        NOT_ENDING.include?(standing(c[:handle], before))
     end
 
     def attach_routers(alive, routers)
@@ -463,23 +549,30 @@ module Play
       end
     end
 
-    # Forget what Docker no longer has; adopt live sessions this process did
-    # not start (a restart, or the other control plane during a deploy).
-    def reconcile(containers, networks, alive)
+    # Forget the records Docker no longer has, among those settled before the
+    # listings; adopt the live sessions this process knows nothing of, before
+    # or now (a restart, or the other control plane during a deploy). A
+    # creation under way is neither forgotten nor adopted, nor is a session
+    # that was ended meanwhile.
+    def reconcile(containers, networks, alive, before)
       seen = (containers.map { |c| c[:handle] } + networks.map { |n| n[:handle] }).to_set
       @mutex.synchronize do
-        @records.delete_if { |handle, s| s.state != :creating && !seen.include?(handle) }
+        @records.delete_if { |handle, _| %i[ready ending].include?(before[handle]) && !seen.include?(handle) }
         alive.each do |c|
-          @records[c[:handle]] ||= Session.new(c[:handle], nil, c[:created_at], c[:expires_at], nil, :ready, nil, nil, 0)
+          next if before.key?(c[:handle]) || @records.key?(c[:handle])
+
+          @records[c[:handle]] = Session.new(c[:handle], nil, c[:created_at], c[:expires_at], nil, :ready, nil, nil, 0)
         end
       end
     end
 
     # Every minute: CPU and memory per session; ten samples in a row at 90 %
-    # or more log one `suspect` line (spec §5.8). Nothing is stopped.
+    # or more log one `suspect` line (spec §5.8). Nothing is stopped. The
+    # containers are named from their checked handles, not from docker's
+    # {{.Names}}.
     def collect_stats(alive)
       @last_stats = @clock.monotonic
-      read_stats(alive.map { |c| c[:name] }).each do |name, (cpu, memory)|
+      read_stats(alive.map { |c| "ctplay-s-#{c[:handle]}" }).each do |name, (cpu, memory)|
         handle = name.delete_prefix("ctplay-s-")
         hot = @mutex.synchronize do
           session = @records[handle]
@@ -491,6 +584,23 @@ module Play
         end
         @log.event("suspect", handle: handle, cpu: format("%.1f%%", cpu)) if hot == HOT_COUNT
       end
+    end
+
+    # The container ids or names in docker's TEXT (separated by whitespace)
+    # that may become argv elements. Anything else never reaches a command
+    # line: one `dropped` line per call counts it, without its text. TEXT is
+    # read as UTF-8 and scrubbed first, as in DockerCLI.redact: one odd byte
+    # would otherwise make the split raise.
+    def container_refs(text, step, handle = nil)
+      words = text.to_s.dup.force_encoding(Encoding::UTF_8).scrub.split
+      refs = words.grep(CONTAINER_REF)
+      return refs if refs.size == words.size
+
+      fields = { step: step }
+      fields[:handle] = handle if handle
+      fields[:count] = words.size - refs.size
+      @log.event("dropped", **fields)
+      refs
     end
 
     def due?(last, every)
