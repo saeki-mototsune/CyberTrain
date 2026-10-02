@@ -3,13 +3,15 @@ require "cybertrain/test"
 
 # A pooled connection must come back in autocommit mode (and with
 # @transaction_depth at 0) however a `transaction` block ends: normally, by an
-# exception, or by `break`, which the method's rescue never sees and
+# exception, or by leaving a BEGIN open that the method never saw, which
 # Pool#with cleans up through Connection#abandon_transaction!. This program
 # links SQLite through FFI, so its snapshot must come from the compiled binary
 # (NOTES rule 23); the committed one was first captured under CRuby with an
 # FFI shim -- run script/regen-snapshot test/db_transaction.rb on a Spinel
 # machine. Not exercised on purpose: `return` from inside the block (under
-# Spinel it ends the block, not the enclosing method), throw/catch and
+# Spinel it ends the block, not the enclosing method), `break` out of the
+# block (Spinel refuses it at compile time -- "unsupported expression:
+# BreakNode" -- now that the yield sits inside a rescue), throw/catch and
 # Exception subclasses (no precedent for them compiling under Spinel).
 
 DB = Cybertrain::DB
@@ -48,28 +50,16 @@ def clean?(conn)
   rolled_back && begin_ok
 end
 
-# Leaves the transaction block by `break`, the exit its rescue cannot see.
-# A method of its own, with the `break` inside an each: Spinel rejects a
-# `break` anywhere inside a block that is forwarded as &block (DB.with's),
-# even nested in an each ("unsupported expression: BreakNode", CI on PR
-# #10), while this shape -- the one the nested-exit test below also uses --
-# compiles.
-def leave_by_break(conn)
-  [1].each do |n|
-    conn.transaction do
-      conn.execute("INSERT INTO posts (title) VALUES (?)", ["broken#{n}"])
-      break
-    end
-  end
-  nil
-end
-
-test "a transaction left by break is rolled back when the pooled connection comes back" do
+test "a BEGIN left open inside a checkout is rolled back when the connection comes back" do
   DB.connect(":memory:")
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
   DB.with do |c|
-    leave_by_break(c)
-    # Still inside the checkout: the BEGIN is open until the connection
+    # What a block that escapes `transaction` past its rescue leaves behind:
+    # autocommit off, nothing to COMMIT it. Done by hand here, since under
+    # Spinel no such escape even compiles.
+    c.exec_script("BEGIN")
+    c.execute("INSERT INTO posts (title) VALUES (?)", ["open"])
+    # Still inside the checkout: the BEGIN stays open until the connection
     # goes back, which is what makes the pool the right place to clean up.
     assert_equal 1, post_count(c)
   end
@@ -130,22 +120,6 @@ test "a nested transaction joins the outer one and an inner raise rolls everythi
       conn.transaction do
         conn.execute("INSERT INTO posts (title) VALUES (?)", ["inner2"])
         raise "inner"
-      end
-    end
-  end
-  assert_equal 2, post_count(conn)
-  assert clean?(conn)
-  conn.close
-end
-
-test "a nested non-local exit leaves the outer transaction usable" do
-  conn = posts_db
-  conn.transaction do
-    conn.execute("INSERT INTO posts (title) VALUES (?)", ["outer"])
-    [1].each do |n|
-      conn.transaction do
-        conn.execute("INSERT INTO posts (title) VALUES (?)", ["inner#{n}"])
-        break
       end
     end
   end

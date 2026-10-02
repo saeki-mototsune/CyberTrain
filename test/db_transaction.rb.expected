@@ -1,7 +1,6 @@
-ok   a transaction left by break is rolled back when the pooled connection comes back
+ok   a BEGIN left open inside a checkout is rolled back when the connection comes back
 ok   abandon_transaction! leaves a clean connection alone
 ok   a StandardError rolls back, re-raises and leaves autocommit on
 ok   a normal completion commits
 ok   a nested transaction joins the outer one and an inner raise rolls everything back
-ok   a nested non-local exit leaves the outer transaction usable
-6 tests, 18 assertions, 0 failures
+5 tests, 16 assertions, 0 failures

@@ -96,11 +96,12 @@ module Cybertrain
       # rule 33). A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves
       # SQLite inside the transaction, so it is rolled back too before the
       # COMMIT error is re-raised. A nested call just runs its block inside
-      # the outer transaction. A block that leaves by `break` is not seen
-      # here (no `ensure`: a second ensure in this re-entrant yielding method
-      # broke nested transactions under Spinel, CI on PR #10); the Pool
-      # calls abandon_transaction! on every check-in, so the open BEGIN and
-      # the stale depth never reach the next checkout.
+      # the outer transaction. No `ensure` here: a second ensure in this
+      # re-entrant yielding method broke nested transactions under Spinel
+      # (CI on PR #10). What the rescue cannot see -- a `break` out of the
+      # block under CRuby (Spinel refuses to compile one here), or a BEGIN
+      # run by hand -- is caught by the Pool, which calls
+      # abandon_transaction! on every check-in.
       # Returns nil: the blocks callers pass return unrelated types, and one
       # generic return value would not type-check under Spinel.
       def transaction
@@ -133,12 +134,12 @@ module Cybertrain
         nil
       end
 
-      # Rolls back whatever a `transaction` block left open and resets the
-      # depth. Pool#with runs it when a connection comes back: a block that
-      # left `transaction` by `break` (or anything its rescue cannot see)
-      # otherwise leaves BEGIN open with the depth at 1, so every later
-      # transaction on this pooled connection would count as nested and
-      # nothing would ever be committed. A clean connection is untouched.
+      # Rolls back whatever was left open and resets the depth. Pool#with
+      # runs it when a connection comes back: a `transaction` block that got
+      # out past the rescue (a `break`, under CRuby) leaves BEGIN open with
+      # the depth at 1, so every later transaction on this pooled connection
+      # would count as nested and nothing would ever be committed; a BEGIN
+      # run by hand leaves autocommit off. A clean connection is untouched.
       def abandon_transaction!
         return nil if @closed
         return nil if @transaction_depth == 0 && SQLite3.sqlite3_get_autocommit(@db) != 0

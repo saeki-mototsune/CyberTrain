@@ -23,9 +23,8 @@ module Cybertrain
         end
       end
 
-      # The connection goes back clean: a transaction the block abandoned
-      # (left by `break`, say) is rolled back first -- see
-      # Connection#abandon_transaction!.
+      # The connection goes back clean: a transaction the block left open
+      # is rolled back first -- see Connection#abandon_transaction!.
       def with
         conn = @available.pop
         begin
