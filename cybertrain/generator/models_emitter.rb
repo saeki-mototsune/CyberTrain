@@ -73,16 +73,17 @@ module Cybertrain
       end
 
       # Raises ArgumentError (the generator exits non-zero) for a column the
-      # generated class cannot host: not a plain snake_case identifier, a Ruby
-      # keyword, or one of Ident::RESERVED_COLUMN_NAMES. The same rules gate
-      # `cybertrain generate scaffold`, so the scaffold refuses the name
-      # before it writes any file.
+      # generated class cannot host: not a Ruby method name (Ident.column?),
+      # a Ruby keyword, or one of Ident::RESERVED_COLUMN_NAMES. The same
+      # rules (and a stricter snake_case spelling) gate `cybertrain generate
+      # scaffold`, so the scaffold refuses the name before it writes any
+      # file.
       def self.check_column_names(table)
         table.columns.each do |c|
           name = c.name
           unless Ident.column?(name)
             raise ArgumentError, "table #{table.name}: column #{name.inspect} is not a valid attribute name " \
-                                 "(use lowercase letters, digits and _, not starting with a digit)"
+                                 "(use letters, digits and _, not starting with a digit)"
           end
           if Ident.keyword?(name) || Ident.reserved_column?(name)
             raise ArgumentError, "table #{table.name}: column #{name.inspect} is reserved " \
@@ -280,12 +281,24 @@ module Cybertrain
 
           pointing = other.foreign_keys.select { |fk| fk.to_table == table.name }
           pointing.each do |fk|
-            name = pointing.size > 1 ? other.name + "_as_" + column_stem(fk.column) : other.name
+            plain = pointing.size > 1 ? other.name + "_as_" + column_stem(fk.column) : other.name
+            name = plain
+            note = ""
+            # The column (or the Model method) owns the plain name: it is the
+            # explicit thing and the association is derived, so the reader
+            # moves to `<table>_as_<stem>` -- the name it would have if the
+            # table pointed here twice -- and the generated file says so.
+            # Only that name colliding too is an error.
+            if taken.include?(name) || Ident.keyword?(name) || Ident.reserved_column?(name)
+              name = other.name + "_as_" + column_stem(fk.column)
+              note = "# has_many #{other.name} reads as #{name}: #{plain.inspect} is a column or a Cybertrain::Model method"
+            end
             next if assoc_names.include?(name)
             association_collision!(table, name, "has_many (#{other.name}.#{fk.column})") if taken.include?(name)
             check_association_name(table, name, "has_many")
 
             assoc_names << name
+            assoc_defs << note unless note == ""
             assoc_defs << "def #{name} = #{model_class_name(other.name)}Relation.new(\"#{other.name}\")" \
                           ".where(#{fk.column}: @id).to_a"
           end

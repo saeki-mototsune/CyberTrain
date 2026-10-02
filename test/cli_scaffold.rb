@@ -261,6 +261,16 @@ test "bad input is rejected before anything is written" do
   status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "class", "name:string"]) }
   assert_equal 1, status
   refute File.exist?("blog/app/models/class.rb")
+  # A resource is read as `errors` (has_many) / `error` (belongs_to) on the
+  # models that reference it, so its singular and plural answer to the same
+  # rules as a column: Post#errors would shadow Model#errors.
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "Error", "post:references"]) }
+  assert_equal 1, status
+  refute File.exist?("blog/app/models/error.rb")
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "attribute", "name:string"]) }
+  assert_equal 1, status
+  refute File.exist?("blog/app/models/attribute.rb")
+  assert_equal 4, migration_versions.size
   # TMP itself is not an app: it has no config/routes.rb.
   assert_equal 1, Cybertrain::CLI.run(["generate", "scaffold", "tag", "name:string"])
   assert_equal 1, Cybertrain::CLI.run(["generate", "scaffold"])

@@ -32,15 +32,31 @@ module Cybertrain
         begin
           yield conn
         ensure
-          if conn.abandon_transaction!
-            Cybertrain.logger.warn("rolled back a transaction left open on a pooled connection (a BEGIN without COMMIT)")
-          end
-          @available << conn
+          check_in(conn)
         end
       end
 
       def close_all
         @connections.each(&:close)
+      end
+
+      private
+
+      # The connection always goes back, whatever the rollback or the logger
+      # does: a logger whose IO is gone (EPIPE at shutdown) must not leak the
+      # connection from the pool, which with the one-connection ":memory:"
+      # pool would block every later `with` for good.
+      # Returns nil: the `if` must not be the method's value (a Logger
+      # subclass's `warn` can type differently from Logger#warn, rule 10).
+      def check_in(conn)
+        begin
+          rolled_back = conn.abandon_transaction!
+          Cybertrain.logger.warn("rolled back a transaction left open on a pooled connection (a BEGIN without COMMIT)") if rolled_back
+          nil
+        ensure
+          @available << conn
+        end
+        nil
       end
     end
   end

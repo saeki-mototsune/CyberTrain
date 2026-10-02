@@ -605,19 +605,25 @@ end
 test "emit rejects column names that are invalid or collide with model methods" do
   ["errors", "persisted", "class", "hash", "object_id", "send", "freeze", "display", "method",
    "instance_variable_get", "attributes", "save", "update", "destroy", "reload", "model_name",
-   "to_json", "as_json", "end", "def", "nil", "self"].each do |bad|
+   "to_json", "as_json", "end", "def", "nil", "self", "BEGIN", "__FILE__",
+   # Kernel methods the model calls on implicit self: a `raise` column would
+   # turn Model#save!'s `raise RecordInvalid, ...` into a call of the reader.
+   "raise", "fail", "format", "puts", "warn", "loop", "lambda", "proc", "require", "sleep"].each do |bad|
     assert emit_error(bad).include?("is reserved"), "#{bad} should be rejected"
   end
-  ["Title", "1st", "a-b", "a b", "a.b", "", "valid?"].each do |bad|
+  ["1st", "a-b", "a b", "a.b", "", "valid?", "ünïcode"].each do |bad|
     assert emit_error(bad).include?("not a valid attribute name"), "#{bad.inspect} should be rejected"
   end
-  # Names that only look like Model methods: the real ones end in `?`.
-  ["title", "_x", "a1", "group", "new_record", "is_a", "frozen"].each do |ok|
+  # Names that only look like Model methods (the real ones end in `?`), and
+  # the camelCase / capitalised columns of an existing schema: anything Ruby
+  # takes as a method name generates (the scaffold alone insists on
+  # snake_case for the names it invents).
+  ["title", "_x", "a1", "group", "new_record", "is_a", "frozen", "createdAt", "userId", "Title", "X1"].each do |ok|
     assert_equal "", emit_error(ok)
   end
 end
 
-test "an association reader named like a Model method is an error too" do
+test "a has_many named like a Model method moves to <table>_as_<stem>; a belongs_to is an error" do
   definition = Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "posts" do |t|
       t.string "title", null: false
@@ -634,17 +640,22 @@ test "an association reader named like a Model method is an error too" do
     end
     s.add_foreign_key "things", "hashes", column: "hash_id"
   end
-  has_many = assert_raises("ArgumentError") do
-    Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
-  end
-  assert_includes has_many, 'the has_many association "errors" is reserved'
+  # Post#errors stays Model#errors; the derived reader takes the other name.
+  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
+  assert_lines(post, [
+    '# has_many errors reads as errors_as_post: "errors" is a column or a Cybertrain::Model method',
+    'def errors_as_post = ErrorRelation.new("errors").where(post_id: @id).to_a',
+    "when :errors_as_post then errors_as_post"
+  ])
+  refute post.include?("def errors ")
+  # The FK column asked for the reader by name, so there is nothing to fall back to.
   belongs_to = assert_raises("ArgumentError") do
     Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [])
   end
   assert_includes belongs_to, 'the belongs_to association "hash" is reserved'
 end
 
-test "a column named like an association reader is an error, not a lost association" do
+test "a column named like a has_many reader keeps its name; the association moves, and a belongs_to is an error" do
   definition = Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "articles" do |t|
       t.string "title", null: false
@@ -654,15 +665,33 @@ test "a column named like an association reader is an error, not a lost associat
       t.references :article
       t.string "article"
     end
+    # The fallback name itself taken by a column: now there is nothing left.
+    s.create_table "notes" do |t|
+      t.text "tags"
+      t.text "tags_as_note"
+    end
+    s.create_table "tags" do |t|
+      t.references :note
+    end
   end
-  has_many = assert_raises("ArgumentError") do
-    Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [])
-  end
-  assert_includes has_many, 'column "comments" collides with the has_many (comments.article_id) association'
+  # articles.comments (a text column) wins the plain name, as it did before
+  # the generator checked for the clash; the association is not lost.
+  article = Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [])
+  assert_lines(article, [
+    "attr_accessor :title, :comments",
+    '# has_many comments reads as comments_as_article: "comments" is a column or a Cybertrain::Model method',
+    'def comments_as_article = CommentRelation.new("comments").where(article_id: @id).to_a',
+    "when :comments_as_article then comments_as_article"
+  ])
+  refute article.include?("def comments ")
   belongs_to = assert_raises("ArgumentError") do
     Cybertrain::Gen::ModelsEmitter.emit(definition.table("comments"), definition, [])
   end
   assert_includes belongs_to, 'column "article" collides with the belongs_to (from article_id) association'
+  note = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("notes"), definition, [])
+  end
+  assert_includes note, 'column "tags_as_note" collides with the has_many (tags.note_id) association'
 end
 
 test "initial values: zero values for NOT NULL, nil for nullable, SQL defaults applied" do

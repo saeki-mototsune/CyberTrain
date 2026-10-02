@@ -11,8 +11,8 @@ ok   call_view_method with a scanned summary
 ok   integer, float, boolean, date and datetime casts
 ok   attributes stay attr_accessors (no def writers: NOTES rule 43) and order_sql is emitted
 ok   emit rejects column names that are invalid or collide with model methods
-ok   an association reader named like a Model method is an error too
-ok   a column named like an association reader is an error, not a lost association
+ok   a has_many named like a Model method moves to <table>_as_<stem>; a belongs_to is an error
+ok   a column named like a has_many reader keeps its name; the association moves, and a belongs_to is an error
 ok   initial values: zero values for NOT NULL, nil for nullable, SQL defaults applied
 ok   string defaults are emitted as escaped Ruby literals
 ok   a nullable foreign key and a foreign key to a differently named column
@@ -25,4 +25,4 @@ ok   scan_source skips class << self, nested classes and later classes
 ok   scan_source inside a module stops at the class's own end
 ok   view_methods_for picks the scanned methods of one model
 ok   outputs maps gen/models paths to sources for every table
-27 tests, 142 assertions, 0 failures
+27 tests, 165 assertions, 0 failures

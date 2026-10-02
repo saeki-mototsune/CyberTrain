@@ -82,6 +82,53 @@ test "a BEGIN left open inside a checkout is rolled back, and logged, when the c
   DB.disconnect
 end
 
+# A logger whose IO is gone, as at shutdown: the warning cannot be written.
+# Returns nil like Logger#warn (same name, same type: NOTES rule 10).
+class BrokenLogger < Cybertrain::Logger
+  def warn(msg)
+    raise "log IO closed" unless msg.empty?
+    nil
+  end
+end
+
+test "a BEGIN run and rolled back by hand is a clean check-in: no warning" do
+  log = StringIO.new
+  Cybertrain.logger = Cybertrain::Logger.new(log, :info)
+  DB.connect(":memory:")
+  DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
+  DB.with { |c| c.exec_script("BEGIN"); c.exec_script("ROLLBACK") }
+  assert_equal "", log.string
+  DB.disconnect
+end
+
+# The message of the RuntimeError a leaked BEGIN raises through the broken
+# logger ("" when nothing was raised). A method of its own rather than
+# `assert_raises { DB.with { ... } }`: with the checkout nested in another
+# block, Spinel typed the block's return path wrongly in the generated C
+# ("incompatible types when returning type 'sp_RbVal' but 'sp_int' was
+# expected"), NOTES rule 32 again.
+def leak_through_broken_logger
+  message = ""
+  begin
+    DB.with { |c| leave_begin_open(c) }
+  rescue RuntimeError => e
+    message = e.message
+  end
+  message
+end
+
+test "the connection goes back to the pool even when the leak warning cannot be logged" do
+  Cybertrain.logger = BrokenLogger.new
+  DB.connect(":memory:")
+  DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
+  assert_equal "log IO closed", leak_through_broken_logger
+  # The ":memory:" pool has one connection: a leak would park this forever.
+  assert_equal 0, DB.with { |c| post_count(c) }
+  assert DB.with { |c| clean?(c) }
+  DB.disconnect
+  Cybertrain.logger = Cybertrain::Logger.new
+end
+
 test "abandon_transaction! leaves a clean connection alone" do
   conn = posts_db
   conn.execute("INSERT INTO posts (title) VALUES (?)", ["kept"])
