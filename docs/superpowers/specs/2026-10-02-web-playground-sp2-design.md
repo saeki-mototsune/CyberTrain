@@ -2329,3 +2329,118 @@ VPS とドメインでしか確かめられないもの（§7.7、§8.6）:
 28. 監視は `/status.json` と任意の GitHub の定期実行。VPS に警報の仕組みを置かない（§7.10）。
 29. サイトの入口は公開の別コミットで、サイトから 1 回の押下で作成する（§9.1）。
 30. 最上位に `SECURITY.md`（§9.5）。
+
+## 15. 承認後の検証と訂正（2026-10-02、実装の前）
+
+§12.1 のうち Docker と Caddy とブラウザだけで確かめられる 7 項目を、実装の前に使い捨ての試験で確かめた
+（Docker Engine 29.7.2 / Docker Desktop の linux/arm64、Caddy 2.10.2（`caddy:2.10-alpine`）で実行し 2.11.4 で
+設定を検証、code-server 4.139.1、Chromium 154。試験のイメージは SP1 のイメージとスパイクの code-server で、
+本書の `web` イメージそのものではない）。この節は本文の該当箇所に優先する。
+
+| # | 結果 [計測] |
+| --- | --- |
+| V1 | 書いたとおり動く。`--disable-proxy` あり、`--proxy-domain` なし、`VSCODE_PROXY_URI` だけで、タスクが起動したサーバーが検出され、Simple Browser が `3000-<pid>` のホストで自分で開き、Ports ビューも同じ URL を示す。ポートの表示名と openPreview はユーザー設定から効いた（V9 の一部） |
+| V2 | 書いたとおり動く。`header_regexp` の捕獲は上流のアドレスにもヘッダの値にも使え、ルーターは `s-` / `p-` の別名を引け、WebSocket は 101 で通る。存在しない別名はエディタで 404 のページ、プレビューで 502 のページになる |
+| V3 | 書いたとおり動く。`--internal` + `inhibit_ipv4=true` + 明示した /28 は受け付けられ、ブリッジは IPv4 を持たず、セッションはゲートウェイにもホストにも届かない。対照: `inhibit_ipv4` なしの `--internal` はブリッジのアドレスでホストのリスナーに届く（このオプションは必須で、E2E で確かめ続ける） |
+| V4 | 書いたとおり動く。セッションの中で外の名前は引けず、外への通信は一切ない |
+| V20 | 書いたとおり動く。セッションの範囲からルーターへの接続は空の応答で切れ、それ以外は通る |
+| V21 | 1 か所の変更で動く（訂正 2） |
+| V22 | フラグは書いたとおり動く（uid、gid、mode、size が効き、uid 1000 が書ける）。ただし訂正 1 が要る |
+
+訂正:
+
+1. **§4.1（実装を止める誤り）**: web ステージを `WORKDIR /workspace/blog` で終えると、`--tmpfs /workspace` の下では
+   runc がエントリポイントより先に、空で root 所有（755）の `/workspace/blog` を tmpfs の中に作る。§4.6 の手順 1 は
+   `/workspace` が空でないと見て種の写しを飛ばし、dev は `/workspace/blog` に書けない。web ステージは
+   `WORKDIR /workspace`（マウントポイントそのもの）で終える。タスクと端末はワークスペースのフォルダを使うので、
+   他に影響はない。制御面の `docker run` と同じフラグで起動したコンテナに、種から写した dev 所有の
+   `/workspace/blog` があることを web のスモークテストで確かめる。
+2. **§6.1 の `handle_errors`**: `@apex_error host {$PLAY_DOMAIN}` は入口のすべてのエラーに合うので、`/internal/*` の
+   `error 404` まで 503 の「unavailable」になる。次の形にする（`caddy adapt` は条件を
+   `{http.error.status_code} >= 500` と表示する）:
+
+   ```caddyfile
+   	handle_errors {
+   		header {
+   			Cache-Control no-store
+   			X-Robots-Tag "noindex, nofollow"
+   			Referrer-Policy no-referrer
+   		}
+   		root * /srv/pages
+   		# Only the control plane's own failures (5xx) get the "not available"
+   		# page; a 404 on the apex (/internal/*) gets the 404 page below.
+   		@apex_error {
+   			host {$PLAY_DOMAIN}
+   			expression {err.status_code} >= 500
+   		}
+   		handle @apex_error {
+   			rewrite * /unavailable.html
+   			templates
+   			file_server {
+   				status 503
+   			}
+   		}
+   		@preview_error header_regexp Host ^3000-[0-9a-f]{32}\.
+   		handle @preview_error {
+   			rewrite * /app-down.html
+   			templates
+   			file_server {
+   				status 502
+   			}
+   		}
+   		handle {
+   			rewrite * /ended.html
+   			templates
+   			file_server {
+   				status 404
+   			}
+   		}
+   	}
+   ```
+
+3. **ルーターは `--dns 127.0.0.1` で動かす（§7.2、§8.1）**: ルーターは内部でないネットワーク（`kamal`）にもいるので、
+   生きた別名の無い id の問い合わせはホストのリゾルバへ転送される。終わったセッションの id（持参人払いの能力）が
+   VPS の事業者のリゾルバへ出ていき、リゾルバが遅いと「No session」のページが約 3 秒遅れる。`--dns 127.0.0.1` なら
+   404 / 502 は数ミリ秒で返り、何も外へ出ず、生きた別名と `ctplay-control` は引ける。ルーターは外の名前を
+   必要としない（`auto_https off`）。compose では `dns: 127.0.0.1`、Kamal では `options` の `dns`
+   （Kamal 側は V13 と一緒に VPS で確かめる）。
+4. **片付けの順序と keep-alive（§5.4、§5.8、§6.1）**: 順序は §5.4 のとおり「セッションのコンテナを消す → ルーターを
+   ネットワークから外す → ネットワークを消す」を守る。逆（先にルーターを外す）にすると、Caddy が上流への接続を
+   使い回すため、生きているセッションへの次のリクエストが切れた経路の接続に乗って 3 分以上返らなかった。
+   順序に頼らないよう、セッション向けの 2 つの上流は keep-alive を切る:
+
+   ```caddyfile
+   			reverse_proxy s-{re.editor.1}:8080 {
+   				transport http {
+   					keepalive off
+   				}
+   			}
+   ```
+
+   ```caddyfile
+   			reverse_proxy p-{re.preview.1}:3000 {
+   				transport http {
+   					keepalive off
+   				}
+   			}
+   ```
+
+   この形で WebSocket は 101、プレビューは 200、コンテナを消した後もルーターを外した後も 404 のページが
+   4〜13 ms で返った。片付けの argv の順序は単体テストで固定し、終わった直後のセッションへのリクエストが
+   数秒以内に 404 のページになることを E2E で確かめる。
+5. **§5.5**: `inhibit_ipv4` のネットワークにはゲートウェイが無く、最初のコンテナが `.1` を取る
+   （`.IPAM.Config[0].Gateway` は空）。/28 の中のゲートウェイの予約は当たらない。害はない（§5.4 が読むのは
+   `.Subnet` だけ）。
+6. **ルーターの `ip_forward`（追加、念のため）**: ルーターのネットワーク名前空間ではホストから引き継いだ
+   `net.ipv4.ip_forward=1` が立っており、ルーターは `kamal` と全セッションのネットワークにまたがる。セッションは
+   全ケーパビリティなしなので他所あてのフレームを渡せないはず [推論] だが、ルーターを
+   `--sysctl net.ipv4.ip_forward=0` で動かす（`docker run` では受け付けられ、中で 0 と読める。Kamal の `options` は
+   V13 と一緒に確かめ、通らなければ外す）。
+7. **ルーターの接続と切断は他のセッションを乱さない**: 別のセッションのネットワークへの
+   `docker network connect` / `disconnect` の前後で、生きているエディタの接続は同じままで、ブラウザに再接続の
+   表示は出なかった。
+
+まだ手元で確かめていないもの: V5〜V11 と V19（本書の `web` イメージそのもので、plan のタスクが確かめる）。
+Docker Desktop では確かめられず VPS で確かめるもの: セッションからホストの実サービスへの到達と §7.5 の規則、
+事業者のメタデータと私設網、デーモンが IPv6 を有効にしている場合の IPv6、実際のリゾルバへの転送、kamal-proxy と
+Cloudflare の経路（V12〜V16。切れた経路の接続はそこでは 504 / 524 として見える）、`runsc` の下でのこの節の全項目。
