@@ -32,6 +32,10 @@
   "terminal.integrated.confirmOnKill": "never",
   "terminal.integrated.showExitAlert": false,
   "terminal.integrated.gpuAcceleration": "off",
+  // The editor URL's payload opens the guide on every load, a reload too, and
+  // VS Code restores no other editor when it has files to open: without this
+  // the preview does not come back after a reload (B4, checked).
+  "window.restoreWindows": "preserve",
   // Closing the tab loses nothing (the session runs on), so no "Leave site?".
   "window.confirmBeforeClose": "never"
 }
