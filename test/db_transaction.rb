@@ -50,25 +50,36 @@ def clean?(conn)
   rolled_back && begin_ok
 end
 
+# What a block that escapes `transaction` past its rescue would leave behind:
+# autocommit off, nothing to COMMIT it. Done by hand, since under Spinel no
+# such escape even compiles. Returns the rows visible inside the checkout.
+def leave_begin_open(conn)
+  conn.exec_script("BEGIN")
+  conn.execute("INSERT INTO posts (title) VALUES (?)", ["open"])
+  post_count(conn)
+end
+
+# A transaction on the next checkout must work normally again.
+def commit_after(conn)
+  conn.transaction { conn.execute("INSERT INTO posts (title) VALUES (?)", ["after"]) }
+  post_count(conn)
+end
+
+# Every DB.with block here is a one-line call into a method (the shape
+# test/db_sqlite.rb compiles with): calling `transaction`, whose yield sits
+# inside a rescue, from a block nested in another block does not compile
+# under Spinel (NOTES rule 32: "assigning to 'volatile sp_RbVal' from
+# incompatible type 'sp_Exception *'", CI on PR #10).
 test "a BEGIN left open inside a checkout is rolled back when the connection comes back" do
   DB.connect(":memory:")
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
-  DB.with do |c|
-    # What a block that escapes `transaction` past its rescue leaves behind:
-    # autocommit off, nothing to COMMIT it. Done by hand here, since under
-    # Spinel no such escape even compiles.
-    c.exec_script("BEGIN")
-    c.execute("INSERT INTO posts (title) VALUES (?)", ["open"])
-    # Still inside the checkout: the BEGIN stays open until the connection
-    # goes back, which is what makes the pool the right place to clean up.
-    assert_equal 1, post_count(c)
-  end
-  DB.with do |c|
-    assert_equal 0, post_count(c)
-    assert clean?(c)
-    c.transaction { c.execute("INSERT INTO posts (title) VALUES (?)", ["after"]) }
-    assert_equal 1, post_count(c)
-  end
+  # Still inside the checkout the row is there: the BEGIN stays open until
+  # the connection goes back, which is what makes the pool the place to
+  # clean up.
+  assert_equal 1, DB.with { |c| leave_begin_open(c) }
+  assert_equal 0, DB.with { |c| post_count(c) }
+  assert DB.with { |c| clean?(c) }
+  assert_equal 1, DB.with { |c| commit_after(c) }
   DB.disconnect
 end
 
