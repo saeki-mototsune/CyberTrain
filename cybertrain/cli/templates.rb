@@ -46,7 +46,7 @@ module Cybertrain
       # letter-first since it names packages, binaries and files too; one
       # definition of the characters, so the two cannot drift apart.
       def self.identifier?(word)
-        Ident.column?(word) && word == word.downcase && !word.start_with?("_")
+        Ident.snake_case?(word, false)
       end
 
       # "blog_posts" -> "Blog posts"

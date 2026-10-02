@@ -14,6 +14,7 @@ ok   emit rejects column names that are invalid or collide with model methods
 ok   an association reader named like an Object method keeps its name and gets the note a column gets
 ok   a capitalised foreign key gets a capitalised reader, dispatched with an explicit receiver
 ok   an association named like a Model method moves to its fallback name instead of shadowing it
+ok   an association named like a Ruby keyword moves to its fallback name and the note says keyword
 ok   a column named like an association reader keeps its name; the association moves to its fallback name
 ok   a has_many through two foreign keys whose _as_<stem> name is taken falls back to the full column
 ok   a has_many named like a belongs_to reader of the same model is renamed, not dropped
@@ -29,4 +30,4 @@ ok   scan_source skips class << self, nested classes and later classes
 ok   scan_source inside a module stops at the class's own end
 ok   view_methods_for picks the scanned methods of one model
 ok   outputs maps gen/models paths to sources for every table
-31 tests, 196 assertions, 0 failures
+32 tests, 209 assertions, 0 failures

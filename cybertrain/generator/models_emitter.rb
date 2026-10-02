@@ -88,7 +88,11 @@ module Cybertrain
             raise ArgumentError, "table #{table.name}: column #{name.inspect} is not a valid attribute name " \
                                  "(use letters, digits and _, not starting with a digit)"
           end
-          if Ident.keyword?(name) || Ident.reserved_column?(name)
+          if Ident.keyword?(name)
+            raise ArgumentError, "table #{table.name}: column #{name.inspect} is a Ruby keyword " \
+                                 "and cannot name a column; rename it"
+          end
+          if Ident.reserved_column?(name)
             raise ArgumentError, "table #{table.name}: column #{name.inspect} is reserved " \
                                  "(it would shadow a method of Cybertrain::Model or Object); rename it"
           end
@@ -254,8 +258,8 @@ module Cybertrain
 
         if owned?(fallback, taken, assoc_names)
           raise ArgumentError, "table #{table.name}: the #{kind} association can be neither #{plain.inspect} nor " \
-                               "#{fallback.inspect} (a column, another association or a Cybertrain::Model method " \
-                               "owns each); rename a column"
+                               "#{fallback.inspect} (a column, another association, a Cybertrain::Model method or a " \
+                               "Ruby keyword owns each); rename a column"
         end
         fallback
       end
@@ -264,7 +268,13 @@ module Cybertrain
         taken.include?(name) || assoc_names.include?(name) || Ident.keyword?(name) || Ident.reserved_column?(name)
       end
 
+      # A keyword is not a method of anything: say so instead of the
+      # Model-method wording (the other cases keep their exact text).
       def self.association_note(kind, plain, name)
+        if Ident.keyword?(plain)
+          return "# #{kind} reads as #{name}: #{plain.inspect} is a Ruby keyword"
+        end
+
         "# #{kind} reads as #{name}: #{plain.inspect} is a column, another association or a Cybertrain::Model method"
       end
 

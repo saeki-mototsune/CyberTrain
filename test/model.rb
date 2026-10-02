@@ -592,6 +592,10 @@ test "order validates its columns and quotes them" do
   assert_equal 'SELECT * FROM `posts` ORDER BY `title` DESC, `id`', Post.order("title DESC, id").to_sql
   assert_equal 'SELECT * FROM `posts` ORDER BY `title` ASC, `id` DESC', Post.order("  title  asc ,id desc ").to_sql
   assert_equal 'SELECT * FROM `posts`', Post.order("").to_sql
+  # A Symbol is its name and nil is no order, not a NoMethodError on strip.
+  assert_equal Post.order("title").to_sql, Post.order(:title).to_sql
+  assert_equal 'SELECT * FROM `posts` ORDER BY `title`', Post.order(:title).to_sql
+  assert_equal 'SELECT * FROM `posts`', Post.order(nil).to_sql
   ["title; DROP TABLE posts", "title DESC; DROP", "lower(title)", "title, ", ",title", "title DESCX",
    "title DESC id", "1title", "posts.title", "title--"].each do |bad|
     message = assert_raises("ArgumentError") { Post.order(bad) }

@@ -14,8 +14,13 @@ module Cybertrain
     # absent: the primary key is Model#id. Names that end in `?` or `!`
     # cannot be columns at all (column? rejects them), so `valid?`,
     # `persisted?`, `is_a?` need no entry; keywords (`class`) live in
-    # RUBY_KEYWORDS only. script/check-reserved-names keeps the Model and
-    # Object groups here and in SHADOWING_COLUMN_NAMES in step with the code.
+    # RUBY_KEYWORDS only. Class methods (`table_name`, `column_names`,
+    # `from_row`) need no entry either: the framework calls them on the
+    # class (`self.class.table_name`, `Post.from_row`), which a column
+    # reader on the instance does not shadow, so a schema with a
+    # `table_name` column keeps generating. script/check-reserved-names
+    # keeps the Model and Object groups here and in SHADOWING_COLUMN_NAMES
+    # in step with the code (it skips `def self.` methods).
     RESERVED_COLUMN_NAMES = [
       # Cybertrain::Model: its methods and the ivars behind them (`errors`,
       # `persisted` -> @errors, @persisted)
@@ -23,8 +28,7 @@ module Cybertrain
       "reload", "model_name", "to_json", "as_json", "to_param", "to_row",
       "load_row", "set_id", "run_callbacks", "insert_row", "update_row",
       "read_attribute", "write_attribute", "assign_attributes",
-      "read_association", "call_view_method", "initialize", "table_name",
-      "column_names", "from_row",
+      "read_association", "call_view_method", "initialize",
       # Object methods Ruby or the framework calls on a record without being
       # asked: string interpolation and templates (to_s), error messages
       # (inspect), Hash keys (hash)
@@ -99,6 +103,16 @@ module Cybertrain
         first = false
       end
       ok
+    end
+
+    # The snake_case subset of column?: lowercase only, and a leading `_`
+    # only when allowed. CLI::Templates.identifier? (app, resource and field
+    # names: letter-first) and Template::Lexer.identifier? (template locals
+    # and block parameters: `_x` allowed) are both this predicate, so the two
+    # cannot drift. A positional default rather than a keyword argument: this
+    # file compiles under Spinel and keeps to the shapes it already uses.
+    def self.snake_case?(word, leading_underscore = true)
+      column?(word) && word == word.downcase && (leading_underscore || !word.start_with?("_"))
     end
 
     def self.keyword?(name)

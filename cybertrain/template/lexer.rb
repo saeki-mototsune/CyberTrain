@@ -183,7 +183,7 @@ module Cybertrain
       # A template-language identifier (a `locals:` name, a block parameter):
       # the lowercase subset of Ident.column?, leading `_` allowed.
       def self.identifier?(s)
-        Ident.column?(s) && s == s.downcase
+        Ident.snake_case?(s)
       end
     end
   end

@@ -26,9 +26,11 @@ module Cybertrain
         end
         # The name reaches the shell through quote_arg, so any spelling is
         # safe there; only what breaks the build/bin/<name> path is refused
-        # ("my-app" and "MyApp" are fine for `spin build`).
-        if name.include?("/") || name.match?(/\s/)
-          raise InvalidArgument, "spin.toml [package] name '#{name}' cannot contain '/' or whitespace"
+        # ("my-app" and "MyApp" are fine for `spin build`). "." and ".." name
+        # build/bin/. and build/bin/.., which exist already (the latter is
+        # build/) and only fail later, in assemble's cp.
+        if name == "." || name == ".." || name.include?("/") || name.match?(/\s/)
+          raise InvalidArgument, "spin.toml [package] name '#{name}' cannot be '.' or '..' or contain '/' or whitespace"
         end
 
         name

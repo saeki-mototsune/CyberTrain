@@ -44,11 +44,16 @@ end
 test "app_name rejects only a name that breaks the build/bin/<name> path" do
   File.write("spin.toml", "[package]\nname = \"x; touch PWNED #\"\n")
   message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
-  assert_equal "spin.toml [package] name 'x; touch PWNED #' cannot contain '/' or whitespace", message
+  assert_equal "spin.toml [package] name 'x; touch PWNED #' cannot be '.' or '..' or contain '/' or whitespace", message
   assert_equal 1, Cybertrain::CLI.run(["build"])
   refute File.exist?("PWNED")
   File.write("spin.toml", "[package]\nname = \"a/b\"\n")
   assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+  # "." and ".." would make build/bin/<name> the directory itself or build/.
+  [".", ".."].each do |dots|
+    File.write("spin.toml", "[package]\nname = \"#{dots}\"\n")
+    assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+  end
   # Shell safety comes from quote_arg, not from the spelling: a hand-written
   # "my-app" or "MyApp" builds as it did before the check existed.
   File.write("spin.toml", "[package]\nname = \"my-app\"\n")

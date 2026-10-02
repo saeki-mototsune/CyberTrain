@@ -192,6 +192,27 @@ test "a closed :memory: connection is an error on the next checkout, never a fre
   DB.disconnect
 end
 
+# The error a checkout raises on a pool that close_all shut down ("" when it
+# did not raise). A method, not an assert_raises block around Pool#with
+# (NOTES rule 32).
+def checkout_after_close_all(pool)
+  message = ""
+  begin
+    pool.with { |c| 1 }
+  rescue DB::Error => e
+    message = e.message
+  end
+  message
+end
+
+test "a pool that close_all shut down refuses every checkout instead of reopening" do
+  pool = DB::Pool.new(":memory:")
+  pool.close_all
+  assert_equal "pool closed", checkout_after_close_all(pool)
+  # And again: it raises before touching the queue, so it cannot hang.
+  assert_equal "pool closed", checkout_after_close_all(pool)
+end
+
 test "abandon_transaction! leaves a clean connection alone and says so" do
   conn = posts_db
   conn.execute("INSERT INTO posts (title) VALUES (?)", ["kept"])

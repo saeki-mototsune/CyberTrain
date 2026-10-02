@@ -607,15 +607,20 @@ def emit_error(name)
 end
 
 test "emit rejects column names that are invalid or collide with model methods" do
-  ["errors", "persisted", "class", "hash", "inspect", "to_s",
+  ["errors", "persisted", "hash", "inspect", "to_s",
    "attributes", "save", "update", "destroy", "reload", "model_name",
-   "to_json", "as_json", "end", "def", "nil", "self", "BEGIN", "__FILE__",
+   "to_json", "as_json",
    # The hooks Ruby calls on its own.
    "to_ary", "to_str", "to_hash", "to_proc", "to_int", "method_missing",
    # The one Kernel method the model calls on implicit self: a `raise` column
    # would turn Model#save!'s `raise RecordInvalid, ...` into a call of the reader.
    "raise", "fail"].each do |bad|
     assert emit_error(bad).include?("is reserved"), "#{bad} should be rejected"
+  end
+  # A keyword shadows no method: it is told so, not that it is "reserved".
+  ["class", "end", "def", "nil", "self", "BEGIN", "__FILE__"].each do |bad|
+    assert emit_error(bad).include?("is a Ruby keyword and cannot name a column"), "#{bad} should be rejected as a keyword"
+    refute emit_error(bad).include?("is reserved"), "#{bad} is not a reserved name"
   end
   ["1st", "a-b", "a b", "a.b", "", "valid?", "ünïcode"].each do |bad|
     assert emit_error(bad).include?("not a valid attribute name"), "#{bad.inspect} should be rejected"
@@ -627,7 +632,10 @@ test "emit rejects column names that are invalid or collide with model methods" 
   # ... and private Kernel methods nothing in the class calls are ordinary
   # columns (issues.open, documents.format, trucks.load).
   ["title", "_x", "a1", "group", "new_record", "is_a", "frozen", "createdAt", "userId", "Title", "X1",
-   "open", "format", "load", "print", "select", "test", "sleep"].each do |ok|
+   "open", "format", "load", "print", "select", "test", "sleep",
+   # Class methods of Model / the generated class: a column reader on the
+   # instance shadows none of them (an audit table's table_name column).
+   "table_name", "column_names", "from_row"].each do |ok|
     assert_equal "", emit_error(ok)
   end
   # Object methods nothing in Cybertrain calls on a record: accepted, with a
@@ -714,6 +722,24 @@ test "an association named like a Model method moves to its fallback name instea
     "when :hash_as_hash_id then self.hash_as_hash_id"
   ])
   refute thing.include?("def hash ")
+end
+
+test "an association named like a Ruby keyword moves to its fallback name and the note says keyword" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "lessons" do |t|
+      t.references :class, foreign_key: false
+    end
+    s.create_table "klasses" do |t|
+      t.string "title"
+    end
+    s.add_foreign_key "lessons", "klasses", column: "class_id"
+  end
+  lesson = Cybertrain::Gen::ModelsEmitter.emit(definition.table("lessons"), definition, [])
+  assert_lines(lesson, [
+    '# belongs_to class_id reads as class_as_class_id: "class" is a Ruby keyword',
+    "def class_as_class_id = Klass.find_by(id: @class_id)"
+  ])
+  refute lesson.include?("Cybertrain::Model method")
 end
 
 test "a column named like an association reader keeps its name; the association moves to its fallback name" do

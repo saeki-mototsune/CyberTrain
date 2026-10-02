@@ -1,5 +1,5 @@
 ok   app_name reads [package] name from spin.toml
-error: spin.toml [package] name 'x; touch PWNED #' cannot contain '/' or whitespace
+error: spin.toml [package] name 'x; touch PWNED #' cannot be '.' or '..' or contain '/' or whitespace
 ok   app_name rejects only a name that breaks the build/bin/<name> path
 ok   command strings quote every interpolated value
 ok   an empty application name is an error, not an empty spin argument
@@ -29,4 +29,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-17 tests, 79 assertions, 0 failures
+17 tests, 81 assertions, 0 failures

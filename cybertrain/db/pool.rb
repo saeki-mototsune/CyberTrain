@@ -15,11 +15,22 @@ module Cybertrain
 
       def initialize(path, size = 4)
         @path = path
-        @size = path == ":memory:" ? 1 : size
+        # The one place that knows what a ":memory:" path means: its single
+        # connection *is* the database, so the pool holds exactly one, never
+        # closes it after a failed ROLLBACK (check_in) and never replaces a
+        # closed one (reopen): either would drop every table. Another
+        # in-memory spelling is a change to this line only.
+        @reopenable = path != ":memory:"
+        @size = @reopenable ? size : 1
         @connections = []
         # Guards @connections: `with` runs on every connection thread and
         # reopen rewrites the list (the SizedQueue covers the handing out).
         @lock = Mutex.new
+        # Set by close_all. Every connection is closed then but stays in
+        # @available, so without this flag `with` would take them for slots
+        # whose ROLLBACK failed (see check_in) and reopen them on a pool
+        # nobody references any more.
+        @closed = false
         @available = SizedQueue.new(@size)
         @size.times do
           conn = Connection.new(path)
@@ -31,13 +42,17 @@ module Cybertrain
       # The connection goes back clean: a transaction the block left open
       # is rolled back first -- see Connection#abandon_transaction! -- and
       # the log says so, since the writes are gone and nothing else would.
-      # A slot holding a closed connection (check_in closed it after a
-      # failed ROLLBACK) is reopened here, on the checkout that needs it:
+      # A pool that close_all shut down raises "pool closed" before it pops
+      # anything (the closed connections are still queued; nothing may be
+      # reopened or run against them), every time.
+      # Otherwise a slot holding a closed connection (check_in closed it after
+      # a failed ROLLBACK) is reopened here, on the checkout that needs it:
       # should the open fail, its error reaches this caller before the block
       # runs (no exception of the block's is masked) and the ensure puts the
       # closed connection back, so the slot survives and the next checkout
       # tries again.
       def with
+        raise Error, "pool closed" if @closed
         conn = @available.pop
         begin
           conn = reopen(conn) if conn.closed?
@@ -47,8 +62,12 @@ module Cybertrain
         end
       end
 
+      # Marks the pool closed first (see `with`), then closes every connection.
       def close_all
-        @lock.synchronize { @connections.each(&:close) }
+        @lock.synchronize do
+          @closed = true
+          @connections.each(&:close)
+        end
       end
 
       private
@@ -61,9 +80,8 @@ module Cybertrain
       # transaction, where the next checkout's plain `execute` would write
       # into it and a later check-in would discard that write under the wrong
       # block's name; so it is closed, and `with` reopens the slot on the next
-      # checkout. Not for ":memory:": that one connection *is* the database,
-      # closing it would drop every table, so it stays and the error line is
-      # the only remedy.
+      # checkout. Not when the pool is not @reopenable (":memory:", see
+      # initialize): the connection stays and the error line is the only remedy.
       # Returns nil: the `if` must not be the method's value (a Logger
       # subclass's `warn` can type differently from Logger#warn, rule 10).
       def check_in(conn)
@@ -72,13 +90,13 @@ module Cybertrain
           if outcome == :rolled_back
             Cybertrain.logger.warn("rolled back a transaction left open on a pooled connection (a BEGIN without COMMIT)")
           elsif outcome == :failed
-            if @path == ":memory:"
-              Cybertrain.logger.error("could not roll back a transaction left open on the :memory: connection; " \
-                                      "it stays in the pool inside that transaction (closing it would drop the database)")
-            else
+            if @reopenable
               Cybertrain.logger.error("could not roll back a transaction left open on a pooled connection; " \
                                       "closed it, the next checkout reopens #{@path}")
               conn.close
+            else
+              Cybertrain.logger.error("could not roll back a transaction left open on the :memory: connection; " \
+                                      "it stays in the pool inside that transaction (closing it would drop the database)")
             end
           end
           nil
@@ -90,13 +108,15 @@ module Cybertrain
 
       # A fresh connection for a slot whose connection was closed, taking the
       # closed one's place in @connections (a persistent disk fault must not
-      # grow the list). Never for ":memory:": that one connection is the
-      # database, a fresh one would be an empty database with no tables and
-      # no trace, so a closed ":memory:" connection (user code closed it) is
-      # an error on every later checkout, as it was before the pool reopened
-      # anything.
+      # grow the list). Never when the pool is not @reopenable (":memory:", see
+      # initialize): a fresh connection would be an empty database with no
+      # tables and no trace, so a closed one (user code closed it) is an error
+      # on every later checkout, as it was before the pool reopened anything.
+      # Nor once close_all ran: a `with` that popped its connection
+      # just before close_all finds it closed by the shutdown, not by check_in.
       def reopen(closed)
-        if @path == ":memory:"
+        raise Error, "pool closed" if @closed
+        unless @reopenable
           raise Error, "the :memory: connection was closed (Connection#close inside a checkout); " \
                        "reopening it would start an empty database"
         end

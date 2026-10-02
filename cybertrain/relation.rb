@@ -72,9 +72,12 @@ module Cybertrain
     # order("title DESC, id"): a comma-separated list of `column [ASC|DESC]`,
     # each column quoted. Anything else (expressions, functions, a stray
     # `;`) raises: order(params[:sort]) must not become SQL. Raw ORDER BY
-    # text goes through add_order_sql (the models' `order_sql`).
+    # text goes through add_order_sql (the models' `order_sql`). A Symbol is
+    # taken as its name (order(:title) is the common Rails spelling; the
+    # column still goes through Ident.column?) and nil as no order. One
+    # to_s up front, so a non-String never reaches `strip` as a NoMethodError.
     def set_order(order)
-      stripped = order.strip
+      stripped = order.to_s.strip
       if stripped == ""
         @order = ""
         return nil
