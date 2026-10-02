@@ -11,6 +11,7 @@ on:
       - "playground/**"
       - ".devcontainer/**"
       - "cybertrain/**"
+      - "cybertrain.rb"
       - "cybertrain.gemspec"
       - "spin.toml"
       - "exe/**"
@@ -23,6 +24,7 @@ on:
       - "playground/**"
       - ".devcontainer/**"
       - "cybertrain/**"
+      - "cybertrain.rb"
       - "cybertrain.gemspec"
       - "spin.toml"
       - "exe/**"
@@ -51,9 +53,17 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: devcontainer.json parses
-        run: npx --yes @devcontainers/cli@0 read-configuration --workspace-folder . > /dev/null
+      - name: The tag is v + Cybertrain::VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+          test "$GITHUB_REF_NAME" = "v$version" || { echo "tag $GITHUB_REF_NAME is not v$version (cybertrain/version.rb)"; exit 1; }
+
+      - name: devcontainer.json is valid JSON
+        run: jq empty .devcontainer/devcontainer.json
 
       - uses: docker/setup-buildx-action@v3
 
@@ -77,10 +87,11 @@ jobs:
           target: playground
           platforms: linux/amd64
           load: true
+          provenance: false
           tags: cybertrain-playground:ci
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=playground-image
-          cache-to: type=gha,mode=max,scope=playground-image
+          cache-to: type=gha,mode=max,scope=playground-image,ignore-error=true
 
       - name: Smoke test
         run: bash playground/smoke.sh cybertrain-playground:ci

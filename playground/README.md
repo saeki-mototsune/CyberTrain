@@ -203,15 +203,17 @@ server started by hand (D4) and the offline app (B3).
 
 [.github/workflows/playground-image.yml](../.github/workflows/playground-image.yml)
 ("Playground image") runs on pull requests and pushes to `main` that touch
-`playground/`, `.devcontainer/`, `cybertrain/`, `cybertrain.gemspec`,
-`spin.toml`, `exe/` or the workflow itself, on every `v*` tag (GitHub does
-not apply path filters to tags), and by hand. It checks that
-`devcontainer.json` parses, builds the `playground` target for `linux/amd64`
-with the GitHub Actions cache (a change to the framework alone rebuilds only
-the mirror and the blog), runs the smoke test and then, except on pull
-requests, pushes the image it tested: `latest` from `main`, `X.Y.Z` and
-`latest` from a tag `vX.Y.Z`, and the given tag from a manual run (Actions →
-Playground image → Run workflow, on `main`).
+`playground/`, `.devcontainer/`, `cybertrain/`, `cybertrain.rb`,
+`cybertrain.gemspec`, `spin.toml`, `exe/` or the workflow itself, on every
+`v*` tag (GitHub does not apply path filters to tags), and by hand. It
+checks that `devcontainer.json` is valid JSON and, on a tag, that the tag is
+`v` + `Cybertrain::VERSION` (any other `v*` tag fails the run before the
+build), builds the `playground` target for `linux/amd64` with the GitHub
+Actions cache (a change to the framework alone rebuilds only the mirror and
+the blog), runs the smoke test and then, except on pull requests, pushes the
+image it tested: `latest` from `main`, `X.Y.Z` and `latest` from a tag
+`vX.Y.Z`, and the given tag from a manual run (Actions → Playground image →
+Run workflow, on `main`).
 
 ## Owner's one-time steps
 
