@@ -2843,6 +2843,15 @@ In Chrome with a new browser profile (no `app.github.dev` cookies), the owner si
 
 With Fallback 1 in place, L2 expects `pwd` = `/workspaces/blog` and L8 counts `pgrep -c -f '^/workspaces/blog/build/bin/blog( \|$)'`.
 
+Added by the whole-branch review (2026-10-02), recorded with the rows above:
+
+- L1/L3: note whether the first server start compiled anything (the Listening line should follow the banner within seconds).
+- L3: also run `id` and expect `uid=1000(dev)`; if Codespaces remapped the user, `/workspace/blog` and `/opt/*` belong to someone else, and the remedy is `"updateRemoteUserUID": false` in `devcontainer.json`.
+- L2: also run `git -C /workspaces/* remote -v` and record the clone's URL (the image's two `insteadOf` rules match only the lower-case `https://github.com/saeki-mototsune/cybertrain`).
+- L8: also close the `server` terminal with its trash icon, then count the servers again: the framework's dev loop treats SIGHUP as a restart request, so the app may survive as an orphan that keeps port 3000 and playground-server's lock. Record what happens; if a server survives without a terminal, add a line to `PLAYGROUND.md`'s "Good to know" on how to stop it (`pkill -f build/bin/`) as a Step 6 fix.
+- Step 3: after the first push, look at the package page for `unknown/unknown` rows (none expected with `provenance: false`).
+- Step 8: also record the smoke test's total time locally and on CI.
+
 - [ ] **Step 6: [EXECUTOR] Apply the fallback for each failing row**
 
 Skip this step when every row passed. Otherwise make the edits for each failing row, then: `bash -n playground/playground-server` if it changed; rebuild and smoke-test locally if `PLAYGROUND.md` or `playground-server` changed (`docker build -f playground/Dockerfile --target playground -t cybertrain-playground:local . && bash playground/smoke.sh cybertrain-playground:local`, expect `smoke: 29 passed, 0 failed`); commit with the message given; push (covered by Step 2's go-ahead; the temporary trigger republishes `latest`); wait for the run as in Step 3; delete the old codespace, create a new one from the same link and redo the rows that changed.
@@ -3073,11 +3082,11 @@ git grep -n '0\.2\.0' -- . ':!docs/superpowers/'
 version=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::VERSION'); grep -q "^version = \"$version\"$" spin.toml && echo "spin.toml matches $version"
 gem build cybertrain.gemspec --output "${TMPDIR:-/tmp}/cybertrain-check.gem"
 git grep -n 'web-playground' -- .github/
-npx --yes @devcontainers/cli@0 read-configuration --workspace-folder . > /dev/null && echo "devcontainer.json parses"
+jq empty .devcontainer/devcontainer.json && echo "devcontainer.json is valid JSON"
 git status --short | grep -v '^??'
 ```
 
-Expected: only `test/cli_new.rb:175` and `test/cli_new.rb:176`; `spin.toml matches 0.2.1`; `Successfully built RubyGem` with `Version: 0.2.1`; nothing from the trigger grep; `devcontainer.json parses`; nothing from the last command (no modified tracked file; untracked entries such as `.playwright-mcp/` are filtered out).
+Expected: only `test/cli_new.rb:175` and `test/cli_new.rb:176`; `spin.toml matches 0.2.1`; `Successfully built RubyGem` with `Version: 0.2.1`; nothing from the trigger grep; `devcontainer.json is valid JSON` (the same `jq empty` check the workflow runs); nothing from the last command (no modified tracked file; untracked entries such as `.playwright-mcp/` are filtered out).
 
 - [ ] **Step 4: The site content rule**
 
@@ -3111,7 +3120,7 @@ facts = [
   /(pop-ups and confirm\(\) dialogs do not work|if the app's tab did not open \(a pop-up blocker\))/,
   /open in browser/,
   /with no network/,
-  %r{docker run --rm -it --init -p 3000:3000 -e cybertrain_host=0\.0\.0\.0 ghcr\.io/saeki-mototsune/cybertrain-playground},
+  %r{docker run --rm -it --init -p 127\.0\.0\.1:3000:3000 -e cybertrain_host=0\.0\.0\.0 ghcr\.io/saeki-mototsune/cybertrain-playground},
   %r{linux/amd64},
   %r{http://localhost:3000},
   %r{playground/readme\.md}
