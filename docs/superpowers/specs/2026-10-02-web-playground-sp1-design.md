@@ -1416,3 +1416,141 @@ jobs:
 19. スモークテストに E1（`cp -a` したコピーが再ビルドなしで起動する）を入れ、フォールバック 1 の前提を CI で毎回確かめる（§8.2）。
 20. サイトのナビの表記は `Playground`、ヒーローのボタンは `Try it in your browser`、closer とフッターは変えない（§7.1、§7.3）。
 21. Codespaces の実機確認はマージ前にブランチから行い（一時的な push トリガーで `latest` を公開）、`v0.2.1` のタグはマージ後に打つ（§10.3、§11）。
+
+## 14. 実装後の差分（as built, 2026-10-02。実機確認は未実施）
+
+ブランチ `web-playground` で plan の 8 タスクとタスクごとのレビュー、ブランチ全体のレビューと
+1 回の修正を終えた時点の記録。開発機での確認: フルの `spin test` が 66/66（92 s）。Docker Desktop
+（linux/arm64）で `--no-cache` のビルドが 146 s、そのイメージでスモークテストの 29 項目がすべて通過（130 s）、
+イメージは圧縮 142 MB、ディスク 597 MB（§1.4 のスパイク値は 143 MB、607 MB）。
+
+未実施: ブランチの push（オーナーの認証が要り、オーナーが後回しにした）。そのためイメージは未公開で、
+ワークフローは GitHub で一度も走っておらず（amd64 のビルド、runner でのミラーの手順、GHCR への push は
+未検証）、§10.3 の実機確認（L1〜L12）も済んでいない。それに頼る記述（`/workspaces` の外の `workspaceFolder`、
+private ポートでの自動プレビュー、実際のプレビューでの Cookie、2 コアでの再ビルド時間など）は未検証で、
+§6.5 のフォールバックは必要になっておらず適用もしていない。
+ブランチの先頭のコミット「TEMP: live check: publish latest from web-playground」は §10.3 の 1 の一時トリガーで、
+確認の後に取り消す。
+
+### 14.1 フレームワーク、イメージ、起動スクリプト（§3〜§6）
+
+1. §3.7: `test/cookies.rb` の `.expected` は CRuby ではなく、コンパイル済みバイナリから
+   `script/regen-snapshot test/cookies.rb` で作る。既存のテスト "parse of a malformed percent-escape does
+   not raise (Spinel diverges from CRuby, which raises ArgumentError)" が CRuby では例外になり、出力が
+   一致しないため。新しい serialize のテストは §3.7 の 2 つに "serialize writes Secure once when secure,
+   same_site None and partitioned are all set"（3 つを全部指定しても `Secure` は 1 回、続けて `Partitioned`）
+   を足した 3 つ。`session_secure` が真の本番アプリを他サイトの枠に出す場合のため（plan の Review Focus 5）。
+2. §3.8・§9: `site/tutorial.html` の環境変数の表（README の表を行ごとに写したもの）にも同じ 3 行を同じ順と
+   文面で足し、重複になった箇条 "The default bind host is `127.0.0.1`; `host` is a `Config` attribute that
+   `config/app.rb` can set." を消した。§9 の対象から漏れていたが、site/README.md の内容規則（"when those
+   change, change the site to match"）が求めるため。
+3. §4.1: ミラーの手順の fetch は `git -C "$mirror" -c safe.directory='*' fetch ...` ではなく次の形:
+   `git -C "$mirror" fetch -q --depth 1 --no-tags --upload-pack "git -c safe.directory='*' upload-pack" /tmp/checkout.git "+HEAD:refs/heads/main"`。
+   バインドした `.git` は dev 以外（ローカルでは root）の所有に見え、git の所有者検査はローカルの fetch が
+   起こす upload-pack の側で走り、fetch に付けた `-c` はそこへ渡らないため（spec の形では最初のビルドが
+   "detected dubious ownership" で止まった）。§4.1 の「所有者を揃えれば git の `safe.directory` 検査に一切
+   かからない」はミラーを clone する側の話で、ミラーを作る側には当たらない。設定は残さない（`/etc/gitconfig`
+   は `insteadOf` 2 本だけ）。使い方のコメントのタグは §10.2 と同じ `cybertrain-playground:local`。
+4. §5.2: `PLAYGROUND.md` の「Start a fresh app」の最後に 1 文 "The new app has no root route, so `/` shows
+   "Not Found": its pages start at `/products`." を足した。新しいアプリの `config/routes.rb` は空で、
+   プレビューの `/` がルーターの "Not Found" だけになり、失敗に見えるため。
+5. §6.2（§13 の 15）: `playground-server` の検査はロックとポートの 2 つではなく 3 つ。ポートの後に
+   `pgrep -u "$(id -u)" -f '^[^ ]*ruby[^ ]* [^ ]*/cybertrain server( |$)'` で同じユーザーの
+   `cybertrain server`（手で起動し、コンパイル中で待ち受けていないもの）を探し、あれば次を出して 0 で終わる:
+   `playground-server: a cybertrain server is already starting, so no second server is started: ${url}`。
+   コンパイル中（Ruby の編集の後で約 1 分）の再アタッチが 2 つ目のサーバーを起こし、そのビルドが
+   `build/bin/gen` を書き換えて、手で起動したサーバーを "Text file busy" で落としたため（修正前のイメージで
+   新しい D4 が `while compiling: exit 137` で落ちたのが赤の証拠）。既知の限界: ポートではなくユーザー単位で、
+   ブログが 3000 で動いている横での `PORT=4000 playground-server` は "already starting" と言って
+   何も起動しない（playground/README.md に記載）。
+
+### 14.2 サイトと README（§7）
+
+6. §7.1・§7.3・§9: CSS は §7.1 の 1 規則 `.step > .cta-row { margin-top: 28px; }`（当初の「新しい CSS
+   規則…を足さない」を実装前に 53b8159 で改めたもの）に加えてもう 1 つ、`@media (max-width: 440px)` の中の
+   `.nav-links .nav-wide-only { display: none; }` と `.nav-links ul { gap: 12px; }`。3 ページの主ナビの
+   "How it works" の `<li>` に class `nav-wide-only` を付けた。4 つ目のリンクで、375 px では "How it works"
+   が 3 行（67 px、64 px のヘッダーより高い）に折れてリストが余白に 11 px はみ出し、360 / 320 px ではページが
+   9 / 49 px 横に動いたため（実測）。最初の 400 px では 401〜437 px（412〜430 px の大きい電話）で 2 行に
+   折れたので 440 px にした（441 px で 4 つのリンクが 3.8 px の余裕で 1 行に入る）。
+7. §7.2: 01 の stage の行は "One click · GitHub Codespaces" ではなく "No install · GitHub Codespaces"。
+   README は 1 クリックとは言っておらず（内容規則）、§1.3 の流れでもボタンの後に「Create codespace」か
+   「Resume」（未ログインならサインインも）が要るため。README の "without installing anything" に合わせた。
+8. §7.2・§9: `<body>` は §7.2 に書いていないが、tutorial と同じ `<body class="tutorial">`（900 px 未満で
+   目次が固定バーになるときの `html:has(body.tutorial) { scroll-padding-top: 92px; }` を効かせる）。
+   `site/README.md` は §9 のとおり冒頭の段落に `playground.html` を足し、`assets/site.js` の説明を "marks the
+   current step in the contents lists" に広げた（目次を持つページが 2 つになったため）。
+9. §7.4・§7.2・§7.5: 文書の `docker run` は `-p 3000:3000` ではなく `-p 127.0.0.1:3000:3000`（README、
+   `site/playground.html`、playground/README.md の「Run it」で同じ 1 行）。`-e CYBERTRAIN_HOST=0.0.0.0`
+   と合わせると開発サーバー（認証なし、開発用のエラーページ）がホストの全インターフェースに出て LAN から
+   届くため（Linux では Docker の規則が ufw を迂回する）。`http://localhost:3000` はそのまま開ける。
+10. §7.5・§12: playground/README.md は spec の次の記述を正した。
+    - Build it: Spinel の `make deps` が prism と rbs の gem を取るので rubygems.org に接続する（§7.5 の 3 は
+      "rubygems is not used"）。接続先の一覧に Docker Hub（`ubuntu:24.04`、`docker/dockerfile:1`）も足した。
+    - URL が `https://github.com/saeki-mototsune/cybertrain` で始まる別のリポジトリは、ミラーに向くのでは
+      なく clone できない（git は一致した接頭辞だけを置き換えるので、`…/cybertrain-foo` は存在しない
+      `…/cybertrain.git-foo` になる）。§7.5 の 10 と §12 の「`insteadOf` は接頭辞の一致」はこの点が誤り。
+    - 2 つの規則は push にも効く: その URL への `git push` は GitHub ではなくミラーに入る（Limitations に
+      記載）。`pushInsteadOf` は足さず、§4.6 の約束（`insteadOf` 2 本）を保つ。Codespaces 自身の clone
+      （`/workspaces` の下）はこの接頭辞に一致しない見込み: GitHub の API が返すリポジトリの正規名は
+      `CyberTrain`（`clone_url` は `https://github.com/saeki-mototsune/CyberTrain.git`。§6.4 の「実体は
+      `cybertrain`」は誤り）で、git は `insteadOf` の接頭辞を大文字小文字を区別して比べるので、その clone の
+      `git pull` と `git push` は GitHub に向くはず。L2 で `git remote -v` を記録して確かめる。
+
+### 14.3 CI とスモークテスト（§8）
+
+11. §8.1（§13 の 18）: ワークフローは全文から次を変えた。
+    - `actions/checkout@v4` に `persist-credentials: false`: 既定では `packages: write` の `GITHUB_TOKEN` が
+      `.git/config` に残り、許可リストの `.git` ごとビルドコンテキストにも入るため。
+    - `npx --yes @devcontainers/cli@0 read-configuration` の手順をやめ、手順 "devcontainer.json is valid JSON"
+      で `jq empty .devcontainer/devcontainer.json`: `read-configuration` は壊れた JSONC も通し、公開の job に
+      版を固定しない npm パッケージを持ち込むだけだったため。以後 `devcontainer.json` はコメントや末尾の
+      カンマの無い厳密な JSON に保つ（§6.5 の代替もそうなっている）。
+    - 2 つのパスの一覧に `cybertrain.rb`: ミラーが運ぶフレームワークの入口で、これだけの変更でもビルドする。
+    - `provenance: false`: runner の Docker が containerd の image store だと `load: true` でも来歴証明が
+      残って push され、GHCR に unknown/unknown の行が出うるため（§8.1 の「付かず」は従来の store の話）。
+    - `cache-to` に `ignore-error=true`: リリースでは main とタグの実行が同じキャッシュに同時に書くので、
+      書き出しの衝突でタグの実行が落ちて `X.Y.Z` が出ないように。
+    - タグのときだけの手順 "The tag is v + Cybertrain::VERSION": タグ名が `v` + `cybertrain/version.rb` の
+      `VERSION` でなければビルドの前に落ちる（付け間違えたタグを公開しない）。
+12. §8.2: 26 項目ではなく 29 項目（plan の Review Focus から足した）。
+    - D3: コンテナの再起動（Codespaces のアイドル停止と再開）の後、サーバーが 1 つだけ戻り、前の記事が残る。
+      `docker restart` が 0 で終わり `.State.StartedAt` が変わったことも求める（再起動しなくても古い
+      サーバーが他の条件を満たしてしまうため）。
+    - D4: 手で起動した `cybertrain server` に触れない。コンパイル中は "is already starting"、待ち受け後は
+      "is already in use" で、どちらも 0 で終わり、サーバーは 1 つ（項目 5）。
+    - C3: `CODESPACES=true` で対話シェルとログインシェル（`bash -ic`、`bash -lc`）が Cookie の 2 変数を
+      持つ（訪問者が新しい端末で起動したサーバーが 403 にならないため）。
+    - B2・B3 は `/tmp` ではなく `/workspace` で走る（ガイドの「Start a fresh app」はブログの隣に作る）。
+      落ちたときはそのログの末尾 40 行を `sed "s/^/  | /"` で字下げして出す（`--rm` で消える原因を残す）。
+    - F1 は時間切れ（60 s で終わらずに消されたコンテナ）も失敗にする（§8.2 は「0 以外で終わり」）。
+    - 時間: コンパイルは A9、D4、B3 の 3 回（§8.2 の目安は 2 回）。開発機で 130 s、CI では未計測。
+
+### 14.4 検証（§10、§11）
+
+13. §10.2 の 3: devcontainer CLI（0.89.0）の `up` は `postAttachCommand` を実行して終わるのを待つ（§10.2
+    は「`up` では走らない」としていた）ので、前面のサーバーで返らない。ローカルの確認は
+    `up --workspace-folder . --skip-post-attach` で行う。フラグなしの `up` を再アタッチとして走らせると、
+    `playground-server` は "already running" で 0 で終わり、サーバーは 1 つのままだった。
+14. §10.3・§11: 実機確認は未実施。§11 の 1 の push はオーナーの手元での承認（SSH エージェント）が要る。
+    チェックリストには最終レビューの観察を足した: L3 で `id`（`uid=1000(dev)` を期待し、違えば
+    `"updateRemoteUserUID": false`）、L1・L3 で最初の起動が何かをコンパイルしたか、L2 で codespace の clone の
+    `git remote -v`、L8 で `server` の端末をゴミ箱のアイコンで閉じた後のサーバーの数（開発ループは SIGHUP を
+    再起動として扱うので、端末のない孤児が 3000 番とロックを持ち続けうる）、公開後のパッケージのページに
+    unknown/unknown の行が無いこと、スモークテストの総時間（ローカルと CI）。フォールバックと L7 の書き換え
+    では playground/README.md の該当する箇条も直す（文字列は plan の Task 9）。結果は playground/README.md
+    （§7.5 の 6・7）に書き、この節も実測で更新する。
+
+### 14.5 直さずに残したもの（最終レビューの「leave」など）
+
+- 3 つ目の検査はユーザー単位（項目 5）。root 所有のロックが残ると、flock の失敗も "already running" と出る。
+- `jq empty` は空のファイルや連結した複数の JSON 値も通す（`jq -e -s 'length == 1'` を足せば防げる）。
+- `v*` のタグはプレリリースでも古いコミットでも `latest` を動かす。`v*` の ref の手動実行は `X.Y.Z` も押す。
+- ヒーローの 3 つのボタンは約 901〜1299 px（1280 を含む）で 2 + 1 に折れる（ラベルはオーナーが変えてよい）。
+- `config/app.rb` のコメント（テンプレートと examples/blog）の変数の一覧に `SPINEL_WORKERS` が以前から無い。
+- smoke.sh を arm64 の機械で公開版（amd64）に当てると、docker の platform の警告で G1、G2、G4、G6 が落ちうる。
+- B2 と B3 が両方落ちると、要約に出る B23 の出力の末尾 40 行から B2 のログが押し出されうる。
+- イメージに `/tmp/sp_ossl_probe.c` が残る。`cybertrain new` が git の detached HEAD の助言を約 15 行出す。
+- 「What opens」は `PLAYGROUND.md` が必ず開くように書いている（開くかは L10 で決まる）。
+- §4.2 の worktree での停止は一度も走らせていない（worktree を作らない制約のため）。
+- 別の仕事: 端末を閉じたとき開発ループが SIGHUP を再起動として扱うこと、Actions の SHA での固定。
