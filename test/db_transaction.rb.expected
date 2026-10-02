@@ -1,5 +1,5 @@
-ok   return from inside a transaction rolls back and leaves autocommit on
-ok   break out of a transaction rolls back and leaves autocommit on
+ok   a transaction left by break is rolled back when the pooled connection comes back
+ok   abandon_transaction! leaves a clean connection alone
 ok   a StandardError rolls back, re-raises and leaves autocommit on
 ok   a normal completion commits
 ok   a nested transaction joins the outer one and an inner raise rolls everything back

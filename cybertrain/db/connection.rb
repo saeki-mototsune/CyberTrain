@@ -1,3 +1,4 @@
+require "json"
 require "cybertrain/db/error"
 require "cybertrain/db/sqlite_ffi"
 
@@ -90,12 +91,16 @@ module Cybertrain
         SQLite3.sqlite3_last_insert_rowid(@db)
       end
 
-      # BEGIN / COMMIT around the block, ROLLBACK (and the exception keeps
-      # propagating) when it raises or exits non-locally (return/break/throw).
-      # A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves SQLite
-      # inside the transaction, so it is rolled back too before the COMMIT
-      # error is re-raised: a pooled connection never goes back mid-transaction.
-      # A nested call just runs its block inside the outer transaction.
+      # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises
+      # (JSON::ParserError named too: not a StandardError under Spinel, NOTES
+      # rule 33). A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves
+      # SQLite inside the transaction, so it is rolled back too before the
+      # COMMIT error is re-raised. A nested call just runs its block inside
+      # the outer transaction. A block that leaves by `break` is not seen
+      # here (no `ensure`: a second ensure in this re-entrant yielding method
+      # broke nested transactions under Spinel, CI on PR #10); the Pool
+      # calls abandon_transaction! on every check-in, so the open BEGIN and
+      # the stale depth never reach the next checkout.
       # Returns nil: the blocks callers pass return unrelated types, and one
       # generic return value would not type-check under Spinel.
       def transaction
@@ -111,20 +116,12 @@ module Cybertrain
 
         exec_script("BEGIN")
         @transaction_depth = 1
-        completed = false
         begin
           yield
-          completed = true
-        ensure
-          # Not completed = the block raised (any Exception, not only
-          # StandardError) or left non-locally (return / break / throw
-          # through a caller). Either way the transaction is rolled back
-          # and the depth reset, so the pooled connection is never handed back
-          # mid-transaction with a depth that makes every later call "nested".
-          unless completed
-            @transaction_depth = 0
-            rollback_quietly
-          end
+        rescue JSON::ParserError, StandardError => e
+          @transaction_depth = 0
+          rollback_quietly
+          raise e
         end
         @transaction_depth = 0
         begin
@@ -133,6 +130,21 @@ module Cybertrain
           rollback_quietly
           raise e
         end
+        nil
+      end
+
+      # Rolls back whatever a `transaction` block left open and resets the
+      # depth. Pool#with runs it when a connection comes back: a block that
+      # left `transaction` by `break` (or anything its rescue cannot see)
+      # otherwise leaves BEGIN open with the depth at 1, so every later
+      # transaction on this pooled connection would count as nested and
+      # nothing would ever be committed. A clean connection is untouched.
+      def abandon_transaction!
+        return nil if @closed
+        return nil if @transaction_depth == 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
+
+        @transaction_depth = 0
+        rollback_quietly
         nil
       end
 

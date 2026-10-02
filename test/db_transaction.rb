@@ -1,14 +1,16 @@
 require "cybertrain/db"
 require "cybertrain/test"
 
-# Connection#transaction must leave the connection in autocommit mode (and
-# @transaction_depth at 0) however its block ends: normally, by an exception,
-# or by a non-local exit (return / break). This program links SQLite through
-# FFI, so its snapshot must come from the compiled binary (NOTES rule 23); the
-# committed one was first captured under CRuby with an FFI shim -- run
-# script/regen-snapshot test/db_transaction.rb on a Spinel machine.
-# (throw/catch and Exception subclasses are deliberately not exercised: the
-# repo has no precedent for them compiling under Spinel.)
+# A pooled connection must come back in autocommit mode (and with
+# @transaction_depth at 0) however a `transaction` block ends: normally, by an
+# exception, or by `break`, which the method's rescue never sees and
+# Pool#with cleans up through Connection#abandon_transaction!. This program
+# links SQLite through FFI, so its snapshot must come from the compiled binary
+# (NOTES rule 23); the committed one was first captured under CRuby with an
+# FFI shim -- run script/regen-snapshot test/db_transaction.rb on a Spinel
+# machine. Not exercised on purpose: `return` from inside the block (under
+# Spinel it ends the block, not the enclosing method), throw/catch and
+# Exception subclasses (no precedent for them compiling under Spinel).
 
 DB = Cybertrain::DB
 
@@ -46,34 +48,32 @@ def clean?(conn)
   rolled_back && begin_ok
 end
 
-def leave_by_return(conn)
-  conn.transaction do
-    conn.execute("INSERT INTO posts (title) VALUES (?)", ["returned"])
-    return 7
-  end
-  8
-end
-
-test "return from inside a transaction rolls back and leaves autocommit on" do
-  conn = posts_db
-  assert_equal 7, leave_by_return(conn)
-  assert_equal 0, post_count(conn)
-  assert clean?(conn)
-  conn.transaction { conn.execute("INSERT INTO posts (title) VALUES (?)", ["after"]) }
-  assert_equal 1, post_count(conn)
-  conn.close
-end
-
-test "break out of a transaction rolls back and leaves autocommit on" do
-  conn = posts_db
-  [1, 2, 3].each do |n|
-    conn.transaction do
-      conn.execute("INSERT INTO posts (title) VALUES (?)", ["n#{n}"])
-      break if n == 1
+test "a transaction left by break is rolled back when the pooled connection comes back" do
+  DB.connect(":memory:")
+  DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
+  DB.with do |c|
+    c.transaction do
+      c.execute("INSERT INTO posts (title) VALUES (?)", ["broken"])
+      break
     end
-    break
+    # Still inside the checkout: the BEGIN is open until the connection
+    # goes back, which is what makes the pool the right place to clean up.
+    assert_equal 1, post_count(c)
   end
-  assert_equal 0, post_count(conn)
+  DB.with do |c|
+    assert_equal 0, post_count(c)
+    assert clean?(c)
+    c.transaction { c.execute("INSERT INTO posts (title) VALUES (?)", ["after"]) }
+    assert_equal 1, post_count(c)
+  end
+  DB.disconnect
+end
+
+test "abandon_transaction! leaves a clean connection alone" do
+  conn = posts_db
+  conn.execute("INSERT INTO posts (title) VALUES (?)", ["kept"])
+  conn.abandon_transaction!
+  assert_equal 1, post_count(conn)
   assert clean?(conn)
   conn.close
 end
