@@ -75,7 +75,9 @@ module Cybertrain
       # The connection always goes back, whatever the rollback or the logger
       # does: a logger whose IO is gone (EPIPE at shutdown) must not leak the
       # slot from the pool, which with the one-connection ":memory:" pool
-      # would block every later `with` for good.
+      # would block every later `with` for good, and (see `note`) must not
+      # replace the exception the block is propagating either: this runs from
+      # `with`'s ensure.
       # A connection whose ROLLBACK failed (:failed) is still inside the
       # transaction, where the next checkout's plain `execute` would write
       # into it and a later check-in would discard that write under the wrong
@@ -88,20 +90,41 @@ module Cybertrain
         begin
           outcome = conn.abandon_transaction!
           if outcome == :rolled_back
-            Cybertrain.logger.warn("rolled back a transaction left open on a pooled connection (a BEGIN without COMMIT)")
+            note(:warn, "rolled back a transaction left open on a pooled connection (a BEGIN without COMMIT)")
           elsif outcome == :failed
             if @reopenable
-              Cybertrain.logger.error("could not roll back a transaction left open on a pooled connection; " \
-                                      "closed it, the next checkout reopens #{@path}")
+              note(:error, "could not roll back a transaction left open on a pooled connection; " \
+                           "closed it, the next checkout reopens #{@path}")
               conn.close
             else
-              Cybertrain.logger.error("could not roll back a transaction left open on the :memory: connection; " \
-                                      "it stays in the pool inside that transaction (closing it would drop the database)")
+              note(:error, "could not roll back a transaction left open on the :memory: connection; " \
+                           "it stays in the pool inside that transaction (closing it would drop the database)")
             end
           end
           nil
         ensure
           @available << conn
+        end
+        nil
+      end
+
+      # Writes one log line from check_in. A logger whose IO is gone (EPIPE at
+      # shutdown) must neither leak the connection nor replace the block's own
+      # exception, which check_in's caller (`with`'s ensure) is still
+      # propagating; and there is nowhere left to report the logging failure
+      # itself, so it is dropped. A plain method with its own rescue, called
+      # from check_in (not a yielding method, rules 32/45; compare `clean?` in
+      # test/db_transaction.rb). The level is picked with an `if`, no `send`
+      # (rule 1). Returns nil.
+      def note(level, message)
+        begin
+          if level == :error
+            Cybertrain.logger.error(message)
+          else
+            Cybertrain.logger.warn(message)
+          end
+        rescue StandardError
+          nil
         end
         nil
       end
@@ -114,6 +137,13 @@ module Cybertrain
       # on every later checkout, as it was before the pool reopened anything.
       # Nor once close_all ran: a `with` that popped its connection
       # just before close_all finds it closed by the shutdown, not by check_in.
+      # That is checked twice: before the open (saves it in the common case)
+      # and again under the lock, where close_all cannot interleave. A
+      # close_all that ran while the fresh connection was opening has already
+      # closed the list without it, so `fresh` is closed here (its WAL and shm
+      # locks would otherwise never be released) and the checkout fails. The
+      # flag, not a raise inside the block, since a non-local exit from a
+      # block is not safe under Spinel (rule 44).
       def reopen(closed)
         raise Error, "pool closed" if @closed
         unless @reopenable
@@ -124,17 +154,29 @@ module Cybertrain
         # Under the lock, so two threads reopening two slots at once cannot
         # both take the same closed entry and strand one fresh connection
         # outside the list (unreachable by close_all).
+        shut = false
         @lock.synchronize do
-          replaced = false
-          i = 0
-          while i < @connections.size
-            if !replaced && @connections[i].closed?
-              @connections[i] = fresh
-              replaced = true
+          if @closed
+            shut = true
+          else
+            replaced = false
+            i = 0
+            while i < @connections.size
+              if @connections[i].closed?
+                @connections[i] = fresh
+                replaced = true
+                # Stops at the first closed entry. A `break` out of a
+                # `while` is a plain loop exit (rule 44 concerns blocks).
+                break
+              end
+              i += 1
             end
-            i += 1
+            @connections << fresh unless replaced
           end
-          @connections << fresh unless replaced
+        end
+        if shut
+          fresh.close
+          raise Error, "pool closed"
         end
         fresh
       end

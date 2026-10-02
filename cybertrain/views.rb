@@ -27,7 +27,8 @@ module Cybertrain
 
     # max_render_depth: how many renders may be open at once (page, layout
     # and partials); Template::Interpreter::MAX_RENDER_DEPTH (12) unless the
-    # app's partials legitimately recurse deeper.
+    # app's partials legitimately recurse deeper. Must be at least 1: the
+    # engine raises ArgumentError for anything lower.
     def self.configure(root, cache: true, max_render_depth: Template::Interpreter::MAX_RENDER_DEPTH)
       @engine = Template::Engine.new(root, cache: cache, max_render_depth: max_render_depth)
       nil

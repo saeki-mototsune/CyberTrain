@@ -34,23 +34,33 @@ module Cybertrain
         type = parts.size > 1 ? parts[1].to_s : "string"
         type = "references" if type == "belongs_to"
         raise InvalidArgument, "bad field name '#{name}'" unless Templates.identifier?(name)
-        raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a field" if Ident.keyword?(name)
+        raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a field" if Ident.unusable_reason(name) == "keyword"
         raise InvalidArgument, "unknown type '#{type}' for #{name} (use #{TYPES.join(", ")})" unless TYPES.include?(type)
 
         field = Field.new(name, type)
         raise InvalidArgument, "'#{field.column_name}' is a column every table already has" if RESERVED_COLUMNS.include?(field.column_name)
-        if Ident.reserved_column?(field.column_name)
+        # Ident.unusable_reason is the one definition of a name the scaffold
+        # must not invent; each place that takes a name raises the message for
+        # the reason. "shadowing" names the generator accepts with a note (an
+        # existing schema must keep generating); a new name need not shadow
+        # Object at all.
+        case Ident.unusable_reason(field.column_name)
+        when "keyword"
+          raise InvalidArgument, "'#{field.column_name}' is a Ruby keyword and cannot name a field"
+        when "reserved"
           raise InvalidArgument, "'#{field.column_name}' would shadow a method of the generated model (Cybertrain::Model); pick another name"
-        end
-        # The generator accepts these with a note (an existing schema must keep
-        # generating); a new name need not shadow Object at all.
-        if Ident.shadowing_column?(field.column_name)
+        when "shadowing"
           raise InvalidArgument, "'#{field.column_name}' would shadow Object##{field.column_name} on the generated model; pick another name"
         end
         # A references field also defines the reader `def <name>` (post:references
         # -> def post), which answers to the same rules as a column.
-        if field.reference? && (Ident.reserved_column?(name) || Ident.shadowing_column?(name))
-          raise InvalidArgument, "'#{name}' would shadow a method of the generated model (Cybertrain::Model or Object); pick another name for the reference"
+        if field.reference?
+          case Ident.unusable_reason(name)
+          when "keyword"
+            raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a field"
+          when "reserved", "shadowing"
+            raise InvalidArgument, "'#{name}' would shadow a method of the generated model (Cybertrain::Model or Object); pick another name for the reference"
+          end
         end
 
         field
@@ -130,13 +140,15 @@ module Cybertrain
         underscored = Inflector.underscore(name)
         raise InvalidArgument, "bad resource name '#{name}'" unless Templates.identifier?(underscored)
         singular = Inflector.singularize(underscored)
-        raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a resource" if Ident.keyword?(singular)
         # The singular becomes the belongs_to reader on every model that
         # references this one (`hash:references` -> def hash), which the
         # generator would refuse too. The plural (the has_many side) is left
         # to the generator, which renames such a reader (`errors_as_post`)
         # rather than refusing it -- and nothing may reference the table.
-        if Ident.reserved_column?(singular) || Ident.shadowing_column?(singular)
+        case Ident.unusable_reason(singular)
+        when "keyword"
+          raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a resource"
+        when "reserved", "shadowing"
           raise InvalidArgument, "'#{name}' would be read as `#{singular}` on the models that reference it, " \
                                  "shadowing a method of the generated model (Cybertrain::Model or Object); pick another name"
         end

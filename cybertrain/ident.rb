@@ -126,5 +126,23 @@ module Cybertrain
     def self.shadowing_column?(name)
       SHADOWING_COLUMN_NAMES.include?(name)
     end
+
+    # The one definition of "a name the scaffold must not invent": "" when
+    # `name` may be chosen, otherwise why not -- "keyword" (RUBY_KEYWORDS),
+    # "reserved" (RESERVED_COLUMN_NAMES, which the generator refuses too) or
+    # "shadowing" (SHADOWING_COLUMN_NAMES, which the generator only notes).
+    # The scaffold asks here at every place it takes a name from the user
+    # (field column, references reader, resource singular) and raises the
+    # message for the reason, so a new list of names is added to this method
+    # once, not to each call site. A String, not nil or a Symbol, so the
+    # return type is the same on every path (NOTES rules 10/34); a keyword
+    # that is also listed in a column array reports "keyword" first.
+    def self.unusable_reason(name)
+      return "keyword" if keyword?(name)
+      return "reserved" if reserved_column?(name)
+      return "shadowing" if shadowing_column?(name)
+
+      ""
+    end
   end
 end

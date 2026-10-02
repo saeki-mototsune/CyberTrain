@@ -52,6 +52,19 @@ test "the depth is configurable (Interpreter max_depth, Views.configure, Config#
   assert_equal 12, Cybertrain::Config.new.max_render_depth
 end
 
+test "a max_render_depth below 1 is refused at boot (Views.configure)" do
+  msg = assert_raises("ArgumentError") { Cybertrain::Views.configure(ROOT, cache: true, max_render_depth: 0) }
+  assert msg.include?("at least 1")
+  assert_equal "max_render_depth must be at least 1 (got 0)", msg
+  msg = assert_raises("ArgumentError") { Cybertrain::Views.configure(ROOT, cache: true, max_render_depth: -1) }
+  assert msg.include?("at least 1")
+  assert_raises("ArgumentError") { Cybertrain::Views.configure_embedded({ "" => "" }, max_render_depth: 0) }
+  # 1 is the smallest ceiling that renders (the page itself). Restore the
+  # engine the rest of the file configured at the top.
+  Cybertrain::Views.configure(ROOT, cache: true, max_render_depth: 1)
+  Cybertrain::Views.configure(ROOT, cache: true)
+end
+
 test "two partials rendering each other raise too" do
   msg = assert_raises("Cybertrain::Template::RuntimeError") { render_src("<%= render 'ping' %>") }
   assert msg.include?("partial nesting too deep (> 12)")

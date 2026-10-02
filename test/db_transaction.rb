@@ -101,8 +101,9 @@ test "a BEGIN run and rolled back by hand is a clean check-in: no warning" do
   DB.disconnect
 end
 
-# The message of the RuntimeError a leaked BEGIN raises through the broken
-# logger ("" when nothing was raised). A method of its own rather than
+# The message of whatever a leaked BEGIN raises through the broken logger
+# ("" when nothing was raised, which is the expected outcome: check_in drops
+# the logging failure). A method of its own rather than
 # `assert_raises { DB.with { ... } }`: with the checkout nested in another
 # block, Spinel typed the block's return path wrongly in the generated C
 # ("incompatible types when returning type 'sp_RbVal' but 'sp_int' was
@@ -123,7 +124,10 @@ end
 def pool_survives_broken_logger
   DB.connect(":memory:")
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
-  assert_equal "log IO closed", leak_through_broken_logger
+  # The logger's "log IO closed" does not escape check_in (it would replace
+  # whatever the block was propagating), so nothing is raised here.
+  assert_equal "", leak_through_broken_logger
+  # The leaked BEGIN was still rolled back: its row is gone.
   # The ":memory:" pool has one connection: a leak would park this forever.
   assert_equal 0, DB.with { |c| post_count(c) }
   assert DB.with { |c| clean?(c) }
@@ -131,7 +135,7 @@ def pool_survives_broken_logger
   nil
 end
 
-test "the connection goes back to the pool even when the leak warning cannot be logged" do
+test "a logger that fails while check-in reports a leaked BEGIN is swallowed and the connection still goes back" do
   Cybertrain.logger = BrokenLogger.new
   begin
     pool_survives_broken_logger

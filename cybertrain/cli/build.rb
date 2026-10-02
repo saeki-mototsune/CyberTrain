@@ -28,9 +28,12 @@ module Cybertrain
         # safe there; only what breaks the build/bin/<name> path is refused
         # ("my-app" and "MyApp" are fine for `spin build`). "." and ".." name
         # build/bin/. and build/bin/.., which exist already (the latter is
-        # build/) and only fail later, in assemble's cp.
-        if name == "." || name == ".." || name.include?("/") || name.match?(/\s/)
-          raise InvalidArgument, "spin.toml [package] name '#{name}' cannot be '.' or '..' or contain '/' or whitespace"
+        # build/) and only fail later, in assemble's cp. A leading "-" is
+        # refused too: quote_arg leaves it bare ("-" is in its safe set), so
+        # `spin build --release` would take the name as an option, not as the
+        # package name.
+        if name == "." || name == ".." || name.start_with?("-") || name.include?("/") || name.match?(/\s/)
+          raise InvalidArgument, "spin.toml [package] name '#{name}' cannot be '.' or '..', start with '-', or contain '/' or whitespace"
         end
 
         name

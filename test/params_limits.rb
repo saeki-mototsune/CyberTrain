@@ -41,11 +41,32 @@ test "a malformed bracket run is still one plain key" do
   assert_equal ["a", "b", ""], Cybertrain::Query.split_key("a[b][]")
 end
 
-test "a deep key with a malformed tail is still one plain key, not TooDeep" do
-  key = "a" + "[x]" * 100 + "[oops"
+test "a key with MAX_DEPTH pairs and a malformed tail is one plain key; one more pair is TooDeep" do
+  # split_key refuses a key at the (MAX_DEPTH + 1)th well-formed pair without
+  # reading the rest (bounded work, however long the tail), so the malformed
+  # tail only turns the key into a plain one while the pairs so far fit.
+  key = "a" + "[x]" * 32 + "[oops"
   assert_equal [key], Cybertrain::Query.split_key(key)
   params = Cybertrain::Query.parse("#{key}=1")
   assert_equal "1", params[key]
+  deeper = "a" + "[x]" * 33 + "[oops"
+  assert_raises("TooDeep") { Cybertrain::Query.split_key(deeper) }
+  assert_raises("TooDeep") { Cybertrain::Query.parse("#{deeper}=1") }
+end
+
+test "a non-ASCII key with 100000 bracket pairs is refused as TooDeep" do
+  # Character offsets into a non-ASCII String are O(n); the bounded first
+  # pass keeps this to MAX_DEPTH + 1 pairs. Asserted on the result only.
+  key = "k\u00e9" + "[]" * 100000
+  assert_raises("TooDeep") { Cybertrain::Query.split_key(key) }
+  assert_raises("TooDeep") { Cybertrain::Query.parse("#{key}=1") }
+end
+
+test "Query.decode (shared by Query and Cookies) decodes clean escapes" do
+  # The malformed case raises only under CRuby (test/query.rb), so it is not here.
+  assert_equal "a b", Cybertrain::Query.decode("a+b")
+  assert_equal "A B", Cybertrain::Query.decode("%41%20B")
+  assert_equal "", Cybertrain::Query.decode("")
 end
 
 test "MAX_PAIRS pairs parse, one more raises TooMany" do

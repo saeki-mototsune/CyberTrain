@@ -63,6 +63,20 @@ module Cybertrain
       params
     end
 
+    # The one place request text is percent-decoded (query strings, form
+    # bodies and the Cookie header), so malformed input is the same client
+    # fault everywhere. A plain method with one begin/rescue and no block
+    # (NOTES rule 32 is about yielding methods).
+    def self.decode(text)
+      URI.decode_www_form_component(text)
+    rescue ArgumentError
+      # The client's fault (a 400 through ClientError), not the app's. The
+      # decoder's message is not repeated: it embeds the raw text, newlines
+      # included, and would let a form body forge log lines (Logger writes
+      # the line as is) and echo itself into the dev page's 400 body.
+      raise Malformed, "malformed percent-encoding in request parameters"
+    end
+
     # One non-empty "k=v" (or bare "k") pair into the tree.
     def self.add_pair(params, pair)
       eq = pair.index("=")
@@ -74,18 +88,8 @@ module Cybertrain
         raw_value = pair[(eq + 1)..-1].to_s
       end
 
-      key = ""
-      value = ""
-      begin
-        key = URI.decode_www_form_component(raw_key)
-        value = URI.decode_www_form_component(raw_value)
-      rescue ArgumentError
-        # The client's fault (a 400 through ClientError), not the app's. The
-        # decoder's message is not repeated: it embeds the raw pair, newlines
-        # included, and would let a form body forge log lines (Logger writes
-        # the line as is) and echo itself into the dev page's 400 body.
-        raise Malformed, "malformed percent-encoding in request parameters"
-      end
+      key = decode(raw_key)
+      value = decode(raw_value)
       params.set_path(split_key(key), value)
       nil
     end
@@ -93,14 +97,20 @@ module Cybertrain
     # "post[tags][]" -> ["post", "tags", ""]; "id" -> ["id"]. A "[" with no
     # matching "]" (or any other malformed bracket run) is not a nesting
     # marker at all -- the whole string is returned as one plain key, however
-    # many pairs precede the malformed tail. A well-formed key with more than
-    # MAX_DEPTH bracket pairs raises TooDeep.
+    # many pairs precede the malformed tail -- unless the key already holds
+    # more than MAX_DEPTH well-formed pairs before it: that is TooDeep
+    # whatever follows (the key is refused as soon as the (MAX_DEPTH + 1)th
+    # pair is seen, so a malformed tail after it is never looked at).
     #
-    # Two cursor passes, both linear in the key length. The first only counts
-    # the pairs and checks the shape, allocating nothing, so a multi-megabyte
-    # `a[x][x]...` costs no Strings before it is refused (MAX_PAIRS bounds
-    # the number of pairs, not a key's length, and every request is parsed
-    # up to three times). The second slices only a key that passed.
+    # Two cursor passes. The first only counts the pairs and checks the shape,
+    # allocating nothing, and stops at the (MAX_DEPTH + 1)th pair, so it scans
+    # at most MAX_DEPTH + 1 pairs however long the key is. That bound matters
+    # beyond the Strings: `key[pos]` and `key.index("]", pos)` take character
+    # offsets, which a UTF-8 string resolves with an O(pos) scan once it has a
+    # non-ASCII character, so an unbounded pass over a key like "k" + e-acute
+    # + "[][][]..." (a megabyte of pairs, parsed up to three times per
+    # request) was quadratic. The second pass slices only a key that passed,
+    # so it is at most MAX_DEPTH pairs too.
     def self.split_key(key)
       first_bracket = key.index("[")
       return [key] if first_bracket.nil?
@@ -115,9 +125,10 @@ module Cybertrain
         return [key] if close.nil?
 
         count += 1
+        raise TooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if count > MAX_DEPTH
+
         pos = close + 1
       end
-      raise TooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if count > MAX_DEPTH
 
       parts = [key[0, first_bracket]]
       pos = first_bracket

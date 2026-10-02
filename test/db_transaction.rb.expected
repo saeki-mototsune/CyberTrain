@@ -1,6 +1,6 @@
 ok   a BEGIN left open inside a checkout is rolled back, and logged, when the connection comes back
 ok   a BEGIN run and rolled back by hand is a clean check-in: no warning
-ok   the connection goes back to the pool even when the leak warning cannot be logged
+ok   a logger that fails while check-in reports a leaked BEGIN is swallowed and the connection still goes back
 ok   a slot whose connection was closed is reopened on the next checkout
 ok   a closed :memory: connection is an error on the next checkout, never a fresh database
 ok   a pool that close_all shut down refuses every checkout instead of reopening

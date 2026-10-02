@@ -50,6 +50,13 @@ module Cybertrain
       attr_reader :root
 
       def initialize(root, cache: true, max_render_depth: Interpreter::MAX_RENDER_DEPTH)
+        # Views.configure and Views.configure_embedded (Engine.embedded) both
+        # end here. A ceiling below 1 would fail `@depth >= @max_depth` at
+        # depth 0 and turn every page into a 500, so refuse it at boot. No nil
+        # check: the parameter is an Integer (a nil would not compile under
+        # Spinel).
+        raise ArgumentError, "max_render_depth must be at least 1 (got #{max_render_depth})" if max_render_depth < 1
+
         @root = root
         @cache = cache
         @max_render_depth = max_render_depth

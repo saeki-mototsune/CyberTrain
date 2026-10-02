@@ -519,7 +519,7 @@ Other attributes with fixed, overridable defaults: `host` (`"127.0.0.1"`),
 marks the session cookie `Secure`; `false` elsewhere), `pool_size` (4),
 `static_files`/`csrf` (`true`), `max_render_depth` (12 renders open at once:
 page, layout and partials; raise it for partials that legitimately recurse
-deeper).
+deeper; it must be at least 1, or boot fails).
 
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse

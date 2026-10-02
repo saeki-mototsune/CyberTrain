@@ -60,25 +60,28 @@ module Cybertrain
       permitted
     end
 
+    # Rack-style: setting a key as one kind (scalar/list/nested) deletes it
+    # from the other two (a no-op when absent), so a name is only ever one
+    # kind at a time and the last write wins.
     def set_value(key, value)
       k = key.to_s
-      evict_from_list(k)
-      evict_from_children(k)
+      @lists.delete(k)
+      @children.delete(k)
       @values[k] = value
     end
 
     def add_list_value(key, value)
       k = key.to_s
-      evict_from_values(k)
-      evict_from_children(k)
+      @values.delete(k)
+      @children.delete(k)
       @lists[k] = [] unless @lists.key?(k)
       @lists[k] << value
     end
 
     def child!(key)
       k = key.to_s
-      evict_from_values(k)
-      evict_from_list(k)
+      @values.delete(k)
+      @lists.delete(k)
       @children[k] = Params.new unless @children.key?(k)
       @children[k]
     end
@@ -175,30 +178,10 @@ module Cybertrain
     # Replaces the list under k with arr (an owned copy), evicting the other
     # kinds. Used by merge!, which calls it on another Params.
     def replace_list!(k, arr)
-      evict_from_values(k)
-      evict_from_children(k)
+      @values.delete(k)
+      @children.delete(k)
       @lists[k] = arr
       nil
-    end
-
-    private
-
-    # Rack-style eviction: setting a key as one kind (scalar/list/nested)
-    # removes it from the other two, so a name can only ever be one kind
-    # at a time and the last write wins.
-    def evict_from_values(k)
-      return unless @values.key?(k)
-      @values.delete(k)
-    end
-
-    def evict_from_list(k)
-      return unless @lists.key?(k)
-      @lists.delete(k)
-    end
-
-    def evict_from_children(k)
-      return unless @children.key?(k)
-      @children.delete(k)
     end
   end
 end

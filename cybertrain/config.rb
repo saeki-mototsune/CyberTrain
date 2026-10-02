@@ -36,7 +36,10 @@ module Cybertrain
       @views_root = "app/views"
       # Renders open at once (page, layout, partials) before a template error:
       # Template::Interpreter::MAX_RENDER_DEPTH. Raise it for partials that
-      # legitimately recurse deeper (threaded comments, a tree menu).
+      # legitimately recurse deeper (threaded comments, a tree menu). Must be
+      # an Integer of at least 1: Views.configure (and configure_embedded)
+      # refuse anything else at boot, since a ceiling of 0 or less would make
+      # every render fail.
       @max_render_depth = 12
       @public_root = "public"
       @layout = "layouts/application"

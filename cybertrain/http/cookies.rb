@@ -1,9 +1,12 @@
 require "uri"
+require "cybertrain/http/query"
 
 module Cybertrain
   # Cookie header parsing and Set-Cookie serialization. Values round-trip
   # through the same www-form percent-encoding Query uses, so a value with
-  # a space, "=" or ";" survives both directions.
+  # a space, "=" or ";" survives both directions. Decoding goes through
+  # Query.decode: a malformed escape in the Cookie header raises
+  # Query::Malformed (a 400 through ClientError), as in a query string.
   module Cookies
     def self.parse(header)
       cookies = {}
@@ -18,7 +21,7 @@ module Cybertrain
         next if cookies.key?(name)
 
         value = trimmed[(eq + 1)..-1].to_s
-        cookies[name] = URI.decode_www_form_component(value)
+        cookies[name] = Query.decode(value)
       end
       cookies
     end

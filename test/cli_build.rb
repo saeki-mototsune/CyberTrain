@@ -44,7 +44,7 @@ end
 test "app_name rejects only a name that breaks the build/bin/<name> path" do
   File.write("spin.toml", "[package]\nname = \"x; touch PWNED #\"\n")
   message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
-  assert_equal "spin.toml [package] name 'x; touch PWNED #' cannot be '.' or '..' or contain '/' or whitespace", message
+  assert_equal "spin.toml [package] name 'x; touch PWNED #' cannot be '.' or '..', start with '-', or contain '/' or whitespace", message
   assert_equal 1, Cybertrain::CLI.run(["build"])
   refute File.exist?("PWNED")
   File.write("spin.toml", "[package]\nname = \"a/b\"\n")
@@ -52,6 +52,12 @@ test "app_name rejects only a name that breaks the build/bin/<name> path" do
   # "." and ".." would make build/bin/<name> the directory itself or build/.
   [".", ".."].each do |dots|
     File.write("spin.toml", "[package]\nname = \"#{dots}\"\n")
+    assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+  end
+  # A leading "-" would reach `spin build` as an option (quote_arg leaves it
+  # bare); a "-" inside the name is fine (my-app below).
+  ["--release", "-x"].each do |flag|
+    File.write("spin.toml", "[package]\nname = \"#{flag}\"\n")
     assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
   end
   # Shell safety comes from quote_arg, not from the spelling: a hand-written

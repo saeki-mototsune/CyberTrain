@@ -23,9 +23,10 @@ module Cybertrain
       rescue JSON::ParserError, StandardError => e
         # Still two lines per request: the error path outside this
         # middleware (ErrorPages, Dev::ErrorPage or the Server) answers the
-        # status ClientError gives the exception -- 400 for a client fault,
-        # 500 otherwise -- so log that status (as Rails does) and let it
-        # propagate. JSON::ParserError named too (NOTES rule 33), or an
+        # status ClientError.status gives the exception -- 400 for a client
+        # fault, 500 otherwise (a name lookup, nothing is re-raised, so both
+        # sites always agree) -- so log that status (as Rails does) and let
+        # it propagate. JSON::ParserError named too (NOTES rule 33), or an
         # action's bad JSON.parse would leave the request without its
         # Completed line under Spinel.
         log_completed(ClientError.status(e), started)
