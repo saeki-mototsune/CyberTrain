@@ -5,4 +5,7 @@ ok   parse of a malformed percent-escape does not raise (Spinel diverges from CR
 ok   serialize with defaults
 ok   serialize with all options set
 ok   serialize omits Max-Age when negative and HttpOnly/Secure when off
-7 tests, 7 assertions, 0 failures
+ok   serialize with same_site None adds Secure even when secure is false
+ok   serialize with partitioned appends Partitioned and implies Secure
+ok   serialize writes Secure once when secure, same_site None and partitioned are all set
+10 tests, 11 assertions, 0 failures

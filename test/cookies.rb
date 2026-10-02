@@ -42,4 +42,22 @@ test "serialize omits Max-Age when negative and HttpOnly/Secure when off" do
   assert_equal "a=1; Path=/; SameSite=Lax", value
 end
 
+test "serialize with same_site None adds Secure even when secure is false" do
+  value = Cybertrain::Cookies.serialize("s", "v", same_site: "None")
+  assert_equal "s=v; Path=/; HttpOnly; SameSite=None; Secure", value
+end
+
+test "serialize with partitioned appends Partitioned and implies Secure" do
+  lax = Cybertrain::Cookies.serialize("s", "v", partitioned: true)
+  assert_equal "s=v; Path=/; HttpOnly; SameSite=Lax; Secure; Partitioned", lax
+  none = Cybertrain::Cookies.serialize("s", "v", max_age: 60, same_site: "None", partitioned: true)
+  assert_equal "s=v; Path=/; HttpOnly; SameSite=None; Max-Age=60; Secure; Partitioned", none
+end
+
+# Production (secure: true) inside another site's frame: one Secure, not two.
+test "serialize writes Secure once when secure, same_site None and partitioned are all set" do
+  value = Cybertrain::Cookies.serialize("s", "v", max_age: 60, same_site: "None", secure: true, partitioned: true)
+  assert_equal "s=v; Path=/; HttpOnly; SameSite=None; Max-Age=60; Secure; Partitioned", value
+end
+
 Cybertrain::Test.run!

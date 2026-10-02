@@ -12,5 +12,6 @@ ok   SessionStore's Set-Cookie loads back to the value the chain wrote
 ok   a request carrying that cookie sees the value
 ok   flash round-trips through SessionStore: request 1 sets, request 2 sees, request 3 is empty
 ok   the session cookie is Secure only when SessionStore is built with secure: true
+ok   SessionStore passes same_site and partitioned to its Set-Cookie
 ok   an unchanged session sets no cookie
-15 tests, 38 assertions, 0 failures
+16 tests, 39 assertions, 0 failures
