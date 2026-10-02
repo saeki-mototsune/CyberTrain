@@ -30,15 +30,16 @@ module Play
       @clock = clock
     end
 
-    # The exit status: 0 done, 1 failed, 2 bad usage.
+    # The exit status: 0 done, 1 failed, 2 bad usage. A command that takes
+    # no argument refuses any (kill-all --help must not end every session).
     def run(argv)
       command, *rest = argv
       case command
-      when "status" then status
+      when "status" then rest.empty? ? status : usage
       when "pause" then pause(rest.join(" ").strip)
-      when "resume" then resume
+      when "resume" then rest.empty? ? resume : usage
       when "end" then end_one(rest)
-      when "kill-all" then kill_all
+      when "kill-all" then rest.empty? ? kill_all : usage
       else usage
       end
     end
@@ -64,9 +65,14 @@ module Play
       @err.puts KILL_PENDING if File.exist?(kill_path)
     end
 
+    # MESSAGE is the operator's text; one that starts with "-" is an option
+    # given by mistake (pause --help). Its own final period is not doubled.
     def pause(message)
+      return usage if message.start_with?("-")
+
       write_paused(message.empty? ? "for maintenance" : message)
-      @out.puts "paused: #{@sessions.pause_message}. Running sessions go on; playctl resume starts accepting again."
+      @out.puts "paused: #{@sessions.pause_message.delete_suffix(".")}. Running sessions go on; " \
+                "playctl resume starts accepting again."
       0
     end
 
@@ -83,10 +89,24 @@ module Play
       0
     end
 
-    # Handles are lower-case hex, and docker names are case-sensitive.
+    # Handles are lower-case hex, and docker names are case-sensitive. Only a
+    # session Docker has (its container or its network) is ended: teardown
+    # counts every absent step as done, so a mistyped handle would otherwise
+    # be reported ended while the real session runs on.
     def end_one(args)
       handle = args.first.to_s
       return usage unless args.size == 1 && handle.match?(/\A[0-9a-f]{16}\z/)
+
+      containers = @sessions.list_containers
+      return listing_failed("docker ps") unless containers
+
+      networks = @sessions.list_networks
+      return listing_failed("docker network ls") unless networks
+
+      unless (containers + networks).any? { |item| item[:handle] == handle }
+        @err.puts "playctl: no session #{handle}"
+        return 1
+      end
 
       if @sessions.teardown(handle, reason: "killed")
         @out.puts "ended #{handle}"
@@ -109,12 +129,16 @@ module Play
       end
     end
 
+    # The docker_error line itself comes from Sessions' log.
+    def listing_failed(what)
+      @err.puts "playctl: #{what} failed (see the docker_error line)"
+      1
+    end
+
     def status
       containers = @sessions.list_containers
-      unless containers
-        @err.puts "playctl: docker ps failed (see the docker_error line)"
-        return 1
-      end
+      return listing_failed("docker ps") unless containers
+
       known = @internal.call
       # Names made from the checked handles, not docker's output (as
       # Sessions#collect_stats does).

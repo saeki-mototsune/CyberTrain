@@ -44,10 +44,34 @@ class PlayctlTest < Minitest::Test
   end
 
   def test_end_tears_down_one_session
+    @docker.default("ps sessions", FakeDocker.ok("c#{H}\tctplay-s-#{H}\trunning\t#{H}\t1\t2\n"))
     assert_equal 0, ctl.run(["end", H])
-    assert_equal ["rm", "network inspect", "network rm"], @docker.keys
+    assert_equal ["ps sessions", "network ls", "rm", "network inspect", "network rm"], @docker.keys
     assert_includes @out.string, "play event=ended handle=#{H} reason=killed"
     assert_includes @out.string, "ended #{H}\n"
+  end
+
+  # A well-formed handle that Docker does not have: teardown would count
+  # every step as done and say "ended" while the real session runs on.
+  def test_end_refuses_a_handle_that_no_listing_has
+    assert_equal 1, ctl.run(["end", H])
+    assert_equal ["ps sessions", "network ls"], @docker.keys
+    assert_equal "playctl: no session #{H}\n", @err.string
+    refute_includes @out.string, "ended"
+  end
+
+  def test_end_finds_a_session_that_only_has_its_network_left
+    @docker.default("network ls", FakeDocker.ok("n#{H}\tctplay-n-#{H}\t#{H}\t1\n"))
+    assert_equal 0, ctl.run(["end", H])
+    assert_includes @out.string, "ended #{H}\n"
+  end
+
+  def test_end_fails_when_docker_cannot_list
+    @docker.default("ps sessions", FakeDocker.fail("Cannot connect to the Docker daemon"))
+    assert_equal 1, ctl.run(["end", H])
+    assert_includes @out.string, "play event=docker_error step=ps status=1"
+    assert_equal "playctl: docker ps failed (see the docker_error line)\n", @err.string
+    assert_equal ["ps sessions"], @docker.keys
   end
 
   def test_end_takes_exactly_one_handle
@@ -125,6 +149,31 @@ class PlayctlTest < Minitest::Test
   def test_unknown_command_is_a_usage_error
     assert_equal 2, ctl.run([])
     assert_equal 2, ctl.run(["start"])
+  end
+
+  # A command without arguments takes none: kill-all --help must not end
+  # every session.
+  def test_commands_without_arguments_refuse_extra_ones
+    File.write(paused_path, "incident\n")
+    [%w[kill-all --help], %w[status x], %w[resume x]].each do |argv|
+      assert_equal 2, ctl.run(argv), argv.join(" ")
+    end
+    assert_empty @docker.calls
+    assert_equal "incident\n", File.read(paused_path)
+    refute File.exist?(kill_path)
+    assert_includes @err.string, "usage: playctl status"
+  end
+
+  def test_pause_refuses_a_message_that_starts_with_a_dash
+    assert_equal 2, ctl.run(%w[pause --help])
+    refute File.exist?(paused_path)
+    assert_includes @err.string, "usage: playctl status"
+  end
+
+  def test_pause_does_not_double_a_period
+    assert_equal 0, ctl.run(%w[pause back at 14:00 UTC.])
+    assert_includes @out.string, "paused: Back at 14:00 UTC. Running sessions go on"
+    refute_includes @out.string, "UTC.."
   end
 
   def test_the_script_reports_a_missing_setting_and_bad_usage

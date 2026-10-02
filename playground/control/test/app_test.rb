@@ -19,9 +19,12 @@ class AppTest < Minitest::Test
     @fake ||= FakeSessions.new(config)
   end
 
-  # The stack config.ru builds: Play::Guard in front of the app.
+  def log_io
+    @log_io ||= StringIO.new
+  end
+
   def app
-    Play::Guard.new(Play::App.for(config: config, sessions: fake), headers: Play::App.security_headers(config))
+    Play::App.for(config: config, sessions: fake, log: Play::EventLog.new(log_io))
   end
 
   def setup
@@ -236,13 +239,38 @@ class AppTest < Minitest::Test
     assert_equal 413, last_response.status
   end
 
-  # Sinatra parses the query before any route or filter runs, and its 400
-  # would quote it.
-  def test_an_unparsable_query_gets_a_fixed_400_with_the_headers
-    get "/", {}, { "QUERY_STRING" => "%zz<b>hi</b>" }
+  # The app gets every request with an empty query string: Sinatra would
+  # parse it before any route ran, and a deep or long one became a 500 with
+  # a backtrace on rack.errors (Puma's stderr), a broken one a 400 quoting it.
+  def test_the_query_string_is_ignored
+    get "/"
+    plain = [last_response.status, last_response.body]
+    { "deep" => "a#{"[a]" * 40}=1", "4100 parameters" => (["a"] * 4100).join("&"),
+      "unparsable" => "%zz<b>hi</b>" }.each do |kind, query|
+      get "/", {}, { "QUERY_STRING" => query }
+      assert_equal plain, [last_response.status, last_response.body], kind
+      assert_entry_headers kind
+      assert_empty last_request.env["rack.errors"].string, kind
+    end
+  end
+
+  def test_no_answer_contains_the_query
+    ["/", "/terms", "/status.json", "/robots.txt", "/.well-known/security.txt", "/nothing-here"].each do |path|
+      get path, {}, { "QUERY_STRING" => "zzq9=<b>x</b>" }
+      refute_includes last_response.body, "zzq9", path
+    end
+    post "/sessions", {}, { "QUERY_STRING" => "zzq9=1", "HTTP_ORIGIN" => "https://play.example.test" }
+    assert_equal [303, fake.result.editor_url], [last_response.status, last_response.headers["Location"]]
+  end
+
+  # A form type with no body still makes Rack's parser fail; Sinatra's 400
+  # would name the reason.
+  def test_a_multipart_type_without_a_body_gets_a_fixed_400_with_the_headers
+    post "/sessions", "", { "CONTENT_TYPE" => "multipart/form-data; boundary=x", "CONTENT_LENGTH" => nil,
+                            "HTTP_ORIGIN" => "https://play.example.test" }
     assert_equal [400, "Bad Request\n"], [last_response.status, last_response.body]
-    refute_match(/zz|hi/, last_response.body)
     assert_entry_headers "400"
+    assert_empty fake.clients
   end
 
   def test_a_foreign_host_gets_403_with_the_headers
@@ -252,11 +280,23 @@ class AppTest < Minitest::Test
     assert_entry_headers "403"
   end
 
-  def test_an_unexpected_exception_gets_a_fixed_500_with_the_headers
+  # One event line that names only the exception's class (not its message,
+  # nothing of the request), the fixed page, nothing on rack.errors.
+  def test_an_unexpected_exception_gets_a_fixed_500_and_one_event_line
     fake.define_singleton_method(:create) { |_client| raise "docker exploded at 0123456789abcdef" }
     start("HTTP_ORIGIN" => "https://play.example.test")
-    assert_equal [500, "<h1>Internal Server Error</h1>"], [last_response.status, last_response.body]
+    assert_equal [500, "Internal Server Error\n"], [last_response.status, last_response.body]
     assert_entry_headers "500"
+    assert_equal "play event=error step=request exception=RuntimeError\n", log_io.string
+    assert_empty last_request.env["rack.errors"].string
+  end
+
+  # Production wherever the app runs, whatever RACK_ENV says: no Sinatra
+  # development route or page (the 500 above is the fixed page).
+  def test_the_app_runs_as_production
+    assert_equal [:production, :production], [Sinatra::Base.environment, Play::App.environment]
+    get "/__sinatra__/404.png"
+    assert_equal [404, "Not Found\n"], [last_response.status, last_response.body]
   end
 
   def test_the_small_answers_carry_the_headers_too

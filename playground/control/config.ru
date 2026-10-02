@@ -16,9 +16,9 @@ rescue Play::Config::Error => e
   exit 1
 end
 
+log = Play::EventLog.new($stdout)
 sessions = Play::Sessions.new(config: config, docker: Play::DockerCLI.new, probe: Play::Probe.new(config),
-                              clock: Play::Clock.new, log: Play::EventLog.new($stdout))
+                              clock: Play::Clock.new, log: log)
 sessions.check_availability
 sessions.start_reaper
-use Play::Guard, headers: Play::App.security_headers(config)
-run Play::App.for(config: config, sessions: sessions)
+run Play::App.for(config: config, sessions: sessions, log: log)

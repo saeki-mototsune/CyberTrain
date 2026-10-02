@@ -3,6 +3,10 @@
 require "digest"
 require "json"
 require "rack/utils"
+# Sinatra::Base takes its environment from APP_ENV (then RACK_ENV) when it
+# loads, and in development gives every app a debugging route. The control
+# plane runs as production wherever it runs, the tests included.
+ENV["APP_ENV"] = "production"
 require "sinatra/base"
 require_relative "../play"
 
@@ -10,8 +14,9 @@ module Play
   # The entry page, POST /sessions and the small endpoints (spec §5.2,
   # §5.13). A request is read for three headers only: Origin and
   # Sec-Fetch-Site (the origin check) and PLAY_CLIENT_IP_HEADER (the
-  # client); no form field and no body (Play::Guard, in front of it, refuses
-  # one and puts the security headers on every answer).
+  # client); no parameter and no body (Play::Guard, in front of it, hands it
+  # each request without its query string, refuses a body and puts the
+  # security headers on every answer).
   class App < Sinatra::Base
     # Disables the Start button while the session starts (no double submit);
     # pageshow enables it again when the browser restores the page from its
@@ -28,23 +33,31 @@ module Play
     # every POST; its FrameOptions adds X-Frame-Options, which spec §6.3 does
     # not want. The origin check below and Play::Guard's headers replace it.
     set :protection, false
+    # Production whatever RACK_ENV says (see APP_ENV above), and errors stay
+    # inside: no debug page, nothing raised past Play::Guard, no backtrace on
+    # rack.errors (Puma's stderr). An unexpected exception is one event line
+    # and the fixed 500 page (`error 500` below).
+    set :environment, :production
     set :show_exceptions, false
-    # An unexpected exception is the fixed 500 page in every environment
-    # (under RACK_ENV=test Sinatra would raise it past Play::Guard).
     set :raise_errors, false
+    set :dump_errors, false
     set :views, File.expand_path("../../views", __dir__)
 
-    # The app for CONFIG and SESSIONS. Host names other than PLAY_PUBLIC_URL's
-    # (and 127.0.0.1 and localhost, for the health check and playctl) get 403.
-    def self.for(config:, sessions:)
+    # The control plane's Rack app for CONFIG and SESSIONS, behind
+    # Play::Guard: the one way to build it (config.ru, the tests). LOG takes
+    # the event line of an unexpected exception. Host names other than
+    # PLAY_PUBLIC_URL's (and 127.0.0.1 and localhost, for the health check
+    # and playctl) get 403.
+    def self.for(config:, sessions:, log: EventLog.new($stdout))
       set :host_authorization, { permitted_hosts: [config.domain, "127.0.0.1", "localhost"] }
-      new(config: config, sessions: sessions)
+      Guard.new(new(config: config, sessions: sessions, log: log), headers: security_headers(config))
     end
 
-    def initialize(app = nil, config:, sessions:)
+    def initialize(app = nil, config:, sessions:, log:)
       super(app)
       @config = config
       @sessions = sessions
+      @log = log
     end
 
     helpers do
@@ -133,11 +146,19 @@ module Play
       "Not Found\n"
     end
 
-    # Sinatra parses the query before any route runs; its own 400 would quote
-    # the part it could not parse.
+    # Rack's form parser can still fail on a form type without a body;
+    # Sinatra's own 400 would name the reason.
     error 400 do
       content_type :text
       "Bad Request\n"
+    end
+
+    # An unexpected exception: one event line naming its class, never its
+    # message or anything of the request, and the fixed page.
+    error 500 do
+      @log.event("error", step: "request", exception: env["sinatra.error"].class.name)
+      content_type :text
+      "Internal Server Error\n"
     end
 
     private
