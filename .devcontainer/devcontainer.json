@@ -1,0 +1,17 @@
+{
+  "name": "cybertrain playground",
+  "image": "ghcr.io/saeki-mototsune/cybertrain-playground:latest",
+  "remoteUser": "dev",
+  "workspaceFolder": "/workspace/blog",
+  "postCreateCommand": "",
+  "postAttachCommand": { "server": "playground-server" },
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "cybertrain", "onAutoForward": "openPreview" }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": { "files.autoSave": "off" }
+    }
+  }
+}
