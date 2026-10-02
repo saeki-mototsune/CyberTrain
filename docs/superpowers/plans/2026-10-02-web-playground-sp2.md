@@ -62,7 +62,7 @@ Notes on the spec's text, applied below:
 - Correction (spec §15, correction 1): the stage ends with `WORKDIR /workspace`, not `/workspace/blog`: under `--tmpfs /workspace` runc creates a missing working directory on the empty tmpfs, root-owned, before the entrypoint runs, which then skipped the seed and left `dev` unable to write. The entrypoint now tests for `/workspace/blog/spin.toml` instead of an empty `/workspace` and stops with a clear message if `/workspace/blog` exists but is not writable, and W6 checks a session started with the control plane's flags has a seeded, dev-owned, writable `/workspace/blog`.
 - Correction: the two checksums are filled in (the GitHub release API's `digest` of `code-server-4.139.1-linux-amd64.tar.gz`, 222,167,474 bytes, and `…-linux-arm64.tar.gz`, 216,952,063 bytes, read on 2026-10-02). The build's `sha256sum -c` verifies the download.
 - Correction: `RUN mkdir .vscode` before copying `tasks.json`, so that `dev` owns the directory (VS Code writes `.vscode/settings.json` there when a visitor changes a workspace setting); a directory created by `COPY --chown` is not guaranteed to get the owner.
-- `web-smoke.sh`: the image's `ENTRYPOINT` ignores arguments, so one-shot checks use `--entrypoint`. W11 tries to write `/opt/cybertrain` (dev's own directory: only the read-only root stops it) instead of the spec's `/usr/local/bin` (unwritable by `dev` even on a writable root, so it proved nothing). W12 and W13 also require that the session answered `/healthz` and lived at least 50 and 55 seconds, otherwise a session that crashed at start would pass. The main session starts with the control plane's flags except `--rm` (its logs are kept for the summary), the labels and the names.
+- `web-smoke.sh`: the image's `ENTRYPOINT` ignores arguments, so one-shot checks use `--entrypoint`. W11 tries to write `/opt/cybertrain` (dev's own directory: only the read-only root stops it) instead of the spec's `/usr/local/bin` (unwritable by `dev` even on a writable root, so it proved nothing). W12 and W13 also require that the session answered `/healthz` and lived at least 50 and 55 seconds, otherwise a session that crashed at start would pass. The main session starts with the control plane's flags except `--rm` (its logs are kept for the summary), the labels and the names, and with `PLAYGROUND_IDLE_TIMEOUT=1800`: no browser attaches to it, so code-server's default 300 s idle timeout would end it while W9 and W10 still wait on a slow host. W11 also requires an empty bounding set (`CapBnd`): the effective set (`CapEff`) is empty for any non-root process, with or without `--cap-drop ALL`, so it alone proves nothing (both are corrections from Task 1's review, 2026-10-03; Task 7's E9 checks `CapBnd` for the same reason).
 - `playground-server`: "1 minute" in the singular; a past end shows 0 minutes.
 
 - [ ] **Step 1: Write the failing test**
@@ -348,10 +348,13 @@ if [ "$helper_ok" = yes ]; then
   fi
 fi
 
+# No browser ever attaches to the main session: with playground-web's default
+# idle timeout (300 s) code-server would end it while W9 and W10 still wait on
+# a slow host, so its idle timeout is the session's 1800 s.
 main_up=no
 if [ "$helper_ok" != yes ]; then
   detail="no test network or helper: $(first_line "$(cat "$work/net.out" "$work/helper.start" 2> /dev/null)")"
-elif session main s-smoke -e "PLAYGROUND_ENDS_AT=$(($(date +%s) + 1800))"; then
+elif session main s-smoke -e "PLAYGROUND_ENDS_AT=$(($(date +%s) + 1800))" -e "PLAYGROUND_IDLE_TIMEOUT=1800"; then
   launched=$SECONDS
   detail="no 200 from /healthz within 30 s"
   while [ $((SECONDS - launched)) -lt 30 ]; do
@@ -460,9 +463,12 @@ EOF
     *) fail W10 "$what_W10" "$(printf '%s\n' "$new_app" | grep -v '^$' | tail -n 1)" "$main" ;;
   esac
 
-  locked=$(docker exec "$main" bash -c 'if touch /opt/cybertrain/.smoke-probe 2> /tmp/t.err; then echo root=writable; elif grep -q "Read-only file system" /tmp/t.err; then echo root=read-only; else echo "root=$(cat /tmp/t.err)"; fi; awk "/^(CapEff|NoNewPrivs):/ {print \$1 \$2}" /proc/1/status; df -P -k /tmp /home/dev /workspace /opt/cybertrain-cache | awk "NR > 1 {print \$6 \"=\" \$2}"' 2>&1)
+  # As uid 1000 the session's effective set is empty even without
+  # --cap-drop ALL (execve clears it for a non-root user): the bounding set
+  # is what shows the drop.
+  locked=$(docker exec "$main" bash -c 'if touch /opt/cybertrain/.smoke-probe 2> /tmp/t.err; then echo root=writable; elif grep -q "Read-only file system" /tmp/t.err; then echo root=read-only; else echo "root=$(cat /tmp/t.err)"; fi; awk "/^(CapEff|CapBnd|NoNewPrivs):/ {print \$1 \$2}" /proc/1/status; df -P -k /tmp /home/dev /workspace /opt/cybertrain-cache | awk "NR > 1 {print \$6 \"=\" \$2}"' 2>&1)
   missing=""
-  for want in root=read-only CapEff:0000000000000000 NoNewPrivs:1 $tmpfs_sizes; do
+  for want in root=read-only CapEff:0000000000000000 CapBnd:0000000000000000 NoNewPrivs:1 $tmpfs_sizes; do
     if ! printf '%s\n' "$locked" | grep -qxF "$want"; then
       missing="$missing $want"
     fi
@@ -5183,9 +5189,11 @@ check E7 "the two ids do not stand in for each other: 3000-<editor id> is the 50
 
 # ---- E9: confinement, from inside session 1 ---------------------------------
 
-confined=$(inside "$h1" 'echo uid=$(id -u); awk "/^(CapEff|NoNewPrivs):/ {print \$1 \$2}" /proc/1/status; if touch /opt/cybertrain/.e2e 2> /dev/null; then echo root=writable; else echo root=read-only; fi; touch /workspace/.e2e && echo workspace=writable; echo memory=$(cat /sys/fs/cgroup/memory.max); echo pids=$(cat /sys/fs/cgroup/pids.max); echo cpu=$(cat /sys/fs/cgroup/cpu.max); if [ -e /var/run/docker.sock ]; then echo socket=present; else echo socket=absent; fi')
+# The bounding set (CapBnd) is what shows --cap-drop ALL: a non-root
+# process has an empty effective set either way.
+confined=$(inside "$h1" 'echo uid=$(id -u); awk "/^(CapEff|CapBnd|NoNewPrivs):/ {print \$1 \$2}" /proc/1/status; if touch /opt/cybertrain/.e2e 2> /dev/null; then echo root=writable; else echo root=read-only; fi; touch /workspace/.e2e && echo workspace=writable; echo memory=$(cat /sys/fs/cgroup/memory.max); echo pids=$(cat /sys/fs/cgroup/pids.max); echo cpu=$(cat /sys/fs/cgroup/cpu.max); if [ -e /var/run/docker.sock ]; then echo socket=present; else echo socket=absent; fi')
 missing=""
-for want in uid=1000 CapEff:0000000000000000 NoNewPrivs:1 root=read-only workspace=writable memory=1610612736 pids=512 "cpu=100000 100000" socket=absent; do
+for want in uid=1000 CapEff:0000000000000000 CapBnd:0000000000000000 NoNewPrivs:1 root=read-only workspace=writable memory=1610612736 pids=512 "cpu=100000 100000" socket=absent; do
   printf '%s\n' "$confined" | grep -qxF "$want" || missing="$missing [$want]"
 done
 ok=no
