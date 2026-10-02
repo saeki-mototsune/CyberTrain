@@ -1,4 +1,7 @@
 ok   app_name reads [package] name from spin.toml
+error: spin.toml [package] name 'x; touch PWNED #' is not a valid application name (lowercase letters, digits and _)
+ok   app_name rejects a name that is not a valid application name
+ok   command strings quote every interpolated value
 ok   build embeds the views, builds, then restores the empty table
 ok   db commands generate first, and again after migrate and rollback
 usage: cybertrain db (migrate|rollback [N]|status|schema:dump|create)
@@ -25,4 +28,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-14 tests, 61 assertions, 0 failures
+16 tests, 72 assertions, 0 failures

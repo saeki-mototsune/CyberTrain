@@ -44,9 +44,20 @@ module Cybertrain
     end
 
     class Interpreter
+      # How many renders may be nested (page -> partial -> partial ...). A
+      # partial that renders itself, or two that render each other, would
+      # otherwise recurse until the native stack is gone: SystemStackError is
+      # not a StandardError (every rescue misses it) and under Spinel it is a
+      # SIGSEGV of the whole process. Past the limit render raises a located
+      # Template::RuntimeError like any other template error. Real pages nest
+      # a handful of levels, so 50 leaves room for recursive tree partials.
+      MAX_RENDER_DEPTH = 50
+
       def initialize(helpers)
         @helpers = helpers
         @name = ""
+        # Renders currently open on this interpreter (typed Integer counter).
+        @depth = 0
         @last_error = ""
         # The output buffer lives in an ivar rather than being passed down:
         # Spinel strings are immutable C strings that `<<` replaces, and a
@@ -66,14 +77,23 @@ module Cybertrain
       # Renders template into a fresh String. Re-entrant: a helper rendering
       # a partial calls render again on the same interpreter.
       def render(template, env)
+        # Checked before anything is saved or changed, so the raise leaves
+        # @depth/@name/@out untouched. @name is still the calling template
+        # here; the caller's call_helper then adds its "name:line:" prefix.
+        if @depth >= MAX_RENDER_DEPTH
+          raise RuntimeError, "partial nesting too deep (> #{MAX_RENDER_DEPTH}): #{template.name} rendered from #{@name}"
+        end
+
         saved_name = @name
         saved_out = @out
         @name = template.name
         @out = String.new
+        @depth = @depth + 1
         begin
           exec_nodes(template.nodes, env)
           result = @out
         ensure
+          @depth = @depth - 1
           @name = saved_name
           @out = saved_out
         end

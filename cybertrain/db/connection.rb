@@ -32,8 +32,11 @@ module Cybertrain
           raise Error, message
         end
 
-        exec_script("PRAGMA journal_mode=WAL") unless path == ":memory:"
+        # busy_timeout first: switching to WAL takes a lock that another
+        # connection opening the same file may hold, and without a timeout
+        # that PRAGMA fails immediately with SQLITE_BUSY.
         exec_script("PRAGMA busy_timeout=5000")
+        exec_script("PRAGMA journal_mode=WAL") unless path == ":memory:"
         exec_script("PRAGMA foreign_keys=ON")
       end
 
@@ -87,7 +90,8 @@ module Cybertrain
         SQLite3.sqlite3_last_insert_rowid(@db)
       end
 
-      # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises.
+      # BEGIN / COMMIT around the block, ROLLBACK (and the exception keeps
+      # propagating) when it raises or exits non-locally (return/break/throw).
       # A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves SQLite
       # inside the transaction, so it is rolled back too before the COMMIT
       # error is re-raised: a pooled connection never goes back mid-transaction.
@@ -107,12 +111,20 @@ module Cybertrain
 
         exec_script("BEGIN")
         @transaction_depth = 1
+        completed = false
         begin
           yield
-        rescue StandardError => e
-          @transaction_depth = 0
-          rollback_quietly
-          raise e
+          completed = true
+        ensure
+          # Not completed = the block raised (any Exception, not only
+          # StandardError) or left non-locally (return / break / throw
+          # through a caller). Either way the transaction is rolled back
+          # and the depth reset, so the pooled connection is never handed back
+          # mid-transaction with a depth that makes every later call "nested".
+          unless completed
+            @transaction_depth = 0
+            rollback_quietly
+          end
         end
         @transaction_depth = 0
         begin

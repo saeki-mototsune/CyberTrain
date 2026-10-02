@@ -16,6 +16,7 @@ class PostRelation < Cybertrain::Relation
   def where(h) = (add_where(h); self)
   def where_sql(s, b = []) = (add_where_sql(s, b); self)
   def order(o) = (set_order(o); self)
+  def order_sql(s) = (add_order_sql(s); self)
   def limit(n) = (set_limit(n); self)
   def offset(n) = (set_offset(n); self)
 
@@ -55,7 +56,24 @@ class Post < Cybertrain::Model
   def self.column_names = ["id", "title", "body", "created_at", "updated_at"]
   def model_name = "Post"
 
-  attr_accessor :title, :body, :created_at, :updated_at
+  attr_reader :title, :body, :created_at, :updated_at
+
+  def title=(v)
+    @title = Cybertrain::Cast.str(v)
+    nil
+  end
+  def body=(v)
+    @body = Cybertrain::Cast.str_or_nil(v)
+    nil
+  end
+  def created_at=(v)
+    @created_at = Cybertrain::Cast.time_or_nil(v)
+    nil
+  end
+  def updated_at=(v)
+    @updated_at = Cybertrain::Cast.time_or_nil(v)
+    nil
+  end
 
   def initialize(attrs = {})
     super()
@@ -95,10 +113,10 @@ class Post < Cybertrain::Model
 
   def write_attribute(name, value)
     case name
-    when :title then @title = Cybertrain::Cast.str(value)
-    when :body then @body = Cybertrain::Cast.str_or_nil(value)
-    when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
-    when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
+    when :title then self.title = value
+    when :body then self.body = value
+    when :created_at then self.created_at = value
+    when :updated_at then self.updated_at = value
     end
     nil
   end
@@ -156,6 +174,7 @@ class CommentRelation < Cybertrain::Relation
   def where(h) = (add_where(h); self)
   def where_sql(s, b = []) = (add_where_sql(s, b); self)
   def order(o) = (set_order(o); self)
+  def order_sql(s) = (add_order_sql(s); self)
   def limit(n) = (set_limit(n); self)
   def offset(n) = (set_offset(n); self)
 
@@ -195,7 +214,28 @@ class Comment < Cybertrain::Model
   def self.column_names = ["id", "post_id", "author", "body", "created_at", "updated_at"]
   def model_name = "Comment"
 
-  attr_accessor :post_id, :author, :body, :created_at, :updated_at
+  attr_reader :post_id, :author, :body, :created_at, :updated_at
+
+  def post_id=(v)
+    @post_id = Cybertrain::Cast.int(v)
+    nil
+  end
+  def author=(v)
+    @author = Cybertrain::Cast.str_or_nil(v)
+    nil
+  end
+  def body=(v)
+    @body = Cybertrain::Cast.str(v)
+    nil
+  end
+  def created_at=(v)
+    @created_at = Cybertrain::Cast.time_or_nil(v)
+    nil
+  end
+  def updated_at=(v)
+    @updated_at = Cybertrain::Cast.time_or_nil(v)
+    nil
+  end
 
   def initialize(attrs = {})
     super()
@@ -238,11 +278,11 @@ class Comment < Cybertrain::Model
 
   def write_attribute(name, value)
     case name
-    when :post_id then @post_id = Cybertrain::Cast.int(value)
-    when :author then @author = Cybertrain::Cast.str_or_nil(value)
-    when :body then @body = Cybertrain::Cast.str(value)
-    when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
-    when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
+    when :post_id then self.post_id = value
+    when :author then self.author = value
+    when :body then self.body = value
+    when :created_at then self.created_at = value
+    when :updated_at then self.updated_at = value
     end
     nil
   end
@@ -301,6 +341,7 @@ class FlagRelation < Cybertrain::Relation
   def where(h) = (add_where(h); self)
   def where_sql(s, b = []) = (add_where_sql(s, b); self)
   def order(o) = (set_order(o); self)
+  def order_sql(s) = (add_order_sql(s); self)
   def limit(n) = (set_limit(n); self)
   def offset(n) = (set_offset(n); self)
 
@@ -340,7 +381,20 @@ class Flag < Cybertrain::Model
   def self.column_names = ["id", "active", "score", "group"]
   def model_name = "Flag"
 
-  attr_accessor :active, :score, :group
+  attr_reader :active, :score, :group
+
+  def active=(v)
+    @active = Cybertrain::Cast.bool(v)
+    nil
+  end
+  def score=(v)
+    @score = Cybertrain::Cast.float_or_nil(v)
+    nil
+  end
+  def group=(v)
+    @group = Cybertrain::Cast.str_or_nil(v)
+    nil
+  end
 
   def initialize(attrs = {})
     super()
@@ -377,9 +431,9 @@ class Flag < Cybertrain::Model
 
   def write_attribute(name, value)
     case name
-    when :active then @active = Cybertrain::Cast.bool(value)
-    when :score then @score = Cybertrain::Cast.float_or_nil(value)
-    when :group then @group = Cybertrain::Cast.str_or_nil(value)
+    when :active then self.active = value
+    when :score then self.score = value
+    when :group then self.group = value
     end
     nil
   end
@@ -574,13 +628,85 @@ end
 
 test "Relation builds SQL from where, order, limit and offset" do
   rel = Post.where(title: "Hello").where(body: nil).order("id DESC").limit(2).offset(4)
-  assert_equal 'SELECT * FROM "posts" WHERE "title" = ? AND "body" IS NULL ORDER BY id DESC LIMIT 2 OFFSET 4', rel.to_sql
+  assert_equal 'SELECT * FROM `posts` WHERE `title` = ? AND `body` IS NULL ORDER BY `id` DESC LIMIT 2 OFFSET 4', rel.to_sql
   assert_equal 1, rel.binds.size
-  assert_equal 'SELECT * FROM "posts" WHERE "id" IN (?, ?)', Post.where(id: [3, 4]).to_sql
-  assert_equal 'SELECT * FROM "posts" WHERE views > ?', Post.all.where_sql("views > ?", [3]).to_sql
-  assert_equal 'SELECT * FROM "posts"', Post.all.to_sql
-  assert_equal 'SELECT * FROM "flags" WHERE "group" = ?', Flag.where(group: "x").to_sql
-  assert_equal '"a""b"', Cybertrain::Relation.quote_ident('a"b')
+  assert_equal 'SELECT * FROM `posts` WHERE `id` IN (?, ?)', Post.where(id: [3, 4]).to_sql
+  assert_equal 'SELECT * FROM `posts` WHERE views > ?', Post.all.where_sql("views > ?", [3]).to_sql
+  assert_equal 'SELECT * FROM `posts`', Post.all.to_sql
+  assert_equal 'SELECT * FROM `flags` WHERE `group` = ?', Flag.where(group: "x").to_sql
+  assert_equal '`a``b`', Cybertrain::Relation.quote_ident('a`b')
+  assert_equal '`a"b`', Cybertrain::Relation.quote_ident('a"b')
+end
+
+test "order validates its columns and quotes them" do
+  assert_equal 'SELECT * FROM `posts` ORDER BY `title`', Post.order("title").to_sql
+  assert_equal 'SELECT * FROM `posts` ORDER BY `title` DESC, `id`', Post.order("title DESC, id").to_sql
+  assert_equal 'SELECT * FROM `posts` ORDER BY `title` ASC, `id` DESC', Post.order("  title  asc ,id desc ").to_sql
+  assert_equal 'SELECT * FROM `posts`', Post.order("").to_sql
+  ["title; DROP TABLE posts", "title DESC; DROP", "lower(title)", "title, ", ",title", "title DESCX",
+   "title DESC id", "1title", "posts.title", "title--"].each do |bad|
+    message = assert_raises("ArgumentError") { Post.order(bad) }
+    assert message.include?("order_sql"), "message for #{bad} should point to order_sql"
+    assert message.include?("is not `column [ASC|DESC]`")
+  end
+  assert_equal "order: \"title; DROP TABLE posts\" is not `column [ASC|DESC]` (use order_sql for raw SQL)",
+               assert_raises("ArgumentError") { Post.order("title; DROP TABLE posts") }
+  # Raw ORDER BY is the explicit, separate door: the hand-written Post has no
+  # order_sql, so reach it through the relation's base method.
+  raw = PostRelation.new("posts")
+  raw.add_order_sql("lower(title) DESC")
+  assert_equal 'SELECT * FROM `posts` ORDER BY lower(title) DESC', raw.to_sql
+end
+
+test "reverse_order flips quoted order terms (used by last)" do
+  reset_tables
+  assert_equal "`title` ASC, `id` DESC", Cybertrain::Relation.reverse_order("`title` DESC, `id`")
+  assert_equal "`a` DESC", Cybertrain::Relation.reverse_order("`a` ASC")
+  ["Bravo", "Alpha", "Charlie"].each { |t| Post.create(title: t) }
+  assert_equal "Alpha", Post.order("title DESC").last.title
+  assert_equal "Charlie", Post.order("title").last.title
+  assert_equal "Alpha", Post.order("title DESC, id").last.title
+  assert_equal "Charlie", Post.order("title ASC").last.title
+end
+
+test "where with a Time value binds it as a single equality" do
+  reset_tables
+  t = Time.at(1_700_000_000)
+  rel = Post.where(created_at: t)
+  assert_equal 'SELECT * FROM `posts` WHERE `created_at` = ?', rel.to_sql
+  assert_equal 1, rel.binds.size
+  assert_equal Cybertrain::Cast.to_sql(t), rel.binds[0]
+  assert_equal 0, rel.count
+  post = Post.create(title: "Stamped")
+  assert_equal 1, Post.where(created_at: post.created_at).count
+end
+
+test "delete_all respects limit and offset" do
+  reset_tables
+  ["Alpha", "Bravo", "Charlie"].each { |t| Post.create(title: t) }
+  assert_equal 1, Post.limit(1).delete_all
+  assert_equal 2, Post.count
+  assert_equal ["Bravo", "Charlie"], Post.order("id").to_a.map { |p| p.title }
+
+  reset_tables
+  ["Alpha", "Bravo", "Charlie"].each { |t| Post.create(title: t) }
+  assert_equal 2, Post.order("title DESC").limit(2).delete_all
+  assert_equal ["Alpha"], Post.all.to_a.map { |p| p.title }
+
+  reset_tables
+  ["Alpha", "Bravo", "Charlie", "Delta"].each { |t| Post.create(title: t) }
+  assert_equal 2, Post.where(body: nil).offset(1).limit(2).delete_all
+  assert_equal ["Alpha", "Delta"], Post.order("id").to_a.map { |p| p.title }
+  assert_equal 1, Post.where(title: "Delta").offset(0).limit(5).delete_all
+  assert_equal 0, Post.where(title: "Alpha").limit(0).delete_all
+  assert_equal 1, Post.where(title: "Alpha").offset(0).delete_all
+  assert_equal 0, Post.count
+
+  reset_tables
+  ["Alpha", "Bravo", "Charlie"].each { |t| Post.create(title: t) }
+  assert_equal 2, Post.all.offset(1).delete_all
+  assert_equal ["Alpha"], Post.all.to_a.map { |p| p.title }
+  assert_equal 1, Post.all.delete_all
 end
 
 test "count and size respect limit and offset" do

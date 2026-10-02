@@ -22,6 +22,12 @@ class ServerTestApp < Cybertrain::Middleware
       res.body = req.body
     when "/boom"
       raise "kaboom"
+    when "/reject"
+      # what Query.parse raises past its limits (the stack parses inside @app)
+      raise Cybertrain::Query::TooDeep, "nested too deeply (limit 32)"
+    when "/json"
+      # a StandardError under CRuby, not under Spinel (NOTES rule 33)
+      raise JSON::ParserError, "unexpected token"
     when "/slow"
       $slow_started = true
       sleep 1
@@ -296,6 +302,28 @@ test "an exception in the app gets 500 and the connection stays usable" do
   assert_includes $log.string, "[ERROR] RuntimeError: kaboom"
   assert_equal "hi", c.get("/hello").body
   c.close
+end
+
+test "parameters past Query's limits get 400, not 500, and the connection stays usable" do
+  c = RawClient.new($server.port)
+  res = c.get("/reject")
+  assert_equal "HTTP/1.1 400 Bad Request", res.status_line
+  assert_equal "Bad Request", res.body
+  assert_includes $log.string, "rejected request parameters: nested too deeply (limit 32)"
+  refute $log.string.include?("TooDeep: nested"), "a rejected request is not an error-level log line"
+  assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
+  c.close
+end
+
+test "a JSON::ParserError in the app gets 500 and the server keeps serving" do
+  c = RawClient.new($server.port)
+  res = c.get("/json")
+  assert_equal "HTTP/1.1 500 Internal Server Error", res.status_line
+  assert_includes $log.string, "JSON::ParserError: unexpected token"
+  c.close
+  c2 = RawClient.new($server.port)
+  assert_equal "hi", c2.get("/hello", "Connection: close\r\n").body
+  c2.close
 end
 
 test "an idle keep-alive connection is closed after read_timeout" do

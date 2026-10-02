@@ -2,9 +2,11 @@
 #
 # Rack/Rails represent params as one Hash mixing String, Array and nested
 # Hash values. Spinel's typed containers reject that mix, so a Params keeps
-# three separate typed Hashes (scalars, lists, nested Params) plus an
-# insertion-order Array per kind, and exposes the Rails-flavoured surface
-# (#require, #permit, #[]) on top of them.
+# three separate typed Hashes (scalars, lists, nested Params) and exposes the
+# Rails-flavoured surface (#require, #permit, #[]) on top of them. Key order
+# is the insertion order of each Hash (Ruby and Spinel Hashes are ordered), so
+# evicting a key is one O(1) Hash#delete: the earlier per-kind order Arrays
+# made every kind change an O(n) Array#delete, i.e. quadratic parsing.
 module Cybertrain
   class Params
     class ParameterMissing < StandardError
@@ -12,11 +14,8 @@ module Cybertrain
 
     def initialize
       @values = {}
-      @value_order = []
       @lists = {}
-      @list_order = []
       @children = {}
-      @child_order = []
     end
 
     def [](key)
@@ -40,7 +39,7 @@ module Cybertrain
     end
 
     def keys
-      @value_order + @list_order + @child_order
+      @values.keys + @lists.keys + @children.keys
     end
 
     def require(key)
@@ -65,7 +64,6 @@ module Cybertrain
       k = key.to_s
       evict_from_list(k)
       evict_from_children(k)
-      @value_order << k unless @values.key?(k)
       @values[k] = value
     end
 
@@ -73,10 +71,7 @@ module Cybertrain
       k = key.to_s
       evict_from_values(k)
       evict_from_children(k)
-      unless @lists.key?(k)
-        @lists[k] = []
-        @list_order << k
-      end
+      @lists[k] = [] unless @lists.key?(k)
       @lists[k] << value
     end
 
@@ -84,24 +79,35 @@ module Cybertrain
       k = key.to_s
       evict_from_values(k)
       evict_from_list(k)
-      unless @children.key?(k)
-        @children[k] = Params.new
-        @child_order << k
-      end
+      @children[k] = Params.new unless @children.key?(k)
       @children[k]
     end
 
     # path comes from Query.split_key: ["id"], ["tags", ""] (append to
     # list), or ["post", "title"] / ["post", "tags", ""] (one hop per
-    # nesting level, recursing into the child Params).
+    # nesting level). Walks down with a cursor node instead of recursing, so
+    # the stack stays flat however long the path is (Query caps it at
+    # MAX_DEPTH, but that is not the only guard).
     def set_path(path, value)
-      if path.length == 1
-        set_value(path[0], value)
-      elsif path.length == 2 && path[1] == ""
-        add_list_value(path[0], value)
-      else
-        child!(path[0]).set_path(path[1..-1], value)
+      node = self
+      i = 0
+      done = false
+      until done
+        remaining = path.length - i
+        if remaining <= 0
+          done = true
+        elsif remaining == 1
+          node.set_value(path[i], value)
+          done = true
+        elsif remaining == 2 && path[i + 1] == ""
+          node.add_list_value(path[i], value)
+          done = true
+        else
+          node = node.child!(path[i])
+          i += 1
+        end
       end
+      nil
     end
 
     # other wins on conflicts: a scalar or list key present on other
@@ -111,49 +117,49 @@ module Cybertrain
     # at any level, is left untouched. other is never mutated, and nothing
     # of other's internal Arrays/Hashes/Params is aliased into self --
     # every list and nested Params that crosses over is copied.
+    #
+    # Iterative: dsts[i] receives srcs[i], and each nested pair found while
+    # merging one level is appended to the two work lists. Levels are
+    # independent of each other, so visiting order does not matter.
     def merge!(other)
-      other.value_order.each { |k| set_value(k, other.raw_values[k]) }
-      other.list_order.each do |k|
-        evict_from_values(k)
-        evict_from_children(k)
-        @list_order << k unless @lists.key?(k)
-        @lists[k] = other.lists[k].dup
-      end
-      other.child_order.each do |k|
-        existing = @children[k]
-        if existing.nil?
-          evict_from_values(k)
-          evict_from_list(k)
-          @child_order << k
-          @children[k] = Params.new.merge!(other.children[k])
-        else
-          existing.merge!(other.children[k])
+      dsts = [self]
+      srcs = [other]
+      i = 0
+      while i < dsts.length
+        dst = dsts[i]
+        src = srcs[i]
+        src.raw_values.keys.each { |k| dst.set_value(k, src.raw_values[k]) }
+        src.lists.keys.each { |k| dst.replace_list!(k, src.lists[k].dup) }
+        src.children.keys.each do |k|
+          dsts << dst.child!(k)
+          srcs << src.children[k]
         end
+        i += 1
       end
       self
     end
 
     def to_h
       h = {}
-      @value_order.each { |k| h[k] = @values[k] }
+      @values.keys.each { |k| h[k] = @values[k] }
       h
     end
 
     def empty?
-      @value_order.empty? && @list_order.empty? && @child_order.empty?
+      @values.empty? && @lists.empty? && @children.empty?
     end
 
     def inspect
       parts = []
-      @value_order.each { |k| parts << "#{k.inspect}=>#{@values[k].inspect}" }
-      @list_order.each { |k| parts << "#{k.inspect}=>#{@lists[k].inspect}" }
-      @child_order.each { |k| parts << "#{k.inspect}=>#{@children[k].inspect}" }
+      @values.keys.each { |k| parts << "#{k.inspect}=>#{@values[k].inspect}" }
+      @lists.keys.each { |k| parts << "#{k.inspect}=>#{@lists[k].inspect}" }
+      @children.keys.each { |k| parts << "#{k.inspect}=>#{@children[k].inspect}" }
       "{#{parts.join(", ")}}"
     end
 
     protected
 
-    attr_reader :value_order, :lists, :list_order, :children, :child_order
+    attr_reader :lists, :children
 
     # NOTE: named raw_values, not values -- naming this accessor "values"
     # (colliding with Hash#values) miscompiles the recursive merge! below
@@ -165,6 +171,15 @@ module Cybertrain
       @values
     end
 
+    # Replaces the list under k with arr (an owned copy), evicting the other
+    # kinds. Used by merge!, which calls it on another Params.
+    def replace_list!(k, arr)
+      evict_from_values(k)
+      evict_from_children(k)
+      @lists[k] = arr
+      nil
+    end
+
     private
 
     # Rack-style eviction: setting a key as one kind (scalar/list/nested)
@@ -173,19 +188,16 @@ module Cybertrain
     def evict_from_values(k)
       return unless @values.key?(k)
       @values.delete(k)
-      @value_order.delete(k)
     end
 
     def evict_from_list(k)
       return unless @lists.key?(k)
       @lists.delete(k)
-      @list_order.delete(k)
     end
 
     def evict_from_children(k)
       return unless @children.key?(k)
       @children.delete(k)
-      @child_order.delete(k)
     end
   end
 end

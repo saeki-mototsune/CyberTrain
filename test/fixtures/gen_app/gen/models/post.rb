@@ -3,6 +3,7 @@ class PostRelation < Cybertrain::Relation
   def where(h) = (add_where(h); self)
   def where_sql(s, b = []) = (add_where_sql(s, b); self)
   def order(o) = (set_order(o); self)
+  def order_sql(s) = (add_order_sql(s); self)
   def limit(n) = (set_limit(n); self)
   def offset(n) = (set_offset(n); self)
 
@@ -42,7 +43,28 @@ class Post < Cybertrain::Model
   def self.column_names = ["id", "title", "body", "views", "created_at", "updated_at"]
   def model_name = "Post"
 
-  attr_accessor :title, :body, :views, :created_at, :updated_at
+  attr_reader :title, :body, :views, :created_at, :updated_at
+
+  def title=(v)
+    @title = Cybertrain::Cast.str(v)
+    nil
+  end
+  def body=(v)
+    @body = Cybertrain::Cast.str_or_nil(v)
+    nil
+  end
+  def views=(v)
+    @views = Cybertrain::Cast.int(v)
+    nil
+  end
+  def created_at=(v)
+    @created_at = Cybertrain::Cast.time_or_nil(v)
+    nil
+  end
+  def updated_at=(v)
+    @updated_at = Cybertrain::Cast.time_or_nil(v)
+    nil
+  end
 
   def initialize(attrs = {})
     super()
@@ -85,11 +107,11 @@ class Post < Cybertrain::Model
 
   def write_attribute(name, value)
     case name
-    when :title then @title = Cybertrain::Cast.str(value)
-    when :body then @body = Cybertrain::Cast.str_or_nil(value)
-    when :views then @views = Cybertrain::Cast.int(value)
-    when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
-    when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
+    when :title then self.title = value
+    when :body then self.body = value
+    when :views then self.views = value
+    when :created_at then self.created_at = value
+    when :updated_at then self.updated_at = value
     end
     nil
   end

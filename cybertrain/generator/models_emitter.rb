@@ -10,6 +10,39 @@ module Cybertrain
     # Spinel cannot define methods at runtime. test/model.rb hand-writes
     # this exact shape and is its executable specification.
     module ModelsEmitter
+      # Column names the emitter refuses (besides anything not matching
+      # COLUMN_NAME_PATTERN and the Ruby keywords below): each would define
+      # an attribute reader/writer that shadows a method of Cybertrain::Model
+      # or Object that the framework itself calls (`errors`, `save`,
+      # `attributes`, `hash`, `send`, ...), or one that breaks the generated
+      # source (`class`). `id` is deliberately absent: the primary key is
+      # handled by Model#id. cli/scaffold.rb keeps its own, narrower
+      # RESERVED_COLUMNS (id created_at updated_at) for what a scaffold may
+      # add; this list is about what the generated class can host.
+      RESERVED_COLUMN_NAMES = [
+        "errors", "persisted", "class", "hash", "object_id", "send", "freeze",
+        "display", "method", "instance_variable_get", "attributes", "save",
+        "update", "destroy", "reload", "valid?", "model_name", "new_record",
+        "to_json", "as_json", "to_param", "to_row", "load_row", "set_id",
+        "run_callbacks", "insert_row", "update_row", "read_attribute",
+        "write_attribute", "assign_attributes", "read_association",
+        "call_view_method", "initialize", "table_name", "column_names",
+        "from_row", "dup", "clone", "tap", "itself", "extend", "inspect",
+        "to_s", "public_send", "respond_to", "instance_variable_set",
+        "instance_variables", "instance_of", "kind_of", "is_a", "frozen"
+      ]
+
+      # Ruby keywords: `def end=` / `attr_reader :class` would not parse or
+      # would redefine core behaviour.
+      RUBY_KEYWORD_NAMES = [
+        "__ENCODING__", "__LINE__", "__FILE__", "BEGIN", "END", "alias", "and",
+        "begin", "break", "case", "class", "def", "defined", "do", "else",
+        "elsif", "end", "ensure", "false", "for", "if", "in", "module", "next",
+        "nil", "not", "or", "redo", "rescue", "retry", "return", "self",
+        "super", "then", "true", "undef", "unless", "until", "when", "while",
+        "yield"
+      ]
+
       # "posts" -> "Post"; "blog_posts" -> "BlogPost".
       def self.model_class_name(table)
         Inflector.camelize(Inflector.singularize(table.to_s))
@@ -56,6 +89,7 @@ module Cybertrain
       def self.emit(table, definition, view_methods)
         raise ArgumentError, "table #{table.name} has no columns" if table.columns.empty?
 
+        check_column_names(table)
         model = model_class_name(table.name)
         # Each part builds and returns its own String: a String argument
         # appended to inside the callee does not reliably update the
@@ -70,12 +104,46 @@ module Cybertrain
         src
       end
 
+      # Raises ArgumentError (the generator exits non-zero) for a column the
+      # generated class cannot host: not a plain snake_case identifier, a Ruby
+      # keyword, or one of RESERVED_COLUMN_NAMES.
+      def self.check_column_names(table)
+        table.columns.each do |c|
+          name = c.name
+          unless column_name_valid?(name)
+            raise ArgumentError, "table #{table.name}: column #{name.inspect} is not a valid attribute name " \
+                                 "(use lowercase letters, digits and _, not starting with a digit)"
+          end
+          if RUBY_KEYWORD_NAMES.include?(name) || RESERVED_COLUMN_NAMES.include?(name)
+            raise ArgumentError, "table #{table.name}: column #{name.inspect} is reserved " \
+                                 "(it would shadow a method of Cybertrain::Model or Object); rename it"
+          end
+        end
+        nil
+      end
+
+      # /\A[a-z_][a-z0-9_]*\z/ spelled out so Spinel needs no Regexp here.
+      def self.column_name_valid?(name)
+        return false if name.empty?
+
+        i = 0
+        name.each_char do |ch|
+          lower = ch >= "a" && ch <= "z"
+          digit = ch >= "0" && ch <= "9"
+          return false unless lower || ch == "_" || (digit && i > 0)
+
+          i += 1
+        end
+        true
+      end
+
       def self.emit_relation(model)
         src = +""
         src << "class #{model}Relation < Cybertrain::Relation\n"
         src << "  def where(h) = (add_where(h); self)\n"
         src << "  def where_sql(s, b = []) = (add_where_sql(s, b); self)\n"
         src << "  def order(o) = (set_order(o); self)\n"
+        src << "  def order_sql(s) = (add_order_sql(s); self)\n"
         src << "  def limit(n) = (set_limit(n); self)\n"
         src << "  def offset(n) = (set_offset(n); self)\n"
         src << "\n"
@@ -122,7 +190,20 @@ module Cybertrain
         src << "  def self.column_names = [\"id\", #{quoted}]\n"
         src << "  def model_name = \"#{model}\"\n"
         src << "\n"
-        src << "  attr_accessor #{symbols}\n"
+        # Readers only. Every writer casts like write_attribute does (rule
+        # 7: a nullable ivar is assigned only through a Cast helper that can
+        # return nil, e.g. time_or_nil; a raw attr_writer would store a Time
+        # straight into the nil-initialised ivar). The writers return nil so
+        # a name shared by two models (`body=`) has one return type (rule 34);
+        # `rec.body = v` still evaluates to v at the call site.
+        src << "  attr_reader #{symbols}\n"
+        src << "\n"
+        table.columns.each do |c|
+          src << "  def #{c.name}=(v)\n"
+          src << "    @#{c.name} = Cybertrain::Cast.#{cast_for(c)}(v)\n"
+          src << "    nil\n"
+          src << "  end\n"
+        end
         src << "\n"
         src << "  def initialize(attrs = {})\n"
         src << "    super()\n"
@@ -153,7 +234,8 @@ module Cybertrain
         src << "\n"
         src << "  def write_attribute(name, value)\n"
         src << "    case name\n"
-        table.columns.each { |c| src << "    when :#{c.name} then @#{c.name} = Cybertrain::Cast.#{cast_for(c)}(value)\n" }
+        # Through the typed writers above, so the two cannot drift apart.
+        table.columns.each { |c| src << "    when :#{c.name} then self.#{c.name} = value\n" }
         src << "    end\n"
         src << "    nil\n"
         src << "  end\n"

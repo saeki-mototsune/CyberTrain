@@ -1,0 +1,7 @@
+ok   return from inside a transaction rolls back and leaves autocommit on
+ok   break out of a transaction rolls back and leaves autocommit on
+ok   a StandardError rolls back, re-raises and leaves autocommit on
+ok   a normal completion commits
+ok   a nested transaction joins the outer one and an inner raise rolls everything back
+ok   a nested non-local exit leaves the outer transaction usable
+6 tests, 18 assertions, 0 failures

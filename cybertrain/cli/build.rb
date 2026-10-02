@@ -4,7 +4,9 @@
 module Cybertrain
   module CLI
     module Build
-      # The [package] name in root/spin.toml, or "" when there is none.
+      # The [package] name in root/spin.toml, or "" when there is none. The
+      # name ends up in shell command strings and file paths, so it must be
+      # a name `cybertrain new` could have produced.
       def self.app_name(root)
         path = "#{root}/spin.toml"
         return "" unless File.exist?(path)
@@ -22,11 +24,15 @@ module Cybertrain
             break
           end
         end
+        raise InvalidArgument, "spin.toml [package] name '#{name}' is not a valid application name (lowercase letters, digits and _)" unless name == "" || Templates.identifier?(name)
+
         name
       end
 
+      # name goes through quote_arg too: app_name validates it, but the
+      # command strings stay safe for a caller that skipped that.
       def self.commands(name)
-        ["spin run gen -- --embed-views", "spin build #{name}", "spin run gen"]
+        ["spin run gen -- --embed-views", "spin build #{quote_arg(name)}", "spin run gen"]
       end
 
       # `cybertrain db ARGS`, through bin/db.rb (the app binary cannot compile
@@ -55,7 +61,8 @@ module Cybertrain
 
       # port is "" (the app's default, 3000) or a port? string.
       def self.server_commands(name, port)
-        run = port == "" ? "spin run #{name}" : "spin run #{name} -- #{port}"
+        target = quote_arg(name)
+        run = port == "" ? "spin run #{target}" : "spin run #{target} -- #{quote_arg(port)}"
         ["spin run gen", run]
       end
 

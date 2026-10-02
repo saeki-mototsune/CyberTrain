@@ -25,19 +25,26 @@ module Cybertrain
       @offset = 0
     end
 
-    # Table and column names are double-quoted in every generated fragment
+    # Table and column names are backtick-quoted in every generated fragment
     # so a column named after an SQL keyword (order, group, on) still works.
-    # Raw fragments (where_sql, order) are the caller's SQL and stay as given.
+    # Backticks, not double quotes: SQLite falls back to reading an unknown
+    # "name" as the string literal 'name' (a misspelled key would then match
+    # silently), while an unknown `name` is a "no such column" error.
+    # Raw fragments (where_sql, order_sql) are the caller's SQL and stay as given.
     #
-    # where(title: "x")    -> "title" = ?
-    # where(body: nil)     -> "body" IS NULL
-    # where(id: [1, 2])    -> "id" IN (?, ?)
+    # where(title: "x")    -> `title` = ?
+    # where(body: nil)     -> `body` IS NULL
+    # where(id: [1, 2])    -> `id` IN (?, ?)
     def add_where(hash)
       hash.each do |key, value|
         column = Relation.quote_ident(key.to_s)
         case value
         when nil
           @wheres << "#{column} IS NULL"
+        when Time
+          # Before `when Array`: a Time in a poly slot matches Array (rule 8).
+          @wheres << "#{column} = ?"
+          @binds << Cast.to_sql(value)
         when Array
           if value.empty?
             @wheres << "1 = 0"
@@ -61,8 +68,43 @@ module Cybertrain
       nil
     end
 
+    # order("title DESC, id"): a comma-separated list of `column [ASC|DESC]`,
+    # each column quoted. Anything else (expressions, functions, a stray
+    # `;`) raises: order(params[:sort]) must not become SQL. Raw ORDER BY
+    # text goes through add_order_sql (the models' `order_sql`).
     def set_order(order)
-      @order = order
+      if order.strip == ""
+        @order = ""
+        return nil
+      end
+      terms = Array.new(0) { "" }
+      stripped = order.strip
+      if stripped.start_with?(",") || stripped.end_with?(",")
+        raise ArgumentError, "order: \"#{stripped}\" is not `column [ASC|DESC]` (use order_sql for raw SQL)"
+      end
+      stripped.split(",").each do |fragment|
+        words = fragment.strip.split(" ")
+        bad = words.size == 0 || words.size > 2 || !Relation.plain_ident?(words[0])
+        dir = words.size == 2 ? words[1].upcase : ""
+        bad = true if dir != "" && dir != "ASC" && dir != "DESC"
+        if bad
+          raise ArgumentError, "order: \"#{fragment.strip}\" is not `column [ASC|DESC]` " \
+                               "(use order_sql for raw SQL)"
+        end
+        quoted = Relation.quote_ident(words[0])
+        terms << (dir == "" ? quoted : "#{quoted} #{dir}")
+      end
+      @order = terms.join(", ")
+      nil
+    end
+
+    # A raw ORDER BY fragment, stored verbatim: order_sql("lower(title) DESC").
+    # Never pass request data here. `last` reverses the order by splitting on
+    # commas and flipping ASC/DESC (Relation.reverse_order), which is right for
+    # `order` output but can mangle raw text with commas inside parentheses
+    # (`COALESCE(a, b)`); call `order_sql` with the reversed text yourself then.
+    def add_order_sql(sql)
+      @order = sql
       nil
     end
 
@@ -108,10 +150,18 @@ module Cybertrain
       !found.empty?
     end
 
-    # Deletes the matching rows and returns how many went.
+    # Deletes the matching rows and returns how many went. With a limit or
+    # offset only the rows of that window go (Post.limit(1).delete_all is one
+    # row, as count/exists? read the same window): SQLite has no DELETE ...
+    # LIMIT in a default build, so the window is picked by a rowid subselect;
+    # the where binds appear once, inside it.
     def delete_all
       sql = +"DELETE FROM #{Relation.quote_ident(@table)}"
-      sql << " WHERE " << @wheres.join(" AND ") unless @wheres.empty?
+      if @limit >= 0 || @offset > 0
+        sql << " WHERE rowid IN (" << select_sql("rowid", @order, @limit, @offset) << ")"
+      else
+        sql << " WHERE " << @wheres.join(" AND ") unless @wheres.empty?
+      end
       binds = @binds
       Cybertrain::DB.with do |c|
         c.execute(sql, binds)
@@ -144,9 +194,21 @@ module Cybertrain
       pick_row(Relation.reverse_order(order), 0)
     end
 
-    # "posts" -> "\"posts\"" (an embedded double quote is doubled).
+    # "posts" -> "`posts`" (an embedded backtick is doubled).
     def self.quote_ident(name)
-      "\"" + name.gsub("\"", "\"\"") + "\""
+      "`" + name.gsub("`", "``") + "`"
+    end
+
+    # [A-Za-z_][A-Za-z0-9_]*, scanned by hand (no regexp in framework code).
+    def self.plain_ident?(name)
+      return false if name == ""
+      first = true
+      name.each_char do |c|
+        letter = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_"
+        return false unless letter || (!first && c >= "0" && c <= "9")
+        first = false
+      end
+      true
     end
 
     # "title DESC, id" -> "title ASC, id DESC"

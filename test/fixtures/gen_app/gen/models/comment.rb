@@ -3,6 +3,7 @@ class CommentRelation < Cybertrain::Relation
   def where(h) = (add_where(h); self)
   def where_sql(s, b = []) = (add_where_sql(s, b); self)
   def order(o) = (set_order(o); self)
+  def order_sql(s) = (add_order_sql(s); self)
   def limit(n) = (set_limit(n); self)
   def offset(n) = (set_offset(n); self)
 
@@ -42,7 +43,32 @@ class Comment < Cybertrain::Model
   def self.column_names = ["id", "post_id", "commenter", "body", "approved", "created_at", "updated_at"]
   def model_name = "Comment"
 
-  attr_accessor :post_id, :commenter, :body, :approved, :created_at, :updated_at
+  attr_reader :post_id, :commenter, :body, :approved, :created_at, :updated_at
+
+  def post_id=(v)
+    @post_id = Cybertrain::Cast.int(v)
+    nil
+  end
+  def commenter=(v)
+    @commenter = Cybertrain::Cast.str(v)
+    nil
+  end
+  def body=(v)
+    @body = Cybertrain::Cast.str(v)
+    nil
+  end
+  def approved=(v)
+    @approved = Cybertrain::Cast.bool_or_nil(v)
+    nil
+  end
+  def created_at=(v)
+    @created_at = Cybertrain::Cast.time_or_nil(v)
+    nil
+  end
+  def updated_at=(v)
+    @updated_at = Cybertrain::Cast.time_or_nil(v)
+    nil
+  end
 
   def initialize(attrs = {})
     super()
@@ -88,12 +114,12 @@ class Comment < Cybertrain::Model
 
   def write_attribute(name, value)
     case name
-    when :post_id then @post_id = Cybertrain::Cast.int(value)
-    when :commenter then @commenter = Cybertrain::Cast.str(value)
-    when :body then @body = Cybertrain::Cast.str(value)
-    when :approved then @approved = Cybertrain::Cast.bool_or_nil(value)
-    when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
-    when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
+    when :post_id then self.post_id = value
+    when :commenter then self.commenter = value
+    when :body then self.body = value
+    when :approved then self.approved = value
+    when :created_at then self.created_at = value
+    when :updated_at then self.updated_at = value
     end
     nil
   end

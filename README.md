@@ -482,6 +482,8 @@ compiler output on every HTML response. None of this loads in production.
 | Many database adapters | SQLite only, via FFI |
 | `has_many :through`, `includes`, `pluck`, `dependent:`, enums, STI, polymorphic associations | Not implemented; associations come from schema foreign keys only |
 | `namespace`, format/`respond_to`, `constraints`, `mount` | Not implemented — flat names, `render json:` only |
+| `rescue StandardError` catches a bad `JSON.parse` | Under Spinel `JSON::ParserError` is not a `StandardError`: app code must `rescue JSON::ParserError, StandardError`. The server catches it as a last resort and answers 500 |
+| `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` takes only `column [ASC\|DESC]` lists (each column quoted) and raises on anything else; raw ORDER BY text goes through the relation's `order_sql`, which must never see request data. A `limit`/`offset` on `delete_all` is honoured (a subselect), and request parameters nest at most 32 levels / 4096 pairs (400 past that) |
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |

@@ -41,6 +41,26 @@ test "app_name reads [package] name from spin.toml" do
   assert_equal "", Cybertrain::CLI::Build.app_name("no_such_dir")
 end
 
+test "app_name rejects a name that is not a valid application name" do
+  File.write("spin.toml", "[package]\nname = \"x; touch PWNED #\"\n")
+  message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+  assert_equal "spin.toml [package] name 'x; touch PWNED #' is not a valid application name (lowercase letters, digits and _)", message
+  assert_equal 1, Cybertrain::CLI.run(["build"])
+  refute File.exist?("PWNED")
+  File.write("spin.toml", "[package]\nname = \"Blog\"\n")
+  assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+  File.write("spin.toml", "[package]\nname = \"blog\"\nversion = \"0.1.0\"\n")
+  assert_equal "blog", Cybertrain::CLI::Build.app_name(".")
+end
+
+test "command strings quote every interpolated value" do
+  assert_equal "'x; touch PWNED #'", Cybertrain::CLI::Build.quote_arg("x; touch PWNED #")
+  assert_equal "'it'\\''s'", Cybertrain::CLI::Build.quote_arg("it's")
+  assert_equal "spin build 'x; touch PWNED #'", Cybertrain::CLI::Build.commands("x; touch PWNED #")[1]
+  assert_equal "spin run 'x; touch PWNED #'", Cybertrain::CLI::Build.server_commands("x; touch PWNED #", "")[1]
+  assert_equal "spin run blog -- '1; id'", Cybertrain::CLI::Build.server_commands("blog", "1; id")[1]
+end
+
 test "build embeds the views, builds, then restores the empty table" do
   assert_equal ["spin run gen -- --embed-views", "spin build blog", "spin run gen"], Cybertrain::CLI::Build.commands("blog")
   assert_equal ["spin run gen", "spin run db -- migrate", "spin run gen"], Cybertrain::CLI::Build.migration_commands

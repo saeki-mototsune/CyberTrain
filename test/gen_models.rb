@@ -55,6 +55,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       def where(h) = (add_where(h); self)
       def where_sql(s, b = []) = (add_where_sql(s, b); self)
       def order(o) = (set_order(o); self)
+      def order_sql(s) = (add_order_sql(s); self)
       def limit(n) = (set_limit(n); self)
       def offset(n) = (set_offset(n); self)
 
@@ -94,7 +95,24 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       def self.column_names = ["id", "title", "body", "created_at", "updated_at"]
       def model_name = "Post"
 
-      attr_accessor :title, :body, :created_at, :updated_at
+      attr_reader :title, :body, :created_at, :updated_at
+
+      def title=(v)
+        @title = Cybertrain::Cast.str(v)
+        nil
+      end
+      def body=(v)
+        @body = Cybertrain::Cast.str_or_nil(v)
+        nil
+      end
+      def created_at=(v)
+        @created_at = Cybertrain::Cast.time_or_nil(v)
+        nil
+      end
+      def updated_at=(v)
+        @updated_at = Cybertrain::Cast.time_or_nil(v)
+        nil
+      end
 
       def initialize(attrs = {})
         super()
@@ -134,10 +152,10 @@ EXPECTED_POST = HEADER + <<~'RUBY'
 
       def write_attribute(name, value)
         case name
-        when :title then @title = Cybertrain::Cast.str(value)
-        when :body then @body = Cybertrain::Cast.str_or_nil(value)
-        when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
-        when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
+        when :title then self.title = value
+        when :body then self.body = value
+        when :created_at then self.created_at = value
+        when :updated_at then self.updated_at = value
         end
         nil
       end
@@ -195,6 +213,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       def where(h) = (add_where(h); self)
       def where_sql(s, b = []) = (add_where_sql(s, b); self)
       def order(o) = (set_order(o); self)
+      def order_sql(s) = (add_order_sql(s); self)
       def limit(n) = (set_limit(n); self)
       def offset(n) = (set_offset(n); self)
 
@@ -234,7 +253,28 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       def self.column_names = ["id", "post_id", "author", "body", "created_at", "updated_at"]
       def model_name = "Comment"
 
-      attr_accessor :post_id, :author, :body, :created_at, :updated_at
+      attr_reader :post_id, :author, :body, :created_at, :updated_at
+
+      def post_id=(v)
+        @post_id = Cybertrain::Cast.int(v)
+        nil
+      end
+      def author=(v)
+        @author = Cybertrain::Cast.str_or_nil(v)
+        nil
+      end
+      def body=(v)
+        @body = Cybertrain::Cast.str(v)
+        nil
+      end
+      def created_at=(v)
+        @created_at = Cybertrain::Cast.time_or_nil(v)
+        nil
+      end
+      def updated_at=(v)
+        @updated_at = Cybertrain::Cast.time_or_nil(v)
+        nil
+      end
 
       def initialize(attrs = {})
         super()
@@ -277,11 +317,11 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
 
       def write_attribute(name, value)
         case name
-        when :post_id then @post_id = Cybertrain::Cast.int(value)
-        when :author then @author = Cybertrain::Cast.str_or_nil(value)
-        when :body then @body = Cybertrain::Cast.str(value)
-        when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
-        when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
+        when :post_id then self.post_id = value
+        when :author then self.author = value
+        when :body then self.body = value
+        when :created_at then self.created_at = value
+        when :updated_at then self.updated_at = value
         end
         nil
       end
@@ -335,6 +375,7 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def where(h) = (add_where(h); self)
       def where_sql(s, b = []) = (add_where_sql(s, b); self)
       def order(o) = (set_order(o); self)
+      def order_sql(s) = (add_order_sql(s); self)
       def limit(n) = (set_limit(n); self)
       def offset(n) = (set_offset(n); self)
 
@@ -374,7 +415,20 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def self.column_names = ["id", "active", "score", "group"]
       def model_name = "Flag"
 
-      attr_accessor :active, :score, :group
+      attr_reader :active, :score, :group
+
+      def active=(v)
+        @active = Cybertrain::Cast.bool(v)
+        nil
+      end
+      def score=(v)
+        @score = Cybertrain::Cast.float_or_nil(v)
+        nil
+      end
+      def group=(v)
+        @group = Cybertrain::Cast.str_or_nil(v)
+        nil
+      end
 
       def initialize(attrs = {})
         super()
@@ -411,9 +465,9 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
 
       def write_attribute(name, value)
         case name
-        when :active then @active = Cybertrain::Cast.bool(value)
-        when :score then @score = Cybertrain::Cast.float_or_nil(value)
-        when :group then @group = Cybertrain::Cast.str_or_nil(value)
+        when :active then self.active = value
+        when :score then self.score = value
+        when :group then self.group = value
         end
         nil
       end
@@ -507,8 +561,14 @@ test "casts per column follow type and null" do
     '@author = Cybertrain::Cast.str_or_nil(row["author"])',
     '@body = Cybertrain::Cast.str(row["body"])',
     '@created_at = Cybertrain::Cast.time_or_nil(row["created_at"])',
-    'when :post_id then @post_id = Cybertrain::Cast.int(value)',
-    'when :author then @author = Cybertrain::Cast.str_or_nil(value)',
+    'def post_id=(v)',
+    '@post_id = Cybertrain::Cast.int(v)',
+    'def author=(v)',
+    '@author = Cybertrain::Cast.str_or_nil(v)',
+    'def created_at=(v)',
+    '@created_at = Cybertrain::Cast.time_or_nil(v)',
+    'when :post_id then self.post_id = value',
+    'when :author then self.author = value',
     '@post_id = 0',
     '@author = nil',
     '@body = ""'
@@ -569,9 +629,52 @@ test "integer, float, boolean, date and datetime casts" do
     '@draft = Cybertrain::Cast.bool_or_nil(row["draft"])',
     '@starts_on = Cybertrain::Cast.str_or_nil(row["starts_on"])',
     '@published_at = Cybertrain::Cast.time_or_nil(row["published_at"])',
-    'when :starts_on then @starts_on = Cybertrain::Cast.str_or_nil(value)',
-    'when :published_at then @published_at = Cybertrain::Cast.time_or_nil(value)'
+    '@starts_on = Cybertrain::Cast.str_or_nil(v)',
+    '@published_at = Cybertrain::Cast.time_or_nil(v)',
+    'when :starts_on then self.starts_on = value',
+    'when :published_at then self.published_at = value'
   ])
+end
+
+test "attributes are readers plus typed writers, never raw accessors (rule 7)" do
+  post = emit_for("posts")
+  assert_lines(post, ["attr_reader :title, :body, :created_at, :updated_at", "def order_sql(s) = (add_order_sql(s); self)"])
+  refute_line(post, "attr_accessor :title, :body, :created_at, :updated_at")
+  refute_line(post, "attr_writer :title")
+  # The writer returns nil so `body=` has one return type across models.
+  assert post.include?("  def body=(v)\n    @body = Cybertrain::Cast.str_or_nil(v)\n    nil\n  end\n")
+end
+
+def raising_columns(name)
+  Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "things" do |t|
+      t.string name
+    end
+  end
+end
+
+def emit_error(name)
+  definition = raising_columns(name)
+  begin
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [])
+    ""
+  rescue ArgumentError => e
+    e.message
+  end
+end
+
+test "emit rejects column names that are invalid or collide with model methods" do
+  ["errors", "persisted", "class", "hash", "object_id", "send", "freeze", "display", "method",
+   "instance_variable_get", "attributes", "save", "update", "destroy", "reload", "model_name",
+   "new_record", "to_json", "as_json", "end", "def", "nil", "self"].each do |bad|
+    assert emit_error(bad).include?("is reserved"), "#{bad} should be rejected"
+  end
+  ["Title", "1st", "a-b", "a b", "a.b", ""].each do |bad|
+    assert emit_error(bad).include?("not a valid attribute name"), "#{bad.inspect} should be rejected"
+  end
+  ["title", "_x", "a1", "group"].each do |ok|
+    assert_equal "", emit_error(ok)
+  end
 end
 
 test "initial values: zero values for NOT NULL, nil for nullable, SQL defaults applied" do

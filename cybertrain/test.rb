@@ -103,7 +103,12 @@ end
 
 # Passes when the block raises. `class_name` (optional) must be a substring of
 # the raised exception's class name; the raised message is returned so callers
-# can assert on it.
+# can assert on it. A failing assertion inside the block is not "the expected
+# exception": AssertionFailed is a StandardError, so without its own clause
+# (first, it is the more specific class) the rescue below would swallow it and
+# the test would pass vacuously. It is re-raised so the enclosing test fails,
+# unless the caller names it (`assert_raises("AssertionFailed") { ... }` is how
+# the assertion helpers themselves are tested).
 def assert_raises(class_name = "")
   Cybertrain::Test.count_assertion
   message = ""
@@ -111,6 +116,12 @@ def assert_raises(class_name = "")
   begin
     yield
   rescue StandardError => e
+    # One clause, as before (a second `=> e` of another type in this yielding
+    # method is untested under Spinel, NOTES rule 32); the class-name check
+    # is the one the helper already does below.
+    if e.class.name.include?("AssertionFailed") && !(class_name != "" && e.class.name.include?(class_name))
+      raise e
+    end
     raised = true
     message = e.message
     if class_name != "" && !e.class.name.include?(class_name)
