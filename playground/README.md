@@ -1,14 +1,14 @@
 # The playground image
 
 `ghcr.io/saeki-mototsune/cybertrain-playground` is cybertrain ready to try
-without installing anything: Ubuntu 24.04 with the `cybertrain` CLI and
-Spinel built from this repository, a mirror of the framework so that
-`cybertrain new` needs no network, and the tutorial's blog in
-`/workspace/blog`, created, scaffolded, migrated and built once.
+without installing anything: Ubuntu 24.04 with the `cybertrain` CLI built
+from this repository and Spinel `2026.09.12` built from source, a mirror of
+the framework so that `cybertrain new` needs no network, and the tutorial's
+blog in `/workspace/blog`, created, scaffolded, migrated and built once.
 [.devcontainer/devcontainer.json](../.devcontainer/devcontainer.json) opens
 it in GitHub Codespaces (the README's
 ["Try it in the browser"](../README.md#try-it-in-the-browser)); a hosted
-playground that runs the same image is planned.
+playground built on this image is planned.
 
 - Tags: `latest` is the latest tested build of `main`; `X.Y.Z` comes from the
   release tag `vX.Y.Z`, which also moves `latest`; a manual run of the
@@ -24,7 +24,7 @@ playground that runs the same image is planned.
 ## Run it
 
 ```sh
-docker run --rm -it --init -p 3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground
+docker run --rm -it --init -p 127.0.0.1:3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground
 ```
 
 Then open http://localhost:3000. The default command, `playground-server`,
@@ -39,16 +39,17 @@ docker run --rm -it ghcr.io/saeki-mototsune/cybertrain-playground bash
   `docker stop` on and reaps processes: the server runs as `cybertrain
   server` → `spin run blog` → the app's binary.
 - `CYBERTRAIN_HOST=0.0.0.0` makes the server listen on every interface,
-  which `-p` needs. The server listens on 127.0.0.1 by default and the image
-  leaves it so: GitHub Codespaces forwards 127.0.0.1, and nothing else needs
-  to reach the server there.
+  which `-p` needs; `-p` publishes it on the host's loopback interface only,
+  because it is a development server. The server listens on 127.0.0.1 by
+  default and the image leaves it so: GitHub Codespaces forwards 127.0.0.1,
+  and nothing else needs to reach the server there.
 
 ## Build it
 
 From a regular clone of this repository (not a git worktree), at its root:
 
 ```sh
-docker build -f playground/Dockerfile --target playground -t cybertrain-playground .
+docker build -f playground/Dockerfile --target playground -t cybertrain-playground:local .
 ```
 
 - Always name the target: a later stage will add a browser editor after
@@ -63,14 +64,15 @@ docker build -f playground/Dockerfile --target playground -t cybertrain-playgrou
   commit framework changes before building.
 - It builds on arm64 too: the image is for the architecture of the machine
   that builds it.
-- The build needs the network: Ubuntu's package mirrors, github.com (Spinel's
-  source) and rubygems.org (Spinel's `make deps` downloads the prism and rbs
-  gems). The `cybertrain` gem itself is built from this checkout's
-  `cybertrain.gemspec`, not downloaded.
+- The build needs the network: Docker Hub (the `ubuntu:24.04` base image and
+  the `docker/dockerfile:1` syntax image), Ubuntu's package mirrors,
+  github.com (Spinel's source) and rubygems.org (Spinel's `make deps`
+  downloads the prism and rbs gems). The `cybertrain` gem itself is built
+  from this checkout's `cybertrain.gemspec`, not downloaded.
 - A clean build took 156 s on 10 CPUs (Apple M5, linux/arm64), 41.5 s of it
   building Spinel.
 
-Then run the smoke test: `bash playground/smoke.sh cybertrain-playground`
+Then run the smoke test: `bash playground/smoke.sh cybertrain-playground:local`
 (below).
 
 ## What is inside
@@ -137,11 +139,15 @@ GIT_CONFIG_NOSYSTEM=1 git clone https://github.com/saeki-mototsune/cybertrain
   `PLAYGROUND.md` once per container (the marker is
   `tmp/.playground-guide-opened`, which git ignores); otherwise the banner is
   the only pointer.
-- `PORT` changes the port, as it does for `cybertrain server`.
+- `PORT` changes the port, as it does for `cybertrain server`. While another
+  `cybertrain server` of the same user runs, whatever its port, the script
+  starts nothing: beside the running blog, `PORT=4000 playground-server`
+  only says that a server is already starting.
 
 **`/etc/profile.d/cybertrain-playground.sh`** (from `profile.sh`) puts
 `/opt/cybertrain/bin` on `PATH` and sets `CYBERTRAIN_HOME` and
-`XDG_CACHE_HOME` for every shell, login or not. In a codespace
+`XDG_CACHE_HOME` for login shells and interactive bash (the image's
+environment already sets the three for every process). In a codespace
 (`CODESPACES=true`) it also defaults `CYBERTRAIN_SESSION_SAME_SITE=None` and
 `CYBERTRAIN_SESSION_PARTITIONED=1`. The editor's preview shows the app in an
 iframe inside a webview on another site (`vscode-cdn.net`), where a
@@ -150,7 +156,8 @@ would fail the CSRF check with 403; `SameSite=None; Secure` works there, and
 `Partitioned` keeps it working in browsers that block third-party cookies.
 These are the framework's own variables (the README's "Configuration and
 environment variables"); the framework does not look at `CODESPACES`
-itself. A value already set wins, which allows a control run:
+itself. A value already set wins, which allows a control run, once the
+server is stopped (Ctrl-C in its terminal):
 `CYBERTRAIN_SESSION_SAME_SITE=Lax CYBERTRAIN_SESSION_PARTITIONED=0 playground-server`.
 
 ## Codespaces
@@ -217,11 +224,12 @@ Run workflow, on `main`).
 
 ## Owner's one-time steps
 
-1. After the first push, open the package `cybertrain-playground` (the
-   Packages tab of github.com/saeki-mototsune) and make sure its visibility
-   is **Public** (Package settings → Change visibility) and that it is
-   connected to the repository (Connect repository). Codespaces cannot pull
-   a private image for anyone else.
+1. Once the workflow has pushed the image for the first time, open the
+   package `cybertrain-playground` (the Packages tab of
+   github.com/saeki-mototsune) and make sure its visibility is **Public**
+   (Package settings → Change visibility) and that it is connected to the
+   repository (Connect repository). Codespaces cannot pull a private image
+   for anyone else.
 2. Optional: Codespaces prebuilds (repository Settings → Codespaces → Set up
    prebuild; branch `main`, configuration `.devcontainer/devcontainer.json`,
    as few regions as will do). The owner pays for the prebuild's storage and
@@ -235,6 +243,9 @@ Run workflow, on `main`).
 - The blog's `spin.lock` pins the commit the image was built from, which for
   an image built from `main` can differ from the commit GitHub's
   `v<VERSION>` tag points at.
-- Inside the image, `https://github.com/saeki-mototsune/cybertrain` clones
-  the one-commit mirror, and other repositories whose URL starts that way
+- Inside the image, the two `insteadOf` rules apply to every git command for
+  URLs that start with `https://github.com/saeki-mototsune/cybertrain` (lower
+  case, the form `cybertrain new` writes), for fetches and for pushes alike:
+  that URL clones the one-commit mirror and a `git push` to it goes to the
+  mirror, not to GitHub, while other repositories whose URL starts that way
   cannot be cloned (above).

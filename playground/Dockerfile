@@ -6,7 +6,7 @@
 # .devcontainer/devcontainer.json (GitHub Codespaces) runs it; CI publishes
 # it as ghcr.io/saeki-mototsune/cybertrain-playground. See playground/README.md.
 #
-#   docker build -f playground/Dockerfile --target playground -t cybertrain-playground .
+#   docker build -f playground/Dockerfile --target playground -t cybertrain-playground:local .
 #
 # Always name the target: a later stage adds a browser editor.
 # The context is the repository root and must hold the .git directory (a

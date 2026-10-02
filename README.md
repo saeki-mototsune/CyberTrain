@@ -60,7 +60,7 @@ works there with no network.
   it from a checkout):
 
   ```sh
-  docker run --rm -it --init -p 3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground
+  docker run --rm -it --init -p 127.0.0.1:3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground
   ```
 
   Then open http://localhost:3000. [playground/README.md](playground/README.md)

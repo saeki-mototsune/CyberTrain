@@ -114,7 +114,7 @@
     <p class="why"><span class="why-k">Why</span><span class="why-t">The same image runs on your own machine.</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; any directory</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: run the playground image"><code><span class="ln cmd">docker run --rm -it --init -p 3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground</span></code></pre>
+<pre tabindex="0" role="region" aria-label="Code: run the playground image"><code><span class="ln cmd">docker run --rm -it --init -p 127.0.0.1:3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground</span></code></pre>
 </figure>
     <p>Then open <code>http://localhost:3000</code>. The published image is <code>linux/amd64</code>; on an arm64 machine, build it from a checkout as <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/playground/README.md" rel="noopener"><code>playground/README.md</code></a> describes.</p>
   </section>
