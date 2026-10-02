@@ -2,6 +2,38 @@ require "uri"
 require "cybertrain/params"
 
 module Cybertrain
+  # Raised for request parameters the server will not take: past one of
+  # Query's limits (QueryLimitExceeded: QueryTooDeep, QueryTooMany) or not
+  # decodable (QueryMalformed). StandardErrors on purpose: ClientError turns
+  # them into a 400 at info level instead of a 500 at error level, so a
+  # scanner's junk does not fill the error log or kill the connection
+  # thread. In Cybertrain (like Rejected, RecordNotFound, MissingTemplate)
+  # and prefixed Query, not Query::Invalid / Query::TooMany: Class#name
+  # carries no namespace under Spinel (NOTES rule 46), so a bare "Invalid" or
+  # "TooMany" there is indistinguishable from an app's own Billing::Invalid or
+  # RateLimiter::TooMany. The bare names here are unique, which is what lets
+  # ClientError tell a framework client fault from an app class by name alone.
+  # Not called Rejected: Cybertrain::Rejected is the Server's own
+  # status-carrying error.
+  class QueryInvalid < StandardError
+  end
+
+  class QueryLimitExceeded < QueryInvalid
+  end
+
+  class QueryTooDeep < QueryLimitExceeded
+  end
+
+  class QueryTooMany < QueryLimitExceeded
+  end
+
+  # A percent-escape that does not decode ("%zz", a lone "%") in a query
+  # string or form body (Cookies keep such a value raw instead). CRuby's
+  # decoder raises ArgumentError for it; Spinel's decodes it leniently
+  # (test/query.rb), so under Spinel this is never raised.
+  class QueryMalformed < QueryInvalid
+  end
+
   # Decoding/encoding for query strings and x-www-form-urlencoded bodies:
   # "a=1&b[]=2&b[]=3&post[title]=hi&flag" -> a Params tree.
   module Query
@@ -11,35 +43,8 @@ module Cybertrain
     MAX_DEPTH = 32   # bracket pairs in one key: "a[b][c]" is depth 2
     MAX_PAIRS = 4096 # "&"-delimited segments in one parse, empty ones included
 
-    # Raised for request parameters the server will not take: past a limit
-    # above (LimitExceeded: TooDeep, TooMany) or not decodable (Malformed).
-    # StandardErrors on purpose: ClientError turns them into a 400 at info
-    # level instead of a 500 at error level, so a scanner's junk does not
-    # fill the error log or kill the connection thread. Not called Rejected:
-    # Cybertrain::Rejected is the Server's own status-carrying error, and
-    # Class#name carries no namespace under Spinel (NOTES rule 46), so the
-    # two would be indistinguishable in a log line.
-    class Invalid < StandardError
-    end
-
-    class LimitExceeded < Invalid
-    end
-
-    class TooDeep < LimitExceeded
-    end
-
-    class TooMany < LimitExceeded
-    end
-
-    # A percent-escape that does not decode ("%zz", a lone "%") in a query
-    # string or form body (Cookies keep such a value raw instead). CRuby's
-    # decoder raises ArgumentError for it; Spinel's decodes it leniently
-    # (test/query.rb), so under Spinel this is never raised.
-    class Malformed < Invalid
-    end
-
     # A cursor scan, like split_key: the segments are cut out one at a time
-    # and TooMany is raised as soon as the (MAX_PAIRS + 1)th segment starts,
+    # and QueryTooMany is raised as soon as the (MAX_PAIRS + 1)th segment starts,
     # so a hostile body costs O(MAX_PAIRS) work however long it is.
     # (`split("&")` would first materialise every pair of a 10 MB body of
     # "&", three times per request.) EVERY segment counts, an empty one
@@ -48,7 +53,7 @@ module Cybertrain
     # character (always, under Spinel, which indexes by character: see
     # Server#serve), so a body of one e-acute and 200 000 "&" that skipped
     # its empty segments uncounted was quadratic (11 s on CRuby) and never
-    # reached TooMany. Counting them bounds the scan at MAX_PAIRS + 1
+    # reached QueryTooMany. Counting them bounds the scan at MAX_PAIRS + 1
     # segments. Not byteindex/byteslice: Spinel's support for them on this
     # path is unverified (NOTES rule 27 uses them on socket buffers only).
     # Empty segments are still skipped, not parsed, so "a=1&&b=2" and a
@@ -63,7 +68,7 @@ module Cybertrain
         amp = s.index("&", pos)
         stop = amp.nil? ? len : amp
         count += 1
-        raise TooMany, "too many parameters (limit #{MAX_PAIRS})" if count > MAX_PAIRS
+        raise QueryTooMany, "too many parameters (limit #{MAX_PAIRS})" if count > MAX_PAIRS
 
         add_pair(params, s[pos, stop - pos]) if stop > pos
         pos = stop + 1
@@ -83,7 +88,7 @@ module Cybertrain
       # decoder's message is not repeated: it embeds the raw text, newlines
       # included, and would let a form body forge log lines (Logger writes
       # the line as is) and echo itself into the dev page's 400 body.
-      raise Malformed, "malformed percent-encoding in request parameters"
+      raise QueryMalformed, "malformed percent-encoding in request parameters"
     end
 
     # One non-empty "k=v" (or bare "k") pair into the tree.
@@ -107,7 +112,7 @@ module Cybertrain
     # matching "]" (or any other malformed bracket run) is not a nesting
     # marker at all -- the whole string is returned as one plain key, however
     # many pairs precede the malformed tail -- unless the key already holds
-    # more than MAX_DEPTH well-formed pairs before it: that is TooDeep
+    # more than MAX_DEPTH well-formed pairs before it: that is QueryTooDeep
     # whatever follows (the key is refused as soon as the (MAX_DEPTH + 1)th
     # pair is seen, so a malformed tail after it is never looked at).
     #
@@ -134,7 +139,7 @@ module Cybertrain
         return [key] if close.nil?
 
         count += 1
-        raise TooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if count > MAX_DEPTH
+        raise QueryTooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if count > MAX_DEPTH
 
         pos = close + 1
       end

@@ -1,16 +1,16 @@
-ok   a key nested 10000 levels deep raises TooDeep instead of overflowing the stack
-ok   TooDeep and TooMany are StandardErrors (assert_raises rescues only those)
+ok   a key nested 10000 levels deep raises QueryTooDeep instead of overflowing the stack
+ok   QueryTooDeep and QueryTooMany are StandardErrors (assert_raises rescues only those)
 ok   nesting exactly MAX_DEPTH deep parses, one more raises
 ok   the deepest allowed key lands its value at the bottom
 ok   a malformed bracket run is still one plain key
-ok   a key with MAX_DEPTH pairs and a malformed tail is one plain key; one more pair is TooDeep
-ok   a non-ASCII key with 100000 bracket pairs is refused as TooDeep
+ok   a key with MAX_DEPTH pairs and a malformed tail is one plain key; one more pair is QueryTooDeep
+ok   a non-ASCII key with 100000 bracket pairs is refused as QueryTooDeep
 ok   Query.decode (shared by Query and Cookies) decodes clean escapes
-ok   MAX_PAIRS pairs parse, one more raises TooMany
+ok   MAX_PAIRS pairs parse, one more raises QueryTooMany
 ok   empty segments count towards MAX_PAIRS but are still skipped
-ok   a body of one non-ASCII character and many '&' is refused as TooMany, not scanned quadratically
+ok   a body of one non-ASCII character and many '&' is refused as QueryTooMany, not scanned quadratically
 ok   20000 key kind flips complete and keep the last write
 ok   flips within one parse keep Rack's last-write-wins
 ok   set_path and merge! handle a 5000 level chain iteratively
-ok   Malformed (an undecodable percent-escape under CRuby) is a client fault: 400, not 500
+ok   QueryMalformed (an undecodable percent-escape under CRuby) is a client fault: 400, not 500
 15 tests, 49 assertions, 0 failures

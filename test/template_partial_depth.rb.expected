@@ -5,4 +5,4 @@ ok   two partials rendering each other raise too
 ok   the interpreter is usable again after the error
 ok   a 10-level chain renders fine
 ok   the limit is 12 nested renders, page included
-7 tests, 25 assertions, 0 failures
+7 tests, 27 assertions, 0 failures

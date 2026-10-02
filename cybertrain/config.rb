@@ -1,5 +1,5 @@
 require "cybertrain/crypto"
-require "cybertrain/template/interpreter"
+require "cybertrain/template/limits"
 
 module Cybertrain
   # The application's settings. Defaults come from the environment
@@ -38,12 +38,12 @@ module Cybertrain
       # Renders open at once (page, layout, partials) before a template error.
       # The constant itself, not a copy of its value: Views.configure always
       # receives this, so a literal here would override a changed
-      # Template::Interpreter::MAX_RENDER_DEPTH for every real app. Raise it
+      # Template::MAX_RENDER_DEPTH for every real app. Raise it
       # for partials that legitimately recurse deeper (threaded comments, a
       # tree menu). Must be an Integer of at least 1: Views.configure (and configure_embedded)
       # refuse anything else at boot, since a ceiling of 0 or less would make
       # every render fail.
-      @max_render_depth = Template::Interpreter::MAX_RENDER_DEPTH
+      @max_render_depth = Template::MAX_RENDER_DEPTH
       @public_root = "public"
       @layout = "layouts/application"
       @log_level = :info

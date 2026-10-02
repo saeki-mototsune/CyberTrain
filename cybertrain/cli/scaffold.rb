@@ -39,28 +39,14 @@ module Cybertrain
         field = Field.new(name, type)
         raise InvalidArgument, "'#{field.column_name}' is a column every table already has" if RESERVED_COLUMNS.include?(field.column_name)
         # Ident.unusable_reason is the one definition of a name the scaffold
-        # must not invent; each place that takes a name raises the message for
-        # the reason. "shadowing" names the generator accepts with a note (an
+        # must not invent; Scaffold.refuse_unusable! turns its answer into the
+        # message. "shadowing" names the generator accepts with a note (an
         # existing schema must keep generating); a new name need not shadow
         # Object at all.
-        case Ident.unusable_reason(field.column_name)
-        when "keyword"
-          raise InvalidArgument, "'#{field.column_name}' is a Ruby keyword and cannot name a field"
-        when "reserved"
-          raise InvalidArgument, "'#{field.column_name}' would shadow a method of the generated model (Cybertrain::Model); pick another name"
-        when "shadowing"
-          raise InvalidArgument, "'#{field.column_name}' would shadow Object##{field.column_name} on the generated model; pick another name"
-        end
+        Scaffold.refuse_unusable!(field.column_name, "field")
         # A references field also defines the reader `def <name>` (post:references
         # -> def post), which answers to the same rules as a column.
-        if field.reference?
-          case Ident.unusable_reason(name)
-          when "keyword"
-            raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a field"
-          when "reserved", "shadowing"
-            raise InvalidArgument, "'#{name}' would shadow a method of the generated model (Cybertrain::Model or Object); pick another name for the reference"
-          end
-        end
+        Scaffold.refuse_unusable!(name, "reference") if field.reference?
 
         field
       end
@@ -127,6 +113,31 @@ module Cybertrain
     module Scaffold
       DRAW_LINE = "Cybertrain::Routes.draw do"
 
+      # Raises InvalidArgument when `name` is a name the scaffold must not
+      # invent, with the message for the reason Ident.unusable_reason gives;
+      # `what` says what the name would name ("field", "reference",
+      # "resource"). The one place that maps a reason to a message, shared by the
+      # field column, the references reader and the resource singular: a
+      # reason Ident adds must be added here, and the `else` raises for one
+      # that is not (a `case` without it would return nil and let the name
+      # through silently). Returns nil, explicitly, for a usable name (NOTES
+      # rules 10/34: one return type).
+      def self.refuse_unusable!(name, what)
+        case Ident.unusable_reason(name)
+        when ""
+          nil
+        when "keyword"
+          raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a #{what}"
+        when "reserved"
+          raise InvalidArgument, "'#{name}' would shadow a method of the generated model (Cybertrain::Model); pick another #{what}"
+        when "shadowing"
+          raise InvalidArgument, "'#{name}' would shadow Object##{name} on the generated model; pick another #{what}"
+        else
+          raise RuntimeError, "Ident.unusable_reason('#{name}') answered a reason Scaffold.refuse_unusable! has no message for"
+        end
+        nil
+      end
+
       # Returns the paths it created (files that already exist are reported
       # as "identical" or "exist" and left alone). Raises InvalidArgument on a
       # bad name, a bad or duplicate field, or a routes file without a
@@ -144,13 +155,7 @@ module Cybertrain
         # generator would refuse too. The plural (the has_many side) is left
         # to the generator, which renames such a reader (`errors_as_post`)
         # rather than refusing it -- and nothing may reference the table.
-        case Ident.unusable_reason(singular)
-        when "keyword"
-          raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a resource"
-        when "reserved", "shadowing"
-          raise InvalidArgument, "'#{name}' would be read as `#{singular}` on the models that reference it, " \
-                                 "shadowing a method of the generated model (Cybertrain::Model or Object); pick another name"
-        end
+        Scaffold.refuse_unusable!(singular, "resource")
 
         parsed = Array.new(0) { Field.new("", "") }
         columns = Array.new(0) { "" }

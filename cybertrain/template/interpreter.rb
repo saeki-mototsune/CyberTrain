@@ -11,6 +11,7 @@ require "cybertrain/params"
 require "cybertrain/model"
 require "cybertrain/template/ast"
 require "cybertrain/template/inode"
+require "cybertrain/template/limits"
 
 module Cybertrain
   # Templates ask a record whether a name it answered nil for exists at all
@@ -44,17 +45,11 @@ module Cybertrain
     end
 
     class Interpreter
-      # How many renders may be nested (page -> partial -> partial ...). A
-      # partial that renders itself, or two that render each other, would
-      # otherwise recurse until the native stack is gone: SystemStackError is
-      # not a StandardError (every rescue misses it) and under Spinel it is a
-      # SIGSEGV of the whole process. Past the limit render raises a located
-      # Template::RuntimeError like any other template error. Real pages nest
-      # a handful of levels (layout, page, a partial or two). The limit is
-      # low on purpose: a render costs about 14 frames under CRuby and more
-      # under Spinel, whose thread stacks are small -- 50 nested renders
-      # already overflowed one in CI (macOS, test/template_partial_depth.rb).
-      MAX_RENDER_DEPTH = 12
+      # The same constant as Template::MAX_RENDER_DEPTH (template/limits.rb,
+      # where the reasoning for 12 lives): kept here so Interpreter::
+      # MAX_RENDER_DEPTH, the default of the engine and of Views.configure,
+      # still resolves.
+      MAX_RENDER_DEPTH = Template::MAX_RENDER_DEPTH
 
       # max_depth: Views.configure(root, max_render_depth: n) for an app whose
       # partials legitimately recurse (threaded comments, a tree menu) past

@@ -42,6 +42,11 @@ class ApplicationController < Cybertrain::Controller
   end
 end
 
+module Billing
+  class Invalid < StandardError
+  end
+end
+
 class PostsController < ApplicationController
   before_action :set_post, only: [:show, :edit]
   before_action(except: [:index]) do |c|
@@ -54,6 +59,17 @@ class PostsController < ApplicationController
   def require_post
     params.require(:post)
     render plain: "unreachable"
+  end
+
+  # An action that parses a request body itself past Query's limit, and one
+  # that raises an app class sharing a bare name with a framework one.
+  def parse_body
+    Cybertrain::Query.parse("&" * 4097)
+    render plain: "unreachable"
+  end
+
+  def bill
+    raise Billing::Invalid, "card declined"
   end
 
   def index
@@ -411,6 +427,21 @@ test "a missing required param answers 400 Bad Request" do
   controller.process(:require_post) { |c| c.require_post }
   assert_equal 400, ctx.response.status
   assert_includes ctx.response.body, "param is missing or the value is empty: post"
+end
+
+test "a client fault raised in an action answers 400 with its message, like a missing param" do
+  ctx = build_ctx(false)
+  controller = PostsController.new(ctx)
+  controller.process(:parse_body) { |c| c.parse_body }
+  assert_equal 400, ctx.response.status
+  assert_equal "too many parameters (limit 4096)", ctx.response.body
+end
+
+test "an app exception sharing a bare name with a framework one is still raised (500 path)" do
+  ctx = build_ctx(false)
+  controller = PostsController.new(ctx)
+  msg = assert_raises("Invalid") { controller.process(:bill) { |c| c.bill } }
+  assert_equal "card declined", msg
 end
 
 Cybertrain::Test.run!

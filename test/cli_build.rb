@@ -72,8 +72,15 @@ test "app_name rejects only a name that breaks the build/bin/<name> path" do
     assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
   end
   assert_equal ["public", "storage", "tmp"], Cybertrain::CLI::Build::DIST_ENTRIES
-  # Only exact collisions and a leading dot: other spellings are other entries.
-  ["Public", "tmp2", "my_public", "blog", "a.b"].each do |fine|
+  # Case-insensitive filesystems (macOS APFS) make "Public" and public one
+  # directory entry, so the entry names match in any letter case.
+  ["Public", "STORAGE", "Tmp", "TMP"].each do |cased|
+    File.write("spin.toml", "[package]\nname = \"#{cased}\"\n")
+    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+    assert_includes message, "spin.toml [package] name '#{cased}' collides with what `cybertrain build` keeps in dist/"
+  end
+  # Only those names and a leading dot: other spellings are other entries.
+  ["tmp2", "my_public", "blog", "a.b", "MyApp"].each do |fine|
     File.write("spin.toml", "[package]\nname = \"#{fine}\"\n")
     assert_equal fine, Cybertrain::CLI::Build.app_name(".")
   end

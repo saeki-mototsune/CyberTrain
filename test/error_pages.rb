@@ -40,7 +40,7 @@ def endpoint
   end
   router.get("/toodeep") do |c|
     c.response.set_header("Location", "/elsewhere")
-    raise Cybertrain::Query::TooDeep, "parameter nesting too deep (limit 32)"
+    raise Cybertrain::QueryTooDeep, "parameter nesting too deep (limit 32)"
   end
   router
 end
@@ -104,7 +104,7 @@ test "parameters past Query's limits are a 400 logged at info, not a 500" do
   assert_equal "text/plain; charset=utf-8", res.header("Content-Type")
   assert_nil res.header("Location")
   assert_includes LOG.string, "[INFO] rejected request (400 Bad Request): parameter nesting too deep (limit 32)"
-  refute LOG.string.include?("TooDeep"), "a rejected request is not an error-level log line"
+  refute LOG.string.include?("QueryTooDeep"), "a rejected request is not an error-level log line"
 end
 
 test "without the page files the plain-text bodies stay" do

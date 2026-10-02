@@ -154,8 +154,18 @@ test "new refuses an app named like a dist/ entry, writing nothing" do
     refute File.exist?(name), name
     refute File.exist?("sub/#{name}"), name
   end
+  # A different letter case is the same directory entry on a case-insensitive
+  # filesystem (macOS APFS): refused too. (`cybertrain new` itself accepts
+  # lowercase names only; NewApp.create is the check a caller that skipped
+  # that sees.)
+  ["Public", "STORAGE", "Tmp"].each do |name|
+    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::NewApp.create("sub/#{name}", "\"~> 0.1\"") }
+    assert_includes message, "'#{name}' is not a valid app name: it collides with what `cybertrain build` keeps in dist/"
+    refute File.exist?("sub/#{name}"), name
+  end
   # Similar spellings are different entries and still fine.
   assert_equal "", Cybertrain::CLI::Build.dist_name_problem("tmp2")
+  assert_equal "", Cybertrain::CLI::Build.dist_name_problem("my_public")
   assert_equal "", Cybertrain::CLI::Build.dist_name_problem("blog")
 end
 

@@ -1,4 +1,5 @@
 require "json"
+require "cybertrain/params"
 require "cybertrain/http/query"
 require "cybertrain/http/response"
 
@@ -12,11 +13,11 @@ module Cybertrain
   module ClientError
     # The status for an exception out of the app, logged at the level it
     # deserves: a client fault (request parameters past Query's limits or
-    # not decodable, Query::Invalid) is
-    # its 4xx at info, so a flood of them does not fill the error log;
-    # anything else is 500 at error, as `class: message`. Each error path
-    # then does `reset_to(status)` (or its own 500 page); the next
-    # client-fault class is added to CLIENT_FAULTS below and nowhere else.
+    # not decodable, QueryInvalid; a missing required parameter) is its 4xx
+    # at info, so a flood of them does not fill the error log; anything else
+    # is 500 at error, as `class: message`. Each error path then does
+    # `reset_to(status)` (or its own 500 page); the next client-fault class
+    # is added to CLIENT_FAULTS below and nowhere else.
     def self.classify(e, logger)
       status = self.status(e)
       if status >= 500
@@ -27,22 +28,25 @@ module Cybertrain
       status
     end
 
-    # Full class names of the client-fault exceptions: THE place to add a new
-    # one (a new Query::Invalid subclass is listed here and in
-    # BARE_CLIENT_FAULTS, which test/client_error.rb keeps in step).
-    # `e.is_a?(Query::Invalid)` cannot do this job: under Spinel is_a? on an
-    # exception object answered false for its own superclass (a TooDeep
+    # Full class names of the client-fault exceptions: THE list, and the one
+    # place to add a new one (a new QueryInvalid subclass, say).
+    # `e.is_a?(QueryInvalid)` cannot do this job: under Spinel is_a? on an
+    # exception object answered false for its own superclass (a QueryTooDeep
     # reached every error path as a 500 on the 2026.09.12 build, NOTES rule
     # 47). Matching by class name is what Controller#rescue_with_handler
     # already does for rescue_from.
-    CLIENT_FAULTS = ["Cybertrain::Query::Invalid", "Cybertrain::Query::LimitExceeded",
-                     "Cybertrain::Query::TooDeep", "Cybertrain::Query::TooMany",
-                     "Cybertrain::Query::Malformed"]
-
-    # The same list without the namespace, for a runtime whose Class#name has
-    # none (Spinel, NOTES rule 46). A literal, not CLIENT_FAULTS.map, so no
-    # method call runs at load time.
-    BARE_CLIENT_FAULTS = ["Invalid", "LimitExceeded", "TooDeep", "TooMany", "Malformed"]
+    #
+    # Class#name has no namespace under Spinel (rule 46), so there only the
+    # part after the last "::" is compared (status_for_name). That is safe
+    # only while every bare name here is unique in the program: the Query
+    # classes are QueryXxx, not Query::Invalid / Query::TooMany, so an app's
+    # own Billing::Invalid or RateLimiter::TooMany cannot be taken for them,
+    # and "ParameterMissing" is not a name an app has a reason to reuse. A
+    # new entry must be named so as not to collide the same way.
+    CLIENT_FAULTS = ["Cybertrain::QueryInvalid", "Cybertrain::QueryLimitExceeded",
+                     "Cybertrain::QueryTooDeep", "Cybertrain::QueryTooMany",
+                     "Cybertrain::QueryMalformed",
+                     "Cybertrain::Params::ParameterMissing"]
 
     # 400 for a client fault, 500 for the app's own exception: an Array
     # lookup, no raise, so RequestLogger (for its Completed line) and the
@@ -56,22 +60,27 @@ module Cybertrain
     end
 
     # The decision on a class name alone, so it can be tested with names from
-    # either runtime. A namespaced name (CRuby) must match in full: a bare
-    # "Invalid" or "TooMany" is also what an app or library raises
-    # (Billing::Invalid, RateLimiter::TooMany) and that is a 500, not the
-    # client's fault. A name with no "::" (Spinel, which cannot tell the two
-    # apart, or a top-level class; "" for an anonymous one) is matched
-    # against the bare names.
+    # either runtime. A namespaced name (CRuby) must match an entry in full:
+    # "Billing::Invalid" and "Other::QueryMalformed" are the app's, a 500. A
+    # name with no "::" (Spinel, which cannot tell the namespaces apart, or a
+    # top-level class; "" for an anonymous one) is matched against the bare
+    # name of each entry, so it is 400 only for a name that is unique to the
+    # framework (see CLIENT_FAULTS): a bare "Invalid" or "TooMany" is a 500.
+    # A while loop, not a block: no closure, nothing to widen (rules 32, 45).
     def self.status_for_name(name)
-      if name.index("::").nil?
-        BARE_CLIENT_FAULTS.include?(name) ? 400 : 500
-      else
-        CLIENT_FAULTS.include?(name) ? 400 : 500
+      namespaced = !name.index("::").nil?
+      i = 0
+      while i < CLIENT_FAULTS.length
+        entry = CLIENT_FAULTS[i]
+        candidate = namespaced ? entry : bare_name(entry)
+        return 400 if candidate == name
+        i += 1
       end
+      500
     end
 
     # The part after the last "::": Class#name carries no namespace under
-    # Spinel ("TooDeep") but does under CRuby ("Cybertrain::Query::TooDeep")
+    # Spinel ("QueryTooDeep") but does under CRuby ("Cybertrain::QueryTooDeep")
     # (NOTES rule 46). Only ever given a String (status passes `name.to_s`).
     def self.bare_name(name)
       i = name.rindex("::")

@@ -24,7 +24,7 @@ class ServerTestApp < Cybertrain::Middleware
       raise "kaboom"
     when "/reject"
       # what Query.parse raises past its limits (a bare app: no error pages)
-      raise Cybertrain::Query::TooDeep, "nested too deeply (limit 32)"
+      raise Cybertrain::QueryTooDeep, "nested too deeply (limit 32)"
     when "/json"
       # a StandardError under CRuby, not under Spinel (NOTES rule 33)
       raise JSON::ParserError, "unexpected token"
@@ -310,7 +310,7 @@ test "parameters past Query's limits get 400, not 500, and the connection stays 
   assert_equal "HTTP/1.1 400 Bad Request", res.status_line
   assert_equal "Bad Request", res.body
   assert_includes $log.string, "rejected request (400 Bad Request): nested too deeply (limit 32)"
-  refute $log.string.include?("TooDeep: nested"), "a rejected request is not an error-level log line"
+  refute $log.string.include?("QueryTooDeep: nested"), "a rejected request is not an error-level log line"
   assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
   c.close
 end

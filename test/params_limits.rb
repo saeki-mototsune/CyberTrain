@@ -6,16 +6,16 @@ require "cybertrain/test"
 # Request-parameter DoS limits: bracket nesting depth, pairs per parse, and
 # eviction cost. Assertions are on results, never on time.
 
-test "a key nested 10000 levels deep raises TooDeep instead of overflowing the stack" do
+test "a key nested 10000 levels deep raises QueryTooDeep instead of overflowing the stack" do
   key = "a" + ("[x]" * 10000)
-  assert_raises("TooDeep") { Cybertrain::Query.split_key(key) }
-  assert_raises("TooDeep") { Cybertrain::Query.parse(key + "=1") }
+  assert_raises("QueryTooDeep") { Cybertrain::Query.split_key(key) }
+  assert_raises("QueryTooDeep") { Cybertrain::Query.parse(key + "=1") }
 end
 
-test "TooDeep and TooMany are StandardErrors (assert_raises rescues only those)" do
-  msg = assert_raises("TooDeep") { Cybertrain::Query.split_key("a" + ("[x]" * 33)) }
+test "QueryTooDeep and QueryTooMany are StandardErrors (assert_raises rescues only those)" do
+  msg = assert_raises("QueryTooDeep") { Cybertrain::Query.split_key("a" + ("[x]" * 33)) }
   assert_equal "parameter nesting too deep (limit 32)", msg
-  msg2 = assert_raises("TooMany") { Cybertrain::Query.parse((0..4096).map { |i| "k#{i}=1" }.join("&")) }
+  msg2 = assert_raises("QueryTooMany") { Cybertrain::Query.parse((0..4096).map { |i| "k#{i}=1" }.join("&")) }
   assert_equal "too many parameters (limit 4096)", msg2
 end
 
@@ -25,7 +25,7 @@ test "nesting exactly MAX_DEPTH deep parses, one more raises" do
   assert_equal 33, Cybertrain::Query.split_key(ok).length
   params = Cybertrain::Query.parse(ok + "=v")
   assert params.key?("a")
-  assert_raises("TooDeep") { Cybertrain::Query.split_key("a" + ("[x]" * 33)) }
+  assert_raises("QueryTooDeep") { Cybertrain::Query.split_key("a" + ("[x]" * 33)) }
 end
 
 test "the deepest allowed key lands its value at the bottom" do
@@ -41,7 +41,7 @@ test "a malformed bracket run is still one plain key" do
   assert_equal ["a", "b", ""], Cybertrain::Query.split_key("a[b][]")
 end
 
-test "a key with MAX_DEPTH pairs and a malformed tail is one plain key; one more pair is TooDeep" do
+test "a key with MAX_DEPTH pairs and a malformed tail is one plain key; one more pair is QueryTooDeep" do
   # split_key refuses a key at the (MAX_DEPTH + 1)th well-formed pair without
   # reading the rest (bounded work, however long the tail), so the malformed
   # tail only turns the key into a plain one while the pairs so far fit.
@@ -50,16 +50,16 @@ test "a key with MAX_DEPTH pairs and a malformed tail is one plain key; one more
   params = Cybertrain::Query.parse("#{key}=1")
   assert_equal "1", params[key]
   deeper = "a" + "[x]" * 33 + "[oops"
-  assert_raises("TooDeep") { Cybertrain::Query.split_key(deeper) }
-  assert_raises("TooDeep") { Cybertrain::Query.parse("#{deeper}=1") }
+  assert_raises("QueryTooDeep") { Cybertrain::Query.split_key(deeper) }
+  assert_raises("QueryTooDeep") { Cybertrain::Query.parse("#{deeper}=1") }
 end
 
-test "a non-ASCII key with 100000 bracket pairs is refused as TooDeep" do
+test "a non-ASCII key with 100000 bracket pairs is refused as QueryTooDeep" do
   # Character offsets into a non-ASCII String are O(n); the bounded first
   # pass keeps this to MAX_DEPTH + 1 pairs. Asserted on the result only.
   key = "k\u00e9" + "[]" * 100000
-  assert_raises("TooDeep") { Cybertrain::Query.split_key(key) }
-  assert_raises("TooDeep") { Cybertrain::Query.parse("#{key}=1") }
+  assert_raises("QueryTooDeep") { Cybertrain::Query.split_key(key) }
+  assert_raises("QueryTooDeep") { Cybertrain::Query.parse("#{key}=1") }
 end
 
 test "Query.decode (shared by Query and Cookies) decodes clean escapes" do
@@ -69,32 +69,32 @@ test "Query.decode (shared by Query and Cookies) decodes clean escapes" do
   assert_equal "", Cybertrain::Query.decode("")
 end
 
-test "MAX_PAIRS pairs parse, one more raises TooMany" do
+test "MAX_PAIRS pairs parse, one more raises QueryTooMany" do
   assert_equal 4096, Cybertrain::Query::MAX_PAIRS
   ok = (0...4096).map { |i| "k#{i}=1" }.join("&")
   assert_equal 4096, Cybertrain::Query.parse(ok).keys.length
   too_many = ok + "&extra=1"
-  assert_raises("TooMany") { Cybertrain::Query.parse(too_many) }
+  assert_raises("QueryTooMany") { Cybertrain::Query.parse(too_many) }
 end
 
 test "empty segments count towards MAX_PAIRS but are still skipped" do
   assert_equal ["a", "b"], Cybertrain::Query.parse("a=1&&b=2").keys
   assert_equal ["a"], Cybertrain::Query.parse("&&a=1&&").keys
   assert_equal "2", Cybertrain::Query.parse("a=1&&b=2")["b"]
-  # exactly MAX_PAIRS segments, almost all empty: fine; one more: TooMany
+  # exactly MAX_PAIRS segments, almost all empty: fine; one more: QueryTooMany
   ok = ("&" * 4095) + "a=1"
   assert_equal ["a"], Cybertrain::Query.parse(ok).keys
   assert_equal [], Cybertrain::Query.parse("&" * 4096).keys
-  assert_raises("TooMany") { Cybertrain::Query.parse(ok + "&b=1") }
-  assert_raises("TooMany") { Cybertrain::Query.parse("&" * 4097) }
+  assert_raises("QueryTooMany") { Cybertrain::Query.parse(ok + "&b=1") }
+  assert_raises("QueryTooMany") { Cybertrain::Query.parse("&" * 4097) }
 end
 
-test "a body of one non-ASCII character and many '&' is refused as TooMany, not scanned quadratically" do
+test "a body of one non-ASCII character and many '&' is refused as QueryTooMany, not scanned quadratically" do
   # Empty segments used to be skipped uncounted, so this never reached
-  # TooMany and each character-offset index/slice was O(pos): 11 s for 200 000
-  # on CRuby. Asserted on the result only.
-  assert_raises("TooMany") { Cybertrain::Query.parse("\u00e9" + ("&" * 4097)) }
-  assert_raises("TooMany") { Cybertrain::Query.parse("\u00e9" + ("&" * 200000)) }
+  # QueryTooMany and each character-offset index/slice was O(pos): 11 s for
+  # 200 000 on CRuby. Asserted on the result only.
+  assert_raises("QueryTooMany") { Cybertrain::Query.parse("\u00e9" + ("&" * 4097)) }
+  assert_raises("QueryTooMany") { Cybertrain::Query.parse("\u00e9" + ("&" * 200000)) }
   assert_equal ["k\u00e9"], Cybertrain::Query.parse("k\u00e9=1&&").keys
 end
 
@@ -135,11 +135,11 @@ test "set_path and merge! handle a 5000 level chain iteratively" do
   assert_equal "2", node["leaf"]
 end
 
-test "Malformed (an undecodable percent-escape under CRuby) is a client fault: 400, not 500" do
+test "QueryMalformed (an undecodable percent-escape under CRuby) is a client fault: 400, not 500" do
   # Constructed, not raised: Spinel's decoder never raises it (test/query.rb),
   # so the classification is what both runtimes can check.
-  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::Query::Malformed.new("malformed percent-encoding"))
-  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::Query::TooMany.new("too many"))
+  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::QueryMalformed.new("malformed percent-encoding"))
+  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::QueryTooMany.new("too many"))
   assert_equal 500, Cybertrain::ClientError.status(ArgumentError.new("the app's own"))
 end
 

@@ -19,12 +19,15 @@ module Cybertrain
       # "" when name cannot collide with what assemble() puts in dist/, else
       # the reason. A leading "." covers assemble's scratch entries
       # (dist/.<name>.tmp, dist/.public.tmp, dist/.public.old) and "."/"..".
-      # Exact matches only: "Public" and "tmp2" are different directory
-      # entries.
+      # The entry names match case-insensitively: on a case-insensitive
+      # filesystem (macOS's default APFS, one of the CI OSes; Windows) "Public"
+      # and "TMP" are the same directory entry as public and tmp. Only a
+      # different spelling of the whole name ("tmp2", "my_public") is another
+      # entry. downcase is ASCII-safe here: the entries are ASCII.
       def self.dist_name_problem(name)
-        return "" unless DIST_ENTRIES.include?(name) || name.start_with?(".")
+        return "" unless DIST_ENTRIES.include?(name.downcase) || name.start_with?(".")
 
-        "collides with what `cybertrain build` keeps in dist/ (#{DIST_ENTRIES.join(", ")}) or its scratch entries: it cannot be one of those names or start with '.'"
+        "collides with what `cybertrain build` keeps in dist/ (#{DIST_ENTRIES.join(", ")}) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'"
       end
 
       # The [package] name in root/spin.toml, or "" when there is none. The

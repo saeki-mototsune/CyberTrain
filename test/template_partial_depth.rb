@@ -50,7 +50,11 @@ test "the depth is configurable (Interpreter max_depth, Views.configure, Config#
   msg = assert_raises("Cybertrain::Template::RuntimeError") { render_src("<%= render 'down', n: 5 %>", 4) }
   assert msg.include?("partial nesting too deep (> 4)")
   assert_equal 12, Cybertrain::Config.new.max_render_depth
-  # The default is the constant itself, so the two cannot drift.
+  # The default is the constant itself, so the two cannot drift: the leaf
+  # constant (template/limits.rb, all Config loads), the Interpreter alias
+  # (the engine's and Views.configure's default) and Config#max_render_depth.
+  assert_equal Cybertrain::Template::MAX_RENDER_DEPTH, Cybertrain::Template::Interpreter::MAX_RENDER_DEPTH
+  assert_equal Cybertrain::Template::MAX_RENDER_DEPTH, Cybertrain::Config.new.max_render_depth
   assert_equal Cybertrain::Template::Interpreter::MAX_RENDER_DEPTH, Cybertrain::Config.new.max_render_depth
 end
 

@@ -115,14 +115,14 @@ end
 # RequestLogger answers 400 for it (ClientError), so the access log must too.
 class TooManyApp
   def call(ctx)
-    raise Cybertrain::Query::TooMany, "too many parameters (limit 4096)"
+    raise Cybertrain::QueryTooMany, "too many parameters (limit 4096)"
   end
 end
 
 test "RequestLogger logs the status the client fault gets (400), not 500" do
   sink = StringIO.new
   stack = Cybertrain::RequestLogger.new(TooManyApp.new, Cybertrain::Logger.new(sink))
-  message = assert_raises("TooMany") { stack.call(build_ctx("POST", "/things")) }
+  message = assert_raises("QueryTooMany") { stack.call(build_ctx("POST", "/things")) }
   assert_equal "too many parameters (limit 4096)", message
   lines = sink.string.split("\n")
   assert_equal 2, lines.size

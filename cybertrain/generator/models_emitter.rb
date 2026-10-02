@@ -79,8 +79,10 @@ module Cybertrain
       # Cybertrain::Model or Object that the framework (or Ruby itself)
       # calls on the record, and an ivar named `@errors` / `@persisted` is
       # one the Model owns, so both are renamed; everything keyed by the
-      # column's SQL name (column_names, read_attribute(:hash), to_row,
-      # load_row, params, templates) stays keyed by it. An existing schema
+      # column's SQL name (column_names, to_row, load_row, params) stays
+      # keyed by it; read_attribute / write_attribute answer both spellings
+      # (attribute_keys), so a template, which reaches a column through
+      # read_attribute, can always use the Ruby name. An existing schema
       # must keep generating on upgrade, so such a column is renamed rather
       # than refused (`cybertrain generate scaffold` still refuses to invent
       # one). A keyword is not renamed: `@class` / `def class` is not a
@@ -92,6 +94,19 @@ module Cybertrain
       # The ivar behind reader_name.
       def self.ivar_name(column_name)
         "@" + reader_name(column_name)
+      end
+
+      # The `when` keys of read_attribute / write_attribute for a column: its
+      # SQL name, plus the reader's name when reader_name renamed it. The
+      # interpreter resolves `post.hash_column` through read_attribute and
+      # knows no other way to the column, so without the second key a renamed
+      # column would be unreachable from a template under its Ruby name. A
+      # multi-value `when` is plain Ruby the interpreter already uses
+      # (`when :size, :length`). A column that is not renamed keeps its single
+      # key, so the committed models do not change.
+      def self.attribute_keys(column_name)
+        key = ":" + column_name
+        reader_name(column_name) == column_name ? key : key + ", :" + reader_name(column_name)
       end
 
       # Raises ArgumentError (the generator exits non-zero) for a column the
@@ -193,8 +208,8 @@ module Cybertrain
         #
         # A column named like a method the framework calls on the record
         # (Ident::RESERVED_COLUMN_NAMES) reads as `<column>_column` (reader,
-        # writer and ivar: reader_name); the SQL-name keys below keep the
-        # column's own name.
+        # writer and ivar: reader_name); the read_attribute / write_attribute
+        # keys below take either spelling (attribute_keys).
         names.each do |n|
           src << "  " << reserved_note(n) << "\n" if Ident.reserved_column?(n)
           next unless Ident.shadowing_column?(n)
@@ -225,14 +240,14 @@ module Cybertrain
         src << "  def read_attribute(name)\n"
         src << "    case name\n"
         src << "    when :id then @id\n"
-        table.columns.each { |c| src << "    when :#{c.name} then #{ivar_name(c.name)}\n" }
+        table.columns.each { |c| src << "    when #{attribute_keys(c.name)} then #{ivar_name(c.name)}\n" }
         src << "    else nil\n"
         src << "    end\n"
         src << "  end\n"
         src << "\n"
         src << "  def write_attribute(name, value)\n"
         src << "    case name\n"
-        table.columns.each { |c| src << "    when :#{c.name} then #{ivar_name(c.name)} = Cybertrain::Cast.#{cast_for(c)}(value)\n" }
+        table.columns.each { |c| src << "    when #{attribute_keys(c.name)} then #{ivar_name(c.name)} = Cybertrain::Cast.#{cast_for(c)}(value)\n" }
         src << "    end\n"
         src << "    nil\n"
         src << "  end\n"
@@ -321,9 +336,18 @@ module Cybertrain
       end
 
       # The note beside the attr_accessor of a column reader_name renamed.
+      # The interpreter resolves `errors` and `to_param` as model methods
+      # before it asks read_attribute (Interpreter#model_method), so for those
+      # two the plain name never reaches the column from a template and the
+      # note says so; every other reserved name falls through to
+      # read_attribute and works under either spelling.
       def self.reserved_note(name)
-        "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a method of " \
+        note = "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a method of " \
           "Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)"
+        if name == "errors" || name == "to_param"
+          note += "; templates resolve #{name} as that method, so a template reads the column as #{reader_name(name)}"
+        end
+        note
       end
 
       def self.emit_dispatch(table, definition, view_methods)

@@ -117,15 +117,18 @@ def assert_raises(class_name = "")
     yield
   rescue StandardError => e
     # One clause, as before (a second `=> e` of another type in this yielding
-    # method is untested under Spinel, NOTES rule 32); the class-name check
-    # is the one the helper already does below.
-    if e.class.name.include?("AssertionFailed") && !(class_name != "" && e.class.name.include?(class_name))
+    # method is untested under Spinel, NOTES rule 32). `to_s`: Class#name is
+    # nil for an anonymous class under CRuby (`Class.new(StandardError)`), and
+    # a NoMethodError from inside this rescue clause would replace the very
+    # exception being asserted on.
+    name = e.class.name.to_s
+    if name.include?("AssertionFailed") && !(class_name != "" && name.include?(class_name))
       raise e
     end
     raised = true
     message = e.message
-    if class_name != "" && !e.class.name.include?(class_name)
-      flunk("expected #{class_name} to be raised, got #{e.class.name}: #{e.message}")
+    if class_name != "" && !name.include?(class_name)
+      flunk("expected #{class_name} to be raised, got #{name}: #{e.message}")
     end
   end
   flunk("expected #{class_name == "" ? "an exception" : class_name} to be raised") unless raised

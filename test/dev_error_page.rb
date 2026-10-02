@@ -24,7 +24,7 @@ class Raiser < Cybertrain::Middleware
       raise Cybertrain::Template::SyntaxError, "posts/_form.html.erb:3: unterminated <% tag"
     end
     raise ArgumentError, "wrong number of arguments (given 1, expected 0)" if ctx.request.path == "/argument"
-    raise Cybertrain::Query::TooMany, "too many parameters (limit 4096)" if ctx.request.path == "/toomany"
+    raise Cybertrain::QueryTooMany, "too many parameters (limit 4096)" if ctx.request.path == "/toomany"
     if ctx.request.path == "/download"
       # A send_data-style action that fails after setting its headers.
       ctx.response.redirect("/elsewhere")

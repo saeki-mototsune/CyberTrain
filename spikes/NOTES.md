@@ -188,13 +188,13 @@ finds the commit that removed them).
     whose values are all Strings is typed that way; seed it with a value of
     every type it will hold (rule 9 for Hashes).
 47. `is_a?` on an exception object does not see its class: with `e` a
-    `Query::TooDeep` caught by `rescue StandardError => e`,
-    `e.is_a?(Query::LimitExceeded)` (its direct superclass) was false. Tell
+    `QueryTooDeep` caught by `rescue StandardError => e`,
+    `e.is_a?(QueryLimitExceeded)` (its direct superclass) was false. Tell
     exception classes apart the way the framework always has, by rescue
     clause -- re-raising `e` into a `begin ... rescue A / rescue B` ladder
     works, but costs a second raise per use, so the framework compares bare
-    class names instead (Cybertrain::ClientError::CLIENT_FAULTS, as
-    Controller#rescue_with_handler does). A `begin ... ensure ... end` as
+    class names instead (Cybertrain::ClientError::CLIENT_FAULTS, which
+    Controller#rescue_with_handler asks too). A `begin ... ensure ... end` as
     the last expression of a block does not type either (same C error as
     rule 32's); end the block with an explicit `nil` after it.
 48. `JSON::ParserError` exists only in a rescue clause. `rescue

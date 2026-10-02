@@ -1,6 +1,7 @@
 require "json"
 require "cybertrain/context"
 require "cybertrain/html"
+require "cybertrain/http/client_error"
 require "cybertrain/callback"
 require "cybertrain/views"
 require "cybertrain/template/helpers"
@@ -318,9 +319,14 @@ module Cybertrain
         end
         return nil
       end
-      # A missing or empty required parameter is the client's fault: answer
-      # 400 like Rails instead of letting it surface as a 500.
-      if class_name == "Cybertrain::Params::ParameterMissing"
+      # A client fault raised inside an action (a missing required parameter;
+      # a Query.parse of its own past Query's limits) answers 400
+      # with its message in plain text, like Rails' bad-request page, instead
+      # of surfacing as a 500. The decision is ClientError's, the same one the
+      # error pages use, by class name (NOTES rules 46, 47): comparing the
+      # full "Cybertrain::Params::ParameterMissing" here would miss under
+      # Spinel, where Class#name is the bare "ParameterMissing".
+      if ClientError.status(e) == 400
         render(plain: e.message, status: 400)
         return nil
       end

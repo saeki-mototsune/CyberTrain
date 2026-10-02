@@ -659,37 +659,46 @@ def reserved_columns_schema
       t.string "hash"
       t.text "attributes"
       t.integer "errors"
+      t.string "to_param"
     end
   end
 end
 
-test "a reserved column name generates under <column>_column with a note; SQL-name keys keep the column name" do
+test "a reserved column name generates under <column>_column with a note; read_attribute and write_attribute take either spelling" do
   definition = reserved_columns_schema
   file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
   assert_lines(file, [
     '# column "hash" reads as hash_column: "hash" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)',
     '# column "attributes" reads as attributes_column: "attributes" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)',
-    '# column "errors" reads as errors_column: "errors" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)',
-    "attr_accessor :title, :hash_column, :attributes_column, :errors_column",
-    'def self.column_names = ["id", "title", "hash", "attributes", "errors"]',
+    # errors and to_param: the interpreter resolves the plain name as the model method first
+    '# column "errors" reads as errors_column: "errors" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); templates resolve errors as that method, so a template reads the column as errors_column',
+    '# column "to_param" reads as to_param_column: "to_param" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); templates resolve to_param as that method, so a template reads the column as to_param_column',
+    "attr_accessor :title, :hash_column, :attributes_column, :errors_column, :to_param_column",
+    'def self.column_names = ["id", "title", "hash", "attributes", "errors", "to_param"]',
     "@hash_column = nil",
     '@hash_column = Cybertrain::Cast.str_or_nil(row["hash"])',
     '@attributes_column = Cybertrain::Cast.str_or_nil(row["attributes"])',
     '@errors_column = Cybertrain::Cast.int_or_nil(row["errors"])',
-    "when :hash then @hash_column",
-    "when :attributes then @attributes_column",
-    "when :hash then @hash_column = Cybertrain::Cast.str_or_nil(value)",
-    "when :errors then @errors_column = Cybertrain::Cast.int_or_nil(value)",
+    "when :hash, :hash_column then @hash_column",
+    "when :attributes, :attributes_column then @attributes_column",
+    "when :errors, :errors_column then @errors_column",
+    "when :hash, :hash_column then @hash_column = Cybertrain::Cast.str_or_nil(value)",
+    "when :errors, :errors_column then @errors_column = Cybertrain::Cast.int_or_nil(value)",
+    "when :to_param, :to_param_column then @to_param_column = Cybertrain::Cast.str_or_nil(value)",
     '"hash" => Cybertrain::Cast.to_sql(@hash_column),',
-    '"errors" => Cybertrain::Cast.to_sql(@errors_column)'
+    '"errors" => Cybertrain::Cast.to_sql(@errors_column),',
+    '"to_param" => Cybertrain::Cast.to_sql(@to_param_column)'
   ])
   # No bare reader or ivar that would shadow what the Model owns.
   refute file.include?("attr_accessor :title, :hash,")
   refute file.include?("@errors ")
   refute file.include?("@errors =")
   refute file.include?("(@attributes)")
-  # An unaffected column gets no note.
+  # An unaffected column gets no note and keeps its single key.
   refute file.include?('column "title"')
+  assert_includes file, "when :title then @title"
+  # Only errors and to_param carry the template remark; hash does not.
+  refute file.include?('"hash" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); templates')
 end
 
 test "a reserved column whose fallback name is taken, and keywords, still fail" do

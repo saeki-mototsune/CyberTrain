@@ -1,7 +1,9 @@
 ok   a namespaced name must match in full
 ok   an app or library exception that shares a bare name is the app's fault (500)
-ok   a name with no namespace (Spinel) matches the bare names
+ok   a name with no namespace (Spinel) matches the framework's unique bare names
+ok   a bare name an app also uses (Billing::Invalid under Spinel) is not a client fault
 ok   an anonymous class (name nil under CRuby) is a 500, not a crash
-ok   the bare list is the full list without its namespace
+ok   bare_name is the part after the last namespace separator
+ok   every bare client-fault name is unique within the list
 ok   status of the framework's own exceptions
-6 tests, 20 assertions, 0 failures
+8 tests, 39 assertions, 0 failures

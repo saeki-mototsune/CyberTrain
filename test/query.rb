@@ -15,7 +15,7 @@ test "parse decodes '+' as space and percent-escapes" do
   assert_equal "松本", params["name"]
 end
 
-test "parse of a malformed percent-escape does not raise (Spinel diverges from CRuby, where Query raises Malformed)" do
+test "parse of a malformed percent-escape does not raise (Spinel diverges from CRuby, where Query raises QueryMalformed)" do
   params = Cybertrain::Query.parse("a=%zz&b=%")
   assert_equal "\u0000", params["a"]
   assert_equal "%", params["b"]
