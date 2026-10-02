@@ -1,0 +1,5 @@
+# Build context of playground/control/Dockerfile (the repository root): the
+# control plane's own files, without its tests.
+*
+!playground/control/
+playground/control/test/

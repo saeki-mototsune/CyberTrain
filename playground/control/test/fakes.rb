@@ -120,3 +120,44 @@ class FakeProbe
     !@ready_after.nil? && @calls.size >= @ready_after
   end
 end
+
+# Play::Sessions as the routes see it (test/app_test.rb).
+class FakeSessions
+  attr_reader :clients, :refusals
+  attr_accessor :result, :status_value, :closed, :healthy, :internal
+
+  def initialize(config)
+    @clients = []
+    @refusals = []
+    @result = Play::Sessions::Created.new(config.editor_url("0123456789abcdef0123456789abcdef"), "1f2e3d4c5b6a7980")
+    @status_value = { accepting: true, paused: false, live: 2, capacity: 5, ttl_seconds: 1800 }
+    @closed = nil
+    @healthy = true
+    @internal = []
+  end
+
+  def create(client)
+    @clients << client
+    @result
+  end
+
+  def status
+    @status_value
+  end
+
+  def closed_message
+    @closed
+  end
+
+  def healthy?
+    @healthy
+  end
+
+  def internal_list
+    @internal
+  end
+
+  def note_refusal(reason)
+    @refusals << reason
+  end
+end

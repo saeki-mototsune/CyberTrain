@@ -1,0 +1,20 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# bin/playctl -- the hosted playground's stop switch (spec §5.9):
+#   playctl status | pause [message] | resume | end <handle> | kill-all
+# On the server:  kamal app exec -c playground/deploy/control.yml --reuse 'bin/playctl status'
+# Locally:        docker compose -f playground/dev/compose.yml exec control bin/playctl status
+$stdout.sync = true
+$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+require "play"
+
+begin
+  config = Play::Config.from_env
+rescue Play::Config::Error => e
+  warn "error: #{e.message}"
+  exit 1
+end
+sessions = Play::Sessions.new(config: config, docker: Play::DockerCLI.new, probe: nil, clock: Play::Clock.new,
+                              log: Play::EventLog.new($stdout))
+exit Play::Ctl.new(sessions: sessions, out: $stdout, err: $stderr).run(ARGV)
