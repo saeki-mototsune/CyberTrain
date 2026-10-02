@@ -886,7 +886,9 @@ private ポートのサインインが iframe の中で完了しない（空の�
 
 `index.html` の closer とフッターは変えない。サイトの内容規則（site/README.md）に従い、ページの主張と
 コマンドはすべて README の新しい節（§7.4）に根拠を置く。ブランド（BRAND.md）: 金色はロゴの光の帯だけ。
-新しい色、新しい CSS 規則、外部への読み込み（バッジ画像を含む）を足さない。既存のクラスだけを使う。
+新しい色、外部への読み込み（バッジ画像を含む）を足さない。既存のクラスを使い、CSS の追加は
+レイアウトの 1 規則 `.step > .cta-row { margin-top: 28px; }` だけ（ステップの中にボタンの行を置くのはこのページが
+初めてで、`.cta-row` の上余白はヒーローと closer にしか無いため。本 spec での決定）。
 
 ### 7.2 `site/playground.html`
 
@@ -1268,6 +1270,8 @@ jobs:
 | 変更 | `site/index.html` | ナビ、ヒーローの CTA、バージョン |
 | 変更 | `site/tutorial.html` | ナビ、Step 00 のヒント、バージョン |
 | 新規 | `site/playground.html` | §7.2 |
+| 変更 | `site/assets/style.css` | `.step > .cta-row` の上余白 1 規則（§7.1） |
+| 変更 | `site/README.md` | ページの一覧に `playground.html` |
 | 新規 | `playground/Dockerfile` | §4.1 |
 | 新規 | `playground/README.md` | §7.5 |
 | 新規 | `playground/PLAYGROUND.md` | §5.2 |
