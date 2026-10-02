@@ -28,8 +28,6 @@
   "files.autoSave": "off",
   // ERB views highlight as HTML with the built-in grammar (no extension).
   "files.associations": { "*.html.erb": "html" },
-  // The guide opens rendered (V9).
-  "workbench.editorAssociations": { "**/PLAYGROUND.md": "vscode.markdown.preview.editor" },
   "editor.minimap.enabled": false,
   "terminal.integrated.confirmOnKill": "never",
   "terminal.integrated.showExitAlert": false,
