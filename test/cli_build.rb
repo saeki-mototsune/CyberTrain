@@ -41,14 +41,22 @@ test "app_name reads [package] name from spin.toml" do
   assert_equal "", Cybertrain::CLI::Build.app_name("no_such_dir")
 end
 
-test "app_name rejects a name that is not a valid application name" do
+test "app_name rejects only a name that breaks the build/bin/<name> path" do
   File.write("spin.toml", "[package]\nname = \"x; touch PWNED #\"\n")
   message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
-  assert_equal "spin.toml [package] name 'x; touch PWNED #' is not a valid application name (lowercase letters, digits and _)", message
+  assert_equal "spin.toml [package] name 'x; touch PWNED #' cannot contain '/' or whitespace", message
   assert_equal 1, Cybertrain::CLI.run(["build"])
   refute File.exist?("PWNED")
-  File.write("spin.toml", "[package]\nname = \"Blog\"\n")
+  File.write("spin.toml", "[package]\nname = \"a/b\"\n")
   assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+  # Shell safety comes from quote_arg, not from the spelling: a hand-written
+  # "my-app" or "MyApp" builds as it did before the check existed.
+  File.write("spin.toml", "[package]\nname = \"my-app\"\n")
+  assert_equal "my-app", Cybertrain::CLI::Build.app_name(".")
+  assert_equal "spin build my-app", Cybertrain::CLI::Build.commands("my-app")[1]
+  assert_equal "spin build 'my app'", Cybertrain::CLI::Build.commands("my app")[1]
+  File.write("spin.toml", "[package]\nname = \"MyApp\"\n")
+  assert_equal "MyApp", Cybertrain::CLI::Build.app_name(".")
   File.write("spin.toml", "[package]\nname = \"blog\"\nversion = \"0.1.0\"\n")
   assert_equal "blog", Cybertrain::CLI::Build.app_name(".")
 end

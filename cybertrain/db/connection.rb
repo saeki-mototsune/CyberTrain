@@ -107,12 +107,19 @@ module Cybertrain
       def transaction
         raise Error, "connection closed (transaction)" if @closed
 
-        # A depth left above 0 while SQLite is in autocommit is stale: a
-        # `break` out of an earlier block on this connection (CRuby) left the
-        # depth at 1 past the rescue, and SQLite may since have rolled back
-        # on its own. Nesting into it would run this block without a
-        # transaction and never COMMIT; forget it and start a real one.
-        @transaction_depth = 0 if @transaction_depth > 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
+        # A depth above 0 while SQLite is in autocommit means the enclosing
+        # transaction is gone: SQLite rolled it back on its own after
+        # SQLITE_FULL / IOERR / BUSY and the app's block rescued that and went
+        # on, or (CRuby) an earlier block on this connection was left with
+        # `break`. Nesting into it would run this block without a transaction
+        # and never COMMIT; starting a fresh one here would commit this part
+        # while the outer COMMIT then fails as if everything rolled back.
+        # Raising is the only honest answer; Pool#check_in resets the depth
+        # when the connection comes back.
+        if @transaction_depth > 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
+          raise Error, "transaction: the enclosing transaction is no longer open (SQLite rolled it back " \
+                       "after an error, or its block was left early); nothing nested in it can be committed"
+        end
         if @transaction_depth > 0
           @transaction_depth += 1
           begin
@@ -128,22 +135,23 @@ module Cybertrain
         begin
           yield
         rescue JSON::ParserError, StandardError => e
-          @transaction_depth = 0
-          rollback_quietly
+          abandon_transaction!
           raise e
         end
         @transaction_depth = 0
         begin
           exec_script("COMMIT")
         rescue Error => e
-          rollback_quietly
+          abandon_transaction!
           raise e
         end
         nil
       end
 
-      # Rolls back whatever was left open and resets the depth. Pool#with
-      # runs it when a connection comes back: a `transaction` block that got
+      # Rolls back whatever was left open and resets the depth; never raises,
+      # so the rescue paths of `transaction` can call it without masking the
+      # exception they propagate. Pool#with runs it when a connection comes
+      # back: a `transaction` block that got
       # out past the rescue (a `break`, under CRuby) leaves BEGIN open with
       # the depth at 1, so every later transaction on this pooled connection
       # would count as nested and nothing would ever be committed; a BEGIN
@@ -182,16 +190,6 @@ module Cybertrain
       end
 
       private
-
-      # ROLLBACK that never raises, so it cannot mask the exception being
-      # propagated. Skipped when SQLite has already rolled back on its own
-      # (SQLITE_FULL, IOERR, NOMEM, some BUSY cases): autocommit is back on.
-      def rollback_quietly
-        return if @closed
-        return if SQLite3.sqlite3_get_autocommit(@db) != 0
-        SQLite3.sqlite3_exec(@db, "ROLLBACK", nil, nil, nil)
-        nil
-      end
 
       def bind(stmt, index, value)
         case value

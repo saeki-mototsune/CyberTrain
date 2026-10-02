@@ -24,7 +24,12 @@ module Cybertrain
             break
           end
         end
-        raise InvalidArgument, "spin.toml [package] name '#{name}' is not a valid application name (lowercase letters, digits and _)" unless name == "" || Templates.identifier?(name)
+        # The name reaches the shell through quote_arg, so any spelling is
+        # safe there; only what breaks the build/bin/<name> path is refused
+        # ("my-app" and "MyApp" are fine for `spin build`).
+        if name.include?("/") || name.match?(/\s/)
+          raise InvalidArgument, "spin.toml [package] name '#{name}' cannot contain '/' or whitespace"
+        end
 
         name
       end

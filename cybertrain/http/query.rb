@@ -79,9 +79,12 @@ module Cybertrain
       begin
         key = URI.decode_www_form_component(raw_key)
         value = URI.decode_www_form_component(raw_value)
-      rescue ArgumentError => e
-        # The client's fault (a 400 through ClientError), not the app's.
-        raise Malformed, "malformed percent-encoding in request parameters: #{e.message}"
+      rescue ArgumentError
+        # The client's fault (a 400 through ClientError), not the app's. The
+        # decoder's message is not repeated: it embeds the raw pair, newlines
+        # included, and would let a form body forge log lines (Logger writes
+        # the line as is) and echo itself into the dev page's 400 body.
+        raise Malformed, "malformed percent-encoding in request parameters"
       end
       params.set_path(split_key(key), value)
       nil
@@ -91,30 +94,41 @@ module Cybertrain
     # matching "]" (or any other malformed bracket run) is not a nesting
     # marker at all -- the whole string is returned as one plain key, however
     # many pairs precede the malformed tail. A well-formed key with more than
-    # MAX_DEPTH bracket pairs raises TooDeep, once the scan is complete.
+    # MAX_DEPTH bracket pairs raises TooDeep.
     #
-    # Scans with a cursor into key instead of re-slicing the remainder after
-    # every pair, so the work is linear in the key length either way.
+    # Two cursor passes, both linear in the key length. The first only counts
+    # the pairs and checks the shape, allocating nothing, so a multi-megabyte
+    # `a[x][x]...` costs no Strings before it is refused (MAX_PAIRS bounds
+    # the number of pairs, not a key's length, and every request is parsed
+    # up to three times). The second slices only a key that passed.
     def self.split_key(key)
       first_bracket = key.index("[")
       return [key] if first_bracket.nil?
 
-      base = key[0, first_bracket]
-      parts = []
+      len = key.length
+      count = 0
       pos = first_bracket
-
-      while pos < key.length
+      while pos < len
         return [key] unless key[pos] == "["
 
         close = key.index("]", pos)
         return [key] if close.nil?
 
+        count += 1
+        pos = close + 1
+      end
+      raise TooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if count > MAX_DEPTH
+
+      parts = [key[0, first_bracket]]
+      pos = first_bracket
+      while pos < len
+        close = key.index("]", pos)
+        break if close.nil? # cannot happen: the first pass saw every "]"
+
         parts << key[pos + 1, close - pos - 1].to_s
         pos = close + 1
       end
-      raise TooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if parts.length > MAX_DEPTH
-
-      [base] + parts
+      parts
     end
 
     def self.encode(pairs)
