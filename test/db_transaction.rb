@@ -145,6 +145,30 @@ test "the connection goes back to the pool even when the leak warning cannot be 
   nil
 end
 
+# A file-backed database for the reopen test: closing the one ":memory:"
+# connection would drop the database itself, which is exactly why the pool
+# never closes that one.
+REOPEN_DB = "tmp/db_transaction_reopen.sqlite3"
+
+def remove_reopen_db
+  [REOPEN_DB, REOPEN_DB + "-wal", REOPEN_DB + "-shm"].each { |f| File.delete(f) if File.exist?(f) }
+end
+
+test "a slot whose connection was closed is reopened on the next checkout" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  remove_reopen_db
+  DB.connect(REOPEN_DB, size: 1)
+  DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
+  assert_equal 1, DB.with { |c| insert_after(c) }
+  # What check_in does after a failed ROLLBACK: the slot's connection is
+  # closed. The next checkout must not get a closed handle.
+  DB.with { |c| c.close }
+  assert_equal 1, DB.with { |c| post_count(c) }
+  assert DB.with { |c| clean?(c) }
+  DB.disconnect
+  remove_reopen_db
+end
+
 test "abandon_transaction! leaves a clean connection alone and says so" do
   conn = posts_db
   conn.execute("INSERT INTO posts (title) VALUES (?)", ["kept"])

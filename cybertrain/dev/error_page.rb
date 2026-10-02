@@ -30,12 +30,10 @@ module Cybertrain
           # Spinel, and a bad JSON body deserves the diagnostics page too. A
           # client fault (ClientError: parameters past Query's limits) gets a
           # plain 4xx naming the limit instead, as ErrorPages does.
-          status = ClientError.status(e)
-          if status == 0
-            Cybertrain.logger.error("#{e.class.name}: #{e.message}")
+          status = ClientError.classify(e, Cybertrain.logger)
+          if status >= 500
             render_exception(ctx, e)
           else
-            Cybertrain.logger.info(ClientError.log_line(e, status))
             ctx.response.reset_to(status, "#{Response.status_text(status)}: #{e.message}")
           end
         end

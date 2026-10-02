@@ -11,9 +11,8 @@ module Cybertrain
     # Column names that would collide with the generated model: a reader
     # named like a method Cybertrain::Model or Object defines and the
     # framework calls (`errors`, `save`, `attributes`, `hash`, `send`, ...),
-    # a Kernel method the model (or app code in the class) calls on implicit
-    # self (`raise` above all: Model#save! and #reload would dispatch to the
-    # zero-arity reader and die with "wrong number of arguments"), an ivar
+    # `raise` (Model#save! and #reload would dispatch to the zero-arity
+    # reader and die with "wrong number of arguments"), an ivar
     # the model keeps (`errors`, `persisted` -> @errors, @persisted), or a
     # name that breaks the generated source (`class`). `id` is deliberately
     # absent: the primary key is Model#id. Names that end in `?` or `!`
@@ -48,13 +47,12 @@ module Cybertrain
       # `?` and needs no entry.
       "to_ary", "to_str", "to_hash", "to_proc", "to_int", "to_a", "to_h",
       "to_sym", "to_io", "to_path", "to_regexp", "coerce", "method_missing",
-      # Kernel methods the model (or app code in the class) calls on
-      # implicit self
-      "raise", "fail", "format", "sprintf", "printf", "puts", "print", "p",
-      "pp", "warn", "loop", "lambda", "proc", "require", "require_relative",
-      "load", "sleep", "exit", "abort", "catch", "throw", "rand", "binding",
-      "caller", "eval", "system", "exec", "spawn", "fork", "trap", "open",
-      "gets", "at_exit"
+      # The one Kernel method the model calls on implicit self (Model#save!
+      # and #reload would dispatch `raise RecordInvalid, ...` to the
+      # zero-arity reader), and its alias. No other private Kernel method is
+      # reserved: `open`, `format`, `load`, `print`, `select`, `test` are
+      # ordinary column names and nothing in the generated class calls them.
+      "raise", "fail"
     ]
 
     # Ruby keywords a column could be spelled like: `def end=` /

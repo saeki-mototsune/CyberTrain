@@ -322,18 +322,9 @@ module Cybertrain
         # not named: nothing proves Spinel's exception table has them (a
         # stack overflow is a SIGSEGV there anyway); the depth limits in Query
         # and the template Interpreter are the guard against those.
-        # ClientError maps the client's faults (a query string or form body
-        # past Query's limits) to their 4xx, logged at info so a flood of
-        # them does not fill the error log; ErrorPages and Dev::ErrorPage ask
-        # it too, this is the bare-app path.
-        status = ClientError.status(e)
-        if status == 0
-          @logger.error("#{e.class.name}: #{e.message}")
-          response = error_response(500)
-        else
-          @logger.info(ClientError.log_line(e, status))
-          response = error_response(status)
-        end
+        # ClientError maps and logs (a client's fault is its 4xx at info);
+        # ErrorPages and Dev::ErrorPage ask it too, this is the bare-app path.
+        response = error_response(ClientError.classify(e, @logger))
       end
       keep_alive = request.keep_alive? && @running
       response.set_header("Connection", keep_alive ? "keep-alive" : "close")

@@ -105,6 +105,12 @@ module Cybertrain
       # Returns nil: the blocks callers pass return unrelated types, and one
       # generic return value would not type-check under Spinel.
       def transaction
+        # A depth left above 0 while SQLite is in autocommit is stale: a
+        # `break` out of an earlier block on this connection (CRuby) left the
+        # depth at 1 past the rescue, and SQLite may since have rolled back
+        # on its own. Nesting into it would run this block without a
+        # transaction and never COMMIT; forget it and start a real one.
+        @transaction_depth = 0 if @transaction_depth > 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
         if @transaction_depth > 0
           @transaction_depth += 1
           begin

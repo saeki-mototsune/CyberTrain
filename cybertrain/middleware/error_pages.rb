@@ -24,19 +24,12 @@ module Cybertrain
       rescue JSON::ParserError, StandardError => e
         # JSON::ParserError named too: not a StandardError under Spinel
         # (NOTES rule 33), and an action's JSON.parse of a bad body deserves
-        # the same 500 page as any other failure. ClientError says which
-        # exceptions are the client's fault instead (request parameters past
-        # Query's limits: 400, at info level); caught here because this
-        # middleware wraps the whole stack, so Server#respond's own mapping
-        # never sees the exception in a real application.
-        status = ClientError.status(e)
-        if status == 0
-          @logger.error("#{e.class.name}: #{e.message}")
-          ctx.response.reset_to(500)
-        else
-          @logger.info(ClientError.log_line(e, status))
-          ctx.response.reset_to(status)
-        end
+        # the same 500 page as any other failure. ClientError maps and logs:
+        # a client's fault (request parameters past Query's limits) is a 400
+        # at info level. Caught here because this middleware wraps the whole
+        # stack, so Server#respond's own mapping never sees the exception in
+        # a real application.
+        ctx.response.reset_to(ClientError.classify(e, @logger))
       end
       response = ctx.response
       page = page_for(response)

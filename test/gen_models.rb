@@ -612,9 +612,9 @@ test "emit rejects column names that are invalid or collide with model methods" 
    "to_json", "as_json", "end", "def", "nil", "self", "BEGIN", "__FILE__",
    # Object's methods and the hooks Ruby calls on its own.
    "then", "methods", "__send__", "to_ary", "to_str", "to_hash", "to_proc", "to_int", "method_missing",
-   # Kernel methods the model calls on implicit self: a `raise` column would
-   # turn Model#save!'s `raise RecordInvalid, ...` into a call of the reader.
-   "raise", "fail", "format", "puts", "warn", "loop", "lambda", "proc", "require", "sleep"].each do |bad|
+   # The one Kernel method the model calls on implicit self: a `raise` column
+   # would turn Model#save!'s `raise RecordInvalid, ...` into a call of the reader.
+   "raise", "fail"].each do |bad|
     assert emit_error(bad).include?("is reserved"), "#{bad} should be rejected"
   end
   ["1st", "a-b", "a b", "a.b", "", "valid?", "ünïcode"].each do |bad|
@@ -624,7 +624,10 @@ test "emit rejects column names that are invalid or collide with model methods" 
   # the camelCase / capitalised columns of an existing schema: anything Ruby
   # takes as a method name generates (the scaffold alone insists on
   # snake_case for the names it invents).
-  ["title", "_x", "a1", "group", "new_record", "is_a", "frozen", "createdAt", "userId", "Title", "X1"].each do |ok|
+  # ... and private Kernel methods nothing in the class calls are ordinary
+  # columns (issues.open, documents.format, trucks.load).
+  ["title", "_x", "a1", "group", "new_record", "is_a", "frozen", "createdAt", "userId", "Title", "X1",
+   "open", "format", "load", "print", "select", "test", "sleep"].each do |ok|
     assert_equal "", emit_error(ok)
   end
 end

@@ -80,7 +80,9 @@ module Cybertrain
         return nil
       end
       terms = Array.new(0) { "" }
-      if stripped.start_with?(",") || stripped.end_with?(",")
+      # split drops trailing empty strings, so "title," needs this check; a
+      # leading comma yields an empty first term the loop rejects itself.
+      if stripped.end_with?(",")
         raise ArgumentError, "order: \"#{stripped}\" is not `column [ASC|DESC]` (use order_sql for raw SQL)"
       end
       stripped.split(",").each do |fragment|

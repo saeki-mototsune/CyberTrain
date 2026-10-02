@@ -10,29 +10,37 @@ module Cybertrain
   # or multipart limit, say) is added once and all three paths answer alike
   # instead of one of them quietly answering 500.
   module ClientError
-    # The 4xx status for a client fault, or 0 when the exception is the
-    # app's (a 500). 0 rather than nil: an Integer-or-nil return would not
-    # type under Spinel. The class test is a re-raise into rescue clauses
-    # rather than `e.is_a?(Query::LimitExceeded)`: under Spinel is_a? on an
-    # exception object answered false for its own superclass (a TooDeep
-    # reached every error path as a 500 on the local 2026.09.12 build),
-    # while rescue-by-class is what every rescue in the framework already
-    # relies on (NOTES rule 47).
+    # The status for an exception out of the app, logged at the level it
+    # deserves: a client fault (request parameters past Query's limits) is
+    # its 4xx at info, so a flood of them does not fill the error log;
+    # anything else is 500 at error, as `class: message`. Each error path
+    # then does `reset_to(status)` (or its own 500 page), so the next
+    # client-fault class changes this file only.
+    def self.classify(e, logger)
+      status = self.status(e)
+      if status >= 500
+        logger.error("#{e.class.name}: #{e.message}")
+      else
+        logger.info("rejected request (#{status} #{Response.status_text(status)}): #{e.message}")
+      end
+      status
+    end
+
+    # 400 for a client fault, 500 for the app's own exception. The class
+    # test is a re-raise into rescue clauses rather than
+    # `e.is_a?(Query::LimitExceeded)`: under Spinel is_a? on an exception
+    # object answered false for its own superclass (a TooDeep reached every
+    # error path as a 500 on the local 2026.09.12 build), while
+    # rescue-by-class is what every rescue in the framework already relies
+    # on (NOTES rule 47).
     def self.status(e)
       begin
         raise e
       rescue Query::LimitExceeded
         400
       rescue JSON::ParserError, StandardError
-        0
+        500
       end
-    end
-
-    # The info-level log line for a client fault (a flood of them must not
-    # fill the error log), worded from the status so it stays right for any
-    # 4xx `status` returns: "rejected request (400 Bad Request): <message>".
-    def self.log_line(e, status)
-      "rejected request (#{status} #{Response.status_text(status)}): #{e.message}"
     end
   end
 end

@@ -21,7 +21,15 @@ source.scan(/^\s*def\s+(?!self\.)([A-Za-z_][A-Za-z0-9_]*)\b(?![?!=])/) { |(m)| n
 source.scan(/^\s*attr_(?:reader|accessor|writer)\s+((?::\w+\s*,?\s*)+)/) do |(list)|
   list.scan(/:(\w+)/) { |(m)| names << m }
 end
-source.scan(/@([A-Za-z_][A-Za-z0-9_]*)/) { |(iv)| names << iv }
+# Instance variables, from code only: full-line comments are skipped and an
+# inline ` # ...` tail is cut, so a `@name` mentioned in prose (or an e-mail
+# address) does not demand an entry; `@@class_vars` are not readers.
+source.each_line do |line|
+  next if line.lstrip.start_with?("#")
+
+  code = line.sub(/\s#\s.*/, "")
+  code.scan(/(?<![@\w])@([A-Za-z_][A-Za-z0-9_]*)/) { |(iv)| names << iv }
+end
 # Object's public instance methods (and BasicObject's hooks such as
 # method_missing), which every model has whether or not model.rb mentions
 # them. `test`, `select` and the other private Kernel methods are not

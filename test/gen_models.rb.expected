@@ -27,4 +27,4 @@ ok   scan_source skips class << self, nested classes and later classes
 ok   scan_source inside a module stops at the class's own end
 ok   view_methods_for picks the scanned methods of one model
 ok   outputs maps gen/models paths to sources for every table
-29 tests, 188 assertions, 0 failures
+29 tests, 187 assertions, 0 failures
