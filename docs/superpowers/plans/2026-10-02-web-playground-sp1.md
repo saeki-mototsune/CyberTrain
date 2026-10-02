@@ -1998,7 +1998,7 @@ The devcontainer CLI uses a local image of the configured name and pulls only wh
 
 ```bash
 docker tag cybertrain-playground:local ghcr.io/saeki-mototsune/cybertrain-playground:latest
-npx --yes @devcontainers/cli@0 up --workspace-folder . | tail -n 1
+npx --yes @devcontainers/cli@0 up --workspace-folder . --skip-post-attach | tail -n 1
 npx --yes @devcontainers/cli@0 exec --workspace-folder . sh -c 'id -un; pwd'
 npx --yes @devcontainers/cli@0 exec --workspace-folder . playground-server > "${TMPDIR:-/tmp}/devcontainer-server.log" 2>&1 &
 code=000; for i in $(seq 1 30); do code=$(npx --yes @devcontainers/cli@0 exec --workspace-folder . curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/articles); [ "$code" = 200 ] && break; sleep 1; done; echo "$code"
@@ -2813,14 +2813,14 @@ Then bring the dev container up on the published image (spec §10.2, item 3; on 
 
 ```bash
 docker image rm ghcr.io/saeki-mototsune/cybertrain-playground:latest 2> /dev/null
-npx --yes @devcontainers/cli@0 up --workspace-folder . | tail -n 1
+npx --yes @devcontainers/cli@0 up --workspace-folder . --skip-post-attach | tail -n 1
 npx --yes @devcontainers/cli@0 exec --workspace-folder . sh -c 'id -un; pwd; uname -m'
 npx --yes @devcontainers/cli@0 exec --workspace-folder . playground-server > "${TMPDIR:-/tmp}/devcontainer-server.log" 2>&1 &
 code=000; for i in $(seq 1 60); do code=$(npx --yes @devcontainers/cli@0 exec --workspace-folder . curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/articles); [ "$code" = 200 ] && break; sleep 1; done; echo "$code"
 docker rm -f $(docker ps -aq --filter "label=devcontainer.local_folder=$(pwd)")
 ```
 
-Expected: the `up` line contains `"outcome":"success"`; `dev`, `/workspace/blog` and `x86_64`; `200`. The first command only drops a stale local tag, so that `up` pulls the published image; removing the container also ends the background `exec`.
+Expected: the `up` line contains `"outcome":"success"`; `dev`, `/workspace/blog` and `x86_64`; `200`. The first command only drops a stale local tag, so that `up` pulls the published image; removing the container also ends the background `exec`. `--skip-post-attach` is needed because the CLI (0.89.0) runs `postAttachCommand` inside `up` and waits for it, and `playground-server` is a foreground server (found in Task 6; spec §10.2 says otherwise).
 
 - [ ] **Step 5: [OWNER] Run the live checklist L1-L12**
 
