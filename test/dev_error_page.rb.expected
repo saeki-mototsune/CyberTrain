@@ -20,5 +20,6 @@ ok   a failing rebuild keeps the command output
 ok   no rebuild while cybertrain build holds tmp/cybertrain-build.lock
 ok   a lock whose build process is gone is stale: removed and ignored
 ok   a lock older than 30 minutes is stale even with a live PID: age wins over aliveness
+ok   the rebuild command quotes the build target like every other interpolated value
 ok   shell_quote escapes single quotes
-23 tests, 80 assertions, 0 failures
+24 tests, 83 assertions, 0 failures

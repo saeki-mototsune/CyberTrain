@@ -102,11 +102,14 @@ module Cybertrain
         true
       end
 
-      # The brace group sends a failing `cd` to the log as well.
+      # The brace group sends a failing `cd` to the log as well. Every
+      # interpolated value is quoted; the target comes from Application.new(name:),
+      # not spin.toml, so Build.app_name's validation does not run here and the
+      # quoting is what keeps a stray quote or space in the name from reaching sh.
       def command
         log = log_file
         "mkdir -p #{Rebuilder.shell_quote(File.dirname(log))} && " \
-          "{ cd #{Rebuilder.shell_quote(@root)} && spin run gen && spin build #{@target}; } " \
+          "{ cd #{Rebuilder.shell_quote(@root)} && spin run gen && spin build #{Rebuilder.shell_quote(@target)}; } " \
           "> #{Rebuilder.shell_quote(log)} 2>&1"
       end
 
