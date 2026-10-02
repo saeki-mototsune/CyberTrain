@@ -1,7 +1,8 @@
 # Builds the playground images for linux/amd64 and, except on pull requests,
 # pushes the tested images to GHCR: latest from main, X.Y.Z and latest from a
 # tag vX.Y.Z, the given tag on a manual run. Job image: target playground
-# (Codespaces), smoke-tested by playground/smoke.sh. Job web: target web (the
+# (Codespaces), smoke-tested by playground/smoke.sh. Job web, only once image
+# has passed (the web stage is built on the playground stage): target web (the
 # hosted playground's sessions), smoke-tested by playground/web-smoke.sh and
 # end-to-end tested with the router and the control plane (playground/dev/e2e.sh).
 # See playground/README.md.
@@ -34,7 +35,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to push to ghcr.io/saeki-mototsune/cybertrain-playground (latest, X.Y.Z or a test name)"
+        description: "Tag to push to ghcr.io/saeki-mototsune/cybertrain-playground and ghcr.io/saeki-mototsune/cybertrain-playground-web (latest, X.Y.Z or a test name). The hosted playground's next deploy pins whatever cybertrain-playground-web:latest is at that moment, so a latest pushed here becomes its session image."
         required: true
         default: "test"
 
@@ -117,10 +118,16 @@ jobs:
             docker push "$tag"
           done
 
-  # The hosted playground's session image (target web): the same build rules,
-  # then its smoke test and the end-to-end test of the whole local stack
-  # (router, control plane and real sessions) before anything is pushed.
+  # The hosted playground's session image (target web), only once the image
+  # job has passed: the web stage is built on the playground stage, so a base
+  # that fails SP1's smoke test never becomes the session image. The same
+  # build rules and its own tag check (it pushes on its own); the shared layers
+  # come from the cache scope the image job has just written (playground-image),
+  # this job's own go to playground-web. Then its smoke test and the end-to-end
+  # test of the whole local stack (router, control plane and real sessions)
+  # before anything is pushed.
   web:
+    needs: image
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
