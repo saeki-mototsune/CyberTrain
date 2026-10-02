@@ -1811,6 +1811,7 @@ Notes on the spec's text, applied below:
 - `Config#editor_url` builds spec §5.2's URL (`folder` and `payload` encoded with `URI.encode_www_form_component`; the `vscode-remote://` authority carries the port only when `PLAY_PUBLIC_URL` has one). `session_hosts_source` serves Task 6's CSP correction.
 - `Gemfile`: `rake` joins the test group (spec §8.1 runs `bundle exec rake test`); the precedent's `rackup` is left out (Puma loads `config.ru` itself).
 - Configuration checks beyond spec §5.10's list (sizes like `256m`, the runtime name, the router filters, the header name, origins without a path) keep every value that reaches an argv in a known shape.
+- **As built after review** (2026-10-03, commit `e0f8238`; the code blocks below are the first version, commit `3d69853`). Nothing in the Interfaces block changed. Added: `test/docker_cli_test.rb` (`redact`, and `run` through `sh -c`: results, the 128+signal status, the timeout with its first-three-words message and a quiet stderr), `test/event_log_test.rb`, `test/probe_test.rb`, and tests for the items that follow; the suite is `44 runs, 196 assertions`. Changed: `DockerCLI#run`'s reader threads end quietly when the pipes close under them (`drain`); `DockerCLI.redact` relabels its input as UTF-8 and scrubs invalid bytes before redacting; `EventLog` quotes a value that holds a control character and escapes it JSON-style (`\n`, `\u001b`), so an event is always one line (lines for values without control characters are byte-identical; the private `format` is now `render_value`); `Limits#retry_after` waits for the hit that must leave the window (`hits[hits.size - @limit]`; the same number as before with exactly `limit` hits); `Subnets#first_free` strips each taken entry; `Config` refuses a `PLAY_SESSION_IMAGE` that is not an image reference (`\A[A-Za-z0-9][A-Za-z0-9._/:@-]*\z`, so no leading `-`), a `PLAY_ROUTER_URL` that is not plain `http` with a host (message `PLAY_ROUTER_URL must be a plain http URL such as http://ctplay-router (got …)`), a URL or origin without a host, and a `PLAY_PUBLIC_URL` host with characters other than letters, digits, `.` and `-`; `Probe` uses the URI's `hostname` and `max_retries = 0` (one attempt, bounded by the 2 s timeouts); the drift test reads `web-smoke.sh` as UTF-8.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2919,7 +2920,7 @@ BUNDLE_PATH="$SDD/bundle" bundle exec rake test 2>&1 | tail -n 1
 for f in lib/play.rb lib/play/*.rb; do ruby -c "$f" > /dev/null || echo "syntax: $f"; done
 ```
 
-Expected: `25 runs, 128 assertions, 0 failures, 0 errors, 0 skips` and no `syntax:` line. Run `bundle exec rake test` twice more: minitest shuffles the order, and the counts must not change.
+Expected: `25 runs, 128 assertions, 0 failures, 0 errors, 0 skips` and no `syntax:` line. Run `bundle exec rake test` twice more: minitest shuffles the order, and the counts must not change. (After this task's review the suite is `44 runs, 196 assertions`: see "As built after review" above. The totals in Tasks 5, 6 and 12 below count from there.)
 
 - [ ] **Step 5: Commit**
 
@@ -3393,7 +3394,7 @@ SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2
 BUNDLE_PATH="$SDD/bundle" bundle exec rake test 2>&1 | grep -E 'runs,|uninitialized constant' | sort | uniq -c
 ```
 
-Expected: `25 NameError: uninitialized constant Play::Sessions` and `1 50 runs, 128 assertions, 0 failures, 25 errors, 0 skips` (Task 4's 25 tests still pass).
+Expected: `25 NameError: uninitialized constant Play::Sessions` and `1 69 runs, 196 assertions, 0 failures, 25 errors, 0 skips` (Task 4's 44 tests still pass).
 
 - [ ] **Step 3: Implement**
 
@@ -3951,7 +3952,7 @@ SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2
 for i in 1 2 3; do BUNDLE_PATH="$SDD/bundle" bundle exec rake test 2>&1 | tail -n 1; done
 ```
 
-Expected, three times (minitest shuffles): `50 runs, 296 assertions, 0 failures, 0 errors, 0 skips`.
+Expected, three times (minitest shuffles): `69 runs, 364 assertions, 0 failures, 0 errors, 0 skips`.
 
 - [ ] **Step 5: Commit**
 
@@ -4813,7 +4814,7 @@ for i in 1 2 3; do BUNDLE_PATH="$SDD/bundle" bundle exec rake test 2>&1 | tail -
 for f in config.ru bin/playctl lib/play/app.rb lib/play/ctl.rb; do ruby -c "$f" > /dev/null || echo "syntax: $f"; done
 ```
 
-Expected, three times: `74 runs, 437 assertions, 0 failures, 0 errors, 0 skips`; no `syntax:` line.
+Expected, three times: `93 runs, 505 assertions, 0 failures, 0 errors, 0 skips`; no `syntax:` line.
 
 - [ ] **Step 6: Build the image and check its boot**
 
@@ -7550,7 +7551,7 @@ bash "$SDD/scratch/docs-check.sh" "$SDD/scratch/docs-check-work" | tail -n 1
 for f in playground/web-smoke.sh playground/dev/e2e.sh playground/web/playground-web playground/playground-server playground/deploy/host/cybertrain-play-firewall; do /bin/bash -n "$f" || echo "syntax: $f"; done
 ```
 
-Expected: `74 runs, 437 assertions, 0 failures, 0 errors, 0 skips`; `deploy-check: 10 passed, 0 failed, 0 skipped` (or `8 passed, 0 failed, 2 skipped` on a machine without Kamal 2.12.0: say so in the owner's list); `ci-check: ok`; `docs-check: 7 passed, 0 failed`; no `syntax:` line.
+Expected: `93 runs, 505 assertions, 0 failures, 0 errors, 0 skips`; `deploy-check: 10 passed, 0 failed, 0 skipped` (or `8 passed, 0 failed, 2 skipped` on a machine without Kamal 2.12.0: say so in the owner's list); `ci-check: ok`; `docs-check: 7 passed, 0 failed`; no `syntax:` line.
 
 - [ ] **Step 2: Both images from scratch, and their smoke tests**
 
@@ -7629,7 +7630,7 @@ Write this list into your report, with the numbers you measured (cold build, smo
 | §7.1-7.5 Kamal services and configs, secrets, image pinning, hooks, firewall | Task 9 (D1-D10) |
 | §7.6-7.12 operator's steps, checks, updates, capacity, logs, abuse, gVisor | Task 11 (guide parts 1-8); Task 12 (owner's list) |
 | §8.1 compose, §8.4 E2E | Task 7 (E1-E19) |
-| §8.2 unit tests | Tasks 4, 5, 6 (74 tests) |
+| §8.2 unit tests | Tasks 4, 5, 6 (93 tests) |
 | §8.3 web smoke | Task 1 (W1-W13) |
 | §8.5 browser checks | Task 3 (B5-B10, B12), Task 8 (B1-B4, B11, B13); B14 owner (P9) |
 | §8.6 VPS-only | Task 9's list, Task 11's guide, Task 12's owner list |
