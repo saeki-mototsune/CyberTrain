@@ -6,7 +6,7 @@
 <% when :paused, :unavailable
      @title = "The playground is paused" %>
 <h1>The playground is paused</h1>
-<p><%= h(refusal.message) %>. Try again later, or use <a href="<%= h(@config.codespaces_url) %>" rel="noopener">GitHub Codespaces</a>.</p>
+<p><%= without_period(refusal.message) %>. Try again later, or use <a href="<%= h(@config.codespaces_url) %>" rel="noopener">GitHub Codespaces</a>.</p>
 <% when :full
      @title = "All sessions are in use" %>
 <h1>All sessions are in use</h1>

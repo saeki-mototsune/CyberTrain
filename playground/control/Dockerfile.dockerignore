@@ -1,5 +1,8 @@
 # Build context of playground/control/Dockerfile (the repository root): the
-# control plane's own files, without its tests.
+# control plane's own files, without its tests and without a local bundle
+# (the image installs its own gems).
 *
 !playground/control/
 playground/control/test/
+playground/control/vendor/
+playground/control/.bundle/

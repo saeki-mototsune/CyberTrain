@@ -17,4 +17,5 @@ EXPOSE 9292
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s \
   CMD ["ruby", "-rnet/http", "-e", "exit(Net::HTTP.get_response(URI('http://127.0.0.1:9292/up')).code == '200' ? 0 : 1)"]
 # Single-mode puma: the limits and the session records live in this process.
-CMD ["bundle", "exec", "puma", "-p", "9292", "-t", "4:16"]
+# config/puma.rb holds its port (9292), threads (4-16) and body limit.
+CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]

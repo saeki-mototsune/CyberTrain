@@ -17,6 +17,9 @@ module Play
              playctl kill-all
     TEXT
     INTERNAL_URL = "http://127.0.0.1:9292/internal/sessions"
+    # The reaper keeps a kill-all request until it has ended every session,
+    # and meanwhile ends new ones too, resumed or not.
+    KILL_PENDING = "playctl: a kill-all is pending: sessions are ended as they appear until it completes"
 
     def initialize(sessions:, out:, err:, internal: nil, clock: Clock.new)
       @sessions = sessions
@@ -51,6 +54,16 @@ module Play
       File.join(@config.data_dir, "paused")
     end
 
+    def kill_path
+      File.join(@config.data_dir, "kill-all")
+    end
+
+    # On stderr, after the command's own output: status's table still ends
+    # with its summary line.
+    def warn_if_kill_pending
+      @err.puts KILL_PENDING if File.exist?(kill_path)
+    end
+
     def pause(message)
       write_paused(message.empty? ? "for maintenance" : message)
       @out.puts "paused: #{@sessions.pause_message}. Running sessions go on; playctl resume starts accepting again."
@@ -66,12 +79,14 @@ module Play
     def resume
       File.delete(paused_path) if File.exist?(paused_path)
       @out.puts "resumed: new sessions are accepted"
+      warn_if_kill_pending
       0
     end
 
+    # Handles are lower-case hex, and docker names are case-sensitive.
     def end_one(args)
       handle = args.first.to_s
-      return usage unless args.size == 1 && handle.match?(/\A\h{16}\z/)
+      return usage unless args.size == 1 && handle.match?(/\A[0-9a-f]{16}\z/)
 
       if @sessions.teardown(handle, reason: "killed")
         @out.puts "ended #{handle}"
@@ -84,7 +99,7 @@ module Play
 
     def kill_all
       write_paused("for maintenance") unless @sessions.pause_message
-      File.write(File.join(@config.data_dir, "kill-all"), "")
+      File.write(kill_path, "")
       if @sessions.with_create_lock { @sessions.kill_all }
         @out.puts "killed every session; the playground stays paused until playctl resume"
         0
@@ -101,17 +116,21 @@ module Play
         return 1
       end
       known = @internal.call
-      stats = @sessions.read_stats(containers.select { |c| c[:state] == "running" }.map { |c| c[:name] })
+      # Names made from the checked handles, not docker's output (as
+      # Sessions#collect_stats does).
+      running = containers.select { |c| c[:state] == "running" }
+      stats = @sessions.read_stats(running.map { |c| "ctplay-s-#{c[:handle]}" })
       now = @clock.now
       @out.puts format("%-16s  %-8s  %5s  %5s  %6s  %-22s  %s", "HANDLE", "STATE", "AGE", "LEFT", "CPU", "MEMORY", "CLIENT")
       containers.sort_by { |c| c[:created_at] }.each do |c|
-        cpu, memory = stats[c[:name]]
+        cpu, memory = stats["ctplay-s-#{c[:handle]}"]
         client = known.dig(c[:handle], "client") || "-"
         @out.puts format("%-16s  %-8s  %4dm  %4dm  %6s  %-22s  %s", c[:handle], c[:state], (now - c[:created_at]) / 60,
                          [(c[:expires_at] - now) / 60, 0].max, cpu ? format("%.1f%%", cpu) : "-", memory || "-", client)
       end
       state = (message = @sessions.pause_message) ? "paused: #{message}" : "accepting"
       @out.puts "#{containers.size} of #{@config.max_sessions} sessions; #{state}"
+      warn_if_kill_pending
       0
     end
 

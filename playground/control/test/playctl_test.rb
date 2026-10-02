@@ -25,6 +25,12 @@ class PlayctlTest < Minitest::Test
     File.join(play_config.data_dir, "paused")
   end
 
+  def kill_path
+    File.join(play_config.data_dir, "kill-all")
+  end
+
+  KILL_PENDING = "playctl: a kill-all is pending: sessions are ended as they appear until it completes\n"
+
   def test_pause_and_resume_write_and_remove_the_flag
     assert_equal 0, ctl.run(%w[pause maintenance until 14:00 UTC])
     assert_equal "maintenance until 14:00 UTC\n", File.read(paused_path)
@@ -48,6 +54,14 @@ class PlayctlTest < Minitest::Test
     ["end", "end #{H} #{H}", "end ../etc", "end ctplay-s-#{H}", "end #{H.upcase}x"].each do |line|
       assert_equal 2, ctl.run(line.split), line
     end
+    assert_includes @err.string, "usage: playctl status"
+    assert_empty @docker.calls
+  end
+
+  # Handles are lower-case, and docker names are case-sensitive: an upper-case
+  # one would end nothing (docker rm --force of a missing name succeeds).
+  def test_end_refuses_an_upper_case_handle
+    assert_equal 2, ctl.run(["end", H.upcase])
     assert_includes @err.string, "usage: playctl status"
     assert_empty @docker.calls
   end
@@ -76,6 +90,36 @@ class PlayctlTest < Minitest::Test
     assert_match(/\AHANDLE +STATE +AGE +LEFT +CPU +MEMORY +CLIENT\z/, lines[0])
     assert_equal "#{H}  running     12m    18m   12.5%  420MiB / 1.5GiB         203.0.113.7", lines[1]
     assert_equal "1 of 5 sessions; accepting", lines[2]
+  end
+
+  # docker stats gets names made from the checked handles, not docker's own
+  # output (as Sessions#collect_stats does).
+  def test_status_names_the_containers_for_docker_stats_from_their_handles
+    @docker.default("ps sessions", FakeDocker.ok("c#{H}\tsomething-else\trunning\t#{H}\t#{@clock.now}\t#{@clock.now + 60}\n"))
+    @docker.default("stats", FakeDocker.ok("ctplay-s-#{H}\t3.0%\t1MiB / 1.5GiB\n"))
+    assert_equal 0, ctl.run(["status"])
+    assert_equal "ctplay-s-#{H}", @docker.calls_for("stats").last.last
+    assert_includes @out.string.lines[1], "3.0%"
+  end
+
+  # A kill-all request stays until the reaper has ended every session, and
+  # meanwhile ends new ones too, resumed or not: status and resume say so.
+  def test_status_warns_while_a_kill_all_is_pending
+    assert_equal 0, ctl.run(["status"])
+    assert_empty @err.string
+    File.write(kill_path, "")
+    assert_equal 0, ctl.run(["status"])
+    assert_equal "0 of 5 sessions; accepting\n", @out.string.lines.last
+    assert_equal KILL_PENDING, @err.string
+  end
+
+  def test_resume_warns_while_a_kill_all_is_pending
+    File.write(paused_path, "incident\n")
+    File.write(kill_path, "")
+    assert_equal 0, ctl.run(["resume"])
+    assert_equal "resumed: new sessions are accepted\n", @out.string
+    assert_equal KILL_PENDING, @err.string
+    refute File.exist?(paused_path)
   end
 
   def test_unknown_command_is_a_usage_error

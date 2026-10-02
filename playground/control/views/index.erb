@@ -8,7 +8,7 @@
   <li>Works best in: a desktop browser (Chrome, Edge or Firefox)</li>
 </ul>
 <% if closed %>
-<p class="state">The playground is paused. <%= h(closed) %>. Try again later, or use GitHub Codespaces.</p>
+<p class="state">The playground is paused. <%= without_period(closed) %>. Try again later, or use GitHub Codespaces.</p>
 <% else %>
 <% free = [status[:capacity] - status[:live], 0].max %>
 <% if free.positive? %>

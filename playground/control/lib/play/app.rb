@@ -10,7 +10,8 @@ module Play
   # The entry page, POST /sessions and the small endpoints (spec §5.2,
   # §5.13). A request is read for three headers only: Origin and
   # Sec-Fetch-Site (the origin check) and PLAY_CLIENT_IP_HEADER (the
-  # client); no form field and no body.
+  # client); no form field and no body (Play::Guard, in front of it, refuses
+  # one and puts the security headers on every answer).
   class App < Sinatra::Base
     # Disables the Start button while the session starts (no double submit);
     # pageshow enables it again when the browser restores the page from its
@@ -25,9 +26,12 @@ module Play
     # Rack::Protection stays off: its HttpOrigin compares Origin with the
     # request's own scheme, which is http behind the router, and would refuse
     # every POST; its FrameOptions adds X-Frame-Options, which spec §6.3 does
-    # not want. The origin check below and the headers in `before` replace it.
+    # not want. The origin check below and Play::Guard's headers replace it.
     set :protection, false
     set :show_exceptions, false
+    # An unexpected exception is the fixed 500 page in every environment
+    # (under RACK_ENV=test Sinatra would raise it past Play::Guard).
+    set :raise_errors, false
     set :views, File.expand_path("../../views", __dir__)
 
     # The app for CONFIG and SESSIONS. Host names other than PLAY_PUBLIC_URL's
@@ -52,15 +56,24 @@ module Play
         n = [(seconds / 60.0).ceil, 1].max
         n == 1 ? "1 minute" : "#{n} minutes"
       end
+
+      # TEXT escaped and without a final period, for a sentence the page ends
+      # itself: a pause message may bring its own.
+      def without_period(text)
+        h(text.to_s.delete_suffix("."))
+      end
     end
 
-    before do
-      headers "Content-Security-Policy" => "default-src 'none'; style-src 'unsafe-inline'; script-src #{SCRIPT_SOURCE}; " \
-                                           "form-action 'self' #{@config.session_hosts_source}; " \
-                                           "frame-ancestors 'none'; base-uri 'none'",
-              "Referrer-Policy" => "no-referrer",
-              "X-Content-Type-Options" => "nosniff",
-              "Cache-Control" => "no-store"
+    # The entry origin's security headers (spec §5.13, §6.3) for CONFIG.
+    # Play::Guard puts them on every answer, also on those made before any
+    # route runs (Sinatra's 400, the host check's 403).
+    def self.security_headers(config)
+      { "content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; script-src #{SCRIPT_SOURCE}; " \
+                                     "form-action 'self' #{config.session_hosts_source}; " \
+                                     "frame-ancestors 'none'; base-uri 'none'",
+        "referrer-policy" => "no-referrer",
+        "x-content-type-options" => "nosniff",
+        "cache-control" => "no-store" }.freeze
     end
 
     get "/" do
@@ -118,6 +131,13 @@ module Play
     not_found do
       content_type :text
       "Not Found\n"
+    end
+
+    # Sinatra parses the query before any route runs; its own 400 would quote
+    # the part it could not parse.
+    error 400 do
+      content_type :text
+      "Bad Request\n"
     end
 
     private

@@ -19,8 +19,9 @@ class AppTest < Minitest::Test
     @fake ||= FakeSessions.new(config)
   end
 
+  # The stack config.ru builds: Play::Guard in front of the app.
   def app
-    Play::App.for(config: config, sessions: fake)
+    Play::Guard.new(Play::App.for(config: config, sessions: fake), headers: Play::App.security_headers(config))
   end
 
   def setup
@@ -33,6 +34,17 @@ class AppTest < Minitest::Test
 
   def refusal(reason, retry_after, message: nil, ends_at: nil)
     Play::Sessions::Refusal.new(reason, retry_after, message, ends_at)
+  end
+
+  # The four headers test_every_page_carries_the_security_headers pins for
+  # the entry page, on the last response.
+  def assert_entry_headers(what)
+    script = "'sha256-#{[Digest::SHA256.digest(Play::App::BUTTON_SCRIPT)].pack("m0")}'"
+    expected = { "content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; script-src #{script}; " \
+                                              "form-action 'self' https://*.play.example.test; frame-ancestors 'none'; " \
+                                              "base-uri 'none'",
+                 "referrer-policy" => "no-referrer", "x-content-type-options" => "nosniff", "cache-control" => "no-store" }
+    assert_equal expected, last_response.headers.to_h.slice(*expected.keys), what
   end
 
   # ---- the entry page ---------------------------------------------------------
@@ -56,6 +68,18 @@ class AppTest < Minitest::Test
     get "/"
     assert_includes last_response.body, "The playground is paused. Maintenance. Try again later"
     refute_includes last_response.body, "<form"
+  end
+
+  # The pages end the operator's sentence themselves.
+  def test_a_pause_message_with_its_own_period_is_not_doubled
+    fake.closed = "Back at 14:00 UTC."
+    get "/"
+    assert_includes last_response.body, "The playground is paused. Back at 14:00 UTC. Try again later"
+    refute_includes last_response.body, "UTC.."
+    fake.result = refusal(:paused, 300, message: "Back at 14:00 UTC.")
+    start("HTTP_ORIGIN" => "https://play.example.test")
+    assert_includes last_response.body, "<p>Back at 14:00 UTC. Try again later, or use"
+    refute_includes last_response.body, "UTC.."
   end
 
   def test_every_page_carries_the_security_headers
@@ -177,6 +201,94 @@ class AppTest < Minitest::Test
     header "Host", "play.example.test"
     get "/", {}, { "HTTP_X_FORWARDED_HOST" => "evil.example" }
     assert_equal 403, last_response.status
+  end
+
+  # ---- every answer (Play::Guard) ------------------------------------------------
+
+  # No route takes a body, and Rack would parse a form body before any route
+  # ran (a multipart one into a temp file). Puma passes a chunked body with
+  # its decoded length; another server may pass only Transfer-Encoding.
+  def test_a_post_with_a_body_is_refused_and_creates_nothing
+    multipart = "--x\r\nContent-Disposition: form-data; name=\"f\"; filename=\"f.bin\"\r\n\r\nhello\r\n--x--\r\n"
+    {
+      "urlencoded" => ["a=1", { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }],
+      "multipart" => [multipart, { "CONTENT_TYPE" => "multipart/form-data; boundary=x" }],
+      "chunked" => ["a=1", { "CONTENT_TYPE" => "application/x-www-form-urlencoded", "CONTENT_LENGTH" => "0",
+                             "HTTP_TRANSFER_ENCODING" => "chunked" }]
+    }.each do |kind, (body, env)|
+      post "/sessions", body, { "HTTP_ORIGIN" => "https://play.example.test", "HTTP_CF_CONNECTING_IP" => "203.0.113.7" }.merge(env)
+      assert_equal [413, "No request body is accepted.\n"], [last_response.status, last_response.body], kind
+      assert_entry_headers kind
+    end
+    assert_empty fake.clients
+  end
+
+  # A browser's form POST from the entry page has no fields: Content-Length: 0.
+  def test_an_empty_post_still_starts_a_session
+    start("HTTP_ORIGIN" => "https://play.example.test", "CONTENT_TYPE" => "application/x-www-form-urlencoded")
+    assert_equal "0", last_request.env["CONTENT_LENGTH"]
+    assert_equal 303, last_response.status
+    assert_equal ["203.0.113.7"], fake.clients
+  end
+
+  def test_a_get_with_a_body_is_refused
+    get "/", {}, { input: "a=1", "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
+    assert_equal 413, last_response.status
+  end
+
+  # Sinatra parses the query before any route or filter runs, and its 400
+  # would quote it.
+  def test_an_unparsable_query_gets_a_fixed_400_with_the_headers
+    get "/", {}, { "QUERY_STRING" => "%zz<b>hi</b>" }
+    assert_equal [400, "Bad Request\n"], [last_response.status, last_response.body]
+    refute_match(/zz|hi/, last_response.body)
+    assert_entry_headers "400"
+  end
+
+  def test_a_foreign_host_gets_403_with_the_headers
+    header "Host", "evil.example"
+    get "/"
+    assert_equal [403, "Host not permitted"], [last_response.status, last_response.body]
+    assert_entry_headers "403"
+  end
+
+  def test_an_unexpected_exception_gets_a_fixed_500_with_the_headers
+    fake.define_singleton_method(:create) { |_client| raise "docker exploded at 0123456789abcdef" }
+    start("HTTP_ORIGIN" => "https://play.example.test")
+    assert_equal [500, "<h1>Internal Server Error</h1>"], [last_response.status, last_response.body]
+    assert_entry_headers "500"
+  end
+
+  def test_the_small_answers_carry_the_headers_too
+    get "/nothing-here"
+    assert_equal [404, "Not Found\n"], [last_response.status, last_response.body]
+    assert_entry_headers "404"
+    %w[/status.json /robots.txt /.well-known/security.txt /terms].each do |path|
+      get path
+      assert_entry_headers path
+    end
+    header "Host", "127.0.0.1:9292"
+    get "/up"
+    assert_entry_headers "/up 200"
+    fake.healthy = false
+    get "/up"
+    assert_entry_headers "/up 503"
+  end
+
+  # Play::Guard adds the headers the routes used to set, and nothing else.
+  def test_the_redirect_and_the_pages_keep_their_headers
+    start("HTTP_ORIGIN" => "https://play.example.test")
+    assert_equal %w[cache-control content-length content-security-policy content-type location referrer-policy
+                    x-content-type-options], last_response.headers.keys.sort
+    assert_entry_headers "303"
+    get "/"
+    assert_equal %w[cache-control content-length content-security-policy content-type referrer-policy
+                    x-content-type-options], last_response.headers.keys.sort
+    fake.result = refusal(:full, 60)
+    start("HTTP_ORIGIN" => "https://play.example.test")
+    assert_equal %w[cache-control content-length content-security-policy content-type referrer-policy retry-after
+                    x-content-type-options], last_response.headers.keys.sort
+    assert_entry_headers "503"
   end
 
   def test_terms_robots_and_security_txt

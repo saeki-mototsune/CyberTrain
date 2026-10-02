@@ -20,4 +20,5 @@ sessions = Play::Sessions.new(config: config, docker: Play::DockerCLI.new, probe
                               clock: Play::Clock.new, log: Play::EventLog.new($stdout))
 sessions.check_availability
 sessions.start_reaper
+use Play::Guard, headers: Play::App.security_headers(config)
 run Play::App.for(config: config, sessions: sessions)
