@@ -50,6 +50,10 @@ end
 test "the interpreter is usable again after the error" do
   env = {}
   env["__template_dir"] = "d"
+  # Seeds the Hash with an Integer value as render_src does: under Spinel a
+  # Hash holding only Strings is typed that way, and the `n: 3` local the
+  # last render passes would not fit (NOTES rule 9 for containers).
+  env["n"] = 0
   interp = Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil))
   template = Cybertrain::Template::Template.parse("<%= render 'loop' %>", "d/page")
   assert_raises("RuntimeError") { interp.render(template, env) }
