@@ -1,0 +1,128 @@
+# playground/router/Caddyfile -- the hosted playground's router (SP2).
+#
+# kamal-proxy terminates TLS and hands this Caddy every request for
+# {$PLAY_DOMAIN} and *.{$PLAY_DOMAIN} as plain HTTP (locally the browser
+# talks to it directly). Nothing here changes per session: a session is
+# reachable exactly while a container with the network alias s-<editor id>
+# or p-<preview id> shares a network with this router (the control plane
+# attaches it) and answers. Never reloaded: a reload would close every
+# editor's WebSocket.
+{
+	admin off
+	auto_https off
+	persist_config off
+	log default {
+		output {$ROUTER_LOG_OUTPUT:discard}
+		level ERROR
+	}
+}
+
+:80 {
+	# route keeps the written order (Caddy would otherwise sort handle
+	# blocks with path matchers ahead of the others).
+	route {
+		# A session container can reach this router on its own network. It
+		# gets nothing: not another session, not the control plane.
+		@from_session remote_ip {$PLAY_SUBNET_POOL}
+		handle @from_session {
+			abort
+		}
+
+		@editor {
+			host *.{$PLAY_DOMAIN}
+			header_regexp editor Host ^([0-9a-f]{32})\.
+		}
+		handle @editor {
+			header {
+				defer
+				Referrer-Policy no-referrer
+				X-Robots-Tag "noindex, nofollow"
+				X-Content-Type-Options nosniff
+				+Content-Security-Policy "frame-ancestors 'self'"
+			}
+			# No pooled connections: a reused one to a session that has just
+			# ended (or a router just detached from it) would hang instead
+			# of answering the "No session" page.
+			reverse_proxy s-{re.editor.1}:8080 {
+				transport http {
+					keepalive off
+				}
+			}
+		}
+
+		@preview {
+			host *.{$PLAY_DOMAIN}
+			header_regexp preview Host ^3000-([0-9a-f]{32})\.
+		}
+		handle @preview {
+			header {
+				defer
+				Referrer-Policy no-referrer
+				X-Robots-Tag "noindex, nofollow"
+				Cache-Control no-store
+				+Content-Security-Policy "frame-ancestors *.{$PLAY_DOMAIN}:*"
+			}
+			reverse_proxy p-{re.preview.1}:3000 {
+				transport http {
+					keepalive off
+				}
+			}
+		}
+
+		@apex host {$PLAY_DOMAIN}
+		handle @apex {
+			handle /internal/* {
+				error 404
+			}
+			handle {
+				reverse_proxy {$PLAY_CONTROL_UPSTREAM:ctplay-control:9292}
+			}
+		}
+
+		# kamal-proxy's health check (its Host is the container's address).
+		handle /up {
+			respond "OK" 200
+		}
+
+		handle {
+			error 404
+		}
+	}
+
+	handle_errors {
+		header {
+			Cache-Control no-store
+			X-Robots-Tag "noindex, nofollow"
+			Referrer-Policy no-referrer
+		}
+		root * /srv/pages
+		# Only the control plane's own failures (5xx) get the "not available"
+		# page; the apex's 404 (/internal/*) gets the 404 page below.
+		@apex_error {
+			host {$PLAY_DOMAIN}
+			expression {err.status_code} >= 500
+		}
+		handle @apex_error {
+			rewrite * /unavailable.html
+			templates
+			file_server {
+				status 503
+			}
+		}
+		@preview_error header_regexp Host ^3000-[0-9a-f]{32}\.
+		handle @preview_error {
+			rewrite * /app-down.html
+			templates
+			file_server {
+				status 502
+			}
+		}
+		handle {
+			rewrite * /ended.html
+			templates
+			file_server {
+				status 404
+			}
+		}
+	}
+}
