@@ -309,7 +309,7 @@ test "parameters past Query's limits get 400, not 500, and the connection stays 
   res = c.get("/reject")
   assert_equal "HTTP/1.1 400 Bad Request", res.status_line
   assert_equal "Bad Request", res.body
-  assert_includes $log.string, "rejected request parameters: nested too deeply (limit 32)"
+  assert_includes $log.string, "rejected request (400 Bad Request): nested too deeply (limit 32)"
   refute $log.string.include?("TooDeep: nested"), "a rejected request is not an error-level log line"
   assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
   c.close

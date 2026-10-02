@@ -92,7 +92,12 @@ module Cybertrain
     end
 
     def status_text
-      STATUS_TEXT[@status] || "Unknown"
+      Response.status_text(@status)
+    end
+
+    # "Bad Request" for 400; "Unknown" for a status the table lacks.
+    def self.status_text(status)
+      STATUS_TEXT[status] || "Unknown"
     end
 
     # Content-Length is always computed from the body; a HEAD response

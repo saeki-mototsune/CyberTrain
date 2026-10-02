@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # Guards Cybertrain::Ident::RESERVED_COLUMN_NAMES (the names a column may not
 # have, because the generated reader would shadow a method or ivar of
-# Cybertrain::Model) against Model growing: every `def name` and every @ivar
+# Cybertrain::Model, or a method of Object) against Model growing: every `def name` and every @ivar
 # in cybertrain/model.rb that a column could be spelled like must be in the
 # list, or the next method added to Model silently reintroduces the
 # shadowing. Reads the source rather than the class: under CRuby model.rb
@@ -17,14 +17,24 @@ names = []
 # is not (a column cannot be called save!), nor are `def self.x` or
 # `def x=`.
 source.scan(/^\s*def\s+(?!self\.)([A-Za-z_][A-Za-z0-9_]*)\b(?![?!=])/) { |(m)| names << m }
+# attr_reader :id, :errors / attr_accessor / attr_writer: methods too.
+source.scan(/^\s*attr_(?:reader|accessor|writer)\s+((?::\w+\s*,?\s*)+)/) do |(list)|
+  list.scan(/:(\w+)/) { |(m)| names << m }
+end
 source.scan(/@([A-Za-z_][A-Za-z0-9_]*)/) { |(iv)| names << iv }
+# Object's public instance methods (and BasicObject's hooks such as
+# method_missing), which every model has whether or not model.rb mentions
+# them. `test`, `select` and the other private Kernel methods are not
+# demanded: the list carries the ones the model calls on implicit self by
+# hand.
+(Object.instance_methods + BasicObject.private_instance_methods).each { |m| names << m.to_s }
 names = names.uniq.sort.select { |n| Cybertrain::Ident.column?(n) && !Cybertrain::Ident.keyword?(n) && n != "id" }
 
 missing = names - Cybertrain::Ident::RESERVED_COLUMN_NAMES
 if missing.empty?
-  puts "check-reserved-names: #{names.size} Model names, all reserved"
+  puts "check-reserved-names: #{names.size} Model and Object names, all reserved"
 else
-  warn "check-reserved-names: cybertrain/model.rb defines or keeps #{missing.map(&:inspect).join(", ")} " \
+  warn "check-reserved-names: cybertrain/model.rb (or Object) defines #{missing.map(&:inspect).join(", ")} " \
        "but Cybertrain::Ident::RESERVED_COLUMN_NAMES (cybertrain/ident.rb) lacks them; add them"
   exit 1
 end

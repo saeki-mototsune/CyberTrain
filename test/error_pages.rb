@@ -103,7 +103,7 @@ test "parameters past Query's limits are a 400 logged at info, not a 500" do
   assert_equal "Bad Request", res.body
   assert_equal "text/plain; charset=utf-8", res.header("Content-Type")
   assert_nil res.header("Location")
-  assert_includes LOG.string, "[INFO] rejected request parameters: parameter nesting too deep (limit 32)"
+  assert_includes LOG.string, "[INFO] rejected request (400 Bad Request): parameter nesting too deep (limit 32)"
   refute LOG.string.include?("TooDeep"), "a rejected request is not an error-level log line"
 end
 

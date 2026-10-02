@@ -20,16 +20,36 @@ module Cybertrain
     # cannot be columns at all (column? rejects them), so `valid?`,
     # `persisted?`, `is_a?` need no entry.
     RESERVED_COLUMN_NAMES = [
-      "errors", "persisted", "class", "hash", "object_id", "send", "freeze",
-      "display", "method", "instance_variable_get", "instance_variable_set",
-      "instance_variables", "public_send", "attributes", "save", "update",
-      "destroy", "reload", "model_name", "to_json", "as_json", "to_param",
-      "to_row", "load_row", "set_id", "run_callbacks", "insert_row",
-      "update_row", "read_attribute", "write_attribute", "assign_attributes",
+      # Cybertrain::Model (script/check-reserved-names keeps this in step)
+      "errors", "persisted", "attributes", "save", "update", "destroy",
+      "reload", "model_name", "to_json", "as_json", "to_param", "to_row",
+      "load_row", "set_id", "run_callbacks", "insert_row", "update_row",
+      "read_attribute", "write_attribute", "assign_attributes",
       "read_association", "call_view_method", "initialize", "table_name",
-      "column_names", "from_row", "dup", "clone", "tap", "itself", "extend",
+      "column_names", "from_row",
+      # Object / BasicObject public instance methods (the script checks
+      # these too, under CRuby): `then`, `methods`, `send`, ...
+      "class", "hash", "object_id", "send", "__send__", "__id__", "freeze",
+      "display", "method", "methods", "public_method", "public_methods",
+      "private_methods", "protected_methods", "singleton_class",
+      "singleton_method", "singleton_methods", "singleton_method_added",
+      "singleton_method_removed", "singleton_method_undefined",
+      "define_singleton_method", "remove_instance_variable",
+      "instance_variable_get", "instance_variable_set", "instance_variables",
+      "instance_eval", "instance_exec", "public_send", "dup", "clone", "tap",
+      "then", "yield_self", "itself", "extend", "enum_for", "to_enum",
       "inspect", "to_s",
-      # Kernel
+      # Implicit-conversion and dispatch hooks Ruby calls on its own (none is
+      # defined on Object, so no reflection finds them): an arity-0 reader
+      # returning a String breaks `puts post` / `[post].flatten` / a splat
+      # (to_ary), string coercion (to_str), keyword splats (to_hash), `&post`
+      # (to_proc), Integer coercion (to_int), and turns every NoMethodError
+      # into an ArgumentError (method_missing). `respond_to_missing?` ends in
+      # `?` and needs no entry.
+      "to_ary", "to_str", "to_hash", "to_proc", "to_int", "to_a", "to_h",
+      "to_sym", "to_io", "to_path", "to_regexp", "coerce", "method_missing",
+      # Kernel methods the model (or app code in the class) calls on
+      # implicit self
       "raise", "fail", "format", "sprintf", "printf", "puts", "print", "p",
       "pp", "warn", "loop", "lambda", "proc", "require", "require_relative",
       "load", "sleep", "exit", "abort", "catch", "throw", "rand", "binding",

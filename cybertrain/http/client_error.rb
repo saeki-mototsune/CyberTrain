@@ -1,5 +1,6 @@
 require "json"
 require "cybertrain/http/query"
+require "cybertrain/http/response"
 
 module Cybertrain
   # The one place that says which exceptions out of the app are the client's
@@ -27,10 +28,11 @@ module Cybertrain
       end
     end
 
-    # The info-level log line for a client fault: a flood of them must not
-    # fill the error log.
-    def self.log_line(e)
-      "rejected request parameters: #{e.message}"
+    # The info-level log line for a client fault (a flood of them must not
+    # fill the error log), worded from the status so it stays right for any
+    # 4xx `status` returns: "rejected request (400 Bad Request): <message>".
+    def self.log_line(e, status)
+      "rejected request (#{status} #{Response.status_text(status)}): #{e.message}"
     end
   end
 end

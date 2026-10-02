@@ -26,30 +26,47 @@ module Cybertrain
     class TooMany < LimitExceeded
     end
 
+    # A cursor scan, like split_key: the pairs are cut out one at a time and
+    # TooMany is raised as soon as the (MAX_PAIRS + 1)th non-empty pair
+    # starts, so a hostile body costs O(MAX_PAIRS) work however long it is.
+    # (`split("&")` would first materialise every pair of a 10 MB body of
+    # "&", three times per request.) Empty pairs ("a=1&&b=2", a trailing
+    # "&") are skipped and not counted, as before.
     def self.parse(str)
       params = Params.new
-      pairs = str.to_s.split("&")
+      s = str.to_s
+      len = s.length
       count = 0
-      pairs.each do |pair|
-        next if pair.empty?
+      pos = 0
+      while pos < len
+        amp = s.index("&", pos)
+        stop = amp.nil? ? len : amp
+        if stop > pos
+          count += 1
+          raise TooMany, "too many parameters (limit #{MAX_PAIRS})" if count > MAX_PAIRS
 
-        count = count + 1
-        raise TooMany, "too many parameters (limit #{MAX_PAIRS})" if count > MAX_PAIRS
-
-        eq = pair.index("=")
-        if eq.nil?
-          raw_key = pair
-          raw_value = ""
-        else
-          raw_key = pair[0, eq]
-          raw_value = pair[(eq + 1)..-1].to_s
+          add_pair(params, s[pos, stop - pos])
         end
-
-        key = URI.decode_www_form_component(raw_key)
-        value = URI.decode_www_form_component(raw_value)
-        params.set_path(split_key(key), value)
+        pos = stop + 1
       end
       params
+    end
+
+    # One non-empty "k=v" (or bare "k") pair into the tree.
+    def self.add_pair(params, pair)
+      eq = pair.index("=")
+      if eq.nil?
+        raw_key = pair
+        raw_value = ""
+      else
+        raw_key = pair[0, eq]
+        raw_value = pair[(eq + 1)..-1].to_s
+      end
+
+      key = URI.decode_www_form_component(raw_key)
+      value = URI.decode_www_form_component(raw_value)
+      params.set_path(split_key(key), value)
+      nil
     end
 
     # "post[tags][]" -> ["post", "tags", ""]; "id" -> ["id"]. A "[" with no

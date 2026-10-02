@@ -148,9 +148,8 @@ module Cybertrain
       #   :rolled_back -- a ROLLBACK was issued and autocommit is back on;
       #   :failed      -- the ROLLBACK did not bring autocommit back (BUSY,
       #                   IOERR): the connection is still inside the
-      #                   transaction. Its next BEGIN fails loudly ("cannot
-      #                   start a transaction within a transaction") and the
-      #                   next check-in tries the ROLLBACK again.
+      #                   transaction, and the Pool closes and replaces it
+      #                   rather than hand it out again.
       def abandon_transaction!
         return :clean if @closed
 

@@ -74,22 +74,23 @@ module Cybertrain
     # `;`) raises: order(params[:sort]) must not become SQL. Raw ORDER BY
     # text goes through add_order_sql (the models' `order_sql`).
     def set_order(order)
-      if order.strip == ""
+      stripped = order.strip
+      if stripped == ""
         @order = ""
         return nil
       end
       terms = Array.new(0) { "" }
-      stripped = order.strip
       if stripped.start_with?(",") || stripped.end_with?(",")
         raise ArgumentError, "order: \"#{stripped}\" is not `column [ASC|DESC]` (use order_sql for raw SQL)"
       end
       stripped.split(",").each do |fragment|
-        words = fragment.strip.split(" ")
+        term = fragment.strip
+        words = term.split(" ")
         bad = words.size == 0 || words.size > 2 || !Ident.column?(words[0])
         dir = words.size == 2 ? words[1].upcase : ""
         bad = true if dir != "" && dir != "ASC" && dir != "DESC"
         if bad
-          raise ArgumentError, "order: \"#{fragment.strip}\" is not `column [ASC|DESC]` " \
+          raise ArgumentError, "order: \"#{term}\" is not `column [ASC|DESC]` " \
                                "(use order_sql for raw SQL)"
         end
         quoted = Relation.quote_ident(words[0])

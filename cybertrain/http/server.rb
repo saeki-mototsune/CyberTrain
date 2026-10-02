@@ -331,7 +331,7 @@ module Cybertrain
           @logger.error("#{e.class.name}: #{e.message}")
           response = error_response(500)
         else
-          @logger.info(ClientError.log_line(e))
+          @logger.info(ClientError.log_line(e, status))
           response = error_response(status)
         end
       end

@@ -610,6 +610,8 @@ test "emit rejects column names that are invalid or collide with model methods" 
   ["errors", "persisted", "class", "hash", "object_id", "send", "freeze", "display", "method",
    "instance_variable_get", "attributes", "save", "update", "destroy", "reload", "model_name",
    "to_json", "as_json", "end", "def", "nil", "self", "BEGIN", "__FILE__",
+   # Object's methods and the hooks Ruby calls on its own.
+   "then", "methods", "__send__", "to_ary", "to_str", "to_hash", "to_proc", "to_int", "method_missing",
    # Kernel methods the model calls on implicit self: a `raise` column would
    # turn Model#save!'s `raise RecordInvalid, ...` into a call of the reader.
    "raise", "fail", "format", "puts", "warn", "loop", "lambda", "proc", "require", "sleep"].each do |bad|
@@ -706,6 +708,28 @@ test "a column named like an association reader keeps its name; the association 
     Cybertrain::Gen::ModelsEmitter.emit(definition.table("notes"), definition, [])
   end
   assert_includes note, 'the has_many (tags.note_id) association can be neither "tags" nor "tags_as_note"'
+end
+
+test "a has_many through two foreign keys whose _as_<stem> name is taken falls back to the full column" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "users" do |t|
+      t.string "name", null: false
+      t.text "messages_as_sender"
+    end
+    s.create_table "messages" do |t|
+      t.references :sender, foreign_key: false
+      t.references :recipient, foreign_key: false
+      t.text "body"
+    end
+    s.add_foreign_key "messages", "users", column: "sender_id"
+    s.add_foreign_key "messages", "users", column: "recipient_id"
+  end
+  user = Cybertrain::Gen::ModelsEmitter.emit(definition.table("users"), definition, [])
+  assert_lines(user, [
+    '# has_many messages reads as messages_as_sender_id: "messages_as_sender" is a column, another association or a Cybertrain::Model method',
+    'def messages_as_sender_id = MessageRelation.new("messages").where(sender_id: @id).to_a',
+    'def messages_as_recipient = MessageRelation.new("messages").where(recipient_id: @id).to_a'
+  ])
 end
 
 test "a has_many named like a belongs_to reader of the same model is renamed, not dropped" do

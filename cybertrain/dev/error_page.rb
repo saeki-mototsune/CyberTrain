@@ -4,6 +4,7 @@ require "cybertrain/logger"
 require "json"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/http/client_error"
+require "cybertrain/http/response"
 
 module Cybertrain
   module Dev
@@ -34,8 +35,8 @@ module Cybertrain
             Cybertrain.logger.error("#{e.class.name}: #{e.message}")
             render_exception(ctx, e)
           else
-            Cybertrain.logger.info(ClientError.log_line(e))
-            ctx.response.reset_to(status, "Bad Request: #{e.message}")
+            Cybertrain.logger.info(ClientError.log_line(e, status))
+            ctx.response.reset_to(status, "#{Response.status_text(status)}: #{e.message}")
           end
         end
         inject_banner(ctx.response)

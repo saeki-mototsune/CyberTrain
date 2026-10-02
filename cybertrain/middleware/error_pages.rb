@@ -34,7 +34,7 @@ module Cybertrain
           @logger.error("#{e.class.name}: #{e.message}")
           ctx.response.reset_to(500)
         else
-          @logger.info(ClientError.log_line(e))
+          @logger.info(ClientError.log_line(e, status))
           ctx.response.reset_to(status)
         end
       end

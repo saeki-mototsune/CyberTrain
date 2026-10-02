@@ -295,8 +295,11 @@ module Cybertrain
           pointing = other.foreign_keys.select { |fk| fk.to_table == table.name }
           pointing.each do |fk|
             as_stem = other.name + "_as_" + column_stem(fk.column)
+            # Two FKs: the plain name is already the `_as_<stem>` form, so the
+            # fallback uses the whole column (messages_as_sender_id).
             plain = pointing.size > 1 ? as_stem : other.name
-            name = association_name(table, plain, as_stem, "has_many (#{other.name}.#{fk.column})", taken, assoc_names)
+            fallback = pointing.size > 1 ? other.name + "_as_" + fk.column : as_stem
+            name = association_name(table, plain, fallback, "has_many (#{other.name}.#{fk.column})", taken, assoc_names)
             assoc_names << name
             assoc_defs << association_note("has_many #{other.name}", plain, name) if name != plain
             assoc_defs << "def #{name} = #{model_class_name(other.name)}Relation.new(\"#{other.name}\")" \
