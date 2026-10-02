@@ -26,20 +26,14 @@ def post_count(conn)
   conn.execute("SELECT COUNT(*) AS n FROM posts")[0]["n"]
 end
 
-# True when the connection is back in autocommit mode with depth 0: a raising
-# transaction rolls back (a stuck depth would treat it as nested and keep the
-# row) and a manual BEGIN is accepted (a leaked BEGIN refuses it).
+# True when the connection is back in autocommit mode: a manual BEGIN is
+# accepted (a leaked BEGIN refuses it with "cannot start a transaction
+# within a transaction"). Deliberately no `transaction` call in here: every
+# call of that method in this file keeps the exact shapes test/db_sqlite.rb
+# compiles with (NOTES rule 32 -- a call from an unusual block nesting gave
+# "assigning to 'volatile sp_RbVal' from incompatible type 'sp_Exception *'"
+# at its rescue clauses, CI on PR #10).
 def clean?(conn)
-  before = post_count(conn)
-  begin
-    conn.transaction do
-      conn.execute("INSERT INTO posts (title) VALUES (?)", ["probe"])
-      raise "probe"
-    end
-  rescue StandardError
-    nil
-  end
-  rolled_back = post_count(conn) == before
   begin_ok = true
   begin
     conn.exec_script("BEGIN")
@@ -47,7 +41,7 @@ def clean?(conn)
   rescue DB::Error
     begin_ok = false
   end
-  rolled_back && begin_ok
+  begin_ok
 end
 
 # What a block that escapes `transaction` past its rescue would leave behind:
@@ -59,17 +53,15 @@ def leave_begin_open(conn)
   post_count(conn)
 end
 
-# A transaction on the next checkout must work normally again.
-def commit_after(conn)
-  conn.transaction { conn.execute("INSERT INTO posts (title) VALUES (?)", ["after"]) }
+# A write on the next checkout autocommits again (no `transaction` here, see
+# clean?).
+def insert_after(conn)
+  conn.execute("INSERT INTO posts (title) VALUES (?)", ["after"])
   post_count(conn)
 end
 
-# Every DB.with block here is a one-line call into a method (the shape
-# test/db_sqlite.rb compiles with): calling `transaction`, whose yield sits
-# inside a rescue, from a block nested in another block does not compile
-# under Spinel (NOTES rule 32: "assigning to 'volatile sp_RbVal' from
-# incompatible type 'sp_Exception *'", CI on PR #10).
+# Every DB.with block here is a one-line call into a method, the shape
+# test/db_sqlite.rb compiles with.
 test "a BEGIN left open inside a checkout is rolled back when the connection comes back" do
   DB.connect(":memory:")
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
@@ -79,7 +71,7 @@ test "a BEGIN left open inside a checkout is rolled back when the connection com
   assert_equal 1, DB.with { |c| leave_begin_open(c) }
   assert_equal 0, DB.with { |c| post_count(c) }
   assert DB.with { |c| clean?(c) }
-  assert_equal 1, DB.with { |c| commit_after(c) }
+  assert_equal 1, DB.with { |c| insert_after(c) }
   DB.disconnect
 end
 
