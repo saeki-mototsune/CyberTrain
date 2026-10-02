@@ -1,0 +1,24 @@
+# The hosted playground's outside check: every 30 minutes, GET
+# <PLAYGROUND_URL>/status.json. A failed run makes GitHub mail its usual
+# failure notice. Off until the repository variable PLAYGROUND_URL is set
+# (Settings -> Secrets and variables -> Actions -> Variables), for example
+# https://<DOMAIN>. See playground/deploy/README.md.
+name: Playground uptime
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  status:
+    if: vars.PLAYGROUND_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: status.json answers
+        env:
+          PLAYGROUND_URL: ${{ vars.PLAYGROUND_URL }}
+        run: curl -fsS --max-time 20 "$PLAYGROUND_URL/status.json"

@@ -1,0 +1,41 @@
+# The hosted playground's control plane (playground/control): its unit tests,
+# including the check that playground/web-smoke.sh runs sessions with the
+# control plane's hardening flags. See playground/README.md.
+name: Playground control plane
+
+on:
+  pull_request:
+    paths:
+      - "playground/control/**"
+      - "playground/web-smoke.sh"
+      - ".github/workflows/playground-control.yml"
+  push:
+    branches: [main]
+    paths:
+      - "playground/control/**"
+      - "playground/web-smoke.sh"
+      - ".github/workflows/playground-control.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: playground/control
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          working-directory: playground/control
+          bundler-cache: true
+
+      - name: Unit tests
+        run: bundle exec rake test
