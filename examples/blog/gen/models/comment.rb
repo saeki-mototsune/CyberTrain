@@ -43,28 +43,7 @@ class Comment < Cybertrain::Model
   def self.column_names = ["id", "commenter", "body", "article_id", "created_at", "updated_at"]
   def model_name = "Comment"
 
-  attr_reader :commenter, :body, :article_id, :created_at, :updated_at
-
-  def commenter=(v)
-    @commenter = Cybertrain::Cast.str_or_nil(v)
-    v
-  end
-  def body=(v)
-    @body = Cybertrain::Cast.str_or_nil(v)
-    v
-  end
-  def article_id=(v)
-    @article_id = Cybertrain::Cast.int(v)
-    v
-  end
-  def created_at=(v)
-    @created_at = Cybertrain::Cast.time_or_nil(v)
-    v
-  end
-  def updated_at=(v)
-    @updated_at = Cybertrain::Cast.time_or_nil(v)
-    v
-  end
+  attr_accessor :commenter, :body, :article_id, :created_at, :updated_at
 
   def initialize(attrs = {})
     super()
@@ -107,11 +86,11 @@ class Comment < Cybertrain::Model
 
   def write_attribute(name, value)
     case name
-    when :commenter then self.commenter = value
-    when :body then self.body = value
-    when :article_id then self.article_id = value
-    when :created_at then self.created_at = value
-    when :updated_at then self.updated_at = value
+    when :commenter then @commenter = Cybertrain::Cast.str_or_nil(value)
+    when :body then @body = Cybertrain::Cast.str_or_nil(value)
+    when :article_id then @article_id = Cybertrain::Cast.int(value)
+    when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
+    when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
     end
     nil
   end

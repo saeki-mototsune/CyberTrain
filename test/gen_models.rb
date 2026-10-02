@@ -95,24 +95,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       def self.column_names = ["id", "title", "body", "created_at", "updated_at"]
       def model_name = "Post"
 
-      attr_reader :title, :body, :created_at, :updated_at
-
-      def title=(v)
-        @title = Cybertrain::Cast.str(v)
-        v
-      end
-      def body=(v)
-        @body = Cybertrain::Cast.str_or_nil(v)
-        v
-      end
-      def created_at=(v)
-        @created_at = Cybertrain::Cast.time_or_nil(v)
-        v
-      end
-      def updated_at=(v)
-        @updated_at = Cybertrain::Cast.time_or_nil(v)
-        v
-      end
+      attr_accessor :title, :body, :created_at, :updated_at
 
       def initialize(attrs = {})
         super()
@@ -152,10 +135,10 @@ EXPECTED_POST = HEADER + <<~'RUBY'
 
       def write_attribute(name, value)
         case name
-        when :title then self.title = value
-        when :body then self.body = value
-        when :created_at then self.created_at = value
-        when :updated_at then self.updated_at = value
+        when :title then @title = Cybertrain::Cast.str(value)
+        when :body then @body = Cybertrain::Cast.str_or_nil(value)
+        when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
+        when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
         end
         nil
       end
@@ -253,28 +236,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       def self.column_names = ["id", "post_id", "author", "body", "created_at", "updated_at"]
       def model_name = "Comment"
 
-      attr_reader :post_id, :author, :body, :created_at, :updated_at
-
-      def post_id=(v)
-        @post_id = Cybertrain::Cast.int(v)
-        v
-      end
-      def author=(v)
-        @author = Cybertrain::Cast.str_or_nil(v)
-        v
-      end
-      def body=(v)
-        @body = Cybertrain::Cast.str(v)
-        v
-      end
-      def created_at=(v)
-        @created_at = Cybertrain::Cast.time_or_nil(v)
-        v
-      end
-      def updated_at=(v)
-        @updated_at = Cybertrain::Cast.time_or_nil(v)
-        v
-      end
+      attr_accessor :post_id, :author, :body, :created_at, :updated_at
 
       def initialize(attrs = {})
         super()
@@ -317,11 +279,11 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
 
       def write_attribute(name, value)
         case name
-        when :post_id then self.post_id = value
-        when :author then self.author = value
-        when :body then self.body = value
-        when :created_at then self.created_at = value
-        when :updated_at then self.updated_at = value
+        when :post_id then @post_id = Cybertrain::Cast.int(value)
+        when :author then @author = Cybertrain::Cast.str_or_nil(value)
+        when :body then @body = Cybertrain::Cast.str(value)
+        when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
+        when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
         end
         nil
       end
@@ -415,20 +377,7 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def self.column_names = ["id", "active", "score", "group"]
       def model_name = "Flag"
 
-      attr_reader :active, :score, :group
-
-      def active=(v)
-        @active = Cybertrain::Cast.bool(v)
-        v
-      end
-      def score=(v)
-        @score = Cybertrain::Cast.float_or_nil(v)
-        v
-      end
-      def group=(v)
-        @group = Cybertrain::Cast.str_or_nil(v)
-        v
-      end
+      attr_accessor :active, :score, :group
 
       def initialize(attrs = {})
         super()
@@ -465,9 +414,9 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
 
       def write_attribute(name, value)
         case name
-        when :active then self.active = value
-        when :score then self.score = value
-        when :group then self.group = value
+        when :active then @active = Cybertrain::Cast.bool(value)
+        when :score then @score = Cybertrain::Cast.float_or_nil(value)
+        when :group then @group = Cybertrain::Cast.str_or_nil(value)
         end
         nil
       end
@@ -561,14 +510,8 @@ test "casts per column follow type and null" do
     '@author = Cybertrain::Cast.str_or_nil(row["author"])',
     '@body = Cybertrain::Cast.str(row["body"])',
     '@created_at = Cybertrain::Cast.time_or_nil(row["created_at"])',
-    'def post_id=(v)',
-    '@post_id = Cybertrain::Cast.int(v)',
-    'def author=(v)',
-    '@author = Cybertrain::Cast.str_or_nil(v)',
-    'def created_at=(v)',
-    '@created_at = Cybertrain::Cast.time_or_nil(v)',
-    'when :post_id then self.post_id = value',
-    'when :author then self.author = value',
+    'when :post_id then @post_id = Cybertrain::Cast.int(value)',
+    'when :author then @author = Cybertrain::Cast.str_or_nil(value)',
     '@post_id = 0',
     '@author = nil',
     '@body = ""'
@@ -629,21 +572,16 @@ test "integer, float, boolean, date and datetime casts" do
     '@draft = Cybertrain::Cast.bool_or_nil(row["draft"])',
     '@starts_on = Cybertrain::Cast.str_or_nil(row["starts_on"])',
     '@published_at = Cybertrain::Cast.time_or_nil(row["published_at"])',
-    '@starts_on = Cybertrain::Cast.str_or_nil(v)',
-    '@published_at = Cybertrain::Cast.time_or_nil(v)',
-    'when :starts_on then self.starts_on = value',
-    'when :published_at then self.published_at = value'
+    'when :starts_on then @starts_on = Cybertrain::Cast.str_or_nil(value)',
+    'when :published_at then @published_at = Cybertrain::Cast.time_or_nil(value)'
   ])
 end
 
-test "attributes are readers plus typed writers, never raw accessors (rule 7)" do
+test "attributes stay attr_accessors (no def writers: NOTES rule 43) and order_sql is emitted" do
   post = emit_for("posts")
-  assert_lines(post, ["attr_reader :title, :body, :created_at, :updated_at", "def order_sql(s) = (add_order_sql(s); self)"])
-  refute_line(post, "attr_accessor :title, :body, :created_at, :updated_at")
-  refute_line(post, "attr_writer :title")
-  # The writer returns its argument like attr_writer: Response#body= is an
-  # attr_accessor, and rule 34 wants one return type per name.
-  assert post.include?("  def body=(v)\n    @body = Cybertrain::Cast.str_or_nil(v)\n    v\n  end\n")
+  assert_lines(post, ["attr_accessor :title, :body, :created_at, :updated_at", "def order_sql(s) = (add_order_sql(s); self)"])
+  refute_line(post, "attr_reader :title, :body, :created_at, :updated_at")
+  refute post.include?("  def body=(v)\n"), "a def writer on a model breaks Response#body= under Spinel"
 end
 
 def raising_columns(name)

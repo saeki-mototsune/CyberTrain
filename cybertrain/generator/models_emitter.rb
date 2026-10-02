@@ -190,23 +190,16 @@ module Cybertrain
         src << "  def self.column_names = [\"id\", #{quoted}]\n"
         src << "  def model_name = \"#{model}\"\n"
         src << "\n"
-        # Readers only. Every writer casts like write_attribute does (rule
-        # 7: a nullable ivar is assigned only through a Cast helper that can
-        # return nil, e.g. time_or_nil; a raw attr_writer would store a Time
-        # straight into the nil-initialised ivar). A writer returns its
-        # argument, exactly as attr_writer does: column names are arbitrary
-        # and `body=` / `status=` also exist on Cybertrain::Response as
-        # attr_accessors, and rule 34 wants one return type per name -- a
-        # nil-returning `body=` made Spinel lose Response#body= ("undefined
-        # method 'body='" on the blog's 404 path, CI on PR #10).
-        src << "  attr_reader #{symbols}\n"
-        src << "\n"
-        table.columns.each do |c|
-          src << "  def #{c.name}=(v)\n"
-          src << "    @#{c.name} = Cybertrain::Cast.#{cast_for(c)}(v)\n"
-          src << "    v\n"
-          src << "  end\n"
-        end
+        # attr_accessor, as before PR #10, on purpose. Typed `def x=(v)`
+        # writers were tried there and had to go: under Spinel a `def x=` on
+        # one class breaks the run-time dispatch of an `attr_accessor :x` on
+        # another (NOTES rule 43) -- a column named body or status took
+        # Response#body= / #status= down with it -- and column names are the
+        # app's to choose. Probed on Spinel 2026.09.12: a Time assigned
+        # through the raw writer to a nullable datetime ivar reads back
+        # intact once load_row has typed the ivar via Cast.time_or_nil, so
+        # rule 7 does not bite this shape.
+        src << "  attr_accessor #{symbols}\n"
         src << "\n"
         src << "  def initialize(attrs = {})\n"
         src << "    super()\n"
@@ -237,8 +230,7 @@ module Cybertrain
         src << "\n"
         src << "  def write_attribute(name, value)\n"
         src << "    case name\n"
-        # Through the typed writers above, so the two cannot drift apart.
-        table.columns.each { |c| src << "    when :#{c.name} then self.#{c.name} = value\n" }
+        table.columns.each { |c| src << "    when :#{c.name} then @#{c.name} = Cybertrain::Cast.#{cast_for(c)}(value)\n" }
         src << "    end\n"
         src << "    nil\n"
         src << "  end\n"

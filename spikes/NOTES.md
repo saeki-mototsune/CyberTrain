@@ -160,6 +160,32 @@ finds the commit that removed them).
     Pass lambdas positionally, as `&block`, or return them from a method
     (`Gen::Routes.url_resolver`).
 
+43. A `def x=(v)` on one class next to an `attr_accessor :x` on another makes
+    the accessor's writer undefined at run time for a boxed receiver
+    ("undefined method 'body=' for an instance of Cybertrain::Response" once
+    a generated model defined `body=`). Generated models therefore keep
+    `attr_accessor` for columns (names the app chooses); both classes
+    spelling the method out as `def` also works. A `Cast.time_or_nil(v)`
+    call whose argument is statically a Time does not compile either
+    (`when String` is still compiled for it), so casting writers are out.
+44. `break` out of a block whose `yield` sits inside a `begin/rescue` is
+    rejected at compile time ("unsupported expression: BreakNode"); the same
+    `break` compiles when the yield is guarded by `ensure` only. `return`
+    inside a block ends the block, not the enclosing method. A `break`
+    anywhere inside a block forwarded as `&block` (DB.with's) is rejected too.
+45. Rule 32 in practice: calling a yielding method that has `rescue => e`
+    (Connection#transaction) from a block nested in another block fails in
+    the C compiler ("assigning to 'volatile sp_RbVal' from incompatible type
+    'sp_Exception *'"). Call it from a method body or a single-level block.
+    A second `ensure` in such a re-entrant yielding method broke nested
+    calls at run time (the outer transaction rolled back).
+46. `Class#name` carries no namespace ("ParserError", not
+    "JSON::ParserError"); assert on the bare name. Thread stacks are small:
+    about 50 nested template renders (14 Ruby frames each under CRuby)
+    overflow one, so the Interpreter caps nesting at 12. A Hash literal
+    whose values are all Strings is typed that way; seed it with a value of
+    every type it will hold (rule 9 for Hashes).
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.

@@ -43,28 +43,7 @@ class Post < Cybertrain::Model
   def self.column_names = ["id", "title", "body", "views", "created_at", "updated_at"]
   def model_name = "Post"
 
-  attr_reader :title, :body, :views, :created_at, :updated_at
-
-  def title=(v)
-    @title = Cybertrain::Cast.str(v)
-    v
-  end
-  def body=(v)
-    @body = Cybertrain::Cast.str_or_nil(v)
-    v
-  end
-  def views=(v)
-    @views = Cybertrain::Cast.int(v)
-    v
-  end
-  def created_at=(v)
-    @created_at = Cybertrain::Cast.time_or_nil(v)
-    v
-  end
-  def updated_at=(v)
-    @updated_at = Cybertrain::Cast.time_or_nil(v)
-    v
-  end
+  attr_accessor :title, :body, :views, :created_at, :updated_at
 
   def initialize(attrs = {})
     super()
@@ -107,11 +86,11 @@ class Post < Cybertrain::Model
 
   def write_attribute(name, value)
     case name
-    when :title then self.title = value
-    when :body then self.body = value
-    when :views then self.views = value
-    when :created_at then self.created_at = value
-    when :updated_at then self.updated_at = value
+    when :title then @title = Cybertrain::Cast.str(value)
+    when :body then @body = Cybertrain::Cast.str_or_nil(value)
+    when :views then @views = Cybertrain::Cast.int(value)
+    when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
+    when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
     end
     nil
   end
