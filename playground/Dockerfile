@@ -131,3 +131,83 @@ RUN git init -q -b main \
 
 EXPOSE 3000
 CMD ["playground-server"]
+
+# ---------------------------------------------------------------------------
+# The hosted playground's session image (SP2): the playground stage plus
+# code-server. Only the control plane runs it (playground/control): a
+# read-only root file system, empty tmpfs mounts on /tmp, /home/dev,
+# /workspace and /opt/cybertrain-cache, and no network but its own internal
+# one. Nothing here changes the playground stage, which Codespaces runs.
+#
+#   docker build -f playground/Dockerfile --target web -t cybertrain-playground-web:local .
+FROM playground AS web
+
+ARG TARGETARCH
+ARG CODE_SERVER_VERSION=4.139.1
+# sha256 of code-server-<version>-linux-<arch>.tar.gz on the GitHub release
+# (the release API's "digest" of each asset).
+ARG CODE_SERVER_SHA256_AMD64=53029be6c5781b7bca49b815fcc9a2a3fc111813ad8c9965b2c0f0d2985a0674
+ARG CODE_SERVER_SHA256_ARM64=0edb4b60d9c4744b2dd14b0911e3c2e6dd8c6f3c13bd58bda23ae744e59e7df1
+
+USER root
+# The version check runs with a throwaway HOME: a first run writes a config
+# file there and logs that before the version line (hence the grep).
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) sum="$CODE_SERVER_SHA256_AMD64" ;; \
+      arm64) sum="$CODE_SERVER_SHA256_ARM64" ;; \
+      *) echo "playground/Dockerfile: no code-server for $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    tarball="code-server-${CODE_SERVER_VERSION}-linux-${TARGETARCH}.tar.gz"; \
+    curl -fsSL -o "/tmp/$tarball" \
+        "https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/$tarball"; \
+    echo "$sum  /tmp/$tarball" | sha256sum -c -; \
+    mkdir /usr/lib/code-server; \
+    tar -xzf "/tmp/$tarball" -C /usr/lib/code-server --strip-components 1 --no-same-owner; \
+    rm "/tmp/$tarball"; \
+    ln -s /usr/lib/code-server/bin/code-server /usr/local/bin/code-server; \
+    test "$(HOME=/tmp/cs-home code-server --version | grep -m 1 '^[0-9]' | cut -d ' ' -f 1)" = "$CODE_SERVER_VERSION"; \
+    rm -rf /tmp/cs-home
+
+# code-server's user settings (the entrypoint copies them into the session's
+# home) and the session's entrypoint.
+COPY playground/web/settings.json /opt/cybertrain-web/settings.json
+COPY --chmod=0755 playground/web/playground-web /usr/local/bin/playground-web
+# The router reaches the dev server at the session's own address, so the app
+# listens on every interface (only the router shares the session's network).
+# An empty gallery: an install could not download anything here (no network),
+# and the visitor's browser then contacts no extension marketplace.
+ENV CYBERTRAIN_HOST=0.0.0.0 \
+    EXTENSIONS_GALLERY={}
+
+USER dev
+WORKDIR /workspace/blog
+# The folderOpen task that starts the server in a visible terminal. It is the
+# playground's, not the visitor's, so Source Control does not show it. The
+# directory is made first so that dev owns it.
+RUN mkdir .vscode
+COPY --chown=dev:dev playground/web/tasks.json .vscode/tasks.json
+# This environment's guide replaces the Codespaces one inside the one commit.
+COPY --chown=dev:dev playground/web/PLAYGROUND.md PLAYGROUND.md
+RUN echo '/.vscode/' >> .git/info/exclude \
+ && git add PLAYGROUND.md \
+ && git -c user.name="cybertrain playground" -c user.email="playground@cybertrain.invalid" \
+        commit -q --amend --no-edit \
+ && test -z "$(git status --porcelain)" \
+ && test "$(git rev-list --count HEAD)" = 1
+
+# What the entrypoint copies into the empty tmpfs mounts. cp -a keeps file
+# times, so the copy is as fresh as the build (spin compares mtimes).
+USER root
+RUN mkdir -p /opt/cybertrain-web/seed \
+ && cp -a /workspace /opt/cybertrain-web/seed/workspace \
+ && cp -a /opt/cybertrain-cache /opt/cybertrain-web/seed/cybertrain-cache
+
+USER dev
+# The mount point itself, never a directory below it: a WORKDIR inside the
+# /workspace tmpfs would make runc create it there, root-owned and empty,
+# before the entrypoint runs, and the seed copy would then be skipped.
+WORKDIR /workspace
+EXPOSE 8080 3000
+ENTRYPOINT ["/usr/local/bin/playground-web"]
+CMD []

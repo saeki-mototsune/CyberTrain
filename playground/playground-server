@@ -9,6 +9,8 @@
 #   - the port answers: a server started by hand is listening;
 #   - this user runs a `cybertrain server` that does not listen yet: one
 #     started by hand is still compiling (about a minute after a Ruby edit).
+# In the hosted playground (playground/web) a VS Code task runs it when the
+# folder opens; there VSCODE_PROXY_URI gives the app's URL.
 set -u
 
 app="${1:-/workspace/blog}"
@@ -20,6 +22,10 @@ port="${PORT:-3000}"
 
 if [ "${CODESPACES:-}" = "true" ] && [ -n "${CODESPACE_NAME:-}" ]; then
   url="https://${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}/"
+elif [[ -n "${VSCODE_PROXY_URI:-}" && "${VSCODE_PROXY_URI}" == *'{{port}}'* ]]; then
+  # code-server (the hosted playground): its address for a port.
+  url="${VSCODE_PROXY_URI//'{{port}}'/$port}"
+  url="${url%/}/"
 else
   url="http://localhost:${port}/"
 fi
@@ -49,11 +55,25 @@ if [ ! -f "${app}/spin.toml" ]; then
   exit 1
 fi
 
-cat <<EOF
+# The hosted playground's control plane sets PLAYGROUND_ENDS_AT (seconds
+# since the epoch): the banner says when the session and its files go.
+ends=""
+case "${PLAYGROUND_ENDS_AT:-}" in
+  "" | *[!0-9]*) ;;
+  *)
+    left=$(( (PLAYGROUND_ENDS_AT - $(date +%s)) / 60 ))
+    [ "$left" -ge 0 ] || left=0
+    unit=minutes
+    [ "$left" = 1 ] && unit=minute
+    ends="  Ends   in ${left} ${unit} ($(date -u -d "@${PLAYGROUND_ENDS_AT}" +%H:%M) UTC): the session and its files are deleted then."
+    ;;
+esac
 
-  cybertrain playground
-  App    ${url}
-  Guide  ${app}/PLAYGROUND.md
+printf '\n  cybertrain playground\n  App    %s\n  Guide  %s\n' "$url" "${app}/PLAYGROUND.md"
+if [ -n "$ends" ]; then
+  printf '%s\n' "$ends"
+fi
+cat <<'EOF'
 
   Views reload on the next request. A Ruby change rebuilds the app (about a
   minute), then the server restarts by itself. Reload the page to see either.

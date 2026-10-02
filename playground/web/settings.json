@@ -1,0 +1,39 @@
+// code-server's User settings in the hosted playground (playground-web
+// copies this file into the session's home). Lines marked "checked" were
+// measured on code-server 4.139.1 / Code 1.139.1 in the VS Code web spike.
+{
+  // No first-run noise (checked).
+  "workbench.startupEditor": "none",
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
+  "workbench.welcomePage.walkthroughs.openOnInstall": false,
+  "workbench.tips.enabled": false,
+  "workbench.enableExperiments": false,
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none",
+  "update.showReleaseNotes": false,
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "extensions.ignoreRecommendations": true,
+  "chat.disableAIFeatures": true,
+  // .vscode/tasks.json starts the dev server when the folder opens. This is
+  // application-scoped: a workspace file cannot set it (checked).
+  "task.allowAutomaticTasks": "on",
+  // Port 3000 opens in the editor's preview; other ports are not offered,
+  // since only 3000 is routed (checked from a workspace file; from here: V9).
+  "remote.portsAttributes": {
+    "3000": { "label": "cybertrain", "onAutoForward": "openPreview" }
+  },
+  "remote.otherPortsAttributes": { "onAutoForward": "ignore" },
+  // A Ruby save is a ~1 minute rebuild: save on purpose (as in Codespaces).
+  "files.autoSave": "off",
+  // ERB views highlight as HTML with the built-in grammar (no extension).
+  "files.associations": { "*.html.erb": "html" },
+  // The guide opens rendered (V9).
+  "workbench.editorAssociations": { "**/PLAYGROUND.md": "vscode.markdown.preview.editor" },
+  "editor.minimap.enabled": false,
+  "terminal.integrated.confirmOnKill": "never",
+  "terminal.integrated.showExitAlert": false,
+  "terminal.integrated.gpuAcceleration": "off",
+  // Closing the tab loses nothing (the session runs on), so no "Leave site?".
+  "window.confirmBeforeClose": "never"
+}
