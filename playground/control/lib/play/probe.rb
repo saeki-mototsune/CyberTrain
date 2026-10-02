@@ -16,11 +16,14 @@ module Play
       @timeout = timeout
     end
 
+    # One attempt (Net::HTTP would repeat a GET after a read timeout), each
+    # phase bounded by the timeout; hostname drops an IPv6 literal's brackets.
     def ready?(sid)
-      http = Net::HTTP.new(@uri.host, @uri.port, nil)
+      http = Net::HTTP.new(@uri.hostname, @uri.port, nil)
       http.open_timeout = @timeout
       http.read_timeout = @timeout
       http.write_timeout = @timeout
+      http.max_retries = 0
       response = http.request(Net::HTTP::Get.new(@uri.request_uri, "Host" => "#{sid}.#{@domain}"))
       response.code == "200" && response.body.to_s.include?('"status"')
     rescue StandardError

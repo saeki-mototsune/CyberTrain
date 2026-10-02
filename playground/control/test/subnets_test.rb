@@ -19,6 +19,11 @@ class SubnetsTest < Minitest::Test
     assert_equal "10.250.0.0/28", subnets.first_free(["192.0.2.0/24", "not a subnet"])
   end
 
+  def test_taken_subnets_may_carry_whitespace
+    assert_equal "10.250.0.16/28", subnets.first_free(["10.250.0.0/28\n"])
+    assert_equal "10.250.0.32/28", subnets.first_free([" 10.250.0.0/28", "10.250.0.16/28 \n"])
+  end
+
   def test_none_left
     small = Play::Subnets.new("10.250.0.0/27", 28)
     assert_nil small.first_free(["10.250.0.0/28", "10.250.0.16/28"])

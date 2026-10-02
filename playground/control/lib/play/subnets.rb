@@ -39,11 +39,12 @@ module Play
     end
 
     # The lowest subnet of the pool that overlaps none of TAKEN (CIDR
-    # strings: the session networks' subnets and the ones Docker refused),
-    # or nil when the pool is used up.
+    # strings: the session networks' subnets and the ones Docker refused;
+    # whitespace around them, such as docker's trailing newline, is
+    # ignored), or nil when the pool is used up.
     def first_free(taken)
       used = taken.filter_map do |cidr|
-        IPAddr.new(cidr)
+        IPAddr.new(cidr.to_s.strip)
       rescue IPAddr::Error
         nil
       end

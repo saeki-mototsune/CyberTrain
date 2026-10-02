@@ -18,6 +18,21 @@ class LimitsTest < Minitest::Test
     assert_equal 100, limits.retry_after("203.0.113.7")
   end
 
+  def test_more_hits_than_the_limit_wait_until_enough_have_left_the_window
+    clock = FakeClock.new
+    limits = Play::Limits.new(limit: 2, window: 600, clock: clock)
+    limits.record("203.0.113.7")
+    clock.advance(100)
+    limits.record("203.0.113.7")
+    clock.advance(100)
+    limits.record("203.0.113.7") # creations that passed retry_after together overshoot the limit
+    assert_equal 500, limits.retry_after("203.0.113.7")
+    clock.advance(499)
+    assert_equal 1, limits.retry_after("203.0.113.7")
+    clock.advance(1)
+    assert_equal 0, limits.retry_after("203.0.113.7")
+  end
+
   def test_ipv4_key_from_the_header
     env = { "HTTP_CF_CONNECTING_IP" => "203.0.113.7", "REMOTE_ADDR" => "172.18.0.5" }
     assert_equal "203.0.113.7", Play::Limits.client_key(env, "HTTP_CF_CONNECTING_IP")

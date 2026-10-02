@@ -11,7 +11,7 @@ class DriftTest < Minitest::Test
   SMOKE = File.expand_path("../../web-smoke.sh", __dir__)
 
   def test_the_smoke_tests_hardened_run_is_the_templates_hardening
-    block = File.read(SMOKE)[/^# BEGIN hardened run\n(.*?)^# END hardened run$/m, 1]
+    block = File.read(SMOKE, encoding: "UTF-8")[/^# BEGIN hardened run\n(.*?)^# END hardened run$/m, 1]
     refute_nil block, "#{SMOKE} has no '# BEGIN hardened run' ... '# END hardened run' block"
     flags = block.lines.map(&:strip).reject { |line| line.empty? || line.start_with?("#") || %w[hardened=( )].include?(line) }
     assert_equal Play::Templates.hardening(play_config), flags.flat_map(&:split)

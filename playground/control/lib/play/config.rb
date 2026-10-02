@@ -51,9 +51,9 @@ module Play
     def initialize(env)
       @env = env
       parse_public_url(value("PLAY_PUBLIC_URL"))
-      @session_image = matching("PLAY_SESSION_IMAGE", /\A\S+\z/, "an image reference")
+      @session_image = matching("PLAY_SESSION_IMAGE", %r{\A[A-Za-z0-9][A-Za-z0-9._/:@-]*\z}, "an image reference")
       @abuse_contact = matching("PLAY_ABUSE_CONTACT", /\A[^\s@]+@[^\s@]+\z/, "an email address")
-      @router_url = http_url("PLAY_ROUTER_URL")
+      @router_url = plain_http_url("PLAY_ROUTER_URL")
       @router_filters = value("PLAY_ROUTER_FILTERS").split(",").map(&:strip).reject(&:empty?)
       if @router_filters.empty? || @router_filters.any? { |f| !f.match?(/\A[a-z_]+=\S+\z/) }
         raise Error, "PLAY_ROUTER_FILTERS must be docker ps filters such as label=role=web, separated by commas"
@@ -147,19 +147,34 @@ module Play
       matching(name, /\A[1-9]\d*[kmg]\z/, "a size such as 256m")
     end
 
+    # A page the control plane links to: an http or https URL with a host.
     def http_url(name)
       text = value(name)
-      uri = URI.parse(text)
-      raise Error, "#{name} must be an http or https URL (got #{text.inspect})" unless uri.is_a?(URI::HTTP) && uri.host
+      return text if url_with_host?(text, %w[http https])
 
-      text
-    rescue URI::InvalidURIError
       raise Error, "#{name} must be an http or https URL (got #{text.inspect})"
     end
 
+    # The router's address: the probe speaks plain HTTP only.
+    def plain_http_url(name)
+      text = value(name)
+      return text if url_with_host?(text, %w[http])
+
+      raise Error, "#{name} must be a plain http URL such as http://ctplay-router (got #{text.inspect})"
+    end
+
+    def url_with_host?(text, schemes)
+      uri = URI.parse(text)
+      schemes.include?(uri.scheme) && !uri.host.to_s.empty?
+    rescue URI::InvalidURIError
+      false
+    end
+
+    # The host takes host-name characters only: it reaches the session
+    # host names and, through session_hosts_source, a CSP header.
     def parse_public_url(text)
       uri = URI.parse(text)
-      bare = uri.is_a?(URI::HTTP) && uri.host && !uri.host.empty? && uri.userinfo.nil? &&
+      bare = uri.is_a?(URI::HTTP) && uri.host.to_s.match?(/\A[A-Za-z0-9.-]+\z/) && uri.userinfo.nil? &&
              ["", "/"].include?(uri.path) && uri.query.nil? && uri.fragment.nil?
       raise Error, "PLAY_PUBLIC_URL must be a scheme and a host such as https://play.example (got #{text.inspect})" unless bare
 
@@ -176,7 +191,7 @@ module Play
 
       items.map do |item|
         uri = URI.parse(item)
-        unless uri.is_a?(URI::HTTP) && uri.host && uri.path.empty? && uri.query.nil? && uri.userinfo.nil?
+        unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty? && uri.path.empty? && uri.query.nil? && uri.userinfo.nil?
           raise Error, "PLAY_ALLOWED_ORIGINS must list origins such as https://example.org (got #{item.inspect})"
         end
 

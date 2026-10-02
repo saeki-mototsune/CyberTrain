@@ -32,11 +32,14 @@ module Play
       @mutex = Mutex.new
     end
 
-    # Seconds until KEY may create again: 0 when it may now.
+    # Seconds until KEY may create again: 0 when it may now. The wait lasts
+    # until enough hits have left the window for the count to drop below the
+    # limit; creations that passed this check together can leave more hits
+    # than the limit.
     def retry_after(key)
       @mutex.synchronize do
         hits = fresh(key)
-        hits.size < @limit ? 0 : [(hits.first + @window - @clock.monotonic).ceil, 1].max
+        hits.size < @limit ? 0 : [(hits[hits.size - @limit] + @window - @clock.monotonic).ceil, 1].max
       end
     end
 

@@ -83,4 +83,50 @@ class ConfigTest < Minitest::Test
     assert_equal "PLAY_SUBNET_POOL 172.20.0.0/16 overlaps Docker's default address pool 172.20.0.0/16",
                  error_for("PLAY_SUBNET_POOL" => "172.20.0.0/16")
   end
+
+  def test_the_plans_own_values_pass
+    %w[https://play.example.test http://play.localhost:8080 http://play.localhost:18080].each do |url|
+      assert_equal url, play_config("PLAY_PUBLIC_URL" => url).public_origin
+    end
+    assert_equal "http://ctplay-router", play_config("PLAY_ROUTER_URL" => "http://ctplay-router").router_url
+    ["cybertrain-playground-web:local",
+     "ghcr.io/saeki-mototsune/cybertrain-playground-web@sha256:#{"0123456789abcdef" * 4}"].each do |image|
+      assert_equal image, play_config("PLAY_SESSION_IMAGE" => image).session_image
+    end
+  end
+
+  def test_the_session_image_must_be_an_image_reference
+    assert_equal 'PLAY_SESSION_IMAGE must be an image reference (got "--privileged")',
+                 error_for("PLAY_SESSION_IMAGE" => "--privileged")
+    assert_match(/PLAY_SESSION_IMAGE must be an image reference/, error_for("PLAY_SESSION_IMAGE" => "img$(id)"))
+  end
+
+  def test_the_router_url_must_be_plain_http_with_a_host
+    assert_equal 'PLAY_ROUTER_URL must be a plain http URL such as http://ctplay-router (got "https://ctplay-router")',
+                 error_for("PLAY_ROUTER_URL" => "https://ctplay-router")
+    assert_match(/PLAY_ROUTER_URL must be a plain http URL/, error_for("PLAY_ROUTER_URL" => "http://"))
+  end
+
+  def test_urls_and_origins_need_a_host
+    assert_equal 'PLAY_CODESPACES_URL must be an http or https URL (got "https://")',
+                 error_for("PLAY_CODESPACES_URL" => "https://")
+    assert_match(/PLAY_ALLOWED_ORIGINS must list origins/, error_for("PLAY_ALLOWED_ORIGINS" => "https://"))
+  end
+
+  def test_the_public_host_has_only_host_name_characters
+    assert_match(/PLAY_PUBLIC_URL must be a scheme and a host/, error_for("PLAY_PUBLIC_URL" => "https://a;b,c"))
+    assert_match(/PLAY_PUBLIC_URL must be a scheme and a host/, error_for("PLAY_PUBLIC_URL" => "https://*.example.test"))
+  end
+
+  def test_router_filters_are_checked
+    c = play_config("PLAY_ROUTER_FILTERS" => "label=service=x, name=ctplay-router")
+    assert_equal ["label=service=x", "name=ctplay-router"], c.router_filters
+    message = "PLAY_ROUTER_FILTERS must be docker ps filters such as label=role=web, separated by commas"
+    assert_equal message, error_for("PLAY_ROUTER_FILTERS" => "label=role=web,--all")
+    assert_equal message, error_for("PLAY_ROUTER_FILTERS" => " , ")
+  end
+
+  def test_a_size_cannot_carry_mount_options
+    assert_match(/PLAY_TMPFS_HOME must be a size such as 256m/, error_for("PLAY_TMPFS_HOME" => "128m,exec"))
+  end
 end
