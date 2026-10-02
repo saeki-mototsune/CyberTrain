@@ -22,7 +22,7 @@
 - Long commands (image builds, `smoke.sh`, `web-smoke.sh`, `e2e.sh`) run in the background with their output in a log file under `$SDD/logs/`, polled until they end. On this machine (Apple Silicon, Docker Desktop, linux/arm64): SP1's image builds in about 2.5 minutes cold; the `web` stage adds the code-server download (217 MB) and extraction, 1-3 minutes; `smoke.sh` about 2 minutes; `web-smoke.sh` about 6 minutes; `e2e.sh` about 6 minutes plus about 3 minutes for its first build of the router and control-plane images.
 - `$SDD` is the workspace directory the controller gives you (by convention `/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2`, git-ignored): logs in `$SDD/logs/`, screenshots in `$SDD/screens/`, throwaway scripts in `$SDD/scratch/`, the control plane's Ruby gems in `$SDD/bundle` (`export BUNDLE_PATH="$SDD/bundle"` before every `bundle` command). Create the subdirectories when missing.
 - Shell: the commands below work in bash and zsh (the tool's shell here). Shell state may not persist between tool calls: start each command line with `cd /Users/saeki/work/cybertrain` and set `SDD=...` (and `BUNDLE_PATH=...`) in it when it uses them. The repository's scripts run under bash (`bash playground/...`).
-- If a step fails for a reason its text did not foresee, fix it within the spec's meaning and these constraints, and record the exact error, the change and the reason in your report. If the fix would change a requirement (a name, a limit, a flag of the hardened run, what a check means), stop and report instead. Never weaken a check to make it pass.
+- If a step fails for a reason its text did not foresee, fix it within the spec's meaning and these constraints, and record the exact error, the change and the reason in your report. If the fix would change a requirement (a name, a limit, a flag of the hardened run, what a check means), stop and report instead. Never weaken a check to make it pass. Adding `exec` to the `/home/dev` or `/opt/cybertrain-cache` tmpfs, as Task 1 Step 7 and spec §5.4 foresee, is not such a change (Task 1 needed none: the hardened block stands as written).
 - Names: session image `ghcr.io/saeki-mototsune/cybertrain-playground-web` (local tag `cybertrain-playground-web:local`, CI tag `cybertrain-playground-web:ci`); SP1's image `cybertrain-playground:local`; router image `ctplay-router:local`; control-plane image `ctplay-control:local`; Kamal services `cybertrain-play-router` (network alias `ctplay-router`) and `cybertrain-play` (network alias `ctplay-control`, port 9292); per session: container `ctplay-s-<h>`, network `ctplay-n-<h>`, labels `cybertrain-play.role=session`, `cybertrain-play.handle=<h>`, `cybertrain-play.created-at=<unix>`, `cybertrain-play.expires-at=<unix>`, network aliases `s-<sid>` and `p-<pid>`; `<sid>` and `<pid>` are two separate `SecureRandom.hex(16)` (32 lower-case hex digits); `<h>` is the first 16 hex digits of SHA-256(`<sid>`).
 - Hosts: entry `<DOMAIN>`, editor `<sid>.<DOMAIN>`, preview `3000-<pid>.<DOMAIN>`. Locally the domain is `play.localhost` with `PLAY_PUBLIC_URL=http://play.localhost:8080` (dev stack), port 18080 (end-to-end test), 18081 (Task 2's check), 18082 (Task 3's hand-wired session).
 - Session networks: `docker network create --driver bridge --internal --subnet <a /28 of 10.250.0.0/16> --opt com.docker.network.bridge.inhibit_ipv4=true` (both options are load-bearing, spec §15: without `inhibit_ipv4` an internal network reaches host listeners). Such a network has no gateway; the first container takes `.1`.
@@ -536,15 +536,23 @@ exit 1
 
 ```bash
 cd /Users/saeki/work/cybertrain
-mkdir -p "$SDD/logs"
+SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2; mkdir -p "$SDD/logs" "$SDD/scratch" "$SDD/screens"
 bash playground/web-smoke.sh; echo "exit=$?"
 /bin/bash -n playground/web-smoke.sh && echo "parses with bash 3.2"
 docker build -f playground/Dockerfile --target playground -t cybertrain-playground:local . > "$SDD/logs/task1-build-sp1.log" 2>&1; echo "build exit=$?"
+bash playground/web-smoke.sh cybertrain-playground:local > "$SDD/logs/task1-red-as-written.log" 2>&1; echo "exit=$?"
+```
+
+Run the build in the background and poll its log. Expected: `usage: bash playground/web-smoke.sh IMAGE` and `exit=2`; `parses with bash 3.2`; `build exit=0`; then `exit=2` with `web-smoke: no VERSION in cybertrain/version.rb or no CODE_SERVER_VERSION in playground/Dockerfile`: the script reads the code-server version from the Dockerfile's `ARG`, which Step 4 adds, so no check can run yet. The red run proper follows Step 4 (correction after the pre-flight scan and Task 1's run, 2026-10-03: the plan first expected `exit=1` here). After Step 4 and before Step 5, run:
+
+```bash
+cd /Users/saeki/work/cybertrain
+SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2; mkdir -p "$SDD/logs" "$SDD/scratch" "$SDD/screens"
 bash playground/web-smoke.sh cybertrain-playground:local > "$SDD/logs/task1-red.log" 2>&1; echo "exit=$?"
 grep -E '^(web-smoke:|PASS)' "$SDD/logs/task1-red.log"; grep -c '^FAIL' "$SDD/logs/task1-red.log"; grep -n 'line [0-9]*:' "$SDD/logs/task1-red.log"
 ```
 
-Run the build and the second smoke run in the background and poll their logs. Expected: `usage: bash playground/web-smoke.sh IMAGE` and `exit=2`; `parses with bash 3.2`; `build exit=0`; then `exit=1`, the lines `web-smoke: cybertrain-playground:local, expecting code-server 4.139.1 and cybertrain 0.2.1` and `web-smoke: 0 passed, 13 failed`, no `PASS` line, `13`, and no `line N:` error from bash. SP1's image has no code-server, no seed and no `CYBERTRAIN_HOST`, so every check fails (W12 and W13 fail once their sessions are judged, after at most 4 minutes).
+Expected: `exit=1`, the lines `web-smoke: cybertrain-playground:local, expecting code-server 4.139.1 and cybertrain 0.2.1` and `web-smoke: 0 passed, 13 failed`, no `PASS` line, `13`, and no `line N:` error from bash. The image under test is still SP1's (Steps 3 and 4 do not touch the `playground` stage): it has no code-server, no seed and no `CYBERTRAIN_HOST`, so every check fails.
 
 - [ ] **Step 3: Write the files the stage copies**
 
@@ -694,6 +702,7 @@ The new app has no root route, so `/` shows "Not Found": its pages start at
 Its "Try this" and "Start a fresh app" sections must equal SP1's guide word for word:
 
 ```bash
+SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2; mkdir -p "$SDD/logs" "$SDD/scratch" "$SDD/screens"
 sed -n '/^## Try this/,/^## Good to know/p' playground/PLAYGROUND.md > "$SDD/scratch/guide-sp1.md"
 sed -n '/^## Try this/,/^## Good to know/p' playground/web/PLAYGROUND.md > "$SDD/scratch/guide-web.md"
 diff "$SDD/scratch/guide-sp1.md" "$SDD/scratch/guide-web.md" && echo "common sections identical"
@@ -812,6 +821,8 @@ ARG CODE_SERVER_SHA256_AMD64=53029be6c5781b7bca49b815fcc9a2a3fc111813ad8c9965b2c
 ARG CODE_SERVER_SHA256_ARM64=0edb4b60d9c4744b2dd14b0911e3c2e6dd8c6f3c13bd58bda23ae744e59e7df1
 
 USER root
+# The version check runs with a throwaway HOME: a first run writes a config
+# file there and logs that before the version line (hence the grep).
 RUN set -eu; \
     case "$TARGETARCH" in \
       amd64) sum="$CODE_SERVER_SHA256_AMD64" ;; \
@@ -826,7 +837,7 @@ RUN set -eu; \
     tar -xzf "/tmp/$tarball" -C /usr/lib/code-server --strip-components 1 --no-same-owner; \
     rm "/tmp/$tarball"; \
     ln -s /usr/lib/code-server/bin/code-server /usr/local/bin/code-server; \
-    test "$(HOME=/tmp/cs-home code-server --version | head -n 1 | cut -d ' ' -f 1)" = "$CODE_SERVER_VERSION"; \
+    test "$(HOME=/tmp/cs-home code-server --version | grep -m 1 '^[0-9]' | cut -d ' ' -f 1)" = "$CODE_SERVER_VERSION"; \
     rm -rf /tmp/cs-home
 
 # code-server's user settings (the entrypoint copies them into the session's
@@ -959,6 +970,7 @@ Then `bash -n playground/playground-server && echo parses`. Expected: `parses`. 
 ```bash
 cd /Users/saeki/work/cybertrain
 test -d .git && git rev-parse --abbrev-ref HEAD
+SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2; mkdir -p "$SDD/logs" "$SDD/scratch" "$SDD/screens"
 docker build -f playground/Dockerfile --target web -t cybertrain-playground-web:local . > "$SDD/logs/task1-build-web.log" 2>&1; echo "web exit=$?"
 docker build -f playground/Dockerfile --target playground -t cybertrain-playground:local . > "$SDD/logs/task1-build-playground.log" 2>&1; echo "playground exit=$?"
 docker image inspect -f '{{.Config.WorkingDir}} {{json .Config.Entrypoint}} {{.Config.User}}' cybertrain-playground-web:local
@@ -969,6 +981,7 @@ Run the builds in the background. Do not run git commands in this checkout while
 - [ ] **Step 7: Run both smoke tests**
 
 ```bash
+SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2; mkdir -p "$SDD/logs" "$SDD/scratch" "$SDD/screens"
 bash playground/web-smoke.sh cybertrain-playground-web:local > "$SDD/logs/task1-web-smoke.log" 2>&1; echo "exit=$?"
 bash playground/smoke.sh cybertrain-playground:local > "$SDD/logs/task1-smoke.log" 2>&1; echo "exit=$?"
 cat "$SDD/logs/task1-web-smoke.log"; tail -n 1 "$SDD/logs/task1-smoke.log"
@@ -1102,7 +1115,7 @@ done
 ok=no
 if [ "$up" = yes ] && [ "$(has '"status"')" = yes ] && [ "$(header referrer-policy)" = no-referrer ] &&
   [ "$(header x-robots-tag)" = "noindex, nofollow" ] && [ "$(header x-content-type-options)" = nosniff ] &&
-  header content-security-policy | grep -qF "frame-ancestors 'self'"; then ok=yes; fi
+  grep -i '^content-security-policy:' "$work/head" | grep -qF "frame-ancestors 'self'"; then ok=yes; fi
 check R1 "the editor host reaches code-server, with the editor's headers" "$ok" \
   "status $code, $(tr -d '\r' < "$work/head" | grep -iE '^(referrer|x-robots|x-content|content-security)' | tr '\n' ' ')"
 
@@ -1125,7 +1138,7 @@ for i in $(seq 1 30); do
 done
 ok=no
 if [ "$code" = 200 ] && [ "$(header cache-control)" = no-store ] && [ "$(header x-robots-tag)" = "noindex, nofollow" ] &&
-  [ -z "$(header x-content-type-options)" ] && header content-security-policy | grep -qF 'frame-ancestors *.play.localhost:*'; then ok=yes; fi
+  [ -z "$(header x-content-type-options)" ] && grep -i '^content-security-policy:' "$work/head" | grep -qF 'frame-ancestors *.play.localhost:*'; then ok=yes; fi
 check R3 "the preview host reaches port 3000, with the preview's headers and no nosniff" "$ok" \
   "status $code, Cache-Control: $(header cache-control), CSP: $(header content-security-policy), nosniff: $(header x-content-type-options)"
 
@@ -1203,6 +1216,7 @@ fi
 
 ```bash
 cd /Users/saeki/work/cybertrain
+SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2; mkdir -p "$SDD/logs" "$SDD/scratch" "$SDD/screens"
 docker build -f playground/router/Dockerfile -t ctplay-router:local . > "$SDD/logs/task2-red.log" 2>&1; echo "build exit=$?"; tail -n 2 "$SDD/logs/task2-red.log"
 bash "$SDD/scratch/router-check.sh"; echo "exit=$?"
 ```
@@ -1473,6 +1487,8 @@ Create `playground/router/Dockerfile.dockerignore` (BuildKit reads `<Dockerfile>
 - [ ] **Step 5: Build the image**
 
 ```bash
+cd /Users/saeki/work/cybertrain
+SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2; mkdir -p "$SDD/logs" "$SDD/scratch" "$SDD/screens"
 docker build -f playground/router/Dockerfile -t ctplay-router:local . > "$SDD/logs/task2-build.log" 2>&1; echo "exit=$?"
 grep -c 'Valid configuration' "$SDD/logs/task2-build.log"
 docker run --rm --entrypoint caddy ctplay-router:local version
@@ -1483,6 +1499,8 @@ Expected: `exit=0`; `1` (the build's `caddy validate` step); a version line star
 - [ ] **Step 6: Run the check**
 
 ```bash
+cd /Users/saeki/work/cybertrain
+SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2; mkdir -p "$SDD/logs" "$SDD/scratch" "$SDD/screens"
 bash "$SDD/scratch/router-check.sh" > "$SDD/logs/task2-check.log" 2>&1; echo "exit=$?"
 cat "$SDD/logs/task2-check.log"
 ```
@@ -1734,7 +1752,7 @@ ENV CYBERTRAIN_HOST=0.0.0.0
 
 and in `playground/web-smoke.sh` replace `what_W2="user dev (uid 1000), cybertrain $version, CYBERTRAIN_HOST=0.0.0.0 and EXTENSIONS_GALLERY={}"` with `what_W2="user dev (uid 1000), cybertrain $version, CYBERTRAIN_HOST=0.0.0.0, EXTENSIONS_GALLERY unset"` and `  *"user=dev:1000 cli=[cybertrain $version] host=0.0.0.0 gallery={}"*) pass W2 "$what_W2" ;;` with `  *"user=dev:1000 cli=[cybertrain $version] host=0.0.0.0 gallery=unset"*) pass W2 "$what_W2" ;;`. Rebuild and run `web-smoke.sh`. (Task 6 then uses the terms page's other sentence.)
 
-**V11 fails** (the Markdown preview or the Simple Browser stays blank, or the console reports a refused frame): delete the header line of the side that breaks from `playground/router/Caddyfile`, the editor's `+Content-Security-Policy "frame-ancestors 'self'"` (V11-editor) or the preview's `+Content-Security-Policy "frame-ancestors *.{$PLAY_DOMAIN}:*"` (V11-preview); spec §6.3 calls their value small. Rebuild `ctplay-router:local`, remove the matching `header content-security-policy | grep …` condition from R1 or R3 in `$SDD/scratch/router-check.sh`, and run it (10 passed).
+**V11 fails** (the Markdown preview or the Simple Browser stays blank, or the console reports a refused frame): delete the header line of the side that breaks from `playground/router/Caddyfile`, the editor's `+Content-Security-Policy "frame-ancestors 'self'"` (V11-editor) or the preview's `+Content-Security-Policy "frame-ancestors *.{$PLAY_DOMAIN}:*"` (V11-preview); spec §6.3 calls their value small. Rebuild `ctplay-router:local`, remove the matching `grep -i '^content-security-policy:' "$work/head" | grep …` condition from R1 or R3 in `$SDD/scratch/router-check.sh`, and run it (10 passed).
 
 **V19 fails** (no notice in the terminal): in `playground/web/playground-web` delete the block from the line `# 3. A notice in every open terminal 5 minutes and 1 minute before the end.` through the `fi` that closes `if [ -n "$ends_at" ]; then` (the notifier), renumber `# 4. code-server.` to `# 3. code-server.`, and in the header comment replace `installs
 # code-server's user settings, schedules two notices in the terminals and
@@ -4867,7 +4885,7 @@ Expected from `git ls-files -s`: mode `100755`.
 Notes on the spec's text, applied below:
 - Correction (spec §15, corrections 3 and 6): the router service has `dns: [127.0.0.1]` and `sysctls: [net.ipv4.ip_forward=0]`.
 - Correction: the control plane's data directory is `${PLAY_DATA_HOST:-./data}`, and `e2e.sh` uses `./data-e2e`: with the spec's fixed `./data`, the test's project shared the dev stack's `paused` and `kill-all` flags (a test interrupted while paused left the dev stack paused). `.gitignore` gets both directories.
-- `e2e.sh` follows the spec's E1-E19 with these changes, each because the spec's form could not pass or prove the point: `PLAY_TTL=180` instead of 150, so that session 1 (created at E2) outlives the checks that need it on a slow CI runner, and E18 then measures that same session's end (its window is "within 15 s of `expires-at`"); the run order is E1-E7, E9, E10, E8 (E8 needs E10's second session), E11-E15, E18, E16, E17, E19; E8's "gateway" checks become the host's own addresses and a listener on the host (spec §15, correction 5: an `inhibit_ipv4` network has no gateway, `.1` is a container), plus a check that no host interface has an address in `10.250.0.0/16` (the measure that `inhibit_ipv4` is in force, which §15 asks the end-to-end test to keep checking), and a refused connection counts as a way out; E11 adds "a session just ended with `playctl end` answers the 404 page within 5 s" (§15, correction 4; Review Focus 2); E12 adds `Origin: null` from this origin, which must pass the origin check (it then meets the per-client limit: 429); E13 adds the router's DNS and `ip_forward`; E14 expects `"live":1` (one session is left at that point of the sequence, not two); E17 sends its POST from inside the control plane's container, since a stopped router leaves no way in from outside.
+- `e2e.sh` follows the spec's E1-E19 with these changes, each because the spec's form could not pass or prove the point: `PLAY_TTL=180` instead of 150, so that session 1 (created at E2) outlives the checks that need it on a slow CI runner, and E18 then measures that same session's end (its window is "within 15 s of `expires-at`"); the run order is E1-E7, E9, E10, E8 (E8 needs E10's second session), E11-E15, E18, E16, E17, E19; E8's "gateway" checks become the host's own addresses and a listener on the host (spec §15, correction 5: an `inhibit_ipv4` network has no gateway, `.1` is a container), plus a check that no host interface has an address in `10.250.0.0/16` (the measure that `inhibit_ipv4` is in force, which §15 asks the end-to-end test to keep checking), and a refused connection counts as a way out; E11 adds "a session just ended with `playctl end` answers the 404 page within 5 s" (§15, correction 4; Review Focus 2), waits after each `playctl end` until `status.json` counts one live session again (`playctl` is another process: the control plane forgets the session at its reaper's next pass, up to 5 s later, and until then the same client would get the per-client 429), and requires the third creation's 429 to be the rate page; E3 and E5 read every `Content-Security-Policy` line (code-server may send its own before the router's); E12 adds `Origin: null` from this origin, which must pass the origin check (it then meets the per-client limit: 429); E13 adds the router's DNS and `ip_forward`; E14 expects `"live":1` (one session is left at that point of the sequence, not two); E17 sends its POST from inside the control plane's container, since a stopped router leaves no way in from outside.
 - It refuses to start (exit 2) while any playground session exists on this Docker: a second control plane would adopt or reap them (they share the labels).
 
 - [ ] **Step 1: Write the failing test**
@@ -5005,6 +5023,12 @@ header() {
   grep -i "^$1:" "$work/head" | head -n 1 | tr -d '\r' | sed 's/^[^:]*: *//'
 }
 
+# header_all NAME: every value of a response header on one line (a header
+# can come from the upstream and again from the router).
+header_all() {
+  grep -i "^$1:" "$work/head" | tr -d '\r' | sed 's/^[^:]*: *//' | tr '\n' ' '
+}
+
 has() {
   if grep -qF -- "$1" "$work/body"; then echo yes; else echo no; fi
 }
@@ -5048,6 +5072,18 @@ inside() {
   docker exec -u 1000:1000 "ctplay-s-$h" bash -c "$*" 2>&1
 }
 
+# wait_live N: until status.json reports N live sessions. A session ended by
+# playctl (another process) leaves the control plane's memory at the reaper's
+# next pass, and until then its client still counts as having a session.
+wait_live() {
+  local i
+  for i in $(seq 1 15); do
+    contains "$(curl -s --max-time 2 -H "Host: $domain" "$base/status.json")" "\"live\":$1," && return 0
+    sleep 1
+  done
+  return 1
+}
+
 echo "e2e: bringing up $PLAY_PROJECT on $base with $PLAY_SESSION_IMAGE"
 rm -rf "$here/data-e2e"
 if ! dc up --build -d > "$work/up.log" 2>&1; then
@@ -5088,7 +5124,7 @@ if [ "$code" = 303 ] && [ "$took" -le 30 ] &&
 check E2 "POST /sessions answers 303 to the editor within 30 s (took $took s)" "$ok" "status $code, Location: $location, preview id: ${p1:-none}"
 
 get "$s1.$domain" "/?folder=%2Fworkspace%2Fblog"
-csp=$(header content-security-policy)
+csp=$(header_all content-security-policy)
 ok=no
 if [ "$code" = 200 ] && [ "$(has vscode-workbench-web-configuration)" = yes ] && [ "$(header referrer-policy)" = no-referrer ] &&
   [ "$(header x-robots-tag)" = "noindex, nofollow" ] && contains "$csp" "frame-ancestors 'self'"; then ok=yes; fi
@@ -5113,7 +5149,7 @@ for i in $(seq 1 30); do
   sleep 1
 done
 banner=$(docker exec "ctplay-s-$h1" cat /tmp/s.log 2> /dev/null)
-csp=$(header content-security-policy)
+csp=$(header_all content-security-policy)
 ok=no
 if [ "$code" = 200 ] && [ "$(header cache-control)" = no-store ] && [ "$(header x-robots-tag)" = "noindex, nofollow" ] &&
   contains "$csp" 'frame-ancestors *.play.localhost:*' && contains "$banner" "App    http://3000-$p1.$domain/"; then ok=yes; fi
@@ -5227,17 +5263,20 @@ gone_took=$((SECONDS - began))
 start 198.51.100.9
 r1=$code
 end_session "$handle"
+wait_live 1
 start 198.51.100.9
 r2=$code
 end_session "$handle"
+wait_live 1
 start 198.51.100.9
 r3=$code
 r3_retry=$(header retry-after)
+r3_page=$(has "Too many sessions from your network address")
 ok=no
 if [ "$again" = 429 ] && [ -n "$again_retry" ] && [ "$ended" = 0 ] && [ "$gone_code" = 404 ] && [ "$gone_took" -le 5 ] &&
-  [ "$r1" = 303 ] && [ "$r2" = 303 ] && [ "$r3" = 429 ] && [ -n "$r3_retry" ]; then ok=yes; fi
+  [ "$r1" = 303 ] && [ "$r2" = 303 ] && [ "$r3" = 429 ] && [ -n "$r3_retry" ] && [ "$r3_page" = yes ]; then ok=yes; fi
 check E11 "the same client gets 429; a just-ended session answers the 404 page at once; a third creation in the window gets 429" "$ok" \
-  "same client: $again (Retry-After $again_retry); playctl end: exit $ended, then $gone_code in $gone_took s; creations: $r1 $r2 $r3 (Retry-After $r3_retry)"
+  "same client: $again (Retry-After $again_retry); playctl end: exit $ended, then $gone_code in $gone_took s; creations: $r1 $r2 $r3 (Retry-After $r3_retry, the rate page: $r3_page)"
 
 start 198.51.100.12 -H "Origin: http://evil.localhost"
 o1=$code
@@ -5535,7 +5574,7 @@ Browser: the Playwright MCP tools or the built-in browser tools (Chromium); Fire
 | U3 (B3) | Change the `<h1>` in `app/views/articles/index.html.erb`, save, press the preview's reload; then add `validates :body, presence: true, length: { minimum: 10 }` inside the class in `app/models/article.rb`, save, watch the terminal until the server restarts, and create an article with the body `short` | The new heading at once; the terminal shows the rebuild and the restart (record the seconds); the short body is refused with "Body is too short (minimum is 10 characters)" (422) |
 | U4 (B4) | Reload the browser tab (F5); wait 15 s; screenshot `task8-04-reload.png`; in a new terminal run `pgrep -c -f '^/workspace/blog/build/bin/blog( \|$)'` | The terminal and the preview come back; no "Select an instance to terminate" prompt; `1` |
 | U5 (Review Focus 5) | Press the browser's Back button (to the entry page); screenshot `task8-05-back.png` | The button reads "Start a session" and is enabled (the `pageshow` handler); pressing it now shows the 429 page "A session from your network address is already running" with "at the latest it ends at HH:MM UTC" (the editor's session is still yours) |
-| U6 (B11) | Close the editor's tab; poll `curl -s -H 'Host: play.localhost:8080' http://127.0.0.1:8080/status.json` every 30 s for up to 10 minutes | `"live"` falls from 1 to 0 about 6 minutes after the tab closed (code-server's 300 s idle timeout after its heartbeat notices, then the reaper); record the minutes |
+| U6 (B11) | The editor's page left the browser when U5 pressed Back: note that time. Close the tab; poll `curl -s -H 'Host: play.localhost:8080' http://127.0.0.1:8080/status.json` every 30 s for up to 10 minutes | `"live"` falls from 1 to 0 about 6 minutes after U5's Back press (code-server's 300 s idle timeout after its heartbeat notices, then the reaper); record the minutes |
 | U7 (B13) | If your tools can drive Firefox: repeat U1-U4 in Firefox with a fresh stack | As in Chromium; otherwise record "B13: not checked locally" |
 
 - [ ] **Step 2: Run the control that must fail**
@@ -6414,7 +6453,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `$SDD/scratch/docs-check.sh` (throwaway, not committed): K1-K7; a browser look at the patched page
 
 **Interfaces:**
-- Consumes: the facts of Tasks 1-10 (names, commands, checks W1-W13 and E1-E19, the workflows); Task 8's results; Task 3's `V-OUTCOMES` line, which changes these sentences: `V10=fallback`: in `playground/README.md` the web stage's Environment row says "`CYBERTRAIN_HOST=0.0.0.0` (the router reaches port 3000 at the session's address); the extension gallery stays code-server's default, Open VSX (an install cannot download anything: no network)", and the W1-W4 row says "user `dev`, the CLI's version and `CYBERTRAIN_HOST=0.0.0.0`"; in the operator's guide B7 expects "Open VSX のギャラリーが出るが、インストールはネットワークが無いので失敗する". `V19=fallback`: drop "schedules the end-of-session notices, " from the entrypoint row and "notices 5 minutes and 1 minute before it, and " from the `PLAYGROUND_ENDS_AT` sentence; in the guide B10 expects only the end. `V9-ports=fallback`: the User settings row loses "port 3000 opens in the editor's preview", and a row `| Port settings | `/workspace/blog/.vscode/settings.json` ([web/workspace-settings.json](web/workspace-settings.json)), hidden from git: port 3000 opens in the editor's preview |` follows the task's row. `V9-guide=fallback`: the guide's B1 says "`PLAYGROUND.md`（テキスト）". `V1=fallback`: the guide's troubleshooting row "プレビューが開かない" adds "（code-server は `--proxy-domain` で動いています。プレビューのアドレスはそこから作られます）". `V11-*=fallback`: nothing in these files.
+- Consumes: the facts of Tasks 1-10 (names, commands, checks W1-W13 and E1-E19, the workflows); Task 8's results; Task 3's `V-OUTCOMES` line, which changes these sentences: `V10=fallback`: in `playground/README.md` the web stage's Environment row says "`CYBERTRAIN_HOST=0.0.0.0` (the router reaches port 3000 at the session's address); the extension gallery stays code-server's default, Open VSX (an install cannot download anything: no network)", and the W1-W4 row says "user `dev`, the CLI's version and `CYBERTRAIN_HOST=0.0.0.0`"; in the operator's guide B7 expects "Open VSX のギャラリーが出るが、インストールはネットワークが無いので失敗する". `V19=fallback`: in the entrypoint row replace "installs the user settings, schedules the end-of-session notices and runs code-server" with "installs the user settings and runs code-server", and drop "notices 5 minutes and 1 minute before it, and " from the `PLAYGROUND_ENDS_AT` sentence; in the guide B10 expects only the end. `V9-ports=fallback`: in the User settings row replace "; automatic tasks on; port 3000 opens in the editor's preview" with "; automatic tasks on", and a row `| Port settings | `/workspace/blog/.vscode/settings.json` ([web/workspace-settings.json](web/workspace-settings.json)), hidden from git: port 3000 opens in the editor's preview |` follows the task's row. `V9-guide=fallback`: the guide's B1 says "`PLAYGROUND.md`（テキスト）". `V1=fallback`: the guide's troubleshooting row "プレビューが開かない" adds "（code-server は `--proxy-domain` で動いています。プレビューのアドレスはそこから作られます）". `V11-*=fallback`: nothing in these files.
 - Produces: the documentation the owner follows (`playground/deploy/README.md`, Japanese, the spec's §9.4 structure in nine parts and a troubleshooting table); `SECURITY.md` (spec §9.5); `playground/deploy/launch.patch`, which the owner applies after the live checks (`sed 's/<DOMAIN>/…/g' playground/deploy/launch.patch | git apply`); Task 12's final checks run `docs-check.sh`.
 
 Notes on the spec's text, applied below:
@@ -7493,7 +7532,7 @@ bash "$SDD/scratch/docs-check.sh" "$SDD/scratch/docs-check-work" | tail -n 1
 for f in playground/web-smoke.sh playground/dev/e2e.sh playground/web/playground-web playground/playground-server playground/deploy/host/cybertrain-play-firewall; do /bin/bash -n "$f" || echo "syntax: $f"; done
 ```
 
-Expected: `74 runs, 437 assertions, 0 failures, 0 errors, 0 skips`; `deploy-check: 10 passed, 0 failed, 0 skipped`; `ci-check: ok`; `docs-check: 7 passed, 0 failed`; no `syntax:` line.
+Expected: `74 runs, 437 assertions, 0 failures, 0 errors, 0 skips`; `deploy-check: 10 passed, 0 failed, 0 skipped` (or `8 passed, 0 failed, 2 skipped` on a machine without Kamal 2.12.0: say so in the owner's list); `ci-check: ok`; `docs-check: 7 passed, 0 failed`; no `syntax:` line.
 
 - [ ] **Step 2: Both images from scratch, and their smoke tests**
 
