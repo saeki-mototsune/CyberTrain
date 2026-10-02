@@ -48,19 +48,27 @@ def clean?(conn)
   rolled_back && begin_ok
 end
 
+# Leaves the transaction block by `break`, the exit its rescue cannot see.
+# A method of its own, with the `break` inside an each: Spinel rejects a
+# `break` anywhere inside a block that is forwarded as &block (DB.with's),
+# even nested in an each ("unsupported expression: BreakNode", CI on PR
+# #10), while this shape -- the one the nested-exit test below also uses --
+# compiles.
+def leave_by_break(conn)
+  [1].each do |n|
+    conn.transaction do
+      conn.execute("INSERT INTO posts (title) VALUES (?)", ["broken#{n}"])
+      break
+    end
+  end
+  nil
+end
+
 test "a transaction left by break is rolled back when the pooled connection comes back" do
   DB.connect(":memory:")
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
   DB.with do |c|
-    # The `break` sits inside an each: Spinel compiles a block's `break`
-    # only within an iterator ("unsupported expression: BreakNode" for a
-    # bare one, CI on PR #10); the shape is the one test/db_sqlite.rb uses.
-    [1].each do |_|
-      c.transaction do
-        c.execute("INSERT INTO posts (title) VALUES (?)", ["broken"])
-        break
-      end
-    end
+    leave_by_break(c)
     # Still inside the checkout: the BEGIN is open until the connection
     # goes back, which is what makes the pool the right place to clean up.
     assert_equal 1, post_count(c)
