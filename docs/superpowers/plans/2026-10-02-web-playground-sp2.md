@@ -2963,6 +2963,7 @@ Notes on the spec's text, applied below:
 - `Session` gains `cpu`, `memory` and `hot` (the CPU samples) beside spec §5.3's fields, for `playctl status` and the `suspect` line. Ids never enter a record.
 - The reaper thread sets `abort_on_exception` on itself rather than process-wide (`Thread.abort_on_exception = true` in spec §5.1): the effect for the reaper is the same (an unexpected error ends the process, Docker restarts it, the first pass reconciles), and Puma's own threads keep their own error handling.
 - A creation that raises an unexpected error is cleaned up and logged with its message redacted, never with the exception's raw text.
+- **As built after review** (2026-10-03, commits `14ea59c` the code below verbatim, then `a744b3d` and `d4a7e9b`). Nothing in the Interfaces block changed; the suite is `88 runs, 467 assertions`. The code below had races and gaps that the implementer and the reviewer reproduced with the fakes; the fixes: (1) the reaper snapshots the record states before its Docker listings, and a handle that was `:creating` then, or appeared since, is in progress for the whole pass: it is not ended as `exited` or `idle`, and `reconcile` neither forgets nor re-adopts it (the code below could end a just-ready session as `idle`, or forget it and adopt it again with `client: nil`); (2) an unknown container still in state `created` gets the 60 s orphan grace before it is ended as `exited`, so a pass during a deploy does not end the other control plane's creation in progress (this follows spec §5.8 item 3's intent against the letter of item 2); (3) a record already `:ending` before the pass whose container is still listed is torn down again, for the reason it recorded; a teardown still running is left alone; (4) `wait_until_ready` sets `:ready` only from `:creating`; (5) the pause is checked again first thing inside the create lock; (6) only ids matching `\A[A-Za-z0-9][A-Za-z0-9_.-]*\z` from Docker's output reach an argv (a new `dropped` event counts the rest), and `docker stats` gets names built from the checked handle; (7) every Docker result's stdout and stderr is read as UTF-8 and scrubbed, and the pause message is read the same way; (8) the kill file is removed with `rm_f`. `FakeProbe.new` also takes a block, run at each probe call.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3952,7 +3953,7 @@ SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2
 for i in 1 2 3; do BUNDLE_PATH="$SDD/bundle" bundle exec rake test 2>&1 | tail -n 1; done
 ```
 
-Expected, three times (minitest shuffles): `69 runs, 364 assertions, 0 failures, 0 errors, 0 skips`.
+Expected, three times (minitest shuffles): `69 runs, 364 assertions, 0 failures, 0 errors, 0 skips`. (After this task's review the suite is `88 runs, 467 assertions`: see "As built after review" above. The totals in Tasks 6 and 12 count from there.)
 
 - [ ] **Step 5: Commit**
 
@@ -4814,7 +4815,7 @@ for i in 1 2 3; do BUNDLE_PATH="$SDD/bundle" bundle exec rake test 2>&1 | tail -
 for f in config.ru bin/playctl lib/play/app.rb lib/play/ctl.rb; do ruby -c "$f" > /dev/null || echo "syntax: $f"; done
 ```
 
-Expected, three times: `93 runs, 505 assertions, 0 failures, 0 errors, 0 skips`; no `syntax:` line.
+Expected, three times: `112 runs, 608 assertions, 0 failures, 0 errors, 0 skips`; no `syntax:` line.
 
 - [ ] **Step 6: Build the image and check its boot**
 
@@ -7551,7 +7552,7 @@ bash "$SDD/scratch/docs-check.sh" "$SDD/scratch/docs-check-work" | tail -n 1
 for f in playground/web-smoke.sh playground/dev/e2e.sh playground/web/playground-web playground/playground-server playground/deploy/host/cybertrain-play-firewall; do /bin/bash -n "$f" || echo "syntax: $f"; done
 ```
 
-Expected: `93 runs, 505 assertions, 0 failures, 0 errors, 0 skips`; `deploy-check: 10 passed, 0 failed, 0 skipped` (or `8 passed, 0 failed, 2 skipped` on a machine without Kamal 2.12.0: say so in the owner's list); `ci-check: ok`; `docs-check: 7 passed, 0 failed`; no `syntax:` line.
+Expected: `112 runs, 608 assertions, 0 failures, 0 errors, 0 skips`; `deploy-check: 10 passed, 0 failed, 0 skipped` (or `8 passed, 0 failed, 2 skipped` on a machine without Kamal 2.12.0: say so in the owner's list); `ci-check: ok`; `docs-check: 7 passed, 0 failed`; no `syntax:` line.
 
 - [ ] **Step 2: Both images from scratch, and their smoke tests**
 
@@ -7630,7 +7631,7 @@ Write this list into your report, with the numbers you measured (cold build, smo
 | §7.1-7.5 Kamal services and configs, secrets, image pinning, hooks, firewall | Task 9 (D1-D10) |
 | §7.6-7.12 operator's steps, checks, updates, capacity, logs, abuse, gVisor | Task 11 (guide parts 1-8); Task 12 (owner's list) |
 | §8.1 compose, §8.4 E2E | Task 7 (E1-E19) |
-| §8.2 unit tests | Tasks 4, 5, 6 (93 tests) |
+| §8.2 unit tests | Tasks 4, 5, 6 (112 tests) |
 | §8.3 web smoke | Task 1 (W1-W13) |
 | §8.5 browser checks | Task 3 (B5-B10, B12), Task 8 (B1-B4, B11, B13); B14 owner (P9) |
 | §8.6 VPS-only | Task 9's list, Task 11's guide, Task 12's owner list |
