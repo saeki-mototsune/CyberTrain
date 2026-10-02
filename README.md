@@ -34,6 +34,38 @@ authentication, mailers, jobs, WebSockets/ActionCable, an asset pipeline,
 i18n, and anything beyond a minimal `render json:` — see "Differences from
 Rails" below.
 
+## Try it in the browser
+
+[Open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
+to try cybertrain without installing anything: VS Code opens in your browser with
+Spinel 2026.09.12, the `cybertrain` CLI and the blog from the walkthrough below
+already created (`cybertrain new blog`, the article scaffold, the root route and
+the first migration, built once so the server starts without compiling), its
+development server running in a terminal and the app, showing the article list,
+in the editor's preview. The app is a git repository with one commit, so Source
+Control shows what you change. `PLAYGROUND.md` in the app lists what to try, from
+editing a view to carrying on with the walkthrough's comments. A view edit shows
+on the next reload; a Ruby edit is a full rebuild, about a minute, after which the
+server restarts by itself; the preview does not reload by itself. `cybertrain new`
+works there with no network.
+
+- A GitHub account is required, and the codespace runs on your own Codespaces
+  quota: GitHub's free plan includes 120 core-hours and 15 GB-month of storage a
+  month, about 60 hours on the default 2-core machine the playground uses. GitHub
+  stops an idle codespace after 30 minutes by default; its storage counts until
+  you delete it.
+- Inside the preview, pop-ups and `confirm()` dialogs do not work; the Ports
+  view's "Open in Browser" shows the app in a normal tab.
+- The same image runs locally (it is published for linux/amd64; on arm64, build
+  it from a checkout):
+
+  ```sh
+  docker run --rm -it --init -p 3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground
+  ```
+
+  Then open http://localhost:3000. [playground/README.md](playground/README.md)
+  describes the image, building it and the Codespaces setup.
+
 ## Requirements
 
 - Spinel `2026.09.12` (`Cybertrain::SPINEL_TAG`, the same release as
@@ -598,8 +630,9 @@ prints the diff stat).
 
 ## Learn more
 
-- [Homepage](https://saeki-mototsune.github.io/CyberTrain/) and
-  [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) —
+- [Homepage](https://saeki-mototsune.github.io/CyberTrain/),
+  [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) and
+  [playground](https://saeki-mototsune.github.io/CyberTrain/playground.html) —
   the source lives in [site/](site/), published by
   [.github/workflows/pages.yml](.github/workflows/pages.yml); the logo files and
   brand notes are in [site/assets/brand/](site/assets/brand/BRAND.md).
@@ -625,6 +658,10 @@ before the gem is pushed:
    dependency by that version.
 2. Merge to `main`, then tag and push: `git tag v0.2.1 && git push origin v0.2.1`.
 3. `gem build cybertrain.gemspec && gem push cybertrain-0.2.1.gem`.
+4. The tag also publishes the playground image
+   `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z` (and `latest`) through
+   [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml);
+   check that run.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in
