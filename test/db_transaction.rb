@@ -117,8 +117,10 @@ def leak_through_broken_logger
   message
 end
 
-test "the connection goes back to the pool even when the leak warning cannot be logged" do
-  Cybertrain.logger = BrokenLogger.new
+# The checks of the test below, in a method so the test block itself holds
+# only the begin/ensure that restores the logger (NOTES rule 32: the fewer
+# yielding calls inside a block with its own ensure, the better).
+def pool_survives_broken_logger
   DB.connect(":memory:")
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
   assert_equal "log IO closed", leak_through_broken_logger
@@ -126,14 +128,31 @@ test "the connection goes back to the pool even when the leak warning cannot be 
   assert_equal 0, DB.with { |c| post_count(c) }
   assert DB.with { |c| clean?(c) }
   DB.disconnect
-  Cybertrain.logger = Cybertrain::Logger.new
+  nil
 end
 
-test "abandon_transaction! leaves a clean connection alone" do
+test "the connection goes back to the pool even when the leak warning cannot be logged" do
+  Cybertrain.logger = BrokenLogger.new
+  begin
+    pool_survives_broken_logger
+  ensure
+    # Restored even when an assertion above fails, or every later test that
+    # trips a pool warning would die with "log IO closed".
+    Cybertrain.logger = Cybertrain::Logger.new
+  end
+  # Not the begin/ensure's value: as a block's last expression it does not
+  # type under Spinel ("incompatible types when returning type 'sp_RbVal'").
+  nil
+end
+
+test "abandon_transaction! leaves a clean connection alone and says so" do
   conn = posts_db
   conn.execute("INSERT INTO posts (title) VALUES (?)", ["kept"])
-  conn.abandon_transaction!
+  assert conn.abandon_transaction! == :clean, "a clean connection reports :clean"
   assert_equal 1, post_count(conn)
+  conn.exec_script("BEGIN")
+  assert conn.abandon_transaction! == :rolled_back, "an open BEGIN reports :rolled_back"
+  assert conn.abandon_transaction! == :clean, "and the connection is clean again"
   assert clean?(conn)
   conn.close
 end

@@ -160,6 +160,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       def self.all = PostRelation.new("posts")
       def self.where(h) = all.where(h)
       def self.order(o) = all.order(o)
+      def self.order_sql(s) = all.order_sql(s)
       def self.limit(n) = all.limit(n)
       def self.find(id) = all.find(id)
       def self.find_by(h) = all.find_by(h)
@@ -306,6 +307,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       def self.all = CommentRelation.new("comments")
       def self.where(h) = all.where(h)
       def self.order(o) = all.order(o)
+      def self.order_sql(s) = all.order_sql(s)
       def self.limit(n) = all.limit(n)
       def self.find(id) = all.find(id)
       def self.find_by(h) = all.find_by(h)
@@ -437,6 +439,7 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def self.all = FlagRelation.new("flags")
       def self.where(h) = all.where(h)
       def self.order(o) = all.order(o)
+      def self.order_sql(s) = all.order_sql(s)
       def self.limit(n) = all.limit(n)
       def self.find(id) = all.find(id)
       def self.find_by(h) = all.find_by(h)
@@ -579,7 +582,8 @@ end
 
 test "attributes stay attr_accessors (no def writers: NOTES rule 43) and order_sql is emitted" do
   post = emit_for("posts")
-  assert_lines(post, ["attr_accessor :title, :body, :created_at, :updated_at", "def order_sql(s) = (add_order_sql(s); self)"])
+  assert_lines(post, ["attr_accessor :title, :body, :created_at, :updated_at", "def order_sql(s) = (add_order_sql(s); self)",
+                      "def self.order_sql(s) = all.order_sql(s)"])
   refute_line(post, "attr_reader :title, :body, :created_at, :updated_at")
   refute post.include?("  def body=(v)\n"), "a def writer on a model breaks Response#body= under Spinel"
 end
@@ -623,7 +627,7 @@ test "emit rejects column names that are invalid or collide with model methods" 
   end
 end
 
-test "a has_many named like a Model method moves to <table>_as_<stem>; a belongs_to is an error" do
+test "an association named like a Model method moves to its fallback name instead of shadowing it" do
   definition = Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "posts" do |t|
       t.string "title", null: false
@@ -640,22 +644,25 @@ test "a has_many named like a Model method moves to <table>_as_<stem>; a belongs
     end
     s.add_foreign_key "things", "hashes", column: "hash_id"
   end
-  # Post#errors stays Model#errors; the derived reader takes the other name.
+  # Post#errors stays Model#errors; the derived has_many takes <table>_as_<stem>.
   post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
   assert_lines(post, [
-    '# has_many errors reads as errors_as_post: "errors" is a column or a Cybertrain::Model method',
+    '# has_many errors reads as errors_as_post: "errors" is a column, another association or a Cybertrain::Model method',
     'def errors_as_post = ErrorRelation.new("errors").where(post_id: @id).to_a',
     "when :errors_as_post then errors_as_post"
   ])
   refute post.include?("def errors ")
-  # The FK column asked for the reader by name, so there is nothing to fall back to.
-  belongs_to = assert_raises("ArgumentError") do
-    Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [])
-  end
-  assert_includes belongs_to, 'the belongs_to association "hash" is reserved'
+  # Thing#hash stays Object#hash; the belongs_to takes <stem>_as_<column>.
+  thing = Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [])
+  assert_lines(thing, [
+    '# belongs_to hash_id reads as hash_as_hash_id: "hash" is a column, another association or a Cybertrain::Model method',
+    "def hash_as_hash_id = Hash.find_by(id: @hash_id)",
+    "when :hash_as_hash_id then hash_as_hash_id"
+  ])
+  refute thing.include?("def hash ")
 end
 
-test "a column named like a has_many reader keeps its name; the association moves, and a belongs_to is an error" do
+test "a column named like an association reader keeps its name; the association moves to its fallback name" do
   definition = Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "articles" do |t|
       t.string "title", null: false
@@ -679,19 +686,49 @@ test "a column named like a has_many reader keeps its name; the association move
   article = Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [])
   assert_lines(article, [
     "attr_accessor :title, :comments",
-    '# has_many comments reads as comments_as_article: "comments" is a column or a Cybertrain::Model method',
+    '# has_many comments reads as comments_as_article: "comments" is a column, another association or a Cybertrain::Model method',
     'def comments_as_article = CommentRelation.new("comments").where(article_id: @id).to_a',
     "when :comments_as_article then comments_as_article"
   ])
   refute article.include?("def comments ")
-  belongs_to = assert_raises("ArgumentError") do
-    Cybertrain::Gen::ModelsEmitter.emit(definition.table("comments"), definition, [])
-  end
-  assert_includes belongs_to, 'column "article" collides with the belongs_to (from article_id) association'
+  # comments.article (a string column) next to comments.article_id: the
+  # column keeps `article`, the belongs_to reads as article_as_article_id --
+  # a schema that generated before PR #10 still generates.
+  comment = Cybertrain::Gen::ModelsEmitter.emit(definition.table("comments"), definition, [])
+  assert_lines(comment, [
+    "attr_accessor :article_id, :article",
+    '# belongs_to article_id reads as article_as_article_id: "article" is a column, another association or a Cybertrain::Model method',
+    "def article_as_article_id = Article.find_by(id: @article_id)",
+    "when :article_as_article_id then article_as_article_id"
+  ])
+  refute comment.include?("def article ")
   note = assert_raises("ArgumentError") do
     Cybertrain::Gen::ModelsEmitter.emit(definition.table("notes"), definition, [])
   end
-  assert_includes note, 'column "tags_as_note" collides with the has_many (tags.note_id) association'
+  assert_includes note, 'the has_many (tags.note_id) association can be neither "tags" nor "tags_as_note"'
+end
+
+test "a has_many named like a belongs_to reader of the same model is renamed, not dropped" do
+  # posts.comments_id (belongs_to `comments`) and comments.post_id (has_many
+  # `comments`): both readers exist, the has_many as comments_as_post.
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "posts" do |t|
+      t.string "title", null: false
+      t.references :comments
+    end
+    s.create_table "comments" do |t|
+      t.references :post
+      t.string "body"
+    end
+  end
+  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
+  assert_lines(post, [
+    "def comments = Comment.find_by(id: @comments_id)",
+    '# has_many comments reads as comments_as_post: "comments" is a column, another association or a Cybertrain::Model method',
+    'def comments_as_post = CommentRelation.new("comments").where(post_id: @id).to_a',
+    "when :comments then comments",
+    "when :comments_as_post then comments_as_post"
+  ])
 end
 
 test "initial values: zero values for NOT NULL, nil for nullable, SQL defaults applied" do

@@ -125,14 +125,14 @@ module Cybertrain
         underscored = Inflector.underscore(name)
         raise InvalidArgument, "bad resource name '#{name}'" unless Templates.identifier?(underscored)
         singular = Inflector.singularize(underscored)
-        plural = Inflector.pluralize(singular)
         raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a resource" if Ident.keyword?(singular)
-        # The names become readers on every model that references this one
-        # (post:references -> def post; the has_many side -> def posts), so
-        # they answer to the same rules as a column: `Error`/`Attribute`
-        # would give Post#errors / #attributes.
-        if Ident.reserved_column?(singular) || Ident.reserved_column?(plural)
-          raise InvalidArgument, "'#{name}' would be read as `#{singular}` / `#{plural}` on the models that reference it, " \
+        # The singular becomes the belongs_to reader on every model that
+        # references this one (`hash:references` -> def hash), which the
+        # generator would refuse too. The plural (the has_many side) is left
+        # to the generator, which renames such a reader (`errors_as_post`)
+        # rather than refusing it -- and nothing may reference the table.
+        if Ident.reserved_column?(singular)
+          raise InvalidArgument, "'#{name}' would be read as `#{singular}` on the models that reference it, " \
                                  "shadowing a method of the generated model (Cybertrain::Model); pick another name"
         end
 

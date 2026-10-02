@@ -1,0 +1,30 @@
+#!/usr/bin/env ruby
+# Guards Cybertrain::Ident::RESERVED_COLUMN_NAMES (the names a column may not
+# have, because the generated reader would shadow a method or ivar of
+# Cybertrain::Model) against Model growing: every `def name` and every @ivar
+# in cybertrain/model.rb that a column could be spelled like must be in the
+# list, or the next method added to Model silently reintroduces the
+# shadowing. Reads the source rather than the class: under CRuby model.rb
+# cannot be loaded without SQLite's FFI, and under Spinel there is no
+# reflection. Run by CI; exits 1 and names the missing entries.
+#
+# usage: ruby script/check-reserved-names
+require File.expand_path("../cybertrain/ident", __dir__)
+
+source = File.read(File.expand_path("../cybertrain/model.rb", __dir__))
+names = []
+# Instance methods a column reader would redefine: `def save`, `def save!`
+# is not (a column cannot be called save!), nor are `def self.x` or
+# `def x=`.
+source.scan(/^\s*def\s+(?!self\.)([A-Za-z_][A-Za-z0-9_]*)\b(?![?!=])/) { |(m)| names << m }
+source.scan(/@([A-Za-z_][A-Za-z0-9_]*)/) { |(iv)| names << iv }
+names = names.uniq.sort.select { |n| Cybertrain::Ident.column?(n) && !Cybertrain::Ident.keyword?(n) && n != "id" }
+
+missing = names - Cybertrain::Ident::RESERVED_COLUMN_NAMES
+if missing.empty?
+  puts "check-reserved-names: #{names.size} Model names, all reserved"
+else
+  warn "check-reserved-names: cybertrain/model.rb defines or keeps #{missing.map(&:inspect).join(", ")} " \
+       "but Cybertrain::Ident::RESERVED_COLUMN_NAMES (cybertrain/ident.rb) lacks them; add them"
+  exit 1
+end

@@ -8,6 +8,7 @@
 # before a tag and -%> the newline after it, for any tag kind. <%% is a
 # literal "<%" in text and %%> a literal "%>" inside a tag.
 require "cybertrain/template/ast"
+require "cybertrain/ident"
 
 module Cybertrain
   module Template
@@ -179,17 +180,10 @@ module Cybertrain
         ""
       end
 
+      # A template-language identifier (a `locals:` name, a block parameter):
+      # the lowercase subset of Ident.column?, leading `_` allowed.
       def self.identifier?(s)
-        return false if s.empty?
-
-        i = 0
-        while i < s.length
-          c = s[i]
-          ok = (c >= "a" && c <= "z") || c == "_" || (i > 0 && c >= "0" && c <= "9")
-          return false unless ok
-          i += 1
-        end
-        true
+        Ident.column?(s) && s == s.downcase
       end
     end
   end

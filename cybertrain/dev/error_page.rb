@@ -3,7 +3,7 @@ require "cybertrain/html"
 require "cybertrain/logger"
 require "json"
 require "cybertrain/dev/rebuilder"
-require "cybertrain/http/query"
+require "cybertrain/http/client_error"
 
 module Cybertrain
   module Dev
@@ -24,16 +24,19 @@ module Cybertrain
         begin
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
-        rescue Query::LimitExceeded => e
-          # The client's fault (parameters past Query's limits): a plain 400
-          # naming the limit, not the 500 diagnostics page. See ErrorPages.
-          Cybertrain.logger.info("rejected request parameters: #{e.message}")
-          ctx.response.reset_to(400, "Bad Request: #{e.message}")
         rescue JSON::ParserError, StandardError => e
           # NOTES rule 33: JSON::ParserError is not a StandardError under
-          # Spinel, and a bad JSON body deserves the diagnostics page too.
-          Cybertrain.logger.error("#{e.class.name}: #{e.message}")
-          render_exception(ctx, e)
+          # Spinel, and a bad JSON body deserves the diagnostics page too. A
+          # client fault (ClientError: parameters past Query's limits) gets a
+          # plain 4xx naming the limit instead, as ErrorPages does.
+          status = ClientError.status(e)
+          if status == 0
+            Cybertrain.logger.error("#{e.class.name}: #{e.message}")
+            render_exception(ctx, e)
+          else
+            Cybertrain.logger.info(ClientError.log_line(e))
+            ctx.response.reset_to(status, "Bad Request: #{e.message}")
+          end
         end
         inject_banner(ctx.response)
         nil

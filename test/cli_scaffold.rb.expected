@@ -103,8 +103,8 @@ error: bad field 'a:string:index': use name:type (modifiers such as :index are n
 error: bad field 'a:string:': use name:type (modifiers such as :index are not supported)
 error: bad field name 'Title'
 error: 'class' is a Ruby keyword and cannot name a resource
-error: 'Error' would be read as `error` / `errors` on the models that reference it, shadowing a method of the generated model (Cybertrain::Model); pick another name
-error: 'attribute' would be read as `attribute` / `attributes` on the models that reference it, shadowing a method of the generated model (Cybertrain::Model); pick another name
+error: 'Hash' would be read as `hash` on the models that reference it, shadowing a method of the generated model (Cybertrain::Model); pick another name
+error: 'raise' would be read as `raise` on the models that reference it, shadowing a method of the generated model (Cybertrain::Model); pick another name
 error: ./config/routes.rb not found: run this inside a cybertrain app
 error: usage: cybertrain generate scaffold NAME field:type ...
 error: only `generate scaffold` is supported

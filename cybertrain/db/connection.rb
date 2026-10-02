@@ -139,20 +139,26 @@ module Cybertrain
       # out past the rescue (a `break`, under CRuby) leaves BEGIN open with
       # the depth at 1, so every later transaction on this pooled connection
       # would count as nested and nothing would ever be committed; a BEGIN
-      # run by hand leaves autocommit off. A clean connection is untouched.
-      # True only when a ROLLBACK was actually issued, so the caller's
-      # warning is never a false alarm: a depth left above 0 with autocommit
-      # already back on (SQLite rolled back on its own after SQLITE_FULL /
-      # IOERR / BUSY, or a ROLLBACK run by hand inside the block) just
-      # resets the depth.
+      # run by hand leaves autocommit off. Returns what happened, so the
+      # caller's log line is never a false alarm:
+      #   :clean       -- nothing was open (a depth left above 0 with
+      #                   autocommit already back on -- SQLite rolled back on
+      #                   its own after SQLITE_FULL / IOERR / BUSY, or a
+      #                   ROLLBACK run by hand -- only resets the depth);
+      #   :rolled_back -- a ROLLBACK was issued and autocommit is back on;
+      #   :failed      -- the ROLLBACK did not bring autocommit back (BUSY,
+      #                   IOERR): the connection is still inside the
+      #                   transaction. Its next BEGIN fails loudly ("cannot
+      #                   start a transaction within a transaction") and the
+      #                   next check-in tries the ROLLBACK again.
       def abandon_transaction!
-        return false if @closed
+        return :clean if @closed
 
         @transaction_depth = 0
-        return false if SQLite3.sqlite3_get_autocommit(@db) != 0
+        return :clean if SQLite3.sqlite3_get_autocommit(@db) != 0
 
         SQLite3.sqlite3_exec(@db, "ROLLBACK", nil, nil, nil)
-        true
+        SQLite3.sqlite3_get_autocommit(@db) != 0 ? :rolled_back : :failed
       end
 
       def close

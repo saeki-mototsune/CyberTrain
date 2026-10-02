@@ -113,6 +113,7 @@ class Comment < Cybertrain::Model
   def self.all = CommentRelation.new("comments")
   def self.where(h) = all.where(h)
   def self.order(o) = all.order(o)
+  def self.order_sql(s) = all.order_sql(s)
   def self.limit(n) = all.limit(n)
   def self.find(id) = all.find(id)
   def self.find_by(h) = all.find_by(h)

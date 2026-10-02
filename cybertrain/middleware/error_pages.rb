@@ -1,7 +1,7 @@
 require "json"
 require "cybertrain/middleware"
 require "cybertrain/logger"
-require "cybertrain/http/query"
+require "cybertrain/http/client_error"
 
 module Cybertrain
   # Production's error pages (docs/design.md D14), outermost in the stack.
@@ -21,19 +21,22 @@ module Cybertrain
     def call(ctx)
       begin
         super
-      rescue Query::LimitExceeded => e
-        # Request parameters past Query's limits (nesting depth, pair count)
-        # are the client's fault: 400, at info level. Caught here because
-        # this middleware wraps the whole stack, so Server#respond's own
-        # mapping never sees the exception in a real application.
-        @logger.info("rejected request parameters: #{e.message}")
-        ctx.response.reset_to(400)
       rescue JSON::ParserError, StandardError => e
         # JSON::ParserError named too: not a StandardError under Spinel
         # (NOTES rule 33), and an action's JSON.parse of a bad body deserves
-        # the same 500 page as any other failure.
-        @logger.error("#{e.class.name}: #{e.message}")
-        ctx.response.reset_to(500)
+        # the same 500 page as any other failure. ClientError says which
+        # exceptions are the client's fault instead (request parameters past
+        # Query's limits: 400, at info level); caught here because this
+        # middleware wraps the whole stack, so Server#respond's own mapping
+        # never sees the exception in a real application.
+        status = ClientError.status(e)
+        if status == 0
+          @logger.error("#{e.class.name}: #{e.message}")
+          ctx.response.reset_to(500)
+        else
+          @logger.info(ClientError.log_line(e))
+          ctx.response.reset_to(status)
+        end
       end
       response = ctx.response
       page = page_for(response)

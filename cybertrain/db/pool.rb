@@ -50,8 +50,13 @@ module Cybertrain
       # subclass's `warn` can type differently from Logger#warn, rule 10).
       def check_in(conn)
         begin
-          rolled_back = conn.abandon_transaction!
-          Cybertrain.logger.warn("rolled back a transaction left open on a pooled connection (a BEGIN without COMMIT)") if rolled_back
+          outcome = conn.abandon_transaction!
+          if outcome == :rolled_back
+            Cybertrain.logger.warn("rolled back a transaction left open on a pooled connection (a BEGIN without COMMIT)")
+          elsif outcome == :failed
+            Cybertrain.logger.error("could not roll back a transaction left open on a pooled connection; " \
+                                    "its next BEGIN will fail and the next check-in retries the ROLLBACK")
+          end
           nil
         ensure
           @available << conn

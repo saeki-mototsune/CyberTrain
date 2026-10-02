@@ -5,6 +5,8 @@
 # The scaffold templates take a Cybertrain::CLI::Resource (cli/scaffold.rb).
 # Generated views stay inside the template language of docs/design.md
 # section 7: literals, @ivars, locals, helper calls, `if` and `each do`.
+require "cybertrain/ident"
+
 module Cybertrain
   module CLI
     module Templates
@@ -39,19 +41,12 @@ module Cybertrain
         nil
       end
 
-      # A lowercase Ruby-ish name: "post", "blog_post", "released_on".
+      # A lowercase Ruby-ish name: "post", "blog_post", "released_on". The
+      # snake_case subset of Ident.column? (what the generator accepts),
+      # letter-first since it names packages, binaries and files too; one
+      # definition of the characters, so the two cannot drift apart.
       def self.identifier?(word)
-        return false if word == ""
-
-        ok = true
-        first = true
-        word.each_char do |ch|
-          lower = ch >= "a" && ch <= "z"
-          digit = ch >= "0" && ch <= "9"
-          ok = false unless lower || (!first && (digit || ch == "_"))
-          first = false
-        end
-        ok
+        Ident.column?(word) && word == word.downcase && !word.start_with?("_")
       end
 
       # "blog_posts" -> "Blog posts"

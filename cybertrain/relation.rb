@@ -85,7 +85,7 @@ module Cybertrain
       end
       stripped.split(",").each do |fragment|
         words = fragment.strip.split(" ")
-        bad = words.size == 0 || words.size > 2 || !Relation.plain_ident?(words[0])
+        bad = words.size == 0 || words.size > 2 || !Ident.column?(words[0])
         dir = words.size == 2 ? words[1].upcase : ""
         bad = true if dir != "" && dir != "ASC" && dir != "DESC"
         if bad
@@ -203,12 +203,6 @@ module Cybertrain
     # "posts" -> "`posts`" (an embedded backtick is doubled).
     def self.quote_ident(name)
       "`" + name.gsub("`", "``") + "`"
-    end
-
-    # What order() accepts as a column: Ident.column? (the generator refuses
-    # any other column name, so nothing else can exist).
-    def self.plain_ident?(name)
-      Ident.column?(name)
     end
 
     # "title DESC, id" -> "title ASC, id DESC"

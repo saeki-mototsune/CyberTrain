@@ -34,6 +34,12 @@ jobs:
           tag=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::SPINEL_TAG')
           test "$tag" = "$SPINEL_TAG" || { echo "Cybertrain::SPINEL_TAG ($tag) != CI SPINEL_TAG ($SPINEL_TAG)"; exit 1; }
 
+      # Every method and ivar of Cybertrain::Model a column could be named
+      # like must be in Ident::RESERVED_COLUMN_NAMES (the generator's and the
+      # scaffold's reserved list), or a new Model method is shadowed silently.
+      - name: Reserved column names cover Cybertrain::Model
+        run: ruby script/check-reserved-names
+
       # The gem ships the CLI only; it must run under CRuby and bring every
       # file it requires (cybertrain.gemspec lists them by hand).
       - name: Build and install the gem

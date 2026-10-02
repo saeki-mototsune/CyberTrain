@@ -5,7 +5,7 @@ require "cybertrain/http/request"
 require "cybertrain/http/response"
 require "cybertrain/context"
 require "cybertrain/middleware"
-require "cybertrain/http/query"
+require "cybertrain/http/client_error"
 require "cybertrain/logger"
 
 module Cybertrain
@@ -315,13 +315,6 @@ module Cybertrain
       response = ctx.response
       begin
         @app.call(ctx)
-      rescue Query::LimitExceeded => e
-        # A query string or form body past Query's limits (nesting depth,
-        # pair count) is the client's fault: 400, logged at info so a flood
-        # of them does not fill the error log. ErrorPages and Dev::ErrorPage
-        # map it the same way for a full stack; this is the bare-app path.
-        @logger.info("rejected request parameters: #{e.message}")
-        response = error_response(400)
       rescue JSON::ParserError, StandardError => e
         # JSON::ParserError is not a StandardError under Spinel (NOTES rule
         # 33); named here so an action's bad JSON.parse is a 500 and not the
@@ -329,8 +322,18 @@ module Cybertrain
         # not named: nothing proves Spinel's exception table has them (a
         # stack overflow is a SIGSEGV there anyway); the depth limits in Query
         # and the template Interpreter are the guard against those.
-        @logger.error("#{e.class.name}: #{e.message}")
-        response = error_response(500)
+        # ClientError maps the client's faults (a query string or form body
+        # past Query's limits) to their 4xx, logged at info so a flood of
+        # them does not fill the error log; ErrorPages and Dev::ErrorPage ask
+        # it too, this is the bare-app path.
+        status = ClientError.status(e)
+        if status == 0
+          @logger.error("#{e.class.name}: #{e.message}")
+          response = error_response(500)
+        else
+          @logger.info(ClientError.log_line(e))
+          response = error_response(status)
+        end
       end
       keep_alive = request.keep_alive? && @running
       response.set_header("Connection", keep_alive ? "keep-alive" : "close")

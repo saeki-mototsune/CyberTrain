@@ -211,6 +211,7 @@ module Cybertrain
         src << "  def self.all = #{model}Relation.new(\"#{table.name}\")\n"
         src << "  def self.where(h) = all.where(h)\n"
         src << "  def self.order(o) = all.order(o)\n"
+        src << "  def self.order_sql(s) = all.order_sql(s)\n"
         src << "  def self.limit(n) = all.limit(n)\n"
         src << "  def self.find(id) = all.find(id)\n"
         src << "  def self.find_by(h) = all.find_by(h)\n"
@@ -229,24 +230,34 @@ module Cybertrain
 
       # Associations, then the read_association / call_view_method case
       # tables the template interpreter dispatches through by name.
-      # A column named like an association reader would define the method
-      # twice (or, before PR #10, silently lose the association). Raised
-      # like the column-name checks: the generator exits non-zero.
-      def self.association_collision!(table, name, kind)
-        raise ArgumentError, "table #{table.name}: column #{name.inspect} collides with the #{kind} " \
-                             "association of the same name; rename the column"
+      #
+      # The name of an association reader. It is a method on the model like
+      # any column reader, so it must be free: not a column, not another
+      # association, not a Ruby keyword, not a method of Cybertrain::Model
+      # or Object that the framework calls (`errors`, `attributes`, `raise`,
+      # ... -- Ident). When the plain name is owned, the reader takes the
+      # fallback instead of being dropped (as it was before PR #10) or
+      # aborting the generator (which would break an existing schema on
+      # upgrade): `<table>_as_<stem>` for a has_many, `<stem>_as_<column>`
+      # for a belongs_to, and the generated file carries a note. Only both
+      # names being owned is an error.
+      def self.association_name(table, plain, fallback, kind, taken, assoc_names)
+        return plain unless owned?(plain, taken, assoc_names)
+
+        if owned?(fallback, taken, assoc_names)
+          raise ArgumentError, "table #{table.name}: the #{kind} association can be neither #{plain.inspect} nor " \
+                               "#{fallback.inspect} (a column, another association or a Cybertrain::Model method " \
+                               "owns each); rename a column"
+        end
+        fallback
       end
 
-      # An association reader is a method on the model like any column
-      # reader, so it answers to the same rules: `errors_id` (-> def errors)
-      # or a table called `attributes` pointing here would shadow Model#errors
-      # / #attributes. The scaffold applies the same check to a references
-      # field before writing anything.
-      def self.check_association_name(table, name, kind)
-        return nil unless Ident.keyword?(name) || Ident.reserved_column?(name)
+      def self.owned?(name, taken, assoc_names)
+        taken.include?(name) || assoc_names.include?(name) || Ident.keyword?(name) || Ident.reserved_column?(name)
+      end
 
-        raise ArgumentError, "table #{table.name}: the #{kind} association #{name.inspect} is reserved " \
-                             "(it would shadow a method of Cybertrain::Model or Object); rename it"
+      def self.association_note(kind, plain, name)
+        "# #{kind} reads as #{name}: #{plain.inspect} is a column, another association or a Cybertrain::Model method"
       end
 
       def self.emit_dispatch(table, definition, view_methods)
@@ -256,17 +267,16 @@ module Cybertrain
         assoc_names = Array.new(0) { "" }
         assoc_defs = Array.new(0) { "" }
 
-        # belongs_to: comments.post_id -> def post
+        # belongs_to: comments.post_id -> def post (posts.author_id next to an
+        # `author` column -> def author_as_author_id)
         table.foreign_keys.each do |fk|
           col = fk.column
           next unless col.end_with?("_id") && !table.column(col).nil?
 
-          name = col[0, col.size - 3]
-          next if assoc_names.include?(name)
-          association_collision!(table, name, "belongs_to (from #{col})") if taken.include?(name)
-          check_association_name(table, name, "belongs_to")
-
+          plain = col[0, col.size - 3]
+          name = association_name(table, plain, plain + "_as_" + col, "belongs_to (from #{col})", taken, assoc_names)
           assoc_names << name
+          assoc_defs << association_note("belongs_to " + col, plain, name) if name != plain
           assoc_defs << "def #{name} = #{model_class_name(fk.to_table)}.find_by(id: @#{col})"
         end
 
@@ -275,30 +285,20 @@ module Cybertrain
         # (messages.sender_id and messages.recipient_id both -> users), each
         # gets its own name, `<table>_as_<column stem>` (def messages_as_sender,
         # def messages_as_recipient), so no key is dropped and the names do
-        # not depend on declaration order.
+        # not depend on declaration order; the same name is the fallback when
+        # a column, a belongs_to reader or a Model method owns the plain one
+        # (articles.comments TEXT next to comments.article_id -> def
+        # comments_as_article).
         definition.tables.each do |other|
           next if other.name == table.name
 
           pointing = other.foreign_keys.select { |fk| fk.to_table == table.name }
           pointing.each do |fk|
-            plain = pointing.size > 1 ? other.name + "_as_" + column_stem(fk.column) : other.name
-            name = plain
-            note = ""
-            # The column (or the Model method) owns the plain name: it is the
-            # explicit thing and the association is derived, so the reader
-            # moves to `<table>_as_<stem>` -- the name it would have if the
-            # table pointed here twice -- and the generated file says so.
-            # Only that name colliding too is an error.
-            if taken.include?(name) || Ident.keyword?(name) || Ident.reserved_column?(name)
-              name = other.name + "_as_" + column_stem(fk.column)
-              note = "# has_many #{other.name} reads as #{name}: #{plain.inspect} is a column or a Cybertrain::Model method"
-            end
-            next if assoc_names.include?(name)
-            association_collision!(table, name, "has_many (#{other.name}.#{fk.column})") if taken.include?(name)
-            check_association_name(table, name, "has_many")
-
+            as_stem = other.name + "_as_" + column_stem(fk.column)
+            plain = pointing.size > 1 ? as_stem : other.name
+            name = association_name(table, plain, as_stem, "has_many (#{other.name}.#{fk.column})", taken, assoc_names)
             assoc_names << name
-            assoc_defs << note unless note == ""
+            assoc_defs << association_note("has_many #{other.name}", plain, name) if name != plain
             assoc_defs << "def #{name} = #{model_class_name(other.name)}Relation.new(\"#{other.name}\")" \
                           ".where(#{fk.column}: @id).to_a"
           end

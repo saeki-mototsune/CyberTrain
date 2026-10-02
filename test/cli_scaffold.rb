@@ -261,15 +261,16 @@ test "bad input is rejected before anything is written" do
   status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "class", "name:string"]) }
   assert_equal 1, status
   refute File.exist?("blog/app/models/class.rb")
-  # A resource is read as `errors` (has_many) / `error` (belongs_to) on the
-  # models that reference it, so its singular and plural answer to the same
-  # rules as a column: Post#errors would shadow Model#errors.
-  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "Error", "post:references"]) }
+  # A resource's singular is the belongs_to reader on the models that
+  # reference it (`hash:references` -> Thing#hash would shadow Object#hash),
+  # so it answers to the same rules as a column. The plural (the has_many
+  # reader) is the generator's business: it renames, never refuses.
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "Hash", "post:references"]) }
   assert_equal 1, status
-  refute File.exist?("blog/app/models/error.rb")
-  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "attribute", "name:string"]) }
+  refute File.exist?("blog/app/models/hash.rb")
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "raise", "name:string"]) }
   assert_equal 1, status
-  refute File.exist?("blog/app/models/attribute.rb")
+  refute File.exist?("blog/app/models/raise.rb")
   assert_equal 4, migration_versions.size
   # TMP itself is not an app: it has no config/routes.rb.
   assert_equal 1, Cybertrain::CLI.run(["generate", "scaffold", "tag", "name:string"])
