@@ -1,0 +1,20 @@
+#!/bin/sh
+# playground/deploy/session-image [REPOSITORY] -- prints the session image a
+# control-plane deploy pins: REPOSITORY:latest (default
+# ghcr.io/saeki-mototsune/cybertrain-playground-web, which CI pushes only
+# after its smoke and end-to-end tests pass) resolved to its digest. Also
+# writes it to playground/deploy/.session-image (git-ignored) for the
+# pre-deploy hook. control.yml calls it through ERB whenever Kamal reads the
+# config. PLAY_SESSION_IMAGE_REF set: that reference, as it is.
+set -eu
+repo=${1:-ghcr.io/saeki-mototsune/cybertrain-playground-web}
+here=$(cd "$(dirname "$0")" && pwd)
+if [ -n "${PLAY_SESSION_IMAGE_REF:-}" ]; then
+  ref=$PLAY_SESSION_IMAGE_REF
+else
+  digest=$(docker buildx imagetools inspect "$repo:latest" --format '{{.Manifest.Digest}}')
+  case "$digest" in sha256:*) ;; *) echo "session-image: no digest for $repo:latest" >&2; exit 1 ;; esac
+  ref="$repo@$digest"
+fi
+printf '%s\n' "$ref" > "$here/.session-image"
+printf '%s' "$ref"

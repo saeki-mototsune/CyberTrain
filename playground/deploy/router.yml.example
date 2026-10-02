@@ -1,0 +1,64 @@
+# Kamal config of the hosted playground's router (SP2): a stock Caddy that
+# kamal-proxy hands every request for <DOMAIN> and *.<DOMAIN>. Copy to
+# playground/deploy/router.yml (git-ignored) and fill in the placeholders.
+#
+#   kamal setup  -c playground/deploy/router.yml   # once, before the control plane
+#   kamal deploy -c playground/deploy/router.yml   # rarely: live editors reconnect (playground/deploy/README.md)
+service: cybertrain-play-router
+image: <GHCR_OWNER>/cybertrain-play-router
+minimum_version: 2.12.0
+
+servers:
+  web:
+    hosts:
+      - <VPS_IP>
+    options:
+      network-alias: ctplay-router
+      # No outside resolver: the router needs none, and the ids of ended
+      # sessions must not reach the host's.
+      dns: 127.0.0.1
+      # It spans the kamal network and every session network: it forwards
+      # nothing at the IP level (spec §15, correction 6).
+      sysctl: net.ipv4.ip_forward=0
+
+proxy:
+  hosts:
+    - <DOMAIN>
+    - "*.<DOMAIN>"
+  app_port: 80
+  ssl:
+    certificate_pem: CERTIFICATE_PEM
+    private_key_pem: PRIVATE_KEY_PEM
+  forward_headers: false
+  # POST /sessions waits for the new session (up to PLAY_READY_TIMEOUT, 30 s).
+  response_timeout: 60
+  healthcheck:
+    path: /up
+    interval: 1
+    timeout: 3
+
+registry:
+  server: ghcr.io
+  username: <GHCR_OWNER>
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+  context: .
+  dockerfile: playground/router/Dockerfile
+
+env:
+  clear:
+    PLAY_DOMAIN: <DOMAIN>
+    PLAY_PUBLIC_URL: https://<DOMAIN>
+    PLAY_SUBNET_POOL: 10.250.0.0/16
+
+logging:
+  options:
+    max-size: 10m
+    max-file: "3"
+
+# Non-root deploy user in the docker group on the VPS.
+ssh:
+  user: deploy

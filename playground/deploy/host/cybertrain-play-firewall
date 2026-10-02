@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# cybertrain-play-firewall -- host rules of the hosted playground (SP2), run
+# by cybertrain-play-firewall.service after Docker starts and whenever Docker
+# restarts; safe to run again (it rebuilds its own chains).
+#   POOL     the session subnet pool (PLAY_SUBNET_POOL)   default 10.250.0.0/16
+#   EXT_IF   the public interface                         default: the default route's
+#   CF_LIST  Cloudflare's IPv4 ranges, one per line        default /etc/cybertrain-play/cloudflare-ips-v4
+#            (from https://www.cloudflare.com/ips-v4, which has no final newline)
+# Session rules always apply. The Cloudflare-only rule for ports 80/443 needs
+# a non-empty CF_LIST; without one the script says so and exits 1, leaving
+# the ports open (per-IP limits can then be spoofed; the global cap holds).
+set -uo pipefail
+POOL=${POOL:-10.250.0.0/16}
+EXT_IF=${EXT_IF:-$(ip -4 route show default | awk '{print $5; exit}')}
+CF_LIST=${CF_LIST:-/etc/cybertrain-play/cloudflare-ips-v4}
+status=0
+
+chain() { iptables -N "$1" 2>/dev/null || iptables -F "$1"; }
+
+# 1. A session never talks to the host itself (its bridge has no host address
+#    with inhibit_ipv4; this covers the case where it has one).
+iptables -C INPUT -s "$POOL" -j DROP 2>/dev/null || iptables -I INPUT 1 -s "$POOL" -j DROP
+
+# 2. Forwarded traffic, checked before Docker's own rules (DOCKER-USER).
+chain CTPLAY
+iptables -A CTPLAY -d 169.254.169.254/32 -j DROP          # cloud metadata, from any container
+if [ -s "$CF_LIST" ]; then
+  chain CTPLAY-EDGE
+  # `|| [ -n "$range" ]` keeps the last line, which has no newline.
+  while read -r range || [ -n "$range" ]; do
+    [ -n "$range" ] && iptables -A CTPLAY-EDGE -s "$range" -j RETURN
+  done < "$CF_LIST"
+  iptables -A CTPLAY-EDGE -j DROP
+  for port in 80 443; do
+    iptables -A CTPLAY -i "$EXT_IF" -p tcp -m conntrack --ctorigdstport "$port" --ctdir ORIGINAL -j CTPLAY-EDGE
+  done
+else
+  echo "cybertrain-play-firewall: $CF_LIST is empty: ports 80/443 stay open to everyone" >&2
+  status=1
+fi
+iptables -A CTPLAY -m physdev --physdev-is-bridged -j RETURN  # router <-> session on one bridge
+iptables -A CTPLAY -s "$POOL" -j DROP                         # anything routed out of a session network
+iptables -C DOCKER-USER -j CTPLAY 2>/dev/null || iptables -I DOCKER-USER 1 -j CTPLAY
+exit "$status"

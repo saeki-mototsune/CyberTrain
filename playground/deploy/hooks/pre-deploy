@@ -1,0 +1,25 @@
+#!/bin/sh
+# Run by `kamal deploy -c playground/deploy/control.yml` (hooks_path). Pulls
+# the session image that PLAY_SESSION_IMAGE names onto every host, so the
+# control plane's `docker run --pull never` finds it. Any failure aborts the
+# deploy: the control plane never goes live naming an image the host lacks.
+# Rollbacks skip it: the older image is still on the host (post-deploy keeps
+# three).
+set -eu
+[ "${KAMAL_COMMAND:-}" = "rollback" ] && exit 0
+HOSTS="${KAMAL_HOSTS:?KAMAL_HOSTS must be set (this hook is run by kamal deploy)}"
+
+git diff-index --quiet HEAD || {
+  echo "pre-deploy: uncommitted changes: commit first (the control image is built from this tree)" >&2
+  exit 1
+}
+ref_file=playground/deploy/.session-image
+[ -s "$ref_file" ] || { echo "pre-deploy: $ref_file is missing (playground/deploy/session-image writes it)" >&2; exit 1; }
+REF=$(cat "$ref_file")
+SSH_USER=$(sed -n 's|^ *user: *\(.*\)|\1|p' playground/deploy/control.yml | head -n 1)
+SSH_USER="${SSH_USER:-root}"
+
+for HOST in $(echo "$HOSTS" | tr ',' ' '); do
+  echo "pre-deploy: pulling $REF on $HOST"
+  ssh "$SSH_USER@$HOST" "docker pull '$REF' > /dev/null && docker image inspect --format '{{.Id}}' '$REF'"
+done

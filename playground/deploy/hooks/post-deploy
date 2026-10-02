@@ -1,0 +1,11 @@
+#!/bin/sh
+# Run after `kamal deploy -c playground/deploy/control.yml`: keeps the three
+# newest session images on every host. docker rmi refuses an image a live
+# session uses, which is fine.
+set -u
+[ "${KAMAL_COMMAND:-}" = "deploy" ] || exit 0
+SSH_USER=$(sed -n 's|^ *user: *\(.*\)|\1|p' playground/deploy/control.yml | head -n 1)
+for HOST in $(echo "${KAMAL_HOSTS:-}" | tr ',' ' '); do
+  ssh "${SSH_USER:-root}@$HOST" \
+    "docker images ghcr.io/saeki-mototsune/cybertrain-playground-web --format '{{.ID}}' | awk '!seen[\$0]++' | tail -n +4 | xargs -r docker rmi > /dev/null 2>&1 || true"
+done
