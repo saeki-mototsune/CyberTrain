@@ -1,21 +1,104 @@
 #!/bin/sh
-# Run by `kamal deploy -c playground/deploy/control.yml` (hooks_path). Pulls
-# the session image that PLAY_SESSION_IMAGE names onto every host, so the
-# control plane's `docker run --pull never` finds it. Any failure aborts the
-# deploy: the control plane never goes live naming an image the host lacks.
-# Rollbacks skip it: the older image is still on the host (post-deploy keeps
-# three).
+# Run by Kamal before it boots a new version of either service (hooks_path in
+# router.yml and control.yml): kamal setup, deploy, redeploy and rollback.
+# Each check stops the deploy with a message (non-zero exit):
+#   1. router: PLAY_ORIGIN_CERT and PLAY_ORIGIN_KEY name readable, non-empty
+#      files (Kamal uploads their content as kamal-proxy's certificate);
+#   2. both: router.yml and control.yml give PLAY_SUBNET_POOL one value;
+#   3. both, except rollbacks (they build nothing): no uncommitted change and
+#      no untracked file under the service's directory, since Kamal builds
+#      the image from the working tree (builder context: .);
+#   4. control: playground/deploy/.session-image holds a valid reference, and
+#      its pull succeeds on every host.
+# The control plane starts sessions with `docker run --pull never`, so 4
+# pulls the session image PLAY_SESSION_IMAGE names onto every host before the
+# new version boots, rollbacks included: Kamal 2.12 boots the old version's
+# image with the configuration as rendered now, so the session image is the
+# one pinned at rollback time (what latest names then) unless
+# PLAY_SESSION_IMAGE_REF names another. To bring the old session image back
+# too, give its reference (PLAY_SESSION_IMAGE in the old container's
+# environment on the host):
+#   PLAY_SESSION_IMAGE_REF=<the old reference> kamal rollback <version> -c playground/deploy/control.yml
 set -eu
-[ "${KAMAL_COMMAND:-}" = "rollback" ] && exit 0
 HOSTS="${KAMAL_HOSTS:?KAMAL_HOSTS must be set (this hook is run by kamal deploy)}"
+case "${KAMAL_SERVICE:-}" in
+  cybertrain-play-router) service=router ;;
+  cybertrain-play) service=control ;;
+  *) echo "pre-deploy: unknown service '${KAMAL_SERVICE:-}' (cybertrain-play-router or cybertrain-play)" >&2; exit 1 ;;
+esac
 
-git diff-index --quiet HEAD || {
-  echo "pre-deploy: uncommitted changes: commit first (the control image is built from this tree)" >&2
-  exit 1
+# 1. Kamal uploads whatever the secrets hold, empty included.
+need_file() { # VARIABLE VALUE WHAT
+  if [ -z "$2" ]; then
+    echo "pre-deploy: $1 is not set: export it with the path of the Origin CA $3 (Kamal would upload an empty one)" >&2
+    exit 1
+  elif [ ! -f "$2" ] || [ ! -r "$2" ] || [ ! -s "$2" ]; then
+    echo "pre-deploy: $1 ($2) is not a readable, non-empty file" >&2
+    exit 1
+  fi
+}
+if [ "$service" = router ]; then
+  need_file PLAY_ORIGIN_CERT "${PLAY_ORIGIN_CERT:-}" certificate
+  need_file PLAY_ORIGIN_KEY "${PLAY_ORIGIN_KEY:-}" "private key"
+fi
+
+# 2. The router closes connections that come from the pool, and the firewall
+#    (its POOL) drops traffic from it. A file without the line means the
+#    default that both services use.
+pool_in() { # FILE
+  value=$(sed -n "s/^[[:space:]]*PLAY_SUBNET_POOL:[[:space:]]*[\"']\{0,1\}\([^\"'[:space:]#]*\).*/\1/p" "$1" | head -n 1)
+  echo "${value:-10.250.0.0/16}"
+}
+router_yml=playground/deploy/router.yml
+control_yml=playground/deploy/control.yml
+if [ -f "$router_yml" ] && [ -f "$control_yml" ]; then
+  router_pool=$(pool_in "$router_yml")
+  control_pool=$(pool_in "$control_yml")
+  if [ "$router_pool" != "$control_pool" ]; then
+    echo "pre-deploy: PLAY_SUBNET_POOL is $router_pool in $router_yml but $control_pool in $control_yml: give both, and the firewall's POOL, the same value" >&2
+    exit 1
+  fi
+else
+  for file in "$router_yml" "$control_yml"; do
+    [ -f "$file" ] || echo "pre-deploy: $file is missing, so PLAY_SUBNET_POOL was not compared (keep it the same in router.yml, control.yml and the firewall's POOL)" >&2
+  done
+fi
+
+# 3. A clean tree.
+dir=playground/$service
+if [ "${KAMAL_COMMAND:-}" != rollback ]; then
+  git update-index -q --refresh > /dev/null 2>&1 || :
+  changed=$(git diff-index --name-only HEAD --)
+  if [ -n "$changed" ]; then
+    echo "pre-deploy: uncommitted changes: commit first (the $service image is built from this tree):" >&2
+    printf '%s\n' "$changed" | sed 's/^/  /' >&2
+    exit 1
+  fi
+  untracked=$(git status --porcelain --untracked-files=all -- "$dir")
+  untracked=$(printf '%s\n' "$untracked" | sed -n 's/^?? //p')
+  if [ -n "$untracked" ]; then
+    echo "pre-deploy: untracked files under $dir/, which the $service image is built from: commit or remove them first:" >&2
+    printf '%s\n' "$untracked" | sed 's/^/  /' >&2
+    exit 1
+  fi
+fi
+[ "$service" = control ] || exit 0
+
+# 4. The reference goes into a remote command: the control plane's rule for
+#    an image reference (Play::Config, PLAY_SESSION_IMAGE), and a pinned one
+#    ends in @sha256: and 64 lower-case hex digits (as in session-image).
+alnum=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
+valid_ref() { # REF
+  case "$1" in "" | [!$alnum]* | *[!$alnum._/:@-]*) return 1 ;; esac
+  case "$1" in *@*) ;; *) return 0 ;; esac
+  hex=${1##*@sha256:}
+  [ "$hex" != "$1" ] && [ ${#hex} -eq 64 ] || return 1
+  case "$hex" in *[!0123456789abcdef]*) return 1 ;; esac
 }
 ref_file=playground/deploy/.session-image
 [ -s "$ref_file" ] || { echo "pre-deploy: $ref_file is missing (playground/deploy/session-image writes it)" >&2; exit 1; }
 REF=$(cat "$ref_file")
+valid_ref "$REF" || { echo "pre-deploy: $ref_file does not hold an image reference: '$REF'" >&2; exit 1; }
 SSH_USER=$(sed -n 's|^ *user: *\(.*\)|\1|p' playground/deploy/control.yml | head -n 1)
 SSH_USER="${SSH_USER:-root}"
 

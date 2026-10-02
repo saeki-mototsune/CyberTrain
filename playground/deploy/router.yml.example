@@ -32,6 +32,17 @@ proxy:
   forward_headers: false
   # POST /sessions waits for the new session (up to PLAY_READY_TIMEOUT, 30 s).
   response_timeout: 60
+  # kamal-proxy reads a request's whole body before the router sees it (by
+  # default up to 1 GB, on disk beyond 1 MB), so the router's 4 KB limit on
+  # the apex alone could not keep a large body off the host's disk. No host
+  # of this service needs more than 1 MB (uploads are off in the editor,
+  # whose traffic is a WebSocket; the preview's forms are small): bodies up
+  # to 1 MB stay in memory, larger ones are refused. Responses: Kamal's
+  # default.
+  buffering:
+    requests: true
+    max_request_body: 1_000_000
+    memory: 1_000_000
   healthcheck:
     path: /up
     interval: 1
@@ -52,7 +63,18 @@ env:
   clear:
     PLAY_DOMAIN: <DOMAIN>
     PLAY_PUBLIC_URL: https://<DOMAIN>
+    # The same value as PLAY_SUBNET_POOL in control.yml and as POOL in
+    # playground/deploy/host/cybertrain-play-firewall: the router closes
+    # connections that come from the pool, and the firewall drops traffic
+    # from it. pre-deploy compares router.yml with control.yml.
     PLAY_SUBNET_POOL: 10.250.0.0/16
+
+# pre-deploy refuses a router deploy without readable, non-empty certificate
+# files (PLAY_ORIGIN_CERT, PLAY_ORIGIN_KEY), with a pool unlike control.yml's,
+# or from a tree with uncommitted changes. verbose: Kamal shows the hooks'
+# messages, which it hides by default.
+hooks_path: playground/deploy/hooks
+hooks_output: verbose
 
 logging:
   options:

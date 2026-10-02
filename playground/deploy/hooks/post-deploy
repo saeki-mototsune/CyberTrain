@@ -1,11 +1,20 @@
 #!/bin/sh
-# Run after `kamal deploy -c playground/deploy/control.yml`: keeps the three
-# newest session images on every host. docker rmi refuses an image a live
-# session uses, which is fine.
+# Run after a deploy (hooks_path in router.yml and control.yml). After
+# `kamal deploy -c playground/deploy/control.yml`, it keeps the three newest
+# session images on every host. Best effort: an unreachable host or a failed
+# prune prints a warning, and the hook still exits 0 (the deploy is done).
+# docker rmi refuses an image a live session uses, which is fine.
 set -u
-[ "${KAMAL_COMMAND:-}" = "deploy" ] || exit 0
+[ "${KAMAL_SERVICE:-}" = cybertrain-play ] && [ "${KAMAL_COMMAND:-}" = deploy ] || exit 0
 SSH_USER=$(sed -n 's|^ *user: *\(.*\)|\1|p' playground/deploy/control.yml | head -n 1)
+prune="ids=\$(docker images ghcr.io/saeki-mototsune/cybertrain-playground-web --format '{{.ID}}') && printf '%s\n' \"\$ids\" | awk '!seen[\$0]++' | tail -n +4 | xargs -r docker rmi > /dev/null 2>&1"
 for HOST in $(echo "${KAMAL_HOSTS:-}" | tr ',' ' '); do
-  ssh "${SSH_USER:-root}@$HOST" \
-    "docker images ghcr.io/saeki-mototsune/cybertrain-playground-web --format '{{.ID}}' | awk '!seen[\$0]++' | tail -n +4 | xargs -r docker rmi > /dev/null 2>&1 || true"
+  ssh "${SSH_USER:-root}@$HOST" "$prune"
+  rc=$?
+  if [ "$rc" -eq 255 ]; then
+    echo "post-deploy: warning: $HOST cannot be reached: its old session images stay" >&2
+  elif [ "$rc" -ne 0 ]; then
+    echo "post-deploy: warning: pruning old session images on $HOST failed (exit $rc): some stay (docker rmi refuses an image a live session uses)" >&2
+  fi
 done
+exit 0

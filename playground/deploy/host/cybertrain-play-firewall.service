@@ -10,4 +10,6 @@ RemainAfterExit=yes
 ExecStart=/usr/local/sbin/cybertrain-play-firewall
 
 [Install]
-WantedBy=multi-user.target
+# docker.service too: a start of Docker (not only a boot or a restart) runs
+# the rules again, and the unit is not left shown inactive.
+WantedBy=multi-user.target docker.service

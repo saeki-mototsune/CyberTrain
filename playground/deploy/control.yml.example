@@ -5,7 +5,9 @@
 # pre-deploy hook pulls exactly that onto the host. Every Kamal command reads
 # this file, so each one asks GHCR for the digest; when GHCR cannot be
 # reached, set PLAY_SESSION_IMAGE_REF to the reference in
-# playground/deploy/.session-image first.
+# playground/deploy/.session-image first. A rollback, too, pins what latest
+# names at that moment, unless PLAY_SESSION_IMAGE_REF names the old reference
+# (playground/deploy/hooks/pre-deploy).
 #
 #   kamal setup  -c playground/deploy/control.yml   # once, after the router
 #   kamal deploy -c playground/deploy/control.yml   # any time: live sessions keep running
@@ -44,6 +46,10 @@ env:
     PLAY_MAX_SESSIONS_PER_IP: "1"
     PLAY_TTL: "1800"
     PLAY_SESSION_MEMORY: 1536m
+    # The same value as PLAY_SUBNET_POOL in router.yml and as POOL in
+    # playground/deploy/host/cybertrain-play-firewall: the router closes
+    # connections that come from the pool, and the firewall drops traffic
+    # from it. pre-deploy compares control.yml with router.yml.
     PLAY_SUBNET_POOL: 10.250.0.0/16
     # Empty reaches the container as unset (runc); runsc after the gVisor
     # measurement (playground/deploy/README.md).
@@ -54,7 +60,11 @@ volumes:
   - /var/run/docker.sock:/var/run/docker.sock
   - /var/lib/cybertrain-play:/data
 
+# pre-deploy pulls the pinned session image onto every host, post-deploy
+# prunes old ones. verbose: Kamal shows the hooks' messages, which it hides
+# by default.
 hooks_path: playground/deploy/hooks
+hooks_output: verbose
 
 logging:
   options:
