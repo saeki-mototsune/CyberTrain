@@ -75,6 +75,12 @@
 				error 404
 			}
 			handle {
+				# No route of the control plane takes a request body. A large
+				# one stops here: Puma would buffer a chunked body to disk
+				# before the application could refuse it.
+				request_body {
+					max_size 4KB
+				}
 				reverse_proxy {$PLAY_CONTROL_UPSTREAM:ctplay-control:9292}
 			}
 		}
@@ -108,6 +114,14 @@
 			file_server {
 				status 503
 			}
+		}
+		# A request body over the apex's limit (the control plane takes none).
+		@apex_too_large {
+			host {$PLAY_DOMAIN}
+			expression {err.status_code} == 413
+		}
+		handle @apex_too_large {
+			respond "Request body too large" 413
 		}
 		@preview_error header_regexp Host ^3000-[0-9a-f]{32}\.
 		handle @preview_error {
