@@ -236,6 +236,18 @@ module Cybertrain
                              "association of the same name; rename the column"
       end
 
+      # An association reader is a method on the model like any column
+      # reader, so it answers to the same rules: `errors_id` (-> def errors)
+      # or a table called `attributes` pointing here would shadow Model#errors
+      # / #attributes. The scaffold applies the same check to a references
+      # field before writing anything.
+      def self.check_association_name(table, name, kind)
+        return nil unless Ident.keyword?(name) || Ident.reserved_column?(name)
+
+        raise ArgumentError, "table #{table.name}: the #{kind} association #{name.inspect} is reserved " \
+                             "(it would shadow a method of Cybertrain::Model or Object); rename it"
+      end
+
       def self.emit_dispatch(table, definition, view_methods)
         src = +""
         taken = table.columns.map { |c| c.name }
@@ -251,6 +263,7 @@ module Cybertrain
           name = col[0, col.size - 3]
           next if assoc_names.include?(name)
           association_collision!(table, name, "belongs_to (from #{col})") if taken.include?(name)
+          check_association_name(table, name, "belongs_to")
 
           assoc_names << name
           assoc_defs << "def #{name} = #{model_class_name(fk.to_table)}.find_by(id: @#{col})"
@@ -270,6 +283,7 @@ module Cybertrain
             name = pointing.size > 1 ? other.name + "_as_" + column_stem(fk.column) : other.name
             next if assoc_names.include?(name)
             association_collision!(table, name, "has_many (#{other.name}.#{fk.column})") if taken.include?(name)
+            check_association_name(table, name, "has_many")
 
             assoc_names << name
             assoc_defs << "def #{name} = #{model_class_name(other.name)}Relation.new(\"#{other.name}\")" \

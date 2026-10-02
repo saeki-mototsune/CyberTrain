@@ -23,7 +23,7 @@ class ServerTestApp < Cybertrain::Middleware
     when "/boom"
       raise "kaboom"
     when "/reject"
-      # what Query.parse raises past its limits (the stack parses inside @app)
+      # what Query.parse raises past its limits (a bare app: no error pages)
       raise Cybertrain::Query::TooDeep, "nested too deeply (limit 32)"
     when "/json"
       # a StandardError under CRuby, not under Spinel (NOTES rule 33)

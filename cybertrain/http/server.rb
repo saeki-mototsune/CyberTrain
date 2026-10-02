@@ -284,20 +284,6 @@ module Cybertrain
       # the client went away; nothing to answer
     rescue StandardError => e
       @logger.error("connection error: #{e.class.name}: #{e.message}")
-    rescue JSON::ParserError => e
-      # Last resort for the one exception `rescue StandardError` is known to
-      # miss: JSON::ParserError is not a StandardError under Spinel (NOTES
-      # rule 33). Without this it would unwind past serve and kill the
-      # connection thread without a word. Named explicitly rather than a bare
-      # `rescue Exception`, which would also eat Interrupt, SignalException
-      # and SystemExit and break the SIGTERM drain; SystemStackError and
-      # NoMemoryError are not named because nothing proves Spinel's exception
-      # table has them (a stack overflow is a SIGSEGV there anyway -- the
-      # depth limits in Query and the template Interpreter are the real
-      # guard). Kept in serve, which does not yield (rule 32). Nothing has
-      # been written for this request yet, so answer a plain 500 and close.
-      @logger.error("unhandled exception: #{e.class.name}: #{e.message}")
-      reject(sock, 500)
     ensure
       sock.close unless sock.closed?
       connection_closed
@@ -329,16 +315,20 @@ module Cybertrain
       response = ctx.response
       begin
         @app.call(ctx)
-      rescue Query::Rejected => e
+      rescue Query::LimitExceeded => e
         # A query string or form body past Query's limits (nesting depth,
         # pair count) is the client's fault: 400, logged at info so a flood
-        # of them does not fill the error log. Parsing happens inside the
-        # stack (MethodOverride, CsrfProtection, Router), which is why the
-        # mapping lives here and not in a middleware.
+        # of them does not fill the error log. ErrorPages and Dev::ErrorPage
+        # map it the same way for a full stack; this is the bare-app path.
         @logger.info("rejected request parameters: #{e.message}")
         response = error_response(400)
       rescue JSON::ParserError, StandardError => e
-        # NOTES rule 33: JSON::ParserError is not a StandardError under Spinel.
+        # JSON::ParserError is not a StandardError under Spinel (NOTES rule
+        # 33); named here so an action's bad JSON.parse is a 500 and not the
+        # end of the connection thread. SystemStackError / NoMemoryError are
+        # not named: nothing proves Spinel's exception table has them (a
+        # stack overflow is a SIGSEGV there anyway); the depth limits in Query
+        # and the template Interpreter are the guard against those.
         @logger.error("#{e.class.name}: #{e.message}")
         response = error_response(500)
       end
@@ -362,9 +352,7 @@ module Cybertrain
 
     def error_response(status)
       response = Response.new
-      response.status = status
-      response.content_type = "text/plain"
-      response.body = response.status_text
+      response.reset_to(status)
       response
     end
 

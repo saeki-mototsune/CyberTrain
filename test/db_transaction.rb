@@ -1,4 +1,6 @@
+require "stringio"
 require "cybertrain/db"
+require "cybertrain/logger"
 require "cybertrain/test"
 
 # A pooled connection must come back in autocommit mode (and with
@@ -62,16 +64,21 @@ end
 
 # Every DB.with block here is a one-line call into a method, the shape
 # test/db_sqlite.rb compiles with.
-test "a BEGIN left open inside a checkout is rolled back when the connection comes back" do
+test "a BEGIN left open inside a checkout is rolled back, and logged, when the connection comes back" do
+  log = StringIO.new
+  Cybertrain.logger = Cybertrain::Logger.new(log, :info)
   DB.connect(":memory:")
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
+  assert_equal "", log.string
   # Still inside the checkout the row is there: the BEGIN stays open until
   # the connection goes back, which is what makes the pool the place to
-  # clean up.
+  # clean up -- and the only place that can say the writes are gone.
   assert_equal 1, DB.with { |c| leave_begin_open(c) }
+  assert_includes log.string, "[WARN] rolled back a transaction left open on a pooled connection"
   assert_equal 0, DB.with { |c| post_count(c) }
   assert DB.with { |c| clean?(c) }
   assert_equal 1, DB.with { |c| insert_after(c) }
+  assert log.string.lines.size == 1, "a clean check-in logs nothing"
   DB.disconnect
 end
 

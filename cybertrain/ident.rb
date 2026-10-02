@@ -39,19 +39,22 @@ module Cybertrain
       "when", "while", "yield"
     ]
 
-    # /\A[a-z_][a-z0-9_]*\z/ spelled out: a plain snake_case name.
+    # /\A[a-z_][a-z0-9_]*\z/ spelled out: a plain snake_case name. A flag
+    # rather than a `return` inside the block, like Templates.identifier?:
+    # a `return` from an each_char block does leave the method under Spinel
+    # (probed on 2026.09.12), but the flag needs no such guarantee.
     def self.column?(name)
       return false if name.empty?
 
-      i = 0
+      ok = true
+      first = true
       name.each_char do |ch|
         lower = ch >= "a" && ch <= "z"
         digit = ch >= "0" && ch <= "9"
-        return false unless lower || ch == "_" || (digit && i > 0)
-
-        i += 1
+        ok = false unless lower || ch == "_" || (digit && !first)
+        first = false
       end
-      true
+      ok
     end
 
     def self.keyword?(name)

@@ -1,3 +1,4 @@
+require "json"
 require "cybertrain/middleware"
 require "cybertrain/logger"
 require "cybertrain/http/query"
@@ -20,16 +21,19 @@ module Cybertrain
     def call(ctx)
       begin
         super
-      rescue Query::Rejected => e
+      rescue Query::LimitExceeded => e
         # Request parameters past Query's limits (nesting depth, pair count)
         # are the client's fault: 400, at info level. Caught here because
         # this middleware wraps the whole stack, so Server#respond's own
         # mapping never sees the exception in a real application.
         @logger.info("rejected request parameters: #{e.message}")
-        bad_request(ctx.response)
-      rescue StandardError => e
+        ctx.response.reset_to(400)
+      rescue JSON::ParserError, StandardError => e
+        # JSON::ParserError named too: not a StandardError under Spinel
+        # (NOTES rule 33), and an action's JSON.parse of a bad body deserves
+        # the same 500 page as any other failure.
         @logger.error("#{e.class.name}: #{e.message}")
-        internal_error(ctx.response)
+        ctx.response.reset_to(500)
       end
       response = ctx.response
       page = page_for(response)
@@ -41,26 +45,6 @@ module Cybertrain
     end
 
     private
-
-    # Starts over like Server#error_response: every header and cookie the
-    # failed action had already set goes (a stale Location or
-    # Content-Disposition: attachment would hide the page).
-    def internal_error(response)
-      reset_to(response, 500)
-    end
-
-    def bad_request(response)
-      reset_to(response, 400)
-    end
-
-    def reset_to(response, status)
-      response.headers.clear
-      response.cookies.clear
-      response.status = status
-      response.content_type = "text/plain; charset=utf-8"
-      response.body = response.status_text
-      nil
-    end
 
     # The page to serve in place of the response's body, or "".
     def page_for(response)

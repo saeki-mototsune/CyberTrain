@@ -251,6 +251,10 @@ test "bad input is rejected before anything is written" do
   rejected(["save:text"])
   rejected(["attributes:string"])
   rejected(["hash:integer"])
+  # A references field also defines a reader (def errors), so the same rule
+  # applies to the field name, not only to the errors_id column.
+  rejected(["errors:references"])
+  rejected(["hash:references"])
   rejected(["a:string:index"])
   rejected(["a:string:"])
   rejected(["Title:string"])

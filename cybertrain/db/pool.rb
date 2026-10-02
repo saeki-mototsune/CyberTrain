@@ -1,4 +1,5 @@
 require "cybertrain/db/connection"
+require "cybertrain/logger"
 
 module Cybertrain
   module DB
@@ -24,13 +25,16 @@ module Cybertrain
       end
 
       # The connection goes back clean: a transaction the block left open
-      # is rolled back first -- see Connection#abandon_transaction!.
+      # is rolled back first -- see Connection#abandon_transaction! -- and
+      # the log says so, since the writes are gone and nothing else would.
       def with
         conn = @available.pop
         begin
           yield conn
         ensure
-          conn.abandon_transaction!
+          if conn.abandon_transaction!
+            Cybertrain.logger.warn("rolled back a transaction left open on a pooled connection (a BEGIN without COMMIT)")
+          end
           @available << conn
         end
       end

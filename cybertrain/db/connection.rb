@@ -140,13 +140,14 @@ module Cybertrain
       # the depth at 1, so every later transaction on this pooled connection
       # would count as nested and nothing would ever be committed; a BEGIN
       # run by hand leaves autocommit off. A clean connection is untouched.
+      # True when there was something to roll back, so the caller can say so.
       def abandon_transaction!
-        return nil if @closed
-        return nil if @transaction_depth == 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
+        return false if @closed
+        return false if @transaction_depth == 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
 
         @transaction_depth = 0
         rollback_quietly
-        nil
+        true
       end
 
       def close

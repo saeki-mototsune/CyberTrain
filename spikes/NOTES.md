@@ -171,8 +171,10 @@ finds the commit that removed them).
 44. `break` out of a block whose `yield` sits inside a `begin/rescue` is
     rejected at compile time ("unsupported expression: BreakNode"); the same
     `break` compiles when the yield is guarded by `ensure` only. `return`
-    inside a block ends the block, not the enclosing method. A `break`
-    anywhere inside a block forwarded as `&block` (DB.with's) is rejected too.
+    inside a block passed to a user-defined yielding method ends the block,
+    not the enclosing method (seen with Connection#transaction); a `return`
+    inside an `each_char` block does leave the method. A `break` anywhere
+    inside a block forwarded as `&block` (DB.with's) is rejected too.
 45. Rule 32 in practice: calling a yielding method that has `rescue => e`
     (Connection#transaction) from a block nested in another block fails in
     the C compiler ("assigning to 'volatile sp_RbVal' from incompatible type

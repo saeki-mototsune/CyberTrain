@@ -24,6 +24,20 @@ module Cybertrain
       @performed = false
     end
 
+    # Starts the response over as a plain-text error: every header and
+    # cookie an action had already set goes (a stale Location or
+    # Content-Disposition: attachment would hide the error), then status,
+    # text/plain and body ("" means the status text). The one sequence the
+    # Server, ErrorPages and Dev::ErrorPage share.
+    def reset_to(status, body = "")
+      @headers.clear
+      @cookies.clear
+      @status = status
+      self.content_type = "text/plain; charset=utf-8"
+      @body = body == "" ? status_text : body
+      nil
+    end
+
     # Replaces any existing header of the same name, whatever its case,
     # keeping its position in the output. Raises ArgumentError when the name
     # or value contains CR or LF (header injection / response splitting).

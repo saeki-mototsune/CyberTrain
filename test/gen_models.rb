@@ -617,6 +617,33 @@ test "emit rejects column names that are invalid or collide with model methods" 
   end
 end
 
+test "an association reader named like a Model method is an error too" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "posts" do |t|
+      t.string "title", null: false
+    end
+    s.create_table "errors" do |t|
+      t.references :post
+      t.string "message"
+    end
+    s.create_table "things" do |t|
+      t.references :hash, foreign_key: false
+    end
+    s.create_table "hashes" do |t|
+      t.string "digest"
+    end
+    s.add_foreign_key "things", "hashes", column: "hash_id"
+  end
+  has_many = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
+  end
+  assert_includes has_many, 'the has_many association "errors" is reserved'
+  belongs_to = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [])
+  end
+  assert_includes belongs_to, 'the belongs_to association "hash" is reserved'
+end
+
 test "a column named like an association reader is an error, not a lost association" do
   definition = Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "articles" do |t|

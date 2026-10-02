@@ -1,6 +1,7 @@
 require "cybertrain/middleware"
 require "cybertrain/html"
 require "cybertrain/logger"
+require "json"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/http/query"
 
@@ -23,12 +24,14 @@ module Cybertrain
         begin
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
-        rescue Query::Rejected => e
+        rescue Query::LimitExceeded => e
           # The client's fault (parameters past Query's limits): a plain 400
           # naming the limit, not the 500 diagnostics page. See ErrorPages.
           Cybertrain.logger.info("rejected request parameters: #{e.message}")
-          render_rejected(ctx, e)
-        rescue StandardError => e
+          ctx.response.reset_to(400, "Bad Request: #{e.message}")
+        rescue JSON::ParserError, StandardError => e
+          # NOTES rule 33: JSON::ParserError is not a StandardError under
+          # Spinel, and a bad JSON body deserves the diagnostics page too.
           Cybertrain.logger.error("#{e.class.name}: #{e.message}")
           render_exception(ctx, e)
         end
@@ -56,26 +59,13 @@ module Cybertrain
 
       private
 
-      # Starts over like Server#error_response: every header and cookie the
-      # failed action had already set goes (a stale Location or
-      # Content-Disposition: attachment would hide the page).
+      # Response#reset_to drops the failed action's headers and cookies; the
+      # diagnostics page then replaces the plain-text body.
       def render_exception(ctx, error)
         response = ctx.response
-        response.headers.clear
-        response.cookies.clear
-        response.status = 500
+        response.reset_to(500)
         response.content_type = "text/html; charset=utf-8"
         response.body = error_html(ctx.request, error.class.name, error.message)
-        nil
-      end
-
-      def render_rejected(ctx, error)
-        response = ctx.response
-        response.headers.clear
-        response.cookies.clear
-        response.status = 400
-        response.content_type = "text/plain; charset=utf-8"
-        response.body = "Bad Request: #{error.message}"
         nil
       end
 

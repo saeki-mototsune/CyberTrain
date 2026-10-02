@@ -12,15 +12,18 @@ module Cybertrain
     MAX_PAIRS = 4096 # non-empty "k=v" pairs in one parse
 
     # Raised for input that exceeds a limit above. A StandardError on purpose:
-    # the server's `rescue StandardError` (respond/serve) turns it into an
-    # error response instead of letting it kill the connection thread.
-    class Rejected < StandardError
+    # the error pages (and Server#respond for a bare app) turn it into a 400
+    # instead of letting it kill the connection thread. Not called Rejected:
+    # Cybertrain::Rejected is the Server's own status-carrying error, and
+    # Class#name carries no namespace under Spinel (NOTES rule 46), so the
+    # two would be indistinguishable in a log line.
+    class LimitExceeded < StandardError
     end
 
-    class TooDeep < Rejected
+    class TooDeep < LimitExceeded
     end
 
-    class TooMany < Rejected
+    class TooMany < LimitExceeded
     end
 
     def self.parse(str)

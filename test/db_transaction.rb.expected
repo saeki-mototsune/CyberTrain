@@ -1,6 +1,6 @@
-ok   a BEGIN left open inside a checkout is rolled back when the connection comes back
+ok   a BEGIN left open inside a checkout is rolled back, and logged, when the connection comes back
 ok   abandon_transaction! leaves a clean connection alone
 ok   a StandardError rolls back, re-raises and leaves autocommit on
 ok   a normal completion commits
 ok   a nested transaction joins the outer one and an inner raise rolls everything back
-5 tests, 16 assertions, 0 failures
+5 tests, 19 assertions, 0 failures
