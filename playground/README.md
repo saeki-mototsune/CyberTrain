@@ -108,10 +108,10 @@ The mirror is this checkout's HEAD as a one-commit bare repository with the
 tag `v<VERSION>` forced onto it. A new app's `spin.toml` points at
 `https://github.com/saeki-mototsune/cybertrain`, tag `v<VERSION>`, and the
 `insteadOf` rules send that URL, with or without `.git`, to the mirror, so
-`cybertrain new` works with no network. Every clone of a URL that starts
-with `https://github.com/saeki-mototsune/cybertrain` is sent to the mirror,
-so cloning another repository whose name starts that way fails; to reach
-GitHub itself:
+`cybertrain new` works with no network. git replaces that prefix with the
+mirror's path: the framework's URL gets the mirror, and another repository
+whose name starts that way (`…/cybertrain-foo` becomes
+`…/cybertrain.git-foo`) cannot be cloned; to reach GitHub itself:
 
 ```sh
 GIT_CONFIG_NOSYSTEM=1 git clone https://github.com/saeki-mototsune/cybertrain
@@ -233,5 +233,6 @@ Playground image → Run workflow, on `main`).
 - The blog's `spin.lock` pins the commit the image was built from, which for
   an image built from `main` can differ from the commit GitHub's
   `v<VERSION>` tag points at.
-- Inside the image, clones of any URL that starts with
-  `https://github.com/saeki-mototsune/cybertrain` go to the mirror (above).
+- Inside the image, `https://github.com/saeki-mototsune/cybertrain` clones
+  the one-commit mirror, and other repositories whose URL starts that way
+  cannot be cloned (above).
