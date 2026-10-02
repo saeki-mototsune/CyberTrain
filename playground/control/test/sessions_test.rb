@@ -125,6 +125,29 @@ class SessionsTest < Minitest::Test
     end
   end
 
+  def test_a_creation_that_takes_the_lock_after_a_pause_is_refused_without_docker
+    on_its_way = Queue.new
+    random = Object.new
+    random.define_singleton_method(:hex) do |n|
+      on_its_way << true
+      SecureRandom.hex(n)
+    end
+    s = Play::Sessions.new(config: play_config, docker: @docker, probe: @probe, clock: @clock,
+                           log: Play::EventLog.new(@log), random: random)
+    creation = nil
+    s.with_create_lock do
+      # The creation passes its first pause check, then waits for the lock
+      # while the operator pauses (playctl pause, or a kill-all that pauses).
+      creation = Thread.new { s.create("203.0.113.7") }
+      on_its_way.pop
+      File.write(File.join(s.config.data_dir, "paused"), "maintenance\n")
+    end
+    refusal = creation.value
+    assert_kind_of Play::Sessions::Refusal, refusal
+    assert_equal [:paused, 300, "Maintenance"], [refusal.reason, refusal.retry_after, refusal.message]
+    assert_empty @docker.calls
+  end
+
   def test_full_counts_starting_containers_too
     @docker.default("ps sessions", FakeDocker.ok(container("a" * 16, "running") + container("b" * 16, "created")))
     refusal = sessions("PLAY_MAX_SESSIONS" => "2").create("203.0.113.7")
@@ -204,6 +227,47 @@ class SessionsTest < Minitest::Test
     assert_includes @log.string, "reason=failed"
   end
 
+  def test_a_session_ended_during_its_readiness_wait_is_not_made_ready
+    @probe = FakeProbe.new(ready_after: 2) do |sid, call|
+      next unless call == 2
+
+      # Another thread's teardown of the session (kill-all, an operator's
+      # end) fails at `docker rm` while the creation waits; then the probe
+      # answers, since the container still runs.
+      @docker.on("rm", FakeDocker.fail("Error response from daemon: removal of container ctplay-s-x is already in progress"))
+      refute sessions.teardown(Play::Sessions.handle_for(sid), reason: "killed")
+    end
+    refusal = sessions.create("203.0.113.7")
+    assert_kind_of Play::Sessions::Refusal, refusal
+    assert_equal [:failed, 60], [refusal.reason, refusal.retry_after]
+    handle = handle_of_last_network
+    assert_equal ["ending"], sessions.internal_list.map { |s| s[:state] }
+    refute_includes @log.string, "event=created"
+
+    # The next pass repeats the teardown, for the reason it recorded.
+    @docker.default("ps sessions", FakeDocker.ok(container(handle, "running")))
+    @docker.default("network ls", FakeDocker.ok(network(handle)))
+    sessions.reap
+    assert_includes @log.string, "play event=ended handle=#{handle} reason=killed age_s=0\n"
+  end
+
+  def test_an_unexpected_error_in_a_creation_is_cleaned_up_and_logged_redacted
+    @docker.on("run", lambda do |argv|
+      raise "boom with #{argv[argv.index("--network-alias") + 1]} and #{argv.find { |a| a.start_with?("VSCODE_PROXY_URI=") }}"
+    end)
+    refusal = sessions.create("203.0.113.7")
+    sid, pid = ids
+    handle = handle_of_last_network
+    assert_equal [:failed, 60], [refusal.reason, refusal.retry_after]
+    assert_removed(handle)
+    assert_empty sessions.internal_list
+    assert_includes @log.string, "play event=ended handle=#{handle} reason=failed age_s=0\n"
+    assert_includes @log.string, "play event=error step=create handle=#{handle} message=\"RuntimeError: boom with s-<sid> " \
+                                 "and VSCODE_PROXY_URI=https://{{port}}-<pid>.play.example.test\"\n"
+    [sid, pid].each { |secret| refute_includes @log.string, secret }
+    refute_match(/\h{32}/, @log.string)
+  end
+
   def test_a_missing_image_pauses_creation_until_it_is_back
     @docker.on("run", FakeDocker.fail("docker: Error response from daemon: No such image: ghcr.io/example/web@sha256:0123"))
     refusal = sessions.create("203.0.113.7")
@@ -266,7 +330,23 @@ class SessionsTest < Minitest::Test
     refute_includes @log.string, "event=ended"
   end
 
-  # ---- docker output as arguments -----------------------------------------------
+  def test_kill_all_ends_every_listed_session_and_network_in_the_teardown_order
+    @docker.default("ps sessions", FakeDocker.ok(container("a" * 16, "running") + container("b" * 16, "exited")))
+    @docker.default("network ls", FakeDocker.ok(network("a" * 16) + network("b" * 16) + network("c" * 16)))
+    @docker.default("network inspect", FakeDocker.ok("#{ROUTER} "))
+    assert sessions.kill_all
+    expected = %w[a b c].flat_map do |letter|
+      handle = letter * 16
+      [Play::Templates.remove_container(handle: handle), Play::Templates.network_containers(handle: handle),
+       Play::Templates.network_disconnect(handle: handle, container: ROUTER), Play::Templates.network_remove(handle: handle)]
+    end
+    assert_equal ["ps sessions", "network ls"], @docker.keys.first(2)
+    assert_equal expected, @docker.calls.drop(2)
+    assert_equal %w[a b c].map { |letter| "play event=ended handle=#{letter * 16} reason=killed" },
+                 @log.string.lines.map(&:chomp).grep(/event=ended/)
+  end
+
+  # ---- docker output -------------------------------------------------------------
 
   def test_a_router_listing_word_that_is_not_an_id_reaches_no_command
     @docker.default("ps routers", FakeDocker.ok("#{ROUTER}\n--alias=evil\n"))
@@ -314,6 +394,20 @@ class SessionsTest < Minitest::Test
     assert_equal [Play::Templates.stats(["ctplay-s-#{"a" * 16}"])], @docker.calls_for("stats")
   end
 
+  def test_a_stray_byte_in_docker_output_does_not_stop_the_pass
+    # Without LANG, Ruby labels docker's output US-ASCII; a byte that is not
+    # ASCII then makes splitting and matching raise.
+    odd = ->(text) { text.b.force_encoding(Encoding::US_ASCII) }
+    @docker.default("ps sessions", FakeDocker.ok(odd.call(container("a" * 16, "exited") + container("b" * 16, "running") +
+                                                          "c\tctplay-s-x\trunning\t\xFF\t1\t2\n")))
+    @docker.default("network ls", FakeDocker.ok(odd.call("#{network("a" * 16)}#{network("b" * 16)}n\t\xFF\n")))
+    @docker.on("rm", FakeDocker.fail(odd.call("Error response from daemon: No such container: \xFF")))
+    @docker.default("stats", FakeDocker.ok(odd.call("ctplay-s-#{"b" * 16}\t12.5%\t420MiB / 1.5GiB\n\xFF\n")))
+    assert sessions.reap
+    assert_includes @log.string, "play event=ended handle=#{"a" * 16} reason=exited age_s=100\n"
+    assert_equal [["b" * 16, 12.5, "420MiB / 1.5GiB"]], sessions.internal_list.map { |s| s.values_at(:handle, :cpu, :memory) }
+  end
+
   # ---- the reaper -------------------------------------------------------------
 
   def test_reap_removes_expired_and_stopped_sessions
@@ -334,12 +428,44 @@ class SessionsTest < Minitest::Test
     refute_includes @docker.calls, ["docker", "rm", "--force", "ctplay-s-#{"b" * 16}"]
   end
 
+  def test_an_unknown_container_still_starting_has_the_grace_of_its_network
+    born = @clock.now - 10
+    @docker.default("ps sessions", FakeDocker.ok(container("a" * 16, "created", created: born) +
+                                                 container("b" * 16, "exited", created: born)))
+    @docker.default("network ls", FakeDocker.ok(network("a" * 16, created: born) + network("b" * 16, created: born)))
+    sessions.reap
+    refute_includes @log.string, "handle=#{"a" * 16}"
+    assert_includes @log.string, "play event=ended handle=#{"b" * 16} reason=exited age_s=10\n"
+
+    # Still starting a minute after it was made: no creation takes that long.
+    @docker.default("ps sessions", FakeDocker.ok(container("a" * 16, "created", created: born)))
+    @docker.default("network ls", FakeDocker.ok(network("a" * 16, created: born)))
+    @clock.advance(50)
+    sessions.reap
+    assert_includes @log.string, "play event=ended handle=#{"a" * 16} reason=exited age_s=60\n"
+  end
+
   def test_a_session_whose_container_ended_by_itself_is_cleaned_up_as_idle
     created = sessions.create("203.0.113.7")
     @docker.default("network ls", FakeDocker.ok(network(created.handle, created: @clock.now)))
     sessions.reap
     assert_includes @log.string, "play event=ended handle=#{created.handle} reason=idle"
     assert_empty sessions.internal_list
+  end
+
+  def test_a_pass_during_a_creation_leaves_its_starting_container_to_it
+    @probe = FakeProbe.new(ready_after: 2) do |sid, call|
+      next unless call == 1
+
+      # A pass runs while the creation waits for readiness: Docker lists its
+      # network and its container, still in state `created`.
+      handle = Play::Sessions.handle_for(sid)
+      @docker.default("ps sessions", FakeDocker.ok(container(handle, "created", created: @clock.now)))
+      @docker.default("network ls", FakeDocker.ok(network(handle, created: @clock.now)))
+      sessions.reap
+    end
+    assert_kind_of Play::Sessions::Created, sessions.create("203.0.113.7")
+    refute_includes @log.string, "event=ended"
   end
 
   def test_a_session_ready_between_the_listings_is_not_ended_as_idle
@@ -482,6 +608,21 @@ class SessionsTest < Minitest::Test
     assert_includes @log.string, "handle=#{"b" * 16} reason=killed"
     refute File.exist?(path)
     assert_empty @docker.calls_for("network connect")
+  end
+
+  def test_a_kill_all_request_removed_meanwhile_by_the_other_control_plane_does_not_stop_the_pass
+    path = File.join(sessions.config.data_dir, "kill-all")
+    File.write(path, "")
+    @docker.default("ps sessions", FakeDocker.ok(container("a" * 16, "running")))
+    @docker.default("network ls", FakeDocker.ok(network("a" * 16)))
+    # During a deploy, the other control plane's reaper honours it first.
+    @docker.on("rm", lambda do |_argv|
+      File.delete(path)
+      FakeDocker.ok
+    end)
+    assert sessions.reap
+    assert_includes @log.string, "play event=ended handle=#{"a" * 16} reason=killed"
+    refute File.exist?(path)
   end
 
   def test_a_session_at_90_percent_cpu_ten_minutes_running_is_logged_once

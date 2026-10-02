@@ -102,17 +102,21 @@ class FakeDocker
   end
 end
 
-# Ready on the Nth call (ready_after: N), or never (ready_after: nil).
+# Ready on the Nth call (ready_after: N), or never (ready_after: nil). A
+# block, when given, runs at each call with the session id and the call's
+# number, before the answer: what other threads do while a creation waits.
 class FakeProbe
   attr_reader :calls
 
-  def initialize(ready_after: 1)
+  def initialize(ready_after: 1, &during)
     @ready_after = ready_after
+    @during = during
     @calls = []
   end
 
   def ready?(sid)
     @calls << sid
+    @during&.call(sid, @calls.size)
     !@ready_after.nil? && @calls.size >= @ready_after
   end
 end

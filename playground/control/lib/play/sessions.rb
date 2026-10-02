@@ -244,7 +244,9 @@ module Play
       attach_routers(alive, routers)
       reconcile(containers, networks, alive, before)
       collect_stats(alive) if due?(@last_stats, STATS_EVERY)
-      File.delete(kill_path) if killing && done
+      # rm_f: during a deploy the other control plane's reaper may have
+      # honoured the request and removed the file first.
+      FileUtils.rm_f(kill_path) if killing && done
       @last_reap_ok = @clock.monotonic
       true
     end
@@ -340,10 +342,15 @@ module Play
       Refusal.new(reason, retry_after, message, ends_at)
     end
 
-    # Inside the create lock: the limits, then the network, the routers and
-    # the container. nil once the container runs, else a Refusal (after
-    # removing whatever was made).
+    # Inside the create lock: the pause again (playctl pause, or a kill-all
+    # that paused, may have come while this creation waited for the lock),
+    # the limits, then the network, the routers and the container. nil once
+    # the container runs, else a Refusal (after removing whatever was made).
     def admit_and_start(client, handle, sid, pid)
+      if (message = pause_message)
+        return refuse(:paused, 300, message)
+      end
+
       refusal = client_refusal(client)
       return refusal if refusal
 
@@ -442,8 +449,17 @@ module Play
         end
         @clock.sleep(PROBE_EVERY)
       end
-      session = @mutex.synchronize { @records[handle]&.tap { |s| s.state = :ready } }
-      return refuse(:failed, 60) unless session # ended meanwhile (kill-all)
+      # Only a session still creating becomes ready (spec §5.3). One that a
+      # teardown began ending meanwhile (kill-all, an operator's end) is left
+      # to that teardown, or to the pass that repeats it.
+      session = @mutex.synchronize do
+        record = @records[handle]
+        next unless record&.state == :creating
+
+        record.state = :ready
+        record
+      end
+      return refuse(:failed, 60) unless session
 
       @limits.record(client)
       @log.event("created", handle: handle, subnet: session.subnet,
@@ -498,14 +514,19 @@ module Play
       end
     end
 
-    # Why the pass ends container C, or nil.
+    # Why the pass ends container C, or nil. One still `created` that nobody
+    # here knows has the grace of its network (spec §5.8 item 3): it may be
+    # the other control plane's `docker run` under way during a deploy. A
+    # leftover from a crash holds its slot for that minute at most.
     def container_reason(c, standing, killing, now)
       return recorded_reason(c[:handle]) if standing == :retry
       return unless NOT_ENDING.include?(standing)
 
       if killing then "killed"
       elsif c[:expires_at] <= now then "ttl"
-      elsif c[:state] != "running" && standing != :in_progress then "exited"
+      elsif c[:state] == "running" || standing == :in_progress then nil
+      elsif standing == :unknown && c[:state] == "created" && now - c[:created_at] < ORPHAN_GRACE then nil
+      else "exited"
       end
     end
 
@@ -586,13 +607,12 @@ module Play
       end
     end
 
-    # The container ids or names in docker's TEXT (separated by whitespace)
-    # that may become argv elements. Anything else never reaches a command
-    # line: one `dropped` line per call counts it, without its text. TEXT is
-    # read as UTF-8 and scrubbed first, as in DockerCLI.redact: one odd byte
-    # would otherwise make the split raise.
+    # The container ids or names in docker's TEXT (separated by whitespace,
+    # already scrubbed by #docker) that may become argv elements. Anything
+    # else never reaches a command line: one `dropped` line per call counts
+    # it, without its text.
     def container_refs(text, step, handle = nil)
-      words = text.to_s.dup.force_encoding(Encoding::UTF_8).scrub.split
+      words = text.split
       refs = words.grep(CONTAINER_REF)
       return refs if refs.size == words.size
 
@@ -607,10 +627,19 @@ module Play
       last.nil? || @clock.monotonic - last >= every
     end
 
+    # Runs ARGV with the docker CLI; a hung docker counts as a failure. Both
+    # outputs are read as UTF-8 and scrubbed here, once: without LANG, Ruby
+    # labels them US-ASCII, and one odd byte would make every split and
+    # match on them raise, the reaper thread with it.
     def docker(argv, timeout)
-      @docker.run(argv, timeout: timeout)
+      result = @docker.run(argv, timeout: timeout)
+      DockerCLI::Result.new(result.status, utf8(result.stdout), utf8(result.stderr))
     rescue DockerCLI::Timeout => e
       DockerCLI::Result.new(-1, "", e.message)
+    end
+
+    def utf8(text)
+      text.to_s.dup.force_encoding(Encoding::UTF_8).scrub
     end
 
     def docker_error(step, handle, result, secrets = {})
