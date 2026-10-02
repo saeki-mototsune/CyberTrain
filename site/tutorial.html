@@ -139,7 +139,7 @@
       <li><code>cybertrain spin ARGS...</code> runs <code>spin</code> with the pinned Spinel, from any directory: <code>cybertrain spin test</code>, <code>cybertrain spin run gen -- --check</code>.</li>
       <li><code>cybertrain setup [--force]</code> installs Spinel <code>2026.09.12</code> into <code>~/.cybertrain</code> unless a <code>spinel</code> of that release is already on <code>PATH</code>; <code>--force</code> rebuilds the copy under <code>~/.cybertrain</code>.</li>
       <li><code>cybertrain doctor</code> checks the C toolchain, the SQLite headers and the Spinel install.</li>
-      <li><code>cybertrain version</code> prints the version (<code>cybertrain 0.2.0</code>); <code>cybertrain help</code> prints the usage.</li>
+      <li><code>cybertrain version</code> prints the version (<code>cybertrain 0.2.1</code>); <code>cybertrain help</code> prints the usage.</li>
     </ul>
     <p class="note"><code>db</code>, <code>server</code> and <code>build</code> run inside an application; NAME is the <code>[package] name</code> in its <code>spin.toml</code>.</p>
   </section>
@@ -161,7 +161,7 @@
 <span class="ln">version = <span class="s">"0.1.0"</span></span>
 <span class="ln"></span>
 <span class="ln">[dependencies]</span>
-<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.0"</span> }</span></code></pre>
+<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.1"</span> }</span></code></pre>
 </figure>
     <p>Then it makes sure Spinel is installed (the first time, that means building Spinel <code>2026.09.12</code> into <code>~/.cybertrain</code>: a few minutes, once; see <a href="#requirements">step 00</a>) and runs <code>spin lock</code> (spin fetches the framework into its cache, <code>~/.cache/spin/packages/</code>, and pins the commit in <code>spin.lock</code>) and <code>spin run gen</code>, much as <code>rails new</code> runs <code>bundle install</code>, so <code>cybertrain server</code> works right away. It ends by printing the next steps. Nothing of the framework is copied into the app; commit <code>spin.toml</code> and <code>spin.lock</code>.</p>
     <p class="note">If Spinel or one of the two <code>spin</code> steps fails, the files stay, <code>new</code> exits with 1 and prints what to run once the cause is fixed (for Spinel: <code>cybertrain setup</code>, then <code>cybertrain spin lock &amp;&amp; cybertrain spin run gen</code> in the new directory). <code>--skip-spin</code> only writes the files; <code>--path DIR</code> depends on a local checkout instead, <code>--git URL [--ref R]</code> on the framework at URL (at branch or tag R), and <code>--version V</code> on an index version once <code>cybertrain</code> is on a <code>spin-index</code>.</p>
@@ -297,7 +297,7 @@
     <p><code>cybertrain server</code> prints each <code>spin</code> command it runs, then the app's boot banner. The first start compiles the app, so it takes a while:</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">output &mdash; cybertrain server</span><span class="code-lang">text</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: output of cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.2.0</span>
+<pre tabindex="0" role="region" aria-label="Code: output of cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.2.1</span>
 <span class="ln">=&gt; development environment (1 worker)</span>
 <span class="ln">=&gt; Watching app/, config/ and db/schema.rb for changes</span>
 <span class="ln">* Listening on http://127.0.0.1:3000</span>

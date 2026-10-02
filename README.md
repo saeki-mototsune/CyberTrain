@@ -150,7 +150,7 @@ if they are not that release.
 
 `cybertrain new` writes the application with its `spin.toml` pointing at
 the release matching the CLI (`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "v0.2.0" }`), makes
+"https://github.com/saeki-mototsune/cybertrain", ref = "v0.2.1" }`), makes
 sure Spinel is installed, then runs `spin lock` (spin fetches the framework
 into its cache, `~/.cache/spin/packages/`, and pins the commit in
 `spin.lock`) and `spin run gen`, much as `rails new` runs `bundle install`,
@@ -508,13 +508,21 @@ end
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | required in production; dev/test auto-generate one into `tmp/secret_key` |
 | `SPINEL_WORKERS` | `workers` | `1` |
+| `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`; `0.0.0.0` listens on every interface (containers) |
+| `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; also `Strict` or `None` (`None` always adds `Secure`); anything else stops the server at boot |
+| `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
 
-Other attributes with fixed, overridable defaults: `host` (`"127.0.0.1"`),
-`views_root` (`"app/views"`), `public_root` (`"public"`), `layout`
+Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
+inside another site's frame, such as the playground's Codespaces preview; the
+browser must reach the app over HTTPS.
+
+Other attributes with fixed, overridable defaults: `views_root`
+(`"app/views"`), `public_root` (`"public"`), `layout`
 (`"layouts/application"`), `log_level` (`:info`), `session_cookie_name`,
 `session_max_age` (2 weeks), `session_secure` (`true` in production, which
-marks the session cookie `Secure`; `false` elsewhere), `pool_size` (4),
-`static_files`/`csrf` (`true`).
+marks the session cookie `Secure`; `false` elsewhere, though `SameSite=None`
+and `Partitioned` add `Secure` anyway), `pool_size` (4), `static_files`/`csrf`
+(`true`).
 
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse
@@ -615,8 +623,8 @@ before the gem is pushed:
 1. Bump `Cybertrain::VERSION` (`cybertrain/version.rb`) and `version` in
    `spin.toml` together (CI checks they match); spin caches a git
    dependency by that version.
-2. Merge to `main`, then tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
-3. `gem build cybertrain.gemspec && gem push cybertrain-0.2.0.gem`.
+2. Merge to `main`, then tag and push: `git tag v0.2.1 && git push origin v0.2.1`.
+3. `gem build cybertrain.gemspec && gem push cybertrain-0.2.1.gem`.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in

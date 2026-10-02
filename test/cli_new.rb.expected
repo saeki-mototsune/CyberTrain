@@ -197,13 +197,13 @@ error: blog already exists
 error: 'Bad Name' is not a valid app name (lowercase letters, digits and _)
 error: usage: cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 ok   CLI new refuses an existing directory and a bad name
-cybertrain 0.2.0
+cybertrain 0.2.1
 Usage:
   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
       Create an application in NAME, then run `spin lock` and
       `spin run gen` in it (skipped with --skip-spin). Its spin.toml
       depends on this cybertrain's release by default:
-        git tag v0.2.0 of https://github.com/saeki-mototsune/cybertrain
+        git tag v0.2.1 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
       --version V: the index version constraint V.
@@ -242,7 +242,7 @@ Usage:
       Create an application in NAME, then run `spin lock` and
       `spin run gen` in it (skipped with --skip-spin). Its spin.toml
       depends on this cybertrain's release by default:
-        git tag v0.2.0 of https://github.com/saeki-mototsune/cybertrain
+        git tag v0.2.1 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
       --version V: the index version constraint V.
@@ -280,7 +280,7 @@ Usage:
       Create an application in NAME, then run `spin lock` and
       `spin run gen` in it (skipped with --skip-spin). Its spin.toml
       depends on this cybertrain's release by default:
-        git tag v0.2.0 of https://github.com/saeki-mototsune/cybertrain
+        git tag v0.2.1 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
       --version V: the index version constraint V.

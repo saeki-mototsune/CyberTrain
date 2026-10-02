@@ -217,6 +217,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - ログ: 標準出力に 1 リクエスト 2 行（`Started GET "/posts"`、`Completed 200 in 3ms`）。`Cybertrain.logger` に `info` / `warn` / `error`。
 - エラーページ: production は `public/404.html` / `public/500.html`（最外周の `ErrorPages` ミドルウェア。例外は 500 にし、本文が空・Content-Type なし・`text/plain` のエラー応答を `public/<status>.html` に差し替える。アクションが HTML / JSON で描画したエラーはそのまま）、development は診断ページ。
 - セッション Cookie: production では `Secure` 属性を付ける（`Config#session_secure`、既定は `production?`）。
+- セッション Cookie の SameSite は `Config#session_same_site`（既定 `Lax`、`CYBERTRAIN_SESSION_SAME_SITE`、`Lax`/`Strict`/`None` 以外は起動時エラー）、`Partitioned` は `Config#session_partitioned`（既定 false、`CYBERTRAIN_SESSION_PARTITIONED`）。`None` か `Partitioned` のときは `session_secure` に関係なく `Secure`。待ち受けアドレスは `Config#host`（既定 `127.0.0.1`、`CYBERTRAIN_HOST`）。（2026-10-02、web playground SP1）
 - 安全側の既定: 出力エスケープ、CSRF、署名クッキー、SQL は常にバインド変数、`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`。
 - 終了処理: `SIGTERM` で listen を止め、処理中のリクエストを待って終了。`trap` が使えなければ libc の `signal` を FFI で呼ぶ。trap ブロックは C のシグナルハンドラから直接呼ばれるので、ハンドラはフラグを落とすだけ（`Server#request_stop`）にし、`Thread#join` などは通常のスレッド文脈で行う。フラグが落ちると accept ループが listener を閉じ、`Server#run` は開いている接続が閉じるのを最大 `drain_timeout`（既定 10 秒、systemd の `TimeoutStopSec` より短く）待ってから戻る。処理中のリクエストは `Connection: close` 付きで応答してから閉じ、リクエスト間で待機中の keep-alive 接続は待たずに閉じる。接続数は accept スレッドで数え（`Mutex` で保護）、`serve` の ensure で減らす。
 - i18n なし。バリデーションメッセージは英語固定。
