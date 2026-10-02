@@ -549,7 +549,7 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   .callout { padding: 20px 18px 22px; }
   .foot-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 400px) {
+@media (max-width: 440px) {
   .nav-links .nav-wide-only { display: none; }
   .nav-links ul { gap: 12px; }
 }
