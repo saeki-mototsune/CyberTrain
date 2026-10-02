@@ -9,7 +9,7 @@ module Cybertrain
     # CSRF check (MethodOverride, Router), so a hostile query string or form
     # body must cost bounded work and bounded stack.
     MAX_DEPTH = 32   # bracket pairs in one key: "a[b][c]" is depth 2
-    MAX_PAIRS = 4096 # non-empty "k=v" pairs in one parse
+    MAX_PAIRS = 4096 # "&"-delimited segments in one parse, empty ones included
 
     # Raised for request parameters the server will not take: past a limit
     # above (LimitExceeded: TooDeep, TooMany) or not decodable (Malformed).
@@ -31,18 +31,28 @@ module Cybertrain
     class TooMany < LimitExceeded
     end
 
-    # A percent-escape that does not decode ("%zz", a lone "%"). CRuby's
+    # A percent-escape that does not decode ("%zz", a lone "%") in a query
+    # string or form body (Cookies keep such a value raw instead). CRuby's
     # decoder raises ArgumentError for it; Spinel's decodes it leniently
     # (test/query.rb), so under Spinel this is never raised.
     class Malformed < Invalid
     end
 
-    # A cursor scan, like split_key: the pairs are cut out one at a time and
-    # TooMany is raised as soon as the (MAX_PAIRS + 1)th non-empty pair
-    # starts, so a hostile body costs O(MAX_PAIRS) work however long it is.
+    # A cursor scan, like split_key: the segments are cut out one at a time
+    # and TooMany is raised as soon as the (MAX_PAIRS + 1)th segment starts,
+    # so a hostile body costs O(MAX_PAIRS) work however long it is.
     # (`split("&")` would first materialise every pair of a 10 MB body of
-    # "&", three times per request.) Empty pairs ("a=1&&b=2", a trailing
-    # "&") are skipped and not counted, as before.
+    # "&", three times per request.) EVERY segment counts, an empty one
+    # ("a=1&&b=2") included: `s.index("&", pos)` and `s[pos, n]` take
+    # character offsets, an O(pos) scan once the string has a non-ASCII
+    # character (always, under Spinel, which indexes by character: see
+    # Server#serve), so a body of one e-acute and 200 000 "&" that skipped
+    # its empty segments uncounted was quadratic (11 s on CRuby) and never
+    # reached TooMany. Counting them bounds the scan at MAX_PAIRS + 1
+    # segments. Not byteindex/byteslice: Spinel's support for them on this
+    # path is unverified (NOTES rule 27 uses them on socket buffers only).
+    # Empty segments are still skipped, not parsed, so "a=1&&b=2" and a
+    # trailing "&" give the same Params as before.
     def self.parse(str)
       params = Params.new
       s = str.to_s
@@ -52,20 +62,19 @@ module Cybertrain
       while pos < len
         amp = s.index("&", pos)
         stop = amp.nil? ? len : amp
-        if stop > pos
-          count += 1
-          raise TooMany, "too many parameters (limit #{MAX_PAIRS})" if count > MAX_PAIRS
+        count += 1
+        raise TooMany, "too many parameters (limit #{MAX_PAIRS})" if count > MAX_PAIRS
 
-          add_pair(params, s[pos, stop - pos])
-        end
+        add_pair(params, s[pos, stop - pos]) if stop > pos
         pos = stop + 1
       end
       params
     end
 
-    # The one place request text is percent-decoded (query strings, form
-    # bodies and the Cookie header), so malformed input is the same client
-    # fault everywhere. A plain method with one begin/rescue and no block
+    # The one place request text is percent-decoded (query strings and form
+    # bodies; Cookies.decode wraps it, because a cookie the app does not own
+    # must not fail the request), so malformed input is the same client
+    # fault in every parameter. A plain method with one begin/rescue and no block
     # (NOTES rule 32 is about yielding methods).
     def self.decode(text)
       URI.decode_www_form_component(text)

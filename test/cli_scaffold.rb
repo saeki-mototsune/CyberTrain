@@ -245,6 +245,11 @@ test "bad input is rejected before anything is written" do
   rejected(["class:string"])
   rejected(["end"])
   rejected(["self:text"])
+  # A keyword as a references name is caught by the reader check (the column
+  # would be end_id, which is no keyword); a keyword with a bad type reports
+  # the type.
+  rejected(["end:references"])
+  rejected(["class:bogus"])
   # Names the generated model cannot host (Cybertrain::Ident, the generator's
   # own rule): refused here, not by the later `spin run gen`.
   rejected(["errors:string"])

@@ -20,33 +20,59 @@ module Cybertrain
     def self.classify(e, logger)
       status = self.status(e)
       if status >= 500
-        logger.error("#{e.class.name}: #{e.message}")
+        logger.error("#{e.class.name.to_s}: #{e.message}")
       else
         logger.info("rejected request (#{status} #{Response.status_text(status)}): #{e.message}")
       end
       status
     end
 
-    # Bare class names of the client-fault exceptions: THE place to add a new
-    # one (a new Query::Invalid subclass is listed here and nowhere else).
+    # Full class names of the client-fault exceptions: THE place to add a new
+    # one (a new Query::Invalid subclass is listed here and in
+    # BARE_CLIENT_FAULTS, which test/client_error.rb keeps in step).
     # `e.is_a?(Query::Invalid)` cannot do this job: under Spinel is_a? on an
     # exception object answered false for its own superclass (a TooDeep
     # reached every error path as a 500 on the 2026.09.12 build, NOTES rule
     # 47). Matching by class name is what Controller#rescue_with_handler
     # already does for rescue_from.
-    CLIENT_FAULTS = ["Invalid", "LimitExceeded", "TooDeep", "TooMany", "Malformed"]
+    CLIENT_FAULTS = ["Cybertrain::Query::Invalid", "Cybertrain::Query::LimitExceeded",
+                     "Cybertrain::Query::TooDeep", "Cybertrain::Query::TooMany",
+                     "Cybertrain::Query::Malformed"]
+
+    # The same list without the namespace, for a runtime whose Class#name has
+    # none (Spinel, NOTES rule 46). A literal, not CLIENT_FAULTS.map, so no
+    # method call runs at load time.
+    BARE_CLIENT_FAULTS = ["Invalid", "LimitExceeded", "TooDeep", "TooMany", "Malformed"]
 
     # 400 for a client fault, 500 for the app's own exception: an Array
     # lookup, no raise, so RequestLogger (for its Completed line) and the
     # error path outside it (ErrorPages, Dev::ErrorPage, Server#respond) can
-    # each ask and always agree.
+    # each ask and always agree. `to_s`: Class#name is nil for an anonymous
+    # class (`Class.new(StandardError)`) under CRuby, and this runs inside
+    # error handlers' rescue clauses, where a NoMethodError would escape and
+    # close the connection with no response at all.
     def self.status(e)
-      CLIENT_FAULTS.include?(bare_name(e.class.name)) ? 400 : 500
+      status_for_name(e.class.name.to_s)
+    end
+
+    # The decision on a class name alone, so it can be tested with names from
+    # either runtime. A namespaced name (CRuby) must match in full: a bare
+    # "Invalid" or "TooMany" is also what an app or library raises
+    # (Billing::Invalid, RateLimiter::TooMany) and that is a 500, not the
+    # client's fault. A name with no "::" (Spinel, which cannot tell the two
+    # apart, or a top-level class; "" for an anonymous one) is matched
+    # against the bare names.
+    def self.status_for_name(name)
+      if name.index("::").nil?
+        BARE_CLIENT_FAULTS.include?(name) ? 400 : 500
+      else
+        CLIENT_FAULTS.include?(name) ? 400 : 500
+      end
     end
 
     # The part after the last "::": Class#name carries no namespace under
     # Spinel ("TooDeep") but does under CRuby ("Cybertrain::Query::TooDeep")
-    # (NOTES rule 46).
+    # (NOTES rule 46). Only ever given a String (status passes `name.to_s`).
     def self.bare_name(name)
       i = name.rindex("::")
       return name if i.nil?

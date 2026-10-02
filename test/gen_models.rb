@@ -606,7 +606,9 @@ def emit_error(name)
   end
 end
 
-test "emit rejects column names that are invalid or collide with model methods" do
+test "emit rejects column names that are invalid; reserved ones are renamed, not refused" do
+  # Names the framework or Ruby calls on a record generate under
+  # <column>_column (an existing schema keeps generating on upgrade).
   ["errors", "persisted", "hash", "inspect", "to_s",
    "attributes", "save", "update", "destroy", "reload", "model_name",
    "to_json", "as_json",
@@ -614,13 +616,13 @@ test "emit rejects column names that are invalid or collide with model methods" 
    "to_ary", "to_str", "to_hash", "to_proc", "to_int", "method_missing",
    # The one Kernel method the model calls on implicit self: a `raise` column
    # would turn Model#save!'s `raise RecordInvalid, ...` into a call of the reader.
-   "raise", "fail"].each do |bad|
-    assert emit_error(bad).include?("is reserved"), "#{bad} should be rejected"
+   "raise", "fail"].each do |renamed|
+    assert_equal "", emit_error(renamed)
   end
   # A keyword shadows no method: it is told so, not that it is "reserved".
   ["class", "end", "def", "nil", "self", "BEGIN", "__FILE__"].each do |bad|
     assert emit_error(bad).include?("is a Ruby keyword and cannot name a column"), "#{bad} should be rejected as a keyword"
-    refute emit_error(bad).include?("is reserved"), "#{bad} is not a reserved name"
+    refute emit_error(bad).include?("can be neither"), "#{bad} is not renamed"
   end
   ["1st", "a-b", "a b", "a.b", "", "valid?", "ünïcode"].each do |bad|
     assert emit_error(bad).include?("not a valid attribute name"), "#{bad.inspect} should be rejected"
@@ -648,6 +650,81 @@ test "emit rejects column names that are invalid or collide with model methods" 
     '# NOTE: column "display" shadows Object#display on this model (nothing in Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)',
     "attr_accessor :display"
   ])
+end
+
+def reserved_columns_schema
+  Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "files" do |t|
+      t.string "title", null: false
+      t.string "hash"
+      t.text "attributes"
+      t.integer "errors"
+    end
+  end
+end
+
+test "a reserved column name generates under <column>_column with a note; SQL-name keys keep the column name" do
+  definition = reserved_columns_schema
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
+  assert_lines(file, [
+    '# column "hash" reads as hash_column: "hash" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)',
+    '# column "attributes" reads as attributes_column: "attributes" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)',
+    '# column "errors" reads as errors_column: "errors" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)',
+    "attr_accessor :title, :hash_column, :attributes_column, :errors_column",
+    'def self.column_names = ["id", "title", "hash", "attributes", "errors"]',
+    "@hash_column = nil",
+    '@hash_column = Cybertrain::Cast.str_or_nil(row["hash"])',
+    '@attributes_column = Cybertrain::Cast.str_or_nil(row["attributes"])',
+    '@errors_column = Cybertrain::Cast.int_or_nil(row["errors"])',
+    "when :hash then @hash_column",
+    "when :attributes then @attributes_column",
+    "when :hash then @hash_column = Cybertrain::Cast.str_or_nil(value)",
+    "when :errors then @errors_column = Cybertrain::Cast.int_or_nil(value)",
+    '"hash" => Cybertrain::Cast.to_sql(@hash_column),',
+    '"errors" => Cybertrain::Cast.to_sql(@errors_column)'
+  ])
+  # No bare reader or ivar that would shadow what the Model owns.
+  refute file.include?("attr_accessor :title, :hash,")
+  refute file.include?("@errors ")
+  refute file.include?("@errors =")
+  refute file.include?("(@attributes)")
+  # An unaffected column gets no note.
+  refute file.include?('column "title"')
+end
+
+test "a reserved column whose fallback name is taken, and keywords, still fail" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "files" do |t|
+      t.string "hash"
+      t.string "hash_column"
+    end
+  end
+  msg = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
+  end
+  assert_includes msg, 'column "hash" can be neither "hash" nor "hash_column"'
+  assert_includes msg, "rename a column"
+  assert_includes emit_error("class"), "is a Ruby keyword and cannot name a column"
+end
+
+test "an association cannot land on the renamed reader of a reserved column" do
+  # files.hash reads as hash_column; a table hash_column pointing at files
+  # would plainly be `hash_column` too, so it takes its fallback.
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "files" do |t|
+      t.string "hash"
+    end
+    s.create_table "hash_column" do |t|
+      t.references :file
+    end
+  end
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
+  assert_lines(file, [
+    "attr_accessor :hash_column",
+    '# has_many hash_column reads as hash_column_as_file: "hash_column" is a column, another association or a Cybertrain::Model method',
+    'def hash_column_as_file = HashColumnRelation.new("hash_column").where(file_id: @id).to_a'
+  ])
+  refute file.include?("def hash_column = ")
 end
 
 test "an association reader named like an Object method keeps its name and gets the note a column gets" do

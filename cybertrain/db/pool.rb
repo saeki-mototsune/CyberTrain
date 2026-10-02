@@ -129,9 +129,11 @@ module Cybertrain
         nil
       end
 
-      # A fresh connection for a slot whose connection was closed, taking the
-      # closed one's place in @connections (a persistent disk fault must not
-      # grow the list). Never when the pool is not @reopenable (":memory:", see
+      # A fresh connection for a slot whose connection was closed, taking
+      # exactly the closed one's place in @connections (matched by identity: with
+      # two slots closed, one still checked out and one queued, the queued one
+      # is the one being reopened, not whichever closed entry comes first; a
+      # persistent disk fault must not grow the list either). Never when the pool is not @reopenable (":memory:", see
       # initialize): a fresh connection would be an empty database with no
       # tables and no trace, so a closed one (user code closed it) is an error
       # on every later checkout, as it was before the pool reopened anything.
@@ -152,7 +154,7 @@ module Cybertrain
         end
         fresh = Connection.new(@path)
         # Under the lock, so two threads reopening two slots at once cannot
-        # both take the same closed entry and strand one fresh connection
+        # both overwrite the same entry and strand one fresh connection
         # outside the list (unreachable by close_all).
         shut = false
         @lock.synchronize do
@@ -162,15 +164,18 @@ module Cybertrain
             replaced = false
             i = 0
             while i < @connections.size
-              if @connections[i].closed?
+              if @connections[i].equal?(closed)
                 @connections[i] = fresh
                 replaced = true
-                # Stops at the first closed entry. A `break` out of a
-                # `while` is a plain loop exit (rule 44 concerns blocks).
+                # A `break` out of a `while` is a plain loop exit (rule 44
+                # concerns blocks).
                 break
               end
               i += 1
             end
+            # Not reachable: every connection handed out comes from
+            # @connections. Kept as a safety net so `fresh` is never left
+            # outside the list close_all walks.
             @connections << fresh unless replaced
           end
         end

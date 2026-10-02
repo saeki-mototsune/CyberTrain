@@ -14,6 +14,11 @@ module Cybertrain
       # relative to dir.
       def self.create(dir, framework_dep)
         package = File.basename(dir)
+        # Before anything is written: `public`, `storage` and `tmp` are valid
+        # identifiers but collide with dist/ entries (Build.dist_name_problem).
+        problem = Build.dist_name_problem(package)
+        raise InvalidArgument, "'#{package}' is not a valid app name: it #{problem}" unless problem.empty?
+
         title = Inflector.camelize(package)
         files = [
           ["spin.toml", Templates.spin_toml(package, framework_dep)],

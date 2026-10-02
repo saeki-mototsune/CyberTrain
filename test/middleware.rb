@@ -3,6 +3,7 @@ require "cybertrain/middleware"
 require "cybertrain/middleware/request_logger"
 require "cybertrain/http/query"
 require "cybertrain/middleware/method_override"
+require "cybertrain/middleware/session_store"
 require "cybertrain/router"
 require "cybertrain/app"
 require "cybertrain/test"
@@ -158,6 +159,18 @@ test "MethodOverride ignores _method in a body that is not a form" do
   ctx = build_ctx("POST", "/things/4", "_method=delete", { "content-type" => "text/plain" })
   stack.call(ctx)
   assert_equal "POST 4", ctx.response.body
+end
+
+# SessionStore parses every cookie on every request but reads only its own,
+# so a cookie another app set on the parent domain must not fail the request
+# whether or not it percent-decodes ("50%off" does not, under CRuby; Spinel's
+# decoder is lenient, so the status is the only thing both runtimes share).
+test "a foreign cookie that does not percent-decode does not fail the request" do
+  stack = Cybertrain::SessionStore.new(endpoint, secret: "s" * 32)
+  ctx = build_ctx("GET", "/", "", { "cookie" => "promo=50%off; theme=dark" })
+  assert_nil stack.call(ctx)
+  assert_equal 200, ctx.response.status
+  assert_equal "[app]", ctx.response.body
 end
 
 test "App runs the default stack down to the router" do

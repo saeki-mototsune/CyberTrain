@@ -29,4 +29,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-17 tests, 83 assertions, 0 failures
+17 tests, 98 assertions, 0 failures

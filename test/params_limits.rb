@@ -77,9 +77,25 @@ test "MAX_PAIRS pairs parse, one more raises TooMany" do
   assert_raises("TooMany") { Cybertrain::Query.parse(too_many) }
 end
 
-test "empty pairs do not count towards the limit" do
-  qs = ("&" * 10000) + "a=1" + ("&" * 10000)
-  assert_equal ["a"], Cybertrain::Query.parse(qs).keys
+test "empty segments count towards MAX_PAIRS but are still skipped" do
+  assert_equal ["a", "b"], Cybertrain::Query.parse("a=1&&b=2").keys
+  assert_equal ["a"], Cybertrain::Query.parse("&&a=1&&").keys
+  assert_equal "2", Cybertrain::Query.parse("a=1&&b=2")["b"]
+  # exactly MAX_PAIRS segments, almost all empty: fine; one more: TooMany
+  ok = ("&" * 4095) + "a=1"
+  assert_equal ["a"], Cybertrain::Query.parse(ok).keys
+  assert_equal [], Cybertrain::Query.parse("&" * 4096).keys
+  assert_raises("TooMany") { Cybertrain::Query.parse(ok + "&b=1") }
+  assert_raises("TooMany") { Cybertrain::Query.parse("&" * 4097) }
+end
+
+test "a body of one non-ASCII character and many '&' is refused as TooMany, not scanned quadratically" do
+  # Empty segments used to be skipped uncounted, so this never reached
+  # TooMany and each character-offset index/slice was O(pos): 11 s for 200 000
+  # on CRuby. Asserted on the result only.
+  assert_raises("TooMany") { Cybertrain::Query.parse("\u00e9" + ("&" * 4097)) }
+  assert_raises("TooMany") { Cybertrain::Query.parse("\u00e9" + ("&" * 200000)) }
+  assert_equal ["k\u00e9"], Cybertrain::Query.parse("k\u00e9=1&&").keys
 end
 
 test "20000 key kind flips complete and keep the last write" do

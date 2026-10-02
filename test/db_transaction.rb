@@ -217,6 +217,52 @@ test "a pool that close_all shut down refuses every checkout instead of reopenin
   assert_equal "pool closed", checkout_after_close_all(pool)
 end
 
+# Two slots closed at once: A still checked out when user code closes it, B
+# checked out inside it and closed too. B goes back first, so the queue holds
+# B then A. Each reopen must replace its own entry in the pool's list: the
+# pool afterwards serves `size` distinct working connections and close_all
+# closes all of them. Named methods hold the nested checkouts (rules 32/45),
+# and only behaviour is observed (no instance_variable_get, rule 1).
+def close_inner_and_outer(pool, outer)
+  pool.with { |inner| (outer.close; inner.close; 0) }
+end
+
+def close_two_slots(pool)
+  pool.with { |outer| close_inner_and_outer(pool, outer) }
+end
+
+# 0 when the second checkout got the same connection as the first, else the
+# post count seen through both (2 * the rows inserted).
+def distinct_second_checkout(pool, first)
+  pool.with { |second| second.equal?(first) ? 0 : post_count(first) + post_count(second) }
+end
+
+def distinct_checkouts(pool)
+  pool.with { |first| distinct_second_checkout(pool, first) }
+end
+
+test "two closed slots, one checked out and one queued, are both reopened and both closed by close_all" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  remove_reopen_db
+  pool = DB::Pool.new(REOPEN_DB, 2)
+  assert_equal 2, pool.size
+  pool.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
+  assert_equal 1, pool.with { |c| insert_after(c) }
+  close_two_slots(pool)
+  # Each checkout reopens the closed slot it pops.
+  assert_equal 1, pool.with { |c| post_count(c) }
+  assert_equal 1, pool.with { |c| post_count(c) }
+  assert pool.with { |c| clean?(c) }
+  # Both slots serve at once, as two different working connections.
+  assert_equal 2, distinct_checkouts(pool)
+  # close_all succeeds on the reopened list, the pool refuses afterwards, and
+  # a second close_all is harmless.
+  pool.close_all
+  assert_equal "pool closed", checkout_after_close_all(pool)
+  pool.close_all
+  remove_reopen_db
+end
+
 test "abandon_transaction! leaves a clean connection alone and says so" do
   conn = posts_db
   conn.execute("INSERT INTO posts (title) VALUES (?)", ["kept"])

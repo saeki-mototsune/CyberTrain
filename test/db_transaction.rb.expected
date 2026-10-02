@@ -4,8 +4,9 @@ ok   a logger that fails while check-in reports a leaked BEGIN is swallowed and 
 ok   a slot whose connection was closed is reopened on the next checkout
 ok   a closed :memory: connection is an error on the next checkout, never a fresh database
 ok   a pool that close_all shut down refuses every checkout instead of reopening
+ok   two closed slots, one checked out and one queued, are both reopened and both closed by close_all
 ok   abandon_transaction! leaves a clean connection alone and says so
 ok   a StandardError rolls back, re-raises and leaves autocommit on
 ok   a normal completion commits
 ok   a nested transaction joins the outer one and an inner raise rolls everything back
-10 tests, 33 assertions, 0 failures
+11 tests, 40 assertions, 0 failures

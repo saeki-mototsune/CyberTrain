@@ -60,6 +60,23 @@ test "app_name rejects only a name that breaks the build/bin/<name> path" do
     File.write("spin.toml", "[package]\nname = \"#{flag}\"\n")
     assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
   end
+  # The names assemble() creates in dist/ (public, storage, tmp) and its
+  # dot-prefixed scratch entries: refused, with one message naming the reason.
+  Cybertrain::CLI::Build::DIST_ENTRIES.each do |entry|
+    File.write("spin.toml", "[package]\nname = \"#{entry}\"\n")
+    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+    assert_includes message, "spin.toml [package] name '#{entry}' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp)"
+  end
+  [".hidden", ".public.old", ".blog.tmp"].each do |hidden|
+    File.write("spin.toml", "[package]\nname = \"#{hidden}\"\n")
+    assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+  end
+  assert_equal ["public", "storage", "tmp"], Cybertrain::CLI::Build::DIST_ENTRIES
+  # Only exact collisions and a leading dot: other spellings are other entries.
+  ["Public", "tmp2", "my_public", "blog", "a.b"].each do |fine|
+    File.write("spin.toml", "[package]\nname = \"#{fine}\"\n")
+    assert_equal fine, Cybertrain::CLI::Build.app_name(".")
+  end
   # Shell safety comes from quote_arg, not from the spelling: a hand-written
   # "my-app" or "MyApp" builds as it did before the check existed.
   File.write("spin.toml", "[package]\nname = \"my-app\"\n")

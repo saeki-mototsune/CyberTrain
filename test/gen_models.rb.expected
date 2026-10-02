@@ -10,7 +10,10 @@ ok   read_association case covers belongs_to and has_many
 ok   call_view_method with a scanned summary
 ok   integer, float, boolean, date and datetime casts
 ok   attributes stay attr_accessors (no def writers: NOTES rule 43) and order_sql is emitted
-ok   emit rejects column names that are invalid or collide with model methods
+ok   emit rejects column names that are invalid; reserved ones are renamed, not refused
+ok   a reserved column name generates under <column>_column with a note; SQL-name keys keep the column name
+ok   a reserved column whose fallback name is taken, and keywords, still fail
+ok   an association cannot land on the renamed reader of a reserved column
 ok   an association reader named like an Object method keeps its name and gets the note a column gets
 ok   a capitalised foreign key gets a capitalised reader, dispatched with an explicit receiver
 ok   an association named like a Model method moves to its fallback name instead of shadowing it
@@ -30,4 +33,4 @@ ok   scan_source skips class << self, nested classes and later classes
 ok   scan_source inside a module stops at the class's own end
 ok   view_methods_for picks the scanned methods of one model
 ok   outputs maps gen/models paths to sources for every table
-32 tests, 209 assertions, 0 failures
+35 tests, 237 assertions, 0 failures

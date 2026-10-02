@@ -4,6 +4,29 @@
 module Cybertrain
   module CLI
     module Build
+      # The entries assemble() keeps in dist/ besides the binary: the copied
+      # public/ and the storage/ and tmp/ directories. A package named like
+      # one of them would collide with it (the binary renamed to dist/public
+      # gets moved aside as dist/.public.old and deleted; a dist/storage
+      # directory cannot be replaced by the binary), so app_name and
+      # `cybertrain new` refuse these names. assemble builds its paths from
+      # these constants so the two cannot drift.
+      DIST_PUBLIC = "public"
+      DIST_STORAGE = "storage"
+      DIST_TMP = "tmp"
+      DIST_ENTRIES = [DIST_PUBLIC, DIST_STORAGE, DIST_TMP]
+
+      # "" when name cannot collide with what assemble() puts in dist/, else
+      # the reason. A leading "." covers assemble's scratch entries
+      # (dist/.<name>.tmp, dist/.public.tmp, dist/.public.old) and "."/"..".
+      # Exact matches only: "Public" and "tmp2" are different directory
+      # entries.
+      def self.dist_name_problem(name)
+        return "" unless DIST_ENTRIES.include?(name) || name.start_with?(".")
+
+        "collides with what `cybertrain build` keeps in dist/ (#{DIST_ENTRIES.join(", ")}) or its scratch entries: it cannot be one of those names or start with '.'"
+      end
+
       # The [package] name in root/spin.toml, or "" when there is none. The
       # name ends up in shell command strings and file paths, so it must be
       # a name `cybertrain new` could have produced.
@@ -35,6 +58,9 @@ module Cybertrain
         if name == "." || name == ".." || name.start_with?("-") || name.include?("/") || name.match?(/\s/)
           raise InvalidArgument, "spin.toml [package] name '#{name}' cannot be '.' or '..', start with '-', or contain '/' or whitespace"
         end
+
+        problem = dist_name_problem(name)
+        raise InvalidArgument, "spin.toml [package] name '#{name}' #{problem}" unless problem.empty?
 
         name
       end
@@ -164,8 +190,8 @@ module Cybertrain
         dist = "#{root}/dist"
         Templates.mkdir_p(dist)
         binary_tmp = "#{dist}/.#{name}.tmp"
-        public_tmp = "#{dist}/.public.tmp"
-        public_old = "#{dist}/.public.old"
+        public_tmp = "#{dist}/.#{DIST_PUBLIC}.tmp"
+        public_old = "#{dist}/.#{DIST_PUBLIC}.old"
         # Leftovers of an interrupted earlier run.
         rm_tree(binary_tmp)
         rm_tree(public_tmp)
@@ -176,20 +202,20 @@ module Cybertrain
 
         File.rename(binary_tmp, "#{dist}/#{name}")
 
-        if File.directory?("#{root}/public")
-          public_command = "cp -R #{shell_quote("#{root}/public")} #{shell_quote(public_tmp)}"
-          raise InvalidArgument, "could not copy public/ to dist/" unless system(public_command)
+        if File.directory?("#{root}/#{DIST_PUBLIC}")
+          public_command = "cp -R #{shell_quote("#{root}/#{DIST_PUBLIC}")} #{shell_quote(public_tmp)}"
+          raise InvalidArgument, "could not copy #{DIST_PUBLIC}/ to dist/" unless system(public_command)
         else
           Dir.mkdir(public_tmp)
         end
-        public_dir = "#{dist}/public"
+        public_dir = "#{dist}/#{DIST_PUBLIC}"
         File.rename(public_dir, public_old) if File.exist?(public_dir) || File.symlink?(public_dir)
         File.rename(public_tmp, public_dir)
         rm_tree(public_old)
 
-        Templates.mkdir_p("#{dist}/storage")
-        Templates.mkdir_p("#{dist}/tmp")
-        ["dist/#{name}", "dist/public/", "dist/storage/", "dist/tmp/"]
+        Templates.mkdir_p("#{dist}/#{DIST_STORAGE}")
+        Templates.mkdir_p("#{dist}/#{DIST_TMP}")
+        ["dist/#{name}", "dist/#{DIST_PUBLIC}/", "dist/#{DIST_STORAGE}/", "dist/#{DIST_TMP}/"]
       end
 
       # A symlink is removed itself, never followed: its target may be

@@ -72,16 +72,40 @@ module Cybertrain
         src
       end
 
+      # The Ruby name a column's reader, writer and ivar carry: the column's
+      # own name, except for Ident::RESERVED_COLUMN_NAMES, which take
+      # `<column>_column`. This is the one place that decides it. A reader
+      # named `errors`, `save`, `hash` or `to_ary` would shadow a method of
+      # Cybertrain::Model or Object that the framework (or Ruby itself)
+      # calls on the record, and an ivar named `@errors` / `@persisted` is
+      # one the Model owns, so both are renamed; everything keyed by the
+      # column's SQL name (column_names, read_attribute(:hash), to_row,
+      # load_row, params, templates) stays keyed by it. An existing schema
+      # must keep generating on upgrade, so such a column is renamed rather
+      # than refused (`cybertrain generate scaffold` still refuses to invent
+      # one). A keyword is not renamed: `@class` / `def class` is not a
+      # shape worth supporting, check_column_names refuses it.
+      def self.reader_name(column_name)
+        Ident.reserved_column?(column_name) ? column_name + "_column" : column_name
+      end
+
+      # The ivar behind reader_name.
+      def self.ivar_name(column_name)
+        "@" + reader_name(column_name)
+      end
+
       # Raises ArgumentError (the generator exits non-zero) for a column the
       # generated class cannot host: not a Ruby method name (Ident.column?),
-      # a Ruby keyword, or one of Ident::RESERVED_COLUMN_NAMES (a method the
-      # class or the framework calls on the record). A column named like
-      # another Object method (Ident::SHADOWING_COLUMN_NAMES, `display`,
-      # `then`) is accepted with a note in the generated file: an existing
-      # schema must keep generating. The same rules (and a stricter
-      # snake_case spelling) gate `cybertrain generate scaffold`, which
-      # refuses both kinds before it writes any file.
+      # a Ruby keyword, or a reserved name (Ident::RESERVED_COLUMN_NAMES)
+      # whose fallback `<column>_column` another column already owns. A
+      # reserved name alone is not an error (reader_name renames it), and a
+      # column named like another Object method (Ident::SHADOWING_COLUMN_NAMES,
+      # `display`, `then`) is accepted with a note in the generated file: an
+      # existing schema must keep generating. `cybertrain generate scaffold`
+      # is stricter (and wants snake_case): it refuses reserved and shadowing
+      # names before it writes any file, since it invents them.
       def self.check_column_names(table)
+        names = table.columns.map { |c| c.name }
         table.columns.each do |c|
           name = c.name
           unless Ident.column?(name)
@@ -92,9 +116,13 @@ module Cybertrain
             raise ArgumentError, "table #{table.name}: column #{name.inspect} is a Ruby keyword " \
                                  "and cannot name a column; rename it"
           end
-          if Ident.reserved_column?(name)
-            raise ArgumentError, "table #{table.name}: column #{name.inspect} is reserved " \
-                                 "(it would shadow a method of Cybertrain::Model or Object); rename it"
+          next unless Ident.reserved_column?(name)
+
+          fallback = reader_name(name)
+          if names.include?(fallback) || Ident.keyword?(fallback) || Ident.reserved_column?(fallback)
+            raise ArgumentError, "table #{table.name}: column #{name.inspect} can be neither #{name.inspect} nor " \
+                                 "#{fallback.inspect} (a Cybertrain::Model or Object method owns the first, a " \
+                                 "column or a Ruby keyword the second); rename a column"
           end
         end
         nil
@@ -147,7 +175,7 @@ module Cybertrain
         src = +""
         names = table.columns.map { |c| c.name }
         quoted = names.map { |n| "\"#{n}\"" }.join(", ")
-        symbols = names.map { |n| ":#{n}" }.join(", ")
+        symbols = names.map { |n| ":#{reader_name(n)}" }.join(", ")
         src << "class #{model} < Cybertrain::Model\n"
         src << "  def self.table_name = \"#{table.name}\"\n"
         src << "  def self.column_names = [\"id\", #{quoted}]\n"
@@ -162,7 +190,13 @@ module Cybertrain
         # through the raw writer to a nullable datetime ivar reads back
         # intact once load_row has typed the ivar via Cast.time_or_nil, so
         # rule 7 does not bite this shape.
+        #
+        # A column named like a method the framework calls on the record
+        # (Ident::RESERVED_COLUMN_NAMES) reads as `<column>_column` (reader,
+        # writer and ivar: reader_name); the SQL-name keys below keep the
+        # column's own name.
         names.each do |n|
+          src << "  " << reserved_note(n) << "\n" if Ident.reserved_column?(n)
           next unless Ident.shadowing_column?(n)
 
           src << "  " << shadow_note("column", n) << "\n"
@@ -171,7 +205,7 @@ module Cybertrain
         src << "\n"
         src << "  def initialize(attrs = {})\n"
         src << "    super()\n"
-        table.columns.each { |c| src << "    @#{c.name} = #{initial_value(c)}\n" }
+        table.columns.each { |c| src << "    #{ivar_name(c.name)} = #{initial_value(c)}\n" }
         src << "    assign_attributes(attrs)\n"
         src << "  end\n"
         src << "\n"
@@ -183,7 +217,7 @@ module Cybertrain
         src << "\n"
         src << "  def load_row(row)\n"
         src << "    set_id(Cybertrain::Cast.int(row[\"id\"]))\n"
-        table.columns.each { |c| src << "    @#{c.name} = Cybertrain::Cast.#{cast_for(c)}(row[\"#{c.name}\"])\n" }
+        table.columns.each { |c| src << "    #{ivar_name(c.name)} = Cybertrain::Cast.#{cast_for(c)}(row[\"#{c.name}\"])\n" }
         src << "    mark_persisted!\n"
         src << "    nil\n"
         src << "  end\n"
@@ -191,14 +225,14 @@ module Cybertrain
         src << "  def read_attribute(name)\n"
         src << "    case name\n"
         src << "    when :id then @id\n"
-        table.columns.each { |c| src << "    when :#{c.name} then @#{c.name}\n" }
+        table.columns.each { |c| src << "    when :#{c.name} then #{ivar_name(c.name)}\n" }
         src << "    else nil\n"
         src << "    end\n"
         src << "  end\n"
         src << "\n"
         src << "  def write_attribute(name, value)\n"
         src << "    case name\n"
-        table.columns.each { |c| src << "    when :#{c.name} then @#{c.name} = Cybertrain::Cast.#{cast_for(c)}(value)\n" }
+        table.columns.each { |c| src << "    when :#{c.name} then #{ivar_name(c.name)} = Cybertrain::Cast.#{cast_for(c)}(value)\n" }
         src << "    end\n"
         src << "    nil\n"
         src << "  end\n"
@@ -210,7 +244,7 @@ module Cybertrain
         src << "\n"
         src << "  def to_row\n"
         src << "    {\n"
-        pairs = table.columns.map { |c| "      \"#{c.name}\" => Cybertrain::Cast.to_sql(@#{c.name})" }.join(",\n")
+        pairs = table.columns.map { |c| "      \"#{c.name}\" => Cybertrain::Cast.to_sql(#{ivar_name(c.name)})" }.join(",\n")
         src << "#{pairs}\n"
         src << "    }\n"
         src << "  end\n"
@@ -286,9 +320,19 @@ module Cybertrain
           "Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)"
       end
 
+      # The note beside the attr_accessor of a column reader_name renamed.
+      def self.reserved_note(name)
+        "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a method of " \
+          "Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)"
+      end
+
       def self.emit_dispatch(table, definition, view_methods)
         src = +""
+        # Both spellings of every column are owned: its SQL name and its
+        # reader (they differ for a reserved name), so an association cannot
+        # land on a renamed reader.
         taken = table.columns.map { |c| c.name }
+        table.columns.each { |c| taken << reader_name(c.name) }
         taken << "id"
         assoc_names = Array.new(0) { "" }
         assoc_defs = Array.new(0) { "" }
@@ -304,7 +348,7 @@ module Cybertrain
           assoc_names << name
           assoc_defs << association_note("belongs_to " + col, plain, name) if name != plain
           assoc_defs << shadow_note("belongs_to reader", name) if Ident.shadowing_column?(name)
-          assoc_defs << "def #{name} = #{model_class_name(fk.to_table)}.find_by(id: @#{col})"
+          assoc_defs << "def #{name} = #{model_class_name(fk.to_table)}.find_by(id: #{ivar_name(col)})"
         end
 
         # has_many: another table's foreign key pointing here -> def comments.

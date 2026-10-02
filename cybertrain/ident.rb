@@ -8,9 +8,11 @@
 # CRuby, the framework compiles it under Spinel (no Regexp, NOTES rule 1).
 module Cybertrain
   module Ident
-    # Column names the generated class cannot host (the generator refuses
-    # them, the scaffold too): the reader would shadow a method the generated
-    # class or the framework calls on the record. `id` is deliberately
+    # Column names whose plain reader the generated class cannot host: it
+    # would shadow a method the generated class or the framework calls on the
+    # record. The scaffold refuses them (it invents names); the generator
+    # does not, so an existing schema keeps generating: the column reads as
+    # `<column>_column` (ModelsEmitter.reader_name). `id` is deliberately
     # absent: the primary key is Model#id. Names that end in `?` or `!`
     # cannot be columns at all (column? rejects them), so `valid?`,
     # `persisted?`, `is_a?` need no entry; keywords (`class`) live in
@@ -129,7 +131,7 @@ module Cybertrain
 
     # The one definition of "a name the scaffold must not invent": "" when
     # `name` may be chosen, otherwise why not -- "keyword" (RUBY_KEYWORDS),
-    # "reserved" (RESERVED_COLUMN_NAMES, which the generator refuses too) or
+    # "reserved" (RESERVED_COLUMN_NAMES, which the generator renames) or
     # "shadowing" (SHADOWING_COLUMN_NAMES, which the generator only notes).
     # The scaffold asks here at every place it takes a name from the user
     # (field column, references reader, resource singular) and raises the

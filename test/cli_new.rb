@@ -142,6 +142,23 @@ test "CLI new --path keeps an absolute DIR and works for a nested app dir" do
   assert_includes read("sub/store/spin.toml"), "name = \"store\""
 end
 
+# `public`, `storage` and `tmp` are identifiers, but `cybertrain build` keeps
+# those names in dist/ (Build.dist_name_problem): refused before any file is
+# written, by the CLI and by NewApp.create alike.
+test "new refuses an app named like a dist/ entry, writing nothing" do
+  ["public", "storage", "tmp"].each do |name|
+    assert_equal 1, Cybertrain::CLI.run(["new", name, "--skip-spin"])
+    refute File.exist?(name), name
+    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::NewApp.create("sub/#{name}", "\"~> 0.1\"") }
+    assert_includes message, "'#{name}' is not a valid app name: it collides with what `cybertrain build` keeps in dist/"
+    refute File.exist?(name), name
+    refute File.exist?("sub/#{name}"), name
+  end
+  # Similar spellings are different entries and still fine.
+  assert_equal "", Cybertrain::CLI::Build.dist_name_problem("tmp2")
+  assert_equal "", Cybertrain::CLI::Build.dist_name_problem("blog")
+end
+
 test "CLI new rejects --path together with --version" do
   assert_equal 1, Cybertrain::CLI.run(["new", "both", "--path", "/opt/cybertrain", "--version", "~> 0.1"])
   refute File.exist?("both")

@@ -10,6 +10,7 @@ ok   MethodOverride turns a form POST with _method=delete into DELETE
 ok   MethodOverride reads _method from the query string and ignores case
 ok   MethodOverride ignores unknown methods and non-POST requests
 ok   MethodOverride ignores _method in a body that is not a form
+ok   a foreign cookie that does not percent-decode does not fail the request
 ok   App runs the default stack down to the router
 ok   App without logging writes nothing to its logger
-14 tests, 36 assertions, 0 failures
+15 tests, 39 assertions, 0 failures

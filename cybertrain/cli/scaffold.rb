@@ -34,7 +34,6 @@ module Cybertrain
         type = parts.size > 1 ? parts[1].to_s : "string"
         type = "references" if type == "belongs_to"
         raise InvalidArgument, "bad field name '#{name}'" unless Templates.identifier?(name)
-        raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a field" if Ident.unusable_reason(name) == "keyword"
         raise InvalidArgument, "unknown type '#{type}' for #{name} (use #{TYPES.join(", ")})" unless TYPES.include?(type)
 
         field = Field.new(name, type)
