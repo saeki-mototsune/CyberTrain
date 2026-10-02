@@ -2,5 +2,5 @@ ok   a self-rendering partial raises a located template error
 ok   two partials rendering each other raise too
 ok   the interpreter is usable again after the error
 ok   a 10-level chain renders fine
-ok   the limit is 50 nested renders, page included
-5 tests, 13 assertions, 0 failures
+ok   the limit is 12 nested renders, page included
+5 tests, 12 assertions, 0 failures

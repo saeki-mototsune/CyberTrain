@@ -319,7 +319,8 @@ test "a JSON::ParserError in the app gets 500 and the server keeps serving" do
   c = RawClient.new($server.port)
   res = c.get("/json")
   assert_equal "HTTP/1.1 500 Internal Server Error", res.status_line
-  assert_includes $log.string, "JSON::ParserError: unexpected token"
+  # Spinel's class names carry no namespace ("ParserError"), CRuby's do.
+  assert_includes $log.string, "ParserError: unexpected token"
   c.close
   c2 = RawClient.new($server.port)
   assert_equal "hi", c2.get("/hello", "Connection: close\r\n").body

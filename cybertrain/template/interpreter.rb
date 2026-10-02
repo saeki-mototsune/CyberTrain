@@ -50,8 +50,11 @@ module Cybertrain
       # not a StandardError (every rescue misses it) and under Spinel it is a
       # SIGSEGV of the whole process. Past the limit render raises a located
       # Template::RuntimeError like any other template error. Real pages nest
-      # a handful of levels, so 50 leaves room for recursive tree partials.
-      MAX_RENDER_DEPTH = 50
+      # a handful of levels (layout, page, a partial or two). The limit is
+      # low on purpose: a render costs about 14 frames under CRuby and more
+      # under Spinel, whose thread stacks are small -- 50 nested renders
+      # already overflowed one in CI (macOS, test/template_partial_depth.rb).
+      MAX_RENDER_DEPTH = 12
 
       def initialize(helpers)
         @helpers = helpers
