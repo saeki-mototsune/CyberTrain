@@ -4884,7 +4884,8 @@ Expected from `git ls-files -s`: mode `100755`.
 **Files:**
 - Create: `playground/dev/compose.yml`, `playground/dev/e2e.sh`
 - Modify: `.gitignore` (append the two local data directories)
-- Test: `bash playground/dev/e2e.sh` (E1-E19)
+- Modify: `playground/router/Caddyfile` (the apex refuses a request body: Step 2b, a controller ruling after Task 6's review)
+- Test: `bash playground/dev/e2e.sh` (E1-E19); `$SDD/scratch/router-check.sh` (Task 2's R1-R10, after the router change)
 
 **Interfaces:**
 - Consumes: `cybertrain-playground-web:local` (Task 1; with any Task 3 fallback), the router's files (Task 2), the control plane's files and image recipe (Tasks 4-6). The `V11-editor=` and `V11-preview=` values of Task 3's `V-OUTCOMES` line: with `fallback`, drop the matching `contains "$csp" "frame-ancestors …"` condition from E3 (editor) or E5 (preview), since the router no longer sends that header.
@@ -4895,6 +4896,7 @@ Notes on the spec's text, applied below:
 - Correction: the control plane's data directory is `${PLAY_DATA_HOST:-./data}`, and `e2e.sh` uses `./data-e2e`: with the spec's fixed `./data`, the test's project shared the dev stack's `paused` and `kill-all` flags (a test interrupted while paused left the dev stack paused). `.gitignore` gets both directories.
 - `e2e.sh` follows the spec's E1-E19 with these changes, each because the spec's form could not pass or prove the point: `PLAY_TTL=180` instead of 150, so that session 1 (created at E2) outlives the checks that need it on a slow CI runner, and E18 then measures that same session's end (its window is "within 15 s of `expires-at`"); the run order is E1-E7, E9, E10, E8 (E8 needs E10's second session), E11-E15, E18, E16, E17, E19; E8's "gateway" checks become the host's own addresses and a listener on the host (spec §15, correction 5: an `inhibit_ipv4` network has no gateway, `.1` is a container), plus a check that no host interface has an address in `10.250.0.0/16` (the measure that `inhibit_ipv4` is in force, which §15 asks the end-to-end test to keep checking), and a refused connection counts as a way out; E11 adds "a session just ended with `playctl end` answers the 404 page within 5 s" (§15, correction 4; Review Focus 2), waits after each `playctl end` until `status.json` counts one live session again (`playctl` is another process: the control plane forgets the session at its reaper's next pass, up to 5 s later, and until then the same client would get the per-client 429), requires the third creation's 429 to be the rate page, and detaches the router from a live session's network and requires the 404 page within 3 s (the only check that fails when `keepalive off` is dropped from the session upstreams: Task 2's R10 removes the session first, where a router with keep-alive answers 404 just as fast); E3 and E5 read every `Content-Security-Policy` line (code-server may send its own before the router's); E12 adds `Origin: null` from this origin, which must pass the origin check (it then meets the per-client limit: 429); E13 adds the router's DNS and `ip_forward`; E14 expects `"live":1` (one session is left at that point of the sequence, not two); E17 sends its POST from inside the control plane's container, since a stopped router leaves no way in from outside.
 - It refuses to start (exit 2) while any playground session exists on this Docker: a second control plane would adopt or reap them (they share the labels).
+- Addition (controller ruling after Task 6's review, 2026-10-03): no route of the control plane takes a request body. The control plane refuses a declared body itself (a Rack guard answers 413, and Puma's `http_content_length_limit` is 4096), but Puma decodes a chunked body into a temp file before the guard can answer, so an anonymous client could make it buffer bodies up to Cloudflare's 100 MB limit, on many connections, onto the host's Docker storage. The router therefore limits the apex's request body (Step 2b), and E12 pins three cases: a small body (the guard's 413), 1 MiB with a declared length and 1 MiB chunked (both refused by the router with 413).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -5304,10 +5306,25 @@ start 198.51.100.12 -H "Sec-Fetch-Site: same-site"
 o2=$code
 start 198.51.100.1 -H "Origin: null" -H "Sec-Fetch-Site: same-origin"
 o3=$code
+# No route takes a request body. The control plane refuses a small one itself
+# (413); the router refuses a large one before the control plane reads it,
+# with a declared length and with chunked encoding (Puma would buffer a
+# chunked body to disk before the application could refuse it).
+head -c 1048576 /dev/zero > "$work/body-1m"
+post_body() { # curl options -> the status of a POST /sessions that carries a body
+  curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H "Host: $domain" -H "CF-Connecting-IP: 198.51.100.13" \
+    -H "Origin: $entry_origin" -H "Sec-Fetch-Site: same-origin" -H 'Content-Type: application/x-www-form-urlencoded' \
+    "$@" "$base/sessions"
+}
+b_small=$(post_body --data 'a=b')
+b_large=$(post_body --data-binary "@$work/body-1m")
+b_chunked=$(post_body -H 'Transfer-Encoding: chunked' --data-binary "@$work/body-1m")
+b_status=$(curl -s --max-time 2 -H "Host: $domain" "$base/status.json")
 ok=no
-if [ "$o1" = 403 ] && [ "$o2" = 403 ] && [ "$o3" = 429 ]; then ok=yes; fi
-check E12 "another origin and a same-site request get 403; Origin null from this origin passes the check" "$ok" \
-  "evil origin: $o1, same-site: $o2, null from same-origin: $o3 (429 is the per-client limit, past the origin check)"
+if [ "$o1" = 403 ] && [ "$o2" = 403 ] && [ "$o3" = 429 ] &&
+  [ "$b_small" = 413 ] && [ "$b_large" = 413 ] && [ "$b_chunked" = 413 ] && contains "$b_status" '"live":1,'; then ok=yes; fi
+check E12 "another origin and a same-site request get 403; Origin null from this origin passes the check; a request body is refused with 413" "$ok" \
+  "evil origin: $o1, same-site: $o2, null from same-origin: $o3 (429 is the per-client limit, past the origin check); bodies: small $b_small, 1 MiB $b_large, 1 MiB chunked $b_chunked; then $b_status"
 
 get "ffffffffffffffffffffffffffffffff.$domain" /
 u1=$code
@@ -5429,6 +5446,48 @@ bash playground/dev/e2e.sh; echo "exit=$?"
 
 Expected: `parses with bash 3.2`; then `e2e: bringing up ctplay-e2e on http://127.0.0.1:18080 with cybertrain-playground-web:local`, compose's complaint that `playground/dev/compose.yml` does not exist (`no such file or directory`), `e2e: docker compose up failed` and `exit=2`. (If it says playground sessions exist already, remove them first: `docker ps -aq --filter label=cybertrain-play.role=session | xargs docker rm -f`, then their networks as in spec §5.9's fallback.)
 
+- [ ] **Step 2b: The router refuses a request body on the apex**
+
+In `playground/router/Caddyfile`, the apex's inner handle becomes (tabs, as in the file):
+
+```caddyfile
+			handle {
+				# No route of the control plane takes a request body. A large
+				# one stops here: Puma would buffer a chunked body to disk
+				# before the application could refuse it.
+				request_body {
+					max_size 4KB
+				}
+				reverse_proxy {$PLAY_CONTROL_UPSTREAM:ctplay-control:9292}
+			}
+```
+
+and `handle_errors` gains, before `@preview_error`:
+
+```caddyfile
+		# A request body over the apex's limit (the control plane takes none).
+		@apex_too_large {
+			host {$PLAY_DOMAIN}
+			expression {err.status_code} == 413
+		}
+		handle @apex_too_large {
+			respond "Request body too large" 413
+		}
+```
+
+Rebuild the router and check it, first with a throwaway probe, then with Task 2's check:
+
+```bash
+cd /Users/saeki/work/cybertrain
+SDD=/Users/saeki/work/cybertrain/.superpowers/sdd/2026-10-02-web-playground-sp2; mkdir -p "$SDD/logs" "$SDD/scratch" "$SDD/screens"
+docker build -f playground/router/Dockerfile -t ctplay-router:local . > "$SDD/logs/task7-router-build.log" 2>&1; echo "exit=$?"
+bash "$SDD/scratch/router-check.sh" > "$SDD/logs/task7-router-check.log" 2>&1; echo "exit=$?"; tail -n 1 "$SDD/logs/task7-router-check.log"
+```
+
+Expected: `exit=0` (the build's `caddy validate` accepts the file); `exit=0` and `router-check: 10 passed, 0 failed`.
+
+The probe (throwaway, `$SDD/scratch/router-body-probe.sh`, not committed): start the router with a stand-in control plane the way `router-check.sh` does (copy its setup and cleanup; use its port 18081 and another name prefix), then send to the apex host a POST without a body, a POST with a 1 MiB body with a declared length, and the same body with `-H 'Transfer-Encoding: chunked'`. Expected: the stand-in's own answer for the first; `413` with the body `Request body too large` for the other two, within a second. If Caddy 2.11.4 answers either large case with another status (for example the 404 page, or a 502 or 503 because the error surfaced from the proxy's transport), find the placement that gives 413 (for example `request_body` directly in `handle @apex`, or matching the status the proxy reports) and record exactly what you saw and what you changed; the requirement is: a large body never reaches the control plane, and the client gets 413. If no placement gives that, stop and report.
+
 - [ ] **Step 3: Write the compose file and the ignore rules**
 
 Create `playground/dev/compose.yml`:
@@ -5544,7 +5603,7 @@ PASS E9 inside: uid 1000, no capabilities, no new privileges, read-only root, wr
 PASS E10 a second client gets a session, a third the 503 full page; Docker holds exactly 2 sessions
 PASS E8 from a session: no internet, DNS, metadata, host or other session; the router drops it; no session bridge has a host address
 PASS E11 the same client gets 429; a just-ended session and one the router was cut from answer the 404 page at once; a third creation in the window gets 429
-PASS E12 another origin and a same-site request get 403; Origin null from this origin passes the check
+PASS E12 another origin and a same-site request get 403; Origin null from this origin passes the check; a request body is refused with 413
 PASS E13 unknown hosts get the 404 page, /internal/* through the router is 404, the router asks no outside resolver and forwards nothing
 PASS E14 after a control-plane restart status.json counts the live session within 10 s and its editor answers
 PASS E15 a re-created router reaches the live session within 10 s (took 5 s)
@@ -5560,14 +5619,14 @@ then `0` and `0` (the script removed everything; `docker compose -p ctplay-e2e p
 - [ ] **Step 6: Commit**
 
 ```bash
-git add playground/dev/compose.yml playground/dev/e2e.sh .gitignore
+git add playground/dev/compose.yml playground/dev/e2e.sh .gitignore playground/router/Caddyfile
 git status --short
-git commit -m "Playground: the local stack (compose) and the end-to-end test
+git commit -m "Playground: the local stack (compose) and the end-to-end test; the router refuses a request body on the apex
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-Expected from `git status --short`: the three staged files only (no `playground/dev/data*`).
+Expected from `git status --short`: the four staged files only (no `playground/dev/data*`).
 
 ---
 
