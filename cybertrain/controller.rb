@@ -264,7 +264,13 @@ module Cybertrain
           default_render(action) unless performed?
           run_after_callbacks(action)
         end
-      rescue StandardError => e
+      rescue JSON::ParserError, StandardError => e
+        # JSON::ParserError named (NOTES rule 33: not a StandardError under
+        # Spinel) so an action's bad JSON.parse goes through
+        # rescue_with_handler like any other exception. A `rescue_from
+        # JSON::ParserError` handler fires under CRuby; under Spinel the
+        # constant cannot be referenced as a value (rule 48), so no app can
+        # register one there and the exception goes on to the error pages.
         rescue_with_handler(e)
       end
       nil

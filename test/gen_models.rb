@@ -642,6 +642,30 @@ test "emit rejects column names that are invalid or collide with model methods" 
   ])
 end
 
+test "an association reader named like an Object method keeps its name and gets the note a column gets" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "posts" do |t|
+      t.string "title", null: false
+      t.references :send, foreign_key: false
+    end
+    s.create_table "users" do |t|
+      t.string "name", null: false
+    end
+    s.add_foreign_key "posts", "users", column: "send_id"
+    s.create_table "methods" do |t|
+      t.references :post
+      t.string "body"
+    end
+  end
+  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
+  assert_lines(post, [
+    '# NOTE: belongs_to reader "send" shadows Object#send on this model (nothing in Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)',
+    "def send = User.find_by(id: @send_id)",
+    '# NOTE: has_many reader "methods" shadows Object#methods on this model (nothing in Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)',
+    'def methods = MethodRelation.new("methods").where(post_id: @id).to_a'
+  ])
+end
+
 test "a capitalised foreign key gets a capitalised reader, dispatched with an explicit receiver" do
   definition = Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "users" do |t|

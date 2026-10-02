@@ -1,6 +1,6 @@
 ok   parse decodes scalars, lists, nested params and bare flags
 ok   parse decodes '+' as space and percent-escapes
-ok   parse of a malformed percent-escape does not raise (Spinel diverges from CRuby, which raises ArgumentError)
+ok   parse of a malformed percent-escape does not raise (Spinel diverges from CRuby, where Query raises Malformed)
 ok   parse of an empty string yields an empty Params
 ok   split_key splits scalar, nested and list-in-nested forms
 ok   split_key treats a malformed bracket as part of a plain key

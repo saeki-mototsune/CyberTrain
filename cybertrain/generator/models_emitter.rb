@@ -161,8 +161,7 @@ module Cybertrain
         names.each do |n|
           next unless Ident.shadowing_column?(n)
 
-          src << "  # NOTE: column #{n.inspect} shadows Object##{n} on this model (nothing in " \
-                 "Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)\n"
+          src << "  " << shadow_note("column", n) << "\n"
         end
         src << "  attr_accessor #{symbols}\n"
         src << "\n"
@@ -269,6 +268,14 @@ module Cybertrain
         "# #{kind} reads as #{name}: #{plain.inspect} is a column, another association or a Cybertrain::Model method"
       end
 
+      # Same note a column gets (emit_model_head) when the reader's name is an
+      # Object method nothing in Cybertrain calls on a record: the association
+      # keeps its name, the generated file says what it shadows.
+      def self.shadow_note(what, name)
+        "# NOTE: #{what} #{name.inspect} shadows Object##{name} on this model (nothing in " \
+          "Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)"
+      end
+
       def self.emit_dispatch(table, definition, view_methods)
         src = +""
         taken = table.columns.map { |c| c.name }
@@ -286,6 +293,7 @@ module Cybertrain
           name = association_name(table, plain, plain + "_as_" + col, "belongs_to (from #{col})", taken, assoc_names)
           assoc_names << name
           assoc_defs << association_note("belongs_to " + col, plain, name) if name != plain
+          assoc_defs << shadow_note("belongs_to reader", name) if Ident.shadowing_column?(name)
           assoc_defs << "def #{name} = #{model_class_name(fk.to_table)}.find_by(id: @#{col})"
         end
 
@@ -311,6 +319,7 @@ module Cybertrain
             name = association_name(table, plain, fallback, "has_many (#{other.name}.#{fk.column})", taken, assoc_names)
             assoc_names << name
             assoc_defs << association_note("has_many #{other.name}", plain, name) if name != plain
+            assoc_defs << shadow_note("has_many reader", name) if Ident.shadowing_column?(name)
             assoc_defs << "def #{name} = #{model_class_name(other.name)}Relation.new(\"#{other.name}\")" \
                           ".where(#{fk.column}: @id).to_a"
           end

@@ -49,8 +49,8 @@ module Cybertrain
         end
         # A references field also defines the reader `def <name>` (post:references
         # -> def post), which answers to the same rules as a column.
-        if field.reference? && Ident.reserved_column?(name)
-          raise InvalidArgument, "'#{name}' would shadow a method of the generated model (Cybertrain::Model); pick another name for the reference"
+        if field.reference? && (Ident.reserved_column?(name) || Ident.shadowing_column?(name))
+          raise InvalidArgument, "'#{name}' would shadow a method of the generated model (Cybertrain::Model or Object); pick another name for the reference"
         end
 
         field
@@ -136,9 +136,9 @@ module Cybertrain
         # generator would refuse too. The plural (the has_many side) is left
         # to the generator, which renames such a reader (`errors_as_post`)
         # rather than refusing it -- and nothing may reference the table.
-        if Ident.reserved_column?(singular)
+        if Ident.reserved_column?(singular) || Ident.shadowing_column?(singular)
           raise InvalidArgument, "'#{name}' would be read as `#{singular}` on the models that reference it, " \
-                                 "shadowing a method of the generated model (Cybertrain::Model); pick another name"
+                                 "shadowing a method of the generated model (Cybertrain::Model or Object); pick another name"
         end
 
         parsed = Array.new(0) { Field.new("", "") }

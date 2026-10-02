@@ -1,4 +1,5 @@
 require "cybertrain/http/query"
+require "cybertrain/http/client_error"
 require "cybertrain/params"
 require "cybertrain/test"
 
@@ -95,6 +96,14 @@ test "set_path and merge! handle a 5000 level chain iteratively" do
   node = a
   5000.times { node = node.nested("x") }
   assert_equal "2", node["leaf"]
+end
+
+test "Malformed (an undecodable percent-escape under CRuby) is a client fault: 400, not 500" do
+  # Constructed, not raised: Spinel's decoder never raises it (test/query.rb),
+  # so the classification is what both runtimes can check.
+  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::Query::Malformed.new("malformed percent-encoding"))
+  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::Query::TooMany.new("too many"))
+  assert_equal 500, Cybertrain::ClientError.status(ArgumentError.new("the app's own"))
 end
 
 Cybertrain::Test.run!

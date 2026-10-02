@@ -1,6 +1,7 @@
 require "stringio"
 require "cybertrain/middleware"
 require "cybertrain/middleware/request_logger"
+require "cybertrain/http/query"
 require "cybertrain/middleware/method_override"
 require "cybertrain/router"
 require "cybertrain/app"
@@ -107,6 +108,24 @@ test "RequestLogger logs Completed 500 and re-raises when the app raises" do
   assert_equal "[INFO] Started GET \"/boom\" for 127.0.0.1", lines[0]
   assert lines[1].start_with?("[INFO] Completed 500 in "), lines[1]
   assert lines[1].end_with?("ms"), lines[1]
+end
+
+# An app whose parameter parsing hit a Query limit: the error path outside
+# RequestLogger answers 400 for it (ClientError), so the access log must too.
+class TooManyApp
+  def call(ctx)
+    raise Cybertrain::Query::TooMany, "too many parameters (limit 4096)"
+  end
+end
+
+test "RequestLogger logs the status the client fault gets (400), not 500" do
+  sink = StringIO.new
+  stack = Cybertrain::RequestLogger.new(TooManyApp.new, Cybertrain::Logger.new(sink))
+  message = assert_raises("TooMany") { stack.call(build_ctx("POST", "/things")) }
+  assert_equal "too many parameters (limit 4096)", message
+  lines = sink.string.split("\n")
+  assert_equal 2, lines.size
+  assert lines[1].start_with?("[INFO] Completed 400 in "), lines[1]
 end
 
 test "MethodOverride turns a form POST with _method=delete into DELETE" do

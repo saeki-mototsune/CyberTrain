@@ -9,4 +9,5 @@ ok   empty pairs do not count towards the limit
 ok   20000 key kind flips complete and keep the last write
 ok   flips within one parse keep Rack's last-write-wins
 ok   set_path and merge! handle a 5000 level chain iteratively
-11 tests, 30 assertions, 0 failures
+ok   Malformed (an undecodable percent-escape under CRuby) is a client fault: 400, not 500
+12 tests, 33 assertions, 0 failures

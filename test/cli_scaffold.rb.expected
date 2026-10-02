@@ -97,16 +97,18 @@ error: 'errors' would shadow a method of the generated model (Cybertrain::Model)
 error: 'save' would shadow a method of the generated model (Cybertrain::Model); pick another name
 error: 'attributes' would shadow a method of the generated model (Cybertrain::Model); pick another name
 error: 'hash' would shadow a method of the generated model (Cybertrain::Model); pick another name
-error: 'errors' would shadow a method of the generated model (Cybertrain::Model); pick another name for the reference
-error: 'hash' would shadow a method of the generated model (Cybertrain::Model); pick another name for the reference
+error: 'errors' would shadow a method of the generated model (Cybertrain::Model or Object); pick another name for the reference
+error: 'hash' would shadow a method of the generated model (Cybertrain::Model or Object); pick another name for the reference
 error: 'display' would shadow Object#display on the generated model; pick another name
 error: 'tap' would shadow Object#tap on the generated model; pick another name
+error: 'display' would shadow a method of the generated model (Cybertrain::Model or Object); pick another name for the reference
 error: bad field 'a:string:index': use name:type (modifiers such as :index are not supported)
 error: bad field 'a:string:': use name:type (modifiers such as :index are not supported)
 error: bad field name 'Title'
 error: 'class' is a Ruby keyword and cannot name a resource
-error: 'Hash' would be read as `hash` on the models that reference it, shadowing a method of the generated model (Cybertrain::Model); pick another name
-error: 'raise' would be read as `raise` on the models that reference it, shadowing a method of the generated model (Cybertrain::Model); pick another name
+error: 'Hash' would be read as `hash` on the models that reference it, shadowing a method of the generated model (Cybertrain::Model or Object); pick another name
+error: 'raise' would be read as `raise` on the models that reference it, shadowing a method of the generated model (Cybertrain::Model or Object); pick another name
+error: 'displays' would be read as `display` on the models that reference it, shadowing a method of the generated model (Cybertrain::Model or Object); pick another name
 error: ./config/routes.rb not found: run this inside a cybertrain app
 error: usage: cybertrain generate scaffold NAME field:type ...
 error: only `generate scaffold` is supported
@@ -145,4 +147,4 @@ create app/views/sheep/_form.html.erb
 route resources :sheep
 ok   a name that is its own plural links and redirects to <plural>_index_path
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-15 tests, 158 assertions, 0 failures
+15 tests, 164 assertions, 0 failures

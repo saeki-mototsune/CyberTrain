@@ -17,6 +17,9 @@ module Cybertrain
         @path = path
         @size = path == ":memory:" ? 1 : size
         @connections = []
+        # Guards @connections: `with` runs on every connection thread and
+        # reopen rewrites the list (the SizedQueue covers the handing out).
+        @lock = Mutex.new
         @available = SizedQueue.new(@size)
         @size.times do
           conn = Connection.new(path)
@@ -45,7 +48,7 @@ module Cybertrain
       end
 
       def close_all
-        @connections.each(&:close)
+        @lock.synchronize { @connections.each(&:close) }
       end
 
       private
@@ -98,15 +101,21 @@ module Cybertrain
                        "reopening it would start an empty database"
         end
         fresh = Connection.new(@path)
-        i = 0
-        while i < @connections.size
-          if @connections[i].closed?
-            @connections[i] = fresh
-            return fresh
+        # Under the lock, so two threads reopening two slots at once cannot
+        # both take the same closed entry and strand one fresh connection
+        # outside the list (unreachable by close_all).
+        @lock.synchronize do
+          replaced = false
+          i = 0
+          while i < @connections.size
+            if !replaced && @connections[i].closed?
+              @connections[i] = fresh
+              replaced = true
+            end
+            i += 1
           end
-          i += 1
+          @connections << fresh unless replaced
         end
-        @connections << fresh
         fresh
       end
     end

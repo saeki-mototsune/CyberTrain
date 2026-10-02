@@ -195,6 +195,14 @@ finds the commit that removed them).
     works (Cybertrain::ClientError.status). A `begin ... ensure ... end` as
     the last expression of a block does not type either (same C error as
     rule 32's); end the block with an explicit `nil` after it.
+48. `JSON::ParserError` exists only in a rescue clause. `rescue
+    JSON::ParserError, StandardError => e` compiles and catches it (rule
+    33), but the constant as a value -- `rescue_from(JSON::ParserError)`,
+    `klass = JSON::ParserError` -- is "uninitialized constant
+    JSON::ParserError (NameError)" when the program starts. So an app cannot
+    register a `rescue_from` handler for it under Spinel; Controller#run_action
+    still names it in its rescue so the handler fires under CRuby and the
+    exception reaches the error pages the same way on both runtimes.
 
 ## Numbers worth remembering
 

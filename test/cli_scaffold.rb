@@ -255,9 +255,11 @@ test "bad input is rejected before anything is written" do
   # applies to the field name, not only to the errors_id column.
   rejected(["errors:references"])
   rejected(["hash:references"])
-  # Object methods the generator only notes: a new name need not shadow them.
+  # Object methods the generator only notes: a new name need not shadow them,
+  # as a column or as a references reader (def display).
   rejected(["display:string"])
   rejected(["tap:string"])
+  rejected(["display:references"])
   rejected(["a:string:index"])
   rejected(["a:string:"])
   rejected(["Title:string"])
@@ -274,6 +276,11 @@ test "bad input is rejected before anything is written" do
   status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "raise", "name:string"]) }
   assert_equal 1, status
   refute File.exist?("blog/app/models/raise.rb")
+  # The singular of `displays` is `display`, Object#display on any model that
+  # references it.
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "displays", "name:string"]) }
+  assert_equal 1, status
+  refute File.exist?("blog/app/models/display.rb")
   assert_equal 4, migration_versions.size
   # TMP itself is not an app: it has no config/routes.rb.
   assert_equal 1, Cybertrain::CLI.run(["generate", "scaffold", "tag", "name:string"])
