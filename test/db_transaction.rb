@@ -52,9 +52,14 @@ test "a transaction left by break is rolled back when the pooled connection come
   DB.connect(":memory:")
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
   DB.with do |c|
-    c.transaction do
-      c.execute("INSERT INTO posts (title) VALUES (?)", ["broken"])
-      break
+    # The `break` sits inside an each: Spinel compiles a block's `break`
+    # only within an iterator ("unsupported expression: BreakNode" for a
+    # bare one, CI on PR #10); the shape is the one test/db_sqlite.rb uses.
+    [1].each do |_|
+      c.transaction do
+        c.execute("INSERT INTO posts (title) VALUES (?)", ["broken"])
+        break
+      end
     end
     # Still inside the checkout: the BEGIN is open until the connection
     # goes back, which is what makes the pool the right place to clean up.
