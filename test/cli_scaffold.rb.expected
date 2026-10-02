@@ -93,6 +93,10 @@ error: 'updated_at' is a column every table already has
 error: 'class' is a Ruby keyword and cannot name a field
 error: 'end' is a Ruby keyword and cannot name a field
 error: 'self' is a Ruby keyword and cannot name a field
+error: 'errors' would shadow a method of the generated model (Cybertrain::Model); pick another name
+error: 'save' would shadow a method of the generated model (Cybertrain::Model); pick another name
+error: 'attributes' would shadow a method of the generated model (Cybertrain::Model); pick another name
+error: 'hash' would shadow a method of the generated model (Cybertrain::Model); pick another name
 error: bad field 'a:string:index': use name:type (modifiers such as :index are not supported)
 error: bad field 'a:string:': use name:type (modifiers such as :index are not supported)
 error: bad field name 'Title'
@@ -135,4 +139,4 @@ create app/views/sheep/_form.html.erb
 route resources :sheep
 ok   a name that is its own plural links and redirects to <plural>_index_path
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-15 tests, 121 assertions, 0 failures
+15 tests, 137 assertions, 0 failures

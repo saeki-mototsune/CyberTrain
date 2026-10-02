@@ -3,9 +3,10 @@ ok   TooDeep and TooMany are StandardErrors (assert_raises rescues only those)
 ok   nesting exactly MAX_DEPTH deep parses, one more raises
 ok   the deepest allowed key lands its value at the bottom
 ok   a malformed bracket run is still one plain key
+ok   a deep key with a malformed tail is still one plain key, not TooDeep
 ok   MAX_PAIRS pairs parse, one more raises TooMany
 ok   empty pairs do not count towards the limit
 ok   20000 key kind flips complete and keep the last write
 ok   flips within one parse keep Rack's last-write-wins
 ok   set_path and merge! handle a 5000 level chain iteratively
-10 tests, 28 assertions, 0 failures
+11 tests, 30 assertions, 0 failures

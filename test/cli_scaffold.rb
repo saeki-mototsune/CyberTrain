@@ -245,6 +245,12 @@ test "bad input is rejected before anything is written" do
   rejected(["class:string"])
   rejected(["end"])
   rejected(["self:text"])
+  # Names the generated model cannot host (Cybertrain::Ident, the generator's
+  # own rule): refused here, not by the later `spin run gen`.
+  rejected(["errors:string"])
+  rejected(["save:text"])
+  rejected(["attributes:string"])
+  rejected(["hash:integer"])
   rejected(["a:string:index"])
   rejected(["a:string:"])
   rejected(["Title:string"])

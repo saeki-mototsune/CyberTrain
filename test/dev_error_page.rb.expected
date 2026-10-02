@@ -1,4 +1,5 @@
 ok   an exception from the inner app becomes a 500 HTML page
+ok   parameters past Query's limits are a plain 400, not the diagnostics page
 ok   the error page shows the request line
 ok   the error page names any exception class
 ok   a template runtime error shows the template name and line
@@ -20,4 +21,4 @@ ok   no rebuild while cybertrain build holds tmp/cybertrain-build.lock
 ok   a lock whose build process is gone is stale: removed and ignored
 ok   a lock older than 30 minutes is stale even with a live PID: age wins over aliveness
 ok   shell_quote escapes single quotes
-22 tests, 77 assertions, 0 failures
+23 tests, 80 assertions, 0 failures

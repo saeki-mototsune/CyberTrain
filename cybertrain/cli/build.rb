@@ -30,9 +30,17 @@ module Cybertrain
       end
 
       # name goes through quote_arg too: app_name validates it, but the
-      # command strings stay safe for a caller that skipped that.
+      # command strings stay safe for a caller that skipped that. An empty
+      # name would otherwise become an explicit "" argument to spin.
       def self.commands(name)
+        require_name!(name)
         ["spin run gen -- --embed-views", "spin build #{quote_arg(name)}", "spin run gen"]
+      end
+
+      def self.require_name!(name)
+        raise InvalidArgument, "no application name: run this inside a cybertrain application (spin.toml with a [package] name)" if name.empty?
+
+        nil
       end
 
       # `cybertrain db ARGS`, through bin/db.rb (the app binary cannot compile
@@ -61,6 +69,7 @@ module Cybertrain
 
       # port is "" (the app's default, 3000) or a port? string.
       def self.server_commands(name, port)
+        require_name!(name)
         target = quote_arg(name)
         run = port == "" ? "spin run #{target}" : "spin run #{target} -- #{quote_arg(port)}"
         ["spin run gen", run]

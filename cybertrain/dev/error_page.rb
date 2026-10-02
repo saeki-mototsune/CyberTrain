@@ -2,6 +2,7 @@ require "cybertrain/middleware"
 require "cybertrain/html"
 require "cybertrain/logger"
 require "cybertrain/dev/rebuilder"
+require "cybertrain/http/query"
 
 module Cybertrain
   module Dev
@@ -22,6 +23,11 @@ module Cybertrain
         begin
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
+        rescue Query::Rejected => e
+          # The client's fault (parameters past Query's limits): a plain 400
+          # naming the limit, not the 500 diagnostics page. See ErrorPages.
+          Cybertrain.logger.info("rejected request parameters: #{e.message}")
+          render_rejected(ctx, e)
         rescue StandardError => e
           Cybertrain.logger.error("#{e.class.name}: #{e.message}")
           render_exception(ctx, e)
@@ -60,6 +66,16 @@ module Cybertrain
         response.status = 500
         response.content_type = "text/html; charset=utf-8"
         response.body = error_html(ctx.request, error.class.name, error.message)
+        nil
+      end
+
+      def render_rejected(ctx, error)
+        response = ctx.response
+        response.headers.clear
+        response.cookies.clear
+        response.status = 400
+        response.content_type = "text/plain; charset=utf-8"
+        response.body = "Bad Request: #{error.message}"
         nil
       end
 

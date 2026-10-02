@@ -2,6 +2,7 @@
 # migration, model, controller and views of a resource and adds
 # `resources :posts` to config/routes.rb, the way Rails' scaffold does.
 require "cybertrain/generator/inflector"
+require "cybertrain/ident"
 require "cybertrain/cli/templates"
 
 module Cybertrain
@@ -15,16 +16,11 @@ module Cybertrain
       TYPES = %w[string text integer float boolean date datetime references]
 
       # Columns every table already has (the primary key and t.timestamps).
+      # Everything else a column may not be called -- Ruby keywords, names
+      # that collide with the generated model -- comes from Cybertrain::Ident,
+      # the same rules the generator applies, so the scaffold refuses the
+      # name instead of writing files that `spin run gen` then rejects.
       RESERVED_COLUMNS = %w[id created_at updated_at]
-
-      # Ruby keywords: a column (or resource) named after one would generate
-      # `def class` / `|end|` and break the generated code.
-      RUBY_KEYWORDS = %w[
-        __ENCODING__ __LINE__ __FILE__ BEGIN END alias and begin break case
-        class def defined do else elsif end ensure false for if in module
-        next nil not or redo rescue retry return self super then true undef
-        unless until when while yield
-      ]
 
       attr_reader :field_name, :field_type
 
@@ -38,11 +34,14 @@ module Cybertrain
         type = parts.size > 1 ? parts[1].to_s : "string"
         type = "references" if type == "belongs_to"
         raise InvalidArgument, "bad field name '#{name}'" unless Templates.identifier?(name)
-        raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a field" if RUBY_KEYWORDS.include?(name)
+        raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a field" if Ident.keyword?(name)
         raise InvalidArgument, "unknown type '#{type}' for #{name} (use #{TYPES.join(", ")})" unless TYPES.include?(type)
 
         field = Field.new(name, type)
         raise InvalidArgument, "'#{field.column_name}' is a column every table already has" if RESERVED_COLUMNS.include?(field.column_name)
+        if Ident.reserved_column?(field.column_name)
+          raise InvalidArgument, "'#{field.column_name}' would shadow a method of the generated model (Cybertrain::Model); pick another name"
+        end
 
         field
       end
@@ -120,7 +119,7 @@ module Cybertrain
 
         underscored = Inflector.underscore(name)
         raise InvalidArgument, "bad resource name '#{name}'" unless Templates.identifier?(underscored)
-        raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a resource" if Field::RUBY_KEYWORDS.include?(Inflector.singularize(underscored))
+        raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a resource" if Ident.keyword?(Inflector.singularize(underscored))
 
         parsed = Array.new(0) { Field.new("", "") }
         columns = Array.new(0) { "" }

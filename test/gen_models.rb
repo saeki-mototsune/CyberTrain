@@ -605,15 +605,37 @@ end
 test "emit rejects column names that are invalid or collide with model methods" do
   ["errors", "persisted", "class", "hash", "object_id", "send", "freeze", "display", "method",
    "instance_variable_get", "attributes", "save", "update", "destroy", "reload", "model_name",
-   "new_record", "to_json", "as_json", "end", "def", "nil", "self"].each do |bad|
+   "to_json", "as_json", "end", "def", "nil", "self"].each do |bad|
     assert emit_error(bad).include?("is reserved"), "#{bad} should be rejected"
   end
-  ["Title", "1st", "a-b", "a b", "a.b", ""].each do |bad|
+  ["Title", "1st", "a-b", "a b", "a.b", "", "valid?"].each do |bad|
     assert emit_error(bad).include?("not a valid attribute name"), "#{bad.inspect} should be rejected"
   end
-  ["title", "_x", "a1", "group"].each do |ok|
+  # Names that only look like Model methods: the real ones end in `?`.
+  ["title", "_x", "a1", "group", "new_record", "is_a", "frozen"].each do |ok|
     assert_equal "", emit_error(ok)
   end
+end
+
+test "a column named like an association reader is an error, not a lost association" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "articles" do |t|
+      t.string "title", null: false
+      t.text "comments"
+    end
+    s.create_table "comments" do |t|
+      t.references :article
+      t.string "article"
+    end
+  end
+  has_many = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [])
+  end
+  assert_includes has_many, 'column "comments" collides with the has_many (comments.article_id) association'
+  belongs_to = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("comments"), definition, [])
+  end
+  assert_includes belongs_to, 'column "article" collides with the belongs_to (from article_id) association'
 end
 
 test "initial values: zero values for NOT NULL, nil for nullable, SQL defaults applied" do

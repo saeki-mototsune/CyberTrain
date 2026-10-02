@@ -1,5 +1,6 @@
 require "cybertrain/schema"
 require "cybertrain/generator/inflector"
+require "cybertrain/ident"
 require "cybertrain/generator/model_scan"
 
 module Cybertrain
@@ -10,39 +11,6 @@ module Cybertrain
     # Spinel cannot define methods at runtime. test/model.rb hand-writes
     # this exact shape and is its executable specification.
     module ModelsEmitter
-      # Column names the emitter refuses (besides anything not matching
-      # COLUMN_NAME_PATTERN and the Ruby keywords below): each would define
-      # an attribute reader/writer that shadows a method of Cybertrain::Model
-      # or Object that the framework itself calls (`errors`, `save`,
-      # `attributes`, `hash`, `send`, ...), or one that breaks the generated
-      # source (`class`). `id` is deliberately absent: the primary key is
-      # handled by Model#id. cli/scaffold.rb keeps its own, narrower
-      # RESERVED_COLUMNS (id created_at updated_at) for what a scaffold may
-      # add; this list is about what the generated class can host.
-      RESERVED_COLUMN_NAMES = [
-        "errors", "persisted", "class", "hash", "object_id", "send", "freeze",
-        "display", "method", "instance_variable_get", "attributes", "save",
-        "update", "destroy", "reload", "valid?", "model_name", "new_record",
-        "to_json", "as_json", "to_param", "to_row", "load_row", "set_id",
-        "run_callbacks", "insert_row", "update_row", "read_attribute",
-        "write_attribute", "assign_attributes", "read_association",
-        "call_view_method", "initialize", "table_name", "column_names",
-        "from_row", "dup", "clone", "tap", "itself", "extend", "inspect",
-        "to_s", "public_send", "respond_to", "instance_variable_set",
-        "instance_variables", "instance_of", "kind_of", "is_a", "frozen"
-      ]
-
-      # Ruby keywords: `def end=` / `attr_reader :class` would not parse or
-      # would redefine core behaviour.
-      RUBY_KEYWORD_NAMES = [
-        "__ENCODING__", "__LINE__", "__FILE__", "BEGIN", "END", "alias", "and",
-        "begin", "break", "case", "class", "def", "defined", "do", "else",
-        "elsif", "end", "ensure", "false", "for", "if", "in", "module", "next",
-        "nil", "not", "or", "redo", "rescue", "retry", "return", "self",
-        "super", "then", "true", "undef", "unless", "until", "when", "while",
-        "yield"
-      ]
-
       # "posts" -> "Post"; "blog_posts" -> "BlogPost".
       def self.model_class_name(table)
         Inflector.camelize(Inflector.singularize(table.to_s))
@@ -106,35 +74,22 @@ module Cybertrain
 
       # Raises ArgumentError (the generator exits non-zero) for a column the
       # generated class cannot host: not a plain snake_case identifier, a Ruby
-      # keyword, or one of RESERVED_COLUMN_NAMES.
+      # keyword, or one of Ident::RESERVED_COLUMN_NAMES. The same rules gate
+      # `cybertrain generate scaffold`, so the scaffold refuses the name
+      # before it writes any file.
       def self.check_column_names(table)
         table.columns.each do |c|
           name = c.name
-          unless column_name_valid?(name)
+          unless Ident.column?(name)
             raise ArgumentError, "table #{table.name}: column #{name.inspect} is not a valid attribute name " \
                                  "(use lowercase letters, digits and _, not starting with a digit)"
           end
-          if RUBY_KEYWORD_NAMES.include?(name) || RESERVED_COLUMN_NAMES.include?(name)
+          if Ident.keyword?(name) || Ident.reserved_column?(name)
             raise ArgumentError, "table #{table.name}: column #{name.inspect} is reserved " \
                                  "(it would shadow a method of Cybertrain::Model or Object); rename it"
           end
         end
         nil
-      end
-
-      # /\A[a-z_][a-z0-9_]*\z/ spelled out so Spinel needs no Regexp here.
-      def self.column_name_valid?(name)
-        return false if name.empty?
-
-        i = 0
-        name.each_char do |ch|
-          lower = ch >= "a" && ch <= "z"
-          digit = ch >= "0" && ch <= "9"
-          return false unless lower || ch == "_" || (digit && i > 0)
-
-          i += 1
-        end
-        true
       end
 
       def self.emit_relation(model)
@@ -273,6 +228,14 @@ module Cybertrain
 
       # Associations, then the read_association / call_view_method case
       # tables the template interpreter dispatches through by name.
+      # A column named like an association reader would define the method
+      # twice (or, before PR #10, silently lose the association). Raised
+      # like the column-name checks: the generator exits non-zero.
+      def self.association_collision!(table, name, kind)
+        raise ArgumentError, "table #{table.name}: column #{name.inspect} collides with the #{kind} " \
+                             "association of the same name; rename the column"
+      end
+
       def self.emit_dispatch(table, definition, view_methods)
         src = +""
         taken = table.columns.map { |c| c.name }
@@ -286,7 +249,8 @@ module Cybertrain
           next unless col.end_with?("_id") && !table.column(col).nil?
 
           name = col[0, col.size - 3]
-          next if taken.include?(name) || assoc_names.include?(name)
+          next if assoc_names.include?(name)
+          association_collision!(table, name, "belongs_to (from #{col})") if taken.include?(name)
 
           assoc_names << name
           assoc_defs << "def #{name} = #{model_class_name(fk.to_table)}.find_by(id: @#{col})"
@@ -304,7 +268,8 @@ module Cybertrain
           pointing = other.foreign_keys.select { |fk| fk.to_table == table.name }
           pointing.each do |fk|
             name = pointing.size > 1 ? other.name + "_as_" + column_stem(fk.column) : other.name
-            next if taken.include?(name) || assoc_names.include?(name)
+            next if assoc_names.include?(name)
+            association_collision!(table, name, "has_many (#{other.name}.#{fk.column})") if taken.include?(name)
 
             assoc_names << name
             assoc_defs << "def #{name} = #{model_class_name(other.name)}Relation.new(\"#{other.name}\")" \

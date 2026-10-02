@@ -61,6 +61,12 @@ test "command strings quote every interpolated value" do
   assert_equal "spin run blog -- '1; id'", Cybertrain::CLI::Build.server_commands("blog", "1; id")[1]
 end
 
+test "an empty application name is an error, not an empty spin argument" do
+  msg = assert_raises("InvalidArgument") { Cybertrain::CLI::Build.commands("") }
+  assert_includes msg, "no application name"
+  assert_raises("InvalidArgument") { Cybertrain::CLI::Build.server_commands("", "") }
+end
+
 test "build embeds the views, builds, then restores the empty table" do
   assert_equal ["spin run gen -- --embed-views", "spin build blog", "spin run gen"], Cybertrain::CLI::Build.commands("blog")
   assert_equal ["spin run gen", "spin run db -- migrate", "spin run gen"], Cybertrain::CLI::Build.migration_commands

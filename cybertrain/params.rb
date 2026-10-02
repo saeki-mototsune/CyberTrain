@@ -162,11 +162,12 @@ module Cybertrain
     attr_reader :lists, :children
 
     # NOTE: named raw_values, not values -- naming this accessor "values"
-    # (colliding with Hash#values) miscompiles the recursive merge! below
-    # under Spinel (a "const char * -> sp_int" C build error, confirmed on
-    # 2026.09.12): the recursive self-call apparently resolves "values"
-    # against Hash#values instead of this reader. Renaming it sidesteps
-    # the miscompile; no functional change.
+    # (colliding with Hash#values) miscompiled merge! (above) under Spinel
+    # back when it called itself recursively: a "const char * -> sp_int" C
+    # build error, confirmed on 2026.09.12, the call resolving "values"
+    # against Hash#values instead of this reader. merge! is iterative now,
+    # but the name stays: a reader called like a Hash method on a class
+    # whose Hashes it reads is asking for the same mis-resolution.
     def raw_values
       @values
     end

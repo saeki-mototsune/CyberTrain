@@ -39,6 +39,7 @@ Gem::Specification.new do |spec|
     "cybertrain/cli/build.rb",
     "cybertrain/cli/toolchain.rb",
     "cybertrain/generator/inflector.rb",
+    "cybertrain/ident.rb",
     "exe/cybertrain",
     "README.md"
   ]

@@ -1,4 +1,5 @@
 require "cybertrain/cast"
+require "cybertrain/ident"
 require "cybertrain/db"
 
 module Cybertrain
@@ -158,7 +159,12 @@ module Cybertrain
     def delete_all
       sql = +"DELETE FROM #{Relation.quote_ident(@table)}"
       if @limit >= 0 || @offset > 0
-        sql << " WHERE rowid IN (" << select_sql("rowid", @order, @limit, @offset) << ")"
+        # By id when the relation has no order, as first_row/last_row do, so
+        # Post.limit(1).delete_all removes the row Post.limit(1).first returns
+        # rather than whichever row SQLite scans first.
+        id = Relation.quote_ident("id")
+        order = @order == "" ? id : @order
+        sql << " WHERE #{id} IN (" << select_sql(id, order, @limit, @offset) << ")"
       else
         sql << " WHERE " << @wheres.join(" AND ") unless @wheres.empty?
       end
@@ -174,7 +180,7 @@ module Cybertrain
     def first_row
       return nil if @limit == 0
 
-      order = @order == "" ? "id" : @order
+      order = @order == "" ? Relation.quote_ident("id") : @order
       pick_row(order, @offset)
     end
 
@@ -184,7 +190,7 @@ module Cybertrain
     # (Post.offset(1).last is the table's last row, Post.limit(3).last the
     # third), which means loading that window.
     def last_row
-      order = @order == "" ? "id" : @order
+      order = @order == "" ? Relation.quote_ident("id") : @order
       if @limit >= 0 || @offset > 0
         sql = select_sql("*", order, @limit, @offset)
         binds = @binds
@@ -199,16 +205,10 @@ module Cybertrain
       "`" + name.gsub("`", "``") + "`"
     end
 
-    # [A-Za-z_][A-Za-z0-9_]*, scanned by hand (no regexp in framework code).
+    # What order() accepts as a column: Ident.column? (the generator refuses
+    # any other column name, so nothing else can exist).
     def self.plain_ident?(name)
-      return false if name == ""
-      first = true
-      name.each_char do |c|
-        letter = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_"
-        return false unless letter || (!first && c >= "0" && c <= "9")
-        first = false
-      end
-      true
+      Ident.column?(name)
     end
 
     # "title DESC, id" -> "title ASC, id DESC"

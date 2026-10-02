@@ -40,6 +40,13 @@ test "a malformed bracket run is still one plain key" do
   assert_equal ["a", "b", ""], Cybertrain::Query.split_key("a[b][]")
 end
 
+test "a deep key with a malformed tail is still one plain key, not TooDeep" do
+  key = "a" + "[x]" * 100 + "[oops"
+  assert_equal [key], Cybertrain::Query.split_key(key)
+  params = Cybertrain::Query.parse("#{key}=1")
+  assert_equal "1", params[key]
+end
+
 test "MAX_PAIRS pairs parse, one more raises TooMany" do
   assert_equal 4096, Cybertrain::Query::MAX_PAIRS
   ok = (0...4096).map { |i| "k#{i}=1" }.join("&")

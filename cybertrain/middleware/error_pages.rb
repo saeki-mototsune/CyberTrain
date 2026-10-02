@@ -1,5 +1,6 @@
 require "cybertrain/middleware"
 require "cybertrain/logger"
+require "cybertrain/http/query"
 
 module Cybertrain
   # Production's error pages (docs/design.md D14), outermost in the stack.
@@ -19,6 +20,13 @@ module Cybertrain
     def call(ctx)
       begin
         super
+      rescue Query::Rejected => e
+        # Request parameters past Query's limits (nesting depth, pair count)
+        # are the client's fault: 400, at info level. Caught here because
+        # this middleware wraps the whole stack, so Server#respond's own
+        # mapping never sees the exception in a real application.
+        @logger.info("rejected request parameters: #{e.message}")
+        bad_request(ctx.response)
       rescue StandardError => e
         @logger.error("#{e.class.name}: #{e.message}")
         internal_error(ctx.response)
@@ -38,9 +46,17 @@ module Cybertrain
     # failed action had already set goes (a stale Location or
     # Content-Disposition: attachment would hide the page).
     def internal_error(response)
+      reset_to(response, 500)
+    end
+
+    def bad_request(response)
+      reset_to(response, 400)
+    end
+
+    def reset_to(response, status)
       response.headers.clear
       response.cookies.clear
-      response.status = 500
+      response.status = status
       response.content_type = "text/plain; charset=utf-8"
       response.body = response.status_text
       nil

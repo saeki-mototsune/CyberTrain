@@ -8,6 +8,7 @@ require "cybertrain/middleware"
 require "cybertrain/template/ast"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/dev/error_page"
+require "cybertrain/http/query"
 require "cybertrain/test"
 
 # Keep the error log out of the snapshot.
@@ -23,6 +24,7 @@ class Raiser < Cybertrain::Middleware
       raise Cybertrain::Template::SyntaxError, "posts/_form.html.erb:3: unterminated <% tag"
     end
     raise ArgumentError, "wrong number of arguments (given 1, expected 0)" if ctx.request.path == "/argument"
+    raise Cybertrain::Query::TooMany, "too many parameters (limit 4096)" if ctx.request.path == "/toomany"
     if ctx.request.path == "/download"
       # A send_data-style action that fails after setting its headers.
       ctx.response.redirect("/elsewhere")
@@ -87,6 +89,13 @@ test "an exception from the inner app becomes a 500 HTML page" do
   assert_includes res.body, "<h1>RuntimeError</h1>"
   assert_includes res.body, "boom &lt;b&gt;"
   assert res.body.index("boom <b>").nil?, "the message must be escaped"
+end
+
+test "parameters past Query's limits are a plain 400, not the diagnostics page" do
+  res = request(plain_app, "/toomany")
+  assert_equal 400, res.status
+  assert_equal "text/plain; charset=utf-8", res.header("Content-Type")
+  assert_equal "Bad Request: too many parameters (limit 4096)", res.body
 end
 
 test "the error page shows the request line" do

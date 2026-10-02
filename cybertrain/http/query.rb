@@ -51,12 +51,12 @@ module Cybertrain
 
     # "post[tags][]" -> ["post", "tags", ""]; "id" -> ["id"]. A "[" with no
     # matching "]" (or any other malformed bracket run) is not a nesting
-    # marker at all -- the whole string is returned as one plain key. More
-    # than MAX_DEPTH bracket pairs raises TooDeep, checked as the pairs are
-    # found so a hostile key is rejected after MAX_DEPTH + 1 steps.
+    # marker at all -- the whole string is returned as one plain key, however
+    # many pairs precede the malformed tail. A well-formed key with more than
+    # MAX_DEPTH bracket pairs raises TooDeep, once the scan is complete.
     #
     # Scans with a cursor into key instead of re-slicing the remainder after
-    # every pair, so the work is linear in the key length.
+    # every pair, so the work is linear in the key length either way.
     def self.split_key(key)
       first_bracket = key.index("[")
       return [key] if first_bracket.nil?
@@ -71,11 +71,10 @@ module Cybertrain
         close = key.index("]", pos)
         return [key] if close.nil?
 
-        raise TooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if parts.length >= MAX_DEPTH
-
         parts << key[pos + 1, close - pos - 1].to_s
         pos = close + 1
       end
+      raise TooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if parts.length > MAX_DEPTH
 
       [base] + parts
     end
