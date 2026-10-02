@@ -56,8 +56,12 @@ module Cybertrain
       # already overflowed one in CI (macOS, test/template_partial_depth.rb).
       MAX_RENDER_DEPTH = 12
 
-      def initialize(helpers)
+      # max_depth: Views.configure(root, max_render_depth: n) for an app whose
+      # partials legitimately recurse (threaded comments, a tree menu) past
+      # the default; the page and the layout count as renders too.
+      def initialize(helpers, max_depth = MAX_RENDER_DEPTH)
         @helpers = helpers
+        @max_depth = max_depth
         @name = ""
         # Renders currently open on this interpreter (typed Integer counter).
         @depth = 0
@@ -83,8 +87,8 @@ module Cybertrain
         # Checked before anything is saved or changed, so the raise leaves
         # @depth/@name/@out untouched. @name is still the calling template
         # here; the caller's call_helper then adds its "name:line:" prefix.
-        if @depth >= MAX_RENDER_DEPTH
-          raise RuntimeError, "partial nesting too deep (> #{MAX_RENDER_DEPTH}): #{template.name} rendered from #{@name}"
+        if @depth >= @max_depth
+          raise RuntimeError, "partial nesting too deep (> #{@max_depth}): #{template.name} rendered from #{@name}"
         end
 
         saved_name = @name

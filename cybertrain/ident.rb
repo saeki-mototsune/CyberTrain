@@ -8,36 +8,27 @@
 # CRuby, the framework compiles it under Spinel (no Regexp, NOTES rule 1).
 module Cybertrain
   module Ident
-    # Column names that would collide with the generated model: a reader
-    # named like a method Cybertrain::Model or Object defines and the
-    # framework calls (`errors`, `save`, `attributes`, `hash`, `send`, ...),
-    # `raise` (Model#save! and #reload would dispatch to the zero-arity
-    # reader and die with "wrong number of arguments"), an ivar
-    # the model keeps (`errors`, `persisted` -> @errors, @persisted), or a
-    # name that breaks the generated source (`class`). `id` is deliberately
+    # Column names the generated class cannot host (the generator refuses
+    # them, the scaffold too): the reader would shadow a method the generated
+    # class or the framework calls on the record. `id` is deliberately
     # absent: the primary key is Model#id. Names that end in `?` or `!`
     # cannot be columns at all (column? rejects them), so `valid?`,
-    # `persisted?`, `is_a?` need no entry.
+    # `persisted?`, `is_a?` need no entry; keywords (`class`) live in
+    # RUBY_KEYWORDS only. script/check-reserved-names keeps the Model and
+    # Object groups here and in SHADOWING_COLUMN_NAMES in step with the code.
     RESERVED_COLUMN_NAMES = [
-      # Cybertrain::Model (script/check-reserved-names keeps this in step)
+      # Cybertrain::Model: its methods and the ivars behind them (`errors`,
+      # `persisted` -> @errors, @persisted)
       "errors", "persisted", "attributes", "save", "update", "destroy",
       "reload", "model_name", "to_json", "as_json", "to_param", "to_row",
       "load_row", "set_id", "run_callbacks", "insert_row", "update_row",
       "read_attribute", "write_attribute", "assign_attributes",
       "read_association", "call_view_method", "initialize", "table_name",
       "column_names", "from_row",
-      # Object / BasicObject public instance methods (the script checks
-      # these too, under CRuby): `then`, `methods`, `send`, ...
-      "class", "hash", "object_id", "send", "__send__", "__id__", "freeze",
-      "display", "method", "methods", "public_method", "public_methods",
-      "private_methods", "protected_methods", "singleton_class",
-      "singleton_method", "singleton_methods", "singleton_method_added",
-      "singleton_method_removed", "singleton_method_undefined",
-      "define_singleton_method", "remove_instance_variable",
-      "instance_variable_get", "instance_variable_set", "instance_variables",
-      "instance_eval", "instance_exec", "public_send", "dup", "clone", "tap",
-      "then", "yield_self", "itself", "extend", "enum_for", "to_enum",
-      "inspect", "to_s",
+      # Object methods Ruby or the framework calls on a record without being
+      # asked: string interpolation and templates (to_s), error messages
+      # (inspect), Hash keys (hash)
+      "hash", "inspect", "to_s",
       # Implicit-conversion and dispatch hooks Ruby calls on its own (none is
       # defined on Object, so no reflection finds them): an arity-0 reader
       # returning a String breaks `puts post` / `[post].flatten` / a splat
@@ -53,6 +44,24 @@ module Cybertrain
       # reserved: `open`, `format`, `load`, `print`, `select`, `test` are
       # ordinary column names and nothing in the generated class calls them.
       "raise", "fail"
+    ]
+
+    # The rest of Object's public instance methods: a column so named shadows
+    # them on its model (`record.display`, `record.tap` are the column), but
+    # neither the generated class nor the framework calls any of them on a
+    # record, so the generator accepts the column and writes a note into the
+    # generated file instead of refusing an existing schema. The scaffold,
+    # which invents names, refuses them.
+    SHADOWING_COLUMN_NAMES = [
+      "object_id", "__id__", "send", "__send__", "public_send", "freeze",
+      "display", "method", "methods", "public_method", "public_methods",
+      "private_methods", "protected_methods", "singleton_class",
+      "singleton_method", "singleton_methods", "singleton_method_added",
+      "singleton_method_removed", "singleton_method_undefined",
+      "define_singleton_method", "remove_instance_variable",
+      "instance_variable_get", "instance_variable_set", "instance_variables",
+      "instance_eval", "instance_exec", "dup", "clone", "tap", "yield_self",
+      "itself", "extend", "enum_for", "to_enum"
     ]
 
     # Ruby keywords a column could be spelled like: `def end=` /
@@ -98,6 +107,10 @@ module Cybertrain
 
     def self.reserved_column?(name)
       RESERVED_COLUMN_NAMES.include?(name)
+    end
+
+    def self.shadowing_column?(name)
+      SHADOWING_COLUMN_NAMES.include?(name)
     end
   end
 end

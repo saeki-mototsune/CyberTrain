@@ -131,7 +131,7 @@ class Comment < Cybertrain::Model
 
   def read_association(name)
     case name
-    when :article then article
+    when :article then self.article
     else nil
     end
   end

@@ -169,6 +169,29 @@ test "a slot whose connection was closed is reopened on the next checkout" do
   remove_reopen_db
 end
 
+# The error the next checkout raises once the one :memory: connection was
+# closed ("" when it did not raise). A method, not an assert_raises block
+# around DB.with (NOTES rule 32).
+def checkout_after_close
+  message = ""
+  begin
+    DB.with { |c| post_count(c) }
+  rescue DB::Error => e
+    message = e.message
+  end
+  message
+end
+
+test "a closed :memory: connection is an error on the next checkout, never a fresh database" do
+  DB.connect(":memory:")
+  DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
+  DB.with { |c| c.close }
+  assert_includes checkout_after_close, "the :memory: connection was closed"
+  # And again: the slot stays in the pool, the error repeats, nothing hangs.
+  assert_includes checkout_after_close, "the :memory: connection was closed"
+  DB.disconnect
+end
+
 test "abandon_transaction! leaves a clean connection alone and says so" do
   conn = posts_db
   conn.execute("INSERT INTO posts (title) VALUES (?)", ["kept"])

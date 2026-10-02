@@ -2,8 +2,9 @@ ok   a BEGIN left open inside a checkout is rolled back, and logged, when the co
 ok   a BEGIN run and rolled back by hand is a clean check-in: no warning
 ok   the connection goes back to the pool even when the leak warning cannot be logged
 ok   a slot whose connection was closed is reopened on the next checkout
+ok   a closed :memory: connection is an error on the next checkout, never a fresh database
 ok   abandon_transaction! leaves a clean connection alone and says so
 ok   a StandardError rolls back, re-raises and leaves autocommit on
 ok   a normal completion commits
 ok   a nested transaction joins the outer one and an inner raise rolls everything back
-8 tests, 29 assertions, 0 failures
+9 tests, 31 assertions, 0 failures

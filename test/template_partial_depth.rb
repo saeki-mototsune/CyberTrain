@@ -1,6 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/controller"
 require "cybertrain/template"
+require "cybertrain/config"
 require "tmpdir"
 
 # cybertrain/model links SQLite through FFI, so this program cannot run under
@@ -22,12 +23,12 @@ def put(name, src)
   nil
 end
 
-def render_src(src)
+def render_src(src, max_depth = Cybertrain::Template::Interpreter::MAX_RENDER_DEPTH)
   env = {}
   env["__template_dir"] = "d"
   env["n"] = 0
   template = Cybertrain::Template::Template.parse(src, "d/page")
-  Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil)).render(template, env)
+  Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil), max_depth).render(template, env)
 end
 
 put("_loop.html.erb", "<%= render 'loop' %>")
@@ -39,6 +40,16 @@ put("_down.html.erb", "<%= n %><% if n > 0 %>,<%= render 'down', n: n - 1 %><% e
 test "a self-rendering partial raises a located template error" do
   msg = assert_raises("Cybertrain::Template::RuntimeError") { render_src("x\n<%= render 'loop' %>") }
   assert_equal "d/_loop.html.erb:1: partial nesting too deep (> 12): d/_loop.html.erb rendered from d/_loop.html.erb", msg
+end
+
+test "the depth is configurable (Interpreter max_depth, Views.configure, Config#max_render_depth)" do
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { render_src("<%= render 'loop' %>", 3) }
+  assert msg.include?("partial nesting too deep (> 3)")
+  # Six renders below the page fit in a ceiling of 8 but not in one of 4.
+  assert_equal "5,4,3,2,1,0", render_src("<%= render 'down', n: 5 %>", 8)
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { render_src("<%= render 'down', n: 5 %>", 4) }
+  assert msg.include?("partial nesting too deep (> 4)")
+  assert_equal 12, Cybertrain::Config.new.max_render_depth
 end
 
 test "two partials rendering each other raise too" do

@@ -255,6 +255,9 @@ test "bad input is rejected before anything is written" do
   # applies to the field name, not only to the errors_id column.
   rejected(["errors:references"])
   rejected(["hash:references"])
+  # Object methods the generator only notes: a new name need not shadow them.
+  rejected(["display:string"])
+  rejected(["tap:string"])
   rejected(["a:string:index"])
   rejected(["a:string:"])
   rejected(["Title:string"])

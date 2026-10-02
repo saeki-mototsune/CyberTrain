@@ -96,9 +96,9 @@ module Cybertrain
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
-        Views.configure_embedded(@views)
+        Views.configure_embedded(@views, max_render_depth: c.max_render_depth)
       else
-        Views.configure(c.views_root, cache: !c.development?)
+        Views.configure(c.views_root, cache: !c.development?, max_render_depth: c.max_render_depth)
       end
       Views.url_resolver = @url_resolver
       Views.layout_name = c.layout

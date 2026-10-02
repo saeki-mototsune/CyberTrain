@@ -131,14 +131,14 @@ class Post < Cybertrain::Model
 
   def read_association(name)
     case name
-    when :comments then comments
+    when :comments then self.comments
     else nil
     end
   end
 
   def call_view_method(name)
     case name
-    when :summary then summary
+    when :summary then self.summary
     else nil
     end
   end

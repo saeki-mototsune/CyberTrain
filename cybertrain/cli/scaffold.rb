@@ -42,6 +42,11 @@ module Cybertrain
         if Ident.reserved_column?(field.column_name)
           raise InvalidArgument, "'#{field.column_name}' would shadow a method of the generated model (Cybertrain::Model); pick another name"
         end
+        # The generator accepts these with a note (an existing schema must keep
+        # generating); a new name need not shadow Object at all.
+        if Ident.shadowing_column?(field.column_name)
+          raise InvalidArgument, "'#{field.column_name}' would shadow Object##{field.column_name} on the generated model; pick another name"
+        end
         # A references field also defines the reader `def <name>` (post:references
         # -> def post), which answers to the same rules as a column.
         if field.reference? && Ident.reserved_column?(name)

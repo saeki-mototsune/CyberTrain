@@ -85,10 +85,27 @@ module Cybertrain
         nil
       end
 
-      # A fresh connection for a slot whose connection was closed. The closed
-      # one stays in @connections (close_all closes it again, a no-op).
+      # A fresh connection for a slot whose connection was closed, taking the
+      # closed one's place in @connections (a persistent disk fault must not
+      # grow the list). Never for ":memory:": that one connection is the
+      # database, a fresh one would be an empty database with no tables and
+      # no trace, so a closed ":memory:" connection (user code closed it) is
+      # an error on every later checkout, as it was before the pool reopened
+      # anything.
       def reopen(closed)
+        if @path == ":memory:"
+          raise Error, "the :memory: connection was closed (Connection#close inside a checkout); " \
+                       "reopening it would start an empty database"
+        end
         fresh = Connection.new(@path)
+        i = 0
+        while i < @connections.size
+          if @connections[i].closed?
+            @connections[i] = fresh
+            return fresh
+          end
+          i += 1
+        end
         @connections << fresh
         fresh
       end

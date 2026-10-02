@@ -1,7 +1,8 @@
 #!/usr/bin/env ruby
 # Guards Cybertrain::Ident::RESERVED_COLUMN_NAMES (the names a column may not
 # have, because the generated reader would shadow a method or ivar of
-# Cybertrain::Model, or a method of Object) against Model growing: every `def name` and every @ivar
+# Cybertrain::Model, or a method of Object -- RESERVED_COLUMN_NAMES, or the
+# noted-not-refused SHADOWING_COLUMN_NAMES) against Model growing: every `def name` and every @ivar
 # in cybertrain/model.rb that a column could be spelled like must be in the
 # list, or the next method added to Model silently reintroduces the
 # shadowing. Reads the source rather than the class: under CRuby model.rb
@@ -38,11 +39,20 @@ end
 (Object.instance_methods + BasicObject.private_instance_methods).each { |m| names << m.to_s }
 names = names.uniq.sort.select { |n| Cybertrain::Ident.column?(n) && !Cybertrain::Ident.keyword?(n) && n != "id" }
 
-missing = names - Cybertrain::Ident::RESERVED_COLUMN_NAMES
-if missing.empty?
-  puts "check-reserved-names: #{names.size} Model and Object names, all reserved"
+reserved = Cybertrain::Ident::RESERVED_COLUMN_NAMES
+shadowing = Cybertrain::Ident::SHADOWING_COLUMN_NAMES
+missing = names - reserved - shadowing
+# One home per name: a name in both lists, or a keyword in either, would be
+# reported by whichever check runs first and drift the next time one is
+# edited.
+twice = (reserved & shadowing) + ((reserved + shadowing) & Cybertrain::Ident::RUBY_KEYWORDS)
+if missing.empty? && twice.empty?
+  puts "check-reserved-names: #{names.size} Model and Object names, all reserved or noted"
 else
-  warn "check-reserved-names: cybertrain/model.rb (or Object) defines #{missing.map(&:inspect).join(", ")} " \
-       "but Cybertrain::Ident::RESERVED_COLUMN_NAMES (cybertrain/ident.rb) lacks them; add them"
+  unless missing.empty?
+    warn "check-reserved-names: cybertrain/model.rb (or Object) defines #{missing.map(&:inspect).join(", ")} " \
+         "but neither Cybertrain::Ident::RESERVED_COLUMN_NAMES nor SHADOWING_COLUMN_NAMES (cybertrain/ident.rb) has them; add them"
+  end
+  warn "check-reserved-names: #{twice.map(&:inspect).join(", ")} listed twice (reserved, shadowing or keyword)" unless twice.empty?
   exit 1
 end

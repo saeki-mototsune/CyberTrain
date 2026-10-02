@@ -481,7 +481,7 @@ compiler output on every HTML response. None of this loads in production.
 | Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
 | Many database adapters | SQLite only, via FFI |
 | `has_many :through`, `includes`, `pluck`, `dependent:`, enums, STI, polymorphic associations | Not implemented; associations come from schema foreign keys only |
-| Any column name; an association can shadow `errors` | `spin run gen` refuses a column named like a `Cybertrain::Model`/`Object`/`Kernel` method the model calls (`errors`, `save`, `attributes`, `hash`, `raise`, ...) or a Ruby keyword; `cybertrain generate scaffold` refuses the same names first. An association whose plain name a column, another association or a `Model` method already owns is emitted under a fallback name with a comment in the generated file: `<table>_as_<column stem>` for a `has_many` (`comments_as_article`), `<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`) |
+| Any column name; an association can shadow `errors` | `spin run gen` refuses a column named like a method the generated class or the framework calls on a record (`errors`, `save`, `attributes`, `hash`, `to_s`, `to_ary`, `raise`, ...) or a Ruby keyword; a column named like another Object method (`display`, `tap`, `methods`) generates with a note in the generated file. `cybertrain generate scaffold` refuses both kinds first. An association whose plain name a column, another association or a `Model` method already owns is emitted under a fallback name with a comment in the generated file: `<table>_as_<column stem>` for a `has_many` (`comments_as_article`), `<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`) |
 | `namespace`, format/`respond_to`, `constraints`, `mount` | Not implemented — flat names, `render json:` only |
 | `rescue StandardError` catches a bad `JSON.parse` | Under Spinel `JSON::ParserError` is not a `StandardError`: app code must `rescue JSON::ParserError, StandardError`. The server catches it as a last resort and answers 500 |
 | `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` takes only `column [ASC\|DESC]` lists (each column quoted) and raises on anything else; raw ORDER BY text goes through `order_sql` (`Post.order_sql("lower(title)")`, also on a relation), which must never see request data. A `limit`/`offset` on `delete_all` is honoured (a subselect), and request parameters nest at most 32 levels / 4096 pairs (400 past that) |
@@ -517,7 +517,9 @@ Other attributes with fixed, overridable defaults: `host` (`"127.0.0.1"`),
 (`"layouts/application"`), `log_level` (`:info`), `session_cookie_name`,
 `session_max_age` (2 weeks), `session_secure` (`true` in production, which
 marks the session cookie `Secure`; `false` elsewhere), `pool_size` (4),
-`static_files`/`csrf` (`true`).
+`static_files`/`csrf` (`true`), `max_render_depth` (12 renders open at once:
+page, layout and partials; raise it for partials that legitimately recurse
+deeper).
 
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse

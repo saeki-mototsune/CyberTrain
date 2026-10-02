@@ -126,7 +126,7 @@ class Article < Cybertrain::Model
 
   def read_association(name)
     case name
-    when :comments then comments
+    when :comments then self.comments
     else nil
     end
   end

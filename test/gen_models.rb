@@ -178,14 +178,14 @@ EXPECTED_POST = HEADER + <<~'RUBY'
 
       def read_association(name)
         case name
-        when :comments then comments
+        when :comments then self.comments
         else nil
         end
       end
 
       def call_view_method(name)
         case name
-        when :summary then summary
+        when :summary then self.summary
         else nil
         end
       end
@@ -325,7 +325,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
 
       def read_association(name)
         case name
-        when :post then post
+        when :post then self.post
         else nil
         end
       end
@@ -528,15 +528,15 @@ test "def post (belongs_to) and def comments (has_many)" do
 end
 
 test "read_association case covers belongs_to and has_many" do
-  assert_lines(emit_for("posts"), ["def read_association(name)", "when :comments then comments"])
-  assert_lines(emit_for("comments"), ["def read_association(name)", "when :post then post"])
+  assert_lines(emit_for("posts"), ["def read_association(name)", "when :comments then self.comments"])
+  assert_lines(emit_for("comments"), ["def read_association(name)", "when :post then self.post"])
   assert_lines(emit_for("flags"), ["def read_association(name) = nil"])
 end
 
 test "call_view_method with a scanned summary" do
   info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  def summary = title[0, 3]\nend\n")
   post = emit_for("posts", info.view_methods)
-  assert_lines(post, ["def call_view_method(name)", "when :summary then summary"])
+  assert_lines(post, ["def call_view_method(name)", "when :summary then self.summary"])
   assert_lines(emit_for("comments"), ["def call_view_method(name) = nil"])
 end
 
@@ -607,11 +607,11 @@ def emit_error(name)
 end
 
 test "emit rejects column names that are invalid or collide with model methods" do
-  ["errors", "persisted", "class", "hash", "object_id", "send", "freeze", "display", "method",
-   "instance_variable_get", "attributes", "save", "update", "destroy", "reload", "model_name",
+  ["errors", "persisted", "class", "hash", "inspect", "to_s",
+   "attributes", "save", "update", "destroy", "reload", "model_name",
    "to_json", "as_json", "end", "def", "nil", "self", "BEGIN", "__FILE__",
-   # Object's methods and the hooks Ruby calls on its own.
-   "then", "methods", "__send__", "to_ary", "to_str", "to_hash", "to_proc", "to_int", "method_missing",
+   # The hooks Ruby calls on its own.
+   "to_ary", "to_str", "to_hash", "to_proc", "to_int", "method_missing",
    # The one Kernel method the model calls on implicit self: a `raise` column
    # would turn Model#save!'s `raise RecordInvalid, ...` into a call of the reader.
    "raise", "fail"].each do |bad|
@@ -630,6 +630,31 @@ test "emit rejects column names that are invalid or collide with model methods" 
    "open", "format", "load", "print", "select", "test", "sleep"].each do |ok|
     assert_equal "", emit_error(ok)
   end
+  # Object methods nothing in Cybertrain calls on a record: accepted, with a
+  # note in the generated file (an existing schema keeps generating).
+  ["display", "tap", "methods", "send", "object_id", "freeze", "method", "instance_variable_get"].each do |noted|
+    assert_equal "", emit_error(noted)
+  end
+  display = Cybertrain::Gen::ModelsEmitter.emit(raising_columns("display").table("things"), raising_columns("display"), [])
+  assert_lines(display, [
+    '# NOTE: column "display" shadows Object#display on this model (nothing in Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)',
+    "attr_accessor :display"
+  ])
+end
+
+test "a capitalised foreign key gets a capitalised reader, dispatched with an explicit receiver" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "users" do |t|
+      t.string "name", null: false
+    end
+    s.create_table "posts" do |t|
+      t.integer "Author_id", null: false
+    end
+    s.add_foreign_key "posts", "users", column: "Author_id"
+  end
+  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
+  # Bare, `Author` would be a constant lookup; `self.Author` is the reader.
+  assert_lines(post, ["def Author = User.find_by(id: @Author_id)", "when :Author then self.Author"])
 end
 
 test "an association named like a Model method moves to its fallback name instead of shadowing it" do
@@ -654,7 +679,7 @@ test "an association named like a Model method moves to its fallback name instea
   assert_lines(post, [
     '# has_many errors reads as errors_as_post: "errors" is a column, another association or a Cybertrain::Model method',
     'def errors_as_post = ErrorRelation.new("errors").where(post_id: @id).to_a',
-    "when :errors_as_post then errors_as_post"
+    "when :errors_as_post then self.errors_as_post"
   ])
   refute post.include?("def errors ")
   # Thing#hash stays Object#hash; the belongs_to takes <stem>_as_<column>.
@@ -662,7 +687,7 @@ test "an association named like a Model method moves to its fallback name instea
   assert_lines(thing, [
     '# belongs_to hash_id reads as hash_as_hash_id: "hash" is a column, another association or a Cybertrain::Model method',
     "def hash_as_hash_id = Hash.find_by(id: @hash_id)",
-    "when :hash_as_hash_id then hash_as_hash_id"
+    "when :hash_as_hash_id then self.hash_as_hash_id"
   ])
   refute thing.include?("def hash ")
 end
@@ -693,7 +718,7 @@ test "a column named like an association reader keeps its name; the association 
     "attr_accessor :title, :comments",
     '# has_many comments reads as comments_as_article: "comments" is a column, another association or a Cybertrain::Model method',
     'def comments_as_article = CommentRelation.new("comments").where(article_id: @id).to_a',
-    "when :comments_as_article then comments_as_article"
+    "when :comments_as_article then self.comments_as_article"
   ])
   refute article.include?("def comments ")
   # comments.article (a string column) next to comments.article_id: the
@@ -704,7 +729,7 @@ test "a column named like an association reader keeps its name; the association 
     "attr_accessor :article_id, :article",
     '# belongs_to article_id reads as article_as_article_id: "article" is a column, another association or a Cybertrain::Model method',
     "def article_as_article_id = Article.find_by(id: @article_id)",
-    "when :article_as_article_id then article_as_article_id"
+    "when :article_as_article_id then self.article_as_article_id"
   ])
   refute comment.include?("def article ")
   note = assert_raises("ArgumentError") do
@@ -753,8 +778,8 @@ test "a has_many named like a belongs_to reader of the same model is renamed, no
     "def comments = Comment.find_by(id: @comments_id)",
     '# has_many comments reads as comments_as_post: "comments" is a column, another association or a Cybertrain::Model method',
     'def comments_as_post = CommentRelation.new("comments").where(post_id: @id).to_a',
-    "when :comments then comments",
-    "when :comments_as_post then comments_as_post"
+    "when :comments then self.comments",
+    "when :comments_as_post then self.comments_as_post"
   ])
 end
 
@@ -798,14 +823,14 @@ test "a nullable foreign key and a foreign key to a differently named column" do
   article = Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [])
   assert_lines(article, [
     "def writer = Person.find_by(id: @writer_id)",
-    "when :writer then writer",
+    "when :writer then self.writer",
     '@editor_id = Cybertrain::Cast.int_or_nil(row["editor_id"])'
   ])
   refute_line(article, "def editor = Editor.find_by(id: @editor_id)")
   person = Cybertrain::Gen::ModelsEmitter.emit(definition.table("people"), definition, [])
   assert_lines(person, [
     'def articles = ArticleRelation.new("articles").where(writer_id: @id).to_a',
-    "when :articles then articles",
+    "when :articles then self.articles",
     "class PersonRelation < Cybertrain::Relation",
     'raise Cybertrain::RecordNotFound, "Couldn\'t find Person with id=#{id}" if rec.nil?'
   ])
@@ -832,11 +857,11 @@ test "two foreign keys to one table get distinct has_many names" do
     'def messages_as_sender = MessageRelation.new("messages").where(sender_id: @id).to_a',
     'def messages_as_recipient = MessageRelation.new("messages").where(recipient_id: @id).to_a',
     'def posts = PostRelation.new("posts").where(user_id: @id).to_a',
-    "when :messages_as_sender then messages_as_sender",
-    "when :messages_as_recipient then messages_as_recipient",
-    "when :posts then posts"
+    "when :messages_as_sender then self.messages_as_sender",
+    "when :messages_as_recipient then self.messages_as_recipient",
+    "when :posts then self.posts"
   ])
-  refute_line(user, "when :messages then messages")
+  refute_line(user, "when :messages then self.messages")
   message = Cybertrain::Gen::ModelsEmitter.emit(definition.table("messages"), definition, [])
   assert_lines(message, [
     "def sender = User.find_by(id: @sender_id)",
@@ -846,9 +871,9 @@ end
 
 test "view methods that collide with columns or associations are skipped" do
   post = emit_for("posts", ["title", "comments", "summary", "published?"])
-  assert_lines(post, ["when :summary then summary", "when :published? then published?"])
-  refute_line(post, "when :title then title")
-  assert_equal 1, post.lines.count { |l| l.strip == "when :comments then comments" }
+  assert_lines(post, ["when :summary then self.summary", "when :published? then self.published?"])
+  refute_line(post, "when :title then self.title")
+  assert_equal 1, post.lines.count { |l| l.strip == "when :comments then self.comments" }
 end
 
 # ---- ModelScan -------------------------------------------------------------

@@ -74,10 +74,13 @@ module Cybertrain
 
       # Raises ArgumentError (the generator exits non-zero) for a column the
       # generated class cannot host: not a Ruby method name (Ident.column?),
-      # a Ruby keyword, or one of Ident::RESERVED_COLUMN_NAMES. The same
-      # rules (and a stricter snake_case spelling) gate `cybertrain generate
-      # scaffold`, so the scaffold refuses the name before it writes any
-      # file.
+      # a Ruby keyword, or one of Ident::RESERVED_COLUMN_NAMES (a method the
+      # class or the framework calls on the record). A column named like
+      # another Object method (Ident::SHADOWING_COLUMN_NAMES, `display`,
+      # `then`) is accepted with a note in the generated file: an existing
+      # schema must keep generating. The same rules (and a stricter
+      # snake_case spelling) gate `cybertrain generate scaffold`, which
+      # refuses both kinds before it writes any file.
       def self.check_column_names(table)
         table.columns.each do |c|
           name = c.name
@@ -155,6 +158,12 @@ module Cybertrain
         # through the raw writer to a nullable datetime ivar reads back
         # intact once load_row has typed the ivar via Cast.time_or_nil, so
         # rule 7 does not bite this shape.
+        names.each do |n|
+          next unless Ident.shadowing_column?(n)
+
+          src << "  # NOTE: column #{n.inspect} shadows Object##{n} on this model (nothing in " \
+                 "Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)\n"
+        end
         src << "  attr_accessor #{symbols}\n"
         src << "\n"
         src << "  def initialize(attrs = {})\n"
@@ -339,7 +348,10 @@ module Cybertrain
         end
         src << "  def #{method}(name)\n"
         src << "    case name\n"
-        names.each { |n| src << "    when :#{n} then #{n}\n" }
+        # `self.` because a reader may be capitalised (Ident.column? admits
+        # `Author_id` -> def Author): bare, Ruby would read `Author` as a
+        # constant.
+        names.each { |n| src << "    when :#{n} then self.#{n}\n" }
         src << "    else nil\n"
         src << "    end\n"
         src << "  end\n"

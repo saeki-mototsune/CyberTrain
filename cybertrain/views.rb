@@ -25,14 +25,17 @@ module Cybertrain
       @engine
     end
 
-    def self.configure(root, cache: true)
-      @engine = Template::Engine.new(root, cache: cache)
+    # max_render_depth: how many renders may be open at once (page, layout
+    # and partials); Template::Interpreter::MAX_RENDER_DEPTH (12) unless the
+    # app's partials legitimately recurse deeper.
+    def self.configure(root, cache: true, max_render_depth: Template::Interpreter::MAX_RENDER_DEPTH)
+      @engine = Template::Engine.new(root, cache: cache, max_render_depth: max_render_depth)
       nil
     end
 
     # Production: the templates `spin run gen -- --embed-views` compiled in.
-    def self.configure_embedded(sources)
-      @engine = Template::Engine.embedded(sources)
+    def self.configure_embedded(sources, max_render_depth: Template::Interpreter::MAX_RENDER_DEPTH)
+      @engine = Template::Engine.embedded(sources, max_render_depth: max_render_depth)
       nil
     end
 

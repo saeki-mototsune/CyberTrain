@@ -11,6 +11,7 @@ ok   call_view_method with a scanned summary
 ok   integer, float, boolean, date and datetime casts
 ok   attributes stay attr_accessors (no def writers: NOTES rule 43) and order_sql is emitted
 ok   emit rejects column names that are invalid or collide with model methods
+ok   a capitalised foreign key gets a capitalised reader, dispatched with an explicit receiver
 ok   an association named like a Model method moves to its fallback name instead of shadowing it
 ok   a column named like an association reader keeps its name; the association moves to its fallback name
 ok   a has_many through two foreign keys whose _as_<stem> name is taken falls back to the full column
@@ -27,4 +28,4 @@ ok   scan_source skips class << self, nested classes and later classes
 ok   scan_source inside a module stops at the class's own end
 ok   view_methods_for picks the scanned methods of one model
 ok   outputs maps gen/models paths to sources for every table
-29 tests, 187 assertions, 0 failures
+30 tests, 192 assertions, 0 failures
