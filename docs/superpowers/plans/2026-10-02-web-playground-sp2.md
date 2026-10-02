@@ -3988,6 +3988,7 @@ Notes on the spec's text, applied below:
 - Spec §5.6's paused text takes its message from `playctl pause` (default "for maintenance"); "is starting up" (no router), "Its session image is missing" and "It cannot reach Docker" use the same page (spec §5.12).
 - `bin/playctl` keeps its logic in `lib/play/ctl.rb` (a `lib/play/*.rb` file of spec §10) so that the tests drive it with a fake Docker; `kill-all` writes `paused` (keeping an existing message), writes the `kill-all` request for the running control plane, and removes every labelled session itself under the create lock.
 - The image is spec §5.1's with `ruby:4.0.7-slim` (the newest 4.0 patch on Docker Hub on 2026-10-02; use the newest `4.0.x-slim` if that tag is gone) and a build-context file that leaves the tests out.
+- **As built after review** (2026-10-03, commits `ac693b5` the code below verbatim, then `da5c14d` and `0e08e7b`). Routes, status codes, `Retry-After` values, the page texts other tasks grep for, `playctl`'s lines and exit codes for correct use, the image name and port are as below; the suite is `134 runs, 729 assertions`. The code below let a stranger's request be parsed; the fixes: (1) a front middleware `Play::Guard` (`lib/play/guard.rb`) answers `413 Request body not accepted` to any request that declares a body (`Content-Length` above zero, or `Transfer-Encoding`) before Sinatra sees it, hands the app an empty query string (a query is ignored, never parsed), and puts the entry origin's security headers on every answer, including Sinatra's own 400, 404 and 500 and the host check's 403; `Play::App.for` returns the app inside the guard, and `config.ru` and the tests both use it; (2) Puma's settings live in `config/puma.rb` (`port 9292`, `threads 4, 16`, `http_content_length_limit 4096`) and the image's command is `puma -C config/puma.rb`; Puma's limit does not stop a chunked body before buffering it, which is why Task 7 limits the apex's body at the router; (3) the app pins its environment to production (`APP_ENV` is set before Sinatra loads), `dump_errors` is off, and an unexpected exception in a route logs one line `play event=error step=request exception=<class>` and answers a fixed 500; (4) `playctl end` takes only `[0-9a-f]{16}` and looks the handle up first (`playctl: no session <handle>`, exit 1, when neither a container nor a network has it); commands without arguments answer extra arguments with the usage (exit 2), and `pause` refuses a message starting with `-`; `status` and `resume` warn on stderr while a kill-all is pending; `status` names containers for `docker stats` from the checked handle; (5) a pause message is shown without a doubled period; `vendor/` and `.bundle/` are left out of the image's build context.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4815,7 +4816,7 @@ for i in 1 2 3; do BUNDLE_PATH="$SDD/bundle" bundle exec rake test 2>&1 | tail -
 for f in config.ru bin/playctl lib/play/app.rb lib/play/ctl.rb; do ruby -c "$f" > /dev/null || echo "syntax: $f"; done
 ```
 
-Expected, three times: `112 runs, 608 assertions, 0 failures, 0 errors, 0 skips`; no `syntax:` line.
+Expected, three times: `112 runs, 608 assertions, 0 failures, 0 errors, 0 skips`; no `syntax:` line. (After this task's review the suite is `134 runs, 729 assertions`: see "As built after review" above. Task 12 counts from there.)
 
 - [ ] **Step 6: Build the image and check its boot**
 
@@ -7611,7 +7612,7 @@ bash "$SDD/scratch/docs-check.sh" "$SDD/scratch/docs-check-work" | tail -n 1
 for f in playground/web-smoke.sh playground/dev/e2e.sh playground/web/playground-web playground/playground-server playground/deploy/host/cybertrain-play-firewall; do /bin/bash -n "$f" || echo "syntax: $f"; done
 ```
 
-Expected: `112 runs, 608 assertions, 0 failures, 0 errors, 0 skips`; `deploy-check: 10 passed, 0 failed, 0 skipped` (or `8 passed, 0 failed, 2 skipped` on a machine without Kamal 2.12.0: say so in the owner's list); `ci-check: ok`; `docs-check: 7 passed, 0 failed`; no `syntax:` line.
+Expected: `134 runs, 729 assertions, 0 failures, 0 errors, 0 skips`; `deploy-check: 10 passed, 0 failed, 0 skipped` (or `8 passed, 0 failed, 2 skipped` on a machine without Kamal 2.12.0: say so in the owner's list); `ci-check: ok`; `docs-check: 7 passed, 0 failed`; no `syntax:` line.
 
 - [ ] **Step 2: Both images from scratch, and their smoke tests**
 
@@ -7690,7 +7691,7 @@ Write this list into your report, with the numbers you measured (cold build, smo
 | §7.1-7.5 Kamal services and configs, secrets, image pinning, hooks, firewall | Task 9 (D1-D10) |
 | §7.6-7.12 operator's steps, checks, updates, capacity, logs, abuse, gVisor | Task 11 (guide parts 1-8); Task 12 (owner's list) |
 | §8.1 compose, §8.4 E2E | Task 7 (E1-E19) |
-| §8.2 unit tests | Tasks 4, 5, 6 (112 tests) |
+| §8.2 unit tests | Tasks 4, 5, 6 (134 tests) |
 | §8.3 web smoke | Task 1 (W1-W13) |
 | §8.5 browser checks | Task 3 (B5-B10, B12), Task 8 (B1-B4, B11, B13); B14 owner (P9) |
 | §8.6 VPS-only | Task 9's list, Task 11's guide, Task 12's owner list |
