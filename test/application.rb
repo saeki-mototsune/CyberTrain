@@ -49,7 +49,8 @@ write_file("#{ROOT}/public/robots.txt", "User-agent: *\n")
 at_exit { remove_tree(ROOT) }
 
 # Every variable Config reads, cleared so the defaults are deterministic.
-CONFIG_ENV = ["CYBERTRAIN_ENV", "PORT", "CYBERTRAIN_DATABASE", "CYBERTRAIN_SECRET_KEY_BASE", "SPINEL_WORKERS"]
+CONFIG_ENV = ["CYBERTRAIN_ENV", "PORT", "CYBERTRAIN_DATABASE", "CYBERTRAIN_SECRET_KEY_BASE", "SPINEL_WORKERS",
+              "CYBERTRAIN_HOST", "CYBERTRAIN_SESSION_SAME_SITE", "CYBERTRAIN_SESSION_PARTITIONED"]
 SAVED_ENV = {}
 CONFIG_ENV.each do |name|
   value = ENV[name]
@@ -100,6 +101,8 @@ test "config defaults in development" do
   assert_equal 1209600, c.session_max_age
   assert_equal 4, c.pool_size
   refute c.session_secure
+  assert_equal "Lax", c.session_same_site
+  refute c.session_partitioned
   assert c.static_files
   assert c.csrf
   assert_equal 1, c.workers
@@ -133,6 +136,55 @@ test "an empty CYBERTRAIN_DATABASE counts as unset" do
   restore_config_env
   assert c.test?
   assert_equal "storage/test.sqlite3", c.database_path
+end
+
+test "CYBERTRAIN_HOST, CYBERTRAIN_SESSION_SAME_SITE and CYBERTRAIN_SESSION_PARTITIONED override the defaults" do
+  clear_config_env
+  ENV["CYBERTRAIN_HOST"] = "0.0.0.0"
+  ENV["CYBERTRAIN_SESSION_SAME_SITE"] = "None"
+  ENV["CYBERTRAIN_SESSION_PARTITIONED"] = "1"
+  c = Cybertrain::Config.new
+  ENV["CYBERTRAIN_SESSION_PARTITIONED"] = "true"
+  with_true = Cybertrain::Config.new
+  restore_config_env
+  assert_equal "0.0.0.0", c.host
+  assert_equal "None", c.session_same_site
+  assert c.session_partitioned
+  assert with_true.session_partitioned
+end
+
+test "empty CYBERTRAIN_HOST and CYBERTRAIN_SESSION_SAME_SITE count as unset; only 1 and true turn partitioning on" do
+  clear_config_env
+  ENV["CYBERTRAIN_HOST"] = ""
+  ENV["CYBERTRAIN_SESSION_SAME_SITE"] = ""
+  ENV["CYBERTRAIN_SESSION_PARTITIONED"] = ""
+  empty = Cybertrain::Config.new
+  ENV["CYBERTRAIN_SESSION_PARTITIONED"] = "0"
+  zero = Cybertrain::Config.new
+  ENV["CYBERTRAIN_SESSION_PARTITIONED"] = "false"
+  word_false = Cybertrain::Config.new
+  ENV["CYBERTRAIN_SESSION_PARTITIONED"] = "yes"
+  yes = Cybertrain::Config.new
+  restore_config_env
+  assert_equal "127.0.0.1", empty.host
+  assert_equal "Lax", empty.session_same_site
+  refute empty.session_partitioned
+  refute zero.session_partitioned
+  refute word_false.session_partitioned
+  refute yes.session_partitioned
+end
+
+test "session_same_site_error is empty for Lax, Strict and None and names the valid values otherwise" do
+  c = Cybertrain::Config.new
+  c.session_same_site = "Lax"
+  assert_equal "", c.session_same_site_error
+  c.session_same_site = "Strict"
+  assert_equal "", c.session_same_site_error
+  c.session_same_site = "None"
+  assert_equal "", c.session_same_site_error
+  c.session_same_site = "lax"
+  assert_equal "CYBERTRAIN_SESSION_SAME_SITE / session_same_site must be Lax, Strict or None (got \"lax\")",
+               c.session_same_site_error
 end
 
 test "resolve_secret! creates the secret key file in the test env and reuses it" do
@@ -255,6 +307,20 @@ test "log_level :none, static_files and csrf switch their middleware off" do
   c.secret_key_base = "bare-secret"
   bare = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/bare/#{name}" }, config: c)
   assert_equal ["Cybertrain::MethodOverride", "Cybertrain::SessionStore", "Cybertrain::Router"], stack_names(bare)
+end
+
+test "the stack's session cookie follows session_same_site and session_partitioned" do
+  c = Cybertrain::Config.new
+  c.log_level = :none
+  c.static_files = false
+  c.csrf = false
+  c.secret_key_base = "framed-secret"
+  c.session_same_site = "None"
+  c.session_partitioned = true
+  framed = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/framed/#{name}" }, config: c)
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/visit", {}, ""))
+  framed.call(ctx)
+  assert ctx.response.cookies[0].end_with?("; SameSite=None; Max-Age=1209600; Secure; Partitioned")
 end
 
 test "production puts ErrorPages outermost" do

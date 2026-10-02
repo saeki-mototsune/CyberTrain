@@ -3,7 +3,8 @@ require "cybertrain/crypto"
 module Cybertrain
   # The application's settings. Defaults come from the environment
   # (CYBERTRAIN_ENV, PORT, CYBERTRAIN_DATABASE, CYBERTRAIN_SECRET_KEY_BASE,
-  # SPINEL_WORKERS); config/app.rb then adjusts them:
+  # SPINEL_WORKERS, CYBERTRAIN_HOST, CYBERTRAIN_SESSION_SAME_SITE,
+  # CYBERTRAIN_SESSION_PARTITIONED); config/app.rb then adjusts them:
   #
   #   Cybertrain.configure do |c|
   #     c.port = 3000
@@ -12,8 +13,8 @@ module Cybertrain
     SECRET_LENGTH = 64
 
     attr_accessor :env, :host, :port, :database_path, :secret_key_base, :views_root, :public_root, :layout,
-                  :log_level, :session_cookie_name, :session_max_age, :session_secure, :pool_size, :static_files,
-                  :csrf, :workers, :secret_key_path
+                  :log_level, :session_cookie_name, :session_max_age, :session_secure, :session_same_site,
+                  :session_partitioned, :pool_size, :static_files, :csrf, :workers, :secret_key_path
 
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
     # empty one counts as unset). Shared with DB::CLI.
@@ -26,9 +27,30 @@ module Cybertrain
       ENV["CYBERTRAIN_ENV"] || "development"
     end
 
+    # CYBERTRAIN_HOST, or "127.0.0.1" when it is unset or empty. Not
+    # validated: TCPServer.new gets it as it is ("0.0.0.0" listens on every
+    # interface, which a container needs).
+    def self.default_host
+      configured = ENV["CYBERTRAIN_HOST"] || ""
+      configured.empty? ? "127.0.0.1" : configured
+    end
+
+    # CYBERTRAIN_SESSION_SAME_SITE, or "Lax" when it is unset or empty.
+    def self.default_session_same_site
+      configured = ENV["CYBERTRAIN_SESSION_SAME_SITE"] || ""
+      configured.empty? ? "Lax" : configured
+    end
+
+    # True only for CYBERTRAIN_SESSION_PARTITIONED=1 or =true; any other
+    # value is false, not an error.
+    def self.default_session_partitioned
+      configured = ENV["CYBERTRAIN_SESSION_PARTITIONED"] || ""
+      configured == "1" || configured == "true"
+    end
+
     def initialize
       @env = Config.default_env
-      @host = "127.0.0.1"
+      @host = Config.default_host
       @port = (ENV["PORT"] || "3000").to_i
       @database_path = Config.default_database_path(@env)
       @secret_key_base = ENV["CYBERTRAIN_SECRET_KEY_BASE"] || ""
@@ -41,8 +63,16 @@ module Cybertrain
       @session_max_age = 1209600
       # The session cookie's Secure attribute: on in production, which is
       # expected to sit behind a TLS-terminating proxy; off elsewhere, where
-      # the server is reached over plain http://.
+      # the server is reached over plain http://. SameSite=None and
+      # Partitioned add Secure whatever this says (Cookies.serialize).
       @session_secure = production?
+      # SameSite of the session cookie: "Lax", "Strict" or "None" (boot checks
+      # it). "None" is for an app shown inside another site's frame, such as an
+      # editor's preview; it always adds Secure (Cookies.serialize).
+      @session_same_site = Config.default_session_same_site
+      # Partitioned (CHIPS): with None, the cookie survives third-party cookie
+      # blocking inside such a frame. Adds Secure too.
+      @session_partitioned = Config.default_session_partitioned
       @pool_size = 4
       @static_files = true
       @csrf = true
@@ -59,6 +89,17 @@ module Cybertrain
 
     def production?
       @env == "production"
+    end
+
+    # The error Application#boot reports (and exits 1 on) when
+    # session_same_site is not a value browsers accept; "" when it is one.
+    # Case-sensitive, since the value goes into the header as it is; a chain
+    # of ==, not include? (spikes/NOTES.md rules 14 and 29).
+    def session_same_site_error
+      value = @session_same_site
+      return "" if value == "Lax" || value == "Strict" || value == "None"
+
+      "CYBERTRAIN_SESSION_SAME_SITE / session_same_site must be Lax, Strict or None (got \"#{value}\")"
     end
 
     # The secret sessions are signed with. Production must set it
