@@ -43,6 +43,8 @@ cybertrain server
 
 Stop the blog's server first: both use port 3000. `cybertrain new` needs no network
 here, and the first `cybertrain server` of a new app compiles it (about a minute).
+The new app has no root route, so `/` shows "Not Found": its pages start at
+`/products`.
 
 ## Good to know
 

@@ -413,8 +413,17 @@ if [ "$main_up" = yes ]; then
 
   # Codespaces stops an idle codespace and starts the same container again:
   # the lock file and tmp/secret_key from the first run are still there.
+  # The old server would pass the checks below too, so the restart must
+  # succeed and give the container a new start time.
+  started_before=$(docker inspect -f '{{.State.StartedAt}}' "$main" 2> /dev/null)
   docker restart -t 10 "$main" > /dev/null 2>&1
+  restart_rc=$?
   restarted=$SECONDS
+  started_after=$(docker inspect -f '{{.State.StartedAt}}' "$main" 2> /dev/null)
+  restart_ok=no
+  if [ "$restart_rc" = 0 ] && [ -n "$started_after" ] && [ "$started_after" != "$started_before" ]; then
+    restart_ok=yes
+  fi
   port=$(host_port "$main")
   base="http://127.0.0.1:$port"
   back=no
@@ -435,10 +444,10 @@ if [ "$main_up" = yes ]; then
     kept=no
   fi
   servers=$(docker exec "$main" pgrep -c -f '^/workspace/blog/build/bin/blog( |$)' 2> /dev/null)
-  if [ "$back" = yes ] && [ "$kept" = yes ] && [ "$servers" = 1 ]; then
+  if [ "$restart_ok" = yes ] && [ "$back" = yes ] && [ "$kept" = yes ] && [ "$servers" = 1 ]; then
     pass D3 "$what_D3"
   else
-    fail D3 "$what_D3" "answered 200: $back, article kept: $kept, servers: ${servers:-none}" "$main"
+    fail D3 "$what_D3" "restarted: $restart_ok, answered 200: $back, article kept: $kept, servers: ${servers:-none}" "$main"
   fi
 else
   fail A1 "$what_A1" "$detail" "$main"
@@ -592,12 +601,16 @@ else
 fi
 
 # B2 and B3 share one container: B3 builds the app B2 creates. The script
-# runs inside it and prints one "B2 ..." and one "B3 ..." line.
+# runs inside it and prints one "B2 ..." and one "B3 ..." line. After a FAIL
+# line it prints the last 40 lines of that step's log, each behind "  | ", so
+# no log line starts with "B2 " or "B3 "; the summary shows them.
 offline='
+log_tail() { tail -n 40 "$1" | sed "s/^/  | /"; }
 began=$SECONDS
 cd /workspace || exit 1
 if ! cybertrain new offline > /tmp/smoke-new.log 2>&1; then
   echo "B2 FAIL cybertrain new offline failed: $(tail -n 2 /tmp/smoke-new.log | tr "\n" " ")"
+  log_tail /tmp/smoke-new.log
   echo "B3 FAIL skipped: there is no app"
   exit 0
 fi
@@ -605,10 +618,13 @@ took=$((SECONDS - began))
 cd offline || exit 1
 if [ "$took" -gt 180 ]; then
   echo "B2 FAIL cybertrain new took $took s (limit 180 s)"
+  log_tail /tmp/smoke-new.log
 elif ! grep -qF "ref = \"v$SMOKE_VERSION\"" spin.toml; then
   echo "B2 FAIL spin.toml has no ref = \"v$SMOKE_VERSION\""
+  log_tail /tmp/smoke-new.log
 elif ! cmp -s spin.lock /workspace/blog/spin.lock; then
   echo "B2 FAIL spin.lock differs from /workspace/blog/spin.lock"
+  log_tail /tmp/smoke-new.log
 else
   echo "B2 PASS"
 fi
@@ -616,6 +632,7 @@ if cybertrain spin build offline > /tmp/smoke-build.log 2>&1 && [ -x build/bin/o
   echo "B3 PASS"
 else
   echo "B3 FAIL cybertrain spin build offline failed: $(tail -n 2 /tmp/smoke-build.log | tr "\n" " ")"
+  log_tail /tmp/smoke-build.log
 fi
 '
 run_once 420 B23 --network none -e "SMOKE_VERSION=$version" "$image" bash -c "$offline"
