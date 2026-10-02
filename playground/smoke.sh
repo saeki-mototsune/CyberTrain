@@ -73,7 +73,7 @@ what_A10="the running container generated tmp/secret_key"
 what_D1="a second playground-server exits 0 saying the server is already running"
 what_D2="exactly one app server process runs"
 what_D3="after a container restart (Codespaces' idle stop and resume) the server is back, once, with the earlier article"
-what_D4="playground-server leaves a server started by hand alone: it says the port is in use, exits 0, and one server runs"
+what_D4="playground-server leaves a server started by hand alone: it says a server is already starting while it compiles and the port is in use once it listens, exits 0 both times, and one server runs"
 what_C1="with CODESPACES=true the session cookie is SameSite=None; Secure; Partitioned"
 what_C2="with CODESPACES=true the banner shows https://smoke-3000.app.github.dev/"
 what_C3="with CODESPACES=true, interactive and login bash shells get the cookie settings"
@@ -103,6 +103,11 @@ fail() {
 
 first_line() {
   printf '%s\n' "$1" | head -n 1
+}
+
+# The first non-blank line of $1, without its indentation.
+first_text() {
+  printf '%s\n' "$1" | grep -m 1 '[^ ]' | sed 's/^ *//'
 }
 
 # run_once SECONDS ID [docker run options] IMAGE [COMMAND...]: a one-shot
@@ -443,26 +448,59 @@ else
   done
 fi
 
-# A server started by hand (PLAYGROUND.md's tutorial step restarts it with
-# `cybertrain server`) holds port 3000 without playground-server's lock; the
-# next attach runs playground-server, which must leave it alone.
+# A server started by hand (PLAYGROUND.md's tutorial steps start one with
+# `cybertrain server`) never holds playground-server's lock, and while it
+# compiles it does not hold the port either; the next attach runs
+# playground-server, which must leave it alone in both phases. The model edit
+# makes it compile before it listens, as after a visitor's edit.
 manual="$prefix-manual"
-if start manual "$image" bash -c 'cd /workspace/blog && exec cybertrain server'; then
-  if up_inside "$manual" 30; then
+if start manual "$image" bash -c 'cd /workspace/blog && echo "# smoke: compile before listening" >> app/models/article.rb && exec cybertrain server'; then
+  phase=""
+  # Its own process, the gem's Ruby script (docker-init's arguments name
+  # `cybertrain server` too): playground-server must not run before it exists.
+  waited=$SECONDS
+  until docker exec "$manual" pgrep -f '^[^ ]*ruby[^ ]* [^ ]*/cybertrain server( |$)' > /dev/null 2>&1; do
+    if [ $((SECONDS - waited)) -ge 30 ] || ! running "$manual"; then
+      phase="while compiling: no cybertrain server process within 30 s"
+      break
+    fi
+    sleep 0.5
+  done
+  if [ -z "$phase" ]; then
+    starting=$(docker exec "$manual" timeout 10 playground-server 2>&1)
+    starting_rc=$?
+    case "$starting" in
+      *"is already starting"*) said=yes ;;
+      *) said=no ;;
+    esac
+    if [ "$starting_rc" != 0 ] || [ "$said" != yes ]; then
+      phase="while compiling: exit $starting_rc: $(first_text "$starting")"
+    fi
+  fi
+  if [ -z "$phase" ] && ! up_inside "$manual" 300; then
+    phase="while compiling: $detail"
+  fi
+  if [ -z "$phase" ]; then
     again=$(docker exec "$manual" timeout 10 playground-server 2>&1)
     again_rc=$?
-    servers=$(docker exec "$manual" pgrep -c -f '^/workspace/blog/build/bin/blog( |$)' 2> /dev/null)
     case "$again" in
       *"is already in use"*) said=yes ;;
       *) said=no ;;
     esac
-    if [ "$again_rc" = 0 ] && [ "$said" = yes ] && [ "$servers" = 1 ]; then
-      pass D4 "$what_D4"
-    else
-      fail D4 "$what_D4" "exit $again_rc, servers: ${servers:-none}: $(first_line "$again")" "$manual"
+    if [ "$again_rc" != 0 ] || [ "$said" != yes ]; then
+      phase="once listening: exit $again_rc: $(first_text "$again")"
     fi
+  fi
+  if [ -z "$phase" ]; then
+    servers=$(docker exec "$manual" pgrep -c -f '^/workspace/blog/build/bin/blog( |$)' 2> /dev/null)
+    if [ "$servers" != 1 ]; then
+      phase="once listening: servers: ${servers:-none}"
+    fi
+  fi
+  if [ -z "$phase" ]; then
+    pass D4 "$what_D4"
   else
-    fail D4 "$what_D4" "$detail" "$manual"
+    fail D4 "$what_D4" "$phase" "$manual"
   fi
 else
   fail D4 "$what_D4" "docker run failed: $(first_line "$(cat "$work/manual.start")")"

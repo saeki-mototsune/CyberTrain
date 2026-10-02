@@ -4,7 +4,11 @@
 # Starts `cybertrain server` for the playground's app (default
 # /workspace/blog) in the foreground of this terminal. GitHub Codespaces runs
 # it from postAttachCommand on every attach, so a second run must not start a
-# second server: it prints where the app is and exits 0.
+# second server: it prints where the app is and exits 0 instead when
+#   - its lock is held: a server this script started is running;
+#   - the port answers: a server started by hand is listening;
+#   - this user runs a `cybertrain server` that does not listen yet: one
+#     started by hand is still compiling (about a minute after a Ruby edit).
 set -u
 
 app="${1:-/workspace/blog}"
@@ -29,6 +33,15 @@ if ! flock -n 9; then
 fi
 if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
   echo "playground-server: port ${port} is already in use, so no second server is started: ${url}"
+  exit 0
+fi
+# A `cybertrain server` started by hand holds neither the lock nor, until it
+# has compiled the app, the port. It is the gem's Ruby script, whose command
+# line is "/usr/bin/ruby3.2 /usr/local/bin/cybertrain server [PORT]";
+# anchoring on the interpreter skips a shell or init whose arguments merely
+# mention it.
+if pgrep -u "$(id -u)" -f '^[^ ]*ruby[^ ]* [^ ]*/cybertrain server( |$)' >/dev/null 2>&1; then
+  echo "playground-server: a cybertrain server is already starting, so no second server is started: ${url}"
   exit 0
 fi
 if [ ! -f "${app}/spin.toml" ]; then
