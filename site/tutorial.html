@@ -35,8 +35,9 @@
     </a>
     <nav class="nav-links" aria-label="Primary">
       <ul>
-        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li class="nav-wide-only"><a href="index.html#how-it-works">How it works</a></li>
         <li><a href="tutorial.html" aria-current="page">Tutorial</a></li>
+        <li><a href="playground.html">Playground</a></li>
         <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
       </ul>
     </nav>
@@ -111,6 +112,7 @@
     <p><code>~/.cybertrain/bin</code> holds <code>spinel</code> and <code>spin</code> links to the release in use. Without it on <code>PATH</code>, <code>cybertrain spin ARGS...</code> runs <code>spin</code> with that release from any directory. <code>CYBERTRAIN_HOME</code> replaces <code>~/.cybertrain</code>, and <code>CYBERTRAIN_SPINEL_HOME=PREFIX</code> uses the Spinel installed in <code>PREFIX</code> instead (it must be that release). A <code>spinel</code> of another release on <code>PATH</code> is never used or touched.</p>
       </div>
     </details>
+    <p class="note">No machine to install on? The <a href="playground.html">playground</a> opens this blog in a GitHub Codespace with steps 02, 03, 04 and 07 already done.</p>
   </section>
 
   <section class="step" id="install" aria-labelledby="h-install">
