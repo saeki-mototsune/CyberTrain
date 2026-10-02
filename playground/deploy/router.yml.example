@@ -37,10 +37,14 @@ proxy:
   # the apex alone could not keep a large body off the host's disk. No host
   # of this service needs more than 1 MB (uploads are off in the editor,
   # whose traffic is a WebSocket; the preview's forms are small): bodies up
-  # to 1 MB stay in memory, larger ones are refused. Responses: Kamal's
-  # default.
+  # to 1 MB stay in memory, larger ones are refused. Responses are not
+  # buffered: by default kamal-proxy buffers them with no size limit and
+  # writes what exceeds memory to disk, and the preview hosts serve
+  # strangers' apps, so one visitor could fill the host's disk. Unbuffered,
+  # kamal-proxy streams them to its client, Cloudflare.
   buffering:
     requests: true
+    responses: false
     max_request_body: 1_000_000
     memory: 1_000_000
   healthcheck:
@@ -69,10 +73,11 @@ env:
     # from it. pre-deploy compares router.yml with control.yml.
     PLAY_SUBNET_POOL: 10.250.0.0/16
 
-# pre-deploy refuses a router deploy without readable, non-empty certificate
-# files (PLAY_ORIGIN_CERT, PLAY_ORIGIN_KEY), with a pool unlike control.yml's,
-# or from a tree with uncommitted changes. verbose: Kamal shows the hooks'
-# messages, which it hides by default.
+# pre-build refuses to build the router's image from a tree unlike its
+# commit; pre-deploy refuses a router deploy without readable, non-empty
+# certificate files (PLAY_ORIGIN_CERT, PLAY_ORIGIN_KEY) or with a pool unlike
+# control.yml's. verbose: Kamal shows the hooks' messages, which it hides by
+# default.
 hooks_path: playground/deploy/hooks
 hooks_output: verbose
 

@@ -6,6 +6,8 @@
 #   EXT_IF   the public interface                         default: the default route's
 #   CF_LIST  Cloudflare's IPv4 ranges, one per line        default /etc/cybertrain-play/cloudflare-ips-v4
 #            (from https://www.cloudflare.com/ips-v4, which has no final newline)
+#   LOCK_FILE  held for the whole run (runs never overlap)
+#              default /run/lock/cybertrain-play-firewall.lock
 # It checks everything first: CF_LIST must hold at least one range and only
 # IPv4 ranges (a.b.c.d/n), POOL must be one, EXT_IF must name an interface of
 # this host, and Docker's DOCKER-USER chain must exist. Otherwise it changes
@@ -16,17 +18,25 @@
 # is interrupted or the kernel refuses a rule (which it names, exiting 1).
 set -uo pipefail
 export LC_ALL=C
+fail() { echo "cybertrain-play-firewall: $*; nothing changed" >&2; exit 1; }
+
+# One run at a time: a second run waits for the first, so that two runs can
+# never both find the INPUT rule or the jump missing and both add it.
+LOCK_FILE=${LOCK_FILE:-/run/lock/cybertrain-play-firewall.lock}
+{ exec 9> "$LOCK_FILE"; } 2> /dev/null || fail "cannot open the lock file $LOCK_FILE"
+flock -w 60 9 || fail "another run still holds $LOCK_FILE after 60 s"
+
 POOL=${POOL:-10.250.0.0/16}
 EXT_IF=${EXT_IF:-$(ip -4 route show default | awk '{print $5; exit}')}
 CF_LIST=${CF_LIST:-/etc/cybertrain-play/cloudflare-ips-v4}
 
-fail() { echo "cybertrain-play-firewall: $*; nothing changed" >&2; exit 1; }
-
 # An IPv4 range: four octets 0-255 without leading zeros, and a prefix length
-# from 8 to 32 (anything wider is neither a Cloudflare range nor a pool).
+# from 8 to 32 (anything wider is neither a Cloudflare range nor a pool). An
+# interface name never starts with -, which a command would take for an
+# option.
 octet='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
 range_re="^$octet(\\.$octet){3}/([89]|[12][0-9]|3[0-2])\$"
-ifname_re='^[A-Za-z0-9_.-]{1,15}$'
+ifname_re='^[A-Za-z0-9_.][A-Za-z0-9_.-]{0,14}$'
 
 [[ $POOL =~ $range_re ]] || fail "POOL is not an IPv4 range a.b.c.d/n (n from 8 to 32): $(printf '%q' "$POOL")"
 [[ $EXT_IF =~ $ifname_re ]] || fail "EXT_IF is empty or not an interface name: $(printf '%q' "$EXT_IF") (no default route? set EXT_IF)"

@@ -5,12 +5,11 @@
 #   1. router: PLAY_ORIGIN_CERT and PLAY_ORIGIN_KEY name readable, non-empty
 #      files (Kamal uploads their content as kamal-proxy's certificate);
 #   2. both: router.yml and control.yml give PLAY_SUBNET_POOL one value;
-#   3. both, except rollbacks (they build nothing): no uncommitted change and
-#      no untracked file under the service's directory, since Kamal builds
-#      the image from the working tree (builder context: .);
-#   4. control: playground/deploy/.session-image holds a valid reference, and
+#   3. control: playground/deploy/.session-image holds a valid reference, and
 #      its pull succeeds on every host.
-# The control plane starts sessions with `docker run --pull never`, so 4
+# The tree checks are pre-build's: Kamal runs this hook only after the image
+# is built and pushed, and pre-build before it builds.
+# The control plane starts sessions with `docker run --pull never`, so 3
 # pulls the session image PLAY_SESSION_IMAGE names onto every host before the
 # new version boots, rollbacks included: Kamal 2.12 boots the old version's
 # image with the configuration as rendered now, so the session image is the
@@ -63,35 +62,17 @@ else
     [ -f "$file" ] || echo "pre-deploy: $file is missing, so PLAY_SUBNET_POOL was not compared (keep it the same in router.yml, control.yml and the firewall's POOL)" >&2
   done
 fi
-
-# 3. A clean tree.
-dir=playground/$service
-if [ "${KAMAL_COMMAND:-}" != rollback ]; then
-  git update-index -q --refresh > /dev/null 2>&1 || :
-  changed=$(git diff-index --name-only HEAD --)
-  if [ -n "$changed" ]; then
-    echo "pre-deploy: uncommitted changes: commit first (the $service image is built from this tree):" >&2
-    printf '%s\n' "$changed" | sed 's/^/  /' >&2
-    exit 1
-  fi
-  untracked=$(git status --porcelain --untracked-files=all -- "$dir")
-  untracked=$(printf '%s\n' "$untracked" | sed -n 's/^?? //p')
-  if [ -n "$untracked" ]; then
-    echo "pre-deploy: untracked files under $dir/, which the $service image is built from: commit or remove them first:" >&2
-    printf '%s\n' "$untracked" | sed 's/^/  /' >&2
-    exit 1
-  fi
-fi
 [ "$service" = control ] || exit 0
 
-# 4. The reference goes into a remote command: the control plane's rule for
+# 3. The reference goes into a remote command: the control plane's rule for
 #    an image reference (Play::Config, PLAY_SESSION_IMAGE), and a pinned one
-#    ends in @sha256: and 64 lower-case hex digits (as in session-image).
+#    holds exactly one @, followed by sha256: and 64 lower-case hex digits
+#    (as in session-image).
 alnum=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 valid_ref() { # REF
   case "$1" in "" | [!$alnum]* | *[!$alnum._/:@-]*) return 1 ;; esac
-  case "$1" in *@*) ;; *) return 0 ;; esac
-  hex=${1##*@sha256:}
+  case "$1" in *@*@*) return 1 ;; *@*) ;; *) return 0 ;; esac
+  hex=${1#*@sha256:}
   [ "$hex" != "$1" ] && [ ${#hex} -eq 64 ] || return 1
   case "$hex" in *[!0123456789abcdef]*) return 1 ;; esac
 }

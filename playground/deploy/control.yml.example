@@ -60,9 +60,10 @@ volumes:
   - /var/run/docker.sock:/var/run/docker.sock
   - /var/lib/cybertrain-play:/data
 
-# pre-deploy pulls the pinned session image onto every host, post-deploy
-# prunes old ones. verbose: Kamal shows the hooks' messages, which it hides
-# by default.
+# pre-build refuses to build the control plane's image from a tree unlike
+# its commit; pre-deploy pulls the pinned session image onto every host;
+# post-deploy prunes old ones, never the pinned one. verbose: Kamal shows the
+# hooks' messages, which it hides by default.
 hooks_path: playground/deploy/hooks
 hooks_output: verbose
 
