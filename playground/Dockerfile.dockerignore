@@ -1,0 +1,10 @@
+# Build context of playground/Dockerfile (the repository root). Only what the
+# image uses is sent. .git stays: the image's framework mirror is made from
+# it through a bind mount (never copied into a layer).
+*
+!.git
+!README.md
+!cybertrain.gemspec
+!exe/
+!cybertrain/
+!playground/

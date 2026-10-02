@@ -72,12 +72,15 @@ what_A9="a model edit rebuilds and restarts the server: a short body then answer
 what_A10="the running container generated tmp/secret_key"
 what_D1="a second playground-server exits 0 saying the server is already running"
 what_D2="exactly one app server process runs"
+what_D3="after a container restart (Codespaces' idle stop and resume) the server is back, once, with the earlier article"
+what_D4="playground-server leaves a server started by hand alone: it says the port is in use, exits 0, and one server runs"
 what_C1="with CODESPACES=true the session cookie is SameSite=None; Secure; Partitioned"
 what_C2="with CODESPACES=true the banner shows https://smoke-3000.app.github.dev/"
+what_C3="with CODESPACES=true, interactive and login bash shells get the cookie settings"
 what_F1="CYBERTRAIN_SESSION_SAME_SITE=lax stops the server at boot and names the valid values"
 what_E1="a cp -a copy of the blog started by playground-server compiles nothing"
 what_B1="with no network, git ls-remote of the repository URL lists refs/tags/v$version (the mirror)"
-what_B2="with no network, cybertrain new works in /tmp and locks the blog's commit"
+what_B2="with no network, cybertrain new works in /workspace (next to the blog) and locks the blog's commit"
 what_B3="with no network, the new app builds"
 
 pass() {
@@ -402,12 +405,67 @@ if [ "$main_up" = yes ]; then
   else
     fail D2 "$what_D2" "pgrep counted ${servers:-nothing}" "$main"
   fi
+
+  # Codespaces stops an idle codespace and starts the same container again:
+  # the lock file and tmp/secret_key from the first run are still there.
+  docker restart -t 10 "$main" > /dev/null 2>&1
+  restarted=$SECONDS
+  port=$(host_port "$main")
+  base="http://127.0.0.1:$port"
+  back=no
+  while [ $((SECONDS - restarted)) -lt 30 ]; do
+    if [ -n "$port" ] && [ "$(curl -s -o "$work/d3.html" -w '%{http_code}' --max-time 2 "$base/articles")" = "200" ]; then
+      back=yes
+      break
+    fi
+    if ! running "$main"; then
+      break
+    fi
+    port=$(host_port "$main")
+    base="http://127.0.0.1:$port"
+    sleep 0.5
+  done
+  kept=yes
+  if [ -n "$title" ] && ! grep -qF "$title" "$work/d3.html" 2> /dev/null; then
+    kept=no
+  fi
+  servers=$(docker exec "$main" pgrep -c -f '^/workspace/blog/build/bin/blog( |$)' 2> /dev/null)
+  if [ "$back" = yes ] && [ "$kept" = yes ] && [ "$servers" = 1 ]; then
+    pass D3 "$what_D3"
+  else
+    fail D3 "$what_D3" "answered 200: $back, article kept: $kept, servers: ${servers:-none}" "$main"
+  fi
 else
   fail A1 "$what_A1" "$detail" "$main"
-  for id in A2 A3 A4 A5 A6 A7 A8 A9 A10 D1 D2; do
+  for id in A2 A3 A4 A5 A6 A7 A8 A9 A10 D1 D2 D3; do
     name="what_$id"
     fail "$id" "${!name}" "skipped: the dev server did not come up"
   done
+fi
+
+# A server started by hand (PLAYGROUND.md's tutorial step restarts it with
+# `cybertrain server`) holds port 3000 without playground-server's lock; the
+# next attach runs playground-server, which must leave it alone.
+manual="$prefix-manual"
+if start manual "$image" bash -c 'cd /workspace/blog && exec cybertrain server'; then
+  if up_inside "$manual" 30; then
+    again=$(docker exec "$manual" timeout 10 playground-server 2>&1)
+    again_rc=$?
+    servers=$(docker exec "$manual" pgrep -c -f '^/workspace/blog/build/bin/blog( |$)' 2> /dev/null)
+    case "$again" in
+      *"is already in use"*) said=yes ;;
+      *) said=no ;;
+    esac
+    if [ "$again_rc" = 0 ] && [ "$said" = yes ] && [ "$servers" = 1 ]; then
+      pass D4 "$what_D4"
+    else
+      fail D4 "$what_D4" "exit $again_rc, servers: ${servers:-none}: $(first_line "$again")" "$manual"
+    fi
+  else
+    fail D4 "$what_D4" "$detail" "$manual"
+  fi
+else
+  fail D4 "$what_D4" "docker run failed: $(first_line "$(cat "$work/manual.start")")"
 fi
 
 # ---- C: the Codespaces settings --------------------------------------------
@@ -431,6 +489,23 @@ case "$(docker logs "$codespace" 2>&1)" in
   *"https://smoke-3000.app.github.dev/"*) pass C2 "$what_C2" ;;
   *) fail C2 "$what_C2" "the URL is not in the banner" "$codespace" ;;
 esac
+
+# A terminal the visitor opens, interactive or login bash, must carry the
+# same settings, or a server started by hand answers 403 in the preview.
+run_once 30 C3 -e CODESPACES=true "$image" bash -c 'bash -ic "echo IC=\$CYBERTRAIN_SESSION_SAME_SITE/\$CYBERTRAIN_SESSION_PARTITIONED" 2> /dev/null; bash -lc "echo LC=\$CYBERTRAIN_SESSION_SAME_SITE/\$CYBERTRAIN_SESSION_PARTITIONED" 2> /dev/null'
+case "$out" in
+  *"IC=None/1"*) interactive=yes ;;
+  *) interactive=no ;;
+esac
+case "$out" in
+  *"LC=None/1"*) login=yes ;;
+  *) login=no ;;
+esac
+if [ "$rc" = 0 ] && [ "$interactive" = yes ] && [ "$login" = yes ]; then
+  pass C3 "$what_C3"
+else
+  fail C3 "$what_C3" "interactive: $interactive, login: $login" out:C3
+fi
 
 # ---- F: the boot check -----------------------------------------------------
 
@@ -482,7 +557,7 @@ fi
 # runs inside it and prints one "B2 ..." and one "B3 ..." line.
 offline='
 began=$SECONDS
-cd /tmp || exit 1
+cd /workspace || exit 1
 if ! cybertrain new offline > /tmp/smoke-new.log 2>&1; then
   echo "B2 FAIL cybertrain new offline failed: $(tail -n 2 /tmp/smoke-new.log | tr "\n" " ")"
   echo "B3 FAIL skipped: there is no app"
