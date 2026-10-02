@@ -60,19 +60,19 @@ class Post < Cybertrain::Model
 
   def title=(v)
     @title = Cybertrain::Cast.str(v)
-    nil
+    v
   end
   def body=(v)
     @body = Cybertrain::Cast.str_or_nil(v)
-    nil
+    v
   end
   def created_at=(v)
     @created_at = Cybertrain::Cast.time_or_nil(v)
-    nil
+    v
   end
   def updated_at=(v)
     @updated_at = Cybertrain::Cast.time_or_nil(v)
-    nil
+    v
   end
 
   def initialize(attrs = {})
@@ -218,23 +218,23 @@ class Comment < Cybertrain::Model
 
   def post_id=(v)
     @post_id = Cybertrain::Cast.int(v)
-    nil
+    v
   end
   def author=(v)
     @author = Cybertrain::Cast.str_or_nil(v)
-    nil
+    v
   end
   def body=(v)
     @body = Cybertrain::Cast.str(v)
-    nil
+    v
   end
   def created_at=(v)
     @created_at = Cybertrain::Cast.time_or_nil(v)
-    nil
+    v
   end
   def updated_at=(v)
     @updated_at = Cybertrain::Cast.time_or_nil(v)
-    nil
+    v
   end
 
   def initialize(attrs = {})
@@ -385,15 +385,15 @@ class Flag < Cybertrain::Model
 
   def active=(v)
     @active = Cybertrain::Cast.bool(v)
-    nil
+    v
   end
   def score=(v)
     @score = Cybertrain::Cast.float_or_nil(v)
-    nil
+    v
   end
   def group=(v)
     @group = Cybertrain::Cast.str_or_nil(v)
-    nil
+    v
   end
 
   def initialize(attrs = {})

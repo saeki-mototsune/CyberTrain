@@ -193,15 +193,18 @@ module Cybertrain
         # Readers only. Every writer casts like write_attribute does (rule
         # 7: a nullable ivar is assigned only through a Cast helper that can
         # return nil, e.g. time_or_nil; a raw attr_writer would store a Time
-        # straight into the nil-initialised ivar). The writers return nil so
-        # a name shared by two models (`body=`) has one return type (rule 34);
-        # `rec.body = v` still evaluates to v at the call site.
+        # straight into the nil-initialised ivar). A writer returns its
+        # argument, exactly as attr_writer does: column names are arbitrary
+        # and `body=` / `status=` also exist on Cybertrain::Response as
+        # attr_accessors, and rule 34 wants one return type per name -- a
+        # nil-returning `body=` made Spinel lose Response#body= ("undefined
+        # method 'body='" on the blog's 404 path, CI on PR #10).
         src << "  attr_reader #{symbols}\n"
         src << "\n"
         table.columns.each do |c|
           src << "  def #{c.name}=(v)\n"
           src << "    @#{c.name} = Cybertrain::Cast.#{cast_for(c)}(v)\n"
-          src << "    nil\n"
+          src << "    v\n"
           src << "  end\n"
         end
         src << "\n"

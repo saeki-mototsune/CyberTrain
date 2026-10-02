@@ -99,19 +99,19 @@ EXPECTED_POST = HEADER + <<~'RUBY'
 
       def title=(v)
         @title = Cybertrain::Cast.str(v)
-        nil
+        v
       end
       def body=(v)
         @body = Cybertrain::Cast.str_or_nil(v)
-        nil
+        v
       end
       def created_at=(v)
         @created_at = Cybertrain::Cast.time_or_nil(v)
-        nil
+        v
       end
       def updated_at=(v)
         @updated_at = Cybertrain::Cast.time_or_nil(v)
-        nil
+        v
       end
 
       def initialize(attrs = {})
@@ -257,23 +257,23 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
 
       def post_id=(v)
         @post_id = Cybertrain::Cast.int(v)
-        nil
+        v
       end
       def author=(v)
         @author = Cybertrain::Cast.str_or_nil(v)
-        nil
+        v
       end
       def body=(v)
         @body = Cybertrain::Cast.str(v)
-        nil
+        v
       end
       def created_at=(v)
         @created_at = Cybertrain::Cast.time_or_nil(v)
-        nil
+        v
       end
       def updated_at=(v)
         @updated_at = Cybertrain::Cast.time_or_nil(v)
-        nil
+        v
       end
 
       def initialize(attrs = {})
@@ -419,15 +419,15 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
 
       def active=(v)
         @active = Cybertrain::Cast.bool(v)
-        nil
+        v
       end
       def score=(v)
         @score = Cybertrain::Cast.float_or_nil(v)
-        nil
+        v
       end
       def group=(v)
         @group = Cybertrain::Cast.str_or_nil(v)
-        nil
+        v
       end
 
       def initialize(attrs = {})
@@ -641,8 +641,9 @@ test "attributes are readers plus typed writers, never raw accessors (rule 7)" d
   assert_lines(post, ["attr_reader :title, :body, :created_at, :updated_at", "def order_sql(s) = (add_order_sql(s); self)"])
   refute_line(post, "attr_accessor :title, :body, :created_at, :updated_at")
   refute_line(post, "attr_writer :title")
-  # The writer returns nil so `body=` has one return type across models.
-  assert post.include?("  def body=(v)\n    @body = Cybertrain::Cast.str_or_nil(v)\n    nil\n  end\n")
+  # The writer returns its argument like attr_writer: Response#body= is an
+  # attr_accessor, and rule 34 wants one return type per name.
+  assert post.include?("  def body=(v)\n    @body = Cybertrain::Cast.str_or_nil(v)\n    v\n  end\n")
 end
 
 def raising_columns(name)
