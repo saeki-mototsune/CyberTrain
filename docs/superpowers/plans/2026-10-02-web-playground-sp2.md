@@ -38,7 +38,7 @@
 ## Review Focus
 
 1. A visitor presses "Start a session" on the entry page itself. The page is served with `Referrer-Policy: no-referrer`, so the browser sends that form POST with `Origin: null`, and the spec's origin check would answer 403 to everyone; the 303 that follows goes to the editor's host, a form-submission redirect that Chrome checks against CSP `form-action`, which the spec's `'self'` blocks. The visitor expects to land in the editor. Pinned by `test_the_entry_pages_own_button_sends_origin_null_and_is_let_through` and the `form-action 'self' https://*.play.example.test` assertion in `test_every_page_carries_the_security_headers` (Task 6, Step 1), and by U1 (B1) starting from the entry page's button (Task 8, Step 3).
-2. A visitor reloads an editor or app whose session has just ended (its TTL, `playctl end`, the idle timeout). They expect the "No session at this address" page at once, not a request that hangs until kamal-proxy or Cloudflare gives up: a pooled upstream connection to a vanished session hung for over 3 minutes in the probe. Pinned by `test_teardown_disconnects_every_attachment_before_removing_the_network` (Task 5, Step 1), R10 of the router check (Task 2, Step 1) and E11's "404 within 5 s after `playctl end`" (Task 7, Step 1).
+2. A visitor reloads an editor or app whose session has just ended (its TTL, `playctl end`, the idle timeout). They expect the "No session at this address" page at once, not a request that hangs until kamal-proxy or Cloudflare gives up: a pooled upstream connection to a vanished session hung for over 3 minutes in the probe. Pinned by `test_teardown_disconnects_every_attachment_before_removing_the_network` (Task 5, Step 1), R10 of the router check (Task 2, Step 1) and E11's "404 within 5 s after `playctl end`" and "404 within 3 s after the router is cut from a live session" (Task 7, Step 1); the last is the one that fails without `keepalive off`.
 3. The operator's first router deploy with the Origin CA certificate. The spec's `.kamal/secrets` line `$(cat "${PLAY_ORIGIN_CERT:-/dev/null}")` is mangled by Kamal 2.12's parser (it substitutes `${PLAY_ORIGIN_CERT` and leaves `:-/dev/null}`), so the certificate secret comes out empty and the deploy fails. The operator expects the PEM from the file to reach kamal-proxy. Pinned by D8 and D9 of the deployment check (Task 9, Step 1), which load the secrets through Kamal 2.12 itself.
 4. Cloudflare's published IPv4 list has no final newline (15 ranges in October 2026). The spec's `while read -r range` loop skips the last one (`131.0.72.0/22`), so visitors whose Cloudflare edge uses that range time out at the origin. The operator expects every listed range to be let in. Pinned by D5 of the deployment check, a firewall dry run on a list without a final newline (Task 9, Step 1).
 5. A visitor presses Start, lands in the editor and presses Back. A browser that restores the entry page from its back-forward cache (recent Chrome may, even for this `no-store` page, since it sets no cookie) shows the button still disabled and reading "Starting…", which looks like a hung service. The visitor expects a usable button. Pinned by the `pageshow` handler in `BUTTON_SCRIPT` (Task 6, Step 3) and U5, the Back step of the browser checklist (Task 8, Step 3).
@@ -4891,7 +4891,7 @@ Expected from `git ls-files -s`: mode `100755`.
 Notes on the spec's text, applied below:
 - Correction (spec §15, corrections 3 and 6): the router service has `dns: [127.0.0.1]` and `sysctls: [net.ipv4.ip_forward=0]`.
 - Correction: the control plane's data directory is `${PLAY_DATA_HOST:-./data}`, and `e2e.sh` uses `./data-e2e`: with the spec's fixed `./data`, the test's project shared the dev stack's `paused` and `kill-all` flags (a test interrupted while paused left the dev stack paused). `.gitignore` gets both directories.
-- `e2e.sh` follows the spec's E1-E19 with these changes, each because the spec's form could not pass or prove the point: `PLAY_TTL=180` instead of 150, so that session 1 (created at E2) outlives the checks that need it on a slow CI runner, and E18 then measures that same session's end (its window is "within 15 s of `expires-at`"); the run order is E1-E7, E9, E10, E8 (E8 needs E10's second session), E11-E15, E18, E16, E17, E19; E8's "gateway" checks become the host's own addresses and a listener on the host (spec §15, correction 5: an `inhibit_ipv4` network has no gateway, `.1` is a container), plus a check that no host interface has an address in `10.250.0.0/16` (the measure that `inhibit_ipv4` is in force, which §15 asks the end-to-end test to keep checking), and a refused connection counts as a way out; E11 adds "a session just ended with `playctl end` answers the 404 page within 5 s" (§15, correction 4; Review Focus 2), waits after each `playctl end` until `status.json` counts one live session again (`playctl` is another process: the control plane forgets the session at its reaper's next pass, up to 5 s later, and until then the same client would get the per-client 429), and requires the third creation's 429 to be the rate page; E3 and E5 read every `Content-Security-Policy` line (code-server may send its own before the router's); E12 adds `Origin: null` from this origin, which must pass the origin check (it then meets the per-client limit: 429); E13 adds the router's DNS and `ip_forward`; E14 expects `"live":1` (one session is left at that point of the sequence, not two); E17 sends its POST from inside the control plane's container, since a stopped router leaves no way in from outside.
+- `e2e.sh` follows the spec's E1-E19 with these changes, each because the spec's form could not pass or prove the point: `PLAY_TTL=180` instead of 150, so that session 1 (created at E2) outlives the checks that need it on a slow CI runner, and E18 then measures that same session's end (its window is "within 15 s of `expires-at`"); the run order is E1-E7, E9, E10, E8 (E8 needs E10's second session), E11-E15, E18, E16, E17, E19; E8's "gateway" checks become the host's own addresses and a listener on the host (spec §15, correction 5: an `inhibit_ipv4` network has no gateway, `.1` is a container), plus a check that no host interface has an address in `10.250.0.0/16` (the measure that `inhibit_ipv4` is in force, which §15 asks the end-to-end test to keep checking), and a refused connection counts as a way out; E11 adds "a session just ended with `playctl end` answers the 404 page within 5 s" (§15, correction 4; Review Focus 2), waits after each `playctl end` until `status.json` counts one live session again (`playctl` is another process: the control plane forgets the session at its reaper's next pass, up to 5 s later, and until then the same client would get the per-client 429), requires the third creation's 429 to be the rate page, and detaches the router from a live session's network and requires the 404 page within 3 s (the only check that fails when `keepalive off` is dropped from the session upstreams: Task 2's R10 removes the session first, where a router with keep-alive answers 404 just as fast); E3 and E5 read every `Content-Security-Policy` line (code-server may send its own before the router's); E12 adds `Origin: null` from this origin, which must pass the origin check (it then meets the per-client limit: 429); E13 adds the router's DNS and `ip_forward`; E14 expects `"live":1` (one session is left at that point of the sequence, not two); E17 sends its POST from inside the control plane's container, since a stopped router leaves no way in from outside.
 - It refuses to start (exit 2) while any playground session exists on this Docker: a second control plane would adopt or reap them (they share the labels).
 
 - [ ] **Step 1: Write the failing test**
@@ -5270,6 +5270,15 @@ gone_code=$(healthz "$s2")
 gone_took=$((SECONDS - began))
 start 198.51.100.9
 r1=$code
+# The router cut off from a session that still runs must answer the 404 page
+# at once. This is what `keepalive off` on the session upstreams is for:
+# without it the next request rides the pooled connection to a session the
+# router can no longer reach, and hangs (healthz gives up after 5 s).
+warm=$(healthz "$sid")
+docker network disconnect "ctplay-n-$handle" "$router" > /dev/null 2>&1
+began=$SECONDS
+cut_code=$(healthz "$sid")
+cut_took=$((SECONDS - began))
 end_session "$handle"
 wait_live 1
 start 198.51.100.9
@@ -5282,9 +5291,10 @@ r3_retry=$(header retry-after)
 r3_page=$(has "Too many sessions from your network address")
 ok=no
 if [ "$again" = 429 ] && [ -n "$again_retry" ] && [ "$ended" = 0 ] && [ "$gone_code" = 404 ] && [ "$gone_took" -le 5 ] &&
-  [ "$r1" = 303 ] && [ "$r2" = 303 ] && [ "$r3" = 429 ] && [ -n "$r3_retry" ] && [ "$r3_page" = yes ]; then ok=yes; fi
-check E11 "the same client gets 429; a just-ended session answers the 404 page at once; a third creation in the window gets 429" "$ok" \
-  "same client: $again (Retry-After $again_retry); playctl end: exit $ended, then $gone_code in $gone_took s; creations: $r1 $r2 $r3 (Retry-After $r3_retry, the rate page: $r3_page)"
+  [ "$r1" = 303 ] && [ "$warm" = 200 ] && [ "$cut_code" = 404 ] && [ "$cut_took" -le 3 ] &&
+  [ "$r2" = 303 ] && [ "$r3" = 429 ] && [ -n "$r3_retry" ] && [ "$r3_page" = yes ]; then ok=yes; fi
+check E11 "the same client gets 429; a just-ended session and one the router was cut from answer the 404 page at once; a third creation in the window gets 429" "$ok" \
+  "same client: $again (Retry-After $again_retry); playctl end: exit $ended, then $gone_code in $gone_took s; router cut from a live session: $warm, then $cut_code in $cut_took s; creations: $r1 $r2 $r3 (Retry-After $r3_retry, the rate page: $r3_page)"
 
 start 198.51.100.12 -H "Origin: http://evil.localhost"
 o1=$code
@@ -5531,7 +5541,7 @@ PASS E7 the two ids do not stand in for each other: 3000-<editor id> is the 502 
 PASS E9 inside: uid 1000, no capabilities, no new privileges, read-only root, writable /workspace, 1536 MiB, 512 pids, 1 CPU, no Docker socket
 PASS E10 a second client gets a session, a third the 503 full page; Docker holds exactly 2 sessions
 PASS E8 from a session: no internet, DNS, metadata, host or other session; the router drops it; no session bridge has a host address
-PASS E11 the same client gets 429; a just-ended session answers the 404 page at once; a third creation in the window gets 429
+PASS E11 the same client gets 429; a just-ended session and one the router was cut from answer the 404 page at once; a third creation in the window gets 429
 PASS E12 another origin and a same-site request get 403; Origin null from this origin passes the check
 PASS E13 unknown hosts get the 404 page, /internal/* through the router is 404, the router asks no outside resolver and forwards nothing
 PASS E14 after a control-plane restart status.json counts the live session within 10 s and its editor answers
