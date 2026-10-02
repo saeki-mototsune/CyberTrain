@@ -566,6 +566,9 @@
         <tr><td data-label="Variable"><code>CYBERTRAIN_DATABASE</code></td><td data-label="Attribute"><code>database_path</code></td><td data-label="Default"><code>storage/#{env}.sqlite3</code></td></tr>
         <tr><td data-label="Variable"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="Attribute"><code>secret_key_base</code></td><td data-label="Default">required in production; dev/test auto-generate one into <code>tmp/secret_key</code></td></tr>
         <tr><td data-label="Variable"><code>SPINEL_WORKERS</code></td><td data-label="Attribute"><code>workers</code></td><td data-label="Default"><code>1</code></td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_HOST</code></td><td data-label="Attribute"><code>host</code></td><td data-label="Default"><code>"127.0.0.1"</code>; <code>0.0.0.0</code> listens on every interface (containers)</td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_SESSION_SAME_SITE</code></td><td data-label="Attribute"><code>session_same_site</code></td><td data-label="Default"><code>"Lax"</code>; also <code>Strict</code> or <code>None</code> (<code>None</code> always adds <code>Secure</code>); anything else stops the server at boot</td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_SESSION_PARTITIONED</code></td><td data-label="Attribute"><code>session_partitioned</code></td><td data-label="Default"><code>false</code>; <code>1</code> or <code>true</code> adds <code>Partitioned</code> (and <code>Secure</code>)</td></tr>
       </tbody>
     </table>
     </div>
@@ -582,7 +585,6 @@
       <li>Production refuses to start without <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</li>
       <li>In production an exception answers 500, and a bare error response (the router's plain-text 404, <code>head :not_found</code>, <code>render plain:</code>) is replaced by <code>public/&lt;status&gt;.html</code> when that file exists; <code>cybertrain new</code> writes <code>404.html</code> and <code>500.html</code>.</li>
       <li><code>SIGTERM</code> stops accepting, lets requests in flight finish and exits when they are done, or after the server's <code>drain_timeout</code> (10 s).</li>
-      <li>The default bind host is <code>127.0.0.1</code>; <code>host</code> is a <code>Config</code> attribute that <code>config/app.rb</code> can set.</li>
       <li>The watcher and rebuild loop never run in production. A running <code>cybertrain server</code> skips its rebuilds while <code>cybertrain build</code> holds <code>tmp/cybertrain-build.lock</code>.</li>
     </ul>
   </section>
