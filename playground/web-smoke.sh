@@ -276,10 +276,13 @@ if [ "$helper_ok" = yes ]; then
   fi
 fi
 
+# No browser ever attaches to the main session: with playground-web's default
+# idle timeout (300 s) code-server would end it while W9 and W10 still wait on
+# a slow host, so its idle timeout is the session's 1800 s.
 main_up=no
 if [ "$helper_ok" != yes ]; then
   detail="no test network or helper: $(first_line "$(cat "$work/net.out" "$work/helper.start" 2> /dev/null)")"
-elif session main s-smoke -e "PLAYGROUND_ENDS_AT=$(($(date +%s) + 1800))"; then
+elif session main s-smoke -e "PLAYGROUND_ENDS_AT=$(($(date +%s) + 1800))" -e "PLAYGROUND_IDLE_TIMEOUT=1800"; then
   launched=$SECONDS
   detail="no 200 from /healthz within 30 s"
   while [ $((SECONDS - launched)) -lt 30 ]; do
@@ -388,9 +391,12 @@ EOF
     *) fail W10 "$what_W10" "$(printf '%s\n' "$new_app" | grep -v '^$' | tail -n 1)" "$main" ;;
   esac
 
-  locked=$(docker exec "$main" bash -c 'if touch /opt/cybertrain/.smoke-probe 2> /tmp/t.err; then echo root=writable; elif grep -q "Read-only file system" /tmp/t.err; then echo root=read-only; else echo "root=$(cat /tmp/t.err)"; fi; awk "/^(CapEff|NoNewPrivs):/ {print \$1 \$2}" /proc/1/status; df -P -k /tmp /home/dev /workspace /opt/cybertrain-cache | awk "NR > 1 {print \$6 \"=\" \$2}"' 2>&1)
+  # As uid 1000 the session's effective set is empty even without
+  # --cap-drop ALL (execve clears it for a non-root user): the bounding set
+  # is what shows the drop.
+  locked=$(docker exec "$main" bash -c 'if touch /opt/cybertrain/.smoke-probe 2> /tmp/t.err; then echo root=writable; elif grep -q "Read-only file system" /tmp/t.err; then echo root=read-only; else echo "root=$(cat /tmp/t.err)"; fi; awk "/^(CapEff|CapBnd|NoNewPrivs):/ {print \$1 \$2}" /proc/1/status; df -P -k /tmp /home/dev /workspace /opt/cybertrain-cache | awk "NR > 1 {print \$6 \"=\" \$2}"' 2>&1)
   missing=""
-  for want in root=read-only CapEff:0000000000000000 NoNewPrivs:1 $tmpfs_sizes; do
+  for want in root=read-only CapEff:0000000000000000 CapBnd:0000000000000000 NoNewPrivs:1 $tmpfs_sizes; do
     if ! printf '%s\n' "$locked" | grep -qxF "$want"; then
       missing="$missing $want"
     fi
