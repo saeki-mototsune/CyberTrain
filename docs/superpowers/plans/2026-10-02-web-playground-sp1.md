@@ -2260,8 +2260,10 @@ GIT_CONFIG_NOSYSTEM=1 git clone https://github.com/saeki-mototsune/cybertrain
   (`/tmp/playground-server-3000.lock`, held by the server until it exits)
   and says "the dev server is already running"; a server started some other
   way, such as `cybertrain server` by hand, is found by connecting to the
-  port. Either way it prints the app's URL and exits 0 without starting
-  anything. Codespaces runs it on every attach.
+  port, or, while it is still compiling and does not listen yet, by its
+  process (any `cybertrain server` of the same user, whatever its port). In
+  each case it prints the app's URL and exits 0 without starting anything.
+  Codespaces runs it on every attach.
 - The banner shows the app's URL (in a codespace the forwarded
   `https://<codespace>-3000.app.github.dev/`, elsewhere
   `http://localhost:3000/`), where the guide is, and how long edits take.
@@ -2318,14 +2320,14 @@ bash playground/smoke.sh IMAGE
 It needs bash 3.2 or newer, docker and curl. It prints one PASS or FAIL line
 per check, then `smoke: N passed, M failed`, and exits 0 only when every
 check passes; CI runs it on every build before pushing. Most of its time
-goes to two compiles of about a minute each: the model edit (A9) and the
-offline app (B3).
+goes to three compiles of up to a minute each: the model edit (A9), the
+server started by hand (D4) and the offline app (B3).
 
 | ID | Checks |
 | --- | --- |
 | G1-G7 | The image as built: user `dev` (uid 1000); `cybertrain version`; `cybertrain doctor`; `CYBERTRAIN_HOME` and `XDG_CACHE_HOME` set, `CYBERTRAIN_HOST` not; the blog's `spin.toml` points at `v<VERSION>`; the blog is a clean one-commit git repository that tracks `PLAYGROUND.md`; no `tmp/secret_key`, an executable `build/bin/blog` |
 | A1-A10 | The default command with `CYBERTRAIN_HOST=0.0.0.0`, reached from the host: `GET /articles`; the boot banner; nothing compiled at start; `GET /` shows `<h1>Articles</h1>`; a CSRF token and a `SameSite=Lax` cookie; creating an article (303, then its page); 403 without a token; a view edit shows on the next request; a model edit rebuilds and restarts the server (a short body then answers 422); `tmp/secret_key` generated |
-| D1-D4 | `playground-server` again: it exits 0 saying "already running"; one server process; after a container restart (idle stop and resume) the server is back with the data; a server started by hand is left alone |
+| D1-D4 | `playground-server` again: it exits 0 saying "already running"; one server process; after a container restart (idle stop and resume) the server is back with the data; a server started by hand is left alone, while it is still compiling and once it listens |
 | C1-C3 | `CODESPACES=true`: the cookie is `SameSite=None; Secure; Partitioned`; the banner shows the forwarded URL; interactive and login shells get the cookie settings |
 | F1 | `CYBERTRAIN_SESSION_SAME_SITE=lax` stops the server at boot, naming the valid values |
 | E1 | A `cp -a` copy of the blog starts without compiling |
