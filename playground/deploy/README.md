@@ -34,7 +34,7 @@ VPS（Ubuntu 24.04、Docker、Kamal 2）
 | プレイグラウンドのドメイン（Public Suffix List に載っていないもの） | `<DOMAIN>` |
 | VPS の IPv4 アドレス | `<VPS_IP>` |
 | VPS の管理用ユーザー（sudo でき、2-3 で `docker` グループにも入れる。VPS の上のコマンドはすべてこのユーザーで打つ） | `<ADMIN>` |
-| GHCR の持ち主（GitHub のユーザー名。小文字で書く: Docker はイメージ名の大文字を受け付けない） | `<GHCR_OWNER>` |
+| ルーターと制御面のイメージを持つ、デプロイ専用の GitHub アカウントの名前（1-4。saeki-mototsune ではない。小文字で書く: Docker はイメージ名の大文字を受け付けない） | `<GHCR_OWNER>` |
 | 不正利用と脆弱性の窓口のメールアドレス | `<ABUSE_EMAIL>` |
 | VPS のデプロイ用ユーザー | `deploy` |
 | セッションのプール（`PLAY_SUBNET_POOL`） | `10.250.0.0/16`（`router.yml`、`control.yml`、ファイアウォールの `POOL` で同じ値） |
@@ -71,8 +71,18 @@ KVM は要りません（gVisor の systrap は VM の中で動きます）。
 
 ### 1-4. GitHub
 
-- Kamal 用に Personal access token（classic）を `write:packages` で作ります（GHCR は classic のトークンで入ります）。
-  ルーターと制御面のイメージを push し、VPS が pull します（この 2 つのパッケージは private のままで構いません）。
+- Kamal 用に、デプロイ専用の GitHub アカウント（`<GHCR_OWNER>`。GitHub の規約でいうマシンアカウントで、自動の
+  作業にだけ使います）を作り、そのアカウントで Personal access token（classic）を `write:packages` で作ります
+  （GHCR は classic のトークンで入ります）。ルーターと制御面のイメージはこのアカウントのパッケージになり、Kamal が
+  push し、VPS が pull します（この 2 つは private のままで構いません）。
+  `router.yml` と `control.yml` の `image:` と `username:` の `<GHCR_OWNER>` はこのアカウントの名前、
+  `.kamal/secrets` の `KAMAL_REGISTRY_PASSWORD` はこのアカウントのトークンです（4-1、4-2）。
+- 自分のアカウント（saeki-mototsune）のトークンを使わない理由: Kamal は `setup` と `deploy` のたびに VPS で
+  `docker login` し、トークンを `/home/deploy/.docker/config.json` に残します。classic のトークンは持ち主のすべての
+  パッケージに書けるので、自分のものだと、VPS が破られたときに公開の `cybertrain-playground`（新しい codespace が
+  pull する）と `cybertrain-playground-web`（次の deploy がセッションのイメージに固定する）を書き換えられます。
+  専用のアカウントのトークンは、そのアカウントのパッケージにしか届きません。セッションのイメージは
+  saeki-mototsune の下で Public にするので（下の CI の項）、VPS は自分の資格情報なしで pull します。
 - リポジトリの Settings で Private vulnerability reporting を有効にします（Code security か Advanced Security の
   項にあります。[SECURITY.md](../../SECURITY.md) がここを指しています）。
 - CI: このブランチを push しただけでは既存の `CI` だけが走ります。main への PR を開くと 1 回目（試験だけ）、
@@ -86,8 +96,9 @@ KVM は要りません（gVisor の systrap は VM の中で動きます）。
   - E15（作り直したルーターが 10 秒以内にセッションに届く）は手元で 6〜7 秒でした（大半は刈り取りの 5 秒の
     間隔）。いちばん落ちやすいのがこれです。遅いランナーで落ちたら一度だけ走らせ直し、続けて落ちるなら調べます。
   - マージの実行: `cybertrain-playground:latest`、続けて `cybertrain-playground-web:latest` が出ます。最初の
-    `cybertrain-playground-web` が出たら、github.com/<GHCR_OWNER> の Packages でそのパッケージを Public にし、
-    リポジトリに結び付けます（Package settings → Change visibility、Connect repository）。
+    `cybertrain-playground-web` が出たら、github.com/saeki-mototsune の Packages でそのパッケージを Public にし、
+    リポジトリに結び付けます（Package settings → Change visibility、Connect repository）。最初の deploy の前に
+    行います（`<GHCR_OWNER>` のトークンでは saeki-mototsune の private のパッケージを読めません）。
   - "Playground uptime" は 30 分ごとに予定され、変数 `PLAYGROUND_URL` を入れるまで skipped と出ます（6-7）。
     一覧がうるさければ、公開まで Actions の画面でこのワークフローを無効にしておきます。
 
@@ -131,8 +142,10 @@ install -d -m 0700 -o <ADMIN> -g <ADMIN> /home/<ADMIN>/.ssh
 install -m 0600 -o <ADMIN> -g <ADMIN> /root/.ssh/authorized_keys /home/<ADMIN>/.ssh/authorized_keys
 ```
 
-別の端末で `ssh -t <ADMIN>@<VPS_IP> sudo -v` が通る（パスワードを聞かれ、答えると何も出ずに終わる）ことを
-確かめてから、`<ADMIN>` で入り直して続けます（`-t` が無いと sudo はパスワードを聞けません）。
+別の端末で `ssh -t <ADMIN>@<VPS_IP> sudo -v; echo "exit $?"` が通ることを確かめてから、`<ADMIN>` で入り直して
+続けます（`-t` が無いと sudo はパスワードを聞けません）。通ったときは、パスワードを聞かれて答えると
+`Connection to <VPS_IP> closed.` と `exit 0` だけが出ます（パスワードなしで sudo できるユーザーなら、聞かれずに
+この 2 行が出ます）。`Sorry, try again.` や `is not in the sudoers file`、0 以外の `exit` は失敗です。
 
 デプロイ用ユーザー `deploy`（鍵だけ、sudo なし）を作ります:
 
@@ -157,8 +170,8 @@ sudo sshd -T | grep -Ei '^(permitrootlogin|passwordauthentication) '   # permitr
 `<ADMIN>` の sudo が VPS を管理する唯一の道です:
 
 ```sh
-ssh -t <ADMIN>@<VPS_IP> sudo -v     # パスワードを聞かれ、答えると何も出ずに終わる
-ssh deploy@<VPS_IP> true            # 何も出ずに終わる
+ssh -t <ADMIN>@<VPS_IP> sudo -v; echo "exit $?"   # パスワードを聞かれ（パスワードなしの sudo なら聞かれない）、Connection to <VPS_IP> closed. と exit 0
+ssh deploy@<VPS_IP> true                          # 何も出ずに終わる
 ```
 
 どちらかが通らなければ、開いたままの接続で
@@ -266,10 +279,11 @@ sudo iptables -S INPUT | grep 10.250.0.0/16        # -A INPUT -s 10.250.0.0/16 -
   残ります）。だからジャーナルの「rules in force」を必ず見ます。
 - 規則は `iptables-restore --noflush` で 1 回にまとめて適用されます（1 つのトランザクション）。途中で止まっても、カーネルが規則を断っても、
   前の規則がそのまま残ります（断った規則の名前を出して 1 で終わります）。同時に 2 つ走ることはありません
-  （`/run/lock/cybertrain-play-firewall.lock`）。
-- ユニットは失敗すると 10 秒ごとにやり直し、2 分のうちに 5 回失敗すると failed になります（Docker の再起動に
-  付いて走った回も数えます）。原因を直したら:
-  `sudo systemctl reset-failed cybertrain-play-firewall && sudo systemctl restart cybertrain-play-firewall`。
+  （`/run/cybertrain-play-firewall/lock`。ユニットが作る root のディレクトリで、誰でも書ける `/run/lock` は使いません）。
+- ユニットは失敗すると、成功するまで 10 秒ごとにやり直します。回数の上限はありません（規則が無いままだと 80/443 が
+  誰にでも開き、メタデータにも届くため）。その間 `systemctl status cybertrain-play-firewall` は
+  "activating (auto-restart)" で、ジャーナルに 10 秒ごとに「…; nothing changed」の理由が出ます。原因を直せば、
+  次のやり直しで「rules in force」になります。
 - Docker の再起動と起動のたびにユニットも走り直し、規則を作り直します（`PartOf` と `WantedBy=docker.service`）。
   起動の直後は、Kamal のコンテナがユニットより数秒早く上がります（その数秒は 80/443 が誰にでも開き、
   メタデータの規則もありません。5-3 で秒数を見ます）。
@@ -288,6 +302,36 @@ sudo install -d -m 0750 /var/lib/cybertrain-play
 ```
 
 制御面の `/data` です（`paused`、`kill-all`、`create.lock`）。
+
+### 2-6. ホストの更新と再起動
+
+見知らぬ人にシェルとコンパイラを渡すホストなので、カーネルと runc の既知の脱出を塞ぐ更新が、入って動いている必要が
+あります（設計の R2 は、gVisor までの runc の危険を、カーネルの更新と定期の再起動を前提に受け入れています）。
+
+Ubuntu のセキュリティの自動更新（unattended-upgrades）が有効なことを確かめます:
+
+```sh
+apt-config dump APT::Periodic::Unattended-Upgrade         # APT::Periodic::Unattended-Upgrade "1";
+systemctl is-active apt-daily-upgrade.timer               # active（毎日の自動更新）
+```
+
+違えば `sudo apt-get install -y unattended-upgrades && sudo dpkg-reconfigure -plow unattended-upgrades`（Yes を選ぶ）。
+
+自動更新は再起動をしないので、新しいカーネルは誰かが再起動するまで動きません。そこで、更新が再起動を求めたとき
+（`/var/run/reboot-required` があるとき）だけ、静かな時間（日本時間の 4 時）に自動で再起動させます:
+
+```sh
+printf '%s\n' 'Unattended-Upgrade::Automatic-Reboot "true";' 'Unattended-Upgrade::Automatic-Reboot-Time "19:00";' |
+  sudo tee /etc/apt/apt.conf.d/52cybertrain-play-reboot > /dev/null
+timedatectl | grep 'Time zone'                             # Etc/UTC なら 19:00 が日本時間の 4 時
+apt-config dump Unattended-Upgrade::Automatic-Reboot-Time  # Unattended-Upgrade::Automatic-Reboot-Time "19:00";
+```
+
+- 時刻は VPS の時間帯で書きます。`timedatectl` の時間帯が UTC でなければ、その時間帯の 4 時に直します。
+- 再起動は動いているセッションをすべて終わらせます（起動の後、制御面の照合が残りを片付けます。P14）。セッションは
+  長くて 30 分なので、夜中の再起動で失われるものは小さく済みます。
+- Docker の apt リポジトリのパッケージ（`docker-ce`、`containerd.io`。runc は `containerd.io` に入っています）と、
+  第 8 部の後の `runsc` は自動更新の対象になりません。6-9 のとおり週に 1 度、手で更新します。
 
 ---
 
@@ -330,7 +374,7 @@ includeSubDomains、preload なし）。一度出すと戻せないので最後�
 デプロイする端末で毎回:
 
 ```sh
-export KAMAL_REGISTRY_PASSWORD=<1-4 の PAT>
+export KAMAL_REGISTRY_PASSWORD=<1-4 のデプロイ用アカウントの PAT>
 export PLAY_ORIGIN_CERT=~/.secrets/cybertrain-play/origin.pem
 export PLAY_ORIGIN_KEY=~/.secrets/cybertrain-play/origin.key
 ```
@@ -356,14 +400,14 @@ cp playground/deploy/router.yml.example playground/deploy/router.yml
 cp playground/deploy/control.yml.example playground/deploy/control.yml
 ```
 
-両方の `<VPS_IP>`、`<DOMAIN>`、`<GHCR_OWNER>`（小文字）、`<ABUSE_EMAIL>` を埋めます（2 つのファイルは git が
-無視します）。容量（1-3）に合わせて `control.yml` の `PLAY_MAX_SESSIONS` を決めます。`PLAY_SUBNET_POOL` は
-2 つのファイルで同じ値のままにします。
+両方の `<VPS_IP>`、`<DOMAIN>`、`<GHCR_OWNER>`（1-4 のデプロイ用アカウント、小文字）、`<ABUSE_EMAIL>` を
+埋めます（2 つのファイルは git が無視します）。容量（1-3）に合わせて `control.yml` の `PLAY_MAX_SESSIONS` を
+決めます。`PLAY_SUBNET_POOL` は 2 つのファイルで同じ値のままにします。
 
 `control.yml` を読むたびに `playground/deploy/session-image` が GHCR に `cybertrain-playground-web:latest` の
 ダイジェストを問い合わせて、`PLAY_SESSION_IMAGE` に固定します（CI がスモークと E2E を通したものだけを `latest`
-にします）。前提: CI が main から `latest` を出していること（1-4）。パッケージを Public にする前は、手元で
-`docker login ghcr.io -u <GHCR_OWNER>`（パスワードは PAT）をしておきます。確かめ:
+にします）。前提: CI が main から `latest` を出し、そのパッケージ（saeki-mototsune の `cybertrain-playground-web`）が
+Public であること（1-4。問い合わせにも VPS の pull にも、saeki-mototsune の資格情報は使いません）。確かめ:
 
 ```sh
 kamal config -c playground/deploy/router.yml > /dev/null && echo router ok
@@ -424,7 +468,7 @@ Kamal はこのリポジトリのフック（`playground/deploy/hooks`、両方�
 | P3 | 手元から `curl -sk --max-time 5 --resolve <DOMAIN>:443:<VPS_IP> https://<DOMAIN>/status.json`（VPS に IPv6 のアドレスがあれば `[<v6>]` でも） | どちらも時間切れ（Cloudflare 以外は届かない） |
 | P4 | VPS の上で `curl -vk --resolve <DOMAIN>:443:127.0.0.1 https://<DOMAIN>/status.json` と `curl -vk --resolve x.<DOMAIN>:443:127.0.0.1 https://x.<DOMAIN>/` | 発行者が Cloudflare Origin の証明書が、apex と一段の名前の両方で出る（複数行の PEM が届いた証拠） |
 | P5 | 実ブラウザ（5-2 の B1〜B14） | すべて |
-| P6 | セッションを 2 つ作り（2 つ目は別の回線、例えばスマートフォンのテザリングから）、VPS で下の「P6 のコマンド」 | 外、DNS、メタデータ、ホスト、別のセッションのどれにも届かない |
+| P6 | セッションを 2 つ作り（2 つ目は別の回線、例えばスマートフォンのテザリングから）、VPS で下の「P6 のコマンド」 | 外、DNS（制御面の名前も）、メタデータ、ホスト、別のセッションのどれにも届かない。セッションのネットワークのルーターのアドレスは接続を断る（curl exit 7）。IPv6 のアドレスが無い |
 | P7 | 同じブラウザで: エディタからブラウザの戻るを 1 回（プレビューを使う前に）→ 入口で Start をもう一度 | 戻った入口のボタンは「Start a session」のまま押せる（"Starting…" で固まらない）。押すと 429 のページ「A session from your network address is already running」。`playctl status` の CLIENT に自分の IP（`CF-Connecting-IP` が届いている） |
 | P8 | `curl -sI https://3000-<pid>.<DOMAIN>/` を 2 回 | `cf-cache-status` が `DYNAMIC` か `BYPASS` |
 | P9 | エディタを 20 分放置 | 使えるまま、または自分で再接続する |
@@ -435,21 +479,29 @@ Kamal はこのリポジトリのフック（`playground/deploy/hooks`、両方�
 | P14 | VPS を再起動 | ファイアウォールの規則が戻る（2-4 の確かめ）、ルーターと制御面が戻る（P2）、照合で残りが消える（ラベルの付いたコンテナとネットワークが無い） |
 
 P6 のコマンド（VPS の上で。ハンドルは `playctl status` の HANDLE、別のセッションのアドレスは
-`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ctplay-s-<別のハンドル>`）:
+`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ctplay-s-<別のハンドル>`、ルーターの
+アドレスは
+`docker inspect -f '{{(index .NetworkSettings.Networks "ctplay-n-<ハンドル>").IPAddress}}' $(docker ps -q --filter label=service=cybertrain-play-router)`）:
 
 ```sh
-docker exec -i -u 1000 ctplay-s-<ハンドル> bash -s -- <VPS_IP> <別のセッションのアドレス> <<'EOF'
+docker exec -i -u 1000 ctplay-s-<ハンドル> bash -s -- <VPS_IP> <別のセッションのアドレス> <ルーターのアドレス> <<'EOF'
 curl -s --max-time 5 -o /dev/null https://example.com; echo "example.com: exit $?"
 getent hosts example.com; echo "DNS: exit $?"
+getent hosts ctplay-control; echo "control DNS: exit $?"
+curl -s --max-time 5 -o /dev/null -H 'Host: <DOMAIN>' "http://$3/"; echo "router: exit $?"
+echo "IPv6 addresses but loopback's:"; awk '$6 != "lo"' /proc/net/if_inet6
 for t in 1.1.1.1/443 169.254.169.254/80 172.17.0.1/22 "$1/22" "$1/443" "$2/8080" "$2/3000"; do
   out=$(timeout 5 bash -c "exec 3<>/dev/tcp/${t%/*}/${t#*/}" 2>&1); echo "$t: exit $? ${out##*: }"
 done
 EOF
 ```
 
-期待: `example.com: exit 6`（または 28）、`DNS: exit 2`、残りの行はどれも `exit 124`（時間切れ）か
+期待: `example.com: exit 6`（または 28）、`DNS: exit 2`、`control DNS: exit 2`、`router: exit 7`（ルーターは kamal の
+ネットワークの自分のアドレスでしか待ち受けないので、セッションのネットワークのアドレスは接続を断る）、
+`IPv6 addresses but loopback's:` の後に行が無い、残りの行はどれも `exit 124`（時間切れ）か
 `exit 1 Network is unreachable` / `No route to host`。`exit 0` や `Connection refused`（そのアドレスで何かが答えた）
-が 1 つでもあれば、公開を止めてファイアウォール（2-4）とネットワークを調べます。
+が 1 つでもあれば、公開を止めてファイアウォール（2-4）とネットワークを調べます。`router: exit 52` なら、ルーターが
+すべてのアドレスで待ち受けています（7-3 のルーターの行）。
 
 ### 5-2. 実ブラウザ（B1〜B14）
 
@@ -482,7 +534,7 @@ Chrome で行い、B13 で Firefox と Safari を見ます。ページの再読�
 | ファイアウォールの一括適用（Ubuntu 24.04 の iptables-nft） | 2-4 の確かめを、`sudo systemctl restart cybertrain-play-firewall` の後と、2 つ同時に走らせた後（`sudo systemctl restart cybertrain-play-firewall & sudo /usr/local/sbin/cybertrain-play-firewall; wait`）にもう一度 | ジャーナルに「rules in force」。`sudo iptables -S DOCKER-USER \| grep -c CTPLAY` と `sudo iptables -S INPUT \| grep -c 10.250.0.0/16` がどちらも 1。`iptables-restore refused …` が出たら、その規則と `iptables -V` を書き留めて公開を止める |
 | Docker の再起動 | `sudo systemctl restart docker`、続けて `sudo systemctl stop docker; sudo systemctl start docker` | どちらの後も `sudo iptables -S DOCKER-USER` の最初の規則が `-j CTPLAY`、`systemctl status cybertrain-play-firewall` が active（違えば `sudo systemctl restart cybertrain-play-firewall`） |
 | ufw の再読み込み | `sudo ufw reload`、`sudo iptables -S INPUT` | 最初の `-A` の行が `-A INPUT -s 10.250.0.0/16 -j DROP`。下がっていたら `sudo iptables -D INPUT -s 10.250.0.0/16 -j DROP && sudo systemctl restart cybertrain-play-firewall`（先頭に入れ直す） |
-| ユニットのやり直し | `sudo mv /etc/cybertrain-play/cloudflare-ips-v4 /tmp/cf.bak && sudo systemctl restart cybertrain-play-firewall`、2 分後に `systemctl status cybertrain-play-firewall`。戻すときは `sudo mv /tmp/cf.bak /etc/cybertrain-play/cloudflare-ips-v4 && sudo systemctl reset-failed cybertrain-play-firewall && sudo systemctl restart cybertrain-play-firewall` | "activating (auto-restart)" の後、5 回で failed。その間も規則は前のまま。戻した後は active と「rules in force」 |
+| ユニットのやり直し | `sudo mv /etc/cybertrain-play/cloudflare-ips-v4 /tmp/cf.bak && sudo systemctl restart cybertrain-play-firewall`（restart は失敗を知らせる）、30 秒後と 2 分後に `systemctl status cybertrain-play-firewall`。戻すときは `sudo mv /tmp/cf.bak /etc/cybertrain-play/cloudflare-ips-v4` だけ | どちらでも "activating (auto-restart)"（failed にならない）で、ジャーナルに 10 秒ごとに「…; nothing changed」。その間も規則は前のまま。戻すと 10 秒以内に active と「rules in force」 |
 | 起動の直後の数秒 | P14 の後に `sudo journalctl -b -u docker -u cybertrain-play-firewall -o short-precise` | Docker の起動から「rules in force」まで数秒（その間は 80/443 が誰にでも開き、メタデータの規則も無い）。秒数を 5-4 に書く |
 | kamal-proxy の本文の上限 | 手元から `head -c 1100000 /dev/zero \| curl -s -o /dev/null -w '%{http_code}\n' -X POST --data-binary @- <URL>` を、`https://<sid>.<DOMAIN>/` と `https://3000-<pid>.<DOMAIN>/articles` に | どちらも 413（kamal-proxy が 1 MB で断る）。その後もエディタとプレビューが普通に動く（WebSocket は影響を受けない） |
 | 大きな応答がディスクを使わない | セッションの端末でサーバーを Ctrl-C で止め、下の「大きな応答のコマンド」で 3000 番から約 3 GB を流す。手元から `curl -s -o /dev/null -w '%{size_download}\n' https://3000-<pid>.<DOMAIN>/`、その間 VPS で `df -h /` | 約 3.2 GB を受け取り、VPS のディスクの使用量が増えない（kamal-proxy は応答を溜めない）。終わったら端末で `playground-server` |
@@ -490,7 +542,7 @@ Chrome で行い、B13 で Firefox と Safari を見ます。ページの再読�
 | 掃除（post-deploy） | セッションのイメージが 4 つ以上になる deploy の後、VPS で `docker images --no-trunc ghcr.io/saeki-mototsune/cybertrain-playground-web` | 新しい 3 つと固定中のもの（`.session-image`）だけが残る |
 | フックが本物の SSH で動く | `playground/control/` に空のファイルを作って `kamal deploy -c playground/deploy/control.yml`（その後ファイルを消す）。`env -u PLAY_ORIGIN_CERT kamal deploy -c playground/deploy/router.yml` | 前者は ``Hook `pre-build` failed:`` で止まり、GHCR に新しいタグが出ない。後者は `pre-deploy: PLAY_ORIGIN_CERT is not set: …` で止まり、動いているルーターはそのまま。どちらもフックのメッセージが出力に出る |
 | ルーターの `dns` と `sysctl` | `docker inspect -f '{{.HostConfig.Dns}} {{.HostConfig.Sysctls}}' $(docker ps -q --filter label=service=cybertrain-play-router)` | `[127.0.0.1] map[net.ipv4.ip_forward:0]`。Docker が sysctl を断ってルーターが起動しないときは、`router.yml` の `sysctl:` の行を外して出し直す |
-| 制御面の入れ替え | `kamal deploy -c playground/deploy/control.yml` の最中に Start | セッションが作られるか 503 で断られる。どちらでも、deploy の後の `playctl status` と `docker ps --filter label=cybertrain-play.role=session` が一致し、上限を超えない。deploy が「not healthy」で止まらない（制御面は 30 秒以内に healthy になる） |
+| 制御面の入れ替え | `kamal deploy -c playground/deploy/control.yml` の最中に Start | セッションが作られるか 503 で断られる。どちらでも、deploy の後の `playctl status` と `docker ps --filter label=cybertrain-play.role=session` が一致し、上限を超えない。deploy が「not healthy」で止まらない（制御面は 30 秒以内に healthy になる）。その後の `kamal app logs -c playground/deploy/control.yml` に `docker_error step=connect` が出ない（新しい制御面は、ルーターがつながったままのセッションのネットワークにもう一度つなぎ、Docker の "already exists" という答えを成功と読む） |
 | ロールバックが pull する | 6-2 のロールバックを試しに一度 | 出力に `pre-deploy: pulling … on <VPS_IP>`。`PLAY_SESSION_IMAGE_REF` を付けたときは、新しいコンテナの `PLAY_SESSION_IMAGE` がその参照（`docker inspect`） |
 
 大きな応答のコマンド（セッションの端末で。1 回の要求に答えて終わります）:
@@ -604,13 +656,13 @@ Origin CA を作り直したら、`PLAY_ORIGIN_CERT` / `PLAY_ORIGIN_KEY` のフ�
 
 | 見るもの | どうやって |
 | --- | --- |
-| 制御面の出来事 | `kamal app logs -c playground/deploy/control.yml -f`。1 行に 1 つ: `event=created`（`ready_ms`、`live`）、`ended`（理由 `ttl` `idle` `exited` `orphan` `killed` `failed`）、`refused`（理由 `full` `per_ip` `rate` `paused` `origin` `unavailable` `failed`）、`docker_error`（`step` が段）、`unavailable` と `available`（Docker かセッションのイメージ）、`suspect`（CPU）、`dropped`、`error`（予期しない例外。要求のときはクラス名だけ、作成のときは id を伏せた `message=` 付き）。`playctl` の出来事は入らない（7-1） |
+| 制御面の出来事 | `kamal app logs -c playground/deploy/control.yml -f`。1 行に 1 つ: `event=created`（`ready_ms`、`live`）、`ended`（理由 `ttl` `idle` `exited` `orphan` `killed` `failed`）、`refused`（理由 `full` `per_ip` `rate` `paused` `origin` `unavailable` `failed`）、`docker_error`（`step` が段）、`unavailable` と `available`（Docker かセッションのイメージ）、`lock_timeout`（作成が鍵 `create.lock` を 10 秒待っても取れなかった。続けて `refused reason=failed`）、`suspect`（CPU）、`dropped`、`error`（予期しない例外。要求のときはクラス名だけ、作成のときは id を伏せた `message=` 付き）。`playctl` の出来事は入らない（7-1） |
 | 生きているセッション | `kamal app exec -c playground/deploy/control.yml --reuse 'bin/playctl status'` |
 | 公開の状態 | `https://<DOMAIN>/status.json` |
 | ルーター | 普段はログなし。調べるときは `router.yml` の `env.clear` に `ROUTER_LOG_OUTPUT: stderr` を足して出し直し（6-3 のとおりエディタが再接続します）、`kamal app logs -c playground/deploy/router.yml`。終わったら外して出し直す |
 | kamal-proxy | `kamal proxy logs -c playground/deploy/router.yml`（ホスト名を含みます。人に渡さないこと） |
 | ホスト | `df -h`、`docker system df`、プロバイダのグラフ。週に 1 度 |
-| 外形監視（任意） | リポジトリの変数 `PLAYGROUND_URL` に `https://<DOMAIN>`（末尾の `/` なし）を入れると、`.github/workflows/playground-uptime.yml` が 30 分ごとに `status.json` を取り、失敗すると GitHub が通知のメールを送ります。入れたら Actions → Playground uptime → Run workflow で一度通ることを見ます。停止中や満員でも通ります（答えないときだけ落ちます） |
+| 外形監視（任意） | リポジトリの変数 `PLAYGROUND_URL` に `https://<DOMAIN>`（末尾の `/` はあってもなくても同じ）を入れると、`.github/workflows/playground-uptime.yml` が 30 分ごとに `status.json` を取り、失敗すると GitHub が通知のメールを送ります。入れたら Actions → Playground uptime → Run workflow で一度通ることを見ます。停止中や満員でも通ります。答えないとき、エラーのとき（15 秒おきに 2 回まで取り直してから）と、答えが `status.json` の JSON でないとき（リダイレクト、別のページ）に落ちます |
 
 ### 6-8. ホストの掃除
 
@@ -625,7 +677,19 @@ Origin CA を作り直したら、`PLAY_ORIGIN_CERT` / `PLAY_ORIGIN_KEY` のフ�
 - Origin CA の期限（作った日から 15 年。通知は来ません）。
 - 月に 1 度: code-server、Caddy（`caddy:2.11.4-alpine`）、ベースイメージ（`ubuntu:24.04`、`ruby:4.0.7-slim`、
   `docker:28-cli`）の新しい版（6-4）。
-- 週に 1 度: 6-7 のホストの確認。
+- 週に 1 度: 6-7 のホストの確認と、`/var/run/reboot-required` が残っていないこと（残っていれば 2-6 の自動の再起動が
+  効いていない）。
+- 週に 1 度: 自動更新の対象外の Docker のパッケージ（runc は `containerd.io` に入っています）を更新します。
+  パッチ版の更新なら `live-restore` で動いているコンテナは止まりません（Docker はそれより大きな版の更新での
+  `live-restore` を約束しないので、そのときは静かな時間に、先に `playctl pause` して）:
+
+  ```sh
+  sudo apt-get update && sudo apt-get install --only-upgrade docker-ce docker-ce-cli containerd.io   # 第 8 部の後は runsc も
+  docker version --format '{{.Server.Version}}'; systemctl is-active cybertrain-play-firewall          # active（Docker の再起動で規則を作り直す）
+  ```
+
+- 随時: Docker、runc、gVisor（GitHub の Security advisories）と Ubuntu（USN）のセキュリティ情報を見て、脱出に
+  つながる修正が出たら、週を待たずに更新します（カーネルなら再起動。7-3）。
 - まれに: Cloudflare の範囲の見直し（2-4 の取り直し）。
 - 公開リポジトリでは、60 日間リポジトリに動きがないと GitHub が予定のワークフロー（外形監視）を止めます。
   止まったら Actions の画面で有効に戻します。
@@ -666,6 +730,8 @@ kamal app exec -c playground/deploy/control.yml --reuse 'bin/playctl pause "main
   （`kamal app logs`）には出ないので、`playctl end` したセッションはログでは `created` だけに見えます。
 - `end` が `… is not fully removed (see the docker_error line); the reaper retries` と言ったら、刈り取りが次の回
   （5 秒ごと）でやり直します。`status` で消えたことを確かめます。
+- `end` と `kill-all` で終えたセッションは、制御面が次の刈り取り（5 秒ごと）で忘れるまで、入口の空きと作成の上限に
+  まだ数えられます（満員だったなら、その数秒の Start は満員の 503 になります）。
 - `pause` のメッセージは日本語でも構いません（UTF-8 で読みます）。
 
 Kamal のコマンドはどれも `control.yml` を読み、そのたびに GHCR へダイジェストを問い合わせます。GHCR に届かない
@@ -696,11 +762,27 @@ sudo touch /var/lib/cybertrain-play/paused
 | 兆候 | すること |
 | --- | --- |
 | CPU を使い続けるセッション（`event=suspect` の行、`playctl status`） | `playctl status` でハンドルとアドレスを見て `playctl end <handle>`。繰り返すなら Cloudflare の Security → WAF → Tools の IP Access Rules でそのアドレスを Block |
+| エディタ、プレビュー、入口がそろって遅いか落ちる。ルーターが再起動を繰り返す | 下の「ルーターの確かめ」。メモリが上限（512 MiB）に近いか、`:80` への接続がセッションのアドレス（`10.250.x.y`）から多ければ、そのセッションを `playctl end <handle>` し、`playctl status` のそのクライアントのアドレスを上の IP Access Rules で Block。ルーターのログに `router: warning:` があれば、ルーターがセッションのネットワークでも待ち受けている（P6 の `router: exit 52`）: `docker restart` でルーターを起動し直し（エディタは再接続する。6-3）、警告が消え P6 の `router: exit 7` に戻ることを見る |
+| カーネル、runc（`containerd.io`）、Docker、gVisor の脆弱性の公表（6-9） | 修正が出たら 6-9 のとおりすぐ更新する。カーネルの修正は再起動で効く（2-6 の自動の再起動を待たないなら `sudo reboot`）。再起動は動いているセッションをすべて終わらせる: 先に `playctl pause "maintenance"` して `playctl status` が 0 になるのを待つ（最長 30 分）か、静かな時間に。停止は再起動の後も残るので、最後に `playctl resume`。セッションからの脱出に使えて修正がまだ無いなら、出るまで `playctl kill-all`（停止したまま） |
 | 多くのアドレスからの大量の作成 | WAF のカスタム規則「`(http.host eq "<DOMAIN>" and http.request.uri.path ne "/status.json")` → Managed Challenge」（入口だけ。エディタとプレビューには掛けない。`/status.json` を外すのは外形監視のためで、外さないと 30 分ごとに失敗のメールが来ます）を有効にし、必要ならレート制限の規則（Free で 1 つ）「`POST /sessions`、同じ IP で 10 秒に 5 回」→ Block。まだ多ければ `playctl pause` |
 | プレビューのホストのフィッシング・マルウェアの通報 | 30 分以内に消えているはず。`playctl status` で生きていれば `end`。分からなければ `kill-all`。通報者に返信する。Safe Browsing に載ったら Search Console で再審査を依頼する |
 | Cloudflare からの不正利用の通知 | 上と同じ。ダッシュボードで返答する |
-| 脱出・侵害の疑い | `playctl kill-all` → 両サービスを `kamal app stop -c playground/deploy/control.yml`、`kamal app stop -c playground/deploy/router.yml` → プロバイダのスナップショットで保全 → VPS を作り直す → 秘密を替える（GHCR の PAT、Origin CA は失効して作り直す）→ SECURITY.md の窓口で記録する |
+| 脱出・侵害の疑い | `playctl kill-all` → 両サービスを `kamal app stop -c playground/deploy/control.yml`、`kamal app stop -c playground/deploy/router.yml` → プロバイダのスナップショットで保全 → VPS を作り直す → 秘密を替える（デプロイ用アカウント `<GHCR_OWNER>` の PAT を GitHub で失効させる。Origin CA は失効して作り直す）→ saeki-mototsune の 2 つの公開パッケージ（`cybertrain-playground`、`cybertrain-playground-web`）の版の一覧に、CI（Actions の "Playground image" の実行）が出していない版が無いかを見る。疑わしければ main で "Playground image" を走らせ直して `latest` を出し直す → SECURITY.md の窓口で記録する |
 | ディスクが埋まる | `docker system df`、6-8 の掃除（セッションのイメージは消さない）、ログの大きさ |
+
+ルーターの確かめ（VPS の上で）:
+
+```sh
+r=$(docker ps -q --filter label=service=cybertrain-play-router)
+docker stats --no-stream "$r"                        # MEM USAGE（普段は数十 MiB、上限 512 MiB）と PIDS
+docker logs "$r" 2>&1 | grep '^router: warning:'     # 何も出ない
+docker exec "$r" netstat -tln | grep ':80 '          # kamal のネットワークの自分のアドレスの :80 だけ（:::80 ではない）
+docker exec "$r" netstat -tn | awk '$4 ~ /:80$/ && $6 == "ESTABLISHED" { sub(/:[0-9]+$/, "", $5); print $5 }' | sort | uniq -c | sort -rn | head
+docker ps -q --filter label=cybertrain-play.role=session | xargs -r docker inspect -f '{{.Name}} {{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
+```
+
+4 行目は `:80` への接続を相手のアドレスごとに数えます（普段は kamal-proxy の、kamal のネットワークのアドレスだけ）。
+`10.250.x.y` が出たら、5 行目でそのアドレスのセッション（`/ctplay-s-<handle>`）を探します。
 
 生きているログ（とくに kamal-proxy のもの）は、セッションの合鍵を含むので人に渡しません。
 
@@ -772,13 +854,13 @@ git commit -m "Site: the hosted playground's entry"
 | --- | --- |
 | エディタが「Cannot reconnect」/「Attempting to reconnect」 | セッションが終わった（時間切れ、タブを閉じて約 5 分半）なら、ブラウザの再読み込みで「No session at this address」がすぐ出る。動いているのに切れるならルーターがつながっていない: VPS で `docker network inspect ctplay-n-<handle>` の Containers にルーターがいるか。制御面の刈り取りが 5 秒ごとにつなぎ直す |
 | プレビューが開かない | 「No app is answering here」（502）なら開発サーバーが動いていない: 端末で `playground-server`。Ports ビューの 3000 の URL が `https://3000-<pid>.<DOMAIN>/` か。閉じたプレビューは Ports ビューの 3000 の Preview in Editor で戻る |
-| 作成が 503 | `kamal app logs -c playground/deploy/control.yml` の `docker_error`（段 `network`、`connect`、`run`）と `unavailable`（`image_missing` ならセッションのイメージを pull し直す: `kamal deploy -c playground/deploy/control.yml`） |
+| 作成が 503 | `kamal app logs -c playground/deploy/control.yml` の `docker_error`（段 `network`、`connect`、`run`）と `unavailable`（`image_missing` ならセッションのイメージを pull し直す: `kamal deploy -c playground/deploy/control.yml`）と `lock_timeout`（前の作成が Docker を待っている。deploy の pull の最中など。続くなら `docker info` が遅くないか） |
 | 入口が 503（"not available"） | 制御面が落ちている。`kamal app details -c playground/deploy/control.yml`、`kamal app logs -c playground/deploy/control.yml` |
 | Cloudflare の 52x | 521: オリジンが答えない（kamal-proxy が動いているか、ファイアウォールの一覧に Cloudflare の範囲が漏れていないか）。524: オリジンの応答が Cloudflare の待ち時間を超えた（作成なら `ready_ms` と `docker_error` を見る） |
 | `kamal` のコマンドが設定を読むところで失敗する | docker のエラーの後に `env/clear/PLAY_SESSION_IMAGE: should be a string`: GHCR に届かない。7-1 の `PLAY_SESSION_IMAGE_REF`。`session-image: … is not an image reference` なら参照の形が違う（`<repository>@sha256:<小文字の 16 進 64 桁>`） |
 | ``Hook `pre-build` failed:`` | コミットしていない変更か、サービスのディレクトリのコミットしていないファイル（名前が出る）。コミットするか消す（4-4） |
 | ``Hook `pre-deploy` failed:`` | 理由の行を読む: 証明書の変数（4-1）、`PLAY_SUBNET_POOL` の食い違い（2-1）、`.session-image` が無い（`kamal config -c playground/deploy/control.yml` を一度）、VPS での pull の失敗（VPS から GHCR に届くか、PAT） |
-| ファイアウォールのユニットが failed | `sudo journalctl -u cybertrain-play-firewall -n 20 --no-pager` の「…; nothing changed」の理由を直し、`sudo systemctl reset-failed cybertrain-play-firewall && sudo systemctl restart cybertrain-play-firewall` |
+| ファイアウォールのユニットが activating (auto-restart) のまま | `sudo journalctl -u cybertrain-play-firewall -n 20 --no-pager` の「…; nothing changed」の理由を直す。次のやり直し（10 秒以内）で active と「rules in force」になる。failed のとき（Docker が止まっていたなど）は `sudo systemctl reset-failed cybertrain-play-firewall && sudo systemctl restart cybertrain-play-firewall` |
 | F5 で「You don't have an extension for debugging Ruby」 | エディタの中の F5 はデバッグの開始。Cancel を押し、ブラウザの再読み込みボタンを使う |
 | 戻るボタンで入口に戻れない | プレビューの中の移動が履歴に積まれるので、何回も押すことになる（想定どおり）。出るときはタブを閉じる |
 | エクスプローラの右クリックでメニューが出ない | Chrome がクリップボードの読み取りの許可を尋ねている（アドレスバーの所）。どちらかで答えるとメニューが出る |
