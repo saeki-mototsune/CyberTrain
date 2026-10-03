@@ -670,11 +670,11 @@ test "a reserved column name generates under <column>_column with a note; read_a
   definition = reserved_columns_schema
   file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
   assert_lines(file, [
-    '# column "hash" reads as hash_column: "hash" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)',
-    '# column "attributes" reads as attributes_column: "attributes" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)',
+    '# column "hash" reads as hash_column: "hash" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); queries (where, order, find_by) take the SQL name "hash"',
+    '# column "attributes" reads as attributes_column: "attributes" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); queries (where, order, find_by) take the SQL name "attributes"',
     # errors and to_param: the interpreter resolves the plain name as the model method first
-    '# column "errors" reads as errors_column: "errors" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); templates resolve errors as that method, so a template reads the column as errors_column',
-    '# column "to_param" reads as to_param_column: "to_param" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); templates resolve to_param as that method, so a template reads the column as to_param_column',
+    '# column "errors" reads as errors_column: "errors" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); templates resolve errors as that method, so a template reads the column as errors_column; queries (where, order, find_by) take the SQL name "errors"',
+    '# column "to_param" reads as to_param_column: "to_param" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); templates resolve to_param as that method, so a template reads the column as to_param_column; queries (where, order, find_by) take the SQL name "to_param"',
     "attr_accessor :title, :hash_column, :attributes_column, :errors_column, :to_param_column",
     'def self.column_names = ["id", "title", "hash", "attributes", "errors", "to_param"]',
     "@hash_column = nil",
@@ -733,9 +733,9 @@ test "a keyword column generates under <column>_column with a note that says key
   definition = keyword_columns_schema
   file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [])
   assert_lines(file, [
-    '# column "begin" reads as begin_column: "begin" is a Ruby keyword',
-    '# column "end" reads as end_column: "end" is a Ruby keyword',
-    '# column "class" reads as class_column: "class" is a Ruby keyword',
+    '# column "begin" reads as begin_column: "begin" is a Ruby keyword; queries (where, order, find_by) take the SQL name "begin"',
+    '# column "end" reads as end_column: "end" is a Ruby keyword; queries (where, order, find_by) take the SQL name "end"',
+    '# column "class" reads as class_column: "class" is a Ruby keyword; queries (where, order, find_by) take the SQL name "class"',
     "attr_accessor :title, :begin_column, :end_column, :class_column, :defined",
     'def self.column_names = ["id", "title", "begin", "end", "class", "defined"]',
     "@end_column = nil",

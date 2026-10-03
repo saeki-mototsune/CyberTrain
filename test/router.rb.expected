@@ -8,11 +8,14 @@ ok   trailing slash and repeated slashes are ignored
 ok   segments are percent-decoded, plus stays a plus
 ok   a segment with a malformed percent-escape stays literal
 ok   split_path drops empty segments and decodes
+ok   split_path decodes escapes and multibyte text in one segment and keeps '+' a plus
+ok   a large non-ASCII path segment with an escape splits without a quadratic library call
 ok   path_for builds paths from route names
 ok   Route#path raises ArgumentError when a segment is missing
 ok   Route#match returns captures or nil
 ok   unmatched request gets a plain-text 404
 ok   params assembly order is query < form < route
+ok   the Router takes the cached query tree as ctx.params and merges the form and the route into it
 ok   form body is ignored unless the request is a form
 ok   route params and escaped output work in one program
-17 tests, 52 assertions, 0 failures
+20 tests, 65 assertions, 0 failures

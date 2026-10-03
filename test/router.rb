@@ -97,6 +97,25 @@ test "split_path drops empty segments and decodes" do
   assert_equal ["café"], Cybertrain::Router.split_path("/caf%C3%A9")
 end
 
+test "split_path decodes escapes and multibyte text in one segment and keeps '+' a plus" do
+  assert_equal ["a+b c\u00e9"], Cybertrain::Router.split_path("/a+b%20c%C3%A9")
+  assert_equal ["+", "A+"], Cybertrain::Router.split_path("/+/%41+")
+  assert_equal ["\u00e9+ "], Cybertrain::Router.split_path("/\u00e9+%20")
+  # a bad escape keeps its segment literal, "+" included
+  assert_equal ["a+b%ZZ", "x y"], Cybertrain::Router.split_path("/a+b%ZZ/x%20y")
+end
+
+test "a large non-ASCII path segment with an escape splits without a quadratic library call" do
+  # Router.split_path decodes through Query.decode_escapes (NOTES rule 49):
+  # one non-ASCII character, a "+" kept as a plus, and %41 in 60 000 bytes.
+  seg = "\u00e9" + ("a" * 30_000) + "+" + ("b" * 30_000) + "%41"
+  parts = Cybertrain::Router.split_path("/" + seg)
+  assert_equal 1, parts.length
+  assert_equal 60_003, parts[0].length
+  assert_equal "+", parts[0][30_001, 1]
+  assert_equal "bA", parts[0][-2, 2]
+end
+
 test "path_for builds paths from route names" do
   router = sample_router
   assert_equal "/posts", router.path_for("posts")
@@ -142,6 +161,23 @@ test "params assembly order is query < form < route" do
   form = { "content-type" => "application/x-www-form-urlencoded" }
   dispatch(router, "POST", "/items/7?id=q&a=q&b=q", "id=f&a=f&post[title]=hi", form)
   assert_equal ["7 f q hi"], seen
+end
+
+test "the Router takes the cached query tree as ctx.params and merges the form and the route into it" do
+  router = Cybertrain::Router.new
+  seen = []
+  router.post("/items/:id") do |c|
+    seen << c.params.equal?(c.request.query_params)
+    seen << c.params[:q].to_s
+  end
+  form = { "content-type" => "application/x-www-form-urlencoded" }
+  ctx = dispatch(router, "POST", "/items/7?q=1", "f=2", form)
+  assert_equal [true, "1"], seen
+  assert ctx.params.equal?(ctx.request.query_params)
+  # the form cache is read, never changed
+  assert_equal "2", ctx.request.form_params["f"]
+  assert !ctx.request.form_params.key?("id")
+  assert !ctx.request.form_params.key?("q")
 end
 
 test "form body is ignored unless the request is a form" do

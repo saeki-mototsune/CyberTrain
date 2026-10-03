@@ -1,10 +1,11 @@
 ok   parse decodes scalars, lists, nested params and bare flags
 ok   parse decodes '+' as space and percent-escapes
 ok   parse of a malformed percent-escape raises QueryMalformed on every runtime
+ok   decode_escapes (the loop under decode and Router.split_path) leaves '+' alone when asked
 ok   decode handles runs of escapes, '+', and non-ASCII text between them
 ok   valid_escapes? wants two hex digits after every percent sign
 ok   parse of an empty string yields an empty Params
 ok   split_key splits scalar, nested and list-in-nested forms
 ok   split_key treats a malformed bracket as part of a plain key
 ok   encode round-trips through parse
-9 tests, 43 assertions, 0 failures
+10 tests, 55 assertions, 0 failures

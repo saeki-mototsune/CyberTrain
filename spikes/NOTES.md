@@ -216,6 +216,12 @@ finds the commit that removed them).
     minutes. Decode by byte chunks (`Query.decode`): copy the text between
     escapes with `byteslice` and hand the decoder only the ASCII runs of
     `%XX` escapes.
+50. `ensure` in a re-entrant yielding method is not safe under Spinel even for
+    bookkeeping only: in Connection#transaction an `ensure @flag = true unless
+    completed` ran as if the local `completed` were still false after the
+    rescue clause had set it, on the nested-transaction tests (2026.09.12).
+    Rule 45 again: no ensure in a yielding method; a CRuby break/return out of
+    such a block therefore cannot be detected there.
 
 ## Numbers worth remembering
 

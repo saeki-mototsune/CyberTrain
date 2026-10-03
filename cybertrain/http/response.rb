@@ -60,6 +60,19 @@ module Cybertrain
       end
     end
 
+    # Removes the header of that name, whatever its case (every spelling
+    # when several were stored); a missing one is not an error. Returns nil
+    # (NOTES rules 10/34: one return type for the name).
+    def drop_header(name)
+      wanted = name.downcase
+      kept = {}
+      @headers.each do |k, v|
+        kept[k] = v unless k.downcase == wanted
+      end
+      @headers = kept
+      nil
+    end
+
     def header(name)
       key = header_key(name)
       key.nil? ? nil : @headers[key]

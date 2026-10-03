@@ -68,10 +68,15 @@ class PostsController < ApplicationController
     render plain: "unreachable"
   end
 
-  # Dirties the response (a cookie, a redirect, an attachment header) and
-  # then raises a client fault: the 400 must not keep any of it.
+  # Dirties the response the way a before_action and an action might (a
+  # cookie, CORS and Cache-Control headers, a redirect, an attachment
+  # header) and then raises a client fault: the 400 keeps the deliberate
+  # ones and drops only Location and Content-Disposition.
   def dirty_then_parse
     response.add_cookie("sid=abc; Path=/")
+    response.set_header("access-control-allow-origin", "https://app.example")
+    response.set_header("Cache-Control", "no-store")
+    response.set_header("content-disposition", "attachment")
     response.set_header("Content-Disposition", "attachment")
     redirect_to "/elsewhere"
     Cybertrain::Query.parse("&" * 4097)
@@ -447,7 +452,7 @@ test "a client fault raised in an action answers 400 with its message, like a mi
   assert_equal "too many parameters (limit 4096)", ctx.response.body
 end
 
-test "a client fault after the action set cookies and redirected answers a clean text/plain 400" do
+test "a client fault after the action redirected drops only Location and Content-Disposition" do
   ctx = build_ctx(false)
   controller = PostsController.new(ctx)
   controller.process(:dirty_then_parse) { |c| c.dirty_then_parse }
@@ -456,7 +461,10 @@ test "a client fault after the action set cookies and redirected answers a clean
   assert_equal "text/plain; charset=utf-8", ctx.response.header("Content-Type")
   assert_nil ctx.response.header("Location")
   assert_nil ctx.response.header("Content-Disposition")
-  assert_equal 0, ctx.response.cookies.length
+  assert_equal 1, ctx.response.cookies.length
+  assert_equal "sid=abc; Path=/", ctx.response.cookies[0]
+  assert_equal "https://app.example", ctx.response.header("Access-Control-Allow-Origin")
+  assert_equal "no-store", ctx.response.header("Cache-Control")
   assert controller.performed?
 end
 

@@ -122,14 +122,21 @@ module Cybertrain
     # A segment with a malformed escape ("%ZZ", a trailing "%" or "%2") is
     # kept literal: CRuby's decoder raises ArgumentError on it while Spinel's
     # silently yields a NUL byte, so neither runtime ever sees it
-    # (Query.valid_escapes? is the check Query.decode makes too).
+    # (Query.valid_escapes? is the check Query.decode makes too). The decoding
+    # is Query.decode_escapes, the byte-chunked loop of query strings with "+"
+    # left alone: URI.decode_www_form_component on a whole segment is
+    # quadratic on non-ASCII text under Spinel (NOTES rule 49), and Static
+    # calls split_path before routing on every request, anonymous ones
+    # included, so a ~60 KB segment (inside the 64 KB head limit) holding one
+    # non-ASCII byte and one "%41" cost ~0.5 s of CPU per request. The same
+    # call replaces the old `gsub("+", "%2B")` pass over the segment.
     def self.split_path(path)
       segments = []
       path.split("/").each do |seg|
         next if seg.empty?
 
-        if seg.include?("%") && Query.valid_escapes?(seg)
-          segments << URI.decode_www_form_component(seg.gsub("+", "%2B"))
+        if !seg.byteindex("%").nil? && Query.valid_escapes?(seg)
+          segments << Query.decode_escapes(seg, false)
         else
           segments << seg
         end
@@ -145,12 +152,18 @@ module Cybertrain
     private
 
     # Later sources win: query string, then the form body, then the route.
+    # The Router is the LAST consumer of the Request's parse caches
+    # (MethodOverride and CsrfProtection run before it and only read one key
+    # each), so it takes the cached query tree itself as the request's params
+    # instead of copying both trees (a copy is a second full tree build per
+    # request: up to 4096 pairs x 32 levels). After routing, ctx.params IS
+    # request.query_params, the same object, with the form tree merged in
+    # (merge! reads the form tree and does not change it) and the route
+    # captures set on top: nothing may rely on request.query_params being
+    # pristine once the Router has run, and nothing in cybertrain/ reads it
+    # afterwards.
     def assemble_params(request, captured)
-      # The Request caches its parsed query and form (MethodOverride and
-      # CsrfProtection read them too), so they are copied into a fresh Params
-      # here: the controller may change ctx.params, never the cached trees.
-      params = Params.new
-      params.merge!(request.query_params)
+      params = request.query_params
       params.merge!(request.form_params) if request.form?
       # NOTE(Spinel): not `captured.each { |k, v| ... }` -- captured comes from
       # the nullable Route#match, and with a user-defined #to_s in the program

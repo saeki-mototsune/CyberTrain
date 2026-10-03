@@ -100,48 +100,78 @@ module Cybertrain
     # non-ASCII character (e-acute + 50 000 "a" took 517 ms, + 100 000 2.4 s,
     # + 200 000 8.5 s; 400 000 "a" + "%41%C3%A9", which is ASCII up to the
     # escapes, 11 ms; linear under CRuby, NOTES rule 49), so one 1.6 MB
-    # non-ASCII key or form value hung the binary for minutes. So the text is
-    # decoded by byte chunks: the stretches between escapes are copied with
-    # byteslice, and the decoder sees only each maximal run of consecutive
-    # "%XX" escapes, which is pure ASCII and as short as the run (a percent-
-    # encoded multibyte character is one run, so it still decodes as a unit).
-    # "+" is turned into a space first (gsub with a String pattern: the
-    # pattern is compiled elsewhere, router.rb), which also leaves nothing
-    # for the decoder to do but the escapes. Text without "%" is returned
-    # as it is.
-    # Offsets are bytes, as in parse and split_key (NOTES rule 27): each is a
-    # "%" or just after two hex digits of a valid escape (valid_escapes?
-    # guarantees two bytes follow every "%", so `j + 2 < n` below never
-    # drops a final escape: "%41" has n = 3, j = 0), so always on a character
-    # boundary. O(bytes) overall.
+    # non-ASCII key or form value hung the binary for minutes. It is decoded
+    # by byte chunks in decode_escapes (below), shared with the router.
     def self.decode(text)
       raise QueryMalformed, "malformed percent-encoding in request parameters" unless valid_escapes?(text)
 
-      plus = text.index("+").nil? ? text : text.gsub("+", " ")
-      i = plus.byteindex("%")
-      return utf8_text(plus.dup) if i.nil?
-
-      n = plus.bytesize
-      out = +""
-      pos = 0
-      while !i.nil?
-        out << utf8_text(plus.byteslice(pos, i - pos).to_s)
-        j = i
-        while j + 2 < n && plus.getbyte(j) == 37
-          j += 3
-        end
-        out << URI.decode_www_form_component(plus.byteslice(i, j - i).to_s)
-        pos = j
-        i = plus.byteindex("%", pos)
-      end
-      out << utf8_text(plus.byteslice(pos, n - pos).to_s)
-      out
+      decode_escapes(text, true)
     rescue ArgumentError
       # The client's fault (a 400 through ClientError), not the app's. The
       # decoder's message is not repeated: it embeds the raw text, newlines
       # included, and would let a form body forge log lines (Logger writes
       # the line as is) and echo itself into the dev page's 400 body.
       raise QueryMalformed, "malformed percent-encoding in request parameters"
+    end
+
+    # The one chunked decoding loop, for text whose escapes the CALLER has
+    # already checked with valid_escapes? (decode does; Router.split_path
+    # does and keeps a segment literal when the check fails). With
+    # plus_is_space a "+" is a space (query strings, forms, cookies); without
+    # it a "+" stays a plus (a path segment). Two entry points over one loop,
+    # and no block, so it is a plain method (NOTES rule 32).
+    #
+    # The stretches between the specials are copied with byteslice, the
+    # decoder sees only each maximal run of consecutive "%XX" escapes, which
+    # is pure ASCII and as short as the run (a percent-encoded multibyte
+    # character is one run, so it still decodes as a unit), and a "+" is
+    # appended as " " right here: a gsub over the whole text would be one
+    # more library String op that nothing has measured on a 10 MB non-ASCII
+    # value under Spinel (does a String-pattern gsub scan by character
+    # offset? rules 27/49 are why the rest of this loop does not ask). Text
+    # with neither special is returned as it is.
+    # Offsets are bytes, as in parse and split_key (NOTES rule 27): each is a
+    # "%", a "+", or just after two hex digits of a valid escape (valid_escapes?
+    # guarantees two bytes follow every "%", so `j + 2 < n` below never
+    # drops a final escape: "%41" has n = 3, j = 0), so always on a character
+    # boundary. The next "%" and the next "+" are each searched for once per
+    # use (a run of escapes holds no "+", so the cached "+" offset stays
+    # valid across it), so the whole decode is O(bytes). -1 means none, a
+    # typed sentinel rather than nil (NOTES rule 11).
+    def self.decode_escapes(text, plus_is_space)
+      pct = next_byte(text, "%", 0)
+      plus = plus_is_space ? next_byte(text, "+", 0) : -1
+      return utf8_text(text.dup) if pct < 0 && plus < 0
+
+      n = text.bytesize
+      out = +""
+      pos = 0
+      while pct >= 0 || plus >= 0
+        if pct >= 0 && (plus < 0 || pct < plus)
+          out << utf8_text(text.byteslice(pos, pct - pos).to_s)
+          j = pct
+          while j + 2 < n && text.getbyte(j) == 37
+            j += 3
+          end
+          out << URI.decode_www_form_component(text.byteslice(pct, j - pct).to_s)
+          pos = j
+          pct = next_byte(text, "%", pos)
+        else
+          out << utf8_text(text.byteslice(pos, plus - pos).to_s)
+          out << " "
+          pos = plus + 1
+          plus = next_byte(text, "+", pos)
+        end
+      end
+      out << utf8_text(text.byteslice(pos, n - pos).to_s)
+      out
+    end
+
+    # The byte offset of the next `needle` (one ASCII character) at or after
+    # `from`, or -1: byteindex's nil as a typed Integer (NOTES rule 11).
+    def self.next_byte(text, needle, from)
+      i = text.byteindex(needle, from)
+      i.nil? ? -1 : i
     end
 
     # `s` tagged as UTF-8, in place (a no-op for the Spinel runtime, whose

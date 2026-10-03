@@ -96,12 +96,19 @@ module Cybertrain
       # rule 33). A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves
       # SQLite inside the transaction, so it is rolled back too before the
       # COMMIT error is re-raised. A nested call just runs its block inside
-      # the outer transaction. No `ensure` here: a second ensure in this
-      # re-entrant yielding method broke nested transactions under Spinel
-      # (CI on PR #10). What the rescue cannot see -- a `break` out of the
-      # block under CRuby (Spinel refuses to compile one here), or a BEGIN
-      # run by hand -- is caught by the Pool, which calls
-      # abandon_transaction! on every check-in.
+      # the outer transaction. Do not break or return out of a transaction
+      # block. Under CRuby that leaves BEGIN open with the depth at 1; the
+      # autocommit probe below cannot see it (autocommit is 0, as in a live
+      # transaction), so a later `transaction` on the same checkout would
+      # nest into it and never COMMIT. Nothing in this method can observe
+      # that: an `ensure` is the only construct that could, and an ensure in
+      # this re-entrant yielding method miscompiles under Spinel (NOTES rule
+      # 50; rule 45 for the earlier ensure-based body). The Pool rolls the
+      # open transaction back on check-in (abandon_transaction!, with a warn
+      # line), so the hole is bounded to the rest of that one checkout under
+      # CRuby, and it does not exist under Spinel: a `break` there is
+      # refused at compile time and a `return` just ends the block (rule 44).
+      # A BEGIN run by hand is caught by the Pool the same way.
       # Returns nil: the blocks callers pass return unrelated types, and one
       # generic return value would not type-check under Spinel.
       def transaction
@@ -110,15 +117,14 @@ module Cybertrain
         # A depth above 0 while SQLite is in autocommit means the enclosing
         # transaction is gone: SQLite rolled it back on its own after
         # SQLITE_FULL / IOERR / BUSY and the app's block rescued that and went
-        # on, or (CRuby) an earlier block on this connection was left with
-        # `break`. Nesting into it would run this block without a transaction
+        # on. Nesting into it would run this block without a transaction
         # and never COMMIT; starting a fresh one here would commit this part
         # while the outer COMMIT then fails as if everything rolled back.
         # Raising is the only honest answer; Pool#check_in resets the depth
         # when the connection comes back.
         if @transaction_depth > 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
           raise Error, "transaction: the enclosing transaction is no longer open (SQLite rolled it back " \
-                       "after an error, or its block was left early); nothing nested in it can be committed"
+                       "after an error); nothing nested in it can be committed"
         end
         if @transaction_depth > 0
           @transaction_depth += 1

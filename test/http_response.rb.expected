@@ -12,5 +12,6 @@ ok   set_header rejects CR or LF in the value
 ok   redirect rejects a Location with CR or LF (no response splitting)
 ok   add_cookie rejects CR or LF
 ok   set_header replacing a header keeps its position
+ok   drop_header removes a header whatever its case and leaves the rest in order
 ok   performed! marks the response
-15 tests, 40 assertions, 0 failures
+16 tests, 45 assertions, 0 failures

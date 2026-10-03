@@ -8,6 +8,7 @@ ok   a non-ASCII key with 100000 bracket pairs is refused as QueryTooDeep
 ok   a key of a few bracket pairs behind one non-ASCII character splits by byte offsets, multibyte parts intact
 ok   a non-ASCII key with MAX_DEPTH pairs of 300000 bytes parses without rescanning (9.6 MB, O(key), not O(MAX_DEPTH x key))
 ok   a large non-ASCII value and a large non-ASCII key decode without a quadratic library call
+ok   a large non-ASCII value full of '+' decodes to spaces without a library gsub over the whole text
 ok   Query.decode (shared by Query and Cookies) decodes clean escapes
 ok   MAX_PAIRS pairs parse, one more raises QueryTooMany
 ok   empty segments count towards MAX_PAIRS but are still skipped
@@ -18,4 +19,4 @@ ok   20000 key kind flips complete and keep the last write
 ok   flips within one parse keep Rack's last-write-wins
 ok   set_path and merge! handle a 5000 level chain iteratively
 ok   QueryMalformed (an undecodable percent-escape) is a client fault: 400, not 500
-20 tests, 74 assertions, 0 failures
+21 tests, 79 assertions, 0 failures

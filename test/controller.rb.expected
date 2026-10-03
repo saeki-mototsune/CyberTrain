@@ -25,6 +25,6 @@ ok   Callback#applies? honours only and except
 ok   status_code maps symbols and passes integers through
 ok   a missing required param answers 400 Bad Request
 ok   a client fault raised in an action answers 400 with its message, like a missing param
-ok   a client fault after the action set cookies and redirected answers a clean text/plain 400
+ok   a client fault after the action redirected drops only Location and Content-Disposition
 ok   an app exception sharing a bare name with a framework one is still raised (500 path)
-29 tests, 79 assertions, 0 failures
+29 tests, 82 assertions, 0 failures

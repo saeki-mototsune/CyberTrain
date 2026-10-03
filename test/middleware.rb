@@ -174,11 +174,18 @@ test "MethodOverride and the Router share one parse of the form body" do
   assert_equal "DELETE 1", ctx.response.body
   assert ctx.request.form_params.equal?(ctx.request.form_params)
   assert_equal "delete", ctx.request.form_params["_method"]
-  # the Router copied the cached trees, so the controller's ctx.params is its own
+  # the Router is the last consumer: it takes the cached query tree itself as
+  # ctx.params (the same object), merges the form into it and leaves the form
+  # cache as it was
+  assert ctx.params.equal?(ctx.request.query_params)
   assert !ctx.params.equal?(ctx.request.form_params)
-  assert !ctx.params.equal?(ctx.request.query_params)
+  assert_equal "1", ctx.params["q"]
+  assert_equal "delete", ctx.params["_method"]
+  assert_equal "1", ctx.params["id"]
   ctx.params.set_value("_method", "changed")
   assert_equal "delete", ctx.request.form_params["_method"]
+  assert !ctx.request.form_params.key?("q")
+  assert !ctx.request.form_params.key?("id")
 end
 
 # SessionStore parses every cookie on every request but reads only its own,

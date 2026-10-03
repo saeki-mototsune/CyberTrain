@@ -327,14 +327,24 @@ module Cybertrain
       # full "Cybertrain::Params::ParameterMissing" here would miss under
       # Spinel, where Class#name is the bare "ParameterMissing".
       #
-      # reset_to, not render(plain:, status: 400): the action may already have
-      # set a cookie, called redirect_to or set Content-Disposition before the
-      # parameter error raised, and ErrorPages, Dev::ErrorPage and Server all
-      # drop those the same way (a stale Location or attachment header would
-      # hide the 400). It leaves a text/plain 400 whose body is the message
-      # ("" would become the status text), then performed! so the chain stops.
+      # Not reset_to, and not render(plain:, status: 400) either. The action
+      # may already have called redirect_to or set Content-Disposition before
+      # the parameter error raised, and a stale Location or attachment header
+      # would hide the 400, so exactly those two go (both spellings the
+      # response might hold: drop_header matches any case). Every other
+      # header and cookie stays: unlike the error pages (ErrorPages,
+      # Dev::ErrorPage, Server), which start over with reset_to because they
+      # answer for a failure the app never handled, a before_action's CORS
+      # headers, Cache-Control: no-store or session cookie are deliberate,
+      # and a CORS client that lost Access-Control-Allow-Origin would see an
+      # opaque network error instead of the 400. The body is the message, the
+      # type text/plain, then performed! so the chain stops.
       if ClientError.status(e) == 400
-        @response.reset_to(400, e.message)
+        @response.drop_header("Location")
+        @response.drop_header("Content-Disposition")
+        @response.status = 400
+        @response.body = e.message
+        @response.content_type = "text/plain; charset=utf-8"
         @response.performed!
         return nil
       end

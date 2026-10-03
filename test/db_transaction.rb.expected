@@ -10,4 +10,5 @@ ok   abandon_transaction! leaves a clean connection alone and says so
 ok   a StandardError rolls back, re-raises and leaves autocommit on
 ok   a normal completion commits
 ok   a nested transaction joins the outer one and an inner raise rolls everything back
-12 tests, 48 assertions, 0 failures
+ok   a transaction after a normal or a raised one, and after abandon_transaction!, still commits
+13 tests, 53 assertions, 0 failures

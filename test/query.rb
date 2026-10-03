@@ -23,6 +23,15 @@ test "parse of a malformed percent-escape raises QueryMalformed on every runtime
   assert_raises("QueryMalformed") { Cybertrain::Query.decode("50%off") }
 end
 
+test "decode_escapes (the loop under decode and Router.split_path) leaves '+' alone when asked" do
+  assert_equal "a+b c\u00e9", Cybertrain::Query.decode_escapes("a+b%20c%C3%A9", false)
+  assert_equal "+", Cybertrain::Query.decode_escapes("+", false)
+  assert_equal "++A+", Cybertrain::Query.decode_escapes("++%41+", false)
+  assert_equal "a b c\u00e9", Cybertrain::Query.decode_escapes("a+b%20c%C3%A9", true)
+  assert_equal "plain\u00e9", Cybertrain::Query.decode_escapes("plain\u00e9", false)
+  assert_equal "", Cybertrain::Query.decode_escapes("", false)
+end
+
 test "decode handles runs of escapes, '+', and non-ASCII text between them" do
   # Query.decode hands the library decoder only the ASCII runs of %XX escapes
   # (NOTES rule 49); these pin the chunk boundaries.
@@ -35,6 +44,12 @@ test "decode handles runs of escapes, '+', and non-ASCII text between them" do
   assert_equal "\u00e9\u00e9\u3042x\u00e9", Cybertrain::Query.decode("\u00e9%C3%A9%E3%81%82x\u00e9")
   assert_equal " ", Cybertrain::Query.decode("+")
   assert_equal "  ", Cybertrain::Query.decode("++")
+  assert_equal "a b", Cybertrain::Query.decode("a+b")
+  assert_equal "\u00e9 \u00e9", Cybertrain::Query.decode("\u00e9+%C3%A9")
+  assert_equal " A ", Cybertrain::Query.decode("+%41+")
+  assert_equal "A B", Cybertrain::Query.decode("%41+%42")
+  assert_equal "A  B ", Cybertrain::Query.decode("%41++%42+")
+  assert_equal " \u00e9\u3042 ", Cybertrain::Query.decode("+%C3%A9\u3042+")
   assert_equal "plain\u00e9text", Cybertrain::Query.decode("plain\u00e9text")
   assert_equal "plain text", Cybertrain::Query.decode("plain text")
   assert_equal "x%y", Cybertrain::Query.decode("x%25y")

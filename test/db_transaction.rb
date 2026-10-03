@@ -336,4 +336,29 @@ test "a nested transaction joins the outer one and an inner raise rolls everythi
   conn.close
 end
 
+# A `break`/`return` out of an outer block (CRuby only) cannot be driven
+# portably: Spinel refuses to compile the `break`, and a `return` there just
+# ends the block and commits (NOTES rules 44, 50). What both runtimes share
+# is checked here: a normal, a raised and another normal transaction in a
+# row, and abandon_transaction! leaving the connection able to start a
+# transaction again after a BEGIN run by hand.
+test "a transaction after a normal or a raised one, and after abandon_transaction!, still commits" do
+  conn = posts_db
+  conn.transaction { conn.execute("INSERT INTO posts (title) VALUES (?)", ["one"]) }
+  assert_raises("RuntimeError") do
+    conn.transaction do
+      conn.execute("INSERT INTO posts (title) VALUES (?)", ["lost"])
+      raise "boom"
+    end
+  end
+  conn.transaction { conn.execute("INSERT INTO posts (title) VALUES (?)", ["two"]) }
+  assert_equal 2, post_count(conn)
+  leave_begin_open(conn)
+  assert conn.abandon_transaction! == :rolled_back, "the hand-run BEGIN is rolled back"
+  conn.transaction { conn.execute("INSERT INTO posts (title) VALUES (?)", ["three"]) }
+  assert_equal 3, post_count(conn)
+  assert clean?(conn)
+  conn.close
+end
+
 Cybertrain::Test.run!

@@ -116,9 +116,13 @@ module Cybertrain
     # CsrfProtection and the Router all read it, and every parse decodes each
     # pair and builds a tree, so the cost the Query limits bound is paid once,
     # not three times. A parse that raises (QueryTooMany, QueryMalformed, ...)
-    # is not cached: it propagates and the request ends as a 400. Callers
-    # only read the result; the Router copies it before it adds route
-    # params. The cache ivars start as nil and are assigned from a method's
+    # is not cached: it propagates and the request ends as a 400. The
+    # middleware only read it (one key each) and run before the Router; the
+    # Router is the last consumer and takes this very tree as ctx.params
+    # (merging the form and the route params into it) rather than building a
+    # second one, so once the Router has run the cached query tree IS
+    # ctx.params, and nothing may rely on it being pristine after that.
+    # The cache ivars start as nil and are assigned from a method's
     # result, as a nullable ivar must be (NOTES rule 7).
     def query_params
       cached = @query_params_cache

@@ -122,6 +122,18 @@ test "set_header replacing a header keeps its position" do
   assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-A: 3\r\nx-b: 4\r\nX-C: 5\r\nContent-Length: 0\r\n\r\n", res.to_http
 end
 
+test "drop_header removes a header whatever its case and leaves the rest in order" do
+  res = Response.new
+  res.set_header("X-A", "1")
+  res.set_header("location", "/x")
+  res.set_header("X-B", "2")
+  assert_nil res.drop_header("Location")
+  assert_nil res.header("Location")
+  assert_equal 2, res.headers.size
+  assert_nil res.drop_header("Location")
+  assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-A: 1\r\nX-B: 2\r\nContent-Length: 0\r\n\r\n", res.to_http
+end
+
 test "performed! marks the response" do
   res = Response.new
   res.performed!

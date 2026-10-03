@@ -103,6 +103,20 @@ test "a large non-ASCII value and a large non-ASCII key decode without a quadrat
   assert_equal 300_002, Cybertrain::Query.decode(value + "%C3%A9").length
 end
 
+test "a large non-ASCII value full of '+' decodes to spaces without a library gsub over the whole text" do
+  # "+" is handled in the byte loop (Query.decode_escapes), not by a gsub
+  # over the text that nothing has measured on non-ASCII input under Spinel.
+  # Asserted on the result only.
+  value = "\u00e9" + ("+" * 300_000) + "%C3%A9" + ("a+" * 1000)
+  decoded = Cybertrain::Query.decode(value)
+  assert_equal 300_000 + 1 + 1 + 2000, decoded.length
+  assert_equal 300_000 + 1000, decoded.count(" ")
+  assert_equal "\u00e9", decoded[0, 1]
+  assert_equal "\u00e9", decoded[300_001, 1]
+  params = Cybertrain::Query.parse("k=" + value)
+  assert_equal decoded, params["k"]
+end
+
 test "Query.decode (shared by Query and Cookies) decodes clean escapes" do
   # The malformed case is in test/query.rb.
   assert_equal "a b", Cybertrain::Query.decode("a+b")

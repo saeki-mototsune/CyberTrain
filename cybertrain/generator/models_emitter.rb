@@ -84,7 +84,13 @@ module Cybertrain
       # keyed by the column's SQL name (column_names, to_row, load_row,
       # params) stays keyed by it; read_attribute / write_attribute answer
       # both spellings (attribute_keys), so a template, which reaches a column
-      # through read_attribute, can always use the Ruby name. An existing
+      # through read_attribute, can always use the Ruby name. The query API
+      # (Relation#where / order / find_by, order_sql) does not: Relation is
+      # built from a table name and knows no per-model rename table, and a
+      # column is its SQL name there, so `Post.where(hash: 1)` is right and
+      # `Post.where(hash_column: 1)` is "no such column". The Ruby name is the
+      # reader, the writer, the constructor key and the template name only
+      # (rename_note says so beside the accessor). An existing
       # schema must keep generating on upgrade, so such a column is renamed
       # rather than refused (`cybertrain generate scaffold` still refuses to
       # invent one).
@@ -103,7 +109,8 @@ module Cybertrain
       end
 
       # The `when` keys of read_attribute / write_attribute for a column: its
-      # SQL name, plus the reader's name when reader_name renamed it. The
+      # SQL name, plus the reader's name when reader_name renamed it (the
+      # query API takes the SQL name only: see reader_name). The
       # interpreter resolves `post.hash_column` through read_attribute and
       # knows no other way to the column, so without the second key a renamed
       # column would be unreachable from a template under its Ruby name. A
@@ -340,7 +347,9 @@ module Cybertrain
       end
 
       # The note beside the attr_accessor of a column reader_name renamed.
-      # A keyword is told so, not that it is a method. The interpreter
+      # Every note ends by telling that queries take the SQL name (the reader
+      # name is not a column to Relation). A keyword is told so, not that it
+      # is a method. The interpreter
       # resolves `errors` and `to_param` as model methods before it asks
       # read_attribute (Interpreter#model_method), so for those two the plain
       # name never reaches the column from a template and the note says so;
@@ -348,7 +357,8 @@ module Cybertrain
       # under either spelling.
       def self.rename_note(name)
         if Ident.keyword?(name)
-          return "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a Ruby keyword"
+          kw = "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a Ruby keyword"
+          return kw + query_note(name)
         end
 
         note = "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a method of " \
@@ -356,7 +366,13 @@ module Cybertrain
         if name == "errors" || name == "to_param"
           note += "; templates resolve #{name} as that method, so a template reads the column as #{reader_name(name)}"
         end
-        note
+        note + query_note(name)
+      end
+
+      # The clause every rename note ends with: where / order / find_by quote
+      # the name as an SQL identifier, so only the SQL name is a column there.
+      def self.query_note(name)
+        "; queries (where, order, find_by) take the SQL name #{name.inspect}"
       end
 
       def self.emit_dispatch(table, definition, view_methods)
