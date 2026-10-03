@@ -41,6 +41,94 @@ test "app_name reads [package] name from spin.toml" do
   assert_equal "", Cybertrain::CLI::Build.app_name("no_such_dir")
 end
 
+test "app_name rejects only a name that breaks the build/bin/<name> path" do
+  File.write("spin.toml", "[package]\nname = \"x; touch PWNED #\"\n")
+  message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+  assert_equal "spin.toml [package] name 'x; touch PWNED #' cannot contain whitespace", message
+  assert_equal 1, Cybertrain::CLI.run(["build"])
+  refute File.exist?("PWNED")
+  # Each reason has its own wording (Cybertrain::AppName.problem, the one
+  # predicate Application.new applies too).
+  {
+    "a/b" => "cannot contain '/'",
+    # "." and ".." would make build/bin/<name> the directory itself or build/.
+    "." => "cannot be '.' or '..'",
+    ".." => "cannot be '.' or '..'",
+    # A leading "-" would reach `spin build` as an option (quote_arg leaves it
+    # bare); a "-" inside the name is fine (my-app below).
+    "--release" => "cannot start with '-' (spin would read it as an option)",
+    "-x" => "cannot start with '-' (spin would read it as an option)",
+    "a b" => "cannot contain whitespace",
+    "a\tb" => "cannot contain whitespace"
+  }.each do |bad, reason|
+    File.write("spin.toml", "[package]\nname = \"#{bad}\"\n")
+    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+    assert_equal "spin.toml [package] name '#{bad}' #{reason}", message
+  end
+  # An empty name is not an error here: run_in_app reports it.
+  File.write("spin.toml", "[package]\nname = \"\"\n")
+  assert_equal "", Cybertrain::CLI::Build.app_name(".")
+  assert_equal "cannot be empty", Cybertrain::AppName.problem("")
+  assert_equal "cannot contain whitespace", Cybertrain::AppName.problem("a\nb")
+  assert_equal "cannot contain whitespace", Cybertrain::AppName.problem("a\rb")
+  assert_equal "", Cybertrain::AppName.problem("my-app")
+  assert_equal ["public", "storage", "tmp"], Cybertrain::CLI::Build::DIST_ENTRIES
+  # The names assemble() creates in dist/ only matter to the build: app_name
+  # (read by migration, db, server and build alike) accepts them, so an
+  # existing app named tmp or Public still migrates and serves; the build
+  # path (require_dist_name!) refuses them in any letter case (macOS APFS
+  # makes "Public" and public one directory entry), and the dot-prefixed
+  # scratch names too, with one message naming the reason.
+  ["public", "storage", "tmp", "Public", "STORAGE", "Tmp", "TMP", ".hidden", ".public.old", ".blog.tmp"].each do |name|
+    File.write("spin.toml", "[package]\nname = \"#{name}\"\n")
+    assert_equal name, Cybertrain::CLI::Build.app_name(".")
+    # NOTES rule 10: run_in_app's own path returns 1, so the block's value is an Integer.
+    assert_equal 0, Cybertrain::CLI.run_in_app { |n| n == name ? 0 : 1 }
+    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.require_dist_name!(name) }
+    assert_includes message, "spin.toml [package] name '#{name}' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp)"
+  end
+  # `cybertrain build` itself refuses, before the toolchain is touched.
+  File.write("spin.toml", "[package]\nname = \"tmp\"\n")
+  assert_equal 1, Cybertrain::CLI.run(["build"])
+  assert_equal "", Cybertrain::CLI::Build.dist_name_problem("tmp2")
+  Cybertrain::CLI::Build.require_dist_name!("blog")
+  # Only those names and a leading dot: other spellings are other entries.
+  ["tmp2", "my_public", "blog", "a.b", "MyApp"].each do |fine|
+    File.write("spin.toml", "[package]\nname = \"#{fine}\"\n")
+    assert_equal fine, Cybertrain::CLI::Build.app_name(".")
+  end
+  # Shell safety comes from quote_arg, not from the spelling: a hand-written
+  # "my-app" or "MyApp" builds as it did before the check existed.
+  File.write("spin.toml", "[package]\nname = \"my-app\"\n")
+  assert_equal "my-app", Cybertrain::CLI::Build.app_name(".")
+  assert_equal "spin build my-app", Cybertrain::CLI::Build.commands("my-app")[1]
+  assert_equal "spin build 'my app'", Cybertrain::CLI::Build.commands("my app")[1]
+  File.write("spin.toml", "[package]\nname = \"MyApp\"\n")
+  assert_equal "MyApp", Cybertrain::CLI::Build.app_name(".")
+  File.write("spin.toml", "[package]\nname = \"blog\"\nversion = \"0.1.0\"\n")
+  assert_equal "blog", Cybertrain::CLI::Build.app_name(".")
+end
+
+test "command strings quote every interpolated value" do
+  assert_equal "'x; touch PWNED #'", Cybertrain::CLI::Build.quote_arg("x; touch PWNED #")
+  assert_equal "'it'\\''s'", Cybertrain::CLI::Build.quote_arg("it's")
+  assert_equal "spin build 'x; touch PWNED #'", Cybertrain::CLI::Build.commands("x; touch PWNED #")[1]
+  assert_equal "spin run 'x; touch PWNED #'", Cybertrain::CLI::Build.server_commands("x; touch PWNED #", "")[1]
+  assert_equal "spin run blog -- '1; id'", Cybertrain::CLI::Build.server_commands("blog", "1; id")[1]
+end
+
+test "an empty application name never reaches the commands from the CLI" do
+  # run_in_app is the one place that refuses it (before yielding), so the
+  # command builders do not repeat the check: a direct caller gets a quoted "".
+  File.write("spin.toml", "[package]\nname = \"\"\n")
+  yielded = false
+  assert_equal 1, Cybertrain::CLI.run_in_app { |_n| yielded = true; 0 }
+  refute yielded
+  assert_equal "spin build ''", Cybertrain::CLI::Build.commands("")[1]
+  assert_equal "spin run ''", Cybertrain::CLI::Build.server_commands("", "")[1]
+  File.write("spin.toml", "[package]\nname = \"blog\"\n")
+end
+
 test "build embeds the views, builds, then restores the empty table" do
   assert_equal ["spin run gen -- --embed-views", "spin build blog", "spin run gen"], Cybertrain::CLI::Build.commands("blog")
   assert_equal ["spin run gen", "spin run db -- migrate", "spin run gen"], Cybertrain::CLI::Build.migration_commands
@@ -103,6 +191,19 @@ class FakeRunner < Cybertrain::CLI::Build::Runner
     @log << "#{command} (#{lock})"
     command != @failing
   end
+end
+
+# The name check lives in CLI.build_app alone (Build.run assumes a validated
+# name), ahead of Toolchain.ensure!: a refused name returns 1 before any
+# toolchain is fetched, any step runs or the lock is taken.
+test "cybertrain build refuses a name that collides with dist/ before the toolchain, any step or the lock" do
+  ["tmp", "Public", ".hidden"].each do |name|
+    File.write("spin.toml", "[package]\nname = \"#{name}\"\n")
+    assert_equal 1, Cybertrain::CLI.run(["build"])
+    refute File.exist?("tmp/cybertrain-build.lock")
+    refute File.exist?("dist")
+  end
+  File.write("spin.toml", "[package]\nname = \"blog\"\n")
 end
 
 test "build runs the three steps under tmp/cybertrain-build.lock, then assembles dist/" do

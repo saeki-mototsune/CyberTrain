@@ -1,5 +1,7 @@
+require "json"
 require "cybertrain/middleware"
 require "cybertrain/logger"
+require "cybertrain/http/client_error"
 
 module Cybertrain
   # Production's error pages (docs/design.md D14), outermost in the stack.
@@ -19,9 +21,15 @@ module Cybertrain
     def call(ctx)
       begin
         super
-      rescue StandardError => e
-        @logger.error("#{e.class.name}: #{e.message}")
-        internal_error(ctx.response)
+      rescue JSON::ParserError, StandardError => e
+        # JSON::ParserError named too: not a StandardError under Spinel
+        # (NOTES rule 33), and an action's JSON.parse of a bad body deserves
+        # the same 500 page as any other failure. ClientError maps and logs:
+        # a client's fault (request parameters past Query's limits) is a 400
+        # at info level. Caught here because this middleware wraps the whole
+        # stack, so Server#respond's own mapping never sees the exception in
+        # a real application.
+        ctx.response.reset_to(ClientError.classify(e, @logger))
       end
       response = ctx.response
       page = page_for(response)
@@ -33,18 +41,6 @@ module Cybertrain
     end
 
     private
-
-    # Starts over like Server#error_response: every header and cookie the
-    # failed action had already set goes (a stale Location or
-    # Content-Disposition: attachment would hide the page).
-    def internal_error(response)
-      response.headers.clear
-      response.cookies.clear
-      response.status = 500
-      response.content_type = "text/plain; charset=utf-8"
-      response.body = response.status_text
-      nil
-    end
 
     # The page to serve in place of the response's body, or "".
     def page_for(response)

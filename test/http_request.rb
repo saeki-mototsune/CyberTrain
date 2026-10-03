@@ -1,4 +1,5 @@
 require "cybertrain/http/request"
+require "cybertrain/params"
 require "cybertrain/test"
 
 Request = Cybertrain::Request
@@ -110,6 +111,76 @@ test "body and headers are exposed" do
   assert_equal "payload", req.body
   assert_equal "1", req.headers["x-a"]
   assert_equal "10.0.0.1", req.remote_addr
+end
+
+test "query_params and form_params parse once and return the same Params every time" do
+  req = Request.new("POST", "/p?a=1&b[]=2", { "content-type" => "application/x-www-form-urlencoded" }, "c=3&d[e]=4")
+  q = req.query_params
+  assert_equal "1", q["a"]
+  assert_equal ["2"], q.list("b")
+  assert q.equal?(req.query_params)
+  f = req.form_params
+  assert_equal "3", f["c"]
+  assert_equal "4", f.nested("d")["e"]
+  assert f.equal?(req.form_params)
+  assert !q.equal?(f)
+end
+
+test "query_params and form_params are read-only shared caches" do
+  req = Request.new("POST", "/p?a=1&b[x]=2", { "content-type" => "application/x-www-form-urlencoded" }, "c=3&d[e]=4")
+  assert req.query_params.read_only?
+  assert req.form_params.read_only?
+  assert req.query_params.nested("b").read_only?
+  assert req.form_params.nested("d").read_only?
+  msg = assert_raises("RuntimeError") { req.query_params.set_value("x", "1") }
+  assert_includes msg, "request parameters are read-only"
+  assert_raises("RuntimeError") { req.form_params.set_value("x", "1") }
+  assert_raises("RuntimeError") { req.query_params.nested("b").set_value("x", "1") }
+  assert_raises("RuntimeError") { req.query_params.merge!(req.form_params) }
+  # A failed write changed nothing, and the cache is still the same object.
+  assert req.query_params.equal?(req.query_params)
+  assert_equal "1", req.query_params["a"]
+  refute req.query_params.key?("x")
+  # An empty query and body are read-only too.
+  empty = Request.new("GET", "/", {}, "")
+  assert empty.query_params.read_only?
+  assert empty.form_params.read_only?
+  # The way to change them: a writable copy that leaves the cache alone.
+  mine = Cybertrain::Params.new.merge!(req.query_params)
+  refute mine.read_only?
+  mine.set_value("a", "changed")
+  assert_equal "1", req.query_params["a"]
+end
+
+test "query_params and form_params of an empty query and body are cached empty Params" do
+  req = Request.new("GET", "/", {}, "")
+  assert req.query_params.empty?
+  assert req.query_params.equal?(req.query_params)
+  assert req.form_params.empty?
+  assert req.form_params.equal?(req.form_params)
+end
+
+test "path_segments decodes once and returns the same Array every time" do
+  req = Request.new("GET", "/caf%C3%A9/a+b/%41/?x=1", {}, "")
+  segs = req.path_segments
+  assert_equal ["caf\u00e9", "a+b", "A"], segs
+  assert segs.equal?(req.path_segments)
+  assert_equal [], Request.new("GET", "/", {}, "").path_segments
+  assert_equal ["%ZZ", "a%2"], Request.new("GET", "/%ZZ/a%2", {}, "").path_segments
+end
+
+test "path_segments: an invalid decoded byte sequence is QueryMalformed and is not cached" do
+  req = Request.new("GET", "/a/%81", {}, "")
+  assert_raises("QueryMalformed") { req.path_segments }
+  assert_raises("QueryMalformed") { req.path_segments }
+end
+
+test "a parse that raises is not cached: every call raises again" do
+  req = Request.new("POST", "/p?x=%zz", {}, "a=%zz")
+  assert_raises("QueryMalformed") { req.query_params }
+  assert_raises("QueryMalformed") { req.query_params }
+  assert_raises("QueryMalformed") { req.form_params }
+  assert_raises("QueryMalformed") { req.form_params }
 end
 
 Cybertrain::Test.run!

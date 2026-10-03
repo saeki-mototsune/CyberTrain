@@ -4,6 +4,7 @@
 require "stringio"
 require "cybertrain/middleware"
 require "cybertrain/middleware/error_pages"
+require "cybertrain/http/query"
 require "cybertrain/router"
 require "cybertrain/logger"
 require "cybertrain/test"
@@ -36,6 +37,10 @@ def endpoint
     c.response.set_header("Location", "/elsewhere")
     c.response.add_cookie("a=1; Path=/")
     raise ArgumentError, "kaboom"
+  end
+  router.get("/toodeep") do |c|
+    c.response.set_header("Location", "/elsewhere")
+    raise Cybertrain::QueryTooDeep, "parameter nesting too deep (limit 32)"
   end
   router
 end
@@ -90,6 +95,16 @@ test "an exception is logged and becomes public/500.html without the action's he
   assert_nil res.header("Location")
   assert res.cookies.empty?
   assert_includes LOG.string, "[ERROR] ArgumentError: kaboom"
+end
+
+test "parameters past Query's limits are a 400 logged at info, not a 500" do
+  res = get("/toodeep", "test/fixtures/no_such_dir")
+  assert_equal 400, res.status
+  assert_equal "Bad Request", res.body
+  assert_equal "text/plain; charset=utf-8", res.header("Content-Type")
+  assert_nil res.header("Location")
+  assert_includes LOG.string, "[INFO] rejected request (400 Bad Request): parameter nesting too deep (limit 32)"
+  refute LOG.string.include?("QueryTooDeep"), "a rejected request is not an error-level log line"
 end
 
 test "without the page files the plain-text bodies stay" do

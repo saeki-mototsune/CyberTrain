@@ -1,5 +1,4 @@
 require "cybertrain/middleware"
-require "cybertrain/router"
 
 module Cybertrain
   # Serves files under `root` (the app's public/ directory) for GET and HEAD
@@ -32,7 +31,7 @@ module Cybertrain
     def call(ctx)
       request = ctx.request
       if request.get? || request.head?
-        file = file_for(request.path)
+        file = file_for(request)
         unless file.empty?
           serve(ctx.response, file)
           return nil
@@ -43,11 +42,15 @@ module Cybertrain
 
     private
 
-    # The file to serve for a request path, or "" when there is none. Path
+    # The file to serve for a request, or "" when there is none. Path
     # segments are percent-decoded first, so "%2e%2e" and "%2f" cannot be
-    # used to climb out of the root.
-    def file_for(path)
-      segments = Router.split_path(path)
+    # used to climb out of the root. They come from request.path_segments,
+    # which decodes once per request: the Router reads the same cached Array
+    # afterwards (read-only here, as there), and an invalid byte sequence in a
+    # decoded segment is raised from there as the one QueryMalformed (400)
+    # decision, by whichever reads first -- this middleware for GET/HEAD.
+    def file_for(request)
+      segments = request.path_segments
       segments.each do |seg|
         return "" if seg == ".." || seg == "." || seg.include?("/") || seg.include?("\\") || seg.include?("\0")
       end

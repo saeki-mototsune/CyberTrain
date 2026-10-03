@@ -245,12 +245,48 @@ test "bad input is rejected before anything is written" do
   rejected(["class:string"])
   rejected(["end"])
   rejected(["self:text"])
+  # A keyword as a references name is caught by the reader check (the column
+  # would be end_id, which is no keyword); a keyword with a bad type reports
+  # the type.
+  rejected(["end:references"])
+  rejected(["class:bogus"])
+  # Names the generated model cannot host (Cybertrain::Ident, the generator's
+  # own rule): refused here, not by the later `spin run gen`.
+  rejected(["errors:string"])
+  rejected(["save:text"])
+  rejected(["attributes:string"])
+  rejected(["hash:integer"])
+  # A references field also defines a reader (def errors), so the same rule
+  # applies to the field name, not only to the errors_id column.
+  rejected(["errors:references"])
+  rejected(["hash:references"])
+  # Object methods the generator only notes: a new name need not shadow them,
+  # as a column or as a references reader (def display).
+  rejected(["display:string"])
+  rejected(["tap:string"])
+  rejected(["display:references"])
   rejected(["a:string:index"])
   rejected(["a:string:"])
   rejected(["Title:string"])
   status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "class", "name:string"]) }
   assert_equal 1, status
   refute File.exist?("blog/app/models/class.rb")
+  # A resource's singular is the belongs_to reader on the models that
+  # reference it (`hash:references` -> Thing#hash would shadow Object#hash),
+  # so it answers to the same rules as a column. The plural (the has_many
+  # reader) is the generator's business: it renames, never refuses.
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "Hash", "post:references"]) }
+  assert_equal 1, status
+  refute File.exist?("blog/app/models/hash.rb")
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "raise", "name:string"]) }
+  assert_equal 1, status
+  refute File.exist?("blog/app/models/raise.rb")
+  # The singular of `displays` is `display`, Object#display on any model that
+  # references it.
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "displays", "name:string"]) }
+  assert_equal 1, status
+  refute File.exist?("blog/app/models/display.rb")
+  assert_equal 4, migration_versions.size
   # TMP itself is not an app: it has no config/routes.rb.
   assert_equal 1, Cybertrain::CLI.run(["generate", "scaffold", "tag", "name:string"])
   assert_equal 1, Cybertrain::CLI.run(["generate", "scaffold"])

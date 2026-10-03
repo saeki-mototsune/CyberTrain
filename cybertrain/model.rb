@@ -154,7 +154,7 @@ module Cybertrain
       return false unless @persisted
 
       run_callbacks("before_destroy")
-      sql = "DELETE FROM #{Relation.quote_ident(self.class.table_name)} WHERE \"id\" = ?"
+      sql = "DELETE FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
       id = @id
       Cybertrain::DB.with { |c| c.execute(sql, [id]) }
       @persisted = false
@@ -164,7 +164,7 @@ module Cybertrain
 
     # Re-reads every column from the database.
     def reload
-      sql = "SELECT * FROM #{Relation.quote_ident(self.class.table_name)} WHERE \"id\" = ?"
+      sql = "SELECT * FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
       id = @id
       found = Cybertrain::DB.with { |c| c.execute(sql, [id]) }
       raise RecordNotFound, "Couldn't find #{model_name} with id=#{id}" if found.empty?
@@ -239,7 +239,7 @@ module Cybertrain
       write_attribute(:updated_at, Model.now_string) if column?("updated_at")
       row = to_row
       sets = row.keys.map { |k| "#{Relation.quote_ident(k)} = ?" }
-      sql = "UPDATE #{Relation.quote_ident(self.class.table_name)} SET #{sets.join(", ")} WHERE \"id\" = ?"
+      sql = "UPDATE #{Relation.quote_ident(self.class.table_name)} SET #{sets.join(", ")} WHERE #{Relation.quote_ident("id")} = ?"
       binds = row.values
       binds << @id
       Cybertrain::DB.with { |c| c.execute(sql, binds) }

@@ -1,0 +1,23 @@
+ok   a key nested 10000 levels deep raises QueryTooDeep instead of overflowing the stack
+ok   QueryTooDeep and QueryTooMany are StandardErrors (assert_raises rescues only those)
+ok   nesting exactly MAX_DEPTH deep parses, one more raises
+ok   the deepest allowed key lands its value at the bottom
+ok   a malformed bracket run is still one plain key
+ok   a key with MAX_DEPTH pairs and a malformed tail is one plain key; one more pair is QueryTooDeep
+ok   a non-ASCII key with 100000 bracket pairs is refused as QueryTooDeep
+ok   a key of a few bracket pairs behind one non-ASCII character splits by byte offsets, multibyte parts intact
+ok   a non-ASCII key with MAX_DEPTH pairs of 300000 bytes parses without rescanning (9.6 MB, O(key), not O(MAX_DEPTH x key))
+ok   a large non-ASCII value and a large non-ASCII key decode without a quadratic library call
+ok   a large non-ASCII value full of '+' decodes to spaces without a library gsub over the whole text
+ok   Query.decode (shared by Query and Cookies) decodes clean escapes
+ok   MAX_PAIRS pairs parse, one more raises QueryTooMany
+ok   empty segments count towards MAX_PAIRS but are still skipped
+ok   a body of one non-ASCII character and many '&' is refused as QueryTooMany, not scanned quadratically
+ok   4000 segments after a non-ASCII character parse by byte offsets (O(body), not O(MAX_PAIRS x body))
+ok   multibyte keys and values survive the byte-offset cut, whatever the segment boundaries
+ok   20000 key kind flips complete and keep the last write
+ok   flips within one parse keep Rack's last-write-wins
+ok   set_path and merge! handle a 5000 level chain iteratively
+ok   QueryMalformed (an undecodable percent-escape) is a client fault: 400, not 500
+ok   a malformed escape is rescued as QueryInvalid, not ArgumentError (upgrade note)
+22 tests, 82 assertions, 0 failures

@@ -22,6 +22,9 @@ module Cybertrain
       STALE_LOCK_AGE = 30 * 60
 
       def initialize(root, target = "server", log_path = "tmp/rebuild.log")
+        # target was validated by Application.new (AppName.problem: no leading
+        # '-', no '/', no whitespace, ...); the quoting in #command is for the
+        # shell only.
         @root = root
         @target = target
         @log_path = log_path
@@ -102,11 +105,13 @@ module Cybertrain
         true
       end
 
-      # The brace group sends a failing `cd` to the log as well.
+      # The brace group sends a failing `cd` to the log as well. Every
+      # interpolated value is quoted, which is what keeps a stray quote in a
+      # name from reaching sh (AppName.problem does not refuse a quote).
       def command
         log = log_file
         "mkdir -p #{Rebuilder.shell_quote(File.dirname(log))} && " \
-          "{ cd #{Rebuilder.shell_quote(@root)} && spin run gen && spin build #{@target}; } " \
+          "{ cd #{Rebuilder.shell_quote(@root)} && spin run gen && spin build #{Rebuilder.shell_quote(@target)}; } " \
           "> #{Rebuilder.shell_quote(log)} 2>&1"
       end
 

@@ -481,7 +481,10 @@ compiler output on every HTML response. None of this loads in production.
 | Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
 | Many database adapters | SQLite only, via FFI |
 | `has_many :through`, `includes`, `pluck`, `dependent:`, enums, STI, polymorphic associations | Not implemented; associations come from schema foreign keys only |
+| Any column name; an association can shadow `errors` | A column name must be an ASCII identifier (`[A-Za-z_][A-Za-z0-9_]*`): a schema with a non-ASCII column name (`名前`, `prénom`) generated under CRuby before PR #10 and `spin run gen` refuses it now, so rename the column when upgrading (a name like `first-name` was never a method name). A column named like a method the generated class or the framework calls on a record (`errors`, `save`, `attributes`, `hash`, `to_s`, `to_ary`, `raise`, ...) or like a Ruby keyword (`end`, `class`, `begin`) generates under `<column>_column` (`hash_column`, reader, writer and ivar) with a note in the generated file; its SQL name keeps working in `read_attribute`, params and `attributes["hash"]`, and a template reaches it under either name (`post.hash`, `post.hash_column`), except `errors` and `to_param`, which a template resolves as the model methods, so use `post.errors_column` there; the query API (`where`, `order`, `find_by`) always takes the SQL column name (`Post.where(hash: 1)`), the Ruby name being the reader/writer and the template name only. A column named like another Object method (`display`, `tap`, `methods`) generates under its own name with a note. `cybertrain generate scaffold` refuses all three kinds (keywords, reserved and shadowing names), since it invents the names. An association whose plain name a column, another association or a `Model` method already owns is emitted under a fallback name with a comment in the generated file: `<table>_as_<column stem>` for a `has_many` (`comments_as_article`), `<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`) |
 | `namespace`, format/`respond_to`, `constraints`, `mount` | Not implemented — flat names, `render json:` only |
+| `rescue StandardError` catches a bad `JSON.parse` | Under Spinel `JSON::ParserError` is not a `StandardError`: app code must `rescue JSON::ParserError, StandardError`. The server catches it as a last resort and answers 500 |
+| `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` takes only `column [ASC\|DESC]` lists (each column quoted) and raises `ArgumentError` (a 500: the string is the developer's) on anything else; request data must go through an allowlist first, e.g. `SORTS = { "title" => "title", "newest" => "created_at DESC" }` and `Post.order(SORTS.fetch(params[:sort].to_s, "id"))`, because a well-formed term can still name a missing column (a 500 from SQLite) or a column the client must not sort by; raw ORDER BY text goes through `order_sql` (`Post.order_sql("lower(title)")`, also on a relation), which must never see request data. A `limit`/`offset` on `delete_all` is honoured (a subselect), and request parameters nest at most 32 levels / 4096 pairs (400 past that). `Query.parse`, `Query.decode`, `request.query_params` and `request.form_params` raise `Cybertrain::QueryMalformed` (a `StandardError` under `Cybertrain::QueryInvalid`, not an `ArgumentError`) on a malformed percent-escape, on both runtimes (`Cookies.parse` still keeps the raw value). They raise it too on an invalid UTF-8 byte sequence, raw or percent-encoded (Rails likewise answers 400 for an invalid parameter encoding); `Cookies.parse` keeps such a value raw, and a percent-decoded path segment with an invalid sequence is a 400 as well. App code that rescued `ArgumentError` around them should rescue `Cybertrain::QueryInvalid` instead (upgrade note) |
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
@@ -514,7 +517,14 @@ Other attributes with fixed, overridable defaults: `host` (`"127.0.0.1"`),
 (`"layouts/application"`), `log_level` (`:info`), `session_cookie_name`,
 `session_max_age` (2 weeks), `session_secure` (`true` in production, which
 marks the session cookie `Secure`; `false` elsewhere), `pool_size` (4),
-`static_files`/`csrf` (`true`).
+`static_files`/`csrf` (`true`), `max_render_depth` (12 renders open at once:
+the page and its partials; raise it for partials that legitimately recurse
+deeper; it must be at least 1, or boot fails). Upgrade note: render nesting,
+unlimited before, is now capped at 12 by default (the page is depth 1, so
+partials can nest 11 levels; the layout renders after the page and does not
+nest), and an app with a deeper tree (threaded
+comments, a category menu) gets a template error until it sets
+`max_render_depth`.
 
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse

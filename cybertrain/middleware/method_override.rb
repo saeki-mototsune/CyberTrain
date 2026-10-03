@@ -23,8 +23,8 @@ module Cybertrain
     # not one of ALLOWED). The form body wins over the query string.
     def override_from(request)
       value = ""
-      value = Query.parse(request.body)["_method"].to_s if request.form?
-      value = Query.parse(request.query_string)["_method"].to_s if value.empty?
+      value = request.form_params["_method"].to_s if request.form?
+      value = request.query_params["_method"].to_s if value.empty?
       value = value.upcase
       ALLOWED.include?(value) ? value : ""
     end

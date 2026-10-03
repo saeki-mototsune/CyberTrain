@@ -5,5 +5,6 @@ ok   a 404 the action rendered as HTML is kept
 ok   a 404 the action rendered as JSON is kept
 ok   a status with no page keeps its body
 ok   an exception is logged and becomes public/500.html without the action's headers or cookies
+ok   parameters past Query's limits are a 400 logged at info, not a 500
 ok   without the page files the plain-text bodies stay
-8 tests, 22 assertions, 0 failures
+9 tests, 28 assertions, 0 failures

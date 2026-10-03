@@ -15,9 +15,20 @@ test "parse keeps the first of a duplicate cookie name (most specific Path wins)
   assert_equal({ "a" => "1" }, cookies)
 end
 
-test "parse of a malformed percent-escape does not raise (Spinel diverges from CRuby, which raises ArgumentError)" do
-  cookies = Cybertrain::Cookies.parse("e=%zz")
-  assert_equal({ "e" => "\u0000" }, cookies)
+test "parse keeps the raw value of a malformed percent-escape on every runtime" do
+  cookies = Cybertrain::Cookies.parse("e=%zz; f=50%off; g=%; h=%41")
+  assert_equal({ "e" => "%zz", "f" => "50%off", "g" => "%", "h" => "A" }, cookies)
+end
+
+test "decode keeps the raw value of an invalid byte sequence (raw or percent-encoded), as a foreign cookie must not fail the request" do
+  # decode, not parse: under CRuby String#split/strip refuse an invalid UTF-8
+  # String themselves (a socket header is binary there, so parse never sees one).
+  assert_equal 3, Cybertrain::Cookies.decode("x\x81y").bytesize
+  assert_equal 4, Cybertrain::Cookies.decode("%41\x81").bytesize
+  assert_equal "%81", Cybertrain::Cookies.decode("%81")
+  assert_equal "%C3", Cybertrain::Cookies.decode("%C3")
+  cookies = Cybertrain::Cookies.parse("c=%81; d=ok; e=%C3%A9")
+  assert_equal({ "c" => "%81", "d" => "ok", "e" => "\u00e9" }, cookies)
 end
 
 test "serialize with defaults" do

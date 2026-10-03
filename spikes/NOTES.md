@@ -100,6 +100,11 @@ finds the commit that removed them).
 28. `URI.decode_www_form_component` on a malformed escape (`%ZZ`, a trailing
     `%`) raises under CRuby but silently decodes under Spinel; validate escapes
     (`%` followed by two hex digits) before decoding when both must agree.
+    The decoding loop (`Query.decode_valid`) therefore refuses a malformed
+    escape itself, with a byte scan of its own, so `QueryMalformed` and the
+    Cookies raw-value fallback behave the same on both runtimes.
+    `Query.valid_escapes?` is the router's pre-check, for its own policy: a
+    path segment with a malformed escape stays literal instead of raising.
 29. Once `SafeString` (to_s/to_str) is in the program, `String#include?` with
     a polymorphic argument mis-dispatches even after narrowing the receiver;
     `String#index(needle.to_s)` works. Iterating a nullable Hash with
@@ -159,6 +164,111 @@ finds the commit that removed them).
     called later (`url_resolver: ->(name, args) { ... }` gave name = 4295868465).
     Pass lambdas positionally, as `&block`, or return them from a method
     (`Gen::Routes.url_resolver`).
+
+43. A `def x=(v)` on one class next to an `attr_accessor :x` on another makes
+    the accessor's writer undefined at run time for a boxed receiver
+    ("undefined method 'body=' for an instance of Cybertrain::Response" once
+    a generated model defined `body=`). Generated models therefore keep
+    `attr_accessor` for columns (names the app chooses); both classes
+    spelling the method out as `def` also works. A `Cast.time_or_nil(v)`
+    call whose argument is statically a Time does not compile either
+    (`when String` is still compiled for it), so casting writers are out.
+44. `break` out of a block whose `yield` sits inside a `begin/rescue` is
+    rejected at compile time ("unsupported expression: BreakNode"); the same
+    `break` compiles when the yield is guarded by `ensure` only. `return`
+    inside a block passed to a user-defined yielding method ends the block,
+    not the enclosing method (seen with Connection#transaction); a `return`
+    inside an `each_char` block does leave the method. A `break` anywhere
+    inside a block forwarded as `&block` (DB.with's) is rejected too.
+45. Rule 32 in practice: calling a yielding method that has `rescue => e`
+    (Connection#transaction) from a block nested in another block fails in
+    the C compiler ("assigning to 'volatile sp_RbVal' from incompatible type
+    'sp_Exception *'"). Call it from a method body or a single-level block.
+    A second `ensure` in such a re-entrant yielding method broke nested
+    calls at run time (the outer transaction rolled back).
+46. `Class#name` carries no namespace ("ParserError", not
+    "JSON::ParserError"); assert on the bare name. Thread stacks are small:
+    about 50 nested template renders (14 Ruby frames each under CRuby)
+    overflow one, so the Interpreter caps nesting at 12. A Hash literal
+    whose values are all Strings is typed that way; seed it with a value of
+    every type it will hold (rule 9 for Hashes).
+47. `is_a?` on an exception object does not see its class: with `e` a
+    `QueryTooDeep` caught by `rescue StandardError => e`,
+    `e.is_a?(QueryLimitExceeded)` (its direct superclass) was false. Tell
+    exception classes apart the way the framework always has, by rescue
+    clause -- re-raising `e` into a `begin ... rescue A / rescue B` ladder
+    works, but costs a second raise per use, so the framework compares bare
+    class names instead (Cybertrain::ClientError::CLIENT_FAULTS, which
+    Controller#rescue_with_handler asks too). A `begin ... ensure ... end` as
+    the last expression of a block does not type either (same C error as
+    rule 32's); end the block with an explicit `nil` after it.
+48. `JSON::ParserError` exists only in a rescue clause. `rescue
+    JSON::ParserError, StandardError => e` compiles and catches it (rule
+    33), but the constant as a value -- `rescue_from(JSON::ParserError)`,
+    `klass = JSON::ParserError` -- is "uninitialized constant
+    JSON::ParserError (NameError)" when the program starts. So an app cannot
+    register a `rescue_from` handler for it under Spinel; Controller#run_action
+    still names it in its rescue so the handler fires under CRuby and the
+    exception reaches the error pages the same way on both runtimes.
+49. `URI.decode_www_form_component` is quadratic on a non-ASCII String under
+    Spinel (517 ms for e-acute + 50 000 bytes, 8.5 s for 200 000; linear
+    under CRuby and for ASCII text: 11 ms for 400 000 "a" + "%41%C3%A9"). A
+    single 1.6 MB non-ASCII key or form value would hang the binary for
+    minutes. Decode by byte chunks (`Query.decode`): copy the text between
+    escapes with `byteslice` and hand the decoder only the ASCII runs of
+    `%XX` escapes.
+50. `ensure` in a re-entrant yielding method is not safe under Spinel even for
+    bookkeeping only: in Connection#transaction an `ensure @flag = true unless
+    completed` ran as if the local `completed` were still false after the
+    rescue clause had set it, on the nested-transaction tests (2026.09.12).
+    Rule 45 again: no ensure in a yielding method; a CRuby break/return out of
+    such a block therefore cannot be detected there.
+51. Calling one method with both Symbol and String keys in one program
+    mis-dispatches the `key.to_s` inside it under Spinel: test/router.rb's
+    "params assembly order" test (Symbol keys into Params#[]/#nested/#key?)
+    raised `TypeError: no implicit conversion of Symbol into String` as soon
+    as another test in the same program used String keys
+    (`ctx.params["id"]`, `q.key?("f")`) on the same methods; each shape
+    passed alone (2026.09.12). Keep one key type per program in tests
+    (Symbols, as the framework's own callers do), and treat a polymorphic
+    key parameter as rule 29 territory. The same program also failed
+    `Params#keys` with "undefined method 'keys' for an instance of Hash"
+    once two tests called it: a method name shared with Hash (`keys`) is
+    the same hazard; assert with `key?`/`[]` instead.
+52. `String#byteindex` raises `IndexError` ("offset N does not land on
+    character boundary") under CRuby for an offset that is not on a character
+    boundary of a UTF-8 String, e.g. right after `&` when the next byte is a
+    stray `\x81` (`"a=1&\x81b=2"`, `"x+\x81y"`, `"%41\x81"`); Spinel's
+    returns the match without checking. `String#valid_encoding?` exists under
+    Spinel and agrees with CRuby, so byte-offset scans over request text
+    validate the encoding once up front (`Query.parse`, `Query.decode_escapes`,
+    `Router.split_path`) and treat an invalid byte sequence as `QueryMalformed`
+    (a 400, like Rails' BadRequest), also after decoding (`%81`). Never
+    `rescue IndexError`: that would be CRuby-only behaviour. Once the String
+    is valid, every offset the scans use (0, or just after an ASCII byte) is a
+    boundary, and a binary (ASCII-8BIT) String never fails the check.
+    Spinel's `split`, `strip` and `index` accept an invalid String; CRuby's
+    raise ArgumentError ("invalid byte sequence in UTF-8") on a UTF-8-tagged
+    one (a binary socket buffer is fine), so a test cannot feed
+    `Router.split_path` or `Cookies.parse` a UTF-8 literal with a stray byte:
+    test invalid bytes through `Query.decode`/`Cookies.decode`, and through
+    `split_path` only next to a `%`, where `Query.check_valid!` runs first.
+53. An exception object built with `.new("msg")` and never raised has no
+    `#message` under Spinel (`undefined method 'message' for an instance of
+    <its class>`, seen on a `Cybertrain::` exception subclass in review;
+    `e.class.name` works). `ClientError.classify`
+    is only ever called from a rescue clause, so a test of it must raise and
+    rescue too (a helper method with a `rescue` clause, returning the status).
+54. `Class#superclass` on a raised exception's class does not show the
+    hierarchy under Spinel: walking `e.class` / `.superclass` / `.name` for a
+    raised `Cybertrain::QueryTooMany` gives `Cybertrain::QueryTooMany,
+    Cybertrain::QueryLimitExceeded, Cybertrain::QueryInvalid, StandardError,
+    Exception, Object, BasicObject` under CRuby but `QueryTooMany, Object,
+    BasicObject` under Spinel. So a "walk the ancestors' names" fallback for
+    rule 47 does not exist (it would make an app's subclass of a framework
+    fault a 400 on one runtime and a 500 on the other): client faults are
+    listed by full name (`ClientError::CLIENT_FAULTS`) and
+    `script/check-client-faults` (CRuby, run by CI) keeps the list complete.
 
 ## Numbers worth remembering
 

@@ -103,7 +103,12 @@ end
 
 # Passes when the block raises. `class_name` (optional) must be a substring of
 # the raised exception's class name; the raised message is returned so callers
-# can assert on it.
+# can assert on it. A failing assertion inside the block is not "the expected
+# exception": AssertionFailed is a StandardError, so without its own clause
+# (first, it is the more specific class) the rescue below would swallow it and
+# the test would pass vacuously. It is re-raised so the enclosing test fails,
+# unless the caller names it (`assert_raises("AssertionFailed") { ... }` is how
+# the assertion helpers themselves are tested).
 def assert_raises(class_name = "")
   Cybertrain::Test.count_assertion
   message = ""
@@ -111,10 +116,19 @@ def assert_raises(class_name = "")
   begin
     yield
   rescue StandardError => e
+    # One clause, as before (a second `=> e` of another type in this yielding
+    # method is untested under Spinel, NOTES rule 32). `to_s`: Class#name is
+    # nil for an anonymous class under CRuby (`Class.new(StandardError)`), and
+    # a NoMethodError from inside this rescue clause would replace the very
+    # exception being asserted on.
+    name = e.class.name.to_s
+    if name.include?("AssertionFailed") && !(class_name != "" && name.include?(class_name))
+      raise e
+    end
     raised = true
     message = e.message
-    if class_name != "" && !e.class.name.include?(class_name)
-      flunk("expected #{class_name} to be raised, got #{e.class.name}: #{e.message}")
+    if class_name != "" && !name.include?(class_name)
+      flunk("expected #{class_name} to be raised, got #{name}: #{e.message}")
     end
   end
   flunk("expected #{class_name == "" ? "an exception" : class_name} to be raised") unless raised

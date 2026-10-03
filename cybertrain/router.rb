@@ -102,7 +102,7 @@ module Cybertrain
 
     def call(ctx)
       request = ctx.request
-      segments = Router.split_path(request.path)
+      segments = request.path_segments
       @routes.each do |route|
         captured = route.match(request.method, segments)
         next if captured.nil?
@@ -117,45 +117,14 @@ module Cybertrain
       nil
     end
 
-    # "/posts/1/" -> ["posts", "1"]; each segment is percent-decoded, but a
-    # "+" stays a plus (it only means space in query strings and forms).
-    # A segment with a malformed escape ("%ZZ", a trailing "%" or "%2") is
-    # kept literal: CRuby's decoder raises ArgumentError on it while Spinel's
-    # silently yields a NUL byte, so neither runtime ever sees it.
+    # "/posts/1/" -> ["posts", "1"], percent-decoded. The implementation
+    # (and the 400 policy for invalid bytes) lives in Request.split_path,
+    # which Request#path_segments caches; it cannot live here because Router
+    # requires Request (through Middleware and Context), so the other way
+    # round would be a require cycle. The Router itself reads
+    # request.path_segments.
     def self.split_path(path)
-      segments = []
-      path.split("/").each do |seg|
-        next if seg.empty?
-
-        if seg.include?("%") && valid_escapes?(seg)
-          segments << URI.decode_www_form_component(seg.gsub("+", "%2B"))
-        else
-          segments << seg
-        end
-      end
-      segments
-    end
-
-    # True when every "%" in `seg` is followed by two hex digits.
-    def self.valid_escapes?(seg)
-      n = seg.bytesize
-      i = 0
-      while i < n
-        if seg.getbyte(i).to_i == 37
-          return false if i + 2 >= n
-          return false unless hex_byte?(seg.getbyte(i + 1).to_i) && hex_byte?(seg.getbyte(i + 2).to_i)
-
-          i += 3
-        else
-          i += 1
-        end
-      end
-      true
-    end
-
-    # 0-9, A-F, a-f as a byte value.
-    def self.hex_byte?(b)
-      (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102)
+      Request.split_path(path)
     end
 
     # Percent-encodes a value for use as one path segment ("a b" -> "a%20b").
@@ -166,9 +135,29 @@ module Cybertrain
     private
 
     # Later sources win: query string, then the form body, then the route.
+    # ctx.params is the request's OWN tree: a fresh Params that the query
+    # tree, the form tree (when the body is a form) and the route captures
+    # are merged into, in that order. merge! reads its argument and copies
+    # every list and nested Params it takes over, so neither of the
+    # Request's parse caches is ever mutated, and anyone who kept
+    # request.query_params or request.form_params (a middleware rebuilding a
+    # canonical URL after `super`) still sees the query keys or the form
+    # fields alone, never `_method`, `authenticity_token` or the captures.
+    # Both caches are marked Params#read_only! by the Request (an O(1) flag
+    # on the tree, no walk; every mutator on them raises), so this is not a
+    # defensive copy that a convention has to protect: it is the merge of
+    # three sources into the one tree the controller may write to, and merge!
+    # copies from a read-only source into a fresh writable one. Parsing
+    # straight into ctx.params instead would parse the body a second time
+    # (the middleware chain has already parsed the query and form into the
+    # caches, for MethodOverride and CsrfProtection) and decode every pair
+    # again; the copy decodes nothing, it only allocates the nodes. One tree
+    # build per request, bounded by the Query limits (at most MAX_PAIRS pairs
+    # of MAX_DEPTH levels).
     def assemble_params(request, captured)
-      params = Query.parse(request.query_string)
-      params.merge!(Query.parse(request.body)) if request.form?
+      params = Params.new
+      params.merge!(request.query_params)
+      params.merge!(request.form_params) if request.form?
       # NOTE(Spinel): not `captured.each { |k, v| ... }` -- captured comes from
       # the nullable Route#match, and with a user-defined #to_s in the program
       # (SafeString) the pair's key reaches Params#set_value as a boxed value

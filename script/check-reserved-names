@@ -1,0 +1,70 @@
+#!/usr/bin/env ruby
+# Guards Cybertrain::Ident::RESERVED_COLUMN_NAMES (the names a column may not
+# have, because the generated reader would shadow a method or ivar of
+# Cybertrain::Model) and SHADOWING_COLUMN_NAMES (Object methods: noted, not
+# refused) against Model growing: every `def name` and every @ivar in
+# cybertrain/model.rb that a column could be spelled like must be in one of
+# the lists, or the next method added to Model silently reintroduces the
+# shadowing. That is the hard check (exit 1). Reads the source rather than the
+# class: under CRuby model.rb cannot be loaded without SQLite's FFI, and under
+# Spinel there is no reflection.
+#
+# The Object/BasicObject surface is only advisory: it comes from whatever CRuby
+# runs this, so a Ruby release that adds a public Object or Kernel method would
+# otherwise fail every PR with no change to the framework. Names Ruby exposes
+# that are in neither list are printed as a warning and do not fail the step.
+# The lists themselves (a name in both, or a keyword in either) stay a hard
+# check: that is about the framework's own files. Run by CI.
+#
+# usage: ruby script/check-reserved-names
+require File.expand_path("../cybertrain/ident", __dir__)
+
+source = File.read(File.expand_path("../cybertrain/model.rb", __dir__))
+names = []
+# Instance methods a column reader would redefine: `def save`, `def save!`
+# is not (a column cannot be called save!), nor are `def self.x` or
+# `def x=`.
+source.scan(/^\s*def\s+(?!self\.)([A-Za-z_][A-Za-z0-9_]*)\b(?![?!=])/) { |(m)| names << m }
+# attr_reader :id, :errors / attr_accessor / attr_writer: methods too.
+source.scan(/^\s*attr_(?:reader|accessor|writer)\s+((?::\w+\s*,?\s*)+)/) do |(list)|
+  list.scan(/:(\w+)/) { |(m)| names << m }
+end
+# Instance variables, from code only: full-line comments are skipped and an
+# inline ` # ...` tail is cut, so a `@name` mentioned in prose (or an e-mail
+# address) does not demand an entry; `@@class_vars` are not readers.
+source.each_line do |line|
+  next if line.lstrip.start_with?("#")
+
+  code = line.sub(/\s#\s.*/, "")
+  code.scan(/(?<![@\w])@([A-Za-z_][A-Za-z0-9_]*)/) { |(iv)| names << iv }
+end
+# Object's public instance methods (and BasicObject's hooks such as
+# method_missing), which every model has whether or not model.rb mentions
+# them: advisory only, see the header. `test`, `select` and the other private
+# Kernel methods are not demanded: the list carries the ones the model calls
+# on implicit self by hand.
+usable = ->(n) { Cybertrain::Ident.column?(n) && !Cybertrain::Ident.keyword?(n) && n != "id" }
+object_names = (Object.instance_methods + BasicObject.private_instance_methods).map(&:to_s).uniq.sort.select(&usable)
+names = names.uniq.sort.select(&usable)
+
+reserved = Cybertrain::Ident::RESERVED_COLUMN_NAMES
+shadowing = Cybertrain::Ident::SHADOWING_COLUMN_NAMES
+missing = names - reserved - shadowing
+advisory = object_names - names - reserved - shadowing
+# One home per name: a name in both lists, or a keyword in either, would be
+# reported by whichever check runs first and drift the next time one is
+# edited.
+twice = (reserved & shadowing) + ((reserved + shadowing) & Cybertrain::Ident::RUBY_KEYWORDS)
+advisory.each do |n|
+  warn "advisory: Object##{n} is in neither list; add it to SHADOWING_COLUMN_NAMES when convenient"
+end
+if missing.empty? && twice.empty?
+  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names)"
+else
+  unless missing.empty?
+    warn "check-reserved-names: cybertrain/model.rb defines #{missing.map(&:inspect).join(", ")} " \
+         "but neither Cybertrain::Ident::RESERVED_COLUMN_NAMES nor SHADOWING_COLUMN_NAMES (cybertrain/ident.rb) has them; add them"
+  end
+  warn "check-reserved-names: #{twice.map(&:inspect).join(", ")} listed twice (reserved, shadowing or keyword)" unless twice.empty?
+  exit 1
+end

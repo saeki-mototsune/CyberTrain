@@ -8,6 +8,7 @@ require "cybertrain/middleware"
 require "cybertrain/template/ast"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/dev/error_page"
+require "cybertrain/http/query"
 require "cybertrain/test"
 
 # Keep the error log out of the snapshot.
@@ -23,6 +24,7 @@ class Raiser < Cybertrain::Middleware
       raise Cybertrain::Template::SyntaxError, "posts/_form.html.erb:3: unterminated <% tag"
     end
     raise ArgumentError, "wrong number of arguments (given 1, expected 0)" if ctx.request.path == "/argument"
+    raise Cybertrain::QueryTooMany, "too many parameters (limit 4096)" if ctx.request.path == "/toomany"
     if ctx.request.path == "/download"
       # A send_data-style action that fails after setting its headers.
       ctx.response.redirect("/elsewhere")
@@ -87,6 +89,13 @@ test "an exception from the inner app becomes a 500 HTML page" do
   assert_includes res.body, "<h1>RuntimeError</h1>"
   assert_includes res.body, "boom &lt;b&gt;"
   assert res.body.index("boom <b>").nil?, "the message must be escaped"
+end
+
+test "parameters past Query's limits are a plain 400, not the diagnostics page" do
+  res = request(plain_app, "/toomany")
+  assert_equal 400, res.status
+  assert_equal "text/plain; charset=utf-8", res.header("Content-Type")
+  assert_equal "Bad Request: too many parameters (limit 4096)", res.body
 end
 
 test "the error page shows the request line" do
@@ -199,7 +208,7 @@ test "the rebuild command runs gen then build in the app root, logging to tmp/re
   r = Cybertrain::Dev::Rebuilder.new("/apps/my blog")
   assert_equal "/apps/my blog/tmp/rebuild.log", r.log_file
   assert_equal "/apps/my blog/build/bin/server", r.binary_path
-  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build server; } " \
+  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build 'server'; } " \
                "> '/apps/my blog/tmp/rebuild.log' 2>&1", r.command
   refute r.last_failed
   assert_equal "", r.last_output
@@ -280,6 +289,13 @@ test "a lock older than 30 minutes is stale even with a live PID: age wins over 
   refute File.exist?(lock)
   Dir.rmdir("#{root}/tmp")
   Dir.rmdir(root)
+end
+
+test "the rebuild command quotes the build target like every other interpolated value" do
+  assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog'; }"), "plain target is quoted"
+  tricky = Cybertrain::Dev::Rebuilder.new("/apps/blog", "it's").command
+  assert tricky.include?("spin build 'it'\\''s'; }"), "a single quote in the target is escaped"
+  assert tricky.index("spin build it's").nil?, "no unquoted target reaches sh"
 end
 
 test "shell_quote escapes single quotes" do

@@ -252,6 +252,64 @@ test "an unopenable path raises with SQLite's error message" do
   assert_includes message, "unable to open database file"
 end
 
+# Open file descriptors of this process, -1 where /proc/self/fd does not
+# exist (the leak check below then compares -1 with -1 and still passes).
+def open_fd_count
+  return -1 unless Dir.exist?("/proc/self/fd")
+  Dir.children("/proc/self/fd").size
+end
+
+# Connection.new opens fine on a file that is not a database; the first
+# PRAGMA is what fails ("file is not a database"). The half-built connection
+# is never returned, so initialize has to close its handle: a Pool slot in
+# quarantine reopens on every checkout, and a leak here is one descriptor
+# per request until EMFILE.
+def refused_by_pragma(path)
+  DB::Connection.new(path)
+  ""
+rescue DB::Error => e
+  e.message
+end
+
+test "a PRAGMA that fails in Connection.new closes the handle it opened" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/db_sqlite_not_a_database.txt"
+  File.write(path, "this is not a SQLite database file, just text " * 40)
+  message = refused_by_pragma(path)
+  assert_includes message, "file is not a database"
+  before = open_fd_count
+  20.times { refused_by_pragma(path) }
+  after = open_fd_count
+  File.delete(path)
+  assert_equal before, after
+end
+
+# Pool#initialize rescues a failed open, closes the slots already opened
+# and re-raises. A file that is not a database fails every slot at its first
+# PRAGMA, so here nothing is left to close: the test only exercises the
+# rescue path and checks the error and the descriptors. (Slot k > 0 failing
+# after slot 0 opened needs Connection.new stubbed; that was checked with a
+# throwaway CRuby script, 30 descriptors leaked without the rescue, none with.)
+def pool_refused(path)
+  DB::Pool.new(path, 4)
+  ""
+rescue DB::Error => e
+  e.message
+end
+
+test "a Pool that cannot open its connections raises and leaks no descriptor" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/db_sqlite_pool_not_a_database.txt"
+  File.write(path, "this is not a SQLite database file, just text " * 40)
+  message = pool_refused(path)
+  assert_includes message, "file is not a database"
+  before = open_fd_count
+  10.times { pool_refused(path) }
+  after = open_fd_count
+  File.delete(path)
+  assert_equal before, after
+end
+
 test "DB.with before DB.connect raises not connected" do
   refute DB.connected?
   # Caught by hand: DB.with inlined straight into an assert_raises block

@@ -1,0 +1,15 @@
+ok   a BEGIN left open inside a checkout is rolled back, and logged, when the connection comes back
+ok   a BEGIN run and rolled back by hand is a clean check-in: no warning
+ok   a logger that fails while check-in reports a leaked BEGIN is swallowed and the connection still goes back
+ok   a slot whose connection was closed is reopened on the next checkout
+ok   a closed :memory: connection is an error on the next checkout, never a fresh database
+ok   a pool that close_all shut down refuses every checkout instead of reopening
+ok   every in-memory or temporary spelling is a one-connection, non-reopenable pool
+ok   a private connection (any spelling) opens, works and is not put in WAL
+ok   two closed slots, one checked out and one queued, are both reopened and both closed by close_all
+ok   abandon_transaction! leaves a clean connection alone and says so
+ok   a StandardError rolls back, re-raises and leaves autocommit on
+ok   a normal completion commits
+ok   a nested transaction joins the outer one and an inner raise rolls everything back
+ok   a transaction after a normal or a raised one, and after abandon_transaction!, still commits
+14 tests, 65 assertions, 0 failures

@@ -1,6 +1,7 @@
 require "json"
 require "cybertrain/context"
 require "cybertrain/html"
+require "cybertrain/http/client_error"
 require "cybertrain/callback"
 require "cybertrain/views"
 require "cybertrain/template/helpers"
@@ -264,7 +265,13 @@ module Cybertrain
           default_render(action) unless performed?
           run_after_callbacks(action)
         end
-      rescue StandardError => e
+      rescue JSON::ParserError, StandardError => e
+        # JSON::ParserError named (NOTES rule 33: not a StandardError under
+        # Spinel) so an action's bad JSON.parse goes through
+        # rescue_with_handler like any other exception. A `rescue_from
+        # JSON::ParserError` handler fires under CRuby; under Spinel the
+        # constant cannot be referenced as a value (rule 48), so no app can
+        # register one there and the exception goes on to the error pages.
         rescue_with_handler(e)
       end
       nil
@@ -312,10 +319,18 @@ module Cybertrain
         end
         return nil
       end
-      # A missing or empty required parameter is the client's fault: answer
-      # 400 like Rails instead of letting it surface as a 500.
-      if class_name == "Cybertrain::Params::ParameterMissing"
-        render(plain: e.message, status: 400)
+      # A client fault raised inside an action (a missing required parameter;
+      # a Query.parse of its own past Query's limits) answers 400 with its
+      # message in plain text, like Rails' bad-request page, instead of
+      # surfacing as a 500. The decision is ClientError's, the same one the
+      # error pages use, by class name (NOTES rules 46, 47): comparing the
+      # full "Cybertrain::Params::ParameterMissing" here would miss under
+      # Spinel, where Class#name is the bare "ParameterMissing". Which
+      # headers survive is Response#client_error!'s policy; then performed!
+      # so the chain stops.
+      if ClientError.status_for(e) == 400
+        @response.client_error!(400, e.message)
+        @response.performed!
         return nil
       end
       raise e
