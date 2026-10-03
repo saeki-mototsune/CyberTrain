@@ -7,7 +7,7 @@
 #   CF_LIST  Cloudflare's IPv4 ranges, one per line        default /etc/cybertrain-play/cloudflare-ips-v4
 #            (from https://www.cloudflare.com/ips-v4, which has no final newline)
 #   LOCK_FILE  held for the whole run (runs never overlap)
-#              default /run/lock/cybertrain-play-firewall.lock
+#              default /run/cybertrain-play-firewall/lock (the unit's RuntimeDirectory)
 # It checks everything first: CF_LIST must hold at least one range and only
 # IPv4 ranges (a.b.c.d/n), POOL must be one, EXT_IF must name an interface of
 # this host, and Docker's DOCKER-USER chain must exist. Otherwise it changes
@@ -21,8 +21,12 @@ export LC_ALL=C
 fail() { echo "cybertrain-play-firewall: $*; nothing changed" >&2; exit 1; }
 
 # One run at a time: a second run waits for the first, so that two runs can
-# never both find the INPUT rule or the jump missing and both add it.
-LOCK_FILE=${LOCK_FILE:-/run/lock/cybertrain-play-firewall.lock}
+# never both find the INPUT rule or the jump missing and both add it. The
+# lock is in root's own directory, not in /run/lock, which every user can
+# write; the unit makes it, and a run by hand before the unit's first start
+# makes it here.
+LOCK_FILE=${LOCK_FILE:-/run/cybertrain-play-firewall/lock}
+mkdir -p "$(dirname "$LOCK_FILE")" 2> /dev/null
 { exec 9> "$LOCK_FILE"; } 2> /dev/null || fail "cannot open the lock file $LOCK_FILE"
 flock -w 60 9 || fail "another run still holds $LOCK_FILE after 60 s"
 

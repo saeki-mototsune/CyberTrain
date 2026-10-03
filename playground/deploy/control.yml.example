@@ -12,6 +12,7 @@
 #   kamal setup  -c playground/deploy/control.yml   # once, after the router
 #   kamal deploy -c playground/deploy/control.yml   # any time: live sessions keep running
 service: cybertrain-play
+# A package of <GHCR_OWNER>, the deploy account (registry below).
 image: <GHCR_OWNER>/cybertrain-play-control
 minimum_version: 2.12.0
 
@@ -23,6 +24,13 @@ servers:
     options:
       network-alias: ctplay-control
 
+# <GHCR_OWNER> is a GitHub account of its own that owns only the router's and
+# the control plane's images (playground/deploy/README.md, 1-4), not
+# saeki-mototsune, which owns the public session and Codespaces images. Kamal
+# logs in to GHCR on the VPS at every setup and deploy and leaves this token
+# (KAMAL_REGISTRY_PASSWORD) there: it must not be able to push those two. The
+# session image is public, and pre-deploy pulls it without saeki-mototsune's
+# credentials.
 registry:
   server: ghcr.io
   username: <GHCR_OWNER>

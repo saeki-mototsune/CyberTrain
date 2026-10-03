@@ -5,6 +5,7 @@
 #   kamal setup  -c playground/deploy/router.yml   # once, before the control plane
 #   kamal deploy -c playground/deploy/router.yml   # rarely: live editors reconnect (playground/deploy/README.md)
 service: cybertrain-play-router
+# A package of <GHCR_OWNER>, the deploy account (registry below).
 image: <GHCR_OWNER>/cybertrain-play-router
 minimum_version: 2.12.0
 
@@ -20,6 +21,17 @@ servers:
       # It spans the kamal network and every session network: it forwards
       # nothing at the IP level (spec §15, correction 6).
       sysctl: net.ipv4.ip_forward=0
+      # Every editor, every preview and the entry go through this one
+      # router: a flood of connections must cost a router restart (Kamal
+      # runs it with --restart unless-stopped), not the host's memory. Caddy
+      # idles at about 17 MiB with a dozen threads and stayed under 30 MiB and
+      # 17 threads in the end-to-end test; an idle connection held open
+      # costs it about 11 KB (16,000 held: 188 MiB, 18 threads). 512 MiB
+      # stops a flood at some 45,000 such connections; no swap, as for the
+      # sessions.
+      memory: 512m
+      memory-swap: 512m
+      pids-limit: 256
 
 proxy:
   hosts:
@@ -52,6 +64,11 @@ proxy:
     interval: 1
     timeout: 3
 
+# <GHCR_OWNER> is a GitHub account of its own that owns only the router's and
+# the control plane's images (playground/deploy/README.md, 1-4), not
+# saeki-mototsune, which owns the public session and Codespaces images. Kamal
+# logs in to GHCR on the VPS at every setup and deploy and leaves this token
+# (KAMAL_REGISTRY_PASSWORD) there: it must not be able to push those two.
 registry:
   server: ghcr.io
   username: <GHCR_OWNER>
