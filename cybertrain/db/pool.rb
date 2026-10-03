@@ -156,7 +156,9 @@ module Cybertrain
       # closed the list without it, so `fresh` is closed here (its WAL and shm
       # locks would otherwise never be released) and the checkout fails. The
       # flag, not a raise inside the block, since a non-local exit from a
-      # block is not safe under Spinel (rule 44).
+      # block is not safe under Spinel (rule 44). A Connection.new that fails
+      # after the open (a PRAGMA) closes its own handle, so a disk fault that
+      # keeps failing here leaks nothing per checkout.
       def reopen(closed)
         raise Error, "pool closed" if @closed
         unless @reopenable

@@ -222,4 +222,23 @@ test "QueryMalformed (an undecodable percent-escape) is a client fault: 400, not
   assert_equal 500, Cybertrain::ClientError.status(ArgumentError.new("the app's own"))
 end
 
+# Which rescue clause a malformed escape lands in, as a plain method with one
+# begin/rescue and no block (NOTES rule 32; rule 47: clauses, not is_a?). It
+# used to be the decoder's ArgumentError under CRuby; it is QueryInvalid now
+# on both runtimes (README "Differences from Rails").
+def malformed_rescued_by(text)
+  Cybertrain::Query.parse(text)
+  "none"
+rescue ArgumentError
+  "ArgumentError"
+rescue Cybertrain::QueryInvalid
+  "QueryInvalid"
+end
+
+test "a malformed escape is rescued as QueryInvalid, not ArgumentError (upgrade note)" do
+  assert_equal "QueryInvalid", malformed_rescued_by("a=%zz")
+  assert_equal "QueryInvalid", malformed_rescued_by("a%=1")
+  assert_equal "none", malformed_rescued_by("a=%41")
+end
+
 Cybertrain::Test.run!

@@ -5,4 +5,6 @@ ok   two partials rendering each other raise too
 ok   the interpreter is usable again after the error
 ok   a 10-level chain renders fine
 ok   the limit is 12 nested renders, page included
-7 tests, 26 assertions, 0 failures
+ok   the arithmetic: the page is depth 1, a chain of 11 partials fits and 12 does not
+ok   the layout does not add a level: it renders after the page, at depth 1
+9 tests, 31 assertions, 0 failures

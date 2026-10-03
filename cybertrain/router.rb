@@ -154,16 +154,16 @@ module Cybertrain
     # Later sources win: query string, then the form body, then the route.
     # The Router is the LAST consumer of the Request's parse caches
     # (MethodOverride and CsrfProtection run before it and only read one key
-    # each), so it takes the cached query tree itself as the request's params
-    # instead of copying both trees (a copy is a second full tree build per
-    # request: up to 4096 pairs x 32 levels). After routing, ctx.params IS
-    # request.query_params, the same object, with the form tree merged in
-    # (merge! reads the form tree and does not change it) and the route
-    # captures set on top: nothing may rely on request.query_params being
-    # pristine once the Router has run, and nothing in cybertrain/ reads it
-    # afterwards.
+    # each), so it TAKES the cached query tree (Request#take_query_params)
+    # as the request's params instead of copying both trees (a copy is a
+    # second full tree build per request: up to 4096 pairs x 32 levels). The
+    # take clears the cache, so ctx.params is the only holder of that
+    # object: the form tree is merged into it (merge! reads the form tree
+    # and does not change it) and the route captures set on top, and a later
+    # request.query_params is a fresh, pristine parse that never carries the
+    # form, `_method`, `authenticity_token` or the captures.
     def assemble_params(request, captured)
-      params = request.query_params
+      params = request.take_query_params
       params.merge!(request.form_params) if request.form?
       # NOTE(Spinel): not `captured.each { |k, v| ... }` -- captured comes from
       # the nullable Route#match, and with a user-defined #to_s in the program

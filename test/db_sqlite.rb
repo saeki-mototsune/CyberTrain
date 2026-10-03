@@ -252,6 +252,38 @@ test "an unopenable path raises with SQLite's error message" do
   assert_includes message, "unable to open database file"
 end
 
+# Open file descriptors of this process, -1 where /proc/self/fd does not
+# exist (the leak check below then compares -1 with -1 and still passes).
+def open_fd_count
+  return -1 unless Dir.exist?("/proc/self/fd")
+  Dir.children("/proc/self/fd").size
+end
+
+# Connection.new opens fine on a file that is not a database; the first
+# PRAGMA is what fails ("file is not a database"). The half-built connection
+# is never returned, so initialize has to close its handle: a Pool slot in
+# quarantine reopens on every checkout, and a leak here is one descriptor
+# per request until EMFILE.
+def refused_by_pragma(path)
+  DB::Connection.new(path)
+  ""
+rescue DB::Error => e
+  e.message
+end
+
+test "a PRAGMA that fails in Connection.new closes the handle it opened" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/db_sqlite_not_a_database.txt"
+  File.write(path, "this is not a SQLite database file, just text " * 40)
+  message = refused_by_pragma(path)
+  assert_includes message, "file is not a database"
+  before = open_fd_count
+  20.times { refused_by_pragma(path) }
+  after = open_fd_count
+  File.delete(path)
+  assert_equal before, after
+end
+
 test "DB.with before DB.connect raises not connected" do
   refute DB.connected?
   # Caught by hand: DB.with inlined straight into an assert_raises block

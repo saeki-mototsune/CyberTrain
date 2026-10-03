@@ -484,7 +484,7 @@ compiler output on every HTML response. None of this loads in production.
 | Any column name; an association can shadow `errors` | A column name must be an ASCII identifier (`[A-Za-z_][A-Za-z0-9_]*`): a schema with a non-ASCII column name (`名前`, `prénom`) generated under CRuby before PR #10 and `spin run gen` refuses it now, so rename the column when upgrading (a name like `first-name` was never a method name). A column named like a method the generated class or the framework calls on a record (`errors`, `save`, `attributes`, `hash`, `to_s`, `to_ary`, `raise`, ...) or like a Ruby keyword (`end`, `class`, `begin`) generates under `<column>_column` (`hash_column`, reader, writer and ivar) with a note in the generated file; its SQL name keeps working in `read_attribute`, params and `attributes["hash"]`, and a template reaches it under either name (`post.hash`, `post.hash_column`), except `errors` and `to_param`, which a template resolves as the model methods, so use `post.errors_column` there; the query API (`where`, `order`, `find_by`) always takes the SQL column name (`Post.where(hash: 1)`), the Ruby name being the reader/writer and the template name only. A column named like another Object method (`display`, `tap`, `methods`) generates under its own name with a note. `cybertrain generate scaffold` refuses all three kinds (keywords, reserved and shadowing names), since it invents the names. An association whose plain name a column, another association or a `Model` method already owns is emitted under a fallback name with a comment in the generated file: `<table>_as_<column stem>` for a `has_many` (`comments_as_article`), `<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`) |
 | `namespace`, format/`respond_to`, `constraints`, `mount` | Not implemented — flat names, `render json:` only |
 | `rescue StandardError` catches a bad `JSON.parse` | Under Spinel `JSON::ParserError` is not a `StandardError`: app code must `rescue JSON::ParserError, StandardError`. The server catches it as a last resort and answers 500 |
-| `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` takes only `column [ASC\|DESC]` lists (each column quoted) and raises on anything else; raw ORDER BY text goes through `order_sql` (`Post.order_sql("lower(title)")`, also on a relation), which must never see request data. A `limit`/`offset` on `delete_all` is honoured (a subselect), and request parameters nest at most 32 levels / 4096 pairs (400 past that) |
+| `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` takes only `column [ASC\|DESC]` lists (each column quoted) and raises on anything else; raw ORDER BY text goes through `order_sql` (`Post.order_sql("lower(title)")`, also on a relation), which must never see request data. A `limit`/`offset` on `delete_all` is honoured (a subselect), and request parameters nest at most 32 levels / 4096 pairs (400 past that). `Query.parse`, `Query.decode`, `request.query_params` and `request.form_params` raise `Cybertrain::QueryMalformed` (a `StandardError` under `Cybertrain::QueryInvalid`, not an `ArgumentError`) on a malformed percent-escape, on both runtimes (`Cookies.parse` still keeps the raw value), so app code that rescued `ArgumentError` around them should rescue `Cybertrain::QueryInvalid` instead (upgrade note) |
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
@@ -518,10 +518,11 @@ Other attributes with fixed, overridable defaults: `host` (`"127.0.0.1"`),
 `session_max_age` (2 weeks), `session_secure` (`true` in production, which
 marks the session cookie `Secure`; `false` elsewhere), `pool_size` (4),
 `static_files`/`csrf` (`true`), `max_render_depth` (12 renders open at once:
-page, layout and partials; raise it for partials that legitimately recurse
+the page and its partials; raise it for partials that legitimately recurse
 deeper; it must be at least 1, or boot fails). Upgrade note: render nesting,
-unlimited before, is now capped at 12 by default (the page and layout count,
-so about 10 partial levels), and an app with a deeper tree (threaded
+unlimited before, is now capped at 12 by default (the page is depth 1, so
+partials can nest 11 levels; the layout renders after the page and does not
+nest), and an app with a deeper tree (threaded
 comments, a category menu) gets a template error until it sets
 `max_render_depth`.
 

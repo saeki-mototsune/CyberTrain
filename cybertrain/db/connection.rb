@@ -36,9 +36,23 @@ module Cybertrain
         # busy_timeout first: switching to WAL takes a lock that another
         # connection opening the same file may hold, and without a timeout
         # that PRAGMA fails immediately with SQLITE_BUSY.
-        exec_script("PRAGMA busy_timeout=5000")
-        exec_script("PRAGMA journal_mode=WAL") unless path == ":memory:"
-        exec_script("PRAGMA foreign_keys=ON")
+        #
+        # The open above succeeded, so a PRAGMA that raises (SQLITE_BUSY or
+        # IOERR on the WAL switch, a file that is not a database) must close
+        # the handle before the error leaves: the caller never receives the
+        # object, so nobody else can. A Pool slot in quarantine reopens on
+        # every checkout (Pool#reopen), and a handle leaked per request is a
+        # file descriptor and a WAL/shm lock per request until EMFILE. A
+        # rescue, not an ensure, as everywhere in this file (NOTES rules 33,
+        # 50); `close` is the same path a user close takes.
+        begin
+          exec_script("PRAGMA busy_timeout=5000")
+          exec_script("PRAGMA journal_mode=WAL") unless path == ":memory:"
+          exec_script("PRAGMA foreign_keys=ON")
+        rescue JSON::ParserError, StandardError => e
+          close
+          raise e
+        end
       end
 
       # Runs one statement with positional `?` binds and returns its rows as

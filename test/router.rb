@@ -163,17 +163,34 @@ test "params assembly order is query < form < route" do
   assert_equal ["7 f q hi"], seen
 end
 
-test "the Router takes the cached query tree as ctx.params and merges the form and the route into it" do
+test "the Router takes the cached query tree as ctx.params; request.query_params afterwards is a pristine re-parse" do
   router = Cybertrain::Router.new
   seen = []
   router.post("/items/:id") do |c|
-    seen << c.params.equal?(c.request.query_params)
     seen << c.params[:q].to_s
+    seen << c.params[:f].to_s
   end
   form = { "content-type" => "application/x-www-form-urlencoded" }
-  ctx = dispatch(router, "POST", "/items/7?q=1", "f=2", form)
-  assert_equal [true, "1"], seen
-  assert ctx.params.equal?(ctx.request.query_params)
+  ctx = dispatch(router, "POST", "/items/7?q=1", "f=2&_method=put&authenticity_token=tok&post[title]=hi", form)
+  assert_equal ["1", "2"], seen
+  assert_equal "7", ctx.params[:id]
+  assert_equal "put", ctx.params[:_method]
+  assert_equal "tok", ctx.params[:authenticity_token]
+  assert_equal "hi", ctx.params.nested(:post)[:title]
+  # a pagination helper reading the query string after routing sees the
+  # (Symbol keys throughout this program: see NOTES rule 51)
+  # query keys alone: no form field, _method, token or route capture
+  q = ctx.request.query_params
+  assert !q.equal?(ctx.params)
+  assert_equal "1", q[:q]
+  assert !q.key?(:f)
+  assert !q.key?(:_method)
+  assert !q.key?(:authenticity_token)
+  assert !q.key?(:post)
+  assert !q.key?(:id)
+  # and writing to ctx.params later does not reach it
+  ctx.params.set_value(:page, "9")
+  assert !ctx.request.query_params.key?(:page)
   # the form cache is read, never changed
   assert_equal "2", ctx.request.form_params["f"]
   assert !ctx.request.form_params.key?("id")

@@ -57,6 +57,14 @@ test "decode handles runs of escapes, '+', and non-ASCII text between them" do
   assert_raises("QueryMalformed") { Cybertrain::Query.decode("\u00e9%4") }
 end
 
+test "decode_escapes raises QueryMalformed on a percent sign without two bytes after it instead of looping" do
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%4", false) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%41%4", true) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%", true) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("a+b%", true) }
+  assert_equal "A", Cybertrain::Query.decode_escapes("%41", true)
+end
+
 test "valid_escapes? wants two hex digits after every percent sign" do
   assert Cybertrain::Query.valid_escapes?("")
   assert Cybertrain::Query.valid_escapes?("plain text")

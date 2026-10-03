@@ -15,8 +15,9 @@ ok   SELECT name, sql FROM sqlite_master
 ok   close marks the connection closed
 ok   a closed connection raises instead of touching the freed handle
 ok   an unopenable path raises with SQLite's error message
+ok   a PRAGMA that fails in Connection.new closes the handle it opened
 ok   DB.with before DB.connect raises not connected
 ok   DB.connect(":memory:") shares one database across DB.with calls
 ok   pool: 8 threads x 100 inserts through DB.with
 ok   DB.connect, DB.with and DB.disconnect
-21 tests, 86 assertions, 0 failures
+22 tests, 88 assertions, 0 failures

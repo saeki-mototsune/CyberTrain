@@ -67,9 +67,9 @@ module Cybertrain
         name
       end
 
-      # The build path's own check (cybertrain/cli.rb before the toolchain is
-      # touched, and run before any spin command): a name that collides with
-      # a dist/ entry only matters to assemble. Returns nil.
+      # The build path's check, made once in CLI.build_app before the
+      # toolchain is touched (Build.run does not repeat it): a name that
+      # collides with a dist/ entry only matters to assemble. Returns nil.
       def self.require_dist_name!(name)
         problem = dist_name_problem(name)
         raise InvalidArgument, "spin.toml [package] name '#{name}' #{problem}" unless problem.empty?
@@ -148,8 +148,9 @@ module Cybertrain
       end
 
       # Runs the build in root and assembles dist/. Returns the exit code.
+      # name must already have passed require_dist_name!: CLI.build_app checks
+      # it once, before the toolchain is fetched.
       def self.run(root, name, runner = Runner.new)
-        require_dist_name!(name)
         steps = commands(name)
         ok = false
         restored = false

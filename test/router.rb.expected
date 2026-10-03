@@ -15,7 +15,7 @@ ok   Route#path raises ArgumentError when a segment is missing
 ok   Route#match returns captures or nil
 ok   unmatched request gets a plain-text 404
 ok   params assembly order is query < form < route
-ok   the Router takes the cached query tree as ctx.params and merges the form and the route into it
+ok   the Router takes the cached query tree as ctx.params; request.query_params afterwards is a pristine re-parse
 ok   form body is ignored unless the request is a form
 ok   route params and escaped output work in one program
-20 tests, 65 assertions, 0 failures
+20 tests, 76 assertions, 0 failures

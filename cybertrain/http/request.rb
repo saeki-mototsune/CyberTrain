@@ -118,12 +118,16 @@ module Cybertrain
     # not three times. A parse that raises (QueryTooMany, QueryMalformed, ...)
     # is not cached: it propagates and the request ends as a 400. The
     # middleware only read it (one key each) and run before the Router; the
-    # Router is the last consumer and takes this very tree as ctx.params
-    # (merging the form and the route params into it) rather than building a
-    # second one, so once the Router has run the cached query tree IS
-    # ctx.params, and nothing may rely on it being pristine after that.
-    # The cache ivars start as nil and are assigned from a method's
-    # result, as a nullable ivar must be (NOTES rule 7).
+    # Router is the last consumer and TAKES the tree (take_query_params) as
+    # ctx.params, merging the form and the route params into it, so the
+    # common request builds one tree. That take clears the cache: a reader
+    # after routing (a pagination helper rebuilding the current query
+    # string, say) pays one more parse of the query string only, and gets a
+    # fresh tree with the query keys alone, never form fields, `_method`,
+    # `authenticity_token` or route captures (a POST to /posts/5?page=2
+    # would otherwise hand back {page, id, authenticity_token, ...} to be
+    # encoded into a URL). The cache ivars start as nil and are assigned
+    # from a method's result, as a nullable ivar must be (NOTES rule 7).
     def query_params
       cached = @query_params_cache
       return cached unless cached.nil?
@@ -131,6 +135,20 @@ module Cybertrain
       parsed = Query.parse(@query_string)
       @query_params_cache = parsed
       parsed
+    end
+
+    # The Router's entry: the cached query tree (built now if nothing read
+    # it yet), with the cache CLEARED, so the caller owns that object and
+    # may merge into and write to it (it becomes ctx.params). The next
+    # #query_params re-parses the query string into a different, pristine
+    # tree. A cheap, rare path (the query string is bounded by the Query
+    # limits and only a post-routing reader pays it), in exchange for no
+    # second build on the common request. Takes the tree out through a local
+    # and assigns the nil from a plain method body (NOTES rule 7).
+    def take_query_params
+      taken = query_params
+      @query_params_cache = nil
+      taken
     end
 
     # The body parsed into Params, once per request (see #query_params). Only

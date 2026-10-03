@@ -175,13 +175,17 @@ class FakeRunner < Cybertrain::CLI::Build::Runner
   end
 end
 
-test "Build.run refuses a name that collides with dist/ before any step runs or the lock is taken" do
+# The name check lives in CLI.build_app alone (Build.run assumes a validated
+# name), ahead of Toolchain.ensure!: a refused name returns 1 before any
+# toolchain is fetched, any step runs or the lock is taken.
+test "cybertrain build refuses a name that collides with dist/ before the toolchain, any step or the lock" do
   ["tmp", "Public", ".hidden"].each do |name|
-    runner = FakeRunner.new("")
-    assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.run(".", name, runner) }
-    assert_equal 0, runner.log.size
+    File.write("spin.toml", "[package]\nname = \"#{name}\"\n")
+    assert_equal 1, Cybertrain::CLI.run(["build"])
     refute File.exist?("tmp/cybertrain-build.lock")
+    refute File.exist?("dist")
   end
+  File.write("spin.toml", "[package]\nname = \"blog\"\n")
 end
 
 test "build runs the three steps under tmp/cybertrain-build.lock, then assembles dist/" do

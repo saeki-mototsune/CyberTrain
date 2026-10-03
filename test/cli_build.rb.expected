@@ -14,7 +14,10 @@ error: PORT must be a number
 ok   server rejects a PORT that is not a number
 error: unexpected argument 'extra'
 ok   server rejects anything after PORT
-ok   Build.run refuses a name that collides with dist/ before any step runs or the lock is taken
+error: spin.toml [package] name 'tmp' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
+error: spin.toml [package] name 'Public' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
+error: spin.toml [package] name '.hidden' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
+ok   cybertrain build refuses a name that collides with dist/ before the toolchain, any step or the lock
 
 dist/blog       (production by default)
 dist/public/

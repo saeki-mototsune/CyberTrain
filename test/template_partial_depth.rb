@@ -105,8 +105,33 @@ test "the limit is 12 nested renders, page included" do
   assert msg.include?("partial nesting too deep (> 12): d/_down.html.erb")
 end
 
+test "the arithmetic: the page is depth 1, a chain of 11 partials fits and 12 does not" do
+  # n counts down to 0, so n: 10 is 11 nested partials below the page.
+  assert_equal "10,9,8,7,6,5,4,3,2,1,0", render_src("<%= render 'down', n: 10 %>")
+  # n: 11 is 12 nested partials: the 12th would be the 13th open render.
+  msg = assert_raises("RuntimeError") { render_src("<%= render 'down', n: 11 %>") }
+  assert msg.include?("partial nesting too deep (> 12): d/_down.html.erb rendered from d/_down.html.erb")
+end
+
+test "the layout does not add a level: it renders after the page, at depth 1" do
+  put("lay.html.erb", "[<%= yield %>|<%= render 'down', n: 10 %>]")
+  put("pg.html.erb", "<%= render 'down', n: 10 %>")
+  put("pg_deep.html.erb", "<%= render 'down', n: 11 %>")
+  env = {}
+  env["__template_dir"] = "d"
+  env["n"] = 0
+  engine = Cybertrain::Template::Engine.new(ROOT)
+  chain = "10,9,8,7,6,5,4,3,2,1,0"
+  # Page and layout each carry the full 11-partial chain: had the layout
+  # nested inside the page's render, its chain would exceed the limit.
+  html = engine.render_with_layout("d/pg", "d/lay", env, Cybertrain::Template::Helpers.new(nil))
+  assert_equal "[#{chain}|#{chain}]", html
+  # The page's own limit is unchanged by having a layout.
+  assert_raises("RuntimeError") { engine.render_with_layout("d/pg_deep", "d/lay", env, Cybertrain::Template::Helpers.new(nil)) }
+end
+
 Cybertrain::Test.run!
 
-%w[_loop _ping _pong _down].each { |f| File.delete(File.join(ROOT, "d", "#{f}.html.erb")) }
+%w[_loop _ping _pong _down lay pg pg_deep].each { |f| File.delete(File.join(ROOT, "d", "#{f}.html.erb")) }
 Dir.rmdir(File.join(ROOT, "d"))
 Dir.rmdir(ROOT)

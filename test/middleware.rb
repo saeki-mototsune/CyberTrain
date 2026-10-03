@@ -174,11 +174,15 @@ test "MethodOverride and the Router share one parse of the form body" do
   assert_equal "DELETE 1", ctx.response.body
   assert ctx.request.form_params.equal?(ctx.request.form_params)
   assert_equal "delete", ctx.request.form_params["_method"]
-  # the Router is the last consumer: it takes the cached query tree itself as
-  # ctx.params (the same object), merges the form into it and leaves the form
-  # cache as it was
-  assert ctx.params.equal?(ctx.request.query_params)
+  # the Router is the last consumer: it takes the cached query tree as
+  # ctx.params (merges the form into it) and leaves the form cache as it was;
+  # a reader after routing gets a fresh, pristine query tree, not ctx.params
+  assert !ctx.params.equal?(ctx.request.query_params)
   assert !ctx.params.equal?(ctx.request.form_params)
+  after = ctx.request.query_params
+  assert_equal "1", after["q"]
+  assert !after.key?("_method")
+  assert !after.key?("id")
   assert_equal "1", ctx.params["q"]
   assert_equal "delete", ctx.params["_method"]
   assert_equal "1", ctx.params["id"]

@@ -163,8 +163,9 @@ module Cybertrain
       yield name
     end
 
-    # `cybertrain build`: the dist/ name check comes before the toolchain is
-    # fetched or any spin command runs (Build.run repeats it for its callers).
+    # `cybertrain build`: the one dist/ name check, made before the toolchain
+    # is fetched or any spin command runs; Build.run assumes a name that got
+    # past it.
     def self.build_app(name)
       Build.require_dist_name!(name)
       Toolchain.ensure! ? Build.run(".", name) : 1

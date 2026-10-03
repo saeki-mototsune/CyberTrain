@@ -222,6 +222,15 @@ finds the commit that removed them).
     rescue clause had set it, on the nested-transaction tests (2026.09.12).
     Rule 45 again: no ensure in a yielding method; a CRuby break/return out of
     such a block therefore cannot be detected there.
+51. Calling one method with both Symbol and String keys in one program
+    mis-dispatches the `key.to_s` inside it under Spinel: test/router.rb's
+    "params assembly order" test (Symbol keys into Params#[]/#nested/#key?)
+    raised `TypeError: no implicit conversion of Symbol into String` as soon
+    as another test in the same program used String keys
+    (`ctx.params["id"]`, `q.key?("f")`) on the same methods; each shape
+    passed alone (2026.09.12). Keep one key type per program in tests
+    (Symbols, as the framework's own callers do), and treat a polymorphic
+    key parameter as rule 29 territory.
 
 ## Numbers worth remembering
 

@@ -47,7 +47,8 @@ module Cybertrain
     class Interpreter
       # max_depth: Views.configure(root, max_render_depth: n) for an app whose
       # partials legitimately recurse (threaded comments, a tree menu) past
-      # the default; the page and the layout count as renders too. The
+      # the default; the page is depth 1 (the layout renders after the page
+      # has returned, so it never nests on top of it). The
       # default is Template::MAX_RENDER_DEPTH (template/limits.rb, where the
       # reasoning for 12 lives), the one name the limit has: written bare
       # here and in Engine because `Template::` inside module

@@ -35,7 +35,8 @@ module Cybertrain
       @secret_key_base = ENV["CYBERTRAIN_SECRET_KEY_BASE"] || ""
       @secret_key_path = "tmp/secret_key"
       @views_root = "app/views"
-      # Renders open at once (page, layout, partials) before a template error.
+      # Renders open at once (the page and its partials; the layout renders after
+      # the page and does not nest) before a template error.
       # The constant itself, not a copy of its value: Views.configure always
       # receives this, so a literal here would override a changed
       # Template::MAX_RENDER_DEPTH for every real app. Raise it

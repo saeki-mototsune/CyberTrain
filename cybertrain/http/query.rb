@@ -31,7 +31,14 @@ module Cybertrain
   # string or form body (Cookies keep such a value raw instead). Query.decode
   # finds it with its own byte scanner, not the decoder's ArgumentError
   # (CRuby only: Spinel decodes it leniently, to a NUL byte, NOTES rule 28),
-  # so it is raised the same way on both runtimes.
+  # so it is raised the same way on both runtimes. A StandardError under
+  # QueryInvalid, NOT an ArgumentError (the class the decoder used to raise
+  # under CRuby): app code that rescued ArgumentError around Query.parse,
+  # Query.decode or request.form_params must rescue Cybertrain::QueryInvalid
+  # instead (README "Differences from Rails"). The hierarchy stays as it is:
+  # an ArgumentError superclass for a user class is unverified under Spinel,
+  # and Query.decode's own `rescue ArgumentError` net would then catch this
+  # raise too.
   class QueryMalformed < QueryInvalid
   end
 
@@ -153,6 +160,15 @@ module Cybertrain
           while j + 2 < n && text.getbyte(j) == 37
             j += 3
           end
+          # A guard, not a path: both callers run valid_escapes? first, so
+          # every "%" here has two bytes after it. This method is public,
+          # though, and without the guard a "%" with fewer than two following
+          # bytes consumed nothing (j == pct), pos stayed put and next_byte
+          # found the same "%" again: an endless loop on ("%4", false). An
+          # escape that is not two hex digits is malformed input, the same
+          # QueryMalformed decode raises (no rescue needed: a plain raise,
+          # NOTES rule 32).
+          raise QueryMalformed, "malformed percent-encoding in request parameters" if j == pct
           out << URI.decode_www_form_component(text.byteslice(pct, j - pct).to_s)
           pos = j
           pct = next_byte(text, "%", pos)
