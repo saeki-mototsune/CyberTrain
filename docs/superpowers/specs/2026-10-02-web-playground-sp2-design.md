@@ -8,6 +8,8 @@ code-server のスパイクのメモは途中の版で、頼るのは計測済�
 SP1 の spec（`docs/superpowers/specs/2026-10-02-web-playground-sp1-design.md`、特に §4.6 の約束と §14 の実装後の差分）と
 SP1 の実装、spinel scope の公開部分（`config/deploy.yml` は読んでいない）。
 
+> **2026-10-03 の注記**: 実装は終わり、§15 と §16（実装後の実態）が本文に優先する。デプロイと運用の手順は本文の §7 ではなく、実装後の実態に合わせた `playground/deploy/README.md`（運用ガイド）に従うこと。本文の §7.4〜§7.6、§7.11、§7.12 のコマンドや設定の全文には、そのまま使うと最初のデプロイが失敗する・ホストが無防備になる記述が残っている（§16.5 に一覧）。
+
 事実の出どころの印:
 
 - **[計測]** スパイクか SP1 の実装で測った値（Apple M5 上の Docker Desktop、linux/arm64。x86 の VPS では未計測）。
@@ -422,6 +424,8 @@ CMD []
 - アプリケーションの範囲の設定（`task.allowAutomaticTasks` など）はユーザー設定にしか置けない [計測]。
 
 ### 4.4 `playground/web/settings.json`（全文）
+
+> §16.2 が優先: 実装では `workbench.editorAssociations` の 2 行を外し（ガイドはテキスト表示。整形表示だとプレビューが上に重なる）、`"window.restoreWindows": "preserve"` を足した（再読み込みでプレビューが戻るため）。
 
 ```jsonc
 // code-server's User settings in the hosted playground (playground-web
@@ -1520,6 +1524,8 @@ ssh:
 
 ### 7.4 秘密、フック、セッションのイメージ
 
+> §16.5 が優先: `.kamal/secrets` の `$(cat "${PLAY_ORIGIN_CERT:-/dev/null}")` の形は Kamal 2.12 の解釈で証明書が空になる（実装は `$(test -n "$VAR" && cat "$VAR")`）。ロールバックは古いイメージを**今の設定**で起動するので、セッションのイメージは巻き戻らない（`PLAY_SESSION_IMAGE_REF` で指定する）。フックは `pre-build`（ツリーの検査）、`pre-deploy`（ロールバックでも取得、プールの一致、証明書の確認、参照の検証）、`post-deploy`（固定したイメージは消さない）に変わった。
+
 **イメージの作り方（本 spec での決定、先例からの変更）**: spinel scope は pre-deploy フックでサンドボックスの
 イメージを手元で作っている。このイメージは Spinel とブログのビルド（コンパイル 3 回）を含み、arm64 の Mac で
 amd64 をエミュレーションすると数十分かかる [推論]。そこで CI（amd64 のランナーで本物のビルド）がテスト済みの
@@ -1614,6 +1620,8 @@ done
 
 ### 7.5 ホストのファイアウォール
 
+> §16.5 が優先: 本文のスクリプトは Cloudflare の一覧の最終行（改行なし）を落とし、iptables の失敗を見ず、途中で止まると 80/443 が開いたままになる。実装は適用前に検証し、`iptables-restore -w --noflush` の 1 トランザクションで適用し、`flock` を取り、失敗は非ゼロで終わる。ユニットは `Restart=on-failure`、`RestartSec=10`、`WantedBy=multi-user.target docker.service`。
+
 `playground/deploy/host/cybertrain-play-firewall`（全文、VPS の `/usr/local/sbin/` に置く）:
 
 ```bash
@@ -1697,6 +1705,8 @@ WantedBy=multi-user.target
 - Ubuntu 24.04 の `iptables` は nft の裏側で動き、Docker の連鎖と同じ表を見る [推論]。
 
 ### 7.6 オペレーターの初回手順（チェックリスト）
+
+> §16.5 が優先: 手順 5 の `kamal setup` は sudo の無い `deploy` では Docker を入れられない。手順 6 の `curl | tee` は一時ファイルに落として検証してから置く。手順 10 の個人のトークンは、公開イメージを push できないデプロイ専用の GitHub アカウントのトークンに替える。ホストのパッチ運用（unattended-upgrades、再起動の方針、docker-ce / containerd.io の更新）が要る。実際の手順は運用ガイドの第 1〜4 部。
 
 1. **ドメインを買う**（オーナー）。Public Suffix List に載っていない登録可能ドメイン（例えば新しい `.dev`）。
    `mototsune.dev` の下は使わない（オーナーの決定）。
@@ -1801,6 +1811,8 @@ WantedBy=multi-user.target
 
 ### 7.11 不正利用の手順書
 
+> §16.5 が優先: 攻撃時の WAF 規則は `/status.json` を除く（稼働監視が 30 分ごとに落ちる）。ルーターへの接続の洪水の行、`playctl kill-all` の待ち、ロールバックの注意が運用ガイドの第 7 部にある。
+
 | 兆候 | すること |
 | --- | --- |
 | CPU を使い続けるセッション（`suspect` の行、`playctl status`） | `playctl status` でハンドルとアドレス → `playctl end <handle>`。繰り返すなら Cloudflare の Security → WAF → Tools の IP Access Rules でそのアドレスを Block |
@@ -1813,6 +1825,8 @@ WantedBy=multi-user.target
 停止スイッチのコマンドは §5.9。制御面が動かないときは同じ節の生の Docker コマンド。
 
 ### 7.12 gVisor の計測と切り替え
+
+> §16.5 が優先: イメージに `/usr/bin/time` は無い。bash の `time` で測る（手元の runc は 39.9 s）。目標は同じ VPS の runc の値の 1.5 倍以内。
 
 1. VPS で: gVisor の apt リポジトリを足して `apt-get install runsc`、`sudo runsc install`、
    `sudo systemctl reload docker`（再起動ではないので動いているコンテナは止まらない [文書]）。
@@ -2444,3 +2458,254 @@ VPS とドメインでしか確かめられないもの（§7.7、§8.6）:
 Docker Desktop では確かめられず VPS で確かめるもの: セッションからホストの実サービスへの到達と §7.5 の規則、
 事業者のメタデータと私設網、デーモンが IPv6 を有効にしている場合の IPv6、実際のリゾルバへの転送、kamal-proxy と
 Cloudflare の経路（V12〜V16。切れた経路の接続はそこでは 504 / 524 として見える）、`runsc` の下でのこの節の全項目。
+
+## 16. 実装後の実態（2026-10-03）
+
+plan（`docs/superpowers/plans/2026-10-02-web-playground-sp2.md`）の 12 タスクを、タスクごとのレビューと合わせて
+ブランチ `web-playground-sp2` で終え（`53acca1..ed01fcb`）、ブランチ全体のレビューと 1 回の修正を経た時点の記録。
+出どころは plan の注記（"Correction:" と "As built"）、作業台帳（`.superpowers/sdd/2026-10-02-web-playground-sp2/progress.md`、
+リポジトリに入れない）の裁定、最終レビューと再レビューの報告、コード。報告とコードが食い違えばコードに合わせた。
+この節は §15 を含む本文の該当箇所に優先する。下の変更はどれも plan の訂正か、タスクと最終レビューの裁定で決めた
+もので、各行に上書きする本文の節と理由を書いた。この節の [計測] は SP2 の実装の実行で測った値（Apple M5、
+Docker Desktop 29.7.2、linux/arm64。x86 の VPS では未計測のまま）。
+
+### 16.1 要約
+
+作ったもの: §1.1 の 1〜5 と、6 の入口を当てていないパッチ（`playground/deploy/launch.patch`）。§10 に無いファイルは
+`playground/router/entrypoint.sh`、`playground/control/config/puma.rb`、`lib/play/{guard,ctl}.rb`、`hooks/pre-build`、`launch.patch`。
+
+| 検査 | 結果 [計測] | 時間 |
+| --- | --- | --- |
+| 制御面の単体テスト（minitest） | `143 runs, 773 assertions, 0 failures` | 1 s 未満 |
+| web イメージのスモーク W1〜W13（§8.3） | 13/13 | 83 s |
+| SP1 のスモーク | 29/29 | 125 s |
+| ルーターの検査 R1〜R13（使い捨て、リポジトリの外） | 13/13 | 9 s |
+| 全体の E2E E1〜E19（§8.4） | 19/19 | 196〜198 s |
+| デプロイの検査 D1〜D10（使い捨て。Kamal 2.12.0 自身で設定と秘密を読む） | 10/10 | 6〜7 s |
+| 文書の検査 K1〜K8、CI の検査（どちらも使い捨て） | 8/8、ok | 1 s |
+| 実ブラウザ（§8.5、手元の Chromium） | B1〜B12 合格（B12 はメニューまで。保存は未確認）。B13 は未確認（Firefox が無い）。B14 は本番で | — |
+| web イメージの `--no-cache` ビルド | 成功。`docker images` で 1.49 GB、うち `/usr/lib/code-server` 627 MB、種 4.7 MB と 3.8 MB（本文は「1 GB 余り」[推論]、種は約 7 MB） | 161 s |
+
+訪問者の時間（手元、Cloudflare と kamal-proxy なし）[計測]: Start から 303 まで 0.57〜0.84 s（`ready_ms` は 258〜523 ms）、
+ガイドが出るまで 2.0〜2.7 s、プレビューの記事一覧まで 6.6〜7.5 s（`Listening` の 1.3 s 後）。ビューの編集はプレビューの
+再読み込みから 0.13 s。モデルの編集は再ビルド 46.8 s、保存から 47.3 s で再び待ち受け（W9 は 46 s）。タブを閉じてから
+終わるまで約 5 分半（コンテナの終了 5 分 30 秒、`event=ended` 5 分 34 秒。§1.2 の 10 の「約 6 分」より短い）。
+
+まだしていないこと（すべてオーナー）:
+
+- push と PR（GitHub の SSH は 1Password のエージェントを通る）。CI は GitHub で一度も走っていない（amd64 のビルド、
+  Linux での E2E、GHCR への push は [未検証]）。`cybertrain-playground-web` を Public にしてリポジトリに結び付けること。
+- ドメイン、Cloudflare、Origin CA、VPS、最初のデプロイ（運用ガイドの第 1〜4 部）。VPS とドメインでしか確かめられない
+  P1〜P14、B13・B14、5-3 の行（V12〜V18、V23。16.9）。gVisor の計測と判断（第 8 部、Q3）。公開（`launch.patch`、第 9 部）。
+- SP2 は SP1 の未マージのブランチ `web-playground` の `6a8853a` の上に積んである。この節の前で main に無いコミットは
+  62（SP1 の 22 と SP2 の 40）。SP1 の `85bc6a3 TEMP: live check` は SP2 に入っていない。
+
+### 16.2 本文に優先する変更（セッションのイメージと最初の画面）
+
+| 本文 | 実装 | 理由 |
+| --- | --- | --- |
+| §1.2 の 3・§4.4 | ガイドはテキストで開く。`workbench.editorAssociations` の 2 行を外した（V9 のガイドは fallback） | 描画したガイドではプレビューがその上のタブで開いた。テキストのエディタが前にあれば Simple Browser は横の自分のグループに開き、code-server 4.139.1 はそのグループに既定で鍵を掛ける（`AUTO_LOCK_DEFAULT_ENABLED`）ので、エクスプローラから開いたファイルは左に入り、プレビューは見えたまま [計測、ソース]。描画は Markdown: Open Preview で開ける |
+| §4.4 | `"window.restoreWindows": "preserve"` を足した | エディタの URL の `payload` が読み込みのたびにガイドを開き、そのとき VS Code は他のエディタを戻さないので、再読み込みでプレビューが消えた（B4 が落ちた）。足した後は 0.70 s で 2 つのグループ、2.72 s でプレビュー、6.3 s で端末 [計測] |
+| §4.1 | チェックサム 2 つを埋めた（リリースの API の `digest`）。`RUN mkdir .vscode` を `COPY` の前に。版の検査は `grep -m 1 '^[0-9]'` | 新しい HOME での初回は版の行の前に "Wrote default config file" を出す [計測]。`COPY --chown` が作るディレクトリの所有者は保証されない [推論] |
+| §4.6 の 1 | 種を写す条件は「`/workspace` が空」ではなく「`/workspace/blog/spin.toml` が無い」。`/workspace/blog` があって書けなければ理由を出して 1 で終わる | §15 の訂正 1 の失敗（runc が root 所有の空の WORKDIR を作る）を、黙って進まずに名指しする [計測] |
+| §4.7 | "1 minute" は単数。過ぎた終了時刻は "0 minutes" | "1 minutes" や負の分を出さない [推論] |
+| §8.3 の W11 | `/usr/local/bin` ではなく `/opt/cybertrain`（dev のディレクトリ）に書けないこと。`CapEff` に加えて `CapBnd` も 0 | `/usr/local/bin` は書けるルートでも dev には書けず、何も示さない。`CapEff` は root でないどのプロセスでも 0 [計測: `--cap-drop ALL` なしの `CapBnd` は `a80425fb`] |
+| §8.3 | 主のセッションは `--rm` なしで `PLAYGROUND_IDLE_TIMEOUT=1800`。W12・W13 は `/healthz` が答えたことと 50・55 秒以上生きたことも求める。補助のコンテナは `--entrypoint sleep … infinity` と `docker exec … curl`（裁定 P8） | ブラウザが来ないので、既定の 300 s では遅いホストで W9・W10 の途中に終わる。起動で落ちたセッションが W12・W13 を通らないように [推論] |
+| §1.2 の 8・§4.10 | 予告は 420 s のセッションの 120.1 s と 360.1 s に出た（V19 ok）。時刻を過ぎた予告は出ない（5 分の TTL では 1 分前の行だけ） | [計測]。ガイドの B10 はこの形で書いた |
+| §4.10 | 表示は "Attempting to reconnect in N seconds..."（Reload Window、Reconnect Now）で、コンテナが止まってから約 40 秒後（40.1 s、別の回で 36〜38 s）。再読み込みは 39〜95 ms で 404 のページ | [計測]。本文は終了時刻（± 5 秒）に「再接続中」と見ていた [推論] |
+| §1.2 の 8・§4.2 | Chrome ではエクスプローラの最初の右クリックが、クリップボードの読み取りの許可の確認に答えるまでメニューを出さない。Download... はあり Upload... は無い。保存されたファイルは未確認（B12 はオーナー） | code-server はメニューの前に `navigator.clipboard.read()` を呼ぶ [ソース、計測]。`Permissions-Policy: clipboard-read=()` で消す案は Paste に響きうるので採っていない。Firefox と Safari にはフォルダを書く API が無く、フォルダの Download は無いかもしれない [推論] |
+| §1.2・§8.5 の B4 | 再読み込みはブラウザのボタンで。エディタにフォーカスがあると F5 はデバッグの開始（Ruby のデバッガの確認） | [計測]。ガイドと playground/README.md の Limitations に書いた |
+| §1.2・§5.13 | プレビューを使った後のブラウザの戻るは、プレビューの中の移動を先に戻る（7 回。使わなければ 1 回）。戻った入口のボタンは `pageshow` で押せる状態に戻る | [計測]。Playwright の Chrome は back-forward cache を切るので、その道は [未検証]（P7 でオーナーが見る） |
+
+### 16.3 制御面
+
+| 本文 | 実装 | 理由 |
+| --- | --- | --- |
+| §5.2・§5.13・§6.3 | 前段の `Play::Guard`: 本文を宣言した要求（`Content-Length` が 0 より大きいか `Transfer-Encoding`）に Sinatra より先に 413（"No request body is accepted."）。アプリには空のクエリ文字列を渡す（解釈しない）。入口のヘッダ 4 つ（CSP、`Referrer-Policy`、`nosniff`、`Cache-Control: no-store`）を、Sinatra 自身の 400 / 404 / 500 とホストの検査の 403 を含むすべての応答に付ける | Sinatra はどのルートより先に本文とクエリを解釈した: 20 MiB の multipart は 20 MiB の一時ファイル、130 バイトの入れ子のクエリは 500 と 60 行のバックトレース [計測]。ブラウザの空のフォームは `Content-Length: 0` で通る |
+| §5.1 | Puma は `config/puma.rb`（`port 9292`、`threads 4, 16`、`http_content_length_limit 4096`）で、`bundle exec puma -C config/puma.rb`。ベースは `ruby:4.0.7-slim` | Puma は宣言の大きな本文を読まずに断る [ソース] が、chunked の本文は先に一時ファイルへ解く（1 MiB で確認 [計測]）ので、ルーターでも絞る（16.4） |
+| §5.1 | Sinatra を読む前に `APP_ENV=production`。`set :protection, false`。`dump_errors`、`show_exceptions`、`raise_errors` は off。予期しない例外は `play event=error step=request exception=<クラス>` の 1 行と決まった 500 | 開発の環境では Sinatra がデバッグのルートを足す。`Rack::Protection` の HttpOrigin はルーターの後ろの `http` と `Origin` を比べて全 POST を断り、FrameOptions は §6.3 が要らないとした `X-Frame-Options` を足す [ソース] |
+| §5.2 | `Origin: null` は「無い」と同じに扱い、`Sec-Fetch-Site`（無い、`same-origin`、`none`）で決める（裁定 P9） | `no-referrer` のページからのフォームの POST にブラウザは `Origin: null` を付ける [文書: Fetch]。本文の規則では入口自身のボタンが 403 になる。U1 で 303 [計測] |
+| §5.13 | CSP の `form-action` は `'self' <scheme>://*.<domain><port>`。ボタンのスクリプトは `pageshow` でボタンを戻す | POST の 303 はエディタのホストへ行き、Chrome はフォームの送信のリダイレクトも `form-action` で調べる [文書]。back-forward cache から戻った入口で "Starting…" のまま固まらないように [推論] |
+| §5.2 | `/internal/sessions` は `::1` も通す（裁定 P8） | 127.0.0.1 と同じループバック [推論] |
+| §5.12 | 起動時に Docker に届かないと、届くまで（10 秒ごとに確かめる）停止中と同じページ（"The playground is paused. It cannot reach Docker."）で 503、`Retry-After: 300`（裁定 P8）。起動の後に届かなくなったときは一覧が失敗し、503「失敗」 | 本文は 503「失敗」（`Retry-After: 60`）。直るまで数分かかる状態として扱う [推論] |
+| §5.8 の 3 | 自分の記録があるセッションのコンテナが無くなったネットワークは、60 秒を待たずに `idle` で消す。記録の無いものは 60 秒の後に `orphan`（裁定 P8） | 猶予は別のプロセスの作成の途中を守るためで、自分の記録はそれに当たらない [推論] |
+| §5.8 の 2 | 記録の無い `created` のままのコンテナは、60 秒の猶予の後に `exited` で消す（`exited`、`dead`、`removing` はすぐ） | deploy で重なったもう一方の制御面の `docker run` の途中を消さない。項目 3 の趣旨に従い、項目 2 の文面には反する [推論] |
+| §5.8 | 刈り取りは一覧の前に記録の状態を写し、そのとき `:creating` だったか後から現れたハンドルは、その回の間ずっと作成中として扱う（`exited` や `idle` で終えず、忘れも引き取りもしない）。`:ready` には `:creating` からしか移らない | 遅い回の間に準備のできたセッションを `idle` で消す、または忘れて `client: nil` で引き取り直す（アドレスごとの上限が破れる）ことを偽物の Docker で再現した [計測] |
+| §5.12 | 失敗した片付けは記録を `:ending` のまま残し、後の回が記録した理由でやり直す（ネットワークだけが残った場合も）。進行中の片付けには触れない | 作成の失敗で `docker rm` も失敗すると、コンテナが TTL まで残った [計測] |
+| §5.8（排他） | 停止の確認をロックの中の最初にもう一度。メモリで決まる拒否（停止、unavailable、アドレスごと、回数、記録が上限）はロックの前。ロックは `LOCK_NB` を 0.05 s ごとに最長 10 s 試し、取れなければ `play event=lock_timeout waited_s=10` と 503「失敗」（`Retry-After: 60`、Docker は呼ばない）。ロックの中では Docker の数（running と created）が正。`playctl` は待ち続ける | 本文の `flock` には期限が無く、満員での拒否もロックの中で `docker ps` を走らせたので、拒否の殺到か遅いデーモン（deploy の pull の間）で Puma の 16 スレッドがすべて待ち、`GET /` と HEALTHCHECK も止まる [計測: 偽物の Docker、推論] |
+| 同上の帰結 | 別のプロセスがセッションを終えると（`playctl end`、`kill-all`、自分で止まったコンテナ）、次の刈り取りまで（最長約 5 秒）記録が数えられ、上限ちょうどなら Docker に空きがあっても満員の 503 | 受け入れた（入口と `/status.json` も記録から数える）。E11 は作成の前に生きている数が戻るのを待つ [計測] |
+| §5.9 | `playctl` の本体は `lib/play/ctl.rb`。`end` は `[0-9a-f]{16}` だけを受け、先に Docker で探す（無ければ `playctl: no session <handle>`、終了 1）。引数を取らないコマンドに余計な引数を付けると使い方を出して終了 2。`pause` は `-` で始まるメッセージを断る。kill-all の要求が残る間は `status` と `resume` が標準エラーで警告する。`kill-all` は停止と要求のファイルを書き、ロックの中で全部を片付け、Docker の一覧が空になるのを最長 20 秒（0.5 秒ごと）待って報告する（空にならなければ残りの名前と終了 1） | 大文字のハンドルに「ended」と言ってセッションが動き続けた [計測]。`kill-all --help` でも全部を消す作りだった。kill-all が刈り取りと同じ片付けを競って終了 1 になり、E16 が約 10 回に 1 回落ちた [計測] |
+| §5.9・§5.11 | `playctl` の出来事の行は実行した端末に出て、サーバーのログには出ない（`playctl end` したセッションは、ログでは `created` だけ） | 別のプロセスだから [計測]。運用ガイドの 7-1 に書いた |
+| §5.11 | 新しい出来事: `dropped`（Docker の出力のうち id の形に合わず捨てた数）、`error`（`step=request` は例外のクラスだけ、`step=create` は伏せ字にした文）、`lock_timeout`、`unavailable` / `available`。値に制御文字があれば JSON の形で逃がし、1 つの出来事は必ず 1 行 | 値に改行を入れて偽の 2 行目を作れることを再現した [計測] |
+| §5.4 | Docker の出力から argv に入るのは `\A[A-Za-z0-9][A-Za-z0-9_.-]*\z` に合う id だけ。`docker stats` の名前は確かめたハンドルから作る | `-` で始まる id はフラグとして読まれる [推論] |
+| §5.4・§5.11 | Docker の標準出力と標準エラー、停止のメッセージは UTF-8 として読み、不正なバイトを洗う。`redact` も先に洗う | `LANG` が無いと Ruby は US-ASCII と見なし、1 バイトで刈り取りのスレッドが例外で落ちた（プロセスが起こし直され続ける）[計測] |
+| §5.4 | `docker network create` に `--ipv6=false`（1 つの要素。`--ipv6 false` だと `false` がネットワークの名前になる） | デーモンの `default-network-opts` が IPv6 を有効にすると、IPv4 で断るルーターを越えて偽の `CF-Connecting-IP` で入口に届きうる。明示のフラグは `com.docker.network.enable_ipv6=true` に勝つ [計測: CLI 28.5.2、デーモン 29.7.2] |
+| §5.10 | 検査を足した: `PLAY_SESSION_IMAGE` は `\A[A-Za-z0-9][A-Za-z0-9._/:@-]*\z`（`-` で始まらない）、`PLAY_ROUTER_URL` はホストのある素の `http` だけ（文言は "PLAY_ROUTER_URL must be a plain http URL such as http://ctplay-router (got …)"）、ホストの無い URL と origin を断る、`PLAY_PUBLIC_URL` のホストは英数字と `.`、`-` だけ。大きさ、実行環境の名前、ルーターのフィルタ、ヘッダの名前にも形 | argv と CSP のヘッダに入る値の形を決めておく。`https` も許すと言っていた前の文言は嘘になったので替えた [推論] |
+| §5.1・§5.3・§5.7・§8.2 | 刈り取りのスレッドは自分にだけ `abort_on_exception`。記録に `cpu`、`memory`、`hot`、`reason`。準備確認は 1 回ずつ（`max_retries = 0`）。作成の呼び出しはルーターの一覧をネットワークの作成より前に | Puma のスレッドは自分の例外の扱いを保つ。Net::HTTP は読み取りの期限の後で GET を繰り返す [ソース]。ルーターが 0 台なら何も作らない（§5.4）には先に一覧が要る |
+
+### 16.4 ルーター
+
+| 本文 | 実装 | 理由 |
+| --- | --- | --- |
+| §6.1 | ベースは `caddy:2.11.4-alpine` | 2026-10-02 の 2.x の最新 [文書] |
+| §6.1（apex） | `request_body { max_size 4KB }` と、`handle_errors` の apex の 413（決まった文 "Request body too large"） | Puma は chunked の本文をガードが答える前に一時ファイルへ解くので、匿名の相手が Cloudflare の上限（100 MB）まで、多くの接続で、ホストの Docker の記憶域に溜めさせられた [計測: 1 MiB、文書]。今は切るまでに約 4 KB だけが Puma に届く |
+| §6.1・§6.2 | Caddy は既定の経路のネットワーク（本番は `kamal`、手元は compose）の自分のアドレスだけで待つ。`entrypoint.sh` が起動のたびにアドレスを探して `ROUTER_BIND` に入れ、Caddyfile は `bind "{$ROUTER_BIND}"`（引用符付き）。見つからなければ警告を 1 行出して全アドレスで待つ。Dockerfile はビルドの時に `":80"` と `"192.0.2.1:80"` に展開されることを確かめる | `remote_ip` と `abort` は要求ごとの判断で、TCP の接続は受けて要求か読み取りの期限まで持つ。1 つのセッションから約 28,000 の接続（エフェメラルの範囲）を張り直し続けられ、全エディタ、全プレビュー、入口が一緒に落ちうる [推論]。今はカーネルが拒否する [計測: R7、R11〜R13、E8]。引用符の無い空の `bind` は待ち受けを作らない [計測: `caddy adapt` 2.11.4] |
+| §7.2・§8.1 | ルーターに `memory: 512m`、`memory-swap: 512m`、`pids-limit: 256`（compose も同じ） | 氾濫の代価をホストのメモリではなくルーターの再起動にする（Kamal の再起動の方針は `unless-stopped` [ソース]）。Caddy は待機で約 17 MiB、E2E の山で 24〜28 MiB と 15〜17 スレッド、持たれた接続は 1 つ約 11 KB（16,000 で 188 MiB）[計測]。512 MiB は約 45,000 の接続で止まる [推論] |
+| §6.1 | `@from_session remote_ip {$PLAY_SUBNET_POOL}` と `abort` は二重の守りとして残す | Caddy が全アドレスで待つ場合（警告の道）の備え [推論] |
+| §6.2・ルーターの検査 R7 | セッションの範囲からの接続は「空の応答で切る」ではなく接続の拒否（curl の終了 7）。R7 はこれを指す。R11（表のアドレスだけで待つ）、R12（`docker restart` の後もそう。表のアドレスは `.3` から `.2` に変わった）、R13（既定の経路が無い: 警告 1 行で全アドレス）を足した | 古いイメージでは 13 項目のうち 4 つが落ちる [計測] |
+| §15 の訂正 3、4、6 | 書いたとおり（`keepalive off`、`--dns 127.0.0.1`、`--sysctl net.ipv4.ip_forward=0`。後の 2 つは compose と Kamal の `options`） | E11 が `keepalive off` を、E13 が DNS と `ip_forward` を確かめる [計測] |
+| §6.1（先送り） | `@preview_error` に `host *.{$PLAY_DOMAIN}` の行が無く、`3000-<32 桁>.<他のドメイン>` は 404 ではなく 502 のページ | kamal-proxy は `<DOMAIN>` と `*.<DOMAIN>` しか送らず、それより深い名前は Universal SSL で先に落ちる [推論]。次のルーターの変更で直す |
+
+### 16.5 デプロイと運用
+
+| 本文 | 実装 | 理由 |
+| --- | --- | --- |
+| §7.2・§7.3 | 両方の設定に `minimum_version: 2.12.0`、`hooks_path`（ルーターにも）、`hooks_output: verbose`。ルーターの `options` に `dns: 127.0.0.1`、`sysctl: net.ipv4.ip_forward=0`（§15）、`memory`、`memory-swap`、`pids-limit`（16.4） | Kamal は既定でフックの出力を隠す [ソース]。Kamal 2.12.0 はこれらを `--dns`、`--sysctl`、`--memory` などに描画する [計測: D8]。サーバーの Docker が受け付けるかは [未検証]（5-3） |
+| §7.4（フック） | 新しい `pre-build`: 追跡しているファイルの変更と、サービスのディレクトリの下で `Dockerfile.dockerignore` が外さない未追跡のファイル（git が無視するものも）があれば、ビルドと push の前に止める | Kamal は作業ツリー（`context: .`）からビルドする [ソース]。本文の `pre-deploy` の検査は push の後で、未追跡のファイルも見なかった |
+| §7.4（`pre-deploy`） | ロールバックでも pull する。2 つの設定の `PLAY_SUBNET_POOL` を比べる。ルーターの deploy（`KAMAL_SERVICE` で見分ける）は、読めて空でない `PLAY_ORIGIN_CERT` と `PLAY_ORIGIN_KEY` が無ければ止める。参照を確かめる（固定なら `@sha256:` がちょうど 1 つで小文字の 16 進 64 桁。`session-image` と `post-deploy` も同じ検査） | 空の PEM がそのまま上がる。プールが食い違うとルーターとファイアウォールが別の範囲を守る。参照は遠隔のコマンドに入る [推論] |
+| §7.4（`post-deploy`） | 新しい 3 つと固定中のものを残す。届かないホストや失敗は警告だけで、0 で終わる | 固定中のイメージにはタグが無く、古さで消されうる。deploy は済んでいる [推論] |
+| §7.4・§7.8（ロールバック） | 本文の「古い制御面の環境変数に戻るので、セッションのイメージも戻る」と、`pre-deploy` がロールバックを飛ばす形は誤り。Kamal 2.12 は古いイメージを今描画した設定で起こすので、セッションのイメージはロールバックの時点で `latest` が指すもの。戻すには `PLAY_SESSION_IMAGE_REF=<古い参照>`（古いコンテナの環境を `docker inspect` で読む） | [ソース: Kamal 2.12]。本文のままでは pull していないダイジェストを指し、`--pull never` で全作成が失敗する [推論] |
+| §7.4（`.kamal/secrets`） | `CERTIFICATE_PEM=$(test -n "$PLAY_ORIGIN_CERT" && cat "$PLAY_ORIGIN_CERT")`（鍵も同じ形） | Kamal 2.12 の dotenv は `${PLAY_ORIGIN_CERT` だけを置き換えて `:-/dev/null}` を残すので、秘密が空になり最初のルーターの deploy が落ちる [ソース]。D8 で 4 行の PEM が届き、D9 で変数なしでも空でエラーが出ない [計測] |
+| §7.2（kamal-proxy） | `buffering`: `requests: true`、`responses: false`、`max_request_body: 1_000_000`、`memory: 1_000_000` | 既定では要求を 1 GB まで（1 MB を超えた分はディスク）、応答を上限なく溜めてディスクにあふれさせる [ソース]。プレビューは見知らぬ人のアプリを出すので、1 人がディスクを埋められた。1 MB を超える本文を要るホストは無い |
+| §7.6 の 10・§11.1 の 6 | レジストリはルーターと制御面のイメージだけを持つデプロイ用の GitHub アカウント（`<GHCR_OWNER>`、機械アカウント）と、その classic PAT（`write:packages`）。セッションのイメージは最初のデプロイの前に saeki-mototsune の下で Public にし、オーナーの資格情報なしで pull する | Kamal は setup と deploy のたびに VPS で `docker login` し、トークンを `/home/deploy/.docker/config.json` に残す [ソース]。オーナーの PAT なら、VPS の root は全 codespace が取る `cybertrain-playground:latest` と次の deploy が固定する `cybertrain-playground-web:latest` に push できた（16.7） |
+| §7.5（スクリプト） | 先に全部を確かめる（Cloudflare の一覧に 1 行以上、どの行も /8〜/32 の IPv4 の範囲、`POOL`、`EXT_IF` がこのホストのインターフェースで `-` で始まらない、`DOCKER-USER` がある）。駄目なら何も変えずに理由を出して 1。規則は 1 回の `iptables-restore -w --noflush` で入れ、`/run/cybertrain-play-firewall/lock` の `flock -w 60` の中で走る。拒まれた規則を名指しして 1。改行で終わらない最後の行も読む | 本文の形は iptables の終了状態を見ず、正しい範囲の無い一覧で 80/443 をすべて落として 0 で終わり、途中で止まると次の実行まで 80/443 が開いた [計測]。Cloudflare の一覧は改行で終わらず（2026-10-02 に 15 行）、本文のループは最後の `131.0.72.0/22` を落とした [計測]。新しい形は D5・D6 が偽物の iptables で確かめただけで、実物は VPS で [未検証] |
+| §7.5（ユニット） | `Restart=on-failure`、`RestartSec=10`、開始の回数の上限なし、`RuntimeDirectory=cybertrain-play-firewall` と `RuntimeDirectoryPreserve=yes`、`WantedBy=multi-user.target docker.service` | 守りの規則はやり直し続ける（上限で止まると 80/443 が開き、メタデータの規則も無い）。`/run/lock` は誰でも書ける。Docker の start でも作り直す。一覧が空か壊れていれば最初の起動では規則が 1 つも無い（10 秒ごとにやり直し、5-3 で見る）[推論] |
+| §12.2 の R2（成果物に無かった抑え） | ガイドの 2-6: unattended-upgrades を確かめ、`/var/run/reboot-required` があるときだけ 19:00 UTC（日本時間 4 時）に自動で再起動。6-9: 週に 1 度 `docker-ce`、`docker-ce-cli`、`containerd.io`（第 8 部の後は `runsc`）を手で上げ、セキュリティ情報を見る。7-3 に公表のときの行 | R2 は「カーネルの更新と定期の再起動」を前提に runc の危険を受け入れていた。自動更新は再起動せず、Docker の apt リポジトリのもの（runc は `containerd.io`）も上げない [文書] |
+| §7.6 の 5 | Docker は管理者 `<ADMIN>`（sudo あり）が公式の apt リポジトリから入れる。`kamal setup` には任せられない | Kamal 2.12 は root か `sudo -nl usermod` ができるときだけ Docker を入れる（`Kamal::Commands::Docker#superuser?`）[ソース]。`deploy` には sudo が無い |
+| §7.6 の 6 | Cloudflare の一覧は一時ファイルに取り、IPv4 の範囲の行だけと確かめてから置く（`curl \| tee` ではない）。行は `grep -c .` で数える | 壊れた取得をそのまま規則にしない。`wc -l` は改行の無い最後の行を数えない [文書] |
+| §7.7 | P6 はコマンドの塊と期待の出力（ルーターのアドレスに `Host: <DOMAIN>` で curl の終了 7、`lo` の外の IPv6 なし、`ctplay-control` の名前は終了 2）。P7 は戻るを 1 回押してボタンが押せること。P1・P2 は CSP と `status.json` の全文 | 最終レビューの Minor 4（VPS で一番効く検査）と、手元で確かめられない back-forward cache の道 [未検証] |
+| §7.8（ルーター） | 新しいルーターがセッションに届くのは刈り取りの次の回（E15 で 6〜7 s、上限 10 s） | 本文は「最長 5 秒」とした。刈り取りの間隔に、回の時間と新しいルーターの起動が足される [計測、推論] |
+| §7.11 | WAF の規則は `(http.host eq "<DOMAIN>" and http.request.uri.path ne "/status.json")`。行を足した: ルーターの氾濫（「ルーターの確かめ」のコマンド）、カーネル、runc、Docker、gVisor の脆弱性の公表。侵害の疑いの行に、デプロイ用アカウントの PAT の失効、2 つの公開パッケージに CI が出していない版が無いかの確認、main での "Playground image" のやり直し | 規則が `/status.json` にも確認を挟むと外形監視が 30 分ごとに落ちる [推論]。16.7 |
+| §7.12 の 2 | `/usr/bin/time -v` ではなく bash の `time` | イメージに `/usr/bin/time` が無い。手元の runc で再ビルドは `real 0m39.9s` [計測] |
+| §9.3・§9.4 | 運用ガイド（867 行）は 9 部（1 用意、2 VPS と 2-6 ホストの更新、3 Cloudflare、4 Kamal、5 公開前の確認（5-3 VPS でしか確かめられない 13 行、5-4 記録）、6 日々の運用と 6-9 暦、7 緊急停止と不正利用、8 gVisor、9 公開）とトラブルシューティング。名前の表に `<ADMIN>` とプール。playground/README.md に E1〜E19 の表（SP1 の E1 とは別）と、ガイドがテキストで開く理由 | 公開の手順と、手元で確かめられなかったものの一覧が要った。設定を元に戻させないため [推論] |
+| §9.1・§9.2 | 入口は当てていないパッチ `launch.patch`（`<DOMAIN>` を置き換えて当てる）。CSS は `button.btn { font-family: inherit; line-height: inherit; border: 0; background: none; cursor: pointer; }`。README の段落にサイトの 2 つの主張（満員なら数分後か codespace、"terminal included"）を足し、`site/README.md` の `playground.html` の説明も替える | `font: inherit` は `.btn` の大きさと太さまで戻す（要素とクラスの詳細度が勝つ）[推論]。当てた後のボタンの計算されたスタイルはリンクのボタンと同じ [計測]。サイトの主張は README から来るという `site/README.md` の規則 |
+
+### 16.6 テストと CI
+
+compose（§8.1）はルーターに `dns`、`sysctls`、メモリと pids の上限を持ち、制御面のデータは `${PLAY_DATA_HOST:-./data}`。
+E2E（`playground/dev/e2e.sh`、§8.4）は `PLAY_TTL=180`（150 では E2 のセッションが遅い CI で最後まで持たない。E18 は
+そのセッションの終わりを測る）、順は E1〜E7、E9、E10、E8、E11〜E15、E18、E16、E17、E19、データは `./data-e2e`
+（開発のスタックの `paused` と `kill-all` を共有しない）。セッションか、同じスタックの別の制御面（コンテナの環境の
+`PLAY_SESSION_IMAGE` で見分ける）が Docker にあれば、名前を出して終了 2 で始めない。
+
+| 検査 | ラベルの外で求めること（どれも通った [計測]） |
+| --- | --- |
+| E8 | 「経路なし」と接続の時間切れだけを塞がれたと数え、接続も拒否もそれ以外も抜け道とする。ゲートウェイの代わりにホストの全アドレスとホストの待ち受け（18099）、`172.17.0.1` の 22/80/443/2375、`1.1.1.1`、メタデータ、別セッションの 8080/3000、`example.com` と `ctplay-control` の名前。正の対照: ルーターのセッション側のアドレスの 80 が拒否する（curl の終了 7）。ホストのどのアドレスも `10.250.0.0/16` に無い（`inhibit_ipv4` が効いている） |
+| E9 | `CapBnd` も 0。`lo` の外に IPv6 のアドレスが無い |
+| E11 | `playctl end` の後 5 s 以内に 404 のページ。生きているセッションからルーターを外して 3 s 以内に 404（`keepalive off` が要る唯一の検査）。`end` の後ごとに（最初の作成の前も）、生きている数が 1 に戻るのを待つ。3 つ目の 429 は回数のページ |
+| E12 | 本文 3 つ: 小さい本文はガードの 413（"No request body is accepted."）、長さを宣言した 1 MiB は 413（ルーターか Puma）、chunked の 1 MiB はルーターの "Request body too large"。この origin からの `Origin: null` は検査を通る（その先のアドレスごとの 429） |
+| E13 | `/internal/sessions` はルーター自身の 404 のページ。ルーターの DNS が `[127.0.0.1]`、`ip_forward` が 0 |
+| E14・E15 | `docker restart` が 0 で終わり、生きている数は 1（本文の 2 ではない。その時点で残るのは 1 つ）。E15 はルーターのコンテナ id が変わる |
+| E17 | ルーターを止めると外から届かないので、制御面のコンテナの中から POST。理由が "It is starting up"、その前の `resume` が 0 |
+| E18 | `expires-at` と `created-at` の差が TTL に等しく、終わりは `expires-at` の −5〜+15 s（早すぎる終わりも落ちる） |
+| E19 | 作成がちょうど 5 つ、探した id がその 2 倍、32 桁の 16 進が単独でログに無い、クライアントのアドレスも無い |
+| §8.5 の B | B1 はテキストのガイドと右の鍵付きの Simple Browser、B4 はブラウザのボタン、B6 は Markdown のプレビューを手で開く、B7 は検索欄に語を入れる、B9 は Preview in Editor、B10 は 4 分で 1 分前の行と約 40 秒後の再接続、B11 は約 5 分半、B12 はフォルダとクリップボードの確認、B13 はファイルとフォルダの Download |
+
+ミュータント（コミットしていない）[計測]: 検査を 1 つずつ崩した 10 か所でちょうどその 10 が落ち、エディタの上流から
+`keepalive off` を外すと E11 だけが落ちた（"200, then 000 in 5 s"）。古いルーターのイメージではルーターの検査が 9/13、
+メモリの満員の検査を外すと上限のテストが落ち、引用符の無い `bind` はビルドの検査で落ちる。修正のテストは先に赤を見た。
+
+| 本文 | 実装 | 理由 |
+| --- | --- | --- |
+| §8.7（`web` ジョブ） | `needs: image`。タグの検査を自分でも行う。キャッシュは `playground-image` と `playground-web` を読み、`playground-web` にだけ書く | web ステージは playground ステージの上にあり、`playground-server` は全セッションで動くので、SP1 のスモークが落ちた土台をセッションのイメージにしない。2 つのジョブが同じ範囲に同時に書かない [推論] |
+| §8.7（手動の実行） | タグの説明は 2 つのパッケージを名指しし、手で出した `latest` が次の deploy で固定されると書く | 手動の実行は両方に push する（CI の検査が説明の文を確かめる [計測]） |
+| §8.7（制御面） | `playground/web-smoke.sh` の変更でも走る | drift のテストがそれを読む（CI の検査がパスの一覧を確かめる [計測]） |
+| §8.7（外形監視） | `curl -fsS --max-time 20 --retry 2 --retry-delay 15 --retry-all-errors "${PLAYGROUND_URL%/}/status.json"`、本文に `"accepting":` が無ければ失敗。`*/30` のまま | 一時の失敗で知らせない、末尾の `/` で `//` にならない、`-f` は 3xx を通すので本文で見る [計測: 手元のサーバーで 5 通り] |
+
+最初の実行で見ること（オーナー）: E15（6〜7 s、上限 10 s。一番余裕が小さい）、制御面のイメージの最初のコールドビルド
+（手元の compose はキャッシュから来た）と setup-buildx のビルダーでの compose のビルド、Linux の E8 と E9（手元のホストは
+Docker Desktop の VM）、W9・W12・W13 と E2・E11・E14・E18 の時間の窓、`web` ジョブの時間（見積もり 30〜50 分 [推論]、上限 60 分）。
+
+### 16.7 脅威モデルへの追記（§3.6、§12.2）
+
+| 経路 | 内容 | 抑え（実装） |
+| --- | --- | --- |
+| セッションからルーターの氾濫（新しい。§3.6 の M8 は要求の単位でしか満たしていなかった） | ルーターは全エディタ、全プレビュー、入口を運び、全セッションのネットワークにいる。`abort` までは TCP を受けて持つので、1 セッションから約 28,000 の接続を張り直し続けられ、数セッションで掛け算になる。ルーターのメモリ（`br_netfilter` があればホストの conntrack も）が尽きると全員が一緒に落ち、CPU で見る `suspect` は気付かない [推論] | ルーターはセッションのネットワークで待たない（カーネルが拒否）、`memory 512m` と `pids 256`（ホストではなくルーターの再起動）、7-3 の行と「ルーターの確かめ」、P6 の `router: exit 7`。残り: OOM の後の再起動が失敗しうる（16.8） |
+| レジストリのトークンからの供給網（新しい。§7.6 の 10） | R2 の脱出で VPS の root を取ると、`/home/deploy/.docker/config.json` のトークンで `cybertrain-playground:latest`（全 codespace が取る）と `cybertrain-playground-web:latest`（次の deploy が固定する）に push でき、VPS を作り直しても残った [ソース: Kamal 2.12] | ルーターと制御面のイメージだけを持つデプロイ用アカウント。セッションのイメージは公開のまま資格情報なしで pull。7-3 で PAT の失効、CI が出していない版の確認、`latest` の出し直し。CI のトークン（Actions はメジャーのタグで固定）は残る経路 |
+| ログの溢れ（§5.11。制御面のログは 10 MB × 3） | 本文はガード、apex の 4 KB、Puma の 4096、kamal-proxy の 1 MB で閉じた。クエリは解釈しない（前は 130 バイトで 500 と 60 行）。本文の無い multipart の `Content-Type` はまだ Rack のパーサに届き、1 要求で `event=error` が 1 行出る（匿名の相手がログを回せる。先送り） | [計測]。16.3 |
+
+最終レビューが挙げた、オーナーが受け入れる残りの危険（14）:
+
+1. R2 の脱出（runc でのカーネルや runc）。境界集合まで空のケーパビリティ、`no-new-privileges`、読み取り専用のルート、
+   既定の seccomp と AppArmor、cgroup で抑え、gVisor と実際に入ったホストの更新で変わる。修正前の公表が最悪の場合。
+2. R1 の能力 URL。制御面のログには出ないが、kamal-proxy の要求ログ（root と docker グループ、1 MB）と Cloudflare に残る。
+3. R5 のソケット。Sinatra / Puma / Rack の RCE はホストの root。解釈しない表面と、Cloudflare、kamal-proxy、ルーターで抑える。
+4. R3 の内容の乱用。Safe Browsing に載ると、入口を含むドメイン全体が止まりうる。
+5. 1 つの登録可能ドメイン。訪問者のアプリは `.<DOMAIN>` に Cookie を置け、他人を締め出したり Cookie を入れたりできるが、
+   セッションは奪えない（制御面は Cookie を使わず、code-server は `--auth none`）。SP3 は別のドメイン（§13 の 2）。
+6. アドレスごとの上限は Cloudflare（だけを通す規則と新しい範囲の一覧）と、再起動で消えるメモリ頼み。全体の上限は効く。
+7. Fetch Metadata の無い古いブラウザは、被害者のアドレスからセッションを作らされうる（裁定 P9）。迷惑だけ。
+8. ルーターの deploy は全エディタの WebSocket を切り、新しいルーターは約 5〜10 秒でセッションに届く。
+9. メモリの重ね売り（1.5 GiB × セッション数は RAM を超えうる）。計測した山からの容量と 2 GB のスワップで抑える。
+10. 外向きの帯域。訪問者のアプリは 30 分、誰にでも大きな応答を流せる（kamal-proxy は溜めないのでディスクは使わない）。
+11. 共有の dockerd。セッションは内蔵 DNS に問い合わせて少し負荷をかけられる。ルーターの再起動の間は全員が止まる。
+12. 起動直後の数秒は Kamal のコンテナがファイアウォールより先に起き、80/443 が開き、メタデータの規則も無い（5-3 で測る）。
+13. VPS 1 台で、ホストに警報なし。外形監視は任意で、60 日動きが無いと GitHub が予定のワークフローを止める。
+14. アドレスごとに 1 つは NAT の向こうの人を断る（Q5）。ワークショップでは設定を上げる。
+
+### 16.8 未解決と先送り
+
+レビューが「待てる」として台帳に残したもの（1 項目 1 文）:
+
+- 制御面（作成と片付け）: ロックの別案（`LOCK_NB` を 1 回だけ）は記録だけ。重なった片付けへの Docker の答え（"already in
+  progress"、"marked for removal"、"unknown network"）を「別の片付けが進行中」と読む改良（今は `docker_error` が増えるだけ）。
+  `ended` が 2 行出うる。`@connected` と、別のプロセスが終えた記録を黙って忘れる刈り取り（`forgot` の行が安い）。kill-all の
+  `ended` に `age_s` が無い。`:in_progress` に年齢の上限が無い。kill-all のファイルを消す `rm_f` が EPERM も飲む。
+- 制御面（そのほか）: `Probe#ready?` は理由を残さない（間違った `PLAY_ROUTER_URL` は 30 s 後の `ended reason=failed` に
+  しか見えない）。本文の無い multipart（16.7）。Puma 自身の 413 と 400 にヘッダが無い。Puma の 16 スレッドは容量の表
+  （16 セッションまで）に合わせて増えない。イメージの `build-essential`。gem の更新が暦に無い（R5）。`EventLog#event` は
+  不正なバイトで例外（今の呼び出しは洗った値だけ）。`DockerCLI#run` の期限は直接の子だけ。
+- 制御面のテスト: 禁止フラグの `=` の形、プールの最後の区画、`Limits` の掃除、/29 より狭いプールの文言、
+  `docker_unreachable` と `read_stats` の失敗と `start_reaper`、`playctl end` の `docker network ls` の失敗を試していない。
+- セッションのイメージ: 配置は code-server 4.139.1 の既定のグループの鍵に頼る（次の版上げで `workbench.editor.autoLockGroups`
+  を書く）。code-server の取得に `curl --retry` が無い。W6 はサーバーが動く前の mtime だけを見る。エントリポイントの守りと
+  バナーの単数と 0 の検査が無い。`web-smoke.sh` の補助関数は `smoke.sh` の写し（SP1 と SP2 のマージの後にまとめる）。
+- ルーター: `@preview_error`（16.4）。Dockerfile のコメントが `--sysctl` に触れない。基のイメージをダイジェストで固定して
+  いない。エントリポイントが引数を無視し、`docker run <ルーター> <コマンド>` と `--reuse` なしの `kamal app exec -c router.yml`
+  が 2 つ目の Caddy を起こして返らない（1 行で直る）。OOM で止まったルーターが再起動を待つ間に片付けがネットワークを
+  消すと "network … not found" で起動できず、`kamal deploy -c router.yml` まで全体が止まる（bind の後では起きにくい）。
+- デプロイと VPS の確認: commit の時点の失敗ではファイアウォールが `COMMIT` を名指しする。掃除は deploy の後だけ。
+  `user:` の値の引用符とコメントが残る。`pre-build` は非 ASCII の名前のファイルを誤って拒む（安全側）。最終レビューの勧め
+  で 5-3 にまだ無いもの: `net.bridge.bridge-nf-call-iptables`（CTPLAY の physdev の規則が効くか）と conntrack の余裕、
+  無作為の id の 404 の時間（`--dns 127.0.0.1` の効果）、TLS の後ろの code-server（`X-Forwarded-Proto: http`）を見る本番の B1。
+- CI: `web` ジョブのキャッシュのコメントは再利用を言い過ぎる（`.git` のバインドで Spinel までの層だけ）。別の
+  concurrency group から `latest` が順不同で出うる。Actions はメジャーのタグで固定。E15 の上限は 15 s にしても意味は弱まらない。
+- 文書とテスト: 7-3 の「`docker restart` で警告が消え」は `docker logs` では見えない（前の行が残る）。6-9 の週 1 の
+  `/var/run/reboot-required` の確認は更新の日に誤報になる。`usermod -aG docker "$USER"` は `sudo -i` の中では root を足す。
+  root だけの手順は root の鍵が前提。`e2e.sh` の本文の検査の前のコメントは言い過ぎ（約 4 KB は Puma に届く）。PASS の行に
+  計測値が無い。E8 のホストの待ち受けが実行中だけ `PLAY_ROUTER_FILTERS` に合う。2 回目の Ctrl-C は `down` を止めうる。
+
+オーナーの決定で残るもの:
+
+- §11.2 の Q1（ドメインと窓口のアドレス）と Q7（利用条件の文面、`playground/control/views/terms.erb`）。Q3（gVisor）は
+  第 8 部の計測の後。Q2、Q4〜Q6 は本書の既定のまま（設定で変えられる）。
+- 外形監視は `"accepting":false`（停止中、満員、Docker かイメージが無い）でも通る。これを知らせるか（停止も知らせる）。
+- PR の形（SP1 を先に、`85bc6a3 TEMP` を除いて出すか、1 つの PR で両方か）と、公開の時期。SP3 の問いはこの spec の外で扱う。
+
+### 16.9 V 項目の結果
+
+| # | 結果 | 根拠 |
+| --- | --- | --- |
+| V1 | ok | §15 の試験と、実物のイメージでの Task 3 の H1・H2（Simple Browser が `3000-<pid>` で自分で開き、Ports ビューも同じ URL）[計測] |
+| V2 | ok | §15、ルーターの検査 R1〜R6、E3・E5 [計測] |
+| V3 | ok | §15、E8（ホストのどのアドレスも `10.250.0.0/16` に無い）、E9 [計測] |
+| V4 | ok | §15、E8（`getent hosts example.com` が 2）[計測] |
+| V5 | ok | Task 1 の W5、W8〜W10。tmpfs に `exec` を足す必要は無かった [計測] |
+| V6 | ok | W4、W6。WORKDIR は `/workspace`（§15 の訂正 1）、種の判定は `spin.toml`（16.2）[計測] |
+| V7 | ok | W13: クライアントが一度も来ないセッションが `PLAYGROUND_IDLE_TIMEOUT=61` で 64 s 後に終わった [計測] |
+| V8 | ok | W12: 終了時刻を過ぎたセッションが 66 s で止まり、`--rm` で消えた [計測] |
+| V9 | ポート ok、ガイド fallback | H1・H2。ガイドは描画して開けたが、プレビューを横に置くためにテキストにした（16.2）[計測] |
+| V10 | ok | H4: ギャラリーの一覧なし、`open-vsx.org` への要求なし（Chromium）[計測] |
+| V11 | ok（エディタ、プレビューとも） | H3、Task 8 の U1（Chromium）[計測]。Firefox と Safari は B13 で [未検証] |
+| V12 | VPS で | P5（B1）[未検証] |
+| V13 | 一部 ok、残りは VPS で | Kamal 2.12.0 自身で設定と秘密を読む D8・D9（ワイルドカードのホスト、TLS、60 s、`buffering`、`options`、4 行の PEM、`proxy: false`、フック）[計測]。`kamal setup`、P4、5-3 の `dns`・`sysctl` とフックの行は VPS で [未検証] |
+| V14 | VPS で | P13 [未検証] |
+| V15 | VPS で | P7 [未検証] |
+| V16 | VPS で | P9、B14 [未検証] |
+| V17 | VPS で | P11 と 5-4（手元の値は 16.1）[未検証] |
+| V18 | VPS で | 第 8 部（手元の runc の再ビルドは `real 0m39.9s`）[未検証] |
+| V19 | ok | H7: 120.1 s と 360.1 s [計測] |
+| V20 | ok（形が変わった） | §15、E8。ルーターはセッションのネットワークで待たないので、接続はカーネルが拒否する（curl の終了 7）。`remote_ip` と `abort` は二重の守り（16.4）[計測] |
+| V21 | ok（§15 の訂正 2） | R4〜R6、E7、E13、E18 [計測] |
+| V22 | ok | §15、W5〜W11（W11 が 4 つの大きさを読み返す）[計測] |
+| V23 | VPS で | 5-3 の「制御面の入れ替え」の行 [未検証] |
