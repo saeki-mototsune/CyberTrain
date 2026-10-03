@@ -45,15 +45,14 @@ module Cybertrain
     end
 
     class Interpreter
-      # The same constant as Template::MAX_RENDER_DEPTH (template/limits.rb,
-      # where the reasoning for 12 lives): kept here so Interpreter::
-      # MAX_RENDER_DEPTH, the default of the engine and of Views.configure,
-      # still resolves.
-      MAX_RENDER_DEPTH = Template::MAX_RENDER_DEPTH
-
       # max_depth: Views.configure(root, max_render_depth: n) for an app whose
       # partials legitimately recurse (threaded comments, a tree menu) past
-      # the default; the page and the layout count as renders too.
+      # the default; the page and the layout count as renders too. The
+      # default is Template::MAX_RENDER_DEPTH (template/limits.rb, where the
+      # reasoning for 12 lives), the one name the limit has: written bare
+      # here and in Engine because `Template::` inside module
+      # Cybertrain::Template names the Template class (engine.rb), not the
+      # module; the lexical lookup reaches the constant.
       def initialize(helpers, max_depth = MAX_RENDER_DEPTH)
         @helpers = helpers
         @max_depth = max_depth
@@ -83,7 +82,7 @@ module Cybertrain
         # @depth/@name/@out untouched. @name is still the calling template
         # here; the caller's call_helper then adds its "name:line:" prefix.
         if @depth >= @max_depth
-          raise RuntimeError, "partial nesting too deep (> #{@max_depth}): #{template.name} rendered from #{@name}"
+          raise RuntimeError, "partial nesting too deep (> #{@max_depth}): #{template.name} rendered from #{@name} (max_render_depth is #{@max_depth}; raise Config#max_render_depth for partials that legitimately recurse deeper)"
         end
 
         saved_name = @name

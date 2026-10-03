@@ -73,22 +73,28 @@ module Cybertrain
       end
 
       # The Ruby name a column's reader, writer and ivar carry: the column's
-      # own name, except for Ident::RESERVED_COLUMN_NAMES, which take
-      # `<column>_column`. This is the one place that decides it. A reader
-      # named `errors`, `save`, `hash` or `to_ary` would shadow a method of
-      # Cybertrain::Model or Object that the framework (or Ruby itself)
-      # calls on the record, and an ivar named `@errors` / `@persisted` is
-      # one the Model owns, so both are renamed; everything keyed by the
-      # column's SQL name (column_names, to_row, load_row, params) stays
-      # keyed by it; read_attribute / write_attribute answer both spellings
-      # (attribute_keys), so a template, which reaches a column through
-      # read_attribute, can always use the Ruby name. An existing schema
-      # must keep generating on upgrade, so such a column is renamed rather
-      # than refused (`cybertrain generate scaffold` still refuses to invent
-      # one). A keyword is not renamed: `@class` / `def class` is not a
-      # shape worth supporting, check_column_names refuses it.
+      # own name, except for Ident::RESERVED_COLUMN_NAMES and Ruby keywords
+      # (Ident::RUBY_KEYWORDS), which take `<column>_column`. This is the one
+      # place that decides it. A reader named `errors`, `save`, `hash` or
+      # `to_ary` would shadow a method of Cybertrain::Model or Object that
+      # the framework (or Ruby itself) calls on the record, and an ivar named
+      # `@errors` / `@persisted` is one the Model owns; a keyword column
+      # (`end`, `begin`, `class`) would need `def class` / `@class`, which is
+      # not a shape worth supporting. All of them are renamed; everything
+      # keyed by the column's SQL name (column_names, to_row, load_row,
+      # params) stays keyed by it; read_attribute / write_attribute answer
+      # both spellings (attribute_keys), so a template, which reaches a column
+      # through read_attribute, can always use the Ruby name. An existing
+      # schema must keep generating on upgrade, so such a column is renamed
+      # rather than refused (`cybertrain generate scaffold` still refuses to
+      # invent one).
       def self.reader_name(column_name)
-        Ident.reserved_column?(column_name) ? column_name + "_column" : column_name
+        renamed?(column_name) ? column_name + "_column" : column_name
+      end
+
+      # Whether reader_name renames the column.
+      def self.renamed?(column_name)
+        Ident.reserved_column?(column_name) || Ident.keyword?(column_name)
       end
 
       # The ivar behind reader_name.
@@ -110,34 +116,31 @@ module Cybertrain
       end
 
       # Raises ArgumentError (the generator exits non-zero) for a column the
-      # generated class cannot host: not a Ruby method name (Ident.column?),
-      # a Ruby keyword, or a reserved name (Ident::RESERVED_COLUMN_NAMES)
-      # whose fallback `<column>_column` another column already owns. A
-      # reserved name alone is not an error (reader_name renames it), and a
-      # column named like another Object method (Ident::SHADOWING_COLUMN_NAMES,
-      # `display`, `then`) is accepted with a note in the generated file: an
+      # generated class cannot host: not an ASCII Ruby method name
+      # (Ident.column?: `[A-Za-z_][A-Za-z0-9_]*`), or one whose fallback
+      # `<column>_column` another column already owns. A reserved name or a
+      # keyword alone is not an error (reader_name renames it), and a column
+      # named like another Object method (Ident::SHADOWING_COLUMN_NAMES,
+      # `display`, `tap`) is accepted with a note in the generated file: an
       # existing schema must keep generating. `cybertrain generate scaffold`
-      # is stricter (and wants snake_case): it refuses reserved and shadowing
-      # names before it writes any file, since it invents them.
+      # is stricter (and wants snake_case): it refuses keywords, reserved and
+      # shadowing names before it writes any file, since it invents them.
       def self.check_column_names(table)
         names = table.columns.map { |c| c.name }
         table.columns.each do |c|
           name = c.name
           unless Ident.column?(name)
             raise ArgumentError, "table #{table.name}: column #{name.inspect} is not a valid attribute name " \
-                                 "(use letters, digits and _, not starting with a digit)"
+                                 "(a column name is an ASCII identifier: ASCII letters, digits and _, " \
+                                 "not starting with a digit)"
           end
-          if Ident.keyword?(name)
-            raise ArgumentError, "table #{table.name}: column #{name.inspect} is a Ruby keyword " \
-                                 "and cannot name a column; rename it"
-          end
-          next unless Ident.reserved_column?(name)
+          next unless renamed?(name)
 
           fallback = reader_name(name)
-          if names.include?(fallback) || Ident.keyword?(fallback) || Ident.reserved_column?(fallback)
+          if names.include?(fallback) || Ident.reserved_column?(fallback)
             raise ArgumentError, "table #{table.name}: column #{name.inspect} can be neither #{name.inspect} nor " \
-                                 "#{fallback.inspect} (a Cybertrain::Model or Object method owns the first, a " \
-                                 "column or a Ruby keyword the second); rename a column"
+                                 "#{fallback.inspect} (a Ruby keyword or a Cybertrain::Model or Object method " \
+                                 "owns the first, a column the second); rename a column"
           end
         end
         nil
@@ -207,11 +210,12 @@ module Cybertrain
         # rule 7 does not bite this shape.
         #
         # A column named like a method the framework calls on the record
-        # (Ident::RESERVED_COLUMN_NAMES) reads as `<column>_column` (reader,
-        # writer and ivar: reader_name); the read_attribute / write_attribute
-        # keys below take either spelling (attribute_keys).
+        # (Ident::RESERVED_COLUMN_NAMES) or like a Ruby keyword reads as
+        # `<column>_column` (reader, writer and ivar: reader_name); the
+        # read_attribute / write_attribute keys below take either spelling
+        # (attribute_keys).
         names.each do |n|
-          src << "  " << reserved_note(n) << "\n" if Ident.reserved_column?(n)
+          src << "  " << rename_note(n) << "\n" if renamed?(n)
           next unless Ident.shadowing_column?(n)
 
           src << "  " << shadow_note("column", n) << "\n"
@@ -336,12 +340,17 @@ module Cybertrain
       end
 
       # The note beside the attr_accessor of a column reader_name renamed.
-      # The interpreter resolves `errors` and `to_param` as model methods
-      # before it asks read_attribute (Interpreter#model_method), so for those
-      # two the plain name never reaches the column from a template and the
-      # note says so; every other reserved name falls through to
-      # read_attribute and works under either spelling.
-      def self.reserved_note(name)
+      # A keyword is told so, not that it is a method. The interpreter
+      # resolves `errors` and `to_param` as model methods before it asks
+      # read_attribute (Interpreter#model_method), so for those two the plain
+      # name never reaches the column from a template and the note says so;
+      # every other renamed name falls through to read_attribute and works
+      # under either spelling.
+      def self.rename_note(name)
+        if Ident.keyword?(name)
+          return "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a Ruby keyword"
+        end
+
         note = "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a method of " \
           "Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES)"
         if name == "errors" || name == "to_param"

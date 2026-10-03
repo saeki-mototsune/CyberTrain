@@ -326,8 +326,16 @@ module Cybertrain
       # error pages use, by class name (NOTES rules 46, 47): comparing the
       # full "Cybertrain::Params::ParameterMissing" here would miss under
       # Spinel, where Class#name is the bare "ParameterMissing".
+      #
+      # reset_to, not render(plain:, status: 400): the action may already have
+      # set a cookie, called redirect_to or set Content-Disposition before the
+      # parameter error raised, and ErrorPages, Dev::ErrorPage and Server all
+      # drop those the same way (a stale Location or attachment header would
+      # hide the 400). It leaves a text/plain 400 whose body is the message
+      # ("" would become the status text), then performed! so the chain stops.
       if ClientError.status(e) == 400
-        render(plain: e.message, status: 400)
+        @response.reset_to(400, e.message)
+        @response.performed!
         return nil
       end
       raise e

@@ -11,6 +11,7 @@
 #     => source, generated into the binary by `spin run gen -- --embed-views`;
 #     parsed once, never re-read.
 require "cybertrain/html"
+require "cybertrain/template/limits"
 require "cybertrain/template/lexer"
 require "cybertrain/template/parser"
 require "cybertrain/template/inode"
@@ -49,7 +50,7 @@ module Cybertrain
     class Engine
       attr_reader :root
 
-      def initialize(root, cache: true, max_render_depth: Interpreter::MAX_RENDER_DEPTH)
+      def initialize(root, cache: true, max_render_depth: MAX_RENDER_DEPTH)
         # Views.configure and Views.configure_embedded (Engine.embedded) both
         # end here. A ceiling below 1 would fail `@depth >= @max_depth` at
         # depth 0 and turn every page into a 500, so refuse it at boot. No nil
@@ -70,7 +71,7 @@ module Cybertrain
       end
 
       # An engine over an embedded table (Gen::Views::SOURCES).
-      def self.embedded(sources, max_render_depth: Interpreter::MAX_RENDER_DEPTH)
+      def self.embedded(sources, max_render_depth: MAX_RENDER_DEPTH)
         engine = Engine.new("", cache: true, max_render_depth: max_render_depth)
         engine.sources = sources
         engine

@@ -9,7 +9,7 @@ require "tmpdir"
 # rule 23). The committed one was first captured under CRuby with an FFI shim;
 # run script/regen-snapshot test/template_partial_depth.rb on a Spinel machine.
 #
-# Partials may nest at most Interpreter::MAX_RENDER_DEPTH (12) levels: a
+# Partials may nest at most Template::MAX_RENDER_DEPTH (12) levels: a
 # partial rendering itself (or a cycle) raises a located template error
 # instead of overflowing the stack (SystemStackError is no StandardError).
 
@@ -23,7 +23,7 @@ def put(name, src)
   nil
 end
 
-def render_src(src, max_depth = Cybertrain::Template::Interpreter::MAX_RENDER_DEPTH)
+def render_src(src, max_depth = Cybertrain::Template::MAX_RENDER_DEPTH)
   env = {}
   env["__template_dir"] = "d"
   env["n"] = 0
@@ -39,7 +39,8 @@ put("_down.html.erb", "<%= n %><% if n > 0 %>,<%= render 'down', n: n - 1 %><% e
 
 test "a self-rendering partial raises a located template error" do
   msg = assert_raises("Cybertrain::Template::RuntimeError") { render_src("x\n<%= render 'loop' %>") }
-  assert_equal "d/_loop.html.erb:1: partial nesting too deep (> 12): d/_loop.html.erb rendered from d/_loop.html.erb", msg
+  assert_equal "d/_loop.html.erb:1: partial nesting too deep (> 12): d/_loop.html.erb rendered from d/_loop.html.erb " \
+               "(max_render_depth is 12; raise Config#max_render_depth for partials that legitimately recurse deeper)", msg
 end
 
 test "the depth is configurable (Interpreter max_depth, Views.configure, Config#max_render_depth)" do
@@ -50,12 +51,11 @@ test "the depth is configurable (Interpreter max_depth, Views.configure, Config#
   msg = assert_raises("Cybertrain::Template::RuntimeError") { render_src("<%= render 'down', n: 5 %>", 4) }
   assert msg.include?("partial nesting too deep (> 4)")
   assert_equal 12, Cybertrain::Config.new.max_render_depth
-  # The default is the constant itself, so the two cannot drift: the leaf
-  # constant (template/limits.rb, all Config loads), the Interpreter alias
-  # (the engine's and Views.configure's default) and Config#max_render_depth.
-  assert_equal Cybertrain::Template::MAX_RENDER_DEPTH, Cybertrain::Template::Interpreter::MAX_RENDER_DEPTH
+  # The default is the one constant (template/limits.rb; there is no
+  # Interpreter alias any more), so it cannot drift: Config#max_render_depth,
+  # Interpreter.new and Views.configure all start from it.
+  assert_equal 12, Cybertrain::Template::MAX_RENDER_DEPTH
   assert_equal Cybertrain::Template::MAX_RENDER_DEPTH, Cybertrain::Config.new.max_render_depth
-  assert_equal Cybertrain::Template::Interpreter::MAX_RENDER_DEPTH, Cybertrain::Config.new.max_render_depth
 end
 
 test "a max_render_depth below 1 is refused at boot (Views.configure)" do

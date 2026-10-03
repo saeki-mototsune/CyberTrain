@@ -190,9 +190,9 @@ test "a closed :memory: connection is an error on the next checkout, never a fre
   DB.connect(":memory:")
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);") }
   DB.with { |c| c.close }
-  assert_includes checkout_after_close, "the :memory: connection was closed"
+  assert_includes checkout_after_close, "the in-memory or temporary connection was closed"
   # And again: the slot stays in the pool, the error repeats, nothing hangs.
-  assert_includes checkout_after_close, "the :memory: connection was closed"
+  assert_includes checkout_after_close, "the in-memory or temporary connection was closed"
   DB.disconnect
 end
 
@@ -215,6 +215,20 @@ test "a pool that close_all shut down refuses every checkout instead of reopenin
   assert_equal "pool closed", checkout_after_close_all(pool)
   # And again: it raises before touching the queue, so it cannot hang.
   assert_equal "pool closed", checkout_after_close_all(pool)
+end
+
+test "every in-memory or temporary spelling is a one-connection, non-reopenable pool" do
+  assert_equal 1, DB::Pool.new(":memory:", 4).size
+  assert_equal 1, DB::Pool.new("file::memory:", 4).size
+  assert_equal 1, DB::Pool.new("file:x?mode=memory&cache=shared", 4).size
+  assert_equal 1, DB::Pool.new("", 4).size
+  assert DB::Pool.private_database?("file:x?mode=memory")
+  refute DB::Pool.private_database?("storage/dev.sqlite3")
+  refute DB::Pool.private_database?("file:storage/dev.sqlite3")
+  # A closed connection on such a pool is an error, not a fresh empty database.
+  pool = DB::Pool.new("file::memory:", 4)
+  pool.with { |c| c.close }
+  assert_includes checkout_after_close_all(pool), "the in-memory or temporary connection was closed"
 end
 
 # Two slots closed at once: A still checked out when user code closes it, B

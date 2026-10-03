@@ -161,10 +161,30 @@ test "MethodOverride ignores _method in a body that is not a form" do
   assert_equal "POST 4", ctx.response.body
 end
 
+test "MethodOverride on a malformed form body raises QueryMalformed (a 400 through ClientError)" do
+  stack = Cybertrain::MethodOverride.new(endpoint)
+  assert_raises("QueryMalformed") { stack.call(build_ctx("POST", "/things/1", "_method=%zz", FORM)) }
+  assert_raises("QueryMalformed") { stack.call(build_ctx("POST", "/things/1?_method=%zz")) }
+end
+
+test "MethodOverride and the Router share one parse of the form body" do
+  stack = Cybertrain::MethodOverride.new(endpoint)
+  ctx = build_ctx("POST", "/things/1?q=1", "_method=delete", FORM)
+  stack.call(ctx)
+  assert_equal "DELETE 1", ctx.response.body
+  assert ctx.request.form_params.equal?(ctx.request.form_params)
+  assert_equal "delete", ctx.request.form_params["_method"]
+  # the Router copied the cached trees, so the controller's ctx.params is its own
+  assert !ctx.params.equal?(ctx.request.form_params)
+  assert !ctx.params.equal?(ctx.request.query_params)
+  ctx.params.set_value("_method", "changed")
+  assert_equal "delete", ctx.request.form_params["_method"]
+end
+
 # SessionStore parses every cookie on every request but reads only its own,
 # so a cookie another app set on the parent domain must not fail the request
-# whether or not it percent-decodes ("50%off" does not, under CRuby; Spinel's
-# decoder is lenient, so the status is the only thing both runtimes share).
+# whether or not it percent-decodes ("50%off" does not: Cookies keeps the raw
+# value, on both runtimes).
 test "a foreign cookie that does not percent-decode does not fail the request" do
   stack = Cybertrain::SessionStore.new(endpoint, secret: "s" * 32)
   ctx = build_ctx("GET", "/", "", { "cookie" => "promo=50%off; theme=dark" })

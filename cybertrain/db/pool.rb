@@ -6,21 +6,32 @@ module Cybertrain
     # A fixed set of Connections shared by the server's threads. `with` blocks
     # (parking the green thread) until a connection is free.
     #
-    # Every ":memory:" connection is its own private database, so a
-    # ":memory:" pool always holds exactly one connection (and `size`
+    # Every in-memory or temporary connection (":memory:", a `file::memory:` or
+    # `mode=memory` URI, "" for a private temporary file) is its own private
+    # database, so such a pool always holds exactly one connection (and `size`
     # reports 1) whatever size was asked for: otherwise tables created
     # through one `with` would be missing from the next.
     class Pool
       attr_reader :size
 
+      # True for a path whose database lives only in its connection:
+      # Connection opens with OPEN_URI, so besides ":memory:" and "" (a
+      # private temporary database) a `file:` URI naming ":memory:" or
+      # "mode=memory" is one too. String checks only: no Regexp.
+      def self.private_database?(path)
+        return true if path == "" || path == ":memory:"
+        path.start_with?("file:") && (path.include?(":memory:") || path.include?("mode=memory"))
+      end
+
       def initialize(path, size = 4)
         @path = path
-        # The one place that knows what a ":memory:" path means: its single
-        # connection *is* the database, so the pool holds exactly one, never
-        # closes it after a failed ROLLBACK (check_in) and never replaces a
-        # closed one (reopen): either would drop every table. Another
-        # in-memory spelling is a change to this line only.
-        @reopenable = path != ":memory:"
+        # The one place that knows what an in-memory or temporary path means
+        # (Pool.private_database?): its single connection *is* the database,
+        # so the pool holds exactly one, never closes it after a failed
+        # ROLLBACK (check_in) and never replaces a closed one (reopen):
+        # either would drop every table. Another spelling is a change to
+        # the predicate only.
+        @reopenable = !Pool.private_database?(path)
         @size = @reopenable ? size : 1
         @connections = []
         # Guards @connections: `with` runs on every connection thread and
@@ -74,7 +85,7 @@ module Cybertrain
 
       # The connection always goes back, whatever the rollback or the logger
       # does: a logger whose IO is gone (EPIPE at shutdown) must not leak the
-      # slot from the pool, which with the one-connection ":memory:" pool
+      # slot from the pool, which with the one-connection in-memory pool
       # would block every later `with` for good, and (see `note`) must not
       # replace the exception the block is propagating either: this runs from
       # `with`'s ensure.
@@ -82,8 +93,8 @@ module Cybertrain
       # transaction, where the next checkout's plain `execute` would write
       # into it and a later check-in would discard that write under the wrong
       # block's name; so it is closed, and `with` reopens the slot on the next
-      # checkout. Not when the pool is not @reopenable (":memory:", see
-      # initialize): the connection stays and the error line is the only remedy.
+      # checkout. Not when the pool is not @reopenable (in-memory or temporary,
+      # see initialize): the connection stays and the error line is the only remedy.
       # Returns nil: the `if` must not be the method's value (a Logger
       # subclass's `warn` can type differently from Logger#warn, rule 10).
       def check_in(conn)
@@ -97,7 +108,7 @@ module Cybertrain
                            "closed it, the next checkout reopens #{@path}")
               conn.close
             else
-              note(:error, "could not roll back a transaction left open on the :memory: connection; " \
+              note(:error, "could not roll back a transaction left open on the in-memory or temporary connection; " \
                            "it stays in the pool inside that transaction (closing it would drop the database)")
             end
           end
@@ -133,8 +144,8 @@ module Cybertrain
       # exactly the closed one's place in @connections (matched by identity: with
       # two slots closed, one still checked out and one queued, the queued one
       # is the one being reopened, not whichever closed entry comes first; a
-      # persistent disk fault must not grow the list either). Never when the pool is not @reopenable (":memory:", see
-      # initialize): a fresh connection would be an empty database with no
+      # persistent disk fault must not grow the list either). Never when the pool is not
+      # @reopenable (in-memory or temporary, see initialize): a fresh connection would be an empty database with no
       # tables and no trace, so a closed one (user code closed it) is an error
       # on every later checkout, as it was before the pool reopened anything.
       # Nor once close_all ran: a `with` that popped its connection
@@ -149,7 +160,7 @@ module Cybertrain
       def reopen(closed)
         raise Error, "pool closed" if @closed
         unless @reopenable
-          raise Error, "the :memory: connection was closed (Connection#close inside a checkout); " \
+          raise Error, "the in-memory or temporary connection was closed (Connection#close inside a checkout); " \
                        "reopening it would start an empty database"
         end
         fresh = Connection.new(@path)
@@ -157,6 +168,7 @@ module Cybertrain
         # both overwrite the same entry and strand one fresh connection
         # outside the list (unreachable by close_all).
         shut = false
+        broken = false
         @lock.synchronize do
           if @closed
             shut = true
@@ -173,15 +185,20 @@ module Cybertrain
               end
               i += 1
             end
-            # Not reachable: every connection handed out comes from
-            # @connections. Kept as a safety net so `fresh` is never left
-            # outside the list close_all walks.
-            @connections << fresh unless replaced
+            broken = !replaced
           end
         end
         if shut
           fresh.close
           raise Error, "pool closed"
+        end
+        # Not reachable: every connection handed out comes from @connections.
+        # If it ever happens the invariant is broken, so say so (closing
+        # `fresh` first, nothing leaks) instead of quietly growing the list.
+        # The flag, not a raise under the lock (rule 44).
+        if broken
+          fresh.close
+          raise Error, "pool invariant broken: reopened a connection the pool does not own"
         end
         fresh
       end

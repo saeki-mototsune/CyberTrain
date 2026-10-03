@@ -16,7 +16,8 @@ module Cybertrain
     # absent: the primary key is Model#id. Names that end in `?` or `!`
     # cannot be columns at all (column? rejects them), so `valid?`,
     # `persisted?`, `is_a?` need no entry; keywords (`class`) live in
-    # RUBY_KEYWORDS only. Class methods (`table_name`, `column_names`,
+    # RUBY_KEYWORDS only, and the generator renames those the same way
+    # (`class_column`). Class methods (`table_name`, `column_names`,
     # `from_row`) need no entry either: the framework calls them on the
     # class (`self.class.table_name`, `Post.from_row`), which a column
     # reader on the instance does not shadow, so a schema with a
@@ -70,13 +71,16 @@ module Cybertrain
       "itself", "extend", "enum_for", "to_enum"
     ]
 
-    # Ruby keywords a column could be spelled like: `def end=` /
-    # `attr_accessor :class` would not parse or would redefine core
-    # behaviour. The uppercase ones are reachable since column? accepts
-    # capitals.
+    # Ruby keywords a column could be spelled like: `@end` / `def class` are
+    # not shapes worth supporting. The generator reads such a column as
+    # `<column>_column` (ModelsEmitter.reader_name), like a reserved name;
+    # the scaffold, which invents names, refuses them. The uppercase ones
+    # are reachable since column? accepts capitals. `defined` is not here:
+    # the keyword is `defined?`, which column? rejects, and `defined` is an
+    # ordinary method name (`attr_accessor :defined` works).
     RUBY_KEYWORDS = [
-      "alias", "and", "begin", "break", "case", "class", "def", "defined",
-      "do", "else", "elsif", "end", "ensure", "false", "for", "if", "in",
+      "alias", "and", "begin", "break", "case", "class", "def", "do",
+      "else", "elsif", "end", "ensure", "false", "for", "if", "in",
       "module", "next", "nil", "not", "or", "redo", "rescue", "retry",
       "return", "self", "super", "then", "true", "undef", "unless", "until",
       "when", "while", "yield",
@@ -131,7 +135,8 @@ module Cybertrain
 
     # The one definition of "a name the scaffold must not invent": "" when
     # `name` may be chosen, otherwise why not -- "keyword" (RUBY_KEYWORDS),
-    # "reserved" (RESERVED_COLUMN_NAMES, which the generator renames) or
+    # "reserved" (RESERVED_COLUMN_NAMES, which the generator renames, as it
+    # does a keyword) or
     # "shadowing" (SHADOWING_COLUMN_NAMES, which the generator only notes).
     # The scaffold asks here at every place it takes a name from the user
     # (field column, references reader, resource singular) and raises the

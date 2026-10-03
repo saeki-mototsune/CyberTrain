@@ -606,7 +606,7 @@ def emit_error(name)
   end
 end
 
-test "emit rejects column names that are invalid; reserved ones are renamed, not refused" do
+test "emit rejects column names that are invalid; reserved ones and keywords are renamed, not refused" do
   # Names the framework or Ruby calls on a record generate under
   # <column>_column (an existing schema keeps generating on upgrade).
   ["errors", "persisted", "hash", "inspect", "to_s",
@@ -619,21 +619,23 @@ test "emit rejects column names that are invalid; reserved ones are renamed, not
    "raise", "fail"].each do |renamed|
     assert_equal "", emit_error(renamed)
   end
-  # A keyword shadows no method: it is told so, not that it is "reserved".
-  ["class", "end", "def", "nil", "self", "BEGIN", "__FILE__"].each do |bad|
-    assert emit_error(bad).include?("is a Ruby keyword and cannot name a column"), "#{bad} should be rejected as a keyword"
-    refute emit_error(bad).include?("can be neither"), "#{bad} is not renamed"
+  # Keywords are renamed too (an existing schema with begin / end datetime
+  # columns generated before this rule); `then` is one, `defined` is not.
+  ["class", "end", "def", "nil", "self", "then", "BEGIN", "__FILE__"].each do |kw|
+    assert_equal "", emit_error(kw)
   end
-  ["1st", "a-b", "a b", "a.b", "", "valid?", "ünïcode"].each do |bad|
+  # Only what Ruby cannot take as a method name, ASCII-only, is refused.
+  ["1st", "a-b", "a b", "a.b", "", "valid?", "ünïcode", "名前", "prénom", "first-name"].each do |bad|
     assert emit_error(bad).include?("not a valid attribute name"), "#{bad.inspect} should be rejected"
   end
+  assert_includes emit_error("prénom"), "ASCII letters, digits and _"
   # Names that only look like Model methods (the real ones end in `?`), and
   # the camelCase / capitalised columns of an existing schema: anything Ruby
   # takes as a method name generates (the scaffold alone insists on
   # snake_case for the names it invents).
   # ... and private Kernel methods nothing in the class calls are ordinary
   # columns (issues.open, documents.format, trucks.load).
-  ["title", "_x", "a1", "group", "new_record", "is_a", "frozen", "createdAt", "userId", "Title", "X1",
+  ["title", "_x", "a1", "group", "defined", "new_record", "is_a", "frozen", "createdAt", "userId", "Title", "X1",
    "open", "format", "load", "print", "select", "test", "sleep",
    # Class methods of Model / the generated class: a column reader on the
    # instance shadows none of them (an audit table's table_name column).
@@ -701,7 +703,7 @@ test "a reserved column name generates under <column>_column with a note; read_a
   refute file.include?('"hash" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); templates')
 end
 
-test "a reserved column whose fallback name is taken, and keywords, still fail" do
+test "a reserved column or keyword whose fallback name is taken still fails" do
   definition = Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "files" do |t|
       t.string "hash"
@@ -713,7 +715,61 @@ test "a reserved column whose fallback name is taken, and keywords, still fail" 
   end
   assert_includes msg, 'column "hash" can be neither "hash" nor "hash_column"'
   assert_includes msg, "rename a column"
-  assert_includes emit_error("class"), "is a Ruby keyword and cannot name a column"
+end
+
+def keyword_columns_schema
+  Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "shifts" do |t|
+      t.string "title", null: false
+      t.datetime "begin"
+      t.datetime "end"
+      t.string "class"
+      t.string "defined"
+    end
+  end
+end
+
+test "a keyword column generates under <column>_column with a note that says keyword; a column named defined keeps its name" do
+  definition = keyword_columns_schema
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [])
+  assert_lines(file, [
+    '# column "begin" reads as begin_column: "begin" is a Ruby keyword',
+    '# column "end" reads as end_column: "end" is a Ruby keyword',
+    '# column "class" reads as class_column: "class" is a Ruby keyword',
+    "attr_accessor :title, :begin_column, :end_column, :class_column, :defined",
+    'def self.column_names = ["id", "title", "begin", "end", "class", "defined"]',
+    "@end_column = nil",
+    '@end_column = Cybertrain::Cast.time_or_nil(row["end"])',
+    '@class_column = Cybertrain::Cast.str_or_nil(row["class"])',
+    "when :end, :end_column then @end_column",
+    "when :class, :class_column then @class_column",
+    "when :end, :end_column then @end_column = Cybertrain::Cast.time_or_nil(value)",
+    "when :defined then @defined",
+    '"begin" => Cybertrain::Cast.to_sql(@begin_column),',
+    '"end" => Cybertrain::Cast.to_sql(@end_column),',
+    '"defined" => Cybertrain::Cast.to_sql(@defined)'
+  ])
+  # No keyword reader, ivar or accessor, and no note on the ordinary names.
+  refute file.include?("attr_accessor :title, :begin,")
+  refute file.include?("@end ")
+  refute file.include?("@class ")
+  refute file.include?('column "defined"')
+  refute file.include?("Cybertrain::Model or Object that the framework calls")
+end
+
+test "a keyword column whose fallback name is a column fails, naming the keyword" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "shifts" do |t|
+      t.datetime "end"
+      t.datetime "end_column"
+    end
+  end
+  msg = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [])
+  end
+  assert_includes msg, 'column "end" can be neither "end" nor "end_column"'
+  assert_includes msg, "a Ruby keyword"
+  assert_includes msg, "rename a column"
 end
 
 test "an association cannot land on the renamed reader of a reserved column" do

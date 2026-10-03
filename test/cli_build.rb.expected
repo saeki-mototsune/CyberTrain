@@ -1,5 +1,6 @@
 ok   app_name reads [package] name from spin.toml
 error: spin.toml [package] name 'x; touch PWNED #' cannot be '.' or '..', start with '-', or contain '/' or whitespace
+error: spin.toml [package] name 'tmp' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
 ok   app_name rejects only a name that breaks the build/bin/<name> path
 ok   command strings quote every interpolated value
 ok   an empty application name is an error, not an empty spin argument
@@ -13,6 +14,7 @@ error: PORT must be a number
 ok   server rejects a PORT that is not a number
 error: unexpected argument 'extra'
 ok   server rejects anything after PORT
+ok   Build.run refuses a name that collides with dist/ before any step runs or the lock is taken
 
 dist/blog       (production by default)
 dist/public/
@@ -29,4 +31,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-17 tests, 106 assertions, 0 failures
+18 tests, 140 assertions, 0 failures

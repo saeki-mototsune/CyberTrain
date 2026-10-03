@@ -56,24 +56,37 @@ module Cybertrain
     # error handlers' rescue clauses, where a NoMethodError would escape and
     # close the connection with no response at all.
     def self.status(e)
-      status_for_name(e.class.name.to_s)
+      status_for_name(e.class.name.to_s, namespaced_names?)
     end
 
-    # The decision on a class name alone, so it can be tested with names from
-    # either runtime. A namespaced name (CRuby) must match an entry in full:
-    # "Billing::Invalid" and "Other::QueryMalformed" are the app's, a 500. A
-    # name with no "::" (Spinel, which cannot tell the namespaces apart, or a
-    # top-level class; "" for an anonymous one) is matched against the bare
-    # name of each entry, so it is 400 only for a name that is unique to the
-    # framework (see CLIENT_FAULTS): a bare "Invalid" or "TooMany" is a 500.
-    # A while loop, not a block: no closure, nothing to widen (rules 32, 45).
-    def self.status_for_name(name)
-      namespaced = !name.index("::").nil?
+    # Whether Class#name carries its namespace on this runtime, asked of the
+    # framework's own class rather than RUBY_ENGINE: "Cybertrain::QueryInvalid"
+    # under CRuby, "QueryInvalid" under Spinel (NOTES rule 46). Computed per
+    # call, a String#index on a short name, and not held in a constant: a
+    # constant initialised from a method call at load time is not vouched for
+    # by NOTES under Spinel (only literals are).
+    def self.namespaced_names?
+      !Cybertrain::QueryInvalid.name.to_s.index("::").nil?
+    end
+
+    # The decision on a class name alone; `namespaced` is the runtime's
+    # answer from namespaced_names?, a parameter so it can be tested with
+    # names from either runtime. Where names are namespaced (CRuby) every
+    # framework fault has one, so it must match an entry in full:
+    # "Billing::Invalid" and "Other::QueryMalformed" are the app's, and so is
+    # a name with no "::", which can only be the app's own top-level class (an
+    # `class QueryTooMany < StandardError` of its own is a 500, not a 400;
+    # "" for an anonymous class likewise). Where they are not (Spinel, which
+    # cannot tell the namespaces apart) the name is matched against the bare
+    # names (CLIENT_FAULT_BARE_NAMES), so it is 400 only for a name that is
+    # unique to the framework (see CLIENT_FAULTS): a bare "Invalid" or
+    # "TooMany" is a 500. A while loop, not a block: no closure, nothing to
+    # widen (rules 32, 45).
+    def self.status_for_name(name, namespaced)
+      candidates = namespaced ? CLIENT_FAULTS : CLIENT_FAULT_BARE_NAMES
       i = 0
-      while i < CLIENT_FAULTS.length
-        entry = CLIENT_FAULTS[i]
-        candidate = namespaced ? entry : bare_name(entry)
-        return 400 if candidate == name
+      while i < candidates.length
+        return 400 if candidates[i] == name
         i += 1
       end
       500
@@ -81,11 +94,25 @@ module Cybertrain
 
     # The part after the last "::": Class#name carries no namespace under
     # Spinel ("QueryTooDeep") but does under CRuby ("Cybertrain::QueryTooDeep")
-    # (NOTES rule 46). Only ever given a String (status passes `name.to_s`).
+    # (NOTES rule 46). Only ever given a String.
     def self.bare_name(name)
       i = name.rindex("::")
       return name if i.nil?
       name[(i + 2)..-1]
+    end
+
+    # DERIVED from CLIENT_FAULTS, never edited: the bare name of each entry,
+    # so a lookup under Spinel compares against constants instead of slicing
+    # six strings per call (and per failing request, which asks twice). Built
+    # here, after bare_name is defined, with a plain while loop in the module
+    # body (no block) and an element-typed empty Array (rule 9). A module-body
+    # statement calling a module method is not covered by NOTES: verify it on
+    # the Spinel build.
+    CLIENT_FAULT_BARE_NAMES = Array.new(0) { "" }
+    bare_i = 0
+    while bare_i < CLIENT_FAULTS.length
+      CLIENT_FAULT_BARE_NAMES << bare_name(CLIENT_FAULTS[bare_i])
+      bare_i += 1
     end
   end
 end

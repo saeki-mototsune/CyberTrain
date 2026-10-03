@@ -15,9 +15,9 @@ test "parse keeps the first of a duplicate cookie name (most specific Path wins)
   assert_equal({ "a" => "1" }, cookies)
 end
 
-test "parse of a malformed percent-escape does not raise (Spinel diverges from CRuby, which raises ArgumentError)" do
-  cookies = Cybertrain::Cookies.parse("e=%zz")
-  assert_equal({ "e" => "\u0000" }, cookies)
+test "parse keeps the raw value of a malformed percent-escape on every runtime" do
+  cookies = Cybertrain::Cookies.parse("e=%zz; f=50%off; g=%; h=%41")
+  assert_equal({ "e" => "%zz", "f" => "50%off", "g" => "%", "h" => "A" }, cookies)
 end
 
 test "serialize with defaults" do

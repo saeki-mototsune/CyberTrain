@@ -112,4 +112,33 @@ test "body and headers are exposed" do
   assert_equal "10.0.0.1", req.remote_addr
 end
 
+test "query_params and form_params parse once and return the same Params every time" do
+  req = Request.new("POST", "/p?a=1&b[]=2", { "content-type" => "application/x-www-form-urlencoded" }, "c=3&d[e]=4")
+  q = req.query_params
+  assert_equal "1", q["a"]
+  assert_equal ["2"], q.list("b")
+  assert q.equal?(req.query_params)
+  f = req.form_params
+  assert_equal "3", f["c"]
+  assert_equal "4", f.nested("d")["e"]
+  assert f.equal?(req.form_params)
+  assert !q.equal?(f)
+end
+
+test "query_params and form_params of an empty query and body are cached empty Params" do
+  req = Request.new("GET", "/", {}, "")
+  assert req.query_params.empty?
+  assert req.query_params.equal?(req.query_params)
+  assert req.form_params.empty?
+  assert req.form_params.equal?(req.form_params)
+end
+
+test "a parse that raises is not cached: every call raises again" do
+  req = Request.new("POST", "/p?x=%zz", {}, "a=%zz")
+  assert_raises("QueryMalformed") { req.query_params }
+  assert_raises("QueryMalformed") { req.query_params }
+  assert_raises("QueryMalformed") { req.form_params }
+  assert_raises("QueryMalformed") { req.form_params }
+end
+
 Cybertrain::Test.run!

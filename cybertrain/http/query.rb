@@ -28,9 +28,10 @@ module Cybertrain
   end
 
   # A percent-escape that does not decode ("%zz", a lone "%") in a query
-  # string or form body (Cookies keep such a value raw instead). CRuby's
-  # decoder raises ArgumentError for it; Spinel's decodes it leniently
-  # (test/query.rb), so under Spinel this is never raised.
+  # string or form body (Cookies keep such a value raw instead). Query.decode
+  # finds it with its own byte scanner, not the decoder's ArgumentError
+  # (CRuby only: Spinel decodes it leniently, to a NUL byte, NOTES rule 28),
+  # so it is raised the same way on both runtimes.
   class QueryMalformed < QueryInvalid
   end
 
@@ -86,16 +87,94 @@ module Cybertrain
     # The one place request text is percent-decoded (query strings and form
     # bodies; Cookies.decode wraps it, because a cookie the app does not own
     # must not fail the request), so malformed input is the same client
-    # fault in every parameter. A plain method with one begin/rescue and no block
-    # (NOTES rule 32 is about yielding methods).
+    # fault in every parameter. The escapes are checked first, by
+    # valid_escapes?, because that is the only check Spinel has: its decoder
+    # never raises (NOTES rule 28), so relying on the ArgumentError alone
+    # would put NUL bytes into params there while CRuby answered 400. The
+    # rescue stays as a second net for anything else the decoder refuses.
+    # A plain method with one begin/rescue and no block (NOTES rule 32 is
+    # about yielding methods).
+    #
+    # The library decoder is never handed the whole text: under Spinel
+    # URI.decode_www_form_component is quadratic on a String that holds a
+    # non-ASCII character (e-acute + 50 000 "a" took 517 ms, + 100 000 2.4 s,
+    # + 200 000 8.5 s; 400 000 "a" + "%41%C3%A9", which is ASCII up to the
+    # escapes, 11 ms; linear under CRuby, NOTES rule 49), so one 1.6 MB
+    # non-ASCII key or form value hung the binary for minutes. So the text is
+    # decoded by byte chunks: the stretches between escapes are copied with
+    # byteslice, and the decoder sees only each maximal run of consecutive
+    # "%XX" escapes, which is pure ASCII and as short as the run (a percent-
+    # encoded multibyte character is one run, so it still decodes as a unit).
+    # "+" is turned into a space first (gsub with a String pattern: the
+    # pattern is compiled elsewhere, router.rb), which also leaves nothing
+    # for the decoder to do but the escapes. Text without "%" is returned
+    # as it is.
+    # Offsets are bytes, as in parse and split_key (NOTES rule 27): each is a
+    # "%" or just after two hex digits of a valid escape (valid_escapes?
+    # guarantees two bytes follow every "%", so `j + 2 < n` below never
+    # drops a final escape: "%41" has n = 3, j = 0), so always on a character
+    # boundary. O(bytes) overall.
     def self.decode(text)
-      URI.decode_www_form_component(text)
+      raise QueryMalformed, "malformed percent-encoding in request parameters" unless valid_escapes?(text)
+
+      plus = text.index("+").nil? ? text : text.gsub("+", " ")
+      i = plus.byteindex("%")
+      return utf8_text(plus.dup) if i.nil?
+
+      n = plus.bytesize
+      out = +""
+      pos = 0
+      while !i.nil?
+        out << utf8_text(plus.byteslice(pos, i - pos).to_s)
+        j = i
+        while j + 2 < n && plus.getbyte(j) == 37
+          j += 3
+        end
+        out << URI.decode_www_form_component(plus.byteslice(i, j - i).to_s)
+        pos = j
+        i = plus.byteindex("%", pos)
+      end
+      out << utf8_text(plus.byteslice(pos, n - pos).to_s)
+      out
     rescue ArgumentError
       # The client's fault (a 400 through ClientError), not the app's. The
       # decoder's message is not repeated: it embeds the raw text, newlines
       # included, and would let a form body forge log lines (Logger writes
       # the line as is) and echo itself into the dev page's 400 body.
       raise QueryMalformed, "malformed percent-encoding in request parameters"
+    end
+
+    # `s` tagged as UTF-8, in place (a no-op for the Spinel runtime, whose
+    # Strings are all UTF-8). The decoder always answered UTF-8, but a
+    # socket buffer under CRuby is ASCII-8BIT (NOTES rule 27), and the pieces
+    # decode copies out of it would then not mix with the decoder's UTF-8 in
+    # `out` (Encoding::CompatibilityError on "e-acute%41"-style text). Only
+    # ever called on a fresh String (byteslice or dup), never on the caller's.
+    def self.utf8_text(s)
+      s.force_encoding("UTF-8")
+    end
+
+    # True when every "%" in `text` is followed by two hex digits. A byte
+    # scan, so it answers the same on CRuby and Spinel (the decoder does not,
+    # NOTES rule 28) and costs O(bytes) whatever the encoding; it jumps from
+    # one "%" to the next with byteindex, so text without escapes is one C
+    # scan. Every offset it uses is a "%" or just after two ASCII hex digits,
+    # so it is always on a character boundary. Router.split_path asks too.
+    def self.valid_escapes?(text)
+      n = text.bytesize
+      i = text.byteindex("%")
+      while !i.nil?
+        return false if i + 2 >= n
+        return false unless hex_byte?(text.getbyte(i + 1).to_i) && hex_byte?(text.getbyte(i + 2).to_i)
+
+        i = text.byteindex("%", i + 3)
+      end
+      true
+    end
+
+    # 0-9, A-F, a-f as a byte value.
+    def self.hex_byte?(b)
+      (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102)
     end
 
     # One non-empty "k=v" (or bare "k") pair into the tree.
@@ -123,41 +202,32 @@ module Cybertrain
     # whatever follows (the key is refused as soon as the (MAX_DEPTH + 1)th
     # pair is seen, so a malformed tail after it is never looked at).
     #
-    # Two cursor passes. The first only counts the pairs and checks the shape,
-    # allocating nothing, and stops at the (MAX_DEPTH + 1)th pair, so it scans
-    # at most MAX_DEPTH + 1 pairs however long the key is. That bound matters
-    # beyond the Strings: `key[pos]` and `key.index("]", pos)` take character
-    # offsets, which a UTF-8 string resolves with an O(pos) scan once it has a
-    # non-ASCII character, so an unbounded pass over a key like "k" + e-acute
-    # + "[][][]..." (a megabyte of pairs, parsed up to three times per
-    # request) was quadratic. The second pass slices only a key that passed,
-    # so it is at most MAX_DEPTH pairs too.
+    # One cursor loop that cuts each pair out as it validates it, so it runs
+    # at most MAX_DEPTH + 1 times however long the key is, and allocates only
+    # the (at most MAX_DEPTH + 1) parts. The offsets are bytes (getbyte,
+    # byteindex, byteslice, bytesize; parse does the same, NOTES rule 27):
+    # `key[pos]` and `key.index("]", pos)` take character offsets, which a
+    # UTF-8 string resolves with an O(pos) scan once it holds one non-ASCII
+    # character, so a key like e-acute + ("[" + 300 000 "a" + "]") * 32 cost
+    # 0.47 s per parse, three times per request, for 32 pairs. Every "[" and
+    # "]" is ASCII, so each offset is 0 or on one of them and always on a
+    # character boundary: a multibyte part is never split.
     def self.split_key(key)
-      first_bracket = key.index("[")
+      first_bracket = key.byteindex("[")
       return [key] if first_bracket.nil?
 
-      len = key.length
-      count = 0
+      len = key.bytesize
+      parts = [key.byteslice(0, first_bracket).to_s]
       pos = first_bracket
       while pos < len
-        return [key] unless key[pos] == "["
+        return [key] unless key.getbyte(pos) == 91 # "["
 
-        close = key.index("]", pos)
+        close = key.byteindex("]", pos)
         return [key] if close.nil?
 
-        count += 1
-        raise QueryTooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if count > MAX_DEPTH
+        raise QueryTooDeep, "parameter nesting too deep (limit #{MAX_DEPTH})" if parts.length > MAX_DEPTH
 
-        pos = close + 1
-      end
-
-      parts = [key[0, first_bracket]]
-      pos = first_bracket
-      while pos < len
-        close = key.index("]", pos)
-        break if close.nil? # cannot happen: the first pass saw every "]"
-
-        parts << key[pos + 1, close - pos - 1].to_s
+        parts << key.byteslice(pos + 1, close - pos - 1).to_s
         pos = close + 1
       end
       parts

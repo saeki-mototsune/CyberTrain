@@ -160,8 +160,8 @@ module Cybertrain
     # Deletes the matching rows and returns how many went. With a limit or
     # offset only the rows of that window go (Post.limit(1).delete_all is one
     # row, as count/exists? read the same window): SQLite has no DELETE ...
-    # LIMIT in a default build, so the window is picked by a rowid subselect;
-    # the where binds appear once, inside it.
+    # LIMIT in a default build, so the window is picked by an `id` subselect
+    # (the quoted primary key); the where binds appear once, inside it.
     def delete_all
       sql = +"DELETE FROM #{Relation.quote_ident(@table)}"
       if @limit >= 0 || @offset > 0

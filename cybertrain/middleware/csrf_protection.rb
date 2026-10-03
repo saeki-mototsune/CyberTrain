@@ -48,8 +48,8 @@ module Cybertrain
     # the query string, falling back to the header.
     def token_from_request(req)
       value = ""
-      value = Query.parse(req.body)[PARAM].to_s if req.form?
-      value = Query.parse(req.query_string)[PARAM].to_s if value.empty?
+      value = req.form_params[PARAM].to_s if req.form?
+      value = req.query_params[PARAM].to_s if value.empty?
       if value.empty?
         header_value = req.header(HEADER)
         value = header_value unless header_value.nil?

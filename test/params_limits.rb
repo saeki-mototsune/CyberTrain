@@ -62,8 +62,49 @@ test "a non-ASCII key with 100000 bracket pairs is refused as QueryTooDeep" do
   assert_raises("QueryTooDeep") { Cybertrain::Query.parse("#{key}=1") }
 end
 
+test "a key of a few bracket pairs behind one non-ASCII character splits by byte offsets, multibyte parts intact" do
+  assert_equal ["\u00e9", "\u3042", "b"], Cybertrain::Query.split_key("\u00e9[\u3042][b]")
+  assert_equal ["k\u00e9", "", "\u3042x"], Cybertrain::Query.split_key("k\u00e9[][\u3042x]")
+  assert_equal ["\u3042[b"], Cybertrain::Query.split_key("\u3042[b")
+  assert_equal ["\u3042[b]\u00e9"], Cybertrain::Query.split_key("\u3042[b]\u00e9")
+  params = Cybertrain::Query.parse("\u00e9[\u3042][b]=1&%C3%A9x%5B%E3%81%82%5D=2")
+  assert_equal "1", params.nested("\u00e9").nested("\u3042")["b"]
+  assert_equal "2", params.nested("\u00e9x")["\u3042"]
+end
+
+test "a non-ASCII key with MAX_DEPTH pairs of 300000 bytes parses without rescanning (9.6 MB, O(key), not O(MAX_DEPTH x key))" do
+  # Character offsets (key[pos], key.index("]", pos)) take an O(pos) scan on a
+  # UTF-8 String with one multibyte character: 0.47 s per parse on CRuby for
+  # this key, three times per request. Byte offsets make it one pass.
+  # Asserted on the result only.
+  key = "\u00e9" + ("[" + ("a" * 300_000) + "]") * 32
+  parts = Cybertrain::Query.split_key(key)
+  assert_equal 33, parts.length
+  assert_equal "\u00e9", parts[0]
+  assert_equal 300_000, parts[1].length
+  assert_equal 300_000, parts[32].length
+  assert_raises("QueryTooDeep") { Cybertrain::Query.split_key(key + "[a]") }
+  params = Cybertrain::Query.parse(key + "=v")
+  assert params.key?("\u00e9")
+end
+
+test "a large non-ASCII value and a large non-ASCII key decode without a quadratic library call" do
+  # URI.decode_www_form_component is quadratic on a non-ASCII String under
+  # Spinel (8.5 s for e-acute + 200 000 bytes, NOTES rule 49); Query.decode
+  # gives it only the ASCII runs of escapes. Asserted on the result only.
+  value = "\u00e9" + ("v" * 300_000)
+  params = Cybertrain::Query.parse("k=" + value)
+  assert_equal 300_001, params["k"].length
+  assert_equal "\u00e9", params["k"][0, 1]
+  big_key = "\u00e9" + ("k" * 300_000)
+  params = Cybertrain::Query.parse(big_key + "=" + value + "%C3%A9")
+  assert_equal 300_002, params[big_key].length
+  assert_equal "\u00e9", params[big_key][300_001, 1]
+  assert_equal 300_002, Cybertrain::Query.decode(value + "%C3%A9").length
+end
+
 test "Query.decode (shared by Query and Cookies) decodes clean escapes" do
-  # The malformed case raises only under CRuby (test/query.rb), so it is not here.
+  # The malformed case is in test/query.rb.
   assert_equal "a b", Cybertrain::Query.decode("a+b")
   assert_equal "A B", Cybertrain::Query.decode("%41%20B")
   assert_equal "", Cybertrain::Query.decode("")
@@ -161,9 +202,7 @@ test "set_path and merge! handle a 5000 level chain iteratively" do
   assert_equal "2", node["leaf"]
 end
 
-test "QueryMalformed (an undecodable percent-escape under CRuby) is a client fault: 400, not 500" do
-  # Constructed, not raised: Spinel's decoder never raises it (test/query.rb),
-  # so the classification is what both runtimes can check.
+test "QueryMalformed (an undecodable percent-escape) is a client fault: 400, not 500" do
   assert_equal 400, Cybertrain::ClientError.status(Cybertrain::QueryMalformed.new("malformed percent-encoding"))
   assert_equal 400, Cybertrain::ClientError.status(Cybertrain::QueryTooMany.new("too many"))
   assert_equal 500, Cybertrain::ClientError.status(ArgumentError.new("the app's own"))

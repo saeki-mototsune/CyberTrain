@@ -100,6 +100,10 @@ finds the commit that removed them).
 28. `URI.decode_www_form_component` on a malformed escape (`%ZZ`, a trailing
     `%`) raises under CRuby but silently decodes under Spinel; validate escapes
     (`%` followed by two hex digits) before decoding when both must agree.
+    `Query.decode` therefore validates them itself (`Query.valid_escapes?`, a
+    byte scan) before decoding, so `QueryMalformed` and the Cookies raw-value
+    fallback behave the same on both runtimes; `Router.split_path` uses the
+    same check.
 29. Once `SafeString` (to_s/to_str) is in the program, `String#include?` with
     a polymorphic argument mis-dispatches even after narrowing the receiver;
     `String#index(needle.to_s)` works. Iterating a nullable Hash with
@@ -205,6 +209,13 @@ finds the commit that removed them).
     register a `rescue_from` handler for it under Spinel; Controller#run_action
     still names it in its rescue so the handler fires under CRuby and the
     exception reaches the error pages the same way on both runtimes.
+49. `URI.decode_www_form_component` is quadratic on a non-ASCII String under
+    Spinel (517 ms for e-acute + 50 000 bytes, 8.5 s for 200 000; linear
+    under CRuby and for ASCII text: 11 ms for 400 000 "a" + "%41%C3%A9"). A
+    single 1.6 MB non-ASCII key or form value would hang the binary for
+    minutes. Decode by byte chunks (`Query.decode`): copy the text between
+    escapes with `byteslice` and hand the decoder only the ASCII runs of
+    `%XX` escapes.
 
 ## Numbers worth remembering
 

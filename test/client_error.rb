@@ -9,43 +9,67 @@ require "cybertrain/test"
 # name strings from both runtimes, which is identical on both.
 
 test "a namespaced name must match in full" do
-  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryTooMany")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryTooDeep")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryLimitExceeded")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryInvalid")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryMalformed")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::Params::ParameterMissing")
+  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryTooMany", true)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryTooDeep", true)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryLimitExceeded", true)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryInvalid", true)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryMalformed", true)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::Params::ParameterMissing", true)
 end
 
 test "an app or library exception that shares a bare name is the app's fault (500)" do
-  assert_equal 500, Cybertrain::ClientError.status_for_name("Billing::Invalid")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("RateLimiter::TooMany")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("Other::QueryMalformed")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("Other::ParameterMissing")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("Cybertrain::TooMany")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("Cybertrain::Query::TooMany")
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Billing::Invalid", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("RateLimiter::TooMany", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Other::QueryMalformed", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Other::ParameterMissing", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Cybertrain::TooMany", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Cybertrain::Query::TooMany", true)
 end
 
 test "a name with no namespace (Spinel) matches the framework's unique bare names" do
-  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryTooMany")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryTooDeep")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryLimitExceeded")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryInvalid")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryMalformed")
-  assert_equal 400, Cybertrain::ClientError.status_for_name("ParameterMissing")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("ArgumentError")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("Rejected")
+  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryTooMany", false)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryTooDeep", false)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryLimitExceeded", false)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryInvalid", false)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryMalformed", false)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("ParameterMissing", false)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("ArgumentError", false)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Rejected", false)
 end
 
 test "a bare name an app also uses (Billing::Invalid under Spinel) is not a client fault" do
-  assert_equal 500, Cybertrain::ClientError.status_for_name("Invalid")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("TooMany")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("Malformed")
-  assert_equal 500, Cybertrain::ClientError.status_for_name("LimitExceeded")
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Invalid", false)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("TooMany", false)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Malformed", false)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("LimitExceeded", false)
 end
 
 test "an anonymous class (name nil under CRuby) is a 500, not a crash" do
-  assert_equal 500, Cybertrain::ClientError.status_for_name("")
+  assert_equal 500, Cybertrain::ClientError.status_for_name("", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("", false)
+end
+
+test "a bare framework name is the app's own top-level class where names are namespaced" do
+  # An app's `class QueryTooMany < StandardError` under CRuby has no "::",
+  # and every framework fault there has one: the bare name is a 500.
+  assert_equal 500, Cybertrain::ClientError.status_for_name("QueryTooMany", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("ParameterMissing", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Invalid", true)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("QueryTooMany", false)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryTooMany", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Billing::Invalid", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Invalid", false)
+end
+
+test "the bare-name list is derived from CLIENT_FAULTS, entry for entry" do
+  faults = Cybertrain::ClientError::CLIENT_FAULTS
+  bare = Cybertrain::ClientError::CLIENT_FAULT_BARE_NAMES
+  assert_equal faults.length, bare.length
+  i = 0
+  while i < faults.length
+    assert_equal Cybertrain::ClientError.bare_name(faults[i]), bare[i]
+    i += 1
+  end
 end
 
 test "bare_name is the part after the last namespace separator" do

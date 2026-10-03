@@ -60,25 +60,26 @@ test "app_name rejects only a name that breaks the build/bin/<name> path" do
     File.write("spin.toml", "[package]\nname = \"#{flag}\"\n")
     assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
   end
-  # The names assemble() creates in dist/ (public, storage, tmp) and its
-  # dot-prefixed scratch entries: refused, with one message naming the reason.
-  Cybertrain::CLI::Build::DIST_ENTRIES.each do |entry|
-    File.write("spin.toml", "[package]\nname = \"#{entry}\"\n")
-    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
-    assert_includes message, "spin.toml [package] name '#{entry}' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp)"
-  end
-  [".hidden", ".public.old", ".blog.tmp"].each do |hidden|
-    File.write("spin.toml", "[package]\nname = \"#{hidden}\"\n")
-    assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
-  end
   assert_equal ["public", "storage", "tmp"], Cybertrain::CLI::Build::DIST_ENTRIES
-  # Case-insensitive filesystems (macOS APFS) make "Public" and public one
-  # directory entry, so the entry names match in any letter case.
-  ["Public", "STORAGE", "Tmp", "TMP"].each do |cased|
-    File.write("spin.toml", "[package]\nname = \"#{cased}\"\n")
-    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
-    assert_includes message, "spin.toml [package] name '#{cased}' collides with what `cybertrain build` keeps in dist/"
+  # The names assemble() creates in dist/ only matter to the build: app_name
+  # (read by migration, db, server and build alike) accepts them, so an
+  # existing app named tmp or Public still migrates and serves; the build
+  # path (require_dist_name!) refuses them in any letter case (macOS APFS
+  # makes "Public" and public one directory entry), and the dot-prefixed
+  # scratch names too, with one message naming the reason.
+  ["public", "storage", "tmp", "Public", "STORAGE", "Tmp", "TMP", ".hidden", ".public.old", ".blog.tmp"].each do |name|
+    File.write("spin.toml", "[package]\nname = \"#{name}\"\n")
+    assert_equal name, Cybertrain::CLI::Build.app_name(".")
+    # NOTES rule 10: run_in_app's own path returns 1, so the block's value is an Integer.
+    assert_equal 0, Cybertrain::CLI.run_in_app { |n| n == name ? 0 : 1 }
+    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.require_dist_name!(name) }
+    assert_includes message, "spin.toml [package] name '#{name}' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp)"
   end
+  # `cybertrain build` itself refuses, before the toolchain is touched.
+  File.write("spin.toml", "[package]\nname = \"tmp\"\n")
+  assert_equal 1, Cybertrain::CLI.run(["build"])
+  assert_equal "", Cybertrain::CLI::Build.dist_name_problem("tmp2")
+  Cybertrain::CLI::Build.require_dist_name!("blog")
   # Only those names and a leading dot: other spellings are other entries.
   ["tmp2", "my_public", "blog", "a.b", "MyApp"].each do |fine|
     File.write("spin.toml", "[package]\nname = \"#{fine}\"\n")
@@ -171,6 +172,15 @@ class FakeRunner < Cybertrain::CLI::Build::Runner
     end
     @log << "#{command} (#{lock})"
     command != @failing
+  end
+end
+
+test "Build.run refuses a name that collides with dist/ before any step runs or the lock is taken" do
+  ["tmp", "Public", ".hidden"].each do |name|
+    runner = FakeRunner.new("")
+    assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.run(".", name, runner) }
+    assert_equal 0, runner.log.size
+    refute File.exist?("tmp/cybertrain-build.lock")
   end
 end
 

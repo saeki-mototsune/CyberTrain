@@ -8,9 +8,11 @@ module Cybertrain
       # public/ and the storage/ and tmp/ directories. A package named like
       # one of them would collide with it (the binary renamed to dist/public
       # gets moved aside as dist/.public.old and deleted; a dist/storage
-      # directory cannot be replaced by the binary), so app_name and
-      # `cybertrain new` refuse these names. assemble builds its paths from
-      # these constants so the two cannot drift.
+      # directory cannot be replaced by the binary), so `cybertrain build`
+      # (require_dist_name!) and `cybertrain new` refuse these names;
+      # app_name, which every command reads, does not: `cybertrain db` and
+      # `server` work for an existing app named like one. assemble builds its
+      # paths from these constants so the two cannot drift.
       DIST_PUBLIC = "public"
       DIST_STORAGE = "storage"
       DIST_TMP = "tmp"
@@ -62,10 +64,17 @@ module Cybertrain
           raise InvalidArgument, "spin.toml [package] name '#{name}' cannot be '.' or '..', start with '-', or contain '/' or whitespace"
         end
 
+        name
+      end
+
+      # The build path's own check (cybertrain/cli.rb before the toolchain is
+      # touched, and run before any spin command): a name that collides with
+      # a dist/ entry only matters to assemble. Returns nil.
+      def self.require_dist_name!(name)
         problem = dist_name_problem(name)
         raise InvalidArgument, "spin.toml [package] name '#{name}' #{problem}" unless problem.empty?
 
-        name
+        nil
       end
 
       # name goes through quote_arg too: app_name validates it, but the
@@ -140,6 +149,7 @@ module Cybertrain
 
       # Runs the build in root and assembles dist/. Returns the exit code.
       def self.run(root, name, runner = Runner.new)
+        require_dist_name!(name)
         steps = commands(name)
         ok = false
         restored = false

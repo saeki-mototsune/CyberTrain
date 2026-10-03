@@ -1,3 +1,5 @@
+require "cybertrain/http/query"
+
 module Cybertrain
   # One incoming HTTP request. Header names are expected lowercased (as
   # HttpParser produces them), but #header also finds mixed-case keys so
@@ -19,6 +21,8 @@ module Cybertrain
       @body = body
       @remote_addr = remote_addr
       @http_version = http_version
+      @query_params_cache = nil
+      @form_params_cache = nil
     end
 
     # Used by MethodOverride to turn a POST form into PATCH/PUT/DELETE.
@@ -106,6 +110,35 @@ module Cybertrain
 
     def json?
       content_type == "application/json"
+    end
+
+    # The query string parsed into Params, once per request. MethodOverride,
+    # CsrfProtection and the Router all read it, and every parse decodes each
+    # pair and builds a tree, so the cost the Query limits bound is paid once,
+    # not three times. A parse that raises (QueryTooMany, QueryMalformed, ...)
+    # is not cached: it propagates and the request ends as a 400. Callers
+    # only read the result; the Router copies it before it adds route
+    # params. The cache ivars start as nil and are assigned from a method's
+    # result, as a nullable ivar must be (NOTES rule 7).
+    def query_params
+      cached = @query_params_cache
+      return cached unless cached.nil?
+
+      parsed = Query.parse(@query_string)
+      @query_params_cache = parsed
+      parsed
+    end
+
+    # The body parsed into Params, once per request (see #query_params). Only
+    # meaningful for a form body: callers check #form? first, as they always
+    # did, and any other body is not parsed at all.
+    def form_params
+      cached = @form_params_cache
+      return cached unless cached.nil?
+
+      parsed = Query.parse(@body)
+      @form_params_cache = parsed
+      parsed
     end
 
     def cookie_header

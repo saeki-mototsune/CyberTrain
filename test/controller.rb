@@ -68,6 +68,16 @@ class PostsController < ApplicationController
     render plain: "unreachable"
   end
 
+  # Dirties the response (a cookie, a redirect, an attachment header) and
+  # then raises a client fault: the 400 must not keep any of it.
+  def dirty_then_parse
+    response.add_cookie("sid=abc; Path=/")
+    response.set_header("Content-Disposition", "attachment")
+    redirect_to "/elsewhere"
+    Cybertrain::Query.parse("&" * 4097)
+    render plain: "unreachable"
+  end
+
   def bill
     raise Billing::Invalid, "card declined"
   end
@@ -435,6 +445,19 @@ test "a client fault raised in an action answers 400 with its message, like a mi
   controller.process(:parse_body) { |c| c.parse_body }
   assert_equal 400, ctx.response.status
   assert_equal "too many parameters (limit 4096)", ctx.response.body
+end
+
+test "a client fault after the action set cookies and redirected answers a clean text/plain 400" do
+  ctx = build_ctx(false)
+  controller = PostsController.new(ctx)
+  controller.process(:dirty_then_parse) { |c| c.dirty_then_parse }
+  assert_equal 400, ctx.response.status
+  assert_equal "too many parameters (limit 4096)", ctx.response.body
+  assert_equal "text/plain; charset=utf-8", ctx.response.header("Content-Type")
+  assert_nil ctx.response.header("Location")
+  assert_nil ctx.response.header("Content-Disposition")
+  assert_equal 0, ctx.response.cookies.length
+  assert controller.performed?
 end
 
 test "an app exception sharing a bare name with a framework one is still raised (500 path)" do
