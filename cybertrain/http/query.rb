@@ -36,9 +36,7 @@ module Cybertrain
   # under CRuby): app code that rescued ArgumentError around Query.parse,
   # Query.decode or request.form_params must rescue Cybertrain::QueryInvalid
   # instead (README "Differences from Rails"). The hierarchy stays as it is:
-  # an ArgumentError superclass for a user class is unverified under Spinel,
-  # and Query.decode's own `rescue ArgumentError` net would then catch this
-  # raise too.
+  # an ArgumentError superclass for a user class is unverified under Spinel.
   class QueryMalformed < QueryInvalid
   end
 
@@ -94,13 +92,13 @@ module Cybertrain
     # The one place request text is percent-decoded (query strings and form
     # bodies; Cookies.decode wraps it, because a cookie the app does not own
     # must not fail the request), so malformed input is the same client
-    # fault in every parameter. The escapes are checked first, by
-    # valid_escapes?, because that is the only check Spinel has: its decoder
-    # never raises (NOTES rule 28), so relying on the ArgumentError alone
-    # would put NUL bytes into params there while CRuby answered 400. The
-    # rescue stays as a second net for anything else the decoder refuses.
-    # A plain method with one begin/rescue and no block (NOTES rule 32 is
-    # about yielding methods).
+    # fault in every parameter. The escapes are validated up front, by
+    # valid_escapes?: one clear QueryMalformed before any work, with the same
+    # message on both runtimes, which Spinel could not give otherwise (its
+    # decoder never raises, NOTES rule 28, and would put NUL bytes into
+    # params while CRuby answered 400). There is no rescue around the decoder:
+    # decode_escapes hands it only runs of well-formed "%XX", which it never
+    # refuses.
     #
     # The library decoder is never handed the whole text: under Spinel
     # URI.decode_www_form_component is quadratic on a String that holds a
@@ -113,17 +111,13 @@ module Cybertrain
       raise QueryMalformed, "malformed percent-encoding in request parameters" unless valid_escapes?(text)
 
       decode_escapes(text, true)
-    rescue ArgumentError
-      # The client's fault (a 400 through ClientError), not the app's. The
-      # decoder's message is not repeated: it embeds the raw text, newlines
-      # included, and would let a form body forge log lines (Logger writes
-      # the line as is) and echo itself into the dev page's 400 body.
-      raise QueryMalformed, "malformed percent-encoding in request parameters"
     end
 
-    # The one chunked decoding loop, for text whose escapes the CALLER has
-    # already checked with valid_escapes? (decode does; Router.split_path
-    # does and keeps a segment literal when the check fails). With
+    # The one chunked decoding loop. It decodes well-formed text and refuses
+    # anything else, whatever its caller checked (decode and Router.split_path
+    # both run valid_escapes? first, but this method is public and must not
+    # depend on that): a "%" counts as an escape only when two hex digits
+    # follow it, otherwise QueryMalformed is raised right there. With
     # plus_is_space a "+" is a space (query strings, forms, cookies); without
     # it a "+" stays a plus (a path segment). Two entry points over one loop,
     # and no block, so it is a plain method (NOTES rule 32).
@@ -138,13 +132,12 @@ module Cybertrain
     # offset? rules 27/49 are why the rest of this loop does not ask). Text
     # with neither special is returned as it is.
     # Offsets are bytes, as in parse and split_key (NOTES rule 27): each is a
-    # "%", a "+", or just after two hex digits of a valid escape (valid_escapes?
-    # guarantees two bytes follow every "%", so `j + 2 < n` below never
-    # drops a final escape: "%41" has n = 3, j = 0), so always on a character
-    # boundary. The next "%" and the next "+" are each searched for once per
-    # use (a run of escapes holds no "+", so the cached "+" offset stays
-    # valid across it), so the whole decode is O(bytes). -1 means none, a
-    # typed sentinel rather than nil (NOTES rule 11).
+    # "%", a "+", or just after two hex digits of an escape that was checked
+    # here, so always on a character boundary. The next "%" and the next "+"
+    # are each searched for once per use (a run holds only "%" and hex
+    # digits, so the cached "+" offset is never behind `pos` after it), so
+    # the whole decode is O(bytes). -1 means none, a typed sentinel rather
+    # than nil (NOTES rule 11).
     def self.decode_escapes(text, plus_is_space)
       pct = next_byte(text, "%", 0)
       plus = plus_is_space ? next_byte(text, "+", 0) : -1
@@ -157,18 +150,18 @@ module Cybertrain
         if pct >= 0 && (plus < 0 || pct < plus)
           out << utf8_text(text.byteslice(pos, pct - pos).to_s)
           j = pct
-          while j + 2 < n && text.getbyte(j) == 37
+          while j + 2 < n && text.getbyte(j) == 37 && hex_byte?(text.getbyte(j + 1).to_i) && hex_byte?(text.getbyte(j + 2).to_i)
             j += 3
           end
-          # A guard, not a path: both callers run valid_escapes? first, so
-          # every "%" here has two bytes after it. This method is public,
-          # though, and without the guard a "%" with fewer than two following
-          # bytes consumed nothing (j == pct), pos stayed put and next_byte
-          # found the same "%" again: an endless loop on ("%4", false). An
-          # escape that is not two hex digits is malformed input, the same
-          # QueryMalformed decode raises (no rescue needed: a plain raise,
-          # NOTES rule 32).
-          raise QueryMalformed, "malformed percent-encoding in request parameters" if j == pct
+          # The run ended at a "%" that is not followed by two hex digits
+          # (fewer than two bytes left, or a non-hex byte: "%4", "%zz",
+          # "%+1ab"). Walking past it as if it were an escape put `pos` ahead
+          # of the cached "+" offset ("%+1ab": plus 1, pos 3), so the next
+          # byteslice got a negative length, returned nil and utf8_text
+          # raised FrozenError; with fewer than two bytes left it consumed
+          # nothing and looped forever on ("%4", false). A plain raise, no
+          # rescue (NOTES rule 32).
+          raise QueryMalformed, "malformed percent-encoding in request parameters" if j < n && text.getbyte(j) == 37
           out << URI.decode_www_form_component(text.byteslice(pct, j - pct).to_s)
           pos = j
           pct = next_byte(text, "%", pos)

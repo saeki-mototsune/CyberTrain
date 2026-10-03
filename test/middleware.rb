@@ -170,26 +170,33 @@ end
 test "MethodOverride and the Router share one parse of the form body" do
   stack = Cybertrain::MethodOverride.new(endpoint)
   ctx = build_ctx("POST", "/things/1?q=1", "_method=delete", FORM)
+  # a reader that ran before the Router and kept the trees
+  q = ctx.request.query_params
+  f = ctx.request.form_params
   stack.call(ctx)
   assert_equal "DELETE 1", ctx.response.body
-  assert ctx.request.form_params.equal?(ctx.request.form_params)
-  assert_equal "delete", ctx.request.form_params["_method"]
-  # the Router is the last consumer: it takes the cached query tree as
-  # ctx.params (merges the form into it) and leaves the form cache as it was;
-  # a reader after routing gets a fresh, pristine query tree, not ctx.params
-  assert !ctx.params.equal?(ctx.request.query_params)
-  assert !ctx.params.equal?(ctx.request.form_params)
-  after = ctx.request.query_params
-  assert_equal "1", after["q"]
-  assert !after.key?("_method")
-  assert !after.key?("id")
+  assert f.equal?(ctx.request.form_params)
+  assert_equal "delete", f["_method"]
+  # the Router builds ctx.params as its own tree (query, then form, then the
+  # captures merged into a fresh Params); neither cache is ever changed, so
+  # the trees fetched before routing are still what the Request holds
+  assert !ctx.params.equal?(q)
+  assert !ctx.params.equal?(f)
+  assert q.equal?(ctx.request.query_params)
+  assert_equal "1", q["q"]
+  assert_equal ["q"], q.keys
+  assert !q.key?("_method")
+  assert !q.key?("id")
   assert_equal "1", ctx.params["q"]
   assert_equal "delete", ctx.params["_method"]
   assert_equal "1", ctx.params["id"]
   ctx.params.set_value("_method", "changed")
-  assert_equal "delete", ctx.request.form_params["_method"]
-  assert !ctx.request.form_params.key?("q")
-  assert !ctx.request.form_params.key?("id")
+  ctx.params.set_value("q", "changed")
+  assert_equal "delete", f["_method"]
+  assert_equal "1", q["q"]
+  assert_equal ["_method"], f.keys
+  assert !f.key?("q")
+  assert !f.key?("id")
 end
 
 # SessionStore parses every cookie on every request but reads only its own,

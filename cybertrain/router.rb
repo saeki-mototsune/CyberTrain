@@ -152,18 +152,22 @@ module Cybertrain
     private
 
     # Later sources win: query string, then the form body, then the route.
-    # The Router is the LAST consumer of the Request's parse caches
-    # (MethodOverride and CsrfProtection run before it and only read one key
-    # each), so it TAKES the cached query tree (Request#take_query_params)
-    # as the request's params instead of copying both trees (a copy is a
-    # second full tree build per request: up to 4096 pairs x 32 levels). The
-    # take clears the cache, so ctx.params is the only holder of that
-    # object: the form tree is merged into it (merge! reads the form tree
-    # and does not change it) and the route captures set on top, and a later
-    # request.query_params is a fresh, pristine parse that never carries the
-    # form, `_method`, `authenticity_token` or the captures.
+    # ctx.params is the request's OWN tree: a fresh Params that the query
+    # tree, the form tree (when the body is a form) and the route captures
+    # are merged into, in that order. merge! reads its argument and copies
+    # every list and nested Params it takes over, so neither of the
+    # Request's parse caches is ever mutated, and anyone who kept
+    # request.query_params or request.form_params (a middleware rebuilding a
+    # canonical URL after `super`) still sees the query keys or the form
+    # fields alone, never `_method`, `authenticity_token` or the captures.
+    # This is one more tree build per request than handing over the cached
+    # query tree (rounds 17 and 18 did, to save it), accepted on purpose: it
+    # is bounded by the Query limits (at most MAX_PAIRS pairs of MAX_DEPTH
+    # levels), and a cache that is read-only for every holder cannot be
+    # corrupted by the one consumer that writes.
     def assemble_params(request, captured)
-      params = request.take_query_params
+      params = Params.new
+      params.merge!(request.query_params)
       params.merge!(request.form_params) if request.form?
       # NOTE(Spinel): not `captured.each { |k, v| ... }` -- captured comes from
       # the nullable Route#match, and with a user-defined #to_s in the program

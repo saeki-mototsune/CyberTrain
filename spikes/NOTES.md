@@ -230,7 +230,10 @@ finds the commit that removed them).
     (`ctx.params["id"]`, `q.key?("f")`) on the same methods; each shape
     passed alone (2026.09.12). Keep one key type per program in tests
     (Symbols, as the framework's own callers do), and treat a polymorphic
-    key parameter as rule 29 territory.
+    key parameter as rule 29 territory. The same program also failed
+    `Params#keys` with "undefined method 'keys' for an instance of Hash"
+    once two tests called it: a method name shared with Hash (`keys`) is
+    the same hazard; assert with `key?`/`[]` instead.
 
 ## Numbers worth remembering
 

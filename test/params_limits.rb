@@ -217,9 +217,9 @@ test "set_path and merge! handle a 5000 level chain iteratively" do
 end
 
 test "QueryMalformed (an undecodable percent-escape) is a client fault: 400, not 500" do
-  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::QueryMalformed.new("malformed percent-encoding"))
-  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::QueryTooMany.new("too many"))
-  assert_equal 500, Cybertrain::ClientError.status(ArgumentError.new("the app's own"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::QueryMalformed.new("malformed percent-encoding"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::QueryTooMany.new("too many"))
+  assert_equal 500, Cybertrain::ClientError.status_for(ArgumentError.new("the app's own"))
 end
 
 # Which rescue clause a malformed escape lands in, as a plain method with one

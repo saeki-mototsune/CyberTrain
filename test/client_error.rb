@@ -91,10 +91,10 @@ test "every bare client-fault name is unique within the list" do
 end
 
 test "status of the framework's own exceptions" do
-  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::QueryTooMany.new("x"))
-  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::QueryMalformed.new("x"))
-  assert_equal 400, Cybertrain::ClientError.status(Cybertrain::Params::ParameterMissing.new("x"))
-  assert_equal 500, Cybertrain::ClientError.status(ArgumentError.new("x"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::QueryTooMany.new("x"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::QueryMalformed.new("x"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::Params::ParameterMissing.new("x"))
+  assert_equal 500, Cybertrain::ClientError.status_for(ArgumentError.new("x"))
 end
 
 Cybertrain::Test.run!

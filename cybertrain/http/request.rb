@@ -116,17 +116,21 @@ module Cybertrain
     # CsrfProtection and the Router all read it, and every parse decodes each
     # pair and builds a tree, so the cost the Query limits bound is paid once,
     # not three times. A parse that raises (QueryTooMany, QueryMalformed, ...)
-    # is not cached: it propagates and the request ends as a 400. The
-    # middleware only read it (one key each) and run before the Router; the
-    # Router is the last consumer and TAKES the tree (take_query_params) as
-    # ctx.params, merging the form and the route params into it, so the
-    # common request builds one tree. That take clears the cache: a reader
-    # after routing (a pagination helper rebuilding the current query
-    # string, say) pays one more parse of the query string only, and gets a
-    # fresh tree with the query keys alone, never form fields, `_method`,
-    # `authenticity_token` or route captures (a POST to /posts/5?page=2
-    # would otherwise hand back {page, id, authenticity_token, ...} to be
-    # encoded into a URL). The cache ivars start as nil and are assigned
+    # is not cached: it propagates and the request ends as a 400.
+    #
+    # The cached tree is READ-ONLY for every holder, this one included: it is
+    # the same object for every reader, so a middleware that keeps it (to
+    # rebuild a canonical or pagination URL after `super`, say) must find the
+    # query keys and nothing else, however much the Router assembled after it.
+    # The Router therefore builds ctx.params as a fresh Params and merges this
+    # tree into it (Router#assemble_params) rather than taking it over: round
+    # 17 dropped that copy for speed, round 18 took the tree instead, which
+    # kept readers AFTER routing correct but left a reader that fetched the
+    # tree BEFORE routing holding the Router's own mutated object (form
+    # fields, `_method`, `authenticity_token`, captures). The copy costs one
+    # more tree build, bounded by the Query limits (at most MAX_PAIRS pairs
+    # of MAX_DEPTH levels), and nothing else can corrupt a cache. The same
+    # goes for #form_params. The cache ivars start as nil and are assigned
     # from a method's result, as a nullable ivar must be (NOTES rule 7).
     def query_params
       cached = @query_params_cache
@@ -137,23 +141,10 @@ module Cybertrain
       parsed
     end
 
-    # The Router's entry: the cached query tree (built now if nothing read
-    # it yet), with the cache CLEARED, so the caller owns that object and
-    # may merge into and write to it (it becomes ctx.params). The next
-    # #query_params re-parses the query string into a different, pristine
-    # tree. A cheap, rare path (the query string is bounded by the Query
-    # limits and only a post-routing reader pays it), in exchange for no
-    # second build on the common request. Takes the tree out through a local
-    # and assigns the nil from a plain method body (NOTES rule 7).
-    def take_query_params
-      taken = query_params
-      @query_params_cache = nil
-      taken
-    end
-
-    # The body parsed into Params, once per request (see #query_params). Only
-    # meaningful for a form body: callers check #form? first, as they always
-    # did, and any other body is not parsed at all.
+    # The body parsed into Params, once per request (see #query_params; the
+    # tree is read-only for every holder). Only meaningful for a form body:
+    # callers check #form? first, as they always did, and any other body is
+    # not parsed at all.
     def form_params
       cached = @form_params_cache
       return cached unless cached.nil?

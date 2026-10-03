@@ -339,7 +339,7 @@ module Cybertrain
       # and a CORS client that lost Access-Control-Allow-Origin would see an
       # opaque network error instead of the 400. The body is the message, the
       # type text/plain, then performed! so the chain stops.
-      if ClientError.status(e) == 400
+      if ClientError.status_for(e) == 400
         @response.drop_header("Location")
         @response.drop_header("Content-Disposition")
         @response.status = 400

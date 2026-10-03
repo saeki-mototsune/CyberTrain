@@ -57,12 +57,24 @@ test "decode handles runs of escapes, '+', and non-ASCII text between them" do
   assert_raises("QueryMalformed") { Cybertrain::Query.decode("\u00e9%4") }
 end
 
-test "decode_escapes raises QueryMalformed on a percent sign without two bytes after it instead of looping" do
+test "decode_escapes refuses a percent sign that is not followed by two hex digits, whatever its caller checked" do
+  # "%+1ab" once walked past the "+" as if "%+1" were an escape: pos landed
+  # ahead of the cached "+" offset and a nil byteslice raised FrozenError
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%+1ab", true) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%+1ab", false) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%zz", true) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%4z", false) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("a%4", false) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%", false) }
   assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%4", false) }
   assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%41%4", true) }
-  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%", true) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%41%zz", true) }
   assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("a+b%", true) }
+  assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("+%+1ab", true) }
   assert_equal "A", Cybertrain::Query.decode_escapes("%41", true)
+  assert_equal "A b%", Cybertrain::Query.decode_escapes("%41+b%25", true)
+  assert_equal "+A +", Cybertrain::Query.decode_escapes("%2B%41+%2b", true)
+  assert_equal "a\u00e9 b", Cybertrain::Query.decode_escapes("a%C3%A9+b", true)
 end
 
 test "valid_escapes? wants two hex digits after every percent sign" do

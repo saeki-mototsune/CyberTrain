@@ -37,6 +37,7 @@ jobs:
       # Every method and ivar of Cybertrain::Model a column could be named
       # like must be in Ident::RESERVED_COLUMN_NAMES (the generator's and the
       # scaffold's reserved list), or a new Model method is shadowed silently.
+      # Names the runner's Ruby adds to Object are advisory warnings only.
       - name: Reserved column names cover Cybertrain::Model
         run: ruby script/check-reserved-names
 

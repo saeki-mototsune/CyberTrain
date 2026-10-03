@@ -284,6 +284,32 @@ test "a PRAGMA that fails in Connection.new closes the handle it opened" do
   assert_equal before, after
 end
 
+# Pool#initialize rescues a failed open, closes the slots already opened
+# and re-raises. A file that is not a database fails every slot at its first
+# PRAGMA, so here nothing is left to close: the test only exercises the
+# rescue path and checks the error and the descriptors. (Slot k > 0 failing
+# after slot 0 opened needs Connection.new stubbed; that was checked with a
+# throwaway CRuby script, 30 descriptors leaked without the rescue, none with.)
+def pool_refused(path)
+  DB::Pool.new(path, 4)
+  ""
+rescue DB::Error => e
+  e.message
+end
+
+test "a Pool that cannot open its connections raises and leaks no descriptor" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/db_sqlite_pool_not_a_database.txt"
+  File.write(path, "this is not a SQLite database file, just text " * 40)
+  message = pool_refused(path)
+  assert_includes message, "file is not a database"
+  before = open_fd_count
+  10.times { pool_refused(path) }
+  after = open_fd_count
+  File.delete(path)
+  assert_equal before, after
+end
+
 test "DB.with before DB.connect raises not connected" do
   refute DB.connected?
   # Caught by hand: DB.with inlined straight into an assert_raises block

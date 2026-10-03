@@ -141,12 +141,18 @@ module Cybertrain
                        "after an error); nothing nested in it can be committed"
         end
         if @transaction_depth > 0
+          # The outer branch's shape, not an ensure: this is a re-entrant
+          # yielding method (NOTES rule 50). A raise from the nested block
+          # restores the depth here and propagates; the outer `transaction`
+          # then rolls everything back.
           @transaction_depth += 1
           begin
             yield
-          ensure
+          rescue JSON::ParserError, StandardError => e
             @transaction_depth -= 1
+            raise e
           end
+          @transaction_depth -= 1
           return nil
         end
 

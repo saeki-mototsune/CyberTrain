@@ -19,7 +19,7 @@ module Cybertrain
     # `reset_to(status)` (or its own 500 page); the next client-fault class
     # is added to CLIENT_FAULTS below and nowhere else.
     def self.classify(e, logger)
-      status = self.status(e)
+      status = self.status_for(e)
       if status >= 500
         logger.error("#{e.class.name.to_s}: #{e.message}")
       else
@@ -54,8 +54,10 @@ module Cybertrain
     # each ask and always agree. `to_s`: Class#name is nil for an anonymous
     # class (`Class.new(StandardError)`) under CRuby, and this runs inside
     # error handlers' rescue clauses, where a NoMethodError would escape and
-    # close the connection with no response at all.
-    def self.status(e)
+    # close the connection with no response at all. Named status_for, not
+    # status: DB::Migrator#status and DB::CLI.status share the program and
+    # return other types (NOTES rules 10, 34).
+    def self.status_for(e)
       status_for_name(e.class.name.to_s, namespaced_names?)
     end
 

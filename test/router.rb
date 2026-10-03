@@ -163,7 +163,7 @@ test "params assembly order is query < form < route" do
   assert_equal ["7 f q hi"], seen
 end
 
-test "the Router takes the cached query tree as ctx.params; request.query_params afterwards is a pristine re-parse" do
+test "ctx.params is the Router's own tree: neither parse cache of the Request is ever changed" do
   router = Cybertrain::Router.new
   seen = []
   router.post("/items/:id") do |c|
@@ -171,30 +171,60 @@ test "the Router takes the cached query tree as ctx.params; request.query_params
     seen << c.params[:f].to_s
   end
   form = { "content-type" => "application/x-www-form-urlencoded" }
-  ctx = dispatch(router, "POST", "/items/7?q=1", "f=2&_method=put&authenticity_token=tok&post[title]=hi", form)
+  ctx = build_ctx("POST", "/items/7?q=1", "f=2&_method=put&authenticity_token=tok&post[title]=hi", form)
+  # (Symbol keys throughout this program: see NOTES rule 51)
+  # a middleware that ran BEFORE the Router and kept the trees (to rebuild a
+  # canonical or pagination URL after `super`, say)
+  q = ctx.request.query_params
+  f = ctx.request.form_params
+  router.call(ctx)
   assert_equal ["1", "2"], seen
+  assert_equal "1", ctx.params[:q]
+  assert_equal "2", ctx.params[:f]
   assert_equal "7", ctx.params[:id]
   assert_equal "put", ctx.params[:_method]
   assert_equal "tok", ctx.params[:authenticity_token]
   assert_equal "hi", ctx.params.nested(:post)[:title]
-  # a pagination helper reading the query string after routing sees the
-  # (Symbol keys throughout this program: see NOTES rule 51)
-  # query keys alone: no form field, _method, token or route capture
-  q = ctx.request.query_params
-  assert !q.equal?(ctx.params)
+  # ctx.params is neither cache, and the caches are the very objects the
+  # early reader holds
+  assert !ctx.params.equal?(q)
+  assert !ctx.params.equal?(f)
+  assert q.equal?(ctx.request.query_params)
+  assert f.equal?(ctx.request.form_params)
+  # the query tree still holds the query keys alone: no form field, _method,
+  # token or route capture
   assert_equal "1", q[:q]
+  # (no Params#keys here: next to Hash#keys in this program it mis-dispatches
+  # under Spinel, NOTES rule 51)
   assert !q.key?(:f)
   assert !q.key?(:_method)
   assert !q.key?(:authenticity_token)
   assert !q.key?(:post)
   assert !q.key?(:id)
-  # and writing to ctx.params later does not reach it
+  # the form tree is unchanged too
+  assert_equal "2", f[:f]
+  assert !f.key?(:id)
+  assert !f.key?(:q)
+  assert_equal "hi", f.nested(:post)[:title]
+  # and writing to ctx.params later (top level or nested) reaches neither
   ctx.params.set_value(:page, "9")
+  ctx.params.set_value(:q, "changed")
+  ctx.params.nested(:post).set_value(:title, "changed")
+  assert !q.key?(:page)
+  assert_equal "1", q[:q]
+  assert_equal "hi", f.nested(:post)[:title]
+end
+
+test "a reader after routing and a request without a form body get the same untouched query tree" do
+  router = Cybertrain::Router.new
+  router.get("/items/:id") { |c| c.response.body = "#{c.params[:id]} #{c.params[:q]}" }
+  ctx = dispatch(router, "GET", "/items/3?q=1&id=query")
+  assert_equal "3 1", ctx.response.body
+  assert !ctx.params.equal?(ctx.request.query_params)
+  assert_equal "query", ctx.request.query_params[:id]
+  assert_equal "3", ctx.params[:id]
+  assert_equal "1", ctx.request.query_params[:q]
   assert !ctx.request.query_params.key?(:page)
-  # the form cache is read, never changed
-  assert_equal "2", ctx.request.form_params["f"]
-  assert !ctx.request.form_params.key?("id")
-  assert !ctx.request.form_params.key?("q")
 end
 
 test "form body is ignored unless the request is a form" do

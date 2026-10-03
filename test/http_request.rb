@@ -125,26 +125,6 @@ test "query_params and form_params parse once and return the same Params every t
   assert !q.equal?(f)
 end
 
-test "take_query_params hands over the cached tree and the next query_params is a different, pristine one" do
-  req = Request.new("POST", "/p?a=1", { "content-type" => "application/x-www-form-urlencoded" }, "c=3")
-  cached = req.query_params
-  taken = req.take_query_params
-  assert taken.equal?(cached)
-  taken.set_value("c", "3")
-  taken.set_value("id", "5")
-  fresh = req.query_params
-  assert !fresh.equal?(taken)
-  assert_equal "1", fresh["a"]
-  assert !fresh.key?("c")
-  assert !fresh.key?("id")
-  assert fresh.equal?(req.query_params)
-  # taking when nothing was read yet parses once, then clears as well
-  other = Request.new("GET", "/p?z=9", {}, "")
-  first = other.take_query_params
-  assert_equal "9", first["z"]
-  assert !first.equal?(other.query_params)
-end
-
 test "query_params and form_params of an empty query and body are cached empty Params" do
   req = Request.new("GET", "/", {}, "")
   assert req.query_params.empty?

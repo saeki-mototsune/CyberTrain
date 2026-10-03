@@ -150,11 +150,16 @@ module Cybertrain
         underscored = Inflector.underscore(name)
         raise InvalidArgument, "bad resource name '#{name}'" unless Templates.identifier?(underscored)
         singular = Inflector.singularize(underscored)
-        # The singular becomes the belongs_to reader on every model that
-        # references this one (`hash:references` -> def hash), which the
-        # generator would refuse too. The plural (the has_many side) is left
-        # to the generator, which renames such a reader (`errors_as_post`)
-        # rather than refusing it -- and nothing may reference the table.
+        # Policy: the scaffold invents names, so it refuses any singular the
+        # generator would have to rename or annotate. A reserved one (update,
+        # save) would give every referencing model a `<stem>_as_<col>` reader,
+        # a shadowing one (display, tap) a shadow note, and the singular is
+        # also the model class name; refusing keeps the generated API plain.
+        # The generator itself still generates such schemas (a hand-written
+        # table named `updates` works), so this is the scaffold's choice, not
+        # the generator's refusal. The plural (the has_many side) is left to
+        # the generator, which renames such a reader (`errors_as_post`) -- and
+        # nothing may reference the table.
         Scaffold.refuse_unusable!(singular, "resource")
 
         parsed = Array.new(0) { Field.new("", "") }
