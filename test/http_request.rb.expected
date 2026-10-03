@@ -15,5 +15,7 @@ ok   body and headers are exposed
 ok   query_params and form_params parse once and return the same Params every time
 ok   query_params and form_params are read-only shared caches
 ok   query_params and form_params of an empty query and body are cached empty Params
+ok   path_segments decodes once and returns the same Array every time
+ok   path_segments: an invalid decoded byte sequence is QueryMalformed and is not cached
 ok   a parse that raises is not cached: every call raises again
-18 tests, 83 assertions, 0 failures
+20 tests, 89 assertions, 0 failures

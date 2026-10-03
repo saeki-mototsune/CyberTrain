@@ -127,6 +127,27 @@ test "split_path: an invalid byte sequence in a decoded segment is QueryMalforme
   assert_equal ["a", "%ZZ"], Cybertrain::Router.split_path("/a/%ZZ")
 end
 
+# Router#call raising inside a helper method (NOTES rule 32).
+def dispatch_error(router, method, target)
+  dispatch(router, method, target)
+  "none"
+rescue Cybertrain::QueryMalformed
+  "QueryMalformed"
+end
+
+test "the Router reads the request's cached path_segments; an invalid decoded segment is the 400" do
+  router = sample_router
+  assert_equal "QueryMalformed", dispatch_error(router, "GET", "/posts/%81")
+  assert_equal "QueryMalformed", dispatch_error(router, "POST", "/posts/%C3")
+  assert_equal "none", dispatch_error(router, "GET", "/posts/%C3%A9")
+  # one decode per request: the segments the Router matched on are the very
+  # Array the request keeps
+  ctx = dispatch(router, "GET", "/posts/%41")
+  assert_equal "show A", ctx.response.body
+  assert ctx.request.path_segments.equal?(ctx.request.path_segments)
+  assert_equal ["posts", "A"], ctx.request.path_segments
+end
+
 test "a large non-ASCII path segment with an escape splits without a quadratic library call" do
   # Router.split_path decodes through Query.decode_escapes (NOTES rule 49):
   # one non-ASCII character, a "+" kept as a plus, and %41 in 60 000 bytes.

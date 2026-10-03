@@ -37,4 +37,4 @@ ok   to_param
 ok   nullable body round trips nil and String
 ok   created_at is a Time after reload
 ok   assign_attributes with String keys from Params#permit
-39 tests, 303 assertions, 0 failures
+39 tests, 306 assertions, 0 failures

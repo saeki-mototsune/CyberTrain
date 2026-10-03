@@ -17,4 +17,5 @@ ok   read_only! marks the Params and every nested child, and returns self
 ok   every mutator of a read-only Params raises RuntimeError and changes nothing
 ok   every reader of a read-only Params still works
 ok   Params.new.merge!(read_only) is writable and independent of its source
-19 tests, 99 assertions, 0 failures
+ok   read_only! is one flag per tree: a nested node seals its whole tree, copies and strangers are separate
+20 tests, 109 assertions, 0 failures

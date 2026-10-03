@@ -286,4 +286,29 @@ test "Params.new.merge!(read_only) is writable and independent of its source" do
   assert src.nested("post").read_only?
 end
 
+test "read_only! is one flag per tree: a nested node seals its whole tree, copies and strangers are separate" do
+  a = Cybertrain::Params.new
+  a.set_path(["x", "y", "z"], "1")
+  b = Cybertrain::Params.new.merge!(a)
+  other = Cybertrain::Params.new
+  # Sealing a deep node seals the tree it is in, root included ...
+  a.nested("x").nested("y").read_only!
+  assert a.read_only?
+  assert a.nested("x").read_only?
+  assert_raises("RuntimeError") { a.set_value("late", "1") }
+  # ... but not a merged copy (its own tree) nor an unrelated Params.
+  refute b.read_only?
+  refute b.nested("x").read_only?
+  refute other.read_only?
+  b.set_path(["x", "y", "w"], "2")
+  assert_equal "2", b.nested("x").nested("y")["w"]
+  refute a.nested("x").nested("y").key?("w")
+  # A child created by set_path after the parent is writable shares its tree,
+  # so sealing the root afterwards covers it.
+  b.set_path(["p", "q"], "3")
+  b.read_only!
+  assert b.nested("p").read_only?
+  assert_raises("RuntimeError") { b.nested("p").set_value("q", "4") }
+end
+
 Cybertrain::Test.run!

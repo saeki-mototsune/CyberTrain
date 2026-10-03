@@ -10,6 +10,7 @@ ok   a segment with a malformed percent-escape stays literal
 ok   split_path drops empty segments and decodes
 ok   split_path decodes escapes and multibyte text in one segment and keeps '+' a plus
 ok   split_path: an invalid byte sequence in a decoded segment is QueryMalformed (400)
+ok   the Router reads the request's cached path_segments; an invalid decoded segment is the 400
 ok   a large non-ASCII path segment with an escape splits without a quadratic library call
 ok   path_for builds paths from route names
 ok   Route#path raises ArgumentError when a segment is missing
@@ -20,4 +21,4 @@ ok   ctx.params is the Router's own tree: neither parse cache of the Request is 
 ok   a reader after routing and a request without a form body get the same untouched query tree
 ok   form body is ignored unless the request is a form
 ok   route params and escaped output work in one program
-22 tests, 96 assertions, 0 failures
+23 tests, 102 assertions, 0 failures

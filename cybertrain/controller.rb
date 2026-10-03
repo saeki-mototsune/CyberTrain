@@ -320,31 +320,16 @@ module Cybertrain
         return nil
       end
       # A client fault raised inside an action (a missing required parameter;
-      # a Query.parse of its own past Query's limits) answers 400
-      # with its message in plain text, like Rails' bad-request page, instead
-      # of surfacing as a 500. The decision is ClientError's, the same one the
+      # a Query.parse of its own past Query's limits) answers 400 with its
+      # message in plain text, like Rails' bad-request page, instead of
+      # surfacing as a 500. The decision is ClientError's, the same one the
       # error pages use, by class name (NOTES rules 46, 47): comparing the
       # full "Cybertrain::Params::ParameterMissing" here would miss under
-      # Spinel, where Class#name is the bare "ParameterMissing".
-      #
-      # Not reset_to, and not render(plain:, status: 400) either. The action
-      # may already have called redirect_to or set Content-Disposition before
-      # the parameter error raised, and a stale Location or attachment header
-      # would hide the 400, so exactly those two go (both spellings the
-      # response might hold: drop_header matches any case). Every other
-      # header and cookie stays: unlike the error pages (ErrorPages,
-      # Dev::ErrorPage, Server), which start over with reset_to because they
-      # answer for a failure the app never handled, a before_action's CORS
-      # headers, Cache-Control: no-store or session cookie are deliberate,
-      # and a CORS client that lost Access-Control-Allow-Origin would see an
-      # opaque network error instead of the 400. The body is the message, the
-      # type text/plain, then performed! so the chain stops.
+      # Spinel, where Class#name is the bare "ParameterMissing". Which
+      # headers survive is Response#client_error!'s policy; then performed!
+      # so the chain stops.
       if ClientError.status_for(e) == 400
-        @response.drop_header("Location")
-        @response.drop_header("Content-Disposition")
-        @response.status = 400
-        @response.body = e.message
-        @response.content_type = "text/plain; charset=utf-8"
+        @response.client_error!(400, e.message)
         @response.performed!
         return nil
       end

@@ -85,6 +85,27 @@ test "a malformed percent-escape falls through instead of raising" do
   end
 end
 
+# Static raising inside a helper method (NOTES rule 32).
+def serve_error(method, target)
+  serve(method, target)
+  "none"
+rescue Cybertrain::QueryMalformed
+  "QueryMalformed"
+end
+
+test "Static decodes the path once through request.path_segments; an invalid decoded byte is the 400" do
+  assert_equal "QueryMalformed", serve_error("GET", "/css/%81")
+  assert_equal "QueryMalformed", serve_error("HEAD", "/%C3")
+  # a method Static skips reaches the Router, which raises the same decision
+  assert_equal "QueryMalformed", serve_error("POST", "/css/%81")
+  assert_equal "none", serve_error("GET", "/css/%C3%A9")
+  # the Router reuses the segments Static decoded
+  ctx = build_ctx("GET", "/posts")
+  static_stack.call(ctx)
+  assert_equal "from router", ctx.response.body
+  assert ctx.request.path_segments.equal?(ctx.request.path_segments)
+end
+
 test "only GET and HEAD are served" do
   assert_equal "posted", serve("POST", "/robots.txt").body
 end

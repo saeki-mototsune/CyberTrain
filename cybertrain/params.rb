@@ -12,14 +12,39 @@ module Cybertrain
     class ParameterMissing < StandardError
     end
 
-    def initialize
+    # The state shared by every node of one tree. A Params is created with a
+    # tree of its own; child! hands its own tree to the child, so the whole
+    # tree answers to one flag and Params#read_only! flips it in O(1) instead
+    # of walking up to MAX_PAIRS * MAX_DEPTH nodes. Its method names are not
+    # shared with any Params or Hash method (NOTES rules 10, 34, 51).
+    class Tree
+      def initialize
+        @sealed = false
+      end
+
+      def seal!
+        @sealed = true
+        nil
+      end
+
+      def sealed?
+        @sealed
+      end
+    end
+
+    # `tree` defaults to a fresh Tree (a Params.new has a tree of its own);
+    # child! passes its own. It is always a Tree, never nil, so it is not a
+    # nullable parameter (NOTES rule 7). Creating the child with a default
+    # tree and swapping it afterwards would allocate a throwaway Tree per node
+    # (~20% slower parse and merge! under CRuby at the Query limits).
+    def initialize(tree = Tree.new)
       @values = {}
       @lists = {}
       @children = {}
-      @read_only = false
+      @tree = tree
     end
 
-    # Marks this Params and every nested Params below it read-only and
+    # Marks this Params and every nested Params of its tree read-only and
     # returns self: after that each mutator (set_value, add_list_value,
     # child!, set_path, merge!, replace_list!) raises RuntimeError, and every
     # reader is unchanged. Request#query_params and #form_params use it on
@@ -29,22 +54,20 @@ module Cybertrain
     # warns against. One-way: build a writable copy with
     # Params.new.merge!(read_only_params) (merge! copies, it never aliases).
     #
-    # Iterative like merge!: a work list of the Params still to mark, so the
-    # stack stays flat however deep the tree is.
+    # O(1): the flag lives in the Tree object that all nodes of a tree share
+    # (child! creates every child in its parent's tree), so there is no walk
+    # over the nodes. The flag belongs to the tree, not the node: marking a
+    # nested Params (`p.nested("a").read_only!`) seals the whole tree it is
+    # in, root included. Only trees built by child! (set_path, merge!, Query)
+    # share state; a Params from Params.new, and the empty one #nested
+    # returns for an absent key, has a tree of its own and stays writable.
     def read_only!
-      pending = [self]
-      i = 0
-      while i < pending.length
-        node = pending[i]
-        node.mark_read_only
-        node.children.keys.each { |k| pending << node.children[k] }
-        i += 1
-      end
+      @tree.seal!
       self
     end
 
     def read_only?
-      @read_only
+      @tree.sealed?
     end
 
     def [](key)
@@ -114,7 +137,10 @@ module Cybertrain
       k = key.to_s
       @values.delete(k)
       @lists.delete(k)
-      @children[k] = Params.new unless @children.key?(k)
+      unless @children.key?(k)
+        # The child joins this tree.
+        @children[k] = Params.new(@tree)
+      end
       @children[k]
     end
 
@@ -153,7 +179,7 @@ module Cybertrain
     # at any level, is left untouched. other is never mutated, and nothing
     # of other's internal Arrays/Hashes/Params is aliased into self --
     # every list and nested Params that crosses over is copied. The copies
-    # are fresh and writable (dst.child! builds a new unmarked Params, lists
+    # are fresh and writable (dst.child! builds a new Params in dst's tree, lists
     # are dup'd), so merging a read_only! source into Params.new yields an
     # independent, mutable tree; only the receiver must be writable.
     #
@@ -201,12 +227,6 @@ module Cybertrain
 
     attr_reader :lists, :children
 
-    # Called on the other nodes by read_only!.
-    def mark_read_only
-      @read_only = true
-      nil
-    end
-
     # NOTE: named raw_values, not values -- naming this accessor "values"
     # (colliding with Hash#values) miscompiled merge! (above) under Spinel
     # back when it called itself recursively: a "const char * -> sp_int" C
@@ -233,7 +253,7 @@ module Cybertrain
     # Every mutator starts here (set_path reaches it through set_value,
     # add_list_value and child!). A nil return so it is one type everywhere.
     def writable!
-      if @read_only
+      if @tree.sealed?
         raise "request parameters are read-only: request.query_params and request.form_params are shared caches; build your own Params (Params.new.merge!(request.query_params)) to change them"
       end
       nil

@@ -598,12 +598,17 @@ test "order validates its columns and quotes them" do
   assert_equal 'SELECT * FROM `posts`', Post.order(nil).to_sql
   ["title; DROP TABLE posts", "title DESC; DROP", "lower(title)", "title, ", ",title", "title DESCX",
    "title DESC id", "1title", "posts.title", "title--"].each do |bad|
-    message = assert_raises("OrderInvalid") { Post.order(bad) }
+    message = assert_raises("ArgumentError") { Post.order(bad) }
     assert message.include?("order_sql"), "message for #{bad} should point to order_sql"
     assert message.include?("is not `column [ASC|DESC]`")
   end
   assert_equal "order: \"title; DROP TABLE posts\" is not `column [ASC|DESC]` (use order_sql for raw SQL)",
-               assert_raises("OrderInvalid") { Post.order("title; DROP TABLE posts") }
+               assert_raises("ArgumentError") { Post.order("title; DROP TABLE posts") }
+  # The term is shown escaped: a decoded newline in it (?sort=a%0Ab) cannot
+  # forge a second log line or body line.
+  newline_message = assert_raises("ArgumentError") { Post.order("title\nDROP") }
+  assert !newline_message.include?("\n"), "the message must not carry a raw newline"
+  assert newline_message.include?("title\\nDROP"), "the newline is printed as backslash-n"
   # Raw ORDER BY is the explicit, separate door: the hand-written Post has no
   # order_sql, so reach it through the relation's base method.
   raw = PostRelation.new("posts")

@@ -38,6 +38,29 @@ module Cybertrain
       nil
     end
 
+    # The other reset policy, for a client fault the action raised (a
+    # missing required parameter, a query past its limits): answer the
+    # status in plain text, but only the two headers that would hide the
+    # error go, Location and Content-Disposition (through drop_header, so
+    # any spelling): the action may already have called redirect_to or set
+    # an attachment before it raised. Every other header and cookie stays:
+    # a before_action's CORS headers, Cache-Control: no-store or a session
+    # cookie are deliberate, and a CORS client that lost
+    # Access-Control-Allow-Origin would see an opaque network error instead
+    # of the status. A header that hides an error in future (Refresh, a
+    # stale Content-Encoding) is added here, in one place. reset_to is the
+    # other policy: start over, for a failure the app never handled. Sets
+    # status, text/plain and body ("" means the status text, like
+    # reset_to); the caller marks the response performed!.
+    def client_error!(status, body)
+      drop_header("Location")
+      drop_header("Content-Disposition")
+      @status = status
+      self.content_type = "text/plain; charset=utf-8"
+      @body = body == "" ? status_text : body
+      nil
+    end
+
     # Replaces any existing header of the same name, whatever its case,
     # keeping its position in the output. Raises ArgumentError when the name
     # or value contains CR or LF (header injection / response splitting).

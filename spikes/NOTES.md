@@ -255,9 +255,20 @@ finds the commit that removed them).
     `split_path` only next to a `%`, where `Query.check_valid!` runs first.
 53. An exception object built with `.new("msg")` and never raised has no
     `#message` under Spinel (`undefined method 'message' for an instance of
-    Cybertrain::OrderInvalid`; `e.class.name` works). `ClientError.classify`
+    <its class>`, seen on a `Cybertrain::` exception subclass in review;
+    `e.class.name` works). `ClientError.classify`
     is only ever called from a rescue clause, so a test of it must raise and
     rescue too (a helper method with a `rescue` clause, returning the status).
+54. `Class#superclass` on a raised exception's class does not show the
+    hierarchy under Spinel: walking `e.class` / `.superclass` / `.name` for a
+    raised `Cybertrain::QueryTooMany` gives `Cybertrain::QueryTooMany,
+    Cybertrain::QueryLimitExceeded, Cybertrain::QueryInvalid, StandardError,
+    Exception, Object, BasicObject` under CRuby but `QueryTooMany, Object,
+    BasicObject` under Spinel. So a "walk the ancestors' names" fallback for
+    rule 47 does not exist (it would make an app's subclass of a framework
+    fault a 400 on one runtime and a 500 on the other): client faults are
+    listed by full name (`ClientError::CLIENT_FAULTS`) and
+    `script/check-client-faults` (CRuby, run by CI) keeps the list complete.
 
 ## Numbers worth remembering
 

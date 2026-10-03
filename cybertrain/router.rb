@@ -102,7 +102,7 @@ module Cybertrain
 
     def call(ctx)
       request = ctx.request
-      segments = Router.split_path(request.path)
+      segments = request.path_segments
       @routes.each do |route|
         captured = route.match(request.method, segments)
         next if captured.nil?
@@ -117,44 +117,14 @@ module Cybertrain
       nil
     end
 
-    # "/posts/1/" -> ["posts", "1"]; each segment is percent-decoded, but a
-    # "+" stays a plus (it only means space in query strings and forms).
-    # A segment with a malformed escape ("%ZZ", a trailing "%" or "%2") is
-    # kept literal: CRuby's decoder raises ArgumentError on it while Spinel's
-    # silently yields a NUL byte, so neither runtime ever sees it. That
-    # policy is why the escapes are scanned twice here (Query.valid_escapes?,
-    # then the decoding loop): the loop raises QueryMalformed on a malformed
-    # escape, which is right for a query string (Query.decode no longer
-    # pre-scans) but would turn a path like "/50%off" into a 400 instead of
-    # a 404 by non-match. The decoding is the byte-chunked loop of query
-    # strings with "+" left alone: URI.decode_www_form_component on a whole
-    # segment is quadratic on non-ASCII text under Spinel (NOTES rule 49), and
-    # Static calls split_path before routing on every request, anonymous ones
-    # included, so a ~60 KB segment (inside the 64 KB head limit) holding one
-    # non-ASCII byte and one "%41" cost ~0.5 s of CPU per request. The same
-    # call replaces the old `gsub("+", "%2B")` pass over the segment.
-    #
-    # An invalid UTF-8 byte sequence in a segment that is decoded ("%81", or a
-    # raw "\x81" next to a "%") is QueryMalformed, answered 400 through
-    # ErrorPages (Rails answers 400 for an invalid path encoding too). The
-    # segment is validated BEFORE valid_escapes? asks, because that scan's
-    # byte offsets are only character boundaries in a valid String (CRuby's
-    # byteindex raises IndexError otherwise, NOTES rule 52). A segment
-    # without any "%" is never handed to the decoder, so a raw invalid byte
-    # there stays literal (404 by non-match), as before.
+    # "/posts/1/" -> ["posts", "1"], percent-decoded. The implementation
+    # (and the 400 policy for invalid bytes) lives in Request.split_path,
+    # which Request#path_segments caches; it cannot live here because Router
+    # requires Request (through Middleware and Context), so the other way
+    # round would be a require cycle. The Router itself reads
+    # request.path_segments.
     def self.split_path(path)
-      segments = []
-      path.split("/").each do |seg|
-        next if seg.empty?
-
-        if seg.byteindex("%").nil?
-          segments << seg
-        else
-          Query.check_valid!(seg)
-          segments << (Query.valid_escapes?(seg) ? Query.decode_valid(seg, false) : seg)
-        end
-      end
-      segments
+      Request.split_path(path)
     end
 
     # Percent-encodes a value for use as one path segment ("a b" -> "a%20b").
@@ -173,12 +143,17 @@ module Cybertrain
     # request.query_params or request.form_params (a middleware rebuilding a
     # canonical URL after `super`) still sees the query keys or the form
     # fields alone, never `_method`, `authenticity_token` or the captures.
-    # Both caches are marked Params#read_only! by the Request (every mutator
-    # on them raises), so this is not a defensive copy that a convention has
-    # to protect: it is the merge of three sources into the one tree the
-    # controller may write to, and merge! copies from a read-only source into
-    # a fresh writable one. One tree build per request, bounded by the Query
-    # limits (at most MAX_PAIRS pairs of MAX_DEPTH levels).
+    # Both caches are marked Params#read_only! by the Request (an O(1) flag
+    # on the tree, no walk; every mutator on them raises), so this is not a
+    # defensive copy that a convention has to protect: it is the merge of
+    # three sources into the one tree the controller may write to, and merge!
+    # copies from a read-only source into a fresh writable one. Parsing
+    # straight into ctx.params instead would parse the body a second time
+    # (the middleware chain has already parsed the query and form into the
+    # caches, for MethodOverride and CsrfProtection) and decode every pair
+    # again; the copy decodes nothing, it only allocates the nodes. One tree
+    # build per request, bounded by the Query limits (at most MAX_PAIRS pairs
+    # of MAX_DEPTH levels).
     def assemble_params(request, captured)
       params = Params.new
       params.merge!(request.query_params)

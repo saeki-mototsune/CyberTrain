@@ -23,6 +23,7 @@ module Cybertrain
       @http_version = http_version
       @query_params_cache = nil
       @form_params_cache = nil
+      @path_segments_cache = nil
     end
 
     # Used by MethodOverride to turn a POST form into PATCH/PUT/DELETE.
@@ -151,6 +152,74 @@ module Cybertrain
       parsed = Query.parse(@body).read_only!
       @form_params_cache = parsed
       parsed
+    end
+
+    # The path split into percent-decoded segments, once per request:
+    # "/posts/1/" -> ["posts", "1"]. Static (every GET/HEAD) and the Router
+    # both need them, and decoding a segment containing a "%" costs four byte
+    # scans plus allocations (check_valid!, valid_escapes?, decode_valid and
+    # its own check_valid! on the output), so it is done once, like
+    # #query_params. The decision to answer 400 for an invalid UTF-8 byte
+    # sequence in a decoded segment (QueryMalformed) is therefore made in one
+    # place, by whichever reader comes first (Static for GET/HEAD, the Router
+    # otherwise); a raise is not cached, so every later call raises again and
+    # the request still ends as that 400. The returned Array is the cached
+    # one, shared by both readers: callers must not mutate it (neither does,
+    # they only read, compare and join); one that needs to change it dups it.
+    # The ivar starts as nil and is assigned from a method's result (NOTES
+    # rule 7).
+    def path_segments
+      cached = @path_segments_cache
+      return cached unless cached.nil?
+
+      parsed = Request.split_path(@path)
+      @path_segments_cache = parsed
+      parsed
+    end
+
+    # "/posts/1/" -> ["posts", "1"]; each segment is percent-decoded, but a
+    # "+" stays a plus (it only means space in query strings and forms).
+    # A segment with a malformed escape ("%ZZ", a trailing "%" or "%2") is
+    # kept literal: CRuby's decoder raises ArgumentError on it while Spinel's
+    # silently yields a NUL byte, so neither runtime ever sees it. That
+    # policy is why the escapes are scanned twice here (Query.valid_escapes?,
+    # then the decoding loop): the loop raises QueryMalformed on a malformed
+    # escape, which is right for a query string (Query.decode no longer
+    # pre-scans) but would turn a path like "/50%off" into a 400 instead of
+    # a 404 by non-match. The decoding is the byte-chunked loop of query
+    # strings with "+" left alone: URI.decode_www_form_component on a whole
+    # segment is quadratic on non-ASCII text under Spinel (NOTES rule 49), and
+    # Static routes every GET/HEAD through the segments, anonymous requests
+    # included, so a ~60 KB segment (inside the 64 KB head limit) holding one
+    # non-ASCII byte and one "%41" cost ~0.5 s of CPU per request. The same
+    # call replaces the old `gsub("+", "%2B")` pass over the segment.
+    #
+    # An invalid UTF-8 byte sequence in a segment that is decoded ("%81", or a
+    # raw "\x81" next to a "%") is QueryMalformed, answered 400 through
+    # ErrorPages (Rails answers 400 for an invalid path encoding too). The
+    # segment is validated BEFORE valid_escapes? asks, because that scan's
+    # byte offsets are only character boundaries in a valid String (CRuby's
+    # byteindex raises IndexError otherwise, NOTES rule 52). A segment
+    # without any "%" is never handed to the decoder, so a raw invalid byte
+    # there stays literal (404 by non-match), as before.
+    #
+    # Lives here, not in Router: Router requires Middleware -> Context ->
+    # Request, so Request requiring Router would be a require cycle (and
+    # CRuby 3.3 only warns about it, half-loading one of the two). Router
+    # keeps `Router.split_path` as a one-line delegate for its callers.
+    def self.split_path(path)
+      segments = []
+      path.split("/").each do |seg|
+        next if seg.empty?
+
+        if seg.byteindex("%").nil?
+          segments << seg
+        else
+          Query.check_valid!(seg)
+          segments << (Query.valid_escapes?(seg) ? Query.decode_valid(seg, false) : seg)
+        end
+      end
+      segments
     end
 
     def cookie_header

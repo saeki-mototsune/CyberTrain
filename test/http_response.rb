@@ -134,6 +134,30 @@ test "drop_header removes a header whatever its case and leaves the rest in orde
   assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-A: 1\r\nX-B: 2\r\nContent-Length: 0\r\n\r\n", res.to_http
 end
 
+test "client_error! drops Location and Content-Disposition in any case, keeps the rest" do
+  res = Response.new
+  res.set_header("location", "/x")
+  res.set_header("CONTENT-DISPOSITION", "attachment; filename=a.csv")
+  res.set_header("Access-Control-Allow-Origin", "*")
+  res.add_cookie("sid=abc; Path=/")
+  assert_nil res.client_error!(400, "param is missing")
+  assert_nil res.header("Location")
+  assert_nil res.header("Content-Disposition")
+  assert_equal "*", res.header("Access-Control-Allow-Origin")
+  assert_equal ["sid=abc; Path=/"], res.cookies
+  assert_equal 400, res.status
+  assert_equal "text/plain; charset=utf-8", res.header("Content-Type")
+  assert_equal "param is missing", res.body
+  assert !res.performed?
+end
+
+test "client_error! with an empty body answers the status text" do
+  res = Response.new
+  res.client_error!(400, "")
+  assert_equal "Bad Request", res.body
+  assert_equal 400, res.status
+end
+
 test "performed! marks the response" do
   res = Response.new
   res.performed!

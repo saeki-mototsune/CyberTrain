@@ -13,5 +13,7 @@ ok   redirect rejects a Location with CR or LF (no response splitting)
 ok   add_cookie rejects CR or LF
 ok   set_header replacing a header keeps its position
 ok   drop_header removes a header whatever its case and leaves the rest in order
+ok   client_error! drops Location and Content-Disposition in any case, keeps the rest
+ok   client_error! with an empty body answers the status text
 ok   performed! marks the response
-16 tests, 45 assertions, 0 failures
+18 tests, 56 assertions, 0 failures

@@ -160,6 +160,21 @@ test "query_params and form_params of an empty query and body are cached empty P
   assert req.form_params.equal?(req.form_params)
 end
 
+test "path_segments decodes once and returns the same Array every time" do
+  req = Request.new("GET", "/caf%C3%A9/a+b/%41/?x=1", {}, "")
+  segs = req.path_segments
+  assert_equal ["caf\u00e9", "a+b", "A"], segs
+  assert segs.equal?(req.path_segments)
+  assert_equal [], Request.new("GET", "/", {}, "").path_segments
+  assert_equal ["%ZZ", "a%2"], Request.new("GET", "/%ZZ/a%2", {}, "").path_segments
+end
+
+test "path_segments: an invalid decoded byte sequence is QueryMalformed and is not cached" do
+  req = Request.new("GET", "/a/%81", {}, "")
+  assert_raises("QueryMalformed") { req.path_segments }
+  assert_raises("QueryMalformed") { req.path_segments }
+end
+
 test "a parse that raises is not cached: every call raises again" do
   req = Request.new("POST", "/p?x=%zz", {}, "a=%zz")
   assert_raises("QueryMalformed") { req.query_params }

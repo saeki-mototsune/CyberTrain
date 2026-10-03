@@ -41,6 +41,12 @@ jobs:
       - name: Reserved column names cover Cybertrain::Model
         run: ruby script/check-reserved-names
 
+      # Every QueryInvalid subclass (and ParameterMissing) must be listed in
+      # ClientError::CLIENT_FAULTS: the hierarchy is invisible under Spinel,
+      # so an unlisted one would be a 500 there.
+      - name: Client faults are all listed in ClientError
+        run: ruby script/check-client-faults
+
       # The gem ships the CLI only; it must run under CRuby and bring every
       # file it requires (cybertrain.gemspec lists them by hand).
       - name: Build and install the gem
