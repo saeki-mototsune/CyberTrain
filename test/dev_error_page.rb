@@ -298,6 +298,27 @@ test "the rebuild command quotes the build target like every other interpolated 
   assert tricky.index("spin build it's").nil?, "no unquoted target reaches sh"
 end
 
+# AppName.problem is the one predicate (`cybertrain build` asks it of
+# spin.toml's name too); the Rebuilder, the only user of the target in the app,
+# applies it, so Application.new (production included) does not.
+test "the Rebuilder refuses a build target that is not usable for spin build" do
+  {
+    "-x" => "cannot start with '-' (spin would read it as an option)",
+    "a/b" => "cannot contain '/'",
+    ".." => "cannot be '.' or '..'",
+    "." => "cannot be '.' or '..'",
+    "a b" => "cannot contain whitespace",
+    "" => "cannot be empty"
+  }.each do |bad, reason|
+    message = assert_raises("ArgumentError") { Cybertrain::Dev::Rebuilder.new("/apps/blog", bad) }
+    assert_equal "build target #{bad.inspect} #{reason}", message
+  end
+  # Ordinary names, including one the shell has to quote, are accepted.
+  Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog")
+  Cybertrain::Dev::Rebuilder.new("/apps/blog", "my-app")
+  Cybertrain::Dev::Rebuilder.new("/apps/blog", "it's")
+end
+
 test "shell_quote escapes single quotes" do
   assert_equal "'it'\\''s'", Cybertrain::Dev::Rebuilder.shell_quote("it's")
 end

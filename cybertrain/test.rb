@@ -116,7 +116,7 @@ def assert_raises(class_name = "")
   begin
     yield
   rescue StandardError => e
-    # One clause, as before (a second `=> e` of another type in this yielding
+    # One clause only (a second `=> e` of another type in this yielding
     # method is untested under Spinel, NOTES rule 32). `to_s`: Class#name is
     # nil for an anonymous class under CRuby (`Class.new(StandardError)`), and
     # a NoMethodError from inside this rescue clause would replace the very

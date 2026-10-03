@@ -18,11 +18,11 @@ module Cybertrain
     # NOTES rule 46). 12 is therefore a measured choice, not a guess: the
     # headroom is somewhere under 50, and 12 keeps a wide margin below it.
     # A generous default would trade a clean template error for a SIGSEGV.
-    # Nesting used to be unlimited, so this is a visible break on upgrade for
-    # an app whose partials legitimately recurse deeper (threaded comments, a
-    # category tree): the error past the limit names max_render_depth, and the
-    # README says so next to Config#max_render_depth. Such an app raises it
-    # through Config#max_render_depth / Views.configure(root, max_render_depth: n).
+    # An app whose partials legitimately recurse deeper (threaded comments, a
+    # category tree) raises it through Config#max_render_depth /
+    # Views.configure(root, max_render_depth: n): the error past the limit
+    # names max_render_depth, and the README says so next to
+    # Config#max_render_depth.
     # The page is depth 1, so with 12 partials nest 11 levels. The layout
     # does not count: Engine#render_with_layout renders it only after the
     # page's render has returned, so it runs at depth 1 on its own, with the

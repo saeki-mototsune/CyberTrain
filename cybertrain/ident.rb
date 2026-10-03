@@ -10,9 +10,11 @@ module Cybertrain
   module Ident
     # Column names whose plain reader the generated class cannot host: it
     # would shadow a method the generated class or the framework calls on the
-    # record. The scaffold refuses them (it invents names); the generator
-    # does not, so an existing schema keeps generating: the column reads as
-    # `<column>_column` (ModelsEmitter.reader_name). `id` is deliberately
+    # record. The generator renames them, so an existing schema keeps
+    # generating: the column reads as `<column>_column`
+    # (ModelsEmitter.reader_name). The scaffold refuses them: its views and
+    # controller call the reader by the field's name, which a renamed reader
+    # would break. `id` is deliberately
     # absent: the primary key is Model#id. Names that end in `?` or `!`
     # cannot be columns at all (column? rejects them), so `valid?`,
     # `persisted?`, `is_a?` need no entry; keywords (`class`) live in
@@ -57,8 +59,9 @@ module Cybertrain
     # them on its model (`record.display`, `record.tap` are the column), but
     # neither the generated class nor the framework calls any of them on a
     # record, so the generator accepts the column and writes a note into the
-    # generated file instead of refusing an existing schema. The scaffold,
-    # which invents names, refuses them.
+    # generated file instead of refusing an existing schema. The scaffold
+    # accepts them the same way, with a note on stdout (Scaffold.shadow_notes):
+    # `payment.method` is the field, which its views and controller call.
     SHADOWING_COLUMN_NAMES = [
       "object_id", "__id__", "send", "__send__", "public_send", "freeze",
       "display", "method", "methods", "public_method", "public_methods",
@@ -74,10 +77,10 @@ module Cybertrain
     # Ruby keywords a column could be spelled like: `@end` / `def class` are
     # not shapes worth supporting. The generator reads such a column as
     # `<column>_column` (ModelsEmitter.reader_name), like a reserved name;
-    # the scaffold, which invents names, refuses them. The uppercase ones
-    # are reachable since column? accepts capitals. `defined` is not here:
-    # the keyword is `defined?`, which column? rejects, and `defined` is an
-    # ordinary method name (`attr_accessor :defined` works).
+    # the scaffold refuses them (its views call the reader by name). The
+    # uppercase ones are reachable since column? accepts capitals. `defined`
+    # is not here: the keyword is `defined?`, which column? rejects, and
+    # `defined` is an ordinary method name (`attr_accessor :defined` works).
     RUBY_KEYWORDS = [
       "alias", "and", "begin", "break", "case", "class", "def", "do",
       "else", "elsif", "end", "ensure", "false", "for", "if", "in",
@@ -89,8 +92,8 @@ module Cybertrain
 
     # /\A[A-Za-z_][A-Za-z0-9_]*\z/ spelled out: what Ruby needs of a method
     # name, so a schema with camelCase or mixed-case columns (`createdAt`,
-    # `userId`, a legacy SQLite table) generates as it did before this rule
-    # existed; `attr_accessor :createdAt` and `attr_accessor :Title` both
+    # `userId`, a legacy SQLite table) generates under its own name, not a
+    # renamed one; `attr_accessor :createdAt` and `attr_accessor :Title` both
     # compile and dispatch under Spinel (probed on 2026.09.12). The
     # scaffold, which chooses new names, keeps the stricter snake_case rule
     # (CLI::Templates.identifier?). A flag rather than a `return` inside
@@ -134,20 +137,21 @@ module Cybertrain
     end
 
     # The one definition of "a name the scaffold must not invent": "" when
-    # `name` may be chosen, otherwise why not -- "keyword" (RUBY_KEYWORDS),
-    # "reserved" (RESERVED_COLUMN_NAMES, which the generator renames, as it
-    # does a keyword) or
-    # "shadowing" (SHADOWING_COLUMN_NAMES, which the generator only notes).
-    # The scaffold asks here at every place it takes a name from the user
-    # (field column, references reader, resource singular) and raises the
-    # message for the reason, so a new list of names is added to this method
-    # once, not to each call site. A String, not nil or a Symbol, so the
-    # return type is the same on every path (NOTES rules 10/34); a keyword
-    # that is also listed in a column array reports "keyword" first.
+    # `name` may be chosen, otherwise why not -- "keyword" (RUBY_KEYWORDS) or
+    # "reserved" (RESERVED_COLUMN_NAMES): the two kinds the generator RENAMES,
+    # which the scaffold cannot accept because its views and controller call
+    # the reader by the field's name. A SHADOWING_COLUMN_NAMES entry is not
+    # refused: the generator keeps its name with a note, and so does the
+    # scaffold (shadowing_column?). The scaffold asks here at every place it
+    # takes a name from the user (field column, references reader, resource
+    # singular) and raises the message for the reason, so a new list of names
+    # is added to this method once, not to each call site. A String, not nil
+    # or a Symbol, so the return type is the same on every path (NOTES rules
+    # 10/34); a keyword that is also listed in a column array reports
+    # "keyword" first.
     def self.unusable_reason(name)
       return "keyword" if keyword?(name)
       return "reserved" if reserved_column?(name)
-      return "shadowing" if shadowing_column?(name)
 
       ""
     end

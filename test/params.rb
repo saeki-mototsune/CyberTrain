@@ -41,7 +41,7 @@ test "key? is true for scalars, lists and nested params" do
   refute p.key?("nope")
 end
 
-test "keys lists scalars, then lists, then nested, each in insertion order" do
+test "inspect lists scalars, then lists, then nested, each in insertion order (Params has no keys)" do
   p = Cybertrain::Params.new
   p.set_value("b", "1")
   p.add_list_value("y", "1")
@@ -49,7 +49,8 @@ test "keys lists scalars, then lists, then nested, each in insertion order" do
   p.set_value("a", "2")
   p.add_list_value("x", "2")
   p.child!("w")
-  assert_equal ["b", "a", "y", "x", "z", "w"], p.keys
+  assert_equal "{\"b\"=>\"1\", \"a\"=>\"2\", \"y\"=>[\"1\"], \"x\"=>[\"2\"], \"z\"=>{}, \"w\"=>{}}", p.inspect
+  ["b", "a", "y", "x", "z", "w"].each { |k| assert p.key?(k) }
 end
 
 test "set_path assembles nested params from a Query.split_key-shaped path" do
@@ -141,7 +142,7 @@ test "merge! does not alias other's lists or nested params" do
   assert_equal "{\"t\"=>[\"x\"], \"c\"=>{\"k\"=>\"v\"}}", b.inspect
 end
 
-test "merge! preserves keys/inspect ordering: receiver order first, then other's new keys" do
+test "merge! preserves inspect ordering: receiver order first, then other's new keys" do
   a = Cybertrain::Params.new
   a.set_value("keep", "yes")
   a.add_list_value("tags", "a")
@@ -157,7 +158,7 @@ test "merge! preserves keys/inspect ordering: receiver order first, then other's
 
   a.merge!(b)
 
-  assert_equal ["keep", "id", "tags", "extra", "post", "author"], a.keys
+  ["keep", "id", "tags", "extra", "post", "author"].each { |k| assert a.key?(k) }
   assert_equal(
     "{\"keep\"=>\"no\", \"id\"=>\"2\", \"tags\"=>[\"b\"], \"extra\"=>[\"z\"], " \
       "\"post\"=>{\"title\"=>\"new\"}, \"author\"=>{\"name\"=>\"matz\"}}",
@@ -171,17 +172,20 @@ test "a name can only be one kind at a time: last write wins, like Rack" do
   p.add_list_value("a", "2")
   assert_nil p["a"]
   assert_equal ["2"], p.list("a")
-  assert_equal ["a"], p.keys
+  assert p.key?("a")
+  assert_equal({}, p.to_h)
 
   p.child!("a").set_value("b", "3")
   assert_equal [], p.list("a")
   assert_equal "3", p.nested("a")["b"]
-  assert_equal ["a"], p.keys
+  assert p.key?("a")
+  assert_equal [], p.list("a")
 
   p.set_value("a", "4")
   assert_equal "4", p["a"]
   assert p.nested("a").empty?
-  assert_equal ["a"], p.keys
+  assert p.key?("a")
+  assert_equal({ "a" => "4" }, p.to_h)
 end
 
 test "to_h returns only scalars, empty? and inspect are deterministic" do
@@ -252,7 +256,7 @@ test "every reader of a read-only Params still works" do
   assert_equal "v", p.nested("post").nested("meta")["k"]
   assert p.key?("post")
   refute p.key?("nope")
-  assert_equal ["id", "tags", "post"], p.keys
+  ["id", "tags", "post"].each { |k| assert p.key?(k) }
   assert_equal "hi", p.require("post")["title"]
   assert_equal({ "id" => "1" }, p.permit("id", "nope"))
   assert_equal({ "id" => "1" }, p.to_h)
@@ -309,6 +313,60 @@ test "read_only! is one flag per tree: a nested node seals its whole tree, copie
   b.read_only!
   assert b.nested("p").read_only?
   assert_raises("RuntimeError") { b.nested("p").set_value("q", "4") }
+end
+
+# A sealed tree is shared by every holder, so what it hands out must be
+# copies: a String is mutable, an Array too.
+def mutate_scalar(params)
+  params["id"] << "XYZ"
+  nil
+end
+
+def mutate_list(params)
+  params.list("tags") << "evil"
+  params.list("tags")[0] << "XYZ"
+  nil
+end
+
+test "a read-only Params hands out copies: mutating a returned String or list changes nothing" do
+  p = read_only_sample
+  mutate_scalar(p)
+  mutate_list(p)
+  p.to_h["id"] << "XYZ"
+  p.permit("id")["id"] << "XYZ"
+  p.nested("post")["title"] << "XYZ"
+  p.nested("post").list("none") << "evil"
+  assert_equal "1", p["id"]
+  assert_equal ["a"], p.list("tags")
+  assert_equal "hi", p.nested("post")["title"]
+  assert_equal({ "id" => "1" }, p.to_h)
+  assert_equal "{\"id\"=>\"1\", \"tags\"=>[\"a\"], \"post\"=>{\"title\"=>\"hi\", \"meta\"=>{\"k\"=>\"v\"}}}", p.inspect
+  assert_nil p["nope"]
+  assert_equal [], p.list("nope")
+end
+
+test "merge! copies Strings: the merged tree shares none with its source" do
+  src = Cybertrain::Params.new
+  src.set_value("q", "1")
+  src.add_list_value("t", "a")
+  src.child!("c").set_value("k", "v")
+  dst = Cybertrain::Params.new.merge!(src)
+  dst["q"] << "XYZ"
+  dst.list("t")[0] << "XYZ"
+  dst.nested("c")["k"] << "XYZ"
+  # Only the source is asserted: whether the appends stuck on dst is the
+  # runtime's business (under Spinel a String read out of a Params does not
+  # take an in-place `<<`, NOTES rule 55); what matters is that src is intact.
+  assert_equal "1", src["q"]
+  assert_equal ["a"], src.list("t")
+  assert_equal "v", src.nested("c")["k"]
+  # The same from a read-only source (the request caches).
+  sealed = read_only_sample
+  copy = Cybertrain::Params.new.merge!(sealed)
+  copy["id"] << "XYZ"
+  copy.list("tags")[0] << "XYZ"
+  assert_equal "1", sealed["id"]
+  assert_equal ["a"], sealed.list("tags")
 end
 
 Cybertrain::Test.run!

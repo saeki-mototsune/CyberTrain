@@ -40,9 +40,8 @@ module Cybertrain
         raise InvalidArgument, "'#{field.column_name}' is a column every table already has" if RESERVED_COLUMNS.include?(field.column_name)
         # Ident.unusable_reason is the one definition of a name the scaffold
         # must not invent; Scaffold.refuse_unusable! turns its answer into the
-        # message. "shadowing" names the generator accepts with a note (an
-        # existing schema must keep generating); a new name need not shadow
-        # Object at all.
+        # message. A name that only shadows an Object method is accepted, as the
+        # generator accepts it, and Scaffold.generate prints a note.
         Scaffold.refuse_unusable!(field.column_name, "field")
         # A references field also defines the reader `def <name>` (post:references
         # -> def post), which answers to the same rules as a column.
@@ -113,6 +112,13 @@ module Cybertrain
     module Scaffold
       DRAW_LINE = "Cybertrain::Routes.draw do"
 
+      # Policy: the scaffold refuses what the generator would RENAME (Ruby
+      # keywords, Ident::RESERVED_COLUMN_NAMES): its views and controller call
+      # the reader by the field's name, so a renamed reader would break them.
+      # It accepts what the generator only annotates (a name that shadows an
+      # Object method, `method`, `display`, `send`) and says so on stdout
+      # (shadow_notes), as the generator does in the model file.
+      #
       # Raises InvalidArgument when `name` is a name the scaffold must not
       # invent, with the message for the reason Ident.unusable_reason gives;
       # `what` says what the name would name ("field", "reference",
@@ -130,8 +136,6 @@ module Cybertrain
           raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a #{what}"
         when "reserved"
           raise InvalidArgument, "'#{name}' would shadow a method of the generated model (Cybertrain::Model); pick another #{what}"
-        when "shadowing"
-          raise InvalidArgument, "'#{name}' would shadow Object##{name} on the generated model; pick another #{what}"
         else
           raise RuntimeError, "Ident.unusable_reason('#{name}') answered a reason Scaffold.refuse_unusable! has no message for"
         end
@@ -150,15 +154,15 @@ module Cybertrain
         underscored = Inflector.underscore(name)
         raise InvalidArgument, "bad resource name '#{name}'" unless Templates.identifier?(underscored)
         singular = Inflector.singularize(underscored)
-        # Policy: the scaffold invents names, so it refuses any singular the
-        # generator would have to rename or annotate. A reserved one (update,
-        # save) would give every referencing model a `<stem>_as_<col>` reader,
-        # a shadowing one (display, tap) a shadow note, and the singular is
-        # also the model class name; refusing keeps the generated API plain.
-        # The generator itself still generates such schemas (a hand-written
-        # table named `updates` works), so this is the scaffold's choice, not
-        # the generator's refusal. The plural (the has_many side) is left to
-        # the generator, which renames such a reader (`errors_as_post`) -- and
+        # Policy (refuse_unusable!): the scaffold refuses a singular the
+        # generator would RENAME. A reserved one (update, save) would give
+        # every referencing model a `<stem>_as_<col>` reader, and the singular
+        # is also the model class name. A shadowing one (display, tap) is
+        # accepted with a note (shadow_notes). The generator itself still
+        # generates a schema with a reserved table (a hand-written table named
+        # `updates` works), so this is the scaffold's choice, not the
+        # generator's refusal. The plural (the has_many side) is left to the
+        # generator, which renames such a reader (`errors_as_post`) -- and
         # nothing may reference the table.
         Scaffold.refuse_unusable!(singular, "resource")
 
@@ -185,7 +189,23 @@ module Cybertrain
         record(created, root, "#{views}/edit.html.erb", Templates.edit_view(res))
         record(created, root, "#{views}/_form.html.erb", Templates.form_partial(res))
         add_route(routes_path, res.plural)
+        shadow_notes(res).each { |note| puts note }
         created
+      end
+
+      # One line per name the scaffold accepted that shadows an Object method
+      # (Ident::SHADOWING_COLUMN_NAMES), the generator's own note told on
+      # stdout: a field (or references reader) on the model, the resource
+      # singular on every model that references it.
+      def self.shadow_notes(res)
+        notes = Array.new(0) { "" }
+        res.fields.each do |f|
+          notes << "note: '#{f.field_name}' shadows Object##{f.field_name} on the generated model; call it as #{res.singular}.#{f.field_name}" if Ident.shadowing_column?(f.field_name)
+        end
+        if Ident.shadowing_column?(res.singular)
+          notes << "note: '#{res.singular}' shadows Object##{res.singular} on a model that references #{res.plural} (belongs_to reader); call it as record.#{res.singular}"
+        end
+        notes
       end
 
       def self.record(created, root, path, content)

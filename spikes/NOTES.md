@@ -241,18 +241,31 @@ finds the commit that removed them).
     stray `\x81` (`"a=1&\x81b=2"`, `"x+\x81y"`, `"%41\x81"`); Spinel's
     returns the match without checking. `String#valid_encoding?` exists under
     Spinel and agrees with CRuby, so byte-offset scans over request text
-    validate the encoding once up front (`Query.parse`, `Query.decode_escapes`,
-    `Router.split_path`) and treat an invalid byte sequence as `QueryMalformed`
-    (a 400, like Rails' BadRequest), also after decoding (`%81`). Never
+    validate the encoding once up front (`Query.parse_into`, `Query.value_of`,
+    `Query.decode_escapes`, `Request.split_path`) and treat an invalid byte
+    sequence as `QueryMalformed` (a 400, like Rails' BadRequest), also after decoding (`%81`). Never
     `rescue IndexError`: that would be CRuby-only behaviour. Once the String
     is valid, every offset the scans use (0, or just after an ASCII byte) is a
     boundary, and a binary (ASCII-8BIT) String never fails the check.
     Spinel's `split`, `strip` and `index` accept an invalid String; CRuby's
     raise ArgumentError ("invalid byte sequence in UTF-8") on a UTF-8-tagged
     one (a binary socket buffer is fine), so a test cannot feed
-    `Router.split_path` or `Cookies.parse` a UTF-8 literal with a stray byte:
-    test invalid bytes through `Query.decode`/`Cookies.decode`, and through
-    `split_path` only next to a `%`, where `Query.check_valid!` runs first.
+    `Request.split_path` or `Cookies.parse` a UTF-8 literal with a stray byte
+    (`"/\x81".split("/")` raises): test invalid bytes through
+    `Query.decode`/`Cookies.decode`, and through `split_path` only as an
+    escape (`/%81`).
+    The path policy is therefore the same on both runtimes by construction:
+    `Request.split_path` checks the ESCAPES first (`Query.valid_escapes?`
+    false: the segment stays literal, whatever bytes it holds, so `/\x81%zz`
+    is a 404 on both), then `Query.check_valid!` (a raw invalid byte in a
+    segment that will be decoded is `QueryMalformed`; the CRuby binary buffer
+    passes it and `decode_valid`'s check of the decoded RESULT catches the same
+    byte, so `/\x81%41` is a 400 on both). The reverse order (validity first)
+    answered 400 under Spinel and 404 under CRuby for `/\x81%zz`. For the
+    escapes-first order to be safe on a broken UTF-8-tagged String,
+    `valid_escapes?` searches the next "%" from `i + 1`, not `i + 3`: the byte
+    at i + 1 is a hex digit (ASCII), always a character boundary, while i + 3
+    can be a stray byte (`"%41\x81"`).
 53. An exception object built with `.new("msg")` and never raised has no
     `#message` under Spinel (`undefined method 'message' for an instance of
     <its class>`, seen on a `Cybertrain::` exception subclass in review;
@@ -269,6 +282,15 @@ finds the commit that removed them).
     fault a 400 on one runtime and a 500 on the other): client faults are
     listed by full name (`ClientError::CLIENT_FAULTS`) and
     `script/check-client-faults` (CRuby, run by CI) keeps the list complete.
+55. An in-place String mutation through a value read out of a container does
+    not reach the stored String under Spinel: after `p.set_value("id", "1")`,
+    `p["id"] << "2"` leaves `p["id"]` as `"1"` (CRuby: `"12"`), and the same
+    for `list(k)[0] << "x"` and a value read through `nested`. So a test must
+    not assert that an append through a reader "stuck" on the writable tree
+    (runtime-dependent); assert only that the other tree (a cache, a merge!
+    source) is untouched. The dup-on-read of a sealed Params and the dup in
+    merge! are what make that true under CRuby; under Spinel they cost a copy
+    and change nothing.
 
 ## Numbers worth remembering
 

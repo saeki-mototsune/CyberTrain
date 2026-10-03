@@ -43,8 +43,8 @@ module Cybertrain
     private
 
     # The file to serve for a request, or "" when there is none. Path
-    # segments are percent-decoded first, so "%2e%2e" and "%2f" cannot be
-    # used to climb out of the root. They come from request.path_segments,
+    # segments are percent-decoded first, so "%2e%2e" and "%2f" are seen as
+    # the ".." and "/" they stand for and cannot climb out of the root. They come from request.path_segments,
     # which decodes once per request: the Router reads the same cached Array
     # afterwards (read-only here, as there), and an invalid byte sequence in a
     # decoded segment is raised from there as the one QueryMalformed (400)

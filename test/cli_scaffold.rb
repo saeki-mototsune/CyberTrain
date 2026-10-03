@@ -260,11 +260,6 @@ test "bad input is rejected before anything is written" do
   # applies to the field name, not only to the errors_id column.
   rejected(["errors:references"])
   rejected(["hash:references"])
-  # Object methods the generator only notes: a new name need not shadow them,
-  # as a column or as a references reader (def display).
-  rejected(["display:string"])
-  rejected(["tap:string"])
-  rejected(["display:references"])
   rejected(["a:string:index"])
   rejected(["a:string:"])
   rejected(["Title:string"])
@@ -281,11 +276,9 @@ test "bad input is rejected before anything is written" do
   status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "raise", "name:string"]) }
   assert_equal 1, status
   refute File.exist?("blog/app/models/raise.rb")
-  # The singular of `displays` is `display`, Object#display on any model that
-  # references it.
-  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "displays", "name:string"]) }
-  assert_equal 1, status
-  refute File.exist?("blog/app/models/display.rb")
+  # Object methods the generator only notes (`display`, `tap`) are not
+  # refused: see "a name that shadows an Object method is accepted with a
+  # note" below.
   assert_equal 4, migration_versions.size
   # TMP itself is not an app: it has no config/routes.rb.
   assert_equal 1, Cybertrain::CLI.run(["generate", "scaffold", "tag", "name:string"])
@@ -314,6 +307,49 @@ test "a name that is its own plural links and redirects to <plural>_index_path" 
     assert_includes read("blog/app/views/sheep/#{view}.html.erb"), "sheep_index_path"
   end
   assert_includes read("blog/config/routes.rb"), "resources :sheep"
+end
+
+# The policy is the generator's: refuse what it would RENAME (keywords and
+# Ident::RESERVED_COLUMN_NAMES, whose renamed reader the scaffold's views and
+# controller could not call), accept what it only annotates.
+test "the scaffold refuses a keyword or reserved name with its own message" do
+  refuse = lambda do |name, what|
+    assert_raises("InvalidArgument") { Cybertrain::CLI::Scaffold.refuse_unusable!(name, what) }
+  end
+  assert_equal "'class' is a Ruby keyword and cannot name a field", refuse.call("class", "field")
+  assert_equal "'end' is a Ruby keyword and cannot name a reference", refuse.call("end", "reference")
+  assert_equal "'errors' would shadow a method of the generated model (Cybertrain::Model); pick another field", refuse.call("errors", "field")
+  assert_equal "'hash' would shadow a method of the generated model (Cybertrain::Model); pick another resource", refuse.call("hash", "resource")
+  # Ident answers no "shadowing" reason any more.
+  assert_equal "", Cybertrain::Ident.unusable_reason("method")
+  assert_equal "", Cybertrain::Ident.unusable_reason("display")
+  assert Cybertrain::Ident.shadowing_column?("method")
+  assert_nil Cybertrain::CLI::Scaffold.refuse_unusable!("method", "field")
+end
+
+test "a name that shadows an Object method is accepted with a note" do
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "payment", "method:string", "amount:integer", "tap:references"]) }
+  assert_equal 0, status
+  assert File.exist?("blog/app/models/payment.rb")
+  controller = read("blog/app/controllers/payments_controller.rb")
+  assert_includes controller, "params.require(:payment).permit(:method, :amount, :tap_id)"
+  assert_includes read("blog/app/views/payments/_form.html.erb"), "<%= f.text_field :method %>"
+  assert_includes read("blog/app/views/payments/show.html.erb"), "<%= @payment.method %>"
+  assert_includes read("blog/db/migrate/20260925120005_create_payments.rb"), "      t.string \"method\"\n"
+  res = Cybertrain::CLI::Resource.new("payment", [Cybertrain::CLI::Field.parse("method:string"), Cybertrain::CLI::Field.parse("amount:integer"), Cybertrain::CLI::Field.parse("tap:references")])
+  assert_equal [
+    "note: 'method' shadows Object#method on the generated model; call it as payment.method",
+    "note: 'tap' shadows Object#tap on the generated model; call it as payment.tap"
+  ], Cybertrain::CLI::Scaffold.shadow_notes(res)
+  # The resource singular is the belongs_to reader on the models that
+  # reference it.
+  status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "displays", "name:string"]) }
+  assert_equal 0, status
+  assert File.exist?("blog/app/models/display.rb")
+  notes = Cybertrain::CLI::Scaffold.shadow_notes(Cybertrain::CLI::Resource.new("displays", [Cybertrain::CLI::Field.parse("name:string")]))
+  assert_equal ["note: 'display' shadows Object#display on a model that references displays (belongs_to reader); call it as record.display"], notes
+  # No shadowing name, no note.
+  assert_equal [], Cybertrain::CLI::Scaffold.shadow_notes(Cybertrain::CLI::Resource.new("post", [Cybertrain::CLI::Field.parse("title")]))
 end
 
 test "the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP" do

@@ -6,22 +6,25 @@ module Cybertrain
     # A fixed set of Connections shared by the server's threads. `with` blocks
     # (parking the green thread) until a connection is free.
     #
-    # Every in-memory or temporary connection (":memory:", a `file::memory:` or
-    # `mode=memory` URI, "" for a private temporary file) is its own private
-    # database, so such a pool always holds exactly one connection (and `size`
-    # reports 1) whatever size was asked for: otherwise tables created
-    # through one `with` would be missing from the next.
+    # Every private in-memory or temporary connection (":memory:", a
+    # `file::memory:` or `mode=memory` URI, "" for a private temporary file)
+    # is its own database, so such a pool always holds exactly one connection
+    # (and `size` reports 1) whatever size was asked for: otherwise tables
+    # created through one `with` would be missing from the next. A
+    # `cache=shared` in-memory URI is one database for all its connections
+    # (Connection.private_database? says no), so that pool keeps its full
+    # size, and a checkout nested in another gets a second connection.
     class Pool
       attr_reader :size
 
       def initialize(path, size = 4)
         @path = path
-        # What an in-memory or temporary path means is decided in one place,
-        # Connection.private_database? (Connection asks it too, for WAL): its
-        # single connection *is* the database, so the pool holds exactly one, never closes it after a failed
-        # ROLLBACK (check_in) and never replaces a closed one (reopen):
-        # either would drop every table. Another spelling is a change to
-        # the predicate only.
+        # What a private in-memory or temporary path means is decided in one
+        # place, Connection.private_database? (Connection asks it too, for
+        # WAL): its single connection *is* the database, so the pool holds
+        # exactly one, never closes it after a failed ROLLBACK (check_in) and
+        # never replaces a closed one (reopen): either would drop every
+        # table. Another spelling is a change to the predicate only.
         @reopenable = !Connection.private_database?(path)
         @size = @reopenable ? size : 1
         @connections = []
@@ -148,7 +151,7 @@ module Cybertrain
       # persistent disk fault must not grow the list either). Never when the pool is not
       # @reopenable (in-memory or temporary, see initialize): a fresh connection would be an empty database with no
       # tables and no trace, so a closed one (user code closed it) is an error
-      # on every later checkout, as it was before the pool reopened anything.
+      # on every later checkout.
       # Nor once close_all ran: a `with` that popped its connection
       # just before close_all finds it closed by the shutdown, not by check_in.
       # That is checked twice: before the open (saves it in the common case)

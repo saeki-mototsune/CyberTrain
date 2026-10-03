@@ -1,9 +1,10 @@
 module Cybertrain
   # The one definition of "a name usable as the application's package name":
   # `cybertrain build`/`server` (CLI::Build.app_name, reading spin.toml) and
-  # the compiled app (Application.new(name:), which the development
-  # rebuilder shells out with) both ask here, so the rules cannot drift
-  # apart. A leaf file with no requires: the CLI (CRuby) and the framework
+  # the development rebuilder (Dev::Rebuilder.new, which shells out with the
+  # name Application.new(name:) was given) both ask here, so the rules
+  # cannot drift apart. Application.new itself does not: production never
+  # builds. A leaf file with no requires: the CLI (CRuby) and the framework
   # (Spinel) both load it. String methods only, no Regexp, because it
   # compiles under Spinel (see Dev::Rebuilder).
   module AppName

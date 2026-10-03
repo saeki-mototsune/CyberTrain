@@ -1,10 +1,13 @@
+require "cybertrain/app_name"
+
 module Cybertrain
   module Dev
     # Regenerates gen/ and rebuilds the server binary of the application in
     # root, logging both steps' stdout and stderr to log_path (relative to
     # root unless absolute). ErrorPage shows last_output while last_failed.
     # target is the app's bin/<name>.rb executable (the package name);
-    # "server" only as a default for tests. While `cybertrain build` holds
+    # "server" only as a default for tests. ArgumentError when
+    # AppName.problem refuses it. While `cybertrain build` holds
     # root/tmp/cybertrain-build.lock (both write build/bin/<target>), #rebuild
     # runs nothing: it fails with last_skipped set and last_output saying so
     # (and, once the lock is gone, that the build has finished).
@@ -22,9 +25,14 @@ module Cybertrain
       STALE_LOCK_AGE = 30 * 60
 
       def initialize(root, target = "server", log_path = "tmp/rebuild.log")
-        # target was validated by Application.new (AppName.problem: no leading
-        # '-', no '/', no whitespace, ...); the quoting in #command is for the
+        # The target is only ever shelled out with here (and by the CLI, which
+        # checks the same predicate in Build.app_name), so the check lives
+        # where the name is used: a production boot, which never builds,
+        # neither pays nor fails for it. The quoting in #command is for the
         # shell only.
+        problem = AppName.problem(target)
+        raise ArgumentError, "build target #{target.inspect} #{problem}" unless problem.empty?
+
         @root = root
         @target = target
         @log_path = log_path

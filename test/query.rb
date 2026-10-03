@@ -23,7 +23,7 @@ test "parse of a malformed percent-escape raises QueryMalformed on every runtime
   assert_raises("QueryMalformed") { Cybertrain::Query.decode("50%off") }
 end
 
-test "decode_escapes (the loop under decode and Router.split_path) leaves '+' alone when asked" do
+test "decode_escapes (the loop under decode and Request.split_path) leaves '+' alone when asked" do
   assert_equal "a+b c\u00e9", Cybertrain::Query.decode_escapes("a+b%20c%C3%A9", false)
   assert_equal "+", Cybertrain::Query.decode_escapes("+", false)
   assert_equal "++A+", Cybertrain::Query.decode_escapes("++%41+", false)
@@ -109,7 +109,32 @@ test "parse of a 100-pair valid non-ASCII body still works" do
   params = Cybertrain::Query.parse(body)
   assert_equal "\u00e9\u00e9 0", params["k0"]
   assert_equal "\u00e9\u00e9 99", params["k99"]
-  assert_equal 100, params.keys.length
+  assert_equal 100, params.to_h.length
+end
+
+test "parse_into writes into the caller's Params, later pairs over earlier ones, and parse is parse_into on a fresh one" do
+  params = Cybertrain::Params.new
+  params.set_value("a", "old")
+  params.set_value("keep", "k")
+  assert Cybertrain::Query.parse_into(params, "a=1&b[]=2").equal?(params)
+  Cybertrain::Query.parse_into(params, "a=3&b[]=4")
+  assert_equal "3", params["a"]
+  assert_equal "k", params["keep"]
+  assert_equal ["2", "4"], params.list("b")
+  assert_equal "1", Cybertrain::Query.parse("a=1")["a"]
+  assert_equal 0, Cybertrain::Query.parse("").to_h.length
+end
+
+test "value_of answers what Params#[] answers after a parse" do
+  bodies = [
+    "a=1&a=2", "a=1&a[]=2", "a[]=2&a=1", "a=1&a[b]=2", "a=1&&a", "a&a=2&a", "%61=1&a+b=2&a=3",
+    "a[b]=1&a=2&a[b][c]=3", "x=1", "", "&&", "a=%C3%A9&b=1", "a=1&a[=2", "a=1&a]=2&a[]x=3", "a==1"
+  ]
+  bodies.each do |body|
+    assert_equal Cybertrain::Query.parse(body)["a"].to_s, Cybertrain::Query.value_of(body, "a")
+  end
+  assert_equal "\u00e9", Cybertrain::Query.value_of("a=%C3%A9&b=1", "a")
+  assert_equal "=1", Cybertrain::Query.value_of("a==1", "a")
 end
 
 test "valid_escapes? wants two hex digits after every percent sign" do

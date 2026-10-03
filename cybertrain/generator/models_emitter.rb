@@ -209,15 +209,14 @@ module Cybertrain
         src << "  def self.column_names = [\"id\", #{quoted}]\n"
         src << "  def model_name = \"#{model}\"\n"
         src << "\n"
-        # attr_accessor, as before PR #10, on purpose. Typed `def x=(v)`
-        # writers were tried there and had to go: under Spinel a `def x=` on
-        # one class breaks the run-time dispatch of an `attr_accessor :x` on
-        # another (NOTES rule 43) -- a column named body or status took
-        # Response#body= / #status= down with it -- and column names are the
-        # app's to choose. Probed on Spinel 2026.09.12: a Time assigned
-        # through the raw writer to a nullable datetime ivar reads back
-        # intact once load_row has typed the ivar via Cast.time_or_nil, so
-        # rule 7 does not bite this shape.
+        # Plain attr_accessor, on purpose: not typed `def x=(v)` writers.
+        # Under Spinel a `def x=` on one class breaks the run-time dispatch
+        # of an `attr_accessor :x` on another (NOTES rule 43) -- a column
+        # named body or status would take Response#body= / #status= down
+        # with it -- and column names are the app's to choose. Probed on
+        # Spinel 2026.09.12: a Time assigned through the raw writer to a
+        # nullable datetime ivar reads back intact once load_row has typed
+        # the ivar via Cast.time_or_nil, so rule 7 does not bite this shape.
         #
         # A column named like a method the framework calls on the record
         # (Ident::RESERVED_COLUMN_NAMES) or like a Ruby keyword reads as
@@ -311,9 +310,9 @@ module Cybertrain
       # association, not a Ruby keyword, not a method of Cybertrain::Model
       # or Object that the framework calls (`errors`, `attributes`, `raise`,
       # ... -- Ident). When the plain name is owned, the reader takes the
-      # fallback instead of being dropped (as it was before PR #10) or
-      # aborting the generator (which would break an existing schema on
-      # upgrade): `<table>_as_<stem>` for a has_many, `<stem>_as_<column>`
+      # fallback instead of being dropped or aborting the generator (which
+      # would break an existing schema on upgrade): `<table>_as_<stem>` for a
+      # has_many, `<stem>_as_<column>`
       # for a belongs_to, and the generated file carries a note. Only both
       # names being owned is an error.
       def self.association_name(table, plain, fallback, kind, taken, assoc_names)

@@ -10,16 +10,24 @@ module Cybertrain
     class Connection
       attr_reader :path
 
-      # True for a path whose database lives only in its connection:
-      # Connection opens with OPEN_URI, so besides ":memory:" and "" (a
-      # private temporary database) a `file:` URI naming ":memory:" or
-      # "mode=memory" is one too. String checks only: no Regexp. The single
-      # predicate: Connection#initialize (no WAL for it) and Pool (one
-      # never-reopened connection) both ask it, so a new spelling is a
-      # change here only.
+      # True for a path whose database lives only in its connection, so no
+      # other connection can see it: ":memory:", "" (a private temporary
+      # database) and, since Connection opens with OPEN_URI, a `file:` URI
+      # naming ":memory:" or "mode=memory" -- unless it says "cache=shared".
+      # A shared-cache in-memory database (`file:memdb?mode=memory&cache=
+      # shared`) is one database that every connection to that name sees, kept
+      # alive while any of them is open, so it is NOT private: a Pool may hold
+      # its full size on it (a nested checkout then gets a second connection
+      # instead of waiting on the first forever) and may reopen a slot, since
+      # the other connections keep the database alive. String checks only: no
+      # Regexp. The single predicate: Connection#initialize (no WAL for it)
+      # and Pool (one never-reopened connection) both ask it, so a new
+      # spelling is a change here only.
       def self.private_database?(path)
         return true if path == "" || path == ":memory:"
-        path.start_with?("file:") && (path.include?(":memory:") || path.include?("mode=memory"))
+        return false unless path.start_with?("file:")
+        return false if path.include?("cache=shared")
+        path.include?(":memory:") || path.include?("mode=memory")
       end
 
       # path is a file name, ":memory:" or a "file:" URI (OPEN_URI makes
@@ -61,7 +69,9 @@ module Cybertrain
           exec_script("PRAGMA busy_timeout=5000")
           # WAL is meaningless for a database that lives only in this
           # connection; every spelling of that is private_database?, not just
-          # ":memory:" (`file:x?mode=memory` and "" used to get the PRAGMA).
+          # ":memory:" (`file:x?mode=memory` and "" count too).
+          # A shared-cache in-memory database is not private and still gets
+          # the PRAGMA: SQLite answers "memory" for it and keeps that mode.
           exec_script("PRAGMA journal_mode=WAL") unless Connection.private_database?(path)
           exec_script("PRAGMA foreign_keys=ON")
         rescue JSON::ParserError, StandardError => e
@@ -132,7 +142,7 @@ module Cybertrain
       # nest into it and never COMMIT. Nothing in this method can observe
       # that: an `ensure` is the only construct that could, and an ensure in
       # this re-entrant yielding method miscompiles under Spinel (NOTES rule
-      # 50; rule 45 for the earlier ensure-based body). The Pool rolls the
+      # 50; rule 45 for nested calls). The Pool rolls the
       # open transaction back on check-in (abandon_transaction!, with a warn
       # line), so the hole is bounded to the rest of that one checkout under
       # CRuby, and it does not exist under Spinel: a `break` there is

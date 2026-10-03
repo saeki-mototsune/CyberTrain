@@ -127,19 +127,23 @@ end
 test "MAX_PAIRS pairs parse, one more raises QueryTooMany" do
   assert_equal 4096, Cybertrain::Query::MAX_PAIRS
   ok = (0...4096).map { |i| "k#{i}=1" }.join("&")
-  assert_equal 4096, Cybertrain::Query.parse(ok).keys.length
+  assert_equal 4096, Cybertrain::Query.parse(ok).to_h.length
   too_many = ok + "&extra=1"
   assert_raises("QueryTooMany") { Cybertrain::Query.parse(too_many) }
 end
 
 test "empty segments count towards MAX_PAIRS but are still skipped" do
-  assert_equal ["a", "b"], Cybertrain::Query.parse("a=1&&b=2").keys
-  assert_equal ["a"], Cybertrain::Query.parse("&&a=1&&").keys
+  two = Cybertrain::Query.parse("a=1&&b=2")
+  assert_equal 2, two.to_h.length
+  assert two.key?("a") && two.key?("b")
+  one = Cybertrain::Query.parse("&&a=1&&")
+  assert_equal 1, one.to_h.length
+  assert one.key?("a")
   assert_equal "2", Cybertrain::Query.parse("a=1&&b=2")["b"]
   # exactly MAX_PAIRS segments, almost all empty: fine; one more: QueryTooMany
   ok = ("&" * 4095) + "a=1"
-  assert_equal ["a"], Cybertrain::Query.parse(ok).keys
-  assert_equal [], Cybertrain::Query.parse("&" * 4096).keys
+  assert_equal 1, Cybertrain::Query.parse(ok).to_h.length
+  assert Cybertrain::Query.parse("&" * 4096).empty?
   assert_raises("QueryTooMany") { Cybertrain::Query.parse(ok + "&b=1") }
   assert_raises("QueryTooMany") { Cybertrain::Query.parse("&" * 4097) }
 end
@@ -150,7 +154,9 @@ test "a body of one non-ASCII character and many '&' is refused as QueryTooMany,
   # 200 000 on CRuby. Asserted on the result only.
   assert_raises("QueryTooMany") { Cybertrain::Query.parse("\u00e9" + ("&" * 4097)) }
   assert_raises("QueryTooMany") { Cybertrain::Query.parse("\u00e9" + ("&" * 200000)) }
-  assert_equal ["k\u00e9"], Cybertrain::Query.parse("k\u00e9=1&&").keys
+  kept = Cybertrain::Query.parse("k\u00e9=1&&")
+  assert_equal 1, kept.to_h.length
+  assert_equal "1", kept["k\u00e9"]
 end
 
 test "4000 segments after a non-ASCII character parse by byte offsets (O(body), not O(MAX_PAIRS x body))" do
@@ -165,7 +171,7 @@ test "4000 segments after a non-ASCII character parse by byte offsets (O(body), 
     i += 1
   end
   params = Cybertrain::Query.parse(body)
-  assert_equal 4000, params.keys.length
+  assert_equal 4000, params.to_h.length
   assert_equal "first", params["k\u00e9"]
   assert_equal 600, params["k3999"].length
   assert_equal "v", params["k1"][0, 1]
@@ -173,7 +179,7 @@ end
 
 test "multibyte keys and values survive the byte-offset cut, whatever the segment boundaries" do
   params = Cybertrain::Query.parse("\u00e9=\u00e9\u00e9&&%C3%A9x=%E3%81%82&\u3042=1&")
-  assert_equal ["\u00e9", "\u00e9x", "\u3042"], params.keys
+  assert_equal 3, params.to_h.length
   assert_equal "\u00e9\u00e9", params["\u00e9"]
   assert_equal "\u3042", params["\u00e9x"]
   assert_equal "1", params["\u3042"]
@@ -186,18 +192,20 @@ test "20000 key kind flips complete and keep the last write" do
   params = Cybertrain::Params.new
   n.times { |i| params.set_value("k#{i}", "1") }
   n.times { |i| params.add_list_value("k#{i}", "1") }
-  assert_equal n, params.keys.length
+  assert_equal 0, params.to_h.length
+  assert params.key?("k0") && params.key?("k19999")
   assert_nil params["k0"]
   assert_equal ["1"], params.list("k19999")
   n.times { |i| params.child!("k#{i}") }
-  assert_equal n, params.keys.length
+  assert params.key?("k0") && params.key?("k19999")
   assert_equal [], params.list("k0")
   assert params.nested("k5").empty?
 end
 
 test "flips within one parse keep Rack's last-write-wins" do
   params = Cybertrain::Query.parse("a=1&a[]=2&a[b]=3&c[]=1&c=2")
-  assert_equal ["c", "a"], params.keys
+  assert params.key?("c") && params.key?("a")
+  assert_equal 1, params.to_h.length
   assert_equal "3", params.nested("a")["b"]
   assert_equal "2", params["c"]
 end

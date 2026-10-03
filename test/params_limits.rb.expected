@@ -20,4 +20,4 @@ ok   flips within one parse keep Rack's last-write-wins
 ok   set_path and merge! handle a 5000 level chain iteratively
 ok   QueryMalformed (an undecodable percent-escape) is a client fault: 400, not 500
 ok   a malformed escape is rescued as QueryInvalid, not ArgumentError (upgrade note)
-22 tests, 82 assertions, 0 failures
+22 tests, 87 assertions, 0 failures

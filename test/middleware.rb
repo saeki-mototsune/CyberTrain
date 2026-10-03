@@ -184,7 +184,7 @@ test "MethodOverride and the Router share one parse of the form body" do
   assert !ctx.params.equal?(f)
   assert q.equal?(ctx.request.query_params)
   assert_equal "1", q["q"]
-  assert_equal ["q"], q.keys
+  assert_equal 1, q.to_h.length
   assert !q.key?("_method")
   assert !q.key?("id")
   assert_equal "1", ctx.params["q"]
@@ -194,7 +194,7 @@ test "MethodOverride and the Router share one parse of the form body" do
   ctx.params.set_value("q", "changed")
   assert_equal "delete", f["_method"]
   assert_equal "1", q["q"]
-  assert_equal ["_method"], f.keys
+  assert_equal 1, f.to_h.length
   assert !f.key?("q")
   assert !f.key?("id")
 end

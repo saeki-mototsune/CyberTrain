@@ -34,11 +34,11 @@ module Cybertrain
   # ArgumentError (CRuby only: Spinel decodes it leniently, to a NUL byte,
   # NOTES rule 28), and the bytes with String#valid_encoding? (NOTES rule 52),
   # so both are raised the same way on both runtimes. A StandardError under
-  # QueryInvalid, NOT an ArgumentError (the class the decoder used to raise
-  # under CRuby): app code that rescued ArgumentError around Query.parse,
-  # Query.decode or request.form_params must rescue Cybertrain::QueryInvalid
-  # instead (README "Differences from Rails"). The hierarchy stays as it is:
-  # an ArgumentError superclass for a user class is unverified under Spinel.
+  # QueryInvalid, NOT an ArgumentError (the class CRuby's decoder raises):
+  # app code that rescues around Query.parse, Query.decode or
+  # request.form_params rescues Cybertrain::QueryInvalid (README
+  # "Differences from Rails"). An ArgumentError superclass for a user class
+  # is unverified under Spinel.
   class QueryMalformed < QueryInvalid
   end
 
@@ -84,10 +84,28 @@ module Cybertrain
     # CRuby socket buffer passes; its bytes are checked after decoding
     # (decode_valid). The segments cut out below inherit the valid
     # encoding, so add_pair and the decoder do not check them again.
-    # Empty segments are still skipped, not parsed, so "a=1&&b=2" and a
-    # trailing "&" give the same Params as before.
+    # Empty segments are skipped, not parsed, so "a=1&&b=2" and a trailing
+    # "&" give the same Params as "a=1&b=2".
+    #
+    # Three entry points share this segment scan: parse (a fresh Params),
+    # parse_into (the caller's Params: the Router builds the controller's own
+    # tree with it, query string first, then the form body, so a later source
+    # wins and nothing is copied node by node afterwards) and value_of (one
+    # key's value, no tree). Each limit applies per call: a form body and a
+    # query string are two calls of MAX_PAIRS each. The cursor loop is
+    # written out in parse_into and in value_of rather than factored into a
+    # helper that yields each segment: a yielding helper called from nested
+    # blocks is a NOTES rule 32 hazard (the raises below must stay plain
+    # raises), and the loop is a dozen lines; Array-free on purpose too (no
+    # `split`, see above).
     def self.parse(str)
-      params = Params.new
+      parse_into(Params.new, str)
+    end
+
+    # Parses `str` into `params` (a writable Params; a read-only one raises
+    # from its first set_path) and returns it. Later pairs override earlier
+    # ones, also over what `params` already held.
+    def self.parse_into(params, str)
       s = str.to_s
       check_valid!(s)
       len = s.bytesize
@@ -105,6 +123,59 @@ module Cybertrain
       params
     end
 
+    # The decoded value `Params#[]` would answer for `name` after
+    # parse(str), without building the tree: "" when there is none. For the
+    # framework middleware (MethodOverride's _method, CsrfProtection's token),
+    # which read one key of the query string or the form body before routing:
+    # building (and caching) a whole tree for that one key would cost up to
+    # MAX_PAIRS pairs of MAX_DEPTH levels per request.
+    #
+    # The same scan as parse_into: check_valid! first (invalid bytes are
+    # QueryMalformed), every "&" segment counted (QueryTooMany past
+    # MAX_PAIRS, empty ones counted and skipped). The LAST segment whose
+    # decoded key is `name` wins ("a=1&a=2" -> "2"; a bare "a" is ""). A later
+    # segment whose key is `name[...]` or `name[]` evicts it ("" from there
+    # on), as Params#set_path does to a scalar that becomes a list or a
+    # nested tree; a later plain `name=` writes it again. A key is decoded
+    # only when it holds a "%" or a "+" (anything else is already its own
+    # decoded form), and is compared with `name` as decoded text, so
+    # "%5Fmethod" is "_method". A key with brackets is cut with split_key only
+    # when its first "[" sits right after `name`'s bytes, so a hostile
+    # a[b][c]... key costs one byteindex. The value is decoded (decode_valid)
+    # only for a matching segment, so a malformed escape in the value of
+    # another key is not looked at here (parse would raise on it; the Router
+    # still does later). Always a String (NOTES rules 10/11).
+    def self.value_of(str, name)
+      s = str.to_s
+      check_valid!(s)
+      len = s.bytesize
+      nlen = name.bytesize
+      result = ""
+      count = 0
+      pos = 0
+      while pos < len
+        amp = s.byteindex("&", pos)
+        stop = amp.nil? ? len : amp
+        count += 1
+        raise QueryTooMany, "too many parameters (limit #{MAX_PAIRS})" if count > MAX_PAIRS
+
+        if stop > pos
+          seg = s.byteslice(pos, stop - pos).to_s
+          eq = seg.byteindex("=")
+          raw_key = eq.nil? ? seg : seg.byteslice(0, eq).to_s
+          key = raw_key
+          key = decode_valid(raw_key, true) if !raw_key.byteindex("%").nil? || !raw_key.byteindex("+").nil?
+          if key == name
+            result = eq.nil? ? "" : decode_valid(seg.byteslice(eq + 1, seg.bytesize - eq - 1).to_s, true)
+          elsif next_byte(key, "[", 0) == nlen && key.byteslice(0, nlen) == name && split_key(key).length > 1
+            result = ""
+          end
+        end
+        pos = stop + 1
+      end
+      result
+    end
+
     # The one place request text is percent-decoded (query strings and form
     # bodies; Cookies.decode wraps it, because a cookie the app does not own
     # must not fail the request), so malformed input is the same client
@@ -114,7 +185,7 @@ module Cybertrain
     # message and the same behaviour on both runtimes, which Spinel could not
     # give otherwise (its decoder never raises, NOTES rule 28, and would put
     # NUL bytes into params while CRuby answered 400); there is no pre-scan
-    # (valid_escapes? is the router's check, for its own policy). There is no
+    # (valid_escapes? is Request.split_path's check, for its own policy). There is no
     # rescue around the library decoder either: the loop hands it only runs
     # of well-formed "%XX", which it never refuses.
     #
@@ -124,13 +195,14 @@ module Cybertrain
     # + 200 000 8.5 s; 400 000 "a" + "%41%C3%A9", which is ASCII up to the
     # escapes, 11 ms; linear under CRuby, NOTES rule 49), so one 1.6 MB
     # non-ASCII key or form value hung the binary for minutes. It is decoded
-    # by byte chunks in decode_valid (below), shared with the router.
+    # by byte chunks in decode_valid (below), shared with Request.split_path.
     def self.decode(text)
       decode_escapes(text, true)
     end
 
     # Validates `text` (once) and decodes it. The entry point for text that
-    # has not been through Query.parse: decode, Cookies and Router.split_path.
+    # has not been through Query.parse: decode and Cookies (Request.split_path validates
+    # and scans on its own, then calls decode_valid).
     # An invalid byte sequence is QueryMalformed before any byte offset is
     # used, because those offsets are only character boundaries in a valid
     # String (see parse, NOTES rule 52). With plus_is_space a "+" is a space
@@ -225,7 +297,7 @@ module Cybertrain
     end
 
     # `s` tagged as UTF-8, in place (a no-op for the Spinel runtime, whose
-    # Strings are all UTF-8). The decoder always answered UTF-8, but a
+    # Strings are all UTF-8). The decoder always answers UTF-8, but a
     # socket buffer under CRuby is ASCII-8BIT (NOTES rule 27), and the pieces
     # decode copies out of it would then not mix with the decoder's UTF-8 in
     # `out` (Encoding::CompatibilityError on "e-acute%41"-style text). Only
@@ -242,7 +314,17 @@ module Cybertrain
     # so it is on a character boundary as long as `text` is valid in its
     # encoding, and ONLY then: on "%41\x81" CRuby's byteindex raises
     # IndexError for the offset of the stray byte, so the caller validates
-    # first (check_valid!; Router.split_path does, before it asks).
+    # first (check_valid!). Request.split_path asks this one BEFORE it
+    # validates (a malformed escape keeps the segment literal whatever bytes
+    # it holds, NOTES rule 52), so it must also be safe on an invalid
+    # UTF-8-tagged String: the next "%" is searched from `i + 1`, not
+    # `i + 3`. The byte at i + 1 is a hex digit here (the checks above), an
+    # ASCII byte, which is a character boundary even in a broken String (a
+    # continuation byte never looks like an ASCII one), so CRuby's byteindex
+    # does not raise IndexError. `i + 3`, the offset after the escape, can be
+    # a stray byte ("%41\x81": CRuby raises for offset 3). The next "%" found
+    # is still at i + 3 or later, since i + 1 and i + 2 are hex digits, not
+    # "%".
     def self.valid_escapes?(text)
       n = text.bytesize
       i = text.byteindex("%")
@@ -250,7 +332,7 @@ module Cybertrain
         return false if i + 2 >= n
         return false unless hex_byte?(text.getbyte(i + 1).to_i) && hex_byte?(text.getbyte(i + 2).to_i)
 
-        i = text.byteindex("%", i + 3)
+        i = text.byteindex("%", i + 1)
       end
       true
     end

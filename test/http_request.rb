@@ -175,6 +175,86 @@ test "path_segments: an invalid decoded byte sequence is QueryMalformed and is n
   assert_raises("QueryMalformed") { req.path_segments }
 end
 
+# form_value / query_value raising inside a helper method, not in the
+# assert_raises block (NOTES rule 32): the class name of what was raised.
+def value_error(req, which, name)
+  which == "form" ? req.form_value(name) : req.query_value(name)
+  "none"
+rescue Cybertrain::QueryTooMany
+  "QueryTooMany"
+rescue Cybertrain::QueryMalformed
+  "QueryMalformed"
+end
+
+test "form_value and query_value: the last pair wins, absent is empty" do
+  req = Request.new("POST", "/p?m=q1&m=q2&bare&z=", { "content-type" => "application/x-www-form-urlencoded" }, "m=f1&m=f2&&x=1")
+  assert_equal "f2", req.form_value("m")
+  assert_equal "q2", req.query_value("m")
+  assert_equal "1", req.form_value("x")
+  assert_equal "", req.query_value("x")
+  assert_equal "", req.form_value("absent")
+  assert_equal "", req.query_value("bare")
+  assert_equal "", req.query_value("z")
+  assert_equal "", Request.new("POST", "/p", {}, "").form_value("m")
+  assert_equal "", Request.new("GET", "/p", {}, "").query_value("m")
+  # one scan each, no cache; the read-only trees are separate and still built on demand
+  assert_equal "f2", req.form_params["m"]
+  assert req.form_params.equal?(req.form_params)
+end
+
+test "form_value and query_value decode keys and values like a parse" do
+  req = Request.new("POST", "/p?%5Fmethod=pu%74&a+b=1+2", {}, "%5fmethod=de%6Cete&caf%C3%A9=%E3%81%82&k=v%20w+x")
+  assert_equal "delete", req.form_value("_method")
+  assert_equal "put", req.query_value("_method")
+  assert_equal "1 2", req.query_value("a b")
+  assert_equal "\u3042", req.form_value("caf\u00e9")
+  assert_equal "v w x", req.form_value("k")
+  # an encoded key is matched as decoded text, not as raw bytes
+  assert_equal "", req.query_value("%5Fmethod")
+end
+
+test "form_value and query_value: name[]= and name[x]= evict an earlier scalar, a later name= writes it again" do
+  assert_equal "", Request.new("POST", "/p", {}, "_method=put&_method[]=x").form_value("_method")
+  assert_equal "", Request.new("POST", "/p", {}, "_method=put&_method[a]=x").form_value("_method")
+  assert_equal "", Request.new("POST", "/p", {}, "_method=put&%5Fmethod%5B%5D=x").form_value("_method")
+  assert_equal "delete", Request.new("POST", "/p", {}, "_method[]=x&_method=delete").form_value("_method")
+  assert_equal "", Request.new("POST", "/p", {}, "_method[]=x&_method[]=y").form_value("_method")
+  # a malformed bracket run is a plain, different key and evicts nothing
+  assert_equal "put", Request.new("POST", "/p", {}, "_method=put&_method[x=1").form_value("_method")
+  # a key that merely starts with the name is another key
+  assert_equal "put", Request.new("POST", "/p", {}, "_method=put&_methods=x&_method_y[]=z").form_value("_method")
+  # the same answers as Params#[] after a parse
+  body = "_method=put&_method[]=x&a=1&a[b]=2&a=3"
+  assert_equal "", Cybertrain::Query.parse(body)["_method"].to_s
+  assert_equal "3", Cybertrain::Query.parse(body)["a"].to_s
+  assert_equal "3", Request.new("POST", "/p", {}, body).form_value("a")
+end
+
+test "form_value and query_value: MAX_PAIRS segments are counted, one more is QueryTooMany; invalid bytes are QueryMalformed" do
+  # 4095 empty segments (counted, skipped) and the 4096th
+  ok = ("&" * 4095) + "_method=put"
+  assert_equal "put", Request.new("POST", "/p", {}, ok).form_value("_method")
+  assert_equal "put", Request.new("POST", "/p?" + ok, {}, "").query_value("_method")
+  assert_equal "QueryTooMany", value_error(Request.new("POST", "/p", {}, ok + "&x=1"), "form", "_method")
+  assert_equal "QueryTooMany", value_error(Request.new("POST", "/p?" + ok + "&x=1", {}, ""), "query", "_method")
+  assert_equal "QueryTooMany", value_error(Request.new("POST", "/p", {}, "\u00e9" + ("&" * 200000)), "form", "_method")
+  # a raw invalid byte, wherever it is, even in a key that is not asked for
+  assert_equal "QueryMalformed", value_error(Request.new("POST", "/p", {}, "a=1&\x81b=2&_method=put"), "form", "_method")
+  assert_equal "QueryMalformed", value_error(Request.new("POST", "/p?_method=pu\x81", {}, ""), "query", "_method")
+  # a percent-encoded one, in the matching value, and a malformed escape in the matching value
+  assert_equal "QueryMalformed", value_error(Request.new("POST", "/p", {}, "_method=%81"), "form", "_method")
+  assert_equal "QueryMalformed", value_error(Request.new("POST", "/p", {}, "_method=%zz"), "form", "_method")
+  assert_equal "QueryMalformed", value_error(Request.new("POST", "/p", {}, "%zz=1&_method=put"), "form", "_method")
+end
+
+test "form_value on the 4096 x 32 body answers like the parse" do
+  deep = "a" + ("[b]" * 32)
+  body = (0...4095).map { |i| "#{deep}#{i}=1" }.join("&") + "&_method=put"
+  assert_equal 4096, body.split("&").length
+  assert_equal "put", Request.new("POST", "/p", {}, body).form_value("_method")
+  assert_equal "", Request.new("POST", "/p", {}, body).form_value("a")
+end
+
 test "a parse that raises is not cached: every call raises again" do
   req = Request.new("POST", "/p?x=%zz", {}, "a=%zz")
   assert_raises("QueryMalformed") { req.query_params }

@@ -117,16 +117,6 @@ module Cybertrain
       nil
     end
 
-    # "/posts/1/" -> ["posts", "1"], percent-decoded. The implementation
-    # (and the 400 policy for invalid bytes) lives in Request.split_path,
-    # which Request#path_segments caches; it cannot live here because Router
-    # requires Request (through Middleware and Context), so the other way
-    # round would be a require cycle. The Router itself reads
-    # request.path_segments.
-    def self.split_path(path)
-      Request.split_path(path)
-    end
-
     # Percent-encodes a value for use as one path segment ("a b" -> "a%20b").
     def self.escape_segment(value)
       URI.encode_www_form_component(value).gsub("+", "%20")
@@ -135,34 +125,30 @@ module Cybertrain
     private
 
     # Later sources win: query string, then the form body, then the route.
-    # ctx.params is the request's OWN tree: a fresh Params that the query
-    # tree, the form tree (when the body is a form) and the route captures
-    # are merged into, in that order. merge! reads its argument and copies
-    # every list and nested Params it takes over, so neither of the
-    # Request's parse caches is ever mutated, and anyone who kept
-    # request.query_params or request.form_params (a middleware rebuilding a
-    # canonical URL after `super`) still sees the query keys or the form
-    # fields alone, never `_method`, `authenticity_token` or the captures.
-    # Both caches are marked Params#read_only! by the Request (an O(1) flag
-    # on the tree, no walk; every mutator on them raises), so this is not a
-    # defensive copy that a convention has to protect: it is the merge of
-    # three sources into the one tree the controller may write to, and merge!
-    # copies from a read-only source into a fresh writable one. Parsing
-    # straight into ctx.params instead would parse the body a second time
-    # (the middleware chain has already parsed the query and form into the
-    # caches, for MethodOverride and CsrfProtection) and decode every pair
-    # again; the copy decodes nothing, it only allocates the nodes. One tree
-    # build per request, bounded by the Query limits (at most MAX_PAIRS pairs
-    # of MAX_DEPTH levels).
+    # ctx.params is the request's OWN tree, built right here by parsing the
+    # query string and then (for a form) the body straight into one fresh
+    # Params (Query.parse_into), then the route captures. The Request's
+    # caches (query_params, form_params, path_segments) are for middleware
+    # and app code and stay read-only and unshared: this does not read them
+    # (so a request whose middleware never asked for them builds no cache
+    # tree at all), and nothing in ctx.params aliases them. The parsed
+    # Strings come fresh out of the decoder, and a capture is the very String
+    # the cached path_segments holds, so it is dup'd: `params[:id].upcase!` in
+    # an action must not change the cached segment Array that Static or a
+    # later middleware reads. One tree build per request, no node-by-node
+    # copy: copying a parsed tree into a fresh one cost more than the parse at
+    # the Query limits (648 ms against 546 ms for MAX_PAIRS pairs of MAX_DEPTH
+    # levels). The Query limits (QueryTooMany, QueryTooDeep) apply per parse
+    # call: one for the query string, one for the form body.
     def assemble_params(request, captured)
       params = Params.new
-      params.merge!(request.query_params)
-      params.merge!(request.form_params) if request.form?
+      Query.parse_into(params, request.query_string)
+      Query.parse_into(params, request.body) if request.form?
       # NOTE(Spinel): not `captured.each { |k, v| ... }` -- captured comes from
       # the nullable Route#match, and with a user-defined #to_s in the program
       # (SafeString) the pair's key reaches Params#set_value as a boxed value
       # and the C build fails. Iterating the keys keeps them typed String.
-      captured.each_key { |k| params.set_value(k, captured[k].to_s) }
+      captured.each_key { |k| params.set_value(k, captured[k].to_s.dup) }
       params
     end
 

@@ -2,7 +2,7 @@ ok   set_value stores and reads a scalar
 ok   add_list_value builds a list, absent key returns empty array
 ok   child! creates and returns a nested Params, nested() never stores
 ok   key? is true for scalars, lists and nested params
-ok   keys lists scalars, then lists, then nested, each in insertion order
+ok   inspect lists scalars, then lists, then nested, each in insertion order (Params has no keys)
 ok   set_path assembles nested params from a Query.split_key-shaped path
 ok   require returns the nested Params when present and non-empty
 ok   require raises ParameterMissing when absent or empty
@@ -10,7 +10,7 @@ ok   permit returns only listed scalar keys that are present
 ok   merge! lets the other Params win on conflicts
 ok   merge! deep-merges nested Params, keeping receiver-only keys
 ok   merge! does not alias other's lists or nested params
-ok   merge! preserves keys/inspect ordering: receiver order first, then other's new keys
+ok   merge! preserves inspect ordering: receiver order first, then other's new keys
 ok   a name can only be one kind at a time: last write wins, like Rack
 ok   to_h returns only scalars, empty? and inspect are deterministic
 ok   read_only! marks the Params and every nested child, and returns self
@@ -18,4 +18,6 @@ ok   every mutator of a read-only Params raises RuntimeError and changes nothing
 ok   every reader of a read-only Params still works
 ok   Params.new.merge!(read_only) is writable and independent of its source
 ok   read_only! is one flag per tree: a nested node seals its whole tree, copies and strangers are separate
-20 tests, 109 assertions, 0 failures
+ok   a read-only Params hands out copies: mutating a returned String or list changes nothing
+ok   merge! copies Strings: the merged tree shares none with its source
+22 tests, 137 assertions, 0 failures

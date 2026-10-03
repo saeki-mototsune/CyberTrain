@@ -17,5 +17,10 @@ ok   query_params and form_params are read-only shared caches
 ok   query_params and form_params of an empty query and body are cached empty Params
 ok   path_segments decodes once and returns the same Array every time
 ok   path_segments: an invalid decoded byte sequence is QueryMalformed and is not cached
+ok   form_value and query_value: the last pair wins, absent is empty
+ok   form_value and query_value decode keys and values like a parse
+ok   form_value and query_value: name[]= and name[x]= evict an earlier scalar, a later name= writes it again
+ok   form_value and query_value: MAX_PAIRS segments are counted, one more is QueryTooMany; invalid bytes are QueryMalformed
+ok   form_value on the 4096 x 32 body answers like the parse
 ok   a parse that raises is not cached: every call raises again
-20 tests, 89 assertions, 0 failures
+25 tests, 129 assertions, 0 failures

@@ -217,14 +217,14 @@ test "a pool that close_all shut down refuses every checkout instead of reopenin
   assert_equal "pool closed", checkout_after_close_all(pool)
 end
 
-test "every in-memory or temporary spelling is a one-connection, non-reopenable pool" do
+test "every private in-memory or temporary spelling is a one-connection, non-reopenable pool" do
   assert_equal 1, DB::Pool.new(":memory:", 4).size
   assert_equal 1, DB::Pool.new("file::memory:", 4).size
-  assert_equal 1, DB::Pool.new("file:x?mode=memory&cache=shared", 4).size
+  assert_equal 1, DB::Pool.new("file:x?mode=memory", 4).size
   assert_equal 1, DB::Pool.new("", 4).size
   assert DB::Connection.private_database?(":memory:")
   assert DB::Connection.private_database?("")
-  assert DB::Connection.private_database?("file::memory:?cache=shared")
+  assert DB::Connection.private_database?("file::memory:")
   assert DB::Connection.private_database?("file:x?mode=memory")
   refute DB::Connection.private_database?("storage/dev.sqlite3")
   refute DB::Connection.private_database?("file:storage/dev.sqlite3")
@@ -236,13 +236,41 @@ test "every in-memory or temporary spelling is a one-connection, non-reopenable 
 end
 
 test "a private connection (any spelling) opens, works and is not put in WAL" do
-  [":memory:", "file::memory:?cache=shared", "file:x?mode=memory", ""].each do |path|
+  [":memory:", "file::memory:", "file:x?mode=memory", ""].each do |path|
     conn = DB::Connection.new(path)
     conn.exec_script("CREATE TABLE t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;")
     assert_equal 1, conn.execute("SELECT COUNT(*) AS n FROM t")[0]["n"]
     refute conn.execute("PRAGMA journal_mode")[0]["journal_mode"].to_s == "wal"
     conn.close
   end
+end
+
+# cache=shared makes an in-memory database one database for all its
+# connections, so it is not private: the pool keeps its full size and a
+# checkout nested in another gets a second connection (it used to be capped
+# at one, where the nested checkout waited on the empty queue forever). The
+# nesting is in plain methods, not in an assert_raises block (rules 32/45).
+def shared_inner_count(pool)
+  pool.with { |d| d.execute("SELECT COUNT(*) AS n FROM shared_t")[0]["n"] }
+end
+
+def shared_nested_count(pool)
+  pool.with do |c|
+    c.exec_script("CREATE TABLE IF NOT EXISTS shared_t (id INTEGER PRIMARY KEY); INSERT INTO shared_t DEFAULT VALUES;")
+    shared_inner_count(pool)
+  end
+end
+
+test "a shared-cache in-memory database is not private: the pool keeps its size and a nested checkout works" do
+  refute DB::Connection.private_database?("file:memdb?mode=memory&cache=shared")
+  refute DB::Connection.private_database?("file::memory:?cache=shared")
+  refute DB::Connection.private_database?("file:r22shared?mode=memory&cache=shared")
+  pool = DB::Pool.new("file:r22shared?mode=memory&cache=shared", 3)
+  assert_equal 3, pool.size
+  assert_equal 1, shared_nested_count(pool)
+  # Two sequential checkouts see the same database too.
+  assert_equal 1, shared_inner_count(pool)
+  pool.close_all
 end
 
 # Two slots closed at once: A still checked out when user code closes it, B

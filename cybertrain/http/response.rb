@@ -27,15 +27,12 @@ module Cybertrain
     # Starts the response over as a plain-text error: every header and
     # cookie an action had already set goes (a stale Location or
     # Content-Disposition: attachment would hide the error), then status,
-    # text/plain and body ("" means the status text). The one sequence the
-    # Server, ErrorPages and Dev::ErrorPage share.
+    # text/plain and body ("" means the status text; plain_error). The one
+    # sequence the Server, ErrorPages and Dev::ErrorPage share.
     def reset_to(status, body = "")
       @headers.clear
       @cookies.clear
-      @status = status
-      self.content_type = "text/plain; charset=utf-8"
-      @body = body == "" ? status_text : body
-      nil
+      plain_error(status, body)
     end
 
     # The other reset policy, for a client fault the action raised (a
@@ -49,16 +46,12 @@ module Cybertrain
     # Access-Control-Allow-Origin would see an opaque network error instead
     # of the status. A header that hides an error in future (Refresh, a
     # stale Content-Encoding) is added here, in one place. reset_to is the
-    # other policy: start over, for a failure the app never handled. Sets
-    # status, text/plain and body ("" means the status text, like
-    # reset_to); the caller marks the response performed!.
+    # other policy: start over, for a failure the app never handled. Both
+    # finish with plain_error; the caller marks the response performed!.
     def client_error!(status, body)
       drop_header("Location")
       drop_header("Content-Disposition")
-      @status = status
-      self.content_type = "text/plain; charset=utf-8"
-      @body = body == "" ? status_text : body
-      nil
+      plain_error(status, body)
     end
 
     # Replaces any existing header of the same name, whatever its case,
@@ -159,6 +152,15 @@ module Cybertrain
     end
 
     private
+
+    # The tail both reset policies share: status, text/plain content type
+    # and the body ("" means the status text). Returns nil.
+    def plain_error(status, body)
+      @status = status
+      self.content_type = "text/plain; charset=utf-8"
+      @body = body == "" ? status_text : body
+      nil
+    end
 
     def reject_crlf!(name, text)
       if text.include?("\r") || text.include?("\n")

@@ -5,8 +5,8 @@
 # three separate typed Hashes (scalars, lists, nested Params) and exposes the
 # Rails-flavoured surface (#require, #permit, #[]) on top of them. Key order
 # is the insertion order of each Hash (Ruby and Spinel Hashes are ordered), so
-# evicting a key is one O(1) Hash#delete: the earlier per-kind order Arrays
-# made every kind change an O(n) Array#delete, i.e. quadratic parsing.
+# evicting a key is one O(1) Hash#delete (per-kind order Arrays would make
+# every kind change an O(n) Array#delete, i.e. quadratic parsing).
 module Cybertrain
   class Params
     class ParameterMissing < StandardError
@@ -47,7 +47,9 @@ module Cybertrain
     # Marks this Params and every nested Params of its tree read-only and
     # returns self: after that each mutator (set_value, add_list_value,
     # child!, set_path, merge!, replace_list!) raises RuntimeError, and every
-    # reader is unchanged. Request#query_params and #form_params use it on
+    # reader keeps answering but with copies of the Strings and Arrays it
+    # holds (#[], #list, #permit, #to_h), so a holder cannot change the tree
+    # through a returned object either. Request#query_params and #form_params use it on
     # the trees they cache, which several holders share. This is the
     # framework's own flag, not Object#freeze: `freeze`/`frozen?` are Object
     # methods, and sharing a name with Hash/Object is what NOTES rule 51
@@ -70,12 +72,27 @@ module Cybertrain
       @tree.sealed?
     end
 
+    # A sealed tree is shared by every holder of request.query_params, and
+    # a String is mutable (`<<`, `upcase!`, `replace`): handing out the
+    # stored one would let a holder change the cache for everybody without
+    # ever reaching writable!. So a read_only! tree answers with a copy
+    # (nil stays nil: the method's type is String|nil, NOTES rule 11). Only
+    # a sealed tree pays for the copy on read; a writable Params is the
+    # caller's own and returns its own objects.
     def [](key)
-      @values[key.to_s]
+      v = @values[key.to_s]
+      v.nil? ? nil : (@tree.sealed? ? v.dup : v)
     end
 
+    # The same rule for the list: a sealed tree answers with a new Array of
+    # copied Strings (Array#dup alone would still share the elements), so
+    # neither `list("tags") << "x"` nor `list("tags")[0] << "x"` reaches the
+    # cache. Copied by Params.copy_strings (a while loop, no block). A
+    # writable Params returns its internal Array.
     def list(key)
-      @lists[key.to_s] || []
+      arr = @lists[key.to_s]
+      return [] if arr.nil?
+      @tree.sealed? ? Params.copy_strings(arr) : arr
     end
 
     # A fresh, empty Params for an absent key -- it is never stored, so
@@ -90,10 +107,6 @@ module Cybertrain
       @values.key?(k) || @lists.key?(k) || @children.key?(k)
     end
 
-    def keys
-      @values.keys + @lists.keys + @children.keys
-    end
-
     def require(key)
       k = key.to_s
       child = @children[k]
@@ -103,11 +116,12 @@ module Cybertrain
       child
     end
 
+    # The values follow #[]: copies when the tree is sealed.
     def permit(*keys)
       permitted = {}
       keys.each do |key|
         k = key.to_s
-        permitted[k] = @values[k] if @values.key?(k)
+        permitted[k] = self[k] if @values.key?(k)
       end
       permitted
     end
@@ -177,11 +191,12 @@ module Cybertrain
     # present on both sides is merged recursively (so a key only the
     # receiver's nested Params has survives). A key only this Params has,
     # at any level, is left untouched. other is never mutated, and nothing
-    # of other's internal Arrays/Hashes/Params is aliased into self --
-    # every list and nested Params that crosses over is copied. The copies
-    # are fresh and writable (dst.child! builds a new Params in dst's tree, lists
-    # are dup'd), so merging a read_only! source into Params.new yields an
-    # independent, mutable tree; only the receiver must be writable.
+    # of other's internal Arrays/Hashes/Params/Strings is aliased into self
+    # -- every scalar, list element and nested Params that crosses over is
+    # copied (a String is mutable, so `dst["q"] << "x"` must not change
+    # other). The copies are fresh and writable (dst.child! builds a new
+    # Params in dst's tree), so merging a read_only! source into Params.new
+    # yields an independent, mutable tree; only the receiver must be writable.
     #
     # Iterative: dsts[i] receives srcs[i], and each nested pair found while
     # merging one level is appended to the two work lists. Levels are
@@ -194,8 +209,8 @@ module Cybertrain
       while i < dsts.length
         dst = dsts[i]
         src = srcs[i]
-        src.raw_values.keys.each { |k| dst.set_value(k, src.raw_values[k]) }
-        src.lists.keys.each { |k| dst.replace_list!(k, src.lists[k].dup) }
+        src.raw_values.keys.each { |k| dst.set_value(k, src.raw_values[k].dup) }
+        src.lists.keys.each { |k| dst.replace_list!(k, Params.copy_strings(src.lists[k])) }
         src.children.keys.each do |k|
           dsts << dst.child!(k)
           srcs << src.children[k]
@@ -205,9 +220,14 @@ module Cybertrain
       self
     end
 
+    # Scalars only, copied like #[] when the tree is sealed. Params has no
+    # `keys` method on purpose: it would share its name with Hash#keys in a
+    # class whose own code (to_h, inspect, merge!) calls Hash#keys on its
+    # Hashes, the shape NOTES rule 51 records as mis-dispatching under
+    # Spinel. Ask key? for one name, or to_h / inspect for the whole level.
     def to_h
       h = {}
-      @values.keys.each { |k| h[k] = @values[k] }
+      @values.keys.each { |k| h[k] = self[k] }
       h
     end
 
@@ -223,17 +243,28 @@ module Cybertrain
       "{#{parts.join(", ")}}"
     end
 
+    # A new Array holding a copy of each String of arr (Array#dup alone
+    # shares the elements). For merge!.
+    def self.copy_strings(arr)
+      copy = []
+      i = 0
+      while i < arr.length
+        copy << arr[i].dup
+        i += 1
+      end
+      copy
+    end
+
     protected
 
     attr_reader :lists, :children
 
-    # NOTE: named raw_values, not values -- naming this accessor "values"
-    # (colliding with Hash#values) miscompiled merge! (above) under Spinel
-    # back when it called itself recursively: a "const char * -> sp_int" C
-    # build error, confirmed on 2026.09.12, the call resolving "values"
-    # against Hash#values instead of this reader. merge! is iterative now,
-    # but the name stays: a reader called like a Hash method on a class
-    # whose Hashes it reads is asking for the same mis-resolution.
+    # NOTE: named raw_values, not values -- a reader called "values" collides
+    # with Hash#values: under Spinel the call resolves "values" against
+    # Hash#values instead of this reader (a "const char * -> sp_int" C build
+    # error, confirmed on 2026.09.12 in a recursive merge!). merge! is
+    # iterative, but a reader named like a Hash method on a class whose
+    # Hashes it reads asks for the same mis-resolution.
     def raw_values
       @values
     end

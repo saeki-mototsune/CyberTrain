@@ -101,16 +101,12 @@ error: 'attributes' would shadow a method of the generated model (Cybertrain::Mo
 error: 'hash' would shadow a method of the generated model (Cybertrain::Model); pick another field
 error: 'errors' would shadow a method of the generated model (Cybertrain::Model); pick another reference
 error: 'hash' would shadow a method of the generated model (Cybertrain::Model); pick another reference
-error: 'display' would shadow Object#display on the generated model; pick another field
-error: 'tap' would shadow Object#tap on the generated model; pick another field
-error: 'display' would shadow Object#display on the generated model; pick another reference
 error: bad field 'a:string:index': use name:type (modifiers such as :index are not supported)
 error: bad field 'a:string:': use name:type (modifiers such as :index are not supported)
 error: bad field name 'Title'
 error: 'class' is a Ruby keyword and cannot name a resource
 error: 'hash' would shadow a method of the generated model (Cybertrain::Model); pick another resource
 error: 'raise' would shadow a method of the generated model (Cybertrain::Model); pick another resource
-error: 'display' would shadow Object#display on the generated model; pick another resource
 error: ./config/routes.rb not found: run this inside a cybertrain app
 error: usage: cybertrain generate scaffold NAME field:type ...
 error: only `generate scaffold` is supported
@@ -148,5 +144,28 @@ create app/views/sheep/edit.html.erb
 create app/views/sheep/_form.html.erb
 route resources :sheep
 ok   a name that is its own plural links and redirects to <plural>_index_path
+ok   the scaffold refuses a keyword or reserved name with its own message
+create db/migrate/20260925120005_create_payments.rb
+create app/models/payment.rb
+create app/controllers/payments_controller.rb
+create app/views/payments/index.html.erb
+create app/views/payments/show.html.erb
+create app/views/payments/new.html.erb
+create app/views/payments/edit.html.erb
+create app/views/payments/_form.html.erb
+route resources :payments
+note: 'method' shadows Object#method on the generated model; call it as payment.method
+note: 'tap' shadows Object#tap on the generated model; call it as payment.tap
+create db/migrate/20260925120006_create_displays.rb
+create app/models/display.rb
+create app/controllers/displays_controller.rb
+create app/views/displays/index.html.erb
+create app/views/displays/show.html.erb
+create app/views/displays/new.html.erb
+create app/views/displays/edit.html.erb
+create app/views/displays/_form.html.erb
+route resources :displays
+note: 'display' shadows Object#display on a model that references displays (belongs_to reader); call it as record.display
+ok   a name that shadows an Object method is accepted with a note
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-15 tests, 172 assertions, 0 failures
+17 tests, 181 assertions, 0 failures
