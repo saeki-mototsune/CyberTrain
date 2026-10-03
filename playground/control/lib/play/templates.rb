@@ -16,10 +16,14 @@ module Play
        "--label", "cybertrain-play.expires-at=#{expires}"]
     end
 
+    # IPv6 off whatever the daemon's default-network-opts say: the router
+    # turns sessions away by their IPv4 address. One element: `--ipv6 false`
+    # would make "false" the network's name.
     def network_create(handle:, subnet:, created:, expires:)
       ["docker", "network", "create",
        "--driver", "bridge",
        "--internal",
+       "--ipv6=false",
        "--subnet", subnet,
        "--opt", "com.docker.network.bridge.inhibit_ipv4=true",
        *labels(handle, created, expires),

@@ -64,6 +64,25 @@ class SessionsTest < Minitest::Test
     $VERBOSE = verbose
   end
 
+  # Holds the host-wide create lock as another process would (the other
+  # control plane during a deploy, playctl kill-all) while the block runs.
+  def while_another_holds_the_lock
+    File.open(File.join(sessions.config.data_dir, "create.lock"), File::RDWR | File::CREAT, 0o644) do |file|
+      file.flock(File::LOCK_EX)
+      yield file
+    end
+  end
+
+  # CLIENT's creation by S, which must come back within 5 s (a creation
+  # waiting for the lock with no deadline never would).
+  def create_at_once(client, s = sessions)
+    creation = Thread.new { s.create(client) }
+    assert creation.join(5), "the creation for #{client} is still waiting for the lock"
+    creation.value
+  ensure
+    creation&.kill
+  end
+
   # ---- creation ----------------------------------------------------------
 
   def test_create_lists_creates_attaches_runs_then_waits_for_the_router
@@ -132,7 +151,9 @@ class SessionsTest < Minitest::Test
       on_its_way << true
       SecureRandom.hex(n)
     end
-    s = Play::Sessions.new(config: play_config, docker: @docker, probe: @probe, clock: @clock,
+    # The real clock: the creation must really wait for the lock (its wait
+    # has a deadline, which a fake clock would reach at once).
+    s = Play::Sessions.new(config: play_config, docker: @docker, probe: @probe, clock: Play::Clock.new,
                            log: Play::EventLog.new(@log), random: random)
     creation = nil
     s.with_create_lock do
@@ -146,6 +167,80 @@ class SessionsTest < Minitest::Test
     assert_kind_of Play::Sessions::Refusal, refusal
     assert_equal [:paused, 300, "Maintenance"], [refusal.reason, refusal.retry_after, refusal.message]
     assert_empty @docker.calls
+  end
+
+  # ---- refusals that memory decides, before the host-wide lock -------------
+
+  def test_a_client_with_a_live_session_is_refused_before_the_lock_without_docker
+    assert_kind_of Play::Sessions::Created, sessions.create("203.0.113.7")
+    @clock.advance(60)
+    calls = @docker.calls.size
+    refusal = while_another_holds_the_lock { create_at_once("203.0.113.7") }
+    assert_equal [:per_ip, 1740], [refusal.reason, refusal.retry_after]
+    assert_equal calls, @docker.calls.size
+  end
+
+  def test_a_client_past_its_rate_is_refused_before_the_lock_without_docker
+    s = sessions("PLAY_CREATE_LIMIT" => "1", "PLAY_MAX_SESSIONS_PER_IP" => "5")
+    assert_kind_of Play::Sessions::Created, s.create("203.0.113.7")
+    calls = @docker.calls.size
+    refusal = while_another_holds_the_lock { create_at_once("203.0.113.7") }
+    assert_equal [:rate, 600], [refusal.reason, refusal.retry_after]
+    assert_equal calls, @docker.calls.size
+  end
+
+  def test_live_records_at_the_cap_refuse_as_full_before_the_lock_without_docker
+    s = sessions("PLAY_MAX_SESSIONS" => "2")
+    assert_kind_of Play::Sessions::Created, s.create("203.0.113.7")
+    assert_kind_of Play::Sessions::Created, s.create("198.51.100.1")
+    calls = @docker.calls.size
+    refusal = while_another_holds_the_lock { create_at_once("198.51.100.2") }
+    assert_equal [:full, 60], [refusal.reason, refusal.retry_after]
+    assert_equal calls, @docker.calls.size
+    assert_includes @log.string, "play event=refused reason=full live=2/2\n"
+  end
+
+  def test_a_session_ended_by_another_process_counts_against_the_cap_until_the_next_pass
+    s = sessions("PLAY_MAX_SESSIONS" => "2")
+    first = s.create("203.0.113.7")
+    assert_kind_of Play::Sessions::Created, s.create("198.51.100.1")
+    # playctl end, another process, removed the second session: Docker lists
+    # the first only, and this process learns it at the reaper's next pass.
+    @docker.default("ps sessions", FakeDocker.ok(container(first.handle, "running")))
+    @docker.default("network ls", FakeDocker.ok(network(first.handle)))
+    calls = @docker.calls.size
+    assert_equal [:full, 60], s.create("198.51.100.2").to_a.first(2)
+    assert_equal calls, @docker.calls.size
+    s.reap
+    assert_kind_of Play::Sessions::Created, s.create("198.51.100.2")
+  end
+
+  def test_a_creation_that_cannot_have_the_lock_within_10_s_is_refused_as_failed_without_docker
+    started = @clock.monotonic
+    refusal = while_another_holds_the_lock { create_at_once("203.0.113.7") }
+    assert_equal [:failed, 60], [refusal.reason, refusal.retry_after]
+    assert_in_delta 10, @clock.monotonic - started, 0.1
+    assert_empty @docker.calls
+    assert_equal "play event=lock_timeout waited_s=10\nplay event=refused reason=failed live=0/5\n", @log.string
+  end
+
+  def test_a_creation_waits_for_the_lock_and_goes_on_once_it_is_released
+    slept = []
+    clock = FakeClock.new
+    s = Play::Sessions.new(config: play_config, docker: @docker, probe: @probe, clock: clock,
+                           log: Play::EventLog.new(@log))
+    created = while_another_holds_the_lock do |holder|
+      # The other holder lets go while the creation waits.
+      clock.define_singleton_method(:sleep) do |seconds|
+        slept << seconds
+        holder.flock(File::LOCK_UN) if slept.size == 10
+        advance(seconds)
+      end
+      create_at_once("203.0.113.7", s)
+    end
+    assert_kind_of Play::Sessions::Created, created
+    assert_equal [Play::Sessions::LOCK_RETRY_EVERY] * 10, slept.first(10)
+    assert_equal ["ps sessions", "ps routers", "network ls", "network create", "network connect", "run"], @docker.keys
   end
 
   def test_full_counts_starting_containers_too

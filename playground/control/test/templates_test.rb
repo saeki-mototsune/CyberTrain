@@ -15,8 +15,8 @@ class TemplatesTest < Minitest::Test
   end
 
   def test_network_create_is_the_spec_argv
-    assert_equal ["docker", "network", "create", "--driver", "bridge", "--internal", "--subnet", "10.250.0.16/28",
-                  "--opt", "com.docker.network.bridge.inhibit_ipv4=true",
+    assert_equal ["docker", "network", "create", "--driver", "bridge", "--internal", "--ipv6=false",
+                  "--subnet", "10.250.0.16/28", "--opt", "com.docker.network.bridge.inhibit_ipv4=true",
                   "--label", "cybertrain-play.role=session", "--label", "cybertrain-play.handle=#{H}",
                   "--label", "cybertrain-play.created-at=1800000000", "--label", "cybertrain-play.expires-at=1800001800",
                   "ctplay-n-#{H}"],

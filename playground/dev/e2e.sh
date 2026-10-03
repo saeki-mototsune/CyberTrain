@@ -207,7 +207,9 @@ inside() {
 
 # wait_live N: until status.json reports N live sessions. A session ended by
 # playctl (another process) leaves the control plane's memory at the reaper's
-# next pass, and until then its client still counts as having a session.
+# next pass, and until then its client still counts as having a session, and
+# the cap counts it too (a creation that memory finds at the cap is refused
+# before the create lock).
 wait_live() {
   local i
   for i in $(seq 1 15); do
@@ -434,6 +436,7 @@ ended_out=$end_out
 began=$SECONDS
 gone_code=$(healthz "$s2")
 gone_took=$((SECONDS - began))
+if wait_live 1; then live1=yes; else live1=no; fi
 start 198.51.100.9
 r1=$code
 # The router cut off from a session that still runs must answer the 404 page
@@ -461,11 +464,11 @@ r3_retry=$(header retry-after)
 r3_page=$(has "Too many sessions from your network address")
 ok=no
 if [ "$again" = 429 ] && [ -n "$again_retry" ] && [ "$ended" = 0 ] && [ "$gone_code" = 404 ] && [ "$gone_took" -le 5 ] &&
-  [ "$r1" = 303 ] && [ "$warm" = 200 ] && [ "$cut_code" = 404 ] && [ "$cut_took" -le 3 ] && [ "$ended2" = 0 ] &&
+  [ "$live1" = yes ] && [ "$r1" = 303 ] && [ "$warm" = 200 ] && [ "$cut_code" = 404 ] && [ "$cut_took" -le 3 ] && [ "$ended2" = 0 ] &&
   [ "$live2" = yes ] && [ "$r2" = 303 ] && [ "$ended3" = 0 ] && [ "$live3" = yes ] && [ "$r3" = 429 ] && [ -n "$r3_retry" ] &&
   [ "$r3_page" = yes ]; then ok=yes; fi
 check E11 "the same client gets 429; a just-ended session and one the router was cut from answer the 404 page at once; a third creation in the window gets 429" "$ok" \
-  "same client: $again (Retry-After $again_retry); playctl end: exit $ended ($ended_out), then $gone_code in $gone_took s; router cut from a live session: $warm, then $cut_code in $cut_took s; creations: $r1 $r2 $r3 (Retry-After $r3_retry, the rate page: $r3_page); the ends between them: exit $ended2 ($ended2_out), exit $ended3 ($ended3_out); status.json back to one live session after each: $live2, $live3"
+  "same client: $again (Retry-After $again_retry); playctl end: exit $ended ($ended_out), then $gone_code in $gone_took s; router cut from a live session: $warm, then $cut_code in $cut_took s; creations: $r1 $r2 $r3 (Retry-After $r3_retry, the rate page: $r3_page); the ends between them: exit $ended2 ($ended2_out), exit $ended3 ($ended3_out); status.json back to one live session after each: $live1, $live2, $live3"
 
 start 198.51.100.12 -H "Origin: http://evil.localhost"
 o1=$code

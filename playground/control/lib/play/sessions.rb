@@ -20,6 +20,14 @@ module Play
     Created = Struct.new(:editor_url, :handle)
     Refusal = Struct.new(:reason, :retry_after, :message, :ends_at)
 
+    # The create lock stayed taken for the whole wait.
+    class LockTimeout < StandardError; end
+
+    # A creation waits this long for the create lock, trying again this often:
+    # a slow Docker (a pull during a deploy) must not keep every Puma thread
+    # waiting behind the lock.
+    CREATE_LOCK_WAIT = 10
+    LOCK_RETRY_EVERY = 0.05
     CREATE_TIMEOUT = 30
     LIST_TIMEOUT = 10
     ORPHAN_GRACE = 60
@@ -117,20 +125,31 @@ module Play
 
     # Starts a session for CLIENT (Limits.client_key). Returns Created, whose
     # editor_url is the only copy of the session id, or a Refusal. Whatever
-    # fails, nothing of the new session is left behind.
+    # fails, nothing of the new session is left behind. What memory already
+    # knows is refused before the create lock (the pause, the client's
+    # limits, live records at the cap), so that such a refusal neither waits
+    # for the lock nor holds it for a `docker ps`; inside the lock Docker's
+    # count stays the authority.
     def create(client)
       if (message = pause_message)
         return refuse(:paused, 300, message)
       end
       return refuse(:unavailable, 300, @unavailable) if @unavailable
 
+      refusal = client_refusal(client)
+      return refusal if refusal
+      return refuse(:full, 60) if live_count >= @config.max_sessions
+
       sid, pid = new_ids
       handle = self.class.handle_for(sid)
       begin
-        refusal = with_create_lock { admit_and_start(client, handle, sid, pid) }
+        refusal = with_create_lock(wait: CREATE_LOCK_WAIT) { admit_and_start(client, handle, sid, pid) }
         return refusal if refusal
 
         wait_until_ready(handle, sid, client)
+      rescue LockTimeout
+        @log.event("lock_timeout", waited_s: CREATE_LOCK_WAIT)
+        refuse(:failed, 60)
       rescue StandardError => e
         teardown(handle, reason: "failed")
         @log.event("error", step: "create", handle: handle,
@@ -141,10 +160,13 @@ module Play
 
     # Holds the host-wide create lock (PLAY_DATA_DIR/create.lock): threads of
     # this process, a second control plane during a deploy and playctl all
-    # take it before they count or start sessions.
-    def with_create_lock
+    # take it before they count or start sessions. WAIT: at most that many
+    # seconds for it (nil: as long as it takes), then LockTimeout, without
+    # running the block.
+    def with_create_lock(wait: nil)
       File.open(lock_path, File::RDWR | File::CREAT, 0o644) do |file|
-        file.flock(File::LOCK_EX)
+        raise LockTimeout unless lock(file, wait)
+
         yield
       end
     end
@@ -328,6 +350,20 @@ module Play
 
     def live_count
       @mutex.synchronize { @records.count { |_, s| LIVE.include?(s.state) } }
+    end
+
+    # Takes FILE's exclusive lock, waiting at most WAIT seconds for it (nil:
+    # as long as it takes). False when the wait ran out.
+    def lock(file, wait)
+      return file.flock(File::LOCK_EX) if wait.nil?
+
+      deadline = @clock.monotonic + wait
+      until file.flock(File::LOCK_EX | File::LOCK_NB)
+        return false if @clock.monotonic >= deadline
+
+        @clock.sleep(LOCK_RETRY_EVERY)
+      end
+      true
     end
 
     def new_ids
