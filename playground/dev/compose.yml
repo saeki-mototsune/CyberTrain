@@ -17,11 +17,14 @@ services:
       PLAY_SUBNET_POOL: ${PLAY_SUBNET_POOL:-10.250.0.0/16}
       ROUTER_LOG_OUTPUT: stderr
     # As in production (playground/deploy/router.yml.example): no outside
-    # resolver, no IP forwarding.
+    # resolver, no IP forwarding, the same memory and process limits.
     dns:
       - 127.0.0.1
     sysctls:
       - net.ipv4.ip_forward=0
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 256
     ports:
       - "127.0.0.1:${PLAY_PORT:-8080}:80"
     networks:

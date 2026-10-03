@@ -352,7 +352,8 @@ check E10 "a second client gets a session, a third the 503 full page; Docker hol
 # a timeout count as blocked: a connection, "Connection refused" (something
 # on that address answered) or any other failure counts as a way out. The
 # probe first shows that it works: the router's address on the session's
-# network accepts on port 80 (Caddy accepts, then drops the request).
+# network refuses port 80 (the router listens only on its address on the
+# compose network), which the probe tells from "no route" and a timeout.
 
 router_image=$(docker inspect -f '{{.Image}}' "$router")
 docker run -d --name "$hostlisten" --network host --entrypoint caddy "$router_image" \
@@ -386,7 +387,13 @@ blocked() { # WHAT EXIT ALLOWED...: any other exit status counts as a way out
   done
   leak "$what" "exit $rc"
 }
-if timeout 5 bash -c "exec 3<>/dev/tcp/$router/80" 2> /dev/null; then echo "probe works"; fi
+out=$(timeout 5 bash -c "exec 3<>/dev/tcp/$router/80" 2>&1)
+rc=$?
+case "$rc $out" in
+  *"Connection refused"*) echo "probe works" ;;
+  "0 "*) echo "router: connected" ;;
+  *) echo "router: exit $rc: $(printf '%s' "$out" | head -n 1)" ;;
+esac
 # curl may only fail to resolve (6) or time out (28); getent only find nothing (2).
 curl -s --max-time 5 -o /dev/null https://example.com
 blocked "example.com https" $? 6 28
@@ -404,17 +411,17 @@ echo checked
 EOF
 escape=$(docker exec -i -u 1000:1000 "ctplay-s-$h1" bash -s -- "${router_ip:-0.0.0.0}" "${other_ip:-0.0.0.0}" $host_ips < "$work/escape.sh" 2>&1)
 inside "$h1" "curl -s --max-time 5 -o /dev/null -H 'Host: play.localhost' http://$router_ip/" > /dev/null
-aborted=$?
+router_rc=$?
 bridge=$(printf '%s\n' "$host_ips" | grep -c '^10\.250\.' | tr -d ' ')
 docker rm -f "$hostlisten" > /dev/null 2>&1
 leaks=$(printf '%s\n' "$escape" | grep '^LEAK' | tr '\n' ' ')
-works=$(if contains "$escape" "probe works"; then echo yes; else echo no; fi)
+works=$(if contains "$escape" "probe works"; then echo yes; else printf '%s\n' "$escape" | grep '^router: ' | head -n 1; fi)
 if contains "$escape" checked; then ran=complete; else ran="stopped: $(printf '%s\n' "$escape" | tail -n 3 | tr '\n' ' ')"; fi
 ok=no
-if [ "$ran" = complete ] && [ "$works" = yes ] && [ -z "$leaks" ] && [ "$aborted" = 52 ] && [ "$bridge" = 0 ] && [ -n "$host_ips" ] &&
+if [ "$ran" = complete ] && [ "$works" = yes ] && [ -z "$leaks" ] && [ "$router_rc" = 7 ] && [ "$bridge" = 0 ] && [ -n "$host_ips" ] &&
   [ -n "$other_ip" ]; then ok=yes; fi
-check E8 "from a session: no internet, DNS, metadata, host or other session; the router drops it; no session bridge has a host address" "$ok" \
-  "probe: $ran, the router's port 80 reached: $works; leaks: ${leaks:-none}; router: curl exit $aborted (52 expected); host addresses in 10.250/16: $bridge; host addresses tried: $(printf '%s' "$host_ips" | tr '\n' ' ')"
+check E8 "from a session: no internet, DNS, metadata, host or other session; the router refuses it; no session bridge has a host address" "$ok" \
+  "probe: $ran, the router's port 80 refused: ${works:-no}; leaks: ${leaks:-none}; router: curl exit $router_rc (7 expected); host addresses in 10.250/16: $bridge; host addresses tried: $(printf '%s' "$host_ips" | tr '\n' ' ')"
 
 # ---- E11-E13: per-client limits, origins, unknown hosts -----------------------
 

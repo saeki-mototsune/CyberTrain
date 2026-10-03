@@ -7,6 +7,13 @@
 # or p-<preview id> shares a network with this router (the control plane
 # attaches it) and answers. Never reloaded: a reload would close every
 # editor's WebSocket.
+#
+# It listens only on its own address on Kamal's network (locally the compose
+# network), which entrypoint.sh finds at every start and passes in
+# ROUTER_BIND: a session that connects to the router's address on the
+# session's own network is refused by the kernel, and Caddy never holds a
+# connection from it. With ROUTER_BIND empty or unset (no address found, or
+# Caddy started without the entrypoint) it listens on every address.
 {
 	admin off
 	auto_https off
@@ -18,11 +25,17 @@
 }
 
 :80 {
+	# Quoted: an empty value is "" (every address, as :80 alone); an
+	# unquoted empty bind would leave no listener at all.
+	bind "{$ROUTER_BIND}"
+
 	# route keeps the written order (Caddy would otherwise sort handle
 	# blocks with path matchers ahead of the others).
 	route {
-		# A session container can reach this router on its own network. It
-		# gets nothing: not another session, not the control plane.
+		# Defence in depth: the bind above refuses a session's connection
+		# before it gets here. Should Caddy listen on every address, a
+		# session still gets nothing: not another session, not the control
+		# plane.
 		@from_session remote_ip {$PLAY_SUBNET_POOL}
 		handle @from_session {
 			abort
