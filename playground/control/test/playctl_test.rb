@@ -91,13 +91,52 @@ class PlayctlTest < Minitest::Test
   end
 
   def test_kill_all_pauses_requests_the_reaper_and_ends_everything
-    @docker.default("ps sessions", FakeDocker.ok("c#{H}\tctplay-s-#{H}\trunning\t#{H}\t1\t2\n"))
-    @docker.default("network ls", FakeDocker.ok("n#{H}\tctplay-n-#{H}\t#{H}\t1\n"))
+    # Listed for kill-all's own pass; the listings that follow find nothing.
+    @docker.on("ps sessions", FakeDocker.ok("c#{H}\tctplay-s-#{H}\trunning\t#{H}\t1\t2\n"))
+    @docker.on("network ls", FakeDocker.ok("n#{H}\tctplay-n-#{H}\t#{H}\t1\n"))
     assert_equal 0, ctl.run(["kill-all"])
     assert_equal "for maintenance\n", File.read(paused_path)
     assert File.exist?(File.join(play_config.data_dir, "kill-all"))
     assert_includes @docker.calls, ["docker", "rm", "--force", "ctplay-s-#{H}"]
     assert_includes @out.string, "killed every session; the playground stays paused until playctl resume"
+  end
+
+  # The running control plane's reaper honours the same request, and a
+  # teardown of playctl's can meet one of its half done: kill-all reports what
+  # the listings show once the removal settles, not how its own teardowns went.
+  def test_kill_all_waits_for_the_removal_to_settle_and_then_reports_it
+    network = FakeDocker.ok("n#{H}\tctplay-n-#{H}\t#{H}\t1\n")
+    @docker.on("ps sessions", FakeDocker.ok("c#{H}\tctplay-s-#{H}\trunning\t#{H}\t1\t2\n"))
+    # kill-all's own pass, then a first look that still finds the network
+    # (the reaper is removing it); the second look finds nothing.
+    @docker.on("network ls", network, network)
+    @docker.on("rm", FakeDocker.fail("Error response from daemon: removal of container ctplay-s-#{H} " \
+                                     "is already in progress"))
+    started = @clock.monotonic
+    assert_equal 0, ctl.run(["kill-all"])
+    assert_includes @out.string, "killed every session; the playground stays paused until playctl resume\n"
+    assert_empty @err.string
+    assert_equal [3, 3], [@docker.calls_for("ps sessions").size, @docker.calls_for("network ls").size]
+    assert_in_delta 0.5, @clock.monotonic - started, 0.01
+  end
+
+  def test_kill_all_fails_after_20_s_naming_what_is_still_listed
+    busy = "Error response from daemon: error while removing network: network ctplay-n-#{H} has active endpoints"
+    @docker.default("network ls", FakeDocker.ok("n#{H}\tctplay-n-#{H}\t#{H}\t1\n"))
+    @docker.default("network rm", FakeDocker.fail(busy))
+    started = @clock.monotonic
+    assert_equal 1, ctl.run(["kill-all"])
+    assert_in_delta 20, @clock.monotonic - started, 0.5
+    assert_equal "playctl: not fully removed after 20 s: ctplay-n-#{H} (see the docker_error lines); " \
+                 "the reaper retries\n", @err.string
+    refute_includes @out.string, "killed every session"
+  end
+
+  def test_kill_all_stops_waiting_when_docker_cannot_list
+    @docker.default("ps sessions", FakeDocker.fail("Cannot connect to the Docker daemon"))
+    assert_equal 1, ctl.run(["kill-all"])
+    assert_equal "playctl: docker ps failed (see the docker_error line)\n", @err.string
+    assert_equal 2, @docker.calls_for("ps sessions").size
   end
 
   def test_kill_all_keeps_an_existing_pause_message

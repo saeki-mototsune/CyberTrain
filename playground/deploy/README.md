@@ -706,7 +706,7 @@ Origin CA を作り直したら、`PLAY_ORIGIN_CERT` / `PLAY_ORIGIN_KEY` のフ�
 | `bin/playctl pause [message]` | 新しい作成を止め、入口にメッセージを出す（無ければ「for maintenance」。`-` で始まるものは断る）。動いているセッションはそのまま |
 | `bin/playctl resume` | 作成を再開する |
 | `bin/playctl end <handle>` | そのセッションを片付ける。ハンドルは小文字の 16 進 16 桁。無いハンドルには `playctl: no session <handle>` と出して 1 で終わる |
-| `bin/playctl kill-all` | 停止したうえで、全セッションを片付ける。停止は残るので、再開は `resume` |
+| `bin/playctl kill-all` | 停止したうえで、全セッションを片付ける。停止は残るので、再開は `resume`。動いている制御面の刈り取りも同時に片付けるので、セッションのコンテナとネットワークが Docker の一覧から消えるのを待って（最長 20 秒）から終わる。消えきらなければ、残りの名前（`ctplay-s-<handle>`、`ctplay-n-<handle>`）を出して 1 で終わる（刈り取りが続けて片付ける） |
 
 実行の仕方:
 

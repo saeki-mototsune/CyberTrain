@@ -20,6 +20,10 @@ module Play
     # The reaper keeps a kill-all request until it has ended every session,
     # and meanwhile ends new ones too, resumed or not.
     KILL_PENDING = "playctl: a kill-all is pending: sessions are ended as they appear until it completes"
+    # kill-all waits this long for every session to leave Docker's listings,
+    # looking again this often.
+    KILL_SETTLE = 20
+    KILL_LOOK_EVERY = 0.5
 
     def initialize(sessions:, out:, err:, internal: nil, clock: Clock.new)
       @sessions = sessions
@@ -117,15 +121,41 @@ module Play
       end
     end
 
+    # The running control plane's reaper honours the same request at once,
+    # and a teardown of this process can meet one of its own half done (a
+    # container already being removed, a network going away) and fail while
+    # the removal goes on. So what this reports is what Docker's listings show
+    # once the removal has settled, not how its own teardowns went.
     def kill_all
       write_paused("for maintenance") unless @sessions.pause_message
       File.write(kill_path, "")
-      if @sessions.with_create_lock { @sessions.kill_all }
-        @out.puts "killed every session; the playground stays paused until playctl resume"
-        0
-      else
-        @err.puts "playctl: some sessions are not fully removed (see the docker_error lines); the reaper retries"
-        1
+      @sessions.with_create_lock { @sessions.kill_all }
+      settle_after_kill
+    end
+
+    # Looks at the sessions' containers and networks until neither listing
+    # has any, for up to KILL_SETTLE seconds; names what is left (from the
+    # checked handles) if they do not empty.
+    def settle_after_kill
+      deadline = @clock.monotonic + KILL_SETTLE
+      loop do
+        containers = @sessions.list_containers
+        return listing_failed("docker ps") unless containers
+
+        networks = @sessions.list_networks
+        return listing_failed("docker network ls") unless networks
+
+        left = containers.map { |c| "ctplay-s-#{c[:handle]}" } + networks.map { |n| "ctplay-n-#{n[:handle]}" }
+        if left.empty?
+          @out.puts "killed every session; the playground stays paused until playctl resume"
+          return 0
+        end
+        if @clock.monotonic >= deadline
+          @err.puts "playctl: not fully removed after #{KILL_SETTLE} s: #{left.join(", ")} " \
+                    "(see the docker_error lines); the reaper retries"
+          return 1
+        end
+        @clock.sleep(KILL_LOOK_EVERY)
       end
     end
 
