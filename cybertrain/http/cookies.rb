@@ -10,9 +10,11 @@ module Cybertrain
   # ("promo=50%off", set by another app on the parent domain) must not turn
   # every dynamic page into a 400. Its raw value is kept, as Rack does.
   module Cookies
-    # Query.decode, falling back to the raw text when it raises QueryMalformed
-    # (on both runtimes: Query.decode checks the escapes itself, because
-    # Spinel's decoder is lenient, NOTES rule 28). A plain non-yielding
+    # Query.decode, falling back to the raw text when it raises QueryMalformed:
+    # a malformed escape or an invalid UTF-8 byte sequence (raw, or "%81"),
+    # on both runtimes (Query.decode checks both itself: Spinel's decoder is
+    # lenient, NOTES rule 28, and CRuby's byteindex would raise IndexError on
+    # such text, rule 52). A plain non-yielding
     # method with one rescue clause by class: fine under Spinel (NOTES rules
     # 32, 47).
     def self.decode(value)

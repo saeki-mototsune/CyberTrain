@@ -20,6 +20,17 @@ test "parse keeps the raw value of a malformed percent-escape on every runtime" 
   assert_equal({ "e" => "%zz", "f" => "50%off", "g" => "%", "h" => "A" }, cookies)
 end
 
+test "decode keeps the raw value of an invalid byte sequence (raw or percent-encoded), as a foreign cookie must not fail the request" do
+  # decode, not parse: under CRuby String#split/strip refuse an invalid UTF-8
+  # String themselves (a socket header is binary there, so parse never sees one).
+  assert_equal 3, Cybertrain::Cookies.decode("x\x81y").bytesize
+  assert_equal 4, Cybertrain::Cookies.decode("%41\x81").bytesize
+  assert_equal "%81", Cybertrain::Cookies.decode("%81")
+  assert_equal "%C3", Cybertrain::Cookies.decode("%C3")
+  cookies = Cybertrain::Cookies.parse("c=%81; d=ok; e=%C3%A9")
+  assert_equal({ "c" => "%81", "d" => "ok", "e" => "\u00e9" }, cookies)
+end
+
 test "serialize with defaults" do
   value = Cybertrain::Cookies.serialize("session_id", "abc123")
   assert_equal "session_id=abc123; Path=/; HttpOnly; SameSite=Lax", value

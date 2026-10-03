@@ -13,7 +13,8 @@ module Cybertrain
   module ClientError
     # The status for an exception out of the app, logged at the level it
     # deserves: a client fault (request parameters past Query's limits or
-    # not decodable, QueryInvalid; a missing required parameter) is its 4xx
+    # not decodable, QueryInvalid; a missing required parameter; a sort term
+    # `order` refuses, OrderInvalid) is its 4xx
     # at info, so a flood of them does not fill the error log; anything else
     # is 500 at error, as `class: message`. Each error path then does
     # `reset_to(status)` (or its own 500 page); the next client-fault class
@@ -41,12 +42,14 @@ module Cybertrain
     # only while every bare name here is unique in the program: the Query
     # classes are QueryXxx, not Query::Invalid / Query::TooMany, so an app's
     # own Billing::Invalid or RateLimiter::TooMany cannot be taken for them,
-    # and "ParameterMissing" is not a name an app has a reason to reuse. A
+    # and "ParameterMissing" and "OrderInvalid" are not names an app has a
+    # reason to reuse. A
     # new entry must be named so as not to collide the same way.
     CLIENT_FAULTS = ["Cybertrain::QueryInvalid", "Cybertrain::QueryLimitExceeded",
                      "Cybertrain::QueryTooDeep", "Cybertrain::QueryTooMany",
                      "Cybertrain::QueryMalformed",
-                     "Cybertrain::Params::ParameterMissing"]
+                     "Cybertrain::Params::ParameterMissing",
+                     "Cybertrain::OrderInvalid"]
 
     # 400 for a client fault, 500 for the app's own exception: an Array
     # lookup, no raise, so RequestLogger (for its Completed line) and the

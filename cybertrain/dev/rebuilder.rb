@@ -22,15 +22,9 @@ module Cybertrain
       STALE_LOCK_AGE = 30 * 60
 
       def initialize(root, target = "server", log_path = "tmp/rebuild.log")
-        # Quoting (see #command) only stops the shell from reading a quote or
-        # a space in the name; `spin build '-x'` is still parsed by spin as an
-        # option. Build.app_name refuses a leading - for the same reason, and
-        # its validation does not run for a target that comes from
-        # Application.new(name:), so the rule is repeated here. Whether spin
-        # accepts `--` before the target is unverified, hence a refusal.
-        # (String#start_with?, no Regexp: this file compiles under Spinel.)
-        raise ArgumentError, "build target #{target.inspect} starts with '-' and would reach spin as an option" if target.start_with?("-")
-
+        # target was validated by Application.new (AppName.problem: no leading
+        # '-', no '/', no whitespace, ...); the quoting in #command is for the
+        # shell only.
         @root = root
         @target = target
         @log_path = log_path
@@ -112,9 +106,8 @@ module Cybertrain
       end
 
       # The brace group sends a failing `cd` to the log as well. Every
-      # interpolated value is quoted; the target comes from Application.new(name:),
-      # not spin.toml, so Build.app_name's validation does not run here and the
-      # quoting is what keeps a stray quote or space in the name from reaching sh.
+      # interpolated value is quoted, which is what keeps a stray quote in a
+      # name from reaching sh (AppName.problem does not refuse a quote).
       def command
         log = log_file
         "mkdir -p #{Rebuilder.shell_quote(File.dirname(log))} && " \

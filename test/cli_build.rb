@@ -44,22 +44,34 @@ end
 test "app_name rejects only a name that breaks the build/bin/<name> path" do
   File.write("spin.toml", "[package]\nname = \"x; touch PWNED #\"\n")
   message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
-  assert_equal "spin.toml [package] name 'x; touch PWNED #' cannot be '.' or '..', start with '-', or contain '/' or whitespace", message
+  assert_equal "spin.toml [package] name 'x; touch PWNED #' cannot contain whitespace", message
   assert_equal 1, Cybertrain::CLI.run(["build"])
   refute File.exist?("PWNED")
-  File.write("spin.toml", "[package]\nname = \"a/b\"\n")
-  assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
-  # "." and ".." would make build/bin/<name> the directory itself or build/.
-  [".", ".."].each do |dots|
-    File.write("spin.toml", "[package]\nname = \"#{dots}\"\n")
-    assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+  # Each reason has its own wording (Cybertrain::AppName.problem, the one
+  # predicate Application.new applies too).
+  {
+    "a/b" => "cannot contain '/'",
+    # "." and ".." would make build/bin/<name> the directory itself or build/.
+    "." => "cannot be '.' or '..'",
+    ".." => "cannot be '.' or '..'",
+    # A leading "-" would reach `spin build` as an option (quote_arg leaves it
+    # bare); a "-" inside the name is fine (my-app below).
+    "--release" => "cannot start with '-' (spin would read it as an option)",
+    "-x" => "cannot start with '-' (spin would read it as an option)",
+    "a b" => "cannot contain whitespace",
+    "a\tb" => "cannot contain whitespace"
+  }.each do |bad, reason|
+    File.write("spin.toml", "[package]\nname = \"#{bad}\"\n")
+    message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
+    assert_equal "spin.toml [package] name '#{bad}' #{reason}", message
   end
-  # A leading "-" would reach `spin build` as an option (quote_arg leaves it
-  # bare); a "-" inside the name is fine (my-app below).
-  ["--release", "-x"].each do |flag|
-    File.write("spin.toml", "[package]\nname = \"#{flag}\"\n")
-    assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.app_name(".") }
-  end
+  # An empty name is not an error here: run_in_app reports it.
+  File.write("spin.toml", "[package]\nname = \"\"\n")
+  assert_equal "", Cybertrain::CLI::Build.app_name(".")
+  assert_equal "cannot be empty", Cybertrain::AppName.problem("")
+  assert_equal "cannot contain whitespace", Cybertrain::AppName.problem("a\nb")
+  assert_equal "cannot contain whitespace", Cybertrain::AppName.problem("a\rb")
+  assert_equal "", Cybertrain::AppName.problem("my-app")
   assert_equal ["public", "storage", "tmp"], Cybertrain::CLI::Build::DIST_ENTRIES
   # The names assemble() creates in dist/ only matter to the build: app_name
   # (read by migration, db, server and build alike) accepts them, so an
@@ -105,10 +117,16 @@ test "command strings quote every interpolated value" do
   assert_equal "spin run blog -- '1; id'", Cybertrain::CLI::Build.server_commands("blog", "1; id")[1]
 end
 
-test "an empty application name is an error, not an empty spin argument" do
-  msg = assert_raises("InvalidArgument") { Cybertrain::CLI::Build.commands("") }
-  assert_includes msg, "no application name"
-  assert_raises("InvalidArgument") { Cybertrain::CLI::Build.server_commands("", "") }
+test "an empty application name never reaches the commands from the CLI" do
+  # run_in_app is the one place that refuses it (before yielding), so the
+  # command builders do not repeat the check: a direct caller gets a quoted "".
+  File.write("spin.toml", "[package]\nname = \"\"\n")
+  yielded = false
+  assert_equal 1, Cybertrain::CLI.run_in_app { |_n| yielded = true; 0 }
+  refute yielded
+  assert_equal "spin build ''", Cybertrain::CLI::Build.commands("")[1]
+  assert_equal "spin run ''", Cybertrain::CLI::Build.server_commands("", "")[1]
+  File.write("spin.toml", "[package]\nname = \"blog\"\n")
 end
 
 test "build embeds the views, builds, then restores the empty table" do

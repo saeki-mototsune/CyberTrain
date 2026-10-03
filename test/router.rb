@@ -105,6 +105,28 @@ test "split_path decodes escapes and multibyte text in one segment and keeps '+'
   assert_equal ["a+b%ZZ", "x y"], Cybertrain::Router.split_path("/a+b%ZZ/x%20y")
 end
 
+# split_path raising inside a helper method, not in the assert_raises block
+# (NOTES rule 32): the class name of what it raised, or "none".
+def split_path_error(path)
+  Cybertrain::Router.split_path(path)
+  "none"
+rescue Cybertrain::QueryMalformed
+  "QueryMalformed"
+end
+
+test "split_path: an invalid byte sequence in a decoded segment is QueryMalformed (400)" do
+  assert_equal ["a", "\u00e9"], Cybertrain::Router.split_path("/a/%C3%A9")
+  assert_equal "QueryMalformed", split_path_error("/a/%81")
+  assert_equal "QueryMalformed", split_path_error("/a/%C3")
+  assert_equal "QueryMalformed", split_path_error("/a/x%81/b")
+  # the raw cases ("\x81" next to a "%": QueryMalformed; without one: literal)
+  # need a UTF-8 String that CRuby's split refuses, so they are Query-level
+  # tests (test/query.rb), not path-level ones
+  # a malformed escape stays literal (404 by non-match), as before
+  assert_equal "none", split_path_error("/a/%ZZ")
+  assert_equal ["a", "%ZZ"], Cybertrain::Router.split_path("/a/%ZZ")
+end
+
 test "a large non-ASCII path segment with an escape splits without a quadratic library call" do
   # Router.split_path decodes through Query.decode_escapes (NOTES rule 49):
   # one non-ASCII character, a "+" kept as a plus, and %41 in 60 000 bytes.

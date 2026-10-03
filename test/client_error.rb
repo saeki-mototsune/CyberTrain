@@ -1,5 +1,6 @@
 require "cybertrain/http/query"
 require "cybertrain/http/client_error"
+require "cybertrain/relation"
 require "cybertrain/test"
 
 # ClientError decides on the class NAME. Class#name is namespaced under CRuby
@@ -15,6 +16,9 @@ test "a namespaced name must match in full" do
   assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryInvalid", true)
   assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::QueryMalformed", true)
   assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::Params::ParameterMissing", true)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::OrderInvalid", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Other::OrderInvalid", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("OrderInvalid", true)
 end
 
 test "an app or library exception that shares a bare name is the app's fault (500)" do
@@ -33,6 +37,7 @@ test "a name with no namespace (Spinel) matches the framework's unique bare name
   assert_equal 400, Cybertrain::ClientError.status_for_name("QueryInvalid", false)
   assert_equal 400, Cybertrain::ClientError.status_for_name("QueryMalformed", false)
   assert_equal 400, Cybertrain::ClientError.status_for_name("ParameterMissing", false)
+  assert_equal 400, Cybertrain::ClientError.status_for_name("OrderInvalid", false)
   assert_equal 500, Cybertrain::ClientError.status_for_name("ArgumentError", false)
   assert_equal 500, Cybertrain::ClientError.status_for_name("Rejected", false)
 end
@@ -94,7 +99,53 @@ test "status of the framework's own exceptions" do
   assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::QueryTooMany.new("x"))
   assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::QueryMalformed.new("x"))
   assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::Params::ParameterMissing.new("x"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::OrderInvalid.new("x"))
   assert_equal 500, Cybertrain::ClientError.status_for(ArgumentError.new("x"))
+end
+
+# Records what classify logs, and at which level.
+class RecordingLogger
+  attr_reader :infos, :errors
+
+  def initialize
+    @infos = Array.new(0) { "" }
+    @errors = Array.new(0) { "" }
+  end
+
+  def info(message)
+    @infos << message
+    nil
+  end
+
+  def error(message)
+    @errors << message
+    nil
+  end
+end
+
+# classify is called from a rescue clause, as every error path calls it: an
+# exception built with .new and never raised has no #message under Spinel
+# (NoMethodError; NOTES rule 53), so the test raises and rescues too.
+def classify_raised_order_fault(logger)
+  raise Cybertrain::OrderInvalid, "order: bad"
+rescue Cybertrain::OrderInvalid => e
+  Cybertrain::ClientError.classify(e, logger)
+end
+
+def classify_raised_argument_error(logger)
+  raise ArgumentError, "x"
+rescue ArgumentError => e
+  Cybertrain::ClientError.classify(e, logger)
+end
+
+test "an order fault is classified as a 400 at info level, not an error" do
+  logger = RecordingLogger.new
+  assert_equal 400, classify_raised_order_fault(logger)
+  assert_equal 1, logger.infos.length
+  assert_equal 0, logger.errors.length
+  assert logger.infos[0].include?("400"), "logged as the 400"
+  assert_equal 500, classify_raised_argument_error(logger)
+  assert_equal 1, logger.errors.length
 end
 
 Cybertrain::Test.run!

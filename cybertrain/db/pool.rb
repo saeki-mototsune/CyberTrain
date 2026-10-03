@@ -14,24 +14,15 @@ module Cybertrain
     class Pool
       attr_reader :size
 
-      # True for a path whose database lives only in its connection:
-      # Connection opens with OPEN_URI, so besides ":memory:" and "" (a
-      # private temporary database) a `file:` URI naming ":memory:" or
-      # "mode=memory" is one too. String checks only: no Regexp.
-      def self.private_database?(path)
-        return true if path == "" || path == ":memory:"
-        path.start_with?("file:") && (path.include?(":memory:") || path.include?("mode=memory"))
-      end
-
       def initialize(path, size = 4)
         @path = path
-        # The one place that knows what an in-memory or temporary path means
-        # (Pool.private_database?): its single connection *is* the database,
-        # so the pool holds exactly one, never closes it after a failed
+        # What an in-memory or temporary path means is decided in one place,
+        # Connection.private_database? (Connection asks it too, for WAL): its
+        # single connection *is* the database, so the pool holds exactly one, never closes it after a failed
         # ROLLBACK (check_in) and never replaces a closed one (reopen):
         # either would drop every table. Another spelling is a change to
         # the predicate only.
-        @reopenable = !Pool.private_database?(path)
+        @reopenable = !Connection.private_database?(path)
         @size = @reopenable ? size : 1
         @connections = []
         # Guards @connections: `with` runs on every connection thread and

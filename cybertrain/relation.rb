@@ -3,6 +3,17 @@ require "cybertrain/ident"
 require "cybertrain/db"
 
 module Cybertrain
+  # Raised by `order` for a sort term that is not `column [ASC|DESC]`. A
+  # StandardError on purpose, not an ArgumentError, like QueryMalformed:
+  # ClientError turns it into a 400 at info level, so `order(params[:sort])`
+  # with scanner input (`?sort=title;DROP`) does not answer 500 and fill the
+  # error log; an app that wants another answer rescues Cybertrain::OrderInvalid.
+  # Top level in the module, not nested in Relation: Class#name carries no
+  # namespace under Spinel (NOTES rule 46), so the bare name must be unique in
+  # the program (ClientError matches it by name).
+  class OrderInvalid < StandardError
+  end
+
   # A lazily built SELECT over one table. Each generated model gets its own
   # subclass (PostRelation) whose chain methods wrap the setters below and
   # return self, so `Post.where(...).first` is typed Post|nil: a base-class
@@ -86,7 +97,7 @@ module Cybertrain
       # split drops trailing empty strings, so "title," needs this check; a
       # leading comma yields an empty first term the loop rejects itself.
       if stripped.end_with?(",")
-        raise ArgumentError, "order: \"#{stripped}\" is not `column [ASC|DESC]` (use order_sql for raw SQL)"
+        raise OrderInvalid, "order: \"#{stripped}\" is not `column [ASC|DESC]` (use order_sql for raw SQL)"
       end
       stripped.split(",").each do |fragment|
         term = fragment.strip
@@ -95,8 +106,8 @@ module Cybertrain
         dir = words.size == 2 ? words[1].upcase : ""
         bad = true if dir != "" && dir != "ASC" && dir != "DESC"
         if bad
-          raise ArgumentError, "order: \"#{term}\" is not `column [ASC|DESC]` " \
-                               "(use order_sql for raw SQL)"
+          raise OrderInvalid, "order: \"#{term}\" is not `column [ASC|DESC]` " \
+                              "(use order_sql for raw SQL)"
         end
         quoted = Relation.quote_ident(words[0])
         terms << (dir == "" ? quoted : "#{quoted} #{dir}")

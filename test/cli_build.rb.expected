@@ -1,9 +1,10 @@
 ok   app_name reads [package] name from spin.toml
-error: spin.toml [package] name 'x; touch PWNED #' cannot be '.' or '..', start with '-', or contain '/' or whitespace
+error: spin.toml [package] name 'x; touch PWNED #' cannot contain whitespace
 error: spin.toml [package] name 'tmp' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
 ok   app_name rejects only a name that breaks the build/bin/<name> path
 ok   command strings quote every interpolated value
-ok   an empty application name is an error, not an empty spin argument
+error: no spin.toml with a [package] name here; run this inside a cybertrain application
+ok   an empty application name never reaches the commands from the CLI
 ok   build embeds the views, builds, then restores the empty table
 ok   db commands generate first, and again after migrate and rollback
 usage: cybertrain db (migrate|rollback [N]|status|schema:dump|create)
@@ -34,4 +35,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-18 tests, 140 assertions, 0 failures
+18 tests, 155 assertions, 0 failures

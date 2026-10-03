@@ -222,13 +222,27 @@ test "every in-memory or temporary spelling is a one-connection, non-reopenable 
   assert_equal 1, DB::Pool.new("file::memory:", 4).size
   assert_equal 1, DB::Pool.new("file:x?mode=memory&cache=shared", 4).size
   assert_equal 1, DB::Pool.new("", 4).size
-  assert DB::Pool.private_database?("file:x?mode=memory")
-  refute DB::Pool.private_database?("storage/dev.sqlite3")
-  refute DB::Pool.private_database?("file:storage/dev.sqlite3")
+  assert DB::Connection.private_database?(":memory:")
+  assert DB::Connection.private_database?("")
+  assert DB::Connection.private_database?("file::memory:?cache=shared")
+  assert DB::Connection.private_database?("file:x?mode=memory")
+  refute DB::Connection.private_database?("storage/dev.sqlite3")
+  refute DB::Connection.private_database?("file:storage/dev.sqlite3")
+  refute DB::Connection.private_database?("memory.sqlite3")
   # A closed connection on such a pool is an error, not a fresh empty database.
   pool = DB::Pool.new("file::memory:", 4)
   pool.with { |c| c.close }
   assert_includes checkout_after_close_all(pool), "the in-memory or temporary connection was closed"
+end
+
+test "a private connection (any spelling) opens, works and is not put in WAL" do
+  [":memory:", "file::memory:?cache=shared", "file:x?mode=memory", ""].each do |path|
+    conn = DB::Connection.new(path)
+    conn.exec_script("CREATE TABLE t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;")
+    assert_equal 1, conn.execute("SELECT COUNT(*) AS n FROM t")[0]["n"]
+    refute conn.execute("PRAGMA journal_mode")[0]["journal_mode"].to_s == "wal"
+    conn.close
+  end
 end
 
 # Two slots closed at once: A still checked out when user code closes it, B

@@ -16,6 +16,35 @@ module Cybertrain
       @values = {}
       @lists = {}
       @children = {}
+      @read_only = false
+    end
+
+    # Marks this Params and every nested Params below it read-only and
+    # returns self: after that each mutator (set_value, add_list_value,
+    # child!, set_path, merge!, replace_list!) raises RuntimeError, and every
+    # reader is unchanged. Request#query_params and #form_params use it on
+    # the trees they cache, which several holders share. This is the
+    # framework's own flag, not Object#freeze: `freeze`/`frozen?` are Object
+    # methods, and sharing a name with Hash/Object is what NOTES rule 51
+    # warns against. One-way: build a writable copy with
+    # Params.new.merge!(read_only_params) (merge! copies, it never aliases).
+    #
+    # Iterative like merge!: a work list of the Params still to mark, so the
+    # stack stays flat however deep the tree is.
+    def read_only!
+      pending = [self]
+      i = 0
+      while i < pending.length
+        node = pending[i]
+        node.mark_read_only
+        node.children.keys.each { |k| pending << node.children[k] }
+        i += 1
+      end
+      self
+    end
+
+    def read_only?
+      @read_only
     end
 
     def [](key)
@@ -64,6 +93,7 @@ module Cybertrain
     # from the other two (a no-op when absent), so a name is only ever one
     # kind at a time and the last write wins.
     def set_value(key, value)
+      writable!
       k = key.to_s
       @lists.delete(k)
       @children.delete(k)
@@ -71,6 +101,7 @@ module Cybertrain
     end
 
     def add_list_value(key, value)
+      writable!
       k = key.to_s
       @values.delete(k)
       @children.delete(k)
@@ -79,6 +110,7 @@ module Cybertrain
     end
 
     def child!(key)
+      writable!
       k = key.to_s
       @values.delete(k)
       @lists.delete(k)
@@ -92,6 +124,7 @@ module Cybertrain
     # the stack stays flat however long the path is (Query caps it at
     # MAX_DEPTH, but that is not the only guard).
     def set_path(path, value)
+      writable!
       node = self
       i = 0
       done = false
@@ -119,12 +152,16 @@ module Cybertrain
     # receiver's nested Params has survives). A key only this Params has,
     # at any level, is left untouched. other is never mutated, and nothing
     # of other's internal Arrays/Hashes/Params is aliased into self --
-    # every list and nested Params that crosses over is copied.
+    # every list and nested Params that crosses over is copied. The copies
+    # are fresh and writable (dst.child! builds a new unmarked Params, lists
+    # are dup'd), so merging a read_only! source into Params.new yields an
+    # independent, mutable tree; only the receiver must be writable.
     #
     # Iterative: dsts[i] receives srcs[i], and each nested pair found while
     # merging one level is appended to the two work lists. Levels are
     # independent of each other, so visiting order does not matter.
     def merge!(other)
+      writable!
       dsts = [self]
       srcs = [other]
       i = 0
@@ -164,6 +201,12 @@ module Cybertrain
 
     attr_reader :lists, :children
 
+    # Called on the other nodes by read_only!.
+    def mark_read_only
+      @read_only = true
+      nil
+    end
+
     # NOTE: named raw_values, not values -- naming this accessor "values"
     # (colliding with Hash#values) miscompiled merge! (above) under Spinel
     # back when it called itself recursively: a "const char * -> sp_int" C
@@ -178,9 +221,21 @@ module Cybertrain
     # Replaces the list under k with arr (an owned copy), evicting the other
     # kinds. Used by merge!, which calls it on another Params.
     def replace_list!(k, arr)
+      writable!
       @values.delete(k)
       @children.delete(k)
       @lists[k] = arr
+      nil
+    end
+
+    private
+
+    # Every mutator starts here (set_path reaches it through set_value,
+    # add_list_value and child!). A nil return so it is one type everywhere.
+    def writable!
+      if @read_only
+        raise "request parameters are read-only: request.query_params and request.form_params are shared caches; build your own Params (Params.new.merge!(request.query_params)) to change them"
+      end
       nil
     end
   end

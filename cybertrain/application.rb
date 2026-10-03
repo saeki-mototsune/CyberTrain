@@ -1,3 +1,4 @@
+require "cybertrain/app_name"
 require "cybertrain/config"
 require "cybertrain/version"
 require "cybertrain/logger"
@@ -50,6 +51,12 @@ module Cybertrain
       @router = router
       @url_resolver = url_resolver
       @views = views
+      # The name is the `spin build` target the dev rebuilder shells out with
+      # and the build/bin/<name> path. One check for both the CLI and the
+      # app: Build.app_name uses the same predicate.
+      problem = AppName.problem(name)
+      raise ArgumentError, "application name #{name.inspect} #{problem}" unless problem.empty?
+
       @name = name
       @config = config
       @stack = nil

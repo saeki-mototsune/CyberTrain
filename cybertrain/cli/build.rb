@@ -1,6 +1,8 @@
 # `cybertrain build`: dist/ = the app binary with app/views embedded, plus
 # public/. Also the command lists `cybertrain db` and `server` run. Plain Ruby:
 # runs under CRuby (the gem) and compiles under Spinel (spin install).
+require "cybertrain/app_name"
+
 module Cybertrain
   module CLI
     module Build
@@ -52,17 +54,15 @@ module Cybertrain
             break
           end
         end
-        # The name reaches the shell through quote_arg, so any spelling is
-        # safe there; only what breaks the build/bin/<name> path is refused
-        # ("my-app" and "MyApp" are fine for `spin build`). "." and ".." name
-        # build/bin/. and build/bin/.., which exist already (the latter is
-        # build/) and only fail later, in assemble's cp. A leading "-" is
-        # refused too: quote_arg leaves it bare ("-" is in its safe set), so
-        # `spin build --release` would take the name as an option, not as the
-        # package name.
-        if name == "." || name == ".." || name.start_with?("-") || name.include?("/") || name.match?(/\s/)
-          raise InvalidArgument, "spin.toml [package] name '#{name}' cannot be '.' or '..', start with '-', or contain '/' or whitespace"
-        end
+        # An empty name is run_in_app's "no spin.toml with a [package] name".
+        # Any other name must be usable as a `spin build` target and a
+        # build/bin/<name> path: the same predicate Application.new applies to
+        # the dev rebuilder's target. The name reaches the shell through
+        # quote_arg, so only what breaks that target or path is refused.
+        return "" if name.empty?
+
+        problem = AppName.problem(name)
+        raise InvalidArgument, "spin.toml [package] name '#{name}' #{problem}" unless problem.empty?
 
         name
       end
@@ -78,17 +78,11 @@ module Cybertrain
       end
 
       # name goes through quote_arg too: app_name validates it, but the
-      # command strings stay safe for a caller that skipped that. An empty
-      # name would otherwise become an explicit "" argument to spin.
+      # command strings stay safe for a caller that skipped that, whatever the
+      # spelling. An empty name cannot reach these from the CLI (run_in_app
+      # refuses it first); a direct caller passing "" gets `spin build ''`.
       def self.commands(name)
-        require_name!(name)
         ["spin run gen -- --embed-views", "spin build #{quote_arg(name)}", "spin run gen"]
-      end
-
-      def self.require_name!(name)
-        raise InvalidArgument, "no application name: run this inside a cybertrain application (spin.toml with a [package] name)" if name.empty?
-
-        nil
       end
 
       # `cybertrain db ARGS`, through bin/db.rb (the app binary cannot compile
@@ -117,7 +111,6 @@ module Cybertrain
 
       # port is "" (the app's default, 3000) or a port? string.
       def self.server_commands(name, port)
-        require_name!(name)
         target = quote_arg(name)
         run = port == "" ? "spin run #{target}" : "spin run #{target} -- #{quote_arg(port)}"
         ["spin run gen", run]

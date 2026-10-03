@@ -77,6 +77,41 @@ test "decode_escapes refuses a percent sign that is not followed by two hex digi
   assert_equal "a\u00e9 b", Cybertrain::Query.decode_escapes("a%C3%A9+b", true)
 end
 
+# NOTES rule 52: CRuby's byteindex raises IndexError for an offset inside a
+# character of an invalid String; Query validates once and answers
+# QueryMalformed (a 400) instead, with one fixed message and never the raw text.
+test "an invalid byte sequence is QueryMalformed, not IndexError, raw or percent-encoded" do
+  msg = "invalid byte sequence in request parameters"
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.parse("a=1&\x81b=2") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.parse("a=x+\x81y") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.parse("a=%41\x81") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.parse("\x81=1") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.parse("a=%81") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.parse("%C3=1") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode("x+\x81y") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode("%41\x81") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode("\x81") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode("%81") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode("ok%C3") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("a\x81", false) }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%81", false) }
+end
+
+test "decode of valid percent-encoded multibyte text still works, a malformed escape keeps its own message" do
+  assert_equal "\u00e9", Cybertrain::Query.decode("%C3%A9")
+  assert_equal "caf\u00e9 x", Cybertrain::Query.decode("caf%C3%A9+x")
+  msg = assert_raises("QueryMalformed") { Cybertrain::Query.decode("%ZZ") }
+  assert_equal "malformed percent-encoding in request parameters", msg
+end
+
+test "parse of a 100-pair valid non-ASCII body still works" do
+  body = (0...100).map { |i| "k#{i}=%C3%A9\u00e9+#{i}" }.join("&")
+  params = Cybertrain::Query.parse(body)
+  assert_equal "\u00e9\u00e9 0", params["k0"]
+  assert_equal "\u00e9\u00e9 99", params["k99"]
+  assert_equal 100, params.keys.length
+end
+
 test "valid_escapes? wants two hex digits after every percent sign" do
   assert Cybertrain::Query.valid_escapes?("")
   assert Cybertrain::Query.valid_escapes?("plain text")

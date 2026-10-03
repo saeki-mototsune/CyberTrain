@@ -298,12 +298,6 @@ test "the rebuild command quotes the build target like every other interpolated 
   assert tricky.index("spin build it's").nil?, "no unquoted target reaches sh"
 end
 
-test "a build target starting with - is refused: quoting cannot keep spin from reading it as an option" do
-  message = assert_raises("ArgumentError") { Cybertrain::Dev::Rebuilder.new("/apps/blog", "-x") }
-  assert_includes message, "build target \"-x\" starts with '-' and would reach spin as an option"
-  assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog'; }"), "an ordinary target still works"
-end
-
 test "shell_quote escapes single quotes" do
   assert_equal "'it'\\''s'", Cybertrain::Dev::Rebuilder.shell_quote("it's")
 end

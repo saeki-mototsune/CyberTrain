@@ -9,6 +9,7 @@ ok   DB::CLI.database_path follows Cybertrain.config once it is loaded
 ok   the stack is RequestLogger, Static, MethodOverride, SessionStore, CsrfProtection, Router
 ok   log_level :none, static_files and csrf switch their middleware off
 ok   production puts ErrorPages outermost
+ok   Application.new refuses a name that is not a usable spin build target
 ok   production refuses to boot without embedded views
 ok   production boots on the embedded table, development on app/views
 ok   boot connects the database, configures views and resolves the secret
@@ -21,4 +22,4 @@ ok   a static file is served from the public root
 ok   path helpers in templates call the url_resolver
 ok   a method-returned Gen::Routes-style url_resolver keeps its route names
 ok   the server listens on the configured host and port
-23 tests, 84 assertions, 0 failures
+24 tests, 97 assertions, 0 failures

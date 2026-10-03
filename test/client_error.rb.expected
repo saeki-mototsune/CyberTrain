@@ -8,4 +8,5 @@ ok   the bare-name list is derived from CLIENT_FAULTS, entry for entry
 ok   bare_name is the part after the last namespace separator
 ok   every bare client-fault name is unique within the list
 ok   status of the framework's own exceptions
-10 tests, 54 assertions, 0 failures
+ok   an order fault is classified as a 400 at info level, not an error
+11 tests, 67 assertions, 0 failures

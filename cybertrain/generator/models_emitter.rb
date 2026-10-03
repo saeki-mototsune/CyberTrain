@@ -144,10 +144,13 @@ module Cybertrain
           next unless renamed?(name)
 
           fallback = reader_name(name)
-          if names.include?(fallback) || Ident.reserved_column?(fallback)
+          # The fallback is `<column>_column`, which no RESERVED_COLUMN_NAMES
+          # entry or keyword ends in, so the only way it is taken is by
+          # another column of the table.
+          if names.include?(fallback)
             raise ArgumentError, "table #{table.name}: column #{name.inspect} can be neither #{name.inspect} nor " \
                                  "#{fallback.inspect} (a Ruby keyword or a Cybertrain::Model or Object method " \
-                                 "owns the first, a column the second); rename a column"
+                                 "owns the first, another column of the table owns the second); rename a column"
           end
         end
         nil

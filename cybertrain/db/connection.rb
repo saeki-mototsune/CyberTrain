@@ -10,6 +10,18 @@ module Cybertrain
     class Connection
       attr_reader :path
 
+      # True for a path whose database lives only in its connection:
+      # Connection opens with OPEN_URI, so besides ":memory:" and "" (a
+      # private temporary database) a `file:` URI naming ":memory:" or
+      # "mode=memory" is one too. String checks only: no Regexp. The single
+      # predicate: Connection#initialize (no WAL for it) and Pool (one
+      # never-reopened connection) both ask it, so a new spelling is a
+      # change here only.
+      def self.private_database?(path)
+        return true if path == "" || path == ":memory:"
+        path.start_with?("file:") && (path.include?(":memory:") || path.include?("mode=memory"))
+      end
+
       # path is a file name, ":memory:" or a "file:" URI (OPEN_URI makes
       # SQLite read the URI form whether or not the library was compiled
       # with SQLITE_USE_URI). With create: false a missing file is refused
@@ -47,7 +59,10 @@ module Cybertrain
         # 50); `close` is the same path a user close takes.
         begin
           exec_script("PRAGMA busy_timeout=5000")
-          exec_script("PRAGMA journal_mode=WAL") unless path == ":memory:"
+          # WAL is meaningless for a database that lives only in this
+          # connection; every spelling of that is private_database?, not just
+          # ":memory:" (`file:x?mode=memory` and "" used to get the PRAGMA).
+          exec_script("PRAGMA journal_mode=WAL") unless Connection.private_database?(path)
           exec_script("PRAGMA foreign_keys=ON")
         rescue JSON::ParserError, StandardError => e
           close

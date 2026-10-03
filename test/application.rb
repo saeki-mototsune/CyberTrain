@@ -273,6 +273,33 @@ test "production puts ErrorPages outermost" do
   assert_equal "Not Found", res.body
 end
 
+# name: is the `spin build` target the dev rebuilder shells out with and the
+# build/bin path; Application.new applies Cybertrain::AppName.problem, the
+# predicate `cybertrain build` applies to spin.toml's name. The rebuilder
+# itself no longer checks (test/dev_error_page.rb only quotes).
+def application_named(name)
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(n, a) { "/" }, name: name)
+end
+
+test "Application.new refuses a name that is not a usable spin build target" do
+  {
+    "-x" => "cannot start with '-' (spin would read it as an option)",
+    "a/b" => "cannot contain '/'",
+    ".." => "cannot be '.' or '..'",
+    "." => "cannot be '.' or '..'",
+    "a b" => "cannot contain whitespace",
+    "" => "cannot be empty"
+  }.each do |bad, reason|
+    message = assert_raises("ArgumentError") { application_named(bad) }
+    assert_equal "application name #{bad.inspect} #{reason}", message
+  end
+  # Ordinary names, including one the shell has to quote, are accepted.
+  application_named("blog")
+  application_named("my-app")
+  application_named("it's")
+  assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog'; }"), "an ordinary target still works"
+end
+
 test "production refuses to boot without embedded views" do
   c = Cybertrain::Config.new
   c.env = "production"

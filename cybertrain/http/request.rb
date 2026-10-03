@@ -118,38 +118,37 @@ module Cybertrain
     # not three times. A parse that raises (QueryTooMany, QueryMalformed, ...)
     # is not cached: it propagates and the request ends as a 400.
     #
-    # The cached tree is READ-ONLY for every holder, this one included: it is
-    # the same object for every reader, so a middleware that keeps it (to
-    # rebuild a canonical or pagination URL after `super`, say) must find the
-    # query keys and nothing else, however much the Router assembled after it.
-    # The Router therefore builds ctx.params as a fresh Params and merges this
-    # tree into it (Router#assemble_params) rather than taking it over: round
-    # 17 dropped that copy for speed, round 18 took the tree instead, which
-    # kept readers AFTER routing correct but left a reader that fetched the
-    # tree BEFORE routing holding the Router's own mutated object (form
-    # fields, `_method`, `authenticity_token`, captures). The copy costs one
-    # more tree build, bounded by the Query limits (at most MAX_PAIRS pairs
-    # of MAX_DEPTH levels), and nothing else can corrupt a cache. The same
-    # goes for #form_params. The cache ivars start as nil and are assigned
-    # from a method's result, as a nullable ivar must be (NOTES rule 7).
+    # The cached tree is shared by MethodOverride, CsrfProtection and the
+    # Router (and any middleware that keeps it, say to rebuild a pagination
+    # URL after `super`), so a holder that mutated it would silently change
+    # what the others see. It is therefore marked read_only! before it is
+    # cached: set_value, set_path, child!, merge! and the rest raise
+    # RuntimeError instead (a holder that needs to change params builds its
+    # own: Params.new.merge!(request.query_params)). The Router's per-request
+    # `Params.new` + merge! (Router#assemble_params) is the MERGE of three
+    # sources (query, form, path captures) into the controller's own mutable
+    # params, not a defensive copy of this tree, so it stays: merge! copies
+    # from a read-only source into a fresh writable tree. The same goes for
+    # #form_params. The cache ivars start as nil and are assigned from a
+    # method's result, as a nullable ivar must be (NOTES rule 7).
     def query_params
       cached = @query_params_cache
       return cached unless cached.nil?
 
-      parsed = Query.parse(@query_string)
+      parsed = Query.parse(@query_string).read_only!
       @query_params_cache = parsed
       parsed
     end
 
     # The body parsed into Params, once per request (see #query_params; the
-    # tree is read-only for every holder). Only meaningful for a form body:
+    # tree is read_only! for every holder). Only meaningful for a form body:
     # callers check #form? first, as they always did, and any other body is
     # not parsed at all.
     def form_params
       cached = @form_params_cache
       return cached unless cached.nil?
 
-      parsed = Query.parse(@body)
+      parsed = Query.parse(@body).read_only!
       @form_params_cache = parsed
       parsed
     end

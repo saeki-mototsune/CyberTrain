@@ -714,6 +714,7 @@ test "a reserved column or keyword whose fallback name is taken still fails" do
     Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
   end
   assert_includes msg, 'column "hash" can be neither "hash" nor "hash_column"'
+  assert_includes msg, "another column of the table owns the second"
   assert_includes msg, "rename a column"
 end
 

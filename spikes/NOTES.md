@@ -100,10 +100,11 @@ finds the commit that removed them).
 28. `URI.decode_www_form_component` on a malformed escape (`%ZZ`, a trailing
     `%`) raises under CRuby but silently decodes under Spinel; validate escapes
     (`%` followed by two hex digits) before decoding when both must agree.
-    `Query.decode` therefore validates them itself (`Query.valid_escapes?`, a
-    byte scan) before decoding, so `QueryMalformed` and the Cookies raw-value
-    fallback behave the same on both runtimes; `Router.split_path` uses the
-    same check.
+    The decoding loop (`Query.decode_valid`) therefore refuses a malformed
+    escape itself, with a byte scan of its own, so `QueryMalformed` and the
+    Cookies raw-value fallback behave the same on both runtimes.
+    `Query.valid_escapes?` is the router's pre-check, for its own policy: a
+    path segment with a malformed escape stays literal instead of raising.
 29. Once `SafeString` (to_s/to_str) is in the program, `String#include?` with
     a polymorphic argument mis-dispatches even after narrowing the receiver;
     `String#index(needle.to_s)` works. Iterating a nullable Hash with
@@ -234,6 +235,29 @@ finds the commit that removed them).
     `Params#keys` with "undefined method 'keys' for an instance of Hash"
     once two tests called it: a method name shared with Hash (`keys`) is
     the same hazard; assert with `key?`/`[]` instead.
+52. `String#byteindex` raises `IndexError` ("offset N does not land on
+    character boundary") under CRuby for an offset that is not on a character
+    boundary of a UTF-8 String, e.g. right after `&` when the next byte is a
+    stray `\x81` (`"a=1&\x81b=2"`, `"x+\x81y"`, `"%41\x81"`); Spinel's
+    returns the match without checking. `String#valid_encoding?` exists under
+    Spinel and agrees with CRuby, so byte-offset scans over request text
+    validate the encoding once up front (`Query.parse`, `Query.decode_escapes`,
+    `Router.split_path`) and treat an invalid byte sequence as `QueryMalformed`
+    (a 400, like Rails' BadRequest), also after decoding (`%81`). Never
+    `rescue IndexError`: that would be CRuby-only behaviour. Once the String
+    is valid, every offset the scans use (0, or just after an ASCII byte) is a
+    boundary, and a binary (ASCII-8BIT) String never fails the check.
+    Spinel's `split`, `strip` and `index` accept an invalid String; CRuby's
+    raise ArgumentError ("invalid byte sequence in UTF-8") on a UTF-8-tagged
+    one (a binary socket buffer is fine), so a test cannot feed
+    `Router.split_path` or `Cookies.parse` a UTF-8 literal with a stray byte:
+    test invalid bytes through `Query.decode`/`Cookies.decode`, and through
+    `split_path` only next to a `%`, where `Query.check_valid!` runs first.
+53. An exception object built with `.new("msg")` and never raised has no
+    `#message` under Spinel (`undefined method 'message' for an instance of
+    Cybertrain::OrderInvalid`; `e.class.name` works). `ClientError.classify`
+    is only ever called from a rescue clause, so a test of it must raise and
+    rescue too (a helper method with a `rescue` clause, returning the status).
 
 ## Numbers worth remembering
 

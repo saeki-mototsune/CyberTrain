@@ -13,6 +13,7 @@ ok   override_method! upper-cases the new method
 ok   cookie_header returns the Cookie header or empty string
 ok   body and headers are exposed
 ok   query_params and form_params parse once and return the same Params every time
+ok   query_params and form_params are read-only shared caches
 ok   query_params and form_params of an empty query and body are cached empty Params
 ok   a parse that raises is not cached: every call raises again
-17 tests, 67 assertions, 0 failures
+18 tests, 83 assertions, 0 failures
