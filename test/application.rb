@@ -293,6 +293,26 @@ test "Application.new accepts any name; only the Rebuilder refuses one" do
   assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog'; }"), "an ordinary target still works"
 end
 
+# Two layers on a bad name: Application#serve (a development boot) prints
+# `error: <Application.name_problem>` and exits 1 before it builds the
+# Rebuilder, so a developer sees a boot failure line, not a backtrace; the
+# Rebuilder still raises for direct callers (above). serve itself cannot be
+# driven here (it would bind a socket and exit the test process), so this
+# tests the text it prints: Application.name_problem, the one thing serve
+# asks, with the same refusals as the Rebuilder.
+test "Application.name_problem is the text a development boot prints for a bad name" do
+  assert_equal "", Cybertrain::Application.name_problem("blog")
+  assert_equal "", Cybertrain::Application.name_problem("my-app")
+  assert_equal "application name \"-x\" cannot start with '-' (spin would read it as an option)",
+               Cybertrain::Application.name_problem("-x")
+  assert_equal "application name \"\" cannot be empty", Cybertrain::Application.name_problem("")
+  assert_equal "application name \"a/b\" cannot contain '/'", Cybertrain::Application.name_problem("a/b")
+  ["-x", "a/b", "..", ".", "a b", ""].each do |odd|
+    refute Cybertrain::Application.name_problem(odd).empty?, "#{odd.inspect} should be reported"
+    assert_raises("ArgumentError") { Cybertrain::Dev::Rebuilder.new("/apps/blog", odd) }
+  end
+end
+
 test "production refuses to boot without embedded views" do
   c = Cybertrain::Config.new
   c.env = "production"

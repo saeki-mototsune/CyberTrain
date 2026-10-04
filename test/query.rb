@@ -95,6 +95,43 @@ test "an invalid byte sequence is QueryMalformed, not IndexError, raw or percent
   assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode("ok%C3") }
   assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("a\x81", false) }
   assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("%81", false) }
+  # half a character raw plus its other half escaped is not valid text, on
+  # either runtime and whatever the String's tag (a client never sends half
+  # a character raw; a binary CRuby buffer is read as UTF-8, Query.utf8!)
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.parse("a=\xC3%A9") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.value_of("a=\xC3%A9", "a") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode("\xC3%A9") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.decode_escapes("\xC3%A9", false) }
+end
+
+test "utf8! answers the validated UTF-8 text itself, or QueryMalformed" do
+  text = "a=\u00e9&b=x"
+  assert Cybertrain::Query.utf8!(text).equal?(text)
+  assert_equal "", Cybertrain::Query.utf8!("")
+  assert_equal "a%C3%A9", Cybertrain::Query.utf8!("a%C3%A9")
+  msg = "invalid byte sequence in request parameters"
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.utf8!("a\x81") }
+  assert_equal msg, assert_raises("QueryMalformed") { Cybertrain::Query.utf8!("\xC3%A9") }
+  # an escape is not looked at: "%81" is valid text until it is decoded
+  assert_equal "%81", Cybertrain::Query.utf8!("%81")
+end
+
+test "parse_valid and value_of_valid are parse_into and value_of for text utf8! has answered" do
+  body = Cybertrain::Query.utf8!("a=1&a[]=2&b=%C3%A9&c[d]=3&&_method=put")
+  params = Cybertrain::Params.new
+  assert Cybertrain::Query.parse_valid(params, body).equal?(params)
+  assert_equal "\u00e9", params["b"]
+  assert_equal "3", params.nested("c")["d"]
+  assert_equal "put", params["_method"]
+  assert_equal Cybertrain::Query.parse_into(Cybertrain::Params.new, body).inspect, params.inspect
+  assert_equal "put", Cybertrain::Query.value_of_valid(body, "_method")
+  assert_equal "\u00e9", Cybertrain::Query.value_of_valid(body, "b")
+  assert_equal "", Cybertrain::Query.value_of_valid(body, "absent")
+  # the limits and a malformed escape still raise: only the validity check is skipped
+  assert_raises("QueryTooMany") { Cybertrain::Query.parse_valid(Cybertrain::Params.new, "&" * 4097) }
+  assert_raises("QueryTooMany") { Cybertrain::Query.value_of_valid("&" * 4097, "a") }
+  assert_raises("QueryMalformed") { Cybertrain::Query.parse_valid(Cybertrain::Params.new, "a=%zz") }
+  assert_raises("QueryMalformed") { Cybertrain::Query.parse_valid(Cybertrain::Params.new, "a=%81") }
 end
 
 test "decode of valid percent-encoded multibyte text still works, a malformed escape keeps its own message" do

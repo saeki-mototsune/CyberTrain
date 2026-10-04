@@ -1,3 +1,4 @@
+require "stringio"
 require "cybertrain/test"
 require "cybertrain/controller"
 
@@ -5,6 +6,11 @@ require "cybertrain/controller"
 # (through the template helpers), so this program no longer runs under CRuby:
 # take its snapshot from the compiled binary, never `spin test --regen`
 # (spikes/NOTES.md rule 23).
+
+# A client fault answered from an action logs a "rejected request" line
+# (Controller#rescue_with_handler); keep it out of the snapshot except in the
+# tests that read it.
+Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
 
 # What the callbacks and actions did, in order; cleared by each dispatch.
 TRAIL = []
@@ -466,6 +472,38 @@ test "a client fault after the action redirected drops only Location and Content
   assert_equal "https://app.example", ctx.response.header("Access-Control-Allow-Origin")
   assert_equal "no-store", ctx.response.header("Cache-Control")
   assert controller.performed?
+end
+
+# The 400 answered inside the action is logged like the same fault one layer
+# up (ErrorPages, Dev::ErrorPage): one info line through Cybertrain.logger.
+# An exception the controller does not answer (the 500 path) logs nothing
+# here: ErrorPages classifies and logs it once, as the error.
+test "a client fault answered from an action logs one rejected-request line" do
+  previous = Cybertrain.logger
+  log = StringIO.new
+  Cybertrain.logger = Cybertrain::Logger.new(log, :info)
+  ctx = build_ctx(false)
+  controller = PostsController.new(ctx)
+  controller.process(:parse_body) { |c| c.parse_body }
+  assert_equal 400, ctx.response.status
+  assert_equal "[INFO] rejected request (400 Bad Request): too many parameters (limit 4096)\n", log.string
+  ctx2 = build_ctx(false)
+  ctx2.params.set_value("other", "1")
+  PostsController.new(ctx2).process(:require_post) { |c| c.require_post }
+  assert_equal 400, ctx2.response.status
+  assert_equal 2, log.string.lines.size
+  assert_includes log.string, "[INFO] rejected request (400 Bad Request): param is missing or the value is empty: post"
+  Cybertrain.logger = previous
+end
+
+test "an exception the controller re-raises is not logged by it (ErrorPages logs it once)" do
+  previous = Cybertrain.logger
+  log = StringIO.new
+  Cybertrain.logger = Cybertrain::Logger.new(log, :info)
+  controller = PostsController.new(build_ctx(false))
+  assert_raises("Invalid") { controller.process(:bill) { |c| c.bill } }
+  assert_equal "", log.string
+  Cybertrain.logger = previous
 end
 
 test "an app exception sharing a bare name with a framework one is still raised (500 path)" do

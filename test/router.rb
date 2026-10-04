@@ -119,32 +119,29 @@ test "split_path: an invalid byte sequence in a decoded segment is QueryMalforme
   assert_equal "QueryMalformed", split_path_error("/a/%81")
   assert_equal "QueryMalformed", split_path_error("/a/%C3")
   assert_equal "QueryMalformed", split_path_error("/a/x%81/b")
-  # the raw-byte cases need a UTF-8 String that CRuby's split refuses, so
-  # they are Query-level tests ("the path segment policy" below)
+  # a raw invalid byte anywhere in the path is a 400 too, whole-path check
+  # ("the path segment policy" below)
   # a malformed escape stays literal (404 by non-match), as before
   assert_equal "none", split_path_error("/a/%ZZ")
   assert_equal ["a", "%ZZ"], Cybertrain::Request.split_path("/a/%ZZ")
 end
 
-# The per-segment policy of Request.split_path (escapes first, then validity),
-# which has to answer the same on both runtimes. A raw invalid byte in a path
-# can only reach split_path end to end under Spinel (CRuby's "/\x81".split("/")
-# raises ArgumentError on a UTF-8-tagged String, a binary socket buffer is
-# fine), so its two raw-byte rows are checked at the Query level, with the
-# exact calls split_path makes, and the escape-only rows through split_path.
-#   /\x81%zz  literal   valid_escapes? false, never validated or decoded
-#   /\x81%41  400       valid_escapes? true, check_valid! raises (CRuby binary: the result check)
-#   /%81      400       the result check
-#   /%zz      literal
+# The policy of Request.split_path: the WHOLE path is validated as UTF-8 first
+# (Query.utf8!, whatever the String's tag), then each segment holding a "%"
+# stays literal for a malformed escape or is decoded (and its result checked).
+# The same answers on both runtimes by construction. These are UTF-8 literals
+# with a stray byte: the whole-path check runs before `split("/")`, so CRuby's
+# ArgumentError from split on a broken UTF-8-tagged String never bites. (A
+# binary CRuby buffer takes the same road through utf8!'s one copy; no test
+# here builds one, `.b` is unverified under Spinel, so that path is covered by
+# the server tests that send raw bytes.)
+#   /%zz       literal   malformed escape, never decoded
+#   /%81       400       the decoded result is not UTF-8
+#   /\x81%zz   400       raw invalid byte, whole-path check
+#   /\x81%41   400       whole-path check
+#   /\xC3%A9   400       half a character raw is not valid text
 def valid_escapes_answer(text)
   Cybertrain::Query.valid_escapes?(text) ? "escapes ok" : "malformed escape"
-end
-
-def check_valid_error(text)
-  Cybertrain::Query.check_valid!(text)
-  "valid"
-rescue Cybertrain::QueryMalformed
-  "QueryMalformed"
 end
 
 def decode_valid_error(text)
@@ -154,28 +151,28 @@ rescue Cybertrain::QueryMalformed
   "QueryMalformed"
 end
 
-test "the path segment policy: a malformed escape stays literal before any validity check" do
-  # /\x81%zz: the escape scan answers false without CRuby's IndexError (it searches
-  # the next "%" from i + 1, an ASCII byte, never from the stray byte after
-  # the escape), so split_path keeps the segment literal and never validates
+test "the path segment policy: the whole path is validated, then a malformed escape stays literal" do
+  assert_equal ["%zz"], Cybertrain::Request.split_path("/%zz")
+  assert_equal ["x%zz", "y"], Cybertrain::Request.split_path("/x%zz/y")
+  assert_equal "QueryMalformed", split_path_error("/%81")
+  assert_equal "QueryMalformed", split_path_error("/\x81%zz")
+  assert_equal "QueryMalformed", split_path_error("/\x81%41")
+  assert_equal "QueryMalformed", split_path_error("/\xC3%A9")
+  assert_equal "QueryMalformed", split_path_error("/\x81")
+  assert_equal "QueryMalformed", split_path_error("/a/b\x81/c")
+  assert_equal "QueryMalformed", split_path_error("/%41\x81")
+  # a raw invalid byte in a segment with no "%" is refused as well
+  assert_equal "QueryMalformed", split_path_error("/ok/\xFF")
+  # the decoder's result check
+  assert_equal "QueryMalformed", decode_valid_error("%81")
+  assert_equal "decoded", decode_valid_error("%41")
+  # valid_escapes? stays safe on a String nobody validated (it searches from i + 1)
   assert_equal "malformed escape", valid_escapes_answer("\x81%zz")
   assert_equal "malformed escape", valid_escapes_answer("%zz")
   assert_equal "malformed escape", valid_escapes_answer("\x81%41%4")
-  # a well-formed escape next to a stray byte is then refused by check_valid!
   assert_equal "escapes ok", valid_escapes_answer("\x81%41")
   assert_equal "escapes ok", valid_escapes_answer("%41\x81")
   assert_equal "escapes ok", valid_escapes_answer("%41\x81%41")
-  assert_equal "QueryMalformed", check_valid_error("\x81%41")
-  # a binary String passes check_valid!, so the RESULT check catches the same
-  # bytes (this is what a CRuby socket buffer takes): decode_valid raises
-  assert_equal "QueryMalformed", decode_valid_error("\x81%41")
-  assert_equal "QueryMalformed", decode_valid_error("%81")
-  assert_equal "decoded", decode_valid_error("%41")
-  # through split_path itself
-  assert_equal "QueryMalformed", split_path_error("/%81")
-  assert_equal "none", split_path_error("/%zz")
-  assert_equal ["%zz"], Cybertrain::Request.split_path("/%zz")
-  assert_equal ["x%zz", "y"], Cybertrain::Request.split_path("/x%zz/y")
 end
 
 # Router#call raising inside a helper method (NOTES rule 32).
@@ -257,7 +254,7 @@ test "params assembly order is query < form < route" do
   assert_equal ["7 f q hi"], seen
 end
 
-test "ctx.params is the Router's own tree: neither parse cache of the Request is ever changed" do
+test "ctx.params is the Router's own tree: built from the Request's validated texts, later sources win" do
   router = Cybertrain::Router.new
   seen = []
   router.post("/items/:id") do |c|
@@ -267,10 +264,11 @@ test "ctx.params is the Router's own tree: neither parse cache of the Request is
   form = { "content-type" => "application/x-www-form-urlencoded" }
   ctx = build_ctx("POST", "/items/7?q=1", "f=2&_method=put&authenticity_token=tok&post[title]=hi", form)
   # (Symbol keys throughout this program: see NOTES rule 51)
-  # a middleware that ran BEFORE the Router and kept the trees (to rebuild a
-  # canonical or pagination URL after `super`, say)
-  q = ctx.request.query_params
-  f = ctx.request.form_params
+  # a middleware that ran BEFORE the Router and read the texts (it owns any
+  # tree it parses from them)
+  query_text = ctx.request.utf8_query_string
+  body_text = ctx.request.utf8_body
+  q = Cybertrain::Query.parse(query_text)
   router.call(ctx)
   assert_equal ["1", "2"], seen
   assert_equal "1", ctx.params[:q]
@@ -279,75 +277,53 @@ test "ctx.params is the Router's own tree: neither parse cache of the Request is
   assert_equal "put", ctx.params[:_method]
   assert_equal "tok", ctx.params[:authenticity_token]
   assert_equal "hi", ctx.params.nested(:post)[:title]
-  # ctx.params is neither cache, and the caches are the very objects the
-  # early reader holds
+  # the Router reads the very validated texts the Request holds (one
+  # validation per field), and does not change them
+  assert query_text.equal?(ctx.request.utf8_query_string)
+  assert body_text.equal?(ctx.request.utf8_body)
+  assert_equal "q=1", query_text
+  # a tree parsed earlier from the text is its owner's: the Router's writes
+  # (top level or nested) never reach it
   assert !ctx.params.equal?(q)
-  assert !ctx.params.equal?(f)
-  assert q.equal?(ctx.request.query_params)
-  assert f.equal?(ctx.request.form_params)
-  # the query tree still holds the query keys alone: no form field, _method,
-  # token or route capture
   assert_equal "1", q[:q]
-  # (no Params#keys here: next to Hash#keys in this program it mis-dispatches
-  # under Spinel, NOTES rule 51)
   assert !q.key?(:f)
-  assert !q.key?(:_method)
-  assert !q.key?(:authenticity_token)
-  assert !q.key?(:post)
   assert !q.key?(:id)
-  # the form tree is unchanged too
-  assert_equal "2", f[:f]
-  assert !f.key?(:id)
-  assert !f.key?(:q)
-  assert_equal "hi", f.nested(:post)[:title]
-  # and writing to ctx.params later (top level or nested) reaches neither
   ctx.params.set_value(:page, "9")
   ctx.params.set_value(:q, "changed")
-  ctx.params.nested(:post).set_value(:title, "changed")
   assert !q.key?(:page)
   assert_equal "1", q[:q]
-  assert_equal "hi", f.nested(:post)[:title]
 end
 
-test "a reader after routing and a request without a form body get the same untouched query tree" do
+test "a request without a form body: ctx.params has the query and the capture, a later parse of the text is unaffected" do
   router = Cybertrain::Router.new
   router.get("/items/:id") { |c| c.response.body = "#{c.params[:id]} #{c.params[:q]}" }
   ctx = dispatch(router, "GET", "/items/3?q=1&id=query")
   assert_equal "3 1", ctx.response.body
-  assert !ctx.params.equal?(ctx.request.query_params)
-  assert_equal "query", ctx.request.query_params[:id]
+  own = Cybertrain::Query.parse(ctx.request.utf8_query_string)
+  assert !ctx.params.equal?(own)
+  assert_equal "query", own[:id]
   assert_equal "3", ctx.params[:id]
-  assert_equal "1", ctx.request.query_params[:q]
-  assert !ctx.request.query_params.key?(:page)
+  assert_equal "1", own[:q]
+  assert !own.key?(:page)
 end
 
-test "ctx.params never aliases the Request's caches: mutating a value in an action changes nothing the middleware reads" do
+test "ctx.params never aliases the Request's path segments: mutating a capture in an action changes nothing Static reads" do
   router = Cybertrain::Router.new
   router.post("/items/:id") do |c|
-    c.params[:q] << "XYZ"
-    c.params[:f] << "XYZ"
     c.params[:id].upcase!
-    c.params.list(:tags)[0] << "XYZ"
-    c.params.nested(:post)[:title] << "XYZ"
+    c.params[:q] << "XYZ"
   end
   form = { "content-type" => "application/x-www-form-urlencoded" }
-  ctx = build_ctx("POST", "/items/abc?q=1&tags[]=t", "f=2&post[title]=hi", form)
-  # the readers a middleware would hold (built before routing) ...
+  ctx = build_ctx("POST", "/items/abc?q=1", "f=2", form)
   segments_before = ctx.request.path_segments
-  q = ctx.request.query_params
-  f = ctx.request.form_params
   router.call(ctx)
-  # ... see none of it
-  assert_equal "1", q[:q]
-  assert_equal ["t"], q.list(:tags)
-  assert_equal "2", f[:f]
-  assert_equal "hi", f.nested(:post)[:title]
   assert_equal ["items", "abc"], ctx.request.path_segments
   assert segments_before.equal?(ctx.request.path_segments)
+  assert_equal "1", ctx.request.query_value("q")
   # Whether the action's own tree took the appends is not asserted: under
   # Spinel an in-place `<<` on a String read out of a Params does not reach
   # the stored value (NOTES rule 55), under CRuby it does; the contract under
-  # test is only that the caches are untouched either way.
+  # test is only that the shared segments are untouched either way.
 end
 
 test "later sources still win when each is parsed straight into ctx.params" do
@@ -356,9 +332,9 @@ test "later sources still win when each is parsed straight into ctx.params" do
   form = { "content-type" => "application/x-www-form-urlencoded" }
   ctx = dispatch(router, "POST", "/items/7?q=1&id=x", "f=2&q=3", form)
   assert_equal "3 2 7", ctx.response.body
-  # no cache was needed to route; asking for one later parses the same text
-  assert_equal "1", ctx.request.query_params[:q]
-  assert_equal "3", ctx.request.form_params[:q]
+  # asking for one source later parses the same text
+  assert_equal "1", Cybertrain::Query.parse(ctx.request.utf8_query_string)[:q]
+  assert_equal "3", Cybertrain::Query.parse(ctx.request.utf8_body)[:q]
 end
 
 # Router#call raising inside a helper method (NOTES rule 32): the class name

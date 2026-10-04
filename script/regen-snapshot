@@ -8,12 +8,15 @@
 # of that snapshot so you can review what changed. The old binary is removed
 # first, so a compile failure leaves no binary to run ("was not built", exit 1)
 # instead of turning a stale one's output into the new snapshot. A run that
-# exits non-zero or prints one of the harness's failure lines ("FAIL <test>: "
-# / "ERR  <test>: ", cybertrain/test.rb -- the test name may itself contain a
-# colon, hence `.*`; a test's own output that merely starts with FAIL is not
-# one) is not kept: the output goes to a temporary file that
-# replaces the snapshot only on success, so a failing test can never be
-# enshrined as its own expectation.
+# exits non-zero is not kept: the harness exits 1 when a case fails
+# (Cybertrain::Test.run!, cybertrain/test.rb), so the exit status is the one
+# signal. The output is not grepped for "FAIL" lines: test names contain
+# spaces and colons, so no shape of line singles out the harness's own, and
+# a test that merely prints "FAIL mode: strict" would otherwise never
+# regenerate. (Display only: the failure is shown as the output minus the
+# "ok" lines.) The output goes to a temporary file that replaces the snapshot
+# only on success, so a failing test can never be enshrined as its own
+# expectation.
 #
 # usage: script/regen-snapshot test/<name>.rb [...]
 set -u
@@ -39,9 +42,9 @@ for file in "$@"; do
   tmp="test/$name.rb.expected.tmp"
   "$bin" > "$tmp" 2>&1
   rc=$?
-  if [ "$rc" -ne 0 ] || grep -q -e '^FAIL .*: ' -e '^ERR  .*: ' "$tmp"; then
+  if [ "$rc" -ne 0 ]; then
     echo "regen-snapshot: $bin failed (exit $rc); kept the previous test/$name.rb.expected" >&2
-    grep -e '^FAIL .*: ' -e '^ERR  .*: ' "$tmp" >&2
+    grep -v '^ok   ' "$tmp" >&2
     rm -f "$tmp"
     status=1
     continue

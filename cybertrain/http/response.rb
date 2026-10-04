@@ -64,28 +64,32 @@ module Cybertrain
       if existing.nil? || existing == name
         @headers[name] = value
       else
-        rebuilt = {}
+        # Rebuilt in place (clear, then put back in order): `headers` is a
+        # public reader, so a Hash a before_action or middleware kept must
+        # stay the live one.
+        names = []
+        values = []
         @headers.each do |k, v|
-          if k == existing
-            rebuilt[name] = value
-          else
-            rebuilt[k] = v
-          end
+          names << (k == existing ? name : k)
+          values << v
         end
-        @headers = rebuilt
+        @headers.clear
+        names.each_with_index { |k, i| @headers[k] = k == name ? value : values[i] }
       end
     end
 
     # Removes the header of that name, whatever its case (every spelling
     # when several were stored); a missing one is not an error. Returns nil
-    # (NOTES rules 10/34: one return type for the name).
+    # (NOTES rules 10/34: one return type for the name). Edits @headers in
+    # place: `headers` is a public reader, so a Hash a before_action or
+    # middleware took earlier must still be the live one afterwards. The
+    # matching keys are collected first (never delete while iterating) and
+    # removed with Hash#delete; no block-taking Hash method is needed.
     def drop_header(name)
       wanted = name.downcase
-      kept = {}
-      @headers.each do |k, v|
-        kept[k] = v unless k.downcase == wanted
-      end
-      @headers = kept
+      gone = []
+      @headers.keys.each { |k| gone << k if k.downcase == wanted }
+      gone.each { |k| @headers.delete(k) }
       nil
     end
 

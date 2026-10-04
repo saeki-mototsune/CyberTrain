@@ -13,11 +13,5 @@ ok   merge! does not alias other's lists or nested params
 ok   merge! preserves inspect ordering: receiver order first, then other's new keys
 ok   a name can only be one kind at a time: last write wins, like Rack
 ok   to_h returns only scalars, empty? and inspect are deterministic
-ok   read_only! marks the Params and every nested child, and returns self
-ok   every mutator of a read-only Params raises RuntimeError and changes nothing
-ok   every reader of a read-only Params still works
-ok   Params.new.merge!(read_only) is writable and independent of its source
-ok   read_only! is one flag per tree: a nested node seals its whole tree, copies and strangers are separate
-ok   a read-only Params hands out copies: mutating a returned String or list changes nothing
 ok   merge! copies Strings: the merged tree shares none with its source
-22 tests, 137 assertions, 0 failures
+16 tests, 65 assertions, 0 failures

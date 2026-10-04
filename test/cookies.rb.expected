@@ -6,4 +6,4 @@ ok   decode keeps the raw value of an invalid byte sequence (raw or percent-enco
 ok   serialize with defaults
 ok   serialize with all options set
 ok   serialize omits Max-Age when negative and HttpOnly/Secure when off
-8 tests, 12 assertions, 0 failures
+8 tests, 13 assertions, 0 failures

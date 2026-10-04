@@ -134,6 +134,27 @@ test "drop_header removes a header whatever its case and leaves the rest in orde
   assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-A: 1\r\nX-B: 2\r\nContent-Length: 0\r\n\r\n", res.to_http
 end
 
+test "a headers Hash taken before drop_header, set_header or client_error! is still the live one" do
+  res = Response.new
+  taken = res.headers
+  res.set_header("location", "/x")
+  res.set_header("X-A", "1")
+  res.set_header("Location", "/y")
+  assert taken.equal?(res.headers)
+  assert_equal "/y", taken["Location"]
+  res.drop_header("LOCATION")
+  assert taken.equal?(res.headers)
+  assert_equal 1, taken.size
+  res.set_header("location", "/z")
+  assert_nil res.client_error!(400, "bad")
+  assert taken.equal?(res.headers)
+  taken["X-Late"] = "1"
+  assert_nil taken["Location"]
+  assert res.to_http.include?("X-Late: 1\r\n")
+  assert res.to_http.include?("X-A: 1\r\n")
+  refute res.to_http.include?("Location")
+end
+
 test "client_error! drops Location and Content-Disposition in any case, keeps the rest" do
   res = Response.new
   res.set_header("location", "/x")

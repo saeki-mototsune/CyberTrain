@@ -12,6 +12,7 @@ ok   integer, float, boolean, date and datetime casts
 ok   attributes stay attr_accessors (no def writers: NOTES rule 43) and order_sql is emitted
 ok   emit rejects column names that are invalid; reserved ones and keywords are renamed, not refused
 ok   a reserved column name generates under <column>_column with a note; read_attribute and write_attribute take either spelling
+ok   a column named like a hook Ruby calls with an argument reads as <column>_column
 ok   a reserved column or keyword whose fallback name is taken still fails
 ok   a keyword column generates under <column>_column with a note that says keyword; a column named defined keeps its name
 ok   a keyword column whose fallback name is a column fails, naming the keyword
@@ -35,4 +36,4 @@ ok   scan_source skips class << self, nested classes and later classes
 ok   scan_source inside a module stops at the class's own end
 ok   view_methods_for picks the scanned methods of one model
 ok   outputs maps gen/models paths to sources for every table
-37 tests, 266 assertions, 0 failures
+38 tests, 286 assertions, 0 failures

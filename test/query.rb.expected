@@ -5,6 +5,8 @@ ok   decode_escapes (the loop under decode and Request.split_path) leaves '+' al
 ok   decode handles runs of escapes, '+', and non-ASCII text between them
 ok   decode_escapes refuses a percent sign that is not followed by two hex digits, whatever its caller checked
 ok   an invalid byte sequence is QueryMalformed, not IndexError, raw or percent-encoded
+ok   utf8! answers the validated UTF-8 text itself, or QueryMalformed
+ok   parse_valid and value_of_valid are parse_into and value_of for text utf8! has answered
 ok   decode of valid percent-encoded multibyte text still works, a malformed escape keeps its own message
 ok   parse of a 100-pair valid non-ASCII body still works
 ok   parse_into writes into the caller's Params, later pairs over earlier ones, and parse is parse_into on a fresh one
@@ -14,4 +16,4 @@ ok   parse of an empty string yields an empty Params
 ok   split_key splits scalar, nested and list-in-nested forms
 ok   split_key treats a malformed bracket as part of a plain key
 ok   encode round-trips through parse
-16 tests, 126 assertions, 0 failures
+18 tests, 154 assertions, 0 failures

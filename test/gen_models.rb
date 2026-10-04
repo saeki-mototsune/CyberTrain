@@ -614,6 +614,9 @@ test "emit rejects column names that are invalid; reserved ones and keywords are
    "to_json", "as_json",
    # The hooks Ruby calls on its own.
    "to_ary", "to_str", "to_hash", "to_proc", "to_int", "method_missing",
+   # The hooks Ruby calls with an argument (dup / clone, `def record.x`).
+   "initialize_copy", "initialize_dup", "initialize_clone",
+   "singleton_method_added", "singleton_method_removed", "singleton_method_undefined",
    # The one Kernel method the model calls on implicit self: a `raise` column
    # would turn Model#save!'s `raise RecordInvalid, ...` into a call of the reader.
    "raise", "fail"].each do |renamed|
@@ -701,6 +704,37 @@ test "a reserved column name generates under <column>_column with a note; read_a
   assert_includes file, "when :title then @title"
   # Only errors and to_param carry the template remark; hash does not.
   refute file.include?('"hash" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); templates')
+end
+
+# `record.dup` calls initialize_copy(orig) and `def record.x` calls
+# singleton_method_added(:x): a zero-arity reader of either name raises
+# ArgumentError there. The emitter has no database to run a record against
+# here, so the test asserts the emitted source: the reader is the renamed one
+# and the bare name is never an accessor.
+test "a column named like a hook Ruby calls with an argument reads as <column>_column" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "files" do |t|
+      t.string "initialize_copy"
+      t.string "singleton_method_added"
+    end
+  end
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
+  assert_lines(file, [
+    "attr_accessor :initialize_copy_column, :singleton_method_added_column",
+    "when :initialize_copy, :initialize_copy_column then @initialize_copy_column",
+    "when :singleton_method_added, :singleton_method_added_column then @singleton_method_added_column",
+    '"initialize_copy" => Cybertrain::Cast.to_sql(@initialize_copy_column),'
+  ])
+  refute file.include?("attr_accessor :initialize_copy,")
+  refute file.include?("attr_accessor :initialize_copy\n")
+  refute file.include?(":singleton_method_added,\n")
+  assert_equal "reserved", Cybertrain::Ident.unusable_reason("initialize_copy")
+  assert_equal "reserved", Cybertrain::Ident.unusable_reason("initialize_dup")
+  assert_equal "reserved", Cybertrain::Ident.unusable_reason("initialize_clone")
+  assert_equal "reserved", Cybertrain::Ident.unusable_reason("singleton_method_added")
+  assert_equal "reserved", Cybertrain::Ident.unusable_reason("singleton_method_removed")
+  assert_equal "reserved", Cybertrain::Ident.unusable_reason("singleton_method_undefined")
+  refute Cybertrain::Ident.shadowing_column?("singleton_method_added")
 end
 
 test "a reserved column or keyword whose fallback name is taken still fails" do

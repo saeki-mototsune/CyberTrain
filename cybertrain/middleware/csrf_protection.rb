@@ -44,8 +44,9 @@ module Cybertrain
     # the Router matches a route), and this middleware sits before the
     # Router in the stack (MethodOverride -> SessionStore -> CsrfProtection
     # -> Router), so ctx.params is always empty here. Read the token the
-    # way MethodOverride reads `_method`: one Query.value_of scan of the form
-    # body, then of the query string (no parsed tree), falling back to the
+    # way MethodOverride reads `_method`: one Query.value_of_valid scan of the
+    # form body, then of the query string (no parsed tree; both texts are
+    # already validated by then, Request#utf8_body), falling back to the
     # header.
     def token_from_request(req)
       value = ""

@@ -167,22 +167,20 @@ test "MethodOverride on a malformed form body raises QueryMalformed (a 400 throu
   assert_raises("QueryMalformed") { stack.call(build_ctx("POST", "/things/1?_method=%zz")) }
 end
 
-test "MethodOverride and the Router share one parse of the form body" do
+test "MethodOverride and the Router share one validation of the form body" do
   stack = Cybertrain::MethodOverride.new(endpoint)
   ctx = build_ctx("POST", "/things/1?q=1", "_method=delete", FORM)
-  # a reader that ran before the Router and kept the trees
-  q = ctx.request.query_params
-  f = ctx.request.form_params
+  # a tree a reader parsed before the Router, from the validated texts it owns
+  q = Cybertrain::Query.parse(ctx.request.utf8_query_string)
+  body_text = ctx.request.utf8_body
   stack.call(ctx)
   assert_equal "DELETE 1", ctx.response.body
-  assert f.equal?(ctx.request.form_params)
-  assert_equal "delete", f["_method"]
+  # every reader took the one validated text the Request holds
+  assert body_text.equal?(ctx.request.utf8_body)
+  assert_equal "_method=delete", body_text
   # the Router builds ctx.params as its own tree (query, then form, then the
-  # captures merged into a fresh Params); neither cache is ever changed, so
-  # the trees fetched before routing are still what the Request holds
+  # captures); a tree parsed earlier is never changed
   assert !ctx.params.equal?(q)
-  assert !ctx.params.equal?(f)
-  assert q.equal?(ctx.request.query_params)
   assert_equal "1", q["q"]
   assert_equal 1, q.to_h.length
   assert !q.key?("_method")
@@ -192,11 +190,8 @@ test "MethodOverride and the Router share one parse of the form body" do
   assert_equal "1", ctx.params["id"]
   ctx.params.set_value("_method", "changed")
   ctx.params.set_value("q", "changed")
-  assert_equal "delete", f["_method"]
   assert_equal "1", q["q"]
-  assert_equal 1, f.to_h.length
-  assert !f.key?("q")
-  assert !f.key?("id")
+  assert_equal "delete", Cybertrain::Query.parse(ctx.request.utf8_body)["_method"]
 end
 
 # SessionStore parses every cookie on every request but reads only its own,

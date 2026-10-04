@@ -127,23 +127,21 @@ module Cybertrain
     # Later sources win: query string, then the form body, then the route.
     # ctx.params is the request's OWN tree, built right here by parsing the
     # query string and then (for a form) the body straight into one fresh
-    # Params (Query.parse_into), then the route captures. The Request's
-    # caches (query_params, form_params, path_segments) are for middleware
-    # and app code and stay read-only and unshared: this does not read them
-    # (so a request whose middleware never asked for them builds no cache
-    # tree at all), and nothing in ctx.params aliases them. The parsed
+    # Params (Query.parse_valid, on the Request's validated texts: a form POST
+    # whose body MethodOverride already read is not validated again), then
+    # the route captures. There are no cached trees to alias: the parsed
     # Strings come fresh out of the decoder, and a capture is the very String
-    # the cached path_segments holds, so it is dup'd: `params[:id].upcase!` in
-    # an action must not change the cached segment Array that Static or a
-    # later middleware reads. One tree build per request, no node-by-node
-    # copy: copying a parsed tree into a fresh one cost more than the parse at
-    # the Query limits (648 ms against 546 ms for MAX_PAIRS pairs of MAX_DEPTH
-    # levels). The Query limits (QueryTooMany, QueryTooDeep) apply per parse
-    # call: one for the query string, one for the form body.
+    # the cached path_segments holds (shared with Static), so it is dup'd:
+    # `params[:id].upcase!` in an action must not change the segment Array
+    # that Static or a later middleware reads. One tree build per request, no
+    # node-by-node copy: copying a parsed tree into a fresh one cost more than
+    # the parse at the Query limits (648 ms against 546 ms for MAX_PAIRS pairs
+    # of MAX_DEPTH levels). The Query limits (QueryTooMany, QueryTooDeep)
+    # apply per parse call: one for the query string, one for the form body.
     def assemble_params(request, captured)
       params = Params.new
-      Query.parse_into(params, request.query_string)
-      Query.parse_into(params, request.body) if request.form?
+      Query.parse_valid(params, request.utf8_query_string)
+      Query.parse_valid(params, request.utf8_body) if request.form?
       # NOTE(Spinel): not `captured.each { |k, v| ... }` -- captured comes from
       # the nullable Route#match, and with a user-defined #to_s in the program
       # (SafeString) the pair's key reaches Params#set_value as a boxed value

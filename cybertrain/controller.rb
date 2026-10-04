@@ -2,6 +2,7 @@ require "json"
 require "cybertrain/context"
 require "cybertrain/html"
 require "cybertrain/http/client_error"
+require "cybertrain/logger"
 require "cybertrain/callback"
 require "cybertrain/views"
 require "cybertrain/template/helpers"
@@ -327,8 +328,15 @@ module Cybertrain
       # full "Cybertrain::Params::ParameterMissing" here would miss under
       # Spinel, where Class#name is the bare "ParameterMissing". Which
       # headers survive is Response#client_error!'s policy; then performed!
-      # so the chain stops.
+      # so the chain stops. classify also logs the "rejected request" info
+      # line, which the error pages write for the same fault one layer up
+      # (Cybertrain.logger, as Dev::ErrorPage does), so an answer given here
+      # is as visible as one given there. It is called only once status_for
+      # has said 400: for anything else classify would log an error line, and
+      # this method re-raises that exception to ErrorPages, which classifies
+      # (and logs) it again, once, as the 500.
       if ClientError.status_for(e) == 400
+        ClientError.classify(e, Cybertrain.logger)
         @response.client_error!(400, e.message)
         @response.performed!
         return nil

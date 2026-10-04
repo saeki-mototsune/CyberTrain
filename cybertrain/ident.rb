@@ -47,6 +47,19 @@ module Cybertrain
       # `?` and needs no entry.
       "to_ary", "to_str", "to_hash", "to_proc", "to_int", "to_a", "to_h",
       "to_sym", "to_io", "to_path", "to_regexp", "coerce", "method_missing",
+      # Hooks Ruby itself calls WITH an argument, which it finds whether they
+      # are public or private (so Object.instance_methods never lists the
+      # private ones): `record.dup` / `clone` call initialize_copy(orig)
+      # (initialize_dup / initialize_clone on the way), and defining, removing
+      # or undefining a singleton method (`def record.x`) calls
+      # singleton_method_added / _removed / _undefined. A zero-arity column
+      # reader in their place raises ArgumentError at that call. These are
+      # reserved, not merely shadowing: the problem is Ruby's call, not a
+      # method the caller could have wanted. script/check-reserved-names
+      # fails when one of Ruby's private hooks is missing here.
+      "initialize_copy", "initialize_dup", "initialize_clone",
+      "singleton_method_added", "singleton_method_removed",
+      "singleton_method_undefined",
       # The one Kernel method the model calls on implicit self (Model#save!
       # and #reload would dispatch `raise RecordInvalid, ...` to the
       # zero-arity reader), and its alias. No other private Kernel method is
@@ -66,12 +79,11 @@ module Cybertrain
       "object_id", "__id__", "send", "__send__", "public_send", "freeze",
       "display", "method", "methods", "public_method", "public_methods",
       "private_methods", "protected_methods", "singleton_class",
-      "singleton_method", "singleton_methods", "singleton_method_added",
-      "singleton_method_removed", "singleton_method_undefined",
-      "define_singleton_method", "remove_instance_variable",
-      "instance_variable_get", "instance_variable_set", "instance_variables",
-      "instance_eval", "instance_exec", "dup", "clone", "tap", "yield_self",
-      "itself", "extend", "enum_for", "to_enum"
+      "singleton_method", "singleton_methods", "define_singleton_method",
+      "remove_instance_variable", "instance_variable_get",
+      "instance_variable_set", "instance_variables", "instance_eval",
+      "instance_exec", "dup", "clone", "tap", "yield_self", "itself",
+      "extend", "enum_for", "to_enum"
     ]
 
     # Ruby keywords a column could be spelled like: `@end` / `def class` are

@@ -320,6 +320,9 @@ test "the scaffold refuses a keyword or reserved name with its own message" do
   assert_equal "'end' is a Ruby keyword and cannot name a reference", refuse.call("end", "reference")
   assert_equal "'errors' would shadow a method of the generated model (Cybertrain::Model); pick another field", refuse.call("errors", "field")
   assert_equal "'hash' would shadow a method of the generated model (Cybertrain::Model); pick another resource", refuse.call("hash", "resource")
+  # Hooks Ruby calls with an argument (dup, `def record.x`) are reserved too.
+  assert_equal "'initialize_copy' would shadow a method of the generated model (Cybertrain::Model); pick another field", refuse.call("initialize_copy", "field")
+  assert_equal "'singleton_method_added' would shadow a method of the generated model (Cybertrain::Model); pick another field", refuse.call("singleton_method_added", "field")
   # Ident answers no "shadowing" reason any more.
   assert_equal "", Cybertrain::Ident.unusable_reason("method")
   assert_equal "", Cybertrain::Ident.unusable_reason("display")

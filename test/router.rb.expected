@@ -10,7 +10,7 @@ ok   a segment with a malformed percent-escape stays literal
 ok   split_path drops empty segments and decodes
 ok   split_path decodes escapes and multibyte text in one segment and keeps '+' a plus
 ok   split_path: an invalid byte sequence in a decoded segment is QueryMalformed (400)
-ok   the path segment policy: a malformed escape stays literal before any validity check
+ok   the path segment policy: the whole path is validated, then a malformed escape stays literal
 ok   the Router reads the request's cached path_segments; an invalid decoded segment is the 400
 ok   a large non-ASCII path segment with an escape splits without a quadratic library call
 ok   path_for builds paths from route names
@@ -18,11 +18,11 @@ ok   Route#path raises ArgumentError when a segment is missing
 ok   Route#match returns captures or nil
 ok   unmatched request gets a plain-text 404
 ok   params assembly order is query < form < route
-ok   ctx.params is the Router's own tree: neither parse cache of the Request is ever changed
-ok   a reader after routing and a request without a form body get the same untouched query tree
-ok   ctx.params never aliases the Request's caches: mutating a value in an action changes nothing the middleware reads
+ok   ctx.params is the Router's own tree: built from the Request's validated texts, later sources win
+ok   a request without a form body: ctx.params has the query and the capture, a later parse of the text is unaffected
+ok   ctx.params never aliases the Request's path segments: mutating a capture in an action changes nothing Static reads
 ok   later sources still win when each is parsed straight into ctx.params
 ok   the Query limits apply per parse call: the query string and the form body each get MAX_PAIRS
 ok   form body is ignored unless the request is a form
 ok   route params and escaped output work in one program
-27 tests, 128 assertions, 0 failures
+27 tests, 121 assertions, 0 failures

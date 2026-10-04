@@ -12,9 +12,11 @@ module Cybertrain
   module Cookies
     # Query.decode, falling back to the raw text when it raises QueryMalformed:
     # a malformed escape or an invalid UTF-8 byte sequence (raw, or "%81"),
-    # on both runtimes (Query.decode checks both itself: Spinel's decoder is
-    # lenient, NOTES rule 28, and CRuby's byteindex would raise IndexError on
-    # such text, rule 52). A plain non-yielding
+    # on both runtimes (Query.decode goes through decode_escapes, which
+    # validates the text as UTF-8 first (Query.utf8!) and then decodes it
+    # itself: Spinel's decoder is lenient, NOTES rule 28, and CRuby's byteindex
+    # would raise IndexError on such text, rule 52). The raw value is kept on
+    # QueryMalformed, never the half-decoded one. A plain non-yielding
     # method with one rescue clause by class: fine under Spinel (NOTES rules
     # 32, 47).
     def self.decode(value)

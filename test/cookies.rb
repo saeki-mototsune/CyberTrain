@@ -27,6 +27,8 @@ test "decode keeps the raw value of an invalid byte sequence (raw or percent-enc
   assert_equal 4, Cybertrain::Cookies.decode("%41\x81").bytesize
   assert_equal "%81", Cybertrain::Cookies.decode("%81")
   assert_equal "%C3", Cybertrain::Cookies.decode("%C3")
+  # half a character raw plus its other half escaped: also kept raw
+  assert_equal 4, Cybertrain::Cookies.decode("\xC3%A9").bytesize
   cookies = Cybertrain::Cookies.parse("c=%81; d=ok; e=%C3%A9")
   assert_equal({ "c" => "%81", "d" => "ok", "e" => "\u00e9" }, cookies)
 end

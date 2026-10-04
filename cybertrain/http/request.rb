@@ -21,8 +21,8 @@ module Cybertrain
       @body = body
       @remote_addr = remote_addr
       @http_version = http_version
-      @query_params_cache = nil
-      @form_params_cache = nil
+      @utf8_query_string = nil
+      @utf8_body = nil
       @path_segments_cache = nil
     end
 
@@ -113,76 +113,77 @@ module Cybertrain
       content_type == "application/json"
     end
 
-    # The query string parsed into a read-only Params, built only when
-    # someone asks (middleware or app code that wants the whole tree, say to
-    # rebuild a pagination URL after `super`) and then once per request. A
-    # parse that raises (QueryTooMany, QueryMalformed, ...) is not cached: it
-    # propagates and the request ends as a 400.
+    # What the request exposes of its parameters, each validated once:
+    # utf8_query_string and utf8_body (the validated UTF-8 text of the
+    # fields, see below), form_value / query_value (one key), and
+    # path_segments. There is no cached parameter tree: nobody in the
+    # framework asks for one (the Router builds the controller's own with
+    # Query.parse_valid, MethodOverride and CsrfProtection read one key). An
+    # app or middleware that wants a whole tree calls
+    # `Query.parse(request.utf8_query_string)` and owns it, a private,
+    # writable Params.
     #
-    # It is NOT what the Router builds ctx.params from, and neither
-    # MethodOverride nor CsrfProtection touch it: they read their one key
-    # with #query_value / #form_value, and the Router parses the query string
-    # and the form body straight into the controller's own tree
-    # (Router#assemble_params), so a request that nobody asks for the whole
-    # tree costs no tree build here at all. The cached tree is shared by
-    # every holder, so a holder that mutated it would silently change what the
-    # others see: it is marked read_only! before it is cached (set_value,
-    # set_path, child!, merge! and the rest raise RuntimeError; a holder that
-    # needs to change params builds its own: Params.new.merge!(request.query_params)).
-    # The cache ivars start as nil and are assigned from a method's result,
-    # as a nullable ivar must be (NOTES rule 7).
-    def query_params
-      cached = @query_params_cache
+    # The query string as validated UTF-8 text (Query.utf8!: a raw or
+    # percent-encoded invalid sequence is QueryMalformed whatever the String's
+    # tag), once per request: every reader (query_value, the Router's parse)
+    # takes this text and skips its own O(length) validation. For a String
+    # that is already UTF-8 (every one under Spinel) it is the field itself;
+    # for a binary CRuby socket buffer it is one copy. A raise is not cached:
+    # every call raises again and the request still ends as that 400. The ivar
+    # starts as nil and is assigned from a method's result (NOTES rule 7).
+    def utf8_query_string
+      cached = @utf8_query_string
       return cached unless cached.nil?
 
-      parsed = Query.parse(@query_string).read_only!
-      @query_params_cache = parsed
-      parsed
+      text = Query.utf8!(@query_string)
+      @utf8_query_string = text
+      text
     end
 
-    # The body parsed into a read-only Params, built only when asked for and
-    # then once per request (see #query_params; the Router does not use it
-    # either). Only meaningful for a form body: callers check #form? first,
-    # and any other body is not parsed at all.
-    def form_params
-      cached = @form_params_cache
+    # The body as validated UTF-8 text, once per request, like
+    # #utf8_query_string. Only meaningful for a form body (#form?): callers
+    # check that first, and any other body is never validated. On a form POST
+    # this is where the body is validated: MethodOverride reads it first, then
+    # CsrfProtection and the Router's parse reuse the result, so a hostile
+    # body costs one O(body) validation, not one per reader.
+    def utf8_body
+      cached = @utf8_body
       return cached unless cached.nil?
 
-      parsed = Query.parse(@body).read_only!
-      @form_params_cache = parsed
-      parsed
+      text = Query.utf8!(@body)
+      @utf8_body = text
+      text
     end
 
     # The decoded value of one key of the query string, "" when absent: one
-    # scan of the string, no tree and no cache (Query.value_of has the
+    # scan of the validated text, no tree (Query.value_of_valid has the
     # semantics: last pair wins, `name[]` evicts, limits and malformed input
     # raise as a parse would). For the framework middleware that read a
     # single field before routing.
     def query_value(name)
-      Query.value_of(@query_string, name)
+      Query.value_of_valid(utf8_query_string, name)
     end
 
     # The same for the form body, one scan per call. Only meaningful for a
-    # form body (#form?): callers check that first, as they do for
-    # #form_params.
+    # form body (#form?): callers check that first.
     def form_value(name)
-      Query.value_of(@body, name)
+      Query.value_of_valid(utf8_body, name)
     end
 
     # The path split into percent-decoded segments, once per request:
     # "/posts/1/" -> ["posts", "1"]. Static (every GET/HEAD) and the Router
-    # both need them, and decoding a segment containing a "%" costs four byte
-    # scans plus allocations (valid_escapes?, check_valid!, decode_valid and
-    # its own check_valid! on the output), so it is done once per request. The decision to answer 400 for an invalid UTF-8 byte
-    # sequence in a decoded segment (QueryMalformed) is therefore made in one
+    # both need them, and the path is validated whole and each segment holding
+    # a "%" decoded (valid_escapes?, decode_valid and its result check), so it
+    # is done once per request. The decision to answer 400 for an invalid
+    # UTF-8 byte sequence in the path (QueryMalformed) is therefore made in one
     # place, by whichever reader comes first (Static for GET/HEAD, the Router
     # otherwise); a raise is not cached, so every later call raises again and
     # the request still ends as that 400. The returned Array is the cached
-    # one, shared by both readers: callers must not mutate it, nor the Strings in it (neither does: they
-    # only read, compare and join; the Router dups a capture before it puts it
-    # into the controller's params); one that needs to change either dups it.
-    # The ivar starts as nil and is assigned from a method's result (NOTES
-    # rule 7).
+    # one, shared by both readers: callers must not mutate it, nor the Strings
+    # in it (neither does: they only read, compare and join; the Router dups a
+    # capture before it puts it into the controller's params); one that needs
+    # to change either dups it. The ivar starts as nil and is assigned from a
+    # method's result (NOTES rule 7).
     def path_segments
       cached = @path_segments_cache
       return cached unless cached.nil?
@@ -194,6 +195,12 @@ module Cybertrain
 
     # "/posts/1/" -> ["posts", "1"]; each segment is percent-decoded, but a
     # "+" stays a plus (it only means space in query strings and forms).
+    # The WHOLE path is validated once, first, as UTF-8 whatever the String's
+    # tag (Query.utf8!): a raw invalid byte anywhere in it is QueryMalformed
+    # (a 400, as Rails answers for an invalid path encoding), also in a
+    # segment that is never decoded. Doing it on the whole path before
+    # `split` also keeps `split` itself safe: CRuby's raises ArgumentError on
+    # a broken UTF-8-tagged String (Spinel's accepts it, NOTES rule 52).
     # A segment with a malformed escape ("%ZZ", a trailing "%" or "%2") is
     # kept literal: CRuby's decoder raises ArgumentError on it while Spinel's
     # silently yields a NUL byte, so neither runtime ever sees it. That
@@ -210,44 +217,32 @@ module Cybertrain
     # false for the plus flag keeps "+" literal without a `gsub("+", "%2B")`
     # pass over the segment.
     #
-    # The order per segment holding a "%", the same on both runtimes:
-    #   (i)   Query.valid_escapes?(seg) false -> the segment stays literal,
-    #         whatever else it holds (a malformed escape never decodes);
-    #   (ii)  Query.check_valid!(seg): a raw invalid byte in a segment that
-    #         WILL be decoded is QueryMalformed (400);
-    #   (iii) Query.decode_valid(seg, false), whose result is checked too:
-    #         "%81" decodes to an invalid byte, QueryMalformed (400).
+    # Per segment holding a "%", the same on both runtimes:
+    #   (i)  Query.valid_escapes?(seg) false -> the segment stays literal;
+    #   (ii) Query.decode_valid(seg, false), whose result check catches an
+    #        escape that decodes to an invalid byte ("%81").
     # A segment without any "%" is never decoded and stays literal (404 by
-    # non-match). Escapes before validity, so that the policy is not
-    # runtime-dependent (checking validity first would make /\x81%zz a 400
-    # under Spinel, whose Strings are UTF-8, and a 404 under CRuby, whose
-    # server path is a binary buffer that always passes check_valid!):
-    #   path       Spinel (UTF-8)      CRuby (binary buffer)
-    #   /\x81%zz   literal (404)       literal (404)
-    #   /\x81%41   400 (check_valid!)  400 (result check: the raw \x81
-    #                                   survives decoding, then fails)
-    #   /%81       400 (result check)  400 (result check)
-    #   /%zz       literal (404)       literal (404)
-    # A UTF-8-tagged String (a test) under CRuby takes the check_valid! road
-    # for /\x81%41, same answer. valid_escapes? runs on a possibly broken
-    # String here, which is why it searches its next "%" from i + 1 (an ASCII
-    # hex digit, always a character boundary), not i + 3 (NOTES rule 52).
-    # A raw byte in the path can only be exercised end-to-end on Spinel:
-    # under CRuby `"/\x81".split("/")` raises ArgumentError for a UTF-8-tagged
-    # String, so test/router.rb tests those two segments at the Query level.
+    # non-match). The path is valid UTF-8 before either runs, so the answers
+    # do not depend on the runtime or the tag:
+    #   /%zz       literal (404)
+    #   /%81       400 (result check)
+    #   /\x81%zz   400 (whole-path check)
+    #   /\x81%41   400 (whole-path check)
+    #   /\xC3%A9   400 (whole-path check: half a character raw is not valid,
+    #              though CRuby would decode "\xC3" + "%A9" as "e-acute" in a
+    #              binary buffer)
     #
     # Lives here, not in Router: Router requires Middleware -> Context ->
     # Request, so Request requiring Router would be a require cycle (and
     # CRuby 3.3 only warns about it, half-loading one of the two).
     def self.split_path(path)
       segments = []
-      path.split("/").each do |seg|
+      Query.utf8!(path).split("/").each do |seg|
         next if seg.empty?
 
         if seg.byteindex("%").nil? || !Query.valid_escapes?(seg)
           segments << seg
         else
-          Query.check_valid!(seg)
           segments << Query.decode_valid(seg, false)
         end
       end

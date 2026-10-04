@@ -168,4 +168,4 @@ route resources :displays
 note: 'display' shadows Object#display on a model that references displays (belongs_to reader); call it as record.display
 ok   a name that shadows an Object method is accepted with a note
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-17 tests, 181 assertions, 0 failures
+17 tests, 185 assertions, 0 failures

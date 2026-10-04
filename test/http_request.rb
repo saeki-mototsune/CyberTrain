@@ -113,51 +113,42 @@ test "body and headers are exposed" do
   assert_equal "10.0.0.1", req.remote_addr
 end
 
-test "query_params and form_params parse once and return the same Params every time" do
-  req = Request.new("POST", "/p?a=1&b[]=2", { "content-type" => "application/x-www-form-urlencoded" }, "c=3&d[e]=4")
-  q = req.query_params
-  assert_equal "1", q["a"]
-  assert_equal ["2"], q.list("b")
-  assert q.equal?(req.query_params)
-  f = req.form_params
-  assert_equal "3", f["c"]
-  assert_equal "4", f.nested("d")["e"]
-  assert f.equal?(req.form_params)
-  assert !q.equal?(f)
-end
-
-test "query_params and form_params are read-only shared caches" do
-  req = Request.new("POST", "/p?a=1&b[x]=2", { "content-type" => "application/x-www-form-urlencoded" }, "c=3&d[e]=4")
-  assert req.query_params.read_only?
-  assert req.form_params.read_only?
-  assert req.query_params.nested("b").read_only?
-  assert req.form_params.nested("d").read_only?
-  msg = assert_raises("RuntimeError") { req.query_params.set_value("x", "1") }
-  assert_includes msg, "request parameters are read-only"
-  assert_raises("RuntimeError") { req.form_params.set_value("x", "1") }
-  assert_raises("RuntimeError") { req.query_params.nested("b").set_value("x", "1") }
-  assert_raises("RuntimeError") { req.query_params.merge!(req.form_params) }
-  # A failed write changed nothing, and the cache is still the same object.
-  assert req.query_params.equal?(req.query_params)
-  assert_equal "1", req.query_params["a"]
-  refute req.query_params.key?("x")
-  # An empty query and body are read-only too.
+test "utf8_query_string and utf8_body are the validated text, the same object on every call" do
+  req = Request.new("POST", "/p?a=1&caf%C3%A9=2&\u00e9=x", { "content-type" => "application/x-www-form-urlencoded" }, "c=3&d[e]=\u3042")
+  q = req.utf8_query_string
+  assert_equal "a=1&caf%C3%A9=2&\u00e9=x", q
+  assert q.equal?(req.utf8_query_string)
+  b = req.utf8_body
+  assert_equal "c=3&d[e]=\u3042", b
+  assert b.equal?(req.utf8_body)
+  # A String that is already UTF-8 is not copied (and under Spinel every String is).
+  assert q.equal?(req.query_string)
+  assert b.equal?(req.body)
+  # The readers take the same text: one validation per field.
+  assert_equal "3", req.form_value("c")
+  assert_equal "1", req.query_value("a")
+  assert b.equal?(req.utf8_body)
+  assert q.equal?(req.utf8_query_string)
+  # An empty field is valid text too.
   empty = Request.new("GET", "/", {}, "")
-  assert empty.query_params.read_only?
-  assert empty.form_params.read_only?
-  # The way to change them: a writable copy that leaves the cache alone.
-  mine = Cybertrain::Params.new.merge!(req.query_params)
-  refute mine.read_only?
-  mine.set_value("a", "changed")
-  assert_equal "1", req.query_params["a"]
+  assert_equal "", empty.utf8_query_string
+  assert_equal "", empty.utf8_body
+  assert empty.utf8_body.equal?(empty.utf8_body)
 end
 
-test "query_params and form_params of an empty query and body are cached empty Params" do
-  req = Request.new("GET", "/", {}, "")
-  assert req.query_params.empty?
-  assert req.query_params.equal?(req.query_params)
-  assert req.form_params.empty?
-  assert req.form_params.equal?(req.form_params)
+test "utf8_query_string and utf8_body: a raw invalid byte raises QueryMalformed on every call" do
+  req = Request.new("POST", "/p?a=\x81", {}, "b=\x81")
+  assert_raises("QueryMalformed") { req.utf8_query_string }
+  assert_raises("QueryMalformed") { req.utf8_query_string }
+  assert_raises("QueryMalformed") { req.utf8_body }
+  assert_raises("QueryMalformed") { req.utf8_body }
+  # so do the readers built on them, also for a key that is not asked for
+  assert_raises("QueryMalformed") { req.query_value("x") }
+  assert_raises("QueryMalformed") { req.form_value("x") }
+  # half a character raw plus its other half escaped is not valid text
+  half = Request.new("POST", "/p?a=\xC3%A9", {}, "a=\xC3%A9")
+  assert_raises("QueryMalformed") { half.utf8_query_string }
+  assert_raises("QueryMalformed") { half.utf8_body }
 end
 
 test "path_segments decodes once and returns the same Array every time" do
@@ -173,6 +164,16 @@ test "path_segments: an invalid decoded byte sequence is QueryMalformed and is n
   req = Request.new("GET", "/a/%81", {}, "")
   assert_raises("QueryMalformed") { req.path_segments }
   assert_raises("QueryMalformed") { req.path_segments }
+end
+
+test "path_segments: a raw invalid byte anywhere in the path is QueryMalformed, as is half a character raw" do
+  ["/\x81", "/a/\x81b/c", "/\x81%zz", "/\x81%41", "/\xC3%A9"].each do |path|
+    req = Request.new("GET", path, {}, "")
+    assert_raises("QueryMalformed") { req.path_segments }
+    assert_raises("QueryMalformed") { req.path_segments }
+  end
+  # a malformed escape alone stays literal
+  assert_equal ["%zz"], Request.new("GET", "/%zz", {}, "").path_segments
 end
 
 # form_value / query_value raising inside a helper method, not in the
@@ -197,9 +198,6 @@ test "form_value and query_value: the last pair wins, absent is empty" do
   assert_equal "", req.query_value("z")
   assert_equal "", Request.new("POST", "/p", {}, "").form_value("m")
   assert_equal "", Request.new("GET", "/p", {}, "").query_value("m")
-  # one scan each, no cache; the read-only trees are separate and still built on demand
-  assert_equal "f2", req.form_params["m"]
-  assert req.form_params.equal?(req.form_params)
 end
 
 test "form_value and query_value decode keys and values like a parse" do
@@ -253,14 +251,6 @@ test "form_value on the 4096 x 32 body answers like the parse" do
   assert_equal 4096, body.split("&").length
   assert_equal "put", Request.new("POST", "/p", {}, body).form_value("_method")
   assert_equal "", Request.new("POST", "/p", {}, body).form_value("a")
-end
-
-test "a parse that raises is not cached: every call raises again" do
-  req = Request.new("POST", "/p?x=%zz", {}, "a=%zz")
-  assert_raises("QueryMalformed") { req.query_params }
-  assert_raises("QueryMalformed") { req.query_params }
-  assert_raises("QueryMalformed") { req.form_params }
-  assert_raises("QueryMalformed") { req.form_params }
 end
 
 Cybertrain::Test.run!

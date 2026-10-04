@@ -12,15 +12,14 @@ ok   method predicates
 ok   override_method! upper-cases the new method
 ok   cookie_header returns the Cookie header or empty string
 ok   body and headers are exposed
-ok   query_params and form_params parse once and return the same Params every time
-ok   query_params and form_params are read-only shared caches
-ok   query_params and form_params of an empty query and body are cached empty Params
+ok   utf8_query_string and utf8_body are the validated text, the same object on every call
+ok   utf8_query_string and utf8_body: a raw invalid byte raises QueryMalformed on every call
 ok   path_segments decodes once and returns the same Array every time
 ok   path_segments: an invalid decoded byte sequence is QueryMalformed and is not cached
+ok   path_segments: a raw invalid byte anywhere in the path is QueryMalformed, as is half a character raw
 ok   form_value and query_value: the last pair wins, absent is empty
 ok   form_value and query_value decode keys and values like a parse
 ok   form_value and query_value: name[]= and name[x]= evict an earlier scalar, a later name= writes it again
 ok   form_value and query_value: MAX_PAIRS segments are counted, one more is QueryTooMany; invalid bytes are QueryMalformed
 ok   form_value on the 4096 x 32 body answers like the parse
-ok   a parse that raises is not cached: every call raises again
-25 tests, 129 assertions, 0 failures
+24 tests, 128 assertions, 0 failures

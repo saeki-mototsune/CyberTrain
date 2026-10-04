@@ -14,7 +14,13 @@
 # otherwise fail every PR with no change to the framework. Names Ruby exposes
 # that are in neither list are printed as a warning and do not fail the step.
 # The lists themselves (a name in both, or a keyword in either) stay a hard
-# check: that is about the framework's own files. Run by CI.
+# check: that is about the framework's own files. So is the private hooks
+# check below: Ruby's own hooks that it calls with an argument
+# (initialize_copy on `dup`, singleton_method_added on `def record.x`, ...)
+# are private, so Object.instance_methods never lists them, yet a column
+# reader of that name raises ArgumentError at Ruby's call. They must be in
+# RESERVED_COLUMN_NAMES, never a plain reader and never merely "shadowing".
+# Run by CI.
 #
 # usage: ruby script/check-reserved-names
 require File.expand_path("../cybertrain/ident", __dir__)
@@ -47,6 +53,16 @@ usable = ->(n) { Cybertrain::Ident.column?(n) && !Cybertrain::Ident.keyword?(n) 
 object_names = (Object.instance_methods + BasicObject.private_instance_methods).map(&:to_s).uniq.sort.select(&usable)
 names = names.uniq.sort.select(&usable)
 
+# Ruby's private hooks: a fixed list (so a Ruby that renames or drops one
+# does not shrink the check) plus whatever this Ruby's private methods show
+# that is shaped like a hook (`*_added`, `*_removed`, `*_undefined`,
+# `*_missing`, `initialize_*`). `respond_to_missing?` and the like end in `?`
+# and are not columns, so `usable` drops them.
+fixed_hooks = %w[initialize_copy initialize_dup initialize_clone method_missing respond_to_missing?
+                 singleton_method_added singleton_method_removed singleton_method_undefined]
+private_hooks = (fixed_hooks + (Object.private_instance_methods + BasicObject.private_instance_methods)
+  .map(&:to_s).grep(/(?:_added|_removed|_undefined|_missing)\z|\Ainitialize_/)).uniq.sort.select(&usable)
+
 reserved = Cybertrain::Ident::RESERVED_COLUMN_NAMES
 shadowing = Cybertrain::Ident::SHADOWING_COLUMN_NAMES
 missing = names - reserved - shadowing
@@ -55,15 +71,21 @@ advisory = object_names - names - reserved - shadowing
 # reported by whichever check runs first and drift the next time one is
 # edited.
 twice = (reserved & shadowing) + ((reserved + shadowing) & Cybertrain::Ident::RUBY_KEYWORDS)
+hooks_missing = private_hooks - reserved
 advisory.each do |n|
   warn "advisory: Object##{n} is in neither list; add it to SHADOWING_COLUMN_NAMES when convenient"
 end
-if missing.empty? && twice.empty?
-  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names)"
+if missing.empty? && twice.empty? && hooks_missing.empty?
+  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved)"
 else
   unless missing.empty?
     warn "check-reserved-names: cybertrain/model.rb defines #{missing.map(&:inspect).join(", ")} " \
          "but neither Cybertrain::Ident::RESERVED_COLUMN_NAMES nor SHADOWING_COLUMN_NAMES (cybertrain/ident.rb) has them; add them"
+  end
+  unless hooks_missing.empty?
+    warn "check-reserved-names: Ruby calls #{hooks_missing.map(&:inspect).join(", ")} on a record with an argument (a private hook, so " \
+         "Object.instance_methods does not show it); it must be in Cybertrain::Ident::RESERVED_COLUMN_NAMES " \
+         "(cybertrain/ident.rb), not SHADOWING_COLUMN_NAMES, or a column so named raises ArgumentError at Ruby's call"
   end
   warn "check-reserved-names: #{twice.map(&:inspect).join(", ")} listed twice (reserved, shadowing or keyword)" unless twice.empty?
   exit 1
