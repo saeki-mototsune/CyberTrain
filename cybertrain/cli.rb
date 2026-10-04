@@ -67,7 +67,7 @@ module Cybertrain
       when "migration" then run_in_app { |_name| run_spin(Build.db_commands(["migrate"])) }
       when "db" then run_in_app { |_name| run_db(argv) }
       when "server" then run_in_app { |name| run_server(name, argv) }
-      when "build" then run_in_app { |name| Toolchain.ensure! ? Build.run(".", name) : 1 }
+      when "build" then run_in_app { |name| build_app(name) }
       when "spin" then run_spin_passthrough(argv)
       when "setup" then Toolchain.setup(argv[1, argv.size - 1])
       when "doctor" then run_doctor(argv)
@@ -161,6 +161,14 @@ module Cybertrain
         return 1
       end
       yield name
+    end
+
+    # `cybertrain build`: the one dist/ name check, made before the toolchain
+    # is fetched or any spin command runs; Build.run assumes a name that got
+    # past it.
+    def self.build_app(name)
+      Build.require_dist_name!(name)
+      Toolchain.ensure! ? Build.run(".", name) : 1
     end
 
     # Runs spin commands in turn once a Spinel of the pinned release is on

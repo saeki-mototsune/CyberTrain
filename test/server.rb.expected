@@ -15,6 +15,8 @@ ok   a pipelined multibyte body is framed by bytes, not characters
 ok   chunked transfer encoding gets 411 and the connection closes
 ok   an invalid Content-Length gets 400
 ok   an exception in the app gets 500 and the connection stays usable
+ok   parameters past Query's limits get 400, not 500, and the connection stays usable
+ok   a JSON::ParserError in the app gets 500 and the server keeps serving
 ok   an idle keep-alive connection is closed after read_timeout
 ok   a failed accept is logged and the server keeps accepting
 ok   stop makes the port refuse connections
@@ -26,4 +28,4 @@ ok   drain_timeout bounds the wait for a request that takes too long
 ok   start raises Cybertrain::PortInUse when the port is already bound
 ok   PortInUse names the reason the port could not be bound
 ok   starting a server on port 80 as non-root reports permission denied
-28 tests, 84 assertions, 0 failures
+30 tests, 92 assertions, 0 failures

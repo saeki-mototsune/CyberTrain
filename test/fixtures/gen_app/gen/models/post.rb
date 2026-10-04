@@ -3,6 +3,7 @@ class PostRelation < Cybertrain::Relation
   def where(h) = (add_where(h); self)
   def where_sql(s, b = []) = (add_where_sql(s, b); self)
   def order(o) = (set_order(o); self)
+  def order_sql(s) = (add_order_sql(s); self)
   def limit(n) = (set_limit(n); self)
   def offset(n) = (set_offset(n); self)
 
@@ -112,6 +113,7 @@ class Post < Cybertrain::Model
   def self.all = PostRelation.new("posts")
   def self.where(h) = all.where(h)
   def self.order(o) = all.order(o)
+  def self.order_sql(s) = all.order_sql(s)
   def self.limit(n) = all.limit(n)
   def self.find(id) = all.find(id)
   def self.find_by(h) = all.find_by(h)
@@ -129,14 +131,14 @@ class Post < Cybertrain::Model
 
   def read_association(name)
     case name
-    when :comments then comments
+    when :comments then self.comments
     else nil
     end
   end
 
   def call_view_method(name)
     case name
-    when :summary then summary
+    when :summary then self.summary
     else nil
     end
   end

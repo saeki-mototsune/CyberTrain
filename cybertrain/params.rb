@@ -2,9 +2,11 @@
 #
 # Rack/Rails represent params as one Hash mixing String, Array and nested
 # Hash values. Spinel's typed containers reject that mix, so a Params keeps
-# three separate typed Hashes (scalars, lists, nested Params) plus an
-# insertion-order Array per kind, and exposes the Rails-flavoured surface
-# (#require, #permit, #[]) on top of them.
+# three separate typed Hashes (scalars, lists, nested Params) and exposes the
+# Rails-flavoured surface (#require, #permit, #[]) on top of them. Key order
+# is the insertion order of each Hash (Ruby and Spinel Hashes are ordered), so
+# evicting a key is one O(1) Hash#delete (per-kind order Arrays would make
+# every kind change an O(n) Array#delete, i.e. quadratic parsing).
 module Cybertrain
   class Params
     class ParameterMissing < StandardError
@@ -12,11 +14,8 @@ module Cybertrain
 
     def initialize
       @values = {}
-      @value_order = []
       @lists = {}
-      @list_order = []
       @children = {}
-      @child_order = []
     end
 
     def [](key)
@@ -24,7 +23,8 @@ module Cybertrain
     end
 
     def list(key)
-      @lists[key.to_s] || []
+      arr = @lists[key.to_s]
+      arr.nil? ? [] : arr
     end
 
     # A fresh, empty Params for an absent key -- it is never stored, so
@@ -37,10 +37,6 @@ module Cybertrain
     def key?(key)
       k = key.to_s
       @values.key?(k) || @lists.key?(k) || @children.key?(k)
-    end
-
-    def keys
-      @value_order + @list_order + @child_order
     end
 
     def require(key)
@@ -61,47 +57,59 @@ module Cybertrain
       permitted
     end
 
+    # Rack-style: setting a key as one kind (scalar/list/nested) deletes it
+    # from the other two (a no-op when absent), so a name is only ever one
+    # kind at a time and the last write wins.
     def set_value(key, value)
       k = key.to_s
-      evict_from_list(k)
-      evict_from_children(k)
-      @value_order << k unless @values.key?(k)
+      @lists.delete(k)
+      @children.delete(k)
       @values[k] = value
     end
 
     def add_list_value(key, value)
       k = key.to_s
-      evict_from_values(k)
-      evict_from_children(k)
-      unless @lists.key?(k)
-        @lists[k] = []
-        @list_order << k
-      end
+      @values.delete(k)
+      @children.delete(k)
+      @lists[k] = [] unless @lists.key?(k)
       @lists[k] << value
     end
 
     def child!(key)
       k = key.to_s
-      evict_from_values(k)
-      evict_from_list(k)
+      @values.delete(k)
+      @lists.delete(k)
       unless @children.key?(k)
         @children[k] = Params.new
-        @child_order << k
       end
       @children[k]
     end
 
     # path comes from Query.split_key: ["id"], ["tags", ""] (append to
     # list), or ["post", "title"] / ["post", "tags", ""] (one hop per
-    # nesting level, recursing into the child Params).
+    # nesting level). Walks down with a cursor node instead of recursing, so
+    # the stack stays flat however long the path is (Query caps it at
+    # MAX_DEPTH, but that is not the only guard).
     def set_path(path, value)
-      if path.length == 1
-        set_value(path[0], value)
-      elsif path.length == 2 && path[1] == ""
-        add_list_value(path[0], value)
-      else
-        child!(path[0]).set_path(path[1..-1], value)
+      node = self
+      i = 0
+      done = false
+      until done
+        remaining = path.length - i
+        if remaining <= 0
+          done = true
+        elsif remaining == 1
+          node.set_value(path[i], value)
+          done = true
+        elsif remaining == 2 && path[i + 1] == ""
+          node.add_list_value(path[i], value)
+          done = true
+        else
+          node = node.child!(path[i])
+          i += 1
+        end
       end
+      nil
     end
 
     # other wins on conflicts: a scalar or list key present on other
@@ -109,83 +117,88 @@ module Cybertrain
     # present on both sides is merged recursively (so a key only the
     # receiver's nested Params has survives). A key only this Params has,
     # at any level, is left untouched. other is never mutated, and nothing
-    # of other's internal Arrays/Hashes/Params is aliased into self --
-    # every list and nested Params that crosses over is copied.
+    # of other's internal Arrays/Hashes/Params/Strings is aliased into self
+    # -- every scalar, list element and nested Params that crosses over is
+    # copied (a String is mutable, so `dst["q"] << "x"` must not change
+    # other), so an app that merges one tree into another gets two
+    # independent trees.
+    #
+    # Iterative: dsts[i] receives srcs[i], and each nested pair found while
+    # merging one level is appended to the two work lists. Levels are
+    # independent of each other, so visiting order does not matter.
     def merge!(other)
-      other.value_order.each { |k| set_value(k, other.raw_values[k]) }
-      other.list_order.each do |k|
-        evict_from_values(k)
-        evict_from_children(k)
-        @list_order << k unless @lists.key?(k)
-        @lists[k] = other.lists[k].dup
-      end
-      other.child_order.each do |k|
-        existing = @children[k]
-        if existing.nil?
-          evict_from_values(k)
-          evict_from_list(k)
-          @child_order << k
-          @children[k] = Params.new.merge!(other.children[k])
-        else
-          existing.merge!(other.children[k])
+      dsts = [self]
+      srcs = [other]
+      i = 0
+      while i < dsts.length
+        dst = dsts[i]
+        src = srcs[i]
+        src.raw_values.keys.each { |k| dst.set_value(k, src.raw_values[k].dup) }
+        src.lists.keys.each { |k| dst.replace_list!(k, Params.copy_strings(src.lists[k])) }
+        src.children.keys.each do |k|
+          dsts << dst.child!(k)
+          srcs << src.children[k]
         end
+        i += 1
       end
       self
     end
 
+    # Scalars only. Params has no `keys` method on purpose: it would share its name with Hash#keys in a
+    # class whose own code (to_h, inspect, merge!) calls Hash#keys on its
+    # Hashes, the shape NOTES rule 51 records as mis-dispatching under
+    # Spinel. Ask key? for one name, or to_h / inspect for the whole level.
     def to_h
       h = {}
-      @value_order.each { |k| h[k] = @values[k] }
+      @values.keys.each { |k| h[k] = @values[k] }
       h
     end
 
     def empty?
-      @value_order.empty? && @list_order.empty? && @child_order.empty?
+      @values.empty? && @lists.empty? && @children.empty?
     end
 
     def inspect
       parts = []
-      @value_order.each { |k| parts << "#{k.inspect}=>#{@values[k].inspect}" }
-      @list_order.each { |k| parts << "#{k.inspect}=>#{@lists[k].inspect}" }
-      @child_order.each { |k| parts << "#{k.inspect}=>#{@children[k].inspect}" }
+      @values.keys.each { |k| parts << "#{k.inspect}=>#{@values[k].inspect}" }
+      @lists.keys.each { |k| parts << "#{k.inspect}=>#{@lists[k].inspect}" }
+      @children.keys.each { |k| parts << "#{k.inspect}=>#{@children[k].inspect}" }
       "{#{parts.join(", ")}}"
+    end
+
+    # A new Array holding a copy of each String of arr (Array#dup alone
+    # shares the elements). A while loop, no block. For merge!.
+    def self.copy_strings(arr)
+      copy = []
+      i = 0
+      while i < arr.length
+        copy << arr[i].dup
+        i += 1
+      end
+      copy
     end
 
     protected
 
-    attr_reader :value_order, :lists, :list_order, :children, :child_order
+    attr_reader :lists, :children
 
-    # NOTE: named raw_values, not values -- naming this accessor "values"
-    # (colliding with Hash#values) miscompiles the recursive merge! below
-    # under Spinel (a "const char * -> sp_int" C build error, confirmed on
-    # 2026.09.12): the recursive self-call apparently resolves "values"
-    # against Hash#values instead of this reader. Renaming it sidesteps
-    # the miscompile; no functional change.
+    # NOTE: named raw_values, not values -- a reader called "values" collides
+    # with Hash#values: under Spinel the call resolves "values" against
+    # Hash#values instead of this reader (a "const char * -> sp_int" C build
+    # error, confirmed on 2026.09.12 in a recursive merge!). merge! is
+    # iterative, but a reader named like a Hash method on a class whose
+    # Hashes it reads asks for the same mis-resolution.
     def raw_values
       @values
     end
 
-    private
-
-    # Rack-style eviction: setting a key as one kind (scalar/list/nested)
-    # removes it from the other two, so a name can only ever be one kind
-    # at a time and the last write wins.
-    def evict_from_values(k)
-      return unless @values.key?(k)
+    # Replaces the list under k with arr (an owned copy), evicting the other
+    # kinds. Used by merge!, which calls it on another Params.
+    def replace_list!(k, arr)
       @values.delete(k)
-      @value_order.delete(k)
-    end
-
-    def evict_from_list(k)
-      return unless @lists.key?(k)
-      @lists.delete(k)
-      @list_order.delete(k)
-    end
-
-    def evict_from_children(k)
-      return unless @children.key?(k)
       @children.delete(k)
-      @child_order.delete(k)
+      @lists[k] = arr
+      nil
     end
   end
 end

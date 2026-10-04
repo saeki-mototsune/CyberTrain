@@ -1,3 +1,4 @@
+require "json"
 require "cybertrain/db/error"
 require "cybertrain/db/sqlite_ffi"
 
@@ -8,6 +9,26 @@ module Cybertrain
     # single thread at a time.
     class Connection
       attr_reader :path
+
+      # True for a path whose database lives only in its connection, so no
+      # other connection can see it: ":memory:", "" (a private temporary
+      # database) and, since Connection opens with OPEN_URI, a `file:` URI
+      # naming ":memory:" or "mode=memory" -- unless it says "cache=shared".
+      # A shared-cache in-memory database (`file:memdb?mode=memory&cache=
+      # shared`) is one database that every connection to that name sees, kept
+      # alive while any of them is open, so it is NOT private: a Pool may hold
+      # its full size on it (a nested checkout then gets a second connection
+      # instead of waiting on the first forever) and may reopen a slot, since
+      # the other connections keep the database alive. String checks only: no
+      # Regexp. The single predicate: Connection#initialize (no WAL for it)
+      # and Pool (one never-reopened connection) both ask it, so a new
+      # spelling is a change here only.
+      def self.private_database?(path)
+        return true if path == "" || path == ":memory:"
+        return false unless path.start_with?("file:")
+        return false if path.include?("cache=shared")
+        path.include?(":memory:") || path.include?("mode=memory")
+      end
 
       # path is a file name, ":memory:" or a "file:" URI (OPEN_URI makes
       # SQLite read the URI form whether or not the library was compiled
@@ -32,9 +53,31 @@ module Cybertrain
           raise Error, message
         end
 
-        exec_script("PRAGMA journal_mode=WAL") unless path == ":memory:"
-        exec_script("PRAGMA busy_timeout=5000")
-        exec_script("PRAGMA foreign_keys=ON")
+        # busy_timeout first: switching to WAL takes a lock that another
+        # connection opening the same file may hold, and without a timeout
+        # that PRAGMA fails immediately with SQLITE_BUSY.
+        #
+        # The open above succeeded, so a PRAGMA that raises (SQLITE_BUSY or
+        # IOERR on the WAL switch, a file that is not a database) must close
+        # the handle before the error leaves: the caller never receives the
+        # object, so nobody else can. A Pool slot in quarantine reopens on
+        # every checkout (Pool#reopen), and a handle leaked per request is a
+        # file descriptor and a WAL/shm lock per request until EMFILE. A
+        # rescue, not an ensure, as everywhere in this file (NOTES rules 33,
+        # 50); `close` is the same path a user close takes.
+        begin
+          exec_script("PRAGMA busy_timeout=5000")
+          # WAL is meaningless for a database that lives only in this
+          # connection; every spelling of that is private_database?, not just
+          # ":memory:" (`file:x?mode=memory` and "" count too).
+          # A shared-cache in-memory database is not private and still gets
+          # the PRAGMA: SQLite answers "memory" for it and keeps that mode.
+          exec_script("PRAGMA journal_mode=WAL") unless Connection.private_database?(path)
+          exec_script("PRAGMA foreign_keys=ON")
+        rescue JSON::ParserError, StandardError => e
+          close
+          raise e
+        end
       end
 
       # Runs one statement with positional `?` binds and returns its rows as
@@ -87,21 +130,54 @@ module Cybertrain
         SQLite3.sqlite3_last_insert_rowid(@db)
       end
 
-      # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises.
-      # A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves SQLite
-      # inside the transaction, so it is rolled back too before the COMMIT
-      # error is re-raised: a pooled connection never goes back mid-transaction.
-      # A nested call just runs its block inside the outer transaction.
+      # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises
+      # (JSON::ParserError named too: not a StandardError under Spinel, NOTES
+      # rule 33). A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves
+      # SQLite inside the transaction, so it is rolled back too before the
+      # COMMIT error is re-raised. A nested call just runs its block inside
+      # the outer transaction. Do not break or return out of a transaction
+      # block. Under CRuby that leaves BEGIN open with the depth at 1; the
+      # autocommit probe below cannot see it (autocommit is 0, as in a live
+      # transaction), so a later `transaction` on the same checkout would
+      # nest into it and never COMMIT. Nothing in this method can observe
+      # that: an `ensure` is the only construct that could, and an ensure in
+      # this re-entrant yielding method miscompiles under Spinel (NOTES rule
+      # 50; rule 45 for nested calls). The Pool rolls the
+      # open transaction back on check-in (abandon_transaction!, with a warn
+      # line), so the hole is bounded to the rest of that one checkout under
+      # CRuby, and it does not exist under Spinel: a `break` there is
+      # refused at compile time and a `return` just ends the block (rule 44).
+      # A BEGIN run by hand is caught by the Pool the same way.
       # Returns nil: the blocks callers pass return unrelated types, and one
       # generic return value would not type-check under Spinel.
       def transaction
+        raise Error, "connection closed (transaction)" if @closed
+
+        # A depth above 0 while SQLite is in autocommit means the enclosing
+        # transaction is gone: SQLite rolled it back on its own after
+        # SQLITE_FULL / IOERR / BUSY and the app's block rescued that and went
+        # on. Nesting into it would run this block without a transaction
+        # and never COMMIT; starting a fresh one here would commit this part
+        # while the outer COMMIT then fails as if everything rolled back.
+        # Raising is the only honest answer; Pool#check_in resets the depth
+        # when the connection comes back.
+        if @transaction_depth > 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
+          raise Error, "transaction: the enclosing transaction is no longer open (SQLite rolled it back " \
+                       "after an error); nothing nested in it can be committed"
+        end
         if @transaction_depth > 0
+          # The outer branch's shape, not an ensure: this is a re-entrant
+          # yielding method (NOTES rule 50). A raise from the nested block
+          # restores the depth here and propagates; the outer `transaction`
+          # then rolls everything back.
           @transaction_depth += 1
           begin
             yield
-          ensure
+          rescue JSON::ParserError, StandardError => e
             @transaction_depth -= 1
+            raise e
           end
+          @transaction_depth -= 1
           return nil
         end
 
@@ -109,19 +185,48 @@ module Cybertrain
         @transaction_depth = 1
         begin
           yield
-        rescue StandardError => e
-          @transaction_depth = 0
-          rollback_quietly
+        rescue JSON::ParserError, StandardError => e
+          abandon_transaction!
           raise e
         end
         @transaction_depth = 0
         begin
           exec_script("COMMIT")
         rescue Error => e
-          rollback_quietly
+          abandon_transaction!
           raise e
         end
         nil
+      end
+
+      # Rolls back whatever was left open and resets the depth; never raises,
+      # so the rescue paths of `transaction` can call it without masking the
+      # exception they propagate. Pool#with runs it when a connection comes
+      # back: a `transaction` block that got
+      # out past the rescue (a `break`, under CRuby) leaves BEGIN open with
+      # the depth at 1, so every later transaction on this pooled connection
+      # would count as nested and nothing would ever be committed; a BEGIN
+      # run by hand leaves autocommit off. Returns what happened, so the
+      # caller's log line is never a false alarm:
+      #   :clean       -- nothing was open (a depth left above 0 with
+      #                   autocommit already back on -- SQLite rolled back on
+      #                   its own after SQLITE_FULL / IOERR / BUSY, or a
+      #                   ROLLBACK run by hand -- only resets the depth);
+      #   :rolled_back -- a ROLLBACK was issued and autocommit is back on;
+      #   :failed      -- the ROLLBACK did not bring autocommit back (BUSY,
+      #                   IOERR): the connection is still inside the
+      #                   transaction, and the Pool closes and replaces it
+      #                   rather than hand it out again.
+      def abandon_transaction!
+        # The depth goes first: a connection closed inside its own
+        # transaction block must not keep a stale depth for whoever still
+        # holds it.
+        @transaction_depth = 0
+        return :clean if @closed
+        return :clean if SQLite3.sqlite3_get_autocommit(@db) != 0
+
+        SQLite3.sqlite3_exec(@db, "ROLLBACK", nil, nil, nil)
+        SQLite3.sqlite3_get_autocommit(@db) != 0 ? :rolled_back : :failed
       end
 
       def close
@@ -136,16 +241,6 @@ module Cybertrain
       end
 
       private
-
-      # ROLLBACK that never raises, so it cannot mask the exception being
-      # propagated. Skipped when SQLite has already rolled back on its own
-      # (SQLITE_FULL, IOERR, NOMEM, some BUSY cases): autocommit is back on.
-      def rollback_quietly
-        return if @closed
-        return if SQLite3.sqlite3_get_autocommit(@db) != 0
-        SQLite3.sqlite3_exec(@db, "ROLLBACK", nil, nil, nil)
-        nil
-      end
 
       def bind(stmt, index, value)
         case value

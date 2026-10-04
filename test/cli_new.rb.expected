@@ -72,6 +72,10 @@ create storage/.keep
 create tmp/.keep
 create test/.keep
 ok   CLI new --path keeps an absolute DIR and works for a nested app dir
+error: 'public' is not a valid app name: it collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
+error: 'storage' is not a valid app name: it collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
+error: 'tmp' is not a valid app name: it collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
+ok   new refuses an app named like a dist/ entry, writing nothing
 error: pass only one of --path, --version and --git
 ok   CLI new rejects --path together with --version
 create spin.toml
@@ -314,4 +318,4 @@ Usage:
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-20 tests, 92 assertions, 0 failures
+21 tests, 122 assertions, 0 failures

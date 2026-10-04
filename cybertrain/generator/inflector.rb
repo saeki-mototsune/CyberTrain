@@ -55,8 +55,9 @@ module Cybertrain
     def self.underscore(camel_cased_word)
       return camel_cased_word.dup unless camel_cased_word.match?(/[A-Z-]|::/)
 
-      # Two steps: in a threaded program a collection inside `chars` freed the
-      # unnamed gsub result it was splitting ("Post" came back as "").
+      # Two steps, the gsub result held in a local: in a threaded program a
+      # collection inside `chars` frees an unnamed gsub result it is
+      # splitting ("Post" comes back as "").
       path = camel_cased_word.gsub("::", "/")
       chars = path.chars
       out = +""

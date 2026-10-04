@@ -1,8 +1,9 @@
 ok   parse splits 'a=1; b=2' into a Hash, percent-decoding values
 ok   parse of an empty header yields an empty Hash
 ok   parse keeps the first of a duplicate cookie name (most specific Path wins)
-ok   parse of a malformed percent-escape does not raise (Spinel diverges from CRuby, which raises ArgumentError)
+ok   parse keeps the raw value of a malformed percent-escape on every runtime
+ok   decode keeps the raw value of an invalid byte sequence (raw or percent-encoded), as a foreign cookie must not fail the request
 ok   serialize with defaults
 ok   serialize with all options set
 ok   serialize omits Max-Age when negative and HttpOnly/Secure when off
-7 tests, 7 assertions, 0 failures
+8 tests, 13 assertions, 0 failures

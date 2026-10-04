@@ -6,6 +6,10 @@ ok   Cast.time_or_nil returns nil for well-formed but out-of-range values
 ok   Cast.to_sql turns Time and booleans into SQLite values
 ok   Errors collects messages per attribute in insertion order
 ok   Relation builds SQL from where, order, limit and offset
+ok   order validates its columns and quotes them
+ok   reverse_order flips quoted order terms (used by last)
+ok   where with a Time value binds it as a single equality
+ok   delete_all respects limit and offset
 ok   count and size respect limit and offset
 ok   exists? respects offset and limit
 ok   first and last pick from the limit/offset window
@@ -33,4 +37,4 @@ ok   to_param
 ok   nullable body round trips nil and String
 ok   created_at is a Time after reload
 ok   assign_attributes with String keys from Params#permit
-35 tests, 237 assertions, 0 failures
+39 tests, 306 assertions, 0 failures

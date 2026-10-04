@@ -1,0 +1,32 @@
+#!/usr/bin/env ruby
+# Guards Cybertrain::ClientError::CLIENT_FAULTS, the list of exceptions answered
+# as a 400. The list is matched by class NAME because the exception hierarchy
+# is not visible under Spinel (NOTES rules 47, 54), so a QueryInvalid subclass
+# nobody listed would be a 500 on the compiled build. This loads the framework
+# under CRuby, collects every class at or below Cybertrain::QueryInvalid plus
+# Cybertrain::Params::ParameterMissing, and fails (exit 1) when one is not in
+# the list, or when a list entry names no loaded class. CRuby only (needs
+# ObjectSpace). Run by CI.
+#
+# usage: ruby script/check-client-faults
+$LOAD_PATH.unshift(File.expand_path("..", __dir__))
+require "cybertrain/params"
+require "cybertrain/http/query"
+require "cybertrain/http/client_error"
+
+listed = Cybertrain::ClientError::CLIENT_FAULTS
+faults = ObjectSpace.each_object(Class).select { |c| c <= Cybertrain::QueryInvalid }
+faults << Cybertrain::Params::ParameterMissing
+names = faults.map(&:name).compact.uniq
+
+failed = false
+(names - listed).each do |n|
+  warn "#{n} is a client fault but is not in ClientError::CLIENT_FAULTS (it would answer 500)"
+  failed = true
+end
+(listed - names).each do |n|
+  warn "ClientError::CLIENT_FAULTS lists #{n}, which is not a loaded QueryInvalid subclass or ParameterMissing"
+  failed = true
+end
+exit 1 if failed
+puts "client faults: #{names.length} classes, all in CLIENT_FAULTS"

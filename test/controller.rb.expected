@@ -24,4 +24,9 @@ ok   chain_for and rescues_for walk the class hierarchy
 ok   Callback#applies? honours only and except
 ok   status_code maps symbols and passes integers through
 ok   a missing required param answers 400 Bad Request
-26 tests, 68 assertions, 0 failures
+ok   a client fault raised in an action answers 400 with its message, like a missing param
+ok   a client fault after the action redirected drops only Location and Content-Disposition
+ok   a client fault answered from an action logs one rejected-request line
+ok   an exception the controller re-raises is not logged by it (ErrorPages logs it once)
+ok   an app exception sharing a bare name with a framework one is still raised (500 path)
+31 tests, 89 assertions, 0 failures

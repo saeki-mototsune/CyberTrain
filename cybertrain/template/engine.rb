@@ -11,6 +11,7 @@
 #     => source, generated into the binary by `spin run gen -- --embed-views`;
 #     parsed once, never re-read.
 require "cybertrain/html"
+require "cybertrain/template/limits"
 require "cybertrain/template/lexer"
 require "cybertrain/template/parser"
 require "cybertrain/template/inode"
@@ -49,9 +50,17 @@ module Cybertrain
     class Engine
       attr_reader :root
 
-      def initialize(root, cache: true)
+      def initialize(root, cache: true, max_render_depth: MAX_RENDER_DEPTH)
+        # Views.configure and Views.configure_embedded (Engine.embedded) both
+        # end here. A ceiling below 1 would fail `@depth >= @max_depth` at
+        # depth 0 and turn every page into a 500, so refuse it at boot. No nil
+        # check: the parameter is an Integer (a nil would not compile under
+        # Spinel).
+        raise ArgumentError, "max_render_depth must be at least 1 (got #{max_render_depth})" if max_render_depth < 1
+
         @root = root
         @cache = cache
+        @max_render_depth = max_render_depth
         # nil: read files under root. A Hash: the embedded table.
         @sources = nil
         # Typed empty Hashes (spikes/NOTES.md rule 9).
@@ -62,8 +71,8 @@ module Cybertrain
       end
 
       # An engine over an embedded table (Gen::Views::SOURCES).
-      def self.embedded(sources)
-        engine = Engine.new("", cache: true)
+      def self.embedded(sources, max_render_depth: MAX_RENDER_DEPTH)
+        engine = Engine.new("", cache: true, max_render_depth: max_render_depth)
         engine.sources = sources
         engine
       end
@@ -101,14 +110,14 @@ module Cybertrain
       end
 
       def render(name, env, helpers)
-        Interpreter.new(helpers).render(template(name), env)
+        Interpreter.new(helpers, @max_render_depth).render(template(name), env)
       end
 
       # Renders name, then the layout around it: the layout's <%= yield %>
       # prints env["__content"], and <%= yield :title %> env["__content_title"]
       # (which the content_for helper sets while the page renders).
       def render_with_layout(name, layout, env, helpers)
-        interp = Interpreter.new(helpers)
+        interp = Interpreter.new(helpers, @max_render_depth)
         page = template(name)
         frame = template(layout)
         env["__content"] = SafeString.new(interp.render(page, env))

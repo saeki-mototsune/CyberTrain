@@ -102,7 +102,7 @@ module Cybertrain
 
     def call(ctx)
       request = ctx.request
-      segments = Router.split_path(request.path)
+      segments = request.path_segments
       @routes.each do |route|
         captured = route.match(request.method, segments)
         next if captured.nil?
@@ -117,47 +117,6 @@ module Cybertrain
       nil
     end
 
-    # "/posts/1/" -> ["posts", "1"]; each segment is percent-decoded, but a
-    # "+" stays a plus (it only means space in query strings and forms).
-    # A segment with a malformed escape ("%ZZ", a trailing "%" or "%2") is
-    # kept literal: CRuby's decoder raises ArgumentError on it while Spinel's
-    # silently yields a NUL byte, so neither runtime ever sees it.
-    def self.split_path(path)
-      segments = []
-      path.split("/").each do |seg|
-        next if seg.empty?
-
-        if seg.include?("%") && valid_escapes?(seg)
-          segments << URI.decode_www_form_component(seg.gsub("+", "%2B"))
-        else
-          segments << seg
-        end
-      end
-      segments
-    end
-
-    # True when every "%" in `seg` is followed by two hex digits.
-    def self.valid_escapes?(seg)
-      n = seg.bytesize
-      i = 0
-      while i < n
-        if seg.getbyte(i).to_i == 37
-          return false if i + 2 >= n
-          return false unless hex_byte?(seg.getbyte(i + 1).to_i) && hex_byte?(seg.getbyte(i + 2).to_i)
-
-          i += 3
-        else
-          i += 1
-        end
-      end
-      true
-    end
-
-    # 0-9, A-F, a-f as a byte value.
-    def self.hex_byte?(b)
-      (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102)
-    end
-
     # Percent-encodes a value for use as one path segment ("a b" -> "a%20b").
     def self.escape_segment(value)
       URI.encode_www_form_component(value).gsub("+", "%20")
@@ -166,14 +125,28 @@ module Cybertrain
     private
 
     # Later sources win: query string, then the form body, then the route.
+    # ctx.params is the request's OWN tree, built right here by parsing the
+    # query string and then (for a form) the body straight into one fresh
+    # Params (Query.parse_valid, on the Request's validated texts: a form POST
+    # whose body MethodOverride already read is not validated again), then
+    # the route captures. There are no cached trees to alias: the parsed
+    # Strings come fresh out of the decoder, and a capture is the very String
+    # the cached path_segments holds (shared with Static), so it is dup'd:
+    # `params[:id].upcase!` in an action must not change the segment Array
+    # that Static or a later middleware reads. One tree build per request, no
+    # node-by-node copy: copying a parsed tree into a fresh one cost more than
+    # the parse at the Query limits (648 ms against 546 ms for MAX_PAIRS pairs
+    # of MAX_DEPTH levels). The Query limits (QueryTooMany, QueryTooDeep)
+    # apply per parse call: one for the query string, one for the form body.
     def assemble_params(request, captured)
-      params = Query.parse(request.query_string)
-      params.merge!(Query.parse(request.body)) if request.form?
+      params = Params.new
+      Query.parse_valid(params, request.utf8_query_string)
+      Query.parse_valid(params, request.utf8_body) if request.form?
       # NOTE(Spinel): not `captured.each { |k, v| ... }` -- captured comes from
       # the nullable Route#match, and with a user-defined #to_s in the program
       # (SafeString) the pair's key reaches Params#set_value as a boxed value
       # and the C build fails. Iterating the keys keeps them typed String.
-      captured.each_key { |k| params.set_value(k, captured[k].to_s) }
+      captured.each_key { |k| params.set_value(k, captured[k].to_s.dup) }
       params
     end
 

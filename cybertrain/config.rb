@@ -1,4 +1,5 @@
 require "cybertrain/crypto"
+require "cybertrain/template/limits"
 
 module Cybertrain
   # The application's settings. Defaults come from the environment
@@ -13,7 +14,7 @@ module Cybertrain
 
     attr_accessor :env, :host, :port, :database_path, :secret_key_base, :views_root, :public_root, :layout,
                   :log_level, :session_cookie_name, :session_max_age, :session_secure, :pool_size, :static_files,
-                  :csrf, :workers, :secret_key_path
+                  :csrf, :workers, :secret_key_path, :max_render_depth
 
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
     # empty one counts as unset). Shared with DB::CLI.
@@ -34,6 +35,16 @@ module Cybertrain
       @secret_key_base = ENV["CYBERTRAIN_SECRET_KEY_BASE"] || ""
       @secret_key_path = "tmp/secret_key"
       @views_root = "app/views"
+      # Renders open at once (the page and its partials; the layout renders after
+      # the page and does not nest) before a template error.
+      # The constant itself, not a copy of its value: Views.configure always
+      # receives this, so a literal here would override a changed
+      # Template::MAX_RENDER_DEPTH for every real app. Raise it
+      # for partials that legitimately recurse deeper (threaded comments, a
+      # tree menu). Must be an Integer of at least 1: Views.configure (and configure_embedded)
+      # refuse anything else at boot, since a ceiling of 0 or less would make
+      # every render fail.
+      @max_render_depth = Template::MAX_RENDER_DEPTH
       @public_root = "public"
       @layout = "layouts/application"
       @log_level = :info

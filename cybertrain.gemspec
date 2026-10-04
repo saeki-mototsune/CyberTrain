@@ -32,6 +32,7 @@ Gem::Specification.new do |spec|
   # which only compiles under Spinel.
   spec.files = [
     "cybertrain/version.rb",
+    "cybertrain/app_name.rb",
     "cybertrain/cli.rb",
     "cybertrain/cli/new_app.rb",
     "cybertrain/cli/scaffold.rb",
@@ -39,6 +40,7 @@ Gem::Specification.new do |spec|
     "cybertrain/cli/build.rb",
     "cybertrain/cli/toolchain.rb",
     "cybertrain/generator/inflector.rb",
+    "cybertrain/ident.rb",
     "exe/cybertrain",
     "README.md"
   ]

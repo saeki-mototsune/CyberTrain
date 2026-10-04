@@ -57,11 +57,11 @@ module Cybertrain
     # Returns this session's CSRF token, minting and storing one the first
     # time it is asked for. This is a typed instance method (rather than a
     # module method taking a Session argument) so Spinel resolves `self`
-    # statically at every call site; a free function
-    # `CsrfProtection.token_for(session)` widened `session` to an untyped
-    # poly value once it was called through a real SessionStore -> Context
-    # chain, so `session[TOKEN_KEY] = token` silently did nothing
-    # (regression tests: test/csrf_chain.rb, test/csrf_conditional.rb).
+    # statically at every call site: a free function taking `session` as a
+    # plain parameter widens it to an untyped poly value once it is called
+    # through a real SessionStore -> Context chain, and then
+    # `session[TOKEN_KEY] = token` silently does nothing
+    # (tests: test/csrf_chain.rb, test/csrf_conditional.rb).
     def csrf_token!
       token = @data[CSRF_TOKEN_KEY]
       if token.nil? || token.empty?
@@ -75,13 +75,11 @@ module Cybertrain
 
     # Flash's own storage primitives, kept here (as typed Session instance
     # methods, `self` statically known) for the same reason as
-    # csrf_token! above: Flash.load/.store used to mutate the session
-    # straight from a module method taking `session` as a plain parameter
-    # (`session[FLASH_KEY] = json`), and through a real SessionStore ->
-    # Middleware chain that write silently failed to stick (session.changed?
-    # stayed false) the same way CsrfProtection.token_for's did. Flash calls
-    # these instead of touching `[]`/`[]=`/`delete` on a `session` parameter
-    # directly.
+    # csrf_token! above: a module method that writes `session[FLASH_KEY] =
+    # json` through a plain `session` parameter fails to stick through a real
+    # SessionStore -> Middleware chain (session.changed? stays false). Flash
+    # calls these instead of touching `[]`/`[]=`/`delete` on a `session`
+    # parameter directly.
     def flash_payload
       self[FLASH_KEY]
     end

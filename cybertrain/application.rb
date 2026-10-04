@@ -1,3 +1,4 @@
+require "cybertrain/app_name"
 require "cybertrain/config"
 require "cybertrain/version"
 require "cybertrain/logger"
@@ -50,6 +51,9 @@ module Cybertrain
       @router = router
       @url_resolver = url_resolver
       @views = views
+      # Not checked here: only the development Rebuilder uses the name (it is
+      # validated in Dev::Rebuilder#initialize), so a production boot neither
+      # pays nor fails for it.
       @name = name
       @config = config
       @stack = nil
@@ -96,9 +100,9 @@ module Cybertrain
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
-        Views.configure_embedded(@views)
+        Views.configure_embedded(@views, max_render_depth: c.max_render_depth)
       else
-        Views.configure(c.views_root, cache: !c.development?)
+        Views.configure(c.views_root, cache: !c.development?, max_render_depth: c.max_render_depth)
       end
       Views.url_resolver = @url_resolver
       Views.layout_name = c.layout
@@ -141,8 +145,17 @@ module Cybertrain
       port = Application.port_argument(argv)
       @config.port = port if port > 0
       # The rebuilder must exist before #server builds the stack (front_app
-      # wraps it in Dev::ErrorPage only when one is set).
-      @rebuilder = Dev::Rebuilder.new(Dir.pwd, @name) if @config.development?
+      # wraps it in Dev::ErrorPage only when one is set). Two layers on the
+      # name: serve reports a bad one as a boot failure (the `error: ...`
+      # line, exit 1, like a busy port), and Rebuilder.new refuses it for
+      # direct callers (its contract: ArgumentError). The check here is a
+      # plain call, not a `rescue ArgumentError` around the Rebuilder (NOTES
+      # rule 32: no new rescue clause in a method that blocks and yields).
+      if @config.development?
+        problem = Application.name_problem(@name)
+        fail_boot(problem) unless problem.empty?
+        @rebuilder = Dev::Rebuilder.new(Dir.pwd, @name)
+      end
       srv = server
       srv.start # bind first: a PortInUse error must not come after the banner
       print_boot_banner
@@ -154,9 +167,19 @@ module Cybertrain
       end
       nil
     rescue PortInUse => e
-      puts "error: #{e.message}"
-      STDOUT.flush
-      exit(1)
+      fail_boot(e.message)
+    end
+
+    # "" when name works as the development build target, else the
+    # `application name "<name>" <reason>` text serve prints after "error: ".
+    # AppName.problem is the one predicate (Rebuilder.new and the CLI ask it
+    # too); only a development boot builds, so only it asks. A String on every
+    # path (NOTES rules 10/34).
+    def self.name_problem(name)
+      reason = AppName.problem(name)
+      return "" if reason.empty?
+
+      "application name #{name.inspect} #{reason}"
     end
 
     # The development loop (docs/design.md D12): requests go through
@@ -208,6 +231,14 @@ module Cybertrain
     end
 
     private
+
+    # A boot failure: the message on STDOUT in place of the banner, exit 1.
+    def fail_boot(message)
+      puts "error: #{message}"
+      STDOUT.flush
+      exit(1)
+      nil
+    end
 
     # Printed once, straight to STDOUT (not through Cybertrain.logger, which
     # a quiet log_level could silence): the same "is it up, and where"
