@@ -8,7 +8,27 @@
 # evicting a key is one O(1) Hash#delete (per-kind order Arrays would make
 # every kind change an O(n) Array#delete, i.e. quadratic parsing).
 module Cybertrain
+  # The request parameters, {Controller#params} in an action and `params`
+  # in a template. They come from the query string, a urlencoded form body
+  # and the route's segments (`:id`, `:article_id`), later sources winning.
+  # A JSON or multipart body is not parsed into them.
+  #
+  # Values are Strings (never Integers or booleans). Rails-style keys nest:
+  # `article[title]=Hi` is `params.require(:article)[:title]`, and
+  # `tags[]=a&tags[]=b` is `params.list(:tags)`. A key is one kind at a time,
+  # a String, a list or a nested Params; the last one sent wins.
+  #
+  # Malformed input (a bad `%` escape, invalid UTF-8, more than 32 levels of
+  # nesting or 4096 pairs) is answered with 400 before the action runs.
+  # @example Strong parameters, as the scaffold writes them
+  #   def article_params
+  #     params.require(:article).permit(:title, :body)
+  #   end
+  # @api public
   class Params
+    # Raised by {Params#require}. Unless a `rescue_from` handles it, the
+    # request is answered with 400 and the message as plain text.
+    # @api public
     class ParameterMissing < StandardError
     end
 
@@ -18,27 +38,55 @@ module Cybertrain
       @children = {}
     end
 
+    # A String value. A list or nested key gives nil, as does an absent
+    # one; a key sent with no `=` gives `""`.
+    # @example
+    #   Article.find(params[:id])
+    # @param key [String, Symbol]
+    # @return [String, nil]
+    # @api public
     def [](key)
       @values[key.to_s]
     end
 
+    # The values sent as `key[]=a&key[]=b`.
+    # @param key [String, Symbol]
+    # @return [Array<String>] `[]` when absent
+    # @api public
     def list(key)
       arr = @lists[key.to_s]
       arr.nil? ? [] : arr
     end
 
+    # The nested parameters sent as `key[...]`, like {#require} but without
+    # raising.
+    #
     # A fresh, empty Params for an absent key -- it is never stored, so
     # calling #nested twice on the same missing key returns two different
     # (both empty) objects.
+    # @param key [String, Symbol]
+    # @return [Params]
+    # @api public
     def nested(key)
       @children[key.to_s] || Params.new
     end
 
+    # @param key [String, Symbol]
+    # @return [Boolean] true when the key was sent, of any kind
+    # @api public
     def key?(key)
       k = key.to_s
       @values.key?(k) || @lists.key?(k) || @children.key?(k)
     end
 
+    # The nested parameters under `key` (`article[...]`), which must be
+    # present and non-empty. Only nested keys qualify: `require(:id)`
+    # raises even when `id` was sent, since it is a String.
+    # @param key [String, Symbol]
+    # @return [Params]
+    # @raise [ParameterMissing] `"param is missing or the value is empty:
+    #   article"` (a 400 unless rescued)
+    # @api public
     def require(key)
       k = key.to_s
       child = @children[k]
@@ -48,6 +96,15 @@ module Cybertrain
       child
     end
 
+    # The listed keys that were sent as Strings, as a Hash ready for
+    # `Model.new` or {Model#update}. Unlisted keys are dropped silently, and
+    # so are lists and nested values: there is no `permit(tags: [])`; read
+    # those with {#list} and {#nested}.
+    # @example
+    #   params.require(:article).permit(:title, :body)  # => {"title" => "Hi", "body" => "..."}
+    # @param keys [Array<String, Symbol>]
+    # @return [Hash{String => String}]
+    # @api public
     def permit(*keys)
       permitted = {}
       keys.each do |key|
@@ -144,16 +201,23 @@ module Cybertrain
       self
     end
 
-    # Scalars only. Params has no `keys` method on purpose: it would share its name with Hash#keys in a
+    # This level's String values as a Hash (not the lists or nested
+    # parameters).
+    #
+    # Params has no `keys` method on purpose: it would share its name with Hash#keys in a
     # class whose own code (to_h, inspect, merge!) calls Hash#keys on its
     # Hashes, the shape NOTES rule 51 records as mis-dispatching under
     # Spinel. Ask key? for one name, or to_h / inspect for the whole level.
+    # @return [Hash{String => String}]
+    # @api public
     def to_h
       h = {}
       @values.keys.each { |k| h[k] = @values[k] }
       h
     end
 
+    # @return [Boolean] true when nothing was sent at this level
+    # @api public
     def empty?
       @values.empty? && @lists.empty? && @children.empty?
     end

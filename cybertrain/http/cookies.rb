@@ -9,6 +9,14 @@ module Cybertrain
   # every cookie on every request but reads only its own, so a foreign one
   # ("promo=50%off", set by another app on the parent domain) must not turn
   # every dynamic page into a 400. Its raw value is kept, as Rack does.
+  #
+  # Plain cookies besides the session (there is no `cookies` jar in
+  # controllers, and no signed or encrypted cookie other than the session).
+  # @example
+  #   theme = Cybertrain::Cookies.parse(request.cookie_header)["theme"]
+  #   response.add_cookie(Cybertrain::Cookies.serialize("theme", "dark", max_age: 31_536_000))
+  #   response.add_cookie(Cybertrain::Cookies.serialize("theme", "", max_age: 0))   # delete
+  # @api public
   module Cookies
     # Query.decode, falling back to the raw text when it raises QueryMalformed:
     # a malformed escape or an invalid UTF-8 byte sequence (raw, or "%81"),
@@ -25,6 +33,11 @@ module Cybertrain
       value
     end
 
+    # The cookies in a Cookie header, values decoded. The first of two
+    # cookies with one name wins.
+    # @param header [String] {Request#cookie_header}
+    # @return [Hash{String => String}]
+    # @api public
     def self.parse(header)
       cookies = {}
       header.to_s.split(";").each do |pair|
@@ -43,6 +56,18 @@ module Cybertrain
       cookies
     end
 
+    # A Set-Cookie value for {Response#add_cookie}, the value
+    # percent-encoded.
+    # @param name [String]
+    # @param value [String]
+    # @param path [String]
+    # @param max_age [Integer] seconds; `-1` leaves it out (a browser-session
+    #   cookie), `0` deletes the cookie
+    # @param http_only [Boolean]
+    # @param same_site [String] `"Lax"`, `"Strict"` or `"None"`
+    # @param secure [Boolean]
+    # @return [String]
+    # @api public
     def self.serialize(name, value, path: "/", max_age: -1, http_only: true, same_site: "Lax", secure: false)
       out = +"#{name}=#{URI.encode_www_form_component(value)}"
       out << "; Path=#{path}"

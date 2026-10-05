@@ -6,7 +6,8 @@
 </p>
 <p align="center">
   <a href="https://saeki-mototsune.github.io/CyberTrain/">Homepage</a> ·
-  <a href="https://saeki-mototsune.github.io/CyberTrain/tutorial.html">Tutorial</a>
+  <a href="https://saeki-mototsune.github.io/CyberTrain/tutorial.html">Tutorial</a> ·
+  <a href="https://saeki-mototsune.github.io/CyberTrain/api/">API reference</a>
 </p>
 
 # cybertrain
@@ -605,6 +606,13 @@ prints the diff stat).
   the source lives in [site/](site/), published by
   [.github/workflows/pages.yml](.github/workflows/pages.yml); the logo files and
   brand notes are in [site/assets/brand/](site/assets/brand/BRAND.md).
+- [API reference](https://saeki-mototsune.github.io/CyberTrain/api/) — every
+  class and method an application uses (controllers, params, session and
+  flash, models and relations, routes, migrations, configuration, tests),
+  including what `spin run gen` generates. It is built by YARD
+  (`script/api-docs`, into `site/api/`) from the doc comments marked
+  `@api public` in `cybertrain/` and from [docs/api/](docs/api/); a method
+  without that tag is internal and stays out. CI fails on any YARD warning.
 - [docs/design.md](docs/design.md) — the design record (Japanese): every
   decision, what was rejected and why, and the Spinel constraints behind it.
 - [docs/template-language.md](docs/template-language.md) — the full template

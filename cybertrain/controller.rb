@@ -15,17 +15,73 @@ module Cybertrain
   class UnknownCallback < StandardError
   end
 
-  # Base class of every application controller. The router builds one per
-  # request and calls `process(:show) { |c| c.show }`, so the action name and
+  # Base class of every application controller, through the app's
+  # `ApplicationController`. One instance handles one request: the router
+  # builds it, runs the before callbacks, the action, the implicit render and
+  # the after callbacks.
+  #
+  #     class ArticlesController < ApplicationController
+  #       before_action :set_article, only: [:show, :edit, :update, :destroy]
+  #
+  #       def index
+  #         @articles = Article.all.to_a
+  #       end
+  #
+  #       def new_action   # GET /articles/new: a method named `new` would shadow ArticlesController.new
+  #         @article = Article.new
+  #       end
+  #
+  #       def create
+  #         @article = Article.new(article_params)
+  #         if @article.save
+  #           flash[:notice] = "Article was successfully created."
+  #           redirect_to article_path(@article), status: :see_other
+  #         else
+  #           render :new, status: :unprocessable_entity
+  #         end
+  #       end
+  #
+  #       private
+  #
+  #       def set_article
+  #         @article = Article.find(params[:id])
+  #       end
+  #
+  #       def article_params
+  #         params.require(:article).permit(:title, :body)
+  #       end
+  #     end
+  #
+  # Rules that differ from Rails, all because Spinel compiles ahead of time
+  # with no `send` or `instance_exec`:
+  #
+  # - Actions are public methods; the `new` action is `def new_action`
+  #   (its view is still `new.html.erb`, its action name `"new"`).
+  # - Templates see the instance variables assigned (`@x = ...`) in the
+  #   controller's file or its parents' files, found by `spin run gen`; re-run
+  #   it after adding one (`cybertrain server` does).
+  # - A block callback takes the controller as its argument
+  #   (`before_action { |c| ... }`), so it can call public methods only.
+  # - `render` and `redirect_to` do not end the action, and a second one
+  #   replaces the first; `return` after them when more code follows.
+  # - Every controller also has the route helpers (`article_path(...)`,
+  #   see {Gen::UrlHelpers}).
+  #
+  # Implementation: the router calls
+  # `process(:show) { |c| c.show }`, so the action name and
   # the action body both arrive as literals (no send).
   #
   # Callback and rescue declarations are runtime data keyed by class name;
   # symbol callbacks are dispatched through run_callback(name), which
   # gen/controllers.rb overrides in each controller with a case table.
+  # @api public
   class Controller
     CALLBACKS = {}   # class name => Array<Callback>
     RESCUES = {}     # class name => Array<RescueHandler>
 
+    # The Symbols `status:` accepts in {#render}, {#head} and
+    # {#redirect_to}. Any other status must be given as an Integer.
+    # @api public
     STATUS_SYMBOLS = {
       ok: 200, created: 201, no_content: 204,
       moved_permanently: 301, found: 302, see_other: 303,
@@ -46,10 +102,41 @@ module Cybertrain
     DEFAULT_STATUS = [200, :ok][0]
     DEFAULT_REDIRECT_STATUS = [302, :found][0]
 
+    # Runs a method or a block before the action. The chain runs the
+    # parent classes' callbacks first, then each class's in declaration order,
+    # and stops at the first callback that renders, redirects or calls
+    # {#head}: the action, the implicit render and the after callbacks are
+    # then skipped.
+    #
+    # One method name per call. The method is called without a receiver, so
+    # it may be private; it must be named on the same line as
+    # `before_action` for `spin run gen` to find it.
+    #
+    # @example
+    #   before_action :set_article, only: [:show, :edit, :update, :destroy]
+    #   before_action(except: [:index, :show]) { |c| c.head :forbidden unless c.session[:user_id] }
+    # @param name [Symbol, nil] a method of this controller, or nil with a block
+    # @param only [Array<Symbol>] run for these actions only (`:new` for
+    #   `new_action`)
+    # @param except [Array<Symbol>] run for every action but these
+    # @yieldparam controller [Controller] the controller (no implicit self)
+    # @return [nil]
+    # @api public
     def self.before_action(name = nil, only: [], except: [], &block)
       add_callback(Callback.new(:before, name, block, only, except))
     end
 
+    # Runs a method or a block after the action and its implicit render,
+    # in the same order as {.before_action} (not reversed). Skipped when a
+    # before callback halted or anything raised.
+    # @example
+    #   after_action { |c| c.response.set_header("Cache-Control", "no-store") }
+    # @param name [Symbol, nil]
+    # @param only [Array<Symbol>]
+    # @param except [Array<Symbol>]
+    # @yieldparam controller [Controller]
+    # @return [nil]
+    # @api public
     def self.after_action(name = nil, only: [], except: [], &block)
       add_callback(Callback.new(:after, name, block, only, except))
     end
@@ -59,8 +146,33 @@ module Cybertrain
       nil
     end
 
+    # Handles an exception raised by a callback, the action or its render:
     # `rescue_from NotFound, with: :not_found` or
     # `rescue_from(NotFound) { |c, e| c.head :not_found }`.
+    #
+    # Unlike Rails, the class must match exactly (a subclass does not), and
+    # the first handler found wins, looking in this class before its parents.
+    # A `with:` method reads the exception from {#rescued_exception}; keep
+    # `with:` on the same line as `rescue_from`. A handler that renders
+    # nothing leaves an empty 200.
+    #
+    # Unhandled, a {Params::ParameterMissing} or malformed query answers 400
+    # and anything else 500 (a {RecordNotFound} too: the generated
+    # ApplicationController rescues it to a 404).
+    # @example
+    #   rescue_from Cybertrain::RecordNotFound, with: :record_not_found
+    #
+    #   private
+    #
+    #   def record_not_found
+    #     render plain: "Not Found", status: :not_found
+    #   end
+    # @param klass [Class] an exception class
+    # @param with [Symbol, nil] a method of this controller, or nil with a block
+    # @yieldparam controller [Controller]
+    # @yieldparam exception [StandardError]
+    # @return [nil]
+    # @api public
     def self.rescue_from(klass, with: nil, &block)
       (RESCUES[self.name] ||= []) << RescueHandler.new(klass.name, with, block)
       nil
@@ -112,14 +224,55 @@ module Cybertrain
       code
     end
 
-    attr_reader :ctx, :request, :response, :params, :action_name, :rescued_exception
+    attr_reader :ctx
 
+    # The request: method, path, headers, raw body.
+    # @return [Request]
+    # @api public
+    attr_reader :request
+
+    # The response being built. {#render}, {#redirect_to} and {#head} fill
+    # it; set headers and cookies on it directly.
+    # @example
+    #   response.set_header("Cache-Control", "no-store")
+    # @return [Response]
+    # @api public
+    attr_reader :response
+
+    # The request parameters: the query string, a urlencoded form body and
+    # the route's `:id`-style segments (in that order, later ones winning).
+    # @example
+    #   params[:id]
+    #   params.require(:article).permit(:title, :body)
+    # @return [Params]
+    # @api public
+    attr_reader :params
+
+    # The action being run, by its route name: `"show"`, and `"new"` for
+    # `new_action`.
+    # @return [String]
+    # @api public
+    attr_reader :action_name
+
+    # The exception a {.rescue_from} `with:` method is handling.
+    # @return [StandardError, nil]
+    # @api public
+    attr_reader :rescued_exception
+
+    # This visitor's session, kept in a signed cookie.
+    #
     # The session and flash installed by SessionStore (nil when the
     # middleware is not in the stack, e.g. in bare unit tests).
+    # @return [Session]
+    # @api public
     def session
       @ctx.session
     end
 
+    # Messages for the next request (`flash[:notice] = "Saved."` before a
+    # redirect) or, through `flash.now`, for this one.
+    # @return [Flash]
+    # @api public
     def flash
       @ctx.flash
     end
@@ -180,7 +333,10 @@ module Cybertrain
       env
     end
 
-    # "posts" for PostsController.
+    # "posts" for PostsController: the directory under `app/views/` its
+    # templates come from.
+    # @return [String]
+    # @api public
     def controller_path
       name = Inflector.underscore(self.class.name)
       name.end_with?("_controller") ? name[0, name.length - 11] : name
@@ -203,11 +359,46 @@ module Cybertrain
       end
     end
 
-    # Exactly one of template, plain:, html:, json: or partial:.
+    # Renders the response from a template, text, HTML or JSON: exactly
+    # one of template, plain:, html:, json: or partial:.
     #
+    # An action that renders nothing renders its own template
+    # (`app/views/<controller_path>/<action>.html.erb`) in the layout.
+    #
+    # - `template`: `app/views/<controller_path>/<template>.html.erb`, always
+    #   this controller's directory, inside the layout
+    #   (`app/views/layouts/application.html.erb`, when it exists) unless
+    #   `layout: false`.
+    # - `plain:` the String as `text/plain`.
+    # - `html:` as `text/html`; a plain String is escaped, a
+    #   {SafeString} is sent as it is.
+    # - `json:` as `application/json`; a String is sent as it is (taken to be
+    #   JSON already), anything else goes through `JSON.generate`. For a
+    #   record, pass {Model#as_json} or {Model#to_json}.
+    # - `partial:` `_<name>.html.erb` (`"form"` in this controller's
+    #   directory, `"comments/comment"` in another), never in a layout.
+    #
+    # It does not end the action: a later `render` or `redirect_to`
+    # replaces it.
+    # @example
     #   render :new, status: :unprocessable_entity
-    #   render :show, layout: false
-    #   render partial: "form", locals: { post: @post }   (never a layout)
+    #   render plain: "Not Found", status: :not_found
+    #   render json: { ok: true }, status: :created
+    #   render json: @article.to_json
+    # @param template [Symbol, String, nil] an action's template, `:new`
+    # @param plain [String, nil]
+    # @param html [String, SafeString, nil]
+    # @param json [Object, nil]
+    # @param partial [String, nil]
+    # @param status [Integer, Symbol] see {STATUS_SYMBOLS}; 200 by default
+    # @param content_type [String, nil] replaces the content type
+    # @param locals [Hash{Symbol => Object}] extra template variables
+    # @param layout [Boolean] false renders a template without the layout
+    # @return [nil]
+    # @raise [ArgumentError] when not exactly one of template, `plain:`,
+    #   `html:`, `json:`, `partial:` is given, or the status is unknown
+    # @raise [Template::MissingTemplate] when the template does not exist
+    # @api public
     def render(template = nil, plain: nil, html: nil, json: nil, status: DEFAULT_STATUS, content_type: nil,
                partial: nil, locals: {}, layout: true)
       given = 0
@@ -238,13 +429,34 @@ module Cybertrain
       nil
     end
 
+    # Answers with a redirect (302 by default) to a URL String: build it with
+    # a route helper. After a form submission use `status: :see_other`
+    # (303), as the scaffold does, so the browser follows with a GET. It
+    # does not end the action. To show a message on the next page, set
+    # {#flash} first.
+    # @example
+    #   flash[:notice] = "Article was successfully created."
+    #   redirect_to article_path(@article), status: :see_other
+    # @param location [String] a path or URL (a record is not accepted)
+    # @param status [Integer, Symbol] see {STATUS_SYMBOLS}
+    # @return [nil]
+    # @raise [ArgumentError] when the location holds a CR or LF
+    # @api public
     def redirect_to(location, status: DEFAULT_REDIRECT_STATUS)
       @response.redirect(location, Controller.status_code(status))
       nil
     end
 
+    # Answers with a status and an empty body.
+    #
     # status defaults to :ok only so that Spinel boxes the parameter (see
     # DEFAULT_STATUS); callers are expected to pass one.
+    # @example
+    #   head :forbidden
+    #   head 401
+    # @param status [Integer, Symbol] see {STATUS_SYMBOLS}
+    # @return [nil]
+    # @api public
     def head(status = DEFAULT_STATUS)
       @response.status = Controller.status_code(status)
       @response.body = ""
@@ -252,6 +464,9 @@ module Cybertrain
       nil
     end
 
+    # @return [Boolean] true once this request has been rendered,
+    #   redirected or answered with {#head}
+    # @api public
     def performed?
       @response.performed?
     end

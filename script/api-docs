@@ -1,0 +1,30 @@
+#!/bin/sh
+# Builds the API reference (YARD) into site/api/, which the Pages workflow
+# publishes as https://saeki-mototsune.github.io/CyberTrain/api/. What goes
+# in, and how, is .yardopts: the framework's methods marked `@api public`,
+# the generated-code descriptions in docs/api/stubs/, docs/api/README.md as
+# the front page and docs/template-language.md. docs/api/yard_setup.rb holds
+# the filter and the Markdown setup. site/api/ is not committed.
+#
+# Any YARD warning (an unknown tag, a {Link} that resolves to nothing) fails
+# the build, so a broken reference is caught by CI (.github/workflows/ci.yml)
+# rather than shipped. Runs under CRuby; needs the yard, kramdown and
+# kramdown-parser-gfm gems (the install line is printed when one is missing).
+#
+# usage: script/api-docs            # then open site/api/index.html
+set -u
+
+cd "$(dirname "$0")/.." || exit 1
+
+for gem in yard kramdown kramdown-parser-gfm; do
+  if ! ruby -e "gem '$gem'" 2>/dev/null; then
+    echo "script/api-docs: the $gem gem is missing; install the three with:" >&2
+    echo "  gem install yard kramdown kramdown-parser-gfm" >&2
+    exit 1
+  fi
+done
+
+rm -rf site/api
+# Gem.bin_path, not `yard` on PATH: a version manager may not have put the
+# gem's executable there.
+exec ruby -e 'load Gem.bin_path("yard", "yard")' -- doc --no-save --fail-on-warning --no-progress

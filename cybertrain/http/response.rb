@@ -3,6 +3,15 @@ module Cybertrain
   # Server serializes it with #to_http. Headers keep the case they were set
   # with, and Set-Cookie values live in their own list because one response
   # may carry several.
+  #
+  # {Controller#response} in an action. {Controller#render},
+  # {Controller#redirect_to} and {Controller#head} set the status and body;
+  # use this object for headers and cookies. Content-Length is always
+  # computed, and Content-Type defaults to `text/html; charset=utf-8`.
+  # @example
+  #   response.set_header("Cache-Control", "no-store")
+  #   response.add_cookie(Cybertrain::Cookies.serialize("theme", "dark", max_age: 31_536_000))
+  # @api public
   class Response
     STATUS_TEXT = {
       200 => "OK", 201 => "Created", 204 => "No Content",
@@ -13,8 +22,27 @@ module Cybertrain
     }
     DEFAULT_CONTENT_TYPE = "text/html; charset=utf-8"
 
-    attr_accessor :status, :body
-    attr_reader :headers, :cookies
+    # The status code, 200 until set. A code missing from STATUS_TEXT
+    # (401, 409, ...) is sent with the reason phrase "Unknown".
+    # @return [Integer]
+    # @api public
+    attr_accessor :status
+
+    # The body, `""` until set.
+    # @return [String]
+    # @api public
+    attr_accessor :body
+
+    # The headers set so far, in the case they were set with; change them
+    # through {#set_header} and {#drop_header}.
+    # @return [Hash{String => String}]
+    # @api public
+    attr_reader :headers
+
+    # The Set-Cookie values added so far.
+    # @return [Array<String>]
+    # @api public
+    attr_reader :cookies
 
     def initialize
       @status = 200
@@ -57,6 +85,10 @@ module Cybertrain
     # Replaces any existing header of the same name, whatever its case,
     # keeping its position in the output. Raises ArgumentError when the name
     # or value contains CR or LF (header injection / response splitting).
+    # @param name [String]
+    # @param value [String]
+    # @raise [ArgumentError] on a CR or LF
+    # @api public
     def set_header(name, value)
       reject_crlf!(name, name)
       reject_crlf!(name, value)
@@ -85,6 +117,9 @@ module Cybertrain
     # middleware took earlier must still be the live one afterwards. The
     # matching keys are collected first (never delete while iterating) and
     # removed with Hash#delete; no block-taking Hash method is needed.
+    # @param name [String]
+    # @return [nil]
+    # @api public
     def drop_header(name)
       wanted = name.downcase
       gone = []
@@ -93,16 +128,24 @@ module Cybertrain
       nil
     end
 
+    # @param name [String] any case
+    # @return [String, nil]
+    # @api public
     def header(name)
       key = header_key(name)
       key.nil? ? nil : @headers[key]
     end
 
+    # @param value [String] e.g. `"text/csv; charset=utf-8"`
+    # @api public
     def content_type=(value)
       set_header("Content-Type", value)
     end
 
+    # Adds a Set-Cookie header; build the value with {Cookies.serialize}.
     # Raises ArgumentError when the value contains CR or LF.
+    # @param set_cookie_value [String]
+    # @api public
     def add_cookie(set_cookie_value)
       reject_crlf!("Set-Cookie", set_cookie_value)
       @cookies << set_cookie_value
