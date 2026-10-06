@@ -553,6 +553,11 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   .nav-links .nav-wide-only { display: none; }
   .nav-links ul { gap: 12px; }
 }
+/* At 360px and below the four links left do not fit beside the brand: the
+   API reference, which the footer also links, goes first. */
+@media (max-width: 360px) {
+  .nav-links .nav-roomy-only { display: none; }
+}
 /* ---------- Motion ---------------------------------------------------------
    CSS only, and all of it off under prefers-reduced-motion (the rule below
    stops every animation and transition) and on paper. Nothing waits on motion
