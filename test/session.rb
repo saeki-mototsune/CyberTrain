@@ -220,6 +220,13 @@ test "the session cookie is Secure only when SessionStore is built with secure: 
   assert secure_ctx.response.cookies[0].end_with?("; Secure")
 end
 
+test "SessionStore passes same_site and partitioned to its Set-Cookie" do
+  store = Cybertrain::SessionStore.new(SessionWriter.new, secret: SECRET, same_site: "None", partitioned: true)
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
+  store.call(ctx)
+  assert ctx.response.cookies[0].end_with?("; SameSite=None; Max-Age=1209600; Secure; Partitioned")
+end
+
 test "an unchanged session sets no cookie" do
   store = Cybertrain::SessionStore.new(SessionReader.new, secret: SECRET)
   req = Cybertrain::Request.new("GET", "/", {}, "")

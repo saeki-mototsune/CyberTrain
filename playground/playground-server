@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# playground-server [APP_DIR]
+#
+# Starts `cybertrain server` for the playground's app (default
+# /workspace/blog) in the foreground of this terminal. GitHub Codespaces runs
+# it from postAttachCommand on every attach, so a second run must not start a
+# second server: it prints where the app is and exits 0 instead when
+#   - its lock is held: a server this script started is running;
+#   - the port answers: a server started by hand is listening;
+#   - this user runs a `cybertrain server` that does not listen yet: one
+#     started by hand is still compiling (about a minute after a Ruby edit).
+# In the hosted playground (playground/web) a VS Code task runs it when the
+# folder opens; there VSCODE_PROXY_URI gives the app's URL.
+set -u
+
+app="${1:-/workspace/blog}"
+port="${PORT:-3000}"
+
+# The toolchain on PATH; in a codespace, the cookie settings the editor's
+# preview needs (SameSite=None; Secure; Partitioned).
+. /etc/profile.d/cybertrain-playground.sh
+
+if [ "${CODESPACES:-}" = "true" ] && [ -n "${CODESPACE_NAME:-}" ]; then
+  url="https://${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}/"
+elif [[ -n "${VSCODE_PROXY_URI:-}" && "${VSCODE_PROXY_URI}" == *'{{port}}'* ]]; then
+  # code-server (the hosted playground): its address for a port.
+  url="${VSCODE_PROXY_URI//'{{port}}'/$port}"
+  url="${url%/}/"
+else
+  url="http://localhost:${port}/"
+fi
+
+# One server per port. `cybertrain server` inherits the lock and holds it
+# until it exits.
+exec 9>"/tmp/playground-server-${port}.lock"
+if ! flock -n 9; then
+  echo "playground-server: the dev server is already running: ${url}"
+  exit 0
+fi
+if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
+  echo "playground-server: port ${port} is already in use, so no second server is started: ${url}"
+  exit 0
+fi
+# A `cybertrain server` started by hand holds neither the lock nor, until it
+# has compiled the app, the port. It is the gem's Ruby script, whose command
+# line is "/usr/bin/ruby3.2 /usr/local/bin/cybertrain server [PORT]";
+# anchoring on the interpreter skips a shell or init whose arguments merely
+# mention it.
+if pgrep -u "$(id -u)" -f '^[^ ]*ruby[^ ]* [^ ]*/cybertrain server( |$)' >/dev/null 2>&1; then
+  echo "playground-server: a cybertrain server is already starting, so no second server is started: ${url}"
+  exit 0
+fi
+if [ ! -f "${app}/spin.toml" ]; then
+  echo "playground-server: ${app} is not a cybertrain app (no spin.toml)" >&2
+  exit 1
+fi
+
+# The hosted playground's control plane sets PLAYGROUND_ENDS_AT (seconds
+# since the epoch): the banner says when the session and its files go.
+ends=""
+case "${PLAYGROUND_ENDS_AT:-}" in
+  "" | *[!0-9]*) ;;
+  *)
+    left=$(( (PLAYGROUND_ENDS_AT - $(date +%s)) / 60 ))
+    [ "$left" -ge 0 ] || left=0
+    unit=minutes
+    [ "$left" = 1 ] && unit=minute
+    ends="  Ends   in ${left} ${unit} ($(date -u -d "@${PLAYGROUND_ENDS_AT}" +%H:%M) UTC): the session and its files are deleted then."
+    ;;
+esac
+
+printf '\n  cybertrain playground\n  App    %s\n  Guide  %s\n' "$url" "${app}/PLAYGROUND.md"
+if [ -n "$ends" ]; then
+  printf '%s\n' "$ends"
+fi
+cat <<'EOF'
+
+  Views reload on the next request. A Ruby change rebuilds the app (about a
+  minute), then the server restarts by itself. Reload the page to see either.
+  Ctrl-C stops the server; run playground-server to start it again.
+
+EOF
+
+# Open the guide once per container, when this terminal has VS Code's `code`.
+marker="${app}/tmp/.playground-guide-opened"
+if [ -f "${app}/PLAYGROUND.md" ] && [ ! -e "$marker" ] && command -v code >/dev/null 2>&1; then
+  timeout 5 code --reuse-window "${app}/PLAYGROUND.md" >/dev/null 2>&1 && touch "$marker"
+fi
+
+cd "$app" || exit 1
+exec cybertrain server

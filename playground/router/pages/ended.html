@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>No session at this address</title>
+<style>
+:root { --bg: #fafaf9; --fg: #1c1917; --muted: #57534e; --accent: #1d4ed8; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0a0a0a; --fg: #f5f5f4; --muted: #a8a29e; --accent: #93c5fd; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 36rem; margin: 0 auto; padding: 64px 16px; }
+h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 16px; }
+p { margin: 0 0 16px; }
+a { color: var(--accent); }
+code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+<main>
+<h1>No session at this address</h1>
+<p>Playground sessions last a limited time, end a few minutes after their tab is closed, and are deleted with their files. If you just started this one or the playground was just updated, reload in a few seconds.</p>
+<p><a href="{{env "PLAY_PUBLIC_URL"}}/">Start a new session</a> · <a href="https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1" rel="noopener">Open in GitHub Codespaces</a></p>
+</main>
+</body>
+</html>

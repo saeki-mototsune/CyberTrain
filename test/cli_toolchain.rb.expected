@@ -2,7 +2,7 @@ ok   release_of reads the release out of spinel --version
 ok   the managed copy lives under CYBERTRAIN_HOME/spinel/<tag>, as an absolute path
 ok   usable? wants an executable spinel and spin of the pinned release
 ok   a spinel of the pinned release on PATH is used as it is
-note: old/spinel is release 2026.09.08; cybertrain 0.2.0 is pinned to Spinel 2026.09.12 and keeps its own copy in home/spinel/2026.09.12
+note: old/spinel is release 2026.09.08; cybertrain 0.2.1 is pinned to Spinel 2026.09.12 and keeps its own copy in home/spinel/2026.09.12
 ok   another release on PATH, or a spin from elsewhere, does not count
 ok   CYBERTRAIN_SPINEL_HOME names a prefix or its bin directory, absolute
 ok   the managed copy counts only once its completion stamp is there

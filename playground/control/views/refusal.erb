@@ -1,0 +1,32 @@
+<% case reason
+   when :origin
+     @title = "Start a session from #{@config.domain}" %>
+<h1>Start a session from <%= h(@config.domain) %></h1>
+<p><a href="<%= h(@config.public_origin) %>/">Go to <%= h(@config.domain) %></a></p>
+<% when :paused, :unavailable
+     @title = "The playground is paused" %>
+<h1>The playground is paused</h1>
+<p><%= without_period(refusal.message) %>. Try again later, or use <a href="<%= h(@config.codespaces_url) %>" rel="noopener">GitHub Codespaces</a>.</p>
+<% when :full
+     @title = "All sessions are in use" %>
+<h1>All sessions are in use</h1>
+<p>All <%= @config.max_sessions %> playground sessions are in use right now. A session lasts at most <%= h(minutes(@config.ttl)) %>, so one usually frees up within a few minutes: try again shortly.</p>
+<form class="start" method="post" action="/sessions">
+  <button type="submit" data-label="Try again">Try again</button>
+</form>
+<script><%= Play::App::BUTTON_SCRIPT %></script>
+<p><a href="<%= h(@config.codespaces_url) %>" rel="noopener">Open in GitHub Codespaces</a> (needs a GitHub account)</p>
+<% when :per_ip
+     @title = "A session from your network address is already running" %>
+<h1>A session from your network address is already running</h1>
+<p><%= @config.max_sessions_per_ip == 1 ? "Only one session runs" : "Only #{@config.max_sessions_per_ip} sessions run" %> per network address. If it is yours, go back to its tab. If you closed the tab, it ends a few minutes later; at the latest it ends at <%= Time.at(refusal.ends_at).utc.strftime("%H:%M") %> UTC.</p>
+<% when :rate
+     @title = "Too many sessions from your network address" %>
+<h1>Too many sessions from your network address</h1>
+<p>Try again in <%= h(minutes(refusal.retry_after)) %>.</p>
+<% else
+     @title = "The session could not be started" %>
+<h1>The session could not be started</h1>
+<p>Something went wrong on our side. Try again in a minute.</p>
+<% end %>
+<footer class="muted"><p><a href="/">Back to the playground</a></p></footer>

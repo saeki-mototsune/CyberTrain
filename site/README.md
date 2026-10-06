@@ -1,9 +1,11 @@
 # site/
 
-The CyberTrain homepage (`index.html`) and the getting-started tutorial
-(`tutorial.html`): static HTML and CSS with no build step, no framework and
-no third-party requests. `assets/site.js` only adds copy buttons and the
-active tutorial step; every page works with JavaScript off.
+The CyberTrain homepage (`index.html`), the getting-started tutorial
+(`tutorial.html`) and the playground page (`playground.html`, the way into
+the GitHub Codespaces playground): static HTML and CSS with no build step, no
+framework and no third-party requests. `assets/site.js` only adds copy
+buttons and marks the current step in the contents lists; every page works
+with JavaScript off.
 
 - `assets/brand/` — the logo files and [BRAND.md](assets/brand/BRAND.md)
   (construction system, colour tokens, clear space, which file to use where).

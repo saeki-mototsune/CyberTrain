@@ -35,9 +35,10 @@
     </a>
     <nav class="nav-links" aria-label="Primary">
       <ul>
-        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li class="nav-wide-only"><a href="index.html#how-it-works">How it works</a></li>
         <li><a href="tutorial.html" aria-current="page">Tutorial</a></li>
-        <li><a href="api/index.html">API</a></li>
+        <li><a href="playground.html">Playground</a></li>
+        <li class="nav-roomy-only"><a href="api/index.html">API</a></li>
         <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
       </ul>
     </nav>
@@ -112,6 +113,7 @@
     <p><code>~/.cybertrain/bin</code> holds <code>spinel</code> and <code>spin</code> links to the release in use. Without it on <code>PATH</code>, <code>cybertrain spin ARGS...</code> runs <code>spin</code> with that release from any directory. <code>CYBERTRAIN_HOME</code> replaces <code>~/.cybertrain</code>, and <code>CYBERTRAIN_SPINEL_HOME=PREFIX</code> uses the Spinel installed in <code>PREFIX</code> instead (it must be that release). A <code>spinel</code> of another release on <code>PATH</code> is never used or touched.</p>
       </div>
     </details>
+    <p class="note">No machine to install on? The <a href="playground.html">playground</a> opens this blog in a GitHub Codespace with steps 02, 03, 04 and 07 already done.</p>
   </section>
 
   <section class="step" id="install" aria-labelledby="h-install">
@@ -140,7 +142,7 @@
       <li><code>cybertrain spin ARGS...</code> runs <code>spin</code> with the pinned Spinel, from any directory: <code>cybertrain spin test</code>, <code>cybertrain spin run gen -- --check</code>.</li>
       <li><code>cybertrain setup [--force]</code> installs Spinel <code>2026.09.12</code> into <code>~/.cybertrain</code> unless a <code>spinel</code> of that release is already on <code>PATH</code>; <code>--force</code> rebuilds the copy under <code>~/.cybertrain</code>.</li>
       <li><code>cybertrain doctor</code> checks the C toolchain, the SQLite headers and the Spinel install.</li>
-      <li><code>cybertrain version</code> prints the version (<code>cybertrain 0.2.0</code>); <code>cybertrain help</code> prints the usage.</li>
+      <li><code>cybertrain version</code> prints the version (<code>cybertrain 0.2.1</code>); <code>cybertrain help</code> prints the usage.</li>
     </ul>
     <p class="note"><code>db</code>, <code>server</code> and <code>build</code> run inside an application; NAME is the <code>[package] name</code> in its <code>spin.toml</code>.</p>
   </section>
@@ -162,7 +164,7 @@
 <span class="ln">version = <span class="s">"0.1.0"</span></span>
 <span class="ln"></span>
 <span class="ln">[dependencies]</span>
-<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.0"</span> }</span></code></pre>
+<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.1"</span> }</span></code></pre>
 </figure>
     <p>Then it makes sure Spinel is installed (the first time, that means building Spinel <code>2026.09.12</code> into <code>~/.cybertrain</code>: a few minutes, once; see <a href="#requirements">step 00</a>) and runs <code>spin lock</code> (spin fetches the framework into its cache, <code>~/.cache/spin/packages/</code>, and pins the commit in <code>spin.lock</code>) and <code>spin run gen</code>, much as <code>rails new</code> runs <code>bundle install</code>, so <code>cybertrain server</code> works right away. It ends by printing the next steps. Nothing of the framework is copied into the app; commit <code>spin.toml</code> and <code>spin.lock</code>.</p>
     <p class="note">If Spinel or one of the two <code>spin</code> steps fails, the files stay, <code>new</code> exits with 1 and prints what to run once the cause is fixed (for Spinel: <code>cybertrain setup</code>, then <code>cybertrain spin lock &amp;&amp; cybertrain spin run gen</code> in the new directory). <code>--skip-spin</code> only writes the files; <code>--path DIR</code> depends on a local checkout instead, <code>--git URL [--ref R]</code> on the framework at URL (at branch or tag R), and <code>--version V</code> on an index version once <code>cybertrain</code> is on a <code>spin-index</code>.</p>
@@ -298,7 +300,7 @@
     <p><code>cybertrain server</code> prints each <code>spin</code> command it runs, then the app's boot banner. The first start compiles the app, so it takes a while:</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">output &mdash; cybertrain server</span><span class="code-lang">text</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: output of cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.2.0</span>
+<pre tabindex="0" role="region" aria-label="Code: output of cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.2.1</span>
 <span class="ln">=&gt; development environment (1 worker)</span>
 <span class="ln">=&gt; Watching app/, config/ and db/schema.rb for changes</span>
 <span class="ln">* Listening on http://127.0.0.1:3000</span>
@@ -567,6 +569,9 @@
         <tr><td data-label="Variable"><code>CYBERTRAIN_DATABASE</code></td><td data-label="Attribute"><code>database_path</code></td><td data-label="Default"><code>storage/#{env}.sqlite3</code></td></tr>
         <tr><td data-label="Variable"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="Attribute"><code>secret_key_base</code></td><td data-label="Default">required in production; dev/test auto-generate one into <code>tmp/secret_key</code></td></tr>
         <tr><td data-label="Variable"><code>SPINEL_WORKERS</code></td><td data-label="Attribute"><code>workers</code></td><td data-label="Default"><code>1</code></td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_HOST</code></td><td data-label="Attribute"><code>host</code></td><td data-label="Default"><code>"127.0.0.1"</code>; <code>0.0.0.0</code> listens on every interface (containers)</td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_SESSION_SAME_SITE</code></td><td data-label="Attribute"><code>session_same_site</code></td><td data-label="Default"><code>"Lax"</code>; also <code>Strict</code> or <code>None</code> (<code>None</code> always adds <code>Secure</code>); anything else stops the server at boot</td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_SESSION_PARTITIONED</code></td><td data-label="Attribute"><code>session_partitioned</code></td><td data-label="Default"><code>false</code>; <code>1</code> or <code>true</code> adds <code>Partitioned</code> (and <code>Secure</code>)</td></tr>
       </tbody>
     </table>
     </div>
@@ -583,7 +588,6 @@
       <li>Production refuses to start without <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</li>
       <li>In production an exception answers 500, and a bare error response (the router's plain-text 404, <code>head :not_found</code>, <code>render plain:</code>) is replaced by <code>public/&lt;status&gt;.html</code> when that file exists; <code>cybertrain new</code> writes <code>404.html</code> and <code>500.html</code>.</li>
       <li><code>SIGTERM</code> stops accepting, lets requests in flight finish and exits when they are done, or after the server's <code>drain_timeout</code> (10 s).</li>
-      <li>The default bind host is <code>127.0.0.1</code>; <code>host</code> is a <code>Config</code> attribute that <code>config/app.rb</code> can set.</li>
       <li>The watcher and rebuild loop never run in production. A running <code>cybertrain server</code> skips its rebuilds while <code>cybertrain build</code> holds <code>tmp/cybertrain-build.lock</code>.</li>
     </ul>
   </section>

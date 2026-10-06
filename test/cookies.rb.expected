@@ -6,4 +6,7 @@ ok   decode keeps the raw value of an invalid byte sequence (raw or percent-enco
 ok   serialize with defaults
 ok   serialize with all options set
 ok   serialize omits Max-Age when negative and HttpOnly/Secure when off
-8 tests, 13 assertions, 0 failures
+ok   serialize with same_site None adds Secure even when secure is false
+ok   serialize with partitioned appends Partitioned and implies Secure
+ok   serialize writes Secure once when secure, same_site None and partitioned are all set
+11 tests, 17 assertions, 0 failures

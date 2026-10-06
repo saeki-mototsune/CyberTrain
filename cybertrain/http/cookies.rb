@@ -57,7 +57,9 @@ module Cybertrain
     end
 
     # A Set-Cookie value for {Response#add_cookie}, the value
-    # percent-encoded.
+    # percent-encoded. `same_site` `"None"` and `partitioned` both require
+    # `Secure` (browsers drop such a cookie without it), so either adds
+    # `Secure` whatever `secure` says, and `Secure` is written once.
     # @param name [String]
     # @param value [String]
     # @param path [String]
@@ -66,15 +68,18 @@ module Cybertrain
     # @param http_only [Boolean]
     # @param same_site [String] `"Lax"`, `"Strict"` or `"None"`
     # @param secure [Boolean]
+    # @param partitioned [Boolean] adds `Partitioned` (and `Secure`)
     # @return [String]
     # @api public
-    def self.serialize(name, value, path: "/", max_age: -1, http_only: true, same_site: "Lax", secure: false)
+    def self.serialize(name, value, path: "/", max_age: -1, http_only: true, same_site: "Lax", secure: false,
+                       partitioned: false)
       out = +"#{name}=#{URI.encode_www_form_component(value)}"
       out << "; Path=#{path}"
       out << "; HttpOnly" if http_only
       out << "; SameSite=#{same_site}"
       out << "; Max-Age=#{max_age}" if max_age >= 0
-      out << "; Secure" if secure
+      out << "; Secure" if secure || partitioned || same_site == "None"
+      out << "; Partitioned" if partitioned
       out
     end
   end

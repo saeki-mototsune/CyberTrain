@@ -35,9 +35,10 @@
     </a>
     <nav class="nav-links" aria-label="Primary">
       <ul>
-        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li class="nav-wide-only"><a href="index.html#how-it-works">How it works</a></li>
         <li><a href="tutorial.html">Tutorial</a></li>
-        <li><a href="api/index.html">API</a></li>
+        <li><a href="playground.html">Playground</a></li>
+        <li class="nav-roomy-only"><a href="api/index.html">API</a></li>
         <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
       </ul>
     </nav>
@@ -56,6 +57,7 @@
         <p class="pitch">CyberTrain is a Rails-shaped web application framework written natively for Spinel, matz's ahead-of-time Ruby compiler. You keep the vocabulary (<code>resources</code>, <code>before_action</code>, <code>validates</code>, <code>form_with</code>, scaffolds) while <code>cybertrain build</code> compiles controllers, models, views and the framework itself into a single native binary with no Rack, no runtime gems and no Ruby interpreter in the artifact.</p>
         <div class="cta-row">
           <a class="btn btn-primary" href="tutorial.html">Get started<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="btn btn-ghost" href="playground.html">Try it in your browser</a>
           <a class="btn btn-ghost" href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">View on GitHub</a>
         </div>
       </div>
@@ -225,7 +227,7 @@
         <div class="part-head"><p class="part-k">Spinel package</p><h3 id="part-fw">The framework</h3></div>
         <p class="part-what">The library your app is built on.</p>
         <div class="part-fact"><p class="fact-k">What is in it</p><p>The HTTP server, routing and controllers, sessions and CSRF protection, the template interpreter, SQLite models and migrations, and the code generator behind <code>spin run gen</code>.</p></div>
-        <div class="part-fact"><p class="fact-k">How you get it</p><p>You don&rsquo;t install it. Your app&rsquo;s <code>spin.toml</code> names the release tag <code>v0.2.0</code> of this repository, and <code>spin lock</code> fetches it into spin&rsquo;s cache and pins the commit in <code>spin.lock</code>. Nothing is copied into your app.</p></div>
+        <div class="part-fact"><p class="fact-k">How you get it</p><p>You don&rsquo;t install it. Your app&rsquo;s <code>spin.toml</code> names the release tag <code>v0.2.1</code> of this repository, and <code>spin lock</code> fetches it into spin&rsquo;s cache and pins the commit in <code>spin.lock</code>. Nothing is copied into your app.</p></div>
         <div class="part-fact"><p class="fact-k">Where it runs</p><p>Inside your app. Spinel compiles it together with your code ahead of time; it never runs on CRuby.</p></div>
         <div class="part-fact"><p class="fact-k">In dist/blog</p><p><span class="pill pill-on">Compiled in</span>It is the part of CyberTrain that ships.</p></div>
       </article>
@@ -239,7 +241,7 @@
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">Both are released from the same tag, so their versions match: the 0.2.0 gem writes apps that depend on framework <code>v0.2.0</code>. To move an app to a new release, update the gem, point <code>spin.toml</code> at the new tag, then run <code>cybertrain spin lock</code> and <code>cybertrain spin run gen</code>.</p>
+      <p class="footnote">Both are released from the same tag, so their versions match: the 0.2.1 gem writes apps that depend on framework <code>v0.2.1</code>. To move an app to a new release, update the gem, point <code>spin.toml</code> at the new tag, then run <code>cybertrain spin lock</code> and <code>cybertrain spin run gen</code>.</p>
     </div>
   </div></div>
 </section>
@@ -316,7 +318,7 @@
       <div><dt>Ruby</dt><dd>3.2+ with RubyGems, for the <code>cybertrain</code> command only. Applications never run on CRuby.</dd></div>
       <div><dt>Spinel</dt><dd><code>2026.09.12</code>, untested against other versions. The first command that needs it builds it into <code>~/.cybertrain</code> (a few minutes, once); a <code>spinel</code> of that release already on <code>PATH</code> is used as is.</dd></div>
       <div><dt>Toolchain</dt><dd><code>cc</code> and <code>make</code> (Spinel compiles every program to C), plus <code>git</code> and <code>curl</code> to build Spinel. SQLite&nbsp;3 headers and library: <code>libsqlite3-dev</code> on Debian/Ubuntu, included with Xcode command line tools on macOS. OpenSSL headers are optional.</dd></div>
-      <div><dt>Status</dt><dd>Pre-alpha, version <code>0.2.0</code>, MIT licensed. The example blog is exercised by CI on Linux and macOS.</dd></div>
+      <div><dt>Status</dt><dd>Pre-alpha, version <code>0.2.1</code>, MIT licensed. The example blog is exercised by CI on Linux and macOS.</dd></div>
     </dl>
     <p class="footnote"><code>cybertrain doctor</code> checks these tools and headers and the Spinel install, and prints the install command for your platform when one is missing. <code>cybertrain setup</code> installs Spinel on request and prints the <code>PATH</code> line for running <code>spin</code> yourself; <code>cybertrain spin ARGS...</code> runs it without one.</p>
     </div>

@@ -35,6 +35,38 @@ authentication, mailers, jobs, WebSockets/ActionCable, an asset pipeline,
 i18n, and anything beyond a minimal `render json:` — see "Differences from
 Rails" below.
 
+## Try it in the browser
+
+[Open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
+to try cybertrain without installing anything: VS Code opens in your browser with
+Spinel 2026.09.12, the `cybertrain` CLI and the blog from the walkthrough below
+already created (`cybertrain new blog`, the article scaffold, the root route and
+the first migration, built once so the server starts without compiling), its
+development server running in a terminal and the app, showing the article list,
+in the editor's preview. The app is a git repository with one commit, so Source
+Control shows what you change. `PLAYGROUND.md` in the app lists what to try, from
+editing a view to carrying on with the walkthrough's comments. A view edit shows
+on the next reload; a Ruby edit is a full rebuild, about a minute, after which the
+server restarts by itself; the preview does not reload by itself. `cybertrain new`
+works there with no network.
+
+- A GitHub account is required, and the codespace runs on your own Codespaces
+  quota: GitHub's free plan includes 120 core-hours and 15 GB-month of storage a
+  month, about 60 hours on the default 2-core machine the playground uses. GitHub
+  stops an idle codespace after 30 minutes by default; its storage counts until
+  you delete it.
+- Inside the preview, pop-ups and `confirm()` dialogs do not work; the Ports
+  view's "Open in Browser" shows the app in a normal tab.
+- The same image runs locally (it is published for linux/amd64; on arm64, build
+  it from a checkout):
+
+  ```sh
+  docker run --rm -it --init -p 127.0.0.1:3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground
+  ```
+
+  Then open http://localhost:3000. [playground/README.md](playground/README.md)
+  describes the image, building it and the Codespaces setup.
+
 ## Requirements
 
 - Spinel `2026.09.12` (`Cybertrain::SPINEL_TAG`, the same release as
@@ -151,7 +183,7 @@ if they are not that release.
 
 `cybertrain new` writes the application with its `spin.toml` pointing at
 the release matching the CLI (`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "v0.2.0" }`), makes
+"https://github.com/saeki-mototsune/cybertrain", ref = "v0.2.1" }`), makes
 sure Spinel is installed, then runs `spin lock` (spin fetches the framework
 into its cache, `~/.cache/spin/packages/`, and pins the commit in
 `spin.lock`) and `spin run gen`, much as `rails new` runs `bundle install`,
@@ -512,20 +544,27 @@ end
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | required in production; dev/test auto-generate one into `tmp/secret_key` |
 | `SPINEL_WORKERS` | `workers` | `1` |
+| `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`; `0.0.0.0` listens on every interface (containers) |
+| `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; also `Strict` or `None` (`None` always adds `Secure`); anything else stops the server at boot |
+| `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
 
-Other attributes with fixed, overridable defaults: `host` (`"127.0.0.1"`),
-`views_root` (`"app/views"`), `public_root` (`"public"`), `layout`
+Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
+inside another site's frame, such as the playground's Codespaces preview; the
+browser must reach the app over HTTPS.
+
+Other attributes with fixed, overridable defaults: `views_root`
+(`"app/views"`), `public_root` (`"public"`), `layout`
 (`"layouts/application"`), `log_level` (`:info`), `session_cookie_name`,
 `session_max_age` (2 weeks), `session_secure` (`true` in production, which
-marks the session cookie `Secure`; `false` elsewhere), `pool_size` (4),
-`static_files`/`csrf` (`true`), `max_render_depth` (12 renders open at once:
-the page and its partials; raise it for partials that legitimately recurse
-deeper; it must be at least 1, or boot fails). Upgrade note: render nesting,
-unlimited before, is now capped at 12 by default (the page is depth 1, so
-partials can nest 11 levels; the layout renders after the page and does not
-nest), and an app with a deeper tree (threaded
-comments, a category menu) gets a template error until it sets
-`max_render_depth`.
+marks the session cookie `Secure`; `false` elsewhere, though `SameSite=None`
+and `Partitioned` add `Secure` anyway), `pool_size` (4), `static_files`/`csrf`
+(`true`), `max_render_depth` (12 renders open at once: the page and its
+partials; raise it for partials that legitimately recurse deeper; it must be
+at least 1, or boot fails). Upgrade note: render nesting, unlimited before, is
+now capped at 12 by default (the page is depth 1, so partials can nest 11
+levels; the layout renders after the page and does not nest), and an app with
+a deeper tree (threaded comments, a category menu) gets a template error until
+it sets `max_render_depth`.
 
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse
@@ -601,8 +640,9 @@ prints the diff stat).
 
 ## Learn more
 
-- [Homepage](https://saeki-mototsune.github.io/CyberTrain/) and
-  [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) —
+- [Homepage](https://saeki-mototsune.github.io/CyberTrain/),
+  [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) and
+  [playground](https://saeki-mototsune.github.io/CyberTrain/playground.html) —
   the source lives in [site/](site/), published by
   [.github/workflows/pages.yml](.github/workflows/pages.yml); the logo files and
   brand notes are in [site/assets/brand/](site/assets/brand/BRAND.md).
@@ -633,8 +673,12 @@ before the gem is pushed:
 1. Bump `Cybertrain::VERSION` (`cybertrain/version.rb`) and `version` in
    `spin.toml` together (CI checks they match); spin caches a git
    dependency by that version.
-2. Merge to `main`, then tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
-3. `gem build cybertrain.gemspec && gem push cybertrain-0.2.0.gem`.
+2. Merge to `main`, then tag and push: `git tag v0.2.1 && git push origin v0.2.1`.
+3. `gem build cybertrain.gemspec && gem push cybertrain-0.2.1.gem`.
+4. The tag also publishes the playground image
+   `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z` (and `latest`) through
+   [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml);
+   check that run.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in

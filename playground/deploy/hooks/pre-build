@@ -1,0 +1,57 @@
+#!/bin/sh
+# Run by Kamal before it builds an image of either service (hooks_path in
+# router.yml and control.yml): kamal setup, deploy, redeploy and build push.
+# Kamal builds from the working tree (builder context: .), so this stops the
+# build with a message (non-zero exit), before anything is pushed, when the
+# image would not come from a commit:
+#   - a tracked file differs from the commit;
+#   - an untracked file, git-ignored or not, is under the service's directory
+#     and not left out by that directory's Dockerfile.dockerignore.
+# A rollback builds nothing, so this hook does not run for it.
+set -eu
+case "${KAMAL_SERVICE:-}" in
+  cybertrain-play-router) dir=playground/router ;;
+  cybertrain-play) dir=playground/control ;;
+  *) echo "pre-build: unknown service '${KAMAL_SERVICE:-}' (cybertrain-play-router or cybertrain-play)" >&2; exit 1 ;;
+esac
+service=${dir#playground/}
+
+git update-index -q --refresh > /dev/null 2>&1 || :
+changed=$(git diff-index --name-only HEAD --)
+if [ -n "$changed" ]; then
+  echo "pre-build: uncommitted changes: commit first (the $service image is built from this tree):" >&2
+  printf '%s\n' "$changed" | sed 's/^/  /' >&2
+  exit 1
+fi
+
+# The Dockerfile.dockerignore starts with * and !$dir/; every other line must
+# be a plain path under $dir (a directory with a trailing /), which this hook
+# can evaluate without Docker's matcher.
+ignore=$dir/Dockerfile.dockerignore
+excluded=""
+while IFS= read -r pattern || [ -n "$pattern" ]; do
+  case "$pattern" in
+    "" | "#"* | "*" | "!$dir/") continue ;;
+    *"*"* | *"?"* | *"["* | *"\\"* | *" "*) ;;
+    "$dir/"*) excluded="$excluded ${pattern%/}"; continue ;;
+  esac
+  echo "pre-build: cannot evaluate '$pattern' in $ignore: only plain paths under $dir/ (extend this hook)" >&2
+  exit 1
+done < "$ignore"
+reaches_image() { # PATH: true unless the dockerignore leaves it out
+  for path in $excluded; do
+    case "$1" in "$path" | "$path"/*) return 1 ;; esac
+  done
+  return 0
+}
+
+# Untracked files, git-ignored ones too: they reach the build context alike.
+untracked=$(git ls-files --others -- "$dir")
+reach=$(printf '%s\n' "$untracked" | while IFS= read -r file; do
+  if [ -n "$file" ] && reaches_image "$file"; then printf '%s\n' "$file"; fi
+done)
+if [ -n "$reach" ]; then
+  echo "pre-build: untracked files under $dir/ would reach the $service image (git-ignored ones too): commit or remove them first:" >&2
+  printf '%s\n' "$reach" | sed 's/^/  /' >&2
+  exit 1
+fi

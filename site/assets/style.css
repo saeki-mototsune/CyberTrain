@@ -387,6 +387,7 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 .note { font-size: 15px; color: var(--ink-3) !important; padding-left: 18px; border-left: 1px solid var(--line-2); }
 .step .sub { margin-top: 44px; font-size: 20px; font-weight: 500; font-stretch: 115%; letter-spacing: -.01em; }
 .step .sub + .code { margin-top: 18px; }
+.step > .cta-row { margin-top: 28px; }
 .checklist, .points { margin-top: 20px; display: grid; gap: 10px; color: var(--ink-2); }
 .checklist li, .points li { position: relative; padding-left: 26px; }
 .checklist li::before, .points li::before { content: ""; position: absolute; left: 0; top: .78em; width: 12px; height: 1px; background: var(--ink-3); }
@@ -547,6 +548,15 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   .next-list a, .next-list li:nth-child(odd) a { padding: 18px 0; }
   .callout { padding: 20px 18px 22px; }
   .foot-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 440px) {
+  .nav-links .nav-wide-only { display: none; }
+  .nav-links ul { gap: 12px; }
+}
+/* At 360px and below the four links left do not fit beside the brand: the
+   API reference, which the footer also links, goes first. */
+@media (max-width: 360px) {
+  .nav-links .nav-roomy-only { display: none; }
 }
 /* ---------- Motion ---------------------------------------------------------
    CSS only, and all of it off under prefers-reduced-motion (the rule below

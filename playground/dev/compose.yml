@@ -1,0 +1,54 @@
+# playground/dev/compose.yml -- the whole hosted playground on this machine,
+# without Cloudflare or Kamal, at http://play.localhost:8080 (browsers resolve
+# *.localhost to this machine). Build the session image first:
+#   docker build -f playground/Dockerfile --target web -t cybertrain-playground-web:local .
+#   docker compose -f playground/dev/compose.yml up --build
+# playground/dev/e2e.sh brings up its own copy (project ctplay-e2e, port
+# 18080, data in data-e2e/).
+name: ${PLAY_PROJECT:-ctplay-dev}
+services:
+  router:
+    build:
+      context: ../..
+      dockerfile: playground/router/Dockerfile
+    environment:
+      PLAY_DOMAIN: play.localhost
+      PLAY_PUBLIC_URL: http://play.localhost:${PLAY_PORT:-8080}
+      PLAY_SUBNET_POOL: ${PLAY_SUBNET_POOL:-10.250.0.0/16}
+      ROUTER_LOG_OUTPUT: stderr
+    # As in production (playground/deploy/router.yml.example): no outside
+    # resolver, no IP forwarding, the same memory and process limits.
+    dns:
+      - 127.0.0.1
+    sysctls:
+      - net.ipv4.ip_forward=0
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 256
+    ports:
+      - "127.0.0.1:${PLAY_PORT:-8080}:80"
+    networks:
+      default:
+        aliases: [ctplay-router]
+  control:
+    build:
+      context: ../..
+      dockerfile: playground/control/Dockerfile
+    environment:
+      PLAY_PUBLIC_URL: http://play.localhost:${PLAY_PORT:-8080}
+      PLAY_SESSION_IMAGE: ${PLAY_SESSION_IMAGE:-cybertrain-playground-web:local}
+      PLAY_ROUTER_URL: http://ctplay-router
+      PLAY_ROUTER_FILTERS: label=com.docker.compose.project=${PLAY_PROJECT:-ctplay-dev},label=com.docker.compose.service=router
+      PLAY_CLIENT_IP_HEADER: CF-Connecting-IP
+      PLAY_MAX_SESSIONS: ${PLAY_MAX_SESSIONS:-3}
+      PLAY_MAX_SESSIONS_PER_IP: ${PLAY_MAX_SESSIONS_PER_IP:-1}
+      PLAY_CREATE_LIMIT: ${PLAY_CREATE_LIMIT:-3}
+      PLAY_TTL: ${PLAY_TTL:-1800}
+      PLAY_SUBNET_POOL: ${PLAY_SUBNET_POOL:-10.250.0.0/16}
+      PLAY_ABUSE_CONTACT: abuse@playground.invalid
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PLAY_DATA_HOST:-./data}:/data
+    networks:
+      default:
+        aliases: [ctplay-control]

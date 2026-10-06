@@ -1,6 +1,9 @@
 ok   config defaults in development
 ok   environment variables override the config defaults
 ok   an empty CYBERTRAIN_DATABASE counts as unset
+ok   CYBERTRAIN_HOST, CYBERTRAIN_SESSION_SAME_SITE and CYBERTRAIN_SESSION_PARTITIONED override the defaults
+ok   empty CYBERTRAIN_HOST and CYBERTRAIN_SESSION_SAME_SITE count as unset; only 1 and true turn partitioning on
+ok   session_same_site_error is empty for Lax, Strict and None and names the valid values otherwise
 ok   resolve_secret! creates the secret key file in the test env and reuses it
 ok   resolve_secret! keeps an explicit secret_key_base
 ok   resolve_secret! raises in production when the secret is empty
@@ -8,6 +11,7 @@ ok   Cybertrain.configure fills the process-wide config
 ok   DB::CLI.database_path follows Cybertrain.config once it is loaded
 ok   the stack is RequestLogger, Static, MethodOverride, SessionStore, CsrfProtection, Router
 ok   log_level :none, static_files and csrf switch their middleware off
+ok   the stack's session cookie follows session_same_site and session_partitioned
 ok   production puts ErrorPages outermost
 ok   Application.new accepts any name; only the Rebuilder refuses one
 ok   Application.name_problem is the text a development boot prints for a bad name
@@ -23,4 +27,4 @@ ok   a static file is served from the public root
 ok   path helpers in templates call the url_resolver
 ok   a method-returned Gen::Routes-style url_resolver keeps its route names
 ok   the server listens on the configured host and port
-25 tests, 108 assertions, 0 failures
+29 tests, 125 assertions, 0 failures

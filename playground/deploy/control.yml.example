@@ -1,0 +1,84 @@
+# Kamal config of the hosted playground's control plane (SP2). Copy to
+# playground/deploy/control.yml (git-ignored) and fill in the placeholders.
+# Rendered through ERB: PLAY_SESSION_IMAGE pins the tested session image
+# (CI's cybertrain-playground-web:latest) by digest at each deploy, and the
+# pre-deploy hook pulls exactly that onto the host. Every Kamal command reads
+# this file, so each one asks GHCR for the digest; when GHCR cannot be
+# reached, set PLAY_SESSION_IMAGE_REF to the reference in
+# playground/deploy/.session-image first. A rollback, too, pins what latest
+# names at that moment, unless PLAY_SESSION_IMAGE_REF names the old reference
+# (playground/deploy/hooks/pre-deploy).
+#
+#   kamal setup  -c playground/deploy/control.yml   # once, after the router
+#   kamal deploy -c playground/deploy/control.yml   # any time: live sessions keep running
+service: cybertrain-play
+# A package of <GHCR_OWNER>, the deploy account (registry below).
+image: <GHCR_OWNER>/cybertrain-play-control
+minimum_version: 2.12.0
+
+servers:
+  web:
+    hosts:
+      - <VPS_IP>
+    proxy: false
+    options:
+      network-alias: ctplay-control
+
+# <GHCR_OWNER> is a GitHub account of its own that owns only the router's and
+# the control plane's images (playground/deploy/README.md, 1-4), not
+# saeki-mototsune, which owns the public session and Codespaces images. Kamal
+# logs in to GHCR on the VPS at every setup and deploy and leaves this token
+# (KAMAL_REGISTRY_PASSWORD) there: it must not be able to push those two. The
+# session image is public, and pre-deploy pulls it without saeki-mototsune's
+# credentials.
+registry:
+  server: ghcr.io
+  username: <GHCR_OWNER>
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+  context: .
+  dockerfile: playground/control/Dockerfile
+
+env:
+  clear:
+    PLAY_PUBLIC_URL: https://<DOMAIN>
+    PLAY_SESSION_IMAGE: <%= `playground/deploy/session-image`.strip %>
+    PLAY_ALLOWED_ORIGINS: https://<DOMAIN>,https://saeki-mototsune.github.io
+    PLAY_CLIENT_IP_HEADER: CF-Connecting-IP
+    PLAY_ROUTER_URL: http://ctplay-router
+    PLAY_ROUTER_FILTERS: label=service=cybertrain-play-router,label=role=web
+    PLAY_MAX_SESSIONS: "5"
+    PLAY_MAX_SESSIONS_PER_IP: "1"
+    PLAY_TTL: "1800"
+    PLAY_SESSION_MEMORY: 1536m
+    # The same value as PLAY_SUBNET_POOL in router.yml and as POOL in
+    # playground/deploy/host/cybertrain-play-firewall: the router closes
+    # connections that come from the pool, and the firewall drops traffic
+    # from it. pre-deploy compares control.yml with router.yml.
+    PLAY_SUBNET_POOL: 10.250.0.0/16
+    # Empty reaches the container as unset (runc); runsc after the gVisor
+    # measurement (playground/deploy/README.md).
+    PLAY_RUNTIME: ""
+    PLAY_ABUSE_CONTACT: <ABUSE_EMAIL>
+
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+  - /var/lib/cybertrain-play:/data
+
+# pre-build refuses to build the control plane's image from a tree unlike
+# its commit; pre-deploy pulls the pinned session image onto every host;
+# post-deploy prunes old ones, never the pinned one. verbose: Kamal shows the
+# hooks' messages, which it hides by default.
+hooks_path: playground/deploy/hooks
+hooks_output: verbose
+
+logging:
+  options:
+    max-size: 10m
+    max-file: "3"
+
+ssh:
+  user: deploy

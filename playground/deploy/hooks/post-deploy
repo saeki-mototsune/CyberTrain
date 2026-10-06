@@ -1,0 +1,41 @@
+#!/bin/sh
+# Run after a deploy (hooks_path in router.yml and control.yml). After
+# `kamal deploy -c playground/deploy/control.yml`, it keeps on every host the
+# three newest session images and the one the deploy pins, whatever its age:
+# PLAY_SESSION_IMAGE_REF when set, else playground/deploy/.session-image.
+# Best effort: no valid pinned reference (nothing is pruned then), an
+# unreachable host or a failed prune prints a warning, and the hook still
+# exits 0 (the deploy is done). docker rmi refuses an image a live session
+# uses, which is fine.
+set -u
+[ "${KAMAL_SERVICE:-}" = cybertrain-play ] && [ "${KAMAL_COMMAND:-}" = deploy ] || exit 0
+
+# The reference goes into the remote command: the same check as in
+# session-image and pre-deploy.
+alnum=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
+valid_ref() { # REF
+  case "$1" in "" | [!$alnum]* | *[!$alnum._/:@-]*) return 1 ;; esac
+  case "$1" in *@*@*) return 1 ;; *@*) ;; *) return 0 ;; esac
+  hex=${1#*@sha256:}
+  [ "$hex" != "$1" ] && [ ${#hex} -eq 64 ] || return 1
+  case "$hex" in *[!0123456789abcdef]*) return 1 ;; esac
+}
+ref=${PLAY_SESSION_IMAGE_REF:-$(cat playground/deploy/.session-image 2> /dev/null)}
+if ! valid_ref "$ref"; then
+  echo "post-deploy: warning: no valid pinned session image (PLAY_SESSION_IMAGE_REF or playground/deploy/.session-image), so nothing was pruned" >&2
+  exit 0
+fi
+SSH_USER=$(sed -n 's|^ *user: *\(.*\)|\1|p' playground/deploy/control.yml | head -n 1)
+# On the host: the pinned image's id first (no id, no pruning), then every
+# image of the repository past the three newest, the pinned one aside.
+prune="keep=\$(docker image inspect --format '{{.Id}}' '$ref') && ids=\$(docker images --no-trunc ghcr.io/saeki-mototsune/cybertrain-playground-web --format '{{.ID}}') && printf '%s\n' \"\$ids\" | awk '!seen[\$0]++' | tail -n +4 | grep -vxF \"\$keep\" | xargs -r docker rmi > /dev/null 2>&1"
+for HOST in $(echo "${KAMAL_HOSTS:-}" | tr ',' ' '); do
+  ssh "${SSH_USER:-root}@$HOST" "$prune"
+  rc=$?
+  if [ "$rc" -eq 255 ]; then
+    echo "post-deploy: warning: $HOST cannot be reached: its old session images stay" >&2
+  elif [ "$rc" -ne 0 ]; then
+    echo "post-deploy: warning: pruning old session images on $HOST failed (exit $rc): some stay (docker rmi refuses an image a live session uses)" >&2
+  fi
+done
+exit 0

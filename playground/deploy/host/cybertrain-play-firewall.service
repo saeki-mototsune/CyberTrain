@@ -1,0 +1,27 @@
+[Unit]
+Description=cybertrain playground host firewall rules
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/cybertrain-play-firewall
+# A failure is retried every 10 s for as long as it lasts: a passing one at
+# boot (a late default route, the xtables lock) and a lasting one (an empty
+# Cloudflare list, say) alike, since without the rules ports 80/443 are open
+# to everyone and the metadata service answers. At one start per 10 s,
+# systemd's default start limit (5 starts in 10 s) never stops the retries.
+Restart=on-failure
+RestartSec=10
+# The lock's directory, /run/cybertrain-play-firewall: root's, unlike
+# /run/lock, which every user can write. Kept across stops and restarts, so
+# that a run by hand and a run of the unit always lock the same file.
+RuntimeDirectory=cybertrain-play-firewall
+RuntimeDirectoryPreserve=yes
+
+[Install]
+# docker.service too: a start of Docker (not only a boot or a restart) runs
+# the rules again, and the unit is not left shown inactive.
+WantedBy=multi-user.target docker.service

@@ -97,6 +97,14 @@ module Cybertrain
         STDOUT.flush
         exit(1)
       end
+      # config/app.rb has run by now, so the environment variable and
+      # `c.session_same_site = ...` are checked together.
+      same_site_error = c.session_same_site_error
+      unless same_site_error.empty?
+        puts "error: #{same_site_error}"
+        STDOUT.flush
+        exit(1)
+      end
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
@@ -313,7 +321,8 @@ module Cybertrain
       app = @router
       app = CsrfProtection.new(app) if c.csrf
       app = SessionStore.new(app, secret: c.resolve_secret!, cookie_name: c.session_cookie_name,
-                                  max_age: c.session_max_age, secure: c.session_secure)
+                                  max_age: c.session_max_age, secure: c.session_secure,
+                                  same_site: c.session_same_site, partitioned: c.session_partitioned)
       app = MethodOverride.new(app)
       app = Static.new(app, c.public_root) if c.static_files
       app = RequestLogger.new(app) unless c.log_level == :none

@@ -1,5 +1,5 @@
 module Cybertrain
-  VERSION = "0.2.0"
+  VERSION = "0.2.1"
 
   # Where `cybertrain new` points an app's spin.toml by default: the git tag
   # "v#{VERSION}" of this repository. Kept here because the gem (CRuby) and
