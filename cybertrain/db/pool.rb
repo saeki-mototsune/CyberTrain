@@ -148,8 +148,9 @@ module Cybertrain
       # exactly the closed one's place in @connections (matched by identity: with
       # two slots closed, one still checked out and one queued, the queued one
       # is the one being reopened, not whichever closed entry comes first; a
-      # persistent disk fault must not grow the list either). Never when the pool is not
-      # @reopenable (in-memory or temporary, see initialize): a fresh connection would be an empty database with no
+      # persistent disk fault must not grow the list either). Never when the
+      # pool's @reopenable is false (in-memory or temporary, see initialize): a
+      # fresh connection would be an empty database with no
       # tables and no trace, so a closed one (user code closed it) is an error
       # on every later checkout.
       # Nor once close_all ran: a `with` that popped its connection

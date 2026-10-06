@@ -11,9 +11,14 @@ active tutorial step; every page works with JavaScript off.
   under the SIL Open Font License (`OFL-*.txt`).
 - `assets/og.png` — the social card.
 
+`api/` is not in the repository: it is the API reference, which
+`script/api-docs` builds with YARD (see the comment at its top) and the
+Pages workflow builds before each deploy. The header and footer link to it.
+
 Preview locally:
 
 ```sh
+script/api-docs                       # optional: builds site/api/ (needs the yard, kramdown, kramdown-parser-gfm gems)
 python3 -m http.server -d site 8000   # http://localhost:8000
 ```
 

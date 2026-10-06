@@ -1,4 +1,5 @@
-# Publishes site/ (the project homepage and tutorial) to GitHub Pages.
+# Publishes site/ (the project homepage and tutorial) to GitHub Pages, with
+# the API reference built into site/api/ by script/api-docs (YARD).
 # One-time setup: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 name: Pages
 
@@ -8,6 +9,12 @@ on:
     paths:
       - "site/**"
       - ".github/workflows/pages.yml"
+      # The API reference's sources (see script/api-docs).
+      - "cybertrain/**"
+      - "docs/api/**"
+      - "docs/template-language.md"
+      - ".yardopts"
+      - "script/api-docs"
   workflow_dispatch:
 
 permissions:
@@ -27,6 +34,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Build the API reference into site/api/
+        run: |
+          gem install --no-document yard kramdown kramdown-parser-gfm
+          script/api-docs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

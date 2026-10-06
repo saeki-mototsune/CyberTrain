@@ -16,3 +16,7 @@ log/
 
 # gem build output
 *.gem
+
+# YARD (API docs are built by the Pages workflow into site/api/)
+.yardoc/
+/site/api/

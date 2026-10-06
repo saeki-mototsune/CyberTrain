@@ -1,0 +1,13 @@
+--title "CyberTrain API"
+--readme docs/api/README.md
+--markup markdown
+-e docs/api/yard_setup.rb
+--query 'CybertrainApiFilter.visible?(object)'
+--hide-void-return
+--template-path docs/api/templates
+--no-private
+--output-dir site/api
+cybertrain/**/*.rb
+docs/api/stubs/*.rb
+-
+docs/template-language.md

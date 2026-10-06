@@ -7,6 +7,10 @@ require "cybertrain/schema"
 
 module Cybertrain
   module Migration
+    # Raised when rolling back a `change` that recorded an operation with no
+    # automatic inverse (anything but create_table, add_column, add_index and
+    # rename_column); write `up` and `down` instead.
+    # @api public
     class IrreversibleMigration < StandardError
     end
 
@@ -86,6 +90,42 @@ module Cybertrain
       end
     end
 
+    # The superclass of every migration in `db/migrate/`. A file is named
+    # `<version>_<name>.rb` (`20260925174942_create_articles.rb`) and holds
+    # the class `<Name>` (`CreateArticles`); the version is the file's
+    # prefix. `cybertrain generate scaffold` writes one, and
+    # `cybertrain db migrate` applies the pending ones (`db rollback [N]`
+    # reverts), each in a transaction, then rewrites `db/schema.rb` from the
+    # database. Never edit `db/schema.rb` by hand.
+    #
+    # Write `change` when every operation is reversible (create_table,
+    # add_column, add_index, rename_column); otherwise write `up` and `down`.
+    # SQLite cannot add a foreign key to an existing table, so declare
+    # references in `create_table` or with {#add_reference}. Not available:
+    # `rename_table`, `change_column`, `change_column_default`,
+    # `change_column_null`, `create_join_table`.
+    # @example
+    #   class CreateComments < Cybertrain::Migration::Base
+    #     def change
+    #       create_table "comments" do |t|
+    #         t.string "commenter"
+    #         t.text "body"
+    #         t.references :article
+    #         t.timestamps
+    #       end
+    #     end
+    #   end
+    # @example up and down
+    #   class RemoveSubtitleFromArticles < Cybertrain::Migration::Base
+    #     def up
+    #       remove_column "articles", "subtitle"
+    #     end
+    #
+    #     def down
+    #       add_column "articles", "subtitle", :string
+    #     end
+    #   end
+    # @api public
     class Base
       # Migration version strings ("20260924120000") declared per subclass
       # via `self.version(v)`. Keyed by class name (a String) rather than a
@@ -103,26 +143,42 @@ module Cybertrain
         @operations = empty_operations
       end
 
+      # Override with the migration's operations; `cybertrain db migrate`
+      # runs them, and `db rollback` runs their inverses in reverse order.
+      #
       # Subclasses override `change` (recorded both ways via `inverse`) or
       # `up`/`down` directly when a migration is not mechanically reversible.
+      # @return [void]
+      # @api public
       def change
       end
 
+      # What `db migrate` runs: `change`, unless you override it (together
+      # with {#down}) because `change` cannot be reversed automatically.
+      #
       # Both `up` and `down` reset `@operations` before running `change` so
       # calling either one twice (or calling both on the same instance)
       # never duplicates or mixes forward/backward operations.
+      # @return [void]
+      # @api public
       def up
         @operations = empty_operations
         change
         nil
       end
 
+      # What `db rollback` runs: the inverse of `change`, unless you override
+      # it (together with {#up}).
+      #
       # The default `down` runs `change` to record the forward operations,
       # then replaces them with their inverses in reverse order -- it must
       # NOT simply re-run `change` and keep the forward operations, or a
       # rollback would re-apply the migration instead of undoing it. Raises
       # IrreversibleMigration (via `inverse`) when `change` recorded an
       # operation with no automatic inverse.
+      # @return [void]
+      # @raise [IrreversibleMigration]
+      # @api public
       def down
         @operations = empty_operations
         change
@@ -130,6 +186,12 @@ module Cybertrain
         nil
       end
 
+      # Creates a table with an `id` primary key and the columns the block
+      # declares. Reversible.
+      # @param name [String, Symbol] the plural (`"articles"`)
+      # @yieldparam t [Schema::TableDef]
+      # @return [void]
+      # @api public
       def create_table(name)
         table = Cybertrain::Schema::Table.new(name)
         yield Cybertrain::Schema::TableDef.new(table)
@@ -143,38 +205,94 @@ module Cybertrain
       # name across every unrelated class that defines it, so an implicit
       # `Array#<<` return here would fight their `nil`/object returns and
       # corrupt one of them. See spikes/NOTES.md rule 10.
+
+      # Drops a table. Not reversible.
+      # @param name [String, Symbol]
+      # @return [nil]
+      # @api public
       def drop_table(name)
         @operations << Operation.for_drop_table(name.to_s)
         nil
       end
 
+      # Adds a column. Reversible. SQLite adds a NOT NULL column to an
+      # existing table only with a non-NULL `default:`.
+      # @example
+      #   add_column "articles", "published", :boolean, null: false, default: "false"
+      # @param table [String, Symbol]
+      # @param name [String, Symbol]
+      # @param type [Symbol] `:string`, `:text`, `:integer`, `:float`,
+      #   `:boolean`, `:datetime` or `:date`
+      # @param null [Boolean]
+      # @param default [String, nil] SQL literal text
+      # @param limit [Integer] `VARCHAR(n)` for a string when positive
+      # @return [nil]
+      # @api public
       def add_column(table, name, type, null: true, default: nil, limit: 0)
         @operations << Operation.for_add_column(table.to_s, name.to_s, type, null, default, limit)
         nil
       end
 
+      # Drops a column (`ALTER TABLE ... DROP COLUMN`). Not reversible. Drop
+      # its indexes first.
+      # @param table [String, Symbol]
+      # @param name [String, Symbol]
+      # @return [nil]
+      # @api public
       def remove_column(table, name)
         @operations << Operation.for_remove_column(table.to_s, name.to_s)
         nil
       end
 
+      # Renames a column. Reversible.
+      # @param table [String, Symbol]
+      # @param from [String, Symbol]
+      # @param to [String, Symbol]
+      # @return [nil]
+      # @api public
       def rename_column(table, from, to)
         @operations << Operation.for_rename_column(table.to_s, from.to_s, to.to_s)
         nil
       end
 
+      # Adds an index, named `index_<table>_on_<col>_and_<col>` unless
+      # `name:` is given. Reversible.
+      # @example
+      #   add_index "articles", ["slug"], unique: true
+      # @param table [String, Symbol]
+      # @param columns [Array<String, Symbol>]
+      # @param unique [Boolean]
+      # @param name [String]
+      # @return [nil]
+      # @api public
       def add_index(table, columns, unique: false, name: "")
         cols = columns.map { |c| c.to_s }
         @operations << Operation.for_add_index(table.to_s, cols, unique, name.to_s)
         nil
       end
 
+      # Drops the index on these columns. Not reversible.
+      # @param table [String, Symbol]
+      # @param columns [Array<String, Symbol>]
+      # @return [nil]
+      # @api public
       def remove_index(table, columns)
         cols = columns.map { |c| c.to_s }
         @operations << Operation.for_remove_index(table.to_s, cols)
         nil
       end
 
+      # Adds `<name>_id` (an integer, NOT NULL by default), an index on it
+      # and, unless `foreign_key: false`, a foreign key to the plural table.
+      # Not reversible. SQLite adds a NOT NULL column to an existing table
+      # only with a default, so pass `null: true` here; in a new table use
+      # {Schema::TableDef#references} instead.
+      # @param table [String, Symbol]
+      # @param name [Symbol, String] the singular (`:author`)
+      # @param null [Boolean]
+      # @param foreign_key [Boolean]
+      # @return [nil]
+      # @api public
       def add_reference(table, name, null: false, foreign_key: true)
         column_name = "#{name}_id"
         @operations << Operation.for_add_reference(table.to_s, column_name, null)

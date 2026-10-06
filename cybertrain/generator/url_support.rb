@@ -2,14 +2,23 @@ require "cybertrain/router"
 
 # Runtime support for the URL helpers in a generated gen/routes.rb (which
 # requires this file). It is not part of the generator program itself.
+
 module Cybertrain
   @url_root = "http://localhost:3000"
 
   # Scheme and host the *_url helpers prepend: Cybertrain.url_root = "https://example.com".
+  # It is not derived from the request or from {Config}; set it in
+  # `config/app.rb`, e.g.
+  # `Cybertrain.url_root = "https://example.com" if Cybertrain.config.production?`.
+  # @return [String] `"http://localhost:3000"` until set
+  # @api public
   def self.url_root
     @url_root
   end
 
+  # @param root [String] scheme and host, no trailing slash
+  # @return [String]
+  # @api public
   def self.url_root=(root)
     @url_root = root
   end

@@ -3,11 +3,27 @@ require "cybertrain/ident"
 require "cybertrain/db"
 
 module Cybertrain
-  # A lazily built SELECT over one table. Each generated model gets its own
-  # subclass (PostRelation) whose chain methods wrap the setters below and
+  # A lazily built SELECT over one table: nothing runs until a method that
+  # needs rows ({#count}, {#exists?}, `to_a`, `first`, `each`, ...).
+  #
+  # Each generated model gets its own subclass, `<Model>Relation`, which adds
+  # the chainable query methods (`where`, `where_sql`, `order`, `order_sql`,
+  # `limit`, `offset`) and the methods that return records (`to_a`, `each`,
+  # `first`, `last`, `find`, `find_by`, `size`); see {ArticleRelation}. The
+  # methods documented here are the ones every relation shares.
+  #
+  # The chain methods change the relation they are called on and return it
+  # (they do not copy it), so keep one relation per query:
+  #
+  #     scope = Comment.where(article_id: article.id)
+  #     recent = scope.order("created_at DESC").limit(10).to_a
+  #     # scope itself is now ordered and limited too
+  #
+  # Implementation: the subclass's chain methods wrap the setters below and
   # return self, so `Post.where(...).first` is typed Post|nil: a base-class
   # method that returned self would be typed as the base (spikes/NOTES.md
   # rule 5), which is why these setters return nil.
+  # @api public
   class Relation
     attr_reader :binds
 
@@ -133,6 +149,10 @@ module Cybertrain
       nil
     end
 
+    # The SELECT this relation runs, with `?` placeholders (see `binds`).
+    # Handy in a test or a log line.
+    # @return [String]
+    # @api public
     def to_sql
       select_sql("*", @order, @limit, @offset)
     end
@@ -145,6 +165,10 @@ module Cybertrain
 
     # Counts the rows the relation would return: with a limit or offset the
     # count runs over the windowed subquery (Post.limit(2).count is 2).
+    # @example
+    #   Comment.where(article_id: article.id).count
+    # @return [Integer]
+    # @api public
     def count
       sql = if @limit >= 0 || @offset > 0
               "SELECT COUNT(*) AS n FROM (#{select_sql("1", "", @limit, @offset)})"
@@ -156,6 +180,10 @@ module Cybertrain
       Cast.int(found[0]["n"])
     end
 
+    # Whether the relation matches any row (a `SELECT 1 ... LIMIT 1`).
+    # Conditions go on the relation, not the call: `Post.where(slug: s).exists?`.
+    # @return [Boolean]
+    # @api public
     def exists?
       return false if @limit == 0
 
@@ -165,11 +193,16 @@ module Cybertrain
       !found.empty?
     end
 
-    # Deletes the matching rows and returns how many went. With a limit or
+    # Deletes the matching rows and returns how many went, with one DELETE:
+    # no model is loaded and no callback runs. With a limit or
     # offset only the rows of that window go (Post.limit(1).delete_all is one
     # row, as count/exists? read the same window): SQLite has no DELETE ...
     # LIMIT in a default build, so the window is picked by an `id` subselect
     # (the quoted primary key); the where binds appear once, inside it.
+    # @example
+    #   Comment.where(article_id: article.id).delete_all
+    # @return [Integer] the number of rows deleted
+    # @api public
     def delete_all
       sql = +"DELETE FROM #{Relation.quote_ident(@table)}"
       if @limit >= 0 || @offset > 0

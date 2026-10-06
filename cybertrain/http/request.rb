@@ -4,8 +4,47 @@ module Cybertrain
   # One incoming HTTP request. Header names are expected lowercased (as
   # HttpParser produces them), but #header also finds mixed-case keys so
   # hand-built requests in tests behave the same.
+  #
+  # {Controller#request} in an action. Read parameters through
+  # {Controller#params}; the request holds the raw parts. There is no
+  # `remote_ip` (no X-Forwarded-For handling), `xhr?`, `format` or `url`.
+  # @example
+  #   request.header("user-agent")
+  #   JSON.parse(request.body) if request.json?   # JSON bodies are not parsed into params
+  # @api public
   class Request
-    attr_reader :method, :path, :query_string, :headers, :body, :remote_addr, :http_version
+    # The method, upper case, after a form's `_method` override (so
+    # `"PATCH"` for an edit form).
+    # @return [String]
+    # @api public
+    attr_reader :method
+
+    # The path as sent, without the query string and not percent-decoded.
+    # @return [String]
+    # @api public
+    attr_reader :path
+
+    # The raw query string, without the `?` (`""` when there is none).
+    # @return [String]
+    # @api public
+    attr_reader :query_string
+
+    # The headers, by lowercase name. {#header} looks one up.
+    # @return [Hash{String => String}]
+    # @api public
+    attr_reader :headers
+
+    # The raw body (`""` when there is none).
+    # @return [String]
+    # @api public
+    attr_reader :body
+
+    # The peer's IP address (the reverse proxy's, behind one).
+    # @return [String]
+    # @api public
+    attr_reader :remote_addr
+
+    attr_reader :http_version
 
     def initialize(method, target, headers, body, remote_addr = "", http_version = "HTTP/1.1")
       @method = method.upcase
@@ -31,6 +70,11 @@ module Cybertrain
       @method = m.upcase
     end
 
+    # @example
+    #   request.header("Referer")
+    # @param name [String] any case
+    # @return [String, nil]
+    # @api public
     def header(name)
       key = name.downcase
       value = @headers[key]
@@ -42,9 +86,13 @@ module Cybertrain
       nil
     end
 
+    # The Content-Length header as an Integer.
+    #
     # 0 when the header is absent or not a plain non-negative integer.
     # An overlong all-digit value saturates to 9223372036854775807 under
     # Spinel (CRuby would return a Bignum); the Server's 413 limit rejects it.
+    # @return [Integer]
+    # @api public
     def content_length
       value = header("content-length")
       return 0 if value.nil? || value.empty?
@@ -54,6 +102,9 @@ module Cybertrain
     end
 
     # Media type only: "text/html; charset=utf-8" -> "text/html".
+    # Lowercase; `""` when absent.
+    # @return [String]
+    # @api public
     def content_type
       value = header("content-type")
       return "" if value.nil?
@@ -81,34 +132,51 @@ module Cybertrain
       @http_version == "HTTP/1.0" ? keep : true
     end
 
+    # @return [Boolean]
+    # @api public
     def get?
       @method == "GET"
     end
 
+    # @return [Boolean]
+    # @api public
     def post?
       @method == "POST"
     end
 
+    # @return [Boolean]
+    # @api public
     def head?
       @method == "HEAD"
     end
 
+    # @return [Boolean]
+    # @api public
     def patch?
       @method == "PATCH"
     end
 
+    # @return [Boolean]
+    # @api public
     def put?
       @method == "PUT"
     end
 
+    # @return [Boolean]
+    # @api public
     def delete?
       @method == "DELETE"
     end
 
+    # @return [Boolean] true for an `application/x-www-form-urlencoded`
+    #   body, the only kind parsed into params
+    # @api public
     def form?
       content_type == "application/x-www-form-urlencoded"
     end
 
+    # @return [Boolean] true for an `application/json` body
+    # @api public
     def json?
       content_type == "application/json"
     end
@@ -249,6 +317,9 @@ module Cybertrain
       segments
     end
 
+    # The raw Cookie header; parse it with {Cookies.parse}.
+    # @return [String] `""` when absent
+    # @api public
     def cookie_header
       header("cookie") || ""
     end
