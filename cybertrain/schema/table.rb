@@ -104,35 +104,105 @@ module Cybertrain
     end
 
     # The `t` a `create_table` block yields.
+    #
+    # Every table also gets `id INTEGER PRIMARY KEY AUTOINCREMENT`; do not
+    # declare it. The types are those below; there is no `decimal`, `bigint`,
+    # `json`, `binary` or `time`. `default:` is SQL literal text, and a new
+    # record starts with it when it is a plain literal.
+    # @example
+    #   create_table "articles" do |t|
+    #     t.string "title", null: false
+    #     t.text "body"
+    #     t.boolean "published", null: false, default: "false"
+    #     t.references :author
+    #     t.timestamps
+    #   end
+    # @api public
     class TableDef
       def initialize(table)
         @table = table
       end
 
+      # A `VARCHAR` column, a String in the model.
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"'draft'"`
+      # @param limit [Integer] `VARCHAR(n)` when positive
+      # @return [nil]
+      # @api public
       def string(name, null: true, default: nil, limit: 0)
         push_column(name, :string, null, default, limit)
       end
 
+      # A `TEXT` column, a String in the model.
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"0"`, `"'draft'"`,
+      #   `"false"`
+      # @param limit [Integer] ignored
+      # @return [nil]
+      # @api public
       def text(name, null: true, default: nil, limit: 0)
         push_column(name, :text, null, default, limit)
       end
 
+      # An `INTEGER` column, an Integer in the model.
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"0"`, `"'draft'"`,
+      #   `"false"`
+      # @param limit [Integer] ignored
+      # @return [nil]
+      # @api public
       def integer(name, null: true, default: nil, limit: 0)
         push_column(name, :integer, null, default, limit)
       end
 
+      # A `REAL` column, a Float in the model.
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"0"`, `"'draft'"`,
+      #   `"false"`
+      # @param limit [Integer] ignored
+      # @return [nil]
+      # @api public
       def float(name, null: true, default: nil, limit: 0)
         push_column(name, :float, null, default, limit)
       end
 
+      # A `BOOLEAN` column (0/1), true/false in the model.
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"0"`, `"'draft'"`,
+      #   `"false"`
+      # @param limit [Integer] ignored
+      # @return [nil]
+      # @api public
       def boolean(name, null: true, default: nil, limit: 0)
         push_column(name, :boolean, null, default, limit)
       end
 
+      # A `DATETIME` column, a UTC Time in the model (stored as
+      # `"2026-10-05T09:00:00Z"`, to the second).
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"0"`, `"'draft'"`,
+      #   `"false"`
+      # @param limit [Integer] ignored
+      # @return [nil]
+      # @api public
       def datetime(name, null: true, default: nil, limit: 0)
         push_column(name, :datetime, null, default, limit)
       end
 
+      # A `DATE` column, a String (`"2026-10-05"`) in the model.
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"0"`, `"'draft'"`,
+      #   `"false"`
+      # @param limit [Integer] ignored
+      # @return [nil]
+      # @api public
       def date(name, null: true, default: nil, limit: 0)
         push_column(name, :date, null, default, limit)
       end
@@ -140,6 +210,16 @@ module Cybertrain
       # Adds "<name>_id" (Integer), an index on it, and -- unless
       # `foreign_key: false` -- a foreign key to the pluralized table name
       # ("post" -> "posts", "person" -> "people" via Cybertrain::Inflector).
+      #
+      # The foreign key is what gives the two models their association
+      # readers (`comment.article`, `article.comments`).
+      # @example
+      #   t.references :article   # article_id, NOT NULL, indexed, -> articles
+      # @param name [Symbol, String] the singular (`:article`)
+      # @param null [Boolean] the column is NOT NULL unless true
+      # @param foreign_key [Boolean]
+      # @return [nil]
+      # @api public
       def references(name, null: false, foreign_key: true)
         column_name = "#{name}_id"
         push_column(column_name, :integer, null, nil, 0)
@@ -150,6 +230,10 @@ module Cybertrain
         end
       end
 
+      # `created_at` and `updated_at`, NOT NULL datetimes that
+      # {Model#save} fills in.
+      # @return [nil]
+      # @api public
       def timestamps
         push_column("created_at", :datetime, false, nil, 0)
         push_column("updated_at", :datetime, false, nil, 0)

@@ -1,7 +1,9 @@
 require "stringio"
 require "cybertrain/middleware"
 require "cybertrain/middleware/request_logger"
+require "cybertrain/http/query"
 require "cybertrain/middleware/method_override"
+require "cybertrain/middleware/session_store"
 require "cybertrain/router"
 require "cybertrain/app"
 require "cybertrain/test"
@@ -109,6 +111,24 @@ test "RequestLogger logs Completed 500 and re-raises when the app raises" do
   assert lines[1].end_with?("ms"), lines[1]
 end
 
+# An app whose parameter parsing hit a Query limit: the error path outside
+# RequestLogger answers 400 for it (ClientError), so the access log must too.
+class TooManyApp
+  def call(ctx)
+    raise Cybertrain::QueryTooMany, "too many parameters (limit 4096)"
+  end
+end
+
+test "RequestLogger logs the status the client fault gets (400), not 500" do
+  sink = StringIO.new
+  stack = Cybertrain::RequestLogger.new(TooManyApp.new, Cybertrain::Logger.new(sink))
+  message = assert_raises("QueryTooMany") { stack.call(build_ctx("POST", "/things")) }
+  assert_equal "too many parameters (limit 4096)", message
+  lines = sink.string.split("\n")
+  assert_equal 2, lines.size
+  assert lines[1].start_with?("[INFO] Completed 400 in "), lines[1]
+end
+
 test "MethodOverride turns a form POST with _method=delete into DELETE" do
   stack = Cybertrain::MethodOverride.new(endpoint)
   ctx = build_ctx("POST", "/things/1", "_method=delete", FORM)
@@ -139,6 +159,51 @@ test "MethodOverride ignores _method in a body that is not a form" do
   ctx = build_ctx("POST", "/things/4", "_method=delete", { "content-type" => "text/plain" })
   stack.call(ctx)
   assert_equal "POST 4", ctx.response.body
+end
+
+test "MethodOverride on a malformed form body raises QueryMalformed (a 400 through ClientError)" do
+  stack = Cybertrain::MethodOverride.new(endpoint)
+  assert_raises("QueryMalformed") { stack.call(build_ctx("POST", "/things/1", "_method=%zz", FORM)) }
+  assert_raises("QueryMalformed") { stack.call(build_ctx("POST", "/things/1?_method=%zz")) }
+end
+
+test "MethodOverride and the Router share one validation of the form body" do
+  stack = Cybertrain::MethodOverride.new(endpoint)
+  ctx = build_ctx("POST", "/things/1?q=1", "_method=delete", FORM)
+  # a tree a reader parsed before the Router, from the validated texts it owns
+  q = Cybertrain::Query.parse(ctx.request.utf8_query_string)
+  body_text = ctx.request.utf8_body
+  stack.call(ctx)
+  assert_equal "DELETE 1", ctx.response.body
+  # every reader took the one validated text the Request holds
+  assert body_text.equal?(ctx.request.utf8_body)
+  assert_equal "_method=delete", body_text
+  # the Router builds ctx.params as its own tree (query, then form, then the
+  # captures); a tree parsed earlier is never changed
+  assert !ctx.params.equal?(q)
+  assert_equal "1", q["q"]
+  assert_equal 1, q.to_h.length
+  assert !q.key?("_method")
+  assert !q.key?("id")
+  assert_equal "1", ctx.params["q"]
+  assert_equal "delete", ctx.params["_method"]
+  assert_equal "1", ctx.params["id"]
+  ctx.params.set_value("_method", "changed")
+  ctx.params.set_value("q", "changed")
+  assert_equal "1", q["q"]
+  assert_equal "delete", Cybertrain::Query.parse(ctx.request.utf8_body)["_method"]
+end
+
+# SessionStore parses every cookie on every request but reads only its own,
+# so a cookie another app set on the parent domain must not fail the request
+# whether or not it percent-decodes ("50%off" does not: Cookies keeps the raw
+# value, on both runtimes).
+test "a foreign cookie that does not percent-decode does not fail the request" do
+  stack = Cybertrain::SessionStore.new(endpoint, secret: "s" * 32)
+  ctx = build_ctx("GET", "/", "", { "cookie" => "promo=50%off; theme=dark" })
+  assert_nil stack.call(ctx)
+  assert_equal 200, ctx.response.status
+  assert_equal "[app]", ctx.response.body
 end
 
 test "App runs the default stack down to the router" do

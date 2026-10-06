@@ -45,6 +45,18 @@ module Cybertrain
     # collection) take the mapper as their argument instead
     # (`resources :posts do |posts| posts.resources :comments end`), see
     # Routes.draw for why.
+    #
+    # The methods available in `config/routes.rb`. They run when
+    # `spin run gen` generates `gen/routes.rb`, not in the server, so a
+    # mistake is an `ArgumentError` from `spin run gen`. Routes match in the
+    # order drawn; HEAD matches GET routes; an unmatched request is a plain
+    # `404 Not Found`.
+    #
+    # Each named route gets a `<name>_path` and a `<name>_url` helper (see
+    # {::Gen::UrlHelpers}). Not available: `resource` (singular), `match`,
+    # `namespace`, `scope`, `constraints`, `mount`, formats, globs and
+    # optional segments.
+    # @api public
     class Mapper
       STANDARD_ACTIONS = [:index, :create, :new, :edit, :show, :update, :destroy]
       # A route name must work as the prefix of `def <name>_path`.
@@ -67,27 +79,72 @@ module Cybertrain
       end
 
       # root "posts#index" -> GET / named "root".
+      # @param to [String] `"controller#action"`
+      # @return [nil]
+      # @api public
       def root(to)
         target = split_to(to)
         add_spec("GET", "/", target[0], target[1], "root")
       end
 
+      # A GET route. At the top level `to:` is required; inside a
+      # `resources` block (or its `member` / `collection`) the controller is
+      # the resource's and the action defaults to the path.
+      #
+      # The name is `as:`, or the path with every character outside
+      # `[a-z0-9_]` turned into `_` (`"about-us"` → `about_us`). Inside a
+      # `member` block it gets the resource's singular as a suffix
+      # (`preview_post`), inside `collection` the plural (`search_posts`),
+      # inside `resources` its prefix (`post_...`).
+      # @example
+      #   get "/about", to: "pages#about"               # GET /about, about_path
+      #   get "/feed", to: "articles#index", as: "feed"   # feed_path
+      # @param path [String] `:name` segments become params (`"/users/:id"`)
+      # @param to [String] `"controller#action"`, or just `"action"`
+      # @param as [String] the route name
+      # @return [nil]
+      # @raise [ArgumentError] with no controller, an invalid or duplicate name
+      # @api public
       def get(path, to: "", as: "")
         add_custom_route("GET", path, to, as)
       end
 
+      # A POST route; see {#get}.
+      # @param path [String]
+      # @param to [String]
+      # @param as [String]
+      # @return [nil]
+      # @api public
       def post(path, to: "", as: "")
         add_custom_route("POST", path, to, as)
       end
 
+      # A PATCH route; see {#get}.
+      # @param path [String]
+      # @param to [String]
+      # @param as [String]
+      # @return [nil]
+      # @api public
       def patch(path, to: "", as: "")
         add_custom_route("PATCH", path, to, as)
       end
 
+      # A PUT route; see {#get}.
+      # @param path [String]
+      # @param to [String]
+      # @param as [String]
+      # @return [nil]
+      # @api public
       def put(path, to: "", as: "")
         add_custom_route("PUT", path, to, as)
       end
 
+      # A DELETE route; see {#get}.
+      # @param path [String]
+      # @param to [String]
+      # @param as [String]
+      # @return [nil]
+      # @api public
       def delete(path, to: "", as: "")
         add_custom_route("DELETE", path, to, as)
       end
@@ -95,6 +152,38 @@ module Cybertrain
       # The seven standard actions (only:/except: pick some). Routes drawn
       # in the block (nested resources, member, collection) come first, so
       # /posts/search wins over /posts/:id as in Rails.
+      #
+      # `resources :articles` draws, to `ArticlesController`:
+      #
+      # | Verb | Path | Action | Helper |
+      # | --- | --- | --- | --- |
+      # | GET | `/articles` | `index` | `articles_path` |
+      # | POST | `/articles` | `create` | |
+      # | GET | `/articles/new` | `new` (`def new_action`) | `new_article_path` |
+      # | GET | `/articles/:id/edit` | `edit` | `edit_article_path(article)` |
+      # | GET | `/articles/:id` | `show` | `article_path(article)` |
+      # | PATCH, PUT | `/articles/:id` | `update` | |
+      # | DELETE | `/articles/:id` | `destroy` | |
+      #
+      # A word that is its own plural (`sheep`) names the collection
+      # `sheep_index`. Nested resources take the parent's id as
+      # `:<singular>_id` and its singular as a name prefix:
+      # `article_comments_path(article)`, `article_comment_path(article,
+      # comment)`. Their controller is the child's (`CommentsController`).
+      # @example
+      #   resources :articles do |articles|
+      #     articles.resources :comments, only: [:create, :destroy]
+      #     articles.member { |m| m.get "preview" }        # GET /articles/:id/preview, preview_article_path
+      #     articles.collection { |c| c.get "search" }     # GET /articles/search, search_articles_path
+      #   end
+      # @param name [Symbol] the plural (`:articles`)
+      # @param only [Array<Symbol>, nil] draw only these actions
+      # @param except [Array<Symbol>, nil] draw all but these
+      # @yieldparam mapper [Mapper] the mapper, to call with an explicit
+      #   receiver inside the block (`articles.resources`): Spinel gives a
+      #   nested block no implicit self
+      # @return [nil]
+      # @api public
       def resources(name, only: nil, except: nil, &block)
         # Interpolated, not name.to_s: in a program that also loads the model
         # runtime, name.to_s came out boxed and widened @controller, which
@@ -143,11 +232,19 @@ module Cybertrain
       end
 
       # Inside resources: get "preview" -> GET /posts/:id/preview as preview_post.
+      # @yieldparam mapper [Mapper]
+      # @return [nil]
+      # @raise [ArgumentError] outside a `resources` block
+      # @api public
       def member(&block)
         within("member", block)
       end
 
       # Inside resources: get "search" -> GET /posts/search as search_posts.
+      # @yieldparam mapper [Mapper]
+      # @return [nil]
+      # @raise [ArgumentError] outside a `resources` block
+      # @api public
       def collection(&block)
         within("collection", block)
       end
@@ -286,9 +383,18 @@ module Cybertrain
   # identifier 'self'"). Nested blocks therefore take the mapper as their
   # argument. `draw do |r| r.root ... end` also works (instance_eval passes
   # the receiver as the block argument).
+  # @api public
   module Routes
     @specs = Array.new(0) { Gen::RouteSpec.new("", "", "", "", "") }
 
+    # Declares the application's routes; the block's methods are those of
+    # {Gen::Mapper}. `spin run gen` runs `config/routes.rb` and writes
+    # `gen/routes.rb` (re-run it after editing the routes; the development
+    # server does).
+    # @yieldparam mapper [Gen::Mapper] also the block's self, at its top
+    #   level only
+    # @return [nil]
+    # @api public
     def self.draw(&block)
       Gen::Mapper.new(@specs).instance_eval(&block)
       nil

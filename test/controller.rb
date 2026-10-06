@@ -1,3 +1,4 @@
+require "stringio"
 require "cybertrain/test"
 require "cybertrain/controller"
 
@@ -5,6 +6,11 @@ require "cybertrain/controller"
 # (through the template helpers), so this program no longer runs under CRuby:
 # take its snapshot from the compiled binary, never `spin test --regen`
 # (spikes/NOTES.md rule 23).
+
+# A client fault answered from an action logs a "rejected request" line
+# (Controller#rescue_with_handler); keep it out of the snapshot except in the
+# tests that read it.
+Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
 
 # What the callbacks and actions did, in order; cleared by each dispatch.
 TRAIL = []
@@ -42,6 +48,11 @@ class ApplicationController < Cybertrain::Controller
   end
 end
 
+module Billing
+  class Invalid < StandardError
+  end
+end
+
 class PostsController < ApplicationController
   before_action :set_post, only: [:show, :edit]
   before_action(except: [:index]) do |c|
@@ -54,6 +65,32 @@ class PostsController < ApplicationController
   def require_post
     params.require(:post)
     render plain: "unreachable"
+  end
+
+  # An action that parses a request body itself past Query's limit, and one
+  # that raises an app class sharing a bare name with a framework one.
+  def parse_body
+    Cybertrain::Query.parse("&" * 4097)
+    render plain: "unreachable"
+  end
+
+  # Dirties the response the way a before_action and an action might (a
+  # cookie, CORS and Cache-Control headers, a redirect, an attachment
+  # header) and then raises a client fault: the 400 keeps the deliberate
+  # ones and drops only Location and Content-Disposition.
+  def dirty_then_parse
+    response.add_cookie("sid=abc; Path=/")
+    response.set_header("access-control-allow-origin", "https://app.example")
+    response.set_header("Cache-Control", "no-store")
+    response.set_header("content-disposition", "attachment")
+    response.set_header("Content-Disposition", "attachment")
+    redirect_to "/elsewhere"
+    Cybertrain::Query.parse("&" * 4097)
+    render plain: "unreachable"
+  end
+
+  def bill
+    raise Billing::Invalid, "card declined"
   end
 
   def index
@@ -411,6 +448,69 @@ test "a missing required param answers 400 Bad Request" do
   controller.process(:require_post) { |c| c.require_post }
   assert_equal 400, ctx.response.status
   assert_includes ctx.response.body, "param is missing or the value is empty: post"
+end
+
+test "a client fault raised in an action answers 400 with its message, like a missing param" do
+  ctx = build_ctx(false)
+  controller = PostsController.new(ctx)
+  controller.process(:parse_body) { |c| c.parse_body }
+  assert_equal 400, ctx.response.status
+  assert_equal "too many parameters (limit 4096)", ctx.response.body
+end
+
+test "a client fault after the action redirected drops only Location and Content-Disposition" do
+  ctx = build_ctx(false)
+  controller = PostsController.new(ctx)
+  controller.process(:dirty_then_parse) { |c| c.dirty_then_parse }
+  assert_equal 400, ctx.response.status
+  assert_equal "too many parameters (limit 4096)", ctx.response.body
+  assert_equal "text/plain; charset=utf-8", ctx.response.header("Content-Type")
+  assert_nil ctx.response.header("Location")
+  assert_nil ctx.response.header("Content-Disposition")
+  assert_equal 1, ctx.response.cookies.length
+  assert_equal "sid=abc; Path=/", ctx.response.cookies[0]
+  assert_equal "https://app.example", ctx.response.header("Access-Control-Allow-Origin")
+  assert_equal "no-store", ctx.response.header("Cache-Control")
+  assert controller.performed?
+end
+
+# The 400 answered inside the action is logged like the same fault one layer
+# up (ErrorPages, Dev::ErrorPage): one info line through Cybertrain.logger.
+# An exception the controller does not answer (the 500 path) logs nothing
+# here: ErrorPages classifies and logs it once, as the error.
+test "a client fault answered from an action logs one rejected-request line" do
+  previous = Cybertrain.logger
+  log = StringIO.new
+  Cybertrain.logger = Cybertrain::Logger.new(log, :info)
+  ctx = build_ctx(false)
+  controller = PostsController.new(ctx)
+  controller.process(:parse_body) { |c| c.parse_body }
+  assert_equal 400, ctx.response.status
+  assert_equal "[INFO] rejected request (400 Bad Request): too many parameters (limit 4096)\n", log.string
+  ctx2 = build_ctx(false)
+  ctx2.params.set_value("other", "1")
+  PostsController.new(ctx2).process(:require_post) { |c| c.require_post }
+  assert_equal 400, ctx2.response.status
+  assert_equal 2, log.string.lines.size
+  assert_includes log.string, "[INFO] rejected request (400 Bad Request): param is missing or the value is empty: post"
+  Cybertrain.logger = previous
+end
+
+test "an exception the controller re-raises is not logged by it (ErrorPages logs it once)" do
+  previous = Cybertrain.logger
+  log = StringIO.new
+  Cybertrain.logger = Cybertrain::Logger.new(log, :info)
+  controller = PostsController.new(build_ctx(false))
+  assert_raises("Invalid") { controller.process(:bill) { |c| c.bill } }
+  assert_equal "", log.string
+  Cybertrain.logger = previous
+end
+
+test "an app exception sharing a bare name with a framework one is still raised (500 path)" do
+  ctx = build_ctx(false)
+  controller = PostsController.new(ctx)
+  msg = assert_raises("Invalid") { controller.process(:bill) { |c| c.bill } }
+  assert_equal "card declined", msg
 end
 
 Cybertrain::Test.run!

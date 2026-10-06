@@ -11,6 +11,7 @@ require "cybertrain/params"
 require "cybertrain/model"
 require "cybertrain/template/ast"
 require "cybertrain/template/inode"
+require "cybertrain/template/limits"
 
 module Cybertrain
   # Templates ask a record whether a name it answered nil for exists at all
@@ -44,9 +45,21 @@ module Cybertrain
     end
 
     class Interpreter
-      def initialize(helpers)
+      # max_depth: Views.configure(root, max_render_depth: n) for an app whose
+      # partials legitimately recurse (threaded comments, a tree menu) past
+      # the default; the page is depth 1 (the layout renders after the page
+      # has returned, so it never nests on top of it). The
+      # default is Template::MAX_RENDER_DEPTH (template/limits.rb, where the
+      # reasoning for 12 lives), the one name the limit has: written bare
+      # here and in Engine because `Template::` inside module
+      # Cybertrain::Template names the Template class (engine.rb), not the
+      # module; the lexical lookup reaches the constant.
+      def initialize(helpers, max_depth = MAX_RENDER_DEPTH)
         @helpers = helpers
+        @max_depth = max_depth
         @name = ""
+        # Renders currently open on this interpreter (typed Integer counter).
+        @depth = 0
         @last_error = ""
         # The output buffer lives in an ivar rather than being passed down:
         # Spinel strings are immutable C strings that `<<` replaces, and a
@@ -66,14 +79,23 @@ module Cybertrain
       # Renders template into a fresh String. Re-entrant: a helper rendering
       # a partial calls render again on the same interpreter.
       def render(template, env)
+        # Checked before anything is saved or changed, so the raise leaves
+        # @depth/@name/@out untouched. @name is still the calling template
+        # here; the caller's call_helper then adds its "name:line:" prefix.
+        if @depth >= @max_depth
+          raise RuntimeError, "partial nesting too deep (> #{@max_depth}): #{template.name} rendered from #{@name} (max_render_depth is #{@max_depth}; raise Config#max_render_depth for partials that legitimately recurse deeper)"
+        end
+
         saved_name = @name
         saved_out = @out
         @name = template.name
         @out = String.new
+        @depth = @depth + 1
         begin
           exec_nodes(template.nodes, env)
           result = @out
         ensure
+          @depth = @depth - 1
           @name = saved_name
           @out = saved_out
         end

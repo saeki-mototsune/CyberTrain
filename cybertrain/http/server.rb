@@ -1,9 +1,11 @@
 require "socket"
+require "json"
 require "cybertrain/http/parser"
 require "cybertrain/http/request"
 require "cybertrain/http/response"
 require "cybertrain/context"
 require "cybertrain/middleware"
+require "cybertrain/http/client_error"
 require "cybertrain/logger"
 
 module Cybertrain
@@ -313,9 +315,16 @@ module Cybertrain
       response = ctx.response
       begin
         @app.call(ctx)
-      rescue StandardError => e
-        @logger.error("#{e.class.name}: #{e.message}")
-        response = error_response(500)
+      rescue JSON::ParserError, StandardError => e
+        # JSON::ParserError is not a StandardError under Spinel (NOTES rule
+        # 33); named here so an action's bad JSON.parse is a 500 and not the
+        # end of the connection thread. SystemStackError / NoMemoryError are
+        # not named: nothing proves Spinel's exception table has them (a
+        # stack overflow is a SIGSEGV there anyway); the depth limits in Query
+        # and the template Interpreter are the guard against those.
+        # ClientError maps and logs (a client's fault is its 4xx at info);
+        # ErrorPages and Dev::ErrorPage ask it too, this is the bare-app path.
+        response = error_response(ClientError.classify(e, @logger))
       end
       keep_alive = request.keep_alive? && @running
       response.set_header("Connection", keep_alive ? "keep-alive" : "close")
@@ -337,9 +346,7 @@ module Cybertrain
 
     def error_response(status)
       response = Response.new
-      response.status = status
-      response.content_type = "text/plain"
-      response.body = response.status_text
+      response.reset_to(status)
       response
     end
 

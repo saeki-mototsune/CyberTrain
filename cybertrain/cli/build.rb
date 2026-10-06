@@ -1,10 +1,42 @@
 # `cybertrain build`: dist/ = the app binary with app/views embedded, plus
 # public/. Also the command lists `cybertrain db` and `server` run. Plain Ruby:
 # runs under CRuby (the gem) and compiles under Spinel (spin install).
+require "cybertrain/app_name"
+
 module Cybertrain
   module CLI
     module Build
-      # The [package] name in root/spin.toml, or "" when there is none.
+      # The entries assemble() keeps in dist/ besides the binary: the copied
+      # public/ and the storage/ and tmp/ directories. A package named like
+      # one of them would collide with it (the binary renamed to dist/public
+      # gets moved aside as dist/.public.old and deleted; a dist/storage
+      # directory cannot be replaced by the binary), so `cybertrain build`
+      # (require_dist_name!) and `cybertrain new` refuse these names;
+      # app_name, which every command reads, does not: `cybertrain db` and
+      # `server` work for an existing app named like one. assemble builds its
+      # paths from these constants so the two cannot drift.
+      DIST_PUBLIC = "public"
+      DIST_STORAGE = "storage"
+      DIST_TMP = "tmp"
+      DIST_ENTRIES = [DIST_PUBLIC, DIST_STORAGE, DIST_TMP]
+
+      # "" when name cannot collide with what assemble() puts in dist/, else
+      # the reason. A leading "." covers assemble's scratch entries
+      # (dist/.<name>.tmp, dist/.public.tmp, dist/.public.old) and "."/"..".
+      # The entry names match case-insensitively: on a case-insensitive
+      # filesystem (macOS's default APFS, one of the CI OSes; Windows) "Public"
+      # and "TMP" are the same directory entry as public and tmp. Only a
+      # different spelling of the whole name ("tmp2", "my_public") is another
+      # entry. downcase is ASCII-safe here: the entries are ASCII.
+      def self.dist_name_problem(name)
+        return "" unless DIST_ENTRIES.include?(name.downcase) || name.start_with?(".")
+
+        "collides with what `cybertrain build` keeps in dist/ (#{DIST_ENTRIES.join(", ")}) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'"
+      end
+
+      # The [package] name in root/spin.toml, or "" when there is none. The
+      # name ends up in shell command strings and file paths, so it must be
+      # a name `cybertrain new` could have produced.
       def self.app_name(root)
         path = "#{root}/spin.toml"
         return "" unless File.exist?(path)
@@ -22,11 +54,35 @@ module Cybertrain
             break
           end
         end
+        # An empty name is run_in_app's "no spin.toml with a [package] name".
+        # Any other name must be usable as a `spin build` target and a
+        # build/bin/<name> path: the same predicate Application.new applies to
+        # the dev rebuilder's target. The name reaches the shell through
+        # quote_arg, so only what breaks that target or path is refused.
+        return "" if name.empty?
+
+        problem = AppName.problem(name)
+        raise InvalidArgument, "spin.toml [package] name '#{name}' #{problem}" unless problem.empty?
+
         name
       end
 
+      # The build path's check, made once in CLI.build_app before the
+      # toolchain is touched (Build.run does not repeat it): a name that
+      # collides with a dist/ entry only matters to assemble. Returns nil.
+      def self.require_dist_name!(name)
+        problem = dist_name_problem(name)
+        raise InvalidArgument, "spin.toml [package] name '#{name}' #{problem}" unless problem.empty?
+
+        nil
+      end
+
+      # name goes through quote_arg too: app_name validates it, but the
+      # command strings stay safe for a caller that skipped that, whatever the
+      # spelling. An empty name cannot reach these from the CLI (run_in_app
+      # refuses it first); a direct caller passing "" gets `spin build ''`.
       def self.commands(name)
-        ["spin run gen -- --embed-views", "spin build #{name}", "spin run gen"]
+        ["spin run gen -- --embed-views", "spin build #{quote_arg(name)}", "spin run gen"]
       end
 
       # `cybertrain db ARGS`, through bin/db.rb (the app binary cannot compile
@@ -55,7 +111,8 @@ module Cybertrain
 
       # port is "" (the app's default, 3000) or a port? string.
       def self.server_commands(name, port)
-        run = port == "" ? "spin run #{name}" : "spin run #{name} -- #{port}"
+        target = quote_arg(name)
+        run = port == "" ? "spin run #{target}" : "spin run #{target} -- #{quote_arg(port)}"
         ["spin run gen", run]
       end
 
@@ -84,6 +141,8 @@ module Cybertrain
       end
 
       # Runs the build in root and assembles dist/. Returns the exit code.
+      # name must already have passed require_dist_name!: CLI.build_app checks
+      # it once, before the toolchain is fetched.
       def self.run(root, name, runner = Runner.new)
         steps = commands(name)
         ok = false
@@ -138,8 +197,8 @@ module Cybertrain
         dist = "#{root}/dist"
         Templates.mkdir_p(dist)
         binary_tmp = "#{dist}/.#{name}.tmp"
-        public_tmp = "#{dist}/.public.tmp"
-        public_old = "#{dist}/.public.old"
+        public_tmp = "#{dist}/.#{DIST_PUBLIC}.tmp"
+        public_old = "#{dist}/.#{DIST_PUBLIC}.old"
         # Leftovers of an interrupted earlier run.
         rm_tree(binary_tmp)
         rm_tree(public_tmp)
@@ -150,20 +209,20 @@ module Cybertrain
 
         File.rename(binary_tmp, "#{dist}/#{name}")
 
-        if File.directory?("#{root}/public")
-          public_command = "cp -R #{shell_quote("#{root}/public")} #{shell_quote(public_tmp)}"
-          raise InvalidArgument, "could not copy public/ to dist/" unless system(public_command)
+        if File.directory?("#{root}/#{DIST_PUBLIC}")
+          public_command = "cp -R #{shell_quote("#{root}/#{DIST_PUBLIC}")} #{shell_quote(public_tmp)}"
+          raise InvalidArgument, "could not copy #{DIST_PUBLIC}/ to dist/" unless system(public_command)
         else
           Dir.mkdir(public_tmp)
         end
-        public_dir = "#{dist}/public"
+        public_dir = "#{dist}/#{DIST_PUBLIC}"
         File.rename(public_dir, public_old) if File.exist?(public_dir) || File.symlink?(public_dir)
         File.rename(public_tmp, public_dir)
         rm_tree(public_old)
 
-        Templates.mkdir_p("#{dist}/storage")
-        Templates.mkdir_p("#{dist}/tmp")
-        ["dist/#{name}", "dist/public/", "dist/storage/", "dist/tmp/"]
+        Templates.mkdir_p("#{dist}/#{DIST_STORAGE}")
+        Templates.mkdir_p("#{dist}/#{DIST_TMP}")
+        ["dist/#{name}", "dist/#{DIST_PUBLIC}/", "dist/#{DIST_STORAGE}/", "dist/#{DIST_TMP}/"]
       end
 
       # A symlink is removed itself, never followed: its target may be

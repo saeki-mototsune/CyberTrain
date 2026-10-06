@@ -5,10 +5,14 @@ ok   app is reassignable to splice a chain
 ok   RequestLogger logs Started and Completed lines
 ok   RequestLogger reports the final status
 ok   RequestLogger logs Completed 500 and re-raises when the app raises
+ok   RequestLogger logs the status the client fault gets (400), not 500
 ok   MethodOverride turns a form POST with _method=delete into DELETE
 ok   MethodOverride reads _method from the query string and ignores case
 ok   MethodOverride ignores unknown methods and non-POST requests
 ok   MethodOverride ignores _method in a body that is not a form
+ok   MethodOverride on a malformed form body raises QueryMalformed (a 400 through ClientError)
+ok   MethodOverride and the Router share one validation of the form body
+ok   a foreign cookie that does not percent-decode does not fail the request
 ok   App runs the default stack down to the router
 ok   App without logging writes nothing to its logger
-13 tests, 32 assertions, 0 failures
+17 tests, 54 assertions, 0 failures

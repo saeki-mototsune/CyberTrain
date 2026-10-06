@@ -1,5 +1,7 @@
+require "json"
 require "cybertrain/middleware"
 require "cybertrain/logger"
+require "cybertrain/http/client_error"
 
 module Cybertrain
   # Rails-style request log lines around the rest of the stack:
@@ -18,11 +20,17 @@ module Cybertrain
       started = Time.now
       begin
         super
-      rescue StandardError
-        # Still two lines per request: the Server turns the exception into
-        # a 500, so log that status (as Rails does) and let it propagate.
-        log_completed(500, started)
-        raise
+      rescue JSON::ParserError, StandardError => e
+        # Still two lines per request: the error path outside this
+        # middleware (ErrorPages, Dev::ErrorPage or the Server) answers the
+        # status ClientError.status_for gives the exception -- 400 for a client
+        # fault, 500 otherwise (a name lookup, nothing is re-raised, so both
+        # sites always agree) -- so log that status (as Rails does) and let
+        # it propagate. JSON::ParserError named too (NOTES rule 33), or an
+        # action's bad JSON.parse would leave the request without its
+        # Completed line under Spinel.
+        log_completed(ClientError.status_for(e), started)
+        raise e
       end
       log_completed(ctx.response.status, started)
       nil

@@ -1,7 +1,10 @@
 require "cybertrain/middleware"
 require "cybertrain/html"
 require "cybertrain/logger"
+require "json"
 require "cybertrain/dev/rebuilder"
+require "cybertrain/http/client_error"
+require "cybertrain/http/response"
 
 module Cybertrain
   module Dev
@@ -22,9 +25,17 @@ module Cybertrain
         begin
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
-        rescue StandardError => e
-          Cybertrain.logger.error("#{e.class.name}: #{e.message}")
-          render_exception(ctx, e)
+        rescue JSON::ParserError, StandardError => e
+          # NOTES rule 33: JSON::ParserError is not a StandardError under
+          # Spinel, and a bad JSON body deserves the diagnostics page too. A
+          # client fault (ClientError: parameters past Query's limits) gets a
+          # plain 4xx naming the limit instead, as ErrorPages does.
+          status = ClientError.classify(e, Cybertrain.logger)
+          if status >= 500
+            render_exception(ctx, e)
+          else
+            ctx.response.reset_to(status, "#{Response.status_text(status)}: #{e.message}")
+          end
         end
         inject_banner(ctx.response)
         nil
@@ -50,14 +61,11 @@ module Cybertrain
 
       private
 
-      # Starts over like Server#error_response: every header and cookie the
-      # failed action had already set goes (a stale Location or
-      # Content-Disposition: attachment would hide the page).
+      # Response#reset_to drops the failed action's headers and cookies; the
+      # diagnostics page then replaces the plain-text body.
       def render_exception(ctx, error)
         response = ctx.response
-        response.headers.clear
-        response.cookies.clear
-        response.status = 500
+        response.reset_to(500)
         response.content_type = "text/html; charset=utf-8"
         response.body = error_html(ctx.request, error.class.name, error.message)
         nil

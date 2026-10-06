@@ -41,7 +41,7 @@ test "key? is true for scalars, lists and nested params" do
   refute p.key?("nope")
 end
 
-test "keys lists scalars, then lists, then nested, each in insertion order" do
+test "inspect lists scalars, then lists, then nested, each in insertion order (Params has no keys)" do
   p = Cybertrain::Params.new
   p.set_value("b", "1")
   p.add_list_value("y", "1")
@@ -49,7 +49,8 @@ test "keys lists scalars, then lists, then nested, each in insertion order" do
   p.set_value("a", "2")
   p.add_list_value("x", "2")
   p.child!("w")
-  assert_equal ["b", "a", "y", "x", "z", "w"], p.keys
+  assert_equal "{\"b\"=>\"1\", \"a\"=>\"2\", \"y\"=>[\"1\"], \"x\"=>[\"2\"], \"z\"=>{}, \"w\"=>{}}", p.inspect
+  ["b", "a", "y", "x", "z", "w"].each { |k| assert p.key?(k) }
 end
 
 test "set_path assembles nested params from a Query.split_key-shaped path" do
@@ -141,7 +142,7 @@ test "merge! does not alias other's lists or nested params" do
   assert_equal "{\"t\"=>[\"x\"], \"c\"=>{\"k\"=>\"v\"}}", b.inspect
 end
 
-test "merge! preserves keys/inspect ordering: receiver order first, then other's new keys" do
+test "merge! preserves inspect ordering: receiver order first, then other's new keys" do
   a = Cybertrain::Params.new
   a.set_value("keep", "yes")
   a.add_list_value("tags", "a")
@@ -157,7 +158,7 @@ test "merge! preserves keys/inspect ordering: receiver order first, then other's
 
   a.merge!(b)
 
-  assert_equal ["keep", "id", "tags", "extra", "post", "author"], a.keys
+  ["keep", "id", "tags", "extra", "post", "author"].each { |k| assert a.key?(k) }
   assert_equal(
     "{\"keep\"=>\"no\", \"id\"=>\"2\", \"tags\"=>[\"b\"], \"extra\"=>[\"z\"], " \
       "\"post\"=>{\"title\"=>\"new\"}, \"author\"=>{\"name\"=>\"matz\"}}",
@@ -171,17 +172,20 @@ test "a name can only be one kind at a time: last write wins, like Rack" do
   p.add_list_value("a", "2")
   assert_nil p["a"]
   assert_equal ["2"], p.list("a")
-  assert_equal ["a"], p.keys
+  assert p.key?("a")
+  assert_equal({}, p.to_h)
 
   p.child!("a").set_value("b", "3")
   assert_equal [], p.list("a")
   assert_equal "3", p.nested("a")["b"]
-  assert_equal ["a"], p.keys
+  assert p.key?("a")
+  assert_equal [], p.list("a")
 
   p.set_value("a", "4")
   assert_equal "4", p["a"]
   assert p.nested("a").empty?
-  assert_equal ["a"], p.keys
+  assert p.key?("a")
+  assert_equal({ "a" => "4" }, p.to_h)
 end
 
 test "to_h returns only scalars, empty? and inspect are deterministic" do
@@ -194,6 +198,23 @@ test "to_h returns only scalars, empty? and inspect are deterministic" do
   refute p.empty?
   assert_equal({ "id" => "1" }, p.to_h)
   assert_equal "{\"id\"=>\"1\", \"tags\"=>[\"a\", \"b\"], \"post\"=>{\"title\"=>\"x\"}}", p.inspect
+end
+
+test "merge! copies Strings: the merged tree shares none with its source" do
+  src = Cybertrain::Params.new
+  src.set_value("q", "1")
+  src.add_list_value("t", "a")
+  src.child!("c").set_value("k", "v")
+  dst = Cybertrain::Params.new.merge!(src)
+  dst["q"] << "XYZ"
+  dst.list("t")[0] << "XYZ"
+  dst.nested("c")["k"] << "XYZ"
+  # Only the source is asserted: whether the appends stuck on dst is the
+  # runtime's business (under Spinel a String read out of a Params does not
+  # take an in-place `<<`, NOTES rule 55); what matters is that src is intact.
+  assert_equal "1", src["q"]
+  assert_equal ["a"], src.list("t")
+  assert_equal "v", src.nested("c")["k"]
 end
 
 Cybertrain::Test.run!

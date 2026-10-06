@@ -27,3 +27,7 @@ playground/dev/data-e2e/
 playground/deploy/router.yml
 playground/deploy/control.yml
 playground/deploy/.session-image
+
+# YARD (API docs are built by the Pages workflow into site/api/)
+.yardoc/
+/site/api/

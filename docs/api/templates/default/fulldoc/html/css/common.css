@@ -1,0 +1,16 @@
+/* YARD's slot for site-specific CSS (it ships empty), loaded after its own
+   style.css by every API page and the sidebar lists. It only sets the
+   site's typefaces: the pages keep YARD's light theme and colours (the
+   brand's gold is for the mark alone, site/assets/brand/BRAND.md). The fonts
+   are the site's own files: the pages are published at site/api/, so
+   ../../assets is site/assets. */
+@import url("../../assets/fonts/fonts.css");
+
+body, .summary_desc, #search input, #full_list {
+  font-family: 'Archivo', 'Archivo Fallback', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+code, pre, tt, .signature, .code, #filecontents pre.code, .docstring pre.code, .tags pre.example, .source_code pre {
+  font-family: 'JetBrains Mono', 'JetBrains Mono Fallback', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-variant-ligatures: none;
+}

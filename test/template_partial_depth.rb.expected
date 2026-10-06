@@ -1,0 +1,10 @@
+ok   a self-rendering partial raises a located template error
+ok   the depth is configurable (Interpreter max_depth, Views.configure, Config#max_render_depth)
+ok   a max_render_depth below 1 is refused at boot (Views.configure)
+ok   two partials rendering each other raise too
+ok   the interpreter is usable again after the error
+ok   a 10-level chain renders fine
+ok   the limit is 12 nested renders, page included
+ok   the arithmetic: the page is depth 1, a chain of 11 partials fits and 12 does not
+ok   the layout does not add a level: it renders after the page, at depth 1
+9 tests, 31 assertions, 0 failures
