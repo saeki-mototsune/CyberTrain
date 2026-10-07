@@ -99,9 +99,9 @@ by file times, so copy the blog only with `cp -a` (or `tar`), which keep
 them.
 
 Not baked in: `tmp/secret_key` (each container makes its own on first start,
-so no two visitors share a key), `CYBERTRAIN_HOST` and the Codespaces
-variables (set at run time), the VS Code server (Codespaces installs it),
-seed data, `sudo` and editor extensions.
+so no two visitors share a key), `CYBERTRAIN_HOST` (set at run time), the
+VS Code server (Codespaces installs it), seed data, `sudo` and editor
+extensions.
 
 The mirror is this checkout's HEAD as a one-commit bare repository with the
 tag `v<VERSION>` forced onto it. A new app's `spin.toml` points at
@@ -144,20 +144,7 @@ GIT_CONFIG_NOSYSTEM=1 git clone https://github.com/saeki-mototsune/cybertrain
 **`/etc/profile.d/cybertrain-playground.sh`** (from `profile.sh`) puts
 `/opt/cybertrain/bin` on `PATH` and sets `CYBERTRAIN_HOME` and
 `XDG_CACHE_HOME` for login shells and interactive bash (the image's
-environment already sets the three for every process). In a codespace
-(`CODESPACES=true`) it also defaults `CYBERTRAIN_SESSION_SAME_SITE=None` and
-`CYBERTRAIN_SESSION_PARTITIONED=1`. The editor's preview shows the app in an
-iframe inside a webview, which in a codespace is on a `github.dev` host; the
-app is on `<codespace>-3000.app.github.dev`. In a frame on another site a
-`SameSite=Lax` session cookie is neither stored nor sent, so every form POST
-would fail the CSRF check with 403; `SameSite=None; Secure` works there, and
-`Partitioned` keeps it working in browsers that block third-party cookies.
-The same settings also work in a frame on the same site and in the app's own
-tab. These are the framework's own variables (the README's "Configuration and
-environment variables"); the framework does not look at `CODESPACES`
-itself. A value already set wins, which allows a control run, once the
-server is stopped (Ctrl-C in its terminal):
-`CYBERTRAIN_SESSION_SAME_SITE=Lax CYBERTRAIN_SESSION_PARTITIONED=0 playground-server`.
+environment already sets the three for every process).
 
 ## Codespaces
 
@@ -169,7 +156,7 @@ repository's default dev container configuration:
 - `workspaceFolder`: `/workspace/blog`, the prebuilt blog, outside the clone of this repository under `/workspaces`.
 - `postCreateCommand`: empty, so no setup step runs.
 - `postAttachCommand`: `playground-server`, on every attach (it is safe to run again). When the codespace first opens, VS Code asks whether the visitor trusts the authors of the files in this folder; the `server` terminal starts only after "Trust Folder & Continue".
-- `forwardPorts` and `portsAttributes`: port 3000, labelled `cybertrain`, opened in a new browser tab (`onAutoForward: openBrowserOnce`) when the server starts listening. The editor's preview (`openPreview`) did not load the private forwarded port (live check L4; see below). `openBrowserOnce` opens the tab only the first time the port is forwarded in a session, so the server's restart after a rebuild opens no second tab. The cookie settings stay: they work in the tab, and in a preview the visitor opens by hand.
+- `forwardPorts` and `portsAttributes`: port 3000, labelled `cybertrain`, opened in a new browser tab (`onAutoForward: openBrowserOnce`) when the server starts listening. The editor's preview (`openPreview`) did not load the private forwarded port (live check L4; see below). `openBrowserOnce` opens the tab only the first time the port is forwarded in a session, so the server's restart after a rebuild opens no second tab.
 - `files.autoSave: off`: the development server rebuilds the app on every save of a Ruby file, and delayed auto-save would start a minute-long rebuild at every pause in typing.
 - No `hostRequirements`: the default 2-core machine, which costs the visitor the least quota.
 
@@ -201,7 +188,7 @@ server started by hand (D4) and the offline app (B3).
 | G1-G7 | The image as built: user `dev` (uid 1000); `cybertrain version`; `cybertrain doctor`; `CYBERTRAIN_HOME` and `XDG_CACHE_HOME` set, `CYBERTRAIN_HOST` not; the blog's `spin.toml` points at `v<VERSION>`; the blog is a clean one-commit git repository that tracks `PLAYGROUND.md`; no `tmp/secret_key`, an executable `build/bin/blog` |
 | A1-A10 | The default command with `CYBERTRAIN_HOST=0.0.0.0`, reached from the host: `GET /articles`; the boot banner; nothing compiled at start; `GET /` shows `<h1>Articles</h1>`; a CSRF token and a `SameSite=Lax` cookie; creating an article (303, then its page); 403 without a token; a view edit shows on the next request; a model edit rebuilds and restarts the server (a short body then answers 422); `tmp/secret_key` generated |
 | D1-D4 | `playground-server` again: it exits 0 saying "already running"; one server process; after a container restart (idle stop and resume) the server is back with the data; a server started by hand is left alone, while it is still compiling and once it listens |
-| C1-C3 | `CODESPACES=true`: the cookie is `SameSite=None; Secure; Partitioned`; the banner shows the forwarded URL; interactive and login shells get the cookie settings |
+| C1-C3 | `CODESPACES=true`: the cookie keeps the default, `SameSite=Lax` without `Secure` or `Partitioned`; the banner shows the forwarded URL; interactive and login shells started with `PATH=/usr/bin:/bin` find `spin` in `/opt/cybertrain/bin` |
 | F1 | `CYBERTRAIN_SESSION_SAME_SITE=lax` stops the server at boot, naming the valid values |
 | E1 | A `cp -a` copy of the blog starts without compiling |
 | B1-B3 | No network: the repository URL reaches the mirror; `cybertrain new` in `/workspace` locks the blog's commit; the new app builds |

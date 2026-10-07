@@ -11,9 +11,9 @@
 # lines of every container or command involved and exits 1; it exits 0 when
 # every check passes and 2 without an IMAGE. Groups: G the image as built,
 # A the default command serving the blog to the host and the edit loop,
-# D playground-server started again, C the Codespaces settings, F the boot
-# check of CYBERTRAIN_SESSION_SAME_SITE, E a cp -a copy of the blog, B no
-# network. playground/README.md lists every check.
+# D playground-server started again, C a codespace (CODESPACES=true),
+# F the boot check of CYBERTRAIN_SESSION_SAME_SITE, E a cp -a copy of the
+# blog, B no network. playground/README.md lists every check.
 #
 # The host needs bash 3.2 or newer (no associative arrays, no date +%N:
 # macOS's /bin/bash works), docker and curl. The expected version is read
@@ -74,9 +74,9 @@ what_D1="a second playground-server exits 0 saying the server is already running
 what_D2="exactly one app server process runs"
 what_D3="after a container restart (Codespaces' idle stop and resume) the server is back, once, with the earlier article"
 what_D4="playground-server leaves a server started by hand alone: it says a server is already starting while it compiles and the port is in use once it listens, exits 0 both times, and one server runs"
-what_C1="with CODESPACES=true the session cookie is SameSite=None; Secure; Partitioned"
+what_C1="with CODESPACES=true the session cookie keeps the default, SameSite=Lax without Secure or Partitioned"
 what_C2="with CODESPACES=true the banner shows https://smoke-3000.app.github.dev/"
-what_C3="with CODESPACES=true, interactive and login bash shells get the cookie settings"
+what_C3="with CODESPACES=true and PATH=/usr/bin:/bin, interactive and login bash shells find spin in /opt/cybertrain/bin"
 what_F1="CYBERTRAIN_SESSION_SAME_SITE=lax stops the server at boot and names the valid values"
 what_E1="a cp -a copy of the blog started by playground-server compiles nothing"
 what_B1="with no network, git ls-remote of the repository URL lists refs/tags/v$version (the mirror)"
@@ -515,7 +515,7 @@ else
   fail D4 "$what_D4" "docker run failed: $(first_line "$(cat "$work/manual.start")")"
 fi
 
-# ---- C: the Codespaces settings --------------------------------------------
+# ---- C: a codespace (CODESPACES=true) --------------------------------------
 
 codespace="$prefix-codespace"
 if start codespace -e CODESPACES=true -e CODESPACE_NAME=smoke -e GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN=app.github.dev "$image"; then
@@ -523,7 +523,7 @@ if start codespace -e CODESPACES=true -e CODESPACE_NAME=smoke -e GITHUB_CODESPAC
     cookie=$(docker exec "$codespace" curl -s -D - -o /dev/null --max-time 5 http://127.0.0.1:3000/articles/new 2> /dev/null |
       grep -i '^set-cookie:' | head -n 1 | tr -d '\r' | sed 's/^[^:]*: *//')
     case "$cookie" in
-      *"; Path=/; HttpOnly; SameSite=None; Max-Age=1209600; Secure; Partitioned") pass C1 "$what_C1" ;;
+      *"; Path=/; HttpOnly; SameSite=Lax; Max-Age=1209600") pass C1 "$what_C1" ;;
       *) fail C1 "$what_C1" "Set-Cookie: $cookie" "$codespace" ;;
     esac
   else
@@ -537,15 +537,16 @@ case "$(docker logs "$codespace" 2>&1)" in
   *) fail C2 "$what_C2" "the URL is not in the banner" "$codespace" ;;
 esac
 
-# A terminal the visitor opens, interactive or login bash, must carry the
-# same settings, or a server started by hand answers 403 in the preview.
-run_once 30 C3 -e CODESPACES=true "$image" bash -c 'bash -ic "echo IC=\$CYBERTRAIN_SESSION_SAME_SITE/\$CYBERTRAIN_SESSION_PARTITIONED" 2> /dev/null; bash -lc "echo LC=\$CYBERTRAIN_SESSION_SAME_SITE/\$CYBERTRAIN_SESSION_PARTITIONED" 2> /dev/null'
+# A terminal the visitor opens, interactive or login bash, must find the
+# toolchain. The image's PATH already holds /opt/cybertrain/bin, so the
+# shells start without it: profile.sh has to put it back.
+run_once 30 C3 -e CODESPACES=true "$image" env PATH=/usr/bin:/bin bash -c 'bash -ic "echo IC=\$(command -v spin)" 2> /dev/null; bash -lc "echo LC=\$(command -v spin)" 2> /dev/null'
 case "$out" in
-  *"IC=None/1"*) interactive=yes ;;
+  *"IC=/opt/cybertrain/bin/spin"*) interactive=yes ;;
   *) interactive=no ;;
 esac
 case "$out" in
-  *"LC=None/1"*) login=yes ;;
+  *"LC=/opt/cybertrain/bin/spin"*) login=yes ;;
   *) login=no ;;
 esac
 if [ "$rc" = 0 ] && [ "$interactive" = yes ] && [ "$login" = yes ]; then

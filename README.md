@@ -551,8 +551,7 @@ end
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
 
 Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
-inside another site's frame, such as the playground's Codespaces preview; the
-browser must reach the app over HTTPS.
+inside another site's frame; the browser must reach the app over HTTPS.
 
 Other attributes with fixed, overridable defaults: `views_root`
 (`"app/views"`), `public_root` (`"public"`), `layout`

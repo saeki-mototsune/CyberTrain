@@ -7,13 +7,3 @@ case ":${PATH}:" in
   *:/opt/cybertrain/bin:*) ;;
   *) PATH="/opt/cybertrain/bin:${PATH}"; export PATH ;;
 esac
-# In a GitHub Codespace the editor's preview is an iframe inside a webview on
-# a github.dev host, and the app is on *.app.github.dev. In a frame on another
-# site a SameSite=Lax session cookie is dropped and every form POST gets 403;
-# SameSite=None; Secure; Partitioned works there, in a frame on the same site
-# and in the app's own tab. Codespaces sets CODESPACES=true.
-# Defaults only: a value already set (for a test) wins.
-if [ "${CODESPACES:-}" = "true" ]; then
-  export CYBERTRAIN_SESSION_SAME_SITE="${CYBERTRAIN_SESSION_SAME_SITE:-None}"
-  export CYBERTRAIN_SESSION_PARTITIONED="${CYBERTRAIN_SESSION_PARTITIONED:-1}"
-fi

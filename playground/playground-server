@@ -14,8 +14,7 @@ set -u
 app="${1:-/workspace/blog}"
 port="${PORT:-3000}"
 
-# The toolchain on PATH; in a codespace, the cookie settings the editor's
-# preview needs (SameSite=None; Secure; Partitioned).
+# The toolchain on PATH.
 . /etc/profile.d/cybertrain-playground.sh
 
 if [ "${CODESPACES:-}" = "true" ] && [ -n "${CODESPACE_NAME:-}" ]; then
