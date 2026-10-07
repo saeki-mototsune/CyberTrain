@@ -570,7 +570,7 @@ else
 fi
 
 # ---- E: a cp -a copy of the blog -------------------------------------------
-# The premise of the Codespaces fallback that copies the blog to /workspaces.
+# The premise of playground/README.md's "copy the blog only with cp -a".
 
 copy="$prefix-copy"
 if start copy "$image" bash -c 'cp -a /workspace/blog /tmp/blog-copy && exec playground-server /tmp/blog-copy'; then

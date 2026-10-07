@@ -156,21 +156,21 @@ repository's default dev container configuration:
 - `workspaceFolder`: `/workspace/blog`, the prebuilt blog, outside the clone of this repository under `/workspaces`.
 - `postCreateCommand`: empty, so no setup step runs.
 - `postAttachCommand`: `playground-server`, on every attach (it is safe to run again). When the codespace first opens, VS Code asks whether the visitor trusts the authors of the files in this folder; the `server` terminal starts only after "Trust Folder & Continue".
-- `forwardPorts` and `portsAttributes`: port 3000, labelled `cybertrain`, opened in a new browser tab (`onAutoForward: openBrowserOnce`) when the server starts listening. The editor's preview (`openPreview`) did not load the private forwarded port (live check L4; see below). `openBrowserOnce` opens the tab only the first time the port is forwarded in a session, so the server's restart after a rebuild opens no second tab.
+- `forwardPorts` and `portsAttributes`: port 3000, labelled `cybertrain`, opened in a new browser tab (`onAutoForward: openBrowserOnce`) when the server starts listening. The editor's preview (`openPreview`) did not load the private forwarded port (see below). `openBrowserOnce` opens the tab only the first time the port is forwarded in a session, so the server's restart after a rebuild opens no second tab.
 - `files.autoSave: off`: the development server rebuilds the app on every save of a Ruby file, and delayed auto-save would start a minute-long rebuild at every pause in typing.
 - No `hostRequirements`: the default 2-core machine, which costs the visitor the least quota.
 
 The link is `https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1`
 (the default branch; `https://codespaces.new/saeki-mototsune/CyberTrain/tree/<branch>?quickstart=1`
 for another branch). `quickstart=1` resumes the visitor's codespace if there
-is one, or offers a single "Create codespace" button, and always opens VS
+is one, or offers a "Create new codespace" button (and "Change options"), and always opens VS
 Code in the browser.
 
-- The app opens in a new browser tab. Port 3000 is a private forwarded port, and its first visit signs in through github.com, which refuses to be shown in a frame: in a new Chrome profile the editor's preview showed only "github.com refused to connect." (live check L4). If the app's tab did not open (a pop-up blocker), use the Ports view's "Open in Browser" on port 3000.
+- The app opens in a new browser tab. Port 3000 is a private forwarded port, and its first visit signs in through github.com, which refuses to be shown in a frame: in a new Chrome profile the editor's preview showed only "github.com refused to connect." (the live check of 2026-10-06/07, row L4 in section 14.6 of docs/superpowers/specs/2026-10-02-web-playground-sp1-design.md). If the app's tab did not open (a pop-up blocker), use the Ports view's "Open in Browser" on port 3000.
 - The editor's preview needs that sign-in first: once the app's tab has opened, the Ports view's "Preview in Editor" on port 3000 shows the app inside VS Code too (reload a preview that showed the error). After every restart of the codespace the port signs in again, so the preview again needs the app's tab first. Inside the preview, pop-ups and `confirm()` dialogs do not work.
 - "Rebuild Container" starts again from the image: edits under `/workspace/blog` are lost, since only `/workspaces` survives a rebuild.
 - A codespace's storage counts against the visitor's quota until it is deleted at https://github.com/codespaces.
-- Measured on the default 2-core machine (live check, 2026-10-06): the editor shows about 20 s after "Create codespace" and the blog's files after about a minute; the server listens a few seconds after "Trust Folder & Continue"; a Ruby edit is rebuilt and the server restarted about 100 s after the save; a stopped codespace starts the server again about 40 s after "Restart codespace", with the data kept.
+- Measured on the default 2-core machine (the same live check): the editor shows about 20 s after "Create new codespace" and the blog's files after about a minute; the server listens a few seconds after "Trust Folder & Continue"; a Ruby edit is rebuilt and the server restarted about 100 s after the save; a stopped codespace starts the server again about 40 s after "Restart codespace", with the data kept.
 
 ## Smoke test
 
@@ -233,6 +233,12 @@ Run workflow, on `main`).
   port by itself. The app opens in a browser tab, and the preview shows the
   app only once that tab has signed in; after every restart of the
   codespace, the tab has to sign in again first.
+- In a codespace the server runs in the `server` terminal; stop it with
+  Ctrl-C. Closing that terminal with its trash icon leaves the app answering
+  on port 3000 without a terminal (the development loop treats SIGHUP as a
+  restart request), and `playground-server` then starts nothing because the
+  server is already running. Stopping and restarting the codespace brings the
+  server back in a new terminal.
 - The blog's `spin.lock` pins the commit the image was built from, which for
   an image built from `main` can differ from the commit GitHub's
   `v<VERSION>` tag points at.
