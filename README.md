@@ -58,7 +58,9 @@ works there with no network.
 - If VS Code asks whether you trust the authors of the files in this folder,
   choose "Trust Folder & Continue": the server's terminal starts only then.
 - If the app's tab did not open (a pop-up blocker, or the codespace was stopped
-  and restarted), use the Ports view's "Open in Browser" on port 3000.
+  and restarted), click "Open in Browser" in VS Code's notification for port
+  3000 or in the Ports view, or Ctrl-click the app's URL in the `server`
+  terminal. `PLAYGROUND.md` shows where each is.
 - The same image runs locally (it is published for linux/amd64; on arm64, build
   it from a checkout):
 

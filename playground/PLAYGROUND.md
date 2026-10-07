@@ -2,10 +2,30 @@
 
 This is the blog from the cybertrain tutorial, already set up: `cybertrain new blog`,
 the article scaffold, the root route and the first migration (tutorial steps 02, 03,
-04 and 07). The development server runs in the terminal below and the app opened in a
-new browser tab (if it did not, use the Ports view's "Open in Browser" on port 3000).
+04 and 07). The development server runs in the terminal below, and the app opens in
+a new browser tab when the server is ready. The app does not show inside VS Code:
+use that browser tab.
 
 The page does not reload by itself: after a change, reload its tab.
+
+## If the app's tab did not open
+
+A pop-up blocker may stop the app's tab: Chrome then shows a "Pop-up blocked" icon
+at the right end of the address bar. Allowing pop-ups there does not open the tab
+afterwards, so open it yourself, in any of these ways. Each is a click, so no
+pop-up blocker stops it.
+
+- **VS Code's notification**: "Your application (cybertrain) running on port 3000
+  is available." → **Open in Browser**. If the notification has gone, the bell
+  icon at the right end of the status bar (bottom right) keeps it.
+- **The Ports view**: the **PORTS** tab next to **TERMINAL** → the row for port
+  3000 (`cybertrain`) → the globe icon (**Open in Browser**), or right-click the
+  row → **Open in Browser**.
+- **The terminal**: in the `server` terminal, Ctrl-click (Cmd-click on a Mac) the
+  `https://…-3000.app.github.dev/` link after `App`.
+
+These also open the app again after you closed its tab, or after the codespace was
+stopped and restarted.
 
 ## Try this
 
@@ -50,10 +70,8 @@ The new app has no root route, so `/` shows "Not Found": its pages start at
 
 - If VS Code asks whether you trust the authors of the files in this folder, choose
   "Trust Folder & Continue": the server's terminal starts only then.
-- If the app's tab did not open (a pop-up blocker, or the codespace was stopped
-  and restarted), use the Ports view's "Open in Browser" on port 3000. After
-  the app's tab has opened, the Ports view's "Preview in Editor" on port 3000
-  also shows the app inside VS Code.
+- This guide opens as a Markdown preview. To edit it as text, right-click its
+  tab → "Reopen Editor With..." → "Text Editor".
 - When you are done, delete the codespace at https://github.com/codespaces: its
   storage counts against your quota for as long as it exists.
 - Everything else is in the README: https://github.com/saeki-mototsune/cybertrain#readme

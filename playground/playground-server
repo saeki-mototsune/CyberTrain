@@ -57,13 +57,44 @@ cat <<EOF
   Views reload on the next request. A Ruby change rebuilds the app (about a
   minute), then the server restarts by itself. Reload the page to see either.
   Ctrl-C stops the server; run playground-server to start it again.
-
 EOF
+if command -v code >/dev/null 2>&1; then
+  cat <<EOF
+
+  The app opens in a new browser tab, not inside VS Code. If no tab opened
+  (a pop-up blocker), Ctrl-click (Cmd-click on a Mac) the App link above, or
+  click "Open in Browser" in VS Code's notification or in the Ports view on
+  port ${port}.
+EOF
+fi
+echo
 
 # Open the guide once per container, when this terminal has VS Code's `code`.
+# devcontainer.json opens it as a Markdown preview.
 marker="${app}/tmp/.playground-guide-opened"
 if [ -f "${app}/PLAYGROUND.md" ] && [ ! -e "$marker" ] && command -v code >/dev/null 2>&1; then
   timeout 5 code --reuse-window "${app}/PLAYGROUND.md" >/dev/null 2>&1 && touch "$marker"
+fi
+
+# Open the app in a browser tab as soon as it listens, when this terminal has
+# VS Code's `code`: on every start by this script, so also after the
+# codespace was stopped and restarted, but not on the development loop's
+# restarts after a rebuild, which do not run this script. No click leads to
+# that tab, so a pop-up blocker may stop it; devcontainer.json therefore has
+# the port notify too, and the notification's "Open in Browser" is a click.
+# The opener gives up when the server ($$ after the exec below) exits, and
+# closes the lock (fd 9): it must not hold it after the server exits.
+if command -v code >/dev/null 2>&1; then
+  (
+    began=$SECONDS
+    while [ $((SECONDS - began)) -lt 300 ] && kill -0 $$ 2>/dev/null; do
+      if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
+        timeout 5 code --openExternal "$url"
+        exit 0
+      fi
+      sleep 0.25
+    done
+  ) 9>&- </dev/null >/dev/null 2>&1 &
 fi
 
 cd "$app" || exit 1
