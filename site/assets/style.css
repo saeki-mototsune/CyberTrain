@@ -558,6 +558,11 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 @media (max-width: 360px) {
   .nav-links .nav-roomy-only { display: none; }
 }
+/* Below 340px the language menu does not fit beside GitHub either, and the
+   footer links GitHub too. */
+@media (max-width: 339px) {
+  .nav-links li:has(> a[href^="https://github.com/"]) { display: none; }
+}
 /* ---------- Motion ---------------------------------------------------------
    CSS only, and all of it off under prefers-reduced-motion (the rule below
    stops every animation and transition) and on paper. Nothing waits on motion
@@ -740,3 +745,9 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 :lang(ja) .doc-meta dt, :lang(ja) .toc-title, :lang(ja) .stage-k, :lang(ja) .why-k, :lang(ja) .callout-k, :lang(ja) .crumb, :lang(ja) .term-k, :lang(ja) .status,
 :lang(zh) .sec-label, :lang(zh) .spec-k, :lang(zh) .part-k, :lang(zh) .fact-k, :lang(zh) .look-k, :lang(zh) .reqs dt, :lang(zh) .outline-k, :lang(zh) .foot-h,
 :lang(zh) .doc-meta dt, :lang(zh) .toc-title, :lang(zh) .stage-k, :lang(zh) .why-k, :lang(zh) .callout-k, :lang(zh) .crumb, :lang(zh) .term-k, :lang(zh) .status { letter-spacing: .04em; }
+/* French and Russian words run long: on a phone a heading word or a button
+   label can be wider than the screen, so let them hyphenate and wrap. */
+:lang(fr) h1, :lang(fr) h2, :lang(fr) h3, :lang(ru) h1, :lang(ru) h2, :lang(ru) h3 { hyphens: auto; overflow-wrap: break-word; }
+@media (max-width: 640px) { .cta-row .btn { white-space: normal; text-align: center; } }
+/* Japanese and Chinese break between any two characters: keep each nav label on one line. */
+.nav-links a { white-space: nowrap; }

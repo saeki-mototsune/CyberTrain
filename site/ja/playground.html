@@ -21,7 +21,7 @@
 <meta property="og:image" content="https://saeki-mototsune.github.io/CyberTrain/assets/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="CyberTrain: Rails-shaped web apps, compiled to one native binary.">
+<meta property="og:image:alt" content="CyberTrain：Rails 流の Web アプリを、ひとつのネイティブバイナリに。">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="alternate" hreflang="en" href="https://saeki-mototsune.github.io/CyberTrain/playground.html">
 <link rel="alternate" hreflang="ja" href="https://saeki-mototsune.github.io/CyberTrain/ja/playground.html">
@@ -31,24 +31,24 @@
 <link rel="alternate" hreflang="x-default" href="https://saeki-mototsune.github.io/CyberTrain/playground.html">
 <script src="../assets/site.js" defer></script>
 
-<title>Try it in your browser · CyberTrain</title>
-<meta name="description" content="Open the CyberTrain tutorial blog in a GitHub Codespace: VS Code in your browser, the development server running, the app in a new browser tab. Or run the same image locally with Docker.">
-<meta property="og:title" content="Try CyberTrain in your browser">
-<meta property="og:description" content="The tutorial blog, already scaffolded and migrated, in VS Code in your browser. Needs a GitHub account; runs on your own Codespaces quota.">
+<title>ブラウザで試す · CyberTrain</title>
+<meta name="description" content="CyberTrain のチュートリアルのブログを GitHub Codespace で開きます：ブラウザ上の VS Code、起動済みの開発サーバー、新しいブラウザタブに開くアプリ。同じイメージを Docker でローカル実行することもできます。">
+<meta property="og:title" content="CyberTrain をブラウザで試す">
+<meta property="og:description" content="スキャフォールドとマイグレーションが済んだチュートリアルのブログを、ブラウザ上の VS Code で。GitHub アカウントが必要で、あなた自身の Codespaces の利用枠で動きます。">
 </head>
 <body class="tutorial">
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#main">本文へスキップ</a>
 <header class="site-header">
   <div class="wrap nav">
-    <a class="brand" href="index.html" aria-label="CyberTrain home">
+    <a class="brand" href="index.html" aria-label="CyberTrain ホーム">
       <svg class="brand-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
       <svg class="brand-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg>
     </a>
-    <nav class="nav-links" aria-label="Primary">
+    <nav class="nav-links" aria-label="メイン">
       <ul>
-        <li class="nav-wide-only"><a href="index.html#how-it-works">How it works</a></li>
-        <li><a href="tutorial.html">Tutorial</a></li>
-        <li><a href="playground.html" aria-current="page">Playground</a></li>
+        <li class="nav-wide-only"><a href="index.html#how-it-works">仕組み</a></li>
+        <li><a href="tutorial.html">チュートリアル</a></li>
+        <li><a href="playground.html" aria-current="page">試す</a></li>
         <li class="nav-roomy-only"><a href="../api/index.html">API</a></li>
         <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
         <li><details class="lang-menu">
@@ -70,28 +70,28 @@
 
 <div class="wrap">
   <header class="doc-hero">
-    <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Playground</span></p>
-    <h1>Try it in your&nbsp;browser</h1>
-    <p class="doc-intro">The blog from the <a href="tutorial.html">tutorial</a>, already created, scaffolded and migrated, opens in VS Code in your browser, with its development server running in a terminal and the app in a new browser tab. Nothing to install: GitHub Codespaces runs it on a cloud machine.</p>
+    <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>プレイグラウンド</span></p>
+    <h1>ブラウザで試す</h1>
+    <p class="doc-intro"><a href="tutorial.html">チュートリアル</a>のブログが、作成・スキャフォールド・マイグレーションまで済んだ状態で、ブラウザ上の VS Code で開きます。開発サーバーはターミナルで起動しており、アプリは新しいブラウザタブに表示されます。インストールは不要です：GitHub Codespaces がクラウド上のマシンで実行します。</p>
     <dl class="doc-meta">
-      <div><dt>You need</dt><dd>A GitHub account</dd></div>
-      <div><dt>It runs on</dt><dd>Your own Codespaces quota, on the default 2-core machine</dd></div>
-      <div><dt>You get</dt><dd>VS Code, Spinel <code>2026.09.12</code>, the <code>cybertrain</code> CLI and the blog</dd></div>
+      <div><dt>必要なもの</dt><dd>GitHub アカウント</dd></div>
+      <div><dt>実行環境</dt><dd>あなた自身の Codespaces の利用枠（デフォルトの 2 コアマシン）</dd></div>
+      <div><dt>使えるもの</dt><dd>VS Code、Spinel <code>2026.09.12</code>、<code>cybertrain</code> CLI、そしてブログ</dd></div>
     </dl>
   </header>
 </div>
 
 <div class="wrap doc">
-  <nav class="toc" aria-label="Playground sections">
+  <nav class="toc" aria-label="プレイグラウンドの項目">
     <details class="toc-d" open>
-      <summary class="toc-sum"><span class="toc-title">On this page</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <summary class="toc-sum"><span class="toc-title">このページの内容</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
       <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
     <ol>
-      <li><a href="#open"><span class="toc-n">01</span>Open a codespace</a></li>
-      <li><a href="#what-opens"><span class="toc-n">02</span>What opens</a></li>
-      <li><a href="#try"><span class="toc-n">03</span>What to try</a></li>
-      <li><a href="#docker"><span class="toc-n">04</span>Run it with Docker</a></li>
-      <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>Where next</a></li>
+      <li><a href="#open"><span class="toc-n">01</span>codespace を開く</a></li>
+      <li><a href="#what-opens"><span class="toc-n">02</span>開かれるもの</a></li>
+      <li><a href="#try"><span class="toc-n">03</span>試してみること</a></li>
+      <li><a href="#docker"><span class="toc-n">04</span>Docker で実行する</a></li>
+      <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>次に読むもの</a></li>
     </ol>
     </details>
   </nav>
@@ -99,56 +99,56 @@
   <article class="doc-body">
 
   <section class="step" id="open" aria-labelledby="h-open">
-    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>No install <span aria-hidden="true">&middot;</span> GitHub Codespaces</p>
-    <h2 id="h-open"><span class="step-num" aria-hidden="true">01</span>Open a codespace</h2>
-    <p class="why"><span class="why-k">Why</span><span class="why-t">VS Code in your browser, on a cloud machine that runs on your own GitHub quota.</span></p>
+    <p class="stage"><span class="stage-k">現在地<span class="sr-only">:</span></span>インストール不要 <span aria-hidden="true">&middot;</span> GitHub Codespaces</p>
+    <h2 id="h-open"><span class="step-num" aria-hidden="true">01</span>codespace を開く</h2>
+    <p class="why"><span class="why-k">なぜ</span><span class="why-t">ブラウザ上の VS Code を、あなた自身の GitHub の利用枠で動くクラウドマシンで。</span></p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1" rel="noopener">Open in GitHub Codespaces<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
-      <a class="btn btn-ghost" href="tutorial.html">Read the tutorial</a>
+      <a class="btn btn-primary" href="https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1" rel="noopener">GitHub Codespaces で開く<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+      <a class="btn btn-ghost" href="tutorial.html">チュートリアルを読む</a>
     </div>
-    <p class="note">A GitHub account is required, and the codespace runs on your own Codespaces quota: GitHub's free plan includes 120 core-hours and 15&nbsp;GB-month of storage a month, about 60 hours on the default 2-core machine the playground uses. GitHub stops an idle codespace after 30 minutes by default; its storage counts until you delete it.</p>
+    <p class="note">GitHub アカウントが必要で、codespace はあなた自身の Codespaces の利用枠で動きます：GitHub の無料プランには毎月 120 コア時間と 15&nbsp;GB-月のストレージが含まれており、プレイグラウンドが使うデフォルトの 2 コアマシンで約 60 時間分です。GitHub はデフォルトで、アイドル状態の codespace を 30 分後に停止します。ストレージは codespace を削除するまで使用量に計上されます。</p>
   </section>
 
   <section class="step" id="what-opens" aria-labelledby="h-what-opens">
-    <h2 id="h-what-opens"><span class="step-num" aria-hidden="true">02</span>What opens</h2>
+    <h2 id="h-what-opens"><span class="step-num" aria-hidden="true">02</span>開かれるもの</h2>
     <ul class="points">
-      <li>The blog with tutorial steps 02, 03, 04 and 07 done: <code>cybertrain new blog</code>, the article scaffold, the root route and the first migration, built once so the server starts without compiling.</li>
-      <li>A terminal running <code>cybertrain server</code>.</li>
-      <li>The app in a new browser tab, showing the article list.</li>
-      <li><code>PLAYGROUND.md</code>, the short guide to what to try.</li>
-      <li>Source Control: the app is a git repository with one commit, so it shows exactly what you change.</li>
+      <li>チュートリアルのステップ 02、03、04、07 を済ませたブログ：<code>cybertrain new blog</code>、記事のスキャフォールド、root ルート、最初のマイグレーション。一度ビルド済みなので、サーバーはコンパイルなしで起動します。</li>
+      <li><code>cybertrain server</code> を実行中のターミナル。</li>
+      <li>新しいブラウザタブで記事一覧を表示しているアプリ。</li>
+      <li><code>PLAYGROUND.md</code>：何を試せばよいかの短いガイド。</li>
+      <li>ソース管理（Source Control）：アプリはコミットがひとつだけの git リポジトリなので、あなたが変更した内容が正確に表示されます。</li>
     </ul>
-    <p class="note">If VS Code asks whether you trust the authors of the files in this folder, choose &ldquo;Trust Folder &amp; Continue&rdquo;: the server&rsquo;s terminal starts only then.</p>
+    <p class="note">このフォルダー内のファイルの作成者を信頼するかどうかを VS Code に尋ねられたら、「Trust Folder &amp; Continue」（フォルダーを信頼して続行）を選んでください：サーバーのターミナルはそのときに初めて起動します。</p>
   </section>
 
   <section class="step" id="try" aria-labelledby="h-try">
-    <h2 id="h-try"><span class="step-num" aria-hidden="true">03</span>What to try</h2>
+    <h2 id="h-try"><span class="step-num" aria-hidden="true">03</span>試してみること</h2>
     <ul class="points">
-      <li><strong>Edit a view.</strong> It shows on the next reload: views are read from disk on every request.</li>
-      <li><strong>Add a validation.</strong> Ruby is compiled, so a Ruby change is a full rebuild, about a minute, after which the server restarts by itself.</li>
-      <li><strong>Carry on with the tutorial</strong> from <a href="tutorial.html#scaffold-comment">step 08, Scaffold comments</a>.</li>
-      <li><strong>Start a fresh app.</strong> <code>cybertrain new</code> works in the codespace with no network.</li>
+      <li><strong>ビューを編集する。</strong>次にリロードしたときに反映されます：ビューはリクエストのたびにディスクから読み込まれます。</li>
+      <li><strong>バリデーションを追加する。</strong>Ruby はコンパイルされるため、Ruby の変更は完全な再ビルド（約 1 分）になり、その後サーバーは自動で再起動します。</li>
+      <li><strong>チュートリアルの続きを進める：</strong><a href="tutorial.html#scaffold-comment">ステップ 08「コメントをスキャフォールドする」</a>から。</li>
+      <li><strong>新しいアプリを始める。</strong><code>cybertrain new</code> は codespace 内でネットワークなしで動きます。</li>
     </ul>
-    <p class="note">The app's tab does not reload by itself: reload it after a change. If the app's tab did not open (a pop-up blocker, or the codespace was stopped and restarted), use the Ports view's &ldquo;Open in Browser&rdquo; on port 3000.</p>
+    <p class="note">アプリのタブは自動ではリロードされません：変更後にリロードしてください。アプリのタブが開かなかった場合（ポップアップブロッカーのせいか、codespace が停止・再起動された場合）は、「ポート」ビューでポート 3000 の「Open in Browser」（ブラウザーで開く）を使ってください。</p>
   </section>
 
   <section class="step" id="docker" aria-labelledby="h-docker">
-    <h2 id="h-docker"><span class="step-num" aria-hidden="true">04</span>Run it with Docker</h2>
-    <p class="why"><span class="why-k">Why</span><span class="why-t">The same image runs on your own machine.</span></p>
+    <h2 id="h-docker"><span class="step-num" aria-hidden="true">04</span>Docker で実行する</h2>
+    <p class="why"><span class="why-k">なぜ</span><span class="why-t">同じイメージが手元のマシンでも動きます。</span></p>
     <figure class="code" data-lang="shell">
-<figcaption><span class="code-path">terminal &mdash; any directory</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: run the playground image"><code><span class="ln cmd">docker run --rm -it --init -p 127.0.0.1:3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground</span></code></pre>
+<figcaption><span class="code-path">ターミナル &mdash; 任意のディレクトリ</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="コード：プレイグラウンドのイメージを実行"><code><span class="ln cmd">docker run --rm -it --init -p 127.0.0.1:3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground</span></code></pre>
 </figure>
-    <p>Then open <code>http://localhost:3000</code>. The published image is <code>linux/amd64</code>; on an arm64 machine, build it from a checkout as <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/playground/README.md" rel="noopener"><code>playground/README.md</code></a> describes.</p>
+    <p>次に <code>http://localhost:3000</code> を開きます。公開されているイメージは <code>linux/amd64</code> です。arm64 のマシンでは、<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/playground/README.md" rel="noopener"><code>playground/README.md</code></a> の説明に従ってチェックアウトからビルドしてください。</p>
   </section>
 
   <section class="step step-last" id="where-next" aria-labelledby="h-where-next">
-    <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>Where next</h2>
+    <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>次に読むもの</h2>
     <ul class="next-list">
-      <li><a href="tutorial.html"><span class="next-t">The tutorial</span><span class="next-d">The blog from <code>cybertrain new</code> to <code>cybertrain build</code>.</span></a></li>
-      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/playground/README.md" rel="noopener"><span class="next-t"><code>playground/README.md</code></span><span class="next-d">The image, building it, and the Codespaces setup.</span></a></li>
-      <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener"><span class="next-t">CyberTrain on GitHub</span><span class="next-d">The source, the README and releases.</span></a></li>
-      <li><a href="index.html"><span class="next-t">CyberTrain home</span><span class="next-d">Overview, features and how it works.</span></a></li>
+      <li><a href="tutorial.html"><span class="next-t">チュートリアル</span><span class="next-d"><code>cybertrain new</code> から <code>cybertrain build</code> までのブログ。</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/playground/README.md" rel="noopener"><span class="next-t"><code>playground/README.md</code></span><span class="next-d">イメージ、そのビルド方法、Codespaces の設定。</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener"><span class="next-t">GitHub の CyberTrain</span><span class="next-d">ソースコード、README、リリース。</span></a></li>
+      <li><a href="index.html"><span class="next-t">CyberTrain ホーム</span><span class="next-d">概要、機能、仕組み。</span></a></li>
     </ul>
   </section>
 
@@ -159,23 +159,23 @@
 <footer class="site-footer">
   <div class="wrap">
     <div class="foot-top">
-      <a class="foot-brand" href="index.html" aria-label="CyberTrain home">
+      <a class="foot-brand" href="index.html" aria-label="CyberTrain ホーム">
         <svg class="foot-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
       </a>
-      <p class="foot-tag">Rails-shaped web apps, compiled to one native binary.</p>
+      <p class="foot-tag">Rails 流の Web アプリを、ひとつのネイティブバイナリに。</p>
     </div>
     <div class="foot-cols">
-      <nav aria-label="Project">
-        <p class="foot-h">Project</p>
+      <nav aria-label="プロジェクト">
+        <p class="foot-h">プロジェクト</p>
         <ul>
           <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
-          <li><a href="tutorial.html">Tutorial</a></li>
+          <li><a href="tutorial.html">チュートリアル</a></li>
           <li><a href="../api/index.html">API</a></li>
           <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
         </ul>
       </nav>
-      <nav aria-label="Related projects">
-        <p class="foot-h">Related</p>
+      <nav aria-label="関連プロジェクト">
+        <p class="foot-h">関連</p>
         <ul>
           <li><a href="https://github.com/matz/spinel" rel="noopener">Spinel</a></li>
           <li><a href="https://github.com/rubys/roundhouse" rel="noopener">Roundhouse</a></li>
@@ -193,8 +193,8 @@
       </nav>
     </div>
     <div class="foot-base">
-      <p><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/README.md#license" rel="noopener">MIT License</a> <span aria-hidden="true">&middot;</span> Pre-alpha</p>
-      <p>CyberTrain is an independent project, not affiliated with Rails, Spinel or Roundhouse.</p>
+      <p><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/README.md#license" rel="noopener">MIT ライセンス</a> <span aria-hidden="true">&middot;</span> プレアルファ</p>
+      <p>CyberTrain は独立したプロジェクトであり、Rails、Spinel、Roundhouse とは提携関係にありません。</p>
     </div>
   </div>
 </footer>
