@@ -206,11 +206,13 @@ after the last tab closes.
 environment already sets the three for every process). In a codespace
 (`CODESPACES=true`) it also defaults `CYBERTRAIN_SESSION_SAME_SITE=None` and
 `CYBERTRAIN_SESSION_PARTITIONED=1`. The editor's preview shows the app in an
-iframe inside a webview on another site (`vscode-cdn.net`), where a
+iframe inside a webview, which in a codespace is on a `github.dev` host; the
+app is on `<codespace>-3000.app.github.dev`. In a frame on another site a
 `SameSite=Lax` session cookie is neither stored nor sent, so every form POST
 would fail the CSRF check with 403; `SameSite=None; Secure` works there, and
 `Partitioned` keeps it working in browsers that block third-party cookies.
-These are the framework's own variables (the README's "Configuration and
+The same settings also work in a frame on the same site and in the app's own
+tab. These are the framework's own variables (the README's "Configuration and
 environment variables"); the framework does not look at `CODESPACES`
 itself. A value already set wins, which allows a control run, once the
 server is stopped (Ctrl-C in its terminal):
