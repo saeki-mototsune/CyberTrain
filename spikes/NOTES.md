@@ -80,6 +80,9 @@ finds the commit that removed them).
     10-worker default (25-45k rps) and had no 40-80 ms stalls; set it from the
     binary (`ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]`) before
     the first `Thread.new`, and re-measure once templates and SQLite add CPU work.
+    Re-measured with examples/blog on two cores ([docs/benchmark.md](../docs/benchmark.md)):
+    `SPINEL_WORKERS=2` adds 9-13% to the pages and 30% to a static file, and
+    costs 24% on a comment POST, so 1 stays the default.
 23. `spin test --regen` writes `.expected` from CRuby's output; `spin test` diffs
     the Spinel binary's output (stdout and stderr merged) against it. Tests must
     therefore be CRuby/Spinel-portable;

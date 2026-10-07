@@ -529,6 +529,31 @@ compiler output on every HTML response. None of this loads in production.
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
 
+## Performance
+
+[docs/benchmark.md](docs/benchmark.md) measures examples/blog against the
+same blog written in Rails 8.1, [bench/rails_blog](bench/rails_blog) (the same
+views, routes, models and schema), both in production mode, each server
+pinned to the same CPU cores of one 4-vCPU cloud VM and loaded by wrk from
+two others. Medians of three 10-second runs, recorded 2026-10-07:
+
+| 1 CPU core, 16 connections | CyberTrain 0.2.1 | Rails 8.1.4 (YJIT, Puma) | |
+| --- | --: | --: | --: |
+| `GET /articles` (30 articles) | 1,026 req/s | 414 req/s | 2.5x |
+| `GET /articles/1` (10 comments, 12 forms) | 1,064 req/s | 192 req/s | 5.5x |
+| `POST /articles/2/comments` | 926 req/s | 324 req/s | 2.9x |
+| `GET /style.css` | 15,832 req/s | 5,794 req/s | 2.7x |
+| Memory after the load (RSS) | 10.6 MB | 130 MB | |
+| Spawn to first response | 0.02 s | 1.2 s | |
+| What the server needs | 2.5 MB (one binary) | 109 MB (Ruby, 69 gems, the app) | |
+
+On two cores the lead narrows to 1.2 to 2.9 times: a second Puma worker
+nearly doubles Rails, while `SPINEL_WORKERS=2` adds 9 to 30% to reads and
+slows the POST. The binary also has to be built (`cybertrain build` took
+3 minutes there). docs/benchmark.md has latency, both configurations and the
+method; `bench/run` repeats the measurement and `bench/report` prints its
+tables.
+
 ## Configuration and environment variables
 
 ```ruby
@@ -660,6 +685,8 @@ prints the diff stat).
   decision, what was rejected and why, and the Spinel constraints behind it.
 - [docs/template-language.md](docs/template-language.md) — the full template
   grammar and helpers, and where it differs from Rails' ERB.
+- [docs/benchmark.md](docs/benchmark.md) — examples/blog measured against the
+  same blog in Rails 8.1 ([bench/](bench/)), and how to run it again.
 - [spikes/NOTES.md](spikes/NOTES.md) — the spikes that answered
   `docs/design.md`'s open questions, and the compiler constraints they found.
 - [Spinel](https://github.com/matz/spinel) — the AOT Ruby compiler cybertrain targets.
