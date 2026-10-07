@@ -7,7 +7,7 @@
   "postAttachCommand": { "server": "playground-server" },
   "forwardPorts": [3000],
   "portsAttributes": {
-    "3000": { "label": "cybertrain", "onAutoForward": "openPreview" }
+    "3000": { "label": "cybertrain", "onAutoForward": "openBrowserOnce" }
   },
   "customizations": {
     "vscode": {

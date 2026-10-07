@@ -2,15 +2,15 @@
 
 This is the blog from the cybertrain tutorial, already set up: `cybertrain new blog`,
 the article scaffold, the root route and the first migration (tutorial steps 02, 03,
-04 and 07). The development server runs in the terminal below and the preview shows
-the app.
+04 and 07). The development server runs in the terminal below and the app opened in a
+new browser tab (if it did not, use the Ports view's "Open in Browser" on port 3000).
 
-The preview does not reload by itself: after a change, press its reload button.
+The page does not reload by itself: after a change, reload its tab.
 
 ## Try this
 
 1. **Edit a view.** Change the `<h1>` in `app/views/articles/index.html.erb`, save,
-   reload the preview. Views are read from disk on every request, so there is
+   reload the app's tab. Views are read from disk on every request, so there is
    nothing to build.
 2. **Add a validation.** In `app/models/article.rb`, add this line inside the class
    and save:
@@ -48,8 +48,11 @@ The new app has no root route, so `/` shows "Not Found": its pages start at
 
 ## Good to know
 
-- The Ports view's "Open in Browser" on port 3000 shows the app in a normal tab.
-  Inside the preview, pop-ups and `confirm()` dialogs do not work.
+- If VS Code asks whether you trust the authors of the files in this folder, choose
+  "Trust Folder & Continue": the server's terminal starts only then.
+- If the app's tab did not open (a pop-up blocker), use the Ports view's
+  "Open in Browser" on port 3000. After the app's tab has opened, the Ports
+  view's "Preview in Editor" on port 3000 also shows the app inside VS Code.
 - When you are done, delete the codespace at https://github.com/codespaces: its
   storage counts against your quota for as long as it exists.
 - Everything else is in the README: https://github.com/saeki-mototsune/cybertrain#readme

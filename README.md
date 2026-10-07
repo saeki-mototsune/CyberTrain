@@ -43,11 +43,11 @@ Spinel 2026.09.12, the `cybertrain` CLI and the blog from the walkthrough below
 already created (`cybertrain new blog`, the article scaffold, the root route and
 the first migration, built once so the server starts without compiling), its
 development server running in a terminal and the app, showing the article list,
-in the editor's preview. The app is a git repository with one commit, so Source
+in a new browser tab. The app is a git repository with one commit, so Source
 Control shows what you change. `PLAYGROUND.md` in the app lists what to try, from
 editing a view to carrying on with the walkthrough's comments. A view edit shows
 on the next reload; a Ruby edit is a full rebuild, about a minute, after which the
-server restarts by itself; the preview does not reload by itself. `cybertrain new`
+server restarts by itself; the app's tab does not reload by itself. `cybertrain new`
 works there with no network.
 
 - A GitHub account is required, and the codespace runs on your own Codespaces
@@ -55,8 +55,10 @@ works there with no network.
   month, about 60 hours on the default 2-core machine the playground uses. GitHub
   stops an idle codespace after 30 minutes by default; its storage counts until
   you delete it.
-- Inside the preview, pop-ups and `confirm()` dialogs do not work; the Ports
-  view's "Open in Browser" shows the app in a normal tab.
+- If VS Code asks whether you trust the authors of the files in this folder,
+  choose "Trust Folder & Continue": the server's terminal starts only then.
+- If the app's tab did not open (a pop-up blocker), use the Ports view's
+  "Open in Browser" on port 3000.
 - The same image runs locally (it is published for linux/amd64; on arm64, build
   it from a checkout):
 

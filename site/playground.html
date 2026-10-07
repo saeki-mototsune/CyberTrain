@@ -21,7 +21,7 @@
 <script src="assets/site.js" defer></script>
 
 <title>Try it in your browser · CyberTrain</title>
-<meta name="description" content="Open the CyberTrain tutorial blog in a GitHub Codespace: VS Code in your browser, the development server running, the app in the editor's preview. Or run the same image locally with Docker.">
+<meta name="description" content="Open the CyberTrain tutorial blog in a GitHub Codespace: VS Code in your browser, the development server running, the app in a new browser tab. Or run the same image locally with Docker.">
 <meta property="og:title" content="Try CyberTrain in your browser">
 <meta property="og:description" content="The tutorial blog, already scaffolded and migrated, in VS Code in your browser. Needs a GitHub account; runs on your own Codespaces quota.">
 </head>
@@ -51,7 +51,7 @@
   <header class="doc-hero">
     <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Playground</span></p>
     <h1>Try it in your&nbsp;browser</h1>
-    <p class="doc-intro">The blog from the <a href="tutorial.html">tutorial</a>, already created, scaffolded and migrated, opens in VS Code in your browser, with its development server running in a terminal and the app in the editor's preview. Nothing to install: GitHub Codespaces runs it on a cloud machine.</p>
+    <p class="doc-intro">The blog from the <a href="tutorial.html">tutorial</a>, already created, scaffolded and migrated, opens in VS Code in your browser, with its development server running in a terminal and the app in a new browser tab. Nothing to install: GitHub Codespaces runs it on a cloud machine.</p>
     <dl class="doc-meta">
       <div><dt>You need</dt><dd>A GitHub account</dd></div>
       <div><dt>It runs on</dt><dd>Your own Codespaces quota, on the default 2-core machine</dd></div>
@@ -93,7 +93,7 @@
     <ul class="points">
       <li>The blog with tutorial steps 02, 03, 04 and 07 done: <code>cybertrain new blog</code>, the article scaffold, the root route and the first migration, built once so the server starts without compiling.</li>
       <li>A terminal running <code>cybertrain server</code>.</li>
-      <li>The app in the editor's preview, showing the article list.</li>
+      <li>The app in a new browser tab, showing the article list.</li>
       <li><code>PLAYGROUND.md</code>, the short guide to what to try.</li>
       <li>Source Control: the app is a git repository with one commit, so it shows exactly what you change.</li>
     </ul>
@@ -107,7 +107,7 @@
       <li><strong>Carry on with the tutorial</strong> from <a href="tutorial.html#scaffold-comment">step 08, Scaffold comments</a>.</li>
       <li><strong>Start a fresh app.</strong> <code>cybertrain new</code> works in the codespace with no network.</li>
     </ul>
-    <p class="note">The preview does not reload by itself: press its reload button after a change. Inside the preview, pop-ups and <code>confirm()</code> dialogs do not work; the Ports view's &ldquo;Open in Browser&rdquo; shows the app in a normal tab.</p>
+    <p class="note">The app's tab does not reload by itself: reload it after a change. If the app's tab did not open (a pop-up blocker), use the Ports view's &ldquo;Open in Browser&rdquo; on port 3000.</p>
   </section>
 
   <section class="step" id="docker" aria-labelledby="h-docker">
