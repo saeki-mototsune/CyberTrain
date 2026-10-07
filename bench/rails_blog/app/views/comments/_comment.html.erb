@@ -1,0 +1,14 @@
+<%# locals: (comment:) %>
+<div class="comment">
+  <p>
+    <strong>Commenter:</strong>
+    <%= comment.commenter %>
+  </p>
+
+  <p>
+    <strong>Comment:</strong>
+    <%= comment.body %>
+  </p>
+
+  <%= button_to "Destroy comment", [@article, comment], method: :delete %>
+</div>
