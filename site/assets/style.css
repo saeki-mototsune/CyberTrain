@@ -301,7 +301,63 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 .ja { font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Noto Sans CJK JP', 'Yu Gothic', sans-serif; }
 .more { font-weight: 500; font-stretch: 110%; color: var(--ink); }
 
-/* ---------- 06 requirements ---------- */
+/* ---------- 06 performance ---------- */
+/* One row per request and a pair of bars per configuration: CyberTrain's bar
+   in ink (as the binary is drawn in the diagram), Rails' in gray. The four
+   bars of a row share one scale (the longest is the full width), so a row
+   shows both the gap and how each framework uses a second core; the values
+   sit at the bar ends and the ratio on the right, so nothing depends on
+   telling the two colours apart. Then the other figures. */
+.perf-fig { margin-top: 48px; }
+.perf-cap { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px 32px; padding-bottom: 16px; border-bottom: 1px solid var(--ink); }
+.perf-title { font-size: 17px; font-weight: 600; font-stretch: 112%; line-height: 1.35; }
+.perf-legend { display: flex; flex-wrap: wrap; gap: 8px 24px; font: 400 13px/1.5 var(--mono); color: var(--ink-2); }
+.perf-legend span { display: inline-flex; align-items: center; gap: 10px; }
+.sw { display: inline-block; width: 16px; height: 10px; background: var(--ink); border-radius: 0 3px 3px 0; }
+.sw-rails, .meter-rails .bar { background: #5E5E5E; }
+.perf-head, .perf-row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 4.5fr) minmax(0, 4.5fr); gap: 14px clamp(24px, 4vw, 64px); }
+.perf-head { padding: 14px 0 12px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.perf-row { align-items: center; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.perf-req code { font-size: 14px; color: var(--ink); }
+.perf-sub { display: block; margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--ink-3); }
+.perf-sub code { font-size: 1em; color: var(--ink-2); }
+.perf-cell { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: center; min-width: 0; }
+/* the column head names the configuration on wide screens; the cell's own
+   label is read out there and shown once the columns stack */
+.perf-ck { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.perf-bars { display: grid; gap: 2px; min-width: 0; }
+.meter { display: flex; align-items: center; gap: 12px; font: 500 14px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.bar { flex: none; width: calc((100% - 8ch) * var(--f)); min-width: 2px; height: 18px; background: var(--ink); border-radius: 0 4px 4px 0; }
+.meter-rails { color: var(--ink-2); }
+.perf-x { min-width: 5ch; text-align: right; font-size: clamp(19px, 1.7vw, 24px); line-height: 1.1; font-weight: 500; font-stretch: 125%; letter-spacing: -.01em; color: var(--ink); }
+.perf-xk { display: block; margin-top: 4px; font-family: var(--mono); font-size: 11px; font-weight: 400; font-stretch: 100%; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.perf-stats { margin-top: 56px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.perf-stats li { padding: 22px 24px 26px; border-left: 1px solid var(--line); }
+.perf-stats li:first-child { border-left: 0; padding-left: 0; }
+.perf-k { font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.perf-v { margin-top: 14px; font-size: clamp(34px, 3.4vw, 52px); line-height: 1; font-weight: 500; font-stretch: 125%; letter-spacing: -.02em; color: var(--ink); }
+.perf-d { margin-top: 12px; font-size: 14.5px; line-height: 1.55; color: var(--ink-2); max-width: 30ch; }
+.perf-stats + .footnote { margin-top: 8px; }
+@media (max-width: 1180px) {
+  .perf-head, .perf-row { grid-template-columns: minmax(0, 2fr) minmax(0, 5fr) minmax(0, 5fr); }
+  .perf-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .perf-stats li:nth-child(3) { border-left: 0; padding-left: 0; }
+  .perf-stats li:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+}
+@media (max-width: 900px) {
+  .perf-head { display: none; }
+  .perf-row { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 24px 0; }
+  .perf-ck { position: static; width: auto; height: auto; overflow: visible; clip: auto; grid-column: 1 / -1; font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+}
+@media (max-width: 767px) {
+  .perf-k, .perf-xk, .perf-ck, .perf-legend { font-size: 14px; letter-spacing: .04em; }
+}
+@media (max-width: 640px) {
+  .perf-stats { grid-template-columns: minmax(0, 1fr); }
+  .perf-stats li, .perf-stats li:nth-child(3) { padding: 20px 0; border-left: 0; border-bottom: 1px solid var(--line); }
+}
+
+/* ---------- 07 requirements ---------- */
 .reqs { margin-top: 40px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); }
 .reqs > div { padding: 22px 24px 8px; border-left: 1px solid var(--line); }
 .reqs > div:first-child { border-left: 0; padding-left: 0; }
@@ -674,6 +730,9 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   .dg .bg-inv path { fill: #fff; }
   .dg .bg-inv text { fill: #111; }
   .hero-mark::before, .hero-mark::after { background: var(--line); }
+  /* the bars are backgrounds, which browsers leave off paper unless told */
+  .bar, .sw { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sw-rails, .meter-rails .bar { background: #b4b4b4; }
 }
 .cmp-full td:nth-child(2) code { color: var(--ink); }
 @media (max-width: 899px) { html:has(body.tutorial) { scroll-padding-top: 92px; } }
@@ -744,7 +803,8 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 :lang(ja) .sec-label, :lang(ja) .spec-k, :lang(ja) .part-k, :lang(ja) .fact-k, :lang(ja) .look-k, :lang(ja) .reqs dt, :lang(ja) .outline-k, :lang(ja) .foot-h,
 :lang(ja) .doc-meta dt, :lang(ja) .toc-title, :lang(ja) .stage-k, :lang(ja) .why-k, :lang(ja) .callout-k, :lang(ja) .crumb, :lang(ja) .term-k, :lang(ja) .status,
 :lang(zh) .sec-label, :lang(zh) .spec-k, :lang(zh) .part-k, :lang(zh) .fact-k, :lang(zh) .look-k, :lang(zh) .reqs dt, :lang(zh) .outline-k, :lang(zh) .foot-h,
-:lang(zh) .doc-meta dt, :lang(zh) .toc-title, :lang(zh) .stage-k, :lang(zh) .why-k, :lang(zh) .callout-k, :lang(zh) .crumb, :lang(zh) .term-k, :lang(zh) .status { letter-spacing: .04em; }
+:lang(zh) .doc-meta dt, :lang(zh) .toc-title, :lang(zh) .stage-k, :lang(zh) .why-k, :lang(zh) .callout-k, :lang(zh) .crumb, :lang(zh) .term-k, :lang(zh) .status,
+:lang(ja) .perf-k, :lang(ja) .perf-xk, :lang(ja) .perf-ck, :lang(ja) .perf-head, :lang(zh) .perf-k, :lang(zh) .perf-xk, :lang(zh) .perf-ck, :lang(zh) .perf-head { letter-spacing: .04em; }
 /* French and Russian words run long: on a phone a heading word or a button
    label can be wider than the screen, so let them hyphenate and wrap. */
 :lang(fr) h1, :lang(fr) h2, :lang(fr) h3, :lang(ru) h1, :lang(ru) h2, :lang(ru) h3 { hyphens: auto; overflow-wrap: break-word; }

@@ -36,6 +36,11 @@ relative, so the site works from the `/CyberTrain/` project path (the `og:image`
 Content rule: every command, code block and claim on these pages comes from
 [README.md](../README.md), [examples/blog](../examples/blog) or
 [docs/](../docs); when those change, change the site to match.
+The home page's Performance section (06) shows the run recorded in
+[docs/benchmark.md](../docs/benchmark.md) (`bench/results/<date>.json`,
+printed by `bench/report`): after a new recorded run, update its numbers in
+all five languages, and the bar widths (`--f`, each bar's share of the
+longest bar in its row) with them.
 
 ## Social cards
 
