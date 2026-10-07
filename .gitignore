@@ -17,17 +17,6 @@ log/
 # gem build output
 *.gem
 
-# The hosted playground's local stack (playground/dev): the control plane's
-# flags and lock, for the dev stack and for e2e.sh.
-playground/dev/data/
-playground/dev/data-e2e/
-
-# The hosted playground's deployment (playground/deploy): the operator's
-# filled-in Kamal configs and the pinned session image (session-image).
-playground/deploy/router.yml
-playground/deploy/control.yml
-playground/deploy/.session-image
-
 # YARD (API docs are built by the Pages workflow into site/api/)
 .yardoc/
 /site/api/

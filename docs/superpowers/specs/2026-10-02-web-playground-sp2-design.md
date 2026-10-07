@@ -1,5 +1,7 @@
 # web playground SP2: ログイン不要のホスト型プレイグラウンド
 
+> **Status: abandoned on 2026-10-07.** The hosted playground was built and tested (on one machine and in GitHub Actions) and its session image was published to GHCR, but it was never deployed; the owner decided that GitHub Codespaces (SP1) is enough to try cybertrain. Its code was removed from the tree in the commit "Remove the hosted playground (cancelled)"; the merge of PR #12 still has it. This document is kept for its measurements and its threat model. The published image `ghcr.io/saeki-mototsune/cybertrain-playground-web` is no longer built.
+
 2026-10-02。ブランチ `web-playground-sp2`（SP1 のブランチ `web-playground` の上に積む。SP1 は実装済みで、push と
 実機確認が未了）。状態: 2026-10-02 にオーナーが設計を承認（新規の小さめの VPS、専用ドメイン + Cloudflare、
 本書の構成と既定値）。前提: オーナーの決定と調査メモ（コンテナスパイク、code-server のスパイク、脅威モデル、

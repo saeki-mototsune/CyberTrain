@@ -1,5 +1,7 @@
 # Web playground SP2 Implementation Plan
 
+> **Status: abandoned on 2026-10-07.** The hosted playground was built and tested (on one machine and in GitHub Actions) and its session image was published to GHCR, but it was never deployed; the owner decided that GitHub Codespaces (SP1) is enough to try cybertrain. Its code was removed from the tree in the commit "Remove the hosted playground (cancelled)"; the merge of PR #12 still has it. This document is kept for its measurements and its threat model. The published image `ghcr.io/saeki-mototsune/cybertrain-playground-web` is no longer built.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A no-login hosted playground where a visitor presses "Start a session" and, for 30 minutes, gets VS Code (code-server) in the browser on the tutorial blog, its development server in a terminal and the app in the editor's preview, built as a session image (`web` stage), a static Caddy router and a small Ruby control plane, proven locally end to end and in a real browser, with deployment files, CI, documentation and a prepared (not applied) site entry.

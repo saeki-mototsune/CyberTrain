@@ -1417,7 +1417,7 @@ jobs:
 20. サイトのナビの表記は `Playground`、ヒーローのボタンは `Try it in your browser`、closer とフッターは変えない（§7.1、§7.3）。
 21. Codespaces の実機確認はマージ前にブランチから行い（一時的な push トリガーで `latest` を公開）、`v0.2.1` のタグはマージ後に打つ（§10.3、§11）。
 
-## 14. 実装後の差分（as built, 2026-10-02。実機確認は未実施）
+## 14. 実装後の差分（as built, 2026-10-02。実機確認は 2026-10-06〜07 に実施、§14.6）
 
 ブランチ `web-playground` で plan の 8 タスクとタスクごとのレビュー、ブランチ全体のレビューと
 1 回の修正を終えた時点の記録。開発機での確認: フルの `spin test` が 66/66（92 s）。Docker Desktop
@@ -1431,6 +1431,13 @@ private ポートでの自動プレビュー、実際のプレビューでの Co
 §6.5 のフォールバックは必要になっておらず適用もしていない。
 ブランチの先頭のコミット「TEMP: live check: publish latest from web-playground」は §10.3 の 1 の一時トリガーで、
 確認の後に取り消す。
+
+**追記（2026-10-07）:** 上の「未実施」は解消した。ブランチは SP2 の `web-playground-sp2` と合わせた 1 本の PR #12 として
+2026-10-06 にマージされ（ae6b957）、「Playground image」は PR でもマージ後の main でも GitHub で成功し（`image` ジョブが
+615 秒）、`latest` は認証なしで pull できる公開のイメージになった。ブランチの先頭の「TEMP: live check」のコミットは PR に
+含めず、一度も使っていない。§10.3 の実機確認は main の `latest` で行い、結果は §14.6 に書く。その結果、§6.5 のフォールバック 2
+を適用し、Cookie の前提（§1、§3）の誤りを訂正し、Codespaces 用の Cookie の既定（§6.3）を外した。SP2 と SP3 は 2026-10-07
+に中止した（SP2 のコードはツリーから外した）。
 
 ### 14.1 フレームワーク、イメージ、起動スクリプト（§3〜§6）
 
@@ -1532,7 +1539,7 @@ private ポートでの自動プレビュー、実際のプレビューでの Co
     は「`up` では走らない」としていた）ので、前面のサーバーで返らない。ローカルの確認は
     `up --workspace-folder . --skip-post-attach` で行う。フラグなしの `up` を再アタッチとして走らせると、
     `playground-server` は "already running" で 0 で終わり、サーバーは 1 つのままだった。
-14. §10.3・§11: 実機確認は未実施。§11 の 1 の push はオーナーの手元での承認（SSH エージェント）が要る。
+14. §10.3・§11: 実機確認は 2026-10-06〜07 に実施した（結果は §14.6）。以下は実施前の記録。§11 の 1 の push はオーナーの手元での承認（SSH エージェント）が要る。
     チェックリストには最終レビューの観察を足した: L3 で `id`（`uid=1000(dev)` を期待し、違えば
     `"updateRemoteUserUID": false`）、L1・L3 で最初の起動が何かをコンパイルしたか、L2 で codespace の clone の
     `git remote -v`、L8 で `server` の端末をゴミ箱のアイコンで閉じた後のサーバーの数（開発ループは SIGHUP を
@@ -1554,3 +1561,42 @@ private ポートでの自動プレビュー、実際のプレビューでの Co
 - 「What opens」は `PLAYGROUND.md` が必ず開くように書いている（開くかは L10 で決まる）。
 - §4.2 の worktree での停止は一度も走らせていない（worktree を作らない制約のため）。
 - 別の仕事: 端末を閉じたとき開発ループが SIGHUP を再起動として扱うこと、Actions の SHA での固定。
+
+### 14.6 実機確認の結果（2026-10-06〜07、§10.3）
+
+環境: GitHub Codespaces の既定の機械（2 コア、8 GB RAM、32 GB、東南アジア）。イメージは main（PR #12 のマージ ae6b957）の
+CI が出した `latest`。ブラウザは Chrome の新しいプロファイル（`app.github.dev` の Cookie なし）、リンクは
+`https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1`。確認用の codespace は確認ごとに作って削除した。
+前提の確認: マージ（ae6b957）、タグ v0.2.1、main の CI の成功、2 つのイメージの `latest` が認証なしで pull できること
+（GHCR のマニフェストが 200）。
+
+| 行 | 結果 | 観察 |
+| --- | --- | --- |
+| L1 | 記録 | 作成ページのボタンは「Create new codespace」の 1 つ（と「Change options」）で、課金先はそのページに出ない。ボタンからエディタの表示まで 21 秒、blog のファイルが出るまで 57 秒。ここで Workspace Trust のダイアログが出て、押すまで端末が始まらない（下の 1）。押してから 8 秒以内にバナーと Listening。最初の起動でコンパイルは走らなかった。 |
+| L2 | 通過 | Explorer の根は `blog [Codespaces: …]` でアプリのファイルが見え、`pwd` は `/workspace/blog`、blog のリポジトリは変更 0。`ls -ld /workspaces` は `drwxrwxr-x dev root` で `touch` できる（フォールバック 1 は要らない）。codespace の clone の origin は `https://github.com/saeki-mototsune/CyberTrain`（大文字の C。イメージの `insteadOf` は小文字の URL だけに当たる）。 |
+| L3 | 通過 | `server` の端末にバナーと `* Listening on http://127.0.0.1:3000`。`x86_64`、`CODESPACES=true`、`uid=1000(dev)`（ユーザーの再割り当てなし）。当時は Cookie の変数が `None` と `1` だった（下の訂正）。 |
+| L4 | **不合格** | 自動で開いたプレビューは Chrome の「github.com refused to connect.」になった（小さい枠では壊れたページのアイコンだけ）。private ポートのサインインが iframe を github.com のページへ移し、そのページは枠に入れられないため。Ports → Open in Browser で通常のタブを一度開いて認証し、プレビューを再読み込みすると出る。codespace を Stop して再開するたびに、また必要になる。オーナーも同じ画面を見て、同じ手順で直した。→ 下の 2。 |
+| L5 | 通過（対照は訂正） | 既定の設定で、プレビューの中の記事の作成は 303 で 403 にならなかった。Cookie の行は `HttpOnly; SameSite=None; Max-Age=1209600; Secure; Partitioned`。`location.ancestorOrigins` は `github.dev` の 3 つ（webview の origin も `*.github.dev` で、`vscode-cdn.net` ではない）。Lax の対照は下の訂正。 |
+| L6 | 一部未確認 | オーナーが自分の環境で、記事を作ってエラーなしで通ることを確かめた。使ったブラウザは記録していない。Firefox と Safari を個別には確かめていない。 |
+| L7 | 通過 | ビューの編集は再読み込みですぐ出る。モデルへの検証の追加は、保存からバイナリの書き込みまで 99 秒（2 vCPU）で、サーバーはその直後に再起動した。120 秒を超えないので「about a minute」は直していない。 |
+| L8 | 通過 | ブラウザの再読み込みでも、タブを閉じて github.com/codespaces から開き直しても、端末とプレビューが復元され、サーバーは 1 つのまま。`playground-server` をもう一度走らせると "already running" で終了 0。`server` の端末をゴミ箱のアイコンで閉じると、アプリは親なし（ppid 1）の孤児として 3000 番で答え続ける（playground/README.md の限界の節に既出）。 |
+| L9 | 通過 | Stop して Restart してから約 40 秒後に、`postAttachCommand` の新しい端末でサーバーが自動で起動し、L5 の記事も残っていた。プレビューは再び認証が要った。止めた codespace を一覧から開くと「Codespace is stopped」の画面になり、Restart を 1 回押す。 |
+| L10 | 記録 | Trust を押した直後に `PLAYGROUND.md` が自動で開いた。それ以前は `README.md` がプレビュー表示で開いていた。 |
+| L11 | 通過 | `cybertrain new shop` から scaffold、migrate、server までがすべて通った（Listening まで約 4 分。gen、db、アプリの順に、初回のコンパイルが走る）。3000 番での商品の作成は 403 になったが、L5 の対照実験の残骸が原因だった（下の訂正）。きれいなオリジンの 3001 番では、blog のあとに shop を動かしても作成できた。新しいアプリの `/` は "Not Found"（ガイドに書いてある）。 |
+| L12 | 通過 | 削除した。 |
+
+見つかったことと直し（ブランチ `codespaces-open-browser` の変更）:
+
+1. **Workspace Trust のダイアログ**（仕様書に無かった）。初回に「Do you trust the authors of the files in this folder?」が出て、「Trust Folder & Continue」を押すまで `server` の端末が始まらず、サーバーも起動しない。`PLAYGROUND.md` の Good to know と README に一行足した。
+2. **L4（§6.5 のフォールバック 2）。** `onAutoForward` を `openPreview` から `openBrowserOnce` に変えた（仕様書は `openBrowser` だが、開発ループの再起動のたびに 2 つ目のタブが開かないよう、最初の 1 回だけにした）。ガイドと README と `site/playground.html` は Variant B の文面にした（アプリは新しいタブで開く、再読み込みは「アプリのタブ」、ポップアップを止められたら Ports の Open in Browser）。あわせて、アプリのタブが一度開いたあとなら、Ports の「Preview in Editor」でエディタ内にも出せることを一行足した。
+3. **`vscode-cdn.net` の誤り。** Codespaces のプレビューの webview は `*.github.dev` で、`vscode-cdn.net` ではなかった。`playground/README.md` と `profile.sh` の説明を直した（4 で説明ごと外れた）。
+4. **Cookie の既定を外した**（下の訂正）。
+5. 直していないもの: 再ビルドの「about a minute」（99 秒）、孤児のアプリ（既出）。
+
+訂正（Cookie の前提）: 当初の前提（§1、§3、§6.3: Codespaces のプレビューは別サイトの iframe で、`SameSite=Lax` の Cookie は保存も送信もされず、すべてのフォームの POST が 403 になる）は、Codespaces では成り立たない。Public Suffix List（2026-10-01 版）に `github.dev` も `app.github.dev` も無く、エディタ（`<codespace>.github.dev`）、webview（`<id>.github.dev`）、アプリ（`<codespace>-3000.app.github.dev`）は、origin は別でも同じサイトである。何も残っていない新しい codespace で、サーバーを `SameSite=Lax`、`PARTITIONED=0` だけで起動し（署名鍵は替えない）、サインイン後のプレビューで記事を作ると、エラーなしで通った。L5 の最初の対照（Lax で 403）は、署名鍵を替えたために古い `SameSite=None; Partitioned` の Cookie が先に送られて新しい Cookie を隠していただけで、Lax が落ちた証拠ではなかった。同じ実験が 3000 番に残した Lax の Cookie がそのオリジンの `_cybertrain_session` を汚し、L11 の 403 を起こした（Cookie の名前を変えると通り、きれいな 3001 番では blog のあとの shop も通った）。2026-10-07 にオーナーの決定で、Codespaces 用の Cookie の既定（`profile.sh` の `None` と `Partitioned`）を外し、スモークテストの C1 は「既定の `SameSite=Lax` のまま」、C3 は「interactive と login のシェルが `/opt/cybertrain/bin` の `spin` を見つける」に替えた。フレームワークの変数（`CYBERTRAIN_SESSION_SAME_SITE`、`CYBERTRAIN_SESSION_PARTITIONED`）は 0.2.1 の一般的な機能として残す。この節より前の Cookie に関する記述は、設計時点の記録としてそのまま残す。教訓: 対照実験で署名鍵を替えてセッションを「リセット」しない。新しいオリジンを使う。
+
+変更後のローカルの確認（ブランチの 44ff98f、arm64 の Docker Desktop）: イメージのビルドが成功し、スモークテストの 29 項目（Cookie の既定を外したあとの C1 と C3 を含む）がすべて通った。
+
+ブランチの設定での確認（2026-10-07、`codespaces.new/saeki-mototsune/CyberTrain/tree/codespaces-open-browser`、新しい codespace、Chrome の新しいプロファイル、クライアントは 1 つ）: 接続して「Trust Folder & Continue」を押すと、5 秒以内に新しいタブが自動で開き（`pf-signin` を経由して）、アプリ（タイトル `Blog`）が表示された。ポップアップはブロックされなかった。Ruby のファイルを `touch` して再ビルドさせ、サーバーが再起動しても（`Build succeeded; restarting`）、2 つ目のタブは開かなかった。Stop して Restart した別の codespace では、信頼を押したあとにサーバーは起動したが、タブは開かなかった（コンソールに `Revived port: 3000` があり、ポートは前の接続で転送済みの扱い）。そのため、再開後は Ports の「Open in Browser」を使うと、README、`PLAYGROUND.md`、サイトに書いた。注意: 信頼のクリックからタブが開くまでは約 5 秒で、Chrome のユーザー操作の有効時間（約 5 秒）に近い。遅い環境や、ポップアップに厳しい Safari・Firefox では開かない可能性があり、そのための案内は文面にある。なお、最初の codespace では、作成ログのリンクを押して信頼のダイアログが早く出たあと、接続が数分止まり、別のタブで開き直すと繋がった（私の操作が原因と見ている。訪問者の経路ではない）。
+
+未確認: Firefox と Safari（L6）、信頼のダイアログを「Cancel」したあとの復帰の手順（状態バーの Restricted Mode から信頼したときに、サーバーが自動で起動するか）。

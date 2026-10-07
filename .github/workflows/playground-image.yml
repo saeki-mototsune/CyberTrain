@@ -1,10 +1,7 @@
-# Builds the playground images for linux/amd64 and, except on pull requests,
-# pushes the tested images to GHCR: latest from main, X.Y.Z and latest from a
-# tag vX.Y.Z, the given tag on a manual run. Job image: target playground
-# (Codespaces), smoke-tested by playground/smoke.sh. Job web, only once image
-# has passed (the web stage is built on the playground stage): target web (the
-# hosted playground's sessions), smoke-tested by playground/web-smoke.sh and
-# end-to-end tested with the router and the control plane (playground/dev/e2e.sh).
+# Builds the playground image (playground/Dockerfile, target playground) for
+# linux/amd64, smoke-tests it (playground/smoke.sh) and, except on pull
+# requests, pushes the tested image to GHCR: latest from main, X.Y.Z and
+# latest from a tag vX.Y.Z, the given tag on a manual run.
 # See playground/README.md.
 name: Playground image
 
@@ -35,7 +32,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to push to ghcr.io/saeki-mototsune/cybertrain-playground and ghcr.io/saeki-mototsune/cybertrain-playground-web (latest, X.Y.Z or a test name). The hosted playground's next deploy pins whatever cybertrain-playground-web:latest is at that moment, so a latest pushed here becomes its session image."
+        description: "Tag to push to ghcr.io/saeki-mototsune/cybertrain-playground (latest, X.Y.Z or a test name)"
         required: true
         default: "test"
 
@@ -115,87 +112,5 @@ jobs:
           test -n "$TAGS" || { echo "no tag to push"; exit 1; }
           for tag in $TAGS; do
             docker tag cybertrain-playground:ci "$tag"
-            docker push "$tag"
-          done
-
-  # The hosted playground's session image (target web), only once the image
-  # job has passed: the web stage is built on the playground stage, so a base
-  # that fails SP1's smoke test never becomes the session image. The same
-  # build rules and its own tag check (it pushes on its own); the shared layers
-  # come from the cache scope the image job has just written (playground-image),
-  # this job's own go to playground-web. Then its smoke test and the end-to-end
-  # test of the whole local stack (router, control plane and real sessions)
-  # before anything is pushed.
-  web:
-    needs: image
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      IMAGE: ghcr.io/saeki-mototsune/cybertrain-playground-web
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: The tag is v + Cybertrain::VERSION
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
-          test "$GITHUB_REF_NAME" = "v$version" || { echo "tag $GITHUB_REF_NAME is not v$version (cybertrain/version.rb)"; exit 1; }
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Tags and labels
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE }}
-          flavor: |
-            latest=false
-          tags: |
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
-            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=raw,value=${{ inputs.tag || 'manual' }},enable=${{ github.event_name == 'workflow_dispatch' }}
-
-      - name: Build (linux/amd64, target web)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: playground/Dockerfile
-          target: web
-          platforms: linux/amd64
-          load: true
-          provenance: false
-          tags: cybertrain-playground-web:ci
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha,scope=playground-image
-            type=gha,scope=playground-web
-          cache-to: type=gha,mode=max,scope=playground-web,ignore-error=true
-
-      - name: Smoke test
-        run: bash playground/web-smoke.sh cybertrain-playground-web:ci
-
-      - name: End-to-end test
-        env:
-          PLAY_SESSION_IMAGE: cybertrain-playground-web:ci
-        run: bash playground/dev/e2e.sh
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push the tested image
-        if: github.event_name != 'pull_request'
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          test -n "$TAGS" || { echo "no tag to push"; exit 1; }
-          for tag in $TAGS; do
-            docker tag cybertrain-playground-web:ci "$tag"
             docker push "$tag"
           done
