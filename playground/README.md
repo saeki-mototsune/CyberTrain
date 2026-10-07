@@ -170,6 +170,7 @@ Code in the browser.
 - The editor's preview needs that sign-in first: once the app's tab has opened, the Ports view's "Preview in Editor" on port 3000 shows the app inside VS Code too (reload a preview that showed the error). After every restart of the codespace the port signs in again, so the preview again needs the app's tab first. Inside the preview, pop-ups and `confirm()` dialogs do not work.
 - "Rebuild Container" starts again from the image: edits under `/workspace/blog` are lost, since only `/workspaces` survives a rebuild.
 - A codespace's storage counts against the visitor's quota until it is deleted at https://github.com/codespaces.
+- Measured on the default 2-core machine (live check, 2026-10-06): the editor shows about 20 s after "Create codespace" and the blog's files after about a minute; the server listens a few seconds after "Trust Folder & Continue"; a Ruby edit is rebuilt and the server restarted about 100 s after the save; a stopped codespace starts the server again about 40 s after "Restart codespace", with the data kept.
 
 ## Smoke test
 
@@ -226,7 +227,8 @@ Run workflow, on `main`).
 
 - `linux/amd64` only; on arm64, build the image from a checkout.
 - No live reload: reload the page after a change.
-- A Ruby edit is a full rebuild (about a minute); a view edit needs none.
+- A Ruby edit is a full rebuild (about a minute; 99 s on the default 2-core
+  codespace); a view edit needs none.
 - In a codespace the editor's preview cannot sign in to the private forwarded
   port by itself. The app opens in a browser tab, and the preview shows the
   app only once that tab has signed in; after every restart of the
