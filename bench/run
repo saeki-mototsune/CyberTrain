@@ -1,0 +1,538 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Benchmarks examples/blog, built with `cybertrain build`, against
+# bench/rails_blog, the same blog in Rails 8.1 on Puma, on this machine.
+# docs/benchmark.md describes the method and the recorded results.
+#
+# usage: bench/run [--no-build] [--configs 1cpu,2cpu] [--duration S]
+#                  [--runs N] [--warmup S] [--boots N] [--out FILE] [--quick]
+#
+#   BENCH_RAILS_RUBY=/path/to/bin/ruby   the Ruby that runs Rails (default:
+#                                        the `ruby` on PATH); give it YJIT,
+#                                        which Rails 8 turns on in production
+#
+# Needs Linux with at least 4 CPUs (taskset, /proc), wrk, and what building
+# each app needs: Spinel for examples/blog (`cybertrain setup`), and Bundler
+# with the gems in bench/rails_blog/Gemfile.lock for Rails.
+#
+# Each server is pinned with taskset to the CPUs its configuration names and
+# wrk to CPUs 2-3, so the load generator never competes with the server.
+# For each framework and configuration: start the server on a fresh database,
+# seed it over HTTP through the app's own forms (30 articles, 10 comments on
+# the first), warm up, then run wrk against each endpoint. Startup time,
+# memory and deploy size are measured too. The results are written as JSON
+# (bench/results/<date>.json unless --out) and summarized on stdout.
+require "etc"
+require "fileutils"
+require "json"
+require "net/http"
+require "open3"
+require "optparse"
+require "rbconfig"
+require "securerandom"
+require "time"
+require "uri"
+
+ROOT = File.expand_path("..", __dir__)
+BLOG = File.join(ROOT, "examples", "blog")
+RAILS_APP = File.join(ROOT, "bench", "rails_blog")
+WORK = File.join(ROOT, "bench", "tmp")
+CT_DIR = File.join(WORK, "cybertrain")
+
+# Server CPUs, Spinel worker threads and Puma worker processes. Rails runs
+# Puma's default 3 threads per process (config/puma.rb); CyberTrain runs one
+# green thread per connection on SPINEL_WORKERS OS threads.
+CONFIGS = {
+  "1cpu" => { server_cpus: "0", ct_workers: 1, puma_workers: nil },
+  "2cpu" => { server_cpus: "0,1", ct_workers: 2, puma_workers: 2 },
+}.freeze
+CLIENT_CPUS = "2,3"
+
+ARTICLES = 30
+COMMENTS = 10
+
+ENDPOINTS = [
+  { id: "index", method: "GET", path: "/articles", what: "GET /articles (30 articles)" },
+  { id: "show", method: "GET", path: "/articles/1", what: "GET /articles/1 (an article, 10 comments, 12 forms)" },
+  { id: "static", method: "GET", path: "/style.css", what: "GET /style.css (public/)" },
+  { id: "create", method: "POST", path: "/articles/2/comments", what: "POST /articles/2/comments (insert, 303)" },
+].freeze
+CONNECTIONS = [1, 16].freeze
+
+PORTS = { "cybertrain" => 3201, "rails" => 3202 }.freeze
+
+options = { build: true, configs: CONFIGS.keys, duration: 10, runs: 3, warmup: 10, boots: 5, out: nil }
+OptionParser.new do |o|
+  o.banner = "usage: bench/run [options]"
+  o.on("--no-build", "reuse examples/blog/dist/ instead of running cybertrain build") { options[:build] = false }
+  o.on("--configs LIST", "comma-separated: #{CONFIGS.keys.join(",")}") { |v| options[:configs] = v.split(",") }
+  o.on("--duration S", Integer, "seconds per wrk run (10)") { |v| options[:duration] = v }
+  o.on("--runs N", Integer, "wrk runs per endpoint and concurrency; the median is reported (3)") { |v| options[:runs] = v }
+  o.on("--warmup S", Integer, "seconds of warm-up load per endpoint before measuring (10)") { |v| options[:warmup] = v }
+  o.on("--boots N", Integer, "server starts timed for the startup figure (5)") { |v| options[:boots] = v }
+  o.on("--out FILE", "where to write the JSON") { |v| options[:out] = v }
+  o.on("--quick", "1 s runs, once, 1 s warm-up, 2 boots: checks the script, not a result") do
+    options.merge!(duration: 1, runs: 1, warmup: 1, boots: 2)
+  end
+end.parse!
+unknown = options[:configs] - CONFIGS.keys
+abort "unknown config #{unknown.join(", ")}; known: #{CONFIGS.keys.join(", ")}" unless unknown.empty?
+
+def say(text)
+  $stdout.puts(text)
+  $stdout.flush
+end
+
+def capture(*cmd, **opts)
+  out, status = Open3.capture2e(*cmd, **opts)
+  raise "#{cmd.join(" ")} failed:\n#{out}" unless status.success?
+
+  out
+end
+
+def tool?(name)
+  system("command -v #{name} > /dev/null 2>&1")
+end
+
+def median(values)
+  sorted = values.sort
+  mid = sorted.size / 2
+  sorted.size.odd? ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0
+end
+
+def monotonic
+  Process.clock_gettime(Process::CLOCK_MONOTONIC)
+end
+
+abort "bench/run needs Linux (taskset, /proc)" unless RUBY_PLATFORM.include?("linux")
+abort "bench/run needs at least 4 CPUs (servers on 0-1, wrk on 2-3); this machine has #{Etc.nprocessors}" if Etc.nprocessors < 4
+%w[wrk taskset du].each { |t| abort "bench/run needs #{t} on PATH" unless tool?(t) }
+
+RAILS_RUBY = ENV.fetch("BENCH_RAILS_RUBY") { capture("sh", "-c", "command -v ruby").strip }
+RAILS_ENV = {
+  "PATH" => "#{File.dirname(RAILS_RUBY)}:#{ENV.fetch("PATH")}",
+  "BUNDLE_GEMFILE" => File.join(RAILS_APP, "Gemfile"),
+  "RAILS_ENV" => "production",
+  "SECRET_KEY_BASE" => SecureRandom.hex(64),
+  "GEM_HOME" => nil, "GEM_PATH" => nil, "RUBYLIB" => nil, "RUBYOPT" => nil,
+}.freeze
+CT_ENV = { "CYBERTRAIN_SECRET_KEY_BASE" => SecureRandom.hex(64) }.freeze
+
+YJIT = capture(RAILS_ENV, RAILS_RUBY, "-e", "print defined?(RubyVM::YJIT) ? 1 : 0") == "1"
+warn "warning: #{RAILS_RUBY} has no YJIT; Rails 8 turns it on in production, so the numbers undersell Rails (set BENCH_RAILS_RUBY)" unless YJIT
+
+FileUtils.mkdir_p(WORK)
+
+# --- build both apps --------------------------------------------------------
+
+build_seconds = nil
+if options[:build]
+  say "==> cybertrain build (examples/blog)"
+  started = monotonic
+  capture(RbConfig.ruby, "-I#{ROOT}", File.join(ROOT, "bin", "cybertrain.rb"), "build", chdir: BLOG)
+  build_seconds = (monotonic - started).round(1)
+  say "    #{build_seconds} s"
+end
+abort "examples/blog/dist/blog is missing: run without --no-build" unless File.executable?(File.join(BLOG, "dist", "blog"))
+FileUtils.rm_rf(CT_DIR)
+FileUtils.mkdir_p(CT_DIR)
+FileUtils.cp(File.join(BLOG, "dist", "blog"), CT_DIR, preserve: true)
+FileUtils.cp_r(File.join(BLOG, "dist", "public"), CT_DIR)
+%w[storage tmp].each { |d| FileUtils.mkdir_p(File.join(CT_DIR, d)) }
+
+say "==> bundle install (bench/rails_blog)"
+capture(RAILS_ENV, "bundle", "install", "--quiet", chdir: RAILS_APP)
+
+def reset_database(framework)
+  case framework
+  when "cybertrain"
+    Dir.glob(File.join(CT_DIR, "storage", "production.sqlite3*")).each { |f| File.delete(f) }
+    capture(CT_ENV, "./blog", "migrate", chdir: CT_DIR)
+  when "rails"
+    Dir.glob(File.join(RAILS_APP, "storage", "production.sqlite3*")).each { |f| File.delete(f) }
+    capture(RAILS_ENV, "bin/rails", "db:prepare", chdir: RAILS_APP)
+  end
+end
+
+# --- servers ----------------------------------------------------------------
+
+class Server
+  attr_reader :framework, :port, :pid
+
+  def initialize(framework, config)
+    @framework = framework
+    @config = config
+    @port = PORTS.fetch(framework)
+  end
+
+  # Spawns the server and waits for its first 200; returns the seconds that took.
+  def start
+    cpus = @config[:server_cpus]
+    log = File.join(WORK, "#{@framework}.stderr.log")
+    started = monotonic
+    if @framework == "cybertrain"
+      env = CT_ENV.merge("PORT" => @port.to_s, "SPINEL_WORKERS" => @config[:ct_workers].to_s)
+      @pid = Process.spawn(env, "taskset", "-c", cpus, "./blog", chdir: CT_DIR, out: File::NULL, err: log)
+    else
+      workers = @config[:puma_workers]
+      env = RAILS_ENV.merge("PORT" => @port.to_s, "WEB_CONCURRENCY" => workers&.to_s)
+      @pid = Process.spawn(env, "taskset", "-c", cpus, "bin/rails", "server", "-b", "127.0.0.1", "-p", @port.to_s,
+                           chdir: RAILS_APP, out: File::NULL, err: log)
+    end
+    deadline = started + 60
+    until ready?
+      raise "#{@framework} exited during boot; see #{log}" unless Process.waitpid(@pid, Process::WNOHANG).nil?
+      raise "#{@framework} not ready after 60 s; see #{log}" if monotonic > deadline
+
+      sleep 0.01
+    end
+    monotonic - started
+  end
+
+  def stop
+    return if @pid.nil?
+
+    Process.kill("TERM", @pid)
+    deadline = monotonic + 20
+    while Process.waitpid(@pid, Process::WNOHANG).nil?
+      if monotonic > deadline
+        Process.kill("KILL", @pid)
+        Process.waitpid(@pid)
+        break
+      end
+      sleep 0.05
+    end
+    @pid = nil
+    sleep 0.3 # let the port and the workers go
+  end
+
+  # The server's processes: Puma in cluster mode forks its workers.
+  def pids
+    all = [@pid]
+    queue = [@pid]
+    until queue.empty?
+      pid = queue.shift
+      Dir.glob("/proc/#{pid}/task/*/children").each do |f|
+        File.read(f).split.map(&:to_i).each do |child|
+          all << child
+          queue << child
+        end
+      rescue Errno::ENOENT
+        next
+      end
+    end
+    all.uniq
+  end
+
+  # Kilobytes from /proc/<pid>/status (VmRSS, VmHWM), summed over #pids, and
+  # Pss from smaps_rollup (shared pages split between the processes).
+  def memory_kb
+    totals = { "rss" => 0, "hwm" => 0, "pss" => 0 }
+    pids.each do |pid|
+      status = File.read("/proc/#{pid}/status")
+      totals["rss"] += status[/^VmRSS:\s+(\d+)/, 1].to_i
+      totals["hwm"] += status[/^VmHWM:\s+(\d+)/, 1].to_i
+      totals["pss"] += File.read("/proc/#{pid}/smaps_rollup")[/^Pss:\s+(\d+)/, 1].to_i
+    rescue Errno::ENOENT, Errno::EACCES
+      next
+    end
+    totals
+  end
+
+  def ready?
+    Net::HTTP.start("127.0.0.1", @port, open_timeout: 0.2, read_timeout: 5) do |http|
+      http.get("/").code == "200"
+    end
+  rescue SystemCallError, Net::OpenTimeout, Net::ReadTimeout, EOFError, IOError
+    false
+  end
+end
+
+# A client with one cookie, which fills in forms the way a browser does: the
+# authenticity token comes from the page that holds the form.
+class Browser
+  attr_reader :cookie
+
+  def initialize(port)
+    @port = port
+    @cookie = nil
+  end
+
+  def get(path)
+    request(Net::HTTP::Get.new(path))
+  end
+
+  def post(path, fields)
+    req = Net::HTTP::Post.new(path)
+    req.set_form_data(fields)
+    request(req)
+  end
+
+  # The token in page's form that posts to action: Rails signs a token per
+  # form (per_form_csrf_tokens), so another form's token would not do.
+  def token(page, action)
+    form = get(page).body[/<form[^>]*action="#{Regexp.escape(action)}"[^>]*>.*?<\/form>/m]
+    raise "no form posting to #{action} on #{page}" if form.nil?
+
+    form[/name="authenticity_token" value="([^"]+)"/, 1] or raise "no authenticity_token in #{page}'s #{action} form"
+  end
+
+  def request(req)
+    req["Cookie"] = @cookie if @cookie
+    res = Net::HTTP.start("127.0.0.1", @port) { |http| http.request(req) }
+    set = res.get_fields("set-cookie")
+    @cookie = set.first.split(";").first unless set.nil? || set.empty?
+    res
+  end
+end
+
+LOREM = "Spinel compiles Ruby ahead of time into C, and CyberTrain builds a whole web " \
+        "application into one native binary: routes, controllers, models, views and the " \
+        "HTTP server, with SQLite for storage."
+
+def seed(port)
+  b = Browser.new(port)
+  (1..ARTICLES).each do |i|
+    res = b.post("/articles", "authenticity_token" => b.token("/articles/new", "/articles"),
+                              "article[title]" => "Article #{i}", "article[body]" => "#{i}. #{LOREM}")
+    raise "creating article #{i}: #{res.code} #{res.body[0, 200]}" unless res.code == "303"
+  end
+  (1..COMMENTS).each do |j|
+    res = b.post("/articles/1/comments", "authenticity_token" => b.token("/articles/1", "/articles/1/comments"),
+                                         "comment[commenter]" => "Reader #{j}",
+                                         "comment[body]" => "Comment #{j}: a native binary is a nice thing to deploy.")
+    raise "creating comment #{j}: #{res.code}" unless res.code == "303"
+  end
+  # Read the last flash away, then keep this visit's cookie and the comment
+  # form's token for the measured requests.
+  b.get("/articles/2")
+  token = b.token("/articles/2", "/articles/2/comments")
+  index = b.get("/articles").body
+  show = b.get("/articles/1").body
+  raise "index lists #{index.scan("<tr>").size - 1} articles, not #{ARTICLES}" unless index.scan("<tr>").size - 1 == ARTICLES
+  raise "show lists #{show.scan('class="comment"').size} comments, not #{COMMENTS}" unless show.scan('class="comment"').size == COMMENTS
+
+  sizes = ENDPOINTS.select { |e| e[:method] == "GET" }.to_h { |e| [e[:id], b.get(e[:path]).body.bytesize] }
+  { cookie: b.cookie, token: token, body_bytes: sizes, pages: { "index" => index, "show" => show } }
+end
+
+# --- wrk --------------------------------------------------------------------
+
+POST_LUA = File.join(WORK, "post.lua")
+File.write(POST_LUA, <<~LUA)
+  wrk.method = "POST"
+  wrk.body = os.getenv("BENCH_BODY")
+  wrk.headers["Content-Type"] = "application/x-www-form-urlencoded"
+LUA
+
+def to_ms(text)
+  value = text.to_f
+  case text[/[a-z]+\z/]
+  when "us" then value / 1000.0
+  when "ms" then value
+  when "s" then value * 1000.0
+  when "m" then value * 60_000.0
+  else raise "unknown wrk time unit in #{text}"
+  end
+end
+
+def wrk(port, endpoint, connections, seconds, session)
+  url = "http://127.0.0.1:#{port}#{endpoint[:path]}"
+  threads = [connections, 2].min
+  cmd = ["taskset", "-c", CLIENT_CPUS, "wrk", "-t#{threads}", "-c#{connections}", "-d#{seconds}s", "--latency",
+         "-H", "Cookie: #{session[:cookie]}"]
+  env = {}
+  if endpoint[:method] == "POST"
+    cmd += ["-s", POST_LUA]
+    env["BENCH_BODY"] = URI.encode_www_form("authenticity_token" => session[:token],
+                                            "comment[commenter]" => "wrk", "comment[body]" => "A comment from the load generator.")
+  end
+  out = capture(env, *cmd, url)
+  latency = out.match(/^\s+Latency\s+(\S+)/)
+  pct = out.scan(/^\s+(50|75|90|99)%\s+(\S+)/).to_h { |p, v| ["p#{p}", to_ms(v)] }
+  errors = out.match(/Socket errors: connect (\d+), read (\d+), write (\d+), timeout (\d+)/)
+  bad = out[/Non-2xx or 3xx responses: (\d+)/, 1].to_i
+  result = {
+    "rps" => out[/^Requests\/sec:\s+([\d.]+)/, 1].to_f,
+    "requests" => out[/(\d+) requests in/, 1].to_i,
+    "avg_ms" => to_ms(latency[1]),
+    "socket_errors" => errors ? errors.captures.map(&:to_i).sum : 0,
+    "non_2xx_3xx" => bad,
+  }.merge(pct)
+  if result["socket_errors"].positive? || bad.positive?
+    raise "#{url} at #{connections} connections: #{result["socket_errors"]} socket errors, #{bad} bad responses\n#{out}"
+  end
+
+  result
+end
+
+# --- sizes ------------------------------------------------------------------
+
+def du_bytes(*paths)
+  paths = paths.select { |p| File.exist?(p) }
+  return 0 if paths.empty?
+
+  capture("du", "-scb", *paths).lines.last.to_i
+end
+
+def rails_sizes
+  prefix = capture(RAILS_ENV, RAILS_RUBY, "-e", "print RbConfig::CONFIG['prefix']").strip
+  gem_dir = capture(RAILS_ENV, RAILS_RUBY, "-e", "print Gem.dir").strip
+  gems = capture(RAILS_ENV, "bundle", "list", "--paths", "--without-group", "development", "test", chdir: RAILS_APP).split("\n")
+  gems = gems.map(&:strip).select { |p| p.start_with?("/") }
+  app_files = Dir.glob("**/*", File::FNM_DOTMATCH, base: RAILS_APP).reject do |f|
+    f.start_with?("storage/", "log/", "tmp/", ".bundle/", "vendor/") || File.directory?(File.join(RAILS_APP, f))
+  end
+  {
+    # The interpreter and its standard library: the install minus its gem
+    # directory (which also holds the gems Ruby bundles; not counted).
+    "ruby_bytes" => du_bytes(prefix) - du_bytes(gem_dir),
+    "gems_bytes" => du_bytes(*gems),
+    "gems_count" => gems.size,
+    "app_bytes" => app_files.sum { |f| File.size(File.join(RAILS_APP, f)) },
+  }
+end
+
+def cybertrain_sizes
+  {
+    "binary_bytes" => File.size(File.join(CT_DIR, "blog")),
+    "public_bytes" => du_bytes(File.join(CT_DIR, "public")),
+    "shared_libraries" => capture("ldd", File.join(CT_DIR, "blog")).lines.map { |l| l.strip.split.first }.reject { |l| l.start_with?("linux-vdso") },
+  }
+end
+
+# --- environment ------------------------------------------------------------
+
+def environment
+  cpu = File.read("/proc/cpuinfo")[/^model name\s*:\s*(.+)$/, 1]
+  os = File.exist?("/etc/os-release") ? File.read("/etc/os-release")[/^PRETTY_NAME="([^"]+)"/, 1] : "unknown"
+  # Asked of the booted app: Rails 8 turns YJIT on itself in production
+  # (config.yjit), so the flag on the command line says nothing.
+  versions = capture(RAILS_ENV, "bin/rails", "runner", <<~RUBY, chdir: RAILS_APP)
+    v = ->(n) { Gem.loaded_specs.fetch(n).version.to_s }
+    print [RUBY_DESCRIPTION, RubyVM::YJIT.enabled?, Rails.version, v["puma"], v["sqlite3"], SQLite3::SQLITE_VERSION].join("\\n")
+  RUBY
+  ruby, yjit, rails, puma, sqlite3, sqlite_rails = versions.split("\n")
+  {
+    "date" => Time.now.utc.iso8601,
+    "commit" => capture("git", "rev-parse", "--short", "HEAD", chdir: ROOT).strip,
+    "cpu" => cpu,
+    "cpus" => Etc.nprocessors,
+    "memory_gb" => (File.read("/proc/meminfo")[/^MemTotal:\s+(\d+)/, 1].to_i / 1024.0 / 1024).round(1),
+    "os" => os,
+    "kernel" => capture("uname", "-r").strip,
+    "cybertrain" => File.read(File.join(ROOT, "cybertrain", "version.rb"))[/VERSION = "([^"]+)"/, 1],
+    "spinel" => capture("spinel", "--version").strip,
+    "cc" => capture("cc", "--version").lines.first.strip,
+    "sqlite_system" => capture("sh", "-c", "sqlite3 --version 2>/dev/null || echo unknown").split.first,
+    "ruby" => ruby,
+    "yjit" => yjit == "true",
+    "rails" => rails,
+    "puma" => puma,
+    "sqlite3_gem" => sqlite3,
+    "sqlite_rails" => sqlite_rails,
+    "wrk" => capture("sh", "-c", "wrk -v 2>&1 | head -1 || true").strip,
+  }
+end
+
+# --- run --------------------------------------------------------------------
+
+results = {
+  "environment" => environment,
+  "settings" => options.slice(:duration, :runs, :warmup, :boots).transform_keys(&:to_s)
+                       .merge("articles" => ARTICLES, "comments" => COMMENTS, "client_cpus" => CLIENT_CPUS),
+  "endpoints" => ENDPOINTS.to_h { |e| [e[:id], e[:what]] },
+  "build_seconds" => { "cybertrain" => build_seconds },
+  "sizes" => { "cybertrain" => cybertrain_sizes, "rails" => rails_sizes },
+  "configs" => {},
+}
+
+servers = []
+at_exit { servers.each { |s| s.stop rescue nil } }
+
+options[:configs].each do |name|
+  config = CONFIGS.fetch(name)
+  results["configs"][name] = { "server_cpus" => config[:server_cpus], "cybertrain_workers" => config[:ct_workers],
+                               "puma_workers" => config[:puma_workers] || 0, "puma_threads" => 3, "frameworks" => {} }
+  %w[cybertrain rails].each do |framework|
+    say "==> #{name}: #{framework}"
+    reset_database(framework)
+    server = Server.new(framework, config)
+    servers << server
+    server.start
+    session = seed(server.port)
+    File.write(File.join(WORK, "#{framework}-show.html"), session[:pages]["show"])
+    memory_seeded = server.memory_kb
+    ENDPOINTS.each { |e| wrk(server.port, e, 16, options[:warmup], session) }
+    endpoints = {}
+    ENDPOINTS.each do |e|
+      endpoints[e[:id]] = {}
+      CONNECTIONS.each do |c|
+        runs = Array.new(options[:runs]) { wrk(server.port, e, c, options[:duration], session) }
+        summary = runs.first.keys.to_h { |k| [k, median(runs.map { |r| r[k] })] }
+        endpoints[e[:id]]["c#{c}"] = summary.merge("runs" => runs)
+        say format("    %-7s c=%-3d %10.1f req/s   p50 %7.2f ms   p99 %7.2f ms", e[:id], c, summary["rps"], summary["p50"], summary["p99"])
+      end
+    end
+    memory_loaded = server.memory_kb
+    server.stop
+    servers.delete(server)
+    results["configs"][name]["frameworks"][framework] = {
+      "body_bytes" => session[:body_bytes],
+      "memory_kb" => { "after_seed" => memory_seeded, "after_load" => memory_loaded },
+      "endpoints" => endpoints,
+    }
+  end
+end
+
+# Startup: time from spawn to the first 200 for GET /, and the memory then,
+# on the first configuration's CPUs (the database is already there).
+say "==> startup"
+results["startup"] = {}
+config = CONFIGS.fetch(options[:configs].first)
+%w[cybertrain rails].each do |framework|
+  boots = Array.new(options[:boots]) do
+    server = Server.new(framework, config)
+    servers << server
+    seconds = server.start
+    memory = server.memory_kb
+    server.stop
+    servers.delete(server)
+    { "seconds" => seconds.round(4), "rss_kb" => memory["rss"] }
+  end
+  results["startup"][framework] = { "median_seconds" => median(boots.map { |b| b["seconds"] }),
+                                    "median_rss_kb" => median(boots.map { |b| b["rss_kb"] }), "boots" => boots }
+  say format("    %-10s %.3f s, %d MB", framework, results["startup"][framework]["median_seconds"],
+             results["startup"][framework]["median_rss_kb"] / 1024)
+end
+
+out = options[:out] || File.join(ROOT, "bench", "results", "#{Time.now.utc.strftime("%Y-%m-%d")}.json")
+FileUtils.mkdir_p(File.dirname(out))
+File.write(out, JSON.pretty_generate(results) + "\n")
+say "==> wrote #{out.delete_prefix("#{ROOT}/")}"
+
+# --- summary ----------------------------------------------------------------
+
+say ""
+results["configs"].each do |name, cfg|
+  say "#{name} (server on CPU #{cfg["server_cpus"]}; CyberTrain SPINEL_WORKERS=#{cfg["cybertrain_workers"]}, " \
+      "Puma #{cfg["puma_workers"].zero? ? "single mode" : "#{cfg["puma_workers"]} workers"} x 3 threads)"
+  say "| Endpoint | c | CyberTrain req/s | Rails req/s | Ratio | CyberTrain p99 | Rails p99 |"
+  say "| --- | --: | --: | --: | --: | --: | --: |"
+  ENDPOINTS.each do |e|
+    CONNECTIONS.each do |c|
+      ct = cfg["frameworks"]["cybertrain"]["endpoints"][e[:id]]["c#{c}"]
+      ra = cfg["frameworks"]["rails"]["endpoints"][e[:id]]["c#{c}"]
+      say format("| %s | %d | %.0f | %.0f | %.1fx | %.2f ms | %.2f ms |", e[:id], c, ct["rps"], ra["rps"],
+                 ct["rps"] / ra["rps"], ct["p99"], ra["p99"])
+    end
+  end
+  mem = ->(f) { cfg["frameworks"][f]["memory_kb"]["after_load"]["rss"] / 1024.0 }
+  say format("RSS after load: CyberTrain %.1f MB, Rails %.1f MB", mem["cybertrain"], mem["rails"])
+  say ""
+end
+s = results["sizes"]
+say format("Deploy size: CyberTrain binary %.1f MB; Rails app %.2f MB + %d gems %.1f MB + Ruby %.1f MB",
+           s["cybertrain"]["binary_bytes"] / 1e6, s["rails"]["app_bytes"] / 1e6, s["rails"]["gems_count"],
+           s["rails"]["gems_bytes"] / 1e6, s["rails"]["ruby_bytes"] / 1e6)

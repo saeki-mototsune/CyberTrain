@@ -1,0 +1,87 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Prints the Markdown tables of docs/benchmark.md from a bench/run result.
+#
+# usage: bench/report [bench/results/<date>.json]   (default: the newest)
+require "json"
+
+ROOT = File.expand_path("..", __dir__)
+path = ARGV[0] || Dir.glob(File.join(ROOT, "bench", "results", "*.json")).max
+abort "usage: bench/report [RESULT.json]" if path.nil? || !File.exist?(path)
+
+r = JSON.parse(File.read(path))
+FRAMEWORKS = %w[cybertrain rails].freeze
+
+def num(value, digits = 0)
+  whole, frac = format("%.#{digits}f", value).split(".")
+  whole = whole.reverse.scan(/\d{1,3}/).join(",").reverse
+  frac ? "#{whole}.#{frac}" : whole
+end
+
+def ms(value)
+  value < 10 ? format("%.2f", value) : format("%.1f", value)
+end
+
+def mb(kb)
+  format("%.1f", kb / 1024.0)
+end
+
+e = r["environment"]
+puts "Recorded #{e["date"][0, 10]} at commit #{e["commit"]}: #{e["cpu"]}, #{e["cpus"]} CPUs, " \
+     "#{e["memory_gb"]} GB, #{e["os"]} (Linux #{e["kernel"]})."
+puts
+puts "| | CyberTrain | Rails |"
+puts "| --- | --- | --- |"
+puts "| Version | cybertrain #{e["cybertrain"]}, #{e["spinel"].sub(/ \[.*/, "")} | Rails #{e["rails"]}, Puma #{e["puma"]}, sqlite3 gem #{e["sqlite3_gem"]} |"
+ruby = e["ruby"][/\Aruby \S+/]
+sqlite_rails = e["sqlite_rails"] ? ", SQLite #{e["sqlite_rails"]} (the gem's own)" : ""
+puts "| Runtime | native binary (#{e["cc"].sub(/ \(.*?\)/, "")}, `-O2`), system SQLite #{e["sqlite_system"]} | " \
+     "#{ruby}, YJIT #{e["yjit"] ? "on" : "off"}#{sqlite_rails} |"
+puts
+
+r["configs"].each do |name, cfg|
+  puma = cfg["puma_workers"].zero? ? "Puma single mode, 3 threads" : "Puma #{cfg["puma_workers"]} workers x 3 threads"
+  puts "#### #{name}: server on CPU #{cfg["server_cpus"]} (CyberTrain `SPINEL_WORKERS=#{cfg["cybertrain_workers"]}`; #{puma})"
+  puts
+  puts "| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |"
+  puts "| --- | --: | --: | --: | --: | --: | --: |"
+  r["endpoints"].each do |id, what|
+    cfg["frameworks"]["cybertrain"]["endpoints"][id].each_key do |c|
+      ct = cfg["frameworks"]["cybertrain"]["endpoints"][id][c]
+      ra = cfg["frameworks"]["rails"]["endpoints"][id][c]
+      puts "| #{what} | #{c.delete_prefix("c")} | #{num(ct["rps"])} | #{num(ra["rps"])} | #{format("%.1f", ct["rps"] / ra["rps"])}x | " \
+           "#{ms(ct["p50"])} / #{ms(ct["p99"])} ms | #{ms(ra["p50"])} / #{ms(ra["p99"])} ms |"
+    end
+  end
+  puts
+  puts "| Memory (RSS, all processes) | CyberTrain | Rails |"
+  puts "| --- | --: | --: |"
+  %w[after_seed after_load].each do |when_|
+    row = FRAMEWORKS.map { |f| "#{mb(cfg["frameworks"][f]["memory_kb"][when_]["rss"])} MB" }
+    puts "| #{when_ == "after_seed" ? "After seeding, before load" : "After the load runs"} | #{row.join(" | ")} |"
+  end
+  pss = FRAMEWORKS.map { |f| "#{mb(cfg["frameworks"][f]["memory_kb"]["after_load"]["pss"])} MB" }
+  puts "| After the load runs (PSS) | #{pss.join(" | ")} |"
+  puts
+end
+
+s = r["startup"]
+puts "| Startup (#{r["settings"]["boots"]} boots, median) | CyberTrain | Rails |"
+puts "| --- | --: | --: |"
+puts "| Spawn to first 200 for `GET /` | #{format("%.3f", s["cybertrain"]["median_seconds"])} s | #{format("%.3f", s["rails"]["median_seconds"])} s |"
+puts "| RSS then | #{mb(s["cybertrain"]["median_rss_kb"])} MB | #{mb(s["rails"]["median_rss_kb"])} MB |"
+puts
+
+z = r["sizes"]
+rails_total = z["rails"]["app_bytes"] + z["rails"]["gems_bytes"] + z["rails"]["ruby_bytes"]
+puts "| What the server needs | CyberTrain | Rails |"
+puts "| --- | --: | --: |"
+puts "| The application | #{num(z["cybertrain"]["binary_bytes"] / 1e6, 1)} MB binary (`dist/blog`) | #{num(z["rails"]["app_bytes"] / 1e6, 2)} MB of source |"
+puts "| Gems | none | #{num(z["rails"]["gems_bytes"] / 1e6, 1)} MB (#{z["rails"]["gems_count"]} gems) |"
+puts "| Ruby | none | #{num(z["rails"]["ruby_bytes"] / 1e6, 1)} MB |"
+puts "| Total | #{num(z["cybertrain"]["binary_bytes"] / 1e6, 1)} MB | #{num(rails_total / 1e6, 1)} MB |"
+puts "| Shared libraries | #{z["cybertrain"]["shared_libraries"].join(", ")} | (Ruby's own, and the gems' native extensions) |"
+build = r["build_seconds"]["cybertrain"]
+puts
+puts "`cybertrain build` took #{format("%.0f", build)} s." if build
