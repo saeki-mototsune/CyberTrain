@@ -1,0 +1,169 @@
+#!/usr/bin/env node
+// Renders the social cards (og:image, 1200 x 630) for every page of the site
+// in every language into site/assets/og/<lang>/<page>.png. The words on a
+// card come from the page itself: the kicker is the hero's status line (home)
+// or the header link marked aria-current (tutorial, playground), the headline
+// is the tagline (home) or the <h1>. So after a page's tagline or title
+// changes, in any language, run this again and commit the PNGs.
+//
+// Needs Node and Playwright with its Chromium (`npm install -g playwright`
+// then `npx playwright install chromium`). Archivo and JetBrains Mono come
+// from site/assets/fonts/; Archivo is latin only, so the Japanese, Chinese
+// and Russian cards take Noto Sans JP, Noto Sans SC and Noto Sans from the
+// system (https://fonts.google.com/noto), falling back to Hiragino, PingFang
+// and Helvetica on macOS.
+//
+// usage: script/og-cards            # all languages and pages
+//        script/og-cards ja         # one language
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const { pathToFileURL } = require('url');
+
+function loadPlaywright() {
+  try { return require('playwright'); } catch (_) {}
+  const root = require('child_process').execSync('npm root -g').toString().trim();
+  try { return require(path.join(root, 'playwright')); } catch (_) {}
+  console.error('script/og-cards: Playwright is missing; install it with:\n  npm install -g playwright && npx playwright install chromium');
+  process.exit(1);
+}
+
+const SITE = path.join(__dirname, '..', 'site');
+const LANGS = ['en', 'ja', 'zh', 'ru', 'fr'];
+const PAGES = ['index', 'tutorial', 'playground'];
+const HOST = 'saeki-mototsune.github.io/CyberTrain';
+
+// One real command per page, from the home page's quick start.
+const COMMANDS = {
+  index: ['cybertrain build', '# dist/blog'],
+  tutorial: ['cybertrain g scaffold article title:string body:text', ''],
+  playground: ['cybertrain server', '# http://127.0.0.1:3000'],
+};
+
+const FONT_STACK = {
+  en: "'Archivo', sans-serif",
+  fr: "'Archivo', sans-serif",
+  ru: "'Archivo', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif",
+  ja: "'Archivo', 'Noto Sans JP', 'Noto Sans CJK JP', 'Hiragino Sans', 'Yu Gothic', sans-serif",
+  zh: "'Archivo', 'Noto Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+};
+
+const dataUrl = (file, type) => `data:${type};base64,${fs.readFileSync(file).toString('base64')}`;
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// The wordmark (assets/brand/wordmark.svg, takes `color`) and the inside of
+// the mark (mark-dark.svg), inlined.
+const brand = (file) => fs.readFileSync(path.join(SITE, 'assets/brand', file), 'utf8').replace(/<title>.*?<\/title>/, '');
+const WORDMARK = brand('wordmark.svg').replace(/role="img" aria-label="[^"]*"/, 'class="wordmark"');
+const MARK = brand('mark-dark.svg').replace(/<svg[^>]*>|<\/svg>/g, '');
+
+// The scene: the mark's train on a track running off to the horizon, seen
+// from between the rails, sleepers closing up with distance. Straight lines
+// only, as in the logo. The mark's feet (x 2.93..101.07 of its 104 units,
+// at y 92) stand on the rails, centred on the vanishing point.
+const VP = { x: 940, y: 160 };     // vanishing point, on the horizon
+const NEAR = { y: 670, half: 375 }; // the rails where they leave the card
+const MARK_W = 190;
+function scene() {
+  const s = MARK_W / 98.14, half = MARK_W / 2;
+  const base = VP.y + (half / NEAR.half) * (NEAR.y - VP.y); // where the gauge equals the mark's feet
+  const at = (y) => (y - VP.y) / (NEAR.y - VP.y) * NEAR.half; // half gauge at y
+  let sleepers = '';
+  for (let y = NEAR.y; y > base + 6; y = VP.y + (y - VP.y) * 0.8) {
+    const h = at(y), t = h / NEAR.half, w = h * 1.22, th = Math.max(2, 14 * t);
+    sleepers += `<rect x="${(VP.x - w).toFixed(1)}" y="${(y - th / 2).toFixed(1)}" width="${(2 * w).toFixed(1)}" height="${th.toFixed(1)}" fill-opacity="${(0.35 + 0.65 * t).toFixed(2)}"/>`;
+  }
+  const rail = (sign) => `<line x1="${VP.x + sign * half}" y1="${base.toFixed(1)}" x2="${VP.x + sign * NEAR.half}" y2="${NEAR.y}"/>`;
+  return `<svg class="scene" viewBox="0 0 1200 630" aria-hidden="true">
+    <line class="horizon" x1="0" y1="${VP.y}" x2="1200" y2="${VP.y}"/>
+    <g fill="#1d1d1d">${sleepers}</g>
+    <g stroke="#3d3d3d" stroke-width="3" stroke-linecap="square">${rail(-1)}${rail(1)}</g>
+    <g transform="translate(${(VP.x - 52 * s).toFixed(2)} ${(base - 92 * s).toFixed(2)}) scale(${s.toFixed(4)})">${MARK}</g>
+  </svg>`;
+}
+
+function card({ lang, page, kicker, headline, url }) {
+  const fonts = path.join(SITE, 'assets/fonts');
+  const [cmd, note] = COMMANDS[page];
+  return `<!doctype html><html lang="${lang === 'zh' ? 'zh-Hans' : lang}"><head><meta charset="utf-8"><style>
+@font-face{font-family:'Archivo';font-weight:100 900;font-stretch:62% 125%;src:url(${dataUrl(path.join(fonts, 'Archivo-100-900.woff2'), 'font/woff2')}) format('woff2');}
+@font-face{font-family:'JetBrains Mono';font-weight:400 700;src:url(${dataUrl(path.join(fonts, 'JetBrainsMono-400-700.woff2'), 'font/woff2')}) format('woff2');}
+*{box-sizing:border-box;margin:0}
+html,body{width:1200px;height:630px;overflow:hidden}
+body{position:relative;background:#0A0A0A;color:#E8E8E8;font-family:${FONT_STACK[lang]};-webkit-font-smoothing:antialiased}
+.mono{font-family:'JetBrains Mono',monospace;font-variant-ligatures:none}
+.scene{position:absolute;inset:0;width:1200px;height:630px}
+.scene .horizon{stroke:#1c1c1c;stroke-width:1}
+/* fades the track out behind the words */
+.veil{position:absolute;inset:0;background:linear-gradient(90deg,#0A0A0A 0,#0A0A0A 46%,rgba(10,10,10,.7) 60%,rgba(10,10,10,0) 72%)}
+.top{position:absolute;left:72px;right:72px;top:64px;display:flex;align-items:center;justify-content:space-between}
+.wordmark{height:22px;width:auto;display:block;color:#E8E8E8}
+.host{font-size:15px;letter-spacing:.04em;color:#8C8C8C}
+.kicker{position:absolute;left:72px;top:206px;display:flex;align-items:center;gap:14px;font-size:17px;letter-spacing:.14em;text-transform:uppercase;color:#ABABAB}
+.lightbar{width:36px;height:4px;background:#C8A96A}
+.headline{position:absolute;left:72px;top:250px;width:720px;height:236px}
+h1{font-size:76px;line-height:1.08;font-weight:500;font-stretch:125%;letter-spacing:-.02em;text-wrap:balance;word-break:auto-phrase}
+:lang(ja) h1,:lang(zh-Hans) h1{font-weight:700;letter-spacing:.01em;line-height:1.22}
+.foot{position:absolute;left:72px;right:72px;bottom:56px;display:flex;align-items:center;justify-content:space-between}
+.cmd{--c:8px;position:relative;display:flex;align-items:center;gap:14px;height:56px;padding:0 24px;font-size:20px;color:#E8E8E8;background:#121212;
+  clip-path:polygon(var(--c) 0,calc(100% - var(--c)) 0,100% var(--c),100% calc(100% - var(--c)),calc(100% - var(--c)) 100%,var(--c) 100%,0 calc(100% - var(--c)),0 var(--c))}
+.cmd .p{color:#8C8C8C}.cmd .c{color:#8C8C8C}
+.cursor{width:11px;height:24px;background:#C8A96A;opacity:.85}
+.lang{font-size:15px;letter-spacing:.14em;color:#8C8C8C;text-transform:uppercase}
+</style></head><body>
+${scene()}
+<div class="veil"></div>
+<div class="top">${WORDMARK}<span class="host mono">${esc(url)}</span></div>
+<p class="kicker mono"><span class="lightbar"></span><span>${esc(kicker)}</span></p>
+<div class="headline"><h1>${esc(headline)}</h1></div>
+<div class="foot">
+  <p class="cmd mono"><span class="p">$</span><span>${esc(cmd)}</span>${note ? `<span class="c">${esc(note)}</span>` : ''}<span class="cursor"></span></p>
+  <span class="lang mono">${lang}</span>
+</div>
+</body></html>`;
+}
+
+(async () => {
+  const { chromium } = loadPlaywright();
+  const langs = process.argv.slice(2).length ? process.argv.slice(2) : LANGS;
+  for (const l of langs) if (!LANGS.includes(l)) { console.error(`script/og-cards: unknown language ${l}`); process.exit(1); }
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
+  const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'og-cards-'));
+  try {
+    for (const lang of langs) {
+      for (const name of PAGES) {
+        const src = path.join(SITE, lang === 'en' ? '' : lang, `${name}.html`);
+        await page.goto(pathToFileURL(src).href);
+        const { kicker, headline } = await page.evaluate((name) => {
+          const text = (el) => el.textContent.replace(/\s+/g, ' ').trim();
+          return name === 'index'
+            ? { kicker: [...document.querySelectorAll('.status > span:not(.lightbar):not(.sep)')].map(text).join(' · '),
+                headline: text(document.querySelector('.tagline')) }
+            : { kicker: text(document.querySelector('.nav-links a[aria-current="page"]')),
+                headline: text(document.querySelector('h1')) };
+        }, name);
+        const url = `${HOST}/${lang === 'en' ? '' : lang + '/'}${name === 'index' ? '' : name + '.html'}`;
+        const file = path.join(tmp, `${lang}-${name}.html`);
+        fs.writeFileSync(file, card({ lang, page: name, kicker, headline, url }));
+        await page.goto(pathToFileURL(file).href);
+        await page.evaluate(() => document.fonts.ready);
+        // Shrink the headline until it fits its box (long titles, Russian).
+        await page.evaluate(() => {
+          const box = document.querySelector('.headline'), h1 = box.querySelector('h1');
+          let size = 76;
+          while ((h1.scrollHeight > box.clientHeight || h1.scrollWidth > box.clientWidth) && size > 36) {
+            h1.style.fontSize = `${--size}px`;
+          }
+        });
+        const out = path.join(SITE, 'assets/og', lang, `${name}.png`);
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        await page.screenshot({ path: out });
+        console.log(`${path.relative(process.cwd(), out)}: ${kicker} / ${headline}`);
+      }
+    }
+  } finally {
+    await browser.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+})().catch((e) => { console.error(e); process.exit(1); });

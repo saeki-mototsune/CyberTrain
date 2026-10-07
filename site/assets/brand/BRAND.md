@@ -36,7 +36,7 @@
 | hero / splash / about page | `lockup-stacked.svg` (or `-dark` / `-light`) |
 | browser tab | `favicon.svg` (`<link rel="icon" type="image/svg+xml">`), with `favicon-32.png` and `favicon-16.png` as PNG fallbacks |
 | iOS home screen | `apple-touch-icon.png` (180 x 180) |
-| social card / avatar / app icon at 48 px and up | `app-icon.svg` for the avatar; `lockup-stacked-dark.svg` centred on `#0A0A0A` for a 1200 x 630 card |
+| social card / avatar / app icon at 48 px and up | `app-icon.svg` for the avatar; the site's 1200 x 630 cards (`site/assets/og/`) are rendered by `script/og-cards` from `wordmark.svg` and `mark-dark.svg` on `#0A0A0A` |
 | icon-only UI (nav, loader) | `mark.svg` (currentColor) or `mark-dark.svg` / `mark-light.svg` |
 
 ```html
