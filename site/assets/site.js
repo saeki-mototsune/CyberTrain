@@ -1,19 +1,32 @@
-// CyberTrain: progressive enhancement only (copy buttons, file tabs, tutorial TOC).
+// CyberTrain: progressive enhancement only (copy buttons, file tabs, tutorial TOC, language menu).
 (function () {
   'use strict';
   var d = document;
+  // The copy button's words, by page language (<html lang>).
+  var T = {
+    en: ['Copy', 'Copied', 'Copy code: '],
+    ja: ['コピー', 'コピー済み', 'コードをコピー: '],
+    zh: ['复制', '已复制', '复制代码：'],
+    ru: ['Копировать', 'Скопировано', 'Копировать код: '],
+    fr: ['Copier', 'Copié', 'Copier le code : ']
+  }[d.documentElement.lang.split('-')[0]] || ['Copy', 'Copied', 'Copy code: '];
+  // Language menu: close it on a click outside or Escape.
+  d.querySelectorAll('.lang-menu').forEach(function (m) {
+    d.addEventListener('click', function (e) { if (m.open && !m.contains(e.target)) m.open = false; });
+    m.addEventListener('keydown', function (e) { if (e.key === 'Escape' && m.open) { m.open = false; m.querySelector('summary').focus(); } });
+  });
   // Copy buttons. Shell output lines (.out) are left out of the copied text.
   if (navigator.clipboard) d.querySelectorAll('figure.code').forEach(function (f) {
     var cap = f.querySelector('figcaption'), code = f.querySelector('code');
     if (!cap || !code) return;
     var b = d.createElement('button');
-    b.type = 'button'; b.className = 'copy'; b.textContent = 'Copy';
-    b.setAttribute('aria-label', 'Copy code: ' + (cap.querySelector('.code-path') || cap).textContent);
+    b.type = 'button'; b.className = 'copy'; b.textContent = T[0];
+    b.setAttribute('aria-label', T[2] + (cap.querySelector('.code-path') || cap).textContent);
     b.addEventListener('click', function () {
       var ls = code.querySelectorAll('.ln'), t = ls.length ? [].filter.call(ls, function (l) { return !l.classList.contains('out'); }).map(function (l) { return l.textContent; }).join('\n') : code.textContent;
       navigator.clipboard.writeText(t).then(function () {
-        b.textContent = 'Copied'; b.setAttribute('data-done', '');
-        setTimeout(function () { b.textContent = 'Copy'; b.removeAttribute('data-done'); }, 1600);
+        b.textContent = T[1]; b.setAttribute('data-done', '');
+        setTimeout(function () { b.textContent = T[0]; b.removeAttribute('data-done'); }, 1600);
       });
     });
     cap.appendChild(b);

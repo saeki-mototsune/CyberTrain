@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0A0A">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="../assets/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../assets/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="../assets/brand/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/fonts/fonts.css">
+<link rel="stylesheet" href="../assets/style.css">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<meta property="og:locale:alternate" content="ru_RU">
+<meta property="og:locale:alternate" content="fr_FR">
+<meta property="og:site_name" content="CyberTrain">
+<meta property="og:image" content="https://saeki-mototsune.github.io/CyberTrain/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CyberTrain：Rails 风格的 Web 应用，编译为单个原生二进制文件。">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="alternate" hreflang="en" href="https://saeki-mototsune.github.io/CyberTrain/">
+<link rel="alternate" hreflang="ja" href="https://saeki-mototsune.github.io/CyberTrain/ja/">
+<link rel="alternate" hreflang="zh-Hans" href="https://saeki-mototsune.github.io/CyberTrain/zh/">
+<link rel="alternate" hreflang="ru" href="https://saeki-mototsune.github.io/CyberTrain/ru/">
+<link rel="alternate" hreflang="fr" href="https://saeki-mototsune.github.io/CyberTrain/fr/">
+<link rel="alternate" hreflang="x-default" href="https://saeki-mototsune.github.io/CyberTrain/">
+<script src="../assets/site.js" defer></script>
+
+<title>CyberTrain · Rails 风格的 Web 应用，编译为单个原生二进制文件</title>
+<meta name="description" content="CyberTrain 是一个 Rails 风格的 Web 框架，专为 matz 开发的 Ruby AOT 编译器 Spinel 原生编写。cybertrain build 会把控制器、模型、视图和框架编译成单个原生二进制文件。">
+<meta property="og:title" content="CyberTrain：Rails 风格的 Web 应用，编译为单个原生二进制文件">
+<meta property="og:description" content="专为 Spinel 原生编写的 Rails 风格 Web 框架。没有 Rack，运行时不需要 gem，部署产物中也没有 Ruby 解释器。预 Alpha 版，MIT 许可。">
+</head>
+<body class="home">
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html" aria-label="CyberTrain 首页">
+      <svg class="brand-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      <svg class="brand-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+      <ul>
+        <li class="nav-wide-only"><a href="index.html#how-it-works">原理</a></li>
+        <li><a href="tutorial.html">教程</a></li>
+        <li><a href="playground.html">在线试用</a></li>
+        <li class="nav-roomy-only"><a href="../api/index.html">API</a></li>
+        <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
+        <li><details class="lang-menu">
+          <summary aria-label="语言：简体中文">ZH</summary>
+          <ul>
+            <li><a href="../index.html" hreflang="en" lang="en">English</a></li>
+            <li><a href="../ja/index.html" hreflang="ja" lang="ja">日本語</a></li>
+            <li><a href="../zh/index.html" hreflang="zh-Hans" lang="zh-Hans" aria-current="true">简体中文</a></li>
+            <li><a href="../ru/index.html" hreflang="ru" lang="ru">Русский</a></li>
+            <li><a href="../fr/index.html" hreflang="fr" lang="fr">Français</a></li>
+          </ul>
+        </details></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero" aria-labelledby="hero-title">
+  <div class="wrap hero-inner">
+    <p class="status"><span class="lightbar" aria-hidden="true"></span><span>预 Alpha</span><span class="sep" aria-hidden="true">&middot;</span><span>Spinel 2026.09.12</span><span class="sep" aria-hidden="true">&middot;</span><span>MIT</span></p>
+    <h1 id="hero-title" class="hero-mark"><svg class="hero-wordmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 895.14 60" role="img" aria-label="CyberTrain"><path fill="currentColor" fill-rule="evenodd" d="M14.93 60L80 60L80 50L19.07 50L10 40.93L10 19.07L19.07 10L80 10L80 0L14.93 0L0 14.93L0 45.07ZM141 60L141 35L161.07 35L176 20.07L176 0L166 0L166 15.93L156.93 25L115.07 25L106 15.93L106 0L96 0L96 20.07L110.93 35L131 35L131 60ZM266.07 30L271 25.07L271 14.93L256.07 0L194 0L194 60L259.07 60L274 45.07L274 37.93ZM261 19.07L261 20.93L256.93 25L204 25L204 10L251.93 10ZM204 50L204 35L256.93 35L263.43 41.5L254.93 50ZM367 0L295 0L295 60L367 60L367 50L305 50L305 35L361 35L361 25L305 25L305 10L367 10ZM458 20.07L458 14.93L443.07 0L388 0L388 60L398 60L398 35L428.93 35L453.93 60L468.07 60L443.07 35ZM398 10L438.93 10L446.43 17.5L438.93 25L398 25ZM518.07 10L518.07 60L528.07 60L528.07 10L563.07 10L563.07 0L483.07 0L483.07 10ZM634.14 35L649.07 20.07L649.07 14.93L634.14 0L579.07 0L579.07 60L589.07 60L589.07 35L620 35L645 60L659.14 60ZM589.07 25L589.07 10L630 10L637.5 17.5L630 25ZM738.21 0L704.07 0L679.14 24.93L679.14 60L689.14 60L689.14 35L753.14 35L753.14 60L763.14 60L763.14 24.93ZM693.21 25L708.21 10L734.07 10L749.07 25ZM786.14 60L796.14 60L796.14 0L786.14 0ZM895.14 60L895.14 0L885.14 0L885.14 50.27L833.48 0L819.14 0L819.14 60L829.14 60L829.14 9.73L880.8 60Z"/></svg></h1>
+    <div class="hero-copy">
+      <div class="hero-main">
+        <p class="tagline">Rails 风格的 Web 应用，编译为单个原生二进制文件。</p>
+        <p class="pitch">CyberTrain 是一个 Rails 风格的 Web 应用框架，专为 matz 开发的 Ruby AOT 编译器 Spinel 原生编写。你沿用熟悉的词汇（<code>resources</code>、<code>before_action</code>、<code>validates</code>、<code>form_with</code>、脚手架），而 <code>cybertrain build</code> 会把控制器、模型、视图以及框架本身编译成单个原生二进制文件，产物中没有 Rack、没有运行时 gem，也没有 Ruby 解释器。</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="tutorial.html">开始使用<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="btn btn-ghost" href="playground.html">在浏览器中试用</a>
+          <a class="btn btn-ghost" href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">在 GitHub 上查看</a>
+        </div>
+      </div>
+      <div class="hero-term" id="quick-start">
+        <p class="term-k">快速上手</p>
+        <figure class="code code-term" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; 任意目录，之后在&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：快速上手终端"><code><span class="ln cmd">gem install cybertrain</span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># 首次运行时安装 Spinel 2026.09.12（需要几分钟）</span></span>
+<span class="ln cmd">cd blog</span>
+<span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
+<span class="ln cmd">cybertrain db migrate</span>
+<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000</span></span>
+<span class="ln cmd">cybertrain build             <span class="c"># 生产环境：dist/blog、dist/public/、dist/storage/、dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
+</figure>
+        <p class="term-note">只有 <code>cybertrain</code> 命令需要 Ruby&nbsp;3.2+（应用本身从不在 CRuby 上运行），此外还需要 <code>git</code>、<code>make</code>、<code>curl</code>、C 编译器和 SQLite&nbsp;3 头文件：参见<a href="#requirements">开始之前</a>。设置好 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 后，用 <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> 运行构建产物。</p>
+      </div>
+    </div>
+  </div>
+  <div class="wrap">
+    <ul class="spec-strip" aria-label="概览">
+      <li><span class="spec-k">服务器</span><span class="spec-v">HTTP/1.1，无 Rack</span></li>
+      <li><span class="spec-k">运行时</span><span class="spec-v">无 gem，无解释器</span></li>
+      <li><span class="spec-k">数据库</span><span class="spec-v">经 Spinel FFI 访问 SQLite</span></li>
+      <li><span class="spec-k">CI</span><span class="spec-v">Linux 和 macOS</span></li>
+    </ul>
+    <div class="is-not">
+      <div class="is-not-head">
+        <h2 class="spec-k not-title">适合谁，不是什么</h2>
+        <p class="is-not-intro">面向想要单个原生二进制文件、并且能接受一个年轻项目和 Ruby 子集的 Rails 开发者。</p>
+      </div>
+      <ul class="not-list">
+        <li><h3>不是 Roundhouse</h3><p><a href="https://github.com/rubys/roundhouse" rel="noopener">Roundhouse</a> 把现有的 Rails 应用转译到 Spinel。CyberTrain 是一个让你直接基于它编写代码的原生框架，而不是兼容层。</p></li>
+        <li><h3>不兼容 Rails 或 Rack</h3><p>没有 Rack 兼容性，运行时也没有 gem：只能使用 Spinel 自己的、能在其 Ruby 子集下编译的 <code>spin-index</code> 包。</p></li>
+        <li><h3>尚不可用于生产</h3><p>CyberTrain 处于预 Alpha 阶段。示例博客由 CI 在 Linux 和 macOS 上运行测试。</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="the-code" aria-labelledby="code-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">01</span><p class="sec-label">你编写的代码</p></div>
+    <div class="sec-body">
+      <h2 id="code-h">沿用 Rails 的词汇，Spinel 的规则全部写明。</h2>
+      <p class="lead">控制器、模型、路由和视图读起来就像一个 Rails 应用。凡是 AOT 编译器迫使其有所不同的地方，差异都很小、很明确，并且有文档说明。</p>
+    </div>
+    <div class="sec-full look">
+      <ul class="look-notes" aria-label="各层的 Spinel 规则">
+        <li data-note="0"><p class="look-k">路由</p><p>嵌套的 <code>resources</code> 块需要显式接收 mapper：<code>articles.resources :comments</code>。</p></li>
+        <li data-note="1"><p class="look-k">控制器</p><p><code>new</code> 要写成 <code>new_action</code>：名为 <code>new</code> 的方法会遮蔽 <code>Klass.new(ctx)</code>。</p></li>
+        <li data-note="2"><p class="look-k">视图</p><p>开发时模板从磁盘读取，所以修改视图无需重新构建；<code>cybertrain build</code> 会把它们嵌入二进制文件。模板是一套封闭的语法，而不是任意 Ruby。</p></li>
+        <li data-note="3"><p class="look-k">模型</p><p><code>class Article</code> 声明验证；列、查找方法和关联都根据 <code>db/schema.rb</code> 生成。</p></li>
+      </ul>
+      <div class="tabs" data-tabs>
+        <div class="tab-list" role="tablist" aria-label="示例文件" hidden>
+          <button type="button" role="tab" id="tab-0" aria-controls="panel-0" aria-selected="true">routes.rb</button>
+          <button type="button" role="tab" id="tab-1" aria-controls="panel-1" aria-selected="false" tabindex="-1">articles_controller.rb</button>
+          <button type="button" role="tab" id="tab-2" aria-controls="panel-2" aria-selected="false" tabindex="-1">_comment.html.erb</button>
+          <button type="button" role="tab" id="tab-3" aria-controls="panel-3" aria-selected="false" tabindex="-1">article.rb</button>
+        </div>
+        <div class="tab-panels">
+        <div class="tab-panel" role="tabpanel" id="panel-0" aria-labelledby="tab-0"><figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">config/<wbr>routes.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：config/routes.rb"><code><span class="ln"><span class="t">Cybertrain</span>::<span class="t">Routes</span>.draw <span class="k">do</span></span>
+<span class="ln">  root <span class="s">"articles#index"</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="c"># A nested block takes the mapper explicitly (Spinel's instance_eval</span></span>
+<span class="ln">  <span class="c"># trampoline only rewires `self` for the outermost block): `articles.resources`.</span></span>
+<span class="ln">  resources <span class="y">:articles</span> <span class="k">do</span> |articles|</span>
+<span class="ln">    articles.resources <span class="y">:comments</span>, <span class="y">only:</span> [<span class="y">:create</span>, <span class="y">:destroy</span>]</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure></div>
+        <div class="tab-panel" role="tabpanel" id="panel-1" aria-labelledby="tab-1"><figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/controllers/articles_controller.rb"><code><span class="ln"><span class="c"># app/controllers/articles_controller.rb (index/show/edit are as plain as</span></span>
+<span class="ln"><span class="c"># Rails' own scaffold; update mirrors create)</span></span>
+<span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> new_action   <span class="c"># a `new` method would shadow ArticlesController.new</span></span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> create</span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new(article_params)</span>
+<span class="ln">    <span class="k">if</span> <span class="v">@article</span>.save</span>
+<span class="ln">      flash[<span class="y">:notice</span>] = <span class="s">"Article was successfully created."</span></span>
+<span class="ln">      redirect_to article_path(<span class="v">@article</span>), <span class="y">status:</span> <span class="y">:see_other</span></span>
+<span class="ln">    <span class="k">else</span></span>
+<span class="ln">      render <span class="y">:new</span>, <span class="y">status:</span> <span class="y">:unprocessable_entity</span></span>
+<span class="ln">    <span class="k">end</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">private</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> set_article</span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.find(params[<span class="y">:id</span>])</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> article_params</span>
+<span class="ln">    params.<span class="k">require</span>(<span class="y">:article</span>).permit(<span class="y">:title</span>, <span class="y">:body</span>)</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure></div>
+        <div class="tab-panel" role="tabpanel" id="panel-2" aria-labelledby="tab-2"><figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>comments/<wbr>_comment.html.erb</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/views/comments/_comment.html.erb"><code><span class="ln"><span class="c">&lt;%# locals: (comment:) %&gt;</span></span>
+<span class="ln"><span class="h">&lt;div class="comment"&gt;</span></span>
+<span class="ln">  <span class="h">&lt;p&gt;</span></span>
+<span class="ln">    <span class="h">&lt;strong&gt;</span>Commenter:<span class="h">&lt;/strong&gt;</span></span>
+<span class="ln">    <span class="d">&lt;%=</span> comment.commenter <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;/p&gt;</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="h">&lt;p&gt;</span></span>
+<span class="ln">    <span class="h">&lt;strong&gt;</span>Comment:<span class="h">&lt;/strong&gt;</span></span>
+<span class="ln">    <span class="d">&lt;%=</span> comment.body <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;/p&gt;</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="d">&lt;%=</span> button_to <span class="s">"Destroy comment"</span>, [<span class="v">@article</span>, comment], <span class="y">method:</span> <span class="y">:delete</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="h">&lt;/div&gt;</span></span></code></pre>
+</figure></div>
+        <div class="tab-panel" role="tabpanel" id="panel-3" aria-labelledby="tab-3"><figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>models/<wbr>article.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/models/article.rb"><code><span class="ln"><span class="c"># app/models/article.rb -- only the first string field gets a default</span></span>
+<span class="ln"><span class="c"># presence validation; add anything past that yourself.</span></span>
+<span class="ln"><span class="k">class</span> <span class="t">Article</span></span>
+<span class="ln">  validates <span class="y">:title</span>, <span class="y">presence:</span> <span class="k">true</span></span>
+<span class="ln">  validates <span class="y">:body</span>, <span class="y">presence:</span> <span class="k">true</span>, <span class="y">length:</span> { <span class="y">minimum:</span> 10 }</span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="sec" id="features" aria-labelledby="feat-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">02</span><p class="sec-label">现已可用</p></div>
+    <div class="sec-body">
+      <h2 id="feat-h">你最先会用到的那部分 Rails，为 Spinel 原生编写。</h2>
+    </div>
+    <ul class="features sec-full">
+      <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>原生 HTTP 服务器</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器，每个连接一个绿色线程，请求和响应都带有类型。没有 Rack 层；需要 TLS 时在前面放 nginx 或 Caddy。</p><p class="feat-ref"><code>TCPServer#accept</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>路由与控制器</h3><p><code>resources</code>、嵌套路由、<code>before_action</code>、<code>after_action</code> 和 <code>rescue_from</code>，在构建时生成为纯 Ruby。强参数和“先 flash 再重定向”的用法与 Rails 相同。</p><p class="feat-ref"><code>config/routes.rb</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>会话、flash、CSRF</h3><p>HMAC 签名的 cookie 会话、flash 消息和 CSRF 防护默认开启。表单会自动携带令牌；伪造的 POST 请求会得到 403。</p><p class="feat-ref"><code>_cybertrain_session</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>类 ERB 模板</h3><p>视图看起来就像 Rails 的 ERB，支持布局、局部视图、<code>form_with</code> 和 <code>link_to</code>。开发时从磁盘读取，所以修改后无需重新构建。<code>cybertrain build</code> 会把它们嵌入。</p><p class="feat-ref"><code>app/views/**/*.html.erb</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>SQLite 模型</h3><p>验证、回调，以及由外键推导出的关联。通过 Spinel 的 FFI 和连接池访问 SQLite；所有查询都使用参数绑定。</p><p class="feat-ref"><code>ffi_func · ffi_lib</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>迁移与脚手架</h3><p><code>cybertrain generate scaffold</code> 会写出迁移、模型、控制器和五个视图。<code>cybertrain db migrate</code> 先生成代码，再执行迁移、重写 <code>db/schema.rb</code>，然后再次生成。</p><p class="feat-ref"><code>db/migrate/*.rb</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>实时开发循环</h3><p><code>cybertrain server</code> 监视你的代码，在后台重新构建，然后在同一端口和 PID 上重新 exec 新的二进制文件。构建失败时旧服务器继续运行。</p><p class="feat-ref"><code>rebuild → stop → execv</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>自带测试</h3><p>用 <code>Cybertrain::Test</code> 编写测试，并通过带 cookie jar 的客户端在进程内驱动整个应用。<code>cybertrain spin test</code> 会编译每个测试并比对其输出。</p><p class="feat-ref"><code>test/&lt;name&gt;.rb.expected</code></p></li>
+    </ul>
+  </div></div>
+</section>
+
+<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">框架与 CLI</p></div>
+    <div class="sec-body">
+      <h2 id="parts-h">一个名字，两个部分。</h2>
+      <p class="lead"><code>gem install cybertrain</code> 安装的是一个命令，而不是框架。框架是一个 Spinel 包，你的应用依赖它并把它编译进来。这个 gem 提供 <code>cybertrain</code> 命令，它会替你创建应用、安装 Spinel 并运行 Spinel 的工具。</p>
+    </div>
+    <div class="sec-full parts">
+      <article class="part" aria-labelledby="part-fw">
+        <div class="part-head"><p class="part-k">Spinel 包</p><h3 id="part-fw">框架</h3></div>
+        <p class="part-what">你的应用所基于的库。</p>
+        <div class="part-fact"><p class="fact-k">包含什么</p><p>HTTP 服务器、路由和控制器、会话与 CSRF 防护、模板解释器、SQLite 模型和迁移，以及 <code>spin run gen</code> 背后的代码生成器。</p></div>
+        <div class="part-fact"><p class="fact-k">如何获取</p><p>你不需要安装它。你的应用的 <code>spin.toml</code> 指定本仓库的发布标签 <code>v0.2.1</code>，<code>spin lock</code> 会把它拉取到 spin 的缓存中，并在 <code>spin.lock</code> 中锁定提交。不会有任何内容被复制到你的应用中。</p></div>
+        <div class="part-fact"><p class="fact-k">在哪里运行</p><p>在你的应用内部。Spinel 把它和你的代码一起进行 AOT 编译；它从不在 CRuby 上运行。</p></div>
+        <div class="part-fact"><p class="fact-k">在 dist/blog 中</p><p><span class="pill pill-on">编译在内</span>它是 CyberTrain 中随应用交付的部分。</p></div>
+      </article>
+      <article class="part" aria-labelledby="part-cli">
+        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> 命令</h3></div>
+        <p class="part-what">用来创建、构建和运行你的应用的工具。</p>
+        <div class="part-fact"><p class="fact-k">包含什么</p><p>只有 <code>cybertrain</code> 命令：<code>new</code>、<code>generate scaffold</code>、<code>db migrate</code>、<code>server</code>、<code>build</code>、<code>spin</code>、<code>setup</code> 和 <code>doctor</code>。框架和 Spinel 都不在这个 gem 里。</p></div>
+        <div class="part-fact"><p class="fact-k">如何获取</p><p><code>gem install cybertrain</code>。首次使用时，它会把锁定的 Spinel 版本 <code>2026.09.12</code> 构建到 <code>~/.cybertrain</code> 中，除非你的 <code>PATH</code> 上已经有该版本。</p></div>
+        <div class="part-fact"><p class="fact-k">在哪里运行</p><p>在你的机器上，运行于 CRuby 3.2 或更新版本。它会替你调用 Spinel 的 <code>spin</code> 工具，你无需亲自调用。</p></div>
+        <div class="part-fact"><p class="fact-k">在 dist/blog 中</p><p><span class="pill">不交付</span>该二进制文件无需 Ruby、gem 或 Spinel 即可运行。</p></div>
+      </article>
+    </div>
+    <div class="sec-full">
+      <p class="footnote">两者从同一个标签发布，因此版本一致：0.2.1 版的 gem 生成的应用依赖框架 <code>v0.2.1</code>。要把应用迁移到新版本，先更新 gem，把 <code>spin.toml</code> 指向新标签，然后运行 <code>cybertrain spin lock</code> 和 <code>cybertrain spin run gen</code>。</p>
+    </div>
+  </div></div>
+</section>
+
+<section class="sec" id="how-it-works" aria-labelledby="how-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">工作原理</p></div>
+    <div class="sec-body">
+      <h2 id="how-h">元编程只在构建时发生一次。</h2>
+      <p class="lead">Spinel 进行 AOT 编译，没有 <code>eval</code>。因此，凡是 Rails 在运行时借助 <code>method_missing</code> 和 <code>define_method</code> 的地方，<code>spin run gen</code> 都会写出你可以阅读和提交的纯 Ruby 代码，只有视图是解释执行的。</p>
+    </div>
+    <div class="sec-full">
+      <figure class="diagram">
+<svg class="dg dg-h" viewBox="0 0 1040 476" role="img" aria-labelledby="dgh-t dgh-d" xmlns="http://www.w3.org/2000/svg"><title id="dgh-t">CyberTrain 流水线</title><desc id="dgh-d">db/schema.rb、config/routes.rb、app/ 和 app/views/ 是构建的输入。spin run gen 把已提交的纯 Ruby 代码写入 gen/。cybertrain build 嵌入 app/views/，并把 gen/ 和框架编译成单个原生二进制文件 dist/blog，它提供 HTTP/1.1 服务，并通过 Spinel 的 FFI 访问 SQLite。在开发环境中，该二进制文件改为从磁盘读取 app/views/，并由一条回路监视源代码：监视、重新构建、停止、execv。</desc><text x="0" y="18" class="tp">你编写的</text><path class="rl" d="M0 40V32H196V40"/><text x="214" y="18" class="tp">构建时 · spin</text><path class="rl" d="M214 40V32H790V40"/><text x="808" y="18" class="tp">运行时</text><path class="rl" d="M808 40V32H1040V40"/><path class="nd" d="M8 76H188L196 84V124L188 132H8L0 124V84Z"/><text x="14" y="100" class="tt">db/schema.rb</text><text x="14" y="121" class="ts">表</text><path class="ed" d="M196 104H214"/><path class="nd" d="M8 148H188L196 156V196L188 204H8L0 196V156Z"/><text x="14" y="172" class="tt">config/routes.rb</text><text x="14" y="193" class="ts">路由</text><path class="ed" d="M196 176H214"/><path class="nd" d="M8 220H188L196 228V268L188 276H8L0 268V228Z"/><text x="14" y="244" class="tt">app/</text><text x="14" y="265" class="ts">控制器、模型</text><path class="ed" d="M196 248H214"/><path class="ed" d="M214 104V248"/><path class="ed" d="M214 176H226"/><path class="ah" d="M234 176L226 171.5V180.5Z"/><path class="nd nd-cmd" d="M242 150H356L364 158V194L356 202H242L234 194V158Z"/><text x="299" y="182" class="tc" text-anchor="middle">spin run gen</text><g class="bg"><path d="M239 116H251L256 121V133L251 138H239L234 133V121Z"/><text x="245" y="132" text-anchor="middle">1</text></g><path class="ed" d="M364 176H378"/><path class="ah" d="M386 176L378 171.5V180.5Z"/><path class="nd" d="M394 76H590L598 84V268L590 276H394L386 268V84Z"/><text x="402" y="102" class="tt">gen/</text><text x="402" y="122" class="ts">纯 Ruby，已提交</text><path class="rl" d="M402 136H582"/><text x="402" y="160" class="ti">模型</text><text x="402" y="180" class="ti">路由 · URL 辅助方法</text><text x="402" y="200" class="ti">view_assigns</text><text x="402" y="220" class="ti">run_callback</text><text x="402" y="240" class="ti">迁移 · 视图</text><text x="402" y="260" class="ti">manifest</text><g class="bg"><path d="M571 86H583L588 91V103L583 108H571L566 103V91Z"/><text x="577" y="102" text-anchor="middle">2</text></g><path class="ed" d="M598 176H612"/><path class="ah" d="M620 176L612 171.5V180.5Z"/><path class="nd nd-cmd" d="M628 150H778L786 158V194L778 202H628L620 194V158Z"/><text x="703" y="182" class="tc" text-anchor="middle">cybertrain build</text><path class="ed" d="M786 176H800"/><path class="ah" d="M808 176L800 171.5V180.5Z"/><path class="nd-bin" d="M818 76H1030L1040 86V266L1030 276H818L808 266V86Z"/><text x="824" y="102" class="tt tb">dist/blog</text><text x="824" y="122" class="ts tb2">单个原生二进制</text><rect class="bar" x="808" y="133" width="232" height="5"/><text x="824" y="160" class="ti tb">框架</text><text x="824" y="180" class="ti tb">控制器 · 模型</text><text x="824" y="200" class="ti tb">模板解释器</text><text x="824" y="220" class="ti tb">内嵌的视图</text><text x="824" y="240" class="ti tb">HTTP/1.1 服务器</text><text x="824" y="260" class="ti tb">SQLite via Spinel FFI</text><g class="bg bg-inv"><path d="M1011 225H1023L1028 230V242L1023 247H1011L1006 242V230Z"/><text x="1017" y="241" text-anchor="middle">4</text></g><path class="nd nd-dash" d="M816 330H1032L1040 338V400L1032 408H816L808 400V338Z"/><text x="824" y="355" class="tt">app/views/</text><text x="824" y="376" class="ts">开发时：从磁盘读取</text><text x="824" y="396" class="ts">嵌入 dist/blog</text><g class="bg"><path d="M1011 348H1023L1028 353V365L1023 370H1011L1006 365V353Z"/><text x="1017" y="364" text-anchor="middle">3</text></g><path class="ed" d="M880 330V286"/><path class="ah" d="M880 278L875.5 286H884.5Z"/><path class="ed ed-dash" d="M968 330V286"/><path class="ah" d="M968 278L963.5 286H972.5Z"/><path class="ed ed-dash" d="M98 276V420H790V256H800"/><path class="ah" d="M808 256L800 251.5V260.5Z"/><rect class="knock" x="222" y="406" width="450" height="28"/><g class="bg"><path d="M237 409H249L254 414V426L249 431H237L232 426V414Z"/><text x="243" y="425" text-anchor="middle">5</text></g><text x="266" y="425" class="tl">开发：监视 → 重建 → 停止 → execv</text><text x="98" y="460" class="ts">仅限开发环境 · 构建失败时旧服务器继续运行</text></svg>
+<svg class="dg dg-v" viewBox="0 0 340 968" role="img" aria-labelledby="dgv-t dgv-d" xmlns="http://www.w3.org/2000/svg"><title id="dgv-t">CyberTrain 流水线</title><desc id="dgv-d">db/schema.rb、config/routes.rb、app/ 和 app/views/ 是构建的输入。spin run gen 把已提交的纯 Ruby 代码写入 gen/。cybertrain build 嵌入 app/views/，并把 gen/ 和框架编译成单个原生二进制文件 dist/blog，它提供 HTTP/1.1 服务，并通过 Spinel 的 FFI 访问 SQLite。在开发环境中，该二进制文件改为从磁盘读取 app/views/，并由一条回路监视源代码：监视、重新构建、停止、execv。</desc><text x="30" y="16" class="tp">你编写的</text><path class="nd" d="M38 28H332L340 36V64L332 72H38L30 64V36Z"/><text x="42" y="56" class="tt">db/schema.rb</text><text x="328" y="56" class="ts" text-anchor="end">表</text><path class="nd" d="M38 80H332L340 88V116L332 124H38L30 116V88Z"/><text x="42" y="108" class="tt">config/routes.rb</text><text x="328" y="108" class="ts" text-anchor="end">路由</text><path class="nd" d="M38 132H332L340 140V168L332 176H38L30 168V140Z"/><text x="42" y="160" class="tt">app/</text><text x="328" y="160" class="ts" text-anchor="end">控制器、模型</text><path class="ed" d="M185 176V212"/><path class="ah" d="M185 220L180.5 212H189.5Z"/><text x="30" y="204" class="tp">构建时</text><path class="nd nd-cmd" d="M113 220H257L265 228V256L257 264H113L105 256V228Z"/><text x="185" y="248" class="tc" text-anchor="middle">spin run gen</text><g class="bg"><path d="M323 231H335L340 236V248L335 253H323L318 248V236Z"/><text x="329" y="247" text-anchor="middle">1</text></g><path class="ed" d="M185 264V284"/><path class="ah" d="M185 292L180.5 284H189.5Z"/><path class="nd" d="M38 292H332L340 300V474L332 482H38L30 474V300Z"/><text x="44" y="318" class="tt">gen/</text><text x="44" y="338" class="ts">纯 Ruby，已提交</text><path class="rl" d="M44 352H326"/><text x="44" y="374" class="ti">模型</text><text x="44" y="393" class="ti">路由 · URL 辅助方法</text><text x="44" y="412" class="ti">view_assigns</text><text x="44" y="431" class="ti">run_callback</text><text x="44" y="450" class="ti">迁移 · 视图</text><text x="44" y="469" class="ti">manifest</text><g class="bg"><path d="M313 302H325L330 307V319L325 324H313L308 319V307Z"/><text x="319" y="318" text-anchor="middle">2</text></g><path class="ed" d="M185 482V502"/><path class="ah" d="M185 510L180.5 502H189.5Z"/><path class="nd nd-cmd" d="M105 510H265L273 518V546L265 554H105L97 546V518Z"/><text x="185" y="538" class="tc" text-anchor="middle">cybertrain build</text><path class="ed" d="M185 554V584"/><path class="ah" d="M185 592L180.5 584H189.5Z"/><text x="30" y="578" class="tp">运行时</text><path class="nd-bin" d="M40 592H330L340 602V788L330 798H40L30 788V602Z"/><text x="44" y="618" class="tt tb">dist/blog</text><text x="44" y="638" class="ts tb2">单个原生二进制</text><rect class="bar" x="30" y="649" width="310" height="5"/><text x="44" y="680" class="ti tb">框架</text><text x="44" y="700" class="ti tb">控制器 · 模型</text><text x="44" y="720" class="ti tb">模板解释器</text><text x="44" y="740" class="ti tb">内嵌的视图</text><text x="44" y="760" class="ti tb">HTTP/1.1 服务器</text><text x="44" y="780" class="ti tb">SQLite via Spinel FFI</text><g class="bg bg-inv"><path d="M313 747H325L330 752V764L325 769H313L308 764V752Z"/><text x="319" y="763" text-anchor="middle">4</text></g><path class="nd nd-dash" d="M38 842H332L340 850V910L332 918H38L30 910V850Z"/><text x="44" y="866" class="tt">app/views/</text><text x="44" y="887" class="ts">开发时：从磁盘读取</text><text x="44" y="907" class="ts">嵌入 dist/blog</text><g class="bg"><path d="M313 859H325L330 864V876L325 881H313L308 876V864Z"/><text x="319" y="875" text-anchor="middle">3</text></g><path class="ed" d="M140 842V814"/><path class="ah" d="M140 806L135.5 814H144.5Z"/><path class="ed ed-dash" d="M230 842V814"/><path class="ah" d="M230 806L225.5 814H234.5Z"/><path class="ed ed-dash" d="M30 154H10V772H22"/><path class="ah" d="M30 772L22 767.5V776.5Z"/><rect class="knock" x="0" y="250" width="20" height="368"/><text class="tl" transform="translate(15 610) rotate(-90)">开发：监视 → 重建 → 停止 → execv</text><g class="bg"><path d="M5 204H17L22 209V221L17 226H5L0 221V209Z"/><text x="11" y="220" text-anchor="middle">5</text></g><text x="30" y="948" class="ts">仅限开发环境 · 构建失败时</text><text x="30" y="966" class="ts">旧服务器继续运行</text></svg>
+<figcaption class="dg-key"><span><i class="key" aria-hidden="true"></i>构建步骤</span><span><i class="key key-dash" aria-hidden="true"></i>仅开发：从磁盘读取 / 开发循环</span><span><i class="key key-bin" aria-hidden="true"></i>二进制文件</span><span>编号与下方步骤对应。</span></figcaption>
+</figure>
+    </div>
+    <div class="sec-body sec-body-wide">
+      <ol class="steps">
+        <li><span class="step-n" aria-hidden="true">1</span><h3>构建时生成</h3><p><code>spin run gen</code> 执行 <code>db/schema.rb</code> 和 <code>config/routes.rb</code> 以获取表和路由数据，并对 <code>app/controllers</code> 和 <code>app/models</code> 做词法扫描（用正则表达式，而不是解析器），找出 <code>@ivar =</code> 赋值、回调名和无参数的 <code>def</code>。它把可读的纯 Ruby 代码写入 <code>gen/</code>，其中包括 <code>gen/views.rb</code>，即内嵌视图表（除非为部署而构建，否则为空）。<code>cybertrain db migrate</code>、<code>server</code> 和 <code>build</code> 会替你运行它。</p></li>
+        <li><span class="step-n" aria-hidden="true">2</span><h3>提交 <code>gen/</code></h3><p>它要提交进仓库，而不是写进 gitignore，因为 <code>spin build</code> 和 <code>spin test</code> 没有可以先执行生成的钩子。CI 会重新运行 <code>spin run gen</code>，一旦有差异就失败，因此过时的生成代码无法合并。<code>cybertrain spin run gen -- --check</code> 会报告过时的文件。</p></li>
+        <li><span class="step-n" aria-hidden="true">3</span><h3>解释执行视图</h3><p><code>app/views/**/*.html.erb</code> 在请求时被解析，并由树遍历解释器执行。开发时，引擎从磁盘读取 <code>app/views/</code>，模板变化时重新解析，因此修改视图无需重新构建。<code>cybertrain build</code> 会把每个模板都嵌入二进制文件（<code>spin run gen -- --embed-views</code>）；生产环境的二进制文件只从这张表渲染，每个模板只解析一次。Spinel 没有 <code>eval</code>，所以这是一套封闭的语法，而不是真正的 Ruby。</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>用绿色线程提供服务，用 SQLite 存储</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器为每个连接运行一个 Spinel 绿色线程。模型通过 <code>ffi_func</code>/<code>ffi_lib</code> 访问 SQLite，使用 4 个连接的连接池（WAL、<code>busy_timeout</code>、开启外键）。<code>SPINEL_WORKERS</code> 默认为 <code>1</code>。</p></li>
+        <li><span class="step-n" aria-hidden="true">5</span><h3>开发时重新构建</h3><p><code>cybertrain server</code> 先运行 <code>spin run gen</code>，再运行 <code>spin run blog</code>（你的应用名）。开发时，二进制文件每半秒轮询一次 <code>app/**/*.rb</code>、<code>config/**/*.rb</code>、<code>db/schema.rb</code> 和 <code>gen/**/*.rb</code>（不包括视图和 <code>gen/views.rb</code>）。一旦有变化，就在后台运行 <code>spin run gen &amp;&amp; spin build blog</code>；成功后会设置重启标志（与外部 <code>kill -HUP</code> 设置的是同一个标志），服务器随即停止监听、处理完未完成的请求，并在同一端口和 PID 上 <code>execv</code> 新的二进制文件。构建失败时，服务器继续用旧的二进制文件提供服务，并以横幅形式显示编译器输出。当 <code>cybertrain build</code> 持有 <code>tmp/cybertrain-build.lock</code> 时，会跳过重新构建。生产环境中这些都不会加载。</p></li>
+      </ol>
+      <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">cybertrain spin run gen   <span class="c"># 读取 db/schema.rb + config/routes.rb，扫描 app/，写入 gen/</span></span>
+<span class="ln cmd">cybertrain build          <span class="c"># 内嵌 app/views 的 dist/blog，以及 dist/public/、dist/storage/、dist/tmp/</span></span></code></pre>
+</figure>
+    </div>
+  </div></div>
+</section>
+
+<section class="sec" id="rails-vs-cybertrain" aria-labelledby="cmp-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">Rails 与 CyberTrain</p></div>
+    <div class="sec-body">
+      <h2 id="cmp-h">词汇相同，规则不同，并且都已写明。</h2>
+      <p class="lead">AOT 编译器会改变一些习惯。下面是你最先会遇到的几条。</p>
+    </div>
+    <div class="sec-full cmp-wrap">
+      <table class="cmp">
+        <caption class="sr-only">Rails 与 CyberTrain 的差异（精简版）</caption>
+        <thead>
+          <tr><th scope="col" class="cmp-topic"><span class="sr-only">主题</span></th><th scope="col" class="cmp-rails">Rails</th><th scope="col" class="cmp-ct"><svg class="cmp-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg><span>CyberTrain</span></th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row"><span class="cmp-n">01</span>控制台</th><td data-label="Rails"><code>rails console</code></td><td data-label="CyberTrain">没有控制台——Spinel 没有 <code>eval</code></td></tr>
+          <tr><th scope="row"><span class="cmp-n">02</span>重新加载</th><td data-label="Rails">修改代码，正在运行的应用会自动加载</td><td data-label="CyberTrain">Ruby 代码需要重新构建；开发时 <code>cybertrain server</code> 会替你完成（重新构建、停止、<code>execv</code>）</td></tr>
+          <tr><th scope="row"><span class="cmp-n">03</span>new 动作</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code>（<code>new</code> 会遮蔽 <code>Klass.new(ctx)</code>）</td></tr>
+          <tr><th scope="row"><span class="cmp-n">04</span>回调</th><td data-label="Rails"><code>before_action { do_thing }</code>（隐式 <code>self</code>）</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code>——无法对存储的块使用 <code>instance_exec</code>，因此回调需要显式接收控制器/记录</td></tr>
+          <tr><th scope="row"><span class="cmp-n">05</span>嵌套路由</th><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code>——嵌套块需要显式接收 mapper</td></tr>
+          <tr><th scope="row"><span class="cmp-n">06</span>会话</th><td data-label="Rails">会话可以保存任何经 marshal 序列化的对象</td><td data-label="CyberTrain">会话值只能是 String，使用 HMAC 签名的 cookie</td></tr>
+          <tr><th scope="row"><span class="cmp-n">07</span>数据库</th><td data-label="Rails">多种数据库适配器</td><td data-label="CyberTrain">仅支持 SQLite，通过 FFI 访问</td></tr>
+          <tr><th scope="row"><span class="cmp-n">08</span>测试</th><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code>——基于反射的测试运行器无法在 AOT 编译下工作</td></tr>
+        </tbody>
+      </table>
+      <div class="cmp-foot">
+        <p>此表并不完整。</p>
+        <a class="more" href="https://github.com/saeki-mototsune/CyberTrain#differences-from-rails" rel="noopener">README 中的完整表格<span aria-hidden="true"> &#8599;</span></a>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="sec" id="requirements" aria-labelledby="req-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">06</span><p class="sec-label">开始之前</p></div>
+    <div class="sec-body">
+      <h2 id="req-h">你的机器需要准备什么。</h2>
+    <dl class="reqs">
+      <div><dt>Ruby</dt><dd>3.2+，带 RubyGems，仅供 <code>cybertrain</code> 命令使用。应用本身从不在 CRuby 上运行。</dd></div>
+      <div><dt>Spinel</dt><dd><code>2026.09.12</code>，未在其他版本上测试。第一个需要它的命令会把它构建到 <code>~/.cybertrain</code> 中（需要几分钟，仅一次）；如果 <code>PATH</code> 上已有该版本的 <code>spinel</code>，则直接使用。</dd></div>
+      <div><dt>工具链</dt><dd><code>cc</code> 和 <code>make</code>（Spinel 会把每个程序编译为 C），以及用于构建 Spinel 的 <code>git</code> 和 <code>curl</code>。SQLite&nbsp;3 头文件和库：Debian/Ubuntu 上为 <code>libsqlite3-dev</code>，macOS 上随 Xcode 命令行工具提供。OpenSSL 头文件是可选的。</dd></div>
+      <div><dt>状态</dt><dd>预 Alpha 阶段，版本 <code>0.2.1</code>，MIT 许可。示例博客由 CI 在 Linux 和 macOS 上运行测试。</dd></div>
+    </dl>
+    <p class="footnote"><code>cybertrain doctor</code> 会检查这些工具和头文件以及 Spinel 的安装情况，缺少某项时会打印适用于你的平台的安装命令。<code>cybertrain setup</code> 按需安装 Spinel，并打印用于自行运行 <code>spin</code> 的 <code>PATH</code> 设置行；<code>cybertrain spin ARGS...</code> 则无需该设置即可运行它。</p>
+    </div>
+  </div></div>
+</section>
+
+<section class="closer" aria-labelledby="close-h">
+  <div class="wrap closer-inner">
+    <div class="closer-main">
+      <h2 id="close-h">以原生方式构建 Rails 入门指南中的博客。</h2>
+      <p class="lead">带评论的文章，从 <code>cybertrain new</code> 到 <code>cybertrain build</code>，共十四步。</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="tutorial.html">开始使用<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+      </div>
+    </div>
+    <nav class="outline" aria-label="教程大纲">
+      <p class="outline-k">教程</p>
+      <ol>
+        <li><a href="tutorial.html#requirements"><span class="ol-n">00</span>环境要求</a></li>
+        <li><a href="tutorial.html#install"><span class="ol-n">01</span>安装 CLI</a></li>
+        <li><a href="tutorial.html#new-app"><span class="ol-n">02</span>创建应用</a></li>
+        <li><a href="tutorial.html#scaffold-article"><span class="ol-n">03</span>生成文章脚手架</a></li>
+        <li><a href="tutorial.html#root-route"><span class="ol-n">04</span>设置根路由</a></li>
+        <li><a href="tutorial.html#validations"><span class="ol-n">05</span>添加模型验证</a></li>
+        <li><a href="tutorial.html#articles-controller"><span class="ol-n">06</span>ArticlesController</a></li>
+        <li><a href="tutorial.html#run"><span class="ol-n">07</span>生成、迁移、运行</a></li>
+        <li><a href="tutorial.html#scaffold-comment"><span class="ol-n">08</span>生成评论脚手架</a></li>
+        <li><a href="tutorial.html#nested-routes"><span class="ol-n">09</span>嵌套路由</a></li>
+        <li><a href="tutorial.html#comments-controller"><span class="ol-n">10</span>CommentsController</a></li>
+        <li><a href="tutorial.html#views"><span class="ol-n">11</span>视图与局部视图</a></li>
+        <li><a href="tutorial.html#test"><span class="ol-n">12</span>测试</a></li>
+        <li><a href="tutorial.html#ship"><span class="ol-n">13</span>为部署而构建</a></li>
+      </ol>
+    </nav>
+  </div>
+</section>
+
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <a class="foot-brand" href="index.html" aria-label="CyberTrain 首页">
+        <svg class="foot-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      </a>
+      <p class="foot-tag">Rails 风格的 Web 应用，编译为单个原生二进制文件。</p>
+    </div>
+    <div class="foot-cols">
+      <nav aria-label="项目">
+        <p class="foot-h">项目</p>
+        <ul>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
+          <li><a href="tutorial.html">教程</a></li>
+          <li><a href="../api/index.html">API</a></li>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="相关项目">
+        <p class="foot-h">相关</p>
+        <ul>
+          <li><a href="https://github.com/matz/spinel" rel="noopener">Spinel</a></li>
+          <li><a href="https://github.com/rubys/roundhouse" rel="noopener">Roundhouse</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="语言">
+        <p class="foot-h">语言</p>
+        <ul>
+          <li><a href="../index.html" hreflang="en" lang="en">English</a></li>
+          <li><a href="../ja/index.html" hreflang="ja" lang="ja">日本語</a></li>
+          <li><a href="../zh/index.html" hreflang="zh-Hans" lang="zh-Hans" aria-current="true">简体中文</a></li>
+          <li><a href="../ru/index.html" hreflang="ru" lang="ru">Русский</a></li>
+          <li><a href="../fr/index.html" hreflang="fr" lang="fr">Français</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-base">
+      <p><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/README.md#license" rel="noopener">MIT 许可证</a> <span aria-hidden="true">&middot;</span> 预 Alpha 版</p>
+      <p>CyberTrain 是一个独立项目，与 Rails、Spinel 或 Roundhouse 均无关联。</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

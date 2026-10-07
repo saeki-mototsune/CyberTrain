@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0A0A">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="../assets/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../assets/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="../assets/brand/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/fonts/fonts.css">
+<link rel="stylesheet" href="../assets/style.css">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<meta property="og:locale:alternate" content="ru_RU">
+<meta property="og:locale:alternate" content="fr_FR">
+<meta property="og:site_name" content="CyberTrain">
+<meta property="og:image" content="https://saeki-mototsune.github.io/CyberTrain/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CyberTrain：Rails 风格的 Web 应用，编译为单个原生二进制文件。">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="alternate" hreflang="en" href="https://saeki-mototsune.github.io/CyberTrain/tutorial.html">
+<link rel="alternate" hreflang="ja" href="https://saeki-mototsune.github.io/CyberTrain/ja/tutorial.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://saeki-mototsune.github.io/CyberTrain/zh/tutorial.html">
+<link rel="alternate" hreflang="ru" href="https://saeki-mototsune.github.io/CyberTrain/ru/tutorial.html">
+<link rel="alternate" hreflang="fr" href="https://saeki-mototsune.github.io/CyberTrain/fr/tutorial.html">
+<link rel="alternate" hreflang="x-default" href="https://saeki-mototsune.github.io/CyberTrain/tutorial.html">
+<script src="../assets/site.js" defer></script>
+
+<title>入门：博客 · CyberTrain</title>
+<meta name="description" content="用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。">
+<meta property="og:title" content="CyberTrain 入门：博客">
+<meta property="og:description" content="对照 Rails 官方的入门指南：一个包含文章和评论的博客，在 Spinel 上用 CyberTrain 构建。">
+</head>
+<body class="tutorial">
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html" aria-label="CyberTrain 首页">
+      <svg class="brand-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      <svg class="brand-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+      <ul>
+        <li class="nav-wide-only"><a href="index.html#how-it-works">原理</a></li>
+        <li><a href="tutorial.html" aria-current="page">教程</a></li>
+        <li><a href="playground.html">在线试用</a></li>
+        <li class="nav-roomy-only"><a href="../api/index.html">API</a></li>
+        <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
+        <li><details class="lang-menu">
+          <summary aria-label="语言：简体中文">ZH</summary>
+          <ul>
+            <li><a href="../tutorial.html" hreflang="en" lang="en">English</a></li>
+            <li><a href="../ja/tutorial.html" hreflang="ja" lang="ja">日本語</a></li>
+            <li><a href="../zh/tutorial.html" hreflang="zh-Hans" lang="zh-Hans" aria-current="true">简体中文</a></li>
+            <li><a href="../ru/tutorial.html" hreflang="ru" lang="ru">Русский</a></li>
+            <li><a href="../fr/tutorial.html" hreflang="fr" lang="fr">Français</a></li>
+          </ul>
+        </details></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="wrap">
+  <header class="doc-hero">
+    <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>教程</span></p>
+    <h1>入门：博客</h1>
+    <p class="doc-intro">对照 Rails 官方的<a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">入门指南</a>：一个包含文章和评论的博客。你将为文章生成脚手架、添加验证、把评论嵌套在文章之下、编写一个在进程内驱动应用的测试，并把应用构建到可部署的 <code>dist/</code> 目录中。完成后的应用就是 <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>，由 CI 在 Linux 和 macOS 上运行测试。</p>
+    <dl class="doc-meta">
+      <div><dt>你需要</dt><dd>Ruby 3.2+、<code>cc</code>、<code>make</code>、<code>git</code>、<code>curl</code>、SQLite 3 头文件（Spinel <code>2026.09.12</code> 会自动为你安装）<a class="meta-link" href="#requirements">第 00 步</a></dd></div>
+      <div><dt>从这里开始</dt><dd><code>gem install cybertrain</code></dd></div>
+      <div><dt>最终得到</dt><dd><code>dist/blog</code></dd></div>
+    </dl>
+  </header>
+</div>
+
+<div class="wrap doc">
+  <nav class="toc" aria-label="教程步骤">
+    <details class="toc-d" open>
+      <summary class="toc-sum"><span class="toc-title">步骤 00&ndash;13</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
+    <ol>
+      <li><a href="#requirements"><span class="toc-n">00</span>环境要求</a></li>
+      <li><a href="#install"><span class="toc-n">01</span>安装 CLI</a></li>
+      <li><a href="#new-app"><span class="toc-n">02</span>创建应用</a></li>
+      <li><a href="#scaffold-article"><span class="toc-n">03</span>生成文章脚手架</a></li>
+      <li><a href="#root-route"><span class="toc-n">04</span>设置根路由</a></li>
+      <li><a href="#validations"><span class="toc-n">05</span>添加模型验证</a></li>
+      <li><a href="#articles-controller"><span class="toc-n">06</span>ArticlesController</a></li>
+      <li><a href="#run"><span class="toc-n">07</span>生成、迁移、运行</a></li>
+      <li><a href="#scaffold-comment"><span class="toc-n">08</span>生成评论脚手架</a></li>
+      <li><a href="#nested-routes"><span class="toc-n">09</span>嵌套路由</a></li>
+      <li><a href="#comments-controller"><span class="toc-n">10</span>CommentsController</a></li>
+      <li><a href="#views"><span class="toc-n">11</span>视图与局部视图</a></li>
+      <li><a href="#test"><span class="toc-n">12</span>测试</a></li>
+      <li><a href="#ship"><span class="toc-n">13</span>为部署而构建</a></li>
+      <li class="toc-x"><a href="#things-to-know"><span class="toc-n">+</span>须知</a></li>
+      <li class="toc-x"><a href="#differences"><span class="toc-n">+</span>与 Rails 的差异</a></li>
+      <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>下一步</a></li>
+    </ol>
+    </details>
+  </nav>
+
+  <article class="doc-body">
+
+  <section class="step" id="requirements" aria-labelledby="h-requirements">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>准备 <span aria-hidden="true">&middot;</span> Ruby、<code>cc</code>、SQLite</p>
+    <h2 id="h-requirements"><span class="step-num" aria-hidden="true">00</span>环境要求</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">CyberTrain 通过 Spinel 编译为 C，所以需要 C 工具链和 SQLite 头文件；<code>cybertrain</code> 命令是一个 gem，所以需要 Ruby。</span></p>
+    <ul class="checklist">
+      <li>Ruby 3.2+ 和 RubyGems，仅供 <code>cybertrain</code> 命令使用；应用本身从不在 CRuby 上运行。</li>
+      <li>Spinel <code>2026.09.12</code>，未在其他版本上测试。你无需手动安装：第一个需要它的命令会把该版本构建到 <code>~/.cybertrain</code> 中（需要几分钟，仅一次），除非 <code>PATH</code> 上已有该版本的 <code>spinel</code>。</li>
+      <li>C 工具链（<code>cc</code>，或 <code>CC</code> 指定的编译器）和 <code>make</code>，以及 <code>git</code> 和 <code>curl</code>，用于构建 Spinel；Spinel 会把每个程序编译为 C。</li>
+      <li>SQLite 3 头文件和库：Debian/Ubuntu 上为 <code>libsqlite3-dev</code>；macOS 上随 Xcode 命令行工具提供。</li>
+      <li>OpenSSL 头文件（<code>libssl-dev</code>）是可选的：没有它们时，Spinel 构建时会不带其 <code>openssl</code> 包，而 CyberTrain 并不使用这个包。</li>
+    </ul>
+    <p><code>cybertrain doctor</code> 会检查这些工具和头文件以及 Spinel 的安装情况；缺少必需项时，它还会打印适用于你的平台的安装命令。</p>
+    <details class="ci">
+      <summary><span class="ci-t">CyberTrain 如何安装 Spinel</span><span class="ci-d">某个命令首次需要 <code>spin</code> 时会发生什么</span></summary>
+      <div class="ci-body">
+    <p><code>cybertrain new</code>、<code>db</code>、<code>server</code>、<code>build</code> 和 <code>spin</code> 会先查找 Spinel <code>2026.09.12</code>：首先是 <code>PATH</code> 上已有的该版本的 <code>spinel</code> 和 <code>spin</code>，其次是 <code>~/.cybertrain/spinel/2026.09.12/</code> 下的副本；如果都没有，就从 Spinel 的发布标签构建这份副本（<code>git clone</code>、<code>make deps</code>、<code>make -j</code>、<code>make install</code>），只需一次，耗时几分钟。日志位于 <code>~/.cybertrain/log/spinel-2026.09.12-build.log</code>；如果缺少构建所需的工具，<code>cybertrain</code> 会在开始前指出缺少哪个，并打印适用于你的平台的安装命令。</p>
+    <p><code>cybertrain setup</code> 会按需执行同样的操作（<code>--force</code> 会重新构建 <code>~/.cybertrain</code> 下的副本），并且在正在使用的是它自己的副本时，打印把它加入 <code>PATH</code> 的那一行，方便你自己运行 <code>spin</code>：</p>
+<figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; 任意目录</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端，任意目录"><code><span class="ln cmd">export PATH=<span class="s">"$HOME/.cybertrain/bin:$PATH"</span></span></code></pre>
+</figure>
+    <p><code>~/.cybertrain/bin</code> 中存放指向当前所用版本的 <code>spinel</code> 和 <code>spin</code> 链接。即使它不在 <code>PATH</code> 上，<code>cybertrain spin ARGS...</code> 也能在任意目录下用该版本运行 <code>spin</code>。<code>CYBERTRAIN_HOME</code> 可替代 <code>~/.cybertrain</code>，<code>CYBERTRAIN_SPINEL_HOME=PREFIX</code> 则改用安装在 <code>PREFIX</code> 中的 Spinel（必须是该版本）。<code>PATH</code> 上其他版本的 <code>spinel</code> 永远不会被使用或改动。</p>
+      </div>
+    </details>
+    <p class="note">没有可以安装的机器？<a href="playground.html">在线试用</a>会在 GitHub Codespace 中打开这个博客，第 02、03、04 和 07 步都已完成。</p>
+  </section>
+
+  <section class="step" id="install" aria-labelledby="h-install">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>准备 <span aria-hidden="true">&middot;</span> <code>cybertrain</code> CLI</p>
+    <h2 id="h-install"><span class="step-num" aria-hidden="true">01</span>安装 CLI</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t"><code>cybertrain</code> 命令用来创建应用、生成资源脚手架、执行迁移、启动服务和构建。</span></p>
+    <p>第一行从 RubyGems 安装它。其余几行是整个教程的概览；下面的步骤会逐条命令讲解。</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; 任意目录，之后在&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; 任意目录，之后在 blog/"><code><span class="ln cmd">gem install cybertrain</span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># 首次运行时安装 Spinel 2026.09.12（需要几分钟）</span></span>
+<span class="ln cmd">cd blog</span>
+<span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
+<span class="ln cmd">cybertrain db migrate</span>
+<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000</span></span>
+<span class="ln cmd">cybertrain build             <span class="c"># 生产环境：dist/blog、dist/public/、dist/storage/、dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
+</figure>
+    <p><code>cybertrain</code> 命令是纯 Ruby 编写的，gem 在 CRuby（3.2 或更新版本）下运行它；框架和 Spinel 都不在这个 gem 里。它的命令如下（<code>cybertrain help</code> 会把它们打印出来）：</p>
+    <ul class="points">
+      <li><code>cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]</code> 在 NAME 中创建应用，然后在其中运行 <code>spin lock</code> 和 <code>spin run gen</code>，需要时会先安装 Spinel。</li>
+      <li><code>cybertrain generate scaffold NAME field:type ...</code>（别名 <code>g scaffold</code>）为当前目录中的应用添加一个资源。</li>
+      <li><code>cybertrain db migrate</code> 先生成代码，再执行待处理的迁移，然后再次生成（<code>spin run gen; spin run db -- migrate; spin run gen</code>）；<code>cybertrain migration</code> 作为别名保留。</li>
+      <li><code>cybertrain db COMMAND...</code> 在 <code>spin run gen</code> 之后运行其他任意数据库命令：<code>status</code>、<code>rollback [N]</code>（之后会再次生成）、<code>schema:dump</code>、<code>create</code>。</li>
+      <li><code>cybertrain server [PORT]</code> 先生成代码，然后启动开发服务器（<code>spin run gen; spin run NAME</code>，或 <code>spin run NAME -- PORT</code>；默认端口 3000）。</li>
+      <li><code>cybertrain build</code> 构建嵌入了 <code>app/views/</code> 的 NAME，并组装 <code>dist/</code>（二进制文件、<code>public/</code>、<code>storage/</code>、<code>tmp/</code>）。</li>
+      <li><code>cybertrain spin ARGS...</code> 在任意目录下用锁定版本的 Spinel 运行 <code>spin</code>：<code>cybertrain spin test</code>、<code>cybertrain spin run gen -- --check</code>。</li>
+      <li><code>cybertrain setup [--force]</code> 把 Spinel <code>2026.09.12</code> 安装到 <code>~/.cybertrain</code> 中，除非 <code>PATH</code> 上已有该版本的 <code>spinel</code>；<code>--force</code> 会重新构建 <code>~/.cybertrain</code> 下的副本。</li>
+      <li><code>cybertrain doctor</code> 检查 C 工具链、SQLite 头文件和 Spinel 的安装情况。</li>
+      <li><code>cybertrain version</code> 打印版本（<code>cybertrain 0.2.1</code>）；<code>cybertrain help</code> 打印用法。</li>
+    </ul>
+    <p class="note"><code>db</code>、<code>server</code> 和 <code>build</code> 需在应用目录内运行；NAME 是其 <code>spin.toml</code> 中的 <code>[package] name</code>。</p>
+  </section>
+
+  <section class="step" id="new-app" aria-labelledby="h-new-app">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>你编写 <span aria-hidden="true">&middot;</span> <code>blog/</code></p>
+    <h2 id="h-new-app"><span class="step-num" aria-hidden="true">02</span>创建应用</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">你会得到 Rails 的目录约定，外加三个 <code>bin/</code> 程序：<code>bin/blog.rb</code>（应用）、<code>bin/gen.rb</code>（生成器）和 <code>bin/db.rb</code>（开发时的迁移）。</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; 任意目录</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端，任意目录"><code><span class="ln cmd">cybertrain new blog</span>
+<span class="ln cmd">cd blog</span></code></pre>
+</figure>
+    <p><code>cybertrain new</code> 会写出应用，其 <code>spin.toml</code> 指向与 CLI 相匹配的版本：</p>
+    <figure class="code" data-lang="toml">
+<figcaption><span class="code-path">spin.toml</span><span class="code-lang">toml</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：spin.toml"><code><span class="ln">[package]</span>
+<span class="ln">name = <span class="s">"blog"</span></span>
+<span class="ln">version = <span class="s">"0.1.0"</span></span>
+<span class="ln"></span>
+<span class="ln">[dependencies]</span>
+<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.1"</span> }</span></code></pre>
+</figure>
+    <p>然后它会确保 Spinel 已安装（第一次时，这意味着要把 Spinel <code>2026.09.12</code> 构建到 <code>~/.cybertrain</code> 中：需要几分钟，仅一次；参见<a href="#requirements">第 00 步</a>），并运行 <code>spin lock</code>（spin 会把框架拉取到其缓存 <code>~/.cache/spin/packages/</code> 中，并在 <code>spin.lock</code> 中锁定提交）和 <code>spin run gen</code>，就像 <code>rails new</code> 会运行 <code>bundle install</code> 一样，所以 <code>cybertrain server</code> 可以立即使用。最后它会打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 <code>spin.toml</code> 和 <code>spin.lock</code>。</p>
+    <p class="note">如果 Spinel 或两个 <code>spin</code> 步骤之一失败，已写出的文件会保留，<code>new</code> 以状态码 1 退出，并打印排除原因后需要运行的命令（对于 Spinel：先运行 <code>cybertrain setup</code>，再在新目录中运行 <code>cybertrain spin lock &amp;&amp; cybertrain spin run gen</code>）。<code>--skip-spin</code> 只写出文件；<code>--path DIR</code> 改为依赖本地检出的代码，<code>--git URL [--ref R]</code> 依赖位于 URL 的框架（分支或标签 R），<code>--version V</code> 则在 <code>cybertrain</code> 进入 <code>spin-index</code> 后依赖索引中的版本。</p>
+    <p>应用名使用小写字母、数字和 <code>_</code>，并以字母开头。生成的目录树：</p>
+    <figure class="code" data-lang="text">
+<figcaption><span class="code-path">blog/</span><span class="code-lang">text</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：blog/"><code><span class="ln">blog/</span>
+<span class="ln">  spin.toml  config/app.rb  config/routes.rb</span>
+<span class="ln">  db/schema.rb  db/migrate/</span>
+<span class="ln">  app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/</span>
+<span class="ln">  public/  bin/blog.rb  bin/gen.rb  bin/db.rb</span>
+<span class="ln">  gen/  storage/  tmp/  test/</span></code></pre>
+</figure>
+    <p><code>bin/blog.rb</code> 是应用唯一的入口，也就是 <code>spin build blog</code> 编译的程序：<code>./blog</code> 提供服务，<code>./blog migrate</code> 和 <code>./blog db status</code> 管理数据库。<code>bin/gen.rb</code> 运行生成器（<code>spin run gen</code>），<code>bin/db.rb</code> 在开发期间运行迁移器（<code>cybertrain db migrate</code> 会用到它，因为在第一次迁移生成 <code>gen/models/</code> 之前，<code>bin/blog.rb</code> 无法编译）。<code>gen/</code> 中已经有 <code>views.rb</code>，即已提交的、空的内嵌视图表。</p>
+    <p><code>ApplicationController</code> 一开始是这样的，因此找不到记录时会通过 <code>rescue_from</code> 映射为 404：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>application_controller.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/controllers/application_controller.rb"><code><span class="ln"><span class="k">class</span> <span class="t">ApplicationController</span> &lt; <span class="t">Cybertrain</span>::<span class="t">Controller</span></span>
+<span class="ln">  rescue_from <span class="t">Cybertrain</span>::<span class="t">RecordNotFound</span>, <span class="y">with:</span> <span class="y">:record_not_found</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">private</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> record_not_found</span>
+<span class="ln">    render <span class="y">plain:</span> <span class="s">"Not Found"</span>, <span class="y">status:</span> <span class="y">:not_found</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+  </section>
+
+  <section class="step" id="scaffold-article" aria-labelledby="h-scaffold-article">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>你编写 <span aria-hidden="true">&middot;</span> <code>app/</code>, <code>db/migrate/</code></p>
+    <h2 id="h-scaffold-article"><span class="step-num" aria-hidden="true">03</span>生成文章脚手架</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">一条命令写出整套 CRUD，Rails 风格。</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">cybertrain generate scaffold article title:string body:text</span></code></pre>
+</figure>
+    <p>它会写出一个迁移、一个模型、一个控制器和五个视图（<code>index</code>、<code>show</code>、<code>new</code>、<code>edit</code>、<code>_form</code>），并把 <code>resources :articles</code> 插入 <code>config/routes.rb</code>。字段类型有 <code>string</code>、<code>text</code>、<code>integer</code>、<code>float</code>、<code>boolean</code>、<code>date</code>、<code>datetime</code> 和 <code>references</code>；默认为 <code>string</code>。快速上手中的 <code>cybertrain g scaffold</code> 是同一条命令。</p>
+    <p class="note">已有文件永远不会被覆盖：每个文件都会报告为 <code>create</code>、<code>identical</code> 或 <code>exist</code>。</p>
+  </section>
+
+  <section class="step" id="root-route" aria-labelledby="h-root-route">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>你编写 <span aria-hidden="true">&middot;</span> <code>config/routes.rb</code></p>
+    <h2 id="h-root-route"><span class="step-num" aria-hidden="true">04</span>设置根路由</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t"><code>/</code> 应当显示文章列表。</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">config/<wbr>routes.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：config/routes.rb"><code><span class="ln"><span class="c"># config/routes.rb</span></span>
+<span class="ln"><span class="t">Cybertrain</span>::<span class="t">Routes</span>.draw <span class="k">do</span></span>
+<span class="ln">  root <span class="s">"articles#index"</span></span>
+<span class="ln">  resources <span class="y">:articles</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p class="note">路由在构建时读取：<code>spin run gen</code> 会把它们转换为 <code>gen/routes.rb</code>。<code>cybertrain server</code>、<code>cybertrain db migrate</code> 和 <code>cybertrain build</code> 会替你运行它。</p>
+  </section>
+
+  <section class="step" id="validations" aria-labelledby="h-validations">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>你编写 <span aria-hidden="true">&middot;</span> <code>app/models/</code></p>
+    <h2 id="h-validations"><span class="step-num" aria-hidden="true">05</span>添加模型验证</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">与 Rails 指南一样，手动添加一个长度验证。</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>models/<wbr>article.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/models/article.rb"><code><span class="ln"><span class="c"># app/models/article.rb -- only the first string field gets a default</span></span>
+<span class="ln"><span class="c"># presence validation; add anything past that yourself.</span></span>
+<span class="ln"><span class="k">class</span> <span class="t">Article</span></span>
+<span class="ln">  validates <span class="y">:title</span>, <span class="y">presence:</span> <span class="k">true</span></span>
+<span class="ln">  validates <span class="y">:body</span>, <span class="y">presence:</span> <span class="k">true</span>, <span class="y">length:</span> { <span class="y">minimum:</span> 10 }</span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p><code>class Article</code> 没有写超类：<code>Cybertrain::Model</code> 超类、列和查找方法都来自 <code>gen/models/article.rb</code>。保存失败时会报告诸如 “Title can't be blank” 和 “Body is too short (minimum is 10 characters)” 这样的消息。</p>
+  </section>
+
+  <section class="step" id="articles-controller" aria-labelledby="h-articles-controller">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>你编写 <span aria-hidden="true">&middot;</span> <code>app/controllers/</code></p>
+    <h2 id="h-articles-controller"><span class="step-num" aria-hidden="true">06</span>ArticlesController</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">完整的 CRUD，连强参数和“先 flash 再重定向”都是 Rails 风格的，只有两处是 Spinel 处处强制要求的。</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/controllers/articles_controller.rb"><code><span class="ln"><span class="c"># app/controllers/articles_controller.rb (index/show/edit are as plain as</span></span>
+<span class="ln"><span class="c"># Rails' own scaffold; update mirrors create)</span></span>
+<span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> new_action   <span class="c"># a `new` method would shadow ArticlesController.new</span></span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> create</span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new(article_params)</span>
+<span class="ln">    <span class="k">if</span> <span class="v">@article</span>.save</span>
+<span class="ln">      flash[<span class="y">:notice</span>] = <span class="s">"Article was successfully created."</span></span>
+<span class="ln">      redirect_to article_path(<span class="v">@article</span>), <span class="y">status:</span> <span class="y">:see_other</span></span>
+<span class="ln">    <span class="k">else</span></span>
+<span class="ln">      render <span class="y">:new</span>, <span class="y">status:</span> <span class="y">:unprocessable_entity</span></span>
+<span class="ln">    <span class="k">end</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">private</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> set_article</span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.find(params[<span class="y">:id</span>])</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> article_params</span>
+<span class="ln">    params.<span class="k">require</span>(<span class="y">:article</span>).permit(<span class="y">:title</span>, <span class="y">:body</span>)</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <aside class="callout" aria-label="Spinel 规则：new_action">
+      <p class="callout-k">Spinel 规则</p>
+      <h3><code>new_action</code>，而不是 <code>new</code></h3>
+      <p>名字恰好叫 <code>new</code> 的方法会遮蔽 <code>ArticlesController.new(ctx)</code>，而框架要用它来构造控制器。路由 <code>GET /articles/new</code> 仍然映射到这个方法；你只需重命名方法。视图仍然是 <code>new.html.erb</code>，<code>render :new</code> 也保持不变。</p>
+    </aside>
+    <aside class="callout" aria-label="Spinel 规则：回调">
+      <p class="callout-k">Spinel 规则</p>
+      <h3>回调显式接收控制器</h3>
+      <p>无法对存储的块使用 <code>instance_exec</code>，所以块形式的回调会以参数形式接收控制器（或记录）：写 <code>before_action { |c| c.do_thing }</code>，而不是 <code>before_action { do_thing }</code>。动作和回调都按字面名称调用，从不使用 <code>send</code>。</p>
+    </aside>
+    <p>脚手架写出的完整控制器还包含 <code>index</code>、<code>show</code>、<code>edit</code>、<code>update</code> 和 <code>destroy</code>；上面的节选省略了它们。在 <code>index</code> 中写的是 <code>@articles = Article.all.to_a</code>：其中的 <code>.to_a</code> 是必需的。</p>
+    <p class="note">实例变量是通过对 <code>@ivar =</code> 的词法扫描找到的，所以新增实例变量后要重新运行 <code>cybertrain spin run gen</code>；开发服务器会替你完成这一步。</p>
+  </section>
+
+  <section class="step" id="run" aria-labelledby="h-run">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>先构建时，后运行时 <span aria-hidden="true">&middot;</span> <code>gen/</code> &rarr; <code>build/bin/blog</code></p>
+    <h2 id="h-run"><span class="step-num" aria-hidden="true">07</span>生成、迁移、运行</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">把 schema 和路由转换成 <code>gen/</code>，创建 SQLite 数据库，启动服务器。</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">cybertrain db migrate    <span class="c"># spin run gen; spin run db -- migrate; spin run gen</span></span>
+<span class="ln cmd">cybertrain server        <span class="c"># http://127.0.0.1:3000；修改 Ruby 后会重新构建，视图无需重新构建即可重新加载</span></span></code></pre>
+</figure>
+    <p><code>spin run gen</code> 读取 <code>db/schema.rb</code> 和 <code>config/routes.rb</code>，扫描 <code>app/</code> 并写入 <code>gen/</code>；<code>spin run db -- migrate</code> 执行 <code>db/migrate/*.rb</code> 并重写 <code>db/schema.rb</code>。顺序很重要：第一次 <code>spin run gen</code> 把新迁移放进 <code>gen/migrations.rb</code>（<code>bin/db.rb</code> 会 require 它），第二次则根据重写后的 <code>db/schema.rb</code> 构建模型。</p>
+    <p><code>cybertrain server</code> 会打印它运行的每条 <code>spin</code> 命令，然后是应用的启动横幅。第一次启动需要编译应用，所以要花一些时间：</p>
+    <figure class="code" data-lang="text">
+<figcaption><span class="code-path">输出 &mdash; cybertrain server</span><span class="code-lang">text</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：cybertrain server 的输出"><code><span class="ln">=&gt; Booting cybertrain 0.2.1</span>
+<span class="ln">=&gt; development environment (1 worker)</span>
+<span class="ln">=&gt; Watching app/, config/ and db/schema.rb for changes</span>
+<span class="ln">* Listening on http://127.0.0.1:3000</span>
+<span class="ln">Use Ctrl-C to stop</span></code></pre>
+</figure>
+    <ul class="points">
+      <li>修改 schema、路由，或者控制器、模型的回调和实例变量之后，重新运行 <code>cybertrain spin run gen</code> 并提交 <code>gen/</code>。开发服务器会替你完成这一步。</li>
+      <li>用 <code>cybertrain server 4000</code>（或 <code>PORT=4000</code>）更改端口。</li>
+      <li><code>spin run db</code> 要求在参数前加上 <code>--</code>，<code>cybertrain db</code> 会替你加上；<code>cybertrain db status</code> 和其他数据库命令也是如此。</li>
+    </ul>
+    <aside class="callout" aria-label="Spinel 规则：没有控制台">
+      <p class="callout-k">Spinel 规则</p>
+      <h3>没有控制台</h3>
+      <p><code>rails console</code> 没有对应的功能：Spinel 没有 <code>eval</code>。修改 Ruby 代码需要重新构建，开发时 <code>cybertrain server</code> 会替你完成（重新构建、停止、<code>execv</code>）。开发时视图在每次请求时从磁盘解析，所以修改视图无需重新构建；<code>cybertrain build</code> 会为生产环境把它们嵌入。</p>
+    </aside>
+  </section>
+
+  <section class="step" id="scaffold-comment" aria-labelledby="h-scaffold-comment">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>你编写 <span aria-hidden="true">&middot;</span> <code>db/migrate/</code>, <code>app/</code></p>
+    <h2 id="h-scaffold-comment"><span class="step-num" aria-hidden="true">08</span>生成评论脚手架</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t"><code>references</code> 类型会为你生成外键，关联正是由它推导出来的。</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">cybertrain generate scaffold comment commenter:string body:text article:references</span>
+<span class="ln cmd">cybertrain db migrate    <span class="c"># 脚手架已为 comments 表写好了迁移</span></span></code></pre>
+</figure>
+    <p><code>article:references</code> 会添加 <code>article_id</code> 列、索引和外键——这足以让 <code>Article</code>/<code>Comment</code> 获得关联；不需要写 <code>has_many</code>/<code>belongs_to</code>，<code>spin run gen</code> 会从外键中读出关联。生成的 schema：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">db/<wbr>schema.rb（节选）</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：db/schema.rb（节选）"><code><span class="ln">  s.create_table <span class="s">"comments"</span> <span class="k">do</span> |t|</span>
+<span class="ln">    t.string <span class="s">"commenter"</span></span>
+<span class="ln">    t.text <span class="s">"body"</span></span>
+<span class="ln">    t.integer <span class="s">"article_id"</span>, <span class="y">null:</span> <span class="k">false</span></span>
+<span class="ln">    t.datetime <span class="s">"created_at"</span>, <span class="y">null:</span> <span class="k">false</span></span>
+<span class="ln">    t.datetime <span class="s">"updated_at"</span>, <span class="y">null:</span> <span class="k">false</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  s.add_index <span class="s">"comments"</span>, [<span class="s">"article_id"</span>], <span class="y">name:</span> <span class="s">"index_comments_on_article_id"</span></span>
+<span class="ln"></span>
+<span class="ln">  s.add_foreign_key <span class="s">"comments"</span>, <span class="s">"articles"</span>, <span class="y">column:</span> <span class="s">"article_id"</span></span></code></pre>
+</figure>
+    <p>脚手架会插入一行独立的 <code>resources :comments</code>，下一步会替换它。</p>
+    <aside class="callout" aria-label="删除带评论的文章">
+      <p class="callout-k">来自完成后的示例</p>
+      <h3>删除带评论的文章</h3>
+      <p>关联只来自外键，并且 <code>dependent:</code> 尚未实现。示例添加了一个显式接收记录的 <code>before_destroy</code> 回调：</p>
+      <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>models/<wbr>article.rb（节选）</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/models/article.rb（节选）"><code><span class="ln">  <span class="c"># Rails' `has_many :comments, dependent: :destroy`: the foreign key</span></span>
+<span class="ln">  <span class="c"># would refuse to delete an article that still has comments.</span></span>
+<span class="ln">  before_destroy { |article| <span class="t">Comment</span>.where(<span class="y">article_id:</span> article.id).delete_all }</span></code></pre>
+</figure>
+    </aside>
+  </section>
+
+  <section class="step" id="nested-routes" aria-labelledby="h-nested-routes">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>你编写 <span aria-hidden="true">&middot;</span> <code>config/routes.rb</code></p>
+    <h2 id="h-nested-routes"><span class="step-num" aria-hidden="true">09</span>嵌套路由</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">Rails 指南把评论嵌套在文章之下。</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">config/<wbr>routes.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：config/routes.rb"><code><span class="ln"><span class="t">Cybertrain</span>::<span class="t">Routes</span>.draw <span class="k">do</span></span>
+<span class="ln">  root <span class="s">"articles#index"</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="c"># A nested block takes the mapper explicitly (Spinel's instance_eval</span></span>
+<span class="ln">  <span class="c"># trampoline only rewires `self` for the outermost block): `articles.resources`.</span></span>
+<span class="ln">  resources <span class="y">:articles</span> <span class="k">do</span> |articles|</span>
+<span class="ln">    articles.resources <span class="y">:comments</span>, <span class="y">only:</span> [<span class="y">:create</span>, <span class="y">:destroy</span>]</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <aside class="callout" aria-label="Spinel 规则：显式接收 mapper">
+      <p class="callout-k">Spinel 规则</p>
+      <h3>嵌套块显式接收 mapper</h3>
+      <p>要写 <code>resources :articles do |articles|</code> 和 <code>articles.resources :comments</code>，而不是直接写 <code>resources :comments</code>。Spinel 的 <code>instance_eval</code> 蹦床（trampoline）只会为最外层的块重新绑定 <code>self</code>。</p>
+    </aside>
+  </section>
+
+  <section class="step" id="comments-controller" aria-labelledby="h-comments-controller">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>你编写 <span aria-hidden="true">&middot;</span> <code>app/controllers/</code></p>
+    <h2 id="h-comments-controller"><span class="step-num" aria-hidden="true">10</span>CommentsController</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">只有两个动作可以访问，而父文章取自 URL（<code>params[:article_id]</code>），而不是 <code>:id</code>。</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>comments_controller.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/controllers/comments_controller.rb"><code><span class="ln"><span class="k">class</span> <span class="t">CommentsController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  before_action <span class="y">:set_article</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> create</span>
+<span class="ln">    <span class="v">@comment</span> = <span class="t">Comment</span>.new(comment_params)</span>
+<span class="ln">    <span class="v">@comment</span>.article_id = <span class="v">@article</span>.id</span>
+<span class="ln">    <span class="k">if</span> <span class="v">@comment</span>.save</span>
+<span class="ln">      flash[<span class="y">:notice</span>] = <span class="s">"Comment was successfully created."</span></span>
+<span class="ln">    <span class="k">else</span></span>
+<span class="ln">      flash[<span class="y">:alert</span>] = <span class="s">"Comment could not be saved: #{@comment.errors.full_messages.join(", ")}"</span></span>
+<span class="ln">    <span class="k">end</span></span>
+<span class="ln">    redirect_to article_path(<span class="v">@article</span>), <span class="y">status:</span> <span class="y">:see_other</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> destroy</span>
+<span class="ln">    <span class="v">@comment</span> = <span class="t">Comment</span>.where(<span class="y">article_id:</span> <span class="v">@article</span>.id).find(params[<span class="y">:id</span>])</span>
+<span class="ln">    <span class="v">@comment</span>.destroy</span>
+<span class="ln">    flash[<span class="y">:notice</span>] = <span class="s">"Comment was successfully destroyed."</span></span>
+<span class="ln">    redirect_to article_path(<span class="v">@article</span>), <span class="y">status:</span> <span class="y">:see_other</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">private</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> set_article</span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.find(params[<span class="y">:article_id</span>])</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> comment_params</span>
+<span class="ln">    params.<span class="k">require</span>(<span class="y">:comment</span>).permit(<span class="y">:commenter</span>, <span class="y">:body</span>)</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p>然后给评论模型添加验证：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>models/<wbr>comment.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/models/comment.rb"><code><span class="ln"><span class="k">class</span> <span class="t">Comment</span></span>
+<span class="ln">  validates <span class="y">:commenter</span>, <span class="y">presence:</span> <span class="k">true</span></span>
+<span class="ln">  validates <span class="y">:body</span>, <span class="y">presence:</span> <span class="k">true</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p class="note">这里的 <code>Article#comments</code> 是一个 Array，所以 Rails 的 <code>@article.comments.find(params[:id])</code> 要写成 <code>Comment.where(article_id: @article.id).find(params[:id])</code>。不属于该文章的评论会返回 404。</p>
+  </section>
+
+  <section class="step" id="views" aria-labelledby="h-views">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>运行时 <span aria-hidden="true">&middot;</span> <code>app/views/</code>，开发时从磁盘读取，由 <code>cybertrain build</code> 嵌入</p>
+    <h2 id="h-views"><span class="step-num" aria-hidden="true">11</span>视图与局部视图</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">文章页面列出它的评论，并在末尾放一个绑定到 <code>[@article, @comment]</code> 的表单。</span></p>
+    <p>首先，删除现在已无法访问的评论视图 <code>index</code>、<code>show</code>、<code>new</code> 和 <code>edit</code>，并在 <code>ArticlesController#show</code> 中提供一个空白的 <code>@comment</code>：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb（节选）</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/controllers/articles_controller.rb（节选）"><code><span class="ln">  <span class="k">def</span> show</span>
+<span class="ln">    <span class="v">@comment</span> = <span class="t">Comment</span>.new</span>
+<span class="ln">  <span class="k">end</span></span></code></pre>
+</figure>
+    <p>然后在文章页面上渲染评论和表单：</p>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>show.html.erb &middot; app/<wbr>views/<wbr>comments/<wbr>_form.html.erb</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/views/articles/show.html.erb &middot; app/views/comments/_form.html.erb"><code><span class="ln"><span class="c">&lt;%# app/views/articles/show.html.erb %&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="v">@article</span>.comments.each <span class="k">do</span> |comment| <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> render <span class="s">"comments/comment"</span>, <span class="y">comment:</span> comment <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%=</span> render <span class="s">"comments/form"</span> <span class="d">%&gt;</span></span>
+<span class="ln"></span>
+<span class="ln"><span class="c">&lt;%# app/views/comments/_form.html.erb %&gt;</span></span>
+<span class="ln"><span class="d">&lt;%=</span> form_with(<span class="y">model:</span> [<span class="v">@article</span>, <span class="v">@comment</span>]) <span class="k">do</span> |f| <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> f.label <span class="y">:commenter</span> <span class="d">%&gt;</span> <span class="d">&lt;%=</span> f.text_field <span class="y">:commenter</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> f.label <span class="y">:body</span> <span class="d">%&gt;</span> <span class="d">&lt;%=</span> f.text_area <span class="y">:body</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> f.submit <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span></code></pre>
+</figure>
+    <p>评论的局部视图，与示例中的一致：</p>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>comments/<wbr>_comment.html.erb</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/views/comments/_comment.html.erb"><code><span class="ln"><span class="c">&lt;%# locals: (comment:) %&gt;</span></span>
+<span class="ln"><span class="h">&lt;div class="comment"&gt;</span></span>
+<span class="ln">  <span class="h">&lt;p&gt;</span></span>
+<span class="ln">    <span class="h">&lt;strong&gt;</span>Commenter:<span class="h">&lt;/strong&gt;</span></span>
+<span class="ln">    <span class="d">&lt;%=</span> comment.commenter <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;/p&gt;</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="h">&lt;p&gt;</span></span>
+<span class="ln">    <span class="h">&lt;strong&gt;</span>Comment:<span class="h">&lt;/strong&gt;</span></span>
+<span class="ln">    <span class="d">&lt;%=</span> comment.body <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;/p&gt;</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="d">&lt;%=</span> button_to <span class="s">"Destroy comment"</span>, [<span class="v">@article</span>, comment], <span class="y">method:</span> <span class="y">:delete</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="h">&lt;/div&gt;</span></span></code></pre>
+</figure>
+    <p><code>button_to ... [@article, comment]</code> 和 <code>form_with(model: [@article, @comment])</code> 都通过同一条 <code>[parent, child]</code> 规则解析：新的子对象路由到嵌套集合（<code>article_comments_path</code>），已持久化的子对象路由到嵌套成员（<code>article_comment_path</code>）——这些路由都由上面的嵌套 <code>resources</code> 块生成到 <code>gen/routes.rb</code> 中。</p>
+    <aside class="callout" aria-label="视图是一套封闭的语法">
+      <p class="callout-k">Spinel 规则</p>
+      <h3>视图是一套封闭的语法，而不是 Ruby</h3>
+      <p>Spinel 没有 <code>eval</code>，所以模板按照一套固定的语法来解释执行。<code>link_to</code> 没有 <code>method:</code> 选项；请使用 <code>button_to</code>。<code>each</code> 接受一个或两个块参数。像 <code>&lt;%# locals: (comment:) %&gt;</code> 这样的严格局部变量注释不能带默认值。局部视图会得到调用方环境的一份副本，所以在 <code>comments/_form</code> 中可以看到 <code>@article</code>。</p>
+    </aside>
+  </section>
+
+  <section class="step" id="test" aria-labelledby="h-test">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>构建时 <span aria-hidden="true">&middot;</span> <code>cybertrain spin test</code></p>
+    <h2 id="h-test"><span class="step-num" aria-hidden="true">12</span>测试</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">minitest 和 RSpec 通过反射查找测试，而 AOT 编译器做不到这一点，因此 CyberTrain 提供了 <code>Cybertrain::Test</code>。</span></p>
+    <h3 class="sub">模型测试</h3>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">test/<wbr>articles.rb（片段）</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：test/articles.rb（片段）"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/blog_test"</span>   <span class="c"># the app, BLOG and Cybertrain::Test</span></span>
+<span class="ln"></span>
+<span class="ln">test <span class="s">"title must be present"</span> <span class="k">do</span></span>
+<span class="ln">  article = <span class="t">Article</span>.new(<span class="y">body:</span> <span class="s">"a body long enough to pass length"</span>)</span>
+<span class="ln">  refute article.save</span>
+<span class="ln">  assert_includes article.errors.full_messages, <span class="s">"Title can't be blank"</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p>断言：<code>assert</code>、<code>refute</code>、<code>assert_equal</code>、<code>assert_nil</code>、<code>assert_includes</code>、<code>assert_raises("Class") { }</code>、<code>flunk</code>。示例中还用到了 <code>assert_response</code> 和 <code>assert_redirected_to</code>。</p>
+    <h3 class="sub">完整的 HTTP 流程</h3>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">test/<wbr>articles.rb（片段）</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：test/articles.rb（片段）"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/blog_test"</span>   <span class="c"># the app, BLOG and Cybertrain::Test</span></span>
+<span class="ln"></span>
+<span class="ln">test <span class="s">"POST /articles creates an article and redirects to it"</span> <span class="k">do</span></span>
+<span class="ln">  client = <span class="t">Cybertrain</span>::<span class="t">Test</span>::<span class="t">Client</span>.new(<span class="t">BLOG</span>)</span>
+<span class="ln">  client.get(<span class="s">"/articles/new"</span>)</span>
+<span class="ln">  res = client.post(<span class="s">"/articles"</span>, { <span class="s">"authenticity_token"</span> =&gt; <span class="t">BlogTest</span>.form_token(client),</span>
+<span class="ln">                                   <span class="s">"article[title]"</span> =&gt; <span class="s">"Hello Rails"</span>,</span>
+<span class="ln">                                   <span class="s">"article[body]"</span> =&gt; <span class="s">"I am on Rails! This is my first article."</span> })</span>
+<span class="ln">  assert_redirected_to res, <span class="t">BlogTest</span>.article_path(<span class="t">Article</span>.last)</span>
+<span class="ln">  assert_response res, <span class="y">:see_other</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p><code>Cybertrain::Test::Client</code> 在进程内（不经过 socket）驱动应用，并带有 cookie jar，所以会话和 CSRF 的行为与在浏览器中一致。不带令牌的请求会得到 403。</p>
+    <aside class="callout" aria-label="片段中省略的内容">
+      <p class="callout-k">编译之前</p>
+      <h3>片段中省略的内容</h3>
+      <ul>
+        <li><code>support/blog_test</code> 就是 <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/examples/blog/test/support/blog_test.rb" rel="noopener"><code>examples/blog/test/support/blog_test.rb</code></a>：把它复制到你的应用的 <code>test/support/</code> 中，这里的文件会被 require，而不会被运行。它会迁移一个全新的 <code>storage/test.sqlite3</code>，以 <code>BLOG</code> 启动应用，加载 <code>Cybertrain::Test</code> 及其客户端，并提供 <code>BlogTest.form_token</code>（最近渲染的表单中的 CSRF 令牌）和 <code>BlogTest.article_path</code>。</li>
+        <li>在文件末尾调用 <code>Cybertrain::Test.run!</code>，它会运行测试，并打印快照所比对的各行输出。</li>
+        <li>在 <code>config/app.rb</code> 中设置 <code>c.log_level = :none if c.test?</code>，让请求日志不进入被比对的输出。</li>
+      </ul>
+    </aside>
+    <h3 class="sub">运行测试</h3>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">cybertrain spin test</span></code></pre>
+</figure>
+    <p><code>cybertrain spin test</code> 用锁定版本的 Spinel 运行 <code>spin test</code>；如果工具链已在 <code>PATH</code> 上（<a href="#requirements">第 00 步</a>），直接运行 <code>spin test</code> 效果相同。它会把每个 <code>test/*.rb</code> 编译成独立的程序，并将其输出（stdout 和 stderr 合在一起）与已提交的快照 <code>test/&lt;name&gt;.rb.expected</code> 进行比对。<code>test/support/</code> 中的文件会被 require，而不会被运行。要写入快照：</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">cybertrain spin test --regen test/&lt;name&gt;.rb</span>
+<span class="ln cmd">rm -f build/test/&lt;name&gt;; cybertrain spin test test/&lt;name&gt;.rb; [ -x build/test/&lt;name&gt; ] &amp;&amp; ./build/test/&lt;name&gt; &gt; test/&lt;name&gt;.rb.expected 2&gt;&amp;1</span></code></pre>
+</figure>
+    <p class="note"><code>--regen</code> 根据 CRuby 的输出写入快照。通过 FFI 访问 SQLite 的测试无法在 CRuby 下运行，所以它们的快照来自编译后的二进制文件（上面的第二行）。只要快照过时，<code>cybertrain spin test</code> 就会以非零状态退出，所以它后面跟的是 <code>;</code> 而不是 <code>&amp;&amp;</code>；<code>[ -x ]</code> 检查会在编译失败时跳过捕获，从而保留旧快照。无法在 CRuby 下运行的测试需要先有这个快照，<code>cybertrain spin test</code> 才能通过；其他没有快照的测试会与 CRuby 的输出进行比对。</p>
+  </section>
+
+  <section class="step" id="ship" aria-labelledby="h-ship">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>运行时 <span aria-hidden="true">&middot;</span> <code>dist/blog</code></p>
+    <h2 id="h-ship"><span class="step-num" aria-hidden="true">13</span>为部署而构建</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">一条命令就能把应用构建到可部署的 <code>dist/</code> 目录中，所有视图都已嵌入。</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">cybertrain build</span></code></pre>
+</figure>
+    <p>这会写出 <code>dist/</code>：嵌入了所有视图的应用二进制文件，以及放在它旁边、供它使用的文件。它会运行 <code>spin run gen -- --embed-views</code>、<code>spin build blog</code> 和 <code>spin run gen</code>（最后这一步会恢复已提交的、空的 <code>gen/views.rb</code>，即使在失败或按下 Ctrl-C 之后也是如此），然后组装出：</p>
+    <ul class="ship-grid">
+      <li class="ship-bin"><code>dist/blog</code><span>编译后的框架、控制器、模型和模板解释器，并嵌入了所有视图</span></li>
+      <li><code>dist/public/</code><span>静态资源和错误页面，也可以交给反向代理来提供</span></li>
+      <li><code>dist/storage/</code><span>创建时为空；默认存放 SQLite 文件（重新构建永远不会清空它）</span></li>
+      <li><code>dist/tmp/</code><span>创建时为空（重新构建永远不会清空它）</span></li>
+    </ul>
+    <p>把 <code>dist/</code> 复制到操作系统和 CPU 都相同的机器上（该二进制文件链接系统的 SQLite），然后在那里运行。构建出的二进制文件默认使用生产环境（可用 <code>CYBERTRAIN_ENV</code> 覆盖）。设置 <code>CYBERTRAIN_SECRET_KEY_BASE</code>；示例如下：</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; 生产主机</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; 生产主机"><code><span class="ln cmd">cd dist</span>
+<span class="ln cmd">export CYBERTRAIN_SECRET_KEY_BASE=<span class="s">"$(openssl rand -hex 32)"</span></span>
+<span class="ln cmd">./blog migrate &amp;&amp; ./blog</span></code></pre>
+</figure>
+    <p><code>./blog migrate</code> 执行编译进二进制文件的迁移，<code>./blog db status</code> 显示它们的状态；<code>PORT</code> 设置端口。重启前后请保持密钥不变：更改它会使所有会话失效。</p>
+    <p><code>Cybertrain::Config</code> 首先读取环境变量；<code>config/app.rb</code> 中的设置会覆盖它们：</p>
+    <div class="table-scroll" role="region" aria-label="环境变量" tabindex="0">
+    <table class="env">
+      <thead><tr><th scope="col">变量</th><th scope="col">属性</th><th scope="col">默认值</th></tr></thead>
+      <tbody>
+        <tr><td data-label="变量"><code>CYBERTRAIN_ENV</code></td><td data-label="属性"><code>env</code></td><td data-label="默认值"><code>"development"</code>；由 <code>cybertrain build</code> 构建的二进制文件中为 <code>"production"</code>（也可以是 <code>"test"</code>）</td></tr>
+        <tr><td data-label="变量"><code>PORT</code></td><td data-label="属性"><code>port</code></td><td data-label="默认值"><code>3000</code></td></tr>
+        <tr><td data-label="变量"><code>CYBERTRAIN_DATABASE</code></td><td data-label="属性"><code>database_path</code></td><td data-label="默认值"><code>storage/#{env}.sqlite3</code></td></tr>
+        <tr><td data-label="变量"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="属性"><code>secret_key_base</code></td><td data-label="默认值">生产环境中必需；开发/测试环境会自动生成一个并写入 <code>tmp/secret_key</code></td></tr>
+        <tr><td data-label="变量"><code>SPINEL_WORKERS</code></td><td data-label="属性"><code>workers</code></td><td data-label="默认值"><code>1</code></td></tr>
+        <tr><td data-label="变量"><code>CYBERTRAIN_HOST</code></td><td data-label="属性"><code>host</code></td><td data-label="默认值"><code>"127.0.0.1"</code>；<code>0.0.0.0</code> 监听所有网络接口（容器）</td></tr>
+        <tr><td data-label="变量"><code>CYBERTRAIN_SESSION_SAME_SITE</code></td><td data-label="属性"><code>session_same_site</code></td><td data-label="默认值"><code>"Lax"</code>；也可以是 <code>Strict</code> 或 <code>None</code>（<code>None</code> 总会加上 <code>Secure</code>）；其他任何值都会让服务器在启动时停止</td></tr>
+        <tr><td data-label="变量"><code>CYBERTRAIN_SESSION_PARTITIONED</code></td><td data-label="属性"><code>session_partitioned</code></td><td data-label="默认值"><code>false</code>；<code>1</code> 或 <code>true</code> 会加上 <code>Partitioned</code>（以及 <code>Secure</code>）</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">config/<wbr>app.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：config/app.rb"><code><span class="ln"><span class="c"># config/app.rb</span></span>
+<span class="ln"><span class="t">Cybertrain</span>.configure <span class="k">do</span> |c|</span>
+<span class="ln">  c.port = 3000</span>
+<span class="ln">  c.workers = 1</span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <ul class="points">
+      <li>服务器使用纯 HTTP/1.1：如需 TLS 和 HTTP/2，请在前面放 nginx 或 Caddy。生产环境中会话 cookie 带有 <code>Secure</code>，所以要通过 HTTPS 提供服务（仅当生产环境确实使用纯 http 时，才在 <code>config/app.rb</code> 中设置 <code>c.session_secure = false</code>）。</li>
+      <li>没有 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 时，生产环境会拒绝启动。</li>
+      <li>在生产环境中，异常会返回 500；而裸错误响应（路由器的纯文本 404、<code>head :not_found</code>、<code>render plain:</code>）在 <code>public/&lt;status&gt;.html</code> 存在时会被该文件替换；<code>cybertrain new</code> 会写出 <code>404.html</code> 和 <code>500.html</code>。</li>
+      <li><code>SIGTERM</code> 会让服务器停止接受新连接，让正在处理的请求完成，并在它们完成后退出，或在服务器的 <code>drain_timeout</code>（10 秒）之后退出。</li>
+      <li>监视器和重新构建循环永远不会在生产环境中运行。正在运行的 <code>cybertrain server</code> 会在 <code>cybertrain build</code> 持有 <code>tmp/cybertrain-build.lock</code> 期间跳过重新构建。</li>
+    </ul>
+  </section>
+
+  <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">
+    <h2 id="h-things-to-know"><span class="step-num" aria-hidden="true">+</span>须知</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">值得提前了解的限制和特殊之处，免得到时措手不及。</span></p>
+    <ul class="points know">
+      <li>会话只能保存 String，存放在 HMAC 签名的 cookie 中。</li>
+      <li>仅支持 SQLite，通过 Spinel 的 FFI 访问。</li>
+      <li>没有回溯（backtrace）：错误只显示类、消息、请求行以及模板名/行号。</li>
+      <li>视图中拼错的属性会渲染为空白，而不会抛出异常；这是一个已知的不足。</li>
+      <li>关联只来自 schema 中的外键；不支持 <code>has_many :through</code>、<code>includes</code>、<code>pluck</code>、<code>dependent:</code>、枚举、STI 或多态关联。</li>
+      <li>不支持 <code>namespace</code>、<code>respond_to</code>/格式、<code>constraints</code> 或 <code>mount</code>；<code>render json:</code> 只有最基本的功能。</li>
+      <li>在脚手架生成的模型中，只有第一个字符串字段会获得默认的存在性验证。</li>
+      <li>生成器对 <code>app/controllers</code> 和 <code>app/models</code> 使用词法扫描（正则表达式），而不是解析器。</li>
+      <li>视图在构建时嵌入：即使只修改了视图，也需要运行 <code>cybertrain build</code> 并重启，改动才能到达生产环境。</li>
+      <li>在与运行机器相同的操作系统和 CPU 上构建 <code>dist/</code>：该二进制文件链接系统的 SQLite。</li>
+      <li><code>SPINEL_WORKERS</code> 默认为 <code>1</code>。</li>
+      <li>只测试过 Spinel <code>2026.09.12</code>。</li>
+    </ul>
+  </section>
+
+  <section class="step" id="differences" aria-labelledby="h-differences">
+    <h2 id="h-differences"><span class="step-num" aria-hidden="true">+</span>与 Rails 的差异</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">README 中的完整表格，集中在一处。</span></p>
+    <div class="cmp-wrap cmp-doc">
+      <table class="cmp cmp-full">
+        <caption class="sr-only">Rails 与 CyberTrain 的差异（README 中的完整表格）</caption>
+        <thead><tr><th scope="col" class="cmp-rails">Rails</th><th scope="col" class="cmp-ct"><svg class="cmp-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg><span>CyberTrain</span></th></tr></thead>
+        <tbody>
+          <tr><td data-label="Rails"><code>rails console</code></td><td data-label="CyberTrain">没有控制台——Spinel 没有 <code>eval</code></td></tr>
+          <tr><td data-label="Rails">修改代码，正在运行的应用会自动加载</td><td data-label="CyberTrain">Ruby 代码需要重新构建；开发时 <code>cybertrain server</code> 会替你完成（重新构建、停止、<code>execv</code>）</td></tr>
+          <tr><td data-label="Rails">修改视图，无需重新加载</td><td data-label="CyberTrain">相同——开发时视图在每次请求时从磁盘解析</td></tr>
+          <tr><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code>（<code>new</code> 会遮蔽 <code>Klass.new(ctx)</code>）</td></tr>
+          <tr><td data-label="Rails"><code>before_action { do_thing }</code>（隐式 <code>self</code>）</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code>——无法对存储的块使用 <code>instance_exec</code>，因此回调需要显式接收控制器/记录</td></tr>
+          <tr><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code>——嵌套块需要显式接收 mapper</td></tr>
+          <tr><td data-label="Rails">ERB 编译为方法；可以使用任何对象、任何方法</td><td data-label="CyberTrain">按照固定的语法/分派表解释执行</td></tr>
+          <tr><td data-label="Rails">会话可以保存任何经 marshal 序列化的对象</td><td data-label="CyberTrain">会话值只能是 String，使用 HMAC 签名的 cookie</td></tr>
+          <tr><td data-label="Rails">多种数据库适配器</td><td data-label="CyberTrain">仅支持 SQLite，通过 FFI 访问</td></tr>
+          <tr><td data-label="Rails"><code>has_many :through</code>、<code>includes</code>、<code>pluck</code>、<code>dependent:</code>、枚举、STI、多态关联</td><td data-label="CyberTrain">未实现；关联只来自 schema 中的外键</td></tr>
+          <tr><td data-label="Rails"><code>namespace</code>、格式/<code>respond_to</code>、<code>constraints</code>、<code>mount</code></td><td data-label="CyberTrain">未实现——只有扁平的名称，仅支持 <code>render json:</code></td></tr>
+          <tr><td data-label="Rails">异常时显示完整回溯</td><td data-label="CyberTrain">类、消息、请求行、模板名/行号——Spinel 不提供回溯</td></tr>
+          <tr><td data-label="Rails">Rack 及其中间件，以及 <code>Gemfile</code> 中的任何 gem</td><td data-label="CyberTrain">不兼容 Rack；只有一小组固定的中间件；使用 Spinel 自己的 <code>spin-index</code>，仅限能在其 Ruby 子集下编译的内容</td></tr>
+          <tr><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code>——基于反射的测试运行器无法在 AOT 编译下工作</td></tr>
+          <tr><td data-label="Rails">认证、邮件、后台任务、ActionCable、资源管道、i18n</td><td data-label="CyberTrain">未构建（不在 MVP 范围内）</td></tr>
+        </tbody>
+      </table>
+      <p class="cmp-foot">此表并不完整。</p>
+    </div>
+  </section>
+
+  <section class="step step-last" id="where-next" aria-labelledby="h-where-next">
+    <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>下一步</h2>
+    <ul class="next-list">
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">完成后的应用及其测试。</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener"><span class="next-t">GitHub 上的 CyberTrain</span><span class="next-d">源代码、README 和发布版本。</span></a></li>
+      <li><a href="../api/index.html"><span class="next-t">API 参考</span><span class="next-d">应用用到的每个类和方法，附带示例。</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/spikes/NOTES.md" rel="noopener"><span class="next-t"><code>spikes/NOTES.md</code></span><span class="next-d">技术验证（spike）及其发现的编译器约束。</span></a></li>
+      <li><a href="https://github.com/matz/spinel" rel="noopener"><span class="next-t">Spinel</span><span class="next-d">matz 开发的 Ruby AOT 编译器。</span></a></li>
+      <li><a href="index.html"><span class="next-t">CyberTrain 首页</span><span class="next-d">概览、特性和工作原理。</span></a></li>
+    </ul>
+  </section>
+
+  </article>
+</div>
+
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <a class="foot-brand" href="index.html" aria-label="CyberTrain 首页">
+        <svg class="foot-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      </a>
+      <p class="foot-tag">Rails 风格的 Web 应用，编译为单个原生二进制文件。</p>
+    </div>
+    <div class="foot-cols">
+      <nav aria-label="项目">
+        <p class="foot-h">项目</p>
+        <ul>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
+          <li><a href="tutorial.html">教程</a></li>
+          <li><a href="../api/index.html">API</a></li>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="相关项目">
+        <p class="foot-h">相关</p>
+        <ul>
+          <li><a href="https://github.com/matz/spinel" rel="noopener">Spinel</a></li>
+          <li><a href="https://github.com/rubys/roundhouse" rel="noopener">Roundhouse</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="语言">
+        <p class="foot-h">语言</p>
+        <ul>
+          <li><a href="../tutorial.html" hreflang="en" lang="en">English</a></li>
+          <li><a href="../ja/tutorial.html" hreflang="ja" lang="ja">日本語</a></li>
+          <li><a href="../zh/tutorial.html" hreflang="zh-Hans" lang="zh-Hans" aria-current="true">简体中文</a></li>
+          <li><a href="../ru/tutorial.html" hreflang="ru" lang="ru">Русский</a></li>
+          <li><a href="../fr/tutorial.html" hreflang="fr" lang="fr">Français</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-base">
+      <p><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/README.md#license" rel="noopener">MIT 许可证</a> <span aria-hidden="true">&middot;</span> 预 Alpha 版</p>
+      <p>CyberTrain 是一个独立项目，与 Rails、Spinel 或 Roundhouse 均无关联。</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

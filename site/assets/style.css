@@ -558,6 +558,11 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 @media (max-width: 360px) {
   .nav-links .nav-roomy-only { display: none; }
 }
+/* Below 340px the language menu does not fit beside GitHub either, and the
+   footer links GitHub too. */
+@media (max-width: 339px) {
+  .nav-links li:has(> a[href^="https://github.com/"]) { display: none; }
+}
 /* ---------- Motion ---------------------------------------------------------
    CSS only, and all of it off under prefers-reduced-motion (the rule below
    stops every animation and transition) and on paper. Nothing waits on motion
@@ -712,3 +717,37 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   .env td::before { content: attr(data-label); display: block; font-family: var(--mono); font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 2px; }
   .env code { overflow-wrap: anywhere; }
 }
+
+/* ---------- Languages: switcher and per-script type ---------- */
+/* The switcher is a <details>, so it opens without JavaScript; site.js only
+   closes it on an outside click or Escape. */
+.lang-menu { position: relative; }
+.lang-menu summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; font-family: var(--mono); font-size: 12.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.lang-menu summary::-webkit-details-marker { display: none; }
+.lang-menu summary:hover, .lang-menu[open] summary { color: var(--ink); }
+.lang-menu summary::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); transition: transform .15s; }
+.lang-menu[open] summary::after { transform: translateY(1px) rotate(225deg); }
+.nav-links .lang-menu ul { position: absolute; right: 0; top: 100%; z-index: 5; display: block; min-width: 168px; padding: 6px 0; background: var(--surface-2); border: 1px solid var(--line-2); }
+.nav-links .lang-menu a { display: flex; min-height: 40px; padding: 0 16px; color: var(--ink-2); font-stretch: 100%; }
+.nav-links .lang-menu a:hover { color: var(--ink); background: var(--surface); }
+.nav-links .lang-menu a[aria-current="true"] { color: var(--ink); box-shadow: inset 2px 0 0 var(--accent); }
+.foot-cols a[aria-current="true"] { color: var(--ink); }
+:lang(ja) { --sans: 'Archivo', 'Archivo Fallback', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Noto Sans CJK JP', 'Yu Gothic UI', 'Yu Gothic', Meiryo, sans-serif;
+  --mono: 'JetBrains Mono', 'JetBrains Mono Fallback', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Hiragino Sans', 'Noto Sans JP', 'Noto Sans CJK JP', 'Yu Gothic', monospace; }
+:lang(zh) { --sans: 'Archivo', 'Archivo Fallback', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
+  --mono: 'JetBrains Mono', 'JetBrains Mono Fallback', ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', 'Noto Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', monospace; }
+/* Chinese and Japanese set no spaces between words: drop the extra word
+   spacing and the wide tracking meant for Latin capitals, and break lines the
+   way those languages do. */
+:lang(ja) body, :lang(zh) body { word-spacing: 0; line-break: strict; }
+:lang(ja) h1, :lang(ja) h2, :lang(ja) h3, :lang(zh) h1, :lang(zh) h2, :lang(zh) h3 { letter-spacing: 0; word-break: auto-phrase; }
+:lang(ja) .sec-label, :lang(ja) .spec-k, :lang(ja) .part-k, :lang(ja) .fact-k, :lang(ja) .look-k, :lang(ja) .reqs dt, :lang(ja) .outline-k, :lang(ja) .foot-h,
+:lang(ja) .doc-meta dt, :lang(ja) .toc-title, :lang(ja) .stage-k, :lang(ja) .why-k, :lang(ja) .callout-k, :lang(ja) .crumb, :lang(ja) .term-k, :lang(ja) .status,
+:lang(zh) .sec-label, :lang(zh) .spec-k, :lang(zh) .part-k, :lang(zh) .fact-k, :lang(zh) .look-k, :lang(zh) .reqs dt, :lang(zh) .outline-k, :lang(zh) .foot-h,
+:lang(zh) .doc-meta dt, :lang(zh) .toc-title, :lang(zh) .stage-k, :lang(zh) .why-k, :lang(zh) .callout-k, :lang(zh) .crumb, :lang(zh) .term-k, :lang(zh) .status { letter-spacing: .04em; }
+/* French and Russian words run long: on a phone a heading word or a button
+   label can be wider than the screen, so let them hyphenate and wrap. */
+:lang(fr) h1, :lang(fr) h2, :lang(fr) h3, :lang(ru) h1, :lang(ru) h2, :lang(ru) h3 { hyphens: auto; overflow-wrap: break-word; }
+@media (max-width: 640px) { .cta-row .btn { white-space: normal; text-align: center; } }
+/* Japanese and Chinese break between any two characters: keep each nav label on one line. */
+.nav-links a { white-space: nowrap; }
