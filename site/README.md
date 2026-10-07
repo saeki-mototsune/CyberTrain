@@ -12,7 +12,8 @@ into four languages (see [Translations](#translations)).
   (construction system, colour tokens, clear space, which file to use where).
 - `assets/fonts/` — Archivo and JetBrains Mono, latin subsets, self-hosted
   under the SIL Open Font License (`OFL-*.txt`).
-- `assets/og.png` — the social card.
+- `assets/og/<lang>/<page>.png` — the social cards (`og:image`, 1200 x 630),
+  one per page and language, rendered by `script/og-cards` (see below).
 
 `api/` is not in the repository: it is the API reference, which
 `script/api-docs` builds with YARD (see the comment at its top) and the
@@ -29,12 +30,33 @@ Publishing: [.github/workflows/pages.yml](../.github/workflows/pages.yml)
 deploys this directory to GitHub Pages on every push to `main` that touches
 it. One-time setup in the repository settings: Pages → Build and deployment →
 Source: **GitHub Actions**. Links between the pages and to their assets are
-relative, so the site works from the `/CyberTrain/` project path (the `og:image`
-URLs are absolute, as social previews require).
+relative, so the site works from the `/CyberTrain/` project path (the `og:image`,
+`og:url` and canonical URLs are absolute, as social previews require).
 
 Content rule: every command, code block and claim on these pages comes from
 [README.md](../README.md), [examples/blog](../examples/blog) or
 [docs/](../docs); when those change, change the site to match.
+
+## Social cards
+
+Every page carries Open Graph and Twitter card tags: `og:title`,
+`og:description` and `og:image:alt` in its own language, `og:url` and
+`<link rel="canonical">` pointing at itself, and `og:image` pointing at its own
+card, `assets/og/<lang>/<page>.png` (`en` for the English pages). A card shows
+the wordmark, the page's kicker (the home page's status line, or the header
+link for the page) and headline (the tagline, or the `<h1>`), one real command
+from the quick start, and the mark's train on its track. The words are read
+from the pages, so when a tagline or title changes, in any language, run
+
+```sh
+script/og-cards                 # all languages; or: script/og-cards ja
+```
+
+and commit the PNGs. It needs Node and Playwright with its Chromium, and Noto
+Sans JP, Noto Sans SC and Noto Sans installed for the Japanese, Chinese and
+Russian cards (the comment at the top of the script has the details). Social
+networks cache cards: after changing one, re-scrape the page with the
+network's card validator.
 
 ## Translations
 
