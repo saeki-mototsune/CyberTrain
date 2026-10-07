@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0A0A">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="../assets/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../assets/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="../assets/brand/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/fonts/fonts.css">
+<link rel="stylesheet" href="../assets/style.css">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:locale:alternate" content="fr_FR">
+<meta property="og:site_name" content="CyberTrain">
+<meta property="og:image" content="https://saeki-mototsune.github.io/CyberTrain/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CyberTrain: веб-приложения в духе Rails, скомпилированные в один нативный бинарный файл.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="alternate" hreflang="en" href="https://saeki-mototsune.github.io/CyberTrain/tutorial.html">
+<link rel="alternate" hreflang="ja" href="https://saeki-mototsune.github.io/CyberTrain/ja/tutorial.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://saeki-mototsune.github.io/CyberTrain/zh/tutorial.html">
+<link rel="alternate" hreflang="ru" href="https://saeki-mototsune.github.io/CyberTrain/ru/tutorial.html">
+<link rel="alternate" hreflang="fr" href="https://saeki-mototsune.github.io/CyberTrain/fr/tutorial.html">
+<link rel="alternate" hreflang="x-default" href="https://saeki-mototsune.github.io/CyberTrain/tutorial.html">
+<script src="../assets/site.js" defer></script>
+
+<title>Начало работы: блог · CyberTrain</title>
+<meta name="description" content="Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build.">
+<meta property="og:title" content="Начало работы с CyberTrain: блог">
+<meta property="og:description" content="Повторяет Getting Started самого Rails: блог со статьями и комментариями, построенный на CyberTrain и Spinel.">
+</head>
+<body class="tutorial">
+<a class="skip" href="#main">Перейти к содержимому</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html" aria-label="CyberTrain — главная">
+      <svg class="brand-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      <svg class="brand-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg>
+    </a>
+    <nav class="nav-links" aria-label="Основная навигация">
+      <ul>
+        <li class="nav-wide-only"><a href="index.html#how-it-works">Как это работает</a></li>
+        <li><a href="tutorial.html" aria-current="page">Учебник</a></li>
+        <li><a href="playground.html">Песочница</a></li>
+        <li class="nav-roomy-only"><a href="../api/index.html">API</a></li>
+        <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
+        <li><details class="lang-menu">
+          <summary aria-label="Язык: русский">RU</summary>
+          <ul>
+            <li><a href="../tutorial.html" hreflang="en" lang="en">English</a></li>
+            <li><a href="../ja/tutorial.html" hreflang="ja" lang="ja">日本語</a></li>
+            <li><a href="../zh/tutorial.html" hreflang="zh-Hans" lang="zh-Hans">简体中文</a></li>
+            <li><a href="../ru/tutorial.html" hreflang="ru" lang="ru" aria-current="true">Русский</a></li>
+            <li><a href="../fr/tutorial.html" hreflang="fr" lang="fr">Français</a></li>
+          </ul>
+        </details></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="wrap">
+  <header class="doc-hero">
+    <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Учебник</span></p>
+    <h1>Начало работы: блог</h1>
+    <p class="doc-intro">Повторяет <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a> самого Rails: блог со статьями и комментариями. Вы создадите скаффолд статей, добавите валидации, вложите в статьи комментарии, напишете тест, который прогоняет приложение внутри процесса, и соберёте приложение в готовый к развёртыванию каталог <code>dist/</code>. Готовое приложение — <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>; оно проверяется в CI на Linux и macOS.</p>
+    <dl class="doc-meta">
+      <div><dt>Что нужно</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, заголовки SQLite 3 (Spinel <code>2026.09.12</code> установится сам) <a class="meta-link" href="#requirements">Шаг 00</a></dd></div>
+      <div><dt>Начало</dt><dd><code>gem install cybertrain</code></dd></div>
+      <div><dt>Результат</dt><dd><code>dist/blog</code></dd></div>
+    </dl>
+  </header>
+</div>
+
+<div class="wrap doc">
+  <nav class="toc" aria-label="Шаги учебника">
+    <details class="toc-d" open>
+      <summary class="toc-sum"><span class="toc-title">Шаги 00&ndash;13</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
+    <ol>
+      <li><a href="#requirements"><span class="toc-n">00</span>Требования</a></li>
+      <li><a href="#install"><span class="toc-n">01</span>Установка CLI</a></li>
+      <li><a href="#new-app"><span class="toc-n">02</span>Создание приложения</a></li>
+      <li><a href="#scaffold-article"><span class="toc-n">03</span>Скаффолд статьи</a></li>
+      <li><a href="#root-route"><span class="toc-n">04</span>Корневой маршрут</a></li>
+      <li><a href="#validations"><span class="toc-n">05</span>Валидации модели</a></li>
+      <li><a href="#articles-controller"><span class="toc-n">06</span>ArticlesController</a></li>
+      <li><a href="#run"><span class="toc-n">07</span>Генерация, миграции, запуск</a></li>
+      <li><a href="#scaffold-comment"><span class="toc-n">08</span>Скаффолд комментариев</a></li>
+      <li><a href="#nested-routes"><span class="toc-n">09</span>Вложенные маршруты</a></li>
+      <li><a href="#comments-controller"><span class="toc-n">10</span>CommentsController</a></li>
+      <li><a href="#views"><span class="toc-n">11</span>Представления и партиалы</a></li>
+      <li><a href="#test"><span class="toc-n">12</span>Тестирование</a></li>
+      <li><a href="#ship"><span class="toc-n">13</span>Сборка для развёртывания</a></li>
+      <li class="toc-x"><a href="#things-to-know"><span class="toc-n">+</span>Что нужно знать</a></li>
+      <li class="toc-x"><a href="#differences"><span class="toc-n">+</span>Отличия от Rails</a></li>
+      <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>Что дальше</a></li>
+    </ol>
+    </details>
+  </nav>
+
+  <article class="doc-body">
+
+  <section class="step" id="requirements" aria-labelledby="h-requirements">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Подготовка <span aria-hidden="true">&middot;</span> Ruby, <code>cc</code>, SQLite</p>
+    <h2 id="h-requirements"><span class="step-num" aria-hidden="true">00</span>Требования</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">CyberTrain компилируется через Spinel в C, поэтому ему нужны инструменты C и заголовки SQLite; команда <code>cybertrain</code> — это гем, поэтому ей нужен Ruby.</span></p>
+    <ul class="checklist">
+      <li>Ruby 3.2+ и RubyGems — только для команды <code>cybertrain</code>; приложения никогда не запускаются на CRuby.</li>
+      <li>Spinel <code>2026.09.12</code>; с другими версиями не тестировался. Вручную его устанавливать не нужно: первая команда, которой он нужен, собирает этот релиз в <code>~/.cybertrain</code> (несколько минут, один раз), если <code>spinel</code> этого релиза ещё нет в <code>PATH</code>.</li>
+      <li>Инструменты C (<code>cc</code> или компилятор, указанный в <code>CC</code>) и <code>make</code>, а также <code>git</code> и <code>curl</code> — для сборки Spinel, который компилирует каждую программу в C.</li>
+      <li>Заголовки и библиотека SQLite 3: <code>libsqlite3-dev</code> в Debian/Ubuntu; на macOS входят в Xcode command line tools.</li>
+      <li>Заголовки OpenSSL (<code>libssl-dev</code>) необязательны: без них Spinel собирается без своего пакета <code>openssl</code>, который CyberTrain не использует.</li>
+    </ul>
+    <p><code>cybertrain doctor</code> проверяет эти инструменты и заголовки, а также установку Spinel; если чего-то обязательного не хватает, она также выводит команду установки для вашей платформы.</p>
+    <details class="ci">
+      <summary><span class="ci-t">Как CyberTrain устанавливает Spinel</span><span class="ci-d">Что происходит, когда команде впервые нужен <code>spin</code></span></summary>
+      <div class="ci-body">
+    <p><code>cybertrain new</code>, <code>db</code>, <code>server</code>, <code>build</code> и <code>spin</code> сначала ищут Spinel <code>2026.09.12</code>: <code>spinel</code> и <code>spin</code> этого релиза, уже доступные в <code>PATH</code>; иначе — копию в <code>~/.cybertrain/spinel/2026.09.12/</code>; иначе собирают эту копию из релизного тега Spinel (<code>git clone</code>, <code>make deps</code>, <code>make -j</code>, <code>make install</code>) — один раз, за несколько минут. Лог пишется в <code>~/.cybertrain/log/spinel-2026.09.12-build.log</code>; если не хватает инструмента, нужного для сборки, <code>cybertrain</code> ещё до её начала сообщает, какого именно, и выводит команду установки для вашей платформы.</p>
+    <p><code>cybertrain setup</code> делает то же самое по запросу (<code>--force</code> пересобирает копию в <code>~/.cybertrain</code>) и, если используется именно её копия, выводит строку, добавляющую её в ваш <code>PATH</code>, чтобы запускать <code>spin</code> самостоятельно:</p>
+<figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; любой каталог</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал, любой каталог"><code><span class="ln cmd">export PATH=<span class="s">"$HOME/.cybertrain/bin:$PATH"</span></span></code></pre>
+</figure>
+    <p>В <code>~/.cybertrain/bin</code> лежат ссылки <code>spinel</code> и <code>spin</code> на используемый релиз. Если этого каталога нет в <code>PATH</code>, <code>cybertrain spin ARGS...</code> запускает <code>spin</code> этого релиза из любого каталога. <code>CYBERTRAIN_HOME</code> заменяет <code>~/.cybertrain</code>, а <code>CYBERTRAIN_SPINEL_HOME=PREFIX</code> вместо этого использует Spinel, установленный в <code>PREFIX</code> (это должен быть тот же релиз). <code>spinel</code> другого релиза в <code>PATH</code> никогда не используется и не затрагивается.</p>
+      </div>
+    </details>
+    <p class="note">Негде устанавливать? <a href="playground.html">Песочница</a> открывает этот блог в GitHub Codespace, где шаги 02, 03, 04 и 07 уже выполнены.</p>
+  </section>
+
+  <section class="step" id="install" aria-labelledby="h-install">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Подготовка <span aria-hidden="true">&middot;</span> CLI <code>cybertrain</code></p>
+    <h2 id="h-install"><span class="step-num" aria-hidden="true">01</span>Установка CLI</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t"><code>cybertrain</code> — команда, которая создаёт приложения, генерирует скаффолды ресурсов, выполняет миграции, запускает сервер и собирает.</span></p>
+    <p>Первая строка устанавливает её из RubyGems. Остальное — весь учебник в двух словах; шаги ниже разбирают его по одной команде.</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; любой каталог, затем&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; любой каталог, затем blog/"><code><span class="ln cmd">gem install cybertrain</span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># при первом запуске устанавливает Spinel 2026.09.12 (несколько минут)</span></span>
+<span class="ln cmd">cd blog</span>
+<span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
+<span class="ln cmd">cybertrain db migrate</span>
+<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000</span></span>
+<span class="ln cmd">cybertrain build             <span class="c"># продакшен: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
+</figure>
+    <p>Команда <code>cybertrain</code> написана на обычном Ruby, и гем запускает её под CRuby (3.2 или новее); ни фреймворка, ни Spinel в геме нет. Её команды (их выводит <code>cybertrain help</code>):</p>
+    <ul class="points">
+      <li><code>cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]</code> создаёт приложение в NAME, затем запускает в нём <code>spin lock</code> и <code>spin run gen</code>, при необходимости сначала устанавливая Spinel.</li>
+      <li><code>cybertrain generate scaffold NAME field:type ...</code> (псевдоним <code>g scaffold</code>) добавляет ресурс в приложение в текущем каталоге.</li>
+      <li><code>cybertrain db migrate</code> выполняет генерацию, применяет ожидающие миграции и генерирует снова (<code>spin run gen; spin run db -- migrate; spin run gen</code>); <code>cybertrain migration</code> оставлена как псевдоним.</li>
+      <li><code>cybertrain db COMMAND...</code> после <code>spin run gen</code> запускает любую другую команду базы данных: <code>status</code>, <code>rollback [N]</code> (после которой генерация выполняется снова), <code>schema:dump</code>, <code>create</code>.</li>
+      <li><code>cybertrain server [PORT]</code> выполняет генерацию, затем запускает сервер разработки (<code>spin run gen; spin run NAME</code> или <code>spin run NAME -- PORT</code>; порт по умолчанию — 3000).</li>
+      <li><code>cybertrain build</code> собирает NAME со встроенными <code>app/views/</code> и формирует <code>dist/</code> (бинарный файл, <code>public/</code>, <code>storage/</code>, <code>tmp/</code>).</li>
+      <li><code>cybertrain spin ARGS...</code> запускает <code>spin</code> с зафиксированным Spinel из любого каталога: <code>cybertrain spin test</code>, <code>cybertrain spin run gen -- --check</code>.</li>
+      <li><code>cybertrain setup [--force]</code> устанавливает Spinel <code>2026.09.12</code> в <code>~/.cybertrain</code>, если <code>spinel</code> этого релиза ещё нет в <code>PATH</code>; <code>--force</code> пересобирает копию в <code>~/.cybertrain</code>.</li>
+      <li><code>cybertrain doctor</code> проверяет инструменты C, заголовки SQLite и установку Spinel.</li>
+      <li><code>cybertrain version</code> выводит версию (<code>cybertrain 0.2.1</code>); <code>cybertrain help</code> выводит справку по использованию.</li>
+    </ul>
+    <p class="note"><code>db</code>, <code>server</code> и <code>build</code> запускаются внутри приложения; NAME — это <code>[package] name</code> из его <code>spin.toml</code>.</p>
+  </section>
+
+  <section class="step" id="new-app" aria-labelledby="h-new-app">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Вы пишете <span aria-hidden="true">&middot;</span> <code>blog/</code></p>
+    <h2 id="h-new-app"><span class="step-num" aria-hidden="true">02</span>Создание приложения</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Вы получаете привычную для Rails структуру каталогов и три программы в <code>bin/</code>: <code>bin/blog.rb</code> (приложение), <code>bin/gen.rb</code> (генератор) и <code>bin/db.rb</code> (миграции при разработке).</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; любой каталог</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал, любой каталог"><code><span class="ln cmd">cybertrain new blog</span>
+<span class="ln cmd">cd blog</span></code></pre>
+</figure>
+    <p><code>cybertrain new</code> создаёт приложение, чей <code>spin.toml</code> указывает на релиз, соответствующий CLI:</p>
+    <figure class="code" data-lang="toml">
+<figcaption><span class="code-path">spin.toml</span><span class="code-lang">toml</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: spin.toml"><code><span class="ln">[package]</span>
+<span class="ln">name = <span class="s">"blog"</span></span>
+<span class="ln">version = <span class="s">"0.1.0"</span></span>
+<span class="ln"></span>
+<span class="ln">[dependencies]</span>
+<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.1"</span> }</span></code></pre>
+</figure>
+    <p>Затем она проверяет, что Spinel установлен (в первый раз это означает сборку Spinel <code>2026.09.12</code> в <code>~/.cybertrain</code>: несколько минут, один раз; см. <a href="#requirements">шаг 00</a>), и запускает <code>spin lock</code> (spin загружает фреймворк в свой кэш <code>~/.cache/spin/packages/</code> и фиксирует коммит в <code>spin.lock</code>) и <code>spin run gen</code> — примерно так же, как <code>rails new</code> запускает <code>bundle install</code>, — так что <code>cybertrain server</code> сразу работает. В конце она выводит следующие шаги. Ничего из фреймворка в приложение не копируется; закоммитьте <code>spin.toml</code> и <code>spin.lock</code>.</p>
+    <p class="note">Если не удаётся установить Spinel или выполнить один из двух шагов <code>spin</code>, файлы остаются, <code>new</code> завершается с кодом 1 и выводит, что запустить после устранения причины (для Spinel: <code>cybertrain setup</code>, затем <code>cybertrain spin lock &amp;&amp; cybertrain spin run gen</code> в новом каталоге). <code>--skip-spin</code> только записывает файлы; <code>--path DIR</code> вместо этого делает зависимостью локальную копию репозитория, <code>--git URL [--ref R]</code> — фреймворк по адресу URL (на ветке или теге R), а <code>--version V</code> — версию из индекса, когда <code>cybertrain</code> появится в <code>spin-index</code>.</p>
+    <p>Имена приложений состоят из строчных букв, цифр и <code>_</code> и начинаются с буквы. Сгенерированное дерево:</p>
+    <figure class="code" data-lang="text">
+<figcaption><span class="code-path">blog/</span><span class="code-lang">text</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: blog/"><code><span class="ln">blog/</span>
+<span class="ln">  spin.toml  config/app.rb  config/routes.rb</span>
+<span class="ln">  db/schema.rb  db/migrate/</span>
+<span class="ln">  app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/</span>
+<span class="ln">  public/  bin/blog.rb  bin/gen.rb  bin/db.rb</span>
+<span class="ln">  gen/  storage/  tmp/  test/</span></code></pre>
+</figure>
+    <p><code>bin/blog.rb</code> — единственная точка входа приложения, программа, которую компилирует <code>spin build blog</code>: <code>./blog</code> обслуживает запросы, <code>./blog migrate</code> и <code>./blog db status</code> управляют базой данных. <code>bin/gen.rb</code> запускает генератор (<code>spin run gen</code>), а <code>bin/db.rb</code> запускает мигратор во время разработки (его использует <code>cybertrain db migrate</code>, потому что <code>bin/blog.rb</code> не скомпилируется, пока первая миграция не сгенерирует <code>gen/models/</code>). В <code>gen/</code> уже лежит <code>views.rb</code> — закоммиченная пустая таблица встроенных представлений.</p>
+    <p><code>ApplicationController</code> изначально выглядит так, поэтому отсутствующая запись через <code>rescue_from</code> превращается в 404:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>application_controller.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/controllers/application_controller.rb"><code><span class="ln"><span class="k">class</span> <span class="t">ApplicationController</span> &lt; <span class="t">Cybertrain</span>::<span class="t">Controller</span></span>
+<span class="ln">  rescue_from <span class="t">Cybertrain</span>::<span class="t">RecordNotFound</span>, <span class="y">with:</span> <span class="y">:record_not_found</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">private</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> record_not_found</span>
+<span class="ln">    render <span class="y">plain:</span> <span class="s">"Not Found"</span>, <span class="y">status:</span> <span class="y">:not_found</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+  </section>
+
+  <section class="step" id="scaffold-article" aria-labelledby="h-scaffold-article">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Вы пишете <span aria-hidden="true">&middot;</span> <code>app/</code>, <code>db/migrate/</code></p>
+    <h2 id="h-scaffold-article"><span class="step-num" aria-hidden="true">03</span>Скаффолд статьи</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Одна команда создаёт весь CRUD-срез, как в Rails.</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; blog/"><code><span class="ln cmd">cybertrain generate scaffold article title:string body:text</span></code></pre>
+</figure>
+    <p>Она создаёт миграцию, модель, контроллер и пять представлений (<code>index</code>, <code>show</code>, <code>new</code>, <code>edit</code>, <code>_form</code>) и вставляет <code>resources :articles</code> в <code>config/routes.rb</code>. Типы полей: <code>string</code>, <code>text</code>, <code>integer</code>, <code>float</code>, <code>boolean</code>, <code>date</code>, <code>datetime</code> и <code>references</code>; по умолчанию — <code>string</code>. <code>cybertrain g scaffold</code> из быстрого старта — та же самая команда.</p>
+    <p class="note">Существующие файлы никогда не перезаписываются: для каждого файла выводится <code>create</code>, <code>identical</code> или <code>exist</code>.</p>
+  </section>
+
+  <section class="step" id="root-route" aria-labelledby="h-root-route">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Вы пишете <span aria-hidden="true">&middot;</span> <code>config/routes.rb</code></p>
+    <h2 id="h-root-route"><span class="step-num" aria-hidden="true">04</span>Корневой маршрут</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t"><code>/</code> должен показывать список статей.</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">config/<wbr>routes.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: config/routes.rb"><code><span class="ln"><span class="c"># config/routes.rb</span></span>
+<span class="ln"><span class="t">Cybertrain</span>::<span class="t">Routes</span>.draw <span class="k">do</span></span>
+<span class="ln">  root <span class="s">"articles#index"</span></span>
+<span class="ln">  resources <span class="y">:articles</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p class="note">Маршруты читаются при сборке: <code>spin run gen</code> превращает их в <code>gen/routes.rb</code>. <code>cybertrain server</code>, <code>cybertrain db migrate</code> и <code>cybertrain build</code> запускают его за вас.</p>
+  </section>
+
+  <section class="step" id="validations" aria-labelledby="h-validations">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Вы пишете <span aria-hidden="true">&middot;</span> <code>app/models/</code></p>
+    <h2 id="h-validations"><span class="step-num" aria-hidden="true">05</span>Валидации модели</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Как и в руководстве Rails, добавьте валидацию длины вручную.</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>models/<wbr>article.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/models/article.rb"><code><span class="ln"><span class="c"># app/models/article.rb -- only the first string field gets a default</span></span>
+<span class="ln"><span class="c"># presence validation; add anything past that yourself.</span></span>
+<span class="ln"><span class="k">class</span> <span class="t">Article</span></span>
+<span class="ln">  validates <span class="y">:title</span>, <span class="y">presence:</span> <span class="k">true</span></span>
+<span class="ln">  validates <span class="y">:body</span>, <span class="y">presence:</span> <span class="k">true</span>, <span class="y">length:</span> { <span class="y">minimum:</span> 10 }</span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p>У <code>class Article</code> суперкласс не указан: суперкласс <code>Cybertrain::Model</code>, столбцы и finder-методы берутся из <code>gen/models/article.rb</code>. Неудачное сохранение выдаёт сообщения вроде «Title can't be blank» и «Body is too short (minimum is 10 characters)».</p>
+  </section>
+
+  <section class="step" id="articles-controller" aria-labelledby="h-articles-controller">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Вы пишете <span aria-hidden="true">&middot;</span> <code>app/controllers/</code></p>
+    <h2 id="h-articles-controller"><span class="step-num" aria-hidden="true">06</span>ArticlesController</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Полный CRUD в духе Rails, вплоть до strong params и связки «flash, затем редирект», — за исключением двух вещей, которые Spinel навязывает везде.</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/controllers/articles_controller.rb"><code><span class="ln"><span class="c"># app/controllers/articles_controller.rb (index/show/edit are as plain as</span></span>
+<span class="ln"><span class="c"># Rails' own scaffold; update mirrors create)</span></span>
+<span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> new_action   <span class="c"># a `new` method would shadow ArticlesController.new</span></span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> create</span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new(article_params)</span>
+<span class="ln">    <span class="k">if</span> <span class="v">@article</span>.save</span>
+<span class="ln">      flash[<span class="y">:notice</span>] = <span class="s">"Article was successfully created."</span></span>
+<span class="ln">      redirect_to article_path(<span class="v">@article</span>), <span class="y">status:</span> <span class="y">:see_other</span></span>
+<span class="ln">    <span class="k">else</span></span>
+<span class="ln">      render <span class="y">:new</span>, <span class="y">status:</span> <span class="y">:unprocessable_entity</span></span>
+<span class="ln">    <span class="k">end</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">private</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> set_article</span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.find(params[<span class="y">:id</span>])</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> article_params</span>
+<span class="ln">    params.<span class="k">require</span>(<span class="y">:article</span>).permit(<span class="y">:title</span>, <span class="y">:body</span>)</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <aside class="callout" aria-label="Правило Spinel: new_action">
+      <p class="callout-k">Правило Spinel</p>
+      <h3><code>new_action</code>, а не <code>new</code></h3>
+      <p>Метод, буквально названный <code>new</code>, затенил бы <code>ArticlesController.new(ctx)</code>, с помощью которого фреймворк создаёт контроллер. Маршрут <code>GET /articles/new</code> по-прежнему ведёт к нему; вы лишь переименовываете метод. Представление по-прежнему называется <code>new.html.erb</code>, а <code>render :new</code> не меняется.</p>
+    </aside>
+    <aside class="callout" aria-label="Правило Spinel: колбэки">
+      <p class="callout-k">Правило Spinel</p>
+      <h3>Колбэки получают контроллер явно</h3>
+      <p>Для сохранённого блока нет <code>instance_exec</code>, поэтому колбэк-блок получает контроллер (или запись) как аргумент: <code>before_action { |c| c.do_thing }</code>, а не <code>before_action { do_thing }</code>. Действия и колбэки вызываются по их буквальному имени, никогда через <code>send</code>.</p>
+    </aside>
+    <p>Скаффолд создаёт полный контроллер, включая также <code>index</code>, <code>show</code>, <code>edit</code>, <code>update</code> и <code>destroy</code>; во фрагменте выше они опущены. В <code>index</code> — <code>@articles = Article.all.to_a</code>: <code>.to_a</code> обязателен.</p>
+    <p class="note">Переменные экземпляра находятся лексическим сканированием <code>@ivar =</code>, поэтому после добавления новой заново запустите <code>cybertrain spin run gen</code>; сервер разработки делает это за вас.</p>
+  </section>
+
+  <section class="step" id="run" aria-labelledby="h-run">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Сборка, затем запуск <span aria-hidden="true">&middot;</span> <code>gen/</code> &rarr; <code>build/bin/blog</code></p>
+    <h2 id="h-run"><span class="step-num" aria-hidden="true">07</span>Генерация, миграции, запуск</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Превратить схему и маршруты в <code>gen/</code>, создать базу данных SQLite, запустить сервер.</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; blog/"><code><span class="ln cmd">cybertrain db migrate    <span class="c"># spin run gen; spin run db -- migrate; spin run gen</span></span>
+<span class="ln cmd">cybertrain server        <span class="c"># http://127.0.0.1:3000; пересборка при правках Ruby, представления перезагружаются без пересборки</span></span></code></pre>
+</figure>
+    <p><code>spin run gen</code> читает <code>db/schema.rb</code> и <code>config/routes.rb</code>, сканирует <code>app/</code> и записывает <code>gen/</code>; <code>spin run db -- migrate</code> применяет <code>db/migrate/*.rb</code> и перезаписывает <code>db/schema.rb</code>. Порядок важен: первый <code>spin run gen</code> помещает новую миграцию в <code>gen/migrations.rb</code>, который подключает <code>bin/db.rb</code>, а второй строит модели по перезаписанному <code>db/schema.rb</code>.</p>
+    <p><code>cybertrain server</code> выводит каждую запускаемую команду <code>spin</code>, а затем стартовый баннер приложения. При первом запуске приложение компилируется, так что это займёт некоторое время:</p>
+    <figure class="code" data-lang="text">
+<figcaption><span class="code-path">вывод &mdash; cybertrain server</span><span class="code-lang">text</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: вывод cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.2.1</span>
+<span class="ln">=&gt; development environment (1 worker)</span>
+<span class="ln">=&gt; Watching app/, config/ and db/schema.rb for changes</span>
+<span class="ln">* Listening on http://127.0.0.1:3000</span>
+<span class="ln">Use Ctrl-C to stop</span></code></pre>
+</figure>
+    <ul class="points">
+      <li>Заново запускайте <code>cybertrain spin run gen</code> и коммитьте <code>gen/</code> после изменения схемы, маршрутов или колбэков и переменных экземпляра контроллера либо модели. Сервер разработки делает это за вас.</li>
+      <li>Порт меняется так: <code>cybertrain server 4000</code> (или <code>PORT=4000</code>).</li>
+      <li><code>cybertrain db</code> добавляет <code>--</code>, который нужен <code>spin run db</code> перед аргументами; <code>cybertrain db status</code> и другие команды базы данных работают так же.</li>
+    </ul>
+    <aside class="callout" aria-label="Правило Spinel: нет консоли">
+      <p class="callout-k">Правило Spinel</p>
+      <h3>Консоли нет</h3>
+      <p>У <code>rails console</code> нет аналога: в Spinel нет <code>eval</code>. Изменения в Ruby требуют пересборки, которую в режиме разработки за вас выполняет <code>cybertrain server</code> (пересборка, остановка, <code>execv</code>). В режиме разработки представления разбираются с диска при каждом запросе, поэтому правка представления не требует пересборки; для продакшена <code>cybertrain build</code> встраивает их в бинарный файл.</p>
+    </aside>
+  </section>
+
+  <section class="step" id="scaffold-comment" aria-labelledby="h-scaffold-comment">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Вы пишете <span aria-hidden="true">&middot;</span> <code>db/migrate/</code>, <code>app/</code></p>
+    <h2 id="h-scaffold-comment"><span class="step-num" aria-hidden="true">08</span>Скаффолд комментариев</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Тип <code>references</code> даёт внешний ключ, из которого выводится ассоциация.</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; blog/"><code><span class="ln cmd">cybertrain generate scaffold comment commenter:string body:text article:references</span>
+<span class="ln cmd">cybertrain db migrate    <span class="c"># скаффолд создал миграцию для таблицы comments</span></span></code></pre>
+</figure>
+    <p><code>article:references</code> добавляет столбец <code>article_id</code>, индекс и внешний ключ — этого достаточно, чтобы <code>Article</code>/<code>Comment</code> получили ассоциацию; писать <code>has_many</code>/<code>belongs_to</code> не нужно, <code>spin run gen</code> выводит её из внешнего ключа. Получившаяся схема:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">db/<wbr>schema.rb (фрагмент)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: db/schema.rb (фрагмент)"><code><span class="ln">  s.create_table <span class="s">"comments"</span> <span class="k">do</span> |t|</span>
+<span class="ln">    t.string <span class="s">"commenter"</span></span>
+<span class="ln">    t.text <span class="s">"body"</span></span>
+<span class="ln">    t.integer <span class="s">"article_id"</span>, <span class="y">null:</span> <span class="k">false</span></span>
+<span class="ln">    t.datetime <span class="s">"created_at"</span>, <span class="y">null:</span> <span class="k">false</span></span>
+<span class="ln">    t.datetime <span class="s">"updated_at"</span>, <span class="y">null:</span> <span class="k">false</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  s.add_index <span class="s">"comments"</span>, [<span class="s">"article_id"</span>], <span class="y">name:</span> <span class="s">"index_comments_on_article_id"</span></span>
+<span class="ln"></span>
+<span class="ln">  s.add_foreign_key <span class="s">"comments"</span>, <span class="s">"articles"</span>, <span class="y">column:</span> <span class="s">"article_id"</span></span></code></pre>
+</figure>
+    <p>Скаффолд вставляет отдельную строку <code>resources :comments</code>, которую заменит следующий шаг.</p>
+    <aside class="callout" aria-label="Удаление статьи с комментариями">
+      <p class="callout-k">Из готового примера</p>
+      <h3>Удаление статьи с комментариями</h3>
+      <p>Ассоциации выводятся только из внешних ключей, а <code>dependent:</code> не реализован. Пример добавляет колбэк <code>before_destroy</code>, который получает запись явно:</p>
+      <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>models/<wbr>article.rb (фрагмент)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/models/article.rb (фрагмент)"><code><span class="ln">  <span class="c"># Rails' `has_many :comments, dependent: :destroy`: the foreign key</span></span>
+<span class="ln">  <span class="c"># would refuse to delete an article that still has comments.</span></span>
+<span class="ln">  before_destroy { |article| <span class="t">Comment</span>.where(<span class="y">article_id:</span> article.id).delete_all }</span></code></pre>
+</figure>
+    </aside>
+  </section>
+
+  <section class="step" id="nested-routes" aria-labelledby="h-nested-routes">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Вы пишете <span aria-hidden="true">&middot;</span> <code>config/routes.rb</code></p>
+    <h2 id="h-nested-routes"><span class="step-num" aria-hidden="true">09</span>Вложенные маршруты</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">В руководстве Rails комментарии вложены в статьи.</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">config/<wbr>routes.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: config/routes.rb"><code><span class="ln"><span class="t">Cybertrain</span>::<span class="t">Routes</span>.draw <span class="k">do</span></span>
+<span class="ln">  root <span class="s">"articles#index"</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="c"># A nested block takes the mapper explicitly (Spinel's instance_eval</span></span>
+<span class="ln">  <span class="c"># trampoline only rewires `self` for the outermost block): `articles.resources`.</span></span>
+<span class="ln">  resources <span class="y">:articles</span> <span class="k">do</span> |articles|</span>
+<span class="ln">    articles.resources <span class="y">:comments</span>, <span class="y">only:</span> [<span class="y">:create</span>, <span class="y">:destroy</span>]</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <aside class="callout" aria-label="Правило Spinel: явный маппер">
+      <p class="callout-k">Правило Spinel</p>
+      <h3>Вложенные блоки получают маппер явно</h3>
+      <p>Пишите <code>resources :articles do |articles|</code> и <code>articles.resources :comments</code>, а не просто <code>resources :comments</code>. Трамплин <code>instance_eval</code> в Spinel переназначает <code>self</code> только для самого внешнего блока.</p>
+    </aside>
+  </section>
+
+  <section class="step" id="comments-controller" aria-labelledby="h-comments-controller">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Вы пишете <span aria-hidden="true">&middot;</span> <code>app/controllers/</code></p>
+    <h2 id="h-comments-controller"><span class="step-num" aria-hidden="true">10</span>CommentsController</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Доступны только два действия, а родительская статья берётся из URL (<code>params[:article_id]</code>), а не из <code>:id</code>.</span></p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>comments_controller.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/controllers/comments_controller.rb"><code><span class="ln"><span class="k">class</span> <span class="t">CommentsController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  before_action <span class="y">:set_article</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> create</span>
+<span class="ln">    <span class="v">@comment</span> = <span class="t">Comment</span>.new(comment_params)</span>
+<span class="ln">    <span class="v">@comment</span>.article_id = <span class="v">@article</span>.id</span>
+<span class="ln">    <span class="k">if</span> <span class="v">@comment</span>.save</span>
+<span class="ln">      flash[<span class="y">:notice</span>] = <span class="s">"Comment was successfully created."</span></span>
+<span class="ln">    <span class="k">else</span></span>
+<span class="ln">      flash[<span class="y">:alert</span>] = <span class="s">"Comment could not be saved: #{@comment.errors.full_messages.join(", ")}"</span></span>
+<span class="ln">    <span class="k">end</span></span>
+<span class="ln">    redirect_to article_path(<span class="v">@article</span>), <span class="y">status:</span> <span class="y">:see_other</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> destroy</span>
+<span class="ln">    <span class="v">@comment</span> = <span class="t">Comment</span>.where(<span class="y">article_id:</span> <span class="v">@article</span>.id).find(params[<span class="y">:id</span>])</span>
+<span class="ln">    <span class="v">@comment</span>.destroy</span>
+<span class="ln">    flash[<span class="y">:notice</span>] = <span class="s">"Comment was successfully destroyed."</span></span>
+<span class="ln">    redirect_to article_path(<span class="v">@article</span>), <span class="y">status:</span> <span class="y">:see_other</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">private</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> set_article</span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.find(params[<span class="y">:article_id</span>])</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> comment_params</span>
+<span class="ln">    params.<span class="k">require</span>(<span class="y">:comment</span>).permit(<span class="y">:commenter</span>, <span class="y">:body</span>)</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p>Затем добавьте валидации в модель комментария:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>models/<wbr>comment.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/models/comment.rb"><code><span class="ln"><span class="k">class</span> <span class="t">Comment</span></span>
+<span class="ln">  validates <span class="y">:commenter</span>, <span class="y">presence:</span> <span class="k">true</span></span>
+<span class="ln">  validates <span class="y">:body</span>, <span class="y">presence:</span> <span class="k">true</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p class="note"><code>Article#comments</code> здесь — это Array, поэтому рельсовый <code>@article.comments.find(params[:id])</code> превращается в <code>Comment.where(article_id: @article.id).find(params[:id])</code>. Комментарий под чужой статьёй возвращает 404.</p>
+  </section>
+
+  <section class="step" id="views" aria-labelledby="h-views">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Запуск <span aria-hidden="true">&middot;</span> <code>app/views/</code>, при разработке читаются с диска, встраиваются командой <code>cybertrain build</code></p>
+    <h2 id="h-views"><span class="step-num" aria-hidden="true">11</span>Представления и партиалы</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Страница статьи выводит список её комментариев и заканчивается формой, привязанной к <code>[@article, @comment]</code>.</span></p>
+    <p>Сначала удалите ставшие недоступными представления комментариев <code>index</code>, <code>show</code>, <code>new</code> и <code>edit</code> и добавьте в <code>ArticlesController#show</code> пустой <code>@comment</code>:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb (фрагмент)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/controllers/articles_controller.rb (фрагмент)"><code><span class="ln">  <span class="k">def</span> show</span>
+<span class="ln">    <span class="v">@comment</span> = <span class="t">Comment</span>.new</span>
+<span class="ln">  <span class="k">end</span></span></code></pre>
+</figure>
+    <p>Затем выведите комментарии и форму на странице статьи:</p>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>show.html.erb &middot; app/<wbr>views/<wbr>comments/<wbr>_form.html.erb</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/views/articles/show.html.erb &middot; app/views/comments/_form.html.erb"><code><span class="ln"><span class="c">&lt;%# app/views/articles/show.html.erb %&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="v">@article</span>.comments.each <span class="k">do</span> |comment| <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> render <span class="s">"comments/comment"</span>, <span class="y">comment:</span> comment <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%=</span> render <span class="s">"comments/form"</span> <span class="d">%&gt;</span></span>
+<span class="ln"></span>
+<span class="ln"><span class="c">&lt;%# app/views/comments/_form.html.erb %&gt;</span></span>
+<span class="ln"><span class="d">&lt;%=</span> form_with(<span class="y">model:</span> [<span class="v">@article</span>, <span class="v">@comment</span>]) <span class="k">do</span> |f| <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> f.label <span class="y">:commenter</span> <span class="d">%&gt;</span> <span class="d">&lt;%=</span> f.text_field <span class="y">:commenter</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> f.label <span class="y">:body</span> <span class="d">%&gt;</span> <span class="d">&lt;%=</span> f.text_area <span class="y">:body</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> f.submit <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span></code></pre>
+</figure>
+    <p>Партиал комментария в том виде, в каком он есть в примере:</p>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>comments/<wbr>_comment.html.erb</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/views/comments/_comment.html.erb"><code><span class="ln"><span class="c">&lt;%# locals: (comment:) %&gt;</span></span>
+<span class="ln"><span class="h">&lt;div class="comment"&gt;</span></span>
+<span class="ln">  <span class="h">&lt;p&gt;</span></span>
+<span class="ln">    <span class="h">&lt;strong&gt;</span>Commenter:<span class="h">&lt;/strong&gt;</span></span>
+<span class="ln">    <span class="d">&lt;%=</span> comment.commenter <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;/p&gt;</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="h">&lt;p&gt;</span></span>
+<span class="ln">    <span class="h">&lt;strong&gt;</span>Comment:<span class="h">&lt;/strong&gt;</span></span>
+<span class="ln">    <span class="d">&lt;%=</span> comment.body <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;/p&gt;</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="d">&lt;%=</span> button_to <span class="s">"Destroy comment"</span>, [<span class="v">@article</span>, comment], <span class="y">method:</span> <span class="y">:delete</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="h">&lt;/div&gt;</span></span></code></pre>
+</figure>
+    <p>И <code>button_to ... [@article, comment]</code>, и <code>form_with(model: [@article, @comment])</code> разрешаются по одному и тому же правилу <code>[parent, child]</code>: новый дочерний объект направляется во вложенную коллекцию (<code>article_comments_path</code>), сохранённый — во вложенный элемент (<code>article_comment_path</code>); эти хелперы генерируются в <code>gen/routes.rb</code> из вложенного блока <code>resources</code> выше.</p>
+    <aside class="callout" aria-label="Представления — замкнутая грамматика">
+      <p class="callout-k">Правило Spinel</p>
+      <h3>Представления — замкнутая грамматика, а не Ruby</h3>
+      <p>В Spinel нет <code>eval</code>, поэтому шаблоны интерпретируются по фиксированной грамматике. У <code>link_to</code> нет опции <code>method:</code>; используйте <code>button_to</code>. <code>each</code> принимает один или два параметра блока. Комментарий strict locals вроде <code>&lt;%# locals: (comment:) %&gt;</code> не допускает значений по умолчанию. Партиал получает копию окружения вызывающего кода, поэтому <code>@article</code> виден в <code>comments/_form</code>.</p>
+    </aside>
+  </section>
+
+  <section class="step" id="test" aria-labelledby="h-test">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Сборка <span aria-hidden="true">&middot;</span> <code>cybertrain spin test</code></p>
+    <h2 id="h-test"><span class="step-num" aria-hidden="true">12</span>Тестирование</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">minitest и RSpec находят тесты через рефлексию, на которую AOT-компилятор не способен, поэтому CyberTrain поставляется с <code>Cybertrain::Test</code>.</span></p>
+    <h3 class="sub">Тест модели</h3>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">test/<wbr>articles.rb (отрывок)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: test/articles.rb (отрывок)"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/blog_test"</span>   <span class="c"># the app, BLOG and Cybertrain::Test</span></span>
+<span class="ln"></span>
+<span class="ln">test <span class="s">"title must be present"</span> <span class="k">do</span></span>
+<span class="ln">  article = <span class="t">Article</span>.new(<span class="y">body:</span> <span class="s">"a body long enough to pass length"</span>)</span>
+<span class="ln">  refute article.save</span>
+<span class="ln">  assert_includes article.errors.full_messages, <span class="s">"Title can't be blank"</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p>Утверждения: <code>assert</code>, <code>refute</code>, <code>assert_equal</code>, <code>assert_nil</code>, <code>assert_includes</code>, <code>assert_raises("Class") { }</code>, <code>flunk</code>. В примере также используются <code>assert_response</code> и <code>assert_redirected_to</code>.</p>
+    <h3 class="sub">Полный HTTP-сценарий</h3>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">test/<wbr>articles.rb (отрывок)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: test/articles.rb (отрывок)"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/blog_test"</span>   <span class="c"># the app, BLOG and Cybertrain::Test</span></span>
+<span class="ln"></span>
+<span class="ln">test <span class="s">"POST /articles creates an article and redirects to it"</span> <span class="k">do</span></span>
+<span class="ln">  client = <span class="t">Cybertrain</span>::<span class="t">Test</span>::<span class="t">Client</span>.new(<span class="t">BLOG</span>)</span>
+<span class="ln">  client.get(<span class="s">"/articles/new"</span>)</span>
+<span class="ln">  res = client.post(<span class="s">"/articles"</span>, { <span class="s">"authenticity_token"</span> =&gt; <span class="t">BlogTest</span>.form_token(client),</span>
+<span class="ln">                                   <span class="s">"article[title]"</span> =&gt; <span class="s">"Hello Rails"</span>,</span>
+<span class="ln">                                   <span class="s">"article[body]"</span> =&gt; <span class="s">"I am on Rails! This is my first article."</span> })</span>
+<span class="ln">  assert_redirected_to res, <span class="t">BlogTest</span>.article_path(<span class="t">Article</span>.last)</span>
+<span class="ln">  assert_response res, <span class="y">:see_other</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p><code>Cybertrain::Test::Client</code> прогоняет приложение внутри процесса (без сокета) с хранилищем cookie, поэтому сессии и CSRF ведут себя так же, как за браузером. Запросы без токена получают 403.</p>
+    <aside class="callout" aria-label="Что опущено в отрывках">
+      <p class="callout-k">Чтобы скомпилировалось</p>
+      <h3>Что опущено в отрывках</h3>
+      <ul>
+        <li><code>support/blog_test</code> — это <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/examples/blog/test/support/blog_test.rb" rel="noopener"><code>examples/blog/test/support/blog_test.rb</code></a>: скопируйте его в <code>test/support/</code> вашего приложения, где файлы подключаются, а не запускаются. Он применяет миграции к новой <code>storage/test.sqlite3</code>, загружает приложение как <code>BLOG</code>, подключает <code>Cybertrain::Test</code> и его клиент и предоставляет <code>BlogTest.form_token</code> (CSRF-токен последней отрендеренной формы) и <code>BlogTest.article_path</code>.</li>
+        <li>Завершите файл вызовом <code>Cybertrain::Test.run!</code>: он запускает тесты и выводит строки, которые сравниваются со снимком.</li>
+        <li>Задайте <code>c.log_level = :none if c.test?</code> в <code>config/app.rb</code>, чтобы логи запросов не попадали в сравниваемый вывод.</li>
+      </ul>
+    </aside>
+    <h3 class="sub">Запуск тестов</h3>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; blog/"><code><span class="ln cmd">cybertrain spin test</span></code></pre>
+</figure>
+    <p><code>cybertrain spin test</code> запускает <code>spin test</code> с зафиксированным Spinel; если инструменты есть в <code>PATH</code> (<a href="#requirements">шаг 00</a>), то же самое делает <code>spin test</code>. Он компилирует каждый <code>test/*.rb</code> в отдельную программу и сравнивает её вывод (stdout и stderr вместе) с закоммиченным снимком <code>test/&lt;name&gt;.rb.expected</code>. Файлы в <code>test/support/</code> подключаются, а не запускаются. Чтобы записать снимок:</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; blog/"><code><span class="ln cmd">cybertrain spin test --regen test/&lt;name&gt;.rb</span>
+<span class="ln cmd">rm -f build/test/&lt;name&gt;; cybertrain spin test test/&lt;name&gt;.rb; [ -x build/test/&lt;name&gt; ] &amp;&amp; ./build/test/&lt;name&gt; &gt; test/&lt;name&gt;.rb.expected 2&gt;&amp;1</span></code></pre>
+</figure>
+    <p class="note"><code>--regen</code> записывает снимок по выводу CRuby. Тесты, обращающиеся к SQLite через FFI, не могут работать под CRuby, поэтому их снимок берётся из скомпилированного бинарного файла (вторая строка выше). Пока снимок устарел, <code>cybertrain spin test</code> завершается с ненулевым кодом, поэтому после него стоит <code>;</code>, а не <code>&amp;&amp;</code>; проверка <code>[ -x ]</code> пропускает запись, если компиляция не удалась, и старый снимок сохраняется. Тестам, которые не могут работать под CRuby, этот снимок нужен, прежде чем <code>cybertrain spin test</code> сможет пройти; остальные тесты без снимка сравниваются с выводом CRuby.</p>
+  </section>
+
+  <section class="step" id="ship" aria-labelledby="h-ship">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Запуск <span aria-hidden="true">&middot;</span> <code>dist/blog</code></p>
+    <h2 id="h-ship"><span class="step-num" aria-hidden="true">13</span>Сборка для развёртывания</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Одна команда собирает приложение в готовый к развёртыванию каталог <code>dist/</code> со всеми встроенными представлениями.</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; blog/"><code><span class="ln cmd">cybertrain build</span></code></pre>
+</figure>
+    <p>Она записывает <code>dist/</code>: бинарный файл приложения со всеми встроенными представлениями и рядом с ним файлы, которые он использует. Она запускает <code>spin run gen -- --embed-views</code>, <code>spin build blog</code> и <code>spin run gen</code> (который возвращает закоммиченный пустой <code>gen/views.rb</code>, даже после сбоя или Ctrl-C), а затем собирает:</p>
+    <ul class="ship-grid">
+      <li class="ship-bin"><code>dist/blog</code><span>скомпилированные фреймворк, контроллеры, модели и интерпретатор шаблонов со всеми встроенными представлениями</span></li>
+      <li><code>dist/public/</code><span>статические ресурсы и страницы ошибок; можно отдавать их через обратный прокси</span></li>
+      <li><code>dist/storage/</code><span>создаётся пустым; по умолчанию здесь файл SQLite (пересборка никогда его не очищает)</span></li>
+      <li><code>dist/tmp/</code><span>создаётся пустым (пересборка никогда его не очищает)</span></li>
+    </ul>
+    <p>Скопируйте <code>dist/</code> на машину с той же ОС и тем же процессором (бинарный файл компонуется с системной SQLite) и запустите там. Собранный бинарный файл по умолчанию работает в окружении production (<code>CYBERTRAIN_ENV</code> переопределяет это). Задайте <code>CYBERTRAIN_SECRET_KEY_BASE</code>; для примера:</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; продакшен-сервер</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; продакшен-сервер"><code><span class="ln cmd">cd dist</span>
+<span class="ln cmd">export CYBERTRAIN_SECRET_KEY_BASE=<span class="s">"$(openssl rand -hex 32)"</span></span>
+<span class="ln cmd">./blog migrate &amp;&amp; ./blog</span></code></pre>
+</figure>
+    <p><code>./blog migrate</code> применяет миграции, вкомпилированные в бинарный файл, а <code>./blog db status</code> показывает их состояние; <code>PORT</code> задаёт порт. Не меняйте секрет между перезапусками: его смена завершает все сессии.</p>
+    <p><code>Cybertrain::Config</code> сначала читает переменные окружения; <code>config/app.rb</code> их переопределяет:</p>
+    <div class="table-scroll" role="region" aria-label="Переменные окружения" tabindex="0">
+    <table class="env">
+      <thead><tr><th scope="col">Переменная</th><th scope="col">Атрибут</th><th scope="col">По умолчанию</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Переменная"><code>CYBERTRAIN_ENV</code></td><td data-label="Атрибут"><code>env</code></td><td data-label="По умолчанию"><code>"development"</code>; <code>"production"</code> в бинарном файле из <code>cybertrain build</code> (также <code>"test"</code>)</td></tr>
+        <tr><td data-label="Переменная"><code>PORT</code></td><td data-label="Атрибут"><code>port</code></td><td data-label="По умолчанию"><code>3000</code></td></tr>
+        <tr><td data-label="Переменная"><code>CYBERTRAIN_DATABASE</code></td><td data-label="Атрибут"><code>database_path</code></td><td data-label="По умолчанию"><code>storage/#{env}.sqlite3</code></td></tr>
+        <tr><td data-label="Переменная"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="Атрибут"><code>secret_key_base</code></td><td data-label="По умолчанию">обязательна в production; в dev/test генерируется автоматически в <code>tmp/secret_key</code></td></tr>
+        <tr><td data-label="Переменная"><code>SPINEL_WORKERS</code></td><td data-label="Атрибут"><code>workers</code></td><td data-label="По умолчанию"><code>1</code></td></tr>
+        <tr><td data-label="Переменная"><code>CYBERTRAIN_HOST</code></td><td data-label="Атрибут"><code>host</code></td><td data-label="По умолчанию"><code>"127.0.0.1"</code>; <code>0.0.0.0</code> слушает на всех интерфейсах (контейнеры)</td></tr>
+        <tr><td data-label="Переменная"><code>CYBERTRAIN_SESSION_SAME_SITE</code></td><td data-label="Атрибут"><code>session_same_site</code></td><td data-label="По умолчанию"><code>"Lax"</code>; также <code>Strict</code> или <code>None</code> (<code>None</code> всегда добавляет <code>Secure</code>); любое другое значение останавливает сервер при запуске</td></tr>
+        <tr><td data-label="Переменная"><code>CYBERTRAIN_SESSION_PARTITIONED</code></td><td data-label="Атрибут"><code>session_partitioned</code></td><td data-label="По умолчанию"><code>false</code>; <code>1</code> или <code>true</code> добавляет <code>Partitioned</code> (и <code>Secure</code>)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">config/<wbr>app.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: config/app.rb"><code><span class="ln"><span class="c"># config/app.rb</span></span>
+<span class="ln"><span class="t">Cybertrain</span>.configure <span class="k">do</span> |c|</span>
+<span class="ln">  c.port = 3000</span>
+<span class="ln">  c.workers = 1</span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <ul class="points">
+      <li>Сервер говорит на обычном HTTP/1.1: для TLS и HTTP/2 поставьте перед ним nginx или Caddy. В production cookie сессии имеет флаг <code>Secure</code>, поэтому отдавайте приложение по HTTPS (задавайте <code>c.session_secure = false</code> в <code>config/app.rb</code>, только если production действительно работает по обычному http).</li>
+      <li>Без <code>CYBERTRAIN_SECRET_KEY_BASE</code> production отказывается запускаться.</li>
+      <li>В production исключение даёт ответ 500, а голый ответ с ошибкой (текстовый 404 маршрутизатора, <code>head :not_found</code>, <code>render plain:</code>) заменяется на <code>public/&lt;status&gt;.html</code>, если такой файл существует; <code>cybertrain new</code> создаёт <code>404.html</code> и <code>500.html</code>.</li>
+      <li><code>SIGTERM</code> прекращает приём соединений, даёт выполняющимся запросам завершиться и выходит, когда они закончатся, или по истечении <code>drain_timeout</code> сервера (10 с).</li>
+      <li>Слежение за файлами и цикл пересборки никогда не работают в production. Запущенный <code>cybertrain server</code> пропускает пересборки, пока <code>cybertrain build</code> удерживает <code>tmp/cybertrain-build.lock</code>.</li>
+    </ul>
+  </section>
+
+  <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">
+    <h2 id="h-things-to-know"><span class="step-num" aria-hidden="true">+</span>Что нужно знать</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Ограничения и особенности, о которых лучше знать заранее, чтобы они не застали вас врасплох.</span></p>
+    <ul class="points know">
+      <li>Сессии хранят только строки (String) в cookie с подписью HMAC.</li>
+      <li>Только SQLite, через FFI Spinel.</li>
+      <li>Бэктрейсов нет: ошибки показывают класс, сообщение, строку запроса и имя/строку шаблона.</li>
+      <li>Атрибут с опечаткой в представлении выводится пустым вместо исключения; это известный пробел.</li>
+      <li>Ассоциации выводятся только из внешних ключей схемы; нет <code>has_many :through</code>, <code>includes</code>, <code>pluck</code>, <code>dependent:</code>, enum, STI и полиморфных ассоциаций.</li>
+      <li>Нет <code>namespace</code>, <code>respond_to</code>/форматов, <code>constraints</code> и <code>mount</code>; <code>render json:</code> минимален.</li>
+      <li>В модели, созданной скаффолдом, валидацию присутствия по умолчанию получает только первое строковое поле.</li>
+      <li>Генератор обрабатывает <code>app/controllers</code> и <code>app/models</code> лексическим сканированием (регулярными выражениями), а не парсером.</li>
+      <li>Представления встраиваются при сборке: даже изменение только в представлении требует <code>cybertrain build</code> и перезапуска, прежде чем оно попадёт в production.</li>
+      <li>Собирайте <code>dist/</code> на той же ОС и том же процессоре, что и у машины, где он будет работать: бинарный файл компонуется с системной SQLite.</li>
+      <li><code>SPINEL_WORKERS</code> по умолчанию равен <code>1</code>.</li>
+      <li>Протестирован только Spinel <code>2026.09.12</code>.</li>
+    </ul>
+  </section>
+
+  <section class="step" id="differences" aria-labelledby="h-differences">
+    <h2 id="h-differences"><span class="step-num" aria-hidden="true">+</span>Отличия от Rails</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Полная таблица из README в одном месте.</span></p>
+    <div class="cmp-wrap cmp-doc">
+      <table class="cmp cmp-full">
+        <caption class="sr-only">Различия между Rails и CyberTrain (полная таблица из README)</caption>
+        <thead><tr><th scope="col" class="cmp-rails">Rails</th><th scope="col" class="cmp-ct"><svg class="cmp-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg><span>CyberTrain</span></th></tr></thead>
+        <tbody>
+          <tr><td data-label="Rails"><code>rails console</code></td><td data-label="CyberTrain">Консоли нет — в Spinel нет <code>eval</code></td></tr>
+          <tr><td data-label="Rails">Правите код — запущенное приложение подхватывает изменения</td><td data-label="CyberTrain">Ruby требует пересборки; в режиме разработки <code>cybertrain server</code> делает это за вас (пересборка, остановка, <code>execv</code>)</td></tr>
+          <tr><td data-label="Rails">Правите представление — перезагрузка не нужна</td><td data-label="CyberTrain">Так же — в режиме разработки представления разбираются с диска при каждом запросе</td></tr>
+          <tr><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (<code>new</code> затенил бы <code>Klass.new(ctx)</code>)</td></tr>
+          <tr><td data-label="Rails"><code>before_action { do_thing }</code> (неявный <code>self</code>)</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code> — для сохранённого блока нет <code>instance_exec</code>, поэтому колбэки получают контроллер/запись явно</td></tr>
+          <tr><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code> — вложенные блоки получают маппер явно</td></tr>
+          <tr><td data-label="Rails">ERB компилируется в метод; любой объект, любой метод</td><td data-label="CyberTrain">Интерпретируется по фиксированной грамматике/таблице диспетчеризации</td></tr>
+          <tr><td data-label="Rails">Сессия хранит любой сериализуемый через Marshal объект</td><td data-label="CyberTrain">Значения сессии — только строки (String), cookie с подписью HMAC</td></tr>
+          <tr><td data-label="Rails">Множество адаптеров баз данных</td><td data-label="CyberTrain">Только SQLite, через FFI</td></tr>
+          <tr><td data-label="Rails"><code>has_many :through</code>, <code>includes</code>, <code>pluck</code>, <code>dependent:</code>, enum, STI, полиморфные ассоциации</td><td data-label="CyberTrain">Не реализовано; ассоциации выводятся только из внешних ключей схемы</td></tr>
+          <tr><td data-label="Rails"><code>namespace</code>, форматы/<code>respond_to</code>, <code>constraints</code>, <code>mount</code></td><td data-label="CyberTrain">Не реализовано — плоские имена, только <code>render json:</code></td></tr>
+          <tr><td data-label="Rails">Полный бэктрейс при исключении</td><td data-label="CyberTrain">Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов</td></tr>
+          <tr><td data-label="Rails">Rack, его middleware и любой гем в <code>Gemfile</code></td><td data-label="CyberTrain">Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный <code>spin-index</code> Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby</td></tr>
+          <tr><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code> — раннеры на основе рефлексии не могут работать при AOT-компиляции</td></tr>
+          <tr><td data-label="Rails">Аутентификация, мейлеры, фоновые задачи, ActionCable, asset pipeline, i18n</td><td data-label="CyberTrain">Не сделано (за рамками MVP)</td></tr>
+        </tbody>
+      </table>
+      <p class="cmp-foot">Список не исчерпывающий.</p>
+    </div>
+  </section>
+
+  <section class="step step-last" id="where-next" aria-labelledby="h-where-next">
+    <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>Что дальше</h2>
+    <ul class="next-list">
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">Готовое приложение вместе с тестами.</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener"><span class="next-t">CyberTrain на GitHub</span><span class="next-d">Исходный код, README и релизы.</span></a></li>
+      <li><a href="../api/index.html"><span class="next-t">Справочник API</span><span class="next-d">Все классы и методы, которые использует приложение, с примерами.</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/spikes/NOTES.md" rel="noopener"><span class="next-t"><code>spikes/NOTES.md</code></span><span class="next-d">Спайки и обнаруженные ими ограничения компилятора.</span></a></li>
+      <li><a href="https://github.com/matz/spinel" rel="noopener"><span class="next-t">Spinel</span><span class="next-d">AOT-компилятор Ruby от matz.</span></a></li>
+      <li><a href="index.html"><span class="next-t">Главная CyberTrain</span><span class="next-d">Обзор, возможности и как это работает.</span></a></li>
+    </ul>
+  </section>
+
+  </article>
+</div>
+
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <a class="foot-brand" href="index.html" aria-label="CyberTrain — главная">
+        <svg class="foot-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      </a>
+      <p class="foot-tag">Веб-приложения в духе Rails, скомпилированные в один нативный бинарный файл.</p>
+    </div>
+    <div class="foot-cols">
+      <nav aria-label="Проект">
+        <p class="foot-h">Проект</p>
+        <ul>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
+          <li><a href="tutorial.html">Учебник</a></li>
+          <li><a href="../api/index.html">API</a></li>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Связанные проекты">
+        <p class="foot-h">Связанные</p>
+        <ul>
+          <li><a href="https://github.com/matz/spinel" rel="noopener">Spinel</a></li>
+          <li><a href="https://github.com/rubys/roundhouse" rel="noopener">Roundhouse</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Языки">
+        <p class="foot-h">Язык</p>
+        <ul>
+          <li><a href="../tutorial.html" hreflang="en" lang="en">English</a></li>
+          <li><a href="../ja/tutorial.html" hreflang="ja" lang="ja">日本語</a></li>
+          <li><a href="../zh/tutorial.html" hreflang="zh-Hans" lang="zh-Hans">简体中文</a></li>
+          <li><a href="../ru/tutorial.html" hreflang="ru" lang="ru" aria-current="true">Русский</a></li>
+          <li><a href="../fr/tutorial.html" hreflang="fr" lang="fr">Français</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-base">
+      <p><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/README.md#license" rel="noopener">Лицензия MIT</a> <span aria-hidden="true">&middot;</span> Пре-альфа</p>
+      <p>CyberTrain — независимый проект, не связанный с Rails, Spinel или Roundhouse.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
