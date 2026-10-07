@@ -50,9 +50,10 @@ The new app has no root route, so `/` shows "Not Found": its pages start at
 
 - If VS Code asks whether you trust the authors of the files in this folder, choose
   "Trust Folder & Continue": the server's terminal starts only then.
-- If the app's tab did not open (a pop-up blocker), use the Ports view's
-  "Open in Browser" on port 3000. After the app's tab has opened, the Ports
-  view's "Preview in Editor" on port 3000 also shows the app inside VS Code.
+- If the app's tab did not open (a pop-up blocker, or the codespace was stopped
+  and restarted), use the Ports view's "Open in Browser" on port 3000. After
+  the app's tab has opened, the Ports view's "Preview in Editor" on port 3000
+  also shows the app inside VS Code.
 - When you are done, delete the codespace at https://github.com/codespaces: its
   storage counts against your quota for as long as it exists.
 - Everything else is in the README: https://github.com/saeki-mototsune/cybertrain#readme

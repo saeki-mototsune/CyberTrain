@@ -57,8 +57,8 @@ works there with no network.
   you delete it.
 - If VS Code asks whether you trust the authors of the files in this folder,
   choose "Trust Folder & Continue": the server's terminal starts only then.
-- If the app's tab did not open (a pop-up blocker), use the Ports view's
-  "Open in Browser" on port 3000.
+- If the app's tab did not open (a pop-up blocker, or the codespace was stopped
+  and restarted), use the Ports view's "Open in Browser" on port 3000.
 - The same image runs locally (it is published for linux/amd64; on arm64, build
   it from a checkout):
 

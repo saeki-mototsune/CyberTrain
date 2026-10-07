@@ -1597,4 +1597,6 @@ CI が出した `latest`。ブラウザは Chrome の新しいプロファイル
 
 変更後のローカルの確認（ブランチの 44ff98f、arm64 の Docker Desktop）: イメージのビルドが成功し、スモークテストの 29 項目（Cookie の既定を外したあとの C1 と C3 を含む）がすべて通った。
 
-未確認: Firefox と Safari（L6）、`openBrowserOnce` が実機で新しいタブを開くか（ポップアップブロッカーを含む）と、開発ループの再起動で 2 つ目のタブが開かないか。
+ブランチの設定での確認（2026-10-07、`codespaces.new/saeki-mototsune/CyberTrain/tree/codespaces-open-browser`、新しい codespace、Chrome の新しいプロファイル、クライアントは 1 つ）: 接続して「Trust Folder & Continue」を押すと、5 秒以内に新しいタブが自動で開き（`pf-signin` を経由して）、アプリ（タイトル `Blog`）が表示された。ポップアップはブロックされなかった。Ruby のファイルを `touch` して再ビルドさせ、サーバーが再起動しても（`Build succeeded; restarting`）、2 つ目のタブは開かなかった。Stop して Restart した別の codespace では、信頼を押したあとにサーバーは起動したが、タブは開かなかった（コンソールに `Revived port: 3000` があり、ポートは前の接続で転送済みの扱い）。そのため、再開後は Ports の「Open in Browser」を使うと、README、`PLAYGROUND.md`、サイトに書いた。注意: 信頼のクリックからタブが開くまでは約 5 秒で、Chrome のユーザー操作の有効時間（約 5 秒）に近い。遅い環境や、ポップアップに厳しい Safari・Firefox では開かない可能性があり、そのための案内は文面にある。なお、最初の codespace では、作成ログのリンクを押して信頼のダイアログが早く出たあと、接続が数分止まり、別のタブで開き直すと繋がった（私の操作が原因と見ている。訪問者の経路ではない）。
+
+未確認: Firefox と Safari（L6）、信頼のダイアログを「Cancel」したあとの復帰の手順（状態バーの Restricted Mode から信頼したときに、サーバーが自動で起動するか）。
