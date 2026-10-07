@@ -1,4 +1,0 @@
-# Build context of playground/router/Dockerfile (the repository root): only
-# the router's own files.
-*
-!playground/router/
