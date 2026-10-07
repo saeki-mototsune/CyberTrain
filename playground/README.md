@@ -136,6 +136,13 @@ GIT_CONFIG_NOSYSTEM=1 git clone https://github.com/saeki-mototsune/cybertrain
   `PLAYGROUND.md` once per container (the marker is
   `tmp/.playground-guide-opened`, which git ignores); otherwise the banner is
   the only pointer.
+- When `code` works, it also opens the app's URL in a browser tab (`code
+  --openExternal`) as soon as the port answers, on every start (so after a
+  codespace restart too), and the banner says where to open the app if no
+  tab opened. The opener runs in the background, waits at most 300 s, gives
+  up when the server exits and does not hold the lock. The development
+  loop's restarts after a rebuild do not run the script, so they open no
+  second tab.
 - `PORT` changes the port, as it does for `cybertrain server`. While another
   `cybertrain server` of the same user runs, whatever its port, the script
   starts nothing: beside the running blog, `PORT=4000 playground-server`
@@ -156,8 +163,9 @@ repository's default dev container configuration:
 - `workspaceFolder`: `/workspace/blog`, the prebuilt blog, outside the clone of this repository under `/workspaces`.
 - `postCreateCommand`: empty, so no setup step runs.
 - `postAttachCommand`: `playground-server`, on every attach (it is safe to run again). When the codespace first opens, VS Code asks whether the visitor trusts the authors of the files in this folder; the `server` terminal starts only after "Trust Folder & Continue".
-- `forwardPorts` and `portsAttributes`: port 3000, labelled `cybertrain`, opened in a new browser tab (`onAutoForward: openBrowserOnce`) when the server starts listening. The editor's preview (`openPreview`) did not load the private forwarded port (see below). `openBrowserOnce` opens the tab only the first time the port is forwarded in a session, so the server's restart after a rebuild opens no second tab.
+- `forwardPorts` and `portsAttributes`: port 3000, labelled `cybertrain`, with `onAutoForward: notify`: when the server starts listening, VS Code shows "Your application (cybertrain) running on port 3000 is available." with an "Open in Browser" button. `playground-server` opens the browser tab itself (above). A tab that VS Code opens without a click (`openBrowser`, `openBrowserOnce`, or `code --openExternal`) can be stopped by a pop-up blocker, and in Chrome VS Code then shows nothing (it offers "Retry" only in Safari); allowing pop-ups afterwards does not open it. The notification's button is a click, so it gets through, and `onAutoForward` takes only one action, so the tab comes from the script and the button from `notify`. The editor's preview (`openPreview`) did not load the private forwarded port (see below).
 - `files.autoSave: off`: the development server rebuilds the app on every save of a Ruby file, and delayed auto-save would start a minute-long rebuild at every pause in typing.
+- `workbench.editorAssociations`: `PLAYGROUND.md` opens as a Markdown preview (`vscode.markdown.preview.editor`), the guide's reading view; "Reopen Editor With... → Text Editor" shows its source.
 - No `hostRequirements`: the default 2-core machine, which costs the visitor the least quota.
 
 The link is `https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1`
@@ -166,8 +174,8 @@ for another branch). `quickstart=1` resumes the visitor's codespace if there
 is one, or offers a "Create new codespace" button (and "Change options"), and always opens VS
 Code in the browser.
 
-- The app opens in a new browser tab. Port 3000 is a private forwarded port, and its first visit signs in through github.com, which refuses to be shown in a frame: in a new Chrome profile the editor's preview showed only "github.com refused to connect." (the live check of 2026-10-06/07, row L4 in section 14.6 of docs/superpowers/specs/2026-10-02-web-playground-sp1-design.md). If the app's tab did not open (a pop-up blocker, or the codespace was stopped and restarted: the tab opens when the server first starts in a new codespace), use the Ports view's "Open in Browser" on port 3000.
-- The editor's preview needs that sign-in first: once the app's tab has opened, the Ports view's "Preview in Editor" on port 3000 shows the app inside VS Code too (reload a preview that showed the error). After every restart of the codespace the port signs in again, so the preview again needs the app's tab first. Inside the preview, pop-ups and `confirm()` dialogs do not work.
+- The app opens in a new browser tab, and the guide treats that tab as the only way to see the app. Port 3000 is a private forwarded port, and its first visit signs in through github.com, which refuses to be shown in a frame: in a new Chrome profile the editor's preview showed only "github.com refused to connect." (the live check of 2026-10-06/07, row L4 in section 14.6 of docs/superpowers/specs/2026-10-02-web-playground-sp1-design.md). If the app's tab did not open (a pop-up blocker, or the codespace was stopped and restarted, when VS Code treats the port as already forwarded and may show no notification), `PLAYGROUND.md`'s "If the app's tab did not open" lists the notification's "Open in Browser", the Ports view's "Open in Browser" on port 3000 and the URL in the `server` terminal.
+- The editor's preview needs that sign-in first: once the app's tab has opened, the Ports view's "Preview in Editor" on port 3000 shows the app inside VS Code too (reload a preview that showed the error), but after every restart of the codespace the port signs in again, and inside the preview pop-ups and `confirm()` dialogs do not work, so the guide does not mention it.
 - "Rebuild Container" starts again from the image: edits under `/workspace/blog` are lost, since only `/workspaces` survives a rebuild.
 - A codespace's storage counts against the visitor's quota until it is deleted at https://github.com/codespaces.
 - Measured on the default 2-core machine (the same live check): the editor shows about 20 s after "Create new codespace" and the blog's files after about a minute; the server listens a few seconds after "Trust Folder & Continue"; a Ruby edit is rebuilt and the server restarted about 100 s after the save; a stopped codespace starts the server again about 40 s after "Restart codespace", with the data kept.
@@ -189,7 +197,7 @@ server started by hand (D4) and the offline app (B3).
 | G1-G7 | The image as built: user `dev` (uid 1000); `cybertrain version`; `cybertrain doctor`; `CYBERTRAIN_HOME` and `XDG_CACHE_HOME` set, `CYBERTRAIN_HOST` not; the blog's `spin.toml` points at `v<VERSION>`; the blog is a clean one-commit git repository that tracks `PLAYGROUND.md`; no `tmp/secret_key`, an executable `build/bin/blog` |
 | A1-A10 | The default command with `CYBERTRAIN_HOST=0.0.0.0`, reached from the host: `GET /articles`; the boot banner; nothing compiled at start; `GET /` shows `<h1>Articles</h1>`; a CSRF token and a `SameSite=Lax` cookie; creating an article (303, then its page); 403 without a token; a view edit shows on the next request; a model edit rebuilds and restarts the server (a short body then answers 422); `tmp/secret_key` generated |
 | D1-D4 | `playground-server` again: it exits 0 saying "already running"; one server process; after a container restart (idle stop and resume) the server is back with the data; a server started by hand is left alone, while it is still compiling and once it listens |
-| C1-C3 | `CODESPACES=true`: the cookie keeps the default, `SameSite=Lax` without `Secure` or `Partitioned`; the banner shows the forwarded URL; interactive and login shells started with `PATH=/usr/bin:/bin` find `spin` in `/opt/cybertrain/bin` |
+| C1-C4 | `CODESPACES=true`: the cookie keeps the default, `SameSite=Lax` without `Secure` or `Partitioned`; the banner shows the forwarded URL; interactive and login shells started with `PATH=/usr/bin:/bin` find `spin` in `/opt/cybertrain/bin`; with a stand-in for VS Code's `code` on `PATH`, `playground-server` opens `PLAYGROUND.md` and then the forwarded URL with `--openExternal` |
 | F1 | `CYBERTRAIN_SESSION_SAME_SITE=lax` stops the server at boot, naming the valid values |
 | E1 | A `cp -a` copy of the blog starts without compiling |
 | B1-B3 | No network: the repository URL reaches the mirror; `cybertrain new` in `/workspace` locks the blog's commit; the new app builds |

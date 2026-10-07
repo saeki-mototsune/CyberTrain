@@ -77,6 +77,7 @@ what_D4="playground-server leaves a server started by hand alone: it says a serv
 what_C1="with CODESPACES=true the session cookie keeps the default, SameSite=Lax without Secure or Partitioned"
 what_C2="with CODESPACES=true the banner shows https://smoke-3000.app.github.dev/"
 what_C3="with CODESPACES=true and PATH=/usr/bin:/bin, interactive and login bash shells find spin in /opt/cybertrain/bin"
+what_C4="with VS Code's code command on PATH, playground-server opens PLAYGROUND.md and, once the server listens, the forwarded URL (code --openExternal)"
 what_F1="CYBERTRAIN_SESSION_SAME_SITE=lax stops the server at boot and names the valid values"
 what_E1="a cp -a copy of the blog started by playground-server compiles nothing"
 what_B1="with no network, git ls-remote of the repository URL lists refs/tags/v$version (the mirror)"
@@ -517,8 +518,11 @@ fi
 
 # ---- C: a codespace (CODESPACES=true) --------------------------------------
 
+# A stand-in for VS Code's `code` command, which a codespace's terminal has:
+# it logs its arguments to /tmp/code.log (C4).
 codespace="$prefix-codespace"
-if start codespace -e CODESPACES=true -e CODESPACE_NAME=smoke -e GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN=app.github.dev "$image"; then
+fake_code='mkdir -p /tmp/fakebin && printf "%s\n" "#!/bin/sh" "echo \"\$*\" >> /tmp/code.log" > /tmp/fakebin/code && chmod +x /tmp/fakebin/code && PATH=/tmp/fakebin:$PATH exec playground-server'
+if start codespace -e CODESPACES=true -e CODESPACE_NAME=smoke -e GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN=app.github.dev "$image" bash -c "$fake_code"; then
   if up_inside "$codespace" 30; then
     cookie=$(docker exec "$codespace" curl -s -D - -o /dev/null --max-time 5 http://127.0.0.1:3000/articles/new 2> /dev/null |
       grep -i '^set-cookie:' | head -n 1 | tr -d '\r' | sed 's/^[^:]*: *//')
@@ -535,6 +539,20 @@ fi
 case "$(docker logs "$codespace" 2>&1)" in
   *"https://smoke-3000.app.github.dev/"*) pass C2 "$what_C2" ;;
   *) fail C2 "$what_C2" "the URL is not in the banner" "$codespace" ;;
+esac
+# The opener polls the port every 0.25 s; give it a few seconds after C1.
+calls=""
+began=$SECONDS
+while [ $((SECONDS - began)) -lt 10 ]; do
+  calls=$(docker exec "$codespace" cat /tmp/code.log 2> /dev/null)
+  case "$calls" in
+    *"--openExternal https://smoke-3000.app.github.dev/"*) break ;;
+  esac
+  sleep 0.5
+done
+case "$calls" in
+  *"--reuse-window /workspace/blog/PLAYGROUND.md"*"--openExternal https://smoke-3000.app.github.dev/"*) pass C4 "$what_C4" ;;
+  *) fail C4 "$what_C4" "code was called with: $(printf '%s' "$calls" | tr '\n' ';')" "$codespace" ;;
 esac
 
 # A terminal the visitor opens, interactive or login bash, must find the
