@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Checks the site's translations (site/ja/, zh/, ru/, fr/) against the English
+pages they were translated from (see site/README.md, "Translations").
+
+usage: script/check-site-i18n [LANG...]   (default: every language)
+
+Passes when, for each page:
+  * the element/attribute structure is identical (only text and the
+    attributes aria-label, content, data-label, alt may differ; inline
+    code/a/strong/em/wbr/br may move within a sentence, but none may be
+    added or dropped);
+  * every <pre> block is byte-identical, except that `# comments` inside
+    shell blocks may be translated;
+  * the multiset of inline <code> texts is identical;
+  * no English sentence is left behind (heuristic: lists text nodes outside
+    code/pre/svg-text that still look like English prose, for review).
+"""
+import sys, re, os, collections
+from html.parser import HTMLParser
+SITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'site')
+LANGS = ['ja', 'zh', 'ru', 'fr']
+FREE_ATTRS = {'aria-label', 'content', 'data-label', 'alt'}
+VOID = {'meta', 'link', 'br', 'wbr', 'img', 'input', 'hr', 'source', 'path', 'rect'}
+
+class P(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.struct = []; self.codes = []; self.pres = []; self.texts = []
+        self.stack = []; self.pre = None; self.code = None
+    def handle_starttag(self, tag, attrs):
+        a = tuple((k, v) for k, v in attrs if k not in FREE_ATTRS)
+        self.struct.append(('<', tag, a))
+        if tag == 'pre':
+            self.pre = {'lang': self.cur_lang, 'html': []}
+        elif self.pre is not None:
+            self.pre['html'].append(self.get_starttag_text())
+        if tag == 'figure':
+            self.cur_lang = dict(attrs).get('data-lang')
+        if tag == 'code' and self.pre is None:
+            self.code = []
+        if tag not in VOID:
+            self.stack.append(tag)
+    cur_lang = None
+    def handle_startendtag(self, tag, attrs):
+        a = tuple((k, v) for k, v in attrs if k not in FREE_ATTRS)
+        self.struct.append(('<', tag, a))
+        if self.pre is not None: self.pre['html'].append(self.get_starttag_text())
+    def handle_endtag(self, tag):
+        self.struct.append(('>', tag))
+        if tag == 'pre':
+            self.pres.append((self.pre['lang'], ''.join(self.pre['html']))); self.pre = None
+        elif self.pre is not None:
+            self.pre['html'].append(f'</{tag}>')
+        if tag == 'code' and self.code is not None:
+            self.codes.append(''.join(self.code).strip()); self.code = None
+        if self.stack and self.stack[-1] == tag: self.stack.pop()
+    def handle_data(self, data):
+        if self.pre is not None: self.pre['html'].append(data); return
+        if self.code is not None: self.code.append(data); return
+        if any(t in ('script', 'style', 'code') for t in self.stack): return
+        t = data.strip()
+        if t: self.texts.append((self.stack[-1] if self.stack else '', t))
+    def handle_entityref(self, name): self.handle_data(f'&{name};')
+    def handle_charref(self, name): self.handle_data(f'&#{name};')
+
+def parse(path):
+    p = P(); p.feed(open(path, encoding='utf-8').read()); return p
+
+def strip_shell_comments(h):
+    return re.sub(r'<span class="c">.*?</span>', '<span class="c">#</span>', h)
+
+KEEP = re.compile(r'^(CyberTrain|Spinel|Rails|Roundhouse|GitHub|API|MIT|RubyGem|Ruby|SQLite|HTTP/1\.1|Linux|macOS|CI|Docker|VS Code|[A-Z]{2}|English|Français|Pre-alpha|dist/blog|examples/blog|ffi_func · ffi_lib|rebuild → stop → execv|.*\.rb|.*/|[\W\d_]+)$')
+ENGLISHY = re.compile(r'\b(the|and|with|you|your|is|are|of|to|in|for|not|on|a)\b', re.I)
+
+def main(lang):
+    ok = True
+    for page in ['index.html', 'tutorial.html', 'playground.html']:
+        en, tr = parse(f'{SITE}/{page}'), parse(f'{SITE}/{lang}/{page}')
+        errs = []
+        # structure (lang, hreflang, href, src and aria-current differ by
+        # design: the language menu and the ../ paths)
+        def norm(s):
+            out = []
+            for e in s:
+                if e[0] == '<':
+                    e = ('<', e[1], tuple((k, v) for k, v in e[2] if not (k in ('lang', 'hreflang', 'href', 'src', 'aria-current') )))
+                out.append(e)
+            return out
+        # Inline elements may move within a sentence (word order differs by
+        # language): compare them as a multiset, and the rest as a sequence.
+        INLINE = {'code', 'a', 'strong', 'em', 'wbr', 'br', 'abbr', 'i'}
+        def split(s):
+            seq, inl = [], collections.Counter()
+            for e in s:
+                if e[1] in INLINE:
+                    inl[e] += 1
+                else:
+                    seq.append(e)
+            return seq, inl
+        (a, ia), (b, ib) = split(norm(en.struct)), split(norm(tr.struct))
+        if ia != ib:
+            errs.append(f'inline elements differ: missing {dict(ia - ib)}, extra {dict(ib - ia)}')
+        if a != b:
+            for i, (x, y) in enumerate(zip(a, b)):
+                if x != y:
+                    errs.append(f'structure differs at element #{i}: EN {x} vs {lang.upper()} {y}'); break
+            else:
+                errs.append(f'structure length differs: EN {len(a)} vs {len(b)}')
+        # pre blocks
+        if len(en.pres) != len(tr.pres):
+            errs.append(f'<pre> count differs: {len(en.pres)} vs {len(tr.pres)}')
+        for i, ((la, x), (_, y)) in enumerate(zip(en.pres, tr.pres)):
+            if la == 'shell': x, y = strip_shell_comments(x), strip_shell_comments(y)
+            if x != y:
+                errs.append(f'<pre> block #{i} ({la}) changed:\n  EN: {x[:200]!r}\n  TR: {y[:200]!r}')
+        # inline code
+        ca, cb = collections.Counter(en.codes), collections.Counter(tr.codes)
+        if ca != cb:
+            errs.append(f'inline <code> differs: missing {dict(ca - cb)}, extra {dict(cb - ca)}')
+        # leftover English
+        left = [t for tag, t in tr.texts if tag not in ('text', 'title') and not KEEP.match(t) and len(ENGLISHY.findall(t)) >= 2]
+        print(f'== {lang}/{page}: {"OK" if not errs else "FAIL"}')
+        for e in errs: print('  ' + e)
+        for t in left: print('  possible untranslated: ' + t[:120])
+        ok &= not errs
+    return ok
+
+sys.exit(0 if all([main(l) for l in (sys.argv[1:] or LANGS)]) else 1)
