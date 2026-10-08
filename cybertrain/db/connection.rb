@@ -328,13 +328,18 @@ module Cybertrain
         NO_NAMES
       end
 
+      # The ColumnNames is bound to a local before it is stored: an unnamed
+      # temporary can be collected while the push that receives it still
+      # grows the Array (the cause of a crash seen under load, see the
+      # warning in FormBuilder.humanize).
       def remember_names(sql, names)
+        entry = ColumnNames.new(names)
         i = @name_index[sql]
         if i.nil?
           @name_index[sql] = @name_lists.size
-          @name_lists << ColumnNames.new(names)
+          @name_lists << entry
         else
-          @name_lists[i] = ColumnNames.new(names)
+          @name_lists[i] = entry
         end
         nil
       end
