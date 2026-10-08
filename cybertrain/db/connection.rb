@@ -8,6 +8,9 @@ module Cybertrain
     # connections through Cybertrain::DB::Pool, which hands each one to a
     # single thread at a time.
     class Connection
+      # Prepared statements a connection keeps (see #execute).
+      MAX_CACHED_STATEMENTS = 64
+
       attr_reader :path
 
       # True for a path whose database lives only in its connection, so no
@@ -38,6 +41,12 @@ module Cybertrain
         @path = path
         @closed = false
         @transaction_depth = 0
+        # SQL text => its prepared statement, kept for the life of the
+        # connection: an app runs the same few queries on every request, and
+        # preparing one (parsing the SQL against the schema) cost more than
+        # running it. A schema change re-prepares a cached statement inside
+        # sqlite3_step (prepare_v2 semantics), so migrations need nothing.
+        @statements = {}
         flags = SQLite3::OPEN_READWRITE | SQLite3::OPEN_URI
         flags |= SQLite3::OPEN_CREATE if create
         scratch = SQLite3.malloc(8)
@@ -84,11 +93,23 @@ module Cybertrain
       # Hashes keyed by column name (an empty Array for DDL/DML).
       def execute(sql, binds = [])
         raise Error, "connection closed (sql: #{sql})" if @closed
-        scratch = SQLite3.malloc(8)
-        rc = SQLite3.sqlite3_prepare_v2(@db, sql, -1, scratch, nil)
-        stmt = SQLite3.read_ptr(scratch)
-        SQLite3.free(scratch)
-        raise Error, error_message(sql) if rc != SQLite3::OK
+        stmt = @statements[sql]
+        cached = !stmt.nil?
+        unless cached
+          scratch = SQLite3.malloc(8)
+          rc = SQLite3.sqlite3_prepare_v2(@db, sql, -1, scratch, nil)
+          stmt = SQLite3.read_ptr(scratch)
+          SQLite3.free(scratch)
+          raise Error, error_message(sql) if rc != SQLite3::OK
+
+          # Bounded: SQL built from request data (an IN list of varying
+          # length) would otherwise grow the table without end; past the
+          # bound a statement is used once and finalized, as before.
+          if @statements.size < MAX_CACHED_STATEMENTS
+            @statements[sql] = stmt
+            cached = true
+          end
+        end
 
         rows = []
         begin
@@ -100,14 +121,29 @@ module Cybertrain
           end
 
           columns = SQLite3.sqlite3_column_count(stmt)
+          # The names once per statement, not once per row and column.
+          names = []
+          column = 0
+          while column < columns
+            names << SQLite3.sqlite3_column_name(stmt, column)
+            column += 1
+          end
           rc = SQLite3.sqlite3_step(stmt)
           while rc == SQLite3::ROW
-            rows << read_row(stmt, columns)
+            rows << read_row(stmt, names)
             rc = SQLite3.sqlite3_step(stmt)
           end
           raise Error, error_message(sql) if rc != SQLite3::DONE
         ensure
-          SQLite3.sqlite3_finalize(stmt)
+          if cached
+            # Back to the start, holding nothing: reset ends the statement
+            # (releasing its read lock) and clear_bindings drops the bound
+            # copies.
+            SQLite3.sqlite3_reset(stmt)
+            SQLite3.sqlite3_clear_bindings(stmt)
+          else
+            SQLite3.sqlite3_finalize(stmt)
+          end
         end
         rows
       end
@@ -231,6 +267,9 @@ module Cybertrain
 
       def close
         return nil if @closed
+        # sqlite3_close refuses (SQLITE_BUSY) while a statement is unfinalized.
+        @statements.each_value { |stmt| SQLite3.sqlite3_finalize(stmt) }
+        @statements.clear
         SQLite3.sqlite3_close(@db)
         @closed = true
         nil
@@ -254,19 +293,23 @@ module Cybertrain
         end
       end
 
-      def read_row(stmt, columns)
+      # A :str FFI return is already a copy (Spinel builds it with
+      # sp_str_dup_external), so neither the names nor the text values are
+      # copied again: SQLite reusing its buffer on the next step cannot
+      # reach them.
+      def read_row(stmt, names)
         row = {}
+        columns = names.size
         column = 0
         while column < columns
-          name = SQLite3.sqlite3_column_name(stmt, column) + ""
+          name = names[column]
           case SQLite3.sqlite3_column_type(stmt, column)
           when SQLite3::NULL_TYPE then row[name] = nil
           when SQLite3::INTEGER then row[name] = SQLite3.sqlite3_column_int64(stmt, column)
           when SQLite3::FLOAT then row[name] = SQLite3.sqlite3_column_double(stmt, column)
           else
             text = SQLite3.sqlite3_column_text(stmt, column)
-            # Copy out of SQLite's buffer, which the next step/finalize reuses.
-            row[name] = text.nil? ? "" : text + ""
+            row[name] = text.nil? ? "" : text
           end
           column += 1
         end

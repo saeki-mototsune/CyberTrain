@@ -115,19 +115,26 @@ module Cybertrain
     # Checks the shape and the ranges (month, day of that month, hour,
     # minute, second) before calling Time.utc, which raises on out-of-range
     # fields: a bad cell or form value must read as nil, not crash.
-    def self.parse_time(s)
-      return nil if s.size < 19
-      return nil unless s[4] == "-" && s[7] == "-" && s[13] == ":" && s[16] == ":"
-      return nil unless s[10] == "T" || s[10] == " "
-      return nil unless digits?(s[0, 4]) && digits?(s[5, 2]) && digits?(s[8, 2])
-      return nil unless digits?(s[11, 2]) && digits?(s[14, 2]) && digits?(s[17, 2])
+    #
+    # Reads bytes, not substrings: every datetime column of every loaded row
+    # comes through here, and slicing out six fields (plus a one-character
+    # String per digit for the check) was a tenth of an article page's time.
+    # The 19 bytes it accepts are all ASCII, so a multibyte String is
+    # refused exactly as the character-indexed version refused it.
+    def self.parse_time(text)
+      s = "#{text}" # one static String type for the byte reads (see Html.escape)
+      return nil if s.bytesize < 19
+      return nil unless s.getbyte(4) == 45 && s.getbyte(7) == 45 && s.getbyte(13) == 58 && s.getbyte(16) == 58
+      sep = s.getbyte(10)
+      return nil unless sep == 84 || sep == 32
 
-      year = s[0, 4].to_i
-      month = s[5, 2].to_i
-      day = s[8, 2].to_i
-      hour = s[11, 2].to_i
-      minute = s[14, 2].to_i
-      second = s[17, 2].to_i
+      year = number_at(s, 0, 4)
+      month = number_at(s, 5, 2)
+      day = number_at(s, 8, 2)
+      hour = number_at(s, 11, 2)
+      minute = number_at(s, 14, 2)
+      second = number_at(s, 17, 2)
+      return nil if year < 0 || day < 0 || hour < 0 || minute < 0 || second < 0
       return nil if month < 1 || month > 12
       return nil if day < 1 || day > days_in_month(year, month)
       return nil if hour > 23 || minute > 59 || second > 59
@@ -148,8 +155,29 @@ module Cybertrain
     end
 
     def self.digits?(s)
-      s.each_char { |ch| return false if ch < "0" || ch > "9" }
+      i = 0
+      n = s.bytesize
+      while i < n
+        b = s.getbyte(i)
+        return false if b < 48 || b > 57
+        i += 1
+      end
       true
+    end
+
+    # The decimal number in s's bytes [from, from + len), or -1 when one of
+    # them is not an ASCII digit.
+    def self.number_at(s, from, len)
+      value = 0
+      i = from
+      stop = from + len
+      while i < stop
+        b = s.getbyte(i)
+        return -1 if b < 48 || b > 57
+        value = value * 10 + (b - 48)
+        i += 1
+      end
+      value
     end
   end
 end

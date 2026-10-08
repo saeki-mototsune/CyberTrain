@@ -119,7 +119,26 @@ module Cybertrain
 
     # Percent-encodes a value for use as one path segment ("a b" -> "a%20b").
     def self.escape_segment(value)
+      return value if Router.plain_segment?(value)
+
       URI.encode_www_form_component(value).gsub("+", "%20")
+    end
+
+    # True when encode_www_form_component would return value unchanged: only
+    # the bytes it leaves alone (ASCII letters and digits, `*`, `-`, `.`,
+    # `_`). Ids and most slugs are, and skip the encoder and the gsub.
+    def self.plain_segment?(text)
+      value = "#{text}" # one static String type for the byte reads (see Html.escape)
+      i = 0
+      n = value.bytesize
+      while i < n
+        b = value.getbyte(i)
+        unless (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 42 || b == 45 || b == 46 || b == 95
+          return false
+        end
+        i += 1
+      end
+      true
     end
 
     private

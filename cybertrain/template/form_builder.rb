@@ -59,9 +59,7 @@ module Cybertrain
     # parameter) makes Spinel run the GC write barrier on the caller's
     # stack slot, which later crashes a minor collection.
     def self.html_attr(name, value)
-      out = +" "
-      out << name << "=\"" << Html.escape(value) << "\""
-      out
+      " #{name}=\"#{Html.escape(value)}\"" # one String, sized up front
     end
 
     # model: a Cybertrain::Model, or nil for `form_with url: ...` (fields are

@@ -27,6 +27,13 @@ module Cybertrain
 
       def initialize(controller)
         @controller = controller
+        # model_name => its underscored route key, for this request only (a
+        # page with a list of records asks for the same few names once per
+        # link and form). Typed empty Hash: spikes/NOTES.md rule 9.
+        @model_keys = { "" => "" }
+        @model_keys.delete("")
+        @route_keys = { "" => "" }
+        @route_keys.delete("")
       end
 
       def helper_call(name, args, kwargs, block, interp, env)
@@ -229,7 +236,7 @@ module Cybertrain
           return url_for(model) if model.persisted?
 
           # Bound step by step (see FormBuilder.humanize).
-          route("#{Helpers.route_key(model_key(model))}_path", [])
+          route("#{route_key_of(model_key(model))}_path", [])
         when Array then url_for(model)
         else raise ArgumentError, "form_with needs model: or url:"
         end
@@ -296,7 +303,7 @@ module Cybertrain
           when Cybertrain::Model
             last = i == items.size - 1
             if last && item.new_record?
-              name << Helpers.route_key(model_key(item))
+              name << route_key_of(model_key(item))
             else
               name << model_key(item)
               route_args << item
@@ -310,7 +317,22 @@ module Cybertrain
 
       def model_key(record)
         model_name = record.model_name
-        Inflector.underscore(model_name)
+        key = @model_keys[model_name]
+        return key unless key.nil?
+
+        key = Inflector.underscore(model_name)
+        @model_keys[model_name] = key
+        key
+      end
+
+      # Helpers.route_key, remembered for this request like model_key.
+      def route_key_of(singular)
+        key = @route_keys[singular]
+        return key unless key.nil?
+
+        key = Helpers.route_key(singular)
+        @route_keys[singular] = key
+        key
       end
 
       # --- partials and content_for ----------------------------------------

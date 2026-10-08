@@ -13,15 +13,28 @@ module Cybertrain
     # faster than an each_char loop under Spinel; this runs for every <%= %>.
     #
     # `&`, `<`, `>`, `"` and `'` become entities.
-    # @param str [String]
+    # @param value [String]
     # @return [String]
     # @api public
-    def self.escape(str)
+    def self.escape(value)
+      # Callers hand in Strings of more than one static type, which made the
+      # parameter polymorphic under Spinel and every getbyte and comparison
+      # below a dynamic call (most of this method's time); to_s pins one.
+      str = "#{value}"
       n = str.bytesize
+      i = 0
+      # Most values need nothing: find the first byte that does before
+      # allocating a buffer at all.
+      while i < n
+        b = str.getbyte(i)
+        break if b == 38 || b == 60 || b == 62 || b == 34 || b == 39
+        i += 1
+      end
+      return str if i == n
+
       buf = +""
       dirty = false
       start = 0
-      i = 0
       while i < n
         b = str.getbyte(i)
         if b == 38 || b == 60 || b == 62 || b == 34 || b == 39

@@ -59,16 +59,37 @@ module Cybertrain
       # collection inside `chars` frees an unnamed gsub result it is
       # splitting ("Post" comes back as "").
       path = camel_cased_word.gsub("::", "/")
-      chars = path.chars
+      # Bytes, copied in runs between the places a "_" goes in: a view asks
+      # for a model's and a controller's key on every request, and one
+      # String per character (chars, then << each) was most of a page's
+      # allocations here. The rules only look at ASCII letters, digits and
+      # "-"; any byte of a multibyte character is none of those, as the
+      # character itself was none of them, so the result is the same.
+      s = "#{path}"
+      n = s.bytesize
       out = +""
-      chars.each_with_index do |ch, i|
-        if i > 0 && upper?(ch)
-          prev = chars[i - 1]
-          nxt = i + 1 < chars.size ? chars[i + 1] : ""
-          out << "_" if lower_or_digit?(prev) || (upper?(prev) && lower?(nxt))
+      start = 0
+      i = 0
+      while i < n
+        b = s.getbyte(i)
+        if b == 45
+          out << s.byteslice(start, i - start) if i > start
+          out << "_"
+          start = i + 1
+        elsif i > 0 && b >= 65 && b <= 90
+          prev = s.getbyte(i - 1)
+          nxt = i + 1 < n ? s.getbyte(i + 1) : 0
+          prev_lower_or_digit = (prev >= 97 && prev <= 122) || (prev >= 48 && prev <= 57)
+          prev_upper = prev >= 65 && prev <= 90
+          if prev_lower_or_digit || (prev_upper && nxt >= 97 && nxt <= 122)
+            out << s.byteslice(start, i - start) if i > start
+            out << "_"
+            start = i
+          end
         end
-        out << (ch == "-" ? "_" : ch)
+        i += 1
       end
+      out << s.byteslice(start, n - start) if n > start
       out.downcase
     end
 
