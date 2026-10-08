@@ -27,7 +27,13 @@ module Cybertrain
   class Session
     def initialize(data = {})
       @data = {}
-      data.each { |k, v| @data[k.to_s] = v.to_s }
+      # keys + while: an each block is a Proc and closure per new Session.
+      keys = data.keys
+      i = 0
+      while i < keys.size
+        @data[keys[i].to_s] = data[keys[i]].to_s
+        i += 1
+      end
       @changed = false
     end
 
@@ -140,17 +146,18 @@ module Cybertrain
     # by scanning for "--" -- urlsafe base64's own alphabet includes "-",
     # so the separator can legitimately recur inside the payload.
     def self.load(cookie_value, secret)
-      empty = Session.new
-      return empty if cookie_value.nil? || cookie_value.length < 66
+      # A fresh empty Session on each early return, not one made up front:
+      # a valid cookie (nearly every request) never needs it.
+      return Session.new if cookie_value.nil? || cookie_value.length < 66
 
       len = cookie_value.length
       sep = cookie_value[len - 66, 2]
-      return empty unless sep == "--"
+      return Session.new unless sep == "--"
 
       payload = cookie_value[0, len - 66]
       signature = cookie_value[len - 64, 64]
       expected = Crypto.hmac_hex(secret, payload)
-      return empty unless Crypto.secure_compare(signature, expected)
+      return Session.new unless Crypto.secure_compare(signature, expected)
 
       data = {}
       begin
@@ -162,7 +169,12 @@ module Cybertrain
         parsed = JSON.parse(json)
         case parsed
         when Hash
-          parsed.each { |k, v| data[k.to_s] = v.to_s }
+          keys = parsed.keys
+          i = 0
+          while i < keys.size
+            data[keys[i].to_s] = parsed[keys[i]].to_s
+            i += 1
+          end
         end
       rescue JSON::ParserError, StandardError
         return Session.new

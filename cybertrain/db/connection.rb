@@ -116,8 +116,8 @@ module Cybertrain
         rows = []
         begin
           index = 1
-          binds.each do |value|
-            rc = bind(stmt, index, value)
+          while index <= binds.size
+            rc = bind(stmt, index, binds[index - 1])
             raise Error, error_message(sql) if rc != SQLite3::OK
             index += 1
           end

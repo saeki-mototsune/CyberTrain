@@ -174,14 +174,13 @@ module Cybertrain
           raise ArgumentError, "link_to does not support method: (use button_to '#{text}', path, method: :#{FormBuilder.value_text(kwargs["method"])})"
         end
 
-        buf = +"<a"
-        buf << " href=\"" << Html.escape(href) << "\""
-        buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
-        buf << " id=\"" << Html.escape(FormBuilder.value_text(kwargs["id"])) << "\"" unless kwargs["id"].nil?
-        buf << " data-confirm=\"" << Html.escape(FormBuilder.value_text(kwargs["data_confirm"])) << "\"" unless kwargs["data_confirm"].nil?
-        buf << data_attrs(kwargs["data"]) unless kwargs["data"].nil?
-        buf << ">" << text << "</a>"
-        SafeString.new(buf)
+        # One interpolation (see button_to); the optional attributes are ""
+        # when absent.
+        css = kwargs["class"].nil? ? "" : " class=\"#{Html.escape(FormBuilder.value_text(kwargs["class"]))}\""
+        id = kwargs["id"].nil? ? "" : " id=\"#{Html.escape(FormBuilder.value_text(kwargs["id"]))}\""
+        confirm = kwargs["data_confirm"].nil? ? "" : " data-confirm=\"#{Html.escape(FormBuilder.value_text(kwargs["data_confirm"]))}\""
+        data = kwargs["data"].nil? ? "" : data_attrs(kwargs["data"])
+        SafeString.new("<a href=\"#{Html.escape(href)}\"#{css}#{id}#{confirm}#{data}>#{text}</a>")
       end
 
       # A one-button form: POST (with a hidden _method for delete/patch/put)

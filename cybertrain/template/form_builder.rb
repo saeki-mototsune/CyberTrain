@@ -96,26 +96,16 @@ module Cybertrain
     def label(args, kwargs)
       attr = attribute_name(args, "label", "")
       text = args.size > 1 ? FormBuilder.html_text(args[1]) : Html.escape(FormBuilder.humanize(attr))
-      buf = +"<label"
-      buf << " for=\"" << Html.escape(field_id(attr)) << "\""
-      buf << option_attrs(kwargs, errors_on?(attribute_sym(args, attr)))
-      buf << ">" << text << "</label>"
-      SafeString.new(buf)
+      SafeString.new("<label for=\"#{Html.escape(field_id(attr))}\"#{option_attrs(kwargs, errors_on?(attribute_sym(args, attr)))}>#{text}</label>")
     end
 
     # nil values (and password fields) get no value attribute, as in Rails.
     def input_field(type, args, kwargs)
       attr = attribute_name(args, type, "_field")
       sym = attribute_sym(args, attr)
-      buf = +"<input"
-      buf << " type=\"" << Html.escape(type) << "\""
-      buf << " name=\"" << Html.escape(field_name(attr)) << "\""
-      buf << " id=\"" << Html.escape(field_id(attr)) << "\""
       value = read_value(sym)
-      buf << " value=\"" << Html.escape(FormBuilder.value_text(value)) << "\"" unless value.nil? || type == "password"
-      buf << option_attrs(kwargs, errors_on?(sym))
-      buf << ">"
-      SafeString.new(buf)
+      shown = value.nil? || type == "password" ? "" : " value=\"#{Html.escape(FormBuilder.value_text(value))}\""
+      SafeString.new("<input type=\"#{Html.escape(type)}\" name=\"#{Html.escape(field_name(attr))}\" id=\"#{Html.escape(field_id(attr))}\"#{shown}#{option_attrs(kwargs, errors_on?(sym))}>")
     end
 
     # The newline after the opening tag is Rails' too: browsers drop the
@@ -123,12 +113,7 @@ module Cybertrain
     def text_area(args, kwargs)
       attr = attribute_name(args, "text_area", "")
       sym = attribute_sym(args, attr)
-      buf = +"<textarea"
-      buf << " name=\"" << Html.escape(field_name(attr)) << "\""
-      buf << " id=\"" << Html.escape(field_id(attr)) << "\""
-      buf << option_attrs(kwargs, errors_on?(sym))
-      buf << ">\n" << Html.escape(FormBuilder.value_text(read_value(sym))) << "</textarea>"
-      SafeString.new(buf)
+      SafeString.new("<textarea name=\"#{Html.escape(field_name(attr))}\" id=\"#{Html.escape(field_id(attr))}\"#{option_attrs(kwargs, errors_on?(sym))}>\n#{Html.escape(FormBuilder.value_text(read_value(sym)))}</textarea>")
     end
 
     # The hidden "0" makes an unchecked box submit a value at all.
@@ -136,30 +121,13 @@ module Cybertrain
       attr = attribute_name(args, "check_box", "")
       sym = attribute_sym(args, attr)
       name = Html.escape(field_name(attr))
-      buf = +"<input"
-      buf << " type=\"hidden\""
-      buf << " name=\"" << name << "\""
-      buf << " value=\"0\""
-      buf << "><input"
-      buf << " type=\"checkbox\""
-      buf << " name=\"" << name << "\""
-      buf << " id=\"" << Html.escape(field_id(attr)) << "\""
-      buf << " value=\"1\""
-      buf << " checked=\"checked\"" if checked?(read_value(sym))
-      buf << option_attrs(kwargs, errors_on?(sym))
-      buf << ">"
-      SafeString.new(buf)
+      checked = checked?(read_value(sym)) ? " checked=\"checked\"" : ""
+      SafeString.new("<input type=\"hidden\" name=\"#{name}\" value=\"0\"><input type=\"checkbox\" name=\"#{name}\" id=\"#{Html.escape(field_id(attr))}\" value=\"1\"#{checked}#{option_attrs(kwargs, errors_on?(sym))}>")
     end
 
     def submit(args, kwargs)
       text = args.empty? ? default_submit_text : FormBuilder.value_text(args[0])
-      buf = +"<input"
-      buf << " type=\"submit\""
-      buf << " name=\"commit\""
-      buf << " value=\"" << Html.escape(text) << "\""
-      buf << option_attrs(kwargs, false)
-      buf << ">"
-      SafeString.new(buf)
+      SafeString.new("<input type=\"submit\" name=\"commit\" value=\"#{Html.escape(text)}\"#{option_attrs(kwargs, false)}>")
     end
 
     # "Create Post" / "Update Post", or "Save changes" without a model.

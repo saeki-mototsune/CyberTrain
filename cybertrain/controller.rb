@@ -191,9 +191,17 @@ module Cybertrain
         k = k.superclass
       end
       chain = []
-      names.each do |n|
-        list = CALLBACKS[n]
-        list.each { |cb| chain << cb } unless list.nil?
+      i = 0
+      while i < names.size
+        list = CALLBACKS[names[i]]
+        unless list.nil?
+          j = 0
+          while j < list.size
+            chain << list[j]
+            j += 1
+          end
+        end
+        i += 1
       end
       chain
     end
@@ -203,7 +211,13 @@ module Cybertrain
       k = klass
       while k
         list = RESCUES[k.name]
-        list.each { |h| handlers << h } unless list.nil?
+        unless list.nil?
+          j = 0
+          while j < list.size
+            handlers << list[j]
+            j += 1
+          end
+        end
         break if k == Controller
 
         k = k.superclass
@@ -323,8 +337,19 @@ module Cybertrain
     def view_env(extra)
       env = {}
       assigns = view_assigns
-      assigns.each_key { |key| env[key] = assigns[key] }
-      extra.each_key { |key| env[key] = extra[key] }
+      # keys + while: an each_key block is a Proc and closure per request.
+      assign_keys = assigns.keys
+      i = 0
+      while i < assign_keys.size
+        env[assign_keys[i]] = assigns[assign_keys[i]]
+        i += 1
+      end
+      extra_keys = extra.keys
+      i = 0
+      while i < extra_keys.size
+        env[extra_keys[i]] = extra[extra_keys[i]]
+        i += 1
+      end
       env["flash"] = Template::Helpers.flash_messages(flash)
       env["params"] = @params
       path = controller_path
@@ -513,8 +538,11 @@ module Cybertrain
     end
 
     def run_after_callbacks(chain, action)
-      chain.each do |cb|
+      i = 0
+      while i < chain.size
+        cb = chain[i]
         run_one(cb) if cb.kind == :after && cb.applies?(action)
+        i += 1
       end
       nil
     end
@@ -588,7 +616,12 @@ module Cybertrain
     # names up by String.
     def string_keys(locals)
       out = {}
-      locals.each_key { |key| out[key.to_s] = locals[key] }
+      keys = locals.keys
+      i = 0
+      while i < keys.size
+        out[keys[i].to_s] = locals[keys[i]]
+        i += 1
+      end
       out
     end
 
