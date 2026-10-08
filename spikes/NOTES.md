@@ -81,8 +81,8 @@ finds the commit that removed them).
     binary (`ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]`) before
     the first `Thread.new`, and re-measure once templates and SQLite add CPU work.
     Re-measured with examples/blog on two cores ([docs/benchmark.md](../docs/benchmark.md)):
-    `SPINEL_WORKERS=2` adds 18-32% to the pages, 48% to a comment POST and
-    84% to a static file. The POST used to lose a quarter: SQLite's
+    `SPINEL_WORKERS=2` adds 16-27% to the pages, 51% to a comment POST and
+    49% to a static file. The POST used to lose a quarter: SQLite's
     busy_timeout slept a millisecond or more holding the worker, until a
     busy handler retrying every 100 us replaced it (db/sqlite_ffi.rb). 1 stays
     the default (a one-core server); set it to the core count otherwise.

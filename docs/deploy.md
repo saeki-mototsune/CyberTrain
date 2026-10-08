@@ -158,7 +158,7 @@ git init -b main
 [package]
 name = "notes"
 version = "0.1.0"
-# jemalloc is a faster malloc for a server: 1.2 to 1.5 times the
+# jemalloc is a faster malloc for a server: 1.1 to 1.3 times the
 # requests per second on examples/blog (docs/benchmark.md). Building then
 # needs its development package (libjemalloc-dev on Debian/Ubuntu,
 # `brew install jemalloc` on macOS).
@@ -170,7 +170,7 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.
 
 `# allocator = "jemalloc"` の行の `#` を外すと、アプリが glibc の malloc の代わりに jemalloc を
 リンクしてビルドされます。サーバーはリクエストごとに大量の小さなメモリ確保をするので、
-examples/blog では 1 秒あたりのリクエスト数が 1.2〜1.5 倍になりました（[benchmark.md](benchmark.md)）。
+examples/blog では 1 秒あたりのリクエスト数が 1.1〜1.3 倍になりました（[benchmark.md](benchmark.md)）。
 本番ではおすすめです。手元とサーバーの両方に `libjemalloc-dev` が要ります（1-1 と 3-2 で入れています）。
 入っていないと `cannot find -ljemalloc` でビルドが止まります。
 
