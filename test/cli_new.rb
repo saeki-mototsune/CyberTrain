@@ -49,7 +49,7 @@ test "spin.toml names the package and references the framework" do
     [package]
     name = "blog"
     version = "0.1.0"
-    # jemalloc is a faster malloc for a server: 1.2 to 1.4 times the
+    # jemalloc is a faster malloc for a server: 1.2 to 1.5 times the
     # requests per second on examples/blog (docs/benchmark.md). Building then
     # needs its development package (libjemalloc-dev on Debian/Ubuntu,
     # `brew install jemalloc` on macOS).
