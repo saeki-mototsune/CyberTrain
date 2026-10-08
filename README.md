@@ -91,7 +91,7 @@ works there with no network.
 - jemalloc's development package (`libjemalloc-dev`; `brew install jemalloc`)
   is optional: an app needs it only once its `spin.toml` says
   `allocator = "jemalloc"`, which `cybertrain new` writes commented out. It
-  is worth turning on for production: JEMALLOC_GAIN the requests per second on
+  is worth turning on for production: 1.2 to 1.4 times the requests per second on
   examples/blog ([docs/benchmark.md](docs/benchmark.md)).
 
 `cybertrain doctor` checks these tools and headers and the Spinel install;
@@ -540,24 +540,26 @@ Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record
 same blog written in Rails 8.1, [bench/rails_blog](bench/rails_blog) (the same
 views, routes, models and schema), both in production mode, each server
 pinned to the same CPU cores of one 4-vCPU cloud VM and loaded by wrk from
-two others. Medians of three 10-second runs, recorded 2026-10-07:
+two others. Medians of three 10-second runs, recorded 2026-10-08:
 
 | 1 CPU core, 16 connections | CyberTrain 0.2.1 | Rails 8.1.4 (YJIT, Puma) | |
 | --- | --: | --: | --: |
-| `GET /articles` (30 articles) | 1,026 req/s | 414 req/s | 2.5x |
-| `GET /articles/1` (10 comments, 12 forms) | 1,064 req/s | 192 req/s | 5.5x |
-| `POST /articles/2/comments` | 926 req/s | 324 req/s | 2.9x |
-| `GET /style.css` | 15,832 req/s | 5,794 req/s | 2.7x |
-| Memory after the load (RSS) | 10.6 MB | 130 MB | |
-| Spawn to first response | 0.02 s | 1.2 s | |
+| `GET /articles` (30 articles) | 2,117 req/s | 523 req/s | 4.1x |
+| `GET /articles/1` (10 comments, 12 forms) | 1,948 req/s | 258 req/s | 7.5x |
+| `POST /articles/2/comments` | 1,625 req/s | 436 req/s | 3.7x |
+| `GET /style.css` | 17,887 req/s | 6,560 req/s | 2.7x |
+| Memory after the load (RSS) | 10.5 MB | 130 MB | |
+| Spawn to first response | 0.02 s | 1.1 s | |
 | What the server needs | 2.5 MB (one binary) | 109 MB (Ruby, 69 gems, the app) | |
 
-On two cores the lead narrows to 1.2 to 2.9 times: a second Puma worker
-nearly doubles Rails, while `SPINEL_WORKERS=2` adds 9 to 30% to reads and
-slows the POST. The binary also has to be built (`cybertrain build` took
-3 minutes there). docs/benchmark.md has latency, both configurations and the
-method; `bench/run` repeats the measurement and `bench/report` prints its
-tables.
+With jemalloc in both (`allocator = "jemalloc"` in spin.toml; Rails'
+production image preloads it) the ratios are 2.8 to 9.6. On two cores the lead
+narrows to 1.5 to 4.2: a second Puma worker doubles Rails, while
+`SPINEL_WORKERS=2` adds 14 to 19% to the pages and slows the POST. The binary
+also has to be built (`cybertrain build` took 2 to 3 minutes there).
+docs/benchmark.md has latency, every configuration, the method and what was
+optimized to get here; `bench/run` repeats the measurement and `bench/report`
+prints its tables.
 
 ## Configuration and environment variables
 
