@@ -11,6 +11,7 @@
 # program that renders through it: cybertrain/controller.rb requires this
 # file, so this file does not require the controller back.
 require "cybertrain/html"
+require "cybertrain/http/header_name"
 require "cybertrain/model"
 require "cybertrain/params"
 require "cybertrain/views"
@@ -34,6 +35,10 @@ module Cybertrain
         @model_keys.delete("")
         @route_keys = { "" => "" }
         @route_keys.delete("")
+        # template dir => partial name => its file name, for this request
+        # only (a collection renders the same partial once per record).
+        @partial_files = { "" => { "" => "" } }
+        @partial_files.delete("")
       end
 
       def helper_call(name, args, kwargs, block, interp, env)
@@ -341,6 +346,25 @@ module Cybertrain
         key
       end
 
+      # "comments/_comment.html.erb" for render "comments/comment" (or
+      # "comment" from a comments/ template), remembered like model_key.
+      # Ending in .erb, it is used by Engine#template as is.
+      def partial_file(dir, name)
+        by_name = @partial_files[dir]
+        if by_name.nil?
+          by_name = { "" => "" }
+          by_name.delete("")
+          @partial_files[dir] = by_name
+        end
+        file = by_name[name]
+        return file unless file.nil?
+
+        path = Helpers.partial_path(dir, name)
+        file = path.end_with?(".erb") ? path : "#{path}.html.erb"
+        by_name[name] = file
+        file
+      end
+
       # Helpers.route_key, remembered for this request like model_key.
       def route_key_of(singular)
         key = @route_keys[singular]
@@ -378,7 +402,7 @@ module Cybertrain
         engine = Views.engine
         raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
 
-        template = engine.template(Helpers.partial_path(FormBuilder.value_text(env["__template_dir"]), name))
+        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = []
         locals.each_key { |key| names << key if !(args.empty? && (key == "partial" || key == "locals")) }
         Helpers.check_locals(template, names)
@@ -512,9 +536,10 @@ module Cybertrain
 
       # `method: :DELETE` -> "delete"; `length: "10"` -> 10. The text is bound
       # to a local before the second call (see FormBuilder.humanize).
+      # text.downcase, without the copy for an already lowercase method:.
       def lower_text(v)
         text = FormBuilder.value_text(v)
-        text.downcase
+        HeaderName.lower(text)
       end
 
       def int_text(v)
