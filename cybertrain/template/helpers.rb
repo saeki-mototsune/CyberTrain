@@ -112,8 +112,15 @@ module Cybertrain
       # Array#include? with String arguments mis-dispatches once the whole
       # framework (SafeString's to_str) is in the program (spikes/NOTES.md
       # rules 14 and 29); compare explicitly.
+      # A while loop: `each` with a `return` in the block costs a setjmp and
+      # a Proc per call under Spinel, and this runs for every partial.
       def self.name_in?(names, name)
-        names.each { |n| return true if n == name }
+        i = 0
+        n = names.size
+        while i < n
+          return true if names[i] == name
+          i += 1
+        end
         false
       end
 

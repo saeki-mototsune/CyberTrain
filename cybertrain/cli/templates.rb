@@ -62,6 +62,11 @@ module Cybertrain
           [package]
           name = "#{package}"
           version = "0.1.0"
+          # jemalloc is a faster malloc for a server: about 1.3x the requests
+          # per second on examples/blog (docs/benchmark.md). Building then
+          # needs its development package (libjemalloc-dev on Debian/Ubuntu,
+          # `brew install jemalloc` on macOS).
+          # allocator = "jemalloc"
 
           [dependencies]
           cybertrain = #{framework_dep}

@@ -17,9 +17,13 @@ module Cybertrain
     # @return [String]
     # @api public
     def self.escape(value)
-      # Callers hand in Strings of more than one static type, which made the
-      # parameter polymorphic under Spinel and every getbyte and comparison
-      # below a dynamic call (most of this method's time); to_s pins one.
+      # The parameter is polymorphic under Spinel (callers hand in Strings of
+      # more than one static type), which made every getbyte and comparison
+      # below a dynamic call: most of this method's time. The interpolated
+      # copy has one static type, so the loops compile to plain C. value
+      # itself is what comes back when nothing needs escaping: returning the
+      # parameter keeps Spinel from narrowing it to whatever one caller
+      # passes (it once inferred an Integer and turned Strings into "0").
       str = "#{value}"
       n = str.bytesize
       i = 0
@@ -30,7 +34,7 @@ module Cybertrain
         break if b == 38 || b == 60 || b == 62 || b == 34 || b == 39
         i += 1
       end
-      return str if i == n
+      return value if i == n
 
       buf = +""
       dirty = false

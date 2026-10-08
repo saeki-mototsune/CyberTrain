@@ -475,11 +475,13 @@ module Cybertrain
 
     def run_action(action, body)
       @action_name = action.to_s
+      # Built once per request and walked by both passes.
+      chain = Controller.chain_for(self.class)
       begin
-        if run_before_callbacks(action)
+        if run_before_callbacks(chain, action)
           body.call(self)
           default_render(action) unless performed?
-          run_after_callbacks(action)
+          run_after_callbacks(chain, action)
         end
       rescue JSON::ParserError, StandardError => e
         # JSON::ParserError named (NOTES rule 33: not a StandardError under
@@ -493,19 +495,25 @@ module Cybertrain
       nil
     end
 
-    # false when a callback rendered or redirected (the chain halts).
-    def run_before_callbacks(action)
-      Controller.chain_for(self.class).each do |cb|
-        next unless cb.kind == :before && cb.applies?(action)
-
-        run_one(cb)
-        return false if performed?
+    # false when a callback rendered or redirected (the chain halts). A
+    # while loop, not `each` with a `return` inside the block: under Spinel
+    # a return out of a block costs a setjmp and a Proc on every call.
+    def run_before_callbacks(chain, action)
+      i = 0
+      n = chain.size
+      while i < n
+        cb = chain[i]
+        if cb.kind == :before && cb.applies?(action)
+          run_one(cb)
+          return false if performed?
+        end
+        i += 1
       end
       true
     end
 
-    def run_after_callbacks(action)
-      Controller.chain_for(self.class).each do |cb|
+    def run_after_callbacks(chain, action)
+      chain.each do |cb|
         run_one(cb) if cb.kind == :after && cb.applies?(action)
       end
       nil

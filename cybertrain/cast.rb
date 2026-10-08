@@ -92,7 +92,9 @@ module Cybertrain
       case v
       when Time then v
       when Integer then Time.at(v).utc
-      when String then parse_time(v)
+      # Interpolated so parse_time's parameter is a String, not the
+      # polymorphic v: its byte reads are then plain C (see Html.escape).
+      when String then parse_time("#{v}")
       else nil
       end
     end
@@ -121,8 +123,7 @@ module Cybertrain
     # String per digit for the check) was a tenth of an article page's time.
     # The 19 bytes it accepts are all ASCII, so a multibyte String is
     # refused exactly as the character-indexed version refused it.
-    def self.parse_time(text)
-      s = "#{text}" # one static String type for the byte reads (see Html.escape)
+    def self.parse_time(s)
       return nil if s.bytesize < 19
       return nil unless s.getbyte(4) == 45 && s.getbyte(7) == 45 && s.getbyte(13) == 58 && s.getbyte(16) == 58
       sep = s.getbyte(10)
