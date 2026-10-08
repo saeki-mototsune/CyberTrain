@@ -51,6 +51,9 @@ module Cybertrain
   class Model
     VALIDATORS = {}   # model name => Array<Validator>
     CALLBACKS = {}    # "Post:before_save" => Array<Proc>; each block takes the record
+    # What generated from_row passes to new: never written to (initialize
+    # skips assign_attributes for an empty Hash), so one serves every row.
+    NO_ATTRIBUTES = {}
 
     # Declares validations for one attribute, run by {#valid?} (and so by
     # {#save}) in declaration order. Only `presence` and `length` exist.

@@ -301,6 +301,30 @@ finds the commit that removed them).
     source) is untouched. merge!'s per-String copies are what make that true
     under CRuby; under Spinel they cost a copy and change nothing.
 
+56. Typing for speed (Spinel 2026.09.12; `spinel app.rb --emit-types` writes
+    `app.types.json`, whose diagnostics name each method "widened to
+    untyped", and `-S` shows the C):
+    - `"#{v}"` always allocates and copies, even when `v` is a String.
+      `v.to_s` is typed and returns the String itself, provided every
+      `to_s` in the program returns a typed String (SafeString's does once
+      every `SafeString.new` gets one). A parameter used only through
+      `to_s` is narrowed to one caller's type (Html.escape once took an
+      Integer and turned Strings into "0"): keep a `case v when String` on
+      it, and pass `x.to_s` from a caller whose own parameter is otherwise
+      unused, which Spinel types as an Integer (SafeString#+).
+    - A Hash with object values boxes them, so a lookup is polymorphic; an
+      object Array is typed (`sp_PtrArray`) unless the program calls
+      `clear` on it anywhere, or it is an Array of the class that holds it
+      (INode#ikids): then it is `sp_PolyArray`. Engine keeps Templates in an
+      Array found through a String => index Hash, and `clear_cache!`
+      assigns a fresh Array.
+    - A nullable object passed as a parameter is boxed; returning it from
+      there makes the method's result polymorphic.
+    - `String#to_sym` searches the whole symbol table linearly. Keep the
+      Symbol a template passes rather than round-tripping through a String.
+    - `str.setbyte` writes a heap String in place; `str << int` makes a
+      one-character String per call.
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.

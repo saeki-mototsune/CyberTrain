@@ -249,6 +249,8 @@ module Cybertrain
 
     # "posts" -> "`posts`" (an embedded backtick is doubled).
     def self.quote_ident(name)
+      return "`#{name}`" unless name.include?("`")
+
       "`" + name.gsub("`", "``") + "`"
     end
 

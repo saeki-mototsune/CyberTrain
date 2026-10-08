@@ -30,7 +30,12 @@ class NoteRelation < Cybertrain::Relation
 
   def to_a
     out = Array.new(0) { Note.new }
-    rows.each { |r| out << Note.from_row(r) }
+    found = rows
+    i = 0
+    while i < found.size
+      out << Note.from_row(found[i])
+      i += 1
+    end
     out
   end
 
@@ -55,7 +60,7 @@ class Note < Cybertrain::Model
   end
 
   def self.from_row(row)
-    rec = Note.new
+    rec = Note.new(Cybertrain::Model::NO_ATTRIBUTES)
     rec.load_row(row)
     rec
   end

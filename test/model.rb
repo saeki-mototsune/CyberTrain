@@ -22,7 +22,12 @@ class PostRelation < Cybertrain::Relation
 
   def to_a
     out = Array.new(0) { Post.new }
-    rows.each { |r| out << Post.from_row(r) }
+    found = rows
+    i = 0
+    while i < found.size
+      out << Post.from_row(found[i])
+      i += 1
+    end
     out
   end
 
@@ -68,7 +73,7 @@ class Post < Cybertrain::Model
   end
 
   def self.from_row(row)
-    rec = Post.new
+    rec = Post.new(Cybertrain::Model::NO_ATTRIBUTES)
     rec.load_row(row)
     rec
   end
@@ -163,7 +168,12 @@ class CommentRelation < Cybertrain::Relation
 
   def to_a
     out = Array.new(0) { Comment.new }
-    rows.each { |r| out << Comment.from_row(r) }
+    found = rows
+    i = 0
+    while i < found.size
+      out << Comment.from_row(found[i])
+      i += 1
+    end
     out
   end
 
@@ -210,7 +220,7 @@ class Comment < Cybertrain::Model
   end
 
   def self.from_row(row)
-    rec = Comment.new
+    rec = Comment.new(Cybertrain::Model::NO_ATTRIBUTES)
     rec.load_row(row)
     rec
   end
@@ -309,7 +319,12 @@ class FlagRelation < Cybertrain::Relation
 
   def to_a
     out = Array.new(0) { Flag.new }
-    rows.each { |r| out << Flag.from_row(r) }
+    found = rows
+    i = 0
+    while i < found.size
+      out << Flag.from_row(found[i])
+      i += 1
+    end
     out
   end
 
@@ -354,7 +369,7 @@ class Flag < Cybertrain::Model
   end
 
   def self.from_row(row)
-    rec = Flag.new
+    rec = Flag.new(Cybertrain::Model::NO_ATTRIBUTES)
     rec.load_row(row)
     rec
   end

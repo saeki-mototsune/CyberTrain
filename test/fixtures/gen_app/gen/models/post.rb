@@ -9,7 +9,12 @@ class PostRelation < Cybertrain::Relation
 
   def to_a
     out = Array.new(0) { Post.new }
-    rows.each { |r| out << Post.from_row(r) }
+    found = rows
+    i = 0
+    while i < found.size
+      out << Post.from_row(found[i])
+      i += 1
+    end
     out
   end
 
@@ -56,7 +61,7 @@ class Post < Cybertrain::Model
   end
 
   def self.from_row(row)
-    rec = Post.new
+    rec = Post.new(Cybertrain::Model::NO_ATTRIBUTES)
     rec.load_row(row)
     rec
   end

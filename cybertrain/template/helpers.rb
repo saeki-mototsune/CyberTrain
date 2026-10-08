@@ -190,16 +190,13 @@ module Cybertrain
         text = html_arg(args, 0, "button_to")
         action = url_for(arg(args, 1, "button_to"))
         verb = kwargs["method"].nil? ? "post" : lower_text(kwargs["method"])
-        buf = +"<form class=\"button_to\""
-        buf << " method=\"" << (verb == "get" ? "get" : "post") << "\""
-        buf << " action=\"" << Html.escape(action) << "\""
-        buf << ">"
-        buf << hidden_fields(verb)
-        buf << "<button"
-        buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
-        buf << data_attrs(kwargs["data"]) unless kwargs["data"].nil?
-        buf << " type=\"submit\">" << text << "</button></form>"
-        SafeString.new(buf)
+        # One interpolation, allocated once at its final size: a `+""`
+        # buffer costs a copy of the literal, a String object, and a copy
+        # of the result when it is returned. The optional parts are "" (a
+        # static literal) when absent.
+        css = kwargs["class"].nil? ? "" : " class=\"#{Html.escape(FormBuilder.value_text(kwargs["class"]))}\""
+        data = kwargs["data"].nil? ? "" : data_attrs(kwargs["data"])
+        SafeString.new("<form class=\"button_to\" method=\"#{verb == "get" ? "get" : "post"}\" action=\"#{Html.escape(action)}\">#{hidden_fields(verb)}<button#{css}#{data} type=\"submit\">#{text}</button></form>")
       end
 
       # form_with(model: post) do |f| ... end, form_with(model: [post, comment]),
@@ -284,22 +281,15 @@ module Cybertrain
       # anything but GET (omitted without a session to take it from). Tag
       # builders append what these return rather than passing their buffer
       # down (see FormBuilder.html_attr).
+      # Interpolations, not a `+""` buffer (see button_to).
       def hidden_fields(verb)
-        out = +""
-        return out if verb == "get"
+        return "" if verb == "get"
 
-        if verb != "post"
-          out << "<input type=\"hidden\" name=\"_method\""
-          out << " value=\"" << Html.escape(verb) << "\""
-          out << ">"
-        end
+        method_field = verb == "post" ? "" : "<input type=\"hidden\" name=\"_method\" value=\"#{Html.escape(verb)}\">"
         token = csrf_token
-        unless token.empty?
-          out << "<input type=\"hidden\" name=\"authenticity_token\""
-          out << " value=\"" << Html.escape(token) << "\""
-          out << ">"
-        end
-        out
+        return method_field if token.empty?
+
+        "#{method_field}<input type=\"hidden\" name=\"authenticity_token\" value=\"#{Html.escape(token)}\">"
       end
 
       # data: { turbo_confirm: "Sure?" } -> data-turbo-confirm="Sure?".
@@ -316,8 +306,10 @@ module Cybertrain
 
       # --- routes ------------------------------------------------------------
 
+      # to_s, not an interpolation: a String typed without a copy (see
+      # FormBuilder.value_text).
       def route(name, args)
-        "#{Views.url_resolver.call(name, args)}"
+        Views.url_resolver.call(name, args).to_s
       end
 
       # A String is already a URL; a record maps to its member route
@@ -334,6 +326,21 @@ module Cybertrain
       end
 
       def nested_url(items)
+        # [parent, child], the usual shape, in one interpolation.
+        if items.size == 2
+          parent = items[0]
+          child = items[1]
+          case parent
+          when Cybertrain::Model
+            case child
+            when Cybertrain::Model
+              parent_key = model_key(parent)
+              return route("#{parent_key}_#{route_key_of(model_key(child))}_path", [parent]) if child.new_record?
+
+              return route("#{parent_key}_#{model_key(child)}_path", [parent, child])
+            end
+          end
+        end
         name = +""
         route_args = []
         items.each_with_index do |item, i|

@@ -225,6 +225,8 @@ module Cybertrain
     # Keyword arguments become attributes in the order given (`true` as
     # name="name", false/nil dropped); the error class joins `class:`.
     def option_attrs(kwargs, with_errors)
+      return "" if kwargs.empty? && !with_errors
+
       out = +""
       classes = +""
       kwargs.each_key do |key|

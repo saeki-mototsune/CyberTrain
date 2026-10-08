@@ -64,13 +64,23 @@ module Cybertrain
         # nil: read files under root. A Hash: the embedded table.
         @sources = nil
         # Typed empty Hashes (spikes/NOTES.md rule 9).
-        @templates = { "" => Template.new("", INode.list, Array.new(0) { "" }, false, "") }
-        @templates.delete("")
+        # Parsed templates live in a typed Array, found through a
+        # key => index Hash: Spinel boxes the values of a Hash of objects,
+        # so a Hash<String, Template> lookup comes back polymorphic, and so
+        # would every template, node and env the interpreter handles.
+        @template_list = Engine.no_templates
+        @template_index = { "" => 0 }
+        @template_index.delete("")
         @stamps = { "" => "" }
         @stamps.delete("")
       end
 
       # An engine over an embedded table (Gen::Views::SOURCES).
+      # An empty Array<Template>, typed by the block (never called).
+      def self.no_templates
+        Array.new(0) { Template.new("", INode.list, Array.new(0) { "" }, false, "") }
+      end
+
       def self.embedded(sources, max_render_depth: MAX_RENDER_DEPTH)
         engine = Engine.new("", cache: true, max_render_depth: max_render_depth)
         engine.sources = sources
@@ -84,9 +94,15 @@ module Cybertrain
       # "posts/show" and "posts/show.html.erb" name the same template.
       def template(name)
         key = file_name(name)
-        cached = @templates[key]
+        cached = cached_template(key)
         sources = @sources
-        return embedded_template(key, cached, sources) unless sources.nil?
+        # The cache hit is answered here, not by embedded_template: a
+        # nullable Template passed as a parameter is boxed by Spinel.
+        unless sources.nil?
+          return cached unless cached.nil?
+
+          return embedded_template(key, sources)
+        end
         return cached if @cache && !cached.nil?
 
         path = File.join(@root, key)
@@ -96,7 +112,7 @@ module Cybertrain
         return cached if !cached.nil? && @stamps[key] == stamp
 
         parsed = Template.parse(File.read(path), key, path)
-        @templates[key] = parsed
+        store_template(key, parsed)
         @stamps[key] = stamp
         parsed
       end
@@ -125,7 +141,10 @@ module Cybertrain
       end
 
       def clear_cache!
-        @templates.clear
+        # A fresh Array rather than clear: Array#clear anywhere in the
+        # program makes Spinel box that Array's elements (Spinel 2026.09.12).
+        @template_list = Engine.no_templates
+        @template_index.clear
         @stamps.clear
         nil
       end
@@ -137,19 +156,45 @@ module Cybertrain
       # every error message prefixes, so they read "posts/show.html.erb:12: ..."
       # exactly as from disk; having no file behind it, the key is its
       # source_path too.
-      def embedded_template(key, cached, sources)
-        return cached unless cached.nil?
-
+      def embedded_template(key, sources)
         source = sources[key]
         raise MissingTemplate, "Missing template #{key} (embedded)" if source.nil?
 
         parsed = Template.parse(source, key, key)
-        @templates[key] = parsed
+        store_template(key, parsed)
         parsed
       end
 
+      def cached_template(key)
+        i = @template_index[key]
+        return nil if i.nil?
+
+        # The case unboxes the Array element into a typed Template.
+        found = @template_list[i]
+        case found
+        when Template then return found
+        end
+        nil
+      end
+
+      # A reparsed file replaces its entry in place.
+      def store_template(key, parsed)
+        i = @template_index[key]
+        if i.nil?
+          @template_index[key] = @template_list.size
+          @template_list << parsed
+        else
+          @template_list[i] = parsed
+        end
+        nil
+      end
+
+      # name.to_s: some callers hand in a polymorphic name, and returning it
+      # as is made every key, and with it @template_index, polymorphic.
+      # to_s types it without copying a String.
       def file_name(name)
-        name.end_with?(".erb") ? name : "#{name}.html.erb"
+        text = name.to_s
+        text.end_with?(".erb") ? text : "#{text}.html.erb"
       end
 
       # mtime alone has one-second resolution on some filesystems; the size
