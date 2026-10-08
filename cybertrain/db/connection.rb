@@ -47,6 +47,13 @@ module Cybertrain
         # running it. A schema change re-prepares a cached statement inside
         # sqlite3_step (prepare_v2 semantics), so migrations need nothing.
         @statements = {}
+        # Column names per SQL text, next to the prepared statement: a
+        # typed Array found through a String => index Hash (a Hash of
+        # objects would box its values, and Array#clear would box the
+        # Array: see spikes/NOTES.md rule 56).
+        @name_lists = Connection.no_name_lists
+        @name_index = { "" => 0 }
+        @name_index.delete("")
         flags = SQLite3::OPEN_READWRITE | SQLite3::OPEN_URI
         flags |= SQLite3::OPEN_CREATE if create
         scratch = SQLite3.malloc(8)
@@ -122,15 +129,23 @@ module Cybertrain
             index += 1
           end
 
-          columns = SQLite3.sqlite3_column_count(stmt)
-          # The names once per statement, not once per row and column.
-          names = []
-          column = 0
-          while column < columns
-            names << SQLite3.sqlite3_column_name(stmt, column)
-            column += 1
-          end
+          # Step first: a cached statement is re-prepared inside the step
+          # after a schema change, and only then do its column count and
+          # names (and any later row) describe the new table.
           rc = SQLite3.sqlite3_step(stmt)
+          columns = SQLite3.sqlite3_column_count(stmt)
+          # The names once per SQL text (and the count must still match),
+          # not once per row and column.
+          names = columns == 0 ? NO_NAMES : cached_names(sql)
+          if names.size != columns
+            names = Array.new(0) { "" }
+            column = 0
+            while column < columns
+              names << SQLite3.sqlite3_column_name(stmt, column)
+              column += 1
+            end
+            remember_names(sql, names)
+          end
           while rc == SQLite3::ROW
             rows << read_row(stmt, names)
             rc = SQLite3.sqlite3_step(stmt)
@@ -153,6 +168,7 @@ module Cybertrain
       # Runs a semicolon-separated script (schema DDL, PRAGMAs); no binds, no rows.
       def exec_script(sql)
         raise Error, "connection closed (sql: #{sql})" if @closed
+        forget_names
         rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
         raise Error, error_message(sql) if rc != SQLite3::OK
         nil
@@ -272,6 +288,7 @@ module Cybertrain
         # sqlite3_close refuses (SQLITE_BUSY) while a statement is unfinalized.
         @statements.each_value { |stmt| SQLite3.sqlite3_finalize(stmt) }
         @statements.clear
+        forget_names
         SQLite3.sqlite3_close(@db)
         @closed = true
         nil
@@ -281,7 +298,57 @@ module Cybertrain
         @closed
       end
 
+      # An empty Array<String>, shared and never written to.
+      NO_NAMES = Array.new(0) { "" }
+
+      # Remembered column names for one SQL text.
+      class ColumnNames
+        attr_reader :names
+
+        def initialize(names)
+          @names = names
+        end
+      end
+
+      # An empty Array<ColumnNames>, typed by the block (never called).
+      def self.no_name_lists
+        Array.new(0) { ColumnNames.new(Array.new(0) { "" }) }
+      end
+
       private
+
+      def cached_names(sql)
+        i = @name_index[sql]
+        return NO_NAMES if i.nil?
+
+        found = @name_lists[i]
+        case found
+        when ColumnNames then return found.names
+        end
+        NO_NAMES
+      end
+
+      def remember_names(sql, names)
+        i = @name_index[sql]
+        if i.nil?
+          @name_index[sql] = @name_lists.size
+          @name_lists << ColumnNames.new(names)
+        else
+          @name_lists[i] = ColumnNames.new(names)
+        end
+        nil
+      end
+
+      # A script (DDL) can rename columns under a cached statement. Added or
+      # dropped columns change the count, which execute checks; a rename that
+      # keeps the count, made through another connection, is the one change
+      # this cannot see (the generated models name their columns anyway, so
+      # such a server needs a restart regardless).
+      def forget_names
+        @name_lists = Connection.no_name_lists
+        @name_index.clear
+        nil
+      end
 
       def bind(stmt, index, value)
         case value

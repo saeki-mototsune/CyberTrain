@@ -385,4 +385,23 @@ test "DB.connect, DB.with and DB.disconnect" do
   reset_pool_file
 end
 
+test "remembered column names follow a changed schema" do
+  conn = posts_db
+  conn.execute("INSERT INTO posts (title) VALUES (?)", ["a"])
+  sql = "SELECT * FROM posts"
+  first = conn.execute(sql)[0]
+  assert_equal "a", first["title"]
+  assert_equal 6, first.size
+  assert_equal "a", conn.execute(sql)[0]["title"] # answered from the remembered names
+  conn.exec_script("ALTER TABLE posts ADD COLUMN extra TEXT")
+  widened = conn.execute(sql)[0]
+  assert_equal 7, widened.size
+  assert widened.key?("extra")
+  conn.exec_script("ALTER TABLE posts RENAME COLUMN title TO headline")
+  renamed = conn.execute(sql)[0]
+  assert_equal "a", renamed["headline"]
+  refute renamed.key?("title")
+  conn.close
+end
+
 Cybertrain::Test.run!

@@ -21,4 +21,5 @@ ok   DB.with before DB.connect raises not connected
 ok   DB.connect(":memory:") shares one database across DB.with calls
 ok   pool: 8 threads x 100 inserts through DB.with
 ok   DB.connect, DB.with and DB.disconnect
-23 tests, 90 assertions, 0 failures
+ok   remembered column names follow a changed schema
+24 tests, 97 assertions, 0 failures
