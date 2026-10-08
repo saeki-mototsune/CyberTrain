@@ -170,10 +170,10 @@ module Cybertrain
         end
 
         buf = +"<a"
-        buf << FormBuilder.html_attr("href", href)
-        buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
-        buf << FormBuilder.html_attr("id", FormBuilder.value_text(kwargs["id"])) unless kwargs["id"].nil?
-        buf << FormBuilder.html_attr("data-confirm", FormBuilder.value_text(kwargs["data_confirm"])) unless kwargs["data_confirm"].nil?
+        buf << " href=\"" << Html.escape(href) << "\""
+        buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
+        buf << " id=\"" << Html.escape(FormBuilder.value_text(kwargs["id"])) << "\"" unless kwargs["id"].nil?
+        buf << " data-confirm=\"" << Html.escape(FormBuilder.value_text(kwargs["data_confirm"])) << "\"" unless kwargs["data_confirm"].nil?
         buf << data_attrs(kwargs["data"]) unless kwargs["data"].nil?
         buf << ">" << text << "</a>"
         SafeString.new(buf)
@@ -186,12 +186,12 @@ module Cybertrain
         action = url_for(arg(args, 1, "button_to"))
         verb = kwargs["method"].nil? ? "post" : lower_text(kwargs["method"])
         buf = +"<form class=\"button_to\""
-        buf << FormBuilder.html_attr("method", verb == "get" ? "get" : "post")
-        buf << FormBuilder.html_attr("action", action)
+        buf << " method=\"" << (verb == "get" ? "get" : "post") << "\""
+        buf << " action=\"" << Html.escape(action) << "\""
         buf << ">"
         buf << hidden_fields(verb)
         buf << "<button"
-        buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
+        buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
         buf << data_attrs(kwargs["data"]) unless kwargs["data"].nil?
         buf << " type=\"submit\">" << text << "</button></form>"
         SafeString.new(buf)
@@ -213,9 +213,9 @@ module Cybertrain
           verb = "patch"
         end
         buf = +"<form"
-        buf << FormBuilder.html_attr("action", action)
-        buf << FormBuilder.html_attr("method", verb == "get" ? "get" : "post")
-        buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
+        buf << " action=\"" << Html.escape(action) << "\""
+        buf << " method=\"" << (verb == "get" ? "get" : "post") << "\""
+        buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
         buf << ">"
         buf << hidden_fields(verb)
         buf << interp.capture(block, env, FormBuilder.new(record))
@@ -268,13 +268,13 @@ module Cybertrain
 
         if verb != "post"
           out << "<input type=\"hidden\" name=\"_method\""
-          out << FormBuilder.html_attr("value", verb)
+          out << " value=\"" << Html.escape(verb) << "\""
           out << ">"
         end
         token = csrf_token
         unless token.empty?
           out << "<input type=\"hidden\" name=\"authenticity_token\""
-          out << FormBuilder.html_attr("value", token)
+          out << " value=\"" << Html.escape(token) << "\""
           out << ">"
         end
         out

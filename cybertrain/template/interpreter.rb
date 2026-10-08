@@ -214,13 +214,23 @@ module Cybertrain
           truthy?(eval_expr(n.ia, env)) ? eval_expr(n.ib, env) : eval_expr(n.ic, env)
         elsif k == INode::K_INTERP
           buf = +""
-          n.ikids.each { |part| buf << to_s_value(eval_expr(part, env)) }
+          parts = n.ikids
+          j = 0
+          while j < parts.size
+            buf << to_s_value(eval_expr(parts[j], env))
+            j += 1
+          end
           buf
         elsif k == INode::K_INDEX then index(eval_expr(n.ia, env), eval_expr(n.ib, env), n)
         elsif k == INode::K_FLOAT then n.iflt
         elsif k == INode::K_ARRAY
           items = []
-          n.ikids.each { |item| items << eval_expr(item, env) }
+          elems = n.ikids
+          j = 0
+          while j < elems.size
+            items << eval_expr(elems[j], env)
+            j += 1
+          end
           items
         elsif k == INode::K_HASH
           hash = {}
@@ -277,7 +287,11 @@ module Cybertrain
       private
 
       def exec_nodes(nodes, env)
-        nodes.each do |n|
+        idx = 0
+        count = nodes.size
+        while idx < count
+          n = nodes[idx]
+          idx += 1
           k = n.ikind
           if k == INode::K_TEXT then @out << n.istr
           elsif k == INode::K_OUT then @out << to_output(eval_expr(n.ia, env))
@@ -308,7 +322,8 @@ module Cybertrain
         when Time then undefined(n, "each", "Time")
         when Array
           i = 0
-          coll.each do |item|
+          while i < coll.size
+            item = coll[i]
             if n.iint == 1
               env[names[0]] = item
               env[names[1]] = i if two
@@ -356,17 +371,25 @@ module Cybertrain
       # Block parameters shadow outer names only inside the block.
       def save_locals(env, names)
         saved = {}
-        names.each { |name| saved[name] = env[name] if key_in?(env, name) }
+        i = 0
+        while i < names.size
+          name = names[i]
+          saved[name] = env[name] if key_in?(env, name)
+          i += 1
+        end
         saved
       end
 
       def restore_locals(env, names, saved)
-        names.each do |name|
+        i = 0
+        while i < names.size
+          name = names[i]
           if saved.key?(name)
             env[name] = saved[name]
           else
             env.delete(name)
           end
+          i += 1
         end
         nil
       end
@@ -383,12 +406,20 @@ module Cybertrain
       end
 
       def reset_locals(env, fresh)
-        fresh.each { |name| env[name] = nil }
+        i = 0
+        while i < fresh.size
+          env[fresh[i]] = nil
+          i += 1
+        end
         nil
       end
 
       def drop_locals(env, fresh)
-        fresh.each { |name| env.delete(name) }
+        i = 0
+        while i < fresh.size
+          env.delete(fresh[i])
+          i += 1
+        end
         nil
       end
 
@@ -428,16 +459,29 @@ module Cybertrain
       def eval_args(n, env)
         return @no_args if n.ikids.empty?
 
+        # while, not each: a block here was a Proc and its closure cells per
+        # call, and this runs for nearly every call in a template.
+        kids = n.ikids
         args = []
-        n.ikids.each { |a| args << eval_expr(a, env) }
+        i = 0
+        while i < kids.size
+          args << eval_expr(kids[i], env)
+          i += 1
+        end
         args
       end
 
       def eval_kwargs(n, env)
         return @no_kwargs if n.ipairs.empty?
 
+        keys = n.ipairs
+        values = n.ikids2
         kwargs = {}
-        n.ipairs.each_with_index { |key, i| kwargs[key] = eval_expr(n.ikids2[i], env) }
+        i = 0
+        while i < keys.size
+          kwargs[keys[i]] = eval_expr(values[i], env)
+          i += 1
+        end
         kwargs
       end
 

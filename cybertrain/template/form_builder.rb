@@ -57,7 +57,10 @@ module Cybertrain
     # ` name="value"`, escaped. Tag builders append what this returns: a
     # method that appends to a String it was given (`buf << ...` on a
     # parameter) makes Spinel run the GC write barrier on the caller's
-    # stack slot, which later crashes a minor collection.
+    # stack slot, which later crashes a minor collection. Where the name is
+    # a literal, the builders write `buf << " name=\"" << Html.escape(v) <<
+    # "\""` instead: the literals are static and Html.escape returns its
+    # argument when nothing needs escaping, so that allocates nothing.
     def self.html_attr(name, value)
       " #{name}=\"#{Html.escape(value)}\"" # one String, sized up front
     end
@@ -92,7 +95,7 @@ module Cybertrain
       attr = attribute_name(args, "label")
       text = args.size > 1 ? FormBuilder.html_text(args[1]) : Html.escape(FormBuilder.humanize(attr))
       buf = +"<label"
-      buf << FormBuilder.html_attr("for", field_id(attr))
+      buf << " for=\"" << Html.escape(field_id(attr)) << "\""
       buf << option_attrs(kwargs, errors_on?(attr))
       buf << ">" << text << "</label>"
       SafeString.new(buf)
@@ -102,11 +105,11 @@ module Cybertrain
     def input_field(type, args, kwargs)
       attr = attribute_name(args, "#{type}_field")
       buf = +"<input"
-      buf << FormBuilder.html_attr("type", type)
-      buf << FormBuilder.html_attr("name", field_name(attr))
-      buf << FormBuilder.html_attr("id", field_id(attr))
+      buf << " type=\"" << Html.escape(type) << "\""
+      buf << " name=\"" << Html.escape(field_name(attr)) << "\""
+      buf << " id=\"" << Html.escape(field_id(attr)) << "\""
       value = read_value(attr)
-      buf << FormBuilder.html_attr("value", FormBuilder.value_text(value)) unless value.nil? || type == "password"
+      buf << " value=\"" << Html.escape(FormBuilder.value_text(value)) << "\"" unless value.nil? || type == "password"
       buf << option_attrs(kwargs, errors_on?(attr))
       buf << ">"
       SafeString.new(buf)
@@ -117,8 +120,8 @@ module Cybertrain
     def text_area(args, kwargs)
       attr = attribute_name(args, "text_area")
       buf = +"<textarea"
-      buf << FormBuilder.html_attr("name", field_name(attr))
-      buf << FormBuilder.html_attr("id", field_id(attr))
+      buf << " name=\"" << Html.escape(field_name(attr)) << "\""
+      buf << " id=\"" << Html.escape(field_id(attr)) << "\""
       buf << option_attrs(kwargs, errors_on?(attr))
       buf << ">\n" << Html.escape(FormBuilder.value_text(read_value(attr))) << "</textarea>"
       SafeString.new(buf)
@@ -128,15 +131,15 @@ module Cybertrain
     def check_box(args, kwargs)
       attr = attribute_name(args, "check_box")
       buf = +"<input"
-      buf << FormBuilder.html_attr("type", "hidden")
-      buf << FormBuilder.html_attr("name", field_name(attr))
-      buf << FormBuilder.html_attr("value", "0")
+      buf << " type=\"hidden\""
+      buf << " name=\"" << Html.escape(field_name(attr)) << "\""
+      buf << " value=\"0\""
       buf << "><input"
-      buf << FormBuilder.html_attr("type", "checkbox")
-      buf << FormBuilder.html_attr("name", field_name(attr))
-      buf << FormBuilder.html_attr("id", field_id(attr))
-      buf << FormBuilder.html_attr("value", "1")
-      buf << FormBuilder.html_attr("checked", "checked") if checked?(read_value(attr))
+      buf << " type=\"checkbox\""
+      buf << " name=\"" << Html.escape(field_name(attr)) << "\""
+      buf << " id=\"" << Html.escape(field_id(attr)) << "\""
+      buf << " value=\"1\""
+      buf << " checked=\"checked\"" if checked?(read_value(attr))
       buf << option_attrs(kwargs, errors_on?(attr))
       buf << ">"
       SafeString.new(buf)
@@ -145,9 +148,9 @@ module Cybertrain
     def submit(args, kwargs)
       text = args.empty? ? default_submit_text : FormBuilder.value_text(args[0])
       buf = +"<input"
-      buf << FormBuilder.html_attr("type", "submit")
-      buf << FormBuilder.html_attr("name", "commit")
-      buf << FormBuilder.html_attr("value", text)
+      buf << " type=\"submit\""
+      buf << " name=\"commit\""
+      buf << " value=\"" << Html.escape(text) << "\""
       buf << option_attrs(kwargs, false)
       buf << ">"
       SafeString.new(buf)
@@ -221,7 +224,7 @@ module Cybertrain
         classes << " " unless classes.empty?
         classes << ERROR_CLASS
       end
-      out << FormBuilder.html_attr("class", classes) unless classes.empty?
+      out << " class=\"" << Html.escape(classes) << "\"" unless classes.empty?
       out
     end
   end
