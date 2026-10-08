@@ -324,6 +324,11 @@ finds the commit that removed them).
       Symbol a template passes rather than round-tripping through a String.
     - `str.setbyte` writes a heap String in place; `str << int` makes a
       one-character String per call.
+57. A `Mutex#synchronize` taken on every request stalls requests for seconds
+    under `SPINEL_WORKERS=2` (a process-wide cache in Helpers.route_key):
+    bench/run's two-core config failed about one run in two with wrk
+    timeouts or a dead server, and five runs out of five passed once the
+    lock was gone. Keep locks off the per-request path; cache per request.
 
 ## Numbers worth remembering
 

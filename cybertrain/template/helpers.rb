@@ -242,26 +242,13 @@ module Cybertrain
       # builds it: the plural, or "<plural>_index" when the word is its own
       # plural (sheep_index_path; the routes DSL names that collection the
       # same way).
-      # Inflector.pluralize tries some thirty regexps, and every page with
-      # a form for a new record asks this again. The answers are kept for
-      # the process: callers pass a model's underscored name, so the table
-      # holds one entry per model. The lock covers SPINEL_WORKERS > 1.
-      ROUTE_KEYS = { "" => "" }
-      ROUTE_KEYS.delete("")
-      ROUTE_KEYS_LOCK = Mutex.new
-
+      # Not cached across requests: a process-wide table needs a lock under
+      # SPINEL_WORKERS > 1, and taking a Mutex on every page stalled
+      # requests for seconds there (bench/run, two workers). route_key_of
+      # remembers it for the request.
       def self.route_key(singular)
-        known = ""
-        ROUTE_KEYS_LOCK.synchronize do
-          found = ROUTE_KEYS[singular]
-          known = found unless found.nil?
-        end
-        return known unless known.empty?
-
         plural = Inflector.pluralize(singular)
-        key = plural == singular ? "#{plural}_index" : plural
-        ROUTE_KEYS_LOCK.synchronize { ROUTE_KEYS[singular] = key }
-        key
+        plural == singular ? "#{plural}_index" : plural
       end
 
       # posts_path / post_path(post); nested: post_comments_path(post).
