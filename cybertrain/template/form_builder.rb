@@ -92,25 +92,26 @@ module Cybertrain
 
     # Explicit text is escaped unless it is a SafeString (`raw('<i>T</i>')`).
     def label(args, kwargs)
-      attr = attribute_name(args, "label")
+      attr = attribute_name(args, "label", "")
       text = args.size > 1 ? FormBuilder.html_text(args[1]) : Html.escape(FormBuilder.humanize(attr))
       buf = +"<label"
       buf << " for=\"" << Html.escape(field_id(attr)) << "\""
-      buf << option_attrs(kwargs, errors_on?(attr))
+      buf << option_attrs(kwargs, errors_on?(attribute_sym(args, attr)))
       buf << ">" << text << "</label>"
       SafeString.new(buf)
     end
 
     # nil values (and password fields) get no value attribute, as in Rails.
     def input_field(type, args, kwargs)
-      attr = attribute_name(args, "#{type}_field")
+      attr = attribute_name(args, type, "_field")
+      sym = attribute_sym(args, attr)
       buf = +"<input"
       buf << " type=\"" << Html.escape(type) << "\""
       buf << " name=\"" << Html.escape(field_name(attr)) << "\""
       buf << " id=\"" << Html.escape(field_id(attr)) << "\""
-      value = read_value(attr)
+      value = read_value(sym)
       buf << " value=\"" << Html.escape(FormBuilder.value_text(value)) << "\"" unless value.nil? || type == "password"
-      buf << option_attrs(kwargs, errors_on?(attr))
+      buf << option_attrs(kwargs, errors_on?(sym))
       buf << ">"
       SafeString.new(buf)
     end
@@ -118,29 +119,32 @@ module Cybertrain
     # The newline after the opening tag is Rails' too: browsers drop the
     # first newline of a textarea, so a value starting with one survives.
     def text_area(args, kwargs)
-      attr = attribute_name(args, "text_area")
+      attr = attribute_name(args, "text_area", "")
+      sym = attribute_sym(args, attr)
       buf = +"<textarea"
       buf << " name=\"" << Html.escape(field_name(attr)) << "\""
       buf << " id=\"" << Html.escape(field_id(attr)) << "\""
-      buf << option_attrs(kwargs, errors_on?(attr))
-      buf << ">\n" << Html.escape(FormBuilder.value_text(read_value(attr))) << "</textarea>"
+      buf << option_attrs(kwargs, errors_on?(sym))
+      buf << ">\n" << Html.escape(FormBuilder.value_text(read_value(sym))) << "</textarea>"
       SafeString.new(buf)
     end
 
     # The hidden "0" makes an unchecked box submit a value at all.
     def check_box(args, kwargs)
-      attr = attribute_name(args, "check_box")
+      attr = attribute_name(args, "check_box", "")
+      sym = attribute_sym(args, attr)
+      name = Html.escape(field_name(attr))
       buf = +"<input"
       buf << " type=\"hidden\""
-      buf << " name=\"" << Html.escape(field_name(attr)) << "\""
+      buf << " name=\"" << name << "\""
       buf << " value=\"0\""
       buf << "><input"
       buf << " type=\"checkbox\""
-      buf << " name=\"" << Html.escape(field_name(attr)) << "\""
+      buf << " name=\"" << name << "\""
       buf << " id=\"" << Html.escape(field_id(attr)) << "\""
       buf << " value=\"1\""
-      buf << " checked=\"checked\"" if checked?(read_value(attr))
-      buf << option_attrs(kwargs, errors_on?(attr))
+      buf << " checked=\"checked\"" if checked?(read_value(sym))
+      buf << option_attrs(kwargs, errors_on?(sym))
       buf << ">"
       SafeString.new(buf)
     end
@@ -165,10 +169,23 @@ module Cybertrain
       model.persisted? ? "Update #{human}" : "Create #{human}"
     end
 
-    def attribute_name(args, method)
-      raise ArgumentError, "wrong number of arguments for '#{method}'" if args.empty?
+    # The method name for the error is method + suffix ("text" + "_field"),
+    # joined only when it is raised.
+    def attribute_name(args, method, suffix)
+      raise ArgumentError, "wrong number of arguments for '#{method}#{suffix}'" if args.empty?
 
       FormBuilder.value_text(args[0])
+    end
+
+    # The attribute as a Symbol: `f.text_field :title` passes one already.
+    # String#to_sym is a linear search of the program's symbol table in
+    # Spinel 2026.09.12, so it is only the fallback for `f.text_field "title"`.
+    def attribute_sym(args, attr)
+      first = args[0]
+      case first
+      when Symbol then first
+      else attr.to_sym
+      end
     end
 
     def field_name(attr)
@@ -179,18 +196,18 @@ module Cybertrain
       @scope.empty? ? attr : "#{@scope}_#{attr}"
     end
 
-    def read_value(attr)
+    def read_value(sym)
       model = @model
       return nil if model.nil?
 
-      model.read_attribute(attr.to_sym)
+      model.read_attribute(sym)
     end
 
-    def errors_on?(attr)
+    def errors_on?(sym)
       model = @model
       return false if model.nil?
 
-      model.errors.key?(attr.to_sym)
+      model.errors.key?(sym)
     end
 
     def checked?(value)
