@@ -88,6 +88,11 @@ works there with no network.
   never run on CRuby).
 - OpenSSL's headers (`libssl-dev`) are optional: without them Spinel builds
   without its `openssl` package, which cybertrain does not use.
+- jemalloc's development package (`libjemalloc-dev`; `brew install jemalloc`)
+  is optional: an app needs it only once its `spin.toml` says
+  `allocator = "jemalloc"`, which `cybertrain new` writes commented out. It
+  is worth turning on for production: JEMALLOC_GAIN the requests per second on
+  examples/blog ([docs/benchmark.md](docs/benchmark.md)).
 
 `cybertrain doctor` checks these tools and headers and the Spinel install;
 when a required one is missing it also prints the install command for your

@@ -66,6 +66,12 @@ puts one CSRF token per session in every form.
   Puma in single mode with 3 threads (Rails' default). On two CPUs:
   `SPINEL_WORKERS=2` and Puma with `WEB_CONCURRENCY=2` (two worker
   processes, 3 threads each).
+- **malloc.** Each CPU configuration runs twice: with the system's malloc
+  (glibc), which is what both frameworks get out of the box, and with
+  jemalloc preloaded into both servers (`LD_PRELOAD`), which is what Rails'
+  generated Dockerfile does in production and what `allocator = "jemalloc"`
+  in an app's spin.toml does for CyberTrain (linking it measures the same as
+  preloading it).
 - **Data.** Each server starts on an empty database and is seeded over HTTP
   through its own forms, as a browser would fill them in: 30 articles, then 10
   comments on the first.
@@ -202,9 +208,9 @@ On Linux with at least 4 CPUs, from a checkout:
 
 ```sh
 cybertrain setup                 # Spinel, for examples/blog
-sudo apt-get install -y wrk      # or build wrk from source
+sudo apt-get install -y wrk libjemalloc2   # jemalloc for the -jemalloc configurations
 cd bench/rails_blog && bundle install && cd ../..
-BENCH_RAILS_RUBY=/path/to/ruby/bin/ruby bench/run   # about 25 minutes; --quick to check the setup
+BENCH_RAILS_RUBY=/path/to/ruby/bin/ruby bench/run   # about 50 minutes; --quick to check the setup
 bench/report                     # the tables above, from the newest bench/results/*.json
 ```
 

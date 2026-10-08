@@ -42,7 +42,8 @@ puts
 
 r["configs"].each do |name, cfg|
   puma = cfg["puma_workers"].zero? ? "Puma single mode, 3 threads" : "Puma #{cfg["puma_workers"]} workers x 3 threads"
-  puts "#### #{name}: server on CPU #{cfg["server_cpus"]} (CyberTrain `SPINEL_WORKERS=#{cfg["cybertrain_workers"]}`; #{puma})"
+  malloc = cfg["malloc"] == "jemalloc" ? "; jemalloc preloaded into both" : ""
+  puts "#### #{name}: server on CPU #{cfg["server_cpus"]} (CyberTrain `SPINEL_WORKERS=#{cfg["cybertrain_workers"]}`; #{puma}#{malloc})"
   puts
   puts "| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |"
   puts "| --- | --: | --: | --: | --: | --: | --: |"
