@@ -101,6 +101,17 @@ seconds with `SPINEL_WORKERS=2` (the two-core benchmark failed about one run
 in two), so the key is remembered per request instead
 ([spikes/NOTES.md](../spikes/NOTES.md) rules 56 and 57).
 
+Measured and left out: a `Static` that lists `public/` once and keeps the
+small files in memory serves `GET /style.css` about 19% faster (17,060 to
+20,370 req/s), but changes nothing measurable for the pages (the 3 `stat`
+calls it saves are lost in the run-to-run spread of 5 to 8%), and a file
+added to `public/` after the start would not be served until a restart, so
+`Static` still looks at the disk on every request. Deferring the datetime
+columns' parsing and sharing the environment between a partial and its
+caller (instead of `env.dup`) were tried as upper bounds, by removing the
+work altogether: +1.5% on the list, +0.6% on the article page, within the
+spread, so neither was built.
+
 Measured back to back on the same data, 16 connections, the averages of two
 runs (`before` is a binary built from the commit before these changes; the VM
 runs the same binary 10 to 15% apart from one run to the next):
