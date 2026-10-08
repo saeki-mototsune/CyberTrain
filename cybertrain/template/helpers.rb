@@ -100,11 +100,20 @@ module Cybertrain
       def self.check_locals(template, given)
         return nil unless template.strict_locals?
 
-        template.locals.each do |name|
+        # while loops: a block here allocated a Proc and its closure cells
+        # on every partial render.
+        locals = template.locals
+        i = 0
+        while i < locals.size
+          name = locals[i]
           raise ArgumentError, "missing local '#{name}' for #{template.name}" unless Helpers.name_in?(given, name)
+          i += 1
         end
-        given.each do |name|
-          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless Helpers.name_in?(template.locals, name)
+        i = 0
+        while i < given.size
+          name = given[i]
+          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless Helpers.name_in?(locals, name)
+          i += 1
         end
         nil
       end
@@ -165,7 +174,7 @@ module Cybertrain
         buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
         buf << FormBuilder.html_attr("id", FormBuilder.value_text(kwargs["id"])) unless kwargs["id"].nil?
         buf << FormBuilder.html_attr("data-confirm", FormBuilder.value_text(kwargs["data_confirm"])) unless kwargs["data_confirm"].nil?
-        buf << data_attrs(kwargs["data"])
+        buf << data_attrs(kwargs["data"]) unless kwargs["data"].nil?
         buf << ">" << text << "</a>"
         SafeString.new(buf)
       end
@@ -183,7 +192,7 @@ module Cybertrain
         buf << hidden_fields(verb)
         buf << "<button"
         buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
-        buf << data_attrs(kwargs["data"])
+        buf << data_attrs(kwargs["data"]) unless kwargs["data"].nil?
         buf << " type=\"submit\">" << text << "</button></form>"
         SafeString.new(buf)
       end
@@ -374,7 +383,12 @@ module Cybertrain
         locals.each_key { |key| names << key if !(args.empty? && (key == "partial" || key == "locals")) }
         Helpers.check_locals(template, names)
         scope = env.dup
-        names.each { |key| scope[key] = locals[key] }
+        i = 0
+        while i < names.size
+          key = names[i]
+          scope[key] = locals[key]
+          i += 1
+        end
         html = interp.render(template, scope)
         scope.each_key { |key| env[key] = scope[key] if key.start_with?("__content_") }
         SafeString.new(html)

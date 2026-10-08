@@ -62,9 +62,9 @@ module Cybertrain
           raise Error, message
         end
 
-        # busy_timeout first: switching to WAL takes a lock that another
-        # connection opening the same file may hold, and without a timeout
-        # that PRAGMA fails immediately with SQLITE_BUSY.
+        # The busy handler first: switching to WAL takes a lock that another
+        # connection opening the same file may hold, and without one that
+        # PRAGMA fails immediately with SQLITE_BUSY.
         #
         # The open above succeeded, so a PRAGMA that raises (SQLITE_BUSY or
         # IOERR on the WAL switch, a file that is not a database) must close
@@ -75,7 +75,9 @@ module Cybertrain
         # rescue, not an ensure, as everywhere in this file (NOTES rules 33,
         # 50); `close` is the same path a user close takes.
         begin
-          exec_script("PRAGMA busy_timeout=5000")
+          # Short retries instead of PRAGMA busy_timeout (see SQLite3).
+          rc = SQLite3.cybertrain_sqlite_set_busy_handler(@db)
+          raise Error, error_message("sqlite3_busy_handler") if rc != SQLite3::OK
           # WAL is meaningless for a database that lives only in this
           # connection; every spelling of that is private_database?, not just
           # ":memory:" (`file:x?mode=memory` and "" count too).

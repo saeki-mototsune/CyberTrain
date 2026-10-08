@@ -52,7 +52,7 @@ class Post < Cybertrain::Model
     @views = 0
     @created_at = nil
     @updated_at = nil
-    assign_attributes(attrs)
+    assign_attributes(attrs) unless attrs.empty?
   end
 
   def self.from_row(row)

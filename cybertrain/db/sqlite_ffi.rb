@@ -18,6 +18,28 @@ module Cybertrain
     module SQLite3
       ffi_lib "sqlite3"
 
+      # A busy handler that retries every 100 microseconds, for about five
+      # seconds (the busy_timeout it replaces). SQLite's own busy_timeout
+      # sleeps 1, 2, 5, 10 ... 100 ms between tries; with SPINEL_WORKERS > 1
+      # two inserts meet on the write lock often, and the loser slept a whole
+      # millisecond or more (holding its OS worker, see above) for a lock
+      # held for microseconds.
+      ffi_source <<~C
+        #include <time.h>
+        extern int sqlite3_busy_handler(void *db, int (*cb)(void *, int), void *arg);
+        static int cybertrain_sqlite_busy(void *arg, int count) {
+          (void)arg;
+          if (count >= 50000) return 0;
+          struct timespec ts = { 0, 100000 };
+          nanosleep(&ts, NULL);
+          return 1;
+        }
+        int cybertrain_sqlite_set_busy_handler(void *db) {
+          return sqlite3_busy_handler(db, cybertrain_sqlite_busy, NULL);
+        }
+      C
+      ffi_func :cybertrain_sqlite_set_busy_handler, [:ptr], :int
+
       ffi_const :OK, 0
       ffi_const :ROW, 100
       ffi_const :DONE, 101

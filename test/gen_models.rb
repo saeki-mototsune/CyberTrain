@@ -103,7 +103,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
         @body = nil
         @created_at = nil
         @updated_at = nil
-        assign_attributes(attrs)
+        assign_attributes(attrs) unless attrs.empty?
       end
 
       def self.from_row(row)
@@ -246,7 +246,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
         @body = ""
         @created_at = nil
         @updated_at = nil
-        assign_attributes(attrs)
+        assign_attributes(attrs) unless attrs.empty?
       end
 
       def self.from_row(row)
@@ -386,7 +386,7 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
         @active = false
         @score = nil
         @group = nil
-        assign_attributes(attrs)
+        assign_attributes(attrs) unless attrs.empty?
       end
 
       def self.from_row(row)

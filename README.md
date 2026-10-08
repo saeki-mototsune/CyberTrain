@@ -494,8 +494,10 @@ faster and stall-free for this I/O-bound shape at 100 concurrent connections.
 
 **SQLite via FFI.** Models talk to SQLite through Spinel's
 `ffi_func`/`ffi_lib` directly — no C extension, no gem. A pool (`SizedQueue`,
-4 connections by default) hands out connections with WAL, a `busy_timeout`,
-and foreign keys on; every query is bound, never interpolated. It's the only
+4 connections by default) hands out connections with WAL, a busy timeout of
+about five seconds (a busy handler retrying every 100 µs, where SQLite's
+`busy_timeout` sleeps a millisecond or more), up to 64 cached prepared
+statements and foreign keys on; every query is bound, never interpolated. It's the only
 adapter today (PostgreSQL via `libpq` FFI is noted as possible future work).
 
 **The development loop.** `cybertrain server` (`spin run gen`, then `spin run NAME`) in

@@ -234,7 +234,9 @@ module Cybertrain
         src << "  def initialize(attrs = {})\n"
         src << "    super()\n"
         table.columns.each { |c| src << "    #{ivar_name(c.name)} = #{initial_value(c)}\n" }
-        src << "    assign_attributes(attrs)\n"
+        # A record loaded from a row (from_row) passes no attributes: skip
+        # the each, and the Proc it allocates, for every row of every query.
+        src << "    assign_attributes(attrs) unless attrs.empty?\n"
         src << "  end\n"
         src << "\n"
         src << "  def self.from_row(row)\n"

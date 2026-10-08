@@ -198,12 +198,22 @@ module Cybertrain
     # The validation messages from the last {#valid?} or {#save}.
     # @return [Errors]
     # @api public
-    attr_reader :errors
+    def errors
+      e = @errors
+      return e unless e.nil?
+
+      e = Errors.new
+      @errors = e
+      e
+    end
 
     def initialize
       @id = 0
       @persisted = false
-      @errors = Errors.new
+      # Made on first use: a page that lists loaded records never validates
+      # them, and an Errors (with its Hash and seed Array) per record was a
+      # few dozen allocations per request.
+      @errors = nil
     end
 
     def set_id(v)
@@ -242,10 +252,10 @@ module Cybertrain
     # @return [Boolean] true when no errors were added
     # @api public
     def valid?
-      @errors.clear
+      errors.clear
       run_callbacks("before_validation")
       Model.validators_for(model_name).each { |v| v.validate(self) }
-      @errors.empty?
+      errors.empty?
     end
 
     # Validates, then runs before_save, before_create/before_update, writes
@@ -290,7 +300,7 @@ module Cybertrain
     # @raise [RecordInvalid] when validation fails
     # @api public
     def save!
-      raise RecordInvalid, "Validation failed: #{@errors.full_messages.join(", ")}" unless save
+      raise RecordInvalid, "Validation failed: #{errors.full_messages.join(", ")}" unless save
       true
     end
 
