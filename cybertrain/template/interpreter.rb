@@ -133,7 +133,7 @@ module Cybertrain
       def to_output(v)
         case v
         when nil then ""
-        when SafeString then "#{v.to_s}"
+        when SafeString then v.to_s
         else escape_html(to_s_value(v))
         end
       end
@@ -154,15 +154,16 @@ module Cybertrain
         str
       end
 
-      # Every branch is an interpolation or a literal, so the result is
-      # statically a String: a bare `v` (or `v.to_s`, which may dispatch to
-      # SafeString#to_s) stays polymorphic and drags every `<<` of the result
-      # onto Spinel's boxed slow path. Spinel's interpolation does not call a
-      # user-defined to_s, hence the explicit "#{v.to_s}" for objects.
+      # Every branch is statically a String: a bare `v` stays polymorphic and
+      # drags every `<<` of the result onto Spinel's boxed slow path. Strings
+      # and SafeStrings go through to_s, which is typed (every to_s in the
+      # program returns a String, see Html.escape) and returns the String
+      # itself where an interpolation would copy it. Spinel's interpolation
+      # does not call a user-defined to_s, hence "#{v.to_s}" for objects.
       def to_s_value(v)
         case v
-        when SafeString then "#{v.to_s}"
-        when String then "#{v}"
+        when SafeString then v.to_s
+        when String then v.to_s
         when nil then ""
         when Integer then "#{v}"
         when Float then "#{v}"
@@ -720,7 +721,7 @@ module Cybertrain
         when :size, :length then s.length
         when :empty? then s.empty?
         when :to_i then s.to_i
-        when :html_safe then SafeString.new(s)
+        when :html_safe then SafeString.new(s.to_s)
         when :html_safe? then false
         # String#include? with a polymorphic argument mis-dispatches once
         # SafeString exists (spikes/NOTES.md rule 29): go through #index.

@@ -19,12 +19,20 @@ module Cybertrain
     def self.escape(value)
       # The parameter is polymorphic under Spinel (callers hand in Strings of
       # more than one static type), which made every getbyte and comparison
-      # below a dynamic call: most of this method's time. The interpolated
-      # copy has one static type, so the loops compile to plain C. value
-      # itself is what comes back when nothing needs escaping: returning the
-      # parameter keeps Spinel from narrowing it to whatever one caller
-      # passes (it once inferred an Integer and turned Strings into "0").
-      str = "#{value}"
+      # below a dynamic call: most of this method's time. value.to_s has one
+      # static type (every to_s in the program returns a String; SafeString's
+      # included, see SafeString#initialize), so the loops compile to plain
+      # C, and for a String it is the String itself, not a copy. It is also
+      # what comes back when nothing needs escaping, so callers get a typed
+      # String rather than the polymorphic parameter. The case keeps value
+      # polymorphic: used only through to_s, Spinel narrows it to whatever
+      # one caller passes (it once inferred an Integer and turned Strings
+      # into "0"). Anything but a String is converted anyway, so the
+      # interpolation costs nothing extra.
+      str = case value
+            when String then value.to_s
+            else "#{value.to_s}"
+            end
       n = str.bytesize
       i = 0
       # Most values need nothing: find the first byte that does before
@@ -34,7 +42,7 @@ module Cybertrain
         break if b == 38 || b == 60 || b == 62 || b == 34 || b == 39
         i += 1
       end
-      return value if i == n
+      return str if i == n
 
       buf = +""
       dirty = false
@@ -133,7 +141,10 @@ module Cybertrain
       # as a keyword argument).
       piece = case other
               when SafeString then other.to_s
-              else Html.escape(other)
+              # other.to_s rather than other: in a program that never calls
+              # +, Spinel types the unused parameter as an Integer and passed
+              # that type on to Html.escape's (test/router.rb caught it).
+              else Html.escape(other.to_s)
               end
       SafeString.new(@str + piece)
     end

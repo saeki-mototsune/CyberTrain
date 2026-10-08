@@ -92,9 +92,9 @@ module Cybertrain
       case v
       when Time then v
       when Integer then Time.at(v).utc
-      # Interpolated so parse_time's parameter is a String, not the
-      # polymorphic v: its byte reads are then plain C (see Html.escape).
-      when String then parse_time("#{v}")
+      # v.to_s so parse_time's parameter is a String, not the polymorphic
+      # v: its byte reads are then plain C (see Html.escape).
+      when String then parse_time(v.to_s)
       else nil
       end
     end

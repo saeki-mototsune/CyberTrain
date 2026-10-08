@@ -119,7 +119,7 @@ module Cybertrain
 
     # Percent-encodes a value for use as one path segment ("a b" -> "a%20b").
     def self.escape_segment(value)
-      text = "#{value}" # a String for plain_segment?'s byte reads (see Html.escape)
+      text = value.to_s # a String for plain_segment?'s byte reads (see Html.escape)
       return text if Router.plain_segment?(text)
 
       URI.encode_www_form_component(value).gsub("+", "%20")

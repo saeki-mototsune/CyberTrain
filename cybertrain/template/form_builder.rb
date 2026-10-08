@@ -16,14 +16,16 @@ module Cybertrain
   class FormBuilder
     ERROR_CLASS = "field_with_errors"
 
-    # A template value as text. Every branch is an interpolation or a
-    # literal so the result is statically a String (see
-    # Interpreter#to_s_value); Spinel's interpolation does not call a
-    # user-defined to_s, hence "#{v.to_s}" for SafeString.
+    # A template value as text. Every branch is statically a String (see
+    # Interpreter#to_s_value): a literal, an interpolation, or to_s, which
+    # every class in the program answers with a String (Html.escape). to_s
+    # hands back a String or a SafeString's own String without copying it;
+    # Spinel's interpolation always copies and does not call a
+    # user-defined to_s.
     def self.value_text(v)
       case v
-      when SafeString then "#{v.to_s}"
-      when String then "#{v}"
+      when SafeString then v.to_s
+      when String then v.to_s
       when nil then ""
       when Integer then "#{v}"
       when Float then "#{v}"
@@ -39,7 +41,7 @@ module Cybertrain
     # (the same rule as Helpers#to_html).
     def self.html_text(v)
       case v
-      when SafeString then "#{v.to_s}"
+      when SafeString then v.to_s
       else Html.escape(FormBuilder.value_text(v))
       end
     end
