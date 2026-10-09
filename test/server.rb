@@ -3,6 +3,7 @@
 # printed or compared, never the port.
 require "socket"
 require "stringio"
+require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/test"
 
@@ -38,6 +39,19 @@ class ServerTestApp < Cybertrain::Middleware
       res.body = "Not Found"
     end
     nil
+  end
+end
+
+# A handler that never sees a Context or a Middleware: the Server needs only
+# an HttpHandler.
+class BareHandler < Cybertrain::HttpHandler
+  def call(request)
+    raise "bare boom" if request.path == "/boom"
+
+    response = Cybertrain::Response.new
+    response.content_type = "text/plain"
+    response.body = "bare " + request.path
+    response
   end
 end
 
@@ -144,7 +158,7 @@ class FlakyAcceptServer < Cybertrain::Server
 end
 
 $log = StringIO.new
-$server = Cybertrain::Server.new(ServerTestApp.new, port: 0, read_timeout: 1,
+$server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 1,
                                  max_head_bytes: 1024, max_body_bytes: 64,
                                  logger: Cybertrain::Logger.new($log, :info))
 $server.start
@@ -335,7 +349,7 @@ test "an idle keep-alive connection is closed after read_timeout" do
 end
 
 test "a failed accept is logged and the server keeps accepting" do
-  server = FlakyAcceptServer.new(ServerTestApp.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  server = FlakyAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
   server.start
   c = RawClient.new(server.port)
   assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
@@ -360,8 +374,20 @@ test "stop makes the port refuse connections" do
   assert refused, "expected the connection to be refused after stop"
 end
 
+test "serves a bare HttpHandler with no Context or Middleware involved" do
+  server = Cybertrain::Server.new(BareHandler.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  server.start
+  c = RawClient.new(server.port)
+  assert_equal "bare /x", c.get("/x", "Connection: close\r\n").body
+  c.close
+  c = RawClient.new(server.port)
+  assert_equal "HTTP/1.1 500 Internal Server Error", c.get("/boom", "Connection: close\r\n").status_line
+  c.close
+  server.stop
+end
+
 test "run serves until stop is called" do
-  server = Cybertrain::Server.new(ServerTestApp.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
   runner = Thread.new { server.run }
   sleep 0.01 while server.port == 0
   c = RawClient.new(server.port)
@@ -374,7 +400,7 @@ test "run serves until stop is called" do
 end
 
 test "request_stop (what the TERM trap calls) makes run return without joining" do
-  server = Cybertrain::Server.new(ServerTestApp.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
   runner = Thread.new { server.run }
   sleep 0.01 while server.port == 0
   port = server.port
@@ -402,7 +428,7 @@ rescue Errno::ECONNREFUSED
 end
 
 test "request_stop waits for a request in flight and answers it completely" do
-  server = Cybertrain::Server.new(ServerTestApp.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
   runner = Thread.new { server.run }
   sleep 0.01 while server.port == 0
   port = server.port
@@ -428,7 +454,7 @@ test "request_stop waits for a request in flight and answers it completely" do
 end
 
 test "an idle keep-alive connection does not hold up shutdown" do
-  server = Cybertrain::Server.new(ServerTestApp.new, port: 0, read_timeout: 5, drain_timeout: 5.0,
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
                                                      logger: Cybertrain::Logger.new($log, :info))
   runner = Thread.new { server.run }
   sleep 0.01 while server.port == 0
@@ -446,7 +472,7 @@ end
 
 test "drain_timeout bounds the wait for a request that takes too long" do
   log = StringIO.new
-  server = Cybertrain::Server.new(ServerTestApp.new, port: 0, drain_timeout: 0.3,
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, drain_timeout: 0.3,
                                                      logger: Cybertrain::Logger.new(log, :info))
   runner = Thread.new { server.run }
   sleep 0.01 while server.port == 0
@@ -467,10 +493,10 @@ test "drain_timeout bounds the wait for a request that takes too long" do
 end
 
 test "start raises Cybertrain::PortInUse when the port is already bound" do
-  first = Cybertrain::Server.new(ServerTestApp.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  first = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
   first.start
   port = first.port
-  second = Cybertrain::Server.new(ServerTestApp.new, port: port, logger: Cybertrain::Logger.new($log, :info))
+  second = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, logger: Cybertrain::Logger.new($log, :info))
   message = assert_raises("Cybertrain::PortInUse") { second.start }
   assert_equal "port #{port} on 127.0.0.1 is already in use (stop the other server or set PORT)", message
   assert_equal port, second.port
@@ -520,7 +546,7 @@ test "starting a server on port 80 as non-root reports permission denied" do
       assert listening, "probe connected to 127.0.0.1:80"
       assert_equal 0, $log.string.index("skip: port 80 permission test needs the port free").to_i
     else
-      priv_server = Cybertrain::Server.new(ServerTestApp.new, host: "127.0.0.1", port: 80,
+      priv_server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), host: "127.0.0.1", port: 80,
                                                                logger: Cybertrain::Logger.new($log, :info))
       message = assert_raises("Cybertrain::PortInUse") { priv_server.start }
       assert_equal "port 80 on 127.0.0.1 cannot be bound: permission denied (ports below 1024 need root or a capability)", message

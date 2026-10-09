@@ -3,8 +3,7 @@ require "json"
 require "cybertrain/http/parser"
 require "cybertrain/http/request"
 require "cybertrain/http/response"
-require "cybertrain/context"
-require "cybertrain/middleware"
+require "cybertrain/http/handler"
 require "cybertrain/http/client_error"
 require "cybertrain/logger"
 
@@ -30,10 +29,12 @@ module Cybertrain
   end
 
   # A pure-Ruby HTTP/1.1 server: one TCPServer, one green thread per
-  # connection, keep-alive and pipelining, and a Middleware (usually an App)
-  # that turns each Context into a Response.
+  # connection, keep-alive and pipelining, and an HttpHandler that turns each
+  # Request into a Response. The framework's handler is ContextHandler, which
+  # wraps a Middleware stack (usually an App); the HTTP layer itself does not
+  # depend on it.
   #
-  #   server = Cybertrain::Server.new(app, port: 3000)
+  #   server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 3000)
   #   server.run   # blocks until server.stop, then drains open connections
   #
   # Graceful shutdown (docs/design.md D14): #request_stop (the TERM trap) or
@@ -64,9 +65,9 @@ module Cybertrain
     # drain_timeout bounds how long #run and #stop wait for requests in
     # flight; keep it below the process manager's stop timeout (systemd's
     # TimeoutStopSec, 15 s in docs/deploy.md).
-    def initialize(app, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
+    def initialize(handler, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
                    max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: Cybertrain.logger)
-      @app = app
+      @handler = handler
       @host = host
       @port = port
       @read_timeout = read_timeout
@@ -311,25 +312,26 @@ module Cybertrain
     # Runs the app and writes its response; true when the connection stays
     # open, which it does not once the server is stopping.
     def respond(sock, request)
-      ctx = Context.new(request)
-      response = ctx.response
-      begin
-        @app.call(ctx)
-      rescue JSON::ParserError, StandardError => e
-        # JSON::ParserError is not a StandardError under Spinel (NOTES rule
-        # 33); named here so an action's bad JSON.parse is a 500 and not the
-        # end of the connection thread. SystemStackError / NoMemoryError are
-        # not named: nothing proves Spinel's exception table has them (a
-        # stack overflow is a SIGSEGV there anyway); the depth limits in Query
-        # and the template Interpreter are the guard against those.
-        # ClientError maps and logs (a client's fault is its 4xx at info);
-        # ErrorPages and Dev::ErrorPage ask it too, this is the bare-app path.
-        response = error_response(ClientError.classify(e, @logger))
-      end
+      response = handle(request)
       keep_alive = request.keep_alive? && @running
       response.set_header("Connection", keep_alive ? "keep-alive" : "close")
       sock.write(response.to_http(request.head?))
       keep_alive
+    end
+
+    # The handler's Response, or the error response for what it raised.
+    def handle(request)
+      @handler.call(request)
+    rescue JSON::ParserError, StandardError => e
+      # JSON::ParserError is not a StandardError under Spinel (NOTES rule
+      # 33); named here so an action's bad JSON.parse is a 500 and not the
+      # end of the connection thread. SystemStackError / NoMemoryError are
+      # not named: nothing proves Spinel's exception table has them (a
+      # stack overflow is a SIGSEGV there anyway); the depth limits in Query
+      # and the template Interpreter are the guard against those.
+      # ClientError maps and logs (a client's fault is its 4xx at info);
+      # ErrorPages and Dev::ErrorPage ask it too, this is the bare-app path.
+      error_response(ClientError.classify(e, @logger))
     end
 
     # Writes an error response; serve closes the socket afterwards.

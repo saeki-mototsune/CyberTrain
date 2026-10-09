@@ -39,7 +39,7 @@ test "the Server serves the same App over a socket" do
   router = Cybertrain::Router.new
   router.get("/ping", "ping") { |c| c.response.body = "pong" }
   app = Cybertrain::App.new(router, logging: false)
-  server = Cybertrain::Server.new(app, port: 0, logger: Cybertrain::Logger.new(nil, :error))
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: Cybertrain::Logger.new(nil, :error))
   server.start
   sock = TCPSocket.new("127.0.0.1", server.port)
   sock.write("GET /ping HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")

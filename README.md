@@ -483,7 +483,7 @@ helpers and gaps: [docs/template-language.md](docs/template-language.md).
 
 **The HTTP server.** `Cybertrain::Server` is plain-Ruby HTTP/1.1:
 `TCPServer#accept` plus one Spinel green thread per connection (M:N
-scheduled, no GVL), typed `Request`/`Response`, no Rack layer. TLS/HTTP/2 are
+scheduled, no GVL), typed `Request`/`Response`, no Rack layer. It calls an `HttpHandler` (`call(request) -> Response`); `ContextHandler` joins it to the middleware stack, so the HTTP layer does not depend on `Context` or `Middleware`. TLS/HTTP/2 are
 left to a reverse proxy. `SPINEL_WORKERS` defaults to `1` — spikes found that
 faster and stall-free for this I/O-bound shape at 100 concurrent connections.
 

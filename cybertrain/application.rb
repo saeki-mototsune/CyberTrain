@@ -10,6 +10,7 @@ require "cybertrain/middleware/method_override"
 require "cybertrain/middleware/session_store"
 require "cybertrain/middleware/csrf_protection"
 require "cybertrain/middleware/error_pages"
+require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
 require "cybertrain/views"
@@ -127,7 +128,7 @@ module Cybertrain
     def server
       built = @server
       if built.nil?
-        built = Server.new(front_app, host: @config.host, port: @config.port)
+        built = Server.new(ContextHandler.new(front_app), host: @config.host, port: @config.port)
         @server = built
       end
       built
