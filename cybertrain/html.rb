@@ -76,7 +76,7 @@ module Cybertrain
     # @return [SafeString]
     # @api public
     def self.safe(str)
-      SafeString.new(str)
+      SafeString.of(str)
     end
 
     # Renders any value a template might interpolate: nil disappears,
@@ -98,13 +98,27 @@ module Cybertrain
   # Templates print it unescaped (`raw(x)` and `x.html_safe` make one);
   # {Controller#render} `html:` sends it as it is, where a plain String is
   # escaped. It is a wrapper, not a String subclass. There is no
-  # `String#html_safe` in Ruby code: use {Html.safe} or `SafeString.new`.
+  # `String#html_safe` in Ruby code: use {Html.safe} or `SafeString.of`.
   # @api public
   class SafeString
     # @param str [String] trusted HTML
     # @api public
     def initialize(str)
       @str = str
+    end
+
+    # SafeString.of(str), safe for a String made in the argument itself
+    # (`SafeString.of("<a>#{x}</a>")`). Under Spinel 2026.09.12 the generated
+    # `new` allocates the object before it roots its argument, so a garbage
+    # collection in that allocation frees a String that only the argument
+    # holds (a use-after-free that showed as a rare crash under load). The
+    # parameter of an ordinary method is rooted on entry, so going through
+    # one is enough; bind the String to a local first if you call `new`.
+    # @param str [String] trusted HTML
+    # @return [SafeString]
+    # @api public
+    def self.of(str)
+      SafeString.new(str)
     end
 
     # @return [String] the HTML
@@ -146,7 +160,7 @@ module Cybertrain
               # that type on to Html.escape's (test/router.rb caught it).
               else Html.escape(other.to_s)
               end
-      SafeString.new(@str + piece)
+      SafeString.of(@str + piece)
     end
   end
 end

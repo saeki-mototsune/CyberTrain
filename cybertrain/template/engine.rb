@@ -136,7 +136,7 @@ module Cybertrain
         interp = Interpreter.new(helpers, @max_render_depth)
         page = template(name)
         frame = template(layout)
-        env["__content"] = SafeString.new(interp.render(page, env))
+        env["__content"] = SafeString.of(interp.render(page, env))
         interp.render(frame, env)
       end
 

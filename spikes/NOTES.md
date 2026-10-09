@@ -324,6 +324,20 @@ finds the commit that removed them).
       Symbol a template passes rather than round-tripping through a String.
     - `str.setbyte` writes a heap String in place; `str << int` makes a
       one-character String per call.
+58. `Foo.new(<a String made in the argument>)` can free that String before the
+    object has it (Spinel 2026.09.12): the generated `new` allocates the
+    object, which may collect, and only then roots its arguments. A freshly
+    made String (an interpolation, `buf` converted from a `+""` buffer,
+    `code.strip`) that only the argument holds is swept: the object keeps a
+    dangling pointer and a later read crashes (a use-after-free, 4 to 17% of
+    the benchmark's seeding runs, found with an AddressSanitizer build:
+    `spinel app.rb --cc=<wrapper running cc -fsanitize=address
+    -fno-sanitize-address-use-after-scope -g> ASAN_OPTIONS=fast_unwind_on_malloc=0`).
+    Bind the String to a local first, or go through an ordinary method
+    (`SafeString.of`), whose parameters are rooted on entry. Changing
+    allocation counts moves the window, which is why single reverts of the
+    commits that exposed it all looked like fixes. Template parsing (Token,
+    StrLit) had the same shape.
 57. A `Mutex#synchronize` taken on every request stalls requests for seconds
     under `SPINEL_WORKERS=2` (a process-wide cache in Helpers.route_key):
     bench/run's two-core config failed about one run in two with wrk

@@ -107,12 +107,21 @@ module Cybertrain
             end
           end
 
-          tokens << Token.new(:text, text, text_line) unless text.empty?
-          tokens << Token.new(kind, code.strip, tag_line)
+          # Locals, rooted: a String made in the argument itself can be freed
+          # by the collection inside `new` (see SafeString.of).
+          unless text.empty?
+            literal = "#{text}"
+            tokens << Token.new(:text, literal, text_line)
+          end
+          stripped = code.strip
+          tokens << Token.new(kind, stripped, tag_line)
           text = +""
           text_line = line
         end
-        tokens << Token.new(:text, text, text_line) unless text.empty?
+        unless text.empty?
+          literal = "#{text}"
+          tokens << Token.new(:text, literal, text_line)
+        end
         tokens
       end
 

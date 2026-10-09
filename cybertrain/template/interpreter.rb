@@ -721,7 +721,7 @@ module Cybertrain
         when :size, :length then s.length
         when :empty? then s.empty?
         when :to_i then s.to_i
-        when :html_safe then SafeString.new(s.to_s)
+        when :html_safe then SafeString.of(s.to_s)
         when :html_safe? then false
         # String#include? with a polymorphic argument mis-dispatches once
         # SafeString exists (spikes/NOTES.md rule 29): go through #index.

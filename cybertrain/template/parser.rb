@@ -233,9 +233,13 @@ module Cybertrain
             i += 2
           elsif c == "#" && i + 1 < n && raw[i + 1] == "{"
             close = skip_interpolation(raw, i + 2)
-            parts << StrLit.new(buf) unless buf.empty?
+            unless buf.empty?
+              literal = "#{buf}" # a local, rooted: see SafeString.of
+              parts << StrLit.new(literal)
+            end
             buf = +""
-            parts << ExprParser.new(raw[i + 2, close - i - 3], @name, @line).parse_all
+            inner = raw[i + 2, close - i - 3].to_s
+            parts << ExprParser.new(inner, @name, @line).parse_all
             interpolated = true
             i = close
           else
@@ -243,9 +247,10 @@ module Cybertrain
             i += 1
           end
         end
-        return StrLit.new(buf) unless interpolated
+        tail = "#{buf}"
+        return StrLit.new(tail) unless interpolated
 
-        parts << StrLit.new(buf) unless buf.empty?
+        parts << StrLit.new(tail) unless tail.empty?
         Interp.new(parts)
       end
 

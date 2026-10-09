@@ -47,8 +47,8 @@ module Cybertrain
         when "button_to" then button_to(args, kwargs)
         when "form_with" then form_with(kwargs, block, interp, env)
         when "render" then render_helper(args, kwargs, interp, env)
-        when "h", "escape" then SafeString.new(html_arg(args, 0, name))
-        when "raw" then SafeString.new(text_arg(args, 0, name))
+        when "h", "escape" then SafeString.of(html_arg(args, 0, name))
+        when "raw" then SafeString.of(text_arg(args, 0, name))
         when "pluralize" then pluralize(args)
         when "truncate" then truncate(args, kwargs)
         when "number_with_delimiter" then number_with_delimiter(args)
@@ -180,7 +180,7 @@ module Cybertrain
         id = kwargs["id"].nil? ? "" : " id=\"#{Html.escape(FormBuilder.value_text(kwargs["id"]))}\""
         confirm = kwargs["data_confirm"].nil? ? "" : " data-confirm=\"#{Html.escape(FormBuilder.value_text(kwargs["data_confirm"]))}\""
         data = kwargs["data"].nil? ? "" : data_attrs(kwargs["data"])
-        SafeString.new("<a href=\"#{Html.escape(href)}\"#{css}#{id}#{confirm}#{data}>#{text}</a>")
+        SafeString.of("<a href=\"#{Html.escape(href)}\"#{css}#{id}#{confirm}#{data}>#{text}</a>")
       end
 
       # A one-button form: POST (with a hidden _method for delete/patch/put)
@@ -195,7 +195,7 @@ module Cybertrain
         # static literal) when absent.
         css = kwargs["class"].nil? ? "" : " class=\"#{Html.escape(FormBuilder.value_text(kwargs["class"]))}\""
         data = kwargs["data"].nil? ? "" : data_attrs(kwargs["data"])
-        SafeString.new("<form class=\"button_to\" method=\"#{verb == "get" ? "get" : "post"}\" action=\"#{Html.escape(action)}\">#{hidden_fields(verb)}<button#{css}#{data} type=\"submit\">#{text}</button></form>")
+        SafeString.of("<form class=\"button_to\" method=\"#{verb == "get" ? "get" : "post"}\" action=\"#{Html.escape(action)}\">#{hidden_fields(verb)}<button#{css}#{data} type=\"submit\">#{text}</button></form>")
       end
 
       # form_with(model: post) do |f| ... end, form_with(model: [post, comment]),
@@ -221,7 +221,7 @@ module Cybertrain
         buf << hidden_fields(verb)
         buf << interp.capture(block, env, FormBuilder.new(record))
         buf << "</form>"
-        SafeString.new(buf)
+        SafeString.of(buf)
       end
 
       # The record the fields read from: the model itself, or the last of a
@@ -425,7 +425,7 @@ module Cybertrain
         end
         html = interp.render(template, scope)
         scope.each_key { |key| env[key] = scope[key] if key.start_with?("__content_") }
-        SafeString.new(html)
+        SafeString.of(html)
       end
 
       # content_for :title do ... end  or  content_for :title, "text";
@@ -439,7 +439,7 @@ module Cybertrain
           piece = interp.capture(block, env)
         end
         before = env[key]
-        env[key] = SafeString.new(before.nil? ? piece : "#{FormBuilder.value_text(before)}#{piece}")
+        env[key] = SafeString.of(before.nil? ? piece : "#{FormBuilder.value_text(before)}#{piece}")
         ""
       end
 
@@ -501,9 +501,9 @@ module Cybertrain
 
       def csrf_meta_tags
         token = csrf_token
-        return SafeString.new("") if token.empty?
+        return SafeString.of("") if token.empty?
 
-        SafeString.new("<meta name=\"csrf-param\" content=\"authenticity_token\">\n<meta name=\"csrf-token\" content=\"#{Html.escape(token)}\">")
+        SafeString.of("<meta name=\"csrf-param\" content=\"authenticity_token\">\n<meta name=\"csrf-token\" content=\"#{Html.escape(token)}\">")
       end
 
       # The session's token, minted on first use; "" without a session.
