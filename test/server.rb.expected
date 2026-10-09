@@ -20,6 +20,7 @@ ok   a JSON::ParserError in the app gets 500 and the server keeps serving
 ok   an idle keep-alive connection is closed after read_timeout
 ok   a failed accept is logged and the server keeps accepting
 ok   stop makes the port refuse connections
+ok   serves a bare HttpHandler with no Context or Middleware involved
 ok   run serves until stop is called
 ok   request_stop (what the TERM trap calls) makes run return without joining
 ok   request_stop waits for a request in flight and answers it completely
@@ -28,4 +29,4 @@ ok   drain_timeout bounds the wait for a request that takes too long
 ok   start raises Cybertrain::PortInUse when the port is already bound
 ok   PortInUse names the reason the port could not be bound
 ok   starting a server on port 80 as non-root reports permission denied
-30 tests, 92 assertions, 0 failures
+31 tests, 94 assertions, 0 failures

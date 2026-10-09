@@ -295,7 +295,7 @@ test "the default App stack and the Server still work with templates required" d
   client = Cybertrain::Test::Client.new(app)
   assert_equal "hi X world", client.get("/hello/world").body
 
-  server = Cybertrain::Server.new(app, port: 0, logger: Cybertrain::Logger.new(nil, :error))
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: Cybertrain::Logger.new(nil, :error))
   server.start
   sock = TCPSocket.new("127.0.0.1", server.port)
   sock.write("GET /hello/sock HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
