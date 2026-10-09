@@ -1,8 +1,15 @@
 name: CI
 
+# A change that only touches site/ (the homepage, the tutorial and the
+# playground page: static files that nothing below reads) runs no tests;
+# pages.yml publishes it. A change that also touches anything else runs them.
 on:
   push:
+    paths-ignore:
+      - "site/**"
   pull_request:
+    paths-ignore:
+      - "site/**"
 
 env:
   # Must equal Cybertrain::SPINEL_TAG (checked below): the release the CLI
