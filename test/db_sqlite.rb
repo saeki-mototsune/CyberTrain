@@ -1,3 +1,4 @@
+require "cybertrain/cast"
 require "cybertrain/db"
 require "cybertrain/test"
 
@@ -401,6 +402,37 @@ test "remembered column names follow a changed schema" do
   renamed = conn.execute(sql)[0]
   assert_equal "a", renamed["headline"]
   refute renamed.key?("title")
+  conn.close
+end
+
+test "execute_models reads DATETIME columns as epoch seconds and leaves other values alone" do
+  conn = posts_db
+  conn.exec_script("ALTER TABLE posts ADD COLUMN made_at DATETIME; ALTER TABLE posts ADD COLUMN note TEXT")
+  at = Time.utc(2026, 9, 24, 12, 30, 5)
+  conn.execute("INSERT INTO posts (title, made_at, note) VALUES (?, ?, ?)", ["a", at, "2026-09-24T12:30:05Z"])
+  conn.execute("INSERT INTO posts (title, made_at, note) VALUES (?, ?, ?)", ["b", "2026-09-24 12:30:05", "x"])
+  conn.execute("INSERT INTO posts (title, made_at, note) VALUES (?, ?, ?)", ["c", "not a time", "x"])
+  conn.execute("INSERT INTO posts (title, made_at, note) VALUES (?, ?, ?)", ["d", nil, "x"])
+  conn.execute("INSERT INTO posts (title, made_at, note) VALUES (?, ?, ?)", ["e", "1969-12-31T23:59:59Z", "x"])
+  conn.execute("INSERT INTO posts (title, made_at, note) VALUES (?, ?, ?)", ["f", "2026-02-30T00:00:00Z", "x"])
+  conn.execute("INSERT INTO posts (title, made_at, note) VALUES (?, ?, ?)", ["g", "2024-02-29T23:59:59.123Z", "x"])
+  sql = "SELECT title, made_at, note FROM posts ORDER BY id"
+  rows = conn.execute_models(sql)
+  assert_equal at.to_i, rows[0]["made_at"]
+  assert_equal at.to_i, rows[1]["made_at"]          # a space instead of the T
+  assert_equal "not a time", rows[2]["made_at"]    # not a timestamp: text
+  assert_equal nil, rows[3]["made_at"]
+  assert_equal "1969-12-31T23:59:59Z", rows[4]["made_at"]  # before 1970: text
+  assert_equal "2026-02-30T00:00:00Z", rows[5]["made_at"]  # no such day: text
+  assert_equal Time.utc(2024, 2, 29, 23, 59, 59).to_i, rows[6]["made_at"] # fraction ignored, as in Cast.parse_time
+  assert_equal "2026-09-24T12:30:05Z", rows[0]["note"]     # a TEXT column is never parsed
+  plain = conn.execute(sql)
+  assert_equal "2026-09-24T12:30:05Z", plain[0]["made_at"] # execute is unchanged
+  # the expression has no declared type: text
+  expr = conn.execute_models("SELECT made_at || '' AS m FROM posts ORDER BY id")
+  assert_equal "2026-09-24T12:30:05Z", expr[0]["m"]
+  # and the Time a model builds from either is the same
+  assert_equal Time.at(rows[0]["made_at"]).utc, Cybertrain::Cast.time_or_nil(plain[0]["made_at"])
   conn.close
 end
 

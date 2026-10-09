@@ -22,4 +22,5 @@ ok   DB.connect(":memory:") shares one database across DB.with calls
 ok   pool: 8 threads x 100 inserts through DB.with
 ok   DB.connect, DB.with and DB.disconnect
 ok   remembered column names follow a changed schema
-24 tests, 97 assertions, 0 failures
+ok   execute_models reads DATETIME columns as epoch seconds and leaves other values alone
+25 tests, 108 assertions, 0 failures

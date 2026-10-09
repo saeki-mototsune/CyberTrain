@@ -101,6 +101,19 @@ module Cybertrain
       # Runs one statement with positional `?` binds and returns its rows as
       # Hashes keyed by column name (an empty Array for DDL/DML).
       def execute(sql, binds = [])
+        run_statement(sql, binds, false)
+      end
+
+      # execute for the ORM: a DATETIME column comes back as UTC epoch seconds
+      # (an Integer, which Cast.time_or_nil turns into a Time) instead of its
+      # text, parsed in C without a Ruby String; a value that is not a
+      # timestamp stays text. Relation reads its rows through this; execute
+      # keeps returning the text SQLite stores.
+      def execute_models(sql, binds = [])
+        run_statement(sql, binds, true)
+      end
+
+      def run_statement(sql, binds, epoch)
         raise Error, "connection closed (sql: #{sql})" if @closed
         stmt = @statements[sql]
         cached = !stmt.nil?
@@ -136,18 +149,22 @@ module Cybertrain
           columns = SQLite3.sqlite3_column_count(stmt)
           # The names once per SQL text (and the count must still match),
           # not once per row and column.
-          names = columns == 0 ? NO_NAMES : cached_names(sql)
-          if names.size != columns
-            names = Array.new(0) { "" }
+          info = columns == 0 ? NO_COLUMNS : cached_columns(sql)
+          if info.names.size != columns
+            built = Array.new(0) { "" }
+            datetimes = Array.new(0) { 0 }
             column = 0
             while column < columns
-              names << SQLite3.sqlite3_column_name(stmt, column)
+              built << SQLite3.sqlite3_column_name(stmt, column)
+              datetimes << (Connection.datetime_decl?(SQLite3.sqlite3_column_decltype(stmt, column)) ? 1 : 0)
               column += 1
             end
-            remember_names(sql, names)
+            info = remember_columns(sql, built, datetimes)
           end
+          names = info.names
+          flags = info.datetimes
           while rc == SQLite3::ROW
-            rows << read_row(stmt, names)
+            rows << read_row(stmt, names, flags, epoch)
             rc = SQLite3.sqlite3_step(stmt)
           end
           raise Error, error_message(sql) if rc != SQLite3::DONE
@@ -298,42 +315,52 @@ module Cybertrain
         @closed
       end
 
-      # An empty Array<String>, shared and never written to.
-      NO_NAMES = Array.new(0) { "" }
-
-      # Remembered column names for one SQL text.
+      # Remembered column names for one SQL text, and which of the columns
+      # are declared DATETIME (1) or not (0).
       class ColumnNames
-        attr_reader :names
+        attr_reader :names, :datetimes
 
-        def initialize(names)
+        def initialize(names, datetimes)
           @names = names
+          @datetimes = datetimes
         end
       end
 
+      # No columns, shared and never written to.
+      NO_COLUMNS = ColumnNames.new(Array.new(0) { "" }, Array.new(0) { 0 })
+
       # An empty Array<ColumnNames>, typed by the block (never called).
       def self.no_name_lists
-        Array.new(0) { ColumnNames.new(Array.new(0) { "" }) }
+        Array.new(0) { ColumnNames.new(Array.new(0) { "" }, Array.new(0) { 0 }) }
+      end
+
+      # sqlite3_column_decltype is nil for an expression; a table column
+      # answers the type its CREATE TABLE gave (DATETIME for t.datetime).
+      def self.datetime_decl?(decl)
+        return false if decl.nil?
+
+        decl.upcase == "DATETIME"
       end
 
       private
 
-      def cached_names(sql)
+      def cached_columns(sql)
         i = @name_index[sql]
-        return NO_NAMES if i.nil?
+        return NO_COLUMNS if i.nil?
 
         found = @name_lists[i]
         case found
-        when ColumnNames then return found.names
+        when ColumnNames then return found
         end
-        NO_NAMES
+        NO_COLUMNS
       end
 
       # The ColumnNames is bound to a local before it is stored: an unnamed
       # temporary can be collected while the push that receives it still
       # grows the Array (the cause of a crash seen under load, see the
       # warning in FormBuilder.humanize).
-      def remember_names(sql, names)
-        entry = ColumnNames.new(names)
+      def remember_columns(sql, names, datetimes)
+        entry = ColumnNames.new(names, datetimes)
         i = @name_index[sql]
         if i.nil?
           @name_index[sql] = @name_lists.size
@@ -341,7 +368,7 @@ module Cybertrain
         else
           @name_lists[i] = entry
         end
-        nil
+        entry
       end
 
       # A script (DDL) can rename columns under a cached statement. Added or
@@ -371,7 +398,7 @@ module Cybertrain
       # sp_str_dup_external), so neither the names nor the text values are
       # copied again: SQLite reusing its buffer on the next step cannot
       # reach them.
-      def read_row(stmt, names)
+      def read_row(stmt, names, datetimes, epoch)
         row = {}
         columns = names.size
         column = 0
@@ -382,8 +409,13 @@ module Cybertrain
           when SQLite3::INTEGER then row[name] = SQLite3.sqlite3_column_int64(stmt, column)
           when SQLite3::FLOAT then row[name] = SQLite3.sqlite3_column_double(stmt, column)
           else
-            text = SQLite3.sqlite3_column_text(stmt, column)
-            row[name] = text.nil? ? "" : text
+            seconds = epoch && datetimes[column] == 1 ? SQLite3.cybertrain_sqlite_column_epoch(stmt, column) : -1
+            if seconds >= 0
+              row[name] = seconds
+            else
+              text = SQLite3.sqlite3_column_text(stmt, column)
+              row[name] = text.nil? ? "" : text
+            end
           end
           column += 1
         end

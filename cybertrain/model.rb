@@ -346,7 +346,7 @@ module Cybertrain
     def reload
       sql = "SELECT * FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
       id = @id
-      found = Cybertrain::DB.with { |c| c.execute(sql, [id]) }
+      found = Cybertrain::DB.with { |c| c.execute_models(sql, [id]) }
       raise RecordNotFound, "Couldn't find #{model_name} with id=#{id}" if found.empty?
       load_row(found[0])
       self

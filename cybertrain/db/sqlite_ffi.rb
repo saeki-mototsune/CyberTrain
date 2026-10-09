@@ -40,6 +40,44 @@ module Cybertrain
       C
       ffi_func :cybertrain_sqlite_set_busy_handler, [:ptr], :int
 
+      # A DATETIME column read straight into UTC epoch seconds, with no Ruby
+      # String in between: the text SQLite already holds is parsed in place.
+      # -1 means "not this shape" ("YYYY-MM-DD[T ]HH:MM:SS" and anything after
+      # it, a year from 1970 on, valid month, day, hour, minute and second,
+      # the same shape and ranges as Cast.parse_time), and the caller reads
+      # the column as text, as it always did. Called only after
+      # sqlite3_column_type said TEXT.
+      ffi_source <<~C
+        extern int sqlite3_column_bytes(void *, int);
+        static int cybertrain_digits(const unsigned char *s, int from, int n) {
+          int v = 0;
+          for (int i = 0; i < n; i++) {
+            unsigned d = (unsigned)(s[from + i] - '0');
+            if (d > 9) return -1;
+            v = v * 10 + (int)d;
+          }
+          return v;
+        }
+        long cybertrain_sqlite_column_epoch(void *stmt, int col) {
+          const unsigned char *s = (const unsigned char *)sqlite3_column_text(stmt, col);
+          if (!s || sqlite3_column_bytes(stmt, col) < 19) return -1;
+          if (s[4] != '-' || s[7] != '-' || s[13] != ':' || s[16] != ':') return -1;
+          if (s[10] != 'T' && s[10] != ' ') return -1;
+          int y = cybertrain_digits(s, 0, 4), mo = cybertrain_digits(s, 5, 2), d = cybertrain_digits(s, 8, 2);
+          int h = cybertrain_digits(s, 11, 2), mi = cybertrain_digits(s, 14, 2), se = cybertrain_digits(s, 17, 2);
+          if (y < 1970 || mo < 1 || mo > 12 || d < 1 || h < 0 || h > 23 || mi < 0 || mi > 59 || se < 0 || se > 59) return -1;
+          static const int dim[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+          int leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+          if (d > dim[mo - 1] + (mo == 2 && leap)) return -1;
+          long long yy = y - (mo <= 2);
+          long long era = yy / 400, yoe = yy - era * 400;
+          long long doy = (153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+          long long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+          return (era * 146097 + doe - 719468) * 86400 + h * 3600 + mi * 60 + se;
+        }
+      C
+      ffi_func :cybertrain_sqlite_column_epoch, [:ptr, :int], :long
+
       ffi_const :OK, 0
       ffi_const :ROW, 100
       ffi_const :DONE, 101
@@ -77,6 +115,7 @@ module Cybertrain
       ffi_func :sqlite3_column_int64, [:ptr, :int], :long
       ffi_func :sqlite3_column_double, [:ptr, :int], :double
       ffi_func :sqlite3_column_text, [:ptr, :int], :str
+      ffi_func :sqlite3_column_decltype, [:ptr, :int], :str
 
       ffi_func :sqlite3_changes, [:ptr], :int
       ffi_func :sqlite3_last_insert_rowid, [:ptr], :long
