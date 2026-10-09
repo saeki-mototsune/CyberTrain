@@ -324,6 +324,11 @@ finds the commit that removed them).
       Symbol a template passes rather than round-tripping through a String.
     - `str.setbyte` writes a heap String in place; `str << int` makes a
       one-character String per call.
+57. A `Mutex#synchronize` taken on every request stalls requests for seconds
+    under `SPINEL_WORKERS=2` (a process-wide cache in Helpers.route_key):
+    bench/run's two-core config failed about one run in two with wrk
+    timeouts or a dead server, and five runs out of five passed once the
+    lock was gone. Keep locks off the per-request path; cache per request.
 58. `Foo.new(<a String made in the argument>)` can free that String before the
     object has it (Spinel 2026.09.12): the generated `new` allocates the
     object, which may collect, and only then roots its arguments. A freshly
@@ -338,11 +343,6 @@ finds the commit that removed them).
     allocation counts moves the window, which is why single reverts of the
     commits that exposed it all looked like fixes. Template parsing (Token,
     StrLit) had the same shape.
-57. A `Mutex#synchronize` taken on every request stalls requests for seconds
-    under `SPINEL_WORKERS=2` (a process-wide cache in Helpers.route_key):
-    bench/run's two-core config failed about one run in two with wrk
-    timeouts or a dead server, and five runs out of five passed once the
-    lock was gone. Keep locks off the per-request path; cache per request.
 
 ## Numbers worth remembering
 
