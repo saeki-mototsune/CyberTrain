@@ -134,6 +134,9 @@ binary 10 to 15% apart from one run to the next):
 The one-core POST moves least: its time is in SQLite's write and the
 redirect, not in the code these changes touched.
 
+What is left, with the measurement behind each candidate, is in
+[performance-next.md](performance-next.md).
+
 An article page now allocates about 360 Strings, from about 1,100 at the first
 run. What is left is spread over many sites at one or two Strings per comment
 each (URLs, form tags, the rows themselves), and the collector and the thread
