@@ -40,7 +40,9 @@ The home page's Performance section (06) shows the run recorded in
 [docs/benchmark.md](../docs/benchmark.md) (`bench/results/<date>.json`,
 printed by `bench/report`): after a new recorded run, update its numbers in
 all five languages, and the bar widths (`--f`, each bar's share of the
-longest bar in its row) with them.
+longest bar in its row) with them. That covers both figures, the requests
+per second and the memory after the load runs (RSS, with the PSS figures in
+the note under it), and the four numbers under them.
 
 ## Social cards
 
