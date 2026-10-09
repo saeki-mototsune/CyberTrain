@@ -88,6 +88,24 @@ interpreter. An article page allocated about 1,100 Strings. What changed:
   through a String-to-index Hash. A `partial_file` memo per request, and
   `while` loops in the interpreter's hot paths, take out a Proc and closure
   cells per call.
+- **DATETIME columns as epoch seconds.** Model rows (`Relation#rows`, `reload`)
+  read a column declared DATETIME through `Connection#execute_models`: a C
+  function (`ffi_source`) parses the text SQLite already holds to UTC epoch
+  seconds, so no Ruby String is made for it, and `Cast.time_or_nil` turns the
+  Integer into a Time. The declared type and the column names are looked up
+  once per SQL text and remembered with the prepared statement (they are read
+  after the first `step`, so a column added under a running connection is
+  seen). Text that is not a timestamp stays text and `Connection#execute` is
+  unchanged. The list page went from 585 to 525 objects.
+- **A crash the speedups exposed.** Making the helpers single interpolations
+  put more `SafeString.new(<new String>)` calls in the render path, and
+  Spinel's generated `new` allocates the object before it roots its argument:
+  a collection inside it freed the String, and the seeding runs of `bench/run`
+  crashed 4 to 17% of the time (a use-after-free, found with an
+  AddressSanitizer build). `SafeString.of` goes through an ordinary method,
+  whose parameters are rooted on entry, and the template lexer and parser bind
+  the Strings they pass to locals: 0 of 150 runs crash
+  ([spikes/NOTES.md](../spikes/NOTES.md) rule 58).
 - **Smaller things.** `Html.escape` allocates nothing when nothing needs
   escaping, ids skip the URL encoder, header lookups compare names without
   downcasing both sides, form attributes are built in one interpolation,
@@ -137,8 +155,9 @@ redirect, not in the code these changes touched.
 What is left, with the measurement behind each candidate, is in
 [performance-next.md](performance-next.md).
 
-An article page now allocates about 360 Strings, from about 1,100 at the first
-run. What is left is spread over many sites at one or two Strings per comment
+An article page now allocates about 520 objects (300 of them Strings), from
+about 1,100 Strings at the first run. What is left is spread over many sites at
+one or two Strings per comment
 each (URLs, form tags, the rows themselves), and the collector and the thread
 switches it causes (about a sixth of the time on one core) are still the
 largest costs: that is Spinel's runtime rather than a function of the

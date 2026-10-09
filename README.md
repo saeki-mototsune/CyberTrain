@@ -559,7 +559,7 @@ production image preloads it) the ratios are 2.8 to 14.6. On two cores the lead
 narrows to 2.0 to 5.5: a second Puma worker doubles Rails, while
 `SPINEL_WORKERS=2` adds 9 to 58% to CyberTrain (set it to the core count on a
 multi-core server; it defaults to 1). The binary also has to be built
-(`cybertrain build` took about two minutes there). docs/benchmark.md has
+(`cybertrain build` took about three minutes there). docs/benchmark.md has
 latency, every configuration, the method and what was optimized to get here;
 `bench/run` repeats the measurement and `bench/report` prints its tables.
 

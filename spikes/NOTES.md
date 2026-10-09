@@ -343,6 +343,12 @@ finds the commit that removed them).
     allocation counts moves the window, which is why single reverts of the
     commits that exposed it all looked like fixes. Template parsing (Token,
     StrLit) had the same shape.
+59. An `ffi_source` C block shares one translation unit with the runtime and
+    the `ffi_func` declarations, so an `extern` there must use the types the
+    compiler already emitted: `sqlite3_column_text` is `const char *` (not
+    `const unsigned char *`) and an `:long` return is `long` (not `long
+    long`), or the build stops with "conflicting types". Cast inside the
+    function instead (`db/sqlite_ffi.rb`, `cybertrain_sqlite_column_epoch`).
 
 ## Numbers worth remembering
 
