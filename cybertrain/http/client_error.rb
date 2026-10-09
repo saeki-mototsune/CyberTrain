@@ -1,5 +1,4 @@
 require "json"
-require "cybertrain/params"
 require "cybertrain/http/query"
 require "cybertrain/http/response"
 
