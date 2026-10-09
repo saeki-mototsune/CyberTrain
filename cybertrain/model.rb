@@ -51,6 +51,9 @@ module Cybertrain
   class Model
     VALIDATORS = {}   # model name => Array<Validator>
     CALLBACKS = {}    # "Post:before_save" => Array<Proc>; each block takes the record
+    # What generated from_row passes to new: never written to (initialize
+    # skips assign_attributes for an empty Hash), so one serves every row.
+    NO_ATTRIBUTES = {}
 
     # Declares validations for one attribute, run by {#valid?} (and so by
     # {#save}) in declaration order. Only `presence` and `length` exist.
@@ -198,12 +201,22 @@ module Cybertrain
     # The validation messages from the last {#valid?} or {#save}.
     # @return [Errors]
     # @api public
-    attr_reader :errors
+    def errors
+      e = @errors
+      return e unless e.nil?
+
+      e = Errors.new
+      @errors = e
+      e
+    end
 
     def initialize
       @id = 0
       @persisted = false
-      @errors = Errors.new
+      # Made on first use: a page that lists loaded records never validates
+      # them, and an Errors (with its Hash and seed Array) per record was a
+      # few dozen allocations per request.
+      @errors = nil
     end
 
     def set_id(v)
@@ -242,10 +255,10 @@ module Cybertrain
     # @return [Boolean] true when no errors were added
     # @api public
     def valid?
-      @errors.clear
+      errors.clear
       run_callbacks("before_validation")
       Model.validators_for(model_name).each { |v| v.validate(self) }
-      @errors.empty?
+      errors.empty?
     end
 
     # Validates, then runs before_save, before_create/before_update, writes
@@ -290,7 +303,7 @@ module Cybertrain
     # @raise [RecordInvalid] when validation fails
     # @api public
     def save!
-      raise RecordInvalid, "Validation failed: #{@errors.full_messages.join(", ")}" unless save
+      raise RecordInvalid, "Validation failed: #{errors.full_messages.join(", ")}" unless save
       true
     end
 
@@ -333,7 +346,7 @@ module Cybertrain
     def reload
       sql = "SELECT * FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
       id = @id
-      found = Cybertrain::DB.with { |c| c.execute(sql, [id]) }
+      found = Cybertrain::DB.with { |c| c.execute_models(sql, [id]) }
       raise RecordNotFound, "Couldn't find #{model_name} with id=#{id}" if found.empty?
       load_row(found[0])
       self

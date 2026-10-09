@@ -13,15 +13,40 @@ module Cybertrain
     # faster than an each_char loop under Spinel; this runs for every <%= %>.
     #
     # `&`, `<`, `>`, `"` and `'` become entities.
-    # @param str [String]
+    # @param value [String]
     # @return [String]
     # @api public
-    def self.escape(str)
+    def self.escape(value)
+      # The parameter is polymorphic under Spinel (callers hand in Strings of
+      # more than one static type), which made every getbyte and comparison
+      # below a dynamic call: most of this method's time. value.to_s has one
+      # static type (every to_s in the program returns a String; SafeString's
+      # included, see SafeString#initialize), so the loops compile to plain
+      # C, and for a String it is the String itself, not a copy. It is also
+      # what comes back when nothing needs escaping, so callers get a typed
+      # String rather than the polymorphic parameter. The case keeps value
+      # polymorphic: used only through to_s, Spinel narrows it to whatever
+      # one caller passes (it once inferred an Integer and turned Strings
+      # into "0"). Anything but a String is converted anyway, so the
+      # interpolation costs nothing extra.
+      str = case value
+            when String then value.to_s
+            else "#{value.to_s}"
+            end
       n = str.bytesize
+      i = 0
+      # Most values need nothing: find the first byte that does before
+      # allocating a buffer at all.
+      while i < n
+        b = str.getbyte(i)
+        break if b == 38 || b == 60 || b == 62 || b == 34 || b == 39
+        i += 1
+      end
+      return str if i == n
+
       buf = +""
       dirty = false
       start = 0
-      i = 0
       while i < n
         b = str.getbyte(i)
         if b == 38 || b == 60 || b == 62 || b == 34 || b == 39
@@ -51,7 +76,7 @@ module Cybertrain
     # @return [SafeString]
     # @api public
     def self.safe(str)
-      SafeString.new(str)
+      SafeString.of(str)
     end
 
     # Renders any value a template might interpolate: nil disappears,
@@ -73,13 +98,27 @@ module Cybertrain
   # Templates print it unescaped (`raw(x)` and `x.html_safe` make one);
   # {Controller#render} `html:` sends it as it is, where a plain String is
   # escaped. It is a wrapper, not a String subclass. There is no
-  # `String#html_safe` in Ruby code: use {Html.safe} or `SafeString.new`.
+  # `String#html_safe` in Ruby code: use {Html.safe} or `SafeString.of`.
   # @api public
   class SafeString
     # @param str [String] trusted HTML
     # @api public
     def initialize(str)
       @str = str
+    end
+
+    # SafeString.of(str), safe for a String made in the argument itself
+    # (`SafeString.of("<a>#{x}</a>")`). Under Spinel 2026.09.12 the generated
+    # `new` allocates the object before it roots its argument, so a garbage
+    # collection in that allocation frees a String that only the argument
+    # holds (a use-after-free that showed as a rare crash under load). The
+    # parameter of an ordinary method is rooted on entry, so going through
+    # one is enough; bind the String to a local first if you call `new`.
+    # @param str [String] trusted HTML
+    # @return [SafeString]
+    # @api public
+    def self.of(str)
+      SafeString.new(str)
     end
 
     # @return [String] the HTML
@@ -116,9 +155,12 @@ module Cybertrain
       # as a keyword argument).
       piece = case other
               when SafeString then other.to_s
-              else Html.escape(other)
+              # other.to_s rather than other: in a program that never calls
+              # +, Spinel types the unused parameter as an Integer and passed
+              # that type on to Html.escape's (test/router.rb caught it).
+              else Html.escape(other.to_s)
               end
-      SafeString.new(@str + piece)
+      SafeString.of(@str + piece)
     end
   end
 end

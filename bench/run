@@ -40,12 +40,17 @@ RAILS_APP = File.join(ROOT, "bench", "rails_blog")
 WORK = File.join(ROOT, "bench", "tmp")
 CT_DIR = File.join(WORK, "cybertrain")
 
-# Server CPUs, Spinel worker threads and Puma worker processes. Rails runs
-# Puma's default 3 threads per process (config/puma.rb); CyberTrain runs one
-# green thread per connection on SPINEL_WORKERS OS threads.
+# Server CPUs, Spinel worker threads, Puma worker processes and malloc.
+# Rails runs Puma's default 3 threads per process (config/puma.rb);
+# CyberTrain runs one green thread per connection on SPINEL_WORKERS OS
+# threads. The -jemalloc configurations preload jemalloc into both servers,
+# as Rails' generated Dockerfile does for production; for CyberTrain that
+# measures the same as linking it with `allocator = "jemalloc"` in spin.toml.
 CONFIGS = {
-  "1cpu" => { server_cpus: "0", ct_workers: 1, puma_workers: nil },
-  "2cpu" => { server_cpus: "0,1", ct_workers: 2, puma_workers: 2 },
+  "1cpu" => { server_cpus: "0", ct_workers: 1, puma_workers: nil, malloc: "system" },
+  "2cpu" => { server_cpus: "0,1", ct_workers: 2, puma_workers: 2, malloc: "system" },
+  "1cpu-jemalloc" => { server_cpus: "0", ct_workers: 1, puma_workers: nil, malloc: "jemalloc" },
+  "2cpu-jemalloc" => { server_cpus: "0,1", ct_workers: 2, puma_workers: 2, malloc: "jemalloc" },
 }.freeze
 CLIENT_CPUS = "2,3"
 
@@ -78,6 +83,14 @@ OptionParser.new do |o|
 end.parse!
 unknown = options[:configs] - CONFIGS.keys
 abort "unknown config #{unknown.join(", ")}; known: #{CONFIGS.keys.join(", ")}" unless unknown.empty?
+
+# The jemalloc shared library the -jemalloc configurations preload.
+JEMALLOC = ENV.fetch("BENCH_JEMALLOC") do
+  `ldconfig -p 2>/dev/null`[/=>\s*(\S*libjemalloc\.so\.2)\s*$/, 1].to_s
+end
+if options[:configs].any? { |c| CONFIGS[c][:malloc] == "jemalloc" } && !File.exist?(JEMALLOC)
+  abort "the -jemalloc configurations need libjemalloc.so.2 (apt-get install libjemalloc2, or set BENCH_JEMALLOC)"
+end
 
 def say(text)
   $stdout.puts(text)
@@ -170,13 +183,14 @@ class Server
   def start
     cpus = @config[:server_cpus]
     log = File.join(WORK, "#{@framework}.stderr.log")
+    preload = @config[:malloc] == "jemalloc" ? { "LD_PRELOAD" => JEMALLOC } : {}
     started = monotonic
     if @framework == "cybertrain"
-      env = CT_ENV.merge("PORT" => @port.to_s, "SPINEL_WORKERS" => @config[:ct_workers].to_s)
+      env = CT_ENV.merge(preload).merge("PORT" => @port.to_s, "SPINEL_WORKERS" => @config[:ct_workers].to_s)
       @pid = Process.spawn(env, "taskset", "-c", cpus, "./blog", chdir: CT_DIR, out: File::NULL, err: log)
     else
       workers = @config[:puma_workers]
-      env = RAILS_ENV.merge("PORT" => @port.to_s, "WEB_CONCURRENCY" => workers&.to_s)
+      env = RAILS_ENV.merge(preload).merge("PORT" => @port.to_s, "WEB_CONCURRENCY" => workers&.to_s)
       @pid = Process.spawn(env, "taskset", "-c", cpus, "bin/rails", "server", "-b", "127.0.0.1", "-p", @port.to_s,
                            chdir: RAILS_APP, out: File::NULL, err: log)
     end
@@ -454,7 +468,8 @@ at_exit { servers.each { |s| s.stop rescue nil } }
 options[:configs].each do |name|
   config = CONFIGS.fetch(name)
   results["configs"][name] = { "server_cpus" => config[:server_cpus], "cybertrain_workers" => config[:ct_workers],
-                               "puma_workers" => config[:puma_workers] || 0, "puma_threads" => 3, "frameworks" => {} }
+                               "puma_workers" => config[:puma_workers] || 0, "puma_threads" => 3,
+                               "malloc" => config[:malloc], "frameworks" => {} }
   %w[cybertrain rails].each do |framework|
     say "==> #{name}: #{framework}"
     reset_database(framework)
@@ -517,7 +532,7 @@ say "==> wrote #{out.delete_prefix("#{ROOT}/")}"
 say ""
 results["configs"].each do |name, cfg|
   say "#{name} (server on CPU #{cfg["server_cpus"]}; CyberTrain SPINEL_WORKERS=#{cfg["cybertrain_workers"]}, " \
-      "Puma #{cfg["puma_workers"].zero? ? "single mode" : "#{cfg["puma_workers"]} workers"} x 3 threads)"
+      "Puma #{cfg["puma_workers"].zero? ? "single mode" : "#{cfg["puma_workers"]} workers"} x 3 threads; malloc #{cfg["malloc"]})"
   say "| Endpoint | c | CyberTrain req/s | Rails req/s | Ratio | CyberTrain p99 | Rails p99 |"
   say "| --- | --: | --: | --: | --: | --: | --: |"
   ENDPOINTS.each do |e|

@@ -81,8 +81,11 @@ finds the commit that removed them).
     binary (`ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]`) before
     the first `Thread.new`, and re-measure once templates and SQLite add CPU work.
     Re-measured with examples/blog on two cores ([docs/benchmark.md](../docs/benchmark.md)):
-    `SPINEL_WORKERS=2` adds 9-13% to the pages and 30% to a static file, and
-    costs 24% on a comment POST, so 1 stays the default.
+    `SPINEL_WORKERS=2` adds 16-27% to the pages, 51% to a comment POST and
+    49% to a static file. The POST used to lose a quarter: SQLite's
+    busy_timeout slept a millisecond or more holding the worker, until a
+    busy handler retrying every 100 us replaced it (db/sqlite_ffi.rb). 1 stays
+    the default (a one-core server); set it to the core count otherwise.
 23. `spin test --regen` writes `.expected` from CRuby's output; `spin test` diffs
     the Spinel binary's output (stdout and stderr merged) against it. Tests must
     therefore be CRuby/Spinel-portable;
@@ -297,6 +300,55 @@ finds the commit that removed them).
     (runtime-dependent); assert only that the other tree (a merge!
     source) is untouched. merge!'s per-String copies are what make that true
     under CRuby; under Spinel they cost a copy and change nothing.
+
+56. Typing for speed (Spinel 2026.09.12; `spinel app.rb --emit-types` writes
+    `app.types.json`, whose diagnostics name each method "widened to
+    untyped", and `-S` shows the C):
+    - `"#{v}"` always allocates and copies, even when `v` is a String.
+      `v.to_s` is typed and returns the String itself, provided every
+      `to_s` in the program returns a typed String (SafeString's does once
+      every `SafeString.new` gets one). A parameter used only through
+      `to_s` is narrowed to one caller's type (Html.escape once took an
+      Integer and turned Strings into "0"): keep a `case v when String` on
+      it, and pass `x.to_s` from a caller whose own parameter is otherwise
+      unused, which Spinel types as an Integer (SafeString#+).
+    - A Hash with object values boxes them, so a lookup is polymorphic; an
+      object Array is typed (`sp_PtrArray`) unless the program calls
+      `clear` on it anywhere, or it is an Array of the class that holds it
+      (INode#ikids): then it is `sp_PolyArray`. Engine keeps Templates in an
+      Array found through a String => index Hash, and `clear_cache!`
+      assigns a fresh Array.
+    - A nullable object passed as a parameter is boxed; returning it from
+      there makes the method's result polymorphic.
+    - `String#to_sym` searches the whole symbol table linearly. Keep the
+      Symbol a template passes rather than round-tripping through a String.
+    - `str.setbyte` writes a heap String in place; `str << int` makes a
+      one-character String per call.
+57. A `Mutex#synchronize` taken on every request stalls requests for seconds
+    under `SPINEL_WORKERS=2` (a process-wide cache in Helpers.route_key):
+    bench/run's two-core config failed about one run in two with wrk
+    timeouts or a dead server, and five runs out of five passed once the
+    lock was gone. Keep locks off the per-request path; cache per request.
+58. `Foo.new(<a String made in the argument>)` can free that String before the
+    object has it (Spinel 2026.09.12): the generated `new` allocates the
+    object, which may collect, and only then roots its arguments. A freshly
+    made String (an interpolation, `buf` converted from a `+""` buffer,
+    `code.strip`) that only the argument holds is swept: the object keeps a
+    dangling pointer and a later read crashes (a use-after-free, 4 to 17% of
+    the benchmark's seeding runs, found with an AddressSanitizer build:
+    `spinel app.rb --cc=<wrapper running cc -fsanitize=address
+    -fno-sanitize-address-use-after-scope -g> ASAN_OPTIONS=fast_unwind_on_malloc=0`).
+    Bind the String to a local first, or go through an ordinary method
+    (`SafeString.of`), whose parameters are rooted on entry. Changing
+    allocation counts moves the window, which is why single reverts of the
+    commits that exposed it all looked like fixes. Template parsing (Token,
+    StrLit) had the same shape.
+59. An `ffi_source` C block shares one translation unit with the runtime and
+    the `ffi_func` declarations, so an `extern` there must use the types the
+    compiler already emitted: `sqlite3_column_text` is `const char *` (not
+    `const unsigned char *`) and an `:long` return is `long` (not `long
+    long`), or the build stops with "conflicting types". Cast inside the
+    function instead (`db/sqlite_ffi.rb`, `cybertrain_sqlite_column_epoch`).
 
 ## Numbers worth remembering
 

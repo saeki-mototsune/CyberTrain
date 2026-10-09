@@ -167,8 +167,14 @@ module Cybertrain
         src << "  def offset(n) = (set_offset(n); self)\n"
         src << "\n"
         src << "  def to_a\n"
+        # A while loop: an each block is a Proc per query.
         src << "    out = Array.new(0) { #{model}.new }\n"
-        src << "    rows.each { |r| out << #{model}.from_row(r) }\n"
+        src << "    found = rows\n"
+        src << "    i = 0\n"
+        src << "    while i < found.size\n"
+        src << "      out << #{model}.from_row(found[i])\n"
+        src << "      i += 1\n"
+        src << "    end\n"
         src << "    out\n"
         src << "  end\n"
         src << "\n"
@@ -234,11 +240,14 @@ module Cybertrain
         src << "  def initialize(attrs = {})\n"
         src << "    super()\n"
         table.columns.each { |c| src << "    #{ivar_name(c.name)} = #{initial_value(c)}\n" }
-        src << "    assign_attributes(attrs)\n"
+        # A record loaded from a row (from_row) passes no attributes: skip
+        # the each, and the Proc it allocates, for every row of every query.
+        src << "    assign_attributes(attrs) unless attrs.empty?\n"
         src << "  end\n"
         src << "\n"
         src << "  def self.from_row(row)\n"
-        src << "    rec = #{model}.new\n"
+        # The shared empty Hash, not the `{}` default: one Hash less per row.
+        src << "    rec = #{model}.new(Cybertrain::Model::NO_ATTRIBUTES)\n"
         src << "    rec.load_row(row)\n"
         src << "    rec\n"
         src << "  end\n"

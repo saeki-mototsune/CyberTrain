@@ -1,3 +1,5 @@
+require "cybertrain/http/header_name"
+
 module Cybertrain
   # The response a request builds up on its way through the stack; the
   # Server serializes it with #to_http. Headers keep the case they were set
@@ -121,9 +123,8 @@ module Cybertrain
     # @return [nil]
     # @api public
     def drop_header(name)
-      wanted = name.downcase
       gone = []
-      @headers.keys.each { |k| gone << k if k.downcase == wanted }
+      @headers.keys.each { |k| gone << k if HeaderName.same?(k, name) }
       gone.each { |k| @headers.delete(k) }
       nil
     end
@@ -185,7 +186,7 @@ module Cybertrain
       out = +"HTTP/1.1 #{@status} #{status_text}\r\n"
       out << "Content-Type: #{DEFAULT_CONTENT_TYPE}\r\n" if header_key("content-type").nil?
       @headers.each do |name, value|
-        next if name.downcase == "content-length"
+        next if HeaderName.same?(name, "content-length")
 
         out << name << ": " << value << "\r\n"
       end
@@ -216,9 +217,8 @@ module Cybertrain
     end
 
     def header_key(name)
-      wanted = name.downcase
       @headers.each_key do |k|
-        return k if k.downcase == wanted
+        return k if HeaderName.same?(k, name)
       end
       nil
     end

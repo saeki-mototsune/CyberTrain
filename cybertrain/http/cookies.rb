@@ -28,6 +28,10 @@ module Cybertrain
     # method with one rescue clause by class: fine under Spinel (NOTES rules
     # 32, 47).
     def self.decode(value)
+      # Nothing to decode (a signed session cookie is base64url and "--"):
+      # the value as it is, which is also what an invalid byte sequence gets.
+      return value if value.byteindex("%").nil? && value.byteindex("+").nil?
+
       Query.decode(value)
     rescue QueryMalformed
       value

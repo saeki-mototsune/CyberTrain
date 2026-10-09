@@ -1,4 +1,5 @@
 require "cybertrain/http/query"
+require "cybertrain/http/header_name"
 
 module Cybertrain
   # One incoming HTTP request. Header names are expected lowercased (as
@@ -76,12 +77,11 @@ module Cybertrain
     # @return [String, nil]
     # @api public
     def header(name)
-      key = name.downcase
-      value = @headers[key]
+      value = @headers[HeaderName.lower(name)]
       return value unless value.nil?
 
       @headers.each do |k, v|
-        return v if k.downcase == key
+        return v if HeaderName.same?(k, name)
       end
       nil
     end

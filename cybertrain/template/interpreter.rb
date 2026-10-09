@@ -133,7 +133,7 @@ module Cybertrain
       def to_output(v)
         case v
         when nil then ""
-        when SafeString then "#{v.to_s}"
+        when SafeString then v.to_s
         else escape_html(to_s_value(v))
         end
       end
@@ -154,15 +154,16 @@ module Cybertrain
         str
       end
 
-      # Every branch is an interpolation or a literal, so the result is
-      # statically a String: a bare `v` (or `v.to_s`, which may dispatch to
-      # SafeString#to_s) stays polymorphic and drags every `<<` of the result
-      # onto Spinel's boxed slow path. Spinel's interpolation does not call a
-      # user-defined to_s, hence the explicit "#{v.to_s}" for objects.
+      # Every branch is statically a String: a bare `v` stays polymorphic and
+      # drags every `<<` of the result onto Spinel's boxed slow path. Strings
+      # and SafeStrings go through to_s, which is typed (every to_s in the
+      # program returns a String, see Html.escape) and returns the String
+      # itself where an interpolation would copy it. Spinel's interpolation
+      # does not call a user-defined to_s, hence "#{v.to_s}" for objects.
       def to_s_value(v)
         case v
-        when SafeString then "#{v.to_s}"
-        when String then "#{v}"
+        when SafeString then v.to_s
+        when String then v.to_s
         when nil then ""
         when Integer then "#{v}"
         when Float then "#{v}"
@@ -214,13 +215,23 @@ module Cybertrain
           truthy?(eval_expr(n.ia, env)) ? eval_expr(n.ib, env) : eval_expr(n.ic, env)
         elsif k == INode::K_INTERP
           buf = +""
-          n.ikids.each { |part| buf << to_s_value(eval_expr(part, env)) }
+          parts = n.ikids
+          j = 0
+          while j < parts.size
+            buf << to_s_value(eval_expr(parts[j], env))
+            j += 1
+          end
           buf
         elsif k == INode::K_INDEX then index(eval_expr(n.ia, env), eval_expr(n.ib, env), n)
         elsif k == INode::K_FLOAT then n.iflt
         elsif k == INode::K_ARRAY
           items = []
-          n.ikids.each { |item| items << eval_expr(item, env) }
+          elems = n.ikids
+          j = 0
+          while j < elems.size
+            items << eval_expr(elems[j], env)
+            j += 1
+          end
           items
         elsif k == INode::K_HASH
           hash = {}
@@ -277,7 +288,11 @@ module Cybertrain
       private
 
       def exec_nodes(nodes, env)
-        nodes.each do |n|
+        idx = 0
+        count = nodes.size
+        while idx < count
+          n = nodes[idx]
+          idx += 1
           k = n.ikind
           if k == INode::K_TEXT then @out << n.istr
           elsif k == INode::K_OUT then @out << to_output(eval_expr(n.ia, env))
@@ -308,7 +323,8 @@ module Cybertrain
         when Time then undefined(n, "each", "Time")
         when Array
           i = 0
-          coll.each do |item|
+          while i < coll.size
+            item = coll[i]
             if n.iint == 1
               env[names[0]] = item
               env[names[1]] = i if two
@@ -356,17 +372,25 @@ module Cybertrain
       # Block parameters shadow outer names only inside the block.
       def save_locals(env, names)
         saved = {}
-        names.each { |name| saved[name] = env[name] if key_in?(env, name) }
+        i = 0
+        while i < names.size
+          name = names[i]
+          saved[name] = env[name] if key_in?(env, name)
+          i += 1
+        end
         saved
       end
 
       def restore_locals(env, names, saved)
-        names.each do |name|
+        i = 0
+        while i < names.size
+          name = names[i]
           if saved.key?(name)
             env[name] = saved[name]
           else
             env.delete(name)
           end
+          i += 1
         end
         nil
       end
@@ -383,12 +407,20 @@ module Cybertrain
       end
 
       def reset_locals(env, fresh)
-        fresh.each { |name| env[name] = nil }
+        i = 0
+        while i < fresh.size
+          env[fresh[i]] = nil
+          i += 1
+        end
         nil
       end
 
       def drop_locals(env, fresh)
-        fresh.each { |name| env.delete(name) }
+        i = 0
+        while i < fresh.size
+          env.delete(fresh[i])
+          i += 1
+        end
         nil
       end
 
@@ -428,16 +460,29 @@ module Cybertrain
       def eval_args(n, env)
         return @no_args if n.ikids.empty?
 
+        # while, not each: a block here was a Proc and its closure cells per
+        # call, and this runs for nearly every call in a template.
+        kids = n.ikids
         args = []
-        n.ikids.each { |a| args << eval_expr(a, env) }
+        i = 0
+        while i < kids.size
+          args << eval_expr(kids[i], env)
+          i += 1
+        end
         args
       end
 
       def eval_kwargs(n, env)
         return @no_kwargs if n.ipairs.empty?
 
+        keys = n.ipairs
+        values = n.ikids2
         kwargs = {}
-        n.ipairs.each_with_index { |key, i| kwargs[key] = eval_expr(n.ikids2[i], env) }
+        i = 0
+        while i < keys.size
+          kwargs[keys[i]] = eval_expr(values[i], env)
+          i += 1
+        end
         kwargs
       end
 
@@ -676,7 +721,7 @@ module Cybertrain
         when :size, :length then s.length
         when :empty? then s.empty?
         when :to_i then s.to_i
-        when :html_safe then SafeString.new(s)
+        when :html_safe then SafeString.of(s.to_s)
         when :html_safe? then false
         # String#include? with a polymorphic argument mis-dispatches once
         # SafeString exists (spikes/NOTES.md rule 29): go through #index.

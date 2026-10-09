@@ -191,9 +191,17 @@ module Cybertrain
         k = k.superclass
       end
       chain = []
-      names.each do |n|
-        list = CALLBACKS[n]
-        list.each { |cb| chain << cb } unless list.nil?
+      i = 0
+      while i < names.size
+        list = CALLBACKS[names[i]]
+        unless list.nil?
+          j = 0
+          while j < list.size
+            chain << list[j]
+            j += 1
+          end
+        end
+        i += 1
       end
       chain
     end
@@ -203,7 +211,13 @@ module Cybertrain
       k = klass
       while k
         list = RESCUES[k.name]
-        list.each { |h| handlers << h } unless list.nil?
+        unless list.nil?
+          j = 0
+          while j < list.size
+            handlers << list[j]
+            j += 1
+          end
+        end
         break if k == Controller
 
         k = k.superclass
@@ -284,6 +298,7 @@ module Cybertrain
       @params = ctx.params
       @action_name = ""
       @rescued_exception = nil
+      @controller_path = ""
     end
 
     # Runs the before callbacks (stopping as soon as one renders or
@@ -323,8 +338,19 @@ module Cybertrain
     def view_env(extra)
       env = {}
       assigns = view_assigns
-      assigns.each_key { |key| env[key] = assigns[key] }
-      extra.each_key { |key| env[key] = extra[key] }
+      # keys + while: an each_key block is a Proc and closure per request.
+      assign_keys = assigns.keys
+      i = 0
+      while i < assign_keys.size
+        env[assign_keys[i]] = assigns[assign_keys[i]]
+        i += 1
+      end
+      extra_keys = extra.keys
+      i = 0
+      while i < extra_keys.size
+        env[extra_keys[i]] = extra[extra_keys[i]]
+        i += 1
+      end
       env["flash"] = Template::Helpers.flash_messages(flash)
       env["params"] = @params
       path = controller_path
@@ -338,8 +364,15 @@ module Cybertrain
     # @return [String]
     # @api public
     def controller_path
+      known = @controller_path
+      return known unless known.empty?
+
+      # Asked for at least three times in a render (view_env, render_template,
+      # the layout), each an underscore of the class name: remembered.
       name = Inflector.underscore(self.class.name)
-      name.end_with?("_controller") ? name[0, name.length - 11] : name
+      path = name.end_with?("_controller") ? name[0, name.length - 11] : name
+      @controller_path = path
+      path
     end
 
     # Renders <controller_path>/<name> with the process-wide Views engine,
@@ -475,11 +508,13 @@ module Cybertrain
 
     def run_action(action, body)
       @action_name = action.to_s
+      # Built once per request and walked by both passes.
+      chain = Controller.chain_for(self.class)
       begin
-        if run_before_callbacks(action)
+        if run_before_callbacks(chain, action)
           body.call(self)
           default_render(action) unless performed?
-          run_after_callbacks(action)
+          run_after_callbacks(chain, action)
         end
       rescue JSON::ParserError, StandardError => e
         # JSON::ParserError named (NOTES rule 33: not a StandardError under
@@ -493,20 +528,29 @@ module Cybertrain
       nil
     end
 
-    # false when a callback rendered or redirected (the chain halts).
-    def run_before_callbacks(action)
-      Controller.chain_for(self.class).each do |cb|
-        next unless cb.kind == :before && cb.applies?(action)
-
-        run_one(cb)
-        return false if performed?
+    # false when a callback rendered or redirected (the chain halts). A
+    # while loop, not `each` with a `return` inside the block: under Spinel
+    # a return out of a block costs a setjmp and a Proc on every call.
+    def run_before_callbacks(chain, action)
+      i = 0
+      n = chain.size
+      while i < n
+        cb = chain[i]
+        if cb.kind == :before && cb.applies?(action)
+          run_one(cb)
+          return false if performed?
+        end
+        i += 1
       end
       true
     end
 
-    def run_after_callbacks(action)
-      Controller.chain_for(self.class).each do |cb|
+    def run_after_callbacks(chain, action)
+      i = 0
+      while i < chain.size
+        cb = chain[i]
         run_one(cb) if cb.kind == :after && cb.applies?(action)
+        i += 1
       end
       nil
     end
@@ -580,7 +624,12 @@ module Cybertrain
     # names up by String.
     def string_keys(locals)
       out = {}
-      locals.each_key { |key| out[key.to_s] = locals[key] }
+      keys = locals.keys
+      i = 0
+      while i < keys.size
+        out[keys[i].to_s] = locals[keys[i]]
+        i += 1
+      end
       out
     end
 

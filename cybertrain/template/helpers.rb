@@ -11,6 +11,7 @@
 # program that renders through it: cybertrain/controller.rb requires this
 # file, so this file does not require the controller back.
 require "cybertrain/html"
+require "cybertrain/http/header_name"
 require "cybertrain/model"
 require "cybertrain/params"
 require "cybertrain/views"
@@ -27,6 +28,17 @@ module Cybertrain
 
       def initialize(controller)
         @controller = controller
+        # model_name => its underscored route key, for this request only (a
+        # page with a list of records asks for the same few names once per
+        # link and form). Typed empty Hash: spikes/NOTES.md rule 9.
+        @model_keys = { "" => "" }
+        @model_keys.delete("")
+        @route_keys = { "" => "" }
+        @route_keys.delete("")
+        # template dir => partial name => its file name, for this request
+        # only (a collection renders the same partial once per record).
+        @partial_files = { "" => { "" => "" } }
+        @partial_files.delete("")
       end
 
       def helper_call(name, args, kwargs, block, interp, env)
@@ -35,8 +47,8 @@ module Cybertrain
         when "button_to" then button_to(args, kwargs)
         when "form_with" then form_with(kwargs, block, interp, env)
         when "render" then render_helper(args, kwargs, interp, env)
-        when "h", "escape" then SafeString.new(html_arg(args, 0, name))
-        when "raw" then SafeString.new(text_arg(args, 0, name))
+        when "h", "escape" then SafeString.of(html_arg(args, 0, name))
+        when "raw" then SafeString.of(text_arg(args, 0, name))
         when "pluralize" then pluralize(args)
         when "truncate" then truncate(args, kwargs)
         when "number_with_delimiter" then number_with_delimiter(args)
@@ -93,11 +105,20 @@ module Cybertrain
       def self.check_locals(template, given)
         return nil unless template.strict_locals?
 
-        template.locals.each do |name|
+        # while loops: a block here allocated a Proc and its closure cells
+        # on every partial render.
+        locals = template.locals
+        i = 0
+        while i < locals.size
+          name = locals[i]
           raise ArgumentError, "missing local '#{name}' for #{template.name}" unless Helpers.name_in?(given, name)
+          i += 1
         end
-        given.each do |name|
-          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless Helpers.name_in?(template.locals, name)
+        i = 0
+        while i < given.size
+          name = given[i]
+          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless Helpers.name_in?(locals, name)
+          i += 1
         end
         nil
       end
@@ -105,8 +126,15 @@ module Cybertrain
       # Array#include? with String arguments mis-dispatches once the whole
       # framework (SafeString's to_str) is in the program (spikes/NOTES.md
       # rules 14 and 29); compare explicitly.
+      # A while loop: `each` with a `return` in the block costs a setjmp and
+      # a Proc per call under Spinel, and this runs for every partial.
       def self.name_in?(names, name)
-        names.each { |n| return true if n == name }
+        i = 0
+        n = names.size
+        while i < n
+          return true if names[i] == name
+          i += 1
+        end
         false
       end
 
@@ -146,14 +174,13 @@ module Cybertrain
           raise ArgumentError, "link_to does not support method: (use button_to '#{text}', path, method: :#{FormBuilder.value_text(kwargs["method"])})"
         end
 
-        buf = +"<a"
-        buf << FormBuilder.html_attr("href", href)
-        buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
-        buf << FormBuilder.html_attr("id", FormBuilder.value_text(kwargs["id"])) unless kwargs["id"].nil?
-        buf << FormBuilder.html_attr("data-confirm", FormBuilder.value_text(kwargs["data_confirm"])) unless kwargs["data_confirm"].nil?
-        buf << data_attrs(kwargs["data"])
-        buf << ">" << text << "</a>"
-        SafeString.new(buf)
+        # One interpolation (see button_to); the optional attributes are ""
+        # when absent.
+        css = kwargs["class"].nil? ? "" : " class=\"#{Html.escape(FormBuilder.value_text(kwargs["class"]))}\""
+        id = kwargs["id"].nil? ? "" : " id=\"#{Html.escape(FormBuilder.value_text(kwargs["id"]))}\""
+        confirm = kwargs["data_confirm"].nil? ? "" : " data-confirm=\"#{Html.escape(FormBuilder.value_text(kwargs["data_confirm"]))}\""
+        data = kwargs["data"].nil? ? "" : data_attrs(kwargs["data"])
+        SafeString.of("<a href=\"#{Html.escape(href)}\"#{css}#{id}#{confirm}#{data}>#{text}</a>")
       end
 
       # A one-button form: POST (with a hidden _method for delete/patch/put)
@@ -162,16 +189,13 @@ module Cybertrain
         text = html_arg(args, 0, "button_to")
         action = url_for(arg(args, 1, "button_to"))
         verb = kwargs["method"].nil? ? "post" : lower_text(kwargs["method"])
-        buf = +"<form class=\"button_to\""
-        buf << FormBuilder.html_attr("method", verb == "get" ? "get" : "post")
-        buf << FormBuilder.html_attr("action", action)
-        buf << ">"
-        buf << hidden_fields(verb)
-        buf << "<button"
-        buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
-        buf << data_attrs(kwargs["data"])
-        buf << " type=\"submit\">" << text << "</button></form>"
-        SafeString.new(buf)
+        # One interpolation, allocated once at its final size: a `+""`
+        # buffer costs a copy of the literal, a String object, and a copy
+        # of the result when it is returned. The optional parts are "" (a
+        # static literal) when absent.
+        css = kwargs["class"].nil? ? "" : " class=\"#{Html.escape(FormBuilder.value_text(kwargs["class"]))}\""
+        data = kwargs["data"].nil? ? "" : data_attrs(kwargs["data"])
+        SafeString.of("<form class=\"button_to\" method=\"#{verb == "get" ? "get" : "post"}\" action=\"#{Html.escape(action)}\">#{hidden_fields(verb)}<button#{css}#{data} type=\"submit\">#{text}</button></form>")
       end
 
       # form_with(model: post) do |f| ... end, form_with(model: [post, comment]),
@@ -190,14 +214,14 @@ module Cybertrain
           verb = "patch"
         end
         buf = +"<form"
-        buf << FormBuilder.html_attr("action", action)
-        buf << FormBuilder.html_attr("method", verb == "get" ? "get" : "post")
-        buf << FormBuilder.html_attr("class", FormBuilder.value_text(kwargs["class"])) unless kwargs["class"].nil?
+        buf << " action=\"" << Html.escape(action) << "\""
+        buf << " method=\"" << (verb == "get" ? "get" : "post") << "\""
+        buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
         buf << ">"
         buf << hidden_fields(verb)
         buf << interp.capture(block, env, FormBuilder.new(record))
         buf << "</form>"
-        SafeString.new(buf)
+        SafeString.of(buf)
       end
 
       # The record the fields read from: the model itself, or the last of a
@@ -217,6 +241,10 @@ module Cybertrain
       # builds it: the plural, or "<plural>_index" when the word is its own
       # plural (sheep_index_path; the routes DSL names that collection the
       # same way).
+      # Not cached across requests: a process-wide table needs a lock under
+      # SPINEL_WORKERS > 1, and taking a Mutex on every page stalled
+      # requests for seconds there (bench/run, two workers). route_key_of
+      # remembers it for the request.
       def self.route_key(singular)
         plural = Inflector.pluralize(singular)
         plural == singular ? "#{plural}_index" : plural
@@ -229,7 +257,7 @@ module Cybertrain
           return url_for(model) if model.persisted?
 
           # Bound step by step (see FormBuilder.humanize).
-          route("#{Helpers.route_key(model_key(model))}_path", [])
+          route("#{route_key_of(model_key(model))}_path", [])
         when Array then url_for(model)
         else raise ArgumentError, "form_with needs model: or url:"
         end
@@ -239,22 +267,15 @@ module Cybertrain
       # anything but GET (omitted without a session to take it from). Tag
       # builders append what these return rather than passing their buffer
       # down (see FormBuilder.html_attr).
+      # Interpolations, not a `+""` buffer (see button_to).
       def hidden_fields(verb)
-        out = +""
-        return out if verb == "get"
+        return "" if verb == "get"
 
-        if verb != "post"
-          out << "<input type=\"hidden\" name=\"_method\""
-          out << FormBuilder.html_attr("value", verb)
-          out << ">"
-        end
+        method_field = verb == "post" ? "" : "<input type=\"hidden\" name=\"_method\" value=\"#{Html.escape(verb)}\">"
         token = csrf_token
-        unless token.empty?
-          out << "<input type=\"hidden\" name=\"authenticity_token\""
-          out << FormBuilder.html_attr("value", token)
-          out << ">"
-        end
-        out
+        return method_field if token.empty?
+
+        "#{method_field}<input type=\"hidden\" name=\"authenticity_token\" value=\"#{Html.escape(token)}\">"
       end
 
       # data: { turbo_confirm: "Sure?" } -> data-turbo-confirm="Sure?".
@@ -271,8 +292,10 @@ module Cybertrain
 
       # --- routes ------------------------------------------------------------
 
+      # to_s, not an interpolation: a String typed without a copy (see
+      # FormBuilder.value_text).
       def route(name, args)
-        "#{Views.url_resolver.call(name, args)}"
+        Views.url_resolver.call(name, args).to_s
       end
 
       # A String is already a URL; a record maps to its member route
@@ -289,6 +312,21 @@ module Cybertrain
       end
 
       def nested_url(items)
+        # [parent, child], the usual shape, in one interpolation.
+        if items.size == 2
+          parent = items[0]
+          child = items[1]
+          case parent
+          when Cybertrain::Model
+            case child
+            when Cybertrain::Model
+              parent_key = model_key(parent)
+              return route("#{parent_key}_#{route_key_of(model_key(child))}_path", [parent]) if child.new_record?
+
+              return route("#{parent_key}_#{model_key(child)}_path", [parent, child])
+            end
+          end
+        end
         name = +""
         route_args = []
         items.each_with_index do |item, i|
@@ -296,7 +334,7 @@ module Cybertrain
           when Cybertrain::Model
             last = i == items.size - 1
             if last && item.new_record?
-              name << Helpers.route_key(model_key(item))
+              name << route_key_of(model_key(item))
             else
               name << model_key(item)
               route_args << item
@@ -310,7 +348,41 @@ module Cybertrain
 
       def model_key(record)
         model_name = record.model_name
-        Inflector.underscore(model_name)
+        key = @model_keys[model_name]
+        return key unless key.nil?
+
+        key = Inflector.underscore(model_name)
+        @model_keys[model_name] = key
+        key
+      end
+
+      # "comments/_comment.html.erb" for render "comments/comment" (or
+      # "comment" from a comments/ template), remembered like model_key.
+      # Ending in .erb, it is used by Engine#template as is.
+      def partial_file(dir, name)
+        by_name = @partial_files[dir]
+        if by_name.nil?
+          by_name = { "" => "" }
+          by_name.delete("")
+          @partial_files[dir] = by_name
+        end
+        file = by_name[name]
+        return file unless file.nil?
+
+        path = Helpers.partial_path(dir, name)
+        file = path.end_with?(".erb") ? path : "#{path}.html.erb"
+        by_name[name] = file
+        file
+      end
+
+      # Helpers.route_key, remembered for this request like model_key.
+      def route_key_of(singular)
+        key = @route_keys[singular]
+        return key unless key.nil?
+
+        key = Helpers.route_key(singular)
+        @route_keys[singular] = key
+        key
       end
 
       # --- partials and content_for ----------------------------------------
@@ -340,15 +412,20 @@ module Cybertrain
         engine = Views.engine
         raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
 
-        template = engine.template(Helpers.partial_path(FormBuilder.value_text(env["__template_dir"]), name))
+        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = []
         locals.each_key { |key| names << key if !(args.empty? && (key == "partial" || key == "locals")) }
         Helpers.check_locals(template, names)
         scope = env.dup
-        names.each { |key| scope[key] = locals[key] }
+        i = 0
+        while i < names.size
+          key = names[i]
+          scope[key] = locals[key]
+          i += 1
+        end
         html = interp.render(template, scope)
         scope.each_key { |key| env[key] = scope[key] if key.start_with?("__content_") }
-        SafeString.new(html)
+        SafeString.of(html)
       end
 
       # content_for :title do ... end  or  content_for :title, "text";
@@ -362,7 +439,7 @@ module Cybertrain
           piece = interp.capture(block, env)
         end
         before = env[key]
-        env[key] = SafeString.new(before.nil? ? piece : "#{FormBuilder.value_text(before)}#{piece}")
+        env[key] = SafeString.of(before.nil? ? piece : "#{FormBuilder.value_text(before)}#{piece}")
         ""
       end
 
@@ -424,9 +501,9 @@ module Cybertrain
 
       def csrf_meta_tags
         token = csrf_token
-        return SafeString.new("") if token.empty?
+        return SafeString.of("") if token.empty?
 
-        SafeString.new("<meta name=\"csrf-param\" content=\"authenticity_token\">\n<meta name=\"csrf-token\" content=\"#{Html.escape(token)}\">")
+        SafeString.of("<meta name=\"csrf-param\" content=\"authenticity_token\">\n<meta name=\"csrf-token\" content=\"#{Html.escape(token)}\">")
       end
 
       # The session's token, minted on first use; "" without a session.
@@ -469,9 +546,12 @@ module Cybertrain
 
       # `method: :DELETE` -> "delete"; `length: "10"` -> 10. The text is bound
       # to a local before the second call (see FormBuilder.humanize).
+      # text.downcase, without the copy for an already lowercase method:.
       def lower_text(v)
-        text = FormBuilder.value_text(v)
-        text.downcase
+        case v
+        when Symbol then HeaderName.lower(v.to_s) # a Symbol's text is not copied
+        else HeaderName.lower(FormBuilder.value_text(v))
+        end
       end
 
       def int_text(v)

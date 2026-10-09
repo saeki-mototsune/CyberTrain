@@ -157,10 +157,13 @@ module Cybertrain
       select_sql("*", @order, @limit, @offset)
     end
 
+    # The rows this relation selects, for Model.from_row: a DATETIME column is
+    # an Integer (UTC epoch seconds, see Connection#execute_models) rather than
+    # its text; Cast.time_or_nil takes either.
     def rows
       sql = to_sql
       binds = @binds
-      Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      Cybertrain::DB.with { |c| c.execute_models(sql, binds) }
     end
 
     # Counts the rows the relation would return: with a limit or offset the
@@ -249,6 +252,8 @@ module Cybertrain
 
     # "posts" -> "`posts`" (an embedded backtick is doubled).
     def self.quote_ident(name)
+      return "`#{name}`" unless name.include?("`")
+
       "`" + name.gsub("`", "``") + "`"
     end
 
@@ -273,7 +278,7 @@ module Cybertrain
     def pick_row(order, offset)
       sql = select_sql("*", order, 1, offset)
       binds = @binds
-      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      found = Cybertrain::DB.with { |c| c.execute_models(sql, binds) }
       found.empty? ? nil : found[0]
     end
 

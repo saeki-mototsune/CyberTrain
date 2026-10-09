@@ -48,10 +48,13 @@ Ubuntu / Debian:
 
 ```sh
 sudo apt update
-sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev ruby-full
+sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev libjemalloc-dev ruby-full
 ```
 
 macOS: `xcode-select --install`（C コンパイラ、make、git、curl と SQLite のヘッダが入ります）。
+
+jemalloc（`libjemalloc-dev`、macOS なら `brew install jemalloc`）は、2-2 で `allocator = "jemalloc"`
+を有効にする場合だけ要ります。
 
 OpenSSL（`libssl-dev`、macOS なら `brew install openssl@3`）は必須ではありません。無くても Spinel は
 openssl パッケージ抜きでビルドされ、cybertrain はそれを使いません。
@@ -155,10 +158,21 @@ git init -b main
 [package]
 name = "notes"
 version = "0.1.0"
+# jemalloc is a faster malloc for a server: 1.1 to 1.4 times the
+# requests per second on examples/blog (docs/benchmark.md). Building then
+# needs its development package (libjemalloc-dev on Debian/Ubuntu,
+# `brew install jemalloc` on macOS).
+# allocator = "jemalloc"
 
 [dependencies]
 cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.2.1" }
 ```
+
+`# allocator = "jemalloc"` の行の `#` を外すと、アプリが glibc の malloc の代わりに jemalloc を
+リンクしてビルドされます。サーバーはリクエストごとに大量の小さなメモリ確保をするので、
+examples/blog では 1 秒あたりのリクエスト数が 1.1〜1.4 倍になりました（[benchmark.md](benchmark.md)）。
+本番ではおすすめです。手元とサーバーの両方に `libjemalloc-dev` が要ります（1-1 と 3-2 で入れています）。
+入っていないと `cannot find -ljemalloc` でビルドが止まります。
 
 続けて `new` が `spin lock` と `spin run gen` を実行しています。フレームワークは spin の
 キャッシュ（`~/.cache/spin/packages/`）に取得され、使うコミットは `spin.lock` に固定されます。
@@ -290,7 +304,7 @@ AAAA も）を登録します。第 6 部で Caddy が証明書を取るとき�
 
 ```sh
 sudo apt update && sudo apt -y upgrade
-sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev sqlite3 ufw ruby-full
+sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev libjemalloc-dev sqlite3 ufw ruby-full
 
 sudo ufw allow OpenSSH
 sudo ufw allow 80,443/tcp

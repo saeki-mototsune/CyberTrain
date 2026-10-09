@@ -8,6 +8,9 @@ module Cybertrain
     # connections through Cybertrain::DB::Pool, which hands each one to a
     # single thread at a time.
     class Connection
+      # Prepared statements a connection keeps (see #execute).
+      MAX_CACHED_STATEMENTS = 64
+
       attr_reader :path
 
       # True for a path whose database lives only in its connection, so no
@@ -38,6 +41,19 @@ module Cybertrain
         @path = path
         @closed = false
         @transaction_depth = 0
+        # SQL text => its prepared statement, kept for the life of the
+        # connection: an app runs the same few queries on every request, and
+        # preparing one (parsing the SQL against the schema) cost more than
+        # running it. A schema change re-prepares a cached statement inside
+        # sqlite3_step (prepare_v2 semantics), so migrations need nothing.
+        @statements = {}
+        # Column names per SQL text, next to the prepared statement: a
+        # typed Array found through a String => index Hash (a Hash of
+        # objects would box its values, and Array#clear would box the
+        # Array: see spikes/NOTES.md rule 56).
+        @name_lists = Connection.no_name_lists
+        @name_index = { "" => 0 }
+        @name_index.delete("")
         flags = SQLite3::OPEN_READWRITE | SQLite3::OPEN_URI
         flags |= SQLite3::OPEN_CREATE if create
         scratch = SQLite3.malloc(8)
@@ -53,9 +69,9 @@ module Cybertrain
           raise Error, message
         end
 
-        # busy_timeout first: switching to WAL takes a lock that another
-        # connection opening the same file may hold, and without a timeout
-        # that PRAGMA fails immediately with SQLITE_BUSY.
+        # The busy handler first: switching to WAL takes a lock that another
+        # connection opening the same file may hold, and without one that
+        # PRAGMA fails immediately with SQLITE_BUSY.
         #
         # The open above succeeded, so a PRAGMA that raises (SQLITE_BUSY or
         # IOERR on the WAL switch, a file that is not a database) must close
@@ -66,7 +82,9 @@ module Cybertrain
         # rescue, not an ensure, as everywhere in this file (NOTES rules 33,
         # 50); `close` is the same path a user close takes.
         begin
-          exec_script("PRAGMA busy_timeout=5000")
+          # Short retries instead of PRAGMA busy_timeout (see SQLite3).
+          rc = SQLite3.cybertrain_sqlite_set_busy_handler(@db)
+          raise Error, error_message("sqlite3_busy_handler") if rc != SQLite3::OK
           # WAL is meaningless for a database that lives only in this
           # connection; every spelling of that is private_database?, not just
           # ":memory:" (`file:x?mode=memory` and "" count too).
@@ -83,31 +101,83 @@ module Cybertrain
       # Runs one statement with positional `?` binds and returns its rows as
       # Hashes keyed by column name (an empty Array for DDL/DML).
       def execute(sql, binds = [])
+        run_statement(sql, binds, false)
+      end
+
+      # execute for the ORM: a DATETIME column comes back as UTC epoch seconds
+      # (an Integer, which Cast.time_or_nil turns into a Time) instead of its
+      # text, parsed in C without a Ruby String; a value that is not a
+      # timestamp stays text. Relation reads its rows through this; execute
+      # keeps returning the text SQLite stores.
+      def execute_models(sql, binds = [])
+        run_statement(sql, binds, true)
+      end
+
+      def run_statement(sql, binds, epoch)
         raise Error, "connection closed (sql: #{sql})" if @closed
-        scratch = SQLite3.malloc(8)
-        rc = SQLite3.sqlite3_prepare_v2(@db, sql, -1, scratch, nil)
-        stmt = SQLite3.read_ptr(scratch)
-        SQLite3.free(scratch)
-        raise Error, error_message(sql) if rc != SQLite3::OK
+        stmt = @statements[sql]
+        cached = !stmt.nil?
+        unless cached
+          scratch = SQLite3.malloc(8)
+          rc = SQLite3.sqlite3_prepare_v2(@db, sql, -1, scratch, nil)
+          stmt = SQLite3.read_ptr(scratch)
+          SQLite3.free(scratch)
+          raise Error, error_message(sql) if rc != SQLite3::OK
+
+          # Bounded: SQL built from request data (an IN list of varying
+          # length) would otherwise grow the table without end; past the
+          # bound a statement is used once and finalized, as before.
+          if @statements.size < MAX_CACHED_STATEMENTS
+            @statements[sql] = stmt
+            cached = true
+          end
+        end
 
         rows = []
         begin
           index = 1
-          binds.each do |value|
-            rc = bind(stmt, index, value)
+          while index <= binds.size
+            rc = bind(stmt, index, binds[index - 1])
             raise Error, error_message(sql) if rc != SQLite3::OK
             index += 1
           end
 
-          columns = SQLite3.sqlite3_column_count(stmt)
+          # Step first: a cached statement is re-prepared inside the step
+          # after a schema change, and only then do its column count and
+          # names (and any later row) describe the new table.
           rc = SQLite3.sqlite3_step(stmt)
+          columns = SQLite3.sqlite3_column_count(stmt)
+          # The names once per SQL text (and the count must still match),
+          # not once per row and column.
+          info = columns == 0 ? NO_COLUMNS : cached_columns(sql)
+          if info.names.size != columns
+            built = Array.new(0) { "" }
+            datetimes = Array.new(0) { 0 }
+            column = 0
+            while column < columns
+              built << SQLite3.sqlite3_column_name(stmt, column)
+              datetimes << (Connection.datetime_decl?(SQLite3.sqlite3_column_decltype(stmt, column)) ? 1 : 0)
+              column += 1
+            end
+            info = remember_columns(sql, built, datetimes)
+          end
+          names = info.names
+          flags = info.datetimes
           while rc == SQLite3::ROW
-            rows << read_row(stmt, columns)
+            rows << read_row(stmt, names, flags, epoch)
             rc = SQLite3.sqlite3_step(stmt)
           end
           raise Error, error_message(sql) if rc != SQLite3::DONE
         ensure
-          SQLite3.sqlite3_finalize(stmt)
+          if cached
+            # Back to the start, holding nothing: reset ends the statement
+            # (releasing its read lock) and clear_bindings drops the bound
+            # copies.
+            SQLite3.sqlite3_reset(stmt)
+            SQLite3.sqlite3_clear_bindings(stmt)
+          else
+            SQLite3.sqlite3_finalize(stmt)
+          end
         end
         rows
       end
@@ -115,6 +185,7 @@ module Cybertrain
       # Runs a semicolon-separated script (schema DDL, PRAGMAs); no binds, no rows.
       def exec_script(sql)
         raise Error, "connection closed (sql: #{sql})" if @closed
+        forget_names
         rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
         raise Error, error_message(sql) if rc != SQLite3::OK
         nil
@@ -231,6 +302,10 @@ module Cybertrain
 
       def close
         return nil if @closed
+        # sqlite3_close refuses (SQLITE_BUSY) while a statement is unfinalized.
+        @statements.each_value { |stmt| SQLite3.sqlite3_finalize(stmt) }
+        @statements.clear
+        forget_names
         SQLite3.sqlite3_close(@db)
         @closed = true
         nil
@@ -240,7 +315,72 @@ module Cybertrain
         @closed
       end
 
+      # Remembered column names for one SQL text, and which of the columns
+      # are declared DATETIME (1) or not (0).
+      class ColumnNames
+        attr_reader :names, :datetimes
+
+        def initialize(names, datetimes)
+          @names = names
+          @datetimes = datetimes
+        end
+      end
+
+      # No columns, shared and never written to.
+      NO_COLUMNS = ColumnNames.new(Array.new(0) { "" }, Array.new(0) { 0 })
+
+      # An empty Array<ColumnNames>, typed by the block (never called).
+      def self.no_name_lists
+        Array.new(0) { ColumnNames.new(Array.new(0) { "" }, Array.new(0) { 0 }) }
+      end
+
+      # sqlite3_column_decltype is nil for an expression; a table column
+      # answers the type its CREATE TABLE gave (DATETIME for t.datetime).
+      def self.datetime_decl?(decl)
+        return false if decl.nil?
+
+        decl.upcase == "DATETIME"
+      end
+
       private
+
+      def cached_columns(sql)
+        i = @name_index[sql]
+        return NO_COLUMNS if i.nil?
+
+        found = @name_lists[i]
+        case found
+        when ColumnNames then return found
+        end
+        NO_COLUMNS
+      end
+
+      # The ColumnNames is bound to a local before it is stored: an unnamed
+      # temporary can be collected while the push that receives it still
+      # grows the Array (the cause of a crash seen under load, see the
+      # warning in FormBuilder.humanize).
+      def remember_columns(sql, names, datetimes)
+        entry = ColumnNames.new(names, datetimes)
+        i = @name_index[sql]
+        if i.nil?
+          @name_index[sql] = @name_lists.size
+          @name_lists << entry
+        else
+          @name_lists[i] = entry
+        end
+        entry
+      end
+
+      # A script (DDL) can rename columns under a cached statement. Added or
+      # dropped columns change the count, which execute checks; a rename that
+      # keeps the count, made through another connection, is the one change
+      # this cannot see (the generated models name their columns anyway, so
+      # such a server needs a restart regardless).
+      def forget_names
+        @name_lists = Connection.no_name_lists
+        @name_index.clear
+        nil
+      end
 
       def bind(stmt, index, value)
         case value
@@ -254,19 +394,28 @@ module Cybertrain
         end
       end
 
-      def read_row(stmt, columns)
+      # A :str FFI return is already a copy (Spinel builds it with
+      # sp_str_dup_external), so neither the names nor the text values are
+      # copied again: SQLite reusing its buffer on the next step cannot
+      # reach them.
+      def read_row(stmt, names, datetimes, epoch)
         row = {}
+        columns = names.size
         column = 0
         while column < columns
-          name = SQLite3.sqlite3_column_name(stmt, column) + ""
+          name = names[column]
           case SQLite3.sqlite3_column_type(stmt, column)
           when SQLite3::NULL_TYPE then row[name] = nil
           when SQLite3::INTEGER then row[name] = SQLite3.sqlite3_column_int64(stmt, column)
           when SQLite3::FLOAT then row[name] = SQLite3.sqlite3_column_double(stmt, column)
           else
-            text = SQLite3.sqlite3_column_text(stmt, column)
-            # Copy out of SQLite's buffer, which the next step/finalize reuses.
-            row[name] = text.nil? ? "" : text + ""
+            seconds = epoch && datetimes[column] == 1 ? SQLite3.cybertrain_sqlite_column_epoch(stmt, column) : -1
+            if seconds >= 0
+              row[name] = seconds
+            else
+              text = SQLite3.sqlite3_column_text(stmt, column)
+              row[name] = text.nil? ? "" : text
+            end
           end
           column += 1
         end

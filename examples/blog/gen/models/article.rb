@@ -9,7 +9,12 @@ class ArticleRelation < Cybertrain::Relation
 
   def to_a
     out = Array.new(0) { Article.new }
-    rows.each { |r| out << Article.from_row(r) }
+    found = rows
+    i = 0
+    while i < found.size
+      out << Article.from_row(found[i])
+      i += 1
+    end
     out
   end
 
@@ -51,11 +56,11 @@ class Article < Cybertrain::Model
     @body = nil
     @created_at = nil
     @updated_at = nil
-    assign_attributes(attrs)
+    assign_attributes(attrs) unless attrs.empty?
   end
 
   def self.from_row(row)
-    rec = Article.new
+    rec = Article.new(Cybertrain::Model::NO_ATTRIBUTES)
     rec.load_row(row)
     rec
   end
