@@ -47,6 +47,11 @@ jobs:
       - name: Client faults are all listed in ClientError
         run: ruby script/check-client-faults
 
+      # cybertrain/http/* must load without Context, Middleware, Router and
+      # the rest of the framework, so the HTTP layer can be lifted out whole.
+      - name: HTTP layer does not depend on the framework
+        run: ruby script/check-http-layer
+
       # The API reference (YARD, published with the site) must build without
       # a warning: an unknown tag or a {Link} to nothing fails it.
       - name: API reference builds

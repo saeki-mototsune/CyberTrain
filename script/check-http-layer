@@ -1,0 +1,21 @@
+#!/usr/bin/env ruby
+# Guards the boundary of the HTTP layer (cybertrain/http/*), kept free of the
+# rest of the framework so it can be lifted out as its own library: loading
+# cybertrain/http/server must pull in only cybertrain/http/*, plus the three
+# small files it is built on (Params, which Query parses into, and Logger),
+# and never Context, Middleware, Router, Controller and the like. CRuby only.
+#
+# usage: ruby script/check-http-layer
+$LOAD_PATH.unshift(File.expand_path("..", __dir__))
+require "cybertrain/http/server"
+
+root = File.expand_path("..", __dir__) + "/"
+loaded = $LOADED_FEATURES.select { |f| f.start_with?(root + "cybertrain/") }.map { |f| f.delete_prefix(root) }
+allowed = ["cybertrain/params.rb", "cybertrain/logger.rb"]
+stray = loaded.reject { |f| f.start_with?("cybertrain/http/") || allowed.include?(f) }
+
+unless stray.empty?
+  warn "cybertrain/http/server pulls in code outside the HTTP layer: #{stray.sort.join(", ")}"
+  exit 1
+end
+puts "http layer: #{loaded.length} files, none outside cybertrain/http/ besides #{allowed.join(", ")}"
