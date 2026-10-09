@@ -548,8 +548,10 @@ module Cybertrain
       # to a local before the second call (see FormBuilder.humanize).
       # text.downcase, without the copy for an already lowercase method:.
       def lower_text(v)
-        text = FormBuilder.value_text(v)
-        HeaderName.lower(text)
+        case v
+        when Symbol then HeaderName.lower(v.to_s) # a Symbol's text is not copied
+        else HeaderName.lower(FormBuilder.value_text(v))
+        end
       end
 
       def int_text(v)

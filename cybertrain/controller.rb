@@ -298,6 +298,7 @@ module Cybertrain
       @params = ctx.params
       @action_name = ""
       @rescued_exception = nil
+      @controller_path = ""
     end
 
     # Runs the before callbacks (stopping as soon as one renders or
@@ -363,8 +364,15 @@ module Cybertrain
     # @return [String]
     # @api public
     def controller_path
+      known = @controller_path
+      return known unless known.empty?
+
+      # Asked for at least three times in a render (view_env, render_template,
+      # the layout), each an underscore of the class name: remembered.
       name = Inflector.underscore(self.class.name)
-      name.end_with?("_controller") ? name[0, name.length - 11] : name
+      path = name.end_with?("_controller") ? name[0, name.length - 11] : name
+      @controller_path = path
+      path
     end
 
     # Renders <controller_path>/<name> with the process-wide Views engine,
