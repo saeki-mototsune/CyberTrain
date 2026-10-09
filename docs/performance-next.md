@@ -89,7 +89,8 @@ All measured, see benchmark.md and spikes/NOTES.md for the numbers.
 
 ## What would change the picture: Spinel
 
-These are for the runtime, not for this repository.
+These are for the runtime, not for this repository; the full list, written
+up as issues, is [spinel-feedback.md](spinel-feedback.md).
 
 - A constructor that roots its arguments before it allocates (the cause of
   rule 58).
