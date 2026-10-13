@@ -11,9 +11,8 @@ pins 2026.09.12; this is a preview of what moving would bring, recorded on
 In short: the compile is 2.4 times faster; with system malloc requests are
 about the same to 23% faster; with jemalloc they are 7 to 15% slower, most
 likely because the newer runtime allocates two thirds more objects per
-page; and
-the blog needed two changes to run at all, one of which is a Spinel
-regression.
+page; and the blog needed two changes to run at all, one of which is a
+Spinel regression.
 
 ## Getting it to run
 
