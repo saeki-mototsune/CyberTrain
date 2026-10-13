@@ -46,9 +46,14 @@ module Cybertrain
       # it, a year from 1970 on, valid month, day, hour, minute and second,
       # the same shape and ranges as Cast.parse_time), and the caller reads
       # the column as text, as it always did. Called only after
-      # sqlite3_column_type said TEXT.
+      # sqlite3_column_type said TEXT. sqlite3_column_text is declared here
+      # too: Spinel after 2026.09.12 declares ffi_func functions under names
+      # of its own, and without this the call compiled as an implicit `int`
+      # function and cut the pointer in half (a SIGSEGV). The declaration is
+      # the one 2026.09.12 emits (NOTES rule 59), so it builds on both.
       ffi_source <<~C
         extern int sqlite3_column_bytes(void *, int);
+        extern const char *sqlite3_column_text(void *, int);
         static int cybertrain_digits(const unsigned char *s, int from, int n) {
           int v = 0;
           for (int i = 0; i < n; i++) {

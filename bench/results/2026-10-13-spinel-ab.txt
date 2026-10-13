@@ -1,0 +1,24 @@
+old  /articles=3480.42  /articles/1=3112.84  /style.css=17152.40  rss=10512kB
+new  /articles=3665.28  /articles/1=2799.41  /style.css=21739.17  rss=13332kB
+old+je  /articles=3906.48  /articles/1=3523.91  /style.css=19042.21  rss=13368kB
+new+je  /articles=3187.90  /articles/1=3042.06  /style.css=18711.74  rss=16068kB
+old-post-1cpu 1890.36 req/s p99 14.33ms non2xx=
+new-post-1cpu 1982.55 req/s p99 15.02ms non2xx=
+old-post-2cpu 2913.41 req/s p99 15.73ms non2xx=
+new-post-2cpu 2844.44 req/s p99 18.02ms non2xx=
+old  /articles=3203.21  /articles/1=2788.98  /style.css=19439.77  rss=10612kB
+new  /articles=3639.58  /articles/1=2921.70  /style.css=19857.02  rss=13408kB
+old+je  /articles=4198.58  /articles/1=3521.51  /style.css=20721.78  rss=13428kB
+new+je  /articles=3542.18  /articles/1=2761.04  /style.css=17679.92  rss=16076kB
+old-post-1cpu 1938.80 req/s p99 17.38ms non2xx=
+new-post-1cpu 2032.54 req/s p99 14.70ms non2xx=
+old-post-2cpu 2641.65 req/s p99 16.04ms non2xx=
+new-post-2cpu 2848.11 req/s p99 14.93ms non2xx=
+old  /articles=3300.75  /articles/1=2864.86  /style.css=17730.42  rss=10364kB
+new  /articles=3305.47  /articles/1=2810.16  /style.css=22714.13  rss=13280kB
+old+je  /articles=4044.36  /articles/1=3893.11  /style.css=20084.26  rss=13164kB
+new+je  /articles=3657.48  /articles/1=2987.52  /style.css=22549.23  rss=16020kB
+old-post-1cpu 1849.45 req/s p99 15.93ms non2xx=
+new-post-1cpu 2168.26 req/s p99 13.14ms non2xx=
+old-post-2cpu 3019.99 req/s p99 13.19ms non2xx=
+new-post-2cpu 2958.99 req/s p99 14.28ms non2xx=

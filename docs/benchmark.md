@@ -240,6 +240,11 @@ puts one CSRF token per session in every form.
   install without its gem directory (so the gems Ruby itself bundles are
   not counted for Rails).
 
+A preview on a newer Spinel (the saeki-mototsune/spinel package
+2026.10.09-7009: a 2.4 times faster compile, requests from 15% slower to 23%
+faster depending on the allocator) is in
+[benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md).
+
 ## Results
 
 Recorded 2026-10-09 at commit 0bb5cb8: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 CPUs, 15.7 GB, Ubuntu 24.04.5 LTS (Linux 6.18.44-fc-v80).
