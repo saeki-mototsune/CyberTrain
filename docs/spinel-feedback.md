@@ -7,7 +7,8 @@ about it today, and what would fix it in Spinel. The evidence is in
 [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to 59),
 [benchmark.md](benchmark.md) and [performance-next.md](performance-next.md).
 
-Suggested order: 1, 2, then 3 to 5, then the rest.
+Suggested order: 1, 2, then 3 to 5, then the rest. The regressions found in a
+newer build are at the end (A to E).
 
 ## Correctness
 
@@ -117,3 +118,79 @@ Each made code slower than it reads; all are in rule 56. `spinel
   counts, which is what made progress measurable on a VM with 5 to 15% run
   to run noise. Symbol names in the report instead of offsets (now
   `addr2line` on each) would help.
+
+## Regressions in the 2026.10.09-7009 package
+
+Found while benchmarking the newest package of the
+[saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork
+(`ghcr.io/saeki-mototsune/spinel`, 2026.10.09-7009, commit edb9dd0); see
+[benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md). Each
+worked on 2026.09.12. `spin test` passes 65 of 70 framework tests on it
+(with aedcf4b); the five failures are A, C and D below and one new
+compile-time check.
+
+### A. A receiverless call with a block inside `instance_eval` is `NoMethodError`
+
+```ruby
+class Mapper
+  def initialize; @s = Array.new(0) { "" }; end
+  def res(name, &block)
+    @s << "res #{name}"
+    block.call(self) unless block.nil?
+    nil
+  end
+  def s = @s
+end
+m = Mapper.new
+m.instance_eval do
+  res(:x) { |a| a.res :y }   # undefined method 'res' for an instance of Mapper
+end
+puts m.s
+```
+
+The same call without a block, or with an explicit receiver
+(`instance_eval do |r| r.res(:x) { ... } end`), works. It breaks every
+app's `config/routes.rb` that nests `resources` (examples/blog's, and
+test/gen_runner_models.rb).
+
+### B. `ffi_func` functions are no longer declared under their own names
+
+The runtime now declares them as `sp_ffi_fN_<name>` with an `__asm__`
+label, so an `ffi_source` block calling one by its C name gets an implicit
+declaration: `int`, a cut pointer, a SIGSEGV. CyberTrain declares what it
+calls (db/sqlite_ffi.rb, aedcf4b). gcc 13 only warns; making
+`-Werror=implicit-function-declaration` the default (gcc 14 does) would
+have turned the crash into a build error.
+
+### C. Generated C that does not compile
+
+- A method returning a Hash literal of instance variables, some unset
+  (`{ "viewer" => @viewer }` in generated controllers): "returning
+  `sp_StrPolyHash *` from a function with incompatible return type
+  `sp_StrStrHash *`" (test/gen_namespaced.rb, test/gen_routes_compiles.rb).
+- cybertrain/template/lexer.rb lines 48 and 91 (`source[open + 2] == "%"`,
+  `source[open, close - open].count("\n")`) in one program shape:
+  "incompatible type for argument 1 of `sp_poly_opnd_i`"
+  (test/gen_routes_compiles.rb).
+
+test/template_engine.rb stops at a new, deliberate refusal instead ("a
+typed Hash is passed to `render_with_layout`'s parameter `env`, which the
+method stores keys or values of other types into"): a check that the test's
+`{}` should be built where the call can widen it, not a regression.
+
+### D. `String#to_i` on more digits than an Integer holds raises `RangeError`
+
+`"99999999999999999999".to_i` raises `RangeError: integer overflow`
+where 2026.09.12 saturated. `Request#content_length` checks only that the
+header is all digits, so on this release an oversized `Content-Length`
+raises instead of being refused (test/http_request.rb). CRuby returns a
+Bignum; saturating, or raising only from `Integer()`, would keep `to_i`
+total.
+
+### E. More allocation per request
+
+An article page allocates 852 objects instead of 511 (same source): about
+136 more boxed Arrays from `each_key` on a polymorphic Hash
+(`sp_poly_each_elem`), about 92 more Strings inside `sp_StrPolyHash_set`,
+and about 50 more internal objects. With jemalloc the pages are 7 to 15%
+slower than on 2026.09.12; with system malloc the other gains cover it.
