@@ -596,6 +596,12 @@ module Cybertrain
         sh_read("command -v #{shell_quote(name)}") != ""
       end
 
+      # Spinel's build runs Ruby scripts that parse its sources with prism,
+      # which Ruby bundles from 3.3 on.
+      def self.ruby_with_prism?
+        have_command?("ruby") && system("ruby -e 'require \"prism\"' > /dev/null 2>&1")
+      end
+
       # A C program using `include` and `link` compiles and links: the
       # header and the library are both installed.
       def self.compiles?(include, body, link)
@@ -637,7 +643,7 @@ module Cybertrain
         missing << "git" unless have_command?("git")
         missing << "make" unless have_command?("make")
         missing << "curl" unless have_command?("curl")
-        missing << "ruby" unless have_command?("ruby")
+        missing << "Ruby with the prism library (Ruby 3.3+, or gem install prism)" unless ruby_with_prism?
         missing_app_requirements.each { |name| missing << name }
         missing
       end

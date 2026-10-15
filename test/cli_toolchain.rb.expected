@@ -7,7 +7,7 @@ note: old/spinel is Spinel 2026.09.08; cybertrain 0.2.1 is pinned to Spinel 1c24
 ok   another release on PATH, or a spin from elsewhere, does not count
 ok   CYBERTRAIN_SPINEL_HOME names a prefix or its bin directory, absolute
 ok   the managed copy counts only once its completion stamp is there
-error: cannot build Spinel 1c24fea8: missing git, make, curl, ruby, a C compiler (cc)
+error: cannot build Spinel 1c24fea8: missing git, make, curl, Ruby with the prism library (Ruby 3.3+, or gem install prism), a C compiler (cc)
   install git, make, curl, Ruby, a C compiler and the SQLite 3 development headers with your package manager
 ok   install refuses to start without the build tools, before touching anything
 error: cannot create /proc/cybertrain-test/spinel; set CYBERTRAIN_HOME to a writable directory

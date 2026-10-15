@@ -84,8 +84,9 @@ works there with no network.
   that on request), unless a `spinel` of that build is already on `PATH` —
   see "Installing the CLI".
 - To build it: a C toolchain (`cc`, or the compiler `CC` names) and `make`
-  — Spinel compiles every program to C — plus `git`, `curl` and `ruby`
-  (Spinel's build runs Ruby scripts).
+  — Spinel compiles every program to C — plus `git`, `curl` and Ruby with
+  the `prism` library (Spinel's build runs Ruby scripts that use it: Ruby
+  3.3 or newer bundles it, older ones need `gem install prism`).
 - SQLite 3 headers/library (`libsqlite3-dev` on Debian/Ubuntu; present with
   Xcode's command line tools on macOS) — models use Spinel's FFI directly,
   not a gem.
