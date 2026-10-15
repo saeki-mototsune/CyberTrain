@@ -44,8 +44,10 @@ def new_env
 end
 
 test "renders a template with a loop inside the layout" do
-  env = new_env
-  env["__content_title"] = "All posts"
+  # A literal the call can see, not new_env plus a store: newer Spinel
+  # refuses to pass render_with_layout (which stores a SafeString into env)
+  # a Hash it typed elsewhere.
+  env = { "__content_title" => "All posts", "n" => 7, "posts" => [Post.new("First <post>", ["a", "b"]), Post.new("Second", [])] }
   html = Engine.new(VIEWS).render_with_layout("posts/index", "layouts/application", env, helpers)
   expected = <<~HTML
     <!DOCTYPE html>

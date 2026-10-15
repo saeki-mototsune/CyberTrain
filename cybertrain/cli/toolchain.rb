@@ -1,9 +1,10 @@
 # The Spinel toolchain the CLI runs `spin` with. `cybertrain new`, `db`,
 # `server`, `build` and `spin` call Toolchain.ensure! before their first
-# spin command: it uses a `spinel`/`spin` of the pinned release already on
+# spin command: it uses a `spinel`/`spin` of the pinned build
+# (Cybertrain::SPINEL_COMMIT of the saeki-mototsune/spinel fork) already on
 # PATH, or the copy it keeps under ~/.cybertrain, or builds that copy from
-# the release tag (git clone, make deps, make, make install), the same steps
-# CI runs. `cybertrain setup` does it explicitly; `cybertrain doctor`
+# the commit (git fetch, make deps, make, make install), the same steps CI
+# runs. `cybertrain setup` does it explicitly; `cybertrain doctor`
 # reports.
 #
 # Plain Ruby: runs under CRuby (the gem) and compiles under Spinel
@@ -14,7 +15,6 @@ require "cybertrain/version"
 module Cybertrain
   module CLI
     module Toolchain
-      SPINEL_GIT = "https://github.com/matz/spinel.git"
       LOCK_WAIT_SECONDS = 3600
 
       # ---- locations -----------------------------------------------------
@@ -32,21 +32,21 @@ module Cybertrain
         File.expand_path(dir)
       end
 
-      def self.tag
-        Cybertrain::SPINEL_TAG
+      def self.build
+        Cybertrain::SPINEL_BUILD
       end
 
       # `make install PREFIX=` target of the managed copy.
       def self.prefix
-        File.join(home, "spinel", tag)
+        File.join(home, "spinel", build)
       end
 
       def self.bin_dir
         File.join(prefix, "bin")
       end
 
-      # ~/.cybertrain/bin: `spinel` and `spin` symlinks to the managed release
-      # in use, so one PATH entry keeps working across a SPINEL_TAG bump.
+      # ~/.cybertrain/bin: `spinel` and `spin` symlinks to the managed build
+      # in use, so one PATH entry keeps working across a SPINEL_COMMIT bump.
       def self.stable_bin_dir
         File.join(home, "bin")
       end
@@ -58,23 +58,25 @@ module Cybertrain
       end
 
       def self.src_dir
-        File.join(home, "src", "spinel-#{tag}")
+        File.join(home, "src", "spinel-#{build}")
       end
 
       def self.log_path
-        File.join(home, "log", "spinel-#{tag}-build.log")
+        File.join(home, "log", "spinel-#{build}-build.log")
       end
 
       def self.lock_dir
-        File.join(home, "spinel", "#{tag}.lock")
+        File.join(home, "spinel", "#{build}.lock")
       end
 
       # ---- discovery -----------------------------------------------------
 
-      # The release inside the parentheses of `spinel --version`, which come
-      # before the compiler field: "spinel 112bae85c1a2 (2026.09.12) [cc
-      # (Ubuntu 13.3.0) 13.3.0]" -> "2026.09.12". "" when there is none.
-      def self.release_of(version_line)
+      # What the parentheses of `spinel --version` hold, before the compiler
+      # field: the build revision on the saeki-mototsune/spinel fork ("spinel
+      # unreleased (1c24fea) [cc (Ubuntu 13.3.0) 13.3.0]" -> "1c24fea"), the
+      # release on matz/spinel's 2026.09 releases ("spinel 112bae85c1a2
+      # (2026.09.12) [cc ...]" -> "2026.09.12"). "" when there is none.
+      def self.revision_of(version_line)
         head = version_line.split(" [")[0].to_s
         open = head.index("(")
         close = head.index(")")
@@ -83,23 +85,30 @@ module Cybertrain
         head[open + 1, close - open - 1].to_s
       end
 
-      # The release the spinel binary at `path` reports; "" when it cannot run.
-      def self.release_at(path)
-        release_of(sh_read("#{shell_quote(path)} --version"))
+      # The revision the spinel binary at `path` reports; "" when it cannot run.
+      def self.revision_at(path)
+        revision_of(sh_read("#{shell_quote(path)} --version"))
+      end
+
+      # The revision `spinel --version` printed is the pinned commit: git's
+      # short form of it, seven hex digits or more (more when the clone it
+      # was built in needed them to be unique).
+      def self.pinned?(revision)
+        revision.size >= 7 && Cybertrain::SPINEL_COMMIT.start_with?(revision)
       end
 
       # dir holds an executable spinel and spin, and that spinel is the pinned
-      # release.
+      # build.
       def self.usable?(dir)
         spinel = File.join(dir, "spinel")
         spin = File.join(dir, "spin")
         return false unless File.file?(spinel) && File.executable?(spinel)
         return false unless File.file?(spin) && File.executable?(spin)
 
-        release_at(spinel) == tag
+        pinned?(revision_at(spinel))
       end
 
-      # The managed copy is complete and of the pinned release.
+      # The managed copy is complete and of the pinned build.
       def self.managed_ok?
         home != "" && usable?(bin_dir) && File.exist?(stamp)
       end
@@ -110,7 +119,7 @@ module Cybertrain
         found == "" ? "" : File.expand_path(found)
       end
 
-      # A spinel of the pinned release, with the spin from the same
+      # A spinel of the pinned build, with the spin from the same
       # directory, is already on PATH.
       def self.on_path?
         spinel = spinel_on_path
@@ -120,7 +129,7 @@ module Cybertrain
         return false if spin == ""
         return false unless File.dirname(File.expand_path(spin)) == File.dirname(spinel)
 
-        release_at(spinel) == tag
+        pinned?(revision_at(spinel))
       end
 
       # The bin directory CYBERTRAIN_SPINEL_HOME names, absolute: the
@@ -137,12 +146,12 @@ module Cybertrain
       end
 
       def self.explicit_error(explicit)
-        "error: CYBERTRAIN_SPINEL_HOME=#{ENV["CYBERTRAIN_SPINEL_HOME"]} has no spinel #{tag} and spin in #{explicit}"
+        "error: CYBERTRAIN_SPINEL_HOME=#{ENV["CYBERTRAIN_SPINEL_HOME"]} has no spinel #{build} and spin in #{explicit}"
       end
 
       # ---- ensuring ------------------------------------------------------
 
-      # Puts a toolchain of the pinned release on this process's PATH (so
+      # Puts a toolchain of the pinned build on this process's PATH (so
       # `spin` in a `system` call is that one), installing the managed copy
       # first when nothing else qualifies. Returns false, after explaining,
       # when it could not.
@@ -177,7 +186,7 @@ module Cybertrain
         unless explicit == ""
           puts "note: --force is ignored while CYBERTRAIN_SPINEL_HOME is set" if force
           if usable?(explicit) && path_problem(explicit) == ""
-            puts "spinel #{tag} is in #{explicit} (CYBERTRAIN_SPINEL_HOME); nothing to install"
+            puts "spinel #{build} is in #{explicit} (CYBERTRAIN_SPINEL_HOME); nothing to install"
             return 0
           end
           puts(usable?(explicit) ? "error: #{path_problem(explicit)}" : explicit_error(explicit))
@@ -185,13 +194,13 @@ module Cybertrain
           return 1
         end
         if !force && on_path?
-          puts "spinel #{tag} is on PATH: #{spinel_on_path}"
+          puts "spinel #{build} is on PATH: #{spinel_on_path}"
           puts "nothing to install"
           return 0
         end
         if !force && managed_ok?
           linked = link_stable_bin
-          puts "spinel #{tag} is installed in #{bin_dir}; nothing to install (--force rebuilds it)"
+          puts "spinel #{build} is installed in #{bin_dir}; nothing to install (--force rebuilds it)"
           print_path_hint(linked)
           return 0
         end
@@ -216,7 +225,7 @@ module Cybertrain
         dir.include?(":") ? "#{dir} cannot go on PATH: its name contains ':'" : ""
       end
 
-      # Points ~/.cybertrain/bin/{spinel,spin} at the managed release. False
+      # Points ~/.cybertrain/bin/{spinel,spin} at the managed build. False
       # when the directory or a link could not be written (the toolchain
       # itself still works: cybertrain puts bin_dir on PATH by itself).
       def self.link_stable_bin
@@ -230,30 +239,30 @@ module Cybertrain
       end
 
       # `linked`: whether link_stable_bin succeeded; otherwise the hint names
-      # the release directory itself.
+      # the build directory itself.
       def self.print_path_hint(linked)
         if linked
           puts "cybertrain uses it by itself; `cybertrain spin ...` runs spin with it, or put it on PATH:"
           puts "  export PATH=\"#{stable_bin_dir}:$PATH\""
         else
           puts "cybertrain uses it by itself; `cybertrain spin ...` runs spin with it."
-          puts "note: could not write the links in #{stable_bin_dir}; to run spin directly, put the release on PATH:"
+          puts "note: could not write the links in #{stable_bin_dir}; to run spin directly, put the build on PATH:"
           puts "  export PATH=\"#{bin_dir}:$PATH\""
         end
       end
 
-      # The note for a spinel of another release on PATH, which is left
-      # alone (the framework is tested against one release); "" when PATH
+      # The note for a spinel of another build on PATH, which is left
+      # alone (the framework is tested against one build); "" when PATH
       # has none or has the pinned one.
       def self.other_release_note
         spinel = spinel_on_path
         return "" if spinel == ""
 
-        release = release_at(spinel)
-        return "" if release == tag
+        revision = revision_at(spinel)
+        return "" if pinned?(revision)
 
-        shown = release == "" ? "an unknown release" : "release #{release}"
-        "note: #{spinel} is #{shown}; cybertrain #{Cybertrain::VERSION} is pinned to Spinel #{tag} and keeps its own copy in #{prefix}"
+        shown = revision == "" ? "an unknown build" : "Spinel #{revision}"
+        "note: #{spinel} is #{shown}; cybertrain #{Cybertrain::VERSION} is pinned to Spinel #{build} and keeps its own copy in #{prefix}"
       end
 
       def self.note_other_release
@@ -263,16 +272,16 @@ module Cybertrain
 
       # ---- installing ----------------------------------------------------
 
-      # Builds and installs the pinned release into prefix. Returns false
+      # Builds and installs the pinned build into prefix. Returns false
       # after printing why when a prerequisite is missing or a step fails.
       def self.install(force)
         unless home_problem == ""
-          puts "error: cannot build Spinel #{tag}: missing #{home_problem}"
+          puts "error: cannot build Spinel #{build}: missing #{home_problem}"
           return false
         end
         problems = missing_requirements
         unless problems.empty?
-          puts "error: cannot build Spinel #{tag}: missing #{problems.join(", ")}"
+          puts "error: cannot build Spinel #{build}: missing #{problems.join(", ")}"
           install_hints.each { |line| puts "  #{line}" }
           return false
         end
@@ -282,7 +291,7 @@ module Cybertrain
         begin
           return true if !force && managed_ok? # another process finished it while we waited
 
-          puts "Installing Spinel #{tag} into #{prefix} (one-time; a few minutes)"
+          puts "Installing Spinel #{build} into #{prefix} (one-time; a few minutes)"
           puts "  log: #{log_path}"
           system("mkdir -p #{shell_quote(File.dirname(log_path))} #{shell_quote(File.dirname(src_dir))} 2>/dev/null")
           system("rm -rf #{shell_quote(src_dir)}")
@@ -290,11 +299,17 @@ module Cybertrain
             puts "error: cannot write under #{home} (#{log_path}); set CYBERTRAIN_HOME to a writable directory"
             return false
           end
+          # A commit, not a branch or tag, so `git clone --branch` cannot
+          # name it: fetch that one commit into an empty repository. The
+          # build runs Ruby scripts that read UTF-8 sources, so it must not
+          # depend on the locale (with none set, Ruby reads them as ASCII).
+          src = shell_quote(src_dir)
+          make = "RUBYOPT=\"-EUTF-8 $RUBYOPT\" make"
           steps = [
-            ["clone", "git clone -q --depth 1 --branch #{tag} #{SPINEL_GIT} #{shell_quote(src_dir)}"],
-            ["deps", "cd #{shell_quote(src_dir)} && make deps"],
-            ["build", "cd #{shell_quote(src_dir)} && make -j#{jobs}"],
-            ["install", "cd #{shell_quote(src_dir)} && make install PREFIX=#{shell_quote(prefix)}"]
+            ["clone", "git init -q #{src} && cd #{src} && git fetch -q --depth 1 #{Cybertrain::SPINEL_GIT} #{Cybertrain::SPINEL_COMMIT} && git checkout -q FETCH_HEAD"],
+            ["deps", "cd #{src} && #{make} deps"],
+            ["build", "cd #{src} && #{make} -j#{jobs}"],
+            ["install", "cd #{src} && #{make} install PREFIX=#{shell_quote(prefix)}"]
           ]
           steps.each do |step|
             return false unless still_holding_lock
@@ -310,7 +325,7 @@ module Cybertrain
             system("rmdir #{shell_quote(File.dirname(src_dir))} 2>/dev/null")
           end
           unless usable?(bin_dir)
-            puts "error: the install finished but #{bin_dir} does not hold spinel #{tag} and spin (see #{log_path})"
+            puts "error: the install finished but #{bin_dir} does not hold spinel #{build} and spin (see #{log_path})"
             return false
           end
           return false unless still_holding_lock
@@ -320,7 +335,7 @@ module Cybertrain
           end
           linked = link_stable_bin
           puts ""
-          puts "installed spinel #{tag} in #{bin_dir}"
+          puts "installed spinel #{build} in #{bin_dir}"
           print_path_hint(linked)
           true
         ensure
@@ -352,7 +367,7 @@ module Cybertrain
 
       def self.write_stamp
         begin
-          File.write(stamp, "#{tag}\n")
+          File.write(stamp, "#{build}\n")
         rescue StandardError
           return false
         end
@@ -365,7 +380,7 @@ module Cybertrain
       def self.still_holding_lock
         return true if holding_lock?
 
-        puts "error: #{lock_dir} is no longer this cybertrain's lock (another build of Spinel #{tag} took it over); stopping"
+        puts "error: #{lock_dir} is no longer this cybertrain's lock (another build of Spinel #{build} took it over); stopping"
         false
       end
 
@@ -430,7 +445,7 @@ module Cybertrain
         if lock_stale?
           "a stale lock (#{lock_dir}) is being removed by another cybertrain; waiting (remove it if nothing is running)"
         else
-          "another cybertrain (pid #{lock_pid}) is installing Spinel #{tag}; waiting (remove #{lock_dir} if no build is running)"
+          "another cybertrain (pid #{lock_pid}) is installing Spinel #{build}; waiting (remove #{lock_dir} if no build is running)"
         end
       end
 
@@ -581,6 +596,12 @@ module Cybertrain
         sh_read("command -v #{shell_quote(name)}") != ""
       end
 
+      # Spinel's build runs Ruby scripts that parse its sources with prism,
+      # which Ruby bundles from 3.3 on.
+      def self.ruby_with_prism?
+        have_command?("ruby") && system("ruby -e 'require \"prism\"' > /dev/null 2>&1")
+      end
+
       # A C program using `include` and `link` compiles and links: the
       # header and the library are both installed.
       def self.compiles?(include, body, link)
@@ -622,6 +643,7 @@ module Cybertrain
         missing << "git" unless have_command?("git")
         missing << "make" unless have_command?("make")
         missing << "curl" unless have_command?("curl")
+        missing << "Ruby with the prism library (Ruby 3.3+, or gem install prism)" unless ruby_with_prism?
         missing_app_requirements.each { |name| missing << name }
         missing
       end
@@ -658,31 +680,31 @@ module Cybertrain
       def self.install_hints
         case platform
         when "debian"
-          ["sudo apt-get update && sudo apt-get install -y build-essential git curl libsqlite3-dev libssl-dev"]
+          ["sudo apt-get update && sudo apt-get install -y build-essential git curl ruby libsqlite3-dev libssl-dev"]
         when "rhel"
-          ["sudo dnf install -y gcc make git curl sqlite-devel openssl-devel"]
+          ["sudo dnf install -y gcc make git curl ruby sqlite-devel openssl-devel"]
         when "arch"
-          ["sudo pacman -S --needed base-devel git curl sqlite openssl"]
+          ["sudo pacman -S --needed base-devel git curl ruby sqlite openssl"]
         when "alpine"
-          ["sudo apk add build-base git curl sqlite-dev openssl-dev"]
+          ["sudo apk add build-base git curl ruby sqlite-dev openssl-dev"]
         when "suse"
-          ["sudo zypper install -y gcc make git curl sqlite3-devel libopenssl-devel"]
+          ["sudo zypper install -y gcc make git curl ruby sqlite3-devel libopenssl-devel"]
         when "darwin"
           ["xcode-select --install     # cc, make, git, curl and the SQLite headers",
            "brew install openssl@3     # optional: Spinel's openssl package"]
         else
-          ["install git, make, curl, a C compiler and the SQLite 3 development headers with your package manager"]
+          ["install git, make, curl, Ruby, a C compiler and the SQLite 3 development headers with your package manager"]
         end
       end
 
       # ---- doctor --------------------------------------------------------
 
       # `cybertrain doctor`: prints one line per check. The exit code is 0
-      # when a Spinel of the pinned release is usable and applications can
+      # when a Spinel of the pinned build is usable and applications can
       # be built, or when nothing stops `cybertrain setup` from building
       # one; 1 otherwise.
       def self.doctor
-        puts "cybertrain #{Cybertrain::VERSION}, pinned to Spinel #{tag}"
+        puts "cybertrain #{Cybertrain::VERSION}, pinned to Spinel #{build}"
         puts "home      #{home == "" ? "(unset: set CYBERTRAIN_HOME or HOME)" : home}"
         report("git", have_command?("git"), sh_read("command -v git"))
         report("make", have_command?("make"), sh_read("command -v make"))
@@ -718,7 +740,7 @@ module Cybertrain
         problems
       end
 
-      # The spinel lines; true when one of the pinned release is usable.
+      # The spinel lines; true when one of the pinned build is usable.
       def self.doctor_spinel
         explicit = explicit_bin_dir
         unless explicit == ""
@@ -735,23 +757,23 @@ module Cybertrain
             report("spinel", true, "#{on_path} on PATH (#{release_label(on_path)})")
             found = true
           else
-            info("spinel", "#{on_path} on PATH is #{release_label(on_path)}; not used (pinned to #{tag})")
+            info("spinel", "#{on_path} on PATH is #{release_label(on_path)}; not used (pinned to #{build})")
           end
         end
         if managed_ok?
-          report("spinel", true, "#{bin_dir} (managed, #{tag})")
+          report("spinel", true, "#{bin_dir} (managed, #{build})")
           found = true
         elsif !found && home == ""
-          info("spinel", "not installed; set CYBERTRAIN_HOME or HOME, then `cybertrain setup` builds #{tag}")
+          info("spinel", "not installed; set CYBERTRAIN_HOME or HOME, then `cybertrain setup` builds #{build}")
         elsif !found
-          info("spinel", "not installed; `cybertrain setup` builds #{tag} into #{prefix}")
+          info("spinel", "not installed; `cybertrain setup` builds #{build} into #{prefix}")
         end
         found
       end
 
       def self.release_label(spinel)
-        release = release_at(spinel)
-        release == "" ? "release unknown" : "release #{release}"
+        revision = revision_at(spinel)
+        revision == "" ? "build unknown" : "build #{revision}"
       end
 
       def self.report(name, ok, detail)

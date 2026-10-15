@@ -6,9 +6,10 @@
 #
 # The cloud VM (Ubuntu 24.04, root) already has Ruby 3.3, a C toolchain,
 # make, git, curl and the SQLite headers; what it lacks is Spinel. This
-# builds the pinned release the same way `cybertrain setup` does (git clone,
-# make deps, make, make install) into the copy the CLI manages,
-# ~/.cybertrain/spinel/<tag>, writes the stamp the CLI checks, and links
+# builds the pinned commit of the saeki-mototsune/spinel fork the same way
+# `cybertrain setup` does (git fetch, make deps, make, make install) into the
+# copy the CLI manages, ~/.cybertrain/spinel/<build>, writes the stamp the
+# CLI checks, and links
 # `spinel` and `spin` into ~/.cybertrain/bin and /usr/local/bin, so both
 # `spin test` and `cybertrain spin test` work without touching PATH.
 # It also installs the gems script/api-docs needs (as CI does).
@@ -16,15 +17,17 @@
 # The environment caches the filesystem after a run that finishes within
 # about five minutes, so later sessions start with Spinel already built.
 #
-# SPINEL_TAG must equal Cybertrain::SPINEL_TAG (cybertrain/version.rb) and
-# SPINEL_TAG in .github/workflows/ci.yml; update it here, and in the
-# environment's copy of this script, when the release is bumped.
+# SPINEL_COMMIT and SPINEL_BUILD must equal Cybertrain::SPINEL_COMMIT and
+# Cybertrain::SPINEL_BUILD (cybertrain/version.rb), and SPINEL_COMMIT the one
+# in .github/workflows/ci.yml; update them here, and in the environment's
+# copy of this script, when the pin moves.
 set -euo pipefail
 
-SPINEL_TAG="2026.09.12"
-SPINEL_GIT="https://github.com/matz/spinel.git"
+SPINEL_COMMIT="1c24fea811059781924730028fe40c8d9b87dc29"
+SPINEL_BUILD="1c24fea8"
+SPINEL_GIT="https://github.com/saeki-mototsune/spinel.git"
 CT_HOME="${CYBERTRAIN_HOME:-$HOME/.cybertrain}"
-PREFIX="$CT_HOME/spinel/$SPINEL_TAG"
+PREFIX="$CT_HOME/spinel/$SPINEL_BUILD"
 STAMP="$PREFIX/.cybertrain-complete"
 
 # System packages: normally all present already, so apt runs only when
@@ -44,23 +47,29 @@ fi
 gem install --no-document yard kramdown kramdown-parser-gfm > /tmp/claude-setup-gems.log 2>&1 &
 gems_pid=$!
 
-# Spinel, unless a complete copy of the release is already there.
-if [ -f "$STAMP" ] && "$PREFIX/bin/spinel" --version 2>/dev/null | grep -q "($SPINEL_TAG)"; then
-  echo "==> Spinel $SPINEL_TAG already installed in $PREFIX"
+# Spinel, unless a complete copy of the pinned build is already there
+# (`spinel --version` prints its revision in parentheses, abbreviated).
+installed_rev="$("$PREFIX/bin/spinel" --version 2>/dev/null | sed -n 's/^[^(]*(\([0-9a-f]\{7,\}\)).*/\1/p' || true)"
+if [ -f "$STAMP" ] && [ -n "$installed_rev" ] && [ "${SPINEL_COMMIT#"$installed_rev"}" != "$SPINEL_COMMIT" ]; then
+  echo "==> Spinel $SPINEL_BUILD already installed in $PREFIX"
 else
-  echo "==> building Spinel $SPINEL_TAG into $PREFIX"
+  echo "==> building Spinel $SPINEL_BUILD (saeki-mototsune/spinel) into $PREFIX"
   src="$(mktemp -d)"
-  log="$CT_HOME/log/spinel-$SPINEL_TAG-build.log"
+  log="$CT_HOME/log/spinel-$SPINEL_BUILD-build.log"
   mkdir -p "$(dirname "$log")"
   rm -f "$STAMP"
+  # The build runs Ruby scripts that read UTF-8 sources; without a locale
+  # Ruby reads them as ASCII and fails, hence RUBYOPT.
   {
-    git clone -q --depth 1 --branch "$SPINEL_TAG" "$SPINEL_GIT" "$src/spinel"
-    make -C "$src/spinel" deps
-    make -C "$src/spinel" -j"$(nproc)"
-    make -C "$src/spinel" install PREFIX="$PREFIX"
+    git init -q "$src/spinel"
+    git -C "$src/spinel" fetch -q --depth 1 "$SPINEL_GIT" "$SPINEL_COMMIT"
+    git -C "$src/spinel" checkout -q FETCH_HEAD
+    RUBYOPT="-EUTF-8 ${RUBYOPT:-}" make -C "$src/spinel" deps
+    RUBYOPT="-EUTF-8 ${RUBYOPT:-}" make -C "$src/spinel" -j"$(nproc)"
+    RUBYOPT="-EUTF-8 ${RUBYOPT:-}" make -C "$src/spinel" install PREFIX="$PREFIX"
   } > "$log" 2>&1 || { echo "Spinel build failed; last lines of $log:"; tail -n 25 "$log"; exit 1; }
   rm -rf "$src"
-  echo "$SPINEL_TAG" > "$STAMP"
+  echo "$SPINEL_BUILD" > "$STAMP"
 fi
 
 mkdir -p "$CT_HOME/bin"

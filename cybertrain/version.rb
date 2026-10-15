@@ -6,7 +6,14 @@ module Cybertrain
   # the spin-built CLI read the same file.
   REPOSITORY = "https://github.com/saeki-mototsune/cybertrain"
 
-  # The Spinel release cybertrain is written and tested against: the tag
-  # `cybertrain setup` builds and CI's SPINEL_TAG.
-  SPINEL_TAG = "2026.09.12"
+  # The Spinel build cybertrain is written and tested against: commit
+  # SPINEL_COMMIT of SPINEL_GIT (the saeki-mototsune/spinel fork, the newest
+  # master build when it was pinned), which `cybertrain setup` builds and CI's
+  # SPINEL_COMMIT names. The fork has no release tags, so a build is known by
+  # its revision: `spinel --version` prints it in parentheses, abbreviated
+  # ("spinel unreleased (1c24fea8) [cc ...]"). SPINEL_BUILD is that short form,
+  # the name messages and the managed copy's directory use.
+  SPINEL_GIT = "https://github.com/saeki-mototsune/spinel.git"
+  SPINEL_COMMIT = "1c24fea811059781924730028fe40c8d9b87dc29"
+  SPINEL_BUILD = "1c24fea8"
 end

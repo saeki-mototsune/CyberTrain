@@ -89,16 +89,23 @@ module Cybertrain
     # The Content-Length header as an Integer.
     #
     # 0 when the header is absent or not a plain non-negative integer.
-    # An overlong all-digit value saturates to 9223372036854775807 under
-    # Spinel (CRuby would return a Bignum); the Server's 413 limit rejects it.
+    # An overlong all-digit value saturates to 9223372036854775807 (CRuby
+    # would return a Bignum); the Server's 413 limit rejects it.
     # @return [Integer]
     # @api public
     def content_length
       value = header("content-length")
       return 0 if value.nil? || value.empty?
       return 0 unless value.bytes.all? { |b| b >= 48 && b <= 57 }
+      # Saturates by itself: String#to_i raises RangeError past Int64 max
+      # under newer Spinel builds instead of saturating.
+      max = "9223372036854775807"
+      start = 0
+      start += 1 while start < value.size - 1 && value[start] == "0"
+      digits = value[start, value.size - start]
+      return 9223372036854775807 if digits.size > max.size || (digits.size == max.size && digits > max)
 
-      value.to_i
+      digits.to_i
     end
 
     # Media type only: "text/html; charset=utf-8" -> "text/html".

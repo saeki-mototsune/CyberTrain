@@ -17,7 +17,7 @@ ORIGINAL_HOME = ENV["HOME"].to_s
 ENV["CYBERTRAIN_HOME"] = ""
 ENV["CYBERTRAIN_SPINEL_HOME"] = ""
 ENV["CC"] = ""
-TAG = Cybertrain::SPINEL_TAG
+TAG = Cybertrain::SPINEL_BUILD
 Toolchain = Cybertrain::CLI::Toolchain
 
 def rm_tree(path)
@@ -60,10 +60,10 @@ def reset_env
   ENV["CC"] = ""
 end
 
-# A directory holding a `spinel` that prints the given release and a `spin`.
+# A directory holding a `spinel` that prints the given build and a `spin`.
 def fake_toolchain(dir, release)
   mkdir_p(dir)
-  File.write(File.join(dir, "spinel"), "#!/bin/sh\necho \"spinel abc123def456 (#{release}) [cc 13.3.0]\"\n")
+  File.write(File.join(dir, "spinel"), "#!/bin/sh\necho \"spinel unreleased (#{release}) [cc 13.3.0]\"\n")
   File.write(File.join(dir, "spin"), "#!/bin/sh\necho spin\n")
   File.chmod(0o755, File.join(dir, "spinel"))
   File.chmod(0o755, File.join(dir, "spin"))
@@ -78,15 +78,27 @@ File.write("onlyspin/spin", "#!/bin/sh\necho spin\n")
 File.chmod(0o755, "onlyspin/spin")
 mkdir_p("empty")
 
-test "release_of reads the release out of spinel --version" do
+test "revision_of reads the build out of spinel --version" do
   reset_env
-  assert_equal "2026.09.12", Toolchain.release_of("spinel 112bae85c1a2 (2026.09.12) [cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0]")
-  assert_equal "2026.09.08+1", Toolchain.release_of("spinel 281cd145ffb4 (2026.09.08+1) [cc ...]")
-  assert_equal "unreleased", Toolchain.release_of("spinel 6b8ddcd88dd9 (unreleased) [cc ...]")
-  assert_equal "", Toolchain.release_of("spinel 6b8ddcd88dd9 [cc (Ubuntu 13.3.0) 13.3.0]")
-  assert_equal "", Toolchain.release_of("spinel: command not found")
-  assert_equal "", Toolchain.release_of("")
-  assert_equal "", Toolchain.release_of(") backwards (")
+  assert_equal "1c24fea8", Toolchain.revision_of("spinel unreleased (1c24fea8) [gcc 13.3.0 (cc)]")
+  assert_equal "edb9dd0cc", Toolchain.revision_of("spinel unreleased (edb9dd0cc)")
+  assert_equal "2026.09.12", Toolchain.revision_of("spinel 112bae85c1a2 (2026.09.12) [cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0]")
+  assert_equal "", Toolchain.revision_of("spinel 6b8ddcd88dd9 [cc (Ubuntu 13.3.0) 13.3.0]")
+  assert_equal "", Toolchain.revision_of("spinel: command not found")
+  assert_equal "", Toolchain.revision_of("")
+  assert_equal "", Toolchain.revision_of(") backwards (")
+end
+
+test "pinned? takes git's short form of the pinned commit, of any length" do
+  reset_env
+  assert Toolchain.pinned?(TAG)
+  assert Toolchain.pinned?(Cybertrain::SPINEL_COMMIT[0, 7])
+  assert Toolchain.pinned?(Cybertrain::SPINEL_COMMIT[0, 12])
+  assert Toolchain.pinned?(Cybertrain::SPINEL_COMMIT)
+  refute Toolchain.pinned?(Cybertrain::SPINEL_COMMIT[0, 6])
+  refute Toolchain.pinned?("")
+  refute Toolchain.pinned?("2026.09.12")
+  refute Toolchain.pinned?("edb9dd0cc")
 end
 
 test "the managed copy lives under CYBERTRAIN_HOME/spinel/<tag>, as an absolute path" do
