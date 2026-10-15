@@ -81,6 +81,9 @@ test "content_length of an overlong all-digit value is at least Int64 max" do
   # Spinel saturates to 9223372036854775807; CRuby (which --regen uses)
   # returns the Bignum. Either way it exceeds any 413 limit the Server uses.
   assert request_with({ "content-length" => "99999999999999999999" }).content_length >= 9223372036854775807
+  assert_equal 9223372036854775807, request_with({ "content-length" => "9223372036854775807" }).content_length
+  assert request_with({ "content-length" => "9223372036854775808" }).content_length >= 9223372036854775807
+  assert_equal 42, request_with({ "content-length" => "000000000000000000000042" }).content_length
 end
 
 test "method predicates" do

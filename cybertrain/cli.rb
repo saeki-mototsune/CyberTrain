@@ -48,10 +48,11 @@ module Cybertrain
             Run spin with the pinned Spinel, from any directory
             (cybertrain spin test; cybertrain spin run gen -- --check).
         cybertrain setup [--force]
-            Install Spinel #{Cybertrain::SPINEL_TAG} into ~/.cybertrain (CYBERTRAIN_HOME)
-            unless a spinel of that release is already on PATH, and print
-            the PATH line for ~/.cybertrain/bin. The commands above do the
-            install by themselves the first time they need spin.
+            Install Spinel #{Cybertrain::SPINEL_BUILD} (saeki-mototsune/spinel) into
+            ~/.cybertrain (CYBERTRAIN_HOME) unless a spinel of that build is
+            already on PATH, and print the PATH line for ~/.cybertrain/bin.
+            The commands above do the install by themselves the first time
+            they need spin.
         cybertrain doctor
             Check the C toolchain, the SQLite headers and the Spinel install.
         cybertrain version

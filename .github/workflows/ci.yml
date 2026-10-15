@@ -12,9 +12,10 @@ on:
       - "site/**"
 
 env:
-  # Must equal Cybertrain::SPINEL_TAG (checked below): the release the CLI
-  # installs and the framework is tested against.
-  SPINEL_TAG: "2026.09.12"
+  # Must equal Cybertrain::SPINEL_COMMIT (checked below): the commit of the
+  # saeki-mototsune/spinel fork the CLI installs and the framework is tested
+  # against.
+  SPINEL_COMMIT: "1c24fea811059781924730028fe40c8d9b87dc29"
 
 jobs:
   test:
@@ -38,8 +39,10 @@ jobs:
         run: |
           version=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::VERSION')
           grep -q "^version = \"$version\"$" spin.toml || { echo "spin.toml version != Cybertrain::VERSION ($version)"; exit 1; }
-          tag=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::SPINEL_TAG')
-          test "$tag" = "$SPINEL_TAG" || { echo "Cybertrain::SPINEL_TAG ($tag) != CI SPINEL_TAG ($SPINEL_TAG)"; exit 1; }
+          commit=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::SPINEL_COMMIT')
+          test "$commit" = "$SPINEL_COMMIT" || { echo "Cybertrain::SPINEL_COMMIT ($commit) != CI SPINEL_COMMIT ($SPINEL_COMMIT)"; exit 1; }
+          build=$(ruby -I. -e 'require "cybertrain/version"; print Cybertrain::SPINEL_BUILD')
+          case "$SPINEL_COMMIT" in "$build"*) ;; *) echo "Cybertrain::SPINEL_BUILD ($build) is not a prefix of SPINEL_COMMIT"; exit 1 ;; esac
 
       # Every method and ivar of Cybertrain::Model a column could be named
       # like must be in Ident::RESERVED_COLUMN_NAMES (the generator's and the
@@ -88,10 +91,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.cybertrain/spinel
-          key: spinel-${{ env.SPINEL_TAG }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v3
+          key: spinel-${{ env.SPINEL_COMMIT }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v3
 
       # `cybertrain setup` is how users get Spinel, so CI gets it the same
-      # way: a cache miss builds the release, a hit verifies it.
+      # way: a cache miss builds the pinned commit, a hit verifies it.
       - name: Install Spinel with cybertrain setup
         run: |
           cybertrain doctor

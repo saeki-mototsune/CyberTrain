@@ -77,7 +77,7 @@
     <h1>Premiers pas&nbsp;: le&nbsp;blog</h1>
     <p class="doc-intro">Calqué sur le guide <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a> de Rails&nbsp;: un blog avec des articles et des commentaires. Vous allez générer le scaffold des articles, ajouter des validations, imbriquer les commentaires sous les articles, écrire un test qui pilote l’application dans le même processus, et compiler l’application dans un dossier <code>dist/</code> déployable. L’application terminée est <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>, testée par la CI sous Linux et macOS.</p>
     <dl class="doc-meta">
-      <div><dt>Prérequis</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, en-têtes SQLite 3 (Spinel <code>2026.09.12</code> est installé pour vous) <a class="meta-link" href="#requirements">Étape 00</a></dd></div>
+      <div><dt>Prérequis</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, en-têtes SQLite 3 (Spinel <code>1c24fea8</code> est installé pour vous) <a class="meta-link" href="#requirements">Étape 00</a></dd></div>
       <div><dt>Point de départ</dt><dd><code>gem install cybertrain</code></dd></div>
       <div><dt>Résultat</dt><dd><code>dist/blog</code></dd></div>
     </dl>
@@ -119,7 +119,7 @@
     <p class="why"><span class="why-k">Pourquoi</span><span class="why-t">CyberTrain compile via Spinel vers du C&nbsp;: il lui faut donc une chaîne de compilation C et les en-têtes SQLite&nbsp;; la commande <code>cybertrain</code> est une gem, il lui faut donc Ruby.</span></p>
     <ul class="checklist">
       <li>Ruby 3.2+ et RubyGems, uniquement pour la commande <code>cybertrain</code>&nbsp;; les applications ne tournent jamais sur CRuby.</li>
-      <li>Spinel <code>2026.09.12</code>, non testé avec d’autres versions. Vous ne l’installez pas à la main&nbsp;: la première commande qui en a besoin compile cette version dans <code>~/.cybertrain</code> (quelques minutes, une seule fois), sauf si un <code>spinel</code> de cette version est déjà dans le <code>PATH</code>.</li>
+      <li>Spinel <code>1c24fea8</code>, non testé avec d’autres versions. Vous ne l’installez pas à la main&nbsp;: la première commande qui en a besoin compile cette version dans <code>~/.cybertrain</code> (quelques minutes, une seule fois), sauf si un <code>spinel</code> de cette version est déjà dans le <code>PATH</code>.</li>
       <li>Une chaîne de compilation C (<code>cc</code>, ou le compilateur désigné par <code>CC</code>) et <code>make</code>, plus <code>git</code> et <code>curl</code>, pour compiler Spinel, qui compile chaque programme en C.</li>
       <li>En-têtes et bibliothèque SQLite 3&nbsp;: <code>libsqlite3-dev</code> sous Debian/Ubuntu&nbsp;; fournis avec les Command Line Tools de Xcode sous macOS.</li>
       <li>Les en-têtes OpenSSL (<code>libssl-dev</code>) sont facultatifs&nbsp;: sans eux, Spinel est compilé sans son paquet <code>openssl</code>, que CyberTrain n’utilise pas.</li>
@@ -128,7 +128,7 @@
     <details class="ci">
       <summary><span class="ci-t">Comment CyberTrain installe Spinel</span><span class="ci-d">Ce qui se passe la première fois qu’une commande a besoin de <code>spin</code></span></summary>
       <div class="ci-body">
-    <p><code>cybertrain new</code>, <code>db</code>, <code>server</code>, <code>build</code> et <code>spin</code> cherchent d’abord Spinel <code>2026.09.12</code>&nbsp;: un <code>spinel</code> et un <code>spin</code> de cette version déjà dans le <code>PATH</code>, sinon la copie sous <code>~/.cybertrain/spinel/2026.09.12/</code>, sinon ils compilent cette copie à partir du tag de version de Spinel (<code>git clone</code>, <code>make deps</code>, <code>make -j</code>, <code>make install</code>), une seule fois, en quelques minutes. Le journal est <code>~/.cybertrain/log/spinel-2026.09.12-build.log</code>&nbsp;; s’il manque un outil nécessaire à la compilation, <code>cybertrain</code> indique lequel et affiche la commande d’installation pour votre plateforme avant de commencer.</p>
+    <p><code>cybertrain new</code>, <code>db</code>, <code>server</code>, <code>build</code> et <code>spin</code> cherchent d’abord Spinel <code>1c24fea8</code>&nbsp;: un <code>spinel</code> et un <code>spin</code> de cette version déjà dans le <code>PATH</code>, sinon la copie sous <code>~/.cybertrain/spinel/1c24fea8/</code>, sinon ils compilent cette copie à partir de ce commit du fork saeki-mototsune/spinel (<code>git fetch</code>, <code>make deps</code>, <code>make -j</code>, <code>make install</code>), une seule fois, en quelques minutes. Le journal est <code>~/.cybertrain/log/spinel-1c24fea8-build.log</code>&nbsp;; s’il manque un outil nécessaire à la compilation, <code>cybertrain</code> indique lequel et affiche la commande d’installation pour votre plateforme avant de commencer.</p>
     <p><code>cybertrain setup</code> fait la même chose à la demande (<code>--force</code> recompile la copie sous <code>~/.cybertrain</code>) et, quand c’est sa propre copie qui est utilisée, affiche la ligne qui la place dans votre <code>PATH</code>, pour lancer <code>spin</code> vous-même&nbsp;:</p>
 <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; n’importe quel répertoire</span><span class="code-lang">shell</span></figcaption>
@@ -148,7 +148,7 @@
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; n’importe quel répertoire, puis&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code&nbsp;: terminal &mdash; n’importe quel répertoire, puis blog/"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># installe Spinel 2026.09.12 la première fois (quelques minutes)</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># installe Spinel 1c24fea8 la première fois (quelques minutes)</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -164,7 +164,7 @@
       <li><code>cybertrain server [PORT]</code> génère, puis démarre le serveur de développement (<code>spin run gen; spin run NAME</code>, ou <code>spin run NAME -- PORT</code>&nbsp;; port 3000 par défaut).</li>
       <li><code>cybertrain build</code> compile NAME avec <code>app/views/</code> intégré et assemble <code>dist/</code> (le binaire, <code>public/</code>, <code>storage/</code>, <code>tmp/</code>).</li>
       <li><code>cybertrain spin ARGS...</code> lance <code>spin</code> avec le Spinel épinglé, depuis n’importe quel répertoire&nbsp;: <code>cybertrain spin test</code>, <code>cybertrain spin run gen -- --check</code>.</li>
-      <li><code>cybertrain setup [--force]</code> installe Spinel <code>2026.09.12</code> dans <code>~/.cybertrain</code>, sauf si un <code>spinel</code> de cette version est déjà dans le <code>PATH</code>&nbsp;; <code>--force</code> recompile la copie sous <code>~/.cybertrain</code>.</li>
+      <li><code>cybertrain setup [--force]</code> installe Spinel <code>1c24fea8</code> dans <code>~/.cybertrain</code>, sauf si un <code>spinel</code> de cette version est déjà dans le <code>PATH</code>&nbsp;; <code>--force</code> recompile la copie sous <code>~/.cybertrain</code>.</li>
       <li><code>cybertrain doctor</code> vérifie la chaîne de compilation C, les en-têtes SQLite et l’installation de Spinel.</li>
       <li><code>cybertrain version</code> affiche la version (<code>cybertrain 0.2.1</code>)&nbsp;; <code>cybertrain help</code> affiche l’aide.</li>
     </ul>
@@ -190,7 +190,7 @@
 <span class="ln">[dependencies]</span>
 <span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.1"</span> }</span></code></pre>
 </figure>
-    <p>Ensuite, il s’assure que Spinel est installé (la première fois, cela signifie compiler Spinel <code>2026.09.12</code> dans <code>~/.cybertrain</code>&nbsp;: quelques minutes, une seule fois&nbsp;; voir l’<a href="#requirements">étape 00</a>) et lance <code>spin lock</code> (spin récupère le framework dans son cache, <code>~/.cache/spin/packages/</code>, et épingle le commit dans <code>spin.lock</code>) et <code>spin run gen</code>, un peu comme <code>rails new</code> lance <code>bundle install</code>, pour que <code>cybertrain server</code> fonctionne tout de suite. Il termine en affichant les étapes suivantes. Rien du framework n’est copié dans l’application&nbsp;; commitez <code>spin.toml</code> et <code>spin.lock</code>.</p>
+    <p>Ensuite, il s’assure que Spinel est installé (la première fois, cela signifie compiler Spinel <code>1c24fea8</code> dans <code>~/.cybertrain</code>&nbsp;: quelques minutes, une seule fois&nbsp;; voir l’<a href="#requirements">étape 00</a>) et lance <code>spin lock</code> (spin récupère le framework dans son cache, <code>~/.cache/spin/packages/</code>, et épingle le commit dans <code>spin.lock</code>) et <code>spin run gen</code>, un peu comme <code>rails new</code> lance <code>bundle install</code>, pour que <code>cybertrain server</code> fonctionne tout de suite. Il termine en affichant les étapes suivantes. Rien du framework n’est copié dans l’application&nbsp;; commitez <code>spin.toml</code> et <code>spin.lock</code>.</p>
     <p class="note">Si Spinel ou l’une des deux étapes <code>spin</code> échoue, les fichiers restent en place, <code>new</code> sort avec le code 1 et affiche ce qu’il faut lancer une fois la cause corrigée (pour Spinel&nbsp;: <code>cybertrain setup</code>, puis <code>cybertrain spin lock &amp;&amp; cybertrain spin run gen</code> dans le nouveau répertoire). <code>--skip-spin</code> se contente d’écrire les fichiers&nbsp;; <code>--path DIR</code> fait plutôt dépendre l’application d’une copie locale du dépôt, <code>--git URL [--ref R]</code> du framework situé à URL (à la branche ou au tag R), et <code>--version V</code> d’une version de l’index, une fois que <code>cybertrain</code> sera sur un <code>spin-index</code>.</p>
     <p>Les noms d’application utilisent des lettres minuscules, des chiffres et <code>_</code>, et commencent par une lettre. L’arborescence générée&nbsp;:</p>
     <figure class="code" data-lang="text">
@@ -631,7 +631,7 @@
       <li>Les vues sont intégrées à la compilation&nbsp;: une modification qui ne touche que les vues nécessite <code>cybertrain build</code> et un redémarrage avant d’atteindre la production.</li>
       <li>Compilez <code>dist/</code> sur le même OS et le même CPU que la machine qui l’exécute&nbsp;: le binaire est lié à la SQLite du système.</li>
       <li><code>SPINEL_WORKERS</code> vaut <code>1</code> par défaut.</li>
-      <li>Seul Spinel <code>2026.09.12</code> est testé.</li>
+      <li>Seul Spinel <code>1c24fea8</code> est testé.</li>
     </ul>
   </section>
 

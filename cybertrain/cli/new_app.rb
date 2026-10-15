@@ -53,11 +53,11 @@ module Cybertrain
       # What `rails new` does with `bundle install`: resolve and lock the
       # framework (fetching it into spin's cache, ~/.cache/spin), then write
       # gen/ so `spin build` works straight away. Installs Spinel first when
-      # this machine has none of the pinned release (Toolchain.ensure!).
+      # this machine has none of the pinned build (Toolchain.ensure!).
       # Returns false when a step failed.
       def self.bootstrap(dir)
         unless Toolchain.ensure!
-          puts "skip spin lock / spin run gen: Spinel #{Cybertrain::SPINEL_TAG} is not available"
+          puts "skip spin lock / spin run gen: Spinel #{Cybertrain::SPINEL_BUILD} is not available"
           puts "  fix the problem above (`cybertrain doctor` lists the checks), then: cybertrain setup && #{recovery_command(dir)}"
           return false
         end

@@ -22,4 +22,4 @@ ok   form_value and query_value decode keys and values like a parse
 ok   form_value and query_value: name[]= and name[x]= evict an earlier scalar, a later name= writes it again
 ok   form_value and query_value: MAX_PAIRS segments are counted, one more is QueryTooMany; invalid bytes are QueryMalformed
 ok   form_value on the 4096 x 32 body answers like the parse
-24 tests, 128 assertions, 0 failures
+24 tests, 131 assertions, 0 failures

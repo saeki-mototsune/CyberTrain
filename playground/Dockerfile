@@ -74,7 +74,8 @@ RUN --mount=type=bind,from=cli-src,source=/src,target=/tmp/cli-src \
 USER dev
 WORKDIR /home/dev
 
-# Spinel (Cybertrain::SPINEL_TAG) into $CYBERTRAIN_HOME: the slow step
+# Spinel (Cybertrain::SPINEL_COMMIT of saeki-mototsune/spinel) into
+# $CYBERTRAIN_HOME: the slow step
 # (41.5 s on 10 CPUs in the spike).
 RUN cybertrain setup && cybertrain doctor
 
