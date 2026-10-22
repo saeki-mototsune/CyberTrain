@@ -33,7 +33,7 @@ Source: **GitHub Actions**. Links between the pages and to their assets are
 relative, so the site works from the `/CyberTrain/` project path (the `og:image`,
 `og:url` and canonical URLs are absolute, as social previews require).
 A change that touches only `site/` does not run
-[CI](../.github/workflows/ci.yml) (`paths-ignore`; CI never checked the site),
+[CI](../.github/workflows/ci.yml) (its `paths` filter; CI never checked the site),
 so run `script/check-site-i18n` before pushing one.
 
 Content rule: every command, code block and claim on these pages comes from
