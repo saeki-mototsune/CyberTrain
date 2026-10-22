@@ -204,6 +204,18 @@ test "form_value and query_value: the last pair wins, absent is empty" do
   assert_equal "", Request.new("GET", "/p", {}, "").query_value("m")
 end
 
+test "form_or_query_value: the form body wins, the query string is the fallback, absent is empty" do
+  form = { "content-type" => "application/x-www-form-urlencoded" }
+  req = Request.new("POST", "/p?m=q&only=q", form, "m=f&x=1")
+  assert_equal "f", req.form_or_query_value("m")
+  assert_equal "q", req.form_or_query_value("only")
+  assert_equal "1", req.form_or_query_value("x")
+  assert_equal "", req.form_or_query_value("absent")
+  # a body that is not a form is never read
+  assert_equal "q", Request.new("POST", "/p?m=q", {}, "m=f").form_or_query_value("m")
+  assert_equal "", Request.new("POST", "/p", {}, "m=f").form_or_query_value("m")
+end
+
 test "form_value and query_value decode keys and values like a parse" do
   req = Request.new("POST", "/p?%5Fmethod=pu%74&a+b=1+2", {}, "%5fmethod=de%6Cete&caf%C3%A9=%E3%81%82&k=v%20w+x")
   assert_equal "delete", req.form_value("_method")
