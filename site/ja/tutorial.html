@@ -75,7 +75,7 @@
   <header class="doc-hero">
     <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>チュートリアル</span></p>
     <h1>はじめよう：ブログを作る</h1>
-    <p class="doc-intro">Rails 公式の <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a> に沿って、記事とコメントのあるブログを作ります。記事をスキャフォールドし、バリデーションを追加し、記事の下にコメントをネストし、アプリをプロセス内で動かすテストを書き、最後にアプリをデプロイ可能な <code>dist/</code> フォルダーにビルドします。完成したアプリは <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a> にあり、Linux と macOS の CI で検証されています。</p>
+    <p class="doc-intro">Rails 公式の <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a> に沿って、記事とコメントのあるブログを作ります。記事をスキャフォールドし、バリデーションを追加し、記事の下にコメントをネストし、アプリをプロセス内で動かすテストを書き、サインインを追加し、最後にアプリをデプロイ可能な <code>dist/</code> フォルダーにビルドします。完成したアプリは <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a> にあり、Linux と macOS の CI で検証されています。</p>
     <dl class="doc-meta">
       <div><dt>必要なもの</dt><dd>Ruby 3.2+、<code>cc</code>、<code>make</code>、<code>git</code>、<code>curl</code>、SQLite 3 のヘッダー（Spinel <code>2026.09.12</code> は自動でインストールされます） <a class="meta-link" href="#requirements">ステップ 00</a></dd></div>
       <div><dt>出発点</dt><dd><code>gem install cybertrain</code></dd></div>
@@ -87,7 +87,7 @@
 <div class="wrap doc">
   <nav class="toc" aria-label="チュートリアルのステップ">
     <details class="toc-d" open>
-      <summary class="toc-sum"><span class="toc-title">ステップ 00&ndash;13</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <summary class="toc-sum"><span class="toc-title">ステップ 00&ndash;14</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
       <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
     <ol>
       <li><a href="#requirements"><span class="toc-n">00</span>必要なもの</a></li>
@@ -103,7 +103,8 @@
       <li><a href="#comments-controller"><span class="toc-n">10</span>CommentsController</a></li>
       <li><a href="#views"><span class="toc-n">11</span>ビューとパーシャル</a></li>
       <li><a href="#test"><span class="toc-n">12</span>テストする</a></li>
-      <li><a href="#ship"><span class="toc-n">13</span>デプロイ用にビルドする</a></li>
+      <li><a href="#authentication"><span class="toc-n">13</span>サインインを追加する</a></li>
+      <li><a href="#ship"><span class="toc-n">14</span>デプロイ用にビルドする</a></li>
       <li class="toc-x"><a href="#things-to-know"><span class="toc-n">+</span>知っておくこと</a></li>
       <li class="toc-x"><a href="#differences"><span class="toc-n">+</span>Rails との違い</a></li>
       <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>次に読むもの</a></li>
@@ -159,6 +160,7 @@
     <ul class="points">
       <li><code>cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]</code> は NAME にアプリケーションを作成し、その中で <code>spin lock</code> と <code>spin run gen</code> を実行します。必要なら先に Spinel をインストールします。</li>
       <li><code>cybertrain generate scaffold NAME field:type ...</code>（エイリアスは <code>g scaffold</code>）は、カレントディレクトリのアプリケーションにリソースを追加します。</li>
+      <li><code>cybertrain generate authentication</code> は、カレントディレクトリのアプリケーションにメールアドレスとパスワードによるサインインを追加します（<a href="#authentication">ステップ 13</a>）。</li>
       <li><code>cybertrain db migrate</code> は生成を行い、未適用のマイグレーションを適用して、もう一度生成します（<code>spin run gen; spin run db -- migrate; spin run gen</code>）。<code>cybertrain migration</code> もエイリアスとして残されています。</li>
       <li><code>cybertrain db COMMAND...</code> は <code>spin run gen</code> の後に、その他のデータベースコマンドを実行します：<code>status</code>、<code>rollback [N]</code>（実行後にもう一度生成します）、<code>schema:dump</code>、<code>create</code>。</li>
       <li><code>cybertrain server [PORT]</code> は生成を行ってから開発サーバーを起動します（<code>spin run gen; spin run NAME</code>、または <code>spin run NAME -- PORT</code>。デフォルトのポートは 3000）。</li>
@@ -560,9 +562,76 @@
     <p class="note"><code>--regen</code> は CRuby での出力からスナップショットを書き出します。FFI 経由で SQLite に触れるテストは CRuby では実行できないため、そのスナップショットはコンパイル済みバイナリから作ります（上の 2 行目）。スナップショットが古い間は <code>cybertrain spin test</code> が 0 以外で終了するため、後続は <code>;</code> でつなぎ、<code>&amp;&amp;</code> は使いません。<code>[ -x ]</code> のチェックにより、コンパイルに失敗したときは出力の取り込みをスキップするので、古いスナップショットが残ります。CRuby で実行できないテストは、このスナップショットがないと <code>cybertrain spin test</code> が通りません。スナップショットのないその他のテストは、CRuby での出力と比較されます。</p>
   </section>
 
+  <section class="step" id="authentication" aria-labelledby="h-authentication">
+    <p class="stage"><span class="stage-k">現在地<span class="sr-only">:</span></span>自分で書く <span aria-hidden="true">&middot;</span> <code>app/</code>, <code>db/migrate/</code>, <code>config/routes.rb</code>, <code>test/</code></p>
+    <h2 id="h-authentication"><span class="step-num" aria-hidden="true">13</span>サインインを追加する</h2>
+    <p class="why"><span class="why-k">なぜ</span><span class="why-t">ここまでは誰でも記事を編集・削除できます。Rails 8 の <code>bin/rails generate authentication</code> と同じく、ひとつのコマンドでメールアドレスとパスワードによるサインインを追加します。エンジンとして組み込むのではなく、アプリが所有するコードとして書き出します。</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">ターミナル &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="コード：ターミナル &mdash; blog/"><code><span class="ln cmd">cybertrain generate authentication</span>
+<span class="ln cmd">cybertrain db migrate    <span class="c"># users と sessions のテーブルを作る</span></span></code></pre>
+</figure>
+    <p><code>users</code>（<code>email_address</code>、<code>password_digest</code>、ユニークインデックス）と <code>sessions</code>（サインイン中のブラウザーごとに 1 行）のマイグレーション、<code>User</code> と <code>Session</code> のモデル、<code>SessionsController</code>（<code>/session/new</code>、<code>POST /session</code>、<code>DELETE /session</code>）と <code>RegistrationsController</code>（<code>/sign_up</code>）およびそのビュー、レイアウトの先頭に描画される <code>sessions/_nav</code> パーシャル、そして <code>test/authentication.rb</code> と <code>test/support/app_test.rb</code> を書き出します。さらにルートを挿入し、<code>ApplicationController</code> のクラス行の直後に次のブロックを挿入します：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>application_controller.rb（抜粋）</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="コード：app/controllers/application_controller.rb（抜粋）"><code><span class="ln"><span class="k">class</span> <span class="t">ApplicationController</span> &lt; <span class="t">Cybertrain</span>::<span class="t">Controller</span></span>
+<span class="ln">  before_action <span class="y">:resume_session</span>          <span class="c"># sets @current_user and @current_session</span></span>
+<span class="ln">  before_action <span class="y">:require_authentication</span>  <span class="c"># 303 to /session/new unless signed in</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> <span class="k">self</span>.allow_unauthenticated_access(<span class="y">only:</span> [], <span class="y">except:</span> [])</span>
+<span class="ln">    skip_before_action(<span class="y">:require_authentication</span>, <span class="y">only:</span> only, <span class="y">except:</span> except)</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln">  <span class="c"># authenticated?, start_new_session_for(user), terminate_session,</span></span>
+<span class="ln">  <span class="c"># after_authentication_url ...</span></span></code></pre>
+</figure>
+    <p>これ以降、すべてのアクションはサインイン済みのユーザーを必要とし、訪問者は <code>/session/new</code> にリダイレクトされます。Rails のガイドと同じように、誰でも読めるページを開放し直します：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb（抜粋）</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="コード：app/controllers/articles_controller.rb（抜粋）"><code><span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  allow_unauthenticated_access <span class="y">only:</span> [<span class="y">:index</span>, <span class="y">:show</span>]</span>
+<span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span></code></pre>
+</figure>
+    <p>これらのページでも <code>resume_session</code> は実行されるので、テンプレートから <code>@current_user</code> を読めます。訪問者が使えないものは隠します：</p>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>show.html.erb（抜粋）</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="コード：app/views/articles/show.html.erb（抜粋）"><code><span class="ln"><span class="d">&lt;%</span> <span class="k">if</span> <span class="v">@current_user</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> button_to <span class="s">"Destroy this article"</span>, article_path(<span class="v">@article</span>), <span class="y">method:</span> <span class="y">:delete</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span>
+<span class="ln"></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">if</span> <span class="v">@current_user</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;h2&gt;</span>Add a comment:<span class="h">&lt;/h2&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> render <span class="s">"comments/form"</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span></code></pre>
+</figure>
+    <p>サーバーを起動して <code>http://127.0.0.1:3000/sign_up</code> を開き、最初のユーザーを作成します。Rails のジェネレーターにはサインアップ画面がなく、最初のユーザーはコンソールで作りますが、CyberTrain にはコンソールがないため <code>RegistrationsController</code> を書き出します。招待制のアプリでは、これとそのルートを削除してください。</p>
+    <aside class="callout" aria-label="Spinel のルール：has_secure_password">
+      <p class="callout-k">Spinel のルール</p>
+      <h3><code>has_secure_password</code> は書き下される</h3>
+      <p>Spinel は実行時にメソッドを定義できないため、<code>User</code> モデルには <code>has_secure_password</code> が定義するはずのもの、つまり <code>password=</code>、<code>authenticate</code>、<code>User.authenticate_by(email_address:, password:)</code> がそのまま書かれています。パスワードは <code>Cybertrain::Password</code> でハッシュ化されます。Ruby で書かれた PBKDF2-HMAC-SHA256 で、既定は 10 万回反復（コンパイル後で約 0.2 秒）です。bcrypt を使うと、バイナリが C ライブラリをリンクする必要があるためです。コストは <code>config/app.rb</code> に <code>Cybertrain::Password.iterations = 600_000</code> と書いて引き上げられ、<code>User#authenticate</code> が各ユーザーのサインイン時にハッシュを作り直します。</p>
+    </aside>
+    <h3 class="sub">テストを更新する</h3>
+    <p><a href="#test">ステップ 12</a> のテストのうち、フォームを期待するもの、フォームを送信するもの、<code>index</code> と <code>show</code> 以外のアクションに到達するものは、代わりにサインイン画面に行き着きます。ジェネレーターが <code>test/support/app_test.rb</code> に書いたヘルパーで、先にクライアントをサインインさせます：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">test/<wbr>signed_in.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="コード：test/signed_in.rb"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/app_test"</span>   <span class="c"># written by generate authentication: APP, AppTest</span></span>
+<span class="ln"></span>
+<span class="ln">test <span class="s">"a signed-in user creates an article"</span> <span class="k">do</span></span>
+<span class="ln">  client = <span class="t">Cybertrain</span>::<span class="t">Test</span>::<span class="t">Client</span>.new(<span class="t">APP</span>)</span>
+<span class="ln">  <span class="t">AppTest</span>.user(<span class="s">"ann@example.com"</span>, <span class="s">"s3cr3t-s3cr3t"</span>)</span>
+<span class="ln">  <span class="t">AppTest</span>.sign_in(client, <span class="s">"ann@example.com"</span>, <span class="s">"s3cr3t-s3cr3t"</span>)</span>
+<span class="ln">  client.get(<span class="s">"/articles/new"</span>)</span>
+<span class="ln">  res = client.post(<span class="s">"/articles"</span>, { <span class="s">"authenticity_token"</span> =&gt; <span class="t">AppTest</span>.form_token(client),</span>
+<span class="ln">                                   <span class="s">"article[title]"</span> =&gt; <span class="s">"Hello Rails"</span>,</span>
+<span class="ln">                                   <span class="s">"article[body]"</span> =&gt; <span class="s">"I am on Rails! This is my first article."</span> })</span>
+<span class="ln">  assert_redirected_to res, <span class="s">"/articles/#{Article.last.id}"</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p class="note"><a href="#test">ステップ 12</a> と同じく <code>cybertrain spin test</code> で実行します。<code>test/authentication.rb</code> とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。<code>examples/blog</code> はこのステップの手前までです。パスワードリセット（CyberTrain にはメーラーがありません）とレート制限は生成されません。</p>
+  </section>
+
   <section class="step" id="ship" aria-labelledby="h-ship">
     <p class="stage"><span class="stage-k">現在地<span class="sr-only">:</span></span>実行時 <span aria-hidden="true">&middot;</span> <code>dist/blog</code></p>
-    <h2 id="h-ship"><span class="step-num" aria-hidden="true">13</span>デプロイ用にビルドする</h2>
+    <h2 id="h-ship"><span class="step-num" aria-hidden="true">14</span>デプロイ用にビルドする</h2>
     <p class="why"><span class="why-k">なぜ</span><span class="why-t">ひとつのコマンドで、すべてのビューを埋め込んだ、デプロイ可能な <code>dist/</code> フォルダーにアプリをビルドします。</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">ターミナル &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
@@ -664,7 +733,8 @@
           <tr><td data-label="Rails">例外時には完全なバックトレース</td><td data-label="CyberTrain">クラス、メッセージ、リクエスト行、テンプレート名と行番号 — Spinel はバックトレースを公開しない</td></tr>
           <tr><td data-label="Rails">Rack とそのミドルウェア、<code>Gemfile</code> に書いた任意の gem</td><td data-label="CyberTrain">Rack 互換性なし。小さな固定のミドルウェアセット。Spinel 独自の <code>spin-index</code>（その Ruby サブセットでコンパイルできるものに限る）</td></tr>
           <tr><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code> — リフレクションに基づくテストランナーは AOT では動かない</td></tr>
-          <tr><td data-label="Rails">認証、メーラー、ジョブ、ActionCable、アセットパイプライン、i18n</td><td data-label="CyberTrain">未構築（MVP の範囲外）</td></tr>
+          <tr><td data-label="Rails"><code>bin/rails generate authentication</code>、<code>has_secure_password</code></td><td data-label="CyberTrain"><code>cybertrain generate authentication</code> が同じ構成を書き出し、コンソールがないためサインアップ画面も加える。<code>has_secure_password</code> は <code>Cybertrain::Password</code>（PBKDF2）を使って User モデルに書き下される。パスワードリセットはない（メーラーがない）</td></tr>
+          <tr><td data-label="Rails">メーラー、ジョブ、ActionCable、アセットパイプライン、i18n</td><td data-label="CyberTrain">未構築（MVP の範囲外）</td></tr>
         </tbody>
       </table>
       <p class="cmp-foot">すべてを網羅してはいません。</p>

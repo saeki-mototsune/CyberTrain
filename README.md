@@ -487,6 +487,50 @@ Spinel cannot define methods at run time; edit it like any other model.
 Password reset is not generated (no mailers). Running the generator again
 writes nothing. The design, and why not a package: [docs/design.md](docs/design.md) D15.
 
+In the blog, open the pages anyone may read again, as Rails' guide does, and
+hide what a visitor cannot use (`resume_session` still runs on those pages,
+so `@current_user` is set):
+
+```ruby
+# app/controllers/articles_controller.rb
+class ArticlesController < ApplicationController
+  allow_unauthenticated_access only: [:index, :show]
+  before_action :set_article, only: [:show, :edit, :update, :destroy]
+```
+
+```erb
+<%# app/views/articles/show.html.erb (excerpt) %>
+<% if @current_user %>
+  <%= button_to "Destroy this article", article_path(@article), method: :delete %>
+<% end %>
+
+<% if @current_user %>
+  <h2>Add a comment:</h2>
+  <%= render "comments/form" %>
+<% end %>
+```
+
+A test that expects a form, submits one, or reaches an action other than
+`index` and `show` now meets the sign-in page: sign the client in first
+with the helpers in `test/support/app_test.rb`.
+
+```ruby
+require_relative "support/app_test"   # written by generate authentication: APP, AppTest
+
+test "a signed-in user creates an article" do
+  client = Cybertrain::Test::Client.new(APP)
+  AppTest.user("ann@example.com", "s3cr3t-s3cr3t")
+  AppTest.sign_in(client, "ann@example.com", "s3cr3t-s3cr3t")
+  client.get("/articles/new")
+  res = client.post("/articles", { "authenticity_token" => AppTest.form_token(client),
+                                   "article[title]" => "Hello Rails",
+                                   "article[body]" => "I am on Rails! This is my first article." })
+  assert_redirected_to res, "/articles/#{Article.last.id}"
+end
+```
+
+`examples/blog` itself stops before this step.
+
 ### Build for deployment
 
 ```sh
