@@ -1,15 +1,28 @@
 name: CI
 
-# A change that only touches site/ (the homepage, the tutorial and the
-# playground page: static files that nothing below reads) runs no tests;
-# pages.yml publishes it. A change that also touches anything else runs them.
+# A change that touches only documentation runs no tests: site/ (the
+# homepage, the tutorial and the playground page: static files that nothing
+# below reads; pages.yml publishes it) and Markdown files anywhere. The
+# exceptions are the API reference's Markdown sources (docs/api/README.md,
+# docs/template-language.md; see .yardopts), which the "API reference builds"
+# step below checks. A change that also touches anything else runs the tests.
+# `paths` with negations rather than `paths-ignore`, since only `paths` can
+# bring the API reference's files back in (a later pattern wins).
 on:
   push:
-    paths-ignore:
-      - "site/**"
+    paths:
+      - "**"
+      - "!site/**"
+      - "!**.md"
+      - "docs/api/**"
+      - "docs/template-language.md"
   pull_request:
-    paths-ignore:
-      - "site/**"
+    paths:
+      - "**"
+      - "!site/**"
+      - "!**.md"
+      - "docs/api/**"
+      - "docs/template-language.md"
 
 env:
   # Must equal Cybertrain::SPINEL_TAG (script/gate checks, in the Gate

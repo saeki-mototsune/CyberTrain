@@ -75,7 +75,7 @@
   <header class="doc-hero">
     <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>教程</span></p>
     <h1>入门：博客</h1>
-    <p class="doc-intro">对照 Rails 官方的<a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">入门指南</a>：一个包含文章和评论的博客。你将为文章生成脚手架、添加验证、把评论嵌套在文章之下、编写一个在进程内驱动应用的测试，并把应用构建到可部署的 <code>dist/</code> 目录中。完成后的应用就是 <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>，由 CI 在 Linux 和 macOS 上运行测试。</p>
+    <p class="doc-intro">对照 Rails 官方的<a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">入门指南</a>：一个包含文章和评论的博客。你将为文章生成脚手架、添加验证、把评论嵌套在文章之下、编写一个在进程内驱动应用的测试、添加登录，并把应用构建到可部署的 <code>dist/</code> 目录中。完成后的应用就是 <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>，由 CI 在 Linux 和 macOS 上运行测试。</p>
     <dl class="doc-meta">
       <div><dt>你需要</dt><dd>Ruby 3.2+、<code>cc</code>、<code>make</code>、<code>git</code>、<code>curl</code>、SQLite 3 头文件（Spinel <code>2026.09.12</code> 会自动为你安装）<a class="meta-link" href="#requirements">第 00 步</a></dd></div>
       <div><dt>从这里开始</dt><dd><code>gem install cybertrain</code></dd></div>
@@ -87,7 +87,7 @@
 <div class="wrap doc">
   <nav class="toc" aria-label="教程步骤">
     <details class="toc-d" open>
-      <summary class="toc-sum"><span class="toc-title">步骤 00&ndash;13</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <summary class="toc-sum"><span class="toc-title">步骤 00&ndash;14</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
       <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
     <ol>
       <li><a href="#requirements"><span class="toc-n">00</span>环境要求</a></li>
@@ -103,7 +103,8 @@
       <li><a href="#comments-controller"><span class="toc-n">10</span>CommentsController</a></li>
       <li><a href="#views"><span class="toc-n">11</span>视图与局部视图</a></li>
       <li><a href="#test"><span class="toc-n">12</span>测试</a></li>
-      <li><a href="#ship"><span class="toc-n">13</span>为部署而构建</a></li>
+      <li><a href="#authentication"><span class="toc-n">13</span>添加登录</a></li>
+      <li><a href="#ship"><span class="toc-n">14</span>为部署而构建</a></li>
       <li class="toc-x"><a href="#things-to-know"><span class="toc-n">+</span>须知</a></li>
       <li class="toc-x"><a href="#differences"><span class="toc-n">+</span>与 Rails 的差异</a></li>
       <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>下一步</a></li>
@@ -159,6 +160,7 @@
     <ul class="points">
       <li><code>cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]</code> 在 NAME 中创建应用，然后在其中运行 <code>spin lock</code> 和 <code>spin run gen</code>，需要时会先安装 Spinel。</li>
       <li><code>cybertrain generate scaffold NAME field:type ...</code>（别名 <code>g scaffold</code>）为当前目录中的应用添加一个资源。</li>
+      <li><code>cybertrain generate authentication</code> 为当前目录中的应用添加用邮箱和密码登录的功能（<a href="#authentication">步骤 13</a>）。</li>
       <li><code>cybertrain db migrate</code> 先生成代码，再执行待处理的迁移，然后再次生成（<code>spin run gen; spin run db -- migrate; spin run gen</code>）；<code>cybertrain migration</code> 作为别名保留。</li>
       <li><code>cybertrain db COMMAND...</code> 在 <code>spin run gen</code> 之后运行其他任意数据库命令：<code>status</code>、<code>rollback [N]</code>（之后会再次生成）、<code>schema:dump</code>、<code>create</code>。</li>
       <li><code>cybertrain server [PORT]</code> 先生成代码，然后启动开发服务器（<code>spin run gen; spin run NAME</code>，或 <code>spin run NAME -- PORT</code>；默认端口 3000）。</li>
@@ -560,9 +562,76 @@
     <p class="note"><code>--regen</code> 根据 CRuby 的输出写入快照。通过 FFI 访问 SQLite 的测试无法在 CRuby 下运行，所以它们的快照来自编译后的二进制文件（上面的第二行）。只要快照过时，<code>cybertrain spin test</code> 就会以非零状态退出，所以它后面跟的是 <code>;</code> 而不是 <code>&amp;&amp;</code>；<code>[ -x ]</code> 检查会在编译失败时跳过捕获，从而保留旧快照。无法在 CRuby 下运行的测试需要先有这个快照，<code>cybertrain spin test</code> 才能通过；其他没有快照的测试会与 CRuby 的输出进行比对。</p>
   </section>
 
+  <section class="step" id="authentication" aria-labelledby="h-authentication">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>你编写 <span aria-hidden="true">&middot;</span> <code>app/</code>, <code>db/migrate/</code>, <code>config/routes.rb</code>, <code>test/</code></p>
+    <h2 id="h-authentication"><span class="step-num" aria-hidden="true">13</span>添加登录</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">到目前为止，任何人都能编辑或删除文章。和 Rails 8 的 <code>bin/rails generate authentication</code> 一样，一条命令就能加上用邮箱和密码登录的功能，而且写成归应用所有的代码，而不是作为引擎安装。</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">cybertrain generate authentication</span>
+<span class="ln cmd">cybertrain db migrate    <span class="c"># 创建 users 和 sessions 表</span></span></code></pre>
+</figure>
+    <p>它会写出 <code>users</code>（<code>email_address</code>、<code>password_digest</code>、唯一索引）和 <code>sessions</code>（每个已登录的浏览器一行）的迁移，<code>User</code> 和 <code>Session</code> 模型，<code>SessionsController</code>（<code>/session/new</code>、<code>POST /session</code>、<code>DELETE /session</code>）和 <code>RegistrationsController</code>（<code>/sign_up</code>）及其视图，在布局顶部渲染的 <code>sessions/_nav</code> 局部模板，以及 <code>test/authentication.rb</code> 和 <code>test/support/app_test.rb</code>。它还会插入路由，并在 <code>ApplicationController</code> 的类定义行之后插入下面这段代码：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>application_controller.rb（节选）</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/controllers/application_controller.rb（节选）"><code><span class="ln"><span class="k">class</span> <span class="t">ApplicationController</span> &lt; <span class="t">Cybertrain</span>::<span class="t">Controller</span></span>
+<span class="ln">  before_action <span class="y">:resume_session</span>          <span class="c"># sets @current_user and @current_session</span></span>
+<span class="ln">  before_action <span class="y">:require_authentication</span>  <span class="c"># 303 to /session/new unless signed in</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> <span class="k">self</span>.allow_unauthenticated_access(<span class="y">only:</span> [], <span class="y">except:</span> [])</span>
+<span class="ln">    skip_before_action(<span class="y">:require_authentication</span>, <span class="y">only:</span> only, <span class="y">except:</span> except)</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln">  <span class="c"># authenticated?, start_new_session_for(user), terminate_session,</span></span>
+<span class="ln">  <span class="c"># after_authentication_url ...</span></span></code></pre>
+</figure>
+    <p>从现在起，每个动作都需要已登录的用户，访客会被重定向到 <code>/session/new</code>。像 Rails 指南那样，把任何人都能阅读的页面重新开放：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb（节选）</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/controllers/articles_controller.rb（节选）"><code><span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  allow_unauthenticated_access <span class="y">only:</span> [<span class="y">:index</span>, <span class="y">:show</span>]</span>
+<span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span></code></pre>
+</figure>
+    <p>这些页面上 <code>resume_session</code> 仍会运行，所以模板可以读取 <code>@current_user</code>。把访客用不了的东西隐藏起来：</p>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>show.html.erb（节选）</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：app/views/articles/show.html.erb（节选）"><code><span class="ln"><span class="d">&lt;%</span> <span class="k">if</span> <span class="v">@current_user</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> button_to <span class="s">"Destroy this article"</span>, article_path(<span class="v">@article</span>), <span class="y">method:</span> <span class="y">:delete</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span>
+<span class="ln"></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">if</span> <span class="v">@current_user</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;h2&gt;</span>Add a comment:<span class="h">&lt;/h2&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> render <span class="s">"comments/form"</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span></code></pre>
+</figure>
+    <p>启动服务器并打开 <code>http://127.0.0.1:3000/sign_up</code>，创建第一个用户。Rails 的生成器没有注册页面，第一个用户要在控制台里创建；CyberTrain 没有控制台，所以会写出 <code>RegistrationsController</code>。如果应用只接受邀请，请删除它及其路由。</p>
+    <aside class="callout" aria-label="Spinel 规则：has_secure_password">
+      <p class="callout-k">Spinel 规则</p>
+      <h3><code>has_secure_password</code> 被逐一写出</h3>
+      <p>Spinel 无法在运行时定义方法，所以 <code>User</code> 模型直接写出了 <code>has_secure_password</code> 本该定义的方法：<code>password=</code>、<code>authenticate</code> 和 <code>User.authenticate_by(email_address:, password:)</code>。密码由 <code>Cybertrain::Password</code> 做哈希：它是用 Ruby 实现的 PBKDF2-HMAC-SHA256，默认迭代 10 万次（编译后约 0.2 秒）；bcrypt 则需要让二进制链接一个 C 库。可以在 <code>config/app.rb</code> 里用 <code>Cybertrain::Password.iterations = 600_000</code> 提高成本，<code>User#authenticate</code> 会在每个用户登录时重新计算哈希。</p>
+    </aside>
+    <h3 class="sub">更新测试</h3>
+    <p><a href="#test">步骤 12</a> 中期望出现表单、提交表单，或访问 <code>index</code> 和 <code>show</code> 以外动作的测试，现在都会遇到登录页面。先用生成器写进 <code>test/support/app_test.rb</code> 的辅助方法让客户端登录：</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">test/<wbr>signed_in.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：test/signed_in.rb"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/app_test"</span>   <span class="c"># written by generate authentication: APP, AppTest</span></span>
+<span class="ln"></span>
+<span class="ln">test <span class="s">"a signed-in user creates an article"</span> <span class="k">do</span></span>
+<span class="ln">  client = <span class="t">Cybertrain</span>::<span class="t">Test</span>::<span class="t">Client</span>.new(<span class="t">APP</span>)</span>
+<span class="ln">  <span class="t">AppTest</span>.user(<span class="s">"ann@example.com"</span>, <span class="s">"s3cr3t-s3cr3t"</span>)</span>
+<span class="ln">  <span class="t">AppTest</span>.sign_in(client, <span class="s">"ann@example.com"</span>, <span class="s">"s3cr3t-s3cr3t"</span>)</span>
+<span class="ln">  client.get(<span class="s">"/articles/new"</span>)</span>
+<span class="ln">  res = client.post(<span class="s">"/articles"</span>, { <span class="s">"authenticity_token"</span> =&gt; <span class="t">AppTest</span>.form_token(client),</span>
+<span class="ln">                                   <span class="s">"article[title]"</span> =&gt; <span class="s">"Hello Rails"</span>,</span>
+<span class="ln">                                   <span class="s">"article[body]"</span> =&gt; <span class="s">"I am on Rails! This is my first article."</span> })</span>
+<span class="ln">  assert_redirected_to res, <span class="s">"/articles/#{Article.last.id}"</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p class="note">和<a href="#test">步骤 12</a> 一样用 <code>cybertrain spin test</code> 运行。<code>test/authentication.rb</code> 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。<code>examples/blog</code> 止步于这一步之前。不会生成的部分：密码重置（CyberTrain 没有邮件功能）和速率限制。</p>
+  </section>
+
   <section class="step" id="ship" aria-labelledby="h-ship">
     <p class="stage"><span class="stage-k">当前位置<span class="sr-only">：</span></span>运行时 <span aria-hidden="true">&middot;</span> <code>dist/blog</code></p>
-    <h2 id="h-ship"><span class="step-num" aria-hidden="true">13</span>为部署而构建</h2>
+    <h2 id="h-ship"><span class="step-num" aria-hidden="true">14</span>为部署而构建</h2>
     <p class="why"><span class="why-k">为什么</span><span class="why-t">一条命令就能把应用构建到可部署的 <code>dist/</code> 目录中，所有视图都已嵌入。</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
@@ -664,7 +733,8 @@
           <tr><td data-label="Rails">异常时显示完整回溯</td><td data-label="CyberTrain">类、消息、请求行、模板名/行号——Spinel 不提供回溯</td></tr>
           <tr><td data-label="Rails">Rack 及其中间件，以及 <code>Gemfile</code> 中的任何 gem</td><td data-label="CyberTrain">不兼容 Rack；只有一小组固定的中间件；使用 Spinel 自己的 <code>spin-index</code>，仅限能在其 Ruby 子集下编译的内容</td></tr>
           <tr><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code>——基于反射的测试运行器无法在 AOT 编译下工作</td></tr>
-          <tr><td data-label="Rails">认证、邮件、后台任务、ActionCable、资源管道、i18n</td><td data-label="CyberTrain">未构建（不在 MVP 范围内）</td></tr>
+          <tr><td data-label="Rails"><code>bin/rails generate authentication</code>、<code>has_secure_password</code></td><td data-label="CyberTrain"><code>cybertrain generate authentication</code> 写出同样的结构，并因为没有控制台而额外加上注册页面；<code>has_secure_password</code> 基于 <code>Cybertrain::Password</code>（PBKDF2）逐一写在 User 模型里；没有密码重置（没有邮件功能）</td></tr>
+          <tr><td data-label="Rails">邮件、后台任务、ActionCable、资源管道、i18n</td><td data-label="CyberTrain">未构建（不在 MVP 范围内）</td></tr>
         </tbody>
       </table>
       <p class="cmp-foot">此表并不完整。</p>

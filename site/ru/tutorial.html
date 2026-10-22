@@ -75,7 +75,7 @@
   <header class="doc-hero">
     <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Учебник</span></p>
     <h1>Начало работы: блог</h1>
-    <p class="doc-intro">Повторяет <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a> самого Rails: блог со статьями и комментариями. Вы создадите скаффолд статей, добавите валидации, вложите в статьи комментарии, напишете тест, который прогоняет приложение внутри процесса, и соберёте приложение в готовый к развёртыванию каталог <code>dist/</code>. Готовое приложение — <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>; оно проверяется в CI на Linux и macOS.</p>
+    <p class="doc-intro">Повторяет <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a> самого Rails: блог со статьями и комментариями. Вы создадите скаффолд статей, добавите валидации, вложите в статьи комментарии, напишете тест, который прогоняет приложение внутри процесса, добавите вход и соберёте приложение в готовый к развёртыванию каталог <code>dist/</code>. Готовое приложение — <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>; оно проверяется в CI на Linux и macOS.</p>
     <dl class="doc-meta">
       <div><dt>Что нужно</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, заголовки SQLite 3 (Spinel <code>2026.09.12</code> установится сам) <a class="meta-link" href="#requirements">Шаг 00</a></dd></div>
       <div><dt>Начало</dt><dd><code>gem install cybertrain</code></dd></div>
@@ -87,7 +87,7 @@
 <div class="wrap doc">
   <nav class="toc" aria-label="Шаги учебника">
     <details class="toc-d" open>
-      <summary class="toc-sum"><span class="toc-title">Шаги 00&ndash;13</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <summary class="toc-sum"><span class="toc-title">Шаги 00&ndash;14</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
       <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
     <ol>
       <li><a href="#requirements"><span class="toc-n">00</span>Требования</a></li>
@@ -103,7 +103,8 @@
       <li><a href="#comments-controller"><span class="toc-n">10</span>CommentsController</a></li>
       <li><a href="#views"><span class="toc-n">11</span>Представления и партиалы</a></li>
       <li><a href="#test"><span class="toc-n">12</span>Тестирование</a></li>
-      <li><a href="#ship"><span class="toc-n">13</span>Сборка для развёртывания</a></li>
+      <li><a href="#authentication"><span class="toc-n">13</span>Добавление входа</a></li>
+      <li><a href="#ship"><span class="toc-n">14</span>Сборка для развёртывания</a></li>
       <li class="toc-x"><a href="#things-to-know"><span class="toc-n">+</span>Что нужно знать</a></li>
       <li class="toc-x"><a href="#differences"><span class="toc-n">+</span>Отличия от Rails</a></li>
       <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>Что дальше</a></li>
@@ -159,6 +160,7 @@
     <ul class="points">
       <li><code>cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]</code> создаёт приложение в NAME, затем запускает в нём <code>spin lock</code> и <code>spin run gen</code>, при необходимости сначала устанавливая Spinel.</li>
       <li><code>cybertrain generate scaffold NAME field:type ...</code> (псевдоним <code>g scaffold</code>) добавляет ресурс в приложение в текущем каталоге.</li>
+      <li><code>cybertrain generate authentication</code> добавляет в приложение в текущем каталоге вход по адресу почты и паролю (<a href="#authentication">шаг 13</a>).</li>
       <li><code>cybertrain db migrate</code> выполняет генерацию, применяет ожидающие миграции и генерирует снова (<code>spin run gen; spin run db -- migrate; spin run gen</code>); <code>cybertrain migration</code> оставлена как псевдоним.</li>
       <li><code>cybertrain db COMMAND...</code> после <code>spin run gen</code> запускает любую другую команду базы данных: <code>status</code>, <code>rollback [N]</code> (после которой генерация выполняется снова), <code>schema:dump</code>, <code>create</code>.</li>
       <li><code>cybertrain server [PORT]</code> выполняет генерацию, затем запускает сервер разработки (<code>spin run gen; spin run NAME</code> или <code>spin run NAME -- PORT</code>; порт по умолчанию — 3000).</li>
@@ -560,9 +562,76 @@
     <p class="note"><code>--regen</code> записывает снимок по выводу CRuby. Тесты, обращающиеся к SQLite через FFI, не могут работать под CRuby, поэтому их снимок берётся из скомпилированного бинарного файла (вторая строка выше). Пока снимок устарел, <code>cybertrain spin test</code> завершается с ненулевым кодом, поэтому после него стоит <code>;</code>, а не <code>&amp;&amp;</code>; проверка <code>[ -x ]</code> пропускает запись, если компиляция не удалась, и старый снимок сохраняется. Тестам, которые не могут работать под CRuby, этот снимок нужен, прежде чем <code>cybertrain spin test</code> сможет пройти; остальные тесты без снимка сравниваются с выводом CRuby.</p>
   </section>
 
+  <section class="step" id="authentication" aria-labelledby="h-authentication">
+    <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Вы пишете <span aria-hidden="true">&middot;</span> <code>app/</code>, <code>db/migrate/</code>, <code>config/routes.rb</code>, <code>test/</code></p>
+    <h2 id="h-authentication"><span class="step-num" aria-hidden="true">13</span>Добавление входа</h2>
+    <p class="why"><span class="why-k">Зачем</span><span class="why-t">Пока что любой может изменить или удалить статью. Как <code>bin/rails generate authentication</code> в Rails 8, одна команда добавляет вход по адресу почты и паролю — в виде кода, которым владеет приложение, а не подключаемого движка.</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; blog/"><code><span class="ln cmd">cybertrain generate authentication</span>
+<span class="ln cmd">cybertrain db migrate    <span class="c"># создаёт таблицы users и sessions</span></span></code></pre>
+</figure>
+    <p>Она пишет миграции для <code>users</code> (<code>email_address</code>, <code>password_digest</code>, уникальный индекс) и <code>sessions</code> (по строке на каждый браузер, в котором выполнен вход), модели <code>User</code> и <code>Session</code>, <code>SessionsController</code> (<code>/session/new</code>, <code>POST /session</code>, <code>DELETE /session</code>) и <code>RegistrationsController</code> (<code>/sign_up</code>) с их представлениями, частичный шаблон <code>sessions/_nav</code> в начале макета, а также <code>test/authentication.rb</code> и <code>test/support/app_test.rb</code>. Ещё она вставляет маршруты и блок сразу после строки с объявлением класса <code>ApplicationController</code>:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>application_controller.rb (фрагмент)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/controllers/application_controller.rb (фрагмент)"><code><span class="ln"><span class="k">class</span> <span class="t">ApplicationController</span> &lt; <span class="t">Cybertrain</span>::<span class="t">Controller</span></span>
+<span class="ln">  before_action <span class="y">:resume_session</span>          <span class="c"># sets @current_user and @current_session</span></span>
+<span class="ln">  before_action <span class="y">:require_authentication</span>  <span class="c"># 303 to /session/new unless signed in</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> <span class="k">self</span>.allow_unauthenticated_access(<span class="y">only:</span> [], <span class="y">except:</span> [])</span>
+<span class="ln">    skip_before_action(<span class="y">:require_authentication</span>, <span class="y">only:</span> only, <span class="y">except:</span> except)</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln">  <span class="c"># authenticated?, start_new_session_for(user), terminate_session,</span></span>
+<span class="ln">  <span class="c"># after_authentication_url ...</span></span></code></pre>
+</figure>
+    <p>Теперь каждое действие требует выполненного входа, а посетителя перенаправляет на <code>/session/new</code>. Снова откройте страницы, которые может читать любой, как это делает руководство Rails:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb (фрагмент)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/controllers/articles_controller.rb (фрагмент)"><code><span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  allow_unauthenticated_access <span class="y">only:</span> [<span class="y">:index</span>, <span class="y">:show</span>]</span>
+<span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span></code></pre>
+</figure>
+    <p>На этих страницах <code>resume_session</code> по-прежнему выполняется, поэтому шаблоны могут читать <code>@current_user</code>. Спрячьте то, чем посетитель воспользоваться не может:</p>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>show.html.erb (фрагмент)</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: app/views/articles/show.html.erb (фрагмент)"><code><span class="ln"><span class="d">&lt;%</span> <span class="k">if</span> <span class="v">@current_user</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> button_to <span class="s">"Destroy this article"</span>, article_path(<span class="v">@article</span>), <span class="y">method:</span> <span class="y">:delete</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span>
+<span class="ln"></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">if</span> <span class="v">@current_user</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;h2&gt;</span>Add a comment:<span class="h">&lt;/h2&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> render <span class="s">"comments/form"</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span></code></pre>
+</figure>
+    <p>Запустите сервер и откройте <code>http://127.0.0.1:3000/sign_up</code>, чтобы создать первого пользователя. У генератора Rails нет страницы регистрации — первого пользователя создают в консоли; в CyberTrain консоли нет, поэтому генератор пишет <code>RegistrationsController</code>. Если в приложение попадают только по приглашению, удалите его вместе с маршрутами.</p>
+    <aside class="callout" aria-label="Правило Spinel: has_secure_password">
+      <p class="callout-k">Правило Spinel</p>
+      <h3><code>has_secure_password</code> расписан явно</h3>
+      <p>Spinel не умеет определять методы во время выполнения, поэтому модель <code>User</code> явно содержит то, что определил бы <code>has_secure_password</code>: <code>password=</code>, <code>authenticate</code> и <code>User.authenticate_by(email_address:, password:)</code>. Пароли хеширует <code>Cybertrain::Password</code> — PBKDF2-HMAC-SHA256 на Ruby, по умолчанию 100 000 итераций (около 0,2 с в скомпилированном виде): для bcrypt бинарнику пришлось бы линковать C-библиотеку. Стоимость повышается строкой <code>Cybertrain::Password.iterations = 600_000</code> в <code>config/app.rb</code>; <code>User#authenticate</code> заново хеширует пароль каждого пользователя при его входе.</p>
+    </aside>
+    <h3 class="sub">Обновление тестов</h3>
+    <p>Тесты из <a href="#test">шага 12</a>, которые ожидают форму, отправляют её или обращаются к действию помимо <code>index</code> и <code>show</code>, теперь упираются в страницу входа. Сначала выполните вход клиентом с помощью хелперов, которые генератор записал в <code>test/support/app_test.rb</code>:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">test/<wbr>signed_in.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: test/signed_in.rb"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/app_test"</span>   <span class="c"># written by generate authentication: APP, AppTest</span></span>
+<span class="ln"></span>
+<span class="ln">test <span class="s">"a signed-in user creates an article"</span> <span class="k">do</span></span>
+<span class="ln">  client = <span class="t">Cybertrain</span>::<span class="t">Test</span>::<span class="t">Client</span>.new(<span class="t">APP</span>)</span>
+<span class="ln">  <span class="t">AppTest</span>.user(<span class="s">"ann@example.com"</span>, <span class="s">"s3cr3t-s3cr3t"</span>)</span>
+<span class="ln">  <span class="t">AppTest</span>.sign_in(client, <span class="s">"ann@example.com"</span>, <span class="s">"s3cr3t-s3cr3t"</span>)</span>
+<span class="ln">  client.get(<span class="s">"/articles/new"</span>)</span>
+<span class="ln">  res = client.post(<span class="s">"/articles"</span>, { <span class="s">"authenticity_token"</span> =&gt; <span class="t">AppTest</span>.form_token(client),</span>
+<span class="ln">                                   <span class="s">"article[title]"</span> =&gt; <span class="s">"Hello Rails"</span>,</span>
+<span class="ln">                                   <span class="s">"article[body]"</span> =&gt; <span class="s">"I am on Rails! This is my first article."</span> })</span>
+<span class="ln">  assert_redirected_to res, <span class="s">"/articles/#{Article.last.id}"</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p class="note">Запускайте <code>cybertrain spin test</code>, как в <a href="#test">шаге 12</a>; <code>test/authentication.rb</code> и этот тест используют SQLite, поэтому их снимки берутся из скомпилированного бинарника. <code>examples/blog</code> заканчивается до этого шага. Не генерируются: сброс пароля (в CyberTrain нет мейлеров) и ограничение частоты запросов.</p>
+  </section>
+
   <section class="step" id="ship" aria-labelledby="h-ship">
     <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Запуск <span aria-hidden="true">&middot;</span> <code>dist/blog</code></p>
-    <h2 id="h-ship"><span class="step-num" aria-hidden="true">13</span>Сборка для развёртывания</h2>
+    <h2 id="h-ship"><span class="step-num" aria-hidden="true">14</span>Сборка для развёртывания</h2>
     <p class="why"><span class="why-k">Зачем</span><span class="why-t">Одна команда собирает приложение в готовый к развёртыванию каталог <code>dist/</code> со всеми встроенными представлениями.</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">терминал &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
@@ -664,7 +733,8 @@
           <tr><td data-label="Rails">Полный бэктрейс при исключении</td><td data-label="CyberTrain">Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов</td></tr>
           <tr><td data-label="Rails">Rack, его middleware и любой гем в <code>Gemfile</code></td><td data-label="CyberTrain">Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный <code>spin-index</code> Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby</td></tr>
           <tr><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code> — раннеры на основе рефлексии не могут работать при AOT-компиляции</td></tr>
-          <tr><td data-label="Rails">Аутентификация, мейлеры, фоновые задачи, ActionCable, asset pipeline, i18n</td><td data-label="CyberTrain">Не сделано (за рамками MVP)</td></tr>
+          <tr><td data-label="Rails"><code>bin/rails generate authentication</code>, <code>has_secure_password</code></td><td data-label="CyberTrain"><code>cybertrain generate authentication</code> пишет то же самое и вдобавок страницу регистрации, раз консоли нет; <code>has_secure_password</code> расписан в модели User поверх <code>Cybertrain::Password</code> (PBKDF2); сброса пароля нет (нет мейлеров)</td></tr>
+          <tr><td data-label="Rails">Мейлеры, фоновые задачи, ActionCable, asset pipeline, i18n</td><td data-label="CyberTrain">Не сделано (за рамками MVP)</td></tr>
         </tbody>
       </table>
       <p class="cmp-foot">Список не исчерпывающий.</p>

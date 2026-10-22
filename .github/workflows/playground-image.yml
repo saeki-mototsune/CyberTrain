@@ -2,13 +2,16 @@
 # linux/amd64, smoke-tests it (playground/smoke.sh) and, except on pull
 # requests, pushes the tested image to GHCR: latest from main, X.Y.Z and
 # latest from a tag vX.Y.Z, the given tag on a manual run.
-# See playground/README.md.
+# A change to playground/README.md alone builds nothing (it is not in the
+# image); see the paths below. See playground/README.md.
 name: Playground image
 
 on:
   pull_request:
     paths:
       - "playground/**"
+      # Documentation only; PLAYGROUND.md is not, the image ships it.
+      - "!playground/README.md"
       - ".devcontainer/**"
       - "cybertrain/**"
       - "cybertrain.rb"
@@ -22,6 +25,8 @@ on:
     tags: ["v*"]
     paths:
       - "playground/**"
+      # Documentation only; PLAYGROUND.md is not, the image ships it.
+      - "!playground/README.md"
       - ".devcontainer/**"
       - "cybertrain/**"
       - "cybertrain.rb"
