@@ -62,6 +62,8 @@ module Cybertrain
   #   it after adding one (`cybertrain server` does).
   # - A block callback takes the controller as its argument
   #   (`before_action { |c| ... }`), so it can call public methods only.
+  # - `skip_before_action :name, only: [...]` leaves out a named callback a
+  #   parent declared; there is no `skip_after_action`.
   # - `render` and `redirect_to` do not end the action, and a second one
   #   replaces the first; `return` after them when more code follows.
   # - Every controller also has the route helpers (`article_path(...)`,
@@ -77,6 +79,7 @@ module Cybertrain
   # @api public
   class Controller
     CALLBACKS = {}   # class name => Array<Callback>
+    SKIPS = {}       # class name => Array<Callback> (kind :skip, by name)
     RESCUES = {}     # class name => Array<RescueHandler>
 
     # The Symbols `status:` accepts in {#render}, {#head} and
@@ -101,6 +104,9 @@ module Cybertrain
     # mix is. (test/controller_status.rb)
     DEFAULT_STATUS = [200, :ok][0]
     DEFAULT_REDIRECT_STATUS = [302, :found][0]
+    # What run_before_callbacks consults when no controller declared a skip:
+    # seeded with the element type and emptied (spikes/NOTES.md rule 9).
+    NO_SKIPS = Array.new(0) { Callback.new(:skip, nil, nil, [], []) }
 
     # Runs a method or a block before the action. The chain runs the
     # parent classes' callbacks first, then each class's in declaration order,
@@ -144,6 +150,63 @@ module Cybertrain
     def self.add_callback(callback)
       (CALLBACKS[self.name] ||= []) << callback
       nil
+    end
+
+    # Leaves out a named before callback a parent class (or this one)
+    # declared, for every action or for `only:` / `except:` some. The
+    # usual shape is an `ApplicationController` that requires a signed-in
+    # user everywhere and a controller that opens its sign-in actions:
+    #
+    #     class SessionsController < ApplicationController
+    #       skip_before_action :require_authentication, only: [:new, :create]
+    #
+    # A skip declared in a class applies to it and its subclasses. Block
+    # callbacks have no name and cannot be skipped. `cybertrain generate
+    # authentication` wraps this as `allow_unauthenticated_access`.
+    # @param name [Symbol] the callback's method name
+    # @param only [Array<Symbol>] skip it for these actions only
+    # @param except [Array<Symbol>] skip it for every action but these
+    # @return [nil]
+    # @api public
+    def self.skip_before_action(name, only: [], except: [])
+      (SKIPS[self.name] ||= []) << Callback.new(:skip, name, nil, only, except)
+      nil
+    end
+
+    # The skips that apply to klass: its own and its ancestors', up to
+    # Controller (the class is passed in, as for chain_for).
+    def self.skips_for(klass)
+      skips = []
+      k = klass
+      while k
+        list = SKIPS[k.name]
+        unless list.nil?
+          j = 0
+          while j < list.size
+            skips << list[j]
+            j += 1
+          end
+        end
+        break if k == Controller
+
+        k = k.superclass
+      end
+      skips
+    end
+
+    # Whether a skip in `skips` names this callback for this action.
+    def self.skipped?(skips, cb, action)
+      name = cb.name
+      return false if name.nil?
+
+      i = 0
+      while i < skips.size
+        skip = skips[i]
+        return true if skip.name == name && skip.applies?(action)
+
+        i += 1
+      end
+      false
     end
 
     # Handles an exception raised by a callback, the action or its render:
@@ -532,11 +595,14 @@ module Cybertrain
     # while loop, not `each` with a `return` inside the block: under Spinel
     # a return out of a block costs a setjmp and a Proc on every call.
     def run_before_callbacks(chain, action)
+      # The skip list is walked only in a program that declared one: an app
+      # without skip_before_action pays nothing here.
+      skips = SKIPS.empty? ? NO_SKIPS : Controller.skips_for(self.class)
       i = 0
       n = chain.size
       while i < n
         cb = chain[i]
-        if cb.kind == :before && cb.applies?(action)
+        if cb.kind == :before && cb.applies?(action) && !Controller.skipped?(skips, cb, action)
           run_one(cb)
           return false if performed?
         end

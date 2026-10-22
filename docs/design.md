@@ -79,7 +79,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 
 ### 2.3 非目標（MVP）
 
-認証、メーラー、ジョブ、WebSocket / ActionCable、アセットパイプライン（静的ファイル配信のみ）、i18n、API 専用モード（`render json:` の最小限のみ）、Rails 互換、Rack 互換、Windows ネイティブ。
+認証（MVP 後の 2026-10-22 に D15 として追加）、メーラー、ジョブ、WebSocket / ActionCable、アセットパイプライン（静的ファイル配信のみ）、i18n、API 専用モード（`render json:` の最小限のみ）、Rails 互換、Rack 互換、Windows ネイティブ。
 
 ## 3. 設計原則
 
@@ -223,6 +223,26 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 終了処理: `SIGTERM` で listen を止め、処理中のリクエストを待って終了。`trap` が使えなければ libc の `signal` を FFI で呼ぶ。trap ブロックは C のシグナルハンドラから直接呼ばれるので、ハンドラはフラグを落とすだけ（`Server#request_stop`）にし、`Thread#join` などは通常のスレッド文脈で行う。フラグが落ちると accept ループが listener を閉じ、`Server#run` は開いている接続が閉じるのを最大 `drain_timeout`（既定 10 秒、systemd の `TimeoutStopSec` より短く）待ってから戻る。処理中のリクエストは `Connection: close` 付きで応答してから閉じ、リクエスト間で待機中の keep-alive 接続は待たずに閉じる。接続数は accept スレッドで数え（`Mutex` で保護）、`serve` の ensure で減らす。
 - i18n なし。バリデーションメッセージは英語固定。
 
+### D15. 認証: フレームワークの原始関数 + アプリが所有するコードを書くジェネレータ（2026-10-22）
+
+- 決定: Rails 8 の `bin/rails generate authentication` と同じ分割にする。(1) フレームワーク側には「自分で書くと間違えるもの」だけを置く: パスワードハッシュ `Cybertrain::Password`（PBKDF2-HMAC-SHA256、PHC 形式の文字列、定数時間比較、`needs_rehash?`）、`Controller.skip_before_action`、ルーティング DSL の `resource`（単数）。(2) `cybertrain generate authentication` が、users / sessions のマイグレーション、`User`（`password=` / `authenticate` / `authenticate_by` を手書きの形で）と `Session` モデル、`SessionsController` / `RegistrationsController` とビュー、`ApplicationController` への `before_action :resume_session` / `:require_authentication` と補助メソッド、routes、レイアウトの nav パーシャル、統合テスト（`test/authentication.rb`）を**アプリのファイルとして**書く。外部ライブラリ（spin パッケージ）としての認証「エンジン」は作らない。
+- 理由（Rails 8 と同じ結論に、Spinel がさらに重みを足す）:
+  - **拡張点が無い。** cybertrain のアプリは `config/routes.rb`・`app/controllers`・`app/views`・`db/migrate` を `spin run gen` が読んで `gen/` を書く構造（D3 / D4）で、パッケージ側のコントローラは字句走査の対象外（`view_assigns` / `run_callback` を自分で書けば動くが、ivar をテンプレートに見せる仕組みの外に出る）、ビューは `app/views/` からしか読まれず埋め込みもそこからだけ、マイグレーションも `db/migrate/` だけ、モデルは schema からの生成物。routes は `config/routes.rb` から `Package.draw(r)` を呼べば足せるが、他が足せない以上、認証パッケージは結局「ファイルをアプリにコピーするジェネレータ + 少しの原始関数」になる。それなら最初からそう作る。
+  - **全プログラム推論の衝突面。** Spinel は依存パッケージのコードもアプリと一つのプログラムとしてコンパイルし、無関係なクラス間でもメソッド名と戻り値型の衝突で推論が壊れる（NOTES 10 / 34 / 41 / 43）。パッケージ作者は「どのアプリと一緒にコンパイルされるか」を知り得ないので、薄い原始関数はよいが、コントローラやモデルのような名前の多いコードを外から持ち込むほどリスクが増える。生成してアプリに置けば、衝突したときに直すのはアプリの中の、読める普通の Ruby になる（原則 2）。
+  - **カスタマイズの道筋。** 認証はアプリごとに必ず変わる（登録の可否、招待制、2 要素、ログイン後の遷移）。Devise 型のエンジンは設定とオーバーライドの層を要求するが、生成コードは直接編集すればよい。Rails 8 が同じ理由で生成方式を選んだ。
+  - **CLI は CRuby、フレームワークは Spinel。** ジェネレータは gem（CRuby）で動き、生成物は Spinel でコンパイルされる。この 2 層はすでに `scaffold` で成立しており、認証ジェネレータは同じ型（`cybertrain/cli/authentication.rb`、gemspec に列挙、`spin run gen` には何も足さない）。
+- パスワードハッシュの選定: Spinel で使えるのは、ランタイム同梱の SHA-256（`Digest::SHA256.digest`、C 実装）、libc の `String#crypt`（bcrypt は glibc / libxcrypt のみで macOS に無い。CI は macOS でも走る）、`openssl` パッケージ（リンクパス問題で D8 で不採用）、C の `ffi_source`（自前の暗号実装のレビュー負担）。純 Ruby の PBKDF2-HMAC-SHA256（`Crypto` の HMAC と同じ作り）を選び、RFC 6070 / 7914 のテストベクタで検証した。実測: 10 万反復で CRuby 660 ms、Spinel コンパイル後 197 ms、60 万反復で 1.09 s（NOTES「数値」）。既定は 10 万反復（Django 2019 年相当、bcrypt cost 12 と同程度の時間）で、`Cybertrain::Password.iterations=` で上げられ、`needs_rehash?` によりログイン時に再ハッシュされる。ループは `while` なのでバックエッジがセーフポイントになり、`SPINEL_WORKERS=1` でも他のリクエストを止めない（docs/thread.md「Preemption」）。アルゴリズムは PHC 文字列の識別子で切り替えられるので、argon2 / bcrypt を C で同梱する spin パッケージが後から出ても既存のダイジェストはそのまま検証できる。**この種の「原始関数だけのパッケージ」はエコシステムに向く**（`sources = [...]` で C を運べ、フレームワークの拡張点を要らない）。
+- 却下した案:
+  - `cybertrain-auth` spin パッケージ（エンジン）: 上記のとおり拡張点が無く、あったとしても推論衝突と `app/views` の制約で薄い層にしかならない。
+  - `has_secure_password` マクロ: `define_method` が無い。ジェネレータの字句走査で `has_secure_password` を拾って `gen/models/user.rb` に吐く案は可能だが、15 行の手書きメソッドのためにジェネレータの入力を増やす価値がない。アプリの `app/models/user.rb` に書き出し、コメントで Rails との対応を示す。
+  - concern（`app/controllers/concerns/authentication.rb` を `include`）: 字句走査は `include` を追わず、`gen/app.rb` の require 順も `application_controller` が先なので CRuby で未定義になる。`ApplicationController` のクラス行の直後にブロックを挿入する（`add_route` と同じ一回限りの編集。`def require_authentication` があれば二度目は何もしない）。concern 対応（`include` を辿る走査と require 順）は将来の独立した機能。
+  - パスワードリセット・メーラー: メーラーが無い（2.3 節）。レート制限: 未実装。`Current`: スレッドローカルの代わりに `resume_session` が `@current_user` / `@current_session` を置き、`view_assigns` 経由でテンプレートが読む。
+  - 登録画面を書かない（Rails 8 と同じ）: Rails は console で最初のユーザーを作るが、cybertrain に console は無い（8 章）。`RegistrationsController`（`/sign_up`）を書き、招待制なら消すようコメントする。
+- 帰結:
+  - フレームワークに足したもの: `Cybertrain::Password`、`Controller.skip_before_action`（クラス名キーの実行時データ。`run_before_callbacks` が名前で照合、継承される。ブロック形は名前が無いので飛ばせない）、`Mapper#resource`、カスタム経路の派生名が既出なら無名にする Rails の規則（`get "/sign_up"` と `post "/sign_up"` で一つの `sign_up_path`。`as:` の重複は従来どおりエラー）。
+  - モデル名 `Session` は `Cybertrain::Session` と共存する（検証済み: 実スタックで cookie session に Session 行の id を往復）。`User` の NOT NULL 文字列列 `password_digest` は空文字が「未設定」（nil を入れると生成コードの型が崩れる、NOTES 7 / 11）。
+  - エコシステムの型: 「原始関数は spin パッケージ、アプリに置くコードはジェネレータ」。cybertrain 自身が gem（CLI）+ spin パッケージ（フレームワーク）を同じタグで出しているのと同じ型を、第三者も `my-gem`（`cybertrain generate NAME` のプラグイン）+ `spinel-my-lib`（原始関数）で踏める。`cybertrain generate` に gem からジェネレータを読み込む仕組みは未実装で、二つ目の外部ジェネレータが要るときに入れる。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。
@@ -264,7 +284,7 @@ ERB のタグ: `<% %>`、`<%= %>`（エスケープ）、`<%== %>`（非エス�
 - `rails console`（`eval` が存在しない）
 - テンプレート内の任意 Ruby、テンプレートの型エラーのコンパイル時検出、スタックトレース付きエラー画面
 - production バイナリの完全単一ファイル化（`app/views` と `public` を同梱。将来のコンパイルバックエンドで回収可能）
-- `namespace` / format / `respond_to`、`has_many :through`、`includes`、`transaction` API、i18n、認証、メーラー、ジョブ、WebSocket
+- `namespace` / format / `respond_to`、`has_many :through`、`includes`、`transaction` API、i18n、メーラー、ジョブ、WebSocket（認証は 2026-10-22 に D15 の形で入った: ジェネレータが書くコードと、`Cybertrain::Password`）
 - Rack 互換、Rails 互換、CRuby 上での実行
 
 ## 9. 未検証の前提とスパイク計画（M0）
@@ -358,3 +378,4 @@ blog/
 - 既知の未対応: strict locals の既定値構文（`<%# locals: (comment: nil) %>`）、`Model#attribute_or_method?` が常に true（typo した属性名が空文字で描画される）、`spin run db migrate` は `--` が必要（`spin run db -- migrate`）、`SPINEL_GC_STRESS=1` 下で最初の `form_with` が空文字を返す事象（Spinel 側のルーティング問題の疑い）。
 - 2026-09-26: アプリの入口を `bin/<name>.rb`（`Cybertrain::Main`: server / migrate / db）に統合。`spin run gen` は `gen/views.rb` を常に書き、`--embed-views` で `app/views/` を文字列テーブルとして埋め込む。本番は埋め込みテーブルのみを描画し（`Template::Engine.embedded`）、空なら起動を拒否する。`cybertrain migration` / `db` / `server` / `build` を追加、`build` は `dist/`（バイナリ、public/、無ければ storage/ と tmp/）を組み立てる。開発時のマイグレーション用に `bin/db.rb` は残す（`bin/<name>.rb` は `gen/app` を読むため、最初のマイグレーションで `gen/models/` ができるまでコンパイルできない。`cybertrain migration` は `spin run db -- migrate` を使い、本番は `dist/<name> migrate`）。設計: docs/superpowers/specs/2026-09-26-cli-build-embedded-views-design.md、計画: docs/superpowers/plans/2026-09-26-cli-build-embedded-views.md。クロスビルドと public/ の埋め込みはスコープ外。
 - 2026-09-27（PR #5 まで）: CLI は gem（`gem install cybertrain`、`cybertrain new` は同じタグを依存に書く。D11）でも配布。`cybertrain build` は `tmp/cybertrain-build.lock`（PID 入り）を dist/ の組み立てが終わるまで持ち、`dist/<name>` と `dist/public/` を rename で差し替える（`.public.old`）。開発サーバはロック中の再ビルドを飛ばしてログに出し、死んだ PID や 30 分以上古いロックは消して無視する。ポートを bind できないときは `PortInUse`（使用中 / 権限なし）を stdout に出して終了コード 1。`schema:dump` は `db/` があるところでだけ書く（無ければ終了コード 1）。`script/regen-snapshot` を追加。`spin test` は 64 プログラム。
+- 2026-10-22: 認証（D15）。`cybertrain generate authentication` が users / sessions のマイグレーション、`User` / `Session` モデル、`SessionsController` / `RegistrationsController`、ビュー、`ApplicationController` への挿入、routes、`test/authentication.rb` を書く。フレームワーク側は `Cybertrain::Password`（PBKDF2-HMAC-SHA256）、`Controller.skip_before_action`、`Mapper#resource`、カスタム経路の派生名の衝突を無名にする規則。CI の gem E2E が生成したアプリをコンパイルしてサインアップ / サインインの統合テストを走らせる。

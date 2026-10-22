@@ -234,15 +234,88 @@ test "a resource whose singular is its plural names its collection <plural>_inde
   assert_equal expected, route_lines(Cybertrain::Routes.specs)
 end
 
-test "a duplicate route name raises" do
+test "a duplicate as: raises" do
   Cybertrain::Routes.reset!
   message = assert_raises("ArgumentError") do
     Cybertrain::Routes.draw do
       get "/about", to: "pages#about"
-      get "/about", to: "pages#other"
+      get "/about-us", to: "pages#other", as: "about"
     end
   end
-  assert_equal "route name 'about' is already in use (GET /about)", message
+  assert_equal "route name 'about' is already in use (GET /about-us)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      resources :posts
+      get "/all", to: "pages#all", as: "posts"
+    end
+  end
+  assert_equal "route name 'posts' is already in use (GET /all)", message
+end
+
+test "a derived name an earlier route owns leaves the later route unnamed, as in Rails" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    get "/sign_up", to: "registrations#new", as: "sign_up"
+    post "/sign_up", to: "registrations#create"
+    get "/about", to: "pages#about"
+    get "/about", to: "pages#other"
+    resources :posts do |posts|
+      posts.member do |m|
+        m.get "preview"
+        m.post "preview"
+      end
+    end
+  end
+  expected = [
+    "GET /sign_up registrations#new sign_up",
+    "POST /sign_up registrations#create",
+    "GET /about pages#about about",
+    "GET /about pages#other",
+    "GET /posts/:id/preview posts#preview preview_post",
+    "POST /posts/:id/preview posts#preview",
+    "GET /posts posts#index posts",
+    "POST /posts posts#create",
+    "GET /posts/new posts#new new_post",
+    "GET /posts/:id/edit posts#edit edit_post",
+    "GET /posts/:id posts#show post",
+    "PATCH /posts/:id posts#update",
+    "PUT /posts/:id posts#update",
+    "DELETE /posts/:id posts#destroy"
+  ]
+  assert_equal expected, route_lines(Cybertrain::Routes.specs)
+end
+
+test "resource draws a singular resource without an index or an id" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    resource :session, only: [:new, :create, :destroy]
+    resource :profile
+    resource :settings, except: [:new, :create, :destroy]
+  end
+  expected = [
+    "POST /session sessions#create session",
+    "GET /session/new sessions#new new_session",
+    "DELETE /session sessions#destroy",
+    "POST /profile profiles#create profile",
+    "GET /profile/new profiles#new new_profile",
+    "GET /profile/edit profiles#edit edit_profile",
+    "GET /profile profiles#show",
+    "PATCH /profile profiles#update",
+    "PUT /profile profiles#update",
+    "DELETE /profile profiles#destroy",
+    "GET /settings/edit settings#edit edit_settings",
+    "GET /settings settings#show settings",
+    "PATCH /settings settings#update",
+    "PUT /settings settings#update"
+  ]
+  assert_equal expected, route_lines(Cybertrain::Routes.specs)
+  # The emitted helpers: a path for the named routes only.
+  source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
+  assert_includes source, "def new_session_path"
+  assert_includes source, "def session_path"
+  assert_includes source, "SessionsController.new(ctx).process(:new) { |c| c.new_action }"
+  assert_includes source, "SessionsController.new(ctx).process(:destroy) { |c| c.destroy }"
 end
 
 test "a route outside resources needs to:" do

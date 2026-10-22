@@ -97,15 +97,24 @@ jobs:
           cd shop
           test -f spin.lock
           cybertrain generate scaffold product name:string price:integer
+          cybertrain generate authentication
           cybertrain db migrate
           cybertrain db status
           cybertrain build
           cybertrain spin run gen -- --check
           test -x dist/shop
+          # The generated app's own sign-up / sign-in test, compiled and run
+          # from the binary (it links SQLite, so it has no CRuby snapshot).
+          cybertrain spin test test/authentication.rb || true
+          test -x build/test/authentication
+          ./build/test/authentication
           cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./shop migrate
           CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3999 ./shop > server.log 2>&1 &
-          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3999/products > /dev/null && break; sleep 0.5; done
-          curl -fsS http://127.0.0.1:3999/products > /dev/null
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3999/session/new > /dev/null && break; sleep 0.5; done
+          curl -fsS http://127.0.0.1:3999/session/new | grep -q "Sign in"
+          curl -fsS http://127.0.0.1:3999/sign_up | grep -q "Sign up"
+          # Signed out, the scaffold is behind the sign-in page.
+          test "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://127.0.0.1:3999/products)" = "303 http://127.0.0.1:3999/session/new"
           curl -fsS http://127.0.0.1:3999/style.css > /dev/null
           curl -fsS http://127.0.0.1:3999/up.html > /dev/null   # Kamal's health check (config/deploy.yml)
           grep -q "production environment" server.log
