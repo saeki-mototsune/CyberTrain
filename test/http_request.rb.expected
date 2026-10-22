@@ -22,4 +22,12 @@ ok   form_value and query_value decode keys and values like a parse
 ok   form_value and query_value: name[]= and name[x]= evict an earlier scalar, a later name= writes it again
 ok   form_value and query_value: MAX_PAIRS segments are counted, one more is QueryTooMany; invalid bytes are QueryMalformed
 ok   form_value on the 4096 x 32 body answers like the parse
-24 tests, 128 assertions, 0 failures
+ok   content_encoding is the lowercased header, empty when absent
+ok   decoded_body is the body itself without a Content-Encoding or with identity
+ok   decoded_body inflates a gzip body once and returns the same String every time
+ok   decoded_body with x-gzip is gzip too
+FAIL decoded_body refuses corrupt gzip data and a body too short to be gzip: expected "BodyUndecodable", got "BodyTooLarge"
+ok   decoded_body refuses an encoding it does not decode
+ok   decoded_body refuses a body whose decoded size is over the limit, by the trailer first
+FAIL a decode error is not cached: every call raises again: expected "BodyUndecodable", got "BodyTooLarge"
+32 tests, 143 assertions, 2 failures

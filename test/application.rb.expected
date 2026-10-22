@@ -21,10 +21,11 @@ ok   boot connects the database, configures views and resolves the secret
 ok   a GET renders a template inside the layout
 ok   a POST without the CSRF token is forbidden
 ok   a POST with the token from the page passes
+ok   a POST under csrf_exempt_prefixes passes without a token; the rest of the app is still checked
 ok   a _method=delete POST reaches the DELETE route
 ok   the session cookie round trips
 ok   a static file is served from the public root
 ok   path helpers in templates call the url_resolver
 ok   a method-returned Gen::Routes-style url_resolver keeps its route names
 ok   the server listens on the configured host and port
-29 tests, 125 assertions, 0 failures
+30 tests, 131 assertions, 0 failures

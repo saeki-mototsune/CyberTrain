@@ -13,6 +13,18 @@ module Cybertrain
     PARAM = "authenticity_token"
     HEADER = "x-csrf-token"
 
+    # exempt_prefixes: request paths starting with one of them skip the
+    # check (Config#csrf_exempt_prefixes): an API that programs call with
+    # a credential of their own. The default is no exemption. The Array is
+    # typed through its parameter default (NOTES rule 9), and a prefix is
+    # matched against Request#path as sent, before any decoding, so a
+    # percent-encoded spelling of an exempt path is still checked (fails
+    # closed).
+    def initialize(app, exempt_prefixes = Array.new(0) { "" })
+      super(app)
+      @exempt_prefixes = exempt_prefixes
+    end
+
     # Returns the session's CSRF token, minting and storing one the first
     # time it is asked for. Delegates to the typed Session instance method
     # -- see Session#csrf_token! for why this isn't done inline here.
@@ -23,6 +35,7 @@ module Cybertrain
     def call(ctx)
       req = ctx.request
       return super if req.get? || req.head? || req.method == "OPTIONS"
+      return super if exempt?(req.path)
 
       session = ctx.session
       expected = session.nil? ? "" : session[TOKEN_KEY].to_s
@@ -36,6 +49,20 @@ module Cybertrain
       end
 
       super
+    end
+
+    # True when path starts with one of the exempt prefixes. A while loop
+    # over a typed String Array, no block (NOTES rules 32, 45); an empty
+    # prefix never matches, so `[""]` does not switch the check off.
+    def exempt?(path)
+      prefixes = @exempt_prefixes
+      i = 0
+      while i < prefixes.size
+        prefix = prefixes[i]
+        return true if !prefix.empty? && path.start_with?(prefix)
+        i += 1
+      end
+      false
     end
 
     private

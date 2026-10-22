@@ -145,6 +145,62 @@ test "an empty session token is treated as missing" do
   assert_equal 403, ctx.response.status
 end
 
+# ---- exempt prefixes (Config#csrf_exempt_prefixes) -------------------------
+
+def build_post_at(path)
+  req = Cybertrain::Request.new("POST", path, { "content-type" => "application/json" }, "{}")
+  ctx = Cybertrain::Context.new(req)
+  ctx.session = Cybertrain::Session.new
+  ctx
+end
+
+test "a POST under an exempt prefix passes without a token" do
+  inner = RecordingApp.new
+  csrf = Cybertrain::CsrfProtection.new(inner, ["/api/"])
+  ctx = build_post_at("/api/1/envelope/")
+
+  csrf.call(ctx)
+
+  assert inner.called
+  refute ctx.response.performed?
+end
+
+test "a POST outside every exempt prefix is still checked" do
+  inner = RecordingApp.new
+  csrf = Cybertrain::CsrfProtection.new(inner, ["/api/"])
+  ctx = build_post_at("/apix/1")
+
+  csrf.call(ctx)
+
+  refute inner.called
+  assert_equal 403, ctx.response.status
+end
+
+test "an exempt prefix is matched on the path as sent, so a percent-encoded spelling is checked" do
+  inner = RecordingApp.new
+  csrf = Cybertrain::CsrfProtection.new(inner, ["/api/"])
+  ctx = build_post_at("/%61pi/1")
+
+  csrf.call(ctx)
+
+  refute inner.called
+  assert_equal 403, ctx.response.status
+end
+
+test "an empty prefix exempts nothing and the default is no exemption" do
+  inner = RecordingApp.new
+  csrf = Cybertrain::CsrfProtection.new(inner, [""])
+  ctx = build_post_at("/anything")
+  csrf.call(ctx)
+  refute inner.called
+  assert_equal 403, ctx.response.status
+
+  inner = RecordingApp.new
+  csrf = Cybertrain::CsrfProtection.new(inner)
+  refute csrf.exempt?("/api/1")
+  assert Cybertrain::CsrfProtection.new(inner, ["/hooks/", "/api/"]).exempt?("/api/1")
+end
+
 test "token_for mints a token once and reuses it" do
   session = Cybertrain::Session.new
   t1 = Cybertrain::CsrfProtection.token_for(session)

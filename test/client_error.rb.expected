@@ -9,4 +9,4 @@ ok   bare_name is the part after the last namespace separator
 ok   every bare client-fault name is unique within the list
 ok   status of the framework's own exceptions
 ok   a client fault is classified as a 400 at info level, an ArgumentError as a 500 at error
-11 tests, 60 assertions, 0 failures
+11 tests, 66 assertions, 0 failures

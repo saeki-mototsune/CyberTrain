@@ -133,6 +133,29 @@ module Cybertrain
     # @api public
     attr_accessor :csrf
 
+    # Path prefixes whose non-GET requests skip the CSRF check, `[]`: for an
+    # API that other programs call with a token of its own (a webhook
+    # receiver, an SDK's ingest endpoint), where no browser session exists.
+    # A prefix is compared with the request path as sent (not decoded) from
+    # its first byte, so give it with both slashes: `"/api/"` exempts
+    # `/api/notes` and `/api/1/events/`, not `/apix`. Anything not under a
+    # listed prefix is checked as before. The exempt controller must
+    # authenticate its callers itself (an API key in a header).
+    # @example config/app.rb
+    #   c.csrf_exempt_prefixes = ["/api/"]
+    # @return [Array<String>]
+    # @api public
+    attr_accessor :csrf_exempt_prefixes
+
+    # The largest request body the server accepts, in bytes, `10485760`
+    # (10 MiB); a longer one is answered 413 before the body is read. Raise
+    # it for an endpoint that receives large uploads or compressed payloads
+    # (the limit is on the bytes on the wire; see {Request#decoded_body} for
+    # the decoded size).
+    # @return [Integer]
+    # @api public
+    attr_accessor :max_body_bytes
+
     # Spinel worker threads, `1`, from `SPINEL_WORKERS`.
     # @return [Integer]
     # @api public
@@ -221,6 +244,12 @@ module Cybertrain
       @pool_size = 4
       @static_files = true
       @csrf = true
+      # An element-typed empty Array (spikes/NOTES.md rule 9): config/app.rb
+      # assigns a literal, the stack reads it.
+      @csrf_exempt_prefixes = Array.new(0) { "" }
+      # The same number as Server.new's default (cybertrain/http/server.rb), kept
+      # as a literal here: the HTTP layer must not be required by Config.
+      @max_body_bytes = 10_485_760
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i
     end
 

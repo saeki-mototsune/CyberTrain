@@ -105,6 +105,8 @@ test "config defaults in development" do
   refute c.session_partitioned
   assert c.static_files
   assert c.csrf
+  assert c.csrf_exempt_prefixes.empty?
+  assert_equal 10_485_760, c.max_body_bytes
   assert_equal 1, c.workers
   assert_equal "tmp/secret_key", c.secret_key_path
 end
@@ -273,6 +275,7 @@ router.get("/links", "links") { |ctx| PagesController.new(ctx).process(:links) {
 router.get("/visit", "visit") { |ctx| PagesController.new(ctx).process(:visit) { |c| c.visit } }
 router.post("/notes", "notes") { |ctx| PagesController.new(ctx).process(:create) { |c| c.create } }
 router.delete("/notes/:id", "note") { |ctx| PagesController.new(ctx).process(:destroy) { |c| c.destroy } }
+router.post("/api/notes", "api_notes") { |ctx| PagesController.new(ctx).process(:create) { |c| c.create } }
 
 # The Application Cybertrain::Main builds for bin/<name>.rb, minus views:
 # and name:. NOTE(Spinel 2026.09.12): a lambda literal written as a keyword
@@ -439,6 +442,20 @@ test "a POST with the token from the page passes" do
   res = CLIENT.post("/notes", { "title" => "hello", "authenticity_token" => token })
   assert_response res, :created
   assert_equal "created hello", res.body
+end
+
+test "a POST under csrf_exempt_prefixes passes without a token; the rest of the app is still checked" do
+  c = Cybertrain::Config.new
+  c.log_level = :none
+  c.csrf_exempt_prefixes = ["/api/"]
+  c.secret_key_base = "api-secret"
+  api_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
+  client = Cybertrain::Test::Client.new(api_app)
+  res = client.request("POST", "/api/notes?title=gz", "{}", { "content-type" => "application/json" })
+  assert_response res, :created
+  assert_equal "created gz", res.body
+  assert_response client.post("/notes", { "title" => "x" }), :forbidden
+  assert_response CLIENT.request("POST", "/api/notes", "{}", { "content-type" => "application/json" }), :forbidden
 end
 
 test "a _method=delete POST reaches the DELETE route" do
