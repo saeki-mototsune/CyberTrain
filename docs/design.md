@@ -219,7 +219,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - エラーページ: production は `public/404.html` / `public/500.html`（最外周の `ErrorPages` ミドルウェア。例外は 500 にし、本文が空・Content-Type なし・`text/plain` のエラー応答を `public/<status>.html` に差し替える。アクションが HTML / JSON で描画したエラーはそのまま）、development は診断ページ。
 - セッション Cookie: production では `Secure` 属性を付ける（`Config#session_secure`、既定は `production?`）。
 - セッション Cookie の SameSite は `Config#session_same_site`（既定 `Lax`、`CYBERTRAIN_SESSION_SAME_SITE`、`Lax`/`Strict`/`None` 以外は起動時エラー）、`Partitioned` は `Config#session_partitioned`（既定 false、`CYBERTRAIN_SESSION_PARTITIONED`）。`None` か `Partitioned` のときは `session_secure` に関係なく `Secure`。待ち受けアドレスは `Config#host`（既定 `127.0.0.1`、`CYBERTRAIN_HOST`）。（2026-10-02、web playground SP1）
-- 安全側の既定: 出力エスケープ、CSRF、署名クッキー、SQL は常にバインド変数、`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`。
+- 安全側の既定: 出力エスケープ、CSRF、署名クッキー、SQL は常にバインド変数、`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`。（2026-10-22 時点で、後ろの 2 つは全レスポンスの既定としてはまだ実装されていない。アップロードの配信だけは `send_blob` が付ける。D16）
 - 終了処理: `SIGTERM` で listen を止め、処理中のリクエストを待って終了。`trap` が使えなければ libc の `signal` を FFI で呼ぶ。trap ブロックは C のシグナルハンドラから直接呼ばれるので、ハンドラはフラグを落とすだけ（`Server#request_stop`）にし、`Thread#join` などは通常のスレッド文脈で行う。フラグが落ちると accept ループが listener を閉じ、`Server#run` は開いている接続が閉じるのを最大 `drain_timeout`（既定 10 秒、systemd の `TimeoutStopSec` より短く）待ってから戻る。処理中のリクエストは `Connection: close` 付きで応答してから閉じ、リクエスト間で待機中の keep-alive 接続は待たずに閉じる。接続数は accept スレッドで数え（`Mutex` で保護）、`serve` の ensure で減らす。
 - i18n なし。バリデーションメッセージは英語固定。
 
@@ -242,6 +242,50 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - フレームワークに足したもの: `Cybertrain::Password`、`Controller.skip_before_action`（クラス名キーの実行時データ。`run_before_callbacks` が名前で照合、継承される。ブロック形は名前が無いので飛ばせない）、`Mapper#resource`、カスタム経路の派生名が既出なら無名にする Rails の規則（`get "/sign_up"` と `post "/sign_up"` で一つの `sign_up_path`。`as:` の重複は従来どおりエラー）。
   - モデル名 `Session` は `Cybertrain::Session` と共存する（検証済み: 実スタックで cookie session に Session 行の id を往復）。`User` の NOT NULL 文字列列 `password_digest` は空文字が「未設定」（nil を入れると生成コードの型が崩れる、NOTES 7 / 11）。
   - エコシステムの型: 「原始関数は spin パッケージ、アプリに置くコードはジェネレータ」。cybertrain 自身が gem（CLI）+ spin パッケージ（フレームワーク）を同じタグで出しているのと同じ型を、第三者も `my-gem`（`cybertrain generate NAME` のプラグイン）+ `spinel-my-lib`（原始関数）で踏める。`cybertrain generate` に gem からジェネレータを読み込む仕組みは未実装で、二つ目の外部ジェネレータが要るときに入れる。
+
+### D16. ファイルアップロード: フレームワークの原始関数 + アプリが所有するコードを書くジェネレータ（2026-10-22）
+
+- 決定: D15 と同じ分割にし、別ライブラリ（spin パッケージ）は作らない。
+  - フレームワーク（`cybertrain/`）に置くのは、閉じた層にあるものと、自分で書くと間違えるものだけ:
+    - `cybertrain/http/multipart.rb`: バイナリ安全な multipart/form-data パーサ `Cybertrain::Multipart` と、その結果 `MultipartForm`。例外 4 種（`MultipartMalformed` / `MultipartTooManyParts` / `MultipartPartTooLarge` / `MultipartHeaderTooLarge`）は `QueryInvalid` の子で、`CLIENT_FAULTS` に列挙して 400 にする。
+    - `cybertrain/http/uploaded_file.rb`: `UploadedFile`。マジックバイトによる型判定、ファイル名の無害化、ASCII だけの `Content-Disposition` 生成を含む。
+    - `Params` の 4 つ目の型付き Hash と `params.upload(:key)`。`permit` は今までどおり文字列だけを返すので、ファイルが一括代入に紛れ込むことはない。
+    - `Request#multipart_form`: リクエストごとに一度だけ解析してキャッシュする。`form_or_query_value` もこれを読むので、`CsrfProtection` と `MethodOverride` がトークンと `_method` を multipart 本文から読める。これまでは multipart の POST がすべて 403 だった。
+    - `form_with(multipart: true)` と `f.file_field`。
+    - `Config#max_upload_bytes`（5 MiB）、`max_multipart_parts`（128）、`upload_root`（`storage/uploads`）。
+    - ディスク保存の原始関数 `Cybertrain::BlobStore`: サーバが生成する 32 桁 hex のキー、`0600`、一時ファイルからの rename。
+    - 信頼できないバイト列を安全なヘッダで返す `Controller#send_blob`。
+  - `cybertrain generate attachment MODEL FIELD [--any]` と、scaffold の `FIELD:attachment` 型が、アプリのファイルとして次を書く:
+    - 所有テーブルにメタデータ列 5 本（`<f>_key` / `_filename` / `_content_type` / `_byte_size` / `_checksum`）を足すマイグレーション。
+    - モデルのフィールド名付きメソッドとコールバック。
+    - 所有コントローラのメンバーアクション `GET /posts/:id/cover` と、その route。
+    - フォームと show の編集、アプリの統合テスト。
+- 理由:
+  - **拡張点が無い。** D15 の理由 1 がここではもっと強く効く。multipart の解析は、ルーティングより前に動く `CsrfProtection` / `MethodOverride` が読めるよう `Request` の中に要る。`Params` の型付きスロット、`FormBuilder` の閉じた case 表、`ClientError::CLIENT_FAULTS`、HTTP 層の単独ロード規則（`script/check-http-layer`）も同じで、どれも spin パッケージからも生成コードからも届かない。パッケージに残せるのは `BlobStore` と配信ヘッダの百行ほどだけになる。
+  - **フレームワーク自体が spin パッケージである。** 「セキュリティ修正をバージョン一つで配れる」という別パッケージ案の利点は、`cybertrain/` に置いても同じ形で得られる。別パッケージにすると、二つ目のタグ、アプリの spin.toml の編集、全プログラム推論の衝突面（NOTES 10 / 34 / 41 / 43）が増えるだけになる。
+  - **モデル・コントローラ・ビュー・マイグレーションは生成してアプリに置く。** `has_one_attached` は `define_method` が無いので書けない（D15 の `has_secure_password` と同じ）。許可する型、サイズ、認可、表示はアプリごとに変わるので、直接編集できる生成コードが向く。
+  - **配信は所有コントローラを通す。** アプリの `before_action`（認証）がそのまま効く。
+    - `Static` / `public/` は使わない。html・svg をインラインで返し、public なキャッシュを付け、ビルドのたびに置き換わるため。
+    - バイト列は永続ボリュームの `storage/uploads/` に置く。SQLite にはメタデータだけを入れる（NUL で切れるため）。
+    - 型はクライアントの申告を信じず、マジックバイトで判定する。インラインで返すのは PNG / JPEG / GIF / WebP だけで、それ以外は `attachment` + `application/octet-stream`。配信には必ず `nosniff` と `Content-Security-Policy: default-src 'none'; sandbox` を付ける。
+- 却下した案:
+  - `cybertrain-storage` パッケージ（原始関数だけのものも、エンジンとしてのものも）。理由は上記。
+  - 生成のみ（パーサをアプリに複製する）。ルーティング前の層に届かず、セキュリティ修正が配れない。
+  - Active Storage 型の共有テーブルと `has_one_attached`。`define_method` が無く、polymorphic な関連も無い。
+  - SQLite の BLOB。
+  - `public/` からの配信。
+  - ストリーミング受信。サーバは本文を全部メモリに読むので（`max_body_bytes` が上限）、サーバの改修として別件にする。
+  - v1 での 413 / 415 への対応付け。サイズ超過は 400。`ClientError.status_for_name` と `Controller#rescue_with_handler` を広げる別件にする。
+  - 1 フィールドに複数ファイル（`name[]`）。v1 では `MultipartMalformed` にする。
+- 帰結と今後:
+  - D14 の「安全側の既定」にある全レスポンスへの `X-Content-Type-Options: nosniff` / `X-Frame-Options: SAMEORIGIN` は、まだ実装されていない。アップロードの配信は `send_blob` が自分で付ける。全レスポンスへの既定化は多数のスナップショットに及ぶので、別の PR にする。
+  - S3 など二つ目の保存先が要るときは、`BlobStore` と同じ `write` / `read` / `delete` / `exist?` の面を持つ「原始関数だけの spin パッケージ」として足す（D15 のエコシステムの型）。
+  - 既知の穴:
+    - `before_save` の後で DB の書き込みが失敗すると、孤児ファイルが残る（`save` にトランザクションが無い）。
+    - EXIF などのメタデータはそのまま保存される。
+    - `SPINEL_WORKERS=1` では、ディスク書き込みの間ワーカーが止まる。
+    - 配信は同一オリジン。
+  - 孤児ファイルの掃除、ETag / Range、別オリジン配信は後続の作業。
 
 ## 5. リクエストの流れ
 
