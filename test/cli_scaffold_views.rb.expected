@@ -12,9 +12,14 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/style.css
+create public/up.html
 create bin/blog.rb
 create bin/gen.rb
 create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
 create gen/.keep
 create storage/.keep
 create tmp/.keep

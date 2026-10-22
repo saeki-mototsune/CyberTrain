@@ -29,8 +29,9 @@ EXPECTED_FILES = [
   "db/schema.rb", "db/migrate/.keep",
   "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep",
   "app/views/layouts/application.html.erb",
-  "public/404.html", "public/500.html", "public/style.css",
+  "public/404.html", "public/500.html", "public/style.css", "public/up.html",
   "bin/blog.rb", "bin/gen.rb", "bin/db.rb",
+  "Dockerfile", ".dockerignore", "config/deploy.yml", ".kamal/secrets",
   "gen/.keep", "storage/.keep", "tmp/.keep", "test/.keep"
 ]
 
@@ -129,6 +130,36 @@ test "README.md gives the cybertrain command sequence" do
   assert_includes readme, "cybertrain build"
   assert_includes readme, "bin/db.rb"
   assert_nil readme.index("spin run db")
+end
+
+test "the Dockerfile builds dist/ in the image and runs it on 0.0.0.0:3000" do
+  dockerfile = read("blog/Dockerfile")
+  assert_includes dockerfile, "RUN gem install cybertrain -v #{Cybertrain::VERSION} --no-document && cybertrain setup"
+  assert_includes dockerfile, "RUN cybertrain build"
+  assert_includes dockerfile, "COPY --from=build --chown=app:app /src/dist/ /app/"
+  assert_includes dockerfile, "CYBERTRAIN_HOST=0.0.0.0"
+  assert_includes dockerfile, "EXPOSE 3000"
+  assert_includes dockerfile, "CMD [\"sh\", \"-c\", \"./blog migrate && exec ./blog\"]"
+  # Both stages are the same release: the binary links its libc and SQLite.
+  assert_equal 2, dockerfile.scan("FROM docker.io/library/ubuntu:$UBUNTU_VERSION").size
+  ignored = read("blog/.dockerignore")
+  ["/.git/", "/.kamal/", "/build/", "/dist/", "/storage/*", "/tmp/*"].each { |path| assert_includes ignored, "#{path}\n" }
+end
+
+test "config/deploy.yml and .kamal/secrets configure Kamal for the app" do
+  deploy = read("blog/config/deploy.yml")
+  assert_includes deploy, "service: blog\n"
+  assert_includes deploy, "image: your-user/blog\n"
+  assert_includes deploy, "  app_port: 3000\n"
+  assert_includes deploy, "    path: /up.html\n"
+  assert_includes deploy, "    - CYBERTRAIN_SECRET_KEY_BASE\n"
+  assert_includes deploy, "  - \"blog_storage:/app/storage\"\n"
+  assert_includes deploy, "db_status: app exec --reuse \"./blog db status\""
+  secrets = read("blog/.kamal/secrets")
+  assert_includes secrets, "KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD\n"
+  assert_includes secrets, "CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE\n"
+  assert_includes read("blog/public/up.html"), "OK"
+  assert_includes read("blog/README.md"), "kamal setup"
 end
 
 test "CLI new --path expands a relative DIR against the current directory" do

@@ -614,6 +614,13 @@
       <li><code>SIGTERM</code> cesse d’accepter des connexions, laisse se terminer les requêtes en cours et quitte quand elles sont terminées, ou après le <code>drain_timeout</code> du serveur (10&nbsp;s).</li>
       <li>La surveillance des fichiers et la boucle de recompilation ne tournent jamais en production. Un <code>cybertrain server</code> en cours d’exécution saute ses recompilations tant que <code>cybertrain build</code> détient <code>tmp/cybertrain-build.lock</code>.</li>
     </ul>
+    <p><code>cybertrain new</code> écrit aussi une configuration <a href="https://kamal-deploy.org" rel="noopener">Kamal 2</a>. Le <code>Dockerfile</code> exécute <code>cybertrain setup</code> et <code>cybertrain build</code> dans une étape de build Ubuntu et copie <code>dist/</code> dans une étape allégée de la même version, qui applique les migrations au démarrage puis écoute sur <code>0.0.0.0:3000</code>. À côté se trouvent <code>.dockerignore</code>, <code>config/deploy.yml</code> (kamal-proxy avec Let&rsquo;s Encrypt en façade, le contrôle de santé sur <code>public/up.html</code>, le fichier SQLite sur un volume monté en <code>/app/storage</code>) et <code>.kamal/secrets</code>, qui lit <code>KAMAL_REGISTRY_PASSWORD</code> et <code>CYBERTRAIN_SECRET_KEY_BASE</code> dans l’environnement. Renseignez les valeurs marquées <code>CHANGE ME</code> dans <code>config/deploy.yml</code>, committez, puis&nbsp;:</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code&nbsp;: terminal &mdash; blog/"><code><span class="ln cmd">kamal setup    <span class="c"># la première fois : installe Docker et kamal-proxy sur le serveur, construit, pousse et démarre</span></span>
+<span class="ln cmd">kamal deploy   <span class="c"># chaque déploiement suivant</span></span></code></pre>
+</figure>
+    <p>Le binaire est compilé dans l’image, son OS correspond donc toujours à celui de l’image&nbsp;; réglez <code>builder.arch</code> dans <code>config/deploy.yml</code> sur le CPU du serveur. Déployez sur un seul serveur&nbsp;: la base de données est un fichier SQLite sur le volume de ce serveur. La partie 8 de <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md#第-8-部-kamal-でデプロイする" rel="noopener"><code>docs/deploy.md</code></a> (en japonais) détaille la procédure, sauvegardes comprises.</p>
   </section>
 
   <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">

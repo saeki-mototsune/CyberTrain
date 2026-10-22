@@ -6,6 +6,7 @@
 # Generated views stay inside the template language of docs/design.md
 # section 7: literals, @ivars, locals, helper calls, `if` and `each do`.
 require "cybertrain/ident"
+require "cybertrain/version"
 
 module Cybertrain
   module CLI
@@ -108,6 +109,12 @@ module Cybertrain
           To deploy, copy `dist/` to a machine with the same OS and CPU, then
           `cd dist && ./#{package} migrate && ./#{package}` (production by default;
           set CYBERTRAIN_SECRET_KEY_BASE).
+
+          Or deploy with [Kamal](https://kamal-deploy.org): fill in the values
+          marked CHANGE ME in `config/deploy.yml`, export
+          KAMAL_REGISTRY_PASSWORD and CYBERTRAIN_SECRET_KEY_BASE (read by
+          `.kamal/secrets`), commit, then `kamal setup` once and `kamal deploy`
+          after that. The `Dockerfile` builds the binary inside the image.
         MARKDOWN
       end
 
@@ -246,6 +253,177 @@ module Cybertrain
 
           exit(Cybertrain::DB::CLI.run(ARGV))
         RUBY
+      end
+
+      # ---- Kamal (docs/deploy.md, "Kamal でデプロイする") ------------------
+      #
+      # The image compiles the app inside the build stage, so the binary
+      # links the same libc and SQLite as the runtime stage: both stages are
+      # the same Ubuntu release (its apt Ruby is 3.2, what the CLI needs).
+      # The gem is pinned to this CLI's version, the release `new` writes into
+      # spin.toml, so the generator that runs in the image matches the
+      # framework spin.lock fixes.
+
+      def self.dockerfile(package)
+        <<~DOCKERFILE
+          # syntax=docker/dockerfile:1
+          # The production image `kamal deploy` builds and runs (config/deploy.yml).
+          # To try it by hand:
+          #   docker build -t #{package} .
+          #   docker run --rm -p 127.0.0.1:3000:3000 -e CYBERTRAIN_SECRET_KEY_BASE=$(openssl rand -hex 32) \\
+          #     -v #{package}_storage:/app/storage #{package}
+          # then open http://localhost:3000 (the session cookie is Secure in
+          # production; Chrome and Firefox accept it from localhost over http).
+          #
+          # The framework is fetched by spin from what spin.toml names (a git tag
+          # by default); an app created with --path needs a git or version
+          # dependency before it can be built here.
+
+          ARG UBUNTU_VERSION=24.04
+
+          # ---- build: Spinel, then `cybertrain build` -> /src/dist ----------------
+          FROM docker.io/library/ubuntu:$UBUNTU_VERSION AS build
+
+          RUN apt-get update -qq && \\
+              apt-get install --no-install-recommends -y build-essential git curl ca-certificates \\
+                ruby libsqlite3-dev zlib1g-dev libjemalloc-dev && \\
+              rm -rf /var/lib/apt/lists/*
+
+          # The cybertrain command, then the Spinel release it pins: a few minutes,
+          # cached as a layer until the version changes.
+          RUN gem install cybertrain -v #{Cybertrain::VERSION} --no-document && cybertrain setup
+
+          WORKDIR /src
+          COPY . .
+          RUN cybertrain build
+
+          # ---- runtime: the binary, public/ and the libraries it links ----------
+          FROM docker.io/library/ubuntu:$UBUNTU_VERSION
+
+          RUN apt-get update -qq && \\
+              apt-get install --no-install-recommends -y libsqlite3-0 zlib1g libjemalloc2 && \\
+              rm -rf /var/lib/apt/lists/*
+
+          RUN useradd --system --create-home --shell /bin/bash app
+
+          WORKDIR /app
+          COPY --from=build --chown=app:app /src/dist/ /app/
+
+          # storage/ holds the SQLite database (storage/production.sqlite3); mount
+          # a volume there so it outlives the container.
+          USER app
+          ENV CYBERTRAIN_ENV=production \\
+              CYBERTRAIN_HOST=0.0.0.0 \\
+              PORT=3000
+          EXPOSE 3000
+
+          # Apply pending migrations, then serve. exec hands SIGTERM to the server,
+          # which finishes the requests in flight before it exits.
+          CMD ["sh", "-c", "./#{package} migrate && exec ./#{package}"]
+        DOCKERFILE
+      end
+
+      def self.dockerignore
+        <<~TEXT
+          # What the image build does not need (see Dockerfile).
+          /.git/
+          /.kamal/
+          /build/
+          /dist/
+          /log/
+          /storage/*
+          !/storage/.keep
+          /tmp/*
+          !/tmp/.keep
+        TEXT
+      end
+
+      def self.deploy_yml(package)
+        <<~YAML
+          # Kamal 2 (https://kamal-deploy.org): `kamal setup` the first time,
+          # `kamal deploy` after that. Replace every value marked CHANGE ME.
+
+          # Name of the application; names its containers.
+          service: #{package}
+
+          # The image to build and push. CHANGE ME: your registry user.
+          image: your-user/#{package}
+
+          # The servers to deploy to. CHANGE ME: the server's address. One
+          # server: the database is a SQLite file on that server's volume.
+          servers:
+            web:
+              - 192.168.0.1
+
+          # kamal-proxy terminates TLS (a Let's Encrypt certificate for host)
+          # and forwards to the app on port 3000. Keep ssl on: in production the
+          # session cookie is Secure, so forms only work over HTTPS. CHANGE ME:
+          # host, with a DNS record pointing at the server.
+          proxy:
+            ssl: true
+            host: #{package}.example.com
+            app_port: 3000
+            healthcheck:
+              # public/up.html, served by the app itself.
+              path: /up.html
+
+          # Credentials for the registry the image is pushed to. CHANGE ME:
+          # the user; the password comes from .kamal/secrets.
+          registry:
+            # server: ghcr.io
+            username: your-user
+            password:
+              - KAMAL_REGISTRY_PASSWORD
+
+          # The app's settings (cybertrain/config.rb). Secrets come from
+          # .kamal/secrets.
+          env:
+            secret:
+              - CYBERTRAIN_SECRET_KEY_BASE
+            # clear:
+            #   SPINEL_WORKERS: 2
+
+          # The SQLite database lives in storage/: keep it on the server across
+          # deploys. Back it up from there (docs/deploy.md).
+          volumes:
+            - "#{package}_storage:/app/storage"
+
+          # `kamal db_status` (pending migrations) and `kamal shell`.
+          aliases:
+            db_status: app exec --reuse "./#{package} db status"
+            shell: app exec --interactive --reuse "bash"
+
+          # The image compiles the app (and Spinel, once) inside Docker. Build for
+          # the server's CPU; building another architecture under emulation is
+          # slow, so on an arm64 Mac either build on the server
+          # (remote: ssh://root@192.168.0.1) or set arch to arm64 for an arm64
+          # server.
+          builder:
+            arch: amd64
+            # remote: ssh://root@192.168.0.1
+        YAML
+      end
+
+      def self.kamal_secrets
+        <<~TEXT
+          # Secrets for config/deploy.yml, read from the environment of the
+          # machine running kamal (or a password manager:
+          # https://kamal-deploy.org/docs/commands/secrets/). Never write the
+          # values themselves here: this file is committed.
+
+          # A token that can push to the registry (Docker Hub access token, or a
+          # GitHub token with write:packages for ghcr.io).
+          KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD
+
+          # Signs the session cookie; changing it signs everyone out. Generate it
+          # once with `openssl rand -hex 32` and keep it somewhere safe.
+          CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE
+        TEXT
+      end
+
+      # What kamal-proxy polls before it sends traffic to a new container.
+      def self.up_html
+        "<!DOCTYPE html>\n<html><body>OK</body></html>\n"
       end
 
       # ---- cybertrain generate scaffold --------------------------------

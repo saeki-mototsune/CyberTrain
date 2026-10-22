@@ -635,6 +635,17 @@ are closed at once) and exits when they are done, or after the server's
 (Japanese) walks through it end to end: `cybertrain new`, an Ubuntu server,
 systemd, Caddy with HTTPS, redeploys, rollbacks and backups.
 
+**Kamal:** `cybertrain new` also writes what [Kamal 2](https://kamal-deploy.org)
+needs: a `Dockerfile` that runs `cybertrain setup` and `cybertrain build` in an
+Ubuntu build stage and copies `dist/` into a slim stage of the same release
+(migrate on boot, then serve on `0.0.0.0:3000`), a `.dockerignore`,
+`config/deploy.yml` (kamal-proxy with Let's Encrypt in front, the
+health check on `public/up.html`, the SQLite file on a volume at
+`/app/storage`) and `.kamal/secrets` (`KAMAL_REGISTRY_PASSWORD` and
+`CYBERTRAIN_SECRET_KEY_BASE` from the environment). Fill in the values marked
+`CHANGE ME`, commit, and `kamal setup`; part 8 of
+[docs/deploy.md](docs/deploy.md) has the details.
+
 ## Testing an app
 
 App tests are plain Spinel programs under `test/`, like the framework's own:

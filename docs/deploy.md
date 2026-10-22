@@ -19,6 +19,9 @@
   ビルドする**のがこのチュートリアルのやり方です（一番ハマりにくい）。
 - サーバーは TLS と HTTP/2 を話さないので、前段に Caddy を置きます。
 - DB は SQLite 1 ファイルです。サーバー 1 台構成が前提です。
+- Docker と [Kamal](https://kamal-deploy.org) で配る方法は[第 8 部](#第-8-部-kamal-でデプロイする)にあります。
+  `cybertrain new` は `Dockerfile` と `config/deploy.yml` も書くので、サーバーに Docker を入れられる
+  なら、第 3 部〜第 6 部の代わりにそちらを使えます。
 
 ## この文書で使う名前
 
@@ -735,6 +738,126 @@ git push
 フォームは CSRF エラーになります。
 
 ---
+
+## 第 8 部: Kamal でデプロイする
+
+第 3 部〜第 6 部（サーバー上でビルドし、systemd と Caddy で動かす）の代わりに、Docker イメージに
+して [Kamal 2](https://kamal-deploy.org) で配ることもできます。`cybertrain new` は次のファイルを
+書いています。
+
+| ファイル | 中身 |
+| --- | --- |
+| `Dockerfile` | 2 段のビルド。1 段目（Ubuntu 24.04）で `gem install cybertrain`・`cybertrain setup`（Spinel）・`cybertrain build` を実行し、2 段目（同じ Ubuntu）に `dist/` と実行時に要るライブラリ（SQLite・zlib・jemalloc）だけを入れる。起動時に `./notes migrate` してから `./notes` を `exec` する |
+| `.dockerignore` | `build/`・`dist/`・`storage/` の DB・`tmp/`・`.git/`・`.kamal/` をビルドに渡さない |
+| `config/deploy.yml` | Kamal の設定。kamal-proxy が HTTPS（Let's Encrypt）を受けてアプリの 3000 番に渡し、`/up.html` でヘルスチェックする。DB はボリューム `notes_storage`（コンテナの `/app/storage`）に置く |
+| `.kamal/secrets` | `KAMAL_REGISTRY_PASSWORD` と `CYBERTRAIN_SECRET_KEY_BASE` を、kamal を実行するシェルの環境変数から読む。値そのものは書かない（コミットするファイル） |
+| `public/up.html` | ヘルスチェック用のページ。アプリ自身が静的ファイルとして返す |
+
+バイナリは Docker の中でビルドされるので、「動かすマシンと同じ OS でビルドする」制約はイメージが
+満たします。CPU は合わせる必要があります（`builder.arch`。下記）。
+
+### 8-1. 用意するもの
+
+- 手元: Docker と Kamal（`gem install kamal`）。
+- サーバー: Ubuntu など、root（または sudo できるユーザー）で SSH できるマシン。Docker は
+  `kamal setup` が入れます。80 と 443 を開けておきます。
+- DNS: `notes.example.com` の A（AAAA）レコードをサーバーに向けておきます（3-1 と同じ）。
+- イメージの置き場: Docker Hub か GitHub Container Registry（ghcr.io）のアカウントと、push できる
+  トークン。
+- フレームワークの参照: `spin.toml` の `cybertrain =` が git のタグ（`cybertrain new` の既定）か
+  バージョンであること。`--path` で作ったアプリは、イメージの中からそのパスが見えないのでビルド
+  できません。
+
+### 8-2. `config/deploy.yml` を書き換える
+
+`CHANGE ME` と書いた値を自分のものにします。
+
+```yaml
+service: notes
+image: YOUR_DOCKERHUB_USER/notes      # ghcr.io なら YOUR_GITHUB/notes
+
+servers:
+  web:
+    - 203.0.113.10                    # サーバーの IP アドレスかホスト名
+
+proxy:
+  ssl: true
+  host: notes.example.com
+  app_port: 3000
+  healthcheck:
+    path: /up.html
+
+registry:
+  # server: ghcr.io                   # ghcr.io を使うときだけ
+  username: YOUR_DOCKERHUB_USER
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+```
+
+`builder.arch` はサーバーの CPU に合わせます（x86-64 なら `amd64`、arm64 なら `arm64`）。
+イメージのビルドでは Spinel もコンパイルするので、手元と違う CPU 向けにエミュレーションでビルド
+すると非常に遅くなります。Apple Silicon の Mac から x86-64 のサーバーに配るときは
+`builder.remote: ssh://root@203.0.113.10` を有効にして、サーバー上でビルドさせるのがおすすめです。
+
+`proxy.ssl` は外さないでください。本番のセッション Cookie は `Secure` なので、HTTP ではフォーム
+送信が 403 になります。
+
+### 8-3. 秘密鍵を用意する
+
+`.kamal/secrets` は環境変数を読むだけなので、kamal を実行するシェルで設定します。
+`CYBERTRAIN_SECRET_KEY_BASE` は一度だけ作り、パスワードマネージャーなどに保管してください
+（変えると全員のセッションが切れます）。
+
+```sh
+export KAMAL_REGISTRY_PASSWORD=...                      # レジストリのトークン
+export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"   # 初回だけ作り、保管した値を使う
+```
+
+パスワードマネージャーから直接読む書き方は
+[Kamal のドキュメント](https://kamal-deploy.org/docs/commands/secrets/)にあります。
+
+### 8-4. 最初のデプロイ
+
+Kamal は手元の git の HEAD からイメージをビルドします。`gen/` を含めてコミットしてから実行します
+（2-7）。
+
+```sh
+cybertrain spin run gen -- --check
+git add -A && git commit -m "Configure Kamal"
+kamal setup
+```
+
+`kamal setup` はサーバーに Docker と kamal-proxy を入れ、イメージをビルドして push し、
+コンテナを起動します。初回は Spinel のコンパイルがあるので数分かかります（Docker のレイヤー
+キャッシュに残るので、2 回目からはアプリのビルドだけです）。コンテナは起動時に
+`./notes migrate` を流してからサーバーを起動し、`/up.html` が 200 を返すと kamal-proxy が
+トラフィックを切り替えます。https://notes.example.com を開いて確かめます。
+
+### 8-5. 日々の運用
+
+| やりたいこと | コマンド |
+| --- | --- |
+| 更新をデプロイする（コミットしてから） | `kamal deploy` |
+| ログを見る | `kamal app logs -f` |
+| マイグレーションの状態 | `kamal db_status`（`config/deploy.yml` の `aliases`） |
+| コンテナでシェルを開く | `kamal shell` |
+| 前のバージョンに戻す | `kamal rollback VERSION`（`kamal app containers` で一覧） |
+
+- DB はサーバーの Docker ボリューム `notes_storage`（サーバー上の
+  `/var/lib/docker/volumes/notes_storage/_data/`）にあります。バックアップはサーバーで
+  `sudo apt install -y sqlite3` してから、SQLite の `.backup` で取ります（書き込み中でも壊れません）。
+
+  ```sh
+  sudo sqlite3 /var/lib/docker/volumes/notes_storage/_data/production.sqlite3 ".backup /root/notes-$(date +%Y%m%d).sqlite3"
+  ```
+
+- `kamal deploy` は新しいコンテナがヘルスチェックに通ってから古いコンテナを止めるので、第 7 部の
+  systemd の再起動と違い、デプロイ中も接続は拒否されません。ただし新旧のコンテナが短い間同じ
+  SQLite ファイルを開き、新しいコンテナのマイグレーションは古いコンテナが動いている間に流れます。
+  列を消すようなマイグレーションは、古いコードがその列を使わなくなってから別のデプロイで流します。
+- サーバーは 1 台にしてください（SQLite のファイルはそのサーバーのボリュームにしかありません）。
+- フレームワークを上げるとき（第 7 部の「フレームワークを更新する」）は、`Dockerfile` の
+  `gem install cybertrain -v ...` も `spin.toml` の `ref` と同じバージョンにします。
 
 ## トラブルシューティング
 

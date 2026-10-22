@@ -614,6 +614,13 @@
       <li><code>SIGTERM</code> 会让服务器停止接受新连接，让正在处理的请求完成，并在它们完成后退出，或在服务器的 <code>drain_timeout</code>（10 秒）之后退出。</li>
       <li>监视器和重新构建循环永远不会在生产环境中运行。正在运行的 <code>cybertrain server</code> 会在 <code>cybertrain build</code> 持有 <code>tmp/cybertrain-build.lock</code> 期间跳过重新构建。</li>
     </ul>
+    <p><code>cybertrain new</code> 还会写出一套 <a href="https://kamal-deploy.org" rel="noopener">Kamal 2</a> 配置。<code>Dockerfile</code> 在 Ubuntu 构建阶段运行 <code>cybertrain setup</code> 和 <code>cybertrain build</code>，再把 <code>dist/</code> 复制到同一发行版的精简阶段；该镜像启动时先执行迁移，然后在 <code>0.0.0.0:3000</code> 上提供服务。此外还有 <code>.dockerignore</code>、<code>config/deploy.yml</code>（前端是带 Let&rsquo;s Encrypt 的 kamal-proxy，健康检查使用 <code>public/up.html</code>，SQLite 文件放在挂载于 <code>/app/storage</code> 的卷上），以及从环境变量读取 <code>KAMAL_REGISTRY_PASSWORD</code> 和 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 的 <code>.kamal/secrets</code>。填好 <code>config/deploy.yml</code> 中标为 <code>CHANGE ME</code> 的值，提交，然后运行：</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">kamal setup    <span class="c"># 首次：在服务器上安装 Docker 和 kamal-proxy，构建、推送并启动</span></span>
+<span class="ln cmd">kamal deploy   <span class="c"># 之后的每次部署</span></span></code></pre>
+</figure>
+    <p>二进制文件在镜像内编译，因此操作系统总与镜像一致；请把 <code>config/deploy.yml</code> 中的 <code>builder.arch</code> 设为服务器的 CPU 架构。只部署到一台服务器：数据库是该服务器卷上的一个 SQLite 文件。<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md#第-8-部-kamal-でデプロイする" rel="noopener"><code>docs/deploy.md</code></a>（日文）第 8 部分完整介绍了这一流程，包括备份。</p>
   </section>
 
   <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">
