@@ -41,7 +41,7 @@
 ### 1-1. 必要なパッケージ
 
 Spinel は 1-3 で `cybertrain` コマンドが自分でビルドして入れます。Spinel のビルドには C コンパイラ・
-make・git・curl が、アプリのビルドには SQLite のヘッダ／ライブラリが要ります。`cybertrain setup` は
+make・git・curl が、アプリのビルドには SQLite と zlib のヘッダ／ライブラリが要ります。`cybertrain setup` は
 両方がそろっているか先に確かめるので、ここで入れておきます。
 
 Ubuntu / Debian:
@@ -51,7 +51,7 @@ sudo apt update
 sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev ruby-full
 ```
 
-macOS: `xcode-select --install`（C コンパイラ、make、git、curl と SQLite のヘッダが入ります）。
+macOS: `xcode-select --install`（C コンパイラ、make、git、curl と SQLite・zlib のヘッダが入ります）。
 
 jemalloc（`libjemalloc-dev`、macOS なら `brew install jemalloc`）は、2-2 で `allocator = "jemalloc"`
 を有効にする場合だけ要ります。

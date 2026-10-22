@@ -641,6 +641,7 @@ module Cybertrain
           return missing
         end
         missing << "the SQLite 3 headers and library" unless sqlite_ok?
+        missing << "the zlib headers and library" unless zlib_ok?
         missing
       end
 

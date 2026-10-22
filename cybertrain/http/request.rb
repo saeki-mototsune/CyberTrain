@@ -3,16 +3,17 @@ require "cybertrain/http/header_name"
 
 module Cybertrain
   # The request body cannot be decoded as its Content-Encoding says
-  # (corrupt gzip data, or an encoding the server does not decode).
-  # Raised by {Request#decoded_body}; a client fault, answered 400 (see
-  # ClientError). A QueryInvalid, like the other faults in request data,
-  # so `rescue Cybertrain::QueryInvalid` covers it.
+  # (corrupt gzip data, an encoding the server does not decode, or a gzip
+  # body in a program with no inflater installed). Raised by
+  # {Request#decoded_body}; a client fault, answered 400 (see ClientError).
+  # A QueryInvalid, like the other faults in request data, so
+  # `rescue Cybertrain::QueryInvalid` covers it.
   # @api public
   class BodyUndecodable < QueryInvalid
   end
 
-  # The request body would be larger than the limit once decoded (the gzip
-  # trailer says so, or the decoded bytes are). Raised by
+  # The request body is larger than the limit once decoded: a plain body
+  # over it, or a gzip body whose inflated bytes reached it. Raised by
   # {Request#decoded_body}; a client fault, answered 400.
   # @api public
   class BodyTooLarge < QueryInvalid
@@ -31,11 +32,15 @@ module Cybertrain
   #   JSON.parse(request.decoded_body)            # the same for a gzip-compressed body
   # @api public
   class Request
-    # The largest decoded body {#decoded_body} returns by default, 50 MiB
-    # (at most 2 GiB - 1: what the inflater can hand back). The limit on the
-    # body as sent is the server's (Config#max_body_bytes).
+    # The largest decoded body {#decoded_body} returns by default, 10 MiB,
+    # the same as the server's default limit on the body as sent
+    # (Config#max_body_bytes). An endpoint that expects more passes its own
+    # limit (at most 2 GiB - 1, what the inflater can hand back), sized to
+    # its payload: inflating costs about 1.4 ms per MiB of output and runs
+    # in C without yielding, so a large default would let a small body keep
+    # the worker busy.
     # @api public
-    MAX_DECODED_BODY_BYTES = 52_428_800
+    MAX_DECODED_BODY_BYTES = 10_485_760
 
     # A gzip member is at least a 10-byte header and an 8-byte trailer.
     GZIP_MIN_BYTES = 18
@@ -166,11 +171,17 @@ module Cybertrain
     # inflated whole; bytes after the last member that are not a member of
     # their own make the body undecodable.
     #
+    # Pass a limit sized to the endpoint's payload: DEFLATE expands up to
+    # about 1032 times, so reaching a 10 MiB ceiling takes a 10 KB body and
+    # about 14 ms of the worker's time (the inflate runs in C and does not
+    # yield), which is the cost a hostile client can impose per request.
+    #
     # `require "cybertrain"` installs the inflater. A program that loads only
     # the HTTP layer answers every gzip body as undecodable (a 400) until it
-    # requires `cybertrain/http/gzip_ffi` and calls `GzipFFI.install!`.
+    # requires `cybertrain/http/gzip_ffi` and calls {GzipFFI.install!}.
     # @example
     #   JSON.parse(request.decoded_body)
+    #   request.decoded_body(52_428_800)   # an endpoint that takes bodies up to 50 MiB
     # @param limit [Integer] the largest decoded body accepted, in bytes
     # @return [String]
     # @raise [BodyUndecodable] on corrupt gzip data, an encoding that is not

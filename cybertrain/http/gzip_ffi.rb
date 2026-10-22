@@ -6,8 +6,10 @@
 # huge once inflated (a "zip bomb": DEFLATE expands up to about 1032 times,
 # and a lying gzip trailer hides the size). This module streams through
 # zlib's inflate() with a ceiling on the output: the request is refused the
-# moment the inflated bytes pass the limit, with at most limit + 1 bytes ever
-# allocated, in C, with no Ruby String in between.
+# moment the inflated bytes pass the limit. The C buffer never exceeds
+# limit + 1 bytes; a body that passes is then copied into a Ruby String
+# before the buffer is freed, so the peak for an accepted body is its
+# compressed size plus twice its inflated size.
 #
 # It is not required by cybertrain/http/request.rb (CRuby loads that file
 # for the framework's portable tests and script/check-http-layer, and the
@@ -20,6 +22,10 @@
 require "cybertrain/http/request"
 
 module Cybertrain
+  # The gzip inflater {Request#decoded_body} uses: `require "cybertrain"`
+  # installs it. A program that loads only the HTTP layer requires
+  # `cybertrain/http/gzip_ffi` and calls {.install!} itself.
+  # @api public
   module GzipFFI
     ffi_lib "z"
 
@@ -30,9 +36,10 @@ module Cybertrain
     # one extra byte is how "over the limit" is detected without inflating
     # further. Negative returns: -1 the data is not valid gzip (a bad header,
     # a corrupt block, a wrong CRC, bytes after the last member that are not
-    # another member, or a truncated stream), -2 the inflated size exceeds
-    # max_out, -3 out of memory, -4 zlib could not be initialised. Nothing is
-    # allocated for the caller on a negative return.
+    # another member, a truncated stream, or more input than zlib's uInt
+    # counts), -2 the inflated size exceeds max_out, -3 out of memory, -4
+    # zlib could not be initialised. Nothing is allocated for the caller on
+    # a negative return.
     #
     # cybertrain_bytes_at(ptr, len) is the :binstr bridge: it publishes len
     # in sp_ffi_bin_len (the TLS int the codegen declares for any module with
@@ -42,10 +49,11 @@ module Cybertrain
       #include <zlib.h>
       #include <stdlib.h>
       #include <string.h>
+      #include <limits.h>
       long cybertrain_gunzip_bounded(const char *in, long in_len, long max_out, void *out_slot) {
         z_stream zs;
         memset(&zs, 0, sizeof(zs));
-        if (in_len < 0 || max_out < 0) return -1;
+        if (in_len < 0 || max_out < 0 || (unsigned long)in_len > (unsigned long)UINT_MAX) return -1;
         if (inflateInit2(&zs, 15 + 16) != Z_OK) return -4;
         size_t ceiling = (size_t)max_out + 1;
         size_t cap = (size_t)in_len * 4 + 1024;
@@ -79,6 +87,7 @@ module Cybertrain
             if (zs.avail_out != 0) { free(out); inflateEnd(&zs); return -1; }
             continue;
           }
+          if (rc == Z_MEM_ERROR) { free(out); inflateEnd(&zs); return -3; }
           if (rc != Z_OK) { free(out); inflateEnd(&zs); return -1; }
         }
         inflateEnd(&zs);
@@ -102,7 +111,11 @@ module Cybertrain
     # Inflates `data` (a gzip body) under `limit` bytes of output. Raises
     # BodyUndecodable for anything that is not one or more valid gzip members
     # and BodyTooLarge when the inflated size would pass the limit (at most
-    # limit + 1 bytes are ever inflated).
+    # limit + 1 bytes are ever inflated). The result is tagged UTF-8 like a
+    # body sent plain (a socket buffer is a UTF-8 String under Spinel), not
+    # binary as the FFI bridge hands it back, so the two compare and
+    # concatenate alike; it is validated like any request text by whoever
+    # parses it.
     def self.gunzip(data, limit)
       raise ArgumentError, "limit must be between 0 and #{MAX_LIMIT}" if limit < 0 || limit > MAX_LIMIT
 
@@ -121,7 +134,7 @@ module Cybertrain
       GzipFFI.free(slot)
       text = GzipFFI.cybertrain_bytes_at(out, rc)
       GzipFFI.free(out)
-      text
+      text.force_encoding("UTF-8")
     end
 
     # The lambda Request#decoded_body calls (a method-returned lambda, as
@@ -130,6 +143,9 @@ module Cybertrain
       ->(data, limit) { GzipFFI.gunzip(data, limit) }
     end
 
+    # Makes {Request#decoded_body} inflate through this module.
+    # @return [nil]
+    # @api public
     def self.install!
       Request.inflater = inflater
       nil

@@ -121,7 +121,7 @@
       <li>Ruby 3.2+ 和 RubyGems，仅供 <code>cybertrain</code> 命令使用；应用本身从不在 CRuby 上运行。</li>
       <li>Spinel <code>2026.09.12</code>，未在其他版本上测试。你无需手动安装：第一个需要它的命令会把该版本构建到 <code>~/.cybertrain</code> 中（需要几分钟，仅一次），除非 <code>PATH</code> 上已有该版本的 <code>spinel</code>。</li>
       <li>C 工具链（<code>cc</code>，或 <code>CC</code> 指定的编译器）和 <code>make</code>，以及 <code>git</code> 和 <code>curl</code>，用于构建 Spinel；Spinel 会把每个程序编译为 C。</li>
-      <li>SQLite 3 头文件和库：Debian/Ubuntu 上为 <code>libsqlite3-dev</code>；macOS 上随 Xcode 命令行工具提供。</li>
+      <li>SQLite 3 和 zlib 头文件和库：Debian/Ubuntu 上为 <code>libsqlite3-dev</code> 和 <code>zlib1g-dev</code>；macOS 上随 Xcode 命令行工具提供。</li>
       <li>OpenSSL 头文件（<code>libssl-dev</code>）是可选的：没有它们时，Spinel 构建时会不带其 <code>openssl</code> 包，而 CyberTrain 并不使用这个包。</li>
     </ul>
     <p><code>cybertrain doctor</code> 会检查这些工具和头文件以及 Spinel 的安装情况；缺少必需项时，它还会打印适用于你的平台的安装命令。</p>

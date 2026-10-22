@@ -379,7 +379,7 @@
     <dl class="reqs">
       <div><dt>Ruby</dt><dd>3.2+ と RubyGems。<code>cybertrain</code> コマンドのためだけに必要です。アプリケーションが CRuby 上で動くことはありません。</dd></div>
       <div><dt>Spinel</dt><dd><code>2026.09.12</code>。他のバージョンでは未テストです。Spinel を必要とする最初のコマンドが <code>~/.cybertrain</code> にビルドします（数分、初回のみ）。そのリリースの <code>spinel</code> がすでに <code>PATH</code> 上にあれば、それをそのまま使います。</dd></div>
-      <div><dt>ツールチェーン</dt><dd><code>cc</code> と <code>make</code>（Spinel はすべてのプログラムを C にコンパイルします）、さらに Spinel のビルド用に <code>git</code> と <code>curl</code>。SQLite&nbsp;3 のヘッダーとライブラリ：Debian/Ubuntu では <code>libsqlite3-dev</code>、macOS では Xcode コマンドラインツールに含まれています。OpenSSL のヘッダーは任意です。</dd></div>
+      <div><dt>ツールチェーン</dt><dd><code>cc</code> と <code>make</code>（Spinel はすべてのプログラムを C にコンパイルします）、さらに Spinel のビルド用に <code>git</code> と <code>curl</code>。SQLite&nbsp;3 と zlib のヘッダーとライブラリ：Debian/Ubuntu では <code>libsqlite3-dev</code> と <code>zlib1g-dev</code>、macOS では Xcode コマンドラインツールに含まれています。OpenSSL のヘッダーは任意です。</dd></div>
       <div><dt>ステータス</dt><dd>プレアルファ、バージョン <code>0.2.1</code>、MIT ライセンス。サンプルのブログは Linux と macOS の CI で検証されています。</dd></div>
     </dl>
     <p class="footnote"><code>cybertrain doctor</code> はこれらのツールとヘッダー、Spinel のインストールを確認し、足りないものがあればプラットフォームに応じたインストールコマンドを表示します。<code>cybertrain setup</code> は求めに応じて Spinel をインストールし、<code>spin</code> を自分で実行するための <code>PATH</code> の設定行を表示します。<code>cybertrain spin ARGS...</code> を使えば、その設定なしで実行できます。</p>

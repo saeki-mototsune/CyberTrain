@@ -121,7 +121,7 @@
       <li>Ruby 3.2+ と RubyGems。<code>cybertrain</code> コマンドのためだけに必要で、アプリケーションが CRuby 上で動くことはありません。</li>
       <li>Spinel <code>2026.09.12</code>。他のバージョンでは未テストです。手動でインストールする必要はありません：Spinel を必要とする最初のコマンドが、そのリリースを <code>~/.cybertrain</code> にビルドします（数分、初回のみ）。ただし、そのリリースの <code>spinel</code> がすでに <code>PATH</code> 上にある場合は除きます。</li>
       <li>C ツールチェーン（<code>cc</code>、または <code>CC</code> で指定したコンパイラ）と <code>make</code>、さらに <code>git</code> と <code>curl</code>。すべてのプログラムを C にコンパイルする Spinel をビルドするために使います。</li>
-      <li>SQLite 3 のヘッダーとライブラリ：Debian/Ubuntu では <code>libsqlite3-dev</code>、macOS では Xcode のコマンドラインツールに含まれています。</li>
+      <li>SQLite 3 と zlib のヘッダーとライブラリ：Debian/Ubuntu では <code>libsqlite3-dev</code> と <code>zlib1g-dev</code>、macOS では Xcode のコマンドラインツールに含まれています。</li>
       <li>OpenSSL のヘッダー（<code>libssl-dev</code>）は任意です：ない場合、Spinel は <code>openssl</code> パッケージなしでビルドされますが、CyberTrain はこのパッケージを使いません。</li>
     </ul>
     <p><code>cybertrain doctor</code> はこれらのツールとヘッダー、Spinel のインストールを確認します。必要なものが欠けている場合は、プラットフォームに応じたインストールコマンドも表示します。</p>

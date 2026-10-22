@@ -379,7 +379,7 @@
     <dl class="reqs">
       <div><dt>Ruby</dt><dd>3.2+，带 RubyGems，仅供 <code>cybertrain</code> 命令使用。应用本身从不在 CRuby 上运行。</dd></div>
       <div><dt>Spinel</dt><dd><code>2026.09.12</code>，未在其他版本上测试。第一个需要它的命令会把它构建到 <code>~/.cybertrain</code> 中（需要几分钟，仅一次）；如果 <code>PATH</code> 上已有该版本的 <code>spinel</code>，则直接使用。</dd></div>
-      <div><dt>工具链</dt><dd><code>cc</code> 和 <code>make</code>（Spinel 会把每个程序编译为 C），以及用于构建 Spinel 的 <code>git</code> 和 <code>curl</code>。SQLite&nbsp;3 头文件和库：Debian/Ubuntu 上为 <code>libsqlite3-dev</code>，macOS 上随 Xcode 命令行工具提供。OpenSSL 头文件是可选的。</dd></div>
+      <div><dt>工具链</dt><dd><code>cc</code> 和 <code>make</code>（Spinel 会把每个程序编译为 C），以及用于构建 Spinel 的 <code>git</code> 和 <code>curl</code>。SQLite&nbsp;3 和 zlib 头文件和库：Debian/Ubuntu 上为 <code>libsqlite3-dev</code> 和 <code>zlib1g-dev</code>，macOS 上随 Xcode 命令行工具提供。OpenSSL 头文件是可选的。</dd></div>
       <div><dt>状态</dt><dd>预 Alpha 阶段，版本 <code>0.2.1</code>，MIT 许可。示例博客由 CI 在 Linux 和 macOS 上运行测试。</dd></div>
     </dl>
     <p class="footnote"><code>cybertrain doctor</code> 会检查这些工具和头文件以及 Spinel 的安装情况，缺少某项时会打印适用于你的平台的安装命令。<code>cybertrain setup</code> 按需安装 Spinel，并打印用于自行运行 <code>spin</code> 的 <code>PATH</code> 设置行；<code>cybertrain spin ARGS...</code> 则无需该设置即可运行它。</p>
