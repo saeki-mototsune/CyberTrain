@@ -4,6 +4,7 @@ require "cybertrain/db/migrator"
 require "cybertrain/db/schema_dumper"
 require "cybertrain/migration"
 require "cybertrain/config"
+require "cybertrain/cast"
 
 module Cybertrain
   module DB
@@ -64,13 +65,9 @@ module Cybertrain
       def self.rollback_steps(argv)
         return 1 if argv.size < 2
         arg = argv[1]
-        return 0 if arg.empty?
-        i = 0
-        while i < arg.length
-          c = arg[i]
-          return 0 unless c >= "0" && c <= "9"
-          i += 1
-        end
+        # Cast.digits? is true for "", hence the empty check before it.
+        return 0 if arg.empty? || !Cast.digits?(arg)
+
         arg.to_i
       end
 
@@ -104,7 +101,7 @@ module Cybertrain
           puts "database already exists: #{path}"
           return 0
         end
-        ensure_directory(File.dirname(path)) unless sqlite_name?(path)
+        Config.make_directory(File.dirname(path)) unless sqlite_name?(path)
         Connection.new(path).close
         puts "created #{path}"
         0
@@ -112,7 +109,7 @@ module Cybertrain
 
       def self.migrate(root)
         path = resolved_path(root)
-        ensure_directory(File.dirname(path)) unless sqlite_name?(path)
+        Config.make_directory(File.dirname(path)) unless sqlite_name?(path)
         connection = Connection.new(path)
         begin
           Migrator.new(connection).migrate(Cybertrain::Migration.all)
@@ -184,14 +181,6 @@ module Cybertrain
         end
         File.write("#{dir}/schema.rb", SchemaDumper.dump_to_ruby(connection))
         true
-      end
-
-      # mkdir -p: creates missing parents first.
-      def self.ensure_directory(dir)
-        return nil if dir == "" || File.directory?(dir)
-        ensure_directory(File.dirname(dir))
-        Dir.mkdir(dir)
-        nil
       end
     end
   end
