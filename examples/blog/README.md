@@ -67,5 +67,5 @@ image on every change to the framework or the app, smoke-tests it (health
 check, an article through the form, a clean SIGTERM stop, the database kept
 on its volume) and loads `config/deploy.yml` with Kamal.
 
-Part 8 of [docs/deploy.md](../../docs/deploy.md) (Japanese) covers the rest:
+[docs/deploy-kamal.md](../../docs/deploy-kamal.md) (part 8 of docs/deploy.md, in English) covers the rest:
 DNS, the registry, `builder.arch`, backups of the SQLite volume.

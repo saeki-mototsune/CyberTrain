@@ -813,8 +813,9 @@ Ubuntu build stage and copies `dist/` into a slim stage of the same release
 health check on `public/up.html`, the SQLite file on a volume at
 `/app/storage`) and `.kamal/secrets` (`KAMAL_REGISTRY_PASSWORD` and
 `CYBERTRAIN_SECRET_KEY_BASE` from the environment). Fill in the values marked
-`CHANGE ME`, commit, and `kamal setup`; part 8 of
-[docs/deploy.md](docs/deploy.md) has the details.
+`CHANGE ME`, commit, and `kamal setup`;
+[docs/deploy-kamal.md](docs/deploy-kamal.md) has the details (part 8 of
+[docs/deploy.md](docs/deploy.md), in English).
 [examples/blog](examples/blog#deploying-with-kamal) carries the same setup,
 built against this checkout's framework.
 
