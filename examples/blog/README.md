@@ -62,5 +62,10 @@ docker build -f examples/blog/Dockerfile -t blog .
 docker run --rm -p 127.0.0.1:3000:3000 -e CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)" -v blog_storage:/app/storage blog
 ```
 
+The [Blog image](../../.github/workflows/blog-image.yml) workflow builds this
+image on every change to the framework or the app, smoke-tests it (health
+check, an article through the form, a clean SIGTERM stop, the database kept
+on its volume) and loads `config/deploy.yml` with Kamal.
+
 Part 8 of [docs/deploy.md](../../docs/deploy.md) (Japanese) covers the rest:
 DNS, the registry, `builder.arch`, backups of the SQLite volume.
