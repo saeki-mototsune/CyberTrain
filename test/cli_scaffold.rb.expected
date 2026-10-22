@@ -89,7 +89,7 @@ create app/views/counters/_form.html.erb
 route resources :counters
 ok   a model without string fields gets no validation
 ok   migration versions stay unique and increasing
-error: unknown type 'strang' for name (use string, text, integer, float, boolean, date, datetime, references)
+error: unknown type 'strang' for name (use string, text, integer, float, boolean, date, datetime, references, attachment)
 error: duplicate column 'name'
 error: duplicate column 'post_id'
 error: 'id' is a column every table already has
@@ -99,7 +99,7 @@ error: 'class' is a Ruby keyword and cannot name a field
 error: 'end' is a Ruby keyword and cannot name a field
 error: 'self' is a Ruby keyword and cannot name a field
 error: 'end' is a Ruby keyword and cannot name a reference
-error: unknown type 'bogus' for class (use string, text, integer, float, boolean, date, datetime, references)
+error: unknown type 'bogus' for class (use string, text, integer, float, boolean, date, datetime, references, attachment)
 error: 'errors' would shadow a method of the generated model (Cybertrain::Model); pick another field
 error: 'save' would shadow a method of the generated model (Cybertrain::Model); pick another field
 error: 'attributes' would shadow a method of the generated model (Cybertrain::Model); pick another field
@@ -113,8 +113,8 @@ error: 'class' is a Ruby keyword and cannot name a resource
 error: 'hash' would shadow a method of the generated model (Cybertrain::Model); pick another resource
 error: 'raise' would shadow a method of the generated model (Cybertrain::Model); pick another resource
 error: ./config/routes.rb not found: run this inside a cybertrain app
-error: usage: cybertrain generate scaffold NAME field:type ...
-error: only `generate scaffold` and `generate authentication` are supported
+error: usage: cybertrain generate scaffold NAME field:type ... [--any]
+error: only `generate scaffold`, `generate attachment` and `generate authentication` are supported
 ok   bad input is rejected before anything is written
 create spin.toml
 create .gitignore
@@ -177,5 +177,6 @@ create app/views/displays/_form.html.erb
 route resources :displays
 note: 'display' shadows Object#display on a model that references displays (belongs_to reader); call it as record.display
 ok   a name that shadows an Object method is accepted with a note
+ok   an attachment field expands to five columns and is not a column itself
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-17 tests, 185 assertions, 0 failures
+18 tests, 195 assertions, 0 failures

@@ -105,6 +105,8 @@ module Cybertrain
       fail_boot(prefixes_error) unless prefixes_error.empty?
       body_bytes_error = c.max_body_bytes_error
       fail_boot(body_bytes_error) unless body_bytes_error.empty?
+      upload_error = c.upload_limits_error
+      fail_boot(upload_error) unless upload_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
@@ -114,6 +116,11 @@ module Cybertrain
       end
       Views.url_resolver = @url_resolver
       Views.layout_name = c.layout
+      # Module-level settings, like Views': the parser and the blob store are
+      # reached from places that have no Config. The upload directory is made
+      # by the first write, not here, so a read-only deploy still boots.
+      Multipart.configure(c.max_upload_bytes, c.max_multipart_parts)
+      BlobStore.root = c.upload_root
       Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
       self
     end

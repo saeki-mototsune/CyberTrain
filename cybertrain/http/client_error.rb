@@ -56,6 +56,8 @@ module Cybertrain
                      "Cybertrain::QueryTooDeep", "Cybertrain::QueryTooMany",
                      "Cybertrain::QueryMalformed",
                      "Cybertrain::BodyUndecodable", "Cybertrain::BodyTooLarge",
+                     "Cybertrain::MultipartMalformed", "Cybertrain::MultipartTooManyParts",
+                     "Cybertrain::MultipartPartTooLarge", "Cybertrain::MultipartHeaderTooLarge",
                      "Cybertrain::Params::ParameterMissing"]
 
     # 400 for a client fault, 500 for the app's own exception: an Array

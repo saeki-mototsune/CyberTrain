@@ -1,0 +1,55 @@
+browser body: 8 texts, 1 file, 288 bytes, sha256 80e3f7a98fd1ff13
+ok   a browser-shaped body: text fields, nested names, a PNG file, an unselected file input dropped
+ok   text_value is the last top-level match and is empty when absent
+ok   a body with no parts is an empty form
+ok   a file keeps its bytes whatever they are: all 256 values, NUL runs, a trailing CRLF
+ok   an empty file with a name is kept; an empty name with data is kept too
+ok   boundary look-alikes inside file data do not end the part
+ok   a text value may hold NUL, CRLF and multibyte text
+ok   a text value that holds look-alikes keeps them
+dense look-alikes: 720000 bytes
+ok   a long run of look-alikes is scanned in linear time
+ok   128 parts of mixed binary data keep every byte
+ok   a 4 MiB file part parses and round-trips
+big body: 110 files, 9454207 bytes
+ok   a 9 MiB body of 110 big parts, dense in NUL runs and look-alikes, keeps every digest
+ok   a preamble and an epilogue are ignored
+ok   the first delimiter may start at offset 0 or after a CRLF
+ok   a preamble of exactly 1024 bytes is accepted, 1025 is not
+ok   text glued to the first delimiter is malformed
+ok   transport padding after delimiters is accepted up to 16 bytes
+ok   a delimiter followed by junk is no delimiter
+ok   boundary_from reads a token and a quoted-string
+ok   boundary_from matches the parameter name without regard to case, among others
+ok   boundary_from is empty when missing or invalid
+ok   boundary_from allows 200 bytes and refuses 201
+ok   boundary_from refuses non-ASCII bytes
+ok   parse without a usable boundary raises MultipartMalformed
+ok   a quoted boundary and an odd one parse
+ok   disposition parameters: case, spaces, tokens, escapes, filename wins over filename*
+ok   filenames are sanitized: paths, quotes, controls and an invalid UTF-8 name
+ok   the part Content-Type is sanitized and never trusted
+ok   other part headers are ignored and header names are case-insensitive
+ok   UTF-8 in a field name is kept
+ok   too many parts raises MultipartTooManyParts, counting a dropped file input too
+ok   the part count is checked before the part is cut, so a flood of tiny parts stops early
+ok   a part header block of 8192 bytes passes and 8193 raises MultipartHeaderTooLarge
+ok   a file over max_upload_bytes raises MultipartPartTooLarge, exactly the limit passes
+ok   the text values together are held to 1 MiB
+ok   a name of 1024 bytes passes and 1025 raises MultipartMalformed
+ok   a raw filename of 1024 bytes passes and 1025 raises MultipartMalformed
+ok   a part with no blank line after its headers is malformed
+ok   a body that stops before its closing delimiter is malformed
+ok   a duplicate Content-Disposition or Content-Type is malformed
+ok   a part that is not form-data, or has no usable name, is malformed
+ok   a field name that is not valid UTF-8 is malformed
+ok   a text value that is not valid UTF-8 raises QueryMalformed
+ok   malformed header lines are refused
+ok   a header-injection attempt in a filename stays a display name
+filled: post[cover] = cover.png, 288 bytes, sha256 80e3f7a98fd1ff13
+ok   fill: texts by set_path, files by set_upload_path
+ok   fill: a file named name[] is refused, a plain file name is fine
+ok   fill: names are not percent-decoded, and nesting is limited like a query string
+ok   fill: more fields than Query::MAX_PAIRS raises QueryTooMany
+ok   MultipartForm keeps parts in order, one list per kind
+50 tests, 747 assertions, 0 failures

@@ -201,6 +201,8 @@ module Cybertrain
       # form_with(model: post) do |f| ... end, form_with(model: [post, comment]),
       # form_with(url: "/search", method: :get). A new record posts to the
       # collection route, a saved one patches its member route.
+      # `multipart: true` adds enctype="multipart/form-data" (needed for
+      # f.file_field); it raises ArgumentError on a GET form.
       def form_with(kwargs, block, interp, env)
         raise ArgumentError, "form_with needs a block (form_with(...) do |f| ... end)" if block.nil?
 
@@ -213,9 +215,15 @@ module Cybertrain
         elsif !record.nil? && record.persisted?
           verb = "patch"
         end
+        # No auto-detect from a file_field inside: the <form> tag is built
+        # before the block runs, so the caller says so up front.
+        multipart = kwargs["multipart"] == true
+        raise ArgumentError, "form_with multipart: true needs a non-GET method" if multipart && verb == "get"
+
         buf = +"<form"
         buf << " action=\"" << Html.escape(action) << "\""
         buf << " method=\"" << (verb == "get" ? "get" : "post") << "\""
+        buf << " enctype=\"multipart/form-data\"" if multipart
         buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
         buf << ">"
         buf << hidden_fields(verb)

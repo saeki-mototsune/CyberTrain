@@ -8,4 +8,8 @@ ok   fields with errors get the field_with_errors class
 ok   submit defaults to Create or Update by persisted?
 ok   an unknown builder method is a RuntimeError
 ok   form_with a new record whose name is its own plural posts to <plural>_index
-10 tests, 22 assertions, 0 failures
+ok   form_with multipart: true adds enctype after method and keeps the hidden fields
+ok   form_with multipart: true on a GET form is an error
+ok   file_field has no value, and accept and required pass through
+ok   file_field takes the field_with_errors class and rejects multiple: true
+14 tests, 39 assertions, 0 failures

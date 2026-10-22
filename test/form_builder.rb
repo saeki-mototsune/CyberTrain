@@ -167,4 +167,45 @@ test "form_with a new record whose name is its own plural posts to <plural>_inde
   assert_equal "<form action=\"/posts/7/sheep\" method=\"post\">#{TOKEN}|</form>", html
 end
 
+test "form_with multipart: true adds enctype after method and keeps the hidden fields" do
+  html = render_inline("<%= form_with(model: post, multipart: true) do |f| %>|<% end %>", new_post)
+  assert_equal "<form action=\"/posts\" method=\"post\" enctype=\"multipart/form-data\">#{TOKEN}|</form>", html
+  html = render_inline("<%= form_with model: post, multipart: true, class: 'up' do |f| %>|<% end %>", saved_post)
+  assert_equal "<form action=\"/posts/7\" method=\"post\" enctype=\"multipart/form-data\" class=\"up\"><input type=\"hidden\" name=\"_method\" value=\"patch\">#{TOKEN}|</form>", html
+  # false and absent leave the form urlencoded.
+  html = render_inline("<%= form_with(model: post, multipart: false) do |f| %>|<% end %>", new_post)
+  assert_equal "<form action=\"/posts\" method=\"post\">#{TOKEN}|</form>", html
+end
+
+test "form_with multipart: true on a GET form is an error" do
+  msg = assert_raises("RuntimeError") { render_inline("<%= form_with(url: '/search', method: :get, multipart: true) do |f| %><% end %>", new_post) }
+  assert_equal "posts/_form:1: form_with multipart: true needs a non-GET method", msg
+end
+
+test "file_field has no value, and accept and required pass through" do
+  html = render_inline("<%= form_with model: post, multipart: true do |f| %><%= f.file_field :cover %>|<%= f.file_field :cover, accept: 'image/png,image/jpeg', required: true %>|<%= f.file_field :cover, class: 'pick' %><% end %>", saved_post)
+  assert_includes html, "<input type=\"file\" name=\"post[cover]\" id=\"post_cover\">|"
+  assert_includes html, "<input type=\"file\" name=\"post[cover]\" id=\"post_cover\" accept=\"image/png,image/jpeg\" required=\"required\">|"
+  assert_includes html, "<input type=\"file\" name=\"post[cover]\" id=\"post_cover\" class=\"pick\"></form>"
+  assert !html.include?("file\" name=\"post[cover]\" id=\"post_cover\" value"), "file_field must not emit value="
+  # A column name: still no value attribute.
+  html = render_inline("<%= form_with model: post, multipart: true do |f| %><%= f.file_field :title %><% end %>", saved_post)
+  assert_includes html, "<input type=\"file\" name=\"post[title]\" id=\"post_title\"></form>"
+  # Without a model the bare attribute is the name; a String attribute works.
+  html = render_inline("<%= form_with url: '/up', multipart: true do |f| %><%= f.file_field 'doc' %><% end %>", new_post)
+  assert_includes html, "<form action=\"/up\" method=\"post\" enctype=\"multipart/form-data\">"
+  assert_includes html, "<input type=\"file\" name=\"doc\" id=\"doc\"></form>"
+end
+
+test "file_field takes the field_with_errors class and rejects multiple: true" do
+  post = new_post
+  post.errors.add(:cover, "is too large")
+  html = render_inline("<%= form_with model: post, multipart: true do |f| %><%= f.file_field :cover %><% end %>", post)
+  assert_includes html, "<input type=\"file\" name=\"post[cover]\" id=\"post_cover\" class=\"field_with_errors\"></form>"
+  msg = assert_raises("RuntimeError") { render_inline("<%= form_with model: post, multipart: true do |f| %>\n<%= f.file_field :cover, multiple: true %><% end %>", new_post) }
+  assert_equal "posts/_form:2: file_field multiple: true is not supported", msg
+  msg = assert_raises("RuntimeError") { render_inline("<%= form_with model: post, multipart: true do |f| %>\n<%= f.file_field %><% end %>", new_post) }
+  assert_equal "posts/_form:2: wrong number of arguments for 'file_field'", msg
+end
+
 Cybertrain::Test.run!

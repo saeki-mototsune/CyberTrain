@@ -1,6 +1,7 @@
 require "uri"
 require "cybertrain/middleware"
 require "cybertrain/http/query"
+require "cybertrain/http/multipart"
 
 module Cybertrain
   # One routing table entry: "GET /posts/:id/edit" plus a name for path
@@ -143,13 +144,16 @@ module Cybertrain
 
     private
 
-    # Later sources win: query string, then the form body, then the route.
+    # Later sources win: query string, then the form or multipart body, then
+    # the route.
     # ctx.params is the request's OWN tree, built right here by parsing the
     # query string and then (for a form) the body straight into one fresh
     # Params (Query.parse_valid, on the Request's validated texts: a form POST
-    # whose body MethodOverride already read is not validated again), then
-    # the route captures. There are no cached trees to alias: the parsed
-    # Strings come fresh out of the decoder, and a capture is the very String
+    # whose body MethodOverride already read is not validated again; a
+    # multipart body is filled from the one parse the Request cached,
+    # Multipart.fill: text fields like urlencoded ones, files into the
+    # Params upload slot), then the route captures. There are no cached trees
+    # to alias: the parsed Strings come fresh out of the decoder, and a capture is the very String
     # the cached path_segments holds (shared with Static), so it is dup'd:
     # `params[:id].upcase!` in an action must not change the segment Array
     # that Static or a later middleware reads. One tree build per request, no
@@ -161,6 +165,7 @@ module Cybertrain
       params = Params.new
       Query.parse_valid(params, request.utf8_query_string)
       Query.parse_valid(params, request.utf8_body) if request.form?
+      Multipart.fill(params, request.multipart_form) if request.multipart?
       # NOTE(Spinel): not `captured.each { |k, v| ... }` -- captured comes from
       # the nullable Route#match, and with a user-defined #to_s in the program
       # (SafeString) the pair's key reaches Params#set_value as a boxed value

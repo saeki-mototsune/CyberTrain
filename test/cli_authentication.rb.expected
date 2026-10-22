@@ -118,7 +118,7 @@ ok   the generator runs after a scaffold, with migration versions that follow
 ok   insert_after_line keeps the rest of the file
 error: ./config/routes.rb not found: run this inside a cybertrain app
 error: usage: cybertrain generate authentication (no arguments)
-error: only `generate scaffold` and `generate authentication` are supported
+error: only `generate scaffold`, `generate attachment` and `generate authentication` are supported
 create spin.toml
 create .gitignore
 create README.md

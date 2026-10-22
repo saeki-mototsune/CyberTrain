@@ -344,4 +344,92 @@ test "an installed inflater is what decodes gzip, and it is given the body and t
   assert_equal "BodyUndecodable", decode_error(encoded_request(gz, "gzip"), 1000)
 end
 
+# ---- multipart ---------------------------------------------------------------
+
+MP_BOUNDARY = "----ReqBoundary7"
+
+def multipart_headers(boundary = MP_BOUNDARY)
+  { "content-type" => "multipart/form-data; boundary=#{boundary}" }
+end
+
+# A body of text parts and one file part, every piece binary.
+def multipart_body(token, method_override)
+  out = "".b
+  out << "--#{MP_BOUNDARY}\r\nContent-Disposition: form-data; name=\"authenticity_token\"\r\n\r\n#{token}\r\n".b
+  out << "--#{MP_BOUNDARY}\r\nContent-Disposition: form-data; name=\"_method\"\r\n\r\n#{method_override}\r\n".b
+  out << "--#{MP_BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.bin\"\r\n".b
+  out << "Content-Type: application/octet-stream\r\n\r\n\x00\xFF\r\n--x\r\n".b
+  out << "\r\n--#{MP_BOUNDARY}--\r\n".b
+  out
+end
+
+test "multipart? is true for multipart/form-data only, form? stays false" do
+  req = Request.new("POST", "/p", multipart_headers, "")
+  assert req.multipart?
+  refute req.form?
+  refute req.json?
+  assert Request.new("POST", "/p", { "content-type" => "Multipart/Form-Data; boundary=x" }, "").multipart?
+  refute Request.new("POST", "/p", { "content-type" => "multipart/mixed; boundary=x" }, "").multipart?
+  refute Request.new("POST", "/p", { "content-type" => "application/x-www-form-urlencoded" }, "").multipart?
+  refute Request.new("POST", "/p", {}, "").multipart?
+end
+
+test "multipart_boundary reads the parameter the media type drops" do
+  assert_equal MP_BOUNDARY, Request.new("POST", "/p", multipart_headers, "").multipart_boundary
+  quoted = { "content-type" => "multipart/form-data; boundary=\"a b\"" }
+  assert_equal "a b", Request.new("POST", "/p", quoted, "").multipart_boundary
+  assert_equal "", Request.new("POST", "/p", { "content-type" => "multipart/form-data" }, "").multipart_boundary
+  assert_equal "", Request.new("POST", "/p", {}, "").multipart_boundary
+end
+
+test "multipart_form parses once and is the same object every time" do
+  req = Request.new("POST", "/p", multipart_headers, multipart_body("tok", "patch"))
+  form = req.multipart_form
+  assert_equal 2, form.text_count
+  assert_equal 1, form.file_count
+  assert_equal "tok", form.text_value("authenticity_token")
+  assert form.equal?(req.multipart_form)
+  file = form.file_at(0)
+  assert_equal "a.bin", file.original_filename
+  assert_equal 9, file.byte_size
+end
+
+test "form_or_query_value reads a multipart text part: the body wins, a file never answers, the query is the fallback" do
+  req = Request.new("POST", "/p?_method=put&only=q", multipart_headers, multipart_body("tok", "patch"))
+  assert_equal "tok", req.form_or_query_value("authenticity_token")
+  assert_equal "patch", req.form_or_query_value("_method")
+  assert_equal "q", req.form_or_query_value("only")
+  assert_equal "", req.form_or_query_value("file")
+  assert_equal "", req.form_or_query_value("absent")
+  # an empty text part falls back to the query string, as an empty form value does
+  empty = Request.new("POST", "/p?_method=put", multipart_headers, multipart_body("tok", ""))
+  assert_equal "put", empty.form_or_query_value("_method")
+  # a multipart body is read only when the request says it is one
+  plain = Request.new("POST", "/p", {}, multipart_body("tok", "patch"))
+  assert_equal "", plain.form_or_query_value("_method")
+end
+
+def multipart_error(req)
+  req.multipart_form
+  ""
+rescue Cybertrain::QueryInvalid => e
+  Cybertrain::ClientError.bare_name(e.class.name.to_s)
+end
+
+test "multipart_form refuses an encoded body and a malformed one, and does not cache the raise" do
+  gz = multipart_headers
+  gz["content-encoding"] = "gzip"
+  req = Request.new("POST", "/p", gz, multipart_body("tok", "patch"))
+  assert_equal "MultipartMalformed", multipart_error(req)
+  assert_equal "MultipartMalformed", multipart_error(req)
+  identity = multipart_headers
+  identity["content-encoding"] = "identity"
+  assert_equal "", multipart_error(Request.new("POST", "/p", identity, multipart_body("tok", "patch")))
+  assert_equal "MultipartMalformed", multipart_error(Request.new("POST", "/p", multipart_headers, "no delimiter here"))
+  assert_equal "MultipartMalformed", multipart_error(Request.new("POST", "/p", { "content-type" => "multipart/form-data" }, "x"))
+  bad = Request.new("POST", "/p?_method=put", multipart_headers, "no delimiter here")
+  assert_equal "MultipartMalformed", multipart_error(bad)
+  assert_equal "MultipartMalformed", multipart_error(bad)
+end
+
 Cybertrain::Test.run!

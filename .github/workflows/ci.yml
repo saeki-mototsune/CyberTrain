@@ -120,6 +120,49 @@ jobs:
           grep -q "production environment" server.log
           kill %1
 
+      # File uploads end to end: a scaffold with an attachment field, the
+      # app's own generated upload test, then one browser-shaped multipart
+      # POST (CSRF token and cookie from the form page) and the download of
+      # the same bytes with the headers send_blob sets.
+      - name: Gem CLI scaffolds an attachment, uploads a file and serves it back
+        run: |
+          mkdir -p /tmp/gem-e2e-upload && cd /tmp/gem-e2e-upload
+          cybertrain new album --path "$GITHUB_WORKSPACE"
+          cd album
+          cybertrain generate scaffold post title:string cover:attachment
+          cybertrain db migrate
+          cybertrain build
+          cybertrain spin run gen -- --check
+          test -x dist/album
+          # Its snapshot would come from the binary, like test/authentication.rb.
+          cybertrain spin test test/attachment_post_cover.rb || true
+          test -x build/test/attachment_post_cover
+          ./build/test/attachment_post_cover
+          printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\xff' > /tmp/gem-e2e-upload/pixel.png
+          cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./album migrate
+          CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3998 ./album > server.log 2>&1 &
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3998/posts/new > /dev/null && break; sleep 0.5; done
+          curl -fsS -D new.h -o new.html http://127.0.0.1:3998/posts/new
+          grep -q 'enctype="multipart/form-data"' new.html
+          grep -q '<input type="file" name="post\[cover\]"' new.html
+          cookie=$(grep -i '^set-cookie:' new.h | sed 's/^[^:]*: *//; s/;.*//')
+          token=$(sed -n 's/.*name="authenticity_token" value="\([0-9a-f]*\)".*/\1/p' new.html | head -n 1)
+          test "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$cookie" \
+            -F "authenticity_token=$token" -F "post[title]=Hello" -F "post[cover]=@/tmp/gem-e2e-upload/pixel.png;type=image/png" \
+            http://127.0.0.1:3998/posts)" = "303 http://127.0.0.1:3998/posts/1"
+          # Without the token the multipart form is refused like any other.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -b "$cookie" -F "post[title]=x" -F "post[cover]=@/tmp/gem-e2e-upload/pixel.png" http://127.0.0.1:3998/posts)" = "403"
+          curl -fsS -D cover.h -o cover.bin http://127.0.0.1:3998/posts/1/cover
+          cmp cover.bin /tmp/gem-e2e-upload/pixel.png
+          grep -qi '^content-type: image/png' cover.h
+          grep -qi '^x-content-type-options: nosniff' cover.h
+          grep -qi "^content-security-policy: default-src 'none'; sandbox" cover.h
+          grep -qi '^content-disposition: inline; filename="pixel.png"' cover.h
+          # A record that does not exist has no file.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3998/posts/2/cover)" = "404"
+          test -n "$(find storage/uploads -type f)"
+          kill %1
+
       # What `cybertrain new` does for users: the framework as a git
       # dependency that spin fetches and locks (here this checkout, at a
       # local tag, instead of the release tag).

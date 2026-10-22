@@ -217,4 +217,185 @@ test "merge! copies Strings: the merged tree shares none with its source" do
   assert_equal "v", src.nested("c")["k"]
 end
 
+def upload_named(name, data)
+  Cybertrain::UploadedFile.new(name, "image/png", data.b)
+end
+
+test "set_upload stores a file; upload is nil when absent, upload? says which" do
+  p = Cybertrain::Params.new
+  assert_nil p.upload("cover")
+  refute p.upload?("cover")
+  p.set_upload("cover", upload_named("a.png", "AAAA"))
+  assert p.upload?("cover")
+  assert p.upload?(:cover)
+  up = p.upload(:cover)
+  assert_equal false, up.nil?
+  assert_equal "a.png", up.original_filename
+  assert_equal 4, up.body_bytes.bytesize
+  assert p.key?("cover")
+  # A file is not a String, a list or a nested Params.
+  assert_nil p["cover"]
+  assert_equal [], p.list("cover")
+  assert p.nested("cover").empty?
+  assert_equal({}, p.to_h)
+end
+
+test "the nullable upload return works in an if, the way a controller uses it" do
+  p = Cybertrain::Params.new
+  p.set_upload("cover", upload_named("c.png", "1"))
+  seen = "none"
+  file = p.upload(:cover)
+  seen = file.original_filename if file
+  assert_equal "c.png", seen
+  seen = "none"
+  other = p.upload(:missing)
+  seen = other.original_filename if other
+  assert_equal "none", seen
+  assert_equal "none", (other ? "some" : "none")
+end
+
+test "an empty file still counts as sent" do
+  p = Cybertrain::Params.new
+  p.set_upload("cover", Cybertrain::UploadedFile.blank)
+  assert p.upload?("cover")
+  assert p.upload("cover").empty?
+  refute p.empty?
+end
+
+test "a file evicts a String, a list and a nested Params of the same name" do
+  p = Cybertrain::Params.new
+  p.set_value("a", "1")
+  p.add_list_value("b", "2")
+  p.child!("c").set_value("k", "v")
+  p.set_upload("a", upload_named("a.png", "1"))
+  p.set_upload("b", upload_named("b.png", "22"))
+  p.set_upload("c", upload_named("c.png", "333"))
+  assert_nil p["a"]
+  assert_equal [], p.list("b")
+  assert p.nested("c").empty?
+  assert_equal "a.png", p.upload("a").original_filename
+  assert_equal "b.png", p.upload("b").original_filename
+  assert_equal "c.png", p.upload("c").original_filename
+  assert_equal "{\"a\"=>#<Cybertrain::UploadedFile \"a.png\" 1 bytes>, \"b\"=>#<Cybertrain::UploadedFile \"b.png\" 2 bytes>, \"c\"=>#<Cybertrain::UploadedFile \"c.png\" 3 bytes>}", p.inspect
+end
+
+test "set_value, add_list_value and child! evict a file of the same name" do
+  p = Cybertrain::Params.new
+  p.set_upload("a", upload_named("a.png", "1"))
+  p.set_value("a", "s")
+  refute p.upload?("a")
+  assert_nil p.upload("a")
+  assert_equal "s", p["a"]
+
+  p.set_upload("b", upload_named("b.png", "1"))
+  p.add_list_value("b", "x")
+  refute p.upload?("b")
+  assert_equal ["x"], p.list("b")
+
+  p.set_upload("c", upload_named("c.png", "1"))
+  p.child!("c").set_value("k", "v")
+  refute p.upload?("c")
+  assert_equal "v", p.nested("c")["k"]
+
+  # Last write wins between two files, too.
+  p.set_upload("d", upload_named("one.png", "1"))
+  p.set_upload("d", upload_named("two.png", "1"))
+  assert_equal "two.png", p.upload("d").original_filename
+end
+
+test "set_upload_path nests like set_path and never appends" do
+  p = Cybertrain::Params.new
+  p.set_upload_path(["avatar"], upload_named("top.png", "1"))
+  p.set_upload_path(["post", "cover"], upload_named("cover.png", "22"))
+  p.set_path(["post", "title"], "hi")
+  p.set_upload_path(["post", "deep", "img"], upload_named("deep.png", "333"))
+  assert_equal "top.png", p.upload("avatar").original_filename
+  post = p.require("post")
+  assert_equal "hi", post["title"]
+  assert_equal "cover.png", post.upload(:cover).original_filename
+  assert_equal "deep.png", post.nested("deep").upload("img").original_filename
+  # files[] has no list form: the second file replaces the first.
+  p.set_upload_path(["files", ""], upload_named("f1.png", "1"))
+  p.set_upload_path(["files", ""], upload_named("f2.png", "1"))
+  assert_equal "f2.png", p.upload("files").original_filename
+  assert_equal [], p.list("files")
+  # A file under a key that was a String turns it into a nested Params
+  # hop's leaf: the String is evicted by child!.
+  p.set_value("form", "str")
+  p.set_upload_path(["form", "doc"], upload_named("d.png", "1"))
+  assert_nil p["form"]
+  assert_equal "d.png", p.nested("form").upload("doc").original_filename
+end
+
+test "require succeeds for a form that sent only a file" do
+  p = Cybertrain::Params.new
+  p.set_upload_path(["post", "cover"], upload_named("only.png", "1"))
+  refute p.empty?
+  assert_equal "only.png", p.require(:post).upload(:cover).original_filename
+  refute p.require(:post).empty?
+end
+
+test "permit never returns a file" do
+  p = Cybertrain::Params.new
+  p.set_value("title", "hi")
+  p.set_upload("cover", upload_named("c.png", "1"))
+  permitted = p.permit("title", "cover")
+  assert_equal({ "title" => "hi" }, permitted)
+  assert_equal({ "title" => "hi" }, p.to_h)
+end
+
+test "merge! carries files across, evicting and nesting like the other kinds" do
+  a = Cybertrain::Params.new
+  a.set_value("avatar", "string")
+  a.set_upload("keep", upload_named("keep.png", "1"))
+  a.child!("post").set_upload("old", upload_named("old.png", "1"))
+
+  b = Cybertrain::Params.new
+  b.set_upload("avatar", upload_named("new.png", "22"))
+  b.child!("post").set_upload("cover", upload_named("cover.png", "333"))
+  b.set_value("keep", "now a string")
+
+  a.merge!(b)
+  assert_nil a["avatar"]
+  assert_equal "new.png", a.upload("avatar").original_filename
+  refute a.upload?("keep")
+  assert_equal "now a string", a["keep"]
+  assert_equal "old.png", a.nested("post").upload("old").original_filename
+  assert_equal "cover.png", a.nested("post").upload("cover").original_filename
+  # other is left alone.
+  assert_equal "new.png", b.upload("avatar").original_filename
+  assert_equal "cover.png", b.nested("post").upload("cover").original_filename
+  assert_equal "{\"keep\"=>\"now a string\", \"post\"=>{\"old\"=>#<Cybertrain::UploadedFile \"old.png\" 1 bytes>, \"cover\"=>#<Cybertrain::UploadedFile \"cover.png\" 3 bytes>}, \"avatar\"=>#<Cybertrain::UploadedFile \"new.png\" 2 bytes>}", a.inspect
+end
+
+test "merge! lets the other's list replace a file of the same name" do
+  a = Cybertrain::Params.new
+  a.set_upload("tags", upload_named("tags.png", "1"))
+  b = Cybertrain::Params.new
+  b.add_list_value("tags", "x")
+  a.merge!(b)
+  refute a.upload?("tags")
+  assert_equal ["x"], a.list("tags")
+end
+
+test "uploads are inspected after scalars, lists and nested Params" do
+  p = Cybertrain::Params.new
+  p.set_upload("f", upload_named("f.png", "1"))
+  p.set_value("s", "1")
+  p.add_list_value("l", "1")
+  p.child!("n")
+  assert_equal "{\"s\"=>\"1\", \"l\"=>[\"1\"], \"n\"=>{}, \"f\"=>#<Cybertrain::UploadedFile \"f.png\" 1 bytes>}", p.inspect
+end
+
+test "a file's bytes survive the Params unchanged (NUL and high bytes)" do
+  p = Cybertrain::Params.new
+  data = "\x00\xFF\x00PNG\x80".b
+  p.set_upload_path(["post", "bin"], Cybertrain::UploadedFile.new("bin.dat", "", data))
+  got = p.require(:post).upload(:bin)
+  assert_equal 7, got.body_bytes.bytesize
+  assert_equal 0, got.body_bytes.getbyte(0)
+  assert_equal 255, got.body_bytes.getbyte(1)
+  assert_equal 128, got.body_bytes.getbyte(6)
+end
+
 Cybertrain::Test.run!

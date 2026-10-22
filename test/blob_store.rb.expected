@@ -1,0 +1,17 @@
+ok   new_key is 32 lowercase hex characters and valid
+ok   valid_key? accepts only 32 bytes of 0-9 a-f
+ok   path_for shards by the first two characters
+ok   path_for raises BlobKeyInvalid for an invalid key
+bytesize=555 sha256=481b3eaf25b828e6c01aaf24329838140012fe2e17495483b27339e5efa34a9c
+ok   write then read round-trips binary data with NUL and 0xFF
+ok   an empty blob round-trips
+ok   the file is mode 0600 inside a 0700 shard directory
+ok   write leaves no temp file behind
+ok   write refuses an existing key and keeps the first blob
+ok   write rejects an invalid key before touching the disk
+ok   read of a missing blob is empty and of an invalid key raises
+ok   exist? is false for missing, invalid and symlinked keys
+ok   a directory in the blob's place is not a blob
+ok   delete removes a blob and is false for missing or invalid keys
+ok   root= moves the store and write creates the directories lazily
+15 tests, 63 assertions, 0 failures

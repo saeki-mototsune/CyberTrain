@@ -79,6 +79,7 @@ module Cybertrain
           /build/
           /dist/
           /storage/*.sqlite3*
+          /storage/uploads/
           /tmp/*
           !/tmp/.keep
           /log/
@@ -426,6 +427,75 @@ module Cybertrain
         "<!DOCTYPE html>\n<html><body>OK</body></html>\n"
       end
 
+      # ---- cybertrain generate attachment / scaffold FIELD:attachment ----
+
+      # The accept= attribute of the file input: the four raster types
+      # Cybertrain::UploadedFile serves inline (the generator's default).
+      ATTACHMENT_ACCEPT = "image/png,image/jpeg,image/gif,image/webp"
+
+      # The columns an attachment field adds to its table, as [suffix, type,
+      # SQL default]: `cover` -> cover_key, cover_filename, cover_content_type,
+      # cover_byte_size, cover_checksum. NOT NULL with "" / 0 as the "nothing
+      # attached" value, because nullable columns cost Spinel its type
+      # inference (NOTES rules 7/11).
+      ATTACHMENT_COLUMNS = [
+        ["key", "string", "''"],
+        ["filename", "string", "''"],
+        ["content_type", "string", "''"],
+        ["byte_size", "integer", "0"],
+        ["checksum", "string", "''"]
+      ]
+
+      # Names an attachment field may not have: the generator adds `def
+      # <field>` to the owner controller as the download action, so the field
+      # must not redefine anything that controller already answers to. A
+      # field named `params` would make every action (the download's own
+      # `params[:id]` included) recurse; `head` would turn the download's
+      # `head 404` into a call to itself. Three groups:
+      # - the scaffold's actions;
+      # - every instance method and reader of Cybertrain::Controller,
+      #   public or private (cybertrain/controller.rb);
+      # - the methods the generators write into ApplicationController
+      #   (Templates.application_controller and the authentication block).
+      # Names ending in ? or ! are left out: a field name cannot have them.
+      # script/check-reserved-names fails when Controller or those templates
+      # gain a method this list lacks. The per-model helpers (set_<model>,
+      # <model>_params) are checked by attachment_action_clash?.
+      ATTACHMENT_RESERVED_ACTIONS = %w[
+        index show new new_action edit create update destroy
+        ctx request response params action_name rescued_exception session flash
+        initialize process run_callback default_render view_assigns view_env
+        controller_path render_template render redirect_to head send_blob
+        run_action run_before_callbacks run_after_callbacks run_one
+        rescue_with_handler render_partial send_html string_keys json_body
+        record_not_found resume_session require_authentication
+        start_new_session_for terminate_session after_authentication_url
+      ]
+
+      # Whether `field` as the name of the download action `def <field>` on
+      # the controller of `singular` would redefine one of its methods: the
+      # list above, or the scaffold's private set_<model> / <model>_params.
+      def self.attachment_action_clash?(field, singular)
+        ATTACHMENT_RESERVED_ACTIONS.include?(field) || field == "set_#{singular}" || field == "#{singular}_params"
+      end
+
+      # ["cover_key", "cover_filename", ...] for the attachment field `field`.
+      def self.attachment_column_names(field)
+        names = Array.new(0) { "" }
+        ATTACHMENT_COLUMNS.each { |col| names << "#{field}_#{col[0]}" }
+        names
+      end
+
+      # The schema DSL lines of those columns, as a create_table block writes
+      # them: `t.string "cover_key", null: false, default: "''"`.
+      def self.attachment_table_lines(field)
+        lines = Array.new(0) { "" }
+        ATTACHMENT_COLUMNS.each do |col|
+          lines << "t.#{col[1]} \"#{field}_#{col[0]}\", null: false, default: \"#{col[2]}\""
+        end
+        lines
+      end
+
       # ---- cybertrain generate scaffold --------------------------------
 
       def self.migration(res)
@@ -433,7 +503,7 @@ module Cybertrain
         buf << "class Create#{res.plural_class} < Cybertrain::Migration::Base\n"
         buf << "  def change\n"
         buf << "    create_table \"#{res.plural}\" do |t|\n"
-        res.fields.each { |f| buf << "      #{f.migration_line}\n" }
+        res.fields.each { |f| f.migration_lines.each { |line| buf << "      #{line}\n" } }
         buf << "      t.timestamps\n"
         buf << "    end\n"
         buf << "  end\n"
@@ -456,7 +526,17 @@ module Cybertrain
         s = res.singular
         p = res.plural
         human = humanize(s)
-        permitted = res.fields.map { |f| ":#{f.column_name}" }.join(", ")
+        # An attachment is not a column and never goes through permit: the
+        # create and update actions hand it to `<field>_file=` as an
+        # UploadedFile (cli/attachment.rb), so a file can never be mass-assigned.
+        permit_list = Array.new(0) { "" }
+        res.fields.each { |f| permit_list << ":#{f.column_name}" unless f.attachment? }
+        permitted = permit_list.join(", ")
+        # A form whose only fields are files sends no `#{s}[...]` key at all
+        # when no file is chosen (the parser drops an empty file input), so
+        # `require` would make such an edit a 400: `nested` reads the absent
+        # key as empty, and the update keeps the stored file.
+        lookup = permit_list.empty? && res.attachments? ? "nested" : "require"
         <<~RUBY
           class #{res.plural_class}Controller < ApplicationController
             before_action :set_#{s}, only: [:show, :edit, :update, :destroy]
@@ -515,7 +595,7 @@ module Cybertrain
             end
 
             def #{s}_params
-              params.require(:#{s}).permit(#{permitted})
+              params.#{lookup}(:#{s}).permit(#{permitted})
             end
           end
         RUBY
@@ -531,7 +611,14 @@ module Cybertrain
         buf << "      <th></th>\n    </tr>\n  </thead>\n  <tbody>\n"
         buf << "    <% @#{res.plural}.each do |#{s}| %>\n"
         buf << "      <tr>\n"
-        res.fields.each { |f| buf << "        <td><%= #{s}.#{f.column_name} %></td>\n" }
+        res.fields.each do |f|
+          if f.attachment?
+            # A link to the file, not an <img>: a list of full-size images is heavy.
+            buf << "        <td><% if #{s}.#{f.field_name}_attached? %><a href=\"<%= #{s}.#{f.field_name}_url %>\"><%= #{s}.#{f.field_name}_filename %></a><% end %></td>\n"
+          else
+            buf << "        <td><%= #{s}.#{f.column_name} %></td>\n"
+          end
+        end
         buf << "        <td><%= link_to \"Show\", #{s}_path(#{s}) %></td>\n"
         buf << "      </tr>\n"
         buf << "    <% end %>\n"
@@ -546,13 +633,33 @@ module Cybertrain
         buf = +""
         buf << "<h1>#{humanize(s)}</h1>\n\n"
         res.fields.each do |f|
-          buf << "<p>\n  <strong>#{f.label}:</strong>\n  <%= @#{s}.#{f.column_name} %>\n</p>\n\n"
+          if f.attachment?
+            buf << attachment_show_paragraph(s, f, res.any)
+          else
+            buf << "<p>\n  <strong>#{f.label}:</strong>\n  <%= @#{s}.#{f.column_name} %>\n</p>\n\n"
+          end
         end
         buf << "<p>\n"
         buf << "  <%= link_to \"Edit this #{words}\", edit_#{s}_path(@#{s}) %> |\n"
         buf << "  <%= link_to \"Back to #{res.plural.tr("_", " ")}\", #{res.index_helper}_path %>\n"
         buf << "</p>\n\n"
         buf << "<%= button_to \"Destroy this #{words}\", #{s}_path(@#{s}), method: :delete %>\n"
+        buf
+      end
+
+      # The show page's paragraph for an attachment field: the image itself
+      # for the raster-image default, a download link with --any.
+      def self.attachment_show_paragraph(s, f, any)
+        name = f.field_name
+        buf = +""
+        buf << "<p>\n  <strong>#{f.label}:</strong>\n"
+        buf << "  <% if @#{s}.#{name}_attached? %>\n"
+        if any
+          buf << "    <a href=\"<%= @#{s}.#{name}_url %>\"><%= @#{s}.#{name}_filename %></a>\n"
+        else
+          buf << "    <img src=\"<%= @#{s}.#{name}_url %>\" alt=\"<%= @#{s}.#{name}_filename %>\">\n"
+        end
+        buf << "  <% end %>\n</p>\n\n"
         buf
       end
 
@@ -581,7 +688,8 @@ module Cybertrain
         s = res.singular
         buf = +""
         buf << "<%# locals: (#{s}:) %>\n"
-        buf << "<%= form_with(model: #{s}) do |f| %>\n"
+        multipart = res.attachments?
+        buf << (multipart ? "<%= form_with(model: #{s}, multipart: true) do |f| %>\n" : "<%= form_with(model: #{s}) do |f| %>\n")
         buf << "  <% if #{s}.errors.any? %>\n"
         buf << "    <div id=\"error_explanation\">\n"
         buf << "      <h2><%= pluralize(#{s}.errors.count, \"error\") %> prohibited this #{s.tr("_", " ")} from being saved:</h2>\n"
@@ -595,7 +703,12 @@ module Cybertrain
         res.fields.each do |f|
           buf << "  <div class=\"field\">\n"
           buf << "    <%= f.label :#{f.column_name} %>\n"
-          buf << "    <%= f.#{f.form_input} :#{f.column_name} %>\n"
+          if f.attachment?
+            accept = res.any ? "" : ", accept: \"#{ATTACHMENT_ACCEPT}\""
+            buf << "    <%= f.file_field :#{f.field_name}#{accept} %>\n"
+          else
+            buf << "    <%= f.#{f.form_input} :#{f.column_name} %>\n"
+          end
           buf << "  </div>\n\n"
         end
         buf << "  <div class=\"actions\">\n"

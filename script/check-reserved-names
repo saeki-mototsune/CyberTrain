@@ -20,7 +20,8 @@
 # are private, so Object.instance_methods never lists them, yet a column
 # reader of that name raises ArgumentError at Ruby's call. They must be in
 # RESERVED_COLUMN_NAMES, never a plain reader and never merely "shadowing".
-# Run by CI.
+# It also guards the attachment generator's ATTACHMENT_RESERVED_ACTIONS
+# against Cybertrain::Controller growing (see below). Run by CI.
 #
 # usage: ruby script/check-reserved-names
 require File.expand_path("../cybertrain/ident", __dir__)
@@ -75,9 +76,36 @@ hooks_missing = private_hooks - reserved
 advisory.each do |n|
   warn "advisory: Object##{n} is in neither list; add it to SHADOWING_COLUMN_NAMES when convenient"
 end
-if missing.empty? && twice.empty? && hooks_missing.empty?
-  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved)"
+# The attachment generator adds the download action `def <field>` to the
+# owner controller, so CLI::Templates::ATTACHMENT_RESERVED_ACTIONS must name
+# every instance method and reader a controller already has: those of
+# cybertrain/controller.rb (public or private), and those the generators
+# write into ApplicationController (its template and the authentication
+# block). A field called `params` or `head` would otherwise be accepted and
+# break the controller. Names a field cannot have (with ? ! =) are skipped.
+$LOAD_PATH.unshift(File.expand_path("..", __dir__))
+require "cybertrain/cli/templates"
+require "cybertrain/cli/authentication"
+controller_source = File.read(File.expand_path("../cybertrain/controller.rb", __dir__))
+app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.application_controller_block
+action_names = []
+[controller_source, app_source].each do |text|
+  text.scan(/^\s*def\s+(?!self\.)([A-Za-z_][A-Za-z0-9_]*)\b(?![?!=])/) { |(m)| action_names << m }
+  text.scan(/^\s*attr_(?:reader|accessor)\s+((?::\w+\s*,?\s*)+)/) do |(list)|
+    list.scan(/:(\w+)/) { |(m)| action_names << m }
+  end
+end
+action_names = action_names.uniq.sort.grep(/\A[a-z][a-z0-9_]*\z/)
+actions_missing = action_names - Cybertrain::CLI::Templates::ATTACHMENT_RESERVED_ACTIONS
+
+if missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty?
+  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names"
 else
+  unless actions_missing.empty?
+    warn "check-reserved-names: a controller already has #{actions_missing.map(&:inspect).join(", ")} " \
+         "(cybertrain/controller.rb or the generated ApplicationController) but Cybertrain::CLI::Templates::ATTACHMENT_RESERVED_ACTIONS " \
+         "(cybertrain/cli/templates.rb) does not refuse it as an attachment field name; add it"
+  end
   unless missing.empty?
     warn "check-reserved-names: cybertrain/model.rb defines #{missing.map(&:inspect).join(", ")} " \
          "but neither Cybertrain::Ident::RESERVED_COLUMN_NAMES nor SHADOWING_COLUMN_NAMES (cybertrain/ident.rb) has them; add them"

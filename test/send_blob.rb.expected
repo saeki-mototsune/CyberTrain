@@ -1,0 +1,42 @@
+status 200
+type image/png
+disposition inline; filename="photo.png"; filename*=UTF-8''photo.png
+nosniff nosniff
+csp default-src 'none'; sandbox
+cache private, max-age=3600
+ok   a PNG is served inline with the lock-down headers
+status 200
+type application/octet-stream
+disposition attachment; filename="logo.svg"; filename*=UTF-8''logo.svg
+nosniff nosniff
+csp default-src 'none'; sandbox
+cache private, max-age=3600
+ok   an SVG is forced to an attachment of unknown type
+status 200
+type application/octet-stream
+disposition attachment; filename="page.html"; filename*=UTF-8''page.html
+nosniff nosniff
+csp default-src 'none'; sandbox
+cache private, max-age=3600
+ok   an HTML blob is forced to an attachment of unknown type
+status 200
+type application/octet-stream
+disposition attachment; filename="x.png"; filename*=UTF-8''x.png
+nosniff nosniff
+csp default-src 'none'; sandbox
+cache private, max-age=3600
+ok   a type with parameters is not on the inline list
+disposition inline; filename="abSet-Cookie x_1caf__.png"; filename*=UTF-8''abSet-Cookie%20x%3D1caf%C3%A9.png
+header lines 7
+ok   a hostile stored filename makes a safe ASCII header
+disposition inline; filename="caf__ ______.png"; filename*=UTF-8''caf%C3%A9%20%E6%97%A5%E6%9C%AC.png
+ok   a non-ASCII filename gets an ASCII fallback and a percent-encoded name
+disposition attachment; filename="upload"; filename*=UTF-8''upload
+ok   an empty filename falls back to upload
+blob sha256 9d0c38e7aafe062c3a6dfc561e42771ec997d9359bb3d417ac4775a303292964
+wire body bytes 264
+wire body sha256 9d0c38e7aafe062c3a6dfc561e42771ec997d9359bb3d417ac4775a303292964
+ok   binary body bytes survive to_http intact
+head only bytes after blank line 0
+ok   HEAD answers the same headers and Content-Length without the body
+9 tests, 41 assertions, 0 failures

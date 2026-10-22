@@ -8,5 +8,8 @@ ok   the bare-name list is derived from CLIENT_FAULTS, entry for entry
 ok   bare_name is the part after the last namespace separator
 ok   every bare client-fault name is unique within the list
 ok   status of the framework's own exceptions
+ok   the multipart faults are client faults (400), by full name or bare name
+ok   status of the multipart exceptions the parser raises
+ok   a raised multipart fault is a 400 at info level, with its message
 ok   a client fault is classified as a 400 at info level, an ArgumentError as a 500 at error
-11 tests, 66 assertions, 0 failures
+14 tests, 104 assertions, 0 failures

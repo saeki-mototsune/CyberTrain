@@ -108,6 +108,9 @@ test "config defaults in development" do
   assert c.csrf
   assert c.csrf_exempt_prefixes.empty?
   assert_equal 10_485_760, c.max_body_bytes
+  assert_equal 5_242_880, c.max_upload_bytes
+  assert_equal 128, c.max_multipart_parts
+  assert_equal "storage/uploads", c.upload_root
   assert_equal 1, c.workers
   assert_equal "tmp/secret_key", c.secret_key_path
 end
@@ -199,6 +202,30 @@ test "max_body_bytes_error names a value that is not a positive Integer" do
   assert_equal "", c.max_body_bytes_error
   c.max_body_bytes = 0
   assert_includes c.max_body_bytes_error, "at least 1 (got 0)"
+end
+
+test "upload_limits_error names a setting that is unusable" do
+  c = Cybertrain::Config.new
+  assert_equal "", c.upload_limits_error
+  c.max_upload_bytes = c.max_body_bytes
+  assert_equal "", c.upload_limits_error
+  c.max_upload_bytes = c.max_body_bytes + 1
+  assert_equal "max_upload_bytes (10485761) must not exceed max_body_bytes (10485760)", c.upload_limits_error
+  c.max_body_bytes = 20_000_000
+  assert_equal "", c.upload_limits_error
+  c.max_upload_bytes = 0
+  assert_equal "max_upload_bytes must be an Integer of at least 1 (got 0)", c.upload_limits_error
+  c.max_upload_bytes = 1
+  c.max_multipart_parts = 0
+  assert_equal "max_multipart_parts must be an Integer from 1 to 4096 (got 0)", c.upload_limits_error
+  c.max_multipart_parts = 4097
+  assert_equal "max_multipart_parts must be an Integer from 1 to 4096 (got 4097)", c.upload_limits_error
+  c.max_multipart_parts = 4096
+  assert_equal "", c.upload_limits_error
+  c.upload_root = ""
+  assert_equal "upload_root must be a non-empty String", c.upload_limits_error
+  c.upload_root = "/var/uploads"
+  assert_equal "", c.upload_limits_error
 end
 
 test "session_same_site_error is empty for Lax, Strict and None and names the valid values otherwise" do

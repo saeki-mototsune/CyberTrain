@@ -355,6 +355,20 @@ test "a name that shadows an Object method is accepted with a note" do
   assert_equal [], Cybertrain::CLI::Scaffold.shadow_notes(Cybertrain::CLI::Resource.new("post", [Cybertrain::CLI::Field.parse("title")]))
 end
 
+test "an attachment field expands to five columns and is not a column itself" do
+  field = Cybertrain::CLI::Field.parse("cover:attachment")
+  assert field.attachment?
+  assert_equal ["cover_key", "cover_filename", "cover_content_type", "cover_byte_size", "cover_checksum"], field.expanded_columns
+  assert_equal "t.string \"cover_key\", null: false, default: \"''\"", field.migration_lines[0]
+  assert_equal "t.integer \"cover_byte_size\", null: false, default: \"0\"", field.migration_lines[3]
+  assert_equal "file_field", field.form_input
+  assert_equal ["title"], Cybertrain::CLI::Field.parse("title:string").expanded_columns
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("cover:blob") }
+  assert_includes message, "references, attachment)"
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("update:attachment") }
+  assert_includes message, "'update' would shadow a method of the generated model"
+end
+
 test "the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP" do
   assert_equal "20260925120000", Cybertrain::CLI::Scaffold.timestamp
   ENV.delete("CYBERTRAIN_TIMESTAMP")

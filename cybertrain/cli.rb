@@ -2,7 +2,8 @@
 # bin/cybertrain.rb built by spin (`spin install` from a checkout).
 #
 #   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
-#   cybertrain generate scaffold NAME field:type ... [parent:references]
+#   cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
+#   cybertrain generate attachment MODEL FIELD [--any]
 #   cybertrain generate authentication
 #   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
 #   cybertrain setup [--force] | doctor | version | help
@@ -14,6 +15,7 @@ require "cybertrain/cli/templates"
 require "cybertrain/cli/new_app"
 require "cybertrain/cli/scaffold"
 require "cybertrain/cli/authentication"
+require "cybertrain/cli/attachment"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
 
@@ -30,9 +32,20 @@ module Cybertrain
             current directory; written as an absolute path).
             --version V: the index version constraint V.
             --git URL [--ref R]: the framework at URL, at branch or tag R.
-        cybertrain generate scaffold NAME field:type ... [parent:references]
+        cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
             Add a resource to the application in the current directory.
             Types: #{Field::TYPES.join(", ")} (default string).
+            A field of type attachment (cover:attachment) is an uploaded file:
+            see `generate attachment`; --any applies to it.
+        cybertrain generate attachment MODEL FIELD [--any]
+            Attach an uploaded file to a model of the application in the
+            current directory (`generate attachment post cover`): five
+            columns in a migration, cover_* methods and callbacks in the model,
+            a download action and route, the file input in the scaffold's
+            form, and a test. The bytes are kept in storage/uploads/ (back it
+            up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
+            accepted, unless --any allows any file; the stored type is always
+            the one detected from the bytes.
         cybertrain generate authentication
             Add email-and-password sign-in to the application in the current
             directory: users and sessions tables, User and Session models,
@@ -243,13 +256,34 @@ module Cybertrain
       run_spin(Build.server_commands(name, port))
     end
 
+    # `args` without the (every) `flag` option.
+    def self.without_flag(args, flag)
+      kept = Array.new(0) { "" }
+      args.each { |arg| kept << arg unless arg == flag }
+      kept
+    end
+
     def self.run_generate(argv)
       kind = argv.size > 1 ? argv[1] : ""
       case kind
       when "scaffold"
-        raise InvalidArgument, "usage: cybertrain generate scaffold NAME field:type ..." if argv.size < 3
+        raise InvalidArgument, "usage: cybertrain generate scaffold NAME field:type ... [--any]" if argv.size < 3
 
-        Scaffold.generate(".", argv[2], argv[3, argv.size - 3])
+        args = without_flag(argv[2, argv.size - 2], "--any")
+        raise InvalidArgument, "usage: cybertrain generate scaffold NAME field:type ... [--any]" if args.empty?
+
+        Scaffold.generate(".", args[0], args[1, args.size - 1], argv.include?("--any"))
+      when "attachment"
+        args = without_flag(argv[2, argv.size - 2], "--any")
+        raise InvalidArgument, "usage: cybertrain generate attachment MODEL FIELD [--any]" unless args.size == 2
+
+        Attachment.generate(".", args[0], args[1], argv.include?("--any"))
+        puts Attachment::BACKUP_NOTE
+        puts ""
+        puts "next:"
+        puts "  cybertrain db migrate"
+        puts "  cybertrain server"
+        puts "  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, \"Testing an app\")"
       when "authentication"
         raise InvalidArgument, "usage: cybertrain generate authentication (no arguments)" if argv.size > 2
 
@@ -260,7 +294,7 @@ module Cybertrain
         puts "  cybertrain server      # then open /sign_up"
         puts "  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, \"Testing an app\")"
       else
-        raise InvalidArgument, "only `generate scaffold` and `generate authentication` are supported"
+        raise InvalidArgument, "only `generate scaffold`, `generate attachment` and `generate authentication` are supported"
       end
       0
     end

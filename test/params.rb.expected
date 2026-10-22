@@ -14,4 +14,16 @@ ok   merge! preserves inspect ordering: receiver order first, then other's new k
 ok   a name can only be one kind at a time: last write wins, like Rack
 ok   to_h returns only scalars, empty? and inspect are deterministic
 ok   merge! copies Strings: the merged tree shares none with its source
-16 tests, 65 assertions, 0 failures
+ok   set_upload stores a file; upload is nil when absent, upload? says which
+ok   the nullable upload return works in an if, the way a controller uses it
+ok   an empty file still counts as sent
+ok   a file evicts a String, a list and a nested Params of the same name
+ok   set_value, add_list_value and child! evict a file of the same name
+ok   set_upload_path nests like set_path and never appends
+ok   require succeeds for a form that sent only a file
+ok   permit never returns a file
+ok   merge! carries files across, evicting and nesting like the other kinds
+ok   merge! lets the other's list replace a file of the same name
+ok   uploads are inspected after scalars, lists and nested Params
+ok   a file's bytes survive the Params unchanged (NUL and high bytes)
+28 tests, 127 assertions, 0 failures

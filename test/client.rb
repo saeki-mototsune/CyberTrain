@@ -2,6 +2,26 @@ require "cybertrain/router"
 require "cybertrain/app"
 require "cybertrain/http/cookies"
 require "cybertrain/test/client"
+require "digest"
+
+# What an action sees of a multipart request: the boundary the client chose,
+# each text part, each file as filename, type, size and digest.
+def upload_report(c)
+  form = c.request.multipart_form
+  lines = [c.request.multipart_boundary]
+  i = 0
+  while i < form.text_count
+    lines << "text #{form.text_name_at(i)}=#{form.text_value_at(i)}"
+    i += 1
+  end
+  i = 0
+  while i < form.file_count
+    up = form.file_at(i)
+    lines << "file #{form.file_name_at(i)} #{up.original_filename} #{up.declared_content_type} #{up.byte_size} #{up.sha256_hex}"
+    i += 1
+  end
+  lines.join("\n")
+end
 
 def build_app
   router = Cybertrain::Router.new
@@ -30,6 +50,11 @@ def build_app
   router.put("/posts/:id") { |c| c.response.body = "put #{c.params[:id]}" }
   router.delete("/posts/:id") { |c| c.response.body = "deleted #{c.params[:id]}" }
   router.post("/posts/:id") { |c| c.response.body = "plain post #{c.params[:id]}" }
+  router.post("/upload") do |c|
+    c.response.status = 201
+    c.response.body = upload_report(c)
+  end
+  router.patch("/upload/:id") { |c| c.response.body = "patched #{c.params[:id]} #{upload_report(c)}" }
   Cybertrain::App.new(router, public_root: "test/no_such_public_dir", logging: false)
 end
 
@@ -156,6 +181,82 @@ test "status symbols map to codes" do
   assert_equal "expected response :error, got 503", message
   message = assert_raises("AssertionFailed") { assert_response res, :bogus }
   assert_equal "unknown status symbol :bogus", message
+end
+
+test "Test.binary makes a binary String from byte values" do
+  data = Cybertrain::Test.binary([0, 255, 0x80, 65, 0, 10, 13])
+  assert_equal 7, data.bytesize
+  assert_equal [0, 255, 128, 65, 0, 10, 13], [0, 1, 2, 3, 4, 5, 6].map { |n| data.getbyte(n).to_i }
+  assert_equal 0, Cybertrain::Test.binary([]).bytesize
+  assert_equal Digest::SHA256.hexdigest("\x00\xFF\x80A\x00\n\r".b), Digest::SHA256.hexdigest(data)
+  assert_equal "byte value out of range: 256", assert_raises("ArgumentError") { Cybertrain::Test.binary([1, 256]) }
+  assert_raises("ArgumentError") { Cybertrain::Test.binary([-1]) }
+end
+
+test "post_multipart sends text parts and files as multipart/form-data" do
+  client = Cybertrain::Test::Client.new(build_app)
+  data = Cybertrain::Test.binary([137, 80, 78, 71, 0, 255, 13, 10, 45, 45, 0])
+  uploads = [Cybertrain::Test::Upload.new("post[cover]", "cover.png", "image/png", data)]
+  res = client.post_multipart("/upload", { "post[title]" => "H\u00e9llo", "authenticity_token" => "tok" }, uploads)
+  assert_response res, :created
+  puts res.body
+  lines = res.body.split("\n")
+  assert_equal "----CybertrainTestBoundary1", lines[0]
+  assert_equal "text post[title]=H\u00e9llo", lines[1]
+  assert_equal "text authenticity_token=tok", lines[2]
+  assert_equal "file post[cover] cover.png image/png 11 #{Digest::SHA256.hexdigest(data)}", lines[3]
+end
+
+test "post_multipart takes fields and uploads as optional, and extra headers" do
+  client = Cybertrain::Test::Client.new(build_app)
+  res = client.post_multipart("/upload")
+  assert_response res, :created
+  assert_equal "----CybertrainTestBoundary1", res.body
+  res = client.post_multipart("/upload", { "a" => "1" }, [], { "X-Token" => "abc" })
+  assert_equal "----CybertrainTestBoundary2\ntext a=1", res.body
+end
+
+test "the boundary is bumped until no file or field contains it" do
+  client = Cybertrain::Test::Client.new(build_app)
+  first = Cybertrain::Test.binary([0, 1]) + "----CybertrainTestBoundary1".b + Cybertrain::Test.binary([255])
+  second = "x----CybertrainTestBoundary2".b
+  uploads = [Cybertrain::Test::Upload.new("a", "a.bin", "application/octet-stream", first),
+             Cybertrain::Test::Upload.new("b", "b.bin", "application/octet-stream", second)]
+  res = client.post_multipart("/upload", { "t" => "----CybertrainTestBoundary3" }, uploads)
+  assert_response res, :created
+  puts res.body
+  lines = res.body.split("\n")
+  assert_equal "----CybertrainTestBoundary4", lines[0]
+  assert_equal "text t=----CybertrainTestBoundary3", lines[1]
+  assert_equal "file a a.bin application/octet-stream 30 #{Digest::SHA256.hexdigest(first)}", lines[2]
+  assert_equal "file b b.bin application/octet-stream 28 #{Digest::SHA256.hexdigest(second)}", lines[3]
+end
+
+test "patch_multipart sends a POST with _method=patch, which MethodOverride turns into the PATCH route" do
+  client = Cybertrain::Test::Client.new(build_app)
+  up = Cybertrain::Test::Upload.new("f", "f.txt", "text/plain", "hi")
+  res = client.patch_multipart("/upload/5", { "x" => "1" }, [up])
+  assert_response res, :ok
+  puts res.body
+  lines = res.body.split("\n")
+  assert_equal "patched 5 ----CybertrainTestBoundary1", lines[0]
+  assert_equal "text x=1", lines[1]
+  assert_equal "text _method=patch", lines[2]
+  assert_equal "file f f.txt text/plain 2 #{Digest::SHA256.hexdigest("hi")}", lines[3]
+  # the caller's own _method field is replaced, never sent twice
+  res = client.patch_multipart("/upload/6", { "_method" => "delete" })
+  assert_equal "patched 6 ----CybertrainTestBoundary2\ntext _method=patch", res.body
+end
+
+test "status symbols cover payload_too_large and unsupported_media_type" do
+  res = Cybertrain::Response.new
+  res.status = 413
+  assert_response res, :payload_too_large
+  res.status = 415
+  assert_response res, :unsupported_media_type
+  res.status = 400
+  message = assert_raises("AssertionFailed") { assert_response res, :payload_too_large }
+  assert_equal "expected response :payload_too_large, got 400", message
 end
 
 Cybertrain::Test.run!
