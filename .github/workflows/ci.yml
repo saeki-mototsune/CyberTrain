@@ -107,6 +107,7 @@ jobs:
           for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3999/products > /dev/null && break; sleep 0.5; done
           curl -fsS http://127.0.0.1:3999/products > /dev/null
           curl -fsS http://127.0.0.1:3999/style.css > /dev/null
+          curl -fsS http://127.0.0.1:3999/up.html > /dev/null   # Kamal's health check (config/deploy.yml)
           grep -q "production environment" server.log
           kill %1
 

@@ -187,6 +187,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 名前は `cybertrain`、ライセンスは MIT。
 - フレームワークは spin のライブラリパッケージ（`spin new cybertrain --lib` の配置）。`spin.toml` の `[package] name = "cybertrain"`、入口 `cybertrain.rb`、機能ごとに `cybertrain/http/`、`router.rb`、`template/`、`model.rb`、`db/`、`generator/` などに分割（第 11 章）。C は `ffi_source` でファイル内に書く（`dev/reexec.rb`）。アプリからは GitHub のタグを `{ git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }` で参照し、`spin.lock` でコミットを固定する（フレームワークのコードはアプリに置かない）。`matz/spin-index` への登録後は `--version` 指定も使える。
 - CLI はフレームワーク側の `bin/cybertrain.rb`（spin でビルド）と、同じソースを CRuby で動かす gem（`gem install cybertrain`、`exe/cybertrain`）の 2 通りで配る。spin には索引からツールを入れるコマンドがまだ無く（`spin install` はローカルのソースのみ）、利用者の Rails 開発者は Ruby を持っているため、配布は gem を主とする。gem には CLI とそれが require するファイルだけを入れ、フレームワーク本体は入れない。役割は `cybertrain new blog` の雛形生成と `cybertrain generate scaffold post title:string body:text` のコード生成のみ。（2026-09-26 改訂: 役割は `new`、`generate scaffold`、`migration`、`db`、`server`、`build`。後の 4 つはアプリのディレクトリで `spin run gen` / `spin run db` / `spin run NAME` / `spin build NAME` を順に呼ぶ薄いラッパ。第 13 章）`new` は既定で CLI と同じバージョンのタグを依存に書き、`rails new` の `bundle install` にあたる `spin lock` と `spin run gen` まで実行する（`--skip-spin` で省略）。gem とフレームワークは同じタグからリリースする。
+- `new` はデプロイ用に Kamal 2 の雛形（`Dockerfile`、`.dockerignore`、`config/deploy.yml`、`.kamal/secrets`、ヘルスチェック用の `public/up.html`）も書く（2026-10-22）。バイナリはシステムの libc と SQLite にリンクするので、イメージはビルド段と実行段を同じ Ubuntu リリースにし、ビルド段で `gem install cybertrain -v <CLI のバージョン>`・`cybertrain setup`・`cybertrain build` を実行して `dist/` だけを実行段へコピーする。起動は `./NAME migrate && exec ./NAME`（SIGTERM がサーバーに届く）。ヘルスチェックは静的ファイル: ルートを足すとアプリのルーティングとコントローラに手が入り、kamal-proxy にはプロセスが HTTP に応答することだけが分かればよいため。DB は SQLite のままボリューム（`/app/storage`）に置き、サーバー 1 台を前提にする。
 - アプリの雛形と bin は第 11 章。ビルドは `spin run gen` → `spin build` の 2 段。（2026-09-26 改訂: 配布用ビルドは `cybertrain build` → `dist/`。`spin run gen -- --embed-views` → `spin build NAME` → `spin run gen` で空の表に戻し、バイナリと `public/` を `dist/` にまとめる。第 13 章）
 
 ### D12. 開発ループ: サーバが自分で再ビルドして自分を置き換える
@@ -331,12 +332,13 @@ blog/
   spin.lock                 # spin lock が書く（examples/blog は path 依存なので無し）
   .gitignore  README.md
   app/controllers/  app/models/  app/views/  app/helpers/
-  config/routes.rb  config/app.rb
+  config/routes.rb  config/app.rb  config/deploy.yml   # deploy.yml: Kamal（D11）
+  Dockerfile  .dockerignore  .kamal/secrets
   db/migrate/  db/schema.rb
   gen/                      # app.rb  controllers.rb  migrations.rb  models/  routes.rb  views.rb
   bin/blog.rb  bin/gen.rb  bin/db.rb   # blog.rb: server / migrate / db、db.rb: 開発時のマイグレーション
   test/                     # 雛形は .keep のみ（examples/blog では articles.rb comments.rb support/blog_test.rb）
-  public/  storage/  tmp/   # build/ と dist/ は .gitignore
+  public/  storage/  tmp/   # build/ と dist/ は .gitignore。public/up.html は Kamal のヘルスチェック
 ```
 
 ## 12. 参考
