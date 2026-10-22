@@ -1,0 +1,67 @@
+# Kamal 2 (https://kamal-deploy.org): `kamal setup` the first time,
+# `kamal deploy` after that, both run from examples/blog. Replace every
+# value marked CHANGE ME.
+
+# Name of the application; names its containers.
+service: blog
+
+# The image to build and push. CHANGE ME: your registry user.
+image: your-user/blog
+
+# The servers to deploy to. CHANGE ME: the server's address. One
+# server: the database is a SQLite file on that server's volume.
+servers:
+  web:
+    - 192.168.0.1
+
+# kamal-proxy terminates TLS (a Let's Encrypt certificate for host)
+# and forwards to the app on port 3000. Keep ssl on: in production the
+# session cookie is Secure, so forms only work over HTTPS. CHANGE ME:
+# host, with a DNS record pointing at the server.
+proxy:
+  ssl: true
+  host: blog.example.com
+  app_port: 3000
+  healthcheck:
+    # public/up.html, served by the app itself.
+    path: /up.html
+
+# Credentials for the registry the image is pushed to. CHANGE ME:
+# the user; the password comes from .kamal/secrets.
+registry:
+  # server: ghcr.io
+  username: your-user
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+# The app's settings (cybertrain/config.rb). Secrets come from
+# .kamal/secrets.
+env:
+  secret:
+    - CYBERTRAIN_SECRET_KEY_BASE
+  # clear:
+  #   SPINEL_WORKERS: 2
+
+# The SQLite database lives in storage/: keep it on the server across
+# deploys. Back it up from there (docs/deploy.md).
+volumes:
+  - "blog_storage:/app/storage"
+
+# `kamal db_status` (pending migrations) and `kamal shell`.
+aliases:
+  db_status: app exec --reuse "./blog db status"
+  shell: app exec --interactive --reuse "bash"
+
+# The image compiles the framework from this checkout (spin.toml's
+# `path = "../.."`), so the build context is the repository root; with a
+# context set, Kamal builds the working tree, uncommitted changes included,
+# rather than a clone of HEAD. Dockerfile.dockerignore limits what is sent.
+# Build for the server's CPU; building another architecture under emulation
+# is slow (Spinel compiles in the image), so on an arm64 Mac either build on
+# the server (remote: ssh://root@192.168.0.1) or set arch to arm64 for an
+# arm64 server.
+builder:
+  context: ../..
+  dockerfile: Dockerfile
+  arch: amd64
+  # remote: ssh://root@192.168.0.1

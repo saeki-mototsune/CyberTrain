@@ -702,6 +702,8 @@ health check on `public/up.html`, the SQLite file on a volume at
 `CYBERTRAIN_SECRET_KEY_BASE` from the environment). Fill in the values marked
 `CHANGE ME`, commit, and `kamal setup`; part 8 of
 [docs/deploy.md](docs/deploy.md) has the details.
+[examples/blog](examples/blog#deploying-with-kamal) carries the same setup,
+built against this checkout's framework.
 
 ## Testing an app
 
