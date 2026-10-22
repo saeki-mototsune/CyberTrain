@@ -1,0 +1,16 @@
+ok   a gzip body is inflated once and the same String is returned every time
+ok   x-gzip is gzip too
+ok   embedded NUL bytes survive the inflate
+ok   an empty gzip member inflates to an empty body
+ok   a multi-member gzip file is inflated whole
+ok   bytes after the last member that are not a member make the body undecodable
+ok   a body that is not gzip, or too short to be, is undecodable before anything is read
+ok   a corrupt member (a flipped byte in the deflate data) is undecodable
+ok   a truncated member is undecodable
+ok   a body one byte over the limit is refused, one at the limit passes
+ok   a trailer that lies small changes nothing: the inflater measures the output
+ok   a zip bomb is refused at the ceiling: 20 MB of zeros, small on the wire, against a 1 MiB limit
+ok   a decode error is not cached: every call raises again, and a later larger limit succeeds
+ok   a cached body is checked against a smaller limit asked for later
+ok   GzipFFI.gunzip refuses a limit it cannot represent
+15 tests, 27 assertions, 0 failures

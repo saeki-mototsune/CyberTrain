@@ -9,6 +9,7 @@
 # It links SQLite through FFI (Application#boot connects the database), so
 # it cannot run under CRuby: its snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23).
+require "zlib"
 require "cybertrain"
 require "cybertrain/application"
 require "cybertrain/test"
@@ -176,6 +177,30 @@ test "empty CYBERTRAIN_HOST and CYBERTRAIN_SESSION_SAME_SITE count as unset; onl
   refute yes.session_partitioned
 end
 
+test "csrf_exempt_prefixes_error names an entry that does not start and end with a slash, or is the root" do
+  c = Cybertrain::Config.new
+  assert_equal "", c.csrf_exempt_prefixes_error
+  c.csrf_exempt_prefixes = ["/api/", "/hooks/"]
+  assert_equal "", c.csrf_exempt_prefixes_error
+  c.csrf_exempt_prefixes = ["/api"]
+  assert_includes c.csrf_exempt_prefixes_error, "\"/api\" must start and end with"
+  c.csrf_exempt_prefixes = ["api/"]
+  assert_includes c.csrf_exempt_prefixes_error, "\"api/\""
+  c.csrf_exempt_prefixes = ["/"]
+  assert_includes c.csrf_exempt_prefixes_error, "\"/\" must start and end with"
+  c.csrf_exempt_prefixes = [""]
+  assert_includes c.csrf_exempt_prefixes_error, "\"\" must"
+end
+
+test "max_body_bytes_error names a value that is not a positive Integer" do
+  c = Cybertrain::Config.new
+  assert_equal "", c.max_body_bytes_error
+  c.max_body_bytes = 1
+  assert_equal "", c.max_body_bytes_error
+  c.max_body_bytes = 0
+  assert_includes c.max_body_bytes_error, "at least 1 (got 0)"
+end
+
 test "session_same_site_error is empty for Lax, Strict and None and names the valid values otherwise" do
   c = Cybertrain::Config.new
   c.session_same_site = "Lax"
@@ -264,6 +289,13 @@ class PagesController < Cybertrain::Controller
     render plain: "created #{params[:title]}", status: :created
   end
 
+  # An API action reading a possibly gzip-compressed body under a 100-byte
+  # ceiling: the BodyTooLarge / BodyUndecodable it raises must come out of
+  # the stack as a 400, like any other client fault.
+  def upload
+    render plain: "got #{request.decoded_body(100).bytesize} bytes", status: :created
+  end
+
   def destroy
     render plain: "destroyed #{params[:id]}"
   end
@@ -276,6 +308,7 @@ router.get("/visit", "visit") { |ctx| PagesController.new(ctx).process(:visit) {
 router.post("/notes", "notes") { |ctx| PagesController.new(ctx).process(:create) { |c| c.create } }
 router.delete("/notes/:id", "note") { |ctx| PagesController.new(ctx).process(:destroy) { |c| c.destroy } }
 router.post("/api/notes", "api_notes") { |ctx| PagesController.new(ctx).process(:create) { |c| c.create } }
+router.post("/api/upload", "api_upload") { |ctx| PagesController.new(ctx).process(:upload) { |c| c.upload } }
 
 # The Application Cybertrain::Main builds for bin/<name>.rb, minus views:
 # and name:. NOTE(Spinel 2026.09.12): a lambda literal written as a keyword
@@ -458,6 +491,26 @@ test "a POST under csrf_exempt_prefixes passes without a token; the rest of the 
   assert_response CLIENT.request("POST", "/api/notes", "{}", { "content-type" => "application/json" }), :forbidden
 end
 
+test "a gzip body under the exempt prefix is inflated by the installed inflater; over its ceiling it is a 400" do
+  c = Cybertrain::Config.new
+  c.log_level = :none
+  c.csrf_exempt_prefixes = ["/api/"]
+  c.secret_key_base = "api-secret"
+  api_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
+  client = Cybertrain::Test::Client.new(api_app)
+  small = Zlib.gzip("a" * 100)
+  res = client.request("POST", "/api/upload", small, { "content-type" => "application/json", "content-encoding" => "gzip" })
+  assert_response res, :created
+  assert_equal "got 100 bytes", res.body
+  big = Zlib.gzip("a" * 101)
+  res = client.request("POST", "/api/upload", big, { "content-type" => "application/json", "content-encoding" => "gzip" })
+  assert_response res, :bad_request
+  assert_includes res.body, "inflates to more than 100 bytes"
+  res = client.request("POST", "/api/upload", "not gzip at all, but long enough to try", { "content-encoding" => "gzip" })
+  assert_response res, :bad_request
+  assert_includes res.body, "not gzip data"
+end
+
 test "a _method=delete POST reaches the DELETE route" do
   token = page_token(CLIENT.get("/").body)
   res = CLIENT.post("/notes/7", { "_method" => "delete", "authenticity_token" => token })
@@ -523,6 +576,30 @@ test "a method-returned Gen::Routes-style url_resolver keeps its route names" do
   assert_response res, :ok
   assert_includes res.body, "<a href=\"/gen/notes\">Notes</a>"
   assert_equal ["notes_path"], FakeGenRoutes::NAMES
+end
+
+test "max_body_bytes reaches the server: a longer Content-Length is 413 before the body is read" do
+  c = Cybertrain::Config.new
+  c.log_level = :none
+  c.max_body_bytes = 16
+  c.secret_key_base = "small-secret"
+  small_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
+  server = small_app.server
+  server.start
+  sock = TCPSocket.new("127.0.0.1", server.port)
+  sock.write("POST /api/notes HTTP/1.1\r\nHost: localhost\r\nContent-Length: 17\r\nConnection: close\r\n\r\n")
+  raw = +""
+  while true
+    break if sock.wait_readable(5).nil?
+    begin
+      raw << sock.readpartial(4096)
+    rescue EOFError
+      break
+    end
+  end
+  sock.close
+  server.stop
+  assert_includes raw, "HTTP/1.1 413"
 end
 
 test "the server listens on the configured host and port" do

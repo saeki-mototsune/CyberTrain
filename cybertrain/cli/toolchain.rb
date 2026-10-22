@@ -598,6 +598,13 @@ module Cybertrain
         compiles?("sqlite3.h", "sqlite3_libversion_number() > 0 ? 0 : 1", "-lsqlite3")
       end
 
+      # zlib's header and library: Request#decoded_body inflates gzip request
+      # bodies through the system zlib (cybertrain/http/gzip_ffi.rb), so an
+      # application does not build without them.
+      def self.zlib_ok?
+        compiles?("zlib.h", "zlibVersion() != 0 ? 0 : 1", "-lz")
+      end
+
       # Spinel's own Makefile finds a Homebrew OpenSSL by itself; this probe
       # only decides whether to warn.
       def self.openssl_ok?
@@ -658,20 +665,20 @@ module Cybertrain
       def self.install_hints
         case platform
         when "debian"
-          ["sudo apt-get update && sudo apt-get install -y build-essential git curl libsqlite3-dev libssl-dev"]
+          ["sudo apt-get update && sudo apt-get install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev"]
         when "rhel"
-          ["sudo dnf install -y gcc make git curl sqlite-devel openssl-devel"]
+          ["sudo dnf install -y gcc make git curl sqlite-devel zlib-devel openssl-devel"]
         when "arch"
-          ["sudo pacman -S --needed base-devel git curl sqlite openssl"]
+          ["sudo pacman -S --needed base-devel git curl sqlite zlib openssl"]
         when "alpine"
-          ["sudo apk add build-base git curl sqlite-dev openssl-dev"]
+          ["sudo apk add build-base git curl sqlite-dev zlib-dev openssl-dev"]
         when "suse"
-          ["sudo zypper install -y gcc make git curl sqlite3-devel libopenssl-devel"]
+          ["sudo zypper install -y gcc make git curl sqlite3-devel zlib-devel libopenssl-devel"]
         when "darwin"
-          ["xcode-select --install     # cc, make, git, curl and the SQLite headers",
+          ["xcode-select --install     # cc, make, git, curl, the SQLite and zlib headers",
            "brew install openssl@3     # optional: Spinel's openssl package"]
         else
-          ["install git, make, curl, a C compiler and the SQLite 3 development headers with your package manager"]
+          ["install git, make, curl, a C compiler and the SQLite 3 and zlib development headers with your package manager"]
         end
       end
 
@@ -690,6 +697,7 @@ module Cybertrain
         report("cc", have_command?(cc_program), sh_read("#{cc} --version 2>/dev/null | head -n 1"))
         if have_command?(cc_program)
           report("sqlite3", sqlite_ok?, sqlite_ok? ? "headers and library found" : "sqlite3.h or -lsqlite3 missing")
+          report("zlib", zlib_ok?, zlib_ok? ? "headers and library found" : "zlib.h or -lz missing")
           if openssl_ok?
             report("openssl", true, "headers and library found")
           else

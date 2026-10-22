@@ -379,7 +379,7 @@
     <dl class="reqs">
       <div><dt>Ruby</dt><dd>3.2+ with RubyGems, for the <code>cybertrain</code> command only. Applications never run on CRuby.</dd></div>
       <div><dt>Spinel</dt><dd><code>2026.09.12</code>, untested against other versions. The first command that needs it builds it into <code>~/.cybertrain</code> (a few minutes, once); a <code>spinel</code> of that release already on <code>PATH</code> is used as is.</dd></div>
-      <div><dt>Toolchain</dt><dd><code>cc</code> and <code>make</code> (Spinel compiles every program to C), plus <code>git</code> and <code>curl</code> to build Spinel. SQLite&nbsp;3 headers and library: <code>libsqlite3-dev</code> on Debian/Ubuntu, included with Xcode command line tools on macOS. OpenSSL headers are optional.</dd></div>
+      <div><dt>Toolchain</dt><dd><code>cc</code> and <code>make</code> (Spinel compiles every program to C), plus <code>git</code> and <code>curl</code> to build Spinel. SQLite&nbsp;3 and zlib headers and libraries: <code>libsqlite3-dev</code> and <code>zlib1g-dev</code> on Debian/Ubuntu, included with Xcode command line tools on macOS. OpenSSL headers are optional.</dd></div>
       <div><dt>Status</dt><dd>Pre-alpha, version <code>0.2.1</code>, MIT licensed. The example blog is exercised by CI on Linux and macOS.</dd></div>
     </dl>
     <p class="footnote"><code>cybertrain doctor</code> checks these tools and headers and the Spinel install, and prints the install command for your platform when one is missing. <code>cybertrain setup</code> installs Spinel on request and prints the <code>PATH</code> line for running <code>spin</code> yourself; <code>cybertrain spin ARGS...</code> runs it without one.</p>

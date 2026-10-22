@@ -121,7 +121,7 @@
       <li>Ruby 3.2+ and RubyGems, for the <code>cybertrain</code> command only; applications never run on CRuby.</li>
       <li>Spinel <code>2026.09.12</code>, untested against other versions. You do not install it by hand: the first command that needs it builds that release into <code>~/.cybertrain</code> (a few minutes, once), unless a <code>spinel</code> of that release is already on <code>PATH</code>.</li>
       <li>A C toolchain (<code>cc</code>, or the compiler <code>CC</code> names) and <code>make</code>, plus <code>git</code> and <code>curl</code>, to build Spinel, which compiles every program to C.</li>
-      <li>SQLite 3 headers and library: <code>libsqlite3-dev</code> on Debian/Ubuntu; present with Xcode's command line tools on macOS.</li>
+      <li>SQLite 3 and zlib headers and libraries: <code>libsqlite3-dev</code> and <code>zlib1g-dev</code> on Debian/Ubuntu; present with Xcode's command line tools on macOS.</li>
       <li>OpenSSL headers (<code>libssl-dev</code>) are optional: without them Spinel builds without its <code>openssl</code> package, which CyberTrain does not use.</li>
     </ul>
     <p><code>cybertrain doctor</code> checks these tools and headers and the Spinel install; when a required one is missing it also prints the install command for your platform.</p>

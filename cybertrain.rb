@@ -21,6 +21,7 @@ require "cybertrain/app"
 require "cybertrain/http/handler"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
+require "cybertrain/http/gzip_ffi"
 require "cybertrain/db"
 require "cybertrain/model"
 require "cybertrain/callback"
@@ -46,3 +47,8 @@ require "cybertrain/template/form_builder"
 require "cybertrain/config"
 require "cybertrain/application"
 require "cybertrain/main"
+
+# The gzip inflater behind Request#decoded_body (system zlib through FFI):
+# installed here, since cybertrain/http/request.rb itself must load under
+# CRuby, where the FFI DSL does not exist.
+Cybertrain::GzipFFI.install!

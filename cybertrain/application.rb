@@ -106,6 +106,18 @@ module Cybertrain
         STDOUT.flush
         exit(1)
       end
+      prefixes_error = c.csrf_exempt_prefixes_error
+      unless prefixes_error.empty?
+        puts "error: #{prefixes_error}"
+        STDOUT.flush
+        exit(1)
+      end
+      body_bytes_error = c.max_body_bytes_error
+      unless body_bytes_error.empty?
+        puts "error: #{body_bytes_error}"
+        STDOUT.flush
+        exit(1)
+      end
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?

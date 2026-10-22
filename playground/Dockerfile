@@ -44,7 +44,7 @@ ENV LANG=C.UTF-8 \
 # build-essential (no g++). procps: ps/pgrep for terminals and smoke.sh.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        ca-certificates curl git gcc make libc6-dev libsqlite3-dev procps ruby \
+        ca-certificates curl git gcc make libc6-dev libsqlite3-dev zlib1g-dev procps ruby \
  && rm -rf /var/lib/apt/lists/*
 
 # User dev, uid/gid 1000 (ubuntu:24.04 ships "ubuntu" with 1000: removed

@@ -271,6 +271,37 @@ module Cybertrain
       @env == "production"
     end
 
+    # The error Application#boot reports (and exits 1 on) when a
+    # csrf_exempt_prefixes entry is not a usable prefix: each must start and
+    # end with "/" (so "/api" cannot take "/apix" with it) and must not be
+    # "/" alone (which would switch the check off for the whole app: that is
+    # `c.csrf = false`, said plainly). "" when every entry is fine. A while
+    # loop over the typed Array, no block (NOTES rules 32, 45).
+    def csrf_exempt_prefixes_error
+      prefixes = @csrf_exempt_prefixes
+      i = 0
+      while i < prefixes.size
+        prefix = prefixes[i]
+        unless prefix.size >= 2 && prefix.start_with?("/") && prefix.end_with?("/")
+          return "csrf_exempt_prefixes entry #{prefix.inspect} must start and end with \"/\" and not be \"/\" alone"
+        end
+        i += 1
+      end
+      ""
+    end
+
+    # The error Application#boot reports when max_body_bytes is not a
+    # positive Integer (nil would make every request with a body a
+    # connection error in Server#serve); "" when it is one.
+    def max_body_bytes_error
+      value = @max_body_bytes
+      case value
+      when Integer
+        return "" if value >= 1
+      end
+      "max_body_bytes must be an Integer of at least 1 (got #{value.inspect})"
+    end
+
     # The error Application#boot reports (and exits 1 on) when
     # session_same_site is not a value browsers accept; "" when it is one.
     # Case-sensitive, since the value goes into the header as it is; a chain

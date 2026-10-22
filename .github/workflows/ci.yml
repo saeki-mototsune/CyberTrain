@@ -32,7 +32,7 @@ jobs:
 
       - name: Install SQLite headers (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev libssl-dev
 
       - name: Version and Spinel tag are pinned in one place
         run: |

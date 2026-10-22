@@ -30,7 +30,7 @@ STAMP="$PREFIX/.cybertrain-complete"
 # System packages: normally all present already, so apt runs only when
 # one is missing.
 missing=()
-for pkg in build-essential git curl libsqlite3-dev libssl-dev sqlite3; do
+for pkg in build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev sqlite3; do
   dpkg -s "$pkg" > /dev/null 2>&1 || missing+=("$pkg")
 done
 if [ "${#missing[@]}" -gt 0 ]; then
