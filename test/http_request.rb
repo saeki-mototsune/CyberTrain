@@ -384,12 +384,12 @@ end
 
 test "multipart_form parses once and is the same object every time" do
   req = Request.new("POST", "/p", multipart_headers, multipart_body("tok", "patch"))
-  form = req.multipart_form
-  assert_equal 2, form.text_count
-  assert_equal 1, form.file_count
-  assert_equal "tok", form.text_value("authenticity_token")
-  assert form.equal?(req.multipart_form)
-  file = form.file_at(0)
+  parsed = req.multipart_form
+  assert_equal 2, parsed.text_count
+  assert_equal 1, parsed.file_count
+  assert_equal "tok", parsed.text_value("authenticity_token")
+  assert parsed.equal?(req.multipart_form)
+  file = parsed.file_at(0)
   assert_equal "a.bin", file.original_filename
   assert_equal 9, file.byte_size
 end
@@ -417,14 +417,14 @@ rescue Cybertrain::QueryInvalid => e
 end
 
 test "multipart_form refuses an encoded body and a malformed one, and does not cache the raise" do
-  gz = multipart_headers
-  gz["content-encoding"] = "gzip"
-  req = Request.new("POST", "/p", gz, multipart_body("tok", "patch"))
+  gz_headers = multipart_headers
+  gz_headers["content-encoding"] = "gzip"
+  req = Request.new("POST", "/p", gz_headers, multipart_body("tok", "patch"))
   assert_equal "MultipartMalformed", multipart_error(req)
   assert_equal "MultipartMalformed", multipart_error(req)
-  identity = multipart_headers
-  identity["content-encoding"] = "identity"
-  assert_equal "", multipart_error(Request.new("POST", "/p", identity, multipart_body("tok", "patch")))
+  identity_headers = multipart_headers
+  identity_headers["content-encoding"] = "identity"
+  assert_equal "", multipart_error(Request.new("POST", "/p", identity_headers, multipart_body("tok", "patch")))
   assert_equal "MultipartMalformed", multipart_error(Request.new("POST", "/p", multipart_headers, "no delimiter here"))
   assert_equal "MultipartMalformed", multipart_error(Request.new("POST", "/p", { "content-type" => "multipart/form-data" }, "x"))
   bad = Request.new("POST", "/p?_method=put", multipart_headers, "no delimiter here")
