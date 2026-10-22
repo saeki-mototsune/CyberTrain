@@ -755,6 +755,10 @@ git push
 | `.kamal/secrets` | `KAMAL_REGISTRY_PASSWORD` と `CYBERTRAIN_SECRET_KEY_BASE` を、kamal を実行するシェルの環境変数から読む。値そのものは書かない（コミットするファイル） |
 | `public/up.html` | ヘルスチェック用のページ。アプリ自身が静的ファイルとして返す |
 
+[examples/blog](../examples/blog#deploying-with-kamal) にも同じ設定が入っています（フレームワークは
+このリポジトリのものを使うので、`Dockerfile` は gem を入れずにチェックアウトの CLI を使い、ビルド
+コンテキストはリポジトリのルートです）。
+
 バイナリは Docker の中でビルドされるので、「動かすマシンと同じ OS でビルドする」制約はイメージが
 満たします。CPU は合わせる必要があります（`builder.arch`。下記）。
 

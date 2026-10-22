@@ -1,0 +1,18 @@
+# Build context of examples/blog/Dockerfile (the repository root): only the
+# framework and this app are sent, without the app's build output, local
+# databases or Kamal secrets.
+*
+!cybertrain.gemspec
+!cybertrain.rb
+!spin.toml
+!README.md
+!exe/
+!cybertrain/
+!examples/blog/
+examples/blog/.kamal/
+examples/blog/build/
+examples/blog/dist/
+examples/blog/log/
+examples/blog/storage/*
+!examples/blog/storage/.keep
+examples/blog/tmp/
