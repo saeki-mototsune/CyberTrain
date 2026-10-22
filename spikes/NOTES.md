@@ -350,6 +350,29 @@ finds the commit that removed them).
     long`), or the build stops with "conflicting types". Cast inside the
     function instead (`db/sqlite_ffi.rb`, `cybertrain_sqlite_column_epoch`).
 
+60. A String local that is appended to inside a loop (`rest << chunk`) and
+    not read in that loop is compiled as a growable buffer, and a String
+    ASSIGNED to it (`rest = buf.byteslice(...)`) is copied into the buffer
+    with strlen unless the source is marked binary: everything after the
+    first NUL byte is lost (the server's request body, cut at the first
+    NUL of every gzip upload, waited for bytes that had arrived; found with
+    the real socket only, the in-process Test::Client never frames). Start
+    such a local as `+""` and fill it with `<<`, which copies by the byte
+    length. Interpolating a String that holds a NUL (`"#{body}"`) truncates
+    it the same way; concatenate with `<<` instead. Reduced repro: a method
+    assigning `rest = buf.byteslice(4, n)` then `rest << "!"` in a `while`
+    prints `[97, 98, 33]` for `"ab\x00cd"` under Spinel 2026.09.12.
+
+61. `JSON::NestingError` (what `JSON.generate` raises past 100 levels, which
+    a parsed document can reach: `JSON.parse` accepts 200) is a subclass of
+    `JSON::ParserError` in the runtime's table, but `rescue
+    JSON::ParserError, StandardError` does not catch it under Spinel
+    2026.09.12 (it does under CRuby); only a clause naming it does. A
+    request thread it escapes dies without running `ensure`, so the server
+    leaked the socket and its connection count. Every rescue that names
+    `JSON::ParserError` names `JSON::NestingError` first, and an app's
+    rescue around JSON.generate of request data must too.
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.

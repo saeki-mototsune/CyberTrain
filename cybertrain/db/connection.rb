@@ -92,7 +92,7 @@ module Cybertrain
           # the PRAGMA: SQLite answers "memory" for it and keeps that mode.
           exec_script("PRAGMA journal_mode=WAL") unless Connection.private_database?(path)
           exec_script("PRAGMA foreign_keys=ON")
-        rescue JSON::ParserError, StandardError => e
+        rescue JSON::NestingError, JSON::ParserError, StandardError => e
           close
           raise e
         end
@@ -244,7 +244,7 @@ module Cybertrain
           @transaction_depth += 1
           begin
             yield
-          rescue JSON::ParserError, StandardError => e
+          rescue JSON::NestingError, JSON::ParserError, StandardError => e
             @transaction_depth -= 1
             raise e
           end
@@ -256,7 +256,7 @@ module Cybertrain
         @transaction_depth = 1
         begin
           yield
-        rescue JSON::ParserError, StandardError => e
+        rescue JSON::NestingError, JSON::ParserError, StandardError => e
           abandon_transaction!
           raise e
         end

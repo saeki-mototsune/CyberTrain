@@ -48,7 +48,7 @@ module Cybertrain
             @connections << conn
             @available << conn
           end
-        rescue JSON::ParserError, StandardError => e
+        rescue JSON::NestingError, JSON::ParserError, StandardError => e
           @connections.each(&:close)
           raise e
         end

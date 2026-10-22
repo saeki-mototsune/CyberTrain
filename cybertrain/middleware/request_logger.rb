@@ -20,7 +20,7 @@ module Cybertrain
       started = Time.now
       begin
         super
-      rescue JSON::ParserError, StandardError => e
+      rescue JSON::NestingError, JSON::ParserError, StandardError => e
         # Still two lines per request: the error path outside this
         # middleware (ErrorPages, Dev::ErrorPage or the Server) answers the
         # status ClientError.status_for gives the exception -- 400 for a client
