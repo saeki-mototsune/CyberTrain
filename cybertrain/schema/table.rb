@@ -33,8 +33,14 @@ module Cybertrain
         @table = table.to_s
         @columns = columns
         @unique = unique
-        derived = "index_#{@table}_on_#{@columns.join("_and_")}"
-        @name = name == "" ? derived : name
+        @name = name == "" ? Index.derived_name(@table, @columns) : name
+      end
+
+      # "index_<table>_on_<col>_and_<col>": the one definition of the
+      # derived name, shared with SqliteDDL.derived_index_name (DROP INDEX
+      # for a remove_index without `name:`, and the Migrator's bookkeeping).
+      def self.derived_name(table, columns)
+        "index_#{table}_on_#{columns.join("_and_")}"
       end
     end
 
@@ -45,6 +51,13 @@ module Cybertrain
         @from_table = from_table.to_s
         @column = column.to_s
         @to_table = to_table.to_s
+      end
+
+      # The column a foreign key to `to_table` uses when none is given:
+      # "<singular of to_table>_id" ("people" -> "person_id"). Shared by
+      # Definition#add_foreign_key and Migration::Base#add_foreign_key.
+      def self.default_column(to_table)
+        "#{Cybertrain::Inflector.singularize(to_table.to_s)}_id"
       end
     end
 
