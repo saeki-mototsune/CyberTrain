@@ -95,7 +95,11 @@ finds the commit that removed them).
 24. `spin test` compiles the test program with `--require-gate`; a test must
     `require "cybertrain/test"` itself or `test "..."` fails to compile with an
     'unsupported call' error.
-25. `String#to_i` saturates at 2**63-1 instead of promoting to Bignum.
+25. `String#to_i` raises `RangeError` ("integer overflow parsing ...") past
+    2**63-1 instead of promoting to Bignum (verified on 2026.09.12; an
+    earlier note said it saturates, which it does not). Request data that
+    is parsed with `to_i` (an id, a page number) must be length-checked
+    first, as Server#body_length does, or a 20-digit parameter is a 500.
 26. `obj.attr += x` (an operator-assignment on a method call) does not compile
     inside a block or lambda ("unsupported expression: CallOperatorWriteNode");
     write `obj.attr = obj.attr + x`. It is fine at top level and in method bodies.
@@ -349,6 +353,29 @@ finds the commit that removed them).
     `const unsigned char *`) and an `:long` return is `long` (not `long
     long`), or the build stops with "conflicting types". Cast inside the
     function instead (`db/sqlite_ffi.rb`, `cybertrain_sqlite_column_epoch`).
+
+60. A String local that is appended to inside a loop (`rest << chunk`) and
+    not read in that loop is compiled as a growable buffer, and a String
+    ASSIGNED to it (`rest = buf.byteslice(...)`) is copied into the buffer
+    with strlen unless the source is marked binary: everything after the
+    first NUL byte is lost (the server's request body, cut at the first
+    NUL of every gzip upload, waited for bytes that had arrived; found with
+    the real socket only, the in-process Test::Client never frames). Start
+    such a local as `+""` and fill it with `<<`, which copies by the byte
+    length. Interpolating a String that holds a NUL (`"#{body}"`) truncates
+    it the same way; concatenate with `<<` instead. Reduced repro: a method
+    assigning `rest = buf.byteslice(4, n)` then `rest << "!"` in a `while`
+    prints `[97, 98, 33]` for `"ab\x00cd"` under Spinel 2026.09.12.
+
+61. `JSON::NestingError` (what `JSON.generate` raises past 100 levels, which
+    a parsed document can reach: `JSON.parse` accepts 200) is a subclass of
+    `JSON::ParserError` in the runtime's table, but `rescue
+    JSON::ParserError, StandardError` does not catch it under Spinel
+    2026.09.12 (it does under CRuby); only a clause naming it does. A
+    request thread it escapes dies without running `ensure`, so the server
+    leaked the socket and its connection count. Every rescue that names
+    `JSON::ParserError` names `JSON::NestingError` first, and an app's
+    rescue around JSON.generate of request data must too.
 
 ## Numbers worth remembering
 

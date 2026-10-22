@@ -207,6 +207,14 @@ test "install refuses to start without the build tools, before touching anything
   ENV["PATH"] = ORIGINAL_PATH
 end
 
+test "with the toolchain of this machine, nothing an app build needs is missing (sqlite3 and zlib probes pass)" do
+  reset_env
+  ENV["PATH"] = ORIGINAL_PATH
+  assert_equal [], Toolchain.missing_app_requirements
+  assert Toolchain.sqlite_ok?
+  assert Toolchain.zlib_ok?
+end
+
 test "install refuses a home it cannot write, without hanging" do
   reset_env
   ENV["CYBERTRAIN_HOME"] = "/proc/cybertrain-test"

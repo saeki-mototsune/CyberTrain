@@ -516,7 +516,7 @@ module Cybertrain
           default_render(action) unless performed?
           run_after_callbacks(chain, action)
         end
-      rescue JSON::ParserError, StandardError => e
+      rescue JSON::NestingError, JSON::ParserError, StandardError => e
         # JSON::ParserError named (NOTES rule 33: not a StandardError under
         # Spinel) so an action's bad JSON.parse goes through
         # rescue_with_handler like any other exception. A `rescue_from

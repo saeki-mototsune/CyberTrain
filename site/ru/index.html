@@ -379,7 +379,7 @@
     <dl class="reqs">
       <div><dt>Ruby</dt><dd>3.2+ с RubyGems — только для команды <code>cybertrain</code>. Приложения никогда не запускаются на CRuby.</dd></div>
       <div><dt>Spinel</dt><dd><code>2026.09.12</code>; с другими версиями не тестировался. Первая команда, которой он нужен, собирает его в <code>~/.cybertrain</code> (несколько минут, один раз); если <code>spinel</code> этого релиза уже есть в <code>PATH</code>, используется он.</dd></div>
-      <div><dt>Инструменты</dt><dd><code>cc</code> и <code>make</code> (Spinel компилирует каждую программу в C), а также <code>git</code> и <code>curl</code> для сборки Spinel. Заголовки и библиотека SQLite&nbsp;3: <code>libsqlite3-dev</code> в Debian/Ubuntu, на macOS входят в Xcode command line tools. Заголовки OpenSSL необязательны.</dd></div>
+      <div><dt>Инструменты</dt><dd><code>cc</code> и <code>make</code> (Spinel компилирует каждую программу в C), а также <code>git</code> и <code>curl</code> для сборки Spinel. Заголовки и библиотеки SQLite&nbsp;3 и zlib: <code>libsqlite3-dev</code> и <code>zlib1g-dev</code> в Debian/Ubuntu, на macOS входят в Xcode command line tools. Заголовки OpenSSL необязательны.</dd></div>
       <div><dt>Статус</dt><dd>Пре-альфа, версия <code>0.2.1</code>, лицензия MIT. Пример блога проверяется в CI на Linux и macOS.</dd></div>
     </dl>
     <p class="footnote"><code>cybertrain doctor</code> проверяет эти инструменты и заголовки, а также установку Spinel и, если чего-то не хватает, выводит команду установки для вашей платформы. <code>cybertrain setup</code> устанавливает Spinel по запросу и выводит строку для <code>PATH</code>, чтобы запускать <code>spin</code> самостоятельно; <code>cybertrain spin ARGS...</code> запускает его и без неё.</p>

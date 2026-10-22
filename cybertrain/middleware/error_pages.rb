@@ -21,7 +21,7 @@ module Cybertrain
     def call(ctx)
       begin
         super
-      rescue JSON::ParserError, StandardError => e
+      rescue JSON::NestingError, JSON::ParserError, StandardError => e
         # JSON::ParserError named too: not a StandardError under Spinel
         # (NOTES rule 33), and an action's JSON.parse of a bad body deserves
         # the same 500 page as any other failure. ClientError maps and logs:

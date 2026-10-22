@@ -176,7 +176,7 @@ module Cybertrain
             i += 1
           end
         end
-      rescue JSON::ParserError, StandardError
+      rescue JSON::NestingError, JSON::ParserError, StandardError
         return Session.new
       end
       Session.new(data)

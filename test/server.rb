@@ -29,6 +29,12 @@ class ServerTestApp < Cybertrain::Middleware
     when "/json"
       # a StandardError under CRuby, not under Spinel (NOTES rule 33)
       raise JSON::ParserError, "unexpected token"
+    when "/deep"
+      # JSON::NestingError: what JSON.generate raises past 100 levels, which
+      # a parsed document can reach (JSON.parse accepts 200). Under Spinel
+      # `rescue JSON::ParserError` does not catch it (NOTES rule 61).
+      res.content_type = "application/json"
+      res.body = JSON.generate(ServerTestApp.deep(150))
     when "/slow"
       $slow_started = true
       sleep 1
@@ -40,6 +46,20 @@ class ServerTestApp < Cybertrain::Middleware
     end
     nil
   end
+end
+
+# An Array nested n levels deep, for /deep.
+def ServerTestApp.deep(n)
+  outer = []
+  cur = outer
+  i = 0
+  while i < n
+    inner = []
+    cur << inner
+    cur = inner
+    i += 1
+  end
+  outer
 end
 
 # A handler that never sees a Context or a Middleware: the Server needs only
@@ -292,6 +312,22 @@ test "a pipelined multibyte body is framed by bytes, not characters" do
   c.close
 end
 
+test "a body with NUL bytes is framed by bytes, not cut at the NUL" do
+  c = RawClient.new($server.port)
+  # One write, so the server's first readpartial already holds body bytes
+  # past a NUL (what every gzip upload carries), plus a pipelined request:
+  # read in the body loop, the bytes were appended correctly even before the
+  # fix in serve (NOTES rule 60); read with the head, they were cut.
+  c.send_raw("POST /echo HTTP/1.1\r\nHost: t\r\nContent-Length: 9\r\n\r\nab\x00cd\x00\x00ef" \
+             "POST /echo HTTP/1.1\r\nHost: t\r\nContent-Length: 2\r\n\r\nok")
+  first = c.read_response(false)
+  assert_equal "HTTP/1.1 200 OK", first.status_line
+  assert_equal "9", first.header("content-length")
+  assert_equal [97, 98, 0, 99, 100, 0, 0, 101, 102], first.body.bytes
+  assert_equal "ok", c.read_response(false).body
+  c.close
+end
+
 test "chunked transfer encoding gets 411 and the connection closes" do
   c = RawClient.new($server.port)
   c.send_raw("POST /echo HTTP/1.1\r\nHost: t\r\nTransfer-Encoding: chunked\r\n\r\n")
@@ -327,6 +363,17 @@ test "parameters past Query's limits get 400, not 500, and the connection stays 
   refute $log.string.include?("QueryTooDeep: nested"), "a rejected request is not an error-level log line"
   assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
   c.close
+end
+
+test "a JSON::NestingError in the app gets 500, the connection is closed and the server keeps serving" do
+  c = RawClient.new($server.port)
+  res = c.get("/deep")
+  assert_equal "HTTP/1.1 500 Internal Server Error", res.status_line
+  assert_includes $log.string, "NestingError: nesting of 100 is too deep"
+  c.close
+  c2 = RawClient.new($server.port)
+  assert_equal "hi", c2.get("/hello", "Connection: close\r\n").body
+  c2.close
 end
 
 test "a JSON::ParserError in the app gets 500 and the server keeps serving" do

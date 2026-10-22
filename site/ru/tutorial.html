@@ -121,7 +121,7 @@
       <li>Ruby 3.2+ и RubyGems — только для команды <code>cybertrain</code>; приложения никогда не запускаются на CRuby.</li>
       <li>Spinel <code>2026.09.12</code>; с другими версиями не тестировался. Вручную его устанавливать не нужно: первая команда, которой он нужен, собирает этот релиз в <code>~/.cybertrain</code> (несколько минут, один раз), если <code>spinel</code> этого релиза ещё нет в <code>PATH</code>.</li>
       <li>Инструменты C (<code>cc</code> или компилятор, указанный в <code>CC</code>) и <code>make</code>, а также <code>git</code> и <code>curl</code> — для сборки Spinel, который компилирует каждую программу в C.</li>
-      <li>Заголовки и библиотека SQLite 3: <code>libsqlite3-dev</code> в Debian/Ubuntu; на macOS входят в Xcode command line tools.</li>
+      <li>Заголовки и библиотеки SQLite 3 и zlib: <code>libsqlite3-dev</code> и <code>zlib1g-dev</code> в Debian/Ubuntu; на macOS входят в Xcode command line tools.</li>
       <li>Заголовки OpenSSL (<code>libssl-dev</code>) необязательны: без них Spinel собирается без своего пакета <code>openssl</code>, который CyberTrain не использует.</li>
     </ul>
     <p><code>cybertrain doctor</code> проверяет эти инструменты и заголовки, а также установку Spinel; если чего-то обязательного не хватает, она также выводит команду установки для вашей платформы.</p>

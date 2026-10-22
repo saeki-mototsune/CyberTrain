@@ -258,7 +258,14 @@ module Cybertrain
         raise Rejected.new(400) if idx > @max_head_bytes
 
         head = HttpParser.parse_head(buf.byteslice(0, idx))
-        rest = buf.byteslice(idx + 4, buf.bytesize - idx - 4)
+        # Appended, not assigned (NOTES rule 60): `rest` is appended to in the
+        # body loop below, which makes Spinel compile it as a growable buffer,
+        # and a String ASSIGNED to such a buffer is copied with strlen, so the
+        # body was cut at its first NUL byte (every gzip upload has one) and
+        # the loop waited for bytes that had already arrived. `<<` copies by
+        # the byte length.
+        rest = +""
+        rest << buf.byteslice(idx + 4, buf.bytesize - idx - 4)
 
         raise Rejected.new(411) if !head.headers["transfer-encoding"].nil?
 
@@ -322,7 +329,7 @@ module Cybertrain
     # The handler's Response, or the error response for what it raised.
     def handle(request)
       @handler.call(request)
-    rescue JSON::ParserError, StandardError => e
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
       # JSON::ParserError is not a StandardError under Spinel (NOTES rule
       # 33); named here so an action's bad JSON.parse is a 500 and not the
       # end of the connection thread. SystemStackError / NoMemoryError are

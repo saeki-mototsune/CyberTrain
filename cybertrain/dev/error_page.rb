@@ -25,7 +25,7 @@ module Cybertrain
         begin
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
-        rescue JSON::ParserError, StandardError => e
+        rescue JSON::NestingError, JSON::ParserError, StandardError => e
           # NOTES rule 33: JSON::ParserError is not a StandardError under
           # Spinel, and a bad JSON body deserves the diagnostics page too. A
           # client fault (ClientError: parameters past Query's limits) gets a

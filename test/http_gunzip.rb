@@ -46,6 +46,15 @@ test "embedded NUL bytes survive the inflate" do
   assert_equal [97, 0, 98, 0, 0, 99], out.bytes
 end
 
+test "the inflated body is tagged UTF-8 like a plain one, so the two compare alike" do
+  json = "{\"name\":\"caf\u00e9\"}"
+  inflated = gzip_request(Zlib.gzip(json)).decoded_body
+  plain = Cybertrain::Request.new("POST", "/api", {}, json).decoded_body
+  assert_equal plain.encoding.to_s, inflated.encoding.to_s
+  assert_equal plain, inflated
+  assert_equal json.bytesize, inflated.bytesize
+end
+
 test "an empty gzip member inflates to an empty body" do
   assert_equal "", gzip_request(Zlib.gzip("")).decoded_body
 end
