@@ -8,8 +8,11 @@ name: CI
 # step below checks. A change that also touches anything else runs the tests.
 # `paths` with negations rather than `paths-ignore`, since only `paths` can
 # bring the API reference's files back in (a later pattern wins).
+# push runs only on main: a branch is tested by its pull request, and a push
+# to it would otherwise run everything a second time.
 on:
   push:
+    branches: [main]
     paths:
       - "**"
       - "!site/**"
