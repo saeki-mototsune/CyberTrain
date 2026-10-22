@@ -216,7 +216,7 @@ module Cybertrain
         buf = +"<form"
         buf << " action=\"" << Html.escape(action) << "\""
         buf << " method=\"" << (verb == "get" ? "get" : "post") << "\""
-        buf << kwarg_attr(kwargs, "class", "class")
+        buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
         buf << ">"
         buf << hidden_fields(verb)
         buf << interp.capture(block, env, FormBuilder.new(record))
