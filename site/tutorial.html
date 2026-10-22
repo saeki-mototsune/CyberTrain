@@ -614,6 +614,13 @@
       <li><code>SIGTERM</code> stops accepting, lets requests in flight finish and exits when they are done, or after the server's <code>drain_timeout</code> (10 s).</li>
       <li>The watcher and rebuild loop never run in production. A running <code>cybertrain server</code> skips its rebuilds while <code>cybertrain build</code> holds <code>tmp/cybertrain-build.lock</code>.</li>
     </ul>
+    <p><code>cybertrain new</code> also writes a <a href="https://kamal-deploy.org" rel="noopener">Kamal 2</a> setup. The <code>Dockerfile</code> runs <code>cybertrain setup</code> and <code>cybertrain build</code> in an Ubuntu build stage and copies <code>dist/</code> into a slim stage of the same release, which migrates on boot and then serves on <code>0.0.0.0:3000</code>. Beside it are <code>.dockerignore</code>, <code>config/deploy.yml</code> (kamal-proxy with Let&rsquo;s Encrypt in front, the health check on <code>public/up.html</code>, the SQLite file on a volume at <code>/app/storage</code>) and <code>.kamal/secrets</code>, which reads <code>KAMAL_REGISTRY_PASSWORD</code> and <code>CYBERTRAIN_SECRET_KEY_BASE</code> from the environment. Fill in the values marked <code>CHANGE ME</code> in <code>config/deploy.yml</code>, commit, then:</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">kamal setup    <span class="c"># first time: installs Docker and kamal-proxy on the server, builds, pushes and starts</span></span>
+<span class="ln cmd">kamal deploy   <span class="c"># every deploy after that</span></span></code></pre>
+</figure>
+    <p>The binary is compiled inside the image, so it always matches the image&rsquo;s OS; set <code>builder.arch</code> in <code>config/deploy.yml</code> to the server&rsquo;s CPU. Deploy to one server: the database is a SQLite file on that server&rsquo;s volume. Part 8 of <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md#第-8-部-kamal-でデプロイする" rel="noopener"><code>docs/deploy.md</code></a> (Japanese) walks through it, backups included.</p>
   </section>
 
   <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">

@@ -614,6 +614,13 @@
       <li><code>SIGTERM</code> を受けると新たな受け付けを止め、処理中のリクエストを完了させ、それらが終わった時点か、サーバーの <code>drain_timeout</code>（10 秒）が過ぎた時点で終了します。</li>
       <li>ファイル監視と再ビルドのループが本番環境で動くことはありません。実行中の <code>cybertrain server</code> は、<code>cybertrain build</code> が <code>tmp/cybertrain-build.lock</code> を保持している間、再ビルドをスキップします。</li>
     </ul>
+    <p><code>cybertrain new</code> は <a href="https://kamal-deploy.org" rel="noopener">Kamal 2</a> 用の設定も書き出します。<code>Dockerfile</code> は Ubuntu のビルドステージで <code>cybertrain setup</code> と <code>cybertrain build</code> を実行し、<code>dist/</code> を同じリリースの軽量なステージにコピーします。このイメージは起動時にマイグレーションを流してから <code>0.0.0.0:3000</code> で待ち受けます。ほかに <code>.dockerignore</code>、<code>config/deploy.yml</code>（前段に Let&rsquo;s Encrypt 付きの kamal-proxy、ヘルスチェックは <code>public/up.html</code>、SQLite のファイルは <code>/app/storage</code> のボリューム）、<code>KAMAL_REGISTRY_PASSWORD</code> と <code>CYBERTRAIN_SECRET_KEY_BASE</code> を環境変数から読む <code>.kamal/secrets</code> が作られます。<code>config/deploy.yml</code> の <code>CHANGE ME</code> の値を書き換えてコミットし、次を実行します：</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">ターミナル &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="コード：ターミナル &mdash; blog/"><code><span class="ln cmd">kamal setup    <span class="c"># 初回：サーバーに Docker と kamal-proxy を入れ、ビルド・push・起動する</span></span>
+<span class="ln cmd">kamal deploy   <span class="c"># 以降のデプロイ</span></span></code></pre>
+</figure>
+    <p>バイナリはイメージの中でコンパイルされるので、OS は常にイメージと一致します。<code>config/deploy.yml</code> の <code>builder.arch</code> はサーバーの CPU に合わせてください。デプロイ先はサーバー 1 台です：データベースはそのサーバーのボリュームにある SQLite のファイルです。手順はバックアップも含めて <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md#第-8-部-kamal-でデプロイする" rel="noopener"><code>docs/deploy.md</code></a> の第 8 部にあります。</p>
   </section>
 
   <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">

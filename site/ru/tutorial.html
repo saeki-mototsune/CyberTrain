@@ -614,6 +614,13 @@
       <li><code>SIGTERM</code> прекращает приём соединений, даёт выполняющимся запросам завершиться и выходит, когда они закончатся, или по истечении <code>drain_timeout</code> сервера (10 с).</li>
       <li>Слежение за файлами и цикл пересборки никогда не работают в production. Запущенный <code>cybertrain server</code> пропускает пересборки, пока <code>cybertrain build</code> удерживает <code>tmp/cybertrain-build.lock</code>.</li>
     </ul>
+    <p><code>cybertrain new</code> также создаёт конфигурацию для <a href="https://kamal-deploy.org" rel="noopener">Kamal 2</a>. <code>Dockerfile</code> выполняет <code>cybertrain setup</code> и <code>cybertrain build</code> на этапе сборки в Ubuntu и копирует <code>dist/</code> в облегчённый этап того же выпуска; при запуске образ применяет миграции, а затем слушает <code>0.0.0.0:3000</code>. Рядом лежат <code>.dockerignore</code>, <code>config/deploy.yml</code> (kamal-proxy с Let&rsquo;s Encrypt перед приложением, проверка работоспособности по <code>public/up.html</code>, файл SQLite на томе в <code>/app/storage</code>) и <code>.kamal/secrets</code>, который читает <code>KAMAL_REGISTRY_PASSWORD</code> и <code>CYBERTRAIN_SECRET_KEY_BASE</code> из окружения. Заполните значения, помеченные <code>CHANGE ME</code>, в <code>config/deploy.yml</code>, сделайте коммит и выполните:</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">терминал &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Код: терминал &mdash; blog/"><code><span class="ln cmd">kamal setup    <span class="c"># первый раз: ставит Docker и kamal-proxy на сервер, собирает, публикует и запускает</span></span>
+<span class="ln cmd">kamal deploy   <span class="c"># каждое следующее развёртывание</span></span></code></pre>
+</figure>
+    <p>Двоичный файл компилируется внутри образа, поэтому ОС всегда совпадает с образом; задайте <code>builder.arch</code> в <code>config/deploy.yml</code> по процессору сервера. Развёртывайте на один сервер: база данных&nbsp;&mdash; файл SQLite на томе этого сервера. Часть 8 в <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md#第-8-部-kamal-でデプロイする" rel="noopener"><code>docs/deploy.md</code></a> (на японском) описывает весь процесс, включая резервные копии.</p>
   </section>
 
   <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">
