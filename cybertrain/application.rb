@@ -80,8 +80,8 @@ module Cybertrain
 
     # ErrorPages (in production) -> RequestLogger (unless log_level :none) ->
     # Static (if static_files) -> MethodOverride -> SessionStore ->
-    # CsrfProtection (if csrf) -> router. Built on first use, after boot has
-    # resolved the session secret.
+    # CsrfProtection (if csrf; paths under csrf_exempt_prefixes pass it) ->
+    # router. Built on first use, after boot has resolved the session secret.
     def stack
       built = @stack
       if built.nil?
@@ -128,7 +128,8 @@ module Cybertrain
     def server
       built = @server
       if built.nil?
-        built = Server.new(ContextHandler.new(front_app), host: @config.host, port: @config.port)
+        built = Server.new(ContextHandler.new(front_app), host: @config.host, port: @config.port,
+                                                          max_body_bytes: @config.max_body_bytes)
         @server = built
       end
       built
@@ -320,7 +321,7 @@ module Cybertrain
     def build_stack
       c = @config
       app = @router
-      app = CsrfProtection.new(app) if c.csrf
+      app = CsrfProtection.new(app, c.csrf_exempt_prefixes) if c.csrf
       app = SessionStore.new(app, secret: c.resolve_secret!, cookie_name: c.session_cookie_name,
                                   max_age: c.session_max_age, secure: c.session_secure,
                                   same_site: c.session_same_site, partitioned: c.session_partitioned)

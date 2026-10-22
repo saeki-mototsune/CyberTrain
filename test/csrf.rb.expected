@@ -5,6 +5,10 @@ ok   a POST with the right token in the query string passes
 ok   a POST with the right token via the header passes
 ok   a POST with the wrong token in the body is rejected
 ok   an empty session token is treated as missing
+ok   a POST under an exempt prefix passes without a token
+ok   a POST outside every exempt prefix is still checked
+ok   an exempt prefix is matched on the path as sent, so a percent-encoded spelling is checked
+ok   an empty prefix exempts nothing and the default is no exemption
 ok   token_for mints a token once and reuses it
 ok   token_for marks the session changed and stores the token under TOKEN_KEY
-9 tests, 21 assertions, 0 failures
+13 tests, 31 assertions, 0 failures
