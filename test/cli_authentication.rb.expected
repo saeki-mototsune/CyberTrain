@@ -1,0 +1,150 @@
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/shop.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+ok   generate authentication writes the migrations, models, controllers, views and tests
+ok   the users migration has the two NOT NULL columns and a unique index
+ok   the User model hashes with Cybertrain::Password and validates in before_validation
+ok   ApplicationController gets the before_actions and the sign-in helpers after its class line
+ok   the controllers open their sign-in actions and the views post to the routes
+ok   the routes and the layout's nav are inserted
+ok   the app's test boots the app and drives the sign-in flow
+identical db/migrate/20260925120000_create_users.rb
+identical db/migrate/20260925120001_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical test/support/app_test.rb
+identical test/authentication.rb
+identical app/controllers/application_controller.rb (authentication already added)
+identical route resource :session
+identical app/views/layouts/application.html.erb (nav already rendered)
+
+next:
+  cybertrain db migrate
+  cybertrain server      # then open /sign_up
+  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, "Testing an app")
+ok   running the generator again writes and edits nothing
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/store.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_products.rb
+create app/models/product.rb
+create app/controllers/products_controller.rb
+create app/views/products/index.html.erb
+create app/views/products/show.html.erb
+create app/views/products/new.html.erb
+create app/views/products/edit.html.erb
+create app/views/products/_form.html.erb
+route resources :products
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+ok   the generator runs after a scaffold, with migration versions that follow
+ok   insert_after_line keeps the rest of the file
+error: ./config/routes.rb not found: run this inside a cybertrain app
+error: usage: cybertrain generate authentication (no arguments)
+error: only `generate scaffold` and `generate authentication` are supported
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/broken.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
+ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
+11 tests, 103 assertions, 0 failures

@@ -114,7 +114,7 @@ error: 'hash' would shadow a method of the generated model (Cybertrain::Model); 
 error: 'raise' would shadow a method of the generated model (Cybertrain::Model); pick another resource
 error: ./config/routes.rb not found: run this inside a cybertrain app
 error: usage: cybertrain generate scaffold NAME field:type ...
-error: only `generate scaffold` is supported
+error: only `generate scaffold` and `generate authentication` are supported
 ok   bad input is rejected before anything is written
 create spin.toml
 create .gitignore

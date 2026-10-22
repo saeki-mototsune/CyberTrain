@@ -22,6 +22,11 @@ ok   an unknown callback name raises UnknownCallback
 ok   process runs from a stored route handler
 ok   chain_for and rescues_for walk the class hierarchy
 ok   Callback#applies? honours only and except
+ok   skip_before_action leaves out a parent's callback for only: the listed actions
+ok   an action a skip does not list still runs the callback
+ok   a skip with except: keeps the callback for the listed actions only
+ok   a subclass inherits its parent's skips
+ok   skipped? matches by name and action, never a block callback
 ok   status_code maps symbols and passes integers through
 ok   a missing required param answers 400 Bad Request
 ok   a client fault raised in an action answers 400 with its message, like a missing param
@@ -29,4 +34,4 @@ ok   a client fault after the action redirected drops only Location and Content-
 ok   a client fault answered from an action logs one rejected-request line
 ok   an exception the controller re-raises is not logged by it (ErrorPages logs it once)
 ok   an app exception sharing a bare name with a framework one is still raised (500 path)
-31 tests, 89 assertions, 0 failures
+36 tests, 111 assertions, 0 failures

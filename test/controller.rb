@@ -200,6 +200,74 @@ end
 # does not widen a parameter from calls inside stored Procs, so these only
 # worked by accident while other direct call sites passed Symbols; the
 # block-only case lives in test/controller_status.rb.
+# skip_before_action: a base class requiring sign-in everywhere, a subclass
+# opening two actions, and a grandchild inheriting that skip. SKIPPED
+# records what ran; `skip_before_action` is not scanned into run_callback,
+# so the case table below lists the callbacks only.
+SKIPPED = []
+
+class SecureController < Cybertrain::Controller
+  before_action :require_login
+  before_action :track
+
+  def require_login
+    SKIPPED << "require_login"
+    head :forbidden
+  end
+
+  def track
+    SKIPPED << "track"
+  end
+
+  def run_callback(name)
+    case name
+    when :require_login then require_login
+    when :track then track
+    else super
+    end
+  end
+end
+
+class SessionsController < SecureController
+  skip_before_action :require_login, only: [:new, :create]
+  skip_before_action :track, except: [:destroy]
+
+  def new_action
+    render plain: "sign in"
+  end
+
+  def create
+    render plain: "signed in"
+  end
+
+  def destroy
+    render plain: "signed out"
+  end
+end
+
+class GuestSessionsController < SessionsController
+  def new_action
+    render plain: "guest sign in"
+  end
+end
+
+def secure(klass, action)
+  SKIPPED.clear
+  ctx = build_ctx(false)
+  c = case klass
+      when "sessions" then SessionsController.new(ctx)
+      when "guest" then GuestSessionsController.new(ctx)
+      else SecureController.new(ctx)
+      end
+  case action
+  when :new then c.process(:new) { |x| x.new_action }
+  when :create then c.process(:create) { |x| x.create }
+  when :destroy then c.process(:destroy) { |x| x.destroy }
+  else raise ArgumentError, "no route for #{action}"
+  end
+  c
+end
+
 class Gone < StandardError
 end
 
@@ -432,6 +500,52 @@ test "Callback#applies? honours only and except" do
   cb2 = Cybertrain::Callback.new(:before, :x, nil, [], [:index])
   assert cb2.applies?(:show)
   refute cb2.applies?(:index)
+end
+
+test "skip_before_action leaves out a parent's callback for only: the listed actions" do
+  c = secure("sessions", :new)
+  assert_equal 200, c.response.status
+  assert_equal "sign in", c.response.body
+  assert_equal [], SKIPPED
+  c = secure("sessions", :create)
+  assert_equal "signed in", c.response.body
+  assert_equal [], SKIPPED
+end
+
+test "an action a skip does not list still runs the callback" do
+  c = secure("sessions", :destroy)
+  assert_equal 403, c.response.status
+  assert_equal "", c.response.body
+  assert_equal ["require_login"], SKIPPED
+end
+
+test "a skip with except: keeps the callback for the listed actions only" do
+  skips = Cybertrain::Controller.skips_for(SessionsController)
+  assert_equal 2, skips.size
+  assert_equal "track", skips[1].name.to_s
+  assert skips[1].applies?(:new)
+  refute skips[1].applies?(:destroy)
+end
+
+test "a subclass inherits its parent's skips" do
+  c = secure("guest", :new)
+  assert_equal "guest sign in", c.response.body
+  assert_equal [], SKIPPED
+  assert_equal 2, Cybertrain::Controller.skips_for(GuestSessionsController).size
+  assert_equal 0, Cybertrain::Controller.skips_for(SecureController).size
+  assert_equal 0, Cybertrain::Controller.skips_for(PostsController).size
+end
+
+test "skipped? matches by name and action, never a block callback" do
+  skips = Cybertrain::Controller.skips_for(SessionsController)
+  named = Cybertrain::Callback.new(:before, :require_login, nil, [], [])
+  assert Cybertrain::Controller.skipped?(skips, named, :new)
+  refute Cybertrain::Controller.skipped?(skips, named, :destroy)
+  other = Cybertrain::Callback.new(:before, :set_post, nil, [], [])
+  refute Cybertrain::Controller.skipped?(skips, other, :new)
+  block = Cybertrain::Callback.new(:before, nil, nil, [], [])
+  refute Cybertrain::Controller.skipped?(skips, block, :new)
+  assert_equal 0, Cybertrain::Controller::NO_SKIPS.size
 end
 
 test "status_code maps symbols and passes integers through" do

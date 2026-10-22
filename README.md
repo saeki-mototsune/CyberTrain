@@ -30,10 +30,11 @@ template engine, SQLite-backed models with validations, callbacks and
 schema-derived associations, migrations, the `cybertrain` CLI, and a
 development loop that rebuilds and re-execs the server on code changes.
 [examples/blog](examples/blog) is the Rails "Getting Started" blog (articles
-with comments) built on it, exercised by CI on Linux and macOS. Not built:
-authentication, mailers, jobs, WebSockets/ActionCable, an asset pipeline,
-i18n, and anything beyond a minimal `render json:` — see "Differences from
-Rails" below.
+with comments) built on it, exercised by CI on Linux and macOS.
+`cybertrain generate authentication` adds email-and-password sign-in the way
+Rails 8's generator does. Not built: mailers, jobs, WebSockets/ActionCable,
+an asset pipeline, i18n, and anything beyond a minimal `render json:` — see
+"Differences from Rails" below.
 
 ## Try it in the browser
 
@@ -140,6 +141,10 @@ commands (`cybertrain help` prints them):
   `spin run gen` in it, installing Spinel first when it is needed.
 - `cybertrain generate scaffold NAME field:type ...` (alias `g scaffold`)
   adds a resource to the application in the current directory.
+- `cybertrain generate authentication` adds email-and-password sign-in to
+  it: users and sessions tables, `User` and `Session` models, the sign-in
+  and sign-up controllers and views, the routes, a `before_action` in
+  `ApplicationController` and a test (see "Add authentication").
 - `cybertrain db migrate` generates, applies pending migrations, and
   generates again (`spin run gen; spin run db -- migrate; spin run gen`);
   `cybertrain migration` is kept as an alias.
@@ -434,6 +439,51 @@ child routes to the nested collection (`article_comments_path`), a persisted
 one to the nested member (`article_comment_path`) — generated into
 `gen/routes.rb` from the nested `resources` block above.
 
+### Add authentication
+
+```sh
+cybertrain generate authentication
+cybertrain db migrate
+cybertrain server        # then open http://127.0.0.1:3000/sign_up
+```
+
+Like Rails 8's `bin/rails generate authentication`, this writes code the
+app owns rather than installing an engine: migrations for `users`
+(`email_address`, `password_digest`, a unique index) and `sessions` (one
+row per signed-in browser, with `ip_address` and `user_agent`), the `User`
+and `Session` models, `SessionsController` (`/session/new`, `POST
+/session`, `DELETE /session`), `RegistrationsController` (`/sign_up`,
+because there is no console to create the first user in; delete it for an
+invitation-only app), their views, a `sessions/_nav` partial rendered at
+the top of the layout, and `test/authentication.rb` with its
+`test/support/app_test.rb`. It also inserts a block after the class line of
+`ApplicationController`:
+
+```ruby
+class ApplicationController < Cybertrain::Controller
+  before_action :resume_session          # sets @current_user and @current_session
+  before_action :require_authentication  # 303 to /session/new unless signed in
+
+  def self.allow_unauthenticated_access(only: [], except: [])
+    skip_before_action(:require_authentication, only: only, except: except)
+  end
+  # authenticated?, start_new_session_for(user), terminate_session,
+  # after_authentication_url ...
+```
+
+so every action needs a signed-in user unless its controller says
+`allow_unauthenticated_access only: [:new, :create]`, as the two generated
+controllers do. Templates read `@current_user` (`<% if @current_user %>`).
+Passwords are hashed by `Cybertrain::Password` (PBKDF2-HMAC-SHA256, 100,000
+iterations by default, about 0.2 s compiled; raise it with
+`Cybertrain::Password.iterations = 600_000` in `config/app.rb`, and
+`User#authenticate` rehashes each user as they sign in). The `User` model
+spells out what `has_secure_password` would define (`password=`,
+`authenticate`, `User.authenticate_by(email_address:, password:)`), since
+Spinel cannot define methods at run time; edit it like any other model.
+Password reset is not generated (no mailers). Running the generator again
+writes nothing. The design, and why not a package: [docs/design.md](docs/design.md) D15.
+
 ### Build for deployment
 
 ```sh
@@ -537,7 +587,11 @@ compiler output on every HTML response. None of this loads in production.
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
-| Auth, mailers, jobs, ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape (User, Session, SessionsController, the before_action) plus a sign-up page, since there is no console to create a user in; `has_secure_password` is written out as methods on the User model over `Cybertrain::Password` (PBKDF2-HMAC-SHA256 in Ruby: bcrypt would need a C library the binary links, and `String#crypt` has no bcrypt on macOS). No password reset (no mailers), no `rate_limit` |
+| `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
+| `resource :session` | The same six routes to `SessionsController`; no nesting under it |
+| `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |
+| Mailers, jobs, ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
 

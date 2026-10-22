@@ -53,12 +53,14 @@ module Cybertrain
     # `404 Not Found`.
     #
     # Each named route gets a `<name>_path` and a `<name>_url` helper (see
-    # {::Gen::UrlHelpers}). Not available: `resource` (singular), `match`,
-    # `namespace`, `scope`, `constraints`, `mount`, formats, globs and
-    # optional segments.
+    # {::Gen::UrlHelpers}). Not available: `match`, `namespace`, `scope`,
+    # `constraints`, `mount`, formats, globs, optional segments and
+    # nesting under a singular `resource`.
     # @api public
     class Mapper
       STANDARD_ACTIONS = [:index, :create, :new, :edit, :show, :update, :destroy]
+      # A singular resource has no index; Rails draws `new` before `show`.
+      SINGULAR_ACTIONS = [:create, :new, :edit, :show, :update, :destroy]
       # A route name must work as the prefix of `def <name>_path`.
       NAME_PATTERN = /\A[a-z_][a-z0-9_]*\z/
       # An action becomes a literal method call in the generated handler.
@@ -95,7 +97,10 @@ module Cybertrain
       # `[a-z0-9_]` turned into `_` (`"about-us"` → `about_us`). Inside a
       # `member` block it gets the resource's singular as a suffix
       # (`preview_post`), inside `collection` the plural (`search_posts`),
-      # inside `resources` its prefix (`post_...`).
+      # inside `resources` its prefix (`post_...`). A derived name that an
+      # earlier route already took leaves the route unnamed, as in Rails
+      # (`get "/sign_up"` then `post "/sign_up"`: one `sign_up_path`); a
+      # duplicate `as:` is an error.
       # @example
       #   get "/about", to: "pages#about"               # GET /about, about_path
       #   get "/feed", to: "articles#index", as: "feed"   # feed_path
@@ -231,6 +236,54 @@ module Cybertrain
         nil
       end
 
+      # A singular resource, one the visitor has at most one of (their
+      # session, their profile): the six actions without `index`, at a path
+      # without an id, handled by the plural controller as in Rails.
+      #
+      # `resource :session` draws, to `SessionsController`:
+      #
+      # | Verb | Path | Action | Helper |
+      # | --- | --- | --- | --- |
+      # | GET | `/session/new` | `new` (`def new_action`) | `new_session_path` |
+      # | POST | `/session` | `create` | `session_path` |
+      # | GET | `/session/edit` | `edit` | `edit_session_path` |
+      # | GET | `/session` | `show` | |
+      # | PATCH, PUT | `/session` | `update` | |
+      # | DELETE | `/session` | `destroy` | |
+      #
+      # The order is Rails' (`new` before `show`, so `/session/new` is not
+      # read as a member). There is no nesting under a singular resource.
+      # @example
+      #   resource :session, only: [:new, :create, :destroy]
+      # @param name [Symbol] the singular (`:session`)
+      # @param only [Array<Symbol>, nil] draw only these actions
+      # @param except [Array<Symbol>, nil] draw all but these
+      # @return [nil]
+      # @api public
+      def resource(name, only: nil, except: nil)
+        singular = "#{name}"
+        controller = Inflector.pluralize(singular)
+        path = "#{@path_prefix}/#{singular}"
+        route_name = @name_prefix + singular
+        used = []
+        SINGULAR_ACTIONS.each do |action|
+          next unless only.nil? || only.include?(action)
+          next if !except.nil? && except.include?(action)
+
+          case action
+          when :create then add_standard(used, "POST", path, controller, "create", route_name)
+          when :new then add_standard(used, "GET", "#{path}/new", controller, "new", "new_#{route_name}")
+          when :edit then add_standard(used, "GET", "#{path}/edit", controller, "edit", "edit_#{route_name}")
+          when :show then add_standard(used, "GET", path, controller, "show", route_name)
+          when :update
+            add_standard(used, "PATCH", path, controller, "update", route_name)
+            add_standard(used, "PUT", path, controller, "update", route_name)
+          when :destroy then add_standard(used, "DELETE", path, controller, "destroy", route_name)
+          end
+        end
+        nil
+      end
+
       # Inside resources: get "preview" -> GET /posts/:id/preview as preview_post.
       # @yieldparam mapper [Mapper]
       # @return [nil]
@@ -274,16 +327,27 @@ module Cybertrain
 
         case @mode
         when "member"
-          add_spec(verb, "#{@member_path}/#{segment}", controller, action, "#{word}_#{@member_name}")
+          add_spec(verb, "#{@member_path}/#{segment}", controller, action, custom_name("#{word}_#{@member_name}", as))
         when "collection"
-          add_spec(verb, "#{@collection_path}/#{segment}", controller, action, "#{word}_#{@collection_name}")
+          add_spec(verb, "#{@collection_path}/#{segment}", controller, action, custom_name("#{word}_#{@collection_name}", as))
         when "resources"
-          add_spec(verb, "#{@path_prefix}/#{segment}", controller, action, @name_prefix + word)
+          add_spec(verb, "#{@path_prefix}/#{segment}", controller, action, custom_name(@name_prefix + word, as))
         else
           raise ArgumentError, "#{verb} /#{segment} needs to: \"controller#action\"" if controller == ""
 
-          add_spec(verb, "/#{segment}", controller, action, as == "" ? word : as)
+          add_spec(verb, "/#{segment}", controller, action, custom_name(word, as))
         end
+      end
+
+      # The name a custom route gets: `name` as derived, unless no `as:` was
+      # given and an earlier route already owns it, in which case the route
+      # is unnamed (so `get` and `post` on one path share one helper). An
+      # explicit `as:` always goes through, and add_spec rejects a duplicate.
+      def custom_name(name, as)
+        return name unless as == ""
+
+        @specs.each { |spec| return "" if spec.name == name }
+        name
       end
 
       # A standard resource route; its name goes to the first route that

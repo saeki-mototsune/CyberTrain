@@ -3,6 +3,7 @@
 #
 #   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references]
+#   cybertrain generate authentication
 #   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
 #   cybertrain setup [--force] | doctor | version | help
 #
@@ -12,6 +13,7 @@ require "cybertrain/version"
 require "cybertrain/cli/templates"
 require "cybertrain/cli/new_app"
 require "cybertrain/cli/scaffold"
+require "cybertrain/cli/authentication"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
 
@@ -31,6 +33,11 @@ module Cybertrain
         cybertrain generate scaffold NAME field:type ... [parent:references]
             Add a resource to the application in the current directory.
             Types: #{Field::TYPES.join(", ")} (default string).
+        cybertrain generate authentication
+            Add email-and-password sign-in to the application in the current
+            directory: users and sessions tables, User and Session models,
+            SessionsController and RegistrationsController with their views,
+            the routes, a before_action in ApplicationController and a test.
         cybertrain db migrate
             Generate, apply pending migrations, generate again
             (spin run gen; spin run db -- migrate; spin run gen).
@@ -238,10 +245,23 @@ module Cybertrain
 
     def self.run_generate(argv)
       kind = argv.size > 1 ? argv[1] : ""
-      raise InvalidArgument, "only `generate scaffold` is supported" unless kind == "scaffold"
-      raise InvalidArgument, "usage: cybertrain generate scaffold NAME field:type ..." if argv.size < 3
+      case kind
+      when "scaffold"
+        raise InvalidArgument, "usage: cybertrain generate scaffold NAME field:type ..." if argv.size < 3
 
-      Scaffold.generate(".", argv[2], argv[3, argv.size - 3])
+        Scaffold.generate(".", argv[2], argv[3, argv.size - 3])
+      when "authentication"
+        raise InvalidArgument, "usage: cybertrain generate authentication (no arguments)" if argv.size > 2
+
+        Authentication.generate(".")
+        puts ""
+        puts "next:"
+        puts "  cybertrain db migrate"
+        puts "  cybertrain server      # then open /sign_up"
+        puts "  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, \"Testing an app\")"
+      else
+        raise InvalidArgument, "only `generate scaffold` and `generate authentication` are supported"
+      end
       0
     end
   end
