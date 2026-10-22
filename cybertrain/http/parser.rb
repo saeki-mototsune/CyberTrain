@@ -68,5 +68,25 @@ module Cybertrain
       end
       [parts[0], parts[1], version]
     end
+
+    # True when text is one or more ASCII digits, false for "" (the
+    # Content-Length readers, Request#content_length and Server#body_length,
+    # treat an empty value as malformed). A while loop over getbyte: no
+    # Array and no block per request, as `bytes.all?` would cost. Lives here,
+    # not as Cast.digits? (which is true for ""): the HTTP layer requires
+    # nothing outside cybertrain/http/ but params.rb and logger.rb
+    # (script/check-http-layer).
+    def self.digits?(text)
+      n = text.bytesize
+      return false if n == 0
+
+      i = 0
+      while i < n
+        b = text.getbyte(i)
+        return false if b < 48 || b > 57
+        i += 1
+      end
+      true
+    end
   end
 end

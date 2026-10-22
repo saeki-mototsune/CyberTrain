@@ -366,7 +366,7 @@ module Cybertrain
     # past 2**63-1 instead of saturating or promoting to Bignum.
     def body_length(value)
       return 0 if value.nil?
-      return -1 if value.empty? || !value.bytes.all? { |b| b >= 48 && b <= 57 }
+      return -1 if value.empty? || !HttpParser.digits?(value)
 
       first = 0
       first += 1 while first < value.bytesize - 1 && value.getbyte(first) == 48

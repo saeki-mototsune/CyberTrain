@@ -21,16 +21,13 @@ module Cybertrain
 
     # The requested method upper-cased, or "" when there is none (or it is
     # not one of ALLOWED). The form body wins over the query string. One
-    # Query.value_of_valid scan each (Request#form_value / #query_value), not
-    # the whole parsed tree: this runs before any auth or CSRF check on every
+    # Query.value_of_valid scan each (Request#form_or_query_value), not the
+    # whole parsed tree: this runs before any auth or CSRF check on every
     # POST. It is also the first reader of a form body, so it is where the
     # body is validated (Request#utf8_body); CsrfProtection and the Router
     # reuse that validated text.
     def override_from(request)
-      value = ""
-      value = request.form_value("_method") if request.form?
-      value = request.query_value("_method") if value.empty?
-      value = value.upcase
+      value = request.form_or_query_value("_method").upcase
       ALLOWED.include?(value) ? value : ""
     end
   end
