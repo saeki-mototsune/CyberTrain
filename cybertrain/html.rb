@@ -21,7 +21,7 @@ module Cybertrain
       # more than one static type), which made every getbyte and comparison
       # below a dynamic call: most of this method's time. value.to_s has one
       # static type (every to_s in the program returns a String; SafeString's
-      # included, see SafeString#initialize), so the loops compile to plain
+      # included, see SafeString::EMPTY), so the loops compile to plain
       # C, and for a String it is the String itself, not a copy. It is also
       # what comes back when nothing needs escaping, so callers get a typed
       # String rather than the polymorphic parameter. The case keeps value
@@ -162,5 +162,14 @@ module Cybertrain
               end
       SafeString.of(@str + piece)
     end
+
+    # Built here so that every program requiring this file constructs a
+    # SafeString with a String. One that never did (an API-only program, a
+    # program that never renders) left SafeString#to_s untyped, and with it
+    # every `v.to_s` in the program: the parameter narrowing idiom (`s =
+    # v.to_s` before a byte scan, Html.escape, Cast.parse_time) then kept the
+    # boxed value, whose `getbyte` raises NoMethodError once the openssl
+    # package is in the program (spikes/NOTES.md rules 56 and 62).
+    EMPTY = SafeString.new("")
   end
 end

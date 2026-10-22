@@ -91,7 +91,10 @@ works there with no network.
 - Ruby 3.2+ and RubyGems, for the `cybertrain` command only (applications
   never run on CRuby).
 - OpenSSL's headers (`libssl-dev`) are optional: without them Spinel builds
-  without its `openssl` package, which cybertrain does not use.
+  without its `openssl` package, which cybertrain does not use. On macOS an
+  application that requires `openssl` needs Homebrew's (keg-only) OpenSSL on
+  the compiler's paths: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+  CPATH="$(brew --prefix openssl@3)/include"`.
 - jemalloc's development package (`libjemalloc-dev`; `brew install jemalloc`)
   is optional: an app needs it only once its `spin.toml` says
   `allocator = "jemalloc"`, which `cybertrain new` writes commented out. It

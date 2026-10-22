@@ -75,8 +75,11 @@ module Cybertrain
     # Array and no block per request, as `bytes.all?` would cost. Lives here,
     # not as Cast.digits? (which is true for ""): the HTTP layer requires
     # nothing outside cybertrain/http/ but params.rb and logger.rb
-    # (script/check-http-layer).
-    def self.digits?(text)
+    # (script/check-http-layer). `value` is a nullable header value, boxed,
+    # hence the `to_s` local: a boxed `getbyte` raises NoMethodError in a
+    # program that requires the openssl package (spikes/NOTES.md rule 62).
+    def self.digits?(value)
+      text = value.to_s
       n = text.bytesize
       return false if n == 0
 

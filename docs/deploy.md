@@ -60,7 +60,9 @@ jemalloc（`libjemalloc-dev`、macOS なら `brew install jemalloc`）は、2-2 
 を有効にする場合だけ要ります。
 
 OpenSSL（`libssl-dev`、macOS なら `brew install openssl@3`）は必須ではありません。無くても Spinel は
-openssl パッケージ抜きでビルドされ、cybertrain はそれを使いません。
+openssl パッケージ抜きでビルドされ、cybertrain はそれを使いません。macOS で `require "openssl"` する
+アプリをビルドするときは、Homebrew の OpenSSL(keg-only)をコンパイラに教えます:
+`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib" CPATH="$(brew --prefix openssl@3)/include"`。
 
 `cybertrain` コマンドは gem で入れるので、Ruby 3.2 以上が要ります（サーバーでも
 `cybertrain build` を使うので入れます。アプリ自体は Ruby 無しで動きます）。Ubuntu 24.04 の `ruby-full` は 3.2 です。macOS 付属の Ruby は古いので、

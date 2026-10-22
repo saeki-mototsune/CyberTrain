@@ -308,8 +308,14 @@ module Cybertrain
     # (`encoding.to_s` is "UTF-8" for every one of them, so there it is the
     # very same object; valid_encoding? agrees with CRuby, NOTES rule 52). The
     # result is what the byte-offset scans take (parse_valid, value_of_valid,
-    # decode_valid). A UTF-8 String is returned as it is, uncopied.
-    def self.utf8!(text)
+    # decode_valid). A UTF-8 String is returned as it is, uncopied. A
+    # Request's body or query string can arrive boxed (a caller passed a
+    # nullable or polymorphic value); returning it unnarrowed would hand every
+    # scan downstream a boxed receiver, whose `getbyte` raises NoMethodError
+    # in a program that requires the openssl package (spikes/NOTES.md rule
+    # 62). `to_s` is the String itself, so nothing is copied.
+    def self.utf8!(raw)
+      text = raw.to_s
       s = text.encoding.to_s == "UTF-8" ? text : text.dup.force_encoding("UTF-8")
       raise QueryMalformed, INVALID_BYTES unless s.valid_encoding?
 
