@@ -67,12 +67,13 @@ at [.githooks/](.githooks/), after which:
 - **pre-commit** runs `script/gate --staged` on the files being committed:
   trailing whitespace, final newlines, LF line endings, merge-conflict
   markers, Ruby syntax (`ruby -c`), YAML files load; and, when the commit
-  touches the framework, the CLI, the tests or the scripts, the repository
-  checks: the version and Spinel-tag pins agree, `script/check-reserved-names`,
-  `check-client-faults` and `check-http-layer` pass (see
-  [Conventions](#conventions-ci-enforces) for what each guards), every file
-  `cybertrain.gemspec` lists exists and the CLI loads under CRuby, and every
-  `test/*.rb` has its `.expected` snapshot.
+  touches the framework, the CLI, the tests, the scripts or the playground's
+  Dockerfile, the repository checks: the version and Spinel-tag pins agree,
+  `script/check-reserved-names`, `check-client-faults` and `check-http-layer`
+  pass (see [Conventions](#conventions-ci-enforces) for what each guards),
+  every file `cybertrain.gemspec` lists exists, the CLI loads under CRuby and
+  `playground/Dockerfile` copies each of those files into its gem stage, and
+  every `test/*.rb` has its `.expected` snapshot.
 - **commit-msg** checks the message's shape (see [Commits](#commits)).
 
 `script/gate` with no arguments runs the same checks over the whole

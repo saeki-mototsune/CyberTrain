@@ -1,5 +1,4 @@
 require "cybertrain/middleware"
-require "cybertrain/http/query"
 
 module Cybertrain
   # HTML forms can only GET or POST, so Rails-style forms send

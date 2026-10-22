@@ -22,6 +22,7 @@
 #     equals SPINEL_TAG in .github/workflows/ci.yml and script/claude-cloud-setup;
 #   * script/check-reserved-names, check-client-faults and check-http-layer pass;
 #   * every file cybertrain.gemspec lists exists, and the CLI loads under CRuby;
+#   * playground/Dockerfile's cli-src stage copies every file the gemspec lists;
 #   * every test/*.rb has its .expected snapshot, and every snapshot its test.
 #
 # Exit status 1 when any check fails; the failing lines are printed. To commit
@@ -40,7 +41,7 @@ RUBY_EXT = %w[.rb .gemspec .rake].freeze
 YAML_EXT = %w[.yml .yaml].freeze
 # Files the repository checks read; when none of them is in the set under
 # --staged (a docs-only commit, say), those checks are skipped.
-REPO_INPUTS = %r{\A(cybertrain/|cybertrain\.rb\z|cybertrain\.gemspec\z|spin\.toml\z|exe/|test/|script/|\.github/workflows/ci\.yml\z)}
+REPO_INPUTS = %r{\A(cybertrain/|cybertrain\.rb\z|cybertrain\.gemspec\z|spin\.toml\z|exe/|test/|script/|\.github/workflows/ci\.yml\z|playground/Dockerfile\z)}
 
 $failures = 0
 $started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -155,7 +156,7 @@ end
 # --- repository checks -----------------------------------------------------------
 
 if mode == :staged && files.none? { |f| f.match?(REPO_INPUTS) }
-  skip("repository checks", "nothing staged under cybertrain/, exe/, test/, script/ or the pins")
+  skip("repository checks", "nothing staged under cybertrain/, exe/, test/, script/, the pins or playground/Dockerfile")
 else
   version_rb = "cybertrain/version.rb"
   version = File.read(version_rb)[/VERSION = "([^"]+)"/, 1]
@@ -183,6 +184,49 @@ else
     print spec.files.size
   RB
   spec_status.success? ? ok("gem file list and CLI load under CRuby", "#{spec_out} files") : fail!("gemspec / CLI", spec_out.lines.map(&:chomp))
+
+  # The playground image builds the gem from a scratch stage (cli-src) that
+  # copies spec.files by hand, so that a framework-only change keeps the gem
+  # layer cached. A file added to spec.files and not to that stage passes
+  # every check above and then fails `gem build` in the Playground image job
+  # ("... are not files"), twenty minutes later. Read the stage's COPY lines
+  # (a source ending in "/" or naming a directory stands for the files under
+  # it) and name every gemspec file none of them copies.
+  list_out, list_status = Open3.capture2e("ruby", "-e", 'puts Gem::Specification.load("cybertrain.gemspec").files')
+  dockerfile = "playground/Dockerfile"
+  if !list_status.success?
+    skip("playground gem stage copies spec.files", "cybertrain.gemspec does not load (reported above)")
+  elsif !File.file?(dockerfile)
+    fail!("playground gem stage", ["#{dockerfile} is missing"])
+  else
+    stage = []
+    inside = false
+    File.read(dockerfile).gsub(/\\\n/, " ").each_line do |line|
+      words = line.split
+      next if words.empty?
+
+      if words[0].casecmp?("FROM")
+        inside = words.last == "cli-src"
+      elsif inside && words[0].casecmp?("COPY")
+        args = words[1..].reject { |w| w.start_with?("--") }
+        stage.concat(args[0..-2])
+      end
+    end
+    if stage.empty?
+      fail!("playground gem stage", ["#{dockerfile} has no COPY in a `FROM ... AS cli-src` stage"])
+    else
+      copied = stage.flat_map do |src|
+        path = src.delete_suffix("/")
+        File.directory?(path) ? Dir.glob("#{path}/**/*").select { |f| File.file?(f) } : [path]
+      end
+      missing = list_out.lines.map(&:chomp) - copied
+      if missing.empty?
+        ok("playground gem stage copies spec.files", "#{stage.size} COPY sources")
+      else
+        fail!("playground gem stage", missing.map { |f| "#{dockerfile} (cli-src) does not copy #{f}, which cybertrain.gemspec lists" })
+      end
+    end
+  end
 
   tests = Dir["test/*.rb"].map { |f| f.delete_suffix(".rb") }
   snaps = Dir["test/*.rb.expected"].map { |f| f.delete_suffix(".rb.expected") }
