@@ -1,4 +1,3 @@
-require "zlib"
 require "cybertrain/http/query"
 require "cybertrain/http/header_name"
 
@@ -32,8 +31,9 @@ module Cybertrain
   #   JSON.parse(request.decoded_body)            # the same for a gzip-compressed body
   # @api public
   class Request
-    # The largest decoded body {#decoded_body} returns by default, 50 MiB.
-    # The limit on the body as sent is the server's (Config#max_body_bytes).
+    # The largest decoded body {#decoded_body} returns by default, 50 MiB
+    # (at most 2 GiB - 1: what the inflater can hand back). The limit on the
+    # body as sent is the server's (Config#max_body_bytes).
     # @api public
     MAX_DECODED_BODY_BYTES = 52_428_800
 
@@ -156,28 +156,42 @@ module Cybertrain
     # server does not decode on its way in, so an action that does not ask
     # never pays for it; {#body} stays the bytes as sent.
     #
-    # The decoded size is bounded by `limit`: a gzip trailer announcing more
-    # than that is refused before inflating, and so is a result that turns
-    # out larger (a trailer can lie). The bytes on the wire are already
-    # bounded by the server (Config#max_body_bytes), and DEFLATE expands at
-    # most about 1032 times, which is what a limit here protects against.
-    # Other encodings (`deflate`, `br`) are not decoded: a 400.
+    # The result is never larger than `limit` bytes: a gzip body is inflated
+    # by the installed inflater ({GzipFFI}, zlib streamed with a ceiling on
+    # the output, so a body that is small on the wire and huge inflated is
+    # refused as soon as the ceiling is reached, not after), and a plain body
+    # over the limit is refused as well. The bytes on the wire are bounded
+    # separately by the server (Config#max_body_bytes). Other encodings
+    # (`deflate`, `br`) are not decoded: a 400. A multi-member gzip file is
+    # inflated whole; bytes after the last member that are not a member of
+    # their own make the body undecodable.
+    #
+    # `require "cybertrain"` installs the inflater. A program that loads only
+    # the HTTP layer answers every gzip body as undecodable (a 400) until it
+    # requires `cybertrain/http/gzip_ffi` and calls `GzipFFI.install!`.
     # @example
     #   JSON.parse(request.decoded_body)
     # @param limit [Integer] the largest decoded body accepted, in bytes
     # @return [String]
-    # @raise [BodyUndecodable] on corrupt gzip data or an encoding that is
-    #   not decoded here (a 400 when unhandled)
+    # @raise [BodyUndecodable] on corrupt gzip data, an encoding that is not
+    #   decoded here, or a gzip body with no inflater installed (a 400 when
+    #   unhandled)
     # @raise [BodyTooLarge] when the decoded body would exceed `limit` (a
     #   400 when unhandled)
     # @api public
     def decoded_body(limit = MAX_DECODED_BODY_BYTES)
       cached = @decoded_body
-      return cached unless cached.nil?
+      unless cached.nil?
+        raise BodyTooLarge, "request body is #{cached.bytesize} bytes, over the limit of #{limit}" if cached.bytesize > limit
+
+        return cached
+      end
 
       encoding = content_encoding
       text = ""
       if encoding == "" || encoding == "identity"
+        raise BodyTooLarge, "request body is #{@body.bytesize} bytes, over the limit of #{limit}" if @body.bytesize > limit
+
         text = @body
       elsif encoding == "gzip" || encoding == "x-gzip"
         text = Request.gunzip(@body, limit)
@@ -188,30 +202,35 @@ module Cybertrain
       text
     end
 
-    # Inflates one gzip body under a size limit. The ISIZE field of the
-    # trailer (the uncompressed size modulo 2**32, little-endian, the last
-    # four bytes) is read first, so a body honestly declaring more than
-    # `limit` costs nothing to refuse; the result is measured again because
-    # the trailer is the sender's claim. A begin/rescue in a plain class
-    # method, no block (NOTES rules 32, 45); Zlib::Error is the common
-    # ancestor of CRuby's Zlib::GzipFile::Error and Spinel's Zlib::DataError.
+    # Inflates one gzip body under a size limit through the installed
+    # inflater. The gzip magic (1f 8b, method 8) is checked here, so a body
+    # that is not gzip at all is undecodable before the inflater is asked.
+    # The trailer's ISIZE is deliberately not consulted: it is the sender's
+    # claim (and the last four bytes of a body with trailing junk are not a
+    # trailer at all); the inflater measures the real output as it goes.
     def self.gunzip(data, limit)
-      size = data.bytesize
-      raise BodyUndecodable, "request body is not gzip data" if size < GZIP_MIN_BYTES
-
-      declared = data.getbyte(size - 4) + (data.getbyte(size - 3) << 8) +
-                 (data.getbyte(size - 2) << 16) + (data.getbyte(size - 1) << 24)
-      raise BodyTooLarge, "request body decodes to #{declared} bytes, over the limit of #{limit}" if declared > limit
-
-      out = ""
-      begin
-        out = Zlib.gunzip(data)
-      rescue Zlib::Error
-        raise BodyUndecodable, "request body is not valid gzip data"
+      if data.bytesize < GZIP_MIN_BYTES || data.getbyte(0) != 0x1f || data.getbyte(1) != 0x8b || data.getbyte(2) != 8
+        raise BodyUndecodable, "request body is not gzip data"
       end
-      raise BodyTooLarge, "request body decodes to #{out.bytesize} bytes, over the limit of #{limit}" if out.bytesize > limit
 
-      out
+      inflater.call(data, limit)
+    end
+
+    # The inflater behind #decoded_body: a lambda taking (data, limit) and
+    # returning the inflated String, raising BodyUndecodable / BodyTooLarge.
+    # The default refuses every gzip body: the only bounded inflater is
+    # GzipFFI (system zlib through Spinel FFI), which cannot be loaded here
+    # (CRuby loads this file for the portable tests and check-http-layer),
+    # so `require "cybertrain"` installs it. A module-level ivar with a
+    # lambda default, the shape Views.url_resolver has (NOTES rules 18, 42).
+    @inflater = ->(data, limit) { raise BodyUndecodable, "gzip request bodies are not decoded: no inflater is installed (require \"cybertrain\")" }
+
+    def self.inflater
+      @inflater
+    end
+
+    def self.inflater=(inflater)
+      @inflater = inflater
     end
 
     # Connection is a comma-separated token list; tokens are compared

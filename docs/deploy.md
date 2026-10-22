@@ -48,7 +48,7 @@ Ubuntu / Debian:
 
 ```sh
 sudo apt update
-sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev libjemalloc-dev ruby-full
+sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev ruby-full
 ```
 
 macOS: `xcode-select --install`（C コンパイラ、make、git、curl と SQLite のヘッダが入ります）。
@@ -304,7 +304,7 @@ AAAA も）を登録します。第 6 部で Caddy が証明書を取るとき�
 
 ```sh
 sudo apt update && sudo apt -y upgrade
-sudo apt install -y build-essential git curl libsqlite3-dev libssl-dev libjemalloc-dev sqlite3 ufw ruby-full
+sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev sqlite3 ufw ruby-full
 
 sudo ufw allow OpenSSH
 sudo ufw allow 80,443/tcp

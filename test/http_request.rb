@@ -255,12 +255,14 @@ test "form_value on the 4096 x 32 body answers like the parse" do
   assert_equal "", Request.new("POST", "/p", {}, body).form_value("a")
 end
 
-# ---- decoded_body: Content-Encoding gzip under a size limit ---------------
+# ---- decoded_body: identity bodies, the limit, and the inflater contract --
+# The gzip inflater (Cybertrain::GzipFFI, system zlib through Spinel FFI)
+# cannot load under CRuby, so this program sees Request's default: every gzip
+# body is undecodable until `require "cybertrain"` installs one. The real
+# inflate is tested in test/http_gunzip.rb (a compiled-binary snapshot).
 
-def gzip_request(body, headers = {})
-  head = { "content-encoding" => "gzip" }
-  headers.each { |k, v| head[k] = v }
-  Request.new("POST", "/api", head, body)
+def encoded_request(body, encoding)
+  Request.new("POST", "/api", { "content-encoding" => encoding }, body)
 end
 
 # The bare class name of what decoded_body raises, "" when nothing does
@@ -277,56 +279,55 @@ test "content_encoding is the lowercased header, empty when absent" do
   assert_equal "gzip", Request.new("POST", "/", { "content-encoding" => " GZIP " }, "x").content_encoding
 end
 
-test "decoded_body is the body itself without a Content-Encoding or with identity" do
+test "decoded_body is the body itself without a Content-Encoding or with identity, the same String every time" do
   plain = Request.new("POST", "/", {}, "{\"a\":1}")
   assert_equal "{\"a\":1}", plain.decoded_body
+  assert plain.decoded_body.equal?(plain.decoded_body)
   identity = Request.new("POST", "/", { "content-encoding" => "identity" }, "raw")
   assert_equal "raw", identity.decoded_body
 end
 
-test "decoded_body inflates a gzip body once and returns the same String every time" do
-  text = "{\"items\":[" + (["{\"n\":1}"] * 500).join(",") + "]}"
-  req = gzip_request(Zlib.gzip(text))
-  first = req.decoded_body
-  assert_equal text, first
-  assert first.equal?(req.decoded_body)
-  assert_equal Zlib.gzip(text).bytesize, req.body.bytesize
+test "a plain body over the limit is BodyTooLarge, at the limit it passes" do
+  req = Request.new("POST", "/", {}, "a" * 100)
+  assert_equal "BodyTooLarge", decode_error(req, 99)
+  assert_equal "", decode_error(req, 100)
 end
 
-test "decoded_body with x-gzip is gzip too" do
-  req = gzip_request(Zlib.gzip("hello"), { "content-encoding" => "x-gzip" })
-  assert_equal "hello", req.decoded_body
-end
-
-test "decoded_body refuses corrupt gzip data and a body too short to be gzip" do
-  assert_equal "BodyUndecodable", decode_error(gzip_request("not gzip at all, but long enough to try"), 1000)
-  assert_equal "BodyUndecodable", decode_error(gzip_request("short"), 1000)
+test "a cached body is checked against a smaller limit asked for later" do
+  req = Request.new("POST", "/", {}, "a" * 100)
+  assert_equal 100, req.decoded_body(100).bytesize
+  assert_equal "BodyTooLarge", decode_error(req, 50)
+  assert_equal "", decode_error(req, 100)
 end
 
 test "decoded_body refuses an encoding it does not decode" do
-  req = Request.new("POST", "/", { "content-encoding" => "deflate" }, Zlib.deflate("x"))
-  assert_equal "BodyUndecodable", decode_error(req, 1000)
-  req = Request.new("POST", "/", { "content-encoding" => "br" }, "x")
-  assert_equal "BodyUndecodable", decode_error(req, 1000)
+  assert_equal "BodyUndecodable", decode_error(encoded_request("x", "deflate"), 1000)
+  assert_equal "BodyUndecodable", decode_error(encoded_request("x", "br"), 1000)
 end
 
-test "decoded_body refuses a body whose decoded size is over the limit, by the trailer first" do
-  big = "a" * 10_000
-  gz = Zlib.gzip(big)
-  assert_equal "BodyTooLarge", decode_error(gzip_request(gz), 9_999)
-  assert_equal "", decode_error(gzip_request(gz), 10_000)
-  # A trailer that lies small (zeroed ISIZE) is caught on the inflated bytes
-  # under Spinel, whose gunzip does not verify ISIZE; CRuby's does and
-  # reports it as corrupt. Either way the body is refused.
-  lying = gz.byteslice(0, gz.bytesize - 4).to_s + "\x00\x00\x00\x00".b
-  error = decode_error(gzip_request(lying), 9_999)
-  assert error == "BodyTooLarge" || error == "BodyUndecodable"
+test "a gzip body that is not gzip, or too short to be, is undecodable before the inflater is asked" do
+  assert_equal "BodyUndecodable", decode_error(encoded_request("not gzip at all, but long enough to try", "gzip"), 1000)
+  assert_equal "BodyUndecodable", decode_error(encoded_request("short", "gzip"), 1000)
+  assert_equal "BodyUndecodable", decode_error(encoded_request("x" * 18, "x-gzip"), 1000)
 end
 
-test "a decode error is not cached: every call raises again" do
-  req = gzip_request("not gzip at all, but long enough to try")
+test "a well-formed gzip body is undecodable while no inflater is installed, and the error is not cached" do
+  gz = Zlib.gzip("hello")
+  req = encoded_request(gz, "gzip")
   assert_equal "BodyUndecodable", decode_error(req, 1000)
   assert_equal "BodyUndecodable", decode_error(req, 1000)
+  assert_equal "BodyUndecodable", decode_error(encoded_request(gz, "x-gzip"), 1000)
+end
+
+test "an installed inflater is what decodes gzip, and it is given the body and the limit" do
+  seen = Array.new(0) { "" }
+  previous = Request.inflater
+  Request.inflater = ->(data, limit) { seen << "#{data.bytesize}:#{limit}"; "inflated" }
+  gz = Zlib.gzip("hello")
+  assert_equal "inflated", encoded_request(gz, "gzip").decoded_body(1000)
+  assert_equal ["#{gz.bytesize}:1000"], seen
+  Request.inflater = previous
+  assert_equal "BodyUndecodable", decode_error(encoded_request(gz, "gzip"), 1000)
 end
 
 Cybertrain::Test.run!
