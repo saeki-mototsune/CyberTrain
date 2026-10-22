@@ -55,6 +55,7 @@ module Cybertrain
     CLIENT_FAULTS = ["Cybertrain::QueryInvalid", "Cybertrain::QueryLimitExceeded",
                      "Cybertrain::QueryTooDeep", "Cybertrain::QueryTooMany",
                      "Cybertrain::QueryMalformed",
+                     "Cybertrain::BodyUndecodable", "Cybertrain::BodyTooLarge",
                      "Cybertrain::Params::ParameterMissing"]
 
     # 400 for a client fault, 500 for the app's own exception: an Array

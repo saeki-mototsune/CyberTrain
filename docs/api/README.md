@@ -41,6 +41,7 @@ generates ({Article}, {ArticleRelation}, {Gen::UrlHelpers}).
 | {Cybertrain::RecordNotFound} | `find`, {Cybertrain::Model#reload} | 500; the generated `ApplicationController` rescues it to a 404 |
 | {Cybertrain::RecordInvalid} | {Cybertrain::Model#save!} | 500 |
 | {Cybertrain::Params::ParameterMissing} | {Cybertrain::Params#require} | 400 |
+| {Cybertrain::BodyUndecodable}, {Cybertrain::BodyTooLarge} | {Cybertrain::Request#decoded_body} on a corrupt or unsupported `Content-Encoding`, or a body over its decoded size limit | 400 |
 | `ArgumentError` | `order` with anything but `column [ASC\|DESC]`, `render` with the wrong options | 500 |
 | `Cybertrain::DB::Error` | SQLite refusing a query (a NOT NULL or foreign key constraint, a missing column) | 500 |
 

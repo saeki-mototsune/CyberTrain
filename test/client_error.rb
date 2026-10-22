@@ -1,4 +1,5 @@
 require "cybertrain/http/query"
+require "cybertrain/http/request"
 require "cybertrain/http/client_error"
 require "cybertrain/test"
 
@@ -94,6 +95,8 @@ test "status of the framework's own exceptions" do
   assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::QueryTooMany.new("x"))
   assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::QueryMalformed.new("x"))
   assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::Params::ParameterMissing.new("x"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::BodyUndecodable.new("x"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::BodyTooLarge.new("x"))
   assert_equal 500, Cybertrain::ClientError.status_for(ArgumentError.new("x"))
 end
 
