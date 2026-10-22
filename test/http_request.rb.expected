@@ -31,4 +31,9 @@ ok   decoded_body refuses an encoding it does not decode
 ok   a gzip body that is not gzip, or too short to be, is undecodable before the inflater is asked
 ok   a well-formed gzip body is undecodable while no inflater is installed, and the error is not cached
 ok   an installed inflater is what decodes gzip, and it is given the body and the limit
-33 tests, 157 assertions, 0 failures
+ok   multipart? is true for multipart/form-data only, form? stays false
+ok   multipart_boundary reads the parameter the media type drops
+ok   multipart_form parses once and is the same object every time
+ok   form_or_query_value reads a multipart text part: the body wins, a file never answers, the query is the fallback
+ok   multipart_form refuses an encoded body and a malformed one, and does not cache the raise
+38 tests, 188 assertions, 0 failures

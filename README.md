@@ -32,7 +32,8 @@ development loop that rebuilds and re-execs the server on code changes.
 [examples/blog](examples/blog) is the Rails "Getting Started" blog (articles
 with comments) built on it, exercised by CI on Linux and macOS.
 `cybertrain generate authentication` adds email-and-password sign-in the way
-Rails 8's generator does. Not built: mailers, jobs, WebSockets/ActionCable,
+Rails 8's generator does, and `cybertrain generate attachment` (or a
+`cover:attachment` scaffold field) adds a file upload to a model. Not built: mailers, jobs, WebSockets/ActionCable,
 an asset pipeline, i18n, and anything beyond a minimal `render json:` — see
 "Differences from Rails" below.
 
@@ -148,6 +149,10 @@ commands (`cybertrain help` prints them):
   it: users and sessions tables, `User` and `Session` models, the sign-in
   and sign-up controllers and views, the routes, a `before_action` in
   `ApplicationController` and a test (see "Add authentication").
+- `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
+  to a scaffolded model: five metadata columns, model methods and
+  callbacks, a download action, the route, the form field and a test (see
+  "Add a file upload"). A scaffold field `cover:attachment` does the same.
 - `cybertrain db migrate` generates, applies pending migrations, and
   generates again (`spin run gen; spin run db -- migrate; spin run gen`);
   `cybertrain migration` is kept as an alias.
@@ -531,6 +536,65 @@ end
 
 `examples/blog` itself stops before this step.
 
+### Add a file upload
+
+```sh
+cybertrain generate attachment article cover   # or: generate scaffold article title:string cover:attachment
+cybertrain db migrate
+```
+
+The same split as authentication: the framework parses
+`multipart/form-data` and stores bytes, and the generator writes the rest
+as code the app owns. It writes a migration adding five columns to
+`articles` (`cover_key`, `cover_filename`, `cover_content_type`,
+`cover_byte_size`, `cover_checksum`; the file itself is not in SQLite) and
+a block in `Article` (`cover_file=`, `cover_attached?`, `cover_url`, a
+validation and save/destroy callbacks). In `ArticlesController` it adds a
+`cover` action behind `before_action :set_article` and one line in
+`create` and `update`:
+
+```ruby
+@article.cover_file = params.nested(:article).upload(:cover)
+```
+
+It also adds `get "/articles/:id/cover"` to `config/routes.rb`, and to the
+form `form_with(model: article, multipart: true)` with `f.file_field :cover`.
+The show page gets an `<img>`, and `test/attachment_article_cover.rb` tests
+the whole flow.
+
+What is accepted and how it is served:
+
+- **Types.** By default only PNG, JPEG, GIF and WebP up to 2 MB are
+  accepted (`COVER_TYPES` / `COVER_MAX_BYTES` in the model; `--any` accepts
+  any type). The type is detected from the file's first bytes, never taken
+  from the browser.
+- **Storage.** The bytes go to `storage/uploads/<2 hex>/<32 hex key>`
+  (`Cybertrain::BlobStore`, mode 0600). Replacing a file deletes the old
+  one, and destroying the record deletes its file.
+- **Serving.** The `cover` action serves files with `send_blob`, so the
+  controller's `before_action`s (sign-in, scoping) apply to downloads too.
+  The four image types are served inline; anything else is a download
+  (`application/octet-stream`). Every response carries
+  `X-Content-Type-Options: nosniff` and `Content-Security-Policy:
+  default-src 'none'; sandbox`. Never put uploads under `public/`. In the
+  blog above, where visitors may read articles, add the action to
+  `allow_unauthenticated_access only: [:index, :show, :cover]`, or the
+  image on a public page sends visitors to the sign-in page.
+- **Params and CSRF.** `params.nested(:article).upload(:cover)` is a
+  `Cybertrain::UploadedFile` (`original_filename`, `byte_size`,
+  `detected_content_type`, `body_bytes`, `sha256_hex`), or nil when no
+  file was chosen. `permit` never returns files. The CSRF token and
+  `_method` are read from multipart bodies like any form.
+- **Limits.** Three config keys bound uploads: `max_upload_bytes`,
+  `max_multipart_parts` and `upload_root` (see "Configuration"). A broken
+  or oversize body is a 400.
+- **Not built yet:** several files per field, S3 or other remote storage,
+  image variants, and streaming large bodies to disk (the whole body is
+  read into memory, up to `max_body_bytes`).
+
+Back up `storage/uploads/` together with the SQLite file. The design, and
+why it is not a separate library: [docs/design.md](docs/design.md) D16.
+
 ### Build for deployment
 
 ```sh
@@ -635,6 +699,7 @@ compiler output on every HTML response. None of this loads in production.
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
 | `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape (User, Session, SessionsController, the before_action) plus a sign-up page, since there is no console to create a user in; `has_secure_password` is written out as methods on the User model over `Cybertrain::Password` (PBKDF2-HMAC-SHA256 in Ruby: bcrypt would need a C library the binary links, and `String#crypt` has no bcrypt on macOS). No password reset (no mailers), no `rate_limit` |
+| Active Storage, `has_one_attached :cover` | `cybertrain generate attachment post cover` writes five `cover_*` columns on the owner table and the model methods (`cover_file=`, `cover_url`, ...) into the app; files live on disk under `storage/uploads/` and are served by a generated action through `send_blob`. One file per field, local disk only, no variants or direct uploads |
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |
@@ -716,7 +781,11 @@ at least 1, or boot fails). Upgrade note: render nesting, unlimited before, is
 now capped at 12 by default (the page is depth 1, so partials can nest 11
 levels; the layout renders after the page and does not nest), and an app with
 a deeper tree (threaded comments, a category menu) gets a template error until
-it sets `max_render_depth`.
+it sets `max_render_depth`. File uploads: `max_upload_bytes` (5 MiB per
+uploaded file; it must not exceed `max_body_bytes`), `max_multipart_parts`
+(128 parts, text fields included, at most 4096), `upload_root`
+(`"storage/uploads"`, where `Cybertrain::BlobStore` writes; created on the
+first upload, not at boot).
 
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse

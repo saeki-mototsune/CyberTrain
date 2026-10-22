@@ -254,9 +254,20 @@ Usage:
       current directory; written as an absolute path).
       --version V: the index version constraint V.
       --git URL [--ref R]: the framework at URL, at branch or tag R.
-  cybertrain generate scaffold NAME field:type ... [parent:references]
+  cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
       Add a resource to the application in the current directory.
-      Types: string, text, integer, float, boolean, date, datetime, references (default string).
+      Types: string, text, integer, float, boolean, date, datetime, references, attachment (default string).
+      A field of type attachment (cover:attachment) is an uploaded file:
+      see `generate attachment`; --any applies to it.
+  cybertrain generate attachment MODEL FIELD [--any]
+      Attach an uploaded file to a model of the application in the
+      current directory (`generate attachment post cover`): five
+      columns in a migration, cover_* methods and callbacks in the model,
+      a download action and route, the file input in the scaffold's
+      form, and a test. The bytes are kept in storage/uploads/ (back it
+      up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
+      accepted, unless --any allows any file; the stored type is always
+      the one detected from the bytes.
   cybertrain generate authentication
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
@@ -298,9 +309,20 @@ Usage:
       current directory; written as an absolute path).
       --version V: the index version constraint V.
       --git URL [--ref R]: the framework at URL, at branch or tag R.
-  cybertrain generate scaffold NAME field:type ... [parent:references]
+  cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
       Add a resource to the application in the current directory.
-      Types: string, text, integer, float, boolean, date, datetime, references (default string).
+      Types: string, text, integer, float, boolean, date, datetime, references, attachment (default string).
+      A field of type attachment (cover:attachment) is an uploaded file:
+      see `generate attachment`; --any applies to it.
+  cybertrain generate attachment MODEL FIELD [--any]
+      Attach an uploaded file to a model of the application in the
+      current directory (`generate attachment post cover`): five
+      columns in a migration, cover_* methods and callbacks in the model,
+      a download action and route, the file input in the scaffold's
+      form, and a test. The bytes are kept in storage/uploads/ (back it
+      up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
+      accepted, unless --any allows any file; the stored type is always
+      the one detected from the bytes.
   cybertrain generate authentication
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
@@ -341,9 +363,20 @@ Usage:
       current directory; written as an absolute path).
       --version V: the index version constraint V.
       --git URL [--ref R]: the framework at URL, at branch or tag R.
-  cybertrain generate scaffold NAME field:type ... [parent:references]
+  cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
       Add a resource to the application in the current directory.
-      Types: string, text, integer, float, boolean, date, datetime, references (default string).
+      Types: string, text, integer, float, boolean, date, datetime, references, attachment (default string).
+      A field of type attachment (cover:attachment) is an uploaded file:
+      see `generate attachment`; --any applies to it.
+  cybertrain generate attachment MODEL FIELD [--any]
+      Attach an uploaded file to a model of the application in the
+      current directory (`generate attachment post cover`): five
+      columns in a migration, cover_* methods and callbacks in the model,
+      a download action and route, the file input in the scaffold's
+      form, and a test. The bytes are kept in storage/uploads/ (back it
+      up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
+      accepted, unless --any allows any file; the stored type is always
+      the one detected from the bytes.
   cybertrain generate authentication
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
@@ -375,4 +408,4 @@ Usage:
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-23 tests, 151 assertions, 0 failures
+23 tests, 152 assertions, 0 failures

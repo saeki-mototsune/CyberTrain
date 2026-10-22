@@ -1,6 +1,7 @@
 require "cybertrain/http/query"
 require "cybertrain/http/header_name"
 require "cybertrain/http/parser"
+require "cybertrain/http/multipart"
 
 module Cybertrain
   # The request body cannot be decoded as its Content-Encoding says
@@ -95,6 +96,7 @@ module Cybertrain
       @utf8_query_string = nil
       @utf8_body = nil
       @decoded_body = nil
+      @multipart_form = nil
       @path_segments_cache = nil
     end
 
@@ -323,13 +325,56 @@ module Cybertrain
       content_type == "application/json"
     end
 
+    # @return [Boolean] true for a `multipart/form-data` body (a form with
+    #   file fields). Its text parts and files reach {Controller#params}
+    #   (files through {Params#upload}); see {#multipart_form}.
+    # @api public
+    def multipart?
+      content_type == "multipart/form-data"
+    end
+
+    # The boundary of a multipart body, from the full Content-Type header
+    # (#content_type drops the parameters); `""` when there is none or it is
+    # not a valid boundary.
+    # @return [String]
+    # @api public
+    def multipart_boundary
+      Multipart.boundary_from(header("content-type").to_s)
+    end
+
+    # The parsed multipart body, once per request (MethodOverride and
+    # CsrfProtection read their one field from it before routing, then the
+    # Router fills the controller's params from the same result). Callers
+    # check #multipart? first. The ivar starts as nil and is assigned from a
+    # method's result (NOTES rule 7); a raise is not cached, so every later
+    # call raises again and the request still ends as that 400.
+    #
+    # A multipart body with a Content-Encoding is refused: the parser works on
+    # the bytes as sent and nothing here inflates a body it then slices.
+    # @return [MultipartForm]
+    # @raise [MultipartMalformed] for an encoded body or a malformed one; the
+    #   Multipart* faults are client faults, answered 400
+    # @api public
+    def multipart_form
+      cached = @multipart_form
+      return cached unless cached.nil?
+
+      enc = content_encoding
+      raise MultipartMalformed, "encoded multipart bodies are not supported" unless enc.empty? || enc == "identity"
+
+      form = Multipart.parse(@body, header("content-type").to_s)
+      @multipart_form = form
+      form
+    end
+
     # What the request exposes of its parameters, each validated once:
     # utf8_query_string and utf8_body (the validated UTF-8 text of the
     # fields, see below), form_value / query_value / form_or_query_value
-    # (one key), and
+    # (one key), multipart_form (the parsed multipart body) and
     # path_segments. There is no cached parameter tree: nobody in the
     # framework asks for one (the Router builds the controller's own with
-    # Query.parse_valid, MethodOverride and CsrfProtection read one key). An
+    # Query.parse_valid and Multipart.fill, MethodOverride and CsrfProtection
+    # read one key). An
     # app or middleware that wants a whole tree calls
     # `Query.parse(request.utf8_query_string)` and owns it, a private,
     # writable Params.
@@ -383,11 +428,16 @@ module Cybertrain
 
     # One field from the form body or, failing that, the query string: the
     # form body wins (read only when #form?), one Query.value_of_valid scan
-    # each, "" when neither has it. For the middleware that read one field
-    # before routing (MethodOverride's `_method`, CsrfProtection's token).
+    # each, "" when neither has it. A multipart body (#multipart?) counts as
+    # a form body: its text part of that name (a file part never answers),
+    # from the one parse #multipart_form caches. For the middleware that read
+    # one field before routing (MethodOverride's `_method`, CsrfProtection's
+    # token), so both work for a form with a file field. #form? stays false
+    # for multipart, so utf8_body never sees binary data.
     def form_or_query_value(name)
       value = ""
       value = form_value(name) if form?
+      value = multipart_form.text_value(name) if value.empty? && multipart?
       value = query_value(name) if value.empty?
       value
     end

@@ -411,6 +411,20 @@ finds the commit that removed them).
     iterates with `each_key`. `cybertrain/html.rb` builds
     `SafeString::EMPTY` so that SafeString#to_s is typed String in every
     program; test/openssl_dispatch.rb is the regression program.
+63. Locals of the same name in different top-level blocks share one type.
+    In a test program, `form = { "content-type" => ... }` in one `test do`
+    block and `form = req.multipart_form` in another box both, and with them
+    every parameter the values are passed to: `Request.new`'s headers and
+    body became `sp_RbVal`, `Query.utf8!` received a boxed body, and its
+    `raw.to_s` (rule 62) returned a copy, so a test asserting
+    `req.utf8_body.equal?(req.body)` failed. Nothing raised. The program
+    was test/http_request.rb, once the multipart tests were added
+    (2026-10-22): `form` / `gz` / `identity` had been a Hash in one block
+    and a Request, a String or a MultipartForm in another. Give a local a
+    name no other block in the file uses for a different type, and check a
+    signature in the C (rule 62's `spinel prog.rb -c`) when a test of
+    identity or of a typed path starts failing after an unrelated
+    addition.
 
 ## Numbers worth remembering
 

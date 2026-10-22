@@ -2,6 +2,7 @@ require "json"
 require "cybertrain/context"
 require "cybertrain/html"
 require "cybertrain/http/client_error"
+require "cybertrain/http/uploaded_file"
 require "cybertrain/logger"
 require "cybertrain/callback"
 require "cybertrain/views"
@@ -557,6 +558,51 @@ module Cybertrain
       @response.status = Controller.status_code(status)
       @response.body = ""
       @response.performed!
+      nil
+    end
+
+    # Serves stored bytes that came from a user (an upload), safely. This is
+    # the only supported way to send an upload back: never put uploads under
+    # `public/`, because {Static} serves them with whatever type their
+    # extension implies.
+    #
+    # The bytes are untrusted, so the response never lets a browser run them:
+    #
+    # - only PNG, JPEG, GIF and WebP ({UploadedFile::INLINE_SAFE_TYPES}) are
+    #   sent `inline` under their own type; every other type (SVG and HTML
+    #   included) is an `attachment` typed `application/octet-stream`;
+    # - `filename` is sanitized again ({UploadedFile.sanitize_filename}, in
+    #   case the stored value was tampered with) and the Content-Disposition
+    #   header is ASCII only;
+    # - `X-Content-Type-Options: nosniff`, `Content-Security-Policy:
+    #   default-src 'none'; sandbox` and `Cache-Control: private,
+    #   max-age=3600` are always set.
+    #
+    # HEAD works as for any action: the Server leaves the body out.
+    # @example
+    #   def show
+    #     avatar = Avatar.find(params[:id])
+    #     send_blob avatar.read, filename: avatar.filename, content_type: avatar.content_type
+    #   end
+    # @param data [String] the bytes, binary
+    # @param filename [String] the display name, as stored
+    # @param content_type [String] the type detected on the server when the
+    #   file was stored ({UploadedFile#detected_content_type}), never the
+    #   client's claim
+    # @return [nil]
+    # @api public
+    def send_blob(data, filename:, content_type:)
+      inline = UploadedFile.inline_safe?(content_type)
+      r = @response
+      r.status = 200
+      r.content_type = inline ? content_type : "application/octet-stream"
+      r.set_header("Content-Disposition",
+                   UploadedFile.content_disposition(inline ? "inline" : "attachment", UploadedFile.sanitize_filename(filename)))
+      r.set_header("X-Content-Type-Options", "nosniff")
+      r.set_header("Content-Security-Policy", "default-src 'none'; sandbox")
+      r.set_header("Cache-Control", "private, max-age=3600")
+      r.body = data
+      r.performed!
       nil
     end
 

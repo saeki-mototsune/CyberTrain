@@ -10,9 +10,10 @@
 #
 # and three edits: `before_action`s and the sign-in helpers into
 # app/controllers/application_controller.rb, the routes into
-# config/routes.rb and the nav partial into the layout. Every file is
-# written once (Templates.write never overwrites) and every edit is made
-# once, so running the generator again is harmless.
+# config/routes.rb and the nav partial into the layout (plus a sign-in in
+# any test/attachment_*.rb written before it, which now needs one). Every
+# file is written once (Templates.write never overwrites) and every edit is
+# made once, so running the generator again is harmless.
 #
 # What it leaves out, and why: password reset (needs a mailer, which
 # cybertrain does not have), rate limiting (no `rate_limit` yet) and a
@@ -30,6 +31,15 @@ module Cybertrain
       CLASS_LINE = "class ApplicationController < Cybertrain::Controller"
       ROUTE_MARK = "resource :session"
       NAV_LINE = "<%= render \"sessions/nav\" %>"
+      # What an app test's new_client needs once the app has authentication:
+      # empty the two tables, then a user signed in through the form.
+      # `generate attachment` writes them into its test when app/models/user.rb
+      # exists; add_sign_in_to_attachment_tests adds them to a test written
+      # before this generator ran.
+      TEST_RESET_LINES = "  Session.all.delete_all\n  User.all.delete_all\n"
+      TEST_SIGN_IN_LINES = "  AppTest.user\n  AppTest.sign_in(client)\n"
+      NEW_CLIENT_LINE = "def new_client"
+      TEST_CLIENT_LINE = "  client = Cybertrain::Test::Client.new(APP)"
 
       # Returns the paths it created. Raises InvalidArgument, before anything
       # is written, when `root` is not an application (no config/routes.rb
@@ -60,6 +70,7 @@ module Cybertrain
         add_to_application_controller(controller_path)
         add_routes(routes_path)
         add_nav_to_layout(File.join(root, "app/views/layouts/application.html.erb"))
+        add_sign_in_to_attachment_tests(root)
         created
       end
 
@@ -128,6 +139,31 @@ module Cybertrain
         File.write(path, insert_after_line(source, "<main>", "      #{NAV_LINE}\n"))
         puts "insert app/views/layouts/application.html.erb (#{NAV_LINE})"
         true
+      end
+
+      # A test/attachment_*.rb written by `generate attachment` before this
+      # generator ran drives the forms anonymously, which every action now
+      # redirects to the sign-in page. Its new_client gets the reset and
+      # sign-in lines, once (AppTest.sign_in marks a test that has them); a
+      # new_client rewritten past recognition is left alone with a note.
+      def self.add_sign_in_to_attachment_tests(root)
+        Dir.glob(File.join(root, "test/attachment_*.rb")).sort.each do |path|
+          name = "test/#{File.basename(path)}"
+          source = File.read(path)
+          unless source.index("AppTest.sign_in(").nil?
+            puts "identical #{name} (signs in already)"
+            next
+          end
+          if source.index(NEW_CLIENT_LINE).nil? || source.index(TEST_CLIENT_LINE).nil?
+            puts "skip #{name} (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)"
+            next
+          end
+
+          source = insert_after_line(source, NEW_CLIENT_LINE, TEST_RESET_LINES)
+          File.write(path, insert_after_line(source, TEST_CLIENT_LINE, TEST_SIGN_IN_LINES))
+          puts "insert #{name} (sign in first)"
+        end
+        nil
       end
 
       # `text` with two spaces in front of every non-blank line: the heredocs

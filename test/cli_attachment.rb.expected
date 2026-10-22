@@ -1,0 +1,792 @@
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/shop.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_posts.rb
+create app/models/post.rb
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+route resources :posts
+create db/migrate/20260925120001_add_cover_to_posts.rb
+insert app/views/posts/_form.html.erb (cover file field, multipart: true)
+insert app/views/posts/show.html.erb (cover)
+insert app/models/post.rb (attachment cover)
+insert app/controllers/posts_controller.rb (def cover)
+insert app/controllers/posts_controller.rb (:cover in before_action :set_post)
+insert app/controllers/posts_controller.rb (cover_file= in create)
+insert app/controllers/posts_controller.rb (cover_file= in update)
+route post_cover (GET /posts/:id/cover)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_post_cover.rb
+ok   generate attachment writes the migration and the app test, and edits the rest
+ok   the migration adds the five NOT NULL columns with '' and 0 as not attached
+ok   the model block is inserted after the class line with prefixed names and callbacks
+ok   the controller gets the download action and the file assignment in create and update
+ok   the route is added before the resource
+ok   the form is multipart with a file input, and the show page shows the image
+ok   the .gitignore of a new app ignores the uploads
+ok   the generated test covers the security behaviour
+identical db/migrate/20260925120001_add_cover_to_posts.rb
+identical app/views/posts/_form.html.erb (file field already added)
+identical app/views/posts/show.html.erb (cover already shown)
+identical app/models/post.rb (attachment cover already added)
+identical app/controllers/posts_controller.rb (def cover already added)
+identical app/controllers/posts_controller.rb (cover_file= in create)
+identical app/controllers/posts_controller.rb (cover_file= in update)
+identical route post_cover
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_post_cover.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+
+next:
+  cybertrain db migrate
+  cybertrain server
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, "Testing an app")
+ok   running the generator again writes and edits nothing
+ok   the views the generator edited parse with the template engine
+create db/migrate/20260925120002_add_avatar_to_posts.rb
+insert app/views/posts/_form.html.erb (avatar file field, multipart: true)
+insert app/views/posts/show.html.erb (avatar)
+insert app/models/post.rb (attachment avatar)
+insert app/controllers/posts_controller.rb (def avatar)
+insert app/controllers/posts_controller.rb (:avatar in before_action :set_post)
+insert app/controllers/posts_controller.rb (avatar_file= in create)
+insert app/controllers/posts_controller.rb (avatar_file= in update)
+route post_avatar (GET /posts/:id/avatar)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_post_avatar.rb
+ok   a second field, and an existing CamelCase or plural model name, work
+identical db/migrate/20260925120001_add_cover_to_posts.rb
+identical app/views/posts/_form.html.erb (file field already added)
+identical app/views/posts/show.html.erb (cover already shown)
+identical app/models/post.rb (attachment cover already added)
+identical app/controllers/posts_controller.rb (def cover already added)
+identical app/controllers/posts_controller.rb (cover_file= in create)
+identical app/controllers/posts_controller.rb (cover_file= in update)
+identical route post_cover
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_post_cover.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+
+next:
+  cybertrain db migrate
+  cybertrain server
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, "Testing an app")
+identical db/migrate/20260925120002_add_avatar_to_posts.rb
+identical app/views/posts/_form.html.erb (file field already added)
+identical app/views/posts/show.html.erb (avatar already shown)
+identical app/models/post.rb (attachment avatar already added)
+identical app/controllers/posts_controller.rb (def avatar already added)
+identical app/controllers/posts_controller.rb (avatar_file= in create)
+identical app/controllers/posts_controller.rb (avatar_file= in update)
+identical route post_avatar
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_post_avatar.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+
+next:
+  cybertrain db migrate
+  cybertrain server
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, "Testing an app")
+ok   with two fields, running the generator for either again changes nothing
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/press.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_posts.rb
+create app/models/post.rb
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+route resources :posts
+create db/migrate/20260925120001_add_cover_url_to_posts.rb
+insert app/views/posts/_form.html.erb (cover_url file field, multipart: true)
+insert app/views/posts/show.html.erb (cover_url)
+insert app/models/post.rb (attachment cover_url)
+insert app/controllers/posts_controller.rb (def cover_url)
+insert app/controllers/posts_controller.rb (:cover_url in before_action :set_post)
+insert app/controllers/posts_controller.rb (cover_url_file= in create)
+insert app/controllers/posts_controller.rb (cover_url_file= in update)
+route post_cover_url (GET /posts/:id/cover_url)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_post_cover_url.rb
+create db/migrate/20260925120002_add_cover_to_posts.rb
+insert app/views/posts/_form.html.erb (cover file field, multipart: true)
+insert app/views/posts/show.html.erb (cover)
+insert app/models/post.rb (attachment cover)
+insert app/controllers/posts_controller.rb (def cover)
+insert app/controllers/posts_controller.rb (:cover in before_action :set_post)
+insert app/controllers/posts_controller.rb (cover_file= in create)
+insert app/controllers/posts_controller.rb (cover_file= in update)
+route post_cover (GET /posts/:id/cover)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_post_cover.rb
+ok   a field whose name starts another field's name still gets its file input
+identical db/migrate/20260925120002_add_cover_to_posts.rb
+identical app/views/posts/_form.html.erb (file field already added)
+identical app/views/posts/show.html.erb (cover already shown)
+identical app/models/post.rb (attachment cover already added)
+identical app/controllers/posts_controller.rb (def cover already added)
+identical app/controllers/posts_controller.rb (cover_file= in create)
+identical app/controllers/posts_controller.rb (cover_file= in update)
+identical route post_cover
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_post_cover.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+
+next:
+  cybertrain db migrate
+  cybertrain server
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, "Testing an app")
+create db/migrate/20260925120003_create_tags.rb
+create app/models/tag.rb
+create app/controllers/tags_controller.rb
+create app/views/tags/index.html.erb
+create app/views/tags/show.html.erb
+create app/views/tags/new.html.erb
+create app/views/tags/edit.html.erb
+create app/views/tags/_form.html.erb
+route resources :tags
+create db/migrate/20260925120004_add_cover_to_tags.rb
+insert app/views/tags/_form.html.erb (cover file field, multipart: true)
+insert app/views/tags/show.html.erb (cover)
+insert app/models/tag.rb (attachment cover)
+insert app/controllers/tags_controller.rb (def cover)
+insert app/controllers/tags_controller.rb (:cover in before_action :set_tag)
+insert app/controllers/tags_controller.rb (cover_file= in create)
+insert app/controllers/tags_controller.rb (cover_file= in update)
+route tag_cover (GET /tags/:id/cover)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_tag_cover.rb
+ok   the schema check looks at the owner's table, and a re-run after db migrate is identical
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/docs.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_reports.rb
+create app/models/report.rb
+create app/controllers/reports_controller.rb
+create app/views/reports/index.html.erb
+create app/views/reports/show.html.erb
+create app/views/reports/new.html.erb
+create app/views/reports/edit.html.erb
+create app/views/reports/_form.html.erb
+route resources :reports
+create db/migrate/20260925120001_add_file_upload_to_reports.rb
+insert app/views/reports/_form.html.erb (file_upload file field, multipart: true)
+insert app/views/reports/show.html.erb (file_upload)
+insert app/models/report.rb (attachment file_upload)
+insert app/controllers/reports_controller.rb (def file_upload)
+insert app/controllers/reports_controller.rb (:file_upload in before_action :set_report)
+insert app/controllers/reports_controller.rb (file_upload_file= in create)
+insert app/controllers/reports_controller.rb (file_upload_file= in update)
+route report_file_upload (GET /reports/:id/file_upload)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_report_file_upload.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+
+next:
+  cybertrain db migrate
+  cybertrain server
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, "Testing an app")
+ok   --any allows any file: no accept, no type check, a link instead of an image
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/club.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+create db/migrate/20260925120002_create_posts.rb
+create app/models/post.rb
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+route resources :posts
+create db/migrate/20260925120003_add_cover_to_posts.rb
+insert app/views/posts/_form.html.erb (cover file field, multipart: true)
+insert app/views/posts/show.html.erb (cover)
+insert app/models/post.rb (attachment cover)
+insert app/controllers/posts_controller.rb (def cover)
+insert app/controllers/posts_controller.rb (:cover in before_action :set_post)
+insert app/controllers/posts_controller.rb (cover_file= in create)
+insert app/controllers/posts_controller.rb (cover_file= in update)
+route post_cover (GET /posts/:id/cover)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_post_cover.rb
+ok   with authentication the generated test signs in first
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/guild.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_products.rb
+create app/models/product.rb
+create app/controllers/products_controller.rb
+create app/views/products/index.html.erb
+create app/views/products/show.html.erb
+create app/views/products/new.html.erb
+create app/views/products/edit.html.erb
+create app/views/products/_form.html.erb
+route resources :products
+create db/migrate/20260925120001_add_photo_to_products.rb
+insert app/views/products/_form.html.erb (photo file field, multipart: true)
+insert app/views/products/show.html.erb (photo)
+insert app/models/product.rb (attachment photo)
+insert app/controllers/products_controller.rb (def photo)
+insert app/controllers/products_controller.rb (:photo in before_action :set_product)
+insert app/controllers/products_controller.rb (photo_file= in create)
+insert app/controllers/products_controller.rb (photo_file= in update)
+route product_photo (GET /products/:id/photo)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_product_photo.rb
+create db/migrate/20260925120002_create_users.rb
+create db/migrate/20260925120003_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+identical test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
+insert test/attachment_product_photo.rb (sign in first)
+identical db/migrate/20260925120002_create_users.rb
+identical db/migrate/20260925120003_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical test/support/app_test.rb
+identical test/authentication.rb
+identical app/controllers/application_controller.rb (authentication already added)
+identical route resource :session
+identical app/views/layouts/application.html.erb (nav already rendered)
+skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
+identical test/attachment_product_photo.rb (signs in already)
+ok   authentication generated after the attachment adds the sign-in to its test
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/bare.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_add_scan_to_notes.rb
+skip app/views/notes/_form.html.erb (not found): use form_with(model: note, multipart: true) and <%= f.file_field :scan, accept: "image/png,image/jpeg,image/gif,image/webp" %>
+skip app/views/notes/show.html.erb (not found): show the file with <% if @note.scan_attached? %><p><img src="<%= @note.scan_url %>" alt="<%= @note.scan_filename %>"></p><% end %>
+insert app/models/note.rb (attachment scan)
+insert app/controllers/notes_controller.rb (def scan)
+warning: app/controllers/notes_controller.rb has no `before_action :set_note` for :scan, so def scan looks the note up with an unscoped Note.find(params[:id]); if your actions limit which records a user may see, limit this lookup the same way
+skip app/controllers/notes_controller.rb (no `@note = Note.new(note_params)` line): add `@note.scan_file = params.nested(:note).upload(:scan)` to create
+skip app/controllers/notes_controller.rb (update does not load @note with `@note = Note.find(params[:id])` nor through `before_action :set_note`): add `@note.scan_file = params.nested(:note).upload(:scan)` to update once @note is loaded
+route note_scan (GET /notes/:id/scan)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_note_scan.rb
+identical db/migrate/20260925120000_add_scan_to_notes.rb
+skip app/views/notes/_form.html.erb (not found): use form_with(model: note, multipart: true) and <%= f.file_field :scan, accept: "image/png,image/jpeg,image/gif,image/webp" %>
+skip app/views/notes/show.html.erb (not found): show the file with <% if @note.scan_attached? %><p><img src="<%= @note.scan_url %>" alt="<%= @note.scan_filename %>"></p><% end %>
+identical app/models/note.rb (attachment scan already added)
+identical app/controllers/notes_controller.rb (def scan already added)
+skip app/controllers/notes_controller.rb (no `@note = Note.new(note_params)` line): add `@note.scan_file = params.nested(:note).upload(:scan)` to create
+skip app/controllers/notes_controller.rb (update does not load @note with `@note = Note.find(params[:id])` nor through `before_action :set_note`): add `@note.scan_file = params.nested(:note).upload(:scan)` to update once @note is loaded
+identical route note_scan
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_note_scan.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+
+next:
+  cybertrain db migrate
+  cybertrain server
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, "Testing an app")
+ok   an app that is not the scaffold's shape gets the snippets instead of broken edits
+create db/migrate/20260925120001_add_face_to_cards.rb
+skip app/views/cards/_form.html.erb (not found): use form_with(model: card, multipart: true) and <%= f.file_field :face, accept: "image/png,image/jpeg,image/gif,image/webp" %>
+skip app/views/cards/show.html.erb (not found): show the file with <% if @card.face_attached? %><p><img src="<%= @card.face_url %>" alt="<%= @card.face_filename %>"></p><% end %>
+insert app/models/card.rb (attachment face)
+insert app/controllers/cards_controller.rb (def face)
+warning: app/controllers/cards_controller.rb has no `before_action :set_card` for :face, so def face looks the card up with an unscoped Card.find(params[:id]); if your actions limit which records a user may see, limit this lookup the same way
+skip app/controllers/cards_controller.rb (no `@card = Card.new(card_params)` line): add `@card.face_file = params.nested(:card).upload(:face)` to create
+insert app/controllers/cards_controller.rb (face_file= in update)
+insert app/controllers/cards_controller.rb (card_params reads params.nested(:card): the form may send only files)
+route card_face (GET /cards/:id/face)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_card_face.rb
+create db/migrate/20260925120002_add_icon_to_lists.rb
+skip app/views/lists/_form.html.erb (not found): use form_with(model: list, multipart: true) and <%= f.file_field :icon, accept: "image/png,image/jpeg,image/gif,image/webp" %>
+skip app/views/lists/show.html.erb (not found): show the file with <% if @list.icon_attached? %><p><img src="<%= @list.icon_url %>" alt="<%= @list.icon_filename %>"></p><% end %>
+insert app/models/list.rb (attachment icon)
+insert app/controllers/lists_controller.rb (def icon)
+insert app/controllers/lists_controller.rb (:icon in before_action :set_list)
+skip app/controllers/lists_controller.rb (no `@list = List.new(list_params)` line): add `@list.icon_file = params.nested(:list).upload(:icon)` to create
+skip app/controllers/lists_controller.rb (update does not load @list with `@list = List.find(params[:id])` nor through `before_action :set_list`): add `@list.icon_file = params.nested(:list).upload(:icon)` to update once @list is loaded
+route list_icon (GET /lists/:id/icon)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_list_icon.rb
+create db/migrate/20260925120003_add_logo_to_trays.rb
+skip app/views/trays/_form.html.erb (not found): use form_with(model: tray, multipart: true) and <%= f.file_field :logo, accept: "image/png,image/jpeg,image/gif,image/webp" %>
+skip app/views/trays/show.html.erb (not found): show the file with <% if @tray.logo_attached? %><p><img src="<%= @tray.logo_url %>" alt="<%= @tray.logo_filename %>"></p><% end %>
+insert app/models/tray.rb (attachment logo)
+insert app/controllers/trays_controller.rb (def logo)
+skip app/controllers/trays_controller.rb (no `@tray = Tray.new(tray_params)` line): add `@tray.logo_file = params.nested(:tray).upload(:logo)` to create
+insert app/controllers/trays_controller.rb (logo_file= in update)
+route tray_logo (GET /trays/:id/logo)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_tray_logo.rb
+ok   update gets the assignment only where the record is loaded
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/strict.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_posts.rb
+create app/models/post.rb
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+route resources :posts
+ok   a bad field, model or tree is refused before anything is written
+error: usage: cybertrain generate attachment MODEL FIELD [--any]
+error: usage: cybertrain generate attachment MODEL FIELD [--any]
+error: usage: cybertrain generate attachment MODEL FIELD [--any]
+error: usage: cybertrain generate scaffold NAME field:type ... [--any]
+error: only `generate scaffold`, `generate attachment` and `generate authentication` are supported
+ok   the command line: usage, --any, and the unknown generator message
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/gallery.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_photos.rb
+create app/models/photo.rb
+create app/controllers/photos_controller.rb
+create app/views/photos/index.html.erb
+create app/views/photos/show.html.erb
+create app/views/photos/new.html.erb
+create app/views/photos/edit.html.erb
+create app/views/photos/_form.html.erb
+route resources :photos
+insert app/models/photo.rb (attachment image)
+insert app/controllers/photos_controller.rb (def image)
+insert app/controllers/photos_controller.rb (:image in before_action :set_photo)
+insert app/controllers/photos_controller.rb (image_file= in create)
+insert app/controllers/photos_controller.rb (image_file= in update)
+route photo_image (GET /photos/:id/image)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_photo_image.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+ok   the scaffold type writes the columns in create_table and no second migration
+ok   the scaffold type edits the model, controller and routes the way the generator does
+ok   the scaffold type's views are multipart, show the file and parse
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/vault.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_secrets.rb
+create app/models/secret.rb
+create app/controllers/secrets_controller.rb
+create app/views/secrets/index.html.erb
+create app/views/secrets/show.html.erb
+create app/views/secrets/new.html.erb
+create app/views/secrets/edit.html.erb
+create app/views/secrets/_form.html.erb
+route resources :secrets
+insert app/models/secret.rb (attachment scan)
+insert app/controllers/secrets_controller.rb (def scan)
+insert app/controllers/secrets_controller.rb (:scan in before_action :set_secret)
+insert app/controllers/secrets_controller.rb (scan_file= in create)
+insert app/controllers/secrets_controller.rb (scan_file= in update)
+route secret_scan (GET /secrets/:id/scan)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_secret_scan.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+identical db/migrate/20260925120000_create_secrets.rb
+exist app/models/secret.rb
+exist app/controllers/secrets_controller.rb
+identical app/views/secrets/index.html.erb
+identical app/views/secrets/show.html.erb
+identical app/views/secrets/new.html.erb
+identical app/views/secrets/edit.html.erb
+identical app/views/secrets/_form.html.erb
+identical route resources :secrets
+identical app/models/secret.rb (attachment scan already added)
+identical app/controllers/secrets_controller.rb (def scan already added)
+identical app/controllers/secrets_controller.rb (scan_file= in create)
+identical app/controllers/secrets_controller.rb (scan_file= in update)
+identical route secret_scan
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_secret_scan.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+ok   the scaffold with --any and with nothing but a file
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/album.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_photos.rb
+create app/models/photo.rb
+create app/controllers/photos_controller.rb
+create app/views/photos/index.html.erb
+create app/views/photos/show.html.erb
+create app/views/photos/new.html.erb
+create app/views/photos/edit.html.erb
+create app/views/photos/_form.html.erb
+route resources :photos
+insert app/models/photo.rb (attachment image)
+insert app/controllers/photos_controller.rb (def image)
+insert app/controllers/photos_controller.rb (:image in before_action :set_photo)
+insert app/controllers/photos_controller.rb (image_file= in create)
+insert app/controllers/photos_controller.rb (image_file= in update)
+route photo_image (GET /photos/:id/image)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_photo_image.rb
+insert app/models/photo.rb (attachment thumb)
+insert app/controllers/photos_controller.rb (def thumb)
+insert app/controllers/photos_controller.rb (:thumb in before_action :set_photo)
+insert app/controllers/photos_controller.rb (thumb_file= in create)
+insert app/controllers/photos_controller.rb (thumb_file= in update)
+route photo_thumb (GET /photos/:id/thumb)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_photo_thumb.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+identical db/migrate/20260925120000_create_photos.rb
+exist app/models/photo.rb
+exist app/controllers/photos_controller.rb
+identical app/views/photos/index.html.erb
+identical app/views/photos/show.html.erb
+identical app/views/photos/new.html.erb
+identical app/views/photos/edit.html.erb
+identical app/views/photos/_form.html.erb
+identical route resources :photos
+identical app/models/photo.rb (attachment image already added)
+identical app/controllers/photos_controller.rb (def image already added)
+identical app/controllers/photos_controller.rb (image_file= in create)
+identical app/controllers/photos_controller.rb (image_file= in update)
+identical route photo_image
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_photo_image.rb
+identical app/models/photo.rb (attachment thumb already added)
+identical app/controllers/photos_controller.rb (def thumb already added)
+identical app/controllers/photos_controller.rb (thumb_file= in create)
+identical app/controllers/photos_controller.rb (thumb_file= in update)
+identical route photo_thumb
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_photo_thumb.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+ok   a scaffold with two attachments run twice has each assignment once per action
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/refuse.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_items.rb
+create app/models/item.rb
+create app/controllers/items_controller.rb
+create app/views/items/index.html.erb
+create app/views/items/show.html.erb
+create app/views/items/new.html.erb
+create app/views/items/edit.html.erb
+create app/views/items/_form.html.erb
+route resources :items
+insert app/models/item.rb (attachment set_post)
+insert app/controllers/items_controller.rb (def set_post)
+insert app/controllers/items_controller.rb (:set_post in before_action :set_item)
+insert app/controllers/items_controller.rb (set_post_file= in create)
+insert app/controllers/items_controller.rb (set_post_file= in update)
+route item_set_post (GET /items/:id/set_post)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_item_set_post.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+ok   the scaffold refuses a duplicate column or a bad attachment name before writing
+27 tests, 273 assertions, 0 failures

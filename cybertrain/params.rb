@@ -2,21 +2,27 @@
 #
 # Rack/Rails represent params as one Hash mixing String, Array and nested
 # Hash values. Spinel's typed containers reject that mix, so a Params keeps
-# three separate typed Hashes (scalars, lists, nested Params) and exposes the
+# four separate typed Hashes (scalars, lists, nested Params, uploaded files)
+# and exposes the
 # Rails-flavoured surface (#require, #permit, #[]) on top of them. Key order
 # is the insertion order of each Hash (Ruby and Spinel Hashes are ordered), so
 # evicting a key is one O(1) Hash#delete (per-kind order Arrays would make
 # every kind change an O(n) Array#delete, i.e. quadratic parsing).
+require_relative "http/uploaded_file"
+
 module Cybertrain
   # The request parameters, {Controller#params} in an action and `params`
   # in a template. They come from the query string, a urlencoded form body
   # and the route's segments (`:id`, `:article_id`), later sources winning.
-  # A JSON or multipart body is not parsed into them.
+  # A `multipart/form-data` body fills them too: its text fields as Strings
+  # and its files as {UploadedFile}s ({#upload}). A JSON body is not parsed
+  # into them.
   #
-  # Values are Strings (never Integers or booleans). Rails-style keys nest:
-  # `article[title]=Hi` is `params.require(:article)[:title]`, and
-  # `tags[]=a&tags[]=b` is `params.list(:tags)`. A key is one kind at a time,
-  # a String, a list or a nested Params; the last one sent wins.
+  # Values are Strings (never Integers or booleans) or uploaded files.
+  # Rails-style keys nest: `article[title]=Hi` is
+  # `params.require(:article)[:title]`, and `tags[]=a&tags[]=b` is
+  # `params.list(:tags)`. A key is one kind at a time, a String, a list, a
+  # nested Params or an uploaded file; the last one sent wins.
   #
   # Malformed input (a bad `%` escape, invalid UTF-8, more than 32 levels of
   # nesting or 4096 pairs) is answered with 400 before the action runs.
@@ -36,6 +42,10 @@ module Cybertrain
       @values = {}
       @lists = {}
       @children = {}
+      # Seeded with a blank file and emptied so the Hash is typed
+      # String => UploadedFile (NOTES rule 9).
+      @uploads = { "" => UploadedFile.blank }
+      @uploads.delete("")
     end
 
     # A String value. A list or nested key gives nil, as does an absent
@@ -76,7 +86,7 @@ module Cybertrain
     # @api public
     def key?(key)
       k = key.to_s
-      @values.key?(k) || @lists.key?(k) || @children.key?(k)
+      @values.key?(k) || @lists.key?(k) || @children.key?(k) || @uploads.key?(k)
     end
 
     # The nested parameters under `key` (`article[...]`), which must be
@@ -96,10 +106,39 @@ module Cybertrain
       child
     end
 
+    # The file sent as `key` in a multipart body. The same value is never
+    # also a String: {#[]} gives nil for it, and {#permit} never returns it,
+    # so a file reaches a model only through an explicit call such as
+    # `post.cover_file = params.nested(:post).upload(:cover)`.
+    #
+    # A file input left empty (the browser sends filename="" and no bytes
+    # when nothing was chosen) is dropped by the multipart parser, so this
+    # is nil for it. A form whose only field is that file then has no
+    # `post` key at all: read an optional file through {#nested}, which
+    # does not raise, rather than {#require}. A chosen file with no bytes
+    # is kept, as a file whose {UploadedFile#empty?} is true.
+    # @example
+    #   file = params.nested(:post).upload(:cover)
+    #   @post.cover_file = file if file
+    # @param key [String, Symbol]
+    # @return [UploadedFile, nil] nil when no file was sent under that name
+    # @api public
+    def upload(key)
+      @uploads[key.to_s]
+    end
+
+    # @param key [String, Symbol]
+    # @return [Boolean] true when a file was sent under that name (even a
+    #   chosen file with no bytes; never an input left empty)
+    # @api public
+    def upload?(key)
+      @uploads.key?(key.to_s)
+    end
+
     # The listed keys that were sent as Strings, as a Hash ready for
     # `Model.new` or {Model#update}. Unlisted keys are dropped silently, and
-    # so are lists and nested values: there is no `permit(tags: [])`; read
-    # those with {#list} and {#nested}.
+    # so are lists, nested values and uploaded files: there is no
+    # `permit(tags: [])`; read those with {#list}, {#nested} and {#upload}.
     # @example
     #   params.require(:article).permit(:title, :body)  # => {"title" => "Hi", "body" => "..."}
     # @param keys [Array<String, Symbol>]
@@ -121,6 +160,7 @@ module Cybertrain
       k = key.to_s
       @lists.delete(k)
       @children.delete(k)
+      @uploads.delete(k)
       @values[k] = value
     end
 
@@ -128,6 +168,7 @@ module Cybertrain
       k = key.to_s
       @values.delete(k)
       @children.delete(k)
+      @uploads.delete(k)
       @lists[k] = [] unless @lists.key?(k)
       @lists[k] << value
     end
@@ -136,10 +177,48 @@ module Cybertrain
       k = key.to_s
       @values.delete(k)
       @lists.delete(k)
+      @uploads.delete(k)
       unless @children.key?(k)
         @children[k] = Params.new
       end
       @children[k]
+    end
+
+    # Stores an uploaded file under key, evicting a String, list or nested
+    # Params of the same name (the last write wins, as for the other kinds).
+    # Called by the multipart parser.
+    # @param key [String, Symbol]
+    # @param up [UploadedFile]
+    def set_upload(key, up)
+      k = key.to_s
+      @values.delete(k)
+      @lists.delete(k)
+      @children.delete(k)
+      @uploads[k] = up
+      nil
+    end
+
+    # Stores a file at a Query.split_key-shaped path (see #set_path), the
+    # file being the leaf. A trailing "" (`files[]`) does not append: a file
+    # field has no list form, so the file is stored under the key before it,
+    # replacing an earlier one. Same cursor walk as #set_path, no recursion.
+    def set_upload_path(path, up)
+      node = self
+      i = 0
+      done = false
+      until done
+        remaining = path.length - i
+        if remaining <= 0
+          done = true
+        elsif remaining == 1 || (remaining == 2 && path[i + 1] == "")
+          node.set_upload(path[i], up)
+          done = true
+        else
+          node = node.child!(path[i])
+          i += 1
+        end
+      end
+      nil
     end
 
     # path comes from Query.split_key: ["id"], ["tags", ""] (append to
@@ -179,6 +258,8 @@ module Cybertrain
     # copied (a String is mutable, so `dst["q"] << "x"` must not change
     # other), so an app that merges one tree into another gets two
     # independent trees.
+    # The exception is an uploaded file, which is shared by reference: an
+    # UploadedFile is immutable, and copying its body would double the memory.
     #
     # Iterative: dsts[i] receives srcs[i], and each nested pair found while
     # merging one level is appended to the two work lists. Levels are
@@ -196,6 +277,8 @@ module Cybertrain
           dsts << dst.child!(k)
           srcs << src.children[k]
         end
+        # Shared, not copied: an UploadedFile is immutable.
+        src.upload_map.keys.each { |k| dst.set_upload(k, src.upload_map[k]) }
         i += 1
       end
       self
@@ -216,10 +299,11 @@ module Cybertrain
       h
     end
 
-    # @return [Boolean] true when nothing was sent at this level
+    # @return [Boolean] true when nothing was sent at this level (a file
+    #   counts, so `require(:post)` succeeds for a form that sent only one)
     # @api public
     def empty?
-      @values.empty? && @lists.empty? && @children.empty?
+      @values.empty? && @lists.empty? && @children.empty? && @uploads.empty?
     end
 
     def inspect
@@ -227,6 +311,7 @@ module Cybertrain
       @values.keys.each { |k| parts << "#{k.inspect}=>#{@values[k].inspect}" }
       @lists.keys.each { |k| parts << "#{k.inspect}=>#{@lists[k].inspect}" }
       @children.keys.each { |k| parts << "#{k.inspect}=>#{@children[k].inspect}" }
+      @uploads.keys.each { |k| parts << "#{k.inspect}=>#{@uploads[k].inspect}" }
       "{#{parts.join(", ")}}"
     end
 
@@ -256,11 +341,18 @@ module Cybertrain
       @values
     end
 
+    # The uploads Hash, for merge!. Named upload_map rather than uploads so
+    # it cannot be mistaken for a Hash method (see raw_values).
+    def upload_map
+      @uploads
+    end
+
     # Replaces the list under k with arr (an owned copy), evicting the other
     # kinds. Used by merge!, which calls it on another Params.
     def replace_list!(k, arr)
       @values.delete(k)
       @children.delete(k)
+      @uploads.delete(k)
       @lists[k] = arr
       nil
     end

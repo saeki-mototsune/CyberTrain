@@ -120,6 +120,7 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes read("blog/config/app.rb"), "Cybertrain.configure do |c|"
   assert_includes read("blog/.gitignore"), "/build/"
   assert_includes read("blog/.gitignore"), "/storage/*.sqlite3*"
+  assert_includes read("blog/.gitignore"), "/storage/uploads/\n"
   assert_includes read("blog/.gitignore"), "/dist/"
 end
 

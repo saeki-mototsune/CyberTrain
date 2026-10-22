@@ -1,4 +1,5 @@
 require "cybertrain/http/query"
+require "cybertrain/http/multipart"
 require "cybertrain/http/request"
 require "cybertrain/http/client_error"
 require "cybertrain/test"
@@ -100,6 +101,28 @@ test "status of the framework's own exceptions" do
   assert_equal 500, Cybertrain::ClientError.status_for(ArgumentError.new("x"))
 end
 
+test "the multipart faults are client faults (400), by full name or bare name" do
+  names = ["MultipartMalformed", "MultipartTooManyParts", "MultipartPartTooLarge", "MultipartHeaderTooLarge"]
+  names.each do |bare|
+    assert_equal 400, Cybertrain::ClientError.status_for_name("Cybertrain::#{bare}", true)
+    assert_equal 400, Cybertrain::ClientError.status_for_name(bare, false)
+    assert_equal 500, Cybertrain::ClientError.status_for_name(bare, true)
+    assert_equal 500, Cybertrain::ClientError.status_for_name("Other::#{bare}", true)
+    assert Cybertrain::ClientError::CLIENT_FAULTS.include?("Cybertrain::#{bare}")
+  end
+  # BlobKeyInvalid is the app's own bug (a key that did not come from
+  # BlobStore.new_key), a 500: it is deliberately not a client fault.
+  assert_equal 500, Cybertrain::ClientError.status_for_name("Cybertrain::BlobKeyInvalid", true)
+  assert_equal 500, Cybertrain::ClientError.status_for_name("BlobKeyInvalid", false)
+end
+
+test "status of the multipart exceptions the parser raises" do
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::MultipartMalformed.new("x"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::MultipartTooManyParts.new("x"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::MultipartPartTooLarge.new("x"))
+  assert_equal 400, Cybertrain::ClientError.status_for(Cybertrain::MultipartHeaderTooLarge.new("x"))
+end
+
 # Records what classify logs, and at which level.
 class RecordingLogger
   attr_reader :infos, :errors
@@ -133,6 +156,20 @@ def classify_raised_argument_error(logger)
   raise ArgumentError, "x"
 rescue ArgumentError => e
   Cybertrain::ClientError.classify(e, logger)
+end
+
+def classify_raised_multipart_fault(logger)
+  raise Cybertrain::MultipartPartTooLarge, "uploaded file too large (limit 10 bytes)"
+rescue Cybertrain::MultipartPartTooLarge => e
+  Cybertrain::ClientError.classify(e, logger)
+end
+
+test "a raised multipart fault is a 400 at info level, with its message" do
+  logger = RecordingLogger.new
+  assert_equal 400, classify_raised_multipart_fault(logger)
+  assert_equal 1, logger.infos.length
+  assert_equal 0, logger.errors.length
+  assert logger.infos[0].include?("uploaded file too large (limit 10 bytes)"), "the message is logged"
 end
 
 test "a client fault is classified as a 400 at info level, an ArgumentError as a 500 at error" do

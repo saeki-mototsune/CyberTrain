@@ -2,6 +2,7 @@
 #
 #   <%= f.label :title %>          <label for="post_title">Title</label>
 #   <%= f.text_field :title %>     <input type="text" name="post[title]" id="post_title" value="...">
+#   <%= f.file_field :cover %>     <input type="file" name="post[cover]" id="post_cover"> (form_with multipart: true)
 #   <%= f.submit %>                <input type="submit" name="commit" value="Create Post">
 #
 # Templates reach it through the interpreter's generic method call, which
@@ -83,6 +84,7 @@ module Cybertrain
       when :number_field then input_field("number", args, kwargs)
       when :date_field then input_field("date", args, kwargs)
       when :hidden_field then input_field("hidden", args, kwargs)
+      when :file_field then file_field(args, kwargs)
       when :text_area then text_area(args, kwargs)
       when :check_box then check_box(args, kwargs)
       when :submit then submit(args, kwargs)
@@ -106,6 +108,19 @@ module Cybertrain
       value = read_value(sym)
       shown = value.nil? || type == "password" ? "" : " value=\"#{Html.escape(FormBuilder.value_text(value))}\""
       SafeString.of("<input type=\"#{Html.escape(type)}\" name=\"#{Html.escape(field_name(attr))}\" id=\"#{Html.escape(field_id(attr))}\"#{shown}#{option_attrs(kwargs, errors_on?(sym))}>")
+    end
+
+    # `<input type="file">`. No value attribute (a browser never prefills
+    # one) and no read_value: the attribute is a form field, not a column,
+    # so read_attribute would not know it. accept:/required: pass through
+    # option_attrs. One file per field: a `multiple` input would need the
+    # parser to collect several parts under one name.
+    def file_field(args, kwargs)
+      raise ArgumentError, "file_field multiple: true is not supported" if kwargs["multiple"] == true
+
+      attr = attribute_name(args, "file_field", "")
+      sym = attribute_sym(args, attr)
+      SafeString.of("<input type=\"file\" name=\"#{Html.escape(field_name(attr))}\" id=\"#{Html.escape(field_id(attr))}\"#{option_attrs(kwargs, errors_on?(sym))}>")
     end
 
     # The newline after the opening tag is Rails' too: browsers drop the

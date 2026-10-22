@@ -13,4 +13,22 @@ ok   assert_redirected_to fails on a non-redirect or another location
 ok   MethodOverride turns a POST with _method=delete into DELETE
 ok   a bare Router works as the client's app
 ok   status symbols map to codes
-15 tests, 55 assertions, 0 failures
+ok   Test.binary makes a binary String from byte values
+----CybertrainTestBoundary1
+text post[title]=Héllo
+text authenticity_token=tok
+file post[cover] cover.png image/png 11 ace0ea4935e0d52d706778b306cf354c1a59f0ea28b75f456cc4578f5f237083
+ok   post_multipart sends text parts and files as multipart/form-data
+ok   post_multipart takes fields and uploads as optional, and extra headers
+----CybertrainTestBoundary4
+text t=----CybertrainTestBoundary3
+file a a.bin application/octet-stream 30 c1a8553b03718f6ad4fd3a74db813d43eca3d745839f91a68f561ed052090937
+file b b.bin application/octet-stream 28 bdeaf73c56805b5c8b7b77c2dafec8850eb9d45ccef97fd323ed226b4663d4aa
+ok   the boundary is bumped until no file or field contains it
+patched 5 ----CybertrainTestBoundary1
+text x=1
+text _method=patch
+file f f.txt text/plain 2 8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4
+ok   patch_multipart sends a POST with _method=patch, which MethodOverride turns into the PATCH route
+ok   status symbols cover payload_too_large and unsupported_media_type
+21 tests, 86 assertions, 0 failures

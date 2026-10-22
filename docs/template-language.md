@@ -205,7 +205,7 @@ Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matc
 | --- | --- | --- |
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` escaped unless already `SafeString`; **no `method:`** — raises, telling you to use `button_to` (no rails-ujs/turbo faking of DELETE links) |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | one-button `<form class="button_to">`; hidden `_method` for any verb but `get`/`post`, plus the CSRF field when a session exists |
-| `form_with` | `form_with(model:, url:, method:, class:) do \|f\| ... end` | needs a block; `model:` new → collection route + POST, persisted → member route + PATCH; `[parent, child]` for a nested route; `url:`/`method:` override the derived action/verb |
+| `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | needs a block; `model:` new → collection route + POST, persisted → member route + PATCH; `[parent, child]` for a nested route; `url:`/`method:` override the derived action/verb; `multipart: true` adds `enctype="multipart/form-data"` (required for `f.file_field`; it is never guessed from the block, and raises `ArgumentError` on a GET form) |
 | `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | see section 8 |
 | `h`, `escape` | `h(text)` | escapes; a `SafeString` passes through unescaped |
 | `raw` | `raw(text)` | wraps text in a `SafeString` (prints unescaped) |
@@ -231,6 +231,7 @@ Every method returns a `SafeString`; an unlisted one is a `RuntimeError` (`"unde
 | --- | --- |
 | `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>` — default text is the humanized attribute (`published_at` → "Published at", `author_id` → "Author"); explicit text is escaped unless a `SafeString` |
 | `f.text_field :title` (also `email_field`, `password_field`, `number_field`, `date_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`; `password_field` never emits `value=` |
+| `f.file_field :cover` (also `accept: "image/*"`, `required: true`) | `<input type="file" name="post[cover]" id="post_cover">` — never a `value=`, and the attribute need not be a column; the form must be `form_with ..., multipart: true`; `multiple: true` raises `ArgumentError` (one file per field) |
 | `f.text_area :body` | `<textarea name="post[body]" id="post_body">\n...</textarea>` (leading `\n`, as Rails does — browsers eat the first newline) |
 | `f.check_box :published` | hidden `value="0"` input then the real checkbox, so an unchecked box still submits `"0"` |
 | `f.submit` / `f.submit "Text"` | default text `"Create Post"`/`"Update Post"` (by `persisted?`), or `"Save changes"` with no model |

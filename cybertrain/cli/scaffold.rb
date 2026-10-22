@@ -1,6 +1,11 @@
 # `cybertrain generate scaffold post title:string body:text`: writes the
 # migration, model, controller and views of a resource and adds
 # `resources :posts` to config/routes.rb, the way Rails' scaffold does.
+#
+# A `cover:attachment` field is a stored file rather than a column: the
+# scaffold writes its five metadata columns and its form and show markup,
+# then hands the model, controller, route and test edits to
+# CLI::Attachment (cli/attachment.rb, loaded by cybertrain/cli.rb).
 require "cybertrain/generator/inflector"
 require "cybertrain/ident"
 require "cybertrain/cli/templates"
@@ -13,7 +18,7 @@ module Cybertrain
     # One "name:type" argument. A references field ("post:references")
     # becomes the post_id column.
     class Field
-      TYPES = %w[string text integer float boolean date datetime references]
+      TYPES = %w[string text integer float boolean date datetime references attachment]
 
       # Columns every table already has (the primary key and t.timestamps).
       # Everything else a column may not be called -- Ruby keywords, names
@@ -43,6 +48,11 @@ module Cybertrain
         # message. A name that only shadows an Object method is accepted, as the
         # generator accepts it, and Scaffold.generate prints a note.
         Scaffold.refuse_unusable!(field.column_name, "field")
+        # An attachment is not a column; the five columns it expands to
+        # (cover_key ...) answer to the same rules, and so does the name
+        # the model methods are built from. The download action `def <name>`
+        # is checked by Scaffold.generate, which knows the resource.
+        field.expanded_columns.each { |col| Scaffold.refuse_unusable!(col, "field") } if field.attachment?
         # A references field also defines the reader `def <name>` (post:references
         # -> def post), which answers to the same rules as a column.
         Scaffold.refuse_unusable!(name, "reference") if field.reference?
@@ -59,6 +69,16 @@ module Cybertrain
         @field_type == "references"
       end
 
+      # A stored file (cover:attachment): five columns, not one.
+      def attachment?
+        @field_type == "attachment"
+      end
+
+      # The column names this field adds to its table.
+      def expanded_columns
+        attachment? ? Templates.attachment_column_names(@field_name) : [column_name]
+      end
+
       def column_name
         reference? ? "#{@field_name}_id" : @field_name
       end
@@ -67,8 +87,11 @@ module Cybertrain
         Templates.humanize(@field_name)
       end
 
-      def migration_line
-        reference? ? "t.references :#{@field_name}" : "t.#{@field_type} \"#{@field_name}\""
+      # The create_table lines of this field's columns.
+      def migration_lines
+        return Templates.attachment_table_lines(@field_name) if attachment?
+
+        [reference? ? "t.references :#{@field_name}" : "t.#{@field_type} \"#{@field_name}\""]
       end
 
       # The FormBuilder method that edits this column.
@@ -77,6 +100,7 @@ module Cybertrain
         when "text" then "text_area"
         when "integer", "float" then "number_field"
         when "boolean" then "check_box"
+        when "attachment" then "file_field"
         else "text_field"
         end
       end
@@ -85,14 +109,17 @@ module Cybertrain
     # The names a scaffold derives from its NAME argument ("post", "Post"
     # or "posts" all give post / posts / Post / Posts).
     class Resource
-      attr_reader :singular, :plural, :class_name, :plural_class, :fields
+      attr_reader :singular, :plural, :class_name, :plural_class, :fields, :any
 
-      def initialize(name, fields)
+      # `any` is the --any option: attachments accept any detected file type,
+      # not only the four raster image types.
+      def initialize(name, fields, any = false)
         @singular = Inflector.singularize(Inflector.underscore(name))
         @plural = Inflector.pluralize(@singular)
         @class_name = Inflector.camelize(@singular)
         @plural_class = Inflector.camelize(@plural)
         @fields = fields
+        @any = any
       end
 
       # The index route helper's name without _path, as Rails' scaffold
@@ -100,6 +127,13 @@ module Cybertrain
       # plural (sheep_index_path), matching the routes DSL.
       def index_helper
         @plural == @singular ? "#{@plural}_index" : @plural
+      end
+
+      # Whether any field is a stored file (the form then needs multipart).
+      def attachments?
+        found = false
+        @fields.each { |f| found = true if f.attachment? }
+        found
       end
 
       # The column the model validates for presence ("" when there is none).
@@ -146,7 +180,7 @@ module Cybertrain
       # as "identical" or "exist" and left alone). Raises InvalidArgument on a
       # bad name, a bad or duplicate field, or a routes file without a
       # `Cybertrain::Routes.draw do` line, before anything is written.
-      def self.generate(root, name, fields)
+      def self.generate(root, name, fields, any = false)
         routes_path = File.join(root, "config/routes.rb")
         raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
         raise InvalidArgument, "#{routes_path} has no `#{DRAW_LINE}` line" if File.read(routes_path).index(DRAW_LINE).nil?
@@ -170,12 +204,17 @@ module Cybertrain
         columns = Array.new(0) { "" }
         fields.each do |arg|
           field = Field.parse(arg)
-          raise InvalidArgument, "duplicate column '#{field.column_name}'" if columns.include?(field.column_name)
+          if field.attachment? && Templates.attachment_action_clash?(field.field_name, singular)
+            raise InvalidArgument, "'#{field.field_name}' would redefine a method of #{Inflector.camelize(Inflector.pluralize(singular))}Controller (the download action is `def #{field.field_name}`); pick another field name"
+          end
+          field.expanded_columns.each do |col|
+            raise InvalidArgument, "duplicate column '#{col}'" if columns.include?(col)
 
-          columns << field.column_name
+            columns << col
+          end
           parsed << field
         end
-        res = Resource.new(name, parsed)
+        res = Resource.new(name, parsed, any)
 
         created = Array.new(0) { "" }
         migration = migration_path(root, res)
@@ -189,6 +228,14 @@ module Cybertrain
         record(created, root, "#{views}/edit.html.erb", Templates.edit_view(res))
         record(created, root, "#{views}/_form.html.erb", Templates.form_partial(res))
         add_route(routes_path, res.plural)
+        attachments = false
+        res.fields.each do |f|
+          next unless f.attachment?
+
+          attachments = true
+          Attachment.install_code(root, AttachmentSpec.new(res.singular, f.field_name, any), created)
+        end
+        puts Attachment::BACKUP_NOTE if attachments
         shadow_notes(res).each { |note| puts note }
         created
       end

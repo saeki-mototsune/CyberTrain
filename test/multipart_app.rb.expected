@@ -1,0 +1,22 @@
+ok   the boot validates and applies the upload settings
+created title=Héllo cover=cover.png 273 9e357e30dfae894d2920d068fa62df4e67682c710c99215946aaf44ac0f27101 image/png
+ok   a multipart POST with the token reaches the action with its text and file intact
+updated 7 title=Edited cover=cover.png 273 9e357e30dfae894d2920d068fa62df4e67682c710c99215946aaf44ac0f27101 image/png
+ok   a multipart PATCH through _method reaches the update route
+ok   an edit form without a chosen file sends an empty filename and the action gets no upload
+ok   a form whose only field is a file input left empty has no post key
+ok   a text-only multipart form works too
+ok   a multipart POST without the token is forbidden, with or without a file
+ok   the token may also come in the query string or the header, beside a multipart body
+Bad Request
+Bad Request
+ok   a malformed multipart body is a 400
+Bad Request
+ok   a file over max_upload_bytes is a 400
+Bad Request
+ok   more parts than max_multipart_parts is a 400
+Bad Request
+ok   a multipart body with a Content-Encoding is a 400
+ok   a urlencoded form still works beside it
+ok   nothing is written to the upload root by receiving a file
+14 tests, 40 assertions, 0 failures

@@ -1,0 +1,42 @@
+ok   sniff recognises PNG, JPEG, GIF87a, GIF89a, WebP and PDF
+ok   sniff never reports SVG, HTML, XML or script
+ok   sniff on short and empty input is the unknown type
+ok   sniff needs both the RIFF and the WEBP tag
+ok   sniff reads bytes across NUL and 0xFF
+ok   inline_safe? is an exact match on the four raster types
+ok   sanitize_filename keeps an ordinary name
+ok   sanitize_filename drops a path, however it is spelled
+ok   sanitize_filename drops control bytes, DEL and header or shell metacharacters
+ok   sanitize_filename drops bidi controls and zero-width characters
+ok   sanitize_filename strips leading and trailing dots and spaces
+ok   sanitize_filename cuts to 255 bytes on a character boundary
+ok   sanitize_filename turns invalid UTF-8 into the fallback
+ok   sanitize_filename does not modify its argument
+ok   sanitize_type keeps a plain media type, lowercased, without parameters
+ok   sanitize_type rejects anything that is not type/subtype
+ok   sanitize_type allows 127 bytes and refuses 128
+ok   content_disposition for a plain name
+ok   content_disposition treats an unknown disposition as attachment
+ok   content_disposition percent-encodes non-ASCII per RFC 5987 and falls back to underscores
+ok   content_disposition keeps CR, LF, quotes and backslashes out of the header
+ok   content_disposition encodes everything outside the RFC 5987 attr-chars
+ok   content_disposition output is always ASCII, even for hostile bytes
+ok   content_disposition of an empty name
+ok   an UploadedFile reports its name, types, size and kind
+ok   the declared type is never trusted: HTML named png is not an image
+ok   SVG is not an image
+ok   a PDF is detected but is not inline-safe
+ok   detected_content_type is stable across calls
+ok   blank is an empty file with no name or type
+ok   empty? is true for a zero-byte file with a name
+ok   sha256_hex is the SHA-256 of the bytes, including NUL and 0xFF
+ok   inspect and to_s show the name and size, never the bytes
+name: abc.png
+name: 254
+type: image/png
+disp: inline; filename="caf__ _1_.png"; filename*=UTF-8''caf%C3%A9%20%221%22.png
+file: #<Cybertrain::UploadedFile "p.png" 12 bytes>
+sha:  559f777dcb48901fad778a8998dc4b03ecd717a5d7b6309be091b6f440d63062
+kind: image/webp
+ok   representative results are recorded in the snapshot
+34 tests, 161 assertions, 0 failures

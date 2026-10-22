@@ -5,6 +5,7 @@ ok   CYBERTRAIN_HOST, CYBERTRAIN_SESSION_SAME_SITE and CYBERTRAIN_SESSION_PARTIT
 ok   empty CYBERTRAIN_HOST and CYBERTRAIN_SESSION_SAME_SITE count as unset; only 1 and true turn partitioning on
 ok   csrf_exempt_prefixes_error names an entry that does not start and end with a slash, or is the root
 ok   max_body_bytes_error names a value that is not a positive Integer
+ok   upload_limits_error names a setting that is unusable
 ok   session_same_site_error is empty for Lax, Strict and None and names the valid values otherwise
 ok   resolve_secret! creates the secret key file in the test env and reuses it
 ok   resolve_secret! keeps an explicit secret_key_base
@@ -32,4 +33,4 @@ ok   path helpers in templates call the url_resolver
 ok   a method-returned Gen::Routes-style url_resolver keeps its route names
 ok   max_body_bytes reaches the server: a longer Content-Length is 413 before the body is read
 ok   the server listens on the configured host and port
-34 tests, 147 assertions, 0 failures
+35 tests, 160 assertions, 0 failures

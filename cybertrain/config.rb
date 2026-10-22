@@ -156,6 +156,29 @@ module Cybertrain
     # @api public
     attr_accessor :max_body_bytes
 
+    # The largest single uploaded file in a `multipart/form-data` body, in
+    # bytes, `5242880` (5 MiB); a bigger file part is answered 400. Boot
+    # refuses a value over {#max_body_bytes}, which bounds the whole body
+    # (raise both for bigger files). The server buffers the whole body, so
+    # memory use is about three times the body per request in flight.
+    # @return [Integer]
+    # @api public
+    attr_accessor :max_upload_bytes
+
+    # The most parts (text fields plus files) in one multipart body, `128`
+    # (1 to 4096); more is answered 400.
+    # @return [Integer]
+    # @api public
+    attr_accessor :max_multipart_parts
+
+    # The directory {BlobStore} keeps uploaded files in, `"storage/uploads"`
+    # (relative to the working directory). It is created on the first write,
+    # not at boot, and is never under `public/`: `storage/` is the persistent
+    # volume of a deployment, `public/` is replaced on every build.
+    # @return [String]
+    # @api public
+    attr_accessor :upload_root
+
     # Spinel worker threads, `1`, from `SPINEL_WORKERS`.
     # @return [Integer]
     # @api public
@@ -254,6 +277,11 @@ module Cybertrain
       # The same number as Server.new's default (cybertrain/http/server.rb), kept
       # as a literal here: the HTTP layer must not be required by Config.
       @max_body_bytes = 10_485_760
+      # The same literals as Multipart and BlobStore start with; Application#boot
+      # hands the configured values to both.
+      @max_upload_bytes = 5_242_880
+      @max_multipart_parts = 128
+      @upload_root = "storage/uploads"
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i
     end
 
@@ -304,6 +332,42 @@ module Cybertrain
         return "" if value >= 1
       end
       "max_body_bytes must be an Integer of at least 1 (got #{value.inspect})"
+    end
+
+    # The error Application#boot reports (and exits 1 on) when the upload
+    # settings are unusable; "" when they are fine. A file larger than the
+    # body limit could never arrive, so max_upload_bytes over max_body_bytes
+    # is a mistake worth saying (checked only when both are Integers: a bad
+    # max_body_bytes has its own message).
+    def upload_limits_error
+      limit = @max_upload_bytes
+      case limit
+      when Integer
+        return "max_upload_bytes must be an Integer of at least 1 (got #{limit})" if limit < 1
+
+        body_limit = @max_body_bytes
+        case body_limit
+        when Integer
+          return "max_upload_bytes (#{limit}) must not exceed max_body_bytes (#{body_limit})" if limit > body_limit
+        end
+      else
+        return "max_upload_bytes must be an Integer of at least 1 (got #{limit.inspect})"
+      end
+      parts = @max_multipart_parts
+      case parts
+      when Integer
+        return "max_multipart_parts must be an Integer from 1 to 4096 (got #{parts})" if parts < 1 || parts > 4096
+      else
+        return "max_multipart_parts must be an Integer from 1 to 4096 (got #{parts.inspect})"
+      end
+      root = @upload_root
+      case root
+      when String
+        return "upload_root must be a non-empty String" if root.empty?
+      else
+        return "upload_root must be a non-empty String"
+      end
+      ""
     end
 
     # The error Application#boot reports (and exits 1 on) when
