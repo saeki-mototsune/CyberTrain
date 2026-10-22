@@ -34,6 +34,17 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev libssl-dev
 
+      # Spinel's openssl package links `-lssl -lcrypto` with no search path;
+      # Homebrew's OpenSSL is keg-only, so a program that requires openssl
+      # (test/openssl_dispatch.rb) finds it through the compiler's
+      # LIBRARY_PATH / CPATH.
+      - name: Point the compiler at Homebrew's OpenSSL (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          prefix="$(brew --prefix openssl@3)"
+          echo "LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
+          echo "CPATH=$prefix/include" >> "$GITHUB_ENV"
+
       # The version pins, script/check-reserved-names, check-client-faults and
       # check-http-layer run in the Gate workflow (script/gate), on every change.
 

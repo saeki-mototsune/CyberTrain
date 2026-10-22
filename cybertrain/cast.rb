@@ -123,7 +123,14 @@ module Cybertrain
     # String per digit for the check) was a tenth of an article page's time.
     # The 19 bytes it accepts are all ASCII, so a multibyte String is
     # refused exactly as the character-indexed version refused it.
-    def self.parse_time(s)
+    #
+    # The argument is read through a `to_s` local: it is often boxed (a
+    # value out of JSON.parse or a Hash of mixed values, or what Cast.str
+    # hands back: `when String then v` returns the boxed v), and a boxed
+    # `getbyte` raises NoMethodError in a program that requires the openssl
+    # package (spikes/NOTES.md rule 62). For a String, `to_s` is no copy.
+    def self.parse_time(text)
+      s = text.to_s
       return nil if s.bytesize < 19
       return nil unless s.getbyte(4) == 45 && s.getbyte(7) == 45 && s.getbyte(13) == 58 && s.getbyte(16) == 58
       sep = s.getbyte(10)
@@ -155,7 +162,8 @@ module Cybertrain
       (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
     end
 
-    def self.digits?(s)
+    def self.digits?(text)
+      s = text.to_s # NOTES rule 62, as in parse_time
       i = 0
       n = s.bytesize
       while i < n
@@ -168,7 +176,8 @@ module Cybertrain
 
     # The decimal number in s's bytes [from, from + len), or -1 when one of
     # them is not an ASCII digit.
-    def self.number_at(s, from, len)
+    def self.number_at(text, from, len)
+      s = text.to_s # NOTES rule 62, as in parse_time
       value = 0
       i = from
       stop = from + len
