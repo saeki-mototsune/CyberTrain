@@ -1,4 +1,6 @@
 require "cybertrain/app_name"
+require "cybertrain/cast"
+require "cybertrain/shell"
 
 module Cybertrain
   module Dev
@@ -95,7 +97,7 @@ module Cybertrain
         end
 
         pid = File.read(path).strip
-        return true if pid.empty? || !pid.bytes.all? { |b| b >= 48 && b <= 57 }
+        return true if pid.empty? || !Cast.digits?(pid)
         return true if Rebuilder.process_alive?(pid.to_i)
 
         File.delete(path) if File.exist?(path)
@@ -118,9 +120,9 @@ module Cybertrain
       # name from reaching sh (AppName.problem does not refuse a quote).
       def command
         log = log_file
-        "mkdir -p #{Rebuilder.shell_quote(File.dirname(log))} && " \
-          "{ cd #{Rebuilder.shell_quote(@root)} && spin run gen && spin build #{Rebuilder.shell_quote(@target)}; } " \
-          "> #{Rebuilder.shell_quote(log)} 2>&1"
+        "mkdir -p #{Shell.quote(File.dirname(log))} && " \
+          "{ cd #{Shell.quote(@root)} && spin run gen && spin build #{Shell.quote(@target)}; } " \
+          "> #{Shell.quote(log)} 2>&1"
       end
 
       def log_file
@@ -130,10 +132,6 @@ module Cybertrain
       # Where `spin build <target>` puts the binary.
       def binary_path
         File.expand_path("build/bin/#{@target}", @root)
-      end
-
-      def self.shell_quote(text)
-        "'#{text.gsub("'", "'\\\\''")}'"
       end
     end
   end

@@ -3,6 +3,7 @@ require "cybertrain/generator/inflector"
 require "cybertrain/cli/templates"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
+require "cybertrain/shell"
 
 module Cybertrain
   module CLI
@@ -72,13 +73,13 @@ module Cybertrain
       # Run by bootstrap once Toolchain.ensure! has put spin on this
       # process's PATH.
       def self.bootstrap_command(dir)
-        "cd #{Build.shell_quote(dir)} && spin lock && spin run gen"
+        "cd #{Shell.quote(dir)} && spin lock && spin run gen"
       end
 
       # The same steps for the user to run by hand: through `cybertrain
       # spin`, since the Spinel cybertrain installed is not on their PATH.
       def self.recovery_command(dir)
-        "cd #{Build.shell_quote(dir)} && cybertrain spin lock && cybertrain spin run gen"
+        "cd #{Shell.quote(dir)} && cybertrain spin lock && cybertrain spin run gen"
       end
     end
   end

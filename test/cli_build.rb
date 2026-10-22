@@ -132,7 +132,7 @@ end
 test "build embeds the views, builds, then restores the empty table" do
   assert_equal ["spin run gen -- --embed-views", "spin build blog", "spin run gen"], Cybertrain::CLI::Build.commands("blog")
   assert_equal ["spin run gen", "spin run db -- migrate", "spin run gen"], Cybertrain::CLI::Build.migration_commands
-  assert_equal "'a'\\''b'", Cybertrain::CLI::Build.shell_quote("a'b")
+  assert_equal "'a'\\''b'", Cybertrain::Shell.quote("a'b")
 end
 
 test "db commands generate first, and again after migrate and rollback" do
