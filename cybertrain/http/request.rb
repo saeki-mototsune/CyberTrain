@@ -117,17 +117,24 @@ module Cybertrain
       nil
     end
 
+    # The largest Integer a 64-bit runtime holds; what an overlong
+    # Content-Length reports.
+    INT64_MAX = 9223372036854775807
+
     # The Content-Length header as an Integer.
     #
-    # 0 when the header is absent or not a plain non-negative integer.
-    # An overlong all-digit value saturates to 9223372036854775807 under
-    # Spinel (CRuby would return a Bignum); the Server's 413 limit rejects it.
+    # 0 when the header is absent or not a plain non-negative integer. A
+    # value of more than 18 digits is reported as 9223372036854775807
+    # without parsing it (Spinel's `String#to_i` raises RangeError past
+    # 2**63-1, NOTES rule 25; CRuby would return a Bignum): the Server's 413
+    # limit rejects it either way.
     # @return [Integer]
     # @api public
     def content_length
       value = header("content-length")
       return 0 if value.nil? || value.empty?
       return 0 unless value.bytes.all? { |b| b >= 48 && b <= 57 }
+      return INT64_MAX if value.bytesize > 18
 
       value.to_i
     end

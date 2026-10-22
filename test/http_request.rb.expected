@@ -7,7 +7,7 @@ ok   content_type keeps only the media type
 ok   keep_alive? for HTTP/1.1
 ok   keep_alive? for HTTP/1.0
 ok   keep_alive? matches Connection tokens exactly, not substrings
-ok   content_length of an overlong all-digit value is at least Int64 max
+ok   content_length of an overlong all-digit value is Int64 max, not a RangeError
 ok   method predicates
 ok   override_method! upper-cases the new method
 ok   cookie_header returns the Cookie header or empty string
@@ -30,4 +30,4 @@ ok   decoded_body refuses an encoding it does not decode
 ok   a gzip body that is not gzip, or too short to be, is undecodable before the inflater is asked
 ok   a well-formed gzip body is undecodable while no inflater is installed, and the error is not cached
 ok   an installed inflater is what decodes gzip, and it is given the body and the limit
-32 tests, 149 assertions, 0 failures
+32 tests, 151 assertions, 0 failures

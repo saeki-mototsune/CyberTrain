@@ -79,10 +79,12 @@ test "keep_alive? matches Connection tokens exactly, not substrings" do
   refute request_with({ "connection" => "keep-alive, close" }).keep_alive?
 end
 
-test "content_length of an overlong all-digit value is at least Int64 max" do
-  # Spinel saturates to 9223372036854775807; CRuby (which --regen uses)
-  # returns the Bignum. Either way it exceeds any 413 limit the Server uses.
-  assert request_with({ "content-length" => "99999999999999999999" }).content_length >= 9223372036854775807
+test "content_length of an overlong all-digit value is Int64 max, not a RangeError" do
+  # More than 18 digits is not parsed (Spinel's to_i raises past 2**63-1,
+  # NOTES rule 25); 18 digits still are. Either way it exceeds any 413 limit.
+  assert_equal 9223372036854775807, request_with({ "content-length" => "99999999999999999999" }).content_length
+  assert_equal 9223372036854775807, request_with({ "content-length" => "9223372036854775808" }).content_length
+  assert_equal 999999999999999999, request_with({ "content-length" => "999999999999999999" }).content_length
 end
 
 test "method predicates" do

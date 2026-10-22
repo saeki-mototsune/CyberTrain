@@ -95,7 +95,11 @@ finds the commit that removed them).
 24. `spin test` compiles the test program with `--require-gate`; a test must
     `require "cybertrain/test"` itself or `test "..."` fails to compile with an
     'unsupported call' error.
-25. `String#to_i` saturates at 2**63-1 instead of promoting to Bignum.
+25. `String#to_i` raises `RangeError` ("integer overflow parsing ...") past
+    2**63-1 instead of promoting to Bignum (verified on 2026.09.12; an
+    earlier note said it saturates, which it does not). Request data that
+    is parsed with `to_i` (an id, a page number) must be length-checked
+    first, as Server#body_length does, or a 20-digit parameter is a 500.
 26. `obj.attr += x` (an operator-assignment on a method call) does not compile
     inside a block or lambda ("unsupported expression: CallOperatorWriteNode");
     write `obj.attr = obj.attr + x`. It is fine at top level and in method bodies.
