@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/saeki-mototsune/CyberTrain/security/advisories/new
+    about: Please report vulnerabilities privately, not in an issue (see SECURITY.md).
+  - name: Tutorial and documentation
+    url: https://saeki-mototsune.github.io/CyberTrain/
+    about: The homepage, the tutorial, the playground and the API reference.

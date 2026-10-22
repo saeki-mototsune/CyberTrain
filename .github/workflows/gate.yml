@@ -1,0 +1,23 @@
+# The commit gate (script/gate), the checks the pre-commit hook runs locally,
+# run again here on every push and pull request so that a contributor without
+# the hook gets the same answer. Fast (CRuby only, no Spinel), so it has no
+# path filter: it is the one check that runs on every change, which makes it
+# the one to require in the branch protection rule. The test suite is ci.yml.
+name: Gate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - run: script/gate

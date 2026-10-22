@@ -717,6 +717,14 @@ prints the diff stat).
   *existing* Rails apps to Spinel. cybertrain is not that: it's a native
   framework you write directly against, not a compatibility layer.
 
+## Contributing
+
+Bug reports, questions and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md)
+explains how to set up a checkout, run the tests and the commit gate
+(`script/install-hooks` once per clone; `script/gate` runs the same checks CI
+does), and what a pull request needs. Security issues go through
+[SECURITY.md](SECURITY.md), not an issue.
+
 ## Releasing
 
 The gem and the framework are released from the same tag, and `cybertrain
@@ -735,9 +743,11 @@ before the gem is pushed:
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in
-[.github/workflows/ci.yml](.github/workflows/ci.yml), which CI checks, so
-change the two together when the framework moves to another Spinel release.
+[.github/workflows/ci.yml](.github/workflows/ci.yml) and in
+[script/claude-cloud-setup](script/claude-cloud-setup), which `script/gate`
+checks, so change the three together when the framework moves to another
+Spinel release.
 
 ## License
 
-MIT.
+MIT; see [LICENSE](LICENSE). Contributions are accepted under the same license.
