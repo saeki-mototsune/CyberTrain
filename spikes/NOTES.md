@@ -377,6 +377,41 @@ finds the commit that removed them).
     `JSON::ParserError` names `JSON::NestingError` first, and an app's
     rescue around JSON.generate of request data must too.
 
+62. A method defined in Ruby source with the name of a builtin method
+    (`getbyte`, `puts`, `read`, `gets`, `close`, `write`, `<<`) changes how
+    every call of that name on a **boxed** receiver compiles: a switch over
+    the classes that define it, with NoMethodError as the default and no
+    fallback to the builtin. Spinel's openssl package is such source
+    (`OpenSSL::Buffering#getbyte` and the rest, mixed into SSLSocket; zlib's
+    GzipWriter defines `puts`), so once a program requires it, `s.getbyte(i)`
+    on a boxed String raises "undefined method 'getbyte' for an instance of
+    String". Reduced repro (Spinel 2026.09.12): `def plain(a) = a.getbyte(0);
+    p plain({ "x" => "abc", "n" => 1 }["x"])` prints 97, and the same
+    program with `require "openssl"` on top raises. An application that
+    requires the openssl package had every response fail in
+    `Response#to_http` this way (`HeaderName.same?` got its keys boxed),
+    which the in-process Test::Client, never calling to_http, did not show.
+    Detect it in the C, not by running: `spinel prog.rb -c -o /tmp/x.c` and
+    `grep 'sp_raise_nomethod(sp_nomethod_msg("getbyte"' /tmp/x.c` (the
+    enclosing C function names the Ruby method; a parameter typed `sp_RbVal`
+    is a boxed one). What boxes a String parameter: one call site passing a
+    nullable or boxed value (a header lookup that can return nil, a value
+    out of `JSON.parse` or out of a Hash of mixed values); `case v when
+    String then v`, which returns the boxed `v` (Cast.str); a method
+    returning its boxed argument; the keys of an unseeded `{}` (rule 9); and
+    an untyped user `to_s` (SafeString's, in a program that never built
+    one), which leaves every `v.to_s` in the program untyped. The remedy, in
+    every method that scans a network or user String byte by byte: read the
+    parameter through a NEW local, `s = text.to_s`, at the top (for a String
+    it is the String itself, no copy). Reassigning the parameter (`text =
+    text.to_s`) does not help: the local keeps the parameter's boxed slot
+    and the call still raises. Any name the program defines behaves this
+    way, not only openssl's: `@headers.keys` on a boxed Hash compiled to a
+    switch over a model's `Errors#keys` (rule 51), so Response#drop_header
+    iterates with `each_key`. `cybertrain/html.rb` builds
+    `SafeString::EMPTY` so that SafeString#to_s is typed String in every
+    program; test/openssl_dispatch.rb is the regression program.
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.

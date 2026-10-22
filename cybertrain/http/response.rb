@@ -49,7 +49,11 @@ module Cybertrain
     def initialize
       @status = 200
       @body = ""
-      @headers = {}
+      # Seeded with a String pair, then emptied (NOTES rule 9): a bare `{}`
+      # is a Hash of untyped keys, which hands every key to HeaderName boxed
+      # (NOTES rule 62).
+      @headers = { "" => "" }
+      @headers.delete("")
       @cookies = []
       @performed = false
     end
@@ -118,13 +122,15 @@ module Cybertrain
     # place: `headers` is a public reader, so a Hash a before_action or
     # middleware took earlier must still be the live one afterwards. The
     # matching keys are collected first (never delete while iterating) and
-    # removed with Hash#delete; no block-taking Hash method is needed.
+    # removed with Hash#delete. `each_key`, not `keys.each`: where @headers
+    # is boxed, `keys` dispatches over the program's own `keys` methods (a
+    # model's Errors#keys) and not to Hash#keys (NOTES rules 51 and 62).
     # @param name [String]
     # @return [nil]
     # @api public
     def drop_header(name)
-      gone = []
-      @headers.keys.each { |k| gone << k if HeaderName.same?(k, name) }
+      gone = Array.new(0) { "" }
+      @headers.each_key { |k| gone << k if HeaderName.same?(k, name) }
       gone.each { |k| @headers.delete(k) }
       nil
     end

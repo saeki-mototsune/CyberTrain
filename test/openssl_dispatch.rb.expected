@@ -1,0 +1,10 @@
+ok   the program has the openssl package in it
+ok   a response with headers serializes
+ok   header names compare case-insensitively
+ok   a UTF-8 query string and form body parse
+ok   a gzip request body is inflated
+ok   a request whose body and headers were read out of a Hash of mixed values
+ok   a value read out of parsed JSON escapes
+ok   a time read out of parsed JSON casts
+ok   a time out of a Hash of mixed values casts
+9 tests, 31 assertions, 0 failures

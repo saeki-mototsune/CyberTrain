@@ -227,7 +227,11 @@ module Cybertrain
     # The trailer's ISIZE is deliberately not consulted: it is the sender's
     # claim (and the last four bytes of a body with trailing junk are not a
     # trailer at all); the inflater measures the real output as it goes.
-    def self.gunzip(data, limit)
+    # `body` can be boxed (a caller's nullable or polymorphic body), and a
+    # boxed `getbyte` raises NoMethodError in a program that requires the
+    # openssl package (spikes/NOTES.md rule 62): read it through `to_s`.
+    def self.gunzip(body, limit)
+      data = body.to_s
       if data.bytesize < GZIP_MIN_BYTES || data.getbyte(0) != 0x1f || data.getbyte(1) != 0x8b || data.getbyte(2) != 8
         raise BodyUndecodable, "request body is not gzip data"
       end
