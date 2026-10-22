@@ -2,6 +2,7 @@
 # public/. Also the command lists `cybertrain db` and `server` run. Plain Ruby:
 # runs under CRuby (the gem) and compiles under Spinel (spin install).
 require "cybertrain/app_name"
+require "cybertrain/shell"
 
 module Cybertrain
   module CLI
@@ -106,7 +107,7 @@ module Cybertrain
       def self.quote_arg(text)
         return text if !text.empty? && text.match(/\A[A-Za-z0-9_:.\/-]+\z/)
 
-        shell_quote(text)
+        Shell.quote(text)
       end
 
       # port is "" (the app's default, 3000) or a port? string.
@@ -179,7 +180,7 @@ module Cybertrain
 
       def self.run_in(root, command)
         puts "run    #{command}"
-        system("cd #{shell_quote(root)} && #{command}")
+        system("cd #{Shell.quote(root)} && #{command}")
       end
 
       # Copies build/bin/<name> and public/ into dist/; storage/ and tmp/ are
@@ -204,13 +205,13 @@ module Cybertrain
         rm_tree(public_tmp)
         rm_tree(public_old)
 
-        copy_command = "cp #{shell_quote(binary)} #{shell_quote(binary_tmp)}"
+        copy_command = "cp #{Shell.quote(binary)} #{Shell.quote(binary_tmp)}"
         raise InvalidArgument, "could not copy #{binary} to dist/" unless system(copy_command)
 
         File.rename(binary_tmp, "#{dist}/#{name}")
 
         if File.directory?("#{root}/#{DIST_PUBLIC}")
-          public_command = "cp -R #{shell_quote("#{root}/#{DIST_PUBLIC}")} #{shell_quote(public_tmp)}"
+          public_command = "cp -R #{Shell.quote("#{root}/#{DIST_PUBLIC}")} #{Shell.quote(public_tmp)}"
           raise InvalidArgument, "could not copy #{DIST_PUBLIC}/ to dist/" unless system(public_command)
         else
           Dir.mkdir(public_tmp)
@@ -241,10 +242,6 @@ module Cybertrain
           File.delete(path)
         end
         nil
-      end
-
-      def self.shell_quote(text)
-        "'#{text.gsub("'", "'\\\\''")}'"
       end
     end
   end

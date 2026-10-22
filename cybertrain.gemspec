@@ -33,6 +33,7 @@ Gem::Specification.new do |spec|
   spec.files = [
     "cybertrain/version.rb",
     "cybertrain/app_name.rb",
+    "cybertrain/shell.rb",
     "cybertrain/cli.rb",
     "cybertrain/cli/new_app.rb",
     "cybertrain/cli/scaffold.rb",

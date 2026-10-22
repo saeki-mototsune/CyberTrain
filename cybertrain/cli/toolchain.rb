@@ -10,6 +10,7 @@
 # (bin/cybertrain.rb), so it shells out with `system` and backticks and
 # reads files instead of using Open3, RbConfig or Etc.
 require "cybertrain/version"
+require "cybertrain/shell"
 
 module Cybertrain
   module CLI
@@ -85,7 +86,7 @@ module Cybertrain
 
       # The release the spinel binary at `path` reports; "" when it cannot run.
       def self.release_at(path)
-        release_of(sh_read("#{shell_quote(path)} --version"))
+        release_of(sh_read("#{Shell.quote(path)} --version"))
       end
 
       # dir holds an executable spinel and spin, and that spinel is the pinned
@@ -220,11 +221,11 @@ module Cybertrain
       # when the directory or a link could not be written (the toolchain
       # itself still works: cybertrain puts bin_dir on PATH by itself).
       def self.link_stable_bin
-        return false unless system("mkdir -p #{shell_quote(stable_bin_dir)} 2>/dev/null")
+        return false unless system("mkdir -p #{Shell.quote(stable_bin_dir)} 2>/dev/null")
 
         ok = true
         ["spinel", "spin"].each do |name|
-          ok = false unless system("ln -sfn #{shell_quote(File.join(bin_dir, name))} #{shell_quote(File.join(stable_bin_dir, name))} 2>/dev/null")
+          ok = false unless system("ln -sfn #{Shell.quote(File.join(bin_dir, name))} #{Shell.quote(File.join(stable_bin_dir, name))} 2>/dev/null")
         end
         ok
       end
@@ -284,30 +285,30 @@ module Cybertrain
 
           puts "Installing Spinel #{tag} into #{prefix} (one-time; a few minutes)"
           puts "  log: #{log_path}"
-          system("mkdir -p #{shell_quote(File.dirname(log_path))} #{shell_quote(File.dirname(src_dir))} 2>/dev/null")
-          system("rm -rf #{shell_quote(src_dir)}")
+          system("mkdir -p #{Shell.quote(File.dirname(log_path))} #{Shell.quote(File.dirname(src_dir))} 2>/dev/null")
+          system("rm -rf #{Shell.quote(src_dir)}")
           unless prepare_files
             puts "error: cannot write under #{home} (#{log_path}); set CYBERTRAIN_HOME to a writable directory"
             return false
           end
           steps = [
-            ["clone", "git clone -q --depth 1 --branch #{tag} #{SPINEL_GIT} #{shell_quote(src_dir)}"],
-            ["deps", "cd #{shell_quote(src_dir)} && make deps"],
-            ["build", "cd #{shell_quote(src_dir)} && make -j#{jobs}"],
-            ["install", "cd #{shell_quote(src_dir)} && make install PREFIX=#{shell_quote(prefix)}"]
+            ["clone", "git clone -q --depth 1 --branch #{tag} #{SPINEL_GIT} #{Shell.quote(src_dir)}"],
+            ["deps", "cd #{Shell.quote(src_dir)} && make deps"],
+            ["build", "cd #{Shell.quote(src_dir)} && make -j#{jobs}"],
+            ["install", "cd #{Shell.quote(src_dir)} && make install PREFIX=#{Shell.quote(prefix)}"]
           ]
           steps.each do |step|
             return false unless still_holding_lock
             puts "  #{step[0]}: #{step[1]}"
-            next if system("(#{step[1]}) >> #{shell_quote(log_path)} 2>&1")
+            next if system("(#{step[1]}) >> #{Shell.quote(log_path)} 2>&1")
 
             puts "error: Spinel #{step[0]} failed; the last lines of #{log_path}:"
             tail(log_path, 25).each { |line| puts "  | #{line}" }
             return false
           end
           unless ENV["CYBERTRAIN_KEEP_SRC"].to_s == "1"
-            system("rm -rf #{shell_quote(src_dir)}")
-            system("rmdir #{shell_quote(File.dirname(src_dir))} 2>/dev/null")
+            system("rm -rf #{Shell.quote(src_dir)}")
+            system("rmdir #{Shell.quote(File.dirname(src_dir))} 2>/dev/null")
           end
           unless usable?(bin_dir)
             puts "error: the install finished but #{bin_dir} does not hold spinel #{tag} and spin (see #{log_path})"
@@ -389,12 +390,12 @@ module Cybertrain
       # until someone removes the lock by hand, as the waiting message says.
       def self.take_lock
         parent = File.dirname(lock_dir)
-        unless system("mkdir -p #{shell_quote(parent)} 2>/dev/null") && File.directory?(parent)
+        unless system("mkdir -p #{Shell.quote(parent)} 2>/dev/null") && File.directory?(parent)
           puts "error: cannot create #{parent}; set CYBERTRAIN_HOME to a writable directory"
           return false
         end
         staging = "#{lock_dir}.#{Process.pid}"
-        system("rm -rf #{shell_quote(staging)}")
+        system("rm -rf #{Shell.quote(staging)}")
         begin
           Dir.mkdir(staging)
           File.write(File.join(staging, "pid"), Process.pid.to_s)
@@ -418,7 +419,7 @@ module Cybertrain
           puts waiting_message if waited == 0
           if waited >= LOCK_WAIT_SECONDS
             puts "error: gave up waiting; remove #{lock_dir} if no cybertrain is building Spinel"
-            system("rm -rf #{shell_quote(staging)}")
+            system("rm -rf #{Shell.quote(staging)}")
             return false
           end
           sleep 5
@@ -472,13 +473,13 @@ module Cybertrain
       # Moves the (marked) lock aside and deletes it; true when it was there.
       def self.remove_lock
         aside = "#{lock_dir}.old.#{Process.pid}"
-        system("rm -rf #{shell_quote(aside)}")
+        system("rm -rf #{Shell.quote(aside)}")
         begin
           File.rename(lock_dir, aside)
         rescue StandardError
           return false
         end
-        system("rm -rf #{shell_quote(aside)}")
+        system("rm -rf #{Shell.quote(aside)}")
         true
       end
 
@@ -578,7 +579,7 @@ module Cybertrain
       end
 
       def self.have_command?(name)
-        sh_read("command -v #{shell_quote(name)}") != ""
+        sh_read("command -v #{Shell.quote(name)}") != ""
       end
 
       # A C program using `include` and `link` compiles and links: the
@@ -589,8 +590,8 @@ module Cybertrain
 
         source = File.join(dir, "probe.c")
         File.write(source, "#include <#{include}>\nint main(void) { return #{body}; }\n")
-        ok = system("#{cc} #{shell_quote(source)} -o #{shell_quote(File.join(dir, "probe"))} #{link} > /dev/null 2>&1") ? true : false
-        system("rm -rf #{shell_quote(dir)}")
+        ok = system("#{cc} #{Shell.quote(source)} -o #{Shell.quote(File.join(dir, "probe"))} #{link} > /dev/null 2>&1") ? true : false
+        system("rm -rf #{Shell.quote(dir)}")
         ok
       end
 
@@ -614,7 +615,7 @@ module Cybertrain
         return false if brew == ""
 
         compiles?("openssl/ssl.h", "TLS_client_method() != 0 ? 0 : 1",
-                  "-I#{shell_quote(File.join(brew, "include"))} -L#{shell_quote(File.join(brew, "lib"))} -lssl -lcrypto")
+                  "-I#{Shell.quote(File.join(brew, "include"))} -L#{Shell.quote(File.join(brew, "lib"))} -lssl -lcrypto")
       end
 
       # What a Spinel build cannot do without, by name. OpenSSL is not in
@@ -786,10 +787,6 @@ module Cybertrain
         lines = File.read(path).split("\n")
         from = lines.size > count ? lines.size - count : 0
         lines[from, lines.size - from]
-      end
-
-      def self.shell_quote(text)
-        "'#{text.gsub("'", "'\\\\''")}'"
       end
     end
   end

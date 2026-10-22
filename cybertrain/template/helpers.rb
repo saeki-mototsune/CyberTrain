@@ -175,10 +175,10 @@ module Cybertrain
         end
 
         # One interpolation (see button_to); the optional attributes are ""
-        # when absent.
-        css = kwargs["class"].nil? ? "" : " class=\"#{Html.escape(FormBuilder.value_text(kwargs["class"]))}\""
-        id = kwargs["id"].nil? ? "" : " id=\"#{Html.escape(FormBuilder.value_text(kwargs["id"]))}\""
-        confirm = kwargs["data_confirm"].nil? ? "" : " data-confirm=\"#{Html.escape(FormBuilder.value_text(kwargs["data_confirm"]))}\""
+        # when absent (see kwarg_attr).
+        css = kwarg_attr(kwargs, "class", "class")
+        id = kwarg_attr(kwargs, "id", "id")
+        confirm = kwarg_attr(kwargs, "data_confirm", "data-confirm")
         data = kwargs["data"].nil? ? "" : data_attrs(kwargs["data"])
         SafeString.of("<a href=\"#{Html.escape(href)}\"#{css}#{id}#{confirm}#{data}>#{text}</a>")
       end
@@ -192,8 +192,8 @@ module Cybertrain
         # One interpolation, allocated once at its final size: a `+""`
         # buffer costs a copy of the literal, a String object, and a copy
         # of the result when it is returned. The optional parts are "" (a
-        # static literal) when absent.
-        css = kwargs["class"].nil? ? "" : " class=\"#{Html.escape(FormBuilder.value_text(kwargs["class"]))}\""
+        # static literal) when absent (see kwarg_attr).
+        css = kwarg_attr(kwargs, "class", "class")
         data = kwargs["data"].nil? ? "" : data_attrs(kwargs["data"])
         SafeString.of("<form class=\"button_to\" method=\"#{verb == "get" ? "get" : "post"}\" action=\"#{Html.escape(action)}\">#{hidden_fields(verb)}<button#{css}#{data} type=\"submit\">#{text}</button></form>")
       end
@@ -276,6 +276,16 @@ module Cybertrain
         return method_field if token.empty?
 
         "#{method_field}<input type=\"hidden\" name=\"authenticity_token\" value=\"#{Html.escape(token)}\">"
+      end
+
+      # class: "btn" -> ` class="btn"` (attr_name: the HTML spelling, as
+      # data-confirm for data_confirm:), or "" (a static literal, nothing
+      # allocated) when the keyword is absent, so that link_to and button_to
+      # still build their tag in one interpolation.
+      def kwarg_attr(kwargs, key, attr_name)
+        return "" if kwargs[key].nil?
+
+        FormBuilder.html_attr(attr_name, FormBuilder.value_text(kwargs[key]))
       end
 
       # data: { turbo_confirm: "Sure?" } -> data-turbo-confirm="Sure?".

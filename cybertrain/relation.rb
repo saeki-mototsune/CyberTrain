@@ -213,8 +213,7 @@ module Cybertrain
         # Post.limit(1).delete_all removes the row Post.limit(1).first returns
         # rather than whichever row SQLite scans first.
         id = Relation.quote_ident("id")
-        order = @order == "" ? id : @order
-        sql << " WHERE #{id} IN (" << select_sql(id, order, @limit, @offset) << ")"
+        sql << " WHERE #{id} IN (" << select_sql(id, order_or_id, @limit, @offset) << ")"
       else
         sql << " WHERE " << @wheres.join(" AND ") unless @wheres.empty?
       end
@@ -230,8 +229,7 @@ module Cybertrain
     def first_row
       return nil if @limit == 0
 
-      order = @order == "" ? Relation.quote_ident("id") : @order
-      pick_row(order, @offset)
+      pick_row(order_or_id, @offset)
     end
 
     # The last row of the relation's window. Without limit/offset that is the
@@ -240,7 +238,7 @@ module Cybertrain
     # (Post.offset(1).last is the table's last row, Post.limit(3).last the
     # third), which means loading that window.
     def last_row
-      order = @order == "" ? Relation.quote_ident("id") : @order
+      order = order_or_id
       if @limit >= 0 || @offset > 0
         sql = select_sql("*", order, @limit, @offset)
         binds = @binds
@@ -274,6 +272,13 @@ module Cybertrain
     end
 
     private
+
+    # The relation's ORDER BY text, or the quoted primary key when it has
+    # none: first_row, last_row and a windowed delete_all all pick rows by
+    # id then, so they agree on which row is "first".
+    def order_or_id
+      @order == "" ? Relation.quote_ident("id") : @order
+    end
 
     def pick_row(order, offset)
       sql = select_sql("*", order, 1, offset)

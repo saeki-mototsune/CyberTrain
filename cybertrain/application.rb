@@ -1,5 +1,6 @@
 require "cybertrain/app_name"
 require "cybertrain/config"
+require "cybertrain/cast"
 require "cybertrain/version"
 require "cybertrain/logger"
 require "cybertrain/middleware"
@@ -94,30 +95,16 @@ module Cybertrain
     def boot
       c = @config
       if Application.embedded_views_missing?(c, @views)
-        puts "error: views are not embedded in this binary; build with `cybertrain build` (or run with CYBERTRAIN_ENV=development)"
-        STDOUT.flush
-        exit(1)
+        fail_boot("views are not embedded in this binary; build with `cybertrain build` (or run with CYBERTRAIN_ENV=development)")
       end
       # config/app.rb has run by now, so the environment variable and
       # `c.session_same_site = ...` are checked together.
       same_site_error = c.session_same_site_error
-      unless same_site_error.empty?
-        puts "error: #{same_site_error}"
-        STDOUT.flush
-        exit(1)
-      end
+      fail_boot(same_site_error) unless same_site_error.empty?
       prefixes_error = c.csrf_exempt_prefixes_error
-      unless prefixes_error.empty?
-        puts "error: #{prefixes_error}"
-        STDOUT.flush
-        exit(1)
-      end
+      fail_boot(prefixes_error) unless prefixes_error.empty?
       body_bytes_error = c.max_body_bytes_error
-      unless body_bytes_error.empty?
-        puts "error: #{body_bytes_error}"
-        STDOUT.flush
-        exit(1)
-      end
+      fail_boot(body_bytes_error) unless body_bytes_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
@@ -246,7 +233,8 @@ module Cybertrain
       return 0 if argv.empty?
 
       arg = argv[0]
-      return 0 if arg.empty? || arg.size > 5 || !arg.bytes.all? { |b| b >= 48 && b <= 57 }
+      # Cast.digits? is true for "", hence the empty check before it.
+      return 0 if arg.empty? || arg.size > 5 || !Cast.digits?(arg)
 
       port = arg.to_i
       port <= 65535 ? port : 0

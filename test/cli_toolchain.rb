@@ -346,8 +346,8 @@ test "tail, jobs, quoting and hints" do
   assert_equal ["one", "two", "three", "four"], Toolchain.tail("log.txt", 10)
   assert_equal [], Toolchain.tail("nope.txt", 3)
   assert Toolchain.jobs >= 1
-  assert_equal "'a b'", Toolchain.shell_quote("a b")
-  assert_equal "'it'\\''s'", Toolchain.shell_quote("it's")
+  assert_equal "'a b'", Cybertrain::Shell.quote("a b")
+  assert_equal "'it'\\''s'", Cybertrain::Shell.quote("it's")
   assert_equal "a b|c", Toolchain.sh_read("echo 'a b|c'")
   assert_equal "second", Toolchain.sh_read("false || echo second")
   assert_equal "", Toolchain.sh_read("no-such-command-cybertrain 2>/dev/null")

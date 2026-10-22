@@ -18,6 +18,7 @@ ok   path_segments decodes once and returns the same Array every time
 ok   path_segments: an invalid decoded byte sequence is QueryMalformed and is not cached
 ok   path_segments: a raw invalid byte anywhere in the path is QueryMalformed, as is half a character raw
 ok   form_value and query_value: the last pair wins, absent is empty
+ok   form_or_query_value: the form body wins, the query string is the fallback, absent is empty
 ok   form_value and query_value decode keys and values like a parse
 ok   form_value and query_value: name[]= and name[x]= evict an earlier scalar, a later name= writes it again
 ok   form_value and query_value: MAX_PAIRS segments are counted, one more is QueryTooMany; invalid bytes are QueryMalformed
@@ -30,4 +31,4 @@ ok   decoded_body refuses an encoding it does not decode
 ok   a gzip body that is not gzip, or too short to be, is undecodable before the inflater is asked
 ok   a well-formed gzip body is undecodable while no inflater is installed, and the error is not cached
 ok   an installed inflater is what decodes gzip, and it is given the body and the limit
-32 tests, 151 assertions, 0 failures
+33 tests, 157 assertions, 0 failures

@@ -305,7 +305,7 @@ module Cybertrain
 
       def add_foreign_key(from_table, to_table, column: "")
         col = column
-        col = "#{Cybertrain::Inflector.singularize(to_table.to_s)}_id" if col == ""
+        col = Cybertrain::Schema::ForeignKey.default_column(to_table) if col == ""
         @operations << Operation.for_add_foreign_key(from_table.to_s, to_table.to_s, col.to_s)
         nil
       end

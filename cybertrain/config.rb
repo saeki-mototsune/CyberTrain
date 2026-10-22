@@ -177,8 +177,7 @@ module Cybertrain
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
     # empty one counts as unset). Shared with DB::CLI.
     def self.default_database_path(env)
-      configured = ENV["CYBERTRAIN_DATABASE"] || ""
-      configured.empty? ? "storage/#{env}.sqlite3" : configured
+      env_or("CYBERTRAIN_DATABASE", "storage/#{env}.sqlite3")
     end
 
     def self.default_env
@@ -189,14 +188,19 @@ module Cybertrain
     # validated: TCPServer.new gets it as it is ("0.0.0.0" listens on every
     # interface, which a container needs).
     def self.default_host
-      configured = ENV["CYBERTRAIN_HOST"] || ""
-      configured.empty? ? "127.0.0.1" : configured
+      env_or("CYBERTRAIN_HOST", "127.0.0.1")
     end
 
     # CYBERTRAIN_SESSION_SAME_SITE, or "Lax" when it is unset or empty.
     def self.default_session_same_site
-      configured = ENV["CYBERTRAIN_SESSION_SAME_SITE"] || ""
-      configured.empty? ? "Lax" : configured
+      env_or("CYBERTRAIN_SESSION_SAME_SITE", "Lax")
+    end
+
+    # ENV[name], or default when it is unset or empty (an empty variable
+    # counts as unset). A String either way (NOTES rules 10/34).
+    def self.env_or(name, default)
+      configured = ENV[name] || ""
+      configured.empty? ? default : configured
     end
 
     # True only for CYBERTRAIN_SESSION_PARTITIONED=1 or =true; any other

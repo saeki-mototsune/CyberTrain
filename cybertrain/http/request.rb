@@ -1,5 +1,6 @@
 require "cybertrain/http/query"
 require "cybertrain/http/header_name"
+require "cybertrain/http/parser"
 
 module Cybertrain
   # The request body cannot be decoded as its Content-Encoding says
@@ -133,7 +134,7 @@ module Cybertrain
     def content_length
       value = header("content-length")
       return 0 if value.nil? || value.empty?
-      return 0 unless value.bytes.all? { |b| b >= 48 && b <= 57 }
+      return 0 unless HttpParser.digits?(value)
       return INT64_MAX if value.bytesize > 18
 
       value.to_i
@@ -320,7 +321,8 @@ module Cybertrain
 
     # What the request exposes of its parameters, each validated once:
     # utf8_query_string and utf8_body (the validated UTF-8 text of the
-    # fields, see below), form_value / query_value (one key), and
+    # fields, see below), form_value / query_value / form_or_query_value
+    # (one key), and
     # path_segments. There is no cached parameter tree: nobody in the
     # framework asks for one (the Router builds the controller's own with
     # Query.parse_valid, MethodOverride and CsrfProtection read one key). An
@@ -373,6 +375,17 @@ module Cybertrain
     # form body (#form?): callers check that first.
     def form_value(name)
       Query.value_of_valid(utf8_body, name)
+    end
+
+    # One field from the form body or, failing that, the query string: the
+    # form body wins (read only when #form?), one Query.value_of_valid scan
+    # each, "" when neither has it. For the middleware that read one field
+    # before routing (MethodOverride's `_method`, CsrfProtection's token).
+    def form_or_query_value(name)
+      value = ""
+      value = form_value(name) if form?
+      value = query_value(name) if value.empty?
+      value
     end
 
     # The path split into percent-decoded segments, once per request:
