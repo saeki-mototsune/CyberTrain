@@ -633,9 +633,13 @@ module Cybertrain
             Cybertrain::Test::Client.new(APP)
           end
 
+          # Every action but sign-in and sign-up needs a user: DELETE /session is
+          # the one such action this test can rely on before the app has pages
+          # of its own (a `root` route, a scaffold).
           test "a visitor is sent to the sign-in page" do
             client = new_client
-            res = client.get("/")
+            client.get("/session/new")
+            res = client.post("/session", { "_method" => "delete", "authenticity_token" => AppTest.form_token(client) })
             assert_redirected_to res, "/session/new"
             assert_response res, :see_other
           end
@@ -699,10 +703,9 @@ module Cybertrain
             assert_equal 1, User.count
           end
 
-          test "POST /session signs in with the right password and returns to the page asked for" do
+          test "POST /session signs in with the right password" do
             client = new_client
             AppTest.user
-            client.get("/")
             res = AppTest.sign_in(client)
             assert_redirected_to res, "/"
             assert_response res, :see_other
@@ -740,7 +743,8 @@ module Cybertrain
             AppTest.user
             AppTest.sign_in(client)
             Session.all.delete_all
-            res = client.get("/")
+            client.get("/session/new")
+            res = client.post("/session", { "_method" => "delete", "authenticity_token" => AppTest.form_token(client) })
             assert_redirected_to res, "/session/new"
           end
 
