@@ -75,7 +75,7 @@
   <header class="doc-hero">
     <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Tutorial</span></p>
     <h1>Getting started: the&nbsp;blog</h1>
-    <p class="doc-intro">Mirrors Rails' own <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a>: a blog with articles and comments. You will scaffold articles, add validations, nest comments under them, write a test that drives the app in-process, and build the app into a deployable <code>dist/</code> folder. The finished app is <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>, exercised by CI on Linux and macOS.</p>
+    <p class="doc-intro">Mirrors Rails' own <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a>: a blog with articles and comments. You will scaffold articles, add validations, nest comments under them, write a test that drives the app in-process, add sign-in, and build the app into a deployable <code>dist/</code> folder. The finished app is <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>, exercised by CI on Linux and macOS.</p>
     <dl class="doc-meta">
       <div><dt>You need</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, SQLite 3 headers (Spinel <code>2026.09.12</code> is installed for you) <a class="meta-link" href="#requirements">Step 00</a></dd></div>
       <div><dt>You start from</dt><dd><code>gem install cybertrain</code></dd></div>
@@ -87,7 +87,7 @@
 <div class="wrap doc">
   <nav class="toc" aria-label="Tutorial steps">
     <details class="toc-d" open>
-      <summary class="toc-sum"><span class="toc-title">Steps 00&ndash;13</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <summary class="toc-sum"><span class="toc-title">Steps 00&ndash;14</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
       <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
     <ol>
       <li><a href="#requirements"><span class="toc-n">00</span>Requirements</a></li>
@@ -103,7 +103,8 @@
       <li><a href="#comments-controller"><span class="toc-n">10</span>The CommentsController</a></li>
       <li><a href="#views"><span class="toc-n">11</span>Views and partials</a></li>
       <li><a href="#test"><span class="toc-n">12</span>Test it</a></li>
-      <li><a href="#ship"><span class="toc-n">13</span>Build for deployment</a></li>
+      <li><a href="#authentication"><span class="toc-n">13</span>Add sign-in</a></li>
+      <li><a href="#ship"><span class="toc-n">14</span>Build for deployment</a></li>
       <li class="toc-x"><a href="#things-to-know"><span class="toc-n">+</span>Things to know</a></li>
       <li class="toc-x"><a href="#differences"><span class="toc-n">+</span>Differences from Rails</a></li>
       <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>Where next</a></li>
@@ -159,6 +160,7 @@
     <ul class="points">
       <li><code>cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]</code> creates an application in NAME, then runs <code>spin lock</code> and <code>spin run gen</code> in it, installing Spinel first when it is needed.</li>
       <li><code>cybertrain generate scaffold NAME field:type ...</code> (alias <code>g scaffold</code>) adds a resource to the application in the current directory.</li>
+      <li><code>cybertrain generate authentication</code> adds email-and-password sign-in to the application in the current directory (<a href="#authentication">step 13</a>).</li>
       <li><code>cybertrain db migrate</code> generates, applies pending migrations, and generates again (<code>spin run gen; spin run db -- migrate; spin run gen</code>); <code>cybertrain migration</code> is kept as an alias.</li>
       <li><code>cybertrain db COMMAND...</code> runs any other database command after <code>spin run gen</code>: <code>status</code>, <code>rollback [N]</code> (which generates again afterwards), <code>schema:dump</code>, <code>create</code>.</li>
       <li><code>cybertrain server [PORT]</code> generates, then starts the development server (<code>spin run gen; spin run NAME</code>, or <code>spin run NAME -- PORT</code>; default port 3000).</li>
@@ -560,9 +562,76 @@
     <p class="note"><code>--regen</code> writes the snapshot from CRuby's output. Tests that touch SQLite through FFI can't run under CRuby, so their snapshot comes from the compiled binary (the second line above). <code>cybertrain spin test</code> exits non-zero while a snapshot is stale, so it is followed by <code>;</code>, not <code>&amp;&amp;</code>; the <code>[ -x ]</code> check skips the capture when the compile failed, so the old snapshot is kept. Tests that cannot run under CRuby need this snapshot before <code>cybertrain spin test</code> can pass; other tests without a snapshot are compared with CRuby's output.</p>
   </section>
 
+  <section class="step" id="authentication" aria-labelledby="h-authentication">
+    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>You write <span aria-hidden="true">&middot;</span> <code>app/</code>, <code>db/migrate/</code>, <code>config/routes.rb</code>, <code>test/</code></p>
+    <h2 id="h-authentication"><span class="step-num" aria-hidden="true">13</span>Add sign-in</h2>
+    <p class="why"><span class="why-k">Why</span><span class="why-t">So far anyone can edit or delete an article. Like Rails 8&rsquo;s <code>bin/rails generate authentication</code>, one command adds email-and-password sign-in, written as code the app owns rather than installed as an engine.</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain generate authentication</span>
+<span class="ln cmd">cybertrain db migrate    <span class="c"># creates the users and sessions tables</span></span></code></pre>
+</figure>
+    <p>It writes migrations for <code>users</code> (<code>email_address</code>, <code>password_digest</code>, a unique index) and <code>sessions</code> (one row per signed-in browser), the <code>User</code> and <code>Session</code> models, <code>SessionsController</code> (<code>/session/new</code>, <code>POST /session</code>, <code>DELETE /session</code>), <code>RegistrationsController</code> (<code>/sign_up</code>) and their views, a <code>sessions/_nav</code> partial at the top of the layout, and <code>test/authentication.rb</code> with <code>test/support/app_test.rb</code>. It also inserts the routes, and a block right after the class line of <code>ApplicationController</code>:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>application_controller.rb (excerpt)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: app/controllers/application_controller.rb (excerpt)"><code><span class="ln"><span class="k">class</span> <span class="t">ApplicationController</span> &lt; <span class="t">Cybertrain</span>::<span class="t">Controller</span></span>
+<span class="ln">  before_action <span class="y">:resume_session</span>          <span class="c"># sets @current_user and @current_session</span></span>
+<span class="ln">  before_action <span class="y">:require_authentication</span>  <span class="c"># 303 to /session/new unless signed in</span></span>
+<span class="ln"></span>
+<span class="ln">  <span class="k">def</span> <span class="k">self</span>.allow_unauthenticated_access(<span class="y">only:</span> [], <span class="y">except:</span> [])</span>
+<span class="ln">    skip_before_action(<span class="y">:require_authentication</span>, <span class="y">only:</span> only, <span class="y">except:</span> except)</span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln">  <span class="c"># authenticated?, start_new_session_for(user), terminate_session,</span></span>
+<span class="ln">  <span class="c"># after_authentication_url ...</span></span></code></pre>
+</figure>
+    <p>From now on every action needs a signed-in user, and a visitor is redirected to <code>/session/new</code>. Open the pages anyone may read again, as Rails&rsquo; guide does:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb (excerpt)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: app/controllers/articles_controller.rb (excerpt)"><code><span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  allow_unauthenticated_access <span class="y">only:</span> [<span class="y">:index</span>, <span class="y">:show</span>]</span>
+<span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span></code></pre>
+</figure>
+    <p><code>resume_session</code> still runs on those pages, so templates can read <code>@current_user</code>. Hide what a visitor cannot use:</p>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>show.html.erb (excerpt)</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: app/views/articles/show.html.erb (excerpt)"><code><span class="ln"><span class="d">&lt;%</span> <span class="k">if</span> <span class="v">@current_user</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> button_to <span class="s">"Destroy this article"</span>, article_path(<span class="v">@article</span>), <span class="y">method:</span> <span class="y">:delete</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span>
+<span class="ln"></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">if</span> <span class="v">@current_user</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;h2&gt;</span>Add a comment:<span class="h">&lt;/h2&gt;</span></span>
+<span class="ln">  <span class="d">&lt;%=</span> render <span class="s">"comments/form"</span> <span class="d">%&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span></code></pre>
+</figure>
+    <p>Start the server and open <code>http://127.0.0.1:3000/sign_up</code> to create the first user. Rails&rsquo; generator has no sign-up page and leaves that to the console; CyberTrain has no console, so it writes <code>RegistrationsController</code>. Delete it and its routes for an invitation-only app.</p>
+    <aside class="callout" aria-label="Spinel rule: has_secure_password">
+      <p class="callout-k">Spinel rule</p>
+      <h3><code>has_secure_password</code> is written out</h3>
+      <p>Spinel cannot define methods at run time, so the <code>User</code> model spells out what <code>has_secure_password</code> would define: <code>password=</code>, <code>authenticate</code> and <code>User.authenticate_by(email_address:, password:)</code>. Passwords are hashed by <code>Cybertrain::Password</code>, PBKDF2-HMAC-SHA256 in Ruby, 100,000 iterations by default (about 0.2 s compiled): bcrypt would need a C library the binary links. Raise the cost with <code>Cybertrain::Password.iterations = 600_000</code> in <code>config/app.rb</code>; <code>User#authenticate</code> rehashes each user as they sign in.</p>
+    </aside>
+    <h3 class="sub">Update the tests</h3>
+    <p>Any <a href="#test">step 12</a> test that expects a form, submits one, or reaches an action other than <code>index</code> and <code>show</code> now meets the sign-in page instead. Sign the client in first, with the helpers the generator wrote into <code>test/support/app_test.rb</code>:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">test/<wbr>signed_in.rb</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: test/signed_in.rb"><code><span class="ln"><span class="k">require_relative</span> <span class="s">"support/app_test"</span>   <span class="c"># written by generate authentication: APP, AppTest</span></span>
+<span class="ln"></span>
+<span class="ln">test <span class="s">"a signed-in user creates an article"</span> <span class="k">do</span></span>
+<span class="ln">  client = <span class="t">Cybertrain</span>::<span class="t">Test</span>::<span class="t">Client</span>.new(<span class="t">APP</span>)</span>
+<span class="ln">  <span class="t">AppTest</span>.user(<span class="s">"ann@example.com"</span>, <span class="s">"s3cr3t-s3cr3t"</span>)</span>
+<span class="ln">  <span class="t">AppTest</span>.sign_in(client, <span class="s">"ann@example.com"</span>, <span class="s">"s3cr3t-s3cr3t"</span>)</span>
+<span class="ln">  client.get(<span class="s">"/articles/new"</span>)</span>
+<span class="ln">  res = client.post(<span class="s">"/articles"</span>, { <span class="s">"authenticity_token"</span> =&gt; <span class="t">AppTest</span>.form_token(client),</span>
+<span class="ln">                                   <span class="s">"article[title]"</span> =&gt; <span class="s">"Hello Rails"</span>,</span>
+<span class="ln">                                   <span class="s">"article[body]"</span> =&gt; <span class="s">"I am on Rails! This is my first article."</span> })</span>
+<span class="ln">  assert_redirected_to res, <span class="s">"/articles/#{Article.last.id}"</span></span>
+<span class="ln"><span class="k">end</span></span></code></pre>
+</figure>
+    <p class="note">Run <code>cybertrain spin test</code> as in <a href="#test">step 12</a>; <code>test/authentication.rb</code> and this test use SQLite, so their snapshots come from the compiled binary. <code>examples/blog</code> stops before this step. Not generated: password reset (CyberTrain has no mailers) and rate limiting.</p>
+  </section>
+
   <section class="step" id="ship" aria-labelledby="h-ship">
     <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Run time <span aria-hidden="true">&middot;</span> <code>dist/blog</code></p>
-    <h2 id="h-ship"><span class="step-num" aria-hidden="true">13</span>Build for deployment</h2>
+    <h2 id="h-ship"><span class="step-num" aria-hidden="true">14</span>Build for deployment</h2>
     <p class="why"><span class="why-k">Why</span><span class="why-t">One command builds the app into a deployable <code>dist/</code> folder, with every view embedded.</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
@@ -664,7 +733,8 @@
           <tr><td data-label="Rails">Full backtrace on an exception</td><td data-label="CyberTrain">Class, message, request line, template name/line — Spinel exposes no backtraces</td></tr>
           <tr><td data-label="Rails">Rack, its middleware, and any gem in a <code>Gemfile</code></td><td data-label="CyberTrain">No Rack compatibility; a small fixed middleware set; Spinel's own <code>spin-index</code>, limited to what compiles under its Ruby subset</td></tr>
           <tr><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code> — reflection-based runners can't work ahead-of-time</td></tr>
-          <tr><td data-label="Rails">Auth, mailers, jobs, ActionCable, asset pipeline, i18n</td><td data-label="CyberTrain">Not built (outside the MVP)</td></tr>
+          <tr><td data-label="Rails"><code>bin/rails generate authentication</code>, <code>has_secure_password</code></td><td data-label="CyberTrain"><code>cybertrain generate authentication</code> writes the same shape, plus a sign-up page since there is no console; <code>has_secure_password</code> is written out on the User model over <code>Cybertrain::Password</code> (PBKDF2); no password reset (no mailers)</td></tr>
+          <tr><td data-label="Rails">Mailers, jobs, ActionCable, asset pipeline, i18n</td><td data-label="CyberTrain">Not built (outside the MVP)</td></tr>
         </tbody>
       </table>
       <p class="cmp-foot">Not exhaustive.</p>
