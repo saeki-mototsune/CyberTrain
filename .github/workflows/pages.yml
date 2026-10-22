@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      # Notes for contributors (site/README.md, assets/brand/BRAND.md): no
+      # page links them, so a change to them alone deploys nothing.
+      - "!site/**.md"
       - ".github/workflows/pages.yml"
       # The API reference's sources (see script/api-docs).
       - "cybertrain/**"
