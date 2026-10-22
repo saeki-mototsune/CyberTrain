@@ -320,7 +320,7 @@ test "the Rebuilder refuses a build target that is not usable for spin build" do
 end
 
 test "shell_quote escapes single quotes" do
-  assert_equal "'it'\\''s'", Cybertrain::Dev::Rebuilder.shell_quote("it's")
+  assert_equal "'it'\\''s'", Cybertrain::Shell.quote("it's")
 end
 
 Cybertrain::Test.run!
