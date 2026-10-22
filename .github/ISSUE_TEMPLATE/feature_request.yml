@@ -1,0 +1,21 @@
+name: Feature request
+description: Something the framework or the CLI should do, or do differently.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do and what gets in the way today. A problem is more useful than a solution; the solution can change.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How you imagine it working, with the code or command you would write. If Rails has it, say how Rails spells it.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you have tried or considered
+      description: Workarounds, and other designs you thought about. docs/design.md records why things are the way they are; if it already covers this, say what has changed.

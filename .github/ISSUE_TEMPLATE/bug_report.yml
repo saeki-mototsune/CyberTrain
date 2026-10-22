@@ -1,0 +1,36 @@
+name: Bug report
+description: Something does not work as the documentation says it should.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Paste the error as text, not a screenshot.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce it
+      description: The shortest sequence of commands, or the smallest app, that shows it. `cybertrain new` plus a scaffold is a fine starting point.
+      placeholder: |
+        cybertrain new shop
+        cd shop
+        cybertrain generate scaffold product name:string
+        ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: The output of `cybertrain doctor` and `cybertrain version`, or `spinel --version` if you run the framework without the CLI, and your OS.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: A workaround you found, a related issue, or where in the code you think it is.

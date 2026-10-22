@@ -1,0 +1,35 @@
+#!/bin/sh
+# Checks the shape of the commit message (see CONTRIBUTING.md, "Commits"):
+#   * a subject line that is not empty and does not end with a period;
+#   * a blank line between the subject and the body.
+# The subject's length is advice only (72 characters is where git log and
+# GitHub start to cut it off): longer prints a warning and goes through.
+# Merge, revert, fixup! and squash! commits are left alone. Installed by
+# script/install-hooks; skip once with `git commit --no-verify`.
+msg="$1"
+# Drop git's comment lines (those starting with the comment character) and
+# everything from the scissors line on (`git commit -v`).
+commentchar=$(git config --get core.commentChar 2>/dev/null || true)
+[ -n "$commentchar" ] || commentchar='#'
+body=$(sed -e "/^$commentchar ------------------------ >8 ------------------------$/,\$d" -e "/^$commentchar/d" "$msg")
+subject=$(printf '%s\n' "$body" | sed -n '1p')
+second=$(printf '%s\n' "$body" | sed -n '2p')
+
+case "$subject" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
+esac
+
+fail() { printf 'commit-msg: %s\n' "$1" >&2; failed=1; }
+failed=0
+[ -n "$(printf '%s' "$subject" | tr -d '[:space:]')" ] || fail "the subject line is empty"
+case "$subject" in *.) fail "the subject line ends with a period: \"$subject\"" ;; esac
+[ -z "$second" ] || fail "the second line must be blank (subject, blank line, then the body)"
+if [ ${#subject} -gt 72 ]; then
+  printf 'commit-msg: note: the subject is %d characters; git log and GitHub cut it off past 72\n' "${#subject}" >&2
+fi
+
+if [ "$failed" -ne 0 ]; then
+  printf 'commit-msg: the message is kept in %s; edit it with `git commit --edit --file=%s`,\n' "$msg" "$msg" >&2
+  printf 'commit-msg: or `git commit --no-verify` to keep it as it is. See CONTRIBUTING.md.\n' >&2
+  exit 1
+fi

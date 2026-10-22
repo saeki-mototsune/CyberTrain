@@ -1370,7 +1370,7 @@ cybertrain build
 
 - 2-3: replace the three-command block with `cybertrain migration`.
 - 2-4: `cybertrain server`.
-- 2-6: 
+- 2-6:
 
 ```sh
 cybertrain build

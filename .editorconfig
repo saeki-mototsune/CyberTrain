@@ -1,0 +1,27 @@
+# What script/gate checks on every commit, for editors that read this file:
+# UTF-8, LF, a final newline, no trailing whitespace, two-space indentation.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.py]
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+# Test snapshots are program output, compared byte for byte.
+[*.expected]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# Third-party files, kept as published.
+[site/assets/fonts/*]
+insert_final_newline = unset
+trim_trailing_whitespace = unset

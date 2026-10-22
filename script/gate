@@ -1,0 +1,201 @@
+#!/usr/bin/env ruby
+# The commit gate: the checks a change must pass before it is committed, all
+# of them fast (about a second, CRuby only, no Spinel, no gems) so they can
+# run on every commit. The pre-commit hook (.githooks/pre-commit, installed
+# by script/install-hooks) runs `script/gate --staged`; the Gate workflow
+# (.github/workflows/gate.yml) runs `script/gate` on every push and pull
+# request, so the hook and CI agree. The test suite itself (`spin test`,
+# minutes of compiling) is not part of the gate: CI runs it.
+#
+# usage: script/gate              every tracked file, and the repository checks
+#        script/gate --staged     the files staged for commit (what the hook runs)
+#        script/gate FILE...      the given files
+#
+# Per file (text files only; *.expected snapshots and third-party files under
+# site/assets/fonts/ are left alone):
+#   * no trailing whitespace, a final newline, LF line endings;
+#   * no merge-conflict markers;
+#   * Ruby files parse (`ruby -c`); YAML files load.
+# For the repository, when a file the checks read is in the set (every file,
+# without --staged):
+#   * Cybertrain::VERSION equals spin.toml's version, and Cybertrain::SPINEL_TAG
+#     equals SPINEL_TAG in .github/workflows/ci.yml and script/claude-cloud-setup;
+#   * script/check-reserved-names, check-client-faults and check-http-layer pass;
+#   * every file cybertrain.gemspec lists exists, and the CLI loads under CRuby;
+#   * every test/*.rb has its .expected snapshot, and every snapshot its test.
+#
+# Exit status 1 when any check fails; the failing lines are printed. To commit
+# past the hook on purpose, `git commit --no-verify`; CI runs the gate anyway.
+require "date"
+require "open3"
+require "tempfile"
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+Dir.chdir(ROOT)
+
+SKIP_PATH = %r{\A(site/assets/fonts/|site/api/|\.git/)}
+SKIP_EXT = %w[.expected .png .jpg .jpeg .gif .ico .woff .woff2 .ttf .otf .pdf .gz .zip .sqlite3 .gem].freeze
+RUBY_EXT = %w[.rb .gemspec .rake].freeze
+YAML_EXT = %w[.yml .yaml].freeze
+# Files the repository checks read; when none of them is in the set under
+# --staged (a docs-only commit, say), those checks are skipped.
+REPO_INPUTS = %r{\A(cybertrain/|cybertrain\.rb\z|cybertrain\.gemspec\z|spin\.toml\z|exe/|test/|script/|\.github/workflows/ci\.yml\z)}
+
+$failures = 0
+$started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+def ok(name, note = nil)
+  puts "ok    #{name}#{note ? " (#{note})" : ""}"
+end
+
+def fail!(name, details = [])
+  $failures += 1
+  puts "FAIL  #{name}"
+  Array(details).each { |line| puts "      #{line}" }
+end
+
+def skip(name, why)
+  puts "skip  #{name} (#{why})"
+end
+
+def git(*args)
+  out, status = Open3.capture2("git", *args)
+  abort "git #{args.join(" ")} failed" unless status.success?
+  out
+end
+
+# --- which files, and how to read them ---------------------------------------
+
+mode = ARGV.first == "--staged" ? :staged : (ARGV.empty? ? :all : :given)
+files =
+  case mode
+  when :staged then git("diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z").split("\0")
+  when :all    then git("ls-files", "-z").split("\0")
+  else              ARGV.map { |f| f.delete_prefix("./") }
+  end
+files = files.reject { |f| f.match?(SKIP_PATH) || SKIP_EXT.include?(File.extname(f)) }
+             .select { |f| mode == :staged || File.file?(f) }
+
+# Under --staged the committed content is what is in the index, which may
+# differ from the working tree (`git add -p`), so read blobs from the index.
+# Bytes, whatever the locale: a UTF-8 literal must not trip a regexp under a
+# runner whose locale is US-ASCII.
+read = lambda do |f|
+  (mode == :staged ? git("show", ":#{f}") : File.binread(f)).b
+end
+
+text_files = {}
+files.each do |f|
+  data = read.call(f)
+  next if data.include?("\0") # binary, not ours to judge
+  text_files[f] = data
+end
+
+# --- per-file checks -----------------------------------------------------------
+
+whitespace = []
+newline = []
+crlf = []
+conflicts = []
+text_files.each do |f, data|
+  data.each_line.with_index(1) do |line, n|
+    body = line.chomp
+    whitespace << "#{f}:#{n}" if body.match?(/[ \t]+\z/)
+    crlf << "#{f}:#{n}" if line.end_with?("\r\n")
+    conflicts << "#{f}:#{n}" if body.match?(/\A(<{7} |={7}\z|>{7} )/)
+  end
+  newline << f unless data.empty? || data.end_with?("\n")
+end
+
+whitespace.empty? ? ok("no trailing whitespace", "#{text_files.size} files") : fail!("trailing whitespace", whitespace)
+newline.empty? ? ok("every file ends with a newline") : fail!("missing final newline", newline)
+crlf.empty? ? ok("LF line endings") : fail!("CRLF line endings", crlf)
+conflicts.empty? ? ok("no merge-conflict markers") : fail!("merge-conflict markers", conflicts)
+
+ruby_files = text_files.select do |f, data|
+  RUBY_EXT.include?(File.extname(f)) || (File.extname(f).empty? && data.lines.first.to_s.match?(/\A#!.*\bruby\b/))
+end
+syntax = []
+# Through a file, not stdin: a script read from stdin is parsed in the
+# locale's encoding, which is US-ASCII on a bare runner, and a UTF-8 literal
+# then fails the check.
+ruby_files.each do |f, data|
+  Tempfile.create(["gate-", File.extname(f).empty? ? ".rb" : File.extname(f)]) do |tmp|
+    tmp.binmode
+    tmp.write(data)
+    tmp.flush
+    out, status = Open3.capture2e("ruby", "-c", tmp.path)
+    syntax << "#{f}: #{out.lines.grep(/\S/).first.to_s.strip.sub("#{tmp.path}:", "")}" unless status.success?
+  end
+end
+if ruby_files.empty?
+  skip("ruby syntax", "no Ruby files in the set")
+elsif syntax.empty?
+  ok("ruby syntax", "#{ruby_files.size} files")
+else
+  fail!("ruby syntax", syntax)
+end
+
+yaml_files = text_files.select { |f, _| YAML_EXT.include?(File.extname(f)) }
+bad_yaml = []
+yaml_files.each do |f, data|
+  YAML.safe_load(data, aliases: true, permitted_classes: [Symbol, Date, Time])
+rescue Psych::Exception => e
+  bad_yaml << "#{f}: #{e.message.lines.first.strip}"
+end
+if yaml_files.empty?
+  skip("yaml", "no YAML files in the set")
+elsif bad_yaml.empty?
+  ok("yaml loads", "#{yaml_files.size} files")
+else
+  fail!("yaml", bad_yaml)
+end
+
+# --- repository checks -----------------------------------------------------------
+
+if mode == :staged && files.none? { |f| f.match?(REPO_INPUTS) }
+  skip("repository checks", "nothing staged under cybertrain/, exe/, test/, script/ or the pins")
+else
+  version_rb = "cybertrain/version.rb"
+  version = File.read(version_rb)[/VERSION = "([^"]+)"/, 1]
+  spinel_tag = File.read(version_rb)[/SPINEL_TAG = "([^"]+)"/, 1]
+  pins = []
+  spin_version = File.read("spin.toml")[/^version = "([^"]+)"/, 1]
+  pins << "spin.toml version #{spin_version.inspect} != Cybertrain::VERSION #{version.inspect}" unless spin_version == version
+  ci_tag = File.read(".github/workflows/ci.yml")[/^\s*SPINEL_TAG: "([^"]+)"/, 1]
+  pins << ".github/workflows/ci.yml SPINEL_TAG #{ci_tag.inspect} != Cybertrain::SPINEL_TAG #{spinel_tag.inspect}" unless ci_tag == spinel_tag
+  setup_tag = File.read("script/claude-cloud-setup")[/^SPINEL_TAG="([^"]+)"/, 1]
+  pins << "script/claude-cloud-setup SPINEL_TAG #{setup_tag.inspect} != Cybertrain::SPINEL_TAG #{spinel_tag.inspect}" unless setup_tag == spinel_tag
+  pins.empty? ? ok("version and Spinel tag pinned in one place", "#{version}, spinel #{spinel_tag}") : fail!("version pins", pins)
+
+  %w[check-reserved-names check-client-faults check-http-layer].each do |script|
+    out, status = Open3.capture2e("ruby", "script/#{script}")
+    status.success? ? ok("script/#{script}") : fail!("script/#{script}", out.lines.map(&:chomp))
+  end
+
+  spec_out, spec_status = Open3.capture2e("ruby", "-e", <<~'RB')
+    spec = Gem::Specification.load("cybertrain.gemspec") or abort "cybertrain.gemspec does not load"
+    missing = spec.files.reject { |f| File.file?(f) }
+    abort "cybertrain.gemspec lists files that do not exist: #{missing.join(", ")}" unless missing.empty?
+    $LOAD_PATH.unshift(".")
+    require "cybertrain/cli"
+    print spec.files.size
+  RB
+  spec_status.success? ? ok("gem file list and CLI load under CRuby", "#{spec_out} files") : fail!("gemspec / CLI", spec_out.lines.map(&:chomp))
+
+  tests = Dir["test/*.rb"].map { |f| f.delete_suffix(".rb") }
+  snaps = Dir["test/*.rb.expected"].map { |f| f.delete_suffix(".rb.expected") }
+  orphans = (tests - snaps).map { |t| "#{t}.rb has no #{File.basename(t)}.rb.expected (script/regen-snapshot #{t}.rb)" } +
+            (snaps - tests).map { |s| "#{s}.rb.expected has no #{File.basename(s)}.rb" }
+  orphans.empty? ? ok("every test has its snapshot", "#{tests.size} tests") : fail!("test snapshots", orphans)
+end
+
+elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - $started
+if $failures.zero?
+  puts format("gate: passed in %.1fs", elapsed)
+else
+  puts format("gate: %d check%s failed in %.1fs", $failures, $failures == 1 ? "" : "s", elapsed)
+  puts "      (to commit anyway: git commit --no-verify; CI runs the gate regardless)"
+  exit 1
+end

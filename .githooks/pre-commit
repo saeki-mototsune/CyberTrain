@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs the commit gate on the staged files; see script/gate for what it
+# checks. Installed by script/install-hooks (git config core.hooksPath
+# .githooks). Skip once with `git commit --no-verify`; CI runs the gate anyway.
+exec "$(git rev-parse --show-toplevel)/script/gate" --staged

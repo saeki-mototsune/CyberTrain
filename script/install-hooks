@@ -1,0 +1,13 @@
+#!/bin/sh
+# Points this clone's git hooks at .githooks/, so that every commit runs the
+# gate (script/gate --staged, the same checks CI runs in the Gate workflow)
+# and the commit-msg check. Run once per clone: `script/install-hooks`.
+# Undo with `git config --unset core.hooksPath`.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+chmod +x .githooks/* script/gate
+git config core.hooksPath .githooks
+echo "git hooks installed: core.hooksPath = .githooks"
+echo "  pre-commit  runs script/gate --staged"
+echo "  commit-msg  checks the message's shape"
+echo "Try it now: script/gate"
