@@ -148,7 +148,7 @@ module Cybertrain
       end
 
       def self.derived_index_name(table, columns)
-        "index_#{table}_on_#{columns.join("_and_")}"
+        Cybertrain::Schema::Index.derived_name(table, columns)
       end
     end
   end

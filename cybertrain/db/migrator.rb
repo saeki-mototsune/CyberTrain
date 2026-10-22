@@ -43,11 +43,7 @@ module Cybertrain
           puts "== #{version} #{migration.class.name}: migrating"
           record(migration, true)
           ops = migration.operations
-          @connection.transaction do
-            run_operations(ops, empty_operations)
-            @connection.execute("INSERT INTO schema_migrations (version) VALUES (?)", [version])
-          end
-          puts "done"
+          apply_version(version, ops, empty_operations, "INSERT INTO schema_migrations (version) VALUES (?)")
           count += 1
         end
         count
@@ -83,11 +79,7 @@ module Cybertrain
           forward = migration.operations.dup
           record(migration, false)
           ops = migration.operations
-          @connection.transaction do
-            run_operations(ops, forward)
-            @connection.execute("DELETE FROM schema_migrations WHERE version = ?", [version])
-          end
-          puts "done"
+          apply_version(version, ops, forward, "DELETE FROM schema_migrations WHERE version = ?")
           count += 1
         end
         count
@@ -108,6 +100,22 @@ module Cybertrain
       end
 
       private
+
+      # The step migrate and rollback share: runs `ops` and `sql` (the
+      # schema_migrations INSERT or DELETE for `version`) in one transaction,
+      # then prints "done". The "== <version> <class>: <verb>" line stays in
+      # the callers, before record(), so it still prints when up/down raises
+      # (an irreversible `change`). Called from a method body so the
+      # transaction (a yielding method with rescue) is never inside a nested
+      # block (spikes/NOTES.md rule 45).
+      def apply_version(version, ops, forward, sql)
+        @connection.transaction do
+          run_operations(ops, forward)
+          @connection.execute(sql, [version])
+        end
+        puts "done"
+        nil
+      end
 
       # Base#up/#down start from an empty operation list, but a migration
       # that overrides up/down itself only appends to it, so running the same

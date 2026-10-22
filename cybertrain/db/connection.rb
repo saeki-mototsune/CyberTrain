@@ -1,4 +1,5 @@
 require "json"
+require "cybertrain/cast"
 require "cybertrain/db/error"
 require "cybertrain/db/sqlite_ffi"
 
@@ -389,7 +390,7 @@ module Cybertrain
         when false then SQLite3.sqlite3_bind_int64(stmt, index, 0)
         when Integer then SQLite3.sqlite3_bind_int64(stmt, index, value)
         when Float then SQLite3.sqlite3_bind_double(stmt, index, value)
-        when Time then SQLite3.sqlite3_bind_text(stmt, index, value.getutc.strftime("%Y-%m-%dT%H:%M:%SZ"), -1, -1)
+        when Time then SQLite3.sqlite3_bind_text(stmt, index, Cast.iso8601(value), -1, -1)
         else SQLite3.sqlite3_bind_text(stmt, index, value.to_s, -1, -1)
         end
       end
