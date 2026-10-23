@@ -128,6 +128,7 @@ module Cybertrain
       def self.install_code(root, spec, created)
         add_model_block(root, spec)
         add_action(root, spec)
+        add_public_download(root, spec)
         add_assignments(root, spec)
         add_route(root, spec)
         add_gitignore(root)
@@ -316,6 +317,110 @@ module Cybertrain
           puts "warning: #{path} has no `before_action :set_#{spec.singular}` for :#{spec.field}, so def #{spec.field} looks the #{spec.singular} up with an unscoped #{spec.class_name}.find(params[:id]); if your actions limit which records a user may see, limit this lookup the same way"
         end
         true
+      end
+
+      # The image is shown on the show page, so when `allow_unauthenticated_access`
+      # makes show public (step 13 of the tutorial: `only: [:index, :show]`),
+      # the download joins it; otherwise a visitor sees a broken image. Where
+      # show needs a signed-in user the download does too, and nothing changes.
+      # Only when both find the record through `before_action :set_post`: a
+      # download with its own unscoped find could hand a visitor the file of
+      # a record show would not show, so that one is left for the app to open.
+      def self.add_public_download(root, spec)
+        path = controller_file(spec)
+        full = File.join(root, path)
+        source = File.read(full)
+        return false unless download_access(source, spec) == "add"
+
+        unless set_record_coverage(source, spec, spec.field) == "yes" && set_record_coverage(source, spec, "show") == "yes"
+          puts "skip #{path} (:show is public, but def #{spec.field} does not load the #{spec.singular} through before_action :set_#{spec.singular} as show does): add :#{spec.field} to allow_unauthenticated_access yourself if visitors may download it"
+          return false
+        end
+        if show_checks_more?(source, spec)
+          puts "skip #{path} (:show is public, but show may check more than set_#{spec.singular}: a before_action of its own, code in def show, or a line this cannot read): add :#{spec.field} to allow_unauthenticated_access yourself once def #{spec.field} checks the same"
+          return false
+        end
+
+        File.write(full, add_to_only_list_at(source, public_access_line(source), spec.field))
+        puts "insert #{path} (:#{spec.field} in allow_unauthenticated_access, since :show is public)"
+        true
+      end
+
+      # Whether show does more than load the record, which the download would
+      # not repeat: another before_action that runs for show but not for the
+      # download (a show-only draft check), or any code in `def show` (the
+      # scaffold's is empty). A shared lookup alone is not shared
+      # authorization, so either keeps the download private, and so does
+      # anything this cannot read: a before_action continued on the next
+      # line, or a show not written as a `def show` line of its own.
+      def self.show_checks_more?(source, spec)
+        set_record = set_record_line(source, spec)
+        offset = 0
+        extra = false
+        source.each_line do |raw|
+          stripped = raw.strip
+          if offset != set_record && stripped.start_with?("before_action")
+            continued = stripped.end_with?(",") || stripped.end_with?("(") || stripped.end_with?("\\")
+            only_at = stripped.index("only:")
+            except_at = stripped.index("except:")
+            unreadable = (!only_at.nil? && bracket_open(stripped, only_at + 5) < 0) || (!except_at.nil? && bracket_open(stripped, except_at + 7) < 0)
+            extra = true if continued || unreadable || (list_coverage(stripped, "show") == "yes" && list_coverage(stripped, spec.field) != "yes")
+          end
+          offset += raw.size
+        end
+        return true if extra
+
+        at = line_start(source, "def show", "exact")
+        return true if at < 0
+
+        body = false
+        done = false
+        source[line_end(source, at), source.size - line_end(source, at)].to_s.each_line do |raw|
+          stripped = raw.strip
+          next if done || stripped.empty? || stripped.start_with?("#")
+
+          if stripped == "end"
+            done = true
+          else
+            body = true
+            done = true
+          end
+        end
+        body
+      end
+
+      # Who may download: "public" when allow_unauthenticated_access already
+      # covers the action (no list, an only: list with it, an except: list
+      # without it), "add" when its one-line only: list makes show public but
+      # does not list the action, "private" otherwise (no such line, or show
+      # needs a signed-in user).
+      def self.download_access(source, spec)
+        at = public_access_line(source)
+        return "private" if at < 0
+
+        stripped = source[at, line_end(source, at) - at].to_s.strip
+        field = list_coverage(stripped, spec.field)
+        return "public" if field == "yes"
+        return "add" if field == "add" && list_coverage(stripped, "show") == "yes"
+
+        "private"
+      end
+
+      # Offset of the line `allow_unauthenticated_access` (alone, or followed
+      # by its arguments), or -1.
+      def self.public_access_line(source)
+        head = "allow_unauthenticated_access"
+        offset = 0
+        hit = -1
+        source.each_line do |raw|
+          stripped = raw.strip
+          if hit < 0 && stripped.start_with?(head)
+            rest = stripped[head.size, stripped.size - head.size].to_s
+            hit = offset if rest == "" || rest.start_with?(" ") || rest.start_with?("(")
+          end
+          offset += raw.size
+        end
+        hit
       end
 
       # `@post.cover_file = params.nested(:post).upload(:cover)` after the
@@ -607,15 +712,24 @@ module Cybertrain
         at = set_record_line(source, spec)
         return "no" if at < 0
 
-        stripped = source[at, line_end(source, at) - at].to_s.strip
+        list_coverage(source[at, line_end(source, at) - at].to_s.strip, action)
+      end
+
+      # How a callback line (`before_action :set_post, only: [...]`,
+      # `allow_unauthenticated_access except: [...]`) covers `action`: "yes",
+      # "add" (a one-line only: list without it) or "no", as
+      # set_record_coverage describes.
+      # except: wins over only: (Callback#applies? checks both), and a list
+      # this cannot read answers "no".
+      def self.list_coverage(stripped, action)
         token = ":#{action}"
         except_at = stripped.index("except:")
         only_at = stripped.index("only:")
-        if only_at.nil?
-          return "yes" if except_at.nil?
-
-          return list_has?(stripped, except_at + 7, token) ? "no" : "yes"
+        unless except_at.nil?
+          return "no" if bracket_open(stripped, except_at + 7) < 0
+          return "no" if list_has?(stripped, except_at + 7, token)
         end
+        return "yes" if only_at.nil?
         return "no" if bracket_open(stripped, only_at + 5) < 0
 
         list_has?(stripped, only_at + 5, token) ? "yes" : "add"
@@ -664,7 +778,12 @@ module Cybertrain
       # `source` with `:action` appended to the only: list of `before_action
       # :set_post` (set_record_coverage answered "add").
       def self.add_to_only_list(source, spec, action)
-        at = set_record_line(source, spec)
+        add_to_only_list_at(source, set_record_line(source, spec), action)
+      end
+
+      # `source` with `:action` appended to the only: list of the line at
+      # offset `at`.
+      def self.add_to_only_list_at(source, at, action)
         eol = line_end(source, at)
         line = source[at, eol - at].to_s
         open = line.index("[", line.index("only:").to_i).to_i
@@ -840,17 +959,21 @@ module Cybertrain
         text += TEST_COMMON
         fields = required_fields(root, spec)
         text += TEST_KEEP
-        text += TEST_AUTH_DOWNLOAD if auth
+        if auth
+          open_download = download_access(File.read(File.join(root, controller_file(spec))), spec) == "public"
+          text += open_download ? TEST_PUBLIC_DOWNLOAD : TEST_AUTH_DOWNLOAD
+        end
         text += TEST_TAIL
         text = text.sub("  <<reset_auth>>\n", auth ? Authentication::TEST_RESET_LINES : "")
         text = text.sub("  <<sign_in>>\n", auth ? Authentication::TEST_SIGN_IN_LINES : "")
-        text = text.sub("<<fields_lines>>", field_lines(spec, fields))
+        text = text.sub("<<fields_lines>>", field_lines(root, spec, fields))
         text = text.sub("<<show_check>>", show_check(root, spec))
         spec.expand(text)
       end
 
-      # The attributes the model validates for presence (`validates :title,
-      # presence: true`), which a valid record needs in the form.
+      # The attributes the model validates for presence or a minimum length
+      # (`validates :title, presence: true`), which a valid record needs in
+      # the form.
       def self.required_fields(root, spec)
         names = Array.new(0) { "" }
         path = File.join(root, model_file(spec))
@@ -858,7 +981,7 @@ module Cybertrain
 
         File.read(path).each_line do |raw|
           line = raw.strip
-          next unless line.start_with?("validates :") && !line.index("presence: true").nil?
+          next unless line.start_with?("validates :") && (!line.index("presence: true").nil? || !line.index("minimum:").nil?)
 
           name = +""
           line[11, line.size - 11].to_s.each_char do |ch|
@@ -871,10 +994,47 @@ module Cybertrain
         names
       end
 
-      def self.field_lines(spec, names)
+      def self.field_lines(root, spec, names)
         lines = +""
-        names.each { |name| lines << "  fields[\"#{spec.singular}[#{name}]\"] = \"A #{spec.singular.tr("_", " ")}\"\n" }
+        names.each { |name| lines << "  fields[\"#{spec.singular}[#{name}]\"] = \"#{field_value(root, spec, name)}\"\n" }
         lines
+      end
+
+      # "A post", stretched to the field's `length: { minimum: N }` and cut
+      # to its `maximum: N` (the blog's body needs 10 characters), so the
+      # test's record is valid.
+      def self.field_value(root, spec, name)
+        value = "A #{spec.singular.tr("_", " ")}"
+        min = length_bound(root, spec, name, "minimum:")
+        max = length_bound(root, spec, name, "maximum:")
+        value = value.ljust(min, ".") if min > value.size
+        value = value[0, max].to_s if max >= 0 && value.size > max
+        value
+      end
+
+      # The number after `key` (`minimum:`) on a `validates :name, ...` line
+      # of the model, or -1.
+      def self.length_bound(root, spec, name, key)
+        bound = -1
+        path = File.join(root, model_file(spec))
+        return bound unless File.exist?(path)
+
+        File.read(path).each_line do |raw|
+          line = raw.strip
+          next unless line.start_with?("validates :#{name},") || line == "validates :#{name}"
+
+          at = line.index(key)
+          next if at.nil?
+
+          digits = +""
+          line[at + key.size, line.size - at - key.size].to_s.strip.each_char do |ch|
+            break unless ch >= "0" && ch <= "9"
+
+            digits << ch
+          end
+          bound = digits.to_i unless digits.empty?
+        end
+        bound
       end
 
       # The show-page assertion, only when the show page renders the file
@@ -1093,6 +1253,19 @@ module Cybertrain
           anonymous = Cybertrain::Test::Client.new(APP)
           res = anonymous.get("/<<plural>>/#{record.id}/<<field>>")
           assert_redirected_to res, "/session/new"
+        end
+
+      RUBY
+
+      TEST_PUBLIC_DOWNLOAD = <<~'RUBY'
+        test "the download is public like show: a visitor gets the file" do
+          client = new_client
+          create_<<model>>(client, "<<field>>.png", "image/png", PNG_BYTES)
+          record = <<Model>>.first
+          anonymous = Cybertrain::Test::Client.new(APP)
+          res = anonymous.get("/<<plural>>/#{record.id}/<<field>>")
+          assert_response res, :ok
+          assert_equal PNG_BYTES.bytesize, res.body.bytesize
         end
 
       RUBY
