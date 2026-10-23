@@ -387,7 +387,7 @@ cybertrain/
   test/                     # spin test（.expected をコミット）
   examples/blog/            # 合格基準のアプリ
   spikes/NOTES.md           # M0 スパイクの記録（プログラム自体は検証後に削除。git 履歴にある）
-  README.md  docs/design.md  docs/deploy.md  docs/template-language.md  docs/superpowers/
+  README.md  docs/design.md  docs/deploy.md  docs/deploy.en.md  docs/deploy-kamal.md  docs/template-language.md  docs/superpowers/
   .github/workflows/ci.yml
 ```
 

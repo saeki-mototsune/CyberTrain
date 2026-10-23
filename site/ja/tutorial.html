@@ -51,6 +51,7 @@
       <ul>
         <li class="nav-wide-only"><a href="index.html#how-it-works">仕組み</a></li>
         <li><a href="tutorial.html" aria-current="page">チュートリアル</a></li>
+        <li class="nav-wide-only"><a href="deploy.html">デプロイ</a></li>
         <li><a href="playground.html">試す</a></li>
         <li class="nav-roomy-only"><a href="../api/index.html">API</a></li>
         <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
@@ -763,6 +764,7 @@
 </figure>
     <p>バイナリはイメージの中でコンパイルされるので、OS は常にイメージと一致します。<code>config/deploy.yml</code> の <code>builder.arch</code> はサーバーの CPU に合わせてください。デプロイ先はサーバー 1 台です：データベースはそのサーバーのボリュームにある SQLite のファイルです。手順はバックアップも含めて <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md#第-8-部-kamal-でデプロイする" rel="noopener"><code>docs/deploy.md</code></a> の第 8 部にあります（英語版は <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a>）。</p>
     <p>完成版のアプリ <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> にも同じ設定が入っています。違いは 1 つだけです：リポジトリのフレームワークに対してビルドする（<code>spin.toml</code> の <code>path = "../.."</code>）ので、その <code>Dockerfile</code> は gem を入れずにチェックアウトから <code>cybertrain setup</code> と <code>cybertrain build</code> を実行し、ビルドコンテキストはリポジトリのルートです（<code>builder.context: ../..</code>。送る中身は <code>Dockerfile.dockerignore</code> でフレームワークとアプリだけに絞ります）。CI（<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/.github/workflows/blog-image.yml" rel="noopener"><code>blog-image.yml</code></a>）は変更のたびにこのイメージをビルドし、ヘルスチェック、フォームからの記事の作成、正常な停止、ボリュームに残るデータベースを確かめ、<code>config/deploy.yml</code> を Kamal で読み込みます。</p>
+    <p class="note">各部品の組み合わせ方と、Kamal と Caddy の後ろのサーバーとの比較は、<a href="deploy.html">デプロイのページ</a>にあります。</p>
   </section>
 
   <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">
@@ -844,6 +846,7 @@
         <ul>
           <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
           <li><a href="tutorial.html">チュートリアル</a></li>
+          <li><a href="deploy.html">デプロイ</a></li>
           <li><a href="../api/index.html">API</a></li>
           <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
         </ul>

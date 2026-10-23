@@ -1,0 +1,150 @@
+#!/usr/bin/env ruby
+# Checks the English deployment tutorial against the Japanese original it was
+# translated from, so that a change to one that is not made to the other is
+# caught before it is committed (script/gate runs this when one of the files
+# changes):
+#
+#   docs/deploy.md, all but part 8   <->  docs/deploy.en.md, all but part 8
+#   docs/deploy.md, part 8           <->  docs/deploy-kamal.md
+#
+# (docs/deploy.en.md's part 8 is a pointer to deploy-kamal.md, which it must
+# link.) Passes when, for each pair:
+#   * the headings match one for one: the same levels, and the same section
+#     numbers where there is one ("第 3 部" / "Part 3", "3-4." / "3-4.");
+#   * every section has the same fenced code blocks, in the same order, with
+#     the same language and the same content once comments (`# ...`, which
+#     may be translated) and the text of `echo "==> ..."` progress messages
+#     are taken out; a block with no language (a diagram, sample output) is
+#     only counted, since a diagram's labels are translated;
+#   * every section's tables have the same number of rows (in deploy-kamal.md,
+#     whose introduction repeats deploy.md's table of names, only in the
+#     numbered steps, 8-1 to 8-5).
+# Prose is not compared: it is the part that is translated.
+#
+# usage: script/check-docs-i18n      (exit status 1 and the differences when they drift)
+
+ROOT = File.expand_path("..", __dir__)
+JA = "docs/deploy.md"
+EN = "docs/deploy.en.md"
+KAMAL = "docs/deploy-kamal.md"
+
+Section = Struct.new(:level, :number, :title, :codes, :table_rows)
+
+# The section number a heading carries: "P3" for a part, "3-4" for a step,
+# nil for an unnumbered heading ("Troubleshooting", "ログを見る").
+def number_of(title)
+  return "P#{$1}" if title =~ /\A第 (\d+) 部/ || title =~ /\APart (\d+)\b/
+  return $1 if title =~ /\A(\d+-\d+)\./
+
+  nil
+end
+
+# A code block reduced to what must not differ between languages.
+def normalize_code(text)
+  text.each_line.filter_map do |line|
+    line = line.chomp
+    next if line =~ /\A\s*#(?!!)/                       # a comment line (not a shebang)
+    line = line.sub(/\s+#\s.*\z/, "")                   # a trailing comment
+    line = line.sub(/\A(\s*echo ")==> [^"]*"/, '\1==> …"') # a progress message
+    line.rstrip
+  end.join("\n")
+end
+
+# The document as sections, one per heading (the text before the first
+# heading is a section with level 0). level_shift moves every heading down,
+# so that deploy-kamal.md's "#" and "##" line up with deploy.md's "##" and
+# "###"; part names its top heading's number.
+def sections(path, level_shift: 0, part: nil)
+  list = [Section.new(0, nil, "(preamble)", [], 0)]
+  fence = nil
+  File.read(File.join(ROOT, path), encoding: "UTF-8").each_line do |line|
+    if fence
+      if line =~ /\A\s*```\s*\z/
+        list.last.codes << [fence[:lang], fence[:body]]
+        fence = nil
+      else
+        fence[:body] << line.sub(/\A#{fence[:indent]}/, "")
+      end
+    elsif line =~ /\A(\s*)```(\S*)/
+      fence = { indent: $1, lang: $2, body: +"" }
+    elsif line =~ /\A(#+) (.*)/
+      level = $1.size + level_shift
+      title = $2.strip
+      number = level == 1 + level_shift && part ? part : number_of(title)
+      list << Section.new(level, number, title, [], 0)
+    elsif line.start_with?("|") && line !~ /\A\|[\s:|-]+\|\s*\z/
+      list.last.table_rows += 1
+    end
+  end
+  list
+end
+
+# Splits a list of sections at part 8: [the sections before and after it,
+# the part's own sections].
+def split_part8(list)
+  start = list.index { |s| s.number == "P8" } or return [list, []]
+  stop = (start + 1...list.size).find { |i| list[i].level <= list[start].level } || list.size
+  [list[0...start] + list[stop..], list[start...stop]]
+end
+
+def compare(name_a, a, name_b, b, tables: :all)
+  problems = []
+  heads_a = a.map { |s| [s.level, s.number] }
+  heads_b = b.map { |s| [s.level, s.number] }
+  if heads_a != heads_b
+    width = [a.size, b.size].max
+    first = (0...width).find { |i| heads_a[i] != heads_b[i] }
+    describe = ->(s) { s ? "#{"#" * s.level} #{s.title}" : "(nothing)" }
+    problems << "the headings differ from heading #{first}: #{name_a} has #{describe.(a[first])}, #{name_b} has #{describe.(b[first])}"
+    return problems
+  end
+  a.zip(b).each do |sa, sb|
+    where = "section #{sa.number || sb.title.inspect}"
+    if sa.codes.size != sb.codes.size
+      problems << "#{where}: #{name_a} has #{sa.codes.size} code blocks, #{name_b} has #{sb.codes.size}"
+    else
+      sa.codes.zip(sb.codes).each_with_index do |((lang_a, body_a), (lang_b, body_b)), i|
+        if lang_a != lang_b
+          problems << "#{where}, code block #{i + 1}: ```#{lang_a} in #{name_a}, ```#{lang_b} in #{name_b}"
+          next
+        end
+        next if lang_a.empty?
+
+        code_a = normalize_code(body_a).lines
+        code_b = normalize_code(body_b).lines
+        next if code_a == code_b
+
+        line = (0...[code_a.size, code_b.size].max).find { |j| code_a[j] != code_b[j] }
+        problems << "#{where}, code block #{i + 1} (#{lang_a}) differs at line #{line + 1}: " \
+                    "#{(code_a[line] || "(end)").chomp.inspect} in #{name_a}, #{(code_b[line] || "(end)").chomp.inspect} in #{name_b}"
+      end
+    end
+    next if tables == :numbered && !sa.number.to_s.include?("-") # steps only (8-1 ...)
+    next if sa.table_rows == sb.table_rows
+
+    problems << "#{where}: #{name_a} has #{sa.table_rows} table rows, #{name_b} has #{sb.table_rows}"
+  end
+  problems
+end
+
+ja_rest, ja_part8 = split_part8(sections(JA))
+en_rest, en_part8 = split_part8(sections(EN))
+kamal = sections(KAMAL, level_shift: 1, part: "P8")
+kamal.shift # deploy-kamal.md's own preamble: the text before its title
+
+problems = []
+problems += compare(JA, ja_rest, EN, en_rest).map { |p| "#{EN}: #{p}" }
+problems += compare(JA, ja_part8, KAMAL, kamal, tables: :numbered).map { |p| "#{KAMAL}: #{p}" }
+if en_part8.empty?
+  problems << "#{EN}: no part 8 (a pointer to deploy-kamal.md)"
+elsif !File.read(File.join(ROOT, EN), encoding: "UTF-8")[/^## Part 8\b.*?(?=^## |\z)/m].to_s.include?("(deploy-kamal.md)")
+  problems << "#{EN}: part 8 does not link deploy-kamal.md"
+end
+
+if problems.empty?
+  puts "#{EN} and #{KAMAL} match #{JA}"
+else
+  puts problems
+  puts "(translate the change into the other file too; see script/check-docs-i18n for what is compared)"
+  exit 1
+end

@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0A0A">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="../assets/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../assets/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="../assets/brand/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/fonts/fonts.css">
+<link rel="stylesheet" href="../assets/style.css">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<meta property="og:locale:alternate" content="ru_RU">
+<meta property="og:locale:alternate" content="fr_FR">
+<meta property="og:site_name" content="CyberTrain">
+<meta property="og:url" content="https://saeki-mototsune.github.io/CyberTrain/zh/deploy.html">
+<meta property="og:image" content="https://saeki-mototsune.github.io/CyberTrain/assets/og/zh/deploy.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="部署 CyberTrain 应用">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://saeki-mototsune.github.io/CyberTrain/zh/deploy.html">
+<link rel="alternate" hreflang="en" href="https://saeki-mototsune.github.io/CyberTrain/deploy.html">
+<link rel="alternate" hreflang="ja" href="https://saeki-mototsune.github.io/CyberTrain/ja/deploy.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://saeki-mototsune.github.io/CyberTrain/zh/deploy.html">
+<link rel="alternate" hreflang="ru" href="https://saeki-mototsune.github.io/CyberTrain/ru/deploy.html">
+<link rel="alternate" hreflang="fr" href="https://saeki-mototsune.github.io/CyberTrain/fr/deploy.html">
+<link rel="alternate" hreflang="x-default" href="https://saeki-mototsune.github.io/CyberTrain/deploy.html">
+<script src="../assets/site.js" defer></script>
+
+<title>部署到生产环境 · CyberTrain</title>
+<meta name="description" content="CyberTrain 应用在生产环境中如何运行、如何交付：反向代理后面的一个原生二进制文件，用 Kamal 和 Docker 或 systemd 和 Caddy 部署。">
+<meta property="og:title" content="部署 CyberTrain 应用">
+<meta property="og:description" content="一个原生二进制文件，前端由 kamal-proxy 或 Caddy 提供 HTTPS，旁边是 SQLite：各部分如何组合，以及两种交付方式。">
+</head>
+<body class="tutorial">
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html" aria-label="CyberTrain 首页">
+      <svg class="brand-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      <svg class="brand-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+      <ul>
+        <li class="nav-wide-only"><a href="index.html#how-it-works">原理</a></li>
+        <li><a href="tutorial.html">教程</a></li>
+        <li class="nav-wide-only"><a href="deploy.html" aria-current="page">部署</a></li>
+        <li><a href="playground.html">在线试用</a></li>
+        <li class="nav-roomy-only"><a href="../api/index.html">API</a></li>
+        <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
+        <li><details class="lang-menu">
+          <summary aria-label="语言：简体中文">ZH</summary>
+          <ul>
+            <li><a href="../deploy.html" hreflang="en" lang="en">English</a></li>
+            <li><a href="../ja/deploy.html" hreflang="ja" lang="ja">日本語</a></li>
+            <li><a href="../zh/deploy.html" hreflang="zh-Hans" lang="zh-Hans" aria-current="true">简体中文</a></li>
+            <li><a href="../ru/deploy.html" hreflang="ru" lang="ru">Русский</a></li>
+            <li><a href="../fr/deploy.html" hreflang="fr" lang="fr">Français</a></li>
+          </ul>
+        </details></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="wrap">
+  <header class="doc-hero">
+    <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>部署</span></p>
+    <h1>部署到生产环境</h1>
+    <p class="doc-intro">CyberTrain 应用以一个原生二进制文件和它旁边的一个目录交付。它只说普通的 HTTP，所以要由前端的某个组件负责 HTTPS：用 Kamal 部署时是 kamal-proxy，自己管理的服务器上则是 Caddy。本页说明各个部分如何组合，以及两种方式有何不同；每一步链接的指南里有全部命令。</p>
+    <dl class="doc-meta">
+      <div><dt>你需要</dt><dd>一台可以 SSH 登录的 Linux 服务器，以及一个域名</dd></div>
+      <div><dt>运行的是</dt><dd>反向代理后面的一个二进制文件，旁边是 SQLite</dd></div>
+      <div><dt>两种方式</dt><dd>Kamal 加 Docker，或 systemd 加 Caddy</dd></div>
+    </dl>
+  </header>
+</div>
+
+<div class="wrap doc">
+  <nav class="toc" aria-label="部署章节">
+    <details class="toc-d" open>
+      <summary class="toc-sum"><span class="toc-title">本页内容</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
+    <ol>
+      <li><a href="#what-runs"><span class="toc-n">01</span>生产环境中运行的是什么</a></li>
+      <li><a href="#two-ways"><span class="toc-n">02</span>两种部署方式</a></li>
+      <li><a href="#kamal"><span class="toc-n">03</span>用 Kamal 部署</a></li>
+      <li><a href="#reverse-proxy"><span class="toc-n">04</span>在 Caddy 之后，由 systemd 运行</a></li>
+      <li><a href="#configure"><span class="toc-n">05</span>配置</a></li>
+      <li><a href="#operate"><span class="toc-n">06</span>日常运维</a></li>
+      <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>下一步</a></li>
+    </ol>
+    </details>
+  </nav>
+
+  <article class="doc-body">
+
+  <section class="step" id="what-runs" aria-labelledby="h-what-runs">
+    <p class="stage"><span class="stage-k">当前位置<span class="sr-only">:</span></span>运行时 <span aria-hidden="true">&middot;</span> <code>dist/</code></p>
+    <h2 id="h-what-runs"><span class="step-num" aria-hidden="true">01</span>生产环境中运行的是什么</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">弄清二进制文件自己做什么、把什么交给别人，其余的部署方式也就随之确定。</span></p>
+    <p><code>cybertrain build</code> 把框架、你的控制器和模型以及模板解释器编译进 <code>dist/blog</code>，嵌入所有视图，并在旁边复制 <code>public/</code>。运行它的地方无需安装其他任何东西：不需要 Ruby，也不需要 gem。</p>
+    <figure class="code" data-lang="text">
+<figcaption><span class="code-path">生产环境</span><span class="code-lang">text</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：生产环境中运行的是什么"><code><span class="ln">browser ──HTTPS──▶ reverse proxy (kamal-proxy or Caddy)</span>
+<span class="ln">                     └─ HTTP/1.1 ──▶ dist/blog (port 3000)</span>
+<span class="ln">                                       ├─ public/  static files, 404.html, 500.html</span>
+<span class="ln">                                       └─ storage/production.sqlite3</span></code></pre>
+</figure>
+    <ul class="points">
+      <li><strong>它链接系统的 SQLite 和 libc，</strong>因此要在与运行它的机器相同的操作系统和 CPU 上构建。像 Kamal 配置那样在 Docker 镜像内构建，就自然满足了这一点。</li>
+      <li><strong>它只说普通的 HTTP/1.1。</strong>TLS 和 HTTP/2 是反向代理的工作。生产环境中会话 cookie 带有 <code>Secure</code>，所以必须通过 HTTPS 提供服务，否则表单会因 <code>Invalid authenticity token</code> 而失败。</li>
+      <li><strong>数据库是一个 SQLite 文件。</strong>在一台服务器上以单个进程运行，并把文件放在部署之后仍然保留的存储上。</li>
+      <li><strong>它默认就是生产模式，</strong>没有 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 就拒绝启动。<code>./blog migrate</code> 应用编译进其中的迁移。</li>
+    </ul>
+  </section>
+
+  <section class="step" id="two-ways" aria-labelledby="h-two-ways">
+    <h2 id="h-two-ways"><span class="step-num" aria-hidden="true">02</span>两种部署方式</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">两者最终都在同一个二进制文件前放上 HTTPS；区别在于在哪里构建，以及部署时如何替换。</span></p>
+    <div class="table-scroll" role="region" aria-label="Kamal 与 systemd 加 Caddy 的比较" tabindex="0">
+    <table class="env">
+      <thead><tr><th scope="col"></th><th scope="col">Kamal</th><th scope="col">systemd 加 Caddy</th></tr></thead>
+      <tbody>
+        <tr><td data-label="">构建位置</td><td data-label="Kamal">在 Docker 镜像中，在你的机器或远程构建器上</td><td data-label="systemd 加 Caddy">在服务器上，从 git 检出构建</td></tr>
+        <tr><td data-label="">前端</td><td data-label="Kamal">kamal-proxy，带 Let&rsquo;s Encrypt 证书</td><td data-label="systemd 加 Caddy">Caddy，带 Let&rsquo;s Encrypt 证书</td></tr>
+        <tr><td data-label="">静态文件</td><td data-label="Kamal">由应用提供 <code>public/</code></td><td data-label="systemd 加 Caddy">由 Caddy 直接提供 <code>dist/public/</code></td></tr>
+        <tr><td data-label="">一次部署</td><td data-label="Kamal">新容器通过健康检查后才接收流量：不会拒绝任何连接</td><td data-label="systemd 加 Caddy">一次重启：几秒钟内显示 Caddy 的 500.html</td></tr>
+        <tr><td data-label="">回滚</td><td data-label="Kamal"><code>kamal rollback VERSION</code></td><td data-label="systemd 加 Caddy">把 <code>current</code> 指向较早的发布并重启</td></tr>
+        <tr><td data-label="">服务器需要</td><td data-label="Kamal">SSH 和 Docker（由 <code>kamal setup</code> 安装），外加一个镜像仓库</td><td data-label="systemd 加 Caddy">Ruby、C 工具链、SQLite 头文件、<code>cybertrain</code> CLI 和 Spinel</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="note">无论哪种方式，应用都是一台服务器上的一个进程加上它的 SQLite 文件。</p>
+  </section>
+
+  <section class="step" id="kamal" aria-labelledby="h-kamal">
+    <h2 id="h-kamal"><span class="step-num" aria-hidden="true">03</span>用 Kamal 部署</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t"><code>cybertrain new</code> 已经写好了这些文件；你只需填上服务器、域名和镜像仓库。</span></p>
+    <ul class="ship-grid">
+      <li class="ship-bin"><code>Dockerfile</code><span>Ubuntu 构建阶段运行 <code>cybertrain setup</code> 和 <code>cybertrain build</code>；同一发行版的精简阶段只获得 <code>dist/</code> 和它链接的库</span></li>
+      <li><code>config/deploy.yml</code><span>服务器、域名、带 TLS 并转发到 3000 端口的 kamal-proxy、健康检查以及数据库卷</span></li>
+      <li><code>.kamal/secrets</code><span>从你的环境变量读取 <code>KAMAL_REGISTRY_PASSWORD</code> 和 <code>CYBERTRAIN_SECRET_KEY_BASE</code>，从不写入值本身</span></li>
+      <li><code>public/up.html</code><span>kamal-proxy 在把流量送到新容器之前轮询的页面</span></li>
+    </ul>
+    <p>填好 <code>config/deploy.yml</code> 中标为 <code>CHANGE ME</code> 的值，提交，然后运行：</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：用 Kamal 部署"><code><span class="ln cmd">export KAMAL_REGISTRY_PASSWORD=...</span>
+<span class="ln cmd">export CYBERTRAIN_SECRET_KEY_BASE=<span class="s">"$(openssl rand -hex 32)"</span>  <span class="c"># 只生成一次并妥善保存</span></span>
+<span class="ln cmd">kamal setup    <span class="c"># 首次：在服务器上安装 Docker 和 kamal-proxy，构建、推送并启动</span></span>
+<span class="ln cmd">kamal deploy   <span class="c"># 之后的每次部署</span></span></code></pre>
+</figure>
+    <ul class="points">
+      <li>每次部署都会构建镜像（首次之后 Spinel 留在 Docker 的层缓存中）、推送它，并启动一个容器；容器先运行 <code>./blog migrate</code>，再以 <code>exec ./blog</code> 在 <code>0.0.0.0:3000</code> 上提供服务。</li>
+      <li>kamal-proxy 等到 <code>/up.html</code> 返回 200 后，把流量切换到新容器，然后停止旧容器；旧容器收到 <code>SIGTERM</code> 后会先处理完正在进行的请求。</li>
+      <li>数据库位于挂载在 <code>/app/storage</code> 的卷 <code>blog_storage</code> 上，因此每次部署后都会保留。</li>
+      <li>把 <code>builder.arch</code> 设为服务器的 CPU 架构。Spinel 在镜像内编译，用模拟方式为其他架构构建会很慢；这种情况下改用 <code>builder.remote</code> 在服务器上构建。</li>
+    </ul>
+    <p class="note">包括卷备份在内的分步指南见 <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a>。<a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> 也带有同样的配置，CI 会构建它的镜像并做冒烟测试。</p>
+  </section>
+
+  <section class="step" id="reverse-proxy" aria-labelledby="h-reverse-proxy">
+    <h2 id="h-reverse-proxy"><span class="step-num" aria-hidden="true">04</span>在 Caddy 之后，由 systemd 运行</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">不使用 Docker：服务器从 git 构建应用，systemd 让它持续运行，Caddy 面向互联网。</span></p>
+    <ul class="points">
+      <li><strong>应用</strong>只监听 <code>127.0.0.1:3000</code>，所以只能经由 Caddy 访问。<code>public/</code> 和 <code>storage/</code> 相对于工作目录解析，因此 systemd 以 <code>dist/</code> 为工作目录启动它，并从仓库之外的环境变量文件读取密钥。</li>
+      <li><strong>部署脚本</strong>把每个发布克隆到各自的目录，检查 <code>gen/</code> 是否最新，运行 <code>cybertrain build</code> 和 <code>dist/blog migrate</code>，然后把 <code>current</code> 链接指向它，重启服务并等待 <code>up.html</code> 响应；如果没有响应，脚本会切回之前的发布。切换之前的失败不会影响正在运行的发布。切回之前的发布不会撤销迁移，因此迁移必须与之前的发布兼容；首次部署失败时没有可切回的发布，脚本只会报错退出。</li>
+      <li><strong>Caddy</strong> 获取证书，把 HTTP 重定向到 HTTPS，自己提供 <code>dist/public/</code> 中的文件，其余请求代理给应用。应用重启期间，它返回 <code>500.html</code>。</li>
+    </ul>
+    <figure class="code" data-lang="caddyfile">
+<figcaption><span class="code-path">/etc/caddy/Caddyfile</span><span class="code-lang">caddyfile</span></figcaption>
+<pre tabindex="0" role="region" aria-label="代码：Caddyfile"><code><span class="ln">blog.example.com {</span>
+<span class="ln">	encode zstd gzip</span>
+<span class="ln">	root * /srv/blog/current/dist/public</span>
+<span class="ln"></span>
+<span class="ln">	@static file</span>
+<span class="ln">	handle @static {</span>
+<span class="ln">		file_server</span>
+<span class="ln">	}</span>
+<span class="ln"></span>
+<span class="ln">	handle {</span>
+<span class="ln">		reverse_proxy 127.0.0.1:3000</span>
+<span class="ln">	}</span>
+<span class="ln"></span>
+<span class="ln">	handle_errors {</span>
+<span class="ln">		rewrite * /500.html</span>
+<span class="ln">		file_server</span>
+<span class="ln">	}</span>
+<span class="ln">}</span></code></pre>
+</figure>
+    <p>应用会给它返回的内容加上 <code>X-Content-Type-Options</code> 和 <code>X-Frame-Options</code>；Caddy 从 <code>dist/public/</code> 直接提供的文件不经过应用，如果也想在那里加上，请在站点块中添加。nginx 的做法相同：终止 TLS，提供 <code>dist/public/</code>，其余的代理出去。</p>
+    <p class="note">从一台全新的 Ubuntu 服务器到备份和回滚的完整流程见 <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a>（日文原文为 <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><code>docs/deploy.md</code></a>）。</p>
+  </section>
+
+  <section class="step" id="configure" aria-labelledby="h-configure">
+    <h2 id="h-configure"><span class="step-num" aria-hidden="true">05</span>配置</h2>
+    <p class="why"><span class="why-k">为什么</span><span class="why-t">生产环境的设置来自环境变量，所以同一个二进制文件可以在任何地方运行。</span></p>
+    <div class="table-scroll" role="region" aria-label="生产环境变量" tabindex="0">
+    <table class="env">
+      <thead><tr><th scope="col">变量</th><th scope="col">在生产环境中</th></tr></thead>
+      <tbody>
+        <tr><td data-label="变量"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="在生产环境中">必需。为会话 cookie 签名；更改它会让所有人退出登录。用 <code>openssl rand -hex 32</code> 生成一次</td></tr>
+        <tr><td data-label="变量"><code>CYBERTRAIN_DATABASE</code></td><td data-label="在生产环境中">SQLite 文件；默认是工作目录下的 <code>storage/production.sqlite3</code>。把它放在发布目录之外</td></tr>
+        <tr><td data-label="变量"><code>CYBERTRAIN_HOST</code></td><td data-label="在生产环境中">默认 <code>127.0.0.1</code>，适合同一台机器上的代理之后；容器中用 <code>0.0.0.0</code></td></tr>
+        <tr><td data-label="变量"><code>PORT</code></td><td data-label="在生产环境中">默认 <code>3000</code>；代理转发的目标</td></tr>
+        <tr><td data-label="变量"><code>CYBERTRAIN_ENV</code></td><td data-label="在生产环境中">构建出的二进制文件中已经是 <code>production</code>；<code>development</code> 会启动文件监视和重建</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="note">教程中的<a href="tutorial.html#ship">为部署而构建</a>一步列出了所有变量及其对应的 <code>config/app.rb</code> 属性。</p>
+  </section>
+
+  <section class="step" id="operate" aria-labelledby="h-operate">
+    <h2 id="h-operate"><span class="step-num" aria-hidden="true">06</span>日常运维</h2>
+    <ul class="points">
+      <li><strong>每次更改都是一次部署。</strong>视图在构建时嵌入，因此即使只改了视图也需要重新构建并重启。把 <code>gen/</code> 和更改一起提交：部署脚本遇到过时的 <code>gen/</code> 会停止。</li>
+      <li><strong>迁移在新代码开始提供服务之前运行：</strong>在部署脚本中，或在容器启动时。删除列要放到之后的另一次部署中，等运行中的代码不再读取它。</li>
+      <li><strong>用 SQLite 的 <code>.backup</code> 备份，</strong>而不是复制文件：即使应用正在写入，它也能得到一致的副本。</li>
+      <li><strong>跨越迁移的回滚</strong>意味着数据库也要回滚：在切换之前，从较新的发布中运行 <code>db rollback</code>。</li>
+      <li><strong>停止是平滑的：</strong>收到 <code>SIGTERM</code> 后，服务器停止接受新连接，处理完正在进行的请求后退出，最多 10 秒。</li>
+    </ul>
+  </section>
+
+  <section class="step step-last" id="where-next" aria-labelledby="h-where-next">
+    <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>下一步</h2>
+    <ul class="next-list">
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">用 Kamal 部署，一步一步来。</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">使用 systemd 和 Caddy 的 Ubuntu 服务器，从头到备份（日文版：<code>docs/deploy.md</code>）。</span></a></li>
+      <li><a href="tutorial.html#ship"><span class="next-t">为部署而构建</span><span class="next-d">教程的最后一步：<code>cybertrain build</code> 与 <code>dist/</code>。</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">完成的博客，以及它的 Kamal 配置。</span></a></li>
+    </ul>
+  </section>
+
+  </article>
+</div>
+
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <a class="foot-brand" href="index.html" aria-label="CyberTrain 首页">
+        <svg class="foot-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      </a>
+      <p class="foot-tag">Rails 风格的 Web 应用，编译为单个原生二进制文件。</p>
+    </div>
+    <div class="foot-cols">
+      <nav aria-label="项目">
+        <p class="foot-h">项目</p>
+        <ul>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
+          <li><a href="tutorial.html">教程</a></li>
+          <li><a href="deploy.html">部署</a></li>
+          <li><a href="../api/index.html">API</a></li>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="相关项目">
+        <p class="foot-h">相关</p>
+        <ul>
+          <li><a href="https://github.com/matz/spinel" rel="noopener">Spinel</a></li>
+          <li><a href="https://github.com/rubys/roundhouse" rel="noopener">Roundhouse</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="语言">
+        <p class="foot-h">语言</p>
+        <ul>
+          <li><a href="../deploy.html" hreflang="en" lang="en">English</a></li>
+          <li><a href="../ja/deploy.html" hreflang="ja" lang="ja">日本語</a></li>
+          <li><a href="../zh/deploy.html" hreflang="zh-Hans" lang="zh-Hans" aria-current="true">简体中文</a></li>
+          <li><a href="../ru/deploy.html" hreflang="ru" lang="ru">Русский</a></li>
+          <li><a href="../fr/deploy.html" hreflang="fr" lang="fr">Français</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-base">
+      <p><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/README.md#license" rel="noopener">MIT 许可证</a> <span aria-hidden="true">&middot;</span> 预 Alpha 版</p>
+      <p>CyberTrain 是一个独立项目，与 Rails、Spinel 或 Roundhouse 均无关联。</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

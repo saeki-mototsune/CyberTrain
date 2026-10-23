@@ -1,9 +1,8 @@
 # Deploying with Kamal
 
-English translation of part 8 of [deploy.md](deploy.md) (Japanese), "Kamal
-でデプロイする". The rest of that tutorial (building on the server and
-running under systemd behind Caddy) is in Japanese only; this part stands on
-its own.
+Part 8 of the deployment tutorial, [deploy.en.md](deploy.en.md) (in
+Japanese: part 8 of [deploy.md](deploy.md), "Kamal でデプロイする"). It
+stands on its own: you do not need the other parts to follow it.
 
 The names used below; replace them with yours:
 
@@ -14,7 +13,7 @@ The names used below; replace them with yours:
 | Server | Ubuntu (or another Linux with SSH), x86-64 or arm64 |
 
 Instead of building on the server and running the app under systemd and
-Caddy (parts 3 to 6 of [deploy.md](deploy.md)), you can ship it as a Docker
+Caddy (parts 3 to 6 of [deploy.en.md](deploy.en.md)), you can ship it as a Docker
 image with [Kamal 2](https://kamal-deploy.org). `cybertrain new` writes these
 files:
 

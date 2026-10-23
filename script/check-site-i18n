@@ -74,7 +74,7 @@ ENGLISHY = re.compile(r'\b(the|and|with|you|your|is|are|of|to|in|for|not|on|a)\b
 
 def main(lang):
     ok = True
-    for page in ['index.html', 'tutorial.html', 'playground.html']:
+    for page in ['index.html', 'tutorial.html', 'playground.html', 'deploy.html']:
         en, tr = parse(f'{SITE}/{page}'), parse(f'{SITE}/{lang}/{page}')
         errs = []
         # structure (lang, hreflang, href, src and aria-current differ by

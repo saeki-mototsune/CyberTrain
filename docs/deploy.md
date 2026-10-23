@@ -1,5 +1,7 @@
 # チュートリアル: `cybertrain new` から本番稼働まで
 
+（英語版: [deploy.en.md](deploy.en.md)）
+
 `cybertrain new` でアプリを作り、Ubuntu サーバーに HTTPS 付きでデプロイして使い始める
 までを、上から順にコピペで進められるように書いています。
 
@@ -475,7 +477,7 @@ sudo systemctl enable notes
   バイナリに埋め込まれているので、ディスクからは読みません。ここでは DB を
   `CYBERTRAIN_DATABASE` で `/srv/notes/shared/` に置くので、書き込みが要るのは
   `ReadWritePaths` のそこだけです。
-- ログは標準出力に出るので、journald（`journalctl -u notes`）に集まります。
+- ログは標準出力に出るので、journald（`sudo journalctl -u notes`）に集まります。
 - 停止は SIGTERM で、受け付けを止め、処理中のリクエストに応答し終えてから終了します（最大 10 秒。
   `TimeoutStopSec=15` はこれより長くしてあります）。
 
@@ -524,9 +526,28 @@ echo "==> マイグレーション"
 dist/notes migrate
 
 echo "==> 切り替えて再起動"
+previous="$(readlink "$ROOT/current" || true)"   # 戻す先（初回は空）
 ln -sfn "$release" "$ROOT/current.new"
 mv -T "$ROOT/current.new" "$ROOT/current"
 sudo /usr/bin/systemctl restart "$APP"
+
+echo "==> 新しいリリースが応答するまで待つ（約 30 秒）"
+up=""
+deadline=$((SECONDS + 30))   # 1 回 2 秒まで、全体で約 30 秒（最後の試行は期限を少し越えうる）
+while [ "$SECONDS" -lt "$deadline" ]; do
+  if curl -fs --max-time 2 -o /dev/null "http://127.0.0.1:$PORT/up.html"; then up=1; break; fi
+  sleep 1
+done
+if [ -z "$up" ]; then
+  echo "==> 新しいリリースが応答しない（原因は sudo できるユーザーで journalctl -u $APP）"
+  if [ -n "$previous" ]; then
+    echo "==> 前のリリースに戻す: $previous"
+    ln -sfn "$previous" "$ROOT/current.new"
+    mv -T "$ROOT/current.new" "$ROOT/current"
+    sudo /usr/bin/systemctl restart "$APP"
+  fi
+  exit 1
+fi
 
 echo "==> 古いリリースを削除（新しい $KEEP 個を残す）"
 ls -1d "$ROOT"/releases/* | sort -r | tail -n +$((KEEP + 1)) | xargs -r rm -rf
@@ -541,7 +562,23 @@ chmod 700 ~/deploy.sh
 現在のリリースに向けて張り直すリンクなので、Spinel のリリースが上がっても書き換えは要りません。
 
 途中のどこかで失敗した場合（`gen/` が古い、コンパイルエラー、マイグレーション失敗）は、
-`current` を切り替える前に止まるので、動いているアプリには影響しません。
+`current` を切り替える前に止まるので、動いているアプリはそのまま古いリリースで動き続けます。
+ただし、マイグレーションは古いリリースが動いている間に流れ、成功したマイグレーションはその後の手順が
+失敗しても適用されたまま残ります。マイグレーションは動いているコードと両立する形にしてください（列は
+まず足し、古い列は別のデプロイで消す）。
+
+`systemctl restart` は、新しいバイナリが起動直後に落ちても成功を返します（`Type=simple` のため）。
+そこでスクリプトは、切り替えて再起動したあと `http://127.0.0.1:$PORT/up.html` が応答するまで約
+30 秒待ち、応答しなければ `current` を前のリリースに戻して再起動し、失敗で終わります。原因
+（秘密鍵が空、ポートが使われている、など）は、`notes` ユーザーを抜けて sudo できるユーザーで
+`sudo journalctl -u notes` を見ます（`notes` に許しているのは `systemctl restart notes` だけです）。
+
+- `public/up.html` は `cybertrain new` が書く（Kamal のヘルスチェックと同じ）静的ファイルで、
+  アプリ自身が返します。古い `cybertrain` で作ったアプリにない場合は、
+  `echo OK > public/up.html` で作ってコミットしてください。
+- マイグレーションは戻しません。前のリリースに戻せるのは、上のとおりマイグレーションが古いコードと
+  両立しているからです。
+- 初回のデプロイには戻す先がないので、失敗したら原因を直してもう一度 `~/deploy.sh` を実行します。
 
 ### 5-4. 最初のデプロイ
 
@@ -556,7 +593,7 @@ chmod 700 ~/deploy.sh
 ```sh
 exit    # sudo できるユーザーに戻る
 systemctl status notes --no-pager
-journalctl -u notes -n 20 --no-pager
+sudo journalctl -u notes -n 20 --no-pager
 curl -sI http://127.0.0.1:3000/
 ```
 
@@ -628,7 +665,7 @@ curl -sI https://notes.example.com/
 
 `HTTP/2 200` が返れば公開完了です。ブラウザで https://notes.example.com/ を開き、
 ノートを作成・編集・削除してみてください。うまくいかないときは
-`journalctl -u caddy -n 50 --no-pager` を見ます。
+`sudo journalctl -u caddy -n 50 --no-pager` を見ます。
 
 ---
 
@@ -653,8 +690,8 @@ sudo -iu notes /srv/notes/deploy.sh v1.2.0   # タグやコミットを指定す
 ### ログを見る
 
 ```sh
-journalctl -u notes -f                  # アプリ（1 リクエスト 2 行: Started / Completed）
-journalctl -u caddy -f                  # Caddy
+sudo journalctl -u notes -f             # アプリ（1 リクエスト 2 行: Started / Completed）
+sudo journalctl -u caddy -f             # Caddy
 ```
 
 リクエストログの接続元 IP は常に `127.0.0.1`（Caddy）になります。実際のクライアント IP が
@@ -662,21 +699,36 @@ journalctl -u caddy -f                  # Caddy
 
 ### ロールバック
 
+`notes` ユーザーで、戻す先のリリースを確かめます。
+
 ```sh
 sudo -iu notes
 ls -1 ~/releases                                         # 残っているリリース
+```
+
+戻したいリリース以降に**マイグレーションを追加していなければ**、そのまま切り替えて再起動します。
+
+```sh
 ln -sfn ~/releases/20260926120000 ~/current.new && mv -T ~/current.new ~/current
 sudo /usr/bin/systemctl restart notes
 ```
 
-戻したいリリース以降に**マイグレーションを追加していた場合**は、切り替える前に、新しい方の
-リリースのディレクトリで DB も戻しておきます（古いリリースは新しいマイグレーションを知らないため）。
+**マイグレーションを追加していた場合**は、切り替える**前に**、いま動いている（新しい方の）リリースで
+DB を戻します（古いリリースは新しいマイグレーションを知らないため）。戻している途中のスキーマに
+リクエストが当たらないよう、アプリを止めてから行います（その間、Caddy は 500.html を返します）。
+`notes` のシェルを抜け、sudo できるユーザーで:
 
 ```sh
-cd ~/current                                  # 切り替え前（新しい方）のリリース
+sudo systemctl stop notes
+sudo -iu notes
+cd ~/current                                  # いま動いている（新しい方の）リリース
 set -a; . /etc/notes/notes.env; set +a
 dist/notes db status                          # 適用済みのマイグレーションを確認
 dist/notes db rollback 1                      # 戻す数を指定
+dist/notes db status                          # 戻ったことを確認
+ln -sfn ~/releases/20260926120000 ~/current.new && mv -T ~/current.new ~/current
+exit                                          # sudo できるユーザーに戻る
+sudo systemctl start notes
 ```
 
 ### バックアップ
@@ -878,11 +930,12 @@ kamal setup
 | 500 になり、ログに `Missing template ...` が出る | ビルド時に `app/views/` に無かったテンプレート。`cybertrain build` をやり直す |
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
 | デプロイが `stale: gen/...` で止まる | 手元で `cybertrain spin run gen` して `gen/` をコミットし忘れている |
+| デプロイが「新しいリリースが応答しない」で終わる | 新しいリリースが約 30 秒のうちに `/up.html` に応答しなかった（スクリプトは前のリリースに戻している）。`sudo journalctl -u notes -n 50` で原因を見る。起動はしているのに応答しないなら、アプリに `public/up.html` が無い（5-3） |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
 | `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.2.1`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |
-| ブラウザで 500.html が出続ける | アプリが落ちている。`journalctl -u notes -n 50` を見る |
-| 証明書が取れない | DNS がサーバーを向いているか、80/443 が開いているか。`journalctl -u caddy` を見る |
+| ブラウザで 500.html が出続ける | アプリが落ちている。`sudo journalctl -u notes -n 50` を見る |
+| 証明書が取れない | DNS がサーバーを向いているか、80/443 が開いているか。`sudo journalctl -u caddy` を見る |
 | 静的ファイルが 403 / 404 | `/srv/notes` の権限（`chmod 711`）と、ファイルが `dist/public/` にあるか（`cybertrain build` が `public/` からコピーする） |
 | フォーム送信が 403 `Invalid authenticity token` になる・フラッシュが出ない | HTTP で開いている。本番のセッション Cookie は `Secure` なので HTTPS でしか届かない。`https://` で開く（どうしても HTTP で運用するなら `config/app.rb` で `c.session_secure = false`） |
 

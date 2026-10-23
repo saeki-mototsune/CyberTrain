@@ -24,6 +24,9 @@
 #   * every file cybertrain.gemspec lists exists, and the CLI loads under CRuby;
 #   * playground/Dockerfile's cli-src stage copies every file the gemspec lists;
 #   * every test/*.rb has its .expected snapshot, and every snapshot its test.
+# When docs/deploy.md, docs/deploy.en.md, docs/deploy-kamal.md or the script
+# that compares them is in the set:
+#   * script/check-docs-i18n passes (the English tutorial matches the Japanese).
 #
 # Exit status 1 when any check fails; the failing lines are printed. To commit
 # past the hook on purpose, `git commit --no-verify`; CI runs the gate anyway.
@@ -151,6 +154,18 @@ elsif bad_yaml.empty?
   ok("yaml loads", "#{yaml_files.size} files")
 else
   fail!("yaml", bad_yaml)
+end
+
+# --- the deployment tutorial and its translations --------------------------------
+
+# docs/deploy.md is translated into deploy.en.md (part 8: deploy-kamal.md);
+# a change to one that misses the other is caught here, where it is cheap.
+DOCS_I18N = %r{\A(docs/deploy(\.en|-kamal)?\.md|script/check-docs-i18n)\z}
+if mode != :all && files.none? { |f| f.match?(DOCS_I18N) }
+  skip("deploy tutorial translations", "no docs/deploy*.md in the set")
+else
+  out, status = Open3.capture2e("ruby", "script/check-docs-i18n")
+  status.success? ? ok("deploy tutorial translations match", "script/check-docs-i18n") : fail!("deploy tutorial translations", out.lines.map(&:chomp))
 end
 
 # --- repository checks -----------------------------------------------------------
