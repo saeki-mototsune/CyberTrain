@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0A0A">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="../assets/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../assets/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="../assets/brand/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/fonts/fonts.css">
+<link rel="stylesheet" href="../assets/style.css">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:locale:alternate" content="ru_RU">
+<meta property="og:site_name" content="CyberTrain">
+<meta property="og:url" content="https://saeki-mototsune.github.io/CyberTrain/fr/deploy.html">
+<meta property="og:image" content="https://saeki-mototsune.github.io/CyberTrain/assets/og/fr/deploy.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Déployer une application CyberTrain">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://saeki-mototsune.github.io/CyberTrain/fr/deploy.html">
+<link rel="alternate" hreflang="en" href="https://saeki-mototsune.github.io/CyberTrain/deploy.html">
+<link rel="alternate" hreflang="ja" href="https://saeki-mototsune.github.io/CyberTrain/ja/deploy.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://saeki-mototsune.github.io/CyberTrain/zh/deploy.html">
+<link rel="alternate" hreflang="ru" href="https://saeki-mototsune.github.io/CyberTrain/ru/deploy.html">
+<link rel="alternate" hreflang="fr" href="https://saeki-mototsune.github.io/CyberTrain/fr/deploy.html">
+<link rel="alternate" hreflang="x-default" href="https://saeki-mototsune.github.io/CyberTrain/deploy.html">
+<script src="../assets/site.js" defer></script>
+
+<title>Déployer en production · CyberTrain</title>
+<meta name="description" content="Comment une application CyberTrain tourne en production et comment la livrer : un binaire natif derrière un proxy inverse, déployé avec Kamal et Docker ou avec systemd et Caddy.">
+<meta property="og:title" content="Déployer une application CyberTrain">
+<meta property="og:description" content="Un binaire natif, du HTTPS devant grâce à kamal-proxy ou Caddy, SQLite à côté : comment les pièces s’assemblent, et les deux façons de livrer.">
+</head>
+<body class="tutorial">
+<a class="skip" href="#main">Aller au contenu</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html" aria-label="Accueil CyberTrain">
+      <svg class="brand-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      <svg class="brand-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg>
+    </a>
+    <nav class="nav-links" aria-label="Navigation principale">
+      <ul>
+        <li class="nav-wide-only"><a href="index.html#how-it-works">Fonctionnement</a></li>
+        <li><a href="tutorial.html">Tutoriel</a></li>
+        <li class="nav-wide-only"><a href="deploy.html" aria-current="page">Déployer</a></li>
+        <li><a href="playground.html">Essayer</a></li>
+        <li class="nav-roomy-only"><a href="../api/index.html">API</a></li>
+        <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
+        <li><details class="lang-menu">
+          <summary aria-label="Langue : français">FR</summary>
+          <ul>
+            <li><a href="../deploy.html" hreflang="en" lang="en">English</a></li>
+            <li><a href="../ja/deploy.html" hreflang="ja" lang="ja">日本語</a></li>
+            <li><a href="../zh/deploy.html" hreflang="zh-Hans" lang="zh-Hans">简体中文</a></li>
+            <li><a href="../ru/deploy.html" hreflang="ru" lang="ru">Русский</a></li>
+            <li><a href="../fr/deploy.html" hreflang="fr" lang="fr" aria-current="true">Français</a></li>
+          </ul>
+        </details></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="wrap">
+  <header class="doc-hero">
+    <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Déployer</span></p>
+    <h1>Déployer en&nbsp;production</h1>
+    <p class="doc-intro">Une application CyberTrain se livre sous la forme d’un seul binaire natif et d’un dossier à côté. Elle ne parle que le HTTP simple&nbsp;: c’est donc ce qui se trouve devant elle qui assure le HTTPS, kamal-proxy si vous déployez avec Kamal, ou Caddy sur un serveur que vous gérez vous-même. Cette page explique comment les pièces s’assemblent et en quoi les deux méthodes diffèrent&nbsp;; les guides liés à chaque étape donnent toutes les commandes.</p>
+    <dl class="doc-meta">
+      <div><dt>Il vous faut</dt><dd>Un serveur Linux accessible en SSH, et un nom de domaine</dd></div>
+      <div><dt>Ce qui tourne</dt><dd>Un binaire derrière un proxy inverse, avec SQLite à côté</dd></div>
+      <div><dt>Deux méthodes</dt><dd>Kamal et Docker, ou systemd et Caddy</dd></div>
+    </dl>
+  </header>
+</div>
+
+<div class="wrap doc">
+  <nav class="toc" aria-label="Sections sur le déploiement">
+    <details class="toc-d" open>
+      <summary class="toc-sum"><span class="toc-title">Sur cette page</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
+    <ol>
+      <li><a href="#what-runs"><span class="toc-n">01</span>Ce qui tourne en production</a></li>
+      <li><a href="#two-ways"><span class="toc-n">02</span>Deux façons de déployer</a></li>
+      <li><a href="#kamal"><span class="toc-n">03</span>Déployer avec Kamal</a></li>
+      <li><a href="#reverse-proxy"><span class="toc-n">04</span>Derrière Caddy, sous systemd</a></li>
+      <li><a href="#configure"><span class="toc-n">05</span>Configurer</a></li>
+      <li><a href="#operate"><span class="toc-n">06</span>L’exploitation au quotidien</a></li>
+      <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>Pour aller plus loin</a></li>
+    </ol>
+    </details>
+  </nav>
+
+  <article class="doc-body">
+
+  <section class="step" id="what-runs" aria-labelledby="h-what-runs">
+    <p class="stage"><span class="stage-k">Vous êtes ici<span class="sr-only">:</span></span>Exécution <span aria-hidden="true">&middot;</span> <code>dist/</code></p>
+    <h2 id="h-what-runs"><span class="step-num" aria-hidden="true">01</span>Ce qui tourne en production</h2>
+    <p class="why"><span class="why-k">Pourquoi</span><span class="why-t">Savoir ce que fait le binaire, et ce qu’il laisse à d’autres, décide du reste de l’installation.</span></p>
+    <p><code>cybertrain build</code> compile le framework, vos contrôleurs et modèles et l’interpréteur de gabarits dans <code>dist/blog</code>, avec toutes les vues intégrées, et copie <code>public/</code> à côté. Rien d’autre n’est installé là où il tourne&nbsp;: ni Ruby, ni gems.</p>
+    <figure class="code" data-lang="text">
+<figcaption><span class="code-path">production</span><span class="code-lang">text</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code&nbsp;: ce qui tourne en production"><code><span class="ln">browser ──HTTPS──▶ reverse proxy (kamal-proxy or Caddy)</span>
+<span class="ln">                     └─ HTTP/1.1 ──▶ dist/blog (port 3000)</span>
+<span class="ln">                                       ├─ public/  static files, 404.html, 500.html</span>
+<span class="ln">                                       └─ storage/production.sqlite3</span></code></pre>
+</figure>
+    <ul class="points">
+      <li><strong>Il est lié à la SQLite et à la libc du système&nbsp;:</strong> construisez-le donc sur le même OS et le même CPU que la machine qui l’exécute. Le construire dans une image Docker, comme le fait la configuration Kamal, règle la question.</li>
+      <li><strong>Il ne parle que le HTTP/1.1 simple.</strong> TLS et HTTP/2 sont l’affaire du proxy inverse. En production, le cookie de session est <code>Secure</code>&nbsp;: le site doit être servi en HTTPS, sinon les formulaires échouent avec <code>Invalid authenticity token</code>.</li>
+      <li><strong>La base de données est un seul fichier SQLite.</strong> Faites tourner un seul processus sur un seul serveur, et gardez le fichier sur un stockage qui survit à un déploiement.</li>
+      <li><strong>Il est en production par défaut</strong> et refuse de démarrer sans <code>CYBERTRAIN_SECRET_KEY_BASE</code>. <code>./blog migrate</code> applique les migrations compilées dedans.</li>
+    </ul>
+  </section>
+
+  <section class="step" id="two-ways" aria-labelledby="h-two-ways">
+    <h2 id="h-two-ways"><span class="step-num" aria-hidden="true">02</span>Deux façons de déployer</h2>
+    <p class="why"><span class="why-k">Pourquoi</span><span class="why-t">Les deux mettent du HTTPS devant le même binaire&nbsp;; elles diffèrent par l’endroit où il est construit et la façon dont un déploiement le remplace.</span></p>
+    <div class="table-scroll" role="region" aria-label="Kamal comparé à systemd et Caddy" tabindex="0">
+    <table class="env">
+      <thead><tr><th scope="col"></th><th scope="col">Kamal</th><th scope="col">systemd et Caddy</th></tr></thead>
+      <tbody>
+        <tr><td data-label="">Construction</td><td data-label="Kamal">Dans une image Docker, sur votre machine ou un builder distant</td><td data-label="systemd et Caddy">Sur le serveur, depuis un clone git</td></tr>
+        <tr><td data-label="">En façade</td><td data-label="Kamal">kamal-proxy, avec un certificat Let&rsquo;s Encrypt</td><td data-label="systemd et Caddy">Caddy, avec un certificat Let&rsquo;s Encrypt</td></tr>
+        <tr><td data-label="">Fichiers statiques</td><td data-label="Kamal">L’application sert <code>public/</code></td><td data-label="systemd et Caddy">Caddy sert lui-même <code>dist/public/</code></td></tr>
+        <tr><td data-label="">Un déploiement</td><td data-label="Kamal">Le nouveau conteneur reçoit le trafic une fois son contrôle de santé réussi&nbsp;: aucune connexion n’est refusée</td><td data-label="systemd et Caddy">Un redémarrage&nbsp;: quelques secondes de 500.html servi par Caddy</td></tr>
+        <tr><td data-label="">Revenir en arrière</td><td data-label="Kamal"><code>kamal rollback VERSION</code></td><td data-label="systemd et Caddy">Pointer <code>current</code> vers une version antérieure et redémarrer</td></tr>
+        <tr><td data-label="">Le serveur a besoin de</td><td data-label="Kamal">SSH et Docker (installé par <code>kamal setup</code>), plus un registre d’images</td><td data-label="systemd et Caddy">Ruby, une chaîne de compilation C, les en-têtes SQLite, la CLI <code>cybertrain</code> et Spinel</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="note">Dans les deux cas, l’application est un processus et son fichier SQLite sur un seul serveur.</p>
+  </section>
+
+  <section class="step" id="kamal" aria-labelledby="h-kamal">
+    <h2 id="h-kamal"><span class="step-num" aria-hidden="true">03</span>Déployer avec Kamal</h2>
+    <p class="why"><span class="why-k">Pourquoi</span><span class="why-t"><code>cybertrain new</code> a déjà écrit les fichiers&nbsp;; il vous reste à indiquer un serveur, un domaine et un registre.</span></p>
+    <ul class="ship-grid">
+      <li class="ship-bin"><code>Dockerfile</code><span>une étape de build Ubuntu exécute <code>cybertrain setup</code> et <code>cybertrain build</code>&nbsp;; une étape allégée de la même version ne reçoit que <code>dist/</code> et les bibliothèques auxquelles il est lié</span></li>
+      <li><code>config/deploy.yml</code><span>le serveur, le domaine, kamal-proxy avec TLS vers le port 3000, le contrôle de santé et le volume de la base</span></li>
+      <li><code>.kamal/secrets</code><span>lit <code>KAMAL_REGISTRY_PASSWORD</code> et <code>CYBERTRAIN_SECRET_KEY_BASE</code> dans votre environnement, jamais les valeurs elles-mêmes</span></li>
+      <li><code>public/up.html</code><span>la page que kamal-proxy interroge avant d’envoyer du trafic à un nouveau conteneur</span></li>
+    </ul>
+    <p>Renseignez les valeurs marquées <code>CHANGE ME</code> dans <code>config/deploy.yml</code>, committez, puis&nbsp;:</p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code&nbsp;: déployer avec Kamal"><code><span class="ln cmd">export KAMAL_REGISTRY_PASSWORD=...</span>
+<span class="ln cmd">export CYBERTRAIN_SECRET_KEY_BASE=<span class="s">"$(openssl rand -hex 32)"</span>  <span class="c"># une seule fois ; conservez-la</span></span>
+<span class="ln cmd">kamal setup    <span class="c"># la première fois : Docker et kamal-proxy sur le serveur, build, push, démarrage</span></span>
+<span class="ln cmd">kamal deploy   <span class="c"># chaque déploiement suivant</span></span></code></pre>
+</figure>
+    <ul class="points">
+      <li>Chaque déploiement construit l’image (Spinel reste dans le cache de couches de Docker après la première fois), la pousse et démarre un conteneur qui exécute <code>./blog migrate</code> puis <code>exec ./blog</code> sur <code>0.0.0.0:3000</code>.</li>
+      <li>kamal-proxy attend que <code>/up.html</code> réponde 200, bascule le trafic vers le nouveau conteneur, puis arrête l’ancien, qui termine ses requêtes en cours sur <code>SIGTERM</code>.</li>
+      <li>La base de données se trouve sur le volume <code>blog_storage</code>, monté en <code>/app/storage</code>&nbsp;: elle survit à chaque déploiement.</li>
+      <li>Réglez <code>builder.arch</code> sur le CPU du serveur. Spinel se compile dans l’image, donc construire pour une autre architecture sous émulation est lent&nbsp;; construisez plutôt sur le serveur avec <code>builder.remote</code>.</li>
+    </ul>
+    <p class="note">Le guide pas à pas, sauvegardes du volume comprises, est <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a>. <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> embarque la même configuration, et la CI construit et teste son image.</p>
+  </section>
+
+  <section class="step" id="reverse-proxy" aria-labelledby="h-reverse-proxy">
+    <h2 id="h-reverse-proxy"><span class="step-num" aria-hidden="true">04</span>Derrière Caddy, sous systemd</h2>
+    <p class="why"><span class="why-k">Pourquoi</span><span class="why-t">Sans Docker&nbsp;: le serveur construit l’application depuis git, systemd la maintient en marche, Caddy fait face à Internet.</span></p>
+    <ul class="points">
+      <li><strong>L’application</strong> n’écoute que sur <code>127.0.0.1:3000</code>&nbsp;: rien ne l’atteint sans passer par Caddy. <code>public/</code> et <code>storage/</code> se résolvent depuis le répertoire de travail, donc systemd la démarre avec <code>dist/</code> comme répertoire de travail et lit son secret dans un fichier d’environnement hors du dépôt.</li>
+      <li><strong>Un script de déploiement</strong> clone chaque version dans son propre répertoire, vérifie que <code>gen/</code> est à jour, exécute <code>cybertrain build</code> et <code>dist/blog migrate</code>, puis fait pointer le lien <code>current</code> dessus et redémarre le service. Toute erreur l’arrête avant la bascule.</li>
+      <li><strong>Caddy</strong> obtient le certificat, redirige HTTP vers HTTPS, sert lui-même les fichiers de <code>dist/public/</code> et relaie tout le reste vers l’application. Pendant que l’application redémarre, il répond avec <code>500.html</code>.</li>
+    </ul>
+    <figure class="code" data-lang="caddyfile">
+<figcaption><span class="code-path">/etc/caddy/Caddyfile</span><span class="code-lang">caddyfile</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code&nbsp;: le Caddyfile"><code><span class="ln">blog.example.com {</span>
+<span class="ln">	encode zstd gzip</span>
+<span class="ln">	root * /srv/blog/current/dist/public</span>
+<span class="ln"></span>
+<span class="ln">	@static file</span>
+<span class="ln">	handle @static {</span>
+<span class="ln">		file_server</span>
+<span class="ln">	}</span>
+<span class="ln"></span>
+<span class="ln">	handle {</span>
+<span class="ln">		reverse_proxy 127.0.0.1:3000</span>
+<span class="ln">	}</span>
+<span class="ln"></span>
+<span class="ln">	handle_errors {</span>
+<span class="ln">		rewrite * /500.html</span>
+<span class="ln">		file_server</span>
+<span class="ln">	}</span>
+<span class="ln">}</span></code></pre>
+</figure>
+    <p>L’application ajoute <code>X-Content-Type-Options</code> et <code>X-Frame-Options</code> à ce qu’elle sert&nbsp;; les fichiers que Caddy sert depuis <code>dist/public/</code> ne passent pas par elle, ajoutez-les donc dans le bloc du site si vous les voulez là aussi. nginx fonctionne de la même façon&nbsp;: terminer TLS, servir <code>dist/public/</code>, relayer le reste.</p>
+    <p class="note">La procédure complète, d’un serveur Ubuntu neuf aux sauvegardes et retours en arrière, est <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a>.</p>
+  </section>
+
+  <section class="step" id="configure" aria-labelledby="h-configure">
+    <h2 id="h-configure"><span class="step-num" aria-hidden="true">05</span>Configurer</h2>
+    <p class="why"><span class="why-k">Pourquoi</span><span class="why-t">Les réglages de production viennent de l’environnement&nbsp;: le même binaire tourne partout.</span></p>
+    <div class="table-scroll" role="region" aria-label="Variables d’environnement de production" tabindex="0">
+    <table class="env">
+      <thead><tr><th scope="col">Variable</th><th scope="col">En production</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="En production">Obligatoire. Signe le cookie de session&nbsp;; la changer déconnecte tout le monde. Générez-la une fois avec <code>openssl rand -hex 32</code></td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_DATABASE</code></td><td data-label="En production">Le fichier SQLite&nbsp;; par défaut <code>storage/production.sqlite3</code> sous le répertoire de travail. Gardez-le hors de la version déployée</td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_HOST</code></td><td data-label="En production"><code>127.0.0.1</code> par défaut, ce qui convient derrière un proxy sur la même machine&nbsp;; <code>0.0.0.0</code> dans un conteneur</td></tr>
+        <tr><td data-label="Variable"><code>PORT</code></td><td data-label="En production"><code>3000</code> par défaut&nbsp;; là où le proxy transmet</td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_ENV</code></td><td data-label="En production">Déjà <code>production</code> dans un binaire construit&nbsp;; <code>development</code> lancerait la surveillance des fichiers et les reconstructions</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="note">L’étape <a href="tutorial.html#ship">Compiler pour le déploiement</a> du tutoriel liste toutes les variables et l’attribut <code>config/app.rb</code> correspondant.</p>
+  </section>
+
+  <section class="step" id="operate" aria-labelledby="h-operate">
+    <h2 id="h-operate"><span class="step-num" aria-hidden="true">06</span>L’exploitation au quotidien</h2>
+    <ul class="points">
+      <li><strong>Chaque modification est un déploiement.</strong> Les vues sont intégrées à la compilation, donc même une modification de vue seule demande une reconstruction et un redémarrage. Committez <code>gen/</code> avec la modification&nbsp;: le script de déploiement s’arrête sur un <code>gen/</code> périmé.</li>
+      <li><strong>Les migrations passent avant que le nouveau code ne serve&nbsp;:</strong> dans le script de déploiement, ou au démarrage du conteneur. Supprimez une colonne lors d’un déploiement ultérieur, quand plus aucun code en service ne la lit.</li>
+      <li><strong>Sauvegardez avec <code>.backup</code> de SQLite,</strong> pas en copiant le fichier&nbsp;: la copie est cohérente même pendant que l’application écrit.</li>
+      <li><strong>Revenir en arrière par-delà une migration</strong> implique de ramener aussi la base, avec <code>db rollback</code> depuis la version la plus récente, avant de basculer.</li>
+      <li><strong>L’arrêt est en douceur&nbsp;:</strong> sur <code>SIGTERM</code>, le serveur cesse d’accepter, termine les requêtes en cours et quitte, au bout de 10 secondes au plus.</li>
+    </ul>
+  </section>
+
+  <section class="step step-last" id="where-next" aria-labelledby="h-where-next">
+    <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>Pour aller plus loin</h2>
+    <ul class="next-list">
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">Déployer avec Kamal, pas à pas.</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">Un serveur Ubuntu avec systemd et Caddy, du début aux sauvegardes.</span></a></li>
+      <li><a href="tutorial.html#ship"><span class="next-t">Compiler pour le déploiement</span><span class="next-d">La dernière étape du tutoriel&nbsp;: <code>cybertrain build</code> et <code>dist/</code>.</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">Le blog terminé, avec sa configuration Kamal.</span></a></li>
+    </ul>
+  </section>
+
+  </article>
+</div>
+
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <a class="foot-brand" href="index.html" aria-label="Accueil CyberTrain">
+        <svg class="foot-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      </a>
+      <p class="foot-tag">Des applications web à la Rails, compilées en un seul binaire natif.</p>
+    </div>
+    <div class="foot-cols">
+      <nav aria-label="Projet">
+        <p class="foot-h">Projet</p>
+        <ul>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
+          <li><a href="tutorial.html">Tutoriel</a></li>
+          <li><a href="deploy.html">Déployer</a></li>
+          <li><a href="../api/index.html">API</a></li>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Projets liés">
+        <p class="foot-h">Voir aussi</p>
+        <ul>
+          <li><a href="https://github.com/matz/spinel" rel="noopener">Spinel</a></li>
+          <li><a href="https://github.com/rubys/roundhouse" rel="noopener">Roundhouse</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Langues">
+        <p class="foot-h">Langue</p>
+        <ul>
+          <li><a href="../deploy.html" hreflang="en" lang="en">English</a></li>
+          <li><a href="../ja/deploy.html" hreflang="ja" lang="ja">日本語</a></li>
+          <li><a href="../zh/deploy.html" hreflang="zh-Hans" lang="zh-Hans">简体中文</a></li>
+          <li><a href="../ru/deploy.html" hreflang="ru" lang="ru">Русский</a></li>
+          <li><a href="../fr/deploy.html" hreflang="fr" lang="fr" aria-current="true">Français</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-base">
+      <p><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/README.md#license" rel="noopener">Licence MIT</a> <span aria-hidden="true">&middot;</span> Pré-alpha</p>
+      <p>CyberTrain est un projet indépendant, sans lien avec Rails, Spinel ou Roundhouse.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

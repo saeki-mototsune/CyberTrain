@@ -51,6 +51,7 @@
       <ul>
         <li class="nav-wide-only"><a href="index.html#how-it-works">Как это работает</a></li>
         <li><a href="tutorial.html" aria-current="page">Учебник</a></li>
+        <li class="nav-wide-only"><a href="deploy.html">Деплой</a></li>
         <li><a href="playground.html">Песочница</a></li>
         <li class="nav-roomy-only"><a href="../api/index.html">API</a></li>
         <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
@@ -763,6 +764,7 @@
 </figure>
     <p>Двоичный файл компилируется внутри образа, поэтому ОС всегда совпадает с образом; задайте <code>builder.arch</code> в <code>config/deploy.yml</code> по процессору сервера. Развёртывайте на один сервер: база данных&nbsp;&mdash; файл SQLite на томе этого сервера. Часть 8 в <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md#第-8-部-kamal-でデプロイする" rel="noopener"><code>docs/deploy.md</code></a> (на японском; английская версия&nbsp;&mdash; <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a>) описывает весь процесс, включая резервные копии.</p>
     <p>Готовое приложение <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> содержит ту же конфигурацию с одним отличием: оно собирается с фреймворком из репозитория (<code>path = "../.."</code> в его <code>spin.toml</code>), поэтому его <code>Dockerfile</code> не ставит gem, а запускает <code>cybertrain setup</code> и <code>cybertrain build</code> из рабочей копии, а контекст сборки&nbsp;&mdash; корень репозитория (<code>builder.context: ../..</code>; <code>Dockerfile.dockerignore</code> отправляет только фреймворк и приложение). CI (<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/.github/workflows/blog-image.yml" rel="noopener"><code>blog-image.yml</code></a>) собирает этот образ при каждом изменении и убеждается, что проходит проверка работоспособности, статья создаётся через форму, контейнер корректно останавливается, а база данных сохраняется на томе; кроме того, он загружает <code>config/deploy.yml</code> через Kamal.</p>
+    <p class="note">Как сочетаются эти части и чем Kamal отличается от сервера за Caddy, рассказано на <a href="deploy.html">странице о развёртывании</a>.</p>
   </section>
 
   <section class="step" id="things-to-know" aria-labelledby="h-things-to-know">
@@ -844,6 +846,7 @@
         <ul>
           <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
           <li><a href="tutorial.html">Учебник</a></li>
+          <li><a href="deploy.html">Деплой</a></li>
           <li><a href="../api/index.html">API</a></li>
           <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
         </ul>

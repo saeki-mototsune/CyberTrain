@@ -1,8 +1,9 @@
 # site/
 
 The CyberTrain homepage (`index.html`), the getting-started tutorial
-(`tutorial.html`) and the playground page (`playground.html`, the way into
-the GitHub Codespaces playground): static HTML and CSS with no build step, no
+(`tutorial.html`), the deploy page (`deploy.html`: how an app runs in
+production, Kamal or systemd behind Caddy) and the playground page
+(`playground.html`, the way into the GitHub Codespaces playground): static HTML and CSS with no build step, no
 framework and no third-party requests. `assets/site.js` only adds copy
 buttons, marks the current step in the contents lists and closes the language
 menu; every page works with JavaScript off. Each page is also translated
@@ -70,7 +71,7 @@ network's card validator.
 
 ## Translations
 
-The three pages are also published in Japanese (`ja/`), Simplified Chinese
+The four pages are also published in Japanese (`ja/`), Simplified Chinese
 (`zh/`), Russian (`ru/`) and French (`fr/`), at the same file names:
 `ja/tutorial.html` is the Japanese `tutorial.html`. English is the source;
 each translation is a copy of the English page with only its text translated:

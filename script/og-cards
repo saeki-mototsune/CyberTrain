@@ -2,7 +2,7 @@
 // Renders the social cards (og:image, 1200 x 630) for every page of the site
 // in every language into site/assets/og/<lang>/<page>.png. The words on a
 // card come from the page itself: the kicker is the hero's status line (home)
-// or the header link marked aria-current (tutorial, playground), the headline
+// or the header link marked aria-current (tutorial, playground, deploy), the headline
 // is the tagline (home) or the <h1>. So after a page's tagline or title
 // changes, in any language, run this again and commit the PNGs.
 //
@@ -30,7 +30,7 @@ function loadPlaywright() {
 
 const SITE = path.join(__dirname, '..', 'site');
 const LANGS = ['en', 'ja', 'zh', 'ru', 'fr'];
-const PAGES = ['index', 'tutorial', 'playground'];
+const PAGES = ['index', 'tutorial', 'playground', 'deploy'];
 const HOST = 'saeki-mototsune.github.io/CyberTrain';
 
 // One real command per page, from the home page's quick start.
@@ -38,6 +38,7 @@ const COMMANDS = {
   index: ['cybertrain build', '# dist/blog'],
   tutorial: ['cybertrain g scaffold article title:string body:text', ''],
   playground: ['cybertrain server', '# http://127.0.0.1:3000'],
+  deploy: ['kamal deploy', ''],
 };
 
 const FONT_STACK = {
