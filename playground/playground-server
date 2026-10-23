@@ -19,6 +19,8 @@ port="${PORT:-3000}"
 
 if [ "${CODESPACES:-}" = "true" ] && [ -n "${CODESPACE_NAME:-}" ]; then
   url="https://${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}/"
+  # Trust only this codespace's forwarded hostname, never the whole domain.
+  export CYBERTRAIN_ALLOWED_HOSTS="${CYBERTRAIN_ALLOWED_HOSTS:+${CYBERTRAIN_ALLOWED_HOSTS},}${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
 else
   url="http://localhost:${port}/"
 fi

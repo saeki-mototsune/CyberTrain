@@ -118,6 +118,7 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes controller, "class ApplicationController < Cybertrain::Controller"
   assert_includes controller, "rescue_from Cybertrain::RecordNotFound, with: :record_not_found"
   assert_includes read("blog/config/app.rb"), "Cybertrain.configure do |c|"
+  assert_includes read("blog/config/app.rb"), 'c.allowed_hosts << "my-preview.example.com"'
   assert_includes read("blog/.gitignore"), "/build/"
   assert_includes read("blog/.gitignore"), "/storage/*.sqlite3*"
   assert_includes read("blog/.gitignore"), "/storage/uploads/\n"

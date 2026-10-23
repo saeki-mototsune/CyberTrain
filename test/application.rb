@@ -51,7 +51,7 @@ at_exit { remove_tree(ROOT) }
 
 # Every variable Config reads, cleared so the defaults are deterministic.
 CONFIG_ENV = ["CYBERTRAIN_ENV", "PORT", "CYBERTRAIN_DATABASE", "CYBERTRAIN_SECRET_KEY_BASE", "SPINEL_WORKERS",
-              "CYBERTRAIN_HOST", "CYBERTRAIN_SESSION_SAME_SITE", "CYBERTRAIN_SESSION_PARTITIONED"]
+              "CYBERTRAIN_HOST", "CYBERTRAIN_ALLOWED_HOSTS", "CYBERTRAIN_SESSION_SAME_SITE", "CYBERTRAIN_SESSION_PARTITIONED"]
 SAVED_ENV = {}
 CONFIG_ENV.each do |name|
   value = ENV[name]
@@ -91,6 +91,7 @@ test "config defaults in development" do
   refute c.test?
   refute c.production?
   assert_equal "127.0.0.1", c.host
+  assert_equal ["localhost", "127.0.0.1", "[::1]"], c.allowed_hosts
   assert_equal 3000, c.port
   assert_equal "storage/development.sqlite3", c.database_path
   assert_equal "", c.secret_key_base
@@ -113,6 +114,15 @@ test "config defaults in development" do
   assert_equal "storage/uploads", c.upload_root
   assert_equal 1, c.workers
   assert_equal "tmp/secret_key", c.secret_key_path
+end
+
+test "configured forwarding hosts extend the explicit loopback hosts" do
+  clear_config_env
+  ENV["CYBERTRAIN_HOST"] = "0.0.0.0"
+  ENV["CYBERTRAIN_ALLOWED_HOSTS"] = " preview.example, ,other.example "
+  c = Cybertrain::Config.new
+  restore_config_env
+  assert_equal ["localhost", "127.0.0.1", "[::1]", "preview.example", "other.example"], c.allowed_hosts
 end
 
 test "environment variables override the config defaults" do
@@ -406,7 +416,7 @@ test "log_level :none, static_files and csrf switch their middleware off" do
   c.csrf = false
   c.secret_key_base = "bare-secret"
   bare = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/bare/#{name}" }, config: c)
-  assert_equal ["Cybertrain::MethodOverride", "Cybertrain::SessionStore", "Cybertrain::Router"], stack_names(bare)
+  assert_equal ["Cybertrain::HostAuthorization", "Cybertrain::MethodOverride", "Cybertrain::SessionStore", "Cybertrain::Router"], stack_names(bare)
 end
 
 test "the stack's session cookie follows session_same_site and session_partitioned" do
@@ -418,9 +428,38 @@ test "the stack's session cookie follows session_same_site and session_partition
   c.session_same_site = "None"
   c.session_partitioned = true
   framed = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/framed/#{name}" }, config: c)
-  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/visit", {}, ""))
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/visit", { "host" => "localhost" }, ""))
   framed.call(ctx)
   assert ctx.response.cookies[0].end_with?("; SameSite=None; Max-Age=1209600; Secure; Partitioned")
+end
+
+test "development rejects hostile hosts before pages, static files, sessions and writes" do
+  c = Cybertrain::Config.new
+  c.env = "development"
+  c.host = "0.0.0.0"
+  c.log_level = :none
+  c.secret_key_base = "host-test-secret"
+  c.public_root = "#{ROOT}/public"
+  app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
+  client = Cybertrain::Test::Client.new(app)
+  page = client.get("/", { "host" => "localhost:3000" })
+  token = page_token(page.body)
+  refute token.empty?
+  assert_equal 200, client.get("/robots.txt", { "host" => "127.0.0.1" }).status
+  ["/", "/robots.txt", "/visit"].each do |path|
+    res = client.get(path, { "host" => "rebind.example", "x-forwarded-host" => "localhost" })
+    assert_equal 403, res.status
+    assert_equal "Blocked host", res.body
+    assert res.cookies.empty?
+  end
+  res = client.post("/notes/7", { "_method" => "delete", "authenticity_token" => token }, { "host" => "rebind.example" })
+  assert_equal 403, res.status
+  assert_equal "Blocked host", res.body
+  assert res.cookies.empty?
+  assert_equal 200, client.post("/notes/7", { "_method" => "delete", "authenticity_token" => token }, { "host" => "localhost" }).status
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", { "host" => "rebind.example" }, ""))
+  app.call(ctx)
+  assert ctx.session.nil?
 end
 
 test "production puts ErrorPages outermost" do
@@ -545,6 +584,7 @@ test "a POST under csrf_exempt_prefixes passes without a token; the rest of the 
   c = Cybertrain::Config.new
   c.log_level = :none
   c.csrf_exempt_prefixes = ["/api/"]
+  c.allowed_hosts << "www.example.com" # Test::Client's explicit test hostname.
   c.secret_key_base = "api-secret"
   api_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
   client = Cybertrain::Test::Client.new(api_app)
@@ -559,6 +599,7 @@ test "a gzip body under the exempt prefix is inflated by the installed inflater;
   c = Cybertrain::Config.new
   c.log_level = :none
   c.csrf_exempt_prefixes = ["/api/"]
+  c.allowed_hosts << "www.example.com" # Test::Client's explicit test hostname.
   c.secret_key_base = "api-secret"
   api_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
   client = Cybertrain::Test::Client.new(api_app)

@@ -43,6 +43,14 @@ docker run --rm -it ghcr.io/saeki-mototsune/cybertrain-playground bash
   default and the image leaves it so: GitHub Codespaces forwards 127.0.0.1,
   and nothing else needs to reach the server there.
 
+Development requests must also use a trusted Host: `localhost`, `127.0.0.1`
+or `[::1]` by default, with an optional numeric port. Binding to `0.0.0.0`
+does not allow additional hostnames. For another forwarding hostname, set
+`CYBERTRAIN_ALLOWED_HOSTS=preview.example.com` (comma-separated for more),
+or add it to `c.allowed_hosts` in `config/app.rb`. Names match exactly;
+wildcards are not supported. Rejected hosts receive 403 before application
+data, static files, session cookies or development diagnostics are served.
+
 ## Build it
 
 From a regular clone of this repository (not a git worktree), at its root:
@@ -132,6 +140,8 @@ GIT_CONFIG_NOSYSTEM=1 git clone https://github.com/saeki-mototsune/cybertrain
 - The banner shows the app's URL (in a codespace the forwarded
   `https://<codespace>-3000.app.github.dev/`, elsewhere
   `http://localhost:3000/`), where the guide is, and how long edits take.
+- In Codespaces, the launcher adds that exact forwarded hostname to
+  `CYBERTRAIN_ALLOWED_HOSTS`, preserving any explicitly configured names.
 - When VS Code's `code` command works in its terminal, it opens
   `PLAYGROUND.md` once per container (the marker is
   `tmp/.playground-guide-opened`, which git ignores); otherwise the banner is
