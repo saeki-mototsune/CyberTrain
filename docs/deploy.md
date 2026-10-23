@@ -531,9 +531,9 @@ ln -sfn "$release" "$ROOT/current.new"
 mv -T "$ROOT/current.new" "$ROOT/current"
 sudo /usr/bin/systemctl restart "$APP"
 
-echo "==> 新しいリリースが応答するまで待つ（最大 30 秒）"
+echo "==> 新しいリリースが応答するまで待つ（約 30 秒）"
 up=""
-deadline=$((SECONDS + 30))   # 1 回 2 秒まで、全体で 30 秒まで
+deadline=$((SECONDS + 30))   # 1 回 2 秒まで、全体で約 30 秒（最後の試行は期限を少し越えうる）
 while [ "$SECONDS" -lt "$deadline" ]; do
   if curl -fs --max-time 2 -o /dev/null "http://127.0.0.1:$PORT/up.html"; then up=1; break; fi
   sleep 1
@@ -568,7 +568,7 @@ chmod 700 ~/deploy.sh
 まず足し、古い列は別のデプロイで消す）。
 
 `systemctl restart` は、新しいバイナリが起動直後に落ちても成功を返します（`Type=simple` のため）。
-そこでスクリプトは、切り替えて再起動したあと `http://127.0.0.1:$PORT/up.html` が応答するまで最大
+そこでスクリプトは、切り替えて再起動したあと `http://127.0.0.1:$PORT/up.html` が応答するまで約
 30 秒待ち、応答しなければ `current` を前のリリースに戻して再起動し、失敗で終わります。原因
 （秘密鍵が空、ポートが使われている、など）は、`notes` ユーザーを抜けて sudo できるユーザーで
 `sudo journalctl -u notes` を見ます（`notes` に許しているのは `systemctl restart notes` だけです）。
@@ -930,7 +930,7 @@ kamal setup
 | 500 になり、ログに `Missing template ...` が出る | ビルド時に `app/views/` に無かったテンプレート。`cybertrain build` をやり直す |
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
 | デプロイが `stale: gen/...` で止まる | 手元で `cybertrain spin run gen` して `gen/` をコミットし忘れている |
-| デプロイが「新しいリリースが応答しない」で終わる | 新しいリリースが 30 秒以内に `/up.html` に応答しなかった（スクリプトは前のリリースに戻している）。`sudo journalctl -u notes -n 50` で原因を見る。起動はしているのに応答しないなら、アプリに `public/up.html` が無い（5-3） |
+| デプロイが「新しいリリースが応答しない」で終わる | 新しいリリースが約 30 秒のうちに `/up.html` に応答しなかった（スクリプトは前のリリースに戻している）。`sudo journalctl -u notes -n 50` で原因を見る。起動はしているのに応答しないなら、アプリに `public/up.html` が無い（5-3） |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
 | `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.2.1`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |

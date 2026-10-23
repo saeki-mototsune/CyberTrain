@@ -581,9 +581,9 @@ ln -sfn "$release" "$ROOT/current.new"
 mv -T "$ROOT/current.new" "$ROOT/current"
 sudo /usr/bin/systemctl restart "$APP"
 
-echo "==> Waiting for the new release to answer (30 seconds at most)"
+echo "==> Waiting for the new release to answer (about 30 seconds)"
 up=""
-deadline=$((SECONDS + 30))   # 2 seconds per try, 30 seconds in all
+deadline=$((SECONDS + 30))   # 2 seconds per try, about 30 seconds in all (the last try can end a little past it)
 while [ "$SECONDS" -lt "$deadline" ]; do
   if curl -fs --max-time 2 -o /dev/null "http://127.0.0.1:$PORT/up.html"; then up=1; break; fi
   sleep 1
@@ -621,7 +621,7 @@ column first, remove the old one in a later deploy).
 
 `systemctl restart` succeeds even if the new binary exits right after starting
 (the unit is `Type=simple`). So after switching and restarting, the script
-waits up to 30 seconds for `http://127.0.0.1:$PORT/up.html` to answer; if it
+waits about 30 seconds for `http://127.0.0.1:$PORT/up.html` to answer; if it
 does not, the script points `current` back at the previous release, restarts
 it and fails. To see why the new release did not start (an empty secret, a
 port in use, ...), leave the `notes` shell and run `sudo journalctl -u notes`
@@ -880,7 +880,7 @@ day-to-day operation.
 | A 500, with `Missing template ...` in the log | A template that was not in `app/views/` at build time. Run `cybertrain build` again |
 | `attempt to write a readonly database` / `unable to open database file` | The database path is outside `ReadWritePaths=`, or `/srv/notes/shared` is not owned by `notes` |
 | The deploy stops at `stale: gen/...` | You forgot to run `cybertrain spin run gen` locally and commit `gen/` |
-| The deploy ends with `The new release does not answer` | The new release did not answer `/up.html` within 30 seconds (the script has gone back to the previous release). Look at `sudo journalctl -u notes -n 50` for why. If it did start but does not answer, the app has no `public/up.html` (5-3) |
+| The deploy ends with `The new release does not answer` | The new release did not answer `/up.html` within about 30 seconds (the script has gone back to the previous release). Look at `sudo journalctl -u notes -n 50` for why. If it did start but does not answer, the app has no `public/up.html` (5-3) |
 | `spin: command not found` (while deploying) | Spinel is not installed for the `notes` user (`cybertrain setup` in 3-4), or `~/deploy.sh`'s `PATH` lacks `~/.cybertrain/bin` (5-3) |
 | `cybertrain: command not found` (while deploying) | The cybertrain CLI is not installed for the `notes` user (`gem install --user-install cybertrain -v 0.2.1` in 3-4) |
 | `git clone` fails with `Permission denied (publickey)` | The deploy key is not registered, or another user's key is in use (run 3-5 as the `notes` user) |
