@@ -43,16 +43,22 @@ module Cybertrain
       end
     end
 
-    @@cases = []
-    @@failures = 0
-    @@assertions = 0
+    # Module-level instance variables, not @@class_variables: Spinel
+    # 2026.09.12 does not mark class variables for the garbage collector, so
+    # a cases Array only a @@variable held was swept as soon as the program
+    # allocated enough before run! (booting an app, running migrations), and
+    # run! iterated over whatever reused its memory (spikes/NOTES.md rules
+    # 18 and 64; test/harness_gc.rb). Seeded with the element type (rule 9).
+    @cases = Array.new(0) { Case.new("", -> { nil }) }
+    @failures = 0
+    @assertions = 0
 
     def self.register(name, block)
-      @@cases << Case.new(name, block)
+      @cases << Case.new(name, block)
     end
 
     def self.count_assertion
-      @@assertions += 1
+      @assertions += 1
     end
 
     # Runs every registered case in registration order, prints one line per
@@ -65,20 +71,20 @@ module Cybertrain
     # @return [void]
     # @api public
     def self.run!
-      @@cases.each do |c|
+      @cases.each do |c|
         begin
           c.block.call
           puts "ok   #{c.name}"
         rescue AssertionFailed => e
-          @@failures += 1
+          @failures += 1
           puts "FAIL #{c.name}: #{e.message}"
         rescue StandardError => e
-          @@failures += 1
+          @failures += 1
           puts "ERR  #{c.name}: #{e.class.name}: #{e.message}"
         end
       end
-      puts "#{@@cases.size} tests, #{@@assertions} assertions, #{@@failures} failures"
-      exit(1) if @@failures > 0
+      puts "#{@cases.size} tests, #{@assertions} assertions, #{@failures} failures"
+      exit(1) if @failures > 0
     end
   end
 end

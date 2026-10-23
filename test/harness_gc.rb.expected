@@ -1,0 +1,6 @@
+allocated 560000 objects before run!, 32 still live
+ok   the first registered test runs
+ok   the second registered test runs
+ok   assertions counted before the allocation are kept
+ok   the last registered test sees every earlier one
+4 tests, 5 assertions, 0 failures
