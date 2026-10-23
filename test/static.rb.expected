@@ -1,5 +1,7 @@
 ok   serves a file with the content type from its extension
 ok   an unknown extension is served as octet-stream
+ok   common public/ file types are served under their own type
+ok   static files carry the security defaults once, also for HEAD and the octet-stream fallback
 ok   a directory serves its index.html
 ok   a missing file falls through to the next app
 ok   dot-dot segments are rejected
@@ -7,4 +9,4 @@ ok   a malformed percent-escape falls through instead of raising
 ok   Static decodes the path once through request.path_segments; an invalid decoded byte is the 400
 ok   only GET and HEAD are served
 ok   HEAD keeps Content-Length but sends no body
-9 tests, 39 assertions, 0 failures
+11 tests, 59 assertions, 0 failures

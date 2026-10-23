@@ -894,6 +894,12 @@ kamal setup
 - HTTPS に固定したい場合は、動作を確認した後で Caddyfile のサイトブロックに
   `header Strict-Transport-Security "max-age=31536000"` を足してください（セッション Cookie は
   本番では `Secure` 付きです）。
+- アプリは全レスポンスに `X-Content-Type-Options: nosniff` と `X-Frame-Options: SAMEORIGIN` を付けます
+  （アプリの応答、エラー応答、`Static` ミドルウェアが返す `public/` のファイルも）。ただし 6-2 の
+  Caddyfile では `public/` のファイルを Caddy が直接返すので、アプリを通らず、この 2 つは付きません。
+  揃えたいときは、サイトブロックに `header ?X-Content-Type-Options nosniff` と
+  `header ?X-Frame-Options SAMEORIGIN` を足してください（`?` は、アプリがすでに付けているときは
+  上書きしない指定です。埋め込み用のページがアプリ側で値を変えていても、それが残ります）。
 - 認証（ログイン）機能はフレームワークにありません。公開前に、誰が書き込めるべきかを考えてください。
 - ビューはビルド時にバイナリへ埋め込まれます。ビューだけの変更でも、本番ではデプロイ
   （再ビルドと再起動）が必要です。

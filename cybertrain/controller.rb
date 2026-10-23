@@ -576,7 +576,10 @@ module Cybertrain
     #   header is ASCII only;
     # - `X-Content-Type-Options: nosniff`, `Content-Security-Policy:
     #   default-src 'none'; sandbox` and `Cache-Control: private,
-    #   max-age=3600` are always set.
+    #   max-age=3600` are always set. (nosniff and `X-Frame-Options:
+    #   SAMEORIGIN` are also the defaults of every response, see
+    #   {Response#to_http}; the header set here is the one sent, not a
+    #   second copy.)
     #
     # HEAD works as for any action: the Server leaves the body out.
     # @example

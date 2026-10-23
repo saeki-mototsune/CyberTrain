@@ -3,6 +3,9 @@ require "cybertrain/test"
 
 Response = Cybertrain::Response
 
+# The security defaults every response carries (docs/design.md D14).
+SEC = "X-Content-Type-Options: nosniff\r\nX-Frame-Options: SAMEORIGIN\r\n"
+
 test "defaults" do
   res = Response.new
   assert_equal 200, res.status
@@ -41,7 +44,7 @@ end
 test "to_http exact bytes for a small body" do
   res = Response.new
   res.body = "hi"
-  assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 2\r\n\r\nhi", res.to_http
+  assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n#{SEC}Content-Length: 2\r\n\r\nhi", res.to_http
 end
 
 test "to_http keeps set headers and an explicit content type" do
@@ -50,14 +53,50 @@ test "to_http keeps set headers and an explicit content type" do
   res.content_type = "text/plain"
   res.set_header("X-Request-Id", "abc")
   res.body = "héllo"
-  expected = "HTTP/1.1 201 Created\r\nContent-Type: text/plain\r\nX-Request-Id: abc\r\nContent-Length: 6\r\n\r\nhéllo"
+  expected = "HTTP/1.1 201 Created\r\nContent-Type: text/plain\r\nX-Request-Id: abc\r\n#{SEC}Content-Length: 6\r\n\r\nhéllo"
   assert_equal expected, res.to_http
+end
+
+test "to_http adds nosniff and X-Frame-Options unless the response sets them" do
+  res = Response.new
+  wire = res.to_http
+  assert_includes wire, "X-Content-Type-Options: nosniff\r\n"
+  assert_includes wire, "X-Frame-Options: SAMEORIGIN\r\n"
+  # an explicit Content-Type does not switch the defaults off
+  res.content_type = "text/plain"
+  assert_includes res.to_http, SEC
+  # HEAD and an error answer carry them too
+  assert_includes res.to_http(true), SEC
+  res.reset_to(500)
+  assert_includes res.to_http, SEC
+  # and so does a redirect
+  moved = Response.new
+  moved.redirect("/elsewhere")
+  assert_includes moved.to_http, "Location: /elsewhere\r\n#{SEC}"
+end
+
+test "a header the response sets is sent as set, once, whatever its case" do
+  res = Response.new
+  res.set_header("x-frame-options", "DENY")
+  res.set_header("X-CONTENT-TYPE-OPTIONS", "nosniff")
+  wire = res.to_http
+  assert_equal 1, wire.scan(/x-frame-options:/i).size
+  assert_equal 1, wire.scan(/x-content-type-options:/i).size
+  assert_includes wire, "x-frame-options: DENY\r\n"
+  refute wire.include?("SAMEORIGIN")
+  # an app that frames its page from elsewhere overrides the value
+  other = Response.new
+  other.set_header("X-Frame-Options", "ALLOWALL")
+  assert_includes other.to_http, "X-Frame-Options: ALLOWALL\r\n"
+  assert_equal 1, other.to_http.scan(/x-frame-options:/i).size
+  # the defaults are not stored: headers stays what the app set
+  assert_equal 0, Response.new.headers.size
 end
 
 test "head_only omits the body but keeps Content-Length" do
   res = Response.new
   res.body = "hello"
-  assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 5\r\n\r\n", res.to_http(true)
+  assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n#{SEC}Content-Length: 5\r\n\r\n", res.to_http(true)
 end
 
 test "cookies are emitted as separate Set-Cookie lines" do
@@ -65,7 +104,7 @@ test "cookies are emitted as separate Set-Cookie lines" do
   res.add_cookie("a=1; Path=/")
   res.add_cookie("b=2; Path=/; HttpOnly")
   res.status = 204
-  expected = "HTTP/1.1 204 No Content\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 0\r\nSet-Cookie: a=1; Path=/\r\nSet-Cookie: b=2; Path=/; HttpOnly\r\n\r\n"
+  expected = "HTTP/1.1 204 No Content\r\nContent-Type: text/html; charset=utf-8\r\n#{SEC}Content-Length: 0\r\nSet-Cookie: a=1; Path=/\r\nSet-Cookie: b=2; Path=/; HttpOnly\r\n\r\n"
   assert_equal expected, res.to_http
   assert_equal ["a=1; Path=/", "b=2; Path=/; HttpOnly"], res.cookies
 end
@@ -119,7 +158,7 @@ test "set_header replacing a header keeps its position" do
   res.set_header("X-A", "3")
   res.set_header("x-b", "4")
   assert_equal 3, res.headers.size
-  assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-A: 3\r\nx-b: 4\r\nX-C: 5\r\nContent-Length: 0\r\n\r\n", res.to_http
+  assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-A: 3\r\nx-b: 4\r\nX-C: 5\r\n#{SEC}Content-Length: 0\r\n\r\n", res.to_http
 end
 
 test "drop_header removes a header whatever its case and leaves the rest in order" do
@@ -131,7 +170,7 @@ test "drop_header removes a header whatever its case and leaves the rest in orde
   assert_nil res.header("Location")
   assert_equal 2, res.headers.size
   assert_nil res.drop_header("Location")
-  assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-A: 1\r\nX-B: 2\r\nContent-Length: 0\r\n\r\n", res.to_http
+  assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-A: 1\r\nX-B: 2\r\n#{SEC}Content-Length: 0\r\n\r\n", res.to_http
 end
 
 test "a headers Hash taken before drop_header, set_header or client_error! is still the live one" do

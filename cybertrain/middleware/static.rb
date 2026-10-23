@@ -7,19 +7,42 @@ module Cybertrain
   class Static < Middleware
     EXTENSIONS = {
       "html" => "text/html; charset=utf-8",
+      "htm" => "text/html; charset=utf-8",
       "css" => "text/css; charset=utf-8",
       "js" => "text/javascript; charset=utf-8",
+      "mjs" => "text/javascript; charset=utf-8",
       "png" => "image/png",
       "jpg" => "image/jpeg",
       "jpeg" => "image/jpeg",
       "gif" => "image/gif",
+      "webp" => "image/webp",
+      "avif" => "image/avif",
+      "bmp" => "image/bmp",
       "svg" => "image/svg+xml",
       "ico" => "image/x-icon",
       "txt" => "text/plain; charset=utf-8",
+      "csv" => "text/csv; charset=utf-8",
+      "xml" => "application/xml; charset=utf-8",
       "json" => "application/json",
+      "webmanifest" => "application/manifest+json",
+      "map" => "application/json",
+      "pdf" => "application/pdf",
+      "wasm" => "application/wasm",
       "woff2" => "font/woff2",
-      "map" => "application/json"
+      "woff" => "font/woff",
+      "ttf" => "font/ttf",
+      "otf" => "font/otf",
+      "mp3" => "audio/mpeg",
+      "ogg" => "audio/ogg",
+      "wav" => "audio/wav",
+      "mp4" => "video/mp4",
+      "webm" => "video/webm"
     }
+    # What an extension the table lacks is served as. Every response also
+    # carries `X-Content-Type-Options: nosniff` (Response#to_http), so a
+    # browser takes this type at its word: scripts, styles and wasm only
+    # work from public/ under the types above, and an unknown file is a
+    # download. Add the extension here when an app needs it inline.
     DEFAULT_TYPE = "application/octet-stream"
     CACHE_CONTROL = "public, max-age=3600"
 

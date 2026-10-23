@@ -55,6 +55,30 @@ test "an unknown extension is served as octet-stream" do
   assert_equal "application/octet-stream", res.header("Content-Type")
 end
 
+test "common public/ file types are served under their own type" do
+  want = {
+    "webp" => "image/webp", "avif" => "image/avif", "woff" => "font/woff", "woff2" => "font/woff2",
+    "ttf" => "font/ttf", "otf" => "font/otf", "wasm" => "application/wasm", "mjs" => "text/javascript; charset=utf-8",
+    "pdf" => "application/pdf", "webmanifest" => "application/manifest+json", "mp4" => "video/mp4",
+    "WEBP" => "image/webp"
+  }
+  want.each do |ext, type|
+    File.write(ROOT + "/f." + ext, "x")
+    assert_equal type, serve("GET", "/f." + ext).header("Content-Type")
+    File.delete(ROOT + "/f." + ext)
+  end
+end
+
+test "static files carry the security defaults once, also for HEAD and the octet-stream fallback" do
+  ["/css/app.css", "/data.bin"].each do |target|
+    ["GET", "HEAD"].each do |method|
+      wire = serve(method, target).to_http(method == "HEAD")
+      assert_equal 1, wire.scan(/^x-content-type-options: nosniff\r$/i).length
+      assert_equal 1, wire.scan(/^x-frame-options: SAMEORIGIN\r$/i).length
+    end
+  end
+end
+
 test "a directory serves its index.html" do
   res = serve("GET", "/")
   assert_equal "<h1>home</h1>", res.body

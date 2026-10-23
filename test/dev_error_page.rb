@@ -91,6 +91,13 @@ test "an exception from the inner app becomes a 500 HTML page" do
   assert res.body.index("boom <b>").nil?, "the message must be escaped"
 end
 
+test "the diagnostics page carries the security defaults on the wire" do
+  wire = request(plain_app, "/boom").to_http
+  assert_includes wire, "X-Content-Type-Options: nosniff\r\n"
+  assert_includes wire, "X-Frame-Options: SAMEORIGIN\r\n"
+  assert_equal 1, wire.scan(/^x-frame-options:/i).length
+end
+
 test "parameters past Query's limits are a plain 400, not the diagnostics page" do
   res = request(plain_app, "/toomany")
   assert_equal 400, res.status

@@ -4,6 +4,7 @@ ok   pipelined requests are answered in order
 ok   Connection: close closes the socket after one response
 ok   HTTP/1.0 without keep-alive closes after one response
 ok   HEAD returns headers with Content-Length and no body
+ok   every response the server writes carries the security defaults
 ok   POST with a Content-Length body is echoed back
 ok   malformed request line gets 400 and the connection closes
 ok   an oversized head gets 400 and the connection closes
@@ -31,4 +32,4 @@ ok   drain_timeout bounds the wait for a request that takes too long
 ok   start raises Cybertrain::PortInUse when the port is already bound
 ok   PortInUse names the reason the port could not be bound
 ok   starting a server on port 80 as non-root reports permission denied
-33 tests, 101 assertions, 0 failures
+34 tests, 120 assertions, 0 failures

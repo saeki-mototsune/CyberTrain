@@ -238,6 +238,41 @@ test "HEAD returns headers with Content-Length and no body" do
   c.close
 end
 
+test "every response the server writes carries the security defaults" do
+  c = RawClient.new($server.port)
+  ok = c.get("/hello")
+  assert_equal "nosniff", ok.header("x-content-type-options")
+  assert_equal "SAMEORIGIN", ok.header("x-frame-options")
+  c.send_raw("HEAD /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  head = c.read_response(true)
+  assert_equal "nosniff", head.header("x-content-type-options")
+  assert_equal "SAMEORIGIN", head.header("x-frame-options")
+  missing = c.get("/nope")
+  assert_equal "HTTP/1.1 404 Not Found", missing.status_line
+  assert_equal "nosniff", missing.header("x-content-type-options")
+  assert_equal "SAMEORIGIN", missing.header("x-frame-options")
+  c.close
+  # the Server's own answers: 400, 411, 413 (written by reject) and the 500
+  # for an exception in the app
+  [["NONSENSE\r\n\r\n", "400"],
+   ["POST /echo HTTP/1.1\r\nHost: t\r\nTransfer-Encoding: chunked\r\n\r\n", "411"],
+   ["POST /echo HTTP/1.1\r\nHost: t\r\nContent-Length: 65\r\n\r\n", "413"]].each do |raw, status|
+    r = RawClient.new($server.port)
+    r.send_raw(raw)
+    res = r.read_response(false)
+    assert_includes res.status_line, status
+    assert_equal "nosniff", res.header("x-content-type-options")
+    assert_equal "SAMEORIGIN", res.header("x-frame-options")
+    r.close
+  end
+  b = RawClient.new($server.port)
+  boom = b.get("/boom", "Connection: close\r\n")
+  assert_equal "HTTP/1.1 500 Internal Server Error", boom.status_line
+  assert_equal "nosniff", boom.header("x-content-type-options")
+  assert_equal "SAMEORIGIN", boom.header("x-frame-options")
+  b.close
+end
+
 test "POST with a Content-Length body is echoed back" do
   c = RawClient.new($server.port)
   c.send_raw("POST /echo HTTP/1.1\r\nHost: t\r\nContent-Type: application/json\r\nContent-Length: 13\r\n\r\n")

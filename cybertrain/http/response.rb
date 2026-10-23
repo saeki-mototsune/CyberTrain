@@ -10,6 +10,10 @@ module Cybertrain
   # {Controller#redirect_to} and {Controller#head} set the status and body;
   # use this object for headers and cookies. Content-Length is always
   # computed, and Content-Type defaults to `text/html; charset=utf-8`.
+  # `X-Content-Type-Options: nosniff` and `X-Frame-Options: SAMEORIGIN` are
+  # added to every response that does not set them itself: to allow framing
+  # (an embeddable widget) or change the value, set the header with
+  # {#set_header}; the response's own value is sent and nothing is doubled.
   # @example
   #   response.set_header("Cache-Control", "no-store")
   #   response.add_cookie(Cybertrain::Cookies.serialize("theme", "dark", max_age: 31_536_000))
@@ -23,6 +27,11 @@ module Cybertrain
       500 => "Internal Server Error"
     }
     DEFAULT_CONTENT_TYPE = "text/html; charset=utf-8"
+    # Sent on every response unless the response already carries a header of
+    # that name, in any case (docs/design.md D14). To differ, set the header
+    # on the response: `response.set_header("X-Frame-Options", "DENY")`.
+    DEFAULT_NOSNIFF = "nosniff"
+    DEFAULT_FRAME_OPTIONS = "SAMEORIGIN"
 
     # The status code, 200 until set. A code missing from STATUS_TEXT
     # (401, 409, ...) is sent with the reason phrase "Unknown".
@@ -184,10 +193,13 @@ module Cybertrain
     end
 
     # Content-Length is always computed from the body; a HEAD response
-    # (head_only) keeps it but leaves the body out. Accepted deviation:
-    # Content-Length and the default Content-Type are emitted for 204 and
-    # 304 too, although RFC 9110 section 8.6 forbids Content-Length in a
-    # 204.
+    # (head_only) keeps it but leaves the body out. The default
+    # Content-Type, X-Content-Type-Options and X-Frame-Options are added
+    # when the response has no header of that name (D14); every response
+    # the Server writes, error answers and HEAD included, goes through this
+    # method. Accepted deviation: Content-Length and the default
+    # Content-Type are emitted for 204 and 304 too, although RFC 9110
+    # section 8.6 forbids Content-Length in a 204.
     def to_http(head_only = false)
       out = +"HTTP/1.1 #{@status} #{status_text}\r\n"
       out << "Content-Type: #{DEFAULT_CONTENT_TYPE}\r\n" if header_key("content-type").nil?
@@ -196,6 +208,8 @@ module Cybertrain
 
         out << name << ": " << value << "\r\n"
       end
+      out << "X-Content-Type-Options: #{DEFAULT_NOSNIFF}\r\n" if header_key("x-content-type-options").nil?
+      out << "X-Frame-Options: #{DEFAULT_FRAME_OPTIONS}\r\n" if header_key("x-frame-options").nil?
       out << "Content-Length: #{@body.bytesize}\r\n"
       @cookies.each do |cookie|
         out << "Set-Cookie: " << cookie << "\r\n"
