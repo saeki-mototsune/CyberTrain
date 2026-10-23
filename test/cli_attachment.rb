@@ -353,6 +353,28 @@ test "the download is not opened when except: closes show, or when it does not s
   assert_includes controller, "  allow_unauthenticated_access only: [:index, :show]\n"
   assert_includes controller, "@plan = Plan.find(params[:id])"
   assert_includes read("barn/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+
+  # A shared lookup is not shared authorization: a show-only check, as a
+  # before_action or as code in def show, keeps the download private.
+  public_line = "  allow_unauthenticated_access only: [:index, :show]\n"
+  Cybertrain::CLI::NewApp.create("loft", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("loft", "plan", ["title:string"])
+  Cybertrain::CLI::Authentication.generate("loft")
+  controller_path = "loft/app/controllers/plans_controller.rb"
+  File.write(controller_path, read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{public_line}  before_action :hide_drafts, only: [:show]\n"))
+  Cybertrain::CLI::Attachment.generate("loft", "plan", "photo", false)
+  assert_includes read(controller_path), public_line
+  assert_includes read("loft/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+
+  Cybertrain::CLI::NewApp.create("shed", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("shed", "plan", ["title:string"])
+  Cybertrain::CLI::Authentication.generate("shed")
+  controller_path = "shed/app/controllers/plans_controller.rb"
+  source = read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{public_line}")
+  File.write(controller_path, source.sub("  def show\n  end\n", "  def show\n    head 404 if @plan.title.empty?\n  end\n"))
+  Cybertrain::CLI::Attachment.generate("shed", "plan", "photo", false)
+  assert_includes read(controller_path), public_line
+  assert_includes read("shed/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
 end
 
 # The other order (CI's end-to-end app): the test was written without a

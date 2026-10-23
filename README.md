@@ -582,9 +582,10 @@ What is accepted and how it is served:
   above, where `allow_unauthenticated_access only: [:index, :show]` lets
   visitors read articles, the generator adds `:cover` to that list, so the
   image on a public page loads (only when the download loads the record
-  through the same `before_action :set_article` as show; otherwise it
-  stays private and the generator says so); where show needs a sign-in, so
-  does the download.
+  through the same `before_action :set_article` as show, and show checks
+  nothing more, no show-only `before_action` and no code in `def show`;
+  otherwise it stays private and the generator says so); where show needs
+  a sign-in, so does the download.
 - **Params and CSRF.** `params.nested(:article).upload(:cover)` is a
   `Cybertrain::UploadedFile` (`original_filename`, `byte_size`,
   `detected_content_type`, `body_bytes`, `sha256_hex`), or nil when no

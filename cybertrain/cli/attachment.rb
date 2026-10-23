@@ -336,10 +336,51 @@ module Cybertrain
           puts "skip #{path} (:show is public, but def #{spec.field} does not load the #{spec.singular} through before_action :set_#{spec.singular} as show does): add :#{spec.field} to allow_unauthenticated_access yourself if visitors may download it"
           return false
         end
+        if show_checks_more?(source, spec)
+          puts "skip #{path} (:show is public, but show checks more than set_#{spec.singular}: a before_action of its own, or code in def show): add :#{spec.field} to allow_unauthenticated_access yourself once def #{spec.field} checks the same"
+          return false
+        end
 
         File.write(full, add_to_only_list_at(source, public_access_line(source), spec.field))
         puts "insert #{path} (:#{spec.field} in allow_unauthenticated_access, since :show is public)"
         true
+      end
+
+      # Whether show does more than load the record, which the download would
+      # not repeat: another before_action that runs for show but not for the
+      # download (a show-only draft check), or any code in `def show` (the
+      # scaffold's is empty). A shared lookup alone is not shared
+      # authorization, so either keeps the download private.
+      def self.show_checks_more?(source, spec)
+        set_record = set_record_line(source, spec)
+        offset = 0
+        extra = false
+        source.each_line do |raw|
+          stripped = raw.strip
+          if offset != set_record && stripped.start_with?("before_action")
+            extra = true if list_coverage(stripped, "show") == "yes" && list_coverage(stripped, spec.field) != "yes"
+          end
+          offset += raw.size
+        end
+        return true if extra
+
+        at = line_start(source, "def show", "exact")
+        return false if at < 0
+
+        body = false
+        done = false
+        source[line_end(source, at), source.size - line_end(source, at)].to_s.each_line do |raw|
+          stripped = raw.strip
+          next if done || stripped.empty? || stripped.start_with?("#")
+
+          if stripped == "end"
+            done = true
+          else
+            body = true
+            done = true
+          end
+        end
+        body
       end
 
       # Who may download: "public" when allow_unauthenticated_access already
