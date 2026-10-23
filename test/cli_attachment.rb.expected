@@ -486,6 +486,130 @@ create public/404.html
 create public/500.html
 create public/style.css
 create public/up.html
+create bin/yard.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_plans.rb
+create app/models/plan.rb
+create app/controllers/plans_controller.rb
+create app/views/plans/index.html.erb
+create app/views/plans/show.html.erb
+create app/views/plans/new.html.erb
+create app/views/plans/edit.html.erb
+create app/views/plans/_form.html.erb
+route resources :plans
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+create db/migrate/20260925120003_add_photo_to_plans.rb
+insert app/views/plans/_form.html.erb (photo file field, multipart: true)
+insert app/views/plans/show.html.erb (photo)
+insert app/models/plan.rb (attachment photo)
+insert app/controllers/plans_controller.rb (def photo)
+insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
+insert app/controllers/plans_controller.rb (photo_file= in create)
+insert app/controllers/plans_controller.rb (photo_file= in update)
+route plan_photo (GET /plans/:id/photo)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_plan_photo.rb
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/barn.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_plans.rb
+create app/models/plan.rb
+create app/controllers/plans_controller.rb
+create app/views/plans/index.html.erb
+create app/views/plans/show.html.erb
+create app/views/plans/new.html.erb
+create app/views/plans/edit.html.erb
+create app/views/plans/_form.html.erb
+route resources :plans
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+create db/migrate/20260925120003_add_photo_to_plans.rb
+insert app/views/plans/_form.html.erb (photo file field, multipart: true)
+insert app/views/plans/show.html.erb (photo)
+insert app/models/plan.rb (attachment photo)
+insert app/controllers/plans_controller.rb (def photo)
+warning: app/controllers/plans_controller.rb has no `before_action :set_plan` for :photo, so def photo looks the plan up with an unscoped Plan.find(params[:id]); if your actions limit which records a user may see, limit this lookup the same way
+skip app/controllers/plans_controller.rb (:show is public, but def photo does not load the plan through before_action :set_plan as show does): add :photo to allow_unauthenticated_access yourself if visitors may download it
+insert app/controllers/plans_controller.rb (photo_file= in create)
+skip app/controllers/plans_controller.rb (update does not load @plan with `@plan = Plan.find(params[:id])` nor through `before_action :set_plan`): add `@plan.photo_file = params.nested(:plan).upload(:photo)` to update once @plan is loaded
+route plan_photo (GET /plans/:id/photo)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_plan_photo.rb
+ok   the download is not opened when except: closes show, or when it does not share show's lookup
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
 create bin/guild.rb
 create bin/gen.rb
 create bin/db.rb
@@ -925,4 +1049,4 @@ create test/support/app_test.rb
 create test/attachment_item_set_post.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold refuses a duplicate column or a bad attachment name before writing
-29 tests, 284 assertions, 0 failures
+30 tests, 289 assertions, 0 failures

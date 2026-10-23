@@ -323,11 +323,19 @@ module Cybertrain
       # makes show public (step 13 of the tutorial: `only: [:index, :show]`),
       # the download joins it; otherwise a visitor sees a broken image. Where
       # show needs a signed-in user the download does too, and nothing changes.
+      # Only when both find the record through `before_action :set_post`: a
+      # download with its own unscoped find could hand a visitor the file of
+      # a record show would not show, so that one is left for the app to open.
       def self.add_public_download(root, spec)
         path = controller_file(spec)
         full = File.join(root, path)
         source = File.read(full)
         return false unless download_access(source, spec) == "add"
+
+        unless set_record_coverage(source, spec, spec.field) == "yes" && set_record_coverage(source, spec, "show") == "yes"
+          puts "skip #{path} (:show is public, but def #{spec.field} does not load the #{spec.singular} through before_action :set_#{spec.singular} as show does): add :#{spec.field} to allow_unauthenticated_access yourself if visitors may download it"
+          return false
+        end
 
         File.write(full, add_to_only_list_at(source, public_access_line(source), spec.field))
         puts "insert #{path} (:#{spec.field} in allow_unauthenticated_access, since :show is public)"
@@ -664,15 +672,17 @@ module Cybertrain
       # `allow_unauthenticated_access except: [...]`) covers `action`: "yes",
       # "add" (a one-line only: list without it) or "no", as
       # set_record_coverage describes.
+      # except: wins over only: (Callback#applies? checks both), and a list
+      # this cannot read answers "no".
       def self.list_coverage(stripped, action)
         token = ":#{action}"
         except_at = stripped.index("except:")
         only_at = stripped.index("only:")
-        if only_at.nil?
-          return "yes" if except_at.nil?
-
-          return list_has?(stripped, except_at + 7, token) ? "no" : "yes"
+        unless except_at.nil?
+          return "no" if bracket_open(stripped, except_at + 7) < 0
+          return "no" if list_has?(stripped, except_at + 7, token)
         end
+        return "yes" if only_at.nil?
         return "no" if bracket_open(stripped, only_at + 5) < 0
 
         list_has?(stripped, only_at + 5, token) ? "yes" : "add"

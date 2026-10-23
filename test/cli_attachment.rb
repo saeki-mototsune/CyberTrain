@@ -328,6 +328,33 @@ test "a download stays private where show is, and a maximum length cuts the valu
   assert_includes spec, "assert_redirected_to res, \"/session/new\""
 end
 
+# except: wins over only: (Callback#applies?), so this show needs a sign-in;
+# and a download with its own unscoped find is never opened, since it could
+# serve a record that show's lookup would not.
+test "the download is not opened when except: closes show, or when it does not share show's lookup" do
+  Cybertrain::CLI::NewApp.create("yard", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("yard", "plan", ["title:string"])
+  Cybertrain::CLI::Authentication.generate("yard")
+  controller_path = "yard/app/controllers/plans_controller.rb"
+  closed_line = "  allow_unauthenticated_access only: [:index, :show], except: [:show]\n"
+  File.write(controller_path, read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{closed_line}"))
+  Cybertrain::CLI::Attachment.generate("yard", "plan", "photo", false)
+  assert_includes read(controller_path), closed_line
+  assert_includes read("yard/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+
+  Cybertrain::CLI::NewApp.create("barn", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("barn", "plan", ["title:string"])
+  Cybertrain::CLI::Authentication.generate("barn")
+  controller_path = "barn/app/controllers/plans_controller.rb"
+  source = read(controller_path).sub("ApplicationController\n", "ApplicationController\n  allow_unauthenticated_access only: [:index, :show]\n")
+  File.write(controller_path, source.sub("  before_action :set_plan, only: [:show, :edit, :update, :destroy]\n", ""))
+  Cybertrain::CLI::Attachment.generate("barn", "plan", "photo", false)
+  controller = read(controller_path)
+  assert_includes controller, "  allow_unauthenticated_access only: [:index, :show]\n"
+  assert_includes controller, "@plan = Plan.find(params[:id])"
+  assert_includes read("barn/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+end
+
 # The other order (CI's end-to-end app): the test was written without a
 # sign-in, and every action redirects once authentication is added.
 test "authentication generated after the attachment adds the sign-in to its test" do
