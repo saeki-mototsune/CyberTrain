@@ -538,7 +538,7 @@ for i in $(seq 1 30); do
   sleep 1
 done
 if [ -z "$up" ]; then
-  echo "==> 新しいリリースが応答しない（原因は sudo journalctl -u $APP）"
+  echo "==> 新しいリリースが応答しない（原因は sudo できるユーザーで journalctl -u $APP）"
   if [ -n "$previous" ]; then
     echo "==> 前のリリースに戻す: $previous"
     ln -sfn "$previous" "$ROOT/current.new"
@@ -569,7 +569,8 @@ chmod 700 ~/deploy.sh
 `systemctl restart` は、新しいバイナリが起動直後に落ちても成功を返します（`Type=simple` のため）。
 そこでスクリプトは、切り替えて再起動したあと `http://127.0.0.1:$PORT/up.html` が応答するまで最大
 30 秒待ち、応答しなければ `current` を前のリリースに戻して再起動し、失敗で終わります。原因
-（秘密鍵が空、ポートが使われている、など）は `sudo journalctl -u notes` に出ます。
+（秘密鍵が空、ポートが使われている、など）は、`notes` ユーザーを抜けて sudo できるユーザーで
+`sudo journalctl -u notes` を見ます（`notes` に許しているのは `systemctl restart notes` だけです）。
 
 - `public/up.html` は `cybertrain new` が書く（Kamal のヘルスチェックと同じ）静的ファイルで、
   アプリ自身が返します。古い `cybertrain` で作ったアプリにない場合は、
@@ -704,23 +705,29 @@ sudo -iu notes
 ls -1 ~/releases                                         # 残っているリリース
 ```
 
-戻したいリリース以降に**マイグレーションを追加していた場合**は、切り替える**前に**、いま動いている
-（新しい方の）リリースで DB を戻します（古いリリースは新しいマイグレーションを知らないため）。
-追加していなければ、この手順は飛ばします。
+戻したいリリース以降に**マイグレーションを追加していなければ**、そのまま切り替えて再起動します。
 
 ```sh
+ln -sfn ~/releases/20260926120000 ~/current.new && mv -T ~/current.new ~/current
+sudo /usr/bin/systemctl restart notes
+```
+
+**マイグレーションを追加していた場合**は、切り替える**前に**、いま動いている（新しい方の）リリースで
+DB を戻します（古いリリースは新しいマイグレーションを知らないため）。戻している途中のスキーマに
+リクエストが当たらないよう、アプリを止めてから行います（その間、Caddy は 500.html を返します）。
+`notes` のシェルを抜け、sudo できるユーザーで:
+
+```sh
+sudo systemctl stop notes
+sudo -iu notes
 cd ~/current                                  # いま動いている（新しい方の）リリース
 set -a; . /etc/notes/notes.env; set +a
 dist/notes db status                          # 適用済みのマイグレーションを確認
 dist/notes db rollback 1                      # 戻す数を指定
 dist/notes db status                          # 戻ったことを確認
-```
-
-それから、前のリリースに切り替えて再起動します。
-
-```sh
 ln -sfn ~/releases/20260926120000 ~/current.new && mv -T ~/current.new ~/current
-sudo /usr/bin/systemctl restart notes
+exit                                          # sudo できるユーザーに戻る
+sudo systemctl start notes
 ```
 
 ### バックアップ

@@ -137,7 +137,7 @@ problems += compare(JA, ja_rest, EN, en_rest).map { |p| "#{EN}: #{p}" }
 problems += compare(JA, ja_part8, KAMAL, kamal, tables: :numbered).map { |p| "#{KAMAL}: #{p}" }
 if en_part8.empty?
   problems << "#{EN}: no part 8 (a pointer to deploy-kamal.md)"
-elsif !File.read(File.join(ROOT, EN), encoding: "UTF-8")[/^## Part 8\b.*?(?=^## )/m].to_s.include?("(deploy-kamal.md)")
+elsif !File.read(File.join(ROOT, EN), encoding: "UTF-8")[/^## Part 8\b.*?(?=^## |\z)/m].to_s.include?("(deploy-kamal.md)")
   problems << "#{EN}: part 8 does not link deploy-kamal.md"
 end
 

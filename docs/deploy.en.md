@@ -588,7 +588,7 @@ for i in $(seq 1 30); do
   sleep 1
 done
 if [ -z "$up" ]; then
-  echo "==> The new release does not answer (sudo journalctl -u $APP says why)"
+  echo "==> The new release does not answer (as the user who can sudo: sudo journalctl -u $APP)"
   if [ -n "$previous" ]; then
     echo "==> Going back to the previous release: $previous"
     ln -sfn "$previous" "$ROOT/current.new"
@@ -622,8 +622,9 @@ column first, remove the old one in a later deploy).
 (the unit is `Type=simple`). So after switching and restarting, the script
 waits up to 30 seconds for `http://127.0.0.1:$PORT/up.html` to answer; if it
 does not, the script points `current` back at the previous release, restarts
-it and fails. `sudo journalctl -u notes` shows why the new release did not
-start (an empty secret, a port in use, ...).
+it and fails. To see why the new release did not start (an empty secret, a
+port in use, ...), leave the `notes` shell and run `sudo journalctl -u notes`
+as the user who can sudo (`notes` may only run `systemctl restart notes`).
 
 - `public/up.html` is the static file `cybertrain new` writes (the same one
   Kamal health-checks), served by the app itself. If an app made by an older
@@ -766,24 +767,31 @@ sudo -iu notes
 ls -1 ~/releases                                         # the releases still kept
 ```
 
-**If migrations were added** after the release you are going back to, roll
-the database back **before** switching, from the release running now (the
-newer one): the older release does not know the newer migrations. If none
-were added, skip this step.
+If **no migrations were added** after the release you are going back to,
+switch and restart:
 
 ```sh
+ln -sfn ~/releases/20260926120000 ~/current.new && mv -T ~/current.new ~/current
+sudo /usr/bin/systemctl restart notes
+```
+
+**If migrations were added**, roll the database back **before** switching,
+from the release running now (the newer one): the older release does not
+know the newer migrations. Stop the app first, so that no request meets a
+schema halfway back (Caddy answers with 500.html meanwhile). Leave the
+`notes` shell and, as the user who can sudo:
+
+```sh
+sudo systemctl stop notes
+sudo -iu notes
 cd ~/current                                  # the release running now (the newer one)
 set -a; . /etc/notes/notes.env; set +a
 dist/notes db status                          # see which migrations are applied
 dist/notes db rollback 1                      # how many to roll back
 dist/notes db status                          # check that they are rolled back
-```
-
-Then switch to the earlier release and restart:
-
-```sh
 ln -sfn ~/releases/20260926120000 ~/current.new && mv -T ~/current.new ~/current
-sudo /usr/bin/systemctl restart notes
+exit                                          # back to the user who can sudo
+sudo systemctl start notes
 ```
 
 ### Backups

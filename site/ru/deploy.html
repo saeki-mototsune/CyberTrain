@@ -199,7 +199,7 @@
 <span class="ln">}</span></code></pre>
 </figure>
     <p>Приложение добавляет <code>X-Content-Type-Options</code> и <code>X-Frame-Options</code> к тому, что отдаёт; файлы, которые Caddy отдаёт из <code>dist/public/</code>, через приложение не проходят, так что, если они нужны и там, добавьте их в блок сайта. С nginx всё так же: завершить TLS, отдавать <code>dist/public/</code>, проксировать остальное.</p>
-    <p class="note">Полное руководство, от нового сервера Ubuntu до резервных копий и откатов,&nbsp;&mdash; <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a>.</p>
+    <p class="note">Полное руководство, от нового сервера Ubuntu до резервных копий и откатов,&nbsp;&mdash; <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a> (японский оригинал&nbsp;&mdash; <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><code>docs/deploy.md</code></a>).</p>
   </section>
 
   <section class="step" id="configure" aria-labelledby="h-configure">
@@ -235,7 +235,7 @@
     <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>Что дальше</h2>
     <ul class="next-list">
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">Развёртывание через Kamal, шаг за шагом.</span></a></li>
-      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">Сервер Ubuntu с systemd и Caddy, от начала до резервных копий.</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">Сервер Ubuntu с systemd и Caddy, от начала до резервных копий (на японском: <code>docs/deploy.md</code>).</span></a></li>
       <li><a href="tutorial.html#ship"><span class="next-t">Сборка для развёртывания</span><span class="next-d">Последний шаг учебника: <code>cybertrain build</code> и <code>dist/</code>.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">Готовый блог с его конфигурацией Kamal.</span></a></li>
     </ul>

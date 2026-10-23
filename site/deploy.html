@@ -199,7 +199,7 @@
 <span class="ln">}</span></code></pre>
 </figure>
     <p>The app adds <code>X-Content-Type-Options</code> and <code>X-Frame-Options</code> to what it serves; files Caddy serves from <code>dist/public/</code> do not pass through the app, so add them in the site block if you want them there too. nginx works the same way: terminate TLS, serve <code>dist/public/</code>, proxy the rest.</p>
-    <p class="note">The full walkthrough, from a fresh Ubuntu server to backups and rollbacks, is <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a>.</p>
+    <p class="note">The full walkthrough, from a fresh Ubuntu server to backups and rollbacks, is <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a> (the Japanese original is <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><code>docs/deploy.md</code></a>).</p>
   </section>
 
   <section class="step" id="configure" aria-labelledby="h-configure">
@@ -235,7 +235,7 @@
     <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>Where next</h2>
     <ul class="next-list">
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">Deploying with Kamal, step by step.</span></a></li>
-      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">An Ubuntu server with systemd and Caddy, from start to backups.</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">An Ubuntu server with systemd and Caddy, from start to backups (in Japanese: <code>docs/deploy.md</code>).</span></a></li>
       <li><a href="tutorial.html#ship"><span class="next-t">Build for deployment</span><span class="next-d">The tutorial&rsquo;s last step: <code>cybertrain build</code> and <code>dist/</code>.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">The finished blog, with its Kamal setup.</span></a></li>
     </ul>

@@ -199,7 +199,7 @@
 <span class="ln">}</span></code></pre>
 </figure>
     <p>アプリは自分が返すものに <code>X-Content-Type-Options</code> と <code>X-Frame-Options</code> を付けます。Caddy が <code>dist/public/</code> から返すファイルはアプリを通らないので、そこにも付けたいならサイトブロックで足してください。nginx でも同じです：TLS を終端し、<code>dist/public/</code> を返し、残りをプロキシします。</p>
-    <p class="note">新しい Ubuntu サーバーからバックアップとロールバックまでの通しの手順は <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a> にあります（同じ場所に日本語の原文もあります）。</p>
+    <p class="note">新しい Ubuntu サーバーからバックアップとロールバックまでの通しの手順は <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><code>docs/deploy.md</code></a> にあります（英語版は <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a>）。</p>
   </section>
 
   <section class="step" id="configure" aria-labelledby="h-configure">
@@ -235,7 +235,7 @@
     <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>次に読むもの</h2>
     <ul class="next-list">
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">Kamal でのデプロイを一歩ずつ。</span></a></li>
-      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">systemd と Caddy の Ubuntu サーバー。最初からバックアップまで。</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><span class="next-t"><code>docs/deploy.md</code></span><span class="next-d">systemd と Caddy の Ubuntu サーバー。最初からバックアップまで（英語版：<code>docs/deploy.en.md</code>）。</span></a></li>
       <li><a href="tutorial.html#ship"><span class="next-t">デプロイ用にビルドする</span><span class="next-d">チュートリアルの最後のステップ：<code>cybertrain build</code> と <code>dist/</code>。</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">完成したブログと、その Kamal の設定。</span></a></li>
     </ul>

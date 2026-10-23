@@ -199,7 +199,7 @@
 <span class="ln">}</span></code></pre>
 </figure>
     <p>L’application ajoute <code>X-Content-Type-Options</code> et <code>X-Frame-Options</code> à ce qu’elle sert&nbsp;; les fichiers que Caddy sert depuis <code>dist/public/</code> ne passent pas par elle, ajoutez-les donc dans le bloc du site si vous les voulez là aussi. nginx fonctionne de la même façon&nbsp;: terminer TLS, servir <code>dist/public/</code>, relayer le reste.</p>
-    <p class="note">La procédure complète, d’un serveur Ubuntu neuf aux sauvegardes et retours en arrière, est <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a>.</p>
+    <p class="note">La procédure complète, d’un serveur Ubuntu neuf aux sauvegardes et retours en arrière, est <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><code>docs/deploy.en.md</code></a> (l’original japonais est <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><code>docs/deploy.md</code></a>).</p>
   </section>
 
   <section class="step" id="configure" aria-labelledby="h-configure">
@@ -235,7 +235,7 @@
     <h2 id="h-where-next"><span class="step-num" aria-hidden="true">&rarr;</span>Pour aller plus loin</h2>
     <ul class="next-list">
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">Déployer avec Kamal, pas à pas.</span></a></li>
-      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">Un serveur Ubuntu avec systemd et Caddy, du début aux sauvegardes.</span></a></li>
+      <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">Un serveur Ubuntu avec systemd et Caddy, du début aux sauvegardes (en japonais&nbsp;: <code>docs/deploy.md</code>).</span></a></li>
       <li><a href="tutorial.html#ship"><span class="next-t">Compiler pour le déploiement</span><span class="next-d">La dernière étape du tutoriel&nbsp;: <code>cybertrain build</code> et <code>dist/</code>.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">Le blog terminé, avec sa configuration Kamal.</span></a></li>
     </ul>
