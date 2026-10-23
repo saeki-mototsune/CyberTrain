@@ -425,6 +425,21 @@ finds the commit that removed them).
     signature in the C (rule 62's `spinel prog.rb -c`) when a test of
     identity or of a typed path starts failing after an unrelated
     addition.
+64. Class variables are not GC roots under Spinel 2026.09.12: `@@x` compiles
+    to a C static (`cvar_<Module>_x`) that `sp_mark_user_globals` never
+    marks, while a module-level `@x` (`civ_<Module>_x`) and a constant are
+    marked. An object reachable only from a `@@x` is freed by the first
+    collection after it is allocated, and its memory is reused. The test
+    harness kept its cases in `@@cases`: an application's test program that
+    booted and migrated a database before `run!` had the Array swept and
+    "ran" the migration's operation objects as tests (`ERR ...: undefined
+    method 'block'`); a reduced program crashes with "undefined method
+    'name' for an instance of Array". Never hold an object in a class
+    variable in code Spinel compiles: use a module-level `@x` with `def
+    self.x` accessors (rule 18) or a constant. (An Integer `@@count` is
+    stored unboxed and survives, but follow the rule anyway.)
+    test/harness_gc.rb is the regression program; check a suspect file with
+    `spinel prog.rb -c -o /tmp/x.c && grep -n 'cvar_' /tmp/x.c`.
 
 ## Numbers worth remembering
 
