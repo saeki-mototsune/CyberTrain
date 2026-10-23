@@ -525,7 +525,7 @@ deploy starts it.
   `/srv/notes/shared/`, so that is the only place that needs to be writable
   (`ReadWritePaths`).
 - Logs go to standard output, so journald collects them
-  (`journalctl -u notes`).
+  (`sudo journalctl -u notes`).
 - It stops on SIGTERM: it stops accepting, finishes answering the requests in
   flight, then exits (10 seconds at most; `TimeoutStopSec=15` is longer than
   that).
@@ -594,7 +594,13 @@ chmod 700 ~/deploy.sh
 release, so nothing needs changing when the Spinel release moves on.
 
 If any step fails (`gen/` is stale, a compile error, a failed migration), the
-script stops before switching `current`, so the running app is not affected.
+script stops before switching `current`, and the running app keeps serving the
+old release. Note, though, that migrations run while the old release is still
+serving, and a migration that succeeded stays applied even if a later step
+fails. Keep each migration compatible with the code already running (add a
+column first, remove the old one in a later deploy). If the new release does
+not start after the switch, roll back as in part 7, "Rolling back" (`sudo
+journalctl -u notes` shows why it failed).
 
 ### 5-4. The first deploy
 
@@ -609,7 +615,7 @@ The first time, the migration creates `/srv/notes/shared/production.sqlite3`.
 ```sh
 exit    # back to the user who can sudo
 systemctl status notes --no-pager
-journalctl -u notes -n 20 --no-pager
+sudo journalctl -u notes -n 20 --no-pager
 curl -sI http://127.0.0.1:3000/
 ```
 
@@ -685,7 +691,7 @@ curl -sI https://notes.example.com/
 
 `HTTP/2 200` means it is live. Open https://notes.example.com/ in a browser
 and create, edit and delete a note. If something is wrong, look at
-`journalctl -u caddy -n 50 --no-pager`.
+`sudo journalctl -u caddy -n 50 --no-pager`.
 
 ---
 
@@ -711,8 +717,8 @@ During the restart (a few seconds) Caddy answers with 500.html.
 ### Reading the logs
 
 ```sh
-journalctl -u notes -f                  # the app (two lines per request: Started / Completed)
-journalctl -u caddy -f                  # Caddy
+sudo journalctl -u notes -f             # the app (two lines per request: Started / Completed)
+sudo journalctl -u caddy -f             # Caddy
 ```
 
 The client IP in the request log is always `127.0.0.1` (Caddy). If you need
@@ -721,22 +727,31 @@ access log.
 
 ### Rolling back
 
+As the `notes` user, find the release to go back to.
+
 ```sh
 sudo -iu notes
 ls -1 ~/releases                                         # the releases still kept
-ln -sfn ~/releases/20260926120000 ~/current.new && mv -T ~/current.new ~/current
-sudo /usr/bin/systemctl restart notes
 ```
 
 **If migrations were added** after the release you are going back to, roll
-the database back too before switching, from the newer release's directory
-(the older release does not know the newer migrations):
+the database back **before** switching, from the release running now (the
+newer one): the older release does not know the newer migrations. If none
+were added, skip this step.
 
 ```sh
-cd ~/current                                  # the release before switching (the newer one)
+cd ~/current                                  # the release running now (the newer one)
 set -a; . /etc/notes/notes.env; set +a
 dist/notes db status                          # see which migrations are applied
 dist/notes db rollback 1                      # how many to roll back
+dist/notes db status                          # check that they are rolled back
+```
+
+Then switch to the earlier release and restart:
+
+```sh
+ln -sfn ~/releases/20260926120000 ~/current.new && mv -T ~/current.new ~/current
+sudo /usr/bin/systemctl restart notes
 ```
 
 ### Backups
@@ -827,8 +842,8 @@ day-to-day operation.
 | `spin: command not found` (while deploying) | Spinel is not installed for the `notes` user (`cybertrain setup` in 3-4), or `~/deploy.sh`'s `PATH` lacks `~/.cybertrain/bin` (5-3) |
 | `cybertrain: command not found` (while deploying) | The cybertrain CLI is not installed for the `notes` user (`gem install --user-install cybertrain -v 0.2.1` in 3-4) |
 | `git clone` fails with `Permission denied (publickey)` | The deploy key is not registered, or another user's key is in use (run 3-5 as the `notes` user) |
-| The browser keeps showing 500.html | The app is down. Look at `journalctl -u notes -n 50` |
-| No certificate | Check that DNS points at the server and 80 and 443 are open. Look at `journalctl -u caddy` |
+| The browser keeps showing 500.html | The app is down. Look at `sudo journalctl -u notes -n 50` |
+| No certificate | Check that DNS points at the server and 80 and 443 are open. Look at `sudo journalctl -u caddy` |
 | Static files get 403 / 404 | Check the permissions on `/srv/notes` (`chmod 711`), and that the file is in `dist/public/` (`cybertrain build` copies it from `public/`) |
 | Form submissions get 403 `Invalid authenticity token`, or the flash does not show | The site is open over HTTP. The production session cookie is `Secure`, so it only travels over HTTPS. Open it with `https://` (if you really must run it over HTTP, set `c.session_secure = false` in `config/app.rb`) |
 
