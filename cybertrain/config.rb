@@ -390,21 +390,33 @@ module Cybertrain
       return @secret_key_base unless @secret_key_base.empty?
       raise "CYBERTRAIN_SECRET_KEY_BASE is not set" if production?
 
-      secret = File.exist?(@secret_key_path) ? File.read(@secret_key_path).strip : ""
+      exists = File.exist?(@secret_key_path)
+      secret = ""
+      if exists
+        # Restrict older keys before reading or replacing their contents.
+        File.chmod(0o600, @secret_key_path)
+        secret = File.read(@secret_key_path).strip
+      end
       if secret.length != SECRET_LENGTH
         secret = Crypto.random_token(SECRET_LENGTH / 2)
-        Config.make_directory(File.dirname(@secret_key_path))
-        File.write(@secret_key_path, "#{secret}\n")
+        Config.make_directory(File.dirname(@secret_key_path), 0o700)
+        flags = exists ? File::WRONLY | File::TRUNC : File::WRONLY | File::CREAT | File::EXCL
+        File.open(@secret_key_path, flags, 0o600) do |file|
+          file.write("#{secret}\n")
+        end
       end
       @secret_key_base = secret
     end
 
     # mkdir -p.
-    def self.make_directory(dir)
+    def self.make_directory(dir, mode = 0o777)
       return nil if dir == "" || dir == "." || File.directory?(dir)
 
-      make_directory(File.dirname(dir))
-      Dir.mkdir(dir)
+      make_directory(File.dirname(dir), mode)
+      Dir.mkdir(dir, mode)
+      # Spinel ignores mkdir's mode argument. Only restrict directories we
+      # created for secrets; other callers retain the default umask behavior.
+      File.chmod(mode, dir) unless mode == 0o777
       nil
     end
   end
