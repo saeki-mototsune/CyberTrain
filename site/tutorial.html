@@ -75,7 +75,7 @@
   <header class="doc-hero">
     <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Tutorial</span></p>
     <h1>Getting started: the&nbsp;blog</h1>
-    <p class="doc-intro">Mirrors Rails' own <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a>: a blog with articles and comments. You will scaffold articles, add validations, nest comments under them, write a test that drives the app in-process, add sign-in, and build the app into a deployable <code>dist/</code> folder. The finished app is <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>, exercised by CI on Linux and macOS.</p>
+    <p class="doc-intro">Mirrors Rails' own <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a>: a blog with articles and comments. You will scaffold articles, add validations, nest comments under them, write a test that drives the app in-process, add sign-in, attach an uploaded image, and build the app into a deployable <code>dist/</code> folder. The finished app is <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>, exercised by CI on Linux and macOS.</p>
     <dl class="doc-meta">
       <div><dt>You need</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, SQLite 3 headers (Spinel <code>2026.09.12</code> is installed for you) <a class="meta-link" href="#requirements">Step 00</a></dd></div>
       <div><dt>You start from</dt><dd><code>gem install cybertrain</code></dd></div>
@@ -87,7 +87,7 @@
 <div class="wrap doc">
   <nav class="toc" aria-label="Tutorial steps">
     <details class="toc-d" open>
-      <summary class="toc-sum"><span class="toc-title">Steps 00&ndash;14</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <summary class="toc-sum"><span class="toc-title">Steps 00&ndash;15</span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
       <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
     <ol>
       <li><a href="#requirements"><span class="toc-n">00</span>Requirements</a></li>
@@ -104,7 +104,8 @@
       <li><a href="#views"><span class="toc-n">11</span>Views and partials</a></li>
       <li><a href="#test"><span class="toc-n">12</span>Test it</a></li>
       <li><a href="#authentication"><span class="toc-n">13</span>Add sign-in</a></li>
-      <li><a href="#ship"><span class="toc-n">14</span>Build for deployment</a></li>
+      <li><a href="#attachments"><span class="toc-n">14</span>Add a cover image</a></li>
+      <li><a href="#ship"><span class="toc-n">15</span>Build for deployment</a></li>
       <li class="toc-x"><a href="#things-to-know"><span class="toc-n">+</span>Things to know</a></li>
       <li class="toc-x"><a href="#differences"><span class="toc-n">+</span>Differences from Rails</a></li>
       <li class="toc-x"><a href="#where-next"><span class="toc-n">&rarr;</span>Where next</a></li>
@@ -161,6 +162,7 @@
       <li><code>cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]</code> creates an application in NAME, then runs <code>spin lock</code> and <code>spin run gen</code> in it, installing Spinel first when it is needed.</li>
       <li><code>cybertrain generate scaffold NAME field:type ...</code> (alias <code>g scaffold</code>) adds a resource to the application in the current directory.</li>
       <li><code>cybertrain generate authentication</code> adds email-and-password sign-in to the application in the current directory (<a href="#authentication">step 13</a>).</li>
+      <li><code>cybertrain generate attachment MODEL FIELD [--any]</code> adds a file upload to a scaffolded model in the application in the current directory (<a href="#attachments">step 14</a>).</li>
       <li><code>cybertrain db migrate</code> generates, applies pending migrations, and generates again (<code>spin run gen; spin run db -- migrate; spin run gen</code>); <code>cybertrain migration</code> is kept as an alias.</li>
       <li><code>cybertrain db COMMAND...</code> runs any other database command after <code>spin run gen</code>: <code>status</code>, <code>rollback [N]</code> (which generates again afterwards), <code>schema:dump</code>, <code>create</code>.</li>
       <li><code>cybertrain server [PORT]</code> generates, then starts the development server (<code>spin run gen; spin run NAME</code>, or <code>spin run NAME -- PORT</code>; default port 3000).</li>
@@ -629,9 +631,79 @@
     <p class="note">Run <code>cybertrain spin test</code> as in <a href="#test">step 12</a>; <code>test/authentication.rb</code> and this test use SQLite, so their snapshots come from the compiled binary. <code>examples/blog</code> stops before this step. Not generated: password reset (CyberTrain has no mailers) and rate limiting.</p>
   </section>
 
+  <section class="step" id="attachments" aria-labelledby="h-attachments">
+    <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>You write <span aria-hidden="true">&middot;</span> <code>app/</code>, <code>db/migrate/</code>, <code>config/routes.rb</code>, <code>test/</code></p>
+    <h2 id="h-attachments"><span class="step-num" aria-hidden="true">14</span>Add a cover image</h2>
+    <p class="why"><span class="why-k">Why</span><span class="why-t">An article can carry a picture. The same split as sign-in: the framework parses <code>multipart/form-data</code> and stores the bytes, and one command writes the rest as code the app owns, in place of Active Storage&rsquo;s <code>has_one_attached</code>.</span></p>
+    <figure class="code" data-lang="shell">
+<figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain generate attachment article cover   <span class="c"># a new model: generate scaffold NAME field:type ... cover:attachment</span></span>
+<span class="ln cmd">cybertrain db migrate                          <span class="c"># adds the cover_* columns to articles</span></span></code></pre>
+</figure>
+    <p>It writes a migration that adds five columns to <code>articles</code> (<code>cover_key</code>, <code>cover_filename</code>, <code>cover_content_type</code>, <code>cover_byte_size</code>, <code>cover_checksum</code>; the file itself is not in SQLite) and a block in <code>Article</code> with <code>cover_file=</code>, <code>cover_attached?</code>, <code>cover_url</code>, a validation and save and destroy callbacks. In <code>ArticlesController</code> it adds a <code>cover</code> action behind <code>before_action :set_article</code> and one line in <code>create</code> and in <code>update</code>:</p>
+    <figure class="code" data-lang="ruby">
+<figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb (excerpt)</span><span class="code-lang">ruby</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: app/controllers/articles_controller.rb (excerpt)"><code><span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
+<span class="ln">  allow_unauthenticated_access <span class="y">only:</span> [<span class="y">:index</span>, <span class="y">:show</span>, <span class="y">:cover</span>]   <span class="c"># step 13 wrote [:index, :show]: add :cover yourself</span></span>
+<span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>, <span class="y">:cover</span>]</span>
+<span class="ln"></span>
+<span class="ln">  <span class="c"># GET /articles/1/cover -- @article comes from before_action :set_article, so</span></span>
+<span class="ln">  <span class="c"># the download is scoped exactly like show (and authentication applies).</span></span>
+<span class="ln">  <span class="c"># send_blob is the one way to serve uploads: it sets the type from what the</span></span>
+<span class="ln">  <span class="c"># server detected, nosniff, a locked-down CSP and Content-Disposition</span></span>
+<span class="ln">  <span class="c"># (inline for images only, a download otherwise).</span></span>
+<span class="ln">  <span class="k">def</span> cover</span>
+<span class="ln">    <span class="k">if</span> <span class="v">@article</span>.cover_attached? &amp;&amp; <span class="t">Cybertrain</span>::<span class="t">BlobStore</span>.exist?(<span class="v">@article</span>.cover_key)</span>
+<span class="ln">      send_blob(<span class="t">Cybertrain</span>::<span class="t">BlobStore</span>.read(<span class="v">@article</span>.cover_key), <span class="y">filename:</span> <span class="v">@article</span>.cover_filename, <span class="y">content_type:</span> <span class="v">@article</span>.cover_content_type)</span>
+<span class="ln">    <span class="k">else</span></span>
+<span class="ln">      head <span class="y">404</span></span>
+<span class="ln">    <span class="k">end</span></span>
+<span class="ln">  <span class="k">end</span></span>
+<span class="ln">  <span class="c"># ...</span></span>
+<span class="ln">  <span class="k">def</span> create</span>
+<span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new(article_params)</span>
+<span class="ln">    <span class="v">@article</span>.cover_file = params.nested(<span class="y">:article</span>).upload(<span class="y">:cover</span>)</span>
+<span class="ln">    <span class="k">if</span> <span class="v">@article</span>.save</span>
+<span class="ln">  <span class="c"># ...</span></span>
+<span class="ln">  <span class="k">def</span> update</span>
+<span class="ln">    <span class="v">@article</span>.cover_file = params.nested(<span class="y">:article</span>).upload(<span class="y">:cover</span>)</span>
+<span class="ln">    <span class="k">if</span> <span class="v">@article</span>.update(article_params)</span></code></pre>
+</figure>
+    <p>Step 13 made every page private, and the image on a public article page is fetched from <code>/articles/1/cover</code>. Add <code>:cover</code> to <code>allow_unauthenticated_access</code>, as in the first line above, or visitors who may read the article are sent to the sign-in page by the image. Leave it out when the pictures are for signed-in users only. Whatever <code>set_article</code> does to limit which articles a user may see limits the download too.</p>
+    <p>The generator also adds <code>get "/articles/:id/cover"</code> to <code>config/routes.rb</code>, <code>multipart: true</code> and a file input to the form, above the submit button, and the image to the show page, right after the <code>&lt;h1&gt;</code>:</p>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>_form.html.erb (excerpt)</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: app/views/articles/_form.html.erb (excerpt)"><code><span class="ln"><span class="d">&lt;%=</span> form_with(<span class="y">model:</span> article, <span class="y">multipart:</span> <span class="k">true</span>) <span class="k">do</span> |f| <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="c">&lt;%# ... %&gt;</span></span>
+<span class="ln">  <span class="h">&lt;div</span> class=<span class="s">"field"</span><span class="h">&gt;</span></span>
+<span class="ln">    <span class="d">&lt;%=</span> f.label <span class="y">:cover</span> <span class="d">%&gt;</span></span>
+<span class="ln">    <span class="d">&lt;%=</span> f.file_field <span class="y">:cover</span>, <span class="y">accept:</span> <span class="s">"image/png,image/jpeg,image/gif,image/webp"</span> <span class="d">%&gt;</span></span>
+<span class="ln">  <span class="h">&lt;/div&gt;</span></span></code></pre>
+</figure>
+    <figure class="code" data-lang="erb">
+<figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>show.html.erb (excerpt)</span><span class="code-lang">erb</span></figcaption>
+<pre tabindex="0" role="region" aria-label="Code: app/views/articles/show.html.erb (excerpt)"><code><span class="ln"><span class="h">&lt;h1&gt;</span>Article<span class="h">&lt;/h1&gt;</span></span>
+<span class="ln"><span class="d">&lt;%</span> <span class="k">if</span> <span class="v">@article</span>.cover_attached? <span class="d">%&gt;</span><span class="h">&lt;p&gt;&lt;img</span> src=<span class="s">"</span><span class="d">&lt;%=</span> <span class="v">@article</span>.cover_url <span class="d">%&gt;</span><span class="s">"</span> alt=<span class="s">"</span><span class="d">&lt;%=</span> <span class="v">@article</span>.cover_filename <span class="d">%&gt;</span><span class="s">"</span><span class="h">&gt;&lt;/p&gt;</span><span class="d">&lt;%</span> <span class="k">end</span> <span class="d">%&gt;</span></span></code></pre>
+</figure>
+    <aside class="callout" aria-label="Spinel rule: has_one_attached">
+      <p class="callout-k">Spinel rule</p>
+      <h3><code>has_one_attached</code> is written out</h3>
+      <p>Spinel cannot define methods at run time (no <code>define_method</code>), so there is no <code>has_one_attached</code> and no shared attachments table. The generator spells out what it would define as methods named after the field, in <code>Article</code>, and puts the metadata in five columns of <code>articles</code>. They are <code>NOT NULL</code>, with <code>""</code> and <code>0</code> meaning &ldquo;nothing attached&rdquo;: nullable columns cost Spinel its type inference. SQLite holds the metadata only (a text value stops at a NUL byte); the bytes are files.</p>
+    </aside>
+    <h3 class="sub">How files are served</h3>
+    <ul class="points">
+      <li><strong>Types.</strong> By default only PNG, JPEG, GIF and WebP up to 2 MB are accepted (<code>COVER_TYPES</code> and <code>COVER_MAX_BYTES</code> in the model; <code>--any</code> accepts any type). The type is detected from the file&rsquo;s first bytes, never taken from the browser.</li>
+      <li><strong>Storage.</strong> The bytes go to <code>storage/uploads/&lt;2 hex&gt;/&lt;32 hex key&gt;</code> (<code>Cybertrain::BlobStore</code>, mode 0600). Replacing a file deletes the old one, and destroying the article deletes its file. Back up <code>storage/uploads/</code> together with the SQLite file.</li>
+      <li><strong>Serving.</strong> Files go out through <code>send_blob</code> in the controller, never from <code>public/</code>. The four image types are served inline; anything else is a download (<code>application/octet-stream</code>). Every response carries <code>X-Content-Type-Options: nosniff</code> and <code>Content-Security-Policy: default-src 'none'; sandbox</code>.</li>
+      <li><strong>Params.</strong> <code>params.nested(:article).upload(:cover)</code> is a <code>Cybertrain::UploadedFile</code>, or nil when no file was chosen. <code>permit</code> never returns files, so a file can only arrive through that explicit line. The CSRF token is read from multipart bodies like any form&rsquo;s. A broken or oversize body is a 400; <code>max_upload_bytes</code> and <code>max_multipart_parts</code> in <code>config/app.rb</code> set the limits, and <code>upload_root</code> the directory.</li>
+    </ul>
+    <p>Start the server, edit an article and choose an image. The generator also wrote <code>test/attachment_article_cover.rb</code>, which tests the whole flow and signs in first now that the app has a <code>User</code>. It expects an anonymous download of the cover to be redirected to <code>/session/new</code>, so if you opened <code>:cover</code> above, change that test to match. It also fills the title and the body with <code>"A article"</code>, nine characters, which the 10-character minimum on the body from <a href="#validations">step 05</a> refuses: lengthen the body in <code>article_fields</code> before you run it.</p>
+    <p class="note">Run <code>cybertrain spin test</code> as in <a href="#test">step 12</a>; the test uses SQLite, so its snapshot comes from the compiled binary. <code>examples/blog</code> stops before this step. Not built yet: several files per field, S3 or other remote storage, image variants, and streaming large bodies to disk (the whole body is read into memory, up to <code>max_body_bytes</code>).</p>
+  </section>
+
   <section class="step" id="ship" aria-labelledby="h-ship">
     <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Run time <span aria-hidden="true">&middot;</span> <code>dist/blog</code></p>
-    <h2 id="h-ship"><span class="step-num" aria-hidden="true">14</span>Build for deployment</h2>
+    <h2 id="h-ship"><span class="step-num" aria-hidden="true">15</span>Build for deployment</h2>
     <p class="why"><span class="why-k">Why</span><span class="why-t">One command builds the app into a deployable <code>dist/</code> folder, with every view embedded.</span></p>
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
