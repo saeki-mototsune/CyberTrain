@@ -153,6 +153,7 @@ test "config/deploy.yml and .kamal/secrets configure Kamal for the app" do
   assert_includes deploy, "image: your-user/blog\n"
   assert_includes deploy, "  app_port: 3000\n"
   assert_includes deploy, "    path: /up.html\n"
+  assert_includes deploy, "\ndeploy_timeout: 30\n"
   assert_includes deploy, "    - CYBERTRAIN_SECRET_KEY_BASE\n"
   assert_includes deploy, "  - \"blog_storage:/app/storage\"\n"
   assert_includes deploy, "db_status: app exec --reuse \"./blog db status\""
