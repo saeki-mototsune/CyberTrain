@@ -174,7 +174,7 @@
     <p class="why"><span class="why-k">なぜ</span><span class="why-t">Docker を使いません：サーバーが git からアプリをビルドし、systemd が動かし続け、Caddy がインターネットに面します。</span></p>
     <ul class="points">
       <li><strong>アプリ</strong>は <code>127.0.0.1:3000</code> だけで待ち受けるので、Caddy を通らないと届きません。<code>public/</code> と <code>storage/</code> は作業ディレクトリから解決されるので、systemd は <code>dist/</code> を作業ディレクトリにして起動し、秘密鍵はリポジトリの外の環境変数ファイルから読みます。</li>
-      <li><strong>デプロイスクリプト</strong>はリリースごとに別のディレクトリへクローンし、<code>gen/</code> が最新かを確かめ、<code>cybertrain build</code> と <code>dist/blog migrate</code> を実行してから、<code>current</code> のリンクをそこに向けてサービスを再起動します。途中で失敗すれば、切り替えの前に止まります。</li>
+      <li><strong>デプロイスクリプト</strong>はリリースごとに別のディレクトリへクローンし、<code>gen/</code> が最新かを確かめ、<code>cybertrain build</code> と <code>dist/blog migrate</code> を実行してから、<code>current</code> のリンクをそこに向けてサービスを再起動し、<code>up.html</code> が応答するのを待ちます。応答しなければ前のリリースに戻します。切り替えの前に失敗すれば、動いているリリースには触れません。</li>
       <li><strong>Caddy</strong> は証明書を取り、HTTP を HTTPS にリダイレクトし、<code>dist/public/</code> のファイルは自分で返し、それ以外をアプリに渡します。アプリの再起動中は <code>500.html</code> を返します。</li>
     </ul>
     <figure class="code" data-lang="caddyfile">

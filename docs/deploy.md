@@ -526,9 +526,27 @@ echo "==> マイグレーション"
 dist/notes migrate
 
 echo "==> 切り替えて再起動"
+previous="$(readlink "$ROOT/current" || true)"   # 戻す先（初回は空）
 ln -sfn "$release" "$ROOT/current.new"
 mv -T "$ROOT/current.new" "$ROOT/current"
 sudo /usr/bin/systemctl restart "$APP"
+
+echo "==> 新しいリリースが応答するまで待つ（最大 30 秒）"
+up=""
+for i in $(seq 1 30); do
+  if curl -fs -o /dev/null "http://127.0.0.1:$PORT/up.html"; then up=1; break; fi
+  sleep 1
+done
+if [ -z "$up" ]; then
+  echo "==> 新しいリリースが応答しない（原因は sudo journalctl -u $APP）"
+  if [ -n "$previous" ]; then
+    echo "==> 前のリリースに戻す: $previous"
+    ln -sfn "$previous" "$ROOT/current.new"
+    mv -T "$ROOT/current.new" "$ROOT/current"
+    sudo /usr/bin/systemctl restart "$APP"
+  fi
+  exit 1
+fi
 
 echo "==> 古いリリースを削除（新しい $KEEP 個を残す）"
 ls -1d "$ROOT"/releases/* | sort -r | tail -n +$((KEEP + 1)) | xargs -r rm -rf
@@ -546,8 +564,19 @@ chmod 700 ~/deploy.sh
 `current` を切り替える前に止まるので、動いているアプリはそのまま古いリリースで動き続けます。
 ただし、マイグレーションは古いリリースが動いている間に流れ、成功したマイグレーションはその後の手順が
 失敗しても適用されたまま残ります。マイグレーションは動いているコードと両立する形にしてください（列は
-まず足し、古い列は別のデプロイで消す）。切り替えたあとに新しいリリースが起動しない場合は、第 7 部の
-「ロールバック」で戻します（原因は `sudo journalctl -u notes` に出ます）。
+まず足し、古い列は別のデプロイで消す）。
+
+`systemctl restart` は、新しいバイナリが起動直後に落ちても成功を返します（`Type=simple` のため）。
+そこでスクリプトは、切り替えて再起動したあと `http://127.0.0.1:$PORT/up.html` が応答するまで最大
+30 秒待ち、応答しなければ `current` を前のリリースに戻して再起動し、失敗で終わります。原因
+（秘密鍵が空、ポートが使われている、など）は `sudo journalctl -u notes` に出ます。
+
+- `public/up.html` は `cybertrain new` が書く（Kamal のヘルスチェックと同じ）静的ファイルで、
+  アプリ自身が返します。古い `cybertrain` で作ったアプリにない場合は、
+  `echo OK > public/up.html` で作ってコミットしてください。
+- マイグレーションは戻しません。前のリリースに戻せるのは、上のとおりマイグレーションが古いコードと
+  両立しているからです。
+- 初回のデプロイには戻す先がないので、失敗したら原因を直してもう一度 `~/deploy.sh` を実行します。
 
 ### 5-4. 最初のデプロイ
 
@@ -893,6 +922,7 @@ kamal setup
 | 500 になり、ログに `Missing template ...` が出る | ビルド時に `app/views/` に無かったテンプレート。`cybertrain build` をやり直す |
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
 | デプロイが `stale: gen/...` で止まる | 手元で `cybertrain spin run gen` して `gen/` をコミットし忘れている |
+| デプロイが「新しいリリースが応答しない」で終わる | 新しいリリースが 30 秒以内に `/up.html` に応答しなかった（スクリプトは前のリリースに戻している）。`sudo journalctl -u notes -n 50` で原因を見る。起動はしているのに応答しないなら、アプリに `public/up.html` が無い（5-3） |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
 | `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.2.1`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |

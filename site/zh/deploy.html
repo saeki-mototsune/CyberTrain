@@ -174,7 +174,7 @@
     <p class="why"><span class="why-k">为什么</span><span class="why-t">不使用 Docker：服务器从 git 构建应用，systemd 让它持续运行，Caddy 面向互联网。</span></p>
     <ul class="points">
       <li><strong>应用</strong>只监听 <code>127.0.0.1:3000</code>，所以只能经由 Caddy 访问。<code>public/</code> 和 <code>storage/</code> 相对于工作目录解析，因此 systemd 以 <code>dist/</code> 为工作目录启动它，并从仓库之外的环境变量文件读取密钥。</li>
-      <li><strong>部署脚本</strong>把每个发布克隆到各自的目录，检查 <code>gen/</code> 是否最新，运行 <code>cybertrain build</code> 和 <code>dist/blog migrate</code>，然后把 <code>current</code> 链接指向它并重启服务。任何一步失败都会在切换之前停止。</li>
+      <li><strong>部署脚本</strong>把每个发布克隆到各自的目录，检查 <code>gen/</code> 是否最新，运行 <code>cybertrain build</code> 和 <code>dist/blog migrate</code>，然后把 <code>current</code> 链接指向它，重启服务并等待 <code>up.html</code> 响应；如果没有响应，脚本会切回之前的发布。切换之前的失败不会影响正在运行的发布。</li>
       <li><strong>Caddy</strong> 获取证书，把 HTTP 重定向到 HTTPS，自己提供 <code>dist/public/</code> 中的文件，其余请求代理给应用。应用重启期间，它返回 <code>500.html</code>。</li>
     </ul>
     <figure class="code" data-lang="caddyfile">

@@ -174,7 +174,7 @@
     <p class="why"><span class="why-k">Pourquoi</span><span class="why-t">Sans Docker&nbsp;: le serveur construit l’application depuis git, systemd la maintient en marche, Caddy fait face à Internet.</span></p>
     <ul class="points">
       <li><strong>L’application</strong> n’écoute que sur <code>127.0.0.1:3000</code>&nbsp;: rien ne l’atteint sans passer par Caddy. <code>public/</code> et <code>storage/</code> se résolvent depuis le répertoire de travail, donc systemd la démarre avec <code>dist/</code> comme répertoire de travail et lit son secret dans un fichier d’environnement hors du dépôt.</li>
-      <li><strong>Un script de déploiement</strong> clone chaque version dans son propre répertoire, vérifie que <code>gen/</code> est à jour, exécute <code>cybertrain build</code> et <code>dist/blog migrate</code>, puis fait pointer le lien <code>current</code> dessus et redémarre le service. Toute erreur l’arrête avant la bascule.</li>
+      <li><strong>Un script de déploiement</strong> clone chaque version dans son propre répertoire, vérifie que <code>gen/</code> est à jour, exécute <code>cybertrain build</code> et <code>dist/blog migrate</code>, puis fait pointer le lien <code>current</code> dessus, redémarre le service et attend que <code>up.html</code> réponde&nbsp;; sinon, le script revient à la version précédente. Une erreur avant la bascule laisse la version en service intacte.</li>
       <li><strong>Caddy</strong> obtient le certificat, redirige HTTP vers HTTPS, sert lui-même les fichiers de <code>dist/public/</code> et relaie tout le reste vers l’application. Pendant que l’application redémarre, il répond avec <code>500.html</code>.</li>
     </ul>
     <figure class="code" data-lang="caddyfile">

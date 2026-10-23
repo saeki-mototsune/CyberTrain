@@ -576,9 +576,27 @@ echo "==> Migrating"
 dist/notes migrate
 
 echo "==> Switching and restarting"
+previous="$(readlink "$ROOT/current" || true)"   # where to go back to (empty the first time)
 ln -sfn "$release" "$ROOT/current.new"
 mv -T "$ROOT/current.new" "$ROOT/current"
 sudo /usr/bin/systemctl restart "$APP"
+
+echo "==> Waiting for the new release to answer (30 seconds at most)"
+up=""
+for i in $(seq 1 30); do
+  if curl -fs -o /dev/null "http://127.0.0.1:$PORT/up.html"; then up=1; break; fi
+  sleep 1
+done
+if [ -z "$up" ]; then
+  echo "==> The new release does not answer (sudo journalctl -u $APP says why)"
+  if [ -n "$previous" ]; then
+    echo "==> Going back to the previous release: $previous"
+    ln -sfn "$previous" "$ROOT/current.new"
+    mv -T "$ROOT/current.new" "$ROOT/current"
+    sudo /usr/bin/systemctl restart "$APP"
+  fi
+  exit 1
+fi
 
 echo "==> Removing old releases (keeping the newest $KEEP)"
 ls -1d "$ROOT"/releases/* | sort -r | tail -n +$((KEEP + 1)) | xargs -r rm -rf
@@ -598,9 +616,23 @@ script stops before switching `current`, and the running app keeps serving the
 old release. Note, though, that migrations run while the old release is still
 serving, and a migration that succeeded stays applied even if a later step
 fails. Keep each migration compatible with the code already running (add a
-column first, remove the old one in a later deploy). If the new release does
-not start after the switch, roll back as in part 7, "Rolling back" (`sudo
-journalctl -u notes` shows why it failed).
+column first, remove the old one in a later deploy).
+
+`systemctl restart` succeeds even if the new binary exits right after starting
+(the unit is `Type=simple`). So after switching and restarting, the script
+waits up to 30 seconds for `http://127.0.0.1:$PORT/up.html` to answer; if it
+does not, the script points `current` back at the previous release, restarts
+it and fails. `sudo journalctl -u notes` shows why the new release did not
+start (an empty secret, a port in use, ...).
+
+- `public/up.html` is the static file `cybertrain new` writes (the same one
+  Kamal health-checks), served by the app itself. If an app made by an older
+  `cybertrain` lacks it, create it with `echo OK > public/up.html` and commit
+  it.
+- Migrations are not rolled back. Going back to the previous release works
+  because, as above, migrations stay compatible with the old code.
+- The first deploy has nothing to go back to: if it fails, fix the cause and
+  run `~/deploy.sh` again.
 
 ### 5-4. The first deploy
 
@@ -839,6 +871,7 @@ day-to-day operation.
 | A 500, with `Missing template ...` in the log | A template that was not in `app/views/` at build time. Run `cybertrain build` again |
 | `attempt to write a readonly database` / `unable to open database file` | The database path is outside `ReadWritePaths=`, or `/srv/notes/shared` is not owned by `notes` |
 | The deploy stops at `stale: gen/...` | You forgot to run `cybertrain spin run gen` locally and commit `gen/` |
+| The deploy ends with `The new release does not answer` | The new release did not answer `/up.html` within 30 seconds (the script has gone back to the previous release). Look at `sudo journalctl -u notes -n 50` for why. If it did start but does not answer, the app has no `public/up.html` (5-3) |
 | `spin: command not found` (while deploying) | Spinel is not installed for the `notes` user (`cybertrain setup` in 3-4), or `~/deploy.sh`'s `PATH` lacks `~/.cybertrain/bin` (5-3) |
 | `cybertrain: command not found` (while deploying) | The cybertrain CLI is not installed for the `notes` user (`gem install --user-install cybertrain -v 0.2.1` in 3-4) |
 | `git clone` fails with `Permission denied (publickey)` | The deploy key is not registered, or another user's key is in use (run 3-5 as the `notes` user) |
