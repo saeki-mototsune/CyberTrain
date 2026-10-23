@@ -337,7 +337,7 @@ module Cybertrain
           return false
         end
         if show_checks_more?(source, spec)
-          puts "skip #{path} (:show is public, but show checks more than set_#{spec.singular}: a before_action of its own, or code in def show): add :#{spec.field} to allow_unauthenticated_access yourself once def #{spec.field} checks the same"
+          puts "skip #{path} (:show is public, but show may check more than set_#{spec.singular}: a before_action of its own, code in def show, or a line this cannot read): add :#{spec.field} to allow_unauthenticated_access yourself once def #{spec.field} checks the same"
           return false
         end
 
@@ -350,7 +350,9 @@ module Cybertrain
       # not repeat: another before_action that runs for show but not for the
       # download (a show-only draft check), or any code in `def show` (the
       # scaffold's is empty). A shared lookup alone is not shared
-      # authorization, so either keeps the download private.
+      # authorization, so either keeps the download private, and so does
+      # anything this cannot read: a before_action continued on the next
+      # line, or a show not written as a `def show` line of its own.
       def self.show_checks_more?(source, spec)
         set_record = set_record_line(source, spec)
         offset = 0
@@ -358,14 +360,18 @@ module Cybertrain
         source.each_line do |raw|
           stripped = raw.strip
           if offset != set_record && stripped.start_with?("before_action")
-            extra = true if list_coverage(stripped, "show") == "yes" && list_coverage(stripped, spec.field) != "yes"
+            continued = stripped.end_with?(",") || stripped.end_with?("(") || stripped.end_with?("\\")
+            only_at = stripped.index("only:")
+            except_at = stripped.index("except:")
+            unreadable = (!only_at.nil? && bracket_open(stripped, only_at + 5) < 0) || (!except_at.nil? && bracket_open(stripped, except_at + 7) < 0)
+            extra = true if continued || unreadable || (list_coverage(stripped, "show") == "yes" && list_coverage(stripped, spec.field) != "yes")
           end
           offset += raw.size
         end
         return true if extra
 
         at = line_start(source, "def show", "exact")
-        return false if at < 0
+        return true if at < 0
 
         body = false
         done = false

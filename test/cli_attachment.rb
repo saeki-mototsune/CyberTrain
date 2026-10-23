@@ -375,6 +375,24 @@ test "the download is not opened when except: closes show, or when it does not s
   Cybertrain::CLI::Attachment.generate("shed", "plan", "photo", false)
   assert_includes read(controller_path), public_line
   assert_includes read("shed/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+
+  # What it cannot read keeps the download private too: a before_action
+  # continued on the next line, a list it cannot parse, a one-line show.
+  [
+    ["coop", "  before_action :hide_drafts,\n                only: [:show]\n", "  def show\n  end\n"],
+    ["hive", "  before_action :hide_drafts, only: %i[show]\n", "  def show\n  end\n"],
+    ["pen", "", "  def show; end\n"]
+  ].each do |app, callback, show|
+    Cybertrain::CLI::NewApp.create(app, "{ path = \"../cybertrain\" }")
+    Cybertrain::CLI::Scaffold.generate(app, "plan", ["title:string"])
+    Cybertrain::CLI::Authentication.generate(app)
+    controller_path = "#{app}/app/controllers/plans_controller.rb"
+    source = read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{public_line}#{callback}")
+    File.write(controller_path, source.sub("  def show\n  end\n", show))
+    Cybertrain::CLI::Attachment.generate(app, "plan", "photo", false)
+    assert_includes read(controller_path), public_line
+    assert_includes read("#{app}/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+  end
 end
 
 # The other order (CI's end-to-end app): the test was written without a
