@@ -225,6 +225,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 
 ### D15. 認証: フレームワークの原始関数 + アプリが所有するコードを書くジェネレータ（2026-10-22）
 
+- セッションの有効期限: 生成する `resume_session` は、DB 行の `created_at` から `Cybertrain.config.session_max_age` 秒（既定 2 週間）が経過した認証を拒否し、クッキーから `session_id` を削除する。署名済みクッキーの再送でも期限を延ばせない。クッキー自体の Max-Age は更新時に再開するが、認証の期限はサインイン時から固定する。
 - 決定: Rails 8 の `bin/rails generate authentication` と同じ分割にする。(1) フレームワーク側には「自分で書くと間違えるもの」だけを置く: パスワードハッシュ `Cybertrain::Password`（PBKDF2-HMAC-SHA256、PHC 形式の文字列、定数時間比較、`needs_rehash?`）、`Controller.skip_before_action`、ルーティング DSL の `resource`（単数）。(2) `cybertrain generate authentication` が、users / sessions のマイグレーション、`User`（`password=` / `authenticate` / `authenticate_by` を手書きの形で）と `Session` モデル、`SessionsController` / `RegistrationsController` とビュー、`ApplicationController` への `before_action :resume_session` / `:require_authentication` と補助メソッド、routes、レイアウトの nav パーシャル、統合テスト（`test/authentication.rb`）を**アプリのファイルとして**書く。外部ライブラリ（spin パッケージ）としての認証「エンジン」は作らない。
 - 理由（Rails 8 と同じ結論に、Spinel がさらに重みを足す）:
   - **拡張点が無い。** cybertrain のアプリは `config/routes.rb`・`app/controllers`・`app/views`・`db/migrate` を `spin run gen` が読んで `gen/` を書く構造（D3 / D4）で、パッケージ側のコントローラは字句走査の対象外（`view_assigns` / `run_callback` を自分で書けば動くが、ivar をテンプレートに見せる仕組みの外に出る）、ビューは `app/views/` からしか読まれず埋め込みもそこからだけ、マイグレーションも `db/migrate/` だけ、モデルは schema からの生成物。routes は `config/routes.rb` から `Package.draw(r)` を呼べば足せるが、他が足せない以上、認証パッケージは結局「ファイルをアプリにコピーするジェネレータ + 少しの原始関数」になる。それなら最初からそう作る。

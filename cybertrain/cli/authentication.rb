@@ -369,8 +369,9 @@ module Cybertrain
             !@current_user.nil?
           end
 
-          # Loads the Session row the cookie names (and its user); a stale id
-          # is dropped from the cookie.
+          # Loads the Session row the cookie names (and its user); a stale or
+          # expired id is dropped. Cookie Max-Age alone cannot stop replay:
+          # authentication expires session_max_age seconds after sign-in.
           def resume_session
             @current_session = nil
             @current_user = nil
@@ -379,6 +380,11 @@ module Cybertrain
 
             found = Session.find_by(id: id.to_i)
             if found.nil?
+              session.delete(:session_id)
+              return nil
+            end
+            created_at = found.created_at
+            if created_at.nil? || created_at.to_i + Cybertrain.config.session_max_age <= Time.now.to_i
               session.delete(:session_id)
               return nil
             end
@@ -782,6 +788,42 @@ module Cybertrain
             client.get("/session/new")
             res = client.post("/session", { "_method" => "delete", "authenticity_token" => AppTest.form_token(client) })
             assert_redirected_to res, "/session/new"
+          end
+
+          test "an expired cookie cannot restore its user or reach a protected action" do
+            max_age = Cybertrain.config.session_max_age
+            Cybertrain.config.session_max_age = 60
+            begin
+              client = new_client
+              AppTest.user
+              AppTest.sign_in(client)
+              name = Cybertrain.config.session_cookie_name
+              cookie = "\#{name}=\#{client.cookies[name]}"
+              res = client.get("/session/new", { "cookie" => cookie })
+              assert_includes res.body, "<span>ann@example.com</span>"
+              token = AppTest.form_token(client)
+
+              # Keep the signed cookie and its row, but move the creation time
+              # to the expiration boundary. Saving updates updated_at too;
+              # neither that nor a rewritten cookie extends authentication.
+              row = Session.first
+              row.created_at = Time.at(Time.now.to_i - Cybertrain.config.session_max_age).utc
+              row.save!
+              res = client.post("/session", { "_method" => "delete", "authenticity_token" => token },
+                                           { "cookie" => cookie })
+              assert_redirected_to res, "/session/new"
+              assert_equal 1, Session.count
+              res = client.get("/session/new")
+              refute res.body.include?("<span>ann@example.com</span>")
+              assert_includes res.body, "<a href=\\"/session/new\\">Sign in</a>"
+
+              # Replaying the original credential again still fails, even
+              # after the server removed its id from the client's cookie.
+              res = client.get("/session/new", { "cookie" => cookie })
+              refute res.body.include?("<span>ann@example.com</span>")
+            ensure
+              Cybertrain.config.session_max_age = max_age
+            end
           end
 
           Cybertrain::Test.run!
