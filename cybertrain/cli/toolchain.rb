@@ -58,16 +58,23 @@ module Cybertrain
         File.join(prefix, ".cybertrain-complete")
       end
 
+      # The interpolated name is made before `home` is called, here and in the
+      # two below: in one argument list, `home`'s result is held only by a C
+      # temporary while a later argument allocates, and a collection there
+      # frees it (spikes/NOTES.md rule 65).
       def self.src_dir
-        File.join(home, "src", "spinel-#{tag}")
+        name = "spinel-#{tag}"
+        File.join(home, "src", name)
       end
 
       def self.log_path
-        File.join(home, "log", "spinel-#{tag}-build.log")
+        name = "spinel-#{tag}-build.log"
+        File.join(home, "log", name)
       end
 
       def self.lock_dir
-        File.join(home, "spinel", "#{tag}.lock")
+        name = "#{tag}.lock"
+        File.join(home, "spinel", name)
       end
 
       # ---- discovery -----------------------------------------------------
@@ -353,7 +360,8 @@ module Cybertrain
 
       def self.write_stamp
         begin
-          File.write(stamp, "#{tag}\n")
+          stamp_text = "#{tag}\n" # made before `stamp` is called (rule 65)
+          File.write(stamp, stamp_text)
         rescue StandardError
           return false
         end
