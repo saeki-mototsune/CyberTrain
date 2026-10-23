@@ -287,6 +287,47 @@ test "with authentication the generated test signs in first" do
   assert_includes spec, "assert_redirected_to res, \"/session/new\""
 end
 
+# The tutorial's blog at step 14: step 05 gave the body a minimum length and
+# step 13 opened index and show to visitors. The cover is on the show page,
+# so its download opens with it, and the test's body is long enough.
+test "where show is public the download joins it, and the test's values meet the length rules" do
+  Cybertrain::CLI::NewApp.create("blog", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("blog", "article", ["title:string", "body:text"])
+  Cybertrain::CLI::Authentication.generate("blog")
+  model = read("blog/app/models/article.rb").sub("  validates :title, presence: true\n", "  validates :title, presence: true\n  validates :body, presence: true, length: { minimum: 10 }\n")
+  File.write("blog/app/models/article.rb", model)
+  controller_path = "blog/app/controllers/articles_controller.rb"
+  open_line = "  allow_unauthenticated_access only: [:index, :show]\n"
+  File.write(controller_path, read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{open_line}"))
+  Cybertrain::CLI::Attachment.generate("blog", "article", "cover", false)
+  controller = read(controller_path)
+  assert_includes controller, "  allow_unauthenticated_access only: [:index, :show, :cover]\n"
+  assert_includes controller, "  before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]\n"
+  spec = read("blog/test/attachment_article_cover.rb")
+  assert_includes spec, "fields[\"article[title]\"] = \"A article\"\n"
+  assert_includes spec, "fields[\"article[body]\"] = \"A article.\"\n"
+  assert_includes spec, "test \"the download is public like show: a visitor gets the file\" do"
+  refute spec.include?("/session/new"), "no sign-in redirect expected"
+  Cybertrain::CLI::Attachment.generate("blog", "article", "cover", false)
+  assert_equal controller, read(controller_path)
+  assert_equal spec, read("blog/test/attachment_article_cover.rb")
+end
+
+test "a download stays private where show is, and a maximum length cuts the value" do
+  Cybertrain::CLI::NewApp.create("desk", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("desk", "memo", ["title:string"])
+  Cybertrain::CLI::Authentication.generate("desk")
+  model = read("desk/app/models/memo.rb").sub("validates :title, presence: true\n", "validates :title, presence: true, length: { maximum: 3 }\n")
+  File.write("desk/app/models/memo.rb", model)
+  controller_path = "desk/app/controllers/memos_controller.rb"
+  File.write(controller_path, read(controller_path).sub("ApplicationController\n", "ApplicationController\n  allow_unauthenticated_access only: [:index]\n"))
+  Cybertrain::CLI::Attachment.generate("desk", "memo", "scan", true)
+  assert_includes read(controller_path), "  allow_unauthenticated_access only: [:index]\n"
+  spec = read("desk/test/attachment_memo_scan.rb")
+  assert_includes spec, "fields[\"memo[title]\"] = \"A m\"\n"
+  assert_includes spec, "assert_redirected_to res, \"/session/new\""
+end
+
 # The other order (CI's end-to-end app): the test was written without a
 # sign-in, and every action redirects once authentication is added.
 test "authentication generated after the attachment adds the sign-in to its test" do

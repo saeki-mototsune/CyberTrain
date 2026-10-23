@@ -128,6 +128,7 @@ module Cybertrain
       def self.install_code(root, spec, created)
         add_model_block(root, spec)
         add_action(root, spec)
+        add_public_download(root, spec)
         add_assignments(root, spec)
         add_route(root, spec)
         add_gitignore(root)
@@ -316,6 +317,55 @@ module Cybertrain
           puts "warning: #{path} has no `before_action :set_#{spec.singular}` for :#{spec.field}, so def #{spec.field} looks the #{spec.singular} up with an unscoped #{spec.class_name}.find(params[:id]); if your actions limit which records a user may see, limit this lookup the same way"
         end
         true
+      end
+
+      # The image is shown on the show page, so when `allow_unauthenticated_access`
+      # makes show public (step 13 of the tutorial: `only: [:index, :show]`),
+      # the download joins it; otherwise a visitor sees a broken image. Where
+      # show needs a signed-in user the download does too, and nothing changes.
+      def self.add_public_download(root, spec)
+        path = controller_file(spec)
+        full = File.join(root, path)
+        source = File.read(full)
+        return false unless download_access(source, spec) == "add"
+
+        File.write(full, add_to_only_list_at(source, public_access_line(source), spec.field))
+        puts "insert #{path} (:#{spec.field} in allow_unauthenticated_access, since :show is public)"
+        true
+      end
+
+      # Who may download: "public" when allow_unauthenticated_access already
+      # covers the action (no list, an only: list with it, an except: list
+      # without it), "add" when its one-line only: list makes show public but
+      # does not list the action, "private" otherwise (no such line, or show
+      # needs a signed-in user).
+      def self.download_access(source, spec)
+        at = public_access_line(source)
+        return "private" if at < 0
+
+        stripped = source[at, line_end(source, at) - at].to_s.strip
+        field = list_coverage(stripped, spec.field)
+        return "public" if field == "yes"
+        return "add" if field == "add" && list_coverage(stripped, "show") == "yes"
+
+        "private"
+      end
+
+      # Offset of the line `allow_unauthenticated_access` (alone, or followed
+      # by its arguments), or -1.
+      def self.public_access_line(source)
+        head = "allow_unauthenticated_access"
+        offset = 0
+        hit = -1
+        source.each_line do |raw|
+          stripped = raw.strip
+          if hit < 0 && stripped.start_with?(head)
+            rest = stripped[head.size, stripped.size - head.size].to_s
+            hit = offset if rest == "" || rest.start_with?(" ") || rest.start_with?("(")
+          end
+          offset += raw.size
+        end
+        hit
       end
 
       # `@post.cover_file = params.nested(:post).upload(:cover)` after the
@@ -607,7 +657,14 @@ module Cybertrain
         at = set_record_line(source, spec)
         return "no" if at < 0
 
-        stripped = source[at, line_end(source, at) - at].to_s.strip
+        list_coverage(source[at, line_end(source, at) - at].to_s.strip, action)
+      end
+
+      # How a callback line (`before_action :set_post, only: [...]`,
+      # `allow_unauthenticated_access except: [...]`) covers `action`: "yes",
+      # "add" (a one-line only: list without it) or "no", as
+      # set_record_coverage describes.
+      def self.list_coverage(stripped, action)
         token = ":#{action}"
         except_at = stripped.index("except:")
         only_at = stripped.index("only:")
@@ -664,7 +721,12 @@ module Cybertrain
       # `source` with `:action` appended to the only: list of `before_action
       # :set_post` (set_record_coverage answered "add").
       def self.add_to_only_list(source, spec, action)
-        at = set_record_line(source, spec)
+        add_to_only_list_at(source, set_record_line(source, spec), action)
+      end
+
+      # `source` with `:action` appended to the only: list of the line at
+      # offset `at`.
+      def self.add_to_only_list_at(source, at, action)
         eol = line_end(source, at)
         line = source[at, eol - at].to_s
         open = line.index("[", line.index("only:").to_i).to_i
@@ -840,17 +902,21 @@ module Cybertrain
         text += TEST_COMMON
         fields = required_fields(root, spec)
         text += TEST_KEEP
-        text += TEST_AUTH_DOWNLOAD if auth
+        if auth
+          open_download = download_access(File.read(File.join(root, controller_file(spec))), spec) == "public"
+          text += open_download ? TEST_PUBLIC_DOWNLOAD : TEST_AUTH_DOWNLOAD
+        end
         text += TEST_TAIL
         text = text.sub("  <<reset_auth>>\n", auth ? Authentication::TEST_RESET_LINES : "")
         text = text.sub("  <<sign_in>>\n", auth ? Authentication::TEST_SIGN_IN_LINES : "")
-        text = text.sub("<<fields_lines>>", field_lines(spec, fields))
+        text = text.sub("<<fields_lines>>", field_lines(root, spec, fields))
         text = text.sub("<<show_check>>", show_check(root, spec))
         spec.expand(text)
       end
 
-      # The attributes the model validates for presence (`validates :title,
-      # presence: true`), which a valid record needs in the form.
+      # The attributes the model validates for presence or a minimum length
+      # (`validates :title, presence: true`), which a valid record needs in
+      # the form.
       def self.required_fields(root, spec)
         names = Array.new(0) { "" }
         path = File.join(root, model_file(spec))
@@ -858,7 +924,7 @@ module Cybertrain
 
         File.read(path).each_line do |raw|
           line = raw.strip
-          next unless line.start_with?("validates :") && !line.index("presence: true").nil?
+          next unless line.start_with?("validates :") && (!line.index("presence: true").nil? || !line.index("minimum:").nil?)
 
           name = +""
           line[11, line.size - 11].to_s.each_char do |ch|
@@ -871,10 +937,47 @@ module Cybertrain
         names
       end
 
-      def self.field_lines(spec, names)
+      def self.field_lines(root, spec, names)
         lines = +""
-        names.each { |name| lines << "  fields[\"#{spec.singular}[#{name}]\"] = \"A #{spec.singular.tr("_", " ")}\"\n" }
+        names.each { |name| lines << "  fields[\"#{spec.singular}[#{name}]\"] = \"#{field_value(root, spec, name)}\"\n" }
         lines
+      end
+
+      # "A post", stretched to the field's `length: { minimum: N }` and cut
+      # to its `maximum: N` (the blog's body needs 10 characters), so the
+      # test's record is valid.
+      def self.field_value(root, spec, name)
+        value = "A #{spec.singular.tr("_", " ")}"
+        min = length_bound(root, spec, name, "minimum:")
+        max = length_bound(root, spec, name, "maximum:")
+        value = value.ljust(min, ".") if min > value.size
+        value = value[0, max].to_s if max >= 0 && value.size > max
+        value
+      end
+
+      # The number after `key` (`minimum:`) on a `validates :name, ...` line
+      # of the model, or -1.
+      def self.length_bound(root, spec, name, key)
+        bound = -1
+        path = File.join(root, model_file(spec))
+        return bound unless File.exist?(path)
+
+        File.read(path).each_line do |raw|
+          line = raw.strip
+          next unless line.start_with?("validates :#{name},") || line == "validates :#{name}"
+
+          at = line.index(key)
+          next if at.nil?
+
+          digits = +""
+          line[at + key.size, line.size - at - key.size].to_s.strip.each_char do |ch|
+            break unless ch >= "0" && ch <= "9"
+
+            digits << ch
+          end
+          bound = digits.to_i unless digits.empty?
+        end
+        bound
       end
 
       # The show-page assertion, only when the show page renders the file
@@ -1093,6 +1196,19 @@ module Cybertrain
           anonymous = Cybertrain::Test::Client.new(APP)
           res = anonymous.get("/<<plural>>/#{record.id}/<<field>>")
           assert_redirected_to res, "/session/new"
+        end
+
+      RUBY
+
+      TEST_PUBLIC_DOWNLOAD = <<~'RUBY'
+        test "the download is public like show: a visitor gets the file" do
+          client = new_client
+          create_<<model>>(client, "<<field>>.png", "image/png", PNG_BYTES)
+          record = <<Model>>.first
+          anonymous = Cybertrain::Test::Client.new(APP)
+          res = anonymous.get("/<<plural>>/#{record.id}/<<field>>")
+          assert_response res, :ok
+          assert_equal PNG_BYTES.bytesize, res.body.bytesize
         end
 
       RUBY

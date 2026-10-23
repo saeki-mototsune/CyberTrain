@@ -350,6 +350,142 @@ create public/404.html
 create public/500.html
 create public/style.css
 create public/up.html
+create bin/blog.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_articles.rb
+create app/models/article.rb
+create app/controllers/articles_controller.rb
+create app/views/articles/index.html.erb
+create app/views/articles/show.html.erb
+create app/views/articles/new.html.erb
+create app/views/articles/edit.html.erb
+create app/views/articles/_form.html.erb
+route resources :articles
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+create db/migrate/20260925120003_add_cover_to_articles.rb
+insert app/views/articles/_form.html.erb (cover file field, multipart: true)
+insert app/views/articles/show.html.erb (cover)
+insert app/models/article.rb (attachment cover)
+insert app/controllers/articles_controller.rb (def cover)
+insert app/controllers/articles_controller.rb (:cover in before_action :set_article)
+insert app/controllers/articles_controller.rb (:cover in allow_unauthenticated_access, since :show is public)
+insert app/controllers/articles_controller.rb (cover_file= in create)
+insert app/controllers/articles_controller.rb (cover_file= in update)
+route article_cover (GET /articles/:id/cover)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_article_cover.rb
+identical db/migrate/20260925120003_add_cover_to_articles.rb
+identical app/views/articles/_form.html.erb (file field already added)
+identical app/views/articles/show.html.erb (cover already shown)
+identical app/models/article.rb (attachment cover already added)
+identical app/controllers/articles_controller.rb (def cover already added)
+identical app/controllers/articles_controller.rb (cover_file= in create)
+identical app/controllers/articles_controller.rb (cover_file= in update)
+identical route article_cover
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_article_cover.rb
+ok   where show is public the download joins it, and the test's values meet the length rules
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/desk.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_memos.rb
+create app/models/memo.rb
+create app/controllers/memos_controller.rb
+create app/views/memos/index.html.erb
+create app/views/memos/show.html.erb
+create app/views/memos/new.html.erb
+create app/views/memos/edit.html.erb
+create app/views/memos/_form.html.erb
+route resources :memos
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+create db/migrate/20260925120003_add_scan_to_memos.rb
+insert app/views/memos/_form.html.erb (scan file field, multipart: true)
+insert app/views/memos/show.html.erb (scan)
+insert app/models/memo.rb (attachment scan)
+insert app/controllers/memos_controller.rb (def scan)
+insert app/controllers/memos_controller.rb (:scan in before_action :set_memo)
+insert app/controllers/memos_controller.rb (scan_file= in create)
+insert app/controllers/memos_controller.rb (scan_file= in update)
+route memo_scan (GET /memos/:id/scan)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_memo_scan.rb
+ok   a download stays private where show is, and a maximum length cuts the value
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
 create bin/guild.rb
 create bin/gen.rb
 create bin/db.rb
@@ -789,4 +925,4 @@ create test/support/app_test.rb
 create test/attachment_item_set_post.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold refuses a duplicate column or a bad attachment name before writing
-27 tests, 273 assertions, 0 failures
+29 tests, 284 assertions, 0 failures

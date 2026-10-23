@@ -644,7 +644,7 @@
     <figure class="code" data-lang="ruby">
 <figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb （抜粋）</span><span class="code-lang">ruby</span></figcaption>
 <pre tabindex="0" role="region" aria-label="コード：app/controllers/articles_controller.rb （抜粋）"><code><span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
-<span class="ln">  allow_unauthenticated_access <span class="y">only:</span> [<span class="y">:index</span>, <span class="y">:show</span>, <span class="y">:cover</span>]   <span class="c"># step 13 wrote [:index, :show]: add :cover yourself</span></span>
+<span class="ln">  allow_unauthenticated_access <span class="y">only:</span> [<span class="y">:index</span>, <span class="y">:show</span>, <span class="y">:cover</span>]   <span class="c"># step 13 wrote [:index, :show]; the generator added :cover</span></span>
 <span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>, <span class="y">:cover</span>]</span>
 <span class="ln"></span>
 <span class="ln">  <span class="c"># GET /articles/1/cover -- @article comes from before_action :set_article, so</span></span>
@@ -669,7 +669,7 @@
 <span class="ln">    <span class="v">@article</span>.cover_file = params.nested(<span class="y">:article</span>).upload(<span class="y">:cover</span>)</span>
 <span class="ln">    <span class="k">if</span> <span class="v">@article</span>.update(article_params)</span></code></pre>
 </figure>
-    <p>ステップ 13 ですべてのページが非公開になり、公開された記事ページの画像は <code>/articles/1/cover</code> から取得されます。上のコードの 1 行目のように <code>allow_unauthenticated_access</code> に <code>:cover</code> を加えてください。そうしないと、記事を読める訪問者が、画像のせいでサインインページに送られてしまいます。画像をサインイン済みのユーザーだけに見せたいときは、加えないでください。<code>set_article</code> がユーザーに見せる記事を制限しているなら、その制限はダウンロードにも及びます。</p>
+    <p>ステップ 13 ですべてのページが非公開になり、公開された記事ページの画像は <code>/articles/1/cover</code> から取得されます。ジェネレーターは、ダウンロードを記事ページとちょうど同じだけ公開します。<code>allow_unauthenticated_access</code> に <code>:show</code> があるので、上のコードの 1 行目のように、そのリストに <code>:cover</code> を加えます。これで、記事を読める訪問者には画像も表示されます。記事ページにサインインが必要なら、ダウンロードにも必要になります。<code>set_article</code> がユーザーに見せる記事を制限しているなら、その制限はダウンロードにも及びます。</p>
     <p>ジェネレーターは、<code>config/routes.rb</code> に <code>get "/articles/:id/cover"</code> を、フォームに <code>multipart: true</code> と、送信ボタンの上のファイル入力を、表示ページの <code>&lt;h1&gt;</code> の直後に画像を、それぞれ追加します：</p>
     <figure class="code" data-lang="erb">
 <figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>_form.html.erb （抜粋）</span><span class="code-lang">erb</span></figcaption>
@@ -697,7 +697,7 @@
       <li><strong>配信。</strong>ファイルはコントローラーの <code>send_blob</code> 経由で返し、<code>public/</code> からは返しません。4 種類の画像はそのまま表示され、それ以外はダウンロードになります（<code>application/octet-stream</code>）。すべてのレスポンスに <code>X-Content-Type-Options: nosniff</code> と <code>Content-Security-Policy: default-src 'none'; sandbox</code> が付きます。</li>
       <li><strong>パラメーター。</strong><code>params.nested(:article).upload(:cover)</code> は <code>Cybertrain::UploadedFile</code> を返し、ファイルが選ばれていなければ nil です。<code>permit</code> はファイルを返さないので、ファイルはこの明示的な 1 行を通ってしか入ってきません。CSRF トークンは、通常のフォームと同じように multipart のボディからも読み取られます。壊れたボディやサイズ超過のボディは 400 になります。上限は <code>config/app.rb</code> の <code>max_upload_bytes</code> と <code>max_multipart_parts</code> で、保存先のディレクトリは <code>upload_root</code> で設定します。</li>
     </ul>
-    <p>サーバーを起動し、記事を編集して画像を選びます。ジェネレーターは <code>test/attachment_article_cover.rb</code> も書き出しています。このテストは一連の流れ全体を確かめ、アプリに <code>User</code> があるので最初にサインインします。匿名でのカバー画像のダウンロードは <code>/session/new</code> にリダイレクトされると想定しているため、上で <code>:cover</code> を公開した場合は、このテストをそれに合わせて変更してください。また、タイトルと本文には 9 文字の <code>"A article"</code> が入りますが、<a href="#validations">ステップ 05</a> で本文に付けた最小 10 文字の検証で保存が拒否されるので、実行する前に <code>article_fields</code> の本文を長くしてください。</p>
+    <p>サーバーを起動し、記事を編集して画像を選びます。ジェネレーターは <code>test/attachment_article_cover.rb</code> も書き出しています。このテストは一連の流れ全体を確かめ、アプリに <code>User</code> があるので最初にサインインします。ここでは <code>:cover</code> が公開されているので、訪問者がカバー画像をダウンロードできることを確かめます。本文には、<a href="#validations">ステップ 05</a> の最小 10 文字に合わせて伸ばした <code>"A article."</code> を入れます。</p>
     <p class="note"><a href="#test">ステップ 12</a> と同じく <code>cybertrain spin test</code> で実行します。このテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。<code>examples/blog</code> はこのステップの手前までです。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は <code>max_body_bytes</code>）。</p>
   </section>
 

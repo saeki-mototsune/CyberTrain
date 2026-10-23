@@ -644,7 +644,7 @@
     <figure class="code" data-lang="ruby">
 <figcaption><span class="code-path">app/<wbr>controllers/<wbr>articles_controller.rb （节选）</span><span class="code-lang">ruby</span></figcaption>
 <pre tabindex="0" role="region" aria-label="代码：app/controllers/articles_controller.rb （节选）"><code><span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
-<span class="ln">  allow_unauthenticated_access <span class="y">only:</span> [<span class="y">:index</span>, <span class="y">:show</span>, <span class="y">:cover</span>]   <span class="c"># step 13 wrote [:index, :show]: add :cover yourself</span></span>
+<span class="ln">  allow_unauthenticated_access <span class="y">only:</span> [<span class="y">:index</span>, <span class="y">:show</span>, <span class="y">:cover</span>]   <span class="c"># step 13 wrote [:index, :show]; the generator added :cover</span></span>
 <span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>, <span class="y">:cover</span>]</span>
 <span class="ln"></span>
 <span class="ln">  <span class="c"># GET /articles/1/cover -- @article comes from before_action :set_article, so</span></span>
@@ -669,7 +669,7 @@
 <span class="ln">    <span class="v">@article</span>.cover_file = params.nested(<span class="y">:article</span>).upload(<span class="y">:cover</span>)</span>
 <span class="ln">    <span class="k">if</span> <span class="v">@article</span>.update(article_params)</span></code></pre>
 </figure>
-    <p>步骤 13 让每个页面都变成私有的，而公开文章页面上的图片是从 <code>/articles/1/cover</code> 获取的。请像上面第一行那样，把 <code>:cover</code> 加到 <code>allow_unauthenticated_access</code> 中，否则本可以阅读文章的访客会因为这张图片被重定向到登录页面。如果图片只给已登录用户看，就不要加。<code>set_article</code> 中用来限制用户能看到哪些文章的任何做法，同样会限制下载。</p>
+    <p>步骤 13 让每个页面都变成私有的，而公开文章页面上的图片是从 <code>/articles/1/cover</code> 获取的。生成器让下载与文章页面完全同样公开：由于 <code>allow_unauthenticated_access</code> 列出了 <code>:show</code>，它会像上面第一行那样把 <code>:cover</code> 加到这个列表中，这样可以阅读文章的访客也能看到图片。如果文章页面需要登录，下载也同样需要。<code>set_article</code> 中用来限制用户能看到哪些文章的任何做法，同样会限制下载。</p>
     <p>生成器还会在 <code>config/routes.rb</code> 中添加 <code>get "/articles/:id/cover"</code>，在表单中添加 <code>multipart: true</code> 和一个位于提交按钮上方的文件输入框，并在显示页面中紧跟 <code>&lt;h1&gt;</code> 之后添加这张图片：</p>
     <figure class="code" data-lang="erb">
 <figcaption><span class="code-path">app/<wbr>views/<wbr>articles/<wbr>_form.html.erb （节选）</span><span class="code-lang">erb</span></figcaption>
@@ -697,7 +697,7 @@
       <li><strong>提供。</strong> 文件通过控制器中的 <code>send_blob</code> 发出，绝不从 <code>public/</code> 提供。四种图片类型内联显示；其他类型一律作为下载（<code>application/octet-stream</code>）。每个响应都带有 <code>X-Content-Type-Options: nosniff</code> 和 <code>Content-Security-Policy: default-src 'none'; sandbox</code>。</li>
       <li><strong>参数。</strong> <code>params.nested(:article).upload(:cover)</code> 是一个 <code>Cybertrain::UploadedFile</code>，没有选择文件时为 nil。<code>permit</code> 从不返回文件，所以文件只能通过那一行显式的代码进入。CSRF 令牌和普通表单一样，从 multipart 请求体中读取。损坏或过大的请求体会得到 400；限制由 <code>config/app.rb</code> 中的 <code>max_upload_bytes</code> 和 <code>max_multipart_parts</code> 设置，存放目录由 <code>upload_root</code> 设置。</li>
     </ul>
-    <p>启动服务器，编辑一篇文章并选择一张图片。生成器还写了 <code>test/attachment_article_cover.rb</code>，它测试整个流程，并且因为应用现在有了 <code>User</code>，会先登录。它期望匿名下载封面时被重定向到 <code>/session/new</code>，所以如果你在上面开放了 <code>:cover</code>，请相应修改该测试。它还用 9 个字符的 <code>"A article"</code> 填写标题和正文，而 <a href="#validations">步骤 05</a> 要求正文至少 10 个字符，保存会被拒绝：运行前请在 <code>article_fields</code> 中把正文写长一些。</p>
+    <p>启动服务器，编辑一篇文章并选择一张图片。生成器还写了 <code>test/attachment_article_cover.rb</code>，它测试整个流程，并且因为应用现在有了 <code>User</code>，会先登录。由于这里的 <code>:cover</code> 是公开的，它会检查访客能否下载封面；正文则填入 <code>"A article."</code>，长度补足到 <a href="#validations">步骤 05</a> 要求的至少 10 个字符。</p>
     <p class="note">和<a href="#test">步骤 12</a> 一样用 <code>cybertrain spin test</code> 运行；这个测试会用到 SQLite，所以它的快照来自编译后的二进制。<code>examples/blog</code> 止步于这一步之前。尚未实现：每个字段多个文件、S3 或其他远程存储、图片变体，以及把大请求体流式写入磁盘（整个请求体会读入内存，上限为 <code>max_body_bytes</code>）。</p>
   </section>
 
