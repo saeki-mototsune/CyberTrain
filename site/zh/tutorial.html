@@ -761,7 +761,7 @@
 <pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">kamal setup    <span class="c"># 首次：在服务器上安装 Docker 和 kamal-proxy，构建、推送并启动</span></span>
 <span class="ln cmd">kamal deploy   <span class="c"># 之后的每次部署</span></span></code></pre>
 </figure>
-    <p>二进制文件在镜像内编译，因此操作系统总与镜像一致；请把 <code>config/deploy.yml</code> 中的 <code>builder.arch</code> 设为服务器的 CPU 架构。只部署到一台服务器：数据库是该服务器卷上的一个 SQLite 文件。<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md#第-8-部-kamal-でデプロイする" rel="noopener"><code>docs/deploy.md</code></a>（日文）第 8 部分完整介绍了这一流程，包括备份。</p>
+    <p>二进制文件在镜像内编译，因此操作系统总与镜像一致；请把 <code>config/deploy.yml</code> 中的 <code>builder.arch</code> 设为服务器的 CPU 架构。只部署到一台服务器：数据库是该服务器卷上的一个 SQLite 文件。<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md#第-8-部-kamal-でデプロイする" rel="noopener"><code>docs/deploy.md</code></a>（日文；英文版见 <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a>）第 8 部分完整介绍了这一流程，包括备份。</p>
     <p>完成的应用 <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> 也带有这套配置，只有一处不同：它针对仓库中的框架构建（其 <code>spin.toml</code> 中的 <code>path = "../.."</code>），因此它的 <code>Dockerfile</code> 不安装 gem，而是从检出目录运行 <code>cybertrain setup</code> 和 <code>cybertrain build</code>，构建上下文是仓库根目录（<code>builder.context: ../..</code>，由 <code>Dockerfile.dockerignore</code> 只发送框架和应用）。CI（<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/.github/workflows/blog-image.yml" rel="noopener"><code>blog-image.yml</code></a>）在每次变更时构建该镜像，检查健康检查、通过表单创建文章、正常停止以及数据库保留在卷上，并用 Kamal 加载 <code>config/deploy.yml</code>。</p>
   </section>
 

@@ -743,6 +743,8 @@ git push
 
 ## 第 8 部: Kamal でデプロイする
 
+（英語版: [deploy-kamal.md](deploy-kamal.md)）
+
 第 3 部〜第 6 部（サーバー上でビルドし、systemd と Caddy で動かす）の代わりに、Docker イメージに
 して [Kamal 2](https://kamal-deploy.org) で配ることもできます。`cybertrain new` は次のファイルを
 書いています。
