@@ -1,5 +1,7 @@
 # チュートリアル: `cybertrain new` から本番稼働まで
 
+（英語版: [deploy.en.md](deploy.en.md)）
+
 `cybertrain new` でアプリを作り、Ubuntu サーバーに HTTPS 付きでデプロイして使い始める
 までを、上から順にコピペで進められるように書いています。
 

@@ -619,7 +619,7 @@ template embedded (rendered from memory, error messages still say
 links the system SQLite) and run `./blog migrate && ./blog`; a built binary
 is production by default (`CYBERTRAIN_ENV` overrides). Set
 `CYBERTRAIN_SECRET_KEY_BASE`. Static files can also be served by the reverse
-proxy from `dist/public/` — see [docs/deploy.md](docs/deploy.md).
+proxy from `dist/public/` — see [docs/deploy.en.md](docs/deploy.en.md).
 
 A running `cybertrain server` skips its rebuilds while `cybertrain build` is
 in progress (the build holds `tmp/cybertrain-build.lock`, since both write
@@ -815,7 +815,7 @@ webp and avif, fonts, wasm, pdf, audio and video, json, csv, xml), and
 anything else is served as `application/octet-stream`, a download; add the
 extension to `Cybertrain::Static::EXTENSIONS` if an app needs another one
 inline. A reverse proxy that serves `public/` itself bypasses these headers
-(see [docs/deploy.md](docs/deploy.md)). `Cybertrain::Test::Client` calls the
+(see [docs/deploy.en.md](docs/deploy.en.md)). `Cybertrain::Test::Client` calls the
 app in-process and never serializes the response, so it does not show the two
 defaults; assert them on `response.to_http`.
 
@@ -833,8 +833,8 @@ plain-text 404, `head :not_found`, `render plain:`) is replaced by
 or JSON pass through. `SIGTERM` stops accepting, lets requests already in
 flight finish (answered with `Connection: close`; idle keep-alive connections
 are closed at once) and exits when they are done, or after the server's
-`drain_timeout` (10 s). The watcher/rebuild loop never runs in production. [docs/deploy.md](docs/deploy.md)
-(Japanese) walks through it end to end: `cybertrain new`, an Ubuntu server,
+`drain_timeout` (10 s). The watcher/rebuild loop never runs in production. [docs/deploy.en.md](docs/deploy.en.md)
+(in Japanese: [docs/deploy.md](docs/deploy.md)) walks through it end to end: `cybertrain new`, an Ubuntu server,
 systemd, Caddy with HTTPS, redeploys, rollbacks and backups.
 
 **Kamal:** `cybertrain new` also writes what [Kamal 2](https://kamal-deploy.org)
@@ -847,7 +847,7 @@ health check on `public/up.html`, the SQLite file on a volume at
 `CYBERTRAIN_SECRET_KEY_BASE` from the environment). Fill in the values marked
 `CHANGE ME`, commit, and `kamal setup`;
 [docs/deploy-kamal.md](docs/deploy-kamal.md) has the details (part 8 of
-[docs/deploy.md](docs/deploy.md), in English).
+the deployment tutorial).
 [examples/blog](examples/blog#deploying-with-kamal) carries the same setup,
 built against this checkout's framework.
 

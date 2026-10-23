@@ -387,7 +387,7 @@ Recorded 2026-10-09 at commit 0bb5cb8: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 C
   between the first two. Compare numbers within one run, not across runs. The
   before/after table above was measured in one session.
 - **Static files.** In production both apps would usually sit behind a proxy
-  that serves `public/` itself ([deploy.md](deploy.md) puts Caddy in front),
+  that serves `public/` itself ([deploy.en.md](deploy.en.md) puts Caddy in front),
   so the `GET /style.css` rows are there for completeness.
 
 ## Running it
