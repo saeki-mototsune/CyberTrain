@@ -90,7 +90,9 @@ module Cybertrain
     attr_accessor :session_cookie_name
 
     # The session cookie's Max-Age in seconds, two weeks (`1209600`). It
-    # restarts whenever the session changes.
+    # restarts whenever the session changes. Generated authentication also
+    # uses this as an absolute lifetime from the Session row's created_at;
+    # cookie changes do not extend that sign-in.
     # @return [Integer]
     # @api public
     attr_accessor :session_max_age
