@@ -63,7 +63,8 @@ end
 # A directory holding a `spinel` that prints the given release and a `spin`.
 def fake_toolchain(dir, release)
   mkdir_p(dir)
-  File.write(File.join(dir, "spinel"), "#!/bin/sh\necho \"spinel abc123def456 (#{release}) [cc 13.3.0]\"\n")
+  script = "#!/bin/sh\necho \"spinel abc123def456 (#{release}) [cc 13.3.0]\"\n" # before File.join (rule 65)
+  File.write(File.join(dir, "spinel"), script)
   File.write(File.join(dir, "spin"), "#!/bin/sh\necho spin\n")
   File.chmod(0o755, File.join(dir, "spinel"))
   File.chmod(0o755, File.join(dir, "spin"))

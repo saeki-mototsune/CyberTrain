@@ -450,7 +450,10 @@ finds the commit that removed them).
     falsy" in test/cli_toolchain.rb, on macOS CI only). C leaves the order
     of the arguments unspecified, so `foo.gsub("#{x}/", "")` can be hit the
     same way: gcc built the interpolation first and called `foo` after it.
-    Make the allocating argument first, in a local, and pass the local:
+    A receiver counts as the first argument: `read(path).sub("A\n",
+    "A\n#{line}")` freed the file's text in test/cli_attachment.rb ("has no
+    `class ArticlesController < ApplicationController` line", also macOS
+    only). Make the allocating argument first, in a local, and pass the local:
     `name = "#{tag}.lock"; File.join(home, "spinel", name)`. Reproduce with
     an AddressSanitizer build (rule 58) run under `SPINEL_GC_STRESS=1`,
     which collects every 2 KB of strings; shift where the collections land

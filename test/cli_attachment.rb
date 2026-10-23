@@ -34,6 +34,16 @@ def read(path)
   File.read(path)
 end
 
+# Inserts text after the controller's class line. The replacement is made
+# before the file is read: written as one expression, read's result was held
+# only by a C temporary while the interpolation allocated, and a collection
+# there freed it (spikes/NOTES.md rule 65).
+def add_after_class(path, text)
+  replacement = "ApplicationController\n#{text}"
+  source = read(path)
+  File.write(path, source.sub("ApplicationController\n", replacement))
+end
+
 def count_of(text, piece)
   n = 0
   at = text.index(piece)
@@ -316,7 +326,7 @@ test "where show is public the download joins it, and the test's values meet the
   File.write("blog/app/models/article.rb", model)
   controller_path = "blog/app/controllers/articles_controller.rb"
   open_line = "  allow_unauthenticated_access only: [:index, :show]\n"
-  File.write(controller_path, read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{open_line}"))
+  add_after_class(controller_path, open_line)
   Cybertrain::CLI::Attachment.generate("blog", "article", "cover", false)
   controller = read(controller_path)
   assert_includes controller, "  allow_unauthenticated_access only: [:index, :show, :cover]\n"
@@ -354,7 +364,7 @@ test "show restrictions are preserved or attachment generation is refused" do
   Cybertrain::CLI::Authentication.generate("yard")
   controller_path = "yard/app/controllers/plans_controller.rb"
   closed_line = "  allow_unauthenticated_access only: [:index, :show], except: [:show]\n"
-  File.write(controller_path, read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{closed_line}"))
+  add_after_class(controller_path, closed_line)
   Cybertrain::CLI::Attachment.generate("yard", "plan", "photo", false)
   assert_includes read(controller_path), closed_line
   assert_includes read("yard/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
@@ -373,14 +383,15 @@ test "show restrictions are preserved or attachment generation is refused" do
   Cybertrain::CLI::Scaffold.generate("loft", "plan", ["title:string"])
   Cybertrain::CLI::Authentication.generate("loft")
   controller_path = "loft/app/controllers/plans_controller.rb"
-  File.write(controller_path, read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{public_line}  before_action :hide_drafts, only: [:show]\n"))
+  add_after_class(controller_path, "#{public_line}  before_action :hide_drafts, only: [:show]\n")
   refuse_download("loft", "plan", "photo")
 
   Cybertrain::CLI::NewApp.create("shed", "{ path = \"../cybertrain\" }")
   Cybertrain::CLI::Scaffold.generate("shed", "plan", ["title:string"])
   Cybertrain::CLI::Authentication.generate("shed")
   controller_path = "shed/app/controllers/plans_controller.rb"
-  source = read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{public_line}")
+  add_after_class(controller_path, public_line)
+  source = read(controller_path)
   File.write(controller_path, source.sub("  def show\n  end\n", "  def show\n    head 404 if @plan.title.empty?\n  end\n"))
   refuse_download("shed", "plan", "photo")
 
@@ -395,7 +406,8 @@ test "show restrictions are preserved or attachment generation is refused" do
     Cybertrain::CLI::Scaffold.generate(app, "plan", ["title:string"])
     Cybertrain::CLI::Authentication.generate(app)
     controller_path = "#{app}/app/controllers/plans_controller.rb"
-    source = read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{public_line}#{callback}")
+    add_after_class(controller_path, "#{public_line}#{callback}")
+    source = read(controller_path)
     File.write(controller_path, source.sub("  def show\n  end\n", show))
     refuse_download(app, "plan", "photo")
   end
