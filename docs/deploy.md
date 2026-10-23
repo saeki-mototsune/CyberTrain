@@ -533,8 +533,9 @@ sudo /usr/bin/systemctl restart "$APP"
 
 echo "==> 新しいリリースが応答するまで待つ（最大 30 秒）"
 up=""
-for i in $(seq 1 30); do
-  if curl -fs -o /dev/null "http://127.0.0.1:$PORT/up.html"; then up=1; break; fi
+deadline=$((SECONDS + 30))   # 1 回 2 秒まで、全体で 30 秒まで
+while [ "$SECONDS" -lt "$deadline" ]; do
+  if curl -fs --max-time 2 -o /dev/null "http://127.0.0.1:$PORT/up.html"; then up=1; break; fi
   sleep 1
 done
 if [ -z "$up" ]; then
