@@ -241,18 +241,55 @@ test "session_same_site_error is empty for Lax, Strict and None and names the va
                c.session_same_site_error
 end
 
-test "resolve_secret! creates the secret key file in the test env and reuses it" do
+test "resolve_secret! creates a private secret and parent directories under a permissive umask" do
   c = Cybertrain::Config.new
   c.env = "test"
-  c.secret_key_path = "#{ROOT}/tmp/secret_key"
-  secret = c.resolve_secret!
+  c.secret_key_path = "#{ROOT}/tmp/nested/secret_key"
+  previous_umask = File.umask(0)
+  secret = ""
+  begin
+    secret = c.resolve_secret!
+  ensure
+    File.umask(previous_umask)
+  end
   assert_equal 64, secret.length
   assert_equal secret, c.secret_key_base
-  assert_equal secret, File.read("#{ROOT}/tmp/secret_key").strip
+  assert_equal secret, File.read(c.secret_key_path).strip
+  assert_equal 0o600, File.stat(c.secret_key_path).mode & 0o777
+  assert_equal 0o700, File.stat("#{ROOT}/tmp").mode & 0o777
+  assert_equal 0o700, File.stat("#{ROOT}/tmp/nested").mode & 0o777
   again = Cybertrain::Config.new
   again.env = "test"
-  again.secret_key_path = "#{ROOT}/tmp/secret_key"
+  again.secret_key_path = c.secret_key_path
   assert_equal secret, again.resolve_secret!
+end
+
+test "resolve_secret! restricts an existing key before reuse without changing it or its parent" do
+  path = "#{ROOT}/shared/secret_key"
+  secret = "a" * 64
+  write_file(path, "#{secret}\n")
+  File.chmod(0o755, File.dirname(path))
+  File.chmod(0o666, path)
+  c = Cybertrain::Config.new
+  c.env = "development"
+  c.secret_key_path = path
+  assert_equal secret, c.resolve_secret!
+  assert_equal "#{secret}\n", File.read(path)
+  assert_equal 0o600, File.stat(path).mode & 0o777
+  assert_equal 0o755, File.stat(File.dirname(path)).mode & 0o777
+end
+
+test "resolve_secret! replaces an invalid existing key with a private key" do
+  path = "#{ROOT}/tmp/invalid_secret_key"
+  File.write(path, "invalid\n")
+  File.chmod(0o666, path)
+  c = Cybertrain::Config.new
+  c.env = "test"
+  c.secret_key_path = path
+  secret = c.resolve_secret!
+  assert_equal 64, secret.length
+  assert_equal "#{secret}\n", File.read(path)
+  assert_equal 0o600, File.stat(path).mode & 0o777
 end
 
 test "resolve_secret! keeps an explicit secret_key_base" do
