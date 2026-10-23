@@ -110,6 +110,7 @@ module Cybertrain
            File.read(model_path).index(model_marker(spec)).nil?
           raise InvalidArgument, "#{schema_path} already has a \"#{field}_key\" column in \"#{spec.plural}\": #{spec.class_name} already has a #{field}, or pick another field name"
         end
+        check_download_policy!(root, spec, File.read(controller_path))
 
         created = Array.new(0) { "" }
         record(created, root, migration_path(root, spec), migration(spec))
@@ -135,6 +136,40 @@ module Cybertrain
         record(created, root, "test/support/app_test.rb", Authentication.app_test_support)
         record(created, root, test_file(spec), attachment_test(root, spec))
         nil
+      end
+
+      # Check before writing anything, including when invoked by scaffold.
+      # Authentication alone cannot replace a show-only authorization check.
+      # Only the shared record callback is extended automatically; any other
+      # policy must explicitly cover both show and the download already.
+      def self.check_download_policy!(root, spec, source)
+        coverage = set_record_coverage(source, spec, spec.field)
+        new_action = line_start(source, "def #{spec.field}", "exact") < 0
+        source = add_to_only_list(source, spec, spec.field) if coverage == "add" && new_action
+        safe = line_start(source, controller_line(spec), "exact") >= 0 &&
+               set_record_coverage(source, spec, "show") == "yes" &&
+               set_record_coverage(source, spec, spec.field) == "yes" &&
+               !show_checks_more?(source, spec)
+
+        # Read the actual ancestry rather than inferring policy from the child.
+        parent = "ApplicationController"
+        seen = Array.new(0) { "" }
+        while safe && parent != "Cybertrain::Controller"
+          path = File.join(root, "app/controllers/#{Inflector.underscore(parent)}.rb")
+          if seen.include?(parent) || !File.file?(path)
+            safe = false
+          else
+            seen << parent
+            inherited = File.read(path)
+            head = "class #{parent} < "
+            at = line_start(inherited, head, "start")
+            safe = at >= 0 && !callback_checks_more?(inherited, spec)
+            parent = inherited[at, line_end(inherited, at) - at].to_s.strip.delete_prefix(head) if safe
+          end
+        end
+        return nil if safe
+
+        raise InvalidArgument, "#{controller_file(spec)}: cannot preserve show's authorization for :#{spec.field}; use the same explicit before_action policy for :show and :#{spec.field}, move checks out of def show, and load both through before_action :set_#{spec.singular} (including inherited policies); no attachment files were written"
       end
 
       def self.record(created, root, path, content)
@@ -277,9 +312,8 @@ module Cybertrain
       # once (`def cover` marks it). The record comes from the controller's
       # own `before_action :set_post`, with :cover added to its only: list,
       # so the download is scoped exactly like show: an app that limits
-      # set_post to the signed-in user's posts limits the file too. A
-      # controller without that before_action gets an action that looks the
-      # record up itself, and a warning that this lookup is unscoped.
+      # set_post to the signed-in user's posts limits the file too. The
+      # preflight requires this shared lookup and shared authorization.
       def self.add_action(root, spec)
         path = controller_file(spec)
         full = File.join(root, path)
@@ -323,9 +357,8 @@ module Cybertrain
       # makes show public (step 13 of the tutorial: `only: [:index, :show]`),
       # the download joins it; otherwise a visitor sees a broken image. Where
       # show needs a signed-in user the download does too, and nothing changes.
-      # Only when both find the record through `before_action :set_post`: a
-      # download with its own unscoped find could hand a visitor the file of
-      # a record show would not show, so that one is left for the app to open.
+      # Both find the record through `before_action :set_post`; the preflight
+      # has checked additional and inherited policies as well.
       def self.add_public_download(root, spec)
         path = controller_file(spec)
         full = File.join(root, path)
@@ -346,29 +379,41 @@ module Cybertrain
         true
       end
 
-      # Whether show does more than load the record, which the download would
-      # not repeat: another before_action that runs for show but not for the
-      # download (a show-only draft check), or any code in `def show` (the
-      # scaffold's is empty). A shared lookup alone is not shared
-      # authorization, so either keeps the download private, and so does
-      # anything this cannot read: a before_action continued on the next
-      # line, or a show not written as a `def show` line of its own.
-      def self.show_checks_more?(source, spec)
-        set_record = set_record_line(source, spec)
-        offset = 0
-        extra = false
+      # Unshared callbacks, skips or mixins cannot establish a shared policy.
+      # Restrict callback declarations to literal, single-line symbol lists;
+      # conditional/dynamic declarations and blocks need application review.
+      def self.callback_checks_more?(source, spec)
+        # The authentication generator's helper registers a skip when called;
+        # its declaration is not itself a skip. Calls are checked below.
+        source = source.sub("  def self.allow_unauthenticated_access(only: [], except: [])\n    skip_before_action(:require_authentication, only: only, except: except)\n  end\n", "")
         source.each_line do |raw|
           stripped = raw.strip
-          if offset != set_record && stripped.start_with?("before_action")
-            continued = stripped.end_with?(",") || stripped.end_with?("(") || stripped.end_with?("\\")
-            only_at = stripped.index("only:")
-            except_at = stripped.index("except:")
-            unreadable = (!only_at.nil? && bracket_open(stripped, only_at + 5) < 0) || (!except_at.nil? && bracket_open(stripped, except_at + 7) < 0)
-            extra = true if continued || unreadable || (list_coverage(stripped, "show") == "yes" && list_coverage(stripped, spec.field) != "yes")
+          return true if stripped.match?(/\A(?:include|extend|prepend)\b/)
+          next if stripped.empty? || stripped.start_with?("#")
+          next unless stripped.match?(/\b(?:before_action|skip_before_action|allow_unauthenticated_access)\b/)
+
+          return true unless stripped.match?(/\A(?:before_action\s+:[a-z_]\w*|skip_before_action\s+:[a-z_]\w*|allow_unauthenticated_access)(?:\s*,?\s*(?:only|except):\s*\[(?:\s*:[a-z_]\w*\s*,?)*\s*\])*\s*\z/)
+          # Ruby uses the last duplicate keyword; list_coverage reads the first.
+          ["only:", "except:"].each do |key|
+            at = stripped.index(key)
+            return true if !at.nil? && !stripped.index(key, at + key.size).nil?
           end
-          offset += raw.size
+
+          show = list_coverage(stripped, "show") == "yes"
+          download = list_coverage(stripped, spec.field) == "yes"
+          if stripped.start_with?("before_action")
+            return true if show && !download
+          else
+            return true if download && !show
+          end
         end
-        return true if extra
+        false
+      end
+
+      # The scaffold's show is empty. Inline checks cannot safely be copied
+      # into a different action; the application must share an explicit policy.
+      def self.show_checks_more?(source, spec)
+        return true if callback_checks_more?(source, spec)
 
         at = line_start(source, "def show", "exact")
         return true if at < 0

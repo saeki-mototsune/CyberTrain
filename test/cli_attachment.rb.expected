@@ -581,19 +581,6 @@ create test/authentication.rb
 insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
-create db/migrate/20260925120003_add_photo_to_plans.rb
-insert app/views/plans/_form.html.erb (photo file field, multipart: true)
-insert app/views/plans/show.html.erb (photo)
-insert app/models/plan.rb (attachment photo)
-insert app/controllers/plans_controller.rb (def photo)
-warning: app/controllers/plans_controller.rb has no `before_action :set_plan` for :photo, so def photo looks the plan up with an unscoped Plan.find(params[:id]); if your actions limit which records a user may see, limit this lookup the same way
-skip app/controllers/plans_controller.rb (:show is public, but def photo does not load the plan through before_action :set_plan as show does): add :photo to allow_unauthenticated_access yourself if visitors may download it
-insert app/controllers/plans_controller.rb (photo_file= in create)
-skip app/controllers/plans_controller.rb (update does not load @plan with `@plan = Plan.find(params[:id])` nor through `before_action :set_plan`): add `@plan.photo_file = params.nested(:plan).upload(:photo)` to update once @plan is loaded
-route plan_photo (GET /plans/:id/photo)
-identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
 create spin.toml
 create .gitignore
 create README.md
@@ -643,19 +630,6 @@ create test/authentication.rb
 insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
-create db/migrate/20260925120003_add_photo_to_plans.rb
-insert app/views/plans/_form.html.erb (photo file field, multipart: true)
-insert app/views/plans/show.html.erb (photo)
-insert app/models/plan.rb (attachment photo)
-insert app/controllers/plans_controller.rb (def photo)
-insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
-skip app/controllers/plans_controller.rb (:show is public, but show may check more than set_plan: a before_action of its own, code in def show, or a line this cannot read): add :photo to allow_unauthenticated_access yourself once def photo checks the same
-insert app/controllers/plans_controller.rb (photo_file= in create)
-insert app/controllers/plans_controller.rb (photo_file= in update)
-route plan_photo (GET /plans/:id/photo)
-identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
 create spin.toml
 create .gitignore
 create README.md
@@ -705,19 +679,6 @@ create test/authentication.rb
 insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
-create db/migrate/20260925120003_add_photo_to_plans.rb
-insert app/views/plans/_form.html.erb (photo file field, multipart: true)
-insert app/views/plans/show.html.erb (photo)
-insert app/models/plan.rb (attachment photo)
-insert app/controllers/plans_controller.rb (def photo)
-insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
-skip app/controllers/plans_controller.rb (:show is public, but show may check more than set_plan: a before_action of its own, code in def show, or a line this cannot read): add :photo to allow_unauthenticated_access yourself once def photo checks the same
-insert app/controllers/plans_controller.rb (photo_file= in create)
-insert app/controllers/plans_controller.rb (photo_file= in update)
-route plan_photo (GET /plans/:id/photo)
-identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
 create spin.toml
 create .gitignore
 create README.md
@@ -767,19 +728,6 @@ create test/authentication.rb
 insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
-create db/migrate/20260925120003_add_photo_to_plans.rb
-insert app/views/plans/_form.html.erb (photo file field, multipart: true)
-insert app/views/plans/show.html.erb (photo)
-insert app/models/plan.rb (attachment photo)
-insert app/controllers/plans_controller.rb (def photo)
-insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
-skip app/controllers/plans_controller.rb (:show is public, but show may check more than set_plan: a before_action of its own, code in def show, or a line this cannot read): add :photo to allow_unauthenticated_access yourself once def photo checks the same
-insert app/controllers/plans_controller.rb (photo_file= in create)
-insert app/controllers/plans_controller.rb (photo_file= in update)
-route plan_photo (GET /plans/:id/photo)
-identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
 create spin.toml
 create .gitignore
 create README.md
@@ -829,19 +777,6 @@ create test/authentication.rb
 insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
-create db/migrate/20260925120003_add_photo_to_plans.rb
-insert app/views/plans/_form.html.erb (photo file field, multipart: true)
-insert app/views/plans/show.html.erb (photo)
-insert app/models/plan.rb (attachment photo)
-insert app/controllers/plans_controller.rb (def photo)
-insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
-skip app/controllers/plans_controller.rb (:show is public, but show may check more than set_plan: a before_action of its own, code in def show, or a line this cannot read): add :photo to allow_unauthenticated_access yourself once def photo checks the same
-insert app/controllers/plans_controller.rb (photo_file= in create)
-insert app/controllers/plans_controller.rb (photo_file= in update)
-route plan_photo (GET /plans/:id/photo)
-identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
 create spin.toml
 create .gitignore
 create README.md
@@ -891,20 +826,159 @@ create test/authentication.rb
 insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+ok   show restrictions are preserved or attachment generation is refused
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/restricted.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_plans.rb
+create app/models/plan.rb
+create app/controllers/plans_controller.rb
+create app/views/plans/index.html.erb
+create app/views/plans/show.html.erb
+create app/views/plans/new.html.erb
+create app/views/plans/edit.html.erb
+create app/views/plans/_form.html.erb
+route resources :plans
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
 insert app/models/plan.rb (attachment photo)
 insert app/controllers/plans_controller.rb (def photo)
 insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
-skip app/controllers/plans_controller.rb (:show is public, but show may check more than set_plan: a before_action of its own, code in def show, or a line this cannot read): add :photo to allow_unauthenticated_access yourself once def photo checks the same
 insert app/controllers/plans_controller.rb (photo_file= in create)
 insert app/controllers/plans_controller.rb (photo_file= in update)
 route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
 identical test/support/app_test.rb
 create test/attachment_plan_photo.rb
-ok   the download is not opened when except: closes show, or when it does not share show's lookup
+ok   a show-only policy is refused for authenticated users too
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/inherited.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_plans.rb
+create app/models/plan.rb
+create app/controllers/plans_controller.rb
+create app/views/plans/index.html.erb
+create app/views/plans/show.html.erb
+create app/views/plans/new.html.erb
+create app/views/plans/edit.html.erb
+create app/views/plans/_form.html.erb
+route resources :plans
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /sign_up
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+create db/migrate/20260925120003_add_photo_to_plans.rb
+insert app/views/plans/_form.html.erb (photo file field, multipart: true)
+insert app/views/plans/show.html.erb (photo)
+insert app/models/plan.rb (attachment photo)
+insert app/controllers/plans_controller.rb (def photo)
+insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
+insert app/controllers/plans_controller.rb (:photo in allow_unauthenticated_access, since :show is public)
+insert app/controllers/plans_controller.rb (photo_file= in create)
+insert app/controllers/plans_controller.rb (photo_file= in update)
+route plan_photo (GET /plans/:id/photo)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_plan_photo.rb
+ok   inherited show-only authorization cannot be bypassed by a public download
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/unknown.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+ok   unknown inherited policies and asymmetric skips refuse attachment scaffolds before writing
 create spin.toml
 create .gitignore
 create README.md
@@ -1011,50 +1085,21 @@ create gen/.keep
 create storage/.keep
 create tmp/.keep
 create test/.keep
-create db/migrate/20260925120000_add_scan_to_notes.rb
-skip app/views/notes/_form.html.erb (not found): use form_with(model: note, multipart: true) and <%= f.file_field :scan, accept: "image/png,image/jpeg,image/gif,image/webp" %>
-skip app/views/notes/show.html.erb (not found): show the file with <% if @note.scan_attached? %><p><img src="<%= @note.scan_url %>" alt="<%= @note.scan_filename %>"></p><% end %>
-insert app/models/note.rb (attachment scan)
-insert app/controllers/notes_controller.rb (def scan)
-warning: app/controllers/notes_controller.rb has no `before_action :set_note` for :scan, so def scan looks the note up with an unscoped Note.find(params[:id]); if your actions limit which records a user may see, limit this lookup the same way
-skip app/controllers/notes_controller.rb (no `@note = Note.new(note_params)` line): add `@note.scan_file = params.nested(:note).upload(:scan)` to create
-skip app/controllers/notes_controller.rb (update does not load @note with `@note = Note.find(params[:id])` nor through `before_action :set_note`): add `@note.scan_file = params.nested(:note).upload(:scan)` to update once @note is loaded
-route note_scan (GET /notes/:id/scan)
-identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_note_scan.rb
-identical db/migrate/20260925120000_add_scan_to_notes.rb
-skip app/views/notes/_form.html.erb (not found): use form_with(model: note, multipart: true) and <%= f.file_field :scan, accept: "image/png,image/jpeg,image/gif,image/webp" %>
-skip app/views/notes/show.html.erb (not found): show the file with <% if @note.scan_attached? %><p><img src="<%= @note.scan_url %>" alt="<%= @note.scan_filename %>"></p><% end %>
-identical app/models/note.rb (attachment scan already added)
-identical app/controllers/notes_controller.rb (def scan already added)
-skip app/controllers/notes_controller.rb (no `@note = Note.new(note_params)` line): add `@note.scan_file = params.nested(:note).upload(:scan)` to create
-skip app/controllers/notes_controller.rb (update does not load @note with `@note = Note.find(params[:id])` nor through `before_action :set_note`): add `@note.scan_file = params.nested(:note).upload(:scan)` to update once @note is loaded
-identical route note_scan
-identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_note_scan.rb
-note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
-
-next:
-  cybertrain db migrate
-  cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, "Testing an app")
-ok   an app that is not the scaffold's shape gets the snippets instead of broken edits
-create db/migrate/20260925120001_add_face_to_cards.rb
+ok   a controller without a shared lookup cannot generate an unscoped download
+create db/migrate/20260925120000_add_face_to_cards.rb
 skip app/views/cards/_form.html.erb (not found): use form_with(model: card, multipart: true) and <%= f.file_field :face, accept: "image/png,image/jpeg,image/gif,image/webp" %>
 skip app/views/cards/show.html.erb (not found): show the file with <% if @card.face_attached? %><p><img src="<%= @card.face_url %>" alt="<%= @card.face_filename %>"></p><% end %>
 insert app/models/card.rb (attachment face)
 insert app/controllers/cards_controller.rb (def face)
-warning: app/controllers/cards_controller.rb has no `before_action :set_card` for :face, so def face looks the card up with an unscoped Card.find(params[:id]); if your actions limit which records a user may see, limit this lookup the same way
+insert app/controllers/cards_controller.rb (:face in before_action :set_card)
 skip app/controllers/cards_controller.rb (no `@card = Card.new(card_params)` line): add `@card.face_file = params.nested(:card).upload(:face)` to create
 insert app/controllers/cards_controller.rb (face_file= in update)
 insert app/controllers/cards_controller.rb (card_params reads params.nested(:card): the form may send only files)
 route card_face (GET /cards/:id/face)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
+create test/support/app_test.rb
 create test/attachment_card_face.rb
-create db/migrate/20260925120002_add_icon_to_lists.rb
+create db/migrate/20260925120001_add_icon_to_lists.rb
 skip app/views/lists/_form.html.erb (not found): use form_with(model: list, multipart: true) and <%= f.file_field :icon, accept: "image/png,image/jpeg,image/gif,image/webp" %>
 skip app/views/lists/show.html.erb (not found): show the file with <% if @list.icon_attached? %><p><img src="<%= @list.icon_url %>" alt="<%= @list.icon_filename %>"></p><% end %>
 insert app/models/list.rb (attachment icon)
@@ -1066,7 +1111,7 @@ route list_icon (GET /lists/:id/icon)
 identical .gitignore (/storage/uploads/ already ignored)
 identical test/support/app_test.rb
 create test/attachment_list_icon.rb
-create db/migrate/20260925120003_add_logo_to_trays.rb
+create db/migrate/20260925120002_add_logo_to_trays.rb
 skip app/views/trays/_form.html.erb (not found): use form_with(model: tray, multipart: true) and <%= f.file_field :logo, accept: "image/png,image/jpeg,image/gif,image/webp" %>
 skip app/views/trays/show.html.erb (not found): show the file with <% if @tray.logo_attached? %><p><img src="<%= @tray.logo_url %>" alt="<%= @tray.logo_filename %>"></p><% end %>
 insert app/models/tray.rb (attachment logo)
@@ -1359,4 +1404,4 @@ create test/support/app_test.rb
 create test/attachment_item_set_post.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold refuses a duplicate column or a bad attachment name before writing
-30 tests, 299 assertions, 0 failures
+33 tests, 340 assertions, 0 failures

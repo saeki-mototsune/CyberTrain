@@ -216,6 +216,15 @@ module Cybertrain
         end
         res = Resource.new(name, parsed, any)
 
+        res.fields.each do |f|
+          next unless f.attachment?
+
+          spec = AttachmentSpec.new(res.singular, f.field_name, any)
+          controller_path = File.join(root, Attachment.controller_file(spec))
+          source = File.file?(controller_path) ? File.read(controller_path) : Templates.controller(res)
+          Attachment.check_download_policy!(root, spec, source)
+        end
+
         created = Array.new(0) { "" }
         migration = migration_path(root, res)
         record(created, root, migration, Templates.migration(res))

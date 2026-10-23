@@ -44,6 +44,24 @@ def count_of(text, piece)
   n
 end
 
+# Refusal must precede migration, model, view, controller and route writes.
+def attachment_tree(path)
+  out = +""
+  Dir.children(path).sort.each do |name|
+    child = File.join(path, name)
+    out << child << "\n"
+    out << (File.directory?(child) ? attachment_tree(child) : File.read(child))
+  end
+  out
+end
+
+def refuse_download(app, model, field)
+  before = attachment_tree(app)
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Attachment.generate(app, model, field, false) }
+  assert_includes message, "cannot preserve show's authorization"
+  assert_equal before, attachment_tree(app)
+end
+
 ATTACH_FILES = [
   "db/migrate/20260925120001_add_cover_to_posts.rb",
   "test/support/app_test.rb",
@@ -329,9 +347,8 @@ test "a download stays private where show is, and a maximum length cuts the valu
 end
 
 # except: wins over only: (Callback#applies?), so this show needs a sign-in;
-# and a download with its own unscoped find is never opened, since it could
-# serve a record that show's lookup would not.
-test "the download is not opened when except: closes show, or when it does not share show's lookup" do
+# and a download without shared authorization is refused before any writes.
+test "show restrictions are preserved or attachment generation is refused" do
   Cybertrain::CLI::NewApp.create("yard", "{ path = \"../cybertrain\" }")
   Cybertrain::CLI::Scaffold.generate("yard", "plan", ["title:string"])
   Cybertrain::CLI::Authentication.generate("yard")
@@ -348,23 +365,16 @@ test "the download is not opened when except: closes show, or when it does not s
   controller_path = "barn/app/controllers/plans_controller.rb"
   source = read(controller_path).sub("ApplicationController\n", "ApplicationController\n  allow_unauthenticated_access only: [:index, :show]\n")
   File.write(controller_path, source.sub("  before_action :set_plan, only: [:show, :edit, :update, :destroy]\n", ""))
-  Cybertrain::CLI::Attachment.generate("barn", "plan", "photo", false)
-  controller = read(controller_path)
-  assert_includes controller, "  allow_unauthenticated_access only: [:index, :show]\n"
-  assert_includes controller, "@plan = Plan.find(params[:id])"
-  assert_includes read("barn/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+  refuse_download("barn", "plan", "photo")
 
-  # A shared lookup is not shared authorization: a show-only check, as a
-  # before_action or as code in def show, keeps the download private.
+  # A shared lookup alone does not preserve a separate show-only policy.
   public_line = "  allow_unauthenticated_access only: [:index, :show]\n"
   Cybertrain::CLI::NewApp.create("loft", "{ path = \"../cybertrain\" }")
   Cybertrain::CLI::Scaffold.generate("loft", "plan", ["title:string"])
   Cybertrain::CLI::Authentication.generate("loft")
   controller_path = "loft/app/controllers/plans_controller.rb"
   File.write(controller_path, read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{public_line}  before_action :hide_drafts, only: [:show]\n"))
-  Cybertrain::CLI::Attachment.generate("loft", "plan", "photo", false)
-  assert_includes read(controller_path), public_line
-  assert_includes read("loft/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+  refuse_download("loft", "plan", "photo")
 
   Cybertrain::CLI::NewApp.create("shed", "{ path = \"../cybertrain\" }")
   Cybertrain::CLI::Scaffold.generate("shed", "plan", ["title:string"])
@@ -372,11 +382,9 @@ test "the download is not opened when except: closes show, or when it does not s
   controller_path = "shed/app/controllers/plans_controller.rb"
   source = read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{public_line}")
   File.write(controller_path, source.sub("  def show\n  end\n", "  def show\n    head 404 if @plan.title.empty?\n  end\n"))
-  Cybertrain::CLI::Attachment.generate("shed", "plan", "photo", false)
-  assert_includes read(controller_path), public_line
-  assert_includes read("shed/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+  refuse_download("shed", "plan", "photo")
 
-  # What it cannot read keeps the download private too: a before_action
+  # What it cannot read prevents generation too: a before_action
   # continued on the next line, a list it cannot parse, a one-line show.
   [
     ["coop", "  before_action :hide_drafts,\n                only: [:show]\n", "  def show\n  end\n"],
@@ -389,9 +397,72 @@ test "the download is not opened when except: closes show, or when it does not s
     controller_path = "#{app}/app/controllers/plans_controller.rb"
     source = read(controller_path).sub("ApplicationController\n", "ApplicationController\n#{public_line}#{callback}")
     File.write(controller_path, source.sub("  def show\n  end\n", show))
-    Cybertrain::CLI::Attachment.generate(app, "plan", "photo", false)
-    assert_includes read(controller_path), public_line
-    assert_includes read("#{app}/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+    refuse_download(app, "plan", "photo")
+  end
+end
+
+# Authentication is independent of record/role authorization. These checks
+# apply even when no authentication generator (or public-access list) exists.
+test "a show-only policy is refused for authenticated users too" do
+  Cybertrain::CLI::NewApp.create("restricted", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("restricted", "plan", ["title:string"])
+  Cybertrain::CLI::Authentication.generate("restricted")
+  path = "restricted/app/controllers/plans_controller.rb"
+  source = read(path).sub("ApplicationController\n", "ApplicationController\n  before_action :require_owner, only: [:show]\n")
+  File.write(path, source)
+  refuse_download("restricted", "plan", "photo")
+
+  # Sharing the explicit callback permits generation without changing it.
+  File.write(path, source.sub("only: [:show]", "only: [:show, :photo]"))
+  Cybertrain::CLI::Attachment.generate("restricted", "plan", "photo", false)
+  assert_includes read(path), "before_action :require_owner, only: [:show, :photo]"
+  assert_includes read(path), "def photo\n"
+
+  # Existing actions are left alone: preflight must not assume add_action
+  # will extend their lookup callback when it will actually skip the edit.
+  File.write(path, read(path).sub(":destroy, :photo]", ":destroy]"))
+  refuse_download("restricted", "plan", "photo")
+end
+
+test "inherited show-only authorization cannot be bypassed by a public download" do
+  Cybertrain::CLI::NewApp.create("inherited", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("inherited", "plan", ["title:string"])
+  Cybertrain::CLI::Authentication.generate("inherited")
+  path = "inherited/app/controllers/plans_controller.rb"
+  File.write(path, read(path).sub("ApplicationController\n", "ApplicationController\n  allow_unauthenticated_access only: [:index, :show]\n"))
+  parent = "inherited/app/controllers/application_controller.rb"
+  source = read(parent).sub("Cybertrain::Controller\n", "Cybertrain::Controller\n  before_action :require_reader, only: [:show]\n")
+  File.write(parent, source)
+  refuse_download("inherited", "plan", "photo")
+
+  # A policy further up the ancestry is checked as well.
+  File.write(parent, source.sub("Cybertrain::Controller", "AccessController").sub("  before_action :require_reader, only: [:show]\n", ""))
+  File.write("inherited/app/controllers/access_controller.rb", "class AccessController < Cybertrain::Controller\n  before_action :require_reader, only: [:show]\nend\n")
+  refuse_download("inherited", "plan", "photo")
+  File.write("inherited/app/controllers/access_controller.rb", "class AccessController < Cybertrain::Controller\n  before_action :require_reader, only: [:show, :photo]\nend\n")
+  Cybertrain::CLI::Attachment.generate("inherited", "plan", "photo", false)
+  assert_includes read(path), "allow_unauthenticated_access only: [:index, :show, :photo]"
+end
+
+test "unknown inherited policies and asymmetric skips refuse attachment scaffolds before writing" do
+  Cybertrain::CLI::NewApp.create("unknown", "{ path = \"../cybertrain\" }")
+  parent = "unknown/app/controllers/application_controller.rb"
+  original = read(parent)
+  [
+    original.sub("Cybertrain::Controller", "MissingController"),
+    original.sub("Cybertrain::Controller", "ApplicationController"),
+    original.sub("Cybertrain::Controller\n", "Cybertrain::Controller\n  include AccessPolicy\n"),
+    original.sub("Cybertrain::Controller\n", "Cybertrain::Controller\n  before_action :require_reader, only: %i[show]\n"),
+    original.sub("Cybertrain::Controller\n", "Cybertrain::Controller\n  skip_before_action :require_reader, only: [:photo]\n"),
+    original.sub("Cybertrain::Controller\n", "Cybertrain::Controller\n  self.before_action :require_reader, only: [:show]\n"),
+    original.sub("Cybertrain::Controller\n", "Cybertrain::Controller\n  before_action :require_reader, only: [:photo], only: [:show]\n"),
+    original.sub("Cybertrain::Controller\n", "Cybertrain::Controller\n  allow_unauthenticated_access only: [:photo]\n")
+  ].each do |source|
+    File.write(parent, source)
+    before = attachment_tree("unknown")
+    message = assert_raises("InvalidArgument") { Cybertrain::CLI::Scaffold.generate("unknown", "plan", ["title:string", "photo:attachment"]) }
+    assert_includes message, "cannot preserve show's authorization"
+    assert_equal before, attachment_tree("unknown")
   end
 end
 
@@ -413,20 +484,12 @@ test "authentication generated after the attachment adds the sign-in to its test
   assert_equal spec, read("guild/test/attachment_product_photo.rb")
 end
 
-test "an app that is not the scaffold's shape gets the snippets instead of broken edits" do
+test "a controller without a shared lookup cannot generate an unscoped download" do
   Cybertrain::CLI::NewApp.create("bare", "{ path = \"../cybertrain\" }")
   File.write("bare/app/models/note.rb", "class Note\nend\n")
   File.write("bare/app/controllers/notes_controller.rb", "class NotesController < ApplicationController\n  def index\n  end\nend\n")
-  created = Cybertrain::CLI::Attachment.generate("bare", "note", "scan", false)
-  assert_includes created, "db/migrate/20260925120000_add_scan_to_notes.rb"
-  controller = read("bare/app/controllers/notes_controller.rb")
-  # No before_action :set_note: the action looks the note up itself.
-  assert_includes controller, "unscoped: if your other\n"
-  assert_includes controller, "  def scan\n    @note = Note.find(params[:id])\n    if @note.scan_attached?"
-  refute controller.include?("scan_file ="), "no create or update to put the assignment in"
-  assert read("bare/app/models/note.rb").start_with?("class Note\n  # cybertrain:attachment scan -- ")
-  assert_equal 0, Dir.chdir("bare") { Cybertrain::CLI.run(["generate", "attachment", "note", "scan"]) }
-  assert_equal controller, read("bare/app/controllers/notes_controller.rb")
+  refuse_download("bare", "note", "scan")
+  refute read("bare/app/controllers/notes_controller.rb").include?("def scan"), "no unscoped download"
 end
 
 # Update must have loaded @card before the assignment runs, or it is a
@@ -434,7 +497,7 @@ end
 test "update gets the assignment only where the record is loaded" do
   File.write("bare/app/models/card.rb", "class Card\nend\n")
   File.write("bare/app/controllers/cards_controller.rb",
-             "class CardsController < ApplicationController\n  def update\n    @card = Card.find(params[:id])\n" \
+             "class CardsController < ApplicationController\n  before_action :set_card, only: [:show]\n\n  def show\n  end\n\n  def update\n    @card = Card.find(params[:id])\n" \
              "    if @card.update(card_params)\n    end\n  end\n\n  private\n\n  def card_params\n    params.require(:card).permit()\n  end\nend\n")
   Cybertrain::CLI::Attachment.generate("bare", "card", "face", false)
   controller = read("bare/app/controllers/cards_controller.rb")
@@ -445,14 +508,14 @@ test "update gets the assignment only where the record is loaded" do
   # without only: covers every action, the download included.
   File.write("bare/app/models/list.rb", "class List\nend\n")
   File.write("bare/app/controllers/lists_controller.rb",
-             "class ListsController < ApplicationController\n  before_action :set_list, only: [:show]\n\n  def update\n    head 204\n  end\nend\n")
+             "class ListsController < ApplicationController\n  before_action :set_list, only: [:show]\n\n  def show\n  end\n\n  def update\n    head 204\n  end\nend\n")
   Cybertrain::CLI::Attachment.generate("bare", "list", "icon", false)
   controller = read("bare/app/controllers/lists_controller.rb")
   refute controller.include?("icon_file ="), "update does not load @list"
   assert_includes controller, "  before_action :set_list, only: [:show, :icon]\n"
   File.write("bare/app/models/tray.rb", "class Tray\nend\n")
   File.write("bare/app/controllers/trays_controller.rb",
-             "class TraysController < ApplicationController\n  before_action :set_tray\n\n  def update\n    head 204\n  end\nend\n")
+             "class TraysController < ApplicationController\n  before_action :set_tray\n\n  def show\n  end\n\n  def update\n    head 204\n  end\nend\n")
   Cybertrain::CLI::Attachment.generate("bare", "tray", "logo", false)
   controller = read("bare/app/controllers/trays_controller.rb")
   assert_includes controller, "  before_action :set_tray\n\n  # GET /trays/1/logo -- @tray comes from"
