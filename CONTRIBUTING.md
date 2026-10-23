@@ -152,6 +152,13 @@ way; the script or workflow step that checks it says so in its comment.
   carries a YARD comment tagged `@api public`; the API reference is built from
   those and must build without a warning. Anything without the tag is
   internal.
+- **The deployment tutorial has an English translation.** A change to
+  [docs/deploy.md](docs/deploy.md) changes [docs/deploy.en.md](docs/deploy.en.md)
+  with it (part 8: [docs/deploy-kamal.md](docs/deploy-kamal.md)), and the
+  other way round. `script/check-docs-i18n`, which the gate runs when one of
+  them changes, compares their headings and section numbers, code blocks
+  (comments and progress messages aside) and table rows. As with the site,
+  if you cannot translate, say so in the pull request.
 - **The site is published in five languages.** A change to an English page
   under `site/` changes `ja/`, `zh/`, `ru/` and `fr/` with it, and
   `script/check-site-i18n` verifies the structure matches (see
