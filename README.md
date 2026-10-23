@@ -574,9 +574,11 @@ What is accepted and how it is served:
 - **Serving.** The `cover` action serves files with `send_blob`, so the
   controller's `before_action`s (sign-in, scoping) apply to downloads too.
   The four image types are served inline; anything else is a download
-  (`application/octet-stream`). Every response carries
-  `X-Content-Type-Options: nosniff` and `Content-Security-Policy:
-  default-src 'none'; sandbox`. Never put uploads under `public/`. In the
+  (`application/octet-stream`). Like every response, they carry
+  `X-Content-Type-Options: nosniff` and `X-Frame-Options: SAMEORIGIN` (the
+  framework-wide defaults, below), and `send_blob` adds
+  `Content-Security-Policy: default-src 'none'; sandbox`. Never put uploads
+  under `public/`. In the
   blog above, where visitors may read articles, add the action to
   `allow_unauthenticated_access only: [:index, :show, :cover]`, or the
   image on a public page sends visitors to the sign-in page.
@@ -786,6 +788,27 @@ uploaded file; it must not exceed `max_body_bytes`), `max_multipart_parts`
 (128 parts, text fields included, at most 4096), `upload_root`
 (`"storage/uploads"`, where `Cybertrain::BlobStore` writes; created on the
 first upload, not at boot).
+
+**Security headers:** every response the server writes (actions, the
+static-file middleware, error pages and the development diagnostics page,
+the server's own 400/411/413/500, and HEAD) carries
+`X-Content-Type-Options: nosniff` and `X-Frame-Options: SAMEORIGIN`, unless
+the response already sets a header of that name (any case): `Response#to_http`
+adds them after the response's own headers and only when missing, so
+`response.set_header("X-Frame-Options", "DENY")` in an action sends exactly
+your value, once. There is deliberately no `Config`
+switch to turn them off app-wide; an embeddable widget overrides the header
+on its own responses (a `Content-Security-Policy: frame-ancestors ...` header
+takes precedence over `X-Frame-Options` in current browsers). Because of
+`nosniff`, browsers take `Content-Type` literally: the static-file middleware
+knows the usual `public/` extensions (html, css, js/mjs, images including
+webp and avif, fonts, wasm, pdf, audio and video, json, csv, xml), and
+anything else is served as `application/octet-stream`, a download; add the
+extension to `Cybertrain::Static::EXTENSIONS` if an app needs another one
+inline. A reverse proxy that serves `public/` itself bypasses these headers
+(see [docs/deploy.md](docs/deploy.md)). `Cybertrain::Test::Client` calls the
+app in-process and never serializes the response, so it does not show the two
+defaults; assert them on `response.to_http`.
 
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse

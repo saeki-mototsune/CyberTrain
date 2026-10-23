@@ -27,7 +27,7 @@ csp default-src 'none'; sandbox
 cache private, max-age=3600
 ok   a type with parameters is not on the inline list
 disposition inline; filename="abSet-Cookie x_1caf__.png"; filename*=UTF-8''abSet-Cookie%20x%3D1caf%C3%A9.png
-header lines 7
+header lines 8
 ok   a hostile stored filename makes a safe ASCII header
 disposition inline; filename="caf__ ______.png"; filename*=UTF-8''caf%C3%A9%20%E6%97%A5%E6%9C%AC.png
 ok   a non-ASCII filename gets an ASCII fallback and a percent-encoded name
@@ -39,4 +39,6 @@ wire body sha256 9d0c38e7aafe062c3a6dfc561e42771ec997d9359bb3d417ac4775a30329296
 ok   binary body bytes survive to_http intact
 head only bytes after blank line 0
 ok   HEAD answers the same headers and Content-Length without the body
-9 tests, 41 assertions, 0 failures
+nosniff lines 1
+ok   send_blob sends exactly one nosniff next to the global defaults
+10 tests, 61 assertions, 0 failures

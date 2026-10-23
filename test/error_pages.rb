@@ -115,4 +115,12 @@ test "without the page files the plain-text bodies stay" do
   assert_equal "Not Found", get("/missing", "test/fixtures/no_such_dir").body
 end
 
+test "error answers carry the security defaults on the wire, once" do
+  ["/missing", "/boom", "/toodeep", "/forbidden"].each do |path|
+    wire = get(path).to_http
+    assert_equal 1, wire.scan(/^x-content-type-options: nosniff\r$/i).length
+    assert_equal 1, wire.scan(/^x-frame-options: SAMEORIGIN\r$/i).length
+  end
+end
+
 Cybertrain::Test.run!

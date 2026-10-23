@@ -137,7 +137,8 @@ test "a hostile stored filename makes a safe ASCII header" do
   assert_equal 0, res.to_http.scan("\r\nSet-Cookie:").length
   head = head_of(res.to_http)
   assert head.ascii_only?
-  # the status line plus the five headers and Content-Length: nothing injected
+  # the status line, the five headers send_blob sets, the X-Frame-Options
+  # default and Content-Length: nothing injected
   puts "header lines #{head.split("\r\n").length}"
 end
 
@@ -183,6 +184,19 @@ test "HEAD answers the same headers and Content-Length without the body" do
   assert_includes raw, "Content-Length: 264\r\n"
   assert_includes raw, "X-Content-Type-Options: nosniff\r\n"
   assert_includes raw, "Content-Disposition: inline; filename=\"photo.png\""
+end
+
+test "send_blob sends exactly one nosniff next to the global defaults" do
+  ["/png", "/svg", "/html", "/empty"].each do |path|
+    raw = CLIENT.get(path).to_http
+    assert_equal 1, raw.scan(/^x-content-type-options:/i).length
+    assert_equal 1, raw.scan(/^x-frame-options:/i).length
+    assert_includes raw, "X-Content-Type-Options: nosniff\r\n"
+    assert_includes raw, "X-Frame-Options: SAMEORIGIN\r\n"
+    # send_blob adds the CSP on top of the defaults
+    assert_includes raw, "Content-Security-Policy: default-src 'none'; sandbox\r\n"
+  end
+  puts "nosniff lines #{CLIENT.get("/png").to_http.scan(/^x-content-type-options:/i).length}"
 end
 
 Cybertrain::Test.run!
