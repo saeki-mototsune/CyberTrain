@@ -3,7 +3,12 @@ ok   renders without a layout
 ok   strict locals come from the line-1 comment
 ok   names with and without the extension are the same template
 ok   a missing template raises MissingTemplate with the path
+ok   parent segments cannot load templates outside the view root
+ok   file and directory symlinks cannot escape the view root
+ok   relative paths and symlinks that stay within the root still render
+ok   missing paths and non-files use the missing template behavior
+ok   a reloaded symlink is checked again before reading
 ok   cache off re-reads a template after a rewrite
 ok   cache on keeps the first parse until clear_cache!
 ok   errors name the template file and line
-8 tests, 29 assertions, 0 failures
+13 tests, 76 assertions, 0 failures

@@ -100,6 +100,68 @@ test "a missing template raises MissingTemplate with the path" do
 end
 
 ROOT = Dir.mktmpdir("cybertrain-views")
+SAFE_ROOT = File.join(ROOT, "views")
+PRIVATE_ROOT = File.join(ROOT, "views-private")
+Dir.mkdir(SAFE_ROOT)
+Dir.mkdir(PRIVATE_ROOT)
+Dir.mkdir(File.join(SAFE_ROOT, "nested"))
+Dir.mkdir(File.join(SAFE_ROOT, "directory.html.erb"))
+File.write(File.join(SAFE_ROOT, "page.html.erb"), "inside <%= n %>")
+File.write(File.join(PRIVATE_ROOT, "secret.html.erb"), "outside secret")
+File.symlink(File.join(PRIVATE_ROOT, "secret.html.erb"), File.join(SAFE_ROOT, "escape.html.erb"))
+File.symlink(PRIVATE_ROOT, File.join(SAFE_ROOT, "linked"))
+File.symlink(File.join(SAFE_ROOT, "page.html.erb"), File.join(SAFE_ROOT, "alias.html.erb"))
+File.symlink(SAFE_ROOT, File.join(ROOT, "views-link"))
+File.symlink(File.join(ROOT, "absent"), File.join(SAFE_ROOT, "broken.html.erb"))
+
+test "parent segments cannot load templates outside the view root" do
+  [true, false].each do |cache|
+    engine = Engine.new(SAFE_ROOT, cache: cache)
+    ["../views-private/secret", "nested/../../views-private/secret.html.erb"].each do |name|
+      assert_raises("MissingTemplate") { engine.render(name, new_env, helpers) }
+      refute engine.exists?(name)
+    end
+    assert_raises("MissingTemplate") { engine.render_with_layout("page", "../views-private/secret", new_env, helpers) }
+  end
+end
+
+test "file and directory symlinks cannot escape the view root" do
+  engine = Engine.new(SAFE_ROOT)
+  ["escape", "linked/secret", "linked/../views-private/secret"].each do |name|
+    assert_raises("MissingTemplate") { engine.template(name) }
+    refute engine.exists?(name)
+  end
+end
+
+test "relative paths and symlinks that stay within the root still render" do
+  [SAFE_ROOT, "#{SAFE_ROOT}/", File.join(ROOT, "views-link")].each do |root|
+    engine = Engine.new(root)
+    ["page", "nested/../page", "alias"].each do |name|
+      assert engine.exists?(name)
+      assert_equal "inside 7", engine.render(name, new_env, helpers)
+    end
+  end
+end
+
+test "missing paths and non-files use the missing template behavior" do
+  engine = Engine.new(SAFE_ROOT)
+  ["broken", "directory", "page.html.erb/child", "absent"].each do |name|
+    refute engine.exists?(name)
+    assert_raises("MissingTemplate") { engine.template(name) }
+  end
+  absent = Engine.new(File.join(ROOT, "absent"))
+  refute absent.exists?("page")
+  assert_raises("MissingTemplate") { absent.template("page") }
+end
+
+test "a reloaded symlink is checked again before reading" do
+  engine = Engine.new(SAFE_ROOT, cache: false)
+  assert_equal "inside 7", engine.render("alias", new_env, helpers)
+  File.delete(File.join(SAFE_ROOT, "alias.html.erb"))
+  File.symlink(File.join(PRIVATE_ROOT, "secret.html.erb"), File.join(SAFE_ROOT, "alias.html.erb"))
+  refute engine.exists?("alias")
+  assert_raises("MissingTemplate") { engine.render("alias", new_env, helpers) }
+end
 
 test "cache off re-reads a template after a rewrite" do
   path = File.join(ROOT, "page.html.erb")
@@ -137,5 +199,12 @@ end
 
 Cybertrain::Test.run!
 
+%w[page.html.erb escape.html.erb linked alias.html.erb broken.html.erb].each { |f| File.delete(File.join(SAFE_ROOT, f)) }
+Dir.rmdir(File.join(SAFE_ROOT, "nested"))
+Dir.rmdir(File.join(SAFE_ROOT, "directory.html.erb"))
+File.delete(File.join(PRIVATE_ROOT, "secret.html.erb"))
+File.delete(File.join(ROOT, "views-link"))
+Dir.rmdir(SAFE_ROOT)
+Dir.rmdir(PRIVATE_ROOT)
 %w[page cached broken typo helper].each { |f| File.delete(File.join(ROOT, "#{f}.html.erb")) }
 Dir.rmdir(ROOT)
