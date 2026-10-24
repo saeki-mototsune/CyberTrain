@@ -32,7 +32,7 @@ module Cybertrain
       raise ParseError, "empty request" if first >= lines.size
 
       method, target, version = parse_request_line(lines[first])
-      headers = {}
+      header_values = {}
       i = first + 1
       while i < lines.size
         line = lines[i]
@@ -52,9 +52,17 @@ module Cybertrain
         end
         name = name.downcase
         value = line[colon + 1, line.size - colon - 1].strip
-        existing = headers[name]
-        headers[name] = existing.nil? ? value : "#{existing}, #{value}"
+        values = header_values[name]
+        if values.nil?
+          header_values[name] = [value]
+        else
+          values << value
+        end
       end
+      # Join once per name: rebuilding a growing String for every duplicate
+      # makes many short headers quadratic even within the server's byte cap.
+      headers = {}
+      header_values.each { |name, values| headers[name] = values.join(", ") }
       RequestHead.new(method, target, version, headers)
     end
 

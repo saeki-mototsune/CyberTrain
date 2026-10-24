@@ -1,5 +1,7 @@
 ok   parses a complete GET head with mixed-case headers and extra spaces
 ok   duplicate headers are joined with a comma
+ok   interleaved duplicate headers preserve order and empty values
+ok   many empty duplicate headers within the server byte cap are joined
 ok   a header value may contain colons
 ok   bad request line raises ParseError
 ok   header line without a colon raises ParseError
@@ -8,4 +10,4 @@ ok   a bare CR inside a header line is rejected
 ok   empty lines before the request line are ignored
 ok   HTTP/1.0 is accepted
 ok   HTTP/2.0 raises ParseError
-10 tests, 30 assertions, 0 failures
+12 tests, 37 assertions, 0 failures

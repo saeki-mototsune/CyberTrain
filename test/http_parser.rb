@@ -19,6 +19,22 @@ test "duplicate headers are joined with a comma" do
   assert_equal "text/html, application/json", head.headers["accept"]
 end
 
+test "interleaved duplicate headers preserve order and empty values" do
+  head = HttpParser.parse_head("GET / HTTP/1.1\r\nX-A: first\r\nX-B: one\r\nx-a: \t\r\nX-B: two\r\nX-A: last\r\nX-Empty:")
+  assert_equal "first, , last", head.headers["x-a"]
+  assert_equal "one, two", head.headers["x-b"]
+  assert_equal "", head.headers["x-empty"]
+  assert_equal 3, head.headers.size
+end
+
+test "many empty duplicate headers within the server byte cap are joined" do
+  raw = "GET / HTTP/1.1\r\n" + "X:\r\n" * 16000
+  assert raw.bytesize < 65536
+  head = HttpParser.parse_head(raw)
+  assert_equal ", " * 15999, head.headers["x"]
+  assert_equal 1, head.headers.size
+end
+
 test "a header value may contain colons" do
   head = HttpParser.parse_head("GET / HTTP/1.1\r\nHost: localhost:3000")
   assert_equal "localhost:3000", head.headers["host"]
