@@ -3,6 +3,9 @@ ok   a middleware that does not call super halts the chain
 ok   the base middleware without a next app does nothing
 ok   app is reassignable to splice a chain
 ok   RequestLogger logs Started and Completed lines
+ok   RequestLogger escapes terminal sequences accepted by the HTTP parser
+ok   RequestLogger escapes controls and non-ASCII bytes in paths and queries
+ok   RequestLogger escapes quotes and literal backslashes without decoding percent escapes
 ok   RequestLogger reports the final status
 ok   RequestLogger logs Completed 500 and re-raises when the app raises
 ok   RequestLogger logs the status the client fault gets (400), not 500
@@ -15,4 +18,4 @@ ok   MethodOverride and the Router share one validation of the form body
 ok   a foreign cookie that does not percent-decode does not fail the request
 ok   App runs the default stack down to the router
 ok   App without logging writes nothing to its logger
-17 tests, 54 assertions, 0 failures
+20 tests, 65 assertions, 0 failures
