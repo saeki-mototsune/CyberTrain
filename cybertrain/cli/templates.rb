@@ -368,6 +368,11 @@ module Cybertrain
               # public/up.html, served by the app itself.
               path: /up.html
 
+          # How long kamal-proxy polls /up.html on a new container before giving
+          # up (Kamal's default, written out). If the new container does not
+          # answer 200 in time, the deploy fails and traffic stays on the old one.
+          deploy_timeout: 30
+
           # Credentials for the registry the image is pushed to. CHANGE ME:
           # the user; the password comes from .kamal/secrets.
           registry:

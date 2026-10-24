@@ -440,6 +440,24 @@ finds the commit that removed them).
     stored unboxed and survives, but follow the rule anyway.)
     test/harness_gc.rb is the regression program; check a suspect file with
     `spinel prog.rb -c -o /tmp/x.c && grep -n 'cvar_' /tmp/x.c`.
+65. In one argument list, a method call's result is not rooted while a later
+    argument allocates (Spinel 2026.09.12). `File.join(home, "spinel",
+    "#{tag}.lock")` compiles to `sp_file_join((const char*[]){
+    sp_Toolchain_s_home(), ..., ({ ...sp_str_alloc_raw... }) }, 3)`: the
+    String `home` returned lives only in a C temporary, and a collection
+    inside the interpolation's allocation frees it, so File.join reads
+    freed memory (a wrong lock path, then "expected condition to be
+    falsy" in test/cli_toolchain.rb, on macOS CI only). C leaves the order
+    of the arguments unspecified, so `foo.gsub("#{x}/", "")` can be hit the
+    same way: gcc built the interpolation first and called `foo` after it.
+    A receiver counts as the first argument: `read(path).sub("A\n",
+    "A\n#{line}")` freed the file's text in test/cli_attachment.rb ("has no
+    `class ArticlesController < ApplicationController` line", also macOS
+    only). Make the allocating argument first, in a local, and pass the local:
+    `name = "#{tag}.lock"; File.join(home, "spinel", name)`. Reproduce with
+    an AddressSanitizer build (rule 58) run under `SPINEL_GC_STRESS=1`,
+    which collects every 2 KB of strings; shift where the collections land
+    by running from TMPDIRs whose names differ in length.
 
 ## Numbers worth remembering
 

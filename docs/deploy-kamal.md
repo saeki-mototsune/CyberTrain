@@ -112,7 +112,10 @@ pushes the image, and starts the container. The first time takes a few
 minutes because Spinel is compiled (it stays in Docker's layer cache, so
 later builds only build the app). On start the container runs
 `./notes migrate`, then starts the server; once `/up.html` answers 200,
-kamal-proxy switches traffic to it. Open https://notes.example.com to check.
+kamal-proxy switches traffic to it. If it does not answer within
+`deploy_timeout` (30 seconds), the deploy fails and traffic stays on the old
+container (the first time, there is none). Open https://notes.example.com
+to check.
 
 ## 8-5. Day-to-day operation
 

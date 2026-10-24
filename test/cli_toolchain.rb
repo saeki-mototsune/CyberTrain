@@ -63,7 +63,8 @@ end
 # A directory holding a `spinel` that prints the given release and a `spin`.
 def fake_toolchain(dir, release)
   mkdir_p(dir)
-  File.write(File.join(dir, "spinel"), "#!/bin/sh\necho \"spinel abc123def456 (#{release}) [cc 13.3.0]\"\n")
+  script = "#!/bin/sh\necho \"spinel abc123def456 (#{release}) [cc 13.3.0]\"\n" # before File.join (rule 65)
+  File.write(File.join(dir, "spinel"), script)
   File.write(File.join(dir, "spin"), "#!/bin/sh\necho spin\n")
   File.chmod(0o755, File.join(dir, "spinel"))
   File.chmod(0o755, File.join(dir, "spin"))
@@ -148,7 +149,11 @@ test "another release on PATH, or a spin from elsewhere, does not count" do
   ENV["CYBERTRAIN_HOME"] = "home"
   ENV["PATH"] = "old"
   refute Toolchain.on_path?
-  puts Toolchain.other_release_note.gsub("#{Dir.pwd}/", "")
+  # The prefix is bound first: as an argument made in the same expression
+  # it was only held in a C temporary while other_release_note allocated,
+  # and a collection there freed it (spikes/NOTES.md rule 65).
+  here_prefix = "#{Dir.pwd}/"
+  puts Toolchain.other_release_note.gsub(here_prefix, "")
   ENV["PATH"] = "onlyspin:good"
   refute Toolchain.on_path?
   ENV["PATH"] = "empty"
@@ -181,7 +186,8 @@ test "the managed copy counts only once its completion stamp is there" do
   ENV["CYBERTRAIN_HOME"] = "home"
   assert Toolchain.usable?(Toolchain.bin_dir)
   refute Toolchain.managed_ok?
-  File.write(Toolchain.stamp, "#{TAG}\n")
+  stamp_text = "#{TAG}\n" # made before Toolchain.stamp (rule 65)
+  File.write(Toolchain.stamp, stamp_text)
   assert Toolchain.managed_ok?
   assert Toolchain.ensure!
   assert_equal "#{here("home/spinel/#{TAG}/bin")}:old", ENV["PATH"]
