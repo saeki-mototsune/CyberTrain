@@ -11,6 +11,7 @@ require "cybertrain/middleware/method_override"
 require "cybertrain/middleware/session_store"
 require "cybertrain/middleware/csrf_protection"
 require "cybertrain/middleware/error_pages"
+require "cybertrain/middleware/host_authorization"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
@@ -79,7 +80,8 @@ module Cybertrain
       config.production? && views.empty?
     end
 
-    # ErrorPages (in production) -> RequestLogger (unless log_level :none) ->
+    # HostAuthorization (in development) -> ErrorPages (in production) ->
+    # RequestLogger (unless log_level :none) ->
     # Static (if static_files) -> MethodOverride -> SessionStore ->
     # CsrfProtection (if csrf; paths under csrf_exempt_prefixes pass it) ->
     # router. Built on first use, after boot has resolved the session secret.
@@ -272,11 +274,15 @@ module Cybertrain
       nil
     end
 
-    # The stack the server runs: wrapped in Dev::ErrorPage in development.
+    # The stack the server runs: diagnostics must stay inside hostname
+    # authorization too, including when #stack was built before serving.
     def front_app
       app = stack
       rebuilder = @rebuilder
-      app = Dev::ErrorPage.new(app, rebuilder) unless rebuilder.nil?
+      unless rebuilder.nil?
+        app = Dev::ErrorPage.new(app, rebuilder)
+        app = HostAuthorization.new(app, @config.allowed_hosts) if @config.development?
+      end
       app
     end
 
@@ -336,6 +342,7 @@ module Cybertrain
       app = Static.new(app, c.public_root) if c.static_files
       app = RequestLogger.new(app) unless c.log_level == :none
       app = ErrorPages.new(app, c.public_root) if c.production?
+      app = HostAuthorization.new(app, c.allowed_hosts) if c.development?
       app
     end
   end
