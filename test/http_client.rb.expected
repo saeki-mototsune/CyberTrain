@@ -3,6 +3,7 @@ ok   a 404 is a Response, not an error
 ok   POST sends the body, its type and the caller's headers
 ok   GET sends no body and keeps the caller's User-Agent
 ok   a host name resolves and the address it resolved to is dialled
+ok   each resolved address is dialled in turn until one connects
 ok   a Content-Length body larger than max_body is refused before it is read
 ok   a chunked body is decoded, extensions and trailers dropped
 ok   a chunked body that grows past max_body is refused
@@ -31,4 +32,4 @@ ok   https to a server that does not speak TLS fails the handshake
 ok   a TLS handshake that gets no answer times out
 ok   the TLS connector is installed by requiring cybertrain/net/tls
 ok   without cybertrain/net/tls, https says what to require
-33 tests, 167 assertions, 0 failures
+34 tests, 172 assertions, 0 failures
