@@ -232,6 +232,14 @@ module Cybertrain
           require_relative "../gen/app"
           require_relative "../gen/migrations"
 
+          # Operational commands: `./#{package} NAME ARGS...` runs the block with
+          # Cybertrain::DB connected (pool of 1) and exits with its value;
+          # `./#{package} help` lists them.
+          #   Cybertrain::Main.command("prune", "delete old comments") do |argv|
+          #     Cybertrain::DB.with { |c| c.execute("DELETE FROM comments WHERE created_at < date('now', '-30 days')") }
+          #     0
+          #   end
+
           exit(Cybertrain::Main.run("#{package}", ARGV,
                                     router: Gen::Routes.build(Cybertrain::Router.new),
                                     url_resolver: Gen::Routes.url_resolver,
