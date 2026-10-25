@@ -1,0 +1,34 @@
+ok   GET returns the status, the headers and the body
+ok   a 404 is a Response, not an error
+ok   POST sends the body, its type and the caller's headers
+ok   GET sends no body and keeps the caller's User-Agent
+ok   a host name resolves and the address it resolved to is dialled
+ok   a Content-Length body larger than max_body is refused before it is read
+ok   a chunked body is decoded, extensions and trailers dropped
+ok   a chunked body that grows past max_body is refused
+ok   a body without a length is read to the end of the connection
+ok   a body read to the end is capped too
+ok   a body arriving in pieces is put together
+ok   interim 1xx responses are skipped
+ok   repeated headers are joined, names lowercased, values trimmed
+ok   a 204 has no body
+ok   too many or too large headers are refused
+ok   responses that are not HTTP/1.1 are bad responses
+ok   a server that accepts and never answers is a read timeout
+ok   the deadline bounds a response that trickles in
+ok   a connect that never completes times out
+ok   a closed port is refused
+ok   a name that does not resolve is refused
+ok   every error is a HttpClient::Error
+ok   loopback and private destinations are refused by default
+ok   Config#http_allow_private is the default for allow_private
+ok   address classification
+ok   URLs the client does not take, without repeating them
+ok   URLs are split into host, port and request target
+ok   headers the client owns or cannot send are refused
+ok   timeouts must be positive
+ok   https to a server that does not speak TLS fails the handshake
+ok   a TLS handshake that gets no answer times out
+ok   the TLS connector is installed by requiring cybertrain/net/tls
+ok   without cybertrain/net/tls, https says what to require
+33 tests, 167 assertions, 0 failures

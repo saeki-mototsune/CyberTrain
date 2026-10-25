@@ -5,7 +5,7 @@ module Cybertrain
   # The application's settings. Defaults come from the environment
   # (CYBERTRAIN_ENV, PORT, CYBERTRAIN_DATABASE, CYBERTRAIN_SECRET_KEY_BASE,
   # SPINEL_WORKERS, CYBERTRAIN_HOST, CYBERTRAIN_ALLOWED_HOSTS, CYBERTRAIN_SESSION_SAME_SITE,
-  # CYBERTRAIN_SESSION_PARTITIONED); config/app.rb then adjusts them:
+  # CYBERTRAIN_SESSION_PARTITIONED, CYBERTRAIN_HTTP_ALLOW_PRIVATE); config/app.rb then adjusts them:
   #
   #   Cybertrain.configure do |c|
   #     c.port = 3000
@@ -190,6 +190,18 @@ module Cybertrain
     # @api public
     attr_accessor :upload_root
 
+    # Whether {HttpClient} may connect to addresses that are not public
+    # (loopback, private, link-local, CGNAT, multicast, ...; see
+    # Net::Address), `false`, from `CYBERTRAIN_HTTP_ALLOW_PRIVATE` (`1` or
+    # `true`). Off, a URL whose host resolves to such an address raises
+    # HttpClient::BlockedAddressError before anything is sent, which keeps a
+    # user-supplied webhook URL from reaching the server's own network. Turn
+    # it on for a test against a local server, or for an internal service
+    # the application is meant to call.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :http_allow_private
+
     # Spinel worker threads, `1`, from `SPINEL_WORKERS`.
     # @return [Integer]
     # @api public
@@ -241,6 +253,12 @@ module Cybertrain
     # value is false, not an error.
     def self.default_session_partitioned
       configured = ENV["CYBERTRAIN_SESSION_PARTITIONED"] || ""
+      configured == "1" || configured == "true"
+    end
+
+    # True only for CYBERTRAIN_HTTP_ALLOW_PRIVATE=1 or =true.
+    def self.default_http_allow_private
+      configured = ENV["CYBERTRAIN_HTTP_ALLOW_PRIVATE"] || ""
       configured == "1" || configured == "true"
     end
 
@@ -299,6 +317,7 @@ module Cybertrain
       @max_upload_bytes = 5_242_880
       @max_multipart_parts = 128
       @upload_root = "storage/uploads"
+      @http_allow_private = Config.default_http_allow_private
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i
     end
 

@@ -714,6 +714,7 @@ compiler output on every HTML response. None of this loads in production.
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |
+| `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see "Outbound HTTP"); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
 | Mailers, jobs, ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
@@ -768,6 +769,7 @@ end
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Development accepts `localhost`, `127.0.0.1`, `[::1]`; comma-separated exact hostnames extend this list (no scheme, port or wildcard). Other hosts get 403 before static files, sessions, routing or diagnostics. This is separate from the listening address; production and test do not apply this development guard |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; also `Strict` or `None` (`None` always adds `Secure`); anything else stops the server at boot |
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
+| `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` or `true` lets `Cybertrain::HttpClient` connect to loopback, private and other non-public addresses (see "Outbound HTTP") |
 
 Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
 inside another site's frame; the browser must reach the app over HTTPS.
@@ -851,6 +853,92 @@ health check on `public/up.html`, the SQLite file on a volume at
 the deployment tutorial).
 [examples/blog](examples/blog#deploying-with-kamal) carries the same setup,
 built against this checkout's framework.
+
+## Outbound HTTP
+
+An application that calls another server (a webhook, a Slack incoming
+webhook, a third-party API) uses `Cybertrain::HttpClient`. It is not in
+`require "cybertrain"`; require it where it is used, and the TLS layer too
+when any URL is https:
+
+```ruby
+require "json"
+require "cybertrain/http_client"
+require "cybertrain/net/tls"   # only for https://; links the system libssl
+
+client = Cybertrain::HttpClient.new(timeout: 5, deadline: 15, max_body: 1 << 20)
+begin
+  res = client.post(ENV["SLACK_WEBHOOK_URL"], JSON.generate({ "text" => "Deployed" }),
+                    content_type: "application/json")
+  Cybertrain.logger.warn("slack answered #{res.status}") unless res.success?
+rescue Cybertrain::HttpClient::Error => e
+  Cybertrain.logger.warn("slack: #{e.message}")   # names host:port, never the path
+end
+
+res = client.get("https://api.example.com/v1/status", headers: { "Authorization" => "Bearer #{token}" })
+res.status              # 200
+res.header("ETag")      # names in any case; res.headers has them lowercase
+res.body                # the bytes, chunked coding removed
+```
+
+Why it exists: Spinel's `Net::HTTP` does the TLS handshake and every read
+after the first byte as blocking C calls, and each one holds an OS worker,
+which with the default `SPINEL_WORKERS=1` is the whole web server, for as
+long as a stalled endpoint likes. `HttpClient` never blocks a worker on the
+network:
+
+- **Every wait is bounded.** Connecting (a non-blocking connect; Spinel's
+  `TCPSocket.new` ignores `connect_timeout:`), each TLS handshake step, each
+  read and each write waits at most `timeout` seconds (default 5), and the
+  whole request at most `deadline` seconds (default 15). Past either,
+  `HttpClient::TimeoutError`. Reads go through a byte buffer fed by
+  `read_nonblock`, so bytes already received are never waited for.
+- **Name resolution blocks.** `getaddrinfo` has no non-blocking form in the
+  runtime: the thread making the request waits for DNS (usually
+  milliseconds, but a dead resolver can take the system's timeout, about 5 s
+  per attempt). The deadline counts that time but cannot interrupt it.
+- **Non-public destinations are refused** before anything is sent:
+  loopback (`127.0.0.0/8`, `::1`), private (`10/8`, `172.16/12`,
+  `192.168/16`, `fc00::/7`), link-local (`169.254/16`, which includes cloud
+  metadata services, `fe80::/10`), unspecified (`0.0.0.0/8`, `::`),
+  multicast, broadcast, CGNAT (`100.64/10`), the documentation and
+  benchmarking ranges, and IPv4-mapped, NAT64 and 6to4 forms of those
+  (`Cybertrain::Net::Address.blocked_reason`). The host name is resolved
+  once and that address is dialled, so a name that resolves to a private
+  address (an `/etc/hosts` entry, DNS rebinding) is refused like the
+  literal; the TLS certificate is still checked against the name.
+  `HttpClient::BlockedAddressError` says why. To call a service on your
+  own network, or a local server in a test, set `c.http_allow_private =
+  true` in `config/app.rb` (or `CYBERTRAIN_HTTP_ALLOW_PRIVATE=1`), or pass
+  `allow_private: true` to `HttpClient.new`; leave it off whenever a URL
+  can come from a user.
+- **TLS** is the openssl package's: `VERIFY_PEER` against the operating
+  system's trust store (`SSL_CERT_FILE` / `SSL_CERT_DIR` point it
+  elsewhere; the package has no `X509::Store` for a custom one), host-name
+  checking, SNI, TLS 1.2 or newer. An https URL needs a host name: an IP
+  address does not match a certificate's name. Without `require
+  "cybertrain/net/tls"`, an https request raises `HttpClient::TLSError`
+  saying so; `cybertrain/http_client` alone never links libssl.
+- **A notification client, not a browser:** HTTP/1.1 with `Connection:
+  close`, one connection per request, no keep-alive, no redirects (a 3xx is
+  returned as it is), no proxy, no cookies, no compression. Responses may be
+  `Content-Length`, chunked or read to the close; the headers are capped at
+  64 KiB and 100 lines, the body at `max_body` (default 1 MiB), past which
+  `HttpClient::TooLargeError`. A response that is not HTTP/1.x, or ends
+  early, is `HttpClient::BadResponseError`; a refused or reset connection, or
+  a name that does not resolve, `HttpClient::RefusedError`. All of them are
+  `HttpClient::Error`s.
+- **Errors never contain the path or the query**, where a webhook URL
+  carries its secret: messages name the host and port only. A malformed URL
+  or a header with CR/LF is an `ArgumentError` that does not repeat it
+  either. `Host`, `Connection`, `Content-Length` and `Transfer-Encoding` are
+  the client's; `User-Agent` defaults to `cybertrain/<version>`.
+
+The request runs on the calling thread, a green thread like the request
+being served, so other connections keep being served while it waits. The
+socket layer (`cybertrain/net/socket.rb`: bounded connect, buffered reads,
+bounded writes) is separate from the HTTP layer so that other protocols can
+use it. The design: [docs/design.md](docs/design.md) D21.
 
 ## Testing an app
 

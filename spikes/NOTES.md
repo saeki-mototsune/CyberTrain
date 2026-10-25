@@ -458,6 +458,35 @@ finds the commit that removed them).
     an AddressSanitizer build (rule 58) run under `SPINEL_GC_STRESS=1`,
     which collects every 2 KB of strings; shift where the collections land
     by running from TMPDIRs whose names differ in length.
+71. Outbound sockets under Spinel 2026.09.12 (cybertrain/net/socket.rb):
+    `Socket.getaddrinfo(host, port)` works and answers CRuby's arrays, but
+    an unresolvable name gives `[]` instead of raising `SocketError`, and an
+    entry cannot be indexed (`entry[3]` is "unsupported call", even after
+    `case entry when Array`): read the fields by destructuring the block
+    parameters, `list.each { |_f, _p, _n, ip, family, socktype, _pr| ... }`.
+    `Addrinfo` and `IPSocket.getaddress` do not exist, nor
+    `Socket#bind(sockaddr)`. `Socket.new(AF_INET, SOCK_STREAM, 0)` +
+    `connect_nonblock(Socket.sockaddr_in(port, ip), exception: false)` +
+    `wait_writable(t)` (nil on timeout) is the bounded connect; read the
+    outcome with `getsockopt(SOL_SOCKET, SO_ERROR).int`, because a second
+    `connect_nonblock` raises a bare `SystemCallError` (CRuby: the Errno
+    class), `SystemCallError#message` has no strerror text, and
+    `Errno::ECONNREFUSED::Errno` does not compile. `read_nonblock` /
+    `write_nonblock` with `exception: false` answer `:wait_readable` /
+    `:wait_writable` / nil at EOF as in CRuby and keep NUL bytes; comparing
+    the boxed result with `== :wait_readable` works. To make a connect hang
+    in a test, `TCPServer#listen(0)` and fill the queue: after one queued
+    connection the kernel drops further SYNs (10.255.255.1 is not
+    unroutable in every sandbox). In the openssl package, a handshake error
+    is raised even with `exception: false`; `SSL_CTX_set_default_verify_paths`
+    honours `SSL_CERT_FILE` / `SSL_CERT_DIR` (the only way to trust another
+    CA: there is no `X509::Store`); CRuby's `SSLContext.new` defaults to
+    `VERIFY_NONE` and the package's to `VERIFY_PEER`, so call `set_params`
+    for both to agree. Since the HTTP client, test/template_integration.rb
+    has the whole framework and the openssl package in one program, and
+    there rule 62 caught two more byte scans that only that combination
+    boxes: `Query.split_key` and `BlobStore.valid_key?` (both now read
+    through a `to_s` local).
 
 ## Numbers worth remembering
 

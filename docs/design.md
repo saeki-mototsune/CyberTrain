@@ -291,6 +291,25 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
     - 配信は同一オリジン。
   - 孤児ファイルの掃除、ETag / Range、別オリジン配信は後続の作業。
 
+### D21. 外向き HTTP クライアント: 待ちをすべて有界にし、非公開アドレスを既定で拒否する（2026-10-25、#63）
+
+- 問題: アプリが Webhook・Slack・外部 API を呼ぶ手段が無かった。Spinel の `Net::HTTP` は TLS ハンドシェイク（`SSL_connect`）と最初の 1 バイト以降の読み取り（`SSL_read`）をブロッキングの C 呼び出しで行い、そのあいだ OS ワーカーを握る。既定の `SPINEL_WORKERS=1` ではそれがサーバ全体なので、止まった相手一つで全リクエストが止まる。`TCPSocket.new(connect_timeout:)` は Spinel では無視され（到達不能アドレスで 60 秒以上）、`IO#gets` は後の `wait_readable` に見えないバイトを抱える。
+- 決定: フレームワークに `Cybertrain::HttpClient`（名前は issue で未定だったものをこう決めた）を置く。三層に分ける。
+  - `cybertrain/net/socket.rb`（`Cybertrain::Net`）: 有界な TCP。`Socket.new` + `connect_nonblock(exception: false)` + `wait_writable(t)` の後に `getsockopt(SOL_SOCKET, SO_ERROR)` で結果を見る（二度目の `connect_nonblock` は CRuby では `EISCONN`、Spinel では素の `SystemCallError` になり、揃わない）。読み取りは必ず `read_nonblock` を先に試し、`:wait_readable` のときだけ `wait_readable(t)` で待つ（受信済みのバイトを待たない）。書き込みは `write_nonblock` + `wait_writable(t)`。待ちはどれも「1 回の待ちの上限 `timeout`」と「リクエスト全体の締め切り `deadline`」の小さい方（`Net::Timer`、単調時計）。行・長さ・終端までの読み取りは `Net::Reader`（バイトのバッファ + 読み位置）。メーラー（別 issue）も同じ層を使う前提で、HTTP を知らない。
+  - `cybertrain/net/tls.rb`: openssl パッケージの `SSLSocket#connect_nonblock` / `read_nonblock` / `write_nonblock`（`exception: false`）で同じ有界な待ちを TLS に通す。**このファイルだけが `require "openssl"` する**。socket.rb と http_client.rb は openssl を要求しないので、https を使わないアプリは libssl をリンクしない。require すると `Net.tls_connector`（モジュールレベルの ivar、NOTES 18 / 64）に `OpenSSLConnector` が入り、入っていなければ https は「`require "cybertrain/net/tls"` が要る」という `TLSError` になる。検証はパッケージの `SSLContext#set_params` そのもの: `VERIFY_PEER` を OS の信頼ストアで（`SSL_CERT_FILE` / `SSL_CERT_DIR` で差し替え可。パッケージに `X509::Store` は無い）、`SSL_set1_host` によるホスト名検査、SNI、TLS 1.2 以上。CRuby の `SSLContext.new` の既定は `VERIFY_NONE` なので、両方で同じになるよう必ず `set_params` を呼ぶ。`close_notify` 無しの切断（`Connection: close` の後によくある）は終端として扱う。Content-Length / chunked で枠付けされた本文はそれでも完全でなければならない。
+  - `cybertrain/http_client.rb`: HTTP/1.1、`Connection: close`、リダイレクト・プロキシ・keep-alive・Cookie・圧縮なし（通知用のクライアントでブラウザではない）。`get(url, headers:)` / `post(url, body, content_type:, headers:)` が `HttpClient::Response`（`status` Integer、小文字名の `headers`、`body`）を返す。応答は Content-Length、chunked（最後の転送コーディングが chunked のとき）、切断まで、の三通り。ヘッダは 1 行 8 KiB・合計 64 KiB・100 行、本文は `max_body`（既定 1 MiB）が上限。1xx は 5 個まで読み飛ばし、101 は拒否。URL は `URI` ではなく自前のバイト走査（rule 62 の `s = text.to_s` で）で分解し、userinfo・空白・制御文字・非 ASCII を拒否する。
+- 非公開アドレス: 名前を一度だけ解決し（`Socket.getaddrinfo`、最初のストリームアドレス）、そのアドレスを `Net::Address.blocked_reason` で検査してから、そのアドレスに接続する。名前で判定しないので、`/etc/hosts` や DNS rebinding で私設アドレスを返す名前もリテラルと同じに拒否される。TLS の証明書は URL のホスト名で検査する。拒否するのは loopback、private（RFC 1918、`fc00::/7`、廃止済みの `fec0::/10`）、link-local（`169.254/16` はクラウドのメタデータ、`fe80::/10`）、unspecified（`0/8`、`::`）、multicast、broadcast、CGNAT `100.64/10`、文書用・ベンチマーク用・予約、IPv4-mapped / NAT64 / 6to4 に埋め込まれた同種、IPv4-compatible。IP の解析は `IPAddr`（Spinel に無い）ではなくバイト走査。`Config#http_allow_private`（`CYBERTRAIN_HTTP_ALLOW_PRIVATE=1` / `true`、既定 false）か `HttpClient.new(allow_private: true)` で許す。テストでローカルサーバを相手にするときと、社内サービスを呼ぶときのため。
+- エラー: `HttpClient::Error` の下に `TimeoutError` / `RefusedError`（接続拒否・到達不能・名前解決失敗・リセット）/ `TLSError` / `BlockedAddressError` / `TooLargeError` / `BadResponseError`。メッセージは `host:port` だけを含み、**パスとクエリは決して含まない**（Webhook の URL は秘密をそこに持つ）。URL やヘッダの不正は `ArgumentError` で、これも URL を繰り返さない。Net 層は `Net::Error` の下の自前の例外を投げ、`HttpClient#perform` が rescue の段で HttpClient の例外に移す（NOTES 47: 例外の判別は rescue 節で。ブロックを取らないメソッドの中で、NOTES 32 / 45）。メーラーは同じ Net 例外を自分の例外に移せる。
+- 名前解決はブロッキングのまま: ランタイムに非同期のリゾルバが無い。`getaddrinfo` の待ちは呼び出したスレッドの OS ワーカーを握る（通常は数ミリ秒、リゾルバが死んでいればシステムのタイムアウト）。締め切りはその時間を数えるが中断はできない。README に書いた。Spinel の `Socket.getaddrinfo` は解決できない名前に例外ではなく空配列を返し（CRuby は `SocketError`）、要素の配列は添字では読めず（`entry[3]` がコンパイルできない）、`each` のブロック引数の分解でだけ読める。
+- 却下した案:
+  - Spinel の `Net::HTTP` を使う、または包む: 待ちが C の中にあり、Ruby から上限を付けられない。
+  - `IO#gets` で行を読む: 受信済みのバイトが stdio のバッファに残り、`wait_readable` がそれを見ずにタイムアウトまで待つ。
+  - openssl を http_client.rb で直接 require する: TLS を使わないアプリにも libssl のリンクと、rule 62 の名前衝突面（openssl パッケージは `getbyte` / `read` / `write` / `close` / `<<` を Ruby で定義する）を強いる。
+  - `require "cybertrain"` に含める: 呼ばれないコードを全アプリに入れると推論の穴を踏む（NOTES 36）。使う所で require する。
+  - 解決したアドレスを全部検査して一つでも私設なら拒否、または複数アドレスへのフォールバック: 接続するのは一つだけなので、そのアドレスを検査すれば足りる。フォールバックは今は無い。
+  - TLS の端から端までのテスト: パッケージに X509 が無く証明書を作れず、TLS サーバも無い。test/http_client.rb はハンドシェイクの失敗（平文の HTTP サーバ相手）とタイムアウト（黙るサーバ相手）までを確かめ、実サイトへの検証付きハンドシェイクは手で確認した。
+- 帰結: test/template_integration.rb はフレームワーク全体に http_client と net/tls（つまり openssl パッケージ）を加えたプログラムになり、HttpClient で Server に POST する。rule 62 の回帰はここと test/openssl_dispatch.rb で見る。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。
