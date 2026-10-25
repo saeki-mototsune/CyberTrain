@@ -581,6 +581,29 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 後回し: TLS の受信器（証明書を作れない、D24）、SMTP の一接続内での複数のメッセージ（最後のもの以外は `transcript` にしか残らない）、受信器の一接続での keep-alive。アクションのタグ `v<VERSION>` は、アクションを含むリリース（次のリリース）から使える。それより前のタグ（v0.2.1 まで）にはアクションが無い。
 - 検証: `test/receivers.rb`（HttpClient と GET / POST / chunked 応答 / 204、生のソケットで chunked の要求本文と重複ヘッダ、`max` と `respond_with`、来ない要求が上限で nil になり `stop` の後に同じ番号で次の受信器が受けること、`stop` の冪等性、`accept_window` で番号が閉じること、Mailer と transcript・封筒・メッセージのバイト列、8BITMIME の有無、RCPT・挨拶・本文後の拒否、AUTH PLAIN、`Mailer.deliver` で二通、来ないメッセージ）を CRuby とコンパイル後の両方で同じ出力にした。openssl を足した版と、フレームワーク全体（test/template_integration.rb と同じ require、Server と Test::Client を含む）に受信器を足した版も一時的にコンパイルして通ることを確かめた。CI は `test/cli_new.rb` がワークフローの中身を確かめ、`cybertrain new` で作ったアプリで YAML の読み込みと `spin run gen -- --check` を確かめた。アクションの YAML も読み込み、spin.lock を読む Ruby の一行は git 依存と path 依存の spin.lock で確かめた。
 
+### D30. 運用: `db backup`（VACUUM INTO）、`db vacuum`、`GET /up` のヘルスチェック（2026-10-25、issue #76）
+
+- 背景: 配備したアプリのデータは SQLite のファイル一つで、どのアプリも同じ三つを作り直していた。動いているサーバを止めずに取る一貫したバックアップ、削除の後にファイルを実際に縮める作業、そしてデータベースまで見るヘルスチェック（`public/up.html` は静的ファイルで、プロセスが HTTP に応えることしか示さない）。
+- 決定:
+  - `Cybertrain::DB::CLI` に `backup` と `vacuum` を足す（`./<app> db backup ...`、開発時は `bin/db.rb`）。対象は設定済みのデータベース（`CYBERTRAIN_DATABASE`）。`:memory:` と `file:` URI は拒否する（コピーするファイルが無い、またはターゲットと比べる素のパスが無い）。`Main.run` はアプリ名を `DB::CLI.run(argv, root, name)` に渡す（日付付きファイル名に使う。`bin/db.rb` からは空で、そのときはデータベースのファイル名の基部）。
+  - `db backup PATH [--force]`: 専用の接続で `VACUUM INTO ?`（ファイル名は束縛パラメータ、トランザクションの外。SQLite 3.27 以上を `sqlite_version()` で確かめ、古ければ理由を出して 1）。書き込み先は PATH と同じディレクトリの `PATH.tmp-<pid>-<乱数>` で、`File.open(tmp, WRONLY | CREAT | EXCL, 0o600)` で排他的に作った空ファイル（VACUUM INTO が受け付ける既存ファイルは空のものだけ）。完了後に `chmod 0600`、`fsync`、`File.rename` で PATH に置き換える。失敗したら一時ファイル（と `-journal` などの付属）を消して再送出。rescue は yield しない普通のメソッドに置く（NOTES 32 / 45）。既存の PATH は `--force` が無ければ拒否、データベース自身は `--force` でも拒否、親ディレクトリが無ければ拒否（一時ファイル名を含むメッセージを出さないため、開く前に確かめる）。
+  - `db backup DIR/ [--keep N]`: `/` で終わるか既存のディレクトリなら `DIR/<app>-<YYYYmmddTHHMMSSZ>.sqlite3`（UTC）に書く。ディレクトリが無ければ 0700 で作る。`--keep N` はその形にちょうど合う名前（`dated_backup?`、時刻は文字列順で並ぶ）だけを数え、古いものから N を超える分を消す。他のアプリの名前、一時ファイル、運用者が置いたファイルには触れない。同じ秒の二度目は既存として拒否。
+  - `db vacuum`: `VACUUM` の後に `PRAGMA wal_checkpoint(TRUNCATE)`。WAL では VACUUM の結果がまず WAL に書かれるので、チェックポイントでデータベースファイルに戻し、ファイルを新しい大きさに切り詰め、WAL を空にして初めてディスクが空く。前後の大きさ（本体 + WAL）を出す。読み手がいてチェックポイントが終わらなければ（busy）その旨を出す。
+  - `Config#health_path`（既定 `"/up"`、`CYBERTRAIN_HEALTH_PATH`。空で無効。`/` で始まらなければ boot が止まる）と `Config#health_worker_stale`（既定 300 秒、1 未満で boot が止まる）。`Cybertrain::HealthCheck` ミドルウェアを `RequestLogger` の内側、`Static` の外側に置く。そのパスちょうどの GET / HEAD だけに答え、他のメソッドとパスは下へ流す。セッション・CSRF・ルータより前なので、コントローラは要らず、ログインの `before_action` も走らず、Cookie も付かない。ログは通常のリクエストの 2 行だけ。
+  - 判定: `DB.with { |c| c.execute("SELECT count(*) AS n FROM sqlite_master") }`。素の `SELECT 1` はファイルを読まないので、スキーマのページ（1 ページ目）を読む問い合わせにする。`sqlite_schema` は 3.33 からの別名なので `sqlite_master` と書く。`Cybertrain::DB::Error`（と StandardError）なら `503 database unavailable`。DB が答え、かつ `Scheduler.running?` で `Scheduler.last_tick` が `health_worker_stale` 秒より古ければ `503 worker stale`（最初の tick 前の 0 は古いとみなさない）。それ以外は `200 ok`。いずれも `text/plain; charset=utf-8` と `Cache-Control: no-store`。
+- 理由:
+  - **一時ファイルと rename。** VACUUM INTO が途中で失敗すると、書きかけのファイルが本来の名前で残る。復元の段で初めて壊れていると分かるのが最悪の形なので、本来の名前には完成したものしか現れないようにする。中身はパスワードのダイジェストとセッションのトークンなので、作った瞬間から 0600 にする（umask 任せで作ってから chmod すると、間に他のユーザーが開ける）。
+  - **CLI から別プロセスで。** SQLite の呼び出しは戻るまで OS ワーカーを握る（D28 の制約）。大きなデータベースの VACUUM INTO をスケジューラのスレッドで走らせると、`SPINEL_WORKERS=1` では全リクエストが止まる。README には cron / systemd タイマーからの CLI、またはサーバ自身がスケジュールしたタスクから `system("./<app>", "db", "backup", ...)` で子プロセスとして走らせる形を書いた。`system` は呼んだスレッドだけを待たせることを確かめた（NOTES 75。`spawn` はコンパイルできず、`Process.spawn` はできるが `Process.wait` が無い）。
+  - **ルータより前の組み込みハンドラ。** 経路とコントローラで書くと、認証を入れたアプリでは `ApplicationController` の `before_action` がヘルスチェックをサインイン画面へリダイレクトし、セッション Cookie も付く。Rails は `rails/health#show` を `ActionController::Base` 直下にして避けているが、ここでは経路表を通らない方が単純。
+  - **worker stale。** 止まったタスク（無限ループ、返らない外部呼び出し）はプロセスを生かしたままジョブを止める。HTTP に応える限り外からは見えないので、`last_tick`（D28 で用意した）を見る。スケジューラを動かさないプロセス（`CYBERTRAIN_WORKER=0`、タスクの無いアプリ）では判定しない。
+- 却下した案:
+  - `sqlite3_backup_*` の API で写す: 段階的に写せるが、FFI の関数が増え、書き込みのたびに最初からやり直しになりうる。VACUUM INTO は一つの SQL で、空きページを除いたコンパクトなコピーになる。
+  - バックアップをサーバ内のスケジューラのタスクとして組み込む: 上の OS ワーカーの問題。
+  - `public/up.html` を残してヘルスチェックをそれで済ませる: データベースが無くても 200 になる。
+  - `cybertrain new` が書く Kamal の設定（`config/deploy.yml` の `healthcheck: path: /up.html`）を `/up` に変える: 生成物とその CI・テスト（`test/cli_new.rb`、`examples/blog`、ワークフロー）にまたがり、並行して進む `cybertrain new` の CI テンプレートの作業（#78）と同じファイルに触れるので、この変更では文書で `/up` への切り替えを勧めるにとどめた。
+- 帰結: 既定のスタックに `HealthCheck` が入るので、`test/application.rb` と `test/multipart_app.rb` のスタックの並びの期待値が変わった。`Main.usage` と `DB::CLI.usage` に `backup` / `vacuum` を足した（`test/main.rb` などのスナップショット）。CRuby 側の `cybertrain db ...` はどの引数もそのまま `spin run db -- ...` に渡すので変更していない（その使い方の文字列も、`cybertrain new` の生成物に入るため変えていない）。
+- 検証: `test/db_cli_backup.rb`（0600 のコピーが行ごと開けること、一時ファイルが残らないこと、上書きの拒否と `--force`、データベース自身の拒否、壊れたファイルからのコピー失敗で何も残らないこと、無いディレクトリ・無いデータベース・`:memory:` の拒否、引数の誤り、日付名の形、`--keep` が自分の形だけを消すこと、0700 のディレクトリ、同じ秒の拒否、削除後の vacuum で縮み WAL が空になること）と `test/health.rb`（スタックの位置、200 / no-store / Cookie 無し / before_action が走らないこと、HEAD とクエリ文字列、他のパスとメソッド、ログ 2 行、プールを閉じた・切った後の 503、無効化、環境変数、boot の検査、スケジューラ停止中は古くても 200、実スレッドを起こして `last_tick` を古くしたときの `worker stale`）。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。

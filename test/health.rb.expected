@@ -1,0 +1,12 @@
+ok   the check sits inside RequestLogger and before Static
+ok   GET /up answers 200 ok, text/plain, no-store, without a cookie or the login filter
+ok   the login filter does run for every other page
+ok   HEAD /up answers too; a query string does not matter; other paths and methods pass
+ok   each poll is the normal two request log lines
+ok   503 database unavailable once the pool is closed or gone
+ok   health_path "" turns the check off: the rest of the stack answers /up
+ok   another path, from CYBERTRAIN_HEALTH_PATH; an empty variable turns it off
+ok   boot refuses a path without a leading slash and a stale limit below 1
+ok   not stale while the scheduler is not running, whatever its last tick
+ok   503 worker stale when the running scheduler's last tick is older than health_worker_stale
+11 tests, 43 assertions, 0 failures

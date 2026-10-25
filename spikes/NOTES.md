@@ -609,3 +609,19 @@ finds the commit that removed them).
     constants of that name (issue #78). Spell an inherited constant with its
     owner (`Receiver::MAX_LINE_BYTES`, which is what the receivers do now),
     and read the warnings `spin test` prints.
+
+75. Files and child processes for `db backup` (Spinel 2026.09.12, issue
+    #76): `File.open(path, File::WRONLY | File::CREAT | File::EXCL, 0o600)`
+    creates the file with that mode and raises `Errno::EEXIST` for an
+    existing one, as under CRuby; `File#fsync`, `File.rename`, `File.chmod`,
+    `File.stat(path).mode`, `Dir.children` and `Time#strftime` behave the
+    same too (BlobStore already relied on the O_EXCL form). Child processes:
+    Kernel `spawn` is "unsupported call", `Process.spawn` compiles but
+    `Process.wait` does not (a spawned child is never reaped), and
+    `system("prog", "arg", ...)` waits for the child without stalling other
+    threads: with `SPINEL_WORKERS=1` the main thread kept ticking every
+    0.1 s while another thread's `system("sleep 1")` ran. So an application
+    runs its own binary for heavy SQLite work (`system("./app", "db",
+    "backup", ...)` from a Scheduler task) instead of running a long
+    `VACUUM INTO` on a thread of the server, where the SQLite call would hold
+    its OS worker until it returns.

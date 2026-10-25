@@ -22,6 +22,7 @@ Usage:
   ./blog [server [PORT]]   start the server
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
+                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum
   ./blog help
 
 Settings (environment variables):

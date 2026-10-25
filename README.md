@@ -1166,6 +1166,89 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 There is no cron syntax, no priority or uniqueness for jobs and no mailer:
 this covers "send later" and "run every N seconds" (`docs/design.md` D28).
 
+## Operations: backups, vacuum, health check
+
+The data of a deployed application is one SQLite file, so the binary carries
+the three operational tools such an application needs.
+
+**Backups.** `./<app> db backup PATH` writes a consistent copy of the
+configured database (`CYBERTRAIN_DATABASE`) while the server keeps running:
+SQLite's `VACUUM INTO` (3.27 or newer; the binary checks) reads one snapshot,
+and under WAL the server's writes go on meanwhile. The copy is written to a
+temporary file next to `PATH`, created exclusively with mode 0600 (the file
+holds password digests and session tokens), fsynced, and only then renamed
+to `PATH`, so a failed or interrupted copy never leaves a partial file under
+the real name (the temporary one is deleted). An existing `PATH` is refused
+unless you pass `--force`; the database itself never is a target, nor is a
+`:memory:` database a source.
+
+```sh
+./blog db backup /srv/blog/backups/before-upgrade.sqlite3
+./blog db backup /srv/blog/backups/ --keep 14    # blog-20261025T031500Z.sqlite3, newest 14 kept
+```
+
+A target ending in `/` (or an existing directory) gets a dated name,
+`<app>-<YYYYmmddTHHMMSSZ>.sqlite3` in UTC, in a directory created with mode
+0700 if it does not exist; `--keep N` then deletes the oldest files of
+exactly that shape beyond N and touches nothing else there. Restoring is
+copying a backup over the database file with the server stopped (and
+deleting that file's `-wal` and `-shm` beside it).
+
+**Vacuum.** Deleting rows leaves free pages in the file. `./<app> db vacuum`
+runs `VACUUM` and then `PRAGMA wal_checkpoint(TRUNCATE)`, so the rebuilt
+pages reach the database file, the file is cut to its new size and the WAL
+is emptied; it prints the size on disk (database plus WAL) before and after.
+`VACUUM` rewrites the whole file and holds the write lock while it does, so
+run it when the application is quiet. If a reader keeps the checkpoint from
+finishing it says so, and the WAL shrinks at a later checkpoint.
+
+**Run backups outside the server.** A SQLite call holds its OS worker until
+it returns, so a large `VACUUM INTO` on a `Scheduler` task would stall
+requests (with `SPINEL_WORKERS=1`, all of them) for as long as the copy
+takes. Run the command from cron or a systemd timer instead, as a separate
+process:
+
+```sh
+# crontab of the app's user: every night at 03:15, keep two weeks
+15 3 * * * cd /srv/blog/current && ./blog db backup /srv/blog/backups/ --keep 14
+```
+
+An application that wants to take backups itself can run its own binary as
+a child process from a scheduled task, rather than run the SQL on its own
+thread: `system` waits for the child on the scheduler's thread only, and
+requests go on being served meanwhile (Spinel has no `Process.wait`, and a
+`Process.spawn` without it leaves a zombie, so use `system` with an argument
+list, never a string with request data in it). A copy that takes longer than
+`health_worker_stale` makes the health check answer `worker stale` until it
+is done.
+
+```ruby
+# config/app.rb, in a served binary started from its own directory (dist/)
+Cybertrain::Scheduler.every(86_400, "nightly backup") do
+  system("./blog", "db", "backup", "storage/backups/", "--keep", "14")
+end
+```
+
+**Health check.** Every served application answers `GET /up` (and `HEAD`)
+before the static files, the session, CSRF and the router: no controller
+is involved and no login `before_action` can redirect it, and it sets no
+cookie. It runs `SELECT count(*) FROM sqlite_master`, which has to read the
+schema page from the file (a bare `SELECT 1` never touches it), and answers
+in `text/plain` with `Cache-Control: no-store`:
+
+| Status | Body | When |
+| --- | --- | --- |
+| 200 | `ok` | the query succeeded |
+| 503 | `database unavailable` | it raised `Cybertrain::DB::Error` (the file is missing or unreadable, the pool is closed) |
+| 503 | `worker stale` | the background `Scheduler` runs and its last tick is older than `health_worker_stale` seconds (300): a task is stuck, or runs far too long |
+
+A poll is logged like any request (two lines). The path is
+`config.health_path` (`CYBERTRAIN_HEALTH_PATH`, default `/up`; an empty
+value turns the check off, and the path then goes on to `public/` and the
+router as before). A load balancer, kamal-proxy or a deploy script can poll
+it; `public/up.html`, which `cybertrain new` writes and its Kamal
+configuration still polls, only shows that the process answers HTTP.
+
 ## Differences from Rails
 
 | Rails | cybertrain |
@@ -1202,6 +1285,9 @@ this covers "send later" and "run every N seconds" (`docs/design.md` D28).
 | Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see "Sending e-mail") |
 | Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind) { \|payload\| ... }` and `Job.enqueue(kind, payload, run_at:)` (a String payload in a `cybertrain_jobs` table, retried with backoff, then `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; one thread in the served process, `CYBERTRAIN_WORKER=0` elsewhere ([Background work](#background-work)) |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` is an Array of Strings matched by substring, case-insensitively (no Regexps or lambdas); it applies to the request log and the development error page ([Filtered parameters](#configuration-and-environment-variables)) |
+
+| `get "up" => "rails/health#show"` (a route to a controller) | `GET /up` is built in and answered before the static files, the session and the router, so no `before_action` runs; it queries the database and the background worker's last tick, `200 ok` or `503` ([Operations](#operations-backups-vacuum-health-check)) |
+| `bin/rails db:...` tasks for backups (none built in) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renamed into place) and `./<app> db vacuum` |
 | ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
@@ -1261,6 +1347,7 @@ end
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; comma-separated names replace the list. A parameter whose name contains one of them (ASCII case-insensitively: `password` also matches `user[password]`) has its value written as `[FILTERED]` in the request log and on the development error page; `[]` in `config/app.rb` turns this off |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps this process from running scheduled tasks and jobs (see [Background work](#background-work)); `scheduler_interval` (1 s), `job_poll_interval` (5 s) and `job_max_attempts` (5) are set in `config/app.rb` |
+| `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`; the built-in health check's path (see [Operations](#operations-backups-vacuum-health-check)); an empty value turns it off; one without a leading `/` stops the server at boot. `health_worker_stale` (300 s) is set in `config/app.rb` |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` or `true` lets `Cybertrain::HttpClient` connect to loopback, private and other non-public addresses (see "Outbound HTTP") |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; the SMTP server `Cybertrain::Mailer` sends through (see "Sending e-mail") |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`: the mode's port, 587 for `starttls`, 465 for `tls`, 25 for `none`; anything but 1 to 65535 is 0 |
