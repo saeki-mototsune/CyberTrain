@@ -110,6 +110,40 @@ test "the error page shows the request line" do
   assert_includes res.body, "POST /boom?page=2&amp;sort=title HTTP/1.1"
 end
 
+# A failing request carrying parameters: the params tree as the Router
+# would have built it from the query string, and the given body.
+def failing_with(target, content_type, payload)
+  req = Cybertrain::Request.new("POST", target, { "content-type" => content_type }, payload, "127.0.0.1")
+  failing = Cybertrain::Context.new(req)
+  failing.params = Cybertrain::Query.parse(req.query_string)
+  plain_app.call(failing)
+  failing.response
+end
+
+test "the error page filters parameter values in the request line and the parameter dump" do
+  res = failing_with("/boom?user%5Bpassword%5D=hunter2&user%5Bname%5D=ann&page=2&tags[]=a&api_key=k1", "text/plain", "")
+  assert_equal 500, res.status
+  assert res.body.index("hunter2").nil?, "the password must not be shown"
+  assert res.body.index("k1").nil?, "the api key must not be shown"
+  assert_includes res.body, "POST /boom?user%5Bpassword%5D=[FILTERED]&amp;user%5Bname%5D=ann&amp;page=2&amp;tags[]=a&amp;api_key=[FILTERED] HTTP/1.1"
+  assert_includes res.body, "<pre class=\"params\">Parameters: {&quot;page&quot;=&gt;&quot;2&quot;, &quot;api_key&quot;=&gt;&quot;[FILTERED]&quot;, &quot;tags&quot;=&gt;[&quot;a&quot;], &quot;user&quot;=&gt;{&quot;password&quot;=&gt;&quot;[FILTERED]&quot;, &quot;name&quot;=&gt;&quot;ann&quot;}}</pre>"
+  assert res.body.index("<pre class=\"json\">").nil?, "no JSON dump for a non-JSON body"
+end
+
+test "the error page dumps a JSON body with filtered members, recursively" do
+  res = failing_with("/boom", "application/json", "{\"user\":{\"name\":\"a\",\"API_Key\":\"k1\"},\"items\":[{\"token\":\"t1\"},1,null,true],\"secret\":{\"x\":1},\"n\":1.5}")
+  assert res.body.index("k1").nil?, "the api key must not be shown"
+  assert res.body.index("t1").nil?, "the token must not be shown"
+  assert_includes res.body, "<pre class=\"json\">JSON body: {&quot;user&quot;=&gt;{&quot;name&quot;=&gt;&quot;a&quot;, &quot;API_Key&quot;=&gt;&quot;[FILTERED]&quot;}, &quot;items&quot;=&gt;[{&quot;token&quot;=&gt;&quot;[FILTERED]&quot;}, 1, nil, true], &quot;secret&quot;=&gt;&quot;[FILTERED]&quot;, &quot;n&quot;=&gt;1.5}</pre>"
+  assert_includes res.body, "<pre class=\"params\">Parameters: {}</pre>"
+end
+
+test "a JSON body that does not parse is left out of the dump" do
+  res = failing_with("/boom", "application/json", "{\"password\": ")
+  assert_equal 500, res.status
+  assert res.body.index("<pre class=\"json\">").nil?, "no dump for a body that does not parse"
+end
+
 test "the error page names any exception class" do
   res = request(plain_app, "/argument")
   assert_equal 500, res.status

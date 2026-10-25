@@ -9,6 +9,7 @@
 # evicting a key is one O(1) Hash#delete (per-kind order Arrays would make
 # every kind change an O(n) Array#delete, i.e. quadratic parsing).
 require_relative "http/uploaded_file"
+require_relative "http/parameter_filter"
 
 module Cybertrain
   # The request parameters, {Controller#params} in an action and `params`
@@ -418,6 +419,28 @@ module Cybertrain
       @children.keys.each { |k| parts << "#{k.inspect}=>#{@children[k].inspect}" }
       @uploads.keys.each { |k| parts << "#{k.inspect}=>#{@uploads[k].inspect}" }
       "{#{parts.join(", ")}}"
+    end
+
+    # #inspect with the value of every key ParameterFilter.filter? names
+    # (Config#filter_parameters) replaced by "[FILTERED]", whatever its
+    # kind (a String, a list, a nested level or a file), and nested levels
+    # filtered the same way: what Dev::ErrorPage shows. A distinctive name
+    # (NOTES rule 10).
+    def filtered_inspect
+      parts = []
+      @values.keys.each { |k| parts << "#{k.inspect}=>#{Params.filtered_or(k, @values[k].inspect)}" }
+      @lists.keys.each { |k| parts << "#{k.inspect}=>#{Params.filtered_or(k, @lists[k].inspect)}" }
+      @children.keys.each do |k|
+        piece = ParameterFilter.filter?(k) ? ParameterFilter::FILTERED.inspect : @children[k].filtered_inspect
+        parts << "#{k.inspect}=>#{piece}"
+      end
+      @uploads.keys.each { |k| parts << "#{k.inspect}=>#{Params.filtered_or(k, @uploads[k].inspect)}" }
+      "{#{parts.join(", ")}}"
+    end
+
+    # `"[FILTERED]"` (inspected) when key is filtered, else text.
+    def self.filtered_or(key, text)
+      ParameterFilter.filter?(key) ? ParameterFilter::FILTERED.inspect : text
     end
 
     # A new Array holding a copy of each String of arr (Array#dup alone

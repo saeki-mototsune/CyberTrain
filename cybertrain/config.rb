@@ -513,6 +513,41 @@ end
       @scheduler_interval = 1
       @job_poll_interval = 5
       @job_max_attempts = 5
+      # ParameterFilter.names' list; Application#boot installs it there.
+      @filter_parameters = Config.default_filter_parameters
+    end
+
+    # The parameter names whose values are replaced with `[FILTERED]` in the
+    # request log's `Started` line and on the development error page
+    # (Rails' `filter_parameters`): `password`, `password_confirmation`,
+    # `token`, `secret`, `secret_key_base`, `session_key`, `api_key` and
+    # `authorization`, or the comma-separated names in
+    # `CYBERTRAIN_FILTER_PARAMETERS` instead. A parameter is filtered when
+    # its name contains one of them, ASCII case-insensitively (`password`
+    # filters `user[password]`). `[]` turns filtering off.
+    # @example config/app.rb
+    #   config.filter_parameters = config.filter_parameters + ["otp", "ssn"]
+    # @return [Array<String>]
+    # @api public
+    attr_accessor :filter_parameters
+
+    # ParameterFilter::DEFAULT_NAMES, kept as a literal here (the HTTP layer
+    # is not required by Config), or CYBERTRAIN_FILTER_PARAMETERS split on
+    # commas, blanks dropped, when it is set and not empty. Typed seed
+    # (spikes/NOTES.md rule 9).
+    def self.default_filter_parameters
+      names = Array.new(0) { "" }
+      configured = env_or("CYBERTRAIN_FILTER_PARAMETERS", "")
+      if configured.empty?
+        ["password", "password_confirmation", "token", "secret", "secret_key_base",
+         "session_key", "api_key", "authorization"].each { |n| names << n }
+      else
+        configured.split(",").each do |entry|
+          name = entry.strip
+          names << name unless name.empty?
+        end
+      end
+      names
     end
 
     # @return [Boolean]

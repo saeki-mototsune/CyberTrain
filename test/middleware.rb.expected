@@ -6,6 +6,9 @@ ok   RequestLogger logs Started and Completed lines
 ok   RequestLogger escapes terminal sequences accepted by the HTTP parser
 ok   RequestLogger escapes controls and non-ASCII bytes in paths and queries
 ok   RequestLogger escapes quotes and literal backslashes without decoding percent escapes
+ok   RequestLogger writes filtered query values as [FILTERED], other pairs untouched
+ok   RequestLogger filters with the installed list; an empty list filters nothing
+ok   Config#filter_parameters comes from CYBERTRAIN_FILTER_PARAMETERS, Rails' list by default
 ok   RequestLogger reports the final status
 ok   RequestLogger logs Completed 500 and re-raises when the app raises
 ok   RequestLogger logs the status the client fault gets (400), not 500
@@ -18,4 +21,4 @@ ok   MethodOverride and the Router share one validation of the form body
 ok   a foreign cookie that does not percent-decode does not fail the request
 ok   App runs the default stack down to the router
 ok   App without logging writes nothing to its logger
-20 tests, 65 assertions, 0 failures
+23 tests, 73 assertions, 0 failures

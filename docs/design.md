@@ -541,6 +541,24 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - 生成するテストに、トークン無し・空・違う値・末尾に 1 文字足した値での 404、トークン付きの 200、hidden field の内容、POST での作成、他アドレスとトークン無し・違うトークンの POST で作られないこと、`setup_open` でもトークン無しは 404、を足した。CI の招待制の手順は起動ログからトークンを取り出して curl する。
   - 残る点: リクエストログの `Started GET "/setup?token=..."` の行にもトークンが出る（警告と同じログで、読める人は同じ）。ユーザーができた時点で意味を失うので、フレームワークにパラメータの伏せ字（Rails の `filter_parameters`）は足さなかった。`user` サブコマンドは変えていない。
 
+### D31. パラメータ付きヘッダの読み取り `Request#header_params` と、ログ・エラーページでのパラメータの伏せ字 `filter_parameters`（2026-10-25、issue #77）
+
+- 背景: API クライアントは `Scheme k1=v1, k2="v2"` 形のヘッダ（`Authorization: Digest ...`、ベンダー独自の `X-*-Auth`、`Prefer`、`Forwarded`）で認証や指示を送る。`Request#header` は生の値を返すだけで、アプリはバイト位置で手分割していた（`k, v = part.split("=", 2)` は NOTES 規則 12 で誤コンパイルし、値は任意のバイトを含みうる）。また `RequestLogger` は制御文字をエスケープする（82334a9）がクエリを含む対象をそのまま書くので、`?token=` やエラーになったフォームのパスワードがログと開発用エラーページに残る（D29 の改訂で `/setup?token=...` が記録されることを「残る点」に書いた）。
+- 決定:
+  - `Request#header_params(name)` → `Hash[String, String]`。`,` と `;` をどちらも区切りとして扱い（`Forwarded` / `Prefer` の要素構造は平らにする）、同じ名前は最初のものが勝つ。名前は RFC 9110 の token 文字の並びで小文字にする（token 文字で始まらない部分は次の区切りまで読み飛ばす）。値は quoted-string ならバックスラッシュのエスケープを外して中身を、そうでなければ次の区切りまでのバイトを前後の空白・タブを除いて取る。`=` の無い名前は `""`。先頭の「token 文字の語、空白、`=` / `,` / `;` 以外の文字」は scheme として捨てる（`Digest`、`Bearer`）。語が一つだけの値（`Prefer: respond-async`、`Authorization: Negotiate`）は scheme ではなく値の無いパラメータ。ヘッダが無い、または 8 KiB（`Request::MAX_PARAM_HEADER_BYTES`）を超えると空の Hash（種を入れて消した型付き Hash、規則 9）。
+  - `Request#header_scheme(name)` → scheme の語を送られたとおりの大小で、無ければ `""`。`Bearer <token>` / `Basic <base64>` の資格情報はパラメータではないので `header` から読む、と文書に書いた（token68 の末尾の `=` をパラメータとして解釈しても意味が無い）。
+  - 走査はすべてバイト単位（`getbyte` / `byteslice`、`split` / `strip` は使わない。規則 52）で、各ヘルパは引数を `s = text.to_s` の新しいローカルで読む（規則 62）。quoted-string の中身は `+""` に `<<` だけで詰める（規則 60 / 66、NUL を含んでも切れない）。値はパーセントデコードせず、UTF-8 として正しいとも限らない。
+  - `Config#filter_parameters`（`Array<String>`、既定 `password`, `password_confirmation`, `token`, `secret`, `secret_key_base`, `session_key`, `api_key`, `authorization`）。`CYBERTRAIN_FILTER_PARAMETERS` がカンマ区切りで設定されていればそれで置き換える（前後の空白を除き、空の項目は捨てる。空の変数は未設定扱い）。`[]` で伏せ字をやめる。照合は Rails と同じく「名前がどれかを含む」の部分一致で、ASCII の大小を区別しない（`password` は `user[password]` にも、`token` は `authenticity_token` にも一致する）。
+  - 一覧は HTTP 層の新しいモジュール `Cybertrain::ParameterFilter`（`cybertrain/http/parameter_filter.rb`）のモジュール ivar に置き、`Application#boot` が `ParameterFilter.names = c.filter_parameters` で入れる（`Params.max_page` / `Request.trusted_proxies` と同じ形。HTTP 層は Config を読めない）。HTTP 層だけを使うプログラムでも既定の一覧で伏せる。Config は HTTP 層を require しないので既定の一覧を文字列リテラルで重ねて持ち、テストが `ParameterFilter::DEFAULT_NAMES` と等しいことを確かめる。
+  - `ParameterFilter.filter_query(text)`: クエリ文字列を `&` で分け、名前だけを比較のためにパーセントデコード（`+` は空白、不正なエスケープはそのまま）し、一致したペアの値を `[FILTERED]` に置き換える。それ以外のバイトはデコードせずにそのまま写す。`RequestLogger` はこれを制御文字のエスケープより前に、生のクエリに掛ける。
+  - 開発用エラーページ（`Dev::ErrorPage`）: 要求行のクエリを同じく伏せ、新しく「Parameters:」の欄にルータが組み立てた params の木（`Params#filtered_inspect`: 一致したキーは種類（文字列・リスト・入れ子・ファイル）に関わらず `"[FILTERED]"`、入れ子は再帰）を、JSON の要求（エンコードなし、1 MiB 以下）なら「JSON body:」の欄に本文を解析して同じく伏せたものを出す。JSON の再帰は `Cast.hash` / `Cast.array` で型付きに写してから辿り（規則 71、`when Time` を先に、規則 8）、32 段で打ち切る（解析した文書は 200 段まであり、スレッドのスタックは小さい、規則 46）。解析できない本文（それ自体が失敗の原因かもしれない）は欄ごと出さない。rescue は yield しないメソッドに置き、`JSON::NestingError` を先に書く（規則 32 / 61）。
+- 却下した案:
+  - `header_params` で `,` を要素の区切り、`;` を要素内の区切りとして `Array<Hash>` を返す案。`Forwarded` の複数要素を区別できるが、issue が求めた「API コントローラからの手分割をなくす」には平らな Hash で足り、型付きの入れ子は Spinel で扱いにくい。要素ごとに要るアプリは `header` を自分で分ける。
+  - クエリ全体をデコードしてから伏せて書き直す案。ログは送られたとおりのバイト列（を制御文字だけエスケープしたもの）であるべきで、デコードは不正なエスケープでの例外（規則 28）も持ち込む。
+  - 正規表現や Proc を `filter_parameters` に許す案（Rails は許す）。Spinel で Regexp の値を設定として持ち回す型と、保存したブロックの呼び出し（規則 30 / 69）を避け、文字列の部分一致だけにした。
+  - 本番のエラーページ（`ErrorPages`）への適用: 本番の 500 ページはパラメータを出さないので対象が無い。
+- 帰結: test/http_request.rb（Digest 形、`;` 区切りの Forwarded / Prefer、エスケープ付きの quoted-string、最初の値が勝つ、8 KiB 超、任意のバイト、ヘッダ無し、scheme）、test/middleware.rb（ログ行の伏せ字、一致しない名前はそのまま、一覧の差し替えと空の一覧、`CYBERTRAIN_FILTER_PARAMETERS`）、test/dev_error_page.rb（要求行と params の欄、JSON の欄の再帰、解析できない本文）を足し、コンパイルしたバイナリでスナップショットを作った。D29 の「残る点」の `/setup?token=...` は既定の `token` で伏せられる。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。

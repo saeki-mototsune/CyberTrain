@@ -133,6 +133,7 @@ module Cybertrain
       Params.max_page = c.max_page
       Request.trusted_proxy = c.trusted_proxy
       Request.trusted_proxies = c.trusted_proxies
+      ParameterFilter.names = c.filter_parameters
       Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
       self
     end

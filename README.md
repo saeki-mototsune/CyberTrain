@@ -1071,6 +1071,38 @@ Kamal's `proxy.forward_headers` unset: with `ssl: true`, kamal-proxy sets
 networks that clients cannot connect from: anyone inside a listed network
 can choose the address a rate limit counts.
 
+## Parameterised headers
+
+API clients often send `Scheme k1=v1, k2="v2"` headers (`Authorization:
+Digest ...`, a vendor `X-Example-Auth`) or `k1=v1;k2=v2, k3` lists
+(`Forwarded`, `Prefer`). `request.header_params(name)` parses one into a
+`Hash` of lowercase names to values, so an API controller does not split it
+by hand:
+
+```ruby
+# Authorization: Digest username="Mufasa", realm="api@example.com", nc=00000001, qop=auth
+auth = request.header_params("authorization")
+auth["username"]                         # => "Mufasa"
+request.header_scheme("authorization")   # => "Digest"
+
+# Forwarded: for=192.0.2.60;proto=https;by=203.0.113.43
+request.header_params("forwarded")["proto"]   # => "https"
+
+# Prefer: respond-async, wait=5
+request.header_params("prefer").key?("respond-async")   # => true
+```
+
+`,` and `;` both separate parameters and the first occurrence of a name
+wins; a quoted value is unquoted (`\"` and `\\` undone), an unquoted one
+has the spaces around it trimmed, and a name without `=` maps to `""`. A
+leading scheme word (`Digest`, `Bearer`) is not a parameter:
+`request.header_scheme(name)` returns it (`""` when there is none). A header
+that is missing or longer than 8 KiB gives `{}`. Values are the bytes as sent,
+never percent-decoded and possibly not valid UTF-8. A `Bearer <token>` or
+`Basic <base64>` credential is not a parameter: check the scheme, then read
+the credential from `request.header("authorization")`. Design:
+[docs/design.md](docs/design.md) D31.
+
 ## Background work
 
 An application that has to do something outside a request (send a
@@ -1169,6 +1201,7 @@ this covers "send later" and "run every N seconds" (`docs/design.md` D28).
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see "Outbound HTTP"); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
 | Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see "Sending e-mail") |
 | Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind) { \|payload\| ... }` and `Job.enqueue(kind, payload, run_at:)` (a String payload in a `cybertrain_jobs` table, retried with backoff, then `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; one thread in the served process, `CYBERTRAIN_WORKER=0` elsewhere ([Background work](#background-work)) |
+| `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` is an Array of Strings matched by substring, case-insensitively (no Regexps or lambdas); it applies to the request log and the development error page ([Filtered parameters](#configuration-and-environment-variables)) |
 | ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
@@ -1226,6 +1259,7 @@ end
 | `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` or `true` makes `request.client_ip` (what `rate_limit` counts) the last `X-Forwarded-For` address of a connection from loopback, for a reverse proxy on the same host (see [Rate limiting](#rate-limiting-and-the-client-address)); shorthand for `CYBERTRAIN_TRUSTED_PROXIES=127.0.0.0/8,::1` |
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; comma-separated IPv4/IPv6 addresses or CIDRs (`172.16.0.0/12,10.0.0.0/8`) whose connections have `request.client_ip` taken from the last `X-Forwarded-For` address, for a proxy reached over a network, such as kamal-proxy in its container; a bad entry stops the server at boot |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
+| `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; comma-separated names replace the list. A parameter whose name contains one of them (ASCII case-insensitively: `password` also matches `user[password]`) has its value written as `[FILTERED]` in the request log and on the development error page; `[]` in `config/app.rb` turns this off |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps this process from running scheduled tasks and jobs (see [Background work](#background-work)); `scheduler_interval` (1 s), `job_poll_interval` (5 s) and `job_max_attempts` (5) are set in `config/app.rb` |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` or `true` lets `Cybertrain::HttpClient` connect to loopback, private and other non-public addresses (see "Outbound HTTP") |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; the SMTP server `Cybertrain::Mailer` sends through (see "Sending e-mail") |
@@ -1285,6 +1319,19 @@ inline. A reverse proxy that serves `public/` itself bypasses these headers
 (see [docs/deploy.en.md](docs/deploy.en.md)). `Cybertrain::Test::Client` calls the
 app in-process and never serializes the response, so it does not show the two
 defaults; assert them on `response.to_http`.
+
+**Filtered parameters:** the request log's `Started GET "/login?..."` line
+and the development error page (its request line, and its dump of the
+params and of a JSON body) show the value of every parameter named in
+`config.filter_parameters` as `[FILTERED]`, as Rails' `filter_parameters`
+does, so a `?token=` in a URL or a password posted to a form that fails
+never lands in a log file. Only the values are replaced: the rest of the
+query string is logged as sent (control characters escaped). The list
+matches by substring, case-insensitively; extend it in `config/app.rb`
+(`c.filter_parameters = c.filter_parameters + ["otp", "ssn"]`) or replace
+it with `CYBERTRAIN_FILTER_PARAMETERS`. Values an action logs itself are not
+filtered; ask `Cybertrain::ParameterFilter.filter?(name)` or
+`ParameterFilter.filter_query(text)` there.
 
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse

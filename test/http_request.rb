@@ -432,4 +432,92 @@ test "multipart_form refuses an encoded body and a malformed one, and does not c
   assert_equal "MultipartMalformed", multipart_error(bad)
 end
 
+# header_params / header_scheme (issue #77). Each block's locals have names
+# of their own (spikes/NOTES.md rule 63).
+def auth_request(value)
+  Request.new("GET", "/", { "authorization" => value }, "", "127.0.0.1")
+end
+
+test "header_params reads a Digest-style header: scheme dropped, names lowercased, quotes undone" do
+  digest = auth_request("Digest username=\"Mufasa\", Realm=\"testrealm@host.com\", nonce=\"dcd98b\", uri=\"/dir/index.html\", qop=auth, nc=00000001")
+  dp = digest.header_params("Authorization")
+  assert_equal 6, dp.size
+  assert_equal "Mufasa", dp["username"]
+  assert_equal "testrealm@host.com", dp["realm"]
+  assert_equal "/dir/index.html", dp["uri"]
+  assert_equal "auth", dp["qop"]
+  assert_equal "00000001", dp["nc"]
+  assert_equal "Digest", digest.header_scheme("authorization")
+end
+
+test "header_params treats ; and , as separators (Forwarded, Prefer), first occurrence wins" do
+  fwd = Request.new("GET", "/", { "forwarded" => "for=192.0.2.60;proto=http;by=203.0.113.43, for=\"[2001:db8:cafe::17]:4711\";proto=https" }, "")
+  fp = fwd.header_params("Forwarded")
+  assert_equal 3, fp.size
+  assert_equal "192.0.2.60", fp["for"]
+  assert_equal "http", fp["proto"]
+  assert_equal "203.0.113.43", fp["by"]
+  assert_equal "", fwd.header_scheme("forwarded")
+  prefer = Request.new("GET", "/", { "prefer" => "respond-async, wait=5;  handling = lenient , WAIT=10" }, "")
+  pp = prefer.header_params("prefer")
+  assert_equal 3, pp.size
+  assert_equal "", pp["respond-async"]
+  assert_equal "5", pp["wait"]
+  assert_equal "lenient", pp["handling"]
+  lone = Request.new("GET", "/", { "prefer" => "respond-async" }, "")
+  assert lone.header_params("prefer").key?("respond-async")
+  assert_equal "", lone.header_scheme("prefer")
+end
+
+test "header_params unquotes backslash escapes and keeps separators inside quotes" do
+  quoted = auth_request("Vendor sig=\"a\\\"b\\\\c\", note=\"x, y; z\", empty=\"\", open=\"no end")
+  qp = quoted.header_params("authorization")
+  assert_equal "a\"b\\c", qp["sig"]
+  assert_equal "x, y; z", qp["note"]
+  assert_equal "", qp["empty"]
+  assert_equal "no end", qp["open"]
+  assert_equal "Vendor", quoted.header_scheme("authorization")
+end
+
+test "header_params skips junk, keeps bare names as empty values and trims blanks" do
+  junk = auth_request("  Scheme   a = b ; c,, =x, \"junk\", d=e f ,")
+  jp = junk.header_params("authorization")
+  assert_equal 3, jp.size
+  assert_equal "b", jp["a"]
+  assert_equal "", jp["c"]
+  assert_equal "e f", jp["d"]
+  assert_equal "Scheme", junk.header_scheme("authorization")
+end
+
+test "header_scheme reads Bearer; the credential is a bare parameter" do
+  bearer = auth_request("Bearer mF_9.B5f-4.1JqM")
+  assert_equal "Bearer", bearer.header_scheme("Authorization")
+  bp = bearer.header_params("authorization")
+  assert_equal 1, bp.size
+  assert bp.key?("mf_9.b5f-4.1jqm")
+  lone_scheme = auth_request("Negotiate")
+  assert_equal "", lone_scheme.header_scheme("authorization")
+  assert lone_scheme.header_params("authorization").key?("negotiate")
+end
+
+test "header_params is empty for a missing header and one over 8 KiB" do
+  missing = Request.new("GET", "/", {}, "")
+  assert_equal 0, missing.header_params("authorization").size
+  assert_equal "", missing.header_scheme("authorization")
+  at_limit = auth_request("k=" + "v" * 8190)
+  assert_equal 8190, at_limit.header_params("authorization")["k"].to_s.bytesize
+  oversize = auth_request("Digest k=" + "v" * 8190)
+  assert_equal 0, oversize.header_params("authorization").size
+  assert_equal "", oversize.header_scheme("authorization")
+  assert_equal 0, Request.parse_header_params("").size
+end
+
+test "header_params tolerates any bytes in values" do
+  binary = Request.parse_header_params("k=\xff\x00v; z=\"\x81\\\x82\", n\x80=1, ok=2")
+  assert_equal [0xff, 0, 0x76], binary["k"].to_s.bytes
+  assert_equal [0x81, 0x82], binary["z"].to_s.bytes
+  assert_equal "2", binary["ok"]
+  assert binary.key?("n"), "the name ends at the first non-token byte"
+end
+
 Cybertrain::Test.run!
