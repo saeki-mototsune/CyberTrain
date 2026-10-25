@@ -321,6 +321,30 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - 組み込みの名前の上書きを許す案。`migrate` が別物になると運用手順が壊れる。
   - コマンドごとに DB 接続を選ばせる案（接続しない指定）。必要になったら引数を足す。
 
+### D19. タイムゾーン: システムの TZif を自前で読む `Cybertrain::TimeZone`（2026-10-25、issue #66）
+
+- 決定: `cybertrain/time_zone.rb` に `Cybertrain::TimeZone` を置く（名前は issue で未定だったので、Rails の `ActiveSupport::TimeZone` に寄せた）。
+  - `TimeZone.find("Asia/Tokyo")` が `$TZDIR/<name>`（既定 `/usr/share/zoneinfo/<name>`）を読み、TZif v1〜v4（RFC 8536）を解釈する。v2 以降は 32 ビットのブロックを読み飛ばして 64 ビットのブロックとフッタを使う。最後の遷移より後の時刻は POSIX TZ 文字列のフッタ（`JST-9`、`EST5EDT,M3.2.0,M11.1.0`、`<+09>-9`）で決める。`Mm.w.d`・`Jn`・`n` の規則、`/time` の省略・負の値・24 時間超（RFC の拡張、167 時間まで）を扱う。DST 名だけで規則が無いときは tzcode / glibc と同じく米国の規則を補う。
+  - 値はすべて Integer の epoch 秒。`utc_offset_at` / `dst_at?` / `abbreviation_at`、`utc_to_local` / `local_to_utc`（「ローカル epoch」は壁時計を UTC とみなして数えた秒）と、暦との変換 `civil_to_epoch` / `epoch_to_civil`。issue の `local_to_utc(local_epoch, zone)` は、ゾーンのインスタンスメソッド `zone.local_to_utc(local_epoch)` にした。
+  - 遷移の前後で `local_to_utc` の答えを一つに決める: 飛ばされた壁時刻（米国の春の 02:30）は遷移前のオフセットで読む（結果は遷移後、03:30 EDT になる）。二度ある壁時刻（秋の 01:30）は早いほうの瞬間を返す。前後 1 日の間に遷移は高々一つ、という tz データベースで成り立つ前提を置く。
+  - 名前は `A-Za-z0-9_+-./` の 1〜255 バイトで、先頭の `/`、空・`.`・`..` のセグメントを拒む。ディレクトリの外のファイルを指せる名前は、ファイルを見る前に落とす。ファイルが無い・TZif でない・256 KiB を超える・カウントと長さが合わない（遷移が昇順でない、型番号や略称の位置が範囲外、略称が印字可能 ASCII でない）ときは、UTC として振る舞い `found?` が false のゾーンを返す（例外にしない）。`"UTC"` は組み込みでファイルを読まない（`TimeZone::UTC`）。読めないフッタは無視し、最後の遷移の型がそのまま続く。
+  - キャッシュは、名前 → 添字の Hash とゾーンの型付き Array を持つ不変オブジェクトを一つ、クラスレベルの `@zone_cache` に置く。追加は Mutex の中で新しい組を作って参照を差し替える（copy-on-write）。読み手はロックを取らない（NOTES 57: リクエストごとの Mutex は 2 ワーカーで数秒止まった）。キーは解決後のパスなので、`TZDIR` を変えれば別のエントリになる。見つからなかった名前はキャッシュしない（利用者の入力で表が際限なく伸びないように）。
+  - 解析は `getbyte` の算術で行い、`String#unpack` は使わない（NOTES 62 に従い、走査するメソッドの先頭で `s = bytes.to_s` を取る）。64 ビットの符号付き値は、負なら補数で読み、途中の値が 63 ビットに収まるようにする。
+- 理由:
+  - Spinel には tz データベースが無い。`ENV["TZ"]` を切り替えて `Time#localtime` に頼るのはプロセス全体の状態で、スレッド安全でない。毎日 09:00 Asia/Tokyo のスケジュール、ローカル日付ごとの集計、DST を考えた次回実行時刻の計算は、各アプリが 600 行ほどのパーサとキャッシュを書くことになる。
+  - データを同梱せずシステムの zoneinfo を読むので、tzdata の更新は OS のパッケージで届く。バイナリも大きくならない。
+  - Integer の epoch 秒に絞ると、Spinel の `Time` の差（NOTES 7）に触れずに済み、DB の列やクッキーにもそのまま入る。
+- 却下した案:
+  - tz データの同梱・生成（ビルドごとに古くなり、数百 KB 増える）。
+  - `ENV["TZ"]` + `Time.at(t).localtime`（スレッド安全でない）。
+  - 不明な名前で例外を投げる（設定ミスひとつで全リクエストが 500 になる。呼び出し側が `found?` を見て警告する）。
+  - 不明な名前もキャッシュする（上記）。
+  - `Time.zone` 相当のリクエストごとの既定ゾーンと、テンプレートの `l(time, zone:)`。変換ができた後の別件にする（issue のとおり今回は入れない）。
+- 帰結と今後:
+  - `right/` 系のゾーンのうるう秒レコードは読み飛ばすだけで適用しない（その分の秒がずれる）。通常のゾーンには無い。
+  - コンテナイメージに tzdata が無いと `find` は `found?` false の UTC を返す。slim なイメージでは `tzdata` パッケージを入れるか `TZDIR` を指す。
+  - `def name` をこのクラスに置くと、フレームワーク全体のプログラム（test/template_integration.rb）で `Class#name` が NoMethodError になった。読み出しは `zone_name` にした（NOTES 66）。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。

@@ -739,6 +739,7 @@ compiler output on every HTML response. None of this loads in production.
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |
+| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, ActiveSupport's bundled zone data | `Cybertrain::TimeZone.find("Asia/Tokyo")` reads the system's TZif files (`/usr/share/zoneinfo`, or `TZDIR`) and converts Integer epoch seconds (`utc_offset_at`, `utc_to_local`, `local_to_utc`); no per-request `Time.zone` and no `l(time, zone:)` yet ([Time zones](#time-zones)) |
 | Mailers, jobs, ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
@@ -910,6 +911,44 @@ variable and default, and the boot banner prints the current values
 up in both only by name, as `[FILTERED]`. There is no
 `Cybertrain.config.base_url` accessor: Spinel has no `define_method`, so the
 readers are typed methods that take the name.
+
+## Time zones
+
+Spinel ships no tz database, and setting `ENV["TZ"]` to convert a time
+changes it for every thread of the process. `Cybertrain::TimeZone` reads the
+system's zone files instead: `/usr/share/zoneinfo/<name>`, or `$TZDIR/<name>`
+when `TZDIR` is set (install the `tzdata` package in a slim container image).
+It parses TZif versions 1 to 4 (RFC 8536), including the POSIX TZ rule a
+"slim" file relies on after its last transition, and caches each zone for the
+life of the process (copy-on-write, so lookups from several workers take no
+lock).
+
+Everything is Integer epoch seconds. A *local epoch* is a wall-clock reading
+counted as if it were UTC, so wall-clock arithmetic is plain addition and
+`TimeZone.civil_to_epoch` / `TimeZone.epoch_to_civil` move between it and
+`[year, month, day, hour, minute, second]`:
+
+```ruby
+tokyo = Cybertrain::TimeZone.find("Asia/Tokyo")
+tokyo.found?                         # false for an unknown name: the zone then behaves as UTC
+tokyo.utc_offset_at(Time.now.to_i)   # => 32400
+tokyo.abbreviation_at(Time.now.to_i) # => "JST"
+
+# The next 09:00 in Tokyo:
+now = Time.now.to_i
+today = Cybertrain::TimeZone.epoch_to_civil(tokyo.utc_to_local(now))
+run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2], 9, 0, 0))
+run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2] + 1, 9, 0, 0)) if run <= now
+```
+
+At a daylight-saving transition `local_to_utc` is deterministic: a wall time
+that a forward jump skips (02:30 on a US spring-forward day) is read with the
+offset before the jump, so it lands after it (03:30 EDT); a wall time that a
+backward jump repeats gives the earlier instant. `find` accepts only a
+relative name made of `A-Za-z0-9_+-./` with no empty, `.` or `..` segment, so
+a zone name taken from a user's profile cannot reach a file outside the zone
+directory; an unknown or malformed zone is not cached, and `"UTC"` needs no
+file. Formatting helpers for templates (`l(time, zone:)`) are not there yet.
 
 ## Testing an app
 
