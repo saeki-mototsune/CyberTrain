@@ -5,7 +5,8 @@ require "cybertrain/config"
 require "cybertrain/test"
 
 # Request#loopback? and Request#client_ip (issue #70): which address a
-# rate limit counts. HTTP layer only (plus Config's flag), so this program
+# rate limit counts; Request.trusted_proxies, the CIDR list for a proxy that
+# is not on loopback (kamal-proxy in its own container, PR #79 review). HTTP layer only (plus Config's flag), so this program
 # runs under CRuby too.
 
 def from(addr, forwarded)
@@ -91,6 +92,105 @@ test "Config#trusted_proxy comes from CYBERTRAIN_TRUSTED_PROXY (1 or true)" do
   ENV["CYBERTRAIN_TRUSTED_PROXY"] = "yes"
   refute Cybertrain::Config.new.trusted_proxy
   ENV["CYBERTRAIN_TRUSTED_PROXY"] = ""
+end
+
+test "a peer inside a trusted IPv4 CIDR names the client; one outside does not" do
+  Cybertrain::Request.trusted_proxies = ["172.16.0.0/12", "10.0.0.0/8"]
+  assert_equal "203.0.113.9", from("172.18.0.2", "203.0.113.9").client_ip
+  assert_equal "203.0.113.9", from("172.31.255.255", "6.6.6.6, 203.0.113.9").client_ip
+  assert_equal "203.0.113.9", from("10.200.0.1", "203.0.113.9").client_ip
+  # IPv4-mapped peers (a dual-stack listener) match the IPv4 entry.
+  assert_equal "203.0.113.9", from("::ffff:172.18.0.2", "203.0.113.9").client_ip
+  assert_equal "203.0.113.9", from("::FFFF:10.0.0.1", "203.0.113.9").client_ip
+  # Just outside, another network, and loopback (trusted_proxy is off).
+  ["172.15.255.255", "172.32.0.1", "11.0.0.1", "192.168.1.1", "127.0.0.1", "::ffff:172.32.0.1",
+   "::1", "2001:db8::1", "", "not an address"].each do |outside|
+    assert_equal outside, from(outside, "203.0.113.9").client_ip
+  end
+  # No header, or a bad last hop: the peer.
+  assert_equal "172.18.0.2", from("172.18.0.2", "").client_ip
+  assert_equal "172.18.0.2", from("172.18.0.2", "203.0.113.9,").client_ip
+  Cybertrain::Request.trusted_proxies = Array.new(0) { "" }
+end
+
+test "a single trusted address matches only itself" do
+  Cybertrain::Request.trusted_proxies = ["172.18.0.2"]
+  assert_equal "203.0.113.9", from("172.18.0.2", "203.0.113.9").client_ip
+  assert_equal "172.18.0.3", from("172.18.0.3", "203.0.113.9").client_ip
+  Cybertrain::Request.trusted_proxies = ["10.0.0.0/0"]
+  assert_equal "203.0.113.9", from("198.51.100.1", "203.0.113.9").client_ip
+  Cybertrain::Request.trusted_proxies = Array.new(0) { "" }
+end
+
+test "IPv6 trusted networks: compressed, zone ignored on the peer, bounded prefixes" do
+  Cybertrain::Request.trusted_proxies = ["fd00::/8", "2001:db8:0:1::/64", "fe80::/10"]
+  assert_equal "203.0.113.9", from("fd12:3456::1", "203.0.113.9").client_ip
+  assert_equal "203.0.113.9", from("2001:db8:0:1:ffff::2", "203.0.113.9").client_ip
+  assert_equal "203.0.113.9", from("fe80::1%eth0", "203.0.113.9").client_ip
+  assert_equal "2001:db8:0:2::1", from("2001:db8:0:2::1", "203.0.113.9").client_ip
+  assert_equal "fc00::1", from("fc00::1", "203.0.113.9").client_ip
+  # An IPv6 network does not take an IPv4 peer that it does not cover.
+  assert_equal "172.18.0.2", from("172.18.0.2", "203.0.113.9").client_ip
+  Cybertrain::Request.trusted_proxies = ["::1"]
+  assert_equal "203.0.113.9", from("::1", "203.0.113.9").client_ip
+  assert_equal "::2", from("::2", "203.0.113.9").client_ip
+  Cybertrain::Request.trusted_proxies = Array.new(0) { "" }
+end
+
+test "Request.trusted_proxies is empty until set and refuses a bad entry" do
+  assert_equal 0, Cybertrain::Request.trusted_proxies.size
+  Cybertrain::Request.trusted_proxies = ["172.16.0.0/12", "fd00::/8"]
+  assert_equal ["172.16.0.0/12", "fd00::/8"], Cybertrain::Request.trusted_proxies
+  assert_raises("ArgumentError") { Cybertrain::Request.trusted_proxies = ["172.16.0.0/33"] }
+  # A refused list leaves the installed one as it was.
+  assert_equal ["172.16.0.0/12", "fd00::/8"], Cybertrain::Request.trusted_proxies
+  Cybertrain::Request.trusted_proxies = Array.new(0) { "" }
+  assert_equal 0, Cybertrain::Request.trusted_proxies.size
+end
+
+test "the loopback shorthand and the list add up" do
+  Cybertrain::Request.trusted_proxy = true
+  Cybertrain::Request.trusted_proxies = ["172.16.0.0/12"]
+  assert_equal "203.0.113.9", from("127.0.0.1", "203.0.113.9").client_ip
+  assert_equal "203.0.113.9", from("::1", "203.0.113.9").client_ip
+  assert_equal "203.0.113.9", from("172.18.0.2", "203.0.113.9").client_ip
+  assert_equal "198.51.100.1", from("198.51.100.1", "203.0.113.9").client_ip
+  Cybertrain::Request.trusted_proxy = false
+  Cybertrain::Request.trusted_proxies = Array.new(0) { "" }
+end
+
+test "IpAddress.parse_network bounds prefixes and refuses what is not a network" do
+  ["172.16.0.0/12", "10.0.0.0/8", "172.18.0.2", "0.0.0.0/0", "1.2.3.4/32", "::/0", "::1",
+   "fd00::/8", "2001:db8::/128", "::ffff:10.0.0.0/104"].each do |accepted|
+    assert_equal 17, Cybertrain::IpAddress.parse_network(accepted).size
+  end
+  ["", "/8", "10.0.0.0/", "10.0.0.0/33", "::/129", "10.0.0.0/8/8", "10.0.0.0/8x", "10.0.0.0/-1",
+   "10.0.0.0/0008", "10.0.0", "010.0.0.1", "10.0.0.256", "fe80::1%eth0", "fe80::/10%eth0", "::1::",
+   "1:2:3:4:5:6:7:8:9", "gggg::", "localhost", " 10.0.0.1", "10.0.0.1 "].each do |refused|
+    assert_equal 0, Cybertrain::IpAddress.parse_network(refused).size
+  end
+  # An IPv4 entry is stored as its IPv4-mapped network: prefix + 96.
+  assert_equal 108, Cybertrain::IpAddress.parse_network("172.16.0.0/12")[0]
+  assert_equal 128, Cybertrain::IpAddress.parse_network("fd00::1")[0]
+end
+
+test "Config#trusted_proxies comes from CYBERTRAIN_TRUSTED_PROXIES and is checked at boot" do
+  ENV["CYBERTRAIN_TRUSTED_PROXIES"] = ""
+  assert_equal 0, Cybertrain::Config.new.trusted_proxies.size
+  assert_equal "", Cybertrain::Config.new.trusted_proxies_error
+  ENV["CYBERTRAIN_TRUSTED_PROXIES"] = "172.16.0.0/12, 10.0.0.0/8,,fd00::/8 "
+  listed = Cybertrain::Config.new
+  assert_equal ["172.16.0.0/12", "10.0.0.0/8", "fd00::/8"], listed.trusted_proxies
+  assert_equal "", listed.trusted_proxies_error
+  ENV["CYBERTRAIN_TRUSTED_PROXIES"] = "172.18.0.2"
+  assert_equal ["172.18.0.2"], Cybertrain::Config.new.trusted_proxies
+  ENV["CYBERTRAIN_TRUSTED_PROXIES"] = "10.0.0.0/8,172.16.0.0/40"
+  assert_equal "CYBERTRAIN_TRUSTED_PROXIES / trusted_proxies entry \"172.16.0.0/40\" is not an IP address or CIDR (e.g. 172.16.0.0/12)",
+               Cybertrain::Config.new.trusted_proxies_error
+  ENV["CYBERTRAIN_TRUSTED_PROXIES"] = ""
+  assigned = Cybertrain::Config.new
+  assigned.trusted_proxies = ["kamal-proxy"]
+  assert_includes assigned.trusted_proxies_error, "\"kamal-proxy\""
 end
 
 Cybertrain::Test.run!

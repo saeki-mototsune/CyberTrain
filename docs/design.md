@@ -81,7 +81,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 
 認証（MVP 後の 2026-10-22 に D15 として追加）、メーラー、ジョブ、WebSocket / ActionCable、アセットパイプライン（静的ファイル配信のみ）、i18n、API 専用モード（`render json:` の最小限のみ）、Rails 互換、Rack 互換、Windows ネイティブ。
 
-ジョブについては、MVP 後の 2026-10-25 に「後で送る」と「N 秒ごとに実行」を賄う最小の形（`Cybertrain::Scheduler` とデータベースのジョブキュー `Cybertrain::Job`）を D28 として追加した。メーラーは引き続き非目標。
+ジョブについては、MVP 後の 2026-10-25 に「後で送る」と「N 秒ごとに実行」を賄う最小の形（`Cybertrain::Scheduler` とデータベースのジョブキュー `Cybertrain::Job`）を D28 として追加した。メーラーも同日に最小の SMTP クライアント `Cybertrain::Mailer` を D27 として追加した（HTML・添付・テンプレートは非目標のまま）。
 
 ## 3. 設計原則
 
@@ -353,16 +353,16 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 決定: `Cybertrain::DB.transaction(immediate: false) { |c| ... }` を公開 API にする。プールから接続を借り、`BEGIN`（`immediate: true` なら `BEGIN IMMEDIATE`）を発行し、接続を渡してブロックを呼び、正常終了で `COMMIT`、例外で `ROLLBACK` して再送出し、接続をプールへ返す。`Model.transaction` は同じものを Rails の名前で呼ぶ薄い別名（クラスメソッドなので `Ident::RESERVED_COLUMN_NAMES` には入らない）。D10 の「MVP 外: モデル API の `transaction`」と §8 の `transaction` API はこれで置き換わる。
 - 参加（Rails と同じ意味）: ブロックの実行中、同じスレッドの `DB.with`（したがって `save` / `update` / `destroy` / Relation の問い合わせ）はトランザクションの接続をそのまま受け取る。プールは借りた接続を `Thread.current` に記録し、`Pool#with` が `held_index` でそれを見つけたら借り出しも返却（`check_in` はトランザクションを巻き戻してしまう）もせずに yield する。入れ子の `DB.transaction` も同じ接続で深さを一つ増やすだけで、深さの数え方と「SQLite が自分で巻き戻した」検査は `Connection#transaction` のものをそのまま使う（両者とも新しいブロックなしの `Connection#begin!` / `commit!` / `rollback!` の上に書き直した）。最外段だけが `COMMIT` し、どの段の例外も最外段に届けば全体が巻き戻る。セーブポイントは無い。`immediate:` は最外段でだけ効く。ブロック内で起こしたスレッドは参加しない。
 - 形（Spinel の制約から決まった）: `DB.transaction(&block)` は `DB.run_transaction(immediate, block)` を呼ぶだけで、借り出し・`begin!`・`block.call(conn)`・rescue・ensure はすべて `run_transaction` にある。`Controller#process` / `#run_action` と同じ形。
-  - `&block` を受けて呼ぶメソッドは yield するメソッドと同じく呼び出し側に展開され、そこに rescue / ensure があると C がコンパイルできない（NOTES 規則 32/45、68）。
-  - Proc をもう一段先のメソッド（`Pool` や `Connection` のメソッド）へ渡して呼ぶと、ブロック引数に接続のクラスが伝わらず、`c.execute` が NoMethodError になる（NOTES 規則 68）。
-  - 参加の判定を `DB.with` 側で `block.call` にすると `DB.with` のブロックが Proc になり、外側のブロック引数を読むブロック（`5.times do |i| DB.with { ... i ... } end`）がコンパイルできなくなる（NOTES 規則 67）。だから判定は yield する `Pool#with` の中に置いた。
+  - `&block` を受けて呼ぶメソッドは yield するメソッドと同じく呼び出し側に展開され、そこに rescue / ensure があると C がコンパイルできない（NOTES 規則 32/45、69）。
+  - Proc をもう一段先のメソッド（`Pool` や `Connection` のメソッド）へ渡して呼ぶと、ブロック引数に接続のクラスが伝わらず、`c.execute` が NoMethodError になる（NOTES 規則 69）。
+  - 参加の判定を `DB.with` 側で `block.call` にすると `DB.with` のブロックが Proc になり、外側のブロック引数を読むブロック（`5.times do |i| DB.with { ... i ... } end`）がコンパイルできなくなる（NOTES 規則 68）。だから判定は yield する `Pool#with` の中に置いた。
 - ブロックなしの形: `c.begin!(immediate:)` / `c.commit!` / `c.rollback!`。rescue を普通のメソッドに置きたいコード向け。入れ子の `rollback!` は深さを一つ戻すだけで、判断は最外段に任せる（入れ子の `transaction` ブロックから例外が抜けたときと同じ）。
 - 捨てたもの・制約:
   - 戻り値はブロックの値ではなく nil（`Connection#transaction` と同じく、総称的な戻り値は Spinel で型が付かない）。
   - `ActiveRecord::Rollback` と `requires_new:`（セーブポイント）は無い。
   - `DB.with` のブロックの中で `DB.transaction` を呼ぶと別の接続を借りる（`DB.with` はトランザクションではないので参加先が無い。1 接続のプールでは永久に待つ）。
-  - ブロックの `c` は箱詰めの値なので、その上で `c.transaction { }` は呼べない（yield するメソッドは展開されるだけで実体が無い、NOTES 規則 66）。入れ子は `DB.transaction` か `begin!` / `commit!` で書く。
-  - `DB.transaction` のブロックが外側のブロック引数を読み、その外側がさらにブロックの中にあると（三段）コンパイルできない（NOTES 規則 67）。アクションのようなメソッドの中なら二段で動く。
+  - ブロックの `c` は箱詰めの値なので、その上で `c.transaction { }` は呼べない（yield するメソッドは展開されるだけで実体が無い、NOTES 規則 67）。入れ子は `DB.transaction` か `begin!` / `commit!` で書く。
+  - `DB.transaction` のブロックが外側のブロック引数を読み、その外側がさらにブロックの中にあると（三段）コンパイルできない（NOTES 規則 68）。アクションのようなメソッドの中なら二段で動く。
 - 検証: `test/db_transaction_api.rb`（フレームワーク全体と一緒にコンパイル）。コミット、例外での巻き戻し、入れ子の参加、`Model.transaction` 内の `save` の参加、ブロックなしの形、`DB.with` のブロック内からの呼び出し、コントローラのアクションからの呼び出し、`immediate: true` が `BEGIN IMMEDIATE` を出すこと（別の接続の `BEGIN IMMEDIATE` が "database is locked" になる。遅延 `BEGIN` では通る）。
 
 ### D21. マイグレーションのデータ操作: `execute` を操作として記録する（2026-10-25）
@@ -465,6 +465,13 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - データベースで数える案（複数プロセスで共有）。今回はプロセス内だけ。後から宣言はそのままに裏側を差し替えられるよう、カウンタは `RateLimit` に閉じ込めた。
   - `only: :create`（Symbol 単体）や `within: 3.minutes`。`before_action` と同じく配列だけを受け、`Integer#minutes` は無いので秒の整数にした。
 - 帰結: 制限されたアクションへの要求は一つのロックを取る（NOTES 規則 57: 全要求でロックを取ると複数ワーカーで詰まる）ので、`only:` で絞るようドキュメントに書いた。ロックの保持区間は Hash の数回の操作で、満杯時の掃除も 1 割ぶん。`apply_rate_limit` はコントローラの private メソッドなので `ATTACHMENT_RESERVED_ACTIONS` に足した（`script/check-reserved-names`）。使い方は README の「Rate limiting and the client address」に書いた。
+- 追記（PR #79 のレビュー指摘）: 信頼するプロキシを CIDR で列挙できるようにした。リポジトリ自身のデプロイ手順（docs/deploy-kamal.md、examples/blog の Kamal 設定）では kamal-proxy とアプリが別々の Docker コンテナで動き、アプリから見た接続元は Docker のブリッジネットワーク上の kamal-proxy のアドレス（既定で 172.16.0.0/12 の中）でループバックにならない。ループバックに限る規則のままでは `trusted_proxy` がそこで効かず、`rate_limit` が全員を kamal-proxy の一つのアドレスとして数える。上の却下案「信頼するプロキシの一覧」は、多段構成のために右から辿る形を却下したもので、一段のまま一覧で照合する形はここで採る。
+  - `Config#trusted_proxies`（既定 `[]`、`CYBERTRAIN_TRUSTED_PROXIES` をカンマで分けて前後の空白を除く）: IPv4 / IPv6 のアドレスまたは CIDR。`Config#trusted_proxies_error` が起動時に検査し（`fail_boot`、他の `*_error` と同じ形）、アドレスでも CIDR でもない項目、/32・/128 を超える接頭辞、`%zone` 付きの項目を拒む。`Application#boot` が `Request.trusted_proxies=` に入れ、そこで解析済みの形（接頭辞長と IPv6 形の 16 バイト、計 17 個の Integer を一本の型付き配列に並べる）にする。`Request.trusted_proxies=` に直接渡した不正な項目は ArgumentError で、入っていた一覧はそのまま。
+  - `Request#client_ip`: `remote_addr` が「`trusted_proxy` が真でループバック」または「一覧のどれかに入る」ときだけ、従来と同じ検査で `X-Forwarded-For` の最後の要素を使う。一段だけ、という原則（issue #70）は変えない。`CYBERTRAIN_TRUSTED_PROXY=1` は `127.0.0.0/8,::1` の略記で、一覧と足し合わされる。
+  - 照合は HTTP 層の新しいファイル `cybertrain/http/ip_address.rb`（`Cybertrain::IpAddress`）で、バイト走査だけ（IPAddr も Regexp も使わない）。IPv4 の項目は IPv4 射影形（`::ffff:a.b.c.d`、接頭辞 +96）として持つので、デュアルスタックの待ち受けが報告する `::ffff:172.18.0.2` も IPv4 の項目に一致する。相手のアドレスの `%zone` は無視する。IPv4 / IPv6 の解析は `Net::Address`（外向き HTTP クライアントの検査）にあったものをここへ移し、`Net::Address.parse_ipv4` / `parse_ipv6` / `hex_value` は委譲だけにした（HTTP 層は単独で読み込めなければならない、`script/check-http-layer`）。`Config` がこのファイルを require する（依存のない一ファイルだけで、サーバ本体は読まない）。
+  - `cybertrain new` が書く `config/deploy.yml`（と examples/blog の同じ設定）は `env.clear` に `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` を書く。Kamal はアプリのポートをホストに公開しないので、アプリに届くのは Docker ネットワーク上のコンテナだけ。`proxy.forward_headers` は設定しない: `ssl: true` の kamal-proxy はクライアントが送った `X-Forwarded-For` を渡さず自分で付ける（Kamal のドキュメント）。`forward_headers: true` は kamal-proxy の前にさらにプロキシがあるときのもので、ここで付けるとクライアントの書いた値が届く。
+  - 却下: 既定で 172.16.0.0/12 などの私用アドレスを信頼する案。同じホストの nginx（ループバック）や LAN 内から直接つながる構成で、LAN の誰もがアドレスを選べてしまう。設定はアプリ（生成した deploy.yml）の側で明示する。
+  - テスト: test/client_ip.rb（v4 / v6 / v4 射影の一致、範囲外は `remote_addr`、単一アドレス、不正な項目の拒否、ループバックの略記との併用）、test/cli_new.rb（生成される deploy.yml）。
 
 ### D27. メーラー: 有界なソケット層の上の最小の SMTP クライアント（2026-10-25、#64）
 
@@ -574,7 +581,7 @@ ERB のタグ: `<% %>`、`<%= %>`（エスケープ）、`<%== %>`（非エス�
 - `rails console`（`eval` が存在しない）
 - テンプレート内の任意 Ruby、テンプレートの型エラーのコンパイル時検出、スタックトレース付きエラー画面
 - production バイナリの完全単一ファイル化（`app/views` と `public` を同梱。将来のコンパイルバックエンドで回収可能）
-- `namespace` / format / `respond_to`、`has_many :through`、`includes`、`transaction` API、i18n、メーラー、ジョブ、WebSocket（認証は 2026-10-22 に D15 の形で入った: ジェネレータが書くコードと、`Cybertrain::Password`）（ジョブは 2026-10-25 に D28 の最小の形で入った）
+- `namespace` / format / `respond_to`、`has_many :through`、`includes`、i18n、WebSocket（認証は 2026-10-22 に D15 の形で入った: ジェネレータが書くコードと、`Cybertrain::Password`）（`transaction` API は D20、メーラーは D27、ジョブは D28 の最小の形で 2026-10-25 に入った）
 - Rack 互換、Rails 互換、CRuby 上での実行
 
 ## 9. 未検証の前提とスパイク計画（M0）

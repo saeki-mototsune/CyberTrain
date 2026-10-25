@@ -862,6 +862,15 @@ registry:
 `proxy.ssl` は外さないでください。本番のセッション Cookie は `Secure` なので、HTTP ではフォーム
 送信が 403 になります。
 
+生成される `config/deploy.yml` は `env.clear` に `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` を
+書きます。kamal-proxy は別のコンテナで動き、Docker のネットワーク上のアドレス（既定では
+172.16.0.0/12 の中）からアプリにつなぐので、そこからの接続に限って `X-Forwarded-For` の最後の
+アドレス（kamal-proxy が付けたもの）を `request.client_ip` にします。これがないと、サインインの
+レート制限（`rate_limit`）が訪問者全員を kamal-proxy の一つのアドレスとして数えます。Docker の
+ネットワークを別の範囲にしているときは、その範囲に書き換えてください（`docker network inspect kamal`
+で確かめられます）。`proxy.forward_headers` は設定しません。TLS を終端する kamal-proxy は
+`X-Forwarded-For` を自分で付け、クライアントが送ったものは渡さないので、それが望む動きです。
+
 ### 8-3. 秘密鍵を用意する
 
 `.kamal/secrets` は環境変数を読むだけなので、kamal を実行するシェルで設定します。
