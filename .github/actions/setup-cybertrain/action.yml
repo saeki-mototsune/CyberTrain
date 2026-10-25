@@ -1,0 +1,167 @@
+# setup-cybertrain: the toolchain steps a cybertrain application's CI needs,
+# kept in one place so that the workflow `cybertrain new` writes
+# (.github/workflows/ci.yml in the app) does not copy them and drift.
+#
+#   - uses: actions/checkout@v4
+#   - uses: saeki-mototsune/CyberTrain/.github/actions/setup-cybertrain@vX.Y.Z  # the framework release
+#   - run: spin test
+#
+# What it does, in the application's checkout:
+#   1. the system packages Spinel programs link (SQLite, zlib, OpenSSL on
+#      Linux; Homebrew's keg-only OpenSSL put on the compiler's path on macOS)
+#      and Ruby for the CLI;
+#   2. reads the framework commit the application is locked to out of
+#      spin.lock ([lock.cybertrain] git = / ref =) and fetches the framework
+#      at exactly that commit, so the CLI that installs Spinel is the one the
+#      application compiles against (the `@ref` in `uses:` above only pins
+#      these steps: `uses:` takes no expressions, so it cannot name the
+#      locked commit);
+#   3. restores ~/.cybertrain/spinel from the cache, keyed on the Spinel
+#      release that commit pins (Cybertrain::SPINEL_TAG in
+#      cybertrain/version.rb) and on the runner image, runs `cybertrain
+#      doctor` and `cybertrain setup` (a miss builds Spinel, minutes; a hit
+#      verifies it) and saves the cache after a build;
+#   4. puts `spin` and `spinel` on PATH for the steps after it.
+#
+# An application whose spin.toml uses a path dependency (`cybertrain new
+# --path`) has no commit in spin.lock: pass `framework-path` (a checkout of
+# the framework, e.g. a submodule) instead.
+name: Set up cybertrain
+description: Install the system packages, Ruby and the Spinel toolchain a cybertrain application's spin.lock asks for.
+
+inputs:
+  ruby-version:
+    description: Ruby for the cybertrain CLI (3.2 or newer).
+    required: false
+    default: "3.3"
+  lockfile:
+    description: The application's spin.lock, relative to the workspace.
+    required: false
+    default: spin.lock
+  framework-path:
+    description: A framework checkout to take the CLI from instead of the commit in spin.lock.
+    required: false
+    default: ""
+
+outputs:
+  framework-path:
+    description: Where the framework (and its CLI, exe/cybertrain) is.
+    value: ${{ steps.framework.outputs.path }}
+  framework-ref:
+    description: The framework commit read from spin.lock ("" with framework-path).
+    value: ${{ steps.lock.outputs.ref }}
+  spinel-tag:
+    description: The Spinel release installed.
+    value: ${{ steps.framework.outputs.spinel-tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install SQLite, zlib and OpenSSL headers (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev libssl-dev
+
+    # Spinel's openssl package links `-lssl -lcrypto` with no search path;
+    # Homebrew's OpenSSL is keg-only.
+    - name: Point the compiler at Homebrew's OpenSSL (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        prefix="$(brew --prefix openssl@3)"
+        echo "LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
+        echo "CPATH=$prefix/include" >> "$GITHUB_ENV"
+
+    - uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: ${{ inputs.ruby-version }}
+
+    # The [lock.cybertrain] table spin lock writes:
+    #   [lock.cybertrain]
+    #   version = "0.2.1"
+    #   git = "https://github.com/saeki-mototsune/cybertrain"
+    #   ref = "<40-hex commit>"
+    # (a path dependency has `path = "..."` instead of git/ref).
+    - name: Read the framework commit from spin.lock
+      id: lock
+      if: inputs.framework-path == ''
+      shell: bash
+      env:
+        LOCKFILE: ${{ inputs.lockfile }}
+      run: |
+        ruby -e '
+          table = ""; found = {}
+          File.foreach(ENV.fetch("LOCKFILE")) do |line|
+            line = line.strip
+            if line.start_with?("[")
+              table = line
+            elsif table == "[lock.cybertrain]" && (m = line.match(/\A(git|ref|path) = "(.*)"\z/))
+              found[m[1]] = m[2]
+            end
+          end
+          if found["git"].to_s.empty? || found["ref"].to_s !~ /\A\h{40}\z/
+            where = found["path"] ? "a path dependency (#{found["path"]})" : "no cybertrain git dependency"
+            abort "setup-cybertrain: #{ENV["LOCKFILE"]} locks #{where}; " \
+                  "commit a spin.lock for a git dependency, or pass framework-path"
+          end
+          File.open(ENV.fetch("GITHUB_OUTPUT"), "a") { |f| f.puts "git=#{found["git"]}", "ref=#{found["ref"]}" }
+        '
+
+    # git fetch of one commit rather than actions/checkout: the framework
+    # goes outside the workspace (RUNNER_TEMP), where the application's
+    # `spin` commands and `git diff` never see it.
+    - name: Fetch the framework at the locked commit
+      if: inputs.framework-path == ''
+      shell: bash
+      env:
+        FRAMEWORK_GIT: ${{ steps.lock.outputs.git }}
+        FRAMEWORK_REF: ${{ steps.lock.outputs.ref }}
+      run: |
+        dir="$RUNNER_TEMP/cybertrain-framework"
+        rm -rf "$dir" && mkdir -p "$dir" && cd "$dir"
+        git init -q
+        git fetch -q --depth 1 "$FRAMEWORK_GIT" "$FRAMEWORK_REF"
+        git checkout -q FETCH_HEAD
+
+    - name: Locate the framework and its Spinel release
+      id: framework
+      shell: bash
+      env:
+        GIVEN_PATH: ${{ inputs.framework-path }}
+      run: |
+        if [ -n "$GIVEN_PATH" ]; then dir="$(cd "$GIVEN_PATH" && pwd)"; else dir="$RUNNER_TEMP/cybertrain-framework"; fi
+        tag="$(ruby -e 'print File.read(ARGV[0])[/SPINEL_TAG = "([^"]+)"/, 1].to_s' "$dir/cybertrain/version.rb")"
+        test -n "$tag" || { echo "setup-cybertrain: no SPINEL_TAG in $dir/cybertrain/version.rb" >&2; exit 1; }
+        echo "path=$dir" >> "$GITHUB_OUTPUT"
+        echo "spinel-tag=$tag" >> "$GITHUB_OUTPUT"
+        # ImageOS and ImageVersion are variables of the runner process, not
+        # of the expression context: a toolchain built on one image is not
+        # assumed to run on the next.
+        echo "image=${ImageOS:-unknown}-${ImageVersion:-0}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the Spinel toolchain
+      id: spinel-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cybertrain/spinel
+        key: cybertrain-spinel-${{ steps.framework.outputs.spinel-tag }}-${{ runner.os }}-${{ steps.framework.outputs.image }}-${{ runner.arch }}
+
+    # `cybertrain setup` is how users get Spinel, so CI gets it the same
+    # way: a cache miss builds the release, a hit verifies it.
+    - name: Install Spinel with cybertrain setup
+      shell: bash
+      env:
+        FRAMEWORK: ${{ steps.framework.outputs.path }}
+      run: |
+        ruby -I "$FRAMEWORK" "$FRAMEWORK/exe/cybertrain" doctor
+        ruby -I "$FRAMEWORK" "$FRAMEWORK/exe/cybertrain" setup
+        echo "$HOME/.cybertrain/bin" >> "$GITHUB_PATH"
+
+    # Saved right after the build, so a failure later in the job does not
+    # cost the next run another build.
+    - name: Save the Spinel toolchain
+      if: steps.spinel-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cybertrain/spinel
+        key: ${{ steps.spinel-cache.outputs.cache-primary-key }}

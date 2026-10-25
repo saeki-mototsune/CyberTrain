@@ -20,6 +20,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -142,6 +143,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -241,6 +243,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -295,6 +298,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -357,6 +361,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -431,6 +436,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -493,6 +499,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -554,6 +561,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -603,6 +611,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -652,6 +661,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -701,6 +711,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -750,6 +761,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -799,6 +811,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -849,6 +862,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -911,6 +925,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -974,6 +989,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -1001,6 +1017,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -1081,6 +1098,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -1145,6 +1163,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -1187,6 +1206,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -1235,6 +1255,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -1299,6 +1320,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -1380,6 +1402,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep

@@ -44,6 +44,7 @@ module Cybertrain
           [".dockerignore", Templates.dockerignore],
           ["config/deploy.yml", Templates.deploy_yml(package)],
           [".kamal/secrets", Templates.kamal_secrets],
+          [".github/workflows/ci.yml", Templates.ci_workflow],
           ["gen/.keep", ""],
           ["storage/.keep", ""],
           ["tmp/.keep", ""],

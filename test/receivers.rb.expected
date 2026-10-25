@@ -1,0 +1,17 @@
+ok   a GET: the canned response reaches the client, the request is recorded
+ok   a POST: the body, its type and the caller's headers
+ok   a chunked response is decoded by the client
+ok   a 204 has no body
+ok   a chunked request body is decoded, repeated headers joined
+ok   max: several requests, and respond_with between them
+ok   a request that never comes: nil after the bound, and the port is free again
+ok   stop is idempotent, also before start
+ok   the accept window bounds how long a receiver waits for a connection
+ok   a delivery: the transcript, the envelope and the message bytes
+ok   8BITMIME is offered by default and can be withheld
+ok   a rejected recipient: the mailer raises, the transcript shows how far it got
+ok   a rejected greeting, and a message refused after its data
+ok   auth: AUTH PLAIN is offered and accepted, and recorded
+ok   several deliveries to one receiver, through Mailer.deliver and Config
+ok   a message that never comes: nil after the bound, and stop is idempotent
+16 tests, 97 assertions, 0 failures
