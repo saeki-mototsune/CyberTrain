@@ -131,10 +131,11 @@ jobs:
                ! printf '%s\n' "$changed" | grep -qE "$TESTED_ANYWAY"; then
               ubuntu=0
             fi
-            # §2.1: OS 差分が出うる場所を触った PR とラベル ci:macos
-            if printf '%s' "$PR_LABELS_JSON" | grep -q '"ci:macos"' ||
-               printf '%s\n' "$changed" | grep -qE "$MACOS_PATHS"; then
-              macos=1
+            # §2.1: OS 差分が出うる場所を触った PR は macOS も
+            printf '%s\n' "$changed" | grep -qE "$MACOS_PATHS" && macos=1
+            # ラベル ci:macos は「両 OS を回す」: docs-only 判定より優先する
+            if printf '%s' "$PR_LABELS_JSON" | grep -q '"ci:macos"'; then
+              ubuntu=1; macos=1
             fi
           fi
           os=""
