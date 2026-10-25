@@ -604,7 +604,8 @@ finds the commit that removed them).
     repro: `module M; class Elsewhere; LIMIT = 99; end; class Base; LIMIT
     = 7; end; class Sub < Base; def hook = LIMIT; end; end; p
     M::Sub.new.hook`; without `Elsewhere` it prints 7. Found with
-    `Test::HttpReceiver` reading `Receiver::MAX_LINE_BYTES` by its bare
-    name next to HttpClient's and Mailer's constants of that name (issue
-    #78). Spell an inherited constant with its owner
-    (`Receiver::MAX_LINE_BYTES`), and read the warnings `spin test` prints.
+    `Test::HttpReceiver` reading the `MAX_LINE_BYTES` it inherits from
+    `Receiver` as a bare `MAX_LINE_BYTES`, next to HttpClient's and Mailer's
+    constants of that name (issue #78). Spell an inherited constant with its
+    owner (`Receiver::MAX_LINE_BYTES`, which is what the receivers do now),
+    and read the warnings `spin test` prints.

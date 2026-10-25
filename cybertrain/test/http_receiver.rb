@@ -199,8 +199,12 @@ module Cybertrain
         return nil if @body_failed
 
         received = ReceivedRequest.new(verb, parts[1].to_s, headers, body)
+        # The reply is built before the request is published: a test thread
+        # woken by the append may call respond_with for the NEXT request
+        # before this one is answered.
+        response = canned_response(verb == "HEAD")
         @lock.synchronize { @requests << received }
-        sock.write(canned_response(verb == "HEAD"))
+        sock.write(response)
         nil
       end
 
