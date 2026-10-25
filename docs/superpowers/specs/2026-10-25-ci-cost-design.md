@@ -2,7 +2,7 @@
 
 - 状態: 提案（2026-10-25）。実装はまだ。
 - 対象: `.github/workflows/{ci,gate,playground-image,blog-image,pages}.yml`、`script/`、`.githooks/`、`CONTRIBUTING.md`
-- 目的: PR 1 本あたりの Actions 消費分数を 1/5 以下にし、テストの主戦場をローカル（開発機と Claude のクラウドセッション）に移す。CI が検出できる不具合の範囲は狭めない。
+- 目的: PR 1 本あたりの Actions 消費分数を約 1/4 にし（§3: 155 分 → 41〜50 分）、テストの主戦場をローカル（開発機と Claude のクラウドセッション）に移す。CI が検出できる不具合の範囲は狭めない。
 
 ## 0. 一言でいうと
 
@@ -18,7 +18,7 @@
 
 ## 1. 現状の計測
 
-リポジトリは public なので標準ランナーの課金は 0 円のはず（[GitHub Docs](https://docs.github.com/en/billing/concepts/product-billing/github-actions): public リポジトリの標準ランナーは無料）。ただし Actions の利用量メトリクスには乗り、同時実行枠（Free/Pro プランは全体 20 ジョブ、macOS は 5 ジョブ、[limits](https://docs.github.com/en/actions/reference/limits)）は消費する。private にした瞬間に macOS は 10 倍換算になる（15 分 × 10 = 150 分/回）。以下はすべて「ランナーが動いていた分数」。
+リポジトリは public なので標準ランナーの課金は 0 円のはず（[GitHub Docs](https://docs.github.com/en/billing/concepts/product-billing/github-actions): public リポジトリの標準ランナーは無料）。ただし Actions の利用量メトリクスには乗り、同時実行枠（全体で Free は 20 ジョブ、Pro は 40 ジョブ。macOS はどちらも 5 ジョブ、[limits](https://docs.github.com/en/actions/reference/limits)）は消費する。private にした瞬間に macOS は 10 倍換算になる（15 分 × 10 = 150 分/回）。以下はすべて「ランナーが動いていた分数」。
 
 ### 1.1 ワークフロー 1 回あたり（直近 60 run、2026-10-23〜25）
 
@@ -70,7 +70,19 @@ Spinel ツールチェーンのキャッシュは効いている（restore 1 秒
 
 macOS を PR から外すことには実害が 1 件ある。直近 60 run の中で CI が落ちた 1 回（10/23 18:25、PR #61）は **macOS だけ**が落ちていて、落ちたのは `test/cli_toolchain.rb` の「the build lock is a directory ... taken atomically」（ファイルシステムの挙動の差）。Ubuntu は通っていた。つまり OS 差分は出るし、出るのは CLI のツールチェーン周り（`cybertrain/cli/toolchain.rb`、プロセスやファイルロック、OpenSSL のリンク）に集中している。
 
-なので「PR では macOS を走らせない」ではなく、**変更が OS 差分の出る場所に触れたときだけ PR でも macOS を走らせる**。判定は先頭の小さなジョブ（`plan`、10 秒）が `git diff --name-only` でやり、matrix を出力する。
+なので「PR では macOS を走らせない」ではなく、**変更が OS 差分の出る場所に触れたときだけ PR でも macOS を走らせる**。判定は先頭の小さなジョブ `plan`（10 秒）が `git diff --name-only` でやり、matrix を出力する（yml は §2.2 にまとめて載せる）。見る場所:
+
+```sh
+MACOS_PATHS='^(cybertrain/cli/|cybertrain/cli\.rb|cybertrain/shell\.rb|cybertrain/server|cybertrain/dev/|cybertrain/version\.rb|exe/|test/cli_|test/server|test/dev_|\.github/workflows/ci\.yml|spin\.toml)'
+```
+
+パスの一覧は「過去に macOS だけで落ちた/落ちそうな場所」から始めて、macOS だけで落ちる事例が出るたびに足す（この文書に記録する）。`version.rb` は Spinel の release bump のため。Spinel の release bump と `cybertrain/cli/` の変更は PR の 2 割程度なので、macOS の PR 実行は 1/5 に減る。ラベル `ci:macos` は手で両 OS を回すとき用（`pull_request.types` に `labeled` を足す）。
+
+Playground と Blog の `pull_request.paths` から `cybertrain/**`、`cybertrain.rb`、`cybertrain.gemspec`、`spin.toml`、`exe/**` を外し、`push.paths` には残す。フレームワークの変更でイメージが壊れる場合はマージ後の main で分かる。それは今より遅い検出だが、(a) イメージは PR では push されないので誰にも配られない、(b) 壊れたら main の run が赤くなって次の PR で直す、(c) 直近 60 run で PR のイメージビルドが落ちた例はない、ので受け入れる。心配なら `ci:images` ラベルで opt-in できるようにしておく（macOS と同じ仕組み）。
+
+### 2.2 main での再実行をやめる
+
+マージ後の main push で CI を走らせる前に、「このコミットのツリーは、既に CI が通った PR の head と同じか」を見る。判定は §2.1 の `plan` ジョブに入れる（OS の判定と同じ場所で、同じ checkout を使う）。macOS は main では常に走らせたいので（下記）、「スキップ」は job の `if:` ではなく **matrix から ubuntu を外す**形にする。job 単位の `if:` だと matrix 全体、つまり macOS も止まってしまう。
 
 ```yaml
 jobs:
@@ -82,59 +94,64 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - id: os
+        env:
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          MACOS_PATHS: '^(cybertrain/cli/|...)'   # §2.1 の一覧
+          DOCS_ONLY: '^(site/|.*\.md$|script/|\.githooks/)' # ci.yml 先頭コメントの paths 規則（例外も同様に）
         run: |
-          both='["ubuntu-latest","macos-latest"]'
-          if [ "$GITHUB_EVENT_NAME" = push ] ||
-             echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q '"ci:macos"' ||
-             git diff --name-only "origin/$GITHUB_BASE_REF...HEAD" |
-               grep -qE '^(cybertrain/cli/|cybertrain/cli\.rb|cybertrain/shell\.rb|cybertrain/server|cybertrain/dev/|cybertrain/version\.rb|exe/|test/cli_|test/server|test/dev_|\.github/workflows/ci\.yml|spin\.toml)'; then
-            echo "os=$both" >> "$GITHUB_OUTPUT"
+          ubuntu=1; macos=0
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            macos=1
+            # マージコミット（親 2 つ）で、第 2 親（PR の head）とツリーが同じなら
+            # PR で走った ubuntu の結果がそのまま使える。
+            if [ "$(git rev-list --parents -n1 HEAD | wc -w)" = 3 ] &&
+               [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'HEAD^2^{tree}')" ]; then
+              ubuntu=0
+            fi
           else
-            echo 'os=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+            changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD")
+            # docs だけの変更なら何も走らせない（os=[]、test はスキップ、ci は通る）
+            printf '%s\n' "$changed" | grep -qvE "$DOCS_ONLY" || ubuntu=0
+            # §2.1: OS 差分が出うる場所を触った PR とラベル ci:macos
+            if printf '%s' "$PR_LABELS_JSON" | grep -q '"ci:macos"' ||
+               printf '%s\n' "$changed" | grep -qE "$MACOS_PATHS"; then
+              macos=1
+            fi
           fi
+          os=""
+          [ $ubuntu = 1 ] && os='"ubuntu-latest"'
+          [ $macos = 1 ] && os="${os:+$os,}\"macos-latest\""
+          echo "os=[$os]" >> "$GITHUB_OUTPUT"
   test:
     needs: plan
+    if: needs.plan.outputs.os != '[]'
     strategy:
       fail-fast: false
       matrix:
         os: ${{ fromJSON(needs.plan.outputs.os) }}
-```
-
-パスの一覧は「過去に macOS だけで落ちた/落ちそうな場所」から始めて、macOS だけで落ちる事例が出るたびに足す（この文書に記録する）。`version.rb` は Spinel の release bump のため。Spinel の release bump と `cybertrain/cli/` の変更は PR の 2 割程度なので、macOS の PR 実行は 1/5 に減る。ラベル `ci:macos` は手で両 OS を回すとき用（`pull_request.types` に `labeled` を足す）。
-
-Playground と Blog の `pull_request.paths` から `cybertrain/**`、`cybertrain.rb`、`cybertrain.gemspec`、`spin.toml`、`exe/**` を外し、`push.paths` には残す。フレームワークの変更でイメージが壊れる場合はマージ後の main で分かる。それは今より遅い検出だが、(a) イメージは PR では push されないので誰にも配られない、(b) 壊れたら main の run が赤くなって次の PR で直す、(c) 直近 60 run で PR のイメージビルドが落ちた例はない、ので受け入れる。心配なら `ci:images` ラベルで opt-in できるようにしておく（macOS と同じ仕組み）。
-
-### 2.2 main での再実行をやめる
-
-マージ後の main push で CI を走らせる前に、「このコミットのツリーは、既に CI が通った PR の head と同じか」を見る。
-
-```yaml
-jobs:
-  already-tested:
+    ...
+  # branch protection に要求するのはこのジョブ。needs の失敗やスキップを
+  # そのまま結果にする: plan が落ちれば test はスキップされ、スキップは
+  # 「成功」として報告されるので、test 自体を必須にすると ubuntu を
+  # 走らせずにマージできてしまう。
+  ci:
+    needs: [plan, test]
+    if: always()
     runs-on: ubuntu-latest
-    outputs:
-      skip: ${{ steps.check.outputs.skip }}
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 2 }
-      - id: check
-        run: |
-          # マージコミット（親 2 つ）で、第 2 親（PR の head）とツリーが同じなら
-          # PR で走った CI の結果がそのまま使える。
-          if [ "$(git rev-list --parents -n1 HEAD | wc -w)" = 3 ] &&
-             [ "$(git rev-parse HEAD^{tree})" = "$(git rev-parse HEAD^2^{tree})" ]; then
-            echo skip=true >> "$GITHUB_OUTPUT"
-          fi
-  test:
-    needs: already-tested
-    if: github.event_name != 'push' || needs.already-tested.outputs.skip != 'true'
+      # 式で判定し、needs の値をシェルに展開しない。
+      - if: >-
+          needs.plan.result != 'success' ||
+          (needs.test.result != 'success' &&
+           !(needs.test.result == 'skipped' && needs.plan.outputs.os == '[]'))
+        run: exit 1
 ```
 
 ツリーが同じになるのは、PR のブランチが main の先端から出ていてマージまでに main が動かなかったとき（直近の merge の大半）。main が動いていればツリーは違うので普通に走る。
 
-この判定は「PR の head で CI が通っていた」ことを前提にするので、CI ubuntu を branch protection の必須チェックにする。注意点が 1 つ: **`paths` でスキップされたワークフローは check を作らず Pending のままになり、必須チェックにすると PR がマージできなくなる**（[GitHub Docs: Handling skipped but required checks](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/troubleshooting-required-status-checks#handling-skipped-but-required-checks)）。一方 job の `if:` でスキップしたものは Success として報告される。なので CI の `on.pull_request.paths` を外し、`plan` ジョブが（上の OS 判定と同じ `git diff` で）「docs だけの変更か」を出力して `test` を `if:` で飛ばす形にする。ci.yml の先頭コメントに書かれている paths の規則は `plan` のスクリプトに移す。
+この判定は「PR の head で CI が通っていた」ことを前提にするので、上の `ci` ジョブを branch protection の必須チェックにする。注意点が 1 つ: **`paths` でスキップされたワークフローは check を作らず Pending のままになり、必須チェックにすると PR がマージできなくなる**（[GitHub Docs: Handling skipped but required checks](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/troubleshooting-required-status-checks#handling-skipped-but-required-checks)）。一方 job の `if:` でスキップしたものは Success として報告される。なので CI の `on.pull_request.paths` を外し、`plan` ジョブが（上の OS 判定と同じ `git diff` で）「docs だけの変更か」を見て、そのときは `os=[]` を出力する（`test` はスキップ、`ci` は通る）。ci.yml の先頭コメントに書かれている paths の規則は `plan` のスクリプトに移す。
 
-macOS は main でだけ走るので、この判定でスキップすると macOS が一度も走らない変更が出る。macOS ジョブはこの判定の対象外にして main では常に走らせる（1 回 15 分、1 日 6 回で 90 分、全体の 1/10）。それも惜しければ `schedule: cron "0 3 * * *"`（1 日 1 回、main の先端）に落とし、PR 側は §2.1 のパス判定に任せる。
+macOS は main でだけ走るので、この判定で macOS まで止めると一度も走らない変更が出る。上のとおり main では常に macOS を matrix に残す（1 回 15 分、1 日 6 回で 90 分、全体の 1/10）。それも惜しければ `schedule: cron "0 3 * * *"`（1 日 1 回、main の先端）に落とし、PR 側は §2.1 のパス判定に任せる。
 
 **merge queue は使えない**。「マージ前に main と合わせた状態で 1 回だけ走る」が GitHub の機能として手に入るが、merge queue は organization 所有のリポジトリ限定で、個人アカウント所有の本リポジトリでは有効にできない（[GitHub changelog, 2023-07](https://github.blog/changelog/2023-07-12-pull-request-merge-queue-is-now-generally-available/)）。organization に移す予定が出たら再検討する。
 
@@ -143,7 +160,7 @@ macOS は main でだけ走るので、この判定でスキップすると macO
 | 手 | 今 | 後 | 分 |
 | --- | --- | --- | --- |
 | E2E の 3 アプリを 1 つにする | shop（scaffold + authentication）、album（attachment）、gitshop（git 依存）をそれぞれ `cybertrain new` してフルコンパイル | shop に `post title:string cover:attachment` も載せて 1 回ビルド。gitshop は `spin run gen -- --check` と migrate だけなので今のまま | −4 |
-| `spin test` の `build/` をキャッシュする | 毎回 82 本をゼロからコンパイル（9 分） | `actions/cache` で `build/test/` を `hashFiles('cybertrain/**','test/**','spin.toml')` でキー、restore-keys で直近のものを復元 | −6（ヒット時） |
+| `spin test` の `build/` をキャッシュする | 毎回 82 本をゼロからコンパイル（9 分） | `actions/cache` で `build/test/` を `hashFiles('cybertrain.rb','cybertrain/**','test/**','spin.toml')`（テストは `require "cybertrain"` でルートの `cybertrain.rb` を読む） でキー、restore-keys で直近のものを復元 | −6（ヒット時） |
 
 `build/` キャッシュには落とし穴がある。spin の鮮度判定は mtime で（`playground/Dockerfile` のコメント参照）、checkout 直後のソースはすべて「今」の mtime になるので、復元した `build/` は古く見えて全部作り直される。対策は checkout 後に各ファイルの mtime をそのコミットの時刻に揃えること（`git log -1 --format=%ct -- FILE` を全ファイルに、または `git-restore-mtime`）。これでファイル内容が変わっていないテストは再コンパイルされない。**この手は効果を測ってから入れる**（§4 の順番）。mtime を触るのが嫌なら、代わりに Spinel のビルド出力をコンテンツハッシュで引けるか matz/spinel 側に聞くのが筋。
 
@@ -164,7 +181,7 @@ COPY cybertrain/ /src/cybertrain/
 COPY examples/blog/ /src/examples/blog/
 ```
 
-`script/gate` の「playground gem stage copies spec.files」チェックをこの Dockerfile にも広げる（gemspec にファイルを足したら両方の COPY に足す、を機械で見る）。これで Blog image は 4 分 → 1.5 分。main でしか走らなくなるので分数への効きは小さいが、ローカルで `docker build` する人の待ち時間が減る。
+`script/gate` の「playground gem stage copies spec.files」チェックをこの Dockerfile の setup 前の COPY にも広げる。spec.files は CLI のファイルだけ（gem が配るのは CLI だけなので、15 ファイル）で、`cybertrain setup` が読むのはその一部。チェックは「setup 前の COPY が spec.files を漏れなく含むか」で、フレームワーク本体のファイルは spec.files にないので対象外。gem に CLI のファイルを足したときに両 Dockerfile の COPY にも足し忘れない、を機械で見る。これで Blog image は 4 分 → 1.5 分。main でしか走らなくなるので分数への効きは小さいが、ローカルで `docker build` する人の待ち時間が減る。
 
 ### 2.5 ローカルでテストを通す
 
@@ -210,10 +227,10 @@ PR で push 2 回 + マージ 1 回、`cybertrain/**` を触る変更、main は
 | 今 | 51 × 2 = 102 | 52 | 155 | 100% |
 | §2.1（PR は ubuntu + gate） | 21.3 × 2 = 43 | 52 | 95 | 61% |
 | + §2.2（main の CI ubuntu をスキップ、macOS は残す） | 43 | 15 + 10 + 5 + 0.3 + 0.5 = 31 | 74 | 48% |
-| + §2.3（ubuntu 21 → 12 分） | 12.3 × 2 = 25 | 31（macOS も 15 → 9） | 50 | 32% |
-| + macOS を 1 日 1 回の schedule に | 25 | 16 | 41 | 26% |
+| + §2.3（ubuntu 21 → 12 分、macOS も 15 → 9） | 12.3 × 2 = 25 | 9 + 10 + 5 + 0.3 + 0.5 = 25 | 50 | 32% |
+| + macOS を 1 日 1 回の schedule に | 25 | 10 + 5 + 0.3 + 0.5 = 16 | 41 | 26% |
 
-1 日 6 マージで月 2 万分 → 約 6 千分。§2.3 の `build/` キャッシュが効かなくても 48%。
+最後の行は PR 1 本の表からは macOS が消えるが、別枚で 1 日 1 回 9 分（月 270 分）かかる。月で見ると、1 日 6 マージで月 2 万分 → 約 7 千分（§2.3 まで）、約 6 千分（schedule 化、macOS の日次分込み）。§2.3 の `build/` キャッシュが効かなくても 48%。
 
 ## 4. 実装の順番
 
