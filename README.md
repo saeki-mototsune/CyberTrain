@@ -616,7 +616,7 @@ hand-written sign-in):
   `after_authentication_url` is `safe_redirect_path`. To keep the browser
   that changed a password signed in, store the new key after saving:
   `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`.
-  The design: [docs/design.md](docs/design.md) D24.
+  The design: [docs/design.md](docs/design.md) D25.
 
 ### Add a file upload
 
