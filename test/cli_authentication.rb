@@ -97,6 +97,8 @@ test "ApplicationController gets the before_actions and the sign-in helpers afte
     assert_includes controller, "  def #{name}\n"
   end
   assert_includes controller, "redirect_to new_session_path, status: :see_other"
+  # The address recorded is the client's, behind a trusted proxy too.
+  assert_includes controller, "Session.create(user_id: user.id, ip_address: request.client_ip,"
   # The original body is intact below the inserted block.
   assert_includes controller, "  # ---- end of authentication"
   assert_includes controller, "\n  rescue_from Cybertrain::RecordNotFound, with: :record_not_found\n"
@@ -110,6 +112,8 @@ test "the controllers open their sign-in actions and the views post to the route
   sessions = read("shop/app/controllers/sessions_controller.rb")
   assert_includes sessions, "class SessionsController < ApplicationController\n  allow_unauthenticated_access only: [:new, :create]\n"
   assert_includes sessions, "def new_action\n"
+  # Sign-in attempts are rate limited, as Rails' generator does.
+  assert_includes sessions, "  rate_limit to: 10, within: 3 * 60, only: [:create],\n             redirect_to: \"/session/new\", alert: \"Try again later.\"\n"
   assert_includes sessions, "User.authenticate_by(email_address: params[:email_address].to_s, password: params[:password].to_s)"
   assert_includes sessions, "start_new_session_for(user)"
   assert_includes sessions, "terminate_session"
@@ -152,9 +156,11 @@ test "the app's test boots the app and drives the sign-in flow" do
   assert_includes support, "module AppTest\n"
   assert_includes support, "APP = AppTest.boot\n"
   assert_includes support, "def self.sign_in(client"
+  assert_includes support, "Cybertrain::RateLimit.reset_all!\n"
   spec = read("shop/test/authentication.rb")
   assert_includes spec, "require_relative \"support/app_test\""
   assert_includes spec, "client.post(\"/sign_up\""
+  assert_includes spec, "test \"POST /session past ten attempts is refused for a while\" do\n"
   assert_includes spec, "Cybertrain::Test.run!\n"
 end
 

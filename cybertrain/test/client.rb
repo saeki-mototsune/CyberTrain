@@ -257,6 +257,7 @@ module Cybertrain
         when :payload_too_large then [413, 413]
         when :unsupported_media_type then [415, 415]
         when :unprocessable_entity then [422, 422]
+        when :too_many_requests then [429, 429]
         when :error then [500, 500]
         else [0, 0]
         end

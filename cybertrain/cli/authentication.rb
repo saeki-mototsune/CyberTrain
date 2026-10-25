@@ -15,9 +15,13 @@
 # file is written once (Templates.write never overwrites) and every edit is
 # made once, so running the generator again is harmless.
 #
+# Sign-in attempts are rate limited as in Rails' generator (`rate_limit to:
+# 10, within: 3 * 60, only: [:create]`, per client address, per process;
+# docs/design.md D24), and AppTest.sign_in resets the counts so a test
+# suite never reaches the limit.
+#
 # What it leaves out, and why: password reset (needs a mailer, which
-# cybertrain does not have), rate limiting (no `rate_limit` yet) and a
-# `Current` object (templates read `@current_user` instead, an ivar
+# cybertrain does not have) and a `Current` object (templates read `@current_user` instead, an ivar
 # `resume_session` sets on every controller). What it adds that Rails'
 # does not: a sign-up page, because there is no console to create the first
 # user in (Spinel has no `eval`). Delete RegistrationsController and its
@@ -403,7 +407,7 @@ module Cybertrain
           end
 
           def start_new_session_for(user)
-            started = Session.create(user_id: user.id, ip_address: request.remote_addr,
+            started = Session.create(user_id: user.id, ip_address: request.client_ip,
                                      user_agent: request.header("user-agent").to_s)
             session[:session_id] = started.id
             @current_session = started
@@ -449,6 +453,12 @@ module Cybertrain
           # Sign in and out (cybertrain generate authentication).
           class SessionsController < ApplicationController
             allow_unauthenticated_access only: [:new, :create]
+            # Ten sign-in attempts per client address every three minutes, then
+            # back to the form until the window closes. Behind a reverse proxy on
+            # this host, set CYBERTRAIN_TRUSTED_PROXY=1 so that each visitor is
+            # counted rather than the proxy (README, "Rate limiting").
+            rate_limit to: 10, within: 3 * 60, only: [:create],
+                       redirect_to: "/session/new", alert: "Try again later."
 
             # GET /session/new
             # (named new_action: a `new` method would shadow SessionsController.new)
@@ -659,8 +669,11 @@ module Cybertrain
               user
             end
 
-            # Signs `client` in through the form, as a browser would.
+            # Signs `client` in through the form, as a browser would. Every test
+            # client has the same address, so the sign-in rate limit's counts
+            # are forgotten first: a suite signs in far more than ten times.
             def self.sign_in(client, email_address = "ann@example.com", password = "s3cr3t-s3cr3t")
+              Cybertrain::RateLimit.reset_all!
               client.get("/session/new")
               client.post("/session", { "authenticity_token" => form_token(client),
                                         "email_address" => email_address,
@@ -804,6 +817,30 @@ module Cybertrain
             assert_equal 0, Session.count
             res = AppTest.sign_in(client, "nobody@example.com", "s3cr3t-s3cr3t")
             assert_redirected_to res, "/session/new"
+          end
+
+          # SessionsController's rate_limit: ten attempts per address, then even
+          # the right password goes back to the form until the window closes.
+          test "POST /session past ten attempts is refused for a while" do
+            client = new_client
+            AppTest.user
+            Cybertrain::RateLimit.reset_all!
+            client.get("/session/new")
+            wrong_password = { "authenticity_token" => AppTest.form_token(client),
+                               "email_address" => "ann@example.com", "password" => "wrong-password" }
+            right_password = { "authenticity_token" => AppTest.form_token(client),
+                               "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
+            10.times { client.post("/session", wrong_password) }
+            res = client.post("/session", right_password)
+            assert_redirected_to res, "/session/new"
+            assert_equal 0, Session.count
+            res = client.follow_redirect!
+            assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
+            Cybertrain::RateLimit.current_time = Time.now.to_i + 3 * 60
+            res = client.post("/session", right_password)
+            Cybertrain::RateLimit.current_time = -1
+            assert_redirected_to res, "/"
+            assert_equal 1, Session.count
           end
 
           test "DELETE /session signs out and drops the Session row" do

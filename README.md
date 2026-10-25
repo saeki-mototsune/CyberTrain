@@ -516,6 +516,16 @@ Spinel cannot define methods at run time; edit it like any other model.
 Password reset is not generated (no mailers). Running the generator again
 writes nothing. The design, and why not a package: [docs/design.md](docs/design.md) D15.
 
+Sign-in is protected from password guessing the way Rails 8's generator
+does it: `SessionsController` declares `rate_limit to: 10, within: 3 * 60,
+only: [:create], redirect_to: "/session/new", alert: "Try again later."`,
+so an address that has tried ten times in three minutes goes back to the
+form until the window closes. Behind a reverse proxy on the same machine,
+set `CYBERTRAIN_TRUSTED_PROXY=1`, or every visitor shares the proxy's
+address (see [Rate limiting](#rate-limiting-and-the-client-address)).
+`AppTest.sign_in` forgets the counts first, since every test client comes
+from 127.0.0.1.
+
 In the blog, open the pages anyone may read again, as Rails' guide does, and
 hide what a visitor cannot use (`resume_session` still runs on those pages,
 so `@current_user` is set):
@@ -857,6 +867,51 @@ search or filter survives paging, and a path with its own query string
 pagination (`after: id`) for very large tables is not built yet. The scaffold's
 index view lists every record; add the three lines above to page it.
 
+## Rate limiting and the client address
+
+`rate_limit` in a controller caps how often one client may call some
+actions, counted before the action runs:
+
+```ruby
+class SessionsController < ApplicationController
+  # a 303 back to the form, with flash[:alert], once exhausted
+  rate_limit to: 10, within: 3 * 60, only: [:create],
+             redirect_to: "/session/new", alert: "Try again later."
+end
+
+class ApiKeysController < ApplicationController
+  rate_limit to: 100, within: 60, only: [:create, :update]   # 429 Too Many Requests + Retry-After
+end
+```
+
+Each declaration counts at most `to` requests per `within` seconds for each
+client address and controller (a fixed window that opens with the first
+request), then answers 429 with a `Retry-After` header, or redirects when
+given `redirect_to:`. `within:` is in seconds, `only:`/`except:` take
+Arrays, and there is no `with:` block. The counts live in the process, in a
+table of at most 10,000 addresses (when it is full, expired windows and
+then the oldest ones make room), so they are lost on restart and each
+process counts on its own. Every request to a limited action takes one lock:
+name the actions with `only:`. In a test, `Cybertrain::RateLimit.reset_all!`
+forgets every count and `Cybertrain::RateLimit.current_time = n` fixes the
+clock (`-1` restores it).
+
+The address counted is `request.client_ip` (`by: :remote_addr` counts the
+connection's peer instead). It is `request.remote_addr` unless
+`config.trusted_proxy` is on (`CYBERTRAIN_TRUSTED_PROXY=1`) **and** the
+connection comes from loopback, that is, from a reverse proxy on the same
+host (nginx, Caddy, kamal-proxy); then it is the last address in
+`X-Forwarded-For`, the one the proxy appended. Earlier entries are whatever
+the client sent and are never used, and a last entry that is empty, longer
+than 45 bytes or not printable ASCII gives `remote_addr`. Without the
+setting, every visitor behind such a proxy shares its address, and ten bad
+passwords lock everyone out; with it, a client connecting directly from
+elsewhere still cannot choose its own address. `request.loopback?` tells
+whether the connection comes from this machine (127.0.0.0/8, `::1`,
+`::ffff:127.x.x.x`), for pages only an operator on the server should
+reach; behind a proxy on the same host every request is loopback, so check
+`client_ip` too there. Design: [docs/design.md](docs/design.md) D24.
+
 ## Differences from Rails
 
 | Rails | cybertrain |
@@ -883,7 +938,7 @@ index view lists every record; add the three lines above to page it.
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
-| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape (User, Session, SessionsController, the before_action) plus a sign-up page, since there is no console to create a user in; `has_secure_password` is written out as methods on the User model over `Cybertrain::Password` (PBKDF2-HMAC-SHA256 in Ruby: bcrypt would need a C library the binary links, and `String#crypt` has no bcrypt on macOS). No password reset (no mailers), no `rate_limit` |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape (User, Session, SessionsController, the before_action) plus a sign-up page, since there is no console to create a user in; `has_secure_password` is written out as methods on the User model over `Cybertrain::Password` (PBKDF2-HMAC-SHA256 in Ruby: bcrypt would need a C library the binary links, and `String#crypt` has no bcrypt on macOS). No password reset (no mailers); sign-in attempts are limited by `rate_limit` (counted per process; see [Rate limiting](#rate-limiting-and-the-client-address)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment post cover` writes five `cover_*` columns on the owner table and the model methods (`cover_file=`, `cover_url`, ...) into the app; files live on disk under `storage/uploads/` and are served by a generated action through `send_blob`. One file per field, local disk only, no variants or direct uploads |
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |
@@ -943,6 +998,7 @@ end
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Development accepts `localhost`, `127.0.0.1`, `[::1]`; comma-separated exact hostnames extend this list (no scheme, port or wildcard). Other hosts get 403 before static files, sessions, routing or diagnostics. This is separate from the listening address; production and test do not apply this development guard |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; also `Strict` or `None` (`None` always adds `Secure`); anything else stops the server at boot |
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
+| `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` or `true` makes `request.client_ip` (what `rate_limit` counts) the last `X-Forwarded-For` address of a connection from loopback, for a reverse proxy on the same host (see [Rate limiting](#rate-limiting-and-the-client-address)) |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 
 Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
