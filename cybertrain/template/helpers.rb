@@ -12,7 +12,9 @@
 # file, so this file does not require the controller back.
 require "cybertrain/html"
 require "cybertrain/http/header_name"
+require "cybertrain/http/query"
 require "cybertrain/model"
+require "cybertrain/pagination"
 require "cybertrain/params"
 require "cybertrain/views"
 require "cybertrain/template/engine"
@@ -61,6 +63,7 @@ module Cybertrain
         when "params" then params
         when "request_path" then request_path
         when "url_for" then url_for(arg(args, 0, name))
+        when "paginate" then paginate(args)
         else
           return route(name, args) if name.end_with?("_path") || name.end_with?("_url")
 
@@ -72,6 +75,7 @@ module Cybertrain
       def call_object_method(recv, name_sym, name_str, args, kwargs)
         case recv
         when FormBuilder then recv.call_method(name_sym, args, kwargs)
+        when Cybertrain::Page then page_method(recv, name_sym, name_str)
         else super(recv, name_sym, name_str, args, kwargs)
         end
       end
@@ -403,6 +407,69 @@ module Cybertrain
         key
       end
 
+      # --- pagination ----------------------------------------------------------
+
+      # paginate @page, articles_path: the Newer / Older links of a Page
+      # (Relation#page) around "Page N", in a <nav class="pager">. Each link
+      # is the path plus the current request's query string with `page`
+      # replaced (page 1 drops it), so a search or filter survives paging; a
+      # path that carries its own query string ("/search?q=x") uses that one
+      # instead. A link is left out when there is no such page. Everything
+      # is escaped (the href by Html.escape, the query re-encoded by
+      # Query.without_key).
+      def paginate(args)
+        page = arg(args, 0, "paginate")
+        path = url_for(arg(args, 1, "paginate"))
+        case page
+        when Cybertrain::Page then pager_html(page, path)
+        else raise ArgumentError, "paginate expects a Page (from Relation#page), got #{FormBuilder.value_text(page)}"
+        end
+      end
+
+      def pager_html(page, path)
+        q = path.index("?")
+        base = q.nil? ? path : path[0, q].to_s
+        query = q.nil? ? request_query_string : path[(q + 1)..-1].to_s
+        rest = Query.without_key(query, "page")
+        buf = +"<nav class=\"pager\">"
+        if page.prev?
+          href = Html.escape(pager_href(base, rest, page.prev_number))
+          buf << "<a href=\"" << href << "\" rel=\"prev\">Newer</a> "
+        end
+        buf << "<span class=\"pager-current\">Page " << page.number.to_s << "</span>"
+        if page.next?
+          href = Html.escape(pager_href(base, rest, page.next_number))
+          buf << " <a href=\"" << href << "\" rel=\"next\">Older</a>"
+        end
+        buf << "</nav>"
+        SafeString.of(buf)
+      end
+
+      # base?rest&page=n, without page= for page 1 and without "?" when
+      # nothing is left.
+      def pager_href(base, rest, n)
+        query = rest
+        if n > 1
+          number = "page=#{n}"
+          query = rest.empty? ? number : "#{rest}&#{number}"
+        end
+        query.empty? ? base : "#{base}?#{query}"
+      end
+
+      # `@page.next?` and the other Page readers in a template.
+      def page_method(page, sym, name)
+        case sym
+        when :number then page.number
+        when :per then page.per
+        when :row_offset then page.row_offset
+        when :next? then page.next?
+        when :prev? then page.prev?
+        when :next_number then page.next_number
+        when :prev_number then page.prev_number
+        else raise ArgumentError, "undefined method '#{name}' for Page"
+        end
+      end
+
       # --- partials and content_for ----------------------------------------
 
       # render "form", post: @post  /  render partial: "form", locals: { post: @post }
@@ -548,6 +615,11 @@ module Cybertrain
       def request_path
         controller = @controller
         controller.nil? ? "" : controller.request.path
+      end
+
+      def request_query_string
+        controller = @controller
+        controller.nil? ? "" : controller.request.query_string.to_s
       end
 
       # --- arguments ----------------------------------------------------------

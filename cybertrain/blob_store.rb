@@ -51,9 +51,12 @@ module Cybertrain
 
     # True when key is exactly 32 bytes of 0-9 / a-f. A while loop over the
     # bytes, not a regexp: the key may come from a tampered database value.
-    # @param key [String]
+    # @param candidate [String]
     # @return [Boolean]
-    def self.valid_key?(key)
+    def self.valid_key?(candidate)
+      # Through a `to_s` local (NOTES rule 62): boxed in a program that also
+      # requires the openssl package (test/template_integration.rb).
+      key = candidate.to_s
       return false if key.bytesize != KEY_BYTES
 
       i = 0

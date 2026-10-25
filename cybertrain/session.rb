@@ -141,6 +141,67 @@ module Cybertrain
       delete(FLASH_KEY)
     end
 
+    ISSUED_AT_KEY = "_issued_at"
+
+    # When this session's lifetime started, in seconds since the epoch, or
+    # 0 when it has no `"_issued_at"` key (SessionStore writes it when
+    # `Config#session_absolute_max_age` is on). The cookie is signed, so the
+    # client cannot move it.
+    # @return [Integer]
+    def issued_at
+      Session.epoch_seconds(@data[ISSUED_AT_KEY])
+    end
+
+    # Restarts the absolute lifetime (`Config#session_absolute_max_age`):
+    # SessionStore stamps the time of this request when it writes the
+    # cookie, so the session lasts the full lifetime from now. Call it at
+    # sign-in (the generated `start_new_session_for` does), so that a
+    # visitor who browsed for a while before signing in is not signed out
+    # early.
+    # @return [nil]
+    # @api public
+    def restart_lifetime!
+      delete(ISSUED_AT_KEY)
+      nil
+    end
+
+    # Whether the lifetime started at least `max_age` seconds before `now`
+    # (false for a session without a start).
+    def lifetime_over?(now, max_age)
+      started = issued_at
+      started > 0 && now >= started + max_age
+    end
+
+    # Writes `now` as the start of the lifetime unless one is recorded.
+    # With `only_if_used` true, an empty session is left alone (a request
+    # without a cookie gets none for this).
+    def stamp_issued_at!(now, only_if_used)
+      return nil if @data.key?(ISSUED_AT_KEY)
+      return nil if only_if_used && @data.empty?
+
+      self[ISSUED_AT_KEY] = now
+      nil
+    end
+
+    # The Integer in an `"_issued_at"` value: 1 to 18 decimal digits (to_i
+    # raises past 2**63-1 under Spinel, NOTES rule 25), else 0.
+    def self.epoch_seconds(value)
+      return 0 if value.nil?
+
+      s = value.to_s # NOTES rule 62
+      n = s.bytesize
+      return 0 if n < 1 || n > 18
+
+      i = 0
+      while i < n
+        b = s.getbyte(i)
+        return 0 if b < 48 || b > 57
+
+        i += 1
+      end
+      s.to_i
+    end
+
     # cookie_value is "<base64 JSON payload>--<64 hex HMAC>". The signature
     # occupies a known-width suffix, so it is sliced off rather than located
     # by scanning for "--" -- urlsafe base64's own alphabet includes "-",

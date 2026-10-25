@@ -4,7 +4,7 @@
 #   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
 #   cybertrain generate attachment MODEL FIELD [--any]
-#   cybertrain generate authentication
+#   cybertrain generate authentication [--invite-only]
 #   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
 #   cybertrain setup [--force] | doctor | version | help
 #
@@ -46,11 +46,16 @@ module Cybertrain
             up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
             accepted, unless --any allows any file; the stored type is always
             the one detected from the bytes.
-        cybertrain generate authentication
+        cybertrain generate authentication [--invite-only]
             Add email-and-password sign-in to the application in the current
             directory: users and sessions tables, User and Session models,
             SessionsController and RegistrationsController with their views,
             the routes, a before_action in ApplicationController and a test.
+            --invite-only: no sign-up page. Users are created with
+            `./NAME user EMAIL` (password from stdin), and the first one
+            also at /setup, which answers only to this machine, only with the
+            one-time token the server's boot warning prints, and only while
+            no user exists (NAME_SETUP_OPEN=1 lifts the address check).
         cybertrain db migrate
             Generate, apply pending migrations, generate again
             (spin run gen; spin run db -- migrate; spin run gen).
@@ -285,13 +290,20 @@ module Cybertrain
         puts "  cybertrain server"
         puts "  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, \"Testing an app\")"
       when "authentication"
-        raise InvalidArgument, "usage: cybertrain generate authentication (no arguments)" if argv.size > 2
+        args = without_flag(argv[2, argv.size - 2], "--invite-only")
+        raise InvalidArgument, "usage: cybertrain generate authentication [--invite-only]" unless args.empty?
 
-        Authentication.generate(".")
+        invite_only = argv.include?("--invite-only")
+        Authentication.generate(".", invite_only)
         puts ""
         puts "next:"
         puts "  cybertrain db migrate"
-        puts "  cybertrain server      # then open /sign_up"
+        if invite_only
+          app = Build.app_name(".")
+          puts "  cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run #{app} -- user EMAIL)"
+        else
+          puts "  cybertrain server      # then open /sign_up"
+        end
         puts "  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, \"Testing an app\")"
       else
         raise InvalidArgument, "only `generate scaffold`, `generate attachment` and `generate authentication` are supported"

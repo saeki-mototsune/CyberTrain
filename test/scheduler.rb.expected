@@ -1,0 +1,9 @@
+ok   every registers tasks in order
+ok   every refuses a bad interval, an empty name and a taken one
+ok   the first tick only schedules; a task runs when due and not before
+ok   a raising task is logged and does not stop the others
+ok   last_tick is the time of the latest tick
+ok   start! does nothing when the worker switch is off
+ok   config: the worker switch and the intervals have their defaults, and boot checks them
+ok   start! starts the thread once; stop! asks it to end
+8 tests, 44 assertions, 0 failures

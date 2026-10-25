@@ -35,7 +35,14 @@ module Cybertrain
 
     # Constant-time byte comparison: every byte pair is examined regardless
     # of an early mismatch, so the running time does not leak how much of a
-    # signature or token was guessed correctly.
+    # signature or token was guessed correctly. (Strings of different
+    # lengths return false at once: the length is not the secret.)
+    # @example
+    #   Cybertrain::Crypto.secure_compare(params[:token].to_s, SetupController.setup_token)
+    # @param a [String]
+    # @param b [String]
+    # @return [Boolean] whether the two hold the same bytes
+    # @api public
     def self.secure_compare(a, b)
       return false if a.bytesize != b.bytesize
 
@@ -52,6 +59,11 @@ module Cybertrain
 
     # SecureRandom.hex, through Crypto.hex (SecureRandom.hex appends a
     # one-character String per digit).
+    # @example
+    #   Cybertrain::Crypto.random_token(16)   # => "3f9c..." (32 hex digits)
+    # @param bytes [Integer] how many random bytes
+    # @return [String] twice as many lowercase hex digits
+    # @api public
     def self.random_token(bytes = 32)
       Crypto.hex(SecureRandom.random_bytes(bytes))
     end

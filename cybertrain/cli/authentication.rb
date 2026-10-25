@@ -15,15 +15,35 @@
 # file is written once (Templates.write never overwrites) and every edit is
 # made once, so running the generator again is harmless.
 #
+# Sign-in attempts are rate limited as in Rails' generator (`rate_limit to:
+# 10, within: 3 * 60, only: [:create]`, per client address, per process;
+# docs/design.md D26), and AppTest.sign_in resets the counts so a test
+# suite never reaches the limit.
+#
 # What it leaves out, and why: password reset (needs a mailer, which
-# cybertrain does not have), rate limiting (no `rate_limit` yet) and a
-# `Current` object (templates read `@current_user` instead, an ivar
+# cybertrain does not have) and a `Current` object (templates read `@current_user` instead, an ivar
 # `resume_session` sets on every controller). What it adds that Rails'
 # does not: a sign-up page, because there is no console to create the first
-# user in (Spinel has no `eval`). Delete RegistrationsController and its
-# routes for an invitation-only application.
+# user in (Spinel has no `eval`).
+#
+# `--invite-only` (docs/design.md D29) writes no sign-up page. Instead:
+#
+#   app/commands/user_command.rb   `./<app> user EMAIL [PASSWORD]`, a
+#                                  Main.command that creates a user or sets
+#                                  its password (from stdin when not given),
+#                                  and the boot warning while no user exists
+#   app/controllers/setup_controller.rb, app/views/setup/new.html.erb
+#                                  /setup, the first user's form: only while
+#                                  no user exists, only with the one-time
+#                                  token the boot warning prints, only from
+#                                  loopback unless <APP>_SETUP_OPEN=1
+#
+# plus two more edits: the require and the warning into bin/<app>.rb
+# (before `exit(Cybertrain::Main.run(`), and the `setup_open` setting into
+# config/app.rb's configure block.
 require "cybertrain/cli/templates"
 require "cybertrain/cli/scaffold"
+require "cybertrain/cli/build"
 
 module Cybertrain
   module CLI
@@ -40,12 +60,18 @@ module Cybertrain
       TEST_SIGN_IN_LINES = "  AppTest.user\n  AppTest.sign_in(client)\n"
       NEW_CLIENT_LINE = "def new_client"
       TEST_CLIENT_LINE = "  client = Cybertrain::Test::Client.new(APP)"
+      # --invite-only's two edits: bin/<app>.rb gets the command file and the
+      # boot warning before this line, config/app.rb the setting after this one.
+      MAIN_RUN_LINE = "exit(Cybertrain::Main.run("
+      CONFIGURE_LINE = "Cybertrain.configure do |c|"
+      COMMAND_REQUIRE = "require_relative \"../app/commands/user_command\""
 
       # Returns the paths it created. Raises InvalidArgument, before anything
       # is written, when `root` is not an application (no config/routes.rb
       # with the draw line, no app/controllers/application_controller.rb
-      # with the class line).
-      def self.generate(root)
+      # with the class line; with `invite_only`, no bin/<app>.rb with the
+      # Main.run line or no config/app.rb with the configure line).
+      def self.generate(root, invite_only = false)
         routes_path = File.join(root, "config/routes.rb")
         raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
         raise InvalidArgument, "#{routes_path} has no `#{Scaffold::DRAW_LINE}` line" if File.read(routes_path).index(Scaffold::DRAW_LINE).nil?
@@ -54,6 +80,20 @@ module Cybertrain
         raise InvalidArgument, "#{controller_path} not found: run this inside a cybertrain app" unless File.exist?(controller_path)
         raise InvalidArgument, "#{controller_path} has no `#{CLASS_LINE}` line" if File.read(controller_path).index(CLASS_LINE).nil?
 
+        app = ""
+        if invite_only
+          app = Build.app_name(root)
+          raise InvalidArgument, "#{root}/spin.toml has no [package] name: run this inside a cybertrain app" if app == ""
+
+          bin_path = File.join(root, "bin/#{app}.rb")
+          raise InvalidArgument, "#{bin_path} not found: run this inside a cybertrain app" unless File.exist?(bin_path)
+          raise InvalidArgument, "#{bin_path} has no line starting with `#{MAIN_RUN_LINE}`" if line_start(File.read(bin_path), MAIN_RUN_LINE) < 0
+
+          config_path = File.join(root, "config/app.rb")
+          raise InvalidArgument, "#{config_path} not found: run this inside a cybertrain app" unless File.exist?(config_path)
+          raise InvalidArgument, "#{config_path} has no `#{CONFIGURE_LINE}` line" if File.read(config_path).index(CONFIGURE_LINE).nil?
+        end
+
         created = Array.new(0) { "" }
         users = migration_path(root, "users")
         record(created, root, users, users_migration)
@@ -61,16 +101,29 @@ module Cybertrain
         record(created, root, "app/models/user.rb", user_model)
         record(created, root, "app/models/session.rb", session_model)
         record(created, root, "app/controllers/sessions_controller.rb", sessions_controller)
-        record(created, root, "app/controllers/registrations_controller.rb", registrations_controller)
-        record(created, root, "app/views/sessions/new.html.erb", sessions_new_view)
+        if invite_only
+          record(created, root, "app/controllers/setup_controller.rb", setup_controller(app))
+          record(created, root, "app/commands/user_command.rb", user_command(app))
+        else
+          record(created, root, "app/controllers/registrations_controller.rb", registrations_controller)
+        end
+        record(created, root, "app/views/sessions/new.html.erb", sessions_new_view(invite_only))
         record(created, root, "app/views/sessions/_nav.html.erb", nav_partial)
-        record(created, root, "app/views/registrations/new.html.erb", registrations_new_view)
+        if invite_only
+          record(created, root, "app/views/setup/new.html.erb", setup_new_view)
+        else
+          record(created, root, "app/views/registrations/new.html.erb", registrations_new_view)
+        end
         record(created, root, "test/support/app_test.rb", app_test_support)
-        record(created, root, "test/authentication.rb", authentication_test)
+        record(created, root, "test/authentication.rb", invite_only ? invite_only_test(app) : authentication_test)
         add_to_application_controller(controller_path)
-        add_routes(routes_path)
+        add_routes(routes_path, invite_only)
         add_nav_to_layout(File.join(root, "app/views/layouts/application.html.erb"))
         add_sign_in_to_attachment_tests(root)
+        if invite_only
+          add_command_to_bin(File.join(root, "bin/#{app}.rb"), app)
+          add_setting_to_config(File.join(root, "config/app.rb"), app)
+        end
         created
       end
 
@@ -104,17 +157,55 @@ module Cybertrain
         true
       end
 
-      # Inserts the sign-in and sign-up routes after the draw line, once.
-      def self.add_routes(path)
+      # Inserts the sign-in and sign-up (or setup) routes after the draw
+      # line, once.
+      def self.add_routes(path, invite_only = false)
         source = File.read(path)
         unless source.index(ROUTE_MARK).nil?
           puts "identical route #{ROUTE_MARK}"
           return false
         end
 
-        File.write(path, insert_after_line(source, Scaffold::DRAW_LINE, indent(routes_block)))
-        puts "route #{ROUTE_MARK}, get/post /sign_up"
+        File.write(path, insert_after_line(source, Scaffold::DRAW_LINE, indent(routes_block(invite_only))))
+        puts "route #{ROUTE_MARK}, get/post #{invite_only ? "/setup" : "/sign_up"}"
         true
+      end
+
+      # --invite-only: requires app/commands/user_command.rb (which registers
+      # the `user` command) and runs its boot warning, just before the
+      # Main.run line of bin/<app>.rb, once.
+      def self.add_command_to_bin(path, app)
+        name = "bin/#{app}.rb"
+        source = File.read(path)
+        unless source.index(COMMAND_REQUIRE).nil?
+          puts "identical #{name} (user command already required)"
+          return false
+        end
+
+        File.write(path, insert_before_line(source, MAIN_RUN_LINE, bin_block(app)))
+        puts "insert #{name} (./#{app} user, the first-run warning)"
+        true
+      end
+
+      # --invite-only: declares the setup_open setting at the top of
+      # config/app.rb's configure block, once.
+      def self.add_setting_to_config(path, app)
+        source = File.read(path)
+        unless source.index("setting_bool :setup_open").nil?
+          puts "identical config/app.rb (setup_open already declared)"
+          return false
+        end
+
+        File.write(path, insert_after_line(source, CONFIGURE_LINE, indent(config_block(app))))
+        env = setup_env(app)
+        puts "insert config/app.rb (#{env})"
+        true
+      end
+
+      # The environment variable that opens /setup to any address:
+      # SHOP_SETUP_OPEN for the app shop.
+      def self.setup_env(app)
+        "#{app.upcase}_SETUP_OPEN"
       end
 
       # Renders the nav partial at the top of <main> in the layout, once;
@@ -192,6 +283,27 @@ module Cybertrain
         updated
       end
 
+      # Where the first line that starts with `marker` starts, or -1.
+      def self.line_start(source, marker)
+        return 0 if source.start_with?(marker)
+
+        found = source.index("\n#{marker}")
+        found.nil? ? -1 : found + 1
+      end
+
+      # `source` with `block` inserted right before the first line that
+      # starts with `marker`.
+      def self.insert_before_line(source, marker, block)
+        start = line_start(source, marker)
+        raise InvalidArgument, "no line starting with `#{marker}` to insert before" if start < 0
+
+        updated = +""
+        updated << source[0, start].to_s
+        updated << block
+        updated << source[start, source.size - start].to_s
+        updated
+      end
+
       # ---- the files ----------------------------------------------------
 
       def self.users_migration
@@ -257,12 +369,12 @@ module Cybertrain
             end
 
             # The user with this address and password, or nil. A missing address
-            # costs a hash too, so the response time does not say which of the
-            # two was wrong.
+            # costs a verification too (against Cybertrain::Password.dummy_digest),
+            # so the response time does not say which of the two was wrong.
             def self.authenticate_by(email_address:, password:)
               user = User.find_by(email_address: User.normalize_email_address(email_address))
               if user.nil?
-                Cybertrain::Password.hash(password.to_s.empty? ? "-" : password.to_s)
+                Cybertrain::Password.verify_serialized(password.to_s, Cybertrain::Password.dummy_digest)
                 return nil
               end
               user.authenticate(password) ? user : nil
@@ -296,9 +408,11 @@ module Cybertrain
             # Whether `plain` is this user's password. A digest hashed with fewer
             # iterations than Cybertrain::Password.iterations is rehashed and
             # saved on the way, so raising the cost in config/app.rb upgrades
-            # everyone as they sign in.
+            # everyone as they sign in (and, the digest being new, signs their
+            # other browsers out once). verify_serialized runs one verification
+            # at a time, so a burst of sign-ins does not hold every worker.
             def authenticate(plain)
-              return false unless Cybertrain::Password.verify?(plain, password_digest)
+              return false unless Cybertrain::Password.verify_serialized(plain.to_s, password_digest)
 
               if Cybertrain::Password.needs_rehash?(password_digest)
                 self.password_digest = Cybertrain::Password.hash(plain.to_s)
@@ -371,7 +485,10 @@ module Cybertrain
 
           # Loads the Session row the cookie names (and its user); a stale or
           # expired id is dropped. Cookie Max-Age alone cannot stop replay:
-          # authentication expires session_max_age seconds after sign-in.
+          # authentication expires session_absolute_max_age seconds after
+          # sign-in (SessionStore enforces the same on the cookie). A cookie
+          # whose password key no longer matches (the password changed since
+          # it signed in) ends its Session row.
           def resume_session
             @current_session = nil
             @current_user = nil
@@ -384,12 +501,19 @@ module Cybertrain
               return nil
             end
             created_at = found.created_at
-            if created_at.nil? || created_at.to_i + Cybertrain.config.session_max_age <= Time.now.to_i
+            lifetime = Cybertrain.config.session_absolute_max_age
+            if created_at.nil? || (lifetime > 0 && created_at.to_i + lifetime <= Time.now.to_i)
+              session.delete(:session_id)
+              return nil
+            end
+            user = found.user
+            if user.nil? || !Cybertrain::Password.session_key_matches?(session[:password_key], user.password_digest)
+              found.destroy
               session.delete(:session_id)
               return nil
             end
             @current_session = found
-            @current_user = found.user
+            @current_user = user
             nil
           end
 
@@ -402,10 +526,16 @@ module Cybertrain
             nil
           end
 
+          # Also stores the password key resume_session compares, and restarts
+          # the cookie's absolute lifetime. After a password change, call
+          # `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`
+          # to keep the browser that changed it signed in.
           def start_new_session_for(user)
-            started = Session.create(user_id: user.id, ip_address: request.remote_addr,
+            started = Session.create(user_id: user.id, ip_address: request.client_ip,
                                      user_agent: request.header("user-agent").to_s)
+            session.restart_lifetime!
             session[:session_id] = started.id
+            session[:password_key] = Cybertrain::Password.session_key(user.password_digest)
             @current_session = started
             @current_user = user
             nil
@@ -422,22 +552,10 @@ module Cybertrain
             nil
           end
 
-          # Where to go after signing in: the page that asked for it, or /.
+          # Where to go after signing in: the page that asked for it, if it is a
+          # local path (Cybertrain::Controller#safe_redirect_path), or /.
           def after_authentication_url
-            url = session[:return_to_after_authenticating].to_s
-            session.delete(:return_to_after_authenticating)
-            # Browsers treat // as a host, backslashes as slashes, and strip
-            # some control characters. Only return an ordinary local path.
-            return "/" unless url.start_with?("/") && !url.start_with?("//")
-
-            i = 0
-            while i < url.bytesize
-              byte = url.getbyte(i).to_i
-              return "/" if byte <= 32 || byte == 92 || byte == 127
-
-              i += 1
-            end
-            url
+            safe_redirect_path(session.delete(:return_to_after_authenticating), "/")
           end
           # ---- end of authentication ------------------------------------------
 
@@ -449,6 +567,12 @@ module Cybertrain
           # Sign in and out (cybertrain generate authentication).
           class SessionsController < ApplicationController
             allow_unauthenticated_access only: [:new, :create]
+            # Ten sign-in attempts per client address every three minutes, then
+            # back to the form until the window closes. Behind a reverse proxy on
+            # this host, set CYBERTRAIN_TRUSTED_PROXY=1 so that each visitor is
+            # counted rather than the proxy (README, "Rate limiting").
+            rate_limit to: 10, within: 3 * 60, only: [:create],
+                       redirect_to: "/session/new", alert: "Try again later."
 
             # GET /session/new
             # (named new_action: a `new` method would shadow SessionsController.new)
@@ -509,8 +633,9 @@ module Cybertrain
         RUBY
       end
 
-      def self.sessions_new_view
-        <<~ERB
+      # With --invite-only there is no sign-up page to link to.
+      def self.sessions_new_view(invite_only = false)
+        view = <<~ERB
           <h1>Sign in</h1>
 
           <%= form_with(url: session_path) do |f| %>
@@ -528,9 +653,10 @@ module Cybertrain
               <%= f.submit "Sign in" %>
             </div>
           <% end %>
-
-          <p><%= link_to "Sign up", sign_up_path %></p>
         ERB
+        return view if invite_only
+
+        "#{view}\n<p><%= link_to \"Sign up\", sign_up_path %></p>\n"
       end
 
       def self.nav_partial
@@ -587,8 +713,270 @@ module Cybertrain
         ERB
       end
 
+      # ---- --invite-only ------------------------------------------------
+
+      # The first user's page (--invite-only).
+      def self.setup_controller(app)
+        env = setup_env(app)
+        <<~RUBY
+          # First-run setup (cybertrain generate authentication --invite-only):
+          # the form that creates the first user and signs them in. It answers
+          # only while no user exists, only with the one-time token the server
+          # prints at boot (/setup?token=..., carried back by the form in a
+          # hidden field), and only to a connection from this machine
+          # (request.loopback?, the socket's peer address) that did not come
+          # through a proxy (no X-Forwarded-For header). #{env}=1
+          # (config/app.rb) lifts the address check (never the token) while no
+          # user exists, for a first run behind a proxy on another host; unset
+          # it again afterwards. Anyone else gets a 404, as if there were no
+          # such page. Later users are created with `./#{app} user EMAIL`
+          # (app/commands/user_command.rb).
+          class SetupController < ApplicationController
+            allow_unauthenticated_access only: [:new, :create]
+            before_action :require_first_run
+
+            # The one-time token: 32 random hex characters, made when the
+            # program starts and the same until it exits (a restart makes a new
+            # one). The address check alone is not enough: a proxy on this host
+            # that adds no X-Forwarded-For makes every client a loopback one.
+            # Printed only by the boot [WARN] (UserCommand.warn_if_no_user) and
+            # rendered only into the form's hidden field. A constant, which
+            # Spinel keeps alive (a class variable it would not).
+            SETUP_TOKEN = Cybertrain::Crypto.random_token(16)
+
+            # The token /setup asks for: the boot warning prints it, the app's
+            # test passes it.
+            def self.setup_token
+              SETUP_TOKEN
+            end
+
+            # GET /setup
+            def new_action
+              @user = User.new
+            end
+
+            # POST /setup
+            def create
+              fields = params.require(:user)
+              @user = User.new(fields.permit(:email_address))
+              @user.password = fields[:password].to_s
+              @user.password_confirmation = fields[:password_confirmation].to_s
+              # The no-user check and the insert are one write transaction
+              # (BEGIN IMMEDIATE takes the lock first), so two requests that
+              # both passed require_first_run cannot both create "the first"
+              # account: the second finds a user and saves nothing.
+              saved = false
+              User.transaction(immediate: true) do |c|
+                saved = @user.save unless User.all.exists?
+              end
+              if saved
+                start_new_session_for(@user)
+                flash[:notice] = "Welcome! Your account has been created."
+                redirect_to "/", status: :see_other
+              else
+                render :new, status: :unprocessable_entity
+              end
+            end
+
+            private
+
+            # A missing or wrong token is the same 404 as the other refusals;
+            # the comparison takes as long however much of it matched.
+            def require_first_run
+              @setup_token = params[:token].to_s
+              head :not_found unless setup_open? && Cybertrain::Crypto.secure_compare(@setup_token, SetupController.setup_token)
+              nil
+            end
+
+            # A header never opens the page; it can only close it: behind a proxy
+            # on this host every request is a loopback one, and the proxy adds
+            # X-Forwarded-For.
+            def setup_open?
+              return false if User.all.exists?
+              return true if Cybertrain.config.bool_setting(:setup_open)
+
+              request.loopback? && request.header("x-forwarded-for").nil?
+            end
+          end
+        RUBY
+      end
+
+      def self.setup_new_view
+        <<~ERB
+          <h1>Set up</h1>
+
+          <p>Create the first account. This page is only shown on this machine,
+          with the link the server printed when it started, and only until an
+          account exists.</p>
+
+          <%= form_with(model: @user, url: setup_path) do |f| %>
+            <input type="hidden" name="token" value="<%= @setup_token %>">
+
+            <% if @user.errors.any? %>
+              <div id="error_explanation">
+                <h2><%= pluralize(@user.errors.count, "error") %> prohibited this account from being created:</h2>
+                <ul>
+                  <% @user.errors.full_messages.each do |message| %>
+                    <li><%= message %></li>
+                  <% end %>
+                </ul>
+              </div>
+            <% end %>
+
+            <div class="field">
+              <%= f.label :email_address %>
+              <%= f.email_field :email_address, autocomplete: "username", autofocus: true %>
+            </div>
+
+            <div class="field">
+              <%= f.label :password %>
+              <%= f.password_field :password, autocomplete: "new-password" %>
+            </div>
+
+            <div class="field">
+              <%= f.label :password_confirmation %>
+              <%= f.password_field :password_confirmation, autocomplete: "new-password" %>
+            </div>
+
+            <div class="actions">
+              <%= f.submit "Create account" %>
+            </div>
+          <% end %>
+        ERB
+      end
+
+      # app/commands/user_command.rb (--invite-only): the `user` command and
+      # the boot warning, required from bin/<app>.rb (and from the app's
+      # test, which runs the command through Main.run).
+      def self.user_command(app)
+        <<~RUBY
+          # `./#{app} user EMAIL [PASSWORD]` (cybertrain generate authentication
+          # --invite-only): creates the user with this address, or sets the
+          # password of the one that has it (which signs that user's browsers
+          # out: their sessions' password key no longer matches). Without
+          # PASSWORD it is read from standard input, one line, so that it stays
+          # out of `ps` and the shell history:
+          #
+          #   ./#{app} user ann@example.com          # type it, then Enter (it is echoed)
+          #   printf '%s' "$PASSWORD" | ./#{app} user ann@example.com
+          #
+          # Registered with Cybertrain::Main.command, which connects the database
+          # first (README, "Application commands"). Required by bin/#{app}.rb,
+          # which also calls UserCommand.warn_if_no_user before serving.
+          # Written by the generator; it is yours to change.
+          module UserCommand
+            USAGE = "usage: ./#{app} user EMAIL [PASSWORD] (without PASSWORD, it is read from standard input)"
+
+            # The exit status: 0 when the user was created or updated, 1 for bad
+            # arguments, an empty password or a record that does not validate.
+            def self.run(argv)
+              if argv.empty? || argv.size > 2 || argv[0].start_with?("-")
+                puts USAGE
+                return 1
+              end
+              password = argv.size == 2 ? argv[1] : UserCommand.read_password
+              if password.empty?
+                puts "error: the password is empty"
+                return 1
+              end
+
+              address = User.normalize_email_address(argv[0])
+              found = User.find_by(email_address: address)
+              created = found.nil?
+              user = found.nil? ? User.new(email_address: address) : found
+              user.password = password
+              unless user.save
+                user.errors.full_messages.each { |message| puts "error: \#{message}" }
+                return 1
+              end
+              puts created ? "created \#{address}" : "updated \#{address}"
+              0
+            end
+
+            # One line of standard input, with a prompt when it is a terminal.
+            def self.read_password
+              if STDIN.tty?
+                STDOUT.print("Password: ")
+                STDOUT.flush
+              end
+              line = STDIN.gets
+              UserCommand.password_from(line.nil? ? "" : line)
+            end
+
+            # The text without one trailing newline ("\\n" or "\\r\\n"), which a
+            # terminal or `echo` adds. Anything else, spaces too, is the password.
+            def self.password_from(text)
+              s = text.to_s
+              s = s[0, s.size - 1].to_s if s.end_with?("\\n")
+              s = s[0, s.size - 1].to_s if s.end_with?("\\r")
+              s
+            end
+
+            # Called by bin/#{app}.rb before the server boots: a [WARN] while no
+            # user exists, which is while /setup is open, with the page's
+            # one-time token (SetupController.setup_token, this process's own).
+            # Says nothing when the users table is not there yet (`./#{app}
+            # migrate` comes first).
+            def self.warn_if_no_user
+              Cybertrain.logger.warn("no user exists yet: run ./#{app} user EMAIL, or open /setup?token=\#{SetupController.setup_token} from this machine") if UserCommand.no_user?
+              nil
+            end
+
+            # Connects for the question only: Application#boot connects the
+            # server's own pool afterwards.
+            def self.no_user?
+              begin
+                Cybertrain::DB.connect(Cybertrain.config.database_path, size: 1)
+                !User.all.exists?
+              rescue Cybertrain::DB::Error
+                false
+              ensure
+                Cybertrain::DB.disconnect
+              end
+            end
+          end
+
+          Cybertrain::Main.command("user", "EMAIL [PASSWORD]: create a user or set its password") do |argv|
+            UserCommand.run(argv)
+          end
+        RUBY
+      end
+
+      # Inserted before the Main.run line of bin/<app>.rb (--invite-only).
+      def self.bin_block(app)
+        <<~RUBY
+          # `./#{app} user EMAIL [PASSWORD]`, and a [WARN] at boot while no user
+          # exists (cybertrain generate authentication --invite-only).
+          #{COMMAND_REQUIRE}
+          UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)
+
+        RUBY
+      end
+
+      # Inserted (indented) after the configure line of config/app.rb
+      # (--invite-only).
+      def self.config_block(app)
+        env = setup_env(app)
+        <<~RUBY
+          # /setup (the first user's page) answers only to this machine, with the
+          # token the boot warning prints, while no user exists; #{env}=1
+          # opens it to any address (the token is still needed), for a first
+          # run behind a proxy on another host. Unset it once the user exists.
+          c.setting_bool :setup_open, env: "#{env}", default: false
+
+        RUBY
+      end
+
       # Inserted (indented) after the draw line of config/routes.rb.
-      def self.routes_block
+      def self.routes_block(invite_only = false)
+        if invite_only
+          return <<~RUBY
+            resource :session, only: [:new, :create, :destroy]
+            get "/setup", to: "setup#new", as: "setup"
+            post "/setup", to: "setup#create"
+          RUBY
+        end
+
         <<~RUBY
           resource :session, only: [:new, :create, :destroy]
           get "/sign_up", to: "registrations#new", as: "sign_up"
@@ -659,8 +1047,11 @@ module Cybertrain
               user
             end
 
-            # Signs `client` in through the form, as a browser would.
+            # Signs `client` in through the form, as a browser would. Every test
+            # client has the same address, so the sign-in rate limit's counts
+            # are forgotten first: a suite signs in far more than ten times.
             def self.sign_in(client, email_address = "ann@example.com", password = "s3cr3t-s3cr3t")
+              Cybertrain::RateLimit.reset_all!
               client.get("/session/new")
               client.post("/session", { "authenticity_token" => form_token(client),
                                         "email_address" => email_address,
@@ -672,21 +1063,54 @@ module Cybertrain
         RUBY
       end
 
+      # test/authentication.rb: the head (requires, new_client, the sign-in
+      # form), the sign-up or first-run tests, then the sign-in and sign-out
+      # tests both variants share.
+      # The pieces go through locals and `<<`: an interpolation of three
+      # method calls could free one result while building the next under
+      # Spinel (spikes/NOTES.md rule 65), and the CLI compiles there too.
       def self.authentication_test
+        head = authentication_test_head(false)
+        middle = sign_up_tests
+        join_three(head, middle, authentication_test_tail)
+      end
+
+      # --invite-only's test/authentication.rb.
+      def self.invite_only_test(app)
+        head = authentication_test_head(true)
+        middle = setup_tests(app)
+        join_three(head, middle, authentication_test_tail)
+      end
+
+      def self.join_three(first, second, third)
+        out = +""
+        out << first << second << third
+        out
+      end
+
+      def self.authentication_test_head(invite_only)
+        what = invite_only ? "First-run setup, the user command, sign-in" : "Sign-up, sign-in"
+        command = invite_only ? "require_relative \"../app/commands/user_command\"\n" : ""
+        open_actions = invite_only ? "sign-in and setup" : "sign-in and sign-up"
+        link = if invite_only
+                 'refute res.body.include?("/sign_up")'
+               else
+                 'assert_includes res.body, "<a href=\"/sign_up\">Sign up</a>"'
+               end
         <<~RUBY
-          # Sign-up, sign-in and sign-out through the full stack (session cookie,
+          # #{what} and sign-out through the full stack (session cookie,
           # CSRF, method override, router). Run with `cybertrain spin test`; its
           # snapshot comes from the compiled binary (the database is FFI):
           # `script/regen-snapshot`-style, see README "Testing an app".
           require_relative "support/app_test"
-
+          #{command}
           def new_client
             Session.all.delete_all
             User.all.delete_all
             Cybertrain::Test::Client.new(APP)
           end
 
-          # Every action but sign-in and sign-up needs a user: DELETE /session is
+          # Every action but #{open_actions} needs a user: DELETE /session is
           # the one such action this test can rely on before the app has pages
           # of its own (a `root` route, a scaffold).
           test "a visitor is sent to the sign-in page" do
@@ -705,9 +1129,188 @@ module Cybertrain
             assert_includes res.body, "<form action=\\"/session\\" method=\\"post\\">"
             assert_includes res.body, "name=\\"email_address\\""
             assert_includes res.body, "type=\\"password\\" name=\\"password\\""
-            assert_includes res.body, "<a href=\\"/sign_up\\">Sign up</a>"
+            #{link}
           end
 
+        RUBY
+      end
+
+      # --invite-only: /setup and `./<app> user` in place of the sign-up tests.
+      def self.setup_tests(app)
+        env = setup_env(app)
+        <<~RUBY
+          # The form /setup posts, filled in, with the page's one-time token
+          # in its hidden field.
+          def setup_form(authenticity_token, password, confirmation)
+            { "authenticity_token" => authenticity_token,
+              "token" => SetupController.setup_token,
+              "user[email_address]" => " Ann@Example.com ",
+              "user[password]" => password,
+              "user[password_confirmation]" => confirmation }
+          end
+
+          # /setup with this process's token, the link the boot warning prints.
+          def setup_link
+            "/setup?token=\#{SetupController.setup_token}"
+          end
+
+          # `./#{app} ARGS...` in-process. Main.run connects a pool of one for
+          # the command and disconnects it, so the tests' pool is connected
+          # again afterwards (the database file is the same).
+          def run_command(argv)
+            status = Cybertrain::Main.run("#{app}", argv, router: Gen::Routes.build(Cybertrain::Router.new),
+                                                     url_resolver: Gen::Routes.url_resolver,
+                                                     views: Cybertrain::Application.no_views)
+            reconnect
+            status
+          end
+
+          def reconnect
+            Cybertrain::DB.connect(Cybertrain.config.database_path, size: Cybertrain.config.pool_size)
+            nil
+          end
+
+          test "GET /setup with the token shows the form to this machine while no user exists" do
+            client = new_client
+            res = client.get(setup_link)
+            assert_response res, :ok
+            assert_includes res.body, "<h1>Set up</h1>"
+            assert_includes res.body, "<form action=\\"/setup\\" method=\\"post\\">"
+            assert_includes res.body, "<input type=\\"hidden\\" name=\\"token\\" value=\\"\#{SetupController.setup_token}\\">"
+            assert_includes res.body, "name=\\"user[password_confirmation]\\""
+          end
+
+          test "/setup without the token, or with a wrong one, is a 404" do
+            client = new_client
+            assert_equal 32, SetupController.setup_token.size
+            res = client.get("/setup")
+            assert_response res, :not_found
+            res = client.get("/setup?token=")
+            assert_response res, :not_found
+            res = client.get("/setup?token=0123456789abcdef0123456789abcdef")
+            assert_response res, :not_found
+            res = client.get("/setup?token=\#{SetupController.setup_token}x")
+            assert_response res, :not_found
+            refute res.body.include?(SetupController.setup_token)
+          end
+
+          test "/setup is a 404 to another machine, through a proxy, and once a user exists" do
+            client = new_client
+            client.peer_address = "203.0.113.7"
+            res = client.get(setup_link)
+            assert_response res, :not_found
+            client.peer_address = "127.0.0.1"
+            res = client.get(setup_link, { "x-forwarded-for" => "203.0.113.7" })
+            assert_response res, :not_found
+            res = client.get(setup_link)
+            assert_response res, :ok
+            AppTest.user
+            res = client.get(setup_link)
+            assert_response res, :not_found
+          end
+
+          test "POST /setup from another machine, or without the token, creates nothing" do
+            client = new_client
+            client.get(setup_link)
+            authenticity_token = AppTest.form_token(client)
+            client.peer_address = "203.0.113.7"
+            res = client.post("/setup", setup_form(authenticity_token, "s3cr3t-s3cr3t", "s3cr3t-s3cr3t"))
+            assert_response res, :not_found
+            client.peer_address = "127.0.0.1"
+            form = setup_form(authenticity_token, "s3cr3t-s3cr3t", "s3cr3t-s3cr3t")
+            form["token"] = "0123456789abcdef0123456789abcdef"
+            res = client.post("/setup", form)
+            assert_response res, :not_found
+            form.delete("token")
+            res = client.post("/setup", form)
+            assert_response res, :not_found
+            assert_equal 0, User.count
+          end
+
+          test "#{env} opens /setup to any address with the token until a user exists" do
+            client = new_client
+            client.peer_address = "203.0.113.7"
+            Cybertrain.config.set_bool_setting(:setup_open, true)
+            res = client.get(setup_link)
+            without = client.get("/setup")
+            Cybertrain.config.set_bool_setting(:setup_open, false)
+            assert_response res, :ok
+            assert_response without, :not_found
+            AppTest.user
+            Cybertrain.config.set_bool_setting(:setup_open, true)
+            res = client.get(setup_link)
+            Cybertrain.config.set_bool_setting(:setup_open, false)
+            assert_response res, :not_found
+          end
+
+          test "POST /setup with the token creates the first user and signs them in" do
+            client = new_client
+            client.get(setup_link)
+            res = client.post("/setup", setup_form(AppTest.form_token(client), "s3cr3t-s3cr3t", "s3cr3t-s3cr3t"))
+            assert_redirected_to res, "/"
+            assert_equal 1, User.count
+            assert_equal "ann@example.com", User.first.email_address
+            assert_equal 1, Session.count
+            res = client.get("/session/new")
+            assert_includes res.body, "<span>ann@example.com</span>"
+            res = client.get(setup_link)
+            assert_response res, :not_found
+          end
+
+          test "POST /setup with a short or mismatched password re-renders the form" do
+            client = new_client
+            client.get(setup_link)
+            res = client.post("/setup", setup_form(AppTest.form_token(client), "short", "other"))
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, "<li>Password is too short (minimum is 8 characters)</li>"
+            assert_includes res.body, "<li>Password confirmation doesn&#39;t match Password</li>"
+            assert_includes res.body, "<input type=\\"hidden\\" name=\\"token\\" value=\\"\#{SetupController.setup_token}\\">"
+            assert_equal 0, User.count
+          end
+
+          test "./#{app} user creates a user, then sets its password" do
+            new_client
+            assert_equal 0, run_command(["user", "Bob@Example.com", "s3cr3t-s3cr3t"])
+            assert_equal 1, User.count
+            assert_equal "bob@example.com", User.first.email_address
+            assert User.first.authenticate("s3cr3t-s3cr3t")
+            assert_equal 0, run_command(["user", "bob@example.com", "another-s3cr3t"])
+            assert_equal 1, User.count
+            assert User.first.authenticate("another-s3cr3t")
+            refute User.first.authenticate("s3cr3t-s3cr3t")
+          end
+
+          test "./#{app} user refuses bad arguments and an empty or short password" do
+            new_client
+            assert_equal 1, run_command(["user"])
+            assert_equal 1, run_command(["user", "ann@example.com", "s3cr3t-s3cr3t", "extra"])
+            assert_equal 1, run_command(["user", "--help"])
+            assert_equal 1, run_command(["user", "ann@example.com", ""])
+            assert_equal 1, run_command(["user", "ann@example.com", "short"])
+            assert_equal 0, User.count
+          end
+
+          test "a password read from standard input loses one trailing newline" do
+            assert_equal "s3cr3t s3cr3t", UserCommand.password_from("s3cr3t s3cr3t\\n")
+            assert_equal "s3cr3t", UserCommand.password_from("s3cr3t\\r\\n")
+            assert_equal "s3cr3t\\n", UserCommand.password_from("s3cr3t\\n\\n")
+            assert_equal "", UserCommand.password_from("")
+          end
+
+          test "the boot warning is due while no user exists" do
+            new_client
+            assert UserCommand.no_user?
+            reconnect
+            AppTest.user
+            refute UserCommand.no_user?
+            reconnect
+          end
+
+        RUBY
+      end
+
+      def self.sign_up_tests
+        <<~RUBY
           test "POST /sign_up creates the user and signs them in" do
             client = new_client
             client.get("/sign_up")
@@ -756,6 +1359,11 @@ module Cybertrain
             assert_equal 1, User.count
           end
 
+        RUBY
+      end
+
+      def self.authentication_test_tail
+        <<~RUBY
           test "POST /session signs in with the right password" do
             client = new_client
             AppTest.user
@@ -771,7 +1379,7 @@ module Cybertrain
             ctx.session = Cybertrain::Session.new
             controller = ApplicationController.new(ctx)
             assert_equal "/", controller.after_authentication_url
-            ["/", "/products", "/products/1?tab=details#title", "/products//1", "/caf%C3%A9", "/記事"].each do |path|
+            ["/", "/products", "/products/1?tab=details#title", "/products//1", "/caf%C3%A9"].each do |path|
               controller.session[:return_to_after_authenticating] = path
               assert_equal path, controller.after_authentication_url
               refute controller.session.key?(:return_to_after_authenticating)
@@ -784,7 +1392,7 @@ module Cybertrain
             ctx.session = Cybertrain::Session.new
             controller = ApplicationController.new(ctx)
             unsafe = ["", "products", "https://evil.example/", "//evil.example/", "///evil.example/",
-                      "/\\\\evil.example/", "/products\\\\evil", " //evil.example/"]
+                      "/\\\\evil.example/", "/products\\\\evil", " //evil.example/", "/記事", "/" + "a" * 2048]
             (0..32).each { |byte| unsafe << "/\#{Cybertrain::Test.binary([byte])}/evil.example/" }
             unsafe << "/\#{Cybertrain::Test.binary([127])}/evil.example/"
             unsafe.each do |path|
@@ -804,6 +1412,30 @@ module Cybertrain
             assert_equal 0, Session.count
             res = AppTest.sign_in(client, "nobody@example.com", "s3cr3t-s3cr3t")
             assert_redirected_to res, "/session/new"
+          end
+
+          # SessionsController's rate_limit: ten attempts per address, then even
+          # the right password goes back to the form until the window closes.
+          test "POST /session past ten attempts is refused for a while" do
+            client = new_client
+            AppTest.user
+            Cybertrain::RateLimit.reset_all!
+            client.get("/session/new")
+            wrong_password = { "authenticity_token" => AppTest.form_token(client),
+                               "email_address" => "ann@example.com", "password" => "wrong-password" }
+            right_password = { "authenticity_token" => AppTest.form_token(client),
+                               "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
+            10.times { client.post("/session", wrong_password) }
+            res = client.post("/session", right_password)
+            assert_redirected_to res, "/session/new"
+            assert_equal 0, Session.count
+            res = client.follow_redirect!
+            assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
+            Cybertrain::RateLimit.current_time = Time.now.to_i + 3 * 60
+            res = client.post("/session", right_password)
+            Cybertrain::RateLimit.current_time = -1
+            assert_redirected_to res, "/"
+            assert_equal 1, Session.count
           end
 
           test "DELETE /session signs out and drops the Session row" do
@@ -829,9 +1461,25 @@ module Cybertrain
             assert_redirected_to res, "/session/new"
           end
 
+          test "changing the password signs out the sessions started before" do
+            client = new_client
+            user = AppTest.user
+            AppTest.sign_in(client)
+            res = client.get("/session/new")
+            assert_includes res.body, "<span>ann@example.com</span>"
+            user.password = "another-s3cr3t"
+            user.save!
+            res = client.get("/session/new")
+            refute res.body.include?("<span>ann@example.com</span>")
+            assert_equal 0, Session.count
+            AppTest.sign_in(client, "ann@example.com", "another-s3cr3t")
+            res = client.get("/session/new")
+            assert_includes res.body, "<span>ann@example.com</span>"
+          end
+
           test "an expired cookie cannot restore its user or reach a protected action" do
-            max_age = Cybertrain.config.session_max_age
-            Cybertrain.config.session_max_age = 60
+            max_age = Cybertrain.config.session_absolute_max_age
+            Cybertrain.config.session_absolute_max_age = 60
             begin
               client = new_client
               AppTest.user
@@ -846,7 +1494,7 @@ module Cybertrain
               # to the expiration boundary. Saving updates updated_at too;
               # neither that nor a rewritten cookie extends authentication.
               row = Session.first
-              row.created_at = Time.at(Time.now.to_i - Cybertrain.config.session_max_age).utc
+              row.created_at = Time.at(Time.now.to_i - Cybertrain.config.session_absolute_max_age).utc
               row.save!
               res = client.post("/session", { "_method" => "delete", "authenticity_token" => token },
                                            { "cookie" => cookie })
@@ -861,7 +1509,7 @@ module Cybertrain
               res = client.get("/session/new", { "cookie" => cookie })
               refute res.body.include?("<span>ann@example.com</span>")
             ensure
-              Cybertrain.config.session_max_age = max_age
+              Cybertrain.config.session_absolute_max_age = max_age
             end
           end
 

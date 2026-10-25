@@ -104,6 +104,16 @@ module Cybertrain
       # @api public
       attr_reader :cookies
 
+      # The address the requests come from, `request.remote_addr` in the app:
+      # "127.0.0.1" (REMOTE_ADDR) unless a test sets another, to see what a
+      # page does for a client on another machine (`request.loopback?`).
+      # @example
+      #   client.peer_address = "203.0.113.7"
+      #   assert_response client.get("/setup"), :not_found
+      # @return [String]
+      # @api public
+      attr_accessor :peer_address
+
       # @param app [Application] a booted application (anything with
       #   `call(ctx)`)
       # @api public
@@ -112,6 +122,7 @@ module Cybertrain
         @response = Response.new
         @cookies = {}
         @boundary_counter = 0
+        @peer_address = REMOTE_ADDR
       end
 
       # @param path [String] with its query string, if any (`"/articles?page=2"`)
@@ -211,7 +222,7 @@ module Cybertrain
         head["host"] = "www.example.com" unless head.key?("host")
         head["content-length"] = body.bytesize.to_s unless body.empty?
         head["cookie"] = cookie_header unless @cookies.empty? || head.key?("cookie")
-        ctx = Context.new(Request.new(method, path, head, body, REMOTE_ADDR))
+        ctx = Context.new(Request.new(method, path, head, body, @peer_address))
         @app.call(ctx)
         @response = ctx.response
         store_cookies(@response)
@@ -257,6 +268,7 @@ module Cybertrain
         when :payload_too_large then [413, 413]
         when :unsupported_media_type then [415, 415]
         when :unprocessable_entity then [422, 422]
+        when :too_many_requests then [429, 429]
         when :error then [500, 500]
         else [0, 0]
         end

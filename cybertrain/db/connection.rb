@@ -222,7 +222,53 @@ module Cybertrain
       # A BEGIN run by hand is caught by the Pool the same way.
       # Returns nil: the blocks callers pass return unrelated types, and one
       # generic return value would not type-check under Spinel.
+      #
+      # The block-free begin!/commit!/rollback! below do the bookkeeping, so
+      # this method, Cybertrain::DB.transaction and code that calls them by
+      # hand share one depth count and one "SQLite rolled it back on its own"
+      # check.
       def transaction
+        begin!
+        begin
+          yield
+        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+          rollback!
+          raise e
+        end
+        commit!
+        nil
+      end
+
+      # Opens a transaction, or one more nesting level of the open one, for
+      # code that keeps its rescue in a plain method (Spinel cannot compile a
+      # yielding method with a rescue everywhere: NOTES rules 32/45).
+      # `immediate: true` issues BEGIN IMMEDIATE, which takes SQLite's write
+      # lock now instead of at the first write: a read-then-write transaction
+      # then waits for other writers at its start, where a deferred one would
+      # fail with SQLITE_BUSY at its first write once another connection has
+      # written in between. Only the outermost level opens anything, so
+      # `immediate:` on a nested call changes nothing (SQLite cannot upgrade an
+      # open transaction). Pair every begin! with exactly one commit! or
+      # rollback!:
+      #
+      #   c.begin!(immediate: true)
+      #   begin
+      #     c.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", [n, from])
+      #     c.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", [n, to])
+      #   rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      #     c.rollback!
+      #     raise e
+      #   end
+      #   c.commit!
+      #
+      # @param immediate [Boolean] BEGIN IMMEDIATE instead of BEGIN (outermost level only)
+      # @return [nil]
+      # @raise [Cybertrain::DB::Error] when the connection is closed, when the
+      #   enclosing transaction is gone (SQLite rolled it back on its own after
+      #   an error the application rescued), or when SQLite refuses the BEGIN
+      #   (SQLITE_BUSY once the busy handler gives up, for BEGIN IMMEDIATE)
+      # @api public
+      def begin!(immediate: false)
         raise Error, "connection closed (transaction)" if @closed
 
         # A depth above 0 while SQLite is in autocommit means the enclosing
@@ -238,29 +284,32 @@ module Cybertrain
                        "after an error); nothing nested in it can be committed"
         end
         if @transaction_depth > 0
-          # The outer branch's shape, not an ensure: this is a re-entrant
-          # yielding method (NOTES rule 50). A raise from the nested block
-          # restores the depth here and propagates; the outer `transaction`
-          # then rolls everything back.
           @transaction_depth += 1
-          begin
-            yield
-          rescue JSON::NestingError, JSON::ParserError, StandardError => e
-            @transaction_depth -= 1
-            raise e
-          end
+          return nil
+        end
+
+        exec_script(immediate ? "BEGIN IMMEDIATE" : "BEGIN")
+        @transaction_depth = 1
+        nil
+      end
+
+      # Ends one level opened by {#begin!}. A nested level only counts down;
+      # the outermost one COMMITs. A failed COMMIT (deferred foreign key,
+      # SQLITE_BUSY) leaves SQLite inside the transaction, so it is rolled
+      # back before the COMMIT error is re-raised.
+      # @return [nil]
+      # @raise [Cybertrain::DB::Error] when the connection is closed, when no
+      #   transaction is open, or when the COMMIT fails (everything is rolled
+      #   back then)
+      # @api public
+      def commit!
+        raise Error, "connection closed (commit!)" if @closed
+        raise Error, "commit!: no transaction is open on this connection" if @transaction_depth == 0
+        if @transaction_depth > 1
           @transaction_depth -= 1
           return nil
         end
 
-        exec_script("BEGIN")
-        @transaction_depth = 1
-        begin
-          yield
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
-          abandon_transaction!
-          raise e
-        end
         @transaction_depth = 0
         begin
           exec_script("COMMIT")
@@ -268,6 +317,26 @@ module Cybertrain
           abandon_transaction!
           raise e
         end
+        nil
+      end
+
+      # Ends one level opened by {#begin!} after an error. The outermost level
+      # ROLLBACKs; a nested level only counts down and leaves the decision to
+      # the outermost one, exactly as a raise out of a nested `transaction`
+      # block does: re-raise after it, so the outer level rolls back too
+      # (a nested rollback! followed by a normal end commits the nested
+      # writes along with the outer ones: there are no savepoints). Never
+      # raises, so a rescue clause can call it without masking the exception
+      # it is about to re-raise; on a connection with nothing open it does
+      # nothing.
+      # @return [nil]
+      # @api public
+      def rollback!
+        if @transaction_depth > 1
+          @transaction_depth -= 1
+          return nil
+        end
+        abandon_transaction!
         nil
       end
 

@@ -627,4 +627,21 @@ test "an app exception sharing a bare name with a framework one is still raised 
   assert_equal "card declined", msg
 end
 
+test "local_path? and safe_redirect_path accept only an ordinary local path" do
+  controller = PostsController.new(build_ctx(false))
+  ["/", "/posts", "/posts/1?tab=details#title", "/posts//1", "/caf%C3%A9", "/" + "a" * 2047].each do |good|
+    assert controller.local_path?(good), good
+    assert_equal good, controller.safe_redirect_path(good, "/home")
+  end
+  unsafe = ["", "posts", "https://evil.example/", "//evil.example/", "///evil.example/",
+            "/\\evil.example/", "/posts\\evil", " /posts", "/記事", "/café", "/" + "a" * 2048,
+            "/a b", "/\t", "/x\x7f"]
+  unsafe.each do |bad|
+    refute controller.local_path?(bad), bad
+    assert_equal "/home", controller.safe_redirect_path(bad, "/home")
+  end
+  refute controller.local_path?(nil)
+  assert_equal "/home", controller.safe_redirect_path(nil, "/home")
+end
+
 Cybertrain::Test.run!

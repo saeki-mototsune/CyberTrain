@@ -10,6 +10,31 @@ def hex(bytes)
   Cybertrain::Crypto.hex(bytes)
 end
 
+# First, before any test sets Password.iterations: the default follows
+# Cybertrain.config's environment until something sets a count.
+test "iterations defaults to TEST_ITERATIONS under test? and test digests verify anywhere" do
+  config = Cybertrain.config
+  config.env = "development"
+  assert_equal 100_000, Cybertrain::Password.iterations
+  config.env = "test"
+  assert_equal 1000, Cybertrain::Password.iterations
+  assert_equal 1000, Cybertrain::Password::TEST_ITERATIONS
+  quick = Cybertrain::Password.hash("s3cr3t-s3cr3t")
+  assert quick.start_with?("$pbkdf2-sha256$i=1000$"), quick
+  assert Cybertrain::Password.verify?("s3cr3t-s3cr3t", quick)
+  refute Cybertrain::Password.needs_rehash?(quick)
+  # The digest records its count: production verifies it, and asks for a rehash.
+  config.env = "production"
+  assert Cybertrain::Password.verify?("s3cr3t-s3cr3t", quick)
+  assert Cybertrain::Password.needs_rehash?(quick)
+  # A count set explicitly wins over the environment.
+  Cybertrain::Password.iterations = 2000
+  assert_equal 2000, Cybertrain::Password.iterations
+  config.env = "test"
+  assert_equal 2000, Cybertrain::Password.iterations
+  Cybertrain::Password.iterations = 1000
+end
+
 test "pbkdf2_sha256 matches the published test vectors" do
   assert_equal "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b",
                hex(Cybertrain::Password.pbkdf2_sha256("password", "salt", 1))
@@ -106,6 +131,118 @@ test "parse reads the fields back and refuses the rest" do
   assert_nil Cybertrain::Password.parse("$pbkdf2-sha256$i=12345$$a2V5")
   assert_equal "salt", Cybertrain::Password.decode("c2FsdA")
   assert_equal "c2FsdA", Cybertrain::Password.encode("salt")
+end
+
+# Counts the answers verifier threads get. Typed instance methods (NOTES
+# rule 35) rather than a shared Array the threads append to.
+class VerifyTally
+  def initialize
+    @tally_true = 0
+    @tally_false = 0
+  end
+
+  def add(flag)
+    if flag
+      @tally_true = @tally_true + 1
+    else
+      @tally_false = @tally_false + 1
+    end
+    nil
+  end
+
+  def tally_true
+    @tally_true
+  end
+
+  def tally_false
+    @tally_false
+  end
+end
+
+# Four threads, each verifying twice (the right password, then a wrong
+# one); a method of its own, not a loop nested in a test block (rule 68).
+def run_verifiers(digest, tally)
+  workers = []
+  4.times do
+    workers << Thread.new do
+      tally.add(Cybertrain::Password.verify_serialized("s3cr3t", digest))
+      tally.add(Cybertrain::Password.verify_serialized("wrong", digest))
+    end
+  end
+  workers.each(&:join)
+  nil
+end
+
+def verify_in_thread(digest, tally)
+  Thread.new { tally.add(Cybertrain::Password.verify_serialized("s3cr3t", digest)) }
+end
+
+test "verify_serialized answers like verify?" do
+  Cybertrain::Password.iterations = 1000
+  digest = Cybertrain::Password.hash("s3cr3t")
+  assert Cybertrain::Password.verify_serialized("s3cr3t", digest)
+  refute Cybertrain::Password.verify_serialized("wrong", digest)
+  refute Cybertrain::Password.verify_serialized("", digest)
+  refute Cybertrain::Password.verify_serialized("s3cr3t", nil)
+  refute Cybertrain::Password.verify_serialized("s3cr3t", "not a digest")
+end
+
+test "verify_serialized runs one verification at a time across threads" do
+  Cybertrain::Password.iterations = 1000
+  digest = Cybertrain::Password.hash("s3cr3t")
+  tally = VerifyTally.new
+  run_verifiers(digest, tally)
+  assert_equal 4, tally.tally_true
+  assert_equal 4, tally.tally_false
+  assert_equal 1, Cybertrain::Password.serialized_peak
+
+  # While another holder has the lock, a verification waits for it.
+  waiting = VerifyTally.new
+  lock = Cybertrain::Password.serial_lock
+  lock.lock
+  blocked = verify_in_thread(digest, waiting)
+  sleep 0.2
+  assert_equal 0, waiting.tally_true + waiting.tally_false
+  lock.unlock
+  blocked.join
+  assert_equal 1, waiting.tally_true
+end
+
+test "dummy_digest is made once per process, at the current cost, and matches nothing" do
+  Cybertrain::Password.iterations = 1000
+  dummy = Cybertrain::Password.dummy_digest
+  assert dummy.start_with?("$pbkdf2-sha256$i=1000$"), dummy
+  assert dummy.equal?(Cybertrain::Password.dummy_digest)
+  assert_equal dummy, Cybertrain::Password.dummy_digest
+  refute Cybertrain::Password.verify_serialized("s3cr3t", dummy)
+  refute Cybertrain::Password.verify?("", dummy)
+  # A changed cost makes a new one, so it keeps costing what a real digest does.
+  Cybertrain::Password.iterations = 2000
+  costlier = Cybertrain::Password.dummy_digest
+  assert costlier.start_with?("$pbkdf2-sha256$i=2000$"), costlier
+  assert_equal costlier, Cybertrain::Password.dummy_digest
+  Cybertrain::Password.iterations = 1000
+end
+
+test "session_key is an HMAC of the digest under secret_key_base" do
+  Cybertrain::Password.iterations = 1000
+  secret = "k" * 64
+  Cybertrain.config.secret_key_base = secret
+  digest = Cybertrain::Password.hash("s3cr3t")
+  key = Cybertrain::Password.session_key(digest)
+  assert_equal 64, key.size
+  assert_equal Cybertrain::Crypto.hmac_hex(secret, "cybertrain.password.session_key\n" + digest), key
+  assert_equal key, Cybertrain::Password.session_key(digest)
+  assert_equal key, Cybertrain::Password.session_key_with(digest, secret)
+  refute key == Cybertrain::Password.session_key_with(digest, "another secret")
+  # A new password (or a rehash: a new salt) is a new digest, so a new key.
+  changed = Cybertrain::Password.hash("s3cr3t")
+  refute key == Cybertrain::Password.session_key(changed)
+  assert Cybertrain::Password.session_key_matches?(key, digest)
+  refute Cybertrain::Password.session_key_matches?(key, changed)
+  refute Cybertrain::Password.session_key_matches?("", digest)
+  refute Cybertrain::Password.session_key_matches?(nil, digest)
+  refute Cybertrain::Password.session_key_matches?(key[0, 63].to_s, digest)
 end
 
 Cybertrain::Test.run!

@@ -2,6 +2,7 @@
 class ArticleRelation < Cybertrain::Relation
   def where(h) = (add_where(h); self)
   def where_sql(s, b = []) = (add_where_sql(s, b); self)
+  def where_like(c, t) = (add_where_like(c, t); self)
   def order(o) = (set_order(o); self)
   def order_sql(s) = (add_order_sql(s); self)
   def limit(n) = (set_limit(n); self)
@@ -112,6 +113,7 @@ class Article < Cybertrain::Model
 
   def self.all = ArticleRelation.new("articles")
   def self.where(h) = all.where(h)
+  def self.where_like(c, t) = all.where_like(c, t)
   def self.order(o) = all.order(o)
   def self.order_sql(s) = all.order_sql(s)
   def self.limit(n) = all.limit(n)

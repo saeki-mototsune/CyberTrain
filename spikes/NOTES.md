@@ -458,6 +458,84 @@ finds the commit that removed them).
     an AddressSanitizer build (rule 58) run under `SPINEL_GC_STRESS=1`,
     which collects every 2 KB of strings; shift where the collections land
     by running from TMPDIRs whose names differ in length.
+66. A String local that a method appends to directly two or more times
+    (`buf << "\n"; buf << tail`) loses whatever helpers appended to it
+    through a parameter in the same method (Spinel 2026.09.12): the local
+    is compiled as a buffer of its own, and `add(buf, "ab")` before the
+    direct appends wrote to something else. Reduced repro: `def add(buf, s)
+    = buf << s` and `def two; buf = "".b; add(buf, "ab"); buf << "\n"; buf
+    << "\n"; buf; end` prints `"\n\n"` (CRuby: `"ab\n\n"`); one direct
+    append alone is fine. Rule 60's cousin. A buffer filled through helpers
+    is filled only through helpers (`put_str(buf, "\n")`, as
+    test/time_zone.rb's TZif writer does).
+    Separately, and not reduced: an instance method spelled `def name` on
+    `Cybertrain::TimeZone` made test/template_integration.rb (the whole
+    framework) fail at run time with "undefined method 'name' for an
+    instance of Class" (rule 62's dispatch hazard; the framework calls
+    `.class.name` on boxed receivers). A ten-line program with a `def name`
+    class and `x.class.name` on a boxed value did not fail, so the trigger
+    is something else in the framework. The reader is `zone_name`; a new
+    framework class should not define `name` as a plain method.
+
+67. A yielding method is never emitted as a C function: Spinel inlines it at
+    each call site whose receiver it knows. Called on a boxed receiver it is
+    therefore NoMethodError at run time (the dispatch `switch` has no case),
+    and a `case recv when Klass` around the call does not change that. The
+    `c` a `Cybertrain::DB.with` block receives is boxed (it comes out of the
+    pool's SizedQueue), so `DB.with { |c| c.transaction { ... } }` raised
+    "undefined method 'transaction' for an instance of
+    Cybertrain::DB::Connection" (2026-10-25, issue #67); the yielding method
+    has to be called on a typed receiver (`Connection.new`'s result, as the
+    migrator does). `DB.transaction` and `Connection#begin!` / `commit!` /
+    `rollback!` (plain methods) are the forms for a pooled connection.
+
+68. A block that reads a parameter of an enclosing block does not compile
+    when it is a Proc (taken as `&block` and called with `block.call`) and
+    the enclosing block itself sits in another block: "'lv_i__bpN'
+    undeclared" in the C. test/db_sqlite.rb's `5.times do |i| DB.with { |c|
+    ... [i] } end` inside a `test do` block stopped compiling as soon as
+    DB.with called `block.call` on one path, and a `3.times do |i|
+    DB.transaction { ... i ... } end` written straight into a test block
+    failed the same way; the same loop in a method body (two levels, as in
+    an action) compiles (2026-10-25). Keep framework methods that every
+    application nests deeply (DB.with) yielding, and hoist such loops into a
+    method.
+
+69. A method that takes `&block` and calls `block.call` is inlined at its
+    call sites like a yielding one, so a rescue or ensure in it hits rules
+    32/45 ("incompatible types when returning type 'sp_RbVal' but 'sp_int'
+    was expected" for an ensure). Pass the Proc one level down as a plain
+    parameter and call it there (Controller#process / #run_action,
+    DB.transaction / DB.run_transaction). Not two levels: a Proc passed on
+    again (DB.transaction -> Pool -> Connection, 2026-10-25) was called with
+    an argument whose class the block's parameter never learned, so every
+    method call on that parameter inside the block was NoMethodError at run
+    time (a dispatch with only a `default:`); calls from a helper method the
+    block passes it to still worked, since the helper learned the class from
+    its other callers, which is how a test can miss it. Test such a block
+    with a method call written in the block itself.
+
+70. `rescue DB::Error => e`, with `DB = Cybertrain::DB` at the top of a test
+    program, compiled to a match on the names "Error" / "DB::Error" in a
+    program that requires the whole framework (test/db_transaction_api.rb,
+    2026-10-25), so it never caught a raised `Cybertrain::DB::Error`; in
+    test/db_transaction.rb, which requires only the db files, the same
+    clause matches the full name. Spell the full name in a rescue clause.
+
+71. Narrowing does not type a return value: `case v when Hash then v else
+    {} end` on a polymorphic `v` (a `JSON.parse` result) is
+    `(untyped) -> untyped` in `spinel --emit-rbs` (2026.09.12), so every
+    call on what it returns stays on the boxed slow path (and in rule 62's
+    reach). Copying into a seeded container types it: with `out` a
+    `{ "" => [nil, 0, 0.0, "", true][0] }` minus its seed key, `case v
+    when Time then nil when Hash then v.each { |k, x| out[k.to_s] = x }
+    end; out` is `-> Hash[String, untyped]` (Cybertrain::Cast.hash /
+    Cast.array, issue #74; `when Time` first, rule 8). Two shapes
+    that the same probe confirmed compile and behave as under CRuby: a
+    splat parameter taking mixed types (`Cast.binds(1, "x", nil, Time)`,
+    also with no arguments), and a class method inherited from a base
+    class that calls an overridden class method on implicit self
+    (`Model.upsert` reading each subclass's `table_name`).
 
 ## Numbers worth remembering
 
@@ -467,3 +545,52 @@ finds the commit that removed them).
 - SQLite: 1.5 M inserts/s inside one transaction, ~70 K/s autocommit; pool of 4 serving 8 threads: ~55 K statements/s.
 - HMAC-SHA256 via `OpenSSL::HMAC.hexdigest("SHA256", key, data)`; `Digest::SHA256.digest` is vendored in the runtime (no OpenSSL link needed), so the framework implements HMAC in Ruby on top of it.
 - PBKDF2-HMAC-SHA256 in Ruby over that digest (`Cybertrain::Password`, two `Digest::SHA256.digest` calls and two concatenations per iteration; the runtime has no incremental digest API): 100,000 iterations 197 ms compiled, 660 ms under CRuby 3.3; 600,000 iterations 1.09 s compiled (2026-10-22, one cloud vCPU). `String#crypt` exists but is libc crypt(3), so bcrypt only where libxcrypt is (not macOS). The `while` loop's back-edges are safepoints, so a hash in progress is preempted like any other thread (docs/thread.md).
+
+72. Outbound sockets under Spinel 2026.09.12 (cybertrain/net/socket.rb):
+    `Socket.getaddrinfo(host, port)` works and answers CRuby's arrays, but
+    an unresolvable name gives `[]` instead of raising `SocketError`, and an
+    entry cannot be indexed (`entry[3]` is "unsupported call", even after
+    `case entry when Array`): read the fields by destructuring the block
+    parameters, `list.each { |_f, _p, _n, ip, family, socktype, _pr| ... }`.
+    `Addrinfo` and `IPSocket.getaddress` do not exist, nor
+    `Socket#bind(sockaddr)`. `Socket.new(AF_INET, SOCK_STREAM, 0)` +
+    `connect_nonblock(Socket.sockaddr_in(port, ip), exception: false)` +
+    `wait_writable(t)` (nil on timeout) is the bounded connect; read the
+    outcome with `getsockopt(SOL_SOCKET, SO_ERROR).int`, because a second
+    `connect_nonblock` raises a bare `SystemCallError` (CRuby: the Errno
+    class), `SystemCallError#message` has no strerror text, and
+    `Errno::ECONNREFUSED::Errno` does not compile. `read_nonblock` /
+    `write_nonblock` with `exception: false` answer `:wait_readable` /
+    `:wait_writable` / nil at EOF as in CRuby and keep NUL bytes; comparing
+    the boxed result with `== :wait_readable` works. To make a connect hang
+    in a test, `TCPServer#listen(0)` and fill the queue: after one queued
+    connection the kernel drops further SYNs (10.255.255.1 is not
+    unroutable in every sandbox). That is Linux: macOS's kernel queued more
+    than the backlog asked for or answered with a reset (CI's macOS job), so
+    test/http_client.rb tries up to 1024 connects and falls back to
+    192.0.2.1 (TEST-NET-1); a silent TLS peer is a server that accepts and
+    never writes, not a connection left in the queue. Also macOS:
+    `localhost` resolves to `::1` first, so a client that dials only the
+    first address is refused by a server on 127.0.0.1 (the socket layer
+    dials every resolved address). In the openssl package, a handshake error
+    is raised even with `exception: false`; `SSL_CTX_set_default_verify_paths`
+    honours `SSL_CERT_FILE` / `SSL_CERT_DIR` (the only way to trust another
+    CA: there is no `X509::Store`); CRuby's `SSLContext.new` defaults to
+    `VERIFY_NONE` and the package's to `VERIFY_PEER`, so call `set_params`
+    for both to agree. Since the HTTP client, test/template_integration.rb
+    has the whole framework and the openssl package in one program, and
+    there rule 62 caught two more byte scans that only that combination
+    boxes: `Query.split_key` and `BlobStore.valid_key?` (both now read
+    through a `to_s` local).
+
+73. An instance variable first assigned in a helper method that `initialize`
+    calls, rather than in `initialize` itself, is typed as a boxed value
+    (`sp_RbVal`) even when every assignment is a String (Spinel
+    2026.09.12), and reading it through its `attr_accessor` as a keyword
+    argument's default (`def initialize(host: Cybertrain.config.smtp_host)`)
+    stops the C compiler: "incompatible types when initializing type 'const
+    char *' using type 'sp_RbVal'". Reduced repro: `class Conf; attr_accessor
+    :name; def initialize; init_rest; end; def init_rest; @name = ENV["X"] ||
+    ""; end; end` and `def show(name: Conf.new.name) = puts(name.bytesize)`;
+    the struct has `sp_RbVal iv_name`. Assign every ivar in `initialize`
+    (Config's `smtp_*` settings, cybertrain/mailer.rb, issue #64).

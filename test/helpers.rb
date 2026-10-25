@@ -218,4 +218,55 @@ test "an unknown helper is a RuntimeError" do
   assert_equal "posts/inline:1: undefined helper 'frobnicate'", msg
 end
 
+# A controller for /posts with the given query string (no session).
+def controller_for_query(query)
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/posts?#{query}", { "host" => "example.test" }, ""))
+  Cybertrain::Controller.new(ctx)
+end
+
+def pager_env(number, more)
+  penv = new_env
+  penv["page"] = Cybertrain::Page.new(number, 10, more)
+  penv
+end
+
+test "paginate renders Newer / Older around Page N, keeping the query minus page" do
+  install_routes
+  helpers = Cybertrain::Template::Helpers.new(controller_for_query("q=a+%26+b&page=2&tags[]=x&sort=new"))
+  html = render_with(helpers, "<%= paginate page, posts_path %>", pager_env(2, true))
+  assert_equal "<nav class=\"pager\"><a href=\"/posts?q=a+%26+b&amp;tags%5B%5D=x&amp;sort=new\" rel=\"prev\">Newer</a> " \
+               "<span class=\"pager-current\">Page 2</span> " \
+               "<a href=\"/posts?q=a+%26+b&amp;tags%5B%5D=x&amp;sort=new&amp;page=3\" rel=\"next\">Older</a></nav>", html
+  html = render_with(helpers, "<%= paginate page, posts_path %>", pager_env(5, true))
+  assert_equal "<nav class=\"pager\"><a href=\"/posts?q=a+%26+b&amp;tags%5B%5D=x&amp;sort=new&amp;page=4\" rel=\"prev\">Newer</a> " \
+               "<span class=\"pager-current\">Page 5</span> " \
+               "<a href=\"/posts?q=a+%26+b&amp;tags%5B%5D=x&amp;sort=new&amp;page=6\" rel=\"next\">Older</a></nav>", html
+end
+
+test "paginate leaves out a link to a page that does not exist" do
+  install_routes
+  helpers = Cybertrain::Template::Helpers.new(controller_for_query("page=1"))
+  assert_equal "<nav class=\"pager\"><span class=\"pager-current\">Page 1</span> <a href=\"/posts?page=2\" rel=\"next\">Older</a></nav>",
+               render_with(helpers, "<%= paginate page, posts_path %>", pager_env(1, true))
+  assert_equal "<nav class=\"pager\"><a href=\"/posts?page=2\" rel=\"prev\">Newer</a> <span class=\"pager-current\">Page 3</span></nav>",
+               render_with(helpers, "<%= paginate page, posts_path %>", pager_env(3, false))
+  assert_equal "<nav class=\"pager\"><span class=\"pager-current\">Page 1</span></nav>",
+               render_inline("<%= paginate page, '/posts' %>", pager_env(1, false))
+end
+
+test "paginate escapes what it is given and takes a path's own query string" do
+  helpers = Cybertrain::Template::Helpers.new(controller_for_query("ignored=1"))
+  html = render_with(helpers, "<%= paginate page, '/s\"<x>?q=%3Cb%3E&page=9' %>", pager_env(2, true))
+  assert_equal "<nav class=\"pager\"><a href=\"/s&quot;&lt;x&gt;?q=%3Cb%3E\" rel=\"prev\">Newer</a> " \
+               "<span class=\"pager-current\">Page 2</span> " \
+               "<a href=\"/s&quot;&lt;x&gt;?q=%3Cb%3E&amp;page=3\" rel=\"next\">Older</a></nav>", html
+  msg = assert_raises("RuntimeError") { render_inline("<%= paginate 3, '/posts' %>") }
+  assert_equal "posts/inline:1: paginate expects a Page (from Relation#page), got 3", msg
+end
+
+test "a template reads the Page" do
+  assert_equal "2|10|10|true|true|3|1", render_inline("<%= page.number %>|<%= page.per %>|<%= page.row_offset %>|<%= page.next? %>|<%= page.prev? %>|<%= page.next_number %>|<%= page.prev_number %>", pager_env(2, true))
+  assert_equal "last", render_inline("<% if page.next? %>more<% else %>last<% end %>", pager_env(4, false))
+end
+
 Cybertrain::Test.run!

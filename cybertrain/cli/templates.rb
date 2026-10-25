@@ -232,6 +232,14 @@ module Cybertrain
           require_relative "../gen/app"
           require_relative "../gen/migrations"
 
+          # Operational commands: `./#{package} NAME ARGS...` runs the block with
+          # Cybertrain::DB connected (pool of 1) and exits with its value;
+          # `./#{package} help` lists them.
+          #   Cybertrain::Main.command("prune", "delete old comments") do |argv|
+          #     Cybertrain::DB.with { |c| c.execute("DELETE FROM comments WHERE created_at < date('now', '-30 days')") }
+          #     0
+          #   end
+
           exit(Cybertrain::Main.run("#{package}", ARGV,
                                     router: Gen::Routes.build(Cybertrain::Router.new),
                                     url_resolver: Gen::Routes.url_resolver,
@@ -388,10 +396,16 @@ module Cybertrain
           # The app's settings (cybertrain/config.rb). Secrets come from
           # .kamal/secrets.
           env:
+            clear:
+              # kamal-proxy runs in its own container and connects from its address
+              # on the Docker network (Docker hands those out of 172.16.0.0/12 by
+              # default): trust the X-Forwarded-For it sets, so that
+              # request.client_ip, what rate_limit counts, is each visitor rather
+              # than the proxy. Change it if your Docker networks use another range.
+              CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12
+              # SPINEL_WORKERS: 2
             secret:
               - CYBERTRAIN_SECRET_KEY_BASE
-            # clear:
-            #   SPINEL_WORKERS: 2
 
           # The SQLite database lives in storage/: keep it on the server across
           # deploys. Back it up from there (docs/deploy.md).
@@ -477,6 +491,9 @@ module Cybertrain
         controller_path render_template render redirect_to head send_blob
         run_action run_before_callbacks run_after_callbacks run_one
         rescue_with_handler render_partial send_html string_keys json_body
+        safe_redirect_path
+
+        apply_rate_limit
         record_not_found resume_session require_authentication
         start_new_session_for terminate_session after_authentication_url
       ]

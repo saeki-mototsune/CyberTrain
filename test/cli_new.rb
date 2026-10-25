@@ -74,6 +74,14 @@ test "bin/blog.rb is the app's one binary: server, migrate, db" do
     require_relative "../gen/app"
     require_relative "../gen/migrations"
 
+    # Operational commands: `./blog NAME ARGS...` runs the block with
+    # Cybertrain::DB connected (pool of 1) and exits with its value;
+    # `./blog help` lists them.
+    #   Cybertrain::Main.command("prune", "delete old comments") do |argv|
+    #     Cybertrain::DB.with { |c| c.execute("DELETE FROM comments WHERE created_at < date('now', '-30 days')") }
+    #     0
+    #   end
+
     exit(Cybertrain::Main.run("blog", ARGV,
                               router: Gen::Routes.build(Cybertrain::Router.new),
                               url_resolver: Gen::Routes.url_resolver,
@@ -156,6 +164,8 @@ test "config/deploy.yml and .kamal/secrets configure Kamal for the app" do
   assert_includes deploy, "    path: /up.html\n"
   assert_includes deploy, "\ndeploy_timeout: 30\n"
   assert_includes deploy, "    - CYBERTRAIN_SECRET_KEY_BASE\n"
+  # kamal-proxy connects from the Docker network, not loopback (PR #79 review).
+  assert_includes deploy, "    CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12\n"
   assert_includes deploy, "  - \"blog_storage:/app/storage\"\n"
   assert_includes deploy, "db_status: app exec --reuse \"./blog db status\""
   secrets = read("blog/.kamal/secrets")

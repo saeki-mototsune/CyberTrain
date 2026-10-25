@@ -34,4 +34,5 @@ ok   a client fault after the action redirected drops only Location and Content-
 ok   a client fault answered from an action logs one rejected-request line
 ok   an exception the controller re-raises is not logged by it (ErrorPages logs it once)
 ok   an app exception sharing a bare name with a framework one is still raised (500 path)
-36 tests, 111 assertions, 0 failures
+ok   local_path? and safe_redirect_path accept only an ordinary local path
+37 tests, 153 assertions, 0 failures

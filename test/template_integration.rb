@@ -15,10 +15,19 @@
 # locals, form_with/FormBuilder, link_to and flash, driven through
 # SessionStore + CsrfProtection by Cybertrain::Test::Client.
 #
+# It also requires the outbound HTTP client with its TLS layer, which brings
+# Spinel's openssl package into the whole framework's program: the package
+# defines getbyte, read, write, close, << and more in Ruby, which changes
+# how those calls compile on every boxed receiver (spikes/NOTES.md rule 62),
+# so this is the program where a framework file that scans a boxed String
+# would fail. The last test sends a request through the Server with it.
+#
 # It links SQLite through FFI, so it cannot run under CRuby: its snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23).
 require "cybertrain"
 require "cybertrain/template"
+require "cybertrain/http_client"
+require "cybertrain/net/tls"
 require "cybertrain/test"
 require "cybertrain/test/client"
 
@@ -325,6 +334,54 @@ test "the schema DSL is reachable next to the template engine" do
   end
   assert_equal ["notes"], definition.tables.map { |t| t.name }
   Cybertrain::Schema.reset!
+end
+
+# Cybertrain::TimeZone next to the rest (a `def name` on it once made
+# `Class#name` raise NoMethodError here; spikes/NOTES.md rule 66). Only
+# names whose answer needs no zoneinfo file, so the snapshot is the same on
+# every machine.
+test "time zones are reachable next to the template engine" do
+  utc = Cybertrain::TimeZone.find("UTC")
+  assert utc.found?
+  assert_equal "UTC", utc.zone_name
+  assert_equal 0, utc.utc_offset_at(1_792_886_400)
+  missing = Cybertrain::TimeZone.find("../etc/passwd")
+  assert missing.unknown?
+  assert_equal 1_792_886_400, missing.local_to_utc(1_792_886_400)
+  refute Cybertrain::TimeZone.parse_tzif("Bad/Zone", "TZif").found?
+  assert_equal [2026, 10, 25, 0, 0, 0, 0], Cybertrain::TimeZone.epoch_to_civil(1_792_886_400)
+end
+
+test "a relation's page renders through paginate next to the whole framework" do
+  Note.create(title: "paged one")
+  Note.create(title: "paged two")
+  paged = Note.all.order("id")
+  pg = paged.page(1, per: 1)
+  assert_equal 1, paged.to_a.size
+  assert pg.next?
+  penv = {}
+  penv["page"] = pg
+  tpl = Cybertrain::Template::Template.parse("<%= paginate page, '/notes?q=x&page=1' %>|<%= page.next? %>", "notes/paged")
+  html = Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil)).render(tpl, penv)
+  assert_equal "<nav class=\"pager\"><span class=\"pager-current\">Page 1</span> <a href=\"/notes?q=x&amp;page=2\" rel=\"next\">Older</a></nav>|true", html
+end
+
+test "HttpClient (with the openssl package in the program) talks to the Server" do
+  router = Cybertrain::Router.new
+  router.post("/hooks/:name", "hook") do |c|
+    c.response.content_type = "application/json"
+    c.response.body = "{\"got\":\"#{c.params[:name]}\",\"bytes\":#{c.request.body.bytesize}}"
+  end
+  app = Cybertrain::App.new(router, logging: false)
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: Cybertrain::Logger.new(nil, :error))
+  server.start
+  http = Cybertrain::HttpClient.new(timeout: 2, deadline: 5, allow_private: true)
+  res = http.post("http://127.0.0.1:#{server.port}/hooks/deploy", "{\"text\":\"caf\u00e9\"}", content_type: "application/json")
+  server.stop
+  assert_equal 200, res.status
+  assert_equal "application/json", res.header("content-type")
+  assert_equal "{\"got\":\"deploy\",\"bytes\":16}", res.body
+  assert_includes Cybertrain::Net.tls_connector.class.name.to_s, "OpenSSLConnector"
 end
 
 Cybertrain::Test.run!

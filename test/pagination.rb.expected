@@ -1,0 +1,10 @@
+ok   page fetches one page of typed records and knows whether more follow
+ok   the middle and the last page
+ok   an exactly full last page has no next page (per + 1 decides)
+ok   a page past the last row is empty
+ok   page keeps where conditions and their binds, and replaces an earlier limit
+ok   the page number is clamped to 1..Params.max_page
+ok   per outside 1..Page::MAX_PER is a programmer error
+ok   params.page_number reads ?page= safely
+ok   Config#max_page comes from CYBERTRAIN_MAX_PAGE, bounded
+9 tests, 59 assertions, 0 failures

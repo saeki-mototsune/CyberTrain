@@ -56,6 +56,10 @@ module Cybertrain
       # anything when one of those versions has no entry in `migrations`
       # (its file was deleted or renamed), as Rails'
       # UnknownMigrationVersionError does, instead of silently skipping it.
+      # Raises Migration::IrreversibleMigration ("version N is irreversible:
+      # ..."), also before reverting anything, when one of them cannot be
+      # rolled back: a `change` that recorded an operation with no automatic
+      # inverse (an `execute`, a `drop_table`) and no `down` of its own.
       def rollback(migrations, steps = 1)
         targets = Array.new(0) { "" }
         applied_versions.reverse.each do |version|
@@ -66,6 +70,10 @@ module Cybertrain
           if find_migration(migrations, version).nil?
             raise Error, "no migration for applied version #{version} (was its file in db/migrate deleted or renamed?)"
           end
+        end
+        targets.each do |version|
+          migration = find_migration(migrations, version)
+          check_reversible(version, migration) unless migration.nil?
         end
         count = 0
         targets.each do |version|
@@ -104,10 +112,10 @@ module Cybertrain
       # The step migrate and rollback share: runs `ops` and `sql` (the
       # schema_migrations INSERT or DELETE for `version`) in one transaction,
       # then prints "done". The "== <version> <class>: <verb>" line stays in
-      # the callers, before record(), so it still prints when up/down raises
-      # (an irreversible `change`). Called from a method body so the
-      # transaction (a yielding method with rescue) is never inside a nested
-      # block (spikes/NOTES.md rule 45).
+      # the callers, before record(), so it still prints when up raises (an
+      # irreversible down is caught earlier, by check_reversible). Called
+      # from a method body so the transaction (a yielding method with
+      # rescue) is never inside a nested block (spikes/NOTES.md rule 45).
       def apply_version(version, ops, forward, sql)
         @connection.transaction do
           run_operations(ops, forward)
@@ -131,7 +139,23 @@ module Cybertrain
         nil
       end
 
-      # Runs `ops` in order. Two operations get special handling:
+      # Records `down` once, only to learn whether it can be recorded at all,
+      # and names the version in the error when it cannot. A non-yielding
+      # method holding the rescue (spikes/NOTES.md rules 32/45).
+      def check_reversible(version, migration)
+        record(migration, false)
+        nil
+      rescue Cybertrain::Migration::IrreversibleMigration => e
+        # A local first: a String made inside the argument list can be freed
+        # before the exception holds it (spikes/NOTES.md rule 58).
+        message = "version #{version} is irreversible: #{e.message}"
+        raise Cybertrain::Migration::IrreversibleMigration, message
+      end
+
+      # Runs `ops` in order. An :execute (Base#execute) runs its statement on
+      # this connection, inside the version's transaction like the rest;
+      # without binds it goes through exec_script, so it may hold several
+      # statements. Two other operations get special handling:
       # - an :add_reference directly followed by its :add_foreign_key
       #   (Base#add_reference's default) runs as one ADD COLUMN ... REFERENCES,
       #   since SQLite cannot add a foreign key on its own;
@@ -147,13 +171,24 @@ module Cybertrain
             run_sql(Cybertrain::DB::SqliteDDL.add_reference_statements(op, ops[i + 1].to_table))
             i += 2
           else
-            if op.kind == :remove_index && op.name == ""
+            if op.kind == :execute
+              run_data_statement(op)
+            elsif op.kind == :remove_index && op.name == ""
               @connection.exec_script(Cybertrain::DB::SqliteDDL.drop_index_sql(index_to_remove(op, forward)))
             else
               run_sql(Cybertrain::DB::SqliteDDL.statements(op))
             end
             i += 1
           end
+        end
+        nil
+      end
+
+      def run_data_statement(op)
+        if op.exec_binds.empty?
+          @connection.exec_script(op.exec_sql)
+        else
+          @connection.execute(op.exec_sql, op.exec_binds)
         end
         nil
       end

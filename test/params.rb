@@ -398,4 +398,56 @@ test "a file's bytes survive the Params unchanged (NUL and high bytes)" do
   assert_equal 128, got.body_bytes.getbyte(6)
 end
 
+test "int reads a bounded decimal and never raises" do
+  p = Cybertrain::Params.new
+  p.set_value("n", "42")
+  p.set_value("neg", "-3")
+  p.set_value("big", "123456789012345678")
+  p.set_value("huge", "99999999999999999999")
+  p.set_value("junk", "12abc")
+  p.set_value("blank", "")
+  p.set_value("space", " 7")
+  p.set_value("sign", "-")
+  p.add_list_value("list", "5")
+  assert_equal 42, p.int("n", default: 1, min: 1, max: 100)
+  assert_equal 10, p.int("n", default: 1, min: 1, max: 10)
+  assert_equal 1, p.int("neg", default: 9, min: 1, max: 100)
+  assert_equal(-3, p.int("neg", default: 9, min: -10, max: 100))
+  assert_equal 123456789012345678, p.int("big", default: 0, min: 0, max: 999_999_999_999_999_999)
+  assert_equal 500, p.int("big", default: 0, min: 0, max: 500)
+  # 20 digits: String#to_i would raise RangeError past 2**63-1 under Spinel
+  # (NOTES rule 25), so the read refuses more than 18 digits.
+  assert_equal 9, p.int("huge", default: 9, min: 1, max: 100)
+  assert_equal 9, p.int("junk", default: 9, min: 1, max: 100)
+  assert_equal 9, p.int("blank", default: 9, min: 1, max: 100)
+  assert_equal 9, p.int("space", default: 9, min: 1, max: 100)
+  assert_equal 9, p.int("sign", default: 9, min: 1, max: 100)
+  assert_equal 9, p.int("list", default: 9, min: 1, max: 100)
+  assert_equal 9, p.int("absent", default: 9, min: 1, max: 100)
+end
+
+test "parse_int accepts an optional minus and at most 18 digits" do
+  assert_equal 0, Cybertrain::Params.parse_int("0", 5)
+  assert_equal(-999_999_999_999_999_999, Cybertrain::Params.parse_int("-999999999999999999", 5))
+  assert_equal 5, Cybertrain::Params.parse_int("1234567890123456789", 5)
+  assert_equal 5, Cybertrain::Params.parse_int("+1", 5)
+  assert_equal 5, Cybertrain::Params.parse_int("1.5", 5)
+end
+
+test "page_number is 1-based and clamped to Params.max_page" do
+  p = Cybertrain::Params.new
+  assert_equal 1, p.page_number
+  p.set_value("page", "7")
+  assert_equal 7, p.page_number
+  p.set_value("page", "0")
+  assert_equal 1, p.page_number
+  p.set_value("page", "50000")
+  assert_equal 10_000, p.page_number
+  Cybertrain::Params.max_page = 20
+  assert_equal 20, p.page_number
+  Cybertrain::Params.max_page = 10_000
+  p.set_value("page", "99999999999999999999999999")
+  assert_equal 1, p.page_number
+end
+
 Cybertrain::Test.run!

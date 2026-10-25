@@ -33,7 +33,8 @@ development loop that rebuilds and re-execs the server on code changes.
 with comments) built on it, exercised by CI on Linux and macOS.
 `cybertrain generate authentication` adds email-and-password sign-in the way
 Rails 8's generator does, and `cybertrain generate attachment` (or a
-`cover:attachment` scaffold field) adds a file upload to a model. Not built: mailers, jobs, WebSockets/ActionCable,
+`cover:attachment` scaffold field) adds a file upload to a model. `Cybertrain::Mailer` sends plain-text e-mail over SMTP
+(see "Sending e-mail"). Not built: Action Mailer-style mailer classes and templates, jobs, WebSockets/ActionCable,
 an asset pipeline, i18n, and anything beyond a minimal `render json:` — see
 "Differences from Rails" below.
 
@@ -149,6 +150,10 @@ commands (`cybertrain help` prints them):
   it: users and sessions tables, `User` and `Session` models, the sign-in
   and sign-up controllers and views, the routes, a `before_action` in
   `ApplicationController` and a test (see "Add authentication").
+  With `--invite-only` there is no sign-up page: users are created with
+  `./NAME user EMAIL`, and the first one also at a `/setup` page that
+  answers only to the server's own machine, with the one-time token its
+  boot warning prints, while no user exists.
 - `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
   to a scaffolded model: five metadata columns, model methods and
   callbacks, a download action, the route, the form field and a test (see
@@ -259,6 +264,30 @@ manage the database. `bin/gen.rb` runs the generator (`spin run gen`), and
 uses it, since `bin/blog.rb` cannot compile until the first migration has
 generated `gen/models/`). `gen/` already holds `views.rb`, the committed,
 empty table of embedded views (see "How it works").
+
+Operational commands of your own (create a user, prune old rows, take a
+backup) go on the same binary: register them in `bin/blog.rb` before
+`Main.run`.
+
+```ruby
+Cybertrain::Main.command("prune", "delete comments older than DAYS") do |argv|
+  days = argv.empty? ? 30 : argv[0].to_i
+  Cybertrain::DB.with do |c|
+    c.execute("DELETE FROM comments WHERE created_at < datetime('now', ?)", ["-#{days} days"])
+  end
+  0 # the exit status
+end
+```
+
+`./blog prune 90` then runs the block with the arguments after the name
+(`["90"]`), with `Cybertrain::DB` already connected to the configured
+database (a pool of one connection), and exits with the block's value; a
+`Cybertrain::DB::Error` is printed as `prune failed: ...` and exits 1, and
+`./blog help` lists the command. The block takes `argv` explicitly, as a
+`before_action` block takes the controller (Spinel has no `instance_eval`).
+A built-in word (`server`, `migrate`, `db`, `help`), a number (the port
+argument) or a name already registered raises `ArgumentError`. The server,
+views and session secret are not set up for a command.
 
 Apps created before `cybertrain build` existed have `bin/server.rb` and
 no `bin/<name>.rb`: copy `bin/<name>.rb` from a fresh `cybertrain new` (with
@@ -492,6 +521,92 @@ Spinel cannot define methods at run time; edit it like any other model.
 Password reset is not generated (no mailers). Running the generator again
 writes nothing. The design, and why not a package: [docs/design.md](docs/design.md) D15.
 
+Sign-in is protected from password guessing the way Rails 8's generator
+does it: `SessionsController` declares `rate_limit to: 10, within: 3 * 60,
+only: [:create], redirect_to: "/session/new", alert: "Try again later."`,
+so an address that has tried ten times in three minutes goes back to the
+form until the window closes. Behind a reverse proxy on the same machine,
+set `CYBERTRAIN_TRUSTED_PROXY=1`, or every visitor shares the proxy's
+address (see [Rate limiting](#rate-limiting-and-the-client-address)); behind
+kamal-proxy, the generated `config/deploy.yml` already sets
+`CYBERTRAIN_TRUSTED_PROXIES` to the Docker network.
+`AppTest.sign_in` forgets the counts first, since every test client comes
+from 127.0.0.1.
+
+#### An invitation-only app: `--invite-only`
+
+The sign-up page lets anyone who reaches the server register, which is the
+wrong default for an internal tool: whoever gets there before the admin
+does has an account. `--invite-only` writes no `RegistrationsController`
+and no sign-up link; the first user comes from the command line or from a
+page only the server's own machine can open, with a link the server prints
+when it starts:
+
+```sh
+cybertrain generate authentication --invite-only
+cybertrain db migrate
+cybertrain server        # then open the http://127.0.0.1:3000/setup?token=... link it prints, on the same machine
+```
+
+In production, from the directory the binary runs in:
+
+```sh
+./shop user ann@example.com                        # reads the password from stdin (one line)
+printf '%s' "$PASSWORD" | ./shop user ann@example.com
+./shop user ann@example.com 's3cr3t-s3cr3t'        # or as an argument (visible in ps)
+```
+
+- `app/commands/user_command.rb` registers the `user` command with
+  `Cybertrain::Main.command` (so `./shop help` lists it) and is required
+  from `bin/shop.rb`. `EMAIL [PASSWORD]` creates the user, or sets the
+  password of the one with that address (which signs that user's browsers
+  out, as any password change does); it prints `created ADDRESS` or
+  `updated ADDRESS` and exits 0. Without `PASSWORD` it reads one line of
+  standard input (prompting when that is a terminal; the typing is echoed)
+  and drops the trailing newline, so the password stays out of `ps` and
+  the shell history. An empty password, a record that does not validate
+  (a password under 8 characters) or bad arguments print an error or the
+  usage line and exit 1.
+- `SetupController` (`GET`/`POST /setup`, `app/views/setup/new.html.erb`)
+  creates the first user and signs them in. It answers only while no user
+  exists, only with the one-time token (below), and only to a connection
+  whose socket peer is the loopback address (`request.loopback?`:
+  `127.0.0.0/8` or `::1`) and that carries no `X-Forwarded-For` header (a
+  proxy on the same host makes every request a loopback one, and it adds
+  that header). A header can close the page, never open it. Everyone else,
+  and a missing or wrong token, gets a 404.
+- The token: `SetupController::SETUP_TOKEN`, 32 random hex characters
+  (`Cybertrain::Crypto.random_token(16)`) made when the program starts and
+  kept until it exits, so a restart makes a new one. `GET /setup` takes it
+  as `?token=`, the form carries it back in a hidden field, and both
+  compare it in constant time (`Cybertrain::Crypto.secure_compare`). It is
+  what keeps the page closed when the address check cannot: a proxy on the
+  same host that adds no `X-Forwarded-For` (nginx without
+  `proxy_set_header X-Forwarded-For ...`) makes every client look like
+  loopback, and only someone who can read the server's log has the token.
+  The request log's `Started GET "/setup?token=..."` line writes it to the
+  same log; it opens nothing once the user exists.
+- For a first run behind a proxy on another host, `SHOP_SETUP_OPEN=1`
+  (declared in `config/app.rb` with `c.setting_bool :setup_open`) lifts the
+  address check, still only while no user exists and still only with the
+  token. Unset it once the user is there.
+- While no user exists, the server logs `[WARN] no user exists yet: run
+  ./shop user EMAIL, or open /setup?token=<token> from this machine` before
+  it boots (`UserCommand.warn_if_no_user`, called from `bin/shop.rb` when
+  `Cybertrain::Main.server?(ARGV)`; it connects for that one question and
+  says nothing when the users table is not migrated yet). That line is the
+  only place the token is printed.
+
+The generated `test/authentication.rb` covers both: `/setup` with and
+without the token (`SetupController.setup_token`) or with a wrong one, from
+another address (`client.peer_address = "203.0.113.7"`), through a proxy,
+once a user exists and with the switch on, and the `user` command run in-process
+through `Cybertrain::Main.run`. All of it is application code, yours to
+change (docs/design.md D29); the framework only provides
+`request.loopback?`, `Main.command`, `Main.server?`,
+`Crypto.random_token` / `Crypto.secure_compare` and the test client's
+`peer_address`.
+
 In the blog, open the pages anyone may read again, as Rails' guide does, and
 hide what a visitor cannot use (`resume_session` still runs on those pages,
 so `@current_user` is set):
@@ -535,6 +650,64 @@ end
 ```
 
 `examples/blog` itself stops before this step.
+
+## Authentication: what the framework provides
+
+The generator above writes the flow; the pieces it is built from are
+framework API, usable without it (for an API token, an admin password, a
+hand-written sign-in):
+
+- **`Cybertrain::Password`**: `hash(plain)` makes a salted
+  PBKDF2-HMAC-SHA256 digest that records its own parameters
+  (`$pbkdf2-sha256$i=100000$salt$key`), `verify?(plain, digest)` checks one
+  in constant time and never raises on a malformed digest, and
+  `needs_rehash?(digest)` says when one is behind the current
+  `Password.iterations`. For a sign-in action:
+  - `verify_serialized(plain, digest)` is `verify?` one at a time per
+    process (a Mutex). A hash takes about 0.2 s of CPU; a burst of attempts
+    side by side would hold every worker, through this method they queue and
+    the other workers keep serving pages.
+  - `dummy_digest` is a digest of a random password, made once per process
+    at the current cost. Verify against it when the address is unknown, so
+    the response time does not tell which addresses have accounts:
+    `Password.verify_serialized(password, user.nil? ? Password.dummy_digest : user.password_digest)`.
+  - `session_key(digest)` is an HMAC of the password digest under
+    `secret_key_base`; keep it in the session at sign-in and check it with
+    `session_key_matches?(session[:password_key], user.password_digest)` on
+    each request. A password change makes a new digest, so every session
+    started before it is signed out.
+  - `iterations` is `Password::TEST_ITERATIONS` (1,000) when
+    `Cybertrain.config.test?`, so test suites do not pay the production cost
+    per user; digests record their count, so nothing else changes.
+- **The session** (`session[:key]`, a signed cookie): `clear` empties it
+  (CSRF token included) on sign-out, and `config.session_absolute_max_age`
+  (two weeks; `0` turns it off) bounds a session's whole life however often
+  it is used: the cookie records when it was first written, a cookie older
+  than that loads as an empty session, so a copied cookie cannot be
+  replayed forever. `session.restart_lifetime!` starts the count again (at
+  sign-in).
+- **`Controller#local_path?(text)` and `safe_redirect_path(text, fallback)`**:
+  a path that came from the request (a `return_to` parameter, a remembered
+  page) is redirected to only when it starts with `/` but not `//` or `/\`,
+  holds printable ASCII only and is at most 2,048 bytes:
+  `redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`.
+- **`skip_before_action(name, only:, except:)`** on a controller class drops
+  an inherited `before_action` for some actions; the generated
+  `allow_unauthenticated_access` is a one-line wrapper around it.
+- **`cybertrain generate authentication`** writes, as code the app owns: the
+  `users` and `sessions` migrations and models, `SessionsController`,
+  `RegistrationsController`, their views and nav partial, the
+  `ApplicationController` block (`resume_session`, `require_authentication`,
+  `start_new_session_for`, `terminate_session`, `after_authentication_url`)
+  and `test/authentication.rb`. That code uses everything in this list:
+  `User.authenticate_by` verifies with `verify_serialized` and the dummy
+  digest, `start_new_session_for` stores the password key and restarts the
+  lifetime, `resume_session` ends a Session row whose key no longer matches
+  or that is older than `session_absolute_max_age`, and
+  `after_authentication_url` is `safe_redirect_path`. To keep the browser
+  that changed a password signed in, store the new key after saving:
+  `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`.
+  The design: [docs/design.md](docs/design.md) D25.
 
 ### Add a file upload
 
@@ -675,6 +848,31 @@ about five seconds (a busy handler retrying every 100 µs, where SQLite's
 statements and foreign keys on; every query is bound, never interpolated. It's the only
 adapter today (PostgreSQL via `libpq` FFI is noted as possible future work).
 
+**Transactions.** `Cybertrain::DB.transaction { |c| ... }` (or
+`Article.transaction`, the same thing under the Rails name) checks a
+connection out, runs `BEGIN`, yields the connection, `COMMIT`s when the block
+returns and rolls back and re-raises when it raises. `immediate: true` runs
+`BEGIN IMMEDIATE`, which takes SQLite's write lock at the start: use it for a
+transaction that reads and then writes, so a concurrent writer makes it wait
+at `BEGIN` rather than fail with "database is locked" at its first write.
+While the block runs, everything on that thread that goes through the pool
+(`save`, `update`, `destroy`, Relation queries, `DB.with`) uses the
+transaction's connection, so it is part of the transaction:
+
+```ruby
+Article.transaction(immediate: true) do |c|
+  article.save!
+  c.execute("UPDATE authors SET articles_count = articles_count + 1 WHERE id = ?", [article.author_id])
+end
+```
+
+A `DB.transaction` nested in the block joins the outer one (only the
+outermost commits; a raise anywhere rolls everything back; no savepoints).
+Code that must keep its `rescue` in a plain method uses the block-free form,
+`c.begin!(immediate: true)` ... `c.commit!`, with `c.rollback!` in the rescue.
+It returns nil rather than the block's value, and a `DB.transaction` called
+inside a `DB.with` block (which is not a transaction) gets a second connection.
+
 **The development loop.** `cybertrain server` (`spin run gen`, then `spin run NAME`) in
 `development` (the default `CYBERTRAIN_ENV`, except in a binary from
 `cybertrain build`) also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`
@@ -686,11 +884,262 @@ main thread `execv`s the new binary on the same port and PID, invisible to a
 client mid-session. A failed build keeps serving the old binary and banners the
 compiler output on every HTML response. None of this loads in production.
 
+## Migrations
+
+A migration in `db/migrate/<version>_<name>.rb` is a `Cybertrain::Migration::Base`
+subclass. Its `change` records schema operations (`create_table`,
+`add_column`, `add_index`, `rename_column`, `add_reference`, `remove_column`,
+`remove_index`, `drop_table`); `cybertrain db migrate` applies each pending
+version in its own transaction and rewrites `db/schema.rb` from the database,
+and `cybertrain db rollback [N]` runs the inverse of `change`. When `change`
+holds an operation with no automatic inverse, write `down` (and `up`).
+
+A schema change that needs a data step to be safe uses `execute(sql, binds =
+[])`. It runs at its place in the migration, on the migrator's own
+connection and in the same transaction as the version's schema operations,
+so the column added before it exists when it runs, and a failure undoes the
+whole version:
+
+```ruby
+class AddRetentionDaysToBackups < Cybertrain::Migration::Base
+  def change
+    add_column "backups", "retention_days", :integer, null: false, default: "90"
+    execute "UPDATE backups SET retention_days = ?", [0]   # existing rows keep "forever"
+  end
+
+  def down
+    remove_column "backups", "retention_days"
+  end
+end
+```
+
+Without binds the SQL may be several `;`-separated statements; with binds
+it is one statement with `?` placeholders. `execute` has no inverse: rolling
+back a `change` that executes SQL, with no `down` of its own, stops with
+`version N is irreversible: it executes SQL in change; write down` before
+anything is reverted. A data statement never appears in `db/schema.rb`,
+which is dumped from the database. Recording a migration runs nothing, so
+the statement runs exactly once per `migrate` of its version.
+
+## Querying beyond `where`
+
+The generated relations cover `where` / `where_sql` / `order` / `limit` /
+`offset` / `count` / `exists?` / `delete_all`. For the counters, statistics
+and search boxes most applications also need, there are typed additions
+(issue #74, `docs/design.md` D22) rather than a query builder; each takes
+SQL column names, checked and quoted (anything else is an `ArgumentError`),
+and binds every value:
+
+```ruby
+# INSERT ... ON CONFLICT (project_id, key) DO UPDATE SET ...; returns rows written
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "calls + excluded.calls", max_ms: "MAX(max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1
+Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (also pluck_str, pluck_float)
+Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
+Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # hour buckets
+Stat.where(project_id: 1).sum_int(:calls)                 # also sum_float
+Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%' ESCAPE '\'
+```
+
+- `upsert`'s `update` values and `count_by_sql`'s expression are SQL text, like
+  `order_sql`: never build them from request data. An empty `update` is
+  `DO NOTHING`. `upsert` and `increment` load no model and run no
+  validation or callback, and fill in no timestamps.
+- `count_by` keys are Strings (through `Cast.str`), ascending; NULL and `""`
+  share the key `""`. With a `limit` / `offset`, `count_by`, `sum_*` and
+  `increment` work on that window, as `count` and `delete_all` do.
+- `where_like` is a substring match (case-insensitive for ASCII, as SQLite's
+  LIKE is). A prefix search writes its own pattern:
+  `Article.all.where_sql("title LIKE ? ESCAPE '\\'", [Cybertrain::Cast.like_escape(q) + "%"])`.
+- For hand-written SQL, `Cybertrain::Cast.binds(a, b, c)` builds the bind
+  Array `execute` takes (a Time as UTC ISO 8601 text, booleans as 1/0):
+  `Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(id, since)) }`.
+- `Cybertrain::Cast.hash(v)` / `Cast.array(v)` narrow a parsed JSON value to
+  a Hash / Array, or a fresh empty one when it is not one (a Time is checked
+  first, spikes/NOTES.md rule 8). They return a typed shallow copy, not `v`
+  itself; `Cast.empty_hash` / `Cast.empty_array` are the seeded empty
+  containers.
+
+## Pagination
+
+A list page reads the page number from `?page=N`, windows the relation, and
+renders the links:
+
+```ruby
+# app/controllers/articles_controller.rb
+def index
+  @articles = Article.all.order("created_at DESC")
+  @page = @articles.page(params.page_number, per: 20)
+end
+```
+
+```erb
+<%# app/views/articles/index.html.erb %>
+<% @articles.each do |article| %>
+  <p><%= link_to article.title, article %></p>
+<% end %>
+<%= paginate @page, articles_path %>
+```
+
+`params.page_number` is the 1-based `page` parameter, 1 when it is absent or
+not a number, clamped to `1..max_page` (`config.max_page`, 10000 by default,
+`CYBERTRAIN_MAX_PAGE`); it never hands unbounded text to `String#to_i`, which
+raises `RangeError` past 2**63-1 under Spinel. `params.int(:per, default: 20,
+min: 1, max: 100)` is the same bounded read for any key (an optional `-` and
+at most 18 digits, else the default; clamped to `min..max`).
+`relation.page(n, per: 50)` sets `LIMIT per OFFSET (n - 1) * per` on the
+relation (replacing an earlier `limit`/`offset`, so call it last), clamps `n`
+the same way, so the offset never passes `(max_page - 1) * per`, and returns a
+`Cybertrain::Page`: `number`, `per`, `row_offset`, `next?` (asked with one
+`SELECT 1 ... LIMIT per + 1` over the window, no `COUNT(*)`), `prev?`,
+`next_number`, `prev_number`. The rows stay on the relation, so
+`@articles.each` yields typed `Article`s; `per` outside 1..1000 is an
+`ArgumentError`. `paginate @page, path` renders `<nav class="pager">` with a
+"Newer" link (`rel="prev"`), "Page N" and an "Older" link (`rel="next"`),
+each left out when there is no such page; the links keep the current query
+string with `page` replaced (page 1 drops it), re-encoded and escaped, so a
+search or filter survives paging, and a path with its own query string
+(`"/search?q=x"`) uses that one instead. Offset pagination only: keyset
+pagination (`after: id`) for very large tables is not built yet. The scaffold's
+index view lists every record; add the three lines above to page it.
+
+## Rate limiting and the client address
+
+`rate_limit` in a controller caps how often one client may call some
+actions, counted before the action runs:
+
+```ruby
+class SessionsController < ApplicationController
+  # a 303 back to the form, with flash[:alert], once exhausted
+  rate_limit to: 10, within: 3 * 60, only: [:create],
+             redirect_to: "/session/new", alert: "Try again later."
+end
+
+class ApiKeysController < ApplicationController
+  rate_limit to: 100, within: 60, only: [:create, :update]   # 429 Too Many Requests + Retry-After
+end
+```
+
+Each declaration counts at most `to` requests per `within` seconds for each
+client address and controller (a fixed window that opens with the first
+request), then answers 429 with a `Retry-After` header, or redirects when
+given `redirect_to:`. `within:` is in seconds, `only:`/`except:` take
+Arrays, and there is no `with:` block. The counts live in the process, in a
+table of at most 10,000 addresses (when it is full, expired windows and
+then the oldest ones make room), so they are lost on restart and each
+process counts on its own. Every request to a limited action takes one lock:
+name the actions with `only:`. In a test, `Cybertrain::RateLimit.reset_all!`
+forgets every count and `Cybertrain::RateLimit.current_time = n` fixes the
+clock (`-1` restores it).
+
+The address counted is `request.client_ip` (`by: :remote_addr` counts the
+connection's peer instead). It is `request.remote_addr` unless
+`config.trusted_proxy` is on (`CYBERTRAIN_TRUSTED_PROXY=1`) **and** the
+connection comes from loopback, that is, from a reverse proxy on the same
+host (nginx, Caddy, kamal-proxy); then it is the last address in
+`X-Forwarded-For`, the one the proxy appended. Earlier entries are whatever
+the client sent and are never used, and a last entry that is empty, longer
+than 45 bytes or not printable ASCII gives `remote_addr`. Without the
+setting, every visitor behind such a proxy shares its address, and ten bad
+passwords lock everyone out; with it, a client connecting directly from
+elsewhere still cannot choose its own address. `request.loopback?` tells
+whether the connection comes from this machine (127.0.0.0/8, `::1`,
+`::ffff:127.x.x.x`), for pages only an operator on the server should
+reach; behind a proxy on the same host every request is loopback, so check
+`client_ip` too there. Design: [docs/design.md](docs/design.md) D26.
+
+A proxy that reaches the app over a network, not loopback, is listed by
+address instead: `config.trusted_proxies`, from `CYBERTRAIN_TRUSTED_PROXIES`,
+takes comma-separated IPv4 or IPv6 addresses or CIDRs
+(`CYBERTRAIN_TRUSTED_PROXIES=172.16.0.0/12,10.0.0.0/8`, or a single
+`172.18.0.2`). A connection from inside one of them gets the same treatment
+as a loopback one above: the last `X-Forwarded-For` address, validated the
+same way. An IPv4 entry also matches the IPv4-mapped form of its addresses
+(`::ffff:172.18.0.2`), and a peer's `%zone` is ignored. An entry that is not
+an address or CIDR, or has a prefix past `/32` (IPv4) or `/128` (IPv6),
+stops the server at boot. `CYBERTRAIN_TRUSTED_PROXY=1` is the shorthand for
+`127.0.0.0/8,::1`, and the two add up. This is the Kamal case: kamal-proxy
+runs in its own Docker container and connects from its address on the Docker
+network, so the `config/deploy.yml` that `cybertrain new` writes sets
+`CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` (Docker's default range; change
+it if your networks use another, `docker network inspect kamal`). Leave
+Kamal's `proxy.forward_headers` unset: with `ssl: true`, kamal-proxy sets
+`X-Forwarded-For` itself rather than passing on the client's. List only
+networks that clients cannot connect from: anyone inside a listed network
+can choose the address a rate limit counts.
+
+## Background work
+
+An application that has to do something outside a request (send a
+notification after the response went out, sweep old rows every hour, retry a
+call that failed) registers it with the framework, which runs it on one
+background thread of the served process:
+
+```ruby
+# config/app.rb (or a file bin/<app>.rb requires before Cybertrain::Main.run)
+Cybertrain::Scheduler.every(3600, "prune sessions") do
+  Cybertrain::DB.with { |c| c.execute("DELETE FROM sessions WHERE updated_at < datetime('now', '-30 days')") }
+end
+
+Cybertrain::Job.handle("welcome_mail") do |payload|
+  data = Cybertrain::Cast.hash(JSON.parse(payload))
+  WelcomeMail.deliver(data["email"].to_s)   # raise to have it retried
+end
+```
+
+```ruby
+# in an action, after saving the user
+Cybertrain::Job.enqueue("welcome_mail", JSON.generate({ "email" => @user.email }))
+Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
+```
+
+- **When it runs.** The thread starts when the binary serves (`./<app>`,
+  `./<app> server`), after boot has connected the database, bound the port
+  and set `SPINEL_WORKERS`; `migrate`, `db ...` and `Main.command` commands
+  never start it, and neither does `Cybertrain::Test::Client`. A task runs
+  first `seconds` after the start, then `seconds` after the start of each
+  run. Each run is wrapped in a rescue that logs `[ERROR] Scheduled task
+  "name" failed: ...` and the loop goes on. The block takes no arguments
+  (Spinel has no `instance_eval`). `Cybertrain::Scheduler.last_tick` is the
+  epoch second of the last tick, for a health check of your own.
+- **Jobs.** `Job.enqueue` adds a row to the `cybertrain_jobs` table, which
+  the framework creates itself (`CREATE TABLE IF NOT EXISTS`, on first use)
+  and leaves out of `db/schema.rb`. The payload is a String: JSON-encode
+  structured data. Inside a `DB.transaction` the row commits or rolls back
+  with the rest. The worker, a scheduler task polling every
+  `job_poll_interval` seconds (5), claims the oldest due job in a short
+  `BEGIN IMMEDIATE` transaction, runs its handler outside it, and marks it
+  `done`. A handler that raises is retried 1, 5, 15 and then 60 minutes
+  later, with `Class: message` (up to 1000 characters) in `last_error`, until
+  `job_max_attempts` (5) attempts have failed: the row is then `failed` and
+  stays for you to look at. A job whose kind has no handler is `failed` at
+  once; `Job.enqueue` refuses an unregistered kind. Rows a crashed process
+  left `running` are requeued when the worker starts. `Job.state_count("failed")`
+  and `Job.prune_done(before_epoch)` help with a health page and housekeeping.
+- **One worker per database.** Every served process runs the thread unless
+  `CYBERTRAIN_WORKER=0` (`config.worker = false`): when several processes
+  share one SQLite file, turn it off in all but one, or each scheduled task
+  runs once per process.
+- **Keep tasks short.** Tasks and handlers run one at a time on that one
+  thread, and a SQLite call holds its OS worker until it returns: with
+  `SPINEL_WORKERS=1` (the default) a long query stalls every request for as
+  long. Batch big work (delete a thousand rows per run, enqueue one job per
+  item) rather than doing it in one go.
+- **Testing.** `Scheduler.run_due(now)` runs one tick and `Job.work_one(now)`
+  one job, with an epoch time you choose, so a test never sleeps.
+
+There is no cron syntax, no priority or uniqueness for jobs and no mailer:
+this covers "send later" and "run every N seconds" (`docs/design.md` D28).
+
 ## Differences from Rails
 
 | Rails | cybertrain |
 | --- | --- |
 | `rails console` | No console — Spinel has no `eval` |
+| `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` in `bin/<app>.rb`: `./<app> name ARGS` runs it with the database connected |
 | Edit code, the running app picks it up | Ruby needs a rebuild; `cybertrain server` in development does this for you (rebuild, stop, `execv`) |
 | Edit a view, no reload needed | Same — views are parsed from disk per request in development |
 | `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |
@@ -699,7 +1148,9 @@ compiler output on every HTML response. None of this loads in production.
 | ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table — [docs/template-language.md](docs/template-language.md) |
 | Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
 | Many database adapters | SQLite only, via FFI |
-| `has_many :through`, `includes`, `pluck`, `dependent:`, enums, STI, polymorphic associations | Not implemented; associations come from schema foreign keys only |
+| `Article.transaction { ... }` returns the block's value; `raise ActiveRecord::Rollback`; `requires_new: true` savepoints | `Article.transaction { \|c\| ... }` (= `Cybertrain::DB.transaction`) yields the connection and returns nil; leave it by raising (it re-raises after the rollback); nested calls join the outer transaction, no savepoints. `immediate: true` for SQLite's `BEGIN IMMEDIATE`. `c.transaction { }` cannot be called on the yielded `c` under Spinel: nest `DB.transaction`, or use `c.begin!` / `c.commit!` / `c.rollback!` |
+| `has_many :through`, `includes`, `dependent:`, enums, STI, polymorphic associations | Not implemented; associations come from schema foreign keys only |
+| `pluck(:a)`, `sum(:a)`, `group(:a).count`, `upsert`, `update_counters`, `where("title LIKE ?", "%#{q}%")` | Typed one-column flavours, because a Spinel method has one return type: `pluck_str` / `pluck_int` / `pluck_float` (one column only), `sum_int` / `sum_float`, `count_by(:a)` (a `Hash{String => Integer}`) and `count_by_sql(expr)` for expressions; `Model.upsert(attrs, conflict:, update:)` takes the `DO UPDATE SET` expressions as SQL text and runs no validations, callbacks or timestamps; `relation.increment(:col, by: n)`; `where_like(:col, text)` escapes `\`, `%` and `_` for you. See [Querying beyond `where`](#querying-beyond-where) |
 | Any column name; an association can shadow `errors` | A column name must be an ASCII identifier (`[A-Za-z_][A-Za-z0-9_]*`): a schema with a non-ASCII column name (`名前`, `prénom`) generated under CRuby before PR #10 and `spin run gen` refuses it now, so rename the column when upgrading (a name like `first-name` was never a method name). A column named like a method the generated class or the framework calls on a record (`errors`, `save`, `attributes`, `hash`, `to_s`, `to_ary`, `raise`, ...) or like a Ruby keyword (`end`, `class`, `begin`) generates under `<column>_column` (`hash_column`, reader, writer and ivar) with a note in the generated file; its SQL name keeps working in `read_attribute`, params and `attributes["hash"]`, and a template reaches it under either name (`post.hash`, `post.hash_column`), except `errors` and `to_param`, which a template resolves as the model methods, so use `post.errors_column` there; the query API (`where`, `order`, `find_by`) always takes the SQL column name (`Post.where(hash: 1)`), the Ruby name being the reader/writer and the template name only. A column named like another Object method (`display`, `tap`, `methods`) generates under its own name with a note. `cybertrain generate scaffold` refuses keywords and reserved names (it would have to call a renamed reader) and accepts a shadowing name with a note, like the generator. An association whose plain name a column, another association or a `Model` method already owns is emitted under a fallback name with a comment in the generated file: `<table>_as_<column stem>` for a `has_many` (`comments_as_article`), `<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`) |
 | `namespace`, format/`respond_to`, `constraints`, `mount` | Not implemented — flat names, `render json:` only |
 | `rescue StandardError` catches a bad `JSON.parse` | Under Spinel `JSON::ParserError` is not a `StandardError`: app code must `rescue JSON::ParserError, StandardError`. The server catches it as a last resort and answers 500 |
@@ -709,12 +1160,16 @@ compiler output on every HTML response. None of this loads in production.
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
-| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape (User, Session, SessionsController, the before_action) plus a sign-up page, since there is no console to create a user in; `has_secure_password` is written out as methods on the User model over `Cybertrain::Password` (PBKDF2-HMAC-SHA256 in Ruby: bcrypt would need a C library the binary links, and `String#crypt` has no bcrypt on macOS). No password reset (no mailers), no `rate_limit` |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape (User, Session, SessionsController, the before_action) plus a sign-up page, since there is no console to create a user in; `has_secure_password` is written out as methods on the User model over `Cybertrain::Password` (PBKDF2-HMAC-SHA256 in Ruby: bcrypt would need a C library the binary links, and `String#crypt` has no bcrypt on macOS). No password reset (no mailers); sign-in attempts are limited by `rate_limit` (counted per process; see [Rate limiting](#rate-limiting-and-the-client-address)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment post cover` writes five `cover_*` columns on the owner table and the model methods (`cover_file=`, `cover_url`, ...) into the app; files live on disk under `storage/uploads/` and are served by a generated action through `send_blob`. One file per field, local disk only, no variants or direct uploads |
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |
-| Mailers, jobs, ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
+| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, ActiveSupport's bundled zone data | `Cybertrain::TimeZone.find("Asia/Tokyo")` reads the system's TZif files (`/usr/share/zoneinfo`, or `TZDIR`) and converts Integer epoch seconds (`utc_offset_at`, `utc_to_local`, `local_to_utc`); no per-request `Time.zone` and no `l(time, zone:)` yet ([Time zones](#time-zones)) |
+| `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see "Outbound HTTP"); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
+| Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see "Sending e-mail") |
+| Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind) { \|payload\| ... }` and `Job.enqueue(kind, payload, run_at:)` (a String payload in a `cybertrain_jobs` table, retried with backoff, then `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; one thread in the served process, `CYBERTRAIN_WORKER=0` elsewhere ([Background work](#background-work)) |
+| ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
 
@@ -768,6 +1223,17 @@ end
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Development accepts `localhost`, `127.0.0.1`, `[::1]`; comma-separated exact hostnames extend this list (no scheme, port or wildcard). Other hosts get 403 before static files, sessions, routing or diagnostics. This is separate from the listening address; production and test do not apply this development guard |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; also `Strict` or `None` (`None` always adds `Secure`); anything else stops the server at boot |
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
+| `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` or `true` makes `request.client_ip` (what `rate_limit` counts) the last `X-Forwarded-For` address of a connection from loopback, for a reverse proxy on the same host (see [Rate limiting](#rate-limiting-and-the-client-address)); shorthand for `CYBERTRAIN_TRUSTED_PROXIES=127.0.0.0/8,::1` |
+| `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; comma-separated IPv4/IPv6 addresses or CIDRs (`172.16.0.0/12,10.0.0.0/8`) whose connections have `request.client_ip` taken from the last `X-Forwarded-For` address, for a proxy reached over a network, such as kamal-proxy in its container; a bad entry stops the server at boot |
+| `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
+| `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps this process from running scheduled tasks and jobs (see [Background work](#background-work)); `scheduler_interval` (1 s), `job_poll_interval` (5 s) and `job_max_attempts` (5) are set in `config/app.rb` |
+| `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` or `true` lets `Cybertrain::HttpClient` connect to loopback, private and other non-public addresses (see "Outbound HTTP") |
+| `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; the SMTP server `Cybertrain::Mailer` sends through (see "Sending e-mail") |
+| `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`: the mode's port, 587 for `starttls`, 465 for `tls`, 25 for `none`; anything but 1 to 65535 is 0 |
+| `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`: no AUTH; set, the mailer authenticates with AUTH PLAIN |
+| `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; a secret, never logged, never in the boot banner or an error message |
+| `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: the sender `Mailer.deliver` uses when it is not given `from:` |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; also `tls` (implicit TLS) or `none` (plain text, credentials to loopback only); both TLS modes need `require "cybertrain/net/tls"` |
 
 Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
 inside another site's frame; the browser must reach the app over HTTPS.
@@ -852,6 +1318,259 @@ the deployment tutorial).
 [examples/blog](examples/blog#deploying-with-kamal) carries the same setup,
 built against this checkout's framework.
 
+### Application settings
+
+An application's own settings (a public base URL, a feature switch, an
+interval, an SMTP host) are declared on the same `Config`, with a type, an
+environment variable and a default:
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.setting_string :base_url, env: "MYAPP_BASE_URL", default: ""
+  c.setting_string :smtp_password, env: "MYAPP_SMTP_PASSWORD", default: "", secret: true
+  c.setting_bool :worker, env: "MYAPP_WORKER", default: true
+  c.setting_int :prune_interval, env: "MYAPP_PRUNE_INTERVAL", default: 3600, min: 1, max: 9_999_999
+end
+
+Cybertrain.config.string_setting(:base_url)
+Cybertrain.config.bool_setting(:worker)
+Cybertrain.config.int_setting(:prune_interval)
+```
+
+Each value is read once, when `config/app.rb` runs at startup. An empty or
+unset variable means the default. A boolean takes `1`/`true` or
+`0`/`false`; an integer takes decimal digits (an optional leading `-`) within
+`min..max` (both optional). Any other value falls back to the default and
+logs a `[WARN]` line saying so. Reading an undeclared name, or one declared
+with another type, raises `ArgumentError`, as does declaring a name twice.
+Tests change a value with `set_string_setting`, `set_int_setting` and
+`set_bool_setting`. `./NAME help` lists every declared setting with its
+variable and default, and the boot banner prints the current values
+(`=> Settings: base_url="" worker=true ...`); a `secret: true` setting shows
+up in both only by name, as `[FILTERED]`. There is no
+`Cybertrain.config.base_url` accessor: Spinel has no `define_method`, so the
+readers are typed methods that take the name.
+
+## Time zones
+
+Spinel ships no tz database, and setting `ENV["TZ"]` to convert a time
+changes it for every thread of the process. `Cybertrain::TimeZone` reads the
+system's zone files instead: `/usr/share/zoneinfo/<name>`, or `$TZDIR/<name>`
+when `TZDIR` is set (install the `tzdata` package in a slim container image).
+It parses TZif versions 1 to 4 (RFC 8536), including the POSIX TZ rule a
+"slim" file relies on after its last transition, and caches each zone for the
+life of the process (copy-on-write, so lookups from several workers take no
+lock).
+
+Everything is Integer epoch seconds. A *local epoch* is a wall-clock reading
+counted as if it were UTC, so wall-clock arithmetic is plain addition and
+`TimeZone.civil_to_epoch` / `TimeZone.epoch_to_civil` move between it and
+`[year, month, day, hour, minute, second]`:
+
+```ruby
+tokyo = Cybertrain::TimeZone.find("Asia/Tokyo")
+tokyo.found?                         # false for an unknown name: the zone then behaves as UTC
+tokyo.utc_offset_at(Time.now.to_i)   # => 32400
+tokyo.abbreviation_at(Time.now.to_i) # => "JST"
+
+# The next 09:00 in Tokyo:
+now = Time.now.to_i
+today = Cybertrain::TimeZone.epoch_to_civil(tokyo.utc_to_local(now))
+run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2], 9, 0, 0))
+run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2] + 1, 9, 0, 0)) if run <= now
+```
+
+At a daylight-saving transition `local_to_utc` is deterministic: a wall time
+that a forward jump skips (02:30 on a US spring-forward day) is read with the
+offset before the jump, so it lands after it (03:30 EDT); a wall time that a
+backward jump repeats gives the earlier instant. `find` accepts only a
+relative name made of `A-Za-z0-9_+-./` with no empty, `.` or `..` segment, so
+a zone name taken from a user's profile cannot reach a file outside the zone
+directory; an unknown or malformed zone is not cached, and `"UTC"` needs no
+file. Formatting helpers for templates (`l(time, zone:)`) are not there yet.
+
+## Outbound HTTP
+
+An application that calls another server (a webhook, a Slack incoming
+webhook, a third-party API) uses `Cybertrain::HttpClient`. It is not in
+`require "cybertrain"`; require it where it is used, and the TLS layer too
+when any URL is https:
+
+```ruby
+require "json"
+require "cybertrain/http_client"
+require "cybertrain/net/tls"   # only for https://; links the system libssl
+
+client = Cybertrain::HttpClient.new(timeout: 5, deadline: 15, max_body: 1 << 20)
+begin
+  res = client.post(ENV["SLACK_WEBHOOK_URL"], JSON.generate({ "text" => "Deployed" }),
+                    content_type: "application/json")
+  Cybertrain.logger.warn("slack answered #{res.status}") unless res.success?
+rescue Cybertrain::HttpClient::Error => e
+  Cybertrain.logger.warn("slack: #{e.message}")   # names host:port, never the path
+end
+
+res = client.get("https://api.example.com/v1/status", headers: { "Authorization" => "Bearer #{token}" })
+res.status              # 200
+res.header("ETag")      # names in any case; res.headers has them lowercase
+res.body                # the bytes, chunked coding removed
+```
+
+Why it exists: Spinel's `Net::HTTP` does the TLS handshake and every read
+after the first byte as blocking C calls, and each one holds an OS worker,
+which with the default `SPINEL_WORKERS=1` is the whole web server, for as
+long as a stalled endpoint likes. `HttpClient` never blocks a worker on the
+network:
+
+- **Every wait is bounded.** Connecting (a non-blocking connect; Spinel's
+  `TCPSocket.new` ignores `connect_timeout:`), each TLS handshake step, each
+  read and each write waits at most `timeout` seconds (default 5), and the
+  whole request at most `deadline` seconds (default 15). Past either,
+  `HttpClient::TimeoutError`. Reads go through a byte buffer fed by
+  `read_nonblock`, so bytes already received are never waited for.
+- **Name resolution blocks.** `getaddrinfo` has no non-blocking form in the
+  runtime: the thread making the request waits for DNS (usually
+  milliseconds, but a dead resolver can take the system's timeout, about 5 s
+  per attempt). The deadline counts that time but cannot interrupt it.
+- **Non-public destinations are refused** before anything is sent:
+  loopback (`127.0.0.0/8`, `::1`), private (`10/8`, `172.16/12`,
+  `192.168/16`, `fc00::/7`), link-local (`169.254/16`, which includes cloud
+  metadata services, `fe80::/10`), unspecified (`0.0.0.0/8`, `::`),
+  multicast, broadcast, CGNAT (`100.64/10`), the documentation and
+  benchmarking ranges, and IPv4-mapped, NAT64 and 6to4 forms of those
+  (`Cybertrain::Net::Address.blocked_reason`). The host name is resolved
+  once and the addresses it resolved to are the ones checked and dialled
+  (nothing is looked up again), so a name that resolves to a private
+  address (an `/etc/hosts` entry, DNS rebinding) is refused like the
+  literal; the TLS certificate is still checked against the name. The
+  check is per address: a refused address is skipped, and only when every
+  address is refused does the request fail.
+  `HttpClient::BlockedAddressError` says why. To call a service on your
+  own network, or a local server in a test, set `c.http_allow_private =
+  true` in `config/app.rb` (or `CYBERTRAIN_HTTP_ALLOW_PRIVATE=1`), or pass
+  `allow_private: true` to `HttpClient.new`; leave it off whenever a URL
+  can come from a user.
+- **Every resolved address is tried**, in the order the resolver gives
+  them, IPv6 and IPv4 alike: when one refuses, is unreachable, resets or
+  does not answer within `timeout`, the next is dialled, all of them
+  within `deadline`, and when every one fails the last one's error is
+  raised. This is what makes `localhost` work on macOS, where it resolves
+  to `::1` first and a server listening on `127.0.0.1` refuses that.
+  `Cybertrain::Mailer` dials the same way.
+- **TLS** is the openssl package's: `VERIFY_PEER` against the operating
+  system's trust store (`SSL_CERT_FILE` / `SSL_CERT_DIR` point it
+  elsewhere; the package has no `X509::Store` for a custom one), host-name
+  checking, SNI, TLS 1.2 or newer. An https URL needs a host name: an IP
+  address does not match a certificate's name. Without `require
+  "cybertrain/net/tls"`, an https request raises `HttpClient::TLSError`
+  saying so; `cybertrain/http_client` alone never links libssl.
+- **A notification client, not a browser:** HTTP/1.1 with `Connection:
+  close`, one connection per request, no keep-alive, no redirects (a 3xx is
+  returned as it is), no proxy, no cookies, no compression. Responses may be
+  `Content-Length`, chunked or read to the close; the headers are capped at
+  64 KiB and 100 lines, the body at `max_body` (default 1 MiB), past which
+  `HttpClient::TooLargeError`. A response that is not HTTP/1.x, or ends
+  early, is `HttpClient::BadResponseError`; a refused or reset connection, or
+  a name that does not resolve, `HttpClient::RefusedError`. A connection
+  that is reset or closed during the TLS handshake (a server that does not
+  speak TLS) is `HttpClient::TLSError` ("TLS handshake failed") on every
+  platform, like a handshake OpenSSL rejects. All of them are
+  `HttpClient::Error`s.
+- **Errors never contain the path or the query**, where a webhook URL
+  carries its secret: messages name the host and port only. A malformed URL
+  or a header with CR/LF is an `ArgumentError` that does not repeat it
+  either. `Host`, `Connection`, `Content-Length` and `Transfer-Encoding` are
+  the client's; `User-Agent` defaults to `cybertrain/<version>`.
+
+The request runs on the calling thread, a green thread like the request
+being served, so other connections keep being served while it waits. The
+socket layer (`cybertrain/net/socket.rb`: bounded connect, buffered reads,
+bounded writes) is separate from the HTTP layer so that other protocols can
+use it. The design: [docs/design.md](docs/design.md) D24.
+
+## Sending e-mail
+
+`Cybertrain::Mailer` sends plain-text e-mail through an SMTP server (your
+provider's submission server, or a local relay). Like the HTTP client it is
+not in `require "cybertrain"`, and TLS is a separate require:
+
+```ruby
+require "cybertrain/mailer"
+require "cybertrain/net/tls"   # for starttls (the default) and tls; links the system libssl
+
+# Settings from CYBERTRAIN_SMTP_HOST, _PORT, _USER, _PASSWORD, _FROM, _TLS:
+begin
+  Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Hello #{user.name},\n...")
+rescue Cybertrain::Mailer::Error => e
+  Cybertrain.logger.warn("mail: #{e.message}")   # never contains the password
+end
+
+# Or explicit settings, bypassing Config:
+mailer = Cybertrain::Mailer.new(host: "smtp.example.com", port: 587, tls: "starttls",
+                                user: "app", password: ENV["SMTP_PASSWORD"].to_s,
+                                from: "noreply@example.com", timeout: 10, deadline: 60)
+mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: report)
+```
+
+| Variable | Attribute | Default |
+| --- | --- | --- |
+| `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""` (`Mailer.new` raises `ArgumentError` until it is set) |
+| `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`: 587 for `starttls`, 465 for `tls`, 25 for `none` |
+| `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`: no AUTH |
+| `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""` (secret) |
+| `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""` |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; `tls` or `none` |
+
+- **TLS modes.** `starttls` connects in plain text, requires the server to
+  offer STARTTLS (else `Mailer::TLSError`) and upgrades before anything
+  else is said; bytes the server sends after its STARTTLS reply are
+  refused. `tls` speaks TLS from the first byte (port 465). Both check the
+  certificate against `host` as the HTTP client does (give a host name, not
+  an IP address), and both need `require "cybertrain/net/tls"`: without
+  it, `deliver` raises `Mailer::TLSError` saying so, before connecting.
+  `none` is plain text, for a relay on the same machine or a test server:
+  with a user configured it refuses (`Mailer::InsecureError`, before
+  connecting) unless the host resolves to a loopback address, and then
+  dials only its loopback addresses.
+- **The password is never logged or shown.** It is not in the boot banner,
+  `help`, the log or any error message; it is sent only inside the AUTH
+  PLAIN command, over TLS (or to loopback). Do not `p` or `inspect` a
+  `Mailer` or the `Config`, which hold it.
+- **Every wait is bounded**, as in "Outbound HTTP": connecting, each TLS
+  step and each reply waits at most `timeout` seconds (default 10), the
+  whole delivery at most `deadline` seconds (default 60), else
+  `Mailer::TimeoutError`. Name resolution blocks the calling thread.
+- **The dialogue:** the 220 greeting, `EHLO` (the name is `helo:`, default
+  `localhost`), `STARTTLS` and `EHLO` again, `AUTH PLAIN` when a user is
+  set (the server must offer PLAIN), `MAIL FROM`, one `RCPT TO` per
+  recipient, `DATA`, `QUIT`. A reply with another code is a
+  `Mailer::RejectedError` whose `smtp_code` is the server's (421, 535,
+  550, ...) and whose message has the step and the server's text. The
+  return value is the server's reply to the message (`"250 2.0.0 Ok: queued
+  as ..."`).
+- **The message:** `Date`, `From`, `To`, `Subject`, `MIME-Version: 1.0`,
+  `Content-Type: text/plain; charset=UTF-8`. A non-ASCII subject is RFC 2047
+  encoded (`=?UTF-8?B?...?=`, split between characters). The body's line
+  endings become CRLF and lines starting with `.` are dot-stuffed. Its
+  `Content-Transfer-Encoding` is `7bit` for ASCII, `8bit` (with `MAIL FROM
+  ... BODY=8BITMIME`) for UTF-8 when the server advertises 8BITMIME, and
+  `base64` otherwise or when a line is longer than 998 bytes. No
+  `Message-ID` is added (submission servers add one).
+- **What is refused** with an `ArgumentError`, before connecting: an
+  address that is not a bare ASCII `local@domain` (no display name, no
+  `<>`, spaces, commas, quotes, CR or LF; at most 254 bytes), a subject with
+  CR, LF or NUL (header injection) or over 998 bytes, a body that is not
+  valid UTF-8 or holds a NUL, more than 100 recipients. `to:` takes one
+  address or several separated by commas.
+- **Not yet:** HTML and multipart messages, attachments, templates, display
+  names, `Cc`/`Bcc` headers (send to several recipients instead), AUTH
+  LOGIN/CRAM-MD5, SMTPUTF8 addresses, pipelining, and a delivery queue (a
+  delivery runs on the calling thread, a green thread like a request).
+  `cybertrain generate authentication` still writes no password reset.
+
+The design: [docs/design.md](docs/design.md) D27.
+
 ## Testing an app
 
 App tests are plain Spinel programs under `test/`, like the framework's own:
@@ -893,6 +1612,11 @@ It migrates a fresh `storage/test.sqlite3`, boots the app as `BLOG`, loads
 rendered form (`BlogTest.form_token`). End each test file with
 `Cybertrain::Test.run!`; `examples/blog/test/articles.rb` and `comments.rb`
 show the full pattern.
+
+Every request a test client sends comes from `127.0.0.1` (`request.remote_addr`,
+so `request.loopback?` is true). To see what a page does for a visitor on
+another machine, set `client.peer_address = "203.0.113.7"` before the
+request.
 
 Run with `cybertrain spin test`: it compiles each `test/*.rb` into its own
 program and diffs its output (stdout and stderr together) against

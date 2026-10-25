@@ -1,0 +1,34 @@
+ok   a string setting reads its variable, an empty one means the default
+ok   a boolean setting takes 1/true and 0/false
+ok   an integer setting parses digits and an optional minus within its bounds
+[WARN] CT_TEST_BAD_INT="12abc" is not an integer; using the default 3600
+[WARN] CT_TEST_HUGE="123456789012345678901234567890" is not an integer; using the default 3600
+[WARN] CT_TEST_ZERO=0 is out of range (1..9999999); using the default 3600
+[WARN] CT_TEST_ABOVE=10000000 is out of range (1..9999999); using the default 3600
+[WARN] CT_TEST_MINUS="-" is not an integer; using the default 3600
+[WARN] CT_TEST_BAD_BOOL="yes" is not a boolean (1/true or 0/false); using the default true
+ok   an unparsable or out-of-range value falls back to the default with a warning
+ok   a usable value logs nothing
+ok   a bad declaration is an ArgumentError
+ok   reading an undeclared or differently typed setting is an ArgumentError
+ok   tests can reassign a setting through the writers
+smtp_host="mail.example.com" smtp_password=[FILTERED]
+Settings (environment variables):
+  CT_TEST_SMTP_HOST      smtp_host: string, default "localhost"
+  CT_TEST_SMTP_PASSWORD  smtp_password: string, secret
+ok   a secret's value stays out of the summary and the listing
+ok   nothing declared lists nothing
+Usage:
+  ./blog [server [PORT]]   start the server
+  ./blog migrate           apply pending migrations
+  ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
+  ./blog help
+
+Settings (environment variables):
+  CT_TEST_NEVER_SET  base_url: string, default ""
+  CT_TEST_NEVER_SET  worker: boolean (1/true, 0/false), default true
+  CT_TEST_PRUNE      prune_interval: integer 1..9999999, default 3600
+  CT_TEST_NEVER_SET  retries: integer >= 0, default 3
+  CT_TEST_NEVER_SET  api_key: string, secret
+ok   help lists every declared setting with its variable and default
+11 tests, 56 assertions, 0 failures

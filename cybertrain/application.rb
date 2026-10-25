@@ -15,6 +15,7 @@ require "cybertrain/middleware/host_authorization"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
+require "cybertrain/scheduler"
 require "cybertrain/views"
 require "cybertrain/dev"
 
@@ -109,6 +110,12 @@ module Cybertrain
       fail_boot(body_bytes_error) unless body_bytes_error.empty?
       upload_error = c.upload_limits_error
       fail_boot(upload_error) unless upload_error.empty?
+      scheduler_error = c.scheduler_error
+      fail_boot(scheduler_error) unless scheduler_error.empty?
+      max_page_error = c.max_page_error
+      fail_boot(max_page_error) unless max_page_error.empty?
+      proxies_error = c.trusted_proxies_error
+      fail_boot(proxies_error) unless proxies_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
@@ -123,6 +130,9 @@ module Cybertrain
       # by the first write, not here, so a read-only deploy still boots.
       Multipart.configure(c.max_upload_bytes, c.max_multipart_parts)
       BlobStore.root = c.upload_root
+      Params.max_page = c.max_page
+      Request.trusted_proxy = c.trusted_proxy
+      Request.trusted_proxies = c.trusted_proxies
       Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
       self
     end
@@ -177,12 +187,16 @@ module Cybertrain
       srv = server
       srv.start # bind first: a PortInUse error must not come after the banner
       print_boot_banner
+      # After boot connected the database and SPINEL_WORKERS is set; only
+      # here, so `migrate`, `db` and Main.command never start it.
+      Scheduler.start!(@config)
       if @config.development?
         serve_development(srv)
       else
         trap("TERM") { srv.request_stop }
         srv.wait
       end
+      Scheduler.stop!
       nil
     rescue PortInUse => e
       fail_boot(e.message)
@@ -267,6 +281,9 @@ module Cybertrain
       c = @config
       puts "=> Booting cybertrain #{Cybertrain::VERSION}"
       puts "=> #{c.env} environment (#{c.workers} worker#{c.workers == 1 ? "" : "s"})"
+      # Application settings (Config#setting_string ...), secrets filtered.
+      settings = c.settings_summary
+      puts "=> Settings: #{settings}" unless settings.empty?
       puts "=> Watching app/, config/ and db/schema.rb for changes" if c.development?
       puts "* Listening on http://#{c.host}:#{c.port}"
       puts "Use Ctrl-C to stop"
@@ -337,7 +354,8 @@ module Cybertrain
       app = CsrfProtection.new(app, c.csrf_exempt_prefixes) if c.csrf
       app = SessionStore.new(app, secret: c.resolve_secret!, cookie_name: c.session_cookie_name,
                                   max_age: c.session_max_age, secure: c.session_secure,
-                                  same_site: c.session_same_site, partitioned: c.session_partitioned)
+                                  same_site: c.session_same_site, partitioned: c.session_partitioned,
+                                  absolute_max_age: c.session_absolute_max_age)
       app = MethodOverride.new(app)
       app = Static.new(app, c.public_root) if c.static_files
       app = RequestLogger.new(app) unless c.log_level == :none

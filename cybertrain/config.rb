@@ -1,11 +1,15 @@
 require "cybertrain/crypto"
+require "cybertrain/logger"
+require "cybertrain/params"
+require "cybertrain/http/ip_address"
 require "cybertrain/template/limits"
 
 module Cybertrain
   # The application's settings. Defaults come from the environment
   # (CYBERTRAIN_ENV, PORT, CYBERTRAIN_DATABASE, CYBERTRAIN_SECRET_KEY_BASE,
   # SPINEL_WORKERS, CYBERTRAIN_HOST, CYBERTRAIN_ALLOWED_HOSTS, CYBERTRAIN_SESSION_SAME_SITE,
-  # CYBERTRAIN_SESSION_PARTITIONED); config/app.rb then adjusts them:
+  # CYBERTRAIN_SESSION_PARTITIONED, CYBERTRAIN_MAX_PAGE, CYBERTRAIN_HTTP_ALLOW_PRIVATE,
+  # CYBERTRAIN_WORKER); config/app.rb then adjusts them:
   #
   #   Cybertrain.configure do |c|
   #     c.port = 3000
@@ -99,12 +103,22 @@ module Cybertrain
     attr_accessor :session_cookie_name
 
     # The session cookie's Max-Age in seconds, two weeks (`1209600`). It
-    # restarts whenever the session changes. Generated authentication also
-    # uses this as an absolute lifetime from the Session row's created_at;
-    # cookie changes do not extend that sign-in.
+    # restarts whenever the session changes; {#session_absolute_max_age}
+    # bounds the session's whole life.
     # @return [Integer]
     # @api public
     attr_accessor :session_max_age
+
+    # The longest a session lives in seconds, however often it is used, two
+    # weeks (`1209600`); `0` turns the limit off. The session cookie records
+    # when it was first written, signed with the rest, and a cookie older
+    # than this loads as an empty session, so a copied cookie cannot be
+    # replayed past it. {Session#restart_lifetime!} starts the count again
+    # (generated authentication calls it at sign-in, and also ends a
+    # sign-in this long after its Session row's created_at).
+    # @return [Integer]
+    # @api public
+    attr_accessor :session_absolute_max_age
 
     # Whether the session cookie is `Secure` (HTTPS only): true in production,
     # false elsewhere.
@@ -126,6 +140,40 @@ module Cybertrain
     # @return [Boolean]
     # @api public
     attr_accessor :session_partitioned
+
+    # Whether a reverse proxy on this host may name the client, `false`,
+    # from `CYBERTRAIN_TRUSTED_PROXY` (`1` or `true`). When true, a request
+    # whose connection comes from loopback (127.0.0.0/8, `::1`) takes its
+    # {Request#client_ip} from the last hop of `X-Forwarded-For`, the one
+    # the proxy appended; any other connection keeps its peer address. Turn
+    # it on when the server listens on 127.0.0.1 behind nginx, Caddy or
+    # kamal-proxy on the same machine, so that {Controller.rate_limit}
+    # counts each visitor rather than the proxy. Nothing changes for a
+    # client that connects directly from another machine: its header is
+    # ignored.
+    # The shorthand for `trusted_proxies` of `127.0.0.0/8,::1` (the
+    # IPv4-mapped `::ffff:127.x.x.x` included); see {#trusted_proxies} for a
+    # proxy in another container or on another machine.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :trusted_proxy
+
+# The proxies that may name the client besides loopback, `[]`, from
+# `CYBERTRAIN_TRUSTED_PROXIES`: comma-separated IPv4 or IPv6 addresses
+# or CIDRs (`172.16.0.0/12,10.0.0.0/8`, or one `172.18.0.2`). A request
+# whose connection comes from inside one of them takes its
+# {Request#client_ip} from the last hop of `X-Forwarded-For`. For a
+# proxy that reaches the app over a network rather than loopback:
+# kamal-proxy, which runs in its own Docker container and connects from
+# the bridge network's address (Docker hands those out of 172.16.0.0/12
+# by default). List only addresses no client can connect from: anyone
+# inside a listed network can choose the address a rate limit counts.
+# `trusted_proxy` is the shorthand for `127.0.0.0/8,::1`; the two add
+# up. An entry that is not an address or CIDR (or a prefix past /32 or
+# /128) stops the server at boot.
+# @return [Array<String>]
+# @api public
+attr_accessor :trusted_proxies
 
     # SQLite connections in the pool, `4`.
     # @return [Integer]
@@ -190,6 +238,68 @@ module Cybertrain
     # @api public
     attr_accessor :upload_root
 
+    # Whether {HttpClient} may connect to addresses that are not public
+    # (loopback, private, link-local, CGNAT, multicast, ...; see
+    # Net::Address), `false`, from `CYBERTRAIN_HTTP_ALLOW_PRIVATE` (`1` or
+    # `true`). Off, a URL whose host resolves to such an address raises
+    # HttpClient::BlockedAddressError before anything is sent, which keeps a
+    # user-supplied webhook URL from reaching the server's own network. Turn
+    # it on for a test against a local server, or for an internal service
+    # the application is meant to call.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :http_allow_private
+
+    # ---- {Mailer} (cybertrain/mailer.rb), from CYBERTRAIN_SMTP_* ----------
+
+    # The SMTP server {Mailer} sends through, `""` (unset: Mailer.new raises
+    # until it is set), from `CYBERTRAIN_SMTP_HOST`.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_host
+
+    # Its port, `0`, from `CYBERTRAIN_SMTP_PORT`: 0 means the mode's port,
+    # 587 for `"starttls"`, 465 for `"tls"`, 25 for `"none"`
+    # ({Mailer.default_port}). A value that is not a number from 1 to 65535
+    # is 0.
+    # @return [Integer]
+    # @api public
+    attr_accessor :smtp_port
+
+    # The AUTH PLAIN user, `""` (no AUTH), from `CYBERTRAIN_SMTP_USER`.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_user
+
+    # The AUTH PLAIN password, `""`, from `CYBERTRAIN_SMTP_PASSWORD`. A
+    # secret: the boot banner, `help`, logs and Mailer's error messages
+    # never show it.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_password
+
+    # The default sender address, `""`, from `CYBERTRAIN_SMTP_FROM`.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_from
+
+    # How the connection is protected, `"starttls"`, from
+    # `CYBERTRAIN_SMTP_TLS`: `"starttls"` (upgrade a plain connection, port
+    # 587), `"tls"` (TLS from the first byte, port 465) or `"none"` (plain
+    # text, which sends credentials only to a loopback address). Both TLS
+    # modes need `require "cybertrain/net/tls"`.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_tls
+
+    # CYBERTRAIN_SMTP_PORT: 0 (the mode's port) unless it is 1..65535.
+    def self.default_smtp_port
+      n = Params.parse_int(env_or("CYBERTRAIN_SMTP_PORT", ""), 0)
+      n < 1 || n > 65_535 ? 0 : n
+    end
+
+    # ---- end of the Mailer settings ----------------------------------------
+
     # Spinel worker threads, `1`, from `SPINEL_WORKERS`.
     # @return [Integer]
     # @api public
@@ -207,6 +317,49 @@ module Cybertrain
     # @return [Integer]
     # @api public
     attr_accessor :max_render_depth
+
+    # The largest page number {Params#page_number} gives and
+    # {Relation#page} accepts, `10000`, from `CYBERTRAIN_MAX_PAGE` (an
+    # optional `-` and at most 18 digits; anything else, or a value below 1,
+    # is the default). It bounds the OFFSET a request can ask for, at
+    # `(max_page - 1) * per` rows. At least 1 (boot refuses less).
+    # @return [Integer]
+    # @api public
+    attr_accessor :max_page
+
+    # Whether this process runs the background thread ({Scheduler}: the
+    # scheduled tasks and the {Job} worker) when it serves, `true`; `false`
+    # from `CYBERTRAIN_WORKER=0` (or `false`). When several processes share
+    # one database, turn it off in all but one of them, or every scheduled
+    # task runs once per process.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :worker
+
+    # Seconds the scheduler thread sleeps between ticks, `1`: a task runs
+    # at most this late. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :scheduler_interval
+
+    # Seconds between the job worker's polls of `cybertrain_jobs`, `5`: a
+    # job enqueued to run now starts within about this long. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :job_poll_interval
+
+    # How many attempts a {Job} gets before it is left `failed`, `5` (the
+    # first run and four retries, 1, 5, 15 and 60 minutes apart).
+    # @return [Integer]
+    # @api public
+    attr_accessor :job_max_attempts
+
+    # CYBERTRAIN_MAX_PAGE read without to_i on unbounded text (NOTES rule
+    # 25): 10000 when it is unset, not a number, or below 1.
+    def self.default_max_page
+      n = Params.parse_int(env_or("CYBERTRAIN_MAX_PAGE", ""), 10_000)
+      n < 1 ? 10_000 : n
+    end
 
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
     # empty one counts as unset). Shared with DB::CLI.
@@ -244,6 +397,19 @@ module Cybertrain
       configured == "1" || configured == "true"
     end
 
+    # True only for CYBERTRAIN_HTTP_ALLOW_PRIVATE=1 or =true.
+    def self.default_http_allow_private
+      configured = ENV["CYBERTRAIN_HTTP_ALLOW_PRIVATE"] || ""
+      configured == "1" || configured == "true"
+    end
+
+    # True only for CYBERTRAIN_TRUSTED_PROXY=1 or =true, like
+    # default_session_partitioned.
+    def self.default_trusted_proxy
+      configured = ENV["CYBERTRAIN_TRUSTED_PROXY"] || ""
+      configured == "1" || configured == "true"
+    end
+
     def initialize
       @env = Config.default_env
       @host = Config.default_host
@@ -273,6 +439,9 @@ module Cybertrain
       @log_level = :info
       @session_cookie_name = "_cybertrain_session"
       @session_max_age = 1209600
+      # Absolute session lifetime, enforced by SessionStore: the two weeks
+      # generated authentication already enforced on its Session rows.
+      @session_absolute_max_age = 1209600
       # The session cookie's Secure attribute: on in production, which is
       # expected to sit behind a TLS-terminating proxy; off elsewhere, where
       # the server is reached over plain http://. SameSite=None and
@@ -285,6 +454,17 @@ module Cybertrain
       # Partitioned (CHIPS): with None, the cookie survives third-party cookie
       # blocking inside such a frame. Adds Secure too.
       @session_partitioned = Config.default_session_partitioned
+      # Request.trusted_proxy's default; Application#boot installs it there
+      # (the HTTP layer cannot read the Config).
+      @trusted_proxy = Config.default_trusted_proxy
+# Request.trusted_proxies' list, the same way: split here, checked by
+# trusted_proxies_error at boot. Typed seed (rule 9), assigned in
+# initialize (rule 73).
+@trusted_proxies = Array.new(0) { "" }
+(ENV["CYBERTRAIN_TRUSTED_PROXIES"] || "").split(",").each do |entry|
+  proxy = entry.strip
+  @trusted_proxies << proxy unless proxy.empty?
+end
       @pool_size = 4
       @static_files = true
       @csrf = true
@@ -299,7 +479,40 @@ module Cybertrain
       @max_upload_bytes = 5_242_880
       @max_multipart_parts = 128
       @upload_root = "storage/uploads"
+      @http_allow_private = Config.default_http_allow_private
+      # Mailer's settings (CYBERTRAIN_SMTP_*). Assigned here, not in a
+      # helper: an ivar first set outside initialize is boxed.
+      @smtp_host = Config.env_or("CYBERTRAIN_SMTP_HOST", "")
+      @smtp_port = Config.default_smtp_port
+      @smtp_user = Config.env_or("CYBERTRAIN_SMTP_USER", "")
+      @smtp_password = Config.env_or("CYBERTRAIN_SMTP_PASSWORD", "")
+      @smtp_from = Config.env_or("CYBERTRAIN_SMTP_FROM", "")
+      @smtp_tls = Config.env_or("CYBERTRAIN_SMTP_TLS", "starttls").downcase
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i
+      # Application-defined settings (setting_string / setting_int /
+      # setting_bool): one typed Hash per type, keyed by the setting's name
+      # as a String and seeded with its element type (spikes/NOTES.md rule
+      # 9), plus what `help` and the boot banner list, in declaration order.
+      @setting_strings = { "" => "" }
+      @setting_strings.delete("")
+      @setting_ints = { "" => 0 }
+      @setting_ints.delete("")
+      @setting_bools = { "" => false }
+      @setting_bools.delete("")
+      @setting_names = Array.new(0) { "" }
+      @setting_envs = { "" => "" }
+      @setting_envs.delete("")
+      @setting_descriptions = { "" => "" }
+      @setting_descriptions.delete("")
+      @setting_secrets = { "" => false }
+      @setting_secrets.delete("")
+      # Params.max_page's literal; Application#boot installs this there.
+      @max_page = Config.default_max_page
+      # The background thread (Scheduler, Job).
+      @worker = Config.bool_from_env("CYBERTRAIN_WORKER", true)
+      @scheduler_interval = 1
+      @job_poll_interval = 5
+      @job_max_attempts = 5
     end
 
     # @return [Boolean]
@@ -320,6 +533,299 @@ module Cybertrain
       @env == "production"
     end
 
+    # The widest bounds an Integer setting may have: 18 digits either way,
+    # the most {Config.int_setting_text?} lets through to `to_i` (which
+    # raises RangeError past 2**63-1 under Spinel, spikes/NOTES.md rule 25).
+    SETTING_INT_MIN = -999_999_999_999_999_999
+    SETTING_INT_MAX = 999_999_999_999_999_999
+
+    # Declares an application setting holding a String, read once from the
+    # environment variable `env` (an empty or unset variable means
+    # `default`). Read it with {#string_setting}. A name may be declared
+    # once; give it as a Symbol. `secret: true` keeps the value out of the
+    # boot banner and `help`, which then show only the variable's name.
+    # @example config/app.rb
+    #   Cybertrain.configure do |c|
+    #     c.setting_string :base_url, env: "MYAPP_BASE_URL", default: ""
+    #     c.setting_string :smtp_password, env: "MYAPP_SMTP_PASSWORD", default: "", secret: true
+    #   end
+    #   Cybertrain.config.string_setting(:base_url)
+    # @param name [Symbol]
+    # @param env [String] the environment variable
+    # @param default [String]
+    # @param secret [Boolean]
+    # @return [nil]
+    # @raise [ArgumentError] when the name is already declared or env is empty
+    # @api public
+    def setting_string(name, env:, default:, secret: false)
+      key = declare_setting(name, env, secret)
+      @setting_strings[key] = Config.env_or(env, default)
+      @setting_descriptions[key] = secret ? "string, secret" : "string, default #{default.inspect}"
+      nil
+    end
+
+    # Declares an application setting holding an Integer, read once from the
+    # environment variable `env`: decimal digits with an optional leading
+    # `-`, within `min..max`. An empty or unset variable means `default`;
+    # anything else that does not parse, or a number out of bounds, also
+    # gives `default`, with a `[WARN]` line through {Cybertrain.logger}.
+    # Read it with {#int_setting}.
+    # @example config/app.rb
+    #   c.setting_int :prune_interval, env: "MYAPP_PRUNE_INTERVAL", default: 3600, min: 1, max: 9_999_999
+    # @param name [Symbol]
+    # @param env [String] the environment variable
+    # @param default [Integer]
+    # @param min [Integer] the smallest accepted value (no bound by default)
+    # @param max [Integer] the largest accepted value (no bound by default)
+    # @return [nil]
+    # @raise [ArgumentError] when the name is already declared, env is
+    #   empty, or default is outside min..max
+    # @api public
+    def setting_int(name, env:, default:, min: SETTING_INT_MIN, max: SETTING_INT_MAX)
+      key = name.to_s
+      bounds = Config.int_bounds(min, max)
+      if min > max || default < min || default > max
+        raise ArgumentError, "setting #{key}: default #{default} is out of range (#{bounds})"
+      end
+
+      declare_setting(name, env, false)
+      @setting_ints[key] = Config.int_from_env(env, default, min, max)
+      @setting_descriptions[key] = bounds.empty? ? "integer, default #{default}" : "integer #{bounds}, default #{default}"
+      nil
+    end
+
+    # Declares an application setting holding true or false, read once from
+    # the environment variable `env`: `1` or `true` is true, `0` or `false`
+    # is false, an empty or unset variable means `default`, and any other
+    # value gives `default` with a `[WARN]` line through {Cybertrain.logger}.
+    # Read it with {#bool_setting}.
+    # @example config/app.rb
+    #   c.setting_bool :worker, env: "MYAPP_WORKER", default: true
+    # @param name [Symbol]
+    # @param env [String] the environment variable
+    # @param default [Boolean]
+    # @return [nil]
+    # @raise [ArgumentError] when the name is already declared or env is empty
+    # @api public
+    def setting_bool(name, env:, default:)
+      key = declare_setting(name, env, false)
+      @setting_bools[key] = Config.bool_from_env(env, default)
+      @setting_descriptions[key] = "boolean (1/true, 0/false), default #{default}"
+      nil
+    end
+
+    # The value of the String setting `name` ({#setting_string}).
+    # @param name [Symbol]
+    # @return [String]
+    # @raise [ArgumentError] when no String setting of that name is declared
+    # @api public
+    def string_setting(name)
+      key = name.to_s
+      raise ArgumentError, "no string setting #{key} (declare it with setting_string)" unless @setting_strings.key?(key)
+
+      @setting_strings[key].to_s
+    end
+
+    # The value of the Integer setting `name` ({#setting_int}).
+    # @param name [Symbol]
+    # @return [Integer]
+    # @raise [ArgumentError] when no Integer setting of that name is declared
+    # @api public
+    def int_setting(name)
+      key = name.to_s
+      raise ArgumentError, "no integer setting #{key} (declare it with setting_int)" unless @setting_ints.key?(key)
+
+      @setting_ints[key].to_i
+    end
+
+    # The value of the boolean setting `name` ({#setting_bool}).
+    # @param name [Symbol]
+    # @return [Boolean]
+    # @raise [ArgumentError] when no boolean setting of that name is declared
+    # @api public
+    def bool_setting(name)
+      key = name.to_s
+      raise ArgumentError, "no boolean setting #{key} (declare it with setting_bool)" unless @setting_bools.key?(key)
+
+      @setting_bools[key] == true
+    end
+
+    # Replaces the value of a declared String setting, for tests.
+    # @param name [Symbol]
+    # @param value [String]
+    # @return [nil]
+    # @raise [ArgumentError] when no String setting of that name is declared
+    # @api public
+    def set_string_setting(name, value)
+      string_setting(name)
+      @setting_strings[name.to_s] = value
+      nil
+    end
+
+    # Replaces the value of a declared Integer setting, for tests. The
+    # declared bounds are not applied.
+    # @param name [Symbol]
+    # @param value [Integer]
+    # @return [nil]
+    # @raise [ArgumentError] when no Integer setting of that name is declared
+    # @api public
+    def set_int_setting(name, value)
+      int_setting(name)
+      @setting_ints[name.to_s] = value
+      nil
+    end
+
+    # Replaces the value of a declared boolean setting, for tests.
+    # @param name [Symbol]
+    # @param value [Boolean]
+    # @return [nil]
+    # @raise [ArgumentError] when no boolean setting of that name is declared
+    # @api public
+    def set_bool_setting(name, value)
+      bool_setting(name)
+      @setting_bools[name.to_s] = value
+      nil
+    end
+
+    # Records a declaration (what `help` and the boot banner list) and
+    # returns the name as the String the typed Hashes are keyed by.
+    def declare_setting(name, env, secret)
+      key = name.to_s
+      raise ArgumentError, "a setting needs a name" if key.empty?
+      raise ArgumentError, "setting #{key}: env must name an environment variable" if env.empty?
+      raise ArgumentError, "setting #{key} is declared twice" if @setting_envs.key?(key)
+
+      @setting_names << key
+      @setting_envs[key] = env
+      @setting_secrets[key] = secret
+      key
+    end
+
+    # "1..10", ">= 1", "<= 10", or "" when neither bound is set.
+    def self.int_bounds(min, max)
+      if min == SETTING_INT_MIN
+        return "" if max == SETTING_INT_MAX
+
+        return "<= #{max}"
+      end
+      return ">= #{min}" if max == SETTING_INT_MAX
+
+      "#{min}..#{max}"
+    end
+
+    # True when text is an optional "-" and 1 to 18 significant decimal
+    # digits (leading zeros aside): what `to_i` parses without the
+    # RangeError it raises past 2**63-1 (spikes/NOTES.md rule 25).
+    def self.int_setting_text?(text)
+      s = text.to_s # NOTES rule 62
+      n = s.bytesize
+      start = 0
+      start = 1 if n > 0 && s.getbyte(0) == 45
+      return false if n == start
+
+      i = start
+      while i < n
+        b = s.getbyte(i)
+        return false if b < 48 || b > 57
+
+        i += 1
+      end
+      first = start
+      first += 1 while first < n - 1 && s.getbyte(first) == 48
+      n - first <= 18
+    end
+
+    # The Integer in ENV[env], or default (with a warning when the variable
+    # is set but unusable).
+    def self.int_from_env(env, default, min, max)
+      text = ENV[env] || ""
+      return default if text.empty?
+
+      unless Config.int_setting_text?(text)
+        Cybertrain.logger.warn("#{env}=#{text.inspect} is not an integer; using the default #{default}")
+        return default
+      end
+      value = text.to_i
+      if value < min || value > max
+        Cybertrain.logger.warn("#{env}=#{text} is out of range (#{Config.int_bounds(min, max)}); using the default #{default}")
+        return default
+      end
+      value
+    end
+
+    # The boolean in ENV[env] ("1"/"true", "0"/"false"), or default (with a
+    # warning when the variable is set to anything else).
+    def self.bool_from_env(env, default)
+      text = ENV[env] || ""
+      return default if text.empty?
+      return true if text == "1" || text == "true"
+      return false if text == "0" || text == "false"
+
+      Cybertrain.logger.warn("#{env}=#{text.inspect} is not a boolean (1/true or 0/false); using the default #{default}")
+      default
+    end
+
+    # The declared settings as `help` lists them: one line per setting with
+    # its environment variable, name, type and default (a secret one shows
+    # neither its default nor its value). "" when none is declared.
+    def settings_usage
+      names = @setting_names
+      return "" if names.empty?
+
+      width = 0
+      i = 0
+      while i < names.size
+        env = @setting_envs[names[i]].to_s
+        width = env.size if env.size > width
+        i += 1
+      end
+      out = +"Settings (environment variables):\n"
+      i = 0
+      while i < names.size
+        key = names[i]
+        env = @setting_envs[key].to_s
+        out << "  "
+        out << env
+        pad = width - env.size + 2
+        while pad > 0
+          out << " "
+          pad -= 1
+        end
+        out << key
+        out << ": "
+        out << @setting_descriptions[key].to_s
+        out << "\n"
+        i += 1
+      end
+      out
+    end
+
+    # The declared settings' current values on one line for the boot banner,
+    # `name=value` separated by spaces, a secret one as `name=[FILTERED]`.
+    # "" when none is declared.
+    def settings_summary
+      names = @setting_names
+      out = +""
+      i = 0
+      while i < names.size
+        key = names[i]
+        out << " " unless out.empty?
+        out << key
+        out << "="
+        out << setting_display_value(key)
+        i += 1
+      end
+      out
+    end
+
+    def setting_display_value(key)
+      return "[FILTERED]" if @setting_secrets[key] == true
+      return @setting_strings[key].to_s.inspect if @setting_strings.key?(key)
+      return @setting_ints[key].to_i.to_s if @setting_ints.key?(key)
+
+      (@setting_bools[key] == true).to_s
+    end
+
     # The error Application#boot reports (and exits 1 on) when a
     # csrf_exempt_prefixes entry is not a usable prefix: each must start and
     # end with "/" (so "/api" cannot take "/apix" with it) and must not be
@@ -337,6 +843,29 @@ module Cybertrain
         i += 1
       end
       ""
+    end
+
+    # The error Application#boot reports when scheduler_interval,
+    # job_poll_interval or job_max_attempts is below 1, or "" when all are
+    # fine (a sleep of 0 would spin the scheduler thread; 0 attempts would
+    # fail every job unrun).
+    def scheduler_error
+      return "scheduler_interval must be at least 1 (got #{@scheduler_interval})" if @scheduler_interval < 1
+      return "job_poll_interval must be at least 1 (got #{@job_poll_interval})" if @job_poll_interval < 1
+      return "job_max_attempts must be at least 1 (got #{@job_max_attempts})" if @job_max_attempts < 1
+
+      ""
+    end
+
+    # The error Application#boot reports when max_page is not an Integer of
+    # at least 1, or "" when it is fine.
+    def max_page_error
+      value = @max_page
+      case value
+      when Integer
+        return "" if value >= 1
+      end
+      "max_page must be an Integer of at least 1 (got #{value.inspect})"
     end
 
     # The error Application#boot reports when max_body_bytes is not a
@@ -386,6 +915,23 @@ module Cybertrain
       end
       ""
     end
+
+# The error Application#boot reports (and exits 1 on) when a
+# trusted_proxies entry is not an IPv4 or IPv6 address or CIDR
+# (IpAddress.parse_network); "" when every entry is one. A while loop,
+# no block (NOTES rules 32, 45).
+def trusted_proxies_error
+  entries = @trusted_proxies
+  i = 0
+  while i < entries.size
+    entry = entries[i].to_s
+    if IpAddress.parse_network(entry).empty?
+      return "CYBERTRAIN_TRUSTED_PROXIES / trusted_proxies entry #{entry.inspect} is not an IP address or CIDR (e.g. 172.16.0.0/12)"
+    end
+    i += 1
+  end
+  ""
+end
 
     # The error Application#boot reports (and exits 1 on) when
     # session_same_site is not a value browsers accept; "" when it is one.

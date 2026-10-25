@@ -396,7 +396,12 @@ module Cybertrain
     # UTF-8 (parse and decode_valid guarantee it; byteindex refuses an offset
     # inside a character of an invalid String, NOTES rule 52), so each such
     # offset is a character boundary: a multibyte part is never split.
-    def self.split_key(key)
+    def self.split_key(name)
+      # Through a `to_s` local (NOTES rule 62): the key arrives boxed in a
+      # program that also requires the openssl package and the whole
+      # framework (test/template_integration.rb), where `getbyte` on it
+      # raised NoMethodError.
+      key = name.to_s
       first_bracket = key.byteindex("[")
       return [key] if first_bracket.nil?
 
@@ -415,6 +420,50 @@ module Cybertrain
         pos = close + 1
       end
       parts
+    end
+
+    # The query string `str` without its `name` parameters, re-encoded: each
+    # other pair is decoded and encoded again
+    # (URI.encode_www_form_component, so `post[tags][]` comes back as
+    # `post%5Btags%5D%5B%5D`), in its original order; a pair whose key is
+    # `name` or `name[...]` is dropped, empty segments go, and a bare `flag`
+    # comes back as `flag=` (the same parameter). "" when nothing is left. For links
+    # that keep the current query but change one parameter (the `paginate`
+    # helper's `page`). The same scan and limits as parse: utf8! first,
+    # QueryMalformed and QueryTooMany as there.
+    # @example
+    #   Query.without_key("q=a+b&page=3&tag[]=x", "page")  # => "q=a+b&tag%5B%5D=x"
+    # @param str [String] a raw query string
+    # @param name [String] the decoded parameter name to drop
+    # @return [String]
+    # @api public
+    def self.without_key(str, name)
+      s = utf8!(str.to_s)
+      len = s.bytesize
+      out = +""
+      count = 0
+      pos = 0
+      while pos < len
+        amp = s.byteindex("&", pos)
+        stop = amp.nil? ? len : amp
+        count += 1
+        raise QueryTooMany, "too many parameters (limit #{MAX_PAIRS})" if count > MAX_PAIRS
+
+        if stop > pos
+          pair = s.byteslice(pos, stop - pos).to_s
+          eq = pair.index("=")
+          raw_key = eq.nil? ? pair : pair[0, eq].to_s
+          raw_value = eq.nil? ? "" : pair[(eq + 1)..-1].to_s
+          key = decode_valid(raw_key, true)
+          if split_key(key)[0] != name
+            value = decode_valid(raw_value, true)
+            out << "&" unless out.empty?
+            out << URI.encode_www_form_component(key) << "=" << URI.encode_www_form_component(value)
+          end
+        end
+        pos = stop + 1
+      end
+      out
     end
 
     def self.encode(pairs)
