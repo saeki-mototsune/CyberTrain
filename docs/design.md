@@ -427,6 +427,20 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - TLS の端から端までのテスト: パッケージに X509 が無く証明書を作れず、TLS サーバも無い。test/http_client.rb はハンドシェイクの失敗（平文の HTTP サーバ相手）とタイムアウト（黙るサーバ相手）までを確かめ、実サイトへの検証付きハンドシェイクは手で確認した。
 - 帰結: test/template_integration.rb はフレームワーク全体に http_client と net/tls（つまり openssl パッケージ）を加えたプログラムになり、HttpClient で Server に POST する。rule 62 の回帰はここと test/openssl_dispatch.rb で見る。
 
+### D25. メーラー: 有界なソケット層の上の最小の SMTP クライアント（2026-10-25、#64）
+
+- 問題: アプリからメールを送る手段が無かった。`cybertrain generate authentication` もメーラーが無いことを理由にパスワードリセットを省いている。STARTTLS・暗黙の TLS・有界な待ちを正しくやると自前の SMTP クライアントは数百行になり、アプリごとに書くものではない。
+- 決定: `Cybertrain::Mailer`（cybertrain/mailer.rb、`Smtp` ではなくこの名前にした）。D24 の `Cybertrain::Net` の上に作り、ソケットのコードは複製しない。接続・TLS の各段・各応答の読み取り・書き込みはどれも `timeout`（既定 10 秒）と配信全体の `deadline`（既定 60 秒）の小さい方まで（`Net::Timer`）。応答は `Net::Reader` の行読みで、複数行応答（`250-...`）はコードが変われば `ProtocolError`、1 行 4 KiB・100 行が上限。
+  - API: `Mailer.deliver(to:, subject:, body:, from: "")`（`Config` の設定で）と `Mailer.new(host:, port:, user:, password:, from:, tls:, timeout:, deadline:, helo:)#deliver(...)`（各キーワードの既定は `Config`、テストやアプリが Config を迂回できる）。戻り値は本文に対するサーバの応答（`250 ... queued as ...`）。`to:` は String 一つで、複数の宛先はカンマ区切り（String と Array を受ける多相の引数は Spinel で危うい、NOTES 14 / 29）。
+  - 対話: 220 の挨拶、`EHLO`、`starttls` では `STARTTLS` → 220 → TLS ハンドシェイク（`Net.tls_connector`）→ `EHLO` をやり直す、ユーザがあれば `AUTH PLAIN`（初期応答付き、RFC 4616。`\0user\0password` の base64 は Spinel の base64 パッケージの `strict_encode64`。NUL を含むので補間でなく `<<` で組む、NOTES 60）、`MAIL FROM:<>`、宛先ごとの `RCPT TO:<>`（250 か 251）、`DATA`（354）、ドット詰めした本文と `.`、`QUIT`（221 は待つが、失敗しても配信の失敗にしない）。パイプライン化はしない。
+  - TLS モード: `starttls`（既定、587）、`tls`（暗黙の TLS、465）、`none`（平文、25）。`smtp_port` の既定は 0 で「モードの番号」を意味する（Config 初期化後に `config/app.rb` が `smtp_tls` を変えても番号が追随するように）。TLS が要るモードで `cybertrain/net/tls` が require されていなければ、接続する前に `TLSError`（`TlsConnector#tls_ready?` を足した。openssl を mailer.rb から require しないのは D24 と同じ理由）。STARTTLS の 220 の後に届いていた平文のバイトは TLS 越しに来たものとして読まれてしまう（STARTTLS コマンド注入）ので、`Reader` に残っていれば `ProtocolError`。サーバが STARTTLS を広告しなければ `TLSError`（平文へ黙って落ちない）。
+  - 資格情報: `none` でユーザが設定されているとき、名前を解決したアドレスが loopback でなければ接続前に `InsecureError`。パスワードはエラーメッセージ・ログ・起動バナー・`help` のどれにも出ない（Config の組み込み属性はバナーに出ないし、メッセージは `host:port`・段・サーバの応答だけで組む。サーバの応答は印字可能な ASCII に直して 300 バイトで切る）。`inspect` は上書きしない: 組み込みと同名のメソッドを定義すると箱入りの受け手への呼び出しがすべて切り替わる（NOTES 62）。
+  - メッセージ: `Date`（UTC）、`From`、`To`（78 桁を超えるところで折る）、`Subject`、`MIME-Version: 1.0`、`Content-Type: text/plain; charset=UTF-8`、`Content-Transfer-Encoding`。件名は印字可能な ASCII ならそのまま、それ以外（非 ASCII、`=?` を含む、900 バイト超）は RFC 2047 の B 符号化語（生の 45 バイトまで、UTF-8 の文字の途中で切らない、語ごとに折り返す）。本文は改行を CRLF にそろえ、行頭の `.` を二重にする。転送符号化は ASCII なら `7bit`、UTF-8 でサーバが 8BITMIME を広告すれば `8bit`（`MAIL FROM ... BODY=8BITMIME`）、それ以外か 998 バイトを超える行があれば `base64`（76 桁）。issue の案（広告が無くても 8bit で送る）ではなく、RFC 6152 どおり広告の無いサーバに 8bit を送らないほうを選んだ。`Message-ID` は付けない（投稿用サーバが付ける、RFC 6409）。
+  - 拒否するもの（接続前に `ArgumentError`、メッセージは値を繰り返さない）: 裸の ASCII `local@domain` でないアドレス（CR/LF、空白・制御文字・非 ASCII、`<>()[],;:\"`、`@` が一つでない、ローカル部 64 バイト・全体 254 バイト超）、CR/LF/NUL を含む件名（ヘッダ注入）や 998 バイト超の件名、UTF-8 として不正か NUL を含む本文、101 以上の宛先。
+- エラー: `Mailer::Error` の下に `TimeoutError` / `ConnectError` / `TLSError` / `ProtocolError` / `InsecureError` / `RejectedError`（`smtp_code` にサーバのコード、メッセージに段とサーバの文面）。Net の例外は `Mailer#perform` の rescue の段で移す（HttpClient と同じ、NOTES 32 / 45 / 47）。
+- 設定: `Config#smtp_host` / `smtp_port` / `smtp_user` / `smtp_password` / `smtp_from` / `smtp_tls`、環境変数 `CYBERTRAIN_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_FROM` / `_TLS`。初期化は `Config#initialize` の中に直接書く: 初期化から呼ぶ補助メソッドで初めて代入した ivar は箱入りになり、キーワード引数の既定値で読むとコンパイルできない（NOTES 73）。
+- 却下・後回し: HTML・multipart・添付・テンプレート・表示名・`Cc` / `Bcc` ヘッダ・AUTH LOGIN / CRAM-MD5・SMTPUTF8・パイプライン化・配信キュー（`deliver_later`）。パスワードリセットの生成（`cybertrain generate authentication`）は別の作業として残し、ジェネレータのコメントもまだ変えていない。TLS の端から端までのテストは D24 と同じ理由で無い: test/mailer.rb は STARTTLS と暗黙の TLS をハンドシェイクの失敗（平文で答えるサーバ）まで確かめる。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。

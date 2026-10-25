@@ -575,3 +575,15 @@ finds the commit that removed them).
     there rule 62 caught two more byte scans that only that combination
     boxes: `Query.split_key` and `BlobStore.valid_key?` (both now read
     through a `to_s` local).
+
+73. An instance variable first assigned in a helper method that `initialize`
+    calls, rather than in `initialize` itself, is typed as a boxed value
+    (`sp_RbVal`) even when every assignment is a String (Spinel
+    2026.09.12), and reading it through its `attr_accessor` as a keyword
+    argument's default (`def initialize(host: Cybertrain.config.smtp_host)`)
+    stops the C compiler: "incompatible types when initializing type 'const
+    char *' using type 'sp_RbVal'". Reduced repro: `class Conf; attr_accessor
+    :name; def initialize; init_rest; end; def init_rest; @name = ENV["X"] ||
+    ""; end; end` and `def show(name: Conf.new.name) = puts(name.bytesize)`;
+    the struct has `sp_RbVal iv_name`. Assign every ivar in `initialize`
+    (Config's `smtp_*` settings, cybertrain/mailer.rb, issue #64).
