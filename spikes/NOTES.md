@@ -478,6 +478,51 @@ finds the commit that removed them).
     is something else in the framework. The reader is `zone_name`; a new
     framework class should not define `name` as a plain method.
 
+67. A yielding method is never emitted as a C function: Spinel inlines it at
+    each call site whose receiver it knows. Called on a boxed receiver it is
+    therefore NoMethodError at run time (the dispatch `switch` has no case),
+    and a `case recv when Klass` around the call does not change that. The
+    `c` a `Cybertrain::DB.with` block receives is boxed (it comes out of the
+    pool's SizedQueue), so `DB.with { |c| c.transaction { ... } }` raised
+    "undefined method 'transaction' for an instance of
+    Cybertrain::DB::Connection" (2026-10-25, issue #67); the yielding method
+    has to be called on a typed receiver (`Connection.new`'s result, as the
+    migrator does). `DB.transaction` and `Connection#begin!` / `commit!` /
+    `rollback!` (plain methods) are the forms for a pooled connection.
+
+68. A block that reads a parameter of an enclosing block does not compile
+    when it is a Proc (taken as `&block` and called with `block.call`) and
+    the enclosing block itself sits in another block: "'lv_i__bpN'
+    undeclared" in the C. test/db_sqlite.rb's `5.times do |i| DB.with { |c|
+    ... [i] } end` inside a `test do` block stopped compiling as soon as
+    DB.with called `block.call` on one path, and a `3.times do |i|
+    DB.transaction { ... i ... } end` written straight into a test block
+    failed the same way; the same loop in a method body (two levels, as in
+    an action) compiles (2026-10-25). Keep framework methods that every
+    application nests deeply (DB.with) yielding, and hoist such loops into a
+    method.
+
+69. A method that takes `&block` and calls `block.call` is inlined at its
+    call sites like a yielding one, so a rescue or ensure in it hits rules
+    32/45 ("incompatible types when returning type 'sp_RbVal' but 'sp_int'
+    was expected" for an ensure). Pass the Proc one level down as a plain
+    parameter and call it there (Controller#process / #run_action,
+    DB.transaction / DB.run_transaction). Not two levels: a Proc passed on
+    again (DB.transaction -> Pool -> Connection, 2026-10-25) was called with
+    an argument whose class the block's parameter never learned, so every
+    method call on that parameter inside the block was NoMethodError at run
+    time (a dispatch with only a `default:`); calls from a helper method the
+    block passes it to still worked, since the helper learned the class from
+    its other callers, which is how a test can miss it. Test such a block
+    with a method call written in the block itself.
+
+70. `rescue DB::Error => e`, with `DB = Cybertrain::DB` at the top of a test
+    program, compiled to a match on the names "Error" / "DB::Error" in a
+    program that requires the whole framework (test/db_transaction_api.rb,
+    2026-10-25), so it never caught a raised `Cybertrain::DB::Error`; in
+    test/db_transaction.rb, which requires only the db files, the same
+    clause matches the full name. Spell the full name in a rescue clause.
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.

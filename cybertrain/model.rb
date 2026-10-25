@@ -176,6 +176,29 @@ module Cybertrain
       Cast.iso8601(Time.now.utc)
     end
 
+    # `Cybertrain::DB.transaction`, under the name Rails gives it: saves,
+    # updates, destroys and queries run in the block (on this thread) are one
+    # transaction, committed when the block returns and rolled back when it
+    # raises. The block gets the connection, for SQL of its own.
+    #
+    #     Article.transaction do |c|
+    #       article.save!
+    #       Comment.create(article_id: article.id, body: "First!")
+    #     end
+    #
+    # As with ActiveRecord, the transaction is the database's, not the
+    # model's: `Article.transaction` and `Comment.transaction` are the same.
+    # Unlike ActiveRecord it returns nil rather than the block's value, a
+    # `save` returning false does not roll anything back (raise, or use
+    # `save!`), and there is no `ActiveRecord::Rollback`.
+    # @param immediate [Boolean] BEGIN IMMEDIATE instead of BEGIN
+    # @yieldparam conn [Cybertrain::DB::Connection]
+    # @return [nil]
+    # @api public
+    def self.transaction(immediate: false, &block)
+      Cybertrain::DB.transaction(immediate: immediate, &block)
+    end
+
     # --- hooks every generated subclass overrides ---------------------------
     # The stubs are required: a base method calling a method only subclasses
     # define crashes the compiler (spikes/NOTES.md rule 3).

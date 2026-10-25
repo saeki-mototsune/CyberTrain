@@ -1,0 +1,10 @@
+ok   DB.transaction commits what its block ran
+ok   an exception rolls DB.transaction back, is re-raised, and the connection goes back clean
+ok   a nested DB.transaction, DB.with or begin!/commit! joins the outer transaction
+ok   a raise in a nested level rolls the whole transaction back, as Connection#transaction does
+ok   Model.transaction: a save joins it, and a raise rolls the save back
+ok   begin! / commit! / rollback! without a block, nested ones counting levels
+ok   immediate: true issues BEGIN IMMEDIATE (the write lock is taken before any write)
+ok   DB.transaction compiles inside DB.with's block, nested in a test block
+ok   a controller action runs DB.with and DB.transaction; a raise in the action rolls back
+9 tests, 32 assertions, 0 failures

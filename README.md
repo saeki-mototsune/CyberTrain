@@ -699,6 +699,31 @@ about five seconds (a busy handler retrying every 100 µs, where SQLite's
 statements and foreign keys on; every query is bound, never interpolated. It's the only
 adapter today (PostgreSQL via `libpq` FFI is noted as possible future work).
 
+**Transactions.** `Cybertrain::DB.transaction { |c| ... }` (or
+`Article.transaction`, the same thing under the Rails name) checks a
+connection out, runs `BEGIN`, yields the connection, `COMMIT`s when the block
+returns and rolls back and re-raises when it raises. `immediate: true` runs
+`BEGIN IMMEDIATE`, which takes SQLite's write lock at the start: use it for a
+transaction that reads and then writes, so a concurrent writer makes it wait
+at `BEGIN` rather than fail with "database is locked" at its first write.
+While the block runs, everything on that thread that goes through the pool
+(`save`, `update`, `destroy`, Relation queries, `DB.with`) uses the
+transaction's connection, so it is part of the transaction:
+
+```ruby
+Article.transaction(immediate: true) do |c|
+  article.save!
+  c.execute("UPDATE authors SET articles_count = articles_count + 1 WHERE id = ?", [article.author_id])
+end
+```
+
+A `DB.transaction` nested in the block joins the outer one (only the
+outermost commits; a raise anywhere rolls everything back; no savepoints).
+Code that must keep its `rescue` in a plain method uses the block-free form,
+`c.begin!(immediate: true)` ... `c.commit!`, with `c.rollback!` in the rescue.
+It returns nil rather than the block's value, and a `DB.transaction` called
+inside a `DB.with` block (which is not a transaction) gets a second connection.
+
 **The development loop.** `cybertrain server` (`spin run gen`, then `spin run NAME`) in
 `development` (the default `CYBERTRAIN_ENV`, except in a binary from
 `cybertrain build`) also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`
@@ -724,6 +749,7 @@ compiler output on every HTML response. None of this loads in production.
 | ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table — [docs/template-language.md](docs/template-language.md) |
 | Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
 | Many database adapters | SQLite only, via FFI |
+| `Article.transaction { ... }` returns the block's value; `raise ActiveRecord::Rollback`; `requires_new: true` savepoints | `Article.transaction { \|c\| ... }` (= `Cybertrain::DB.transaction`) yields the connection and returns nil; leave it by raising (it re-raises after the rollback); nested calls join the outer transaction, no savepoints. `immediate: true` for SQLite's `BEGIN IMMEDIATE`. `c.transaction { }` cannot be called on the yielded `c` under Spinel: nest `DB.transaction`, or use `c.begin!` / `c.commit!` / `c.rollback!` |
 | `has_many :through`, `includes`, `pluck`, `dependent:`, enums, STI, polymorphic associations | Not implemented; associations come from schema foreign keys only |
 | Any column name; an association can shadow `errors` | A column name must be an ASCII identifier (`[A-Za-z_][A-Za-z0-9_]*`): a schema with a non-ASCII column name (`名前`, `prénom`) generated under CRuby before PR #10 and `spin run gen` refuses it now, so rename the column when upgrading (a name like `first-name` was never a method name). A column named like a method the generated class or the framework calls on a record (`errors`, `save`, `attributes`, `hash`, `to_s`, `to_ary`, `raise`, ...) or like a Ruby keyword (`end`, `class`, `begin`) generates under `<column>_column` (`hash_column`, reader, writer and ivar) with a note in the generated file; its SQL name keeps working in `read_attribute`, params and `attributes["hash"]`, and a template reaches it under either name (`post.hash`, `post.hash_column`), except `errors` and `to_param`, which a template resolves as the model methods, so use `post.errors_column` there; the query API (`where`, `order`, `find_by`) always takes the SQL column name (`Post.where(hash: 1)`), the Ruby name being the reader/writer and the template name only. A column named like another Object method (`display`, `tap`, `methods`) generates under its own name with a note. `cybertrain generate scaffold` refuses keywords and reserved names (it would have to call a renamed reader) and accepts a shadowing name with a note, like the generator. An association whose plain name a column, another association or a `Model` method already owns is emitted under a fallback name with a comment in the generated file: `<table>_as_<column stem>` for a `has_many` (`comments_as_article`), `<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`) |
 | `namespace`, format/`respond_to`, `constraints`, `mount` | Not implemented — flat names, `render json:` only |
