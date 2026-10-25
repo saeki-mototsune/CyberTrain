@@ -343,4 +343,18 @@ test "time zones are reachable next to the template engine" do
   assert_equal [2026, 10, 25, 0, 0, 0, 0], Cybertrain::TimeZone.epoch_to_civil(1_792_886_400)
 end
 
+test "a relation's page renders through paginate next to the whole framework" do
+  Note.create(title: "paged one")
+  Note.create(title: "paged two")
+  paged = Note.all.order("id")
+  pg = paged.page(1, per: 1)
+  assert_equal 1, paged.to_a.size
+  assert pg.next?
+  penv = {}
+  penv["page"] = pg
+  tpl = Cybertrain::Template::Template.parse("<%= paginate page, '/notes?q=x&page=1' %>|<%= page.next? %>", "notes/paged")
+  html = Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil)).render(tpl, penv)
+  assert_equal "<nav class=\"pager\"><span class=\"pager-current\">Page 1</span> <a href=\"/notes?q=x&amp;page=2\" rel=\"next\">Older</a></nav>|true", html
+end
+
 Cybertrain::Test.run!

@@ -391,6 +391,23 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 却下した案: 汎用クエリビルダ（`select` / `group` / `having` の連鎖）。型の決まらない行を返すことになり、生成コードも大きくなる。`pluck` を多相配列で返して `Cast` で絞らせる案は、呼び出し側が毎回同じ `Cast` を書くことになるので型別にした。
 - 帰結: `Ident::RESERVED_COLUMN_NAMES` は変えない（足したのは Relation のメソッドと Model・Cast のクラスメソッドだけで、レコードのインスタンスメソッドは増えていない）。生成モデルには `where_like` の 2 行が増える。
 
+### D23. ページ送り: `Relation#page` と `Page`、`params.page_number`、`paginate` ヘルパ（2026-10-25、issue #75）
+
+- 決定: オフセット方式のページ送りをフレームワークに置く。
+  - `Params#int(key, default:, min:, max:)`: 任意の `-` と 1〜18 桁の数字だけを `to_i` に渡し、それ以外は `default`、範囲外は `min..max` に丸める。Spinel の `String#to_i` は 2**63-1 を超えると `RangeError` を投げる（NOTES 規則 25）ので、リクエストの文字列を長さ確認なしに `to_i` しない。`Params.parse_int(text, default)` は同じ読み方で、`Config` も使う。
+  - `Params#page_number`: `page` を 1 始まりで読み、`1..Params.max_page` に丸める。`Params.max_page` は Multipart と同じモジュール ivar で、`Application#boot` が `Config#max_page`（既定 10000、`CYBERTRAIN_MAX_PAGE`）を入れる。Params は HTTP 層にあり Config を読めないため。
+  - `Relation#page(n, per: 50)`: リレーションを `LIMIT per OFFSET (n - 1) * per` に絞り（それまでの limit/offset は置き換える）、`Cybertrain::Page`（`number` / `per` / `row_offset` / `next?` / `prev?` / `next_number` / `prev_number`）を返す。`n` も `1..max_page` に丸めるので、オフセットは `(max_page - 1) * per` を超えない。`per` は 1〜1000 で、外れたら開発者の誤りとして `ArgumentError`。
+  - `next?` は同じ窓に対する `SELECT 1 ... LIMIT per + 1` 一本で決める。`COUNT(*)` で全件は数えない。
+  - テンプレートヘルパ `paginate(page, path)`: `<nav class="pager">` に「Newer」（`rel="prev"`）、「Page N」、「Older」（`rel="next"`）を出す。存在しないページへのリンクは出さない。リンクの問い合わせ文字列は、現在のリクエストのものから `page` を除き（`Query.without_key`、各組を復号して符号化し直す）、`page=N` を足したもの（1 ページ目は付けない）。`path` が自前の `?` を持つときはそちらを使う。`href` は `Html.escape` を通す。テンプレートからは `@page.next?` なども読める（`Helpers#call_object_method`）。
+- 型付きの行について: 行は `Page` に載せず、リレーションに残す。`page` で窓を決めた後の `to_a` / `each` は、生成された `<Model>Relation` を通るので `Article` の配列のまま型付けされる。
+- 却下した案:
+  - `Page#rows`。型付きにするにはモデルごとに `ArticlePage` を生成する必要があり、すべてのアプリの gen/ が変わる。
+  - 行を per + 1 件読んでリレーションにキャッシュし、1 本のクエリで済ませる案。生成された `to_a` が呼ぶ基底の `rows` を変え、`execute_models` と同じ型で種を入れた行配列の ivar を持ち、後続のチェーン呼び出しで無効化する必要がある。その代わりに `SELECT 1` を 1 本足すほうを選んだ。
+  - `Params#page`。`Relation#page`（`Page` を返す）と同名で戻り値の型が違うと、推論が壊れる（NOTES 規則 34）。同じ理由で、`Page` のオフセットは `offset` ではなく `row_offset` と呼ぶ。
+  - `paginate(page, path, params)`。`Params` は木を問い合わせ文字列に戻せない。リクエストの生の問い合わせ文字列を組ごとに読み直すほうが、入れ子やリストもそのまま残る。
+  - 範囲外の `page` を 404 にすること。丸めるだけにした。
+- 今後: キーセット方式（`after: id`）は大きなテーブル向けに後から足す。scaffold の index ビューは変えない（gen/ を新しいまま保つ）。使い方は README の「Pagination」に書いた。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。

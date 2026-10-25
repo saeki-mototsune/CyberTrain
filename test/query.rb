@@ -210,4 +210,14 @@ test "encode round-trips through parse" do
   assert_equal "x y", params["b"]
 end
 
+test "without_key drops one parameter and re-encodes the rest in order" do
+  assert_equal "q=a+b&tag%5B%5D=x&flag=&z=%C3%A9", Cybertrain::Query.without_key("q=a+b&page=3&tag[]=x&page[]=1&flag&%70age=9&z=%C3%A9", "page")
+  assert_equal "q=%3Cb%3E+%26+%22c%22", Cybertrain::Query.without_key("q=%3Cb%3E%20%26%20\"c\"&page=2", "page")
+  assert_equal "pages=2&apage=1", Cybertrain::Query.without_key("pages=2&apage=1&page=4", "page")
+  assert_equal "", Cybertrain::Query.without_key("page=1", "page")
+  assert_equal "", Cybertrain::Query.without_key("", "page")
+  assert_equal "a=1&b=2", Cybertrain::Query.without_key("a=1&&b=2&", "page")
+  assert_raises("Cybertrain::QueryMalformed") { Cybertrain::Query.without_key("a=%zz", "page") }
+end
+
 Cybertrain::Test.run!

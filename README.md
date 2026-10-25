@@ -814,6 +814,49 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
   itself; `Cast.empty_hash` / `Cast.empty_array` are the seeded empty
   containers.
 
+## Pagination
+
+A list page reads the page number from `?page=N`, windows the relation, and
+renders the links:
+
+```ruby
+# app/controllers/articles_controller.rb
+def index
+  @articles = Article.all.order("created_at DESC")
+  @page = @articles.page(params.page_number, per: 20)
+end
+```
+
+```erb
+<%# app/views/articles/index.html.erb %>
+<% @articles.each do |article| %>
+  <p><%= link_to article.title, article %></p>
+<% end %>
+<%= paginate @page, articles_path %>
+```
+
+`params.page_number` is the 1-based `page` parameter, 1 when it is absent or
+not a number, clamped to `1..max_page` (`config.max_page`, 10000 by default,
+`CYBERTRAIN_MAX_PAGE`); it never hands unbounded text to `String#to_i`, which
+raises `RangeError` past 2**63-1 under Spinel. `params.int(:per, default: 20,
+min: 1, max: 100)` is the same bounded read for any key (an optional `-` and
+at most 18 digits, else the default; clamped to `min..max`).
+`relation.page(n, per: 50)` sets `LIMIT per OFFSET (n - 1) * per` on the
+relation (replacing an earlier `limit`/`offset`, so call it last), clamps `n`
+the same way, so the offset never passes `(max_page - 1) * per`, and returns a
+`Cybertrain::Page`: `number`, `per`, `row_offset`, `next?` (asked with one
+`SELECT 1 ... LIMIT per + 1` over the window, no `COUNT(*)`), `prev?`,
+`next_number`, `prev_number`. The rows stay on the relation, so
+`@articles.each` yields typed `Article`s; `per` outside 1..1000 is an
+`ArgumentError`. `paginate @page, path` renders `<nav class="pager">` with a
+"Newer" link (`rel="prev"`), "Page N" and an "Older" link (`rel="next"`),
+each left out when there is no such page; the links keep the current query
+string with `page` replaced (page 1 drops it), re-encoded and escaped, so a
+search or filter survives paging, and a path with its own query string
+(`"/search?q=x"`) uses that one instead. Offset pagination only: keyset
+pagination (`after: id`) for very large tables is not built yet. The scaffold's
+index view lists every record; add the three lines above to page it.
+
 ## Differences from Rails
 
 | Rails | cybertrain |
@@ -900,6 +943,7 @@ end
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Development accepts `localhost`, `127.0.0.1`, `[::1]`; comma-separated exact hostnames extend this list (no scheme, port or wildcard). Other hosts get 403 before static files, sessions, routing or diagnostics. This is separate from the listening address; production and test do not apply this development guard |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; also `Strict` or `None` (`None` always adds `Secure`); anything else stops the server at boot |
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
+| `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 
 Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
 inside another site's frame; the browser must reach the app over HTTPS.

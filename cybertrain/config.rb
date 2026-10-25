@@ -1,12 +1,13 @@
 require "cybertrain/crypto"
 require "cybertrain/logger"
+require "cybertrain/params"
 require "cybertrain/template/limits"
 
 module Cybertrain
   # The application's settings. Defaults come from the environment
   # (CYBERTRAIN_ENV, PORT, CYBERTRAIN_DATABASE, CYBERTRAIN_SECRET_KEY_BASE,
   # SPINEL_WORKERS, CYBERTRAIN_HOST, CYBERTRAIN_ALLOWED_HOSTS, CYBERTRAIN_SESSION_SAME_SITE,
-  # CYBERTRAIN_SESSION_PARTITIONED); config/app.rb then adjusts them:
+  # CYBERTRAIN_SESSION_PARTITIONED, CYBERTRAIN_MAX_PAGE); config/app.rb then adjusts them:
   #
   #   Cybertrain.configure do |c|
   #     c.port = 3000
@@ -209,6 +210,22 @@ module Cybertrain
     # @api public
     attr_accessor :max_render_depth
 
+    # The largest page number {Params#page_number} gives and
+    # {Relation#page} accepts, `10000`, from `CYBERTRAIN_MAX_PAGE` (an
+    # optional `-` and at most 18 digits; anything else, or a value below 1,
+    # is the default). It bounds the OFFSET a request can ask for, at
+    # `(max_page - 1) * per` rows. At least 1 (boot refuses less).
+    # @return [Integer]
+    # @api public
+    attr_accessor :max_page
+
+    # CYBERTRAIN_MAX_PAGE read without to_i on unbounded text (NOTES rule
+    # 25): 10000 when it is unset, not a number, or below 1.
+    def self.default_max_page
+      n = Params.parse_int(env_or("CYBERTRAIN_MAX_PAGE", ""), 10_000)
+      n < 1 ? 10_000 : n
+    end
+
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
     # empty one counts as unset). Shared with DB::CLI.
     def self.default_database_path(env)
@@ -318,6 +335,8 @@ module Cybertrain
       @setting_descriptions.delete("")
       @setting_secrets = { "" => false }
       @setting_secrets.delete("")
+      # Params.max_page's literal; Application#boot installs this there.
+      @max_page = Config.default_max_page
     end
 
     # @return [Boolean]
@@ -648,6 +667,17 @@ module Cybertrain
         i += 1
       end
       ""
+    end
+
+    # The error Application#boot reports when max_page is not an Integer of
+    # at least 1, or "" when it is fine.
+    def max_page_error
+      value = @max_page
+      case value
+      when Integer
+        return "" if value >= 1
+      end
+      "max_page must be an Integer of at least 1 (got #{value.inspect})"
     end
 
     # The error Application#boot reports when max_body_bytes is not a
