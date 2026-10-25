@@ -1,3 +1,4 @@
+require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/logger"
 
@@ -12,6 +13,14 @@ if ENV[CHILD_FLAG] == "1"
   Cybertrain.logger.info("Started GET \"/\" for 127.0.0.1")
   sleep 10 # killed by the parent long before this ends
   exit(0)
+end
+
+# Keep stdout's destination inside a directory other users cannot populate.
+LOG_DIR = Dir.mktmpdir("cybertrain-logger-flush")
+at_exit do
+  log_path = "#{LOG_DIR}/stdout.log"
+  File.delete(log_path) if File.exist?(log_path)
+  Dir.rmdir(LOG_DIR)
 end
 
 # Under Spinel $0 is the compiled test binary; under CRuby it is this file.
@@ -40,12 +49,11 @@ def logged_while_running(log_path)
 end
 
 test "the default logger's lines reach a redirected stdout while the process runs" do
-  log_path = "/tmp/cybertrain-logger-flush-#{Process.pid}.log"
+  log_path = "#{LOG_DIR}/stdout.log"
   pid = spawn_child(log_path)
   text = logged_while_running(log_path)
   Process.kill("KILL", pid)
   Process.waitpid2(pid)
-  File.delete(log_path) if File.exist?(log_path)
   assert_equal "[INFO] Started GET \"/\" for 127.0.0.1\n", text
 end
 
