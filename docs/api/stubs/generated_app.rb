@@ -80,6 +80,13 @@ class Article < Cybertrain::Model
   # @api public
   def self.where(conditions) = all.where(conditions)
 
+  # @see ArticleRelation#where_like
+  # @param column [Symbol, String] a column name
+  # @param text [String] matched anywhere in the column, wildcards escaped
+  # @return [ArticleRelation]
+  # @api public
+  def self.where_like(column, text) = all.where_like(column, text)
+
   # @see ArticleRelation#order
   # @param order [String, Symbol] `column [ASC|DESC]`, comma-separated
   # @return [ArticleRelation]
@@ -248,6 +255,23 @@ class ArticleRelation < Cybertrain::Relation
   # @return [self]
   # @api public
   def where_sql(sql, binds = []) = (add_where_sql(sql, binds); self)
+
+  # Adds a substring match on one column, AND-ed with the others:
+  # `` `col` LIKE ? ESCAPE '\' `` with `%text%` bound, the text's `\`, `%`
+  # and `_` escaped ({Cybertrain::Cast.like_escape}), so a search box's
+  # input is matched literally. Case-insensitive for ASCII, as SQLite's
+  # LIKE is; NULL never matches. A prefix search writes its own pattern
+  # through {#where_sql}.
+  # @example
+  #   Article.where_like(:title, params[:q].to_s).order("title").to_a
+  #   prefix = Cybertrain::Cast.like_escape(params[:q].to_s) + "%"
+  #   Article.all.where_sql("title LIKE ? ESCAPE '\\'", [prefix])
+  # @param column [Symbol, String] a column name
+  # @param text [String]
+  # @return [self]
+  # @raise [ArgumentError] when `column` is not a column name
+  # @api public
+  def where_like(column, text) = (add_where_like(column, text); self)
 
   # Sets the order, replacing any earlier one. Takes only comma-separated
   # `column [ASC|DESC]` terms (a Symbol is a column name; nil or `""`

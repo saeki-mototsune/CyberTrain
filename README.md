@@ -686,6 +686,48 @@ main thread `execv`s the new binary on the same port and PID, invisible to a
 client mid-session. A failed build keeps serving the old binary and banners the
 compiler output on every HTML response. None of this loads in production.
 
+## Querying beyond `where`
+
+The generated relations cover `where` / `where_sql` / `order` / `limit` /
+`offset` / `count` / `exists?` / `delete_all`. For the counters, statistics
+and search boxes most applications also need, there are typed additions
+(issue #74, `docs/design.md` D21) rather than a query builder; each takes
+SQL column names, checked and quoted (anything else is an `ArgumentError`),
+and binds every value:
+
+```ruby
+# INSERT ... ON CONFLICT (project_id, key) DO UPDATE SET ...; returns rows written
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "calls + excluded.calls", max_ms: "MAX(max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1
+Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (also pluck_str, pluck_float)
+Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
+Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # hour buckets
+Stat.where(project_id: 1).sum_int(:calls)                 # also sum_float
+Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%' ESCAPE '\'
+```
+
+- `upsert`'s `update` values and `count_by_sql`'s expression are SQL text, like
+  `order_sql`: never build them from request data. An empty `update` is
+  `DO NOTHING`. `upsert` and `increment` load no model and run no
+  validation or callback, and fill in no timestamps.
+- `count_by` keys are Strings (through `Cast.str`), ascending; NULL and `""`
+  share the key `""`. With a `limit` / `offset`, `count_by`, `sum_*` and
+  `increment` work on that window, as `count` and `delete_all` do.
+- `where_like` is a substring match (case-insensitive for ASCII, as SQLite's
+  LIKE is). A prefix search writes its own pattern:
+  `Article.all.where_sql("title LIKE ? ESCAPE '\\'", [Cybertrain::Cast.like_escape(q) + "%"])`.
+- For hand-written SQL, `Cybertrain::Cast.binds(a, b, c)` builds the bind
+  Array `execute` takes (a Time as UTC ISO 8601 text, booleans as 1/0):
+  `Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(id, since)) }`.
+- `Cybertrain::Cast.hash(v)` / `Cast.array(v)` narrow a parsed JSON value to
+  a Hash / Array, or a fresh empty one when it is not one (a Time is checked
+  first, spikes/NOTES.md rule 8). They return a typed shallow copy, not `v`
+  itself; `Cast.empty_hash` / `Cast.empty_array` are the seeded empty
+  containers.
+
 ## Differences from Rails
 
 | Rails | cybertrain |
@@ -699,7 +741,8 @@ compiler output on every HTML response. None of this loads in production.
 | ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table — [docs/template-language.md](docs/template-language.md) |
 | Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
 | Many database adapters | SQLite only, via FFI |
-| `has_many :through`, `includes`, `pluck`, `dependent:`, enums, STI, polymorphic associations | Not implemented; associations come from schema foreign keys only |
+| `has_many :through`, `includes`, `dependent:`, enums, STI, polymorphic associations | Not implemented; associations come from schema foreign keys only |
+| `pluck(:a)`, `sum(:a)`, `group(:a).count`, `upsert`, `update_counters`, `where("title LIKE ?", "%#{q}%")` | Typed one-column flavours, because a Spinel method has one return type: `pluck_str` / `pluck_int` / `pluck_float` (one column only), `sum_int` / `sum_float`, `count_by(:a)` (a `Hash{String => Integer}`) and `count_by_sql(expr)` for expressions; `Model.upsert(attrs, conflict:, update:)` takes the `DO UPDATE SET` expressions as SQL text and runs no validations, callbacks or timestamps; `relation.increment(:col, by: n)`; `where_like(:col, text)` escapes `\`, `%` and `_` for you. See [Querying beyond `where`](#querying-beyond-where) |
 | Any column name; an association can shadow `errors` | A column name must be an ASCII identifier (`[A-Za-z_][A-Za-z0-9_]*`): a schema with a non-ASCII column name (`名前`, `prénom`) generated under CRuby before PR #10 and `spin run gen` refuses it now, so rename the column when upgrading (a name like `first-name` was never a method name). A column named like a method the generated class or the framework calls on a record (`errors`, `save`, `attributes`, `hash`, `to_s`, `to_ary`, `raise`, ...) or like a Ruby keyword (`end`, `class`, `begin`) generates under `<column>_column` (`hash_column`, reader, writer and ivar) with a note in the generated file; its SQL name keeps working in `read_attribute`, params and `attributes["hash"]`, and a template reaches it under either name (`post.hash`, `post.hash_column`), except `errors` and `to_param`, which a template resolves as the model methods, so use `post.errors_column` there; the query API (`where`, `order`, `find_by`) always takes the SQL column name (`Post.where(hash: 1)`), the Ruby name being the reader/writer and the template name only. A column named like another Object method (`display`, `tap`, `methods`) generates under its own name with a note. `cybertrain generate scaffold` refuses keywords and reserved names (it would have to call a renamed reader) and accepts a shadowing name with a note, like the generator. An association whose plain name a column, another association or a `Model` method already owns is emitted under a fallback name with a comment in the generated file: `<table>_as_<column stem>` for a `has_many` (`comments_as_article`), `<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`) |
 | `namespace`, format/`respond_to`, `constraints`, `mount` | Not implemented — flat names, `render json:` only |
 | `rescue StandardError` catches a bad `JSON.parse` | Under Spinel `JSON::ParserError` is not a `StandardError`: app code must `rescue JSON::ParserError, StandardError`. The server catches it as a last resort and answers 500 |
