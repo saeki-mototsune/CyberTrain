@@ -34,7 +34,7 @@ Spinel regression.
   `Cybertrain::Routes.draw` fails in `spin run gen`. For this run the blog's
   config/routes.rb was rewritten to `draw do |r| r.root ...; r.resources ... end`
   (which generates byte-identical gen/routes.rb) and then restored; it is not
-  committed. See [spinel-feedback.md](spinel-feedback.md#regressions-in-the-20261009-7009-package).
+  committed. See [spinel-feedback.md](spinel-feedback.md#regressions-in-newer-packages).
 
 With those, the blog's integration tests pass (2 of 2), and the old and new
 binaries return byte-identical pages apart from the CSRF tokens.
