@@ -82,6 +82,13 @@ server build it.
 Do not turn `proxy.ssl` off. The session cookie is `Secure` in production, so
 over plain HTTP every form submission gets a 403.
 
+With a framework that has the built-in health check (`GET /up`, README
+"Operations"), you can change the `healthcheck` `path` from `/up.html` to
+`/up`. `/up` runs a query that reads the database's schema and answers 503
+when it cannot, so traffic never moves to a release whose volume or database
+is broken; `/up.html` is a static file and only shows that the process
+answers HTTP. Keep `/up.html` for an app made with an older cybertrain.
+
 The generated `config/deploy.yml` sets `CYBERTRAIN_TRUSTED_PROXIES:
 172.16.0.0/12` under `env.clear`. kamal-proxy runs in a container of its own
 and connects to the app from its address on the Docker network (inside

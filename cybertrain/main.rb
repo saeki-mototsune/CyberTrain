@@ -10,7 +10,8 @@ module Cybertrain
   #   ./blog server 3000  serve on 3000 (a bare "3000" too: the dev loop's
   #                       execv passes the port that way)
   #   ./blog migrate      apply db/migrate (gen/migrations.rb)
-  #   ./blog db status    any DB::CLI command: status, rollback N, schema:dump, create
+  #   ./blog db status    any DB::CLI command: status, rollback N, schema:dump, create,
+  #                       backup PATH, vacuum
   #   ./blog user a@b.c   a command the application registered with Main.command
   #
   # `gen` stays a separate bin/gen.rb: it needs the generator and the
@@ -109,9 +110,9 @@ module Cybertrain
 
       case argv[0]
       when "migrate"
-        DB::CLI.run(["migrate"])
+        DB::CLI.run(["migrate"], ".", name)
       when "db"
-        DB::CLI.run(argv[1, argv.size - 1])
+        DB::CLI.run(argv[1, argv.size - 1], ".", name)
       when "help", "--help", "-h"
         puts usage(name)
         0
@@ -181,6 +182,9 @@ module Cybertrain
       text << "  ./#{name} [server [PORT]]   start the server\n"
       text << "  ./#{name} migrate           apply pending migrations\n"
       text << "  ./#{name} db COMMAND        migrate | rollback [N] | status | schema:dump | create\n"
+      # The continuation lines up under "migrate" whatever the name.
+      indent = "".ljust(name.size + 23)
+      text << "#{indent}backup PATH [--force] | backup DIR/ [--keep N] | vacuum\n"
       COMMANDS.each do |command|
         word = command.command_name.ljust(17)
         text << "  ./#{name} #{word} #{command.command_description}\n"

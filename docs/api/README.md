@@ -71,6 +71,10 @@ Top-level methods for `test/*.rb` (see {Cybertrain::Test}):
 `require "cybertrain/test/client"`. Each is documented on the
 [Top Level Namespace](top-level-namespace.html) page.
 
+Webhooks and e-mail the code under test sends are received in-process by
+{Cybertrain::Test::HttpReceiver} (`require "cybertrain/test/http_receiver"`)
+and {Cybertrain::Test::SmtpReceiver} (`require "cybertrain/test/smtp_receiver"`).
+
 ## Conventions on these pages
 
 - Signatures and behaviour are those of the current `main` branch; an

@@ -1006,6 +1006,13 @@ module Cybertrain
           # snapshot, and "Completed 303 in 246ms" is never the same twice.
           Cybertrain.config.log_level = :none
 
+          # Webhooks and e-mail the app sends are received in-process: require
+          # "cybertrain/test/http_receiver" or "cybertrain/test/smtp_receiver",
+          # then `port = receiver.start`, point the app at 127.0.0.1:port
+          # (HttpClient needs `Cybertrain.config.http_allow_private = true`, the
+          # Mailer `tls: "none"`), and read `receiver.received_request` /
+          # `received_message` before `receiver.stop`. Every wait is bounded.
+
           module AppTest
             # Deletes the test database (and its WAL files), migrates a new one
             # and boots the application on it.

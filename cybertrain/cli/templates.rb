@@ -116,6 +116,10 @@ module Cybertrain
           KAMAL_REGISTRY_PASSWORD and CYBERTRAIN_SECRET_KEY_BASE (read by
           `.kamal/secrets`), commit, then `kamal setup` once and `kamal deploy`
           after that. The `Dockerfile` builds the binary inside the image.
+
+          On GitHub, `.github/workflows/ci.yml` installs the toolchain the
+          framework commit in `spin.lock` pins and checks that `spin.lock` and
+          `gen/` are committed and current, then runs `spin test`.
         MARKDOWN
       end
 
@@ -443,6 +447,62 @@ module Cybertrain
           # once with `openssl rand -hex 32` and keep it somewhere safe.
           CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE
         TEXT
+      end
+
+      # "saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v0.2.1":
+      # the composite action in this repository, at this CLI's release tag.
+      # `uses:` takes no expressions, so the pin is static; the action itself
+      # reads the framework commit out of spin.lock and installs the
+      # toolchain that commit pins (docs/design.md D32).
+      def self.setup_action_ref
+        slug = Cybertrain::REPOSITORY.sub("https://github.com/", "")
+        "#{slug}/.github/actions/setup-cybertrain@v#{Cybertrain::VERSION}"
+      end
+
+      # .github/workflows/ci.yml: the toolchain from the setup-cybertrain
+      # action, then the checks an app's CI needs: spin.lock and gen/ are
+      # committed and current, and the tests pass.
+      def self.ci_workflow
+        action = setup_action_ref
+        <<~YAML
+          name: CI
+
+          on:
+            push:
+              branches: [main]
+            pull_request:
+
+          jobs:
+            test:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+
+                # SQLite, zlib and OpenSSL headers, Ruby, and Spinel (cached),
+                # installed by the cybertrain CLI of the framework commit in
+                # spin.lock: that commit is read from spin.lock, so the
+                # spin.toml dependency must be a git one (the default). With a
+                # path dependency, check the framework out yourself and pass
+                # `with: { framework-path: ... }`.
+                - uses: #{action}
+
+                # spin.lock is committed and matches spin.toml.
+                - name: spin.lock is current
+                  run: spin lock && git diff --exit-code spin.lock
+
+                # gen/ is committed and fresh (nothing is written).
+                - name: gen/ is current
+                  run: spin run gen -- --check
+
+                # `spin test` fails when there is no test/*.rb; a new app has none.
+                - name: Tests
+                  run: |
+                    if ls test/*.rb > /dev/null 2>&1; then
+                      spin test
+                    else
+                      echo "no test/*.rb yet"
+                    fi
+        YAML
       end
 
       # What kamal-proxy polls before it sends traffic to a new container.

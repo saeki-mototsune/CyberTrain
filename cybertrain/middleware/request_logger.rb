@@ -2,11 +2,14 @@ require "json"
 require "cybertrain/middleware"
 require "cybertrain/logger"
 require "cybertrain/http/client_error"
+require "cybertrain/http/parameter_filter"
 
 module Cybertrain
   # Rails-style request log lines around the rest of the stack:
   #   Started GET "/posts?page=2" for 127.0.0.1
   #   Completed 200 in 3ms
+  # with each filtered parameter's value in the query string written as
+  # `[FILTERED]` (ParameterFilter, Config#filter_parameters).
   class RequestLogger < Middleware
     def initialize(app, logger = Cybertrain.logger)
       super(app)
@@ -16,7 +19,9 @@ module Cybertrain
     def call(ctx)
       request = ctx.request
       target = log_field(request.path)
-      target = "#{target}?#{log_field(request.query_string)}" unless request.query_string.empty?
+      # The values of filtered parameters (Config#filter_parameters) never
+      # reach the log: replaced before the escaping, on the raw bytes.
+      target = "#{target}?#{log_field(ParameterFilter.filter_query(request.query_string))}" unless request.query_string.empty?
       @logger.info("Started #{log_field(request.method)} \"#{target}\" for #{request.remote_addr}")
       started = Time.now
       begin

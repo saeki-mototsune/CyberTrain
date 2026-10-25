@@ -6,6 +6,7 @@ require "cybertrain/middleware/method_override"
 require "cybertrain/middleware/session_store"
 require "cybertrain/router"
 require "cybertrain/app"
+require "cybertrain/config"
 require "cybertrain/test"
 
 class AppendBefore < Cybertrain::Middleware
@@ -124,6 +125,38 @@ test "RequestLogger escapes quotes and literal backslashes without decoding perc
   lines = sink.string.split("\n")
   assert_equal 2, lines.size
   assert_equal "[INFO] Started GET \"/a\\\"\\\\e[2J?q=\\\"\\\\n%1B[2J\" for 127.0.0.1", lines[0]
+end
+
+test "RequestLogger writes filtered query values as [FILTERED], other pairs untouched" do
+  sink = StringIO.new
+  stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
+  stack.call(build_ctx("GET", "/login?user%5BPassword%5D=hunter2&page=2&api_key=k%41y&flag&TOKEN=&q=%1B[2J&pass%77ord=x"))
+  lines = sink.string.split("\n")
+  assert_equal "[INFO] Started GET \"/login?user%5BPassword%5D=[FILTERED]&page=2&api_key=[FILTERED]&flag&TOKEN=[FILTERED]&q=%1B[2J&pass%77ord=[FILTERED]\" for 127.0.0.1", lines[0]
+end
+
+test "RequestLogger filters with the installed list; an empty list filters nothing" do
+  sink = StringIO.new
+  stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
+  Cybertrain::ParameterFilter.names = ["OTP", "", "ssn"]
+  stack.call(build_ctx("GET", "/v?otp_code=1&password=2&user[ssn]=3"))
+  Cybertrain::ParameterFilter.names = []
+  stack.call(build_ctx("GET", "/v?password=2"))
+  Cybertrain::ParameterFilter.names = Cybertrain::ParameterFilter::DEFAULT_NAMES
+  lines = sink.string.split("\n")
+  assert_equal "[INFO] Started GET \"/v?otp_code=[FILTERED]&password=2&user[ssn]=[FILTERED]\" for 127.0.0.1", lines[0]
+  assert_equal "[INFO] Started GET \"/v?password=2\" for 127.0.0.1", lines[2]
+  assert_equal 8, Cybertrain::ParameterFilter.names.size
+  assert Cybertrain::ParameterFilter.filter?("user[Secret_Answer]")
+  assert !Cybertrain::ParameterFilter.filter?("username")
+end
+
+test "Config#filter_parameters comes from CYBERTRAIN_FILTER_PARAMETERS, Rails' list by default" do
+  ENV["CYBERTRAIN_FILTER_PARAMETERS"] = ""
+  assert_equal Cybertrain::ParameterFilter::DEFAULT_NAMES, Cybertrain::Config.new.filter_parameters
+  ENV["CYBERTRAIN_FILTER_PARAMETERS"] = " pin, ,cvv,"
+  assert_equal ["pin", "cvv"], Cybertrain::Config.new.filter_parameters
+  ENV["CYBERTRAIN_FILTER_PARAMETERS"] = ""
 end
 
 test "RequestLogger reports the final status" do

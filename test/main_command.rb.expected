@@ -11,6 +11,7 @@ Usage:
   ./blog [server [PORT]]   start the server
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
+                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum
   ./blog user              create a user: EMAIL
   ./blog status            exit with ARG as the status
   ./blog broken            run SQL that fails
@@ -25,6 +26,7 @@ Usage:
   ./blog [server [PORT]]   start the server
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
+                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum
   ./blog user              create a user: EMAIL
   ./blog status            exit with ARG as the status
   ./blog broken            run SQL that fails

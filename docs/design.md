@@ -541,6 +541,69 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - 生成するテストに、トークン無し・空・違う値・末尾に 1 文字足した値での 404、トークン付きの 200、hidden field の内容、POST での作成、他アドレスとトークン無し・違うトークンの POST で作られないこと、`setup_open` でもトークン無しは 404、を足した。CI の招待制の手順は起動ログからトークンを取り出して curl する。
   - 残る点: リクエストログの `Started GET "/setup?token=..."` の行にもトークンが出る（警告と同じログで、読める人は同じ）。ユーザーができた時点で意味を失うので、フレームワークにパラメータの伏せ字（Rails の `filter_parameters`）は足さなかった。`user` サブコマンドは変えていない。
 
+### D31. パラメータ付きヘッダの読み取り `Request#header_params` と、ログ・エラーページでのパラメータの伏せ字 `filter_parameters`（2026-10-25、issue #77）
+
+- 背景: API クライアントは `Scheme k1=v1, k2="v2"` 形のヘッダ（`Authorization: Digest ...`、ベンダー独自の `X-*-Auth`、`Prefer`、`Forwarded`）で認証や指示を送る。`Request#header` は生の値を返すだけで、アプリはバイト位置で手分割していた（`k, v = part.split("=", 2)` は NOTES 規則 12 で誤コンパイルし、値は任意のバイトを含みうる）。また `RequestLogger` は制御文字をエスケープする（82334a9）がクエリを含む対象をそのまま書くので、`?token=` やエラーになったフォームのパスワードがログと開発用エラーページに残る（D29 の改訂で `/setup?token=...` が記録されることを「残る点」に書いた）。
+- 決定:
+  - `Request#header_params(name)` → `Hash[String, String]`。`,` と `;` をどちらも区切りとして扱い（`Forwarded` / `Prefer` の要素構造は平らにする）、同じ名前は最初のものが勝つ。名前は RFC 9110 の token 文字の並びで小文字にする（token 文字で始まらない部分は次の区切りまで読み飛ばす）。値は quoted-string ならバックスラッシュのエスケープを外して中身を、そうでなければ次の区切りまでのバイトを前後の空白・タブを除いて取る。`=` の無い名前は `""`。先頭の「token 文字の語、空白、`=` / `,` / `;` 以外の文字」は scheme として捨てる（`Digest`、`Bearer`）。語が一つだけの値（`Prefer: respond-async`、`Authorization: Negotiate`）は scheme ではなく値の無いパラメータ。ヘッダが無い、または 8 KiB（`Request::MAX_PARAM_HEADER_BYTES`）を超えると空の Hash（種を入れて消した型付き Hash、規則 9）。
+  - `Request#header_scheme(name)` → scheme の語を送られたとおりの大小で、無ければ `""`。`Bearer <token>` / `Basic <base64>` の資格情報はパラメータではないので `header` から読む、と文書に書いた（token68 の末尾の `=` をパラメータとして解釈しても意味が無い）。
+  - 走査はすべてバイト単位（`getbyte` / `byteslice`、`split` / `strip` は使わない。規則 52）で、各ヘルパは引数を `s = text.to_s` の新しいローカルで読む（規則 62）。quoted-string の中身は `+""` に `<<` だけで詰める（規則 60 / 66、NUL を含んでも切れない）。値はパーセントデコードせず、UTF-8 として正しいとも限らない。
+  - `Config#filter_parameters`（`Array<String>`、既定 `password`, `password_confirmation`, `token`, `secret`, `secret_key_base`, `session_key`, `api_key`, `authorization`）。`CYBERTRAIN_FILTER_PARAMETERS` がカンマ区切りで設定されていればそれで置き換える（前後の空白を除き、空の項目は捨てる。空の変数は未設定扱い）。`[]` で伏せ字をやめる。照合は Rails と同じく「名前がどれかを含む」の部分一致で、ASCII の大小を区別しない（`password` は `user[password]` にも、`token` は `authenticity_token` にも一致する）。
+  - 一覧は HTTP 層の新しいモジュール `Cybertrain::ParameterFilter`（`cybertrain/http/parameter_filter.rb`）のモジュール ivar に置き、`Application#boot` が `ParameterFilter.names = c.filter_parameters` で入れる（`Params.max_page` / `Request.trusted_proxies` と同じ形。HTTP 層は Config を読めない）。HTTP 層だけを使うプログラムでも既定の一覧で伏せる。Config は HTTP 層を require しないので既定の一覧を文字列リテラルで重ねて持ち、テストが `ParameterFilter::DEFAULT_NAMES` と等しいことを確かめる。
+  - `ParameterFilter.filter_query(text)`: クエリ文字列を `&` で分け、名前だけを比較のためにパーセントデコード（`+` は空白、不正なエスケープはそのまま）し、一致したペアの値を `[FILTERED]` に置き換える。それ以外のバイトはデコードせずにそのまま写す。`RequestLogger` はこれを制御文字のエスケープより前に、生のクエリに掛ける。
+  - 開発用エラーページ（`Dev::ErrorPage`）: 要求行のクエリを同じく伏せ、新しく「Parameters:」の欄にルータが組み立てた params の木（`Params#filtered_inspect`: 一致したキーは種類（文字列・リスト・入れ子・ファイル）に関わらず `"[FILTERED]"`、入れ子は再帰）を、JSON の要求（エンコードなし、1 MiB 以下）なら「JSON body:」の欄に本文を解析して同じく伏せたものを出す。JSON の再帰は `Cast.hash` / `Cast.array` で型付きに写してから辿り（規則 71、`when Time` を先に、規則 8）、32 段で打ち切る（解析した文書は 200 段まであり、スレッドのスタックは小さい、規則 46）。解析できない本文（それ自体が失敗の原因かもしれない）は欄ごと出さない。rescue は yield しないメソッドに置き、`JSON::NestingError` を先に書く（規則 32 / 61）。
+- 却下した案:
+  - `header_params` で `,` を要素の区切り、`;` を要素内の区切りとして `Array<Hash>` を返す案。`Forwarded` の複数要素を区別できるが、issue が求めた「API コントローラからの手分割をなくす」には平らな Hash で足り、型付きの入れ子は Spinel で扱いにくい。要素ごとに要るアプリは `header` を自分で分ける。
+  - クエリ全体をデコードしてから伏せて書き直す案。ログは送られたとおりのバイト列（を制御文字だけエスケープしたもの）であるべきで、デコードは不正なエスケープでの例外（規則 28）も持ち込む。
+  - 正規表現や Proc を `filter_parameters` に許す案（Rails は許す）。Spinel で Regexp の値を設定として持ち回す型と、保存したブロックの呼び出し（規則 30 / 69）を避け、文字列の部分一致だけにした。
+  - 本番のエラーページ（`ErrorPages`）への適用: 本番の 500 ページはパラメータを出さないので対象が無い。
+- 帰結: test/http_request.rb（Digest 形、`;` 区切りの Forwarded / Prefer、エスケープ付きの quoted-string、最初の値が勝つ、8 KiB 超、任意のバイト、ヘッダ無し、scheme）、test/middleware.rb（ログ行の伏せ字、一致しない名前はそのまま、一覧の差し替えと空の一覧、`CYBERTRAIN_FILTER_PARAMETERS`）、test/dev_error_page.rb（要求行と params の欄、JSON の欄の再帰、解析できない本文）を足し、コンパイルしたバイナリでスナップショットを作った。D29 の「残る点」の `/setup?token=...` は既定の `token` で伏せられる。
+
+### D32. テストと CI: 外向きの呼び出しのプロセス内受信器と、生成する CI ワークフロー（2026-10-25、issue #78）
+
+- 問題: アプリが Webhook（D24）やメール（D27）を送るようになると、そのテストには受け手が要る。Spinel で 127.0.0.1 の受信器を正しく書くには、読み取りをすべて `wait_readable` + `readpartial` とバイト位置で行い（`IO#gets` は使わない、NOTES 20 / 27）、`accept` を有界にし（接続して来ないクライアントのせいでスレッドが残り、次のテストの接続を横取りしないように）、スレッドはメソッド経由で起こし（NOTES 21）、最初の `Thread.new` の前に `SPINEL_WORKERS` を決める（NOTES 22）必要があり、アプリごとに同じ 100〜200 行を書くことになる。CI も、アプリごとにツールチェーンの手順（ヘッダのパッケージ、spin.lock からのフレームワークのコミット、`cybertrain setup`、`~/.cybertrain/spinel` のキャッシュ）を手で写していて、手順が変わると写しがずれる。
+- 決定（受信器）: `Cybertrain::Test::HttpReceiver`（cybertrain/test/http_receiver.rb）と `Cybertrain::Test::SmtpReceiver`（cybertrain/test/smtp_receiver.rb）。共通部分は基底クラス `Cybertrain::Test::Receiver`（cybertrain/test/receiver.rb）。
+  - `start(port: 0)` が 127.0.0.1 に bind して番号を返し、スレッドを一本起こす。スレッドは `max`（既定 1）個の接続を順に一つずつ受け、それぞれを読んで答えて閉じる。`accept` は `wait_readable(0.05)` を繰り返し、接続が待っているときだけ呼ぶので、`stop` に 0.05 秒で気づき、`accept_window`（既定 10 秒）接続が来なければ自分で終わる。読み取りも 0.05 秒刻みの `wait_readable` の後の `readpartial` で、`read_timeout`（既定 5 秒）黙ったクライアントは切る。スレッドは終わるときにリスナーを閉じる。`stop` は終了を頼んで `join` する（上限つき、二度呼んでもよい）。したがって `stop` の後に同じ番号で次の受信器を `start` できる（テストで確かめた）。
+  - 結果は型付きの `ReceivedRequest`（`http_method` / `http_target` / `http_path` / `http_headers`（小文字の名前、重複は `", "` で連結）/ `http_header(name)` / `http_body`（chunked は復号））と `ReceivedMessage`（`envelope_from` / `envelope_recipients` / `message_data`（DATA の後のバイト列、ドット詰めを戻し、終わりの `.` 行は除く）/ `message_header(name)` / `message_body` / `transcript`（クライアントのコマンド行すべて）/ `delivered?`）。`received_request(wait = 5)` / `received_message(wait = 5)` が最初の一件を待ち（上限つき、来なければ nil）、`received_requests` / `received_messages` が全部を返す。SMTP の記録は接続が終わったとき（QUIT か切断）に一件。
+  - HttpReceiver は Content-Length と chunked の要求本文を読み、`status:` / `headers:` / `body:` / `chunked:`（応答本文を二つの chunk で送る）の既定応答に `Connection: close` を付けて返す。`respond_with` で次の要求からの応答を変えられる。SmtpReceiver は 220、EHLO（既定で 8BITMIME を広告、`eight_bit_mime: false` で外す。`auth: true` なら AUTH PLAIN を広告して何でも受け入れる）、MAIL、RCPT、DATA（354）、250 queued、QUIT（221）を演じ、`reject: { rcpt: "550 ..." }` のように `:greeting` / `:ehlo` / `:mail` / `:rcpt` / `:data` / `:message` の段を指定の応答で失敗させられる。平文だけで、STARTTLS は 454 を返す。
+  - 名前: Test::Client に `request(method, path, ...)` があり、例外の `message` は組み込みなので、`request` / `message` ではなく `received_request` / `received_message` にした（同名で戻り値の型が違うメソッドは推論を壊し（NOTES 34）、組み込みと同名のメソッドは箱入りの受け手への呼び出しをすべて切り替える（NOTES 62））。結果の読み出しにも `http_` / `envelope_` / `message_` の接頭辞を付けた（NOTES 10）。内部のメソッドは `rx_` で始める。
+  - 依存: Ruby の socket だけ。`cybertrain/net` も openssl も require しない（`Net::Reader` は `Net::Stream` を読む作りで、accept した `TCPSocket` と接続した `Socket` を同じ ivar に入れると箱入りになるので、小さな読み取りを基底クラスに持たせた）。`cybertrain/test.rb` からは require しない: `cybertrain/test/client` と同じく使うテストだけが require する（すべてのテストプログラムにソケットを入れない）。生成する `test/support/app_test.rb` のコメントと README の「Testing outbound calls」に使い方を書いた。
+- 決定（CI）: このリポジトリに複合アクション `.github/actions/setup-cybertrain/action.yml` を置き、`cybertrain new` が `.github/workflows/ci.yml` を書いて、それを `uses: saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v<VERSION>` で呼ぶ。ワークフローに残るのはアプリ自身の検査だけ: `spin lock && git diff --exit-code spin.lock`、`spin run gen -- --check`、`spin test`（`test/*.rb` が一つも無ければ飛ばす。`spin test` はテストが無いと失敗し、新しいアプリには無い）。
+  - アクションの中身: Linux では `libsqlite3-dev zlib1g-dev libssl-dev`、macOS では Homebrew の OpenSSL を `LIBRARY_PATH` / `CPATH` に（フレームワークの CI と同じ）、`ruby/setup-ruby`（既定 3.3）、spin.lock の `[lock.cybertrain]` の `git` と `ref`（40 桁のコミット）を Ruby の一行で読み、そのコミットだけを `git fetch --depth 1` で `$RUNNER_TEMP` に取り、その `cybertrain/version.rb` の `SPINEL_TAG` とランナーのイメージ（`ImageOS` / `ImageVersion`）と OS・アーキテクチャをキーに `~/.cybertrain/spinel` を復元し、そのチェックアウトの `exe/cybertrain doctor` と `setup` を走らせ、ビルドしたらキャッシュを保存し、`~/.cybertrain/bin` を PATH に足す。
+  - `uses:` の参照は式を取れない静的な文字列なので、spin.lock のコミットを `uses:` に書くことはできない。そこで `uses:` は CLI のリリースタグ `v#{Cybertrain::VERSION}` に固定し（`cybertrain new` が spin.toml に書く依存と同じタグ）、アクションの手順だけをそれで決める。Spinel を入れる CLI は、アクションが spin.lock から読んだコミットのもの、つまりアプリがコンパイルするフレームワークと必ず同じ版になる。アプリがフレームワークを上げても、アクションのタグを上げなくてよい。
+  - フレームワークは `actions/checkout` で作業ツリーの `vendor/` に取るのでなく、`$RUNNER_TEMP` に git で取る。`actions/checkout` は作業ツリーの外に置けず、作業ツリーに置くと spin（`vendor/` を使う機能がある）やアプリの `git diff` の目に入る。
+  - キャッシュのキーは `version.rb` のハッシュではなく、そこから読んだ `SPINEL_TAG`: `version.rb` はリリースごとに変わるが、Spinel のビルドは `SPINEL_TAG` が同じなら同じ。`hashFiles` は作業ツリーの外のファイルを読めないこともある。
+  - path 依存（`cybertrain new --path`）のアプリは spin.lock にコミットが無いので、アクションは理由を書いて失敗する。フレームワークを自分で取り出して `framework-path` を渡せば、spin.lock を読まずにそれを使う。
+- 却下した案:
+  - ワークフローに全手順を書き出す: 手順の正本が生成コードの中にあり、変更が既存のアプリに届かない（issue の問題そのもの）。
+  - アクションの中で `uses:` 相当にフレームワークのコミットを選ぶ（動的な `uses:`）: GitHub Actions に無い。
+  - 受信器で test/http_client.rb と test/mailer.rb の手書きのサーバを置き換える: あちらはバイトを分けて送る間隔、不正な応答、途中で切る、STARTTLS の後の平文などの異常系を一歩ずつ演じるためのもので、受信器（正常な相手）の形に合わない。出力と決定性を変えないため手を付けず、受信器のテストは `test/receivers.rb` に新しく書いた。
+- 後回し: TLS の受信器（証明書を作れない、D24）、SMTP の一接続内での複数のメッセージ（最後のもの以外は `transcript` にしか残らない）、受信器の一接続での keep-alive。アクションのタグ `v<VERSION>` は、アクションを含むリリース（次のリリース）から使える。それより前のタグ（v0.2.1 まで）にはアクションが無い。
+- 検証: `test/receivers.rb`（HttpClient と GET / POST / chunked 応答 / 204、生のソケットで chunked の要求本文と重複ヘッダ、`max` と `respond_with`、来ない要求が上限で nil になり `stop` の後に同じ番号で次の受信器が受けること、`stop` の冪等性、`accept_window` で番号が閉じること、Mailer と transcript・封筒・メッセージのバイト列、8BITMIME の有無、RCPT・挨拶・本文後の拒否、AUTH PLAIN、`Mailer.deliver` で二通、来ないメッセージ）を CRuby とコンパイル後の両方で同じ出力にした。openssl を足した版と、フレームワーク全体（test/template_integration.rb と同じ require、Server と Test::Client を含む）に受信器を足した版も一時的にコンパイルして通ることを確かめた。CI は `test/cli_new.rb` がワークフローの中身を確かめ、`cybertrain new` で作ったアプリで YAML の読み込みと `spin run gen -- --check` を確かめた。アクションの YAML も読み込み、spin.lock を読む Ruby の一行は git 依存と path 依存の spin.lock で確かめた。
+
+### D30. 運用: `db backup`（VACUUM INTO）、`db vacuum`、`GET /up` のヘルスチェック（2026-10-25、issue #76）
+
+- 背景: 配備したアプリのデータは SQLite のファイル一つで、どのアプリも同じ三つを作り直していた。動いているサーバを止めずに取る一貫したバックアップ、削除の後にファイルを実際に縮める作業、そしてデータベースまで見るヘルスチェック（`public/up.html` は静的ファイルで、プロセスが HTTP に応えることしか示さない）。
+- 決定:
+  - `Cybertrain::DB::CLI` に `backup` と `vacuum` を足す（`./<app> db backup ...`、開発時は `bin/db.rb`）。対象は設定済みのデータベース（`CYBERTRAIN_DATABASE`）。`:memory:` と `file:` URI は拒否する（コピーするファイルが無い、またはターゲットと比べる素のパスが無い）。`Main.run` はアプリ名を `DB::CLI.run(argv, root, name)` に渡す（日付付きファイル名に使う。`bin/db.rb` からは空で、そのときはデータベースのファイル名の基部）。
+  - `db backup PATH [--force]`: 専用の接続で `VACUUM INTO ?`（ファイル名は束縛パラメータ、トランザクションの外。SQLite 3.27 以上を `sqlite_version()` で確かめ、古ければ理由を出して 1）。書き込み先は PATH と同じディレクトリに `Dir.mkdir(..., 0o700)` + `chmod 0700` で作る一時ディレクトリ `PATH.tmp-<pid>-<乱数>/` の中の新しい名前で、ファイルは VACUUM INTO 自身に作らせる（Linux の SQLite は事前に作った空ファイルを受け付けるが、macOS の SQLite は "output file already exists" で拒むため。ディレクトリが 0700 なので、作成直後のモードが何であれ他のユーザーは開けない）。完了後に `chmod 0600`、`fsync`、`File.rename` で PATH に置き換え、一時ディレクトリを消す。失敗したら一時ファイル（と `-journal` などの付属）を消して再送出。rescue は yield しない普通のメソッドに置く（NOTES 32 / 45）。既存の PATH は `--force` が無ければ拒否、データベース自身は `--force` でも拒否、親ディレクトリが無ければ拒否（一時ファイル名を含むメッセージを出さないため、開く前に確かめる）。
+  - `db backup DIR/ [--keep N]`: `/` で終わるか既存のディレクトリなら `DIR/<app>-<YYYYmmddTHHMMSSZ>.sqlite3`（UTC）に書く。ディレクトリが無ければ 0700 で作る。`--keep N` はその形にちょうど合う名前（`dated_backup?`、時刻は文字列順で並ぶ）だけを数え、古いものから N を超える分を消す。他のアプリの名前、一時ファイル、運用者が置いたファイルには触れない。同じ秒の二度目は既存として拒否。
+  - `db vacuum`: `VACUUM` の後に `PRAGMA wal_checkpoint(TRUNCATE)`。WAL では VACUUM の結果がまず WAL に書かれるので、チェックポイントでデータベースファイルに戻し、ファイルを新しい大きさに切り詰め、WAL を空にして初めてディスクが空く。前後の大きさ（本体 + WAL）を出す。読み手がいてチェックポイントが終わらなければ（busy）その旨を出す。
+  - `Config#health_path`（既定 `"/up"`、`CYBERTRAIN_HEALTH_PATH`。空で無効。`/` で始まらなければ boot が止まる）と `Config#health_worker_stale`（既定 300 秒、1 未満で boot が止まる）。`Cybertrain::HealthCheck` ミドルウェアを `RequestLogger` の内側、`Static` の外側に置く。そのパスちょうどの GET / HEAD だけに答え、他のメソッドとパスは下へ流す。セッション・CSRF・ルータより前なので、コントローラは要らず、ログインの `before_action` も走らず、Cookie も付かない。ログは通常のリクエストの 2 行だけ。
+  - 判定: `DB.with { |c| c.execute("SELECT count(*) AS n FROM sqlite_master") }`。素の `SELECT 1` はファイルを読まないので、スキーマのページ（1 ページ目）を読む問い合わせにする。`sqlite_schema` は 3.33 からの別名なので `sqlite_master` と書く。`Cybertrain::DB::Error`（と StandardError）なら `503 database unavailable`。DB が答え、かつ `Scheduler.running?` で `Scheduler.last_tick` が `health_worker_stale` 秒より古ければ `503 worker stale`（最初の tick 前の 0 は古いとみなさない）。それ以外は `200 ok`。いずれも `text/plain; charset=utf-8` と `Cache-Control: no-store`。
+- 理由:
+  - **一時ファイルと rename。** VACUUM INTO が途中で失敗すると、書きかけのファイルが本来の名前で残る。復元の段で初めて壊れていると分かるのが最悪の形なので、本来の名前には完成したものしか現れないようにする。中身はパスワードのダイジェストとセッションのトークンなので、作った瞬間から 0600 にする（umask 任せで作ってから chmod すると、間に他のユーザーが開ける）。
+  - **CLI から別プロセスで。** SQLite の呼び出しは戻るまで OS ワーカーを握る（D28 の制約）。大きなデータベースの VACUUM INTO をスケジューラのスレッドで走らせると、`SPINEL_WORKERS=1` では全リクエストが止まる。README には cron / systemd タイマーからの CLI、またはサーバ自身がスケジュールしたタスクから `system("./<app>", "db", "backup", ...)` で子プロセスとして走らせる形を書いた。`system` は呼んだスレッドだけを待たせることを確かめた（NOTES 75。`spawn` はコンパイルできず、`Process.spawn` はできるが `Process.wait` が無い）。
+  - **ルータより前の組み込みハンドラ。** 経路とコントローラで書くと、認証を入れたアプリでは `ApplicationController` の `before_action` がヘルスチェックをサインイン画面へリダイレクトし、セッション Cookie も付く。Rails は `rails/health#show` を `ActionController::Base` 直下にして避けているが、ここでは経路表を通らない方が単純。
+  - **worker stale。** 止まったタスク（無限ループ、返らない外部呼び出し）はプロセスを生かしたままジョブを止める。HTTP に応える限り外からは見えないので、`last_tick`（D28 で用意した）を見る。スケジューラを動かさないプロセス（`CYBERTRAIN_WORKER=0`、タスクの無いアプリ）では判定しない。
+- 却下した案:
+  - `sqlite3_backup_*` の API で写す: 段階的に写せるが、FFI の関数が増え、書き込みのたびに最初からやり直しになりうる。VACUUM INTO は一つの SQL で、空きページを除いたコンパクトなコピーになる。
+  - バックアップをサーバ内のスケジューラのタスクとして組み込む: 上の OS ワーカーの問題。
+  - `public/up.html` を残してヘルスチェックをそれで済ませる: データベースが無くても 200 になる。
+  - `cybertrain new` が書く Kamal の設定（`config/deploy.yml` の `healthcheck: path: /up.html`）を `/up` に変える: 生成物とその CI・テスト（`test/cli_new.rb`、`examples/blog`、ワークフロー）にまたがり、並行して進む `cybertrain new` の CI テンプレートの作業（#78）と同じファイルに触れるので、この変更では文書で `/up` への切り替えを勧めるにとどめた。
+- 帰結: 既定のスタックに `HealthCheck` が入るので、`test/application.rb` と `test/multipart_app.rb` のスタックの並びの期待値が変わった。`Main.usage` と `DB::CLI.usage` に `backup` / `vacuum` を足した（`test/main.rb` などのスナップショット）。CRuby 側の `cybertrain db ...` はどの引数もそのまま `spin run db -- ...` に渡すので変更していない（その使い方の文字列も、`cybertrain new` の生成物に入るため変えていない）。
+- 検証: `test/db_cli_backup.rb`（0600 のコピーが行ごと開けること、一時ファイルが残らないこと、上書きの拒否と `--force`、データベース自身の拒否、壊れたファイルからのコピー失敗で何も残らないこと、無いディレクトリ・無いデータベース・`:memory:` の拒否、引数の誤り、日付名の形、`--keep` が自分の形だけを消すこと、0700 のディレクトリ、同じ秒の拒否、削除後の vacuum で縮み WAL が空になること）と `test/health.rb`（スタックの位置、200 / no-store / Cookie 無し / before_action が走らないこと、HEAD とクエリ文字列、他のパスとメソッド、ログ 2 行、プールを閉じた・切った後の 503、無効化、環境変数、boot の検査、スケジューラ停止中は古くても 200、実スレッドを起こして `last_tick` を古くしたときの `worker stale`）。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。
@@ -652,6 +715,7 @@ blog/
   app/controllers/  app/models/  app/views/  app/helpers/
   config/routes.rb  config/app.rb  config/deploy.yml   # deploy.yml: Kamal（D11）
   Dockerfile  .dockerignore  .kamal/secrets
+  .github/workflows/ci.yml  # setup-cybertrain アクションを呼ぶ（D32）
   db/migrate/  db/schema.rb
   gen/                      # app.rb  controllers.rb  migrations.rb  models/  routes.rb  views.rb
   bin/blog.rb  bin/gen.rb  bin/db.rb   # blog.rb: server / migrate / db、db.rb: 開発時のマイグレーション

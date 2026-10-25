@@ -15,9 +15,9 @@ db status failed: cannot open database file:tmp/db_cli_test/missing.sqlite3: una
 db rollback failed: cannot open database file:tmp/db_cli_test/missing.sqlite3: unable to open database file (rc 14)
 db schema:dump failed: cannot open database file:tmp/db_cli_test/missing.sqlite3: unable to open database file (rc 14)
 ok   status on a file: URI naming a missing file fails with exit code 1 instead of creating it
-usage: db (migrate|rollback [N]|status|schema:dump|create)
+usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)
 unknown command: explode
-usage: db (migrate|rollback [N]|status|schema:dump|create)
+usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)
 ok   no arguments or an unknown command prints usage and returns 1
 db status failed: database does not exist: tmp/db_cli_test/storage/test.sqlite3 (run `db migrate` or `db create`)
 ok   status on a missing database fails with exit code 1 instead of creating it
@@ -57,11 +57,11 @@ schema dump skipped (no db/ directory here)
 ok   an explicit schema:dump where there is no db/ directory returns 1
 ok   an empty CYBERTRAIN_DATABASE counts as unset
 db rollback: N must be a positive integer, got "abc"
-usage: db (migrate|rollback [N]|status|schema:dump|create)
+usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)
 db rollback: N must be a positive integer, got "0"
-usage: db (migrate|rollback [N]|status|schema:dump|create)
+usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)
 db rollback: N must be a positive integer, got "-1"
-usage: db (migrate|rollback [N]|status|schema:dump|create)
+usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)
 ok   rollback N accepts only a positive integer
 db rollback failed: no migration for applied version 4 (was its file in db/migrate deleted or renamed?)
 Status  Migration ID    Migration Name

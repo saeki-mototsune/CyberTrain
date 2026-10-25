@@ -31,7 +31,7 @@ EXPECTED_FILES = [
   "app/views/layouts/application.html.erb",
   "public/404.html", "public/500.html", "public/style.css", "public/up.html",
   "bin/blog.rb", "bin/gen.rb", "bin/db.rb",
-  "Dockerfile", ".dockerignore", "config/deploy.yml", ".kamal/secrets",
+  "Dockerfile", ".dockerignore", "config/deploy.yml", ".kamal/secrets", ".github/workflows/ci.yml",
   "gen/.keep", "storage/.keep", "tmp/.keep", "test/.keep"
 ]
 
@@ -173,6 +173,19 @@ test "config/deploy.yml and .kamal/secrets configure Kamal for the app" do
   assert_includes secrets, "CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE\n"
   assert_includes read("blog/public/up.html"), "OK"
   assert_includes read("blog/README.md"), "kamal setup"
+end
+
+# The toolchain steps live in the repository's setup-cybertrain action, at
+# this CLI's release tag; the workflow only adds the app's own checks.
+test ".github/workflows/ci.yml sets up the toolchain and runs the app's checks" do
+  ci = read("blog/.github/workflows/ci.yml")
+  assert_includes ci, "runs-on: ubuntu-latest\n"
+  assert_includes ci, "- uses: actions/checkout@v4\n"
+  assert_includes ci, "- uses: saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v#{Cybertrain::VERSION}\n"
+  assert_includes ci, "run: spin lock && git diff --exit-code spin.lock\n"
+  assert_includes ci, "run: spin run gen -- --check\n"
+  assert_includes ci, "      spin test\n"
+  assert ci.index("setup-cybertrain") < ci.index("spin lock"), "the toolchain comes first"
 end
 
 test "CLI new --path expands a relative DIR against the current directory" do

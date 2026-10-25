@@ -1,0 +1,32 @@
+backed up tmp/db_cli_backup_test/storage/test.sqlite3 to tmp/db_cli_backup_test/copy.sqlite3
+ok   backup writes a 0600 copy, through a temporary name, that opens with the rows
+db backup failed: tmp/db_cli_backup_test/copy.sqlite3 already exists (pass --force to replace it)
+ok   an existing target is refused without --force and left as it was
+backed up tmp/db_cli_backup_test/storage/test.sqlite3 to tmp/db_cli_backup_test/copy.sqlite3
+ok   --force replaces the target with a new copy, still 0600
+db backup failed: the target is the database itself (tmp/db_cli_backup_test/storage/test.sqlite3)
+ok   the database itself is never a target, even with --force
+db backup failed: file is not a database (sql: PRAGMA journal_mode=WAL)
+ok   a failed copy leaves neither the target nor a temporary file
+db backup failed: no such directory: tmp/db_cli_backup_test/nowhere
+db backup failed: database does not exist: tmp/db_cli_backup_test/missing.sqlite3 (run `db migrate` or `db create`)
+db backup failed: the database is :memory:, not a file on disk
+db vacuum failed: the database is :memory:, not a file on disk
+ok   a missing target directory, a missing database and :memory: are refused
+db backup failed: usage: db backup PATH [--force] | db backup DIR/ [--keep N]
+db backup failed: --keep needs a directory target (DIR/), got tmp/db_cli_backup_test/copy.sqlite3
+db backup failed: --keep needs a positive number, got "0"
+db backup failed: --keep needs a positive number, got ""
+db backup failed: unknown option --fast
+db backup failed: unexpected argument "other.sqlite3"
+usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)
+ok   bad arguments are refused
+ok   dated_backup? matches only <name>-YYYYmmddTHHMMSSZ.sqlite3
+backed up tmp/db_cli_backup_test/storage/test.sqlite3 to tmp/db_cli_backup_test/backups/app-20261025T123456Z.sqlite3
+removed tmp/db_cli_backup_test/backups/app-20260101T000000Z.sqlite3
+removed tmp/db_cli_backup_test/backups/app-20260102T000000Z.sqlite3
+ok   backup DIR/ writes a dated copy in a 0700 directory and --keep N prunes its own kind only
+backed up tmp/db_cli_backup_test/storage/test.sqlite3 to tmp/db_cli_backup_test/fresh/app-20261025T123456Z.sqlite3
+ok   backup DIR/ makes the directory, mode 0700, and refuses the same second twice
+ok   vacuum shrinks the file after deletes and checkpoints the WAL to empty
+11 tests, 51 assertions, 0 failures

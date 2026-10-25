@@ -1071,6 +1071,38 @@ Kamal's `proxy.forward_headers` unset: with `ssl: true`, kamal-proxy sets
 networks that clients cannot connect from: anyone inside a listed network
 can choose the address a rate limit counts.
 
+## Parameterised headers
+
+API clients often send `Scheme k1=v1, k2="v2"` headers (`Authorization:
+Digest ...`, a vendor `X-Example-Auth`) or `k1=v1;k2=v2, k3` lists
+(`Forwarded`, `Prefer`). `request.header_params(name)` parses one into a
+`Hash` of lowercase names to values, so an API controller does not split it
+by hand:
+
+```ruby
+# Authorization: Digest username="Mufasa", realm="api@example.com", nc=00000001, qop=auth
+auth = request.header_params("authorization")
+auth["username"]                         # => "Mufasa"
+request.header_scheme("authorization")   # => "Digest"
+
+# Forwarded: for=192.0.2.60;proto=https;by=203.0.113.43
+request.header_params("forwarded")["proto"]   # => "https"
+
+# Prefer: respond-async, wait=5
+request.header_params("prefer").key?("respond-async")   # => true
+```
+
+`,` and `;` both separate parameters and the first occurrence of a name
+wins; a quoted value is unquoted (`\"` and `\\` undone), an unquoted one
+has the spaces around it trimmed, and a name without `=` maps to `""`. A
+leading scheme word (`Digest`, `Bearer`) is not a parameter:
+`request.header_scheme(name)` returns it (`""` when there is none). A header
+that is missing or longer than 8 KiB gives `{}`. Values are the bytes as sent,
+never percent-decoded and possibly not valid UTF-8. A `Bearer <token>` or
+`Basic <base64>` credential is not a parameter: check the scheme, then read
+the credential from `request.header("authorization")`. Design:
+[docs/design.md](docs/design.md) D31.
+
 ## Background work
 
 An application that has to do something outside a request (send a
@@ -1134,6 +1166,90 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 There is no cron syntax, no priority or uniqueness for jobs and no mailer:
 this covers "send later" and "run every N seconds" (`docs/design.md` D28).
 
+## Operations: backups, vacuum, health check
+
+The data of a deployed application is one SQLite file, so the binary carries
+the three operational tools such an application needs.
+
+**Backups.** `./<app> db backup PATH` writes a consistent copy of the
+configured database (`CYBERTRAIN_DATABASE`) while the server keeps running:
+SQLite's `VACUUM INTO` (3.27 or newer; the binary checks) reads one snapshot,
+and under WAL the server's writes go on meanwhile. The copy is written to a
+temporary file next to `PATH`, created exclusively with mode 0600 (the file
+holds password digests and session tokens), fsynced, and only then renamed
+to `PATH`, so a failed or interrupted copy never leaves a partial file under
+the real name (the temporary one is deleted). An existing `PATH` is refused
+unless you pass `--force`; the database itself never is a target, nor is a
+`:memory:` database a source.
+
+```sh
+./blog db backup /srv/blog/backups/before-upgrade.sqlite3
+./blog db backup /srv/blog/backups/ --keep 14    # blog-20261025T031500Z.sqlite3, newest 14 kept
+```
+
+A target ending in `/` (or an existing directory) gets a dated name,
+`<app>-<YYYYmmddTHHMMSSZ>.sqlite3` in UTC, in a directory created with mode
+0700 if it does not exist; `--keep N` then deletes the oldest files of
+exactly that shape beyond N and touches nothing else there. Restoring is
+copying a backup over the database file with the server stopped (and
+deleting that file's `-wal` and `-shm` beside it).
+
+**Vacuum.** Deleting rows leaves free pages in the file. `./<app> db vacuum`
+runs `VACUUM` and then `PRAGMA wal_checkpoint(TRUNCATE)`, so the rebuilt
+pages reach the database file, the file is cut to its new size and the WAL
+is emptied; it prints the size on disk (database plus WAL) before and after.
+`VACUUM` rewrites the whole file and holds the write lock while it does, so
+run it when the application is quiet. If a reader keeps the checkpoint from
+finishing it says so, and the WAL shrinks at a later checkpoint.
+
+**Run backups outside the server.** A SQLite call holds its OS worker until
+it returns, so a large `VACUUM INTO` on a `Scheduler` task would stall
+requests (with `SPINEL_WORKERS=1`, all of them) for as long as the copy
+takes. Run the command from cron or a systemd timer instead, as a separate
+process:
+
+```sh
+# crontab of the app's user: every night at 03:15, keep two weeks
+15 3 * * * cd /srv/blog/current && ./blog db backup /srv/blog/backups/ --keep 14
+```
+
+An application that wants to take backups itself can run its own binary as
+a child process from a scheduled task, rather than run the SQL on its own
+thread: `system` waits for the child on the scheduler's thread only, and
+requests go on being served meanwhile (Spinel has no `Process.wait`, and a
+`Process.spawn` without it leaves a zombie, so use `system` with an argument
+list, never a string with request data in it). A copy that takes longer than
+`health_worker_stale` makes the health check answer `worker stale` until it
+is done.
+
+```ruby
+# config/app.rb, in a served binary started from its own directory (dist/)
+Cybertrain::Scheduler.every(86_400, "nightly backup") do
+  system("./blog", "db", "backup", "storage/backups/", "--keep", "14")
+end
+```
+
+**Health check.** While the health check is enabled (it is by default;
+an empty `config.health_path` turns it off), the served application
+answers `GET /up` (and `HEAD`) before the static files, the session, CSRF and the router: no controller
+is involved and no login `before_action` can redirect it, and it sets no
+cookie. It runs `SELECT count(*) FROM sqlite_master`, which has to read the
+schema page from the file (a bare `SELECT 1` never touches it), and answers
+in `text/plain` with `Cache-Control: no-store`:
+
+| Status | Body | When |
+| --- | --- | --- |
+| 200 | `ok` | the query succeeded |
+| 503 | `database unavailable` | it raised `Cybertrain::DB::Error` (the file is missing or unreadable, the pool is closed) |
+| 503 | `worker stale` | the background `Scheduler` runs and its last tick is older than `health_worker_stale` seconds (300): a task is stuck, or runs far too long |
+
+A poll is logged like any request (two lines). The path is
+`config.health_path` (`CYBERTRAIN_HEALTH_PATH`, default `/up`; an empty
+value turns the check off, and the path then goes on to `public/` and the
+router as before). A load balancer, kamal-proxy or a deploy script can poll
+it; `public/up.html`, which `cybertrain new` writes and its Kamal
+configuration still polls, only shows that the process answers HTTP.
+
 ## Differences from Rails
 
 | Rails | cybertrain |
@@ -1169,6 +1285,10 @@ this covers "send later" and "run every N seconds" (`docs/design.md` D28).
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see "Outbound HTTP"); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
 | Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see "Sending e-mail") |
 | Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind) { \|payload\| ... }` and `Job.enqueue(kind, payload, run_at:)` (a String payload in a `cybertrain_jobs` table, retried with backoff, then `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; one thread in the served process, `CYBERTRAIN_WORKER=0` elsewhere ([Background work](#background-work)) |
+| `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` is an Array of Strings matched by substring, case-insensitively (no Regexps or lambdas); it applies to the request log and the development error page ([Filtered parameters](#configuration-and-environment-variables)) |
+
+| `get "up" => "rails/health#show"` (a route to a controller) | `GET /up` is built in and answered before the static files, the session and the router, so no `before_action` runs; it queries the database and the background worker's last tick, `200 ok` or `503` ([Operations](#operations-backups-vacuum-health-check)) |
+| `bin/rails db:...` tasks for backups (none built in) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renamed into place) and `./<app> db vacuum` |
 | ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
@@ -1226,7 +1346,9 @@ end
 | `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` or `true` makes `request.client_ip` (what `rate_limit` counts) the last `X-Forwarded-For` address of a connection from loopback, for a reverse proxy on the same host (see [Rate limiting](#rate-limiting-and-the-client-address)); shorthand for `CYBERTRAIN_TRUSTED_PROXIES=127.0.0.0/8,::1` |
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; comma-separated IPv4/IPv6 addresses or CIDRs (`172.16.0.0/12,10.0.0.0/8`) whose connections have `request.client_ip` taken from the last `X-Forwarded-For` address, for a proxy reached over a network, such as kamal-proxy in its container; a bad entry stops the server at boot |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
+| `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; comma-separated names replace the list. A parameter whose name contains one of them (ASCII case-insensitively: `password` also matches `user[password]`) has its value written as `[FILTERED]` in the request log and on the development error page; `[]` in `config/app.rb` turns this off |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps this process from running scheduled tasks and jobs (see [Background work](#background-work)); `scheduler_interval` (1 s), `job_poll_interval` (5 s) and `job_max_attempts` (5) are set in `config/app.rb` |
+| `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`; the built-in health check's path (see [Operations](#operations-backups-vacuum-health-check)); an empty value turns it off; one without a leading `/` stops the server at boot. `health_worker_stale` (300 s) is set in `config/app.rb` |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` or `true` lets `Cybertrain::HttpClient` connect to loopback, private and other non-public addresses (see "Outbound HTTP") |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; the SMTP server `Cybertrain::Mailer` sends through (see "Sending e-mail") |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`: the mode's port, 587 for `starttls`, 465 for `tls`, 25 for `none`; anything but 1 to 65535 is 0 |
@@ -1285,6 +1407,20 @@ inline. A reverse proxy that serves `public/` itself bypasses these headers
 (see [docs/deploy.en.md](docs/deploy.en.md)). `Cybertrain::Test::Client` calls the
 app in-process and never serializes the response, so it does not show the two
 defaults; assert them on `response.to_http`.
+
+**Filtered parameters:** the request log's `Started GET "/login?..."` line
+and the development error page (its request line, and its dump of the
+params and of a JSON body) show the value of every parameter named in
+`config.filter_parameters` as `[FILTERED]`, as Rails' `filter_parameters`
+does, so a `?token=` in a URL or a password posted to a form that fails
+does not appear in the framework's request log or on the development
+error page. Only the values are replaced: the rest of the
+query string is logged as sent (control characters escaped). The list
+matches by substring, case-insensitively; extend it in `config/app.rb`
+(`c.filter_parameters = c.filter_parameters + ["otp", "ssn"]`) or replace
+it with `CYBERTRAIN_FILTER_PARAMETERS`. Values an action logs itself are not
+filtered; ask `Cybertrain::ParameterFilter.filter?(name)` or
+`ParameterFilter.filter_query(text)` there.
 
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse
@@ -1629,6 +1765,79 @@ snapshot is stale, so it is followed by `;`, not `&&`; the `[ -x ]` check skips
 the capture when the compile failed, so the old snapshot is kept; in the
 framework checkout, `script/regen-snapshot test/<name>.rb` does exactly this and
 prints the diff stat).
+
+### Testing outbound calls
+
+When the code under test sends a webhook ([Outbound HTTP](#outbound-http)) or
+an e-mail ([Sending e-mail](#sending-e-mail)), the test receives it
+in-process: `Cybertrain::Test::HttpReceiver` and `Cybertrain::Test::SmtpReceiver`
+listen on `127.0.0.1`, record what arrives and answer with a canned reply.
+
+```ruby
+require_relative "support/app_test"
+require "cybertrain/test/http_receiver"
+require "cybertrain/test/smtp_receiver"
+
+test "a sign-up posts a webhook" do
+  hook = Cybertrain::Test::HttpReceiver.new(status: 202, body: "queued")
+  hook.start                                   # binds a free port, returns it
+  Cybertrain.config.http_allow_private = true  # HttpClient refuses loopback otherwise
+  SignupHook.post(hook.url("/hooks/signup"), "ann@example.com")   # the app's code
+  req = hook.received_request                  # waits at most 5 s; nil if nothing came
+  hook.stop
+  assert_equal "POST", req.http_method
+  assert_equal "/hooks/signup", req.http_target
+  assert_equal "application/json", req.http_header("Content-Type")
+  assert_includes req.http_body, "ann@example.com"
+end
+
+test "a refused recipient is reported" do
+  smtp = Cybertrain::Test::SmtpReceiver.new(reject: { rcpt: "550 5.1.1 no such user" })
+  port = smtp.start
+  mailer = Cybertrain::Mailer.new(host: "127.0.0.1", port: port, tls: "none", from: "app@example.com")
+  assert_raises("RejectedError") { mailer.deliver(to: "nobody@example.org", subject: "Hi", body: "Hello\n") }
+  mail = smtp.received_message
+  smtp.stop
+  assert_equal ["EHLO localhost", "MAIL FROM:<app@example.com>", "RCPT TO:<nobody@example.org>"],
+               mail.transcript.first(3)
+  refute mail.delivered?
+end
+```
+
+`HttpReceiver.new` takes the canned `status:`, `headers:`, `body:` and
+`chunked:` (`respond_with` changes them between requests); the request comes
+back as a `ReceivedRequest` (`http_method`, `http_target`, `http_path`,
+`http_headers` with lowercased names, `http_header(name)`, `http_body` with a
+chunked body decoded). `SmtpReceiver` plays 220, EHLO (with 8BITMIME unless
+`eight_bit_mime: false`, AUTH PLAIN with `auth: true`), MAIL, RCPT, DATA and
+QUIT; `reject:` fails any of `:greeting`, `:ehlo`, `:mail`, `:rcpt`, `:data`
+or `:message` with the reply given. A `ReceivedMessage` has the
+`envelope_from`, `envelope_recipients`, the `message_data` (dot-stuffing
+undone), `message_header(name)`, `message_body` and the `transcript` of
+commands. Both accept one connection unless `max:` says more
+(`received_requests` / `received_messages` return them all). Every wait is
+bounded: a receiver gives up after `accept_window:` (10 s) without a
+connection, a silent client after `read_timeout:` (5 s), and `stop` (safe
+to call twice) ends and joins the receiver's thread and closes its port, so
+a receiver never takes a later test's connection. They need only Ruby's
+socket library, not openssl.
+
+### Continuous integration
+
+`cybertrain new` writes `.github/workflows/ci.yml` for the app. It calls the
+`setup-cybertrain` action of this repository
+([.github/actions/setup-cybertrain](.github/actions/setup-cybertrain/action.yml)),
+pinned to the CLI's release tag, which installs the SQLite, zlib and OpenSSL
+headers and Ruby, reads the framework commit the app is locked to out of
+`spin.lock`, fetches the framework at that commit and runs its `cybertrain
+doctor` and `cybertrain setup` (with `~/.cybertrain/spinel` cached per Spinel
+release and runner image). The workflow then checks that `spin.lock` is
+current (`spin lock && git diff --exit-code spin.lock`) and `gen/` is fresh
+(`spin run gen -- --check`), and runs `spin test` once `test/` has a test
+program. When the toolchain steps change, the action changes, not every app's
+copy. The commit is read from `spin.lock`, so the workflow assumes the
+default git dependency; an app made with `--path` passes the framework
+checkout to the action as `framework-path`.
 
 ## Learn more
 

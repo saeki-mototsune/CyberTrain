@@ -594,3 +594,37 @@ finds the commit that removed them).
     ""; end; end` and `def show(name: Conf.new.name) = puts(name.bytesize)`;
     the struct has `sp_RbVal iv_name`. Assign every ivar in `initialize`
     (Config's `smtp_*` settings, cybertrain/mailer.rb, issue #64).
+
+74. A constant a subclass inherits from its superclass is not found by its
+    bare name in the subclass's methods once another class anywhere in the
+    program defines a constant of the same name (Spinel 2026.09.12): the
+    compiler warns "uninitialized constant X: defined nowhere in the
+    program (raises NameError when reached)" and the method raises
+    NameError at run time; CRuby finds it through the ancestors. Reduced
+    repro: `module M; class Elsewhere; LIMIT = 99; end; class Base; LIMIT
+    = 7; end; class Sub < Base; def hook = LIMIT; end; end; p
+    M::Sub.new.hook`; without `Elsewhere` it prints 7. Found with
+    `Test::HttpReceiver` reading the `MAX_LINE_BYTES` it inherits from
+    `Receiver` as a bare `MAX_LINE_BYTES`, next to HttpClient's and Mailer's
+    constants of that name (issue #78). Spell an inherited constant with its
+    owner (`Receiver::MAX_LINE_BYTES`, which is what the receivers do now),
+    and read the warnings `spin test` prints.
+
+75. Files and child processes for `db backup` (Spinel 2026.09.12, issue
+    #76): `File.open(path, File::WRONLY | File::CREAT | File::EXCL, 0o600)`
+    creates the file with that mode and raises `Errno::EEXIST` for an
+    existing one, as under CRuby; `File#fsync`, `File.rename`, `File.chmod`,
+    `File.stat(path).mode`, `Dir.children` and `Time#strftime` behave the
+    same too (BlobStore already relied on the O_EXCL form). `VACUUM INTO`
+    must create its output file itself: macOS's SQLite answers "output file
+    already exists" for a pre-created empty file that Linux's accepts, so
+    `db backup` gives it a fresh name inside a 0700 directory. Child processes:
+    Kernel `spawn` is "unsupported call", `Process.spawn` compiles but
+    `Process.wait` does not (a spawned child is never reaped), and
+    `system("prog", "arg", ...)` waits for the child without stalling other
+    threads: with `SPINEL_WORKERS=1` the main thread kept ticking every
+    0.1 s while another thread's `system("sleep 1")` ran. So an application
+    runs its own binary for heavy SQLite work (`system("./app", "db",
+    "backup", ...)` from a Scheduler task) instead of running a long
+    `VACUUM INTO` on a thread of the server, where the SQLite call would hold
+    its OS worker until it returns.

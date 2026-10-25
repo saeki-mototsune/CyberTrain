@@ -36,4 +36,11 @@ ok   multipart_boundary reads the parameter the media type drops
 ok   multipart_form parses once and is the same object every time
 ok   form_or_query_value reads a multipart text part: the body wins, a file never answers, the query is the fallback
 ok   multipart_form refuses an encoded body and a malformed one, and does not cache the raise
-38 tests, 188 assertions, 0 failures
+ok   header_params reads a Digest-style header: scheme dropped, names lowercased, quotes undone
+ok   header_params treats ; and , as separators (Forwarded, Prefer), first occurrence wins
+ok   header_params unquotes backslash escapes and keeps separators inside quotes
+ok   header_params skips junk, keeps bare names as empty values and trims blanks
+ok   header_scheme reads Bearer; the credential is a bare parameter
+ok   header_params is empty for a missing header and one over 8 KiB
+ok   header_params tolerates any bytes in values
+45 tests, 231 assertions, 0 failures

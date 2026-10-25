@@ -123,6 +123,204 @@ module Cybertrain
       nil
     end
 
+    # The longest header value {#header_params} and {#header_scheme} parse,
+    # 8 KiB; a longer one gives an empty result.
+    # @api public
+    MAX_PARAM_HEADER_BYTES = 8192
+
+    # The parameters of a parameterised header, `Scheme k1=v1, k2="v2"`
+    # (`Authorization: Digest ...`, a vendor `X-*-Auth` header) or
+    # `k1=v1;k2=v2, k3` (`Forwarded`, `Prefer`), as a Hash of lowercase
+    # names to values:
+    #
+    # - `,` and `;` both separate parameters (the element structure of
+    #   `Forwarded` and `Prefer` is flattened); the first occurrence of a
+    #   name wins;
+    # - a name is a run of token characters (RFC 9110), lowercased; a
+    #   parameter that does not start with one is skipped;
+    # - a value is a quoted string, unquoted with each backslash escape
+    #   (`\"`, `\\`) undone, or the bytes up to the next separator, spaces
+    #   and tabs around it trimmed; a name without `=` maps to `""`;
+    # - a leading word followed by a space and more text (the scheme:
+    #   `Digest`, `Bearer`) is not a parameter; {#header_scheme} reads it.
+    #   A value that is one word alone (`Prefer: respond-async`) is a bare
+    #   parameter, not a scheme;
+    # - a missing header, or one longer than {MAX_PARAM_HEADER_BYTES},
+    #   gives `{}`.
+    #
+    # Values are bytes as sent: never percent-decoded, and possibly not
+    # valid UTF-8. `Authorization: Bearer <token>` and `Basic <base64>` are
+    # a scheme and a credential, not parameters: read those with
+    # {#header_scheme} and {#header}.
+    # @example
+    #   # Authorization: Digest username="Mufasa", realm="a@example.com", nc=00000001
+    #   request.header_params("authorization")["username"]   # => "Mufasa"
+    #   request.header_scheme("authorization")               # => "Digest"
+    # @example
+    #   # Forwarded: for=192.0.2.60;proto=http;by=203.0.113.43
+    #   request.header_params("forwarded")["proto"]   # => "http"
+    # @param name [String] the header name, any case
+    # @return [Hash{String => String}]
+    # @api public
+    def header_params(name)
+      Request.parse_header_params(header(name).to_s)
+    end
+
+    # The scheme word that starts a parameterised header, as sent:
+    # `"Digest"` for `Authorization: Digest username="x"`, `"Bearer"` for
+    # `Authorization: Bearer abc`. `""` when the header is missing, longer
+    # than {MAX_PARAM_HEADER_BYTES}, starts with a parameter (`k=v`, or a
+    # word followed by `,` or `;`) or is one word alone. Compare it
+    # case-insensitively: schemes are.
+    # @param name [String] the header name, any case
+    # @return [String]
+    # @api public
+    def header_scheme(name)
+      text = header(name).to_s
+      return "" if text.bytesize > MAX_PARAM_HEADER_BYTES
+
+      start = Request.skip_blanks(text, 0)
+      stop = Request.scheme_end(text, start)
+      return "" if stop == start
+
+      text.byteslice(start, stop - start).to_s
+    end
+
+    # The parser behind #header_params; a byte scan, so any bytes are
+    # tolerated (NOTES rules 52 and 62: `s` is a `to_s` local). The Hash is
+    # seeded with its types (rule 9).
+    def self.parse_header_params(value)
+      s = value.to_s
+      out = { "" => "" }
+      out.delete("")
+      n = s.bytesize
+      return out if n == 0 || n > MAX_PARAM_HEADER_BYTES
+
+      pos = Request.skip_blanks(s, 0)
+      after_scheme = Request.scheme_end(s, pos)
+      pos = after_scheme if after_scheme > pos
+      while pos < n
+        b = s.getbyte(pos)
+        if b == 44 || b == 59 || Request.blank_byte?(b)
+          pos += 1
+          next
+        end
+        key_end = pos
+        key_end += 1 while key_end < n && Request.token_byte?(s.getbyte(key_end))
+        if key_end == pos
+          pos = Request.next_separator(s, pos)
+          next
+        end
+        key = s.byteslice(pos, key_end - pos).to_s.downcase
+        at = Request.skip_blanks(s, key_end)
+        text = ""
+        if at < n && s.getbyte(at) == 61
+          at = Request.skip_blanks(s, at + 1)
+          if at < n && s.getbyte(at) == 34
+            closing = Request.quoted_end(s, at + 1)
+            text = Request.unquote(s, at + 1, closing)
+            pos = Request.next_separator(s, closing < n ? closing + 1 : n)
+          else
+            stop = Request.next_separator(s, at)
+            pos = stop
+            stop -= 1 while stop > at && Request.blank_byte?(s.getbyte(stop - 1))
+            text = s.byteslice(at, stop - at).to_s
+          end
+        else
+          pos = Request.next_separator(s, at)
+        end
+        out[key] = text unless out.key?(key)
+      end
+      out
+    end
+
+    # The end of a scheme word starting at `from`: a run of token bytes
+    # followed by at least one blank and then a byte that is neither `=`,
+    # `,` nor `;`. `from` itself when there is none.
+    def self.scheme_end(text, from)
+      s = text.to_s # NOTES rule 62
+      n = s.bytesize
+      stop = from
+      stop += 1 while stop < n && Request.token_byte?(s.getbyte(stop))
+      return from if stop == from
+
+      after = Request.skip_blanks(s, stop)
+      return from if after == stop || after >= n
+
+      b = s.getbyte(after)
+      return from if b == 61 || b == 44 || b == 59
+
+      stop
+    end
+
+    def self.skip_blanks(text, from)
+      s = text.to_s # NOTES rule 62
+      i = from
+      n = s.bytesize
+      i += 1 while i < n && Request.blank_byte?(s.getbyte(i))
+      i
+    end
+
+    # The offset of the next `,` or `;` at or after `from`, or the end.
+    def self.next_separator(text, from)
+      s = text.to_s # NOTES rule 62
+      i = from
+      n = s.bytesize
+      while i < n
+        b = s.getbyte(i)
+        return i if b == 44 || b == 59
+
+        i += 1
+      end
+      n
+    end
+
+    # The offset of the `"` closing a quoted string whose contents start at
+    # `from` (a backslash escapes the next byte), or the end of the text
+    # when it is unterminated.
+    def self.quoted_end(text, from)
+      s = text.to_s # NOTES rule 62
+      i = from
+      n = s.bytesize
+      while i < n
+        b = s.getbyte(i)
+        return i if b == 34
+
+        i += b == 92 ? 2 : 1
+      end
+      n
+    end
+
+    # The contents of a quoted string, bytes [from, stop), with each
+    # backslash escape replaced by the byte it escapes. Copied in chunks
+    # into a +"" buffer filled with << only (NOTES rules 60 and 66).
+    def self.unquote(text, from, stop)
+      s = text.to_s # NOTES rule 62
+      last = stop > s.bytesize ? s.bytesize : stop
+      out = +""
+      chunk = from
+      i = from
+      while i < last
+        if s.getbyte(i) == 92 && i + 1 < last
+          out << s.byteslice(chunk, i - chunk).to_s
+          out << s.byteslice(i + 1, 1).to_s
+          i += 2
+          chunk = i
+        else
+          i += 1
+        end
+      end
+      out << s.byteslice(chunk, last - chunk).to_s if last > chunk
+      out
+    end
+
+    # An RFC 9110 tchar: ALPHA, DIGIT or one of !#$%&'*+-.^_`|~.
+    def self.token_byte?(b)
+      return true if (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57)
+
+      b == 33 || (b >= 35 && b <= 39) || b == 42 || b == 43 || b == 45 || b == 46 || b == 94 || b == 95 || b == 96 || b == 124 || b == 126
+    end
+
     # The largest Integer a 64-bit runtime holds; what an overlong
     # Content-Length reports.
     INT64_MAX = 9223372036854775807

@@ -12,6 +12,7 @@ require "cybertrain/middleware/session_store"
 require "cybertrain/middleware/csrf_protection"
 require "cybertrain/middleware/error_pages"
 require "cybertrain/middleware/host_authorization"
+require "cybertrain/middleware/health_check"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
@@ -83,7 +84,7 @@ module Cybertrain
 
     # HostAuthorization (in development) -> ErrorPages (in production) ->
     # RequestLogger (unless log_level :none) ->
-    # Static (if static_files) -> MethodOverride -> SessionStore ->
+    # HealthCheck (unless health_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
     # CsrfProtection (if csrf; paths under csrf_exempt_prefixes pass it) ->
     # router. Built on first use, after boot has resolved the session secret.
     def stack
@@ -116,6 +117,8 @@ module Cybertrain
       fail_boot(max_page_error) unless max_page_error.empty?
       proxies_error = c.trusted_proxies_error
       fail_boot(proxies_error) unless proxies_error.empty?
+      health_error = c.health_error
+      fail_boot(health_error) unless health_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
@@ -133,6 +136,7 @@ module Cybertrain
       Params.max_page = c.max_page
       Request.trusted_proxy = c.trusted_proxy
       Request.trusted_proxies = c.trusted_proxies
+      ParameterFilter.names = c.filter_parameters
       Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
       self
     end
@@ -358,6 +362,9 @@ module Cybertrain
                                   absolute_max_age: c.session_absolute_max_age)
       app = MethodOverride.new(app)
       app = Static.new(app, c.public_root) if c.static_files
+      # Before Static and the session: no public/ file shadows it, and it
+      # sets no cookie. Inside RequestLogger, so polls are logged as usual.
+      app = HealthCheck.new(app, c.health_path, c.health_worker_stale) unless c.health_path.empty?
       app = RequestLogger.new(app) unless c.log_level == :none
       app = ErrorPages.new(app, c.public_root) if c.production?
       app = HostAuthorization.new(app, c.allowed_hosts) if c.development?
