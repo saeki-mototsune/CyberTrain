@@ -3,6 +3,7 @@ ok   assert_response(:not_found) on an unknown path
 ok   the cookie jar carries Set-Cookie into the next request
 ok   a Max-Age=0 cookie is removed from the jar
 ok   extra headers reach the request
+ok   requests come from 127.0.0.1 unless peer_address says otherwise
 ok   post sends params as a form body
 ok   patch, put and delete reach their routes
 ok   request is the generic entry point
@@ -31,4 +32,4 @@ text _method=patch
 file f f.txt text/plain 2 8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4
 ok   patch_multipart sends a POST with _method=patch, which MethodOverride turns into the PATCH route
 ok   status symbols cover payload_too_large and unsupported_media_type
-21 tests, 86 assertions, 0 failures
+22 tests, 90 assertions, 0 failures

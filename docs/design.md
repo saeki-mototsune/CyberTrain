@@ -503,6 +503,28 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 今後: cron 形式の時刻指定、ジョブの優先度と一意性、複数ワーカーでの分担（行の取得は既に排他なので、`worker` スイッチを外せば始められる）、`failed` 行の再投入コマンド。
 - 検証: `test/scheduler.rb`（期限前に走らないこと、例外の記録とループの継続、`last_tick`、`worker` が偽なら何もしないこと、実スレッドの起動）、`test/jobs.rb`（フレームワーク全体と一緒にコンパイル。enqueue / 取得 / 実行 / done、期限順、バックオフと試行回数、最終の `failed`、未知の kind、`last_error` の上限、`recover!`、巻き戻されたトランザクション内の enqueue、`prune_done`、schema ダンプからの除外、スケジューラによるワーカータスクの追加）。
 
+### D29. 招待制の初回セットアップ: `generate authentication --invite-only`（2026-10-25、issue #72）
+
+- 背景: console が無いので、認証ジェネレータは最初のユーザーを入れるために公開の登録画面（`/sign_up`）を書く（D15）。社内ツールでは既定として誤りで、管理者より先にサーバへ届いた誰もが登録できる。アプリが結局自分で書くのは (a) パスワードを標準入力から読む `myapp user EMAIL` サブコマンドと、(b) ユーザーが一人もいない間だけ、ループバック接続にだけ応える `/setup` 画面と、ユーザーがいない間の起動時の `[WARN]`。
+- 決定: `cybertrain generate authentication --invite-only` を足す。既定の生成物との違いは次のとおりで、すべてアプリのコード（D15 の方針。フレームワーク側は D26 の `request.loopback?` と D18 の `Main.command` を使うだけ）。
+  - `RegistrationsController`、`registrations/new.html.erb`、`/sign_up` の経路、サインイン画面の「Sign up」リンクを書かない。
+  - `app/commands/user_command.rb`: `UserCommand` モジュールと `Cybertrain::Main.command("user", ...)` の登録。`EMAIL [PASSWORD]` で、そのアドレスのユーザーを作るか、いればパスワードを変える（`password=` でダイジェストが変わるので、そのユーザーの既存セッションは D25 のパスワード鍵で失効する）。`created ADDRESS` / `updated ADDRESS` を出して 0。引数の誤り（0 個、3 個以上、`-` で始まる）は使い方の行を出して 1、空のパスワードと検証エラー（8 文字未満など）はエラー行を出して 1。PASSWORD を省くと標準入力から 1 行読み（端末なら `Password: ` を出す）、末尾の改行 1 つ（`\n` / `\r\n`）だけを落とす。`ps` とシェル履歴にパスワードを残さないため。端末のエコーは止めない（`io/console` が無い）。`STDIN.gets` と `STDIN.tty?` は Spinel 2026.09.12 で CRuby と同じに動くことを確かめた。
+  - `bin/<app>.rb` の `exit(Cybertrain::Main.run(` の行の直前に、上のファイルの `require_relative` と `UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)` を一度だけ挿入する（`ApplicationController` への挿入と同じ一回限りの編集。require が既にあれば何もしない）。
+  - `SetupController`（`GET` / `POST /setup`、`app/views/setup/new.html.erb`）: `before_action :require_first_run` が、ユーザーが存在する（`User.all.exists?`）なら 404、そうでなく設定 `setup_open` が偽なら、`request.loopback?` かつ `X-Forwarded-For` ヘッダが無いときだけ通す。作成に成功したら `start_new_session_for` でサインインさせて `/` へ。
+  - `config/app.rb` の `Cybertrain.configure` ブロックの先頭に `c.setting_bool :setup_open, env: "<APP>_SETUP_OPEN", default: false`（D17）を挿入する。真なら、ユーザーがいない間だけ、どのアドレスからでも `/setup` を開ける（別ホストのプロキシの後ろでの初回起動用）。
+  - 生成するテスト（`test/authentication.rb` の招待制版）: 別アドレスからの 404（`client.peer_address = "203.0.113.7"`）、プロキシ経由（X-Forwarded-For 付き）の 404、ユーザーがいれば 404、スイッチで開くこと、作成とサインイン、短いパスワードの再表示、`user` コマンドの作成・更新・拒否を `Cybertrain::Main.run` 経由で（終わったらテスト側のプールを繋ぎ直す: コマンドはプール 1 本で繋いで切る、D18）、改行の扱い、警告の判定。サインイン以降のテストは既定版と共通。
+  - フレームワークに足したのは二つだけ: `Test::Client#peer_address`（既定 `"127.0.0.1"`、テストが別のマシンからの要求を作るため。`remote_addr` と同名の読み出しは避けた、NOTES 規則 10）と、`Main.server?` を `@api public` にしたこと（起動時だけの処理をアプリが一回きりのコマンドで動かさないための判定）。
+- 理由:
+  - **ループバックの判定はソケットの相手だけ。** ヘッダはクライアントが書けるので、開く理由にはしない。逆に、同じホストのプロキシ（nginx / Caddy / kamal-proxy）の後ろでは全要求の `remote_addr` がループバックになり、`CYBERTRAIN_TRUSTED_PROXY` を設定し忘れると `/setup` が世界に開く。プロキシは `X-Forwarded-For` を付けるので、ヘッダがあれば閉じる。ヘッダで閉じる側に倒すのは安全（偽装しても自分が締め出されるだけ）。
+  - **起動時の警告の置き場所。** `Application#boot` の後に呼ばれるフックは無い。フレームワークに `after_boot` の登録を足す案は、保存したブロックの呼び出し（NOTES 規則 30 / 69）を全プログラムの起動経路に入れ、そのための全体テストも要る。生成コードで済むので、`bin/<app>.rb` で `Main.run` の前に、サーバとして起動するとき（`Main.server?`）だけ、プール 1 本で繋いで `User.all.exists?` を聞き、切ってから boot に任せる（boot は `DB.connected?` でなければ自分のプールを繋ぐ）。users テーブルがまだ無い（未マイグレーション）ときの `Cybertrain::DB::Error` は黙って飛ばす（`./<app> migrate` が先で、そのときは `/setup` 自体がまだ動かない）。rescue / ensure は yield しない普通のメソッドに置く（規則 32 / 45）、rescue 節は完全名で書く（規則 70）。警告は起動バナーより前に出る。
+  - **コマンドのファイルを `app/commands/` に置く。** `bin/<app>.rb` に直接書くと、テスト（`bin/` を読まない）からコマンドを呼べない。`spin run gen` は `app/models` と `app/controllers` しか読まないので、`app/commands/` は gen/app.rb に入らず、bin とテストがそれぞれ require する。
+- 却下した案:
+  - 既定を招待制にする: 既存の手順（CI、README のウォークスルー）と、公開登録が正しいアプリを壊す。フラグで選ぶ。
+  - `/setup` をトークン付き URL にする（起動ログにワンタイムトークンを出す）: ログを読める人は普通サーバに入れるので、ループバック限定と比べて得るものが少なく、トークンの保存と失効を生成コードに足すことになる。
+  - パスワードを環境変数から読む: プロセスの環境は `/proc/<pid>/environ` で同じユーザーから読め、シェル履歴にも残りやすい。標準入力か、承知の上での引数にした。
+  - `/setup` の作成の競合（ユーザーがいない間の同時 POST）を排他する: ループバック限定でオペレータ自身しか届かず、同じアドレスは一意インデックスが拒む。トランザクションで囲む複雑さに見合わない。
+- 帰結: `test/cli_authentication.rb` に招待制の生成物・挿入・再実行・拒否のケースを足した。生成したアプリを `cybertrain new` → `generate authentication --invite-only` → `db migrate` → `spin test test/authentication.rb` でコンパイルして走らせ、`cybertrain build` した本番バイナリで警告、標準入力からの作成、`/setup` のループバック判定と X-Forwarded-For での 404 を確かめた（CI にも同じ手順を足した）。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。

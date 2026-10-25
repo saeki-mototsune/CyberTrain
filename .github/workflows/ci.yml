@@ -163,6 +163,36 @@ jobs:
           grep -q "production environment" server.log
           kill %1
 
+      # The invitation-only variant (docs/design.md D27): its own generated
+      # test, then the binary: the first-run warning and /setup while no user
+      # exists, `./club user` reading the password from stdin, and /setup
+      # gone once a user exists.
+      - name: Gem CLI generates invitation-only authentication and runs its first-run setup
+        run: |
+          mkdir -p /tmp/gem-e2e-invite && cd /tmp/gem-e2e-invite
+          cybertrain new club --path "$GITHUB_WORKSPACE"
+          cd club
+          cybertrain generate authentication --invite-only
+          test ! -e app/controllers/registrations_controller.rb
+          cybertrain db migrate
+          cybertrain build
+          cybertrain spin test test/authentication.rb || true
+          test -x build/test/authentication
+          ./build/test/authentication
+          cd dist
+          export CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret
+          ./club migrate
+          PORT=3997 ./club > server.log 2>&1 &
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3997/session/new > /dev/null && break; sleep 0.5; done
+          grep -q "\[WARN\] no user exists yet" server.log
+          curl -fsS http://127.0.0.1:3997/setup | grep -q "Set up"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: 203.0.113.7' http://127.0.0.1:3997/setup)" = "404"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3997/sign_up)" = "404"
+          test "$(printf 's3cr3t-s3cr3t\n' | ./club user ann@example.com)" = "created ann@example.com"
+          test "$(./club user ann@example.com another-s3cr3t)" = "updated ann@example.com"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3997/setup)" = "404"
+          kill %1
+
       # File uploads end to end: a scaffold with an attachment field, the
       # app's own generated upload test, then one browser-shaped multipart
       # POST (CSRF token and cookie from the form page) and the download of
