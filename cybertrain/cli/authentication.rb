@@ -424,9 +424,20 @@ module Cybertrain
 
           # Where to go after signing in: the page that asked for it, or /.
           def after_authentication_url
-            url = session[:return_to_after_authenticating]
+            url = session[:return_to_after_authenticating].to_s
             session.delete(:return_to_after_authenticating)
-            url.nil? || url.empty? ? "/" : url
+            # Browsers treat // as a host, backslashes as slashes, and strip
+            # some control characters. Only return an ordinary local path.
+            return "/" unless url.start_with?("/") && !url.start_with?("//")
+
+            i = 0
+            while i < url.bytesize
+              byte = url.getbyte(i).to_i
+              return "/" if byte <= 32 || byte == 92 || byte == 127
+
+              i += 1
+            end
+            url
           end
           # ---- end of authentication ------------------------------------------
 
@@ -753,6 +764,34 @@ module Cybertrain
             assert_response res, :see_other
             assert_equal 1, Session.count
             assert_equal "127.0.0.1", Session.first.ip_address
+          end
+
+          test "authentication returns to a local path once" do
+            ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
+            ctx.session = Cybertrain::Session.new
+            controller = ApplicationController.new(ctx)
+            assert_equal "/", controller.after_authentication_url
+            ["/", "/products", "/products/1?tab=details#title", "/products//1", "/caf%C3%A9", "/記事"].each do |path|
+              controller.session[:return_to_after_authenticating] = path
+              assert_equal path, controller.after_authentication_url
+              refute controller.session.key?(:return_to_after_authenticating)
+              assert_equal "/", controller.after_authentication_url
+            end
+          end
+
+          test "authentication rejects unsafe return destinations and consumes them" do
+            ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
+            ctx.session = Cybertrain::Session.new
+            controller = ApplicationController.new(ctx)
+            unsafe = ["", "products", "https://evil.example/", "//evil.example/", "///evil.example/",
+                      "/\\\\evil.example/", "/products\\\\evil", " //evil.example/"]
+            (0..32).each { |byte| unsafe << "/\#{Cybertrain::Test.binary([byte])}/evil.example/" }
+            unsafe << "/\#{Cybertrain::Test.binary([127])}/evil.example/"
+            unsafe.each do |path|
+              controller.session[:return_to_after_authenticating] = path
+              assert_equal "/", controller.after_authentication_url
+              refute controller.session.key?(:return_to_after_authenticating)
+            end
           end
 
           test "POST /session with the wrong password shows an alert" do
