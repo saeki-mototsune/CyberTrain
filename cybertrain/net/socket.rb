@@ -322,6 +322,13 @@ module Cybertrain
     # raises, naming the file that brings it. Requiring cybertrain/net/tls
     # replaces it ({Net.tls_connector=}).
     class TlsConnector
+      # False here, true once cybertrain/net/tls is required: lets a caller
+      # that will need TLS later in an exchange (the mailer's STARTTLS)
+      # refuse before it connects.
+      def tls_ready?
+        false
+      end
+
       # @return [Stream] the TLS stream over `tcp`, handshake done
       def tls_wrap(tcp, host, timer)
         tcp.stream_close

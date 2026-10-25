@@ -33,7 +33,8 @@ development loop that rebuilds and re-execs the server on code changes.
 with comments) built on it, exercised by CI on Linux and macOS.
 `cybertrain generate authentication` adds email-and-password sign-in the way
 Rails 8's generator does, and `cybertrain generate attachment` (or a
-`cover:attachment` scaffold field) adds a file upload to a model. Not built: mailers, jobs, WebSockets/ActionCable,
+`cover:attachment` scaffold field) adds a file upload to a model. `Cybertrain::Mailer` sends plain-text e-mail over SMTP
+(see "Sending e-mail"). Not built: Action Mailer-style mailer classes and templates, jobs, WebSockets/ActionCable,
 an asset pipeline, i18n, and anything beyond a minimal `render json:` — see
 "Differences from Rails" below.
 
@@ -1004,7 +1005,8 @@ reach; behind a proxy on the same host every request is loopback, so check
 | `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, ActiveSupport's bundled zone data | `Cybertrain::TimeZone.find("Asia/Tokyo")` reads the system's TZif files (`/usr/share/zoneinfo`, or `TZDIR`) and converts Integer epoch seconds (`utc_offset_at`, `utc_to_local`, `local_to_utc`); no per-request `Time.zone` and no `l(time, zone:)` yet ([Time zones](#time-zones)) |
 
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see "Outbound HTTP"); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
-| Mailers, jobs, ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
+| Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see "Sending e-mail") |
+| Jobs, ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
 
@@ -1062,6 +1064,12 @@ end
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` or `true` lets `Cybertrain::HttpClient` connect to loopback, private and other non-public addresses (see "Outbound HTTP") |
+| `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; the SMTP server `Cybertrain::Mailer` sends through (see "Sending e-mail") |
+| `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`: the mode's port, 587 for `starttls`, 465 for `tls`, 25 for `none`; anything but 1 to 65535 is 0 |
+| `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`: no AUTH; set, the mailer authenticates with AUTH PLAIN |
+| `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; a secret, never logged, never in the boot banner or an error message |
+| `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: the sender `Mailer.deliver` uses when it is not given `from:` |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; also `tls` (implicit TLS) or `none` (plain text, credentials to loopback only); both TLS modes need `require "cybertrain/net/tls"` |
 
 Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
 inside another site's frame; the browser must reach the app over HTTPS.
@@ -1303,6 +1311,87 @@ being served, so other connections keep being served while it waits. The
 socket layer (`cybertrain/net/socket.rb`: bounded connect, buffered reads,
 bounded writes) is separate from the HTTP layer so that other protocols can
 use it. The design: [docs/design.md](docs/design.md) D24.
+
+## Sending e-mail
+
+`Cybertrain::Mailer` sends plain-text e-mail through an SMTP server (your
+provider's submission server, or a local relay). Like the HTTP client it is
+not in `require "cybertrain"`, and TLS is a separate require:
+
+```ruby
+require "cybertrain/mailer"
+require "cybertrain/net/tls"   # for starttls (the default) and tls; links the system libssl
+
+# Settings from CYBERTRAIN_SMTP_HOST, _PORT, _USER, _PASSWORD, _FROM, _TLS:
+begin
+  Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Hello #{user.name},\n...")
+rescue Cybertrain::Mailer::Error => e
+  Cybertrain.logger.warn("mail: #{e.message}")   # never contains the password
+end
+
+# Or explicit settings, bypassing Config:
+mailer = Cybertrain::Mailer.new(host: "smtp.example.com", port: 587, tls: "starttls",
+                                user: "app", password: ENV["SMTP_PASSWORD"].to_s,
+                                from: "noreply@example.com", timeout: 10, deadline: 60)
+mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: report)
+```
+
+| Variable | Attribute | Default |
+| --- | --- | --- |
+| `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""` (`Mailer.new` raises `ArgumentError` until it is set) |
+| `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`: 587 for `starttls`, 465 for `tls`, 25 for `none` |
+| `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`: no AUTH |
+| `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""` (secret) |
+| `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""` |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; `tls` or `none` |
+
+- **TLS modes.** `starttls` connects in plain text, requires the server to
+  offer STARTTLS (else `Mailer::TLSError`) and upgrades before anything
+  else is said; bytes the server sends after its STARTTLS reply are
+  refused. `tls` speaks TLS from the first byte (port 465). Both check the
+  certificate against `host` as the HTTP client does (give a host name, not
+  an IP address), and both need `require "cybertrain/net/tls"`: without
+  it, `deliver` raises `Mailer::TLSError` saying so, before connecting.
+  `none` is plain text, for a relay on the same machine or a test server:
+  with a user configured it refuses (`Mailer::InsecureError`, before
+  connecting) unless the host resolves to a loopback address.
+- **The password is never logged or shown.** It is not in the boot banner,
+  `help`, the log or any error message; it is sent only inside the AUTH
+  PLAIN command, over TLS (or to loopback). Do not `p` or `inspect` a
+  `Mailer` or the `Config`, which hold it.
+- **Every wait is bounded**, as in "Outbound HTTP": connecting, each TLS
+  step and each reply waits at most `timeout` seconds (default 10), the
+  whole delivery at most `deadline` seconds (default 60), else
+  `Mailer::TimeoutError`. Name resolution blocks the calling thread.
+- **The dialogue:** the 220 greeting, `EHLO` (the name is `helo:`, default
+  `localhost`), `STARTTLS` and `EHLO` again, `AUTH PLAIN` when a user is
+  set (the server must offer PLAIN), `MAIL FROM`, one `RCPT TO` per
+  recipient, `DATA`, `QUIT`. A reply with another code is a
+  `Mailer::RejectedError` whose `smtp_code` is the server's (421, 535,
+  550, ...) and whose message has the step and the server's text. The
+  return value is the server's reply to the message (`"250 2.0.0 Ok: queued
+  as ..."`).
+- **The message:** `Date`, `From`, `To`, `Subject`, `MIME-Version: 1.0`,
+  `Content-Type: text/plain; charset=UTF-8`. A non-ASCII subject is RFC 2047
+  encoded (`=?UTF-8?B?...?=`, split between characters). The body's line
+  endings become CRLF and lines starting with `.` are dot-stuffed. Its
+  `Content-Transfer-Encoding` is `7bit` for ASCII, `8bit` (with `MAIL FROM
+  ... BODY=8BITMIME`) for UTF-8 when the server advertises 8BITMIME, and
+  `base64` otherwise or when a line is longer than 998 bytes. No
+  `Message-ID` is added (submission servers add one).
+- **What is refused** with an `ArgumentError`, before connecting: an
+  address that is not a bare ASCII `local@domain` (no display name, no
+  `<>`, spaces, commas, quotes, CR or LF; at most 254 bytes), a subject with
+  CR, LF or NUL (header injection) or over 998 bytes, a body that is not
+  valid UTF-8 or holds a NUL, more than 100 recipients. `to:` takes one
+  address or several separated by commas.
+- **Not yet:** HTML and multipart messages, attachments, templates, display
+  names, `Cc`/`Bcc` headers (send to several recipients instead), AUTH
+  LOGIN/CRAM-MD5, SMTPUTF8 addresses, pipelining, and a delivery queue (a
+  delivery runs on the calling thread, a green thread like a request).
+  `cybertrain generate authentication` still writes no password reset.
+
+The design: [docs/design.md](docs/design.md) D27.
 
 ## Testing an app
 

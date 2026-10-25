@@ -136,6 +136,10 @@ module Cybertrain
     # The connector that brings TLS: installed as {Net.tls_connector} when
     # this file is required.
     class OpenSSLConnector < TlsConnector
+      def tls_ready?
+        true
+      end
+
       # @return [Stream] a TlsStream over `tcp`, handshake done. Closes `tcp`
       #   when the handshake fails.
       def tls_wrap(tcp, host, timer)

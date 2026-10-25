@@ -1,0 +1,25 @@
+ok   a delivery over tls none to loopback: the commands and the message bytes
+ok   several recipients get one RCPT each and share the To header
+ok   a UTF-8 body is 8bit with BODY=8BITMIME when the server offers it
+ok   without 8BITMIME a UTF-8 body goes as base64
+ok   AUTH PLAIN over tls none is allowed to loopback
+ok   Mailer.deliver takes its settings from Config
+ok   a 550 to RCPT is a RejectedError with the code and the reply
+ok   a 4xx greeting is a RejectedError
+ok   a failed AUTH names the code, never the password
+ok   a server that does not offer AUTH PLAIN is a ProtocolError
+ok   replies that are not SMTP, or stop half way, are ProtocolErrors
+ok   AUTH over tls none to a host that is not loopback is refused before connecting
+ok   starttls without cybertrain/net/tls says what to require, before connecting
+ok   starttls to a server that does not offer it is a TLSError
+ok   bytes sent after the 220 to STARTTLS are refused
+ok   STARTTLS then a server that answers the handshake in plain text
+ok   implicit tls to a plain server fails the handshake
+ok   a server that never greets is a timeout
+ok   a closed port is a ConnectError
+ok   header injection and malformed addresses are refused before connecting
+ok   settings Mailer.new refuses, and the ports the modes default to
+ok   subjects: plain ASCII as it is, anything else as RFC 2047 encoded words
+ok   the message: headers, line endings, encodings, folding
+ok   Config reads the CYBERTRAIN_SMTP_* variables
+24 tests, 113 assertions, 0 failures

@@ -228,6 +228,56 @@ module Cybertrain
     # @api public
     attr_accessor :http_allow_private
 
+    # ---- {Mailer} (cybertrain/mailer.rb), from CYBERTRAIN_SMTP_* ----------
+
+    # The SMTP server {Mailer} sends through, `""` (unset: Mailer.new raises
+    # until it is set), from `CYBERTRAIN_SMTP_HOST`.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_host
+
+    # Its port, `0`, from `CYBERTRAIN_SMTP_PORT`: 0 means the mode's port,
+    # 587 for `"starttls"`, 465 for `"tls"`, 25 for `"none"`
+    # ({Mailer.default_port}). A value that is not a number from 1 to 65535
+    # is 0.
+    # @return [Integer]
+    # @api public
+    attr_accessor :smtp_port
+
+    # The AUTH PLAIN user, `""` (no AUTH), from `CYBERTRAIN_SMTP_USER`.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_user
+
+    # The AUTH PLAIN password, `""`, from `CYBERTRAIN_SMTP_PASSWORD`. A
+    # secret: the boot banner, `help`, logs and Mailer's error messages
+    # never show it.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_password
+
+    # The default sender address, `""`, from `CYBERTRAIN_SMTP_FROM`.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_from
+
+    # How the connection is protected, `"starttls"`, from
+    # `CYBERTRAIN_SMTP_TLS`: `"starttls"` (upgrade a plain connection, port
+    # 587), `"tls"` (TLS from the first byte, port 465) or `"none"` (plain
+    # text, which sends credentials only to a loopback address). Both TLS
+    # modes need `require "cybertrain/net/tls"`.
+    # @return [String]
+    # @api public
+    attr_accessor :smtp_tls
+
+    # CYBERTRAIN_SMTP_PORT: 0 (the mode's port) unless it is 1..65535.
+    def self.default_smtp_port
+      n = Params.parse_int(env_or("CYBERTRAIN_SMTP_PORT", ""), 0)
+      n < 1 || n > 65_535 ? 0 : n
+    end
+
+    # ---- end of the Mailer settings ----------------------------------------
+
     # Spinel worker threads, `1`, from `SPINEL_WORKERS`.
     # @return [Integer]
     # @api public
@@ -373,6 +423,14 @@ module Cybertrain
       @max_multipart_parts = 128
       @upload_root = "storage/uploads"
       @http_allow_private = Config.default_http_allow_private
+      # Mailer's settings (CYBERTRAIN_SMTP_*). Assigned here, not in a
+      # helper: an ivar first set outside initialize is boxed.
+      @smtp_host = Config.env_or("CYBERTRAIN_SMTP_HOST", "")
+      @smtp_port = Config.default_smtp_port
+      @smtp_user = Config.env_or("CYBERTRAIN_SMTP_USER", "")
+      @smtp_password = Config.env_or("CYBERTRAIN_SMTP_PASSWORD", "")
+      @smtp_from = Config.env_or("CYBERTRAIN_SMTP_FROM", "")
+      @smtp_tls = Config.env_or("CYBERTRAIN_SMTP_TLS", "starttls").downcase
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i
       # Application-defined settings (setting_string / setting_int /
       # setting_bool): one typed Hash per type, keyed by the setting's name
