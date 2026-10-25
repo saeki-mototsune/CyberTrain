@@ -43,7 +43,7 @@ Spinel ツールチェーンのキャッシュは効いている（restore 1 秒
 | main へマージ | 上と同じ + Pages 0.5 | 約 52 |
 | PR で push 2 回 + マージ | | **約 155** |
 
-直近 30 日で main へのマージは 68 本、直近 7 日で 40 本。1 日 6 本のペースだと **1 日約 900 分、月 2 万分超**。10/25 10:22 には 1 分の間に 6 本がマージされ、30 本の run が起動した（concurrency で 20 本はキャンセルされたが、起動と checkout の分は消費している）。
+直近 30 日で main へのマージは 68 本、直近 7 日で 40 本。1 日 6 本のペースだと **1 日約 930 分、月約 2.8 万分**。10/25 10:22 には 1 分の間に 6 本がマージされ、30 本の run が起動した（concurrency で 20 本はキャンセルされたが、起動と checkout の分は消費している）。
 
 ### 1.3 二重実行
 
@@ -73,7 +73,7 @@ Spinel ツールチェーンのキャッシュは効いている（restore 1 秒
 
 | ジョブ | PR | main push | 理由 |
 | --- | --- | --- | --- |
-| Gate | ○ | ○ | 1 分。branch protection の必須チェックはこれ |
+| Gate | ○ | ○ | 1 分。必須チェック（`ci` と並べて要求する） |
 | CI ubuntu | ○ | ○（§2.2 の条件つき） | 唯一の「全部走る」ジョブ |
 | CI macos | △（toolchain/server/CLI まわりを触ったときと、ラベル `ci:macos`） | ○ | OS 差分はそこに集中している（§2.1 の実例） |
 | Playground image | ×（playground/ か .devcontainer/ か Dockerfile を触ったときだけ） | ○（publish のため） | フレームワークの挙動は CI の E2E が見ている。イメージが壊れる変更の大半（gemspec と cli-src の不一致）は `script/gate` が既に捕まえる |
@@ -109,11 +109,14 @@ jobs:
         env:
           PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           MACOS_PATHS: '^(cybertrain/cli/|...)'   # §2.1 の一覧
-          DOCS_ONLY: '^(site/|.*\.md$|script/|\.githooks/)' # ci.yml 先頭コメントの paths 規則（例外も同様に）
+          DOCS_ONLY: '^(site/|.*\.md$|script/|\.githooks/)'      # ci.yml 先頭コメントの paths 規則
+          TESTED_ANYWAY: '^(docs/api/|docs/template-language\.md$|script/api-docs$)' # その例外（API リファレンスの入力）
         run: |
           ubuntu=1; macos=0
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
-            macos=1
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            ubuntu=0; macos=1   # schedule 版（下記）: 1 日 1 回、main の先端で macOS だけ
+          elif [ "$GITHUB_EVENT_NAME" = push ]; then
+            macos=1             # schedule 版ではここを 0 にする
             # マージコミット（親 2 つ）で、第 2 親（PR の head）とツリーが同じなら
             # PR で走った ubuntu の結果がそのまま使える。
             if [ "$(git rev-list --parents -n1 HEAD | wc -w)" = 3 ] &&
@@ -122,8 +125,12 @@ jobs:
             fi
           else
             changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD")
-            # docs だけの変更なら何も走らせない（os=[]、test はスキップ、ci は通る）
-            printf '%s\n' "$changed" | grep -qvE "$DOCS_ONLY" || ubuntu=0
+            # docs だけの変更なら何も走らせない（os=[]、test はスキップ、ci は通る）。
+            # ただし API リファレンスの入力（ci.yml の例外）が入っていればテストする。
+            if ! printf '%s\n' "$changed" | grep -qvE "$DOCS_ONLY" &&
+               ! printf '%s\n' "$changed" | grep -qE "$TESTED_ANYWAY"; then
+              ubuntu=0
+            fi
             # §2.1: OS 差分が出うる場所を触った PR とラベル ci:macos
             if printf '%s' "$PR_LABELS_JSON" | grep -q '"ci:macos"' ||
                printf '%s\n' "$changed" | grep -qE "$MACOS_PATHS"; then
@@ -163,7 +170,7 @@ jobs:
 
 この判定は「PR の head で CI が通っていた」ことを前提にするので、上の `ci` ジョブを branch protection の必須チェックにする。注意点が 1 つ: **`paths` でスキップされたワークフローは check を作らず Pending のままになり、必須チェックにすると PR がマージできなくなる**（[GitHub Docs: Handling skipped but required checks](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/troubleshooting-required-status-checks#handling-skipped-but-required-checks)）。一方 job の `if:` でスキップしたものは Success として報告される。なので CI の `on.pull_request.paths` を外し、`plan` ジョブが（上の OS 判定と同じ `git diff` で）「docs だけの変更か」を見て、そのときは `os=[]` を出力する（`test` はスキップ、`ci` は通る）。ci.yml の先頭コメントに書かれている paths の規則は `plan` のスクリプトに移す。
 
-macOS は main でだけ走るので、この判定で macOS まで止めると一度も走らない変更が出る。上のとおり main では常に macOS を matrix に残す（1 回 15 分、1 日 6 回で 90 分、全体の 1/10）。それも惜しければ `schedule: cron "0 3 * * *"`（1 日 1 回、main の先端）に落とし、PR 側は §2.1 のパス判定に任せる。
+macOS は main でだけ走るので、この判定で macOS まで止めると一度も走らない変更が出る。上のとおり main では常に macOS を matrix に残す（1 回 15 分、1 日 6 回で 90 分、全体の 1/10）。それも惜しければ **schedule 版**にする: `on.schedule: cron "0 3 * * *"` を足し、`plan` の分岐で `schedule` のときは macOS だけ（`ubuntu=0; macos=1`）、`push` のときは `macos=0` にする（上の yml のコメント）。PR 側は §2.1 のパス判定のまま。別ワークフローには分けない（同じ `test` ジョブを使う）。
 
 **merge queue は使えない**。「マージ前に main と合わせた状態で 1 回だけ走る」が GitHub の機能として手に入るが、merge queue は organization 所有のリポジトリ限定で、個人アカウント所有の本リポジトリでは有効にできない（[GitHub changelog, 2023-07](https://github.blog/changelog/2023-07-12-pull-request-merge-queue-is-now-generally-available/)）。organization に移す予定が出たら再検討する。
 
@@ -173,7 +180,7 @@ macOS は main でだけ走るので、この判定で macOS まで止めると�
 | --- | --- | --- | --- |
 | E2E の 3 アプリを 1 つにする | shop（scaffold + authentication）、album（attachment）、gitshop（git 依存）をそれぞれ `cybertrain new` してフルコンパイル | shop に `post title:string cover:attachment` も載せて 1 回ビルド。gitshop は `spin run gen -- --check` と migrate だけなので今のまま | −4 |
 
-`spin test` の `build/test/` を `actions/cache` でキャッシュする案（キー `hashFiles('cybertrain.rb','cybertrain/**','test/**','spin.toml')`、restore-keys で直近を復元、checkout 後に `git-restore-mtime` で mtime を揃える）は **見送り**。§1.4 のとおり spin はテスト 1 本の変更で 82 本全部を作り直すので、何かを変えた PR では復元した `build/` が丸ごと無効になる。残るのは 9 分のフルコンパイルそのもので、これを縮めるには (a) Spinel のコンパイルを速くする、(b) 82 本のテストプログラムを束ねてバイナリの数を減らす、(c) spin に依存関係ベースの鮮度判定を入れてもらう、のどれかで、どれもこの設計の外（(b) はテストの書き方の変更、(c) は matz/spinel への提案）。
+`spin test` の `build/test/` を `actions/cache` でキャッシュする案（キー `hashFiles('cybertrain.rb','cybertrain/**','test/**','spin.toml')`、restore-keys で直近を復元、checkout 後に `git-restore-mtime` で mtime を揃える）は **見送り**。§1.4 のとおり spin はテスト 1 本の変更で 82 本全部を作り直すので、何かを変えた PR では復元した `build/` が丸ごと無効になる。逆に restore-keys で別コミットの `build/` を復元して mtime を揃えると、復元したバイナリ（過去の CI の時刻）が変更後のソース（コミット時刻）より新しく見えるケースがあり、古いバイナリで「通る」危険もある。使うなら完全一致キーだけだが、それでは何かを変えた PR には当たらない。残るのは 9 分のフルコンパイルそのもので、これを縮めるには (a) Spinel のコンパイルを速くする、(b) 82 本のテストプログラムを束ねてバイナリの数を減らす、(c) spin に依存関係ベースの鮮度判定を入れてもらう、のどれかで、どれもこの設計の外（(b) はテストの書き方の変更、(c) は matz/spinel への提案）。
 
 ### 2.4 Blog image の Dockerfile でレイヤーを分ける
 
@@ -226,7 +233,7 @@ CI の yml に書かれている shell をこのスクリプトに移し、CI �
 
 - `concurrency` の `cancel-in-progress` は PR で既に効いている。main 側は `cancel-in-progress: false` で pending が 1 本に畳まれているので、連続マージの無駄は 1 run あたり 0.2 分で済んでいる。変更なし。
 - `Pages` は 0.5 分で、`cybertrain/**` の変更ごとに API リファレンスを再デプロイしている。変更なし。
-- `Gate` は 0.2 分。変更なし。branch protection の必須チェックに CI ubuntu を加える（§2.2 の前提）。
+- `Gate` は 0.2 分。変更なし。branch protection の必須チェックは `Gate` と、§2.2 の最終ジョブ `ci` の 2 つにする（`test` や `CI ubuntu` ではなく `ci`。`test` はスキップされうるので必須にしない）。
 - `timeout-minutes` を CI に入れる（今は Playground 45、Blog 30 だけ）。ハングした `spin test` が 6 時間回るのを防ぐ。30 分。
 
 ## 3. 効果の見積もり
@@ -238,16 +245,16 @@ PR で push 2 回 + マージ 1 回、`cybertrain/**` を触る変更、main は
 | 今 | 51 × 2 = 102 | 52 | 155 | 100% |
 | §2.1（PR は ubuntu + gate） | 21.3 × 2 = 43 | 52 | 95 | 61% |
 | + §2.2（main の CI ubuntu をスキップ、macOS は残す） | 43 | 15 + 10 + 5 + 0.3 + 0.5 = 31 | 74 | 48% |
-| + §2.3（ubuntu 21 → 17 分、macOS も 15 → 12） | 17.3 × 2 = 35 | 12 + 10 + 5 + 0.3 + 0.5 = 28 | 63 | 41% |
+| + §2.3（ubuntu 21 → 17 分、macOS 15 → 12 分） | 17.3 × 2 = 35 | 12 + 10 + 5 + 0.3 + 0.5 = 28 | 63 | 41% |
 | + macOS を 1 日 1 回の schedule に | 35 | 10 + 5 + 0.3 + 0.5 = 16 | 51 | 33% |
 
-最後の行は PR 1 本の表からは macOS が消えるが、別枚で 1 日 1 回 12 分（月 360 分）かかる。月で見ると、1 日 6 マージで月 2 万分 → 約 8 千分（§2.3 まで）、約 7 千分（schedule 化、macOS の日次分込み）。§2.1 と §2.2 だけでも 48%。
+§2.3 の E2E 統合は macOS にも効く: macOS の E2E は shop 3.7 分 + album 2.7 分（run 40064478805）で、album の分が消えるので 15 → 12 分。最後の行は PR 1 本の表からは macOS が消えるが、別枚で 1 日 1 回 12 分かかる。月で見ると（1 日 6 マージ × 30 日 = 180 PR）: 今 155 × 180 = 約 2.8 万分 → §2.1〜2.2 で 74 × 180 = 約 1.3 万分 → §2.3 で 63 × 180 = 約 1.1 万分 → schedule 化で 51 × 180 + 12 × 30 = 約 0.95 万分。§2.1 と §2.2 だけでも 48%。
 
 ## 4. 実装の順番
 
 小さい PR に分ける。ci.yml を触る PR は CI が 1 回走る（`**` にマッチする）が、それ以外は Gate だけ。
 
-1. **ci.yml**: `plan` ジョブ（OS 判定と docs-only 判定、§2.1〜2.2）、`timeout-minutes`、already-tested ジョブ（§2.2）。branch protection に CI ubuntu を足す。Playground/Blog の `pull_request.paths` からフレームワークを外す。→ この 1 本で 48%。
+1. **ci.yml**: `plan` ジョブ（OS 判定と docs-only 判定、§2.1〜2.2）、`timeout-minutes`、already-tested ジョブ（§2.2）。branch protection の必須チェックに `ci` を足す。Playground/Blog の `pull_request.paths` からフレームワークを外す。→ この 1 本で 48%。
 2. **script/ci-local** と CONTRIBUTING.md、PR テンプレート、CLAUDE.md、pre-push フック（§2.5）。CI の E2E shell をスクリプトに移す。この PR はスクリプトの移動なので CI ubuntu が 1 回走る。
 3. **E2E の統合**（§2.3 前半）と **Blog Dockerfile のレイヤー分け**（§2.4）、gate のチェック拡張。
 4. **コンパイル時間そのもの**（§2.3 の末尾）: spin の鮮度判定について matz/spinel に依存関係ベースの判定（またはコンテンツハッシュ）を提案する。入れば `build/` キャッシュが生きて ubuntu の 9 分が消える。
