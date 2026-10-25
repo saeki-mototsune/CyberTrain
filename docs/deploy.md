@@ -749,6 +749,14 @@ crontab -e
 サーバーが壊れたときのために、`/srv/notes/backups/` は別の場所（別サーバーやオブジェクト
 ストレージ）にも定期的にコピーしてください。
 
+`sqlite3` の代わりに、アプリのバイナリ自身でもバックアップを取れます（`db backup` のある
+フレームワークで作ったアプリ。README の「Operations」）。
+`CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3 /srv/notes/current/dist/notes db backup /srv/notes/backups/ --keep 14`
+は `notes-<UTC の日時>.sqlite3` を一時ファイル経由でモード 0600 で書き、その形のファイルを新しい
+14 個だけ残します。crontab の `sqlite3 ... && find ...` をこの 1 コマンドに置き換えられます。行を
+たくさん消した後は、同じ変数を付けた `notes db vacuum` で空いた領域をディスクに返せます（ファイル
+全体を書き直すので、空いている時間帯に）。
+
 復元するとき:
 
 ```sh
@@ -861,6 +869,12 @@ registry:
 
 `proxy.ssl` は外さないでください。本番のセッション Cookie は `Secure` なので、HTTP ではフォーム
 送信が 403 になります。
+
+組み込みのヘルスチェック（`GET /up`、README の「Operations」）があるフレームワークで作ったアプリなら、
+`healthcheck` の `path` を `/up.html` から `/up` に変えられます。`/up` はデータベースのスキーマを
+読む問い合わせをして、読めなければ 503 を返すので、ボリュームやデータベースが壊れたリリースに
+トラフィックが切り替わりません。`/up.html` は静的ファイルで、プロセスが HTTP に応えることしか
+示しません。古い cybertrain で作ったアプリは `/up.html` のままにしてください。
 
 生成される `config/deploy.yml` は `env.clear` に `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` を
 書きます。kamal-proxy は別のコンテナで動き、Docker のネットワーク上のアドレス（既定では

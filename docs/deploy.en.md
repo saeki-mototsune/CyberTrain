@@ -814,6 +814,15 @@ crontab -e
 In case the server is lost, also copy `/srv/notes/backups/` somewhere else
 regularly (another server, or object storage).
 
+Instead of `sqlite3`, the app's binary can take the backup itself (an app
+made with a framework that has `db backup`; README, "Operations"):
+`CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3 /srv/notes/current/dist/notes db backup /srv/notes/backups/ --keep 14`
+writes `notes-<UTC date and time>.sqlite3` with mode 0600 through a
+temporary file and keeps the newest 14 files of that shape. It can replace
+the `sqlite3 ... && find ...` pair in the crontab. After deleting many rows,
+`notes db vacuum` with the same variable gives the free space back to the
+disk (it rewrites the whole file, so run it at a quiet hour).
+
 To restore:
 
 ```sh

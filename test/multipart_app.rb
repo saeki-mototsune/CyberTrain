@@ -116,7 +116,7 @@ test "the boot validates and applies the upload settings" do
   assert_equal 16, Cybertrain::Multipart.max_parts
   assert_equal UPLOAD_ROOT, Cybertrain::BlobStore.root
   refute File.exist?(UPLOAD_ROOT), "the upload directory is made by the first write, not at boot"
-  assert_equal ["Cybertrain::ErrorPages", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
+  assert_equal ["Cybertrain::ErrorPages", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
                 "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(APP)
 end
 

@@ -15,7 +15,7 @@ ok   resolve_secret! keeps an explicit secret_key_base
 ok   resolve_secret! raises in production when the secret is empty
 ok   Cybertrain.configure fills the process-wide config
 ok   DB::CLI.database_path follows Cybertrain.config once it is loaded
-ok   the stack is RequestLogger, Static, MethodOverride, SessionStore, CsrfProtection, Router
+ok   the stack is RequestLogger, HealthCheck, Static, MethodOverride, SessionStore, CsrfProtection, Router
 ok   log_level :none, static_files and csrf switch their middleware off
 ok   the stack's session cookie follows session_same_site and session_partitioned
 ok   development rejects hostile hosts before pages, static files, sessions and writes

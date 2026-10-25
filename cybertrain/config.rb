@@ -354,6 +354,27 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :job_max_attempts
 
+    # The path of the built-in health check, `"/up"`, from
+    # `CYBERTRAIN_HEALTH_PATH` (set to an empty value, or `c.health_path =
+    # ""`, to turn it off; unset is the default). A GET or HEAD of exactly
+    # this path is answered before the static files, the session, CSRF and
+    # the router (so no controller and no login `before_action` sees it):
+    # `200 ok` when a query reading the database's schema succeeds, `503
+    # database unavailable` when it fails, and `503 worker stale` when the
+    # {Scheduler} runs and has not ticked for {#health_worker_stale}
+    # seconds; `text/plain`, `Cache-Control: no-store`, no cookie. Must
+    # start with "/" (boot refuses anything else).
+    # @return [String]
+    # @api public
+    attr_accessor :health_path
+
+    # Seconds after the {Scheduler}'s last tick at which the health check
+    # answers `503 worker stale`, `300`: a task that runs longer (or a
+    # stuck one) shows up there. Only while the scheduler runs. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :health_worker_stale
+
     # CYBERTRAIN_MAX_PAGE read without to_i on unbounded text (NOTES rule
     # 25): 10000 when it is unset, not a number, or below 1.
     def self.default_max_page
@@ -513,6 +534,11 @@ end
       @scheduler_interval = 1
       @job_poll_interval = 5
       @job_max_attempts = 5
+      # The health check (HealthCheck). An empty variable turns it off,
+      # unlike Config.env_or's "empty counts as unset": there is no other
+      # way to switch off a default-on path from the environment.
+      @health_path = ENV["CYBERTRAIN_HEALTH_PATH"] || "/up"
+      @health_worker_stale = 300
     end
 
     # @return [Boolean]
@@ -853,6 +879,19 @@ end
       return "scheduler_interval must be at least 1 (got #{@scheduler_interval})" if @scheduler_interval < 1
       return "job_poll_interval must be at least 1 (got #{@job_poll_interval})" if @job_poll_interval < 1
       return "job_max_attempts must be at least 1 (got #{@job_max_attempts})" if @job_max_attempts < 1
+
+      ""
+    end
+
+    # The error Application#boot reports when health_path is neither ""
+    # nor a path starting with "/", or health_worker_stale is below 1; ""
+    # when both are fine.
+    def health_error
+      path = @health_path
+      unless path.empty? || path.start_with?("/")
+        return "health_path must start with \"/\" (or be \"\" to turn the health check off), got #{path.inspect}"
+      end
+      return "health_worker_stale must be at least 1 (got #{@health_worker_stale})" if @health_worker_stale < 1
 
       ""
     end
