@@ -138,9 +138,16 @@ module Cybertrain
       end
     end
 
-    # [], ["server"], ["<port>"], ["server", "<port>"]; never a registered
-    # command's name, so whatever starts only for a server (the scheduler)
-    # stays off for a one-shot command.
+    # Whether {Main.run} starts the server for these arguments: [],
+    # ["server"], ["<port>"], ["server", "<port>"]; never a registered
+    # command's name, so whatever starts only for a server (the scheduler, a
+    # boot-time check) stays off for a one-shot command. Ask it after the
+    # commands are registered.
+    # @example bin/<name>.rb, before `exit(Cybertrain::Main.run(...))`
+    #   UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)
+    # @param argv [Array<String>] the binary's ARGV
+    # @return [Boolean]
+    # @api public
     def self.server?(argv)
       return true if argv.empty?
       return false if command_index(argv[0]) >= 0

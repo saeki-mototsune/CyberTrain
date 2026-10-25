@@ -40,6 +40,7 @@ def build_app
     c.response.body = user.nil? ? "nobody" : user
   end
   router.get("/echo_header") { |c| c.response.body = c.request.header("X-Token").to_s }
+  router.get("/peer") { |c| c.response.body = "#{c.request.remote_addr} #{c.request.loopback?}" }
   router.post("/posts") do |c|
     c.response.status = 201
     c.response.body = "created #{c.params.nested(:post)[:title]} (#{c.request.content_type})"
@@ -96,6 +97,16 @@ end
 test "extra headers reach the request" do
   client = Cybertrain::Test::Client.new(build_app)
   assert_equal "abc", client.get("/echo_header", { "X-Token" => "abc" }).body
+end
+
+test "requests come from 127.0.0.1 unless peer_address says otherwise" do
+  client = Cybertrain::Test::Client.new(build_app)
+  assert_equal "127.0.0.1", client.peer_address
+  assert_equal "127.0.0.1 true", client.get("/peer").body
+  client.peer_address = "203.0.113.7"
+  assert_equal "203.0.113.7 false", client.get("/peer").body
+  client.peer_address = "::1"
+  assert_equal "::1 true", client.get("/peer").body
 end
 
 test "post sends params as a form body" do
