@@ -1,0 +1,7 @@
+ok   explicit loopback hosts accept case differences and numeric ports
+ok   untrusted and misleading authorities cannot reach the app or its cookies
+ok   missing Host fails closed even with trusted forwarding headers
+ok   duplicate Host headers joined by the parser are rejected
+ok   forwarding hostnames require exact configuration without wildcards
+ok   empty allowlists and empty entries deny requests
+6 tests, 104 assertions, 0 failures

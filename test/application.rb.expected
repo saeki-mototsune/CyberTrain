@@ -1,4 +1,5 @@
 ok   config defaults in development
+ok   configured forwarding hosts extend the explicit loopback hosts
 ok   environment variables override the config defaults
 ok   an empty CYBERTRAIN_DATABASE counts as unset
 ok   CYBERTRAIN_HOST, CYBERTRAIN_SESSION_SAME_SITE and CYBERTRAIN_SESSION_PARTITIONED override the defaults
@@ -17,6 +18,7 @@ ok   DB::CLI.database_path follows Cybertrain.config once it is loaded
 ok   the stack is RequestLogger, Static, MethodOverride, SessionStore, CsrfProtection, Router
 ok   log_level :none, static_files and csrf switch their middleware off
 ok   the stack's session cookie follows session_same_site and session_partitioned
+ok   development rejects hostile hosts before pages, static files, sessions and writes
 ok   production puts ErrorPages outermost
 ok   Application.new accepts any name; only the Rebuilder refuses one
 ok   Application.name_problem is the text a development boot prints for a bad name
@@ -35,4 +37,4 @@ ok   path helpers in templates call the url_resolver
 ok   a method-returned Gen::Routes-style url_resolver keeps its route names
 ok   max_body_bytes reaches the server: a longer Content-Length is 413 before the body is read
 ok   the server listens on the configured host and port
-37 tests, 170 assertions, 0 failures
+39 tests, 188 assertions, 0 failures

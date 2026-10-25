@@ -72,6 +72,7 @@ end
 
 config = Cybertrain::Config.new
 config.env = "development"
+config.allowed_hosts << "www.example.com" # Test::Client's explicit test hostname.
 config.database_path = ":memory:"
 config.secret_key_base = "dev-application-test-secret"
 config.views_root = "#{ROOT}/views"
@@ -85,7 +86,8 @@ APP.boot
 
 REBUILDER = Cybertrain::Dev::Rebuilder.new(File.expand_path(ROOT), "blog")
 # What Application#serve_development puts in front of the stack.
-CLIENT = Cybertrain::Test::Client.new(Cybertrain::Dev::ErrorPage.new(APP.stack, REBUILDER))
+CLIENT = Cybertrain::Test::Client.new(Cybertrain::HostAuthorization.new(
+  Cybertrain::Dev::ErrorPage.new(APP.stack, REBUILDER), config.allowed_hosts))
 
 test "port_argument reads a port number from argv[0]" do
   assert_equal 4000, Cybertrain::Application.port_argument(["4000"])
@@ -137,6 +139,17 @@ test "static files still pass through the development stack" do
   res = CLIENT.get("/robots.txt")
   assert_equal 200, res.status
   assert_equal "User-agent: *\n", res.body
+end
+
+test "host rejection precedes diagnostics and failed-build output" do
+  REBUILDER.record_build(false, "private compiler output")
+  ["/", "/boom", "/broken", "/robots.txt"].each do |path|
+    res = CLIENT.get(path, { "host" => "rebind.example" })
+    assert_equal 403, res.status
+    assert_equal "Blocked host", res.body
+    assert res.cookies.empty?
+  end
+  REBUILDER.record_build(true, "")
 end
 
 test "the rebuilder targets the app's build/bin/blog" do

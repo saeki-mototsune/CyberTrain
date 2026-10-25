@@ -4,7 +4,7 @@ require "cybertrain/template/limits"
 module Cybertrain
   # The application's settings. Defaults come from the environment
   # (CYBERTRAIN_ENV, PORT, CYBERTRAIN_DATABASE, CYBERTRAIN_SECRET_KEY_BASE,
-  # SPINEL_WORKERS, CYBERTRAIN_HOST, CYBERTRAIN_SESSION_SAME_SITE,
+  # SPINEL_WORKERS, CYBERTRAIN_HOST, CYBERTRAIN_ALLOWED_HOSTS, CYBERTRAIN_SESSION_SAME_SITE,
   # CYBERTRAIN_SESSION_PARTITIONED); config/app.rb then adjusts them:
   #
   #   Cybertrain.configure do |c|
@@ -37,6 +37,15 @@ module Cybertrain
     # @return [String]
     # @api public
     attr_accessor :host
+
+    # Hostnames development requests may use, even when listening on
+    # "0.0.0.0". Defaults to localhost, 127.0.0.1 and [::1]; the comma-separated
+    # CYBERTRAIN_ALLOWED_HOSTS adds exact forwarding hostnames. No wildcards,
+    # schemes or ports; IPv6 addresses include brackets. An empty list denies
+    # every host. Production and test do not apply this development guard.
+    # @return [Array<String>]
+    # @api public
+    attr_accessor :allowed_hosts
 
     # The port, `3000`, from `PORT`. A port given on the command line (`./blog
     # 8080`, `cybertrain server 8080`) wins.
@@ -238,6 +247,12 @@ module Cybertrain
     def initialize
       @env = Config.default_env
       @host = Config.default_host
+      @allowed_hosts = ["localhost", "127.0.0.1", "[::1]"]
+      extra_hosts = ENV["CYBERTRAIN_ALLOWED_HOSTS"] || ""
+      extra_hosts.split(",").each do |entry|
+        name = entry.strip
+        @allowed_hosts << name unless name.empty?
+      end
       @port = (ENV["PORT"] || "3000").to_i
       @database_path = Config.default_database_path(@env)
       @secret_key_base = ENV["CYBERTRAIN_SECRET_KEY_BASE"] || ""
