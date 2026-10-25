@@ -15,8 +15,9 @@ module Cybertrain
 
     def call(ctx)
       request = ctx.request
-      target = request.query_string.empty? ? request.path : "#{request.path}?#{request.query_string}"
-      @logger.info("Started #{request.method} \"#{target}\" for #{request.remote_addr}")
+      target = log_field(request.path)
+      target = "#{target}?#{log_field(request.query_string)}" unless request.query_string.empty?
+      @logger.info("Started #{log_field(request.method)} \"#{target}\" for #{request.remote_addr}")
       started = Time.now
       begin
         super
@@ -37,6 +38,14 @@ module Cybertrain
     end
 
     private
+
+    # Binary inspect escapes every control byte, including terminal escapes,
+    # and quotes/backslashes. Strip only its surrounding quotes so normal
+    # request log lines keep their existing format.
+    def log_field(value)
+      quoted = value.b.inspect
+      quoted[1, quoted.size - 2]
+    end
 
     def log_completed(status, started)
       elapsed = ((Time.now - started) * 1000).to_i

@@ -92,6 +92,40 @@ test "RequestLogger logs Started and Completed lines" do
   assert lines[1].end_with?("ms"), lines[1]
 end
 
+test "RequestLogger escapes terminal sequences accepted by the HTTP parser" do
+  head = Cybertrain::HttpParser.parse_head("G\e[2JET /\e[2J?text=\e[31mforged HTTP/1.1\r\nHost: example.com")
+  request = Cybertrain::Request.new(head.method, head.target, head.headers, "", "127.0.0.1")
+  sink = StringIO.new
+  stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
+  assert_nil stack.call(Cybertrain::Context.new(request))
+  lines = sink.string.split("\n")
+  assert_equal 2, lines.size
+  assert_equal "[INFO] Started G\\e[2JET \"/\\e[2J?text=\\e[31mforged\" for 127.0.0.1", lines[0]
+  assert lines[1].start_with?("[INFO] Completed 200 in "), lines[1]
+  assert_equal "G\e[2JET", request.method
+  assert_equal "/\e[2J", request.path
+  assert_equal "text=\e[31mforged", request.query_string
+end
+
+test "RequestLogger escapes controls and non-ASCII bytes in paths and queries" do
+  sink = StringIO.new
+  stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
+  controls = "\0\a\b\t\n\v\f\r\e\x1f\x7f\x9b"
+  stack.call(build_ctx("GET", "/" + controls + "?q=" + controls + "\u009b\u2028"))
+  lines = sink.string.split("\n")
+  assert_equal 2, lines.size
+  assert_equal "[INFO] Started GET \"/\\x00\\a\\b\\t\\n\\v\\f\\r\\e\\x1F\\x7F\\x9B?q=\\x00\\a\\b\\t\\n\\v\\f\\r\\e\\x1F\\x7F\\x9B\\xC2\\x9B\\xE2\\x80\\xA8\" for 127.0.0.1", lines[0]
+end
+
+test "RequestLogger escapes quotes and literal backslashes without decoding percent escapes" do
+  sink = StringIO.new
+  stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
+  stack.call(build_ctx("GET", "/a\"\\e[2J?q=\"\\n%1B[2J"))
+  lines = sink.string.split("\n")
+  assert_equal 2, lines.size
+  assert_equal "[INFO] Started GET \"/a\\\"\\\\e[2J?q=\\\"\\\\n%1B[2J\" for 127.0.0.1", lines[0]
+end
+
 test "RequestLogger reports the final status" do
   sink = StringIO.new
   stack = Cybertrain::RequestLogger.new(endpoint, Cybertrain::Logger.new(sink))
