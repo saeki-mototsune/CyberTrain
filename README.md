@@ -1229,8 +1229,9 @@ Cybertrain::Scheduler.every(86_400, "nightly backup") do
 end
 ```
 
-**Health check.** Every served application answers `GET /up` (and `HEAD`)
-before the static files, the session, CSRF and the router: no controller
+**Health check.** While the health check is enabled (it is by default;
+an empty `config.health_path` turns it off), the served application
+answers `GET /up` (and `HEAD`) before the static files, the session, CSRF and the router: no controller
 is involved and no login `before_action` can redirect it, and it sets no
 cookie. It runs `SELECT count(*) FROM sqlite_master`, which has to read the
 schema page from the file (a bare `SELECT 1` never touches it), and answers
@@ -1412,7 +1413,8 @@ and the development error page (its request line, and its dump of the
 params and of a JSON body) show the value of every parameter named in
 `config.filter_parameters` as `[FILTERED]`, as Rails' `filter_parameters`
 does, so a `?token=` in a URL or a password posted to a form that fails
-never lands in a log file. Only the values are replaced: the rest of the
+does not appear in the framework's request log or on the development
+error page. Only the values are replaced: the rest of the
 query string is logged as sent (control characters escaped). The list
 matches by substring, case-insensitively; extend it in `config/app.rb`
 (`c.filter_parameters = c.filter_parameters + ["otp", "ssn"]`) or replace

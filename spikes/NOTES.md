@@ -615,7 +615,10 @@ finds the commit that removed them).
     creates the file with that mode and raises `Errno::EEXIST` for an
     existing one, as under CRuby; `File#fsync`, `File.rename`, `File.chmod`,
     `File.stat(path).mode`, `Dir.children` and `Time#strftime` behave the
-    same too (BlobStore already relied on the O_EXCL form). Child processes:
+    same too (BlobStore already relied on the O_EXCL form). `VACUUM INTO`
+    must create its output file itself: macOS's SQLite answers "output file
+    already exists" for a pre-created empty file that Linux's accepts, so
+    `db backup` gives it a fresh name inside a 0700 directory. Child processes:
     Kernel `spawn` is "unsupported call", `Process.spawn` compiles but
     `Process.wait` does not (a spawned child is never reaped), and
     `system("prog", "arg", ...)` waits for the child without stalling other

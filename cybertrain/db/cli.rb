@@ -269,15 +269,17 @@ module Cybertrain
         path
       end
 
-      # Writes the copy to a temporary name next to target, created with
-      # O_EXCL and mode 0600 (it holds password digests and tokens: there is
-      # no moment at which another user could open it), VACUUM INTO that
-      # file (an empty file is the one existing file SQLite accepts), fsyncs
-      # it and renames it over target, so target is either what it was or
-      # the whole new copy, never a partial one. On any failure the
-      # temporary file goes and the error is re-raised. The rescue sits in
-      # this plain method (NOTES rules 32/45); JSON::NestingError is named
-      # first (rule 61).
+      # Writes the copy into a temporary directory next to target, made
+      # with mode 0700 (the copy holds password digests and tokens: nobody
+      # else can reach a file inside it, whatever mode SQLite creates it
+      # with), VACUUM INTO a fresh name in there (SQLite must create the
+      # file itself: macOS's SQLite refuses a pre-created empty one with
+      # "output file already exists"), chmods it to 0600, fsyncs it and
+      # renames it over target, so target is either what it was or the whole
+      # new copy, never a partial one. On any failure the temporary
+      # directory and its contents go and the error is re-raised. The rescue
+      # sits in this plain method (NOTES rules 32/45); JSON::NestingError is
+      # named first (rule 61).
       def self.backup_to(source, target, force)
         raise Error, "#{target} is a directory" if File.directory?(target)
         parent = File.dirname(target)
@@ -290,20 +292,24 @@ module Cybertrain
         end
 
         suffix = "#{Process.pid}-#{SecureRandom.hex(4)}"
-        tmp = "#{target}.tmp-#{suffix}"
-        created = File.open(tmp, File::WRONLY | File::CREAT | File::EXCL, 0o600)
-        created.close
+        holder = "#{target}.tmp-#{suffix}"
+        Dir.mkdir(holder, 0o700)
+        # mkdir's mode is cut by the umask; the directory is empty until the
+        # chmod lands, so nothing is exposed in between.
+        File.chmod(0o700, holder)
+        tmp = "#{holder}/copy"
         begin
           vacuum_into(source, tmp)
-          # SQLite writes into the file it was given, but the mode must not
+          # SQLite created the file under the umask; the mode must not
           # depend on that.
           File.chmod(0o600, tmp)
           sync_file(tmp)
           File.rename(tmp, target)
         rescue JSON::NestingError, JSON::ParserError, StandardError => e
-          remove_temporary(tmp)
+          remove_temporary(holder, tmp)
           raise e
         end
+        remove_temporary(holder, tmp)
         nil
       end
 
@@ -353,11 +359,13 @@ module Cybertrain
         nil
       end
 
-      # The temporary copy and whatever SQLite left beside it.
-      def self.remove_temporary(tmp)
+      # The temporary copy, whatever SQLite left beside it, and the directory
+      # that held them.
+      def self.remove_temporary(holder, tmp)
         [tmp, "#{tmp}-journal", "#{tmp}-wal", "#{tmp}-shm"].each do |f|
           File.delete(f) if File.exist?(f)
         end
+        Dir.rmdir(holder) if Dir.exist?(holder)
         nil
       end
 

@@ -2,7 +2,7 @@ require "cybertrain/db/cli"
 require "cybertrain/test"
 
 # `db backup` and `db vacuum` (Cybertrain::DB::CLI, issue #76): the copy is
-# written to a temporary name created with O_EXCL and mode 0600 and renamed
+# written by SQLite into a 0700 temporary directory, chmod 0600 and renamed
 # into place, an existing target is refused without --force, a failed copy
 # leaves nothing behind, `backup DIR/ --keep N` names the copy by date and
 # keeps the newest N of that shape only, and vacuum shrinks the file after
