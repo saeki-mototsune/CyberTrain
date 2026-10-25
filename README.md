@@ -260,6 +260,30 @@ uses it, since `bin/blog.rb` cannot compile until the first migration has
 generated `gen/models/`). `gen/` already holds `views.rb`, the committed,
 empty table of embedded views (see "How it works").
 
+Operational commands of your own (create a user, prune old rows, take a
+backup) go on the same binary: register them in `bin/blog.rb` before
+`Main.run`.
+
+```ruby
+Cybertrain::Main.command("prune", "delete comments older than DAYS") do |argv|
+  days = argv.empty? ? 30 : argv[0].to_i
+  Cybertrain::DB.with do |c|
+    c.execute("DELETE FROM comments WHERE created_at < datetime('now', ?)", ["-#{days} days"])
+  end
+  0 # the exit status
+end
+```
+
+`./blog prune 90` then runs the block with the arguments after the name
+(`["90"]`), with `Cybertrain::DB` already connected to the configured
+database (a pool of one connection), and exits with the block's value; a
+`Cybertrain::DB::Error` is printed as `prune failed: ...` and exits 1, and
+`./blog help` lists the command. The block takes `argv` explicitly, as a
+`before_action` block takes the controller (Spinel has no `instance_eval`).
+A built-in word (`server`, `migrate`, `db`, `help`), a number (the port
+argument) or a name already registered raises `ArgumentError`. The server,
+views and session secret are not set up for a command.
+
 Apps created before `cybertrain build` existed have `bin/server.rb` and
 no `bin/<name>.rb`: copy `bin/<name>.rb` from a fresh `cybertrain new` (with
 the same NAME), delete `bin/server.rb`, add `/dist/` to `.gitignore` (the old
@@ -691,6 +715,7 @@ compiler output on every HTML response. None of this loads in production.
 | Rails | cybertrain |
 | --- | --- |
 | `rails console` | No console — Spinel has no `eval` |
+| `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` in `bin/<app>.rb`: `./<app> name ARGS` runs it with the database connected |
 | Edit code, the running app picks it up | Ruby needs a rebuild; `cybertrain server` in development does this for you (rebuild, stop, `execv`) |
 | Edit a view, no reload needed | Same — views are parsed from disk per request in development |
 | `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |

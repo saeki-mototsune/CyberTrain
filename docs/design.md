@@ -291,6 +291,24 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
     - 配信は同一オリジン。
   - 孤児ファイルの掃除、ETag / Range、別オリジン配信は後続の作業。
 
+### D17. アプリ独自のサブコマンド: `Main.command`（2026-10-25）
+
+- 決定: `Cybertrain::Main.command(name, description) { |argv| ...; 0 }` で、アプリがバイナリにサブコマンドを登録できるようにする（#68）。登録は `bin/<app>.rb` で `Main.run` の前に書く。
+  - `./<app> NAME ARGS...` は、名前の後ろの引数（`argv[1..]`）をブロックに渡し、ブロックの値（Integer）を終了コードにする。
+  - ブロックの前に `Cybertrain::DB` を `Cybertrain.config.database_path` へプール 1 本で接続し、後で切断する。サーバ、ビュー、セッション秘密鍵は用意しない。設定は `bin/<app>.rb` が `config/app.rb` を先に require しているので読み込み済みで、未設定なら `Cybertrain.config` の既定（環境変数）になる。
+  - `Cybertrain::DB::Error`（接続の失敗も含む）は `NAME failed: MESSAGE` を出して終了コード 1 にする。それ以外の例外は捕まえない（`db` コマンドの `StandardError` まで捕まえる扱いより狭い。アプリのバグは隠さない）。
+  - 登録済みの名前は組み込みの判定より先に見る。`Main.server?` は登録済みの名前に対して偽になり、サーバ専用の起動処理（スケジューラなど）が一回きりのコマンドで動かない。`help` は組み込みの後に登録順で一覧する。
+  - 組み込みの語（`server` / `migrate` / `db` / `help` / `--help` / `-h`）、数字だけの名前（ポート引数）、空文字、登録済みの名前は `ArgumentError`。
+  - 実装は `Main::Command`（名前、説明、Proc）を定数 `Main::COMMANDS` の配列に積む。定数にするのはクラス変数が GC ルートにならないため（NOTES 64）、空配列は要素型で種付けする（NOTES 9）。アクセサは `command_name` などの固有名にし（NOTES 10 / 34）、`call` は定義しない（NOTES 40）。begin/rescue は yield しない普通のメソッドに置き、保存したブロックを `call` する（NOTES 32 / 45）。
+- 理由:
+  - これまでは `bin/` で `ARGV[0]` を自分で見て、`db migrate` が持っている「設定済みの DB に接続して実行し、表示して終了コードを返す」足場を書き直す必要があり、`help` にも出なかった。
+  - Spinel には `instance_eval` が無いので、ブロックは `before_action { |c| ... }` と同じく引数を明示的に受け取る。
+  - プール 1 本で足りる。一回きりのプロセスで `pool_size` 本を開いて閉じるのは無駄。
+- 却下した案:
+  - Rake 風のタスクファイルを走査して生成する案。字句走査と生成の面が増え、`bin/<app>.rb` に数行書くのと比べて得るものが無い。
+  - 組み込みの名前の上書きを許す案。`migrate` が別物になると運用手順が壊れる。
+  - コマンドごとに DB 接続を選ばせる案（接続しない指定）。必要になったら引数を足す。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。
