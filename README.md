@@ -686,6 +686,43 @@ main thread `execv`s the new binary on the same port and PID, invisible to a
 client mid-session. A failed build keeps serving the old binary and banners the
 compiler output on every HTML response. None of this loads in production.
 
+## Migrations
+
+A migration in `db/migrate/<version>_<name>.rb` is a `Cybertrain::Migration::Base`
+subclass. Its `change` records schema operations (`create_table`,
+`add_column`, `add_index`, `rename_column`, `add_reference`, `remove_column`,
+`remove_index`, `drop_table`); `cybertrain db migrate` applies each pending
+version in its own transaction and rewrites `db/schema.rb` from the database,
+and `cybertrain db rollback [N]` runs the inverse of `change`. When `change`
+holds an operation with no automatic inverse, write `down` (and `up`).
+
+A schema change that needs a data step to be safe uses `execute(sql, binds =
+[])`. It runs at its place in the migration, on the migrator's own
+connection and in the same transaction as the version's schema operations,
+so the column added before it exists when it runs, and a failure undoes the
+whole version:
+
+```ruby
+class AddRetentionDaysToBackups < Cybertrain::Migration::Base
+  def change
+    add_column "backups", "retention_days", :integer, null: false, default: "90"
+    execute "UPDATE backups SET retention_days = ?", [0]   # existing rows keep "forever"
+  end
+
+  def down
+    remove_column "backups", "retention_days"
+  end
+end
+```
+
+Without binds the SQL may be several `;`-separated statements; with binds
+it is one statement with `?` placeholders. `execute` has no inverse: rolling
+back a `change` that executes SQL, with no `down` of its own, stops with
+`version N is irreversible: it executes SQL in change; write down` before
+anything is reverted. A data statement never appears in `db/schema.rb`,
+which is dumped from the database. Recording a migration runs nothing, so
+the statement runs exactly once per `migrate` of its version.
+
 ## Differences from Rails
 
 | Rails | cybertrain |

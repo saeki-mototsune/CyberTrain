@@ -4,12 +4,14 @@
 # `Operation#kind` into DDL is `cybertrain/db/sqlite_ddl.rb`; the migrator
 # that issues it is `cybertrain/db/migrator.rb`.
 require "cybertrain/schema"
+require "cybertrain/cast"
 
 module Cybertrain
   module Migration
     # Raised when rolling back a `change` that recorded an operation with no
     # automatic inverse (anything but create_table, add_column, add_index and
-    # rename_column); write `up` and `down` instead.
+    # rename_column, including an {Base#execute}); write `down` (and `up`
+    # where `change` cannot run forward either) instead.
     # @api public
     class IrreversibleMigration < StandardError
     end
@@ -19,9 +21,14 @@ module Cybertrain
     # Cybertrain::Schema::Table built by the block (there is no separate
     # table name to carry -- the Table already has one). Callers that need
     # a name from either shape use `Operation.table_name`.
+    #
+    # An :execute operation (Base#execute) carries its SQL in `exec_sql` and
+    # its binds in `exec_binds` instead; every other kind leaves them "" and
+    # empty. The names are distinctive on purpose: Relation has a `binds`
+    # (spikes/NOTES.md rules 10/34).
     class Operation
       attr_reader :kind, :table, :name, :type, :null, :default, :limit,
-                  :to_table, :columns, :unique, :new_name
+                  :to_table, :columns, :unique, :new_name, :exec_sql, :exec_binds
 
       def initialize(kind, table, name, type, null, default, limit, to_table, columns, unique, new_name)
         @kind = kind
@@ -35,6 +42,34 @@ module Cybertrain
         @columns = columns
         @unique = unique
         @new_name = new_name.to_s
+        @exec_sql = ""
+        @exec_binds = Operation.no_binds
+      end
+
+      # An empty bind list typed for the values Cast.to_sql returns (nil,
+      # Integer, Float, String), seeded per spikes/NOTES.md rule 9 the way
+      # Relation seeds its own.
+      def self.no_binds
+        binds = [nil, 0, 0.0, ""]
+        binds.clear
+        binds
+      end
+
+      # `binds` is already converted (Cast.to_sql). The SQL and binds are
+      # assigned after `new` rather than passed to it, so the eleven
+      # schema-shaped arguments every other kind passes stay as they are.
+      def self.for_execute(sql, binds)
+        op = new(:execute, "", "", :string, true, nil, 0, "", [], false, "")
+        op.assign_exec(sql, binds)
+        op
+      end
+
+      # Public only so for_execute (a class method) can call it
+      # (spikes/NOTES.md rule 38).
+      def assign_exec(sql, binds)
+        @exec_sql = sql
+        @exec_binds = binds
+        nil
       end
 
       def self.for_create_table(table)
@@ -100,6 +135,8 @@ module Cybertrain
     #
     # Write `change` when every operation is reversible (create_table,
     # add_column, add_index, rename_column); otherwise write `up` and `down`.
+    # A data step goes through {#execute}, which runs in order with the
+    # schema operations, in the same transaction.
     # SQLite cannot add a foreign key to an existing table, so declare
     # references in `create_table` or with {#add_reference}. Not available:
     # `rename_table`, `change_column`, `change_column_default`,
@@ -303,6 +340,44 @@ module Cybertrain
         nil
       end
 
+      # Runs a data statement (an UPDATE, an INSERT, a DELETE) at this point
+      # of the migration, on the migrator's own connection and inside the
+      # same transaction as the version's schema operations: operations
+      # recorded before it have run when it runs, and those after it run
+      # after it. Nothing runs while the migration is only being recorded,
+      # so the migrator can call `up` to learn a version's operations (it
+      # does, when rolling back) without repeating the statement.
+      #
+      # Without binds `sql` may hold several statements separated by `;`;
+      # with binds it must be exactly one statement with `?` placeholders.
+      #
+      # Not reversible: rolling back a `change` that executes SQL raises
+      # {IrreversibleMigration} before anything is reverted, unless the
+      # migration defines {#down}. `db/schema.rb` is dumped from the
+      # database, so a data statement never appears in it.
+      # @example keep existing rows when a new column's default would change them
+      #   class AddRetentionDaysToBackups < Cybertrain::Migration::Base
+      #     def change
+      #       add_column "backups", "retention_days", :integer, null: false, default: "90"
+      #       execute "UPDATE backups SET retention_days = ?", [0]
+      #     end
+      #
+      #     def down
+      #       remove_column "backups", "retention_days"
+      #     end
+      #   end
+      # @param sql [String]
+      # @param binds [Array<String, Integer, Float, Boolean, Time, nil>]
+      #   values for the `?` placeholders, in order
+      # @return [nil]
+      # @api public
+      def execute(sql, binds = [])
+        values = Operation.no_binds
+        binds.each { |v| values << Cybertrain::Cast.to_sql(v) }
+        @operations << Operation.for_execute(sql.to_s, values)
+        nil
+      end
+
       def add_foreign_key(from_table, to_table, column: "")
         col = column
         col = Cybertrain::Schema::ForeignKey.default_column(to_table) if col == ""
@@ -336,6 +411,8 @@ module Cybertrain
           Operation.for_remove_index(op.table, op.columns)
         when :rename_column
           Operation.for_rename_column(op.table, op.new_name, op.name)
+        when :execute
+          raise IrreversibleMigration, "it executes SQL in change; write down"
         else
           raise IrreversibleMigration, "no automatic inverse for #{op.kind}"
         end
