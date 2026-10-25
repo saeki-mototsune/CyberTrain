@@ -22,9 +22,9 @@ The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
 [performance-next.md](performance-next.md).
 
-Suggested order: A and F (they break every app or lose a call silently),
-1 to 3, then G, C and the rest of the regressions, then 4 to 6, then the
-rest.
+Suggested order: A and F (A breaks every app whose routes nest
+`resources`, F loses a call silently), 1 to 3, then G, C and the rest of
+the regressions, then 4 to 7, then the rest.
 
 ## Status at a glance
 
@@ -204,7 +204,7 @@ Each made code slower than it reads; all are in rule 56. `spinel
 
 ## Regressions in newer packages
 
-Each worked on 2026.09.12. First found on 2026.10.09-7009 (A to E, while
+None of these happens on 2026.09.12. First found on 2026.10.09-7009 (A to E, while
 benchmarking, see
 [benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md)) and
 re-checked, with F and G new, on 2026.10.25-7018.
@@ -366,8 +366,9 @@ p out.scan(/^x-a:/i).length   # ArgumentError: invalid byte sequence in UTF-8; R
 
 2026.09.12 also said "UTF-8" but did not validate, so the scan worked.
 Seen in test/send_blob.rb, which scans `Response#to_http` of a PNG
-download. Any application matching a Regexp against a response or a
-request with a binary body hits it.
+download. An application hits it when it matches a Regexp against a
+response or request whose binary body holds bytes that are not valid
+UTF-8 (a PNG or JPEG does; an ASCII-only body does not).
 
 - Fix: follow CRuby's encoding of the result of `<<` (ASCII-only receiver
   plus a binary argument gives ASCII-8BIT).
