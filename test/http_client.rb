@@ -210,6 +210,39 @@ test "a host name resolves and the address it resolved to is dialled" do
   assert_equal "hi", res.body
 end
 
+# How a dial of `endpoint` ended: "connected" or "refused". The rescue is in
+# a method of its own (spikes/NOTES.md rule 32).
+def dial_kind(endpoint, port)
+  label = "127.0.0.1:#{port}"
+  timer = Cybertrain::Net::Timer.new(label, 2, 5)
+  tcp = Cybertrain::Net::TcpStream.connect_to(endpoint, port, label, timer)
+  tcp.stream_close
+  "connected"
+rescue Cybertrain::Net::ConnectError
+  "refused"
+end
+
+test "each resolved address is dialled in turn until one connects" do
+  # Nothing listens on ::1 at this port (a host without IPv6 cannot even
+  # open the socket): the dial moves on to 127.0.0.1, as it does for
+  # `localhost` on macOS, where ::1 comes first.
+  listening = TCPServer.new("127.0.0.1", 0) # never accept()ed: the kernel completes the handshake
+  port = listening.addr[1]
+  v6 = Cybertrain::Net.resolve("::1", port, "::1")
+  v4 = Cybertrain::Net.resolve("127.0.0.1", port, "127.0.0.1")
+  both = Cybertrain::Net::Endpoint.new
+  both.offer(v6.endpoint_ip_at(0), v6.endpoint_family_at(0))
+  both.offer(v4.endpoint_ip_at(0), v4.endpoint_family_at(0))
+  both.offer(v6.endpoint_ip_at(0), v6.endpoint_family_at(0))
+  assert_equal 2, both.endpoint_count
+  assert_equal "::1", both.endpoint_ip
+  assert_equal "connected", dial_kind(both, port)
+  # When every address fails, the last one's error is raised.
+  assert_equal "refused", dial_kind(v6, port)
+  assert_equal "refused", dial_kind(Cybertrain::Net::Endpoint.new, port)
+  listening.close
+end
+
 test "a Content-Length body larger than max_body is refused before it is read" do
   got = outcome { private_client(2, 5, 1000).get("#{$base}/big") }
   assert_equal "too large", got.kind
@@ -355,30 +388,88 @@ test "the deadline bounds a response that trickles in" do
   srv.finish
 end
 
-test "a connect that never completes times out" do
-  # A backlog of 0 queues one connection and drops the SYNs of the rest, so
-  # a connect to it stays pending; find the first that does.
-  full = TCPServer.new("127.0.0.1", 0)
-  full.listen(0)
-  port = full.addr[1]
-  fillers = Array.new(0) { Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0) }
-  pending = false
-  i = 0
-  while i < 16 && !pending
-    s = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
-    s.connect_nonblock(Socket.sockaddr_in(port, "127.0.0.1"), exception: false)
-    pending = s.wait_writable(0.2).nil?
-    fillers << s
-    i += 1
+# A listener whose backlog is full, so that a further connect to it stays
+# pending. Linux queues one connection on a backlog of 0 and drops the SYNs
+# of the rest; macOS's kernel can queue more than the backlog asks for, or
+# answer the overflow with a reset. Up to 1024 non-blocking connects are
+# made; the first three and every 32nd are checked for whether they stayed
+# pending, and one that was refused is closed (it holds no slot). Running
+# out of descriptors (macOS's default limit is 256) ends the filling.
+class FullBacklog
+  attr_reader :full_port
+
+  def initialize
+    @listener = TCPServer.new("127.0.0.1", 0)
+    @listener.listen(0)
+    @full_port = @listener.addr[1]
+    @fillers = Array.new(0) { Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0) }
+    @pending = false
   end
-  assert pending, "the backlog never filled"
+
+  def pending?
+    @pending
+  end
+
+  def fill
+    fill_queue
+    self
+  rescue SystemCallError
+    self
+  end
+
+  def fill_queue
+    made = 0
+    while made < 1024 && !@pending
+      s = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+      s.connect_nonblock(Socket.sockaddr_in(@full_port, "127.0.0.1"), exception: false)
+      made += 1
+      keep = true
+      if made < 4 || made % 32 == 0
+        if s.wait_writable(0.2).nil?
+          @pending = true
+        elsif s.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR).int != 0
+          keep = false
+        end
+      end
+      if keep
+        @fillers << s
+      else
+        s.close
+      end
+    end
+    nil
+  end
+
+  def close_all
+    @fillers.each { |f| f.close unless f.closed? }
+    @fillers = Array.new(0) { Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0) }
+    @listener.close unless @listener.closed?
+    nil
+  end
+end
+
+test "a connect that never completes times out" do
+  backlog = FullBacklog.new.fill
+  if backlog.pending?
+    assert backlog.pending?, "the backlog never filled"
+    url = "http://127.0.0.1:#{backlog.full_port}/hook/abc"
+    wait = 0.3
+  else
+    # No connect stayed pending: a destination that drops the SYN instead,
+    # 192.0.2.1 (TEST-NET-1; a documentation address, which allow_private
+    # lets through), on a port nothing serves. The fillers go first: they
+    # may hold every descriptor the process has.
+    backlog.close_all
+    assert_equal "documentation", reason_of("192.0.2.1")
+    url = "http://192.0.2.1:9/hook/abc"
+    wait = 1.0
+  end
   started = now
-  got = outcome { private_client(0.3, 5).get("http://127.0.0.1:#{port}/hook/abc") }
+  got = outcome { private_client(wait, 5).get(url) }
   assert_equal "timeout", got.kind
   assert_includes got.text, "connecting timed out"
   assert elapsed_since(started) < 3.0
-  fillers.each { |f| f.close }
-  full.close
+  backlog.close_all
 end
 
 test "a closed port is refused" do
@@ -553,15 +644,54 @@ test "https to a server that does not speak TLS fails the handshake" do
   assert_nil got.text.index("secret")
 end
 
+# Accepts one connection and holds it without writing a byte until
+# `release` (at most 5 s): a TLS client waits for a ServerHello that never
+# comes. The same on every platform, unlike a connection left in the
+# listen queue.
+class HoldingServer
+  attr_reader :holding_port
+
+  def initialize
+    @listener = TCPServer.new("127.0.0.1", 0)
+    @holding_port = @listener.addr[1]
+    @released = false
+  end
+
+  def start
+    listener = @listener
+    @thread = Thread.new { hold_one(listener) }
+    self
+  end
+
+  def hold_one(listener)
+    sock = listener.accept
+    waited = 0
+    while !@released && waited < 50
+      sleep(0.1)
+      waited += 1
+    end
+    sock.close
+    listener.close
+    nil
+  rescue IOError, SystemCallError
+    nil
+  end
+
+  def release
+    @released = true
+    @thread.join(5)
+    nil
+  end
+end
+
 test "a TLS handshake that gets no answer times out" do
-  silent = TCPServer.new("127.0.0.1", 0)
-  port = silent.addr[1]
+  holder = HoldingServer.new.start
   started = now
-  got = outcome { private_client(0.3, 5).get("https://localhost:#{port}/") }
+  got = outcome { private_client(0.3, 5).get("https://127.0.0.1:#{holder.holding_port}/") }
+  holder.release
   assert_equal "timeout", got.kind
   assert_includes got.text, "in the TLS handshake timed out"
   assert elapsed_since(started) < 3.0
-  silent.close
 end
 
 test "the TLS connector is installed by requiring cybertrain/net/tls" do

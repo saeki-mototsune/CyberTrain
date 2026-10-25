@@ -349,12 +349,9 @@ module Cybertrain
       timer = Net::Timer.new(label, @mail_timeout, @mail_deadline)
       endpoint = Net.resolve(@mail_host, @mail_port, label)
       timer.wait_limit("resolving the host name") # the deadline, after the blocking lookup
-      if @mail_tls == "none" && !@mail_user.empty? && Net::Address.blocked_reason(endpoint.endpoint_ip) != "loopback"
-        refusal = "#{label}: refusing to send credentials in plain text to #{endpoint.endpoint_ip}; " \
-                  "use tls \"starttls\" or \"tls\" (tls \"none\" authenticates to loopback only)"
-        raise InsecureError, refusal
-      end
-
+      endpoint = Mailer.loopback_only(endpoint, label) if @mail_tls == "none" && !@mail_user.empty?
+      # Every address in order, the next when one refuses (on macOS
+      # `localhost` is ::1 first), as the HTTP client dials.
       tcp = Net::TcpStream.connect_to(endpoint, @mail_port, label, timer)
       # Bound to a local before SmtpSession.new gets it (NOTES rule 58).
       first_stream = Mailer.open_stream(tcp, @mail_host, timer, @mail_tls == "tls")
@@ -364,6 +361,25 @@ module Cybertrain
       ensure
         session.close_session
       end
+    end
+
+    # The loopback addresses of `endpoint`, for credentials in plain text
+    # (tls "none"): the others are skipped, and when none is left the
+    # delivery is refused before connecting (InsecureError, naming the first).
+    def self.loopback_only(endpoint, label)
+      kept = Net::Endpoint.new
+      i = 0
+      while i < endpoint.endpoint_count
+        ip = endpoint.endpoint_ip_at(i)
+        kept.offer(ip, endpoint.endpoint_family_at(i)) if Net::Address.blocked_reason(ip) == "loopback"
+        i += 1
+      end
+      unless kept.found?
+        refusal = "#{label}: refusing to send credentials in plain text to #{endpoint.endpoint_ip}; " \
+                  "use tls \"starttls\" or \"tls\" (tls \"none\" authenticates to loopback only)"
+        raise InsecureError, refusal
+      end
+      kept
     end
 
     # The plain stream, or TLS over it.

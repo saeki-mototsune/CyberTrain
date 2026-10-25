@@ -16,8 +16,10 @@
 #
 # Destinations that are not public (loopback, private, link-local, ...;
 # Net::Address) are refused unless Config#http_allow_private is on. The host
-# name is resolved once and that address is dialled, so a name that resolves
-# to a private address is refused like the literal. Resolution itself
+# name is resolved once and the addresses it resolved to are checked and
+# dialled (in order, the next when one refuses), never looked up again, so a
+# name that resolves to a private address is refused like the literal.
+# Resolution itself
 # (getaddrinfo) blocks the calling thread: the runtime has no asynchronous
 # resolver; the deadline is checked after it.
 #
@@ -239,12 +241,7 @@ module Cybertrain
       timer = Net::Timer.new(label, @timeout, @deadline)
       endpoint = Net.resolve(target.target_host, target.target_port, label)
       timer.wait_limit("resolving the host name") # the deadline, after the blocking lookup
-      reason = Net::Address.blocked_reason(endpoint.endpoint_ip)
-      unless reason.empty? || @allow_private
-        raise Net::BlockedError, "#{label}: refusing to connect to #{endpoint.endpoint_ip} (#{reason} address); " \
-                                 "set Cybertrain.config.http_allow_private to allow it"
-      end
-      tcp = Net::TcpStream.connect_to(endpoint, target.target_port, label, timer)
+      tcp = Net::TcpStream.connect_to(allowed_addresses(endpoint, label), target.target_port, label, timer)
       stream = HttpClient.open_stream(tcp, target, timer)
       begin
         wire = String.new
@@ -255,6 +252,36 @@ module Cybertrain
       ensure
         stream.stream_close
       end
+    end
+
+    # The addresses of `endpoint` this client may dial, in their order: all
+    # of them with allow_private, else the public ones. The policy is decided
+    # per address, so a name with a public and a private address dials the
+    # public one; when every address is refused, BlockedError names the
+    # first and why.
+    def allowed_addresses(endpoint, label)
+      return endpoint if @allow_private
+
+      allowed = Net::Endpoint.new
+      first_ip = ""
+      first_reason = ""
+      i = 0
+      while i < endpoint.endpoint_count
+        ip = endpoint.endpoint_ip_at(i)
+        reason = Net::Address.blocked_reason(ip)
+        if reason.empty?
+          allowed.offer(ip, endpoint.endpoint_family_at(i))
+        elsif first_ip.empty?
+          first_ip = ip
+          first_reason = reason
+        end
+        i += 1
+      end
+      unless allowed.found?
+        raise Net::BlockedError, "#{label}: refusing to connect to #{first_ip} (#{first_reason} address); " \
+                                 "set Cybertrain.config.http_allow_private to allow it"
+      end
+      allowed
     end
 
     # The plain stream, or TLS over it for https.

@@ -1440,14 +1440,24 @@ network:
   multicast, broadcast, CGNAT (`100.64/10`), the documentation and
   benchmarking ranges, and IPv4-mapped, NAT64 and 6to4 forms of those
   (`Cybertrain::Net::Address.blocked_reason`). The host name is resolved
-  once and that address is dialled, so a name that resolves to a private
+  once and the addresses it resolved to are the ones checked and dialled
+  (nothing is looked up again), so a name that resolves to a private
   address (an `/etc/hosts` entry, DNS rebinding) is refused like the
-  literal; the TLS certificate is still checked against the name.
+  literal; the TLS certificate is still checked against the name. The
+  check is per address: a refused address is skipped, and only when every
+  address is refused does the request fail.
   `HttpClient::BlockedAddressError` says why. To call a service on your
   own network, or a local server in a test, set `c.http_allow_private =
   true` in `config/app.rb` (or `CYBERTRAIN_HTTP_ALLOW_PRIVATE=1`), or pass
   `allow_private: true` to `HttpClient.new`; leave it off whenever a URL
   can come from a user.
+- **Every resolved address is tried**, in the order the resolver gives
+  them, IPv6 and IPv4 alike: when one refuses, is unreachable, resets or
+  does not answer within `timeout`, the next is dialled, all of them
+  within `deadline`, and when every one fails the last one's error is
+  raised. This is what makes `localhost` work on macOS, where it resolves
+  to `::1` first and a server listening on `127.0.0.1` refuses that.
+  `Cybertrain::Mailer` dials the same way.
 - **TLS** is the openssl package's: `VERIFY_PEER` against the operating
   system's trust store (`SSL_CERT_FILE` / `SSL_CERT_DIR` point it
   elsewhere; the package has no `X509::Store` for a custom one), host-name
@@ -1462,7 +1472,10 @@ network:
   64 KiB and 100 lines, the body at `max_body` (default 1 MiB), past which
   `HttpClient::TooLargeError`. A response that is not HTTP/1.x, or ends
   early, is `HttpClient::BadResponseError`; a refused or reset connection, or
-  a name that does not resolve, `HttpClient::RefusedError`. All of them are
+  a name that does not resolve, `HttpClient::RefusedError`. A connection
+  that is reset or closed during the TLS handshake (a server that does not
+  speak TLS) is `HttpClient::TLSError` ("TLS handshake failed") on every
+  platform, like a handshake OpenSSL rejects. All of them are
   `HttpClient::Error`s.
 - **Errors never contain the path or the query**, where a webhook URL
   carries its secret: messages name the host and port only. A malformed URL
@@ -1518,7 +1531,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   it, `deliver` raises `Mailer::TLSError` saying so, before connecting.
   `none` is plain text, for a relay on the same machine or a test server:
   with a user configured it refuses (`Mailer::InsecureError`, before
-  connecting) unless the host resolves to a loopback address.
+  connecting) unless the host resolves to a loopback address, and then
+  dials only its loopback addresses.
 - **The password is never logged or shown.** It is not in the boot banner,
   `help`, the log or any error message; it is sent only inside the AUTH
   PLAIN command, over TLS (or to loopback). Do not `p` or `inspect` a

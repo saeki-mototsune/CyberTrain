@@ -17,7 +17,7 @@
 # (SSL_set1_host, no partial wildcards), SNI with the same name, and TLS 1.2
 # as the floor. The package has no X509::Store, so a custom trust store is
 # only those two environment variables. The host name is the URL's, while
-# the connection goes to the address it resolved to once: the certificate is
+# the connection goes to an address it resolved to once: the certificate is
 # checked against the name the caller asked for.
 #
 # Every step is non-blocking (connect_nonblock / read_nonblock /
@@ -41,6 +41,14 @@ module Cybertrain
 
       # The handshake, one non-blocking step at a time; each wait is in the
       # direction OpenSSL asks for (a handshake needs both).
+      #
+      # Once it has begun, a socket-level failure is a failed handshake too:
+      # a peer that does not speak TLS answers the ClientHello with plain
+      # text and closes, and whether OpenSSL then reports a bad record
+      # (an SSLError) or the reset / EOF / broken pipe that followed it
+      # (SystemCallError, IOError) depends on timing and on the kernel:
+      # Linux usually gives the first, macOS the second. Both are TlsError,
+      # so the caller sees one error class on every platform.
       def handshake(timer)
         while true
           step = @ssl.connect_nonblock(exception: false)
@@ -55,6 +63,10 @@ module Cybertrain
         nil
       rescue OpenSSL::SSL::SSLError => e
         raise TlsError, "#{@tcp.stream_label}: TLS handshake failed: #{TlsStream.reason(e.message)}"
+      rescue SystemCallError
+        raise TlsError, "#{@tcp.stream_label}: TLS handshake failed: the connection was reset"
+      rescue IOError
+        raise TlsError, "#{@tcp.stream_label}: TLS handshake failed: the connection closed"
       end
 
       # The openssl package's message without its own "SSL_connect returned

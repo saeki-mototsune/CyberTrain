@@ -2,7 +2,7 @@
 # request may reach?
 #
 # The outbound HTTP client (cybertrain/http_client.rb) resolves a host name
-# once, asks this module about the address it got, and dials that address.
+# once, asks this module about each address it got, and dials those it may.
 # A webhook URL is often typed in by a user, so without this check it is a
 # way into the server's own network: http://127.0.0.1:6379/, the cloud
 # metadata service at 169.254.169.254, a database on 10.0.0.5. The check
