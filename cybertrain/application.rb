@@ -15,6 +15,7 @@ require "cybertrain/middleware/host_authorization"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
+require "cybertrain/scheduler"
 require "cybertrain/views"
 require "cybertrain/dev"
 
@@ -109,6 +110,8 @@ module Cybertrain
       fail_boot(body_bytes_error) unless body_bytes_error.empty?
       upload_error = c.upload_limits_error
       fail_boot(upload_error) unless upload_error.empty?
+      scheduler_error = c.scheduler_error
+      fail_boot(scheduler_error) unless scheduler_error.empty?
       max_page_error = c.max_page_error
       fail_boot(max_page_error) unless max_page_error.empty?
       c.resolve_secret!
@@ -181,12 +184,16 @@ module Cybertrain
       srv = server
       srv.start # bind first: a PortInUse error must not come after the banner
       print_boot_banner
+      # After boot connected the database and SPINEL_WORKERS is set; only
+      # here, so `migrate`, `db` and Main.command never start it.
+      Scheduler.start!(@config)
       if @config.development?
         serve_development(srv)
       else
         trap("TERM") { srv.request_stop }
         srv.wait
       end
+      Scheduler.stop!
       nil
     rescue PortInUse => e
       fail_boot(e.message)

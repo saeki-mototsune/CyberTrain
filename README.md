@@ -971,6 +971,69 @@ whether the connection comes from this machine (127.0.0.0/8, `::1`,
 reach; behind a proxy on the same host every request is loopback, so check
 `client_ip` too there. Design: [docs/design.md](docs/design.md) D26.
 
+## Background work
+
+An application that has to do something outside a request (send a
+notification after the response went out, sweep old rows every hour, retry a
+call that failed) registers it with the framework, which runs it on one
+background thread of the served process:
+
+```ruby
+# config/app.rb (or a file bin/<app>.rb requires before Cybertrain::Main.run)
+Cybertrain::Scheduler.every(3600, "prune sessions") do
+  Cybertrain::DB.with { |c| c.execute("DELETE FROM sessions WHERE updated_at < datetime('now', '-30 days')") }
+end
+
+Cybertrain::Job.handle("welcome_mail") do |payload|
+  data = Cybertrain::Cast.hash(JSON.parse(payload))
+  WelcomeMail.deliver(data["email"].to_s)   # raise to have it retried
+end
+```
+
+```ruby
+# in an action, after saving the user
+Cybertrain::Job.enqueue("welcome_mail", JSON.generate({ "email" => @user.email }))
+Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
+```
+
+- **When it runs.** The thread starts when the binary serves (`./<app>`,
+  `./<app> server`), after boot has connected the database, bound the port
+  and set `SPINEL_WORKERS`; `migrate`, `db ...` and `Main.command` commands
+  never start it, and neither does `Cybertrain::Test::Client`. A task runs
+  first `seconds` after the start, then `seconds` after the start of each
+  run. Each run is wrapped in a rescue that logs `[ERROR] Scheduled task
+  "name" failed: ...` and the loop goes on. The block takes no arguments
+  (Spinel has no `instance_eval`). `Cybertrain::Scheduler.last_tick` is the
+  epoch second of the last tick, for a health check of your own.
+- **Jobs.** `Job.enqueue` adds a row to the `cybertrain_jobs` table, which
+  the framework creates itself (`CREATE TABLE IF NOT EXISTS`, on first use)
+  and leaves out of `db/schema.rb`. The payload is a String: JSON-encode
+  structured data. Inside a `DB.transaction` the row commits or rolls back
+  with the rest. The worker, a scheduler task polling every
+  `job_poll_interval` seconds (5), claims the oldest due job in a short
+  `BEGIN IMMEDIATE` transaction, runs its handler outside it, and marks it
+  `done`. A handler that raises is retried 1, 5, 15 and then 60 minutes
+  later, with `Class: message` (up to 1000 characters) in `last_error`, until
+  `job_max_attempts` (5) attempts have failed: the row is then `failed` and
+  stays for you to look at. A job whose kind has no handler is `failed` at
+  once; `Job.enqueue` refuses an unregistered kind. Rows a crashed process
+  left `running` are requeued when the worker starts. `Job.state_count("failed")`
+  and `Job.prune_done(before_epoch)` help with a health page and housekeeping.
+- **One worker per database.** Every served process runs the thread unless
+  `CYBERTRAIN_WORKER=0` (`config.worker = false`): when several processes
+  share one SQLite file, turn it off in all but one, or each scheduled task
+  runs once per process.
+- **Keep tasks short.** Tasks and handlers run one at a time on that one
+  thread, and a SQLite call holds its OS worker until it returns: with
+  `SPINEL_WORKERS=1` (the default) a long query stalls every request for as
+  long. Batch big work (delete a thousand rows per run, enqueue one job per
+  item) rather than doing it in one go.
+- **Testing.** `Scheduler.run_due(now)` runs one tick and `Job.work_one(now)`
+  one job, with an epoch time you choose, so a test never sleeps.
+
+There is no cron syntax, no priority or uniqueness for jobs and no mailer:
+this covers "send later" and "run every N seconds" (`docs/design.md` D28).
+
 ## Differences from Rails
 
 | Rails | cybertrain |
@@ -1006,7 +1069,8 @@ reach; behind a proxy on the same host every request is loopback, so check
 
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see "Outbound HTTP"); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
 | Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see "Sending e-mail") |
-| Jobs, ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
+| Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind) { \|payload\| ... }` and `Job.enqueue(kind, payload, run_at:)` (a String payload in a `cybertrain_jobs` table, retried with backoff, then `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; one thread in the served process, `CYBERTRAIN_WORKER=0` elsewhere ([Background work](#background-work)) |
+| ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
 
@@ -1062,6 +1126,7 @@ end
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
 | `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` or `true` makes `request.client_ip` (what `rate_limit` counts) the last `X-Forwarded-For` address of a connection from loopback, for a reverse proxy on the same host (see [Rate limiting](#rate-limiting-and-the-client-address)) |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
+| `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps this process from running scheduled tasks and jobs (see [Background work](#background-work)); `scheduler_interval` (1 s), `job_poll_interval` (5 s) and `job_max_attempts` (5) are set in `config/app.rb` |
 
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` or `true` lets `Cybertrain::HttpClient` connect to loopback, private and other non-public addresses (see "Outbound HTTP") |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; the SMTP server `Cybertrain::Mailer` sends through (see "Sending e-mail") |

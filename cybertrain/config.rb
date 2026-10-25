@@ -7,7 +7,8 @@ module Cybertrain
   # The application's settings. Defaults come from the environment
   # (CYBERTRAIN_ENV, PORT, CYBERTRAIN_DATABASE, CYBERTRAIN_SECRET_KEY_BASE,
   # SPINEL_WORKERS, CYBERTRAIN_HOST, CYBERTRAIN_ALLOWED_HOSTS, CYBERTRAIN_SESSION_SAME_SITE,
-  # CYBERTRAIN_SESSION_PARTITIONED, CYBERTRAIN_MAX_PAGE, CYBERTRAIN_HTTP_ALLOW_PRIVATE); config/app.rb then adjusts them:
+  # CYBERTRAIN_SESSION_PARTITIONED, CYBERTRAIN_MAX_PAGE, CYBERTRAIN_HTTP_ALLOW_PRIVATE,
+  # CYBERTRAIN_WORKER); config/app.rb then adjusts them:
   #
   #   Cybertrain.configure do |c|
   #     c.port = 3000
@@ -305,6 +306,33 @@ module Cybertrain
     # @api public
     attr_accessor :max_page
 
+    # Whether this process runs the background thread ({Scheduler}: the
+    # scheduled tasks and the {Job} worker) when it serves, `true`; `false`
+    # from `CYBERTRAIN_WORKER=0` (or `false`). When several processes share
+    # one database, turn it off in all but one of them, or every scheduled
+    # task runs once per process.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :worker
+
+    # Seconds the scheduler thread sleeps between ticks, `1`: a task runs
+    # at most this late. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :scheduler_interval
+
+    # Seconds between the job worker's polls of `cybertrain_jobs`, `5`: a
+    # job enqueued to run now starts within about this long. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :job_poll_interval
+
+    # How many attempts a {Job} gets before it is left `failed`, `5` (the
+    # first run and four retries, 1, 5, 15 and 60 minutes apart).
+    # @return [Integer]
+    # @api public
+    attr_accessor :job_max_attempts
+
     # CYBERTRAIN_MAX_PAGE read without to_i on unbounded text (NOTES rule
     # 25): 10000 when it is unset, not a number, or below 1.
     def self.default_max_page
@@ -451,6 +479,11 @@ module Cybertrain
       @setting_secrets.delete("")
       # Params.max_page's literal; Application#boot installs this there.
       @max_page = Config.default_max_page
+      # The background thread (Scheduler, Job).
+      @worker = Config.bool_from_env("CYBERTRAIN_WORKER", true)
+      @scheduler_interval = 1
+      @job_poll_interval = 5
+      @job_max_attempts = 5
     end
 
     # @return [Boolean]
@@ -780,6 +813,18 @@ module Cybertrain
         end
         i += 1
       end
+      ""
+    end
+
+    # The error Application#boot reports when scheduler_interval,
+    # job_poll_interval or job_max_attempts is below 1, or "" when all are
+    # fine (a sleep of 0 would spin the scheduler thread; 0 attempts would
+    # fail every job unrun).
+    def scheduler_error
+      return "scheduler_interval must be at least 1 (got #{@scheduler_interval})" if @scheduler_interval < 1
+      return "job_poll_interval must be at least 1 (got #{@job_poll_interval})" if @job_poll_interval < 1
+      return "job_max_attempts must be at least 1 (got #{@job_max_attempts})" if @job_max_attempts < 1
+
       ""
     end
 

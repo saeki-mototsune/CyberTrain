@@ -50,6 +50,8 @@ require "cybertrain/views"
 require "cybertrain/template/helpers"
 require "cybertrain/template/form_builder"
 require "cybertrain/config"
+require "cybertrain/job"
+require "cybertrain/scheduler"
 require "cybertrain/application"
 require "cybertrain/main"
 
