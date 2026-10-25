@@ -2,7 +2,7 @@
 
 - 状態: 提案（2026-10-25）。実装はまだ。
 - 対象: `.github/workflows/{ci,gate,playground-image,blog-image,pages}.yml`、`script/`、`.githooks/`、`CONTRIBUTING.md`
-- 目的: PR 1 本あたりの Actions 消費分数を約 1/4 にし（§3: 155 分 → 41〜50 分）、テストの主戦場をローカル（開発機と Claude のクラウドセッション）に移す。CI が検出できる不具合の範囲は狭めない。
+- 目的: PR 1 本あたりの Actions 消費分数を 1/3〜1/2 にし（§3: 155 分 → 51〜74 分）、テストの主戦場をローカル（開発機と Claude のクラウドセッション）に移す。CI が検出できる不具合の範囲は狭めない。
 
 ## 0. 一言でいうと
 
@@ -51,9 +51,21 @@ Spinel ツールチェーンのキャッシュは効いている（restore 1 秒
 
 ### 1.4 ローカル
 
-`spin test` はテストごとに 1 本のバイナリをコンパイルし、`xargs -P <CPU 数>` で並列に走らせる。CI の ubuntu-latest（4 vCPU）で 82 本に 9 分、macos-latest（arm64、3 コア）で 6 分。Claude のクラウドセッション（4 vCPU）で同じことを計ったところ、初回は CI と同程度かそれ以上かかる（計測中: 8 分で 43 本。完走の値と、2 回目・1 ファイル変更後の増分ビルドの値はこの節に追記する）。
+`spin test` はテストごとに 1 本のバイナリをコンパイルし、`xargs -P <CPU 数>` で並列に走らせる。CI の ubuntu-latest（4 vCPU）で 82 本に 9 分、macos-latest（arm64、3 コア）で 6 分。Claude のクラウドセッション（4 vCPU、16 GB）で計った値:
 
-分かっていること: `build/test/` が残っていれば spin は mtime でソースと比べて、変わっていないテストを再コンパイルしない（`playground/Dockerfile` が同じ性質に依存している）。CI はこのディレクトリを毎回捨てているので、CI の 9 分は「ローカルで 2 回目以降なら払わなくていい時間」。
+| 状態 | 再コンパイル | 時間 |
+| --- | --- | --- |
+| 初回（`build/` なし） | 82 本 | 14 分 02 秒 |
+| 2 回目、何も変えない | 0 本 | 11 秒 |
+| `cybertrain/version.rb` を touch（内容は同じ） | 82 本 | 13 分 59 秒 |
+| `test/router.rb` だけを touch（内容は同じ） | 82 本 | 13 分 10 秒 |
+| `spin test test/cli_new.rb`（1 本を指名） | 1 本 | 下記 |
+
+分かったこと:
+
+- **spin の鮮度判定は粗い。** テスト 1 本のソースを touch しただけで 82 本全部が作り直される（`test/router.rb` の変更が `build/test/blob_store` を無効にする）。依存関係ではなく「パッケージ内のどれかの入力が出力より新しいか」で見ているので、`build/` が残っていて効くのは「何も変わっていないとき」だけ。したがって **CI で `build/` をキャッシュしても、PR は必ず何かを変えているので、ほぼ毎回フルビルドになる**（§2.3 で検討していたキャッシュ案はこれで見送り）。
+- ローカルで速いのは `spin test test/<name>.rb` と指名したとき。1 本なら数秒〜十数秒で、`script/ci-local --quick`（§2.5）はこれを使う。
+- `test/cli_new.rb` はこの環境では `spin test` 経由だと最初のテストブロックの途中で出力が止まり FAIL になる（4 回とも再現）。同じバイナリを `/tmp` から直接実行すると 23 tests, 154 assertions, 0 failures で通る。CI（Ubuntu/macOS）では通っている。環境固有（cwd か、`xargs -P` 下での stdout の扱いか）の問題として別に調べる。設計には影響しない。
 
 ## 2. 設計
 
@@ -155,14 +167,13 @@ macOS は main でだけ走るので、この判定で macOS まで止めると�
 
 **merge queue は使えない**。「マージ前に main と合わせた状態で 1 回だけ走る」が GitHub の機能として手に入るが、merge queue は organization 所有のリポジトリ限定で、個人アカウント所有の本リポジトリでは有効にできない（[GitHub changelog, 2023-07](https://github.blog/changelog/2023-07-12-pull-request-merge-queue-is-now-generally-available/)）。organization に移す予定が出たら再検討する。
 
-### 2.3 CI ubuntu ジョブ自体を短くする（21 分 → 12 分）
+### 2.3 CI ubuntu ジョブ自体を短くする（21 分 → 17 分）
 
 | 手 | 今 | 後 | 分 |
 | --- | --- | --- | --- |
 | E2E の 3 アプリを 1 つにする | shop（scaffold + authentication）、album（attachment）、gitshop（git 依存）をそれぞれ `cybertrain new` してフルコンパイル | shop に `post title:string cover:attachment` も載せて 1 回ビルド。gitshop は `spin run gen -- --check` と migrate だけなので今のまま | −4 |
-| `spin test` の `build/` をキャッシュする | 毎回 82 本をゼロからコンパイル（9 分） | `actions/cache` で `build/test/` を `hashFiles('cybertrain.rb','cybertrain/**','test/**','spin.toml')`（テストは `require "cybertrain"` でルートの `cybertrain.rb` を読む） でキー、restore-keys で直近のものを復元 | −6（ヒット時） |
 
-`build/` キャッシュには落とし穴がある。spin の鮮度判定は mtime で（`playground/Dockerfile` のコメント参照）、checkout 直後のソースはすべて「今」の mtime になるので、復元した `build/` は古く見えて全部作り直される。対策は checkout 後に各ファイルの mtime をそのコミットの時刻に揃えること（`git log -1 --format=%ct -- FILE` を全ファイルに、または `git-restore-mtime`）。これでファイル内容が変わっていないテストは再コンパイルされない。**この手は効果を測ってから入れる**（§4 の順番）。mtime を触るのが嫌なら、代わりに Spinel のビルド出力をコンテンツハッシュで引けるか matz/spinel 側に聞くのが筋。
+`spin test` の `build/test/` を `actions/cache` でキャッシュする案（キー `hashFiles('cybertrain.rb','cybertrain/**','test/**','spin.toml')`、restore-keys で直近を復元、checkout 後に `git-restore-mtime` で mtime を揃える）は **見送り**。§1.4 のとおり spin はテスト 1 本の変更で 82 本全部を作り直すので、何かを変えた PR では復元した `build/` が丸ごと無効になる。残るのは 9 分のフルコンパイルそのもので、これを縮めるには (a) Spinel のコンパイルを速くする、(b) 82 本のテストプログラムを束ねてバイナリの数を減らす、(c) spin に依存関係ベースの鮮度判定を入れてもらう、のどれかで、どれもこの設計の外（(b) はテストの書き方の変更、(c) は matz/spinel への提案）。
 
 ### 2.4 Blog image の Dockerfile でレイヤーを分ける
 
@@ -197,7 +208,7 @@ script/ci-local --quick    # gate と、変更に関係するテストだけ（�
 
 CI の yml に書かれている shell をこのスクリプトに移し、CI からは `script/ci-local --e2e` を呼ぶ。**CI とローカルの手順が 1 か所になる**のが本題で、分数の話ではない。E2E の curl 列は今 yml の中にしかなく、ローカルで再現できない。
 
-**`--quick` の「関係するテスト」**: `git diff --name-only main...HEAD` で `test/*.rb` が変わっていればそれ、`cybertrain/foo.rb` が変わっていれば `test/foo*.rb` と、`grep -l "cybertrain/foo"` で引けるテスト。外れたら全件（`spin test` は増分ビルドなので、ローカルの 2 回目以降は数十秒）。
+**`--quick` の「関係するテスト」**: `git diff --name-only main...HEAD` で `test/*.rb` が変わっていればそれ、`cybertrain/foo.rb` が変わっていれば `test/foo*.rb` と、`grep -l "cybertrain/foo"` で引けるテスト。外れたら全件。指名した 1 本は数秒〜十数秒でコンパイルされる（§1.4）。全件は touch 1 つで 14 分のフルビルドになるので、`--quick` は必ずファイルを指名する。
 
 **pre-push フック**（`.githooks/pre-push`、`script/install-hooks` が入れる）: `script/ci-local --quick` を走らせる。pre-commit の gate が 1 秒なのに対しこちらは分単位なので、`git push --no-verify` で飛ばせること、`CYBERTRAIN_SKIP_PREPUSH=1` でも飛ばせることを CONTRIBUTING.md に書く。
 
@@ -227,10 +238,10 @@ PR で push 2 回 + マージ 1 回、`cybertrain/**` を触る変更、main は
 | 今 | 51 × 2 = 102 | 52 | 155 | 100% |
 | §2.1（PR は ubuntu + gate） | 21.3 × 2 = 43 | 52 | 95 | 61% |
 | + §2.2（main の CI ubuntu をスキップ、macOS は残す） | 43 | 15 + 10 + 5 + 0.3 + 0.5 = 31 | 74 | 48% |
-| + §2.3（ubuntu 21 → 12 分、macOS も 15 → 9） | 12.3 × 2 = 25 | 9 + 10 + 5 + 0.3 + 0.5 = 25 | 50 | 32% |
-| + macOS を 1 日 1 回の schedule に | 25 | 10 + 5 + 0.3 + 0.5 = 16 | 41 | 26% |
+| + §2.3（ubuntu 21 → 17 分、macOS も 15 → 12） | 17.3 × 2 = 35 | 12 + 10 + 5 + 0.3 + 0.5 = 28 | 63 | 41% |
+| + macOS を 1 日 1 回の schedule に | 35 | 10 + 5 + 0.3 + 0.5 = 16 | 51 | 33% |
 
-最後の行は PR 1 本の表からは macOS が消えるが、別枚で 1 日 1 回 9 分（月 270 分）かかる。月で見ると、1 日 6 マージで月 2 万分 → 約 7 千分（§2.3 まで）、約 6 千分（schedule 化、macOS の日次分込み）。§2.3 の `build/` キャッシュが効かなくても 48%。
+最後の行は PR 1 本の表からは macOS が消えるが、別枚で 1 日 1 回 12 分（月 360 分）かかる。月で見ると、1 日 6 マージで月 2 万分 → 約 8 千分（§2.3 まで）、約 7 千分（schedule 化、macOS の日次分込み）。§2.1 と §2.2 だけでも 48%。
 
 ## 4. 実装の順番
 
@@ -239,7 +250,7 @@ PR で push 2 回 + マージ 1 回、`cybertrain/**` を触る変更、main は
 1. **ci.yml**: `plan` ジョブ（OS 判定と docs-only 判定、§2.1〜2.2）、`timeout-minutes`、already-tested ジョブ（§2.2）。branch protection に CI ubuntu を足す。Playground/Blog の `pull_request.paths` からフレームワークを外す。→ この 1 本で 48%。
 2. **script/ci-local** と CONTRIBUTING.md、PR テンプレート、CLAUDE.md、pre-push フック（§2.5）。CI の E2E shell をスクリプトに移す。この PR はスクリプトの移動なので CI ubuntu が 1 回走る。
 3. **E2E の統合**（§2.3 前半）と **Blog Dockerfile のレイヤー分け**（§2.4）、gate のチェック拡張。
-4. **`build/` キャッシュ**（§2.3 後半）: まず `git-restore-mtime` 後の `spin test` がローカルで増分になることを確かめ（§1.4 の計測を CI 上で再現）、効いたら入れる。効かなければ見送り、Spinel 側にコンテンツハッシュの話を持つ。
+4. **コンパイル時間そのもの**（§2.3 の末尾）: spin の鮮度判定について matz/spinel に依存関係ベースの判定（またはコンテンツハッシュ）を提案する。入れば `build/` キャッシュが生きて ubuntu の 9 分が消える。
 5. 1 か月後に §1.1 の表を取り直す。macOS だけで落ちた run があれば §2.1 のパス一覧に足す。
 
 ## 5. やらないこと
