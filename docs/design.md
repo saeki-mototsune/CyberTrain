@@ -291,6 +291,23 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
     - 配信は同一オリジン。
   - 孤児ファイルの掃除、ETag / Range、別オリジン配信は後続の作業。
 
+### D17. トランザクション API: `DB.transaction` と `Model.transaction`（2026-10-25、issue #67）
+
+- 決定: `Cybertrain::DB.transaction(immediate: false) { |c| ... }` を公開 API にする。プールから接続を借り、`BEGIN`（`immediate: true` なら `BEGIN IMMEDIATE`）を発行し、接続を渡してブロックを呼び、正常終了で `COMMIT`、例外で `ROLLBACK` して再送出し、接続をプールへ返す。`Model.transaction` は同じものを Rails の名前で呼ぶ薄い別名（クラスメソッドなので `Ident::RESERVED_COLUMN_NAMES` には入らない）。D10 の「MVP 外: モデル API の `transaction`」と §8 の `transaction` API はこれで置き換わる。
+- 参加（Rails と同じ意味）: ブロックの実行中、同じスレッドの `DB.with`（したがって `save` / `update` / `destroy` / Relation の問い合わせ）はトランザクションの接続をそのまま受け取る。プールは借りた接続を `Thread.current` に記録し、`Pool#with` が `held_index` でそれを見つけたら借り出しも返却（`check_in` はトランザクションを巻き戻してしまう）もせずに yield する。入れ子の `DB.transaction` も同じ接続で深さを一つ増やすだけで、深さの数え方と「SQLite が自分で巻き戻した」検査は `Connection#transaction` のものをそのまま使う（両者とも新しいブロックなしの `Connection#begin!` / `commit!` / `rollback!` の上に書き直した）。最外段だけが `COMMIT` し、どの段の例外も最外段に届けば全体が巻き戻る。セーブポイントは無い。`immediate:` は最外段でだけ効く。ブロック内で起こしたスレッドは参加しない。
+- 形（Spinel の制約から決まった）: `DB.transaction(&block)` は `DB.run_transaction(immediate, block)` を呼ぶだけで、借り出し・`begin!`・`block.call(conn)`・rescue・ensure はすべて `run_transaction` にある。`Controller#process` / `#run_action` と同じ形。
+  - `&block` を受けて呼ぶメソッドは yield するメソッドと同じく呼び出し側に展開され、そこに rescue / ensure があると C がコンパイルできない（NOTES 規則 32/45、68）。
+  - Proc をもう一段先のメソッド（`Pool` や `Connection` のメソッド）へ渡して呼ぶと、ブロック引数に接続のクラスが伝わらず、`c.execute` が NoMethodError になる（NOTES 規則 68）。
+  - 参加の判定を `DB.with` 側で `block.call` にすると `DB.with` のブロックが Proc になり、外側のブロック引数を読むブロック（`5.times do |i| DB.with { ... i ... } end`）がコンパイルできなくなる（NOTES 規則 67）。だから判定は yield する `Pool#with` の中に置いた。
+- ブロックなしの形: `c.begin!(immediate:)` / `c.commit!` / `c.rollback!`。rescue を普通のメソッドに置きたいコード向け。入れ子の `rollback!` は深さを一つ戻すだけで、判断は最外段に任せる（入れ子の `transaction` ブロックから例外が抜けたときと同じ）。
+- 捨てたもの・制約:
+  - 戻り値はブロックの値ではなく nil（`Connection#transaction` と同じく、総称的な戻り値は Spinel で型が付かない）。
+  - `ActiveRecord::Rollback` と `requires_new:`（セーブポイント）は無い。
+  - `DB.with` のブロックの中で `DB.transaction` を呼ぶと別の接続を借りる（`DB.with` はトランザクションではないので参加先が無い。1 接続のプールでは永久に待つ）。
+  - ブロックの `c` は箱詰めの値なので、その上で `c.transaction { }` は呼べない（yield するメソッドは展開されるだけで実体が無い、NOTES 規則 66）。入れ子は `DB.transaction` か `begin!` / `commit!` で書く。
+  - `DB.transaction` のブロックが外側のブロック引数を読み、その外側がさらにブロックの中にあると（三段）コンパイルできない（NOTES 規則 67）。アクションのようなメソッドの中なら二段で動く。
+- 検証: `test/db_transaction_api.rb`（フレームワーク全体と一緒にコンパイル）。コミット、例外での巻き戻し、入れ子の参加、`Model.transaction` 内の `save` の参加、ブロックなしの形、`DB.with` のブロック内からの呼び出し、コントローラのアクションからの呼び出し、`immediate: true` が `BEGIN IMMEDIATE` を出すこと（別の接続の `BEGIN IMMEDIATE` が "database is locked" になる。遅延 `BEGIN` では通る）。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。

@@ -66,15 +66,88 @@ module Cybertrain
       # runs (no exception of the block's is masked) and the ensure puts the
       # closed connection back, so the slot survives and the next checkout
       # tries again.
+      # Inside a Cybertrain::DB.transaction on this thread, the block gets
+      # that transaction's connection instead (see held_index), with no
+      # checkout and no check_in (which would roll the transaction back), so
+      # what it runs joins the transaction. Decided here, in the yielding
+      # method, and not in DB.with with a `block.call`: that makes DB.with's
+      # block a Proc, and test/db_sqlite.rb's `5.times do |i| DB.with { |c|
+      # ... [i] ... } end` then stopped compiling (NOTES rule 67).
       def with
+        raise Error, "pool closed" if @closed
+        held = held_index
+        if held >= 0
+          yield @connections[held]
+        else
+          conn = @available.pop
+          begin
+            conn = reopen(conn) if conn.closed?
+            yield conn
+          ensure
+            check_in(conn)
+          end
+        end
+      end
+
+      # The Thread.current key under which checkout_transaction records the
+      # connection a Cybertrain::DB.transaction runs on, so that DB.with
+      # (`with` above) and a nested DB.transaction on the same thread use that
+      # connection instead of checking out another one (held_index). Per
+      # thread, so a Thread started inside the block is not part of it.
+      TRANSACTION_KEY = :cybertrain_db_transaction
+
+      # Cybertrain::DB.transaction's checkout, without a block: `with`'s pop
+      # and reopen, and the connection recorded as this thread's transaction
+      # connection. DB.transaction runs the block itself and always calls
+      # checkin_transaction afterwards, from an ensure. Not a yielding method
+      # around the transaction: that one's rescue would sit in a yielding
+      # method applications call from nested blocks (NOTES rules 32/45), and
+      # its block, passed on as a Proc, would reach `block.call` without the
+      # class of the connection it receives (NOTES rule 68).
+      def checkout_transaction
         raise Error, "pool closed" if @closed
         conn = @available.pop
         begin
           conn = reopen(conn) if conn.closed?
-          yield conn
-        ensure
-          check_in(conn)
+        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+          # The slot goes back, as `with`'s ensure puts it back.
+          @available << conn
+          raise e
         end
+        Thread.current[TRANSACTION_KEY] = conn
+        conn
+      end
+
+      # Ends checkout_transaction: the thread no longer holds a transaction
+      # connection, and the connection goes back through check_in, which
+      # rolls back anything still open (a block that left the transaction
+      # without COMMIT or ROLLBACK: CRuby's break/return). Returns nil.
+      def checkin_transaction(conn)
+        Thread.current[TRANSACTION_KEY] = nil
+        check_in(conn)
+        nil
+      end
+
+      # Where in @connections this thread's open DB.transaction connection
+      # is, or -1: none open, or it belongs to another pool (a DB.connect
+      # inside the block), or it was closed. No lock: the slot of a
+      # connection this thread holds is not rewritten by anyone else (reopen
+      # replaces only the closed connection it popped).
+      def held_index
+        held = Thread.current[TRANSACTION_KEY]
+        return -1 if held.nil?
+        i = 0
+        while i < @connections.size
+          conn = @connections[i]
+          return (conn.closed? ? -1 : i) if conn.equal?(held)
+          i += 1
+        end
+        -1
+      end
+
+      # The connection at a held_index.
+      def connection_at(index)
+        @connections[index]
       end
 
       # Marks the pool closed first (see `with`), then closes every connection.
