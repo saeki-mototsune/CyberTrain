@@ -20,6 +20,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -87,6 +88,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -137,6 +139,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -212,6 +215,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -246,10 +250,11 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-18 tests, 187 assertions, 0 failures
+18 tests, 188 assertions, 0 failures

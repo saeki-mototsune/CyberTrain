@@ -20,6 +20,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -35,6 +36,7 @@ ok   application_controller.rb and config/app.rb are ready to edit
 ok   README.md gives the cybertrain command sequence
 ok   the Dockerfile builds dist/ in the image and runs it on 0.0.0.0:3000
 ok   config/deploy.yml and .kamal/secrets configure Kamal for the app
+ok   .github/workflows/ci.yml sets up the toolchain and runs the app's checks
 create spin.toml
 create .gitignore
 create README.md
@@ -57,6 +59,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -84,6 +87,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -117,6 +121,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -144,6 +149,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -170,6 +176,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -201,6 +208,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -229,6 +237,7 @@ create Dockerfile
 create .dockerignore
 create config/deploy.yml
 create .kamal/secrets
+create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
@@ -423,4 +432,4 @@ Usage:
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-23 tests, 155 assertions, 0 failures
+24 tests, 163 assertions, 0 failures

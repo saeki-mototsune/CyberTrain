@@ -559,6 +559,28 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - 本番のエラーページ（`ErrorPages`）への適用: 本番の 500 ページはパラメータを出さないので対象が無い。
 - 帰結: test/http_request.rb（Digest 形、`;` 区切りの Forwarded / Prefer、エスケープ付きの quoted-string、最初の値が勝つ、8 KiB 超、任意のバイト、ヘッダ無し、scheme）、test/middleware.rb（ログ行の伏せ字、一致しない名前はそのまま、一覧の差し替えと空の一覧、`CYBERTRAIN_FILTER_PARAMETERS`）、test/dev_error_page.rb（要求行と params の欄、JSON の欄の再帰、解析できない本文）を足し、コンパイルしたバイナリでスナップショットを作った。D29 の「残る点」の `/setup?token=...` は既定の `token` で伏せられる。
 
+### D32. テストと CI: 外向きの呼び出しのプロセス内受信器と、生成する CI ワークフロー（2026-10-25、issue #78）
+
+- 問題: アプリが Webhook（D24）やメール（D27）を送るようになると、そのテストには受け手が要る。Spinel で 127.0.0.1 の受信器を正しく書くには、読み取りをすべて `wait_readable` + `readpartial` とバイト位置で行い（`IO#gets` は使わない、NOTES 20 / 27）、`accept` を有界にし（接続して来ないクライアントのせいでスレッドが残り、次のテストの接続を横取りしないように）、スレッドはメソッド経由で起こし（NOTES 21）、最初の `Thread.new` の前に `SPINEL_WORKERS` を決める（NOTES 22）必要があり、アプリごとに同じ 100〜200 行を書くことになる。CI も、アプリごとにツールチェーンの手順（ヘッダのパッケージ、spin.lock からのフレームワークのコミット、`cybertrain setup`、`~/.cybertrain/spinel` のキャッシュ）を手で写していて、手順が変わると写しがずれる。
+- 決定（受信器）: `Cybertrain::Test::HttpReceiver`（cybertrain/test/http_receiver.rb）と `Cybertrain::Test::SmtpReceiver`（cybertrain/test/smtp_receiver.rb）。共通部分は基底クラス `Cybertrain::Test::Receiver`（cybertrain/test/receiver.rb）。
+  - `start(port: 0)` が 127.0.0.1 に bind して番号を返し、スレッドを一本起こす。スレッドは `max`（既定 1）個の接続を順に一つずつ受け、それぞれを読んで答えて閉じる。`accept` は `wait_readable(0.05)` を繰り返し、接続が待っているときだけ呼ぶので、`stop` に 0.05 秒で気づき、`accept_window`（既定 10 秒）接続が来なければ自分で終わる。読み取りも 0.05 秒刻みの `wait_readable` の後の `readpartial` で、`read_timeout`（既定 5 秒）黙ったクライアントは切る。スレッドは終わるときにリスナーを閉じる。`stop` は終了を頼んで `join` する（上限つき、二度呼んでもよい）。したがって `stop` の後に同じ番号で次の受信器を `start` できる（テストで確かめた）。
+  - 結果は型付きの `ReceivedRequest`（`http_method` / `http_target` / `http_path` / `http_headers`（小文字の名前、重複は `", "` で連結）/ `http_header(name)` / `http_body`（chunked は復号））と `ReceivedMessage`（`envelope_from` / `envelope_recipients` / `message_data`（DATA の後のバイト列、ドット詰めを戻し、終わりの `.` 行は除く）/ `message_header(name)` / `message_body` / `transcript`（クライアントのコマンド行すべて）/ `delivered?`）。`received_request(wait = 5)` / `received_message(wait = 5)` が最初の一件を待ち（上限つき、来なければ nil）、`received_requests` / `received_messages` が全部を返す。SMTP の記録は接続が終わったとき（QUIT か切断）に一件。
+  - HttpReceiver は Content-Length と chunked の要求本文を読み、`status:` / `headers:` / `body:` / `chunked:`（応答本文を二つの chunk で送る）の既定応答に `Connection: close` を付けて返す。`respond_with` で次の要求からの応答を変えられる。SmtpReceiver は 220、EHLO（既定で 8BITMIME を広告、`eight_bit_mime: false` で外す。`auth: true` なら AUTH PLAIN を広告して何でも受け入れる）、MAIL、RCPT、DATA（354）、250 queued、QUIT（221）を演じ、`reject: { rcpt: "550 ..." }` のように `:greeting` / `:ehlo` / `:mail` / `:rcpt` / `:data` / `:message` の段を指定の応答で失敗させられる。平文だけで、STARTTLS は 454 を返す。
+  - 名前: Test::Client に `request(method, path, ...)` があり、例外の `message` は組み込みなので、`request` / `message` ではなく `received_request` / `received_message` にした（同名で戻り値の型が違うメソッドは推論を壊し（NOTES 34）、組み込みと同名のメソッドは箱入りの受け手への呼び出しをすべて切り替える（NOTES 62））。結果の読み出しにも `http_` / `envelope_` / `message_` の接頭辞を付けた（NOTES 10）。内部のメソッドは `rx_` で始める。
+  - 依存: Ruby の socket だけ。`cybertrain/net` も openssl も require しない（`Net::Reader` は `Net::Stream` を読む作りで、accept した `TCPSocket` と接続した `Socket` を同じ ivar に入れると箱入りになるので、小さな読み取りを基底クラスに持たせた）。`cybertrain/test.rb` からは require しない: `cybertrain/test/client` と同じく使うテストだけが require する（すべてのテストプログラムにソケットを入れない）。生成する `test/support/app_test.rb` のコメントと README の「Testing outbound calls」に使い方を書いた。
+- 決定（CI）: このリポジトリに複合アクション `.github/actions/setup-cybertrain/action.yml` を置き、`cybertrain new` が `.github/workflows/ci.yml` を書いて、それを `uses: saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v<VERSION>` で呼ぶ。ワークフローに残るのはアプリ自身の検査だけ: `spin lock && git diff --exit-code spin.lock`、`spin run gen -- --check`、`spin test`（`test/*.rb` が一つも無ければ飛ばす。`spin test` はテストが無いと失敗し、新しいアプリには無い）。
+  - アクションの中身: Linux では `libsqlite3-dev zlib1g-dev libssl-dev`、macOS では Homebrew の OpenSSL を `LIBRARY_PATH` / `CPATH` に（フレームワークの CI と同じ）、`ruby/setup-ruby`（既定 3.3）、spin.lock の `[lock.cybertrain]` の `git` と `ref`（40 桁のコミット）を Ruby の一行で読み、そのコミットだけを `git fetch --depth 1` で `$RUNNER_TEMP` に取り、その `cybertrain/version.rb` の `SPINEL_TAG` とランナーのイメージ（`ImageOS` / `ImageVersion`）と OS・アーキテクチャをキーに `~/.cybertrain/spinel` を復元し、そのチェックアウトの `exe/cybertrain doctor` と `setup` を走らせ、ビルドしたらキャッシュを保存し、`~/.cybertrain/bin` を PATH に足す。
+  - `uses:` の参照は式を取れない静的な文字列なので、spin.lock のコミットを `uses:` に書くことはできない。そこで `uses:` は CLI のリリースタグ `v#{Cybertrain::VERSION}` に固定し（`cybertrain new` が spin.toml に書く依存と同じタグ）、アクションの手順だけをそれで決める。Spinel を入れる CLI は、アクションが spin.lock から読んだコミットのもの、つまりアプリがコンパイルするフレームワークと必ず同じ版になる。アプリがフレームワークを上げても、アクションのタグを上げなくてよい。
+  - フレームワークは `actions/checkout` で作業ツリーの `vendor/` に取るのでなく、`$RUNNER_TEMP` に git で取る。`actions/checkout` は作業ツリーの外に置けず、作業ツリーに置くと spin（`vendor/` を使う機能がある）やアプリの `git diff` の目に入る。
+  - キャッシュのキーは `version.rb` のハッシュではなく、そこから読んだ `SPINEL_TAG`: `version.rb` はリリースごとに変わるが、Spinel のビルドは `SPINEL_TAG` が同じなら同じ。`hashFiles` は作業ツリーの外のファイルを読めないこともある。
+  - path 依存（`cybertrain new --path`）のアプリは spin.lock にコミットが無いので、アクションは理由を書いて失敗する。フレームワークを自分で取り出して `framework-path` を渡せば、spin.lock を読まずにそれを使う。
+- 却下した案:
+  - ワークフローに全手順を書き出す: 手順の正本が生成コードの中にあり、変更が既存のアプリに届かない（issue の問題そのもの）。
+  - アクションの中で `uses:` 相当にフレームワークのコミットを選ぶ（動的な `uses:`）: GitHub Actions に無い。
+  - 受信器で test/http_client.rb と test/mailer.rb の手書きのサーバを置き換える: あちらはバイトを分けて送る間隔、不正な応答、途中で切る、STARTTLS の後の平文などの異常系を一歩ずつ演じるためのもので、受信器（正常な相手）の形に合わない。出力と決定性を変えないため手を付けず、受信器のテストは `test/receivers.rb` に新しく書いた。
+- 後回し: TLS の受信器（証明書を作れない、D24）、SMTP の一接続内での複数のメッセージ（最後のもの以外は `transcript` にしか残らない）、受信器の一接続での keep-alive。アクションのタグ `v<VERSION>` は、アクションを含むリリース（次のリリース）から使える。それより前のタグ（v0.2.1 まで）にはアクションが無い。
+- 検証: `test/receivers.rb`（HttpClient と GET / POST / chunked 応答 / 204、生のソケットで chunked の要求本文と重複ヘッダ、`max` と `respond_with`、来ない要求が上限で nil になり `stop` の後に同じ番号で次の受信器が受けること、`stop` の冪等性、`accept_window` で番号が閉じること、Mailer と transcript・封筒・メッセージのバイト列、8BITMIME の有無、RCPT・挨拶・本文後の拒否、AUTH PLAIN、`Mailer.deliver` で二通、来ないメッセージ）を CRuby とコンパイル後の両方で同じ出力にした。openssl を足した版と、フレームワーク全体（test/template_integration.rb と同じ require、Server と Test::Client を含む）に受信器を足した版も一時的にコンパイルして通ることを確かめた。CI は `test/cli_new.rb` がワークフローの中身を確かめ、`cybertrain new` で作ったアプリで YAML の読み込みと `spin run gen -- --check` を確かめた。アクションの YAML も読み込み、spin.lock を読む Ruby の一行は git 依存と path 依存の spin.lock で確かめた。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。
@@ -670,6 +692,7 @@ blog/
   app/controllers/  app/models/  app/views/  app/helpers/
   config/routes.rb  config/app.rb  config/deploy.yml   # deploy.yml: Kamal（D11）
   Dockerfile  .dockerignore  .kamal/secrets
+  .github/workflows/ci.yml  # setup-cybertrain アクションを呼ぶ（D32）
   db/migrate/  db/schema.rb
   gen/                      # app.rb  controllers.rb  migrations.rb  models/  routes.rb  views.rb
   bin/blog.rb  bin/gen.rb  bin/db.rb   # blog.rb: server / migrate / db、db.rb: 開発時のマイグレーション

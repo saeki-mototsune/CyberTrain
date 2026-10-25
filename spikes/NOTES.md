@@ -594,3 +594,17 @@ finds the commit that removed them).
     ""; end; end` and `def show(name: Conf.new.name) = puts(name.bytesize)`;
     the struct has `sp_RbVal iv_name`. Assign every ivar in `initialize`
     (Config's `smtp_*` settings, cybertrain/mailer.rb, issue #64).
+
+74. A constant a subclass inherits from its superclass is not found by its
+    bare name in the subclass's methods once another class anywhere in the
+    program defines a constant of the same name (Spinel 2026.09.12): the
+    compiler warns "uninitialized constant X: defined nowhere in the
+    program (raises NameError when reached)" and the method raises
+    NameError at run time; CRuby finds it through the ancestors. Reduced
+    repro: `module M; class Elsewhere; LIMIT = 99; end; class Base; LIMIT
+    = 7; end; class Sub < Base; def hook = LIMIT; end; end; p
+    M::Sub.new.hook`; without `Elsewhere` it prints 7. Found with
+    `Test::HttpReceiver` reading `Receiver::MAX_LINE_BYTES` by its bare
+    name next to HttpClient's and Mailer's constants of that name (issue
+    #78). Spell an inherited constant with its owner
+    (`Receiver::MAX_LINE_BYTES`), and read the warnings `spin test` prints.

@@ -1677,6 +1677,79 @@ the capture when the compile failed, so the old snapshot is kept; in the
 framework checkout, `script/regen-snapshot test/<name>.rb` does exactly this and
 prints the diff stat).
 
+### Testing outbound calls
+
+When the code under test sends a webhook ([Outbound HTTP](#outbound-http)) or
+an e-mail ([Sending e-mail](#sending-e-mail)), the test receives it
+in-process: `Cybertrain::Test::HttpReceiver` and `Cybertrain::Test::SmtpReceiver`
+listen on `127.0.0.1`, record what arrives and answer with a canned reply.
+
+```ruby
+require_relative "support/app_test"
+require "cybertrain/test/http_receiver"
+require "cybertrain/test/smtp_receiver"
+
+test "a sign-up posts a webhook" do
+  hook = Cybertrain::Test::HttpReceiver.new(status: 202, body: "queued")
+  hook.start                                   # binds a free port, returns it
+  Cybertrain.config.http_allow_private = true  # HttpClient refuses loopback otherwise
+  SignupHook.post(hook.url("/hooks/signup"), "ann@example.com")   # the app's code
+  req = hook.received_request                  # waits at most 5 s; nil if nothing came
+  hook.stop
+  assert_equal "POST", req.http_method
+  assert_equal "/hooks/signup", req.http_target
+  assert_equal "application/json", req.http_header("Content-Type")
+  assert_includes req.http_body, "ann@example.com"
+end
+
+test "a refused recipient is reported" do
+  smtp = Cybertrain::Test::SmtpReceiver.new(reject: { rcpt: "550 5.1.1 no such user" })
+  port = smtp.start
+  mailer = Cybertrain::Mailer.new(host: "127.0.0.1", port: port, tls: "none", from: "app@example.com")
+  assert_raises("RejectedError") { mailer.deliver(to: "nobody@example.org", subject: "Hi", body: "Hello\n") }
+  mail = smtp.received_message
+  smtp.stop
+  assert_equal ["EHLO localhost", "MAIL FROM:<app@example.com>", "RCPT TO:<nobody@example.org>"],
+               mail.transcript.first(3)
+  refute mail.delivered?
+end
+```
+
+`HttpReceiver.new` takes the canned `status:`, `headers:`, `body:` and
+`chunked:` (`respond_with` changes them between requests); the request comes
+back as a `ReceivedRequest` (`http_method`, `http_target`, `http_path`,
+`http_headers` with lowercased names, `http_header(name)`, `http_body` with a
+chunked body decoded). `SmtpReceiver` plays 220, EHLO (with 8BITMIME unless
+`eight_bit_mime: false`, AUTH PLAIN with `auth: true`), MAIL, RCPT, DATA and
+QUIT; `reject:` fails any of `:greeting`, `:ehlo`, `:mail`, `:rcpt`, `:data`
+or `:message` with the reply given. A `ReceivedMessage` has the
+`envelope_from`, `envelope_recipients`, the `message_data` (dot-stuffing
+undone), `message_header(name)`, `message_body` and the `transcript` of
+commands. Both accept one connection unless `max:` says more
+(`received_requests` / `received_messages` return them all). Every wait is
+bounded: a receiver gives up after `accept_window:` (10 s) without a
+connection, a silent client after `read_timeout:` (5 s), and `stop` (safe
+to call twice) ends and joins the receiver's thread and closes its port, so
+a receiver never takes a later test's connection. They need only Ruby's
+socket library, not openssl.
+
+### Continuous integration
+
+`cybertrain new` writes `.github/workflows/ci.yml` for the app. It calls the
+`setup-cybertrain` action of this repository
+([.github/actions/setup-cybertrain](.github/actions/setup-cybertrain/action.yml)),
+pinned to the CLI's release tag, which installs the SQLite, zlib and OpenSSL
+headers and Ruby, reads the framework commit the app is locked to out of
+`spin.lock`, fetches the framework at that commit and runs its `cybertrain
+doctor` and `cybertrain setup` (with `~/.cybertrain/spinel` cached per Spinel
+release and runner image). The workflow then checks that `spin.lock` is
+current (`spin lock && git diff --exit-code spin.lock`) and `gen/` is fresh
+(`spin run gen -- --check`), and runs `spin test` once `test/` has a test
+program. When the toolchain steps change, the action changes, not every app's
+copy. The commit is read from `spin.lock`, so the workflow assumes the
+default git dependency; an app made with `--path` passes the framework
+checkout to the action as `framework-path`.
+
 ## Learn more
 
 - [Homepage](https://saeki-mototsune.github.io/CyberTrain/),

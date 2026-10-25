@@ -170,6 +170,7 @@ test "the app's test boots the app and drives the sign-in flow" do
   assert_includes support, "APP = AppTest.boot\n"
   assert_includes support, "def self.sign_in(client"
   assert_includes support, "Cybertrain::RateLimit.reset_all!\n"
+  assert_includes support, "\"cybertrain/test/http_receiver\""
   spec = read("shop/test/authentication.rb")
   assert_includes spec, "require_relative \"support/app_test\""
   assert_includes spec, "client.post(\"/sign_up\""
