@@ -181,7 +181,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - validations / callbacks: `validates :title, presence: true, length: { minimum: 5 }` は生成された `model_name` 文字列をキーにした登録簿に積み、`valid?` が `read_attribute` 経由で評価する。`errors.full_messages` / `errors[:title]` / `errors.any?` を提供。コールバックはレコードを引数に取るブロック `before_save { |r| r.title = r.title.strip }`（`instance_exec` が使えないため、暗黙 `self` の形は提供しない）。
 - アダプタ: SQLite（FFI）のみ。`Connection#execute(sql, binds)` が `Array<Hash<String, Integer | Float | String | nil>>` を返す（スパイク 6 でこの型が混在しても正しく動くことを確認）。モデルの行読み出し（`Relation#rows`、`reload`）だけは `Connection#execute_models` を通り、DATETIME 列は文字列ではなく UTC のエポック秒（Integer）で返る（`Cast.time_or_nil` が Time にする。理由と数値は docs/benchmark.md）。接続は `SizedQueue` によるプール（初期値はワーカー数）、WAL モード・busy 待ち（現在は C の busy handler、100 µs 間隔で約 5 秒。`PRAGMA busy_timeout` は使わない）・foreign_keys を既定で設定、`sqlite3_step` / `prepare` / `exec` は `blocking: true`。`sqlite3_bind_text` の破棄関数には整数リテラル `-1`（SQLITE_TRANSIENT）を渡す。`sqlite3_open_v2` / `prepare_v2` の出力ポインタは静的 `ffi_buffer` を使わず、呼び出しごとに `malloc(8)` した領域を使う（静的バッファはスレッド間で競合して SIGSEGV する。スパイク 6 で再現と修正を確認）。複数行の書き込みは `BEGIN` / `COMMIT` で包む（自動コミットの 20 倍速い）。PostgreSQL は libpq の FFI で後日。
 - MVP 外: `has_many :through`、`includes` / `preload`、`pluck`、モデル API の `transaction`、enum、STI、polymorphic 関連、`dependent:`。
-- 2026-10-25 追記: `pluck`（型別の `pluck_str` / `pluck_int` / `pluck_float`）、`upsert`、`increment`、`count_by`、`sum_int` / `sum_float`、`where_like` を D21 で足した。
+- 2026-10-25 追記: `pluck`（型別の `pluck_str` / `pluck_int` / `pluck_float`）、`upsert`、`increment`、`count_by`、`sum_int` / `sum_float`、`where_like` を D22 で足した。
 
 ### D11. 名前、パッケージ構成、雛形
 

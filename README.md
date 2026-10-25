@@ -777,7 +777,7 @@ the statement runs exactly once per `migrate` of its version.
 The generated relations cover `where` / `where_sql` / `order` / `limit` /
 `offset` / `count` / `exists?` / `delete_all`. For the counters, statistics
 and search boxes most applications also need, there are typed additions
-(issue #74, `docs/design.md` D21) rather than a query builder; each takes
+(issue #74, `docs/design.md` D22) rather than a query builder; each takes
 SQL column names, checked and quoted (anything else is an `ArgumentError`),
 and binds every value:
 
