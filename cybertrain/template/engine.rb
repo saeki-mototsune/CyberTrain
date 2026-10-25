@@ -106,12 +106,13 @@ module Cybertrain
         return cached if @cache && !cached.nil?
 
         path = File.join(@root, key)
-        raise MissingTemplate, "Missing template #{path}" unless File.exist?(path)
+        resolved = resolved_template_path(path)
+        raise MissingTemplate, "Missing template #{path}" if resolved.empty?
 
-        stamp = file_stamp(path)
+        stamp = file_stamp(resolved)
         return cached if !cached.nil? && @stamps[key] == stamp
 
-        parsed = Template.parse(File.read(path), key, path)
+        parsed = Template.parse(File.read(resolved), key, path)
         store_template(key, parsed)
         @stamps[key] = stamp
         parsed
@@ -122,7 +123,7 @@ module Cybertrain
         sources = @sources
         return sources.key?(key) unless sources.nil?
 
-        File.exist?(File.join(@root, key))
+        !resolved_template_path(File.join(@root, key)).empty?
       end
 
       def render(name, env, helpers)
@@ -195,6 +196,20 @@ module Cybertrain
       def file_name(name)
         text = name.to_s
         text.end_with?(".erb") ? text : "#{text}.html.erb"
+      end
+
+      # Resolve symlinks before checking the root boundary, and read this
+      # canonical path rather than following the original name again.
+      # Keep the caller's path separately for source paths and diagnostics.
+      def resolved_template_path(path)
+        root = File.realpath(@root)
+        resolved = File.realpath(path)
+        prefix = root.end_with?("/") ? root : "#{root}/"
+        return "" unless resolved.start_with?(prefix) && File.file?(resolved)
+
+        resolved
+      rescue Errno::ENOENT, Errno::ENOTDIR, Errno::ELOOP
+        ""
       end
 
       # mtime alone has one-second resolution on some filesystems; the size

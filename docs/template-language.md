@@ -271,6 +271,8 @@ With a model, fields are named `post[title]`/`id="post_title"` (`Inflector.under
 
 `"posts/show"` and `"posts/show.html.erb"` name the same template. Development reads `app/views/` from disk with `cache: false` (a file is re-read and re-parsed whenever its mtime or size changes); the test environment reads from disk with `cache: true` (parsed once). A production binary never touches disk: `cybertrain build` runs `spin run gen -- --embed-views`, which writes every `*.erb` under `app/views/` (dotfiles and symlinked directories skipped) into `gen/views.rb`, and `Engine.embedded(sources)` parses each entry once (error messages keep the same `posts/show.html.erb:12` shape); a binary whose table is empty refuses to boot in production. A missing template raises `Cybertrain::Template::MissingTemplate` — `"Missing template <full path>"` from disk, `"Missing template posts/nope.html.erb (embedded)"` from the table.
 
+File lookups resolve the view root and template path through symlinks and only load regular files inside that root. Paths that escape it (including through symlinks) raise `MissingTemplate`; `exists?` returns false for those paths.
+
 ## 9. Errors
 
 Two exception classes, both in `ast.rb`'s `Cybertrain::Template` namespace (distinct from `::SyntaxError`/`::RuntimeError`):
