@@ -486,6 +486,8 @@ module Cybertrain
         run_action run_before_callbacks run_after_callbacks run_one
         rescue_with_handler render_partial send_html string_keys json_body
         safe_redirect_path
+
+        apply_rate_limit
         record_not_found resume_session require_authentication
         start_new_session_for terminate_session after_authentication_url
       ]

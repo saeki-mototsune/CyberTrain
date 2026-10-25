@@ -239,7 +239,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - `cybertrain-auth` spin パッケージ（エンジン）: 上記のとおり拡張点が無く、あったとしても推論衝突と `app/views` の制約で薄い層にしかならない。
   - `has_secure_password` マクロ: `define_method` が無い。ジェネレータの字句走査で `has_secure_password` を拾って `gen/models/user.rb` に吐く案は可能だが、15 行の手書きメソッドのためにジェネレータの入力を増やす価値がない。アプリの `app/models/user.rb` に書き出し、コメントで Rails との対応を示す。
   - concern（`app/controllers/concerns/authentication.rb` を `include`）: 字句走査は `include` を追わず、`gen/app.rb` の require 順も `application_controller` が先なので CRuby で未定義になる。`ApplicationController` のクラス行の直後にブロックを挿入する（`add_route` と同じ一回限りの編集。`def require_authentication` があれば二度目は何もしない）。concern 対応（`include` を辿る走査と require 順）は将来の独立した機能。
-  - パスワードリセット・メーラー: メーラーが無い（2.3 節）。レート制限: 未実装。`Current`: スレッドローカルの代わりに `resume_session` が `@current_user` / `@current_session` を置き、`view_assigns` 経由でテンプレートが読む。
+  - パスワードリセット・メーラー: メーラーが無い（2.3 節）。レート制限: 当初は未実装（2026-10-25 に D26 で `rate_limit` を足し、生成する SessionsController が使う）。`Current`: スレッドローカルの代わりに `resume_session` が `@current_user` / `@current_session` を置き、`view_assigns` 経由でテンプレートが読む。
   - 登録画面を書かない（Rails 8 と同じ）: Rails は console で最初のユーザーを作るが、cybertrain に console は無い（8 章）。`RegistrationsController`（`/sign_up`）を書き、招待制なら消すようコメントする。
 - 帰結:
   - フレームワークに足したもの: `Cybertrain::Password`、`Controller.skip_before_action`（クラス名キーの実行時データ。`run_before_callbacks` が名前で照合、継承される。ブロック形は名前が無いので飛ばせない）、`Mapper#resource`、カスタム経路の派生名が既出なら無名にする Rails の規則（`get "/sign_up"` と `post "/sign_up"` で一つの `sign_up_path`。`as:` の重複は従来どおりエラー）。
@@ -443,6 +443,26 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - 絶対有効期限を生成コード（行の `created_at`）だけで持つ: 認証を使わないアプリのセッション（CSRF トークン、フラッシュ）は期限なしのままになる。両方に置いた。
   - `verify?` 自体を直列化する: 認証以外の用途（API トークンのバッチ照合など）まで一列に並ぶ。別名にした。
 - 帰結: `ATTACHMENT_RESERVED_ACTIONS` に `safe_redirect_path` を足した（コントローラのメソッド名と添付フィールド名の衝突、`script/check-reserved-names`）。`local_path?` は `?` 付きなのでフィールド名になれない。テスト: test/password.rb（直列化はロックを保持したまま別スレッドの照合が終わらないことと、並行時の同時実行数 1 で確かめる）、test/session.rb（固定した時計で期限）、test/controller.rb（戻り先）、test/cli_authentication.rb（生成物）。
+
+### D26. レート制限と `request.client_ip`: 同一ホストの信頼済みプロキシだけを信じる（2026-10-25、issue #70）
+
+- 決定:
+  - `Request#client_ip`: 既定は `remote_addr`。`Config#trusted_proxy`（既定 false、`CYBERTRAIN_TRUSTED_PROXY=1` / `true`）が真で、**かつ**接続元がループバック（127.0.0.0/8、`::1`、`::ffff:127.x.x.x`）のときだけ、`X-Forwarded-For` の**最後の**要素（同じホストのプロキシが付け足したもの）を使う。それより前の要素はクライアントが自由に書けるので一切使わない。最後の要素が空、45 バイト超、印字可能 ASCII（0x21〜0x7E）以外を含む、またはヘッダが無いときは `remote_addr`。走査はすべてバイト単位（`getbyte` / `byteslice`）で、`split` / `strip` / `downcase` は使わない（ヘッダは任意のバイトを含みうる。CRuby の `split` は不正な UTF-8 で例外を投げる、NOTES 規則 52）。引数は `s = value.to_s` の新しいローカルで読む（規則 62）。
+  - `Request#loopback?`: `remote_addr` がループバックか（X-Forwarded-For は見ない）。初回セットアップ画面や管理用エンドポイントの「このマシンからだけ」の判定用。ドット区切り 4 要素・各 0〜255 を検査し、`127.0.0.1x` や `1270.0.0.1` は偽。サーバは TCP だけで UNIX ソケットを持たないので、その場合分けは無い。
+  - 信頼フラグは HTTP 層のモジュール ivar `Request.trusted_proxy` に置き、`Application#boot` が `Config#trusted_proxy` を入れる（`Params.max_page` / `Multipart.configure` と同じ形。HTTP 層は Config を読めない、`script/check-http-layer`）。
+  - `Controller.rate_limit(to:, within:, only: [], except: [], by: :client_ip, redirect_to: "", alert: "")`: 宣言ごとに `Cybertrain::RateLimit`（issue では名前未定だったのでこれにした）を一つ作って `RateLimit::ALL`（定数なので GC ルート、NOTES 規則 64）に登録し、その添字を持つ before コールバック（`Callback#limit_id`、他のコールバックは -1）を足す。`run_one` は添字があればストアドブロックではなくコントローラ自身の private メソッド `apply_rate_limit` を呼ぶ。ストアドブロックからの呼び出しは呼び先の引数の型を決めない（規則 30）ので、ブロックで包む形は避けた。宣言順で他の before_action と並ぶ。`by:` は `:client_ip`（既定）と `:remote_addr`。
+  - 数え方は固定窓: キー（`"<controller_path> <アドレス>"`。親で宣言した制限もサブクラスごとに別に数える。Rails の `rate_limit` と同じ）ごとに窓の開始秒と回数を持つ。窓の最初の要求が窓を開き、`to` 回目までを通し、`within` 秒後に閉じる。超えたら 429・本文 `Too Many Requests`・`Retry-After`（窓が閉じるまでの秒、最小 1）。`redirect_to:` があれば 303 でそこへ送り、`alert:` を `flash[:alert]` に入れる（Rails の生成コードの `with: -> { redirect_to ..., alert: ... }` に当たる。ブロック形は上の理由で採らない）。どちらでもアクションは走らない。
+  - メモリの上限: 型付き Hash 2 つ（開始秒・回数。種を入れて空にする、規則 9）を Mutex 一つで守る。キーは窓を開いた順に並べ、窓を開き直したキーは削除して入れ直すので、表は常に開始秒順で、期限切れは先頭に固まる。新しいキーが満杯（既定 10 000 キー、`max_keys=`）の表に来たら、先頭から期限切れを消し、それでも 9 割を超えていれば古い窓から消す（1 割ずつ空けるので、`keys` の複製を作るのは満杯のときだけ）。大量のアドレスで攻撃されても他のクライアントの窓が早く閉じるだけで、プロセスは育たない。
+  - 時刻は `RateLimit.current_time`（エポック秒）。テストは `RateLimit.current_time = n` で固定し、-1 でシステム時計に戻す。
+  - `cybertrain generate authentication` の `SessionsController` は `rate_limit to: 10, within: 3 * 60, only: [:create], redirect_to: "/session/new", alert: "Try again later."` を書く（Rails 8 の生成物と同じ値と振る舞い）。`start_new_session_for` が記録する `ip_address` も `request.client_ip` にした。生成する `AppTest.sign_in` は最初に `RateLimit.reset_all!` を呼ぶ: テストクライアントはすべて 127.0.0.1 なので、毎テストでサインインするスイートは 10 回を超える（Rails はテスト環境のキャッシュが null store なので数えない）。
+  - `Controller::STATUS_SYMBOLS` と `Test::Client` の `assert_response` に `:too_many_requests`（429）を足した。
+- 却下した案:
+  - X-Forwarded-For の最初の要素を使う案、または信頼するプロキシの一覧（CIDR の設定）を右から辿る Rails の `remote_ip` 方式。最初の要素はクライアントが選べる。一覧を辿る実装は多段構成のためのもので、cybertrain の想定（同じホストの nginx / Caddy / kamal-proxy 一段、docs/deploy.md）には過剰。直接つながるクライアントが自分のアドレスを選べないことは「ループバックからの接続に限る」で保証する。
+  - ループバック判定なしで `trusted_proxy` だけを見る案。設定したままアプリを外部に直接公開すると、誰でもアドレスを詐称できる。
+  - 単調時計。窓の秒数はそのまま `Retry-After` に出すので壁時計の整数秒で足り、テストで差し替えやすい。
+  - データベースで数える案（複数プロセスで共有）。今回はプロセス内だけ。後から宣言はそのままに裏側を差し替えられるよう、カウンタは `RateLimit` に閉じ込めた。
+  - `only: :create`（Symbol 単体）や `within: 3.minutes`。`before_action` と同じく配列だけを受け、`Integer#minutes` は無いので秒の整数にした。
+- 帰結: 制限されたアクションへの要求は一つのロックを取る（NOTES 規則 57: 全要求でロックを取ると複数ワーカーで詰まる）ので、`only:` で絞るようドキュメントに書いた。ロックの保持区間は Hash の数回の操作で、満杯時の掃除も 1 割ぶん。`apply_rate_limit` はコントローラの private メソッドなので `ATTACHMENT_RESERVED_ACTIONS` に足した（`script/check-reserved-names`）。使い方は README の「Rate limiting and the client address」に書いた。
 
 ## 5. リクエストの流れ
 

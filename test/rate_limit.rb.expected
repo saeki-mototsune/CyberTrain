@@ -1,0 +1,17 @@
+ok   rate_limit declarations are registered in order
+ok   requests under the limit pass; the next is a 429 with Retry-After
+ok   only: leaves the other actions alone
+ok   the window closing resets the count
+ok   behind a trusted proxy each forwarded address has its own count
+ok   without a trusted proxy X-Forwarded-For is ignored
+ok   by: :remote_addr counts the peer even behind a trusted proxy
+ok   redirect_to: answers a 303 with the alert in the flash
+ok   a limit inherited from a parent counts each controller apart
+ok   hit answers 0 while allowed and the seconds left once exhausted
+ok   a full table drops the oldest windows first
+ok   a full table drops every expired window before an open one
+ok   a window that reopens moves its key to the back of the table
+ok   the table never holds more than max_keys keys
+ok   rate_limit refuses a bad to:, within: or by:
+ok   current_time follows the system clock once unfixed
+16 tests, 78 assertions, 0 failures

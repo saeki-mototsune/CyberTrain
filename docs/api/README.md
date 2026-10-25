@@ -18,11 +18,11 @@ generates ({Article}, {ArticleRelation}, {Gen::UrlHelpers}).
 
 | You write | Reference |
 | --- | --- |
-| `class ArticlesController < ApplicationController` | {Cybertrain::Controller}: `before_action`, `skip_before_action`, `rescue_from`, `render`, `redirect_to`, `head` |
+| `class ArticlesController < ApplicationController` | {Cybertrain::Controller}: `before_action`, `skip_before_action`, `rate_limit` ({Cybertrain::RateLimit}), `rescue_from`, `render`, `redirect_to`, `head` |
 | `user.password = ...`, `user.authenticate(...)` (from `cybertrain generate authentication`) | {Cybertrain::Password}: `hash`, `verify?`, `needs_rehash?`, `iterations=` |
 | `params[:id]`, `params.require(:article).permit(...)` | {Cybertrain::Params} |
 | `session[...]`, `flash[...]` | {Cybertrain::Session}, {Cybertrain::Flash} |
-| `request.header(...)`, `response.set_header(...)`, cookies | {Cybertrain::Request}, {Cybertrain::Response}, {Cybertrain::Cookies} |
+| `request.header(...)`, `request.client_ip`, `response.set_header(...)`, cookies | {Cybertrain::Request}, {Cybertrain::Response}, {Cybertrain::Cookies} |
 | `Article.where(...).order(...).to_a`, `Article.find(id)` | {Article} and {ArticleRelation} (generated), {Cybertrain::Relation} |
 | `article.save`, `article.update(...)`, `article.errors` | {Cybertrain::Model}, {Cybertrain::Errors} |
 | `validates`, `before_save { \|r\| ... }` in `app/models/` | {Cybertrain::Model.validates}, {Cybertrain::Model.before_save} and the other callbacks |

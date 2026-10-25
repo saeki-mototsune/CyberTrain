@@ -126,6 +126,7 @@ module Cybertrain
       Multipart.configure(c.max_upload_bytes, c.max_multipart_parts)
       BlobStore.root = c.upload_root
       Params.max_page = c.max_page
+      Request.trusted_proxy = c.trusted_proxy
       Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
       self
     end

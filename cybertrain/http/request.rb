@@ -26,8 +26,10 @@ module Cybertrain
   # hand-built requests in tests behave the same.
   #
   # {Controller#request} in an action. Read parameters through
-  # {Controller#params}; the request holds the raw parts. There is no
-  # `remote_ip` (no X-Forwarded-For handling), `xhr?`, `format` or `url`.
+  # {Controller#params}; the request holds the raw parts. The client's
+  # address is {#client_ip} (Rails' `remote_ip`, with one trusted proxy on
+  # this host at most, see {Request.trusted_proxy}). There is no `xhr?`,
+  # `format` or `url`.
   # @example
   #   request.header("user-agent")
   #   JSON.parse(request.body) if request.json?   # JSON bodies are not parsed into params
@@ -519,6 +521,165 @@ module Cybertrain
         end
       end
       segments
+    end
+
+    # Whether {#client_ip} may read X-Forwarded-For, `false`: a module-level
+    # ivar with a literal default, the Params.max_page shape (spikes/NOTES.md
+    # rule 18). Application#boot installs Config#trusted_proxy here, since
+    # the HTTP layer cannot read the Config itself.
+    @trusted_proxy = false
+
+    # @return [Boolean] whether a loopback peer's X-Forwarded-For names the
+    #   client ({#client_ip}); Config#trusted_proxy
+    # @api public
+    def self.trusted_proxy
+      @trusted_proxy
+    end
+
+    # Installs the trusted-proxy flag. Called by Application#boot with
+    # Config#trusted_proxy; a test may call it directly.
+    # @param flag [Boolean]
+    # @return [nil]
+    # @api public
+    def self.trusted_proxy=(flag)
+      @trusted_proxy = flag == true
+      nil
+    end
+
+    # The longest address #client_ip takes from X-Forwarded-For: an IPv6
+    # address with an embedded IPv4 one is at most 45 characters.
+    MAX_FORWARDED_HOP_BYTES = 45
+
+    # Whether the connection comes from this machine: {#remote_addr} is in
+    # 127.0.0.0/8, `::1` or an IPv4-mapped `::ffff:127.x.x.x`. For pages only
+    # an operator on the server should reach (a first-run setup page, an
+    # admin endpoint). X-Forwarded-For is never consulted, so behind a proxy
+    # on the same host every request is loopback: check {#client_ip} as well
+    # when one is in front.
+    # @example
+    #   before_action(only: [:setup]) { |c| c.head :forbidden unless c.request.loopback? }
+    # @return [Boolean]
+    # @api public
+    def loopback?
+      Request.loopback_address?(@remote_addr)
+    end
+
+    # The client's address: {#remote_addr}, unless {Request.trusted_proxy} is on
+    # (Config#trusted_proxy, `CYBERTRAIN_TRUSTED_PROXY=1`) and the
+    # connection comes from loopback ({#loopback?}: the proxy runs on this
+    # host), in which case the last hop of X-Forwarded-For, the address the
+    # proxy appended. Earlier hops are whatever the client wrote and are
+    # never used. A last hop that is empty, longer than 45 bytes or not
+    # printable ASCII (or no header at all) gives {#remote_addr}. What
+    # {Controller.rate_limit} counts by default.
+    # @example
+    #   Session.create!(user_id: user.id, ip_address: request.client_ip)
+    # @return [String]
+    # @api public
+    def client_ip
+      addr = @remote_addr
+      return addr unless Request.trusted_proxy
+      return addr unless Request.loopback_address?(addr)
+
+      forwarded = header("x-forwarded-for")
+      return addr if forwarded.nil?
+
+      hop = Request.last_forwarded_hop(forwarded)
+      hop.empty? ? addr : hop
+    end
+
+    # The last comma-separated element of an X-Forwarded-For value, spaces
+    # and tabs around it removed, or "" when it is empty, longer than
+    # MAX_FORWARDED_HOP_BYTES or holds a byte outside 0x21..0x7E. Byte scans
+    # only: the header may hold any bytes, including invalid UTF-8, which
+    # CRuby's split/strip would raise on (NOTES rule 52); read through a new
+    # local for rule 62 (header values can be boxed).
+    def self.last_forwarded_hop(value)
+      s = value.to_s
+      stop = s.bytesize
+      start = stop
+      while start > 0 && s.getbyte(start - 1) != 44
+        start -= 1
+      end
+      while start < stop && Request.blank_byte?(s.getbyte(start))
+        start += 1
+      end
+      while stop > start && Request.blank_byte?(s.getbyte(stop - 1))
+        stop -= 1
+      end
+      length = stop - start
+      return "" if length < 1 || length > MAX_FORWARDED_HOP_BYTES
+
+      i = start
+      while i < stop
+        b = s.getbyte(i)
+        return "" if b < 0x21 || b > 0x7e
+
+        i += 1
+      end
+      s.byteslice(start, length).to_s
+    end
+
+    def self.blank_byte?(b)
+      b == 32 || b == 9
+    end
+
+    # Whether an address as the server reports it (Socket#peeraddr) is a
+    # loopback one: "::1", or a dotted quad in 127.0.0.0/8, bare or
+    # IPv4-mapped ("::ffff:127.0.0.1", either case). A byte scan; "" (a
+    # request built without an address) is not loopback.
+    def self.loopback_address?(addr)
+      s = addr.to_s
+      return true if s == "::1"
+
+      from = Request.mapped_prefix?(s) ? 7 : 0
+      return false unless s.byteslice(from, 4).to_s == "127."
+
+      Request.dotted_quad?(s, from)
+    end
+
+    # Whether `s` starts with "::ffff:" in either case (bytes compared, so
+    # no downcase of a String that may not be valid UTF-8).
+    def self.mapped_prefix?(s)
+      return false if s.bytesize < 8
+      return false unless s.getbyte(0) == 58 && s.getbyte(1) == 58 && s.getbyte(6) == 58
+
+      i = 2
+      while i < 6
+        b = s.getbyte(i)
+        return false unless b == 102 || b == 70
+
+        i += 1
+      end
+      true
+    end
+
+    # Four decimal parts of one to three digits, each at most 255,
+    # separated by dots, from byte `from` to the end of `s`.
+    def self.dotted_quad?(s, from)
+      parts = 0
+      digits = 0
+      value = 0
+      i = from
+      n = s.bytesize
+      while i < n
+        b = s.getbyte(i)
+        if b == 46
+          return false if digits == 0
+
+          parts += 1
+          digits = 0
+          value = 0
+        elsif b >= 48 && b <= 57
+          digits += 1
+          value = value * 10 + (b - 48)
+          return false if digits > 3 || value > 255
+        else
+          return false
+        end
+        i += 1
+      end
+      digits > 0 && parts == 3
     end
 
     # The raw Cookie header; parse it with {Cookies.parse}.

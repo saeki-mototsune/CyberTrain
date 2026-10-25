@@ -5,6 +5,7 @@ require "cybertrain/http/client_error"
 require "cybertrain/http/uploaded_file"
 require "cybertrain/logger"
 require "cybertrain/callback"
+require "cybertrain/rate_limit"
 require "cybertrain/views"
 require "cybertrain/template/helpers"
 require "cybertrain/generator/inflector"
@@ -90,7 +91,7 @@ module Cybertrain
       ok: 200, created: 201, no_content: 204,
       moved_permanently: 301, found: 302, see_other: 303,
       bad_request: 400, forbidden: 403, not_found: 404,
-      unprocessable_entity: 422, internal_server_error: 500
+      unprocessable_entity: 422, too_many_requests: 429, internal_server_error: 500
     }
 
     # Default statuses for render/head and redirect_to. They are 200 and 302
@@ -107,7 +108,7 @@ module Cybertrain
     DEFAULT_REDIRECT_STATUS = [302, :found][0]
     # What run_before_callbacks consults when no controller declared a skip:
     # seeded with the element type and emptied (spikes/NOTES.md rule 9).
-    NO_SKIPS = Array.new(0) { Callback.new(:skip, nil, nil, [], []) }
+    NO_SKIPS = Array.new(0) { Callback.new(:skip, nil, nil, [], [], -1) }
 
     # Runs a method or a block before the action. The chain runs the
     # parent classes' callbacks first, then each class's in declaration order,
@@ -130,7 +131,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.before_action(name = nil, only: [], except: [], &block)
-      add_callback(Callback.new(:before, name, block, only, except))
+      add_callback(Callback.new(:before, name, block, only, except, -1))
     end
 
     # Runs a method or a block after the action and its implicit render,
@@ -145,7 +146,60 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.after_action(name = nil, only: [], except: [], &block)
-      add_callback(Callback.new(:after, name, block, only, except))
+      add_callback(Callback.new(:after, name, block, only, except, -1))
+    end
+
+    # Limits how often one client may call some actions: at most `to`
+    # requests per `within` seconds for each client address, counted in
+    # this process before the action runs (a before callback, in
+    # declaration order with the others). An exhausted client gets a 429
+    # with the body "Too Many Requests" and a `Retry-After` header (the
+    # seconds until its window closes), or, with `redirect_to:`, a 303 to
+    # that path with `alert:` in the flash. The action does not run either
+    # way.
+    #
+    # The count is kept per declaration, per controller (a limit declared in
+    # a parent counts each subclass apart, as Rails' does) and per address:
+    # {Request#client_ip} by default, so behind a proxy on the same host set
+    # Config#trusted_proxy, or every visitor shares the proxy's address;
+    # `by: :remote_addr` counts the connection's peer whatever the
+    # configuration. Memory is bounded and counts are lost on restart (see
+    # {RateLimit}). Every request to a limited action takes one lock, so
+    # name the actions with `only:`.
+    #
+    # Differences from Rails: `within:` is a number of seconds (`3 * 60`;
+    # there is no `3.minutes`), `only:`/`except:` take Arrays, there is no
+    # `by:` or `with:` block, and the count lives in the process rather than
+    # in a cache store.
+    # @example
+    #   class SessionsController < ApplicationController
+    #     rate_limit to: 10, within: 3 * 60, only: [:create],
+    #                redirect_to: "/session/new", alert: "Try again later."
+    #   end
+    #   rate_limit to: 100, within: 60, only: [:create, :update]   # a 429 with Retry-After
+    # @param to [Integer] requests allowed per window, at least 1
+    # @param within [Integer] the window, in seconds, at least 1
+    # @param only [Array<Symbol>] limit these actions only
+    # @param except [Array<Symbol>] limit every action but these
+    # @param by [Symbol] `:client_ip` (the default) or `:remote_addr`
+    # @param redirect_to [String] a path to redirect an exhausted client to
+    #   (`""`, the default: answer 429 instead)
+    # @param alert [String] `flash[:alert]` for that redirect (`""`: none)
+    # @return [nil]
+    # @raise [ArgumentError] for a `to` or `within` below 1 or another `by:`
+    # @api public
+    def self.rate_limit(to:, within:, only: [], except: [], by: :client_ip, redirect_to: "", alert: "")
+      raise ArgumentError, "rate_limit needs to: of at least 1 (got #{to})" if to < 1
+      raise ArgumentError, "rate_limit needs within: of at least 1 second (got #{within})" if within < 1
+
+      by_remote_addr = false
+      case by
+      when :client_ip then by_remote_addr = false
+      when :remote_addr then by_remote_addr = true
+      else raise ArgumentError, "rate_limit by: must be :client_ip or :remote_addr (got #{by.inspect})"
+      end
+      id = RateLimit.register(RateLimit.new(to, within, by_remote_addr, redirect_to, alert))
+      add_callback(Callback.new(:before, nil, nil, only, except, id))
     end
 
     def self.add_callback(callback)
@@ -170,7 +224,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.skip_before_action(name, only: [], except: [])
-      (SKIPS[self.name] ||= []) << Callback.new(:skip, name, nil, only, except)
+      (SKIPS[self.name] ||= []) << Callback.new(:skip, name, nil, only, except, -1)
       nil
     end
 
@@ -726,12 +780,45 @@ module Cybertrain
     end
 
     def run_one(cb)
+      limit_id = cb.limit_id
+      if limit_id >= 0
+        apply_rate_limit(RateLimit.all[limit_id])
+        return nil
+      end
       name = cb.name
       if name.nil?
         cb.block.call(self)
       else
         run_callback(name)
       end
+    end
+
+    # One rate_limit check: counts this request and, when the client is
+    # over the limit, answers for the action (a 429 with Retry-After, or
+    # the declaration's redirect), which halts the chain. The key carries
+    # the controller's path, so a limit inherited from a parent counts
+    # each controller apart.
+    def apply_rate_limit(limit)
+      address = limit.by_remote_addr? ? @request.remote_addr : @request.client_ip
+      key = "#{controller_path} #{address}"
+      wait = limit.hit(key, RateLimit.current_time)
+      return nil if wait == 0
+
+      path = limit.redirect_path
+      if path.empty?
+        r = @response
+        r.status = 429
+        r.content_type = "text/plain; charset=utf-8"
+        r.set_header("Retry-After", wait.to_s)
+        r.body = RateLimit::BODY
+        r.performed!
+      else
+        message = limit.alert_message
+        messages = flash
+        messages[:alert] = message unless message.empty? || messages.nil?
+        @response.redirect(path, 303)
+      end
+      nil
     end
 
     # Re-raises e when no rescue_from handler matches its class name.

@@ -139,6 +139,20 @@ module Cybertrain
     # @api public
     attr_accessor :session_partitioned
 
+    # Whether a reverse proxy on this host may name the client, `false`,
+    # from `CYBERTRAIN_TRUSTED_PROXY` (`1` or `true`). When true, a request
+    # whose connection comes from loopback (127.0.0.0/8, `::1`) takes its
+    # {Request#client_ip} from the last hop of `X-Forwarded-For`, the one
+    # the proxy appended; any other connection keeps its peer address. Turn
+    # it on when the server listens on 127.0.0.1 behind nginx, Caddy or
+    # kamal-proxy on the same machine, so that {Controller.rate_limit}
+    # counts each visitor rather than the proxy. Nothing changes for a
+    # client that connects directly from another machine: its header is
+    # ignored.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :trusted_proxy
+
     # SQLite connections in the pool, `4`.
     # @return [Integer]
     # @api public
@@ -290,6 +304,13 @@ module Cybertrain
       configured == "1" || configured == "true"
     end
 
+    # True only for CYBERTRAIN_TRUSTED_PROXY=1 or =true, like
+    # default_session_partitioned.
+    def self.default_trusted_proxy
+      configured = ENV["CYBERTRAIN_TRUSTED_PROXY"] || ""
+      configured == "1" || configured == "true"
+    end
+
     def initialize
       @env = Config.default_env
       @host = Config.default_host
@@ -334,6 +355,9 @@ module Cybertrain
       # Partitioned (CHIPS): with None, the cookie survives third-party cookie
       # blocking inside such a frame. Adds Secure too.
       @session_partitioned = Config.default_session_partitioned
+      # Request.trusted_proxy's default; Application#boot installs it there
+      # (the HTTP layer cannot read the Config).
+      @trusted_proxy = Config.default_trusted_proxy
       @pool_size = 4
       @static_files = true
       @csrf = true
