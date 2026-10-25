@@ -42,10 +42,16 @@ registry:
 # The app's settings (cybertrain/config.rb). Secrets come from
 # .kamal/secrets.
 env:
+  clear:
+    # kamal-proxy runs in its own container and connects from its address
+    # on the Docker network (Docker hands those out of 172.16.0.0/12 by
+    # default): trust the X-Forwarded-For it sets, so that
+    # request.client_ip, what rate_limit counts, is each visitor rather
+    # than the proxy. Change it if your Docker networks use another range.
+    CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12
+    # SPINEL_WORKERS: 2
   secret:
     - CYBERTRAIN_SECRET_KEY_BASE
-  # clear:
-  #   SPINEL_WORKERS: 2
 
 # The SQLite database lives in storage/: keep it on the server across
 # deploys. Back it up from there (docs/deploy.md).

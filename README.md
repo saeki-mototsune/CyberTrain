@@ -526,7 +526,9 @@ only: [:create], redirect_to: "/session/new", alert: "Try again later."`,
 so an address that has tried ten times in three minutes goes back to the
 form until the window closes. Behind a reverse proxy on the same machine,
 set `CYBERTRAIN_TRUSTED_PROXY=1`, or every visitor shares the proxy's
-address (see [Rate limiting](#rate-limiting-and-the-client-address)).
+address (see [Rate limiting](#rate-limiting-and-the-client-address)); behind
+kamal-proxy, the generated `config/deploy.yml` already sets
+`CYBERTRAIN_TRUSTED_PROXIES` to the Docker network.
 `AppTest.sign_in` forgets the counts first, since every test client comes
 from 127.0.0.1.
 
@@ -1032,6 +1034,26 @@ whether the connection comes from this machine (127.0.0.0/8, `::1`,
 reach; behind a proxy on the same host every request is loopback, so check
 `client_ip` too there. Design: [docs/design.md](docs/design.md) D26.
 
+A proxy that reaches the app over a network, not loopback, is listed by
+address instead: `config.trusted_proxies`, from `CYBERTRAIN_TRUSTED_PROXIES`,
+takes comma-separated IPv4 or IPv6 addresses or CIDRs
+(`CYBERTRAIN_TRUSTED_PROXIES=172.16.0.0/12,10.0.0.0/8`, or a single
+`172.18.0.2`). A connection from inside one of them gets the same treatment
+as a loopback one above: the last `X-Forwarded-For` address, validated the
+same way. An IPv4 entry also matches the IPv4-mapped form of its addresses
+(`::ffff:172.18.0.2`), and a peer's `%zone` is ignored. An entry that is not
+an address or CIDR, or has a prefix past `/32` (IPv4) or `/128` (IPv6),
+stops the server at boot. `CYBERTRAIN_TRUSTED_PROXY=1` is the shorthand for
+`127.0.0.0/8,::1`, and the two add up. This is the Kamal case: kamal-proxy
+runs in its own Docker container and connects from its address on the Docker
+network, so the `config/deploy.yml` that `cybertrain new` writes sets
+`CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` (Docker's default range; change
+it if your networks use another, `docker network inspect kamal`). Leave
+Kamal's `proxy.forward_headers` unset: with `ssl: true`, kamal-proxy sets
+`X-Forwarded-For` itself rather than passing on the client's. List only
+networks that clients cannot connect from: anyone inside a listed network
+can choose the address a rate limit counts.
+
 ## Background work
 
 An application that has to do something outside a request (send a
@@ -1185,7 +1207,8 @@ end
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Development accepts `localhost`, `127.0.0.1`, `[::1]`; comma-separated exact hostnames extend this list (no scheme, port or wildcard). Other hosts get 403 before static files, sessions, routing or diagnostics. This is separate from the listening address; production and test do not apply this development guard |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; also `Strict` or `None` (`None` always adds `Secure`); anything else stops the server at boot |
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
-| `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` or `true` makes `request.client_ip` (what `rate_limit` counts) the last `X-Forwarded-For` address of a connection from loopback, for a reverse proxy on the same host (see [Rate limiting](#rate-limiting-and-the-client-address)) |
+| `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` or `true` makes `request.client_ip` (what `rate_limit` counts) the last `X-Forwarded-For` address of a connection from loopback, for a reverse proxy on the same host (see [Rate limiting](#rate-limiting-and-the-client-address)); shorthand for `CYBERTRAIN_TRUSTED_PROXIES=127.0.0.0/8,::1` |
+| `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; comma-separated IPv4/IPv6 addresses or CIDRs (`172.16.0.0/12,10.0.0.0/8`) whose connections have `request.client_ip` taken from the last `X-Forwarded-For` address, for a proxy reached over a network, such as kamal-proxy in its container; a bad entry stops the server at boot |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps this process from running scheduled tasks and jobs (see [Background work](#background-work)); `scheduler_interval` (1 s), `job_poll_interval` (5 s) and `job_max_attempts` (5) are set in `config/app.rb` |
 
