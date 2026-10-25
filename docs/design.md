@@ -408,6 +408,23 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - 範囲外の `page` を 404 にすること。丸めるだけにした。
 - 今後: キーセット方式（`after: id`）は大きなテーブル向けに後から足す。scaffold の index ビューは変えない（gen/ を新しいまま保つ）。使い方は README の「Pagination」に書いた。
 
+### D24. ログインの方針をフレームワークへ: 直列化した照合、ダミー照合、パスワード変更でのセッション失効、テスト時の反復回数、絶対有効期限、安全な戻り先（2026-10-25、issue #71）
+
+- 背景: D15 は「自分で書くと間違えるもの」だけをフレームワークに置いたが、どのアプリも要る方針（絶対有効期限 ad3cb63、戻り先の検査 536665f）が生成コードの側に書かれ、アプリが自分で足すしかないもの（照合の直列化、存在しないアドレスの時間差、パスワード変更時の失効）も残っていた。README の機能一覧だけを見た設計調査が `Cybertrain::Password` と `skip_before_action` を見落として代替を書いたこともあり、README に「Authentication: what the framework provides」節を設けた。
+- 決定:
+  - `Password.verify_serialized(plain, digest)`: `verify?` をプロセス内の `Mutex`（モジュール ivar、NOTES 規則 18 / 64）の中で一つずつ走らせる。PBKDF2 は 1 回約 0.2 s の CPU を使い、ログインの集中が `SPINEL_WORKERS` 個の OS ワーカーを全部ふさぐと他のページが待つ。直列化すれば計算しているワーカーは高々一つ。待つスレッドは Mutex で止まる（回らない）。ロックはログイン時だけで、リクエストごとの経路には置かない（NOTES 規則 57）。
+  - `Password.dummy_digest`: 乱数パスワードのダイジェストをプロセスで一度だけ作り（`iterations` が変わったら作り直す）、存在しないアドレスでもこれに対して一回照合する。応答時間でアカウントの有無が分からない。生成コードは従来 `Password.hash` を呼んでいた（照合ではなく生成なので、塩の生成など費用の形が違った）。
+  - `Password.session_key(digest)` / `session_key_matches?(key, digest)`: パスワードダイジェストの HMAC-SHA256（鍵は `secret_key_base`、ラベル付き）。サインイン時にセッションへ入れ、毎リクエスト比較する。パスワードを変えるとダイジェスト（塩ごと）が変わるので、それ以前のセッションは一致しなくなる。クッキーは署名のみで読めるが、値は秘密鍵なしではダイジェストについて何も言わない。再ハッシュ（`needs_rehash?`）でもダイジェストが変わるため、反復回数を上げた直後に各ユーザーの他のブラウザが一度サインアウトされる。これは受け入れた。
+  - `Password.iterations`: 明示的に設定していなければ、`Cybertrain.config.test?` で `TEST_ITERATIONS`（1000、`iterations=` の下限）、それ以外で `ITERATIONS`（10 万）。ダイジェストは自分の反復回数を持つので、検証側は何も変わらない。値は問い合わせのたびに決める（`password.rb` の読み込み時点では Config がまだ作られていないことがある）。そのため `password.rb` は `cybertrain/config` を require する。
+  - `Config#session_absolute_max_age`（既定 1209600 = 2 週間、ad3cb63 が生成コードで使った値と同じ。0 で無効）: `SessionStore` が、セッションを初めて書くときに `"_issued_at"`（エポック秒）をクッキーに入れ（署名の内側）、読み込み時にこの時間を過ぎていれば空のセッションとして扱う。送る Max-Age は残り時間を超えない。この設定より前のクッキーは最初のリクエストで開始時刻を刻む。`Session#restart_lifetime!` で数え直す（生成コードはサインイン時に呼ぶ）。`SessionStore.new` の既定は 0（無効）で、`Application` が Config の値を渡す。テストは `SessionStore#fixed_now=` で時計を固定する（ラムダをキーワード引数で渡すのは NOTES 規則 42 で不可）。
+  - `Controller#local_path?(text)` / `safe_redirect_path(text, fallback)`: `/` で始まり `//` でも `/\` でもなく、印字可能な ASCII（0x21〜0x7E、バックスラッシュを除く）だけで、2048 バイト以下のときだけ自サイトのパスとして受け入れる。ブラウザが送るパスはすでにパーセント符号化されているので、非 ASCII を拒んでも正しいリンクは落ちない（536665f の生成コードは `/記事` を通していたが、今は拒む）。
+  - 生成コード（`cybertrain generate authentication`）: `User.authenticate_by` / `#authenticate` は `verify_serialized` とダミーダイジェストを使い、`start_new_session_for` は `session.restart_lifetime!` と `session[:password_key]` を書き、`resume_session` は鍵が一致しなければ Session 行を消してサインアウトし、行の `created_at` の期限には `session_absolute_max_age` を使う（クッキー側の期限と同じ値で、行の側でも止める）。`after_authentication_url` は `safe_redirect_path` の一行になった。
+- 却下した案:
+  - パスワード鍵を sessions テーブルに持つ: 行は消せば失効するが、パスワード変更時に全行を消す処理をアプリが書く必要がある。セッションの値として持てば比較だけでよい。
+  - 絶対有効期限を生成コード（行の `created_at`）だけで持つ: 認証を使わないアプリのセッション（CSRF トークン、フラッシュ）は期限なしのままになる。両方に置いた。
+  - `verify?` 自体を直列化する: 認証以外の用途（API トークンのバッチ照合など）まで一列に並ぶ。別名にした。
+- 帰結: `ATTACHMENT_RESERVED_ACTIONS` に `safe_redirect_path` を足した（コントローラのメソッド名と添付フィールド名の衝突、`script/check-reserved-names`）。`local_path?` は `?` 付きなのでフィールド名になれない。テスト: test/password.rb（直列化はロックを保持したまま別スレッドの照合が終わらないことと、並行時の同時実行数 1 で確かめる）、test/session.rb（固定した時計で期限）、test/controller.rb（戻り先）、test/cli_authentication.rb（生成物）。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。

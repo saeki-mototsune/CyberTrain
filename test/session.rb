@@ -237,4 +237,116 @@ test "an unchanged session sets no cookie" do
   assert ctx.response.cookies.empty?
 end
 
+# ---- absolute lifetime (SessionStore absolute_max_age) ---------------------
+
+LIFE_START = 1_000_000
+WEEK = 604_800
+
+# Restarts the lifetime, as generated authentication does at sign-in.
+class LifetimeRestarter < Cybertrain::Middleware
+  def call(ctx)
+    ctx.session.restart_lifetime!
+    ctx.session["user"] = "bob"
+    nil
+  end
+end
+
+# Changes the session without touching its lifetime.
+class LifetimeToucher < Cybertrain::Middleware
+  def call(ctx)
+    ctx.session["visits"] = "2"
+    nil
+  end
+end
+
+# A Cookie header carrying a session with these entries, signed with SECRET.
+def lifetime_cookie(entries)
+  value = Cybertrain::Session.dump(Cybertrain::Session.new(entries), SECRET)
+  "_cybertrain_session=#{URI.encode_www_form_component(value)}"
+end
+
+# The session the response's Set-Cookie holds.
+def lifetime_written(ctx)
+  raw = Cybertrain::Cookies.parse(ctx.response.cookies[0])["_cybertrain_session"]
+  Cybertrain::Session.load(raw, SECRET)
+end
+
+def lifetime_ctx(cookie)
+  Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", { "cookie" => cookie }, ""))
+end
+
+test "Session#issued_at reads the recorded start, 0 for none or garbage" do
+  assert_equal 0, Cybertrain::Session.new.issued_at
+  assert_equal 42, Cybertrain::Session.new({ "_issued_at" => "42" }).issued_at
+  assert_equal 0, Cybertrain::Session.new({ "_issued_at" => "" }).issued_at
+  assert_equal 0, Cybertrain::Session.new({ "_issued_at" => "12x" }).issued_at
+  assert_equal 0, Cybertrain::Session.new({ "_issued_at" => "-5" }).issued_at
+  assert_equal 0, Cybertrain::Session.new({ "_issued_at" => "1" * 19 }).issued_at
+end
+
+test "absolute_max_age stamps the first write and caps the cookie's Max-Age" do
+  stamping = Cybertrain::SessionStore.new(SessionWriter.new, secret: SECRET, absolute_max_age: WEEK)
+  stamping.fixed_now = LIFE_START
+  stamp_ctx = lifetime_ctx("")
+  stamping.call(stamp_ctx)
+  assert_includes stamp_ctx.response.cookies[0], "Max-Age=604800"
+  written = lifetime_written(stamp_ctx)
+  assert_equal "alice", written["user"]
+  assert_equal LIFE_START, written.issued_at
+end
+
+test "a cookie past the absolute lifetime loads empty however recently it was used" do
+  aging = lifetime_cookie({ "user" => "alice", "_issued_at" => LIFE_START.to_s })
+  inside = SessionReader.new
+  inside_store = Cybertrain::SessionStore.new(inside, secret: SECRET, absolute_max_age: WEEK)
+  inside_store.fixed_now = LIFE_START + WEEK - 1
+  inside_ctx = lifetime_ctx(aging)
+  inside_store.call(inside_ctx)
+  assert_equal "alice", inside.seen
+  assert inside_ctx.response.cookies.empty?
+
+  past = SessionReader.new
+  past_store = Cybertrain::SessionStore.new(past, secret: SECRET, absolute_max_age: WEEK)
+  past_store.fixed_now = LIFE_START + WEEK
+  past_store.call(lifetime_ctx(aging))
+  assert_nil past.seen
+
+  # A write six days in keeps the start and sends what is left (one day).
+  late = Cybertrain::SessionStore.new(LifetimeToucher.new, secret: SECRET, absolute_max_age: WEEK)
+  late.fixed_now = LIFE_START + 6 * 86_400
+  late_ctx = lifetime_ctx(aging)
+  late.call(late_ctx)
+  assert_includes late_ctx.response.cookies[0], "Max-Age=86400"
+  assert_equal LIFE_START, lifetime_written(late_ctx).issued_at
+end
+
+test "a cookie without a start gets one; restart_lifetime! starts the count again" do
+  legacy = SessionReader.new
+  legacy_store = Cybertrain::SessionStore.new(legacy, secret: SECRET, absolute_max_age: WEEK)
+  legacy_store.fixed_now = LIFE_START
+  legacy_ctx = lifetime_ctx(lifetime_cookie({ "user" => "alice" }))
+  legacy_store.call(legacy_ctx)
+  assert_equal "alice", legacy.seen
+  assert_equal 1, legacy_ctx.response.cookies.length
+  assert_equal LIFE_START, lifetime_written(legacy_ctx).issued_at
+
+  restarting = Cybertrain::SessionStore.new(LifetimeRestarter.new, secret: SECRET, absolute_max_age: WEEK)
+  restarting.fixed_now = LIFE_START + 5 * 86_400
+  restart_ctx = lifetime_ctx(lifetime_cookie({ "user" => "alice", "_issued_at" => LIFE_START.to_s }))
+  restarting.call(restart_ctx)
+  restarted = lifetime_written(restart_ctx)
+  assert_equal "bob", restarted["user"]
+  assert_equal LIFE_START + 5 * 86_400, restarted.issued_at
+  assert_includes restart_ctx.response.cookies[0], "Max-Age=604800"
+end
+
+test "absolute_max_age 0 (SessionStore's default) leaves the start alone" do
+  ancient = SessionReader.new
+  ancient_store = Cybertrain::SessionStore.new(ancient, secret: SECRET)
+  ancient_ctx = lifetime_ctx(lifetime_cookie({ "user" => "alice", "_issued_at" => "1" }))
+  ancient_store.call(ancient_ctx)
+  assert_equal "alice", ancient.seen
+  assert ancient_ctx.response.cookies.empty?
+end
+
 Cybertrain::Test.run!

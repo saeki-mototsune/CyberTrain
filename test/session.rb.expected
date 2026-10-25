@@ -14,4 +14,9 @@ ok   flash round-trips through SessionStore: request 1 sets, request 2 sees, req
 ok   the session cookie is Secure only when SessionStore is built with secure: true
 ok   SessionStore passes same_site and partitioned to its Set-Cookie
 ok   an unchanged session sets no cookie
-16 tests, 39 assertions, 0 failures
+ok   Session#issued_at reads the recorded start, 0 for none or garbage
+ok   absolute_max_age stamps the first write and caps the cookie's Max-Age
+ok   a cookie past the absolute lifetime loads empty however recently it was used
+ok   a cookie without a start gets one; restart_lifetime! starts the count again
+ok   absolute_max_age 0 (SessionStore's default) leaves the start alone
+21 tests, 61 assertions, 0 failures

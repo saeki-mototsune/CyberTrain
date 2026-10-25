@@ -20,6 +20,7 @@ require "digest"
 require "securerandom"
 require "base64"
 require "cybertrain/crypto"
+require "cybertrain/config"
 
 module Cybertrain
   # Hashes and verifies passwords (PBKDF2-HMAC-SHA256, salted, 100,000
@@ -34,8 +35,12 @@ module Cybertrain
   # iterations) on a 2026 cloud core; raise {ITERATIONS} with
   # `Cybertrain::Password.iterations = ...` in `config/app.rb` when the
   # server has the budget (600,000 is OWASP's 2023 figure, about a second).
+  # In the test environment the default is {TEST_ITERATIONS}, so test
+  # suites do not pay that cost per user they create.
   # The loop is interruptible Ruby (a safepoint per iteration), so other
-  # requests keep being served while a login hashes.
+  # requests keep being served while a login hashes; a login flow calls
+  # {verify_serialized} so that a burst of attempts occupies one worker at
+  # most, and {dummy_digest} when the account does not exist.
   # @example
   #   digest = Cybertrain::Password.hash("correct horse battery staple")
   #   Cybertrain::Password.verify?("correct horse battery staple", digest)   # => true
@@ -56,14 +61,30 @@ module Cybertrain
     # this, so a `password_digest` column (TEXT) holds it.
     MAX_PASSWORD_BYTES = 1024
 
-    @iterations = ITERATIONS
+    # The default iteration count in the test environment
+    # (`Cybertrain.config.test?`): the smallest {iterations=} accepts. A
+    # digest records its own count, so one made under test still verifies
+    # anywhere, and {needs_rehash?} upgrades it if it ever reached
+    # production.
+    # @api public
+    TEST_ITERATIONS = 1000
+
+    # 0 until {iterations=} sets a count: {iterations} then picks the
+    # default for the environment each time it is asked, so it follows
+    # Cybertrain.config whenever that is created.
+    @iterations = 0
 
     # The iteration count new digests get (and the one {needs_rehash?}
-    # checks); {ITERATIONS} unless `config/app.rb` set another.
+    # checks): what `config/app.rb` set with {iterations=}, otherwise
+    # {TEST_ITERATIONS} when `Cybertrain.config.test?` and {ITERATIONS}
+    # elsewhere.
     # @return [Integer]
     # @api public
     def self.iterations
-      @iterations
+      set = @iterations
+      return set if set > 0
+
+      Cybertrain.config.test? ? TEST_ITERATIONS : ITERATIONS
     end
 
     # @param n [Integer] at least 1,000
@@ -71,7 +92,7 @@ module Cybertrain
     # @raise [ArgumentError] when n is below 1,000
     # @api public
     def self.iterations=(n)
-      raise ArgumentError, "Password.iterations must be at least 1000 (got #{n})" if n < 1000
+      raise ArgumentError, "Password.iterations must be at least #{TEST_ITERATIONS} (got #{n})" if n < TEST_ITERATIONS
 
       @iterations = n
     end
@@ -88,7 +109,7 @@ module Cybertrain
       raise ArgumentError, "password is too long (#{plain.bytesize} bytes, at most #{MAX_PASSWORD_BYTES})" if plain.bytesize > MAX_PASSWORD_BYTES
 
       salt = SecureRandom.random_bytes(SALT_BYTES)
-      n = @iterations
+      n = Password.iterations
       key = Password.pbkdf2_sha256(plain, salt, n)
       "$#{ALGORITHM}$i=#{n}$#{Password.encode(salt)}$#{Password.encode(key)}"
     end
@@ -125,7 +146,127 @@ module Cybertrain
       parts = Password.parse(digest)
       return true if parts.nil?
 
-      parts[0].to_i < @iterations
+      parts[0].to_i < Password.iterations
+    end
+
+    # Serializes {verify_serialized}: one verification at a time per
+    # process. A module-level ivar, not a class variable (NOTES rules 18
+    # and 64).
+    @serial_lock = Mutex.new
+    # How many verifications are inside the lock now, and the most there
+    # have ever been (always 1 once one has run: test/password.rb checks
+    # it from several threads).
+    @serial_active = 0
+    @serial_peak = 0
+
+    # {verify?}, one call at a time across the process. A hash takes about
+    # 0.2 s of CPU (compiled, 100,000 iterations); a burst of sign-in
+    # attempts verified side by side would occupy every OS worker
+    # (`SPINEL_WORKERS`) for that long each, and the pages queue behind
+    # them. Through this method the attempts wait for each other on a
+    # Mutex instead (a waiting thread is parked, not spinning), so at most
+    # one worker is hashing and the others keep serving requests. Use it in
+    # the sign-in action; the generated `User.authenticate_by` does.
+    # @example
+    #   Cybertrain::Password.verify_serialized(params[:password].to_s, user.password_digest)
+    # @param password [String]
+    # @param digest [String, nil]
+    # @return [Boolean] what {verify?} returns
+    # @api public
+    def self.verify_serialized(password, digest)
+      ok = false
+      @serial_lock.synchronize do
+        ok = Password.verify_locked(password.to_s, digest)
+      end
+      ok
+    end
+
+    # The body of verify_serialized, under the lock (a plain method: no
+    # rescue or ivar arithmetic inside the synchronize block).
+    def self.verify_locked(password, digest)
+      @serial_active = @serial_active + 1
+      @serial_peak = @serial_active if @serial_active > @serial_peak
+      ok = Password.verify?(password, digest)
+      @serial_active = @serial_active - 1
+      ok
+    end
+
+    # The most verifications {verify_serialized} has had in flight at once
+    # in this process (0 before the first; 1 afterwards, by construction).
+    def self.serialized_peak
+      @serial_peak
+    end
+
+    # The Mutex verify_serialized takes, for test/password.rb to hold.
+    def self.serial_lock
+      @serial_lock
+    end
+
+    # "" until dummy_digest first makes one.
+    @dummy_digest = ""
+
+    # A digest of a random password, made the first time it is asked for
+    # and the same for the rest of the process (made again only if
+    # {iterations} changed since, so that it keeps costing what a real
+    # user's digest costs). A sign-in for an address nobody registered
+    # verifies the given password against it, so the response takes as
+    # long as a wrong password for a real account and its timing does not
+    # reveal which addresses have accounts. No password matches it.
+    # @example
+    #   user = User.find_by(email_address: address)
+    #   digest = user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest
+    #   ok = Cybertrain::Password.verify_serialized(password, digest) && !user.nil?
+    # @return [String]
+    # @api public
+    def self.dummy_digest
+      current = @dummy_digest
+      parts = Password.parse(current)
+      return current if !parts.nil? && parts[0].to_i == Password.iterations
+
+      made = Password.hash(Crypto.random_token)
+      @dummy_digest = made
+      made
+    end
+
+    # The label session_key hashes in front of the digest, so its HMAC
+    # cannot be mistaken for any other value signed with the same secret.
+    SESSION_KEY_LABEL = "cybertrain.password.session_key\n"
+
+    # A value to keep in the session at sign-in and compare on every
+    # request ({session_key_matches?}): an HMAC-SHA256 (64 hex digits) of
+    # the user's password digest, keyed with `Cybertrain.config.secret_key_base`.
+    # Changing the password changes the digest (its salt is new), so every
+    # session started before the change stops matching and is signed out,
+    # while the session that made the change stores the new value. The
+    # cookie can be read by its holder; the value says nothing about the
+    # password or the digest without the secret.
+    # @example
+    #   session[:password_key] = Cybertrain::Password.session_key(user.password_digest)
+    # @param digest [String] the user's `password_digest`
+    # @return [String]
+    # @api public
+    def self.session_key(digest)
+      Password.session_key_with(digest, Cybertrain.config.secret_key_base)
+    end
+
+    # session_key with the secret given (what session_key and the tests call).
+    def self.session_key_with(digest, secret)
+      text = digest.to_s
+      data = SESSION_KEY_LABEL + text
+      Crypto.hmac_hex(secret.to_s, data)
+    end
+
+    # Whether `key` (from the session) is {session_key} of `digest`,
+    # compared in constant time. An empty key is false.
+    # @param key [String, nil]
+    # @param digest [String] the user's current `password_digest`
+    # @return [Boolean]
+    # @api public
+    def self.session_key_matches?(key, digest)
+      given = key.to_s
+      return false if given.empty?
+
+      Crypto.secure_compare(given, Password.session_key(digest))
     end
 
     # ["<iterations>", "<salt b64>", "<key b64>"], or nil for anything that

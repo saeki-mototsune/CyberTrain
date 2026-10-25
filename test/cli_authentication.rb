@@ -79,7 +79,9 @@ test "the User model hashes with Cybertrain::Password and validates in before_va
   assert_includes model, "def password=(plain)"
   assert_includes model, "Cybertrain::Password.hash(text)"
   assert_includes model, "def authenticate(plain)"
-  assert_includes model, "Cybertrain::Password.verify?(plain, password_digest)"
+  assert_includes model, "Cybertrain::Password.verify_serialized(plain.to_s, password_digest)"
+  # An unknown address still costs one verification, against the dummy digest.
+  assert_includes model, "Cybertrain::Password.verify_serialized(password.to_s, Cybertrain::Password.dummy_digest)"
   assert_includes model, "Cybertrain::Password.needs_rehash?(password_digest)"
   assert_includes model, "errors.add(:email_address, \"has already been taken\") if taken"
   assert_includes model, "errors.add(:password, \"can't be blank\")"
@@ -97,6 +99,14 @@ test "ApplicationController gets the before_actions and the sign-in helpers afte
     assert_includes controller, "  def #{name}\n"
   end
   assert_includes controller, "redirect_to new_session_path, status: :see_other"
+  # The framework's primitives instead of hand-written checks: the safe
+  # return path, the password key that ends older sessions on a password
+  # change, the absolute lifetime restarted at sign-in.
+  assert_includes controller, "    safe_redirect_path(session.delete(:return_to_after_authenticating), \"/\")\n"
+  assert_includes controller, "session[:password_key] = Cybertrain::Password.session_key(user.password_digest)"
+  assert_includes controller, "Cybertrain::Password.session_key_matches?(session[:password_key], user.password_digest)"
+  assert_includes controller, "    session.restart_lifetime!\n"
+  assert_includes controller, "lifetime = Cybertrain.config.session_absolute_max_age"
   # The original body is intact below the inserted block.
   assert_includes controller, "  # ---- end of authentication"
   assert_includes controller, "\n  rescue_from Cybertrain::RecordNotFound, with: :record_not_found\n"

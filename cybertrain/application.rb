@@ -343,7 +343,8 @@ module Cybertrain
       app = CsrfProtection.new(app, c.csrf_exempt_prefixes) if c.csrf
       app = SessionStore.new(app, secret: c.resolve_secret!, cookie_name: c.session_cookie_name,
                                   max_age: c.session_max_age, secure: c.session_secure,
-                                  same_site: c.session_same_site, partitioned: c.session_partitioned)
+                                  same_site: c.session_same_site, partitioned: c.session_partitioned,
+                                  absolute_max_age: c.session_absolute_max_age)
       app = MethodOverride.new(app)
       app = Static.new(app, c.public_root) if c.static_files
       app = RequestLogger.new(app) unless c.log_level == :none

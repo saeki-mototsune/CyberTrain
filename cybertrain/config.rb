@@ -101,12 +101,22 @@ module Cybertrain
     attr_accessor :session_cookie_name
 
     # The session cookie's Max-Age in seconds, two weeks (`1209600`). It
-    # restarts whenever the session changes. Generated authentication also
-    # uses this as an absolute lifetime from the Session row's created_at;
-    # cookie changes do not extend that sign-in.
+    # restarts whenever the session changes; {#session_absolute_max_age}
+    # bounds the session's whole life.
     # @return [Integer]
     # @api public
     attr_accessor :session_max_age
+
+    # The longest a session lives in seconds, however often it is used, two
+    # weeks (`1209600`); `0` turns the limit off. The session cookie records
+    # when it was first written, signed with the rest, and a cookie older
+    # than this loads as an empty session, so a copied cookie cannot be
+    # replayed past it. {Session#restart_lifetime!} starts the count again
+    # (generated authentication calls it at sign-in, and also ends a
+    # sign-in this long after its Session row's created_at).
+    # @return [Integer]
+    # @api public
+    attr_accessor :session_absolute_max_age
 
     # Whether the session cookie is `Secure` (HTTPS only): true in production,
     # false elsewhere.
@@ -291,6 +301,9 @@ module Cybertrain
       @log_level = :info
       @session_cookie_name = "_cybertrain_session"
       @session_max_age = 1209600
+      # Absolute session lifetime, enforced by SessionStore: the two weeks
+      # generated authentication already enforced on its Session rows.
+      @session_absolute_max_age = 1209600
       # The session cookie's Secure attribute: on in production, which is
       # expected to sit behind a TLS-terminating proxy; off elsewhere, where
       # the server is reached over plain http://. SameSite=None and
