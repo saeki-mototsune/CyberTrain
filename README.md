@@ -1127,7 +1127,6 @@ this covers "send later" and "run every N seconds" (`docs/design.md` D28).
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |
 | `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, ActiveSupport's bundled zone data | `Cybertrain::TimeZone.find("Asia/Tokyo")` reads the system's TZif files (`/usr/share/zoneinfo`, or `TZDIR`) and converts Integer epoch seconds (`utc_offset_at`, `utc_to_local`, `local_to_utc`); no per-request `Time.zone` and no `l(time, zone:)` yet ([Time zones](#time-zones)) |
-
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see "Outbound HTTP"); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
 | Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see "Sending e-mail") |
 | Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind) { \|payload\| ... }` and `Job.enqueue(kind, payload, run_at:)` (a String payload in a `cybertrain_jobs` table, retried with backoff, then `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; one thread in the served process, `CYBERTRAIN_WORKER=0` elsewhere ([Background work](#background-work)) |
@@ -1188,7 +1187,6 @@ end
 | `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` or `true` makes `request.client_ip` (what `rate_limit` counts) the last `X-Forwarded-For` address of a connection from loopback, for a reverse proxy on the same host (see [Rate limiting](#rate-limiting-and-the-client-address)) |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps this process from running scheduled tasks and jobs (see [Background work](#background-work)); `scheduler_interval` (1 s), `job_poll_interval` (5 s) and `job_max_attempts` (5) are set in `config/app.rb` |
-
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` or `true` lets `Cybertrain::HttpClient` connect to loopback, private and other non-public addresses (see "Outbound HTTP") |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; the SMTP server `Cybertrain::Mailer` sends through (see "Sending e-mail") |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`: the mode's port, 587 for `starttls`, 465 for `tls`, 25 for `none`; anything but 1 to 65535 is 0 |
