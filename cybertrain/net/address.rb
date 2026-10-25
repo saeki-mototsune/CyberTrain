@@ -11,7 +11,10 @@
 # like the literal.
 #
 # Byte scans, no IPAddr (not in Spinel's library) and no Regexp. Every
-# parameter is read through a `to_s` local (spikes/NOTES.md rule 62).
+# parameter is read through a `to_s` local (spikes/NOTES.md rule 62). The
+# parsing itself is Cybertrain::IpAddress (cybertrain/http/ip_address.rb).
+require "cybertrain/http/ip_address"
+
 module Cybertrain
   module Net
     module Address
@@ -41,125 +44,21 @@ module Cybertrain
         Address.blocked_reason(ip).empty?
       end
 
-      # The four bytes of a dotted-quad IPv4 address, or [] when `text` is
-      # not exactly four decimal parts of 0..255 (no leading zeros past one
-      # digit, no other spellings: getaddrinfo answers the canonical form).
+      # The four bytes of a dotted-quad IPv4 address, or [] (IpAddress, the
+      # HTTP layer's parser, which Request#client_ip uses too).
       def self.parse_ipv4(text)
-        s = text.to_s # NOTES rule 62
-        out = Array.new(0) { 0 }
-        n = s.bytesize
-        i = 0
-        value = 0
-        digits = 0
-        while i <= n
-          b = i < n ? s.getbyte(i) : 46 # a final "." closes the last part
-          if b >= 48 && b <= 57
-            return Array.new(0) { 0 } if digits == 3 || (digits == 1 && value == 0)
-
-            value = value * 10 + (b - 48)
-            digits += 1
-          elsif b == 46
-            return Array.new(0) { 0 } if digits == 0 || value > 255 || out.size == 4
-
-            out << value
-            value = 0
-            digits = 0
-          else
-            return Array.new(0) { 0 }
-          end
-          i += 1
-        end
-        out.size == 4 ? out : Array.new(0) { 0 }
+        IpAddress.parse_ipv4(text)
       end
 
-      # The sixteen bytes of an IPv6 address, or [] when `text` is not one.
-      # Accepts "::" compression, a trailing dotted IPv4 part
-      # ("::ffff:10.0.0.1") and a "%zone" suffix, which is dropped (a zoned
-      # address is link-local anyway).
+      # The sixteen bytes of an IPv6 address, or [] (IpAddress.parse_ipv6:
+      # "::" compression, a dotted IPv4 tail, a "%zone" suffix dropped).
       def self.parse_ipv6(text)
-        s = text.to_s # NOTES rule 62
-        zone = s.byteindex("%")
-        s = s.byteslice(0, zone) unless zone.nil?
-        none = Array.new(0) { 0 }
-        n = s.bytesize
-        return none if n < 2
-
-        head = Array.new(0) { 0 } # 16-bit groups before "::"
-        tail = Array.new(0) { 0 } # and after it
-        gap = false
-        i = 0
-        if s.getbyte(0) == 58
-          return none unless s.getbyte(1) == 58
-
-          gap = true
-          i = 2
-        end
-        while i < n
-          # one group: hex digits up to ":" or the end, or a dotted IPv4 tail
-          start = i
-          value = 0
-          while i < n
-            b = s.getbyte(i)
-            d = Address.hex_value(b)
-            break if d < 0
-
-            value = value * 16 + d
-            i += 1
-          end
-          if i < n && s.getbyte(i) == 46
-            # the last 32 bits as dotted IPv4
-            v4 = Address.parse_ipv4(s.byteslice(start, n - start))
-            return none unless v4.size == 4
-
-            groups = gap ? tail : head
-            groups << (v4[0] * 256 + v4[1])
-            groups << (v4[2] * 256 + v4[3])
-            i = n
-            break
-          end
-          return none if i == start || i - start > 4
-
-          (gap ? tail : head) << value
-          break if i == n
-          return none unless s.getbyte(i) == 58
-
-          i += 1
-          if i < n && s.getbyte(i) == 58
-            return none if gap
-
-            gap = true
-            i += 1
-          elsif i == n
-            return none # a trailing single ":"
-          end
-        end
-        total = head.size + tail.size
-        return none if total > 8 || (!gap && total != 8) || (gap && total > 7)
-
-        out = Array.new(0) { 0 }
-        Address.push_groups(out, head)
-        (8 - total).times { out << 0 << 0 } if gap
-        Address.push_groups(out, tail)
-        out
-      end
-
-      def self.push_groups(out, groups)
-        j = 0
-        while j < groups.size
-          out << (groups[j] >> 8)
-          out << (groups[j] & 255)
-          j += 1
-        end
-        nil
+        IpAddress.parse_ipv6(text)
       end
 
       # 0..15 for an ASCII hex digit, -1 otherwise.
       def self.hex_value(b)
-        return b - 48 if b >= 48 && b <= 57
-        return b - 87 if b >= 97 && b <= 102
-        return b - 55 if b >= 65 && b <= 70
-
-        -1
+        IpAddress.hex_value(b)
       end
 
       # The ranges IANA's special-purpose registry lists as not globally

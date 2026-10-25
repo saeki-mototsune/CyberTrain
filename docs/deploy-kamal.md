@@ -82,6 +82,18 @@ server build it.
 Do not turn `proxy.ssl` off. The session cookie is `Secure` in production, so
 over plain HTTP every form submission gets a 403.
 
+The generated `config/deploy.yml` sets `CYBERTRAIN_TRUSTED_PROXIES:
+172.16.0.0/12` under `env.clear`. kamal-proxy runs in a container of its own
+and connects to the app from its address on the Docker network (inside
+172.16.0.0/12 by default), so for connections from there only, the last
+`X-Forwarded-For` address, the one kamal-proxy added, becomes
+`request.client_ip`. Without it the sign-in rate limit (`rate_limit`) counts
+every visitor as kamal-proxy's one address. If your Docker networks use
+another range, put that range there instead (`docker network inspect kamal`
+shows it). Leave `proxy.forward_headers` unset: kamal-proxy terminating TLS
+sets `X-Forwarded-For` itself and does not pass on what the client sent,
+which is what you want.
+
 ## 8-3. Prepare the secrets
 
 `.kamal/secrets` only reads environment variables, so set them in the shell

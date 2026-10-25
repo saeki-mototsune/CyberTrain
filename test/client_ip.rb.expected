@@ -6,4 +6,11 @@ ok   with a trusted proxy a peer that is not loopback keeps its own address
 ok   a last hop that is empty, too long or not printable ASCII falls back to the peer
 ok   Request.trusted_proxy is false until set
 ok   Config#trusted_proxy comes from CYBERTRAIN_TRUSTED_PROXY (1 or true)
-8 tests, 51 assertions, 0 failures
+ok   a peer inside a trusted IPv4 CIDR names the client; one outside does not
+ok   a single trusted address matches only itself
+ok   IPv6 trusted networks: compressed, zone ignored on the peer, bounded prefixes
+ok   Request.trusted_proxies is empty until set and refuses a bad entry
+ok   the loopback shorthand and the list add up
+ok   IpAddress.parse_network bounds prefixes and refuses what is not a network
+ok   Config#trusted_proxies comes from CYBERTRAIN_TRUSTED_PROXIES and is checked at boot
+15 tests, 127 assertions, 0 failures

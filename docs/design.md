@@ -465,6 +465,13 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - データベースで数える案（複数プロセスで共有）。今回はプロセス内だけ。後から宣言はそのままに裏側を差し替えられるよう、カウンタは `RateLimit` に閉じ込めた。
   - `only: :create`（Symbol 単体）や `within: 3.minutes`。`before_action` と同じく配列だけを受け、`Integer#minutes` は無いので秒の整数にした。
 - 帰結: 制限されたアクションへの要求は一つのロックを取る（NOTES 規則 57: 全要求でロックを取ると複数ワーカーで詰まる）ので、`only:` で絞るようドキュメントに書いた。ロックの保持区間は Hash の数回の操作で、満杯時の掃除も 1 割ぶん。`apply_rate_limit` はコントローラの private メソッドなので `ATTACHMENT_RESERVED_ACTIONS` に足した（`script/check-reserved-names`）。使い方は README の「Rate limiting and the client address」に書いた。
+- 追記（PR #79 のレビュー指摘）: 信頼するプロキシを CIDR で列挙できるようにした。リポジトリ自身のデプロイ手順（docs/deploy-kamal.md、examples/blog の Kamal 設定）では kamal-proxy とアプリが別々の Docker コンテナで動き、アプリから見た接続元は Docker のブリッジネットワーク上の kamal-proxy のアドレス（既定で 172.16.0.0/12 の中）でループバックにならない。ループバックに限る規則のままでは `trusted_proxy` がそこで効かず、`rate_limit` が全員を kamal-proxy の一つのアドレスとして数える。上の却下案「信頼するプロキシの一覧」は、多段構成のために右から辿る形を却下したもので、一段のまま一覧で照合する形はここで採る。
+  - `Config#trusted_proxies`（既定 `[]`、`CYBERTRAIN_TRUSTED_PROXIES` をカンマで分けて前後の空白を除く）: IPv4 / IPv6 のアドレスまたは CIDR。`Config#trusted_proxies_error` が起動時に検査し（`fail_boot`、他の `*_error` と同じ形）、アドレスでも CIDR でもない項目、/32・/128 を超える接頭辞、`%zone` 付きの項目を拒む。`Application#boot` が `Request.trusted_proxies=` に入れ、そこで解析済みの形（接頭辞長と IPv6 形の 16 バイト、計 17 個の Integer を一本の型付き配列に並べる）にする。`Request.trusted_proxies=` に直接渡した不正な項目は ArgumentError で、入っていた一覧はそのまま。
+  - `Request#client_ip`: `remote_addr` が「`trusted_proxy` が真でループバック」または「一覧のどれかに入る」ときだけ、従来と同じ検査で `X-Forwarded-For` の最後の要素を使う。一段だけ、という原則（issue #70）は変えない。`CYBERTRAIN_TRUSTED_PROXY=1` は `127.0.0.0/8,::1` の略記で、一覧と足し合わされる。
+  - 照合は HTTP 層の新しいファイル `cybertrain/http/ip_address.rb`（`Cybertrain::IpAddress`）で、バイト走査だけ（IPAddr も Regexp も使わない）。IPv4 の項目は IPv4 射影形（`::ffff:a.b.c.d`、接頭辞 +96）として持つので、デュアルスタックの待ち受けが報告する `::ffff:172.18.0.2` も IPv4 の項目に一致する。相手のアドレスの `%zone` は無視する。IPv4 / IPv6 の解析は `Net::Address`（外向き HTTP クライアントの検査）にあったものをここへ移し、`Net::Address.parse_ipv4` / `parse_ipv6` / `hex_value` は委譲だけにした（HTTP 層は単独で読み込めなければならない、`script/check-http-layer`）。`Config` がこのファイルを require する（依存のない一ファイルだけで、サーバ本体は読まない）。
+  - `cybertrain new` が書く `config/deploy.yml`（と examples/blog の同じ設定）は `env.clear` に `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` を書く。Kamal はアプリのポートをホストに公開しないので、アプリに届くのは Docker ネットワーク上のコンテナだけ。`proxy.forward_headers` は設定しない: `ssl: true` の kamal-proxy はクライアントが送った `X-Forwarded-For` を渡さず自分で付ける（Kamal のドキュメント）。`forward_headers: true` は kamal-proxy の前にさらにプロキシがあるときのもので、ここで付けるとクライアントの書いた値が届く。
+  - 却下: 既定で 172.16.0.0/12 などの私用アドレスを信頼する案。同じホストの nginx（ループバック）や LAN 内から直接つながる構成で、LAN の誰もがアドレスを選べてしまう。設定はアプリ（生成した deploy.yml）の側で明示する。
+  - テスト: test/client_ip.rb（v4 / v6 / v4 射影の一致、範囲外は `remote_addr`、単一アドレス、不正な項目の拒否、ループバックの略記との併用）、test/cli_new.rb（生成される deploy.yml）。
 
 ### D27. メーラー: 有界なソケット層の上の最小の SMTP クライアント（2026-10-25、#64）
 

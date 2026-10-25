@@ -2,6 +2,7 @@ require "cybertrain/http/query"
 require "cybertrain/http/header_name"
 require "cybertrain/http/parser"
 require "cybertrain/http/multipart"
+require "cybertrain/http/ip_address"
 
 module Cybertrain
   # The request body cannot be decoded as its Content-Encoding says
@@ -27,9 +28,9 @@ module Cybertrain
   #
   # {Controller#request} in an action. Read parameters through
   # {Controller#params}; the request holds the raw parts. The client's
-  # address is {#client_ip} (Rails' `remote_ip`, with one trusted proxy on
-  # this host at most, see {Request.trusted_proxy}). There is no `xhr?`,
-  # `format` or `url`.
+  # address is {#client_ip} (Rails' `remote_ip`, with one trusted proxy hop
+  # at most, see {Request.trusted_proxy} and {Request.trusted_proxies}).
+  # There is no `xhr?`, `format` or `url`.
   # @example
   #   request.header("user-agent")
   #   JSON.parse(request.body) if request.json?   # JSON bodies are not parsed into params
@@ -546,6 +547,56 @@ module Cybertrain
       nil
     end
 
+# The proxies {#client_ip} trusts besides loopback: their entries as
+# given, and parsed (IpAddress.parse_network results end to end). Empty
+# until Application#boot installs Config#trusted_proxies; typed seeds
+# (spikes/NOTES.md rule 9).
+@trusted_proxy_entries = Array.new(0) { "" }
+@trusted_networks = Array.new(0) { 0 }
+
+# @return [Array<String>] the addresses and CIDRs whose connections may
+#   name the client in X-Forwarded-For ({#client_ip}); Config#trusted_proxies
+# @api public
+def self.trusted_proxies
+  @trusted_proxy_entries
+end
+
+# Installs the trusted proxy list: IPv4 or IPv6 addresses or CIDRs
+# ("172.16.0.0/12", "10.0.0.0/8", "172.18.0.2", "fd00::/8"). Called by
+# Application#boot with Config#trusted_proxies, which refuses a bad
+# entry at boot; a test may call it directly. An IPv4 entry also
+# matches its IPv4-mapped IPv6 form (`::ffff:172.18.0.2`).
+# @param entries [Array<String>]
+# @return [nil]
+# @raise [ArgumentError] when an entry is not an address or CIDR
+# @api public
+def self.trusted_proxies=(entries)
+  names = Array.new(0) { "" }
+  networks = Array.new(0) { 0 }
+  i = 0
+  while i < entries.size
+    entry = entries[i].to_s
+    parsed = IpAddress.parse_network(entry)
+    raise ArgumentError, "not an IP address or CIDR: #{entry.inspect}" if parsed.empty?
+
+    names << entry
+    parsed.each { |b| networks << b }
+    i += 1
+  end
+  @trusted_proxy_entries = names
+  @trusted_networks = networks
+  nil
+end
+
+# Whether a connection from `addr` may name the client in
+# X-Forwarded-For: a loopback peer while {Request.trusted_proxy} is on,
+# or a peer inside one of {Request.trusted_proxies}.
+def self.trusted_peer?(addr)
+  return true if @trusted_proxy && Request.loopback_address?(addr)
+
+  IpAddress.in_networks?(addr, @trusted_networks)
+end
+
     # The longest address #client_ip takes from X-Forwarded-For: an IPv6
     # address with an embedded IPv4 one is at most 45 characters.
     MAX_FORWARDED_HOP_BYTES = 45
@@ -564,22 +615,24 @@ module Cybertrain
       Request.loopback_address?(@remote_addr)
     end
 
-    # The client's address: {#remote_addr}, unless {Request.trusted_proxy} is on
-    # (Config#trusted_proxy, `CYBERTRAIN_TRUSTED_PROXY=1`) and the
-    # connection comes from loopback ({#loopback?}: the proxy runs on this
-    # host), in which case the last hop of X-Forwarded-For, the address the
-    # proxy appended. Earlier hops are whatever the client wrote and are
-    # never used. A last hop that is empty, longer than 45 bytes or not
-    # printable ASCII (or no header at all) gives {#remote_addr}. What
-    # {Controller.rate_limit} counts by default.
+# The client's address: {#remote_addr}, unless the connection comes from
+# a trusted proxy, in which case the last hop of X-Forwarded-For, the
+# address the proxy appended. A trusted proxy is a loopback peer
+# ({#loopback?}) while {Request.trusted_proxy} is on (Config#trusted_proxy,
+# `CYBERTRAIN_TRUSTED_PROXY=1`: a proxy on this host), or a peer inside
+# one of {Request.trusted_proxies} (Config#trusted_proxies,
+# `CYBERTRAIN_TRUSTED_PROXIES=172.16.0.0/12`: kamal-proxy in its own
+# container). Earlier hops are whatever the client wrote and are never
+# used. A last hop that is empty, longer than 45 bytes or not printable
+# ASCII (or no header at all) gives {#remote_addr}. What
+# {Controller.rate_limit} counts by default.
     # @example
     #   Session.create!(user_id: user.id, ip_address: request.client_ip)
     # @return [String]
     # @api public
     def client_ip
       addr = @remote_addr
-      return addr unless Request.trusted_proxy
-      return addr unless Request.loopback_address?(addr)
+      return addr unless Request.trusted_peer?(addr)
 
       forwarded = header("x-forwarded-for")
       return addr if forwarded.nil?

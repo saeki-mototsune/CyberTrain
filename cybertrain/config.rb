@@ -1,6 +1,7 @@
 require "cybertrain/crypto"
 require "cybertrain/logger"
 require "cybertrain/params"
+require "cybertrain/http/ip_address"
 require "cybertrain/template/limits"
 
 module Cybertrain
@@ -150,9 +151,29 @@ module Cybertrain
     # counts each visitor rather than the proxy. Nothing changes for a
     # client that connects directly from another machine: its header is
     # ignored.
+    # The shorthand for `trusted_proxies` of `127.0.0.0/8,::1` (the
+    # IPv4-mapped `::ffff:127.x.x.x` included); see {#trusted_proxies} for a
+    # proxy in another container or on another machine.
     # @return [Boolean]
     # @api public
     attr_accessor :trusted_proxy
+
+# The proxies that may name the client besides loopback, `[]`, from
+# `CYBERTRAIN_TRUSTED_PROXIES`: comma-separated IPv4 or IPv6 addresses
+# or CIDRs (`172.16.0.0/12,10.0.0.0/8`, or one `172.18.0.2`). A request
+# whose connection comes from inside one of them takes its
+# {Request#client_ip} from the last hop of `X-Forwarded-For`. For a
+# proxy that reaches the app over a network rather than loopback:
+# kamal-proxy, which runs in its own Docker container and connects from
+# the bridge network's address (Docker hands those out of 172.16.0.0/12
+# by default). List only addresses no client can connect from: anyone
+# inside a listed network can choose the address a rate limit counts.
+# `trusted_proxy` is the shorthand for `127.0.0.0/8,::1`; the two add
+# up. An entry that is not an address or CIDR (or a prefix past /32 or
+# /128) stops the server at boot.
+# @return [Array<String>]
+# @api public
+attr_accessor :trusted_proxies
 
     # SQLite connections in the pool, `4`.
     # @return [Integer]
@@ -436,6 +457,14 @@ module Cybertrain
       # Request.trusted_proxy's default; Application#boot installs it there
       # (the HTTP layer cannot read the Config).
       @trusted_proxy = Config.default_trusted_proxy
+# Request.trusted_proxies' list, the same way: split here, checked by
+# trusted_proxies_error at boot. Typed seed (rule 9), assigned in
+# initialize (rule 73).
+@trusted_proxies = Array.new(0) { "" }
+(ENV["CYBERTRAIN_TRUSTED_PROXIES"] || "").split(",").each do |entry|
+  proxy = entry.strip
+  @trusted_proxies << proxy unless proxy.empty?
+end
       @pool_size = 4
       @static_files = true
       @csrf = true
@@ -886,6 +915,23 @@ module Cybertrain
       end
       ""
     end
+
+# The error Application#boot reports (and exits 1 on) when a
+# trusted_proxies entry is not an IPv4 or IPv6 address or CIDR
+# (IpAddress.parse_network); "" when every entry is one. A while loop,
+# no block (NOTES rules 32, 45).
+def trusted_proxies_error
+  entries = @trusted_proxies
+  i = 0
+  while i < entries.size
+    entry = entries[i].to_s
+    if IpAddress.parse_network(entry).empty?
+      return "CYBERTRAIN_TRUSTED_PROXIES / trusted_proxies entry #{entry.inspect} is not an IP address or CIDR (e.g. 172.16.0.0/12)"
+    end
+    i += 1
+  end
+  ""
+end
 
     # The error Application#boot reports (and exits 1 on) when
     # session_same_site is not a value browsers accept; "" when it is one.

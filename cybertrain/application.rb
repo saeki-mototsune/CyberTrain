@@ -114,6 +114,8 @@ module Cybertrain
       fail_boot(scheduler_error) unless scheduler_error.empty?
       max_page_error = c.max_page_error
       fail_boot(max_page_error) unless max_page_error.empty?
+      proxies_error = c.trusted_proxies_error
+      fail_boot(proxies_error) unless proxies_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
@@ -130,6 +132,7 @@ module Cybertrain
       BlobStore.root = c.upload_root
       Params.max_page = c.max_page
       Request.trusted_proxy = c.trusted_proxy
+      Request.trusted_proxies = c.trusted_proxies
       Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
       self
     end
