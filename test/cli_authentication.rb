@@ -263,6 +263,8 @@ test "--invite-only's /setup answers only to loopback with the one-time token wh
   assert_includes setup, "  def self.setup_token\n    SETUP_TOKEN\n  end\n"
   assert_includes setup, "    @setup_token = params[:token].to_s\n"
   assert_includes setup, "    head :not_found unless setup_open? && Cybertrain::Crypto.secure_compare(@setup_token, SetupController.setup_token)\n"
+  # The no-user check and the insert are one BEGIN IMMEDIATE transaction.
+  assert_includes setup, "    User.transaction(immediate: true) do |c|\n      saved = @user.save unless User.all.exists?\n    end\n"
   assert_includes setup, "    return false if User.all.exists?\n"
   assert_includes setup, "    return true if Cybertrain.config.bool_setting(:setup_open)\n"
   assert_includes setup, "    request.loopback? && request.header(\"x-forwarded-for\").nil?\n"

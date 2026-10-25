@@ -761,7 +761,15 @@ module Cybertrain
               @user = User.new(fields.permit(:email_address))
               @user.password = fields[:password].to_s
               @user.password_confirmation = fields[:password_confirmation].to_s
-              if @user.save
+              # The no-user check and the insert are one write transaction
+              # (BEGIN IMMEDIATE takes the lock first), so two requests that
+              # both passed require_first_run cannot both create "the first"
+              # account: the second finds a user and saves nothing.
+              saved = false
+              User.transaction(immediate: true) do |c|
+                saved = @user.save unless User.all.exists?
+              end
+              if saved
                 start_new_session_for(@user)
                 flash[:notice] = "Welcome! Your account has been created."
                 redirect_to "/", status: :see_other
