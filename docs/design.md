@@ -362,6 +362,20 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - `DB.transaction` のブロックが外側のブロック引数を読み、その外側がさらにブロックの中にあると（三段）コンパイルできない（NOTES 規則 67）。アクションのようなメソッドの中なら二段で動く。
 - 検証: `test/db_transaction_api.rb`（フレームワーク全体と一緒にコンパイル）。コミット、例外での巻き戻し、入れ子の参加、`Model.transaction` 内の `save` の参加、ブロックなしの形、`DB.with` のブロック内からの呼び出し、コントローラのアクションからの呼び出し、`immediate: true` が `BEGIN IMMEDIATE` を出すこと（別の接続の `BEGIN IMMEDIATE` が "database is locked" になる。遅延 `BEGIN` では通る）。
 
+### D21. マイグレーションのデータ操作: `execute` を操作として記録する（2026-10-25）
+
+- 背景: マイグレーション DSL はスキーマ操作だけで、だから `change` から `down` を導ける。だが安全なスキーマ変更にデータ操作が要ることがある（既定値 90 の `retention_days` 列を足すとき、既存行は「無期限」の 0 に保たないと、新しい列の最初のデプロイで誰も選んでいない削除が始まる）。これまでは `up` を上書きし、`DB::CLI.resolved_path(".")` で 2 本目の `Connection` を開き、ロールバックのために migrator が `up` を呼んで操作を集めるときに再実行しないよう `schema_migrations` を手で調べ、`:memory:` を避けて閉じるしかなく、migrator の内部に依存していた（issue #73）。
+- 決定:
+  - `Migration::Base#execute(sql, binds = [])` を `change` / `up` / `down` の中で使える DSL にする。その場では何も実行せず、`Operation` の `:execute` 種別（`exec_sql` と、`Cast.to_sql` で変換済みの `exec_binds`）として記録する。`up` / `down` は今までどおり純粋な記録なので、migrator がロールバックの前に `up` を呼んでも文は走らない。
+  - migrator は `:execute` を自分の接続で、そのバージョンのスキーマ操作と同じトランザクションの中で、記録順に実行する。前の `add_column` が済んでから `UPDATE` が走り、後の操作はその後に走る。データ操作が失敗すればそのバージョンのスキーマ操作も巻き戻り、バージョンは記録されない。バインドが無いときは `exec_script`（`;` で区切った複数文を流せる）、あるときは 1 文のプリペアドステートメント。
+  - `:execute` に自動の逆操作は無い。`change` に `execute` を含み `down` を書いていないバージョンのロールバックは `IrreversibleMigration`（"version N is irreversible: it executes SQL in change; write down"）。migrator は対象のバージョンすべてについて `down` を先に記録してみて、記録できないものがあれば**何も戻す前に**止める（ファイルの消えたバージョンの検査と同じ位置）。この事前検査は `drop_table` など他の不可逆な `change` にも効き、メッセージにバージョンが付くようになった。`N` 段のロールバックが途中まで戻って止まることはもう無い。
+  - `db/schema.rb` は DB からダンプするので、データ操作は現れない。ジェネレータ（`gen/migrations.rb`）はマイグレーションのファイルを `require_relative` するだけで中身を字句走査しないので、変更は要らない。
+- 却下した案:
+  - Rails の `reversible { |dir| dir.up { ... } }`。ブロックをレシーバ付きで後から呼ぶ形になり（`instance_exec` は無い、NOTES 規則 2）、`up` と `down` を書けば同じことができる。
+  - `execute` の逆操作として `down` 側の SQL を引数で受ける（`execute up_sql, down_sql`）。バインドとの組み合わせが分かりにくく、`down` を書くほうが読める。
+  - `execute` がその場で SQL を流す。migrator が操作を集めるために `up` を呼ぶたびに走ってしまう、issue が挙げたもろさそのもの。
+- 名前: `Operation` の読み出しは `exec_sql` / `exec_binds`。`Relation#binds` と同名にしない（NOTES 規則 10 / 34）。`Base#execute` は `nil` を返し、`Connection#execute`（行の Array）と戻り値の型が違うが、一つのプログラムに両方があってもコンパイルできることを test/migration_execute.rb と test/db_integration.rb で確かめた。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。

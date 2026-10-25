@@ -1,0 +1,51 @@
+ok   execute records an :execute operation in call order, with its binds cast, and runs nothing
+== 20260201000000 CreateBackups: migrating
+done
+== 20260201000100 AddRetentionDays: migrating
+done
+ok   execute in change runs after the add_column before it and before the add_index after it
+== 20260201000000 CreateBackups: migrating
+done
+== 20260201000100 AddRetentionDays: migrating
+done
+== 20260201000500 AddNoteIndex: migrating
+done
+ok   rolling back a change that executes SQL raises before reverting anything
+== 20260201000000 CreateBackups: migrating
+done
+== 20260201000100 AddRetentionDaysWithDown: migrating
+done
+== 20260201000100 AddRetentionDaysWithDown: reverting
+done
+== 20260201000100 AddRetentionDaysWithDown: migrating
+done
+ok   a migration whose change executes SQL rolls back through its own down
+== 20260201000000 CreateBackups: migrating
+done
+== 20260201000100 AddRetentionDays: migrating
+done
+== 20260201000200 SeedBackups: migrating
+done
+== 20260201000300 TwoStatements: migrating
+done
+== 20260201000300 TwoStatements: reverting
+done
+== 20260201000200 SeedBackups: reverting
+done
+ok   execute in an explicit up and down
+== 20260201000000 CreateBackups: migrating
+done
+== 20260201000100 AddRetentionDays: migrating
+done
+== 20260201000400 BrokenDataStep: migrating
+ok   a failing execute rolls back the schema operations of its version
+== 20260201000000 CreateBackups: migrating
+done
+== 20260201000100 AddRetentionDays: migrating
+done
+== 20260201000000 CreateBackups: migrating
+done
+== 20260201000100 AddRetentionDaysSchemaOnly: migrating
+done
+ok   schema:dump does not see the data step
+7 tests, 44 assertions, 0 failures
