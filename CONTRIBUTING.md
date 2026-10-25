@@ -94,7 +94,7 @@ into its own binary, whose output (stdout and stderr) is compared with the
 committed snapshot `test/<name>.rb.expected`:
 
 ```sh
-spin test                      # everything (71 programs; minutes the first time, then cached)
+spin test                      # everything (one program per test/*.rb; minutes the first time, then cached)
 spin test test/router.rb       # one program
 ```
 
@@ -108,6 +108,29 @@ Read the diff before committing it. A snapshot is a test's assertions, so a
 changed snapshot is reviewed like a changed test: say in the pull request
 what changed in it and why. Never regenerate a snapshot to make a failure go
 away without understanding the failure.
+
+A failure is reported as `FAIL <name>.rb`, then `--- expected` with the whole
+snapshot, then `--- actual` with the whole output: the two blocks are long,
+so do not read the end of the first as a truncated output. The program's
+output is also left in `build/test/<name>.out`, and this shows only what
+differs:
+
+```sh
+diff build/test/router.out test/router.rb.expected
+```
+
+A snapshot that ends with the harness summary (`N tests, N assertions, N
+failures`; `test/version.rb.expected` is the one that does not) counts the
+assertions, and that count is what a merge gets wrong without a conflict:
+two branches that each add one
+assertion to the same test both change `N assertions` to `N+1`, git merges
+the identical change cleanly, and the merged tree runs `N+2` against a
+snapshot that says `N+1` (this happened on `main` between pull requests #58
+and #61; #79 regenerated the snapshot). After merging `main` into a branch
+that touches a test, run that test again before pushing: `spin test
+test/<name>.rb`, or, for a test that needs neither SQLite nor any other FFI
+(the next paragraph), `ruby -I. test/<name>.rb` under CRuby, which takes a
+second and needs no compiler.
 
 Tests that need SQLite or other FFI only run compiled; `script/regen-snapshot`
 handles that. Use the assertions in `cybertrain/test.rb` (`assert`,
