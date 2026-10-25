@@ -267,6 +267,9 @@ module Cybertrain
       c = @config
       puts "=> Booting cybertrain #{Cybertrain::VERSION}"
       puts "=> #{c.env} environment (#{c.workers} worker#{c.workers == 1 ? "" : "s"})"
+      # Application settings (Config#setting_string ...), secrets filtered.
+      settings = c.settings_summary
+      puts "=> Settings: #{settings}" unless settings.empty?
       puts "=> Watching app/, config/ and db/schema.rb for changes" if c.development?
       puts "* Listening on http://#{c.host}:#{c.port}"
       puts "Use Ctrl-C to stop"

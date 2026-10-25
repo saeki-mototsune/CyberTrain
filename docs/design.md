@@ -291,6 +291,18 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
     - 配信は同一オリジン。
   - 孤児ファイルの掃除、ETag / Range、別オリジン配信は後続の作業。
 
+### D17. アプリ定義の設定: `Config` 上の型付き宣言（2026-10-25、issue #69）
+
+- 決定: アプリ独自の設定（公開 URL、機能スイッチ、間隔、SMTP ホスト）は `config/app.rb` の `Cybertrain.configure` ブロックで `Config` に宣言する。宣言は型ごとのメソッド `c.setting_string(name, env:, default:, secret: false)`、`c.setting_int(name, env:, default:, min:, max:)`（`min` / `max` は省略可）、`c.setting_bool(name, env:, default:)`。読み出しは `Cybertrain.config.string_setting(:base_url)` / `int_setting` / `bool_setting`、テスト用の書き込みは `set_string_setting` / `set_int_setting` / `set_bool_setting`。
+- 値は宣言の時点、つまり起動時に `config/app.rb` が走るときに一度だけ環境変数から読む。空または未設定は既定値（`Config.env_or` と同じ規則）。真偽値は `1` / `true` と `0` / `false`（既存の `CYBERTRAIN_SESSION_PARTITIONED` と同じ綴り）、整数は先頭の `-` と 10 進数字で、先頭の 0 を除いて 18 桁まで（`String#to_i` が 2**63-1 を超えると RangeError を投げるため。NOTES 25）。解釈できない値と範囲外の値は既定値に戻し、`Cybertrain.logger` に `[WARN]` を 1 行出す。起動は止めない: 設定の誤りでサーバが上がらないより、既定値で上がって理由がログに残るほうが運用で扱いやすい（フレームワーク自身の `session_same_site` のように誤りが安全性に関わるものは、従来どおり起動時エラー）。宣言の誤り（名前の二重宣言、空の `env:`、範囲外の既定値）と、未宣言・別の型の名前の読み出しはプログラムの誤りなので `ArgumentError`。
+- 値は型ごとの Hash（名前の String がキー、NOTES 9 に従って要素型で種を入れる）に入れ、宣言（名前、環境変数、型と既定値の説明、secret か）を宣言順に記録する。`./NAME help`（`Main.usage`）はこれを環境変数・名前・型・既定値の一覧として出し、起動バナーは `=> Settings: base_url="" worker=true ...` の 1 行で現在値を出す。`secret: true` の設定はどちらにも名前と環境変数しか出さない（バナーでは `[FILTERED]`、help では既定値も出さない）。設定を宣言していなければ help もバナーも従来と同じ。help は設定を読むために `Cybertrain.config` を新しく作らない（作ると、その時点の環境変数で `database_path` などが固まる）。
+- 却下した案:
+  - `c.setting :base_url, ...` で `Cybertrain.config.base_url` という読み出しメソッドを生やす形（issue の原案）。`define_method` も `method_missing` も無い（NOTES 1）。既定値から型を推論する 1 本の `setting` も、戻り値の型が呼び出しごとに変わるので Spinel では型付きの読み出しにならない。
+  - ジェネレータ（`gen/app.rb`）が `config/app.rb` を字句走査して型付きアクセサを書く案。`base_url` のように名前で読めるのは利点だが、`config/app.rb` をジェネレータの入力に加え、`spin run gen` の対象と生成物を増やす。名前を Symbol で渡す型付きメソッド 3 組で足りる。必要になれば後から生成アクセサを薄く被せられる。
+  - 読み出しを `string` / `int` / `bool` と短く名付ける案。`StringIO#string` などの組み込みと同名のメソッドは箱入りの受け手での呼び出しを壊す（NOTES 62）ので、`*_setting` と区別できる名前にした。
+  - `cybertrain settings` という独立したコマンド。一覧は既存の `help` に足し、現在値は起動バナーに出すことで足りる。
+- 帰結: 名前は Symbol で渡す（NOTES 51: 同じメソッドに Symbol と String のキーを混ぜない）。テスト用の書き込みは宣言時の範囲を検査しない。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。
@@ -429,3 +441,4 @@ blog/
 - 2026-10-22: ファイルアップロード（D16）。フレームワーク側は `Multipart` / `MultipartForm` / `UploadedFile` / `BlobStore`、`Params#upload`、`Request#multipart_form`、`Controller#send_blob`、`form_with(multipart: true)` / `f.file_field`、`Config` の 3 キー。CLI 側は `cybertrain generate attachment` と scaffold の `FIELD:attachment`。CI の gem E2E が、添付付きの scaffold を生成・コンパイルし、生成テストを走らせ、curl でアップロードとダウンロード（バイト一致、ヘッダ）を確かめる。
 - 2026-10-22: 認証（D15）。`cybertrain generate authentication` が users / sessions のマイグレーション、`User` / `Session` モデル、`SessionsController` / `RegistrationsController`、ビュー、`ApplicationController` への挿入、routes、`test/authentication.rb` を書く。フレームワーク側は `Cybertrain::Password`（PBKDF2-HMAC-SHA256）、`Controller.skip_before_action`、`Mapper#resource`、カスタム経路の派生名の衝突を無名にする規則。CI の gem E2E が生成したアプリをコンパイルしてサインアップ / サインインの統合テストを走らせる。
 - 2026-10-23: `X-Content-Type-Options: nosniff` と `X-Frame-Options: SAMEORIGIN` を全レスポンスの既定にした（D14、D16）。`Response#to_http` が、同名のヘッダが無いときだけ出す。`Static::EXTENSIONS` に webp / avif / woff / ttf / otf / wasm などを追加。`Config` スイッチは作らず、上書きは `set_header`。
+- 2026-10-25: アプリ定義の設定（D17、issue #69）。`Config#setting_string` / `setting_int` / `setting_bool` で宣言し、`string_setting` / `int_setting` / `bool_setting` で読む。`help` が宣言の一覧を、起動バナーが現在値（secret は伏せる）を出す。回帰テストは `test/config_settings.rb`。

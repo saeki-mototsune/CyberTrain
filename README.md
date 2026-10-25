@@ -852,6 +852,40 @@ the deployment tutorial).
 [examples/blog](examples/blog#deploying-with-kamal) carries the same setup,
 built against this checkout's framework.
 
+### Application settings
+
+An application's own settings (a public base URL, a feature switch, an
+interval, an SMTP host) are declared on the same `Config`, with a type, an
+environment variable and a default:
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.setting_string :base_url, env: "MYAPP_BASE_URL", default: ""
+  c.setting_string :smtp_password, env: "MYAPP_SMTP_PASSWORD", default: "", secret: true
+  c.setting_bool :worker, env: "MYAPP_WORKER", default: true
+  c.setting_int :prune_interval, env: "MYAPP_PRUNE_INTERVAL", default: 3600, min: 1, max: 9_999_999
+end
+
+Cybertrain.config.string_setting(:base_url)
+Cybertrain.config.bool_setting(:worker)
+Cybertrain.config.int_setting(:prune_interval)
+```
+
+Each value is read once, when `config/app.rb` runs at startup. An empty or
+unset variable means the default. A boolean takes `1`/`true` or
+`0`/`false`; an integer takes decimal digits (an optional leading `-`) within
+`min..max` (both optional). Any other value falls back to the default and
+logs a `[WARN]` line saying so. Reading an undeclared name, or one declared
+with another type, raises `ArgumentError`, as does declaring a name twice.
+Tests change a value with `set_string_setting`, `set_int_setting` and
+`set_bool_setting`. `./NAME help` lists every declared setting with its
+variable and default, and the boot banner prints the current values
+(`=> Settings: base_url="" worker=true ...`); a `secret: true` setting shows
+up in both only by name, as `[FILTERED]`. There is no
+`Cybertrain.config.base_url` accessor: Spinel has no `define_method`, so the
+readers are typed methods that take the name.
+
 ## Testing an app
 
 App tests are plain Spinel programs under `test/`, like the framework's own:

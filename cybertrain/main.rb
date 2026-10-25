@@ -54,14 +54,30 @@ module Cybertrain
       0
     end
 
+    # The commands, then the settings config/app.rb declared
+    # (Config#setting_string and its siblings) with their environment
+    # variables and defaults, when there are any. A program that never
+    # configured anything has none, and help must not create the config
+    # (it would freeze the environment it reads, e.g. CYBERTRAIN_DATABASE,
+    # before a later command sets it).
     def self.usage(name)
-      <<~TEXT
+      text = <<~TEXT
         Usage:
           ./#{name} [server [PORT]]   start the server
           ./#{name} migrate           apply pending migrations
           ./#{name} db COMMAND        migrate | rollback [N] | status | schema:dump | create
           ./#{name} help
       TEXT
+      return text unless Cybertrain.config_loaded?
+
+      settings = Cybertrain.config.settings_usage
+      return text if settings.empty?
+
+      out = +""
+      out << text
+      out << "\n"
+      out << settings
+      out
     end
   end
 end
