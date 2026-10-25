@@ -1,0 +1,14 @@
+ok   civil time helpers count proleptic Gregorian days from 1970
+ok   UTC is built in and needs no file
+ok   valid_name? accepts relative names and refuses anything that could leave the directory
+ok   a slim version 2 file: 64-bit transitions, then the POSIX footer
+ok   local_to_utc and utc_to_local, with deterministic gaps and overlaps
+ok   a version 1 file: 32-bit transitions and no footer
+ok   version 3 and 4 files are read like version 2
+ok   POSIX footers: M, J and zero-based rules, negative and 26-hour times
+ok   a footer that does not parse is ignored: the last type holds
+ok   malformed TZif bytes give an unknown zone that behaves as UTC
+ok   find refuses names outside the directory, directories and non-TZif files, uncached
+ok   find from several threads keeps one zone per name
+ok   Asia/Tokyo from the system zoneinfo (a stand-in where none is installed)
+13 tests, 243 assertions, 0 failures

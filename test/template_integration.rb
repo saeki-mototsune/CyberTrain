@@ -327,4 +327,20 @@ test "the schema DSL is reachable next to the template engine" do
   Cybertrain::Schema.reset!
 end
 
+# Cybertrain::TimeZone next to the rest (a `def name` on it once made
+# `Class#name` raise NoMethodError here; spikes/NOTES.md rule 66). Only
+# names whose answer needs no zoneinfo file, so the snapshot is the same on
+# every machine.
+test "time zones are reachable next to the template engine" do
+  utc = Cybertrain::TimeZone.find("UTC")
+  assert utc.found?
+  assert_equal "UTC", utc.zone_name
+  assert_equal 0, utc.utc_offset_at(1_792_886_400)
+  missing = Cybertrain::TimeZone.find("../etc/passwd")
+  assert missing.unknown?
+  assert_equal 1_792_886_400, missing.local_to_utc(1_792_886_400)
+  refute Cybertrain::TimeZone.parse_tzif("Bad/Zone", "TZif").found?
+  assert_equal [2026, 10, 25, 0, 0, 0, 0], Cybertrain::TimeZone.epoch_to_civil(1_792_886_400)
+end
+
 Cybertrain::Test.run!

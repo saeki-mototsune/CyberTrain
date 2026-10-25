@@ -459,6 +459,25 @@ finds the commit that removed them).
     which collects every 2 KB of strings; shift where the collections land
     by running from TMPDIRs whose names differ in length.
 
+66. A String local that a method appends to directly two or more times
+    (`buf << "\n"; buf << tail`) loses whatever helpers appended to it
+    through a parameter in the same method (Spinel 2026.09.12): the local
+    is compiled as a buffer of its own, and `add(buf, "ab")` before the
+    direct appends wrote to something else. Reduced repro: `def add(buf, s)
+    = buf << s` and `def two; buf = "".b; add(buf, "ab"); buf << "\n"; buf
+    << "\n"; buf; end` prints `"\n\n"` (CRuby: `"ab\n\n"`); one direct
+    append alone is fine. Rule 60's cousin. A buffer filled through helpers
+    is filled only through helpers (`put_str(buf, "\n")`, as
+    test/time_zone.rb's TZif writer does).
+    Separately, and not reduced: an instance method spelled `def name` on
+    `Cybertrain::TimeZone` made test/template_integration.rb (the whole
+    framework) fail at run time with "undefined method 'name' for an
+    instance of Class" (rule 62's dispatch hazard; the framework calls
+    `.class.name` on boxed receivers). A ten-line program with a `def name`
+    class and `x.class.name` on a boxed value did not fail, so the trigger
+    is something else in the framework. The reader is `zone_name`; a new
+    framework class should not define `name` as a plain method.
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.
