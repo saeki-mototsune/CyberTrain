@@ -26,4 +26,7 @@ ok   merge! carries files across, evicting and nesting like the other kinds
 ok   merge! lets the other's list replace a file of the same name
 ok   uploads are inspected after scalars, lists and nested Params
 ok   a file's bytes survive the Params unchanged (NUL and high bytes)
-28 tests, 127 assertions, 0 failures
+ok   int reads a bounded decimal and never raises
+ok   parse_int accepts an optional minus and at most 18 digits
+ok   page_number is 1-based and clamped to Params.max_page
+31 tests, 151 assertions, 0 failures

@@ -109,6 +109,8 @@ module Cybertrain
       fail_boot(body_bytes_error) unless body_bytes_error.empty?
       upload_error = c.upload_limits_error
       fail_boot(upload_error) unless upload_error.empty?
+      max_page_error = c.max_page_error
+      fail_boot(max_page_error) unless max_page_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
@@ -123,6 +125,7 @@ module Cybertrain
       # by the first write, not here, so a read-only deploy still boots.
       Multipart.configure(c.max_upload_bytes, c.max_multipart_parts)
       BlobStore.root = c.upload_root
+      Params.max_page = c.max_page
       Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
       self
     end

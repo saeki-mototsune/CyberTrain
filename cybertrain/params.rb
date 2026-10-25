@@ -135,6 +135,111 @@ module Cybertrain
       @uploads.key?(key.to_s)
     end
 
+    # The largest page number {#page_number} gives (and {Relation#page}
+    # accepts), `10000` by default. A module-level ivar with a literal
+    # default, the Multipart shape (spikes/NOTES.md rule 18):
+    # Application#boot installs Config#max_page here, since Params belongs
+    # to the HTTP layer and cannot read the Config itself.
+    @max_page = 10_000
+
+    # @return [Integer] the largest page number accepted (Config#max_page)
+    # @api public
+    def self.max_page
+      @max_page
+    end
+
+    # Installs the page ceiling. Called by Application#boot with
+    # Config#max_page; a test may call it directly.
+    # @param n [Integer] at least 1
+    # @return [nil]
+    # @api public
+    def self.max_page=(n)
+      @max_page = n < 1 ? 1 : n
+      nil
+    end
+
+    # The most digits {Params.parse_int} reads: 18 stay below 2**63-1, past
+    # which `String#to_i` raises RangeError under Spinel instead of
+    # promoting to a Bignum (spikes/NOTES.md rule 25).
+    MAX_INT_DIGITS = 18
+
+    # A String value read as a decimal Integer, bounded: `default` when the
+    # key is absent or its value is not an optional `-` followed by 1 to 18
+    # digits (`"12abc"`, `" 3"`, `"1e3"`, `""` and a 30-digit number all
+    # give `default`, and nothing ever raises), else the number clamped to
+    # `min..max`. Request data is never handed to `to_i` unchecked, since
+    # past 2**63-1 that raises RangeError (a 500) under Spinel.
+    # @example
+    #   per = params.int(:per, default: 20, min: 1, max: 100)
+    # @param key [String, Symbol]
+    # @param default [Integer] returned as is (not clamped)
+    # @param min [Integer]
+    # @param max [Integer]
+    # @return [Integer]
+    # @api public
+    def int(key, default:, min:, max:)
+      Params.clamp_int(@values[key.to_s], default, min, max)
+    end
+
+    # The 1-based page number from `?page=N`, for {Relation#page}: 1 when
+    # `page` is absent or not a number, else clamped to
+    # `1..Params.max_page` (Config#max_page). Reads the key `page` only.
+    # @example
+    #   @page = Article.order("id DESC").page(params.page_number, per: 20)
+    # @return [Integer]
+    # @api public
+    def page_number
+      # The literal key, not int(:page, ...): one method fed Symbol and
+      # String keys in one program mis-dispatches its key.to_s (NOTES rule 51).
+      Params.clamp_int(@values["page"], 1, 1, Params.max_page)
+    end
+
+    # parse_int(text, default) clamped to min..max (default as is).
+    def self.clamp_int(text, default, min, max)
+      return default if text.nil?
+
+      s = text.to_s
+      return default unless Params.int_text?(s)
+
+      n = s.to_i
+      return min if n < min
+      return max if n > max
+
+      n
+    end
+
+    # A decimal Integer from text, or default when text is not an optional
+    # `-` and 1 to {MAX_INT_DIGITS} ASCII digits. Never raises: the length
+    # is checked before `to_i` (NOTES rule 25). Shared with Config.
+    # @param text [String]
+    # @param default [Integer]
+    # @return [Integer]
+    # @api public
+    def self.parse_int(text, default)
+      s = text.to_s
+      return default unless Params.int_text?(s)
+
+      s.to_i
+    end
+
+    # True for an optional "-" and 1 to MAX_INT_DIGITS digits. A byte scan
+    # through a fresh local (NOTES rule 62: the text may arrive boxed).
+    def self.int_text?(text)
+      s = text.to_s
+      len = s.bytesize
+      start = len > 0 && s.getbyte(0) == 45 ? 1 : 0 # "-"
+      digits = len - start
+      return false if digits < 1 || digits > MAX_INT_DIGITS
+
+      i = start
+      while i < len
+        b = s.getbyte(i)
+        return false if b < 48 || b > 57
+        i += 1
+      end
+      true
+    end
+
     # The listed keys that were sent as Strings, as a Hash ready for
     # `Model.new` or {Model#update}. Unlisted keys are dropped silently, and
     # so are lists, nested values and uploaded files: there is no

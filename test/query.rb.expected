@@ -16,4 +16,5 @@ ok   parse of an empty string yields an empty Params
 ok   split_key splits scalar, nested and list-in-nested forms
 ok   split_key treats a malformed bracket as part of a plain key
 ok   encode round-trips through parse
-18 tests, 154 assertions, 0 failures
+ok   without_key drops one parameter and re-encodes the rest in order
+19 tests, 161 assertions, 0 failures

@@ -13,4 +13,8 @@ ok   content_for and yield :title
 ok   url helpers go through the url_resolver with name and args
 ok   url_for derives the route name from the model
 ok   an unknown helper is a RuntimeError
-15 tests, 66 assertions, 0 failures
+ok   paginate renders Newer / Older around Page N, keeping the query minus page
+ok   paginate leaves out a link to a page that does not exist
+ok   paginate escapes what it is given and takes a path's own query string
+ok   a template reads the Page
+19 tests, 76 assertions, 0 failures

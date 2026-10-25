@@ -1,6 +1,7 @@
 require "cybertrain/cast"
 require "cybertrain/ident"
 require "cybertrain/db"
+require "cybertrain/pagination"
 
 module Cybertrain
   # A lazily built SELECT over one table: nothing runs until a method that
@@ -246,6 +247,41 @@ module Cybertrain
         return found.empty? ? nil : found[found.size - 1]
       end
       pick_row(Relation.reverse_order(order), 0)
+    end
+
+    # --- pagination (issue #75) ---------------------------------------------
+
+    # Windows the relation to page `number` of `per` rows and returns where
+    # that page sits: `LIMIT per OFFSET (number - 1) * per` replaces any
+    # limit/offset set before, so call it last, after where and order.
+    # The rows themselves load when the relation does (`to_a`, `each`), as
+    # typed records. `number` is clamped to `1..Params.max_page`
+    # (Config#max_page, 10000 by default), so the offset never passes
+    # `(max_page - 1) * per`; a page past the last row is empty.
+    #
+    # Whether an older page exists is asked with one `SELECT 1 ... LIMIT
+    # per + 1` over the same window, not a COUNT(*) over the whole table.
+    # @example
+    #   @articles = Article.order("created_at DESC")
+    #   @page = @articles.page(params.page_number, per: 20)
+    # @param number [Integer] the 1-based page, usually Params#page_number
+    # @param per [Integer] rows per page, 1 to {Page::MAX_PER}
+    # @return [Page]
+    # @raise [ArgumentError] when per is out of range (a programmer error)
+    # @api public
+    def page(number, per: 50)
+      if per < 1 || per > Page::MAX_PER
+        raise ArgumentError, "page: per must be from 1 to #{Page::MAX_PER} (got #{per})"
+      end
+
+      n = Page.clamp_number(number, Params.max_page)
+      skip = (n - 1) * per
+      sql = select_sql("1 AS one", "", per + 1, skip)
+      binds = @binds
+      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      @limit = per
+      @offset = skip
+      Page.new(n, per, found.size > per)
     end
 
     # "posts" -> "`posts`" (an embedded backtick is doubled).
