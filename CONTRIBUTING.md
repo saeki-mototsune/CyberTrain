@@ -119,15 +119,18 @@ differs:
 diff build/test/router.out test/router.rb.expected
 ```
 
-The last line of every snapshot counts the assertions, and that count is
-what a merge gets wrong without a conflict: two branches that each add one
+A snapshot that ends with the harness summary (`N tests, N assertions, N
+failures`; `test/version.rb.expected` is the one that does not) counts the
+assertions, and that count is what a merge gets wrong without a conflict:
+two branches that each add one
 assertion to the same test both change `N assertions` to `N+1`, git merges
 the identical change cleanly, and the merged tree runs `N+2` against a
 snapshot that says `N+1` (this happened on `main` between pull requests #58
 and #61; #79 regenerated the snapshot). After merging `main` into a branch
 that touches a test, run that test again before pushing: `spin test
-test/<name>.rb`, or, for a test that does not need SQLite, `ruby -I.
-test/<name>.rb` under CRuby, which takes a second and needs no compiler.
+test/<name>.rb`, or, for a test that needs neither SQLite nor any other FFI
+(the next paragraph), `ruby -I. test/<name>.rb` under CRuby, which takes a
+second and needs no compiler.
 
 Tests that need SQLite or other FFI only run compiled; `script/regen-snapshot`
 handles that. Use the assertions in `cybertrain/test.rb` (`assert`,
