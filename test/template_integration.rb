@@ -15,10 +15,19 @@
 # locals, form_with/FormBuilder, link_to and flash, driven through
 # SessionStore + CsrfProtection by Cybertrain::Test::Client.
 #
+# It also requires the outbound HTTP client with its TLS layer, which brings
+# Spinel's openssl package into the whole framework's program: the package
+# defines getbyte, read, write, close, << and more in Ruby, which changes
+# how those calls compile on every boxed receiver (spikes/NOTES.md rule 62),
+# so this is the program where a framework file that scans a boxed String
+# would fail. The last test sends a request through the Server with it.
+#
 # It links SQLite through FFI, so it cannot run under CRuby: its snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23).
 require "cybertrain"
 require "cybertrain/template"
+require "cybertrain/http_client"
+require "cybertrain/net/tls"
 require "cybertrain/test"
 require "cybertrain/test/client"
 
@@ -355,6 +364,24 @@ test "a relation's page renders through paginate next to the whole framework" do
   tpl = Cybertrain::Template::Template.parse("<%= paginate page, '/notes?q=x&page=1' %>|<%= page.next? %>", "notes/paged")
   html = Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil)).render(tpl, penv)
   assert_equal "<nav class=\"pager\"><span class=\"pager-current\">Page 1</span> <a href=\"/notes?q=x&amp;page=2\" rel=\"next\">Older</a></nav>|true", html
+end
+
+test "HttpClient (with the openssl package in the program) talks to the Server" do
+  router = Cybertrain::Router.new
+  router.post("/hooks/:name", "hook") do |c|
+    c.response.content_type = "application/json"
+    c.response.body = "{\"got\":\"#{c.params[:name]}\",\"bytes\":#{c.request.body.bytesize}}"
+  end
+  app = Cybertrain::App.new(router, logging: false)
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: Cybertrain::Logger.new(nil, :error))
+  server.start
+  http = Cybertrain::HttpClient.new(timeout: 2, deadline: 5, allow_private: true)
+  res = http.post("http://127.0.0.1:#{server.port}/hooks/deploy", "{\"text\":\"caf\u00e9\"}", content_type: "application/json")
+  server.stop
+  assert_equal 200, res.status
+  assert_equal "application/json", res.header("content-type")
+  assert_equal "{\"got\":\"deploy\",\"bytes\":16}", res.body
+  assert_includes Cybertrain::Net.tls_connector.class.name.to_s, "OpenSSLConnector"
 end
 
 Cybertrain::Test.run!

@@ -396,7 +396,12 @@ module Cybertrain
     # UTF-8 (parse and decode_valid guarantee it; byteindex refuses an offset
     # inside a character of an invalid String, NOTES rule 52), so each such
     # offset is a character boundary: a multibyte part is never split.
-    def self.split_key(key)
+    def self.split_key(name)
+      # Through a `to_s` local (NOTES rule 62): the key arrives boxed in a
+      # program that also requires the openssl package and the whole
+      # framework (test/template_integration.rb), where `getbyte` on it
+      # raised NoMethodError.
+      key = name.to_s
       first_bracket = key.byteindex("[")
       return [key] if first_bracket.nil?
 
