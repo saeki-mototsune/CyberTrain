@@ -81,6 +81,8 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 
 認証（MVP 後の 2026-10-22 に D15 として追加）、メーラー、ジョブ、WebSocket / ActionCable、アセットパイプライン（静的ファイル配信のみ）、i18n、API 専用モード（`render json:` の最小限のみ）、Rails 互換、Rack 互換、Windows ネイティブ。
 
+ジョブについては、MVP 後の 2026-10-25 に「後で送る」と「N 秒ごとに実行」を賄う最小の形（`Cybertrain::Scheduler` とデータベースのジョブキュー `Cybertrain::Job`）を D24 として追加した。メーラーは引き続き非目標。
+
 ## 3. 設計原則
 
 1. **リクエスト間で変わらない決定はビルド時に解決する。** ルーティング、属性、関連、URL ヘルパー、polymorphic path はすべて生成コードで固定する。
@@ -408,6 +410,29 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - 範囲外の `page` を 404 にすること。丸めるだけにした。
 - 今後: キーセット方式（`after: id`）は大きなテーブル向けに後から足す。scaffold の index ビューは変えない（gen/ を新しいまま保つ）。使い方は README の「Pagination」に書いた。
 
+### D24. バックグラウンド処理: `Scheduler` とデータベースのジョブキュー `Job`（2026-10-25、issue #65）
+
+- 決定: サーバとして動くプロセスにだけ、フレームワークがバックグラウンドのスレッドを一本起こす。
+  - `Cybertrain::Scheduler.every(seconds, name) { ... }`: `config/app.rb` か `bin/<app>.rb` が読むファイルで登録する。タスクは型付きの `Scheduler::Task`（名前、間隔、Proc、次回の時刻）で、定数 `Scheduler::TASKS` の配列に積む（クラス変数は GC ルートにならない、NOTES 64。空配列は要素型で種付け、NOTES 9）。ブロックは引数を取らない（`instance_eval` が無いので暗黙の受け手は無い）。最初の実行は開始の `seconds` 秒後、以後は各実行の開始から `seconds` 秒後。
+  - `Scheduler.start!(config)` を `Application#serve` が呼ぶ。`boot` が DB に接続し、ポートを bind し、`SPINEL_WORKERS` を設定した後（NOTES 22）で、起動バナーの後。`serve` に来るのは `Main.server?(argv)` が真のときだけなので、`migrate` / `db` / `Main.command` では動かない。アプリの `bin/` がスレッドを自前で起こす必要は無くなる。`Test::Client` は `serve` を通らないので、テストでも動かない。
+  - 各回は `Scheduler.run_task` という yield しない普通のメソッドの中で、Task から読んだ Proc を `call` し、`rescue JSON::NestingError, JSON::ParserError, StandardError` で `[ERROR]` を記録して続ける（NOTES 32 / 45 / 61 / 69）。失敗したタスクも次の時刻にまた走る。
+  - `Scheduler.run_due(now)` が 1 回の tick で、テストは時刻を渡して呼ぶ（眠らない）。`Scheduler.last_tick`（Integer の epoch 秒、Mutex の下で読み書き）はヘルスチェックが読める。`stop!` はスレッドに終了を頼み、`start!` の世代番号で古いループが新しいループと並んで走らないようにする。
+  - `Cybertrain::Job`: `Job.handle(kind) { |payload| ... }` でハンドラを登録し（定数 `Job::HANDLERS`）、`Job.enqueue(kind, payload, run_at: Time.now)` でテーブル `cybertrain_jobs`（id, kind, payload, run_at, attempts, last_error, state = queued / running / done / failed, created_at, updated_at）に行を足す。payload は String で、構造のあるデータはアプリが JSON にする。未登録の kind の enqueue は `ArgumentError`（綴り間違いを enqueue の時点で知らせる。全プロセスが同じ `bin/<app>.rb` を通るので、どのプロセスでも登録は揃う）。
+  - ワーカーはスケジューラのタスク（`"cybertrain jobs"`、`Config#job_poll_interval` 秒ごと、既定 5）として、ハンドラが一つでも登録されているときだけ `start!` が足す。1 回のポーリングで期限の来た行を最大 `Job::JOBS_PER_POLL`（20）件、1 件ずつ処理する（`Job.work_one(now)`、テストからも呼べる）。
+  - 取得は `DB.transaction(immediate: true)` の短いトランザクションで、最も古い期限到来の `queued` 行を SELECT し、`UPDATE ... SET state = 'running', attempts = attempts + 1 WHERE id = ? AND state = 'queued'` の `changes == 1` を確かめる。ハンドラは COMMIT の後、ロックを持たずに呼ぶ。成功なら `done`、例外なら `last_error`（"Class: message"、1000 文字で切る）を残して `run_at` を後ろへずらし `queued` に戻す（待ちは 60, 300, 900, 3600 秒、以後 3600 秒）。試行回数が `Config#job_max_attempts`（既定 5）に達したら `failed`。ハンドラの無い kind の行（デプロイで消えたハンドラ）はすぐ `failed` にする。
+  - 取得時に試行回数を数えるので、処理中にプロセスが落ちた行も 1 回と数える。ワーカーの開始時に `running` のまま残った行を `queued` に戻す（`Job.recover!`）。ワーカーはデータベースごとに一つ（次項）なので、その時点で他に処理中のプロセスは無い。
+  - `Config#worker`（`CYBERTRAIN_WORKER`、既定は真。`0` / `false` で偽）が偽なら `start!` は何もしない。同じデータベースを共有するプロセスが複数あるとき、一つ以外はこれで止める。`scheduler_interval`（tick の間隔、既定 1 秒）、`job_poll_interval`、`job_max_attempts` が 1 未満なら boot が止まる。
+- テーブルの用意: フレームワーク所有のマイグレーションではなく、`Job.install!` が `CREATE TABLE IF NOT EXISTS`（と索引）を発行する。最初の `enqueue`、ワーカーの開始、`work_one` などが DB の接続ごとに一度だけ呼ぶ（`DB.generation` は `DB.connect` の回数で、どの接続世代で用意したかを覚える）。時刻は epoch 秒の INTEGER で、SQL で `run_at <= ?` と比べるだけで済む。`db/schema.rb` のダンプからは `schema_migrations` と同じく外す（`SchemaDumper.table_names`）。入れるとジェネレータがモデル `CybertrainJob` を生成してしまう。
+- 理由: スレッドを手で起こすと、`SPINEL_WORKERS` の設定順、DB 接続の待ち、rescue と記録、`Main.server?` の確認、SQLite の呼び出しが OS ワーカーを握る問題をアプリごとにやり直すことになる。確実な配送のキュー（期限順、指数的な再試行、最終状態、回数の上限）はさらに数百行になる。
+- 却下した案:
+  - フレームワーク所有のマイグレーションをアプリに含めさせる案。全アプリの `db/migrate` と `gen/migrations.rb` が変わり、ジョブを使わないアプリにもテーブルができる。schema.rb にも出てモデルが生成される。
+  - ジェネレータでマイグレーションを書き出す案（`cybertrain generate jobs`）。テーブルの形はフレームワークのコードが決めるもので、アプリが変える理由が無い。形を変えたときにアプリのマイグレーションと食い違う。
+  - タスクのブロックが引数（文脈オブジェクト）を取る形。渡すものが今は無い。必要になれば別名の登録メソッドで足せる。
+  - ハンドラをトランザクションの中で呼ぶ案。長いハンドラが書き込みロックを握り続け、リクエストの書き込みを待たせる。
+- 制約（SQLite と Spinel）: タスクもハンドラもスケジューラのスレッドで一つずつ走る。SQLite の呼び出しは戻るまで OS ワーカーを握るので、`SPINEL_WORKERS=1` では長いタスクがすべてのリクエストを止める。仕事は小分けにし（1 回に千行など）、タスクは短く保つ。README の「Background work」に書いた。
+- 今後: cron 形式の時刻指定、ジョブの優先度と一意性、複数ワーカーでの分担（行の取得は既に排他なので、`worker` スイッチを外せば始められる）、`failed` 行の再投入コマンド。
+- 検証: `test/scheduler.rb`（期限前に走らないこと、例外の記録とループの継続、`last_tick`、`worker` が偽なら何もしないこと、実スレッドの起動）、`test/jobs.rb`（フレームワーク全体と一緒にコンパイル。enqueue / 取得 / 実行 / done、期限順、バックオフと試行回数、最終の `failed`、未知の kind、`last_error` の上限、`recover!`、巻き戻されたトランザクション内の enqueue、`prune_done`、schema ダンプからの除外、スケジューラによるワーカータスクの追加）。
+
 ## 5. リクエストの流れ
 
 1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。
@@ -449,7 +474,7 @@ ERB のタグ: `<% %>`、`<%= %>`（エスケープ）、`<%== %>`（非エス�
 - `rails console`（`eval` が存在しない）
 - テンプレート内の任意 Ruby、テンプレートの型エラーのコンパイル時検出、スタックトレース付きエラー画面
 - production バイナリの完全単一ファイル化（`app/views` と `public` を同梱。将来のコンパイルバックエンドで回収可能）
-- `namespace` / format / `respond_to`、`has_many :through`、`includes`、`transaction` API、i18n、メーラー、ジョブ、WebSocket（認証は 2026-10-22 に D15 の形で入った: ジェネレータが書くコードと、`Cybertrain::Password`）
+- `namespace` / format / `respond_to`、`has_many :through`、`includes`、`transaction` API、i18n、メーラー、ジョブ、WebSocket（認証は 2026-10-22 に D15 の形で入った: ジェネレータが書くコードと、`Cybertrain::Password`）（ジョブは 2026-10-25 に D24 の最小の形で入った）
 - Rack 互換、Rails 互換、CRuby 上での実行
 
 ## 9. 未検証の前提とスパイク計画（M0）

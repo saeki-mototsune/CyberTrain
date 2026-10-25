@@ -13,10 +13,19 @@ module Cybertrain
   module DB
     # A module-level ivar, not @@pool: see spikes/NOTES.md rule 18.
     @pool = nil
+    # Counts connects, so that code which prepares a database once (Job's
+    # table) can tell a new database from the one it prepared.
+    @generation = 0
 
     def self.connect(path, size: 4)
       disconnect
+      @generation += 1
       @pool = Pool.new(path, size)
+    end
+
+    # How many times {DB.connect} has run in this process.
+    def self.generation
+      @generation
     end
 
     def self.pool
