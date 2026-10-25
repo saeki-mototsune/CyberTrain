@@ -271,6 +271,225 @@ module Cybertrain
       terms.join(", ")
     end
 
+    # --- LIKE, pluck, aggregates and increment (issue #74) ------------------
+    # Typed one-column reads: Spinel needs one return type per method, so
+    # pluck and sum come in flavours (pluck_str, pluck_int, pluck_float,
+    # sum_int, sum_float) instead of Rails' polymorphic pluck/sum. Each
+    # honours the relation's where, order (pluck), limit and offset. Column
+    # names go through Ident.column? and are quoted; the *_sql variants take
+    # the developer's SQL text, which must never see request data.
+
+    # A column name for the methods below: checked (a programmer error, an
+    # ArgumentError, otherwise) and backtick-quoted.
+    def self.checked_column(method, column)
+      name = column.to_s
+      raise ArgumentError, "#{method}: #{name.inspect} is not a column name" unless Ident.column?(name)
+
+      Relation.quote_ident(name)
+    end
+
+    # where_like(:title, "50%") -> `title` LIKE ? ESCAPE '\' with "%50\%%":
+    # a substring search, the text's `\`, `%` and `_` escaped (Cast.like_escape).
+    def add_where_like(column, text)
+      quoted = Relation.checked_column("where_like", column)
+      @wheres << "#{quoted} LIKE ? ESCAPE '\\'"
+      escaped = Cast.like_escape(text)
+      pattern = "%#{escaped}%"
+      @binds << pattern
+      nil
+    end
+
+    # One column of the matching rows, in the relation's order, as Strings
+    # (NULL is `""`, a DATETIME its stored text).
+    # @example
+    #   Article.all.order("title").pluck_str(:title)  # => ["Bye", "Hello"]
+    # @param column [Symbol, String] a column name
+    # @return [Array<String>]
+    # @raise [ArgumentError] when `column` is not a column name
+    # @api public
+    def pluck_str(column)
+      found = pluck_rows("pluck_str", column)
+      out = Array.new(0) { "" }
+      i = 0
+      while i < found.size
+        out << Cast.str(found[i]["v"])
+        i += 1
+      end
+      out
+    end
+
+    # {#pluck_str} as Integers (NULL is `0`, through Cast.int).
+    # @example
+    #   Comment.where(article_id: article.id).pluck_int(:id)  # => [3, 7]
+    # @param column [Symbol, String] a column name
+    # @return [Array<Integer>]
+    # @raise [ArgumentError] when `column` is not a column name
+    # @api public
+    def pluck_int(column)
+      found = pluck_rows("pluck_int", column)
+      out = Array.new(0) { 0 }
+      i = 0
+      while i < found.size
+        out << Cast.int(found[i]["v"])
+        i += 1
+      end
+      out
+    end
+
+    # {#pluck_str} as Floats (NULL is `0.0`, through Cast.float).
+    # @param column [Symbol, String] a column name
+    # @return [Array<Float>]
+    # @raise [ArgumentError] when `column` is not a column name
+    # @api public
+    def pluck_float(column)
+      found = pluck_rows("pluck_float", column)
+      out = Array.new(0) { 0.0 }
+      i = 0
+      while i < found.size
+        out << Cast.float(found[i]["v"])
+        i += 1
+      end
+      out
+    end
+
+    # How many matching rows hold each value of `column`
+    # (`SELECT col, COUNT(*) ... GROUP BY col`), keys through Cast.str in
+    # ascending order. NULL and `""` share the key `""`. With a limit or
+    # offset the window is grouped (as {#count} counts it).
+    # @example
+    #   Comment.all.count_by(:article_id)  # => {"1" => 2, "4" => 1}
+    # @param column [Symbol, String] a column name
+    # @return [Hash{String => Integer}]
+    # @raise [ArgumentError] when `column` is not a column name
+    # @api public
+    def count_by(column)
+      grouped_counts(Relation.checked_column("count_by", column))
+    end
+
+    # {#count_by} over a raw SQL expression, for buckets a column name
+    # cannot say. The expression is used as written, like
+    # {ArticleRelation#order_sql}'s: never build it from request data.
+    # @example hour buckets
+    #   Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")
+    #   # => {"2026-10-25T09" => 3, "2026-10-25T10" => 1}
+    # @param expr [String] SQL text
+    # @return [Hash{String => Integer}]
+    # @api public
+    def count_by_sql(expr)
+      grouped_counts(expr)
+    end
+
+    # The sum of `column` over the matching rows (`SUM`), `0` when there are
+    # none or every value is NULL. A REAL column's sum is truncated: use
+    # {#sum_float} for those.
+    # @example
+    #   Stat.where(project_id: 1).sum_int(:calls)
+    # @param column [Symbol, String] a column name
+    # @return [Integer]
+    # @raise [ArgumentError] when `column` is not a column name
+    # @api public
+    def sum_int(column)
+      Cast.int(aggregate_cell("sum_int", "SUM", column))
+    end
+
+    # The sum of `column` as a Float (SQLite's `TOTAL`), `0.0` when there
+    # are no rows.
+    # @param column [Symbol, String] a column name
+    # @return [Float]
+    # @raise [ArgumentError] when `column` is not a column name
+    # @api public
+    def sum_float(column)
+      Cast.float(aggregate_cell("sum_float", "TOTAL", column))
+    end
+
+    # Adds `by` to `column` in every matching row with one
+    # `UPDATE ... SET col = col + ?`: no model is loaded, no callback or
+    # validation runs, `updated_at` is left alone. A limit or offset picks
+    # the rows by an `id` subselect, as {#delete_all} does.
+    # @example
+    #   Article.where(id: article.id).increment(:views)
+    #   Stat.where(project_id: 1).increment(:calls, by: 5)
+    # @param column [Symbol, String] a column name
+    # @param by [Integer, Float]
+    # @return [Integer] the number of rows updated
+    # @raise [ArgumentError] when `column` is not a column name
+    # @api public
+    def increment(column, by: 1)
+      quoted = Relation.checked_column("increment", column)
+      table = Relation.quote_ident(@table)
+      sql = +"UPDATE #{table} SET #{quoted} = #{quoted} + ?"
+      binds = [nil, 0, 0.0, ""]
+      binds.clear
+      binds << Cast.to_sql(by)
+      if @limit >= 0 || @offset > 0
+        id = Relation.quote_ident("id")
+        window = select_sql(id, order_or_id, @limit, @offset)
+        sql << " WHERE " << id << " IN (" << window << ")"
+      else
+        sql << " WHERE " << @wheres.join(" AND ") unless @wheres.empty?
+      end
+      i = 0
+      while i < @binds.size
+        binds << @binds[i]
+        i += 1
+      end
+      Cybertrain::DB.with do |c|
+        c.execute(sql, binds)
+        c.changes
+      end
+    end
+
+    def pluck_rows(method, column)
+      quoted = Relation.checked_column(method, column)
+      columns = "#{quoted} AS v"
+      sql = select_sql(columns, @order, @limit, @offset)
+      binds = @binds
+      Cybertrain::DB.with { |c| c.execute(sql, binds) }
+    end
+
+    # One aggregate over one column: SUM(`col`) or TOTAL(`col`), over the
+    # windowed subquery when there is a limit or offset.
+    def aggregate_cell(method, func, column)
+      quoted = Relation.checked_column(method, column)
+      sql = if @limit >= 0 || @offset > 0
+              columns = "#{quoted} AS v"
+              inner = select_sql(columns, @order, @limit, @offset)
+              "SELECT #{func}(v) AS n FROM (#{inner})"
+            else
+              columns = "#{func}(#{quoted}) AS n"
+              select_sql(columns, "", -1, 0)
+            end
+      binds = @binds
+      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      found[0]["n"]
+    end
+
+    # `GROUP BY 1 ORDER BY 1` (the first result column), not the alias: a
+    # table column named `k` would win over an alias in GROUP BY.
+    def grouped_counts(expr)
+      sql = if @limit >= 0 || @offset > 0
+              columns = "#{expr} AS k"
+              inner = select_sql(columns, @order, @limit, @offset)
+              "SELECT k, COUNT(*) AS n FROM (#{inner}) GROUP BY 1 ORDER BY 1"
+            else
+              columns = "#{expr} AS k, COUNT(*) AS n"
+              grouped = select_sql(columns, "", -1, 0)
+              "#{grouped} GROUP BY 1 ORDER BY 1"
+            end
+      binds = @binds
+      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      counts = { "" => 0 }
+      counts.delete("")
+      i = 0
+      while i < found.size
+        key = Cast.str(found[i]["k"])
+        n = Cast.int(found[i]["n"])
+        counts[key] = counts.key?(key) ? counts[key] + n : n
+        i += 1
+      end
+      counts
+    end
+
     private
 
     # The relation's ORDER BY text, or the quoted primary key when it has

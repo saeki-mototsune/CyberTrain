@@ -181,6 +181,7 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - validations / callbacks: `validates :title, presence: true, length: { minimum: 5 }` は生成された `model_name` 文字列をキーにした登録簿に積み、`valid?` が `read_attribute` 経由で評価する。`errors.full_messages` / `errors[:title]` / `errors.any?` を提供。コールバックはレコードを引数に取るブロック `before_save { |r| r.title = r.title.strip }`（`instance_exec` が使えないため、暗黙 `self` の形は提供しない）。
 - アダプタ: SQLite（FFI）のみ。`Connection#execute(sql, binds)` が `Array<Hash<String, Integer | Float | String | nil>>` を返す（スパイク 6 でこの型が混在しても正しく動くことを確認）。モデルの行読み出し（`Relation#rows`、`reload`）だけは `Connection#execute_models` を通り、DATETIME 列は文字列ではなく UTC のエポック秒（Integer）で返る（`Cast.time_or_nil` が Time にする。理由と数値は docs/benchmark.md）。接続は `SizedQueue` によるプール（初期値はワーカー数）、WAL モード・busy 待ち（現在は C の busy handler、100 µs 間隔で約 5 秒。`PRAGMA busy_timeout` は使わない）・foreign_keys を既定で設定、`sqlite3_step` / `prepare` / `exec` は `blocking: true`。`sqlite3_bind_text` の破棄関数には整数リテラル `-1`（SQLITE_TRANSIENT）を渡す。`sqlite3_open_v2` / `prepare_v2` の出力ポインタは静的 `ffi_buffer` を使わず、呼び出しごとに `malloc(8)` した領域を使う（静的バッファはスレッド間で競合して SIGSEGV する。スパイク 6 で再現と修正を確認）。複数行の書き込みは `BEGIN` / `COMMIT` で包む（自動コミットの 20 倍速い）。PostgreSQL は libpq の FFI で後日。
 - MVP 外: `has_many :through`、`includes` / `preload`、`pluck`、モデル API の `transaction`、enum、STI、polymorphic 関連、`dependent:`。
+- 2026-10-25 追記: `pluck`（型別の `pluck_str` / `pluck_int` / `pluck_float`）、`upsert`、`increment`、`count_by`、`sum_int` / `sum_float`、`where_like` を D21 で足した。
 
 ### D11. 名前、パッケージ構成、雛形
 
@@ -375,6 +376,20 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - `execute` の逆操作として `down` 側の SQL を引数で受ける（`execute up_sql, down_sql`）。バインドとの組み合わせが分かりにくく、`down` を書くほうが読める。
   - `execute` がその場で SQL を流す。migrator が操作を集めるために `up` を呼ぶたびに走ってしまう、issue が挙げたもろさそのもの。
 - 名前: `Operation` の読み出しは `exec_sql` / `exec_binds`。`Relation#binds` と同名にしない（NOTES 規則 10 / 34）。`Base#execute` は `nil` を返し、`Connection#execute`（行の Array）と戻り値の型が違うが、一つのプログラムに両方があってもコンパイルできることを test/migration_execute.rb と test/db_integration.rb で確かめた。
+
+### D22. クエリ API の追加: upsert、集計、pluck、binds、LIKE、JSON の Cast（2026-10-25、issue #74）
+
+- 決定: 汎用のクエリビルダは作らず、アプリで何度も手書きされていた生 SQL の型を、型の決まった小さなメソッドとして足す。
+  - `Model.upsert(attrs, conflict: [...], update: { col: "SQL 式" })`: `INSERT ... ON CONFLICT (...) DO UPDATE SET`。`update` が空なら `DO NOTHING`。戻り値は書いた行数（`changes`）。基底 `Model` のクラスメソッドで、サブクラスの `table_name` を読む（継承したクラスメソッドからの `table_name` 呼び出しは Spinel で各サブクラスのものに解決されることを確認した）。生成コードは増やさない。検証・コールバック・タイムスタンプの自動設定はしない。
+  - `Relation#increment(column, by: 1)`: `UPDATE ... SET col = col + ?`。limit / offset があれば `delete_all` と同じく `id` の副問い合わせで窓を選ぶ。
+  - `Relation#pluck_str` / `pluck_int` / `pluck_float`、`sum_int` / `sum_float`: Spinel ではメソッドごとに戻り値の型が一つなので、Rails の多相な `pluck` / `sum` ではなく型別に分ける。`sum` を Float 一本にすると、カウンタの合計（主な用途）が 2^53 を超えたところで丸まるため、整数版を別に持つ。`sum_float` は SQLite の `TOTAL`（行が無ければ 0.0）。
+  - `Relation#count_by(column)` → `Hash{String => Integer}`（キーは `Cast.str`、昇順、NULL と `""` は同じキー `""` に合算）。生の式で集計する逃げ道は `count_by_sql(expr)`（時間バケツの `strftime(...)` など）。issue の `group_sql` は、連鎖メソッドにすると各モデルの生成コードが要り、しかも「複数の集計列を持つ行」の型が Spinel では多相 Hash にしかならないので、終端の `count_by_sql` にした。`order_sql` と同じく、式にリクエストのデータを入れてはいけない。`GROUP BY 1`（位置指定）を使うのは、表に `k` 列があると GROUP BY では別名より列が優先されるため。
+  - `Relation#where_like(column, text)`（生成コードの連鎖メソッドと `Model.where_like`）と `Cast.like_escape(text)`: `\`・`%`・`_` を `\` でエスケープし、`LIKE ? ESCAPE '\'` に `%text%` を束縛する。前方一致は `like_escape(q) + "%"` を `where_sql` に渡す。
+  - `Cast.binds(*values)`: `execute` が受け取る多相配列を `Cast.to_sql` を通して作る。可変長引数は Spinel でコンパイルできる（`Params#permit` が前例）ので、`binds1`〜`binds4` のような版は作らない。
+  - `Cast.hash(v)` / `Cast.array(v)` と `Cast.empty_hash` / `Cast.empty_array`: JSON の値を Hash / Array に絞る。`when Time` を先に置く（NOTES 規則 8）。`v` そのものではなく、型の付いた新しい容器（`Hash[String, untyped]` / `Array[untyped]`、全スカラー型で種を入れる: 規則 9・46）に要素を浅く写して返す。`when Hash then v` で `v` を返すと戻り値が箱詰めの untyped になり（`--emit-rbs` で確認）、以後の呼び出しがすべて遅い経路に乗るため。
+  - 列名はすべて `Ident.column?` で検査してバッククォートで囲み、不正な名前は `ArgumentError`（開発者の誤りなので 500）。値はすべて束縛する。
+- 却下した案: 汎用クエリビルダ（`select` / `group` / `having` の連鎖）。型の決まらない行を返すことになり、生成コードも大きくなる。`pluck` を多相配列で返して `Cast` で絞らせる案は、呼び出し側が毎回同じ `Cast` を書くことになるので型別にした。
+- 帰結: `Ident::RESERVED_COLUMN_NAMES` は変えない（足したのは Relation のメソッドと Model・Cast のクラスメソッドだけで、レコードのインスタンスメソッドは増えていない）。生成モデルには `where_like` の 2 行が増える。
 
 ## 5. リクエストの流れ
 

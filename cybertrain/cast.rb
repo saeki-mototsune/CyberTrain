@@ -189,5 +189,113 @@ module Cybertrain
       end
       value
     end
+
+    # --- binds, LIKE patterns, JSON containers (issue #74) ------------------
+
+    # The bind Array `Connection#execute` takes, each value through
+    # {Cast.to_sql} (a Time as its UTC ISO 8601 text, booleans as 1/0).
+    # A splat compiles under Spinel (Params#permit takes one too); the
+    # result is the polymorphic Array, seeded so it stays one when every
+    # argument has the same type.
+    # @example
+    #   sql = "SELECT COUNT(*) AS n FROM stats WHERE project_id = ? AND at >= ?"
+    #   Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(project.id, since)) }
+    # @param values [Array<Object>] nil, Integer, Float, String, true/false or Time
+    # @return [Array<Object>]
+    # @api public
+    def self.binds(*values)
+      out = [nil, 0, 0.0, ""]
+      out.clear
+      values.each { |v| out << to_sql(v) }
+      out
+    end
+
+    # `text` with `\`, `%` and `_` escaped by a backslash, for a LIKE
+    # pattern written with `ESCAPE '\'`. Relation#where_like wraps it in
+    # `%...%`; a prefix search writes its own pattern:
+    # @example
+    #   pattern = Cybertrain::Cast.like_escape(params[:q]) + "%"
+    #   Article.all.where_sql("title LIKE ? ESCAPE '\\'", [pattern])
+    # @param text [String]
+    # @return [String]
+    # @api public
+    def self.like_escape(text)
+      s = text.to_s # NOTES rule 62: a boxed String argument (request data)
+      out = +""
+      i = 0
+      n = s.bytesize
+      start = 0
+      while i < n
+        b = s.getbyte(i)
+        # 92 `\`, 37 `%`, 95 `_`: ASCII bytes, so the byteslice boundaries
+        # around them are character boundaries.
+        if b == 92 || b == 37 || b == 95
+          out << s.byteslice(start, i - start) if i > start
+          out << "\\"
+          start = i
+        end
+        i += 1
+      end
+      out << s.byteslice(start, n - start) if n > start
+      out
+    end
+
+    # A fresh empty Hash typed String => any value, what {Cast.hash}
+    # returns for a value that is not a Hash. Seeded with a value of every
+    # scalar type (NOTES rules 9 and 46), so `spinel --emit-rbs` reads it as
+    # `Hash[String, untyped]` rather than an empty literal's guess.
+    # @return [Hash{String => Object}]
+    # @api public
+    def self.empty_hash
+      h = { "" => [nil, 0, 0.0, "", true][0] }
+      h.delete("")
+      h
+    end
+
+    # A fresh empty Array of any values ({Cast.array}'s fallback), seeded
+    # like {Cast.empty_hash}.
+    # @return [Array<Object>]
+    # @api public
+    def self.empty_array
+      a = [[nil, 0, 0.0, "", true][0]]
+      a.clear
+      a
+    end
+
+    # Narrows a parsed JSON value (or any polymorphic one) to a Hash: its
+    # pairs, keys through to_s, copied into a fresh {Cast.empty_hash}, or
+    # that empty Hash when `v` is not a Hash. A copy, not `v` itself: the
+    # copy is typed `Hash[String, untyped]` for the compiler, where handing
+    # back the boxed `v` leaves every later call on it on the slow path.
+    # It is shallow (nested containers are shared). `when Time` comes
+    # before the container branches (NOTES rule 8).
+    # @example
+    #   doc = Cybertrain::Cast.hash(JSON.parse(body))
+    #   tags = Cybertrain::Cast.array(doc["tags"])
+    # @param v [Object]
+    # @return [Hash{String => Object}]
+    # @api public
+    def self.hash(v)
+      out = empty_hash
+      case v
+      when Time then nil
+      when Hash then v.each { |k, x| out[k.to_s] = x }
+      end
+      out
+    end
+
+    # {Cast.hash} for Arrays: `v`'s elements in a fresh {Cast.empty_array},
+    # or that empty Array when `v` is not an Array.
+    # @param v [Object]
+    # @return [Array<Object>]
+    # @api public
+    def self.array(v)
+      out = empty_array
+      case v
+      when Time then nil
+      when Array then v.each { |x| out << x }
+      end
+      out
+    end
   end
 end

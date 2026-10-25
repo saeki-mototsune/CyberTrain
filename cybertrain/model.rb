@@ -41,7 +41,8 @@ module Cybertrain
   # and the development server do it for you).
   #
   # Not available (compared with ActiveRecord): declared associations,
-  # `has_many :through`, `includes`, `pluck`, `update_all`, `destroy_all`,
+  # `has_many :through`, `includes`, an untyped `pluck` (relations have
+  # `pluck_str` / `pluck_int` / `pluck_float`), `update_all`, `destroy_all`,
   # dirty tracking, transactions around `save`, STI, enums and the `scope`
   # macro (write `def self.published = where(published: true)` instead).
   #
@@ -197,6 +198,81 @@ module Cybertrain
     # @api public
     def self.transaction(immediate: false, &block)
       Cybertrain::DB.transaction(immediate: immediate, &block)
+    end
+
+    # Inserts one row, or, when it collides with an existing row on the
+    # `conflict` columns (a UNIQUE index or the primary key), updates that
+    # row instead: SQLite's `INSERT ... ON CONFLICT (...) DO UPDATE SET`.
+    # The counter-and-statistics shape in one statement.
+    #
+    # `attrs` are column => value, bound (through Cast.to_sql), never
+    # interpolated. `update` is column => SQL expression, where `excluded.x`
+    # is the value this INSERT tried to write; like {ArticleRelation#order_sql}
+    # it is the developer's SQL text and must never see request data. An
+    # empty `update` is `DO NOTHING`. Every column name (attrs, conflict,
+    # update keys) must be a column name (Ident), or ArgumentError.
+    #
+    # No model is built, no validation or callback runs, and
+    # `created_at` / `updated_at` are not filled in: pass them in `attrs`
+    # (and in `update`, `updated_at: "excluded.updated_at"`) when the table
+    # has them. Use Symbol keys throughout (NOTES rule 51).
+    # @example
+    #   Stat.upsert({ project_id: 1, key: "GET /", calls: 1, max_ms: 12.5 },
+    #               conflict: [:project_id, :key],
+    #               update: { calls: "calls + excluded.calls",
+    #                         max_ms: "MAX(max_ms, excluded.max_ms)" })
+    # @param attrs [Hash{Symbol => Object}] the row to insert
+    # @param conflict [Array<Symbol>] the conflict target's columns
+    # @param update [Hash{Symbol => String}] column => SQL expression
+    # @return [Integer] rows written: 1 inserted or updated, 0 when an empty
+    #   `update` skipped a conflicting row
+    # @raise [ArgumentError] on an empty `attrs` or `conflict`, or a name
+    #   that is not a column name
+    # @raise [DB::Error] when SQLite refuses the statement (no UNIQUE index
+    #   matches `conflict`, a NOT NULL column is missing)
+    # @api public
+    def self.upsert(attrs, conflict:, update: {})
+      Model.upsert_into(table_name, attrs, conflict, update)
+    end
+
+    # The work of {.upsert}, given the table: a class method on Model
+    # itself so the generated subclasses need no code of their own (their
+    # table_name override is what `upsert` passes).
+    def self.upsert_into(table, attrs, conflict, update)
+      raise ArgumentError, "upsert: no attributes" if attrs.empty?
+      raise ArgumentError, "upsert: no conflict columns" if conflict.empty?
+
+      columns = Array.new(0) { "" }
+      binds = [nil, 0, 0.0, ""]
+      binds.clear
+      attrs.each do |key, value|
+        columns << Relation.checked_column("upsert", key)
+        binds << Cast.to_sql(value)
+      end
+      target = Array.new(0) { "" }
+      conflict.each { |key| target << Relation.checked_column("upsert", key) }
+      sets = Array.new(0) { "" }
+      update.each do |key, expr|
+        quoted = Relation.checked_column("upsert", key)
+        sets << "#{quoted} = #{expr}"
+      end
+      marks = Array.new(columns.size) { "?" }
+      # Each piece in a local before it is interpolated (NOTES rule 65).
+      quoted_table = Relation.quote_ident(table)
+      column_list = columns.join(", ")
+      mark_list = marks.join(", ")
+      target_list = target.join(", ")
+      sql = +"INSERT INTO #{quoted_table} (#{column_list}) VALUES (#{mark_list})"
+      sql << " ON CONFLICT (" << target_list << ")"
+      if sets.empty?
+        sql << " DO NOTHING"
+      else
+        sql << " DO UPDATE SET " << sets.join(", ")
+      end
+      Cybertrain::DB.with do |c|
+        c.execute(sql, binds)
+        c.changes
+      end
     end
 
     # --- hooks every generated subclass overrides ---------------------------

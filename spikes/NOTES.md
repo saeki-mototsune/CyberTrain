@@ -523,6 +523,21 @@ finds the commit that removed them).
     test/db_transaction.rb, which requires only the db files, the same
     clause matches the full name. Spell the full name in a rescue clause.
 
+71. Narrowing does not type a return value: `case v when Hash then v else
+    {} end` on a polymorphic `v` (a `JSON.parse` result) is
+    `(untyped) -> untyped` in `spinel --emit-rbs` (2026.09.12), so every
+    call on what it returns stays on the boxed slow path (and in rule 62's
+    reach). Copying into a seeded container types it: with `out` a
+    `{ "" => [nil, 0, 0.0, "", true][0] }` minus its seed key, `case v
+    when Time then nil when Hash then v.each { |k, x| out[k.to_s] = x }
+    end; out` is `-> Hash[String, untyped]` (Cybertrain::Cast.hash /
+    Cast.array, issue #74; `when Time` first, rule 8). Two shapes
+    that the same probe confirmed compile and behave as under CRuby: a
+    splat parameter taking mixed types (`Cast.binds(1, "x", nil, Time)`,
+    also with no arguments), and a class method inherited from a base
+    class that calls an overridden class method on implicit self
+    (`Model.upsert` reading each subclass's `table_name`).
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.

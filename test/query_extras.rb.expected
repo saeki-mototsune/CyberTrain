@@ -1,0 +1,25 @@
+ok   Cast.binds casts each value the way a relation binds it
+ok   Cast.binds feeds Connection#execute
+ok   Cast.like_escape escapes backslash, percent and underscore only
+ok   Cast.hash and Cast.array narrow parsed JSON, a fresh empty container otherwise
+ok   Cast.hash and Cast.array copy: writing to the result leaves the value alone
+ok   Cast.empty_hash and Cast.empty_array are fresh on every call
+ok   upsert inserts, then updates the conflicting row with the update expressions
+ok   upsert binds a Time as its ISO 8601 text and can keep the first or last seen value
+ok   upsert with an empty update is DO NOTHING and reports 0 rows on a conflict
+ok   upsert writes the table of the model it is called on
+ok   upsert refuses empty attributes, no conflict target and names that are not columns
+ok   upsert surfaces SQLite's refusal when no unique index matches the conflict target
+ok   increment adds to a column over the relation's rows and returns how many changed
+ok   increment with a limit or offset changes only that window, by id
+ok   increment refuses a name that is not a column
+ok   where_like is a substring match with the text's wildcards escaped
+ok   where_like quotes the column and binds the pattern
+ok   a prefix search writes its own pattern from like_escape
+ok   pluck_str, pluck_int and pluck_float read one column in the relation's order
+ok   pluck refuses a name that is not a column
+ok   count_by counts the rows per value, keys as Strings in order
+ok   count_by merges NULL into the empty-String key and groups only the window
+ok   count_by_sql groups by an expression: hour buckets
+ok   sum_int and sum_float add up a column, 0 for no rows
+24 tests, 122 assertions, 0 failures
