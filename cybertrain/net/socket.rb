@@ -17,7 +17,8 @@
 #
 # Name resolution (Socket.getaddrinfo) is the one blocking call left: the
 # runtime has no asynchronous resolver. It is done once per request, and the
-# address it answers is the one dialled (see {Net.resolve}).
+# addresses it answers are the ones dialled, in its order, never looked up
+# again (see {Net.resolve} and {TcpStream.connect_to}).
 #
 # TLS is a separate file, cybertrain/net/tls.rb, which requires Spinel's
 # openssl package; this file does not, so a program that never makes an
@@ -119,32 +120,56 @@ module Cybertrain
       end
     end
 
-    # Where a name resolved to: the first stream address getaddrinfo answered.
+    # Where a name resolved to: every stream address getaddrinfo answered,
+    # in its order (on macOS `localhost` is `::1` first, then 127.0.0.1),
+    # each once. A caller that refuses some addresses by policy builds a
+    # second Endpoint from the ones it keeps ({#offer}).
     class Endpoint
-      attr_reader :endpoint_ip, :endpoint_family
-
       def initialize
-        @endpoint_ip = ""
-        @endpoint_family = 0
+        @endpoint_ips = Array.new(0) { "" }
+        @endpoint_families = Array.new(0) { 0 }
       end
 
-      # Keeps the first address offered.
+      # Adds an address unless it is already there.
       def offer(ip, family)
-        return nil unless @endpoint_ip.empty?
+        text = ip.to_s
+        i = 0
+        while i < @endpoint_ips.size
+          return nil if @endpoint_ips[i] == text
 
-        @endpoint_ip = ip
-        @endpoint_family = family
+          i += 1
+        end
+        @endpoint_ips << text
+        @endpoint_families << family.to_i
         nil
       end
 
       def found?
-        !@endpoint_ip.empty?
+        !@endpoint_ips.empty?
+      end
+
+      def endpoint_count
+        @endpoint_ips.size
+      end
+
+      # The address at `index` (0 is the one getaddrinfo answered first).
+      def endpoint_ip_at(index)
+        @endpoint_ips[index].to_s
+      end
+
+      def endpoint_family_at(index)
+        @endpoint_families[index].to_i
+      end
+
+      # The first address, "" when there is none.
+      def endpoint_ip
+        @endpoint_ips.empty? ? "" : @endpoint_ips[0].to_s
       end
     end
 
-    # Resolves `host` (a name or an IP literal, without brackets) once.
-    # Blocking: getaddrinfo has no non-blocking form in the runtime. Raises
-    # ConnectError when nothing resolves.
+    # Resolves `host` (a name or an IP literal, without brackets) once, to
+    # all of its stream addresses. Blocking: getaddrinfo has no non-blocking
+    # form in the runtime. Raises ConnectError when nothing resolves.
     # @return [Endpoint]
     def self.resolve(host, port, label)
       found = Endpoint.new
@@ -211,20 +236,48 @@ module Cybertrain
     class TcpStream < Stream
       attr_reader :tcp_socket
 
-      # Dials `endpoint` (an already resolved address) within the timer's
-      # per-wait timeout. Raises TimeoutError or ConnectError.
+      # Dials the addresses of `endpoint` (already resolved: nothing is looked
+      # up again) in order until one connects. An address that refuses, is
+      # unreachable, resets, cannot be opened (no IPv6 here) or does not
+      # answer within the per-wait timeout gives way to the next; all of them
+      # together are bounded by the deadline. When every address fails, the
+      # last one's error is raised: TimeoutError or ConnectError.
       # @return [TcpStream]
       def self.connect_to(endpoint, port, label, timer)
-        sock = TcpStream.start_connect(endpoint, port, label)
+        raise ConnectError, "#{label}: no address to connect to" unless endpoint.found?
+
+        TcpStream.connect_from(endpoint, 0, port, label, timer)
+      end
+
+      # Address `index` and, when it fails, the ones after it. Recursion
+      # rather than a loop keeps the last error as it was raised (rule 47:
+      # exceptions are told apart by rescue clause, not stored), and the
+      # rescue in a method that takes no block (rules 32, 45). An error raised
+      # by a later address passes through the rescue clause untouched.
+      def self.connect_from(endpoint, index, port, label, timer)
+        return TcpStream.connect_address(endpoint, index, port, label, timer) if index + 1 >= endpoint.endpoint_count
+
+        begin
+          TcpStream.connect_address(endpoint, index, port, label, timer)
+        rescue Cybertrain::Net::ConnectError, Cybertrain::Net::TimeoutError # full names: NOTES rule 70
+          TcpStream.connect_from(endpoint, index + 1, port, label, timer)
+        end
+      end
+
+      # One address: the deadline first (a passed deadline raises before a
+      # socket is opened), then a connect bounded by the per-wait timeout.
+      def self.connect_address(endpoint, index, port, label, timer)
+        limit = timer.wait_limit("connecting")
+        sock = TcpStream.start_connect(endpoint.endpoint_ip_at(index), endpoint.endpoint_family_at(index), port, label)
         stream = TcpStream.new(sock, label)
-        stream.finish_connect(endpoint, port, timer)
+        stream.finish_connect(limit, timer)
         stream
       end
 
-      def self.start_connect(endpoint, port, label)
-        sock = TcpStream.new_socket(endpoint.endpoint_family, label)
+      def self.start_connect(ip, family, port, label)
+        sock = TcpStream.new_socket(family, label)
         begin
-          sock.connect_nonblock(Socket.sockaddr_in(port, endpoint.endpoint_ip), exception: false)
+          sock.connect_nonblock(Socket.sockaddr_in(port, ip), exception: false)
         rescue SystemCallError
           sock.close
           raise ConnectError, "#{label}: connection failed"
@@ -251,8 +304,7 @@ module Cybertrain
       # Waits for the non-blocking connect to finish and checks how it ended
       # (SO_ERROR): a second connect_nonblock would answer EISCONN under CRuby
       # and a bare SystemCallError under Spinel, the option the same on both.
-      def finish_connect(endpoint, port, timer)
-        limit = timer.wait_limit("connecting")
+      def finish_connect(limit, timer)
         if @tcp_socket.wait_writable(limit).nil?
           stream_close
           timer.timed_out!("connecting", limit)

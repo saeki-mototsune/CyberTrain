@@ -565,7 +565,14 @@ finds the commit that removed them).
     the boxed result with `== :wait_readable` works. To make a connect hang
     in a test, `TCPServer#listen(0)` and fill the queue: after one queued
     connection the kernel drops further SYNs (10.255.255.1 is not
-    unroutable in every sandbox). In the openssl package, a handshake error
+    unroutable in every sandbox). That is Linux: macOS's kernel queued more
+    than the backlog asked for or answered with a reset (CI's macOS job), so
+    test/http_client.rb tries up to 1024 connects and falls back to
+    192.0.2.1 (TEST-NET-1); a silent TLS peer is a server that accepts and
+    never writes, not a connection left in the queue. Also macOS:
+    `localhost` resolves to `::1` first, so a client that dials only the
+    first address is refused by a server on 127.0.0.1 (the socket layer
+    dials every resolved address). In the openssl package, a handshake error
     is raised even with `exception: false`; `SSL_CTX_set_default_verify_paths`
     honours `SSL_CERT_FILE` / `SSL_CERT_DIR` (the only way to trust another
     CA: there is no `X509::Store`); CRuby's `SSLContext.new` defaults to
