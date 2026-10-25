@@ -149,6 +149,9 @@ commands (`cybertrain help` prints them):
   it: users and sessions tables, `User` and `Session` models, the sign-in
   and sign-up controllers and views, the routes, a `before_action` in
   `ApplicationController` and a test (see "Add authentication").
+  With `--invite-only` there is no sign-up page: users are created with
+  `./NAME user EMAIL`, and the first one also at a `/setup` page that
+  answers only to the server's own machine while no user exists.
 - `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
   to a scaffolded model: five metadata columns, model methods and
   callbacks, a download action, the route, the form field and a test (see
@@ -525,6 +528,64 @@ set `CYBERTRAIN_TRUSTED_PROXY=1`, or every visitor shares the proxy's
 address (see [Rate limiting](#rate-limiting-and-the-client-address)).
 `AppTest.sign_in` forgets the counts first, since every test client comes
 from 127.0.0.1.
+
+#### An invitation-only app: `--invite-only`
+
+The sign-up page lets anyone who reaches the server register, which is the
+wrong default for an internal tool: whoever gets there before the admin
+does has an account. `--invite-only` writes no `RegistrationsController`
+and no sign-up link; the first user comes from the command line or from a
+page only the server's own machine can open:
+
+```sh
+cybertrain generate authentication --invite-only
+cybertrain db migrate
+cybertrain server        # then open http://127.0.0.1:3000/setup on the same machine
+```
+
+In production, from the directory the binary runs in:
+
+```sh
+./shop user ann@example.com                        # reads the password from stdin (one line)
+printf '%s' "$PASSWORD" | ./shop user ann@example.com
+./shop user ann@example.com 's3cr3t-s3cr3t'        # or as an argument (visible in ps)
+```
+
+- `app/commands/user_command.rb` registers the `user` command with
+  `Cybertrain::Main.command` (so `./shop help` lists it) and is required
+  from `bin/shop.rb`. `EMAIL [PASSWORD]` creates the user, or sets the
+  password of the one with that address (which signs that user's browsers
+  out, as any password change does); it prints `created ADDRESS` or
+  `updated ADDRESS` and exits 0. Without `PASSWORD` it reads one line of
+  standard input (prompting when that is a terminal; the typing is echoed)
+  and drops the trailing newline, so the password stays out of `ps` and
+  the shell history. An empty password, a record that does not validate
+  (a password under 8 characters) or bad arguments print an error or the
+  usage line and exit 1.
+- `SetupController` (`GET`/`POST /setup`, `app/views/setup/new.html.erb`)
+  creates the first user and signs them in. It answers only while no user
+  exists, and only to a connection whose socket peer is the loopback
+  address (`request.loopback?`: `127.0.0.0/8` or `::1`) and that carries no
+  `X-Forwarded-For` header (a proxy on the same host makes every request a
+  loopback one, and it adds that header). A header can close the page,
+  never open it. Everyone else gets a 404.
+- For a first run behind a proxy on another host, `SHOP_SETUP_OPEN=1`
+  (declared in `config/app.rb` with `c.setting_bool :setup_open`) opens
+  `/setup` to any address, still only while no user exists. Unset it once
+  the user is there.
+- While no user exists, the server logs `[WARN] no user exists yet: run
+  ./shop user EMAIL or open /setup from this machine` before it boots
+  (`UserCommand.warn_if_no_user`, called from `bin/shop.rb` when
+  `Cybertrain::Main.server?(ARGV)`; it connects for that one question and
+  says nothing when the users table is not migrated yet).
+
+The generated `test/authentication.rb` covers both: `/setup` from another
+address (`client.peer_address = "203.0.113.7"`), through a proxy, once a
+user exists and with the switch on, and the `user` command run in-process
+through `Cybertrain::Main.run`. All of it is application code, yours to
+change (docs/design.md D27); the framework only provides
+`request.loopback?`, `Main.command`, `Main.server?` and the test client's
+`peer_address`.
 
 In the blog, open the pages anyone may read again, as Rails' guide does, and
 hide what a visitor cannot use (`resume_session` still runs on those pages,
@@ -1345,6 +1406,11 @@ It migrates a fresh `storage/test.sqlite3`, boots the app as `BLOG`, loads
 rendered form (`BlogTest.form_token`). End each test file with
 `Cybertrain::Test.run!`; `examples/blog/test/articles.rb` and `comments.rb`
 show the full pattern.
+
+Every request a test client sends comes from `127.0.0.1` (`request.remote_addr`,
+so `request.loopback?` is true). To see what a page does for a visitor on
+another machine, set `client.peer_address = "203.0.113.7"` before the
+request.
 
 Run with `cybertrain spin test`: it compiles each `test/*.rb` into its own
 program and diffs its output (stdout and stderr together) against

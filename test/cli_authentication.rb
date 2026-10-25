@@ -4,8 +4,10 @@ require "cybertrain/test"
 
 # `cybertrain generate authentication` on a fresh `cybertrain new` tree: the
 # files it writes, the three edits it makes, and that a second run changes
-# nothing. What the generated app does when compiled is CI's end-to-end
-# step (ci.yml: sign up, sign in, the app's own test/authentication.rb).
+# nothing; the same for --invite-only (the user command, /setup, the edits
+# to bin/<app>.rb and config/app.rb). What the generated app does when
+# compiled is CI's end-to-end step (ci.yml: sign up, sign in, the app's own
+# test/authentication.rb, for both variants).
 TMP = Dir.mktmpdir("cybertrain-cli-authentication")
 Dir.chdir(TMP)
 
@@ -200,6 +202,120 @@ test "the generator runs after a scaffold, with migration versions that follow" 
       resources :products
     end
   RUBY
+end
+
+INVITE_FILES = [
+  "db/migrate/20260925120000_create_users.rb",
+  "db/migrate/20260925120001_create_sessions.rb",
+  "app/models/user.rb",
+  "app/models/session.rb",
+  "app/controllers/sessions_controller.rb",
+  "app/controllers/setup_controller.rb",
+  "app/commands/user_command.rb",
+  "app/views/sessions/new.html.erb",
+  "app/views/sessions/_nav.html.erb",
+  "app/views/setup/new.html.erb",
+  "test/support/app_test.rb",
+  "test/authentication.rb"
+]
+
+test "--invite-only writes the user command and /setup instead of the sign-up page" do
+  Cybertrain::CLI::NewApp.create("club", "{ path = \"../cybertrain\" }")
+  status = Dir.chdir("club") { Cybertrain::CLI.run(["generate", "authentication", "--invite-only"]) }
+  assert_equal 0, status
+  INVITE_FILES.each { |f| assert(File.exist?("club/#{f}"), "missing #{f}") }
+  refute File.exist?("club/app/controllers/registrations_controller.rb")
+  refute File.exist?("club/app/views/registrations/new.html.erb")
+  # No link to a sign-up page that does not exist.
+  sign_in_view = read("club/app/views/sessions/new.html.erb")
+  assert sign_in_view.end_with?("  </div>\n<% end %>\n"), sign_in_view
+  assert sign_in_view.index("sign_up").nil?
+  assert_equal <<~RUBY, read("club/config/routes.rb")
+    Cybertrain::Routes.draw do
+      resource :session, only: [:new, :create, :destroy]
+      get "/setup", to: "setup#new", as: "setup"
+      post "/setup", to: "setup#create"
+    end
+  RUBY
+end
+
+test "--invite-only requires the command in bin/<app>.rb and declares setup_open" do
+  club_bin = read("club/bin/club.rb")
+  assert_includes club_bin, <<~RUBY
+    #   end
+
+    # `./club user EMAIL [PASSWORD]`, and a [WARN] at boot while no user
+    # exists (cybertrain generate authentication --invite-only).
+    require_relative "../app/commands/user_command"
+    UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)
+
+    exit(Cybertrain::Main.run("club", ARGV,
+  RUBY
+  club_config = read("club/config/app.rb")
+  assert_includes club_config, "Cybertrain.configure do |c|\n  # /setup (the first user's page)"
+  assert_includes club_config, "  c.setting_bool :setup_open, env: \"CLUB_SETUP_OPEN\", default: false\n\n  # c.port = 3000\n"
+end
+
+test "--invite-only's /setup answers only to loopback while no user exists" do
+  setup = read("club/app/controllers/setup_controller.rb")
+  assert_includes setup, "class SetupController < ApplicationController\n  allow_unauthenticated_access only: [:new, :create]\n  before_action :require_first_run\n"
+  assert_includes setup, "    head :not_found unless setup_open?\n"
+  assert_includes setup, "    return false if User.all.exists?\n"
+  assert_includes setup, "    return true if Cybertrain.config.bool_setting(:setup_open)\n"
+  assert_includes setup, "    request.loopback? && request.header(\"x-forwarded-for\").nil?\n"
+  assert_includes setup, "      start_new_session_for(@user)\n"
+  assert_includes setup, "CLUB_SETUP_OPEN=1"
+  setup_view = read("club/app/views/setup/new.html.erb")
+  assert_includes setup_view, "<%= form_with(model: @user, url: setup_path) do |f| %>"
+  assert_includes setup_view, "<%= f.password_field :password_confirmation, autocomplete: \"new-password\" %>"
+end
+
+test "--invite-only's user command reads the password from stdin when not given" do
+  command = read("club/app/commands/user_command.rb")
+  assert_includes command, "Cybertrain::Main.command(\"user\", \"EMAIL [PASSWORD]: create a user or set its password\") do |argv|\n  UserCommand.run(argv)\nend\n"
+  assert_includes command, "    password = argv.size == 2 ? argv[1] : UserCommand.read_password\n"
+  assert_includes command, "    line = STDIN.gets\n"
+  assert_includes command, "      puts \"error: the password is empty\"\n"
+  assert_includes command, "    puts created ? \"created \#{address}\" : \"updated \#{address}\"\n"
+  assert_includes command, "usage: ./club user EMAIL [PASSWORD]"
+  assert_includes command, "Cybertrain.logger.warn(\"no user exists yet: run ./club user EMAIL or open /setup from this machine\") if UserCommand.no_user?"
+  assert_includes command, "    rescue Cybertrain::DB::Error\n"
+  club_spec = read("club/test/authentication.rb")
+  assert_includes club_spec, "require_relative \"support/app_test\"\nrequire_relative \"../app/commands/user_command\"\n\n"
+  assert_includes club_spec, "  client.peer_address = \"203.0.113.7\"\n"
+  assert_includes club_spec, "test \"CLUB_SETUP_OPEN opens /setup to any address until a user exists\" do\n"
+  assert_includes club_spec, "Cybertrain::Main.run(\"club\", argv, "
+  assert_includes club_spec, "test \"POST /session past ten attempts is refused for a while\" do\n"
+  assert club_spec.index("client.post(\"/sign_up\"").nil?
+end
+
+test "--invite-only run again writes and edits nothing" do
+  club_before = {}
+  (INVITE_FILES + ["config/routes.rb", "config/app.rb", "bin/club.rb", "app/controllers/application_controller.rb"]).each do |f|
+    club_before[f] = read("club/#{f}")
+  end
+  status = Dir.chdir("club") { Cybertrain::CLI.run(["generate", "authentication", "--invite-only"]) }
+  assert_equal 0, status
+  club_before.each { |f, content| assert_equal content, read("club/#{f}") }
+end
+
+test "--invite-only refuses an app whose bin/<app>.rb has no Main.run line, before writing" do
+  Cybertrain::CLI::NewApp.create("bare", "{ path = \"../cybertrain\" }")
+  File.write("bare/bin/bare.rb", "require \"cybertrain\"\n# exit(Cybertrain::Main.run(\"bare\", ARGV))\n")
+  status = Dir.chdir("bare") { Cybertrain::CLI.run(["generate", "authentication", "--invite-only"]) }
+  assert_equal 1, status
+  refute File.exist?("bare/app/models/user.rb")
+  status = Dir.chdir("bare") { Cybertrain::CLI.run(["generate", "authentication", "--invite"]) }
+  assert_equal 1, status
+end
+
+test "insert_before_line inserts at the start of the line" do
+  out = Cybertrain::CLI::Authentication.insert_before_line("a\nexit(x)\n", "exit(", "b\n")
+  assert_equal "a\nb\nexit(x)\n", out
+  out = Cybertrain::CLI::Authentication.insert_before_line("exit(x)\n", "exit(", "b\n")
+  assert_equal "b\nexit(x)\n", out
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Authentication.insert_before_line("# exit(x)\n", "exit(", "b\n") }
+  assert_includes message, "no line starting with `exit(`"
 end
 
 test "insert_after_line keeps the rest of the file" do

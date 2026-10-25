@@ -115,9 +115,114 @@ insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 ok   the generator runs after a scaffold, with migration versions that follow
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/club.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/setup_controller.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/setup/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+insert app/controllers/application_controller.rb (authentication)
+route resource :session, get/post /setup
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/club.rb (./club user, the first-run warning)
+insert config/app.rb (CLUB_SETUP_OPEN)
+
+next:
+  cybertrain db migrate
+  cybertrain server      # then open /setup on this machine (or: spin run club -- user EMAIL)
+  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, "Testing an app")
+ok   --invite-only writes the user command and /setup instead of the sign-up page
+ok   --invite-only requires the command in bin/<app>.rb and declares setup_open
+ok   --invite-only's /setup answers only to loopback while no user exists
+ok   --invite-only's user command reads the password from stdin when not given
+identical db/migrate/20260925120000_create_users.rb
+identical db/migrate/20260925120001_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/setup_controller.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/setup/new.html.erb
+identical test/support/app_test.rb
+identical test/authentication.rb
+identical app/controllers/application_controller.rb (authentication already added)
+identical route resource :session
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical bin/club.rb (user command already required)
+identical config/app.rb (setup_open already declared)
+
+next:
+  cybertrain db migrate
+  cybertrain server      # then open /setup on this machine (or: spin run club -- user EMAIL)
+  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, "Testing an app")
+ok   --invite-only run again writes and edits nothing
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/bare.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+error: ./bin/bare.rb has no line starting with `exit(Cybertrain::Main.run(`
+error: usage: cybertrain generate authentication [--invite-only]
+ok   --invite-only refuses an app whose bin/<app>.rb has no Main.run line, before writing
+ok   insert_before_line inserts at the start of the line
 ok   insert_after_line keeps the rest of the file
 error: ./config/routes.rb not found: run this inside a cybertrain app
-error: usage: cybertrain generate authentication (no arguments)
+error: usage: cybertrain generate authentication [--invite-only]
 error: only `generate scaffold`, `generate attachment` and `generate authentication` are supported
 create spin.toml
 create .gitignore
@@ -147,4 +252,4 @@ create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-11 tests, 107 assertions, 0 failures
+18 tests, 181 assertions, 0 failures
