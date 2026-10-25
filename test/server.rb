@@ -379,6 +379,14 @@ test "an invalid Content-Length gets 400" do
   c.close
 end
 
+test "duplicate Content-Length headers get 400 and close the connection" do
+  c = RawClient.new($server.port)
+  c.send_raw("POST /echo HTTP/1.1\r\nContent-Length: 1\r\ncontent-length: 1\r\n\r\nx")
+  assert_equal "HTTP/1.1 400 Bad Request", c.read_response(false).status_line
+  assert c.closed_by_server?
+  c.close
+end
+
 test "an exception in the app gets 500 and the connection stays usable" do
   c = RawClient.new($server.port)
   res = c.get("/boom")

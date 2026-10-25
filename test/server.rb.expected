@@ -16,6 +16,7 @@ ok   a pipelined multibyte body is framed by bytes, not characters
 ok   a body with NUL bytes is framed by bytes, not cut at the NUL
 ok   chunked transfer encoding gets 411 and the connection closes
 ok   an invalid Content-Length gets 400
+ok   duplicate Content-Length headers get 400 and close the connection
 ok   an exception in the app gets 500 and the connection stays usable
 ok   parameters past Query's limits get 400, not 500, and the connection stays usable
 ok   a JSON::NestingError in the app gets 500, the connection is closed and the server keeps serving
@@ -32,4 +33,4 @@ ok   drain_timeout bounds the wait for a request that takes too long
 ok   start raises Cybertrain::PortInUse when the port is already bound
 ok   PortInUse names the reason the port could not be bound
 ok   starting a server on port 80 as non-root reports permission denied
-34 tests, 120 assertions, 0 failures
+35 tests, 122 assertions, 0 failures
