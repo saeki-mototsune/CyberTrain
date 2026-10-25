@@ -524,6 +524,14 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
   - パスワードを環境変数から読む: プロセスの環境は `/proc/<pid>/environ` で同じユーザーから読め、シェル履歴にも残りやすい。標準入力か、承知の上での引数にした。
   - `/setup` の作成の競合（ユーザーがいない間の同時 POST）を排他する: ループバック限定でオペレータ自身しか届かず、同じアドレスは一意インデックスが拒む。トランザクションで囲む複雑さに見合わない。
 - 帰結: `test/cli_authentication.rb` に招待制の生成物・挿入・再実行・拒否のケースを足した。生成したアプリを `cybertrain new` → `generate authentication --invite-only` → `db migrate` → `spin test test/authentication.rb` でコンパイルして走らせ、`cybertrain build` した本番バイナリで警告、標準入力からの作成、`/setup` のループバック判定と X-Forwarded-For での 404 を確かめた（CI にも同じ手順を足した）。
+- 改訂（2026-10-25、PR #79 のレビュー指摘）: `/setup` にワンタイムトークンを足し、上の「却下した案」のトークン付き URL を採る。
+  - 指摘: ループバック判定と「X-Forwarded-For が無いこと」だけでは、同じホストのプロキシがそのヘッダを付けない設定（`proxy_set_header` を書かない素の nginx など）のとき、全クライアントがループバックに見え、管理者より先に誰でも最初のアカウントを作れる。ヘッダを付けるのはプロキシの設定次第で、文書で注意するだけでは塞がらない。
+  - 決定: `SetupController::SETUP_TOKEN = Cybertrain::Crypto.random_token(16)`（16 バイトの乱数を 16 進 32 文字に。`SecureRandom` は Spinel で動く、NOTES の数値表 8）。プログラムの読み込み時に一度だけ作り、プロセスが終わるまで同じ（再起動で変わる）。クラス変数ではなく定数に置く（NOTES 規則 64: `@@x` は GC の根にならない。定数は根になる）。クラス本体の `@x =` は controller の字句走査（D4）がインスタンス変数として `view_assigns` に拾うので使わない。`SetupController.setup_token` で読む。
+  - `UserCommand.warn_if_no_user` の警告を `[WARN] no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine` にする。トークンを出すのはこの行だけで、描画するのはフォームの hidden field（`name="token"`）だけ。
+  - `before_action :require_first_run` は `params[:token]` を `Cybertrain::Crypto.secure_compare`（定数時間比較）でトークンと比べ、既存の条件（ユーザーがいれば 404、ループバックかつヘッダ無し、または `setup_open`）に**加えて**一致を求める。トークンは住所の判定を置き換えない第二の条件で、`<APP>_SETUP_OPEN=1` も住所の判定だけを外しトークンは外さない。無い・違うトークンは他の拒否と同じ 404。GET はクエリ、POST はフォームの hidden field で受け取る。
+  - 生成コードがフレームワークの `Crypto.random_token` と `Crypto.secure_compare` を呼ぶので、この二つに `@api public` を付けた。
+  - 生成するテストに、トークン無し・空・違う値・末尾に 1 文字足した値での 404、トークン付きの 200、hidden field の内容、POST での作成、他アドレスとトークン無し・違うトークンの POST で作られないこと、`setup_open` でもトークン無しは 404、を足した。CI の招待制の手順は起動ログからトークンを取り出して curl する。
+  - 残る点: リクエストログの `Started GET "/setup?token=..."` の行にもトークンが出る（警告と同じログで、読める人は同じ）。ユーザーができた時点で意味を失うので、フレームワークにパラメータの伏せ字（Rails の `filter_parameters`）は足さなかった。`user` サブコマンドは変えていない。
 
 ## 5. リクエストの流れ
 

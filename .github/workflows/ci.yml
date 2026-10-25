@@ -185,12 +185,18 @@ jobs:
           PORT=3997 ./club > server.log 2>&1 &
           for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3997/session/new > /dev/null && break; sleep 0.5; done
           grep -q "\[WARN\] no user exists yet" server.log
-          curl -fsS http://127.0.0.1:3997/setup | grep -q "Set up"
-          test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: 203.0.113.7' http://127.0.0.1:3997/setup)" = "404"
+          # /setup wants the one-time token the warning prints; without it,
+          # with a wrong one or through a proxy it is a 404.
+          setup_token=$(sed -n 's/.*open \/setup?token=\([0-9a-f]\{32\}\) from this machine.*/\1/p' server.log | head -n 1)
+          test -n "$setup_token"
+          curl -fsS "http://127.0.0.1:3997/setup?token=$setup_token" | grep -q "Set up"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3997/setup)" = "404"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:3997/setup?token=0123456789abcdef0123456789abcdef')" = "404"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: 203.0.113.7' "http://127.0.0.1:3997/setup?token=$setup_token")" = "404"
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3997/sign_up)" = "404"
           test "$(printf 's3cr3t-s3cr3t\n' | ./club user ann@example.com)" = "created ann@example.com"
           test "$(./club user ann@example.com another-s3cr3t)" = "updated ann@example.com"
-          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3997/setup)" = "404"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3997/setup?token=$setup_token")" = "404"
           kill %1
 
       # File uploads end to end: a scaffold with an attachment field, the

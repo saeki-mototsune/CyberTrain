@@ -256,17 +256,20 @@ test "--invite-only requires the command in bin/<app>.rb and declares setup_open
   assert_includes club_config, "  c.setting_bool :setup_open, env: \"CLUB_SETUP_OPEN\", default: false\n\n  # c.port = 3000\n"
 end
 
-test "--invite-only's /setup answers only to loopback while no user exists" do
+test "--invite-only's /setup answers only to loopback with the one-time token while no user exists" do
   setup = read("club/app/controllers/setup_controller.rb")
   assert_includes setup, "class SetupController < ApplicationController\n  allow_unauthenticated_access only: [:new, :create]\n  before_action :require_first_run\n"
-  assert_includes setup, "    head :not_found unless setup_open?\n"
+  assert_includes setup, "  SETUP_TOKEN = Cybertrain::Crypto.random_token(16)\n"
+  assert_includes setup, "  def self.setup_token\n    SETUP_TOKEN\n  end\n"
+  assert_includes setup, "    @setup_token = params[:token].to_s\n"
+  assert_includes setup, "    head :not_found unless setup_open? && Cybertrain::Crypto.secure_compare(@setup_token, SetupController.setup_token)\n"
   assert_includes setup, "    return false if User.all.exists?\n"
   assert_includes setup, "    return true if Cybertrain.config.bool_setting(:setup_open)\n"
   assert_includes setup, "    request.loopback? && request.header(\"x-forwarded-for\").nil?\n"
   assert_includes setup, "      start_new_session_for(@user)\n"
   assert_includes setup, "CLUB_SETUP_OPEN=1"
   setup_view = read("club/app/views/setup/new.html.erb")
-  assert_includes setup_view, "<%= form_with(model: @user, url: setup_path) do |f| %>"
+  assert_includes setup_view, "<%= form_with(model: @user, url: setup_path) do |f| %>\n  <input type=\"hidden\" name=\"token\" value=\"<%= @setup_token %>\">\n"
   assert_includes setup_view, "<%= f.password_field :password_confirmation, autocomplete: \"new-password\" %>"
 end
 
@@ -278,12 +281,14 @@ test "--invite-only's user command reads the password from stdin when not given"
   assert_includes command, "      puts \"error: the password is empty\"\n"
   assert_includes command, "    puts created ? \"created \#{address}\" : \"updated \#{address}\"\n"
   assert_includes command, "usage: ./club user EMAIL [PASSWORD]"
-  assert_includes command, "Cybertrain.logger.warn(\"no user exists yet: run ./club user EMAIL or open /setup from this machine\") if UserCommand.no_user?"
+  assert_includes command, "Cybertrain.logger.warn(\"no user exists yet: run ./club user EMAIL, or open /setup?token=\#{SetupController.setup_token} from this machine\") if UserCommand.no_user?"
   assert_includes command, "    rescue Cybertrain::DB::Error\n"
   club_spec = read("club/test/authentication.rb")
   assert_includes club_spec, "require_relative \"support/app_test\"\nrequire_relative \"../app/commands/user_command\"\n\n"
   assert_includes club_spec, "  client.peer_address = \"203.0.113.7\"\n"
-  assert_includes club_spec, "test \"CLUB_SETUP_OPEN opens /setup to any address until a user exists\" do\n"
+  assert_includes club_spec, "test \"CLUB_SETUP_OPEN opens /setup to any address with the token until a user exists\" do\n"
+  assert_includes club_spec, "test \"/setup without the token, or with a wrong one, is a 404\" do\n"
+  assert_includes club_spec, "    \"token\" => SetupController.setup_token,\n"
   assert_includes club_spec, "Cybertrain::Main.run(\"club\", argv, "
   assert_includes club_spec, "test \"POST /session past ten attempts is refused for a while\" do\n"
   assert club_spec.index("client.post(\"/sign_up\"").nil?

@@ -34,8 +34,9 @@
 #                                  and the boot warning while no user exists
 #   app/controllers/setup_controller.rb, app/views/setup/new.html.erb
 #                                  /setup, the first user's form: only while
-#                                  no user exists, only from loopback unless
-#                                  <APP>_SETUP_OPEN=1
+#                                  no user exists, only with the one-time
+#                                  token the boot warning prints, only from
+#                                  loopback unless <APP>_SETUP_OPEN=1
 #
 # plus two more edits: the require and the warning into bin/<app>.rb
 # (before `exit(Cybertrain::Main.run(`), and the `setup_open` setting into
@@ -720,16 +721,34 @@ module Cybertrain
         <<~RUBY
           # First-run setup (cybertrain generate authentication --invite-only):
           # the form that creates the first user and signs them in. It answers
-          # only while no user exists, and only to a connection from this machine
+          # only while no user exists, only with the one-time token the server
+          # prints at boot (/setup?token=..., carried back by the form in a
+          # hidden field), and only to a connection from this machine
           # (request.loopback?, the socket's peer address) that did not come
           # through a proxy (no X-Forwarded-For header). #{env}=1
-          # (config/app.rb) opens it to any address while no user exists, for a
-          # first run behind a proxy on another host; unset it again afterwards.
-          # Anyone else gets a 404, as if there were no such page. Later users
-          # are created with `./#{app} user EMAIL` (app/commands/user_command.rb).
+          # (config/app.rb) lifts the address check (never the token) while no
+          # user exists, for a first run behind a proxy on another host; unset
+          # it again afterwards. Anyone else gets a 404, as if there were no
+          # such page. Later users are created with `./#{app} user EMAIL`
+          # (app/commands/user_command.rb).
           class SetupController < ApplicationController
             allow_unauthenticated_access only: [:new, :create]
             before_action :require_first_run
+
+            # The one-time token: 32 random hex characters, made when the
+            # program starts and the same until it exits (a restart makes a new
+            # one). The address check alone is not enough: a proxy on this host
+            # that adds no X-Forwarded-For makes every client a loopback one.
+            # Printed only by the boot [WARN] (UserCommand.warn_if_no_user) and
+            # rendered only into the form's hidden field. A constant, which
+            # Spinel keeps alive (a class variable it would not).
+            SETUP_TOKEN = Cybertrain::Crypto.random_token(16)
+
+            # The token /setup asks for: the boot warning prints it, the app's
+            # test passes it.
+            def self.setup_token
+              SETUP_TOKEN
+            end
 
             # GET /setup
             def new_action
@@ -753,8 +772,11 @@ module Cybertrain
 
             private
 
+            # A missing or wrong token is the same 404 as the other refusals;
+            # the comparison takes as long however much of it matched.
             def require_first_run
-              head :not_found unless setup_open?
+              @setup_token = params[:token].to_s
+              head :not_found unless setup_open? && Cybertrain::Crypto.secure_compare(@setup_token, SetupController.setup_token)
               nil
             end
 
@@ -776,9 +798,12 @@ module Cybertrain
           <h1>Set up</h1>
 
           <p>Create the first account. This page is only shown on this machine,
-          and only until an account exists.</p>
+          with the link the server printed when it started, and only until an
+          account exists.</p>
 
           <%= form_with(model: @user, url: setup_path) do |f| %>
+            <input type="hidden" name="token" value="<%= @setup_token %>">
+
             <% if @user.errors.any? %>
               <div id="error_explanation">
                 <h2><%= pluralize(@user.errors.count, "error") %> prohibited this account from being created:</h2>
@@ -880,10 +905,12 @@ module Cybertrain
             end
 
             # Called by bin/#{app}.rb before the server boots: a [WARN] while no
-            # user exists, which is while /setup is open. Says nothing when the
-            # users table is not there yet (`./#{app} migrate` comes first).
+            # user exists, which is while /setup is open, with the page's
+            # one-time token (SetupController.setup_token, this process's own).
+            # Says nothing when the users table is not there yet (`./#{app}
+            # migrate` comes first).
             def self.warn_if_no_user
-              Cybertrain.logger.warn("no user exists yet: run ./#{app} user EMAIL or open /setup from this machine") if UserCommand.no_user?
+              Cybertrain.logger.warn("no user exists yet: run ./#{app} user EMAIL, or open /setup?token=\#{SetupController.setup_token} from this machine") if UserCommand.no_user?
               nil
             end
 
@@ -923,8 +950,9 @@ module Cybertrain
       def self.config_block(app)
         env = setup_env(app)
         <<~RUBY
-          # /setup (the first user's page) answers only to this machine while no
-          # user exists; #{env}=1 opens it to any address, for a first
+          # /setup (the first user's page) answers only to this machine, with the
+          # token the boot warning prints, while no user exists; #{env}=1
+          # opens it to any address (the token is still needed), for a first
           # run behind a proxy on another host. Unset it once the user exists.
           c.setting_bool :setup_open, env: "#{env}", default: false
 
@@ -1103,12 +1131,19 @@ module Cybertrain
       def self.setup_tests(app)
         env = setup_env(app)
         <<~RUBY
-          # The form /setup posts, filled in.
-          def setup_form(token, password, confirmation)
-            { "authenticity_token" => token,
+          # The form /setup posts, filled in, with the page's one-time token
+          # in its hidden field.
+          def setup_form(authenticity_token, password, confirmation)
+            { "authenticity_token" => authenticity_token,
+              "token" => SetupController.setup_token,
               "user[email_address]" => " Ann@Example.com ",
               "user[password]" => password,
               "user[password_confirmation]" => confirmation }
+          end
+
+          # /setup with this process's token, the link the boot warning prints.
+          def setup_link
+            "/setup?token=\#{SetupController.setup_token}"
           end
 
           # `./#{app} ARGS...` in-process. Main.run connects a pool of one for
@@ -1127,57 +1162,82 @@ module Cybertrain
             nil
           end
 
-          test "GET /setup shows the form to this machine while no user exists" do
+          test "GET /setup with the token shows the form to this machine while no user exists" do
             client = new_client
-            res = client.get("/setup")
+            res = client.get(setup_link)
             assert_response res, :ok
             assert_includes res.body, "<h1>Set up</h1>"
             assert_includes res.body, "<form action=\\"/setup\\" method=\\"post\\">"
+            assert_includes res.body, "<input type=\\"hidden\\" name=\\"token\\" value=\\"\#{SetupController.setup_token}\\">"
             assert_includes res.body, "name=\\"user[password_confirmation]\\""
+          end
+
+          test "/setup without the token, or with a wrong one, is a 404" do
+            client = new_client
+            assert_equal 32, SetupController.setup_token.size
+            res = client.get("/setup")
+            assert_response res, :not_found
+            res = client.get("/setup?token=")
+            assert_response res, :not_found
+            res = client.get("/setup?token=0123456789abcdef0123456789abcdef")
+            assert_response res, :not_found
+            res = client.get("/setup?token=\#{SetupController.setup_token}x")
+            assert_response res, :not_found
+            refute res.body.include?(SetupController.setup_token)
           end
 
           test "/setup is a 404 to another machine, through a proxy, and once a user exists" do
             client = new_client
             client.peer_address = "203.0.113.7"
-            res = client.get("/setup")
+            res = client.get(setup_link)
             assert_response res, :not_found
             client.peer_address = "127.0.0.1"
-            res = client.get("/setup", { "x-forwarded-for" => "203.0.113.7" })
+            res = client.get(setup_link, { "x-forwarded-for" => "203.0.113.7" })
             assert_response res, :not_found
-            res = client.get("/setup")
+            res = client.get(setup_link)
             assert_response res, :ok
             AppTest.user
-            res = client.get("/setup")
+            res = client.get(setup_link)
             assert_response res, :not_found
           end
 
-          test "POST /setup from another machine creates nothing" do
+          test "POST /setup from another machine, or without the token, creates nothing" do
             client = new_client
-            client.get("/setup")
-            token = AppTest.form_token(client)
+            client.get(setup_link)
+            authenticity_token = AppTest.form_token(client)
             client.peer_address = "203.0.113.7"
-            res = client.post("/setup", setup_form(token, "s3cr3t-s3cr3t", "s3cr3t-s3cr3t"))
+            res = client.post("/setup", setup_form(authenticity_token, "s3cr3t-s3cr3t", "s3cr3t-s3cr3t"))
+            assert_response res, :not_found
+            client.peer_address = "127.0.0.1"
+            form = setup_form(authenticity_token, "s3cr3t-s3cr3t", "s3cr3t-s3cr3t")
+            form["token"] = "0123456789abcdef0123456789abcdef"
+            res = client.post("/setup", form)
+            assert_response res, :not_found
+            form.delete("token")
+            res = client.post("/setup", form)
             assert_response res, :not_found
             assert_equal 0, User.count
           end
 
-          test "#{env} opens /setup to any address until a user exists" do
+          test "#{env} opens /setup to any address with the token until a user exists" do
             client = new_client
             client.peer_address = "203.0.113.7"
             Cybertrain.config.set_bool_setting(:setup_open, true)
-            res = client.get("/setup")
+            res = client.get(setup_link)
+            without = client.get("/setup")
             Cybertrain.config.set_bool_setting(:setup_open, false)
             assert_response res, :ok
+            assert_response without, :not_found
             AppTest.user
             Cybertrain.config.set_bool_setting(:setup_open, true)
-            res = client.get("/setup")
+            res = client.get(setup_link)
             Cybertrain.config.set_bool_setting(:setup_open, false)
             assert_response res, :not_found
           end
 
-          test "POST /setup creates the first user and signs them in" do
+          test "POST /setup with the token creates the first user and signs them in" do
             client = new_client
-            client.get("/setup")
+            client.get(setup_link)
             res = client.post("/setup", setup_form(AppTest.form_token(client), "s3cr3t-s3cr3t", "s3cr3t-s3cr3t"))
             assert_redirected_to res, "/"
             assert_equal 1, User.count
@@ -1185,17 +1245,18 @@ module Cybertrain
             assert_equal 1, Session.count
             res = client.get("/session/new")
             assert_includes res.body, "<span>ann@example.com</span>"
-            res = client.get("/setup")
+            res = client.get(setup_link)
             assert_response res, :not_found
           end
 
           test "POST /setup with a short or mismatched password re-renders the form" do
             client = new_client
-            client.get("/setup")
+            client.get(setup_link)
             res = client.post("/setup", setup_form(AppTest.form_token(client), "short", "other"))
             assert_response res, :unprocessable_entity
             assert_includes res.body, "<li>Password is too short (minimum is 8 characters)</li>"
             assert_includes res.body, "<li>Password confirmation doesn&#39;t match Password</li>"
+            assert_includes res.body, "<input type=\\"hidden\\" name=\\"token\\" value=\\"\#{SetupController.setup_token}\\">"
             assert_equal 0, User.count
           end
 

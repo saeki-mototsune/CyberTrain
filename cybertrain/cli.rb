@@ -53,8 +53,9 @@ module Cybertrain
             the routes, a before_action in ApplicationController and a test.
             --invite-only: no sign-up page. Users are created with
             `./NAME user EMAIL` (password from stdin), and the first one
-            also at /setup, which answers only to this machine and only while
-            no user exists (NAME_SETUP_OPEN=1 opens it to any address).
+            also at /setup, which answers only to this machine, only with the
+            one-time token the server's boot warning prints, and only while
+            no user exists (NAME_SETUP_OPEN=1 lifts the address check).
         cybertrain db migrate
             Generate, apply pending migrations, generate again
             (spin run gen; spin run db -- migrate; spin run gen).
@@ -299,7 +300,7 @@ module Cybertrain
         puts "  cybertrain db migrate"
         if invite_only
           app = Build.app_name(".")
-          puts "  cybertrain server      # then open /setup on this machine (or: spin run #{app} -- user EMAIL)"
+          puts "  cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run #{app} -- user EMAIL)"
         else
           puts "  cybertrain server      # then open /sign_up"
         end

@@ -152,7 +152,8 @@ commands (`cybertrain help` prints them):
   `ApplicationController` and a test (see "Add authentication").
   With `--invite-only` there is no sign-up page: users are created with
   `./NAME user EMAIL`, and the first one also at a `/setup` page that
-  answers only to the server's own machine while no user exists.
+  answers only to the server's own machine, with the one-time token its
+  boot warning prints, while no user exists.
 - `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
   to a scaffolded model: five metadata columns, model methods and
   callbacks, a download action, the route, the form field and a test (see
@@ -536,12 +537,13 @@ The sign-up page lets anyone who reaches the server register, which is the
 wrong default for an internal tool: whoever gets there before the admin
 does has an account. `--invite-only` writes no `RegistrationsController`
 and no sign-up link; the first user comes from the command line or from a
-page only the server's own machine can open:
+page only the server's own machine can open, with a link the server prints
+when it starts:
 
 ```sh
 cybertrain generate authentication --invite-only
 cybertrain db migrate
-cybertrain server        # then open http://127.0.0.1:3000/setup on the same machine
+cybertrain server        # then open the http://127.0.0.1:3000/setup?token=... link it prints, on the same machine
 ```
 
 In production, from the directory the binary runs in:
@@ -565,27 +567,42 @@ printf '%s' "$PASSWORD" | ./shop user ann@example.com
   usage line and exit 1.
 - `SetupController` (`GET`/`POST /setup`, `app/views/setup/new.html.erb`)
   creates the first user and signs them in. It answers only while no user
-  exists, and only to a connection whose socket peer is the loopback
-  address (`request.loopback?`: `127.0.0.0/8` or `::1`) and that carries no
-  `X-Forwarded-For` header (a proxy on the same host makes every request a
-  loopback one, and it adds that header). A header can close the page,
-  never open it. Everyone else gets a 404.
+  exists, only with the one-time token (below), and only to a connection
+  whose socket peer is the loopback address (`request.loopback?`:
+  `127.0.0.0/8` or `::1`) and that carries no `X-Forwarded-For` header (a
+  proxy on the same host makes every request a loopback one, and it adds
+  that header). A header can close the page, never open it. Everyone else,
+  and a missing or wrong token, gets a 404.
+- The token: `SetupController::SETUP_TOKEN`, 32 random hex characters
+  (`Cybertrain::Crypto.random_token(16)`) made when the program starts and
+  kept until it exits, so a restart makes a new one. `GET /setup` takes it
+  as `?token=`, the form carries it back in a hidden field, and both
+  compare it in constant time (`Cybertrain::Crypto.secure_compare`). It is
+  what keeps the page closed when the address check cannot: a proxy on the
+  same host that adds no `X-Forwarded-For` (nginx without
+  `proxy_set_header X-Forwarded-For ...`) makes every client look like
+  loopback, and only someone who can read the server's log has the token.
+  The request log's `Started GET "/setup?token=..."` line writes it to the
+  same log; it opens nothing once the user exists.
 - For a first run behind a proxy on another host, `SHOP_SETUP_OPEN=1`
-  (declared in `config/app.rb` with `c.setting_bool :setup_open`) opens
-  `/setup` to any address, still only while no user exists. Unset it once
-  the user is there.
+  (declared in `config/app.rb` with `c.setting_bool :setup_open`) lifts the
+  address check, still only while no user exists and still only with the
+  token. Unset it once the user is there.
 - While no user exists, the server logs `[WARN] no user exists yet: run
-  ./shop user EMAIL or open /setup from this machine` before it boots
-  (`UserCommand.warn_if_no_user`, called from `bin/shop.rb` when
+  ./shop user EMAIL, or open /setup?token=<token> from this machine` before
+  it boots (`UserCommand.warn_if_no_user`, called from `bin/shop.rb` when
   `Cybertrain::Main.server?(ARGV)`; it connects for that one question and
-  says nothing when the users table is not migrated yet).
+  says nothing when the users table is not migrated yet). That line is the
+  only place the token is printed.
 
-The generated `test/authentication.rb` covers both: `/setup` from another
-address (`client.peer_address = "203.0.113.7"`), through a proxy, once a
-user exists and with the switch on, and the `user` command run in-process
+The generated `test/authentication.rb` covers both: `/setup` with and
+without the token (`SetupController.setup_token`) or with a wrong one, from
+another address (`client.peer_address = "203.0.113.7"`), through a proxy,
+once a user exists and with the switch on, and the `user` command run in-process
 through `Cybertrain::Main.run`. All of it is application code, yours to
 change (docs/design.md D29); the framework only provides
-`request.loopback?`, `Main.command`, `Main.server?` and the test client's
+`request.loopback?`, `Main.command`, `Main.server?`,
+`Crypto.random_token` / `Crypto.secure_compare` and the test client's
 `peer_address`.
 
 In the blog, open the pages anyone may read again, as Rails' guide does, and
