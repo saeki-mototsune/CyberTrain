@@ -257,12 +257,12 @@ module Cybertrain
             end
 
             # The user with this address and password, or nil. A missing address
-            # costs a hash too, so the response time does not say which of the
-            # two was wrong.
+            # costs a verification too (against Cybertrain::Password.dummy_digest),
+            # so the response time does not say which of the two was wrong.
             def self.authenticate_by(email_address:, password:)
               user = User.find_by(email_address: User.normalize_email_address(email_address))
               if user.nil?
-                Cybertrain::Password.hash(password.to_s.empty? ? "-" : password.to_s)
+                Cybertrain::Password.verify_serialized(password.to_s, Cybertrain::Password.dummy_digest)
                 return nil
               end
               user.authenticate(password) ? user : nil
@@ -296,9 +296,11 @@ module Cybertrain
             # Whether `plain` is this user's password. A digest hashed with fewer
             # iterations than Cybertrain::Password.iterations is rehashed and
             # saved on the way, so raising the cost in config/app.rb upgrades
-            # everyone as they sign in.
+            # everyone as they sign in (and, the digest being new, signs their
+            # other browsers out once). verify_serialized runs one verification
+            # at a time, so a burst of sign-ins does not hold every worker.
             def authenticate(plain)
-              return false unless Cybertrain::Password.verify?(plain, password_digest)
+              return false unless Cybertrain::Password.verify_serialized(plain.to_s, password_digest)
 
               if Cybertrain::Password.needs_rehash?(password_digest)
                 self.password_digest = Cybertrain::Password.hash(plain.to_s)
@@ -371,7 +373,10 @@ module Cybertrain
 
           # Loads the Session row the cookie names (and its user); a stale or
           # expired id is dropped. Cookie Max-Age alone cannot stop replay:
-          # authentication expires session_max_age seconds after sign-in.
+          # authentication expires session_absolute_max_age seconds after
+          # sign-in (SessionStore enforces the same on the cookie). A cookie
+          # whose password key no longer matches (the password changed since
+          # it signed in) ends its Session row.
           def resume_session
             @current_session = nil
             @current_user = nil
@@ -384,12 +389,19 @@ module Cybertrain
               return nil
             end
             created_at = found.created_at
-            if created_at.nil? || created_at.to_i + Cybertrain.config.session_max_age <= Time.now.to_i
+            lifetime = Cybertrain.config.session_absolute_max_age
+            if created_at.nil? || (lifetime > 0 && created_at.to_i + lifetime <= Time.now.to_i)
+              session.delete(:session_id)
+              return nil
+            end
+            user = found.user
+            if user.nil? || !Cybertrain::Password.session_key_matches?(session[:password_key], user.password_digest)
+              found.destroy
               session.delete(:session_id)
               return nil
             end
             @current_session = found
-            @current_user = found.user
+            @current_user = user
             nil
           end
 
@@ -402,10 +414,16 @@ module Cybertrain
             nil
           end
 
+          # Also stores the password key resume_session compares, and restarts
+          # the cookie's absolute lifetime. After a password change, call
+          # `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`
+          # to keep the browser that changed it signed in.
           def start_new_session_for(user)
             started = Session.create(user_id: user.id, ip_address: request.remote_addr,
                                      user_agent: request.header("user-agent").to_s)
+            session.restart_lifetime!
             session[:session_id] = started.id
+            session[:password_key] = Cybertrain::Password.session_key(user.password_digest)
             @current_session = started
             @current_user = user
             nil
@@ -422,22 +440,10 @@ module Cybertrain
             nil
           end
 
-          # Where to go after signing in: the page that asked for it, or /.
+          # Where to go after signing in: the page that asked for it, if it is a
+          # local path (Cybertrain::Controller#safe_redirect_path), or /.
           def after_authentication_url
-            url = session[:return_to_after_authenticating].to_s
-            session.delete(:return_to_after_authenticating)
-            # Browsers treat // as a host, backslashes as slashes, and strip
-            # some control characters. Only return an ordinary local path.
-            return "/" unless url.start_with?("/") && !url.start_with?("//")
-
-            i = 0
-            while i < url.bytesize
-              byte = url.getbyte(i).to_i
-              return "/" if byte <= 32 || byte == 92 || byte == 127
-
-              i += 1
-            end
-            url
+            safe_redirect_path(session.delete(:return_to_after_authenticating), "/")
           end
           # ---- end of authentication ------------------------------------------
 
@@ -771,7 +777,7 @@ module Cybertrain
             ctx.session = Cybertrain::Session.new
             controller = ApplicationController.new(ctx)
             assert_equal "/", controller.after_authentication_url
-            ["/", "/products", "/products/1?tab=details#title", "/products//1", "/caf%C3%A9", "/記事"].each do |path|
+            ["/", "/products", "/products/1?tab=details#title", "/products//1", "/caf%C3%A9"].each do |path|
               controller.session[:return_to_after_authenticating] = path
               assert_equal path, controller.after_authentication_url
               refute controller.session.key?(:return_to_after_authenticating)
@@ -784,7 +790,7 @@ module Cybertrain
             ctx.session = Cybertrain::Session.new
             controller = ApplicationController.new(ctx)
             unsafe = ["", "products", "https://evil.example/", "//evil.example/", "///evil.example/",
-                      "/\\\\evil.example/", "/products\\\\evil", " //evil.example/"]
+                      "/\\\\evil.example/", "/products\\\\evil", " //evil.example/", "/記事", "/" + "a" * 2048]
             (0..32).each { |byte| unsafe << "/\#{Cybertrain::Test.binary([byte])}/evil.example/" }
             unsafe << "/\#{Cybertrain::Test.binary([127])}/evil.example/"
             unsafe.each do |path|
@@ -829,9 +835,25 @@ module Cybertrain
             assert_redirected_to res, "/session/new"
           end
 
+          test "changing the password signs out the sessions started before" do
+            client = new_client
+            user = AppTest.user
+            AppTest.sign_in(client)
+            res = client.get("/session/new")
+            assert_includes res.body, "<span>ann@example.com</span>"
+            user.password = "another-s3cr3t"
+            user.save!
+            res = client.get("/session/new")
+            refute res.body.include?("<span>ann@example.com</span>")
+            assert_equal 0, Session.count
+            AppTest.sign_in(client, "ann@example.com", "another-s3cr3t")
+            res = client.get("/session/new")
+            assert_includes res.body, "<span>ann@example.com</span>"
+          end
+
           test "an expired cookie cannot restore its user or reach a protected action" do
-            max_age = Cybertrain.config.session_max_age
-            Cybertrain.config.session_max_age = 60
+            max_age = Cybertrain.config.session_absolute_max_age
+            Cybertrain.config.session_absolute_max_age = 60
             begin
               client = new_client
               AppTest.user
@@ -846,7 +868,7 @@ module Cybertrain
               # to the expiration boundary. Saving updates updated_at too;
               # neither that nor a rewritten cookie extends authentication.
               row = Session.first
-              row.created_at = Time.at(Time.now.to_i - Cybertrain.config.session_max_age).utc
+              row.created_at = Time.at(Time.now.to_i - Cybertrain.config.session_absolute_max_age).utc
               row.save!
               res = client.post("/session", { "_method" => "delete", "authenticity_token" => token },
                                            { "cookie" => cookie })
@@ -861,7 +883,7 @@ module Cybertrain
               res = client.get("/session/new", { "cookie" => cookie })
               refute res.body.include?("<span>ann@example.com</span>")
             ensure
-              Cybertrain.config.session_max_age = max_age
+              Cybertrain.config.session_absolute_max_age = max_age
             end
           end
 

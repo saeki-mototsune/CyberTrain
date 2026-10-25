@@ -147,4 +147,4 @@ create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-11 tests, 103 assertions, 0 failures
+11 tests, 109 assertions, 0 failures

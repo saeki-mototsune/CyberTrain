@@ -544,6 +544,61 @@ module Cybertrain
       nil
     end
 
+    # The longest path {#local_path?} accepts, in bytes.
+    MAX_LOCAL_PATH_BYTES = 2048
+
+    # Whether `text` is a path on this site that is safe to redirect to: it
+    # starts with `/` but not `//` or `/\` (which browsers read as another
+    # host), holds printable ASCII only (no space, control character,
+    # backslash or byte above 126: browsers strip or reinterpret those; a
+    # path the browser sent is percent-encoded already) and is at most
+    # {MAX_LOCAL_PATH_BYTES} bytes. Use it on any destination that came
+    # from the request (a `return_to` parameter, a remembered page).
+    # @example
+    #   local_path?("/articles?page=2")   # => true
+    #   local_path?("//evil.example/")    # => false
+    # @param text [String, nil]
+    # @return [Boolean]
+    # @api public
+    def local_path?(text)
+      Controller.local_path_text?(text)
+    end
+
+    # `text` when it is a {#local_path?}, otherwise `fallback`: the
+    # destination to give {#redirect_to} for a path that came from the
+    # request.
+    # @example
+    #   redirect_to safe_redirect_path(params[:return_to], root_path), status: :see_other
+    # @param text [String, nil]
+    # @param fallback [String] where to go instead, such as `"/"`
+    # @return [String]
+    # @api public
+    def safe_redirect_path(text, fallback)
+      return fallback unless Controller.local_path_text?(text)
+
+      text.to_s
+    end
+
+    # local_path?'s check, a byte scan through a fresh local (NOTES rule 62).
+    def self.local_path_text?(text)
+      return false if text.nil?
+
+      s = text.to_s
+      n = s.bytesize
+      return false if n < 1 || n > MAX_LOCAL_PATH_BYTES
+      return false unless s.getbyte(0) == 47 # "/"
+
+      i = 1
+      while i < n
+        b = s.getbyte(i)
+        return false if b <= 32 || b >= 127 || b == 92 # control, space, DEL, non-ASCII, "\"
+        return false if i == 1 && b == 47 # "//"
+
+        i += 1
+      end
+      true
+    end
+
     # Answers with a status and an empty body.
     #
     # status defaults to :ok only so that Spinel boxes the parameter (see

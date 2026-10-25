@@ -560,6 +560,64 @@ end
 
 `examples/blog` itself stops before this step.
 
+## Authentication: what the framework provides
+
+The generator above writes the flow; the pieces it is built from are
+framework API, usable without it (for an API token, an admin password, a
+hand-written sign-in):
+
+- **`Cybertrain::Password`**: `hash(plain)` makes a salted
+  PBKDF2-HMAC-SHA256 digest that records its own parameters
+  (`$pbkdf2-sha256$i=100000$salt$key`), `verify?(plain, digest)` checks one
+  in constant time and never raises on a malformed digest, and
+  `needs_rehash?(digest)` says when one is behind the current
+  `Password.iterations`. For a sign-in action:
+  - `verify_serialized(plain, digest)` is `verify?` one at a time per
+    process (a Mutex). A hash takes about 0.2 s of CPU; a burst of attempts
+    side by side would hold every worker, through this method they queue and
+    the other workers keep serving pages.
+  - `dummy_digest` is a digest of a random password, made once per process
+    at the current cost. Verify against it when the address is unknown, so
+    the response time does not tell which addresses have accounts:
+    `Password.verify_serialized(password, user.nil? ? Password.dummy_digest : user.password_digest)`.
+  - `session_key(digest)` is an HMAC of the password digest under
+    `secret_key_base`; keep it in the session at sign-in and check it with
+    `session_key_matches?(session[:password_key], user.password_digest)` on
+    each request. A password change makes a new digest, so every session
+    started before it is signed out.
+  - `iterations` is `Password::TEST_ITERATIONS` (1,000) when
+    `Cybertrain.config.test?`, so test suites do not pay the production cost
+    per user; digests record their count, so nothing else changes.
+- **The session** (`session[:key]`, a signed cookie): `clear` empties it
+  (CSRF token included) on sign-out, and `config.session_absolute_max_age`
+  (two weeks; `0` turns it off) bounds a session's whole life however often
+  it is used: the cookie records when it was first written, a cookie older
+  than that loads as an empty session, so a copied cookie cannot be
+  replayed forever. `session.restart_lifetime!` starts the count again (at
+  sign-in).
+- **`Controller#local_path?(text)` and `safe_redirect_path(text, fallback)`**:
+  a path that came from the request (a `return_to` parameter, a remembered
+  page) is redirected to only when it starts with `/` but not `//` or `/\`,
+  holds printable ASCII only and is at most 2,048 bytes:
+  `redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`.
+- **`skip_before_action(name, only:, except:)`** on a controller class drops
+  an inherited `before_action` for some actions; the generated
+  `allow_unauthenticated_access` is a one-line wrapper around it.
+- **`cybertrain generate authentication`** writes, as code the app owns: the
+  `users` and `sessions` migrations and models, `SessionsController`,
+  `RegistrationsController`, their views and nav partial, the
+  `ApplicationController` block (`resume_session`, `require_authentication`,
+  `start_new_session_for`, `terminate_session`, `after_authentication_url`)
+  and `test/authentication.rb`. That code uses everything in this list:
+  `User.authenticate_by` verifies with `verify_serialized` and the dummy
+  digest, `start_new_session_for` stores the password key and restarts the
+  lifetime, `resume_session` ends a Session row whose key no longer matches
+  or that is older than `session_absolute_max_age`, and
+  `after_authentication_url` is `safe_redirect_path`. To keep the browser
+  that changed a password signed in, store the new key after saving:
+  `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`.
+  The design: [docs/design.md](docs/design.md) D24.
+
 ### Add a file upload
 
 ```sh
