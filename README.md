@@ -1294,7 +1294,7 @@ configuration still polls, only shows that the process answers HTTP.
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see "Outbound HTTP"); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
 | Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see "Sending e-mail") |
 | Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind) { \|payload\| ... }` and `Job.enqueue(kind, payload, run_at:)` (a String payload in a `cybertrain_jobs` table, retried with backoff, then `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; one thread in the served process, `CYBERTRAIN_WORKER=0` elsewhere ([Background work](#background-work)) |
-| ActionCable client, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url) { ... }` keeps a feed connected while the server runs (reconnects, pings, silence detection), `Cybertrain::WebSocket::Client` for one synchronous connection; outbound only, every wait bounded (see "Consuming WebSocket feeds") |
+| ActionCable client, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url).on_message { \|conn, data\| ... }` keeps a feed connected while the server runs (reconnects, pings, silence detection), `Cybertrain::WebSocket::Client` for one synchronous connection; outbound only, every wait bounded (see "Consuming WebSocket feeds") |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` is an Array of Strings matched by substring, case-insensitively (no Regexps or lambdas); it applies to the request log and the development error page ([Filtered parameters](#configuration-and-environment-variables)) |
 
 | `get "up" => "rails/health#show"` (a route to a controller) | `GET /up` is built in and answered before the static files, the session and the router, so no `before_action` runs; it queries the database and the background worker's last tick, `200 ok` or `503` ([Operations](#operations-backups-vacuum-health-check)) |
@@ -1685,9 +1685,11 @@ blocks take their arguments and cannot use `self` (Spinel has no
 - **Waiting and reconnecting.** After any failure the thread waits
   `min(60, 2 ** (attempt - 1))` seconds, with 20 % of jitter either way: 1, 2,
   4, ... 60. A connection that lasted 60 seconds starts again from 1. Every
-  wait is bounded and ends within a second of the server stopping;
-  `WebSocket.stop!` waits for each thread for at most 2 seconds, and a
-  connected feed sends a close (1000) first.
+  wait is bounded. `WebSocket.stop!` returns within about 2 seconds
+  whatever the servers do: it waits at most 2 seconds for all the threads
+  together, a connected feed sends a close (1000) and waits at most 1 second
+  for the server's answer, and every feed's `connected?` is false once it
+  returns (a thread still closing finishes on its own).
 - **Silence.** A feed can go quiet without ever closing the connection, so
   the thread pings after `ping_interval` seconds without any frame (and then
   once per interval), and when no frame at all, a pong included, has arrived
@@ -1727,9 +1729,14 @@ blocks take their arguments and cannot use `self` (Spinel has no
   your own check. The three are read one after the other, not as one
   snapshot, and `connected?` turns true when the connection is made, before
   `on_open` has run.
-- **Keep `on_message` short.** The thread waits with `wait_readable`, so a
-  stalled feed never holds an OS worker, but a SQLite call inside
-  `on_message` does until it returns, as in a scheduled task ([Background
+- **Keep `on_message` short.** The thread waits with `wait_readable` or
+  `sleep`, so a stalled feed does not hold an OS worker while it waits. Two
+  things do hold one: each connect attempt resolves the host name with a
+  blocking `getaddrinfo` (see "Name resolution blocks" in [Outbound
+  HTTP](#outbound-http); with `SPINEL_WORKERS=1` a dead resolver stalls
+  every request for the resolver's timeout, once per attempt per feed, and
+  an IP address in the URL avoids the lookup), and a SQLite call inside
+  `on_message` until it returns, as in a scheduled task ([Background
   work](#background-work)): with `SPINEL_WORKERS=1` a long write stalls every
   request. For a busy feed insert one small row, or collect messages in
   memory and write them in batches from a `Scheduler.every` task.
@@ -1966,14 +1973,20 @@ require "cybertrain/test/websocket_receiver"
 
 TICKS = Array.new(0) { "" }   # a constant: the blocks cannot see locals
 
+# The blocks are written in a method, where their parameters are used,
+# not inside the test block.
+def subscribe_trades(url)
+  Cybertrain::WebSocket.subscribe("trades", url, allow_private: true)
+    .on_open { |conn| conn.send_text("subscribe") }
+    .on_message { |conn, text| TICKS << text }
+end
+
 test "a trade message is stored" do
   rx = Cybertrain::Test::WebSocketReceiver.new
   rx.ws_script([Cybertrain::Test::WsStep.new("accept"), Cybertrain::Test::WsStep.new("expect"),
                 Cybertrain::Test::WsStep.new("send_text", "tick"), Cybertrain::Test::WsStep.new("echo_until_close")])
   rx.start
-  Cybertrain::WebSocket.subscribe("trades", rx.url("/trades"), allow_private: true)
-    .on_open { |conn| conn.send_text("subscribe") }
-    .on_message { |conn, text| TICKS << text }
+  subscribe_trades(rx.url("/trades"))
   Cybertrain::WebSocket.start!               # Test::Client never starts feeds
   # ... poll TICKS for at most a few seconds ...
   Cybertrain::WebSocket.stop!
