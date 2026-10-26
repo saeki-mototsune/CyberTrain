@@ -1,0 +1,13 @@
+ok   retry_delay doubles up to 60 seconds
+ok   subscribe refuses bad arguments
+ok   start! refuses a subscription without on_message
+ok   start! does nothing when the worker is off
+ok   stop! when not running does nothing
+ok   status of an unknown name is an ArgumentError
+ok   the service is registered with Background
+ok   messages reach on_message and status follows
+ok   on_open runs again after every reconnect
+ok   an exception in on_message keeps the connection
+ok   a silent feed is pinged, then reconnected
+ok   stop! ends a thread waiting to reconnect
+12 tests, 76 assertions, 0 failures
