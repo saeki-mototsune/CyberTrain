@@ -11,6 +11,7 @@ ok   a frame sent with the 101 is not lost
 ok   receive resumes a frame split across waits
 ok   receive returns nil when nothing arrives
 ok   a ping is answered with a pong carrying its payload
+ok   a stream of pongs cannot keep receive past its wait
 ok   a close from the server is a ClosedError with its code
 ok   an application close code is passed on
 ok   a dropped connection is a ClosedError 1006
@@ -22,4 +23,4 @@ ok   reserved headers are refused
 ok   a non-ws URL is refused
 ok   a ping payload longer than 125 bytes is refused
 ok   wss to a plain server fails the handshake
-24 tests, 115 assertions, 0 failures
+25 tests, 118 assertions, 0 failures

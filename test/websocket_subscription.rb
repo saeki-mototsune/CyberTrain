@@ -114,6 +114,17 @@ def await_reconnects(name, count, wait)
   WS.feed_status(name).reconnects >= count
 end
 
+# Waits until the feed's status reads connected.
+def await_connected(name, wait)
+  ends_at = mono_now + wait
+  while mono_now < ends_at
+    return true if WS.feed_status(name).connected?
+
+    sleep(0.05)
+  end
+  WS.feed_status(name).connected?
+end
+
 def receiver_for(max, steps_list)
   rx = Cybertrain::Test::WebSocketReceiver.new(max: max, accept_window: 10.0, read_timeout: 5.0)
   i = 0
@@ -154,6 +165,11 @@ end
 
 def subscribe_gone(url)
   WS.subscribe("gone", url, allow_private: true)
+    .on_message { |conn, data| conn.send_text(data) }
+end
+
+def subscribe_deaf(name, url)
+  WS.subscribe(name, url, allow_private: true)
     .on_message { |conn, data| conn.send_text(data) }
 end
 
@@ -271,11 +287,11 @@ test "an exception in on_message keeps the connection" do
 end
 
 test "a silent feed is pinged, then reconnected" do
-  # The first connection reads the ping and then says nothing for 3 s
+  # The first connection reads the ping and then says nothing for 5 s
   # (the receiver serves one connection at a time, so the second
   # connection is accepted once that pause is over).
   rx = receiver_for(2, [
-    [step("accept"), step("expect"), step("silent", "3")],
+    [step("accept"), step("expect"), step("silent", "5")],
     [step("accept"), step("echo_until_close")]
   ])
   subscribe_quiet(rx.url("/quiet"))
@@ -306,6 +322,24 @@ test "stop! ends a thread waiting to reconnect" do
   seen = count_of(LOG.string, "disconnected:")
   sleep(1.5)
   assert_equal seen, count_of(LOG.string, "disconnected:")
+end
+
+test "stop! is bounded when servers ignore the close" do
+  # Two servers that accept and then say nothing, not even close.
+  rx1 = receiver_for(1, [[step("accept"), step("silent", "10")]])
+  rx2 = receiver_for(1, [[step("accept"), step("silent", "10")]])
+  subscribe_deaf("deaf1", rx1.url("/deaf"))
+  subscribe_deaf("deaf2", rx2.url("/deaf"))
+  assert WS.start!(Cybertrain::Config.new)
+  assert await_connected("deaf1", 5.0)
+  assert await_connected("deaf2", 5.0)
+  started = mono_now
+  assert_nil WS.stop!
+  assert mono_now - started < 3.0
+  refute WS.feed_status("deaf1").connected?
+  refute WS.feed_status("deaf2").connected?
+  rx1.stop
+  rx2.stop
 end
 
 Cybertrain::Test.run!

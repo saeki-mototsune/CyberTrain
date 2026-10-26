@@ -23,7 +23,7 @@ module Cybertrain
     # - "send_text" / "send_binary": one frame carrying `data`.
     # - "send_raw": `data`'s bytes, as they are (a protocol violation).
     # - "split_frame": a text frame carrying `data`, its header first and
-    #   the payload 0.3 s later.
+    #   the payload 1 s later.
     # - "expect": reads one frame from the client and records it.
     # - "echo_until_close": records each frame; sends data frames back,
     #   answers a ping with a pong and a close with a close, then ends.
@@ -350,7 +350,7 @@ module Cybertrain
           frame = WebSocket::Frame.encode(WebSocket::Frame::OP_TEXT, data, "")
           cut = frame.bytesize - data.bytesize
           sock.write(frame.byteslice(0, cut))
-          ws_pause(0.3)
+          ws_pause(1.0)
           sock.write(frame.byteslice(cut, frame.bytesize - cut))
         when "expect"
           return ws_read_frame(sock)

@@ -10,4 +10,5 @@ ok   on_open runs again after every reconnect
 ok   an exception in on_message keeps the connection
 ok   a silent feed is pinged, then reconnected
 ok   stop! ends a thread waiting to reconnect
-12 tests, 76 assertions, 0 failures
+ok   stop! is bounded when servers ignore the close
+13 tests, 83 assertions, 0 failures

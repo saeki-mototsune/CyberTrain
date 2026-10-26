@@ -271,6 +271,31 @@ test "a ping is answered with a pong carrying its payload" do
   assert frames[0].rec_masked
 end
 
+test "a stream of pongs cannot keep receive past its wait" do
+  pong = Cybertrain::WebSocket::Frame.encode(10, "", "")
+  pongs = String.new
+  i = 0
+  while i < 20_000
+    pongs << pong
+    i += 1
+  end
+  rx = receiver_with([step("accept"), step("send_raw", pongs), step("send_text", "after"), step("echo_until_close")])
+  ws = connect(rx.url("/"))
+  # Everything is sent before the client reads, so no read has to wait:
+  # only the check after each control frame ends even a wait of 0 (without
+  # it, receive reads all 20000 pongs and answers "after").
+  sleep(0.3)
+  started = now
+  got = ws.receive(0)
+  elapsed = now - started
+  msg = ws.receive(5)
+  ws.close
+  rx.stop
+  assert_nil got
+  assert elapsed < 1.0
+  assert_equal "after", msg.ws_data
+end
+
 test "a close from the server is a ClosedError with its code" do
   rx = receiver_with([step("accept"), step("close", "1001")])
   ws = connect(rx.url("/"))

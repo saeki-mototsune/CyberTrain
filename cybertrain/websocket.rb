@@ -29,9 +29,14 @@
 #    2, 4, ... up to 60, +-20 %; back to 1 after a connection that lasted
 #    60 s), looking at stop! every second, then goes back to 1.
 #
-# Every wait is bounded and is a wait_readable or a sleep, so a stalled
-# feed never holds the OS worker. A SQLite call in `on_message` does hold
-# it until it returns (as a Scheduler task's does): keep the work per
+# Every wait is bounded and is a wait_readable or a sleep, except one: each
+# connect attempt resolves the host name with a blocking getaddrinfo
+# (Net.resolve), which holds the OS worker until the resolver answers or
+# times out. With SPINEL_WORKERS=1 a dead resolver stalls requests for the
+# resolver's timeout once per attempt per feed (README "Outbound HTTP",
+# "Name resolution blocks"); an IP address in the URL skips the lookup.
+# A SQLite call in `on_message` also holds the worker until it returns (as
+# a Scheduler task's does): keep the work per
 # message small, or collect messages in memory and write them from a
 # Scheduler task. Not built: adding or removing subscriptions while the
 # feeds run (subscribe before the server starts), and sending from outside
@@ -256,6 +261,12 @@ module Cybertrain
     # A connection that lasted this long resets the retry delay to 1 s.
     STEADY_SECONDS = 60.0
 
+    # How long stop! waits for all the feed threads together.
+    STOP_JOIN_SECONDS = 2.0
+
+    # How long a feed that is being stopped waits for the server's close.
+    STOP_CLOSE_SECONDS = 1.0
+
     @running = false
     # Counts start!s: a feed loop left from before a stop! and a new start!
     # sees a newer number and ends instead of running beside the new one.
@@ -366,19 +377,28 @@ module Cybertrain
       true
     end
 
-    # Asks every feed to end and waits for each (at most 2 s per thread): a
-    # connected feed sends close 1000 first. Does nothing when the feeds do
-    # not run.
+    # Asks every feed to end and waits for them, at most 2 s in all: a
+    # connected feed sends close 1000 and waits at most 1 s for the
+    # server's answer. Every feed reads as disconnected once it returns
+    # (a thread still closing finishes on its own). Does nothing when the
+    # feeds do not run.
     # @return [nil]
     # @api public
     def self.stop!
       return nil unless @running
 
       @running = false
+      ends_at = Net::Timer.now + STOP_JOIN_SECONDS
       i = 0
       while i < SUBSCRIPTIONS.size
         thread = SUBSCRIPTIONS[i].sub_thread
-        thread.join(2.0) unless thread.nil?
+        left = ends_at - Net::Timer.now
+        thread.join(left) if !thread.nil? && left > 0.0
+        i += 1
+      end
+      i = 0
+      while i < SUBSCRIPTIONS.size
+        SUBSCRIPTIONS[i].sub_disconnected!
         i += 1
       end
       nil
@@ -502,7 +522,7 @@ module Cybertrain
     def self.feed_connected(sub, client, generation)
       name = sub.sub_name
       unless feed_live?(generation)
-        client.close
+        client.ws_close_within(STOP_CLOSE_SECONDS)
         return ""
       end
       Cybertrain.logger.info("WebSocket #{name.inspect} connected to #{client.ws_label}")
@@ -536,7 +556,7 @@ module Cybertrain
           pinged_at = now
         end
       end
-      client.close
+      client.ws_close_within(STOP_CLOSE_SECONDS)
       ""
     end
 

@@ -178,6 +178,8 @@ module Cybertrain
         @last_activity_at = Net::Timer.now
         # The payload of the frame ws_read_frame read last.
         @frame_payload = ""
+        # When the current receive's wait ends (Net::Timer.now).
+        @receive_ends_at = 0.0
       end
 
       # @return [Boolean] false once the connection is closed (by #close, by
@@ -231,7 +233,9 @@ module Cybertrain
       end
 
       # The next data message, waiting at most `wait` seconds. Pings are
-      # answered and pongs noted on the way.
+      # answered and pongs noted on the way; once `wait` has passed it
+      # answers nil after the next control frame or fragment too, so a
+      # server that streams pings or pongs cannot keep it looping.
       # @param wait [Numeric] seconds
       # @return [Message, nil] nil when the wait ends first
       # @raise [ClosedError] the server closed (its code) or the connection
@@ -242,6 +246,7 @@ module Cybertrain
       def receive(wait)
         ws_require_open
         seconds = wait.to_f
+        @receive_ends_at = Net::Timer.now + seconds
         @reader.reader_timer = Net::Timer.new(@label, seconds, seconds)
         ws_receive_guarded
       end
@@ -251,10 +256,16 @@ module Cybertrain
       # @return [nil]
       # @api public
       def close
+        ws_close_within(@timeout)
+      end
+
+      # #close, waiting at most `wait` seconds for the server's close (a
+      # subscription that is being stopped waits 1 s).
+      def ws_close_within(wait)
         return nil unless @open
 
         ws_try_write(Frame.encode(Frame::OP_CLOSE, Frame.close_payload(1000, ""), Client.mask_key))
-        ws_await_close
+        ws_await_close(wait)
         @close_code = 1000
         ws_drop
         nil
@@ -357,6 +368,9 @@ module Cybertrain
             end
             @assembled = op == Frame::OP_CONTINUATION ? @assembled + payload.bytesize : payload.bytesize
           end
+          # A control frame or a fragment after the wait: nil, the
+          # assembly kept for the next receive.
+          return nil if Net::Timer.now >= @receive_ends_at
         end
         nil
       end
@@ -386,7 +400,10 @@ module Cybertrain
         end
         ws_ended unless @reader.fill_to(size + length)
         whole = @reader.read_exact(size + length)
-        @frame_payload = Frame.unmask(whole.byteslice(size, length), header.frame_mask_key)
+        payload = whole.byteslice(size, length)
+        key = header.frame_mask_key
+        # A server's frames are unmasked: no copy.
+        @frame_payload = key.empty? ? payload : Frame.unmask(payload, key)
         header
       end
 
@@ -410,12 +427,15 @@ module Cybertrain
       end
 
       # After our close: reads (and drops) frames until the server's close,
-      # the end of the stream, an error or `timeout` seconds.
-      def ws_await_close
-        @reader.reader_timer = Net::Timer.new(@label, @timeout, @timeout)
+      # the end of the stream, an error or `wait` seconds.
+      def ws_await_close(wait)
+        seconds = wait.to_f
+        ends_at = Net::Timer.now + seconds
+        @reader.reader_timer = Net::Timer.new(@label, seconds, seconds)
         while true
           header = ws_read_frame
           return nil if header.frame_opcode == Frame::OP_CLOSE
+          return nil if Net::Timer.now >= ends_at
         end
         nil
       rescue Cybertrain::Net::Error, Cybertrain::WebSocket::Error
