@@ -19,9 +19,13 @@ Three builds are covered:
   [benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md).
 - **2026.10.26.7019** (80b2f98), the fork's release tag carrying the fixes
   for A, C, F, G and 3, and the build CyberTrain is pinned to now
-  (`Cybertrain::SPINEL_TAG`, `Cybertrain::SPINEL_REPOSITORY`). `spin test`
-  passes 98 of 98 (with test/template_engine.rb's argument built where the
-  call sees it, see C) and examples/blog's tests pass.
+  (`Cybertrain::SPINEL_TAG`, `Cybertrain::SPINEL_REPOSITORY`). With the
+  toolchain `cybertrain setup` builds from that tag, `spin test` passes 98 of
+  98 (test/template_engine.rb with its argument built where the call sees
+  it, see C), and examples/blog's `spin run gen` writes files identical to
+  the committed ones and its tests pass. The package
+  `ghcr.io/saeki-mototsune/spinel:2026.10.26-7019`, built from the same
+  commit, gave the same results.
 
 The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
