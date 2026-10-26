@@ -31,8 +31,9 @@ The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
 [performance-next.md](performance-next.md).
 
-Suggested order for what is still open: 1 and 2, then B and D, then 4 to
-7, then the rest.
+Suggested order for what is still open: 1 and 2, then D, then 4 to 7,
+then the rest. (B is settled: since 2026.10.26.7019 it is a build error by
+design, see B.)
 
 ## Status at a glance
 
@@ -48,13 +49,32 @@ that it is fixed.
 | `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed |
 | `"#{v}"` copies a String | yes | yes | yes |
 | A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** |
-| B. `ffi_func` declared under another name | no | yes (worked around) | yes (worked around) |
+| B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it |
 | C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) |
-| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around) |
+| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around, re-checked) |
 | E. More allocation per request | no | not re-measured | not re-measured |
 | F. A call whose result is always nil is dropped | no | **yes** | **fixed** |
 | G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** |
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) |
+
+## What CyberTrain still works around
+
+Checked on 2026-10-26 with the toolchain `cybertrain setup` builds from
+2026.10.26.7019 (`spinel 2026.10.26.7019 (80b2f988)`). The items that
+release fixes (A, C, F, G, 3) never had a workaround in CyberTrain: it
+stayed on 2026.09.12, where they do not happen, until it moved to
+2026.10.26.7019. What CyberTrain does work around is all still needed:
+
+| Workaround | Item | On 2026.10.26.7019 |
+| --- | --- | --- |
+| `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error |
+| `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` |
+| test/template_engine.rb passes the layout's Hash as a call (`layout_env`) | refusal under C | the earlier form, through a local, is still refused |
+| `Html.escape`'s `case value when String`, `SafeString.of` and binding arguments to locals (rules 56, 58) | 1, 2 | not re-checked; nothing in the fork or in matz/spinel's master of 2026-10-27 names a fix |
+
+The fork's unmerged branches that touch what is left (for example
+`fix/empty-hash-through-param` for the refusal under C) are not in any
+release; when one is, the matching row above can be removed.
 
 ## Correctness
 
@@ -201,7 +221,8 @@ C for a small program.
   with "conflicting types". Document it, or compile `ffi_source` on its
   own. Since 2026.10.09-7009 the runtime's own declarations are under other
   names (B), so a conflicting `extern` no longer collides, but calling an
-  `ffi_func` by its C name needs one.
+  `ffi_func` by its C name needs one (since 2026.10.26.7019 a build error
+  without it, see B).
 - **A `:str` return always copies.** About 30 objects per article page are
   SQLite text columns. A borrowed or into-buffer return would let a caller
   avoid them.
@@ -220,9 +241,9 @@ None of these happens on 2026.09.12. First found on 2026.10.09-7009 (A to E, whi
 benchmarking, see
 [benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md)),
 re-checked, with F and G new, on 2026.10.25-7018, and fixed in the fork's
-2026.10.26.7019 except B and D, which CyberTrain works around (and E, not
-re-measured). Each section's reduced program prints Ruby's result on
-2026.10.26.7019.
+2026.10.26.7019 except D, which CyberTrain works around, and B, which that
+release turns into a build error by design (and E, not re-measured). Each
+section's reduced program prints Ruby's result on 2026.10.26.7019.
 
 On 2026.10.25-7018, the ten `spin test` failures:
 
@@ -271,14 +292,20 @@ Cybertrain::Gen::Mapper", and so does test/gen_runner_models.rb.
 
 ### B. `ffi_func` functions are no longer declared under their own names
 
-Still present on 2026.10.26.7019. The runtime declares them as `sp_ffi_fN_<name>` with an
+The runtime declares them as `sp_ffi_fN_<name>` with an
 `__asm__` label (`extern long sp_ffi_f0_strlen(const char *)
 __asm__(SP_FFI_SYM("strlen"))`), so an `ffi_source` block calling one by
 its C name gets an implicit declaration: `int`, a cut pointer, a SIGSEGV.
 CyberTrain declares what it calls (db/sqlite_ffi.rb, aedcf4b), which works
-on every build. gcc 13 only warns; making
-`-Werror=implicit-function-declaration` the default (gcc 14 does) would
-have turned the crash into a build error.
+on every build.
+
+Settled in 2026.10.26.7019, as suggested here: the generated C is compiled
+with `-Werror=implicit-function-declaration`, so the call above is a build
+error instead of a crash. The private names stay (declaring the function
+under its C name as well would bring back the conflicting-types errors),
+and Spinel's docs/FFI.md says a fragment declares what it calls or
+includes the header. CyberTrain's declaration is therefore required, not a
+workaround to remove.
 
 ### C. Generated C that does not compile
 
@@ -311,7 +338,8 @@ generating wrong code:
 - test/template_engine.rb (since 2026.10.09-7009): "a typed Hash is passed
   to `render_with_layout`'s parameter `env`, which the method stores keys or
   values of other types into". Not a regression: the test's `{}` should be
-  built where the call can widen it. Still refused on 2026.10.26.7019;
+  built where the call can widen it. Still refused on 2026.10.26.7019
+  (re-checked on 2026-10-26 with the test's earlier form);
   fixed in CyberTrain by passing the Hash as a call (`layout_env`) instead
   of through a local.
 - test/template_integration.rb (new): "a constant write given a Hash,
@@ -323,8 +351,9 @@ generating wrong code:
 
 ### D. `String#to_i` on more digits than an Integer holds raises `RangeError`
 
-Still present on 2026.10.26.7019: `"99999999999999999999".to_i` raises `RangeError: integer
-overflow parsing "99999999999999999999"` where 2026.09.12 saturated. CRuby
+Still present on 2026.10.26.7019 (re-checked on 2026-10-26):
+`"99999999999999999999".to_i` raises `RangeError: integer overflow parsing
+"99999999999999999999"` where 2026.09.12 saturated. CRuby
 returns a Bignum; saturating, or raising only from `Integer()`, would keep
 `to_i` total. test/http_request.rb passes now: `Request#content_length`
 refuses more than 18 digits before calling `to_i` (977bfdb).
