@@ -1670,7 +1670,9 @@ blocks take their arguments and cannot use `self` (Spinel has no
   scheduler ([Background work](#background-work)); `migrate`, `db ...`,
   `Main.command` commands and `Cybertrain::Test::Client` never start them.
   With `CYBERTRAIN_WORKER=0` (`config.worker = false`) they do not run in
-  that process (one `[INFO]` line says so): turn it off in all but one when
+  that process (they simply do not start; the only notice is the
+  scheduler's "run elsewhere" line, and `WebSocket.start!` called directly
+  logs its own): turn it off in all but one when
   several processes serve, or each one receives the whole feed.
   `subscribe` must be called before the server starts; there is no adding or
   removing a feed while it runs. A name is unique (`ArgumentError`), and a
@@ -1708,10 +1710,11 @@ blocks take their arguments and cannot use `self` (Spinel has no
   The path and the query are never logged or put in an error message: they
   often carry a token.
 - **Errors.** All are `Cybertrain::WebSocket::Error`s, with host and port
-  only in the message. Once the handshake is done, losing the connection is a
-  `ClosedError` (`close_code`, `close_reason`; a reset or an end without a
-  close frame is 1006). While connecting it is `RefusedError`,
-  `TimeoutError`, `TLSError`, `BlockedAddressError` (a non-public address,
+  only in the message. Once the handshake is done, a lost connection or a
+  close by the server is a `ClosedError` (`close_code`, `close_reason`; a
+  reset or an end without a close frame is 1006); a write that times out or
+  fails in TLS is still a `TimeoutError` or `TLSError`. While connecting it
+  is `RefusedError`, `TimeoutError`, `TLSError`, `BlockedAddressError` (a non-public address,
   refused by default exactly as in [Outbound HTTP](#outbound-http), with
   the same `allow_private:` and `http_allow_private` setting) or
   `HandshakeError` (not a 101, a wrong `Sec-WebSocket-Accept`, or the
@@ -1741,6 +1744,9 @@ For one connection without the reconnect loop (a script, a one-shot read)
 use the synchronous client:
 
 ```ruby
+require "cybertrain/websocket"
+require "cybertrain/net/tls"   # only for wss://
+
 client = Cybertrain::WebSocket::Client.connect("wss://feed.example.com/v1", timeout: 5)
 client.send_text("hello")
 msg = client.receive(10)      # waits at most 10 s; nil when nothing came
