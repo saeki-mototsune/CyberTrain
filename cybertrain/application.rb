@@ -17,6 +17,7 @@ require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
 require "cybertrain/scheduler"
+require "cybertrain/background"
 require "cybertrain/views"
 require "cybertrain/dev"
 
@@ -194,6 +195,8 @@ module Cybertrain
       # After boot connected the database and SPINEL_WORKERS is set; only
       # here, so `migrate`, `db` and Main.command never start it.
       Scheduler.start!(@config)
+      # Services files like cybertrain/websocket registered when required.
+      Background.start_all(@config)
       if @config.development?
         serve_development(srv)
       else
@@ -201,6 +204,7 @@ module Cybertrain
         srv.wait
       end
       Scheduler.stop!
+      Background.stop_all
       nil
     rescue PortInUse => e
       fail_boot(e.message)

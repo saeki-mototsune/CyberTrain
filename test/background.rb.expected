@@ -1,0 +1,5 @@
+ok   start_all starts every registered service
+ok   stop_all stops them
+ok   start_all does nothing when the worker is off
+ok   a name registered twice is refused
+4 tests, 7 assertions, 0 failures
