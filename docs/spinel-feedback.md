@@ -60,17 +60,20 @@ that it is fixed.
 ## What CyberTrain still works around
 
 Checked on 2026-10-26 with the toolchain `cybertrain setup` builds from
-2026.10.26.7019 (`spinel 2026.10.26.7019 (80b2f988)`). The items that
-release fixes (A, C, F, G, 3) never had a workaround in CyberTrain: it
-stayed on 2026.09.12, where they do not happen, until it moved to
-2026.10.26.7019. What CyberTrain does work around is all still needed:
+2026.10.26.7019 (`spinel 2026.10.26.7019 (80b2f988)`). The regressions
+that release fixes (A, the generated C of C, F, G, and 3) never had a
+workaround in CyberTrain: it stayed on 2026.09.12, where they do not happen,
+until it moved to 2026.10.26.7019. The refusal listed under C is separate:
+that release still makes it, and CyberTrain's workaround for it stays. The
+first three rows below were re-checked and are still needed; the last one
+is kept until someone re-checks it:
 
 | Workaround | Item | On 2026.10.26.7019 |
 | --- | --- | --- |
 | `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error |
 | `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` |
 | test/template_engine.rb passes the layout's Hash as a call (`layout_env`) | refusal under C | the earlier form, through a local, is still refused |
-| `Html.escape`'s `case value when String`, `SafeString.of` and binding arguments to locals (rules 56, 58) | 1, 2 | not re-checked; nothing in the fork or in matz/spinel's master of 2026-10-27 names a fix |
+| `Html.escape`'s `case value when String`, `SafeString.of` and binding arguments to locals (rules 56, 58) | 1, 2 | not re-checked, kept; no commit in the fork or in matz/spinel's master as of 2026-10-26 (b933924) names a fix |
 
 The fork's unmerged branches that touch what is left (for example
 `fix/empty-hash-through-param` for the refusal under C) are not in any
