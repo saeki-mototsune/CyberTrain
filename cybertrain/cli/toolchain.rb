@@ -2,7 +2,8 @@
 # `server`, `build` and `spin` call Toolchain.ensure! before their first
 # spin command: it uses a `spinel`/`spin` of the pinned release already on
 # PATH, or the copy it keeps under ~/.cybertrain, or builds that copy from
-# the release tag (git clone, make deps, make, make install), the same steps
+# the release tag of Cybertrain::SPINEL_REPOSITORY (git clone, make deps,
+# make, make install), the same steps
 # CI runs. `cybertrain setup` does it explicitly; `cybertrain doctor`
 # reports.
 #
@@ -15,7 +16,7 @@ require "cybertrain/shell"
 module Cybertrain
   module CLI
     module Toolchain
-      SPINEL_GIT = "https://github.com/matz/spinel.git"
+      SPINEL_GIT = "#{Cybertrain::SPINEL_REPOSITORY}.git"
       LOCK_WAIT_SECONDS = 3600
 
       # ---- locations -----------------------------------------------------
@@ -79,16 +80,30 @@ module Cybertrain
 
       # ---- discovery -----------------------------------------------------
 
-      # The release inside the parentheses of `spinel --version`, which come
-      # before the compiler field: "spinel 112bae85c1a2 (2026.09.12) [cc
-      # (Ubuntu 13.3.0) 13.3.0]" -> "2026.09.12". "" when there is none.
+      # The release `spinel --version` names, in either of its two shapes:
+      # "spinel 2026.10.26.7019 (80b2f9889) [cc ...]" (the release first, then
+      # the revision, from Spinel 2026.10 on) or "spinel 112bae85c1a2
+      # (2026.09.12) [cc ...]" (the revision first, then the release in
+      # parentheses, 2026.09 and before). "" when there is none.
       def self.release_of(version_line)
         head = version_line.split(" [")[0].to_s
+        words = head.split(" ")
+        return words[1].to_s if words.size >= 2 && words[0] == "spinel" && release_name?(words[1].to_s)
+
         open = head.index("(")
         close = head.index(")")
         return "" if open.nil? || close.nil? || close <= open
 
         head[open + 1, close - open - 1].to_s
+      end
+
+      # A release name as Spinel's Makefile writes one: "unreleased", or a
+      # date tag ("2026.09.12", "2026.10.26.7019"), possibly with "+N" for N
+      # commits past it. A revision ("112bae85c1a2") has no dots.
+      def self.release_name?(word)
+        return true if word == "unreleased"
+
+        !word.match(/\A[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?(\+[0-9]+)?\z/).nil?
       end
 
       # The release the spinel binary at `path` reports; "" when it cannot run.

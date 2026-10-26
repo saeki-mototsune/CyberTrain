@@ -36,7 +36,7 @@ Replace them with your own values; they appear as-is in the commands.
 | Domain | `notes.example.com` |
 | The app's GitHub repository (private is fine) | `YOUR_GITHUB/notes` |
 | Server | Ubuntu 24.04 LTS, x86-64 or arm64, 1 GB of memory or more |
-| Spinel version | `2026.09.12` (what `cybertrain setup` installs; the same as `SPINEL_TAG` in [CI](../.github/workflows/ci.yml)) |
+| Spinel version | `2026.10.26.7019` (what `cybertrain setup` installs; the same as `SPINEL_TAG` in [CI](../.github/workflows/ci.yml)) |
 
 ---
 
@@ -93,8 +93,10 @@ Spinel). This command installs Spinel in 1-3.
 cybertrain setup
 ```
 
-This builds Spinel `2026.09.12`, the release `cybertrain` pins, from its
-GitHub release tag and installs it into `~/.cybertrain/spinel/2026.09.12/`
+This builds Spinel `2026.10.26.7019`, the release `cybertrain` pins, from its
+GitHub release tag (in [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel),
+the fork of matz/spinel that carries the fixes cybertrain needs ahead of an
+upstream release) and installs it into `~/.cybertrain/spinel/2026.10.26.7019/`
 (`git clone` → `make deps` → `make -j` → `make install`). It happens once and
 takes a few minutes (about 3 minutes on a 4-core machine; `make -j` runs one
 job per CPU, so fewer CPUs take longer). CI installs Spinel with the same
@@ -104,14 +106,14 @@ job per CPU, so fewer CPUs take longer). CI installs Spinel with the same
   library), it stops before building and prints what is missing and the
   command that installs it.
 - Each step's output goes to the log
-  `~/.cybertrain/log/spinel-2026.09.12-build.log`. When a step fails, the end
+  `~/.cybertrain/log/spinel-2026.10.26.7019-build.log`. When a step fails, the end
   of the log is printed.
 - If it is already installed (in `~/.cybertrain`, or a `spinel` of the same
   release is on PATH), it prints `nothing to install` and does nothing. To
   rebuild the one in `~/.cybertrain`, run `cybertrain setup --force`.
-- The install, `~/.cybertrain/spinel/2026.09.12/`, is about 13 MB (measured
+- The install, `~/.cybertrain/spinel/2026.10.26.7019/`, is about 13 MB (measured
   on Linux x86-64). During the build only, the source and intermediate files
-  take about 90 MB in `~/.cybertrain/src/spinel-2026.09.12/`; they are deleted
+  take about 90 MB in `~/.cybertrain/src/spinel-2026.10.26.7019/`; they are deleted
   when the build succeeds.
 
 `cybertrain doctor` checks the prerequisites (one line each for git, make,
@@ -133,8 +135,9 @@ source ~/.bashrc
 spinel --version
 ```
 
-It is right when the parentheses say `2026.09.12` (it prints something like
-`spinel 112bae85c1a2 (2026.09.12) [cc ...]`).
+It is right when the word after `spinel` is `2026.10.26.7019` (it prints
+something like `spinel 2026.10.26.7019 (80b2f9889) [gcc ...]`; the
+parentheses hold the commit).
 
 **Note: installing it by hand**
 
@@ -142,7 +145,7 @@ Instead of `cybertrain setup`, you can build and install Spinel yourself. The
 steps are the same as `cybertrain setup`'s.
 
 ```sh
-git clone --depth 1 --branch 2026.09.12 https://github.com/matz/spinel.git ~/src/spinel
+git clone --depth 1 --branch 2026.10.26.7019 https://github.com/saeki-mototsune/spinel.git ~/src/spinel
 cd ~/src/spinel
 make deps
 make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
@@ -153,12 +156,12 @@ To have `cybertrain` use it, do one of these:
 
 - Put `~/.local/bin` on your PATH
   (`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`). If
-  `spinel --version` says `2026.09.12`, `cybertrain` uses the one on PATH.
+  `spinel --version` says `2026.10.26.7019`, `cybertrain` uses the one on PATH.
   If it is another release, `cybertrain` ignores it and installs its own into
   `~/.cybertrain`.
 - Name the install location in an environment variable (add
   `export CYBERTRAIN_SPINEL_HOME="$HOME/.local"` to `~/.bashrc`). If the
-  `spinel` there is not `2026.09.12`, it stops with an error.
+  `spinel` there is not `2026.10.26.7019`, it stops with an error.
 
 ---
 
@@ -400,9 +403,9 @@ cybertrain setup
 
 It does what 1-3 does and takes a few minutes, once (longer on a server with
 fewer CPUs). Spinel goes into the `notes` user's
-`~/.cybertrain/spinel/2026.09.12/` (here
-`/srv/notes/.cybertrain/spinel/2026.09.12/`, about 13 MB), and the log stays
-in `~/.cybertrain/log/spinel-2026.09.12-build.log`. During the build only,
+`~/.cybertrain/spinel/2026.10.26.7019/` (here
+`/srv/notes/.cybertrain/spinel/2026.10.26.7019/`, about 13 MB), and the log stays
+in `~/.cybertrain/log/spinel-2026.10.26.7019-build.log`. During the build only,
 the source and intermediate files take about 90 MB in `~/.cybertrain/src/`
 (deleted when it succeeds). The packages from 3-2 cover the prerequisites;
 if it says something is missing, check with `cybertrain doctor`.

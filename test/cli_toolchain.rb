@@ -61,9 +61,12 @@ def reset_env
 end
 
 # A directory holding a `spinel` that prints the given release and a `spin`.
-def fake_toolchain(dir, release)
+# The release comes first, as the pinned Spinel prints it; `old_shape` prints
+# it in parentheses after the revision, as 2026.09 and before did.
+def fake_toolchain(dir, release, old_shape = false)
   mkdir_p(dir)
-  script = "#!/bin/sh\necho \"spinel abc123def456 (#{release}) [cc 13.3.0]\"\n" # before File.join (rule 65)
+  line = old_shape ? "spinel abc123def456 (#{release}) [cc 13.3.0]" : "spinel #{release} (abc123def) [cc 13.3.0]"
+  script = "#!/bin/sh\necho \"#{line}\"\n" # before File.join (rule 65)
   File.write(File.join(dir, "spinel"), script)
   File.write(File.join(dir, "spin"), "#!/bin/sh\necho spin\n")
   File.chmod(0o755, File.join(dir, "spinel"))
@@ -71,7 +74,7 @@ def fake_toolchain(dir, release)
 end
 
 fake_toolchain("good", TAG)
-fake_toolchain("old", "2026.09.08")
+fake_toolchain("old", "2026.09.08", true)
 fake_toolchain("prefix/bin", TAG)
 fake_toolchain("home/spinel/#{TAG}/bin", TAG)
 mkdir_p("onlyspin")
@@ -81,6 +84,10 @@ mkdir_p("empty")
 
 test "release_of reads the release out of spinel --version" do
   reset_env
+  assert_equal "2026.10.26.7019", Toolchain.release_of("spinel 2026.10.26.7019 (80b2f9889) [gcc 13.3.0 (cc)]")
+  assert_equal "2026.10.26", Toolchain.release_of("spinel 2026.10.26 (80b2f9889)")
+  assert_equal "2026.10.26.7019+3", Toolchain.release_of("spinel 2026.10.26.7019+3 (1a2b3c4d5) [gcc 13.3.0 (cc)]")
+  assert_equal "unreleased", Toolchain.release_of("spinel unreleased (80b2f9889) [gcc 13.3.0 (cc)]")
   assert_equal "2026.09.12", Toolchain.release_of("spinel 112bae85c1a2 (2026.09.12) [cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0]")
   assert_equal "2026.09.08+1", Toolchain.release_of("spinel 281cd145ffb4 (2026.09.08+1) [cc ...]")
   assert_equal "unreleased", Toolchain.release_of("spinel 6b8ddcd88dd9 (unreleased) [cc ...]")

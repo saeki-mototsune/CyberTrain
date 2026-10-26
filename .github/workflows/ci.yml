@@ -46,7 +46,7 @@ concurrency:
 env:
   # Must equal Cybertrain::SPINEL_TAG (script/gate checks, in the Gate
   # workflow): the release the CLI installs and the framework is tested against.
-  SPINEL_TAG: "2026.09.12"
+  SPINEL_TAG: "2026.10.26.7019"
 
 jobs:
   test:

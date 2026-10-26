@@ -43,10 +43,18 @@ def new_env
   env
 end
 
-test "renders a template with a loop inside the layout" do
+# new_env with the layout's title. Passed to render_with_layout as a call,
+# not through a local: render_with_layout stores the rendered page into the
+# Hash, and Spinel after 2026.09.12 refuses a local whose Hash type that
+# store would widen (docs/spinel-feedback.md, under C).
+def layout_env
   env = new_env
   env["__content_title"] = "All posts"
-  html = Engine.new(VIEWS).render_with_layout("posts/index", "layouts/application", env, helpers)
+  env
+end
+
+test "renders a template with a loop inside the layout" do
+  html = Engine.new(VIEWS).render_with_layout("posts/index", "layouts/application", layout_env, helpers)
   expected = <<~HTML
     <!DOCTYPE html>
     <html>
