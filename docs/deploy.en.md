@@ -36,7 +36,7 @@ Replace them with your own values; they appear as-is in the commands.
 | Domain | `notes.example.com` |
 | The app's GitHub repository (private is fine) | `YOUR_GITHUB/notes` |
 | Server | Ubuntu 24.04 LTS, x86-64 or arm64, 1 GB of memory or more |
-| Spinel version | `2026.09.12` (what `cybertrain setup` installs; the same as `SPINEL_TAG` in [CI](../.github/workflows/ci.yml)) |
+| Spinel version | `2026.10.26.7019` (what `cybertrain setup` installs; the same as `SPINEL_TAG` in [CI](../.github/workflows/ci.yml)) |
 
 ---
 
@@ -56,7 +56,7 @@ Ubuntu / Debian:
 
 ```sh
 sudo apt update
-sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev ruby-full
+sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev ruby-full ruby-dev
 ```
 
 macOS: `xcode-select --install` (installs a C compiler, make, git, curl and
@@ -77,10 +77,16 @@ Ruby). Ubuntu 24.04's `ruby-full` is 3.2. The Ruby that comes with macOS is
 too old: install one with Homebrew (`brew install ruby`), rbenv, mise or
 similar.
 
+Building Spinel also needs Ruby's `prism` gem. Ruby 3.3 and newer bundle it,
+so there is nothing to do. On Ruby 3.2 (Ubuntu 24.04's `ruby-full`), run
+`gem install prism` in 1-2; it builds an extension, so it needs the
+`ruby-dev` (Ruby's development headers) in the `apt install` above.
+
 ### 1-2. Install the cybertrain CLI
 
 ```sh
 gem install cybertrain
+gem install prism    # Ruby 3.2 only (3.3 and newer bundle it)
 cybertrain version
 ```
 
@@ -93,29 +99,31 @@ Spinel). This command installs Spinel in 1-3.
 cybertrain setup
 ```
 
-This builds Spinel `2026.09.12`, the release `cybertrain` pins, from its
-GitHub release tag and installs it into `~/.cybertrain/spinel/2026.09.12/`
+This builds Spinel `2026.10.26.7019`, the release `cybertrain` pins, from its
+GitHub release tag (in [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel),
+the fork of matz/spinel that carries the fixes CyberTrain needs ahead of an
+upstream release) and installs it into `~/.cybertrain/spinel/2026.10.26.7019/`
 (`git clone` → `make deps` → `make -j` → `make install`). It happens once and
-takes a few minutes (about 3 minutes on a 4-core machine; `make -j` runs one
+takes a few minutes (about 5 minutes on a 4-core machine; `make -j` runs one
 job per CPU, so fewer CPUs take longer). CI installs Spinel with the same
 `cybertrain setup`.
 
-- If a tool is missing (git, make, curl, a C compiler, the SQLite headers or
-  library), it stops before building and prints what is missing and the
+- If a tool is missing (git, make, curl, a Ruby that loads the `prism` gem,
+  a C compiler, the SQLite headers or library), it stops before building and prints what is missing and the
   command that installs it.
 - Each step's output goes to the log
-  `~/.cybertrain/log/spinel-2026.09.12-build.log`. When a step fails, the end
+  `~/.cybertrain/log/spinel-2026.10.26.7019-build.log`. When a step fails, the end
   of the log is printed.
 - If it is already installed (in `~/.cybertrain`, or a `spinel` of the same
   release is on PATH), it prints `nothing to install` and does nothing. To
   rebuild the one in `~/.cybertrain`, run `cybertrain setup --force`.
-- The install, `~/.cybertrain/spinel/2026.09.12/`, is about 13 MB (measured
+- The install, `~/.cybertrain/spinel/2026.10.26.7019/`, is about 41 MB (measured
   on Linux x86-64). During the build only, the source and intermediate files
-  take about 90 MB in `~/.cybertrain/src/spinel-2026.09.12/`; they are deleted
+  take about 220 MB in `~/.cybertrain/src/spinel-2026.10.26.7019/`; they are deleted
   when the build succeeds.
 
 `cybertrain doctor` checks the prerequisites (one line each for git, make,
-curl, cc, SQLite, OpenSSL and Spinel; anything missing says `MISSING`,
+curl, prism, cc, SQLite, OpenSSL and Spinel; anything missing says `MISSING`,
 followed by the command that installs it).
 
 `cybertrain new`, `db`, `server` and `build` find and use this Spinel by
@@ -133,16 +141,18 @@ source ~/.bashrc
 spinel --version
 ```
 
-It is right when the parentheses say `2026.09.12` (it prints something like
-`spinel 112bae85c1a2 (2026.09.12) [cc ...]`).
+It is right when the word after `spinel` is `2026.10.26.7019` (it prints
+something like `spinel 2026.10.26.7019 (80b2f9889) [gcc ...]`; the
+parentheses hold the commit).
 
 **Note: installing it by hand**
 
 Instead of `cybertrain setup`, you can build and install Spinel yourself. The
-steps are the same as `cybertrain setup`'s.
+steps are the same as `cybertrain setup`'s (and so is the need for a Ruby
+that loads the `prism` gem).
 
 ```sh
-git clone --depth 1 --branch 2026.09.12 https://github.com/matz/spinel.git ~/src/spinel
+git clone --depth 1 --branch 2026.10.26.7019 https://github.com/saeki-mototsune/spinel.git ~/src/spinel
 cd ~/src/spinel
 make deps
 make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
@@ -153,12 +163,12 @@ To have `cybertrain` use it, do one of these:
 
 - Put `~/.local/bin` on your PATH
   (`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`). If
-  `spinel --version` says `2026.09.12`, `cybertrain` uses the one on PATH.
+  `spinel --version` says `2026.10.26.7019`, `cybertrain` uses the one on PATH.
   If it is another release, `cybertrain` ignores it and installs its own into
   `~/.cybertrain`.
 - Name the install location in an environment variable (add
   `export CYBERTRAIN_SPINEL_HOME="$HOME/.local"` to `~/.bashrc`). If the
-  `spinel` there is not `2026.09.12`, it stops with an error.
+  `spinel` there is not `2026.10.26.7019`, it stops with an error.
 
 ---
 
@@ -192,7 +202,7 @@ version = "0.1.0"
 # allocator = "jemalloc"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.2.1" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.0" }
 ```
 
 Remove the `#` in front of `# allocator = "jemalloc"` and the app is built
@@ -283,7 +293,7 @@ binary to `CYBERTRAIN_DATABASE`.
 It is right when it starts like this:
 
 ```
-=> Booting cybertrain 0.2.1
+=> Booting cybertrain 0.3.0
 => production environment (1 worker)
 * Listening on http://127.0.0.1:3000
 ```
@@ -345,7 +355,7 @@ certificate in part 6, so do it first.
 
 ```sh
 sudo apt update && sudo apt -y upgrade
-sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev sqlite3 ufw ruby-full
+sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev sqlite3 ufw ruby-full ruby-dev
 
 sudo ufw allow OpenSSH
 sudo ufw allow 80,443/tcp
@@ -372,14 +382,16 @@ sudo -iu notes
 
 From here **to the end of part 3, work in the `notes` user's shell**. The
 steps are those of 1-2 and 1-3: first the `cybertrain` command, then Spinel.
-Ruby is there from `ruby-full` in 3-2.
+Ruby is there from `ruby-full` in 3-2 (3.2), so, as in 1-2, install the
+`prism` gem too.
 
 First install the `cybertrain` command into the `notes` user's home (the
 deploy script uses `cybertrain build`). The executable lands in the gem
 directory, so link it from `~/.local/bin` and put that on PATH.
 
 ```sh
-gem install --user-install cybertrain -v 0.2.1
+gem install --user-install cybertrain -v 0.3.0
+gem install --user-install prism
 mkdir -p ~/.local/bin
 ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
@@ -388,7 +400,7 @@ cybertrain version
 ```
 
 Make `-v` the same version as the `ref` in the app's `spin.toml` (the tag
-`v0.2.1`). The CLI and the framework `spin.lock` pins (`spin run gen` runs
+`v0.3.0`). The CLI and the framework `spin.lock` pins (`spin run gen` runs
 that framework's own generator) are upgraded together; if their versions
 differ, building or starting fails.
 
@@ -400,10 +412,10 @@ cybertrain setup
 
 It does what 1-3 does and takes a few minutes, once (longer on a server with
 fewer CPUs). Spinel goes into the `notes` user's
-`~/.cybertrain/spinel/2026.09.12/` (here
-`/srv/notes/.cybertrain/spinel/2026.09.12/`, about 13 MB), and the log stays
-in `~/.cybertrain/log/spinel-2026.09.12-build.log`. During the build only,
-the source and intermediate files take about 90 MB in `~/.cybertrain/src/`
+`~/.cybertrain/spinel/2026.10.26.7019/` (here
+`/srv/notes/.cybertrain/spinel/2026.10.26.7019/`, about 41 MB), and the log stays
+in `~/.cybertrain/log/spinel-2026.10.26.7019-build.log`. During the build only,
+the source and intermediate files take about 220 MB in `~/.cybertrain/src/`
 (deleted when it succeeds). The packages from 3-2 cover the prerequisites;
 if it says something is missing, check with `cybertrain doctor`.
 
@@ -891,7 +903,7 @@ day-to-day operation.
 | The deploy stops at `stale: gen/...` | You forgot to run `cybertrain spin run gen` locally and commit `gen/` |
 | The deploy ends with `The new release does not answer` | The new release did not answer `/up.html` within about 30 seconds (the script has gone back to the previous release). Look at `sudo journalctl -u notes -n 50` for why. If it did start but does not answer, the app has no `public/up.html` (5-3) |
 | `spin: command not found` (while deploying) | Spinel is not installed for the `notes` user (`cybertrain setup` in 3-4), or `~/deploy.sh`'s `PATH` lacks `~/.cybertrain/bin` (5-3) |
-| `cybertrain: command not found` (while deploying) | The cybertrain CLI is not installed for the `notes` user (`gem install --user-install cybertrain -v 0.2.1` in 3-4) |
+| `cybertrain: command not found` (while deploying) | The cybertrain CLI is not installed for the `notes` user (`gem install --user-install cybertrain -v 0.3.0` in 3-4) |
 | `git clone` fails with `Permission denied (publickey)` | The deploy key is not registered, or another user's key is in use (run 3-5 as the `notes` user) |
 | The browser keeps showing 500.html | The app is down. Look at `sudo journalctl -u notes -n 50` |
 | No certificate | Check that DNS points at the server and 80 and 443 are open. Look at `sudo journalctl -u caddy` |

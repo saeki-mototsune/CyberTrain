@@ -78,7 +78,7 @@
     <h1>Getting started: the&nbsp;blog</h1>
     <p class="doc-intro">Mirrors Rails' own <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a>: a blog with articles and comments. You will scaffold articles, add validations, nest comments under them, write a test that drives the app in-process, add sign-in, attach an uploaded image, and build the app into a deployable <code>dist/</code> folder. The finished app is <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>, exercised by CI on Linux and macOS.</p>
     <dl class="doc-meta">
-      <div><dt>You need</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, SQLite 3 headers (Spinel <code>2026.09.12</code> is installed for you) <a class="meta-link" href="#requirements">Step 00</a></dd></div>
+      <div><dt>You need</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, SQLite 3 headers (Spinel <code>2026.10.26.7019</code> is installed for you) <a class="meta-link" href="#requirements">Step 00</a></dd></div>
       <div><dt>You start from</dt><dd><code>gem install cybertrain</code></dd></div>
       <div><dt>You finish with</dt><dd><code>dist/blog</code></dd></div>
     </dl>
@@ -121,8 +121,8 @@
     <h2 id="h-requirements"><span class="step-num" aria-hidden="true">00</span>Requirements</h2>
     <p class="why"><span class="why-k">Why</span><span class="why-t">CyberTrain compiles through Spinel to C, so it needs a C toolchain and the SQLite headers; the <code>cybertrain</code> command is a gem, so it needs Ruby.</span></p>
     <ul class="checklist">
-      <li>Ruby 3.2+ and RubyGems, for the <code>cybertrain</code> command only; applications never run on CRuby.</li>
-      <li>Spinel <code>2026.09.12</code>, untested against other versions. You do not install it by hand: the first command that needs it builds that release into <code>~/.cybertrain</code> (a few minutes, once), unless a <code>spinel</code> of that release is already on <code>PATH</code>.</li>
+      <li>Ruby 3.2+ and RubyGems, for the <code>cybertrain</code> command only; applications never run on CRuby. Building Spinel also needs Ruby&rsquo;s <code>prism</code> gem: Ruby 3.3 and newer bundle it; on Ruby 3.2, run <code>gem install prism</code> (with Ruby&rsquo;s development headers, <code>ruby-dev</code> on Debian/Ubuntu). <code>cybertrain doctor</code> checks it.</li>
+      <li>Spinel <code>2026.10.26.7019</code>, a release of the <a href="https://github.com/saeki-mototsune/spinel" rel="noopener">saeki-mototsune/spinel</a> fork, which carries the fixes CyberTrain needs ahead of an upstream release; untested against other versions. You do not install it by hand: the first command that needs it builds that release into <code>~/.cybertrain</code> (a few minutes, once), unless a <code>spinel</code> of that release is already on <code>PATH</code>.</li>
       <li>A C toolchain (<code>cc</code>, or the compiler <code>CC</code> names) and <code>make</code>, plus <code>git</code> and <code>curl</code>, to build Spinel, which compiles every program to C.</li>
       <li>SQLite 3 and zlib headers and libraries: <code>libsqlite3-dev</code> and <code>zlib1g-dev</code> on Debian/Ubuntu; present with Xcode's command line tools on macOS.</li>
       <li>OpenSSL headers (<code>libssl-dev</code>) are optional: without them Spinel builds without its <code>openssl</code> package, which CyberTrain does not use.</li>
@@ -131,7 +131,7 @@
     <details class="ci">
       <summary><span class="ci-t">How CyberTrain installs Spinel</span><span class="ci-d">What happens the first time a command needs <code>spin</code></span></summary>
       <div class="ci-body">
-    <p><code>cybertrain new</code>, <code>db</code>, <code>server</code>, <code>build</code> and <code>spin</code> first look for Spinel <code>2026.09.12</code>: a <code>spinel</code> and <code>spin</code> of that release already on <code>PATH</code>, else the copy under <code>~/.cybertrain/spinel/2026.09.12/</code>, else they build that copy from the Spinel release tag (<code>git clone</code>, <code>make deps</code>, <code>make -j</code>, <code>make install</code>), once, in a few minutes. The log is <code>~/.cybertrain/log/spinel-2026.09.12-build.log</code>; if a tool the build needs is missing, <code>cybertrain</code> says which and prints the install command for your platform before it starts.</p>
+    <p><code>cybertrain new</code>, <code>db</code>, <code>server</code>, <code>build</code> and <code>spin</code> first look for Spinel <code>2026.10.26.7019</code>: a <code>spinel</code> and <code>spin</code> of that release already on <code>PATH</code>, else the copy under <code>~/.cybertrain/spinel/2026.10.26.7019/</code>, else they build that copy from the Spinel release tag (<code>git clone</code>, <code>make deps</code>, <code>make -j</code>, <code>make install</code>), once, in a few minutes. The log is <code>~/.cybertrain/log/spinel-2026.10.26.7019-build.log</code>; if a tool the build needs is missing, <code>cybertrain</code> says which and prints the install command for your platform before it starts.</p>
     <p><code>cybertrain setup</code> does the same on request (<code>--force</code> rebuilds the copy under <code>~/.cybertrain</code>) and, when its own copy is the one in use, prints the line that puts it on your <code>PATH</code>, for running <code>spin</code> yourself:</p>
 <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; any directory</span><span class="code-lang">shell</span></figcaption>
@@ -151,7 +151,7 @@
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; any directory, then&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code: terminal &mdash; any directory, then blog/"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># installs Spinel 2026.09.12 the first time (a few minutes)</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># installs Spinel 2026.10.26.7019 the first time (a few minutes)</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -169,9 +169,9 @@
       <li><code>cybertrain server [PORT]</code> generates, then starts the development server (<code>spin run gen; spin run NAME</code>, or <code>spin run NAME -- PORT</code>; default port 3000).</li>
       <li><code>cybertrain build</code> builds NAME with <code>app/views/</code> embedded and assembles <code>dist/</code> (the binary, <code>public/</code>, <code>storage/</code>, <code>tmp/</code>).</li>
       <li><code>cybertrain spin ARGS...</code> runs <code>spin</code> with the pinned Spinel, from any directory: <code>cybertrain spin test</code>, <code>cybertrain spin run gen -- --check</code>.</li>
-      <li><code>cybertrain setup [--force]</code> installs Spinel <code>2026.09.12</code> into <code>~/.cybertrain</code> unless a <code>spinel</code> of that release is already on <code>PATH</code>; <code>--force</code> rebuilds the copy under <code>~/.cybertrain</code>.</li>
+      <li><code>cybertrain setup [--force]</code> installs Spinel <code>2026.10.26.7019</code> into <code>~/.cybertrain</code> unless a <code>spinel</code> of that release is already on <code>PATH</code>; <code>--force</code> rebuilds the copy under <code>~/.cybertrain</code>.</li>
       <li><code>cybertrain doctor</code> checks the C toolchain, the SQLite headers and the Spinel install.</li>
-      <li><code>cybertrain version</code> prints the version (<code>cybertrain 0.2.1</code>); <code>cybertrain help</code> prints the usage.</li>
+      <li><code>cybertrain version</code> prints the version (<code>cybertrain 0.3.0</code>); <code>cybertrain help</code> prints the usage.</li>
     </ul>
     <p class="note"><code>db</code>, <code>server</code> and <code>build</code> run inside an application; NAME is the <code>[package] name</code> in its <code>spin.toml</code>.</p>
   </section>
@@ -193,9 +193,9 @@
 <span class="ln">version = <span class="s">"0.1.0"</span></span>
 <span class="ln"></span>
 <span class="ln">[dependencies]</span>
-<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.1"</span> }</span></code></pre>
+<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.3.0"</span> }</span></code></pre>
 </figure>
-    <p>Then it makes sure Spinel is installed (the first time, that means building Spinel <code>2026.09.12</code> into <code>~/.cybertrain</code>: a few minutes, once; see <a href="#requirements">step 00</a>) and runs <code>spin lock</code> (spin fetches the framework into its cache, <code>~/.cache/spin/packages/</code>, and pins the commit in <code>spin.lock</code>) and <code>spin run gen</code>, much as <code>rails new</code> runs <code>bundle install</code>, so <code>cybertrain server</code> works right away. It ends by printing the next steps. Nothing of the framework is copied into the app; commit <code>spin.toml</code> and <code>spin.lock</code>.</p>
+    <p>Then it makes sure Spinel is installed (the first time, that means building Spinel <code>2026.10.26.7019</code> into <code>~/.cybertrain</code>: a few minutes, once; see <a href="#requirements">step 00</a>) and runs <code>spin lock</code> (spin fetches the framework into its cache, <code>~/.cache/spin/packages/</code>, and pins the commit in <code>spin.lock</code>) and <code>spin run gen</code>, much as <code>rails new</code> runs <code>bundle install</code>, so <code>cybertrain server</code> works right away. It ends by printing the next steps. Nothing of the framework is copied into the app; commit <code>spin.toml</code> and <code>spin.lock</code>.</p>
     <p class="note">If Spinel or one of the two <code>spin</code> steps fails, the files stay, <code>new</code> exits with 1 and prints what to run once the cause is fixed (for Spinel: <code>cybertrain setup</code>, then <code>cybertrain spin lock &amp;&amp; cybertrain spin run gen</code> in the new directory). <code>--skip-spin</code> only writes the files; <code>--path DIR</code> depends on a local checkout instead, <code>--git URL [--ref R]</code> on the framework at URL (at branch or tag R), and <code>--version V</code> on an index version once <code>cybertrain</code> is on a <code>spin-index</code>.</p>
     <p>App names use lowercase letters, digits and <code>_</code>, starting with a letter. The generated tree:</p>
     <figure class="code" data-lang="text">
@@ -329,7 +329,7 @@
     <p><code>cybertrain server</code> prints each <code>spin</code> command it runs, then the app's boot banner. The first start compiles the app, so it takes a while:</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">output &mdash; cybertrain server</span><span class="code-lang">text</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code: output of cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.2.1</span>
+<pre tabindex="0" role="region" aria-label="Code: output of cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.3.0</span>
 <span class="ln">=&gt; development environment (1 worker)</span>
 <span class="ln">=&gt; Watching app/, config/ and db/schema.rb for changes</span>
 <span class="ln">* Listening on http://127.0.0.1:3000</span>
@@ -782,7 +782,7 @@
       <li>Views are embedded at build time: a view-only change needs <code>cybertrain build</code> and a restart before it reaches production.</li>
       <li>Build <code>dist/</code> on the same OS and CPU as the machine that runs it: the binary links the system SQLite.</li>
       <li><code>SPINEL_WORKERS</code> defaults to <code>1</code>.</li>
-      <li>Only Spinel <code>2026.09.12</code> is tested.</li>
+      <li>Only Spinel <code>2026.10.26.7019</code> is tested.</li>
     </ul>
   </section>
 
