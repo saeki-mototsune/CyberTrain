@@ -6,8 +6,9 @@ note: old/spinel is release 2026.09.08; cybertrain 0.2.1 is pinned to Spinel 202
 ok   another release on PATH, or a spin from elsewhere, does not count
 ok   CYBERTRAIN_SPINEL_HOME names a prefix or its bin directory, absolute
 ok   the managed copy counts only once its completion stamp is there
-error: cannot build Spinel 2026.10.26.7019: missing git, make, curl, a C compiler (cc)
+error: cannot build Spinel 2026.10.26.7019: missing git, make, curl, a Ruby that loads the prism gem (Ruby 3.3 or newer, or `gem install prism`), a C compiler (cc)
   install git, make, curl, a C compiler and the SQLite 3 and zlib development headers with your package manager
+  gem install --user-install prism     # or use Ruby 3.3 or newer, which has it
 ok   install refuses to start without the build tools, before touching anything
 ok   with the toolchain of this machine, nothing an app build needs is missing (sqlite3 and zlib probes pass)
 error: cannot create /proc/cybertrain-test/spinel; set CYBERTRAIN_HOME to a writable directory

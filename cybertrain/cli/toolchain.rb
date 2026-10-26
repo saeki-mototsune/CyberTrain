@@ -653,8 +653,19 @@ module Cybertrain
         missing << "git" unless have_command?("git")
         missing << "make" unless have_command?("make")
         missing << "curl" unless have_command?("curl")
+        missing << PRISM_REQUIREMENT unless prism_ok?
         missing_app_requirements.each { |name| missing << name }
         missing
+      end
+
+      PRISM_REQUIREMENT = "a Ruby that loads the prism gem (Ruby 3.3 or newer, or `gem install prism`)"
+
+      # Spinel's build runs tools/gen_respond_to_tables.rb, which requires
+      # the prism gem: bundled with Ruby 3.3 and newer, a `gem install` (with
+      # Ruby's development headers, for its extension) on 3.2. Only building
+      # Spinel needs it; applications never run on CRuby.
+      def self.prism_ok?
+        system("ruby -e 'require \"prism\"' > /dev/null 2>&1")
       end
 
       # What building an application needs even once Spinel is installed.
@@ -688,6 +699,24 @@ module Cybertrain
 
       # The command that installs every requirement on this platform.
       def self.install_hints
+        hints = platform_install_hints
+        hints << prism_install_hint unless prism_ok?
+        hints
+      end
+
+      # Ruby 3.2's prism is a gem with a C extension: Ruby's development
+      # headers first (the package names below), then the gem.
+      def self.prism_install_hint
+        os = platform
+        headers = ""
+        headers = "sudo apt-get install -y ruby-dev && " if os == "debian"
+        headers = "sudo dnf install -y ruby-devel && " if os == "rhel"
+        headers = "sudo zypper install -y ruby-devel && " if os == "suse"
+        headers = "sudo apk add ruby-dev && " if os == "alpine"
+        "#{headers}gem install --user-install prism     # or use Ruby 3.3 or newer, which has it"
+      end
+
+      def self.platform_install_hints
         case platform
         when "debian"
           ["sudo apt-get update && sudo apt-get install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev"]
@@ -719,6 +748,7 @@ module Cybertrain
         report("git", have_command?("git"), sh_read("command -v git"))
         report("make", have_command?("make"), sh_read("command -v make"))
         report("curl", have_command?("curl"), sh_read("command -v curl"))
+        report("prism", prism_ok?, prism_ok? ? "the prism gem loads (building Spinel needs it)" : "ruby cannot load the prism gem (building Spinel needs it)")
         report("cc", have_command?(cc_program), sh_read("#{cc} --version 2>/dev/null | head -n 1"))
         if have_command?(cc_program)
           report("sqlite3", sqlite_ok?, sqlite_ok? ? "headers and library found" : "sqlite3.h or -lsqlite3 missing")

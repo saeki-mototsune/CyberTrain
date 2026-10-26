@@ -94,7 +94,10 @@ works there with no network.
   gzip request bodies (`request.decoded_body`) are inflated through the
   system zlib, bound the same way.
 - Ruby 3.2+ and RubyGems, for the `cybertrain` command only (applications
-  never run on CRuby).
+  never run on CRuby). Building Spinel also needs Ruby's `prism` gem, which
+  Ruby 3.3 and newer bundle; on Ruby 3.2, `gem install prism` (with Ruby's
+  development headers, `ruby-dev` on Debian/Ubuntu). `cybertrain doctor`
+  checks it.
 - OpenSSL's headers (`libssl-dev`) are optional: without them Spinel builds
   without its `openssl` package, which cybertrain does not use. On macOS an
   application that requires `openssl` needs Homebrew's (keg-only) OpenSSL on
