@@ -196,8 +196,12 @@ end
 test "start! refuses a subscription without on_message" do
   assert_includes assert_raises("ArgumentError") { WS.start!(Cybertrain::Config.new) }, "\"bare\" has no on_message"
   refute WS.running?
+  # Application#serve finds it before binding the port.
+  assert_equal "WebSocket subscription \"bare\" has no on_message",
+               Cybertrain::Background.boot_problem(Cybertrain::Config.new)
   # Given one, "bare" is accepted from now on.
   assert_equal "bare", BARE.on_message { |conn, data| conn.send_text(data) }.sub_name
+  assert_equal "", Cybertrain::Background.boot_problem(Cybertrain::Config.new)
 end
 
 test "start! does nothing when the worker is off" do

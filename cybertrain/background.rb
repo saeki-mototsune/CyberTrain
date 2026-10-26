@@ -53,6 +53,15 @@ module Cybertrain
       def service_stop
         nil
       end
+
+      # What would make service_start refuse to start, found before the
+      # server binds its port ({Background.boot_problem}), so serve reports
+      # it as a boot failure rather than raising after the banner.
+      # @return [String] "" when nothing is wrong
+      # @api public
+      def service_problem
+        ""
+      end
     end
 
     # The registry: a constant, which Spinel roots for the collector (NOTES
@@ -82,6 +91,26 @@ module Cybertrain
         i += 1
       end
       -1
+    end
+
+    # The first registered service's {Service#service_problem}, "" when
+    # none has one, or when {Config#worker} is off (nothing starts then).
+    # Application#serve calls it before binding the port and fails the
+    # boot with it.
+    # @param config [Config]
+    # @return [String]
+    # @api public
+    def self.boot_problem(config)
+      return "" unless config.worker
+
+      i = 0
+      while i < SERVICES.size
+        problem = SERVICES[i].service_problem
+        return problem unless problem.empty?
+
+        i += 1
+      end
+      ""
     end
 
     # Starts every registered service, in registration order, unless

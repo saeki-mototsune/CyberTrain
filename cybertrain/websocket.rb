@@ -340,6 +340,22 @@ module Cybertrain
       Status.new(sub.sub_connected?, sub.sub_last_message_at, sub.sub_reconnects)
     end
 
+    # Why {WebSocket.start!} would refuse to start: the first subscription
+    # without on_message, named. Application#serve asks it (through
+    # Background.boot_problem) before binding the port.
+    # @return [String] "" when every subscription has on_message
+    # @api public
+    def self.subscriptions_problem
+      i = 0
+      while i < SUBSCRIPTIONS.size
+        sub = SUBSCRIPTIONS[i]
+        return "WebSocket subscription #{sub.sub_name.inspect} has no on_message" if sub.sub_message_block.nil?
+
+        i += 1
+      end
+      ""
+    end
+
     # Starts one thread per subscription, unless {Config#worker} is off,
     # nothing is subscribed or the feeds already run. Application#serve
     # calls it (through the Background service).
@@ -355,12 +371,8 @@ module Cybertrain
       end
       return false if SUBSCRIPTIONS.empty?
 
-      i = 0
-      while i < SUBSCRIPTIONS.size
-        sub = SUBSCRIPTIONS[i]
-        raise ArgumentError, "WebSocket.start!: #{sub.sub_name.inspect} has no on_message" if sub.sub_message_block.nil?
-        i += 1
-      end
+      problem = subscriptions_problem
+      raise ArgumentError, "WebSocket.start!: #{problem}" unless problem.empty?
 
       # spikes/NOTES.md rule 22: before the first Thread.new.
       ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]
@@ -594,6 +606,10 @@ module Cybertrain
 
       def service_stop
         WebSocket.stop!
+      end
+
+      def service_problem
+        WebSocket.subscriptions_problem
       end
     end
   end

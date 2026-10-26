@@ -1676,8 +1676,8 @@ blocks take their arguments and cannot use `self` (Spinel has no
   several processes serve, or each one receives the whole feed.
   `subscribe` must be called before the server starts; there is no adding or
   removing a feed while it runs. A name is unique (`ArgumentError`), and a
-  feed without `on_message` is an `ArgumentError` naming it when the server
-  starts.
+  feed without `on_message` fails the boot before the port is bound
+  (`error: WebSocket subscription "trades" has no on_message`, exit 1).
 - **Options.** `headers:` (extra handshake headers), `timeout:` (5 seconds
   per wait while connecting and per write), `max_message:` (1 MiB; a larger
   message closes the connection with 1009), `ping_interval:` (15) and

@@ -35,8 +35,21 @@ class ProbeService < Cybertrain::Background::Service
   end
 end
 
+# A second subclass, which would refuse to start: its problem is what
+# Application#serve fails the boot with.
+class MisconfiguredService < Cybertrain::Background::Service
+  def service_name
+    "misconfigured"
+  end
+
+  def service_problem
+    "misconfigured has no handler"
+  end
+end
+
 # Registered at top level, as a required file does.
 B.register(ProbeService.new)
+B.register(MisconfiguredService.new)
 
 test "start_all starts every registered service" do
   assert_equal 1, B.start_all(Cybertrain::Config.new)
@@ -54,6 +67,16 @@ test "start_all does nothing when the worker is off" do
   before = CALLS.size
   assert_equal 0, B.start_all(config)
   assert_equal before, CALLS.size
+end
+
+test "boot_problem names the first service that would refuse to start" do
+  assert_equal "misconfigured has no handler", B.boot_problem(Cybertrain::Config.new)
+end
+
+test "boot_problem is empty when the worker is off" do
+  config = Cybertrain::Config.new
+  config.worker = false
+  assert_equal "", B.boot_problem(config)
 end
 
 test "a name registered twice is refused" do

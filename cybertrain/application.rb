@@ -189,6 +189,11 @@ module Cybertrain
         fail_boot(problem) unless problem.empty?
         @rebuilder = Dev::Rebuilder.new(Dir.pwd, @name)
       end
+      # A service that would refuse to start (a WebSocket subscription
+      # without on_message) fails the boot here, before the port is bound,
+      # not with an exception after the banner.
+      service_problem = Background.boot_problem(@config)
+      fail_boot(service_problem) unless service_problem.empty?
       srv = server
       srv.start # bind first: a PortInUse error must not come after the banner
       print_boot_banner

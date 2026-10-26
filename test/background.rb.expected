@@ -1,5 +1,7 @@
 ok   start_all starts every registered service
 ok   stop_all stops them
 ok   start_all does nothing when the worker is off
+ok   boot_problem names the first service that would refuse to start
+ok   boot_problem is empty when the worker is off
 ok   a name registered twice is refused
-4 tests, 7 assertions, 0 failures
+6 tests, 9 assertions, 0 failures
