@@ -1,0 +1,4 @@
+ok   fill_to buffers without consuming
+ok   fill_to is false at end of stream
+ok   a timeout leaves the buffer intact
+3 tests, 10 assertions, 0 failures

@@ -239,10 +239,7 @@ module Cybertrain
     def exchange(target, head, body, with_body)
       label = target.target_label
       timer = Net::Timer.new(label, @timeout, @deadline)
-      endpoint = Net.resolve(target.target_host, target.target_port, label)
-      timer.wait_limit("resolving the host name") # the deadline, after the blocking lookup
-      tcp = Net::TcpStream.connect_to(allowed_addresses(endpoint, label), target.target_port, label, timer)
-      stream = HttpClient.open_stream(tcp, target, timer)
+      stream = HttpClient.dial(target, timer, @allow_private)
       begin
         wire = String.new
         wire << head
@@ -254,13 +251,27 @@ module Cybertrain
       end
     end
 
-    # The addresses of `endpoint` this client may dial, in their order: all
+    # Connects to `target` the way every outbound client of the framework
+    # does (the WebSocket client too): resolves the host once, checks the
+    # deadline after the blocking lookup, keeps the addresses
+    # `allow_private` permits, dials them in order and wraps TLS when the
+    # target asks for it. Raises the Net errors; the caller translates them.
+    # @return [Net::Stream]
+    def self.dial(target, timer, allow_private)
+      label = target.target_label
+      endpoint = Net.resolve(target.target_host, target.target_port, label)
+      timer.wait_limit("resolving the host name") # the deadline, after the blocking lookup
+      tcp = Net::TcpStream.connect_to(HttpClient.allowed_addresses(endpoint, label, allow_private), target.target_port, label, timer)
+      HttpClient.open_stream(tcp, target, timer)
+    end
+
+    # The addresses of `endpoint` a client may dial, in their order: all
     # of them with allow_private, else the public ones. The policy is decided
     # per address, so a name with a public and a private address dials the
     # public one; when every address is refused, BlockedError names the
     # first and why.
-    def allowed_addresses(endpoint, label)
-      return endpoint if @allow_private
+    def self.allowed_addresses(endpoint, label, allow_private)
+      return endpoint if allow_private
 
       allowed = Net::Endpoint.new
       first_ip = ""
@@ -367,6 +378,13 @@ module Cybertrain
     # may be a secret).
     # @return [Target]
     def self.parse_url(url)
+      HttpClient.parse_url_for(url, "http://", "https://")
+    end
+
+    # parse_url for another pair of schemes ("ws://", "wss://"): the same
+    # byte scan, the same messages, port 80 or 443 by default.
+    # @return [Target]
+    def self.parse_url_for(url, plain_scheme, tls_scheme)
       s = url.to_s # NOTES rule 62
       n = s.bytesize
       i = 0
@@ -377,13 +395,13 @@ module Cybertrain
       end
       tls = false
       start = 0
-      if HttpClient.prefix_ci?(s, "https://")
+      if HttpClient.prefix_ci?(s, tls_scheme)
         tls = true
-        start = 8
-      elsif HttpClient.prefix_ci?(s, "http://")
-        start = 7
+        start = tls_scheme.bytesize
+      elsif HttpClient.prefix_ci?(s, plain_scheme)
+        start = plain_scheme.bytesize
       else
-        raise ArgumentError, "only http:// and https:// URLs are supported"
+        raise ArgumentError, "only #{plain_scheme} and #{tls_scheme} URLs are supported"
       end
       stop = start
       while stop < n
