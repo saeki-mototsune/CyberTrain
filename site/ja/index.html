@@ -74,7 +74,7 @@
 
 <section class="hero" aria-labelledby="hero-title">
   <div class="wrap hero-inner">
-    <p class="status"><span class="lightbar" aria-hidden="true"></span><span>プレアルファ</span><span class="sep" aria-hidden="true">&middot;</span><span>Spinel 2026.09.12</span><span class="sep" aria-hidden="true">&middot;</span><span>MIT</span></p>
+    <p class="status"><span class="lightbar" aria-hidden="true"></span><span>プレアルファ</span><span class="sep" aria-hidden="true">&middot;</span><span>Spinel 2026.10.26.7019</span><span class="sep" aria-hidden="true">&middot;</span><span>MIT</span></p>
     <h1 id="hero-title" class="hero-mark"><svg class="hero-wordmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 895.14 60" role="img" aria-label="CyberTrain"><path fill="currentColor" fill-rule="evenodd" d="M14.93 60L80 60L80 50L19.07 50L10 40.93L10 19.07L19.07 10L80 10L80 0L14.93 0L0 14.93L0 45.07ZM141 60L141 35L161.07 35L176 20.07L176 0L166 0L166 15.93L156.93 25L115.07 25L106 15.93L106 0L96 0L96 20.07L110.93 35L131 35L131 60ZM266.07 30L271 25.07L271 14.93L256.07 0L194 0L194 60L259.07 60L274 45.07L274 37.93ZM261 19.07L261 20.93L256.93 25L204 25L204 10L251.93 10ZM204 50L204 35L256.93 35L263.43 41.5L254.93 50ZM367 0L295 0L295 60L367 60L367 50L305 50L305 35L361 35L361 25L305 25L305 10L367 10ZM458 20.07L458 14.93L443.07 0L388 0L388 60L398 60L398 35L428.93 35L453.93 60L468.07 60L443.07 35ZM398 10L438.93 10L446.43 17.5L438.93 25L398 25ZM518.07 10L518.07 60L528.07 60L528.07 10L563.07 10L563.07 0L483.07 0L483.07 10ZM634.14 35L649.07 20.07L649.07 14.93L634.14 0L579.07 0L579.07 60L589.07 60L589.07 35L620 35L645 60L659.14 60ZM589.07 25L589.07 10L630 10L637.5 17.5L630 25ZM738.21 0L704.07 0L679.14 24.93L679.14 60L689.14 60L689.14 35L753.14 35L753.14 60L763.14 60L763.14 24.93ZM693.21 25L708.21 10L734.07 10L749.07 25ZM786.14 60L796.14 60L796.14 0L786.14 0ZM895.14 60L895.14 0L885.14 0L885.14 50.27L833.48 0L819.14 0L819.14 60L829.14 60L829.14 9.73L880.8 60Z"/></svg></h1>
     <div class="hero-copy">
       <div class="hero-main">
@@ -91,7 +91,7 @@
         <figure class="code code-term" data-lang="shell">
 <figcaption><span class="code-path">ターミナル &mdash; 任意のディレクトリ、その後 blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="コード：クイックスタートのターミナル"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># 初回は Spinel 2026.09.12 をインストール（数分）</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># 初回は Spinel 2026.10.26.7019 をインストール（数分）</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -252,7 +252,7 @@
         <div class="part-head"><p class="part-k">Spinel パッケージ</p><h3 id="part-fw">フレームワーク</h3></div>
         <p class="part-what">アプリの土台となるライブラリ。</p>
         <div class="part-fact"><p class="fact-k">中身</p><p>HTTP サーバー、ルーティングとコントローラー、セッションと CSRF 保護、テンプレートインタプリタ、SQLite のモデルとマイグレーション、そして <code>spin run gen</code> の裏で動くコードジェネレーター。</p></div>
-        <div class="part-fact"><p class="fact-k">入手方法</p><p>インストールは不要です。アプリの <code>spin.toml</code> がこのリポジトリのリリースタグ <code>v0.2.1</code> を指定し、<code>spin lock</code> がそれを spin のキャッシュに取得して、コミットを <code>spin.lock</code> に固定します。アプリには何もコピーされません。</p></div>
+        <div class="part-fact"><p class="fact-k">入手方法</p><p>インストールは不要です。アプリの <code>spin.toml</code> がこのリポジトリのリリースタグ <code>v0.3.0</code> を指定し、<code>spin lock</code> がそれを spin のキャッシュに取得して、コミットを <code>spin.lock</code> に固定します。アプリには何もコピーされません。</p></div>
         <div class="part-fact"><p class="fact-k">動く場所</p><p>アプリの中です。Spinel があなたのコードと一緒に事前（AOT）コンパイルします。CRuby 上で動くことはありません。</p></div>
         <div class="part-fact"><p class="fact-k">dist/blog には</p><p><span class="pill pill-on">組み込み済み</span>CyberTrain のうち、出荷されるのはこの部分です。</p></div>
       </article>
@@ -260,13 +260,13 @@
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> コマンド</h3></div>
         <p class="part-what">アプリを作成し、ビルドし、実行するツール。</p>
         <div class="part-fact"><p class="fact-k">中身</p><p><code>cybertrain</code> コマンドだけです：<code>new</code>、<code>generate scaffold</code>、<code>db migrate</code>、<code>server</code>、<code>build</code>、<code>spin</code>、<code>setup</code>、<code>doctor</code>。フレームワークも Spinel も gem には含まれません。</p></div>
-        <div class="part-fact"><p class="fact-k">入手方法</p><p><code>gem install cybertrain</code> です。初回使用時に、固定された Spinel のリリース <code>2026.09.12</code> を <code>~/.cybertrain</code> にビルドします（そのリリースがすでに <code>PATH</code> 上にある場合を除く）。</p></div>
+        <div class="part-fact"><p class="fact-k">入手方法</p><p><code>gem install cybertrain</code> です。初回使用時に、固定された Spinel のリリース <code>2026.10.26.7019</code> を <code>~/.cybertrain</code> にビルドします（そのリリースがすでに <code>PATH</code> 上にある場合を除く）。</p></div>
         <div class="part-fact"><p class="fact-k">動く場所</p><p>手元のマシン上で、CRuby 3.2 以降で動きます。Spinel の <code>spin</code> ツールを代わりに呼び出すので、自分で呼ぶ必要はありません。</p></div>
         <div class="part-fact"><p class="fact-k">dist/blog には</p><p><span class="pill">含まれない</span>バイナリは Ruby、gem、Spinel なしで動きます。</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">両者は同じタグからリリースされるため、バージョンは一致します：0.2.1 の gem は、フレームワーク <code>v0.2.1</code> に依存するアプリを書き出します。アプリを新しいリリースに移行するには、gem を更新し、<code>spin.toml</code> を新しいタグに向けてから、<code>cybertrain spin lock</code> と <code>cybertrain spin run gen</code> を実行します。</p>
+      <p class="footnote">両者は同じタグからリリースされるため、バージョンは一致します：0.3.0 の gem は、フレームワーク <code>v0.3.0</code> に依存するアプリを書き出します。アプリを新しいリリースに移行するには、gem を更新し、<code>spin.toml</code> を新しいタグに向けてから、<code>cybertrain spin lock</code> と <code>cybertrain spin run gen</code> を実行します。</p>
     </div>
   </div></div>
 </section>
@@ -379,9 +379,9 @@
       <h2 id="req-h">手元のマシンに必要なもの。</h2>
     <dl class="reqs">
       <div><dt>Ruby</dt><dd>3.2+ と RubyGems。<code>cybertrain</code> コマンドのためだけに必要です。アプリケーションが CRuby 上で動くことはありません。</dd></div>
-      <div><dt>Spinel</dt><dd><code>2026.09.12</code>。他のバージョンでは未テストです。Spinel を必要とする最初のコマンドが <code>~/.cybertrain</code> にビルドします（数分、初回のみ）。そのリリースの <code>spinel</code> がすでに <code>PATH</code> 上にあれば、それをそのまま使います。</dd></div>
+      <div><dt>Spinel</dt><dd><code>2026.10.26.7019</code>。他のバージョンでは未テストです。Spinel を必要とする最初のコマンドが <code>~/.cybertrain</code> にビルドします（数分、初回のみ）。そのリリースの <code>spinel</code> がすでに <code>PATH</code> 上にあれば、それをそのまま使います。</dd></div>
       <div><dt>ツールチェーン</dt><dd><code>cc</code> と <code>make</code>（Spinel はすべてのプログラムを C にコンパイルします）、さらに Spinel のビルド用に <code>git</code> と <code>curl</code>。SQLite&nbsp;3 と zlib のヘッダーとライブラリ：Debian/Ubuntu では <code>libsqlite3-dev</code> と <code>zlib1g-dev</code>、macOS では Xcode コマンドラインツールに含まれています。OpenSSL のヘッダーは任意です。</dd></div>
-      <div><dt>ステータス</dt><dd>プレアルファ、バージョン <code>0.2.1</code>、MIT ライセンス。サンプルのブログは Linux と macOS の CI で検証されています。</dd></div>
+      <div><dt>ステータス</dt><dd>プレアルファ、バージョン <code>0.3.0</code>、MIT ライセンス。サンプルのブログは Linux と macOS の CI で検証されています。</dd></div>
     </dl>
     <p class="footnote"><code>cybertrain doctor</code> はこれらのツールとヘッダー、Spinel のインストールを確認し、足りないものがあればプラットフォームに応じたインストールコマンドを表示します。<code>cybertrain setup</code> は求めに応じて Spinel をインストールし、<code>spin</code> を自分で実行するための <code>PATH</code> の設定行を表示します。<code>cybertrain spin ARGS...</code> を使えば、その設定なしで実行できます。</p>
     </div>

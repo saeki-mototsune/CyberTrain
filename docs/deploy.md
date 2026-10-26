@@ -35,7 +35,7 @@
 | ドメイン | `notes.example.com` |
 | アプリの GitHub リポジトリ（private で可） | `YOUR_GITHUB/notes` |
 | サーバー | Ubuntu 24.04 LTS、x86-64 か arm64、メモリ 1GB 以上 |
-| Spinel のバージョン | `2026.09.12`（`cybertrain setup` が入れるもの。[CI](../.github/workflows/ci.yml) の `SPINEL_TAG` と同じもの） |
+| Spinel のバージョン | `2026.10.26.7019`（`cybertrain setup` が入れるもの。[CI](../.github/workflows/ci.yml) の `SPINEL_TAG` と同じもの） |
 
 ---
 
@@ -53,7 +53,7 @@ Ubuntu / Debian:
 
 ```sh
 sudo apt update
-sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev ruby-full
+sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev ruby-full ruby-dev
 ```
 
 macOS: `xcode-select --install`（C コンパイラ、make、git、curl と SQLite・zlib のヘッダが入ります）。
@@ -70,10 +70,15 @@ openssl パッケージ抜きでビルドされ、cybertrain はそれを使い�
 `cybertrain build` を使うので入れます。アプリ自体は Ruby 無しで動きます）。Ubuntu 24.04 の `ruby-full` は 3.2 です。macOS 付属の Ruby は古いので、
 Homebrew（`brew install ruby`）や rbenv・mise などで入れてください。
 
+Spinel のビルドには Ruby の `prism` gem も要ります。Ruby 3.3 以上には同梱されているので何もしなくて構いません。
+Ruby 3.2（Ubuntu 24.04 の `ruby-full`）では 1-2 で `gem install prism` を実行します。拡張をビルドするので、
+上の `apt install` に入れた `ruby-dev`（Ruby の開発用ヘッダー）が要ります。
+
 ### 1-2. cybertrain の CLI をインストールする
 
 ```sh
 gem install cybertrain
+gem install prism    # Ruby 3.2 のときだけ（3.3 以上は同梱）
 cybertrain version
 ```
 
@@ -86,22 +91,23 @@ Spinel は次の 1-3 で、このコマンドが入れます。
 cybertrain setup
 ```
 
-`cybertrain` が固定している Spinel `2026.09.12` を、GitHub のリリースタグからビルドして
-`~/.cybertrain/spinel/2026.09.12/` に入れます（`git clone` → `make deps` → `make -j` →
-`make install`）。初回だけで、数分かかります（4 コアのマシンで 3 分前後でした。`make -j` は CPU の数だけ
+`cybertrain` が固定している Spinel `2026.10.26.7019` を、GitHub のリリースタグ（[saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)。
+CyberTrain が必要とする修正を本家より先に取り込んだ matz/spinel のフォーク）からビルドして
+`~/.cybertrain/spinel/2026.10.26.7019/` に入れます（`git clone` → `make deps` → `make -j` →
+`make install`）。初回だけで、数分かかります（4 コアのマシンで 5 分前後でした。`make -j` は CPU の数だけ
 並列に動くので、CPU が少ないほど長くかかります）。CI も Spinel を同じ `cybertrain setup` で入れています。
 
-- 足りない道具（git・make・curl・C コンパイラ・SQLite のヘッダ／ライブラリ）があると、ビルドを始める前に
+- 足りない道具（git・make・curl・`prism` gem を読み込める Ruby・C コンパイラ・SQLite のヘッダ／ライブラリ）があると、ビルドを始める前に
   何が足りないかとインストールのコマンドを表示して止まります。
-- 各手順の出力はログ `~/.cybertrain/log/spinel-2026.09.12-build.log` に書かれます。途中で失敗したときは
+- 各手順の出力はログ `~/.cybertrain/log/spinel-2026.10.26.7019-build.log` に書かれます。途中で失敗したときは
   ログの末尾が表示されます。
 - すでに入っている場合（`~/.cybertrain` にある、または同じリリースの `spinel` が PATH にある）は、
   `nothing to install` と表示して何もしません。`~/.cybertrain` のものを作り直したいときは
   `cybertrain setup --force` です。
-- 入れ先 `~/.cybertrain/spinel/2026.09.12/` は約 13 MB です（Linux x86-64 で確認した値）。ビルド中だけ、
-  ソースと中間ファイルが `~/.cybertrain/src/spinel-2026.09.12/` に 90 MB ほどでき、成功すると削除されます。
+- 入れ先 `~/.cybertrain/spinel/2026.10.26.7019/` は約 41 MB です（Linux x86-64 で確認した値）。ビルド中だけ、
+  ソースと中間ファイルが `~/.cybertrain/src/spinel-2026.10.26.7019/` に 220 MB ほどでき、成功すると削除されます。
 
-前提が足りているかは `cybertrain doctor` で確認できます（git・make・curl・cc・SQLite・OpenSSL と
+前提が足りているかは `cybertrain doctor` で確認できます（git・make・curl・prism・cc・SQLite・OpenSSL と
 Spinel を 1 行ずつ表示します。足りないものは `MISSING` と表示され、インストールのコマンドが続きます）。
 
 `cybertrain new`・`db`・`server`・`build` は、この Spinel を自分で見つけて使うので、PATH の設定は要りません。
@@ -117,16 +123,16 @@ source ~/.bashrc
 spinel --version
 ```
 
-括弧の中が `2026.09.12` になっていれば OK です
-（`spinel 112bae85c1a2 (2026.09.12) [cc ...]` のように表示されます）。
+`spinel` の直後が `2026.10.26.7019` になっていれば OK です
+（`spinel 2026.10.26.7019 (80b2f9889) [gcc ...]` のように表示されます。括弧の中はコミットです）。
 
 **補足: 手動で入れる場合**
 
 `cybertrain setup` を使わず、Spinel を自分でビルドして入れることもできます。手順は `cybertrain setup` と
-同じです。
+同じです（`prism` gem を読み込める Ruby が要るのも同じです）。
 
 ```sh
-git clone --depth 1 --branch 2026.09.12 https://github.com/matz/spinel.git ~/src/spinel
+git clone --depth 1 --branch 2026.10.26.7019 https://github.com/saeki-mototsune/spinel.git ~/src/spinel
 cd ~/src/spinel
 make deps
 make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
@@ -136,10 +142,10 @@ make install PREFIX="$HOME/.local"
 入れたものを `cybertrain` に使わせるには、次のどちらかにします。
 
 - `~/.local/bin` に PATH を通す（`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`）。
-  `spinel --version` が `2026.09.12` なら、`cybertrain` は PATH 上のそれをそのまま使います。別のリリース
+  `spinel --version` が `2026.10.26.7019` なら、`cybertrain` は PATH 上のそれをそのまま使います。別のリリース
   だと使わず、`cybertrain` が自分用のものを `~/.cybertrain` に入れます。
 - 環境変数で入れ先を指定する（`~/.bashrc` に `export CYBERTRAIN_SPINEL_HOME="$HOME/.local"` を書きます）。
-  そこの `spinel` が `2026.09.12` でなければ、エラーで止まります。
+  そこの `spinel` が `2026.10.26.7019` でなければ、エラーで止まります。
 
 ---
 
@@ -172,7 +178,7 @@ version = "0.1.0"
 # allocator = "jemalloc"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.2.1" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.0" }
 ```
 
 `# allocator = "jemalloc"` の行の `#` を外すと、アプリが glibc の malloc の代わりに jemalloc を
@@ -255,7 +261,7 @@ export CYBERTRAIN_DATABASE="$PWD/dist/storage/rehearsal.sqlite3"
 起動時の表示が次のようになっていれば OK です。
 
 ```
-=> Booting cybertrain 0.2.1
+=> Booting cybertrain 0.3.0
 => production environment (1 worker)
 * Listening on http://127.0.0.1:3000
 ```
@@ -311,7 +317,7 @@ AAAA も）を登録します。第 6 部で Caddy が証明書を取るとき�
 
 ```sh
 sudo apt update && sudo apt -y upgrade
-sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev sqlite3 ufw ruby-full
+sudo apt install -y build-essential git curl libsqlite3-dev zlib1g-dev libssl-dev libjemalloc-dev sqlite3 ufw ruby-full ruby-dev
 
 sudo ufw allow OpenSSH
 sudo ufw allow 80,443/tcp
@@ -337,14 +343,15 @@ sudo -iu notes
 ```
 
 以降、**第 3 部の終わりまで `notes` ユーザーのシェル**で作業します。手順は 1-2、1-3 と同じで、先に
-`cybertrain` コマンド、次に Spinel の順です。Ruby は 3-2 の `ruby-full` で入っています。
+`cybertrain` コマンド、次に Spinel の順です。Ruby は 3-2 の `ruby-full`（3.2）で入っているので、1-2 と同じく `prism` gem も入れます。
 
 まず `cybertrain` コマンドを `notes` ユーザーのホームに入れます（デプロイスクリプトが
 `cybertrain build` を使います）。実行ファイルは gem のディレクトリに入るので、`~/.local/bin` に
 リンクを置いて PATH に通します。
 
 ```sh
-gem install --user-install cybertrain -v 0.2.1
+gem install --user-install cybertrain -v 0.3.0
+gem install --user-install prism
 mkdir -p ~/.local/bin
 ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
@@ -352,7 +359,7 @@ source ~/.bashrc
 cybertrain version
 ```
 
-`-v` はアプリの `spin.toml` の `ref`（タグ `v0.2.1`）と同じバージョンにそろえてください。CLI と
+`-v` はアプリの `spin.toml` の `ref`（タグ `v0.3.0`）と同じバージョンにそろえてください。CLI と
 `spin.lock` が固定するフレームワーク（`spin run gen` はそのフレームワーク自身の generator を
 実行します）は対で更新するものなので、バージョンがずれるとビルドや起動が失敗します。
 
@@ -363,9 +370,9 @@ cybertrain setup
 ```
 
 1-3 と同じ処理で、初回だけ数分かかります（CPU が少ないサーバーほど長くかかります）。Spinel は `notes`
-ユーザーの `~/.cybertrain/spinel/2026.09.12/`（ここでは `/srv/notes/.cybertrain/spinel/2026.09.12/`。
-約 13 MB）に入り、ログは `~/.cybertrain/log/spinel-2026.09.12-build.log` に残ります。ビルド中だけ、
-ソースと中間ファイルが `~/.cybertrain/src/` に 90 MB ほどできます（成功すると削除されます）。3-2 で
+ユーザーの `~/.cybertrain/spinel/2026.10.26.7019/`（ここでは `/srv/notes/.cybertrain/spinel/2026.10.26.7019/`。
+約 41 MB）に入り、ログは `~/.cybertrain/log/spinel-2026.10.26.7019-build.log` に残ります。ビルド中だけ、
+ソースと中間ファイルが `~/.cybertrain/src/` に 220 MB ほどできます（成功すると削除されます）。3-2 で
 入れたパッケージで前提はそろっていますが、足りないと言われたら `cybertrain doctor` で確認してください。
 
 ### 3-5. デプロイキー
@@ -957,7 +964,7 @@ https://notes.example.com を開いて確かめます。
 | デプロイが `stale: gen/...` で止まる | 手元で `cybertrain spin run gen` して `gen/` をコミットし忘れている |
 | デプロイが「新しいリリースが応答しない」で終わる | 新しいリリースが約 30 秒のうちに `/up.html` に応答しなかった（スクリプトは前のリリースに戻している）。`sudo journalctl -u notes -n 50` で原因を見る。起動はしているのに応答しないなら、アプリに `public/up.html` が無い（5-3） |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
-| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.2.1`） |
+| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.3.0`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |
 | ブラウザで 500.html が出続ける | アプリが落ちている。`sudo journalctl -u notes -n 50` を見る |
 | 証明書が取れない | DNS がサーバーを向いているか、80/443 が開いているか。`sudo journalctl -u caddy` を見る |

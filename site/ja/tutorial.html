@@ -78,7 +78,7 @@
     <h1>はじめよう：ブログを作る</h1>
     <p class="doc-intro">Rails 公式の <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a> に沿って、記事とコメントのあるブログを作ります。記事をスキャフォールドし、バリデーションを追加し、記事の下にコメントをネストし、アプリをプロセス内で動かすテストを書き、サインインを追加し、アップロードした画像を添付し、最後にアプリをデプロイ可能な <code>dist/</code> フォルダーにビルドします。完成したアプリは <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a> にあり、Linux と macOS の CI で検証されています。</p>
     <dl class="doc-meta">
-      <div><dt>必要なもの</dt><dd>Ruby 3.2+、<code>cc</code>、<code>make</code>、<code>git</code>、<code>curl</code>、SQLite 3 のヘッダー（Spinel <code>2026.09.12</code> は自動でインストールされます） <a class="meta-link" href="#requirements">ステップ 00</a></dd></div>
+      <div><dt>必要なもの</dt><dd>Ruby 3.2+、<code>cc</code>、<code>make</code>、<code>git</code>、<code>curl</code>、SQLite 3 のヘッダー（Spinel <code>2026.10.26.7019</code> は自動でインストールされます） <a class="meta-link" href="#requirements">ステップ 00</a></dd></div>
       <div><dt>出発点</dt><dd><code>gem install cybertrain</code></dd></div>
       <div><dt>完成物</dt><dd><code>dist/blog</code></dd></div>
     </dl>
@@ -121,8 +121,8 @@
     <h2 id="h-requirements"><span class="step-num" aria-hidden="true">00</span>必要なもの</h2>
     <p class="why"><span class="why-k">なぜ</span><span class="why-t">CyberTrain は Spinel を通じて C にコンパイルされるため、C ツールチェーンと SQLite のヘッダーが必要です。<code>cybertrain</code> コマンドは gem なので、Ruby が必要です。</span></p>
     <ul class="checklist">
-      <li>Ruby 3.2+ と RubyGems。<code>cybertrain</code> コマンドのためだけに必要で、アプリケーションが CRuby 上で動くことはありません。</li>
-      <li>Spinel <code>2026.09.12</code>。他のバージョンでは未テストです。手動でインストールする必要はありません：Spinel を必要とする最初のコマンドが、そのリリースを <code>~/.cybertrain</code> にビルドします（数分、初回のみ）。ただし、そのリリースの <code>spinel</code> がすでに <code>PATH</code> 上にある場合は除きます。</li>
+      <li>Ruby 3.2+ と RubyGems。<code>cybertrain</code> コマンドのためだけに必要で、アプリケーションが CRuby 上で動くことはありません。Spinel のビルドには Ruby の <code>prism</code> gem も必要です：Ruby 3.3 以上には同梱されています。Ruby 3.2 では <code>gem install prism</code> を実行します（Ruby の開発用ヘッダーが必要です。Debian/Ubuntu なら <code>ruby-dev</code>）。<code>cybertrain doctor</code> が確認します。</li>
+      <li>Spinel <code>2026.10.26.7019</code>。CyberTrain が必要とする修正を本家より先に取り込んだフォーク <a href="https://github.com/saeki-mototsune/spinel" rel="noopener">saeki-mototsune/spinel</a> のリリースです。他のバージョンでは未テストです。手動でインストールする必要はありません：Spinel を必要とする最初のコマンドが、そのリリースを <code>~/.cybertrain</code> にビルドします（数分、初回のみ）。ただし、そのリリースの <code>spinel</code> がすでに <code>PATH</code> 上にある場合は除きます。</li>
       <li>C ツールチェーン（<code>cc</code>、または <code>CC</code> で指定したコンパイラ）と <code>make</code>、さらに <code>git</code> と <code>curl</code>。すべてのプログラムを C にコンパイルする Spinel をビルドするために使います。</li>
       <li>SQLite 3 と zlib のヘッダーとライブラリ：Debian/Ubuntu では <code>libsqlite3-dev</code> と <code>zlib1g-dev</code>、macOS では Xcode のコマンドラインツールに含まれています。</li>
       <li>OpenSSL のヘッダー（<code>libssl-dev</code>）は任意です：ない場合、Spinel は <code>openssl</code> パッケージなしでビルドされますが、CyberTrain はこのパッケージを使いません。</li>
@@ -131,7 +131,7 @@
     <details class="ci">
       <summary><span class="ci-t">CyberTrain が Spinel をインストールする仕組み</span><span class="ci-d">コマンドが初めて <code>spin</code> を必要としたときに起きること</span></summary>
       <div class="ci-body">
-    <p><code>cybertrain new</code>、<code>db</code>、<code>server</code>、<code>build</code>、<code>spin</code> は、まず Spinel <code>2026.09.12</code> を探します：そのリリースの <code>spinel</code> と <code>spin</code> がすでに <code>PATH</code> 上にあればそれを、なければ <code>~/.cybertrain/spinel/2026.09.12/</code> 以下のコピーを使い、それもなければ Spinel のリリースタグからそのコピーをビルドします（<code>git clone</code>、<code>make deps</code>、<code>make -j</code>、<code>make install</code>）。ビルドは一度だけで、数分かかります。ログは <code>~/.cybertrain/log/spinel-2026.09.12-build.log</code> です。ビルドに必要なツールが欠けている場合、<code>cybertrain</code> はビルドを始める前に、どれが足りないかを伝え、プラットフォームに応じたインストールコマンドを表示します。</p>
+    <p><code>cybertrain new</code>、<code>db</code>、<code>server</code>、<code>build</code>、<code>spin</code> は、まず Spinel <code>2026.10.26.7019</code> を探します：そのリリースの <code>spinel</code> と <code>spin</code> がすでに <code>PATH</code> 上にあればそれを、なければ <code>~/.cybertrain/spinel/2026.10.26.7019/</code> 以下のコピーを使い、それもなければ Spinel のリリースタグからそのコピーをビルドします（<code>git clone</code>、<code>make deps</code>、<code>make -j</code>、<code>make install</code>）。ビルドは一度だけで、数分かかります。ログは <code>~/.cybertrain/log/spinel-2026.10.26.7019-build.log</code> です。ビルドに必要なツールが欠けている場合、<code>cybertrain</code> はビルドを始める前に、どれが足りないかを伝え、プラットフォームに応じたインストールコマンドを表示します。</p>
     <p><code>cybertrain setup</code> は同じことを求めに応じて行います（<code>--force</code> は <code>~/.cybertrain</code> 以下のコピーを再ビルドします）。さらに、自前のコピーが使われている場合は、それを <code>PATH</code> に加える行を表示します。<code>spin</code> を自分で実行するためのものです：</p>
 <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">ターミナル &mdash; 任意のディレクトリ</span><span class="code-lang">shell</span></figcaption>
@@ -151,7 +151,7 @@
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">ターミナル &mdash; 任意のディレクトリ、その後 blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="コード：ターミナル &mdash; 任意のディレクトリ、その後 blog/"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># 初回は Spinel 2026.09.12 をインストール（数分）</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># 初回は Spinel 2026.10.26.7019 をインストール（数分）</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -169,9 +169,9 @@
       <li><code>cybertrain server [PORT]</code> は生成を行ってから開発サーバーを起動します（<code>spin run gen; spin run NAME</code>、または <code>spin run NAME -- PORT</code>。デフォルトのポートは 3000）。</li>
       <li><code>cybertrain build</code> は <code>app/views/</code> を埋め込んで NAME をビルドし、<code>dist/</code>（バイナリ、<code>public/</code>、<code>storage/</code>、<code>tmp/</code>）を組み立てます。</li>
       <li><code>cybertrain spin ARGS...</code> は、固定された Spinel で <code>spin</code> を任意のディレクトリから実行します：<code>cybertrain spin test</code>、<code>cybertrain spin run gen -- --check</code>。</li>
-      <li><code>cybertrain setup [--force]</code> は Spinel <code>2026.09.12</code> を <code>~/.cybertrain</code> にインストールします（そのリリースの <code>spinel</code> がすでに <code>PATH</code> 上にある場合を除く）。<code>--force</code> は <code>~/.cybertrain</code> 以下のコピーを再ビルドします。</li>
+      <li><code>cybertrain setup [--force]</code> は Spinel <code>2026.10.26.7019</code> を <code>~/.cybertrain</code> にインストールします（そのリリースの <code>spinel</code> がすでに <code>PATH</code> 上にある場合を除く）。<code>--force</code> は <code>~/.cybertrain</code> 以下のコピーを再ビルドします。</li>
       <li><code>cybertrain doctor</code> は C ツールチェーン、SQLite のヘッダー、Spinel のインストールを確認します。</li>
-      <li><code>cybertrain version</code> はバージョン（<code>cybertrain 0.2.1</code>）を、<code>cybertrain help</code> は使い方を表示します。</li>
+      <li><code>cybertrain version</code> はバージョン（<code>cybertrain 0.3.0</code>）を、<code>cybertrain help</code> は使い方を表示します。</li>
     </ul>
     <p class="note"><code>db</code>、<code>server</code>、<code>build</code> はアプリケーションの中で実行します。NAME はそのアプリケーションの <code>spin.toml</code> にある <code>[package] name</code> です。</p>
   </section>
@@ -193,9 +193,9 @@
 <span class="ln">version = <span class="s">"0.1.0"</span></span>
 <span class="ln"></span>
 <span class="ln">[dependencies]</span>
-<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.2.1"</span> }</span></code></pre>
+<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.3.0"</span> }</span></code></pre>
 </figure>
-    <p>次に Spinel がインストールされていることを確認し（初回は Spinel <code>2026.09.12</code> を <code>~/.cybertrain</code> にビルドします：数分、初回のみ。<a href="#requirements">ステップ 00</a> を参照）、<code>spin lock</code>（spin がフレームワークをキャッシュ <code>~/.cache/spin/packages/</code> に取得し、コミットを <code>spin.lock</code> に固定します）と <code>spin run gen</code> を実行します。<code>rails new</code> が <code>bundle install</code> を実行するのと同じようなもので、これで <code>cybertrain server</code> がすぐに動きます。最後に次の手順を表示して終わります。フレームワークのファイルはアプリに一切コピーされません。<code>spin.toml</code> と <code>spin.lock</code> をコミットしてください。</p>
+    <p>次に Spinel がインストールされていることを確認し（初回は Spinel <code>2026.10.26.7019</code> を <code>~/.cybertrain</code> にビルドします：数分、初回のみ。<a href="#requirements">ステップ 00</a> を参照）、<code>spin lock</code>（spin がフレームワークをキャッシュ <code>~/.cache/spin/packages/</code> に取得し、コミットを <code>spin.lock</code> に固定します）と <code>spin run gen</code> を実行します。<code>rails new</code> が <code>bundle install</code> を実行するのと同じようなもので、これで <code>cybertrain server</code> がすぐに動きます。最後に次の手順を表示して終わります。フレームワークのファイルはアプリに一切コピーされません。<code>spin.toml</code> と <code>spin.lock</code> をコミットしてください。</p>
     <p class="note">Spinel のインストールか、2 つの <code>spin</code> ステップのいずれかが失敗した場合、ファイルは残したまま <code>new</code> は終了コード 1 で終了し、原因を解消した後に実行すべきコマンドを表示します（Spinel の場合：<code>cybertrain setup</code> を実行し、続いて新しいディレクトリで <code>cybertrain spin lock &amp;&amp; cybertrain spin run gen</code>）。<code>--skip-spin</code> はファイルを書き出すだけです。<code>--path DIR</code> は代わりにローカルのチェックアウトに依存し、<code>--git URL [--ref R]</code> は URL にあるフレームワーク（ブランチまたはタグ R）に、<code>--version V</code> は <code>cybertrain</code> が <code>spin-index</code> に登録された後、インデックスのバージョンに依存します。</p>
     <p>アプリ名には英小文字、数字、<code>_</code> を使い、先頭は英字にします。生成されるツリー：</p>
     <figure class="code" data-lang="text">
@@ -329,7 +329,7 @@
     <p><code>cybertrain server</code> は実行する <code>spin</code> コマンドをひとつずつ表示し、続いてアプリの起動バナーを表示します。初回の起動ではアプリをコンパイルするため、しばらく時間がかかります：</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">出力 &mdash; cybertrain server</span><span class="code-lang">text</span></figcaption>
-<pre tabindex="0" role="region" aria-label="コード：cybertrain server の出力"><code><span class="ln">=&gt; Booting cybertrain 0.2.1</span>
+<pre tabindex="0" role="region" aria-label="コード：cybertrain server の出力"><code><span class="ln">=&gt; Booting cybertrain 0.3.0</span>
 <span class="ln">=&gt; development environment (1 worker)</span>
 <span class="ln">=&gt; Watching app/, config/ and db/schema.rb for changes</span>
 <span class="ln">* Listening on http://127.0.0.1:3000</span>
@@ -782,7 +782,7 @@
       <li>ビューはビルド時に埋め込まれます：ビューだけの変更でも、本番環境に反映するには <code>cybertrain build</code> と再起動が必要です。</li>
       <li><code>dist/</code> は、実行するマシンと同じ OS と CPU でビルドしてください：バイナリはシステムの SQLite にリンクします。</li>
       <li><code>SPINEL_WORKERS</code> のデフォルトは <code>1</code> です。</li>
-      <li>テスト済みなのは Spinel <code>2026.09.12</code> だけです。</li>
+      <li>テスト済みなのは Spinel <code>2026.10.26.7019</code> だけです。</li>
     </ul>
   </section>
 

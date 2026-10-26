@@ -74,7 +74,7 @@
 
 <section class="hero" aria-labelledby="hero-title">
   <div class="wrap hero-inner">
-    <p class="status"><span class="lightbar" aria-hidden="true"></span><span>预 Alpha</span><span class="sep" aria-hidden="true">&middot;</span><span>Spinel 2026.09.12</span><span class="sep" aria-hidden="true">&middot;</span><span>MIT</span></p>
+    <p class="status"><span class="lightbar" aria-hidden="true"></span><span>预 Alpha</span><span class="sep" aria-hidden="true">&middot;</span><span>Spinel 2026.10.26.7019</span><span class="sep" aria-hidden="true">&middot;</span><span>MIT</span></p>
     <h1 id="hero-title" class="hero-mark"><svg class="hero-wordmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 895.14 60" role="img" aria-label="CyberTrain"><path fill="currentColor" fill-rule="evenodd" d="M14.93 60L80 60L80 50L19.07 50L10 40.93L10 19.07L19.07 10L80 10L80 0L14.93 0L0 14.93L0 45.07ZM141 60L141 35L161.07 35L176 20.07L176 0L166 0L166 15.93L156.93 25L115.07 25L106 15.93L106 0L96 0L96 20.07L110.93 35L131 35L131 60ZM266.07 30L271 25.07L271 14.93L256.07 0L194 0L194 60L259.07 60L274 45.07L274 37.93ZM261 19.07L261 20.93L256.93 25L204 25L204 10L251.93 10ZM204 50L204 35L256.93 35L263.43 41.5L254.93 50ZM367 0L295 0L295 60L367 60L367 50L305 50L305 35L361 35L361 25L305 25L305 10L367 10ZM458 20.07L458 14.93L443.07 0L388 0L388 60L398 60L398 35L428.93 35L453.93 60L468.07 60L443.07 35ZM398 10L438.93 10L446.43 17.5L438.93 25L398 25ZM518.07 10L518.07 60L528.07 60L528.07 10L563.07 10L563.07 0L483.07 0L483.07 10ZM634.14 35L649.07 20.07L649.07 14.93L634.14 0L579.07 0L579.07 60L589.07 60L589.07 35L620 35L645 60L659.14 60ZM589.07 25L589.07 10L630 10L637.5 17.5L630 25ZM738.21 0L704.07 0L679.14 24.93L679.14 60L689.14 60L689.14 35L753.14 35L753.14 60L763.14 60L763.14 24.93ZM693.21 25L708.21 10L734.07 10L749.07 25ZM786.14 60L796.14 60L796.14 0L786.14 0ZM895.14 60L895.14 0L885.14 0L885.14 50.27L833.48 0L819.14 0L819.14 60L829.14 60L829.14 9.73L880.8 60Z"/></svg></h1>
     <div class="hero-copy">
       <div class="hero-main">
@@ -91,7 +91,7 @@
         <figure class="code code-term" data-lang="shell">
 <figcaption><span class="code-path">终端 &mdash; 任意目录，之后在&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="代码：快速上手终端"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># 首次运行时安装 Spinel 2026.09.12（需要几分钟）</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># 首次运行时安装 Spinel 2026.10.26.7019（需要几分钟）</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -252,7 +252,7 @@
         <div class="part-head"><p class="part-k">Spinel 包</p><h3 id="part-fw">框架</h3></div>
         <p class="part-what">你的应用所基于的库。</p>
         <div class="part-fact"><p class="fact-k">包含什么</p><p>HTTP 服务器、路由和控制器、会话与 CSRF 防护、模板解释器、SQLite 模型和迁移，以及 <code>spin run gen</code> 背后的代码生成器。</p></div>
-        <div class="part-fact"><p class="fact-k">如何获取</p><p>你不需要安装它。你的应用的 <code>spin.toml</code> 指定本仓库的发布标签 <code>v0.2.1</code>，<code>spin lock</code> 会把它拉取到 spin 的缓存中，并在 <code>spin.lock</code> 中锁定提交。不会有任何内容被复制到你的应用中。</p></div>
+        <div class="part-fact"><p class="fact-k">如何获取</p><p>你不需要安装它。你的应用的 <code>spin.toml</code> 指定本仓库的发布标签 <code>v0.3.0</code>，<code>spin lock</code> 会把它拉取到 spin 的缓存中，并在 <code>spin.lock</code> 中锁定提交。不会有任何内容被复制到你的应用中。</p></div>
         <div class="part-fact"><p class="fact-k">在哪里运行</p><p>在你的应用内部。Spinel 把它和你的代码一起进行 AOT 编译；它从不在 CRuby 上运行。</p></div>
         <div class="part-fact"><p class="fact-k">在 dist/blog 中</p><p><span class="pill pill-on">编译在内</span>它是 CyberTrain 中随应用交付的部分。</p></div>
       </article>
@@ -260,13 +260,13 @@
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> 命令</h3></div>
         <p class="part-what">用来创建、构建和运行你的应用的工具。</p>
         <div class="part-fact"><p class="fact-k">包含什么</p><p>只有 <code>cybertrain</code> 命令：<code>new</code>、<code>generate scaffold</code>、<code>db migrate</code>、<code>server</code>、<code>build</code>、<code>spin</code>、<code>setup</code> 和 <code>doctor</code>。框架和 Spinel 都不在这个 gem 里。</p></div>
-        <div class="part-fact"><p class="fact-k">如何获取</p><p><code>gem install cybertrain</code>。首次使用时，它会把锁定的 Spinel 版本 <code>2026.09.12</code> 构建到 <code>~/.cybertrain</code> 中，除非你的 <code>PATH</code> 上已经有该版本。</p></div>
+        <div class="part-fact"><p class="fact-k">如何获取</p><p><code>gem install cybertrain</code>。首次使用时，它会把锁定的 Spinel 版本 <code>2026.10.26.7019</code> 构建到 <code>~/.cybertrain</code> 中，除非你的 <code>PATH</code> 上已经有该版本。</p></div>
         <div class="part-fact"><p class="fact-k">在哪里运行</p><p>在你的机器上，运行于 CRuby 3.2 或更新版本。它会替你调用 Spinel 的 <code>spin</code> 工具，你无需亲自调用。</p></div>
         <div class="part-fact"><p class="fact-k">在 dist/blog 中</p><p><span class="pill">不交付</span>该二进制文件无需 Ruby、gem 或 Spinel 即可运行。</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">两者从同一个标签发布，因此版本一致：0.2.1 版的 gem 生成的应用依赖框架 <code>v0.2.1</code>。要把应用迁移到新版本，先更新 gem，把 <code>spin.toml</code> 指向新标签，然后运行 <code>cybertrain spin lock</code> 和 <code>cybertrain spin run gen</code>。</p>
+      <p class="footnote">两者从同一个标签发布，因此版本一致：0.3.0 版的 gem 生成的应用依赖框架 <code>v0.3.0</code>。要把应用迁移到新版本，先更新 gem，把 <code>spin.toml</code> 指向新标签，然后运行 <code>cybertrain spin lock</code> 和 <code>cybertrain spin run gen</code>。</p>
     </div>
   </div></div>
 </section>
@@ -379,9 +379,9 @@
       <h2 id="req-h">你的机器需要准备什么。</h2>
     <dl class="reqs">
       <div><dt>Ruby</dt><dd>3.2+，带 RubyGems，仅供 <code>cybertrain</code> 命令使用。应用本身从不在 CRuby 上运行。</dd></div>
-      <div><dt>Spinel</dt><dd><code>2026.09.12</code>，未在其他版本上测试。第一个需要它的命令会把它构建到 <code>~/.cybertrain</code> 中（需要几分钟，仅一次）；如果 <code>PATH</code> 上已有该版本的 <code>spinel</code>，则直接使用。</dd></div>
+      <div><dt>Spinel</dt><dd><code>2026.10.26.7019</code>，未在其他版本上测试。第一个需要它的命令会把它构建到 <code>~/.cybertrain</code> 中（需要几分钟，仅一次）；如果 <code>PATH</code> 上已有该版本的 <code>spinel</code>，则直接使用。</dd></div>
       <div><dt>工具链</dt><dd><code>cc</code> 和 <code>make</code>（Spinel 会把每个程序编译为 C），以及用于构建 Spinel 的 <code>git</code> 和 <code>curl</code>。SQLite&nbsp;3 和 zlib 头文件和库：Debian/Ubuntu 上为 <code>libsqlite3-dev</code> 和 <code>zlib1g-dev</code>，macOS 上随 Xcode 命令行工具提供。OpenSSL 头文件是可选的。</dd></div>
-      <div><dt>状态</dt><dd>预 Alpha 阶段，版本 <code>0.2.1</code>，MIT 许可。示例博客由 CI 在 Linux 和 macOS 上运行测试。</dd></div>
+      <div><dt>状态</dt><dd>预 Alpha 阶段，版本 <code>0.3.0</code>，MIT 许可。示例博客由 CI 在 Linux 和 macOS 上运行测试。</dd></div>
     </dl>
     <p class="footnote"><code>cybertrain doctor</code> 会检查这些工具和头文件以及 Spinel 的安装情况，缺少某项时会打印适用于你的平台的安装命令。<code>cybertrain setup</code> 按需安装 Spinel，并打印用于自行运行 <code>spin</code> 的 <code>PATH</code> 设置行；<code>cybertrain spin ARGS...</code> 则无需该设置即可运行它。</p>
     </div>
