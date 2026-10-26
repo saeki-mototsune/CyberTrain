@@ -150,6 +150,8 @@ test "the assembler handles an unfragmented binary message" do
   msg = a.take_message
   assert_equal :binary, msg.ws_opcode
   assert_equal "\x00\x01".b, msg.ws_data
+  assert_equal true, a.add(F::OP_BINARY, true, "\x80\xff".b)
+  assert_equal "\x80\xff".b, a.take_message.ws_data
   assert_equal true, a.add(F::OP_TEXT, true, "again")
   assert_equal "again", a.take_message.ws_data
 end

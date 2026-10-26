@@ -1,0 +1,25 @@
+ok   connects and exchanges text and binary
+ok   the handshake sends the required headers
+ok   client frames are masked
+ok   a wrong Sec-WebSocket-Accept is a HandshakeError
+ok   a 200 is a HandshakeError naming the status
+ok   an extension in the answer is a HandshakeError
+ok   a subprotocol in the answer is a HandshakeError
+ok   the {accept} placeholder answers a valid handshake
+ok   a silent handshake times out
+ok   a frame sent with the 101 is not lost
+ok   receive resumes a frame split across waits
+ok   receive returns nil when nothing arrives
+ok   a ping is answered with a pong carrying its payload
+ok   a close from the server is a ClosedError with its code
+ok   an application close code is passed on
+ok   a dropped connection is a ClosedError 1006
+ok   max_message is enforced before reading the payload
+ok   a masked server frame is a ProtocolError
+ok   private addresses are refused unless allowed
+ok   errors never contain the path or the query
+ok   reserved headers are refused
+ok   a non-ws URL is refused
+ok   a ping payload longer than 125 bytes is refused
+ok   wss to a plain server fails the handshake
+24 tests, 115 assertions, 0 failures

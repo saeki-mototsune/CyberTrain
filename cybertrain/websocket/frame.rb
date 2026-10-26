@@ -163,7 +163,11 @@ module Cybertrain
         # @return [Message]
         def take_message
           sym = @opcode == OP_TEXT ? :text : :binary
-          msg = Message.new(sym, @buffer)
+          # .b: under Spinel a String.new buffer is not tagged binary, and a
+          # payload with a byte >= 0x80 then compares unequal to the same
+          # bytes tagged binary. A local first (NOTES rule 58).
+          data = @buffer.b
+          msg = Message.new(sym, data)
           reset
           msg
         end

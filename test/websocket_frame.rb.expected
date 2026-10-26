@@ -22,4 +22,4 @@ ok   the assembler enforces max_message across fragments
 ok   close payloads
 ok   error classes nest under WebSocket::Error
 ok   Message holds opcode and data
-24 tests, 111 assertions, 0 failures
+24 tests, 113 assertions, 0 failures
