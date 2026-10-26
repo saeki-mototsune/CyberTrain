@@ -187,7 +187,7 @@
   - `Subscription#on_open(&block) -> Subscription`、`#on_message(&block) -> Subscription`、`#sub_name -> String`
   - `class Connection` — `send_text(s)`、`send_binary(s)`、`close`、`last_opcode -> Symbol`
   - `class Status` — `connected? -> Boolean`、`last_message_at -> Integer`、`reconnects -> Integer`
-  - `WebSocket.status(name) -> Status`（未知の名前は `ArgumentError`）
+  - `WebSocket.feed_status(name) -> Status`（未知の名前は `ArgumentError`）
   - `WebSocket.start!(config = Cybertrain.config) -> Boolean`、`WebSocket.stop! -> nil`、`WebSocket.running? -> Boolean`
   - `WebSocket.retry_delay(attempt, jitter) -> Float` — `jitter` は 0.0..1.0 の乱数。`min(60, 2 ** (attempt - 1)) * (0.8 + 0.4 * jitter)`
   - テスト用の注入: `WebSocket.random_source=(proc)`（既定 `-> { rand }`）
@@ -199,8 +199,8 @@
   - `test "subscribe refuses bad arguments"`: 空の名前、二重の名前、`http://` の URL、`ping_interval: 0`、`stale_after: 15, ping_interval: 15` がそれぞれ `ArgumentError`
   - `test "start! refuses a subscription without on_message"`
   - `test "start! does nothing when the worker is off"`: `false`、ログに 1 行
-  - `test "status of an unknown name is an ArgumentError"`
-  - `test "messages reach on_message and status follows"`: 受信器が `"accept"` → `"send_text"/"a"` → `"send_text"/"b"` → `"echo_until_close"`。`on_message` が定数の配列に積み、`["a", "b"]` になる。`status.connected?` が true、`last_message_at > 0`
+  - `test "feed_status of an unknown name is an ArgumentError"`
+  - `test "messages reach on_message and feed_status follows"`: 受信器が `"accept"` → `"send_text"/"a"` → `"send_text"/"b"` → `"echo_until_close"`。`on_message` が定数の配列に積み、`["a", "b"]` になる。`feed_status.connected?` が true、`last_message_at > 0`
   - `test "on_open runs again after every reconnect"`: 受信器 `max: 2`。1 本目は `"accept"`、`"expect"`、`"close"/"1001"`、2 本目は `"accept"`、`"expect"`、`"echo_until_close"`。受信器が両方の接続で購読メッセージを受け取る。`reconnects == 1`。ログに `WebSocket "feed" disconnected: Cybertrain::WebSocket::ClosedError:` と `(retry in 1s)`
   - `test "an exception in on_message keeps the connection"`: 1 件目で raise、2 件目が届く。ログに `on_message failed: RuntimeError:`、`reconnects == 0`
   - `test "a silent feed is pinged, then reconnected"`: `ping_interval: 1, stale_after: 2`、受信器 1 本目は `"accept"`、`"expect"`（ping が来る: opcode 9）、`"silent"/"5"`。ログに `silent for 2s; reconnecting`、2 本目の接続が来る
@@ -221,7 +221,7 @@
 **Interfaces:**
 - Consumes: Task 1〜5 の公開 API 名（そのまま書く）
 
-- [ ] **Step 1: README の節を書く** — 中身: spec 1 節の例、`require` の要否、待ちと再接続（既定値と式）、沈黙検知（ping と `stale_after`）、ログの行（spec 4.4 の表）、`status`、制限（spec 2 節: 拡張・サブプロトコル無し、UTF-8 を検証しない、`Connection` はコールバックの中だけ、動作中の追加不可、サーバ側は無い）、OS ワーカーの注意（spec 4.3）、`CYBERTRAIN_WORKER=0` で動かない、テスト（`Test::WebSocketReceiver` の例を 10 行程度）。
+- [ ] **Step 1: README の節を書く** — 中身: spec 1 節の例、`require` の要否、待ちと再接続（既定値と式）、沈黙検知（ping と `stale_after`）、ログの行（spec 4.4 の表）、`feed_status`、制限（spec 2 節: 拡張・サブプロトコル無し、UTF-8 を検証しない、`Connection` はコールバックの中だけ、動作中の追加不可、サーバ側は無い）、OS ワーカーの注意（spec 4.3）、`CYBERTRAIN_WORKER=0` で動かない、テスト（`Test::WebSocketReceiver` の例を 10 行程度）。
 - [ ] **Step 2: design.md に D33 を書く** — 既存の D24 / D27 の書式（背景・決定・却下・後回し・帰結）。決定の要点は spec 3〜4 節、`Background` 登録表の理由（libssl を持ち込まない、`Net.tls_connector` と同じ形）を含める。
 - [ ] **Step 3: 確かめる** — Run: `script/gate` → すべて ok。`script/api-docs` があれば実行してエラーなし。README の例のコードが Task 5 の API 名と一致していることを目で確かめる。
 - [ ] **Step 4: コミット**（件名例: `docs: Consuming WebSocket feeds (README), D33 in design.md`）

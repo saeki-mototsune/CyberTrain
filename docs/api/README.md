@@ -30,6 +30,7 @@ generates ({Article}, {ArticleRelation}, {Gen::UrlHelpers}).
 | `config/routes.rb` | {Cybertrain::Routes.draw}, {Cybertrain::Gen::Mapper} (`resources`, `resource`, `get` ...) |
 | `article_path(@article)` | {Gen::UrlHelpers} (generated), {Cybertrain.url_root} |
 | `db/migrate/*.rb` | {Cybertrain::Migration::Base}, {Cybertrain::Schema::TableDef} |
+| `Cybertrain::WebSocket.subscribe("trades", url).on_open { ... }.on_message { ... }` in `config/app.rb` | {Cybertrain::WebSocket} (`require "cybertrain/websocket"`): {Cybertrain::WebSocket.subscribe}, {Cybertrain::WebSocket::Subscription}, {Cybertrain::WebSocket::Connection}, {Cybertrain::WebSocket.feed_status}; one connection: {Cybertrain::WebSocket::Client}; {Cybertrain::Background} |
 | `config/app.rb` | {Cybertrain.configure}, {Cybertrain::Config} |
 | `test/*.rb` | {Cybertrain::Test}, {Cybertrain::Test::Client}, and the assertions below |
 | `app/views/**/*.html.erb` | {file:docs/template-language.md Template language}: helpers (`link_to`, `form_with`, ...), the form builder and what a template may call |
@@ -73,7 +74,9 @@ Top-level methods for `test/*.rb` (see {Cybertrain::Test}):
 
 Webhooks and e-mail the code under test sends are received in-process by
 {Cybertrain::Test::HttpReceiver} (`require "cybertrain/test/http_receiver"`)
-and {Cybertrain::Test::SmtpReceiver} (`require "cybertrain/test/smtp_receiver"`).
+and {Cybertrain::Test::SmtpReceiver} (`require "cybertrain/test/smtp_receiver"`);
+a WebSocket feed it consumes is played by {Cybertrain::Test::WebSocketReceiver}
+(`require "cybertrain/test/websocket_receiver"`).
 
 ## Conventions on these pages
 

@@ -34,7 +34,9 @@ with comments) built on it, exercised by CI on Linux and macOS.
 `cybertrain generate authentication` adds email-and-password sign-in the way
 Rails 8's generator does, and `cybertrain generate attachment` (or a
 `cover:attachment` scaffold field) adds a file upload to a model. `Cybertrain::Mailer` sends plain-text e-mail over SMTP
-(see "Sending e-mail"). Not built: Action Mailer-style mailer classes and templates, jobs, WebSockets/ActionCable,
+(see "Sending e-mail"), and `Cybertrain::WebSocket.subscribe` keeps a connection to an outside
+WebSocket feed open while the server runs (see "Consuming WebSocket feeds"). Not built: Action Mailer-style
+mailer classes and templates, a WebSocket server (ActionCable),
 an asset pipeline, i18n, and anything beyond a minimal `render json:` — see
 "Differences from Rails" below.
 
@@ -1292,11 +1294,12 @@ configuration still polls, only shows that the process answers HTTP.
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see "Outbound HTTP"); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
 | Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see "Sending e-mail") |
 | Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind) { \|payload\| ... }` and `Job.enqueue(kind, payload, run_at:)` (a String payload in a `cybertrain_jobs` table, retried with backoff, then `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; one thread in the served process, `CYBERTRAIN_WORKER=0` elsewhere ([Background work](#background-work)) |
+| ActionCable client, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url) { ... }` keeps a feed connected while the server runs (reconnects, pings, silence detection), `Cybertrain::WebSocket::Client` for one synchronous connection; outbound only, every wait bounded (see "Consuming WebSocket feeds") |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` is an Array of Strings matched by substring, case-insensitively (no Regexps or lambdas); it applies to the request log and the development error page ([Filtered parameters](#configuration-and-environment-variables)) |
 
 | `get "up" => "rails/health#show"` (a route to a controller) | `GET /up` is built in and answered before the static files, the session and the router, so no `before_action` runs; it queries the database and the background worker's last tick, `200 ok` or `503` ([Operations](#operations-backups-vacuum-health-check)) |
 | `bin/rails db:...` tasks for backups (none built in) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renamed into place) and `./<app> db vacuum` |
-| ActionCable, asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
+| ActionCable (the server), asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
 Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
 
@@ -1632,6 +1635,122 @@ socket layer (`cybertrain/net/socket.rb`: bounded connect, buffered reads,
 bounded writes) is separate from the HTTP layer so that other protocols can
 use it. The design: [docs/design.md](docs/design.md) D24.
 
+## Consuming WebSocket feeds
+
+An application that listens to an outside feed (market ticks, device
+telemetry, an event stream) while the server runs subscribes to it with
+`Cybertrain::WebSocket.subscribe`. Like the HTTP client it is not in
+`require "cybertrain"`; require it where the subscription is written, and the
+TLS layer too for `wss://`:
+
+```ruby
+# config/app.rb (or a file bin/<app>.rb requires before Cybertrain::Main.run)
+require "json"
+require "cybertrain/websocket"
+require "cybertrain/net/tls"   # only for wss://; links the system libssl
+
+Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
+    headers: { "Authorization" => "Bearer #{ENV["FEED_TOKEN"]}" },
+    stale_after: 30)
+  .on_open    { |conn| conn.send_text(JSON.generate({ "op" => "subscribe", "channel" => "trades" })) }
+  .on_message { |conn, text| Cybertrain::DB.with { |c| c.execute("INSERT INTO trades(raw) VALUES (?)", [text]) } }
+```
+
+Requiring `cybertrain/websocket` registers the feeds with
+`Cybertrain::Background`, which `Application#serve` starts after the
+scheduler and stops at shutdown, so there is nothing to call. Each
+subscription gets one thread. It connects, runs `on_open` (send your
+subscribe message there: it runs again after every reconnect), then hands
+each message to `on_message` with the `Connection` (`send_text`,
+`send_binary`, `close`, and `last_opcode`, `:text` or `:binary`). The
+blocks take their arguments and cannot use `self` (Spinel has no
+`instance_eval`).
+
+- **When it runs.** The feeds start when the binary serves, like the
+  scheduler ([Background work](#background-work)); `migrate`, `db ...`,
+  `Main.command` commands and `Cybertrain::Test::Client` never start them.
+  With `CYBERTRAIN_WORKER=0` (`config.worker = false`) they do not run in
+  that process (one `[INFO]` line says so): turn it off in all but one when
+  several processes serve, or each one receives the whole feed.
+  `subscribe` must be called before the server starts; there is no adding or
+  removing a feed while it runs. A name is unique (`ArgumentError`), and a
+  feed without `on_message` is an `ArgumentError` naming it when the server
+  starts.
+- **Options.** `headers:` (extra handshake headers), `timeout:` (5 seconds
+  per wait while connecting and per write), `max_message:` (1 MiB; a larger
+  message closes the connection with 1009), `ping_interval:` (15) and
+  `stale_after:` (45), and `allow_private:` (as `HttpClient`, below).
+- **Waiting and reconnecting.** After any failure the thread waits
+  `min(60, 2 ** (attempt - 1))` seconds, with 20 % of jitter either way: 1, 2,
+  4, ... 60. A connection that lasted 60 seconds starts again from 1. Every
+  wait is bounded and ends within a second of the server stopping;
+  `WebSocket.stop!` waits for each thread for at most 2 seconds, and a
+  connected feed sends a close (1000) first.
+- **Silence.** A feed can go quiet without ever closing the connection, so
+  the thread pings after `ping_interval` seconds without any frame (and then
+  once per interval), and when no frame at all, a pong included, has arrived
+  for `stale_after` seconds it closes the connection and reconnects.
+  `stale_after` must be more than `ping_interval`, which must be at least 1
+  (`ArgumentError` from `subscribe`).
+- **Errors in your blocks.** An exception in `on_message` is logged and the
+  connection stays. An exception in `on_open` is logged and the connection is
+  closed and retried, since a feed that did not subscribe is of no use.
+- **What is logged.**
+
+  | When | Level | Line |
+  | --- | --- | --- |
+  | start | INFO | `WebSocket started: trades (wss://feed.example.com:443)` |
+  | connected | INFO | `WebSocket "trades" connected to feed.example.com:443` |
+  | disconnected | WARN | `WebSocket "trades" disconnected: Cybertrain::WebSocket::ClosedError: feed.example.com:443: closed by the server (1001) (retry in 2s)` |
+  | silent | WARN | `WebSocket "trades" silent for 45s; reconnecting` |
+  | a block raised | ERROR | `WebSocket "trades" on_message failed: KeyError: ...` (or `on_open`) |
+
+  The path and the query are never logged or put in an error message: they
+  often carry a token.
+- **Errors.** All are `Cybertrain::WebSocket::Error`s, with host and port
+  only in the message. Once the handshake is done, losing the connection is a
+  `ClosedError` (`close_code`, `close_reason`; a reset or an end without a
+  close frame is 1006). While connecting it is `RefusedError`,
+  `TimeoutError`, `TLSError`, `BlockedAddressError` (a non-public address,
+  refused by default exactly as in [Outbound HTTP](#outbound-http), with
+  the same `allow_private:` and `http_allow_private` setting) or
+  `HandshakeError` (not a 101, a wrong `Sec-WebSocket-Accept`, or the
+  server answering with an extension or subprotocol). `ProtocolError`
+  (the server broke the framing; the client sends 1002) and
+  `TooLargeError` can come at any time.
+- **Health.** `Cybertrain::WebSocket.feed_status("trades")` answers a
+  `Status`: `connected?`, `last_message_at` (epoch seconds, 0 before the
+  first message) and `reconnects`. It is not part of `GET /up`; use it in
+  your own check. The three are read one after the other, not as one
+  snapshot, and `connected?` turns true when the connection is made, before
+  `on_open` has run.
+- **Keep `on_message` short.** The thread waits with `wait_readable`, so a
+  stalled feed never holds an OS worker, but a SQLite call inside
+  `on_message` does until it returns, as in a scheduled task ([Background
+  work](#background-work)): with `SPINEL_WORKERS=1` a long write stalls every
+  request. For a busy feed insert one small row, or collect messages in
+  memory and write them in batches from a `Scheduler.every` task.
+- **Not built.** Extensions (`permessage-deflate`) and subprotocols are not
+  negotiated. There is no proxy, redirect or cookie support, no automatic
+  saving of messages, and no WebSocket server (ActionCable). Text frames are
+  not checked for valid UTF-8 (a departure from RFC 6455 section 8.1): the
+  bytes are passed on as they came. The `Connection` is valid only during
+  the callback; sending from a request or a task is not supported.
+
+For one connection without the reconnect loop (a script, a one-shot read)
+use the synchronous client:
+
+```ruby
+client = Cybertrain::WebSocket::Client.connect("wss://feed.example.com/v1", timeout: 5)
+client.send_text("hello")
+msg = client.receive(10)      # waits at most 10 s; nil when nothing came
+msg.ws_opcode                 # :text or :binary
+msg.ws_data                   # the bytes
+client.close
+```
+
+The design: [docs/design.md](docs/design.md) D33.
+
 ## Sending e-mail
 
 `Cybertrain::Mailer` sends plain-text e-mail through an SMTP server (your
@@ -1828,6 +1947,38 @@ connection, a silent client after `read_timeout:` (5 s), and `stop` (safe
 to call twice) ends and joins the receiver's thread and closes its port, so
 a receiver never takes a later test's connection. They need only Ruby's
 socket library, not openssl.
+
+A feed is tested the same way with `Cybertrain::Test::WebSocketReceiver`, a
+scripted WebSocket server on `127.0.0.1`: each connection plays a list of
+`Cybertrain::Test::WsStep`s (`"accept"`, `"send_text"`, `"expect"`,
+`"silent"`, `"close"`, `"drop"`, `"echo_until_close"`, ...), and the frames
+the client sent come back unmasked from `ws_received`.
+
+```ruby
+require "cybertrain/websocket"
+require "cybertrain/test/websocket_receiver"
+
+TICKS = Array.new(0) { "" }   # a constant: the blocks cannot see locals
+
+test "a trade message is stored" do
+  rx = Cybertrain::Test::WebSocketReceiver.new
+  rx.ws_script([Cybertrain::Test::WsStep.new("accept"), Cybertrain::Test::WsStep.new("expect"),
+                Cybertrain::Test::WsStep.new("send_text", "tick"), Cybertrain::Test::WsStep.new("echo_until_close")])
+  rx.start
+  Cybertrain::WebSocket.subscribe("trades", rx.url("/trades"), allow_private: true)
+    .on_open { |conn| conn.send_text("subscribe") }
+    .on_message { |conn, text| TICKS << text }
+  Cybertrain::WebSocket.start!               # Test::Client never starts feeds
+  # ... poll TICKS for at most a few seconds ...
+  Cybertrain::WebSocket.stop!
+  assert_equal ["tick"], TICKS
+  assert_equal "subscribe", rx.ws_received[0].rec_data
+  rx.stop
+end
+```
+
+`Cybertrain::WebSocket.random_source = -> { 0.5 }` makes the retry delays exact.
+`test/websocket_integration.rb` in this repository shows a complete test.
 
 ### Continuous integration
 

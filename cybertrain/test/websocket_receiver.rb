@@ -16,7 +16,7 @@ module Cybertrain
     # One step of a connection's script: a `kind` and its `data`.
     #
     # - "accept": the 101 answer with the right Sec-WebSocket-Accept.
-    # - "reply_raw": `data` as the answer, as it is ("{accept}" in it is
+    # - "reply_raw": `data` as the answer, as it is (`{accept}` in it is
     #   replaced by the right Sec-WebSocket-Accept): a wrong Accept, a 200.
     # - "send_with_101": the 101 and a text frame carrying `data`, in one
     #   write.

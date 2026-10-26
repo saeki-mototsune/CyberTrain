@@ -54,7 +54,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
 | --- | --- |
 | `cybertrain/websocket/frame.rb` | フレームの符号化と復号、Accept キーの計算。ソケットに触れない純粋な関数で、CRuby でも動く |
 | `cybertrain/websocket/client.rb` | `WebSocket::Client`: 同期クライアント。ハンドシェイク、送受信、ping / pong、close。`Net::*` の上 |
-| `cybertrain/websocket.rb` | `WebSocket.subscribe`、`Subscription`、`Connection`、`Status`、購読ごとのスレッド、`start!` / `stop!` / `status` |
+| `cybertrain/websocket.rb` | `WebSocket.subscribe`、`Subscription`、`Connection`、`Status`、購読ごとのスレッド、`start!` / `stop!` / `feed_status` |
 | `cybertrain/test/websocket_receiver.rb` | テスト用のプロセス内 WebSocket サーバ（127.0.0.1）。`Test::Receiver` の上 |
 | `cybertrain/application.rb` | `serve` で登録済みのバックグラウンドサービスを起動・停止する（4.5 節） |
 
@@ -156,7 +156,7 @@ sub.on_message { |conn, data| ... }  # self を返す
   を出す（パスは出さない）。`stop!`: 停止を要求し、接続中なら close 1000 を送る。
   各スレッドは 1 秒以内に気づいて終わる。世代番号で古いループを止める
   （`Scheduler` と同じ）。
-- `WebSocket.status(name)` → `Status`: `connected?`、`last_message_at`（エポック秒、
+- `WebSocket.feed_status(name)` → `Status`: `connected?`、`last_message_at`（エポック秒、
   0 は未受信）、`reconnects`（再接続の回数）。ロックで守る。未知の名前は
   `ArgumentError`。`/up` には自動で組み込まない（アプリが自分のヘルスチェックで使う）。
 
@@ -204,7 +204,7 @@ sub.on_message { |conn, data| ... }  # self を返す
   無いときの `TLSError`、平文で答えるサーバへの `wss` がハンドシェイク失敗になること。
 - `test/websocket_subscription.rb`: 再接続のたびに `on_open` が走る、`on_message` の
   例外で接続が保たれる、`stale_after` を超えた沈黙で再接続する、`ping_interval` で
-  ping が届く、待ち時間の計算（注入した乱数）、`status`、`stop!` でスレッドが終わる、
+  ping が届く、待ち時間の計算（注入した乱数）、`feed_status`、`stop!` でスレッドが終わる、
   `worker` が偽なら起動しない、登録時の `ArgumentError`。
 - `test/websocket_receiver.rb` の受信器は `HttpReceiver` / `SmtpReceiver` と同じ方針
   （有界の accept と読み取り、メソッド経由のスレッド）。台本を渡せる: ハンドシェイクの
