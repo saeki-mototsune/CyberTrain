@@ -4,49 +4,57 @@ What building and speeding up CyberTrain found in Spinel itself, written so
 each item can become an issue upstream. Each says what happens, how it was
 seen, what CyberTrain does about it today, and what would fix it in Spinel.
 
-Two builds are covered:
+Three builds are covered:
 
-- **2026.09.12** (112bae85c1a2), the release CyberTrain is pinned to
-  (`Cybertrain::SPINEL_TAG`). Items 1 to 7 and the tables were found on it.
-  CI runs the 98 framework tests and examples/blog on it.
+- **2026.09.12** (112bae85c1a2), matz/spinel's release, which CyberTrain
+  was pinned to until 2026-10-26. Items 1 to 7 and the tables were found on
+  it.
 - **2026.10.25-7018** (0e3ccff, `spinel --version`: `unreleased
-  (0e3ccffa8)`), the newest package of the
+  (0e3ccffa8)`), a package of the
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork
-  (`ghcr.io/saeki-mototsune/spinel:latest`), checked on 2026-10-25 against
-  CyberTrain 0a0d99e. `spin test` passes 88 of 98, and examples/blog does
-  not get past `spin run gen`. The regressions are A to G at the end; an
+  (`ghcr.io/saeki-mototsune/spinel`), checked on 2026-10-25 against
+  CyberTrain 0a0d99e. `spin test` passed 88 of 98, and examples/blog did not
+  get past `spin run gen`. The regressions are A to G at the end; an
   earlier package (2026.10.09-7009, edb9dd0, checked on 2026-10-13) is in
   [benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md).
+- **2026.10.26.7019** (80b2f98), the fork's release tag carrying the fixes
+  for A, C, F, G and 3, and the build CyberTrain is pinned to now
+  (`Cybertrain::SPINEL_TAG`, `Cybertrain::SPINEL_REPOSITORY`). With the
+  toolchain `cybertrain setup` builds from that tag, `spin test` passes 98 of
+  98 (test/template_engine.rb with its argument built where the call sees
+  it, see C), and examples/blog's `spin run gen` writes files identical to
+  the committed ones and its tests pass. The package
+  `ghcr.io/saeki-mototsune/spinel:2026.10.26-7019`, built from the same
+  commit, gave the same results.
 
 The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
 [performance-next.md](performance-next.md).
 
-Suggested order: A and F (A breaks every app whose routes nest
-`resources`, F loses a call silently), 1 to 3, then G, C and the rest of
-the regressions, then 4 to 7, then the rest.
+Suggested order for what is still open: 1 and 2, then B and D, then 4 to
+7, then the rest.
 
 ## Status at a glance
 
 "Not re-checked" means no one has tried it on that build; it is not a claim
 that it is fixed.
 
-| Item | 2026.09.12 | 2026.10.25-7018 |
-| --- | --- | --- |
-| 1. A generated `new` frees its own arguments | yes | not re-checked |
-| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked |
-| 3. An Array assigned to a wider local is copied | yes | yes |
-| 4 to 7. Runtime cost | yes | not re-measured |
-| `String#to_sym` searches linearly | yes | **fixed** (hashed) |
-| `"#{v}"` copies a String | yes | yes |
-| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** |
-| B. `ffi_func` declared under another name | no | yes (worked around) |
-| C. Generated C that does not compile | no | yes, other shapes |
-| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) |
-| E. More allocation per request | no | not re-measured |
-| F. A call whose result is always nil is dropped | no | **yes** |
-| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** |
-| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) |
+| Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 |
+| --- | --- | --- | --- |
+| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked |
+| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked |
+| 3. An Array assigned to a wider local is copied | yes | yes | **fixed** |
+| 4 to 7. Runtime cost | yes | not re-measured | not re-measured |
+| `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed |
+| `"#{v}"` copies a String | yes | yes | yes |
+| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** |
+| B. `ffi_func` declared under another name | no | yes (worked around) | yes (worked around) |
+| C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) |
+| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around) |
+| E. More allocation per request | no | not re-measured | not re-measured |
+| F. A call whose result is always nil is dropped | no | **yes** | **fixed** |
+| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** |
+| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) |
 
 ## Correctness
 
@@ -99,8 +107,11 @@ def f(gap)
   groups << pick(2)    # a boxed value: groups becomes a PolyArray copy
   tail.size
 end
-puts f(true)           # 1 on both builds; Ruby prints 2
+puts f(true)           # 1 on 2026.09.12 and 2026.10.25-7018; 2 on 2026.10.26.7019 and in Ruby
 ```
+
+**Fixed in 2026.10.26.7019**, together with the untyped
+`OpenSSL::Digest#to_s` below, and test/http_client.rb passes there.
 
 - Seen on 2026.10.25-7018 in test/http_client.rb: `::ffff:127.0.0.1` was
   classified as "reserved" instead of "loopback", because
@@ -111,7 +122,7 @@ puts f(true)           # 1 on both builds; Ruby prints 2
   receiver untyped (rule 62's remedy then no longer narrows), and the bytes
   pushed into `groups` came out boxed.
 - Today: nothing; the IPv6 parser works on 2026.09.12 because the bytes
-  stay typed there.
+  stay typed there, and on 2026.10.26.7019 because the copy is gone.
 - Fix: keep aliasing. Either widen the Array where it is made (the
   assignment shares its storage), or refuse the program at compile time
   instead of copying.
@@ -167,9 +178,10 @@ passed once the lock was gone (rule 57).
 
 Each made code slower than it reads; all are in rule 56. `spinel
 --emit-types` and `-S` were how they were found. Status is for
-2026.10.25-7018, from its generated C for a small program.
+2026.10.25-7018 and 2026.10.26.7019 (the same on both), from their generated
+C for a small program.
 
-| What happens | Cost | What would fix it | 2026.10.25-7018 |
+| What happens | Cost | What would fix it | 2026.10.25-7018, 2026.10.26.7019 |
 | --- | --- | --- | --- |
 | `"#{v}"` allocates and copies even when `v` is a String | an object per call | skip the copy for a single String interpolation | still copies |
 | `Array#clear` anywhere makes that Array `sp_PolyArray` | every element access is dynamic | keep the element type through `clear` | not re-checked |
@@ -206,8 +218,11 @@ Each made code slower than it reads; all are in rule 56. `spinel
 
 None of these happens on 2026.09.12. First found on 2026.10.09-7009 (A to E, while
 benchmarking, see
-[benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md)) and
-re-checked, with F and G new, on 2026.10.25-7018.
+[benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md)),
+re-checked, with F and G new, on 2026.10.25-7018, and fixed in the fork's
+2026.10.26.7019 except B and D, which CyberTrain works around (and E, not
+re-measured). Each section's reduced program prints Ruby's result on
+2026.10.26.7019.
 
 On 2026.10.25-7018, the ten `spin test` failures:
 
@@ -222,9 +237,14 @@ On 2026.10.25-7018, the ten `spin test` failures:
 | template_engine.rb | a deliberate refusal (below C) |
 | template_integration.rb | a new refusal (below C) |
 
+On 2026.10.26.7019 only template_engine.rb failed, at the same deliberate
+refusal; with its argument built where the call sees it, 98 of 98 pass.
+
 ### A. A receiverless call with a block inside `instance_eval` is `NoMethodError`
 
-Still present on 2026.10.25-7018.
+Present on 2026.10.25-7018; **fixed in 2026.10.26.7019** (the program
+below prints `res x` and `res y`, and examples/blog's `spin run gen` writes
+files identical to the committed ones).
 
 ```ruby
 class Mapper
@@ -251,18 +271,18 @@ Cybertrain::Gen::Mapper", and so does test/gen_runner_models.rb.
 
 ### B. `ffi_func` functions are no longer declared under their own names
 
-Still present. The runtime declares them as `sp_ffi_fN_<name>` with an
+Still present on 2026.10.26.7019. The runtime declares them as `sp_ffi_fN_<name>` with an
 `__asm__` label (`extern long sp_ffi_f0_strlen(const char *)
 __asm__(SP_FFI_SYM("strlen"))`), so an `ffi_source` block calling one by
 its C name gets an implicit declaration: `int`, a cut pointer, a SIGSEGV.
 CyberTrain declares what it calls (db/sqlite_ffi.rb, aedcf4b), which works
-on both builds. gcc 13 only warns; making
+on every build. gcc 13 only warns; making
 `-Werror=implicit-function-declaration` the default (gcc 14 does) would
 have turned the crash into a build error.
 
 ### C. Generated C that does not compile
 
-On 2026.10.25-7018:
+None of the shapes below is reported on 2026.10.26.7019. On 2026.10.25-7018:
 
 - **A dispatched call's result is not boxed into a boxed local.**
   `assigns = view_assigns` in `Controller#view_env` (controller.rb:458),
@@ -291,17 +311,19 @@ generating wrong code:
 - test/template_engine.rb (since 2026.10.09-7009): "a typed Hash is passed
   to `render_with_layout`'s parameter `env`, which the method stores keys or
   values of other types into". Not a regression: the test's `{}` should be
-  built where the call can widen it. CyberTrain's to fix.
+  built where the call can widen it. Still refused on 2026.10.26.7019;
+  fixed in CyberTrain by passing the Hash as a call (`layout_env`) instead
+  of through a local.
 - test/template_integration.rb (new): "a constant write given a Hash,
   which no conversion keeps in its `sp_StrPolyHash *` slot", at
   `Migration::Base::VERSIONS = begin h = { "" => "" }; h.delete(""); h end`
   (migration.rb:173), the seeding idiom of rule 9. If the refusal is
   intended, rule 9 needs another idiom; either way CyberTrain has to change
-  for it.
+  for it. Not refused any more on 2026.10.26.7019, so the idiom stays.
 
 ### D. `String#to_i` on more digits than an Integer holds raises `RangeError`
 
-Still present: `"99999999999999999999".to_i` raises `RangeError: integer
+Still present on 2026.10.26.7019: `"99999999999999999999".to_i` raises `RangeError: integer
 overflow parsing "99999999999999999999"` where 2026.09.12 saturated. CRuby
 returns a Bignum; saturating, or raising only from `Integer()`, would keep
 `to_i` total. test/http_request.rb passes now: `Request#content_length`
@@ -309,8 +331,8 @@ refuses more than 18 digits before calling `to_i` (977bfdb).
 
 ### E. More allocation per request
 
-Measured on 2026.10.09-7009 only (examples/blog does not build on
-2026.10.25-7018). An article page allocated 852 objects instead of 511
+Measured on 2026.10.09-7009 only (examples/blog did not build on
+2026.10.25-7018; 2026.10.26.7019 is not measured yet). An article page allocated 852 objects instead of 511
 (same source): about 136 more boxed Arrays from `each_key` on a
 polymorphic Hash (`sp_poly_each_elem`), about 92 more Strings inside
 `sp_StrPolyHash_set`, and about 50 more internal objects. With jemalloc the
@@ -339,8 +361,10 @@ end
 check_nil "x"          # v is typed String
 b = Box.new
 check_nil b.clear!     # compiled as check_nil(NULL): clear! never runs
-puts b.size            # 1 on 2026.10.25-7018; 0 on 2026.09.12 and in Ruby
+puts b.size            # 1 on 2026.10.25-7018; 0 on 2026.09.12, 2026.10.26.7019 and in Ruby
 ```
+
+**Fixed in 2026.10.26.7019.**
 
 Seen in test/http_response.rb: `assert_nil res.drop_header("Location")`
 compiled to `sp_assert_nil(NULL)`, so the header was never dropped and the
@@ -363,6 +387,8 @@ out << body
 p out.encoding.to_s           # "UTF-8"; Ruby: "ASCII-8BIT"
 p out.scan(/^x-a:/i).length   # ArgumentError: invalid byte sequence in UTF-8; Ruby: 1
 ```
+
+**Fixed in 2026.10.26.7019** (it prints "ASCII-8BIT" and 1, as Ruby does).
 
 2026.09.12 also said "UTF-8" but did not validate, so the scan worked.
 Seen in test/send_blob.rb, which scans `Response#to_http` of a PNG

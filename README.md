@@ -42,7 +42,7 @@ an asset pipeline, i18n, and anything beyond a minimal `render json:` — see
 
 [Open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
 to try cybertrain without installing anything: VS Code opens in your browser with
-Spinel 2026.09.12, the `cybertrain` CLI and the blog from the walkthrough below
+Spinel 2026.10.26.7019, the `cybertrain` CLI and the blog from the walkthrough below
 already created (`cybertrain new blog`, the article scaffold, the root route and
 the first migration, built once so the server starts without compiling), its
 development server running in a terminal and the app, showing the article list,
@@ -76,8 +76,11 @@ works there with no network.
 
 ## Requirements
 
-- Spinel `2026.09.12` (`Cybertrain::SPINEL_TAG`, the same release as
-  `SPINEL_TAG` in [.github/workflows/ci.yml](.github/workflows/ci.yml));
+- Spinel `2026.10.26.7019` (`Cybertrain::SPINEL_TAG`, the same release as
+  `SPINEL_TAG` in [.github/workflows/ci.yml](.github/workflows/ci.yml)), a
+  release of [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)
+  (`Cybertrain::SPINEL_REPOSITORY`), the fork of matz/spinel that carries
+  the fixes cybertrain needs ahead of an upstream release;
   untested against other versions. You do not install it by hand: the
   `cybertrain` command builds that release into `~/.cybertrain` the first
   time it needs it (`cybertrain setup` does that on request), unless a
@@ -91,7 +94,10 @@ works there with no network.
   gzip request bodies (`request.decoded_body`) are inflated through the
   system zlib, bound the same way.
 - Ruby 3.2+ and RubyGems, for the `cybertrain` command only (applications
-  never run on CRuby).
+  never run on CRuby). Building Spinel also needs Ruby's `prism` gem, which
+  Ruby 3.3 and newer bundle; on Ruby 3.2, `gem install prism` (with Ruby's
+  development headers, `ruby-dev` on Debian/Ubuntu). `cybertrain doctor`
+  checks it.
 - OpenSSL's headers (`libssl-dev`) are optional: without them Spinel builds
   without its `openssl` package, which cybertrain does not use. On macOS an
   application that requires `openssl` needs Homebrew's (keg-only) OpenSSL on
@@ -171,7 +177,7 @@ commands (`cybertrain help` prints them):
   `dist/` (the binary, `public/`, `storage/`, `tmp/`).
 - `cybertrain spin ARGS...` runs `spin` with the pinned Spinel from any
   directory (`cybertrain spin test`, `cybertrain spin run gen -- --check`).
-- `cybertrain setup [--force]` installs Spinel `2026.09.12` into
+- `cybertrain setup [--force]` installs Spinel `2026.10.26.7019` into
   `~/.cybertrain` unless a `spinel` of that release is already on `PATH`;
   `--force` rebuilds the copy under `~/.cybertrain`.
 - `cybertrain doctor` checks the C toolchain, the SQLite headers and the
@@ -185,10 +191,11 @@ Every command that runs `spin` (`new`, `db`, `server`, `build`, `spin`) first ma
 sure a Spinel of the release in `Cybertrain::SPINEL_TAG` is available. A
 `spinel` on `PATH` (with a `spin`) whose `spinel --version` reports that
 release is used as it is; otherwise the copy `cybertrain` keeps under
-`~/.cybertrain/spinel/2026.09.12/` is used; otherwise `cybertrain` builds
-that copy from the release tag (`git clone`, `make deps`, `make -j`, `make
-install PREFIX=...`), once, in a few minutes. The build log is
-`~/.cybertrain/log/spinel-2026.09.12-build.log` (its last lines are printed
+`~/.cybertrain/spinel/2026.10.26.7019/` is used; otherwise `cybertrain`
+builds that copy from the release tag of `Cybertrain::SPINEL_REPOSITORY`
+(`git clone`, `make deps`, `make -j`, `make install PREFIX=...`), once, in a
+few minutes. The build log is
+`~/.cybertrain/log/spinel-2026.10.26.7019-build.log` (its last lines are printed
 if a step fails); if a tool the build needs is missing, `cybertrain` says
 which and prints the install command for your platform before it starts. A
 `spinel` of another release on `PATH` is never used or touched:
@@ -1862,7 +1869,9 @@ checkout to the action as `framework-path`.
   same blog in Rails 8.1 ([bench/](bench/)), and how to run it again.
 - [spikes/NOTES.md](spikes/NOTES.md) — the spikes that answered
   `docs/design.md`'s open questions, and the compiler constraints they found.
-- [Spinel](https://github.com/matz/spinel) — the AOT Ruby compiler cybertrain targets.
+- [Spinel](https://github.com/matz/spinel) — the AOT Ruby compiler cybertrain targets;
+  cybertrain pins a release of the
+  [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork.
 - [Roundhouse](https://github.com/rubys/roundhouse) (Sam Ruby) — transpiles
   *existing* Rails apps to Spinel. cybertrain is not that: it's a native
   framework you write directly against, not a compatibility layer.

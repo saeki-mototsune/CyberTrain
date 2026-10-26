@@ -42,10 +42,14 @@ ENV LANG=C.UTF-8 \
 # Ruby 3.2 for the CLI, a C toolchain, make, git, curl and the SQLite headers
 # (what `cybertrain doctor` checks); gcc + libc6-dev rather than
 # build-essential (no g++). procps: ps/pgrep for terminals and smoke.sh.
+# ruby-dev and the prism gem: Spinel's build runs a Ruby generator that
+# requires prism, which Ruby 3.2 does not bundle (1.9.0 is PRISM_VERSION in
+# Spinel's Makefile at Cybertrain::SPINEL_TAG).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        ca-certificates curl git gcc make libc6-dev libsqlite3-dev zlib1g-dev procps ruby \
- && rm -rf /var/lib/apt/lists/*
+        ca-certificates curl git gcc make libc6-dev libsqlite3-dev zlib1g-dev procps ruby ruby-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && gem install --no-document prism -v 1.9.0
 
 # User dev, uid/gid 1000 (ubuntu:24.04 ships "ubuntu" with 1000: removed
 # first). Nothing the prebuilt app needs lives in its home directory.

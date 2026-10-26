@@ -2,7 +2,7 @@
 
 `ghcr.io/saeki-mototsune/cybertrain-playground` is cybertrain ready to try
 without installing anything: Ubuntu 24.04 with the `cybertrain` CLI built
-from this repository and Spinel `2026.09.12` built from source, a mirror of
+from this repository and Spinel `2026.10.26.7019` built from source, a mirror of
 the framework so that `cybertrain new` needs no network, and the tutorial's
 blog in `/workspace/blog`, created, scaffolded, migrated and built once.
 [.devcontainer/devcontainer.json](../.devcontainer/devcontainer.json) opens

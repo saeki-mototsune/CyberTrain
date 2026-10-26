@@ -17,12 +17,14 @@
 # about five minutes, so later sessions start with Spinel already built.
 #
 # SPINEL_TAG must equal Cybertrain::SPINEL_TAG (cybertrain/version.rb) and
-# SPINEL_TAG in .github/workflows/ci.yml; update it here, and in the
-# environment's copy of this script, when the release is bumped.
+# SPINEL_TAG in .github/workflows/ci.yml, and SPINEL_GIT must be
+# Cybertrain::SPINEL_REPOSITORY plus ".git" (script/gate checks both);
+# update them here, and in the environment's copy of this script, when the
+# release is bumped.
 set -euo pipefail
 
-SPINEL_TAG="2026.09.12"
-SPINEL_GIT="https://github.com/matz/spinel.git"
+SPINEL_TAG="2026.10.26.7019"
+SPINEL_GIT="https://github.com/saeki-mototsune/spinel.git"
 CT_HOME="${CYBERTRAIN_HOME:-$HOME/.cybertrain}"
 PREFIX="$CT_HOME/spinel/$SPINEL_TAG"
 STAMP="$PREFIX/.cybertrain-complete"
@@ -45,7 +47,7 @@ gem install --no-document yard kramdown kramdown-parser-gfm > /tmp/claude-setup-
 gems_pid=$!
 
 # Spinel, unless a complete copy of the release is already there.
-if [ -f "$STAMP" ] && "$PREFIX/bin/spinel" --version 2>/dev/null | grep -q "($SPINEL_TAG)"; then
+if [ -f "$STAMP" ] && "$PREFIX/bin/spinel" --version 2>/dev/null | grep -q "^spinel $SPINEL_TAG ("; then
   echo "==> Spinel $SPINEL_TAG already installed in $PREFIX"
 else
   echo "==> building Spinel $SPINEL_TAG into $PREFIX"

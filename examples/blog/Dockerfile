@@ -17,10 +17,14 @@ ARG UBUNTU_VERSION=24.04
 # ---- build: Spinel, then `cybertrain build` -> examples/blog/dist --------
 FROM docker.io/library/ubuntu:$UBUNTU_VERSION AS build
 
+# ruby-dev and the prism gem: Spinel's build runs a Ruby generator that
+# requires prism, which 24.04's Ruby 3.2 does not bundle (1.9.0 is
+# PRISM_VERSION in Spinel's Makefile at Cybertrain::SPINEL_TAG).
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential git curl ca-certificates \
-      ruby libsqlite3-dev zlib1g-dev libjemalloc-dev && \
-    rm -rf /var/lib/apt/lists/*
+      ruby ruby-dev libsqlite3-dev zlib1g-dev libjemalloc-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    gem install --no-document prism -v 1.9.0
 
 # The CLI runs from the checkout (ruby -I/src exe/cybertrain), as CONTRIBUTING.md
 # does. `cybertrain setup` builds the Spinel release the checkout pins (a few

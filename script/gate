@@ -18,8 +18,9 @@
 #   * Ruby files parse (`ruby -c`); YAML files load.
 # For the repository, when a file the checks read is in the set (every file,
 # without --staged):
-#   * Cybertrain::VERSION equals spin.toml's version, and Cybertrain::SPINEL_TAG
-#     equals SPINEL_TAG in .github/workflows/ci.yml and script/claude-cloud-setup;
+#   * Cybertrain::VERSION equals spin.toml's version, Cybertrain::SPINEL_TAG
+#     equals SPINEL_TAG in .github/workflows/ci.yml and script/claude-cloud-setup,
+#     and the setup script's SPINEL_GIT is Cybertrain::SPINEL_REPOSITORY's;
 #   * script/check-reserved-names, check-client-faults and check-http-layer pass;
 #   * every file cybertrain.gemspec lists exists, and the CLI loads under CRuby;
 #   * playground/Dockerfile's cli-src stage copies every file the gemspec lists;
@@ -183,6 +184,9 @@ else
   pins << ".github/workflows/ci.yml SPINEL_TAG #{ci_tag.inspect} != Cybertrain::SPINEL_TAG #{spinel_tag.inspect}" unless ci_tag == spinel_tag
   setup_tag = File.read("script/claude-cloud-setup")[/^SPINEL_TAG="([^"]+)"/, 1]
   pins << "script/claude-cloud-setup SPINEL_TAG #{setup_tag.inspect} != Cybertrain::SPINEL_TAG #{spinel_tag.inspect}" unless setup_tag == spinel_tag
+  spinel_repo = File.read(version_rb)[/SPINEL_REPOSITORY = "([^"]+)"/, 1]
+  setup_git = File.read("script/claude-cloud-setup")[/^SPINEL_GIT="([^"]+)"/, 1]
+  pins << "script/claude-cloud-setup SPINEL_GIT #{setup_git.inspect} != Cybertrain::SPINEL_REPOSITORY + \".git\" #{"#{spinel_repo}.git".inspect}" unless setup_git == "#{spinel_repo}.git"
   pins.empty? ? ok("version and Spinel tag pinned in one place", "#{version}, spinel #{spinel_tag}") : fail!("version pins", pins)
 
   %w[check-reserved-names check-client-faults check-http-layer].each do |script|
