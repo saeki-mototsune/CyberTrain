@@ -175,6 +175,15 @@ test "close payloads" do
   assert_equal 123, F.close_reason(long).bytesize
 end
 
+test "close codes a peer may not send are refused" do
+  [999, 1004, 1005, 1006, 1015, 1016, 2999, 5000].each do |code|
+    assert_raises("ProtocolError") { F.close_code(F.close_payload(code, "")) }
+  end
+  [1000, 1003, 1007, 1014, 3000, 4999].each do |code|
+    assert_equal code, F.close_code(F.close_payload(code, ""))
+  end
+end
+
 test "error classes nest under WebSocket::Error" do
   W = Cybertrain::WebSocket
   [W::TimeoutError, W::RefusedError, W::TLSError, W::BlockedAddressError,

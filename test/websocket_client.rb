@@ -347,6 +347,19 @@ test "max_message is enforced before reading the payload" do
   assert_equal 1009, code_of(frames[0])
 end
 
+test "a reserved close code from the server is a ProtocolError" do
+  rx = receiver_with([step("accept"), step("close", "1004")])
+  ws = connect(rx.url("/"))
+  got = ws_outcome { ws.receive(5) }
+  frames = rx.ws_received
+  rx.stop
+  assert_equal "protocol", got.kind
+  assert_includes got.text, "invalid close code 1004"
+  refute ws.ws_open?
+  assert_equal 1, frames.size
+  assert_equal 1002, code_of(frames[0])
+end
+
 test "a masked server frame is a ProtocolError" do
   masked = Cybertrain::WebSocket::Frame.encode(1, "m", "abcd")
   rx = receiver_with([step("accept"), step("send_raw", masked), step("expect")])

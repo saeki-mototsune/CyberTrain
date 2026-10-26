@@ -20,6 +20,7 @@ ok   the assembler joins fragments
 ok   the assembler handles an unfragmented binary message
 ok   the assembler enforces max_message across fragments
 ok   close payloads
+ok   close codes a peer may not send are refused
 ok   error classes nest under WebSocket::Error
 ok   Message holds opcode and data
-24 tests, 113 assertions, 0 failures
+25 tests, 127 assertions, 0 failures

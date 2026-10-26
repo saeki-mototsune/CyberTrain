@@ -341,13 +341,21 @@ module Cybertrain
 
       # @param payload [String]
       # @return [Integer] the code; 1005 when the payload is empty
-      # @raise [ProtocolError] for a 1-byte payload
+      # @raise [ProtocolError] for a 1-byte payload, or a code a peer may
+      #   not send (RFC 6455 7.4: below 1000, the reserved 1004, 1005, 1006
+      #   and 1015, the unassigned 1015..2999, or above 4999)
       # @api public
       def self.close_code(payload)
         n = payload.bytesize
         return 1005 if n == 0
         raise ProtocolError, "close payload of 1 byte" if n == 1
-        (payload.getbyte(0) << 8) | payload.getbyte(1)
+
+        code = (payload.getbyte(0) << 8) | payload.getbyte(1)
+        valid = (code >= 1000 && code <= 1003) || (code >= 1007 && code <= 1014) ||
+                (code >= 3000 && code <= 4999)
+        raise ProtocolError, "invalid close code #{code}" unless valid
+
+        code
       end
 
       # The reason: bytes after the code, at most 123, without control

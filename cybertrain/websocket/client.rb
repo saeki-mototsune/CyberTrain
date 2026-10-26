@@ -417,7 +417,7 @@ module Cybertrain
       def ws_closed_by_peer(payload)
         code = Frame.close_code(payload)
         reason = Frame.close_reason(payload)
-        answer = code == 1005 || code == 1006 || code == 1015 ? "" : Frame.close_payload(code, "")
+        answer = code == 1005 ? "" : Frame.close_payload(code, "")
         ws_try_write(Frame.encode(Frame::OP_CLOSE, answer, Client.mask_key))
         @close_code = code
         @close_reason = reason
