@@ -107,11 +107,11 @@ end
 def await_reconnects(name, count, wait)
   ends_at = mono_now + wait
   while mono_now < ends_at
-    return true if WS.status(name).reconnects >= count
+    return true if WS.feed_status(name).reconnects >= count
 
     sleep(0.05)
   end
-  WS.status(name).reconnects >= count
+  WS.feed_status(name).reconnects >= count
 end
 
 def receiver_for(max, steps_list)
@@ -199,9 +199,9 @@ test "stop! when not running does nothing" do
   refute WS.running?
 end
 
-test "status of an unknown name is an ArgumentError" do
-  assert_includes assert_raises("ArgumentError") { WS.status("nope") }, "\"nope\""
-  status = WS.status("bare")
+test "feed_status of an unknown name is an ArgumentError" do
+  assert_includes assert_raises("ArgumentError") { WS.feed_status("nope") }, "\"nope\""
+  status = WS.feed_status("bare")
   refute status.connected?
   assert_equal 0, status.last_message_at
   assert_equal 0, status.reconnects
@@ -221,7 +221,7 @@ test "messages reach on_message and status follows" do
   refute WS.start!(Cybertrain::Config.new)
   assert await_size(TICKS, 2, 5.0)
   assert_equal ["text:a", "text:b"], TICKS
-  status = WS.status("ticks")
+  status = WS.feed_status("ticks")
   assert status.connected?
   assert status.last_message_at > 0
   assert_equal 0, status.reconnects
@@ -230,7 +230,7 @@ test "messages reach on_message and status follows" do
   refute LOG.string.include?("secret")
   WS.stop!
   refute WS.running?
-  refute WS.status("ticks").connected?
+  refute WS.feed_status("ticks").connected?
   # stop! closed the connection with 1000.
   closes = frames_of(rx, 8)
   assert_equal 1, closes.size
@@ -248,8 +248,8 @@ test "on_open runs again after every reconnect" do
   assert await_frames(rx, 1, 2, 8.0)
   assert_equal ["subscribe trades", "subscribe trades"], frames_of(rx, 1)
   assert await_reconnects("feed", 1, 5.0)
-  assert_equal 1, WS.status("feed").reconnects
-  assert WS.status("feed").connected?
+  assert_equal 1, WS.feed_status("feed").reconnects
+  assert WS.feed_status("feed").connected?
   assert_includes LOG.string, "[WARN] WebSocket \"feed\" disconnected: Cybertrain::WebSocket::ClosedError: 127.0.0.1:"
   assert_includes LOG.string, ": closed by the server (1001) (retry in 1s)"
   assert_equal 2, count_of(LOG.string, "WebSocket \"feed\" connected to")
@@ -264,8 +264,8 @@ test "an exception in on_message keeps the connection" do
   assert await_size(FLAKY, 1, 5.0)
   assert_equal ["2"], FLAKY
   assert_includes LOG.string, "[ERROR] WebSocket \"flaky\" on_message failed: RuntimeError: cannot parse 1"
-  assert_equal 0, WS.status("flaky").reconnects
-  assert WS.status("flaky").connected?
+  assert_equal 0, WS.feed_status("flaky").reconnects
+  assert WS.feed_status("flaky").connected?
   WS.stop!
   rx.stop
 end

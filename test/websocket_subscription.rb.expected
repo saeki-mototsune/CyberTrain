@@ -3,7 +3,7 @@ ok   subscribe refuses bad arguments
 ok   start! refuses a subscription without on_message
 ok   start! does nothing when the worker is off
 ok   stop! when not running does nothing
-ok   status of an unknown name is an ArgumentError
+ok   feed_status of an unknown name is an ArgumentError
 ok   the service is registered with Background
 ok   messages reach on_message and status follows
 ok   on_open runs again after every reconnect

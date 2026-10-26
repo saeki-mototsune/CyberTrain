@@ -93,7 +93,7 @@ module Cybertrain
       end
     end
 
-    # A snapshot of a subscription's state, from {WebSocket.status}.
+    # A snapshot of a subscription's state, from {WebSocket.feed_status}.
     # @api public
     class Status
       def initialize(connected, last_message_at, reconnects)
@@ -144,7 +144,7 @@ module Cybertrain
         @sub_message_block = nil
         @sub_thread = nil
         # Guarded by WebSocket::LOCK: the feed thread writes them, a request
-        # thread reads them through WebSocket.status.
+        # thread reads them through WebSocket.feed_status.
         @connected = false
         @last_message_at = 0
         @reconnects = 0
@@ -190,16 +190,26 @@ module Cybertrain
         "#{scheme}#{@sub_target.target_label}"
       end
 
-      def sub_status
+      # The status fields, each read under the lock. Status itself is built
+      # by WebSocket.feed_status: a method that returns a Status from inside
+      # a synchronize block does not compile in a program with the whole
+      # framework (Spinel lays Status out as a value type there).
+      def sub_connected?
         connected = false
+        LOCK.synchronize { connected = @connected }
+        connected
+      end
+
+      def sub_last_message_at
         last = 0
+        LOCK.synchronize { last = @last_message_at }
+        last
+      end
+
+      def sub_reconnects
         count = 0
-        LOCK.synchronize do
-          connected = @connected
-          last = @last_message_at
-          count = @reconnects
-        end
-        Status.new(connected, last, count)
+        LOCK.synchronize { count = @reconnects }
+        count
       end
 
       # A connection opened: a reconnect unless it is the first.
@@ -259,7 +269,7 @@ module Cybertrain
     #   Cybertrain::WebSocket.subscribe("trades", "wss://feed.example.com/v1")
     #     .on_open { |conn| conn.send_text("{\"op\":\"subscribe\"}") }
     #     .on_message { |conn, text| Trade.record(text) }
-    # @param name [String] for the log and {WebSocket.status}; unique
+    # @param name [String] for the log and {WebSocket.feed_status}; unique
     # @param url [String] ws:// or wss://
     # @param headers [Hash{String => String}] extra handshake headers
     # @param timeout [Numeric] seconds per wait while connecting and per write
@@ -311,11 +321,12 @@ module Cybertrain
     # @return [Status]
     # @raise [ArgumentError] when no feed has that name
     # @api public
-    def self.status(name)
+    def self.feed_status(name)
       i = subscription_index(name.to_s)
-      raise ArgumentError, "WebSocket.status: no subscription named #{name.to_s.inspect}" if i < 0
+      raise ArgumentError, "WebSocket.feed_status: no subscription named #{name.to_s.inspect}" if i < 0
 
-      SUBSCRIPTIONS[i].sub_status
+      sub = SUBSCRIPTIONS[i]
+      Status.new(sub.sub_connected?, sub.sub_last_message_at, sub.sub_reconnects)
     end
 
     # Starts one thread per subscription, unless {Config#worker} is off,
@@ -425,9 +436,15 @@ module Cybertrain
       attempt = 0
       while feed_live?(generation)
         failure = feed_session(sub, generation)
+        # After a stop! the state is marked disconnected, but a thread
+        # left from before a stop! and a new start! leaves it to the new
+        # generation's thread.
+        unless feed_live?(generation)
+          sub.sub_disconnected! if @generation == generation
+          break
+        end
         sub.sub_disconnected!
         lasted = sub.sub_lasted(Net::Timer.now)
-        break unless feed_live?(generation)
 
         attempt = 0 if lasted >= STEADY_SECONDS
         attempt += 1
