@@ -55,7 +55,7 @@ that it is fixed.
 | E. More allocation per request | no | not re-measured | not re-measured |
 | F. A call whose result is always nil is dropped | no | **yes** | **fixed** |
 | G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** |
-| H. A forwarded block's value loses an application class | no | not checked | **yes** (new; worked around) |
+| H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) |
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) |
 
 ## What CyberTrain still works around
@@ -439,7 +439,7 @@ UTF-8 (a PNG or JPEG does; an ASCII-only body does not).
 
 New on 2026.10.26.7019 (reported downstream on 2026-10-27, issue #27;
 2026.10.25-7018 not checked; the reporter saw it pass on matz/spinel's
-2026.10.25 release). When a method forwards its block with `&block` to a
+2026.10.25 release, which only hid it: see the bisection below). When a method forwards its block with `&block` to a
 yielding method, and the program's blocks for it return different types,
 the forwarding call's value is boxed without the class of an application
 object: calling a method on it raises `NoMethodError`, and the method is
@@ -470,5 +470,45 @@ a local declared before the block (as DB.transaction already requires),
 and test/db_with_value.rb covers that form and a Boolean condition
 (spikes/NOTES.md rule 77).
 
-- Fix: keep the classes the block can return in the forwarding call's
-  boxed value, as 2026.09.12 did.
+Bisected on 2026-10-27 between matz/spinel's 2026.10.25 release (2814693f6)
+and the fork's 2026.10.26.7019, whose compiler is matz/spinel master
+9d1040375 (the fork adds only its Docker image files). The first bad commit
+is upstream b6ca77437 (2026-10-25, "superclass answers its parents' Class
+objects, and a dynamic name's method takes what dynamic calls hand on",
+src/analyze_cls.c only). It exposes an older gap rather than adding one:
+
+- The gap: the class analysis does not carry a block's value class from
+  the call site, through the `&block` forward, into the inner yield's
+  value once a second call site passes a block of another type. A program
+  with no dynamic name already fails on 2026.10.25:
+
+  ```ruby
+  class R; def ok? = true; end
+  def run_block = yield(0)
+  def with(&block) = run_block(&block)
+  p with { |c| 1 }
+  r = with { |c| R.new }
+  puts r.ok?   # NoMethodError on 2026.10.25 and on 2026.10.26.7019
+  ```
+
+- What hid it: a call to `method` (or `send`, `public_send`) with a
+  computed name, or with no name at all as in `req.method`, makes every
+  method name dynamic (a literal Symbol or String name, `method(:m)`,
+  makes only that one dynamic), and until b6ca77437 a dynamic name's
+  method had its parameters, its `&block` one included, seeded with every
+  class. The forwarded value then held every
+  class, and `r.ok?` dispatched over every class that defines `ok?`.
+  CyberTrain programs always have such a call (`Request#method`, called
+  as `req.method` in cybertrain/middleware/csrf_protection.rb and
+  cybertrain/http/request.rb), which is why the reporter's program passed
+  on 2026.10.25. Adding `class Req; attr_reader :method; def initialize =
+  (@method = "GET"); end` and `puts Req.new.method` to the program above
+  makes it print `true` on 2026.10.25.
+- What b6ca77437 changed: a dynamic (not opaque) name's parameters now
+  take a `dynarg` element, and the `&block` parameter only the builtin
+  values, so the gap shows again.
+
+Still present on matz/spinel master b7007eb8b (2026-10-27).
+
+- Fix: carry the classes the block can return through the `&block`
+  forward into the forwarding call's boxed value, as 2026.09.12 did.
