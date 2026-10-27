@@ -59,7 +59,7 @@ that it is fixed.
 | Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 |
 | --- | --- | --- | --- | --- |
 | 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) |
-| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related tests pass without the workaround) |
+| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) |
 | 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) |
 | 4 to 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured |
 | `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked |
@@ -145,8 +145,9 @@ of a caller that is otherwise unused is typed as an Integer the same way.
 
 Re-checked on 2026-10-27 on matz/spinel master 9b9972399: with
 `Html.escape`'s `case value when String ... else "#{value.to_s}" end`
-replaced by `str = value.to_s`, the 47 CyberTrain tests that mention it or
-the router (`grep -lE "Html|escape|router|Router" test/*.rb`) all pass. Not
+replaced by `str = value.to_s`, the 47 CyberTrain test files that mention it
+or the router (`grep -lE "Html|escape|router|Router" test/*.rb`, 843 `test`
+blocks between them) all pass under `spin test`. Not
 reproduced; the workaround can be reconsidered, but this check does not
 prove the general case.
 
@@ -438,9 +439,10 @@ On 2026.10.26.7019 (re-checked on 2026-10-26) and on matz/spinel master
   (docs/int-overflow.md): its coverage is not complete, and some overflow
   paths through method arguments, closures and certain containers still
   raise rather than promote. For the parse itself it gives CRuby's answer:
-  in the shapes checked on master 0d0a621fb, `String#to_i`, `to_i(base)`,
-  `Integer()` (also with `exception: false` and `"0x..."`), `hex` and `oct`
-  return the same Bignum CRuby does, for literals and for run-time Strings
+  in the shapes checked on master 9b9972399 (and before that on
+  0d0a621fb), `String#to_i`, `to_i(base)`, `Integer()` (also with
+  `exception: false` and `"0x..."`), `hex` and `oct` return the same
+  Bignum CRuby does, for literals and for run-time Strings
   (ARGV, a Hash value, a method parameter) (upstream 317d9bbe8, 2026-09-26,
   "promote mode reads String#to_i and Integer() past sp_int as a Bignum";
   #10263 covers `String#hex` and `#oct` past the word in that mode). What
