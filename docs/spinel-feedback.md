@@ -4,7 +4,7 @@ What building and speeding up CyberTrain found in Spinel itself, written so
 each item can become an issue upstream. Each says what happens, how it was
 seen, what CyberTrain does about it today, and what would fix it in Spinel.
 
-Three builds are covered:
+Four builds are covered:
 
 - **2026.09.12** (112bae85c1a2), matz/spinel's release, which CyberTrain
   was pinned to until 2026-10-26. Items 1 to 7 and the tables were found on
@@ -26,61 +26,83 @@ Three builds are covered:
   the committed ones and its tests pass. The package
   `ghcr.io/saeki-mototsune/spinel:2026.10.26-7019`, built from the same
   commit, gave the same results.
+- **matz/spinel master 9b9972399** (2026-10-28 01:58 +0900), built from
+  source and checked on 2026-10-27. The fork's fixes are no longer only in
+  the fork: they are merged into matz/spinel (all by SaekiMototsune, merged
+  2026-10-26), #10254 (A), #10255 (B), #10256 (`OpenSSL::Digest#to_s` and
+  `#hexdigest` typed), #10257 (3), #10258 and #10259 (the two shapes of C),
+  #10260 (F), #10261 (the `VERSIONS` refusal under C), #10262 (G) and
+  #10263 (`String#hex` and `#oct` past the word under
+  `--int-overflow=promote`, see D), and #10316 ("An
+  empty {} handed on through a parameter takes the Hash kind its callee
+  wants", the fork's `fix/empty-hash-through-param`).
 
 The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
 [performance-next.md](performance-next.md).
 
-Suggested order for what is still open: 1 and 2, then D, then 4 to 7,
-then the rest. (B is settled: since 2026.10.26.7019 it is a build error by
-design, see B.)
+Suggested order for what is still open: H (still present on master
+9b9972399; fix proposed in matz/spinel#10415, not merged yet), and the two
+shapes found in review (#10416 and #10417, not merged yet)
+(see "Two shapes master 9b9972399 still gets wrong"), then deciding whether
+CyberTrain keeps its workarounds for 1 and 2 (neither reproduced on master
+9b9972399), then 4 to 7, then the rest. (B and D are settled as by design:
+since 2026.10.26.7019 B is a build error, see B; D's `RangeError` is the
+default `raise` mode's intended behaviour, and `--int-overflow=promote`
+gives CRuby's Bignum, see D.)
 
 ## Status at a glance
 
 "Not re-checked" means no one has tried it on that build; it is not a claim
 that it is fixed.
 
-| Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 |
-| --- | --- | --- | --- |
-| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked |
-| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked |
-| 3. An Array assigned to a wider local is copied | yes | yes | **fixed** |
-| 4 to 7. Runtime cost | yes | not re-measured | not re-measured |
-| `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed |
-| `"#{v}"` copies a String | yes | yes | yes |
-| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** |
-| B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it |
-| C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) |
-| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around, re-checked) |
-| E. More allocation per request | no | not re-measured | not re-measured |
-| F. A call whose result is always nil is dropped | no | **yes** | **fixed** |
-| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** |
-| H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) |
-| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) |
+| Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 |
+| --- | --- | --- | --- | --- |
+| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) |
+| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related tests pass without the workaround) |
+| 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) |
+| 4 to 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured |
+| `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked |
+| `"#{v}"` copies a String | yes | yes | yes | not re-checked |
+| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) |
+| B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) |
+| C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made |
+| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote gives a Bignum |
+| E. More allocation per request | no | not re-measured | not re-measured | not re-measured |
+| F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) |
+| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) |
+| H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** |
+| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) |
+| Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** |
 
 ## What CyberTrain still works around
 
-Checked on 2026-10-26 with the toolchain `cybertrain setup` builds from
-2026.10.26.7019 (`spinel 2026.10.26.7019 (80b2f988)`). The regressions
-that release fixes (A, the generated C of C, F, G, and 3) never had a
-workaround in CyberTrain: it stayed on 2026.09.12, where they do not happen,
-until it moved to 2026.10.26.7019. The refusal listed under C is separate:
-that release still makes it, and CyberTrain's workaround for it stays. The
-first four rows below were re-checked (the H row on 2026-10-27, when it
-was added) and are still needed; the last one
-is kept until someone re-checks it:
+Re-checked on 2026-10-27 against matz/spinel master 9b9972399, built from
+source; CyberTrain itself is still pinned to 2026.10.26.7019 (`spinel
+2026.10.26.7019 (80b2f988)`), where the rows were checked on 2026-10-26
+(the H row on 2026-10-27, when it was added). The regressions that release
+fixes (A, the generated C of C, F, G, and 3) never had a workaround in
+CyberTrain: it stayed on 2026.09.12, where they do not happen, until it
+moved to 2026.10.26.7019. The refusal listed under C is separate: both
+builds still make it, and CyberTrain's workaround for it stays. The first
+four rows below are still needed on master 9b9972399; the last one did not
+reproduce there, but is kept until it is decided whether to drop it:
 
-| Workaround | Item | On 2026.10.26.7019 |
-| --- | --- | --- |
-| `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error |
-| `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` |
-| test/template_engine.rb passes the layout's Hash as a call (`layout_env`) | refusal under C | the earlier form, through a local, is still refused |
-| `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call |
-| `Html.escape`'s `case value when String`, `SafeString.of` and binding arguments to locals (rules 56, 58) | 1, 2 | not re-checked, kept; no commit in the fork or in matz/spinel's master as of 2026-10-26 (b933924) names a fix |
+| Workaround | Item | On 2026.10.26.7019 | On master 9b9972399 |
+| --- | --- | --- | --- |
+| `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error | required (#10255) |
+| `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` | still raises `RangeError`, by design in the default `raise` mode; kept (or build with `--int-overflow=promote`) |
+| test/template_engine.rb passes the layout's Hash as a call (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged |
+| `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fix proposed in #10415 |
+| `Html.escape`'s `case value when String`, `SafeString.of` and binding arguments to locals (rules 56, 58) | 1, 2 | not re-checked, kept | not reproduced in the shapes checked (see 1 and 2); kept until decided |
 
-The fork's unmerged branches that touch what is left (for example
-`fix/empty-hash-through-param` for the refusal under C) are not in any
-release; when one is, the matching row above can be removed.
+Every fix the fork carried is now in matz/spinel master, not only in the
+fork (#10254 to #10263, and #10316). #10316 is the fork's
+`fix/empty-hash-through-param`, which this document used to name for the
+refusal under C; it is merged, and it does not remove that refusal (see C).
+The row for H can be removed once its fix is in a build CyberTrain uses.
+The row for D stays as long as CyberTrain builds in the default `raise`
+mode, where the `RangeError` is by design (see D).
 
 ## Correctness
 
@@ -101,6 +123,12 @@ a later read crashes.
   method (`SafeString.of`), whose parameters are rooted on entry (rule 58).
 - Fix: root the arguments of the generated `new` before it allocates.
 
+Re-checked on 2026-10-27 on matz/spinel master 9b9972399: for
+`Foo.new("v#{i}".strip)` and `Foo.new("x#{i}" + "y")` the generated C roots
+each argument at the call site (`SP_GC_ROOT(_t7)` before
+`sp_Foo_new(_t7)`). Not reproduced in that shape; there was no
+AddressSanitizer run, so this is not a claim that it is fixed in general.
+
 ### 2. A parameter used only through `to_s` is narrowed to one caller's type
 
 `Html.escape(value)` was typed as taking an Integer because one caller
@@ -114,6 +142,13 @@ of a caller that is otherwise unused is typed as an Integer the same way.
   `x.to_s` from callers (rule 56).
 - Fix: unify the types of every call site, or widen to untyped instead of
   picking one.
+
+Re-checked on 2026-10-27 on matz/spinel master 9b9972399: with
+`Html.escape`'s `case value when String ... else "#{value.to_s}" end`
+replaced by `str = value.to_s`, the 47 CyberTrain tests that mention it or
+the router (`grep -lE "Html|escape|router|Router" test/*.rb`) all pass. Not
+reproduced; the workaround can be reconsidered, but this check does not
+prove the general case.
 
 ### 3. An Array assigned to a local of a wider element type is copied
 
@@ -137,7 +172,9 @@ puts f(true)           # 1 on 2026.09.12 and 2026.10.25-7018; 2 on 2026.10.26.70
 ```
 
 **Fixed in 2026.10.26.7019**, together with the untyped
-`OpenSSL::Digest#to_s` below, and test/http_client.rb passes there.
+`OpenSSL::Digest#to_s` below, and test/http_client.rb passes there. Both
+fixes are merged into matz/spinel (#10257, and #10256 for the Digest).
+A `case` of 17 or more arms still copies, see the next section.
 
 - Seen on 2026.10.25-7018 in test/http_client.rb: `::ffff:127.0.0.1` was
   classified as "reserved" instead of "loopback", because
@@ -152,6 +189,22 @@ puts f(true)           # 1 on 2026.09.12 and 2026.10.25-7018; 2 on 2026.10.26.70
 - Fix: keep aliasing. Either widen the Array where it is made (the
   assignment shares its storage), or refuse the program at compile time
   instead of copying.
+
+### Two shapes master 9b9972399 still gets wrong
+
+Found in review of the upstream fixes, and still wrong on matz/spinel
+master 9b9972399 (2026-10-27). Fixes are proposed in matz/spinel#10416
+(the chain of locals) and #10417 (the `case` of 17 or more arms), not merged
+yet. As far as known
+neither affects CyberTrain's own tests.
+
+- **A Hash literal handed through a long chain of locals into a
+  constant.** `a = {"x"=>1}; b = a; c = b; d = c; e = d; f = e; DEEP = f`,
+  then a method that stores `DEEP["y"] = "s"`, raises `TypeError` at run
+  time: "cannot store a String key with a String value into a hash Spinel
+  typed as String-keyed with Integer values".
+- **A `case` of 17 or more arms yielding Arrays**, assigned to a local that
+  is then pushed to, loses the push: the Array is copied, as in 3.
 
 ## Runtime cost
 
@@ -247,10 +300,13 @@ None of these happens on 2026.09.12. First found on 2026.10.09-7009 (A to E, whi
 benchmarking, see
 [benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md)),
 re-checked, with F and G new, on 2026.10.25-7018, and fixed in the fork's
-2026.10.26.7019 except D, which CyberTrain works around, and B, which that
-release turns into a build error by design (and E, not re-measured). Each
-section's reduced program from A to G prints Ruby's result on
-2026.10.26.7019. H is new on 2026.10.26.7019 itself.
+2026.10.26.7019 except D, which is by design in the default `raise` mode and
+which CyberTrain works around, and B, which that release turns into a build
+error by design (and E, not re-measured). Each section's reduced program
+from A, C, F and G prints Ruby's result on 2026.10.26.7019. H is new on
+2026.10.26.7019 itself. The fixes are merged into matz/spinel (#10254 to
+#10263, 2026-10-26); on master 9b9972399 (re-checked on 2026-10-27) H is
+still present, and D still raises, by design.
 
 On 2026.10.25-7018, the ten `spin test` failures:
 
@@ -272,7 +328,7 @@ refusal; with its argument built where the call sees it, 98 of 98 pass.
 
 Present on 2026.10.25-7018; **fixed in 2026.10.26.7019** (the program
 below prints `res x` and `res y`, and examples/blog's `spin run gen` writes
-files identical to the committed ones).
+files identical to the committed ones). Merged into matz/spinel as #10254.
 
 ```ruby
 class Mapper
@@ -312,11 +368,13 @@ error instead of a crash. The private names stay (declaring the function
 under its C name as well would bring back the conflicting-types errors),
 and Spinel's docs/FFI.md says a fragment declares what it calls or
 includes the header. CyberTrain's declaration is therefore required, not a
-workaround to remove.
+workaround to remove. Merged into matz/spinel as #10255.
 
 ### C. Generated C that does not compile
 
-None of the shapes below is reported on 2026.10.26.7019. On 2026.10.25-7018:
+None of the shapes below is reported on 2026.10.26.7019, nor on matz/spinel
+master, where their fixes are merged as #10258 (the dispatched call's
+result) and #10259 (the attribute write). On 2026.10.25-7018:
 
 - **A dispatched call's result is not boxed into a boxed local.**
   `assigns = view_assigns` in `Controller#view_env` (controller.rb:458),
@@ -346,24 +404,47 @@ generating wrong code:
   to `render_with_layout`'s parameter `env`, which the method stores keys or
   values of other types into". Not a regression: the test's `{}` should be
   built where the call can widen it. Still refused on 2026.10.26.7019
-  (re-checked on 2026-10-26 with the test's earlier form);
-  fixed in CyberTrain by passing the Hash as a call (`layout_env`) instead
-  of through a local.
+  (re-checked on 2026-10-26 with the test's earlier form), and on matz/spinel
+  master 9b9972399 (re-checked on 2026-10-27 with the earlier form,
+  `git show 81778ea^:test/template_engine.rb`, refused at line 49), although
+  #10316 ("An empty {} handed on through a parameter takes the Hash kind its
+  callee wants", the fork's `fix/empty-hash-through-param`) is merged there:
+  that fix does not cover this program. Fixed in CyberTrain by passing the
+  Hash as a call (`layout_env`) instead of through a local.
 - test/template_integration.rb (new): "a constant write given a Hash,
   which no conversion keeps in its `sp_StrPolyHash *` slot", at
   `Migration::Base::VERSIONS = begin h = { "" => "" }; h.delete(""); h end`
   (migration.rb:173), the seeding idiom of rule 9. If the refusal is
   intended, rule 9 needs another idiom; either way CyberTrain has to change
-  for it. Not refused any more on 2026.10.26.7019, so the idiom stays.
+  for it. Not refused any more on 2026.10.26.7019, nor on matz/spinel
+  master since #10261, so the idiom stays.
 
 ### D. `String#to_i` on more digits than an Integer holds raises `RangeError`
 
-Still present on 2026.10.26.7019 (re-checked on 2026-10-26):
-`"99999999999999999999".to_i` raises `RangeError: integer overflow parsing
-"99999999999999999999"` where 2026.09.12 saturated. CRuby
-returns a Bignum; saturating, or raising only from `Integer()`, would keep
-`to_i` total. test/http_request.rb passes now: `Request#content_length`
-refuses more than 18 digits before calling `to_i` (977bfdb).
+By design in the default `raise` mode, not a bug to fix.
+On 2026.10.26.7019 (re-checked on 2026-10-26) and on matz/spinel master
+9b9972399 (re-checked on 2026-10-27), `"99999999999999999999".to_i` raises
+`RangeError: integer overflow parsing "99999999999999999999"` where
+2026.09.12 saturated; CRuby returns a Bignum.
+
+- Why: upstream 412a2200c (Matz, 2026-05-27, "runtime: to_i / Integer() on
+  overflowing input raise RangeError", fixes #842) replaced the silent
+  saturation at INT64_MAX on purpose, because it hid the precision loss
+  and made `rescue RangeError` ineffective. Spinel's docs/int-overflow.md
+  describes the default `raise` mode as catching overflow loudly, never
+  silently wrong, and as a deliberate deviation from CRuby;
+  docs/limitations.md lists Integer overflow under "By design".
+- CRuby's answer is available with `--int-overflow=promote`: there
+  `String#to_i`, `to_i(base)`, `Integer()` (also with `exception: false`
+  and `"0x..."`), `hex` and `oct` return the same Bignum CRuby does, run-time
+  Strings included (upstream 317d9bbe8, 2026-09-26, "promote mode reads
+  String#to_i and Integer() past sp_int as a Bignum", checked on master
+  0d0a621fb; #10263 covers `String#hex` and `#oct` past the word in that
+  mode).
+- Today: test/http_request.rb passes because `Request#content_length`
+  refuses more than 18 digits before calling `to_i` (977bfdb). CyberTrain
+  keeps that guard; building with `--int-overflow=promote` would be the
+  alternative.
 
 ### E. More allocation per request
 
@@ -400,7 +481,7 @@ check_nil b.clear!     # compiled as check_nil(NULL): clear! never runs
 puts b.size            # 1 on 2026.10.25-7018; 0 on 2026.09.12, 2026.10.26.7019 and in Ruby
 ```
 
-**Fixed in 2026.10.26.7019.**
+**Fixed in 2026.10.26.7019**, and merged into matz/spinel as #10260.
 
 Seen in test/http_response.rb: `assert_nil res.drop_header("Location")`
 compiled to `sp_assert_nil(NULL)`, so the header was never dropped and the
@@ -424,7 +505,8 @@ p out.encoding.to_s           # "UTF-8"; Ruby: "ASCII-8BIT"
 p out.scan(/^x-a:/i).length   # ArgumentError: invalid byte sequence in UTF-8; Ruby: 1
 ```
 
-**Fixed in 2026.10.26.7019** (it prints "ASCII-8BIT" and 1, as Ruby does).
+**Fixed in 2026.10.26.7019** (it prints "ASCII-8BIT" and 1, as Ruby does),
+and merged into matz/spinel as #10262.
 
 2026.09.12 also said "UTF-8" but did not validate, so the scan worked.
 Seen in test/send_blob.rb, which scans `Response#to_http` of a PNG
@@ -508,7 +590,11 @@ src/analyze_cls.c only). It exposes an older gap rather than adding one:
   take a `dynarg` element, and the `&block` parameter only the builtin
   values, so the gap shows again.
 
-Still present on matz/spinel master b7007eb8b (2026-10-27).
+Still present on matz/spinel master b7007eb8b (2026-10-27), and on master
+9b9972399: both programs above still raise `NoMethodError` (re-checked on
+2026-10-27). Fixed in matz/spinel#10415, not merged yet: a read of the
+forwarded `block` as a proc's value now marks the method as reading its
+yields' value in every class walk, not only the closed one.
 
 - Fix: carry the classes the block can return through the `&block`
   forward into the forwarding call's boxed value, as 2026.09.12 did.
