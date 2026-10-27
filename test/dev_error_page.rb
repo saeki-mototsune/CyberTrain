@@ -277,6 +277,36 @@ test "a failing rebuild keeps the command output" do
   File.delete(log) if File.exist?(log)
 end
 
+# A `spin` first on PATH that answers like a Spinel release without
+# --incremental: it records each build's arguments and refuses the flag.
+test "a toolchain that refuses --incremental gets the plain build at once, and from then on" do
+  Dir.mkdir("tmp") unless File.directory?("tmp")
+  root = File.expand_path("tmp/dev_error_page_fallback_root")
+  bin = "#{root}/fakebin"
+  calls = "#{root}/calls"
+  Dir.mkdir(root) unless File.directory?(root)
+  Dir.mkdir(bin) unless File.directory?(bin)
+  File.delete(calls) if File.exist?(calls)
+  File.write("#{bin}/spin", "#!/bin/sh\n" \
+                            "[ \"$1\" = build ] || exit 0\n" \
+                            "echo \"$*\" >> '#{calls}'\n" \
+                            "case \"$*\" in *--incremental*) echo \"spinel: unknown option '--incremental'\"; exit 1;; esac\n" \
+                            "echo built\n")
+  File.chmod(0o755, "#{bin}/spin")
+  path = ENV["PATH"] || ""
+  ENV["PATH"] = "#{bin}:#{path}"
+  r = Cybertrain::Dev::Rebuilder.new(root, "server", "#{root}/tmp/rebuild.log")
+  assert r.rebuild
+  refute r.last_failed
+  refute r.incremental
+  assert_equal "built\n", r.last_output
+  assert r.rebuild
+  ENV["PATH"] = path
+  assert_equal "build server -- --incremental\nbuild server\nbuild server\n", File.read(calls)
+  [calls, "#{bin}/spin", "#{root}/tmp/rebuild.log"].each { |f| File.delete(f) if File.exist?(f) }
+  ["#{root}/tmp", bin, root].each { |d| Dir.rmdir(d) if File.directory?(d) }
+end
+
 test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
   Dir.mkdir("tmp") unless File.directory?("tmp")
   root = File.expand_path("tmp/dev_error_page_locked_root")
