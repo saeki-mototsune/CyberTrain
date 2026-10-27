@@ -1,0 +1,4 @@
+[INFO] hello
+[WARN] careful
+ok   the default logger has no io and logs at :info
+1 tests, 1 assertions, 0 failures

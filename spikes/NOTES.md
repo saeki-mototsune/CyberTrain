@@ -669,3 +669,20 @@ finds the commit that removed them).
     (`result = LoginResult.new("none"); DB.with { |c| result = ... };
     result`), the form DB.transaction already requires.
     test/db_with_value.rb is the regression program.
+
+78. `puts` on a receiver whose type is nil-only (an ivar only ever assigned
+    nil, like Logger's `@io` in a program that never passes a logger an
+    io) goes through the IO dispatch, and on Spinel 2026.10.26.7019 that
+    dispatch's fallback branch fails C compilation once the TLS layer is
+    in the program: "passing argument 2 of 'sp_File_puts_bin' from
+    incompatible pointer type" (an `sp_String *` where sp_io.h wants a
+    `const char *`). Reproduce with `require "cybertrain/logger"`,
+    `require "cybertrain/net/tls"`, `Cybertrain.logger.info("hello")`; a
+    standalone class with a nil-default `@io` and `require "openssl"` did
+    not reproduce it. Seeding the ivar with a StringIO (rule 9) does not
+    help, because the nil-only parameter keeps the slot boxed, and neither
+    does narrowing with `case io when StringIO`: the boxed `puts` dispatch
+    is emitted either way. `write` compiles through the same dispatch with
+    the right argument type, so Logger#log calls
+    `@io.write(line.end_with?("\n") ? line : "#{line}\n")`.
+    test/logger_tls.rb is the regression program.

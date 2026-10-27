@@ -49,7 +49,12 @@ module Cybertrain
 
       line = "[#{severity.to_s.upcase}] #{msg}"
       if @io
-        @io.puts(line)
+        # #write, not #puts (spikes/NOTES.md rule 78): in a program whose
+        # loggers never get an io, @io is nil-only, and Spinel
+        # 2026.10.26.7019 sends `@io.puts(line)` through a dispatch whose
+        # fallback fails C compilation once the TLS layer is in the program
+        # (test/logger_tls.rb). The newline is added the way #puts would.
+        @io.write(line.end_with?("\n") ? line : "#{line}\n")
       else
         # Flushed per line: a server's stdout is usually a pipe or a file,
         # where it is block-buffered (test/logger_flush.rb).

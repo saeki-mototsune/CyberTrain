@@ -9,18 +9,12 @@
 # openssl package), so the snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23): script/regen-snapshot test/websocket_client.rb.
 require "base64"
-require "stringio"
 require "cybertrain/websocket/client"
 require "cybertrain/net/tls"
 require "cybertrain/test/websocket_receiver"
 require "cybertrain/test"
 
 Cybertrain.config.http_allow_private = true
-# A Logger whose io is only ever nil does not compile under Spinel
-# 2026.10.26.7019 once the TLS layer is in the program (Logger#log's
-# @io.puts goes through the IO dispatch and is emitted with the wrong
-# argument type); test/http_client.rb gives its logger a StringIO the same way.
-Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
 
 # What an action ended with: "ok" or the error's kind, and the message. The
 # rescue ladder lives in a method that receives the block as a Proc
