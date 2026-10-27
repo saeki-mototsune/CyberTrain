@@ -491,10 +491,12 @@ src/analyze_cls.c only). It exposes an older gap rather than adding one:
   puts r.ok?   # NoMethodError on 2026.10.25 and on 2026.10.26.7019
   ```
 
-- What hid it: a call to `method` (or `send`, `public_send`) whose name is
-  not a literal Symbol makes every method name dynamic, and until
-  b6ca77437 a dynamic name's method had its parameters, its `&block` one
-  included, seeded with every class. The forwarded value then held every
+- What hid it: a call to `method` (or `send`, `public_send`) with a
+  computed name, or with no name at all as in `req.method`, makes every
+  method name dynamic (a literal Symbol or String name, `method(:m)`,
+  makes only that one dynamic), and until b6ca77437 a dynamic name's
+  method had its parameters, its `&block` one included, seeded with every
+  class. The forwarded value then held every
   class, and `r.ok?` dispatched over every class that defines `ok?`.
   CyberTrain programs always have such a call (`Request#method`, called
   as `req.method` in cybertrain/middleware/csrf_protection.rb and

@@ -643,8 +643,8 @@ finds the commit that removed them).
     an application class once the program's blocks for that method return
     different types (Spinel 2026.10.26.7019; fine on 2026.09.12; on
     matz/spinel's 2026.10.25 only hidden: the gap is there already, and a
-    non-literal `method` call, which every CyberTrain program has in
-    `Request#method`, seeded the block with every class until upstream
+    `method` call with a computed name or none (`req.method`, which every
+    CyberTrain program has) seeded the block with every class until upstream
     b6ca77437 narrowed that seeding; still present on matz/spinel master
     b7007eb8b, see docs/spinel-feedback.md H). `Cybertrain::DB.with` is
     such a method, and the framework's own DB.with blocks return Arrays and
