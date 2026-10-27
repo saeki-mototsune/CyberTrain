@@ -55,6 +55,7 @@ that it is fixed.
 | E. More allocation per request | no | not re-measured | not re-measured |
 | F. A call whose result is always nil is dropped | no | **yes** | **fixed** |
 | G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** |
+| H. A forwarded block's value loses an application class | no | not checked | **yes** (new; worked around) |
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) |
 
 ## What CyberTrain still works around
@@ -65,7 +66,8 @@ that release fixes (A, the generated C of C, F, G, and 3) never had a
 workaround in CyberTrain: it stayed on 2026.09.12, where they do not happen,
 until it moved to 2026.10.26.7019. The refusal listed under C is separate:
 that release still makes it, and CyberTrain's workaround for it stays. The
-first three rows below were re-checked and are still needed; the last one
+first four rows below were re-checked (the H row on 2026-10-27, when it
+was added) and are still needed; the last one
 is kept until someone re-checks it:
 
 | Workaround | Item | On 2026.10.26.7019 |
@@ -73,6 +75,7 @@ is kept until someone re-checks it:
 | `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error |
 | `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` |
 | test/template_engine.rb passes the layout's Hash as a call (`layout_env`) | refusal under C | the earlier form, through a local, is still refused |
+| `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call |
 | `Html.escape`'s `case value when String`, `SafeString.of` and binding arguments to locals (rules 56, 58) | 1, 2 | not re-checked, kept; no commit in the fork or in matz/spinel's master as of 2026-10-26 (b933924) names a fix |
 
 The fork's unmerged branches that touch what is left (for example
@@ -246,7 +249,8 @@ benchmarking, see
 re-checked, with F and G new, on 2026.10.25-7018, and fixed in the fork's
 2026.10.26.7019 except D, which CyberTrain works around, and B, which that
 release turns into a build error by design (and E, not re-measured). Each
-section's reduced program prints Ruby's result on 2026.10.26.7019.
+section's reduced program from A to G prints Ruby's result on
+2026.10.26.7019. H is new on 2026.10.26.7019 itself.
 
 On 2026.10.25-7018, the ten `spin test` failures:
 
@@ -430,3 +434,41 @@ UTF-8 (a PNG or JPEG does; an ASCII-only body does not).
 
 - Fix: follow CRuby's encoding of the result of `<<` (ASCII-only receiver
   plus a binary argument gives ASCII-8BIT).
+
+### H. A forwarded block's value loses an application class
+
+New on 2026.10.26.7019 (reported downstream on 2026-10-27, issue #27;
+2026.10.25-7018 not checked; the reporter saw it pass on matz/spinel's
+2026.10.25 release). When a method forwards its block with `&block` to a
+yielding method, and the program's blocks for it return different types,
+the forwarding call's value is boxed without the class of an application
+object: calling a method on it raises `NoMethodError`, and the method is
+not even emitted.
+
+```ruby
+class Pool; def with; begin; yield 1; ensure; nil; end; end; end
+module Db; @pool = Pool.new; def self.with(&block) = @pool.with(&block); end
+class Result; def ok? = true; end
+def result_of = Db.with { |c| Result.new }
+p result_of.ok?      # undefined method 'ok?' for an instance of Result (NoMethodError);
+                     # true on 2026.09.12 and in Ruby
+p Db.with { |c| 1 }  # without this second block, or calling Pool#with directly: true
+```
+
+The generated C dispatches `ok?` with a `switch` that has only the
+`default:` NoMethodError case; 2026.09.12's has `case <Result>:`. Builtin
+values (Arrays, Hashes, Integers, Strings, true/false) still dispatch, so
+CyberTrain's own `Cybertrain::DB.with` sites, which return rows and
+Integers, are unaffected, and its 98 test programs pass. An application's
+`DB.with { |c| ... }` that returns its own object breaks, because the
+framework's blocks already make DB.with's value polymorphic. The reporter
+also saw a Boolean block value refused as a condition ("unsupported
+condition (non-bool)") in a larger program; that was not reproduced.
+
+CyberTrain's workaround: DB.with's comment says to assign such a value to
+a local declared before the block (as DB.transaction already requires),
+and test/db_with_value.rb covers that form and a Boolean condition
+(spikes/NOTES.md rule 77).
+
+- Fix: keep the classes the block can return in the forwarding call's
+  boxed value, as 2026.09.12 did.

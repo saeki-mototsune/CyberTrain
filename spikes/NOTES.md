@@ -628,3 +628,40 @@ finds the commit that removed them).
     "backup", ...)` from a Scheduler task) instead of running a long
     `VACUUM INTO` on a thread of the server, where the SQLite call would hold
     its OS worker until it returns.
+
+76. Spinel 2026.10.26.7019 resolves constants as CRuby does: a bare `DB`
+    in an application class outside `module Cybertrain` (`class
+    SessionsController < ApplicationController; def x = DB.with { ... }`)
+    compiles without a warning and raises "uninitialized constant
+    SessionsController::DB (NameError)" when reached; 2026.09.12 found
+    `Cybertrain::DB` there by accident (issue #27). Code outside `module
+    Cybertrain` (the app, generator templates, tests, README snippets)
+    writes `Cybertrain::DB`, `Cybertrain::Job`, `Cybertrain::Password` and
+    so on, or aliases one at the top (`DB = Cybertrain::DB`, as the tests do).
+
+77. The value of a block forwarded with `&block` to a yielding method loses
+    an application class once the program's blocks for that method return
+    different types (Spinel 2026.10.26.7019; fine on 2026.09.12 and,
+    per the report, on matz/spinel's 2026.10.25). `Cybertrain::DB.with` is
+    such a method, and the framework's own DB.with blocks return Arrays and
+    Integers, so in any program that requires it a DB.with block returning
+    a `LoginResult` gives back a boxed value whose dispatch has no case for
+    the class: `r.ok?` raises "undefined method 'ok?' for an instance of
+    LoginResult" (`spinel prog.rb -c` shows the switch with only a
+    `default:`, and `LoginResult#ok?` is not emitted at all). Reduced repro:
+    `class Pool; def with; begin; yield 1; ensure; nil; end; end; end`,
+    `module Db; @pool = Pool.new; def self.with(&block) =
+    @pool.with(&block); end`, `class Result; def ok? = true; end`, `def
+    result_of = Db.with { |c| Result.new }`, then `p result_of.ok?` and
+    `p Db.with { |c| 1 }`: 2026.10.26.7019 raises, 2026.09.12 prints
+    `true` and `1`; without the second call, or calling `Pool#with`
+    directly, it prints `true`. Builtin values (rows, Integers, Strings,
+    true/false) still dispatch, so the framework's sites are unaffected
+    (issue #27, reported downstream). A Boolean block value used as a
+    condition was reported refused at compile time ("unsupported condition
+    (non-bool)") in a larger program; it did not reproduce in the
+    framework or in small programs. The remedy for an object: declare a
+    typed local before the block, assign it inside, return it after
+    (`result = LoginResult.new("none"); DB.with { |c| result = ... };
+    result`), the form DB.transaction already requires.
+    test/db_with_value.rb is the regression program.

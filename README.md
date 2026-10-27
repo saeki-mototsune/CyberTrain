@@ -679,7 +679,7 @@ hand-written sign-in):
   - `dummy_digest` is a digest of a random password, made once per process
     at the current cost. Verify against it when the address is unknown, so
     the response time does not tell which addresses have accounts:
-    `Password.verify_serialized(password, user.nil? ? Password.dummy_digest : user.password_digest)`.
+    `Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`.
   - `session_key(digest)` is an HMAC of the password digest under
     `secret_key_base`; keep it in the session at sign-in and check it with
     `session_key_matches?(session[:password_key], user.password_digest)` on
@@ -1169,8 +1169,9 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   `SPINEL_WORKERS=1` (the default) a long query stalls every request for as
   long. Batch big work (delete a thousand rows per run, enqueue one job per
   item) rather than doing it in one go.
-- **Testing.** `Scheduler.run_due(now)` runs one tick and `Job.work_one(now)`
-  one job, with an epoch time you choose, so a test never sleeps.
+- **Testing.** `Cybertrain::Scheduler.run_due(now)` runs one tick and
+  `Cybertrain::Job.work_one(now)` one job, with an epoch time you choose, so
+  a test never sleeps.
 
 There is no cron syntax, no priority or uniqueness for jobs and no mailer:
 this covers "send later" and "run every N seconds" (`docs/design.md` D28).
