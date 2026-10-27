@@ -245,14 +245,27 @@ test "no banner once a later build succeeds" do
   assert res.body.index("Build failed").nil?, "no banner expected"
 end
 
-test "the rebuild command runs gen then build in the app root, logging to tmp/rebuild.log" do
+test "the rebuild command runs gen then an incremental build in the app root, logging to tmp/rebuild.log" do
   r = Cybertrain::Dev::Rebuilder.new("/apps/my blog")
   assert_equal "/apps/my blog/tmp/rebuild.log", r.log_file
   assert_equal "/apps/my blog/build/bin/server", r.binary_path
-  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build 'server'; } " \
+  assert r.incremental
+  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build 'server' -- --incremental; } " \
                "> '/apps/my blog/tmp/rebuild.log' 2>&1", r.command
   refute r.last_failed
   assert_equal "", r.last_output
+end
+
+test "without --incremental the rebuild command is the plain spin build" do
+  r = Cybertrain::Dev::Rebuilder.new("/apps/my blog")
+  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build 'server'; } " \
+               "> '/apps/my blog/tmp/rebuild.log' 2>&1", r.command(false)
+end
+
+test "only spinel refusing the flag reads as a toolchain without --incremental" do
+  assert Cybertrain::Dev::Rebuilder.incremental_unsupported?("build server\nspinel: unknown option '--incremental'\nspin: build failed\n")
+  refute Cybertrain::Dev::Rebuilder.incremental_unsupported?("app/models/post.rb:3: syntax error\nspin: build failed\n")
+  refute Cybertrain::Dev::Rebuilder.incremental_unsupported?("")
 end
 
 test "a failing rebuild keeps the command output" do
@@ -333,9 +346,9 @@ test "a lock older than 30 minutes is stale even with a live PID: age wins over 
 end
 
 test "the rebuild command quotes the build target like every other interpolated value" do
-  assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog'; }"), "plain target is quoted"
+  assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog' -- --incremental; }"), "plain target is quoted"
   tricky = Cybertrain::Dev::Rebuilder.new("/apps/blog", "it's").command
-  assert tricky.include?("spin build 'it'\\''s'; }"), "a single quote in the target is escaped"
+  assert tricky.include?("spin build 'it'\\''s' -- --incremental; }"), "a single quote in the target is escaped"
   assert tricky.index("spin build it's").nil?, "no unquoted target reaches sh"
 end
 

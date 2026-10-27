@@ -6,7 +6,10 @@ module Cybertrain
   module Dev
     # Regenerates gen/ and rebuilds the server binary of the application in
     # root, logging both steps' stdout and stderr to log_path (relative to
-    # root unless absolute). ErrorPage shows last_output while last_failed.
+    # root unless absolute). The build is Spinel's `--incremental` one, which
+    # recompiles only the C units an edit changed; a toolchain that predates
+    # the flag refuses it, and from then on #rebuild builds without it.
+    # ErrorPage shows last_output while last_failed.
     # target is the app's bin/<name>.rb executable (the package name);
     # "server" only as a default for tests. ArgumentError when
     # AppName.problem refuses it. While `cybertrain build` holds
@@ -14,11 +17,15 @@ module Cybertrain
     # runs nothing: it fails with last_skipped set and last_output saying so
     # (and, once the lock is gone, that the build has finished).
     class Rebuilder
-      attr_reader :log_path, :last_failed, :last_skipped
+      attr_reader :log_path, :last_failed, :last_skipped, :incremental
 
       SKIPPED_MESSAGE = "cybertrain build in progress (tmp/cybertrain-build.lock); " \
                         "rebuild skipped — save the file again once it finishes"
       FINISHED_MESSAGE = "cybertrain build finished; save a file to rebuild"
+
+      # What spinel says to a flag it does not know: a Spinel release older
+      # than `--incremental` fails the build with it.
+      UNSUPPORTED_INCREMENTAL = "unknown option '--incremental'"
 
       # A lock older than this is presumed abandoned (the build that held it
       # was SIGKILLed, or the machine rebooted) rather than genuinely
@@ -41,9 +48,12 @@ module Cybertrain
         @last_output = ""
         @last_failed = false
         @last_skipped = false
+        @incremental = true
       end
 
-      # Runs `spin run gen && spin build <target>` in root; true on success.
+      # Runs `spin run gen && spin build <target> -- --incremental` in root;
+      # true on success. When the toolchain refuses `--incremental`, runs the
+      # plain build at once and keeps to it for the rest of the process.
       def rebuild
         if build_in_progress?
           @last_failed = true
@@ -51,10 +61,20 @@ module Cybertrain
           return false
         end
 
-        ok = system(command)
-        log = log_file
-        record_build(ok, File.exist?(log) ? File.read(log) : "")
+        ok = system(command(@incremental))
+        output = read_log
+        if !ok && @incremental && Rebuilder.incremental_unsupported?(output)
+          @incremental = false
+          ok = system(command(false))
+          output = read_log
+        end
+        record_build(ok, output)
         ok
+      end
+
+      # True when a failed build's output is spinel refusing `--incremental`.
+      def self.incremental_unsupported?(output)
+        output.include?(UNSUPPORTED_INCREMENTAL)
       end
 
       # The compiler output of the last build, or, after a skipped rebuild,
@@ -118,15 +138,25 @@ module Cybertrain
       # The brace group sends a failing `cd` to the log as well. Every
       # interpolated value is quoted, which is what keeps a stray quote in a
       # name from reaching sh (AppName.problem does not refuse a quote).
-      def command
+      # Everything after `spin build`'s `--` goes to spinel. A build with
+      # such flags is never "up to date" to spin, which a rebuild that a
+      # change triggered never is anyway.
+      def command(incremental = true)
         log = log_file
+        build = "spin build #{Shell.quote(@target)}"
+        build += " -- --incremental" if incremental
         "mkdir -p #{Shell.quote(File.dirname(log))} && " \
-          "{ cd #{Shell.quote(@root)} && spin run gen && spin build #{Shell.quote(@target)}; } " \
+          "{ cd #{Shell.quote(@root)} && spin run gen && #{build}; } " \
           "> #{Shell.quote(log)} 2>&1"
       end
 
       def log_file
         File.expand_path(@log_path, @root)
+      end
+
+      def read_log
+        log = log_file
+        File.exist?(log) ? File.read(log) : ""
       end
 
       # Where `spin build <target>` puts the binary.
