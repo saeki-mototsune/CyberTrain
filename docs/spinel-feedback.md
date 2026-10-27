@@ -48,8 +48,8 @@ shapes found in review (#10416 and #10417, not merged yet)
 CyberTrain keeps its workarounds for 1 and 2 (neither reproduced on master
 9b9972399), then 4 to 7, then the rest. (B and D are settled as by design:
 since 2026.10.26.7019 B is a build error, see B; D's `RangeError` is the
-default `raise` mode's intended behaviour, and `--int-overflow=promote`
-gives CRuby's Bignum, see D.)
+default `raise` mode's intended behaviour, and the experimental
+`--int-overflow=promote` parses CRuby's Bignum, see D.)
 
 ## Status at a glance
 
@@ -67,7 +67,7 @@ that it is fixed.
 | A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) |
 | B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) |
 | C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made |
-| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote gives a Bignum |
+| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum |
 | E. More allocation per request | no | not re-measured | not re-measured | not re-measured |
 | F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) |
 | G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) |
@@ -91,7 +91,7 @@ reproduce there, but is kept until it is decided whether to drop it:
 | Workaround | Item | On 2026.10.26.7019 | On master 9b9972399 |
 | --- | --- | --- | --- |
 | `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error | required (#10255) |
-| `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` | still raises `RangeError`, by design in the default `raise` mode; kept (or build with `--int-overflow=promote`) |
+| `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` | still raises `RangeError`, by design in the default `raise` mode; kept (`--int-overflow=promote`, experimental, parses it as a Bignum; see D) |
 | test/template_engine.rb passes the layout's Hash as a call (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged |
 | `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fix proposed in #10415 |
 | `Html.escape`'s `case value when String`, `SafeString.of` and binding arguments to locals (rules 56, 58) | 1, 2 | not re-checked, kept | not reproduced in the shapes checked (see 1 and 2); kept until decided |
@@ -434,17 +434,21 @@ On 2026.10.26.7019 (re-checked on 2026-10-26) and on matz/spinel master
   describes the default `raise` mode as catching overflow loudly, never
   silently wrong, and as a deliberate deviation from CRuby;
   docs/limitations.md lists Integer overflow under "By design".
-- CRuby's answer is available with `--int-overflow=promote`: there
-  `String#to_i`, `to_i(base)`, `Integer()` (also with `exception: false`
-  and `"0x..."`), `hex` and `oct` return the same Bignum CRuby does, run-time
-  Strings included (upstream 317d9bbe8, 2026-09-26, "promote mode reads
-  String#to_i and Integer() past sp_int as a Bignum", checked on master
-  0d0a621fb; #10263 covers `String#hex` and `#oct` past the word in that
-  mode).
+- `--int-overflow=promote` is experimental in Spinel's own words
+  (docs/int-overflow.md): its coverage is not complete, and some overflow
+  paths through method arguments, closures and certain containers still
+  raise rather than promote. For the parse itself it gives CRuby's answer:
+  in the shapes checked on master 0d0a621fb, `String#to_i`, `to_i(base)`,
+  `Integer()` (also with `exception: false` and `"0x..."`), `hex` and `oct`
+  return the same Bignum CRuby does, for literals and for run-time Strings
+  (ARGV, a Hash value, a method parameter) (upstream 317d9bbe8, 2026-09-26,
+  "promote mode reads String#to_i and Integer() past sp_int as a Bignum";
+  #10263 covers `String#hex` and `#oct` past the word in that mode). What
+  the program then does with the Bignum is outside those checks.
 - Today: test/http_request.rb passes because `Request#content_length`
   refuses more than 18 digits before calling `to_i` (977bfdb). CyberTrain
-  keeps that guard; building with `--int-overflow=promote` would be the
-  alternative.
+  keeps that guard. Building with `--int-overflow=promote` would be an
+  alternative only once the whole program is known to work in that mode.
 
 ### E. More allocation per request
 
