@@ -641,8 +641,12 @@ finds the commit that removed them).
 
 77. The value of a block forwarded with `&block` to a yielding method loses
     an application class once the program's blocks for that method return
-    different types (Spinel 2026.10.26.7019; fine on 2026.09.12 and,
-    per the report, on matz/spinel's 2026.10.25). `Cybertrain::DB.with` is
+    different types (Spinel 2026.10.26.7019; fine on 2026.09.12; on
+    matz/spinel's 2026.10.25 only hidden: the gap is there already, and a
+    non-literal `method` call, which every CyberTrain program has in
+    `Request#method`, seeded the block with every class until upstream
+    b6ca77437 narrowed that seeding; still present on matz/spinel master
+    b7007eb8b, see docs/spinel-feedback.md H). `Cybertrain::DB.with` is
     such a method, and the framework's own DB.with blocks return Arrays and
     Integers, so in any program that requires it a DB.with block returning
     a `LoginResult` gives back a boxed value whose dispatch has no case for
