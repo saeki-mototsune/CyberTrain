@@ -19,3 +19,5 @@ Cybertrain.logger.warn("careful")
 test "the default logger has no io and logs at :info" do
   assert_equal :info, Cybertrain.logger.level
 end
+
+Cybertrain::Test.run!
