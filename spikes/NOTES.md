@@ -628,3 +628,13 @@ finds the commit that removed them).
     "backup", ...)` from a Scheduler task) instead of running a long
     `VACUUM INTO` on a thread of the server, where the SQLite call would hold
     its OS worker until it returns.
+
+76. Spinel 2026.10.26.7019 resolves constants as CRuby does: a bare `DB`
+    in an application class outside `module Cybertrain` (`class
+    SessionsController < ApplicationController; def x = DB.with { ... }`)
+    compiles without a warning and raises "uninitialized constant
+    SessionsController::DB (NameError)" when reached; 2026.09.12 found
+    `Cybertrain::DB` there by accident (issue #27). Code outside `module
+    Cybertrain` (the app, generator templates, tests, README snippets)
+    writes `Cybertrain::DB`, `Cybertrain::Job`, `Cybertrain::Password` and
+    so on, or aliases one at the top (`DB = Cybertrain::DB`, as the tests do).
