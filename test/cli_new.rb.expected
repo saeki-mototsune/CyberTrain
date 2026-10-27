@@ -304,7 +304,7 @@ Usage:
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
   cybertrain setup [--force]
-      Install Spinel 2026.10.26.7019 into ~/.cybertrain (CYBERTRAIN_HOME)
+      Install Spinel 2026.10.27.7020 into ~/.cybertrain (CYBERTRAIN_HOME)
       unless a spinel of that release is already on PATH, and print
       the PATH line for ~/.cybertrain/bin. The commands above do the
       install by themselves the first time they need spin.
@@ -364,7 +364,7 @@ Usage:
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
   cybertrain setup [--force]
-      Install Spinel 2026.10.26.7019 into ~/.cybertrain (CYBERTRAIN_HOME)
+      Install Spinel 2026.10.27.7020 into ~/.cybertrain (CYBERTRAIN_HOME)
       unless a spinel of that release is already on PATH, and print
       the PATH line for ~/.cybertrain/bin. The commands above do the
       install by themselves the first time they need spin.
@@ -423,7 +423,7 @@ Usage:
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
   cybertrain setup [--force]
-      Install Spinel 2026.10.26.7019 into ~/.cybertrain (CYBERTRAIN_HOME)
+      Install Spinel 2026.10.27.7020 into ~/.cybertrain (CYBERTRAIN_HOME)
       unless a spinel of that release is already on PATH, and print
       the PATH line for ~/.cybertrain/bin. The commands above do the
       install by themselves the first time they need spin.

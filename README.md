@@ -44,7 +44,7 @@ an asset pipeline, i18n, and anything beyond a minimal `render json:` — see
 
 [Open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
 to try cybertrain without installing anything: VS Code opens in your browser with
-Spinel 2026.10.26.7019, the `cybertrain` CLI and the blog from the walkthrough below
+Spinel 2026.10.27.7020, the `cybertrain` CLI and the blog from the walkthrough below
 already created (`cybertrain new blog`, the article scaffold, the root route and
 the first migration, built once so the server starts without compiling), its
 development server running in a terminal and the app, showing the article list,
@@ -78,7 +78,7 @@ works there with no network.
 
 ## Requirements
 
-- Spinel `2026.10.26.7019` (`Cybertrain::SPINEL_TAG`, the same release as
+- Spinel `2026.10.27.7020` (`Cybertrain::SPINEL_TAG`, the same release as
   `SPINEL_TAG` in [.github/workflows/ci.yml](.github/workflows/ci.yml)), a
   release of [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)
   (`Cybertrain::SPINEL_REPOSITORY`), the fork of matz/spinel that carries
@@ -179,7 +179,7 @@ commands (`cybertrain help` prints them):
   `dist/` (the binary, `public/`, `storage/`, `tmp/`).
 - `cybertrain spin ARGS...` runs `spin` with the pinned Spinel from any
   directory (`cybertrain spin test`, `cybertrain spin run gen -- --check`).
-- `cybertrain setup [--force]` installs Spinel `2026.10.26.7019` into
+- `cybertrain setup [--force]` installs Spinel `2026.10.27.7020` into
   `~/.cybertrain` unless a `spinel` of that release is already on `PATH`;
   `--force` rebuilds the copy under `~/.cybertrain`.
 - `cybertrain doctor` checks the C toolchain, the SQLite headers and the
@@ -193,11 +193,11 @@ Every command that runs `spin` (`new`, `db`, `server`, `build`, `spin`) first ma
 sure a Spinel of the release in `Cybertrain::SPINEL_TAG` is available. A
 `spinel` on `PATH` (with a `spin`) whose `spinel --version` reports that
 release is used as it is; otherwise the copy `cybertrain` keeps under
-`~/.cybertrain/spinel/2026.10.26.7019/` is used; otherwise `cybertrain`
+`~/.cybertrain/spinel/2026.10.27.7020/` is used; otherwise `cybertrain`
 builds that copy from the release tag of `Cybertrain::SPINEL_REPOSITORY`
 (`git clone`, `make deps`, `make -j`, `make install PREFIX=...`), once, in a
 few minutes. The build log is
-`~/.cybertrain/log/spinel-2026.10.26.7019-build.log` (its last lines are printed
+`~/.cybertrain/log/spinel-2026.10.27.7020-build.log` (its last lines are printed
 if a step fails); if a tool the build needs is missing, `cybertrain` says
 which and prints the install command for your platform before it starts. A
 `spinel` of another release on `PATH` is never used or touched:

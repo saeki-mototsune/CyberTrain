@@ -8,7 +8,7 @@ module Cybertrain
 
   # The Spinel release cybertrain is written and tested against: the tag of
   # SPINEL_REPOSITORY that `cybertrain setup` builds, and CI's SPINEL_TAG.
-  SPINEL_TAG = "2026.10.26.7019"
+  SPINEL_TAG = "2026.10.27.7020"
 
   # Where that tag lives: the saeki-mototsune fork of matz/spinel, which
   # carries the fixes cybertrain needs ahead of an upstream release.
