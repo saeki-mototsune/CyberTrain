@@ -424,6 +424,29 @@ module Cybertrain
         @rbuf.bytesize - @rpos
       end
 
+      # Bounds later reads by `timer` instead: a long-lived connection
+      # starts a fresh Timer for each wait, keeping what is buffered.
+      def reader_timer=(timer)
+        @timer = timer
+      end
+
+      # Reads until at least `count` bytes are buffered, consuming none.
+      # False when the stream ends first. A TimeoutError from the stream
+      # leaves what is already buffered in place, so a later call resumes.
+      def fill_to(count)
+        while buffered < count
+          return false unless fill_more
+        end
+        true
+      end
+
+      # The first `count` unconsumed bytes, without consuming them (fewer
+      # when fewer are buffered: call fill_to first).
+      def peek_bytes(count)
+        n = buffered < count ? buffered : count
+        @rbuf.byteslice(@rpos, n)
+      end
+
       # Reads more into the buffer. False at end of stream.
       def fill_more
         return false if @at_eof

@@ -17,6 +17,7 @@ require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
 require "cybertrain/scheduler"
+require "cybertrain/background"
 require "cybertrain/views"
 require "cybertrain/dev"
 
@@ -188,12 +189,19 @@ module Cybertrain
         fail_boot(problem) unless problem.empty?
         @rebuilder = Dev::Rebuilder.new(Dir.pwd, @name)
       end
+      # A service that would refuse to start (a WebSocket subscription
+      # without on_message) fails the boot here, before the port is bound,
+      # not with an exception after the banner.
+      service_problem = Background.boot_problem(@config)
+      fail_boot(service_problem) unless service_problem.empty?
       srv = server
       srv.start # bind first: a PortInUse error must not come after the banner
       print_boot_banner
       # After boot connected the database and SPINEL_WORKERS is set; only
       # here, so `migrate`, `db` and Main.command never start it.
       Scheduler.start!(@config)
+      # Services files like cybertrain/websocket registered when required.
+      Background.start_all(@config)
       if @config.development?
         serve_development(srv)
       else
@@ -201,6 +209,7 @@ module Cybertrain
         srv.wait
       end
       Scheduler.stop!
+      Background.stop_all
       nil
     rescue PortInUse => e
       fail_boot(e.message)

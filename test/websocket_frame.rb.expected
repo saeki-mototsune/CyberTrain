@@ -1,0 +1,26 @@
+ok   accept_key matches RFC 6455
+ok   a masked Hello encodes as in RFC 6455 5.7
+ok   an unmasked Hello
+ok   length encodings at 125, 126, 65535 and 65536
+ok   parse_header reads the flags
+ok   parse_header asks for more bytes
+ok   a 64-bit length with the top bit set is refused
+ok   unmask restores the payload
+ok   check_header accepts a plain server text frame
+ok   check_header refuses a masked server frame
+ok   check_header refuses an unmasked client frame
+ok   check_header refuses RSV bits
+ok   check_header refuses an unknown opcode
+ok   check_header refuses a 126-byte ping
+ok   check_header refuses a ping without FIN
+ok   check_header refuses a stray continuation
+ok   check_header refuses a new text frame while assembling
+ok   check_header allows a control frame while assembling
+ok   the assembler joins fragments
+ok   the assembler handles an unfragmented binary message
+ok   the assembler enforces max_message across fragments
+ok   close payloads
+ok   close codes a peer may not send are refused
+ok   error classes nest under WebSocket::Error
+ok   Message holds opcode and data
+25 tests, 127 assertions, 0 failures

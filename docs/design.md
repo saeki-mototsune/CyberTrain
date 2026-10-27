@@ -79,9 +79,9 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 
 ### 2.3 非目標（MVP）
 
-認証（MVP 後の 2026-10-22 に D15 として追加）、メーラー、ジョブ、WebSocket / ActionCable、アセットパイプライン（静的ファイル配信のみ）、i18n、API 専用モード（`render json:` の最小限のみ）、Rails 互換、Rack 互換、Windows ネイティブ。
+認証（MVP 後の 2026-10-22 に D15 として追加）、メーラー、ジョブ、WebSocket サーバ（ActionCable）、アセットパイプライン（静的ファイル配信のみ）、i18n、API 専用モード（`render json:` の最小限のみ）、Rails 互換、Rack 互換、Windows ネイティブ。
 
-ジョブについては、MVP 後の 2026-10-25 に「後で送る」と「N 秒ごとに実行」を賄う最小の形（`Cybertrain::Scheduler` とデータベースのジョブキュー `Cybertrain::Job`）を D28 として追加した。メーラーも同日に最小の SMTP クライアント `Cybertrain::Mailer` を D27 として追加した（HTML・添付・テンプレートは非目標のまま）。
+ジョブについては、MVP 後の 2026-10-25 に「後で送る」と「N 秒ごとに実行」を賄う最小の形（`Cybertrain::Scheduler` とデータベースのジョブキュー `Cybertrain::Job`）を D28 として追加した。メーラーも同日に最小の SMTP クライアント `Cybertrain::Mailer` を D27 として追加した（HTML・添付・テンプレートは非目標のまま）。外向きの WebSocket クライアント（データフィードの購読）も 2026-10-26 に D33 として追加した（サーバ側は非目標のまま）。
 
 ## 3. 設計原則
 
@@ -581,6 +581,30 @@ Rails Guides「Getting Started」相当のブログ（Article と Comment）が�
 - 後回し: TLS の受信器（証明書を作れない、D24）、SMTP の一接続内での複数のメッセージ（最後のもの以外は `transcript` にしか残らない）、受信器の一接続での keep-alive。アクションのタグ `v<VERSION>` は、アクションを含むリリース（次のリリース）から使える。それより前のタグ（v0.2.1 まで）にはアクションが無い。
 - 検証: `test/receivers.rb`（HttpClient と GET / POST / chunked 応答 / 204、生のソケットで chunked の要求本文と重複ヘッダ、`max` と `respond_with`、来ない要求が上限で nil になり `stop` の後に同じ番号で次の受信器が受けること、`stop` の冪等性、`accept_window` で番号が閉じること、Mailer と transcript・封筒・メッセージのバイト列、8BITMIME の有無、RCPT・挨拶・本文後の拒否、AUTH PLAIN、`Mailer.deliver` で二通、来ないメッセージ）を CRuby とコンパイル後の両方で同じ出力にした。openssl を足した版と、フレームワーク全体（test/template_integration.rb と同じ require、Server と Test::Client を含む）に受信器を足した版も一時的にコンパイルして通ることを確かめた。CI は `test/cli_new.rb` がワークフローの中身を確かめ、`cybertrain new` で作ったアプリで YAML の読み込みと `spin run gen -- --check` を確かめた。アクションの YAML も読み込み、spin.lock を読む Ruby の一行は git 依存と path 依存の spin.lock で確かめた。
 
+### D33. 外向き WebSocket クライアントと常駐購読: 同期クライアントを `Net` の上に置き、`Background` 経由でサーバと一緒に起動する（2026-10-26）
+
+- 背景: サーバが動いている間、外部のデータフィード（相場のティック、テレメトリ、イベントストリーム）に常時つなぎ、届いたメッセージをアプリに渡す手段が無かった。Spinel の `Net::HTTP` 相当を使えない理由は D24 と同じで、待ちが C の中にあると停止したピア一つが OS ワーカー（既定 `SPINEL_WORKERS=1` ではサーバ全体）を握る。WebSocket の標準ライブラリも無い。
+- 決定: 二層にする（`HttpClient` と `Scheduler` の関係と同じ形）。
+  - `cybertrain/websocket/frame.rb`: RFC 6455 のフレームの符号化・復号と Accept キー（`Digest::SHA1`）。ソケットに触れない純粋な関数で CRuby でも動く。エラー階層 `WebSocket::Error` の下に `TimeoutError` / `RefusedError` / `TLSError` / `BlockedAddressError` / `HandshakeError` / `ProtocolError` / `TooLargeError` / `ClosedError`（`close_code`、`close_reason`）もここ。
+  - `cybertrain/websocket/client.rb`: 同期クライアント `WebSocket::Client`（`connect` / `send_text` / `send_binary` / `send_ping` / `receive(wait)` / `close`）。URL 解析・非公開アドレスの拒否・全アドレスへの接続試行は `HttpClient`（`parse_url_for`、`dial`）を共用し、重複させない。待ちは `Net::Timer`（1 回 `timeout`、全体 `timeout * 3`）、`receive(wait)` の時間切れは例外でなく `nil`。フレームの途中で時間切れになっても `Reader` のバッファに残し、次の `receive` が続きから読む。送信は常にマスクし、1 フレームで送る。
+  - `cybertrain/websocket.rb`: `WebSocket.subscribe(name, url, ...)` が `Subscription`（`on_open` / `on_message`、どちらも `self` を返す）を登録する。購読ごとに 1 スレッド（メソッド経由で起こす: NOTES 規則 21）。`receive(1)` を繰り返して 1 秒ごとに停止要求と時計を見る。`ping_interval`（15 秒）の静けさで ping、`stale_after`（45 秒）の沈黙で閉じて再接続する。再接続の待ちは `min(60, 2 ** (attempt - 1))` 秒 ±20 %、60 秒続いた接続のあとは 1 秒に戻る。`on_message` の例外は `[ERROR]` に出して接続を保ち、`on_open` の例外は接続を閉じて再接続する。待ちは `wait_readable` か `sleep` なので、止まったフィードが待つあいだ OS ワーカーは握らない。ただし接続の試みごとにホスト名をブロッキングの `getaddrinfo` で引き（`Client.connect` → `HttpClient.dial` → `Net.resolve`、D24）、その間は握る。`SPINEL_WORKERS=1` でリゾルバが死んでいれば、フィードごと・試みごとにリゾルバのタイムアウトの間リクエストが止まる（README「Outbound HTTP」の「Name resolution blocks」）。`on_message` の中の SQLite も `Scheduler` のタスクと同じく握る。`stop!` はすべてのスレッドの join を合わせて 2 秒で打ち切り、接続中のフィードは close を送ってサーバの close を高々 1 秒待つ。戻った時点で全フィードの `connected?` は false。
+  - `cybertrain/background.rb`: 何もしない既定の `Background::Service`（`service_start(config)` / `service_stop`）の登録表。`Application#serve` は `Scheduler.start!` の後に `Background.start_all`、終了時に `Background.stop_all` を呼ぶ。`cybertrain/websocket.rb` は require されたときに自分を登録する。**`application.rb` は `cybertrain/websocket` を require しない**: 使わないアプリに libssl を持ち込まないため、`Net.tls_connector` と同じ「既定は何もしない、本物は必要なプログラムだけが require する」差し替えの形にした。`CYBERTRAIN_WORKER=0`（`config.worker = false`）では起動しない（`Background.start_all` が先に 0 を返すので、通知は `Scheduler` の「run elsewhere」の行だけ。`WebSocket.start!` を直接呼んだときは自分の行を出す）、`migrate` / `db ...` / `Main.command` / `Test::Client` は起動しない。
+  - `cybertrain/test/websocket_receiver.rb`: D32 の受信器の流儀（有界の accept と読み取り、メソッド経由のスレッド）の台本付き WebSocket サーバ。`WsStep` の列でハンドシェイクの応答、送るフレーム、期待するフレーム、沈黙、切断を演じ、クライアントが送ったフレームをマスクを外して記録する。
+- 判断（実装で決めたこと）:
+  - 状態の読み出しは `WebSocket.feed_status(name)`（`connected?`、`last_message_at`、`reconnects`）。`status` という名前は別の戻り値型の `status` がフレームワークの他の場所（`DB::CLI.status`、`Migrator#status`）にあり、Spinel の全プログラム推論を壊す（NOTES 規則 34 / 41）ので避けた。3 つの値は別々に読む（ひとつの原子的なスナップショットではない）。`/up` には組み込まない。
+  - 接続が張られたあとの接続の喪失・相手の close は `ClosedError`（リセットは 1006。書き込みの時間切れと TLS の失敗は `TimeoutError` / `TLSError` のまま）。接続の最中の失敗は `RefusedError` / `TimeoutError` / `TLSError` / `BlockedAddressError` / `HandshakeError`。
+  - `connected?` は接続した時点で true になり、`on_open` が走る前である。
+  - `stop!` は購読ごとのスレッドを最大 2 秒 `join` する（世代番号で、古いループが新しい `start!` と並ばないようにする）。
+  - `test/websocket_integration.rb` はフレームワーク全体を WebSocket のコードと一緒にコンパイルする。`test/websocket_client.rb` と `test/websocket_subscription.rb` は WebSocket のファイルしか require しないので、他のファイルと名前が衝突しても（上の `status` のように）そこでは見つからず、アプリのバイナリで初めて壊れるため（NOTES 規則 41）。
+- 却下した案:
+  - `application.rb` が `WebSocket.start!` を直接呼ぶ: libssl をすべてのアプリに持ち込む。
+  - アプリが `config/app.rb` から `start!` を呼ぶ: 起動順（データベース接続、ポートの束縛、`SPINEL_WORKERS`）を利用者が知る必要がある。`Background` はその順序をフレームワークに持たせる。
+  - 拡張（`permessage-deflate`）とサブプロトコル: 要求に載せず、サーバが返したらハンドシェイク失敗。
+  - プロキシ、リダイレクト、Cookie、分割メッセージの送信。
+  - 受信メッセージの自動保存や `Job` への投入: 必要ならアプリが `on_message` の中で行う。
+- 後回し: WebSocket サーバ（ActionCable）、動作中の購読の追加・削除（`subscribe` はサーバ起動前に呼ぶ）、購読の外からの送信（`Connection` はコールバックの中だけ有効）、テキストフレームの UTF-8 検証（バイト列のまま渡す。RFC 6455 8.1 からの逸脱）、`wss` の端から端までのテスト（D24 と同じく証明書を作れない）。
+- 帰結: 購読は `config/app.rb`（または `Main.run` の前に require されるファイル）に書く。`on_message` の SQLite 呼び出しは戻るまで OS ワーカーを握るので、高頻度のフィードは軽い INSERT にするか、メモリに溜めて `Scheduler` のタスクでまとめて書く。複数プロセスが同じ購読を持つと同じフィードを二重に受けるので、`Scheduler` と同じく `CYBERTRAIN_WORKER=0` で切る。
+
 ### D30. 運用: `db backup`（VACUUM INTO）、`db vacuum`、`GET /up` のヘルスチェック（2026-10-25、issue #76）
 
 - 背景: 配備したアプリのデータは SQLite のファイル一つで、どのアプリも同じ三つを作り直していた。動いているサーバを止めずに取る一貫したバックアップ、削除の後にファイルを実際に縮める作業、そしてデータベースまで見るヘルスチェック（`public/up.html` は静的ファイルで、プロセスが HTTP に応えることしか示さない）。
@@ -645,7 +669,7 @@ ERB のタグ: `<% %>`、`<%= %>`（エスケープ）、`<%== %>`（非エス�
 - `rails console`（`eval` が存在しない）
 - テンプレート内の任意 Ruby、テンプレートの型エラーのコンパイル時検出、スタックトレース付きエラー画面
 - production バイナリの完全単一ファイル化（`app/views` と `public` を同梱。将来のコンパイルバックエンドで回収可能）
-- `namespace` / format / `respond_to`、`has_many :through`、`includes`、i18n、WebSocket（認証は 2026-10-22 に D15 の形で入った: ジェネレータが書くコードと、`Cybertrain::Password`）（`transaction` API は D20、メーラーは D27、ジョブは D28 の最小の形で 2026-10-25 に入った）
+- `namespace` / format / `respond_to`、`has_many :through`、`includes`、i18n、WebSocket サーバ（外向きのクライアントは 2026-10-26 に D33 で入った）（認証は 2026-10-22 に D15 の形で入った: ジェネレータが書くコードと、`Cybertrain::Password`）（`transaction` API は D20、メーラーは D27、ジョブは D28 の最小の形で 2026-10-25 に入った）
 - Rack 互換、Rails 互換、CRuby 上での実行
 
 ## 9. 未検証の前提とスパイク計画（M0）
