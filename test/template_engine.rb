@@ -43,10 +43,12 @@ def new_env
   env
 end
 
-# new_env with the layout's title. Passed to render_with_layout as a call,
-# not through a local: render_with_layout stores the rendered page into the
-# Hash, and Spinel after 2026.09.12 refuses a local whose Hash type that
-# store would widen (docs/spinel-feedback.md, under C).
+# new_env with the layout's title. The title is stored here, in the method
+# that returns the Hash, not by the caller: render_with_layout stores the
+# rendered page into the Hash, and Spinel since 2026.10.09-7009 refuses a
+# Hash whose value types are settled to one type where it is built and
+# widened only later (docs/spinel-feedback.md, "The refusal in
+# test/template_engine.rb").
 def layout_env
   env = new_env
   env["__content_title"] = "All posts"
