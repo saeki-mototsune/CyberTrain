@@ -3,7 +3,8 @@
 # publishes as https://saeki-mototsune.github.io/CyberTrain/api/. What goes
 # in, and how, is .yardopts: the framework's methods marked `@api public`,
 # the generated-code descriptions in docs/api/stubs/, docs/api/README.md as
-# the front page, docs/template-language.md and the guides in docs/guide/.
+# the front page. The guides (docs/guide/) are not part of it: script/guide-pages
+# builds them into the site.
 # docs/api/yard_setup.rb holds the filter and the Markdown setup. site/api/ is not committed.
 #
 # Any YARD warning (an unknown tag, a {Link} that resolves to nothing) fails

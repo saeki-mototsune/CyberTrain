@@ -30,7 +30,7 @@ template once) and refuses to boot when it is empty (`error: views are not
 embedded in this binary`). Spinel has no `eval`, so this is a closed grammar (literals, `@ivar`/local lookups, calls
 through fixed per-type dispatch tables, `if`/`unless`,
 `each`/`each_with_index`/one helper block), not real Ruby. Full grammar,
-helpers and gaps: [docs/template-language.md](../template-language.md).
+helpers and gaps: [docs/guide/template-language.md](template-language.md).
 
 **The HTTP server.** `Cybertrain::Server` is plain-Ruby HTTP/1.1:
 `TCPServer#accept` plus one Spinel green thread per connection (M:N
@@ -96,7 +96,7 @@ compiler output on every HTML response. None of this loads in production.
 | `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |
 | `before_action { do_thing }` (implicit `self`) | `before_action { \|c\| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — nested blocks take the mapper explicitly |
-| ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table — [docs/template-language.md](../template-language.md) |
+| ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table — [docs/guide/template-language.md](template-language.md) |
 | Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
 | Many database adapters | SQLite only, via FFI |
 | `Article.transaction { ... }` returns the block's value; `raise ActiveRecord::Rollback`; `requires_new: true` savepoints | `Article.transaction { \|c\| ... }` (= `Cybertrain::DB.transaction`) yields the connection and returns nil; leave it by raising (it re-raises after the rollback); nested calls join the outer transaction, no savepoints. `immediate: true` for SQLite's `BEGIN IMMEDIATE`. `c.transaction { }` cannot be called on the yielded `c` under Spinel: nest `DB.transaction`, or use `c.begin!` / `c.commit!` / `c.rollback!` |

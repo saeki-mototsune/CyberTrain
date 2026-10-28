@@ -25,7 +25,7 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   records what was decided, what was rejected and why. Read the
   relevant section before changing a behaviour, and update it when a
   decision changes. [README.md](README.md) explains the framework to its
-  users and [docs/template-language.md](docs/template-language.md) the
+  users and [docs/guide/template-language.md](docs/guide/template-language.md) the
   template grammar.
 - **Generated code is committed.** `spin` has no build hooks, so
   `examples/blog/gen/` and the generated files in `test/fixtures/` are

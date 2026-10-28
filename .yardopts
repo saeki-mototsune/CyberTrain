@@ -9,6 +9,3 @@
 --output-dir site/api
 cybertrain/**/*.rb
 docs/api/stubs/*.rb
--
-docs/template-language.md
-docs/guide/*.md
