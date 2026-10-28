@@ -163,7 +163,7 @@ jobs:
           grep -q "production environment" server.log
           kill %1
 
-      # The invitation-only variant (docs/design.md D27): its own generated
+      # The invitation-only variant (docs/design.md D29): its own generated
       # test, then the binary: the first-run warning and /setup while no user
       # exists, `./club user` reading the password from stdin, and /setup
       # gone once a user exists.

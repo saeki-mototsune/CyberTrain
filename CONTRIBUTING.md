@@ -22,7 +22,7 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   When something will not compile, look there first, and add a note when you
   find a new one.
 - **Every design decision is written down.** [docs/design.md](docs/design.md)
-  (Japanese) records what was decided, what was rejected and why. Read the
+  records what was decided, what was rejected and why. Read the
   relevant section before changing a behaviour, and update it when a
   decision changes. [README.md](README.md) explains the framework to its
   users and [docs/template-language.md](docs/template-language.md) the

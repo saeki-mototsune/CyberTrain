@@ -15,8 +15,7 @@ Six builds are covered:
   (`ghcr.io/saeki-mototsune/spinel`), checked on 2026-10-25 against
   CyberTrain 0a0d99e. `spin test` passed 88 of 98, and examples/blog did not
   get past `spin run gen`. The regressions are A to G at the end; an
-  earlier package (2026.10.09-7009, edb9dd0, checked on 2026-10-13) is in
-  [benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md).
+  earlier package (2026.10.09-7009, edb9dd0) was checked on 2026-10-13.
 - **2026.10.26.7019** (80b2f98), the fork's release tag carrying the fixes
   for A, C, F, G and 3, which CyberTrain was pinned to until 2026-10-28.
   With the
@@ -315,9 +314,7 @@ C for a small program.
 ## Regressions in newer packages
 
 None of these happens on 2026.09.12. First found on 2026.10.09-7009 (A to E, while
-benchmarking, see
-[benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md)),
-re-checked, with F and G new, on 2026.10.25-7018, and fixed in the fork's
+benchmarking), re-checked, with F and G new, on 2026.10.25-7018, and fixed in the fork's
 2026.10.26.7019 except D, which is by design in the default `raise` mode and
 which CyberTrain works around, and B, which that release turns into a build
 error by design (and E, not re-measured). Each section's reduced program

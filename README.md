@@ -1304,7 +1304,7 @@ configuration still polls, only shows that the process answers HTTP.
 | `bin/rails db:...` tasks for backups (none built in) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renamed into place) and `./<app> db vacuum` |
 | ActionCable (the server), asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
 
-Not exhaustive — `docs/design.md` §8 ("捨てたもの") is the fuller record.
+Not exhaustive — `docs/design.md` §8 ("What was deliberately left out") is the fuller record.
 
 ## Performance
 
@@ -2034,7 +2034,7 @@ checkout to the action as `framework-path`.
   (`script/api-docs`, into `site/api/`) from the doc comments marked
   `@api public` in `cybertrain/` and from [docs/api/](docs/api/); a method
   without that tag is internal and stays out. CI fails on any YARD warning.
-- [docs/design.md](docs/design.md) — the design record (Japanese): every
+- [docs/design.md](docs/design.md) — the design record: every
   decision, what was rejected and why, and the Spinel constraints behind it.
 - [docs/template-language.md](docs/template-language.md) — the full template
   grammar and helpers, and where it differs from Rails' ERB.
