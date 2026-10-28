@@ -7,8 +7,9 @@ module GuidePages
   class Error < StandardError; end
 
   STEP = /\A\s*<!--\s*step\s+(\S+)\s+#(\S+)(?:\s+stage:\s*(.*?))?\s*-->\s*\z/
-  MARKER_COMMENT = /\A\s*<!--\s*(list|table):\s*(\S+?)\s*-->\s*\z/
-  ALERT = /\A>\s*\[!(WHY|RULE|NOTE)\]\s*\z/
+  MARKER_COMMENT = /\A\s*<!--\s*(list|table):\s*(\S+(?:\s+\S+)*?)\s*-->\s*\z/
+  # The marker is the kind; text after it (a callout's aria-label) is prose.
+  ALERT = /\A>\s*\[!(WHY|RULE|COMPILE|EXAMPLE|NOTE)\](?:[ \t]+\S.*)?\s*\z/
   LINK_RE = /!?\[[^\]]*\]\(\s*<?([^\s)>]+)>?(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)|<a\s[^>]*?href\s*=\s*["']([^"']+)["']/i
   REF_DEF = /\A {0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s+.*)?\z/
 

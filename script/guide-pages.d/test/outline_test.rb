@@ -38,6 +38,29 @@ class OutlineTest < Minitest::Test
     assert_equal ["table:cmp", "details", "RULE"], section("Compare").markers
   end
 
+  # The callout kinds, with the optional aria-label after the marker; the
+  # marker is the kind alone, so a translated label does not change it.
+  def test_alert_kinds_and_label
+    o = GuidePages::Outline.parse(<<~MD)
+      # T
+
+      > [!RULE] Views are a closed grammar
+      > ### Views
+
+      > [!COMPILE]
+      > ### Before
+
+      > [!EXAMPLE] Deleting an article
+      > ### Deleting
+    MD
+    assert_equal %w[RULE COMPILE EXAMPLE], o.sections[0].markers
+  end
+
+  def test_list_marker_with_two_classes
+    o = GuidePages::Outline.parse("# T\n\n<!-- list: points know -->\n- a\n")
+    assert_equal ["list:points know"], o.sections[0].markers
+  end
+
   def test_codes_with_place
     codes = section("Validations").codes
     assert_equal [["ruby", "app/models/article.rb"], ["shell", nil]], codes.map { |c| [c.lang, c.place] }
