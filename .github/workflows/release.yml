@@ -1,0 +1,40 @@
+# Creates the GitHub release for a tag vX.Y.Z, with notes GitHub generates
+# from the pull requests merged since the previous tag. Runs on the tag push
+# (README "Releasing", step 2); a manual run takes an existing tag, for a tag
+# pushed before this workflow existed. A tag that already has a release fails
+# the run rather than overwriting it.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (vX.Y.Z)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+
+      - name: The tag is v + Cybertrain::VERSION
+        run: |
+          version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+          test "$TAG" = "v$version" || { echo "tag $TAG is not v$version (cybertrain/version.rb)"; exit 1; }
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes

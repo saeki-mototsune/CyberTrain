@@ -2072,6 +2072,10 @@ before the gem is pushed:
    `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z` (and `latest`) through
    [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml);
    check that run.
+5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
+   from the pull requests merged since the previous tag, through
+   [.github/workflows/release.yml](.github/workflows/release.yml). For a tag
+   pushed without a release, run that workflow by hand with the tag.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in
