@@ -1,5 +1,5 @@
 ---
-source_sha256: d96e0c0b98809ba5aa1e5ed13ecfec209883ed53af829ab37190846bb5498f8d
+source_sha256: 9a5740659170a925b518396b038b184107f4e771c1df3a8e10fa880824e90247
 ---
 # Installer cybertrain
 
@@ -8,14 +8,14 @@ source_sha256: d96e0c0b98809ba5aa1e5ed13ecfec209883ed53af829ab37190846bb5498f8d
 [Ouvrez le bac à sable dans GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
 pour essayer cybertrain sans rien installer&nbsp;: VS Code s’ouvre dans votre
 navigateur avec Spinel 2026.10.27.7020, la CLI `cybertrain` et le blog du
-tutoriel ci-dessous déjà créé (`cybertrain new blog`, le scaffold des articles,
+[tutoriel](tutorial.md) déjà créé (`cybertrain new blog`, le scaffold des articles,
 la route racine et la première migration, compilé une fois pour que le serveur
 démarre sans compiler), son serveur de développement lancé dans un terminal, et
 l’application, qui affiche la liste des articles, dans un nouvel onglet du
 navigateur. L’application est un dépôt git avec un seul commit, donc Source
 Control montre ce que vous modifiez. `PLAYGROUND.md`, dans l’application, liste
 ce qu’il y a à essayer, de la modification d’une vue à la suite du tutoriel avec
-les commentaires. Une modification de vue apparaît au rechargement suivant&nbsp;;
+les commentaires (étape 08). Une modification de vue apparaît au rechargement suivant&nbsp;;
 une modification Ruby entraîne une recompilation complète, environ une minute,
 après quoi le serveur redémarre de lui-même&nbsp;; l’onglet de l’application ne
 se recharge pas de lui-même. `cybertrain new` y fonctionne sans réseau.

@@ -1,11 +1,11 @@
 ---
-source_sha256: d96e0c0b98809ba5aa1e5ed13ecfec209883ed53af829ab37190846bb5498f8d
+source_sha256: 9a5740659170a925b518396b038b184107f4e771c1df3a8e10fa880824e90247
 ---
 # 安装 cybertrain
 
 ## 在浏览器中试用
 
-[在 GitHub Codespaces 中打开在线试用环境](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)，无需安装任何东西即可试用 cybertrain：VS Code 会在你的浏览器中打开，其中已备好 Spinel 2026.10.27.7020、`cybertrain` CLI，以及下文教程中的博客（`cybertrain new blog`、文章脚手架、根路由和第一次迁移，均已构建过一次，所以服务器启动时无需编译）；它的开发服务器在一个终端中运行，应用则在新的浏览器标签页中显示文章列表。应用是一个只有一次提交的 git 仓库，所以“源代码管理”会显示你改动了什么。应用中的 `PLAYGROUND.md` 列出了可以尝试的内容，从编辑视图到继续完成教程中的评论部分。修改视图后，下次重新加载即可看到；修改 Ruby 代码则需要完整重新构建，约一分钟，之后服务器会自行重启；应用的标签页不会自行重新加载。在那里，`cybertrain new` 无需网络即可运行。
+[在 GitHub Codespaces 中打开在线试用环境](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)，无需安装任何东西即可试用 cybertrain：VS Code 会在你的浏览器中打开，其中已备好 Spinel 2026.10.27.7020、`cybertrain` CLI，以及[教程](tutorial.md)中的博客（`cybertrain new blog`、文章脚手架、根路由和第一次迁移，均已构建过一次，所以服务器启动时无需编译）；它的开发服务器在一个终端中运行，应用则在新的浏览器标签页中显示文章列表。应用是一个只有一次提交的 git 仓库，所以“源代码管理”会显示你改动了什么。应用中的 `PLAYGROUND.md` 列出了可以尝试的内容，从编辑视图到从评论部分（第 08 步）继续完成教程。修改视图后，下次重新加载即可看到；修改 Ruby 代码则需要完整重新构建，约一分钟，之后服务器会自行重启；应用的标签页不会自行重新加载。在那里，`cybertrain new` 无需网络即可运行。
 
 - 需要一个 GitHub 账号，codespace 使用你自己的 Codespaces 配额：GitHub 免费计划每月包含 120 核心小时和 15 GB-月的存储，在在线试用所用的默认 2 核机器上约为 60 小时。默认情况下，GitHub 会在 codespace 空闲 30 分钟后将其停止；在你删除它之前，它的存储一直计入配额。
 - 如果 VS Code 询问你是否信任此文件夹中文件的作者，请选择 "Trust Folder & Continue"：只有这样，服务器的终端才会启动。
