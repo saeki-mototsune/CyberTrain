@@ -39,16 +39,11 @@ module Cybertrain
     # Returns the block's value. Forward the block with &block: re-yielding
     # from an inner block loses the value under Spinel.
     #
-    # Use that value directly only when it is a builtin (the rows of
-    # `c.execute`, an Integer from `c.changes`, a String, true/false). An
-    # instance of an application class comes back untyped on Spinel
-    # 2026.10.26.7019, and calling a method on it raises NoMethodError
-    # (spikes/NOTES.md rule 77). Assign it to a local declared before the
-    # block instead, as for DB.transaction:
-    #
-    #   result = LoginResult.new("none")
-    #   Cybertrain::DB.with { |c| result = AUTH.login(c, name) }
-    #   result
+    # The value may be an instance of an application class
+    # (`Cybertrain::DB.with { |c| AUTH.login(c, name) }.ok?`). Spinel
+    # 2026.10.26.7019 lost that class, so a method call on it raised
+    # NoMethodError; the pinned release carries the fix (spikes/NOTES.md
+    # rule 77).
     #
     # Inside a `transaction` block on the same thread, the block gets the
     # transaction's connection rather than a second one from the pool, so
