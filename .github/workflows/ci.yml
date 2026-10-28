@@ -7,10 +7,11 @@ name: CI
 # docs/template-language.md; see .yardopts), which the "API reference builds"
 # step below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
-# reads them except script/api-docs, which is brought back in. A change that
-# also touches anything else runs the tests. `paths` with negations rather
-# than `paths-ignore`, since only `paths` can bring files back in (a later
-# pattern wins).
+# reads them except script/api-docs, which is brought back in. Nor do the
+# other workflows (release, images, pages, gate): only this file is brought
+# back in. A change that also touches anything else runs the tests. `paths`
+# with negations rather than `paths-ignore`, since only `paths` can bring
+# files back in (a later pattern wins).
 # push runs only on main: a branch is tested by its pull request, and a push
 # to it would otherwise run everything a second time.
 on:
@@ -22,6 +23,8 @@ on:
       - "!**.md"
       - "!script/**"
       - "!.githooks/**"
+      - "!.github/workflows/**"
+      - ".github/workflows/ci.yml"
       - "docs/api/**"
       - "docs/template-language.md"
       - "script/api-docs"
@@ -32,6 +35,8 @@ on:
       - "!**.md"
       - "!script/**"
       - "!.githooks/**"
+      - "!.github/workflows/**"
+      - ".github/workflows/ci.yml"
       - "docs/api/**"
       - "docs/template-language.md"
       - "script/api-docs"
