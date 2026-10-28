@@ -315,9 +315,12 @@ finds the commit that removed them).
       `to_s` is narrowed to one caller's type (Html.escape once took an
       Integer and turned Strings into "0"): keep a `case v when String` on
       it, and pass `x.to_s` from a caller whose own parameter is otherwise
-      unused, which Spinel types as an Integer (SafeString#+). The `case`
-      is no longer needed on 2026.10.27.7020 (Html.escape dropped it;
-      docs/spinel-feedback.md item 2); the callers' `x.to_s` stays.
+      unused, which Spinel types as an Integer (SafeString#+). On
+      2026.10.27.7020 Html.escape dropped its `case`: `spin test`,
+      examples/blog's tests and test/template_integration.rb's
+      `--emit-types` showed no narrowing without it (docs/spinel-feedback.md
+      item 2). That covers those programs, not every shape; the callers'
+      `x.to_s` stays.
     - A Hash with object values boxes them, so a lookup is polymorphic; an
       object Array is typed (`sp_PtrArray`) unless the program calls
       `clear` on it anywhere, or it is an Array of the class that holds it

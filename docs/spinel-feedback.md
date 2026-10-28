@@ -70,24 +70,24 @@ default `raise` mode's intended behaviour, and the experimental
 "Not re-checked" means no one has tried it on that build; it is not a claim
 that it is fixed.
 
-| Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 | master 003ceda5d |
-| --- | --- | --- | --- | --- | --- |
-| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) | not re-checked; on 2026.10.27.7020 not reproduced under ASan, but neither on 2026.09.12 in that shape (workaround kept) |
-| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked; on 2026.10.27.7020 not reproduced (106 of 106 and examples/blog pass without it; dropped) |
-| 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) |
-| 4 to 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured |
-| `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked |
-| `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked |
-| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) | **fixed** (its program prints Ruby's result) |
-| B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) | not re-checked |
-| C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made | not re-checked |
-| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum | by design (still raises `RangeError` in raise mode) |
-| E. More allocation per request | no | not re-measured | not re-measured | not re-measured | not re-measured |
-| F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) | **fixed** (its program prints Ruby's result) |
-| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) |
-| H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) |
-| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked |
-| Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) |
+| Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 | master 003ceda5d | 2026.10.27.7020 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) | not re-checked | not reproduced under ASan, but neither on 2026.09.12 in that shape (workaround kept) |
+| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround; dropped) |
+| 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) | not re-checked |
+| 4 to 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
+| `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked | not re-checked |
+| `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked | not re-checked |
+| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) | **fixed** (its program prints Ruby's result) | not re-checked |
+| B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) | not re-checked | not re-checked |
+| C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made | not re-checked | not re-checked |
+| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum | by design (still raises `RangeError` in raise mode) | not re-checked |
+| E. More allocation per request | no | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
+| F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) | **fixed** (its program prints Ruby's result) | not re-checked |
+| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked |
+| H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) | **fixed** (test/db_with_value.rb uses the block's own value) |
+| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked |
+| Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked |
 
 ## What CyberTrain still works around
 
@@ -95,7 +95,8 @@ Re-checked on 2026-10-27 against matz/spinel master 9b9972399, built from
 source; CyberTrain itself was then pinned to 2026.10.26.7019 (`spinel
 2026.10.26.7019 (80b2f988)`), where the rows were checked on 2026-10-26
 (the H row on 2026-10-27, when it was added). Since 2026-10-28 it is
-pinned to 2026.10.27.7020; only the H row was re-checked there. The regressions that release
+pinned to 2026.10.27.7020; the H row and the workarounds for 1 and 2
+were re-checked there (2026-10-28). The regressions that release
 fixes (A, the generated C of C, F, G, and 3) never had a workaround in
 CyberTrain: it stayed on 2026.09.12, where they do not happen, until it
 moved to 2026.10.26.7019. The refusal listed under C is separate: both
