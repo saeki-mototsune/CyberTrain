@@ -40,9 +40,9 @@ module GuidePages
         %(<pre tabindex="0" role="region" aria-label="#{label}"><code>#{lines(lang, text).join("\n")}</code></pre>\n</figure>)
     end
 
-    # A path may break after each "/"; free text is shown as written.
+    # A path may break after each "/" that a word follows ("a/b", not "blog/").
     def caption(place)
-      place.match?(/\s/) ? esc(place) : esc(place).gsub("/", "/<wbr>")
+      esc(place).gsub(%r{/(?=\S)}, "/<wbr>")
     end
 
     def lines(lang, text)

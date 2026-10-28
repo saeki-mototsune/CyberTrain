@@ -96,7 +96,13 @@ class LinksTest < Minitest::Test
   end
 
   def test_ids_for
-    assert_equal %w[requirements sub-part], @links.ids_for("a")
-    assert_equal %w[validations], @links.ids_for("tutorial")
+    assert_equal %w[alpha requirements sub-part], @links.ids_for("a")
+    assert_equal %w[tutorial validations], @links.ids_for("tutorial")
+  end
+
+  # The h1's id (the slug of the English title) is an anchor too.
+  def test_title_anchor
+    assert_equal "a.html#alpha", rewrite("a.md#alpha", src("a", "ja"))
+    assert_equal [], @links.errors
   end
 end

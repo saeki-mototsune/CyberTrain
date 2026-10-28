@@ -16,7 +16,7 @@
 # kept as written: no smart quotes or typographic symbols, entities as typed.
 #
 #   page = GuidePages::Render.page(source, english: en_source, links: links, words: GuidePages::WORDS["ja"])
-#   page.h1, page.intro_html, page.sections_html, page.toc  # toc: [TocEntry(num, id, title_html, extra)]
+#   page.h1, page.h1_id, page.intro_html, page.sections_html, page.toc  # toc: [TocEntry(num, id, title_html, extra)]
 
 require "kramdown"
 require "kramdown-parser-gfm"
@@ -28,7 +28,8 @@ require_relative "words"
 
 module GuidePages
   module Render
-    Page = Struct.new(:h1, :intro_html, :sections_html, :toc)
+    # h1_id: the slug of the English title, the same in every language.
+    Page = Struct.new(:h1, :h1_id, :intro_html, :sections_html, :toc)
     # extra: an unnumbered step ("+", "→"), shown apart in the contents list.
     TocEntry = Struct.new(:num, :id, :title_html, :extra)
 
@@ -60,9 +61,11 @@ module GuidePages
       summaries = []
       text = preprocess(source.body, summaries)
       root, = Parser.parse(text, OPTIONS)
-      en = Outline.parse(english.body).sections.drop(1)
+      outline = Outline.parse(english.body)
+      en = outline.sections.drop(1)
       Converter.build(root, Kramdown::Options.merge(OPTIONS), source: source, links: links, words: words,
-                      summaries: summaries, h2: en.select { |s| s.level == 2 }, sub: en.reject { |s| s.level == 2 }).page
+                      summaries: summaries, title: outline.title,
+                      h2: en.select { |s| s.level == 2 }, sub: en.reject { |s| s.level == 2 }).page
     end
 
     # Line-level fixes before kramdown, outside fences: a convention
@@ -99,8 +102,9 @@ module GuidePages
 
       def self.build(root, options, **ctx) = new(root, options).tap { |c| c.setup(**ctx) }
 
-      def setup(source:, links:, words:, summaries:, h2:, sub:)
+      def setup(source:, links:, words:, summaries:, title:, h2:, sub:)
         @source, @links, @words, @summaries, @en_h2, @en_sub = source, links, words, summaries, h2, sub
+        @en_title = title
         @sub_index = 0
         @quote = 0
       end
@@ -128,6 +132,8 @@ module GuidePages
             intro = inner(el, 0)
           elsif h1 && el.type != :blank
             pre << el
+          elsif el.type != :blank
+            fail!("#{el.value || el.type} before the # title")
           end
         end
         fail!("found #{sections.size} ## sections, the English has #{@en_h2.size}") if sections.size != @en_h2.size
@@ -143,7 +149,10 @@ module GuidePages
           section(id, num, step&.stage, title, sec[:body], last: i == sections.size - 1)
         end
         lead = children_html(@root, pre, 2)
-        Page.new(h1, intro, lead + html.join("\n"), toc)
+        if @sub_index != @en_sub.size
+          fail!("found #{@sub_index} sub-headings, the English has #{@en_sub.size}")
+        end
+        Page.new(h1, Outline.slug(@en_title), intro, lead + html.join("\n"), toc)
       end
 
       def section(id, num, stage, title, body, last:)

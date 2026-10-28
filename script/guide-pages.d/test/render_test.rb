@@ -30,6 +30,24 @@ class RenderTest < Minitest::Test
     assert_equal %(Mirrors Rails' own <a href="https://guides.rubyonrails.org/x" rel="noopener">Getting Started</a> guide.), page.intro_html
   end
 
+  def test_h1_id_from_english
+    assert_equal "how-it-works", render("# How it works\n\nIntro.\n\n## A\n").h1_id
+    page = render("# 仕組み\n\n導入。\n\n## A\n", lang: "ja", english: "# How it works\n\nIntro.\n\n## A\n")
+    assert_equal ["how-it-works", "仕組み"], [page.h1_id, page.h1]
+  end
+
+  def test_content_before_title_rejected
+    e = assert_raises(GuidePages::Error) { render("Stray.\n\n# T\n\nIntro.\n\n## A\n") }
+    assert_match(/docs\/guide\/x\.md: .*before the # title/, e.message)
+  end
+
+  def test_sub_heading_count_must_match_english
+    english = "# T\n\nIntro.\n\n## A\n\n### One\n\n### Two\n"
+    e = assert_raises(GuidePages::Error) { render("# T\n\nI.\n\n## A\n\n### Un\n", lang: "ja", english: english) }
+    assert_match(/1 sub-headings, the English has 2/, e.message)
+    assert_raises(GuidePages::Error) { render("# T\n\nI.\n\n## A\n\n### Un\n\n### Deux\n\n### Trois\n", lang: "ja", english: english) }
+  end
+
   def test_step_section_markup
     page = render(<<~MD)
       # T

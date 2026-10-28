@@ -60,6 +60,12 @@ class HighlightTest < Minitest::Test
     HTML
   end
 
+  # "/" followed by a non-space breaks; a "/" at the end of a word does not.
+  def test_caption_wbr_in_path_with_free_text
+    assert_includes fig("ruby", "app/models/article.rb (excerpt)", "x"), '<span class="code-path">app/<wbr>models/<wbr>article.rb (excerpt)</span>'
+    assert_includes fig("shell", "terminal — any directory, then blog/", "x"), '<span class="code-path">terminal — any directory, then blog/</span>'
+  end
+
   def test_caption_wbr
     assert_includes fig("ruby", "app/models/a.rb", "x"), '<span class="code-path">app/<wbr>models/<wbr>a.rb</span>'
     # free text (has whitespace) is not broken at slashes

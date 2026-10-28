@@ -41,10 +41,13 @@ module GuidePages
     end
 
     # The heading ids of the page made from source name, from the English:
-    # step ids or slugs for "##", slugs for deeper headings.
+    # the title's slug, step ids or slugs for "##", slugs for deeper headings.
     def ids_for(name)
-      @ids[name] ||= Outline.parse(@sources.fetch("en").fetch(name).body).sections.drop(1).map do |s|
-        s.level == 2 && s.step ? s.step.id : Outline.slug(s.text)
+      @ids[name] ||= begin
+        outline = Outline.parse(@sources.fetch("en").fetch(name).body)
+        [Outline.slug(outline.title)] + outline.sections.drop(1).map do |s|
+          s.level == 2 && s.step ? s.step.id : Outline.slug(s.text)
+        end
       end
     end
 
