@@ -33,8 +33,8 @@
 # connect attempt resolves the host name with a blocking getaddrinfo
 # (Net.resolve), which holds the OS worker until the resolver answers or
 # times out. With SPINEL_WORKERS=1 a dead resolver stalls requests for the
-# resolver's timeout once per attempt per feed (README "Outbound HTTP",
-# "Name resolution blocks"); an IP address in the URL skips the lookup.
+# resolver's timeout once per attempt per feed; an IP address in the URL
+# skips the lookup.
 # A SQLite call in `on_message` also holds the worker until it returns (as
 # a Scheduler task's does): keep the work per
 # message small, or collect messages in memory and write them from a

@@ -21,8 +21,7 @@ module Cybertrain
     # An app whose partials legitimately recurse deeper (threaded comments, a
     # category tree) raises it through Config#max_render_depth /
     # Views.configure(root, max_render_depth: n): the error past the limit
-    # names max_render_depth, and the README says so next to
-    # Config#max_render_depth.
+    # names max_render_depth.
     # The page is depth 1, so with 12 partials nest 11 levels. The layout
     # does not count: Engine#render_with_layout renders it only after the
     # page's render has returned, so it runs at depth 1 on its own, with the
