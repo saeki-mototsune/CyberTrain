@@ -84,14 +84,18 @@ module GuidePages
     # aside), and the list/table comments get the blank lines kramdown needs
     # to see the block next to them.
     def preprocess(body, summaries)
-      fence = false
+      fence = nil # the opener's run of ` or ~
       body.each_line.map do |raw|
         line = raw.chomp
-        if line.match?(/\A[>\s]*```/)
-          fence = !fence
+        quoted = line.sub(/\A[>\s]*/, "")
+        if fence
+          fence = nil if Outline.fence_close?(quoted, fence)
           next raw
         end
-        next raw if fence
+        if (m = quoted.match(FENCE_OPEN))
+          fence = m[2]
+          next raw
+        end
 
         prefix = line[/\A(?:>[ \t]?)*/]
         rest = line.delete_prefix(prefix)

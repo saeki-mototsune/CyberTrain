@@ -181,6 +181,17 @@ class RenderTest < Minitest::Test
     assert_includes html, %(</code></pre>\n</figure>\n      </div>\n    </details>\n)
   end
 
+  # preprocess leaves fences alone, whichever their opener: a <details> line
+  # inside a ~~~ fence, or after a ``` line inside a ```` fence, is code.
+  def test_preprocess_skips_tilde_and_long_fences
+    md = "~~~text\n<details><summary>A — B</summary>\n~~~\n\n" \
+         "````text\n```\n<details><summary>C — D</summary>\n````\n"
+    assert_equal md, GuidePages::Render.preprocess(md, [])
+    html = body(md)
+    assert_equal 2, html.scan("&lt;details&gt;&lt;summary&gt;").size
+    refute_includes html, %(<details class="ci">)
+  end
+
   def test_checklist_class
     html = body("<!-- list: checklist -->\n- one `a`\n- two\n\n<!-- list: points know -->\n- three\n")
     assert_includes html, %(    <ul class="checklist">\n      <li>one <code>a</code></li>\n      <li>two</li>\n    </ul>\n)

@@ -133,6 +133,27 @@ class OutlineTest < Minitest::Test
     assert_raises(GuidePages::Error) { GuidePages::Outline.parse("# a\n\n# b\n") }
   end
 
+  # Fences as in CommonMark: 3+ backticks or tildes; closed only by the same
+  # character, at least as many, and nothing but whitespace after.
+  def test_tilde_fence
+    o = GuidePages::Outline.parse("# T\n\n## A\n\n~~~ruby app/x.rb\n## not a heading\n```\n~~\n~~~~  \n\n## B\n")
+    assert_equal ["A", "B"], o.sections.drop(1).map(&:text)
+    assert_equal [["ruby", "app/x.rb", "## not a heading\n```\n~~\n"]], o.sections[1].codes.map { |c| [c.lang, c.place, c.text] }
+  end
+
+  def test_four_backtick_fence_holds_a_three_backtick_line
+    o = GuidePages::Outline.parse("# T\n\n## A\n\n````markdown\n```ruby\n# x\n```\n````\n\n## B\n")
+    assert_equal ["A", "B"], o.sections.drop(1).map(&:text)
+    assert_equal [["markdown", "```ruby\n# x\n```\n"]], o.sections[1].codes.map { |c| [c.lang, c.text] }
+  end
+
+  def test_fence_closer_takes_nothing_after
+    e = assert_raises(GuidePages::Error) { GuidePages::Outline.parse("# a\n\n```\nx\n``` ruby\n") }
+    assert_equal "code fence opened at line 3 is not closed", e.message
+    e = assert_raises(GuidePages::Error) { GuidePages::Outline.parse("# a\n\n~~~\nx\n```\n") }
+    assert_equal "code fence opened at line 3 is not closed", e.message
+  end
+
   def test_rejects_unclosed_fence
     e = assert_raises(GuidePages::Error) { GuidePages::Outline.parse("# a\n\n```ruby\nx\n```\n\n```sh\ny\n") }
     assert_equal "code fence opened at line 7 is not closed", e.message

@@ -13,6 +13,9 @@ module GuidePages
   # The marker is the kind; text after it (a callout's aria-label) is prose.
   ALERT = /\A>\s*\[!(WHY|RULE|COMPILE|EXAMPLE|NOTE)\](?:[ \t]+\S.*)?\s*\z/
   LINK_RE = /!?\[[^\]]*\]\(\s*<?([^\s)>]+)>?(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)|<a\s[^>]*?href\s*=\s*["']([^"']+)["']/i
+  # A code fence opener, as in CommonMark: 3+ backticks (no backtick in the
+  # info string) or 3+ tildes; then LANG and an optional PLACE.
+  FENCE_OPEN = /\A(\s*)(`{3,}(?=[^`]*\z)|~{3,})(\S*)[ \t]*(.*?)\s*\z/
   # A raw HTML code figure (the tutorial's step 01 overview).
   CODE_FIGURE = /\A\s*<figure\s[^>]*\bclass="code[" ]/
   REF_DEF = /\A {0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s+.*)?\z/
@@ -42,6 +45,12 @@ module GuidePages
       text.empty? || text.end_with?("\n") ? text : "#{text}\n"
     end
 
+    # Whether line closes a fence opened with mark (its run of ` or ~): the
+    # same character, at least as many, and only whitespace after.
+    def self.fence_close?(line, mark)
+      line.match?(/\A\s*#{Regexp.escape(mark[0])}{#{mark.size},}\s*\z/)
+    end
+
     def self.parse(body) = new(body)
 
     def initialize(body)
@@ -56,7 +65,7 @@ module GuidePages
       body.each_line.with_index(1) do |raw, no|
         line = raw.chomp
         if fence
-          if line =~ /\A\s*```\s*\z/
+          if Outline.fence_close?(line, fence[:mark])
             @sections.last.codes << Code.new(fence[:lang], fence[:place], fence[:text])
             fence = nil
           else
@@ -77,10 +86,10 @@ module GuidePages
           figure = { lang: line[/\bdata-lang="([^"]*)"/, 1].to_s, html: +"", line: no }
           redo
         end
-        if line =~ /\A(\s*)```(\S*)[ \t]*(.*?)\s*\z/
+        if (m = line.match(FENCE_OPEN))
           flush_links(para)
-          place = $3.empty? ? nil : $3
-          fence = { indent: $1, lang: $2, place: place, text: +"", line: no }
+          place = m[4].empty? ? nil : m[4]
+          fence = { indent: m[1], mark: m[2], lang: m[3], place: place, text: +"", line: no }
           next
         end
         line.strip.empty? ? flush_links(para) : para << line
