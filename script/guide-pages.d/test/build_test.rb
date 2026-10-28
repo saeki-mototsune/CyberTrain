@@ -135,13 +135,14 @@ class BuildTest < Minitest::Test
   end
 
   # A page with no ## section (the Guides index) has no contents list at all,
-  # not an empty one, and no .doc grid, whose first column is the list's.
+  # not an empty one, and doc-plain instead of the .doc grid, whose first
+  # column is the list's.
   def test_no_toc_without_sections
     write("x.md", "# X\n\nI.\n\n<!-- list: next-list -->\n- [**Install**](install.md) — How\n")
     built
     html = page("guide/x.html")
     refute_includes html, %(<nav class="toc")
-    assert_includes html, %(<div class="wrap">\n  <article class="doc-body">)
+    assert_includes html, %(<div class="wrap doc-plain">\n  <article class="doc-body">)
   end
 
   def test_redirects_written

@@ -90,7 +90,7 @@
   </header>
 </div>
 
-<div class="wrap<%= " doc" unless page.toc.empty? %>">
+<div class="wrap <%= page.toc.empty? ? "doc-plain" : "doc" %>">
 <% unless page.toc.empty? -%>
   <nav class="toc" aria-label="<%= toc_label %>">
     <details class="toc-d" open>
