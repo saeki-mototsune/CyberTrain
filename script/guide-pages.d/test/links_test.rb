@@ -94,6 +94,24 @@ class LinksTest < Minitest::Test
                   "docs/guide/a.md: link site:assets/nope.css: site/assets/nope.css does not exist"], @links.errors
   end
 
+  # A site: target is normalised and must stay inside the published site.
+  def test_site_target_outside_site_rejected
+    assert File.file?(File.join(ROOT, "docs/design.md"))
+    rewrite("site:../docs/design.md")
+    rewrite("site:assets/../../docs/design.md")
+    rewrite("site:../../docs/design.md", src("a", "ja"))
+    assert_equal ["docs/guide/a.md: link site:../docs/design.md: ../docs/design.md is outside the site",
+                  "docs/guide/a.md: link site:assets/../../docs/design.md: ../docs/design.md is outside the site",
+                  "docs/guide/ja/a.md: link site:../../docs/design.md: ../docs/design.md is outside the site"], @links.errors
+  end
+
+  def test_site_target_normalised
+    assert_equal "../index.html", rewrite("site:./assets/../index.html")
+    assert_equal "../index.html#x", rewrite("site:guide/../index.html#x")
+    assert_equal "../tutorial.html#validations", rewrite("site:guide/../tutorial.html#validations")
+    assert_equal [], @links.errors
+  end
+
   # A generated page is checked against the build's own output (not site/),
   # and its anchor against its heading ids.
   def test_site_target_generated_page

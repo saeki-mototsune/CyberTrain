@@ -9,7 +9,9 @@
 #                          relative to this page; the file must exist in the
 #                          repository's site/ (api/ is not checked: YARD
 #                          builds it), or, for tutorial.html and guide/*.html,
-#                          be a generated page, whose anchor is checked too
+#                          be a generated page, whose anchor is checked too;
+#                          the path is normalised, and one that leaves the
+#                          site (site:../docs/x.md) is an error
 #   any other relative     https://github.com/saeki-mototsune/CyberTrain/blob/main/<path>
 #                          (tree/main/ for a directory), the fragment kept; the
 #                          path must exist in the repository
@@ -106,9 +108,13 @@ module GuidePages
 
     def site(path, fragment, from, here)
       href = with_fragment(path, fragment)
-      rel = path.delete_prefix("site:")
+      rel = Pathname.new(path.delete_prefix("site:")).cleanpath.to_s
       top = rel.split("/").first
       base = SITE_ROOT_DIRS.include?(top) ? "" : Links.lang_root(from.lang)
+      full = Pathname.new(base + rel).cleanpath.to_s
+      if full == ".." || full.start_with?("../", "/")
+        return error(from, href, "#{full} is outside the site")
+      end
       if rel == "tutorial.html" || top == "guide"
         en = @sources.fetch("en", {}).each_value.find { |s| Links.out_path(s) == rel }
         return error(from, href, "#{base}#{rel} is not a generated page") unless en
