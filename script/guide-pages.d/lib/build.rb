@@ -11,6 +11,7 @@
 #
 #   errors = GuidePages::Build.run(root: repo, out: "site")   # [] when written
 
+require "cgi/escape"
 require "erb"
 require "fileutils"
 require "pathname"
@@ -28,6 +29,8 @@ module GuidePages
     OG_LOCALE = { "en" => "en_US", "ja" => "ja_JP", "zh" => "zh_CN", "ru" => "ru_RU", "fr" => "fr_FR" }.freeze
     LANG_NAME = { "en" => "English", "ja" => "日本語", "zh" => "简体中文", "ru" => "Русский", "fr" => "Français" }.freeze
     NAVS = %w[tutorial guides].freeze
+    # og_image: a file name in site/assets/og/<lang>/.
+    OG_IMAGE = /\A[\w.-]+\.png\z/
     # The script keeps the URL's fragment; the refresh and the link are for
     # browsers without JavaScript.
     REDIRECT = %(<!doctype html><meta charset="utf-8"><title>Moved</title><link rel="canonical" href="%<abs>s">) +
@@ -177,7 +180,11 @@ module GuidePages
         @description = front.key?("description") ? View.text(front["description"]) : View.flat(page.intro_html)
         @og_title = front.key?("og_title") ? View.text(front["og_title"]) : @title
         @og_description = front.key?("og_description") ? View.text(front["og_description"]) : @description
-        @og_image = "#{BASE}assets/og/#{@lang}/#{front["og_image"] || "index.png"}"
+        og = front.key?("og_image") ? front["og_image"] : "index.png"
+        unless og.is_a?(String) && og.match?(OG_IMAGE)
+          raise Error, "#{src.file}: og_image must be a .png file name, not #{og.inspect}"
+        end
+        @og_image = CGI.escapeHTML("#{BASE}assets/og/#{@lang}/#{og}")
         # After "CyberTrain": [text, href or nil]; guides sit under the Guides index.
         crumb = front.key?("crumb") ? View.text(front["crumb"]) : page.h1
         guides = w(:guides)

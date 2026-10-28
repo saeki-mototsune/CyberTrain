@@ -231,5 +231,15 @@ class BuildTest < Minitest::Test
   def test_invalid_nav = (write("x.md", "---\nnav: home\n---\n# X\n\nI.\n\n## A\n"); assert_includes build, %(docs/guide/x.md: nav must be one of tutorial, guides, not "home"))
   def test_duplicate_output_path = (write("x.md", "---\npath: tutorial.html\n---\n# X\n\nI.\n\n## A\n"); assert_includes build, "docs/guide/x.md: output tutorial.html is also written by another source")
   def test_translation_without_english = (write("ja/x.md", "# X\n\nI.\n\n## A\n"); assert_equal ["docs/guide/ja/x.md: no English source docs/guide/x.md"], build)
+  # og_image is a file name in site/assets/og/<lang>/, written into an
+  # attribute: anything else fails the build.
+  def test_og_image_must_be_a_png_file_name
+    ['x.png" onload="alert(1)', "../x.png", "sub/x.png", "x.svg", "<x>.png"].each do |bad|
+      write("x.md", "---\nog_image: '#{bad}'\n---\n# X\n\nI.\n\n## A\n")
+      assert_includes build, "docs/guide/x.md: og_image must be a .png file name, not #{bad.inspect}"
+      refute File.exist?(File.join(@out, "guide/x.html"))
+    end
+  end
+
   def test_malformed_meta = (write("x.md", "---\nmeta:\n  - term: T\n---\n# X\n\nI.\n\n## A\n"); assert_equal ["docs/guide/x.md: meta must be a list of {term, text}"], build)
 end
