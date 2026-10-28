@@ -1096,7 +1096,7 @@ module Cybertrain
         # method override, the model's callbacks and the download action. Written
         # by `cybertrain generate attachment <<model>> <<field>>`. Run with
         # `cybertrain spin test`; its snapshot comes from the compiled binary (the
-        # database is FFI): `script/regen-snapshot`-style, see README "Testing an app".
+        # database is FFI): `script/regen-snapshot`-style, see cybertrain docs/guide/testing.md.
         require_relative "support/app_test"
 
         # Uploaded files land here, not in storage/uploads.

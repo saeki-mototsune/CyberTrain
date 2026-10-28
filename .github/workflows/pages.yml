@@ -16,6 +16,7 @@ on:
       - "cybertrain/**"
       - "docs/api/**"
       - "docs/template-language.md"
+      - "docs/guide/**"
       - ".yardopts"
       - "script/api-docs"
   workflow_dispatch:

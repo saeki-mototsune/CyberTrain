@@ -64,7 +64,7 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 next:
   cybertrain db migrate
   cybertrain server      # then open /sign_up
-  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, "Testing an app")
+  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)
 ok   running the generator again writes and edits nothing
 create spin.toml
 create .gitignore
@@ -165,7 +165,7 @@ insert config/app.rb (CLUB_SETUP_OPEN)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, "Testing an app")
+  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)
 ok   --invite-only writes the user command and /setup instead of the sign-up page
 ok   --invite-only requires the command in bin/<app>.rb and declares setup_open
 ok   --invite-only's /setup answers only to loopback with the one-time token while no user exists
@@ -191,7 +191,7 @@ identical config/app.rb (setup_open already declared)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, "Testing an app")
+  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)
 ok   --invite-only run again writes and edits nothing
 create spin.toml
 create .gitignore

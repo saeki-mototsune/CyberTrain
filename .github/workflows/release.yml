@@ -1,6 +1,6 @@
 # Creates the GitHub release for a tag vX.Y.Z, with notes GitHub generates
 # from the pull requests merged since the previous tag. Runs on the tag push
-# (README "Releasing", step 2); a manual run takes an existing tag, for a tag
+# (CONTRIBUTING.md "Releasing", step 2); a manual run takes an existing tag, for a tag
 # pushed before this workflow existed. A tag that already has a release fails
 # the run rather than overwriting it.
 name: Release

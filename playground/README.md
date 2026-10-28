@@ -6,8 +6,8 @@ from this repository and Spinel `2026.10.27.7020` built from source, a mirror of
 the framework so that `cybertrain new` needs no network, and the tutorial's
 blog in `/workspace/blog`, created, scaffolded, migrated and built once.
 [.devcontainer/devcontainer.json](../.devcontainer/devcontainer.json) opens
-it in GitHub Codespaces (the README's
-["Try it in the browser"](../README.md#try-it-in-the-browser)).
+it in GitHub Codespaces ([docs/guide/install.md](../docs/guide/install.md#try-it-in-the-browser),
+"Try it in the browser").
 
 - Tags: `latest` is the latest tested build of `main`; `X.Y.Z` comes from the
   release tag `vX.Y.Z`, which also moves `latest`; a manual run of the

@@ -37,7 +37,7 @@ so that the pull request can be about the code.
 
 ## Setting up a checkout
 
-The requirements are the ones in [README.md](README.md#requirements): Ruby
+The requirements are the ones in [docs/guide/install.md](docs/guide/install.md#requirements): Ruby
 3.2 or newer, a C compiler, make, git, curl, and the SQLite and zlib headers.
 Then:
 
@@ -235,11 +235,39 @@ Keep a pull request to one change. A fix and the refactoring that enabled it
 are two pull requests, or at least two commits with the refactoring first; an
 unrelated improvement you noticed on the way is its own pull request, which
 will land faster than it would inside yours. Changes to `docs/design.md`,
-`spikes/NOTES.md` and the README belong in the same pull request as the code
+`spikes/NOTES.md`, the README and `docs/guide/` belong in the same pull request as the code
 they describe.
 
 Documentation and translation pull requests need no Spinel at all:
 `script/gate` is the only check, and the site is plain HTML under `site/`.
+
+## Releasing
+
+The gem and the framework are released from the same tag, and `cybertrain
+new` depends on the tag `v` + `Cybertrain::VERSION`, so the tag must exist
+before the gem is pushed:
+
+1. Bump `Cybertrain::VERSION` (`cybertrain/version.rb`) and `version` in
+   `spin.toml` together (CI checks they match); spin caches a git
+   dependency by that version.
+2. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
+4. The tag also publishes the playground image
+   `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z` (and `latest`) through
+   [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml);
+   check that run.
+5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
+   from the pull requests merged since the previous tag, through
+   [.github/workflows/release.yml](.github/workflows/release.yml). For a tag
+   pushed without a release, run that workflow by hand with the tag.
+
+`Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
+release `cybertrain setup` installs. It must equal `SPINEL_TAG` in
+[.github/workflows/ci.yml](.github/workflows/ci.yml) and in
+[script/claude-cloud-setup](script/claude-cloud-setup), which `script/gate`
+checks, so change the three together when the framework moves to another
+Spinel release.
+
 
 ## Licensing
 

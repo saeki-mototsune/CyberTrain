@@ -375,7 +375,7 @@ Recorded 2026-10-09 at commit 0bb5cb8: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 C
   development), where Rails runs its source as it is. And the comparison covers
   only the slice of Rails both apps use: CyberTrain has no jobs, mailers,
   Action Cable, asset pipeline or i18n, and its ORM and router are smaller (see
-  "Differences from Rails" in the [README](../README.md#differences-from-rails)).
+  [Differences from Rails](guide/how-it-works.md#differences-from-rails)).
 - **The machine.** It is a shared cloud VM and not the same host from day to
   day: the runs of 2026-10-07 and 2026-10-08 were on a 2.10 GHz Xeon, the run
   of 2026-10-09 on a 2.80 GHz one, and Rails, unchanged, moved by 20 to 25%

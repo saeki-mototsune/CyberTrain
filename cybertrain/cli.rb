@@ -288,7 +288,7 @@ module Cybertrain
         puts "next:"
         puts "  cybertrain db migrate"
         puts "  cybertrain server"
-        puts "  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (README, \"Testing an app\")"
+        puts "  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)"
       when "authentication"
         args = without_flag(argv[2, argv.size - 2], "--invite-only")
         raise InvalidArgument, "usage: cybertrain generate authentication [--invite-only]" unless args.empty?
@@ -304,7 +304,7 @@ module Cybertrain
         else
           puts "  cybertrain server      # then open /sign_up"
         end
-        puts "  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (README, \"Testing an app\")"
+        puts "  cybertrain spin test   # test/authentication.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)"
       else
         raise InvalidArgument, "only `generate scaffold`, `generate attachment` and `generate authentication` are supported"
       end
