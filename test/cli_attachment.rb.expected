@@ -70,7 +70,7 @@ note: uploaded files live in storage/uploads/; back it up (and mount it as a vol
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/guide/testing.md)
 ok   running the generator again writes and edits nothing
 ok   the views the generator edited parse with the template engine
 create db/migrate/20260925120002_add_avatar_to_posts.rb
@@ -102,7 +102,7 @@ note: uploaded files live in storage/uploads/; back it up (and mount it as a vol
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/guide/testing.md)
 identical db/migrate/20260925120002_add_avatar_to_posts.rb
 identical app/views/posts/_form.html.erb (file field already added)
 identical app/views/posts/show.html.erb (avatar already shown)
@@ -119,7 +119,7 @@ note: uploaded files live in storage/uploads/; back it up (and mount it as a vol
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/guide/testing.md)
 ok   with two fields, running the generator for either again changes nothing
 create spin.toml
 create .gitignore
@@ -198,7 +198,7 @@ note: uploaded files live in storage/uploads/; back it up (and mount it as a vol
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/guide/testing.md)
 create db/migrate/20260925120003_create_tags.rb
 create app/models/tag.rb
 create app/controllers/tags_controller.rb
@@ -274,7 +274,7 @@ note: uploaded files live in storage/uploads/; back it up (and mount it as a vol
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (cybertrain docs/guide/testing.md)
+  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary (https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/guide/testing.md)
 ok   --any allows any file: no accept, no type check, a link instead of an image
 create spin.toml
 create .gitignore
