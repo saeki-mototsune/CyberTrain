@@ -35,9 +35,10 @@ backup) go on the same binary: register them in `bin/blog.rb` before
 
 ```ruby
 Cybertrain::Main.command("prune", "delete comments older than DAYS") do |argv|
-  days = argv.empty? ? 30 : argv[0].to_i
-  if days < 1 # "foo".to_i is 0, which would delete every comment
-    puts "usage: prune [DAYS], DAYS a positive number"
+  arg = argv.empty? ? "30" : argv[0]
+  days = arg.to_i
+  if argv.size > 1 || days < 1 || days.to_s != arg # "foo".to_i is 0, "1.5".to_i is 1
+    puts "usage: prune [DAYS], DAYS a positive whole number"
     1 # the exit status
   else
     Cybertrain::DB.with do |c|
