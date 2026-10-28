@@ -202,7 +202,7 @@ version = "0.1.0"
 # allocator = "jemalloc"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.0" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }
 ```
 
 Remove the `#` in front of `# allocator = "jemalloc"` and the app is built
@@ -293,7 +293,7 @@ binary to `CYBERTRAIN_DATABASE`.
 It is right when it starts like this:
 
 ```
-=> Booting cybertrain 0.3.0
+=> Booting cybertrain 0.3.1
 => production environment (1 worker)
 * Listening on http://127.0.0.1:3000
 ```
@@ -390,7 +390,7 @@ deploy script uses `cybertrain build`). The executable lands in the gem
 directory, so link it from `~/.local/bin` and put that on PATH.
 
 ```sh
-gem install --user-install cybertrain -v 0.3.0
+gem install --user-install cybertrain -v 0.3.1
 gem install --user-install prism
 mkdir -p ~/.local/bin
 ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
@@ -400,7 +400,7 @@ cybertrain version
 ```
 
 Make `-v` the same version as the `ref` in the app's `spin.toml` (the tag
-`v0.3.0`). The CLI and the framework `spin.lock` pins (`spin run gen` runs
+`v0.3.1`). The CLI and the framework `spin.lock` pins (`spin run gen` runs
 that framework's own generator) are upgraded together; if their versions
 differ, building or starting fails.
 
@@ -848,10 +848,10 @@ sudo systemctl start notes
 
 Locally:
 
-Change the `ref` in `spin.toml` to the new tag (for example `"v0.3.0"`) and
+Change the `ref` in `spin.toml` to the new tag (for example `"v0.3.1"`) and
 bring the CLI to the same version with `gem install cybertrain` (on the
 server too, as the `notes` user, update the CLI naming the same version as
-`spin.toml`'s tag, as in `gem install --user-install cybertrain -v 0.3.0`.
+`spin.toml`'s tag, as in `gem install --user-install cybertrain -v 0.3.1`.
 The CLI and the framework `spin.lock` pins are upgraded together; if their
 versions differ, building or starting fails). Then:
 
@@ -903,7 +903,7 @@ day-to-day operation.
 | The deploy stops at `stale: gen/...` | You forgot to run `cybertrain spin run gen` locally and commit `gen/` |
 | The deploy ends with `The new release does not answer` | The new release did not answer `/up.html` within about 30 seconds (the script has gone back to the previous release). Look at `sudo journalctl -u notes -n 50` for why. If it did start but does not answer, the app has no `public/up.html` (5-3) |
 | `spin: command not found` (while deploying) | Spinel is not installed for the `notes` user (`cybertrain setup` in 3-4), or `~/deploy.sh`'s `PATH` lacks `~/.cybertrain/bin` (5-3) |
-| `cybertrain: command not found` (while deploying) | The cybertrain CLI is not installed for the `notes` user (`gem install --user-install cybertrain -v 0.3.0` in 3-4) |
+| `cybertrain: command not found` (while deploying) | The cybertrain CLI is not installed for the `notes` user (`gem install --user-install cybertrain -v 0.3.1` in 3-4) |
 | `git clone` fails with `Permission denied (publickey)` | The deploy key is not registered, or another user's key is in use (run 3-5 as the `notes` user) |
 | The browser keeps showing 500.html | The app is down. Look at `sudo journalctl -u notes -n 50` |
 | No certificate | Check that DNS points at the server and 80 and 443 are open. Look at `sudo journalctl -u caddy` |

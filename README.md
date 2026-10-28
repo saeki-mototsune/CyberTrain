@@ -222,7 +222,7 @@ if they are not that release.
 
 `cybertrain new` writes the application with its `spin.toml` pointing at
 the release matching the CLI (`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.0" }`), makes
+"https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }`), makes
 sure Spinel is installed, then runs `spin lock` (spin fetches the framework
 into its cache, `~/.cache/spin/packages/`, and pins the commit in
 `spin.lock`) and `spin run gen`, much as `rails new` runs `bundle install`,
@@ -2066,8 +2066,8 @@ before the gem is pushed:
 1. Bump `Cybertrain::VERSION` (`cybertrain/version.rb`) and `version` in
    `spin.toml` together (CI checks they match); spin caches a git
    dependency by that version.
-2. Merge to `main`, then tag and push: `git tag v0.2.1 && git push origin v0.2.1`.
-3. `gem build cybertrain.gemspec && gem push cybertrain-0.2.1.gem`.
+2. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
 4. The tag also publishes the playground image
    `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z` (and `latest`) through
    [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml);

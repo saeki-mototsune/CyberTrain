@@ -178,7 +178,7 @@ version = "0.1.0"
 # allocator = "jemalloc"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.0" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }
 ```
 
 `# allocator = "jemalloc"` の行の `#` を外すと、アプリが glibc の malloc の代わりに jemalloc を
@@ -261,7 +261,7 @@ export CYBERTRAIN_DATABASE="$PWD/dist/storage/rehearsal.sqlite3"
 起動時の表示が次のようになっていれば OK です。
 
 ```
-=> Booting cybertrain 0.3.0
+=> Booting cybertrain 0.3.1
 => production environment (1 worker)
 * Listening on http://127.0.0.1:3000
 ```
@@ -350,7 +350,7 @@ sudo -iu notes
 リンクを置いて PATH に通します。
 
 ```sh
-gem install --user-install cybertrain -v 0.3.0
+gem install --user-install cybertrain -v 0.3.1
 gem install --user-install prism
 mkdir -p ~/.local/bin
 ln -sfn "$(ruby -e 'print Gem.user_dir')/bin/cybertrain" ~/.local/bin/cybertrain
@@ -359,7 +359,7 @@ source ~/.bashrc
 cybertrain version
 ```
 
-`-v` はアプリの `spin.toml` の `ref`（タグ `v0.3.0`）と同じバージョンにそろえてください。CLI と
+`-v` はアプリの `spin.toml` の `ref`（タグ `v0.3.1`）と同じバージョンにそろえてください。CLI と
 `spin.lock` が固定するフレームワーク（`spin run gen` はそのフレームワーク自身の generator を
 実行します）は対で更新するものなので、バージョンがずれるとビルドや起動が失敗します。
 
@@ -777,9 +777,9 @@ sudo systemctl start notes
 
 手元で:
 
-`spin.toml` の `ref` を新しいタグ（例: `"v0.3.0"`）に書き換え、`gem install cybertrain` で
+`spin.toml` の `ref` を新しいタグ（例: `"v0.3.1"`）に書き換え、`gem install cybertrain` で
 CLI も同じバージョンにそろえてから（サーバーの `notes` ユーザーでも
-`gem install --user-install cybertrain -v 0.3.0` のように、`spin.toml` のタグと同じバージョンを
+`gem install --user-install cybertrain -v 0.3.1` のように、`spin.toml` のタグと同じバージョンを
 指定して CLI を更新します。CLI と `spin.lock` が固定するフレームワークは対で更新するものなので、
 バージョンがずれるとビルドや起動が失敗します）:
 
@@ -964,7 +964,7 @@ https://notes.example.com を開いて確かめます。
 | デプロイが `stale: gen/...` で止まる | 手元で `cybertrain spin run gen` して `gen/` をコミットし忘れている |
 | デプロイが「新しいリリースが応答しない」で終わる | 新しいリリースが約 30 秒のうちに `/up.html` に応答しなかった（スクリプトは前のリリースに戻している）。`sudo journalctl -u notes -n 50` で原因を見る。起動はしているのに応答しないなら、アプリに `public/up.html` が無い（5-3） |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
-| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.3.0`） |
+| `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v 0.3.1`） |
 | `git clone` が `Permission denied (publickey)` | デプロイキーが未登録か、別ユーザーの鍵を使っている（3-5 は `notes` ユーザーで実行） |
 | ブラウザで 500.html が出続ける | アプリが落ちている。`sudo journalctl -u notes -n 50` を見る |
 | 証明書が取れない | DNS がサーバーを向いているか、80/443 が開いているか。`sudo journalctl -u caddy` を見る |
