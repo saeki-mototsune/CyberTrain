@@ -87,6 +87,14 @@ class OutlineTest < Minitest::Test
     assert_equal "link-text-b", slug.("[Link text](x.md) <b>b</b>")
   end
 
+  def test_slug_decodes_entities
+    slug = GuidePages::Outline.method(:slug)
+    assert_equal "getting-started-the-blog", slug.("Getting started: the&nbsp;blog")
+    assert_equal "getting-started-the-blog", slug.("Getting started: the\u00A0blog")
+    assert_equal "a--b", slug.("a &amp; b")
+    assert_equal "where-next", slug.("Where&rarr; next")
+  end
+
   def test_requires_single_title
     assert_raises(GuidePages::Error) { GuidePages::Outline.parse("## only\n") }
     assert_raises(GuidePages::Error) { GuidePages::Outline.parse("# a\n\n# b\n") }

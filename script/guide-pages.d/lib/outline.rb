@@ -3,6 +3,8 @@
 # in the style of script/check-docs-i18n. Standard library only, so that the
 # translation checker can run with no gems.
 
+require "cgi/escape"
+
 module GuidePages
   class Error < StandardError; end
 
@@ -20,11 +22,13 @@ module GuidePages
   class Outline
     attr_reader :title, :sections, :links
 
-    # GFM heading anchor: markup and tags stripped, lowercased, only letters,
-    # digits, spaces, "-" and "_" kept, spaces turned into "-".
+    # GFM heading anchor: markup and tags stripped, entities decoded (a
+    # no-break space is a space), lowercased, only letters, digits, spaces,
+    # "-" and "_" kept, spaces turned into "-".
     def self.slug(text)
       t = text.gsub(/!?\[([^\]]*)\]\([^)]*\)/, '\1')
       t = t.gsub(/<[^>]*>/, "").delete("`*~")
+      t = CGI.unescapeHTML(t.gsub("&nbsp;", " ")).tr("\u00A0", " ").gsub(/&[A-Za-z][A-Za-z0-9]*;/, "")
       t.downcase.gsub(/[^\p{L}\p{N} _-]/, "").tr(" ", "-")
     end
 

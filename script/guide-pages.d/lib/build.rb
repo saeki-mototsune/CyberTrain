@@ -44,9 +44,11 @@ module GuidePages
         by_name.each_value do |src|
           next if bad.include?(src.file)
 
+          en_file = "docs/guide/#{src.name}.md"
+          next if bad.include?(en_file)
+
           english = sources.fetch("en", {})[src.name]
-          next errors << "#{src.file}: no English source docs/guide/#{src.name}.md" unless english
-          next if bad.include?(english.file)
+          next errors << "#{src.file}: no English source #{en_file}" unless english
 
           path = Links.out_path(src)
           next errors << "#{src.file}: output #{path} is also written by another source" if files.key?(path)
@@ -69,7 +71,8 @@ module GuidePages
     end
 
     # Source.all, but a source that fails to load or has no single "# " title
-    # is reported; bad lists the loaded ones without a title, not rendered.
+    # is reported; bad lists those files, which are not rendered (nor, for an
+    # English source, its translations).
     def load(root, errors)
       bad = []
       sources = {}
@@ -88,6 +91,7 @@ module GuidePages
           end
         rescue Error => e
           errors << e.message
+          bad << File.join(dir, File.basename(f))
         end
       end
       [sources, bad]
@@ -128,7 +132,7 @@ module GuidePages
 
       attr_accessor :meta
       attr_reader :page, :lang, :url, :langs, :up, :home, :title, :description,
-                  :og_title, :og_description, :og_image, :crumb, :toc_title, :toc_label
+                  :og_title, :og_description, :og_image, :crumbs, :toc_title, :toc_label
 
       # Front matter text: escaped, but entities kept as typed.
       def self.text(s)
@@ -160,7 +164,13 @@ module GuidePages
         @og_title = front.key?("og_title") ? View.text(front["og_title"]) : @title
         @og_description = front.key?("og_description") ? View.text(front["og_description"]) : @description
         @og_image = "#{BASE}assets/og/#{@lang}/#{front["og_image"] || "index.png"}"
-        @crumb = front.key?("crumb") ? View.text(front["crumb"]) : page.h1
+        # After "CyberTrain": [text, href or nil]; guides sit under the Guides index.
+        crumb = front.key?("crumb") ? View.text(front["crumb"]) : page.h1
+        guides = w(:guides)
+        @crumbs = if @nav == "tutorial" then [[crumb, nil]]
+                  elsif src.name == "index" then [[guides, nil]]
+                  else [[guides, "#{@home}guide/index.html"], [crumb, nil]]
+                  end
         @toc_title = front.key?("toc_title") ? View.text(front["toc_title"]) : w(:contents)
         @toc_label = @nav == "tutorial" ? w(:steps_label) : @toc_title
       end

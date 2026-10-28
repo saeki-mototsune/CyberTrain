@@ -73,7 +73,7 @@
 
 <div class="wrap">
   <header class="doc-hero">
-    <p class="crumb"><a href="<%= home %>index.html">CyberTrain</a><span aria-hidden="true"> / </span><span><%= crumb %></span></p>
+    <p class="crumb"><a href="<%= home %>index.html">CyberTrain</a><% crumbs.each do |text, href| %><span aria-hidden="true"> / </span><%= href ? %(<a href="#{href}">#{text}</a>) : "<span>#{text}</span>" %><% end %></p>
     <h1 id="<%= page.h1_id %>"><%= page.h1 %></h1>
 <% if page.intro_html -%>
     <p class="doc-intro"><%= page.intro_html %></p>

@@ -164,4 +164,30 @@ class BuildTest < Minitest::Test
     assert_equal [%(docs/guide/extra.md: code fence language "klingon" has no Rouge lexer)], errors
     refute Dir.exist?(@out)
   end
+
+  def crumb(path) = page(path)[%r{<p class="crumb">(.*?)</p>}, 1]
+
+  def test_crumbs
+    write("index.md", "# Guides\n\nAll of them.\n\n## List\n")
+    built
+    sep = %(<span aria-hidden="true"> / </span>)
+    assert_equal %(<a href="index.html">CyberTrain</a>#{sep}<span>Tutorial</span>), crumb("tutorial.html")
+    assert_equal %(<a href="../index.html">CyberTrain</a>#{sep}<a href="../guide/index.html">Guides</a>#{sep}<span>Installing cybertrain</span>),
+                 crumb("guide/install.html")
+    assert_equal %(<a href="../index.html">CyberTrain</a>#{sep}<a href="../guide/index.html">ガイド</a>#{sep}<span>cybertrain のインストール</span>),
+                 crumb("ja/guide/install.html")
+    assert_equal %(<a href="../index.html">CyberTrain</a>#{sep}<span>Guides</span>), crumb("guide/index.html")
+  end
+
+  def test_translations_of_a_failed_english_source_skipped
+    write("install.md", "---\nfoo: 1\n---\n# Installing cybertrain\n\nIntro.\n\n## Requirements\n\n## Differences from Rails\n")
+    errors = build
+    assert_includes errors, %(docs/guide/install.md: unknown front matter key "foo")
+    refute errors.any? { |e| e.start_with?("docs/guide/ja/install.md") }, errors.inspect
+  end
+
+  def test_invalid_nav = (write("x.md", "---\nnav: home\n---\n# X\n\nI.\n\n## A\n"); assert_includes build, %(docs/guide/x.md: nav must be one of tutorial, guides, not "home"))
+  def test_duplicate_output_path = (write("x.md", "---\npath: guide/install.html\n---\n# X\n\nI.\n\n## A\n"); assert_includes build, "docs/guide/x.md: output guide/install.html is also written by another source")
+  def test_translation_without_english = (write("ja/x.md", "# X\n\nI.\n\n## A\n"); assert_equal ["docs/guide/ja/x.md: no English source docs/guide/x.md"], build)
+  def test_malformed_meta = (write("x.md", "---\nmeta:\n  - term: T\n---\n# X\n\nI.\n\n## A\n"); assert_equal ["docs/guide/x.md: meta must be a list of {term, text}"], build)
 end
