@@ -467,8 +467,9 @@ generating wrong code:
   `git show 81778ea^:test/template_engine.rb`, refused at line 49), although
   #10316 ("An empty {} handed on through a parameter takes the Hash kind its
   callee wants", the fork's `fix/empty-hash-through-param`) is merged there:
-  that fix does not cover this program. Fixed in CyberTrain by passing the
-  Hash as a call (`layout_env`) instead of through a local.
+  that fix does not cover this program. Fixed in CyberTrain by storing the
+  title String into the Hash in `layout_env`, before it returns the Hash
+  (see the next section: passing a call alone is still refused).
 - test/template_integration.rb (new): "a constant write given a Hash,
   which no conversion keeps in its `sp_StrPolyHash *` slot", at
   `Migration::Base::VERSIONS = begin h = { "" => "" }; h.delete(""); h end`
@@ -534,11 +535,13 @@ Variations, all on 2026.10.27.7020:
 | `env = {}; env["n"] = 7; fill(env)` at the call site, the literal visible to the call | compiles, prints CRuby's result |
 | The program above storing a String (`"page"`) instead of a `Box` | compiles and prints CRuby's result, with `warning: type inference did not converge in 128 rounds` |
 
-So what decides it is where the Hash's value type is settled, not whether
-it reaches the call through a local: a Hash whose values are already
-polymorphic when it leaves the method that builds it is accepted, and a
-Hash with one value type is refused, even when the caller widens it
-afterwards.
+So in the shapes checked, what decides it is where the Hash's value type
+is settled, not whether it reaches the call through a local: a Hash whose
+values are already polymorphic when it leaves the method that builds it is
+accepted, and a Hash whose only value type is Integer is refused when the
+callee stores a `Box`, even when the caller widens it afterward. Storing a
+String instead compiles (last row), so not every Hash with one value type
+is refused.
 
 A related shape is accepted but wrong at run time. When the literal is
 visible to the call and the callee also reads the Integer before storing
