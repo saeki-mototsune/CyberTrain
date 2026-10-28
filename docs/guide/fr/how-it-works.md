@@ -1,5 +1,5 @@
 ---
-source_sha256: 19e3c2825277815dbb74435696552e6848190d85d1ae7355ae6a3ce413b58be8
+source_sha256: be6250416c64d3c07e705f9e3e4f04987365dbf6031cea8793a97c0452d9885f
 ---
 # Fonctionnement
 
@@ -144,7 +144,6 @@ production.
 | Active Job, `perform_later`, `solid_queue`, tâches récurrentes | `Cybertrain::Job.handle(kind) { \|payload\| ... }` et `Job.enqueue(kind, payload, run_at:)` (une charge utile String dans une table `cybertrain_jobs`, réessayée avec un délai croissant, puis `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`&nbsp;; un thread dans le processus qui sert, `CYBERTRAIN_WORKER=0` ailleurs ([Tâches de fond](background-and-operations.md#background-work)) |
 | Client ActionCable, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url).on_message { \|conn, data\| ... }` garde un flux connecté tant que le serveur tourne (reconnexions, pings, détection de silence), `Cybertrain::WebSocket::Client` pour une connexion synchrone unique&nbsp;; sortant uniquement, chaque attente bornée (voir [Consommer des flux WebSocket](external-services.md#consuming-websocket-feeds)) |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` est un Array de String comparées par sous-chaîne, sans tenir compte de la casse (ni Regexp ni lambdas)&nbsp;; il s’applique au journal des requêtes et à la page d’erreur de développement ([Paramètres filtrés](configuration.md#configuration-and-environment-variables)) |
-
 | `get "up" => "rails/health#show"` (une route vers un contrôleur) | `GET /up` est intégré et reçoit sa réponse avant les fichiers statiques, la session et le routeur, donc aucun `before_action` ne s’exécute&nbsp;; il interroge la base de données et le dernier tick du worker de fond, `200 ok` ou `503` ([Exploitation](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | Tâches `bin/rails db:...` pour les sauvegardes (aucune intégrée) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renommé à sa place) et `./<app> db vacuum` |
 | ActionCable (le serveur), asset pipeline, i18n | Non développé (hors des objectifs du MVP, `docs/design.md` §2.3) |

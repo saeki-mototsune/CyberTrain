@@ -1,5 +1,5 @@
 ---
-source_sha256: 19e3c2825277815dbb74435696552e6848190d85d1ae7355ae6a3ce413b58be8
+source_sha256: be6250416c64d3c07e705f9e3e4f04987365dbf6031cea8793a97c0452d9885f
 ---
 # Как это работает
 
@@ -134,7 +134,6 @@ C, которые затронула правка; релиз Spinel без `--i
 | Active Job, `perform_later`, `solid_queue`, повторяющиеся задачи | `Cybertrain::Job.handle(kind) { \|payload\| ... }` и `Job.enqueue(kind, payload, run_at:)` (полезная нагрузка String в таблице `cybertrain_jobs`, повтор с нарастающей задержкой, затем `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; один поток в обслуживающем процессе, `CYBERTRAIN_WORKER=0` в остальных ([Фоновая работа](background-and-operations.md#background-work)) |
 | Клиент ActionCable, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url).on_message { \|conn, data\| ... }` держит поток подключённым, пока работает сервер (переподключения, пинги, обнаружение тишины), `Cybertrain::WebSocket::Client` — для одного синхронного соединения; только исходящие, каждое ожидание ограничено (см. [Потребление потоков WebSocket](external-services.md#consuming-websocket-feeds)) |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` — массив строк, сопоставляемых по подстроке без учёта регистра (без Regexp и лямбд); применяется к логу запросов и странице ошибок в режиме разработки ([Фильтруемые параметры](configuration.md#configuration-and-environment-variables)) |
-
 | `get "up" => "rails/health#show"` (маршрут к контроллеру) | `GET /up` встроен и получает ответ до статических файлов, сессии и маршрутизатора, поэтому никакой `before_action` не выполняется; он опрашивает базу данных и последний такт фонового обработчика: `200 ok` или `503` ([Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | Задачи `bin/rails db:...` для резервных копий (встроенных нет) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, режим 0600, переименование на место) и `./<app> db vacuum` |
 | ActionCable (сервер), asset pipeline, i18n | Не сделано (за рамками MVP, `docs/design.md` §2.3) |

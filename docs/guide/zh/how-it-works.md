@@ -1,5 +1,5 @@
 ---
-source_sha256: 19e3c2825277815dbb74435696552e6848190d85d1ae7355ae6a3ce413b58be8
+source_sha256: be6250416c64d3c07e705f9e3e4f04987365dbf6031cea8793a97c0452d9885f
 ---
 # 工作原理
 
@@ -64,7 +64,6 @@ end
 | Active Job、`perform_later`、`solid_queue`、周期性任务 | `Cybertrain::Job.handle(kind) { \|payload\| ... }` 和 `Job.enqueue(kind, payload, run_at:)`（String 类型的负载存放在 `cybertrain_jobs` 表中，按退避策略重试，之后标记为 `failed`），`Cybertrain::Scheduler.every(seconds, name) { ... }`；在提供服务的进程中运行一个线程，其他地方用 `CYBERTRAIN_WORKER=0`（[后台任务](background-and-operations.md#background-work)） |
 | ActionCable 客户端、faye-websocket、websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url).on_message { \|conn, data\| ... }` 在服务器运行期间保持订阅连接（重连、ping、静默检测），`Cybertrain::WebSocket::Client` 用于单个同步连接；仅限出站，每次等待都有上限（参见[订阅 WebSocket 数据流](external-services.md#consuming-websocket-feeds)） |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` 是一个 String 数组，按子串不区分大小写地匹配（不支持正则表达式或 lambda）；它作用于请求日志和开发时的错误页面（[过滤的参数](configuration.md#configuration-and-environment-variables)） |
-
 | `get "up" => "rails/health#show"`（指向控制器的路由） | `GET /up` 是内置的，在静态文件、会话和路由器之前就作出响应，所以不会运行任何 `before_action`；它查询数据库和后台工作线程的最后一次心跳，返回 `200 ok` 或 `503`（[运维](background-and-operations.md#operations-backups-vacuum-health-check)） |
 | 用于备份的 `bin/rails db:...` 任务（没有内置） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`，权限 0600，重命名到位）和 `./<app> db vacuum` |
 | ActionCable（服务器端）、资源管道、i18n | 未构建（不在 MVP 范围内，`docs/design.md` §2.3） |

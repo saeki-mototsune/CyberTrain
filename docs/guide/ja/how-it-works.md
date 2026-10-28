@@ -1,5 +1,5 @@
 ---
-source_sha256: 19e3c2825277815dbb74435696552e6848190d85d1ae7355ae6a3ce413b58be8
+source_sha256: be6250416c64d3c07e705f9e3e4f04987365dbf6031cea8793a97c0452d9885f
 ---
 # 仕組み
 
@@ -64,7 +64,6 @@ end
 | Active Job、`perform_later`、`solid_queue`、定期タスク | `Cybertrain::Job.handle(kind) { \|payload\| ... }` と `Job.enqueue(kind, payload, run_at:)`（`cybertrain_jobs` テーブルに置かれる String のペイロードで、バックオフ付きで再試行され、その後 `failed` になる）、`Cybertrain::Scheduler.every(seconds, name) { ... }`。配信を行うプロセスで 1 スレッド、それ以外では `CYBERTRAIN_WORKER=0`（[バックグラウンド処理](background-and-operations.md#background-work)） |
 | ActionCable クライアント、faye-websocket、websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url).on_message { \|conn, data\| ... }` はサーバーの動作中、フィードを接続したまま保つ（再接続、ping、無音の検出）。同期的な 1 本の接続には `Cybertrain::WebSocket::Client`。外向きのみで、すべての待ちに上限がある（[WebSocket フィードを購読する](external-services.md#consuming-websocket-feeds)を参照） |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` は String の Array で、大文字小文字を区別せず部分文字列で照合される（Regexp やラムダは使えない）。リクエストログと開発環境のエラーページに適用される（[フィルターされるパラメーター](configuration.md#configuration-and-environment-variables)） |
-
 | `get "up" => "rails/health#show"`（コントローラーへのルート） | `GET /up` は組み込みで、静的ファイル、セッション、ルーターより前に応答するので、`before_action` は実行されない。データベースとバックグラウンドワーカーの最後のティックを確認し、`200 ok` または `503` を返す（[運用](background-and-operations.md#operations-backups-vacuum-health-check)） |
 | バックアップ用の `bin/rails db:...` タスク（組み込みはない） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`、モード 0600、所定の場所にリネーム）と `./<app> db vacuum` |
 | ActionCable（サーバー）、アセットパイプライン、i18n | 作られていない（MVP の対象外。`docs/design.md` §2.3） |
