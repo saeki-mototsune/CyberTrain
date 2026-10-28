@@ -54,9 +54,10 @@ The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
 [performance-next.md](performance-next.md).
 
-Suggested order for what is still open: deciding whether CyberTrain keeps
-its workarounds for 1 and 2 (neither reproduced on master 9b9972399), then
-4 to 7, then the rest. H and the two shapes found in review are fixed on
+Suggested order for what is still open: 1, whose workaround CyberTrain
+keeps because no reduced program shows it on any build (see 1), then 4 to
+7, then the rest. 2's workaround in `Html.escape` is dropped on
+2026.10.27.7020 (see 2). H and the two shapes found in review are fixed on
 master 003ceda5d (#10415 to #10417), and the fork's 2026.10.27.7020, which
 CyberTrain is now pinned to, carries #10415: H's workaround is dropped
 (issue #90). (B and D are settled as by design:
@@ -71,8 +72,8 @@ that it is fixed.
 
 | Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 | master 003ceda5d |
 | --- | --- | --- | --- | --- | --- |
-| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) | not re-checked |
-| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked |
+| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) | not re-checked; on 2026.10.27.7020 not reproduced under ASan, but neither on 2026.09.12 in that shape (workaround kept) |
+| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked; on 2026.10.27.7020 not reproduced (106 of 106 and examples/blog pass without it; dropped) |
 | 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) |
 | 4 to 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured |
 | `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked |
@@ -100,7 +101,9 @@ CyberTrain: it stayed on 2026.09.12, where they do not happen, until it
 moved to 2026.10.26.7019. The refusal listed under C is separate: both
 builds still make it, and CyberTrain's workaround for it stays. The first
 four rows below are still needed on master 9b9972399; the last one did not
-reproduce there, but is kept until it is decided whether to drop it. Master
+reproduce there, but is kept (see 1). The workaround for 2 in
+`Html.escape` used to be in that row; it is dropped on 2026.10.27.7020
+(see 2). Master
 003ceda5d fixes H (#10415), and the H row is no longer needed now that
 CyberTrain is pinned to 2026.10.27.7020, which carries it (issue #90):
 
@@ -110,7 +113,7 @@ CyberTrain is pinned to 2026.10.27.7020, which carries it (issue #90):
 | `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` | still raises `RangeError`, by design in the default `raise` mode; kept (`--int-overflow=promote`, experimental, parses it as a Bignum; see D) |
 | test/template_engine.rb passes the layout's Hash as a call (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged |
 | `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415). Dropped on 2026.10.27.7020: `DB.with`'s comment no longer asks for the local, and test/db_with_value.rb also covers the block's own value |
-| `Html.escape`'s `case value when String`, `SafeString.of` and binding arguments to locals (rules 56, 58) | 1, 2 | not re-checked, kept | not reproduced in the shapes checked (see 1 and 2); kept until decided |
+| `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept |
 
 Every fix the fork carried is now in matz/spinel master, not only in the
 fork (#10254 to #10263, and #10316). #10316 is the fork's
@@ -145,6 +148,16 @@ each argument at the call site (`SP_GC_ROOT(_t7)` before
 `sp_Foo_new(_t7)`). Not reproduced in that shape; there was no
 AddressSanitizer run, so this is not a claim that it is fixed in general.
 
+Re-checked on 2026-10-28 on 2026.10.27.7020, and against 2026.09.12 for
+comparison: the same two shapes, 200,000 times each in a loop, built with
+AddressSanitizer, report no use-after-free on either build, and
+2026.09.12's generated C roots each argument at the call site too
+(`SP_GC_ROOT(_t6)` before `sp_Foo_new(_t6)`). So this shape never showed
+the bug, and the check above says nothing about whether it is fixed; the
+shape the benchmark crashed on has not been reduced. CyberTrain keeps
+`SafeString.of` and the locals: they cost nothing, and the crash was rare
+and moved with allocation counts.
+
 ### 2. A parameter used only through `to_s` is narrowed to one caller's type
 
 `Html.escape(value)` was typed as taking an Integer because one caller
@@ -154,8 +167,8 @@ of a caller that is otherwise unused is typed as an Integer the same way.
 - Seen in the router tests (wrong output, no error). A two-caller program
   (`esc(1)`, `esc("abc")`) does not show it on either build; it takes the
   router tests' shapes.
-- Today: keep a `case value when String` on the parameter and pass
-  `x.to_s` from callers (rule 56).
+- Today: callers pass `x.to_s` (rule 56); the `case value when String`
+  that `Html.escape` kept on the parameter is dropped on 2026.10.27.7020.
 - Fix: unify the types of every call site, or widen to untyped instead of
   picking one.
 
@@ -166,6 +179,12 @@ or the router (`grep -lE "Html|escape|router|Router" test/*.rb`, 843 `test`
 blocks between them) all pass under `spin test`. Not
 reproduced; the workaround can be reconsidered, but this check does not
 prove the general case.
+
+Dropped on 2026-10-28, on 2026.10.27.7020: with `str = value.to_s`, `spin
+test` passes 106 of 106 and examples/blog's tests pass. In
+test/template_integration.rb (the whole framework), `--emit-types` keeps
+`value` untyped and types `str` as a String, so the byte loops still
+compile to plain C. The callers' `x.to_s` (`SafeString#+`) stays.
 
 ### 3. An Array assigned to a local of a wider element type is copied
 

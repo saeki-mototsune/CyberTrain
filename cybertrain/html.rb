@@ -24,15 +24,12 @@ module Cybertrain
       # included, see SafeString::EMPTY), so the loops compile to plain
       # C, and for a String it is the String itself, not a copy. It is also
       # what comes back when nothing needs escaping, so callers get a typed
-      # String rather than the polymorphic parameter. The case keeps value
-      # polymorphic: used only through to_s, Spinel narrows it to whatever
-      # one caller passes (it once inferred an Integer and turned Strings
-      # into "0"). Anything but a String is converted anyway, so the
-      # interpolation costs nothing extra.
-      str = case value
-            when String then value.to_s
-            else "#{value.to_s}"
-            end
+      # String rather than the polymorphic parameter. Spinel 2026.09.12
+      # narrowed a parameter used only through to_s to one caller's type (it
+      # once inferred an Integer here and turned Strings into "0"), so this
+      # used to be a `case value when String`; that no longer happens on
+      # 2026.10.27.7020 (docs/spinel-feedback.md, item 2).
+      str = value.to_s
       n = str.bytesize
       i = 0
       # Most values need nothing: find the first byte that does before

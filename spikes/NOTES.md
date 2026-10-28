@@ -315,7 +315,9 @@ finds the commit that removed them).
       `to_s` is narrowed to one caller's type (Html.escape once took an
       Integer and turned Strings into "0"): keep a `case v when String` on
       it, and pass `x.to_s` from a caller whose own parameter is otherwise
-      unused, which Spinel types as an Integer (SafeString#+).
+      unused, which Spinel types as an Integer (SafeString#+). The `case`
+      is no longer needed on 2026.10.27.7020 (Html.escape dropped it;
+      docs/spinel-feedback.md item 2); the callers' `x.to_s` stays.
     - A Hash with object values boxes them, so a lookup is polymorphic; an
       object Array is typed (`sp_PtrArray`) unless the program calls
       `clear` on it anywhere, or it is an Array of the class that holds it
