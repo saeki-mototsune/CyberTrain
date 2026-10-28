@@ -4,7 +4,6 @@ The methods an application calls: in controllers, models, migrations,
 `config/routes.rb`, `config/app.rb` and tests. New to CyberTrain? Start with
 the [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html).
 The guides cover the rest: {https://saeki-mototsune.github.io/CyberTrain/guide/install.html installing and the CLI},
-{https://saeki-mototsune.github.io/CyberTrain/tutorial.html the walkthrough},
 {https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html how it works and the differences from Rails},
 {https://saeki-mototsune.github.io/CyberTrain/guide/models.html models}, {https://saeki-mototsune.github.io/CyberTrain/guide/requests.html requests},
 {https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html configuration},
