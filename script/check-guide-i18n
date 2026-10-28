@@ -7,13 +7,16 @@
 #   * a translation is missing, or has no English source;
 #   * source_sha256 is missing or is not the SHA-256 of the English file (the
 #     English changed after the translation; see `git log -p <file>`);
-#   * the front matter keys differ, or path, og_image or nav are not equal;
+#   * the front matter keys differ, path, og_image or nav are not equal, or
+#     meta has a different number of rows;
 #   * the headings differ in number or level, the step comments in number or
 #     id, or the convention markers ([!WHY] [!RULE] [!NOTE] <details> list:
 #     table:) in sequence;
-#   * a section's code fences differ in number, order, language, place or
-#     content once comment lines and trailing `# ` comments are taken out, or
-#     its tables differ in row count;
+#   * a section's code fences (and raw HTML <figure class="code"> blocks,
+#     whose <code> lines are compared with tags stripped and entities decoded;
+#     their caption is translated) differ in number, order, language, place
+#     or content once comment lines and trailing `# ` comments are taken out,
+#     or its tables differ in row count;
 #   * the link targets (with fragment), in order, differ; link text is not
 #     compared.
 # Prose is not compared: it is the part that is translated. Standard library

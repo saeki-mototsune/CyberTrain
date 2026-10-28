@@ -130,6 +130,19 @@ class I18nCheckTest < Minitest::Test
     assert_problem(/code block 1 \(ruby\) differs at line 1/)
   end
 
+  def test_raw_html_figure_commands_compared
+    fig = ->(caption, cmd, comment) {
+      %(<figure class="code" data-lang="shell" markdown="0">\n<figcaption>#{caption}</figcaption>\n) +
+        %(<pre aria-label="#{caption}"><code><span class="ln cmd">#{cmd}   <span class="c"># #{comment}</span></span></code></pre>\n</figure>\n\n)
+    }
+    edit(EN, "## Compare\n", "## Compare\n\n#{fig.("terminal", "cybertrain new blog", "first time")}")
+    edit(JA, "## 比較\n", "## 比較\n\n#{fig.("ターミナル", "cybertrain new blog", "初回")}")
+    GuidePages::I18nCheck.update_sha(JA, root: @root)
+    assert_equal [], run_check # caption and comment are translated
+    edit(JA, "cybertrain new blog", "cybertrain new blogs")
+    assert_problem(/section "Compare", code block 1 \(shell\) differs at line 1/)
+  end
+
   def test_code_count_differs
     edit_ja("```console\n$ cybertrain run\n```\n", "")
     assert_problem(/English has 1 code blocks, translation has 0/)

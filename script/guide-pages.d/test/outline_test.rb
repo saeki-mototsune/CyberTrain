@@ -73,6 +73,34 @@ class OutlineTest < Minitest::Test
     assert_equal "bundle install\n", codes[1].text
   end
 
+  # A raw HTML code figure's lines are a code block too: tags stripped,
+  # entities decoded; the caption is not part of it.
+  def test_codes_from_raw_html_figure
+    o = GuidePages::Outline.parse(<<~MD)
+      # T
+
+      ## A
+
+      <figure class="code" data-lang="shell" markdown="0">
+      <figcaption><span class="code-path">terminal &mdash; x</span></figcaption>
+      <pre tabindex="0" aria-label="Code: x"><code><span class="ln cmd">echo &quot;a &amp; b&quot;&nbsp;c</span>
+      <span class="ln cmd">cd blog   <span class="c"># go there</span></span>
+      <span class="ln">## not a heading</span><span class="term-cursor" aria-hidden="true"></span></code></pre>
+      </figure>
+
+      ## B
+    MD
+    assert_equal ["A", "B"], o.sections.drop(1).map(&:text)
+    codes = o.sections[1].codes
+    assert_equal [["shell", nil]], codes.map { |c| [c.lang, c.place] }
+    assert_equal "echo \"a & b\" c\ncd blog   # go there\n## not a heading\n", codes[0].text
+  end
+
+  def test_rejects_unclosed_code_figure
+    e = assert_raises(GuidePages::Error) { GuidePages::Outline.parse("# a\n\n<figure class=\"code\">\n<pre><code>x\n") }
+    assert_equal "code figure opened at line 3 is not closed", e.message
+  end
+
   def test_table_rows
     assert_equal 3, section("Compare").table_rows
     assert_equal 0, section("Validations").table_rows

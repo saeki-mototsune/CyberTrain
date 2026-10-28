@@ -13,6 +13,8 @@ module GuidePages
   # The marker is the kind; text after it (a callout's aria-label) is prose.
   ALERT = /\A>\s*\[!(WHY|RULE|COMPILE|EXAMPLE|NOTE)\](?:[ \t]+\S.*)?\s*\z/
   LINK_RE = /!?\[[^\]]*\]\(\s*<?([^\s)>]+)>?(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)|<a\s[^>]*?href\s*=\s*["']([^"']+)["']/i
+  # A raw HTML code figure (the tutorial's step 01 overview).
+  CODE_FIGURE = /\A\s*<figure\s[^>]*\bclass="code[" ]/
   REF_DEF = /\A {0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s+.*)?\z/
 
   Step = Struct.new(:num, :id, :stage)
@@ -32,6 +34,14 @@ module GuidePages
       t.downcase.gsub(/[^\p{L}\p{N} _-]/, "").tr(" ", "-")
     end
 
+    # The lines of a raw HTML code figure's <code> (its span.ln lines), tags
+    # stripped and entities decoded; the caption is not part of it.
+    def self.figure_code(html)
+      code = html[%r{<code\b[^>]*>(.*?)</code>}m, 1] || html[%r{<code\b[^>]*>(.*)}m, 1].to_s
+      text = CGI.unescapeHTML(code.gsub(/<[^>]*>/, "").gsub("&nbsp;", " ")).tr("\u00A0", " ")
+      text.empty? || text.end_with?("\n") ? text : "#{text}\n"
+    end
+
     def self.parse(body) = new(body)
 
     def initialize(body)
@@ -40,6 +50,7 @@ module GuidePages
       titles = []
       pending_step = nil
       fence = nil
+      figure = nil
       para = []
       quote_open = false
       body.each_line.with_index(1) do |raw, no|
@@ -52,6 +63,19 @@ module GuidePages
             fence[:text] << line.sub(/\A#{fence[:indent]}/, "") << "\n"
           end
           next
+        end
+        if figure
+          figure[:html] << line << "\n"
+          if line.include?("</figure>")
+            @sections.last.codes << Code.new(figure[:lang], nil, Outline.figure_code(figure[:html])) if figure[:html].include?("<code")
+            figure = nil
+          end
+          para << line
+          next
+        end
+        if line =~ CODE_FIGURE
+          figure = { lang: line[/\bdata-lang="([^"]*)"/, 1].to_s, html: +"", line: no }
+          redo
         end
         if line =~ /\A(\s*)```(\S*)[ \t]*(.*?)\s*\z/
           flush_links(para)
@@ -80,6 +104,7 @@ module GuidePages
       end
       flush_links(para)
       raise Error, "code fence opened at line #{fence[:line]} is not closed" if fence
+      raise Error, "code figure opened at line #{figure[:line]} is not closed" if figure
       raise Error, "expected exactly one '# ' title, found #{titles.size}" unless titles.size == 1
 
       @title = titles.first
