@@ -130,7 +130,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 <% items.each_with_index do |item, i| %>...<% end %>
 ```
 
-- `each`/`each_with_index` 只有作为块头的后缀（`x.each do |...|`）时才会被识别。**实际实现**：两者都要求声明一个或两个块参数——`xs.each do end` 是 `SyntaxError`（"takes one or two block parameters"），而普通的 Ruby 允许零个。
+- `each`/`each_with_index` 只有作为块头的后缀（`x.each do |...|`）时才会被识别。**实际实现**：两者都要求声明一个或两个块参数——`xs.each do end` 是 `SyntaxError`（“takes one or two block parameters”），而普通的 Ruby 允许零个。
 - Array 加一个参数：元素本身。Array 加两个参数：`Array` 类型的元素会被解构（`a, b = item[0], item[1]`）；否则第二个参数为 `nil`。
 - Array 上的 `each_with_index`：`item, i`。Hash 上的：第一个参数是 `[key, value]` 对，第二个是索引。
 - Hash 上带两个参数的 `each`：直接是 `key, value`；带一个参数时：是 `[key, value]` 对。
@@ -139,7 +139,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 ### 块调用（辅助方法）
 
-`do ... end` 也是不带接收者的辅助方法调用接收块的方式——这是块唯一的另一种合法用法，并且只在没有接收者时可用（`f.each do |x| end` 会被拒绝："blocks are only supported on each, each_with_index and helper calls"）：
+`do ... end` 也是不带接收者的辅助方法调用接收块的方式——这是块唯一的另一种合法用法，并且只在没有接收者时可用（`f.each do |x| end` 会被拒绝：“blocks are only supported on each, each_with_index and helper calls”）：
 
 ```erb
 <%= form_with(model: @post) do |f| %>...<% end %>   <%# printed: form_with returns the <form> HTML %>
@@ -223,7 +223,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `params` | | 当前的 `Cybertrain::Params` |
 | `request_path` | | 当前路径，没有控制器时为 `""` |
 | `url_for` | `url_for(target)` | `String` 原样返回，`Model` → 成员路由，`[parent, child]` → 嵌套路由 |
-| `paginate` | `paginate(page, path)` | `page` 是一个 `Cybertrain::Page`（来自 `Relation#page`）；渲染 `<nav class="pager">`，其中有 "Newer"（`rel="prev"`）、`<span class="pager-current">Page N</span>` 和 "Older"（`rel="next"`），没有对应页面时省略相应链接。每个链接都是 `path` 加上当前请求的查询字符串，其中 `page` 被替换（第 1 页时去掉），并重新编码和进行 HTML 转义；带有自己 `?query` 的 `path` 则改用它自己的查询字符串。在模板中，`Page` 还响应 `number`、`per`、`row_offset`、`next?`、`prev?`、`next_number`、`prev_number`（`<% if @page.next? %>`） |
+| `paginate` | `paginate(page, path)` | `page` 是一个 `Cybertrain::Page`（来自 `Relation#page`）；渲染 `<nav class="pager">`，其中有 “Newer”（`rel="prev"`）、`<span class="pager-current">Page N</span>` 和 “Older”（`rel="next"`），没有对应页面时省略相应链接。每个链接都是 `path` 加上当前请求的查询字符串，其中 `page` 被替换（第 1 页时去掉），并重新编码和进行 HTML 转义；带有自己 `?query` 的 `path` 则改用它自己的查询字符串。在模板中，`Page` 还响应 `number`、`per`、`row_offset`、`next?`、`prev?`、`next_number`、`prev_number`（`<% if @page.next? %>`） |
 | `*_path` / `*_url` | 例如 `post_path(post)` | 由应用生成，通过 `Cybertrain::Views.url_resolver` 解析 |
 
 每个辅助方法的文本参数都遵循同一条规则：`SafeString` 不经转义直接通过，其他任何内容都会被转义——`link_to raw('<b>raw</b>'), post` 会原样输出加粗标签，而 `link_to post.title, post` 会转义它。
@@ -234,7 +234,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 | 方法 | 渲染结果 |
 | --- | --- |
-| `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>`——默认文本是人性化后的属性名（`published_at` → "Published at"，`author_id` → "Author"）；显式给出的文本会被转义，除非它是 `SafeString` |
+| `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>`——默认文本是人性化后的属性名（`published_at` → “Published at”，`author_id` → “Author”）；显式给出的文本会被转义，除非它是 `SafeString` |
 | `f.text_field :title`（还有 `email_field`、`password_field`、`number_field`、`date_field`、`hidden_field`） | `<input type="..." name="post[title]" id="post_title" value="...">`；`password_field` 从不输出 `value=` |
 | `f.file_field :cover`（还可以加 `accept: "image/*"`、`required: true`） | `<input type="file" name="post[cover]" id="post_cover">`——从不输出 `value=`，属性也不必是列；表单必须是 `form_with ..., multipart: true`；`multiple: true` 会抛出 `ArgumentError`（每个字段一个文件） |
 | `f.text_area :body` | `<textarea name="post[body]" id="post_body">\n...</textarea>`（开头有 `\n`，与 Rails 一样——浏览器会吞掉第一个换行符） |
@@ -300,7 +300,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `link_to text, path, method: :delete`（由 JS 驱动） | `link_to` 上没有 `method:`——要发出真正的非 GET 表单请使用 `button_to` |
 | 严格局部变量接受 `name: default_expr`（Rails 7.1） | 只能写不带修饰的 `name:`（必需）；带默认值的条目是 `SyntaxError` |
 | 未定义的实例变量/局部变量通过 Ruby / 视图上下文的方法解析 | `@x` 是简单的、从不失败的 env 查找；未定义的裸局部变量是一次显式的、封闭的辅助方法调用尝试（找不到时为 `"undefined helper"`） |
-| `and`/`or`/`not`、`case/when`、范围、正则表达式、多重赋值都可以使用 | 这些都不存在；保留字会以专门的 "not supported in templates" 消息失败，而不是一般的解析错误 |
+| `and`/`or`/`not`、`case/when`、范围、正则表达式、多重赋值都可以使用 | 这些都不存在；保留字会以专门的 “not supported in templates” 消息失败，而不是一般的解析错误 |
 | 数字字面量：十六进制、八进制、二进制、指数、有理数 | 只有十进制整数/浮点数，可以用 `_` 作分隔符 |
 | `:"quoted symbol"`、`:+` 运算符符号 | 符号只能由标识符字符组成 |
 | `foo (x)`、`foo [x]`（允许空格，有时会给出警告） | 两者都是硬性的 `SyntaxError`——调用的 `(` 或索引的 `[` 之前不能有空格 |

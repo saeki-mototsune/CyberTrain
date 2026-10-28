@@ -13,7 +13,7 @@ embedded in this binary`）。Spinel 没有 `eval`，所以这是一套封闭的
 
 **通过 FFI 使用 SQLite。** 模型直接通过 Spinel 的 `ffi_func`/`ffi_lib` 与 SQLite 通信——没有 C 扩展，也没有 gem。一个连接池（`SizedQueue`，默认 4 个连接）分发连接，这些连接启用了 WAL、约五秒的忙等待超时（一个每 100 µs 重试一次的忙处理器，而 SQLite 的 `busy_timeout` 每次会休眠一毫秒或更久）、最多 64 条缓存的预编译语句，并开启了外键；每个查询都使用绑定参数，从不做字符串插值。这是目前唯一的适配器（通过 `libpq` FFI 支持 PostgreSQL 被记为未来可能的工作）。
 
-**事务。** `Cybertrain::DB.transaction { |c| ... }`（或 `Article.transaction`，同一个东西换成 Rails 的名字）会取出一个连接，运行 `BEGIN`，把连接传给块，块返回时 `COMMIT`，块抛出异常时回滚并重新抛出。`immediate: true` 运行 `BEGIN IMMEDIATE`，它在开始时就获取 SQLite 的写锁：先读后写的事务应使用它，这样并发的写入者会让它在 `BEGIN` 处等待，而不是在第一次写入时以 "database is locked" 失败。块运行期间，该线程上所有经过连接池的操作（`save`、`update`、`destroy`、Relation 查询、`DB.with`）都使用事务的连接，因此都属于这个事务：
+**事务。** `Cybertrain::DB.transaction { |c| ... }`（或 `Article.transaction`，同一个东西换成 Rails 的名字）会取出一个连接，运行 `BEGIN`，把连接传给块，块返回时 `COMMIT`，块抛出异常时回滚并重新抛出。`immediate: true` 运行 `BEGIN IMMEDIATE`，它在开始时就获取 SQLite 的写锁：先读后写的事务应使用它，这样并发的写入者会让它在 `BEGIN` 处等待，而不是在第一次写入时以 “database is locked” 失败。块运行期间，该线程上所有经过连接池的操作（`save`、`update`、`destroy`、Relation 查询、`DB.with`）都使用事务的连接，因此都属于这个事务：
 
 ```ruby
 Article.transaction(immediate: true) do |c|
@@ -68,7 +68,7 @@ end
 | 用于备份的 `bin/rails db:...` 任务（没有内置） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`，权限 0600，重命名到位）和 `./<app> db vacuum` |
 | ActionCable（服务器端）、资源管道、i18n | 未构建（不在 MVP 范围内，`docs/design.md` §2.3） |
 
-以上并不详尽——`docs/design.md` §8（"What was deliberately left out"）是更完整的记录。
+以上并不详尽——`docs/design.md` §8（“What was deliberately left out”）是更完整的记录。
 
 ## 性能
 

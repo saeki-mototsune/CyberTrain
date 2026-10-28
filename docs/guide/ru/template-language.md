@@ -130,7 +130,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 <% items.each_with_index do |item, i| %>...<% end %>
 ```
 
-- `each`/`each_with_index` распознаются только как суффикс заголовка блока (`x.each do |...|`). **As built**: оба требуют объявить один или два параметра блока — `xs.each do end` даёт `SyntaxError` ("takes one or two block parameters"), тогда как обычный Ruby допускает ноль.
+- `each`/`each_with_index` распознаются только как суффикс заголовка блока (`x.each do |...|`). **As built**: оба требуют объявить один или два параметра блока — `xs.each do end` даёт `SyntaxError` («takes one or two block parameters»), тогда как обычный Ruby допускает ноль.
 - Array + один параметр: элемент. Array + два параметра: элемент-`Array` деструктурируется (`a, b = item[0], item[1]`); иначе второй — `nil`.
 - `each_with_index` на Array: `item, i`. На Hash: первый параметр — пара `[key, value]`, второй — индекс.
 - `each` на Hash с двумя параметрами: непосредственно `key, value`; с одним параметром — пара `[key, value]`.
@@ -139,7 +139,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 
 ### Вызовы с блоком (хелперы)
 
-`do ... end` — это также способ передать блок вызову хелпера без получателя — единственное другое допустимое использование блока, и только когда получателя нет (`f.each do |x| end` отвергается: "blocks are only supported on each, each_with_index and helper calls"):
+`do ... end` — это также способ передать блок вызову хелпера без получателя — единственное другое допустимое использование блока, и только когда получателя нет (`f.each do |x| end` отвергается: «blocks are only supported on each, each_with_index and helper calls»):
 
 ```erb
 <%= form_with(model: @post) do |f| %>...<% end %>   <%# printed: form_with returns the <form> HTML %>
@@ -223,7 +223,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | `params` | | текущие `Cybertrain::Params` |
 | `request_path` | | текущий путь, `""` без контроллера |
 | `url_for` | `url_for(target)` | `String` как есть, `Model` → маршрут элемента, `[parent, child]` → вложенный маршрут |
-| `paginate` | `paginate(page, path)` | `page` — это `Cybertrain::Page` (из `Relation#page`); выводит `<nav class="pager">` с "Newer" (`rel="prev"`), `<span class="pager-current">Page N</span>` и "Older" (`rel="next"`); ссылка опускается, если такой страницы нет. Каждая ссылка — это `path` плюс строка запроса текущего запроса с заменённым `page` (для страницы 1 он убирается), заново закодированная и HTML-экранированная; `path` с собственным `?query` использует вместо этого его. `Page` в шаблоне также отвечает на `number`, `per`, `row_offset`, `next?`, `prev?`, `next_number`, `prev_number` (`<% if @page.next? %>`) |
+| `paginate` | `paginate(page, path)` | `page` — это `Cybertrain::Page` (из `Relation#page`); выводит `<nav class="pager">` с «Newer» (`rel="prev"`), `<span class="pager-current">Page N</span>` и «Older» (`rel="next"`); ссылка опускается, если такой страницы нет. Каждая ссылка — это `path` плюс строка запроса текущего запроса с заменённым `page` (для страницы 1 он убирается), заново закодированная и HTML-экранированная; `path` с собственным `?query` использует вместо этого его. `Page` в шаблоне также отвечает на `number`, `per`, `row_offset`, `next?`, `prev?`, `next_number`, `prev_number` (`<% if @page.next? %>`) |
 | `*_path` / `*_url` | например, `post_path(post)` | генерируются приложением, разрешаются через `Cybertrain::Views.url_resolver` |
 
 Каждый текстовый аргумент хелпера следует одному правилу: `SafeString` проходит без экранирования, всё остальное экранируется — `link_to raw('<b>raw</b>'), post` выводит тег жирного шрифта буквально, а `link_to post.title, post` его экранирует.
@@ -234,7 +234,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 
 | Метод | Выводит |
 | --- | --- |
-| `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>` — текст по умолчанию — «очеловеченный» атрибут (`published_at` → "Published at", `author_id` → "Author"); явный текст экранируется, если это не `SafeString` |
+| `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>` — текст по умолчанию — «очеловеченный» атрибут (`published_at` → «Published at», `author_id` → «Author»); явный текст экранируется, если это не `SafeString` |
 | `f.text_field :title` (также `email_field`, `password_field`, `number_field`, `date_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`; `password_field` никогда не выводит `value=` |
 | `f.file_field :cover` (также `accept: "image/*"`, `required: true`) | `<input type="file" name="post[cover]" id="post_cover">` — никогда не выводит `value=`, и атрибут не обязан быть столбцом; форма должна быть `form_with ..., multipart: true`; `multiple: true` возбуждает `ArgumentError` (один файл на поле) |
 | `f.text_area :body` | `<textarea name="post[body]" id="post_body">\n...</textarea>` (ведущий `\n`, как в Rails, — браузеры съедают первый перевод строки) |
@@ -300,7 +300,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | `link_to text, path, method: :delete` (через JS) | У `link_to` нет `method:` — используйте `button_to` для настоящей не-GET формы |
 | Строгие локальные переменные принимают `name: default_expr` (Rails 7.1) | Только голое `name:` (обязательное); запись со значением по умолчанию — `SyntaxError` |
 | Неопределённая переменная экземпляра/локальная разрешается через Ruby / методы контекста представления | `@x` — простой, никогда не падающий поиск в окружении; голая неопределённая локальная — явная попытка вызова хелпера из замкнутого набора (`"undefined helper"`, если совпадения нет) |
-| `and`/`or`/`not`, `case/when`, диапазоны, регулярные выражения, множественное присваивание — всё работает | Ничего этого нет; зарезервированные слова дают конкретное сообщение "not supported in templates", а не общую ошибку разбора |
+| `and`/`or`/`not`, `case/when`, диапазоны, регулярные выражения, множественное присваивание — всё работает | Ничего этого нет; зарезервированные слова дают конкретное сообщение «not supported in templates», а не общую ошибку разбора |
 | Числовые литералы: шестнадцатеричные, восьмеричные, двоичные, экспоненты, рациональные | Только десятичные целые/дробные с необязательными разделителями `_` |
 | `:"quoted symbol"`, символы-операторы `:+` | Символы состоят только из символов идентификатора |
 | `foo (x)`, `foo [x]` (пробел допускается, иногда с предупреждением) | Оба — жёсткие `SyntaxError`: никаких пробелов перед `(` вызова или `[` индекса |
