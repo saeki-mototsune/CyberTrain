@@ -1,5 +1,5 @@
 ---
-source_sha256: de774e8e1c432583b9dc3096d1e2c7135a996419b337491f66b506fe4cfff9bf
+source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -811,7 +811,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   добавляет `X-Forwarded-For` (nginx без
   `proxy_set_header X-Forwarded-For ...`), каждый клиент выглядит как
   loopback, а токен есть только у того, кто может читать лог сервера. Строка
-  журнала запросов `Started GET "/setup?token=..."` записывает его в тот же
+  `Started GET "/setup?token=..."` в логе запросов записывает его в тот же
   лог; когда пользователь уже существует, токен ничего не открывает.
 - Для первого запуска за прокси на другом хосте `BLOG_SETUP_OPEN=1` (объявлена
   в `config/app.rb` через `c.setting_bool :setup_open`) снимает проверку
@@ -854,6 +854,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 фреймворка, и ими можно пользоваться без него (для API-токена, пароля
 администратора, входа, написанного вручную):
 
+<!-- list: points -->
 - **`Cybertrain::Password`**: `hash(plain)` создаёт дайджест
   PBKDF2-HMAC-SHA256 с солью, который хранит собственные параметры
   (`$pbkdf2-sha256$i=100000$salt$key`), `verify?(plain, digest)` проверяет
@@ -907,7 +908,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   `after_authentication_url` — это `safe_redirect_path`. Чтобы в браузере, где
   сменили пароль, вход сохранился, запишите новый ключ после сохранения:
   `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`.
-  Устройство: [docs/design.md](../design.md) D25.
+  Проектное решение: [docs/design.md](../design.md) D25.
 
 </details>
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: de774e8e1c432583b9dc3096d1e2c7135a996419b337491f66b506fe4cfff9bf
+source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -878,6 +878,7 @@ Le générateur ci-dessus écrit le parcours&nbsp;; les pièces dont il est fait
 sont de l’API du framework, utilisables sans lui (pour un jeton d’API, un mot
 de passe d’administration, une connexion écrite à la main)&nbsp;:
 
+<!-- list: points -->
 - **`Cybertrain::Password`**&nbsp;: `hash(plain)` produit un condensat
   PBKDF2-HMAC-SHA256 salé qui enregistre ses propres paramètres
   (`$pbkdf2-sha256$i=100000$salt$key`), `verify?(plain, digest)` en vérifie un

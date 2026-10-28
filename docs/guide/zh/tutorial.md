@@ -1,5 +1,5 @@
 ---
-source_sha256: de774e8e1c432583b9dc3096d1e2c7135a996419b337491f66b506fe4cfff9bf
+source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -601,6 +601,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 上面的生成器写出了整个流程；它所用的部件是框架 API，不用生成器也能使用（用于 API 令牌、管理员密码、手写的登录）：
 
+<!-- list: points -->
 - **`Cybertrain::Password`**：`hash(plain)` 生成加盐的 PBKDF2-HMAC-SHA256 摘要，摘要中记录了自身的参数（`$pbkdf2-sha256$i=100000$salt$key`）；`verify?(plain, digest)` 以恒定时间校验，遇到格式错误的摘要也不会抛出异常；`needs_rehash?(digest)` 判断摘要是否落后于当前的 `Password.iterations`。用于登录动作的有：
   - `verify_serialized(plain, digest)` 是每个进程一次只执行一个的 `verify?`（一个 Mutex）。一次哈希大约耗费 0.2 秒 CPU；一批同时到来的尝试会占住所有 worker，而通过这个方法它们会排队，其他 worker 继续提供页面。
   - `dummy_digest` 是一个随机密码的摘要，每个进程按当前成本生成一次。地址不存在时就用它来校验，这样响应时间就不会暴露哪些地址有账号：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`。

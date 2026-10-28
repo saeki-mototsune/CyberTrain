@@ -829,6 +829,7 @@ The generator above writes the flow; the pieces it is built from are
 framework API, usable without it (for an API token, an admin password, a
 hand-written sign-in):
 
+<!-- list: points -->
 - **`Cybertrain::Password`**: `hash(plain)` makes a salted
   PBKDF2-HMAC-SHA256 digest that records its own parameters
   (`$pbkdf2-sha256$i=100000$salt$key`), `verify?(plain, digest)` checks one

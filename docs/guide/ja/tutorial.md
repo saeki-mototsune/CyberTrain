@@ -1,5 +1,5 @@
 ---
-source_sha256: de774e8e1c432583b9dc3096d1e2c7135a996419b337491f66b506fe4cfff9bf
+source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -601,6 +601,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 上のジェネレーターは一連の流れを書き出しますが、それを組み立てている部品はフレームワークの API で、ジェネレーターなしでも使えます（API トークン、管理者パスワード、自分で書くサインインなどに）：
 
+<!-- list: points -->
 - **`Cybertrain::Password`**：`hash(plain)` は、自身のパラメーターを記録した（`$pbkdf2-sha256$i=100000$salt$key`）ソルト付きの PBKDF2-HMAC-SHA256 ダイジェストを作ります。`verify?(plain, digest)` は定数時間で照合し、形式の壊れたダイジェストでも例外を出しません。`needs_rehash?(digest)` は、ダイジェストが現在の `Password.iterations` より古いかどうかを返します。サインインのアクション向けには：
   - `verify_serialized(plain, digest)` は、プロセスごとに一度に 1 つずつ実行する（Mutex）`verify?` です。ハッシュ 1 回に約 0.2 秒の CPU を使うので、試行が一斉に押し寄せるとすべてのワーカーが塞がってしまいますが、このメソッドを通せば試行は順番待ちになり、ほかのワーカーはページの配信を続けます。
   - `dummy_digest` はランダムなパスワードのダイジェストで、プロセスごとに一度、現在のコストで作られます。アドレスが見つからないときはこれと照合してください。そうすれば、どのアドレスにアカウントがあるかが応答時間から分かりません：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`。
