@@ -1,770 +1,837 @@
-# cybertrain 設計文書
+# cybertrain design document
 
-- 状態: 合意済み（2026-09-24 の grilling セッションで 15 項目を確認）
-- 対象: Spinel `2026.09.12` リリース
-- 実装状況: 第 13 章（M0〜M5 はすべて到達。以降の変更は各決定の改訂注記（「2026-09-26 改訂」など）と第 13 章に記録）
+- Status: agreed (15 items confirmed in the grilling session of 2026-09-24)
+- Target: Spinel `2026.09.12` release
+- Implementation status: section 13 (M0 to M5 are all reached. Later changes are recorded in each decision's revision notes ("revised 2026-09-26" and so on) and in section 13)
 
-## 0. 一言でいうと
+## 0. In short
 
-cybertrain は、matz の Ruby AOT コンパイラ **Spinel** の上で動く、**Rails 風の開発体験を持つ Web アプリケーションフレームワーク**である。Rails の実行時メタプログラミングに相当する部分を「ビルド時のコード生成」と「実行時のデータ」に置き換え、アプリを `spin build` で単一の native バイナリにする。
+cybertrain is a **web application framework with a Rails-like development experience** that runs on **Spinel**, matz's AOT compiler for Ruby. It replaces the parts that correspond to Rails' run-time metaprogramming with "build-time code generation" and "run-time data", and turns an application into a single native binary with `spin build`.
 
-既存の Rails アプリを Spinel で動かす **Roundhouse**（Sam Ruby）とは目的が異なる。cybertrain のアプリは最初から cybertrain 向けに、Spinel の Ruby 部分集合で書く。
+Its goal differs from that of **Roundhouse** (Sam Ruby), which runs existing Rails applications on Spinel. A cybertrain application is written for cybertrain from the start, in Spinel's subset of Ruby.
 
-## 1. 背景と前提
+## 1. Context and assumptions
 
-### 1.1 Spinel とは
+### 1.1 What Spinel is
 
-- Ruby ソースを全プログラム型推論にかけ、C を生成し、システムの C コンパイラで native バイナリにする AOT コンパイラ。ランタイム依存なし。初回リリースは 2026.09.12。
-- パーサは libprism。`require_relative` はパース時にファイルをインライン展開する。
-- 付属ツール `spin` がプロジェクトの雛形生成、依存解決（git ホストの `spin-index`）、ビルド、スナップショットテストを担う。依存パッケージはソースツリーとしてバイナリに取り込まれ、`.c` ファイルも同梱できる。
+- An AOT compiler that runs Ruby source through whole-program type inference, generates C, and turns it into a native binary with the system C compiler. No runtime dependencies. First release 2026.09.12.
+- The parser is libprism. `require_relative` inlines the file at parse time.
+- The bundled tool `spin` handles project skeleton generation, dependency resolution (`spin-index` on a git host), builds, and snapshot tests. Dependency packages are pulled into the binary as source trees, and `.c` files can be bundled too.
 
-### 1.2 確認した制約（設計の全分岐がここに依存する）
+### 1.2 Confirmed constraints (every branch of the design depends on these)
 
-使えないもの:
+Not available:
 
-- `eval`、文字列の `instance_eval` / `class_eval`
-- `method_missing`（定義すると警告、dispatch されない）
-- 名前を実行時に計算する `define_method` / `send`（リテラル名なら可。非リテラル `send` は「プログラム中に現れるリテラル名に限って」dispatch される）
-- `Class.new`、クラス本体の外での `include` / `attr_accessor`（実行時のクラス変更）
-- `ObjectSpace`、`autoload`、`require` のロード順序の意味論、glob による require
-- `instance_variable_get` / `const_get` の非リテラル名、`Exception#backtrace`（空を返す）
-- `Refinements`、`TracePoint`、`binding` のオブジェクト化
-- `require "time"` の解析部、`json/pure` などメタプロ依存の標準ライブラリ
+- `eval`, string `instance_eval` / `class_eval`
+- `method_missing` (defining it gives a warning, and it is not dispatched)
+- `define_method` / `send` with names computed at run time (literal names are fine. Non-literal `send` is dispatched "only for literal names that appear in the program")
+- `Class.new`, `include` / `attr_accessor` outside a class body (run-time class modification)
+- `ObjectSpace`, `autoload`, the load-order semantics of `require`, require by glob
+- Non-literal names for `instance_variable_get` / `const_get`, `Exception#backtrace` (returns empty)
+- `Refinements`, `TracePoint`, `binding` as an object
+- The parsing part of `require "time"`, standard libraries that depend on metaprogramming such as `json/pure`
 
-使えるもの:
+Available:
 
-- クラス、継承、`super`、`include`、open class、`attr_accessor`、`Struct`、リテラル名の `define_method` / `send`、ブロック形の `instance_eval` / `instance_exec`
-- Thread（M:N グリーンスレッド、GVL なし、真の並列）、Fiber、Mutex、Queue / SizedQueue、ConditionVariable
-- TCPServer とソケット（整数オプションのみ、non-blocking 系は未整備）、Net::HTTP（HTTP/1.1、keep-alive なし）
-- FFI: `ffi_func` / `ffi_lib` / `ffi_const` / `ffi_buffer` / `ffi_struct` / `ffi_callback` / `ffi_source`、`blocking: true`。ポインタは GC 非追跡。sqlite3 の公式例あり
-- 標準パッケージ 22 個: base64, bigdecimal, cgi, csv, digest, erb, fileutils, forwardable, io, json, net, openssl, optparse, pathname, securerandom, set, stringio, strscan, tempfile, tmpdir, uri, zlib
-- RBS サイドカー（`.rbs`）による型の補助
+- Classes, inheritance, `super`, `include`, open classes, `attr_accessor`, `Struct`, `define_method` / `send` with literal names, block-form `instance_eval` / `instance_exec`
+- Thread (M:N green threads, no GVL, true parallelism), Fiber, Mutex, Queue / SizedQueue, ConditionVariable
+- TCPServer and sockets (integer options only, non-blocking APIs not yet in place), Net::HTTP (HTTP/1.1, no keep-alive)
+- FFI: `ffi_func` / `ffi_lib` / `ffi_const` / `ffi_buffer` / `ffi_struct` / `ffi_callback` / `ffi_source`, `blocking: true`. Pointers are not tracked by the GC. There is an official sqlite3 example
+- 22 standard packages: base64, bigdecimal, cgi, csv, digest, erb, fileutils, forwardable, io, json, net, openssl, optparse, pathname, securerandom, set, stringio, strscan, tempfile, tmpdir, uri, zlib
+- Type hints through RBS sidecars (`.rbs`)
 
-注意点:
+Caveats:
 
-- 型付き配列は要素型の混在を拒否する。混在させるとタグ付き共用体（poly）になる。
-- `nil` と `String` が混ざると nullable String になる。
-- ユーザ定義の `#hash` / `#eql?` は Hash キーで呼ばれない。
-- （スパイク 2 で判明）`instance_exec(&stored_block)` / `instance_eval(&stored_block)` は、保存済みブロックに対してはどの形でもコンパイルできない（ブロックはクラス本体時点の `self` で固定される）。リテラルブロックを直接渡す形だけ動く。
-- （スパイク 2 で判明）非リテラル `send` は「プログラム中の Symbol / String リテラルが 128 個以下」のときだけ desugar される（`src/analyze_desugar.c`）。実アプリは確実に超えるので、フレームワークは非リテラル `send` と非リテラル `respond_to?` を一切使わない。
-- （スパイク 2 で判明）インスタンスメソッドから `self.class.foo` を呼ぶとき、`foo` が基底クラスにしか定義されていないと `self` が静的な基底クラスに束縛される（サイレントなミスコンパイル）。クラスを引数で明示的に渡すか、全サブクラスで `foo` を上書きする（生成コードの `self.table_name` など）。
-- （スパイク 2 で判明）`Method` オブジェクトを配列に入れて `call` すると実行時 `NoMethodError`。コレクションに入れるのは lambda にする。
-- （ハーネス実装で判明）多相な受け手に多相な引数で `include?` を呼ぶと誤った結果になる。`case` で受け手の型を絞ってから呼ぶ。
-- ソケット読み取りで停止したグリーンスレッドが他の I/O を止める不具合（issue #4528）は close 済みだが、ワーカー数と同時接続数の関係で劣化する報告があった。
-- Roundhouse の Spinel ターゲットは「接続ごとにグリーンスレッド、Spinel 自身のネットワーク層、`-lsqlite3` リンク、prefork は未完成」で実運用している。
+- Typed arrays reject mixed element types. Mixing them produces a tagged union (poly).
+- Mixing `nil` and `String` produces a nullable String.
+- A user-defined `#hash` / `#eql?` is not called for Hash keys.
+- (Found in spike 2) `instance_exec(&stored_block)` / `instance_eval(&stored_block)` cannot be compiled in any form for a stored block (the block is fixed to the `self` at class-body time). Only the form that passes a literal block directly works.
+- (Found in spike 2) Non-literal `send` is desugared only when "the program has 128 or fewer Symbol / String literals" (`src/analyze_desugar.c`). A real application will certainly exceed that, so the framework never uses non-literal `send` or non-literal `respond_to?`.
+- (Found in spike 2) When an instance method calls `self.class.foo` and `foo` is defined only on the base class, `self` is bound to the static base class (a silent miscompilation). Pass the class explicitly as an argument, or override `foo` in every subclass (`self.table_name` in generated code, for example).
+- (Found in spike 2) Putting `Method` objects in an array and calling `call` gives a run-time `NoMethodError`. Put lambdas in collections instead.
+- (Found while implementing the harness) Calling `include?` on a polymorphic receiver with a polymorphic argument gives a wrong result. Narrow the receiver's type with `case` before calling it.
+- The bug where a green thread blocked on a socket read stops other I/O (issue #4528) is closed, but there were reports of degradation depending on the relation between the number of workers and the number of concurrent connections.
+- Roundhouse's Spinel target runs in production with "a green thread per connection, Spinel's own network layer, linking with `-lsqlite3`, prefork not finished".
 
-### 1.3 Roundhouse との関係
+### 1.3 Relation to Roundhouse
 
-- Roundhouse は「Rails を仕様とみなし、Rails アプリを Spinel 向けの平易な Ruby（メタプロなし）に変換する」トランスパイラ。cybertrain は Rails 互換を目指さず、Spinel ネイティブの新しいフレームワークを作る。
-- Roundhouse の `runtime/ruby/`（router、action_view、active_record 相当をメタプロなしで書いたもの）は依存先ではなく先行事例として参照する。
+- Roundhouse is a transpiler that "treats Rails as the specification and converts a Rails application into plain Ruby (no metaprogramming) for Spinel". cybertrain does not aim for Rails compatibility and builds a new framework native to Spinel.
+- Roundhouse's `runtime/ruby/` (equivalents of router, action_view and active_record written without metaprogramming) is consulted as prior art, not used as a dependency.
 
-## 2. 目的、合格基準、非目標
+## 2. Goals, acceptance criteria, non-goals
 
-### 2.1 目的
+### 2.1 Goals
 
-- Rails の語彙と規約（MVC のディレクトリ、`resources`、`before_action`、`validates`、`form_with`、`link_to`、flash、scaffold）を、Spinel の制約下で可能な限りそのまま提供する。
-- ビューの編集は再コンパイルなしで即座に反映する。
-- アプリは `spin build` 一発で単一バイナリになり、逆プロキシと SQLite ファイルだけで本番稼働できる。
+- Provide Rails' vocabulary and conventions (MVC directories, `resources`, `before_action`, `validates`, `form_with`, `link_to`, flash, scaffold) as unchanged as possible under Spinel's constraints.
+- View edits take effect immediately without recompiling.
+- An application becomes a single binary with one `spin build` and can run in production with only a reverse proxy and an SQLite file.
 
-### 2.2 合格基準（MVP）
+### 2.2 Acceptance criteria (MVP)
 
-Rails Guides「Getting Started」相当のブログ（Article と Comment）が、以下を満たして動くこと。
+A blog (Article and Comment) equivalent to the Rails Guides "Getting Started" works and meets the following.
 
-- `resources :articles do resources :comments end` によるルーティングと CRUD コントローラ
-- validations、`has_many` / `belongs_to`（外部キー由来）
-- ERB 構文のビュー、レイアウト、パーシャル、フォームヘルパー、flash、redirect
-- マイグレーションと SQLite
-- integration テストが CI（ubuntu / macOS）で通る
-- `spin build` で単一バイナリ
+- Routing with `resources :articles do resources :comments end` and CRUD controllers
+- validations, `has_many` / `belongs_to` (derived from foreign keys)
+- Views in ERB syntax, layouts, partials, form helpers, flash, redirect
+- Migrations and SQLite
+- integration tests pass in CI (ubuntu / macOS)
+- A single binary from `spin build`
 
-### 2.3 非目標（MVP）
+### 2.3 Non-goals (MVP)
 
-認証（MVP 後の 2026-10-22 に D15 として追加）、メーラー、ジョブ、WebSocket サーバ（ActionCable）、アセットパイプライン（静的ファイル配信のみ）、i18n、API 専用モード（`render json:` の最小限のみ）、Rails 互換、Rack 互換、Windows ネイティブ。
+Authentication (added after the MVP on 2026-10-22 as D15), mailers, jobs, a WebSocket server (ActionCable), an asset pipeline (static file serving only), i18n, an API-only mode (only a minimal `render json:`), Rails compatibility, Rack compatibility, native Windows.
 
-ジョブについては、MVP 後の 2026-10-25 に「後で送る」と「N 秒ごとに実行」を賄う最小の形（`Cybertrain::Scheduler` とデータベースのジョブキュー `Cybertrain::Job`）を D28 として追加した。メーラーも同日に最小の SMTP クライアント `Cybertrain::Mailer` を D27 として追加した（HTML・添付・テンプレートは非目標のまま）。外向きの WebSocket クライアント（データフィードの購読）も 2026-10-26 に D33 として追加した（サーバ側は非目標のまま）。
+For jobs, a minimal form covering "send later" and "run every N seconds" (`Cybertrain::Scheduler` and the database job queue `Cybertrain::Job`) was added after the MVP on 2026-10-25 as D28. For mailers, a minimal SMTP client `Cybertrain::Mailer` was added on the same day as D27 (HTML, attachments and templates remain non-goals). An outbound WebSocket client (subscription to data feeds) was also added on 2026-10-26 as D33 (the server side remains a non-goal).
 
-## 3. 設計原則
+## 3. Design principles
 
-1. **リクエスト間で変わらない決定はビルド時に解決する。** ルーティング、属性、関連、URL ヘルパー、polymorphic path はすべて生成コードで固定する。
-2. **生成コードは手でも書ける普通の Ruby で、リポジトリにコミットする。** Spinel のエラーは生成コードの行を指すので、読めて grep できなければならない。
-3. **データ構造は型付きにする。** Rack の `env` や `[status, headers, body]` のような混在コンテナを避け、Spinel の型推論に乗せる。
-4. **Rails の語彙を借り、意味論は Spinel 向けに定義し直す。** 同名の API が Rails と細部で異なることは許容し、文書化する。
-5. **Spinel の Ruby だけで閉じる。** 開発機に CRuby を要求しない。C を使うのは FFI 経由の SQLite と、将来の性能最適化のみ。
+1. **Decisions that do not change between requests are resolved at build time.** Routing, attributes, associations, URL helpers and polymorphic paths are all fixed in generated code.
+2. **Generated code is ordinary Ruby that could be written by hand, and it is committed to the repository.** Spinel's errors point at lines of the generated code, so it must be readable and greppable.
+3. **Data structures are typed.** Avoid mixed containers such as Rack's `env` or `[status, headers, body]`, and stay within Spinel's type inference.
+4. **Borrow Rails' vocabulary, and redefine the semantics for Spinel.** It is acceptable for an API with the same name to differ from Rails in details, and this is documented.
+5. **Stay closed within Spinel's Ruby.** Do not require CRuby on the development machine. C is used only for SQLite through FFI and for future performance optimisation.
 
-## 4. アーキテクチャ決定
+## 4. Architecture decisions
 
-各項目は「決定 / 理由 / 却下した案 / 帰結」で記す。
+Each item is written as "Decision / Reason / Rejected alternatives / Consequences".
 
-### D1. 位置づけ: Spinel ネイティブのフレームワーク
+### D1. Positioning: a Spinel-native framework
 
-- 決定: 既存 Rails アプリの移植は扱わない。アプリは cybertrain の API に対して直接書く。
-- 理由: 既存 Rails の移植は Roundhouse が担っており、そこと競合しても意味がない。ネイティブなら Spinel の制約に合わせて API を設計でき、Roundhouse が扱えない「Spinel の強みを活かす設計」が可能。
-- 却下: Rails トランスパイラ（Roundhouse と重複）、Roundhouse の出力先ランタイム（Roundhouse は自前ランタイムを持つ）。
-
-### D2. 合格基準: ブログ、サーバサイド HTML
-
-- 決定: 第 2 章のとおり。
-- 理由: 全 Rails 開発者が知る題材で、全サブシステムを通過する。API 専用にすると最難関のビュー層を先送りしてしまう。
-
-### D3. 生成コードは「手でも書ける普通の Ruby」でコミットする
-
-- 決定: ジェネレータは Rails の generators と同じ糖衣。`spin build` 単体でビルドできる。生成に必ず頼るのは「schema 由来のモデル属性」と「routes 由来の dispatch / URL ヘルパー」（ビューは D9 により実行時解釈になり、生成対象から外れた）。
-- 理由: 原則 2。`spin` にビルドフックがないので、生成物をコミットしておけば `spin build` / `spin test` がそのまま使える。CI では生成物の鮮度を diff で検査する。
-- 却下: 専用 DSL を必ずトランスパイルする方式（生成物が隠れ、フレームワークが実質コンパイラになり、パーサとエミッタなしには何も動かない）。
-
-### D4. ジェネレータは Spinel プログラム、入力はデータ DSL と字句走査のみ
-
-- 決定: アプリ側の `bin/gen.rb` をアプリごとにコンパイルして `spin run gen` で実行する。入力は次の 3 つに限る。
-  1. `db/schema.rb`（`create_table` DSL を実行して表データを得る）
-  2. `config/routes.rb`（`resources` などを実行して経路データを得る）
-  3. `app/controllers/**/*.rb` と `app/models/**/*.rb` の**字句走査**（正規表現で `@name =` 代入、`class X < Y` 行、`before_action :name` / `after_action :name` / `rescue_from X, with: :name`、モデルの引数なし `def name` を拾う。構文解析はしない）
-  さらに `app/` 配下のファイル一覧から `gen/app.rb`（`require_relative` 一覧）を生成する。
-- 理由: Spinel には Ruby パーサが公開されていない。`bin/gen.rb` がモデルを `require_relative` すると、生成前の属性メソッドを呼ぶモデルでジェネレータ自身がコンパイルできない（鶏と卵）。入力をデータに限ればこの問題が構造的に消える。ivar の字句走査は例外だが、コントローラを変えたときはどのみち再コンパイルするので開発体験を損なわない。
-- 却下: CRuby + Prism のスクリプト（開発機に CRuby が必須になり、二つのランタイムを抱える）。
-- 帰結:
-  - `db/schema.rb` と `config/routes.rb` にはアプリの定数を書けない（文字列とシンボルのみ）。
-  - モデル内の `validates` / `before_save`、コントローラの `before_action` は生成ではなく実行時データで実装する。
-  - 関連は schema の `t.references` / 外部キーから既定で生成する。`through` などは MVP 外。
-
-### D5. HTTP サーバは純 Ruby の HTTP/1.1
-
-- 決定: `TCPServer` で accept、接続ごとにグリーンスレッド 1 本。HTTP パース、keep-alive、chunked をフレームワーク内の Ruby で書く。TLS と HTTP/2 は逆プロキシ（nginx / Caddy）に任せる。プロセスは 1 つ、ワーカー数は `SPINEL_WORKERS` に従う。
-- 理由: 全体が Spinel の Ruby だけで閉じ、`spin build` 一発で単一バイナリになる。Roundhouse が同構成で実運用済み。
-- 却下: C の HTTP ライブラリを FFI で使う（ポインタ寿命の手動管理、ビルド依存）、CGI / FastCGI（プロセス起動が毎回、またはどのみちソケットが要る）。
-- 帰結: サーバは「accept したソケットから Request を作り Response を書き戻す」小さなインターフェースの裏に置き、後から picohttpparser を spin パッケージの `.c` として同梱し `ffi_func` で差し替えられるようにする。prefork は Spinel 側が未完成と明言しているので扱わない。スパイク 5 で確定した実装規則: (1) すべての `readpartial` の直前に `sock.wait_readable(timeout)` を呼ぶ（nil ならアイドルタイムアウト）。素の `readpartial` は `read(2)` で OS ワーカーを止め、他の接続の I/O を止める。(2) ソケットを `Thread.new` の引数で渡さず、`def spawn_conn(sock); Thread.new { serve(sock) }; end` のようにメソッド引数をクロージャで捕まえる（引数渡しは静的型を失う）。(3) I/O 中心の負荷では `SPINEL_WORKERS=1` の方が速く（54〜58k rps 対 25〜45k）、`config.workers` で既定を 1 にし環境変数で上書き可能にする。テンプレートと SQLite が入った後に再計測する。
-
-### D6. 型付きの Request / Response、Rack 非互換
-
-- 決定: `Request`（method、path、query、headers、body、cookies、params）と `Response`（status、headers、body）をクラスとして定義する。ミドルウェアは `Middleware` 基底クラスを継承し `call(ctx)` を実装する。`@app` の型は基底クラスに固定される。
-- 理由: `[Integer, Hash, Array]` の 3 つ組や `Hash<String, 何でも>` の `env` は poly になり、毎リクエストの共用体の出し入れが増える。Rack 互換の最大の動機である gem の流用は Spinel では不可能。
-- 帰結: コントローラ API は Rails と同じ語彙（`request`、`response`、`params`、`cookies`、`session`、`headers`）。テストは `Request` を直接組み立ててプロセス内で呼ぶ。
-
-### D7. ルーティングは生成、DSL は Rails 構文
-
-- 決定: `config/routes.rb` は `root`、`resources`（ネスト、`only:` / `except:`、`member` / `collection`）、`get` / `post` / `patch` / `put` / `delete` + `to: "ctrl#action"` を受け付ける。実装で確定した形: トップレベルは `root "posts#index"`、`resources :posts`、`get "/about", to: "pages#about"` と受け手なしで書けるが、ネストしたブロックは受け手を明示する（`resources :posts do |posts| posts.resources :comments, only: [:create, :destroy]; posts.member { |m| m.get "preview" } end`。Spinel の `instance_eval` はフラットなブロックにしか効かない）。ジェネレータは `gen/routes.rb` に (1) 経路表（メソッド、分割済みセグメント、controller / action 名、経路名）、(2) 経路ごとに `PostsController.new(ctx).process(:show) { |c| c.show }` を呼ぶ dispatch、(3) `posts_path` / `post_path(post)` / `edit_post_path(post)` / `*_url` をリテラル名のメソッドとして吐く。
-- 実行時: HTTP メソッド別に線形走査してセグメント比較する。`_method` パラメータによる PATCH / DELETE の上書きをミドルウェアで行う。
-- 帰結: 存在しない controller / action を指す経路はコンパイルエラーになる。`process(:show) { |c| c.show }` の形により、コントローラは action 名（テンプレート選択と暗黙 render に使う）とアクション本体をリテラルで受け取れ、`send(:show)` に頼らない。
-- MVP 外: `namespace` / `scope`、`constraints`、format サフィックス、`mount`、glob / 正規表現セグメント、`redirect` ルート。
-
-### D8. コントローラ
-
-- コールバック（スパイク 2 の結果で改訂）: 公式構文は Rails と同じシンボル形 `before_action :set_post, only: [:show, :edit]`。宣言はクラス名をキーにした実行時データ（`Hash<String, Array<Callback>>`）に積み、継承チェーンは `Controller.chain_for(self.class)` で `superclass` を明示的に辿る。呼び出しは `send` ではなく、ジェネレータが `app/controllers/**/*.rb` を字句走査して拾った `before_action :name` / `after_action :name` / `rescue_from X, with: :name` の名前から、コントローラごとに `def run_callback(name); case name; when :set_post then set_post; else super; end; end` を `gen/controllers.rb` に生成して dispatch する。ブロック形も提供するが、`instance_exec` が使えないためブロックはコントローラを引数で受け取る: `before_action(only: [:show]) { |c| c.set_post }`。暗黙 `self` のブロック形は提供しない。
-- `params`: 型付き `Params` クラス。`params[:id]` は `String | nil`、`params[:post]` は子 `Params`、配列値は `params.list(:ids)`。`params.require(:post).permit(:title, :body)` は `Hash<Symbol, String>` 相当を返し、モデルの生成済み `assign_attributes` に渡す。MVP で permit できる値は文字列のみ。
-- render / redirect: `render :new`（リテラルシンボル）、`render json: post`（生成 `to_json`）、`render plain:`、`head :not_found`、`redirect_to post_path(post)`、`redirect_to posts_path, status: :see_other`。action が何もしなければ action 名のテンプレートを暗黙 render する。
-- session: クッキーストアのみ。値は `String` だけ。HMAC-SHA256 で署名し、改竄は捨てる。HMAC はランタイム同梱の `Digest::SHA256.digest`（`digest` パッケージ、外部リンク不要）の上に Ruby で実装する（動作確認済み）。`openssl` パッケージは Homebrew の OpenSSL をリンクパスに要求するため使わない。`flash[:notice]` / `flash.now[:alert]` は session 上に載せる。
-- CSRF: 既定で有効。トークンを session に持ち、フォームヘルパーが hidden field を出し、GET 以外で検証する。
-- 例外: `rescue_from RecordNotFound, with: :not_found`（生成 `run_callback` 経由）または `rescue_from(RecordNotFound) { |c, e| c.head :not_found }`。例外クラスは `e.class.name` の文字列比較で照合する。開発時のエラーページは例外クラス・メッセージ・テンプレート名と行のみ。スタックトレースは Spinel の制約で出せない。
-- MVP 外: `respond_to` / format、streaming、`helper_method`、`layout` の動的切り替え（`application` 固定）。
-
-### D9. ビューは「ERB 構文の実行時解釈テンプレート言語」
-
-- 決定: `app/views/**/*.html.erb` を実行時に読んで AST にパースし、フレームワークのインタプリタが評価する。開発時は mtime を見て変更があれば再パース、production では初回だけパースしてキャッシュ。テンプレートはバイナリの外に置く。（2026-09-26 改訂: production はビルド時に `gen/views.rb` へ埋め込んだテンプレートだけを描画する。第 13 章）
-- 理由: ビュー編集は開発で最も回数の多いサイクルであり、そこに再コンパイルを挟みたくない（コンパイル済み ERB 案はこの理由で却下）。Spinel に `eval` はないので、実行時に動かせるのは「ERB の見た目をした、文法を自分で定義したテンプレート言語」だけである。両立はできない。
-- 式の文法（Ruby の部分集合、第 7 章に詳細）: リテラル、`@ivar`、ローカル変数、メソッド呼び出し（位置引数・キーワード引数）、`&.`、演算子、文字列補間、`if / elsif / else / unless / end`、`each do |x|` / `each_with_index`、`form_with ... do |f|`。ブロックはこの 2 種類だけ。
-- 値の表現（スパイク 3 の結果で改訂）: 明示的な `Value` ラッパクラスは作らず、素の多相 Ruby 値（nil / bool / Integer / Float / String / SafeString / Array / Hash / Time / Model）をそのまま `Hash<String, 多相>` の環境に入れる。ラッパは中間結果ごとに割り当てを増やすだけで、`read_attribute` が多相値を返す以上ボクシングは減らない（実測 203 µs 対 298 µs）。
-- AST の表現（スパイク 3 の結果）: パーサはノードごとのクラスで読みやすく書き、パース後に 1 回だけ「整数 kind + 型付きスロット」の単相 `INode` に変換して評価する。クラス階層のまま評価すると多相 dispatch が毎回発生して 2.7 倍遅い。値の `case` では `when Time` を `when Array` より先に置く（多相スロットの Time は `Array` にもマッチする）。
-- モデルへのアクセス: 属性と関連は schema 由来の生成コード `read_attribute(:title)` / `read_association(:comments)` で名前解決する。手書きメソッドは、ジェネレータが `app/models/**/*.rb` を字句走査して引数なしの `def name` を拾い、モデルごとに `def call_view_method(name); case name; when :summary then summary; ... end; end` を生成することでテンプレートから呼べる（`view_methods` 宣言は不要。非リテラル `send` は 128 リテラル制限のため使わない）。
-- `@post` の受け渡し: D4 の字句走査で `gen/controllers.rb` にコントローラごとの `view_assigns`（`{ "post" => @post, ... }`）を吐く（既定）。`render :show, locals: { post: @post }` の明示渡しも併用できる。
-- パーシャル: Rails 7.1 の strict locals 構文 `<%# locals: (post:) %>` を採用する。`<%= render "form", post: @post %>` はリテラル名のみ。
-- レイアウト: `application` 固定。`<%= yield %>` と `content_for :title` / `yield :title`（`Hash<Symbol, String>`）。
-- エスケープ: `<%= %>` は既定でエスケープ、`<%== %>` と `raw` で無効化。ヘルパーの戻り値は `SafeString`（String のサブクラスではないラッパ）。
-- ヘルパー（組み込み）: `link_to`、`button_to`、`form_with(model:)` と `f.label` / `f.text_field` / `f.text_area` / `f.submit`、`render`、`pluralize`、`truncate`、`number_*`、`time_ago_in_words`。URL ヘルパーと polymorphic path は routes 由来の生成 `case` 文で解決する（`form_with(model: [@post, @comment])` は routes に存在する組だけ生成）。
-- 代償: テンプレート内の任意 Ruby は書けない。テンプレートの型エラーは実行時（開発時のエラーページ）で出る。速度は実測で、32 KB のページ描画が手書きコンパイル済み 122〜136 µs に対しインタプリタ 203 µs（1.54 倍）。同じインタプリタを CRuby で動かすより 3.2 倍速い。
-- 将来: 同じ AST から Ruby メソッドを吐くコンパイルバックエンドを足せば、production だけコンパイル済みにして型検査と単一ファイル化を取り戻せる。速度面では 1.54 倍差しかないので必須ではない。MVP には入れない。
-
-### D10. モデル
-
-- 真実の源の流れ: `db/migrate/*.rb`（`create_table`、`add_column`、`add_reference`、`add_index` の DSL）→ `spin run db -- migrate`（`cybertrain migration`）が適用 → DB から `db/schema.rb` をダンプ → ジェネレータが `gen/models/*.rb` を吐く。マイグレーションはアプリ定数を含まないデータ DSL なので `bin/db.rb` にそのまま取り込める。
-- モデルごとの生成物: `attr_accessor`（schema の型から `String | nil`、`Integer | nil`、`Time | nil` などが推論される代入コード付き）、`read_attribute` / `write_attribute` / `assign_attributes` の `case` 文、`from_row`、`to_json`、`attribute_names`、外部キー由来の関連（`Comment#post`、`Post#comments`）。
-- Relation はモデルごとに生成（スパイク 4 で理由を修正）: `Post.where(...)` は `PostRelation`、`.first` / `.find` / `.find_by` は箱詰めなしの `Post | nil` に推論される（`rows` → `Post.from_row(rs[0])` の形で書く）。`to_a` はどの設計でも多相配列（Spinel はユーザオブジェクトの配列を常に poly_array にする）で、これは正しく動く。汎用 Relation でも `case rec when Post` や共用体への直接呼び出しは動くので、モデルごとの生成は「型付き `first`」と生成コードの読みやすさのために選ぶ。基底 `Cybertrain::Relation` の setter は `nil` を返し、`PostRelation` が `def where(h) = (add_where(h); self)` で型を付け直す（基底で `self` を返すと基底型に推論される）。
-- 属性のキャスト（スパイク 4 で判明した必須事項）: `from_row` / `assign_attributes` は `Cast.int` / `Cast.str` / `Cast.str_or_nil` / `Cast.time_or_nil` などのキャストメソッドを通す。nil 初期化した ivar に `Time` を直接代入するとミスコンパイルする（nil が `Time.at(0)` として読める）。非 null の Integer / String は `0` / `""` で初期化し `to_i` / `to_s` でキャストする。
-- 基底クラスの抽象スタブ（スパイク 4 で判明した必須事項）: `Cybertrain::Model` は生成側が上書きするフック（`read_attribute`、`assign_attributes`、`run_before_save` など）をすべて `def read_attribute(name) = nil` の形で宣言しておく。宣言がないと Spinel 2026.09.12 はコード生成でクラッシュする。
-- API（ActiveRecord の部分集合）: `find`、`find_by`、`where(hash)`、`where("sql ?", bind)`、`order`、`limit`、`offset`、`first` / `last` / `all` / `count` / `exists?`、`new` / `create` / `save` / `save!` / `update` / `destroy`、`persisted?`、timestamps 自動更新。動的ファインダ（`find_by_title`）は提供しない。scope は `def self.published = where(published: true)` の普通のクラスメソッド。
-- validations / callbacks: `validates :title, presence: true, length: { minimum: 5 }` は生成された `model_name` 文字列をキーにした登録簿に積み、`valid?` が `read_attribute` 経由で評価する。`errors.full_messages` / `errors[:title]` / `errors.any?` を提供。コールバックはレコードを引数に取るブロック `before_save { |r| r.title = r.title.strip }`（`instance_exec` が使えないため、暗黙 `self` の形は提供しない）。
-- アダプタ: SQLite（FFI）のみ。`Connection#execute(sql, binds)` が `Array<Hash<String, Integer | Float | String | nil>>` を返す（スパイク 6 でこの型が混在しても正しく動くことを確認）。モデルの行読み出し（`Relation#rows`、`reload`）だけは `Connection#execute_models` を通り、DATETIME 列は文字列ではなく UTC のエポック秒（Integer）で返る（`Cast.time_or_nil` が Time にする。理由と数値は docs/benchmark.md）。接続は `SizedQueue` によるプール（初期値はワーカー数）、WAL モード・busy 待ち（現在は C の busy handler、100 µs 間隔で約 5 秒。`PRAGMA busy_timeout` は使わない）・foreign_keys を既定で設定、`sqlite3_step` / `prepare` / `exec` は `blocking: true`。`sqlite3_bind_text` の破棄関数には整数リテラル `-1`（SQLITE_TRANSIENT）を渡す。`sqlite3_open_v2` / `prepare_v2` の出力ポインタは静的 `ffi_buffer` を使わず、呼び出しごとに `malloc(8)` した領域を使う（静的バッファはスレッド間で競合して SIGSEGV する。スパイク 6 で再現と修正を確認）。複数行の書き込みは `BEGIN` / `COMMIT` で包む（自動コミットの 20 倍速い）。PostgreSQL は libpq の FFI で後日。
-- MVP 外: `has_many :through`、`includes` / `preload`、`pluck`、モデル API の `transaction`、enum、STI、polymorphic 関連、`dependent:`。
-- 2026-10-25 追記: `pluck`（型別の `pluck_str` / `pluck_int` / `pluck_float`）、`upsert`、`increment`、`count_by`、`sum_int` / `sum_float`、`where_like` を D22 で足した。
-
-### D11. 名前、パッケージ構成、雛形
-
-- 名前は `cybertrain`、ライセンスは MIT。
-- フレームワークは spin のライブラリパッケージ（`spin new cybertrain --lib` の配置）。`spin.toml` の `[package] name = "cybertrain"`、入口 `cybertrain.rb`、機能ごとに `cybertrain/http/`、`router.rb`、`template/`、`model.rb`、`db/`、`generator/` などに分割（第 11 章）。C は `ffi_source` でファイル内に書く（`dev/reexec.rb`）。アプリからは GitHub のタグを `{ git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }` で参照し、`spin.lock` でコミットを固定する（フレームワークのコードはアプリに置かない）。`matz/spin-index` への登録後は `--version` 指定も使える。
-- CLI はフレームワーク側の `bin/cybertrain.rb`（spin でビルド）と、同じソースを CRuby で動かす gem（`gem install cybertrain`、`exe/cybertrain`）の 2 通りで配る。spin には索引からツールを入れるコマンドがまだ無く（`spin install` はローカルのソースのみ）、利用者の Rails 開発者は Ruby を持っているため、配布は gem を主とする。gem には CLI とそれが require するファイルだけを入れ、フレームワーク本体は入れない。役割は `cybertrain new blog` の雛形生成と `cybertrain generate scaffold post title:string body:text` のコード生成のみ。（2026-09-26 改訂: 役割は `new`、`generate scaffold`、`migration`、`db`、`server`、`build`。後の 4 つはアプリのディレクトリで `spin run gen` / `spin run db` / `spin run NAME` / `spin build NAME` を順に呼ぶ薄いラッパ。第 13 章）`new` は既定で CLI と同じバージョンのタグを依存に書き、`rails new` の `bundle install` にあたる `spin lock` と `spin run gen` まで実行する（`--skip-spin` で省略）。gem とフレームワークは同じタグからリリースする。
-- `new` はデプロイ用に Kamal 2 の雛形（`Dockerfile`、`.dockerignore`、`config/deploy.yml`、`.kamal/secrets`、ヘルスチェック用の `public/up.html`）も書く（2026-10-22）。バイナリはシステムの libc と SQLite にリンクするので、イメージはビルド段と実行段を同じ Ubuntu リリースにし、ビルド段で `gem install cybertrain -v <CLI のバージョン>`・`cybertrain setup`・`cybertrain build` を実行して `dist/` だけを実行段へコピーする。起動は `./NAME migrate && exec ./NAME`（SIGTERM がサーバーに届く）。ヘルスチェックは静的ファイル: ルートを足すとアプリのルーティングとコントローラに手が入り、kamal-proxy にはプロセスが HTTP に応答することだけが分かればよいため。DB は SQLite のままボリューム（`/app/storage`）に置き、サーバー 1 台を前提にする。
-- アプリの雛形と bin は第 11 章。ビルドは `spin run gen` → `spin build` の 2 段。（2026-09-26 改訂: 配布用ビルドは `cybertrain build` → `dist/`。`spin run gen -- --embed-views` → `spin build NAME` → `spin run gen` で空の表に戻し、バイナリと `public/` を `dist/` にまとめる。第 13 章）
-
-### D12. 開発ループ: サーバが自分で再ビルドして自分を置き換える
-
-- 決定: アプリの入口（当初 server 用の bin、2026-09-26 から `bin/<name>.rb`）が `CYBERTRAIN_ENV=development` のときだけ監視モードになる。監視対象は `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb`（再ビルド自身が書き換えた `gen/` は基準に吸収し、`gen/views.rb` は無視する。`cybertrain/dev.rb`）。mtime を 0.5 秒間隔でポーリング。`app/views/**/*.erb` は監視対象外（テンプレートエンジンが自分で再読み込み）。
-- 変更を検知したら `spin run gen && spin build <name>` を `system` で実行し、成功したら自分に `SIGHUP` を送る。`trap("HUP")` のハンドラ（スパイク 7 で実機動作を確認）が listen ソケットを閉じ、`ffi_source` の 6 行の C シム `sp_reexec(path, port_arg)` 経由で `execv` を呼んで新しいバイナリに自分を置き換える。PID は変わらない。元の listen ソケットに `SO_REUSEADDR` を立てておけば、新プロセスは同じポートを即座に再バインドできる（スパイク 7 で確認）。ポートなどの引き継ぎ状態は argv で渡す。（2026-09-27 注記: 実装は `SIGHUP` を送らず、再ビルドに成功したウォッチャースレッドが `trap("HUP")` と同じ再起動フラグを直接立てる（外部からの `kill -HUP` も同じ経路）。監視スレッドが listener を止め、`Server#wait` が戻ったあとメインスレッドが `execv` を呼ぶ。`cybertrain/application.rb`）（2026-10-27 注記: 再ビルドは `spin build <name> -- --incremental`。Spinel の `--incremental` は生成 C をユニットに分けてオブジェクトをキャッシュし、編集で変わったユニットだけを再コンパイルする。ユニットをまたぐインライン化を失うが開発ビルドなので許容する。`--incremental` を知らない Spinel（`unknown option '--incremental'` で失敗する）では、その場でフラグなしのビルドをやり直し、以後のプロセスではフラグを付けない。`cybertrain build` は `--embed-views` で `gen/views.rb` を書き換えるので必ずフラグなしで再コンパイルされ、配布バイナリには影響しない。`cybertrain/dev/rebuilder.rb`）
-- ビルド失敗でサーバは死なない。旧バイナリのまま動き続け、コンパイラの stderr を保持して次のリクエストで開発用エラーページとして返す。
-- マイグレーションは自動で流さない。`spin run db -- migrate` の結果 `db/schema.rb` が変わることで再ビルドが走る。
-- production: 監視もビルドも無効。production はビューを `cybertrain build`（`spin run gen -- --embed-views`）がバイナリに埋め込んだものだけを描画し、development は `app/views/` をディスクから読む。`cybertrain build` はそのバイナリと `public/` を `dist/` にまとめる（第 13 章）。（2026-09-26 改訂: 当初は `app/views/` を同梱して配布し、バイナリ単体では動かない設計だった）
-- 却下: 別プロセスの監視ツール（構成が増える）。
-
-### D13. テストと CI
-
-- `spin test` の仕組み（`test/*.rb` の各ファイルが 1 プログラム、stdout を `.expected` と diff）に合わせ、`Cybertrain::Test` を用意する。`test "saves a post" do ... end` を配列に積んで順に実行、決定的な形式で出力、失敗があれば非ゼロ終了。アサーションは `assert`、`assert_equal`、`assert_nil`、`assert_raises`、`assert_includes`。
-- アプリのテストは model、controller / integration（`get "/posts"`、`post "/posts", params: {...}`、`assert_response :ok`、`assert_redirected_to`、`assert_includes response.body, "..."`。ソケット不使用）、テンプレート（エンジンに文字列を渡す）の 3 種類。
-- テスト用 DB は `storage/test.sqlite3`。各テストをアダプタ層の `BEGIN` / `ROLLBACK` で包む。（2026-09-27 改訂: トランザクションで各テストを包む仕組みは未実装。`examples/blog/test/support/blog_test.rb` はテスト開始時に `storage/test.sqlite3` を作り直してマイグレーションし、各テストの前にテーブルを `delete_all` で空にする）
-- テストプログラムは領域ごとに 1 ファイル（`test/models.rb`、`test/controllers.rb`）。`spin test` はファイルごとにアプリ全体をコンパイルする。
-- フレームワーク自身のテストは `.expected` をコミットして CRuby 非依存にする。
-- CI は GitHub Actions、Spinel `2026.09.12` を固定、ubuntu / macOS の 2 ジョブ。`examples/blog` の integration テストを回す。
-
-### D14. 横断的な既定値
-
-- 環境: `CYBERTRAIN_ENV` = `development` / `test` / `production`。設定は `config/app.rb` の Ruby DSL。YAML は使わない。
-- 秘密鍵: `CYBERTRAIN_SECRET_KEY_BASE`。production で未設定なら起動を拒否。development / test は `tmp/secret_key` に生成して固定。
-- DB: `storage/<env>.sqlite3`。`created_at` / `updated_at` は UTC の ISO 8601 文字列。タイムゾーン変換は持たない。日付文字列の解釈はフレームワークが最小限を自前で持つ。
-- 静的ファイル: `public/` をミドルウェアで配信。拡張子 → Content-Type の表のみ。production では逆プロキシに配信させることを推奨。
-- JSON: `json` パッケージ。`render json:` と、`application/json` のリクエストボディの `params` 取り込みに限る。
-- ログ: 標準出力に 1 リクエスト 2 行（`Started GET "/posts"`、`Completed 200 in 3ms`）。`Cybertrain.logger` に `info` / `warn` / `error`。
-- エラーページ: production は `public/404.html` / `public/500.html`（最外周の `ErrorPages` ミドルウェア。例外は 500 にし、本文が空・Content-Type なし・`text/plain` のエラー応答を `public/<status>.html` に差し替える。アクションが HTML / JSON で描画したエラーはそのまま）、development は診断ページ。
-- セッション Cookie: production では `Secure` 属性を付ける（`Config#session_secure`、既定は `production?`）。
-- セッション Cookie の SameSite は `Config#session_same_site`（既定 `Lax`、`CYBERTRAIN_SESSION_SAME_SITE`、`Lax`/`Strict`/`None` 以外は起動時エラー）、`Partitioned` は `Config#session_partitioned`（既定 false、`CYBERTRAIN_SESSION_PARTITIONED`）。`None` か `Partitioned` のときは `session_secure` に関係なく `Secure`。待ち受けアドレスは `Config#host`（既定 `127.0.0.1`、`CYBERTRAIN_HOST`）。（2026-10-02、web playground SP1）
-- development は `HostAuthorization` を最外周に置き、DNS rebinding に備えて Host を完全一致で検査する。既定は `localhost` / `127.0.0.1` / `[::1]`（数値ポート可）。`Config#allowed_hosts` または `CYBERTRAIN_ALLOWED_HOSTS`（カンマ区切りで既定に追加）で転送先のホスト名を明示する。ワイルドカード、DNS 解決、Forwarded ヘッダは使わない。拒否は 403 で、静的ファイル・セッション・CSRF トークン・開発診断より前。`CYBERTRAIN_HOST=0.0.0.0` は許可ホストを増やさない。playground のランチャーは Codespaces の環境設定から自分の転送ホスト名だけを追加する。production / test は従来どおり。（2026-10-23）
-- 安全側の既定: 出力エスケープ、CSRF、署名クッキー、SQL は常にバインド変数、`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`。`nosniff` と `SAMEORIGIN` は `Response#to_http` が、レスポンスにその名前のヘッダ（大文字小文字は問わない）が無いときだけ付ける。Server が書くのは常に `to_http` なので、エラーページ・開発の診断ページ・Server 自身の 400 / 411 / 413 / 500・HEAD も同じ。アクションが `set_header` で別の値を入れれば（埋め込みウィジェットの枠付けなど）その値が出て、二重にはならない。アプリ全体の `Config` スイッチは作らない: 例外は個々のレスポンスの話で、全体を切るスイッチは安全側の既定を一行で外せる穴になる。リバースプロキシでの上書きもヘッダを足すだけなので、アプリ側に切る口は要らない。web playground SP1 の spec は「入れるときは切り替え可能に」としていたが、それはエディタのプレビュー（iframe）を前提にした注意で、SP1 はアプリを別タブで開き（playground/README.md）、iframe で見せる SP2 は中止したので当たらない。`nosniff` は Content-Type を厳密に守らせるので、`Static::EXTENSIONS` に webp / avif / woff / ttf / otf / wasm / mjs / pdf / 音声・動画などを足した。表に無い拡張子は `application/octet-stream`（ダウンロード扱い）。（2026-10-23）
-- 終了処理: `SIGTERM` で listen を止め、処理中のリクエストを待って終了。`trap` が使えなければ libc の `signal` を FFI で呼ぶ。trap ブロックは C のシグナルハンドラから直接呼ばれるので、ハンドラはフラグを落とすだけ（`Server#request_stop`）にし、`Thread#join` などは通常のスレッド文脈で行う。フラグが落ちると accept ループが listener を閉じ、`Server#run` は開いている接続が閉じるのを最大 `drain_timeout`（既定 10 秒、systemd の `TimeoutStopSec` より短く）待ってから戻る。処理中のリクエストは `Connection: close` 付きで応答してから閉じ、リクエスト間で待機中の keep-alive 接続は待たずに閉じる。接続数は accept スレッドで数え（`Mutex` で保護）、`serve` の ensure で減らす。
-- i18n なし。バリデーションメッセージは英語固定。
-
-### D15. 認証: フレームワークの原始関数 + アプリが所有するコードを書くジェネレータ（2026-10-22）
-
-- セッションの有効期限: 生成する `resume_session` は、DB 行の `created_at` から `Cybertrain.config.session_max_age` 秒（既定 2 週間）が経過した認証を拒否し、クッキーから `session_id` を削除する。署名済みクッキーの再送でも期限を延ばせない。クッキー自体の Max-Age は更新時に再開するが、認証の期限はサインイン時から固定する。
-- 決定: Rails 8 の `bin/rails generate authentication` と同じ分割にする。(1) フレームワーク側には「自分で書くと間違えるもの」だけを置く: パスワードハッシュ `Cybertrain::Password`（PBKDF2-HMAC-SHA256、PHC 形式の文字列、定数時間比較、`needs_rehash?`）、`Controller.skip_before_action`、ルーティング DSL の `resource`（単数）。(2) `cybertrain generate authentication` が、users / sessions のマイグレーション、`User`（`password=` / `authenticate` / `authenticate_by` を手書きの形で）と `Session` モデル、`SessionsController` / `RegistrationsController` とビュー、`ApplicationController` への `before_action :resume_session` / `:require_authentication` と補助メソッド、routes、レイアウトの nav パーシャル、統合テスト（`test/authentication.rb`）を**アプリのファイルとして**書く。外部ライブラリ（spin パッケージ）としての認証「エンジン」は作らない。
-- 理由（Rails 8 と同じ結論に、Spinel がさらに重みを足す）:
-  - **拡張点が無い。** cybertrain のアプリは `config/routes.rb`・`app/controllers`・`app/views`・`db/migrate` を `spin run gen` が読んで `gen/` を書く構造（D3 / D4）で、パッケージ側のコントローラは字句走査の対象外（`view_assigns` / `run_callback` を自分で書けば動くが、ivar をテンプレートに見せる仕組みの外に出る）、ビューは `app/views/` からしか読まれず埋め込みもそこからだけ、マイグレーションも `db/migrate/` だけ、モデルは schema からの生成物。routes は `config/routes.rb` から `Package.draw(r)` を呼べば足せるが、他が足せない以上、認証パッケージは結局「ファイルをアプリにコピーするジェネレータ + 少しの原始関数」になる。それなら最初からそう作る。
-  - **全プログラム推論の衝突面。** Spinel は依存パッケージのコードもアプリと一つのプログラムとしてコンパイルし、無関係なクラス間でもメソッド名と戻り値型の衝突で推論が壊れる（NOTES 10 / 34 / 41 / 43）。パッケージ作者は「どのアプリと一緒にコンパイルされるか」を知り得ないので、薄い原始関数はよいが、コントローラやモデルのような名前の多いコードを外から持ち込むほどリスクが増える。生成してアプリに置けば、衝突したときに直すのはアプリの中の、読める普通の Ruby になる（原則 2）。
-  - **カスタマイズの道筋。** 認証はアプリごとに必ず変わる（登録の可否、招待制、2 要素、ログイン後の遷移）。Devise 型のエンジンは設定とオーバーライドの層を要求するが、生成コードは直接編集すればよい。Rails 8 が同じ理由で生成方式を選んだ。
-  - **CLI は CRuby、フレームワークは Spinel。** ジェネレータは gem（CRuby）で動き、生成物は Spinel でコンパイルされる。この 2 層はすでに `scaffold` で成立しており、認証ジェネレータは同じ型（`cybertrain/cli/authentication.rb`、gemspec に列挙、`spin run gen` には何も足さない）。
-- パスワードハッシュの選定: Spinel で使えるのは、ランタイム同梱の SHA-256（`Digest::SHA256.digest`、C 実装）、libc の `String#crypt`（bcrypt は glibc / libxcrypt のみで macOS に無い。CI は macOS でも走る）、`openssl` パッケージ（リンクパス問題で D8 で不採用）、C の `ffi_source`（自前の暗号実装のレビュー負担）。純 Ruby の PBKDF2-HMAC-SHA256（`Crypto` の HMAC と同じ作り）を選び、RFC 6070 / 7914 のテストベクタで検証した。実測: 10 万反復で CRuby 660 ms、Spinel コンパイル後 197 ms、60 万反復で 1.09 s（NOTES「数値」）。既定は 10 万反復（Django 2019 年相当、bcrypt cost 12 と同程度の時間）で、`Cybertrain::Password.iterations=` で上げられ、`needs_rehash?` によりログイン時に再ハッシュされる。ループは `while` なのでバックエッジがセーフポイントになり、`SPINEL_WORKERS=1` でも他のリクエストを止めない（docs/thread.md「Preemption」）。アルゴリズムは PHC 文字列の識別子で切り替えられるので、argon2 / bcrypt を C で同梱する spin パッケージが後から出ても既存のダイジェストはそのまま検証できる。**この種の「原始関数だけのパッケージ」はエコシステムに向く**（`sources = [...]` で C を運べ、フレームワークの拡張点を要らない）。
-- 却下した案:
-  - `cybertrain-auth` spin パッケージ（エンジン）: 上記のとおり拡張点が無く、あったとしても推論衝突と `app/views` の制約で薄い層にしかならない。
-  - `has_secure_password` マクロ: `define_method` が無い。ジェネレータの字句走査で `has_secure_password` を拾って `gen/models/user.rb` に吐く案は可能だが、15 行の手書きメソッドのためにジェネレータの入力を増やす価値がない。アプリの `app/models/user.rb` に書き出し、コメントで Rails との対応を示す。
-  - concern（`app/controllers/concerns/authentication.rb` を `include`）: 字句走査は `include` を追わず、`gen/app.rb` の require 順も `application_controller` が先なので CRuby で未定義になる。`ApplicationController` のクラス行の直後にブロックを挿入する（`add_route` と同じ一回限りの編集。`def require_authentication` があれば二度目は何もしない）。concern 対応（`include` を辿る走査と require 順）は将来の独立した機能。
-  - パスワードリセット・メーラー: メーラーが無い（2.3 節）。レート制限: 当初は未実装（2026-10-25 に D26 で `rate_limit` を足し、生成する SessionsController が使う）。`Current`: スレッドローカルの代わりに `resume_session` が `@current_user` / `@current_session` を置き、`view_assigns` 経由でテンプレートが読む。
-  - 登録画面を書かない（Rails 8 と同じ）: Rails は console で最初のユーザーを作るが、cybertrain に console は無い（8 章）。`RegistrationsController`（`/sign_up`）を書き、招待制なら消すようコメントする。
-- 帰結:
-  - フレームワークに足したもの: `Cybertrain::Password`、`Controller.skip_before_action`（クラス名キーの実行時データ。`run_before_callbacks` が名前で照合、継承される。ブロック形は名前が無いので飛ばせない）、`Mapper#resource`、カスタム経路の派生名が既出なら無名にする Rails の規則（`get "/sign_up"` と `post "/sign_up"` で一つの `sign_up_path`。`as:` の重複は従来どおりエラー）。
-  - モデル名 `Session` は `Cybertrain::Session` と共存する（検証済み: 実スタックで cookie session に Session 行の id を往復）。`User` の NOT NULL 文字列列 `password_digest` は空文字が「未設定」（nil を入れると生成コードの型が崩れる、NOTES 7 / 11）。
-  - エコシステムの型: 「原始関数は spin パッケージ、アプリに置くコードはジェネレータ」。cybertrain 自身が gem（CLI）+ spin パッケージ（フレームワーク）を同じタグで出しているのと同じ型を、第三者も `my-gem`（`cybertrain generate NAME` のプラグイン）+ `spinel-my-lib`（原始関数）で踏める。`cybertrain generate` に gem からジェネレータを読み込む仕組みは未実装で、二つ目の外部ジェネレータが要るときに入れる。
-
-### D16. ファイルアップロード: フレームワークの原始関数 + アプリが所有するコードを書くジェネレータ（2026-10-22）
-
-- 決定: D15 と同じ分割にし、別ライブラリ（spin パッケージ）は作らない。
-  - フレームワーク（`cybertrain/`）に置くのは、閉じた層にあるものと、自分で書くと間違えるものだけ:
-    - `cybertrain/http/multipart.rb`: バイナリ安全な multipart/form-data パーサ `Cybertrain::Multipart` と、その結果 `MultipartForm`。例外 4 種（`MultipartMalformed` / `MultipartTooManyParts` / `MultipartPartTooLarge` / `MultipartHeaderTooLarge`）は `QueryInvalid` の子で、`CLIENT_FAULTS` に列挙して 400 にする。
-    - `cybertrain/http/uploaded_file.rb`: `UploadedFile`。マジックバイトによる型判定、ファイル名の無害化、ASCII だけの `Content-Disposition` 生成を含む。
-    - `Params` の 4 つ目の型付き Hash と `params.upload(:key)`。`permit` は今までどおり文字列だけを返すので、ファイルが一括代入に紛れ込むことはない。
-    - `Request#multipart_form`: リクエストごとに一度だけ解析してキャッシュする。`form_or_query_value` もこれを読むので、`CsrfProtection` と `MethodOverride` がトークンと `_method` を multipart 本文から読める。これまでは multipart の POST がすべて 403 だった。
-    - `form_with(multipart: true)` と `f.file_field`。
-    - `Config#max_upload_bytes`（5 MiB）、`max_multipart_parts`（128）、`upload_root`（`storage/uploads`）。
-    - ディスク保存の原始関数 `Cybertrain::BlobStore`: サーバが生成する 32 桁 hex のキー、`0600`、一時ファイルからの rename。
-    - 信頼できないバイト列を安全なヘッダで返す `Controller#send_blob`。
-  - `cybertrain generate attachment MODEL FIELD [--any]` と、scaffold の `FIELD:attachment` 型が、アプリのファイルとして次を書く:
-    - 所有テーブルにメタデータ列 5 本（`<f>_key` / `_filename` / `_content_type` / `_byte_size` / `_checksum`）を足すマイグレーション。
-    - モデルのフィールド名付きメソッドとコールバック。
-    - 所有コントローラのメンバーアクション `GET /posts/:id/cover` と、その route。アクションは `before_action :set_post` の `only:` に足し、`@post` を読む。show と同じ絞り込み（アプリが `set_post` に書いた認可）がダウンロードにも効く。公開範囲も show と同じにする: `allow_unauthenticated_access` の `only:` が `:show` を含み（`except:` が除いていない）、ダウンロードが show と同じ `before_action :set_post` でレコードを引くなら、そこに `:cover` も足す（公開ページの画像が訪問者をサインイン画面へ送らないように）。認証だけではレコード別・役割別の認可を代替できない。継承元までコールバックを確認し、show と同じ `set_post` が無い場合、show だけに効く `before_action` や `def show` 内のチェックがある場合、またはポリシーを安全に読み取れない場合は、ファイルを書き込む前に生成を拒否する。アプリ側で明示的な認可コールバックを show とダウンロードの両方に適用し（例: `before_action :authorize_post, only: [:show, :cover]`）、`set_post` も共有してから再実行する（2026-10-23）。生成テストはそれに合わせて、訪問者がダウンロードできること、またはサインイン画面へ送られることを確かめる。フォームの値は、モデルの `length: { minimum: / maximum: }` を満たすように埋める（2026-10-23）。
-    - `create` / `update` への 1 行 `@post.cover_file = params.nested(:post).upload(:cover)`。`require` ではなく `nested` にするのは、ファイルだけのフォームでファイルを選ばずに送ると `post` キー自体が無くなり（空のファイル入力は捨てる）、`require` だと 400 になるため。
-    - フォームと show の編集、アプリの統合テスト。
-  - フィールド名は、ダウンロードアクション `def <field>` が `Cybertrain::Controller` のメソッド（`params`、`render`、`head` など）、scaffold のアクション、`ApplicationController` に生成されるメソッド、`set_<model>` / `<model>_params` を上書きする名前なら拒否する。`script/check-reserved-names` が、この表が `controller.rb` と生成テンプレートに追随しているかを検査する。
-- 理由:
-  - **拡張点が無い。** D15 の理由 1 がここではもっと強く効く。multipart の解析は、ルーティングより前に動く `CsrfProtection` / `MethodOverride` が読めるよう `Request` の中に要る。`Params` の型付きスロット、`FormBuilder` の閉じた case 表、`ClientError::CLIENT_FAULTS`、HTTP 層の単独ロード規則（`script/check-http-layer`）も同じで、どれも spin パッケージからも生成コードからも届かない。パッケージに残せるのは `BlobStore` と配信ヘッダの百行ほどだけになる。
-  - **フレームワーク自体が spin パッケージである。** 「セキュリティ修正をバージョン一つで配れる」という別パッケージ案の利点は、`cybertrain/` に置いても同じ形で得られる。別パッケージにすると、二つ目のタグ、アプリの spin.toml の編集、全プログラム推論の衝突面（NOTES 10 / 34 / 41 / 43）が増えるだけになる。
-  - **モデル・コントローラ・ビュー・マイグレーションは生成してアプリに置く。** `has_one_attached` は `define_method` が無いので書けない（D15 の `has_secure_password` と同じ）。許可する型、サイズ、認可、表示はアプリごとに変わるので、直接編集できる生成コードが向く。
-  - **配信は所有コントローラを通す。** アプリの `before_action`（認証）がそのまま効く。
-    - `Static` / `public/` は使わない。html・svg をインラインで返し、public なキャッシュを付け、ビルドのたびに置き換わるため。
-    - バイト列は永続ボリュームの `storage/uploads/` に置く。SQLite にはメタデータだけを入れる（NUL で切れるため）。
-    - 型はクライアントの申告を信じず、マジックバイトで判定する。インラインで返すのは PNG / JPEG / GIF / WebP だけで、それ以外は `attachment` + `application/octet-stream`。配信には必ず `nosniff` と `Content-Security-Policy: default-src 'none'; sandbox` を付ける。
-- 却下した案:
-  - `cybertrain-storage` パッケージ（原始関数だけのものも、エンジンとしてのものも）。理由は上記。
-  - 生成のみ（パーサをアプリに複製する）。ルーティング前の層に届かず、セキュリティ修正が配れない。
-  - Active Storage 型の共有テーブルと `has_one_attached`。`define_method` が無く、polymorphic な関連も無い。
-  - SQLite の BLOB。
-  - `public/` からの配信。
-  - ストリーミング受信。サーバは本文を全部メモリに読むので（`max_body_bytes` が上限）、サーバの改修として別件にする。
-  - v1 での 413 / 415 への対応付け。サイズ超過は 400。`ClientError.status_for_name` と `Controller#rescue_with_handler` を広げる別件にする。
-  - 1 フィールドに複数ファイル（`name[]`）。v1 では `MultipartMalformed` にする。
-- 帰結と今後:
-  - D14 の「安全側の既定」にある `X-Content-Type-Options: nosniff` / `X-Frame-Options: SAMEORIGIN` は、いまは全レスポンスの既定になっている（`Response#to_http`）。`send_blob` はこれに加えて `Content-Security-Policy: default-src 'none'; sandbox` と `Cache-Control` を付け、`nosniff` は自分でも設定する（同名ヘッダがあれば `to_http` は足さないので二重にならない）。
-  - S3 など二つ目の保存先が要るときは、`BlobStore` と同じ `write` / `read` / `delete` / `exist?` の面を持つ「原始関数だけの spin パッケージ」として足す（D15 のエコシステムの型）。
-  - 既知の穴:
-    - `before_save` の後で DB の書き込みが失敗すると、孤児ファイルが残る（`save` にトランザクションが無い）。
-    - EXIF などのメタデータはそのまま保存される。
-    - `SPINEL_WORKERS=1` では、ディスク書き込みの間ワーカーが止まる。
-    - 配信は同一オリジン。
-  - 孤児ファイルの掃除、ETag / Range、別オリジン配信は後続の作業。
-
-### D17. アプリ定義の設定: `Config` 上の型付き宣言（2026-10-25、issue #69）
-
-- 決定: アプリ独自の設定（公開 URL、機能スイッチ、間隔、SMTP ホスト）は `config/app.rb` の `Cybertrain.configure` ブロックで `Config` に宣言する。宣言は型ごとのメソッド `c.setting_string(name, env:, default:, secret: false)`、`c.setting_int(name, env:, default:, min:, max:)`（`min` / `max` は省略可）、`c.setting_bool(name, env:, default:)`。読み出しは `Cybertrain.config.string_setting(:base_url)` / `int_setting` / `bool_setting`、テスト用の書き込みは `set_string_setting` / `set_int_setting` / `set_bool_setting`。
-- 値は宣言の時点、つまり起動時に `config/app.rb` が走るときに一度だけ環境変数から読む。空または未設定は既定値（`Config.env_or` と同じ規則）。真偽値は `1` / `true` と `0` / `false`（既存の `CYBERTRAIN_SESSION_PARTITIONED` と同じ綴り）、整数は先頭の `-` と 10 進数字で、先頭の 0 を除いて 18 桁まで（`String#to_i` が 2**63-1 を超えると RangeError を投げるため。NOTES 25）。解釈できない値と範囲外の値は既定値に戻し、`Cybertrain.logger` に `[WARN]` を 1 行出す。起動は止めない: 設定の誤りでサーバが上がらないより、既定値で上がって理由がログに残るほうが運用で扱いやすい（フレームワーク自身の `session_same_site` のように誤りが安全性に関わるものは、従来どおり起動時エラー）。宣言の誤り（名前の二重宣言、空の `env:`、範囲外の既定値）と、未宣言・別の型の名前の読み出しはプログラムの誤りなので `ArgumentError`。
-- 値は型ごとの Hash（名前の String がキー、NOTES 9 に従って要素型で種を入れる）に入れ、宣言（名前、環境変数、型と既定値の説明、secret か）を宣言順に記録する。`./NAME help`（`Main.usage`）はこれを環境変数・名前・型・既定値の一覧として出し、起動バナーは `=> Settings: base_url="" worker=true ...` の 1 行で現在値を出す。`secret: true` の設定はどちらにも名前と環境変数しか出さない（バナーでは `[FILTERED]`、help では既定値も出さない）。設定を宣言していなければ help もバナーも従来と同じ。help は設定を読むために `Cybertrain.config` を新しく作らない（作ると、その時点の環境変数で `database_path` などが固まる）。
-- 却下した案:
-  - `c.setting :base_url, ...` で `Cybertrain.config.base_url` という読み出しメソッドを生やす形（issue の原案）。`define_method` も `method_missing` も無い（NOTES 1）。既定値から型を推論する 1 本の `setting` も、戻り値の型が呼び出しごとに変わるので Spinel では型付きの読み出しにならない。
-  - ジェネレータ（`gen/app.rb`）が `config/app.rb` を字句走査して型付きアクセサを書く案。`base_url` のように名前で読めるのは利点だが、`config/app.rb` をジェネレータの入力に加え、`spin run gen` の対象と生成物を増やす。名前を Symbol で渡す型付きメソッド 3 組で足りる。必要になれば後から生成アクセサを薄く被せられる。
-  - 読み出しを `string` / `int` / `bool` と短く名付ける案。`StringIO#string` などの組み込みと同名のメソッドは箱入りの受け手での呼び出しを壊す（NOTES 62）ので、`*_setting` と区別できる名前にした。
-  - `cybertrain settings` という独立したコマンド。一覧は既存の `help` に足し、現在値は起動バナーに出すことで足りる。
-- 帰結: 名前は Symbol で渡す（NOTES 51: 同じメソッドに Symbol と String のキーを混ぜない）。テスト用の書き込みは宣言時の範囲を検査しない。
-
-### D18. アプリ独自のサブコマンド: `Main.command`（2026-10-25）
-
-- 決定: `Cybertrain::Main.command(name, description) { |argv| ...; 0 }` で、アプリがバイナリにサブコマンドを登録できるようにする（#68）。登録は `bin/<app>.rb` で `Main.run` の前に書く。
-  - `./<app> NAME ARGS...` は、名前の後ろの引数（`argv[1..]`）をブロックに渡し、ブロックの値（Integer）を終了コードにする。
-  - ブロックの前に `Cybertrain::DB` を `Cybertrain.config.database_path` へプール 1 本で接続し、後で切断する。サーバ、ビュー、セッション秘密鍵は用意しない。設定は `bin/<app>.rb` が `config/app.rb` を先に require しているので読み込み済みで、未設定なら `Cybertrain.config` の既定（環境変数）になる。
-  - `Cybertrain::DB::Error`（接続の失敗も含む）は `NAME failed: MESSAGE` を出して終了コード 1 にする。それ以外の例外は捕まえない（`db` コマンドの `StandardError` まで捕まえる扱いより狭い。アプリのバグは隠さない）。
-  - 登録済みの名前は組み込みの判定より先に見る。`Main.server?` は登録済みの名前に対して偽になり、サーバ専用の起動処理（スケジューラなど）が一回きりのコマンドで動かない。`help` は組み込みの後に登録順で一覧する。
-  - 組み込みの語（`server` / `migrate` / `db` / `help` / `--help` / `-h`）、数字だけの名前（ポート引数）、空文字、登録済みの名前は `ArgumentError`。
-  - 実装は `Main::Command`（名前、説明、Proc）を定数 `Main::COMMANDS` の配列に積む。定数にするのはクラス変数が GC ルートにならないため（NOTES 64）、空配列は要素型で種付けする（NOTES 9）。アクセサは `command_name` などの固有名にし（NOTES 10 / 34）、`call` は定義しない（NOTES 40）。begin/rescue は yield しない普通のメソッドに置き、保存したブロックを `call` する（NOTES 32 / 45）。
-- 理由:
-  - これまでは `bin/` で `ARGV[0]` を自分で見て、`db migrate` が持っている「設定済みの DB に接続して実行し、表示して終了コードを返す」足場を書き直す必要があり、`help` にも出なかった。
-  - Spinel には `instance_eval` が無いので、ブロックは `before_action { |c| ... }` と同じく引数を明示的に受け取る。
-  - プール 1 本で足りる。一回きりのプロセスで `pool_size` 本を開いて閉じるのは無駄。
-- 却下した案:
-  - Rake 風のタスクファイルを走査して生成する案。字句走査と生成の面が増え、`bin/<app>.rb` に数行書くのと比べて得るものが無い。
-  - 組み込みの名前の上書きを許す案。`migrate` が別物になると運用手順が壊れる。
-  - コマンドごとに DB 接続を選ばせる案（接続しない指定）。必要になったら引数を足す。
-
-### D19. タイムゾーン: システムの TZif を自前で読む `Cybertrain::TimeZone`（2026-10-25、issue #66）
-
-- 決定: `cybertrain/time_zone.rb` に `Cybertrain::TimeZone` を置く（名前は issue で未定だったので、Rails の `ActiveSupport::TimeZone` に寄せた）。
-  - `TimeZone.find("Asia/Tokyo")` が `$TZDIR/<name>`（既定 `/usr/share/zoneinfo/<name>`）を読み、TZif v1〜v4（RFC 8536）を解釈する。v2 以降は 32 ビットのブロックを読み飛ばして 64 ビットのブロックとフッタを使う。最後の遷移より後の時刻は POSIX TZ 文字列のフッタ（`JST-9`、`EST5EDT,M3.2.0,M11.1.0`、`<+09>-9`）で決める。`Mm.w.d`・`Jn`・`n` の規則、`/time` の省略・負の値・24 時間超（RFC の拡張、167 時間まで）を扱う。DST 名だけで規則が無いときは tzcode / glibc と同じく米国の規則を補う。
-  - 値はすべて Integer の epoch 秒。`utc_offset_at` / `dst_at?` / `abbreviation_at`、`utc_to_local` / `local_to_utc`（「ローカル epoch」は壁時計を UTC とみなして数えた秒）と、暦との変換 `civil_to_epoch` / `epoch_to_civil`。issue の `local_to_utc(local_epoch, zone)` は、ゾーンのインスタンスメソッド `zone.local_to_utc(local_epoch)` にした。
-  - 遷移の前後で `local_to_utc` の答えを一つに決める: 飛ばされた壁時刻（米国の春の 02:30）は遷移前のオフセットで読む（結果は遷移後、03:30 EDT になる）。二度ある壁時刻（秋の 01:30）は早いほうの瞬間を返す。前後 1 日の間に遷移は高々一つ、という tz データベースで成り立つ前提を置く。
-  - 名前は `A-Za-z0-9_+-./` の 1〜255 バイトで、先頭の `/`、空・`.`・`..` のセグメントを拒む。ディレクトリの外のファイルを指せる名前は、ファイルを見る前に落とす。ファイルが無い・TZif でない・256 KiB を超える・カウントと長さが合わない（遷移が昇順でない、型番号や略称の位置が範囲外、略称が印字可能 ASCII でない）ときは、UTC として振る舞い `found?` が false のゾーンを返す（例外にしない）。`"UTC"` は組み込みでファイルを読まない（`TimeZone::UTC`）。読めないフッタは無視し、最後の遷移の型がそのまま続く。
-  - キャッシュは、名前 → 添字の Hash とゾーンの型付き Array を持つ不変オブジェクトを一つ、クラスレベルの `@zone_cache` に置く。追加は Mutex の中で新しい組を作って参照を差し替える（copy-on-write）。読み手はロックを取らない（NOTES 57: リクエストごとの Mutex は 2 ワーカーで数秒止まった）。キーは解決後のパスなので、`TZDIR` を変えれば別のエントリになる。見つからなかった名前はキャッシュしない（利用者の入力で表が際限なく伸びないように）。
-  - 解析は `getbyte` の算術で行い、`String#unpack` は使わない（NOTES 62 に従い、走査するメソッドの先頭で `s = bytes.to_s` を取る）。64 ビットの符号付き値は、負なら補数で読み、途中の値が 63 ビットに収まるようにする。
-- 理由:
-  - Spinel には tz データベースが無い。`ENV["TZ"]` を切り替えて `Time#localtime` に頼るのはプロセス全体の状態で、スレッド安全でない。毎日 09:00 Asia/Tokyo のスケジュール、ローカル日付ごとの集計、DST を考えた次回実行時刻の計算は、各アプリが 600 行ほどのパーサとキャッシュを書くことになる。
-  - データを同梱せずシステムの zoneinfo を読むので、tzdata の更新は OS のパッケージで届く。バイナリも大きくならない。
-  - Integer の epoch 秒に絞ると、Spinel の `Time` の差（NOTES 7）に触れずに済み、DB の列やクッキーにもそのまま入る。
-- 却下した案:
-  - tz データの同梱・生成（ビルドごとに古くなり、数百 KB 増える）。
-  - `ENV["TZ"]` + `Time.at(t).localtime`（スレッド安全でない）。
-  - 不明な名前で例外を投げる（設定ミスひとつで全リクエストが 500 になる。呼び出し側が `found?` を見て警告する）。
-  - 不明な名前もキャッシュする（上記）。
-  - `Time.zone` 相当のリクエストごとの既定ゾーンと、テンプレートの `l(time, zone:)`。変換ができた後の別件にする（issue のとおり今回は入れない）。
-- 帰結と今後:
-  - `right/` 系のゾーンのうるう秒レコードは読み飛ばすだけで適用しない（その分の秒がずれる）。通常のゾーンには無い。
-  - コンテナイメージに tzdata が無いと `find` は `found?` false の UTC を返す。slim なイメージでは `tzdata` パッケージを入れるか `TZDIR` を指す。
-  - `def name` をこのクラスに置くと、フレームワーク全体のプログラム（test/template_integration.rb）で `Class#name` が NoMethodError になった。読み出しは `zone_name` にした（NOTES 66）。
-
-### D20. トランザクション API: `DB.transaction` と `Model.transaction`（2026-10-25、issue #67）
-
-- 決定: `Cybertrain::DB.transaction(immediate: false) { |c| ... }` を公開 API にする。プールから接続を借り、`BEGIN`（`immediate: true` なら `BEGIN IMMEDIATE`）を発行し、接続を渡してブロックを呼び、正常終了で `COMMIT`、例外で `ROLLBACK` して再送出し、接続をプールへ返す。`Model.transaction` は同じものを Rails の名前で呼ぶ薄い別名（クラスメソッドなので `Ident::RESERVED_COLUMN_NAMES` には入らない）。D10 の「MVP 外: モデル API の `transaction`」と §8 の `transaction` API はこれで置き換わる。
-- 参加（Rails と同じ意味）: ブロックの実行中、同じスレッドの `DB.with`（したがって `save` / `update` / `destroy` / Relation の問い合わせ）はトランザクションの接続をそのまま受け取る。プールは借りた接続を `Thread.current` に記録し、`Pool#with` が `held_index` でそれを見つけたら借り出しも返却（`check_in` はトランザクションを巻き戻してしまう）もせずに yield する。入れ子の `DB.transaction` も同じ接続で深さを一つ増やすだけで、深さの数え方と「SQLite が自分で巻き戻した」検査は `Connection#transaction` のものをそのまま使う（両者とも新しいブロックなしの `Connection#begin!` / `commit!` / `rollback!` の上に書き直した）。最外段だけが `COMMIT` し、どの段の例外も最外段に届けば全体が巻き戻る。セーブポイントは無い。`immediate:` は最外段でだけ効く。ブロック内で起こしたスレッドは参加しない。
-- 形（Spinel の制約から決まった）: `DB.transaction(&block)` は `DB.run_transaction(immediate, block)` を呼ぶだけで、借り出し・`begin!`・`block.call(conn)`・rescue・ensure はすべて `run_transaction` にある。`Controller#process` / `#run_action` と同じ形。
-  - `&block` を受けて呼ぶメソッドは yield するメソッドと同じく呼び出し側に展開され、そこに rescue / ensure があると C がコンパイルできない（NOTES 規則 32/45、69）。
-  - Proc をもう一段先のメソッド（`Pool` や `Connection` のメソッド）へ渡して呼ぶと、ブロック引数に接続のクラスが伝わらず、`c.execute` が NoMethodError になる（NOTES 規則 69）。
-  - 参加の判定を `DB.with` 側で `block.call` にすると `DB.with` のブロックが Proc になり、外側のブロック引数を読むブロック（`5.times do |i| DB.with { ... i ... } end`）がコンパイルできなくなる（NOTES 規則 68）。だから判定は yield する `Pool#with` の中に置いた。
-- ブロックなしの形: `c.begin!(immediate:)` / `c.commit!` / `c.rollback!`。rescue を普通のメソッドに置きたいコード向け。入れ子の `rollback!` は深さを一つ戻すだけで、判断は最外段に任せる（入れ子の `transaction` ブロックから例外が抜けたときと同じ）。
-- 捨てたもの・制約:
-  - 戻り値はブロックの値ではなく nil（`Connection#transaction` と同じく、総称的な戻り値は Spinel で型が付かない）。
-  - `ActiveRecord::Rollback` と `requires_new:`（セーブポイント）は無い。
-  - `DB.with` のブロックの中で `DB.transaction` を呼ぶと別の接続を借りる（`DB.with` はトランザクションではないので参加先が無い。1 接続のプールでは永久に待つ）。
-  - ブロックの `c` は箱詰めの値なので、その上で `c.transaction { }` は呼べない（yield するメソッドは展開されるだけで実体が無い、NOTES 規則 67）。入れ子は `DB.transaction` か `begin!` / `commit!` で書く。
-  - `DB.transaction` のブロックが外側のブロック引数を読み、その外側がさらにブロックの中にあると（三段）コンパイルできない（NOTES 規則 68）。アクションのようなメソッドの中なら二段で動く。
-- 検証: `test/db_transaction_api.rb`（フレームワーク全体と一緒にコンパイル）。コミット、例外での巻き戻し、入れ子の参加、`Model.transaction` 内の `save` の参加、ブロックなしの形、`DB.with` のブロック内からの呼び出し、コントローラのアクションからの呼び出し、`immediate: true` が `BEGIN IMMEDIATE` を出すこと（別の接続の `BEGIN IMMEDIATE` が "database is locked" になる。遅延 `BEGIN` では通る）。
-
-### D21. マイグレーションのデータ操作: `execute` を操作として記録する（2026-10-25）
-
-- 背景: マイグレーション DSL はスキーマ操作だけで、だから `change` から `down` を導ける。だが安全なスキーマ変更にデータ操作が要ることがある（既定値 90 の `retention_days` 列を足すとき、既存行は「無期限」の 0 に保たないと、新しい列の最初のデプロイで誰も選んでいない削除が始まる）。これまでは `up` を上書きし、`DB::CLI.resolved_path(".")` で 2 本目の `Connection` を開き、ロールバックのために migrator が `up` を呼んで操作を集めるときに再実行しないよう `schema_migrations` を手で調べ、`:memory:` を避けて閉じるしかなく、migrator の内部に依存していた（issue #73）。
-- 決定:
-  - `Migration::Base#execute(sql, binds = [])` を `change` / `up` / `down` の中で使える DSL にする。その場では何も実行せず、`Operation` の `:execute` 種別（`exec_sql` と、`Cast.to_sql` で変換済みの `exec_binds`）として記録する。`up` / `down` は今までどおり純粋な記録なので、migrator がロールバックの前に `up` を呼んでも文は走らない。
-  - migrator は `:execute` を自分の接続で、そのバージョンのスキーマ操作と同じトランザクションの中で、記録順に実行する。前の `add_column` が済んでから `UPDATE` が走り、後の操作はその後に走る。データ操作が失敗すればそのバージョンのスキーマ操作も巻き戻り、バージョンは記録されない。バインドが無いときは `exec_script`（`;` で区切った複数文を流せる）、あるときは 1 文のプリペアドステートメント。
-  - `:execute` に自動の逆操作は無い。`change` に `execute` を含み `down` を書いていないバージョンのロールバックは `IrreversibleMigration`（"version N is irreversible: it executes SQL in change; write down"）。migrator は対象のバージョンすべてについて `down` を先に記録してみて、記録できないものがあれば**何も戻す前に**止める（ファイルの消えたバージョンの検査と同じ位置）。この事前検査は `drop_table` など他の不可逆な `change` にも効き、メッセージにバージョンが付くようになった。`N` 段のロールバックが途中まで戻って止まることはもう無い。
-  - `db/schema.rb` は DB からダンプするので、データ操作は現れない。ジェネレータ（`gen/migrations.rb`）はマイグレーションのファイルを `require_relative` するだけで中身を字句走査しないので、変更は要らない。
-- 却下した案:
-  - Rails の `reversible { |dir| dir.up { ... } }`。ブロックをレシーバ付きで後から呼ぶ形になり（`instance_exec` は無い、NOTES 規則 2）、`up` と `down` を書けば同じことができる。
-  - `execute` の逆操作として `down` 側の SQL を引数で受ける（`execute up_sql, down_sql`）。バインドとの組み合わせが分かりにくく、`down` を書くほうが読める。
-  - `execute` がその場で SQL を流す。migrator が操作を集めるために `up` を呼ぶたびに走ってしまう、issue が挙げたもろさそのもの。
-- 名前: `Operation` の読み出しは `exec_sql` / `exec_binds`。`Relation#binds` と同名にしない（NOTES 規則 10 / 34）。`Base#execute` は `nil` を返し、`Connection#execute`（行の Array）と戻り値の型が違うが、一つのプログラムに両方があってもコンパイルできることを test/migration_execute.rb と test/db_integration.rb で確かめた。
-
-### D22. クエリ API の追加: upsert、集計、pluck、binds、LIKE、JSON の Cast（2026-10-25、issue #74）
-
-- 決定: 汎用のクエリビルダは作らず、アプリで何度も手書きされていた生 SQL の型を、型の決まった小さなメソッドとして足す。
-  - `Model.upsert(attrs, conflict: [...], update: { col: "SQL 式" })`: `INSERT ... ON CONFLICT (...) DO UPDATE SET`。`update` が空なら `DO NOTHING`。戻り値は書いた行数（`changes`）。基底 `Model` のクラスメソッドで、サブクラスの `table_name` を読む（継承したクラスメソッドからの `table_name` 呼び出しは Spinel で各サブクラスのものに解決されることを確認した）。生成コードは増やさない。検証・コールバック・タイムスタンプの自動設定はしない。
-  - `Relation#increment(column, by: 1)`: `UPDATE ... SET col = col + ?`。limit / offset があれば `delete_all` と同じく `id` の副問い合わせで窓を選ぶ。
-  - `Relation#pluck_str` / `pluck_int` / `pluck_float`、`sum_int` / `sum_float`: Spinel ではメソッドごとに戻り値の型が一つなので、Rails の多相な `pluck` / `sum` ではなく型別に分ける。`sum` を Float 一本にすると、カウンタの合計（主な用途）が 2^53 を超えたところで丸まるため、整数版を別に持つ。`sum_float` は SQLite の `TOTAL`（行が無ければ 0.0）。
-  - `Relation#count_by(column)` → `Hash{String => Integer}`（キーは `Cast.str`、昇順、NULL と `""` は同じキー `""` に合算）。生の式で集計する逃げ道は `count_by_sql(expr)`（時間バケツの `strftime(...)` など）。issue の `group_sql` は、連鎖メソッドにすると各モデルの生成コードが要り、しかも「複数の集計列を持つ行」の型が Spinel では多相 Hash にしかならないので、終端の `count_by_sql` にした。`order_sql` と同じく、式にリクエストのデータを入れてはいけない。`GROUP BY 1`（位置指定）を使うのは、表に `k` 列があると GROUP BY では別名より列が優先されるため。
-  - `Relation#where_like(column, text)`（生成コードの連鎖メソッドと `Model.where_like`）と `Cast.like_escape(text)`: `\`・`%`・`_` を `\` でエスケープし、`LIKE ? ESCAPE '\'` に `%text%` を束縛する。前方一致は `like_escape(q) + "%"` を `where_sql` に渡す。
-  - `Cast.binds(*values)`: `execute` が受け取る多相配列を `Cast.to_sql` を通して作る。可変長引数は Spinel でコンパイルできる（`Params#permit` が前例）ので、`binds1`〜`binds4` のような版は作らない。
-  - `Cast.hash(v)` / `Cast.array(v)` と `Cast.empty_hash` / `Cast.empty_array`: JSON の値を Hash / Array に絞る。`when Time` を先に置く（NOTES 規則 8）。`v` そのものではなく、型の付いた新しい容器（`Hash[String, untyped]` / `Array[untyped]`、全スカラー型で種を入れる: 規則 9・46）に要素を浅く写して返す。`when Hash then v` で `v` を返すと戻り値が箱詰めの untyped になり（`--emit-rbs` で確認）、以後の呼び出しがすべて遅い経路に乗るため。
-  - 列名はすべて `Ident.column?` で検査してバッククォートで囲み、不正な名前は `ArgumentError`（開発者の誤りなので 500）。値はすべて束縛する。
-- 却下した案: 汎用クエリビルダ（`select` / `group` / `having` の連鎖）。型の決まらない行を返すことになり、生成コードも大きくなる。`pluck` を多相配列で返して `Cast` で絞らせる案は、呼び出し側が毎回同じ `Cast` を書くことになるので型別にした。
-- 帰結: `Ident::RESERVED_COLUMN_NAMES` は変えない（足したのは Relation のメソッドと Model・Cast のクラスメソッドだけで、レコードのインスタンスメソッドは増えていない）。生成モデルには `where_like` の 2 行が増える。
-
-### D23. ページ送り: `Relation#page` と `Page`、`params.page_number`、`paginate` ヘルパ（2026-10-25、issue #75）
-
-- 決定: オフセット方式のページ送りをフレームワークに置く。
-  - `Params#int(key, default:, min:, max:)`: 任意の `-` と 1〜18 桁の数字だけを `to_i` に渡し、それ以外は `default`、範囲外は `min..max` に丸める。Spinel の `String#to_i` は 2**63-1 を超えると `RangeError` を投げる（NOTES 規則 25）ので、リクエストの文字列を長さ確認なしに `to_i` しない。`Params.parse_int(text, default)` は同じ読み方で、`Config` も使う。
-  - `Params#page_number`: `page` を 1 始まりで読み、`1..Params.max_page` に丸める。`Params.max_page` は Multipart と同じモジュール ivar で、`Application#boot` が `Config#max_page`（既定 10000、`CYBERTRAIN_MAX_PAGE`）を入れる。Params は HTTP 層にあり Config を読めないため。
-  - `Relation#page(n, per: 50)`: リレーションを `LIMIT per OFFSET (n - 1) * per` に絞り（それまでの limit/offset は置き換える）、`Cybertrain::Page`（`number` / `per` / `row_offset` / `next?` / `prev?` / `next_number` / `prev_number`）を返す。`n` も `1..max_page` に丸めるので、オフセットは `(max_page - 1) * per` を超えない。`per` は 1〜1000 で、外れたら開発者の誤りとして `ArgumentError`。
-  - `next?` は同じ窓に対する `SELECT 1 ... LIMIT per + 1` 一本で決める。`COUNT(*)` で全件は数えない。
-  - テンプレートヘルパ `paginate(page, path)`: `<nav class="pager">` に「Newer」（`rel="prev"`）、「Page N」、「Older」（`rel="next"`）を出す。存在しないページへのリンクは出さない。リンクの問い合わせ文字列は、現在のリクエストのものから `page` を除き（`Query.without_key`、各組を復号して符号化し直す）、`page=N` を足したもの（1 ページ目は付けない）。`path` が自前の `?` を持つときはそちらを使う。`href` は `Html.escape` を通す。テンプレートからは `@page.next?` なども読める（`Helpers#call_object_method`）。
-- 型付きの行について: 行は `Page` に載せず、リレーションに残す。`page` で窓を決めた後の `to_a` / `each` は、生成された `<Model>Relation` を通るので `Article` の配列のまま型付けされる。
-- 却下した案:
-  - `Page#rows`。型付きにするにはモデルごとに `ArticlePage` を生成する必要があり、すべてのアプリの gen/ が変わる。
-  - 行を per + 1 件読んでリレーションにキャッシュし、1 本のクエリで済ませる案。生成された `to_a` が呼ぶ基底の `rows` を変え、`execute_models` と同じ型で種を入れた行配列の ivar を持ち、後続のチェーン呼び出しで無効化する必要がある。その代わりに `SELECT 1` を 1 本足すほうを選んだ。
-  - `Params#page`。`Relation#page`（`Page` を返す）と同名で戻り値の型が違うと、推論が壊れる（NOTES 規則 34）。同じ理由で、`Page` のオフセットは `offset` ではなく `row_offset` と呼ぶ。
-  - `paginate(page, path, params)`。`Params` は木を問い合わせ文字列に戻せない。リクエストの生の問い合わせ文字列を組ごとに読み直すほうが、入れ子やリストもそのまま残る。
-  - 範囲外の `page` を 404 にすること。丸めるだけにした。
-- 今後: キーセット方式（`after: id`）は大きなテーブル向けに後から足す。scaffold の index ビューは変えない（gen/ を新しいまま保つ）。使い方は README の「Pagination」に書いた。
-
-### D24. 外向き HTTP クライアント: 待ちをすべて有界にし、非公開アドレスを既定で拒否する（2026-10-25、#63）
-
-- 問題: アプリが Webhook・Slack・外部 API を呼ぶ手段が無かった。Spinel の `Net::HTTP` は TLS ハンドシェイク（`SSL_connect`）と最初の 1 バイト以降の読み取り（`SSL_read`）をブロッキングの C 呼び出しで行い、そのあいだ OS ワーカーを握る。既定の `SPINEL_WORKERS=1` ではそれがサーバ全体なので、止まった相手一つで全リクエストが止まる。`TCPSocket.new(connect_timeout:)` は Spinel では無視され（到達不能アドレスで 60 秒以上）、`IO#gets` は後の `wait_readable` に見えないバイトを抱える。
-- 決定: フレームワークに `Cybertrain::HttpClient`（名前は issue で未定だったものをこう決めた）を置く。三層に分ける。
-  - `cybertrain/net/socket.rb`（`Cybertrain::Net`）: 有界な TCP。`Socket.new` + `connect_nonblock(exception: false)` + `wait_writable(t)` の後に `getsockopt(SOL_SOCKET, SO_ERROR)` で結果を見る（二度目の `connect_nonblock` は CRuby では `EISCONN`、Spinel では素の `SystemCallError` になり、揃わない）。読み取りは必ず `read_nonblock` を先に試し、`:wait_readable` のときだけ `wait_readable(t)` で待つ（受信済みのバイトを待たない）。書き込みは `write_nonblock` + `wait_writable(t)`。待ちはどれも「1 回の待ちの上限 `timeout`」と「リクエスト全体の締め切り `deadline`」の小さい方（`Net::Timer`、単調時計）。行・長さ・終端までの読み取りは `Net::Reader`（バイトのバッファ + 読み位置）。メーラー（別 issue）も同じ層を使う前提で、HTTP を知らない。
-  - `cybertrain/net/tls.rb`: openssl パッケージの `SSLSocket#connect_nonblock` / `read_nonblock` / `write_nonblock`（`exception: false`）で同じ有界な待ちを TLS に通す。**このファイルだけが `require "openssl"` する**。socket.rb と http_client.rb は openssl を要求しないので、https を使わないアプリは libssl をリンクしない。require すると `Net.tls_connector`（モジュールレベルの ivar、NOTES 18 / 64）に `OpenSSLConnector` が入り、入っていなければ https は「`require "cybertrain/net/tls"` が要る」という `TLSError` になる。検証はパッケージの `SSLContext#set_params` そのもの: `VERIFY_PEER` を OS の信頼ストアで（`SSL_CERT_FILE` / `SSL_CERT_DIR` で差し替え可。パッケージに `X509::Store` は無い）、`SSL_set1_host` によるホスト名検査、SNI、TLS 1.2 以上。CRuby の `SSLContext.new` の既定は `VERIFY_NONE` なので、両方で同じになるよう必ず `set_params` を呼ぶ。`close_notify` 無しの切断（`Connection: close` の後によくある）は終端として扱う。Content-Length / chunked で枠付けされた本文はそれでも完全でなければならない。
-  - `cybertrain/http_client.rb`: HTTP/1.1、`Connection: close`、リダイレクト・プロキシ・keep-alive・Cookie・圧縮なし（通知用のクライアントでブラウザではない）。`get(url, headers:)` / `post(url, body, content_type:, headers:)` が `HttpClient::Response`（`status` Integer、小文字名の `headers`、`body`）を返す。応答は Content-Length、chunked（最後の転送コーディングが chunked のとき）、切断まで、の三通り。ヘッダは 1 行 8 KiB・合計 64 KiB・100 行、本文は `max_body`（既定 1 MiB）が上限。1xx は 5 個まで読み飛ばし、101 は拒否。URL は `URI` ではなく自前のバイト走査（rule 62 の `s = text.to_s` で）で分解し、userinfo・空白・制御文字・非 ASCII を拒否する。
-- 非公開アドレス: 名前を一度だけ解決し（`Socket.getaddrinfo`、最初のストリームアドレス）、そのアドレスを `Net::Address.blocked_reason` で検査してから、そのアドレスに接続する。名前で判定しないので、`/etc/hosts` や DNS rebinding で私設アドレスを返す名前もリテラルと同じに拒否される。TLS の証明書は URL のホスト名で検査する。拒否するのは loopback、private（RFC 1918、`fc00::/7`、廃止済みの `fec0::/10`）、link-local（`169.254/16` はクラウドのメタデータ、`fe80::/10`）、unspecified（`0/8`、`::`）、multicast、broadcast、CGNAT `100.64/10`、文書用・ベンチマーク用・予約、IPv4-mapped / NAT64 / 6to4 に埋め込まれた同種、IPv4-compatible。IP の解析は `IPAddr`（Spinel に無い）ではなくバイト走査。`Config#http_allow_private`（`CYBERTRAIN_HTTP_ALLOW_PRIVATE=1` / `true`、既定 false）か `HttpClient.new(allow_private: true)` で許す。テストでローカルサーバを相手にするときと、社内サービスを呼ぶときのため。
-- エラー: `HttpClient::Error` の下に `TimeoutError` / `RefusedError`（接続拒否・到達不能・名前解決失敗・リセット）/ `TLSError` / `BlockedAddressError` / `TooLargeError` / `BadResponseError`。メッセージは `host:port` だけを含み、**パスとクエリは決して含まない**（Webhook の URL は秘密をそこに持つ）。URL やヘッダの不正は `ArgumentError` で、これも URL を繰り返さない。Net 層は `Net::Error` の下の自前の例外を投げ、`HttpClient#perform` が rescue の段で HttpClient の例外に移す（NOTES 47: 例外の判別は rescue 節で。ブロックを取らないメソッドの中で、NOTES 32 / 45）。メーラーは同じ Net 例外を自分の例外に移せる。
-- 名前解決はブロッキングのまま: ランタイムに非同期のリゾルバが無い。`getaddrinfo` の待ちは呼び出したスレッドの OS ワーカーを握る（通常は数ミリ秒、リゾルバが死んでいればシステムのタイムアウト）。締め切りはその時間を数えるが中断はできない。README に書いた。Spinel の `Socket.getaddrinfo` は解決できない名前に例外ではなく空配列を返し（CRuby は `SocketError`）、要素の配列は添字では読めず（`entry[3]` がコンパイルできない）、`each` のブロック引数の分解でだけ読める。
-- 却下した案:
-  - Spinel の `Net::HTTP` を使う、または包む: 待ちが C の中にあり、Ruby から上限を付けられない。
-  - `IO#gets` で行を読む: 受信済みのバイトが stdio のバッファに残り、`wait_readable` がそれを見ずにタイムアウトまで待つ。
-  - openssl を http_client.rb で直接 require する: TLS を使わないアプリにも libssl のリンクと、rule 62 の名前衝突面（openssl パッケージは `getbyte` / `read` / `write` / `close` / `<<` を Ruby で定義する）を強いる。
-  - `require "cybertrain"` に含める: 呼ばれないコードを全アプリに入れると推論の穴を踏む（NOTES 36）。使う所で require する。
-  - 解決したアドレスを全部検査して一つでも私設なら拒否、または複数アドレスへのフォールバック: 接続するのは一つだけなので、そのアドレスを検査すれば足りる。フォールバックは今は無い。
-  - TLS の端から端までのテスト: パッケージに X509 が無く証明書を作れず、TLS サーバも無い。test/http_client.rb はハンドシェイクの失敗（平文の HTTP サーバ相手）とタイムアウト（黙るサーバ相手）までを確かめ、実サイトへの検証付きハンドシェイクは手で確認した。
-- 帰結: test/template_integration.rb はフレームワーク全体に http_client と net/tls（つまり openssl パッケージ）を加えたプログラムになり、HttpClient で Server に POST する。rule 62 の回帰はここと test/openssl_dispatch.rb で見る。
-- 追記（2026-10-25、macOS の CI）: 「最初のストリームアドレスだけに接続する」は macOS で `localhost` を壊した。macOS の `getaddrinfo("localhost")` は `::1` を先に返し、`127.0.0.1` で待つサーバはそれを拒否する（CI の `test (macos-latest)` で HttpClient とメーラーの `localhost` のテストが接続拒否になった）。そこで上の却下を改め、`Net.resolve` は解決したストリームアドレスを全部、順に、重複なしで持つ（`Net::Endpoint`）ようにし、`TcpStream.connect_to` はそれを順に試す: 拒否・到達不能・リセット・ソケットを開けない（IPv6 の無いホスト）・1 回の待ちの上限内に応答なし、のどれでも次へ移り、全体は締め切りで縛り、全部失敗したら最後のアドレスのエラーを投げる（例外は保存せず再帰と rescue 節で区別する、NOTES 47）。名前を引き直すことはないので「一度解決したアドレスに接続する」性質は各試行で保たれる。非公開アドレスの判定もアドレスごとにし（`HttpClient#allowed_addresses`）、拒否されたアドレスは飛ばし、全部が拒否されたときだけ `BlockedAddressError`（最初のものを名指す）。メーラーの `none` + 資格情報は loopback のアドレスだけを残す（`Mailer.loopback_only`）。また、TLS ハンドシェイクが始まった後のソケット層の失敗（リセット・EOF・broken pipe）は、OpenSSL が不正なレコードとして報告した場合と同じく `TlsError`（"TLS handshake failed: ..."）にする。TLS を話さない相手に対してどちらになるかはタイミングとカーネルによるので、プラットフォームで例外クラスを変えないため。テストも移植可能にした: 接続が終わらない状態は `listen(0)` の待ち行列を最大 1024 本の非ブロッキング接続で埋めて作り（macOS は backlog より多く受け付けるか RST で答える）、それでも保留にならなければ TEST-NET-1 の `192.0.2.1` に `allow_private` で接続する。ハンドシェイクのタイムアウトは、待ち行列に残した接続ではなく、受け付けて何も書かないサーバで作る。
-
-### D25. ログインの方針をフレームワークへ: 直列化した照合、ダミー照合、パスワード変更でのセッション失効、テスト時の反復回数、絶対有効期限、安全な戻り先（2026-10-25、issue #71）
-
-- 背景: D15 は「自分で書くと間違えるもの」だけをフレームワークに置いたが、どのアプリも要る方針（絶対有効期限 ad3cb63、戻り先の検査 536665f）が生成コードの側に書かれ、アプリが自分で足すしかないもの（照合の直列化、存在しないアドレスの時間差、パスワード変更時の失効）も残っていた。README の機能一覧だけを見た設計調査が `Cybertrain::Password` と `skip_before_action` を見落として代替を書いたこともあり、README に「Authentication: what the framework provides」節を設けた。
-- 決定:
-  - `Password.verify_serialized(plain, digest)`: `verify?` をプロセス内の `Mutex`（モジュール ivar、NOTES 規則 18 / 64）の中で一つずつ走らせる。PBKDF2 は 1 回約 0.2 s の CPU を使い、ログインの集中が `SPINEL_WORKERS` 個の OS ワーカーを全部ふさぐと他のページが待つ。直列化すれば計算しているワーカーは高々一つ。待つスレッドは Mutex で止まる（回らない）。ロックはログイン時だけで、リクエストごとの経路には置かない（NOTES 規則 57）。
-  - `Password.dummy_digest`: 乱数パスワードのダイジェストをプロセスで一度だけ作り（`iterations` が変わったら作り直す）、存在しないアドレスでもこれに対して一回照合する。応答時間でアカウントの有無が分からない。生成コードは従来 `Password.hash` を呼んでいた（照合ではなく生成なので、塩の生成など費用の形が違った）。
-  - `Password.session_key(digest)` / `session_key_matches?(key, digest)`: パスワードダイジェストの HMAC-SHA256（鍵は `secret_key_base`、ラベル付き）。サインイン時にセッションへ入れ、毎リクエスト比較する。パスワードを変えるとダイジェスト（塩ごと）が変わるので、それ以前のセッションは一致しなくなる。クッキーは署名のみで読めるが、値は秘密鍵なしではダイジェストについて何も言わない。再ハッシュ（`needs_rehash?`）でもダイジェストが変わるため、反復回数を上げた直後に各ユーザーの他のブラウザが一度サインアウトされる。これは受け入れた。
-  - `Password.iterations`: 明示的に設定していなければ、`Cybertrain.config.test?` で `TEST_ITERATIONS`（1000、`iterations=` の下限）、それ以外で `ITERATIONS`（10 万）。ダイジェストは自分の反復回数を持つので、検証側は何も変わらない。値は問い合わせのたびに決める（`password.rb` の読み込み時点では Config がまだ作られていないことがある）。そのため `password.rb` は `cybertrain/config` を require する。
-  - `Config#session_absolute_max_age`（既定 1209600 = 2 週間、ad3cb63 が生成コードで使った値と同じ。0 で無効）: `SessionStore` が、セッションを初めて書くときに `"_issued_at"`（エポック秒）をクッキーに入れ（署名の内側）、読み込み時にこの時間を過ぎていれば空のセッションとして扱う。送る Max-Age は残り時間を超えない。この設定より前のクッキーは最初のリクエストで開始時刻を刻む。`Session#restart_lifetime!` で数え直す（生成コードはサインイン時に呼ぶ）。`SessionStore.new` の既定は 0（無効）で、`Application` が Config の値を渡す。テストは `SessionStore#fixed_now=` で時計を固定する（ラムダをキーワード引数で渡すのは NOTES 規則 42 で不可）。
-  - `Controller#local_path?(text)` / `safe_redirect_path(text, fallback)`: `/` で始まり `//` でも `/\` でもなく、印字可能な ASCII（0x21〜0x7E、バックスラッシュを除く）だけで、2048 バイト以下のときだけ自サイトのパスとして受け入れる。ブラウザが送るパスはすでにパーセント符号化されているので、非 ASCII を拒んでも正しいリンクは落ちない（536665f の生成コードは `/記事` を通していたが、今は拒む）。
-  - 生成コード（`cybertrain generate authentication`）: `User.authenticate_by` / `#authenticate` は `verify_serialized` とダミーダイジェストを使い、`start_new_session_for` は `session.restart_lifetime!` と `session[:password_key]` を書き、`resume_session` は鍵が一致しなければ Session 行を消してサインアウトし、行の `created_at` の期限には `session_absolute_max_age` を使う（クッキー側の期限と同じ値で、行の側でも止める）。`after_authentication_url` は `safe_redirect_path` の一行になった。
-- 却下した案:
-  - パスワード鍵を sessions テーブルに持つ: 行は消せば失効するが、パスワード変更時に全行を消す処理をアプリが書く必要がある。セッションの値として持てば比較だけでよい。
-  - 絶対有効期限を生成コード（行の `created_at`）だけで持つ: 認証を使わないアプリのセッション（CSRF トークン、フラッシュ）は期限なしのままになる。両方に置いた。
-  - `verify?` 自体を直列化する: 認証以外の用途（API トークンのバッチ照合など）まで一列に並ぶ。別名にした。
-- 帰結: `ATTACHMENT_RESERVED_ACTIONS` に `safe_redirect_path` を足した（コントローラのメソッド名と添付フィールド名の衝突、`script/check-reserved-names`）。`local_path?` は `?` 付きなのでフィールド名になれない。テスト: test/password.rb（直列化はロックを保持したまま別スレッドの照合が終わらないことと、並行時の同時実行数 1 で確かめる）、test/session.rb（固定した時計で期限）、test/controller.rb（戻り先）、test/cli_authentication.rb（生成物）。
-
-### D26. レート制限と `request.client_ip`: 同一ホストの信頼済みプロキシだけを信じる（2026-10-25、issue #70）
-
-- 決定:
-  - `Request#client_ip`: 既定は `remote_addr`。`Config#trusted_proxy`（既定 false、`CYBERTRAIN_TRUSTED_PROXY=1` / `true`）が真で、**かつ**接続元がループバック（127.0.0.0/8、`::1`、`::ffff:127.x.x.x`）のときだけ、`X-Forwarded-For` の**最後の**要素（同じホストのプロキシが付け足したもの）を使う。それより前の要素はクライアントが自由に書けるので一切使わない。最後の要素が空、45 バイト超、印字可能 ASCII（0x21〜0x7E）以外を含む、またはヘッダが無いときは `remote_addr`。走査はすべてバイト単位（`getbyte` / `byteslice`）で、`split` / `strip` / `downcase` は使わない（ヘッダは任意のバイトを含みうる。CRuby の `split` は不正な UTF-8 で例外を投げる、NOTES 規則 52）。引数は `s = value.to_s` の新しいローカルで読む（規則 62）。
-  - `Request#loopback?`: `remote_addr` がループバックか（X-Forwarded-For は見ない）。初回セットアップ画面や管理用エンドポイントの「このマシンからだけ」の判定用。ドット区切り 4 要素・各 0〜255 を検査し、`127.0.0.1x` や `1270.0.0.1` は偽。サーバは TCP だけで UNIX ソケットを持たないので、その場合分けは無い。
-  - 信頼フラグは HTTP 層のモジュール ivar `Request.trusted_proxy` に置き、`Application#boot` が `Config#trusted_proxy` を入れる（`Params.max_page` / `Multipart.configure` と同じ形。HTTP 層は Config を読めない、`script/check-http-layer`）。
-  - `Controller.rate_limit(to:, within:, only: [], except: [], by: :client_ip, redirect_to: "", alert: "")`: 宣言ごとに `Cybertrain::RateLimit`（issue では名前未定だったのでこれにした）を一つ作って `RateLimit::ALL`（定数なので GC ルート、NOTES 規則 64）に登録し、その添字を持つ before コールバック（`Callback#limit_id`、他のコールバックは -1）を足す。`run_one` は添字があればストアドブロックではなくコントローラ自身の private メソッド `apply_rate_limit` を呼ぶ。ストアドブロックからの呼び出しは呼び先の引数の型を決めない（規則 30）ので、ブロックで包む形は避けた。宣言順で他の before_action と並ぶ。`by:` は `:client_ip`（既定）と `:remote_addr`。
-  - 数え方は固定窓: キー（`"<controller_path> <アドレス>"`。親で宣言した制限もサブクラスごとに別に数える。Rails の `rate_limit` と同じ）ごとに窓の開始秒と回数を持つ。窓の最初の要求が窓を開き、`to` 回目までを通し、`within` 秒後に閉じる。超えたら 429・本文 `Too Many Requests`・`Retry-After`（窓が閉じるまでの秒、最小 1）。`redirect_to:` があれば 303 でそこへ送り、`alert:` を `flash[:alert]` に入れる（Rails の生成コードの `with: -> { redirect_to ..., alert: ... }` に当たる。ブロック形は上の理由で採らない）。どちらでもアクションは走らない。
-  - メモリの上限: 型付き Hash 2 つ（開始秒・回数。種を入れて空にする、規則 9）を Mutex 一つで守る。キーは窓を開いた順に並べ、窓を開き直したキーは削除して入れ直すので、表は常に開始秒順で、期限切れは先頭に固まる。新しいキーが満杯（既定 10 000 キー、`max_keys=`）の表に来たら、先頭から期限切れを消し、それでも 9 割を超えていれば古い窓から消す（1 割ずつ空けるので、`keys` の複製を作るのは満杯のときだけ）。大量のアドレスで攻撃されても他のクライアントの窓が早く閉じるだけで、プロセスは育たない。
-  - 時刻は `RateLimit.current_time`（エポック秒）。テストは `RateLimit.current_time = n` で固定し、-1 でシステム時計に戻す。
-  - `cybertrain generate authentication` の `SessionsController` は `rate_limit to: 10, within: 3 * 60, only: [:create], redirect_to: "/session/new", alert: "Try again later."` を書く（Rails 8 の生成物と同じ値と振る舞い）。`start_new_session_for` が記録する `ip_address` も `request.client_ip` にした。生成する `AppTest.sign_in` は最初に `RateLimit.reset_all!` を呼ぶ: テストクライアントはすべて 127.0.0.1 なので、毎テストでサインインするスイートは 10 回を超える（Rails はテスト環境のキャッシュが null store なので数えない）。
-  - `Controller::STATUS_SYMBOLS` と `Test::Client` の `assert_response` に `:too_many_requests`（429）を足した。
-- 却下した案:
-  - X-Forwarded-For の最初の要素を使う案、または信頼するプロキシの一覧（CIDR の設定）を右から辿る Rails の `remote_ip` 方式。最初の要素はクライアントが選べる。一覧を辿る実装は多段構成のためのもので、cybertrain の想定（同じホストの nginx / Caddy / kamal-proxy 一段、docs/deploy.md）には過剰。直接つながるクライアントが自分のアドレスを選べないことは「ループバックからの接続に限る」で保証する。
-  - ループバック判定なしで `trusted_proxy` だけを見る案。設定したままアプリを外部に直接公開すると、誰でもアドレスを詐称できる。
-  - 単調時計。窓の秒数はそのまま `Retry-After` に出すので壁時計の整数秒で足り、テストで差し替えやすい。
-  - データベースで数える案（複数プロセスで共有）。今回はプロセス内だけ。後から宣言はそのままに裏側を差し替えられるよう、カウンタは `RateLimit` に閉じ込めた。
-  - `only: :create`（Symbol 単体）や `within: 3.minutes`。`before_action` と同じく配列だけを受け、`Integer#minutes` は無いので秒の整数にした。
-- 帰結: 制限されたアクションへの要求は一つのロックを取る（NOTES 規則 57: 全要求でロックを取ると複数ワーカーで詰まる）ので、`only:` で絞るようドキュメントに書いた。ロックの保持区間は Hash の数回の操作で、満杯時の掃除も 1 割ぶん。`apply_rate_limit` はコントローラの private メソッドなので `ATTACHMENT_RESERVED_ACTIONS` に足した（`script/check-reserved-names`）。使い方は README の「Rate limiting and the client address」に書いた。
-- 追記（PR #79 のレビュー指摘）: 信頼するプロキシを CIDR で列挙できるようにした。リポジトリ自身のデプロイ手順（docs/deploy-kamal.md、examples/blog の Kamal 設定）では kamal-proxy とアプリが別々の Docker コンテナで動き、アプリから見た接続元は Docker のブリッジネットワーク上の kamal-proxy のアドレス（既定で 172.16.0.0/12 の中）でループバックにならない。ループバックに限る規則のままでは `trusted_proxy` がそこで効かず、`rate_limit` が全員を kamal-proxy の一つのアドレスとして数える。上の却下案「信頼するプロキシの一覧」は、多段構成のために右から辿る形を却下したもので、一段のまま一覧で照合する形はここで採る。
-  - `Config#trusted_proxies`（既定 `[]`、`CYBERTRAIN_TRUSTED_PROXIES` をカンマで分けて前後の空白を除く）: IPv4 / IPv6 のアドレスまたは CIDR。`Config#trusted_proxies_error` が起動時に検査し（`fail_boot`、他の `*_error` と同じ形）、アドレスでも CIDR でもない項目、/32・/128 を超える接頭辞、`%zone` 付きの項目を拒む。`Application#boot` が `Request.trusted_proxies=` に入れ、そこで解析済みの形（接頭辞長と IPv6 形の 16 バイト、計 17 個の Integer を一本の型付き配列に並べる）にする。`Request.trusted_proxies=` に直接渡した不正な項目は ArgumentError で、入っていた一覧はそのまま。
-  - `Request#client_ip`: `remote_addr` が「`trusted_proxy` が真でループバック」または「一覧のどれかに入る」ときだけ、従来と同じ検査で `X-Forwarded-For` の最後の要素を使う。一段だけ、という原則（issue #70）は変えない。`CYBERTRAIN_TRUSTED_PROXY=1` は `127.0.0.0/8,::1` の略記で、一覧と足し合わされる。
-  - 照合は HTTP 層の新しいファイル `cybertrain/http/ip_address.rb`（`Cybertrain::IpAddress`）で、バイト走査だけ（IPAddr も Regexp も使わない）。IPv4 の項目は IPv4 射影形（`::ffff:a.b.c.d`、接頭辞 +96）として持つので、デュアルスタックの待ち受けが報告する `::ffff:172.18.0.2` も IPv4 の項目に一致する。相手のアドレスの `%zone` は無視する。IPv4 / IPv6 の解析は `Net::Address`（外向き HTTP クライアントの検査）にあったものをここへ移し、`Net::Address.parse_ipv4` / `parse_ipv6` / `hex_value` は委譲だけにした（HTTP 層は単独で読み込めなければならない、`script/check-http-layer`）。`Config` がこのファイルを require する（依存のない一ファイルだけで、サーバ本体は読まない）。
-  - `cybertrain new` が書く `config/deploy.yml`（と examples/blog の同じ設定）は `env.clear` に `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` を書く。Kamal はアプリのポートをホストに公開しないので、アプリに届くのは Docker ネットワーク上のコンテナだけ。`proxy.forward_headers` は設定しない: `ssl: true` の kamal-proxy はクライアントが送った `X-Forwarded-For` を渡さず自分で付ける（Kamal のドキュメント）。`forward_headers: true` は kamal-proxy の前にさらにプロキシがあるときのもので、ここで付けるとクライアントの書いた値が届く。
-  - 却下: 既定で 172.16.0.0/12 などの私用アドレスを信頼する案。同じホストの nginx（ループバック）や LAN 内から直接つながる構成で、LAN の誰もがアドレスを選べてしまう。設定はアプリ（生成した deploy.yml）の側で明示する。
-  - テスト: test/client_ip.rb（v4 / v6 / v4 射影の一致、範囲外は `remote_addr`、単一アドレス、不正な項目の拒否、ループバックの略記との併用）、test/cli_new.rb（生成される deploy.yml）。
-
-### D27. メーラー: 有界なソケット層の上の最小の SMTP クライアント（2026-10-25、#64）
-
-- 問題: アプリからメールを送る手段が無かった。`cybertrain generate authentication` もメーラーが無いことを理由にパスワードリセットを省いている。STARTTLS・暗黙の TLS・有界な待ちを正しくやると自前の SMTP クライアントは数百行になり、アプリごとに書くものではない。
-- 決定: `Cybertrain::Mailer`（cybertrain/mailer.rb、`Smtp` ではなくこの名前にした）。D24 の `Cybertrain::Net` の上に作り、ソケットのコードは複製しない。接続・TLS の各段・各応答の読み取り・書き込みはどれも `timeout`（既定 10 秒）と配信全体の `deadline`（既定 60 秒）の小さい方まで（`Net::Timer`）。応答は `Net::Reader` の行読みで、複数行応答（`250-...`）はコードが変われば `ProtocolError`、1 行 4 KiB・100 行が上限。
-  - API: `Mailer.deliver(to:, subject:, body:, from: "")`（`Config` の設定で）と `Mailer.new(host:, port:, user:, password:, from:, tls:, timeout:, deadline:, helo:)#deliver(...)`（各キーワードの既定は `Config`、テストやアプリが Config を迂回できる）。戻り値は本文に対するサーバの応答（`250 ... queued as ...`）。`to:` は String 一つで、複数の宛先はカンマ区切り（String と Array を受ける多相の引数は Spinel で危うい、NOTES 14 / 29）。
-  - 対話: 220 の挨拶、`EHLO`、`starttls` では `STARTTLS` → 220 → TLS ハンドシェイク（`Net.tls_connector`）→ `EHLO` をやり直す、ユーザがあれば `AUTH PLAIN`（初期応答付き、RFC 4616。`\0user\0password` の base64 は Spinel の base64 パッケージの `strict_encode64`。NUL を含むので補間でなく `<<` で組む、NOTES 60）、`MAIL FROM:<>`、宛先ごとの `RCPT TO:<>`（250 か 251）、`DATA`（354）、ドット詰めした本文と `.`、`QUIT`（221 は待つが、失敗しても配信の失敗にしない）。パイプライン化はしない。
-  - TLS モード: `starttls`（既定、587）、`tls`（暗黙の TLS、465）、`none`（平文、25）。`smtp_port` の既定は 0 で「モードの番号」を意味する（Config 初期化後に `config/app.rb` が `smtp_tls` を変えても番号が追随するように）。TLS が要るモードで `cybertrain/net/tls` が require されていなければ、接続する前に `TLSError`（`TlsConnector#tls_ready?` を足した。openssl を mailer.rb から require しないのは D24 と同じ理由）。STARTTLS の 220 の後に届いていた平文のバイトは TLS 越しに来たものとして読まれてしまう（STARTTLS コマンド注入）ので、`Reader` に残っていれば `ProtocolError`。サーバが STARTTLS を広告しなければ `TLSError`（平文へ黙って落ちない）。
-  - 資格情報: `none` でユーザが設定されているとき、名前を解決したアドレスが loopback でなければ接続前に `InsecureError`。パスワードはエラーメッセージ・ログ・起動バナー・`help` のどれにも出ない（Config の組み込み属性はバナーに出ないし、メッセージは `host:port`・段・サーバの応答だけで組む。サーバの応答は印字可能な ASCII に直して 300 バイトで切る）。`inspect` は上書きしない: 組み込みと同名のメソッドを定義すると箱入りの受け手への呼び出しがすべて切り替わる（NOTES 62）。
-  - メッセージ: `Date`（UTC）、`From`、`To`（78 桁を超えるところで折る）、`Subject`、`MIME-Version: 1.0`、`Content-Type: text/plain; charset=UTF-8`、`Content-Transfer-Encoding`。件名は印字可能な ASCII ならそのまま、それ以外（非 ASCII、`=?` を含む、900 バイト超）は RFC 2047 の B 符号化語（生の 45 バイトまで、UTF-8 の文字の途中で切らない、語ごとに折り返す）。本文は改行を CRLF にそろえ、行頭の `.` を二重にする。転送符号化は ASCII なら `7bit`、UTF-8 でサーバが 8BITMIME を広告すれば `8bit`（`MAIL FROM ... BODY=8BITMIME`）、それ以外か 998 バイトを超える行があれば `base64`（76 桁）。issue の案（広告が無くても 8bit で送る）ではなく、RFC 6152 どおり広告の無いサーバに 8bit を送らないほうを選んだ。`Message-ID` は付けない（投稿用サーバが付ける、RFC 6409）。
-  - 拒否するもの（接続前に `ArgumentError`、メッセージは値を繰り返さない）: 裸の ASCII `local@domain` でないアドレス（CR/LF、空白・制御文字・非 ASCII、`<>()[],;:\"`、`@` が一つでない、ローカル部 64 バイト・全体 254 バイト超）、CR/LF/NUL を含む件名（ヘッダ注入）や 998 バイト超の件名、UTF-8 として不正か NUL を含む本文、101 以上の宛先。
-- エラー: `Mailer::Error` の下に `TimeoutError` / `ConnectError` / `TLSError` / `ProtocolError` / `InsecureError` / `RejectedError`（`smtp_code` にサーバのコード、メッセージに段とサーバの文面）。Net の例外は `Mailer#perform` の rescue の段で移す（HttpClient と同じ、NOTES 32 / 45 / 47）。
-- 設定: `Config#smtp_host` / `smtp_port` / `smtp_user` / `smtp_password` / `smtp_from` / `smtp_tls`、環境変数 `CYBERTRAIN_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_FROM` / `_TLS`。初期化は `Config#initialize` の中に直接書く: 初期化から呼ぶ補助メソッドで初めて代入した ivar は箱入りになり、キーワード引数の既定値で読むとコンパイルできない（NOTES 73）。
-- 却下・後回し: HTML・multipart・添付・テンプレート・表示名・`Cc` / `Bcc` ヘッダ・AUTH LOGIN / CRAM-MD5・SMTPUTF8・パイプライン化・配信キュー（`deliver_later`）。パスワードリセットの生成（`cybertrain generate authentication`）は別の作業として残し、ジェネレータのコメントもまだ変えていない。TLS の端から端までのテストは D24 と同じ理由で無い: test/mailer.rb は STARTTLS と暗黙の TLS をハンドシェイクの失敗（平文で答えるサーバ）まで確かめる。
-
-### D28. バックグラウンド処理: `Scheduler` とデータベースのジョブキュー `Job`（2026-10-25、issue #65）
-
-- 決定: サーバとして動くプロセスにだけ、フレームワークがバックグラウンドのスレッドを一本起こす。
-  - `Cybertrain::Scheduler.every(seconds, name) { ... }`: `config/app.rb` か `bin/<app>.rb` が読むファイルで登録する。タスクは型付きの `Scheduler::Task`（名前、間隔、Proc、次回の時刻）で、定数 `Scheduler::TASKS` の配列に積む（クラス変数は GC ルートにならない、NOTES 64。空配列は要素型で種付け、NOTES 9）。ブロックは引数を取らない（`instance_eval` が無いので暗黙の受け手は無い）。最初の実行は開始の `seconds` 秒後、以後は各実行の開始から `seconds` 秒後。
-  - `Scheduler.start!(config)` を `Application#serve` が呼ぶ。`boot` が DB に接続し、ポートを bind し、`SPINEL_WORKERS` を設定した後（NOTES 22）で、起動バナーの後。`serve` に来るのは `Main.server?(argv)` が真のときだけなので、`migrate` / `db` / `Main.command` では動かない。アプリの `bin/` がスレッドを自前で起こす必要は無くなる。`Test::Client` は `serve` を通らないので、テストでも動かない。
-  - 各回は `Scheduler.run_task` という yield しない普通のメソッドの中で、Task から読んだ Proc を `call` し、`rescue JSON::NestingError, JSON::ParserError, StandardError` で `[ERROR]` を記録して続ける（NOTES 32 / 45 / 61 / 69）。失敗したタスクも次の時刻にまた走る。
-  - `Scheduler.run_due(now)` が 1 回の tick で、テストは時刻を渡して呼ぶ（眠らない）。`Scheduler.last_tick`（Integer の epoch 秒、Mutex の下で読み書き）はヘルスチェックが読める。`stop!` はスレッドに終了を頼み、`start!` の世代番号で古いループが新しいループと並んで走らないようにする。
-  - `Cybertrain::Job`: `Job.handle(kind) { |payload| ... }` でハンドラを登録し（定数 `Job::HANDLERS`）、`Job.enqueue(kind, payload, run_at: Time.now)` でテーブル `cybertrain_jobs`（id, kind, payload, run_at, attempts, last_error, state = queued / running / done / failed, created_at, updated_at）に行を足す。payload は String で、構造のあるデータはアプリが JSON にする。未登録の kind の enqueue は `ArgumentError`（綴り間違いを enqueue の時点で知らせる。全プロセスが同じ `bin/<app>.rb` を通るので、どのプロセスでも登録は揃う）。
-  - ワーカーはスケジューラのタスク（`"cybertrain jobs"`、`Config#job_poll_interval` 秒ごと、既定 5）として、ハンドラが一つでも登録されているときだけ `start!` が足す。1 回のポーリングで期限の来た行を最大 `Job::JOBS_PER_POLL`（20）件、1 件ずつ処理する（`Job.work_one(now)`、テストからも呼べる）。
-  - 取得は `DB.transaction(immediate: true)` の短いトランザクションで、最も古い期限到来の `queued` 行を SELECT し、`UPDATE ... SET state = 'running', attempts = attempts + 1 WHERE id = ? AND state = 'queued'` の `changes == 1` を確かめる。ハンドラは COMMIT の後、ロックを持たずに呼ぶ。成功なら `done`、例外なら `last_error`（"Class: message"、1000 文字で切る）を残して `run_at` を後ろへずらし `queued` に戻す（待ちは 60, 300, 900, 3600 秒、以後 3600 秒）。試行回数が `Config#job_max_attempts`（既定 5）に達したら `failed`。ハンドラの無い kind の行（デプロイで消えたハンドラ）はすぐ `failed` にする。
-  - 取得時に試行回数を数えるので、処理中にプロセスが落ちた行も 1 回と数える。ワーカーの開始時に `running` のまま残った行を `queued` に戻す（`Job.recover!`）。ワーカーはデータベースごとに一つ（次項）なので、その時点で他に処理中のプロセスは無い。
-  - `Config#worker`（`CYBERTRAIN_WORKER`、既定は真。`0` / `false` で偽）が偽なら `start!` は何もしない。同じデータベースを共有するプロセスが複数あるとき、一つ以外はこれで止める。`scheduler_interval`（tick の間隔、既定 1 秒）、`job_poll_interval`、`job_max_attempts` が 1 未満なら boot が止まる。
-- テーブルの用意: フレームワーク所有のマイグレーションではなく、`Job.install!` が `CREATE TABLE IF NOT EXISTS`（と索引）を発行する。最初の `enqueue`、ワーカーの開始、`work_one` などが DB の接続ごとに一度だけ呼ぶ（`DB.generation` は `DB.connect` の回数で、どの接続世代で用意したかを覚える）。時刻は epoch 秒の INTEGER で、SQL で `run_at <= ?` と比べるだけで済む。`db/schema.rb` のダンプからは `schema_migrations` と同じく外す（`SchemaDumper.table_names`）。入れるとジェネレータがモデル `CybertrainJob` を生成してしまう。
-- 理由: スレッドを手で起こすと、`SPINEL_WORKERS` の設定順、DB 接続の待ち、rescue と記録、`Main.server?` の確認、SQLite の呼び出しが OS ワーカーを握る問題をアプリごとにやり直すことになる。確実な配送のキュー（期限順、指数的な再試行、最終状態、回数の上限）はさらに数百行になる。
-- 却下した案:
-  - フレームワーク所有のマイグレーションをアプリに含めさせる案。全アプリの `db/migrate` と `gen/migrations.rb` が変わり、ジョブを使わないアプリにもテーブルができる。schema.rb にも出てモデルが生成される。
-  - ジェネレータでマイグレーションを書き出す案（`cybertrain generate jobs`）。テーブルの形はフレームワークのコードが決めるもので、アプリが変える理由が無い。形を変えたときにアプリのマイグレーションと食い違う。
-  - タスクのブロックが引数（文脈オブジェクト）を取る形。渡すものが今は無い。必要になれば別名の登録メソッドで足せる。
-  - ハンドラをトランザクションの中で呼ぶ案。長いハンドラが書き込みロックを握り続け、リクエストの書き込みを待たせる。
-- 制約（SQLite と Spinel）: タスクもハンドラもスケジューラのスレッドで一つずつ走る。SQLite の呼び出しは戻るまで OS ワーカーを握るので、`SPINEL_WORKERS=1` では長いタスクがすべてのリクエストを止める。仕事は小分けにし（1 回に千行など）、タスクは短く保つ。README の「Background work」に書いた。
-- 今後: cron 形式の時刻指定、ジョブの優先度と一意性、複数ワーカーでの分担（行の取得は既に排他なので、`worker` スイッチを外せば始められる）、`failed` 行の再投入コマンド。
-- 検証: `test/scheduler.rb`（期限前に走らないこと、例外の記録とループの継続、`last_tick`、`worker` が偽なら何もしないこと、実スレッドの起動）、`test/jobs.rb`（フレームワーク全体と一緒にコンパイル。enqueue / 取得 / 実行 / done、期限順、バックオフと試行回数、最終の `failed`、未知の kind、`last_error` の上限、`recover!`、巻き戻されたトランザクション内の enqueue、`prune_done`、schema ダンプからの除外、スケジューラによるワーカータスクの追加）。
-
-### D29. 招待制の初回セットアップ: `generate authentication --invite-only`（2026-10-25、issue #72）
-
-- 背景: console が無いので、認証ジェネレータは最初のユーザーを入れるために公開の登録画面（`/sign_up`）を書く（D15）。社内ツールでは既定として誤りで、管理者より先にサーバへ届いた誰もが登録できる。アプリが結局自分で書くのは (a) パスワードを標準入力から読む `myapp user EMAIL` サブコマンドと、(b) ユーザーが一人もいない間だけ、ループバック接続にだけ応える `/setup` 画面と、ユーザーがいない間の起動時の `[WARN]`。
-- 決定: `cybertrain generate authentication --invite-only` を足す。既定の生成物との違いは次のとおりで、すべてアプリのコード（D15 の方針。フレームワーク側は D26 の `request.loopback?` と D18 の `Main.command` を使うだけ）。
-  - `RegistrationsController`、`registrations/new.html.erb`、`/sign_up` の経路、サインイン画面の「Sign up」リンクを書かない。
-  - `app/commands/user_command.rb`: `UserCommand` モジュールと `Cybertrain::Main.command("user", ...)` の登録。`EMAIL [PASSWORD]` で、そのアドレスのユーザーを作るか、いればパスワードを変える（`password=` でダイジェストが変わるので、そのユーザーの既存セッションは D25 のパスワード鍵で失効する）。`created ADDRESS` / `updated ADDRESS` を出して 0。引数の誤り（0 個、3 個以上、`-` で始まる）は使い方の行を出して 1、空のパスワードと検証エラー（8 文字未満など）はエラー行を出して 1。PASSWORD を省くと標準入力から 1 行読み（端末なら `Password: ` を出す）、末尾の改行 1 つ（`\n` / `\r\n`）だけを落とす。`ps` とシェル履歴にパスワードを残さないため。端末のエコーは止めない（`io/console` が無い）。`STDIN.gets` と `STDIN.tty?` は Spinel 2026.09.12 で CRuby と同じに動くことを確かめた。
-  - `bin/<app>.rb` の `exit(Cybertrain::Main.run(` の行の直前に、上のファイルの `require_relative` と `UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)` を一度だけ挿入する（`ApplicationController` への挿入と同じ一回限りの編集。require が既にあれば何もしない）。
-  - `SetupController`（`GET` / `POST /setup`、`app/views/setup/new.html.erb`）: `before_action :require_first_run` が、ユーザーが存在する（`User.all.exists?`）なら 404、そうでなく設定 `setup_open` が偽なら、`request.loopback?` かつ `X-Forwarded-For` ヘッダが無いときだけ通す。作成に成功したら `start_new_session_for` でサインインさせて `/` へ。
-  - `config/app.rb` の `Cybertrain.configure` ブロックの先頭に `c.setting_bool :setup_open, env: "<APP>_SETUP_OPEN", default: false`（D17）を挿入する。真なら、ユーザーがいない間だけ、どのアドレスからでも `/setup` を開ける（別ホストのプロキシの後ろでの初回起動用）。
-  - 生成するテスト（`test/authentication.rb` の招待制版）: 別アドレスからの 404（`client.peer_address = "203.0.113.7"`）、プロキシ経由（X-Forwarded-For 付き）の 404、ユーザーがいれば 404、スイッチで開くこと、作成とサインイン、短いパスワードの再表示、`user` コマンドの作成・更新・拒否を `Cybertrain::Main.run` 経由で（終わったらテスト側のプールを繋ぎ直す: コマンドはプール 1 本で繋いで切る、D18）、改行の扱い、警告の判定。サインイン以降のテストは既定版と共通。
-  - フレームワークに足したのは二つだけ: `Test::Client#peer_address`（既定 `"127.0.0.1"`、テストが別のマシンからの要求を作るため。`remote_addr` と同名の読み出しは避けた、NOTES 規則 10）と、`Main.server?` を `@api public` にしたこと（起動時だけの処理をアプリが一回きりのコマンドで動かさないための判定）。
-- 理由:
-  - **ループバックの判定はソケットの相手だけ。** ヘッダはクライアントが書けるので、開く理由にはしない。逆に、同じホストのプロキシ（nginx / Caddy / kamal-proxy）の後ろでは全要求の `remote_addr` がループバックになり、`CYBERTRAIN_TRUSTED_PROXY` を設定し忘れると `/setup` が世界に開く。プロキシは `X-Forwarded-For` を付けるので、ヘッダがあれば閉じる。ヘッダで閉じる側に倒すのは安全（偽装しても自分が締め出されるだけ）。
-  - **起動時の警告の置き場所。** `Application#boot` の後に呼ばれるフックは無い。フレームワークに `after_boot` の登録を足す案は、保存したブロックの呼び出し（NOTES 規則 30 / 69）を全プログラムの起動経路に入れ、そのための全体テストも要る。生成コードで済むので、`bin/<app>.rb` で `Main.run` の前に、サーバとして起動するとき（`Main.server?`）だけ、プール 1 本で繋いで `User.all.exists?` を聞き、切ってから boot に任せる（boot は `DB.connected?` でなければ自分のプールを繋ぐ）。users テーブルがまだ無い（未マイグレーション）ときの `Cybertrain::DB::Error` は黙って飛ばす（`./<app> migrate` が先で、そのときは `/setup` 自体がまだ動かない）。rescue / ensure は yield しない普通のメソッドに置く（規則 32 / 45）、rescue 節は完全名で書く（規則 70）。警告は起動バナーより前に出る。
-  - **コマンドのファイルを `app/commands/` に置く。** `bin/<app>.rb` に直接書くと、テスト（`bin/` を読まない）からコマンドを呼べない。`spin run gen` は `app/models` と `app/controllers` しか読まないので、`app/commands/` は gen/app.rb に入らず、bin とテストがそれぞれ require する。
-- 却下した案:
-  - 既定を招待制にする: 既存の手順（CI、README のウォークスルー）と、公開登録が正しいアプリを壊す。フラグで選ぶ。
-  - `/setup` をトークン付き URL にする（起動ログにワンタイムトークンを出す）: ログを読める人は普通サーバに入れるので、ループバック限定と比べて得るものが少なく、トークンの保存と失効を生成コードに足すことになる。
-  - パスワードを環境変数から読む: プロセスの環境は `/proc/<pid>/environ` で同じユーザーから読め、シェル履歴にも残りやすい。標準入力か、承知の上での引数にした。
-  - `/setup` の作成の競合（ユーザーがいない間の同時 POST）を排他する: ループバック限定でオペレータ自身しか届かず、同じアドレスは一意インデックスが拒む。トランザクションで囲む複雑さに見合わない。
-- 帰結: `test/cli_authentication.rb` に招待制の生成物・挿入・再実行・拒否のケースを足した。生成したアプリを `cybertrain new` → `generate authentication --invite-only` → `db migrate` → `spin test test/authentication.rb` でコンパイルして走らせ、`cybertrain build` した本番バイナリで警告、標準入力からの作成、`/setup` のループバック判定と X-Forwarded-For での 404 を確かめた（CI にも同じ手順を足した）。
-- 改訂（2026-10-25、PR #79 のレビュー指摘）: `/setup` にワンタイムトークンを足し、上の「却下した案」のトークン付き URL を採る。
-  - 指摘: ループバック判定と「X-Forwarded-For が無いこと」だけでは、同じホストのプロキシがそのヘッダを付けない設定（`proxy_set_header` を書かない素の nginx など）のとき、全クライアントがループバックに見え、管理者より先に誰でも最初のアカウントを作れる。ヘッダを付けるのはプロキシの設定次第で、文書で注意するだけでは塞がらない。
-  - 決定: `SetupController::SETUP_TOKEN = Cybertrain::Crypto.random_token(16)`（16 バイトの乱数を 16 進 32 文字に。`SecureRandom` は Spinel で動く、NOTES の数値表 8）。プログラムの読み込み時に一度だけ作り、プロセスが終わるまで同じ（再起動で変わる）。クラス変数ではなく定数に置く（NOTES 規則 64: `@@x` は GC の根にならない。定数は根になる）。クラス本体の `@x =` は controller の字句走査（D4）がインスタンス変数として `view_assigns` に拾うので使わない。`SetupController.setup_token` で読む。
-  - `UserCommand.warn_if_no_user` の警告を `[WARN] no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine` にする。トークンを出すのはこの行だけで、描画するのはフォームの hidden field（`name="token"`）だけ。
-  - `before_action :require_first_run` は `params[:token]` を `Cybertrain::Crypto.secure_compare`（定数時間比較）でトークンと比べ、既存の条件（ユーザーがいれば 404、ループバックかつヘッダ無し、または `setup_open`）に**加えて**一致を求める。トークンは住所の判定を置き換えない第二の条件で、`<APP>_SETUP_OPEN=1` も住所の判定だけを外しトークンは外さない。無い・違うトークンは他の拒否と同じ 404。GET はクエリ、POST はフォームの hidden field で受け取る。
-  - 生成コードがフレームワークの `Crypto.random_token` と `Crypto.secure_compare` を呼ぶので、この二つに `@api public` を付けた。
-  - 生成するテストに、トークン無し・空・違う値・末尾に 1 文字足した値での 404、トークン付きの 200、hidden field の内容、POST での作成、他アドレスとトークン無し・違うトークンの POST で作られないこと、`setup_open` でもトークン無しは 404、を足した。CI の招待制の手順は起動ログからトークンを取り出して curl する。
-  - 残る点: リクエストログの `Started GET "/setup?token=..."` の行にもトークンが出る（警告と同じログで、読める人は同じ）。ユーザーができた時点で意味を失うので、フレームワークにパラメータの伏せ字（Rails の `filter_parameters`）は足さなかった。`user` サブコマンドは変えていない。
-
-### D31. パラメータ付きヘッダの読み取り `Request#header_params` と、ログ・エラーページでのパラメータの伏せ字 `filter_parameters`（2026-10-25、issue #77）
-
-- 背景: API クライアントは `Scheme k1=v1, k2="v2"` 形のヘッダ（`Authorization: Digest ...`、ベンダー独自の `X-*-Auth`、`Prefer`、`Forwarded`）で認証や指示を送る。`Request#header` は生の値を返すだけで、アプリはバイト位置で手分割していた（`k, v = part.split("=", 2)` は NOTES 規則 12 で誤コンパイルし、値は任意のバイトを含みうる）。また `RequestLogger` は制御文字をエスケープする（82334a9）がクエリを含む対象をそのまま書くので、`?token=` やエラーになったフォームのパスワードがログと開発用エラーページに残る（D29 の改訂で `/setup?token=...` が記録されることを「残る点」に書いた）。
-- 決定:
-  - `Request#header_params(name)` → `Hash[String, String]`。`,` と `;` をどちらも区切りとして扱い（`Forwarded` / `Prefer` の要素構造は平らにする）、同じ名前は最初のものが勝つ。名前は RFC 9110 の token 文字の並びで小文字にする（token 文字で始まらない部分は次の区切りまで読み飛ばす）。値は quoted-string ならバックスラッシュのエスケープを外して中身を、そうでなければ次の区切りまでのバイトを前後の空白・タブを除いて取る。`=` の無い名前は `""`。先頭の「token 文字の語、空白、`=` / `,` / `;` 以外の文字」は scheme として捨てる（`Digest`、`Bearer`）。語が一つだけの値（`Prefer: respond-async`、`Authorization: Negotiate`）は scheme ではなく値の無いパラメータ。ヘッダが無い、または 8 KiB（`Request::MAX_PARAM_HEADER_BYTES`）を超えると空の Hash（種を入れて消した型付き Hash、規則 9）。
-  - `Request#header_scheme(name)` → scheme の語を送られたとおりの大小で、無ければ `""`。`Bearer <token>` / `Basic <base64>` の資格情報はパラメータではないので `header` から読む、と文書に書いた（token68 の末尾の `=` をパラメータとして解釈しても意味が無い）。
-  - 走査はすべてバイト単位（`getbyte` / `byteslice`、`split` / `strip` は使わない。規則 52）で、各ヘルパは引数を `s = text.to_s` の新しいローカルで読む（規則 62）。quoted-string の中身は `+""` に `<<` だけで詰める（規則 60 / 66、NUL を含んでも切れない）。値はパーセントデコードせず、UTF-8 として正しいとも限らない。
-  - `Config#filter_parameters`（`Array<String>`、既定 `password`, `password_confirmation`, `token`, `secret`, `secret_key_base`, `session_key`, `api_key`, `authorization`）。`CYBERTRAIN_FILTER_PARAMETERS` がカンマ区切りで設定されていればそれで置き換える（前後の空白を除き、空の項目は捨てる。空の変数は未設定扱い）。`[]` で伏せ字をやめる。照合は Rails と同じく「名前がどれかを含む」の部分一致で、ASCII の大小を区別しない（`password` は `user[password]` にも、`token` は `authenticity_token` にも一致する）。
-  - 一覧は HTTP 層の新しいモジュール `Cybertrain::ParameterFilter`（`cybertrain/http/parameter_filter.rb`）のモジュール ivar に置き、`Application#boot` が `ParameterFilter.names = c.filter_parameters` で入れる（`Params.max_page` / `Request.trusted_proxies` と同じ形。HTTP 層は Config を読めない）。HTTP 層だけを使うプログラムでも既定の一覧で伏せる。Config は HTTP 層を require しないので既定の一覧を文字列リテラルで重ねて持ち、テストが `ParameterFilter::DEFAULT_NAMES` と等しいことを確かめる。
-  - `ParameterFilter.filter_query(text)`: クエリ文字列を `&` で分け、名前だけを比較のためにパーセントデコード（`+` は空白、不正なエスケープはそのまま）し、一致したペアの値を `[FILTERED]` に置き換える。それ以外のバイトはデコードせずにそのまま写す。`RequestLogger` はこれを制御文字のエスケープより前に、生のクエリに掛ける。
-  - 開発用エラーページ（`Dev::ErrorPage`）: 要求行のクエリを同じく伏せ、新しく「Parameters:」の欄にルータが組み立てた params の木（`Params#filtered_inspect`: 一致したキーは種類（文字列・リスト・入れ子・ファイル）に関わらず `"[FILTERED]"`、入れ子は再帰）を、JSON の要求（エンコードなし、1 MiB 以下）なら「JSON body:」の欄に本文を解析して同じく伏せたものを出す。JSON の再帰は `Cast.hash` / `Cast.array` で型付きに写してから辿り（規則 71、`when Time` を先に、規則 8）、32 段で打ち切る（解析した文書は 200 段まであり、スレッドのスタックは小さい、規則 46）。解析できない本文（それ自体が失敗の原因かもしれない）は欄ごと出さない。rescue は yield しないメソッドに置き、`JSON::NestingError` を先に書く（規則 32 / 61）。
-- 却下した案:
-  - `header_params` で `,` を要素の区切り、`;` を要素内の区切りとして `Array<Hash>` を返す案。`Forwarded` の複数要素を区別できるが、issue が求めた「API コントローラからの手分割をなくす」には平らな Hash で足り、型付きの入れ子は Spinel で扱いにくい。要素ごとに要るアプリは `header` を自分で分ける。
-  - クエリ全体をデコードしてから伏せて書き直す案。ログは送られたとおりのバイト列（を制御文字だけエスケープしたもの）であるべきで、デコードは不正なエスケープでの例外（規則 28）も持ち込む。
-  - 正規表現や Proc を `filter_parameters` に許す案（Rails は許す）。Spinel で Regexp の値を設定として持ち回す型と、保存したブロックの呼び出し（規則 30 / 69）を避け、文字列の部分一致だけにした。
-  - 本番のエラーページ（`ErrorPages`）への適用: 本番の 500 ページはパラメータを出さないので対象が無い。
-- 帰結: test/http_request.rb（Digest 形、`;` 区切りの Forwarded / Prefer、エスケープ付きの quoted-string、最初の値が勝つ、8 KiB 超、任意のバイト、ヘッダ無し、scheme）、test/middleware.rb（ログ行の伏せ字、一致しない名前はそのまま、一覧の差し替えと空の一覧、`CYBERTRAIN_FILTER_PARAMETERS`）、test/dev_error_page.rb（要求行と params の欄、JSON の欄の再帰、解析できない本文）を足し、コンパイルしたバイナリでスナップショットを作った。D29 の「残る点」の `/setup?token=...` は既定の `token` で伏せられる。
-
-### D32. テストと CI: 外向きの呼び出しのプロセス内受信器と、生成する CI ワークフロー（2026-10-25、issue #78）
-
-- 問題: アプリが Webhook（D24）やメール（D27）を送るようになると、そのテストには受け手が要る。Spinel で 127.0.0.1 の受信器を正しく書くには、読み取りをすべて `wait_readable` + `readpartial` とバイト位置で行い（`IO#gets` は使わない、NOTES 20 / 27）、`accept` を有界にし（接続して来ないクライアントのせいでスレッドが残り、次のテストの接続を横取りしないように）、スレッドはメソッド経由で起こし（NOTES 21）、最初の `Thread.new` の前に `SPINEL_WORKERS` を決める（NOTES 22）必要があり、アプリごとに同じ 100〜200 行を書くことになる。CI も、アプリごとにツールチェーンの手順（ヘッダのパッケージ、spin.lock からのフレームワークのコミット、`cybertrain setup`、`~/.cybertrain/spinel` のキャッシュ）を手で写していて、手順が変わると写しがずれる。
-- 決定（受信器）: `Cybertrain::Test::HttpReceiver`（cybertrain/test/http_receiver.rb）と `Cybertrain::Test::SmtpReceiver`（cybertrain/test/smtp_receiver.rb）。共通部分は基底クラス `Cybertrain::Test::Receiver`（cybertrain/test/receiver.rb）。
-  - `start(port: 0)` が 127.0.0.1 に bind して番号を返し、スレッドを一本起こす。スレッドは `max`（既定 1）個の接続を順に一つずつ受け、それぞれを読んで答えて閉じる。`accept` は `wait_readable(0.05)` を繰り返し、接続が待っているときだけ呼ぶので、`stop` に 0.05 秒で気づき、`accept_window`（既定 10 秒）接続が来なければ自分で終わる。読み取りも 0.05 秒刻みの `wait_readable` の後の `readpartial` で、`read_timeout`（既定 5 秒）黙ったクライアントは切る。スレッドは終わるときにリスナーを閉じる。`stop` は終了を頼んで `join` する（上限つき、二度呼んでもよい）。したがって `stop` の後に同じ番号で次の受信器を `start` できる（テストで確かめた）。
-  - 結果は型付きの `ReceivedRequest`（`http_method` / `http_target` / `http_path` / `http_headers`（小文字の名前、重複は `", "` で連結）/ `http_header(name)` / `http_body`（chunked は復号））と `ReceivedMessage`（`envelope_from` / `envelope_recipients` / `message_data`（DATA の後のバイト列、ドット詰めを戻し、終わりの `.` 行は除く）/ `message_header(name)` / `message_body` / `transcript`（クライアントのコマンド行すべて）/ `delivered?`）。`received_request(wait = 5)` / `received_message(wait = 5)` が最初の一件を待ち（上限つき、来なければ nil）、`received_requests` / `received_messages` が全部を返す。SMTP の記録は接続が終わったとき（QUIT か切断）に一件。
-  - HttpReceiver は Content-Length と chunked の要求本文を読み、`status:` / `headers:` / `body:` / `chunked:`（応答本文を二つの chunk で送る）の既定応答に `Connection: close` を付けて返す。`respond_with` で次の要求からの応答を変えられる。SmtpReceiver は 220、EHLO（既定で 8BITMIME を広告、`eight_bit_mime: false` で外す。`auth: true` なら AUTH PLAIN を広告して何でも受け入れる）、MAIL、RCPT、DATA（354）、250 queued、QUIT（221）を演じ、`reject: { rcpt: "550 ..." }` のように `:greeting` / `:ehlo` / `:mail` / `:rcpt` / `:data` / `:message` の段を指定の応答で失敗させられる。平文だけで、STARTTLS は 454 を返す。
-  - 名前: Test::Client に `request(method, path, ...)` があり、例外の `message` は組み込みなので、`request` / `message` ではなく `received_request` / `received_message` にした（同名で戻り値の型が違うメソッドは推論を壊し（NOTES 34）、組み込みと同名のメソッドは箱入りの受け手への呼び出しをすべて切り替える（NOTES 62））。結果の読み出しにも `http_` / `envelope_` / `message_` の接頭辞を付けた（NOTES 10）。内部のメソッドは `rx_` で始める。
-  - 依存: Ruby の socket だけ。`cybertrain/net` も openssl も require しない（`Net::Reader` は `Net::Stream` を読む作りで、accept した `TCPSocket` と接続した `Socket` を同じ ivar に入れると箱入りになるので、小さな読み取りを基底クラスに持たせた）。`cybertrain/test.rb` からは require しない: `cybertrain/test/client` と同じく使うテストだけが require する（すべてのテストプログラムにソケットを入れない）。生成する `test/support/app_test.rb` のコメントと README の「Testing outbound calls」に使い方を書いた。
-- 決定（CI）: このリポジトリに複合アクション `.github/actions/setup-cybertrain/action.yml` を置き、`cybertrain new` が `.github/workflows/ci.yml` を書いて、それを `uses: saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v<VERSION>` で呼ぶ。ワークフローに残るのはアプリ自身の検査だけ: `spin lock && git diff --exit-code spin.lock`、`spin run gen -- --check`、`spin test`（`test/*.rb` が一つも無ければ飛ばす。`spin test` はテストが無いと失敗し、新しいアプリには無い）。
-  - アクションの中身: Linux では `libsqlite3-dev zlib1g-dev libssl-dev`、macOS では Homebrew の OpenSSL を `LIBRARY_PATH` / `CPATH` に（フレームワークの CI と同じ）、`ruby/setup-ruby`（既定 3.3）、spin.lock の `[lock.cybertrain]` の `git` と `ref`（40 桁のコミット）を Ruby の一行で読み、そのコミットだけを `git fetch --depth 1` で `$RUNNER_TEMP` に取り、その `cybertrain/version.rb` の `SPINEL_TAG` とランナーのイメージ（`ImageOS` / `ImageVersion`）と OS・アーキテクチャをキーに `~/.cybertrain/spinel` を復元し、そのチェックアウトの `exe/cybertrain doctor` と `setup` を走らせ、ビルドしたらキャッシュを保存し、`~/.cybertrain/bin` を PATH に足す。
-  - `uses:` の参照は式を取れない静的な文字列なので、spin.lock のコミットを `uses:` に書くことはできない。そこで `uses:` は CLI のリリースタグ `v#{Cybertrain::VERSION}` に固定し（`cybertrain new` が spin.toml に書く依存と同じタグ）、アクションの手順だけをそれで決める。Spinel を入れる CLI は、アクションが spin.lock から読んだコミットのもの、つまりアプリがコンパイルするフレームワークと必ず同じ版になる。アプリがフレームワークを上げても、アクションのタグを上げなくてよい。
-  - フレームワークは `actions/checkout` で作業ツリーの `vendor/` に取るのでなく、`$RUNNER_TEMP` に git で取る。`actions/checkout` は作業ツリーの外に置けず、作業ツリーに置くと spin（`vendor/` を使う機能がある）やアプリの `git diff` の目に入る。
-  - キャッシュのキーは `version.rb` のハッシュではなく、そこから読んだ `SPINEL_TAG`: `version.rb` はリリースごとに変わるが、Spinel のビルドは `SPINEL_TAG` が同じなら同じ。`hashFiles` は作業ツリーの外のファイルを読めないこともある。
-  - path 依存（`cybertrain new --path`）のアプリは spin.lock にコミットが無いので、アクションは理由を書いて失敗する。フレームワークを自分で取り出して `framework-path` を渡せば、spin.lock を読まずにそれを使う。
-- 却下した案:
-  - ワークフローに全手順を書き出す: 手順の正本が生成コードの中にあり、変更が既存のアプリに届かない（issue の問題そのもの）。
-  - アクションの中で `uses:` 相当にフレームワークのコミットを選ぶ（動的な `uses:`）: GitHub Actions に無い。
-  - 受信器で test/http_client.rb と test/mailer.rb の手書きのサーバを置き換える: あちらはバイトを分けて送る間隔、不正な応答、途中で切る、STARTTLS の後の平文などの異常系を一歩ずつ演じるためのもので、受信器（正常な相手）の形に合わない。出力と決定性を変えないため手を付けず、受信器のテストは `test/receivers.rb` に新しく書いた。
-- 後回し: TLS の受信器（証明書を作れない、D24）、SMTP の一接続内での複数のメッセージ（最後のもの以外は `transcript` にしか残らない）、受信器の一接続での keep-alive。アクションのタグ `v<VERSION>` は、アクションを含むリリース（次のリリース）から使える。それより前のタグ（v0.2.1 まで）にはアクションが無い。
-- 検証: `test/receivers.rb`（HttpClient と GET / POST / chunked 応答 / 204、生のソケットで chunked の要求本文と重複ヘッダ、`max` と `respond_with`、来ない要求が上限で nil になり `stop` の後に同じ番号で次の受信器が受けること、`stop` の冪等性、`accept_window` で番号が閉じること、Mailer と transcript・封筒・メッセージのバイト列、8BITMIME の有無、RCPT・挨拶・本文後の拒否、AUTH PLAIN、`Mailer.deliver` で二通、来ないメッセージ）を CRuby とコンパイル後の両方で同じ出力にした。openssl を足した版と、フレームワーク全体（test/template_integration.rb と同じ require、Server と Test::Client を含む）に受信器を足した版も一時的にコンパイルして通ることを確かめた。CI は `test/cli_new.rb` がワークフローの中身を確かめ、`cybertrain new` で作ったアプリで YAML の読み込みと `spin run gen -- --check` を確かめた。アクションの YAML も読み込み、spin.lock を読む Ruby の一行は git 依存と path 依存の spin.lock で確かめた。
-
-### D33. 外向き WebSocket クライアントと常駐購読: 同期クライアントを `Net` の上に置き、`Background` 経由でサーバと一緒に起動する（2026-10-26）
-
-- 背景: サーバが動いている間、外部のデータフィード（相場のティック、テレメトリ、イベントストリーム）に常時つなぎ、届いたメッセージをアプリに渡す手段が無かった。Spinel の `Net::HTTP` 相当を使えない理由は D24 と同じで、待ちが C の中にあると停止したピア一つが OS ワーカー（既定 `SPINEL_WORKERS=1` ではサーバ全体）を握る。WebSocket の標準ライブラリも無い。
-- 決定: 二層にする（`HttpClient` と `Scheduler` の関係と同じ形）。
-  - `cybertrain/websocket/frame.rb`: RFC 6455 のフレームの符号化・復号と Accept キー（`Digest::SHA1`）。ソケットに触れない純粋な関数で CRuby でも動く。エラー階層 `WebSocket::Error` の下に `TimeoutError` / `RefusedError` / `TLSError` / `BlockedAddressError` / `HandshakeError` / `ProtocolError` / `TooLargeError` / `ClosedError`（`close_code`、`close_reason`）もここ。
-  - `cybertrain/websocket/client.rb`: 同期クライアント `WebSocket::Client`（`connect` / `send_text` / `send_binary` / `send_ping` / `receive(wait)` / `close`）。URL 解析・非公開アドレスの拒否・全アドレスへの接続試行は `HttpClient`（`parse_url_for`、`dial`）を共用し、重複させない。待ちは `Net::Timer`（1 回 `timeout`、全体 `timeout * 3`）、`receive(wait)` の時間切れは例外でなく `nil`。フレームの途中で時間切れになっても `Reader` のバッファに残し、次の `receive` が続きから読む。送信は常にマスクし、1 フレームで送る。
-  - `cybertrain/websocket.rb`: `WebSocket.subscribe(name, url, ...)` が `Subscription`（`on_open` / `on_message`、どちらも `self` を返す）を登録する。購読ごとに 1 スレッド（メソッド経由で起こす: NOTES 規則 21）。`receive(1)` を繰り返して 1 秒ごとに停止要求と時計を見る。`ping_interval`（15 秒）の静けさで ping、`stale_after`（45 秒）の沈黙で閉じて再接続する。再接続の待ちは `min(60, 2 ** (attempt - 1))` 秒 ±20 %、60 秒続いた接続のあとは 1 秒に戻る。`on_message` の例外は `[ERROR]` に出して接続を保ち、`on_open` の例外は接続を閉じて再接続する。待ちは `wait_readable` か `sleep` なので、止まったフィードが待つあいだ OS ワーカーは握らない。ただし接続の試みごとにホスト名をブロッキングの `getaddrinfo` で引き（`Client.connect` → `HttpClient.dial` → `Net.resolve`、D24）、その間は握る。`SPINEL_WORKERS=1` でリゾルバが死んでいれば、フィードごと・試みごとにリゾルバのタイムアウトの間リクエストが止まる（README「Outbound HTTP」の「Name resolution blocks」）。`on_message` の中の SQLite も `Scheduler` のタスクと同じく握る。`stop!` はすべてのスレッドの join を合わせて 2 秒で打ち切り、接続中のフィードは close を送ってサーバの close を高々 1 秒待つ。戻った時点で全フィードの `connected?` は false。
-  - `cybertrain/background.rb`: 何もしない既定の `Background::Service`（`service_start(config)` / `service_stop`）の登録表。`Application#serve` は `Scheduler.start!` の後に `Background.start_all`、終了時に `Background.stop_all` を呼ぶ。`cybertrain/websocket.rb` は require されたときに自分を登録する。**`application.rb` は `cybertrain/websocket` を require しない**: 使わないアプリに libssl を持ち込まないため、`Net.tls_connector` と同じ「既定は何もしない、本物は必要なプログラムだけが require する」差し替えの形にした。`CYBERTRAIN_WORKER=0`（`config.worker = false`）では起動しない（`Background.start_all` が先に 0 を返すので、通知は `Scheduler` の「run elsewhere」の行だけ。`WebSocket.start!` を直接呼んだときは自分の行を出す）、`migrate` / `db ...` / `Main.command` / `Test::Client` は起動しない。
-  - `cybertrain/test/websocket_receiver.rb`: D32 の受信器の流儀（有界の accept と読み取り、メソッド経由のスレッド）の台本付き WebSocket サーバ。`WsStep` の列でハンドシェイクの応答、送るフレーム、期待するフレーム、沈黙、切断を演じ、クライアントが送ったフレームをマスクを外して記録する。
-- 判断（実装で決めたこと）:
-  - 状態の読み出しは `WebSocket.feed_status(name)`（`connected?`、`last_message_at`、`reconnects`）。`status` という名前は別の戻り値型の `status` がフレームワークの他の場所（`DB::CLI.status`、`Migrator#status`）にあり、Spinel の全プログラム推論を壊す（NOTES 規則 34 / 41）ので避けた。3 つの値は別々に読む（ひとつの原子的なスナップショットではない）。`/up` には組み込まない。
-  - 接続が張られたあとの接続の喪失・相手の close は `ClosedError`（リセットは 1006。書き込みの時間切れと TLS の失敗は `TimeoutError` / `TLSError` のまま）。接続の最中の失敗は `RefusedError` / `TimeoutError` / `TLSError` / `BlockedAddressError` / `HandshakeError`。
-  - `connected?` は接続した時点で true になり、`on_open` が走る前である。
-  - `stop!` は購読ごとのスレッドを最大 2 秒 `join` する（世代番号で、古いループが新しい `start!` と並ばないようにする）。
-  - `test/websocket_integration.rb` はフレームワーク全体を WebSocket のコードと一緒にコンパイルする。`test/websocket_client.rb` と `test/websocket_subscription.rb` は WebSocket のファイルしか require しないので、他のファイルと名前が衝突しても（上の `status` のように）そこでは見つからず、アプリのバイナリで初めて壊れるため（NOTES 規則 41）。
-- 却下した案:
-  - `application.rb` が `WebSocket.start!` を直接呼ぶ: libssl をすべてのアプリに持ち込む。
-  - アプリが `config/app.rb` から `start!` を呼ぶ: 起動順（データベース接続、ポートの束縛、`SPINEL_WORKERS`）を利用者が知る必要がある。`Background` はその順序をフレームワークに持たせる。
-  - 拡張（`permessage-deflate`）とサブプロトコル: 要求に載せず、サーバが返したらハンドシェイク失敗。
-  - プロキシ、リダイレクト、Cookie、分割メッセージの送信。
-  - 受信メッセージの自動保存や `Job` への投入: 必要ならアプリが `on_message` の中で行う。
-- 後回し: WebSocket サーバ（ActionCable）、動作中の購読の追加・削除（`subscribe` はサーバ起動前に呼ぶ）、購読の外からの送信（`Connection` はコールバックの中だけ有効）、テキストフレームの UTF-8 検証（バイト列のまま渡す。RFC 6455 8.1 からの逸脱）、`wss` の端から端までのテスト（D24 と同じく証明書を作れない）。
-- 帰結: 購読は `config/app.rb`（または `Main.run` の前に require されるファイル）に書く。`on_message` の SQLite 呼び出しは戻るまで OS ワーカーを握るので、高頻度のフィードは軽い INSERT にするか、メモリに溜めて `Scheduler` のタスクでまとめて書く。複数プロセスが同じ購読を持つと同じフィードを二重に受けるので、`Scheduler` と同じく `CYBERTRAIN_WORKER=0` で切る。
-
-### D30. 運用: `db backup`（VACUUM INTO）、`db vacuum`、`GET /up` のヘルスチェック（2026-10-25、issue #76）
-
-- 背景: 配備したアプリのデータは SQLite のファイル一つで、どのアプリも同じ三つを作り直していた。動いているサーバを止めずに取る一貫したバックアップ、削除の後にファイルを実際に縮める作業、そしてデータベースまで見るヘルスチェック（`public/up.html` は静的ファイルで、プロセスが HTTP に応えることしか示さない）。
-- 決定:
-  - `Cybertrain::DB::CLI` に `backup` と `vacuum` を足す（`./<app> db backup ...`、開発時は `bin/db.rb`）。対象は設定済みのデータベース（`CYBERTRAIN_DATABASE`）。`:memory:` と `file:` URI は拒否する（コピーするファイルが無い、またはターゲットと比べる素のパスが無い）。`Main.run` はアプリ名を `DB::CLI.run(argv, root, name)` に渡す（日付付きファイル名に使う。`bin/db.rb` からは空で、そのときはデータベースのファイル名の基部）。
-  - `db backup PATH [--force]`: 専用の接続で `VACUUM INTO ?`（ファイル名は束縛パラメータ、トランザクションの外。SQLite 3.27 以上を `sqlite_version()` で確かめ、古ければ理由を出して 1）。書き込み先は PATH と同じディレクトリに `Dir.mkdir(..., 0o700)` + `chmod 0700` で作る一時ディレクトリ `PATH.tmp-<pid>-<乱数>/` の中の新しい名前で、ファイルは VACUUM INTO 自身に作らせる（Linux の SQLite は事前に作った空ファイルを受け付けるが、macOS の SQLite は "output file already exists" で拒むため。ディレクトリが 0700 なので、作成直後のモードが何であれ他のユーザーは開けない）。完了後に `chmod 0600`、`fsync`、`File.rename` で PATH に置き換え、一時ディレクトリを消す。失敗したら一時ファイル（と `-journal` などの付属）を消して再送出。rescue は yield しない普通のメソッドに置く（NOTES 32 / 45）。既存の PATH は `--force` が無ければ拒否、データベース自身は `--force` でも拒否、親ディレクトリが無ければ拒否（一時ファイル名を含むメッセージを出さないため、開く前に確かめる）。
-  - `db backup DIR/ [--keep N]`: `/` で終わるか既存のディレクトリなら `DIR/<app>-<YYYYmmddTHHMMSSZ>.sqlite3`（UTC）に書く。ディレクトリが無ければ 0700 で作る。`--keep N` はその形にちょうど合う名前（`dated_backup?`、時刻は文字列順で並ぶ）だけを数え、古いものから N を超える分を消す。他のアプリの名前、一時ファイル、運用者が置いたファイルには触れない。同じ秒の二度目は既存として拒否。
-  - `db vacuum`: `VACUUM` の後に `PRAGMA wal_checkpoint(TRUNCATE)`。WAL では VACUUM の結果がまず WAL に書かれるので、チェックポイントでデータベースファイルに戻し、ファイルを新しい大きさに切り詰め、WAL を空にして初めてディスクが空く。前後の大きさ（本体 + WAL）を出す。読み手がいてチェックポイントが終わらなければ（busy）その旨を出す。
-  - `Config#health_path`（既定 `"/up"`、`CYBERTRAIN_HEALTH_PATH`。空で無効。`/` で始まらなければ boot が止まる）と `Config#health_worker_stale`（既定 300 秒、1 未満で boot が止まる）。`Cybertrain::HealthCheck` ミドルウェアを `RequestLogger` の内側、`Static` の外側に置く。そのパスちょうどの GET / HEAD だけに答え、他のメソッドとパスは下へ流す。セッション・CSRF・ルータより前なので、コントローラは要らず、ログインの `before_action` も走らず、Cookie も付かない。ログは通常のリクエストの 2 行だけ。
-  - 判定: `DB.with { |c| c.execute("SELECT count(*) AS n FROM sqlite_master") }`。素の `SELECT 1` はファイルを読まないので、スキーマのページ（1 ページ目）を読む問い合わせにする。`sqlite_schema` は 3.33 からの別名なので `sqlite_master` と書く。`Cybertrain::DB::Error`（と StandardError）なら `503 database unavailable`。DB が答え、かつ `Scheduler.running?` で `Scheduler.last_tick` が `health_worker_stale` 秒より古ければ `503 worker stale`（最初の tick 前の 0 は古いとみなさない）。それ以外は `200 ok`。いずれも `text/plain; charset=utf-8` と `Cache-Control: no-store`。
-- 理由:
-  - **一時ファイルと rename。** VACUUM INTO が途中で失敗すると、書きかけのファイルが本来の名前で残る。復元の段で初めて壊れていると分かるのが最悪の形なので、本来の名前には完成したものしか現れないようにする。中身はパスワードのダイジェストとセッションのトークンなので、作った瞬間から 0600 にする（umask 任せで作ってから chmod すると、間に他のユーザーが開ける）。
-  - **CLI から別プロセスで。** SQLite の呼び出しは戻るまで OS ワーカーを握る（D28 の制約）。大きなデータベースの VACUUM INTO をスケジューラのスレッドで走らせると、`SPINEL_WORKERS=1` では全リクエストが止まる。README には cron / systemd タイマーからの CLI、またはサーバ自身がスケジュールしたタスクから `system("./<app>", "db", "backup", ...)` で子プロセスとして走らせる形を書いた。`system` は呼んだスレッドだけを待たせることを確かめた（NOTES 75。`spawn` はコンパイルできず、`Process.spawn` はできるが `Process.wait` が無い）。
-  - **ルータより前の組み込みハンドラ。** 経路とコントローラで書くと、認証を入れたアプリでは `ApplicationController` の `before_action` がヘルスチェックをサインイン画面へリダイレクトし、セッション Cookie も付く。Rails は `rails/health#show` を `ActionController::Base` 直下にして避けているが、ここでは経路表を通らない方が単純。
-  - **worker stale。** 止まったタスク（無限ループ、返らない外部呼び出し）はプロセスを生かしたままジョブを止める。HTTP に応える限り外からは見えないので、`last_tick`（D28 で用意した）を見る。スケジューラを動かさないプロセス（`CYBERTRAIN_WORKER=0`、タスクの無いアプリ）では判定しない。
-- 却下した案:
-  - `sqlite3_backup_*` の API で写す: 段階的に写せるが、FFI の関数が増え、書き込みのたびに最初からやり直しになりうる。VACUUM INTO は一つの SQL で、空きページを除いたコンパクトなコピーになる。
-  - バックアップをサーバ内のスケジューラのタスクとして組み込む: 上の OS ワーカーの問題。
-  - `public/up.html` を残してヘルスチェックをそれで済ませる: データベースが無くても 200 になる。
-  - `cybertrain new` が書く Kamal の設定（`config/deploy.yml` の `healthcheck: path: /up.html`）を `/up` に変える: 生成物とその CI・テスト（`test/cli_new.rb`、`examples/blog`、ワークフロー）にまたがり、並行して進む `cybertrain new` の CI テンプレートの作業（#78）と同じファイルに触れるので、この変更では文書で `/up` への切り替えを勧めるにとどめた。
-- 帰結: 既定のスタックに `HealthCheck` が入るので、`test/application.rb` と `test/multipart_app.rb` のスタックの並びの期待値が変わった。`Main.usage` と `DB::CLI.usage` に `backup` / `vacuum` を足した（`test/main.rb` などのスナップショット）。CRuby 側の `cybertrain db ...` はどの引数もそのまま `spin run db -- ...` に渡すので変更していない（その使い方の文字列も、`cybertrain new` の生成物に入るため変えていない）。
-- 検証: `test/db_cli_backup.rb`（0600 のコピーが行ごと開けること、一時ファイルが残らないこと、上書きの拒否と `--force`、データベース自身の拒否、壊れたファイルからのコピー失敗で何も残らないこと、無いディレクトリ・無いデータベース・`:memory:` の拒否、引数の誤り、日付名の形、`--keep` が自分の形だけを消すこと、0700 のディレクトリ、同じ秒の拒否、削除後の vacuum で縮み WAL が空になること）と `test/health.rb`（スタックの位置、200 / no-store / Cookie 無し / before_action が走らないこと、HEAD とクエリ文字列、他のパスとメソッド、ログ 2 行、プールを閉じた・切った後の 503、無効化、環境変数、boot の検査、スケジューラ停止中は古くても 200、実スレッドを起こして `last_tick` を古くしたときの `worker stale`）。
-
-## 5. リクエストの流れ
-
-1. `Server` が accept したソケットで HTTP/1.1 をパースし、`Request` を作る。
-2. ミドルウェア連鎖: ログ → 静的ファイル → `_method` 上書き → session（署名クッキーの復号）→ CSRF 検証 → ルーター。
-3. ルーターは `gen/routes.rb` の経路表を走査し、一致した経路の dispatch 節を呼ぶ: `PostsController.new(ctx).process(:show) { |c| c.show }`。
-4. `process` は `before_action` を順に実行し（シンボル形は生成された `run_callback(name)` の `case`、ブロック形はコントローラを引数に `block.call(self)`。render / redirect した時点で連鎖は止まる）、アクション本体を呼び、render も redirect も起きていなければ action 名のテンプレートを暗黙 render し、最後に `after_action` を実行する。
-5. render はテンプレートエンジンに `view_assigns`（生成済み）と locals、ヘルパー群を渡し、素の多相値の環境で描画してレイアウトで包む。
-6. `Response` をソケットに書き戻す。keep-alive なら次のリクエストを待つ。
-
-## 6. ジェネレータの入出力
-
-| 入力 | 出力 | 内容 |
+- Decision: porting existing Rails applications is out of scope. Applications are written directly against cybertrain's API.
+- Reason: porting existing Rails applications is Roundhouse's job, and competing with it is pointless. Being native lets the API be designed around Spinel's constraints, and allows "a design that uses Spinel's strengths", which Roundhouse cannot offer.
+- Rejected: a Rails transpiler (duplicates Roundhouse), a runtime as Roundhouse's output target (Roundhouse has its own runtime).
+
+### D2. Acceptance criteria: a blog, server-side HTML
+
+- Decision: as in section 2.
+- Reason: a subject every Rails developer knows, and it passes through every subsystem. Going API-only would postpone the hardest part, the view layer.
+
+### D3. Generated code is committed as "ordinary Ruby that could be written by hand"
+
+- Decision: generators are the same sugar as Rails' generators. `spin build` alone can build. The things that always rely on generation are "model attributes derived from the schema" and "dispatch / URL helpers derived from routes" (views became interpreted at run time under D9 and dropped out of what is generated).
+- Reason: principle 2. `spin` has no build hooks, so if the generated files are committed, `spin build` / `spin test` can be used as is. CI checks the freshness of the generated files with a diff.
+- Rejected: always transpiling a dedicated DSL (the generated output is hidden, the framework effectively becomes a compiler, and nothing works without a parser and an emitter).
+
+### D4. The generator is a Spinel program, and its inputs are only data DSLs and a lexical scan
+
+- Decision: the application's `bin/gen.rb` is compiled per application and run with `spin run gen`. Its inputs are limited to the following three.
+  1. `db/schema.rb` (run the `create_table` DSL to get table data)
+  2. `config/routes.rb` (run `resources` and so on to get route data)
+  3. A **lexical scan** of `app/controllers/**/*.rb` and `app/models/**/*.rb` (regular expressions pick up `@name =` assignments, `class X < Y` lines, `before_action :name` / `after_action :name` / `rescue_from X, with: :name`, and argument-less `def name` in models. No parsing)
+  In addition, it generates `gen/app.rb` (a list of `require_relative`) from the list of files under `app/`.
+- Reason: Spinel does not expose a Ruby parser. If `bin/gen.rb` did `require_relative` on the models, the generator itself could not compile for models that call attribute methods that have not been generated yet (chicken and egg). Limiting the inputs to data removes this problem structurally. The lexical scan of ivars is the exception, but a controller change means recompiling anyway, so it does not hurt the development experience.
+- Rejected: a CRuby + Prism script (CRuby becomes mandatory on the development machine, and there are two runtimes to carry).
+- Consequences:
+  - `db/schema.rb` and `config/routes.rb` cannot contain application constants (strings and symbols only).
+  - `validates` / `before_save` in models and `before_action` in controllers are implemented with run-time data, not generation.
+  - Associations are generated by default from `t.references` / foreign keys in the schema. `through` and the like are outside the MVP.
+
+### D5. The HTTP server is pure-Ruby HTTP/1.1
+
+- Decision: accept with `TCPServer`, one green thread per connection. HTTP parsing, keep-alive and chunked are written in Ruby inside the framework. TLS and HTTP/2 are left to a reverse proxy (nginx / Caddy). One process, with the number of workers following `SPINEL_WORKERS`.
+- Reason: the whole thing stays closed within Spinel's Ruby and becomes a single binary with one `spin build`. Roundhouse runs the same setup in production.
+- Rejected: using a C HTTP library through FFI (manual management of pointer lifetimes, a build dependency), CGI / FastCGI (a process start every time, or a socket is needed anyway).
+- Consequences: the server sits behind a small interface that "builds a Request from an accepted socket and writes a Response back", so that picohttpparser can later be bundled as a `.c` in a spin package and swapped in with `ffi_func`. prefork is not handled, since the Spinel side states it is unfinished. Implementation rules settled in spike 5: (1) call `sock.wait_readable(timeout)` right before every `readpartial` (nil means an idle timeout). A bare `readpartial` blocks an OS worker in `read(2)` and stops other connections' I/O. (2) Do not pass the socket as an argument of `Thread.new`; capture a method argument in a closure, as in `def spawn_conn(sock); Thread.new { serve(sock) }; end` (passing it as an argument loses the static type). (3) Under I/O-bound load `SPINEL_WORKERS=1` is faster (54 to 58k rps versus 25 to 45k), so `config.workers` defaults to 1 and can be overridden with the environment variable. Re-measure after templates and SQLite are in.
+
+### D6. Typed Request / Response, not Rack-compatible
+
+- Decision: `Request` (method, path, query, headers, body, cookies, params) and `Response` (status, headers, body) are defined as classes. Middleware inherits from a `Middleware` base class and implements `call(ctx)`. The type of `@app` is fixed to the base class.
+- Reason: a `[Integer, Hash, Array]` triple or an `env` of `Hash<String, anything>` becomes poly, adding union boxing and unboxing on every request. Reusing gems, the biggest motivation for Rack compatibility, is impossible on Spinel.
+- Consequences: the controller API uses the same vocabulary as Rails (`request`, `response`, `params`, `cookies`, `session`, `headers`). Tests build a `Request` directly and call in-process.
+
+### D7. Routing is generated, the DSL uses Rails syntax
+
+- Decision: `config/routes.rb` accepts `root`, `resources` (nesting, `only:` / `except:`, `member` / `collection`), and `get` / `post` / `patch` / `put` / `delete` + `to: "ctrl#action"`. The form settled in implementation: at the top level, `root "posts#index"`, `resources :posts` and `get "/about", to: "pages#about"` can be written without a receiver, but nested blocks name the receiver explicitly (`resources :posts do |posts| posts.resources :comments, only: [:create, :destroy]; posts.member { |m| m.get "preview" } end`. Spinel's `instance_eval` only works on flat blocks). The generator emits into `gen/routes.rb` (1) the route table (method, split segments, controller / action names, route name), (2) a dispatch that calls `PostsController.new(ctx).process(:show) { |c| c.show }` per route, and (3) `posts_path` / `post_path(post)` / `edit_post_path(post)` / `*_url` as methods with literal names.
+- Run time: a linear scan per HTTP method comparing segments. Overriding to PATCH / DELETE with the `_method` parameter is done in middleware.
+- Consequences: a route pointing at a nonexistent controller / action is a compile error. Thanks to the `process(:show) { |c| c.show }` form, the controller receives the action name (used for template selection and implicit render) and the action body as literals, without relying on `send(:show)`.
+- Outside the MVP: `namespace` / `scope`, `constraints`, format suffixes, `mount`, glob / regular-expression segments, `redirect` routes.
+
+### D8. Controllers
+
+- Callbacks (revised after the results of spike 2): the official syntax is the same symbol form as Rails, `before_action :set_post, only: [:show, :edit]`. Declarations are pushed onto run-time data keyed by class name (`Hash<String, Array<Callback>>`), and the inheritance chain is walked explicitly through `superclass` with `Controller.chain_for(self.class)`. Calls do not use `send`: the generator lexically scans `app/controllers/**/*.rb`, and from the names it picks up in `before_action :name` / `after_action :name` / `rescue_from X, with: :name` it generates, per controller, `def run_callback(name); case name; when :set_post then set_post; else super; end; end` into `gen/controllers.rb`, which does the dispatch. A block form is also provided, but since `instance_exec` is unavailable the block receives the controller as an argument: `before_action(only: [:show]) { |c| c.set_post }`. A block form with implicit `self` is not provided.
+- `params`: a typed `Params` class. `params[:id]` is `String | nil`, `params[:post]` is a child `Params`, array values are `params.list(:ids)`. `params.require(:post).permit(:title, :body)` returns the equivalent of `Hash<Symbol, String>` and is passed to the model's generated `assign_attributes`. In the MVP only string values can be permitted.
+- render / redirect: `render :new` (literal symbol), `render json: post` (generated `to_json`), `render plain:`, `head :not_found`, `redirect_to post_path(post)`, `redirect_to posts_path, status: :see_other`. If the action does nothing, the template named after the action is rendered implicitly.
+- session: cookie store only. Values are `String` only. Signed with HMAC-SHA256, and tampered ones are discarded. HMAC is implemented in Ruby on top of the runtime's bundled `Digest::SHA256.digest` (the `digest` package, no external linking needed) (confirmed working). The `openssl` package is not used, because it requires Homebrew's OpenSSL on the link path. `flash[:notice]` / `flash.now[:alert]` are carried on the session.
+- CSRF: enabled by default. The token is kept in the session, form helpers emit a hidden field, and it is verified on anything other than GET.
+- Exceptions: `rescue_from RecordNotFound, with: :not_found` (through the generated `run_callback`) or `rescue_from(RecordNotFound) { |c, e| c.head :not_found }`. Exception classes are matched by string comparison of `e.class.name`. The development error page shows only the exception class, message, template name and line. A stack trace cannot be shown because of Spinel's constraints.
+- Outside the MVP: `respond_to` / format, streaming, `helper_method`, dynamic switching of `layout` (fixed to `application`).
+
+### D9. Views are "a template language with ERB syntax, interpreted at run time"
+
+- Decision: `app/views/**/*.html.erb` is read at run time, parsed into an AST, and evaluated by the framework's interpreter. In development, the mtime is checked and the file is re-parsed when it changes; in production it is parsed only the first time and cached. Templates live outside the binary. (Revised 2026-09-26: production renders only templates embedded into `gen/views.rb` at build time. section 13)
+- Reason: editing views is the most frequent cycle in development, and recompiling should not be inserted there (the compiled-ERB option was rejected for this reason). Spinel has no `eval`, so the only thing that can run at run time is "a template language that looks like ERB, with a grammar defined by ourselves". The two cannot both be had.
+- Expression grammar (a subset of Ruby, details in section 7): literals, `@ivar`, local variables, method calls (positional and keyword arguments), `&.`, operators, string interpolation, `if / elsif / else / unless / end`, `each do |x|` / `each_with_index`, `form_with ... do |f|`. Only these two kinds of block.
+- Value representation (revised after the results of spike 3): no explicit `Value` wrapper class is made; plain polymorphic Ruby values (nil / bool / Integer / Float / String / SafeString / Array / Hash / Time / Model) go as they are into an environment of `Hash<String, polymorphic>`. A wrapper only adds an allocation per intermediate result, and as long as `read_attribute` returns polymorphic values it does not reduce boxing (measured 203 µs versus 298 µs).
+- AST representation (results of spike 3): the parser is written readably with a class per node, and after parsing the tree is converted once into a monomorphic `INode` of "integer kind + typed slots", which is evaluated. Evaluating the class hierarchy as is incurs polymorphic dispatch every time and is 2.7 times slower. In a `case` on values, put `when Time` before `when Array` (a Time in a polymorphic slot also matches `Array`).
+- Access to models: attributes and associations are resolved by name through the schema-derived generated code `read_attribute(:title)` / `read_association(:comments)`. Hand-written methods can be called from templates because the generator lexically scans `app/models/**/*.rb`, picks up argument-less `def name`, and generates per model `def call_view_method(name); case name; when :summary then summary; ... end; end` (no `view_methods` declaration is needed. Non-literal `send` is not used because of the 128-literal limit).
+- Passing `@post`: through the lexical scan of D4, a per-controller `view_assigns` (`{ "post" => @post, ... }`) is emitted into `gen/controllers.rb` (the default). Explicit passing with `render :show, locals: { post: @post }` can be used alongside it.
+- Partials: adopt Rails 7.1's strict locals syntax `<%# locals: (post:) %>`. `<%= render "form", post: @post %>` takes literal names only.
+- Layout: fixed to `application`. `<%= yield %>` and `content_for :title` / `yield :title` (`Hash<Symbol, String>`).
+- Escaping: `<%= %>` escapes by default, `<%== %>` and `raw` turn it off. Helper return values are `SafeString` (a wrapper, not a subclass of String).
+- Helpers (built in): `link_to`, `button_to`, `form_with(model:)` with `f.label` / `f.text_field` / `f.text_area` / `f.submit`, `render`, `pluralize`, `truncate`, `number_*`, `time_ago_in_words`. URL helpers and polymorphic paths are resolved by generated `case` statements derived from routes (`form_with(model: [@post, @comment])` is generated only for pairs that exist in routes).
+- Cost: arbitrary Ruby cannot be written in templates. Type errors in templates appear at run time (on the development error page). Measured speed: rendering a 32 KB page takes 203 µs with the interpreter versus 122 to 136 µs for hand-written compiled code (1.54 times). It is 3.2 times faster than running the same interpreter on CRuby.
+- Future: adding a compile backend that emits Ruby methods from the same AST would make only production compiled and win back type checking and a single file. With only a 1.54 times difference in speed, it is not required. It is not in the MVP.
+
+### D10. Models
+
+- Flow of the source of truth: `db/migrate/*.rb` (a DSL of `create_table`, `add_column`, `add_reference`, `add_index`) -> applied by `spin run db -- migrate` (`cybertrain migration`) -> `db/schema.rb` dumped from the DB -> the generator emits `gen/models/*.rb`. Migrations are a data DSL with no application constants, so they can be pulled into `bin/db.rb` as they are.
+- Generated per model: `attr_accessor` (with assignment code from which `String | nil`, `Integer | nil`, `Time | nil` and so on are inferred from the schema types), `case` statements for `read_attribute` / `write_attribute` / `assign_attributes`, `from_row`, `to_json`, `attribute_names`, and associations derived from foreign keys (`Comment#post`, `Post#comments`).
+- Relations are generated per model (reason corrected in spike 4): `Post.where(...)` is a `PostRelation`, and `.first` / `.find` / `.find_by` are inferred as unboxed `Post | nil` (written in the form `rows` -> `Post.from_row(rs[0])`). `to_a` is a polymorphic array in any design (Spinel always makes arrays of user objects a poly_array), and this works correctly. Even with a generic Relation, `case rec when Post` and direct calls on the union work, so per-model generation is chosen for "a typed `first`" and the readability of the generated code. The setters of the base `Cybertrain::Relation` return `nil`, and `PostRelation` re-types them with `def where(h) = (add_where(h); self)` (returning `self` in the base makes it infer as the base type).
+- Attribute casting (a requirement found in spike 4): `from_row` / `assign_attributes` go through cast methods such as `Cast.int` / `Cast.str` / `Cast.str_or_nil` / `Cast.time_or_nil`. Assigning a `Time` directly to an ivar initialised with nil miscompiles (nil reads as `Time.at(0)`). Non-null Integer / String are initialised with `0` / `""` and cast with `to_i` / `to_s`.
+- Abstract stubs on the base class (a requirement found in spike 4): `Cybertrain::Model` declares every hook the generated side overrides (`read_attribute`, `assign_attributes`, `run_before_save` and so on) in the form `def read_attribute(name) = nil`. Without the declarations, Spinel 2026.09.12 crashes in code generation.
+- API (a subset of ActiveRecord): `find`, `find_by`, `where(hash)`, `where("sql ?", bind)`, `order`, `limit`, `offset`, `first` / `last` / `all` / `count` / `exists?`, `new` / `create` / `save` / `save!` / `update` / `destroy`, `persisted?`, automatic timestamp updates. Dynamic finders (`find_by_title`) are not provided. A scope is an ordinary class method, `def self.published = where(published: true)`.
+- validations / callbacks: `validates :title, presence: true, length: { minimum: 5 }` is pushed onto a registry keyed by the generated `model_name` string, and `valid?` evaluates it through `read_attribute`. `errors.full_messages` / `errors[:title]` / `errors.any?` are provided. Callbacks are blocks that take the record as an argument, `before_save { |r| r.title = r.title.strip }` (since `instance_exec` is unavailable, the implicit-`self` form is not provided).
+- Adapter: SQLite (FFI) only. `Connection#execute(sql, binds)` returns `Array<Hash<String, Integer | Float | String | nil>>` (spike 6 confirmed this works correctly even when the types are mixed). Only model row reads (`Relation#rows`, `reload`) go through `Connection#execute_models`, and DATETIME columns come back as UTC epoch seconds (Integer) rather than strings (`Cast.time_or_nil` turns them into Time. Reasons and numbers in docs/benchmark.md). Connections are a pool built on `SizedQueue` (initial size is the number of workers), and WAL mode, busy waiting (currently a C busy handler, at 100 µs intervals for about 5 seconds. `PRAGMA busy_timeout` is not used) and foreign_keys are set by default, with `sqlite3_step` / `prepare` / `exec` as `blocking: true`. The integer literal `-1` (SQLITE_TRANSIENT) is passed as the destructor of `sqlite3_bind_text`. The output pointers of `sqlite3_open_v2` / `prepare_v2` do not use a static `ffi_buffer` but a region `malloc(8)`-ed per call (a static buffer races between threads and causes SIGSEGV. Reproduction and fix confirmed in spike 6). Multi-row writes are wrapped in `BEGIN` / `COMMIT` (20 times faster than autocommit). PostgreSQL later, through libpq FFI.
+- Outside the MVP: `has_many :through`, `includes` / `preload`, `pluck`, `transaction` in the model API, enum, STI, polymorphic associations, `dependent:`.
+- Addendum 2026-10-25: `pluck` (typed `pluck_str` / `pluck_int` / `pluck_float`), `upsert`, `increment`, `count_by`, `sum_int` / `sum_float` and `where_like` were added in D22.
+
+### D11. Name, package layout, skeleton
+
+- The name is `cybertrain`, the licence is MIT.
+- The framework is a spin library package (the layout of `spin new cybertrain --lib`). `[package] name = "cybertrain"` in `spin.toml`, entry point `cybertrain.rb`, split by feature into `cybertrain/http/`, `router.rb`, `template/`, `model.rb`, `db/`, `generator/` and so on (section 11). C is written inside a file with `ffi_source` (`dev/reexec.rb`). Applications reference a GitHub tag with `{ git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }` and pin the commit with `spin.lock` (framework code is not placed in the application). After registration in `matz/spin-index`, a `--version` specification can also be used.
+- The CLI is distributed in two ways: the framework's `bin/cybertrain.rb` (built with spin), and a gem that runs the same source on CRuby (`gem install cybertrain`, `exe/cybertrain`). spin does not yet have a command to install tools from the index (`spin install` takes local sources only), and its users, Rails developers, have Ruby, so the gem is the main distribution. The gem contains only the CLI and the files it requires, not the framework itself. Its role is only skeleton generation with `cybertrain new blog` and code generation with `cybertrain generate scaffold post title:string body:text`. (Revised 2026-09-26: its roles are `new`, `generate scaffold`, `migration`, `db`, `server`, `build`. The last four are thin wrappers that call, in the application directory, `spin run gen` / `spin run db` / `spin run NAME` / `spin build NAME` respectively. section 13) By default `new` writes the tag of the same version as the CLI as the dependency, and goes as far as running `spin lock`, the counterpart of `bundle install` in `rails new`, and `spin run gen` (skipped with `--skip-spin`). The gem and the framework are released from the same tag.
+- `new` also writes a Kamal 2 skeleton for deployment (`Dockerfile`, `.dockerignore`, `config/deploy.yml`, `.kamal/secrets`, and `public/up.html` for the health check) (2026-10-22). The binary links against the system libc and SQLite, so the image uses the same Ubuntu release for the build stage and the run stage; the build stage runs `gem install cybertrain -v <CLI version>`, `cybertrain setup` and `cybertrain build`, and copies only `dist/` into the run stage. Startup is `./NAME migrate && exec ./NAME` (SIGTERM reaches the server). The health check is a static file: adding a route would touch the application's routing and controllers, and kamal-proxy only needs to know that the process answers HTTP. The DB stays SQLite on a volume (`/app/storage`), assuming a single server.
+- The application skeleton and bin are in section 11. The build is two steps, `spin run gen` -> `spin build`. (Revised 2026-09-26: the distribution build is `cybertrain build` -> `dist/`. `spin run gen -- --embed-views` -> `spin build NAME` -> `spin run gen` to return to empty tables, then the binary and `public/` are gathered into `dist/`. section 13)
+
+### D12. Development loop: the server rebuilds itself and replaces itself
+
+- Decision: the application's entry point (originally the bin for the server, from 2026-09-26 `bin/<name>.rb`) enters watch mode only when `CYBERTRAIN_ENV=development`. Watched: `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`, `gen/**/*.rb` (`gen/` files rewritten by the rebuild itself are absorbed into the baseline, and `gen/views.rb` is ignored. `cybertrain/dev.rb`). mtimes are polled at 0.5-second intervals. `app/views/**/*.erb` is not watched (the template engine reloads by itself).
+- When a change is detected, it runs `spin run gen && spin build <name>` with `system`, and on success sends itself `SIGHUP`. The `trap("HUP")` handler (confirmed working on a real machine in spike 7) closes the listen socket and calls `execv` through the 6-line C shim `sp_reexec(path, port_arg)` in `ffi_source`, replacing itself with the new binary. The PID does not change. If `SO_REUSEADDR` is set on the original listen socket, the new process can rebind the same port immediately (confirmed in spike 7). State to carry over, such as the port, is passed in argv. (Note 2026-09-27: the implementation does not send `SIGHUP`; the watcher thread that succeeded in rebuilding sets the same restart flag as `trap("HUP")` directly (an external `kill -HUP` takes the same path). The watch thread stops the listener, and after `Server#wait` returns the main thread calls `execv`. `cybertrain/application.rb`) (Note 2026-10-27: the rebuild is `spin build <name> -- --incremental`. Spinel's `--incremental` splits the generated C into units, caches the objects, and recompiles only the units changed by an edit. Inlining across units is lost, which is acceptable for a development build. With a Spinel that does not know `--incremental` (failing with `unknown option '--incremental'`), the build is redone on the spot without the flag, and later processes do not pass the flag. `cybertrain build` rewrites `gen/views.rb` with `--embed-views`, so it is always recompiled without the flag and the distribution binary is unaffected. `cybertrain/dev/rebuilder.rb`)
+- A build failure does not kill the server. It keeps running on the old binary, holds the compiler's stderr, and returns it as the development error page on the next request.
+- Migrations are not run automatically. The rebuild runs because `db/schema.rb` changes as a result of `spin run db -- migrate`.
+- production: watching and building are both disabled. production renders only the views that `cybertrain build` (`spin run gen -- --embed-views`) embedded into the binary, and development reads `app/views/` from disk. `cybertrain build` gathers that binary and `public/` into `dist/` (section 13). (Revised 2026-09-26: originally the design shipped `app/views/` alongside, and the binary alone did not run)
+- Rejected: a separate-process watch tool (more moving parts).
+
+### D13. Tests and CI
+
+- Following how `spin test` works (each file in `test/*.rb` is one program, and stdout is diffed against `.expected`), `Cybertrain::Test` is provided. `test "saves a post" do ... end` is pushed onto an array and run in order, output is in a deterministic format, and the exit is non-zero if anything fails. Assertions are `assert`, `assert_equal`, `assert_nil`, `assert_raises`, `assert_includes`.
+- Application tests are of three kinds: model, controller / integration (`get "/posts"`, `post "/posts", params: {...}`, `assert_response :ok`, `assert_redirected_to`, `assert_includes response.body, "..."`. No sockets), and template (pass a string to the engine).
+- The test DB is `storage/test.sqlite3`. Each test is wrapped in `BEGIN` / `ROLLBACK` at the adapter layer. (Revised 2026-09-27: wrapping each test in a transaction is not implemented. `examples/blog/test/support/blog_test.rb` recreates `storage/test.sqlite3` and migrates it at the start of the tests, and empties the tables with `delete_all` before each test)
+- One test program file per area (`test/models.rb`, `test/controllers.rb`). `spin test` compiles the whole application per file.
+- The framework's own tests commit `.expected` so they do not depend on CRuby.
+- CI is GitHub Actions, with Spinel `2026.09.12` pinned, two jobs on ubuntu / macOS. It runs the integration tests of `examples/blog`.
+
+### D14. Cross-cutting defaults
+
+- Environment: `CYBERTRAIN_ENV` = `development` / `test` / `production`. Configuration is a Ruby DSL in `config/app.rb`. No YAML.
+- Secret key: `CYBERTRAIN_SECRET_KEY_BASE`. If unset in production, startup is refused. In development / test it is generated into `tmp/secret_key` and kept fixed.
+- DB: `storage/<env>.sqlite3`. `created_at` / `updated_at` are UTC ISO 8601 strings. No time zone conversion. The framework has its own minimal parsing of date strings.
+- Static files: `public/` is served by middleware. Only an extension -> Content-Type table. In production, having the reverse proxy serve them is recommended.
+- JSON: the `json` package. Limited to `render json:` and taking `application/json` request bodies into `params`.
+- Logging: two lines per request on standard output (`Started GET "/posts"`, `Completed 200 in 3ms`). `Cybertrain.logger` has `info` / `warn` / `error`.
+- Error pages: production uses `public/404.html` / `public/500.html` (the outermost `ErrorPages` middleware. Exceptions become 500, and error responses with an empty body, no Content-Type, or `text/plain` are replaced with `public/<status>.html`. Errors the action rendered as HTML / JSON are left as they are), development uses a diagnostic page.
+- Session cookie: in production the `Secure` attribute is set (`Config#session_secure`, default `production?`).
+- The session cookie's SameSite is `Config#session_same_site` (default `Lax`, `CYBERTRAIN_SESSION_SAME_SITE`, anything other than `Lax`/`Strict`/`None` is a startup error), and `Partitioned` is `Config#session_partitioned` (default false, `CYBERTRAIN_SESSION_PARTITIONED`). With `None` or `Partitioned`, `Secure` is set regardless of `session_secure`. The listen address is `Config#host` (default `127.0.0.1`, `CYBERTRAIN_HOST`). (2026-10-02, web playground SP1)
+- development puts `HostAuthorization` outermost and checks Host by exact match, to guard against DNS rebinding. The defaults are `localhost` / `127.0.0.1` / `[::1]` (numeric ports allowed). Forwarded host names are named explicitly with `Config#allowed_hosts` or `CYBERTRAIN_ALLOWED_HOSTS` (comma-separated, added to the defaults). No wildcards, DNS resolution or Forwarded headers. Rejection is a 403, before static files, the session, the CSRF token and development diagnostics. `CYBERTRAIN_HOST=0.0.0.0` does not add allowed hosts. The playground launcher adds only its own forwarded host name from the Codespaces environment settings. production / test are unchanged. (2026-10-23)
+- Safe defaults: output escaping, CSRF, signed cookies, always bind variables in SQL, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`. `Response#to_http` adds `nosniff` and `SAMEORIGIN` only when the response has no header of that name (case-insensitive). The Server always writes through `to_http`, so the same applies to error pages, development diagnostic pages, the Server's own 400 / 411 / 413 / 500, and HEAD. If an action sets a different value with `set_header` (for framing an embedded widget, for example), that value is sent, and the header is not doubled. No application-wide `Config` switch is made: exceptions are a matter of individual responses, and a switch that turns it off globally would be a hole that removes a safe default in one line. Overriding at a reverse proxy also only adds headers, so the application needs no way to turn it off. The web playground SP1 spec said "make it switchable when adding it", but that caution assumed the editor preview (an iframe); SP1 opens the application in a separate tab (playground/README.md), and SP2, which would have shown it in an iframe, was cancelled, so it does not apply. `nosniff` makes Content-Type strictly enforced, so webp / avif / woff / ttf / otf / wasm / mjs / pdf / audio and video and so on were added to `Static::EXTENSIONS`. Extensions not in the table get `application/octet-stream` (treated as a download). (2026-10-23)
+- Shutdown: on `SIGTERM`, stop listening, wait for in-flight requests, and exit. If `trap` is unavailable, call libc's `signal` through FFI. The trap block is called directly from the C signal handler, so the handler only clears a flag (`Server#request_stop`), and `Thread#join` and the like are done in an ordinary thread context. When the flag is cleared, the accept loop closes the listener, and `Server#run` waits up to `drain_timeout` (default 10 seconds, shorter than systemd's `TimeoutStopSec`) for open connections to close before returning. In-flight requests are answered with `Connection: close` and then closed, and keep-alive connections idle between requests are closed without waiting. Connections are counted in the accept thread (protected by a `Mutex`) and decremented in `serve`'s ensure.
+- No i18n. Validation messages are fixed in English.
+
+### D15. Authentication: framework primitives plus a generator that writes code the application owns (2026-10-22)
+
+- Session expiry: the generated `resume_session` rejects an authentication once `Cybertrain.config.session_max_age` seconds (default two weeks) have passed since the DB row's `created_at`, and deletes `session_id` from the cookie. Replaying a signed cookie cannot extend the expiry. The cookie's own Max-Age restarts when it is refreshed, but the authentication expiry is fixed from sign-in.
+- Decision: use the same split as Rails 8's `bin/rails generate authentication`. (1) The framework holds only "the things you get wrong when you write them yourself": the password hash `Cybertrain::Password` (PBKDF2-HMAC-SHA256, PHC-format strings, constant-time comparison, `needs_rehash?`), `Controller.skip_before_action`, and `resource` (singular) in the routing DSL. (2) `cybertrain generate authentication` writes, **as files of the application**, the users / sessions migrations, the `User` model (with `password=` / `authenticate` / `authenticate_by` in hand-written form) and the `Session` model, `SessionsController` / `RegistrationsController` and their views, `before_action :resume_session` / `:require_authentication` and helper methods in `ApplicationController`, the routes, a nav partial for the layout, and an integration test (`test/authentication.rb`). No authentication "engine" is built as an external library (spin package).
+- Reasons (the same conclusion as Rails 8, with Spinel adding more weight to it):
+  - **There are no extension points.** A cybertrain application is structured so that `spin run gen` reads `config/routes.rb`, `app/controllers`, `app/views` and `db/migrate` and writes `gen/` (D3 / D4). Controllers in a package are outside the lexical scan (they work if you write `view_assigns` / `run_callback` yourself, but they leave the mechanism that exposes ivars to templates), views are read only from `app/views/` and are embedded only from there, migrations come only from `db/migrate/`, and models are generated from the schema. Routes can be added by calling `Package.draw(r)` from `config/routes.rb`, but since nothing else can be added, an authentication package ends up as "a generator that copies files into the application plus a few primitives". So build it that way from the start.
+  - **The collision surface of whole-program inference.** Spinel compiles the code of dependency packages together with the application as one program, and inference breaks on collisions of method names and return types even between unrelated classes (NOTES 10 / 34 / 41 / 43). A package author cannot know "which applications it will be compiled with", so thin primitives are fine, but the more name-heavy code such as controllers and models is brought in from outside, the higher the risk. If the code is generated and placed in the application, what you fix on a collision is ordinary, readable Ruby inside the application (principle 2).
+  - **A path for customisation.** Authentication always differs per application (whether sign-up is allowed, invitation-only, two-factor, where to go after login). A Devise-style engine demands a layer of configuration and overrides, whereas generated code can simply be edited. Rails 8 chose generation for the same reason.
+  - **The CLI is CRuby, the framework is Spinel.** The generator runs in the gem (CRuby) and its output is compiled by Spinel. These two layers already work for `scaffold`, and the authentication generator follows the same pattern (`cybertrain/cli/authentication.rb`, listed in the gemspec, nothing added to `spin run gen`).
+- Choice of password hash: the options available in Spinel are SHA-256 bundled with the runtime (`Digest::SHA256.digest`, implemented in C), libc's `String#crypt` (bcrypt exists only in glibc / libxcrypt and not on macOS; CI also runs on macOS), the `openssl` package (rejected in D8 because of link path problems), and C via `ffi_source` (the review burden of a home-grown crypto implementation). We chose pure-Ruby PBKDF2-HMAC-SHA256 (built the same way as the HMAC in `Crypto`) and verified it against the RFC 6070 / 7914 test vectors. Measured: 100,000 iterations take 660 ms in CRuby and 197 ms after Spinel compilation; 600,000 iterations take 1.09 s (NOTES "Numbers"). The default is 100,000 iterations (equivalent to Django in 2019, about the same time as bcrypt cost 12); it can be raised with `Cybertrain::Password.iterations=`, and `needs_rehash?` rehashes at login. The loop is a `while`, so its back edge is a safepoint and it does not stall other requests even with `SPINEL_WORKERS=1` (docs/thread.md "Preemption"). The algorithm can be switched by the PHC string's identifier, so if a spin package bundling argon2 / bcrypt in C appears later, existing digests can still be verified as they are. **This kind of "primitives-only package" suits the ecosystem** (it can carry C with `sources = [...]` and needs no framework extension points).
+- Rejected:
+  - A `cybertrain-auth` spin package (engine): as above, there are no extension points, and even if there were, inference collisions and the `app/views` constraint would leave it only a thin layer.
+  - A `has_secure_password` macro: there is no `define_method`. Picking up `has_secure_password` in the generator's lexical scan and emitting it into `gen/models/user.rb` is possible, but adding to the generator's inputs is not worth it for 15 lines of hand-written methods. They are written out into the application's `app/models/user.rb`, with comments showing the correspondence to Rails.
+  - A concern (`include` of `app/controllers/concerns/authentication.rb`): the lexical scan does not follow `include`, and the require order in `gen/app.rb` puts `application_controller` first, so it would be undefined in CRuby. Instead, a block is inserted right after the class line of `ApplicationController` (a one-time edit like `add_route`; if `def require_authentication` exists, a second run does nothing). Concern support (a scan that follows `include`, and the require order) is a separate future feature.
+  - Password reset and mailers: there is no mailer (section 2.3). Rate limiting: not implemented at first (on 2026-10-25 D26 added `rate_limit`, which the generated SessionsController uses). `Current`: instead of thread-locals, `resume_session` sets `@current_user` / `@current_session`, and templates read them via `view_assigns`.
+  - Not writing a sign-up screen (as in Rails 8): Rails creates the first user in the console, but cybertrain has no console (section 8). We write `RegistrationsController` (`/sign_up`) with a comment saying to delete it for invitation-only apps.
+- Consequences:
+  - Added to the framework: `Cybertrain::Password`, `Controller.skip_before_action` (run-time data keyed by class name; `run_before_callbacks` matches by name, and it is inherited; the block form has no name and cannot be skipped), `Mapper#resource`, and the Rails rule that a custom route's derived name is left unnamed if it already exists (`get "/sign_up"` and `post "/sign_up"` give one `sign_up_path`; a duplicate `as:` is an error as before).
+  - The model name `Session` coexists with `Cybertrain::Session` (verified: on the real stack, the Session row's id round-trips through the cookie session). For `User`'s NOT NULL string column `password_digest`, the empty string means "not set" (putting nil in breaks the types of the generated code, NOTES 7 / 11).
+  - The ecosystem pattern: "primitives go in a spin package, code placed in the application comes from a generator". Just as cybertrain itself ships a gem (CLI) plus a spin package (framework) under the same tag, third parties can follow the same pattern with `my-gem` (a plugin for `cybertrain generate NAME`) plus `spinel-my-lib` (primitives). A mechanism for `cybertrain generate` to load generators from gems is not implemented; it will be added when a second external generator is needed.
+
+### D16. File uploads: framework primitives plus a generator that writes code the application owns (2026-10-22)
+
+- Decision: use the same split as D15, and build no separate library (spin package).
+  - The framework (`cybertrain/`) holds only what lives in closed layers and what you get wrong when you write it yourself:
+    - `cybertrain/http/multipart.rb`: the binary-safe multipart/form-data parser `Cybertrain::Multipart` and its result `MultipartForm`. The four exceptions (`MultipartMalformed` / `MultipartTooManyParts` / `MultipartPartTooLarge` / `MultipartHeaderTooLarge`) are children of `QueryInvalid` and are listed in `CLIENT_FAULTS` so they become 400.
+    - `cybertrain/http/uploaded_file.rb`: `UploadedFile`. Includes type detection by magic bytes, filename sanitisation, and generation of an ASCII-only `Content-Disposition`.
+    - A fourth typed Hash in `Params` and `params.upload(:key)`. `permit` still returns only strings, so files cannot slip into mass assignment.
+    - `Request#multipart_form`: parses once per request and caches the result. `form_or_query_value` also reads it, so `CsrfProtection` and `MethodOverride` can read the token and `_method` from a multipart body. Until now every multipart POST was a 403.
+    - `form_with(multipart: true)` and `f.file_field`.
+    - `Config#max_upload_bytes` (5 MiB), `max_multipart_parts` (128), `upload_root` (`storage/uploads`).
+    - The disk storage primitive `Cybertrain::BlobStore`: 32-digit hex keys generated by the server, `0600`, rename from a temporary file.
+    - `Controller#send_blob`, which returns untrusted bytes with safe headers.
+  - `cybertrain generate attachment MODEL FIELD [--any]` and scaffold's `FIELD:attachment` type write the following as files of the application:
+    - A migration that adds five metadata columns (`<f>_key` / `_filename` / `_content_type` / `_byte_size` / `_checksum`) to the owning table.
+    - Field-named methods and callbacks in the model.
+    - A member action `GET /posts/:id/cover` in the owning controller, and its route. The action is added to the `only:` of `before_action :set_post` and reads `@post`. The same scoping as show (the authorisation the application wrote in `set_post`) also applies to the download. Visibility is also the same as show: if the `only:` of `allow_unauthenticated_access` includes `:show` (or `except:` does not exclude it), and the download fetches the record through the same `before_action :set_post` as show, `:cover` is added there too (so that images on public pages do not send visitors to the sign-in screen). Authentication alone cannot replace per-record or per-role authorisation. Callbacks are checked up through the superclasses, and generation is refused before any file is written if there is no `set_post` shared with show, if there is a `before_action` that applies only to show or a check inside `def show`, or if the policy cannot be read safely. The application should apply an explicit authorisation callback to both show and the download (for example `before_action :authorize_post, only: [:show, :cover]`), share `set_post` as well, and run it again (2026-10-23). The generated test follows suit and checks that a visitor can download, or is sent to the sign-in screen. Form values are filled so that they satisfy the model's `length: { minimum: / maximum: }` (2026-10-23).
+    - A one-line `@post.cover_file = params.nested(:post).upload(:cover)` in `create` / `update`. It uses `nested` rather than `require` because when a file-only form is submitted without choosing a file, the `post` key itself disappears (empty file inputs are dropped), and `require` would give 400.
+    - Edits to the form and show, and the application's integration test.
+  - A field name is refused if the download action `def <field>` would override a method of `Cybertrain::Controller` (`params`, `render`, `head` and so on), a scaffold action, a method generated in `ApplicationController`, or `set_<model>` / `<model>_params`. `script/check-reserved-names` checks that this table keeps up with `controller.rb` and the generated templates.
+- Reasons:
+  - **There are no extension points.** D15's reason 1 applies even more strongly here. Multipart parsing has to be inside `Request` so that `CsrfProtection` / `MethodOverride`, which run before routing, can read it. The same holds for the typed slots of `Params`, the closed case table in `FormBuilder`, `ClientError::CLIENT_FAULTS`, and the HTTP layer's standalone loading rule (`script/check-http-layer`): none of them can be reached from a spin package or from generated code. All a package could keep is the hundred or so lines of `BlobStore` and the delivery headers.
+  - **The framework itself is a spin package.** The advantage claimed for a separate package, "security fixes can be shipped as one version", is obtained in the same form by placing the code in `cybertrain/`. A separate package would only add a second tag, edits to the application's spin.toml, and collision surface for whole-program inference (NOTES 10 / 34 / 41 / 43).
+  - **Models, controllers, views and migrations are generated and placed in the application.** `has_one_attached` cannot be written because there is no `define_method` (the same as `has_secure_password` in D15). Allowed types, sizes, authorisation and display differ per application, so generated code that can be edited directly suits it.
+  - **Delivery goes through the owning controller.** The application's `before_action` (authentication) applies as is.
+    - `Static` / `public/` is not used, because it returns html and svg inline, adds public caching, and is replaced on every build.
+    - The bytes go in `storage/uploads/` on the persistent volume. SQLite holds only the metadata (because it truncates at NUL).
+    - The type is determined by magic bytes, not trusted from the client's declaration. Only PNG / JPEG / GIF / WebP are returned inline; everything else is `attachment` + `application/octet-stream`. Delivery always carries `nosniff` and `Content-Security-Policy: default-src 'none'; sandbox`.
+- Rejected:
+  - A `cybertrain-storage` package (either primitives-only or as an engine). Reasons as above.
+  - Generation only (copying the parser into the application). It cannot reach the layers before routing, and security fixes cannot be shipped.
+  - An Active Storage-style shared table and `has_one_attached`. There is no `define_method` and no polymorphic association.
+  - SQLite BLOBs.
+  - Delivery from `public/`.
+  - Streaming reception. The server reads the whole body into memory (bounded by `max_body_bytes`), so this is a separate piece of work as a server change.
+  - Mapping to 413 / 415 in v1. Exceeding the size is 400. Extending `ClientError.status_for_name` and `Controller#rescue_with_handler` is separate work.
+  - Multiple files in one field (`name[]`). In v1 this is `MultipartMalformed`.
+- Consequences and later:
+  - `X-Content-Type-Options: nosniff` / `X-Frame-Options: SAMEORIGIN` from D14's "safe defaults" are now the default for every response (`Response#to_http`). `send_blob` additionally adds `Content-Security-Policy: default-src 'none'; sandbox` and `Cache-Control`, and sets `nosniff` itself as well (`to_http` does not add a header with the same name if one exists, so it is not duplicated).
+  - When a second storage backend such as S3 is needed, it will be added as a "primitives-only spin package" with the same `write` / `read` / `delete` / `exist?` surface as `BlobStore` (D15's ecosystem pattern).
+  - Known gaps:
+    - If the DB write fails after `before_save`, an orphan file is left behind (`save` has no transaction).
+    - Metadata such as EXIF is stored as is.
+    - With `SPINEL_WORKERS=1`, the worker stalls during the disk write.
+    - Delivery is same-origin.
+  - Cleaning up orphan files, ETag / Range, and delivery from a separate origin are follow-up work.
+
+### D17. Application-defined settings: typed declarations on `Config` (2026-10-25, issue #69)
+
+- Decision: application-specific settings (public URL, feature switches, intervals, SMTP host) are declared on `Config` in the `Cybertrain.configure` block in `config/app.rb`. Declarations are per-type methods: `c.setting_string(name, env:, default:, secret: false)`, `c.setting_int(name, env:, default:, min:, max:)` (`min` / `max` are optional), and `c.setting_bool(name, env:, default:)`. Reading is `Cybertrain.config.string_setting(:base_url)` / `int_setting` / `bool_setting`, and writing for tests is `set_string_setting` / `set_int_setting` / `set_bool_setting`.
+- The value is read from the environment variable once, at declaration time, that is, when `config/app.rb` runs at startup. Empty or unset means the default (the same rule as `Config.env_or`). Booleans are `1` / `true` and `0` / `false` (the same spelling as the existing `CYBERTRAIN_SESSION_PARTITIONED`); integers are an optional leading `-` and decimal digits, up to 18 digits excluding leading zeros (because `String#to_i` raises RangeError above 2**63-1; NOTES 25). Values that cannot be parsed and values out of range fall back to the default, and one `[WARN]` line is written to `Cybertrain.logger`. Startup does not stop: in operation it is easier to deal with a server that comes up with the default and leaves the reason in the log than with one that does not come up because of a settings mistake (errors that affect safety, like the framework's own `session_same_site`, are still startup errors as before). Mistakes in declarations (declaring a name twice, an empty `env:`, a default out of range) and reading an undeclared name or a name of a different type are programming errors, so they raise `ArgumentError`.
+- Values go into a Hash per type (keyed by the name as a String, seeded by element type per NOTES 9), and the declarations (name, environment variable, description of type and default, whether secret) are recorded in declaration order. `./NAME help` (`Main.usage`) prints them as a list of environment variable, name, type and default, and the startup banner prints the current values on one line, `=> Settings: base_url="" worker=true ...`. A setting with `secret: true` shows only its name and environment variable in either place (`[FILTERED]` in the banner, and no default in help). If no settings are declared, help and the banner are the same as before. help does not create a new `Cybertrain.config` to read the settings (doing so would freeze `database_path` and the like to the environment variables at that moment).
+- Rejected:
+  - The form `c.setting :base_url, ...` that grows a reader method `Cybertrain.config.base_url` (the issue's original proposal). There is neither `define_method` nor `method_missing` (NOTES 1). A single `setting` that infers the type from the default also does not give a typed reader in Spinel, since the return type changes per call.
+  - Having the generator (`gen/app.rb`) lexically scan `config/app.rb` and write typed accessors. Being able to read by name, like `base_url`, is an advantage, but it adds `config/app.rb` to the generator's inputs and increases what `spin run gen` covers and produces. Three pairs of typed methods taking the name as a Symbol are enough. Generated accessors can be layered thinly on top later if needed.
+  - Naming the readers briefly as `string` / `int` / `bool`. A method with the same name as a built-in such as `StringIO#string` breaks calls on boxed receivers (NOTES 62), so the names were made distinguishable with `*_setting`.
+  - A separate `cybertrain settings` command. Adding the list to the existing `help` and showing current values in the startup banner is enough.
+- Consequences: names are passed as Symbols (NOTES 51: do not mix Symbol and String keys for the same method). The test writers do not check the range from the declaration.
+
+### D18. Application-specific subcommands: `Main.command` (2026-10-25)
+
+- Decision: let the application register subcommands on its binary with `Cybertrain::Main.command(name, description) { |argv| ...; 0 }` (#68). Registration is written in `bin/<app>.rb` before `Main.run`.
+  - `./<app> NAME ARGS...` passes the arguments after the name (`argv[1..]`) to the block and uses the block's value (Integer) as the exit code.
+  - Before the block, `Cybertrain::DB` is connected to `Cybertrain.config.database_path` with a pool of one, and disconnected afterwards. No server, views or session secret are set up. Settings are already loaded because `bin/<app>.rb` requires `config/app.rb` first; if unset, they are `Cybertrain.config`'s defaults (environment variables).
+  - `Cybertrain::DB::Error` (including connection failures) prints `NAME failed: MESSAGE` and exits with code 1. Other exceptions are not caught (narrower than the `db` command, which catches up to `StandardError`; application bugs are not hidden).
+  - Registered names are checked before the built-in dispatch. `Main.server?` is false for a registered name, so server-only startup work (the scheduler and so on) does not run for a one-off command. `help` lists them after the built-ins, in registration order.
+  - Built-in words (`server` / `migrate` / `db` / `help` / `--help` / `-h`), all-digit names (port arguments), the empty string, and already registered names raise `ArgumentError`.
+  - The implementation pushes a `Main::Command` (name, description, Proc) onto an array in the constant `Main::COMMANDS`. It is a constant because class variables are not GC roots (NOTES 64), and the empty array is seeded by element type (NOTES 9). Accessors have distinctive names such as `command_name` (NOTES 10 / 34), and `call` is not defined (NOTES 40). begin/rescue sits in an ordinary method that does not yield, which `call`s the stored block (NOTES 32 / 45).
+- Reasons:
+  - Until now you had to inspect `ARGV[0]` yourself in `bin/` and rewrite the scaffolding that `db migrate` has, "connect to the configured DB, run, print, and return an exit code", and the command did not appear in `help` either.
+  - Spinel has no `instance_eval`, so the block receives its argument explicitly, as with `before_action { |c| ... }`.
+  - A pool of one is enough. Opening and closing `pool_size` connections in a one-off process is waste.
+- Rejected:
+  - Scanning Rake-style task files and generating from them. It increases the lexical scan and generation surface, and gains nothing compared to writing a few lines in `bin/<app>.rb`.
+  - Allowing built-in names to be overridden. If `migrate` became something else, operating procedures would break.
+  - Letting each command choose its DB connection (an option not to connect). An argument will be added when needed.
+
+### D19. Time zones: `Cybertrain::TimeZone`, which reads the system TZif itself (2026-10-25, issue #66)
+
+- Decision: put `Cybertrain::TimeZone` in `cybertrain/time_zone.rb` (the issue left the name open, so it follows Rails's `ActiveSupport::TimeZone`).
+  - `TimeZone.find("Asia/Tokyo")` reads `$TZDIR/<name>` (default `/usr/share/zoneinfo/<name>`) and parses TZif v1 to v4 (RFC 8536). For v2 and later it skips the 32-bit block and uses the 64-bit block and the footer. Times after the last transition are determined by the POSIX TZ string footer (`JST-9`, `EST5EDT,M3.2.0,M11.1.0`, `<+09>-9`). It handles the `Mm.w.d`, `Jn` and `n` rules, and omitted, negative and over-24-hour `/time` (the RFC extension, up to 167 hours). When there is only a DST name and no rule, it fills in the US rules, as tzcode / glibc do.
+  - All values are Integer epoch seconds. `utc_offset_at` / `dst_at?` / `abbreviation_at`, `utc_to_local` / `local_to_utc` (a "local epoch" is the seconds counted by treating the wall clock as UTC), and the calendar conversions `civil_to_epoch` / `epoch_to_civil`. The issue's `local_to_utc(local_epoch, zone)` became the zone instance method `zone.local_to_utc(local_epoch)`.
+  - `local_to_utc` gives a single answer around transitions: a skipped wall time (02:30 in the US spring) is read with the offset before the transition (the result is after the transition, 03:30 EDT). A wall time that occurs twice (01:30 in autumn) returns the earlier instant. It assumes, as holds in the tz database, that there is at most one transition within a day either side.
+  - Names are 1 to 255 bytes of `A-Za-z0-9_+-./`, and a leading `/` and empty, `.` and `..` segments are rejected. Names that could point to a file outside the directory are dropped before any file is looked at. When the file does not exist, is not TZif, exceeds 256 KiB, or its counts and lengths do not match (transitions not ascending, type indexes or abbreviation positions out of range, abbreviations not printable ASCII), it returns a zone that behaves as UTC and whose `found?` is false (no exception). `"UTC"` is built in and reads no file (`TimeZone::UTC`). An unreadable footer is ignored, and the type of the last transition simply continues.
+  - The cache is one immutable object holding a name-to-index Hash and a typed Array of zones, kept in the class-level `@zone_cache`. Additions build a new pair inside a Mutex and swap the reference (copy-on-write). Readers take no lock (NOTES 57: a per-request Mutex stalled for seconds with 2 workers). The key is the resolved path, so changing `TZDIR` gives a separate entry. Names that were not found are not cached (so that user input cannot grow the table without limit).
+  - Parsing uses arithmetic on `getbyte` and not `String#unpack` (following NOTES 62, `s = bytes.to_s` is taken at the top of the scanning method). Signed 64-bit values are read via the complement when negative, so intermediate values fit in 63 bits.
+- Reasons:
+  - Spinel has no tz database. Switching `ENV["TZ"]` and relying on `Time#localtime` uses process-wide state and is not thread-safe. A daily 09:00 Asia/Tokyo schedule, aggregation by local date, and computing the next run time with DST in mind would otherwise mean every application writing a parser and cache of around 600 lines.
+  - Because it reads the system zoneinfo instead of bundling data, tzdata updates arrive through OS packages. The binary does not grow either.
+  - Restricting to Integer epoch seconds avoids touching Spinel's differences in `Time` (NOTES 7), and the values go straight into DB columns and cookies.
+- Rejected:
+  - Bundling or generating tz data (it goes stale with every build and adds hundreds of KB).
+  - `ENV["TZ"]` + `Time.at(t).localtime` (not thread-safe).
+  - Raising an exception for an unknown name (a single configuration mistake would make every request a 500; the caller checks `found?` and warns).
+  - Caching unknown names too (see above).
+  - A per-request default zone like `Time.zone`, and `l(time, zone:)` in templates. Separate work once conversion exists (as the issue says, not included this time).
+- Consequences and later:
+  - Leap second records in `right/` zones are only skipped, not applied (the time is off by those seconds). Ordinary zones have none.
+  - If the container image has no tzdata, `find` returns UTC with `found?` false. On slim images, install the `tzdata` package or point `TZDIR` at it.
+  - Putting `def name` in this class made `Class#name` raise NoMethodError in the program of the whole framework (test/template_integration.rb). The reader was named `zone_name` (NOTES 66).
+
+### D20. Transaction API: `DB.transaction` and `Model.transaction` (2026-10-25, issue #67)
+
+- Decision: make `Cybertrain::DB.transaction(immediate: false) { |c| ... }` a public API. It borrows a connection from the pool, issues `BEGIN` (`BEGIN IMMEDIATE` if `immediate: true`), calls the block with the connection, issues `COMMIT` on normal completion or `ROLLBACK` and re-raises on an exception, and returns the connection to the pool. `Model.transaction` is a thin alias calling the same thing under the Rails name (being a class method, it does not go into `Ident::RESERVED_COLUMN_NAMES`). This replaces D10's "Outside the MVP: `transaction` in the model API" and the `transaction` API in §8.
+- Participation (the same meaning as Rails): while the block runs, `DB.with` on the same thread (and therefore `save` / `update` / `destroy` / Relation queries) receives the transaction's connection as is. The pool records the borrowed connection in `Thread.current`, and when `Pool#with` finds it through `held_index` it yields without checking out or returning it (`check_in` would roll the transaction back). A nested `DB.transaction` also just increases the depth by one on the same connection; the depth counting and the "SQLite rolled back by itself" check are taken as is from `Connection#transaction` (both were rewritten on top of the new block-less `Connection#begin!` / `commit!` / `rollback!`). Only the outermost level issues `COMMIT`, and an exception at any level rolls back the whole thing if it reaches the outermost level. There are no savepoints. `immediate:` takes effect only at the outermost level. Threads started inside the block do not participate.
+- Shape (determined by Spinel's constraints): `DB.transaction(&block)` only calls `DB.run_transaction(immediate, block)`, and checkout, `begin!`, `block.call(conn)`, rescue and ensure all live in `run_transaction`. This is the same shape as `Controller#process` / `#run_action`.
+  - A method that takes `&block` and calls it is inlined into the caller, like a method that yields, and if it contains rescue / ensure the C does not compile (NOTES rule 32/45, 69).
+  - Passing the Proc one more method further (a method on `Pool` or `Connection`) and calling it there does not propagate the connection's class to the block argument, and `c.execute` raises NoMethodError (NOTES rule 69).
+  - Making the participation check a `block.call` on the `DB.with` side would turn `DB.with`'s block into a Proc, and blocks that read an outer block argument (`5.times do |i| DB.with { ... i ... } end`) would no longer compile (NOTES rule 68). So the check was placed inside `Pool#with`, which yields.
+- Block-less form: `c.begin!(immediate:)` / `c.commit!` / `c.rollback!`. For code that wants its rescue in an ordinary method. A nested `rollback!` only steps the depth back by one and leaves the decision to the outermost level (the same as when an exception leaves a nested `transaction` block).
+- What was deliberately left out, and constraints:
+  - The return value is nil, not the block's value (as with `Connection#transaction`, a generic return value cannot be typed in Spinel).
+  - There is no `ActiveRecord::Rollback` and no `requires_new:` (savepoints).
+  - Calling `DB.transaction` inside a `DB.with` block borrows a different connection (`DB.with` is not a transaction, so there is nothing to participate in; with a one-connection pool it waits forever).
+  - The block's `c` is a boxed value, so `c.transaction { }` cannot be called on it (a method that yields is only inlined and has no body of its own, NOTES rule 67). Write nesting with `DB.transaction` or with `begin!` / `commit!`.
+  - If a `DB.transaction` block reads an outer block argument and that outer block is itself inside a block (three levels), it does not compile (NOTES rule 68). Inside a method such as an action, two levels work.
+- Verification: `test/db_transaction_api.rb` (compiled together with the whole framework). Commit, rollback on exception, nested participation, participation of `save` inside `Model.transaction`, the block-less form, calls from inside a `DB.with` block, calls from a controller action, and that `immediate: true` issues `BEGIN IMMEDIATE` (a `BEGIN IMMEDIATE` on another connection gets "database is locked"; with a deferred `BEGIN` it goes through).
+
+### D21. Data operations in migrations: record `execute` as an operation (2026-10-25)
+
+- Context: the migration DSL has only schema operations, which is why `down` can be derived from `change`. But a safe schema change sometimes needs a data operation (when adding a `retention_days` column with default 90, existing rows must be kept at 0, "unlimited", or the first deploy of the new column starts deletions nobody chose). Until now the only way was to override `up`, open a second `Connection` with `DB::CLI.resolved_path(".")`, check `schema_migrations` by hand so as not to re-run when the migrator calls `up` to collect operations for a rollback, and avoid `:memory:` and close it, which depended on the migrator's internals (issue #73).
+- Decision:
+  - Make `Migration::Base#execute(sql, binds = [])` DSL usable inside `change` / `up` / `down`. It executes nothing on the spot and is recorded as an `Operation` of kind `:execute` (`exec_sql`, and `exec_binds` already converted with `Cast.to_sql`). `up` / `down` remain pure recording as before, so the statement does not run even when the migrator calls `up` before a rollback.
+  - The migrator runs `:execute` on its own connection, inside the same transaction as that version's schema operations, in recorded order. The `UPDATE` runs after the preceding `add_column` is done, and later operations run after it. If the data operation fails, that version's schema operations are rolled back too and the version is not recorded. Without binds it uses `exec_script` (which can run several statements separated by `;`); with binds, a single-statement prepared statement.
+  - `:execute` has no automatic inverse. Rolling back a version whose `change` contains `execute` and that has no `down` written is `IrreversibleMigration` ("version N is irreversible: it executes SQL in change; write down"). The migrator first tries recording `down` for every target version, and if any cannot be recorded it stops **before rolling anything back** (at the same point as the check for versions whose files are missing). This pre-check also applies to other irreversible `change`s such as `drop_table`, and the message now carries the version. An `N`-step rollback no longer stops partway.
+  - `db/schema.rb` is dumped from the DB, so data operations do not appear in it. The generator (`gen/migrations.rb`) only `require_relative`s the migration files and does not lexically scan their contents, so it needs no change.
+- Rejected:
+  - Rails's `reversible { |dir| dir.up { ... } }`. It means calling a block later with a receiver (there is no `instance_exec`, NOTES rule 2), and writing `up` and `down` achieves the same thing.
+  - Taking the `down`-side SQL as an argument as the inverse of `execute` (`execute up_sql, down_sql`). The combination with binds is hard to follow, and writing `down` reads better.
+  - Having `execute` run the SQL on the spot. It would run every time the migrator calls `up` to collect operations, which is exactly the fragility the issue raised.
+- Naming: the readers on `Operation` are `exec_sql` / `exec_binds`. Not the same name as `Relation#binds` (NOTES rule 10 / 34). `Base#execute` returns `nil`, a different return type from `Connection#execute` (an Array of rows), but test/migration_execute.rb and test/db_integration.rb confirm that a program containing both still compiles.
+
+### D22. Query API additions: upsert, aggregates, pluck, binds, LIKE, JSON Cast (2026-10-25, issue #74)
+
+- Decision: build no general query builder; instead add the raw-SQL patterns that applications kept writing by hand as small methods with fixed types.
+  - `Model.upsert(attrs, conflict: [...], update: { col: "SQL expression" })`: `INSERT ... ON CONFLICT (...) DO UPDATE SET`. If `update` is empty, `DO NOTHING`. The return value is the number of rows written (`changes`). It is a class method of the base `Model` and reads the subclass's `table_name` (we confirmed that in Spinel a `table_name` call from an inherited class method resolves to each subclass's own). No generated code is added. No validations, callbacks or automatic timestamps.
+  - `Relation#increment(column, by: 1)`: `UPDATE ... SET col = col + ?`. If there is a limit / offset, the window is selected with an `id` subquery, as in `delete_all`.
+  - `Relation#pluck_str` / `pluck_int` / `pluck_float`, `sum_int` / `sum_float`: in Spinel each method has one return type, so these are split by type instead of Rails's polymorphic `pluck` / `sum`. If `sum` were Float only, the sum of counters (the main use) would round once it exceeds 2^53, so an integer version is kept separately. `sum_float` is SQLite's `TOTAL` (0.0 when there are no rows).
+  - `Relation#count_by(column)` -> `Hash{String => Integer}` (keys are `Cast.str`, ascending, NULL and `""` summed under the same key `""`). The escape hatch for aggregating by a raw expression is `count_by_sql(expr)` (time buckets with `strftime(...)` and so on). The issue's `group_sql` became the terminal `count_by_sql`, because as a chain method it would need generated code in every model, and a "row with several aggregate columns" can only be typed as a polymorphic Hash in Spinel. As with `order_sql`, request data must not be put into the expression. `GROUP BY 1` (positional) is used because if the table has a `k` column, GROUP BY prefers the column over the alias.
+  - `Relation#where_like(column, text)` (a chain method in the generated code, and `Model.where_like`) and `Cast.like_escape(text)`: escapes `\`, `%` and `_` with `\`, and binds `%text%` to `LIKE ? ESCAPE '\'`. For a prefix match, pass `like_escape(q) + "%"` to `where_sql`.
+  - `Cast.binds(*values)`: builds the polymorphic array that `execute` accepts, passing each value through `Cast.to_sql`. Variadic arguments compile in Spinel (`Params#permit` is the precedent), so no versions like `binds1` to `binds4` are made.
+  - `Cast.hash(v)` / `Cast.array(v)` and `Cast.empty_hash` / `Cast.empty_array`: narrow a JSON value to Hash / Array. `when Time` comes first (NOTES rule 8). Instead of `v` itself, the elements are shallow-copied into a new typed container (`Hash[String, untyped]` / `Array[untyped]`, seeded with every scalar type: rules 9 and 46) that is returned. Returning `v` with `when Hash then v` would make the return value a boxed untyped (confirmed with `--emit-rbs`), and every later call would take the slow path.
+  - All column names are checked with `Ident.column?` and wrapped in backquotes; an invalid name is `ArgumentError` (a developer mistake, so 500). All values are bound.
+- Rejected: a general query builder (`select` / `group` / `having` chains). It would return rows of undetermined type, and the generated code would also grow. Returning `pluck` as a polymorphic array and letting the caller narrow it with `Cast` would mean the caller writing the same `Cast` every time, so it is split by type.
+- Consequences: `Ident::RESERVED_COLUMN_NAMES` does not change (only Relation methods and Model / Cast class methods were added; record instance methods did not grow). Generated models gain the two lines of `where_like`.
+
+### D23. Pagination: `Relation#page` and `Page`, `params.page_number`, the `paginate` helper (2026-10-25, issue #75)
+
+- Decision: put offset-based pagination in the framework.
+  - `Params#int(key, default:, min:, max:)`: passes to `to_i` only an optional `-` and 1 to 18 digits; anything else gives `default`, and out-of-range values are clamped to `min..max`. Spinel's `String#to_i` raises `RangeError` above 2**63-1 (NOTES rule 25), so request strings are never passed to `to_i` without a length check. `Params.parse_int(text, default)` reads the same way, and `Config` uses it too.
+  - `Params#page_number`: reads `page` as 1-based and clamps it to `1..Params.max_page`. `Params.max_page` is a module ivar like Multipart's, and `Application#boot` sets it from `Config#max_page` (default 10000, `CYBERTRAIN_MAX_PAGE`). This is because Params is in the HTTP layer and cannot read Config.
+  - `Relation#page(n, per: 50)`: narrows the relation to `LIMIT per OFFSET (n - 1) * per` (replacing any earlier limit/offset) and returns a `Cybertrain::Page` (`number` / `per` / `row_offset` / `next?` / `prev?` / `next_number` / `prev_number`). `n` is also clamped to `1..max_page`, so the offset never exceeds `(max_page - 1) * per`. `per` is 1 to 1000; outside that it is `ArgumentError` as a developer mistake.
+  - `next?` is decided by one `SELECT 1 ... LIMIT per + 1` over the same window. It does not count all rows with `COUNT(*)`.
+  - The template helper `paginate(page, path)`: prints "Newer" (`rel="prev"`), "Page N" and "Older" (`rel="next"`) in a `<nav class="pager">`. It prints no links to pages that do not exist. The links' query string is the current request's with `page` removed (`Query.without_key`, which decodes and re-encodes each pair) and `page=N` added (not added for page 1). If `path` has its own `?`, that one is used. `href` goes through `Html.escape`. Templates can also read `@page.next?` and the like (`Helpers#call_object_method`).
+- On typed rows: rows are not carried on `Page` but stay on the relation. `to_a` / `each` after the window is set with `page` go through the generated `<Model>Relation`, so they stay typed as an array of `Article`.
+- Rejected:
+  - `Page#rows`. Typing it would require generating an `ArticlePage` per model, changing the gen/ of every application.
+  - Reading per + 1 rows, caching them on the relation and getting by with one query. It would require changing the base `rows` that the generated `to_a` calls, holding an ivar with a row array seeded with the same types as `execute_models`, and invalidating it on subsequent chain calls. Adding one `SELECT 1` was chosen instead.
+  - `Params#page`. Having the same name as `Relation#page` (which returns a `Page`) with a different return type breaks inference (NOTES rule 34). For the same reason, the offset on `Page` is called `row_offset`, not `offset`.
+  - `paginate(page, path, params)`. `Params` cannot turn the tree back into a query string. Re-reading the request's raw query string pair by pair keeps nesting and lists intact.
+  - Making an out-of-range `page` a 404. It is only clamped.
+- Later: keyset pagination (`after: id`) will be added later for large tables. The scaffold index view is not changed (so gen/ does not go stale). Usage is written in "Pagination" in the README.
+
+### D24. Outbound HTTP client: bound every wait and reject private addresses by default (2026-10-25, #63)
+
+- Problem: applications had no way to call webhooks, Slack or external APIs. Spinel's `Net::HTTP` performs the TLS handshake (`SSL_connect`) and every read after the first byte (`SSL_read`) as blocking C calls, and holds the OS worker for that time. With the default `SPINEL_WORKERS=1` that worker is the whole server, so one stalled peer stops every request. `TCPSocket.new(connect_timeout:)` is ignored on Spinel (60 seconds or more against an unreachable address), and `IO#gets` holds bytes that a later `wait_readable` cannot see.
+- Decision: put `Cybertrain::HttpClient` in the framework (the issue left the name open; this is the one chosen). It has three layers.
+  - `cybertrain/net/socket.rb` (`Cybertrain::Net`): bounded TCP. `Socket.new` + `connect_nonblock(exception: false)` + `wait_writable(t)`, then `getsockopt(SOL_SOCKET, SO_ERROR)` to read the result (a second `connect_nonblock` gives `EISCONN` on CRuby and a bare `SystemCallError` on Spinel, so the two do not agree). A read always tries `read_nonblock` first and waits with `wait_readable(t)` only on `:wait_readable` (it never waits for bytes already received). A write is `write_nonblock` + `wait_writable(t)`. Every wait is the smaller of "the limit for one wait, `timeout`" and "the deadline for the whole request, `deadline`" (`Net::Timer`, monotonic clock). Reading up to a line, a length or the end is done by `Net::Reader` (a byte buffer + a read position). The mailer (a separate issue) is expected to use the same layer, which knows nothing about HTTP.
+  - `cybertrain/net/tls.rb`: passes the same bounded waits through TLS with the openssl package's `SSLSocket#connect_nonblock` / `read_nonblock` / `write_nonblock` (`exception: false`). **Only this file does `require "openssl"`**. socket.rb and http_client.rb do not require openssl, so an application that does not use https does not link libssl. Requiring it puts an `OpenSSLConnector` into `Net.tls_connector` (a module-level ivar, NOTES 18 / 64); if none is there, https raises a `TLSError` saying that `require "cybertrain/net/tls"` is needed. Verification is the package's `SSLContext#set_params` itself: `VERIFY_PEER` against the OS trust store (replaceable with `SSL_CERT_FILE` / `SSL_CERT_DIR`; the package has no `X509::Store`), host name checking with `SSL_set1_host`, SNI, TLS 1.2 or later. CRuby's `SSLContext.new` defaults to `VERIFY_NONE`, so `set_params` is always called to make both behave the same. A disconnect without `close_notify` (common after `Connection: close`) is treated as the end. A body framed by Content-Length / chunked must still be complete.
+  - `cybertrain/http_client.rb`: HTTP/1.1, `Connection: close`, no redirects, proxies, keep-alive, cookies or compression (a client for notifications, not a browser). `get(url, headers:)` / `post(url, body, content_type:, headers:)` return an `HttpClient::Response` (`status` Integer, `headers` with lower-case names, `body`). A response is framed in one of three ways: Content-Length, chunked (when the last transfer coding is chunked), or until disconnect. Headers are limited to 8 KiB per line, 64 KiB in total and 100 lines; the body is limited by `max_body` (default 1 MiB). Up to five 1xx responses are skipped; 101 is rejected. The URL is split by a byte scan of our own (with rule 62's `s = text.to_s`), not by `URI`, and userinfo, whitespace, control characters and non-ASCII are rejected.
+- Private addresses: the name is resolved once (`Socket.getaddrinfo`, the first stream address), that address is checked with `Net::Address.blocked_reason`, and then that address is connected to. Because the decision is not made on the name, a name that returns a private address through `/etc/hosts` or DNS rebinding is rejected just like a literal. The TLS certificate is checked against the host name in the URL. Rejected are loopback, private (RFC 1918, `fc00::/7`, the deprecated `fec0::/10`), link-local (`169.254/16` is the cloud metadata service, `fe80::/10`), unspecified (`0/8`, `::`), multicast, broadcast, CGNAT `100.64/10`, documentation, benchmarking and reserved ranges, the same kinds embedded in IPv4-mapped / NAT64 / 6to4, and IPv4-compatible. IP parsing is a byte scan, not `IPAddr` (which Spinel does not have). It is allowed with `Config#http_allow_private` (`CYBERTRAIN_HTTP_ALLOW_PRIVATE=1` / `true`, default false) or `HttpClient.new(allow_private: true)`, for tests against a local server and for calling internal services.
+- Errors: under `HttpClient::Error` are `TimeoutError` / `RefusedError` (connection refused, unreachable, name resolution failure, reset) / `TLSError` / `BlockedAddressError` / `TooLargeError` / `BadResponseError`. Messages contain only `host:port` and **never the path or query** (a webhook URL carries its secret there). An invalid URL or header is an `ArgumentError`, which also does not repeat the URL. The Net layer raises its own exceptions under `Net::Error`, and `HttpClient#perform` maps them to HttpClient exceptions at the rescue stage (NOTES 47: distinguish exceptions in rescue clauses, in a method that takes no block, NOTES 32 / 45). The mailer can map the same Net exceptions to its own.
+- Name resolution stays blocking: the runtime has no asynchronous resolver. The `getaddrinfo` wait holds the calling thread's OS worker (usually a few milliseconds; the system timeout if the resolver is dead). The deadline counts that time but cannot interrupt it. This is written in the README. Spinel's `Socket.getaddrinfo` returns an empty array instead of raising for a name it cannot resolve (CRuby raises `SocketError`), and its element arrays cannot be read by index (`entry[3]` does not compile); they can be read only by destructuring the block parameters of `each`.
+- Rejected alternatives:
+  - Use or wrap Spinel's `Net::HTTP`: the waits are inside C and cannot be bounded from Ruby.
+  - Read lines with `IO#gets`: received bytes stay in the stdio buffer, and `wait_readable` does not see them and waits until the timeout.
+  - Require openssl directly from http_client.rb: forces on applications that do not use TLS both linking libssl and rule 62's name-collision surface (the openssl package defines `getbyte` / `read` / `write` / `close` / `<<` in Ruby).
+  - Include it in `require "cybertrain"`: putting code that is never called into every application hits inference holes (NOTES 36). Require it where it is used.
+  - Check every resolved address and reject if any one is private, or fall back to multiple addresses: only one address is connected to, so checking that address is enough. There is no fallback for now.
+  - An end-to-end TLS test: the package has no X509, so certificates cannot be made, and there is no TLS server. test/http_client.rb checks up to handshake failure (against a plain HTTP server) and timeout (against a silent server); a verified handshake against a real site was checked by hand.
+- Consequences: test/template_integration.rb becomes a program with http_client and net/tls (that is, the openssl package) added to the whole framework, and it POSTs to the Server with HttpClient. Rule 62 regressions are watched here and in test/openssl_dispatch.rb.
+- Addendum (2026-10-25, macOS CI): "connect only to the first stream address" broke `localhost` on macOS. macOS's `getaddrinfo("localhost")` returns `::1` first, and a server listening on `127.0.0.1` refuses it (in CI's `test (macos-latest)` the HttpClient and mailer `localhost` tests got connection refused). So the rejection above was revised: `Net.resolve` now holds all resolved stream addresses, in order, without duplicates (`Net::Endpoint`), and `TcpStream.connect_to` tries them in order: on any of refused, unreachable, reset, cannot open a socket (a host without IPv6), or no answer within the limit for one wait, it moves to the next; the whole is bounded by the deadline, and if all fail it raises the error for the last address (exceptions are not stored; recursion and rescue clauses tell them apart, NOTES 47). The name is never looked up again, so the property "connect to the address resolved once" holds for each attempt. The private-address decision is also made per address (`HttpClient#allowed_addresses`): rejected addresses are skipped, and `BlockedAddressError` (naming the first one) is raised only when all are rejected. The mailer's `none` + credentials keeps only loopback addresses (`Mailer.loopback_only`). Also, a socket-layer failure after the TLS handshake has started (reset, EOF, broken pipe) becomes a `TlsError` ("TLS handshake failed: ..."), the same as when OpenSSL reports an invalid record. Which of the two happens against a peer that does not speak TLS depends on timing and the kernel, and this keeps the exception class from varying by platform. The tests were made portable too: a connection that never completes is created by filling the `listen(0)` queue with up to 1024 non-blocking connections (macOS accepts more than the backlog or answers with RST), and if that still does not leave one pending, it connects to TEST-NET-1's `192.0.2.1` with `allow_private`. The handshake timeout is created with a server that accepts and writes nothing, not with a connection left in the queue.
+
+### D25. Login policy moves into the framework: serialized verification, dummy verification, session revoke on password change, test-time iteration count, absolute expiry, safe return-to location (2026-10-25, issue #71)
+
+- Context: D15 put in the framework only "the things you get wrong when you write them yourself", but policies every application needs (absolute expiry ad3cb63, return-to check 536665f) were written on the generated-code side, and some things were still left for applications to add themselves (serializing verification, the timing difference for a nonexistent address, revoke on password change). A design survey that looked only at the README's feature list also missed `Cybertrain::Password` and `skip_before_action` and wrote replacements, so the README gained an "Authentication: what the framework provides" section.
+- Decision:
+  - `Password.verify_serialized(plain, digest)`: runs `verify?` one at a time inside an in-process `Mutex` (a module ivar, NOTES rule 18 / 64). PBKDF2 uses about 0.2 s of CPU per call, and when a burst of logins occupies all `SPINEL_WORKERS` OS workers, other pages wait. Serialized, at most one worker is computing. Waiting threads stop on the Mutex (they do not spin). The lock is taken only at login and is not on the per-request path (NOTES rule 57).
+  - `Password.dummy_digest`: builds the digest of a random password once per process (rebuilt if `iterations` changes), and a nonexistent address is also verified once against it. Response time does not reveal whether an account exists. The generated code previously called `Password.hash` (generation rather than verification, so the cost profile differed, for example salt generation).
+  - `Password.session_key(digest)` / `session_key_matches?(key, digest)`: an HMAC-SHA256 of the password digest (keyed with `secret_key_base`, with a label). It is put into the session at sign-in and compared on every request. Changing the password changes the digest (salt included), so earlier sessions no longer match. The cookie is only signed and therefore readable, but without the secret key the value says nothing about the digest. A rehash (`needs_rehash?`) also changes the digest, so right after the iteration count is raised, each user's other browsers are signed out once. This was accepted.
+  - `Password.iterations`: unless set explicitly, `TEST_ITERATIONS` (1000, the lower bound of `iterations=`) when `Cybertrain.config.test?`, otherwise `ITERATIONS` (100,000). A digest carries its own iteration count, so nothing changes on the verification side. The value is decided on every query (Config may not exist yet when `password.rb` is loaded). For that reason `password.rb` requires `cybertrain/config`.
+  - `Config#session_absolute_max_age` (default 1209600 = 2 weeks, the same value ad3cb63 used in the generated code; 0 disables it): when `SessionStore` first writes a session it puts `"_issued_at"` (epoch seconds) in the cookie (inside the signature), and on load treats the session as empty once this time has passed. The Max-Age sent does not exceed the remaining time. Cookies from before this setting stamp their start time on the first request. `Session#restart_lifetime!` restarts the count (the generated code calls it at sign-in). `SessionStore.new` defaults to 0 (disabled), and `Application` passes the Config value. Tests fix the clock with `SessionStore#fixed_now=` (passing a lambda as a keyword argument is not allowed, NOTES rule 42).
+  - `Controller#local_path?(text)` / `safe_redirect_path(text, fallback)`: accepted as a path on this site only when it starts with `/`, is neither `//` nor `/\`, consists only of printable ASCII (0x21 to 0x7E, excluding backslash), and is 2048 bytes or less. Paths sent by browsers are already percent-encoded, so rejecting non-ASCII does not drop correct links (the generated code of 536665f let `/記事` through; it is now rejected).
+  - Generated code (`cybertrain generate authentication`): `User.authenticate_by` / `#authenticate` use `verify_serialized` and the dummy digest, `start_new_session_for` writes `session.restart_lifetime!` and `session[:password_key]`, `resume_session` deletes the Session row and signs out if the key does not match, and the expiry on the row's `created_at` uses `session_absolute_max_age` (the same value as the cookie-side expiry, so it is also enforced on the row side). `after_authentication_url` became a one-liner with `safe_redirect_path`.
+- Rejected alternatives:
+  - Keep the password key in the sessions table: deleting a row revokes it, but the application would have to write the code that deletes all rows on password change. Kept as a session value, only a comparison is needed.
+  - Keep the absolute expiry only in the generated code (the row's `created_at`): sessions of applications that do not use authentication (CSRF token, flash) would stay without expiry. It was put in both.
+  - Serialize `verify?` itself: uses other than authentication (batch verification of API tokens and so on) would also be queued in one line. A separate name was used.
+- Consequences: `safe_redirect_path` was added to `ATTACHMENT_RESERVED_ACTIONS` (collision between controller method names and attachment field names, `script/check-reserved-names`). `local_path?` has a `?`, so it cannot be a field name. Tests: test/password.rb (serialization is checked by a verification on another thread not finishing while the lock is held, and by a concurrency of 1 under parallel calls), test/session.rb (expiry with a fixed clock), test/controller.rb (return-to location), test/cli_authentication.rb (generated output).
+
+### D26. Rate limiting and `request.client_ip`: trust only a trusted proxy on the same host (2026-10-25, issue #70)
+
+- Decision:
+  - `Request#client_ip`: defaults to `remote_addr`. Only when `Config#trusted_proxy` (default false, `CYBERTRAIN_TRUSTED_PROXY=1` / `true`) is true **and** the connection comes from loopback (127.0.0.0/8, `::1`, `::ffff:127.x.x.x`) is the **last** element of `X-Forwarded-For` (the one appended by the proxy on the same host) used. Earlier elements can be written freely by the client and are never used. If the last element is empty, longer than 45 bytes, contains anything other than printable ASCII (0x21 to 0x7E), or the header is absent, it is `remote_addr`. All scanning is byte-wise (`getbyte` / `byteslice`); `split` / `strip` / `downcase` are not used (the header can contain arbitrary bytes, and CRuby's `split` raises on invalid UTF-8, NOTES rule 52). The argument is read through a new local `s = value.to_s` (rule 62).
+  - `Request#loopback?`: whether `remote_addr` is loopback (X-Forwarded-For is not consulted). For "only from this machine" checks on first-run setup screens and administrative endpoints. It checks four dot-separated parts of 0 to 255 each, so `127.0.0.1x` and `1270.0.0.1` are false. The server is TCP only and has no UNIX sockets, so there is no case for those.
+  - The trust flag lives in the HTTP layer's module ivar `Request.trusted_proxy`, and `Application#boot` sets it from `Config#trusted_proxy` (the same shape as `Params.max_page` / `Multipart.configure`; the HTTP layer cannot read Config, `script/check-http-layer`).
+  - `Controller.rate_limit(to:, within:, only: [], except: [], by: :client_ip, redirect_to: "", alert: "")`: each declaration creates one `Cybertrain::RateLimit` (the issue left the name open, so this one was chosen), registers it in `RateLimit::ALL` (a constant, so a GC root, NOTES rule 64), and adds a before callback carrying its index (`Callback#limit_id`; other callbacks have -1). When there is an index, `run_one` calls the controller's own private method `apply_rate_limit` instead of a stored block. A call from a stored block does not determine the callee's argument types (rule 30), so wrapping it in a block was avoided. It is ordered with the other before_actions in declaration order. `by:` is `:client_ip` (default) or `:remote_addr`.
+  - Counting is a fixed window: for each key (`"<controller_path> <address>"`; a limit declared in a parent is counted separately for each subclass, as Rails's `rate_limit` does) it keeps the window's start second and the count. The first request in a window opens it, requests up to the `to`-th pass, and the window closes after `within` seconds. Beyond that: 429, body `Too Many Requests`, `Retry-After` (seconds until the window closes, minimum 1). With `redirect_to:` it sends a 303 there and puts `alert:` into `flash[:alert]` (the equivalent of `with: -> { redirect_to ..., alert: ... }` in Rails's generated code; the block form is not taken, for the reason above). In either case the action does not run.
+  - Memory bound: two typed Hashes (start second, count; seeded then emptied, rule 9) protected by one Mutex. Keys are ordered by when they opened their window, and a key that reopens its window is deleted and reinserted, so the table is always in start-second order and expired entries cluster at the front. When a new key arrives at a full table (default 10,000 keys, `max_keys=`), expired entries are removed from the front, and if it is still above 90 percent, the oldest windows are removed (it frees 10 percent at a time, so the copy of `keys` is made only when full). An attack with many addresses only makes other clients' windows close early; the process does not grow.
+  - Time is `RateLimit.current_time` (epoch seconds). Tests fix it with `RateLimit.current_time = n` and return to the system clock with -1.
+  - The `SessionsController` from `cybertrain generate authentication` writes `rate_limit to: 10, within: 3 * 60, only: [:create], redirect_to: "/session/new", alert: "Try again later."` (the same values and behaviour as the Rails 8 generated output). The `ip_address` recorded by `start_new_session_for` also became `request.client_ip`. The generated `AppTest.sign_in` first calls `RateLimit.reset_all!`: all test clients are 127.0.0.1, so a suite that signs in on every test goes over 10 (Rails does not count, because its test-environment cache is a null store).
+  - `:too_many_requests` (429) was added to `Controller::STATUS_SYMBOLS` and to `Test::Client`'s `assert_response`.
+- Rejected alternatives:
+  - Using the first element of X-Forwarded-For, or Rails's `remote_ip` approach of walking a list of trusted proxies (CIDR settings) from the right. The client can choose the first element. Walking a list is meant for multi-hop setups and is more than cybertrain's assumption needs (one hop of nginx / Caddy / kamal-proxy on the same host, docs/deploy.md). That a directly connected client cannot choose its own address is guaranteed by "only connections from loopback".
+  - Looking only at `trusted_proxy` without the loopback check. If the application is exposed directly to the outside with the setting left on, anyone can spoof their address.
+  - A monotonic clock. The window's seconds go straight into `Retry-After`, so whole wall-clock seconds are enough, and they are easy to replace in tests.
+  - Counting in the database (shared across processes). For now it is in-process only. The counter is confined to `RateLimit` so that the backend can later be replaced with the declarations unchanged.
+  - `only: :create` (a single Symbol) or `within: 3.minutes`. Like `before_action` only arrays are accepted, and there is no `Integer#minutes`, so it is an integer number of seconds.
+- Consequences: a request to a rate-limited action takes one lock (NOTES rule 57: taking a lock on every request clogs multiple workers), so the documentation says to narrow it with `only:`. The lock is held for a few Hash operations, and the cleanup when full is 10 percent's worth. `apply_rate_limit` is a private controller method, so it was added to `ATTACHMENT_RESERVED_ACTIONS` (`script/check-reserved-names`). Usage is in the README's "Rate limiting and the client address".
+- Addendum (review comment on PR #79): trusted proxies can now be listed as CIDRs. In the repository's own deployment instructions (docs/deploy-kamal.md, examples/blog's Kamal configuration) kamal-proxy and the application run in separate Docker containers, and the connection source the application sees is kamal-proxy's address on the Docker bridge network (by default inside 172.16.0.0/12), which is not loopback. With the loopback-only rule `trusted_proxy` does not work there, and `rate_limit` counts everyone as kamal-proxy's single address. The rejected alternative above, "a list of trusted proxies", rejected the form that walks from the right for multi-hop setups; the form that stays one hop and matches against a list is adopted here.
+  - `Config#trusted_proxies` (default `[]`, `CYBERTRAIN_TRUSTED_PROXIES` split on commas with surrounding whitespace removed): IPv4 / IPv6 addresses or CIDRs. `Config#trusted_proxies_error` checks it at boot (`fail_boot`, the same shape as the other `*_error`), rejecting entries that are neither an address nor a CIDR, prefixes beyond /32 or /128, and entries with `%zone`. `Application#boot` puts it into `Request.trusted_proxies=`, which turns it into the parsed form (the prefix length and the 16 bytes of the IPv6 form, 17 Integers in all, laid out in one typed array). An invalid entry passed directly to `Request.trusted_proxies=` is an ArgumentError, and the list that was there stays as it was.
+  - `Request#client_ip`: only when `remote_addr` is "loopback with `trusted_proxy` true" or "within any entry of the list" is the last element of `X-Forwarded-For` used, with the same checks as before. The one-hop-only principle (issue #70) does not change. `CYBERTRAIN_TRUSTED_PROXY=1` is shorthand for `127.0.0.0/8,::1` and is added to the list.
+  - Matching is in a new HTTP-layer file, `cybertrain/http/ip_address.rb` (`Cybertrain::IpAddress`), by byte scanning only (neither IPAddr nor Regexp). IPv4 entries are held in IPv4-mapped form (`::ffff:a.b.c.d`, prefix +96), so `::ffff:172.18.0.2` reported by a dual-stack listener also matches an IPv4 entry. A `%zone` on the peer address is ignored. The IPv4 / IPv6 parsing that was in `Net::Address` (the outbound HTTP client's check) moved here, and `Net::Address.parse_ipv4` / `parse_ipv6` / `hex_value` now only delegate (the HTTP layer must be loadable on its own, `script/check-http-layer`). `Config` requires this file (only this one file with no dependencies; it does not load the server itself).
+  - The `config/deploy.yml` written by `cybertrain new` (and the same configuration in examples/blog) puts `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` under `env.clear`. Kamal does not publish the application's port on the host, so only containers on the Docker network reach the application. `proxy.forward_headers` is not set: kamal-proxy with `ssl: true` does not pass on the `X-Forwarded-For` the client sent and adds its own (Kamal documentation). `forward_headers: true` is for when there is another proxy in front of kamal-proxy; setting it here would let the value written by the client through.
+  - Rejected: trusting private addresses such as 172.16.0.0/12 by default. In a setup with nginx on the same host (loopback) or direct connections from within the LAN, anyone on the LAN could choose their address. The setting is made explicit on the application side (the generated deploy.yml).
+  - Tests: test/client_ip.rb (matching for v4 / v6 / v4-mapped, out of range gives `remote_addr`, single addresses, rejection of invalid entries, combination with the loopback shorthand), test/cli_new.rb (the generated deploy.yml).
+
+### D27. Mailer: a minimal SMTP client on top of the bounded socket layer (2026-10-25, #64)
+
+- Problem: applications had no way to send mail. `cybertrain generate authentication` also leaves out password reset because there is no mailer. Done correctly, with STARTTLS, implicit TLS and bounded waits, a home-made SMTP client runs to several hundred lines, which is not something each application should write.
+- Decision: `Cybertrain::Mailer` (cybertrain/mailer.rb; this name was chosen over `Smtp`). It is built on D24's `Cybertrain::Net` and does not duplicate socket code. Connecting, each TLS stage, each response read and each write are all bounded by the smaller of `timeout` (default 10 seconds) and the whole-delivery `deadline` (default 60 seconds) (`Net::Timer`). Responses are read with `Net::Reader`'s line reads; a multi-line response (`250-...`) whose code changes is a `ProtocolError`, and the limits are 4 KiB per line and 100 lines.
+  - API: `Mailer.deliver(to:, subject:, body:, from: "")` (with the `Config` settings) and `Mailer.new(host:, port:, user:, password:, from:, tls:, timeout:, deadline:, helo:)#deliver(...)` (each keyword defaults to `Config`, so tests and applications can bypass Config). The return value is the server's response to the body (`250 ... queued as ...`). `to:` is a single String, with multiple recipients separated by commas (a polymorphic argument accepting String and Array is risky on Spinel, NOTES 14 / 29).
+  - Dialogue: the 220 greeting, `EHLO`; with `starttls`, `STARTTLS` -> 220 -> TLS handshake (`Net.tls_connector`) -> `EHLO` again; if there is a user, `AUTH PLAIN` (with an initial response, RFC 4616; the base64 of `\0user\0password` uses `strict_encode64` from Spinel's base64 package, and because it contains NUL it is built with `<<` rather than interpolation, NOTES 60), `MAIL FROM:<>`, `RCPT TO:<>` per recipient (250 or 251), `DATA` (354), the dot-stuffed body and `.`, `QUIT` (221 is waited for, but a failure does not make the delivery fail). No pipelining.
+  - TLS modes: `starttls` (default, 587), `tls` (implicit TLS, 465), `none` (plain text, 25). `smtp_port` defaults to 0, meaning "the mode's number" (so the number follows if `config/app.rb` changes `smtp_tls` after Config initialization). In a mode that needs TLS, if `cybertrain/net/tls` has not been required, a `TLSError` is raised before connecting (`TlsConnector#tls_ready?` was added; openssl is not required from mailer.rb for the same reason as in D24). Plain-text bytes that arrived after the STARTTLS 220 would be read as if they had come over TLS (STARTTLS command injection), so if any remain in the `Reader` it is a `ProtocolError`. If the server does not advertise STARTTLS it is a `TLSError` (no silent fallback to plain text).
+  - Credentials: in `none` with a user configured, if the resolved address is not loopback, an `InsecureError` is raised before connecting. The password appears in none of the error messages, logs, boot banner or `help` (Config's built-in attributes do not appear in the banner, and messages are built only from `host:port`, the stage and the server's response; the server's response is reduced to printable ASCII and cut at 300 bytes). `inspect` is not overridden: defining a method with the same name as a built-in switches every call on a boxed receiver (NOTES 62).
+  - Message: `Date` (UTC), `From`, `To` (folded where it would exceed 78 columns), `Subject`, `MIME-Version: 1.0`, `Content-Type: text/plain; charset=UTF-8`, `Content-Transfer-Encoding`. A subject in printable ASCII is sent as is; anything else (non-ASCII, containing `=?`, over 900 bytes) becomes RFC 2047 B encoded-words (up to 45 raw bytes, never cutting a UTF-8 character in the middle, folded per word). The body has its line breaks normalized to CRLF and leading `.` doubled. The transfer encoding is `7bit` for ASCII, `8bit` for UTF-8 when the server advertises 8BITMIME (`MAIL FROM ... BODY=8BITMIME`), and otherwise, or if any line exceeds 998 bytes, `base64` (76 columns). Instead of the issue's proposal (send 8bit even without the advertisement), the choice was to follow RFC 6152 and not send 8bit to a server that does not advertise it. No `Message-ID` is added (the submission server adds it, RFC 6409).
+  - Rejected input (`ArgumentError` before connecting; the message does not repeat the value): an address that is not a bare ASCII `local@domain` (CR/LF, whitespace, control characters, non-ASCII, `<>()[],;:\"`, not exactly one `@`, local part over 64 bytes or whole over 254 bytes), a subject containing CR/LF/NUL (header injection) or over 998 bytes, a body that is invalid UTF-8 or contains NUL, 101 or more recipients.
+- Errors: under `Mailer::Error` are `TimeoutError` / `ConnectError` / `TLSError` / `ProtocolError` / `InsecureError` / `RejectedError` (the server's code in `smtp_code`, the stage and the server's text in the message). Net exceptions are mapped at the rescue stage of `Mailer#perform` (the same as HttpClient, NOTES 32 / 45 / 47).
+- Settings: `Config#smtp_host` / `smtp_port` / `smtp_user` / `smtp_password` / `smtp_from` / `smtp_tls`, environment variables `CYBERTRAIN_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_FROM` / `_TLS`. The initialization is written directly in `Config#initialize`: an ivar first assigned in a helper method called from initialization becomes boxed, and reading it as a keyword argument default does not compile (NOTES 73).
+- Rejected or deferred: HTML, multipart, attachments, templates, display names, `Cc` / `Bcc` headers, AUTH LOGIN / CRAM-MD5, SMTPUTF8, pipelining, a delivery queue (`deliver_later`). Generating password reset (`cybertrain generate authentication`) is left as separate work, and the generator's comment has not been changed yet. There is no end-to-end TLS test, for the same reason as in D24: test/mailer.rb checks STARTTLS and implicit TLS up to handshake failure (a server that answers in plain text).
+
+### D28. Background work: `Scheduler` and the database job queue `Job` (2026-10-25, issue #65)
+
+- Decision: the framework starts one background thread, and only in a process that runs as a server.
+  - `Cybertrain::Scheduler.every(seconds, name) { ... }`: registered in `config/app.rb` or in a file that `bin/<app>.rb` loads. A task is a typed `Scheduler::Task` (name, interval, Proc, next run time), pushed onto the array in the constant `Scheduler::TASKS` (class variables are not GC roots, NOTES 64; the empty array is seeded with its element type, NOTES 9). The block takes no arguments (there is no `instance_eval`, so there is no implicit receiver). The first run is `seconds` seconds after start; after that, each run is `seconds` seconds after the start of the previous run.
+  - `Application#serve` calls `Scheduler.start!(config)`. This is after `boot` has connected to the DB, bound the port and set `SPINEL_WORKERS` (NOTES 22), and after the startup banner. `serve` is reached only when `Main.server?(argv)` is true, so it does not run for `migrate` / `db` / `Main.command`. The application's `bin/` no longer needs to start a thread itself. `Test::Client` does not go through `serve`, so it does not run in tests either.
+  - Each run calls the Proc read from the Task inside `Scheduler.run_task`, an ordinary method that does not yield, and with `rescue JSON::NestingError, JSON::ParserError, StandardError` it logs `[ERROR]` and carries on (NOTES 32 / 45 / 61 / 69). A task that failed runs again at its next time.
+  - `Scheduler.run_due(now)` is one tick; tests call it with a time (no sleeping). `Scheduler.last_tick` (Integer epoch seconds, read and written under a Mutex) can be read by a health check. `stop!` asks the thread to finish, and a generation number from `start!` keeps an old loop from running alongside a new one.
+  - `Cybertrain::Job`: `Job.handle(kind) { |payload| ... }` registers a handler (constant `Job::HANDLERS`), and `Job.enqueue(kind, payload, run_at: Time.now)` adds a row to the table `cybertrain_jobs` (id, kind, payload, run_at, attempts, last_error, state = queued / running / done / failed, created_at, updated_at). The payload is a String; the application turns structured data into JSON. Enqueueing an unregistered kind raises `ArgumentError` (a misspelling is reported at enqueue time; every process goes through the same `bin/<app>.rb`, so registrations match in every process).
+  - `start!` adds the worker as a scheduler task (`"cybertrain jobs"`, every `Config#job_poll_interval` seconds, default 5) only when at least one handler is registered. One poll processes up to `Job::JOBS_PER_POLL` (20) due rows, one at a time (`Job.work_one(now)`, also callable from tests).
+  - A row is claimed in a short transaction with `DB.transaction(immediate: true)`: it SELECTs the oldest due `queued` row and checks that `UPDATE ... SET state = 'running', attempts = attempts + 1 WHERE id = ? AND state = 'queued'` gives `changes == 1`. The handler is called after COMMIT, holding no lock. On success the row becomes `done`; on an exception it records `last_error` ("Class: message", cut at 1000 characters), moves `run_at` later and returns to `queued` (waits of 60, 300, 900, 3600 seconds, then 3600 seconds). When the attempt count reaches `Config#job_max_attempts` (default 5) it becomes `failed`. A row whose kind has no handler (a handler removed by a deploy) becomes `failed` at once.
+  - Attempts are counted at claim time, so a row whose process died while processing it also counts as one attempt. When the worker starts, rows left in `running` are put back to `queued` (`Job.recover!`). There is one worker per database (next item), so at that point no other process is processing.
+  - If `Config#worker` (`CYBERTRAIN_WORKER`, default true; `0` / `false` for false) is false, `start!` does nothing. When several processes share the same database, this is how all but one are stopped. If `scheduler_interval` (the tick interval, default 1 second), `job_poll_interval` or `job_max_attempts` is less than 1, boot stops.
+- Table setup: not a framework-owned migration; `Job.install!` issues `CREATE TABLE IF NOT EXISTS` (and the indexes). The first `enqueue`, worker start, `work_one` and so on call it once per DB connection (`DB.generation` is the count of `DB.connect` calls, and it remembers which connection generation it set up for). Times are INTEGER epoch seconds, so SQL only needs to compare `run_at <= ?`. Like `schema_migrations`, it is excluded from the `db/schema.rb` dump (`SchemaDumper.table_names`). If it were included, the generator would generate a model `CybertrainJob`.
+- Reason: starting a thread by hand means every application redoes the order of setting `SPINEL_WORKERS`, waiting for the DB connection, rescue and logging, checking `Main.server?`, and the problem of SQLite calls holding an OS worker. A reliable-delivery queue (ordered by due time, exponential retry, final states, a cap on attempts) is several hundred more lines.
+- Rejected alternatives:
+  - Having applications include a framework-owned migration. Every application's `db/migrate` and `gen/migrations.rb` would change, and applications that do not use jobs would get the table too. It would also appear in schema.rb and a model would be generated.
+  - Writing the migration out with a generator (`cybertrain generate jobs`). The shape of the table is decided by framework code, and the application has no reason to change it. When the shape changed, it would disagree with the application's migration.
+  - A task block that takes an argument (a context object). There is nothing to pass for now. If it is needed, it can be added with a registration method under another name.
+  - Calling the handler inside the transaction. A long handler would keep holding the write lock and make request writes wait.
+- Constraints (SQLite and Spinel): tasks and handlers both run one at a time on the scheduler thread. A SQLite call holds an OS worker until it returns, so with `SPINEL_WORKERS=1` a long task stops every request. Split work into small pieces (such as a thousand rows at a time) and keep tasks short. This is written in the README under "Background work".
+- Later: cron-style schedules, job priority and uniqueness, sharing work across multiple workers (claiming a row is already exclusive, so this can start by removing the `worker` switch), a command to re-enqueue `failed` rows.
+- Verification: `test/scheduler.rb` (does not run before it is due, logging exceptions and the loop continuing, `last_tick`, doing nothing when `worker` is false, starting a real thread), `test/jobs.rb` (compiled together with the whole framework; enqueue / claim / run / done, due-time order, backoff and attempt count, final `failed`, unknown kind, the `last_error` limit, `recover!`, enqueue inside a rolled-back transaction, `prune_done`, exclusion from the schema dump, the scheduler adding the worker task).
+
+### D29. Invitation-only first-run setup: `generate authentication --invite-only` (2026-10-25, issue #72)
+
+- Context: there is no console, so the authentication generator writes a public sign-up page (`/sign_up`) to let the first user in (D15). For internal tools this is the wrong default: anyone who reaches the server before the administrator can register. What applications end up writing themselves is (a) a `myapp user EMAIL` subcommand that reads the password from standard input, and (b) a `/setup` page that answers only loopback connections and only while there are no users, plus a `[WARN]` at startup while there are no users.
+- Decision: add `cybertrain generate authentication --invite-only`. It differs from the default output as follows, and all of it is application code (the D15 policy; the framework side only uses `request.loopback?` from D26 and `Main.command` from D18).
+  - It does not write `RegistrationsController`, `registrations/new.html.erb`, the `/sign_up` route, or the "Sign up" link on the sign-in page.
+  - `app/commands/user_command.rb`: the `UserCommand` module and the registration `Cybertrain::Main.command("user", ...)`. With `EMAIL [PASSWORD]` it creates a user with that address, or changes the password if one exists (`password=` changes the digest, so that user's existing sessions are revoked through the D25 password key). It prints `created ADDRESS` / `updated ADDRESS` and returns 0. Argument errors (zero, three or more, starting with `-`) print a usage line and return 1; an empty password and validation errors (fewer than 8 characters and so on) print an error line and return 1. If PASSWORD is omitted it reads one line from standard input (printing `Password: ` on a terminal) and drops only one trailing newline (`\n` / `\r\n`). This keeps the password out of `ps` and shell history. Terminal echo is not turned off (there is no `io/console`). `STDIN.gets` and `STDIN.tty?` were checked to behave the same as CRuby on Spinel 2026.09.12.
+  - Immediately before the `exit(Cybertrain::Main.run(` line in `bin/<app>.rb`, it inserts, once, a `require_relative` of the file above and `UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)` (a one-time edit like the insertion into `ApplicationController`; if the require is already there it does nothing).
+  - `SetupController` (`GET` / `POST /setup`, `app/views/setup/new.html.erb`): `before_action :require_first_run` returns 404 if a user exists (`User.all.exists?`); otherwise, if the setting `setup_open` is false, it lets the request through only when `request.loopback?` and there is no `X-Forwarded-For` header. On a successful create it signs the user in with `start_new_session_for` and goes to `/`.
+  - It inserts `c.setting_bool :setup_open, env: "<APP>_SETUP_OPEN", default: false` (D17) at the top of the `Cybertrain.configure` block in `config/app.rb`. When true, `/setup` can be opened from any address, only while there are no users (for a first start behind a proxy on another host).
+  - Generated tests (the invitation-only version of `test/authentication.rb`): 404 from another address (`client.peer_address = "203.0.113.7"`), 404 through a proxy (with X-Forwarded-For), 404 if a user exists, opening with the switch, create and sign in, re-render on a short password, create / update / reject with the `user` command through `Cybertrain::Main.run` (afterwards the test reconnects its pool: the command connects with a pool of 1 and disconnects, D18), newline handling, and the warning check. Tests from sign-in onwards are shared with the default version.
+  - Only two things were added to the framework: `Test::Client#peer_address` (default `"127.0.0.1"`, so tests can build a request from another machine; a reader with the same name as `remote_addr` was avoided, NOTES rule 10), and making `Main.server?` `@api public` (the check an application uses so that startup-only work does not run in one-off commands).
+- Reasons:
+  - **The loopback check uses only the socket peer.** Clients can write headers, so a header is never a reason to open. Conversely, behind a proxy on the same host (nginx / Caddy / kamal-proxy) every request's `remote_addr` is loopback, and forgetting to set `CYBERTRAIN_TRUSTED_PROXY` would open `/setup` to the world. Proxies add `X-Forwarded-For`, so the presence of the header closes it. Letting a header push towards closed is safe (spoofing it only locks yourself out).
+  - **Where the startup warning goes.** There is no hook called after `Application#boot`. Adding an `after_boot` registration to the framework would put a call to a stored block (NOTES rules 30 / 69) on every program's startup path, and would also need a whole-framework test for it. Generated code is enough: in `bin/<app>.rb`, before `Main.run`, and only when starting as a server (`Main.server?`), it connects with a pool of 1, asks `User.all.exists?`, disconnects, and leaves the rest to boot (boot connects its own pool unless `DB.connected?`). A `Cybertrain::DB::Error` when the users table does not exist yet (not migrated) is silently skipped (`./<app> migrate` comes first, and in that state `/setup` itself does not work yet). rescue / ensure are placed in an ordinary method that does not yield (rules 32 / 45), and rescue clauses use fully qualified names (rule 70). The warning is printed before the startup banner.
+  - **The command file goes in `app/commands/`.** Writing it directly in `bin/<app>.rb` would mean tests (which do not read `bin/`) could not call the command. `spin run gen` reads only `app/models` and `app/controllers`, so `app/commands/` does not go into gen/app.rb, and bin and the tests each require it.
+- Rejected alternatives:
+  - Making invitation-only the default: it would break the existing procedures (CI, the README walkthrough) and applications for which public sign-up is correct. It is chosen with a flag.
+  - Making `/setup` a URL with a token (printing a one-time token in the startup log): people who can read the log can usually log in to the server, so there is little gain over loopback-only, and it would add storing and expiring the token to the generated code.
+  - Reading the password from an environment variable: a process's environment can be read by the same user through `/proc/<pid>/environ`, and it tends to stay in shell history. Standard input, or an argument given knowingly, was chosen instead.
+  - Serialising concurrent creates on `/setup` (simultaneous POSTs while there are no users): with loopback-only, only the operator can reach it, and the unique index rejects the same address. It is not worth the complexity of wrapping it in a transaction.
+- Consequences: added invitation-only cases for generated files, insertion, re-running and rejection to `test/cli_authentication.rb`. A generated application was compiled and run with `cybertrain new` -> `generate authentication --invite-only` -> `db migrate` -> `spin test test/authentication.rb`, and a production binary built with `cybertrain build` was checked for the warning, creating a user from standard input, the loopback check on `/setup`, and 404 with X-Forwarded-For (the same steps were added to CI).
+- Revision (2026-10-25, review comment on PR #79): add a one-time token to `/setup`, adopting the token URL from "Rejected alternatives" above.
+  - Review comment: with only the loopback check and "no X-Forwarded-For", if the proxy on the same host is configured not to add that header (plain nginx without `proxy_set_header`, for example), every client looks like loopback and anyone can create the first account before the administrator. Whether the header is added depends on the proxy configuration, and a warning in the documentation does not close the hole.
+  - Decision: `SetupController::SETUP_TOKEN = Cybertrain::Crypto.random_token(16)` (16 random bytes as 32 hex characters; `SecureRandom` works on Spinel, row 8 of the verdict table in NOTES). It is created once when the program loads and stays the same until the process ends (it changes on restart). It is kept in a constant, not a class variable (NOTES rule 64: `@@x` is not a GC root; constants are roots). `@x =` in the class body is not used because the controller lexical scan (D4) would pick it up as an instance variable into `view_assigns`. It is read with `SetupController.setup_token`.
+  - The `UserCommand.warn_if_no_user` warning becomes `[WARN] no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine`. This line is the only place the token is printed, and the only place it is rendered is the form's hidden field (`name="token"`).
+  - `before_action :require_first_run` compares `params[:token]` with the token using `Cybertrain::Crypto.secure_compare` (constant-time comparison) and requires a match **in addition to** the existing conditions (404 if a user exists; loopback and no header, or `setup_open`). The token is a second condition that does not replace the address check; `<APP>_SETUP_OPEN=1` also removes only the address check, not the token. A missing or wrong token gives the same 404 as other rejections. GET takes it from the query, POST from the form's hidden field.
+  - The generated code calls the framework's `Crypto.random_token` and `Crypto.secure_compare`, so these two were marked `@api public`.
+  - Added to the generated tests: 404 with no token, an empty token, a wrong value, and the value with one character appended; 200 with the token; the content of the hidden field; creating with POST; no user created by a POST from another address, with no token, or with a wrong token; and 404 without a token even with `setup_open`. The invitation-only step in CI extracts the token from the startup log and uses curl.
+  - Remaining issue: the token also appears in the request log line `Started GET "/setup?token=..."` (the same log as the warning, so readable by the same people). It loses its meaning once a user exists, so parameter redaction (Rails' `filter_parameters`) was not added to the framework. The `user` subcommand is unchanged.
+
+### D31. Reading parameterised headers with `Request#header_params`, and parameter redaction in logs and error pages with `filter_parameters` (2026-10-25, issue #77)
+
+- Context: API clients send authentication and directives in headers of the form `Scheme k1=v1, k2="v2"` (`Authorization: Digest ...`, vendor-specific `X-*-Auth`, `Prefer`, `Forwarded`). `Request#header` only returns the raw value, and applications split it by hand at byte positions (`k, v = part.split("=", 2)` miscompiles under NOTES rule 12, and values can contain arbitrary bytes). Also, `RequestLogger` escapes control characters (82334a9) but writes the target, including the query, as is, so `?token=` and the passwords of forms that hit errors remain in the log and the development error page (the D29 revision recorded under "Remaining issue" that `/setup?token=...` is logged).
+- Decision:
+  - `Request#header_params(name)` -> `Hash[String, String]`. Both `,` and `;` are treated as separators (the element structure of `Forwarded` / `Prefer` is flattened), and for duplicate names the first one wins. A name is a run of RFC 9110 token characters, lower-cased (a part that does not start with a token character is skipped up to the next separator). For a value that is a quoted-string, the content with backslash escapes removed is taken; otherwise the bytes up to the next separator, with leading and trailing spaces and tabs removed. A name without `=` gets `""`. A leading "word of token characters, followed by a space and a character other than `=` / `,` / `;`" is discarded as the scheme (`Digest`, `Bearer`). A value that is a single word (`Prefer: respond-async`, `Authorization: Negotiate`) is a parameter with no value, not a scheme. If the header is missing or exceeds 8 KiB (`Request::MAX_PARAM_HEADER_BYTES`), the result is an empty Hash (a typed Hash seeded and then emptied, rule 9).
+  - `Request#header_scheme(name)` -> the scheme word in the case it was sent, or `""` if there is none. The documentation says that `Bearer <token>` / `Basic <base64>` credentials are not parameters and are read from `header` (interpreting the trailing `=` of a token68 as a parameter would be meaningless).
+  - All scanning is byte by byte (`getbyte` / `byteslice`; `split` / `strip` are not used, rule 52), and each helper reads its argument through a new local `s = text.to_s` (rule 62). The content of a quoted-string is built only with `<<` onto `+""` (rules 60 / 66; it is not cut short even if it contains NUL). Values are not percent-decoded and are not necessarily valid UTF-8.
+  - `Config#filter_parameters` (`Array<String>`, default `password`, `password_confirmation`, `token`, `secret`, `secret_key_base`, `session_key`, `api_key`, `authorization`). If `CYBERTRAIN_FILTER_PARAMETERS` is set, comma-separated, it replaces the list (leading and trailing whitespace removed, empty items dropped; an empty variable counts as unset). `[]` turns redaction off. Matching is, as in Rails, a substring match "the name contains one of them", ASCII case-insensitive (`password` also matches `user[password]`, and `token` also matches `authenticity_token`).
+  - The list is kept in a module ivar of a new HTTP-layer module `Cybertrain::ParameterFilter` (`cybertrain/http/parameter_filter.rb`), and `Application#boot` sets it with `ParameterFilter.names = c.filter_parameters` (the same shape as `Params.max_page` / `Request.trusted_proxies`; the HTTP layer cannot read Config). A program that uses only the HTTP layer still redacts with the default list. Config does not require the HTTP layer, so it holds a duplicate of the default list as string literals, and a test checks that it equals `ParameterFilter::DEFAULT_NAMES`.
+  - `ParameterFilter.filter_query(text)`: splits the query string on `&`, percent-decodes only the name for comparison (`+` is a space, invalid escapes are left as is), and replaces the value of a matching pair with `[FILTERED]`. All other bytes are copied as is without decoding. `RequestLogger` applies this to the raw query before escaping control characters.
+  - Development error page (`Dev::ErrorPage`): redacts the query in the request line in the same way, and shows in a new "Parameters:" section the params tree built by the router (`Params#filtered_inspect`: a matching key becomes `"[FILTERED]"` whatever its kind (string, list, nested, file), and nesting is recursive), and for a JSON request (no encoding, 1 MiB or less) shows in a "JSON body:" section the parsed body, redacted the same way. The JSON recursion first maps values to typed ones with `Cast.hash` / `Cast.array` and then walks them (rule 71, `when Time` first, rule 8), and stops at 32 levels (a parsed document can have up to 200 levels, and thread stacks are small, rule 46). A body that cannot be parsed (which may itself be the cause of the failure) is left out together with its section. The rescue is placed in a method that does not yield, with `JSON::NestingError` written first (rules 32 / 61).
+- Rejected alternatives:
+  - Having `header_params` treat `,` as the element separator and `;` as the separator within an element, returning `Array<Hash>`. That would distinguish multiple `Forwarded` elements, but a flat Hash is enough for what the issue asked ("remove hand splitting from API controllers"), and typed nesting is awkward in Spinel. Applications that need per-element data split `header` themselves.
+  - Decoding the whole query, redacting, and rewriting it. The log should be the bytes as sent (with only control characters escaped), and decoding would also bring in exceptions on invalid escapes (rule 28).
+  - Allowing regular expressions or Procs in `filter_parameters` (Rails allows them). To avoid the types needed to carry Regexp values around as settings in Spinel and calls to stored blocks (rules 30 / 69), only string substring matching was kept.
+  - Applying it to the production error pages (`ErrorPages`): the production 500 page does not show parameters, so there is nothing to apply it to.
+- Consequences: added test/http_request.rb (Digest form, `;`-separated Forwarded / Prefer, quoted-strings with escapes, first value wins, over 8 KiB, arbitrary bytes, missing header, scheme), test/middleware.rb (redaction in the log line, non-matching names left as is, replacing the list and an empty list, `CYBERTRAIN_FILTER_PARAMETERS`), and test/dev_error_page.rb (the request line and params sections, recursion in the JSON section, unparseable bodies), and made snapshots with the compiled binary. The `/setup?token=...` from D29's "Remaining issue" is redacted by the default `token`.
+
+### D32. Tests and CI: in-process receivers for outbound calls, and a generated CI workflow (2026-10-25, issue #78)
+
+- Problem: once applications send webhooks (D24) and mail (D27), their tests need something on the other end. Writing a correct receiver on 127.0.0.1 in Spinel requires doing all reads with `wait_readable` + `readpartial` and byte positions (not `IO#gets`, NOTES 20 / 27), making `accept` bounded (so that a client that never connects does not leave a thread behind that steals the next test's connection), starting threads through a method (NOTES 21), and deciding `SPINEL_WORKERS` before the first `Thread.new` (NOTES 22), so every application would write the same 100 to 200 lines. CI too: each application copies the toolchain steps by hand (header packages, the framework commit from spin.lock, `cybertrain setup`, caching `~/.cybertrain/spinel`), and when the steps change the copies drift.
+- Decision (receivers): `Cybertrain::Test::HttpReceiver` (cybertrain/test/http_receiver.rb) and `Cybertrain::Test::SmtpReceiver` (cybertrain/test/smtp_receiver.rb). The shared part is the base class `Cybertrain::Test::Receiver` (cybertrain/test/receiver.rb).
+  - `start(port: 0)` binds to 127.0.0.1, returns the port number and starts one thread. The thread accepts up to `max` (default 1) connections in turn, one at a time, reading each, answering and closing it. `accept` repeats `wait_readable(0.05)` and is called only when a connection is waiting, so the thread notices `stop` within 0.05 seconds and finishes by itself if no connection arrives within `accept_window` (default 10 seconds). Reads are also `readpartial` after `wait_readable` in 0.05-second steps, and a client that is silent for `read_timeout` (default 5 seconds) is cut off. The thread closes the listener when it finishes. `stop` asks it to finish and `join`s it (bounded; calling it twice is fine). So after `stop`, the next receiver can `start` on the same port (checked in tests).
+  - Results are a typed `ReceivedRequest` (`http_method` / `http_target` / `http_path` / `http_headers` (lower-case names, duplicates joined with `", "`) / `http_header(name)` / `http_body` (chunked is decoded)) and `ReceivedMessage` (`envelope_from` / `envelope_recipients` / `message_data` (the bytes after DATA, dot-stuffing undone, the final `.` line removed) / `message_header(name)` / `message_body` / `transcript` (all client command lines) / `delivered?`). `received_request(wait = 5)` / `received_message(wait = 5)` wait for the first one (bounded; nil if none arrives), and `received_requests` / `received_messages` return all of them. An SMTP record is one entry when the connection ends (QUIT or disconnect).
+  - HttpReceiver reads Content-Length and chunked request bodies and answers with the default response from `status:` / `headers:` / `body:` / `chunked:` (send the response body as two chunks), with `Connection: close` added. `respond_with` changes the response from the next request on. SmtpReceiver plays 220, EHLO (advertises 8BITMIME by default, removed with `eight_bit_mime: false`; with `auth: true` it advertises AUTH PLAIN and accepts anything), MAIL, RCPT, DATA (354), 250 queued and QUIT (221), and the stages `:greeting` / `:ehlo` / `:mail` / `:rcpt` / `:data` / `:message` can be made to fail with a given response, as in `reject: { rcpt: "550 ..." }`. Plain text only; STARTTLS returns 454.
+  - Names: Test::Client has `request(method, path, ...)`, and an exception's `message` is built in, so the names are `received_request` / `received_message` rather than `request` / `message` (methods with the same name and different return types break inference (NOTES 34), and a method with the same name as a built-in switches every call on a boxed receiver (NOTES 62)). The result readers also have the prefixes `http_` / `envelope_` / `message_` (NOTES 10). Internal methods start with `rx_`.
+  - Dependencies: only Ruby's socket. It requires neither `cybertrain/net` nor openssl (`Net::Reader` is built to read a `Net::Stream`, and putting an accepted `TCPSocket` and a connected `Socket` in the same ivar makes it boxed, so the base class has its own small reader). It is not required from `cybertrain/test.rb`: like `cybertrain/test/client`, only the tests that use it require it (so that sockets are not pulled into every test program). Usage is described in the comments of the generated `test/support/app_test.rb` and in the README under "Testing outbound calls".
+- Decision (CI): a composite action `.github/actions/setup-cybertrain/action.yml` is kept in this repository, and `cybertrain new` writes `.github/workflows/ci.yml`, which calls it with `uses: saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v<VERSION>`. What remains in the workflow is only the application's own checks: `spin lock && git diff --exit-code spin.lock`, `spin run gen -- --check`, and `spin test` (skipped if there is no `test/*.rb`; `spin test` fails when there are no tests, and a new application has none).
+  - What the action does: on Linux, `libsqlite3-dev zlib1g-dev libssl-dev`; on macOS, Homebrew's OpenSSL in `LIBRARY_PATH` / `CPATH` (the same as the framework's CI); `ruby/setup-ruby` (default 3.3); reads `git` and `ref` (a 40-character commit) from `[lock.cybertrain]` in spin.lock with a Ruby one-liner; fetches only that commit with `git fetch --depth 1` into `$RUNNER_TEMP`; restores `~/.cybertrain/spinel` keyed on `SPINEL_TAG` from that checkout's `cybertrain/version.rb`, the runner image (`ImageOS` / `ImageVersion`) and the OS and architecture; runs that checkout's `exe/cybertrain doctor` and `setup`; saves the cache if it built; and adds `~/.cybertrain/bin` to PATH.
+  - A `uses:` reference is a static string that cannot take expressions, so the spin.lock commit cannot be written into `uses:`. So `uses:` is pinned to the CLI release tag `v#{Cybertrain::VERSION}` (the same tag as the dependency `cybertrain new` writes into spin.toml), and that only decides the action's steps. The CLI that installs Spinel is the one from the commit the action read from spin.lock, so it is always the same version as the framework the application compiles. When an application upgrades the framework, it does not need to bump the action's tag.
+  - The framework is fetched with git into `$RUNNER_TEMP`, not with `actions/checkout` into `vendor/` in the working tree. `actions/checkout` cannot place it outside the working tree, and inside the working tree it would be seen by spin (which has features that use `vendor/`) and by the application's `git diff`.
+  - The cache key is not a hash of `version.rb` but the `SPINEL_TAG` read from it: `version.rb` changes with every release, but the Spinel build is the same as long as `SPINEL_TAG` is the same. `hashFiles` may also be unable to read files outside the working tree.
+  - An application with a path dependency (`cybertrain new --path`) has no commit in spin.lock, so the action fails with the reason. If you check out the framework yourself and pass `framework-path`, it uses that without reading spin.lock.
+- Rejected alternatives:
+  - Writing out all the steps in the workflow: the source of truth for the steps would live in generated code, and changes would not reach existing applications (the very problem in the issue).
+  - Choosing the framework commit inside the action as the equivalent of `uses:` (a dynamic `uses:`): GitHub Actions does not have it.
+  - Replacing the hand-written servers in test/http_client.rb and test/mailer.rb with the receivers: those exist to play abnormal cases step by step, such as the intervals between split byte sends, malformed responses, cutting off midway and plain text after STARTTLS, and they do not fit the shape of the receivers (a well-behaved peer). They were left untouched so their output and determinism do not change, and the receiver tests were written new in `test/receivers.rb`.
+- Deferred: a TLS receiver (certificates cannot be created, D24), multiple SMTP messages in one connection (all but the last remain only in `transcript`), and keep-alive on one receiver connection. The action tag `v<VERSION>` can be used from the release that contains the action (the next release). Earlier tags (up to v0.2.1) do not have the action.
+- Verification: `test/receivers.rb` (HttpClient with GET / POST / chunked response / 204; chunked request bodies and duplicate headers over a raw socket; `max` and `respond_with`; a request that never arrives giving nil at the limit, and the next receiver receiving on the same port after `stop`; idempotence of `stop`; the port closing with `accept_window`; Mailer with the transcript, envelope and message bytes; with and without 8BITMIME; rejection at RCPT, greeting and after the body; AUTH PLAIN; two messages with `Mailer.deliver`; a message that never arrives) gives the same output under CRuby and after compilation. A version with openssl added, and a version with the receivers added to the whole framework (the same requires as test/template_integration.rb, including Server and Test::Client), were also compiled temporarily and confirmed to pass. For CI, `test/cli_new.rb` checks the contents of the workflow, and loading the YAML and `spin run gen -- --check` were checked on an application created with `cybertrain new`. The action's YAML was also loaded, and the Ruby one-liner that reads spin.lock was checked with spin.lock files for a git dependency and a path dependency.
+
+### D33. Outbound WebSocket client and long-lived subscriptions: a synchronous client on top of `Net`, started together with the server via `Background` (2026-10-26)
+
+- Context: There was no way to stay connected to an external data feed (market ticks, telemetry, event streams) for as long as the server runs and hand the arriving messages to the application. Spinel's `Net::HTTP` equivalent cannot be used for the same reason as in D24: when the wait is inside C, one stalled peer holds an OS worker (with the default `SPINEL_WORKERS=1`, the whole server). There is no WebSocket standard library either.
+- Decision: Two layers (the same shape as the relationship between `HttpClient` and `Scheduler`).
+  - `cybertrain/websocket/frame.rb`: RFC 6455 frame encoding and decoding, and the Accept key (`Digest::SHA1`). Pure functions that never touch a socket; they run on CRuby too. The error hierarchy lives here as well: under `WebSocket::Error`, `TimeoutError` / `RefusedError` / `TLSError` / `BlockedAddressError` / `HandshakeError` / `ProtocolError` / `TooLargeError` / `ClosedError` (`close_code`, `close_reason`).
+  - `cybertrain/websocket/client.rb`: the synchronous client `WebSocket::Client` (`connect` / `send_text` / `send_binary` / `send_ping` / `receive(wait)` / `close`). URL parsing, rejection of private addresses and trying every address are shared with `HttpClient` (`parse_url_for`, `dial`) rather than duplicated. Waits use `Net::Timer` (`timeout` per operation, `timeout * 3` overall); a `receive(wait)` timeout returns `nil` rather than raising. If the timeout hits in the middle of a frame, the data stays in the `Reader` buffer and the next `receive` continues from there. Sends are always masked and go out as a single frame.
+  - `cybertrain/websocket.rb`: `WebSocket.subscribe(name, url, ...)` registers a `Subscription` (`on_open` / `on_message`, both return `self`). One thread per subscription (started via a method: NOTES rule 21). It repeats `receive(1)` and checks for a stop request and the clock every second. After `ping_interval` (15 seconds) of quiet it sends a ping; after `stale_after` (45 seconds) of silence it closes and reconnects. The reconnect wait is `min(60, 2 ** (attempt - 1))` seconds ±20 %, and returns to 1 second after a connection that lasted 60 seconds. An exception in `on_message` is printed as `[ERROR]` and the connection is kept; an exception in `on_open` closes the connection and reconnects. Waits are `wait_readable` or `sleep`, so a stalled feed does not hold an OS worker while it waits. However, each connection attempt looks up the host name with blocking `getaddrinfo` (`Client.connect` -> `HttpClient.dial` -> `Net.resolve`, D24) and holds the worker during that. With `SPINEL_WORKERS=1` and a dead resolver, requests stall for the resolver timeout for each feed and each attempt (README "Outbound HTTP", "Name resolution blocks"). SQLite inside `on_message` also holds the worker, just as in `Scheduler` tasks. `stop!` cuts off the joins of all threads at 2 seconds in total, and a connected feed sends a close and waits at most 1 second for the server's close. When it returns, `connected?` is false for every feed.
+  - `cybertrain/background.rb`: a registry of `Background::Service` (`service_start(config)` / `service_stop`), whose default does nothing. `Application#serve` calls `Background.start_all` after `Scheduler.start!`, and `Background.stop_all` on shutdown. `cybertrain/websocket.rb` registers itself when it is required. **`application.rb` does not require `cybertrain/websocket`**: to keep libssl out of applications that do not use it, this follows the same substitution pattern as `Net.tls_connector`: "the default does nothing, and only the programs that need the real one require it". It does not start with `CYBERTRAIN_WORKER=0` (`config.worker = false`) (`Background.start_all` returns 0 first, so the only notice is `Scheduler`'s "run elsewhere" line; when `WebSocket.start!` is called directly it prints its own line), and `migrate` / `db ...` / `Main.command` / `Test::Client` do not start it.
+  - `cybertrain/test/websocket_receiver.rb`: a scripted WebSocket server in the style of the D32 receivers (bounded accept and reads, threads started via a method). A sequence of `WsStep`s plays out the handshake response, frames to send, frames to expect, silence and disconnects, and records the frames the client sent, unmasked.
+- Judgement calls (decided during implementation):
+  - Status is read with `WebSocket.feed_status(name)` (`connected?`, `last_message_at`, `reconnects`). The name `status` was avoided because a `status` with a different return type exists elsewhere in the framework (`DB::CLI.status`, `Migrator#status`) and would break Spinel's whole-program inference (NOTES rules 34 / 41). The three values are read separately (they are not one atomic snapshot). It is not built into `/up`.
+  - Loss of the connection or a close from the peer after the connection is established is `ClosedError` (a reset is 1006; write timeouts and TLS failures stay `TimeoutError` / `TLSError`). Failures while connecting are `RefusedError` / `TimeoutError` / `TLSError` / `BlockedAddressError` / `HandshakeError`.
+  - `connected?` becomes true at the moment the connection is made, before `on_open` runs.
+  - `stop!` `join`s each subscription's thread for at most 2 seconds (a generation number keeps an old loop from running alongside a new `start!`).
+  - `test/websocket_integration.rb` compiles the whole framework together with the WebSocket code. This is because `test/websocket_client.rb` and `test/websocket_subscription.rb` require only the WebSocket files, so a name clash with another file (like `status` above) is not found there and first breaks in the application binary (NOTES rule 41).
+- Rejected:
+  - `application.rb` calls `WebSocket.start!` directly: brings libssl into every application.
+  - The application calls `start!` from `config/app.rb`: the user would need to know the startup order (database connection, port binding, `SPINEL_WORKERS`). `Background` makes the framework own that order.
+  - Extensions (`permessage-deflate`) and subprotocols: not offered in the request; if the server returns one, the handshake fails.
+  - Proxies, redirects, cookies, sending fragmented messages.
+  - Automatically storing received messages or enqueueing them as a `Job`: if needed, the application does it inside `on_message`.
+- Deferred: a WebSocket server (ActionCable), adding and removing subscriptions while running (`subscribe` is called before the server starts), sending from outside a subscription (`Connection` is valid only inside callbacks), UTF-8 validation of text frames (passed on as bytes; a deviation from RFC 6455 8.1), end-to-end tests of `wss` (as in D24, certificates cannot be created).
+- Consequences: Subscriptions are written in `config/app.rb` (or a file required before `Main.run`). SQLite calls in `on_message` hold the OS worker until they return, so a high-frequency feed should use a light INSERT, or buffer in memory and write in batches from a `Scheduler` task. If several processes have the same subscription, they receive the same feed twice, so, as with `Scheduler`, turn it off with `CYBERTRAIN_WORKER=0`.
+
+### D30. Operations: `db backup` (VACUUM INTO), `db vacuum`, and a `GET /up` health check (2026-10-25, issue #76)
+
+- Context: A deployed application's data is a single SQLite file, and every application was rebuilding the same three things: a consistent backup taken without stopping the running server, the work of actually shrinking the file after deletes, and a health check that reaches the database (`public/up.html` is a static file and shows only that the process answers HTTP).
+- Decision:
+  - Add `backup` and `vacuum` to `Cybertrain::DB::CLI` (`./<app> db backup ...`, or `bin/db.rb` in development). The target is the configured database (`CYBERTRAIN_DATABASE`). `:memory:` and `file:` URIs are rejected (there is no file to copy, or no plain path to compare with the target). `Main.run` passes the application name to `DB::CLI.run(argv, root, name)` (used for dated file names; it is empty from `bin/db.rb`, in which case the base of the database file name is used).
+  - `db backup PATH [--force]`: `VACUUM INTO ?` on a dedicated connection (the file name is a bound parameter, outside any transaction. SQLite 3.27 or later is checked with `sqlite_version()`; if older, it prints the reason and exits with 1). It writes to a new name inside a temporary directory `PATH.tmp-<pid>-<random>/`, created in the same directory as PATH with `Dir.mkdir(..., 0o700)` + `chmod 0700`, and lets VACUUM INTO create the file itself (SQLite on Linux accepts a pre-created empty file, but SQLite on macOS rejects it with "output file already exists". Because the directory is 0700, other users cannot open the file, whatever its mode right after creation). On completion it does `chmod 0600`, `fsync`, and `File.rename` onto PATH, and removes the temporary directory. On failure it removes the temporary file (and companions such as `-journal`) and re-raises. The rescue sits in an ordinary method that does not yield (NOTES 32 / 45). An existing PATH is rejected without `--force`, the database itself is rejected even with `--force`, and a missing parent directory is rejected (checked before opening, so that no message contains the temporary file name).
+  - `db backup DIR/ [--keep N]`: if the argument ends in `/` or is an existing directory, it writes to `DIR/<app>-<YYYYmmddTHHMMSSZ>.sqlite3` (UTC). A missing directory is created with 0700. `--keep N` counts only names that exactly match that form (`dated_backup?`; the timestamps sort in string order) and removes the oldest ones beyond N. It does not touch other applications' names, temporary files, or files the operator put there. A second backup within the same second is rejected as existing.
+  - `db vacuum`: `VACUUM` followed by `PRAGMA wal_checkpoint(TRUNCATE)`. In WAL mode the result of VACUUM is first written to the WAL, so disk space is freed only once the checkpoint copies it back into the database file, truncates the file to its new size and empties the WAL. It prints the sizes before and after (main file + WAL). If a reader keeps the checkpoint from finishing (busy), it says so.
+  - `Config#health_path` (default `"/up"`, `CYBERTRAIN_HEALTH_PATH`; empty disables it; boot stops if it does not start with `/`) and `Config#health_worker_stale` (default 300 seconds; boot stops if it is below 1). The `Cybertrain::HealthCheck` middleware sits inside `RequestLogger` and outside `Static`. It answers only GET / HEAD for exactly that path, and passes other methods and paths down. Because it comes before sessions, CSRF and the router, no controller is needed, no login `before_action` runs, and no cookie is set. Logging is just the usual two lines of a request.
+  - Check: `DB.with { |c| c.execute("SELECT count(*) AS n FROM sqlite_master") }`. A bare `SELECT 1` does not read the file, so the query reads the schema page (page 1). `sqlite_schema` is an alias only from 3.33, so it is written as `sqlite_master`. On `Cybertrain::DB::Error` (and StandardError), `503 database unavailable`. If the database answers, and `Scheduler.running?` and `Scheduler.last_tick` is older than `health_worker_stale` seconds, `503 worker stale` (the 0 before the first tick is not considered stale). Otherwise `200 ok`. All of them with `text/plain; charset=utf-8` and `Cache-Control: no-store`.
+- Reasons:
+  - **Temporary file and rename.** If VACUUM INTO fails partway, a half-written file is left under the real name. Finding out that it is broken only at restore time is the worst outcome, so only a finished file ever appears under the real name. The contents are password digests and session tokens, so the file is 0600 from the moment it is created (creating it under the umask and then running chmod leaves a window in which other users can open it).
+  - **From the CLI, in a separate process.** An SQLite call holds the OS worker until it returns (the D28 constraint). Running VACUUM INTO on a large database on the scheduler thread stops every request with `SPINEL_WORKERS=1`. The README describes running the CLI from cron / a systemd timer, or running it as a child process with `system("./<app>", "db", "backup", ...)` from a task the server itself schedules. It was confirmed that `system` blocks only the calling thread (NOTES 75; `spawn` does not compile, and `Process.spawn` does but there is no `Process.wait`).
+  - **A built-in handler before the router.** Written as a route and a controller, in an application with authentication the `before_action` of `ApplicationController` would redirect the health check to the sign-in page, and a session cookie would be set too. Rails avoids this by putting `rails/health#show` directly under `ActionController::Base`, but here not going through the route table at all is simpler.
+  - **worker stale.** A stuck task (an infinite loop, an external call that never returns) stops jobs while keeping the process alive. As long as the process answers HTTP this is invisible from outside, so the check looks at `last_tick` (provided in D28). Processes that do not run the scheduler (`CYBERTRAIN_WORKER=0`, applications without tasks) are not checked.
+- Rejected:
+  - Copying with the `sqlite3_backup_*` API: it can copy incrementally, but it adds FFI functions and may restart from the beginning on every write. VACUUM INTO is a single SQL statement and produces a compact copy without free pages.
+  - Building backups into the server as a scheduler task: the OS worker problem above.
+  - Keeping `public/up.html` and making do with it as the health check: it returns 200 even without a database.
+  - Changing the Kamal configuration that `cybertrain new` writes (`healthcheck: path: /up.html` in `config/deploy.yml`) to `/up`: this spans the generated files and their CI and tests (`test/cli_new.rb`, `examples/blog`, the workflow), and touches the same files as the parallel work on the `cybertrain new` CI template (#78), so this change only recommends switching to `/up` in the documentation.
+- Consequences: Because `HealthCheck` is in the default stack, the expected stack order in `test/application.rb` and `test/multipart_app.rb` changed. `backup` / `vacuum` were added to `Main.usage` and `DB::CLI.usage` (snapshots such as `test/main.rb`). The CRuby-side `cybertrain db ...` passes any arguments unchanged to `spin run db -- ...`, so it was not changed (nor was its usage string, because that goes into what `cybertrain new` generates).
+- Verification: `test/db_cli_backup.rb` (the 0600 copy opens with every row, no temporary files are left, overwrite rejection and `--force`, rejection of the database itself, a failed copy from a corrupt file leaves nothing behind, rejection of a missing directory, a missing database and `:memory:`, argument errors, the form of dated names, `--keep` removes only its own form, the 0700 directory, rejection within the same second, vacuum after deletes shrinks the file and empties the WAL) and `test/health.rb` (position in the stack, 200 / no-store / no cookie / before_action does not run, HEAD and query strings, other paths and methods, two log lines, 503 after the pool is closed or disconnected, disabling, the environment variable, the boot checks, 200 even when stale while the scheduler is stopped, `worker stale` when a real thread is started and `last_tick` is made stale).
+
+### D34. CI cost: run one Ubuntu job on pull requests, stop re-running on main what the pull request already tested, and test locally first (proposal, 2026-10-25; not implemented)
+
+- Context: every push to a pull request that touches `cybertrain/**` (15 of the last 20 pull requests) starts five workflows, and the merge to main runs them all again on what is almost always the same tree. The repository is public, so standard runners cost nothing, but the minutes count in the Actions usage metrics and use the concurrency limits (20 jobs on Free, 40 on Pro, 5 macOS jobs on either); were the repository made private, macOS would bill at 10x (15 minutes = 150). Measured over the last 60 runs, 2026-10-23 to 2026-10-25 (runner minutes):
+
+| Workflow | Trigger | Per run | Main content |
+| --- | --- | --- | --- |
+| CI / test (ubuntu-latest) | PR and main push | 21 min | `spin test` 9 min (82 test programs, 4 vCPU), E2E (shop 5, album 4, gitshop 1), examples/blog 1.5 |
+| CI / test (macos-latest) | same | 15 min | the same steps; arm64 is faster (`spin test` 6 min) |
+| Playground image | same (`cybertrain/**` and others) | 7-13 min | docker build 5.5 (gha cache), smoke.sh 5.6 |
+| Blog image | same | 4-5 min | docker build 4 (rebuilds Spinel every time, see below) |
+| Gate | every PR and main push | 0.2-1 min | `script/gate` |
+| Pages | main push only | 0.5 min | YARD and deploy |
+
+  - Per pull request: one push costs about 51 minutes (21 + 15 + 10 + 5 + 0.3), the merge about 52 (the same plus Pages), so two pushes and a merge cost about 155. 68 merges in the last 30 days, 40 in the last 7; at 6 a day that is about 930 minutes a day, about 28,000 a month. On 2026-10-25 at 10:22 six merges within one minute started 30 runs (concurrency cancelled 20, but their start and checkout were already spent).
+  - The Spinel toolchain cache works (restore 1 s, `cybertrain setup` 1 s). The slow part is compiling the framework and the tests: `spin test` builds `build/` from scratch on every run.
+  - Locally (a Claude cloud session, 4 vCPU, 16 GB): first `spin test` 14 min 02 s; a second run with nothing changed 11 s (0 recompiled); touching `cybertrain/version.rb` (same content) 13 min 59 s; touching only `test/router.rb` 13 min 10 s (82 recompiled either way); `spin test test/<name>.rb` recompiles one program, a few seconds to a few tens of seconds. spin's freshness check is "is any input of the package newer than the output", not a dependency graph, so a kept `build/` helps only when nothing changed.
+  - The one CI failure in those 60 runs (2026-10-23 18:25, PR #61) failed on macOS only, in `test/cli_toolchain.rb` ("the build lock is a directory ... taken atomically", a file-system difference); Ubuntu passed. OS differences are real and cluster around the CLI toolchain (`cybertrain/cli/toolchain.rb`, processes and file locks, OpenSSL linking).
+- Decision (proposed): split what runs on a pull request from what runs on main, skip the main re-run when it would test the same tree, and make one local command the source of the CI steps.
+
+| Job | Pull request | Main push |
 | --- | --- | --- |
-| `db/schema.rb` | `gen/models/<model>.rb` | `attr_accessor`、`read_attribute` / `write_attribute` / `assign_attributes` の `case`、`from_row`、`to_json`、`attribute_names`、外部キー由来の関連、`<Model>Relation` |
-| `config/routes.rb` | `gen/routes.rb` | 経路表、dispatch の `case`、`*_path` / `*_url`、polymorphic path の `case` |
-| `app/controllers/**/*.rb`（字句走査） | `gen/controllers.rb` | コントローラごとの `view_assigns` と `run_callback(name)` の `case`（open class） |
-| `app/models/**/*.rb`（字句走査） | `gen/models/<model>.rb` に追記 | モデルごとの `call_view_method(name)` の `case`（引数なし `def` のみ） |
-| `app/` のファイル一覧 | `gen/app.rb` | `require_relative` 一覧 |
+| Gate | yes | yes |
+| CI ubuntu | yes, unless docs-only | yes, unless the merge tree equals the PR head |
+| CI macos | only when the change matches `MACOS_PATHS`, or with label `ci:macos` | yes (or once a day, see below) |
+| Playground image | only for `playground/`, `.devcontainer/`, the Dockerfile, its workflow | yes (it publishes `:latest`) |
+| Blog image | only for `examples/blog/`, the Dockerfile, its workflow | yes |
+| Pages | - | yes, unchanged |
 
-生成物はすべてコミットする。CI で `spin run gen` 後に `git diff --exit-code gen/` を実行し、鮮度を検査する。
+  - A first job `plan` (about 10 s, `actions/checkout` with `fetch-depth: 0`) outputs the matrix `os` as JSON. On a pull request it takes `git diff --name-only "origin/$GITHUB_BASE_REF...HEAD"`: if every changed file matches `DOCS_ONLY` (`^(site/|.*\.md$|script/|\.githooks/)`, the rule now in the comment and `paths` at the top of ci.yml) and none matches `TESTED_ANYWAY` (`^(docs/api/|docs/template-language\.md$|script/api-docs$)`, the API reference inputs), ubuntu is dropped; macOS is added when a file matches `MACOS_PATHS='^(cybertrain/cli/|cybertrain/cli\.rb|cybertrain/shell\.rb|cybertrain/server|cybertrain/dev/|cybertrain/version\.rb|exe/|test/cli_|test/server|test/dev_|\.github/workflows/ci\.yml|spin\.toml)'` (`version.rb` for Spinel release bumps; together with `cybertrain/cli/` about 20% of pull requests, so macOS runs on pull requests drop to about 1/5); the label `ci:macos` (add `labeled` to `pull_request.types`) runs both OSes and overrides the docs-only check. On a push to main macOS is always in the matrix, and ubuntu is dropped when HEAD is a merge commit (`git rev-list --parents -n1 HEAD` gives 3 words) whose tree equals its second parent's (`HEAD^{tree}` = `HEAD^2^{tree}`), which holds when main did not move between the branch point and the merge (most recent merges).
+  - The skip removes ubuntu from the matrix rather than using a job-level `if:`, which would stop the whole matrix, macOS included. `test` has `needs: plan`, `if: needs.plan.outputs.os != '[]'`, `fail-fast: false`, `matrix.os: ${{ fromJSON(needs.plan.outputs.os) }}`.
+  - `on.pull_request.paths` is removed from ci.yml and its rule moves into `plan`: a workflow skipped by `paths` creates no check and stays Pending, so a required check would block the merge, while a job skipped by `if:` reports Success. The required check is a final job `ci` (`needs: [plan, test]`, `if: always()`), failing in an expression (needs values are not expanded into the shell) when `needs.plan.result != 'success'`, or `needs.test.result != 'success'` unless test was skipped with `os == '[]'`. `test` itself is not required, since a failed `plan` skips it and a skip reports Success. Branch protection requires `Gate` and `ci`.
+  - Optional schedule variant: add `on.schedule: cron "0 3 * * *"`; on `schedule` the matrix is macOS only (`ubuntu=0; macos=1`) on the tip of main, and on `push` `macos=0`. Same `test` job, no separate workflow.
+  - Playground and Blog image: remove `cybertrain/**`, `cybertrain.rb`, `cybertrain.gemspec`, `spin.toml` and `exe/**` from `pull_request.paths`, keep them in `push.paths`. Optionally a `ci:images` label opts a pull request in, the same way as `ci:macos`.
+  - Shorter ubuntu job (21 -> 17 min, macOS 15 -> 12): merge the album E2E into shop (`cybertrain generate scaffold post title:string cover:attachment` in the same app, one build); gitshop stays (only `spin run gen -- --check` and migrate).
+  - Blog Dockerfile layers: copy only the CLI files the gemspec lists (`cybertrain.gemspec cybertrain.rb spin.toml README.md`, `exe/`, `cybertrain/version.rb app_name.rb shell.rb ident.rb cli.rb`, `cybertrain/cli/`, `cybertrain/generator/inflector.rb`), run `ruby -I/src exe/cybertrain setup`, then `COPY cybertrain/` and `COPY examples/blog/`, as playground/Dockerfile already does; a framework change then no longer rebuilds Spinel (3 min). Blog image 4 -> 1.5 min. Extend the `script/gate` check "playground gem stage copies spec.files" to this Dockerfile's pre-setup COPY lines (spec.files is the CLI only, 15 files).
+  - `script/ci-local` (new): the CI ubuntu job's steps in one command. `script/ci-local` runs gate, `spin test`, examples/blog's gen freshness and `spin test`, api-docs; `--e2e` adds the CI E2E (`cybertrain new`, scaffold, build, curl) under /tmp; `--quick` runs gate and the related tests only: changed `test/*.rb`, and for a changed `cybertrain/foo.rb` `test/foo*.rb` plus the tests `grep -l "cybertrain/foo"` finds, from `git diff --name-only main...HEAD`, falling back to all. `--quick` always names files, since one touch makes the full run a 14-minute build. The shell in ci.yml moves into the script and CI calls `script/ci-local --e2e`: the point is one place for the CI and local steps (the E2E curl sequence exists only in the yml today), not the minutes.
+  - Pre-push hook `.githooks/pre-push` (installed by `script/install-hooks`) runs `script/ci-local --quick`; it takes minutes, not the pre-commit gate's 1 s, so CONTRIBUTING.md documents skipping it with `git push --no-verify` or `CYBERTRAIN_SKIP_PREPUSH=1`.
+  - A root `CLAUDE.md` for Claude cloud sessions (most pull requests here are made by Claude; `script/claude-cloud-setup` already installs Spinel): run `script/ci-local` before pushing (`--e2e` when the change reaches the CLI, the generator or the templates); do not push failing, or if you must, name the failing tests and the reason in the pull request; paste the diff of regenerated `test/*.rb.expected` files into the pull request. Codespaces (`.devcontainer`) use the playground image and are out of scope.
+  - PR template: "`spin test` passes" becomes "`script/ci-local` passes (paste the last line of its output)".
+  - `timeout-minutes: 30` on the CI job (today only Playground 45 and Blog 30 have one), so a hung `spin test` does not run for 6 hours.
+  - Unchanged: `concurrency` (`cancel-in-progress` on pull requests; main is not cancelled and pending runs fold into one, costing 0.2 min each), Pages, Gate.
+- Estimate (two pushes and a merge, a `cybertrain/**` change, main not moved):
 
-## 7. テンプレート言語の仕様案
+| Step | PR push x2 | Main push | Total | vs now |
+| --- | --- | --- | --- | --- |
+| Now | 51 x 2 = 102 | 52 | 155 | 100% |
+| PR runs ubuntu + Gate | 21.3 x 2 = 43 | 52 | 95 | 61% |
+| + skip CI ubuntu on main, keep macOS | 43 | 15 + 10 + 5 + 0.3 + 0.5 = 31 | 74 | 48% |
+| + E2E merge (ubuntu 17, macOS 12) | 17.3 x 2 = 35 | 12 + 10 + 5 + 0.3 + 0.5 = 28 | 63 | 41% |
+| + macOS once a day on schedule | 35 | 10 + 5 + 0.3 + 0.5 = 16 | 51 | 33% (plus 12 min a day) |
 
-ERB のタグ: `<% %>`、`<%= %>`（エスケープ）、`<%== %>`（非エスケープ）、`<%# %>`、`<%- -%>`（トリム）、先頭の `<%# locals: (a:, b:) %>`。
+  - Per push to a pull request: about 51 -> 21 minutes. Per month (6 merges a day x 30 = 180 pull requests): about 28,000 -> 13,000 (first two steps) -> 11,000 -> about 9,500 (51 x 180 + 12 x 30). The macOS E2E is shop 3.7 + album 2.7 min (run 40064478805), hence 15 -> 12.
+- Order: (1) ci.yml: `plan` (OS and docs-only checks, merge-tree skip), `ci`, `timeout-minutes`; require `ci` in branch protection; remove the framework from the image workflows' `pull_request.paths` (48% on its own); (2) `script/ci-local`, the E2E shell moved into it, CONTRIBUTING.md, PR template, CLAUDE.md, pre-push hook; (3) E2E merge, Blog Dockerfile layers, the gate check; (4) propose dependency- or content-hash-based freshness to matz/spinel; (5) re-measure the table above after a month and add any macOS-only failure to `MACOS_PATHS`, recording it here.
+- Consequences:
+  - What CI no longer catches on the pull request: a macOS-only failure outside `MACOS_PATHS` (caught by the macOS run on main, or the daily one; covered by growing the list from each such failure and by `ci:macos`); an image broken by a framework change (caught on main after the merge; accepted because pull-request images are never pushed to anyone, a red main run is fixed in the next pull request, no pull-request image build failed in the 60 runs, and the usual breakage, gemspec vs cli-src, is already caught by `script/gate`; `ci:images` opts in). The full `spin test` still runs on every pull request that is not docs-only.
+  - The merge-tree skip relies on the pull request head having passed CI, which is why `ci` must be the required check.
+  - Testing moves to the developer machine and the Claude session; CI becomes the confirmation of what passed locally, and the round trips of reading a red CI and fixing it drop.
+- Rejected:
+  - Caching `build/test/` with `actions/cache` (key `hashFiles('cybertrain.rb','cybertrain/**','test/**','spin.toml')`, restore-keys, `git-restore-mtime`): any changed file rebuilds all 82 programs, so a pull request almost never hits; restoring another commit's `build/` with mtimes reset can make an old binary look newer than the changed source and "pass"; an exact-match key never hits a pull request that changes anything.
+  - Merge queue (one run against the merged state): only for organization-owned repositories, and this one belongs to a personal account. Revisit if it moves to an organization.
+  - A self-hosted runner: more upkeep, no gain while public-repository minutes are free.
+  - Thinning the tests or not running `spin test` on pull requests: merging unaware of a failure costs more than the minutes.
+  - Dropping macOS entirely: most cybertrain users develop on macOS (the OpenSSL note in CONTRIBUTING.md, the spike measurements); at least the daily run on main stays.
+  - Publishing the playground image only on tags: `.devcontainer` uses `:latest`, so main keeps publishing it.
+- Deferred: the 9-minute full compile itself, which needs a faster Spinel compile, fewer test binaries (bundling the 82 programs, a change to how tests are written) or dependency-based freshness in spin (a proposal to matz/spinel), all outside this design; whether to take the schedule variant for macOS; the `ci:images` label; `test/cli_new.rb` hanging partway through its first test block under `spin test` in the cloud session (4 of 4 runs; the same binary run directly from /tmp passes 23 tests, 154 assertions, and CI passes), to be investigated separately (cwd, or stdout under `xargs -P`).
+- Implementation status (2026-10-28): none of it. ci.yml still runs the `[ubuntu-latest, macos-latest]` matrix on both `pull_request` and `push` with the docs-only rule as `paths`, has no `plan` or `ci` job and no `timeout-minutes`; the Playground and Blog image workflows still list the framework paths under `pull_request`; examples/blog/Dockerfile still copies all of `cybertrain/` before `cybertrain setup`; there is no `script/ci-local`, `.githooks/pre-push` (only pre-commit and commit-msg) or root `CLAUDE.md`, and the PR template still asks for `spin test`. Since the measurement, ci.yml gained a fourth E2E app (club, `generate authentication --invite-only`, D29), so the E2E merge above should be re-planned with it.
 
-式:
+## 5. Request flow
 
-- リテラル: 整数、浮動小数、文字列（`"..."` は `#{}` 補間可、`'...'` は不可）、シンボル、`nil` / `true` / `false`、配列 `[...]`、ハッシュ `{ key: value }`（キーワード引数と同じ形）
-- 変数: `@ivar`（`view_assigns` から）、ローカル（`each` の束縛と strict locals）
-- 呼び出し: `recv.method`、`recv.method(args, key: value)`、`recv&.method`、`method(args)`（ヘルパー）
-- 演算子: `== != < <= > >= && || ! + - * / % ?:`
-- 制御: `if` / `elsif` / `else` / `unless` / `end`、`each do |x|` / `each_with_index do |x, i|`、`form_with(...) do |f|`
-- 値ごとの許可メソッド表: String（`upcase` `downcase` `capitalize` `strip` `size` `length` `empty?` `to_s`）、Integer / Float（算術と `to_s`）、Time（`strftime` `year` `month` `day` `to_s`）、Array（`size` `length` `empty?` `first` `last` `any?`）、Model（生成属性、生成関連、`errors`、`persisted?`、`new_record?`、`to_param`、`view_methods` で宣言したもの）、`errors`（`any?` `full_messages` `[]` `count`）
+1. `Server` parses HTTP/1.1 on the accepted socket and builds a `Request`.
+2. Middleware chain: logging -> static files -> `_method` override -> session (decoding the signed cookie) -> CSRF verification -> router.
+3. The router walks the route table in `gen/routes.rb` and calls the dispatch clause of the matching route: `PostsController.new(ctx).process(:show) { |c| c.show }`.
+4. `process` runs the `before_action`s in order (the symbol form via the `case` in the generated `run_callback(name)`, the block form via `block.call(self)` with the controller as the argument; the chain stops as soon as one renders or redirects), calls the action body, implicitly renders the template named after the action if neither a render nor a redirect happened, and finally runs the `after_action`s.
+5. render passes `view_assigns` (generated), the locals and the helpers to the template engine, renders in an environment of plain polymorphic values, and wraps the result in the layout.
+6. The `Response` is written back to the socket. With keep-alive, it waits for the next request.
 
-明示的に非対応: 任意ブロック（`map { }` など）、代入以外のローカル定義、`case`、正規表現、範囲、メソッド定義、`require`。
+## 6. Generator inputs and outputs
 
-## 8. 意図的に捨てたもの
-
-- `rails console`（`eval` が存在しない）
-- テンプレート内の任意 Ruby、テンプレートの型エラーのコンパイル時検出、スタックトレース付きエラー画面
-- production バイナリの完全単一ファイル化（`app/views` と `public` を同梱。将来のコンパイルバックエンドで回収可能）
-- `namespace` / format / `respond_to`、`has_many :through`、`includes`、i18n、WebSocket サーバ（外向きのクライアントは 2026-10-26 に D33 で入った）（認証は 2026-10-22 に D15 の形で入った: ジェネレータが書くコードと、`Cybertrain::Password`）（`transaction` API は D20、メーラーは D27、ジョブは D28 の最小の形で 2026-10-25 に入った）
-- Rack 互換、Rails 互換、CRuby 上での実行
-
-## 9. 未検証の前提とスパイク計画（M0）
-
-`spikes/` に小さな Spinel プログラムを置き、`2026.09.12` で検証する。（結果は `spikes/NOTES.md`。プログラム自体は検証後に削除した）
-
-| # | 検証項目 | 落ちた場合 |
+| Input | Output | Content |
 | --- | --- | --- |
-| 1 | `spinel` / `spin` の導入、`spinel --help` の最適化レベル、2,000 行規模のコンパイル時間 | 開発ループ（D12）の体感を再評価 |
-| 2 | 非リテラル `send` がリテラル名に dispatch できるか、戻り値の型、`instance_exec` のブロック形 | **結果**: `send` は動くが 128 リテラル制限で実アプリでは無効。`instance_exec(&stored)` は不可。→ D8 / D9 を生成 `case` 文方式に改訂済み |
-| 3 | **タグ付き共用体 `Value` を持つ木構造インタプリタが型推論を通り、100 行のテンプレート × 1 万回の描画速度が出るか** | **結果**: 通る。単相 `INode` AST + 素の多相値で手書きの 1.54 倍、CRuby の 3.2 倍速。`Value` ラッパは不採用 |
-| 4 | 基底 `Relation` と `PostRelation` で `first` が `Post \| nil` に推論され、複数モデルで型が広がらないか | **結果**: 推論される。基底の抽象スタブ、setter が `nil` を返す形、キャストメソッド経由の nullable 属性が必須 |
-| 5 | `TCPServer` + グリーンスレッド + keep-alive で 100 同時接続、レイテンシ、issue #4528 の再現有無 | **結果**: c=100 keep-alive で 52〜58k req/s（`SPINEL_WORKERS=1`）、p99 ≤ 2 ms。無言接続があっても他は止まらない。ただし `readpartial` の直前に必ず `wait_readable(timeout)` を呼ぶこと（素の `readpartial` は OS ワーカーを占有して #4528 と同じ停止を起こす） |
-| 6 | SQLite FFI の open / prepare / bind / step / column、`blocking: true`、`SizedQueue` プールの複数スレッド利用、WAL | **結果**: 動作。静的 `ffi_buffer` の競合クラッシュを `malloc` スクラッチで回避 |
-| 7 | `execv` の FFI、`trap` の可否、`SO_REUSEADDR` | **結果**: すべて動作（`trap("HUP")` 実機確認、execv シム、同一ポート即時再バインド）。D12 確定 |
-| 8 | `openssl` / `digest` の HMAC、`json`、`cgi` の `escapeHTML`、`uri` のクエリ解析 | **結果**: json / uri / securerandom / base64 / strscan / stringio は動作。`cgi` はこのタグに存在せず、HTML エスケープは自前。HMAC は `Digest::SHA256` の上に自前実装 |
+| `db/schema.rb` | `gen/models/<model>.rb` | `attr_accessor`, the `case` for `read_attribute` / `write_attribute` / `assign_attributes`, `from_row`, `to_json`, `attribute_names`, associations derived from foreign keys, `<Model>Relation` |
+| `config/routes.rb` | `gen/routes.rb` | the route table, the dispatch `case`, `*_path` / `*_url`, the polymorphic path `case` |
+| `app/controllers/**/*.rb` (lexical scan) | `gen/controllers.rb` | per-controller `view_assigns` and the `run_callback(name)` `case` (open class) |
+| `app/models/**/*.rb` (lexical scan) | appended to `gen/models/<model>.rb` | per-model `call_view_method(name)` `case` (argument-less `def` only) |
+| file list of `app/` | `gen/app.rb` | list of `require_relative` |
 
-go / no-go: 2 と 3 の結果で D8 / D9 を確定してから M1 に進む。
+All generated code is committed. CI runs `git diff --exit-code gen/` after `spin run gen` to check that it is up to date.
 
-## 10. マイルストーン
+## 7. Draft specification of the template language
 
-- **M0** スパイク完了と go / no-go 判定。
-- **M1** HTTP サーバ、Request / Response、ミドルウェア、手書き経路表でのルーティング、静的ファイル、ログ。`hello world` コントローラが動く。
-- **M2** テンプレートエンジン、レイアウト、パーシャル、ヘルパー、`view_assigns` 生成。
-- **M3** SQLite アダプタ、マイグレーション、`db/schema.rb` ダンプ、モデル生成、validations、`Cybertrain::Test`。
-- **M4** routes 生成と URL ヘルパー、フォームヘルパー、セッション、flash、CSRF。blog が end-to-end で動き、integration テストが CI で通る。**合格基準**。
-- **M5** 開発ループ、エラーページ、`cybertrain new` / `generate scaffold`、README。
+ERB tags: `<% %>`, `<%= %>` (escaped), `<%== %>` (unescaped), `<%# %>`, `<%- -%>` (trim), and a leading `<%# locals: (a:, b:) %>`.
 
-## 11. リポジトリ構成
+Expressions:
 
-フレームワーク（このリポジトリ）:
+- Literals: integers, floats, strings (`"..."` allows `#{}` interpolation, `'...'` does not), symbols, `nil` / `true` / `false`, arrays `[...]`, hashes `{ key: value }` (the same form as keyword arguments)
+- Variables: `@ivar` (from `view_assigns`), locals (`each` bindings and strict locals)
+- Calls: `recv.method`, `recv.method(args, key: value)`, `recv&.method`, `method(args)` (helpers)
+- Operators: `== != < <= > >= && || ! + - * / % ?:`
+- Control: `if` / `elsif` / `else` / `unless` / `end`, `each do |x|` / `each_with_index do |x, i|`, `form_with(...) do |f|`
+- Per-value table of allowed methods: String (`upcase` `downcase` `capitalize` `strip` `size` `length` `empty?` `to_s`), Integer / Float (arithmetic and `to_s`), Time (`strftime` `year` `month` `day` `to_s`), Array (`size` `length` `empty?` `first` `last` `any?`), Model (generated attributes, generated associations, `errors`, `persisted?`, `new_record?`, `to_param`, those declared with `view_methods`), `errors` (`any?` `full_messages` `[]` `count`)
+
+Explicitly unsupported: arbitrary blocks (`map { }` and so on), local definitions other than assignment, `case`, regular expressions, ranges, method definitions, `require`.
+
+## 8. What was deliberately left out
+
+- `rails console` (`eval` does not exist)
+- Arbitrary Ruby in templates, compile-time detection of type errors in templates, error pages with stack traces
+- A fully single-file production binary (`app/views` and `public` ship alongside it; recoverable with a future compilation backend)
+- `namespace` / format / `respond_to`, `has_many :through`, `includes`, i18n, a WebSocket server (the outbound client arrived on 2026-10-26 in D33) (authentication arrived on 2026-10-22 in the form of D15: code written by the generator, plus `Cybertrain::Password`) (the `transaction` API in D20, mailers in D27 and jobs in D28 arrived on 2026-10-25 in minimal form)
+- Rack compatibility, Rails compatibility, running on CRuby
+
+## 9. Unverified assumptions and spike plan (M0)
+
+Small Spinel programs are placed in `spikes/` and verified against `2026.09.12`. (The results are in `spikes/NOTES.md`. The programs themselves were deleted after verification.)
+
+| # | What is verified | If it fails |
+| --- | --- | --- |
+| 1 | Installing `spinel` / `spin`, the optimisation levels in `spinel --help`, compile time at the scale of 2,000 lines | Re-evaluate how the development loop (D12) feels |
+| 2 | Whether a non-literal `send` can dispatch to literal names, the return type, the block form of `instance_exec` | **Result**: `send` works, but the 128-literal limit makes it unusable in real applications. `instance_exec(&stored)` is not possible. -> D8 / D9 revised to the generated `case` statement approach |
+| 3 | **Whether a tree-walking interpreter with a tagged union `Value` passes type inference, and whether rendering a 100-line template 10,000 times is fast enough** | **Result**: It passes. With a monomorphic `INode` AST + plain polymorphic values, 1.54 times the hand-written version and 3.2 times faster than CRuby. The `Value` wrapper was not adopted |
+| 4 | Whether `first` is inferred as `Post \| nil` with a base `Relation` and `PostRelation`, without the types widening across several models | **Result**: It is inferred. Abstract stubs in the base, setters that return `nil`, and nullable attributes through cast methods are required |
+| 5 | 100 concurrent connections with `TCPServer` + green threads + keep-alive, latency, whether issue #4528 reproduces | **Result**: 52-58k req/s at c=100 keep-alive (`SPINEL_WORKERS=1`), p99 ≤ 2 ms. Silent connections do not stop the others. However, always call `wait_readable(timeout)` immediately before `readpartial` (a bare `readpartial` occupies the OS worker and causes the same stall as #4528) |
+| 6 | SQLite FFI open / prepare / bind / step / column, `blocking: true`, use of a `SizedQueue` pool from multiple threads, WAL | **Result**: Works. A race crash on the static `ffi_buffer` was avoided with `malloc` scratch space |
+| 7 | FFI for `execv`, whether `trap` is available, `SO_REUSEADDR` | **Result**: All work (`trap("HUP")` confirmed on a real machine, an execv shim, immediate rebinding of the same port). D12 confirmed |
+| 8 | HMAC with `openssl` / `digest`, `json`, `escapeHTML` from `cgi`, query parsing with `uri` | **Result**: json / uri / securerandom / base64 / strscan / stringio work. `cgi` does not exist in this tag, so HTML escaping is our own. HMAC is implemented by hand on top of `Digest::SHA256` |
+
+go / no-go: settle D8 / D9 from the results of 2 and 3 before moving on to M1.
+
+## 10. Milestones
+
+- **M0** Spikes complete and the go / no-go decision.
+- **M1** HTTP server, Request / Response, middleware, routing with a hand-written route table, static files, logging. A `hello world` controller works.
+- **M2** Template engine, layouts, partials, helpers, `view_assigns` generation.
+- **M3** SQLite adapter, migrations, `db/schema.rb` dump, model generation, validations, `Cybertrain::Test`.
+- **M4** routes generation and URL helpers, form helpers, sessions, flash, CSRF. The blog works end to end and the integration tests pass in CI. **Acceptance criteria**.
+- **M5** Development loop, error pages, `cybertrain new` / `generate scaffold`, README.
+
+## 11. Repository layout
+
+Framework (this repository):
 
 ```
 cybertrain/
-  spin.toml  cybertrain.rb  cybertrain.gemspec    # gem には CLI とその require だけ
+  spin.toml  cybertrain.rb  cybertrain.gemspec    # the gem holds only the CLI and what it requires
   cybertrain/
-    main.rb  application.rb  config.rb  views.rb  version.rb   # bin/<name>.rb の入口と起動
-    db.rb  dev.rb  generator.rb  template.rb  schema.rb   # 各サブディレクトリの require 入口
+    main.rb  application.rb  config.rb  views.rb  version.rb   # entry point and boot for bin/<name>.rb
+    db.rb  dev.rb  generator.rb  template.rb  schema.rb   # require entry points for each subdirectory
     router.rb  controller.rb  params.rb  session.rb  flash.rb  callback.rb  errors.rb  context.rb
-    middleware.rb  app.rb   # Middleware 基底クラスと既定のスタック（App）
+    middleware.rb  app.rb   # Middleware base class and the default stack (App)
     http/        # server.rb  parser.rb  request.rb  response.rb  query.rb  cookies.rb
     middleware/  # request_logger  static  method_override  session_store  csrf_protection  error_pages
     template/    # lexer  parser  ast  inode  interpreter  helpers  form_builder  engine
     model.rb  relation.rb  validator.rb  cast.rb  migration.rb
-    schema/      # table.rb  definition.rb  dumper.rb（db/schema.rb の DSL）
+    schema/      # table.rb  definition.rb  dumper.rb (the db/schema.rb DSL)
     db/          # sqlite_ffi.rb  connection.rb  pool.rb  migrator.rb  schema_dumper.rb  sqlite_ddl.rb  cli.rb  error.rb
     generator/   # runner.rb  routes_dsl.rb  *_emitter.rb  model_scan.rb  controller_scan.rb  manifest.rb  inflector.rb  url_support.rb
-    dev/         # watcher.rb  rebuilder.rb  reexec.rb  error_page.rb（D12）
+    dev/         # watcher.rb  rebuilder.rb  reexec.rb  error_page.rb (D12)
     cli.rb  cli/ # new_app.rb  scaffold.rb  templates.rb  build.rb
     test.rb  test/client.rb  html.rb  crypto.rb  logger.rb
-  bin/cybertrain.rb  exe/cybertrain   # CLI（spin install / gem）
+  bin/cybertrain.rb  exe/cybertrain   # CLI (spin install / gem)
   script/regen-snapshot
-  test/                     # spin test（.expected をコミット）
-  examples/blog/            # 合格基準のアプリ
-  spikes/NOTES.md           # M0 スパイクの記録（プログラム自体は検証後に削除。git 履歴にある）
-  README.md  docs/design.md  docs/deploy.md  docs/deploy.en.md  docs/deploy-kamal.md  docs/template-language.md  docs/superpowers/
+  test/                     # spin test (.expected files are committed)
+  examples/blog/            # the acceptance-criteria app
+  spikes/NOTES.md           # record of the M0 spikes (the programs were deleted after verification; they are in the git history)
+  README.md  docs/design.md  docs/deploy.md  docs/deploy.en.md  docs/deploy-kamal.md  docs/template-language.md
   .github/workflows/ci.yml
 ```
 
-アプリ（`cybertrain new blog` が生成）:
+App (generated by `cybertrain new blog`):
 
 ```
 blog/
   spin.toml                 # [dependencies] cybertrain = ...
-  spin.lock                 # spin lock が書く（examples/blog は path 依存なので無し）
+  spin.lock                 # written by spin lock (absent in examples/blog, which uses a path dependency)
   .gitignore  README.md
   app/controllers/  app/models/  app/views/  app/helpers/
-  config/routes.rb  config/app.rb  config/deploy.yml   # deploy.yml: Kamal（D11）
+  config/routes.rb  config/app.rb  config/deploy.yml   # deploy.yml: Kamal (D11)
   Dockerfile  .dockerignore  .kamal/secrets
-  .github/workflows/ci.yml  # setup-cybertrain アクションを呼ぶ（D32）
+  .github/workflows/ci.yml  # calls the setup-cybertrain action (D32)
   db/migrate/  db/schema.rb
   gen/                      # app.rb  controllers.rb  migrations.rb  models/  routes.rb  views.rb
-  bin/blog.rb  bin/gen.rb  bin/db.rb   # blog.rb: server / migrate / db、db.rb: 開発時のマイグレーション
-  test/                     # 雛形は .keep のみ（examples/blog では articles.rb comments.rb support/blog_test.rb）
-  public/  storage/  tmp/   # build/ と dist/ は .gitignore。public/up.html は Kamal のヘルスチェック
+  bin/blog.rb  bin/gen.rb  bin/db.rb   # blog.rb: server / migrate / db; db.rb: migrations during development
+  test/                     # the skeleton has only .keep (examples/blog has articles.rb comments.rb support/blog_test.rb)
+  public/  storage/  tmp/   # build/ and dist/ are in .gitignore; public/up.html is the Kamal health check
 ```
 
-## 12. 参考
+## 12. References
 
-- Spinel: https://github.com/matz/spinel （README、`docs/limitations.md`、`docs/FFI.md`、`docs/spin.md`、`packages/`）
-- Spinel issue #4528（ソケット読み取りで停止したスレッドが他の I/O を止める）: https://github.com/matz/spinel/issues/4528
+- Spinel: https://github.com/matz/spinel (README, `docs/limitations.md`, `docs/FFI.md`, `docs/spin.md`, `packages/`)
+- Spinel issue #4528 (a thread stalled on a socket read stops other I/O): https://github.com/matz/spinel/issues/4528
 - spin-index: https://github.com/matz/spin-index
-- Roundhouse: https://github.com/rubys/roundhouse （`docs/guide/spinel.md`、`runtime/ruby/`）
-- spinelgems（gem 互換性調査、bundler-spinel）: https://github.com/OriPekelman/spinelgems
+- Roundhouse: https://github.com/rubys/roundhouse (`docs/guide/spinel.md`, `runtime/ruby/`)
+- spinelgems (gem compatibility survey, bundler-spinel): https://github.com/OriPekelman/spinelgems
 - rubocop_spinel: https://github.com/gurgeous/rubocop_spinel
 
-## 13. 実装状況（2026-09-25）
+## 13. Implementation status (2026-09-25)
 
-- 第 10 章のマイルストーン M0〜M5 はすべて到達した。第 2.2 節の合格基準は `examples/blog`（Article + Comment、サーバサイド HTML、SQLite、`spin build` で単一バイナリ）で満たし、統合テスト 21 ケースと、フレームワーク自身の `spin test` 57 プログラムが通過している。
-- 開発ループ（D12）は実機で確認済み: ビュー編集は再ビルドなしで即時反映、コントローラ編集は約 24 秒（`spin run gen` + `spin build`。当時のビルド対象は server 用の bin）で再ビルドされ、同じ PID のまま `execv` で新バイナリに置き換わった。
-- 実装で判明した Spinel の制約 42 項目は `spikes/NOTES.md` にある。利用者向けの説明は `README.md` と `docs/template-language.md`。
-- 既知の未対応: strict locals の既定値構文（`<%# locals: (comment: nil) %>`）、`Model#attribute_or_method?` が常に true（typo した属性名が空文字で描画される）、`spin run db migrate` は `--` が必要（`spin run db -- migrate`）、`SPINEL_GC_STRESS=1` 下で最初の `form_with` が空文字を返す事象（Spinel 側のルーティング問題の疑い）。
-- 2026-09-26: アプリの入口を `bin/<name>.rb`（`Cybertrain::Main`: server / migrate / db）に統合。`spin run gen` は `gen/views.rb` を常に書き、`--embed-views` で `app/views/` を文字列テーブルとして埋め込む。本番は埋め込みテーブルのみを描画し（`Template::Engine.embedded`）、空なら起動を拒否する。`cybertrain migration` / `db` / `server` / `build` を追加、`build` は `dist/`（バイナリ、public/、無ければ storage/ と tmp/）を組み立てる。開発時のマイグレーション用に `bin/db.rb` は残す（`bin/<name>.rb` は `gen/app` を読むため、最初のマイグレーションで `gen/models/` ができるまでコンパイルできない。`cybertrain migration` は `spin run db -- migrate` を使い、本番は `dist/<name> migrate`）。クロスビルドと public/ の埋め込みはスコープ外。
-- 2026-09-27（PR #5 まで）: CLI は gem（`gem install cybertrain`、`cybertrain new` は同じタグを依存に書く。D11）でも配布。`cybertrain build` は `tmp/cybertrain-build.lock`（PID 入り）を dist/ の組み立てが終わるまで持ち、`dist/<name>` と `dist/public/` を rename で差し替える（`.public.old`）。開発サーバはロック中の再ビルドを飛ばしてログに出し、死んだ PID や 30 分以上古いロックは消して無視する。ポートを bind できないときは `PortInUse`（使用中 / 権限なし）を stdout に出して終了コード 1。`schema:dump` は `db/` があるところでだけ書く（無ければ終了コード 1）。`script/regen-snapshot` を追加。`spin test` は 64 プログラム。
-- 2026-10-22: ファイルアップロード（D16）。フレームワーク側は `Multipart` / `MultipartForm` / `UploadedFile` / `BlobStore`、`Params#upload`、`Request#multipart_form`、`Controller#send_blob`、`form_with(multipart: true)` / `f.file_field`、`Config` の 3 キー。CLI 側は `cybertrain generate attachment` と scaffold の `FIELD:attachment`。CI の gem E2E が、添付付きの scaffold を生成・コンパイルし、生成テストを走らせ、curl でアップロードとダウンロード（バイト一致、ヘッダ）を確かめる。
-- 2026-10-22: 認証（D15）。`cybertrain generate authentication` が users / sessions のマイグレーション、`User` / `Session` モデル、`SessionsController` / `RegistrationsController`、ビュー、`ApplicationController` への挿入、routes、`test/authentication.rb` を書く。フレームワーク側は `Cybertrain::Password`（PBKDF2-HMAC-SHA256）、`Controller.skip_before_action`、`Mapper#resource`、カスタム経路の派生名の衝突を無名にする規則。CI の gem E2E が生成したアプリをコンパイルしてサインアップ / サインインの統合テストを走らせる。
-- 2026-10-23: `X-Content-Type-Options: nosniff` と `X-Frame-Options: SAMEORIGIN` を全レスポンスの既定にした（D14、D16）。`Response#to_http` が、同名のヘッダが無いときだけ出す。`Static::EXTENSIONS` に webp / avif / woff / ttf / otf / wasm などを追加。`Config` スイッチは作らず、上書きは `set_header`。
-- 2026-10-25: アプリ定義の設定（D17、issue #69）。`Config#setting_string` / `setting_int` / `setting_bool` で宣言し、`string_setting` / `int_setting` / `bool_setting` で読む。`help` が宣言の一覧を、起動バナーが現在値（secret は伏せる）を出す。回帰テストは `test/config_settings.rb`。
+- Milestones M0-M5 in section 10 have all been reached. The acceptance criteria in section 2.2 are met by `examples/blog` (Article + Comment, server-side HTML, SQLite, a single binary with `spin build`); its 21 integration test cases and the framework's own 57 `spin test` programs pass.
+- The development loop (D12) was confirmed on a real machine: view edits take effect immediately without a rebuild, and a controller edit was rebuilt in about 24 seconds (`spin run gen` + `spin build`; the build target at the time was the server bin) and replaced by the new binary via `execv`, keeping the same PID.
+- The 42 Spinel constraints found during implementation are in `spikes/NOTES.md`. User-facing explanations are in `README.md` and `docs/template-language.md`.
+- Known gaps: the default value syntax for strict locals (`<%# locals: (comment: nil) %>`), `Model#attribute_or_method?` is always true (a mistyped attribute name renders as an empty string), `spin run db migrate` needs `--` (`spin run db -- migrate`), and under `SPINEL_GC_STRESS=1` the first `form_with` returns an empty string (suspected routing problem on the Spinel side).
+- 2026-09-26: The application entry point was unified into `bin/<name>.rb` (`Cybertrain::Main`: server / migrate / db). `spin run gen` always writes `gen/views.rb`, and with `--embed-views` embeds `app/views/` as a string table. Production renders only from the embedded table (`Template::Engine.embedded`) and refuses to start if it is empty. Added `cybertrain migration` / `db` / `server` / `build`; `build` assembles `dist/` (the binary, public/, and storage/ and tmp/ if they do not exist). `bin/db.rb` is kept for migrations during development (`bin/<name>.rb` reads `gen/app`, so it cannot compile until the first migration creates `gen/models/`; `cybertrain migration` uses `spin run db -- migrate`, and production uses `dist/<name> migrate`). Cross builds and embedding public/ are out of scope.
+- 2026-09-27 (up to PR #5): The CLI is also distributed as a gem (`gem install cybertrain`; `cybertrain new` writes the same tag as the dependency; D11). `cybertrain build` holds `tmp/cybertrain-build.lock` (containing the PID) until dist/ is assembled, and swaps in `dist/<name>` and `dist/public/` with rename (`.public.old`). The development server skips rebuilds while the lock is held and logs that it did, and removes and ignores locks with a dead PID or older than 30 minutes. When the port cannot be bound, it prints `PortInUse` (in use / permission denied) to stdout and exits with code 1. `schema:dump` writes only where `db/` exists (exit code 1 otherwise). Added `script/regen-snapshot`. `spin test` has 64 programs.
+- 2026-10-22: File uploads (D16). On the framework side: `Multipart` / `MultipartForm` / `UploadedFile` / `BlobStore`, `Params#upload`, `Request#multipart_form`, `Controller#send_blob`, `form_with(multipart: true)` / `f.file_field`, and 3 `Config` keys. On the CLI side: `cybertrain generate attachment` and scaffold's `FIELD:attachment`. The gem E2E in CI generates and compiles a scaffold with an attachment, runs the generated tests, and checks upload and download with curl (byte-identical content, headers).
+- 2026-10-22: Authentication (D15). `cybertrain generate authentication` writes the users / sessions migrations, the `User` / `Session` models, `SessionsController` / `RegistrationsController`, views, an insertion into `ApplicationController`, routes, and `test/authentication.rb`. On the framework side: `Cybertrain::Password` (PBKDF2-HMAC-SHA256), `Controller.skip_before_action`, `Mapper#resource`, and a rule that leaves the derived names of custom routes unnamed when they collide. The gem E2E in CI compiles the generated application and runs sign-up / sign-in integration tests.
+- 2026-10-23: `X-Content-Type-Options: nosniff` and `X-Frame-Options: SAMEORIGIN` became the default on every response (D14, D16). `Response#to_http` emits them only when no header of the same name is present. Added webp / avif / woff / ttf / otf / wasm and others to `Static::EXTENSIONS`. No `Config` switch was added; override with `set_header`.
+- 2026-10-25: Application-defined settings (D17, issue #69). They are declared with `Config#setting_string` / `setting_int` / `setting_bool` and read with `string_setting` / `int_setting` / `bool_setting`. `help` prints the list of declarations, and the startup banner prints the current values (secrets masked). The regression test is `test/config_settings.rb`.
