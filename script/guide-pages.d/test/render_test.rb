@@ -1,6 +1,7 @@
-# Tests for GuidePages::Render (Markdown conventions -> the markup of
-# site/tutorial.html) and GuidePages::WORDS. Sources are built in memory;
-# links resolve against the repository files in fixtures/links.
+# Tests for GuidePages::Render (Markdown conventions -> the markup of the
+# former hand-written site/tutorial.html, `git show 2a73b58:site/tutorial.html`)
+# and GuidePages::WORDS. Sources are built in memory; links resolve against
+# the repository files in fixtures/links.
 # usage: ruby -Iscript/guide-pages.d/lib script/guide-pages.d/test/render_test.rb
 
 require "minitest/autorun"

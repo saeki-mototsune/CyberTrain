@@ -15,7 +15,8 @@ class HighlightTest < Minitest::Test
     html[%r{<code>(.*)</code></pre>}m, 1]
   end
 
-  # The step-05 block of site/tutorial.html, byte for byte.
+  # The step-05 block of the former hand-written site/tutorial.html
+  # (`git show 2a73b58:site/tutorial.html`), byte for byte.
   def test_ruby_matches_tutorial
     src = <<~RUBY
       # app/models/article.rb -- only the first string field gets a default
@@ -87,8 +88,9 @@ class HighlightTest < Minitest::Test
     assert_includes code, '<span class="d">&lt;%=</span>'
   end
 
-  # As site/tutorial.html colours them: require/require_relative and self
-  # are keywords, an interpolated string is one string span.
+  # As the former site/tutorial.html (2a73b58) coloured them:
+  # require/require_relative and self are keywords, an interpolated string is
+  # one string span.
   def test_ruby_keywords_and_interpolation
     code = code_of(fig("ruby", nil, %(require_relative "support/x"\nparams.require(:a)\ndef self.go\nflash[:alert] = "No: \#{@c.errors.join(", ")}"\n)))
     assert_equal <<~HTML.chomp, code

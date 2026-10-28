@@ -4,13 +4,13 @@
 # <lang>/tutorial.html, every other guide at guide/<name>.html and
 # <lang>/guide/<name>.html, each in one page shell
 # (script/guide-pages.d/layout.html.erb, which reproduces the hand-written
-# site/tutorial.html this replaced: `git show 2a73b58:site/tutorial.html`), plus api/file.<name>.html redirects
-# from the old YARD URLs. The Pages workflow runs it after script/api-docs;
-# none of its output is committed (.gitignore). It fails, listing every
-# problem and writing nothing, on a link to a missing source, anchor or
-# repository path, a source without exactly one "# " title, a malformed step
-# comment, a code fence language Rouge does not know, or an unknown front
-# matter key. Needs the kramdown, kramdown-parser-gfm and rouge gems; the
+# site/tutorial.html this replaced: `git show 2a73b58:site/tutorial.html`),
+# plus api/file.<name>.html redirects from the old YARD URLs. The Pages
+# workflow runs it after script/api-docs; none of its output is committed
+# (.gitignore). It fails, listing every problem and writing nothing, on a
+# link to a missing source, anchor or repository path, a source without
+# exactly one "# " title, a malformed step comment, a code fence language
+# Rouge does not know, or an unknown front matter key. Needs the kramdown, kramdown-parser-gfm and rouge gems; the
 # conventions are listed in script/guide-pages.d/lib/render.rb.
 #
 # usage: script/guide-pages [--out DIR]   (default: site/; exit status 1 and the problems when any)

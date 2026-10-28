@@ -10,7 +10,7 @@ the first migration, built once so the server starts without compiling), its
 development server running in a terminal and the app, showing the article list,
 in a new browser tab. The app is a git repository with one commit, so Source
 Control shows what you change. `PLAYGROUND.md` in the app lists what to try, from
-editing a view to carrying on with the tutorial at its comments (step 08). A view edit shows
+editing a view to continuing with the tutorial from step 08 (comments). A view edit shows
 on the next reload; a Ruby edit is a full rebuild, about a minute, after which the
 server restarts by itself; the app's tab does not reload by itself. `cybertrain new`
 works there with no network.

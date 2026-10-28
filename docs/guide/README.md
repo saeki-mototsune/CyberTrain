@@ -64,7 +64,7 @@ any translation. Text is kept as written: no smart quotes, and entities
 (`&nbsp;`, `&rsquo;`, `&mdash;`) stay entities.
 
 The page's components are written as below; [render.rb](../../script/guide-pages.d/lib/render.rb)
-lists them in its header comment, and [tutorial.md](tutorial.md) uses all of
+lists them in its header comment, and [tutorial.md](tutorial.md) uses most of
 them.
 
 | Write | For |
@@ -76,7 +76,7 @@ them.
 | `<details><summary>Title — summary</summary>`, a blank line, the body (Markdown), a blank line, `</details>` | A collapsed section with a title and a one-line summary, split at the first " — " |
 | `<!-- list: checklist -->`, `<!-- list: points -->`, `<!-- list: points know -->` before a list | The tutorial's styled lists: requirements to tick off, bullet points, "things to know" |
 | `<!-- list: next-list -->` before a list of `- [**Title**](link) — Description` | Link cards ("Where next", the Guides index) |
-| `<!-- table: cmp -->` before a table, optionally `<!-- table-foot: Text -->` right after it | The Rails/CyberTrain comparison table and its foot note. Keep the table in one piece: a blank line inside it splits it |
+| `<!-- table: cmp -->` before a table, optionally `<!-- table-foot: Text -->` right after it | The Rails/CyberTrain comparison table and its foot note. The table has exactly two header cells; keep it in one piece: a blank line inside it splits it |
 | ```` ```LANG PLACE ```` | A code block. `LANG` is a [Rouge](https://github.com/rouge-ruby/rouge) lexer name (`ruby`, `erb`, `toml`, `shell`, `text`; one Rouge does not know fails the build); `PLACE`, optional, is the caption: a file (`app/models/article.rb`, `config/routes.rb (excerpt)`) or where it runs (`terminal — blog/`, `output — cybertrain server`) |
 | `shell` (or `sh`) and `console` fences | `shell`: every line is a command. `console`: a transcript, where a `$ ` line is a command and the others are its output |
 | `[text](other.md#anchor)` | A link to another guide, in the same language, made relative to the page. The anchor must be one of that page's heading ids |
@@ -104,7 +104,7 @@ python3 -m http.server -d site 8000   # http://localhost:8000/tutorial.html
 The generated files are in `.gitignore`. The Pages workflow
 ([.github/workflows/pages.yml](../../.github/workflows/pages.yml)) runs both
 scripts before each deploy, and the Gate workflow builds the pages into a
-temporary directory on every push and pull request, with the generator's tests
+temporary directory on every pull request and every push to `main`, with the generator's tests
 (`script/guide-pages.d/test/`).
 
 ## Translations

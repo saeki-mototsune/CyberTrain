@@ -1,5 +1,5 @@
 ---
-source_sha256: 9a5740659170a925b518396b038b184107f4e771c1df3a8e10fa880824e90247
+source_sha256: 921f35c9cb87db6ad7dffa5eeabb53f95a5a5d262cbb98ad67ad0ba1542ddfaa
 ---
 # Installer cybertrain
 
@@ -14,8 +14,8 @@ démarre sans compiler), son serveur de développement lancé dans un terminal, 
 l’application, qui affiche la liste des articles, dans un nouvel onglet du
 navigateur. L’application est un dépôt git avec un seul commit, donc Source
 Control montre ce que vous modifiez. `PLAYGROUND.md`, dans l’application, liste
-ce qu’il y a à essayer, de la modification d’une vue à la suite du tutoriel avec
-les commentaires (étape 08). Une modification de vue apparaît au rechargement suivant&nbsp;;
+ce qu’il y a à essayer, de la modification d’une vue à la suite du tutoriel à
+partir de l’étape 08 (les commentaires). Une modification de vue apparaît au rechargement suivant&nbsp;;
 une modification Ruby entraîne une recompilation complète, environ une minute,
 après quoi le serveur redémarre de lui-même&nbsp;; l’onglet de l’application ne
 se recharge pas de lui-même. `cybertrain new` y fonctionne sans réseau.
