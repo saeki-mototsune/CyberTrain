@@ -1,5 +1,8 @@
 # Publishes site/ (the project homepage and tutorial) to GitHub Pages, with
-# the API reference built into site/api/ by script/api-docs (YARD).
+# the API reference built into site/api/ by script/api-docs (YARD) and the
+# tutorial and guides built from docs/guide/ by script/guide-pages (which
+# also writes site/api/file.*.html redirects from the old guide URLs, so it
+# runs after script/api-docs).
 # One-time setup: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 name: Pages
 
@@ -15,10 +18,13 @@ on:
       # The API reference's sources (see script/api-docs).
       - "cybertrain/**"
       - "docs/api/**"
-      - "docs/template-language.md"
       - "docs/guide/**"
       - ".yardopts"
       - "script/api-docs"
+      # The guide pages' generator (see script/guide-pages).
+      - "script/guide-pages"
+      - "script/guide-pages.d/**"
+      - "script/check-guide-i18n"
   workflow_dispatch:
 
 permissions:
@@ -43,8 +49,14 @@ jobs:
           ruby-version: "3.3"
       - name: Build the API reference into site/api/
         run: |
-          gem install --no-document yard kramdown kramdown-parser-gfm
+          gem install --no-document yard kramdown kramdown-parser-gfm rouge
           script/api-docs
+      - name: Build the guides
+        # The guard goes when the translations (docs/guide/<lang>/) land:
+        # until then there is nothing for script/check-guide-i18n to check.
+        run: |
+          if [ -d docs/guide/ja ]; then script/check-guide-i18n; fi
+          script/guide-pages
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

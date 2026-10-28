@@ -68,6 +68,14 @@ module GuidePages
                       h2: en.select { |s| s.level == 2 }, sub: en.reject { |s| s.level == 2 }).page
     end
 
+    # Inline Markdown of the front matter (a meta row's text), links rewritten
+    # as on source's page.
+    def inline(text, source:, links:, words:)
+      root, = Parser.parse("", OPTIONS)
+      Converter.build(root, Kramdown::Options.merge(OPTIONS), source: source, links: links, words: words,
+                      summaries: [], title: nil, h2: [], sub: []).inline_md(text)
+    end
+
     # Line-level fixes before kramdown, outside fences: a convention
     # <details><summary> line becomes a marked <details> (the summary is kept
     # aside), and the list/table comments get the blank lines kramdown needs

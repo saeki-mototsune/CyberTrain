@@ -44,7 +44,12 @@ module GuidePages
     # the title's slug, step ids or slugs for "##", slugs for deeper headings.
     def ids_for(name)
       @ids[name] ||= begin
-        outline = Outline.parse(@sources.fetch("en").fetch(name).body)
+        en = @sources.fetch("en").fetch(name)
+        outline = begin
+          Outline.parse(en.body)
+        rescue Error => e
+          raise Error, "#{en.file}: #{e.message}"
+        end
         [Outline.slug(outline.title)] + outline.sections.drop(1).map do |s|
           s.level == 2 && s.step ? s.step.id : Outline.slug(s.text)
         end
