@@ -54,9 +54,11 @@ The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
 [performance-next.md](performance-next.md).
 
-Suggested order for what is still open: 1, whose workaround CyberTrain
-keeps because no reduced program shows it on any build (see 1), then 4 to
-7, then the rest. 2's workaround in `Html.escape` is dropped on
+Suggested order for what is still open: the refusal under C (the one
+workaround left that a change in Spinel could remove; see "The refusal in
+test/template_engine.rb" under C), then 4 to 7, then the rest. B, D and 1
+are not on that list: they are accepted as Spinel's constraints (see
+"Accepted as Spinel constraints"). 2's workaround in `Html.escape` is dropped on
 2026.10.27.7020 (see 2). H and the two shapes found in review are fixed on
 master 003ceda5d (#10415 to #10417), and the fork's 2026.10.27.7020, which
 CyberTrain is now pinned to, carries #10415: H's workaround is dropped
@@ -112,7 +114,7 @@ CyberTrain is pinned to 2026.10.27.7020, which carries it (issue #90):
 | --- | --- | --- | --- |
 | `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error | required (#10255) |
 | `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` | still raises `RangeError`, by design in the default `raise` mode; kept (`--int-overflow=promote`, experimental, parses it as a Bignum; see D) |
-| test/template_engine.rb passes the layout's Hash as a call (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged |
+| test/template_engine.rb settles the layout Hash's value types where it is built (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged; still refused on 2026.10.27.7020 (see "The refusal in test/template_engine.rb") |
 | `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415). Dropped on 2026.10.27.7020: `DB.with`'s comment no longer asks for the local, and test/db_with_value.rb also covers the block's own value |
 | `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept |
 
@@ -123,6 +125,27 @@ refusal under C; it is merged, and it does not remove that refusal (see C).
 The row for H can be removed once its fix is in a build CyberTrain uses.
 The row for D stays as long as CyberTrain builds in the default `raise`
 mode, where the `RangeError` is by design (see D).
+
+## Accepted as Spinel constraints
+
+Decided on 2026-10-28: the workarounds for B, D and 1 are how CyberTrain is
+written for Spinel, not debts to pay off. They are not targets for future
+fixes, in CyberTrain or upstream: do not try to remove them, do not open
+upstream issues or pull requests for them, and do not re-check them on
+each new Spinel release. Revisit one only if Spinel itself changes the
+behaviour behind it (its release notes or docs say so).
+
+- **B, `extern` declarations in `ffi_source`.** Spinel's documented rule
+  (docs/FFI.md): a fragment declares what it calls. Declaring
+  `ffi_func`s under their C names inside Spinel would bring back the
+  conflicting-types errors, so this is the intended way to write FFI code.
+- **D, `Request#content_length` refusing more than 18 digits.** The
+  `RangeError` is the default `raise` mode's intended behaviour (Matz,
+  412a2200c). The guard is also correct HTTP input validation on its own: no
+  real body is that long, so the request is refused either way.
+- **1, `SafeString.of` and binding a String to a local before `new`.** No
+  reduced program shows the bug on any build, so there is nothing to send
+  upstream, and the idioms cost nothing. New code keeps following rule 58.
 
 ## Correctness
 
@@ -438,8 +461,7 @@ generating wrong code:
 
 - test/template_engine.rb (since 2026.10.09-7009): "a typed Hash is passed
   to `render_with_layout`'s parameter `env`, which the method stores keys or
-  values of other types into". Not a regression: the test's `{}` should be
-  built where the call can widen it. Still refused on 2026.10.26.7019
+  values of other types into". The next section has the details. Still refused on 2026.10.26.7019
   (re-checked on 2026-10-26 with the test's earlier form), and on matz/spinel
   master 9b9972399 (re-checked on 2026-10-27 with the earlier form,
   `git show 81778ea^:test/template_engine.rb`, refused at line 49), although
@@ -454,6 +476,116 @@ generating wrong code:
   intended, rule 9 needs another idiom; either way CyberTrain has to change
   for it. Not refused any more on 2026.10.26.7019, nor on matz/spinel
   master since #10261, so the idiom stays.
+
+#### The refusal in test/template_engine.rb
+
+Still refused on 2026.10.27.7020 (re-checked on 2026-10-28 with the test's
+earlier form, `git show 81778ea^:test/template_engine.rb`, refused at line
+49). It is the one CyberTrain workaround left that a change in Spinel could
+remove, and the candidate for an upstream pull request.
+
+What happens: a Hash whose value type is settled in one method (say
+String => Integer), returned, and passed on to a method that stores a value
+of another type into it, is refused at the call. CRuby runs the program.
+The message suggests building the argument from a hash literal the call can
+see, which is not always possible: the Hash was built somewhere else.
+
+```ruby
+class Box
+  def initialize(s)
+    @s = s
+  end
+  def to_s
+    @s
+  end
+end
+
+def new_env
+  env = {}
+  env["n"] = 7
+  env
+end
+
+def fill(env)
+  env["content"] = Box.new("page")
+  env.size
+end
+
+env = new_env
+p fill(env)                # CRuby: 2
+p env["content"].to_s      # CRuby: "page"
+```
+
+2026.10.27.7020 refuses it:
+
+```
+spinel: refusal.rb:22: a typed Hash is passed to `fill`'s parameter `env`, which the method stores keys or values of other types into: the caller's hash cannot hold them, and a converted copy would not see the stores. Build the argument from a hash literal the call can see, so it is widened with the parameter.
+spinel: 1 refusal, nothing written
+```
+
+Variations, all on 2026.10.27.7020:
+
+| Shape | Result |
+| --- | --- |
+| The program above (Hash from `new_env` through a local) | refused |
+| `fill(new_env)`, the call itself as the argument | refused |
+| `env = new_env; env["title"] = "x"; fill(env)` (the caller widens it to String and Integer values first; this is test/template_engine.rb's earlier form) | refused |
+| The `"title"` store moved into a method that returns the Hash (`def titled_env; env = new_env; env["title"] = "x"; env; end`, then `fill(titled_env)`) | compiles, prints CRuby's result |
+| `env = {}; env["n"] = 7; fill(env)` at the call site, the literal visible to the call | compiles, prints CRuby's result |
+| The program above storing a String (`"page"`) instead of a `Box` | compiles and prints CRuby's result, with `warning: type inference did not converge in 128 rounds` |
+
+So what decides it is where the Hash's value type is settled, not whether
+it reaches the call through a local: a Hash whose values are already
+polymorphic when it leaves the method that builds it is accepted, and a
+Hash with one value type is refused, even when the caller widens it
+afterwards.
+
+A related shape is accepted but wrong at run time. When the literal is
+visible to the call and the callee also reads the Integer before storing
+the object, the program raises:
+
+```ruby
+def fill(env)
+  n = env["n"]
+  env["content"] = Box.new("page")
+  n
+end
+
+env = {}
+env["n"] = 7
+p fill(env)                # CRuby: 7
+```
+
+2026.10.27.7020 compiles it and prints `wrong argument type Integer
+(expected Box) (TypeError)`. 2026.09.12 generates C that does not compile.
+That is wrong code, not a refusal, and the more serious of the two for an
+upstream report. With a String stored instead of a `Box` it prints CRuby's
+result.
+
+Who meets it: anyone who builds a Hash in one method and hands it to
+another that adds values of another type. In CyberTrain that is a caller of
+`Engine#render_with_layout`, which stores the rendered page into `env`
+(`env["__content"] = SafeString.of(...)`). `Controller#render` is not
+affected, because the controller builds its environment where the store
+widens it. An application that calls the Engine directly is.
+
+What would fix it in Spinel: widen a Hash where it is built when a store
+reached through a parameter needs a wider type, following the Hash back
+through method returns and locals (#10316 does this for an empty `{}`
+handed on through a parameter, not for a Hash returned from a method). If
+that is too wide a change, the refusal message should at least name what
+works ("settle the Hash's value types in the method that builds it"), since
+building it from a literal at the call is often not possible. The run-time
+`TypeError` above needs a fix either way: the callee's read of `env["n"]`
+must use the widened value type.
+
+Today: test/template_engine.rb builds the Hash in `layout_env`, which
+stores the title String into it before returning it, so its values are
+already polymorphic when it reaches `render_with_layout`. It is
+`layout_env`'s store that matters; passing the call instead of a local
+alone is still refused (second row of the table).
+
+Not reported upstream yet.
 
 ### D. `String#to_i` on more digits than an Integer holds raises `RangeError`
 
