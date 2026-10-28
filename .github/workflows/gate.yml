@@ -35,7 +35,11 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
-      - run: gem install --no-document kramdown kramdown-parser-gfm rouge
+      - name: Install the gems (pinned as in docs/guide/README.md)
+        run: |
+          gem install --no-document kramdown -v "~> 2.5"
+          gem install --no-document kramdown-parser-gfm -v "~> 1.1"
+          gem install --no-document rouge -v "~> 5.1"
       - name: Test script/guide-pages.d
         run: for t in script/guide-pages.d/test/*_test.rb; do ruby -Iscript/guide-pages.d/lib "$t" || exit 1; done
       - name: Build the guides

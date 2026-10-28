@@ -87,7 +87,9 @@ jobs:
       - name: API reference builds
         if: runner.os == 'Linux'
         run: |
-          gem install --no-document yard kramdown kramdown-parser-gfm
+          gem install --no-document yard
+          gem install --no-document kramdown -v "~> 2.5"
+          gem install --no-document kramdown-parser-gfm -v "~> 1.1"
           script/api-docs
 
       # The gem ships the CLI only; it must run under CRuby and bring every

@@ -49,7 +49,10 @@ jobs:
           ruby-version: "3.3"
       - name: Build the API reference into site/api/
         run: |
-          gem install --no-document yard kramdown kramdown-parser-gfm rouge
+          gem install --no-document yard
+          gem install --no-document kramdown -v "~> 2.5"
+          gem install --no-document kramdown-parser-gfm -v "~> 1.1"
+          gem install --no-document rouge -v "~> 5.1"
           script/api-docs
       - name: Build the guides
         run: |

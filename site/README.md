@@ -35,11 +35,15 @@ into `api/`. The header and footer link to the guides' index,
 conventions: front matter, the markers the Markdown uses for the page's
 components, and the translation procedure.
 
-Preview locally:
+Preview locally. `script/guide-pages` needs the kramdown, kramdown-parser-gfm
+and rouge gems, `script/api-docs` yard, kramdown and kramdown-parser-gfm; the
+workflows pin kramdown `~> 2.5`, kramdown-parser-gfm `~> 1.1` and rouge
+`~> 5.1` (the install commands are in
+[docs/guide/README.md](../docs/guide/README.md#building-and-previewing)):
 
 ```sh
-script/api-docs                       # optional: builds site/api/ (needs the yard, kramdown, kramdown-parser-gfm gems)
-script/guide-pages                    # builds the tutorial and guides into site/ (needs the kramdown, kramdown-parser-gfm, rouge gems)
+script/api-docs                       # optional: builds site/api/
+script/guide-pages                    # builds the tutorial and guides into site/
 python3 -m http.server -d site 8000   # http://localhost:8000
 ```
 
