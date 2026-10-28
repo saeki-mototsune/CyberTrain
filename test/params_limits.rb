@@ -233,7 +233,7 @@ end
 # Which rescue clause a malformed escape lands in, as a plain method with one
 # begin/rescue and no block (NOTES rule 32; rule 47: clauses, not is_a?). It
 # used to be the decoder's ArgumentError under CRuby; it is QueryInvalid now
-# on both runtimes (docs/guide/how-it-works.md, "Differences from Rails").
+# on both runtimes.
 def malformed_rescued_by(text)
   Cybertrain::Query.parse(text)
   "none"

@@ -570,7 +570,7 @@ module Cybertrain
             # Ten sign-in attempts per client address every three minutes, then
             # back to the form until the window closes. Behind a reverse proxy on
             # this host, set CYBERTRAIN_TRUSTED_PROXY=1 so that each visitor is
-            # counted rather than the proxy (https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/guide/requests.md).
+            # counted rather than the proxy.
             rate_limit to: 10, within: 3 * 60, only: [:create],
                        redirect_to: "/session/new", alert: "Try again later."
 
@@ -861,7 +861,7 @@ module Cybertrain
           #   printf '%s' "$PASSWORD" | ./#{app} user ann@example.com
           #
           # Registered with Cybertrain::Main.command, which connects the database
-          # first (https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/guide/how-it-works.md#differences-from-rails). Required by bin/#{app}.rb,
+          # first. Required by bin/#{app}.rb,
           # which also calls UserCommand.warn_if_no_user before serving.
           # Written by the generator; it is yours to change.
           module UserCommand
@@ -1108,7 +1108,7 @@ module Cybertrain
           # #{what} and sign-out through the full stack (session cookie,
           # CSRF, method override, router). Run with `cybertrain spin test`; its
           # snapshot comes from the compiled binary (the database is FFI):
-          # `script/regen-snapshot`-style, see https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/guide/testing.md.
+          # `script/regen-snapshot`-style.
           require_relative "support/app_test"
           #{command}
           def new_client

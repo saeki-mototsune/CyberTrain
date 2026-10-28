@@ -40,7 +40,7 @@ module Cybertrain
   # CRuby socket buffer answers 400 like Spinel's UTF-8 String does. A
   # StandardError under QueryInvalid, NOT an ArgumentError (the class CRuby's
   # decoder raises): app code that rescues around Query.parse or Query.decode
-  # rescues Cybertrain::QueryInvalid (docs/guide/how-it-works.md, "Differences from Rails"). An
+  # rescues Cybertrain::QueryInvalid. An
   # ArgumentError superclass for a user class is unverified under Spinel.
   class QueryMalformed < QueryInvalid
   end
