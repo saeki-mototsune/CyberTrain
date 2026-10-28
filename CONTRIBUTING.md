@@ -203,9 +203,13 @@ edit the Markdown, never the generated HTML. A change to an English guide
 changes its four translations in the same pull request, then
 `script/check-guide-i18n --update-sha docs/guide/<lang>/<name>.md` records
 that each matches it; the gate runs `script/check-guide-i18n` when a file
-under `docs/guide/` changes. [docs/guide/README.md](docs/guide/README.md) has
-the front matter, the conventions the Markdown uses, how to build and preview
-the pages (`script/guide-pages`), and the translation rules.
+under `docs/guide/` changes. If you cannot translate, say so in the pull
+request and leave the English change; a maintainer will follow up. The pull
+request's Gate check stays red until the four translations are updated in it,
+and merging it without them would block the Pages deploys.
+[docs/guide/README.md](docs/guide/README.md) has the front matter, the
+conventions the Markdown uses, how to build and preview the pages
+(`script/guide-pages`), and the translation rules.
 
 ## Commits
 

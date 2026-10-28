@@ -39,7 +39,7 @@ Markdown, except `meta`'s `text`.
 
 | Key | Meaning | Default | In a translation |
 |---|---|---|---|
-| `path` | The page's path from the language root | `guide/<name>.html` | equal to the English |
+| `path` | The page's path from the language root: `tutorial.html` or `guide/<name>.html`, nothing else | `guide/<name>.html` | equal to the English |
 | `title` | `<title>` (before " · CyberTrain") | the `# ` title, as text | translated |
 | `description` | `<meta name="description">` | the paragraph after the title, as text | translated |
 | `og_title` | `og:title` and the social card's alt text | `title` | translated |
@@ -63,9 +63,9 @@ English heading, in every language, so `install.md#requirements` works from
 any translation. Text is kept as written: no smart quotes, and entities
 (`&nbsp;`, `&rsquo;`, `&mdash;`) stay entities.
 
-The page's components are written as below; [render.rb](../../script/guide-pages.d/lib/render.rb)
-lists them in its header comment, and [tutorial.md](tutorial.md) uses most of
-them.
+The page's components are written as below;
+[render.rb](../../script/guide-pages.d/lib/render.rb) lists them in its header
+comment, and [tutorial.md](tutorial.md) uses most of them.
 
 | Write | For |
 |---|---|
@@ -80,20 +80,29 @@ them.
 | ```` ```LANG PLACE ```` | A code block. `LANG` is a [Rouge](https://github.com/rouge-ruby/rouge) lexer name (`ruby`, `erb`, `toml`, `shell`, `text`; one Rouge does not know fails the build); `PLACE`, optional, is the caption: a file (`app/models/article.rb`, `config/routes.rb (excerpt)`) or where it runs (`terminal — blog/`, `output — cybertrain server`) |
 | `shell` (or `sh`) and `console` fences | `shell`: every line is a command. `console`: a transcript, where a `$ ` line is a command and the others are its output |
 | `[text](other.md#anchor)` | A link to another guide, in the same language, made relative to the page. The anchor must be one of that page's heading ids |
-| `[text](site:playground.html)` | A site page that is not built from here (`index.html`, `deploy.html`, `playground.html`, `api/index.html`) |
+| `[text](site:playground.html)` | A site page that is not built from here (`index.html`, `deploy.html`, `playground.html`, `api/index.html`), from the page's language root (`api/` and `assets/` from the site root). It must exist in `site/` (`api/`, built by YARD, is not checked) |
 | `[text](../../examples/blog)` | Any other relative link is a repository path, made a GitHub link (`blob/main/`, `tree/main/` for a directory). It must exist. Relative paths are relative to `docs/guide/`, in the translations too |
 | Raw HTML with `markdown="0"` | Only for a one-off that no convention covers (the tutorial's environment-variable table, its animated terminal); the HTML is copied as it is |
 
 `script/guide-pages` fails, listing every problem and writing nothing, on a
-broken link, anchor or repository path, a file without exactly one `# `
-title, a malformed step comment, an unknown code language or front matter
-key.
+broken link, anchor, repository path or `site:` page, a file without exactly
+one `# ` title, a heading id used twice, an unclosed code fence, a malformed
+step comment, an unknown code language or front matter key, a `path` other
+than `tutorial.html` or `guide/<name>.html`, or an image with a relative URL
+(images are not supported yet).
 
 ## Building and previewing
 
 The build needs Ruby and the `kramdown`, `kramdown-parser-gfm` and `rouge`
-gems (`gem install kramdown kramdown-parser-gfm rouge`); the API reference,
-optional for a preview, needs `yard` as well.
+gems, at the versions the Gate and Pages workflows pin; the API reference,
+optional for a preview, needs `yard` as well:
+
+```sh
+gem install kramdown -v "~> 2.5"
+gem install kramdown-parser-gfm -v "~> 1.1"
+gem install rouge -v "~> 5.1"
+gem install yard                      # optional, for script/api-docs
+```
 
 ```sh
 script/api-docs                       # optional: site/api/, so that the API links resolve
@@ -104,8 +113,8 @@ python3 -m http.server -d site 8000   # http://localhost:8000/tutorial.html
 The generated files are in `.gitignore`. The Pages workflow
 ([.github/workflows/pages.yml](../../.github/workflows/pages.yml)) runs both
 scripts before each deploy, and the Gate workflow builds the pages into a
-temporary directory on every pull request and every push to `main`, with the generator's tests
-(`script/guide-pages.d/test/`).
+temporary directory on every pull request and every push to `main`, with the
+generator's tests (`script/guide-pages.d/test/`).
 
 ## Translations
 
@@ -139,7 +148,9 @@ not the English file's, or its front matter keys, headings, steps, markers,
 code blocks (comments aside), table rows or link targets differ from the
 English; the comment at the top of the script lists what is compared. Prose is
 not compared. If you cannot translate, say so in the pull request and leave
-the English change; a maintainer will follow up.
+the English change; a maintainer will follow up. The pull request's Gate check
+stays red until the four translations are updated in it, and merging it
+without them would block the Pages deploys.
 
 The check runs in `script/gate`, and so in the pre-commit hook, whenever a
 file under `docs/guide/` changes; in the Gate workflow; and in the Pages
