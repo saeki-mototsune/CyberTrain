@@ -1,3 +1,4 @@
 ok   a DB.with block's class instance, through a typed local: its methods are callable
+ok   a DB.with block's class instance, as the block's own value: its methods are callable
 ok   a DB.with block's Boolean as a condition
-2 tests, 11 assertions, 0 failures
+3 tests, 15 assertions, 0 failures

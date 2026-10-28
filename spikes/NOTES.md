@@ -668,7 +668,10 @@ finds the commit that removed them).
     typed local before the block, assign it inside, return it after
     (`result = LoginResult.new("none"); DB.with { |c| result = ... };
     result`), the form DB.transaction already requires.
-    test/db_with_value.rb is the regression program.
+    test/db_with_value.rb is the regression program. **Fixed in
+    2026.10.27.7020** (matz/spinel#10415, issue #90): the block's own value
+    keeps the class, so the typed local is no longer needed with the
+    pinned release; the test covers both forms.
 
 78. `puts` on a receiver whose type is nil-only (an ivar only ever assigned
     nil, like Logger's `@io` in a program that never passes a logger an

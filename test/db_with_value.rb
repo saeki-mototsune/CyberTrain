@@ -1,12 +1,13 @@
 # What a Cybertrain::DB.with block computes, used after the block: an
 # instance of an application class, and a Boolean used as a condition
-# (issue #27, NOTES rule 77). On Spinel 2026.10.26.7019 DB.with's own value
-# loses an application class once the program's DB.with blocks return
-# different types (the framework's return Arrays and Integers), so the
-# class instance goes through a local declared before the block, the form
-# DB.with's comment gives; a Boolean (a builtin value) is used as it comes.
-# The whole framework is required, so those other DB.with blocks are in
-# the program.
+# (issues #27 and #90, NOTES rule 77). On Spinel 2026.10.26.7019 DB.with's
+# own value lost an application class once the program's DB.with blocks
+# returned different types (the framework's return Arrays and Integers),
+# so the class instance had to go through a local declared before the
+# block; 2026.10.27.7020 carries the fix (matz/spinel#10415), and the
+# block's own value is used directly too. A Boolean (a builtin value) is
+# used as it comes. The whole framework is required, so those other
+# DB.with blocks are in the program.
 #
 # It links SQLite through FFI, so it cannot run under CRuby: its snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23).
@@ -74,6 +75,14 @@ def status_of(name)
   result
 end
 
+# The class instance as the block's own value, the reporter's form: it
+# raised NoMethodError on 2026.10.26.7019.
+def login_result_direct(name)
+  Cybertrain::DB.with do |conn|
+    AUTH.login(conn, name)
+  end
+end
+
 # A Boolean returned straight from the block.
 def active_user?(name)
   Cybertrain::DB.with do |conn|
@@ -98,6 +107,16 @@ test "a DB.with block's class instance, through a typed local: its methods are c
   assert !login_result("carol").ok?
   assert_equal "found", status_of("bob").status
   assert_equal "unknown", status_of("carol").status
+  Cybertrain::DB.disconnect
+end
+
+test "a DB.with block's class instance, as the block's own value: its methods are callable" do
+  connect_users
+  r = login_result_direct("alice")
+  assert r.ok?
+  assert_equal "ok", r.status
+  assert_equal "inactive", login_result_direct("bob").status
+  assert !login_result_direct("carol").ok?
   Cybertrain::DB.disconnect
 end
 

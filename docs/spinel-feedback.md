@@ -4,7 +4,7 @@ What building and speeding up CyberTrain found in Spinel itself, written so
 each item can become an issue upstream. Each says what happens, how it was
 seen, what CyberTrain does about it today, and what would fix it in Spinel.
 
-Five builds are covered:
+Six builds are covered:
 
 - **2026.09.12** (112bae85c1a2), matz/spinel's release, which CyberTrain
   was pinned to until 2026-10-26. Items 1 to 7 and the tables were found on
@@ -18,8 +18,8 @@ Five builds are covered:
   earlier package (2026.10.09-7009, edb9dd0, checked on 2026-10-13) is in
   [benchmark-spinel-2026.10.09.md](benchmark-spinel-2026.10.09.md).
 - **2026.10.26.7019** (80b2f98), the fork's release tag carrying the fixes
-  for A, C, F, G and 3, and the build CyberTrain is pinned to now
-  (`Cybertrain::SPINEL_TAG`, `Cybertrain::SPINEL_REPOSITORY`). With the
+  for A, C, F, G and 3, which CyberTrain was pinned to until 2026-10-28.
+  With the
   toolchain `cybertrain setup` builds from that tag, `spin test` passes 98 of
   98 (test/template_engine.rb with its argument built where the call sees
   it, see C), and examples/blog's `spin run gen` writes files identical to
@@ -43,6 +43,13 @@ Five builds are covered:
   tests print Ruby's result there, and so do the reduced programs of 3, A,
   F and G; D's still raises `RangeError` in the default mode, by design.
   Items not listed were not re-checked on it.
+- **2026.10.27.7020** (d37f38a), the fork's release tag carrying matz/spinel
+  master up to #10415 to #10417, and the build CyberTrain is pinned to now
+  (`Cybertrain::SPINEL_TAG`, `Cybertrain::SPINEL_REPOSITORY`; since
+  2026-10-28). With the toolchain `cybertrain setup` builds from that tag,
+  `spin test` passes 106 of 106 (checked on 2026-10-28), including
+  test/db_with_value.rb's use of a DB.with block's own value, which H made
+  raise on 2026.10.26.7019 (issue #90).
 
 The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
@@ -51,8 +58,9 @@ The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 Suggested order for what is still open: deciding whether CyberTrain keeps
 its workarounds for 1 and 2 (neither reproduced on master 9b9972399), then
 4 to 7, then the rest. H and the two shapes found in review are fixed on
-master 003ceda5d (#10415 to #10417); H's workaround stays until CyberTrain
-is pinned to a release that carries #10415. (B and D are settled as by design:
+master 003ceda5d (#10415 to #10417), and the fork's 2026.10.27.7020, which
+CyberTrain is now pinned to, carries #10415: H's workaround is dropped
+(issue #90). (B and D are settled as by design:
 since 2026.10.26.7019 B is a build error, see B; D's `RangeError` is the
 default `raise` mode's intended behaviour, and the experimental
 `--int-overflow=promote` parses CRuby's Bignum, see D.)
@@ -84,24 +92,25 @@ that it is fixed.
 ## What CyberTrain still works around
 
 Re-checked on 2026-10-27 against matz/spinel master 9b9972399, built from
-source; CyberTrain itself is still pinned to 2026.10.26.7019 (`spinel
+source; CyberTrain itself was then pinned to 2026.10.26.7019 (`spinel
 2026.10.26.7019 (80b2f988)`), where the rows were checked on 2026-10-26
-(the H row on 2026-10-27, when it was added). The regressions that release
+(the H row on 2026-10-27, when it was added). Since 2026-10-28 it is
+pinned to 2026.10.27.7020; only the H row was re-checked there. The regressions that release
 fixes (A, the generated C of C, F, G, and 3) never had a workaround in
 CyberTrain: it stayed on 2026.09.12, where they do not happen, until it
 moved to 2026.10.26.7019. The refusal listed under C is separate: both
 builds still make it, and CyberTrain's workaround for it stays. The first
 four rows below are still needed on master 9b9972399; the last one did not
 reproduce there, but is kept until it is decided whether to drop it. Master
-003ceda5d fixes H (#10415), but the H row stays while CyberTrain is pinned
-to 2026.10.26.7019:
+003ceda5d fixes H (#10415), and the H row is no longer needed now that
+CyberTrain is pinned to 2026.10.27.7020, which carries it (issue #90):
 
 | Workaround | Item | On 2026.10.26.7019 | On master 9b9972399 |
 | --- | --- | --- | --- |
 | `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error | required (#10255) |
 | `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` | still raises `RangeError`, by design in the default `raise` mode; kept (`--int-overflow=promote`, experimental, parses it as a Bignum; see D) |
 | test/template_engine.rb passes the layout's Hash as a call (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged |
-| `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415), kept until the pinned build carries it |
+| `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415). Dropped on 2026.10.27.7020: `DB.with`'s comment no longer asks for the local, and test/db_with_value.rb also covers the block's own value |
 | `Html.escape`'s `case value when String`, `SafeString.of` and binding arguments to locals (rules 56, 58) | 1, 2 | not re-checked, kept | not reproduced in the shapes checked (see 1 and 2); kept until decided |
 
 Every fix the fork carried is now in matz/spinel master, not only in the
@@ -562,10 +571,13 @@ framework's blocks already make DB.with's value polymorphic. The reporter
 also saw a Boolean block value refused as a condition ("unsupported
 condition (non-bool)") in a larger program; that was not reproduced.
 
-CyberTrain's workaround: DB.with's comment says to assign such a value to
-a local declared before the block (as DB.transaction already requires),
-and test/db_with_value.rb covers that form and a Boolean condition
-(spikes/NOTES.md rule 77).
+CyberTrain's workaround while it was pinned to 2026.10.26.7019: DB.with's
+comment said to assign such a value to a local declared before the block
+(as DB.transaction already requires), and test/db_with_value.rb covered
+that form and a Boolean condition (spikes/NOTES.md rule 77). Since the pin
+moved to 2026.10.27.7020, which carries the fix below, the comment no
+longer asks for it, and the test also covers the block's own value, which
+raises the reported `NoMethodError` on 2026.10.26.7019 (issue #90).
 
 Bisected on 2026-10-27 between matz/spinel's 2026.10.25 release (2814693f6)
 and the fork's 2026.10.26.7019, whose compiler is matz/spinel master
