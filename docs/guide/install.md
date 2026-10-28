@@ -117,7 +117,7 @@ commands (`cybertrain help` prints them):
 - `cybertrain generate authentication` adds email-and-password sign-in to
   it: users and sessions tables, `User` and `Session` models, the sign-in
   and sign-up controllers and views, the routes, a `before_action` in
-  `ApplicationController` and a test (see [Add authentication](walkthrough.md#add-authentication)).
+  `ApplicationController` and a test (see [Add authentication](tutorial.md#authentication)).
   With `--invite-only` there is no sign-up page: users are created with
   `./NAME user EMAIL`, and the first one also at a `/setup` page that
   answers only to the server's own machine, with the one-time token its
@@ -125,7 +125,7 @@ commands (`cybertrain help` prints them):
 - `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
   to a scaffolded model: five metadata columns, model methods and
   callbacks, a download action, the route, the form field and a test (see
-  [Add a file upload](walkthrough.md#add-a-file-upload)). A scaffold field `cover:attachment` does the same.
+  [Add a file upload](tutorial.md#attachments)). A scaffold field `cover:attachment` does the same.
 - `cybertrain db migrate` generates, applies pending migrations, and
   generates again (`spin run gen; spin run db -- migrate; spin run gen`);
   `cybertrain migration` is kept as an alias.

@@ -87,6 +87,29 @@ class HighlightTest < Minitest::Test
     assert_includes code, '<span class="d">&lt;%=</span>'
   end
 
+  # As site/tutorial.html colours them: require/require_relative and self
+  # are keywords, an interpolated string is one string span.
+  def test_ruby_keywords_and_interpolation
+    code = code_of(fig("ruby", nil, %(require_relative "support/x"\nparams.require(:a)\ndef self.go\nflash[:alert] = "No: \#{@c.errors.join(", ")}"\n)))
+    assert_equal <<~HTML.chomp, code
+      <span class="ln"><span class="k">require_relative</span> <span class="s">"support/x"</span></span>
+      <span class="ln">params.<span class="k">require</span>(<span class="y">:a</span>)</span>
+      <span class="ln"><span class="k">def</span> <span class="k">self</span>.go</span>
+      <span class="ln">flash[<span class="y">:alert</span>] = <span class="s">"No: \#{@c.errors.join(", ")}"</span></span>
+    HTML
+  end
+
+  # HTML in ERB: tags h, attribute names plain, attribute values s.
+  def test_erb_html_tags
+    code = code_of(fig("erb", nil, %(<div class="field"><p><img src="<%= u %>"></p>\n)))
+    assert_equal %(<span class="ln"><span class="h">&lt;div</span> class=<span class="s">"field"</span><span class="h">&gt;&lt;p&gt;&lt;img</span> src=<span class="s">"</span><span class="d">&lt;%=</span> u <span class="d">%&gt;</span><span class="s">"</span><span class="h">&gt;&lt;/p&gt;</span></span>), code
+  end
+
+  # TOML table headers stay plain, as on the page.
+  def test_toml_table_header_plain
+    assert_equal %(<span class="ln">[package]</span>\n<span class="ln">name = <span class="s">"blog"</span></span>), code_of(fig("toml", "spin.toml", %([package]\nname = "blog"\n)))
+  end
+
   def test_text_is_plain_and_escaped
     assert_equal '<span class="ln">a &amp; b</span>', code_of(fig("text", nil, "a & b\n"))
   end

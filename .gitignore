@@ -22,5 +22,6 @@ log/
 /site/api/
 
 # Guide pages (built by script/guide-pages from docs/guide/)
+/site/tutorial.html
 /site/guide/
 /site/*/guide/

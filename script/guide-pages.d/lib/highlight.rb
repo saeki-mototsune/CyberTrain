@@ -3,16 +3,19 @@
 # Called by the renderer for each fenced block:
 #   GuidePages::Highlight.figure(lang, place, text, words: {code_label: "Code: "})
 #
-# Rouge token -> span class (anything else is left unwrapped):
+# Rouge token -> span class, as site/tutorial.html colours its code
+# (anything else is left unwrapped):
 #   Comment.Preproc (ERB delimiters)                   d
 #   Comment*                                           c
-#   Keyword*, Name.Builtin.Pseudo (true/false/nil/self) k
-#   Literal.String.Symbol, Name.Label (`foo:`),
-#     Name.Attribute (ERB/HTML)                        y
-#   Literal.String* (other)                            s
-#   Name.Constant, Name.Class, Name.Tag                t
+#   Keyword*, Name.Builtin.Pseudo (true/false/nil),
+#     any name `self`, `require`, `require_relative`   k
+#   Literal.String.Symbol, Name.Label (`foo:`)         y
+#   Literal.String* (other), and the whole of an
+#     interpolated string, "#{...}" included           s
+#   Name.Constant, Name.Class                          t
 #   Name.Variable*                                     v
-#   Generic.Heading, a TOML table header line          h
+#   Name.Tag (HTML tags in ERB), Generic.Heading       h
+# HTML attribute names and TOML table headers stay plain.
 # Shell and console: only comments and strings (with the $VARs inside them)
 # are classed; the command text stays plain. A shell line is span.ln.cmd, a
 # console "$ " line is span.ln.cmd and any other console line span.ln.out.
@@ -73,9 +76,17 @@ module GuidePages
       return [[nil, text]] unless lexer # no lexer (e.g. caddyfile): plain, the caller warns via lexer?
       shell = lexer.tag == "shell"
       quote = false
+      interpol = 0
       lexer.lex(text).flat_map do |tok, val|
         q = tok.qualname
-        if shell
+        if q == "Literal.String.Interpol"
+          # "#{" opens, "}" closes; everything in between is part of the string.
+          interpol += 1 if val == "\#{"
+          interpol -= 1 if val == "}" && interpol > 0
+          [["s", val]]
+        elsif interpol > 0
+          [["s", val]]
+        elsif shell
           # Inside quotes everything (including $VAR) is string; elsewhere only comments.
           quote = !quote if q.start_with?("Literal.String") && (val == '"' || val == "'")
           [[q.start_with?("Literal.String") || quote ? "s" : (q.start_with?("Comment") ? "c" : nil), val]]
@@ -83,21 +94,25 @@ module GuidePages
           # Rouge lexes `with: :x` as one symbol; the page has two, around the space.
           [["y", m[1]], [nil, m[2]], ["y", m[3]]]
         else
-          [[klass(q), val]]
+          [[klass(q, val), val]]
         end
       end
     end
 
-    def klass(q)
+    KEYWORD_NAMES = %w[self require require_relative].freeze
+
+    def klass(q, val = nil)
+      return "k" if q.start_with?("Name") && KEYWORD_NAMES.include?(val)
+
       case q
       when /\AComment\.Preproc/ then "d"
       when /\AComment/ then "c"
       when /\AKeyword/, "Name.Builtin.Pseudo" then "k"
-      when "Literal.String.Symbol", "Name.Label", "Name.Attribute" then "y"
+      when "Literal.String.Symbol", "Name.Label" then "y"
       when /\ALiteral\.String/ then "s"
-      when "Name.Constant", "Name.Class", "Name.Tag" then "t"
+      when "Name.Constant", "Name.Class" then "t"
       when /\AName\.Variable/ then "v"
-      when "Generic.Heading" then "h"
+      when "Name.Tag", "Generic.Heading" then "h"
       end
     end
 
@@ -114,11 +129,12 @@ module GuidePages
       out
     end
 
-    # `[table]` / `[[table]]` lines of TOML are one heading span.
+    # `[table]` / `[[table]]` lines of TOML are plain (Rouge makes the
+    # brackets keywords).
     def table_header(lang, segs)
       return segs unless lang == "toml"
       text = segs.map(&:last).join
-      text.match?(/\A\s*\[.*\]\s*\z/) ? [["h", text.strip]] : segs
+      text.match?(/\A\s*\[.*\]\s*\z/) ? [[nil, text]] : segs
     end
 
     def render(segs)
