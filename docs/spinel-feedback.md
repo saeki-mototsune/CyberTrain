@@ -83,7 +83,7 @@ that it is fixed.
 | A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) | **fixed** (its program prints Ruby's result) | not re-checked |
 | B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) | not re-checked | not re-checked |
 | C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made | not re-checked | not re-checked |
-| D. `String#to_i` raises `RangeError` on overflow | no | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum | by design (still raises `RangeError` in raise mode) | not re-checked |
+| D. `String#to_i` raises `RangeError` on overflow | yes (re-checked on 2026-10-28; not a regression, see D) | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum | by design (still raises `RangeError` in raise mode) | not re-checked |
 | E. More allocation per request | no | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
 | F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) | **fixed** (its program prints Ruby's result) | not re-checked |
 | G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked |
@@ -101,8 +101,9 @@ pinned to 2026.10.27.7020; the H row and the workarounds for 1 and 2
 were re-checked there (2026-10-28). The regressions that release
 fixes (A, the generated C of C, F, G, and 3) never had a workaround in
 CyberTrain: it stayed on 2026.09.12, where they do not happen, until it
-moved to 2026.10.26.7019. The refusal listed under C is separate: both
-builds still make it, and CyberTrain's workaround for it stays. The first
+moved to 2026.10.26.7019. The refusal listed under C is separate: every
+build checked still makes it (2026.10.26.7019, master 9b9972399 and
+2026.10.27.7020), and CyberTrain's workaround for it stays. The first
 four rows below are still needed on master 9b9972399; the last one did not
 reproduce there, but is kept (see 1). The workaround for 2 in
 `Html.escape` used to be in that row; it is dropped on 2026.10.27.7020
@@ -122,7 +123,8 @@ Every fix the fork carried is now in matz/spinel master, not only in the
 fork (#10254 to #10263, and #10316). #10316 is the fork's
 `fix/empty-hash-through-param`, which this document used to name for the
 refusal under C; it is merged, and it does not remove that refusal (see C).
-The row for H can be removed once its fix is in a build CyberTrain uses.
+The H row's workaround is dropped: CyberTrain is pinned to 2026.10.27.7020,
+which carries #10415 (issue #90); the row stays as a record.
 The row for D stays as long as CyberTrain builds in the default `raise`
 mode, where the `RangeError` is by design (see D).
 
@@ -234,7 +236,8 @@ puts f(true)           # 1 on 2026.09.12 and 2026.10.25-7018; 2 on 2026.10.26.70
 **Fixed in 2026.10.26.7019**, together with the untyped
 `OpenSSL::Digest#to_s` below, and test/http_client.rb passes there. Both
 fixes are merged into matz/spinel (#10257, and #10256 for the Digest).
-A `case` of 17 or more arms still copies, see the next section.
+A `case` of 17 or more arms still copied on master 9b9972399; #10417 fixes
+it, see the next section.
 
 - Seen on 2026.10.25-7018 in test/http_client.rb: `::ffff:127.0.0.1` was
   classified as "reserved" instead of "loopback", because
@@ -356,7 +359,7 @@ C for a small program.
 
 ## Regressions in newer packages
 
-None of these happens on 2026.09.12. First found on 2026.10.09-7009 (A to E, while
+None of these happens on 2026.09.12, except D, which raises there too (see D). First found on 2026.10.09-7009 (A to E, while
 benchmarking), re-checked, with F and G new, on 2026.10.25-7018, and fixed in the fork's
 2026.10.26.7019 except D, which is by design in the default `raise` mode and
 which CyberTrain works around, and B, which that release turns into a build
@@ -595,8 +598,13 @@ Not reported upstream yet.
 By design in the default `raise` mode, not a bug to fix.
 On 2026.10.26.7019 (re-checked on 2026-10-26) and on matz/spinel master
 9b9972399 (re-checked on 2026-10-27), `"99999999999999999999".to_i` raises
-`RangeError: integer overflow parsing "99999999999999999999"` where
-2026.09.12 saturated; CRuby returns a Bignum.
+`RangeError: integer overflow parsing "99999999999999999999"`; CRuby returns
+a Bignum. 2026.09.12 raises the same `RangeError`, for a literal and for a
+run-time String (re-checked on 2026-10-28 on a build of its commit,
+112bae85c1a2): D was never a regression. This document used to say
+2026.09.12 saturated, after spikes/NOTES.md rule 25, which 977bfdb
+(2026-10-22) already corrected; the raise has been there since 412a2200c
+(2026-05-27), which that release includes.
 
 - Why: upstream 412a2200c (Matz, 2026-05-27, "runtime: to_i / Integer() on
   overflowing input raise RangeError", fixes #842) replaced the silent
