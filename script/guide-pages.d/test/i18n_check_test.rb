@@ -78,6 +78,16 @@ class I18nCheckTest < Minitest::Test
     assert_problem(/extra toc_title/)
   end
 
+  # meta rows are translated, but there are as many as in the English.
+  def test_meta_row_count_must_equal
+    edit(EN, "nav: a\n", "nav: a\nmeta:\n  - term: A\n    text: a\n  - term: B\n    text: b\n")
+    edit(JA, "nav: a\n", "nav: a\nmeta:\n  - term: エー\n    text: あ\n  - term: ビー\n    text: い\n")
+    GuidePages::I18nCheck.update_sha(JA, root: @root)
+    assert_equal [], run_check
+    edit(JA, "  - term: ビー\n    text: い\n", "")
+    assert_problem(/front matter meta has 1 rows, the English has 2/)
+  end
+
   def test_front_values_may_be_translated_but_not_path
     edit_ja("path: guide/a.html", "path: guide/ja.html")
     assert_problem(/front matter path must equal/)

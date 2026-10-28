@@ -107,6 +107,12 @@ module GuidePages
 
         problems << "#{tr.file}: front matter #{key} must equal the English (#{en.front[key].inspect}), found #{tr.front[key].inspect}" if en.front[key] != tr.front[key]
       end
+      if en.front.key?("meta") && tr.front.key?("meta")
+        rows = ->(s) { s.front["meta"].is_a?(Array) ? s.front["meta"].size : 0 }
+        if rows.(en) != rows.(tr)
+          problems << "#{tr.file}: front matter meta has #{rows.(tr)} rows, the English has #{rows.(en)}"
+        end
+      end
       problems
     end
 
