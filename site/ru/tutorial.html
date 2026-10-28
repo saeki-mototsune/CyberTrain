@@ -78,7 +78,7 @@
     <h1>Начало работы: блог</h1>
     <p class="doc-intro">Повторяет <a href="https://guides.rubyonrails.org/getting_started.html" rel="noopener">Getting Started</a> самого Rails: блог со статьями и комментариями. Вы создадите скаффолд статей, добавите валидации, вложите в статьи комментарии, напишете тест, который прогоняет приложение внутри процесса, добавите вход, прикрепите загруженную картинку и соберёте приложение в готовый к развёртыванию каталог <code>dist/</code>. Готовое приложение — <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener"><code>examples/blog</code></a>; оно проверяется в CI на Linux и macOS.</p>
     <dl class="doc-meta">
-      <div><dt>Что нужно</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, заголовки SQLite 3 (Spinel <code>2026.10.26.7019</code> установится сам) <a class="meta-link" href="#requirements">Шаг 00</a></dd></div>
+      <div><dt>Что нужно</dt><dd>Ruby 3.2+, <code>cc</code>, <code>make</code>, <code>git</code>, <code>curl</code>, заголовки SQLite 3 (Spinel <code>2026.10.27.7020</code> установится сам) <a class="meta-link" href="#requirements">Шаг 00</a></dd></div>
       <div><dt>Начало</dt><dd><code>gem install cybertrain</code></dd></div>
       <div><dt>Результат</dt><dd><code>dist/blog</code></dd></div>
     </dl>
@@ -122,7 +122,7 @@
     <p class="why"><span class="why-k">Зачем</span><span class="why-t">CyberTrain компилируется через Spinel в C, поэтому ему нужны инструменты C и заголовки SQLite; команда <code>cybertrain</code> — это гем, поэтому ей нужен Ruby.</span></p>
     <ul class="checklist">
       <li>Ruby 3.2+ и RubyGems — только для команды <code>cybertrain</code>; приложения никогда не запускаются на CRuby. Для сборки Spinel также нужен gem <code>prism</code>: в Ruby 3.3 и новее он входит в поставку; на Ruby 3.2 выполните <code>gem install prism</code> (нужны заголовки разработки Ruby, <code>ruby-dev</code> в Debian/Ubuntu). <code>cybertrain doctor</code> это проверяет.</li>
-      <li>Spinel <code>2026.10.26.7019</code> — релиз форка <a href="https://github.com/saeki-mototsune/spinel" rel="noopener">saeki-mototsune/spinel</a>, в котором исправления, нужные CyberTrain, появляются раньше, чем в основном проекте; с другими версиями не тестировался. Вручную его устанавливать не нужно: первая команда, которой он нужен, собирает этот релиз в <code>~/.cybertrain</code> (несколько минут, один раз), если <code>spinel</code> этого релиза ещё нет в <code>PATH</code>.</li>
+      <li>Spinel <code>2026.10.27.7020</code> — релиз форка <a href="https://github.com/saeki-mototsune/spinel" rel="noopener">saeki-mototsune/spinel</a>, в котором исправления, нужные CyberTrain, появляются раньше, чем в основном проекте; с другими версиями не тестировался. Вручную его устанавливать не нужно: первая команда, которой он нужен, собирает этот релиз в <code>~/.cybertrain</code> (несколько минут, один раз), если <code>spinel</code> этого релиза ещё нет в <code>PATH</code>.</li>
       <li>Инструменты C (<code>cc</code> или компилятор, указанный в <code>CC</code>) и <code>make</code>, а также <code>git</code> и <code>curl</code> — для сборки Spinel, который компилирует каждую программу в C.</li>
       <li>Заголовки и библиотеки SQLite 3 и zlib: <code>libsqlite3-dev</code> и <code>zlib1g-dev</code> в Debian/Ubuntu; на macOS входят в Xcode command line tools.</li>
       <li>Заголовки OpenSSL (<code>libssl-dev</code>) необязательны: без них Spinel собирается без своего пакета <code>openssl</code>, который CyberTrain не использует.</li>
@@ -131,7 +131,7 @@
     <details class="ci">
       <summary><span class="ci-t">Как CyberTrain устанавливает Spinel</span><span class="ci-d">Что происходит, когда команде впервые нужен <code>spin</code></span></summary>
       <div class="ci-body">
-    <p><code>cybertrain new</code>, <code>db</code>, <code>server</code>, <code>build</code> и <code>spin</code> сначала ищут Spinel <code>2026.10.26.7019</code>: <code>spinel</code> и <code>spin</code> этого релиза, уже доступные в <code>PATH</code>; иначе — копию в <code>~/.cybertrain/spinel/2026.10.26.7019/</code>; иначе собирают эту копию из релизного тега Spinel (<code>git clone</code>, <code>make deps</code>, <code>make -j</code>, <code>make install</code>) — один раз, за несколько минут. Лог пишется в <code>~/.cybertrain/log/spinel-2026.10.26.7019-build.log</code>; если не хватает инструмента, нужного для сборки, <code>cybertrain</code> ещё до её начала сообщает, какого именно, и выводит команду установки для вашей платформы.</p>
+    <p><code>cybertrain new</code>, <code>db</code>, <code>server</code>, <code>build</code> и <code>spin</code> сначала ищут Spinel <code>2026.10.27.7020</code>: <code>spinel</code> и <code>spin</code> этого релиза, уже доступные в <code>PATH</code>; иначе — копию в <code>~/.cybertrain/spinel/2026.10.27.7020/</code>; иначе собирают эту копию из релизного тега Spinel (<code>git clone</code>, <code>make deps</code>, <code>make -j</code>, <code>make install</code>) — один раз, за несколько минут. Лог пишется в <code>~/.cybertrain/log/spinel-2026.10.27.7020-build.log</code>; если не хватает инструмента, нужного для сборки, <code>cybertrain</code> ещё до её начала сообщает, какого именно, и выводит команду установки для вашей платформы.</p>
     <p><code>cybertrain setup</code> делает то же самое по запросу (<code>--force</code> пересобирает копию в <code>~/.cybertrain</code>) и, если используется именно её копия, выводит строку, добавляющую её в ваш <code>PATH</code>, чтобы запускать <code>spin</code> самостоятельно:</p>
 <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">терминал &mdash; любой каталог</span><span class="code-lang">shell</span></figcaption>
@@ -151,7 +151,7 @@
     <figure class="code" data-lang="shell">
 <figcaption><span class="code-path">терминал &mdash; любой каталог, затем&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Код: терминал &mdash; любой каталог, затем blog/"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># при первом запуске устанавливает Spinel 2026.10.26.7019 (несколько минут)</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># при первом запуске устанавливает Spinel 2026.10.27.7020 (несколько минут)</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -169,9 +169,9 @@
       <li><code>cybertrain server [PORT]</code> выполняет генерацию, затем запускает сервер разработки (<code>spin run gen; spin run NAME</code> или <code>spin run NAME -- PORT</code>; порт по умолчанию — 3000).</li>
       <li><code>cybertrain build</code> собирает NAME со встроенными <code>app/views/</code> и формирует <code>dist/</code> (бинарный файл, <code>public/</code>, <code>storage/</code>, <code>tmp/</code>).</li>
       <li><code>cybertrain spin ARGS...</code> запускает <code>spin</code> с зафиксированным Spinel из любого каталога: <code>cybertrain spin test</code>, <code>cybertrain spin run gen -- --check</code>.</li>
-      <li><code>cybertrain setup [--force]</code> устанавливает Spinel <code>2026.10.26.7019</code> в <code>~/.cybertrain</code>, если <code>spinel</code> этого релиза ещё нет в <code>PATH</code>; <code>--force</code> пересобирает копию в <code>~/.cybertrain</code>.</li>
+      <li><code>cybertrain setup [--force]</code> устанавливает Spinel <code>2026.10.27.7020</code> в <code>~/.cybertrain</code>, если <code>spinel</code> этого релиза ещё нет в <code>PATH</code>; <code>--force</code> пересобирает копию в <code>~/.cybertrain</code>.</li>
       <li><code>cybertrain doctor</code> проверяет инструменты C, заголовки SQLite и установку Spinel.</li>
-      <li><code>cybertrain version</code> выводит версию (<code>cybertrain 0.3.0</code>); <code>cybertrain help</code> выводит справку по использованию.</li>
+      <li><code>cybertrain version</code> выводит версию (<code>cybertrain 0.3.1</code>); <code>cybertrain help</code> выводит справку по использованию.</li>
     </ul>
     <p class="note"><code>db</code>, <code>server</code> и <code>build</code> запускаются внутри приложения; NAME — это <code>[package] name</code> из его <code>spin.toml</code>.</p>
   </section>
@@ -193,9 +193,9 @@
 <span class="ln">version = <span class="s">"0.1.0"</span></span>
 <span class="ln"></span>
 <span class="ln">[dependencies]</span>
-<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.3.0"</span> }</span></code></pre>
+<span class="ln">cybertrain = { git = <span class="s">"https://github.com/saeki-mototsune/cybertrain"</span>, ref = <span class="s">"v0.3.1"</span> }</span></code></pre>
 </figure>
-    <p>Затем она проверяет, что Spinel установлен (в первый раз это означает сборку Spinel <code>2026.10.26.7019</code> в <code>~/.cybertrain</code>: несколько минут, один раз; см. <a href="#requirements">шаг 00</a>), и запускает <code>spin lock</code> (spin загружает фреймворк в свой кэш <code>~/.cache/spin/packages/</code> и фиксирует коммит в <code>spin.lock</code>) и <code>spin run gen</code> — примерно так же, как <code>rails new</code> запускает <code>bundle install</code>, — так что <code>cybertrain server</code> сразу работает. В конце она выводит следующие шаги. Ничего из фреймворка в приложение не копируется; закоммитьте <code>spin.toml</code> и <code>spin.lock</code>.</p>
+    <p>Затем она проверяет, что Spinel установлен (в первый раз это означает сборку Spinel <code>2026.10.27.7020</code> в <code>~/.cybertrain</code>: несколько минут, один раз; см. <a href="#requirements">шаг 00</a>), и запускает <code>spin lock</code> (spin загружает фреймворк в свой кэш <code>~/.cache/spin/packages/</code> и фиксирует коммит в <code>spin.lock</code>) и <code>spin run gen</code> — примерно так же, как <code>rails new</code> запускает <code>bundle install</code>, — так что <code>cybertrain server</code> сразу работает. В конце она выводит следующие шаги. Ничего из фреймворка в приложение не копируется; закоммитьте <code>spin.toml</code> и <code>spin.lock</code>.</p>
     <p class="note">Если не удаётся установить Spinel или выполнить один из двух шагов <code>spin</code>, файлы остаются, <code>new</code> завершается с кодом 1 и выводит, что запустить после устранения причины (для Spinel: <code>cybertrain setup</code>, затем <code>cybertrain spin lock &amp;&amp; cybertrain spin run gen</code> в новом каталоге). <code>--skip-spin</code> только записывает файлы; <code>--path DIR</code> вместо этого делает зависимостью локальную копию репозитория, <code>--git URL [--ref R]</code> — фреймворк по адресу URL (на ветке или теге R), а <code>--version V</code> — версию из индекса, когда <code>cybertrain</code> появится в <code>spin-index</code>.</p>
     <p>Имена приложений состоят из строчных букв, цифр и <code>_</code> и начинаются с буквы. Сгенерированное дерево:</p>
     <figure class="code" data-lang="text">
@@ -329,7 +329,7 @@
     <p><code>cybertrain server</code> выводит каждую запускаемую команду <code>spin</code>, а затем стартовый баннер приложения. При первом запуске приложение компилируется, так что это займёт некоторое время:</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">вывод &mdash; cybertrain server</span><span class="code-lang">text</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Код: вывод cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.3.0</span>
+<pre tabindex="0" role="region" aria-label="Код: вывод cybertrain server"><code><span class="ln">=&gt; Booting cybertrain 0.3.1</span>
 <span class="ln">=&gt; development environment (1 worker)</span>
 <span class="ln">=&gt; Watching app/, config/ and db/schema.rb for changes</span>
 <span class="ln">* Listening on http://127.0.0.1:3000</span>
@@ -782,7 +782,7 @@
       <li>Представления встраиваются при сборке: даже изменение только в представлении требует <code>cybertrain build</code> и перезапуска, прежде чем оно попадёт в production.</li>
       <li>Собирайте <code>dist/</code> на той же ОС и том же процессоре, что и у машины, где он будет работать: бинарный файл компонуется с системной SQLite.</li>
       <li><code>SPINEL_WORKERS</code> по умолчанию равен <code>1</code>.</li>
-      <li>Протестирован только Spinel <code>2026.10.26.7019</code>.</li>
+      <li>Протестирован только Spinel <code>2026.10.27.7020</code>.</li>
     </ul>
   </section>
 

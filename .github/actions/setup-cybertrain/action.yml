@@ -78,7 +78,7 @@ runs:
 
     # The [lock.cybertrain] table spin lock writes:
     #   [lock.cybertrain]
-    #   version = "0.3.0"
+    #   version = "0.3.1"
     #   git = "https://github.com/saeki-mototsune/cybertrain"
     #   ref = "<40-hex commit>"
     # (a path dependency has `path = "..."` instead of git/ref).

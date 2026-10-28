@@ -452,7 +452,7 @@ module Cybertrain
         TEXT
       end
 
-      # "saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v0.3.0":
+      # "saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v0.3.1":
       # the composite action in this repository, at this CLI's release tag.
       # `uses:` takes no expressions, so the pin is static; the action itself
       # reads the framework commit out of spin.lock and installs the

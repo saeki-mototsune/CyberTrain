@@ -222,7 +222,7 @@ if they are not that release.
 
 `cybertrain new` writes the application with its `spin.toml` pointing at
 the release matching the CLI (`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.0" }`), makes
+"https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }`), makes
 sure Spinel is installed, then runs `spin lock` (spin fetches the framework
 into its cache, `~/.cache/spin/packages/`, and pins the commit in
 `spin.lock`) and `spin run gen`, much as `rails new` runs `bundle install`,
