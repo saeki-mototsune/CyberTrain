@@ -147,7 +147,7 @@ class BuildTest < Minitest::Test
 
   def test_redirects_written
     built
-    assert_equal %(<!doctype html><meta charset="utf-8"><title>Moved</title><link rel="canonical" href="#{BASE}guide/install.html"><meta http-equiv="refresh" content="0; url=../guide/install.html"><p>Moved to <a href="../guide/install.html">../guide/install.html</a>.</p>\n),
+    assert_equal %(<!doctype html><meta charset="utf-8"><title>Moved</title><link rel="canonical" href="#{BASE}guide/install.html"><script>location.replace("../guide/install.html" + location.hash)</script><meta http-equiv="refresh" content="0; url=../guide/install.html"><p>Moved to <a href="../guide/install.html">../guide/install.html</a>.</p>\n),
                  page("api/file.install.html")
     assert_includes page("api/file.walkthrough.html"), %(content="0; url=../tutorial.html")
     refute File.exist?(File.join(@out, "api/file.tutorial.html"))

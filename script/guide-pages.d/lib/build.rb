@@ -28,7 +28,10 @@ module GuidePages
     OG_LOCALE = { "en" => "en_US", "ja" => "ja_JP", "zh" => "zh_CN", "ru" => "ru_RU", "fr" => "fr_FR" }.freeze
     LANG_NAME = { "en" => "English", "ja" => "日本語", "zh" => "简体中文", "ru" => "Русский", "fr" => "Français" }.freeze
     NAVS = %w[tutorial guides].freeze
+    # The script keeps the URL's fragment; the refresh and the link are for
+    # browsers without JavaScript.
     REDIRECT = %(<!doctype html><meta charset="utf-8"><title>Moved</title><link rel="canonical" href="%<abs>s">) +
+               %(<script>location.replace("%<rel>s" + location.hash)</script>) +
                %(<meta http-equiv="refresh" content="0; url=%<rel>s"><p>Moved to <a href="%<rel>s">%<rel>s</a>.</p>\n)
 
     module_function
