@@ -195,6 +195,18 @@ and files named for what they hold. Prefer the plain construct Spinel compiles
 well over the clever one; when a compiler constraint forces an odd shape, say
 so in a comment at the spot.
 
+## Guides and translations
+
+The tutorial and the guides on the site are generated from the Markdown in
+[docs/guide/](docs/guide/), in English and in `ja/`, `zh/`, `ru/` and `fr/`;
+edit the Markdown, never the generated HTML. A change to an English guide
+changes its four translations in the same pull request, then
+`script/check-guide-i18n --update-sha docs/guide/<lang>/<name>.md` records
+that each matches it; the gate runs `script/check-guide-i18n` when a file
+under `docs/guide/` changes. [docs/guide/README.md](docs/guide/README.md) has
+the front matter, the conventions the Markdown uses, how to build and preview
+the pages (`script/guide-pages`), and the translation rules.
+
 ## Commits
 
 A commit is a unit of review, so make each one about one thing, and write the
@@ -239,7 +251,9 @@ will land faster than it would inside yours. Changes to `docs/design.md`,
 they describe.
 
 Documentation and translation pull requests need no Spinel at all:
-`script/gate` is the only check, and the site is plain HTML under `site/`.
+`script/gate` is the only check, the site is plain HTML under `site/`, and
+previewing a guide needs only Ruby and three gems (see
+[docs/guide/README.md](docs/guide/README.md#building-and-previewing)).
 
 ## Releasing
 
