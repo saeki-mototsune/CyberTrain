@@ -254,10 +254,13 @@ will land faster than it would inside yours. Changes to `docs/design.md`,
 `spikes/NOTES.md`, the README and `docs/guide/` belong in the same pull request as the code
 they describe.
 
-Documentation and translation pull requests need no Spinel at all:
-`script/gate` is the only check, the site is plain HTML under `site/`, and
-previewing a guide needs only Ruby and three gems (see
-[docs/guide/README.md](docs/guide/README.md#building-and-previewing)).
+Documentation and translation pull requests need no Spinel at all: the site
+is plain HTML under `site/`, and previewing a guide needs only Ruby and three
+gems (see [docs/guide/README.md](docs/guide/README.md#building-and-previewing)).
+`script/gate` checks the guide translations but does not build the guides, so
+if you change `docs/guide/` also run `script/guide-pages --out <tmpdir>`, as
+the Gate workflow's `guide-pages` job does: it fails on a broken link or
+anchor, which the gate does not see.
 
 ## Releasing
 
