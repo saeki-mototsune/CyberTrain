@@ -27,12 +27,12 @@ authentication and file-upload generators, background jobs, outbound HTTP,
 SMTP and WebSocket clients all work end to end;
 [examples/blog](examples/blog) is the Rails "Getting Started" blog built on
 it. Not built: a WebSocket server, an asset pipeline, i18n, mailer classes
-([what differs from Rails](docs/guide/how-it-works.md#differences-from-rails)).
+([what differs from Rails](https://saeki-mototsune.github.io/CyberTrain/api/file.how-it-works.html#differences-from-rails)).
 
 ## Quick start
 
 Needs Ruby 3.2+, a C toolchain, `make`, `git`, `curl` and the SQLite and zlib
-headers ([details](docs/guide/install.md#requirements); `cybertrain doctor`
+headers ([details](https://saeki-mototsune.github.io/CyberTrain/api/file.install.html#requirements); `cybertrain doctor`
 checks them).
 
 ```sh
@@ -47,31 +47,30 @@ cybertrain build       # production: one binary in dist/
 
 Or try it with nothing installed:
 [open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
-([more](docs/guide/install.md#try-it-in-the-browser)).
+([more](https://saeki-mototsune.github.io/CyberTrain/api/file.install.html#try-it-in-the-browser)).
 
 On one CPU core the blog serves 2.6 to 12.2 times the requests per second of
 the same app in Rails 8.1, in about a tenth of the memory
-([numbers](docs/guide/how-it-works.md#performance)).
+([numbers](https://saeki-mototsune.github.io/CyberTrain/api/file.how-it-works.html#performance)).
 
 ## Documentation
 
 | | |
 | --- | --- |
-| [Tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) · [walkthrough](docs/guide/walkthrough.md) | Build the blog step by step: scaffold, comments, authentication, uploads, deployment |
-| [Installing](docs/guide/install.md) | Requirements, the playground, every `cybertrain` command, how Spinel is installed |
-| [How it works](docs/guide/how-it-works.md) | Build-time code generation, differences from Rails, performance |
-| [Models and the database](docs/guide/models.md) | Migrations, queries beyond `where`, pagination |
-| [Requests](docs/guide/requests.md) | Rate limiting, the client address, parameterised headers |
-| [Configuration](docs/guide/configuration.md) | `config/app.rb`, environment variables, time zones |
-| [Background work and operations](docs/guide/background-and-operations.md) | Jobs, scheduled tasks, backups, the health check |
-| [Outbound HTTP, WebSocket feeds and e-mail](docs/guide/external-services.md) | `HttpClient`, `WebSocket.subscribe`, `Mailer` |
-| [Testing](docs/guide/testing.md) | Writing tests for an app, outbound calls, CI |
-| [Deploying](https://saeki-mototsune.github.io/CyberTrain/deploy.html) | To a server with systemd, or with Kamal ([docs/deploy.en.md](docs/deploy.en.md)) |
-| [API reference](https://saeki-mototsune.github.io/CyberTrain/api/) | Every class and method an application uses; also [the template language](docs/template-language.md) |
+| [Tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) · [walkthrough](https://saeki-mototsune.github.io/CyberTrain/api/file.walkthrough.html) | Build the blog step by step: scaffold, comments, authentication, uploads, deployment |
+| [Installing](https://saeki-mototsune.github.io/CyberTrain/api/file.install.html) | Requirements, the playground, every `cybertrain` command, how Spinel is installed |
+| [How it works](https://saeki-mototsune.github.io/CyberTrain/api/file.how-it-works.html) | Build-time code generation, differences from Rails, performance |
+| [Models and the database](https://saeki-mototsune.github.io/CyberTrain/api/file.models.html) | Migrations, queries beyond `where`, pagination |
+| [Requests](https://saeki-mototsune.github.io/CyberTrain/api/file.requests.html) | Rate limiting, the client address, parameterised headers |
+| [Configuration](https://saeki-mototsune.github.io/CyberTrain/api/file.configuration.html) | `config/app.rb`, environment variables, time zones |
+| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/api/file.background-and-operations.html) | Jobs, scheduled tasks, backups, the health check |
+| [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/api/file.external-services.html) | `HttpClient`, `WebSocket.subscribe`, `Mailer` |
+| [Testing](https://saeki-mototsune.github.io/CyberTrain/api/file.testing.html) | Writing tests for an app, outbound calls, CI |
+| [Deploying](https://saeki-mototsune.github.io/CyberTrain/deploy.html) | To a server with systemd, or with Kamal |
+| [API reference](https://saeki-mototsune.github.io/CyberTrain/api/) | Every class and method an application uses; also [the template language](https://saeki-mototsune.github.io/CyberTrain/api/file.template-language.html) |
 | [Design record](docs/design.md) · [benchmark](docs/benchmark.md) · [spikes](spikes/NOTES.md) | Why it is built this way, and the Spinel constraints behind it |
 
-The guides are also published with the
-[API reference](https://saeki-mototsune.github.io/CyberTrain/api/).
+The guides' Markdown sources are in [docs/guide/](docs/guide/).
 
 ## Contributing
 
