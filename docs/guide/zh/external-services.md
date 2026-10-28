@@ -80,8 +80,7 @@ require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Backgrou
 - **错误。** 所有错误都是 `Cybertrain::WebSocket::Error`，消息中只有主机和端口。握手完成后，连接丢失或被服务器关闭是 `ClosedError`（`close_code`、`close_reason`；被重置或没有关闭帧就结束的情况为 1006）；超时或在 TLS 中失败的写入仍然是 `TimeoutError` 或 `TLSError`。在连接期间，错误为 `RefusedError`、`TimeoutError`、`TLSError`、`BlockedAddressError`（非公网地址，默认被拒绝，与[出站 HTTP](#outbound-http) 中完全相同，使用同样的 `allow_private:` 和 `http_allow_private` 设置）或 `HandshakeError`（不是 101、`Sec-WebSocket-Accept` 不正确，或者服务器以扩展或子协议作答）。`ProtocolError`（服务器破坏了帧格式；客户端会发送 1002）和 `TooLargeError` 随时可能出现。
 - **健康状况。** `Cybertrain::WebSocket.feed_status("trades")` 返回一个 `Status`：`connected?`、`last_message_at`（纪元秒数，收到第一条消息之前为 0）和 `reconnects`。它不属于 `GET /up`；请在你自己的检查中使用它。这三项是依次读取的，而不是作为一个快照，并且 `connected?` 在连接建立时就变为 true，早于 `on_open` 运行。
 - **让 `on_message` 保持简短。** 线程用 `wait_readable` 或 `sleep` 等待，所以停滞的数据流在等待期间不会占用操作系统工作线程。有两件事会占用：每次连接尝试都用阻塞的 `getaddrinfo` 解析主机名（参见[出站
-  HTTP](#outbound-http) 中的“域名解析会阻塞”；在 `SPINEL_WORKERS=1` 时，失效的解析器会让每个请求停顿解析器的超时时间，每个订阅每次尝试一次，而在 URL 中使用 IP 地址可以避免查询），以及 `on_message` 中的 SQLite 调用，直到它返回为止，与定时任务中一样（[后台任务
-  ](background-and-operations.md#background-work)）：在 `SPINEL_WORKERS=1` 时，一次耗时的写入会让每个请求停顿。对于繁忙的数据流，请只插入一个小行，或者把消息收集在内存中，再从 `Scheduler.every` 任务中分批写入。
+  HTTP](#outbound-http) 中的“域名解析会阻塞”；在 `SPINEL_WORKERS=1` 时，失效的解析器会让每个请求停顿解析器的超时时间，每个订阅每次尝试一次，而在 URL 中使用 IP 地址可以避免查询），以及 `on_message` 中的 SQLite 调用，直到它返回为止，与定时任务中一样（[后台任务](background-and-operations.md#background-work)）：在 `SPINEL_WORKERS=1` 时，一次耗时的写入会让每个请求停顿。对于繁忙的数据流，请只插入一个小行，或者把消息收集在内存中，再从 `Scheduler.every` 任务中分批写入。
 - **未实现。** 不协商扩展（`permessage-deflate`）和子协议。不支持代理、重定向或 cookie，不会自动保存消息，也没有 WebSocket 服务器（ActionCable）。文本帧不检查是否为有效的 UTF-8（与 RFC 6455 第 8.1 节不同）：字节按收到时的原样传递。`Connection` 只在回调期间有效；不支持从请求或任务中发送。
 
 对于不需要重连循环的单个连接（脚本、一次性读取），请使用同步客户端：

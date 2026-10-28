@@ -40,6 +40,7 @@ module GuidePages
       titles = []
       pending_step = nil
       fence = nil
+      para = []
       quote_open = false
       body.each_line.with_index(1) do |raw, no|
         line = raw.chomp
@@ -53,11 +54,12 @@ module GuidePages
           next
         end
         if line =~ /\A(\s*)```(\S*)[ \t]*(.*?)\s*\z/
+          flush_links(para)
           place = $3.empty? ? nil : $3
           fence = { indent: $1, lang: $2, place: place, text: +"" }
           next
         end
-        scan_links(line)
+        line.strip.empty? ? flush_links(para) : para << line
         if (m = line.match(STEP))
           pending_step = Step.new(m[1], m[2], m[3])
         elsif line =~ /\A# (.*)/
@@ -76,6 +78,7 @@ module GuidePages
         end
         quote_open = line.start_with?(">")
       end
+      flush_links(para)
       raise Error, "expected exactly one '# ' title, found #{titles.size}" unless titles.size == 1
 
       @title = titles.first
@@ -83,12 +86,25 @@ module GuidePages
 
     private
 
-    def scan_links(line)
-      if (m = line.match(REF_DEF))
-        @links << m[1]
-        return
+    # Links are scanned a paragraph at a time (outside fences), so that link
+    # text wrapped across lines is found; a reference definition is one line.
+    def flush_links(lines)
+      text = []
+      lines.each do |line|
+        if (m = line.match(REF_DEF))
+          scan_links(text.join("\n"))
+          text.clear
+          @links << m[1]
+        else
+          text << line
+        end
       end
-      line.scan(LINK_RE) { |inline, anchor| @links << (inline || anchor) }
+      scan_links(text.join("\n"))
+      lines.clear
+    end
+
+    def scan_links(text)
+      text.scan(LINK_RE) { |inline, anchor| @links << (inline || anchor) }
     end
   end
 end

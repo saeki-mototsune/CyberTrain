@@ -21,6 +21,11 @@ class OutlineTest < Minitest::Test
                  o.sections.map { |s| [s.level, s.text] }
   end
 
+  def test_links_across_line_breaks
+    body = "# T\n\nSee [one\ncontinued](a.md#x) and\n[two](b.md) <a\nhref=\"c.md\">c</a>.\n\n```\n[no\n](z)\n```\n\n[ref]: d.md\n"
+    assert_equal %w[a.md#x b.md c.md d.md], GuidePages::Outline.parse(body).links
+  end
+
   def test_ignores_headings_in_fences
     refute_includes outline.sections.map(&:text), "not a heading"
   end

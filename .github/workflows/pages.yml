@@ -52,10 +52,8 @@ jobs:
           gem install --no-document yard kramdown kramdown-parser-gfm rouge
           script/api-docs
       - name: Build the guides
-        # The guard goes when the translations (docs/guide/<lang>/) land:
-        # until then there is nothing for script/check-guide-i18n to check.
         run: |
-          if [ -d docs/guide/ja ]; then script/check-guide-i18n; fi
+          script/check-guide-i18n
           script/guide-pages
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
