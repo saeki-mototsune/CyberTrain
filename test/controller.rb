@@ -15,14 +15,6 @@ Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
 # What the callbacks and actions did, in order; cleared by each dispatch.
 TRAIL = []
 
-# Kept in a constant on purpose: a SafeString that only ever travels as a
-# keyword argument (`render html: SafeString.new(...)`) is laid out as an
-# unboxed value type by Spinel 2026.09.12, and SafeString#+ then fails to
-# compile. Any positional use (or a constant) keeps it a heap object, which a
-# real app with templates always has. Remove this workaround once the
-# html.rb fix for SafeString#+ under the value-type layout lands.
-TRUSTED_MARKUP = Cybertrain::SafeString.new("<b>hi</b>")
-
 class ApplicationController < Cybertrain::Controller
   before_action :authenticate
   rescue_from(RuntimeError, with: :boom_handler)
@@ -125,7 +117,7 @@ class PostsController < ApplicationController
   end
 
   def trusted
-    render html: TRUSTED_MARKUP
+    render html: Cybertrain::SafeString.new("<b>hi</b>")
   end
 
   def csv
