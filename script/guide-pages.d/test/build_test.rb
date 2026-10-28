@@ -123,7 +123,7 @@ class BuildTest < Minitest::Test
   def test_toc_from_sections
     built
     html = page("tutorial.html")
-    assert_includes html, %(<nav class="toc" aria-label="Tutorial steps">)
+    assert_includes html, %(<div class="wrap doc">\n  <nav class="toc" aria-label="Tutorial steps">)
     assert_includes html, %(<span class="toc-title">Steps 00&ndash;01</span>)
     assert_equal [[nil, "requirements", "00", "Requirements"], [nil, "install", "01", "Install the CLI"],
                   [%( class="toc-x"), "things-to-know", "+", "Things to know"]],
@@ -132,6 +132,16 @@ class BuildTest < Minitest::Test
     assert_includes html, %(<nav class="toc" aria-label="目次">)
     assert_includes html, %(<span class="toc-title">目次</span>)
     assert_includes html, %(<li><a href="#differences-from-rails"><span class="toc-n">02</span>Rails との違い</a></li>)
+  end
+
+  # A page with no ## section (the Guides index) has no contents list at all,
+  # not an empty one, and no .doc grid, whose first column is the list's.
+  def test_no_toc_without_sections
+    write("x.md", "# X\n\nI.\n\n<!-- list: next-list -->\n- [**Install**](install.md) — How\n")
+    built
+    html = page("guide/x.html")
+    refute_includes html, %(<nav class="toc")
+    assert_includes html, %(<div class="wrap">\n  <article class="doc-body">)
   end
 
   def test_redirects_written

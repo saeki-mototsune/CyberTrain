@@ -88,7 +88,8 @@
   </header>
 </div>
 
-<div class="wrap doc">
+<div class="wrap<%= " doc" unless page.toc.empty? %>">
+<% unless page.toc.empty? -%>
   <nav class="toc" aria-label="<%= toc_label %>">
     <details class="toc-d" open>
       <summary class="toc-sum"><span class="toc-title"><%= toc_title %></span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
@@ -101,6 +102,7 @@
     </details>
   </nav>
 
+<% end -%>
   <article class="doc-body">
 
 <%= page.sections_html.chomp %>
