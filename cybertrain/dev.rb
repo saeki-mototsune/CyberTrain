@@ -1,6 +1,7 @@
 # The development loop (docs/design.md D12): Application#run in development
 # watches the Ruby sources, rebuilds the server with `spin run gen && spin
-# build <name>` (the app's package name), and replaces itself with the new
+# build <name> -- --incremental` (the app's package name; without the flag
+# when the toolchain predates it), and replaces itself with the new
 # binary; ErrorPage shows exceptions and failed builds in the browser.
 # Production never loads any of it into the request path.
 require "cybertrain/dev/watcher"

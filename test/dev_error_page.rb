@@ -245,14 +245,27 @@ test "no banner once a later build succeeds" do
   assert res.body.index("Build failed").nil?, "no banner expected"
 end
 
-test "the rebuild command runs gen then build in the app root, logging to tmp/rebuild.log" do
+test "the rebuild command runs gen then an incremental build in the app root, logging to tmp/rebuild.log" do
   r = Cybertrain::Dev::Rebuilder.new("/apps/my blog")
   assert_equal "/apps/my blog/tmp/rebuild.log", r.log_file
   assert_equal "/apps/my blog/build/bin/server", r.binary_path
-  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build 'server'; } " \
+  assert r.incremental
+  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build 'server' -- --incremental; } " \
                "> '/apps/my blog/tmp/rebuild.log' 2>&1", r.command
   refute r.last_failed
   assert_equal "", r.last_output
+end
+
+test "without --incremental the rebuild command is the plain spin build" do
+  r = Cybertrain::Dev::Rebuilder.new("/apps/my blog")
+  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build 'server'; } " \
+               "> '/apps/my blog/tmp/rebuild.log' 2>&1", r.command(false)
+end
+
+test "only spinel refusing the flag reads as a toolchain without --incremental" do
+  assert Cybertrain::Dev::Rebuilder.incremental_unsupported?("build server\nspinel: unknown option '--incremental'\nspin: build failed\n")
+  refute Cybertrain::Dev::Rebuilder.incremental_unsupported?("app/models/post.rb:3: syntax error\nspin: build failed\n")
+  refute Cybertrain::Dev::Rebuilder.incremental_unsupported?("")
 end
 
 test "a failing rebuild keeps the command output" do
@@ -262,6 +275,36 @@ test "a failing rebuild keeps the command output" do
   assert r.last_failed
   assert_includes r.last_output, "dev_error_page_missing_root"
   File.delete(log) if File.exist?(log)
+end
+
+# A `spin` first on PATH that answers like a Spinel release without
+# --incremental: it records each build's arguments and refuses the flag.
+test "a toolchain that refuses --incremental gets the plain build at once, and from then on" do
+  Dir.mkdir("tmp") unless File.directory?("tmp")
+  root = File.expand_path("tmp/dev_error_page_fallback_root")
+  bin = "#{root}/fakebin"
+  calls = "#{root}/calls"
+  Dir.mkdir(root) unless File.directory?(root)
+  Dir.mkdir(bin) unless File.directory?(bin)
+  File.delete(calls) if File.exist?(calls)
+  File.write("#{bin}/spin", "#!/bin/sh\n" \
+                            "[ \"$1\" = build ] || exit 0\n" \
+                            "echo \"$*\" >> '#{calls}'\n" \
+                            "case \"$*\" in *--incremental*) echo \"spinel: unknown option '--incremental'\"; exit 1;; esac\n" \
+                            "echo built\n")
+  File.chmod(0o755, "#{bin}/spin")
+  path = ENV["PATH"] || ""
+  ENV["PATH"] = "#{bin}:#{path}"
+  r = Cybertrain::Dev::Rebuilder.new(root, "server", "#{root}/tmp/rebuild.log")
+  assert r.rebuild
+  refute r.last_failed
+  refute r.incremental
+  assert_equal "built\n", r.last_output
+  assert r.rebuild
+  ENV["PATH"] = path
+  assert_equal "build server -- --incremental\nbuild server\nbuild server\n", File.read(calls)
+  [calls, "#{bin}/spin", "#{root}/tmp/rebuild.log"].each { |f| File.delete(f) if File.exist?(f) }
+  ["#{root}/tmp", bin, root].each { |d| Dir.rmdir(d) if File.directory?(d) }
 end
 
 test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
@@ -333,9 +376,9 @@ test "a lock older than 30 minutes is stale even with a live PID: age wins over 
 end
 
 test "the rebuild command quotes the build target like every other interpolated value" do
-  assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog'; }"), "plain target is quoted"
+  assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog' -- --incremental; }"), "plain target is quoted"
   tricky = Cybertrain::Dev::Rebuilder.new("/apps/blog", "it's").command
-  assert tricky.include?("spin build 'it'\\''s'; }"), "a single quote in the target is escaped"
+  assert tricky.include?("spin build 'it'\\''s' -- --incremental; }"), "a single quote in the target is escaped"
   assert tricky.index("spin build it's").nil?, "no unquoted target reaches sh"
 end
 

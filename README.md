@@ -886,8 +886,10 @@ inside a `DB.with` block (which is not a transaction) gets a second connection.
 `development` (the default `CYBERTRAIN_ENV`, except in a binary from
 `cybertrain build`) also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`
 and `gen/**/*.rb` every half second (views are excluded — the engine reloads
-those itself — and so is `gen/views.rb`, empty in development). A change runs `spin run gen && spin build NAME` in the
-background; success requests a restart (the same flag an external `kill -HUP`
+those itself — and so is `gen/views.rb`, empty in development). A change runs `spin run gen && spin build NAME -- --incremental` in the
+background (Spinel's incremental build, which recompiles only the C units the
+edit changed; a Spinel release without `--incremental` rejects the flag, and the
+loop then builds without it); success requests a restart (the same flag an external `kill -HUP`
 sets): a monitor thread stops the listener and drains open requests, then the
 main thread `execv`s the new binary on the same port and PID, invisible to a
 client mid-session. A failed build keeps serving the old binary and banners the

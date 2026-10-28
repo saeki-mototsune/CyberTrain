@@ -497,7 +497,7 @@ test "Application.new accepts any name; only the Rebuilder refuses one" do
     application_named(odd)
     assert_raises("ArgumentError") { Cybertrain::Dev::Rebuilder.new("/apps/blog", odd) }
   end
-  assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog'; }"), "an ordinary target still works"
+  assert Cybertrain::Dev::Rebuilder.new("/apps/blog", "blog").command.include?("spin build 'blog' -- --incremental; }"), "an ordinary target still works"
 end
 
 # Two layers on a bad name: Application#serve (a development boot) prints
