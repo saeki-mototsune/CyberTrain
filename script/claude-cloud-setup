@@ -23,7 +23,7 @@
 # release is bumped.
 set -euo pipefail
 
-SPINEL_TAG="2026.10.26.7019"
+SPINEL_TAG="2026.10.27.7020"
 SPINEL_GIT="https://github.com/saeki-mototsune/spinel.git"
 CT_HOME="${CYBERTRAIN_HOME:-$HOME/.cybertrain}"
 PREFIX="$CT_HOME/spinel/$SPINEL_TAG"

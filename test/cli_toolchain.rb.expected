@@ -2,11 +2,11 @@ ok   release_of reads the release out of spinel --version
 ok   the managed copy lives under CYBERTRAIN_HOME/spinel/<tag>, as an absolute path
 ok   usable? wants an executable spinel and spin of the pinned release
 ok   a spinel of the pinned release on PATH is used as it is
-note: old/spinel is release 2026.09.08; cybertrain 0.3.0 is pinned to Spinel 2026.10.26.7019 and keeps its own copy in home/spinel/2026.10.26.7019
+note: old/spinel is release 2026.09.08; cybertrain 0.3.0 is pinned to Spinel 2026.10.27.7020 and keeps its own copy in home/spinel/2026.10.27.7020
 ok   another release on PATH, or a spin from elsewhere, does not count
 ok   CYBERTRAIN_SPINEL_HOME names a prefix or its bin directory, absolute
 ok   the managed copy counts only once its completion stamp is there
-error: cannot build Spinel 2026.10.26.7019: missing git, make, curl, a Ruby that loads the prism gem (Ruby 3.3 or newer, or `gem install prism`), a C compiler (cc)
+error: cannot build Spinel 2026.10.27.7020: missing git, make, curl, a Ruby that loads the prism gem (Ruby 3.3 or newer, or `gem install prism`), a C compiler (cc)
   install git, make, curl, a C compiler and the SQLite 3 and zlib development headers with your package manager
   gem install --user-install prism     # or use Ruby 3.3 or newer, which has it
 ok   install refuses to start without the build tools, before touching anything
@@ -15,7 +15,7 @@ error: cannot create /proc/cybertrain-test/spinel; set CYBERTRAIN_HOME to a writ
 ok   install refuses a home it cannot write, without hanging
 ok   the build lock is a directory holding the builder's pid, taken atomically
 ok   a lock is removed only by the one process holding its reclaim marker
-error: cannot build Spinel 2026.10.26.7019: missing a directory to keep Spinel in (set CYBERTRAIN_HOME or HOME)
+error: cannot build Spinel 2026.10.27.7020: missing a directory to keep Spinel in (set CYBERTRAIN_HOME or HOME)
 error: odd:dir cannot go on PATH: its name contains ':'
 ok   setup needs a home for the managed copy, and a directory PATH can hold
 ok   tail, jobs, quoting and hints

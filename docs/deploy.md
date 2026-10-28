@@ -35,7 +35,7 @@
 | ドメイン | `notes.example.com` |
 | アプリの GitHub リポジトリ（private で可） | `YOUR_GITHUB/notes` |
 | サーバー | Ubuntu 24.04 LTS、x86-64 か arm64、メモリ 1GB 以上 |
-| Spinel のバージョン | `2026.10.26.7019`（`cybertrain setup` が入れるもの。[CI](../.github/workflows/ci.yml) の `SPINEL_TAG` と同じもの） |
+| Spinel のバージョン | `2026.10.27.7020`（`cybertrain setup` が入れるもの。[CI](../.github/workflows/ci.yml) の `SPINEL_TAG` と同じもの） |
 
 ---
 
@@ -91,21 +91,21 @@ Spinel は次の 1-3 で、このコマンドが入れます。
 cybertrain setup
 ```
 
-`cybertrain` が固定している Spinel `2026.10.26.7019` を、GitHub のリリースタグ（[saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)。
+`cybertrain` が固定している Spinel `2026.10.27.7020` を、GitHub のリリースタグ（[saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)。
 CyberTrain が必要とする修正を本家より先に取り込んだ matz/spinel のフォーク）からビルドして
-`~/.cybertrain/spinel/2026.10.26.7019/` に入れます（`git clone` → `make deps` → `make -j` →
+`~/.cybertrain/spinel/2026.10.27.7020/` に入れます（`git clone` → `make deps` → `make -j` →
 `make install`）。初回だけで、数分かかります（4 コアのマシンで 5 分前後でした。`make -j` は CPU の数だけ
 並列に動くので、CPU が少ないほど長くかかります）。CI も Spinel を同じ `cybertrain setup` で入れています。
 
 - 足りない道具（git・make・curl・`prism` gem を読み込める Ruby・C コンパイラ・SQLite のヘッダ／ライブラリ）があると、ビルドを始める前に
   何が足りないかとインストールのコマンドを表示して止まります。
-- 各手順の出力はログ `~/.cybertrain/log/spinel-2026.10.26.7019-build.log` に書かれます。途中で失敗したときは
+- 各手順の出力はログ `~/.cybertrain/log/spinel-2026.10.27.7020-build.log` に書かれます。途中で失敗したときは
   ログの末尾が表示されます。
 - すでに入っている場合（`~/.cybertrain` にある、または同じリリースの `spinel` が PATH にある）は、
   `nothing to install` と表示して何もしません。`~/.cybertrain` のものを作り直したいときは
   `cybertrain setup --force` です。
-- 入れ先 `~/.cybertrain/spinel/2026.10.26.7019/` は約 41 MB です（Linux x86-64 で確認した値）。ビルド中だけ、
-  ソースと中間ファイルが `~/.cybertrain/src/spinel-2026.10.26.7019/` に 220 MB ほどでき、成功すると削除されます。
+- 入れ先 `~/.cybertrain/spinel/2026.10.27.7020/` は約 41 MB です（Linux x86-64 で確認した値）。ビルド中だけ、
+  ソースと中間ファイルが `~/.cybertrain/src/spinel-2026.10.27.7020/` に 220 MB ほどでき、成功すると削除されます。
 
 前提が足りているかは `cybertrain doctor` で確認できます（git・make・curl・prism・cc・SQLite・OpenSSL と
 Spinel を 1 行ずつ表示します。足りないものは `MISSING` と表示され、インストールのコマンドが続きます）。
@@ -123,8 +123,8 @@ source ~/.bashrc
 spinel --version
 ```
 
-`spinel` の直後が `2026.10.26.7019` になっていれば OK です
-（`spinel 2026.10.26.7019 (80b2f9889) [gcc ...]` のように表示されます。括弧の中はコミットです）。
+`spinel` の直後が `2026.10.27.7020` になっていれば OK です
+（`spinel 2026.10.27.7020 (d37f38af) [gcc ...]` のように表示されます。括弧の中はコミットです）。
 
 **補足: 手動で入れる場合**
 
@@ -132,7 +132,7 @@ spinel --version
 同じです（`prism` gem を読み込める Ruby が要るのも同じです）。
 
 ```sh
-git clone --depth 1 --branch 2026.10.26.7019 https://github.com/saeki-mototsune/spinel.git ~/src/spinel
+git clone --depth 1 --branch 2026.10.27.7020 https://github.com/saeki-mototsune/spinel.git ~/src/spinel
 cd ~/src/spinel
 make deps
 make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
@@ -142,10 +142,10 @@ make install PREFIX="$HOME/.local"
 入れたものを `cybertrain` に使わせるには、次のどちらかにします。
 
 - `~/.local/bin` に PATH を通す（`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`）。
-  `spinel --version` が `2026.10.26.7019` なら、`cybertrain` は PATH 上のそれをそのまま使います。別のリリース
+  `spinel --version` が `2026.10.27.7020` なら、`cybertrain` は PATH 上のそれをそのまま使います。別のリリース
   だと使わず、`cybertrain` が自分用のものを `~/.cybertrain` に入れます。
 - 環境変数で入れ先を指定する（`~/.bashrc` に `export CYBERTRAIN_SPINEL_HOME="$HOME/.local"` を書きます）。
-  そこの `spinel` が `2026.10.26.7019` でなければ、エラーで止まります。
+  そこの `spinel` が `2026.10.27.7020` でなければ、エラーで止まります。
 
 ---
 
@@ -370,8 +370,8 @@ cybertrain setup
 ```
 
 1-3 と同じ処理で、初回だけ数分かかります（CPU が少ないサーバーほど長くかかります）。Spinel は `notes`
-ユーザーの `~/.cybertrain/spinel/2026.10.26.7019/`（ここでは `/srv/notes/.cybertrain/spinel/2026.10.26.7019/`。
-約 41 MB）に入り、ログは `~/.cybertrain/log/spinel-2026.10.26.7019-build.log` に残ります。ビルド中だけ、
+ユーザーの `~/.cybertrain/spinel/2026.10.27.7020/`（ここでは `/srv/notes/.cybertrain/spinel/2026.10.27.7020/`。
+約 41 MB）に入り、ログは `~/.cybertrain/log/spinel-2026.10.27.7020-build.log` に残ります。ビルド中だけ、
 ソースと中間ファイルが `~/.cybertrain/src/` に 220 MB ほどできます（成功すると削除されます）。3-2 で
 入れたパッケージで前提はそろっていますが、足りないと言われたら `cybertrain doctor` で確認してください。
 
