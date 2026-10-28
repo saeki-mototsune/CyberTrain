@@ -1,0 +1,55 @@
+#!/usr/bin/env ruby
+# Checks the guide translations (docs/guide/{ja,zh,ru,fr}/) against the
+# English sources (docs/guide/*.md), so that a change to one that is not made
+# to the other is caught before it is committed (script/gate runs this when
+# a guide file or this script changes). For every English page and language it
+# fails, listing every difference, when:
+#   * a translation is missing, or has no English source;
+#   * source_sha256 is missing or is not the SHA-256 of the English file (the
+#     English changed after the translation; see `git log -p <file>`);
+#   * the front matter keys differ, or path, og_image or nav are not equal;
+#   * the headings differ in number or level, the step comments in number or
+#     id, or the convention markers ([!WHY] [!RULE] [!NOTE] <details> list:
+#     table:) in sequence;
+#   * a section's code fences differ in number, order, language, place or
+#     content once comment lines and trailing `# ` comments are taken out, or
+#     its tables differ in row count;
+#   * the link targets (with fragment), in order, differ; link text is not
+#     compared.
+# Prose is not compared: it is the part that is translated. Standard library
+# only.
+#
+# usage: script/check-guide-i18n [LANG]        (exit status 1 and the differences when they drift)
+#        script/check-guide-i18n --update-sha FILE...
+#                                              write the current English hash into
+#                                              translations, once they are in step
+
+require_relative "guide-pages.d/lib/i18n_check"
+
+ROOT = File.expand_path("..", __dir__)
+
+if ARGV.first == "--update-sha"
+  files = ARGV.drop(1)
+  abort "usage: script/check-guide-i18n --update-sha FILE..." if files.empty?
+  begin
+    files.each { |f| puts "#{f}: source_sha256 #{GuidePages::I18nCheck.update_sha(File.expand_path(f), root: ROOT)}" }
+  rescue GuidePages::Error => e
+    abort e.message
+  end
+  exit
+end
+
+langs = GuidePages::I18nCheck::TRANSLATED_LANGS
+if ARGV.size > 1 || (ARGV.first && !langs.include?(ARGV.first))
+  abort "usage: script/check-guide-i18n [#{langs.join("|")}] | --update-sha FILE..."
+end
+langs = ARGV unless ARGV.empty?
+
+problems = GuidePages::I18nCheck.run(ROOT, langs: langs)
+if problems.empty?
+  puts "docs/guide/#{langs.join(", ")}: translations match the English"
+else
+  puts problems
+  puts "(see script/check-guide-i18n for what is compared)"
+  exit 1
+end
