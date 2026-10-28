@@ -197,8 +197,39 @@ class BuildTest < Minitest::Test
     refute errors.any? { |e| e.start_with?("docs/guide/ja/install.md") }, errors.inspect
   end
 
+  # path is tutorial.html or guide/<name>.html: nothing else of the site
+  # can be overwritten, nothing outside --out written.
+  def test_path_allowed
+    write("x.md", "---\npath: guide/x.html\n---\n# X\n\nI.\n\n## A\n")
+    built
+    assert File.exist?(File.join(@out, "guide/x.html"))
+  end
+
+  def test_path_rejected
+    write("x.md", "---\npath: index.html\n---\n# X\n\nI.\n\n## A\n")
+    write("y.md", "---\npath: ../escape.html\n---\n# Y\n\nI.\n\n## A\n")
+    write("z.md", "---\npath: guide/install.html\n---\n# Z\n\nI.\n\n## A\n")
+    errors = build
+    assert_includes errors, %(docs/guide/x.md: path must be tutorial.html or guide/x.html, not "index.html")
+    assert_includes errors, %(docs/guide/y.md: path must be tutorial.html or guide/y.html, not "../escape.html")
+    assert_includes errors, %(docs/guide/z.md: path must be tutorial.html or guide/z.html, not "guide/install.html")
+    refute Dir.exist?(@out)
+    refute File.exist?(File.join(@root, "escape.html"))
+  end
+
+  # Checked on every page, not only when a link points at one of them.
+  def test_duplicate_heading_id
+    write("x.md", "# X\n\nI.\n\n## A\n\n## A\n")
+    assert_includes build, "docs/guide/x.md: heading id #a is used twice"
+  end
+
+  def test_missing_site_target
+    write("x.md", "# X\n\nSee [deploy](site:deploy.html).\n\n## A\n")
+    assert_equal ["docs/guide/x.md: link site:deploy.html: site/deploy.html does not exist"], build
+  end
+
   def test_invalid_nav = (write("x.md", "---\nnav: home\n---\n# X\n\nI.\n\n## A\n"); assert_includes build, %(docs/guide/x.md: nav must be one of tutorial, guides, not "home"))
-  def test_duplicate_output_path = (write("x.md", "---\npath: guide/install.html\n---\n# X\n\nI.\n\n## A\n"); assert_includes build, "docs/guide/x.md: output guide/install.html is also written by another source")
+  def test_duplicate_output_path = (write("x.md", "---\npath: tutorial.html\n---\n# X\n\nI.\n\n## A\n"); assert_includes build, "docs/guide/x.md: output tutorial.html is also written by another source")
   def test_translation_without_english = (write("ja/x.md", "# X\n\nI.\n\n## A\n"); assert_equal ["docs/guide/ja/x.md: no English source docs/guide/x.md"], build)
   def test_malformed_meta = (write("x.md", "---\nmeta:\n  - term: T\n---\n# X\n\nI.\n\n## A\n"); assert_equal ["docs/guide/x.md: meta must be a list of {term, text}"], build)
 end

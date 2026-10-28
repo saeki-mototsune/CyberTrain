@@ -2,7 +2,7 @@
 # and docs/guide/<lang>/, rendered (GuidePages::Render) into the shell of
 # layout.html.erb, at its output path (spec "Output"):
 #   tutorial.html, <lang>/tutorial.html          front matter path: tutorial.html
-#   guide/<name>.html, <lang>/guide/<name>.html  the default
+#   guide/<name>.html, <lang>/guide/<name>.html  the default (the only other path allowed)
 # and, for the English pages, the old YARD URLs as redirects:
 #   api/file.<name>.html                         -> the guide (not for index)
 #   api/file.walkthrough.html                    -> tutorial.html, once tutorial.md exists
@@ -70,9 +70,10 @@ module GuidePages
       []
     end
 
-    # Source.all, but a source that fails to load or has no single "# " title
-    # is reported; bad lists those files, which are not rendered (nor, for an
-    # English source, its translations).
+    # Source.all, but a source that fails to load, has no single "# " title
+    # or a path other than tutorial.html or guide/<name>.html is reported; bad
+    # lists those files, which are not rendered (nor, for an English source,
+    # its translations).
     def load(root, errors)
       bad = []
       sources = {}
@@ -85,6 +86,7 @@ module GuidePages
           (sources[lang] ||= {})[src.name] = src
           begin
             Outline.parse(src.body)
+            check_path(src)
           rescue Error => e
             errors << "#{src.file}: #{e.message}"
             bad << src.file
@@ -97,7 +99,16 @@ module GuidePages
       [sources, bad]
     end
 
+    def check_path(src)
+      path = src.front["path"]
+      allowed = ["tutorial.html", "guide/#{src.name}.html"]
+      return if path.nil? || allowed.include?(path)
+
+      raise Error, "path must be #{allowed.join(" or ")}, not #{path.inspect}"
+    end
+
     def page(src, english, links, layout)
+      links.ids_for(src.name) # an id used twice fails every page, linked to or not
       words = WORDS.fetch(src.lang)
       view = View.new(src, english, Render.page(src, english: english, links: links, words: words), words)
       view.meta = meta(src, links, words)

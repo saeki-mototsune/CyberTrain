@@ -56,7 +56,7 @@ module GuidePages
         if line =~ /\A(\s*)```(\S*)[ \t]*(.*?)\s*\z/
           flush_links(para)
           place = $3.empty? ? nil : $3
-          fence = { indent: $1, lang: $2, place: place, text: +"" }
+          fence = { indent: $1, lang: $2, place: place, text: +"", line: no }
           next
         end
         line.strip.empty? ? flush_links(para) : para << line
@@ -79,6 +79,7 @@ module GuidePages
         quote_open = line.start_with?(">")
       end
       flush_links(para)
+      raise Error, "code fence opened at line #{fence[:line]} is not closed" if fence
       raise Error, "expected exactly one '# ' title, found #{titles.size}" unless titles.size == 1
 
       @title = titles.first

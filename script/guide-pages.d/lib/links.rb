@@ -4,9 +4,12 @@
 #                          relative to this page; the anchor must be one of
 #                          the target's (English) heading ids
 #   #a                     kept; the anchor must be on this page
-#   site:path              a site page not generated from docs/guide/, relative
-#                          to the language root (api/ and assets/ exist once,
-#                          at the site root), made relative to this page
+#   site:path              a site page, relative to the language root (api/
+#                          and assets/ exist once, at the site root), made
+#                          relative to this page; the file must exist in the
+#                          repository's site/ (api/ is not checked: YARD
+#                          builds it), or, for tutorial.html and guide/*.html,
+#                          be a generated page, whose anchor is checked too
 #   any other relative     https://github.com/saeki-mototsune/CyberTrain/blob/main/<path>
 #                          (tree/main/ for a directory), the fragment kept; the
 #                          path must exist in the repository
@@ -42,6 +45,7 @@ module GuidePages
 
     # The heading ids of the page made from source name, from the English:
     # the title's slug, step ids or slugs for "##", slugs for deeper headings.
+    # An id used twice is an error.
     def ids_for(name)
       @ids[name] ||= begin
         en = @sources.fetch("en").fetch(name)
@@ -50,9 +54,13 @@ module GuidePages
         rescue Error => e
           raise Error, "#{en.file}: #{e.message}"
         end
-        [Outline.slug(outline.title)] + outline.sections.drop(1).map do |s|
+        ids = [Outline.slug(outline.title)] + outline.sections.drop(1).map do |s|
           s.level == 2 && s.step ? s.step.id : Outline.slug(s.text)
         end
+        dup = ids.find { |id| ids.count(id) > 1 }
+        raise Error, "#{en.file}: heading id ##{dup} is used twice" if dup
+
+        ids
       end
     end
 
@@ -97,8 +105,18 @@ module GuidePages
     end
 
     def site(path, fragment, from, here)
+      href = with_fragment(path, fragment)
       rel = path.delete_prefix("site:")
-      base = SITE_ROOT_DIRS.include?(rel.split("/").first) ? "" : Links.lang_root(from.lang)
+      top = rel.split("/").first
+      base = SITE_ROOT_DIRS.include?(top) ? "" : Links.lang_root(from.lang)
+      if rel == "tutorial.html" || top == "guide"
+        en = @sources.fetch("en", {}).each_value.find { |s| Links.out_path(s) == rel }
+        return error(from, href, "#{base}#{rel} is not a generated page") unless en
+
+        check_anchor(href, fragment, en.name, from) if fragment
+      elsif top != "api" && !File.file?(File.join(@root, "site", base + rel))
+        return error(from, href, "site/#{base}#{rel} does not exist")
+      end
       with_fragment(relative(base + rel, here), fragment)
     end
 

@@ -78,6 +78,32 @@ class LinksTest < Minitest::Test
     # api/ and assets/ exist once, at the site root.
     assert_equal "../../api/index.html", rewrite("site:api/index.html", src("a", "ja"))
     assert_equal "api/index.html", rewrite("site:api/index.html", src("tutorial"))
+    assert_equal "../../assets/style.css", rewrite("site:assets/style.css", src("a", "ja"))
+    assert_equal [], @links.errors
+  end
+
+  # A site: target must exist in site/, from the page's language root (api/
+  # and assets/ from the site root); api/ is built by YARD, so not checked.
+  def test_site_target_checked
+    rewrite("site:nope.html")
+    rewrite("site:playground.html", src("a", "ja")) # site/ja/playground.html is missing
+    rewrite("site:assets/nope.css")
+    rewrite("site:api/anything.html")
+    assert_equal ["docs/guide/a.md: link site:nope.html: site/nope.html does not exist",
+                  "docs/guide/ja/a.md: link site:playground.html: site/ja/playground.html does not exist",
+                  "docs/guide/a.md: link site:assets/nope.css: site/assets/nope.css does not exist"], @links.errors
+  end
+
+  # A generated page is checked against the build's own output (not site/),
+  # and its anchor against its heading ids.
+  def test_site_target_generated_page
+    assert_equal "../tutorial.html#validations", rewrite("site:tutorial.html#validations")
+    assert_equal "a.html", rewrite("site:guide/a.html")
+    assert_equal [], @links.errors
+    rewrite("site:guide/nope.html")
+    rewrite("site:tutorial.html#nope")
+    assert_equal ["docs/guide/a.md: link site:guide/nope.html: guide/nope.html is not a generated page",
+                  "docs/guide/a.md: link site:tutorial.html#nope: no anchor #nope on docs/guide/tutorial.md"], @links.errors
   end
 
   def test_absolute_unchanged
@@ -98,6 +124,13 @@ class LinksTest < Minitest::Test
   def test_ids_for
     assert_equal %w[alpha requirements sub-part], @links.ids_for("a")
     assert_equal %w[tutorial validations], @links.ids_for("tutorial")
+  end
+
+  def test_duplicate_ids_rejected
+    dup = GuidePages::Source.new("docs/guide/d.md", "# D\n\nI.\n\n## Setup\n\n### Notes\n\n## More\n\n### Notes\n")
+    links = GuidePages::Links.new(sources: { "en" => { "d" => dup } }, root: ROOT)
+    e = assert_raises(GuidePages::Error) { links.ids_for("d") }
+    assert_equal "docs/guide/d.md: heading id #notes is used twice", e.message
   end
 
   # The h1's id (the slug of the English title) is an anchor too.

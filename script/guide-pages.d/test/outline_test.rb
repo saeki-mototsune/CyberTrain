@@ -105,6 +105,11 @@ class OutlineTest < Minitest::Test
     assert_raises(GuidePages::Error) { GuidePages::Outline.parse("# a\n\n# b\n") }
   end
 
+  def test_rejects_unclosed_fence
+    e = assert_raises(GuidePages::Error) { GuidePages::Outline.parse("# a\n\n```ruby\nx\n```\n\n```sh\ny\n") }
+    assert_equal "code fence opened at line 7 is not closed", e.message
+  end
+
   def with_file(content)
     Dir.mktmpdir do |root|
       FileUtils.mkdir_p(File.join(root, "docs/guide"))

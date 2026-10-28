@@ -264,6 +264,16 @@ class RenderTest < Minitest::Test
     assert_equal ["docs/guide/x.md: link missing.md: no source docs/guide/missing.md"], @links.errors
   end
 
+  # Until images are supported (copied to the site), only absolute URLs.
+  def test_relative_images_rejected
+    ["![a](pic.png)", %(<img src="../pic.png" alt="a">), "Text <img src='pic.png'> more."].each do |md|
+      e = assert_raises(GuidePages::Error, md) { body(md) }
+      assert_match(/\Adocs\/guide\/x\.md: image \S*pic\.png: images are not supported yet\z/, e.message)
+    end
+    assert_includes body("![a](https://example.com/p.png)"), %(<img src="https://example.com/p.png" alt="a")
+    assert_includes body(%(<img src="//example.com/p.png" alt="a">)), %(<img src="//example.com/p.png" alt="a")
+  end
+
   def test_raw_html_passes_through
     raw = <<~HTML.chomp
       <ul class="ship-grid">

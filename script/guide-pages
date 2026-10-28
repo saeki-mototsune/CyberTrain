@@ -8,12 +8,16 @@
 # plus api/file.<name>.html redirects from the old YARD URLs. The Pages
 # workflow runs it after script/api-docs; none of its output is committed
 # (.gitignore). It fails, listing every problem and writing nothing, on a
-# link to a missing source, anchor or repository path, a source without
-# exactly one "# " title, a malformed step comment, a code fence language
-# Rouge does not know, or an unknown front matter key. Needs the kramdown, kramdown-parser-gfm and rouge gems; the
-# conventions are listed in script/guide-pages.d/lib/render.rb.
+# link to a missing source, anchor, repository path or site/ page, a source
+# without exactly one "# " title, a heading id used twice, an unclosed code
+# fence, a malformed step comment, a code fence language Rouge does not
+# know, a relative image, an unknown front matter key, or a front matter
+# path other than tutorial.html or guide/<name>.html. Needs the kramdown,
+# kramdown-parser-gfm and rouge gems; the conventions are listed in
+# script/guide-pages.d/lib/render.rb.
 #
-# usage: script/guide-pages [--out DIR]   (default: site/; exit status 1 and the problems when any)
+# usage: script/guide-pages [--out DIR]   (default: site/; exit status 1 and
+#                                         the problems when any)
 
 require_relative "guide-pages.d/lib/build"
 

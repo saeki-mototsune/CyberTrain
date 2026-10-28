@@ -13,8 +13,10 @@
 #   <!-- list: KIND -->                ul.KIND; next-list items are [**T**](url) — D
 #   <!-- table: cmp --> …              the comparison table (cmp-wrap cmp-doc);
 #   <!-- table-foot: text -->            optional, after the table: p.cmp-foot
-# Links go through GuidePages::Links. Other raw HTML passes through. Text is
-# kept as written: no smart quotes or typographic symbols, entities as typed.
+# Links go through GuidePages::Links. Images must have absolute URLs (a
+# relative one is an error until images are copied to the site). Other raw
+# HTML passes through. Text is kept as written: no smart quotes or
+# typographic symbols, entities as typed.
 #
 #   page = GuidePages::Render.page(source, english: en_source, links: links, words: GuidePages::WORDS["ja"])
 #   page.h1, page.h1_id, page.intro_html, page.sections_html, page.toc  # toc: [TocEntry(num, id, title_html, extra)]
@@ -257,7 +259,19 @@ module GuidePages
         end
 
         el.attr.replace(link_attrs(el.attr)) if el.value == "a" && el.attr["href"]
+        check_image(el.attr["src"]) if el.value == "img"
         super
+      end
+
+      def convert_img(el, indent)
+        check_image(el.attr["src"])
+        super
+      end
+
+      def check_image(src)
+        return if src.to_s.match?(%r{\A(?:[a-z][a-z0-9+.-]*:|//)}i)
+
+        fail!("image #{src}: images are not supported yet")
       end
 
       def details(el, summary, indent)
