@@ -6,7 +6,7 @@ require "cybertrain/router"
 
 # End-to-end regression for the Task 7 review's two BLOCKERs: driving the
 # real production stack order (SessionStore -> CsrfProtection -> Router,
-# per docs/superpowers/plans/2026-09-24-cybertrain-mvp.md line 850) through
+# per Application#stack) through
 # Cybertrain::Test::Client the way a real form POST arrives, with the token
 # minted through a route handler block (the shape the form helpers in
 # cybertrain/template/helpers.rb mint it from: Helpers#csrf_token ->

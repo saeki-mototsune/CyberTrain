@@ -725,7 +725,7 @@ cybertrain/
   test/                     # spin test（.expected をコミット）
   examples/blog/            # 合格基準のアプリ
   spikes/NOTES.md           # M0 スパイクの記録（プログラム自体は検証後に削除。git 履歴にある）
-  README.md  docs/design.md  docs/deploy.md  docs/deploy.en.md  docs/deploy-kamal.md  docs/template-language.md  docs/superpowers/
+  README.md  docs/design.md  docs/deploy.md  docs/deploy.en.md  docs/deploy-kamal.md  docs/template-language.md
   .github/workflows/ci.yml
 ```
 
@@ -760,9 +760,9 @@ blog/
 
 - 第 10 章のマイルストーン M0〜M5 はすべて到達した。第 2.2 節の合格基準は `examples/blog`（Article + Comment、サーバサイド HTML、SQLite、`spin build` で単一バイナリ）で満たし、統合テスト 21 ケースと、フレームワーク自身の `spin test` 57 プログラムが通過している。
 - 開発ループ（D12）は実機で確認済み: ビュー編集は再ビルドなしで即時反映、コントローラ編集は約 24 秒（`spin run gen` + `spin build`。当時のビルド対象は server 用の bin）で再ビルドされ、同じ PID のまま `execv` で新バイナリに置き換わった。
-- 実装で判明した Spinel の制約 42 項目は `spikes/NOTES.md` に、計画との差分は `docs/superpowers/plans/2026-09-24-cybertrain-mvp.md` 末尾の「As built」節にある。利用者向けの説明は `README.md` と `docs/template-language.md`。
+- 実装で判明した Spinel の制約 42 項目は `spikes/NOTES.md` にある。利用者向けの説明は `README.md` と `docs/template-language.md`。
 - 既知の未対応: strict locals の既定値構文（`<%# locals: (comment: nil) %>`）、`Model#attribute_or_method?` が常に true（typo した属性名が空文字で描画される）、`spin run db migrate` は `--` が必要（`spin run db -- migrate`）、`SPINEL_GC_STRESS=1` 下で最初の `form_with` が空文字を返す事象（Spinel 側のルーティング問題の疑い）。
-- 2026-09-26: アプリの入口を `bin/<name>.rb`（`Cybertrain::Main`: server / migrate / db）に統合。`spin run gen` は `gen/views.rb` を常に書き、`--embed-views` で `app/views/` を文字列テーブルとして埋め込む。本番は埋め込みテーブルのみを描画し（`Template::Engine.embedded`）、空なら起動を拒否する。`cybertrain migration` / `db` / `server` / `build` を追加、`build` は `dist/`（バイナリ、public/、無ければ storage/ と tmp/）を組み立てる。開発時のマイグレーション用に `bin/db.rb` は残す（`bin/<name>.rb` は `gen/app` を読むため、最初のマイグレーションで `gen/models/` ができるまでコンパイルできない。`cybertrain migration` は `spin run db -- migrate` を使い、本番は `dist/<name> migrate`）。設計: docs/superpowers/specs/2026-09-26-cli-build-embedded-views-design.md、計画: docs/superpowers/plans/2026-09-26-cli-build-embedded-views.md。クロスビルドと public/ の埋め込みはスコープ外。
+- 2026-09-26: アプリの入口を `bin/<name>.rb`（`Cybertrain::Main`: server / migrate / db）に統合。`spin run gen` は `gen/views.rb` を常に書き、`--embed-views` で `app/views/` を文字列テーブルとして埋め込む。本番は埋め込みテーブルのみを描画し（`Template::Engine.embedded`）、空なら起動を拒否する。`cybertrain migration` / `db` / `server` / `build` を追加、`build` は `dist/`（バイナリ、public/、無ければ storage/ と tmp/）を組み立てる。開発時のマイグレーション用に `bin/db.rb` は残す（`bin/<name>.rb` は `gen/app` を読むため、最初のマイグレーションで `gen/models/` ができるまでコンパイルできない。`cybertrain migration` は `spin run db -- migrate` を使い、本番は `dist/<name> migrate`）。クロスビルドと public/ の埋め込みはスコープ外。
 - 2026-09-27（PR #5 まで）: CLI は gem（`gem install cybertrain`、`cybertrain new` は同じタグを依存に書く。D11）でも配布。`cybertrain build` は `tmp/cybertrain-build.lock`（PID 入り）を dist/ の組み立てが終わるまで持ち、`dist/<name>` と `dist/public/` を rename で差し替える（`.public.old`）。開発サーバはロック中の再ビルドを飛ばしてログに出し、死んだ PID や 30 分以上古いロックは消して無視する。ポートを bind できないときは `PortInUse`（使用中 / 権限なし）を stdout に出して終了コード 1。`schema:dump` は `db/` があるところでだけ書く（無ければ終了コード 1）。`script/regen-snapshot` を追加。`spin test` は 64 プログラム。
 - 2026-10-22: ファイルアップロード（D16）。フレームワーク側は `Multipart` / `MultipartForm` / `UploadedFile` / `BlobStore`、`Params#upload`、`Request#multipart_form`、`Controller#send_blob`、`form_with(multipart: true)` / `f.file_field`、`Config` の 3 キー。CLI 側は `cybertrain generate attachment` と scaffold の `FIELD:attachment`。CI の gem E2E が、添付付きの scaffold を生成・コンパイルし、生成テストを走らせ、curl でアップロードとダウンロード（バイト一致、ヘッダ）を確かめる。
 - 2026-10-22: 認証（D15）。`cybertrain generate authentication` が users / sessions のマイグレーション、`User` / `Session` モデル、`SessionsController` / `RegistrationsController`、ビュー、`ApplicationController` への挿入、routes、`test/authentication.rb` を書く。フレームワーク側は `Cybertrain::Password`（PBKDF2-HMAC-SHA256）、`Controller.skip_before_action`、`Mapper#resource`、カスタム経路の派生名の衝突を無名にする規則。CI の gem E2E が生成したアプリをコンパイルしてサインアップ / サインインの統合テストを走らせる。
