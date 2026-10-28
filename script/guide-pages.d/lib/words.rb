@@ -1,8 +1,9 @@
 # The UI words of the guide pages, per language: what the generator adds
 # around the content (the Markdown carries only the markers). Plain text, as
-# written on the existing site/<lang>/tutorial.html pages (French keeps its
-# no-break spaces before ":"); the renderer escapes them. `contents` (the
-# default heading of the contents list) has no counterpart on today's pages.
+# written on the former hand-written site/<lang>/tutorial.html pages (`git
+# show 2a73b58:site/ja/tutorial.html`; French keeps its no-break spaces before
+# ":"); the renderer escapes them. `contents` (the default heading of the
+# contents list) had no counterpart on those pages.
 #
 #   why          p.why's why-k                  here, here_sep  p.stage's stage-k and its sr-only ":"
 #   rule         callout-k of > [!RULE]         compile         callout-k of > [!COMPILE]
@@ -12,7 +13,7 @@
 #   skip, guides, lang_label, home   the skip link, the Guides nav entry, the
 #                language menu's aria-label, the brand link's aria-label
 #   cmp_caption  the visually hidden caption of a <!-- table: cmp --> table
-# The page shell (layout.html.erb), as on site/<lang>/tutorial.html:
+# The page shell (layout.html.erb), as on those pages:
 #   primary, how, tutorial, deploy, playground   the header nav's aria-label and entries
 #   steps_label  the contents list's aria-label on the tutorial (nav: tutorial)
 #   tagline, project, related, related_label, language, languages_label,

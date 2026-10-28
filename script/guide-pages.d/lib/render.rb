@@ -1,4 +1,5 @@
-# Renders a guide source's body to the markup of site/tutorial.html, applying
+# Renders a guide source's body to the markup of the former hand-written
+# site/tutorial.html (`git show 2a73b58:site/tutorial.html`), applying
 # the Markdown conventions of the guide pages (spec "Markdown conventions"):
 #   # Title, then a paragraph          h1 and the doc-intro (Page#h1, #intro_html)
 #   <!-- step NUM #id stage: … -->     section.step with that number, id and p.stage
@@ -45,7 +46,7 @@ module GuidePages
     MARKER = /\A\[!(WHY|NOTE|RULE|COMPILE|EXAMPLE)\][ \t]*\n?/
     TABLE_FOOT = /\A\s*<!--\s*table-foot:\s*(.*?)\s*-->\s*\z/
     DETAILS = %r{\A((?:>[ \t]?)*[ \t]*)<details><summary>(.*)</summary>\s*\z}
-    # The header mark of site/tutorial.html's comparison table.
+    # The header mark of the tutorial's comparison table.
     CMP_MARK = '<svg class="cmp-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104">' \
                '<path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/>' \
                '<path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg>'

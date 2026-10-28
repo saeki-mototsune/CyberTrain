@@ -2,8 +2,9 @@
 # Builds the site's guide pages from the Markdown in docs/guide/ (English) and
 # docs/guide/<lang>/ (translations): the tutorial at tutorial.html and
 # <lang>/tutorial.html, every other guide at guide/<name>.html and
-# <lang>/guide/<name>.html, each in the shell of site/tutorial.html
-# (script/guide-pages.d/layout.html.erb), plus api/file.<name>.html redirects
+# <lang>/guide/<name>.html, each in one page shell
+# (script/guide-pages.d/layout.html.erb, which reproduces the hand-written
+# site/tutorial.html this replaced: `git show 2a73b58:site/tutorial.html`), plus api/file.<name>.html redirects
 # from the old YARD URLs. The Pages workflow runs it after script/api-docs;
 # none of its output is committed (.gitignore). It fails, listing every
 # problem and writing nothing, on a link to a missing source, anchor or

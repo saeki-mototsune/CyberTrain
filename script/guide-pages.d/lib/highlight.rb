@@ -1,9 +1,10 @@
 # Code figures for the guide pages: Rouge tokens -> the site's own markup,
-# <figure class="code"> as in site/tutorial.html, one span.ln per line.
+# <figure class="code"> as in the former hand-written site/tutorial.html
+# (`git show 2a73b58:site/tutorial.html`), one span.ln per line.
 # Called by the renderer for each fenced block:
 #   GuidePages::Highlight.figure(lang, place, text, words: {code_label: "Code: "})
 #
-# Rouge token -> span class, as site/tutorial.html colours its code
+# Rouge token -> span class, as that page coloured its code
 # (anything else is left unwrapped):
 #   Comment.Preproc (ERB delimiters)                   d
 #   Comment*                                           c
