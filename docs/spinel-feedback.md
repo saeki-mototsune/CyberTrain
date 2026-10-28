@@ -92,9 +92,10 @@ that it is fixed.
 ## What CyberTrain still works around
 
 Re-checked on 2026-10-27 against matz/spinel master 9b9972399, built from
-source; CyberTrain itself is still pinned to 2026.10.26.7019 (`spinel
+source; CyberTrain itself was then pinned to 2026.10.26.7019 (`spinel
 2026.10.26.7019 (80b2f988)`), where the rows were checked on 2026-10-26
-(the H row on 2026-10-27, when it was added). The regressions that release
+(the H row on 2026-10-27, when it was added). Since 2026-10-28 it is
+pinned to 2026.10.27.7020; only the H row was re-checked there. The regressions that release
 fixes (A, the generated C of C, F, G, and 3) never had a workaround in
 CyberTrain: it stayed on 2026.09.12, where they do not happen, until it
 moved to 2026.10.26.7019. The refusal listed under C is separate: both
