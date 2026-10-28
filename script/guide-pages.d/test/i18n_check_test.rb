@@ -130,6 +130,15 @@ class I18nCheckTest < Minitest::Test
     assert_problem(/place "app\/models\/user.rb" in English/)
   end
 
+  def test_free_text_place_may_be_translated
+    edit(EN, "```console\n", "```console terminal — any directory\n")
+    edit(JA, "```console\n", "```console ターミナル — 任意のディレクトリ\n")
+    GuidePages::I18nCheck.update_sha(JA, root: @root)
+    assert_equal [], run_check
+    edit(JA, "```console ターミナル — 任意のディレクトリ\n", "```console\n")
+    assert_problem(/place "terminal .* any directory" in English, nil in translation/)
+  end
+
   def test_code_language_differs
     edit_ja("```console", "```sh")
     assert_problem(/language "console" in English, "sh" in translation/)

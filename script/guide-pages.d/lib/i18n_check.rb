@@ -137,7 +137,7 @@ module GuidePages
         at = "#{where}, code block #{i + 1}"
         if ca.lang != cb.lang
           ["#{at}: language #{ca.lang.inspect} in English, #{cb.lang.inspect} in translation"]
-        elsif ca.place != cb.place
+        elsif place_differs?(ca.place, cb.place)
           ["#{at}: place #{ca.place.inspect} in English, #{cb.place.inspect} in translation"]
         elsif (x = normalize_code(ca.text).lines) != (y = normalize_code(cb.text).lines)
           line = (0...[x.size, y.size].max).find { |j| x[j] != y[j] }
@@ -146,6 +146,14 @@ module GuidePages
           []
         end
       end
+    end
+
+    # A place that is a path (no whitespace) must be equal; a free-text caption
+    # ("terminal — any directory") is translated, so only its presence is compared.
+    def place_differs?(en, tr)
+      return en != tr if en.nil? || tr.nil? || !en.match?(/\s/)
+
+      false
     end
 
     # A code block reduced to what must not differ between languages (the
