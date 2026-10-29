@@ -1,5 +1,5 @@
 ---
-source_sha256: 7fc302298fd20959b22acd10653c103b8a8b01a96b97fbe159edbf336958e282
+source_sha256: 2ae2dd9bb6b7afdd62feb39694e29ca26b161f41a0465bd69f68f6d44d9d47d0
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -974,7 +974,10 @@ end
 > 10, within: 3 * 60, only: [:create]`, dix tentatives par adresse du client
 > toutes les trois minutes, puis retour au formulaire avec "Try again later."
 > jusqu’à la fin de la fenêtre. Non générée&nbsp;: la réinitialisation du mot
-> de passe (CyberTrain n’a pas de mailers).
+> de passe, dont l’e-mail demande les réglages SMTP de l’application
+> (`Cybertrain::Mailer`,
+> [Envoyer des e-mails](external-services.md#sending-e-mail)), que le
+> générateur ne peut pas connaître.
 
 <!-- step 14 #attachments stage: Vous écrivez · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Ajouter une image de couverture
@@ -1289,7 +1292,7 @@ et charge `config/deploy.yml` avec Kamal.
 | Backtrace complète lors d’une exception | Classe, message, ligne de requête, nom/ligne du template — Spinel n’expose pas de backtraces |
 | Rack, ses middlewares, et n’importe quelle gem d’un `Gemfile` | Pas de compatibilité Rack&nbsp;; un petit ensemble fixe de middlewares&nbsp;; le `spin-index` propre à Spinel, limité à ce qui compile avec son sous-ensemble de Ruby |
 | minitest / RSpec | `Cybertrain::Test` — les runners fondés sur la réflexion ne peuvent pas fonctionner avec une compilation AOT |
-| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` écrit la même structure, plus une page d’inscription faute de console&nbsp;; `has_secure_password` est écrit en toutes lettres dans le modèle User au-dessus de `Cybertrain::Password` (PBKDF2)&nbsp;; pas de réinitialisation du mot de passe (pas de mailers) |
+| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` écrit la même structure, plus une page d’inscription faute de console&nbsp;; `has_secure_password` est écrit en toutes lettres dans le modèle User au-dessus de `Cybertrain::Password` (PBKDF2)&nbsp;; pas de réinitialisation du mot de passe (elle demande les réglages SMTP de l’application pour `Cybertrain::Mailer`) |
 | Mailers, jobs, ActionCable, asset pipeline, i18n | Non développé (hors du MVP) |
 <!-- table-foot: Liste non exhaustive. -->
 

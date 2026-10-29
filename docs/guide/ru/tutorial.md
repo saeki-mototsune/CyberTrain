@@ -1,5 +1,5 @@
 ---
-source_sha256: 7fc302298fd20959b22acd10653c103b8a8b01a96b97fbe159edbf336958e282
+source_sha256: 2ae2dd9bb6b7afdd62feb39694e29ca26b161f41a0465bd69f68f6d44d9d47d0
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -945,7 +945,10 @@ end
 > `SessionsController` объявляет `rate_limit to: 10, within: 3 * 60, only:
 > [:create]`, десять попыток с одного адреса клиента за три минуты, затем
 > возврат к форме с "Try again later.", пока окно не закроется. Не
-> генерируется: сброс пароля (в CyberTrain нет мейлеров).
+> генерируется: сброс пароля — его письму нужны настройки SMTP приложения
+> (`Cybertrain::Mailer`,
+> [Отправка электронной почты](external-services.md#sending-e-mail)),
+> которых генератор знать не может.
 
 <!-- step 14 #attachments stage: Вы пишете · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Добавление обложки
@@ -1253,7 +1256,7 @@ kamal deploy   # каждое следующее развёртывание
 | Полный бэктрейс при исключении | Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов |
 | Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
 | minitest / RSpec | `Cybertrain::Test` — раннеры на основе рефлексии не могут работать при AOT-компиляции |
-| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` пишет то же самое и вдобавок страницу регистрации, раз консоли нет; `has_secure_password` расписан в модели User поверх `Cybertrain::Password` (PBKDF2); сброса пароля нет (нет мейлеров) |
+| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` пишет то же самое и вдобавок страницу регистрации, раз консоли нет; `has_secure_password` расписан в модели User поверх `Cybertrain::Password` (PBKDF2); сброса пароля нет (ему нужны настройки SMTP приложения для `Cybertrain::Mailer`) |
 | Мейлеры, фоновые задачи, ActionCable, asset pipeline, i18n | Не сделано (за рамками MVP) |
 <!-- table-foot: Список не исчерпывающий. -->
 

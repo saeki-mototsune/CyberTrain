@@ -1,5 +1,5 @@
 ---
-source_sha256: 0b22d617a8f08f18b32c41e0dfd5bb3613626f655729e681ffcc6f36911c2f3a
+source_sha256: 86d3de9f2a69e668c822f68426aaf998fd7dfe3208df6d317b7a332ae7542ce5
 ---
 # 仕組み
 
@@ -53,7 +53,7 @@ end
 | 例外時の完全なバックトレース | クラス、メッセージ、リクエスト行、テンプレート名と行 — Spinel はバックトレースを公開していない |
 | Rack、そのミドルウェア、`Gemfile` の任意の gem | Rack 互換性はない。小さな固定のミドルウェア群。Spinel 自身の `spin-index` で、その Ruby サブセットでコンパイルできるものに限られる |
 | minitest / RSpec | `Cybertrain::Test` — リフレクションに基づくランナーは AOT では動かない |
-| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` は同じ形（User、Session、SessionsController、before_action）に加えて、ユーザーを作るコンソールがないのでサインアップのページも書き出す。`has_secure_password` は、`Cybertrain::Password`（Ruby による PBKDF2-HMAC-SHA256。bcrypt はバイナリがリンクする C ライブラリを必要とし、macOS の `String#crypt` には bcrypt がない）の上に User モデルのメソッドとして書き下される。パスワードのリセットはない（メーラーがない）。サインインの試行は `rate_limit` で制限される（プロセスごとに数える。[レート制限](requests.md#rate-limiting-and-the-client-address)を参照） |
+| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` は同じ形（User、Session、SessionsController、before_action）に加えて、ユーザーを作るコンソールがないのでサインアップのページも書き出す。`has_secure_password` は、`Cybertrain::Password`（Ruby による PBKDF2-HMAC-SHA256。bcrypt はバイナリがリンクする C ライブラリを必要とし、macOS の `String#crypt` には bcrypt がない）の上に User モデルのメソッドとして書き下される。パスワードのリセットはない（そのメールには `Cybertrain::Mailer` のためのアプリの SMTP 設定が必要になる。[メールを送る](external-services.md#sending-e-mail)を参照）。サインインの試行は `rate_limit` で制限される（プロセスごとに数える。[レート制限](requests.md#rate-limiting-and-the-client-address)を参照） |
 | Active Storage、`has_one_attached :cover` | `cybertrain generate attachment post cover` は、所有者のテーブルに 5 つの `cover_*` カラムを、アプリにモデルのメソッド（`cover_file=`、`cover_url` など）を書き出す。ファイルはディスクの `storage/uploads/` 以下に置かれ、生成されたアクションが `send_blob` で配信する。フィールドごとにファイル 1 つ、ローカルディスクのみで、バリアントやダイレクトアップロードはない |
 | `skip_before_action :x` | 名前付きの before コールバックについては同じ（ブロックのコールバックにはスキップする名前がない）。`skip_after_action` はない |
 | `resource :session` | `SessionsController` への同じ 6 つのルート。その下へのネストはない |

@@ -1,5 +1,5 @@
 ---
-source_sha256: 7fc302298fd20959b22acd10653c103b8a8b01a96b97fbe159edbf336958e282
+source_sha256: 2ae2dd9bb6b7afdd62feb39694e29ca26b161f41a0465bd69f68f6d44d9d47d0
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -634,7 +634,7 @@ end
 ```
 
 > [!NOTE]
-> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。登录尝试会像 Rails 的生成器那样受到速率限制：`SessionsController` 声明了 `rate_limit to: 10, within: 3 * 60, only: [:create]`，每个客户端地址每三分钟最多 10 次，超过后会带着 "Try again later." 回到表单，直到时间窗口结束。不会生成的部分：密码重置（CyberTrain 没有邮件功能）。
+> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。登录尝试会像 Rails 的生成器那样受到速率限制：`SessionsController` 声明了 `rate_limit to: 10, within: 3 * 60, only: [:create]`，每个客户端地址每三分钟最多 10 次，超过后会带着 "Try again later." 回到表单，直到时间窗口结束。不会生成的部分：密码重置，它的邮件需要应用自己的 SMTP 设置（`Cybertrain::Mailer`，[发送电子邮件](external-services.md#sending-e-mail)），而生成器无从得知这些设置。
 
 <!-- step 14 #attachments stage: 你编写 · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## 添加封面图片
@@ -832,7 +832,7 @@ kamal deploy   # 之后的每次部署
 | 异常时显示完整回溯 | 类、消息、请求行、模板名/行号——Spinel 不提供回溯 |
 | Rack 及其中间件，以及 `Gemfile` 中的任何 gem | 不兼容 Rack；只有一小组固定的中间件；使用 Spinel 自己的 `spin-index`，仅限能在其 Ruby 子集下编译的内容 |
 | minitest / RSpec | `Cybertrain::Test`——基于反射的测试运行器无法在 AOT 编译下工作 |
-| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` 写出同样的结构，并因为没有控制台而额外加上注册页面；`has_secure_password` 基于 `Cybertrain::Password`（PBKDF2）逐一写在 User 模型里；没有密码重置（没有邮件功能） |
+| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` 写出同样的结构，并因为没有控制台而额外加上注册页面；`has_secure_password` 基于 `Cybertrain::Password`（PBKDF2）逐一写在 User 模型里；没有密码重置（它需要应用为 `Cybertrain::Mailer` 提供的 SMTP 设置） |
 | 邮件、后台任务、ActionCable、资源管道、i18n | 未构建（不在 MVP 范围内） |
 <!-- table-foot: 此表并不完整。 -->
 

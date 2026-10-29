@@ -916,7 +916,10 @@ end
 > as in Rails' generator: `SessionsController` declares `rate_limit to: 10,
 > within: 3 * 60, only: [:create]`, ten attempts per client address every
 > three minutes, then back to the form with "Try again later." until the
-> window closes. Not generated: password reset (CyberTrain has no mailers).
+> window closes. Not generated: password reset, whose e-mail needs the app's
+> SMTP settings (`Cybertrain::Mailer`,
+> [Sending e-mail](external-services.md#sending-e-mail)), which the generator
+> cannot know.
 
 <!-- step 14 #attachments stage: You write · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Add a cover image
@@ -1211,7 +1214,7 @@ a clean stop and the database kept on its volume, and loads
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
-| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` writes the same shape, plus a sign-up page since there is no console; `has_secure_password` is written out on the User model over `Cybertrain::Password` (PBKDF2); no password reset (no mailers) |
+| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` writes the same shape, plus a sign-up page since there is no console; `has_secure_password` is written out on the User model over `Cybertrain::Password` (PBKDF2); no password reset (it needs the app's SMTP settings for `Cybertrain::Mailer`) |
 | Mailers, jobs, ActionCable, asset pipeline, i18n | Not built (outside the MVP) |
 <!-- table-foot: Not exhaustive. -->
 

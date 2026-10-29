@@ -1,5 +1,5 @@
 ---
-source_sha256: 7fc302298fd20959b22acd10653c103b8a8b01a96b97fbe159edbf336958e282
+source_sha256: 2ae2dd9bb6b7afdd62feb39694e29ca26b161f41a0465bd69f68f6d44d9d47d0
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -634,7 +634,7 @@ end
 ```
 
 > [!NOTE]
-> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。パスワードリセット（CyberTrain にはメーラーがありません）は生成されません。
+> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。パスワードリセットは生成されません：そのメールにはアプリの SMTP 設定（`Cybertrain::Mailer`、[メールを送る](external-services.md#sending-e-mail)）が必要で、ジェネレーターはそれを知り得ません。
 
 <!-- step 14 #attachments stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## カバー画像を追加する
@@ -832,7 +832,7 @@ kamal deploy   # 以降のデプロイ
 | 例外時には完全なバックトレース | クラス、メッセージ、リクエスト行、テンプレート名と行番号 — Spinel はバックトレースを公開しない |
 | Rack とそのミドルウェア、`Gemfile` に書いた任意の gem | Rack 互換性なし。小さな固定のミドルウェアセット。Spinel 独自の `spin-index`（その Ruby サブセットでコンパイルできるものに限る） |
 | minitest / RSpec | `Cybertrain::Test` — リフレクションに基づくテストランナーは AOT では動かない |
-| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` が同じ構成を書き出し、コンソールがないためサインアップ画面も加える。`has_secure_password` は `Cybertrain::Password`（PBKDF2）を使って User モデルに書き下される。パスワードリセットはない（メーラーがない） |
+| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` が同じ構成を書き出し、コンソールがないためサインアップ画面も加える。`has_secure_password` は `Cybertrain::Password`（PBKDF2）を使って User モデルに書き下される。パスワードリセットはない（`Cybertrain::Mailer` のためのアプリの SMTP 設定が必要になる） |
 | メーラー、ジョブ、ActionCable、アセットパイプライン、i18n | 未構築（MVP の範囲外） |
 <!-- table-foot: すべてを網羅してはいません。 -->
 

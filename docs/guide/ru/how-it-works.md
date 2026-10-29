@@ -1,5 +1,5 @@
 ---
-source_sha256: 0b22d617a8f08f18b32c41e0dfd5bb3613626f655729e681ffcc6f36911c2f3a
+source_sha256: 86d3de9f2a69e668c822f68426aaf998fd7dfe3208df6d317b7a332ae7542ce5
 ---
 # Как это работает
 
@@ -125,7 +125,7 @@ C, которые затронула правка; релиз Spinel без `--i
 | Полный бэктрейс при исключении | Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов |
 | Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
 | minitest / RSpec | `Cybertrain::Test` — раннеры на основе рефлексии не могут работать при AOT-компиляции |
-| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` пишет ту же структуру (User, Session, SessionsController, before_action) и вдобавок страницу регистрации, раз консоли, где можно создать пользователя, нет; `has_secure_password` расписан методами модели User поверх `Cybertrain::Password` (PBKDF2-HMAC-SHA256 на Ruby: bcrypt потребовал бы библиотеку на C, с которой компонуется бинарный файл, а `String#crypt` на macOS не поддерживает bcrypt). Сброса пароля нет (нет мейлеров); попытки входа ограничиваются `rate_limit` (подсчёт на процесс; см. [Ограничение частоты запросов](requests.md#rate-limiting-and-the-client-address)) |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` пишет ту же структуру (User, Session, SessionsController, before_action) и вдобавок страницу регистрации, раз консоли, где можно создать пользователя, нет; `has_secure_password` расписан методами модели User поверх `Cybertrain::Password` (PBKDF2-HMAC-SHA256 на Ruby: bcrypt потребовал бы библиотеку на C, с которой компонуется бинарный файл, а `String#crypt` на macOS не поддерживает bcrypt). Сброса пароля нет (его письму нужны настройки SMTP приложения для `Cybertrain::Mailer`; см. [Отправка электронной почты](external-services.md#sending-e-mail)); попытки входа ограничиваются `rate_limit` (подсчёт на процесс; см. [Ограничение частоты запросов](requests.md#rate-limiting-and-the-client-address)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment post cover` записывает в приложение пять столбцов `cover_*` в таблице-владельце и методы модели (`cover_file=`, `cover_url`, ...); файлы лежат на диске в `storage/uploads/` и отдаются сгенерированным действием через `send_blob`. Один файл на поле, только локальный диск, без вариантов и прямых загрузок |
 | `skip_before_action :x` | То же самое для именованных before-колбэков (у колбэка-блока нет имени, которое можно пропустить); `skip_after_action` нет |
 | `resource :session` | Те же шесть маршрутов к `SessionsController`; вложение в него не поддерживается |
