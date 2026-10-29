@@ -11,7 +11,8 @@
 #   <details><summary>T — D</summary>  details.ci (ci-t, ci-d, ci-body)
 #   ```LANG [PLACE]                    figure.code (GuidePages::Highlight)
 #   <!-- list: KIND -->                ul.KIND; next-list items are [**T**](url) — D
-#   <!-- table: cmp --> …              the comparison table (cmp-wrap cmp-doc);
+#   | a | b | (no table comment)       the table inside div.table-scroll (scrolls sideways)
+#   <!-- table: cmp --> …              the comparison table (cmp-wrap cmp-doc), unwrapped;
 #   <!-- table-foot: text -->            optional, after the table: p.cmp-foot
 # Links go through GuidePages::Links. Images must have absolute URLs (a
 # relative one is an error until images are copied to the site). Other raw
@@ -316,13 +317,14 @@ module GuidePages
       end
 
       def convert_table(el, indent)
-        return super unless el.options[:table_kind] == "cmp"
+        sp = " " * indent
+        # A plain table scrolls sideways in its wrapper on a narrow screen.
+        return %(#{sp}<div class="table-scroll">\n#{super(el, indent + 2)}#{sp}</div>\n) unless el.options[:table_kind] == "cmp"
 
         head = el.children.find { |c| c.type == :thead }&.children&.first
         fail!("a cmp table needs two header cells") unless head && head.children.size == 2
 
         labels = head.children.map { |td| plain(td).strip }
-        sp = " " * indent
         th = head.children.map { |td| inner(td, indent) }
         out = +%(#{sp}<div class="cmp-wrap cmp-doc">\n#{sp}  <table class="cmp cmp-full">\n)
         out << %(#{sp}    <caption class="sr-only">#{esc(@words[:cmp_caption])}</caption>\n)

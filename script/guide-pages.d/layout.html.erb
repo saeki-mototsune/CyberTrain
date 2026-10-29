@@ -51,7 +51,7 @@
     </a>
     <nav class="nav-links" aria-label="<%= w(:primary) %>">
       <ul>
-        <li class="nav-wide-only"><a href="<%= home %>index.html#how-it-works"><%= w(:how) %></a></li>
+        <li class="nav-wide-only"><a href="<%= home %>guide/how-it-works.html"><%= w(:how) %></a></li>
         <li><a href="<%= home %>tutorial.html"<%= current("tutorial") %>><%= w(:tutorial) %></a></li>
         <li class="nav-wide-only"><a href="<%= home %>deploy.html"><%= w(:deploy) %></a></li>
         <li class="nav-wide-only"><a href="<%= home %>guide/index.html"<%= current("guides") %>><%= w(:guides) %></a></li>
@@ -98,7 +98,7 @@
       <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
     <ol>
 <% page.toc.each do |e| -%>
-      <li<%= ' class="toc-x"' if e.extra %>><a href="#<%= e.id %>"><span class="toc-n"><%= toc_num(e.num) %></span><%= e.title_html %></a></li>
+      <li<%= ' class="toc-x"' if e.extra %>><a href="#<%= e.id %>"><span class="toc-n"><%= toc_num(e.num) %></span><span class="toc-t"><%= e.title_html %></span></a></li>
 <% end -%>
     </ol>
     </details>
