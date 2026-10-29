@@ -787,8 +787,11 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   same host that adds no `X-Forwarded-For` (nginx without
   `proxy_set_header X-Forwarded-For ...`) makes every client look like
   loopback, and only someone who can read the server's log has the token.
-  The request log's `Started GET "/setup?token=..."` line writes it to the
-  same log; it opens nothing once the user exists.
+  The request log does not repeat it: `token` is one of the default
+  `filter_parameters`, so the line reads `Started GET
+  "/setup?token=[FILTERED]"` (unless `config.filter_parameters` or
+  `CYBERTRAIN_FILTER_PARAMETERS` leaves `token` out). Once the user exists,
+  the token opens nothing.
 - For a first run behind a proxy on another host, `BLOG_SETUP_OPEN=1`
   (declared in `config/app.rb` with `c.setting_bool :setup_open`) lifts the
   address check, still only while no user exists and still only with the

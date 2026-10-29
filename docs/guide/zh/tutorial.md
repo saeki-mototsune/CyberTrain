@@ -1,5 +1,5 @@
 ---
-source_sha256: 05685b876f71d5e53c42b014ef9d30392c2d302ef4166806d21169552714ac05
+source_sha256: 7fc302298fd20959b22acd10653c103b8a8b01a96b97fbe159edbf336958e282
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -584,7 +584,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 <!-- list: points -->
 - `app/commands/user_command.rb` 用 `Cybertrain::Main.command` 注册 `user` 命令（所以 `./blog help` 会列出它），并由 `bin/blog.rb` require。`EMAIL [PASSWORD]` 会创建用户，或者为使用该地址的用户设置密码（和任何密码修改一样，这会让该用户的浏览器退出登录）；它会打印 `created ADDRESS` 或 `updated ADDRESS` 并以 0 退出。不带 `PASSWORD` 时，它从标准输入读取一行（标准输入是终端时会给出提示；输入的内容会回显），并去掉末尾的换行符，这样密码就不会出现在 `ps` 和 shell 历史中。空密码、无法通过验证的记录（不足 8 个字符的密码）或错误的参数，会打印错误或用法说明并以 1 退出。
 - `SetupController`（`GET`/`POST /setup`、`app/views/setup/new.html.erb`）创建第一个用户并让其登录。它只在还没有任何用户时、只在带有一次性令牌（见下文）时、并且只对套接字对端是环回地址（`request.loopback?`：`127.0.0.0/8` 或 `::1`）且不带 `X-Forwarded-For` 请求头的连接作出响应（同一主机上的代理会让每个请求都成为来自环回地址的请求，而代理会加上这个请求头）。请求头只能关闭这个页面，永远不能打开它。其他所有人，以及缺少令牌或令牌错误的请求，都会得到 404。
-- 令牌：`SetupController::SETUP_TOKEN`，32 个随机十六进制字符（`Cybertrain::Crypto.random_token(16)`），在程序启动时生成并一直保留到程序退出，所以重启后会换成新的。`GET /setup` 通过 `?token=` 接收它，表单在隐藏字段里把它带回来，两者都以恒定时间比较（`Cybertrain::Crypto.secure_compare`）。地址检查失效时，正是它让页面保持关闭：同一主机上不添加 `X-Forwarded-For` 的代理（没有 `proxy_set_header X-Forwarded-For ...` 的 nginx）会让每个客户端看起来都来自环回地址，而只有能读取服务器日志的人才拿得到令牌。请求日志中的 `Started GET "/setup?token=..."` 这一行也会把它写进同一份日志；一旦用户已存在，它就打不开任何东西。
+- 令牌：`SetupController::SETUP_TOKEN`，32 个随机十六进制字符（`Cybertrain::Crypto.random_token(16)`），在程序启动时生成并一直保留到程序退出，所以重启后会换成新的。`GET /setup` 通过 `?token=` 接收它，表单在隐藏字段里把它带回来，两者都以恒定时间比较（`Cybertrain::Crypto.secure_compare`）。地址检查失效时，正是它让页面保持关闭：同一主机上不添加 `X-Forwarded-For` 的代理（没有 `proxy_set_header X-Forwarded-For ...` 的 nginx）会让每个客户端看起来都来自环回地址，而只有能读取服务器日志的人才拿得到令牌。请求日志不会重复它：`token` 属于默认的 `filter_parameters`，所以这一行写作 `Started GET "/setup?token=[FILTERED]"`（除非 `config.filter_parameters` 或 `CYBERTRAIN_FILTER_PARAMETERS` 去掉了 `token`）。一旦用户已存在，令牌就打不开任何东西。
 - 如果首次运行时位于另一台主机上的代理之后，`BLOG_SETUP_OPEN=1`（在 `config/app.rb` 中用 `c.setting_bool :setup_open` 声明）会取消地址检查，但仍然只在还没有用户时、仍然只在带有令牌时有效。用户创建之后请取消这个设置。
 - 还没有任何用户时，服务器会在启动前记录 `[WARN] no user exists yet: run ./blog user EMAIL, or open /setup?token=<token> from this machine`（`UserCommand.warn_if_no_user`，在 `Cybertrain::Main.server?(ARGV)` 时由 `bin/blog.rb` 调用；它只为这一次查询连接数据库，users 表尚未迁移时什么也不输出）。这一行是唯一打印令牌的地方。
 

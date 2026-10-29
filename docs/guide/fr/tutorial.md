@@ -1,5 +1,5 @@
 ---
-source_sha256: 05685b876f71d5e53c42b014ef9d30392c2d302ef4166806d21169552714ac05
+source_sha256: 7fc302298fd20959b22acd10653c103b8a8b01a96b97fbe159edbf336958e282
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -832,9 +832,11 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   hôte qui n’ajoute pas `X-Forwarded-For` (nginx sans
   `proxy_set_header X-Forwarded-For ...`) fait passer chaque client pour du
   bouclage, et seul quelqu’un qui peut lire le journal du serveur a le jeton.
-  La ligne `Started GET "/setup?token=..."` du journal des requêtes l’écrit
-  dans le même journal&nbsp;; il n’ouvre plus rien une fois l’utilisateur
-  créé.
+  Le journal des requêtes ne le répète pas&nbsp;: `token` fait partie des
+  `filter_parameters` par défaut, donc la ligne s’écrit `Started GET
+  "/setup?token=[FILTERED]"` (sauf si `config.filter_parameters` ou
+  `CYBERTRAIN_FILTER_PARAMETERS` laisse `token` de côté). Le jeton n’ouvre
+  plus rien une fois l’utilisateur créé.
 - Pour un premier lancement derrière un proxy situé sur un autre hôte,
   `BLOG_SETUP_OPEN=1` (déclaré dans `config/app.rb` avec
   `c.setting_bool :setup_open`) lève la vérification d’adresse, toujours

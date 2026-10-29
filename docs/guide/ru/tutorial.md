@@ -1,5 +1,5 @@
 ---
-source_sha256: 05685b876f71d5e53c42b014ef9d30392c2d302ef4166806d21169552714ac05
+source_sha256: 7fc302298fd20959b22acd10653c103b8a8b01a96b97fbe159edbf336958e282
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -810,9 +810,12 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   когда проверка адреса бессильна: из-за прокси на том же хосте, который не
   добавляет `X-Forwarded-For` (nginx без
   `proxy_set_header X-Forwarded-For ...`), каждый клиент выглядит как
-  loopback, а токен есть только у того, кто может читать лог сервера. Строка
-  `Started GET "/setup?token=..."` в логе запросов записывает его в тот же
-  лог; когда пользователь уже существует, токен ничего не открывает.
+  loopback, а токен есть только у того, кто может читать лог сервера. Лог
+  запросов его не повторяет: `token` входит в `filter_parameters` по
+  умолчанию, поэтому строка выглядит как `Started GET
+  "/setup?token=[FILTERED]"` (если только `config.filter_parameters` или
+  `CYBERTRAIN_FILTER_PARAMETERS` не исключает `token`). Когда пользователь
+  уже существует, токен ничего не открывает.
 - Для первого запуска за прокси на другом хосте `BLOG_SETUP_OPEN=1` (объявлена
   в `config/app.rb` через `c.setting_bool :setup_open`) снимает проверку
   адреса — по-прежнему только пока нет ни одного пользователя и только с
