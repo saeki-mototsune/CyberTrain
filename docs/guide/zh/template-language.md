@@ -1,5 +1,5 @@
 ---
-source_sha256: 9c348325e4945493aa6eeb42add294c7ce0b8bf34811b3014c18617dec0b0ef6
+source_sha256: c62dd8a199df41e47d7f65f6dabf83f2b548e103d5f59b2bd807b7433590bd06
 ---
 # Cybertrain 模板语言参考
 
@@ -56,7 +56,7 @@ Cybertrain 的视图（`app/views/**/*.html.erb`）看起来像 Rails 的 ERB，
 
 - `<%# locals: () %>`（空列表）表示“这个局部模板不接收局部变量”。
 - 每个条目都必须是不带修饰的小写 `name:`（`Lexer.identifier?` 只接受 `[a-z_][a-z0-9_]*`）。**实际实现**：与 Rails 7.1 不同，条目不能带默认值——`<%# locals: (post:, comment: nil) %>` 这种正是 Rails 7.1 所支持的写法，在这里是 `SyntaxError`：`"t:1: bad strict locals entry 'comment: nil' (expected name:)"`，因为 `comment: nil` 不是以 `:` 结尾。每个声明的局部变量实际上都是必需的。格式错误的声明（缺少括号）会抛出 `"t:1: bad strict locals comment (expected locals: (name:, ...))"`。
-- **没有**这条注释时，模板不声明局部变量列表：`render` 会原样传入给它的任何局部变量，不做检查，模板还可以读取调用者环境中已有的任何内容（参见第 8 节）。
+- **没有**这条注释时，模板不声明局部变量列表：`render` 会原样传入给它的任何局部变量，不做检查，模板还可以读取调用者环境中已有的任何内容（参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials)）。
 - 如果注释之前的某一行有任何内容（哪怕只是一个空行），它就只是一条普通的、不起作用的注释，而不是局部变量声明。
 
 ## 表达式
@@ -93,7 +93,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 - 不带括号的（“命令”）参数列表只对表达式中**最外层**的调用开放：`link_to "Show", post_path(post)` 可以工作，但 `link_to "Show", post_path post` 是 `SyntaxError`——内层调用需要自己的括号。
 - 调用目标与其左括号 `(` 之间不允许有空格：`link_to("x")` 和 `link_to "x"` 都可以；`link_to ("x")` 是 `SyntaxError`。
-- `yield` 和 `yield :key` 总是被解析为调用（参见第 8 节）。
+- `yield` 和 `yield :key` 总是被解析为调用（参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials)）。
 - 不带修饰的大写开头单词会被直接拒绝——`"constants are not supported: 'Time'"`——模板无法访问 Ruby 常量。
 - 以下单词是保留字，会以专门的消息（`"'x' is not supported in templates"`）被拒绝：`and or not do end if unless elsif else then while until case when def class module begin rescue return`。
 
@@ -181,7 +181,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `true`/`false` | `to_s` | `published.to_s` |
 | `nil` | `to_s`（返回 `""`） | |
 
-索引（`x[key]`）是一条独立的语法产生式（第 3 节），而不是 `.[]` 调用：`Array`/`String` 接收整数索引，`Hash` 按 `to_s` 匹配任意键（`h[:k]` 和 `h["k"]` 是同一个条目），`Errors` 按符号匹配，`Params` 按 `to_s` 匹配。
+索引（`x[key]`）是一条独立的语法产生式（[表达式](#expressions)），而不是 `.[]` 调用：`Array`/`String` 接收整数索引，`Hash` 按 `to_s` 匹配任意键（`h[:k]` 和 `h["k"]` 是同一个条目），`Errors` 按符号匹配，`Params` 按 `to_s` 匹配。
 
 除上面的 `to_s` 之外的输出（`<%= %>`/插值）：`Array` 输出为类似 inspect 的列表——`[1, "a", nil]` 渲染为文本 `[1, "a", nil]`（然后被转义，所以引号会变成 `&quot;`）；`Hash` 退回到 Ruby 自己的 `Hash#to_s`；`Cybertrain::Model` 输出为 `#<Post id: 7>`（从不输出其属性）；其他任何对象通过自己的 `to_s` 输出。在上述任何类型上调用未列出的方法都会引发 `RuntimeError`（`"undefined method 'first' for Time"`）。`Integer` 除以零或对零取模为 `"divided by 0"`；`Float` 则遵循 IEEE-754（`Infinity`/`NaN`，不报错）。
 
@@ -189,7 +189,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 `Cybertrain::Model` 的子类（生成的 `Post`、`Note` 等）按以下顺序解析不带修饰的名称（`Interpreter#model_method`）：
 
-1. 五个内置方法，始终可用：`id`、`persisted?`、`new_record?`、`to_param`（`id.to_s`）、`errors`（一个 `Errors`，见第 5 节）。
+1. 五个内置方法，始终可用：`id`、`persisted?`、`new_record?`、`to_param`（`id.to_s`）、`errors`（一个 `Errors`，见[各类型的方法表](#per-type-method-table)）。
 2. `read_attribute(:name)`——生成的列。
 3. `read_association(:name)`——生成的 `has_many`/`belongs_to`。
 4. `call_view_method(:name)`——模型生成器在 `app/models/**/*.rb` 中找到的手写的、无参数的 `def`（永远不带参数）。
@@ -216,14 +216,14 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` 会被转义，除非它已经是 `SafeString`；**没有 `method:`**——使用它会抛出异常，提示你改用 `button_to`（不用 rails-ujs/turbo 伪造 DELETE 链接） |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | 只有一个按钮的 `<form class="button_to">`；`get`/`post` 以外的任何动词都带隐藏的 `_method`，存在会话时还带 CSRF 字段 |
 | `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | 需要一个块；`model:` 为新记录 → 集合路由 + POST，已持久化 → 成员路由 + PATCH；嵌套路由用 `[parent, child]`；`url:`/`method:` 会覆盖推导出的动作/动词；`multipart: true` 会加上 `enctype="multipart/form-data"`（`f.file_field` 需要它；它从不根据块推断，在 GET 表单上会抛出 `ArgumentError`） |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | 参见第 8 节 |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials) |
 | `h`、`escape` | `h(text)` | 进行转义；`SafeString` 不经转义直接通过 |
 | `raw` | `raw(text)` | 把文本包装为 `SafeString`（不转义输出） |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`；`pluralize(2, "mouse")` → `"2 mice"`（Rails 默认的英语词形变化规则，经由 `Cybertrain::Inflector`；不支持应用自定义的词形变化）；显式给出的第三个参数总是优先 |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
 | `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`；`-1000` → `"-1,000"`；`1234.5` → `"1,234.5"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails 风格的区间，不精确到秒：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
-| `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | 参见第 8 节 |
+| `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | 没有控制器会话时为空 / 不存在 |
 | `flash` | | 类似 `Hash`：`flash[:notice]` |
 | `params` | | 当前的 `Cybertrain::Params` |
@@ -299,7 +299,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 | Rails ERB | Cybertrain |
 | --- | --- |
-| 编译为 Ruby 方法；任何 Ruby、任何对象、任何方法都可以 | 按固定的、按类型划分的分派表解释执行；只能调用第 5 节列出的内容 |
+| 编译为 Ruby 方法；任何 Ruby、任何对象、任何方法都可以 | 按固定的、按类型划分的分派表解释执行；只能调用[各类型的方法表](#per-type-method-table)列出的内容 |
 | `ActiveSupport::SafeBuffer` 是 `String` 的子类 | `SafeString` 是一个独立的包装类——在它上面只能调用 `to_s`/`html_safe?`/`size`/`length`/`empty?` |
 | 块：`each`、`{ }`、`map`、任何 Enumerable 方法 | 只有 `do...end`，并且只能用于 `each`/`each_with_index`/辅助方法调用 |
 | `xs.each { }`——零个块参数没有问题 | `each`/`each_with_index` 要求声明 1 个或 2 个块参数 |

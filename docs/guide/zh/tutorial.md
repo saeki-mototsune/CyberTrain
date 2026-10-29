@@ -1,5 +1,5 @@
 ---
-source_sha256: 5778d1b05d81b6b389f1a3846deec6d58ffd763fb5e8339ce5d6115944d62d97
+source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -30,15 +30,12 @@ meta:
 > CyberTrain 通过 Spinel 编译为 C，所以需要 C 工具链和 SQLite 头文件；`cybertrain` 命令是一个 gem，所以需要 Ruby。
 
 <!-- list: checklist -->
-- Ruby 3.2+ 和 RubyGems，仅供 `cybertrain` 命令使用；应用本身从不在 CRuby 上运行。构建 Spinel 还需要 Ruby 的 `prism` gem：Ruby 3.3 及以上已内置；Ruby 3.2 请运行 `gem install prism`（需要 Ruby 的开发头文件，Debian/Ubuntu 上为 `ruby-dev`）。`cybertrain doctor` 会检查它。
+- Ruby 3.2+ 和 RubyGems，仅供 `cybertrain` 命令使用；应用本身从不在 CRuby 上运行。在 Ruby 3.2 上，还需要 `gem install prism`。
 - Spinel `2026.10.27.7020`，即 [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) 分支的一个版本，它先于上游收录了 CyberTrain 所需的修复；未在其他版本上测试。你无需手动安装：第一个需要它的命令会把该版本构建到 `~/.cybertrain` 中（需要几分钟，仅一次），除非 `PATH` 上已有该版本的 `spinel`。
 - C 工具链（`cc`，或 `CC` 指定的编译器）和 `make`，以及 `git` 和 `curl`，用于构建 Spinel；Spinel 会把每个程序编译为 C。
 - SQLite 3 和 zlib 头文件和库：Debian/Ubuntu 上为 `libsqlite3-dev` 和 `zlib1g-dev`；macOS 上随 Xcode 命令行工具提供。
-- OpenSSL 头文件（`libssl-dev`）是可选的：没有它们时，Spinel 构建时会不带其 `openssl` 包，而 CyberTrain 并不使用这个包。
 
-`cybertrain doctor` 会检查这些工具和头文件以及 Spinel 的安装情况；缺少必需项时，它还会打印适用于你的平台的安装命令。
-
-Spinel 安装在哪里、如何自己运行 `spin`，以及如何使用另一份安装：[Spinel 是如何安装的](install.md#how-spinel-is-installed)。
+`cybertrain doctor` 会检查以上所有内容。完整列表以及哪些是可选的：[环境要求](install.md#requirements)；Spinel 安装在哪里，以及如何使用另一份安装：[Spinel 是如何安装的](install.md#how-spinel-is-installed)。
 
 > [!NOTE]
 > 没有可以安装的机器？[在线试用](site:playground.html)会在 GitHub Codespace 中打开这个博客，第 02、03、04 和 07 步都已完成。
@@ -779,7 +776,7 @@ kamal deploy   # 之后的每次部署
 - 在与运行机器相同的操作系统和 CPU 上构建 `dist/`：该二进制文件链接系统的 SQLite。
 - `SPINEL_WORKERS` 默认为 `1`。
 - 只测试过 Spinel `2026.10.27.7020`。
-- 与 Rails 差异的完整列表：[与 Rails 的差异](how-it-works.md#differences-from-rails)。
+- 更多与 Rails 的差异，汇总在一张表里：[与 Rails 的差异](how-it-works.md#differences-from-rails)。
 
 <!-- step → #where-next -->
 ## 下一步

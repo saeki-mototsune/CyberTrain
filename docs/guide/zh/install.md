@@ -1,16 +1,16 @@
 ---
-source_sha256: 5e99bb7df246d9c13729928998ed09710a52fc8b7856eeb0a806356f9ba7c03a
+source_sha256: f2fc66817b4de63dd2d3fa3ee4cdba0c25960cae6ec4de300b2cc3d671220cf2
 ---
 # 安装
 
 在你的机器上运行 CyberTrain 需要什么、如何安装 `cybertrain` 命令、它有哪些命令，以及它如何替你安装 Spinel 和框架。
 
 > [!NOTE]
-> 想不安装任何东西就试用 CyberTrain，请打开[在线试用](site:playground.html)：GitHub Codespaces 会在你的浏览器中运行 `cybertrain` 命令、Spinel `2026.10.27.7020` 和教程中的博客。同一个镜像也可以在 Docker 下本地运行。
+> 想不安装任何东西就试用 CyberTrain，请打开[在线试用](site:playground.html)：GitHub Codespaces 会在你浏览器中的 VS Code 里打开教程中的博客、`cybertrain` 命令和 Spinel `2026.10.27.7020`。同一个镜像也可以在 Docker 下本地运行。
 
 ## 环境要求
 
-- Spinel `2026.10.27.7020`（`Cybertrain::SPINEL_TAG`，与 [.github/workflows/ci.yml](../../.github/workflows/ci.yml) 中 `SPINEL_TAG` 的版本相同），即 [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)（`Cybertrain::SPINEL_REPOSITORY`）的一个版本；它是 matz/spinel 的分支，先于上游版本收录了 cybertrain 所需的修复；未在其他版本上测试。你无需手动安装：`cybertrain` 命令在第一次需要它时会把该版本构建到 `~/.cybertrain` 中（`cybertrain setup` 可按需执行这一步），除非 `PATH` 上已有该版本的 `spinel`——参见 [Spinel 是如何安装的](#how-spinel-is-installed)。
+- Spinel `2026.10.27.7020`（`Cybertrain::SPINEL_TAG`，与 [.github/workflows/ci.yml](../../.github/workflows/ci.yml) 中 `SPINEL_TAG` 的版本相同），即 [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)（`Cybertrain::SPINEL_REPOSITORY`）的一个版本；它是 matz/spinel 的分支，先于上游版本收录了 CyberTrain 所需的修复；未在其他版本上测试。你无需手动安装：`cybertrain` 命令在第一次需要它时会把该版本构建到 `~/.cybertrain` 中（`cybertrain setup` 可按需执行这一步），除非 `PATH` 上已有该版本的 `spinel`——参见 [Spinel 是如何安装的](#how-spinel-is-installed)。
 - 构建它需要：C 工具链（`cc`，或 `CC` 指定的编译器）和 `make`——Spinel 会把每个程序编译为 C——以及 `git` 和 `curl`。
 - SQLite 3 头文件和库（Debian/Ubuntu 上为 `libsqlite3-dev`；macOS 上随 Xcode 命令行工具提供）——模型直接使用 Spinel 的 FFI，而不是 gem。
 - zlib 头文件和库（Debian/Ubuntu 上为 `zlib1g-dev`；macOS 上在 SDK 中）——gzip 压缩的请求体（`request.decoded_body`）通过系统的 zlib 解压，绑定方式相同。
@@ -18,10 +18,10 @@ source_sha256: 5e99bb7df246d9c13729928998ed09710a52fc8b7856eeb0a806356f9ba7c03a
 
 `cybertrain doctor` 会检查这些工具和头文件以及 Spinel 的安装情况；缺少必需项时，它还会打印适用于你的平台的安装命令。
 
-<details><summary>可选软件包 — OpenSSL、jemalloc，以及 Ruby 3.2 上的 prism</summary>
+<details><summary>更多软件包 — Ruby 3.2 上的 prism；OpenSSL 和 jemalloc，均为可选</summary>
 
 - 构建 Spinel 需要 Ruby 的 `prism` gem，Ruby 3.3 及以上已内置；Ruby 3.2 请运行 `gem install prism`（需要 Ruby 的开发头文件，Debian/Ubuntu 上为 `ruby-dev`）。`cybertrain doctor` 会检查它。
-- OpenSSL 头文件（`libssl-dev`）是可选的：没有它们时，Spinel 构建时会不带其 `openssl` 包，而 cybertrain 并不使用这个包。在 macOS 上，require `openssl` 的应用需要让编译器的路径包含 Homebrew 的（keg-only）OpenSSL：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+- OpenSSL 头文件（`libssl-dev`）是可选的：没有它们时，Spinel 构建时会不带其 `openssl` 包，而 CyberTrain 并不使用这个包。在 macOS 上，require `openssl` 的应用需要让编译器的路径包含 Homebrew 的（keg-only）OpenSSL：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`。
 - jemalloc 的开发包（`libjemalloc-dev`；`brew install jemalloc`）是可选的：只有当应用的 `spin.toml` 写明 `allocator = "jemalloc"` 时才需要它，`cybertrain new` 会把这一行写成注释。在生产环境中值得开启：在 examples/blog 上每秒请求数可达 1.1 到 1.4 倍（[docs/benchmark.md](../benchmark.md)）。
 
@@ -44,7 +44,7 @@ cybertrain doctor
   [--skip-spin]` 在 NAME 中创建应用，然后在其中运行 `spin lock` 和 `spin run gen`，需要时会先安装 Spinel。
 - `cybertrain generate scaffold NAME field:type ...`（别名 `g scaffold`）为当前目录中的应用添加一个资源。
 - `cybertrain generate authentication` 为其添加用邮箱和密码登录的功能：users 和 sessions 表、`User` 和 `Session` 模型、登录和注册的控制器与视图、路由、`ApplicationController` 中的一个 `before_action`，以及一个测试（参见[添加登录](tutorial.md#authentication)）。使用 `--invite-only` 时没有注册页面：用户通过 `./NAME user EMAIL` 创建；在还没有任何用户时，第一个用户也可以在 `/setup` 页面创建，该页面只响应服务器所在的机器，并需要服务器启动警告中打印的一次性令牌。
-- `cybertrain generate attachment MODEL FIELD [--any]` 为已生成脚手架的模型添加文件上传功能：五个元数据列、模型方法和回调、一个下载动作、路由、表单字段和一个测试（参见[添加文件上传](tutorial.md#attachments)）。脚手架字段 `cover:attachment` 的作用相同。
+- `cybertrain generate attachment MODEL FIELD [--any]` 为已生成脚手架的模型添加文件上传功能：五个元数据列、模型方法和回调、一个下载动作、路由、表单字段和一个测试（参见[添加封面图片](tutorial.md#attachments)）。脚手架字段 `cover:attachment` 的作用相同。
 - `cybertrain db migrate` 先生成代码，再执行待处理的迁移，然后再次生成（`spin run gen; spin run db -- migrate; spin run gen`）；`cybertrain migration` 作为别名保留。
 - `cybertrain db COMMAND...` 在 `spin
   run gen` 之后运行其他任意数据库命令：`status`、`rollback [N]`（之后会再次生成）、`schema:dump`、`create`。
@@ -59,7 +59,9 @@ cybertrain doctor
 
 ## Spinel 是如何安装的
 
-每个运行 `spin` 的命令（`new`、`db`、`server`、`build`、`spin`）都会先确保有 `Cybertrain::SPINEL_TAG` 所指版本的 Spinel 可用。如果 `PATH` 上有 `spinel`（以及 `spin`），且其 `spinel --version` 报告的正是该版本，就直接使用它；否则使用 `cybertrain` 保存在 `~/.cybertrain/spinel/2026.10.27.7020/` 下的副本；如果也没有，`cybertrain` 就从 `Cybertrain::SPINEL_REPOSITORY` 的发布标签构建这份副本（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`），只需一次，耗时几分钟，并把日志写入 `~/.cybertrain/log/spinel-2026.10.27.7020-build.log`（某一步失败时会打印其最后几行）。如果缺少构建所需的工具，`cybertrain` 会在开始前指出缺少哪个，并打印适用于你的平台的安装命令。`PATH` 上其他版本的 `spinel` 永远不会被使用或改动：`cybertrain` 会保留自己的副本（并在安装时说明这一点）。
+每个运行 `spin` 的命令（`new`、`db`、`server`、`build`、`spin`）都会先确保有 `Cybertrain::SPINEL_TAG` 所指版本的 Spinel 可用。如果 `PATH` 上有 `spinel`（以及 `spin`），且其 `spinel --version` 报告的正是该版本，就直接使用它；否则使用 `cybertrain` 保存在 `~/.cybertrain/spinel/2026.10.27.7020/` 下的副本；如果也没有，`cybertrain` 就从 `Cybertrain::SPINEL_REPOSITORY` 的发布标签构建这份副本（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`），只需一次，耗时几分钟，并把日志写入 `~/.cybertrain/log/spinel-2026.10.27.7020-build.log`（某一步失败时会打印其最后几行）。
+
+如果缺少构建所需的工具，`cybertrain` 会在开始前指出缺少哪个，并打印适用于你的平台的安装命令。`PATH` 上其他版本的 `spinel` 永远不会被使用或改动：`cybertrain` 会保留自己的副本（并在安装时说明这一点）。
 
 `cybertrain setup` 会按需执行同样的操作，并且在正在使用的是它自己的副本时，打印把它加入 `PATH` 的那一行，方便你自己运行 `spin`：
 
@@ -92,10 +94,10 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 有四个选项会改变它写出和运行的内容：
 
 - `--skip-spin` 只写出文件：不安装 Spinel，不运行 `spin lock`，也不运行 `spin run gen`。
-- `--path DIR` 改为依赖本地检出的代码（开发 cybertrain 本身时，用 `--path
-  ~/src/cybertrain`，检出代码在哪里就写哪里）。
+- `--path DIR` 改为依赖本地检出的代码
+  （开发 CyberTrain 本身时，用 `--path ~/src/cybertrain`，检出代码在哪里就写哪里）。
 - `--git URL [--ref R]` 依赖位于 URL 的框架（分支或标签 R）。
-- `--version V` 在 cybertrain 进入 `spin-index` 后依赖索引中的版本。
+- `--version V` 在框架进入 `spin-index` 后依赖索引中的版本。
 
 `--path`、`--version` 和 `--git` 只能给出其中一个；`--ref` 需要配合 `--git`。
 

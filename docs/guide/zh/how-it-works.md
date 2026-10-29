@@ -1,10 +1,10 @@
 ---
-description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的所有已知差异。
-source_sha256: dbc42178d5f6d75cdaeb5a45ea7c94a4462048b57ac21424a253347306264fc8
+description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
+source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
 ---
 # 工作原理
 
-本页说明 CyberTrain 应用如何构建和运行：构建时生成的代码、请求时解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite 以及开发循环，然后是与 Rails 的所有已知差异。首页的[性能一节](site:index.html#performance)把结果与用 Rails 8.1 编写的同一个博客作了对比。测量方法、全部数字以及如何重新测量，见 [docs/benchmark.md](../benchmark.md)。
+本页说明 CyberTrain 应用如何构建和运行：构建时生成的代码、请求时解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite 以及开发循环，然后是一张与 Rails 的差异表。首页的[性能一节](site:index.html#performance)把结果与用 Rails 8.1 编写的同一个博客作了对比。测量方法、全部数字以及如何重新测量，见 [docs/benchmark.md](../benchmark.md)。
 
 ## 构建时代码生成
 
@@ -56,12 +56,12 @@ source_sha256: dbc42178d5f6d75cdaeb5a45ea7c94a4462048b57ac21424a253347306264fc8
 
 发生改动时，会在后台运行 `spin run gen && spin build NAME -- --incremental`：Spinel 的增量构建，只重新编译这次编辑改动了的 C 单元。不支持 `--incremental` 的 Spinel 版本会拒绝这个参数，此时循环会不带它进行构建。
 
-构建成功后会请求重启（与外部 `kill -HUP` 设置的是同一个标志）：一个监视线程停止监听并等待进行中的请求完成，然后主线程在同一端口和 PID 上 `execv` 新的二进制文件，会话进行中的客户端察觉不到。构建失败时继续用旧的二进制文件提供服务，并在每个 HTML 响应上以横幅显示编译器输出。这些在生产环境中都不会加载。
+构建成功后会请求重启（与外部 `kill -HUP` 设置的是同一个标志）：一个监视线程停止监听并等待进行中的请求完成，然后主线程在同一端口和 PID 上 `execv` 新的二进制文件，会话进行中的客户端察觉不到。构建失败时继续用旧的二进制文件提供服务，并在每个 HTML 响应上以横幅显示编译器输出。`cybertrain build` 持有 `tmp/cybertrain-build.lock` 期间会跳过重新构建。这些在生产环境中都不会加载。
 
 ## 与 Rails 的差异
 
 <!-- table: cmp -->
-| Rails | cybertrain |
+| Rails | CyberTrain |
 | --- | --- |
 | `rails console` | 没有控制台——Spinel 没有 `eval` |
 | `rails runner`、`lib/tasks/*.rake` | 在 `bin/<app>.rb` 中写 `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }`：`./<app> name ARGS` 会在连接好数据库的情况下运行它 |
@@ -70,7 +70,7 @@ source_sha256: dbc42178d5f6d75cdaeb5a45ea7c94a4462048b57ac21424a253347306264fc8
 | `def new` | `def new_action`（`new` 会遮蔽 `Klass.new(ctx)`） |
 | `before_action { do_thing }`（隐式的 `self`） | `before_action { \|c\| c.do_thing }`——无法对存储的块使用 `instance_exec`，所以回调显式接收控制器或记录 |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end`——嵌套块显式接收 mapper |
-| ERB 编译为方法；任意对象、任意方法 | 按固定的语法和分派表解释执行——[docs/guide/template-language.md](template-language.md) |
+| ERB 编译为方法；任意对象、任意方法 | 按固定的语法和分派表解释执行（[模板语言](template-language.md)） |
 | 会话可以保存任何序列化的对象 | 会话的值只能是 String，存放在 HMAC 签名的 cookie 中 |
 | 多种数据库适配器 | 只有 SQLite，通过 FFI |
 | `Article.transaction { ... }` 返回块的值；`raise ActiveRecord::Rollback`；`requires_new: true` 保存点 | `Article.transaction { \|c\| ... }` 把连接传给块并返回 nil；通过抛出异常退出；嵌套调用加入外层事务，没有保存点（[事务](models.md#transactions)） |

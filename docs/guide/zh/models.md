@@ -1,9 +1,9 @@
 ---
-source_sha256: 1f3299ce753f9ca949e912a5d2848b2b028f258f8ebdcef7a3be7a74894d6104
+source_sha256: 75a49c15853d34f1c018af07c3f0d29bf29d1778a7e52b12a048c95f83b437e4
 ---
 # 模型与数据库
 
-模型在脚手架之外还能做什么：编写迁移、超出 `where` 的查询、列表分页、事务，以及在 Spinel 下 SQLite 列名和 `order` 子句所遵循的规则。
+模型在脚手架之外还能做什么：编写迁移、超出 `where` 的查询、列表分页、事务，以及在 Spinel 下列名和 `order` 子句所遵循的规则。
 
 ## 迁移
 
@@ -37,7 +37,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
             conflict: [:project_id, :key],
             update: { calls: "calls + excluded.calls", max_ms: "MAX(max_ms, excluded.max_ms)",
                       seen_at: "excluded.seen_at" })
-Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1
+Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   （另有 pluck_str、pluck_float）
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
 Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # 按小时分组
@@ -114,7 +114,7 @@ end
 
 与 Object 的其他方法同名的列（`display`、`tap`、`methods`）以原名生成，并附上说明。`cybertrain generate scaffold` 会拒绝关键字和保留名称（否则它就得调用改过名的读方法），对会遮蔽方法的名称则接受并附上说明，与生成器一致。
 
-Rails 允许关联遮蔽 `errors`；这里，如果某个关联的普通名称已被某列、另一个关联或 `Model` 的方法占用，就会以后备名称生成，并在生成的文件中附上注释：`has_many` 用 `<table>_as_<column stem>`（`comments_as_article`），`belongs_to` 用 `<stem>_as_<column>`（`author_as_author_id`）。
+如果某个关联的普通名称已被某列、另一个关联或 `Model` 的方法占用（Rails 允许关联遮蔽 `errors`），就会以后备名称生成，并在生成的文件中附上注释：`has_many` 用 `<table>_as_<column stem>`（`comments_as_article`），`belongs_to` 用 `<stem>_as_<column>`（`author_as_author_id`）。
 
 ## 排序
 
