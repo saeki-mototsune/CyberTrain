@@ -1,5 +1,5 @@
 ---
-source_sha256: 9c348325e4945493aa6eeb42add294c7ce0b8bf34811b3014c18617dec0b0ef6
+source_sha256: c62dd8a199df41e47d7f65f6dabf83f2b548e103d5f59b2bd807b7433590bd06
 ---
 # Справочник по языку шаблонов Cybertrain
 
@@ -56,7 +56,7 @@ source_sha256: 9c348325e4945493aa6eeb42add294c7ce0b8bf34811b3014c18617dec0b0ef6
 
 - `<%# locals: () %>` (пустой список) означает «этот партиал не принимает локальных переменных».
 - Каждая запись должна быть голым `name:` в нижнем регистре (`Lexer.identifier?` принимает только `[a-z_][a-z0-9_]*`). **As built:** в отличие от Rails 7.1, записи не могут иметь значение по умолчанию — `<%# locals: (post:, comment: nil) %>`, ровно та форма, которую поддерживает Rails 7.1, даёт `SyntaxError`: `"t:1: bad strict locals entry 'comment: nil' (expected name:)"`, потому что `comment: nil` не оканчивается на `:`. Фактически каждая объявленная локальная переменная обязательна. Некорректная спецификация (без скобок) вызывает `"t:1: bad strict locals comment (expected locals: (name:, ...))"`.
-- **Без** этого комментария шаблон не объявляет списка локальных переменных: `render` передаёт любые полученные локальные переменные без проверки, и шаблон может также читать всё, что уже есть в окружении вызывающего (см. раздел 8).
+- **Без** этого комментария шаблон не объявляет списка локальных переменных: `render` передаёт любые полученные локальные переменные без проверки, и шаблон может также читать всё, что уже есть в окружении вызывающего (см. [Макеты, `yield`, `content_for`, партиалы](#layouts-yield-content_for-partials)).
 - Если перед комментарием на более ранней строке что-то есть (даже одна пустая строка), это просто обычный, ни на что не влияющий комментарий, а не объявление локальных переменных.
 
 ## Выражения
@@ -93,7 +93,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 
 - Список аргументов без скобок («командный») открывается только для **самого внешнего** вызова в выражении: `link_to "Show", post_path(post)` работает, а `link_to "Show", post_path post` даёт `SyntaxError` — внутренним вызовам нужны собственные скобки.
 - Между целью вызова и её открывающей `(` пробел не допускается: работают и `link_to("x")`, и `link_to "x"`; `link_to ("x")` даёт `SyntaxError`.
-- `yield` и `yield :key` всегда разбираются как вызовы (см. раздел 8).
+- `yield` и `yield :key` всегда разбираются как вызовы (см. [Макеты, `yield`, `content_for`, партиалы](#layouts-yield-content_for-partials)).
 - Голое слово с заглавной буквы сразу отвергается — `"constants are not supported: 'Time'"`: шаблоны не могут обращаться к константам Ruby.
 - Эти слова зарезервированы и отвергаются с отдельным сообщением (`"'x' is not supported in templates"`): `and or not do end if unless elsif else then while until case when def class module begin rescue return`.
 
@@ -181,7 +181,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | `true`/`false` | `to_s` | `published.to_s` |
 | `nil` | `to_s` (возвращает `""`) | |
 
-Индексирование (`x[key]`) — отдельное правило грамматики (раздел 3), а не вызов `.[]`: `Array`/`String` принимают целочисленный индекс, `Hash` сопоставляет любой ключ по его `to_s` (`h[:k]` и `h["k"]` — одна и та же запись), `Errors` — по символу, `Params` — по `to_s`.
+Индексирование (`x[key]`) — отдельное правило грамматики ([Выражения](#expressions)), а не вызов `.[]`: `Array`/`String` принимают целочисленный индекс, `Hash` сопоставляет любой ключ по его `to_s` (`h[:k]` и `h["k"]` — одна и та же запись), `Errors` — по символу, `Params` — по `to_s`.
 
 Вывод (`<%= %>`/интерполяция) помимо `to_s` выше: `Array` выводится как список в духе inspect — `[1, "a", nil]` выводит текст `[1, "a", nil]` (затем экранируется, поэтому кавычки становятся `&quot;`); `Hash` откатывается к собственному `Hash#to_s` Ruby; `Cybertrain::Model` выводится как `#<Post id: 7>` (никогда не его атрибуты); всё остальное выводится через собственный `to_s`. Неперечисленный метод у любого из этих типов — это `RuntimeError` (`"undefined method 'first' for Time"`). Целочисленное деление или остаток от деления на ноль для `Integer` — `"divided by 0"`; `Float` вместо этого следует IEEE-754 (`Infinity`/`NaN`, без ошибки).
 
@@ -189,7 +189,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 
 Подкласс `Cybertrain::Model` (сгенерированный `Post`, `Note`, ...) разрешает голое имя в таком порядке (`Interpreter#model_method`):
 
-1. Пять встроенных, доступных всегда: `id`, `persisted?`, `new_record?`, `to_param` (`id.to_s`), `errors` (`Errors`, раздел 5).
+1. Пять встроенных, доступных всегда: `id`, `persisted?`, `new_record?`, `to_param` (`id.to_s`), `errors` (`Errors`, [Таблица методов по типам](#per-type-method-table)).
 2. `read_attribute(:name)` — сгенерированный столбец.
 3. `read_association(:name)` — сгенерированная ассоциация `has_many`/`belongs_to`.
 4. `call_view_method(:name)` — написанный вручную `def` без аргументов, который генератор моделей нашёл в `app/models/**/*.rb` (никогда с аргументами).
@@ -216,14 +216,14 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` экранируется, если это ещё не `SafeString`; **нет `method:`** — возбуждает ошибку, предлагая использовать `button_to` (никакой имитации ссылок DELETE через rails-ujs/turbo) |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | `<form class="button_to">` с одной кнопкой; скрытый `_method` для любого глагола, кроме `get`/`post`, плюс поле CSRF, когда есть сессия |
 | `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | нужен блок; новая `model:` → маршрут коллекции + POST, сохранённая → маршрут элемента + PATCH; `[parent, child]` для вложенного маршрута; `url:`/`method:` переопределяют выведенные действие/глагол; `multipart: true` добавляет `enctype="multipart/form-data"` (обязательно для `f.file_field`; никогда не угадывается по блоку и возбуждает `ArgumentError` на GET-форме) |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | см. раздел 8 |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | см. [Макеты, `yield`, `content_for`, партиалы](#layouts-yield-content_for-partials) |
 | `h`, `escape` | `h(text)` | экранирует; `SafeString` проходит без экранирования |
 | `raw` | `raw(text)` | оборачивает текст в `SafeString` (выводится без экранирования) |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`; `pluralize(2, "mouse")` → `"2 mice"` (английские правила словоизменения Rails по умолчанию, через `Cybertrain::Inflector`; правила, определённые приложением, не поддерживаются); явный третий аргумент всегда побеждает |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
 | `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`; `-1000` → `"-1,000"`; `1234.5` → `"1,234.5"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | интервалы в стиле Rails, без точности до секунд: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
-| `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | см. раздел 8 |
+| `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | см. [Макеты, `yield`, `content_for`, партиалы](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | пусто / отсутствует без сессии контроллера |
 | `flash` | | похож на `Hash`: `flash[:notice]` |
 | `params` | | текущие `Cybertrain::Params` |
@@ -299,7 +299,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 
 | ERB в Rails | Cybertrain |
 | --- | --- |
-| Компилируется в метод Ruby; работает любой Ruby, любой объект, любой метод | Интерпретируется по фиксированным таблицам диспетчеризации для каждого типа; вызывать можно только то, что перечислено в разделе 5 |
+| Компилируется в метод Ruby; работает любой Ruby, любой объект, любой метод | Интерпретируется по фиксированным таблицам диспетчеризации для каждого типа; вызывать можно только то, что перечислено в [таблице методов по типам](#per-type-method-table) |
 | `ActiveSupport::SafeBuffer` — подкласс `String` | `SafeString` — отдельный класс-обёртка: у него можно вызывать только `to_s`/`html_safe?`/`size`/`length`/`empty?` |
 | Блоки: `each`, `{ }`, `map`, любой метод Enumerable | Только `do...end` и только на `each`/`each_with_index`/вызове хелпера |
 | `xs.each { }` — ноль параметров блока допустим | `each`/`each_with_index` требуют объявить 1 или 2 параметра блока |

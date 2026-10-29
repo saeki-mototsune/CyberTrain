@@ -1,5 +1,5 @@
 ---
-source_sha256: 5e99bb7df246d9c13729928998ed09710a52fc8b7856eeb0a806356f9ba7c03a
+source_sha256: f2fc66817b4de63dd2d3fa3ee4cdba0c25960cae6ec4de300b2cc3d671220cf2
 ---
 # Установка
 
@@ -8,8 +8,8 @@ source_sha256: 5e99bb7df246d9c13729928998ed09710a52fc8b7856eeb0a806356f9ba7c03a
 
 > [!NOTE]
 > Чтобы попробовать CyberTrain, ничего не устанавливая, откройте [песочницу](site:playground.html):
-> GitHub Codespaces запускает в вашем браузере команду `cybertrain`, Spinel `2026.10.27.7020` и
-> блог из учебника. Тот же образ запускается и локально под Docker.
+> GitHub Codespaces открывает в вашем браузере, в VS Code, блог из учебника, команду `cybertrain` и
+> Spinel `2026.10.27.7020`. Тот же образ запускается и локально под Docker.
 
 ## Требования
 
@@ -17,7 +17,7 @@ source_sha256: 5e99bb7df246d9c13729928998ed09710a52fc8b7856eeb0a806356f9ba7c03a
   `SPINEL_TAG` в [.github/workflows/ci.yml](../../.github/workflows/ci.yml)) —
   релиз [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)
   (`Cybertrain::SPINEL_REPOSITORY`), форка matz/spinel, в котором исправления,
-  нужные cybertrain, появляются раньше, чем в релизе основного проекта;
+  нужные CyberTrain, появляются раньше, чем в релизе основного проекта;
   с другими версиями не тестировался. Вручную его устанавливать не нужно:
   команда `cybertrain` собирает этот релиз в `~/.cybertrain`, когда он впервые
   понадобится (`cybertrain setup` делает это по запросу), если только `spinel`
@@ -38,14 +38,14 @@ source_sha256: 5e99bb7df246d9c13729928998ed09710a52fc8b7856eeb0a806356f9ba7c03a
 Spinel; если чего-то обязательного не хватает, она также выводит команду
 установки для вашей платформы.
 
-<details><summary>Необязательные пакеты — OpenSSL, jemalloc и prism на Ruby 3.2</summary>
+<details><summary>Ещё пакеты — prism на Ruby 3.2; OpenSSL и jemalloc, оба необязательны</summary>
 
 - Для сборки Spinel нужен gem `prism`, который в Ruby 3.3 и новее входит в
   поставку; на Ruby 3.2 выполните `gem install prism` (нужны заголовки
   разработки Ruby, `ruby-dev` в Debian/Ubuntu). `cybertrain doctor` это
   проверяет.
 - Заголовки OpenSSL (`libssl-dev`) необязательны: без них Spinel собирается
-  без своего пакета `openssl`, который cybertrain не использует. На macOS
+  без своего пакета `openssl`, который CyberTrain не использует. На macOS
   приложению, которому нужен `openssl`, требуется OpenSSL из Homebrew (keg-only)
   в путях компилятора: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`.
@@ -88,7 +88,7 @@ cybertrain doctor
 - `cybertrain generate attachment MODEL FIELD [--any]` добавляет загрузку файла
   в модель со скаффолдом: пять столбцов метаданных, методы и колбэки модели,
   действие для скачивания, маршрут, поле формы и тест (см.
-  [Добавление загрузки файла](tutorial.md#attachments)). Поле скаффолда `cover:attachment` делает то же самое.
+  [Добавление обложки](tutorial.md#attachments)). Поле скаффолда `cover:attachment` делает то же самое.
 - `cybertrain db migrate` выполняет генерацию, применяет ожидающие миграции и
   генерирует снова (`spin run gen; spin run db -- migrate; spin run gen`);
   `cybertrain migration` оставлена как псевдоним.
@@ -122,9 +122,10 @@ cybertrain doctor
 копию из релизного тега `Cybertrain::SPINEL_REPOSITORY` (`git clone`,
 `make deps`, `make -j`, `make install PREFIX=...`) — один раз, за несколько
 минут, записывая лог в `~/.cybertrain/log/spinel-2026.10.27.7020-build.log`
-(если шаг завершается сбоем, выводятся его последние строки). Если не хватает
-инструмента, нужного для сборки, `cybertrain` ещё до её начала сообщает, какого
-именно, и выводит команду установки для вашей платформы. `spinel` другого
+(если шаг завершается сбоем, выводятся его последние строки).
+
+Если не хватает инструмента, нужного для сборки, `cybertrain` ещё до её начала
+сообщает, какого именно, и выводит команду установки для вашей платформы. `spinel` другого
 релиза в `PATH` никогда не используется и не затрагивается: `cybertrain` держит
 собственную копию (и сообщает об этом, когда её устанавливает).
 
@@ -178,9 +179,12 @@ Spinel в геме нет. Фреймворк — это пакет Spinel, от
 Четыре параметра меняют то, что она записывает и запускает:
 
 - `--skip-spin` только записывает файлы: без установки Spinel, без `spin lock`, без `spin run gen`.
-- `--path DIR` вместо этого делает зависимостью локальную копию репозитория (`--path ~/src/cybertrain`, где бы ни лежала копия, при работе над самим cybertrain).
+- `--path DIR` вместо этого делает зависимостью локальную копию репозитория
+  (`--path ~/src/cybertrain`, где бы ни лежала копия, при работе над самим
+  CyberTrain).
 - `--git URL [--ref R]` делает зависимостью фреймворк по адресу URL (на ветке или теге R).
-- `--version V` делает зависимостью версию из индекса, когда cybertrain появится в `spin-index`.
+- `--version V` делает зависимостью версию из индекса, когда фреймворк появится
+  в `spin-index`.
 
 Указывайте только один из `--path`, `--version` и `--git`; `--ref` требует `--git`.
 

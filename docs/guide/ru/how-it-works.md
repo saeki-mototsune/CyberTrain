@@ -1,13 +1,13 @@
 ---
-description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и все известные отличия от Rails.
-source_sha256: dbc42178d5f6d75cdaeb5a45ea7c94a4462048b57ac21424a253347306264fc8
+description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
+source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
 ---
 
 # Как это работает
 
 На этой странице объясняется, как CyberTrain-приложение собирается и запускается:
 код, генерируемый при сборке, представления, интерпретируемые во время запроса,
-HTTP-сервер, SQLite через FFI и цикл разработки, а затем все известные отличия
+HTTP-сервер, SQLite через FFI и цикл разработки, а затем таблица отличий
 от Rails. [Раздел о производительности](site:index.html#performance) на главной
 странице сравнивает результат с тем же блогом, написанным на Rails 8.1. Методика,
 все цифры и способ повторить измерение — в [docs/benchmark.md](../benchmark.md).
@@ -102,13 +102,14 @@ Spinel нет `eval`, поэтому это замкнутая граммати�
 открытых запросов, затем главный поток делает `execv` нового бинарного файла на
 том же порту и с тем же PID, незаметно для клиента посреди сессии. Неудачная
 сборка продолжает обслуживать старым бинарным файлом и показывает вывод
-компилятора баннером в каждом HTML-ответе. Ничего из этого не загружается в
-production.
+компилятора баннером в каждом HTML-ответе. Пересборки пропускаются, пока
+`cybertrain build` держит `tmp/cybertrain-build.lock`. Ничего из этого не
+загружается в production.
 
 ## Отличия от Rails
 
 <!-- table: cmp -->
-| Rails | cybertrain |
+| Rails | CyberTrain |
 | --- | --- |
 | `rails console` | Консоли нет — в Spinel нет `eval` |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` в `bin/<app>.rb`: `./<app> name ARGS` запускает её с подключённой базой данных |
@@ -117,7 +118,7 @@ production.
 | `def new` | `def new_action` (`new` затенил бы `Klass.new(ctx)`) |
 | `before_action { do_thing }` (неявный `self`) | `before_action { \|c\| c.do_thing }` — для сохранённого блока нет `instance_exec`, поэтому колбэки получают контроллер/запись явно |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — вложенные блоки получают маппер явно |
-| ERB компилируется в метод; любой объект, любой метод | Интерпретируется по фиксированной грамматике/таблице диспетчеризации — [docs/guide/template-language.md](template-language.md) |
+| ERB компилируется в метод; любой объект, любой метод | Интерпретируется по фиксированной грамматике/таблице диспетчеризации ([Язык шаблонов](template-language.md)) |
 | Сессия хранит любой сериализуемый через Marshal объект | Значения сессии — только строки (String), cookie с подписью HMAC |
 | Множество адаптеров баз данных | Только SQLite, через FFI |
 | `Article.transaction { ... }` возвращает значение блока; `raise ActiveRecord::Rollback`; точки сохранения `requires_new: true` | `Article.transaction { \|c\| ... }` передаёт в блок соединение и возвращает nil; выходят из неё, возбуждая исключение; вложенные вызовы присоединяются к внешней транзакции, точек сохранения нет ([Транзакции](models.md#transactions)) |
@@ -132,8 +133,8 @@ production.
 | Полный бэктрейс при исключении | Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов |
 | Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
 | minitest / RSpec | `Cybertrain::Test` — раннеры на основе рефлексии не могут работать при AOT-компиляции |
-| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` пишет ту же структуру плюс страницу регистрации; пароли используют PBKDF2-HMAC-SHA256 (bcrypt потребовал бы библиотеку на C; `String#crypt` на macOS его не поддерживает); сброса пароля нет ([Добавьте вход](tutorial.md#authentication)) |
-| Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` пишет пять столбцов `cover_*` и методы модели; файлы лежат на локальном диске в `storage/uploads/` и отдаются через `send_blob`; один файл на поле, без вариантов и прямых загрузок ([Обложка](tutorial.md#attachments)) |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` пишет ту же структуру плюс страницу регистрации; пароли используют PBKDF2-HMAC-SHA256 (bcrypt потребовал бы библиотеку на C; `String#crypt` на macOS не поддерживает bcrypt); сброса пароля нет ([Добавление входа](tutorial.md#authentication)) |
+| Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` пишет пять столбцов `cover_*` и методы модели; файлы лежат на локальном диске в `storage/uploads/` и отдаются через `send_blob`; один файл на поле, без вариантов и прямых загрузок ([Добавление обложки](tutorial.md#attachments)) |
 | `skip_before_action :x` | То же самое для именованных before-колбэков (у колбэка-блока нет имени, которое можно пропустить); `skip_after_action` нет |
 | `resource :session` | Те же шесть маршрутов к `SessionsController`; вложение в него не поддерживается |
 | `get "/x"`, затем `post "/x"` | Оба допустимы: выведенное имя второго маршрута уже занято, поэтому он остаётся без имени, как в Rails; повторяющийся `as:` по-прежнему ошибка |

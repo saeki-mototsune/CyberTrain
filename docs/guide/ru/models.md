@@ -1,11 +1,11 @@
 ---
-source_sha256: 1f3299ce753f9ca949e912a5d2848b2b028f258f8ebdcef7a3be7a74894d6104
+source_sha256: 75a49c15853d34f1c018af07c3f0d29bf29d1778a7e52b12a048c95f83b437e4
 ---
 # Модели и база данных
 
 Что модель делает помимо скаффолда: написание миграций, запросы помимо `where`,
 постраничный вывод списка, транзакции и правила, которым под Spinel подчиняются
-имена столбцов SQLite и конструкции `order`.
+имена столбцов и конструкции `order`.
 
 ## Миграции
 
@@ -62,7 +62,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
             conflict: [:project_id, :key],
             update: { calls: "calls + excluded.calls", max_ms: "MAX(max_ms, excluded.max_ms)",
                       seen_at: "excluded.seen_at" })
-Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1
+Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (также pluck_str, pluck_float)
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
 Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # группы по часам
@@ -203,9 +203,9 @@ ivar) с примечанием в сгенерированном файле. Д
 переименованный читатель) и принимает затеняющее имя с примечанием, как и
 генератор.
 
-Там, где Rails позволяет ассоциации затенить `errors`, ассоциация, чьё простое
-имя уже занято столбцом, другой ассоциацией или методом `Model`, выдаётся под
-запасным именем с комментарием в сгенерированном файле: `<table>_as_<column stem>`
+Ассоциация, чьё простое имя уже занято столбцом, другой ассоциацией или
+методом `Model` (Rails позволяет затенить `errors`), выдаётся под запасным
+именем с комментарием в сгенерированном файле: `<table>_as_<column stem>`
 для `has_many` (`comments_as_article`), `<stem>_as_<column>` для `belongs_to`
 (`author_as_author_id`).
 

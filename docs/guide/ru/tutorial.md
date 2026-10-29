@@ -1,5 +1,5 @@
 ---
-source_sha256: 5778d1b05d81b6b389f1a3846deec6d58ffd763fb5e8339ce5d6115944d62d97
+source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -39,10 +39,7 @@ CI на Linux и macOS.
 
 <!-- list: checklist -->
 - Ruby 3.2+ и RubyGems — только для команды `cybertrain`; приложения никогда
-  не запускаются на CRuby. Для сборки Spinel также нужен gem `prism`: в Ruby 3.3
-  и новее он входит в поставку; на Ruby 3.2 выполните `gem install prism`
-  (нужны заголовки разработки Ruby, `ruby-dev` в Debian/Ubuntu).
-  `cybertrain doctor` это проверяет.
+  не запускаются на CRuby. На Ruby 3.2 также `gem install prism`.
 - Spinel `2026.10.27.7020` — релиз форка
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel), в
   котором исправления, нужные CyberTrain, появляются раньше, чем в основном
@@ -55,15 +52,10 @@ CI на Linux и macOS.
   C.
 - Заголовки и библиотеки SQLite 3 и zlib: `libsqlite3-dev` и `zlib1g-dev` в
   Debian/Ubuntu; на macOS входят в Xcode command line tools.
-- Заголовки OpenSSL (`libssl-dev`) необязательны: без них Spinel собирается
-  без своего пакета `openssl`, который CyberTrain не использует.
 
-`cybertrain doctor` проверяет эти инструменты и заголовки, а также установку
-Spinel; если чего-то обязательного не хватает, она также выводит команду
-установки для вашей платформы.
-
-Где оказывается Spinel, как запускать `spin` самостоятельно и как использовать
-другую установку: [как устанавливается Spinel](install.md#how-spinel-is-installed).
+`cybertrain doctor` проверяет всё это. Полный список и что необязательно:
+[Требования](install.md#requirements); где оказывается Spinel и как
+использовать другую установку: [как устанавливается Spinel](install.md#how-spinel-is-installed).
 
 > [!NOTE]
 > Негде устанавливать? [Песочница](site:playground.html) открывает этот блог в
@@ -1171,7 +1163,7 @@ kamal deploy   # каждое следующее развёртывание
   будет работать: бинарный файл компонуется с системной SQLite.
 - `SPINEL_WORKERS` по умолчанию равен `1`.
 - Протестирован только Spinel `2026.10.27.7020`.
-- Полный список отличий от Rails: [Отличия от Rails](how-it-works.md#differences-from-rails).
+- Другие отличия от Rails, в одной таблице: [Отличия от Rails](how-it-works.md#differences-from-rails).
 
 <!-- step → #where-next -->
 ## Что дальше
