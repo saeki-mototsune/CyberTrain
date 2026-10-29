@@ -1,5 +1,5 @@
 ---
-source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
+source_sha256: 5778d1b05d81b6b389f1a3846deec6d58ffd763fb5e8339ce5d6115944d62d97
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -38,19 +38,7 @@ meta:
 
 `cybertrain doctor` 会检查这些工具和头文件以及 Spinel 的安装情况；缺少必需项时，它还会打印适用于你的平台的安装命令。
 
-<details><summary>CyberTrain 如何安装 Spinel — 某个命令首次需要 `spin` 时会发生什么</summary>
-
-`cybertrain new`、`db`、`server`、`build` 和 `spin` 会先查找 Spinel `2026.10.27.7020`：首先是 `PATH` 上已有的该版本的 `spinel` 和 `spin`，其次是 `~/.cybertrain/spinel/2026.10.27.7020/` 下的副本；如果都没有，就从 Spinel 的发布标签构建这份副本（`git clone`、`make deps`、`make -j`、`make install`），只需一次，耗时几分钟。日志位于 `~/.cybertrain/log/spinel-2026.10.27.7020-build.log`；如果缺少构建所需的工具，`cybertrain` 会在开始前指出缺少哪个，并打印适用于你的平台的安装命令。
-
-`cybertrain setup` 会按需执行同样的操作（`--force` 会重新构建 `~/.cybertrain` 下的副本），并且在正在使用的是它自己的副本时，打印把它加入 `PATH` 的那一行，方便你自己运行 `spin`：
-
-```shell 终端 — 任意目录
-export PATH="$HOME/.cybertrain/bin:$PATH"
-```
-
-`~/.cybertrain/bin` 中存放指向当前所用版本的 `spinel` 和 `spin` 链接。即使它不在 `PATH` 上，`cybertrain spin ARGS...` 也能在任意目录下用该版本运行 `spin`。`CYBERTRAIN_HOME` 可替代 `~/.cybertrain`，`CYBERTRAIN_SPINEL_HOME=PREFIX` 则改用安装在 `PREFIX` 中的 Spinel（必须是该版本）。`PATH` 上其他版本的 `spinel` 永远不会被使用或改动。
-
-</details>
+Spinel 安装在哪里、如何自己运行 `spin`，以及如何使用另一份安装：[Spinel 是如何安装的](install.md#how-spinel-is-installed)。
 
 > [!NOTE]
 > 没有可以安装的机器？[在线试用](site:playground.html)会在 GitHub Codespace 中打开这个博客，第 02、03、04 和 07 步都已完成。
@@ -74,24 +62,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 <span class="ln cmd">cybertrain build             <span class="c"># 生产环境：dist/blog、dist/public/、dist/storage/、dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
 
-`cybertrain` 命令是纯 Ruby 编写的，gem 在 CRuby（3.2 或更新版本）下运行它；框架和 Spinel 都不在这个 gem 里。它的命令如下（`cybertrain help` 会把它们打印出来）：
-
-<!-- list: points -->
-- `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]` 在 NAME 中创建应用，然后在其中运行 `spin lock` 和 `spin run gen`，需要时会先安装 Spinel。
-- `cybertrain generate scaffold NAME field:type ...`（别名 `g scaffold`）为当前目录中的应用添加一个资源。
-- `cybertrain generate authentication` 为当前目录中的应用添加用邮箱和密码登录的功能（[步骤 13](#authentication)）。
-- `cybertrain generate attachment MODEL FIELD [--any]` 为当前目录中应用里已生成脚手架的模型添加文件上传功能（[步骤 14](#attachments)）。
-- `cybertrain db migrate` 先生成代码，再执行待处理的迁移，然后再次生成（`spin run gen; spin run db -- migrate; spin run gen`）；`cybertrain migration` 作为别名保留。
-- `cybertrain db COMMAND...` 在 `spin run gen` 之后运行其他任意数据库命令：`status`、`rollback [N]`（之后会再次生成）、`schema:dump`、`create`。
-- `cybertrain server [PORT]` 先生成代码，然后启动开发服务器（`spin run gen; spin run NAME`，或 `spin run NAME -- PORT`；默认端口 3000）。
-- `cybertrain build` 构建嵌入了 `app/views/` 的 NAME，并组装 `dist/`（二进制文件、`public/`、`storage/`、`tmp/`）。
-- `cybertrain spin ARGS...` 在任意目录下用锁定版本的 Spinel 运行 `spin`：`cybertrain spin test`、`cybertrain spin run gen -- --check`。
-- `cybertrain setup [--force]` 把 Spinel `2026.10.27.7020` 安装到 `~/.cybertrain` 中，除非 `PATH` 上已有该版本的 `spinel`；`--force` 会重新构建 `~/.cybertrain` 下的副本。
-- `cybertrain doctor` 检查 C 工具链、SQLite 头文件和 Spinel 的安装情况。
-- `cybertrain version` 打印版本（`cybertrain 0.3.1`）；`cybertrain help` 打印用法。
-
-> [!NOTE]
-> `db`、`server` 和 `build` 需在应用目录内运行；NAME 是其 `spin.toml` 中的 `[package] name`。
+[每条命令](install.md#the-cybertrain-command)及其选项，都列在安装指南中。
 
 <!-- step 02 #new-app stage: 你编写 · `blog/` -->
 ## 创建应用
@@ -808,33 +779,7 @@ kamal deploy   # 之后的每次部署
 - 在与运行机器相同的操作系统和 CPU 上构建 `dist/`：该二进制文件链接系统的 SQLite。
 - `SPINEL_WORKERS` 默认为 `1`。
 - 只测试过 Spinel `2026.10.27.7020`。
-
-<!-- step + #differences -->
-## 与 Rails 的差异
-
-> [!WHY]
-> README 中的完整表格，集中在一处。
-
-<!-- table: cmp -->
-| Rails | CyberTrain |
-|---|---|
-| `rails console` | 没有控制台——Spinel 没有 `eval` |
-| 修改代码，正在运行的应用会自动加载 | Ruby 代码需要重新构建；开发时 `cybertrain server` 会替你完成（重新构建、停止、`execv`） |
-| 修改视图，无需重新加载 | 相同——开发时视图在每次请求时从磁盘解析 |
-| `def new` | `def new_action`（`new` 会遮蔽 `Klass.new(ctx)`） |
-| `before_action { do_thing }`（隐式 `self`） | `before_action { |c| c.do_thing }`——无法对存储的块使用 `instance_exec`，因此回调需要显式接收控制器/记录 |
-| `resources :posts do resources :comments end` | `resources :posts do |posts| posts.resources :comments end`——嵌套块需要显式接收 mapper |
-| ERB 编译为方法；可以使用任何对象、任何方法 | 按照固定的语法/分派表解释执行 |
-| 会话可以保存任何经 marshal 序列化的对象 | 会话值只能是 String，使用 HMAC 签名的 cookie |
-| 多种数据库适配器 | 仅支持 SQLite，通过 FFI 访问 |
-| `has_many :through`、`includes`、`pluck`、`dependent:`、枚举、STI、多态关联 | 未实现；关联只来自 schema 中的外键 |
-| `namespace`、格式/`respond_to`、`constraints`、`mount` | 未实现——只有扁平的名称，仅支持 `render json:` |
-| 异常时显示完整回溯 | 类、消息、请求行、模板名/行号——Spinel 不提供回溯 |
-| Rack 及其中间件，以及 `Gemfile` 中的任何 gem | 不兼容 Rack；只有一小组固定的中间件；使用 Spinel 自己的 `spin-index`，仅限能在其 Ruby 子集下编译的内容 |
-| minitest / RSpec | `Cybertrain::Test`——基于反射的测试运行器无法在 AOT 编译下工作 |
-| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` 写出同样的结构，并因为没有控制台而额外加上注册页面；`has_secure_password` 基于 `Cybertrain::Password`（PBKDF2）逐一写在 User 模型里；没有密码重置（它需要应用为 `Cybertrain::Mailer` 提供的 SMTP 设置） |
-| 邮件、后台任务、ActionCable、资源管道、i18n | 邮件和后台任务以最小的形式提供：`Cybertrain::Mailer` 通过 SMTP 发送纯文本（[发送电子邮件](external-services.md#sending-e-mail)），`Cybertrain::Job` 和 `Cybertrain::Scheduler` 让工作稍后运行或每 N 秒运行一次（[后台任务](background-and-operations.md#background-work)）。未构建（不在 MVP 范围内）：ActionCable 服务器端（WebSocket 只支持出站）、资源管道（`public/` 作为静态文件提供）和 i18n |
-<!-- table-foot: 此表并不完整。 -->
+- 与 Rails 差异的完整列表：[与 Rails 的差异](how-it-works.md#differences-from-rails)。
 
 <!-- step → #where-next -->
 ## 下一步
