@@ -61,6 +61,9 @@ Content rule: every command, code block and claim on these pages (the
 generated ones too, through their Markdown) comes from
 [README.md](../README.md), [examples/blog](../examples/blog) or
 [docs/](../docs); when those change, change the site to match.
+The home page carries summaries and links to the guides for detail: when a
+guide becomes the canonical place for a fact, the home page keeps at most a
+sentence about it.
 The home page's Performance section (06) shows the run recorded in
 [docs/benchmark.md](../docs/benchmark.md) (`bench/results/<date>.json`,
 printed by `bench/report`): after a new recorded run, update its numbers in

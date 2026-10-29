@@ -1,5 +1,5 @@
 ---
-source_sha256: 71340fc14e1e2135afadccd8376fd9523bf610df53ed4fff573f49625f19cc4f
+source_sha256: 6b6acef2aeb60289c1882d9a367d782f35a67a456ff5b367fbd4c7eb7a0eaade
 title: Guides
 ---
 # Guides
@@ -8,10 +8,10 @@ Tout ce que la documentation de CyberTrain couvre au-delà de la référence de 
 
 <!-- list: next-list -->
 - [**Tutoriel**](tutorial.md) — Construire le blog pas à pas&nbsp;: scaffold, commentaires, authentification, envois de fichiers, déploiement
-- [**Installation**](install.md) — Prérequis, le bac à sable, toutes les commandes `cybertrain`, comment Spinel est installé
-- [**Fonctionnement**](how-it-works.md) — Génération de code à la compilation, différences avec Rails, performances
-- [**Modèles et base de données**](models.md) — Migrations, requêtes au-delà de `where`, pagination
-- [**Requêtes**](requests.md) — Limitation du débit, l’adresse du client, en-têtes paramétrés
+- [**Installation**](install.md) — Prérequis, la commande `cybertrain`, comment Spinel et le framework sont installés
+- [**Fonctionnement**](how-it-works.md) — Génération de code à la compilation, vues interprétées, le serveur, la boucle de développement et un tableau des différences avec Rails
+- [**Modèles et base de données**](models.md) — Migrations, requêtes au-delà de `where`, pagination, transactions, noms de colonnes, ordre
+- [**Requêtes**](requests.md) — Limitation du débit, l’adresse du client, en-têtes paramétrés, chaînes de requête et corps de requête
 - [**Configuration**](configuration.md) — `config/app.rb`, variables d’environnement, fuseaux horaires
 - [**Tâches de fond et exploitation**](background-and-operations.md) — Jobs, tâches planifiées, sauvegardes, le contrôle de santé
 - [**HTTP sortant, flux WebSocket et e-mail**](external-services.md) — `HttpClient`, `WebSocket.subscribe`, `Mailer`

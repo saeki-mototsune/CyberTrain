@@ -49,7 +49,7 @@
     </a>
     <nav class="nav-links" aria-label="主导航">
       <ul>
-        <li class="nav-wide-only"><a href="index.html#how-it-works">原理</a></li>
+        <li class="nav-wide-only"><a href="guide/how-it-works.html">原理</a></li>
         <li><a href="tutorial.html">教程</a></li>
         <li class="nav-wide-only"><a href="deploy.html">部署</a></li>
         <li class="nav-wide-only"><a href="guide/index.html">指南</a></li>
@@ -99,7 +99,7 @@
 <span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000</span></span>
 <span class="ln cmd">cybertrain build             <span class="c"># 生产环境：dist/blog、dist/public/、dist/storage/、dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
-        <p class="term-note">只有 <code>cybertrain</code> 命令需要 Ruby&nbsp;3.2+（应用本身从不在 CRuby 上运行），此外还需要 <code>git</code>、<code>make</code>、<code>curl</code>、C 编译器和 SQLite&nbsp;3 头文件：参见<a href="#requirements">开始之前</a>。设置好 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 后，用 <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> 运行构建产物。</p>
+        <p class="term-note">只有 <code>cybertrain</code> 命令需要 Ruby&nbsp;3.2+（应用本身从不在 CRuby 上运行），此外还需要 <code>git</code>、<code>make</code>、<code>curl</code>、C 编译器和 SQLite&nbsp;3 头文件：参见<a href="guide/install.html#requirements">开始之前</a>。设置好 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 后，用 <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> 运行构建产物。</p>
       </div>
     </div>
   </div>
@@ -254,20 +254,16 @@
         <p class="part-what">你的应用所基于的库。</p>
         <div class="part-fact"><p class="fact-k">包含什么</p><p>HTTP 服务器、路由和控制器、会话与 CSRF 防护、模板解释器、SQLite 模型和迁移，以及 <code>spin run gen</code> 背后的代码生成器。</p></div>
         <div class="part-fact"><p class="fact-k">如何获取</p><p>你不需要安装它。你的应用的 <code>spin.toml</code> 指定本仓库的发布标签 <code>v0.3.1</code>，<code>spin lock</code> 会把它拉取到 spin 的缓存中，并在 <code>spin.lock</code> 中锁定提交。不会有任何内容被复制到你的应用中。</p></div>
-        <div class="part-fact"><p class="fact-k">在哪里运行</p><p>在你的应用内部。Spinel 把它和你的代码一起进行 AOT 编译；它从不在 CRuby 上运行。</p></div>
-        <div class="part-fact"><p class="fact-k">在 dist/blog 中</p><p><span class="pill pill-on">编译在内</span>它是 CyberTrain 中随应用交付的部分。</p></div>
       </article>
       <article class="part" aria-labelledby="part-cli">
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> 命令</h3></div>
         <p class="part-what">用来创建、构建和运行你的应用的工具。</p>
         <div class="part-fact"><p class="fact-k">包含什么</p><p>只有 <code>cybertrain</code> 命令：<code>new</code>、<code>generate scaffold</code>、<code>db migrate</code>、<code>server</code>、<code>build</code>、<code>spin</code>、<code>setup</code> 和 <code>doctor</code>。框架和 Spinel 都不在这个 gem 里。</p></div>
         <div class="part-fact"><p class="fact-k">如何获取</p><p><code>gem install cybertrain</code>。首次使用时，它会把锁定的 Spinel 版本 <code>2026.10.27.7020</code> 构建到 <code>~/.cybertrain</code> 中，除非你的 <code>PATH</code> 上已经有该版本。</p></div>
-        <div class="part-fact"><p class="fact-k">在哪里运行</p><p>在你的机器上，运行于 CRuby 3.2 或更新版本。它会替你调用 Spinel 的 <code>spin</code> 工具，你无需亲自调用。</p></div>
-        <div class="part-fact"><p class="fact-k">在 dist/blog 中</p><p><span class="pill">不交付</span>该二进制文件无需 Ruby、gem 或 Spinel 即可运行。</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">两者从同一个标签发布，因此版本一致：0.3.1 版的 gem 生成的应用依赖框架 <code>v0.3.1</code>。要把应用迁移到新版本，先更新 gem，把 <code>spin.toml</code> 指向新标签，然后运行 <code>cybertrain spin lock</code> 和 <code>cybertrain spin run gen</code>。</p>
+      <p class="footnote">两者从同一个标签发布，因此版本一致。安装指南中有<a href="guide/install.html#moving-an-app-to-a-new-release">应用如何迁移到新版本</a>的说明。</p>
     </div>
   </div></div>
 </section>
@@ -288,17 +284,15 @@
     </div>
     <div class="sec-body sec-body-wide">
       <ol class="steps">
-        <li><span class="step-n" aria-hidden="true">1</span><h3>构建时生成</h3><p><code>spin run gen</code> 执行 <code>db/schema.rb</code> 和 <code>config/routes.rb</code> 以获取表和路由数据，并对 <code>app/controllers</code> 和 <code>app/models</code> 做词法扫描（用正则表达式，而不是解析器），找出 <code>@ivar =</code> 赋值、回调名和无参数的 <code>def</code>。它把可读的纯 Ruby 代码写入 <code>gen/</code>，其中包括 <code>gen/views.rb</code>，即内嵌视图表（除非为部署而构建，否则为空）。<code>cybertrain db migrate</code>、<code>server</code> 和 <code>build</code> 会替你运行它。</p></li>
-        <li><span class="step-n" aria-hidden="true">2</span><h3>提交 <code>gen/</code></h3><p>它要提交进仓库，而不是写进 gitignore，因为 <code>spin build</code> 和 <code>spin test</code> 没有可以先执行生成的钩子。CI 会重新运行 <code>spin run gen</code>，一旦有差异就失败，因此过时的生成代码无法合并。<code>cybertrain spin run gen -- --check</code> 会报告过时的文件。</p></li>
-        <li><span class="step-n" aria-hidden="true">3</span><h3>解释执行视图</h3><p><code>app/views/**/*.html.erb</code> 在请求时被解析，并由树遍历解释器执行。开发时，引擎从磁盘读取 <code>app/views/</code>，模板变化时重新解析，因此修改视图无需重新构建。<code>cybertrain build</code> 会把每个模板都嵌入二进制文件（<code>spin run gen -- --embed-views</code>）；生产环境的二进制文件只从这张表渲染，每个模板只解析一次。Spinel 没有 <code>eval</code>，所以这是一套封闭的语法，而不是真正的 Ruby。</p></li>
-        <li><span class="step-n" aria-hidden="true">4</span><h3>用绿色线程提供服务，用 SQLite 存储</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器为每个连接运行一个 Spinel 绿色线程。模型通过 <code>ffi_func</code>/<code>ffi_lib</code> 访问 SQLite，使用 4 个连接的连接池（WAL、约 5 秒的 busy 处理器、开启外键）。<code>SPINEL_WORKERS</code> 默认为 <code>1</code>。</p></li>
-        <li><span class="step-n" aria-hidden="true">5</span><h3>开发时重新构建</h3><p><code>cybertrain server</code> 先运行 <code>spin run gen</code>，再运行 <code>spin run blog</code>（你的应用名）。开发时，二进制文件每半秒轮询一次 <code>app/**/*.rb</code>、<code>config/**/*.rb</code>、<code>db/schema.rb</code> 和 <code>gen/**/*.rb</code>（不包括视图和 <code>gen/views.rb</code>）。一旦有变化，就在后台运行 <code>spin run gen &amp;&amp; spin build blog -- --incremental</code>；成功后会设置重启标志（与外部 <code>kill -HUP</code> 设置的是同一个标志），服务器随即停止监听、处理完未完成的请求，并在同一端口和 PID 上 <code>execv</code> 新的二进制文件。构建失败时，服务器继续用旧的二进制文件提供服务，并以横幅形式显示编译器输出。当 <code>cybertrain build</code> 持有 <code>tmp/cybertrain-build.lock</code> 时，会跳过重新构建。生产环境中这些都不会加载。</p></li>
+        <li><span class="step-n" aria-hidden="true">1</span><h3>构建时生成</h3><p><code>spin run gen</code> 读取 <code>db/schema.rb</code> 和 <code>config/routes.rb</code>，扫描 <code>app/controllers</code> 和 <code>app/models</code>，并把可读的纯 Ruby 代码写入 <code>gen/</code>。<code>cybertrain db migrate</code>、<code>server</code> 和 <code>build</code> 会替你运行它。</p></li>
+        <li><span class="step-n" aria-hidden="true">2</span><h3>提交 <code>gen/</code></h3><p>它要提交进仓库，因为 <code>spin build</code> 和 <code>spin test</code> 没有可以先执行生成的钩子。CI 会重新运行 <code>spin run gen</code>，一旦有差异就失败，因此过时的生成代码无法合并。</p></li>
+        <li><span class="step-n" aria-hidden="true">3</span><h3>解释执行视图</h3><p>一个遍历树的解释器渲染 <code>app/views/**/*.html.erb</code>：开发时从磁盘读取，由 <code>cybertrain build</code> 嵌入二进制文件。Spinel 没有 <code>eval</code>，所以这是一套封闭的语法，而不是真正的 Ruby。</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>用绿色线程提供服务，用 SQLite 存储</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器为每个连接运行一个 Spinel 绿色线程。模型通过 <code>ffi_func</code>/<code>ffi_lib</code> 访问 SQLite，使用 4 个连接的连接池。</p></li>
+        <li><span class="step-n" aria-hidden="true">5</span><h3>开发时重新构建</h3><p><code>cybertrain server</code> 会在 Ruby 源代码变化时重新构建，然后处理完未完成的请求，并在同一端口上 <code>execv</code> 新的二进制文件。构建失败时，旧的二进制文件继续提供服务。</p></li>
       </ol>
-      <figure class="code" data-lang="shell">
-<figcaption><span class="code-path">终端 &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="代码：终端 &mdash; blog/"><code><span class="ln cmd">cybertrain spin run gen   <span class="c"># 读取 db/schema.rb + config/routes.rb，扫描 app/，写入 gen/</span></span>
-<span class="ln cmd">cybertrain build          <span class="c"># 内嵌 app/views 的 dist/blog，以及 dist/public/、dist/storage/、dist/tmp/</span></span></code></pre>
-</figure>
+      <div class="cmp-foot">
+        <a class="more" href="guide/how-it-works.html">完整的工作原理</a>
+      </div>
     </div>
   </div></div>
 </section>
@@ -329,7 +323,7 @@
       </table>
       <div class="cmp-foot">
         <p>此表并不完整。</p>
-        <a class="more" href="https://github.com/saeki-mototsune/CyberTrain#differences-from-rails" rel="noopener">README 中的完整表格<span aria-hidden="true"> &#8599;</span></a>
+        <a class="more" href="guide/how-it-works.html#differences-from-rails">完整表格</a>
       </div>
     </div>
   </div></div>
@@ -368,23 +362,7 @@
         <li><p class="perf-k">服务器上需要的东西</p><p class="perf-v">2.5&nbsp;MB</p><p class="perf-d">一个二进制文件。Rails：Ruby、69 个 gem 和应用，共 109&nbsp;MB。</p></li>
         <li><p class="perf-k">代价：一次构建</p><p class="perf-v">3 分钟</p><p class="perf-d">用 <code>cybertrain build</code> 编译二进制文件所需的时间。Rails 直接运行源代码。</p></li>
       </ul>
-      <p class="footnote">预热之后三次 10 秒测量的中位数，环境为一台 4 vCPU 的云虚拟机，wrk 运行在服务器不使用的两个核心上：用 Spinel 2026.09.12 构建的 CyberTrain 0.2.1，对比运行在 Ruby 3.4.6（启用 YJIT）和 Puma 8.0 上的 Rails 8.1.4（一个核心时为一个 3 线程的进程，两个核心时为两个）。同一行的条形共用一个刻度。每次只发一个请求时，文章页面的响应时间为 0.4 ms，Rails 为 4.7 ms。两者都使用 jemalloc 时（Rails 的生产镜像默认预加载它；CyberTrain 只需在 <code>spin.toml</code> 中加一行），一个核心上为 2.8 到 14.6 倍。差距的一部分来自 Rails 默认会做而 CyberTrain 不做的工作：加密会话 Cookie，并为每个表单签发 CSRF 令牌。方法、全部数据以及如何重新运行，见 <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/benchmark.md" rel="noopener">docs/benchmark.md</a>。</p>
-    </div>
-  </div></div>
-</section>
-
-<section class="sec" id="requirements" aria-labelledby="req-h">
-  <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">07</span><p class="sec-label">开始之前</p></div>
-    <div class="sec-body">
-      <h2 id="req-h">你的机器需要准备什么。</h2>
-    <dl class="reqs">
-      <div><dt>Ruby</dt><dd>3.2+，带 RubyGems，仅供 <code>cybertrain</code> 命令使用。应用本身从不在 CRuby 上运行。</dd></div>
-      <div><dt>Spinel</dt><dd><code>2026.10.27.7020</code>，未在其他版本上测试。第一个需要它的命令会把它构建到 <code>~/.cybertrain</code> 中（需要几分钟，仅一次）；如果 <code>PATH</code> 上已有该版本的 <code>spinel</code>，则直接使用。</dd></div>
-      <div><dt>工具链</dt><dd><code>cc</code> 和 <code>make</code>（Spinel 会把每个程序编译为 C），以及用于构建 Spinel 的 <code>git</code> 和 <code>curl</code>。SQLite&nbsp;3 和 zlib 头文件和库：Debian/Ubuntu 上为 <code>libsqlite3-dev</code> 和 <code>zlib1g-dev</code>，macOS 上随 Xcode 命令行工具提供。OpenSSL 头文件是可选的。</dd></div>
-      <div><dt>状态</dt><dd>预 Alpha 阶段，版本 <code>0.3.1</code>，MIT 许可。示例博客由 CI 在 Linux 和 macOS 上运行测试。</dd></div>
-    </dl>
-    <p class="footnote"><code>cybertrain doctor</code> 会检查这些工具和头文件以及 Spinel 的安装情况，缺少某项时会打印适用于你的平台的安装命令。<code>cybertrain setup</code> 按需安装 Spinel，并打印用于自行运行 <code>spin</code> 的 <code>PATH</code> 设置行；<code>cybertrain spin ARGS...</code> 则无需该设置即可运行它。</p>
+      <p class="footnote">预热之后三次 10 秒测量的中位数，环境为一台 4 vCPU 的云虚拟机：用 Spinel 2026.09.12 构建的 CyberTrain 0.2.1，对比运行在 Ruby 3.4.6（启用 YJIT）和 Puma 8.0 上的 Rails 8.1.4。测量方法、全部数字以及如何重新测量：<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/benchmark.md" rel="noopener">docs/benchmark.md</a>。</p>
     </div>
   </div></div>
 </section>

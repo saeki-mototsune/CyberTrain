@@ -1,7 +1,9 @@
 ---
-source_sha256: 2dc0901879541229f7d52f22c19e1446e8d9db24b90486a24024d2379a1605fe
+source_sha256: 8139d87863b139634224e836699b97e3b4ccaddcbe6af45562216a3f8e30208d
 ---
-# Requêtes&nbsp;: limitation du débit et en-têtes
+# Requêtes
+
+Ce qu’un contrôleur reçoit d’une requête et ce que le framework vérifie avant de l’exécuter&nbsp;: la limitation du débit et l’adresse du client derrière un proxy, les en-têtes paramétrés, et la façon dont les chaînes de requête et les corps de requête sont analysés et bornés.
 
 ## Limitation du débit et adresse du client
 
@@ -33,6 +35,8 @@ verrou&nbsp;: nommez les actions avec `only:`. Dans un test,
 `Cybertrain::RateLimit.reset_all!` oublie tous les compteurs et
 `Cybertrain::RateLimit.current_time = n` fige l’horloge (`-1` la rétablit).
 
+### L’adresse du client derrière un proxy
+
 L’adresse comptée est `request.client_ip` (`by: :remote_addr` compte plutôt le
 pair de la connexion). C’est `request.remote_addr`, sauf si
 `config.trusted_proxy` est activé (`CYBERTRAIN_TRUSTED_PROXY=1`) **et** que la
@@ -62,7 +66,9 @@ la forme IPv4-mappée de ses adresses (`::ffff:172.18.0.2`), et le `%zone` d’u
 pair est ignoré. Une entrée qui n’est ni une adresse ni un CIDR, ou dont le
 préfixe dépasse `/32` (IPv4) ou `/128` (IPv6), arrête le serveur au démarrage.
 `CYBERTRAIN_TRUSTED_PROXY=1` est le raccourci de `127.0.0.0/8,::1`, et les deux
-s’additionnent. C’est le cas de Kamal&nbsp;: kamal-proxy tourne dans son propre
+s’additionnent.
+
+C’est le cas de Kamal&nbsp;: kamal-proxy tourne dans son propre
 conteneur Docker et se connecte depuis son adresse sur le réseau Docker, donc le
 `config/deploy.yml` qu’écrit `cybertrain new` définit
 `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` (la plage par défaut de
@@ -108,3 +114,17 @@ valide. Un identifiant `Bearer <token>` ou `Basic <base64>` n’est pas un
 paramètre&nbsp;: vérifiez le schéma, puis lisez l’identifiant dans
 `request.header("authorization")`. Conception&nbsp;:
 [docs/design.md](../design.md) D31.
+
+## Chaînes de requête et corps
+
+`Query.parse`, `Query.value_of`, `Query.decode` et `request.form_value` / `query_value` lèvent `Cybertrain::QueryMalformed` (une `StandardError` sous `Cybertrain::QueryInvalid`, pas une `ArgumentError`), à laquelle il est répondu 400, sur&nbsp;:
+
+- un échappement pourcent mal formé, sur les deux runtimes&nbsp;;
+- une séquence d’octets UTF-8 invalide, brute (quel que soit le tag de la String) ou encodée en pourcent (Rails répond de même 400 pour un encodage de paramètre invalide)&nbsp;;
+- un octet brut que seul un échappement compléterait (`a=\xC3%A9`).
+
+`Cookies.parse` garde plutôt une telle valeur brute. Un chemin avec une séquence invalide (brute, ou décodée depuis le pourcent dans un segment) donne aussi une 400 (`request.path_segments`)&nbsp;; un échappement mal formé dans un chemin reste littéral, une 404 faute de correspondance. Les paramètres de requête s’imbriquent sur 32 niveaux et 4096 paires au plus, et donnent une 400 au-delà. Note de mise à niveau&nbsp;: le code d’application qui faisait `rescue ArgumentError` autour de ces appels doit plutôt faire `rescue Cybertrain::QueryInvalid`.
+
+La requête ne garde pas d’arbre de paramètres à elle (le Router construit `params`, le middleware lit une seule clé)&nbsp;; une application qui veut l’arbre entier l’analyse elle-même, `Query.parse(request.utf8_query_string)`, et possède le résultat.
+
+Rack laisse un corps de requête gzip tel quel. Ici, un corps envoyé avec `Content-Encoding: gzip` (un SDK ou un client d’API au-delà de quelques kilo-octets) est `request.decoded_body`, décompressé une fois via la zlib du système sous un plafond de taille de sortie&nbsp;: 10&nbsp;Mio par défaut, et un point d’accès qui attend davantage passe le sien, `request.decoded_body(limit)`. Un corps corrompu ou un encodage autre que gzip/identity donne `Cybertrain::BodyUndecodable`, un corps qui dépasserait la limite une fois décompressé `Cybertrain::BodyTooLarge`, deux `QueryInvalid` auxquelles il est répondu 400. `request.body` reste les octets tels qu’envoyés.

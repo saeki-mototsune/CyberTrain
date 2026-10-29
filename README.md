@@ -48,21 +48,21 @@ cybertrain build       # production: one binary in dist/
 
 Or try it with nothing installed:
 [open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
-([what the playground holds](https://saeki-mototsune.github.io/CyberTrain/guide/install.html#try-it-in-the-browser)).
+([what the playground holds](https://saeki-mototsune.github.io/CyberTrain/playground.html)).
 
 On one CPU core the blog serves 2.6 to 12.2 times the requests per second of
 the same app in Rails 8.1, in about a tenth of the memory
-([numbers](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html#performance)).
+([numbers](https://saeki-mototsune.github.io/CyberTrain/index.html#performance)).
 
 ## Documentation
 
 | | |
 | --- | --- |
 | [Tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) | Build the blog step by step: scaffold, comments, authentication, uploads, deployment |
-| [Installing](https://saeki-mototsune.github.io/CyberTrain/guide/install.html) | Requirements, the playground, every `cybertrain` command, how Spinel is installed |
-| [How it works](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html) | Build-time code generation, differences from Rails, performance |
-| [Models and the database](https://saeki-mototsune.github.io/CyberTrain/guide/models.html) | Migrations, queries beyond `where`, pagination |
-| [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Rate limiting, the client address, parameterised headers |
+| [Installing](https://saeki-mototsune.github.io/CyberTrain/guide/install.html) | Requirements, the `cybertrain` command, how Spinel and the framework are installed |
+| [How it works](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html) | Build-time code generation, interpreted views, the server, the development loop, and a table of the differences from Rails |
+| [Models and the database](https://saeki-mototsune.github.io/CyberTrain/guide/models.html) | Migrations, queries beyond `where`, pagination, transactions, column names, ordering |
+| [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Rate limiting, the client address, parameterised headers, query strings and request bodies |
 | [Configuration](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
 | [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Jobs, scheduled tasks, backups, the health check |
 | [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html) | `HttpClient`, `WebSocket.subscribe`, `Mailer` |

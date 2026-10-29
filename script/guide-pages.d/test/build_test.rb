@@ -127,11 +127,11 @@ class BuildTest < Minitest::Test
     assert_includes html, %(<span class="toc-title">Steps 00&ndash;01</span>)
     assert_equal [[nil, "requirements", "00", "Requirements"], [nil, "install", "01", "Install the CLI"],
                   [%( class="toc-x"), "things-to-know", "+", "Things to know"]],
-                 html.scan(%r{<li( class="toc-x")?><a href="#([^"]+)"><span class="toc-n">([^<]+)</span>(.*?)</a></li>})
+                 html.scan(%r{<li( class="toc-x")?><a href="#([^"]+)"><span class="toc-n">([^<]+)</span><span class="toc-t">(.*?)</span></a></li>})
     html = page("ja/guide/install.html")
     assert_includes html, %(<nav class="toc" aria-label="目次">)
     assert_includes html, %(<span class="toc-title">目次</span>)
-    assert_includes html, %(<li><a href="#differences-from-rails"><span class="toc-n">02</span>Rails との違い</a></li>)
+    assert_includes html, %(<li><a href="#differences-from-rails"><span class="toc-n">02</span><span class="toc-t">Rails との違い</span></a></li>)
   end
 
   # A page with no ## section (the Guides index) has no contents list at all,

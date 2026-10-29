@@ -11,7 +11,8 @@
 #   <details><summary>T — D</summary>  details.ci (ci-t, ci-d, ci-body)
 #   ```LANG [PLACE]                    figure.code (GuidePages::Highlight)
 #   <!-- list: KIND -->                ul.KIND; next-list items are [**T**](url) — D
-#   <!-- table: cmp --> …              the comparison table (cmp-wrap cmp-doc);
+#   | a | b | (no table comment)       the table inside div.table-scroll (scrolls sideways)
+#   <!-- table: cmp --> …              the comparison table (cmp-wrap cmp-doc), unwrapped;
 #   <!-- table-foot: text -->            optional, after the table: p.cmp-foot
 # Links go through GuidePages::Links. Images must have absolute URLs (a
 # relative one is an error until images are copied to the site). Other raw
@@ -315,14 +316,25 @@ module GuidePages
         %(#{" " * indent}<li>#{format_as_span_html("a", link_attrs(a.attr), %(<span class="next-t">#{inner(title, indent)}</span><span class="next-d">#{desc_html}</span>))}</li>\n)
       end
 
+      # In a table cell GFM reads `\|` as `|`, inside a code span too (the
+      # backslash is how a cell holds a pipe at all); kramdown keeps it in a
+      # code span, so the page would show the backslash.
+      def convert_codespan(el, indent)
+        return super unless @in_table
+        super(Kramdown::Element.new(:codespan, el.value.gsub("\\|", "|"), el.attr, el.options), indent)
+      end
+
       def convert_table(el, indent)
-        return super unless el.options[:table_kind] == "cmp"
+        @in_table = true
+        sp = " " * indent
+        # A plain table scrolls sideways in its wrapper on a narrow screen; the
+        # tab stop lets a keyboard reach and scroll it (WCAG 2.1.1).
+        return %(#{sp}<div class="table-scroll" tabindex="0">\n#{super(el, indent + 2)}#{sp}</div>\n) unless el.options[:table_kind] == "cmp"
 
         head = el.children.find { |c| c.type == :thead }&.children&.first
         fail!("a cmp table needs two header cells") unless head && head.children.size == 2
 
         labels = head.children.map { |td| plain(td).strip }
-        sp = " " * indent
         th = head.children.map { |td| inner(td, indent) }
         out = +%(#{sp}<div class="cmp-wrap cmp-doc">\n#{sp}  <table class="cmp cmp-full">\n)
         out << %(#{sp}    <caption class="sr-only">#{esc(@words[:cmp_caption])}</caption>\n)
@@ -335,6 +347,8 @@ module GuidePages
         out << %(#{sp}    </tbody>\n#{sp}  </table>\n)
         out << %(#{sp}  <p class="cmp-foot">#{inline_md(el.options[:foot])}</p>\n) if el.options[:foot]
         out << "#{sp}</div>\n"
+      ensure
+        @in_table = false
       end
 
       # --- helpers ---------------------------------------------------------

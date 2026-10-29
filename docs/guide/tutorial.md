@@ -35,10 +35,7 @@ deployable `dist/` folder. The finished app is
 
 <!-- list: checklist -->
 - Ruby 3.2+ and RubyGems, for the `cybertrain` command only; applications
-  never run on CRuby. Building Spinel also needs Ruby&rsquo;s `prism` gem:
-  Ruby 3.3 and newer bundle it; on Ruby 3.2, run `gem install prism` (with
-  Ruby&rsquo;s development headers, `ruby-dev` on Debian/Ubuntu).
-  `cybertrain doctor` checks it.
+  never run on CRuby. On Ruby 3.2, also `gem install prism`.
 - Spinel `2026.10.27.7020`, a release of the
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork,
   which carries the fixes CyberTrain needs ahead of an upstream release;
@@ -49,40 +46,10 @@ deployable `dist/` folder. The finished app is
   `curl`, to build Spinel, which compiles every program to C.
 - SQLite 3 and zlib headers and libraries: `libsqlite3-dev` and `zlib1g-dev`
   on Debian/Ubuntu; present with Xcode's command line tools on macOS.
-- OpenSSL headers (`libssl-dev`) are optional: without them Spinel builds
-  without its `openssl` package, which CyberTrain does not use.
 
-`cybertrain doctor` checks these tools and headers and the Spinel install;
-when a required one is missing it also prints the install command for your
-platform.
-
-<details><summary>How CyberTrain installs Spinel — What happens the first time a command needs `spin`</summary>
-
-`cybertrain new`, `db`, `server`, `build` and `spin` first look for Spinel
-`2026.10.27.7020`: a `spinel` and `spin` of that release already on `PATH`,
-else the copy under `~/.cybertrain/spinel/2026.10.27.7020/`, else they build
-that copy from the Spinel release tag (`git clone`, `make deps`, `make -j`,
-`make install`), once, in a few minutes. The log is
-`~/.cybertrain/log/spinel-2026.10.27.7020-build.log`; if a tool the build
-needs is missing, `cybertrain` says which and prints the install command for
-your platform before it starts.
-
-`cybertrain setup` does the same on request (`--force` rebuilds the copy under
-`~/.cybertrain`) and, when its own copy is the one in use, prints the line
-that puts it on your `PATH`, for running `spin` yourself:
-
-```shell terminal — any directory
-export PATH="$HOME/.cybertrain/bin:$PATH"
-```
-
-`~/.cybertrain/bin` holds `spinel` and `spin` links to the release in use.
-Without it on `PATH`, `cybertrain spin ARGS...` runs `spin` with that release
-from any directory. `CYBERTRAIN_HOME` replaces `~/.cybertrain`, and
-`CYBERTRAIN_SPINEL_HOME=PREFIX` uses the Spinel installed in `PREFIX` instead
-(it must be that release). A `spinel` of another release on `PATH` is never
-used or touched.
-
-</details>
+`cybertrain doctor` checks all of this. The full list and what is optional:
+[Requirements](install.md#requirements); where Spinel goes and how to use
+another install: [how Spinel is installed](install.md#how-spinel-is-installed).
 
 > [!NOTE]
 > No machine to install on? The [playground](site:playground.html) opens this
@@ -109,44 +76,8 @@ glance; the steps below take it one command at a time.
 <span class="ln cmd">cybertrain build             <span class="c"># production: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
 
-The `cybertrain` command is plain Ruby and the gem runs it under CRuby (3.2 or
-newer); neither the framework nor Spinel is in the gem. Its commands
-(`cybertrain help` prints them):
-
-<!-- list: points -->
-- `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]`
-  creates an application in NAME, then runs `spin lock` and `spin run gen` in
-  it, installing Spinel first when it is needed.
-- `cybertrain generate scaffold NAME field:type ...` (alias `g scaffold`) adds
-  a resource to the application in the current directory.
-- `cybertrain generate authentication` adds email-and-password sign-in to the
-  application in the current directory ([step 13](#authentication)).
-- `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload to a
-  scaffolded model in the application in the current directory
-  ([step 14](#attachments)).
-- `cybertrain db migrate` generates, applies pending migrations, and generates
-  again (`spin run gen; spin run db -- migrate; spin run gen`);
-  `cybertrain migration` is kept as an alias.
-- `cybertrain db COMMAND...` runs any other database command after
-  `spin run gen`: `status`, `rollback [N]` (which generates again afterwards),
-  `schema:dump`, `create`.
-- `cybertrain server [PORT]` generates, then starts the development server
-  (`spin run gen; spin run NAME`, or `spin run NAME -- PORT`; default port 3000).
-- `cybertrain build` builds NAME with `app/views/` embedded and assembles
-  `dist/` (the binary, `public/`, `storage/`, `tmp/`).
-- `cybertrain spin ARGS...` runs `spin` with the pinned Spinel, from any
-  directory: `cybertrain spin test`, `cybertrain spin run gen -- --check`.
-- `cybertrain setup [--force]` installs Spinel `2026.10.27.7020` into
-  `~/.cybertrain` unless a `spinel` of that release is already on `PATH`;
-  `--force` rebuilds the copy under `~/.cybertrain`.
-- `cybertrain doctor` checks the C toolchain, the SQLite headers and the
-  Spinel install.
-- `cybertrain version` prints the version (`cybertrain 0.3.1`);
-  `cybertrain help` prints the usage.
-
-> [!NOTE]
-> `db`, `server` and `build` run inside an application; NAME is the
-> `[package] name` in its `spin.toml`.
+[Every command](install.md#the-cybertrain-command), with its options, is listed
+in the Installing guide.
 
 <!-- step 02 #new-app stage: You write · `blog/` -->
 ## Create the application
@@ -1193,33 +1124,7 @@ a clean stop and the database kept on its volume, and loads
   links the system SQLite.
 - `SPINEL_WORKERS` defaults to `1`.
 - Only Spinel `2026.10.27.7020` is tested.
-
-<!-- step + #differences -->
-## Differences from Rails
-
-> [!WHY]
-> The full table from the README, in one place.
-
-<!-- table: cmp -->
-| Rails | CyberTrain |
-|---|---|
-| `rails console` | No console — Spinel has no `eval` |
-| Edit code, the running app picks it up | Ruby needs a rebuild; `cybertrain server` in development does this for you (rebuild, stop, `execv`) |
-| Edit a view, no reload needed | Same — views are parsed from disk per request in development |
-| `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |
-| `before_action { do_thing }` (implicit `self`) | `before_action { |c| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |
-| `resources :posts do resources :comments end` | `resources :posts do |posts| posts.resources :comments end` — nested blocks take the mapper explicitly |
-| ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table |
-| Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
-| Many database adapters | SQLite only, via FFI |
-| `has_many :through`, `includes`, `pluck`, `dependent:`, enums, STI, polymorphic associations | Not implemented; associations come from schema foreign keys only |
-| `namespace`, format/`respond_to`, `constraints`, `mount` | Not implemented — flat names, `render json:` only |
-| Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
-| Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
-| minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
-| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` writes the same shape, plus a sign-up page since there is no console; `has_secure_password` is written out on the User model over `Cybertrain::Password` (PBKDF2); no password reset (it needs the app's SMTP settings for `Cybertrain::Mailer`) |
-| Mailers, jobs, ActionCable, asset pipeline, i18n | Mail and jobs in a minimal form: `Cybertrain::Mailer` sends plain text over SMTP ([Sending e-mail](external-services.md#sending-e-mail)), `Cybertrain::Job` and `Cybertrain::Scheduler` run work later or every N seconds ([Background work](background-and-operations.md#background-work)). Not built (outside the MVP): an ActionCable server (WebSocket is outbound only), an asset pipeline (`public/` is served as static files) and i18n |
-<!-- table-foot: Not exhaustive. -->
+- More differences from Rails, in one table: [Differences from Rails](how-it-works.md#differences-from-rails).
 
 <!-- step → #where-next -->
 ## Where next

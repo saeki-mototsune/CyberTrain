@@ -1,5 +1,5 @@
 ---
-source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
+source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -40,11 +40,8 @@ l’application dans un dossier `dist/` déployable. L’application terminée e
 
 <!-- list: checklist -->
 - Ruby 3.2+ et RubyGems, uniquement pour la commande `cybertrain`&nbsp;; les
-  applications ne tournent jamais sur CRuby. La compilation de Spinel demande
-  aussi la gem `prism` de Ruby&nbsp;: Ruby 3.3 et plus récent
-  l’incluent&nbsp;; avec Ruby 3.2, lancez `gem install prism` (avec les
-  en-têtes de développement de Ruby, `ruby-dev` sous Debian/Ubuntu).
-  `cybertrain doctor` le vérifie.
+  applications ne tournent jamais sur CRuby. Avec Ruby 3.2, ajoutez aussi
+  `gem install prism`.
 - Spinel `2026.10.27.7020`, une version du fork
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel), qui
   intègre les corrections dont CyberTrain a besoin avant une version
@@ -58,43 +55,11 @@ l’application dans un dossier `dist/` déployable. L’application terminée e
 - En-têtes et bibliothèques SQLite 3 et zlib&nbsp;: `libsqlite3-dev` et
   `zlib1g-dev` sous Debian/Ubuntu&nbsp;; fournis avec les Command Line Tools
   de Xcode sous macOS.
-- Les en-têtes OpenSSL (`libssl-dev`) sont facultatifs&nbsp;: sans eux, Spinel
-  est compilé sans son paquet `openssl`, que CyberTrain n’utilise pas.
 
-`cybertrain doctor` vérifie ces outils et en-têtes ainsi que l’installation de
-Spinel&nbsp;; quand un élément requis manque, il affiche aussi la commande
-d’installation pour votre plateforme.
-
-<details><summary>Comment CyberTrain installe Spinel — Ce qui se passe la première fois qu’une commande a besoin de `spin`</summary>
-
-`cybertrain new`, `db`, `server`, `build` et `spin` cherchent d’abord Spinel
-`2026.10.27.7020`&nbsp;: un `spinel` et un `spin` de cette version déjà dans
-le `PATH`, sinon la copie sous `~/.cybertrain/spinel/2026.10.27.7020/`, sinon
-ils compilent cette copie à partir du tag de version de Spinel (`git clone`,
-`make deps`, `make -j`, `make install`), une seule fois, en quelques minutes.
-Le journal est `~/.cybertrain/log/spinel-2026.10.27.7020-build.log`&nbsp;;
-s’il manque un outil nécessaire à la compilation, `cybertrain` indique lequel
-et affiche la commande d’installation pour votre plateforme avant de
-commencer.
-
-`cybertrain setup` fait la même chose à la demande (`--force` recompile la
-copie sous `~/.cybertrain`) et, quand c’est sa propre copie qui est utilisée,
-affiche la ligne qui la place dans votre `PATH`, pour lancer `spin`
-vous-même&nbsp;:
-
-```shell terminal — n’importe quel répertoire
-export PATH="$HOME/.cybertrain/bin:$PATH"
-```
-
-`~/.cybertrain/bin` contient des liens `spinel` et `spin` vers la version
-utilisée. S’il n’est pas dans le `PATH`, `cybertrain spin ARGS...` lance
-`spin` avec cette version depuis n’importe quel répertoire. `CYBERTRAIN_HOME`
-remplace `~/.cybertrain`, et `CYBERTRAIN_SPINEL_HOME=PREFIX` utilise à la
-place le Spinel installé dans `PREFIX` (ce doit être cette version). Un
-`spinel` d’une autre version présent dans le `PATH` n’est jamais utilisé ni
-modifié.
-
-</details>
+`cybertrain doctor` vérifie tout cela. La liste complète et ce qui est
+facultatif&nbsp;: [Prérequis](install.md#requirements)&nbsp;; où Spinel est placé
+et comment utiliser une autre installation&nbsp;:
+[comment Spinel est installé](install.md#how-spinel-is-installed).
 
 > [!NOTE]
 > Pas de machine sur laquelle installer&nbsp;? Le
@@ -123,48 +88,8 @@ fois.
 <span class="ln cmd">cybertrain build             <span class="c"># production: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
 
-La commande `cybertrain` est en Ruby pur et la gem l’exécute sous CRuby (3.2
-ou plus récent)&nbsp;; ni le framework ni Spinel ne sont dans la gem. Ses
-commandes (`cybertrain help` les affiche)&nbsp;:
-
-<!-- list: points -->
-- `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]`
-  crée une application dans NAME, puis y lance `spin lock` et `spin run gen`,
-  en installant d’abord Spinel si nécessaire.
-- `cybertrain generate scaffold NAME field:type ...` (alias `g scaffold`)
-  ajoute une ressource à l’application du répertoire courant.
-- `cybertrain generate authentication` ajoute la connexion par adresse e-mail
-  et mot de passe à l’application du répertoire courant
-  ([étape 13](#authentication)).
-- `cybertrain generate attachment MODEL FIELD [--any]` ajoute l’envoi d’un
-  fichier à un modèle généré par scaffold dans l’application du répertoire
-  courant ([étape 14](#attachments)).
-- `cybertrain db migrate` génère, applique les migrations en attente, puis
-  génère à nouveau
-  (`spin run gen; spin run db -- migrate; spin run gen`)&nbsp;;
-  `cybertrain migration` est conservé comme alias.
-- `cybertrain db COMMAND...` lance toute autre commande de base de données
-  après `spin run gen`&nbsp;: `status`, `rollback [N]` (qui génère à nouveau
-  ensuite), `schema:dump`, `create`.
-- `cybertrain server [PORT]` génère, puis démarre le serveur de développement
-  (`spin run gen; spin run NAME`, ou `spin run NAME -- PORT`&nbsp;; port 3000
-  par défaut).
-- `cybertrain build` compile NAME avec `app/views/` intégré et assemble
-  `dist/` (le binaire, `public/`, `storage/`, `tmp/`).
-- `cybertrain spin ARGS...` lance `spin` avec le Spinel épinglé, depuis
-  n’importe quel répertoire&nbsp;: `cybertrain spin test`,
-  `cybertrain spin run gen -- --check`.
-- `cybertrain setup [--force]` installe Spinel `2026.10.27.7020` dans
-  `~/.cybertrain`, sauf si un `spinel` de cette version est déjà dans le
-  `PATH`&nbsp;; `--force` recompile la copie sous `~/.cybertrain`.
-- `cybertrain doctor` vérifie la chaîne de compilation C, les en-têtes SQLite
-  et l’installation de Spinel.
-- `cybertrain version` affiche la version (`cybertrain 0.3.1`)&nbsp;;
-  `cybertrain help` affiche l’aide.
-
-> [!NOTE]
-> `db`, `server` et `build` s’exécutent dans une application&nbsp;; NAME est
-> le `[package] name` de son `spin.toml`.
+[Toutes les commandes](install.md#the-cybertrain-command), avec leurs options, sont listées
+dans le guide d’installation.
 
 <!-- step 02 #new-app stage: Vous écrivez · `blog/` -->
 ## Créer l’application
@@ -1271,33 +1196,7 @@ et charge `config/deploy.yml` avec Kamal.
   l’exécute&nbsp;: le binaire est lié à la SQLite du système.
 - `SPINEL_WORKERS` vaut `1` par défaut.
 - Seul Spinel `2026.10.27.7020` est testé.
-
-<!-- step + #differences -->
-## Différences avec Rails
-
-> [!WHY]
-> Le tableau complet du README, en un seul endroit.
-
-<!-- table: cmp -->
-| Rails | CyberTrain |
-|---|---|
-| `rails console` | Pas de console — Spinel n’a pas d’`eval` |
-| Modifiez le code, l’application en cours d’exécution le prend en compte | Le Ruby demande une recompilation&nbsp;; en développement, `cybertrain server` s’en charge pour vous (recompilation, arrêt, `execv`) |
-| Modifiez une vue, aucun rechargement nécessaire | Pareil — en développement, les vues sont analysées depuis le disque à chaque requête |
-| `def new` | `def new_action` (`new` masquerait `Klass.new(ctx)`) |
-| `before_action { do_thing }` (`self` implicite) | `before_action { |c| c.do_thing }` — pas d’`instance_exec` sur un bloc stocké, donc les callbacks reçoivent explicitement le contrôleur/l’enregistrement |
-| `resources :posts do resources :comments end` | `resources :posts do |posts| posts.resources :comments end` — les blocs imbriqués reçoivent le mapper explicitement |
-| ERB est compilé en méthode&nbsp;; n’importe quel objet, n’importe quelle méthode | Interprété selon une grammaire/table de dispatch fixe |
-| La session contient n’importe quel objet sérialisé (marshal) | Valeurs de session de type String uniquement, cookie signé HMAC |
-| De nombreux adaptateurs de base de données | SQLite uniquement, via FFI |
-| `has_many :through`, `includes`, `pluck`, `dependent:`, enums, STI, associations polymorphes | Non implémenté&nbsp;; les associations viennent uniquement des clés étrangères du schéma |
-| `namespace`, format/`respond_to`, `constraints`, `mount` | Non implémenté — noms plats, `render json:` uniquement |
-| Backtrace complète lors d’une exception | Classe, message, ligne de requête, nom/ligne du template — Spinel n’expose pas de backtraces |
-| Rack, ses middlewares, et n’importe quelle gem d’un `Gemfile` | Pas de compatibilité Rack&nbsp;; un petit ensemble fixe de middlewares&nbsp;; le `spin-index` propre à Spinel, limité à ce qui compile avec son sous-ensemble de Ruby |
-| minitest / RSpec | `Cybertrain::Test` — les runners fondés sur la réflexion ne peuvent pas fonctionner avec une compilation AOT |
-| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` écrit la même structure, plus une page d’inscription faute de console&nbsp;; `has_secure_password` est écrit en toutes lettres dans le modèle User au-dessus de `Cybertrain::Password` (PBKDF2)&nbsp;; pas de réinitialisation du mot de passe (elle demande les réglages SMTP de l’application pour `Cybertrain::Mailer`) |
-| Mailers, jobs, ActionCable, asset pipeline, i18n | L’e-mail et les jobs sous une forme minimale&nbsp;: `Cybertrain::Mailer` envoie du texte brut par SMTP ([Envoyer des e-mails](external-services.md#sending-e-mail)), `Cybertrain::Job` et `Cybertrain::Scheduler` exécutent un travail plus tard ou toutes les N secondes ([Tâches de fond](background-and-operations.md#background-work)). Non développé (hors du MVP)&nbsp;: un serveur ActionCable (WebSocket sortant seulement), un asset pipeline (`public/` est servi comme fichiers statiques) et l’i18n |
-<!-- table-foot: Liste non exhaustive. -->
+- D’autres différences avec Rails, dans un seul tableau&nbsp;: [Différences avec Rails](how-it-works.md#differences-from-rails).
 
 <!-- step → #where-next -->
 ## Pour aller plus loin

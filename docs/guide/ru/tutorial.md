@@ -1,5 +1,5 @@
 ---
-source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
+source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -39,10 +39,7 @@ CI на Linux и macOS.
 
 <!-- list: checklist -->
 - Ruby 3.2+ и RubyGems — только для команды `cybertrain`; приложения никогда
-  не запускаются на CRuby. Для сборки Spinel также нужен gem `prism`: в Ruby 3.3
-  и новее он входит в поставку; на Ruby 3.2 выполните `gem install prism`
-  (нужны заголовки разработки Ruby, `ruby-dev` в Debian/Ubuntu).
-  `cybertrain doctor` это проверяет.
+  не запускаются на CRuby. На Ruby 3.2 также `gem install prism`.
 - Spinel `2026.10.27.7020` — релиз форка
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel), в
   котором исправления, нужные CyberTrain, появляются раньше, чем в основном
@@ -55,40 +52,10 @@ CI на Linux и macOS.
   C.
 - Заголовки и библиотеки SQLite 3 и zlib: `libsqlite3-dev` и `zlib1g-dev` в
   Debian/Ubuntu; на macOS входят в Xcode command line tools.
-- Заголовки OpenSSL (`libssl-dev`) необязательны: без них Spinel собирается
-  без своего пакета `openssl`, который CyberTrain не использует.
 
-`cybertrain doctor` проверяет эти инструменты и заголовки, а также установку
-Spinel; если чего-то обязательного не хватает, она также выводит команду
-установки для вашей платформы.
-
-<details><summary>Как CyberTrain устанавливает Spinel — Что происходит, когда команде впервые нужен `spin`</summary>
-
-`cybertrain new`, `db`, `server`, `build` и `spin` сначала ищут Spinel
-`2026.10.27.7020`: `spinel` и `spin` этого релиза, уже доступные в `PATH`;
-иначе — копию в `~/.cybertrain/spinel/2026.10.27.7020/`; иначе собирают эту
-копию из релизного тега Spinel (`git clone`, `make deps`, `make -j`,
-`make install`) — один раз, за несколько минут. Лог пишется в
-`~/.cybertrain/log/spinel-2026.10.27.7020-build.log`; если не хватает
-инструмента, нужного для сборки, `cybertrain` ещё до её начала сообщает,
-какого именно, и выводит команду установки для вашей платформы.
-
-`cybertrain setup` делает то же самое по запросу (`--force` пересобирает копию
-в `~/.cybertrain`) и, если используется именно её копия, выводит строку,
-добавляющую её в ваш `PATH`, чтобы запускать `spin` самостоятельно:
-
-```shell терминал — любой каталог
-export PATH="$HOME/.cybertrain/bin:$PATH"
-```
-
-В `~/.cybertrain/bin` лежат ссылки `spinel` и `spin` на используемый релиз.
-Если этого каталога нет в `PATH`, `cybertrain spin ARGS...` запускает `spin`
-этого релиза из любого каталога. `CYBERTRAIN_HOME` заменяет `~/.cybertrain`, а
-`CYBERTRAIN_SPINEL_HOME=PREFIX` вместо этого использует Spinel, установленный
-в `PREFIX` (это должен быть тот же релиз). `spinel` другого релиза в `PATH`
-никогда не используется и не затрагивается.
-
-</details>
+`cybertrain doctor` проверяет всё это. Полный список и что необязательно:
+[Требования](install.md#requirements); где оказывается Spinel и как
+использовать другую установку: [как устанавливается Spinel](install.md#how-spinel-is-installed).
 
 > [!NOTE]
 > Негде устанавливать? [Песочница](site:playground.html) открывает этот блог в
@@ -115,46 +82,8 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 <span class="ln cmd">cybertrain build             <span class="c"># продакшен: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
 
-Команда `cybertrain` написана на обычном Ruby, и гем запускает её под CRuby
-(3.2 или новее); ни фреймворка, ни Spinel в геме нет. Её команды (их выводит
-`cybertrain help`):
-
-<!-- list: points -->
-- `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]`
-  создаёт приложение в NAME, затем запускает в нём `spin lock` и
-  `spin run gen`, при необходимости сначала устанавливая Spinel.
-- `cybertrain generate scaffold NAME field:type ...` (псевдоним `g scaffold`)
-  добавляет ресурс в приложение в текущем каталоге.
-- `cybertrain generate authentication` добавляет в приложение в текущем
-  каталоге вход по адресу почты и паролю ([шаг 13](#authentication)).
-- `cybertrain generate attachment MODEL FIELD [--any]` добавляет загрузку
-  файла в модель со скаффолдом в приложении в текущем каталоге
-  ([шаг 14](#attachments)).
-- `cybertrain db migrate` выполняет генерацию, применяет ожидающие миграции и
-  генерирует снова (`spin run gen; spin run db -- migrate; spin run gen`);
-  `cybertrain migration` оставлена как псевдоним.
-- `cybertrain db COMMAND...` после `spin run gen` запускает любую другую
-  команду базы данных: `status`, `rollback [N]` (после которой генерация
-  выполняется снова), `schema:dump`, `create`.
-- `cybertrain server [PORT]` выполняет генерацию, затем запускает сервер
-  разработки (`spin run gen; spin run NAME` или `spin run NAME -- PORT`; порт
-  по умолчанию — 3000).
-- `cybertrain build` собирает NAME со встроенными `app/views/` и формирует
-  `dist/` (бинарный файл, `public/`, `storage/`, `tmp/`).
-- `cybertrain spin ARGS...` запускает `spin` с зафиксированным Spinel из
-  любого каталога: `cybertrain spin test`,
-  `cybertrain spin run gen -- --check`.
-- `cybertrain setup [--force]` устанавливает Spinel `2026.10.27.7020` в
-  `~/.cybertrain`, если `spinel` этого релиза ещё нет в `PATH`; `--force`
-  пересобирает копию в `~/.cybertrain`.
-- `cybertrain doctor` проверяет инструменты C, заголовки SQLite и установку
-  Spinel.
-- `cybertrain version` выводит версию (`cybertrain 0.3.1`); `cybertrain help`
-  выводит справку по использованию.
-
-> [!NOTE]
-> `db`, `server` и `build` запускаются внутри приложения; NAME — это
-> `[package] name` из его `spin.toml`.
+[Все команды](install.md#the-cybertrain-command) с их параметрами перечислены
+в руководстве по установке.
 
 <!-- step 02 #new-app stage: Вы пишете · `blog/` -->
 ## Создание приложения
@@ -1234,33 +1163,7 @@ kamal deploy   # каждое следующее развёртывание
   будет работать: бинарный файл компонуется с системной SQLite.
 - `SPINEL_WORKERS` по умолчанию равен `1`.
 - Протестирован только Spinel `2026.10.27.7020`.
-
-<!-- step + #differences -->
-## Отличия от Rails
-
-> [!WHY]
-> Полная таблица из README в одном месте.
-
-<!-- table: cmp -->
-| Rails | CyberTrain |
-|---|---|
-| `rails console` | Консоли нет — в Spinel нет `eval` |
-| Правите код — запущенное приложение подхватывает изменения | Ruby требует пересборки; в режиме разработки `cybertrain server` делает это за вас (пересборка, остановка, `execv`) |
-| Правите представление — перезагрузка не нужна | Так же — в режиме разработки представления разбираются с диска при каждом запросе |
-| `def new` | `def new_action` (`new` затенил бы `Klass.new(ctx)`) |
-| `before_action { do_thing }` (неявный `self`) | `before_action { |c| c.do_thing }` — для сохранённого блока нет `instance_exec`, поэтому колбэки получают контроллер/запись явно |
-| `resources :posts do resources :comments end` | `resources :posts do |posts| posts.resources :comments end` — вложенные блоки получают маппер явно |
-| ERB компилируется в метод; любой объект, любой метод | Интерпретируется по фиксированной грамматике/таблице диспетчеризации |
-| Сессия хранит любой сериализуемый через Marshal объект | Значения сессии — только строки (String), cookie с подписью HMAC |
-| Множество адаптеров баз данных | Только SQLite, через FFI |
-| `has_many :through`, `includes`, `pluck`, `dependent:`, enum, STI, полиморфные ассоциации | Не реализовано; ассоциации выводятся только из внешних ключей схемы |
-| `namespace`, форматы/`respond_to`, `constraints`, `mount` | Не реализовано — плоские имена, только `render json:` |
-| Полный бэктрейс при исключении | Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов |
-| Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
-| minitest / RSpec | `Cybertrain::Test` — раннеры на основе рефлексии не могут работать при AOT-компиляции |
-| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` пишет то же самое и вдобавок страницу регистрации, раз консоли нет; `has_secure_password` расписан в модели User поверх `Cybertrain::Password` (PBKDF2); сброса пароля нет (ему нужны настройки SMTP приложения для `Cybertrain::Mailer`) |
-| Мейлеры, фоновые задачи, ActionCable, asset pipeline, i18n | Почта и фоновые задачи — в минимальном виде: `Cybertrain::Mailer` отправляет простой текст по SMTP ([Отправка электронной почты](external-services.md#sending-e-mail)), `Cybertrain::Job` и `Cybertrain::Scheduler` выполняют работу позже или каждые N секунд ([Фоновая работа](background-and-operations.md#background-work)). Не сделано (за рамками MVP): сервер ActionCable (WebSocket только исходящий), asset pipeline (`public/` раздаётся как статические файлы) и i18n |
-<!-- table-foot: Список не исчерпывающий. -->
+- Другие отличия от Rails, в одной таблице: [Отличия от Rails](how-it-works.md#differences-from-rails).
 
 <!-- step → #where-next -->
 ## Что дальше

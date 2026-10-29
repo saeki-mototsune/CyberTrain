@@ -91,6 +91,31 @@ step comment, an unknown code language or front matter key, a `path` other
 than `tutorial.html` or `guide/<name>.html`, or an image with a relative URL
 (images are not supported yet).
 
+## Writing a guide
+
+The generator checks the syntax; these rules keep a page readable. Follow them
+in a new page and in any page you change:
+
+1. After the `# Title`, one paragraph of one to three sentences, the page's
+   introduction, then the first `##`. Nothing else comes before the first `##`
+   (a `> [!NOTE]` under the introduction aside).
+2. A `##` section holds under about 400 words of prose. Past that, split it
+   with `###`, or move the detail most readers skip into a
+   `<details><summary>Title — summary</summary>`.
+3. No bold-led paragraphs as headings (`**Topic.** ...`): a topic that
+   deserves a lead is a `###`.
+4. A paragraph runs to about 120 words at most, and three or more parallel
+   facts are a list.
+5. A table cell holds under about 30 words. A longer explanation goes into a
+   section of the guide it belongs to, and the cell links to it.
+6. No numbers in headings (`## 1. Tags`): the contents list numbers the
+   sections already.
+7. A page's title and introduction say what the page is for, and its entry in
+   the Guides index ([index.md](index.md)) says the same in one line.
+
+A topic has one home: the section that explains it in full. Other pages say
+it in a sentence and link there, so that a change is made in one place.
+
 ## Building and previewing
 
 The build needs Ruby and the `kramdown`, `kramdown-parser-gfm` and `rouge`
