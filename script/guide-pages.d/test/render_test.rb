@@ -234,7 +234,7 @@ class RenderTest < Minitest::Test
 
   def test_plain_table_scroll_wrapper
     html = body("| Key | Meaning |\n|---|---|\n| `port` | The port |\n\n<!-- table: cmp -->\n| Rails | CyberTrain |\n|---|---|\n| a | b |\n")
-    assert_includes html, %(    <div class="table-scroll">\n      <table>\n        <thead>\n)
+    assert_includes html, %(    <div class="table-scroll" tabindex="0">\n      <table>\n        <thead>\n)
     assert_includes html, %(            <td><code>port</code></td>\n)
     assert_includes html, %(      </table>\n    </div>\n)
     assert_includes html, %(    <div class="cmp-wrap cmp-doc">\n      <table class="cmp cmp-full">\n)

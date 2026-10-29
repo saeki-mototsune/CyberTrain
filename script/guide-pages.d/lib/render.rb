@@ -327,8 +327,9 @@ module GuidePages
       def convert_table(el, indent)
         @in_table = true
         sp = " " * indent
-        # A plain table scrolls sideways in its wrapper on a narrow screen.
-        return %(#{sp}<div class="table-scroll">\n#{super(el, indent + 2)}#{sp}</div>\n) unless el.options[:table_kind] == "cmp"
+        # A plain table scrolls sideways in its wrapper on a narrow screen; the
+        # tab stop lets a keyboard reach and scroll it (WCAG 2.1.1).
+        return %(#{sp}<div class="table-scroll" tabindex="0">\n#{super(el, indent + 2)}#{sp}</div>\n) unless el.options[:table_kind] == "cmp"
 
         head = el.children.find { |c| c.type == :thead }&.children&.first
         fail!("a cmp table needs two header cells") unless head && head.children.size == 2

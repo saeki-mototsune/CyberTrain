@@ -68,7 +68,7 @@ documentation framework share:
 | Topic | Canonical page and section | Everywhere else |
 |---|---|---|
 | Requirements | `install.md#requirements` | Home: the one-line hero note (exists). Tutorial step 00: a short checklist without the Spinel `<details>`; "the full list and what is optional: Requirements". |
-| Installing the CLI, the quick start | Home hero (the seven commands) and tutorial step 01 (the same seven, the tutorial's path) | `install.md`: `gem install cybertrain` and `cybertrain doctor` only, then a link to the tutorial |
+| Installing the CLI, the quick start | Tutorial step 01 (the seven commands, the tutorial's own path). The one exception to "one home": the home hero shows the same seven, because a landing page's one command block is what it exists for; both copies are taken from README.md's quick start, which `site/README.md`'s content rule already requires, so they cannot drift apart silently | `install.md`: `gem install cybertrain` and `cybertrain doctor` only, then a link to the tutorial |
 | The `cybertrain` command reference | `install.md#the-cybertrain-command` | Tutorial step 01: one sentence and a link |
 | How Spinel is installed, `PATH`, `CYBERTRAIN_HOME`, `CYBERTRAIN_SPINEL_HOME` | `install.md#how-spinel-is-installed` | Tutorial step 00: drop the `<details>`, one sentence and a link. Home §03/§07: dropped (see 3.3) |
 | The gem vs the framework package, `spin.toml`, upgrading an app | `install.md#the-gem-and-the-framework` | Home §03: two cards with two facts each and a link |
@@ -203,8 +203,10 @@ regeneration.
 
 ### 3.7 Out of scope
 
-New content, the API reference, `deploy.html`, the OG cards, the design of
-the page shell, and the four guides listed as untouched.
+New content, the API reference, `deploy.html` (unchanged apart from the
+header's "How it works" entry, which 3.3 changes on every page), the OG
+cards, the design of the page shell, and the four guides listed as
+untouched.
 
 ## 4. Success criteria
 
