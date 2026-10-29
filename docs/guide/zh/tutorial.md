@@ -1,5 +1,5 @@
 ---
-source_sha256: 4a68c4e344de448d40e05831de345f8ba42623ab5d789b4d07715b47bf5e4b58
+source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -634,7 +634,7 @@ end
 ```
 
 > [!NOTE]
-> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。登录尝试会像 Rails 的生成器那样受到速率限制：`SessionsController` 声明了 `rate_limit to: 10, within: 3 * 60, only: [:create]`，每个客户端地址每三分钟最多 10 次，超过后会带着 "Try again later." 回到表单，直到时间窗口结束。不会生成的部分：密码重置，它的邮件需要应用自己的 SMTP 设置（`Cybertrain::Mailer`，[发送电子邮件](external-services.md#sending-e-mail)），而生成器无从得知这些设置。
+> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。登录尝试会像 Rails 的生成器那样受到速率限制：`SessionsController` 声明了 `rate_limit to: 10, within: 3 * 60, only: [:create]`，每个客户端地址每三分钟最多 10 次，超过后会带着 "Try again later." 回到表单，直到时间窗口结束。在反向代理后面，除非配置了[受信任的代理](requests.md#rate-limiting-and-the-client-address)，否则每位访客都按代理的地址计数。不会生成的部分：密码重置，它的邮件需要应用自己的 SMTP 设置（`Cybertrain::Mailer`，[发送电子邮件](external-services.md#sending-e-mail)），而生成器无从得知这些设置。
 
 <!-- step 14 #attachments stage: 你编写 · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## 添加封面图片

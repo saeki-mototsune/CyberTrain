@@ -1,5 +1,5 @@
 ---
-source_sha256: 4a68c4e344de448d40e05831de345f8ba42623ab5d789b4d07715b47bf5e4b58
+source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -944,7 +944,9 @@ end
 > этого шага. Частота попыток входа ограничена, как в генераторе Rails:
 > `SessionsController` объявляет `rate_limit to: 10, within: 3 * 60, only:
 > [:create]`, десять попыток с одного адреса клиента за три минуты, затем
-> возврат к форме с "Try again later.", пока окно не закроется. Не
+> возврат к форме с "Try again later.", пока окно не закроется. За обратным
+> прокси каждый посетитель считается по адресу прокси, если не настроены
+> [доверенные прокси](requests.md#rate-limiting-and-the-client-address). Не
 > генерируется: сброс пароля — его письму нужны настройки SMTP приложения
 > (`Cybertrain::Mailer`,
 > [Отправка электронной почты](external-services.md#sending-e-mail)),

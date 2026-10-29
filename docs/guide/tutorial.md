@@ -916,7 +916,10 @@ end
 > as in Rails' generator: `SessionsController` declares `rate_limit to: 10,
 > within: 3 * 60, only: [:create]`, ten attempts per client address every
 > three minutes, then back to the form with "Try again later." until the
-> window closes. Not generated: password reset, whose e-mail needs the app's
+> window closes. Behind a reverse proxy every visitor counts as the proxy's
+> address unless
+> [trusted proxies](requests.md#rate-limiting-and-the-client-address) are
+> configured. Not generated: password reset, whose e-mail needs the app's
 > SMTP settings (`Cybertrain::Mailer`,
 > [Sending e-mail](external-services.md#sending-e-mail)), which the generator
 > cannot know.

@@ -1,5 +1,5 @@
 ---
-source_sha256: 4a68c4e344de448d40e05831de345f8ba42623ab5d789b4d07715b47bf5e4b58
+source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -973,7 +973,10 @@ end
 > le générateur de Rails&nbsp;: `SessionsController` déclare `rate_limit to:
 > 10, within: 3 * 60, only: [:create]`, dix tentatives par adresse du client
 > toutes les trois minutes, puis retour au formulaire avec "Try again later."
-> jusqu’à la fin de la fenêtre. Non générée&nbsp;: la réinitialisation du mot
+> jusqu’à la fin de la fenêtre. Derrière un reverse proxy, chaque visiteur est
+> compté sous l’adresse du proxy, sauf si des [proxys de
+> confiance](requests.md#rate-limiting-and-the-client-address) sont
+> configurés. Non générée&nbsp;: la réinitialisation du mot
 > de passe, dont l’e-mail demande les réglages SMTP de l’application
 > (`Cybertrain::Mailer`,
 > [Envoyer des e-mails](external-services.md#sending-e-mail)), que le

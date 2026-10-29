@@ -1,5 +1,5 @@
 ---
-source_sha256: 4a68c4e344de448d40e05831de345f8ba42623ab5d789b4d07715b47bf5e4b58
+source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -634,7 +634,7 @@ end
 ```
 
 > [!NOTE]
-> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。パスワードリセットは生成されません：そのメールにはアプリの SMTP 設定（`Cybertrain::Mailer`、[メールを送る](external-services.md#sending-e-mail)）が必要で、ジェネレーターはそれを知り得ません。
+> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。リバースプロキシの背後では、[信頼するプロキシ](requests.md#rate-limiting-and-the-client-address)を設定しない限り、訪問者は全員がプロキシのアドレスとして数えられます。パスワードリセットは生成されません：そのメールにはアプリの SMTP 設定（`Cybertrain::Mailer`、[メールを送る](external-services.md#sending-e-mail)）が必要で、ジェネレーターはそれを知り得ません。
 
 <!-- step 14 #attachments stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## カバー画像を追加する
