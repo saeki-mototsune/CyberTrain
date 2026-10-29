@@ -1,40 +1,13 @@
-# Installing cybertrain
+# Installing
 
-## Try it in the browser
+What CyberTrain needs on your machine, how to install the `cybertrain`
+command, every command it has, and how it installs Spinel and the framework
+for you.
 
-[Open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
-to try cybertrain without installing anything: VS Code opens in your browser with
-Spinel 2026.10.27.7020, the `cybertrain` CLI and the blog from the [tutorial](tutorial.md)
-already created (`cybertrain new blog`, the article scaffold, the root route and
-the first migration, built once so the server starts without compiling), its
-development server running in a terminal and the app, showing the article list,
-in a new browser tab. The app is a git repository with one commit, so Source
-Control shows what you change. `PLAYGROUND.md` in the app lists what to try, from
-editing a view to continuing with the tutorial from step 08 (comments). A view edit shows
-on the next reload; a Ruby edit is a full rebuild, about a minute, after which the
-server restarts by itself; the app's tab does not reload by itself. `cybertrain new`
-works there with no network.
-
-- A GitHub account is required, and the codespace runs on your own Codespaces
-  quota: GitHub's free plan includes 120 core-hours and 15 GB-month of storage a
-  month, about 60 hours on the default 2-core machine the playground uses. GitHub
-  stops an idle codespace after 30 minutes by default; its storage counts until
-  you delete it.
-- If VS Code asks whether you trust the authors of the files in this folder,
-  choose "Trust Folder & Continue": the server's terminal starts only then.
-- If the app's tab did not open (a pop-up blocker, or the codespace was stopped
-  and restarted), click "Open in Browser" in VS Code's notification for port
-  3000 or in the Ports view, or Ctrl-click the app's URL in the `server`
-  terminal. `PLAYGROUND.md` shows where each is.
-- The same image runs locally (it is published for linux/amd64; on arm64, build
-  it from a checkout):
-
-  ```sh
-  docker run --rm -it --init -p 127.0.0.1:3000:3000 -e CYBERTRAIN_HOST=0.0.0.0 ghcr.io/saeki-mototsune/cybertrain-playground
-  ```
-
-  Then open http://localhost:3000. [playground/README.md](../../playground/README.md)
-  describes the image, building it and the Codespaces setup.
+> [!NOTE]
+> To try CyberTrain without installing anything, open [the playground](site:playground.html):
+> GitHub Codespaces runs the `cybertrain` command, Spinel `2026.10.27.7020` and
+> the tutorial's blog in your browser. The same image also runs locally under Docker.
 
 ## Requirements
 
@@ -46,7 +19,7 @@ works there with no network.
   untested against other versions. You do not install it by hand: the
   `cybertrain` command builds that release into `~/.cybertrain` the first
   time it needs it (`cybertrain setup` does that on request), unless a
-  `spinel` of that release is already on `PATH` — see [Installing the CLI](#installing-the-cli).
+  `spinel` of that release is already on `PATH` — see [How Spinel is installed](#how-spinel-is-installed).
 - To build it: a C toolchain (`cc`, or the compiler `CC` names) and `make`
   — Spinel compiles every program to C — plus `git` and `curl`.
 - SQLite 3 headers/library (`libsqlite3-dev` on Debian/Ubuntu; present with
@@ -56,10 +29,18 @@ works there with no network.
   gzip request bodies (`request.decoded_body`) are inflated through the
   system zlib, bound the same way.
 - Ruby 3.2+ and RubyGems, for the `cybertrain` command only (applications
-  never run on CRuby). Building Spinel also needs Ruby's `prism` gem, which
-  Ruby 3.3 and newer bundle; on Ruby 3.2, `gem install prism` (with Ruby's
-  development headers, `ruby-dev` on Debian/Ubuntu). `cybertrain doctor`
-  checks it.
+  never run on CRuby); on Ruby 3.2, building Spinel also needs the `prism`
+  gem (below).
+
+`cybertrain doctor` checks these tools and headers and the Spinel install;
+when a required one is missing it also prints the install command for your
+platform.
+
+<details><summary>Optional packages — OpenSSL, jemalloc, and prism on Ruby 3.2</summary>
+
+- Building Spinel needs Ruby's `prism` gem, which Ruby 3.3 and newer bundle;
+  on Ruby 3.2, `gem install prism` (with Ruby's development headers,
+  `ruby-dev` on Debian/Ubuntu). `cybertrain doctor` checks it.
 - OpenSSL's headers (`libssl-dev`) are optional: without them Spinel builds
   without its `openssl` package, which cybertrain does not use. On macOS an
   application that requires `openssl` needs Homebrew's (keg-only) OpenSSL on
@@ -71,43 +52,22 @@ works there with no network.
   is worth turning on for production: 1.1 to 1.4 times the requests per second on
   examples/blog ([docs/benchmark.md](../benchmark.md)).
 
-`cybertrain doctor` checks these tools and headers and the Spinel install;
-when a required one is missing it also prints the install command for your
-platform.
+</details>
 
-The framework has no separate test runner; it tests itself. `spin` comes
-with Spinel, and `cybertrain spin` runs the copy `cybertrain` installs
-without touching `PATH` (or put that copy on `PATH` with the `export
-PATH=...` line `cybertrain setup` prints, and call `spin` directly):
+## Install the CLI
 
-```sh
-cybertrain spin test
-```
-
-compiles and runs every program under `test/` and diffs its output against a
-committed `test/<name>.rb.expected` snapshot — minitest/RSpec can't run under
-Spinel, since they find test methods by reflection and an ahead-of-time
-compiler has nothing to reflect on at run time. `cybertrain spin test
---regen test/<name>.rb` rewrites a snapshot from CRuby's output; a few tests that
-touch SQLite through FFI take theirs from the compiled binary instead
-([spikes/NOTES.md](../../spikes/NOTES.md), rule 23); `script/regen-snapshot
-test/<name>.rb` does that build-then-capture step for you and prints the diff stat.
-
-## Installing the CLI
-
-```sh
+```shell terminal — any directory
 gem install cybertrain
-cybertrain new blog    # also installs Spinel, the first time (a few minutes)
-cd blog
-cybertrain g scaffold article title:string body:text
-cybertrain db migrate
-cybertrain server      # http://127.0.0.1:3000
-cybertrain build       # production: dist/
+cybertrain doctor
 ```
 
-The `cybertrain` command is plain Ruby and the gem runs it under CRuby
-(3.2 or newer); neither the framework nor Spinel is in the gem. Its
-commands (`cybertrain help` prints them):
+The first line installs the command from RubyGems and the second checks the
+[requirements](#requirements); [the tutorial](tutorial.md#install) goes on
+from there, from `cybertrain new` to `cybertrain build`.
+
+## The `cybertrain` command
+
+`cybertrain help` prints these commands:
 
 - `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]]
   [--skip-spin]` creates an application in NAME, then runs `spin lock` and
@@ -149,36 +109,56 @@ commands (`cybertrain help` prints them):
 `db`, `server` and `build` run inside an application; NAME is the
 `[package] name` in its `spin.toml`.
 
-Every command that runs `spin` (`new`, `db`, `server`, `build`, `spin`) first makes
-sure a Spinel of the release in `Cybertrain::SPINEL_TAG` is available. A
+## How Spinel is installed
+
+Every command that runs `spin` (`new`, `db`, `server`, `build`, `spin`) first
+makes sure a Spinel of the release in `Cybertrain::SPINEL_TAG` is available. A
 `spinel` on `PATH` (with a `spin`) whose `spinel --version` reports that
 release is used as it is; otherwise the copy `cybertrain` keeps under
-`~/.cybertrain/spinel/2026.10.27.7020/` is used; otherwise `cybertrain`
-builds that copy from the release tag of `Cybertrain::SPINEL_REPOSITORY`
-(`git clone`, `make deps`, `make -j`, `make install PREFIX=...`), once, in a
-few minutes. The build log is
-`~/.cybertrain/log/spinel-2026.10.27.7020-build.log` (its last lines are printed
-if a step fails); if a tool the build needs is missing, `cybertrain` says
-which and prints the install command for your platform before it starts. A
-`spinel` of another release on `PATH` is never used or touched:
-`cybertrain` keeps its own copy (and says so when it installs it).
+`~/.cybertrain/spinel/2026.10.27.7020/`; otherwise `cybertrain` builds that
+copy from the release tag of `Cybertrain::SPINEL_REPOSITORY` (`git clone`,
+`make deps`, `make -j`, `make install PREFIX=...`), once, in a few minutes,
+logging to `~/.cybertrain/log/spinel-2026.10.27.7020-build.log` (its last
+lines are printed if a step fails). If a tool the build needs is missing,
+`cybertrain` says which and prints the install command for your platform
+before it starts. A `spinel` of another release on `PATH` is never used or
+touched: `cybertrain` keeps its own copy (and says so when it installs it).
 
 `cybertrain setup` does the same on request and, whenever its own copy is
 the one in use, prints the line that puts it on `PATH`, for running `spin`
-yourself (`~/.cybertrain/bin` holds `spinel` and `spin` links to the release
-in use, so the line survives a release bump; `cybertrain spin ...` needs no
-`PATH` at all):
+yourself:
 
-```sh
+```shell terminal — any directory
 export PATH="$HOME/.cybertrain/bin:$PATH"
 ```
 
-Two environment variables override all this: `CYBERTRAIN_HOME` replaces
-`~/.cybertrain` (a path without spaces, quotes, `$` or `:`, which Spinel's
-Makefile and `PATH` cannot take), and `CYBERTRAIN_SPINEL_HOME=PREFIX` forces
-an existing install — `cybertrain` then uses the `spinel` and `spin` in `PREFIX/bin` (or
-in `PREFIX` itself, if `spinel` is directly in it) and stops with an error
-if they are not that release.
+`~/.cybertrain/bin` holds `spinel` and `spin` links to the release in use, so
+the line survives a release bump; `cybertrain spin ...` needs no `PATH` at all.
+
+<details><summary>Environment variables — `CYBERTRAIN_HOME` moves `~/.cybertrain`, `CYBERTRAIN_SPINEL_HOME` uses an existing install</summary>
+
+Two environment variables override all this:
+
+- `CYBERTRAIN_HOME` replaces `~/.cybertrain` (a path without spaces, quotes,
+  `$` or `:`, which Spinel's Makefile and `PATH` cannot take).
+- `CYBERTRAIN_SPINEL_HOME=PREFIX` forces an existing install: `cybertrain`
+  then uses the `spinel` and `spin` in `PREFIX/bin` (or in `PREFIX` itself,
+  if `spinel` is directly in it) and stops with an error if they are not that
+  release.
+
+</details>
+
+## The gem and the framework
+
+`gem install cybertrain` installs a command, not the framework. The gem is
+the `cybertrain` command, plain Ruby that runs on your machine under CRuby
+(3.2 or newer) and calls Spinel's `spin` tool for you; neither the framework
+nor Spinel is in the gem. The framework is a Spinel package your app depends
+on in its `spin.toml`: Spinel compiles it together with your code ahead of
+time, so it never runs on CRuby, and it is the part that ships. The binary in
+`dist/` runs without Ruby, the gem or Spinel.
+
+### What `cybertrain new` writes
 
 `cybertrain new` writes the application with its `spin.toml` pointing at
 the release matching the CLI (`cybertrain = { git =
@@ -187,18 +167,34 @@ sure Spinel is installed, then runs `spin lock` (spin fetches the framework
 into its cache, `~/.cache/spin/packages/`, and pins the commit in
 `spin.lock`) and `spin run gen`, much as `rails new` runs `bundle install`,
 and prints the next steps. Nothing of the framework is copied into the app;
-commit `spin.toml` and `spin.lock`. If Spinel or one of the two `spin`
-steps fails, the files stay, `new` exits with 1 and prints what to run once
-the cause is fixed (for Spinel: `cybertrain setup`, then `cybertrain spin
-lock && cybertrain spin run gen` in the new directory).
+commit `spin.toml` and `spin.lock`.
 
-`--skip-spin` only writes the files: no Spinel install, no `spin lock`, no
-`spin run gen`. `--path DIR` depends on a local checkout instead,
-`--git URL [--ref R]` on the framework at URL (at branch or tag R), and
-`--version V` on an index version once cybertrain is on a `spin-index`.
+If Spinel or one of the two `spin` steps fails, the files stay, `new` exits
+with 1 and prints what to run once the cause is fixed (for Spinel:
+`cybertrain setup`, then `cybertrain spin lock && cybertrain spin run gen` in
+the new directory).
+
+Four options change what it writes and runs:
+
+- `--skip-spin` only writes the files: no Spinel install, no `spin lock`, no
+  `spin run gen`.
+- `--path DIR` depends on a local checkout instead (`--path
+  ~/src/cybertrain`, wherever the checkout is, when working on cybertrain
+  itself).
+- `--git URL [--ref R]` depends on the framework at URL (at branch or tag R).
+- `--version V` depends on an index version once cybertrain is on a
+  `spin-index`.
+
 Give only one of `--path`, `--version` and `--git`; `--ref` needs `--git`.
 
-Working on cybertrain itself, run the CLI from the checkout (`spin install`
-builds `bin/cybertrain.rb` into `~/.local/bin/cybertrain`; `ruby -I.
-bin/cybertrain.rb` also works) and create apps against it with `cybertrain
-new NAME --path ~/src/cybertrain` (wherever the checkout is).
+### Moving an app to a new release
+
+The gem and the framework are released from the same tag, so their versions
+match: the 0.3.1 gem writes apps that depend on framework `v0.3.1`. To move an
+app to a new release, update the gem, point `spin.toml` at the new tag, then
+run, in the app:
+
+```shell terminal — the app's directory
+cybertrain spin lock
+cybertrain spin run gen
+```

@@ -50,7 +50,9 @@ ruby -I. exe/cybertrain setup  # builds the pinned Spinel into ~/.cybertrain (mi
 spin test                      # the suite; see "Running the tests"
 ```
 
-`ruby -I. exe/cybertrain` runs the CLI from the checkout; `gem install
+`ruby -I. exe/cybertrain` runs the CLI from the checkout (`spin install`
+builds it into `~/.local/bin/cybertrain` instead), and `cybertrain new NAME
+--path ~/src/cybertrain` creates an app against the checkout; `gem install
 cybertrain` gives you the released one instead, which installs the same
 Spinel. On an Ubuntu machine you can also run
 [script/claude-cloud-setup](script/claude-cloud-setup), which does the whole
@@ -132,8 +134,9 @@ test/<name>.rb`, or, for a test that needs neither SQLite nor any other FFI
 (the next paragraph), `ruby -I. test/<name>.rb` under CRuby, which takes a
 second and needs no compiler.
 
-Tests that need SQLite or other FFI only run compiled; `script/regen-snapshot`
-handles that. Use the assertions in `cybertrain/test.rb` (`assert`,
+Tests that need SQLite or other FFI only run compiled (`spin test --regen
+test/<name>.rb` would capture CRuby's output; [spikes/NOTES.md](spikes/NOTES.md),
+rule 23); `script/regen-snapshot` handles that. Use the assertions in `cybertrain/test.rb` (`assert`,
 `assert_equal`, `assert_raises("Class") { }`, ...); for controllers and HTTP
 flows, `Cybertrain::Test::Client` drives an application in-process, as
 [examples/blog/test/](examples/blog/test/) does.
