@@ -60,15 +60,19 @@ Stat.where(project_id: 1).sum_int(:calls)                 # also sum_float
 Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%' ESCAPE '\'
 ```
 
+- Each is typed, because a Spinel method has one return type: `pluck_str` /
+  `pluck_int` / `pluck_float` read one column only, `sum_int` / `sum_float`
+  sum one, and `count_by` returns a `Hash{String => Integer}`.
 - `upsert`'s `update` values and `count_by_sql`'s expression are SQL text, like
   `order_sql`: never build them from request data. An empty `update` is
   `DO NOTHING`. `upsert` and `increment` load no model and run no
   validation or callback, and fill in no timestamps.
 - `count_by` keys are Strings (through `Cast.str`), ascending; NULL and `""`
   share the key `""`. With a `limit` / `offset`, `count_by`, `sum_*` and
-  `increment` work on that window, as `count` and `delete_all` do.
-- `where_like` is a substring match (case-insensitive for ASCII, as SQLite's
-  LIKE is). A prefix search writes its own pattern:
+  `increment` work on that window, as `count` and `delete_all` (through a
+  subselect) do.
+- `where_like` escapes `\`, `%` and `_` in the text for you, and is a
+  substring match (case-insensitive for ASCII, as SQLite's LIKE is). A prefix search writes its own pattern:
   `Article.all.where_sql("title LIKE ? ESCAPE '\\'", [Cybertrain::Cast.like_escape(q) + "%"])`.
 - For hand-written SQL, `Cybertrain::Cast.binds(a, b, c)` builds the bind
   Array `execute` takes (a Time as UTC ISO 8601 text, booleans as 1/0):
@@ -121,3 +125,94 @@ search or filter survives paging, and a path with its own query string
 (`"/search?q=x"`) uses that one instead. Offset pagination only: keyset
 pagination (`after: id`) for very large tables is not built yet. The scaffold's
 index view lists every record; add the three lines above to page it.
+
+## Transactions
+
+`Cybertrain::DB.transaction { |c| ... }` (or `Article.transaction`, the same
+thing under the Rails name) checks a connection out, runs `BEGIN`, yields the
+connection, `COMMIT`s when the block returns and rolls back and re-raises
+when it raises. `immediate: true` runs `BEGIN IMMEDIATE`, which takes
+SQLite's write lock at the start: use it for a transaction that reads and
+then writes, so a concurrent writer makes it wait at `BEGIN` rather than fail
+with "database is locked" at its first write. While the block runs,
+everything on that thread that goes through the pool (`save`, `update`,
+`destroy`, Relation queries, `DB.with`) uses the transaction's connection, so
+it is part of the transaction:
+
+```ruby
+Article.transaction(immediate: true) do |c|
+  article.save!
+  c.execute("UPDATE authors SET articles_count = articles_count + 1 WHERE id = ?", [article.author_id])
+end
+```
+
+Where it differs from Rails' `transaction`, and what to avoid:
+
+- It returns nil rather than the block's value.
+- It is left by raising, and the exception is re-raised after the rollback
+  (Rails leaves one with `raise ActiveRecord::Rollback`).
+- A `DB.transaction` nested in the block joins the outer one: only the
+  outermost commits, a raise anywhere rolls everything back, and there are
+  no savepoints (no `requires_new: true`).
+- `c.transaction { }` cannot be called on the yielded `c` under Spinel: nest
+  `DB.transaction`, or use the block-free form below.
+- A `DB.transaction` called inside a `DB.with` block (which is not a
+  transaction) checks out a second connection: on a one-connection pool
+  (`:memory:` included) it then waits forever. Open the transaction first and
+  do the work inside it.
+
+Code that must keep its `rescue` in a plain method uses the block-free form,
+`c.begin!(immediate: true)` ... `c.commit!`, with `c.rollback!` in the rescue.
+
+## Column names
+
+A column name must be an ASCII identifier (`[A-Za-z_][A-Za-z0-9_]*`), where
+Rails takes any. A schema with a non-ASCII column name (`名前`, `prénom`)
+generated under CRuby before PR #10, and `spin run gen` refuses it now, so
+rename the column when upgrading (a name like `first-name` was never a method
+name).
+
+A column named like a method the generated class or the framework calls on a
+record (`errors`, `save`, `attributes`, `hash`, `to_s`, `to_ary`, `raise`,
+...) or like a Ruby keyword (`end`, `class`, `begin`) generates under
+`<column>_column` (`hash_column`: reader, writer and ivar), with a note in the
+generated file. Its two names are used like this:
+
+- Its SQL name keeps working in `read_attribute`, params and
+  `attributes["hash"]`.
+- A template reaches it under either name (`post.hash`, `post.hash_column`),
+  except `errors` and `to_param`, which a template resolves as the model
+  methods: use `post.errors_column` there.
+- The query API (`where`, `order`, `find_by`) always takes the SQL column
+  name (`Post.where(hash: 1)`); the Ruby name is the reader/writer and the
+  template name only.
+
+A column named like another Object method (`display`, `tap`, `methods`)
+generates under its own name with a note. `cybertrain generate scaffold`
+refuses keywords and reserved names (it would have to call a renamed reader)
+and accepts a shadowing name with a note, like the generator.
+
+Where Rails lets an association shadow `errors`, an association whose plain
+name a column, another association or a `Model` method already owns is
+emitted under a fallback name, with a comment in the generated file:
+`<table>_as_<column stem>` for a `has_many` (`comments_as_article`),
+`<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`).
+
+## Ordering
+
+Where Rails' `order` takes any SQL (`order("lower(title)")`,
+`order("posts.title")`, `order(params[:sort])`), `order` here takes only
+`column [ASC|DESC]` lists, each column quoted, and raises `ArgumentError` on
+anything else: a 500, since the string is the developer's.
+
+Request data must go through an allowlist first, because a well-formed term
+can still name a missing column (a 500 from SQLite) or a column the client
+must not sort by:
+
+```ruby
+SORTS = { "title" => "title", "newest" => "created_at DESC" }
+Post.order(SORTS.fetch(params[:sort].to_s, "id"))
+```
+
+Raw ORDER BY text goes through `order_sql` (`Post.order_sql("lower(title)")`,
+also on a relation), which must never see request data.

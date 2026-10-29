@@ -96,3 +96,35 @@ never percent-decoded and possibly not valid UTF-8. A `Bearer <token>` or
 `Basic <base64>` credential is not a parameter: check the scheme, then read
 the credential from `request.header("authorization")`. Design:
 [docs/design.md](../design.md) D31.
+
+## Query strings and bodies
+
+`Query.parse`, `Query.value_of`, `Query.decode` and `request.form_value` /
+`query_value` raise `Cybertrain::QueryMalformed` (a `StandardError` under
+`Cybertrain::QueryInvalid`, not an `ArgumentError`), answered 400, on:
+
+- a malformed percent-escape, on both runtimes;
+- an invalid UTF-8 byte sequence, raw (whatever the String's tag) or
+  percent-encoded (Rails likewise answers 400 for an invalid parameter
+  encoding);
+- a raw byte that only an escape would complete (`a=\xC3%A9`).
+
+`Cookies.parse` keeps such a value raw instead. A path with an invalid
+sequence (raw, or percent-decoded in a segment) is a 400 as well
+(`request.path_segments`); a malformed escape in a path stays literal, a 404
+by non-match. Request parameters nest at most 32 levels and 4096 pairs, and
+are a 400 past that. Upgrade note: app code that rescued `ArgumentError`
+around these calls should rescue `Cybertrain::QueryInvalid` instead.
+
+The request keeps no parameter tree of its own (the Router builds `params`,
+the middleware read one key); an app that wants the whole tree parses it
+itself, `Query.parse(request.utf8_query_string)`, and owns the result.
+
+Rack leaves a gzip request body as it is. Here a body sent with
+`Content-Encoding: gzip` (an SDK or API client past a few kilobytes) is
+`request.decoded_body`, inflated once through the system zlib under a ceiling
+on the output: 10 MiB by default, and an endpoint that expects more passes
+its own, `request.decoded_body(limit)`. A corrupt body or an encoding other
+than gzip/identity is `Cybertrain::BodyUndecodable`, one that would inflate
+past the limit `Cybertrain::BodyTooLarge`, both `QueryInvalid`s answered 400.
+`request.body` stays the bytes as sent.
