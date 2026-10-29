@@ -49,7 +49,7 @@
     </a>
     <nav class="nav-links" aria-label="Navigation principale">
       <ul>
-        <li class="nav-wide-only"><a href="index.html#how-it-works">Fonctionnement</a></li>
+        <li class="nav-wide-only"><a href="guide/how-it-works.html">Fonctionnement</a></li>
         <li><a href="tutorial.html">Tutoriel</a></li>
         <li class="nav-wide-only"><a href="deploy.html">Déployer</a></li>
         <li class="nav-wide-only"><a href="guide/index.html">Guides</a></li>
@@ -99,7 +99,7 @@
 <span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000</span></span>
 <span class="ln cmd">cybertrain build             <span class="c"># production: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
-        <p class="term-note">Nécessite Ruby&nbsp;3.2+ pour la commande <code>cybertrain</code> uniquement (les applications ne tournent jamais sur CRuby), ainsi que <code>git</code>, <code>make</code>, <code>curl</code>, un compilateur C et les en-têtes SQLite&nbsp;3&nbsp;: <a href="#requirements">avant de commencer</a>. Lancez le build avec <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code>, en définissant <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</p>
+        <p class="term-note">Nécessite Ruby&nbsp;3.2+ pour la commande <code>cybertrain</code> uniquement (les applications ne tournent jamais sur CRuby), ainsi que <code>git</code>, <code>make</code>, <code>curl</code>, un compilateur C et les en-têtes SQLite&nbsp;3&nbsp;: <a href="guide/install.html#requirements">avant de commencer</a>. Lancez le build avec <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code>, en définissant <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</p>
       </div>
     </div>
   </div>
@@ -254,20 +254,16 @@
         <p class="part-what">La bibliothèque sur laquelle repose votre application.</p>
         <div class="part-fact"><p class="fact-k">Contenu</p><p>Le serveur HTTP, le routage et les contrôleurs, les sessions et la protection CSRF, l’interpréteur de templates, les modèles SQLite et les migrations, ainsi que le générateur de code derrière <code>spin run gen</code>.</p></div>
         <div class="part-fact"><p class="fact-k">Comment l’obtenir</p><p>Vous ne l’installez pas. Le <code>spin.toml</code> de votre application désigne le tag de version <code>v0.3.1</code> de ce dépôt, et <code>spin lock</code> le récupère dans le cache de spin et épingle le commit dans <code>spin.lock</code>. Rien n’est copié dans votre application.</p></div>
-        <div class="part-fact"><p class="fact-k">Où il s’exécute</p><p>Dans votre application. Spinel le compile à l’avance avec votre code&nbsp;; il ne tourne jamais sur CRuby.</p></div>
-        <div class="part-fact"><p class="fact-k">Dans dist/blog</p><p><span class="pill pill-on">Compilé dedans</span>C’est la partie de CyberTrain qui est livrée.</p></div>
       </article>
       <article class="part" aria-labelledby="part-cli">
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli">La commande <code>cybertrain</code></h3></div>
         <p class="part-what">L’outil qui crée, compile et lance votre application.</p>
         <div class="part-fact"><p class="fact-k">Contenu</p><p>Uniquement la commande <code>cybertrain</code>&nbsp;: <code>new</code>, <code>generate scaffold</code>, <code>db migrate</code>, <code>server</code>, <code>build</code>, <code>spin</code>, <code>setup</code> et <code>doctor</code>. Ni le framework ni Spinel ne sont dans la gem.</p></div>
         <div class="part-fact"><p class="fact-k">Comment l’obtenir</p><p><code>gem install cybertrain</code>. À la première utilisation, elle compile la version épinglée de Spinel, <code>2026.10.27.7020</code>, dans <code>~/.cybertrain</code>, sauf si cette version est déjà dans votre <code>PATH</code>.</p></div>
-        <div class="part-fact"><p class="fact-k">Où elle s’exécute</p><p>Sur votre machine, sous CRuby 3.2 ou plus récent. Elle appelle l’outil <code>spin</code> de Spinel pour vous, pour que vous n’ayez pas à le faire.</p></div>
-        <div class="part-fact"><p class="fact-k">Dans dist/blog</p><p><span class="pill">Non livrée</span>Le binaire tourne sans Ruby, sans la gem et sans Spinel.</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">Les deux sont publiés à partir du même tag, leurs versions correspondent donc&nbsp;: la gem 0.3.1 crée des applications qui dépendent du framework <code>v0.3.1</code>. Pour passer une application à une nouvelle version, mettez à jour la gem, faites pointer <code>spin.toml</code> vers le nouveau tag, puis lancez <code>cybertrain spin lock</code> et <code>cybertrain spin run gen</code>.</p>
+      <p class="footnote">Les deux sont publiés à partir du même tag, leurs versions correspondent donc&nbsp;; <a href="guide/install.html#the-gem-and-the-framework">comment une application passe à une nouvelle version</a>.</p>
     </div>
   </div></div>
 </section>
@@ -288,17 +284,15 @@
     </div>
     <div class="sec-body sec-body-wide">
       <ol class="steps">
-        <li><span class="step-n" aria-hidden="true">1</span><h3>Générer à la compilation</h3><p><code>spin run gen</code> exécute <code>db/schema.rb</code> et <code>config/routes.rb</code> pour obtenir les données des tables et des routes, et effectue un balayage lexical (des regex, pas un parseur) de <code>app/controllers</code> et <code>app/models</code> à la recherche d’affectations <code>@ivar =</code>, de noms de callbacks et de <code>def</code> sans argument. Il écrit du Ruby pur et lisible dans <code>gen/</code>, y compris <code>gen/views.rb</code>, la table des vues intégrées (vide, sauf lors d’un build pour le déploiement). <code>cybertrain db migrate</code>, <code>server</code> et <code>build</code> le lancent pour vous.</p></li>
-        <li><span class="step-n" aria-hidden="true">2</span><h3>Commiter <code>gen/</code></h3><p>Il est versionné, et non ignoré par git, car <code>spin build</code> et <code>spin test</code> n’ont pas de hook pour générer d’abord. La CI relance <code>spin run gen</code> et échoue en cas de diff&nbsp;: du code généré périmé ne peut donc pas être fusionné. <code>cybertrain spin run gen -- --check</code> signale les fichiers périmés.</p></li>
-        <li><span class="step-n" aria-hidden="true">3</span><h3>Interpréter les vues</h3><p>Les <code>app/views/**/*.html.erb</code> sont analysés au moment de la requête et parcourus par un interpréteur d’arbre (tree-walking). En développement, le moteur lit <code>app/views/</code> depuis le disque et réanalyse un template quand il change, donc modifier une vue ne demande pas de recompilation. <code>cybertrain build</code> intègre tous les templates au binaire (<code>spin run gen -- --embed-views</code>)&nbsp;; un binaire de production ne fait le rendu qu’à partir de cette table et n’analyse chaque template qu’une fois. Spinel n’a pas d’<code>eval</code>, il s’agit donc d’une grammaire fermée, pas de vrai Ruby.</p></li>
-        <li><span class="step-n" aria-hidden="true">4</span><h3>Servir avec des green threads, stocker dans SQLite</h3><p>Un serveur HTTP/1.1 en Ruby pur exécute un green thread Spinel par connexion. Les modèles dialoguent avec SQLite via <code>ffi_func</code>/<code>ffi_lib</code>, avec un pool de 4&nbsp;connexions (WAL, un gestionnaire busy de 5&nbsp;secondes, clés étrangères activées). <code>SPINEL_WORKERS</code> vaut <code>1</code> par défaut.</p></li>
-        <li><span class="step-n" aria-hidden="true">5</span><h3>Recompiler en développement</h3><p><code>cybertrain server</code> lance <code>spin run gen</code>, puis <code>spin run blog</code> (le nom de votre application). En développement, le binaire inspecte <code>app/**/*.rb</code>, <code>config/**/*.rb</code>, <code>db/schema.rb</code> et <code>gen/**/*.rb</code> toutes les demi-secondes (hors vues et <code>gen/views.rb</code>). Un changement lance <code>spin run gen &amp;&amp; spin build blog -- --incremental</code> en arrière-plan&nbsp;; en cas de succès, un indicateur de redémarrage est levé (celui que lève un <code>kill -HUP</code> externe), puis le serveur cesse d’écouter, termine les requêtes en cours et fait un <code>execv</code> du nouveau binaire sur le même port et avec le même PID. Un build échoué continue de servir l’ancien binaire et affiche la sortie du compilateur dans un bandeau. Les recompilations sont ignorées tant que <code>cybertrain build</code> détient <code>tmp/cybertrain-build.lock</code>. Rien de tout cela n’est chargé en production.</p></li>
+        <li><span class="step-n" aria-hidden="true">1</span><h3>Générer à la compilation</h3><p><code>spin run gen</code> lit <code>db/schema.rb</code> et <code>config/routes.rb</code>, analyse <code>app/controllers</code> et <code>app/models</code>, et écrit du Ruby pur et lisible dans <code>gen/</code>. <code>cybertrain db migrate</code>, <code>server</code> et <code>build</code> le lancent pour vous.</p></li>
+        <li><span class="step-n" aria-hidden="true">2</span><h3>Commiter <code>gen/</code></h3><p>Il est versionné car <code>spin build</code> et <code>spin test</code> n’ont pas de hook pour générer d’abord. La CI relance <code>spin run gen</code> et échoue en cas de diff&nbsp;: du code généré périmé ne peut donc pas être fusionné.</p></li>
+        <li><span class="step-n" aria-hidden="true">3</span><h3>Interpréter les vues</h3><p>Un interpréteur d’arbre (tree-walking) rend les <code>app/views/**/*.html.erb</code>, lus depuis le disque en développement et intégrés par <code>cybertrain build</code>. Spinel n’a pas d’<code>eval</code>, il s’agit donc d’une grammaire fermée, pas de vrai Ruby.</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>Servir avec des green threads, stocker dans SQLite</h3><p>Un serveur HTTP/1.1 en Ruby pur exécute un green thread Spinel par connexion. Les modèles dialoguent avec SQLite via <code>ffi_func</code>/<code>ffi_lib</code>, avec un pool de 4&nbsp;connexions.</p></li>
+        <li><span class="step-n" aria-hidden="true">5</span><h3>Recompiler en développement</h3><p><code>cybertrain server</code> recompile quand un source Ruby change, puis termine les requêtes en cours et fait un <code>execv</code> du nouveau binaire sur le même port. Un build échoué continue de servir l’ancien binaire.</p></li>
       </ol>
-      <figure class="code" data-lang="shell">
-<figcaption><span class="code-path">terminal &mdash; blog/</span><span class="code-lang">shell</span></figcaption>
-<pre tabindex="0" role="region" aria-label="Code&nbsp;: terminal &mdash; blog/"><code><span class="ln cmd">cybertrain spin run gen   <span class="c"># lit db/schema.rb + config/routes.rb, analyse app/, écrit gen/</span></span>
-<span class="ln cmd">cybertrain build          <span class="c"># dist/blog avec app/views intégré, plus dist/public/, dist/storage/, dist/tmp/</span></span></code></pre>
-</figure>
+      <div class="cmp-foot">
+        <a class="more" href="guide/how-it-works.html">Le fonctionnement en détail</a>
+      </div>
     </div>
   </div></div>
 </section>
@@ -329,7 +323,7 @@
       </table>
       <div class="cmp-foot">
         <p>Liste non exhaustive.</p>
-        <a class="more" href="https://github.com/saeki-mototsune/CyberTrain#differences-from-rails" rel="noopener">Tableau complet dans le README<span aria-hidden="true"> &#8599;</span></a>
+        <a class="more" href="guide/how-it-works.html#differences-from-rails">Le tableau complet</a>
       </div>
     </div>
   </div></div>
@@ -368,23 +362,7 @@
         <li><p class="perf-k">Ce qu’il faut sur le serveur</p><p class="perf-v">2,5&nbsp;Mo</p><p class="perf-d">Un seul binaire. Rails&nbsp;: 109&nbsp;Mo de Ruby, de 69 gems et de l’application.</p></li>
         <li><p class="perf-k">Le prix&nbsp;: une compilation</p><p class="perf-v">3&nbsp;min</p><p class="perf-d">pour compiler le binaire avec <code>cybertrain build</code>. Rails exécute ses sources telles quelles.</p></li>
       </ul>
-      <p class="footnote">Médianes de trois mesures de 10&nbsp;secondes après un échauffement, sur une VM cloud à 4&nbsp;vCPU, wrk tournant sur les deux cœurs que le serveur n’utilise pas&nbsp;: CyberTrain 0.2.1 compilé par Spinel 2026.09.12, face à Rails 8.1.4 sur Ruby 3.4.6 avec YJIT et Puma 8.0 (un processus à 3 threads sur un cœur, deux sur deux cœurs). Les barres d’une même ligne partagent une échelle. Une requête à la fois, la page d’un article répond en 0,4&nbsp;ms contre 4,7&nbsp;ms. Avec jemalloc des deux côtés (l’image de production de Rails le précharge&nbsp;; pour CyberTrain, c’est une ligne dans <code>spin.toml</code>), un cœur donne 2,8 à 14,6 fois. Une partie de l’écart vient de ce que Rails fait par défaut et CyberTrain non&nbsp;: il chiffre le cookie de session et signe un jeton CSRF par formulaire. La méthode, tous les chiffres et comment relancer la mesure&nbsp;: <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/benchmark.md" rel="noopener">docs/benchmark.md</a>.</p>
-    </div>
-  </div></div>
-</section>
-
-<section class="sec" id="requirements" aria-labelledby="req-h">
-  <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">07</span><p class="sec-label">Avant de commencer</p></div>
-    <div class="sec-body">
-      <h2 id="req-h">Ce qu’il vous faut sur votre machine.</h2>
-    <dl class="reqs">
-      <div><dt>Ruby</dt><dd>3.2+ avec RubyGems, uniquement pour la commande <code>cybertrain</code>. Les applications ne tournent jamais sur CRuby.</dd></div>
-      <div><dt>Spinel</dt><dd><code>2026.10.27.7020</code>, non testé avec d’autres versions. La première commande qui en a besoin le compile dans <code>~/.cybertrain</code> (quelques minutes, une seule fois)&nbsp;; un <code>spinel</code> de cette version déjà présent dans le <code>PATH</code> est utilisé tel quel.</dd></div>
-      <div><dt>Outils</dt><dd><code>cc</code> et <code>make</code> (Spinel compile chaque programme en C), plus <code>git</code> et <code>curl</code> pour compiler Spinel. En-têtes et bibliothèques SQLite&nbsp;3 et zlib&nbsp;: <code>libsqlite3-dev</code> et <code>zlib1g-dev</code> sous Debian/Ubuntu, inclus avec les Command Line Tools de Xcode sous macOS. Les en-têtes OpenSSL sont facultatifs.</dd></div>
-      <div><dt>Statut</dt><dd>Pré-alpha, version <code>0.3.1</code>, sous licence MIT. Le blog d’exemple est testé par la CI sous Linux et macOS.</dd></div>
-    </dl>
-    <p class="footnote"><code>cybertrain doctor</code> vérifie ces outils et en-têtes ainsi que l’installation de Spinel, et affiche la commande d’installation pour votre plateforme quand l’un d’eux manque. <code>cybertrain setup</code> installe Spinel à la demande et affiche la ligne <code>PATH</code> pour lancer <code>spin</code> vous-même&nbsp;; <code>cybertrain spin ARGS...</code> le lance sans cette ligne.</p>
+      <p class="footnote">Médianes de trois mesures de 10&nbsp;secondes après un échauffement, sur une VM cloud à 4&nbsp;vCPU&nbsp;: CyberTrain 0.2.1 compilé par Spinel 2026.09.12, face à Rails 8.1.4 sur Ruby 3.4.6 avec YJIT et Puma 8.0. La méthode, tous les chiffres et comment relancer la mesure&nbsp;: <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/benchmark.md" rel="noopener">docs/benchmark.md</a>.</p>
     </div>
   </div></div>
 </section>

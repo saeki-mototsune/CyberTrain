@@ -1,9 +1,19 @@
 ---
-source_sha256: cd5c852e558335bf66577245c96a3ff581c1ffe95980c14b930f78243312e4dc
+source_sha256: 9c348325e4945493aa6eeb42add294c7ce0b8bf34811b3014c18617dec0b0ef6
 ---
 # Référence du langage de templates de Cybertrain
 
-Les vues de Cybertrain (`app/views/**/*.html.erb`) ressemblent à de l’ERB de Rails, mais ne sont pas du Ruby&nbsp;: elles sont analysées à l’exécution (depuis `app/views/` sur le disque en développement et en test&nbsp;; dans un binaire de production, depuis la table de chaînes que `cybertrain build` intègre via `gen/views.rb`), découpées en lexèmes et analysées en un AST, compilées une fois en un arbre de nœuds plat, puis parcourues par un interpréteur qui parcourt l’arbre. Le pipeline se trouve dans `cybertrain/template/`&nbsp;:
+Les vues de Cybertrain (`app/views/**/*.html.erb`) ressemblent à de l’ERB de Rails, mais ne sont pas du Ruby&nbsp;: elles sont analysées à l’exécution (depuis `app/views/` sur le disque en développement et en test&nbsp;; dans un binaire de production, depuis la table de chaînes que `cybertrain build` intègre via `gen/views.rb`), découpées en lexèmes et analysées en un AST, compilées une fois en un arbre de nœuds plat, puis parcourues par un interpréteur qui parcourt l’arbre.
+
+Ce document décrit exactement ce que ce pipeline accepte et exécute. Là où il diverge de la section 7 de `docs/design.md` (le projet de spécification initial) ou de ce qu’attendrait un développeur Rails, c’est le code qui a raison, et ce document le dit (cherchez «&nbsp;**Tel qu’implémenté**&nbsp;»).
+
+## Ce qui est du Ruby ici, et ce qui n’en est pas
+
+Les templates ne sont **pas** du Ruby. Spinel (le compilateur AOT de Ruby de Matz que vise cybertrain) n’a pas d’`eval`, donc «&nbsp;interpréter le Ruby propre à la vue au moment de la requête&nbsp;» n’a jamais été envisageable (D9 dans `docs/design.md`)&nbsp;; ce qui s’exécute à la place est une petite grammaire fermée qui ne fait qu’emprunter une syntaxe d’allure ERB/Ruby. Il n’y a pas de Ruby arbitraire dans une balise — seulement ce que `ExprParser` (`parser.rb`) reconnaît comme instruction ou expression. Il n’y a pas d’`eval`, de `send`, d’`instance_eval`, de définitions de méthodes/classes/modules, de `require`, d’exceptions (`begin/rescue`), de `case/when`, d’intervalles, de regex, ni d’affectation multiple. Les seuls blocs sont `each`, `each_with_index` et un appel à un helper (`form_with(...) do |f| ... end`) — pas de blocs `{ }`, pas de `map`/`select` ni d’autre méthode d’Enumerable avec bloc. Chaque appel de méthode (`recv.name`) est résolu par des tables de dispatch `case` écrites à la main dans `interpreter.rb`, indexées par la classe Ruby du receveur à l’exécution&nbsp;; un nom absent de la table de ce type échoue avec une `RuntimeError` — il n’y a pas de `method_missing`, pas de réflexion, et (d’après `Interpreter#call_method`) c’est précisément l’absence de `send` dans Spinel qui fait que c’est un `case` et non une recherche par métaprogrammation. Un template ne peut faire que ce que décrit ce document.
+
+<details><summary>Où cela se trouve dans le source — les huit fichiers du pipeline de templates</summary>
+
+Le pipeline se trouve dans `cybertrain/template/`&nbsp;:
 
 | Fichier | Rôle |
 | --- | --- |
@@ -16,13 +26,9 @@ Les vues de Cybertrain (`app/views/**/*.html.erb`) ressemblent à de l’ERB de 
 | `form_builder.rb` | Le `f` passé par `form_with(...) do \|f\| ... end` |
 | `engine.rb` | Charge les sources `.html.erb` — depuis le disque sous une racine, ou depuis la table intégrée `gen/views.rb` (`Engine.embedded`) —, les analyse (et éventuellement les met en cache), et les rend avec un layout |
 
-Ce document décrit exactement ce que ce pipeline accepte et exécute. Là où il diverge de la section 7 de `docs/design.md` (le projet de spécification initial) ou de ce qu’attendrait un développeur Rails, c’est le code qui a raison, et ce document le dit (cherchez «&nbsp;**Tel qu’implémenté**&nbsp;»).
+</details>
 
-## 1. Ce qui est du Ruby ici, et ce qui n’en est pas
-
-Les templates ne sont **pas** du Ruby. Spinel (le compilateur AOT de Ruby de Matz que vise cybertrain) n’a pas d’`eval`, donc «&nbsp;interpréter le Ruby propre à la vue au moment de la requête&nbsp;» n’a jamais été envisageable (D9 dans `docs/design.md`)&nbsp;; ce qui s’exécute à la place est une petite grammaire fermée qui ne fait qu’emprunter une syntaxe d’allure ERB/Ruby. Il n’y a pas de Ruby arbitraire dans une balise — seulement ce que `ExprParser` (`parser.rb`) reconnaît comme instruction ou expression. Il n’y a pas d’`eval`, de `send`, d’`instance_eval`, de définitions de méthodes/classes/modules, de `require`, d’exceptions (`begin/rescue`), de `case/when`, d’intervalles, de regex, ni d’affectation multiple. Les seuls blocs sont `each`, `each_with_index` et un appel à un helper (`form_with(...) do |f| ... end`) — pas de blocs `{ }`, pas de `map`/`select` ni d’autre méthode d’Enumerable avec bloc. Chaque appel de méthode (`recv.name`) est résolu par des tables de dispatch `case` écrites à la main dans `interpreter.rb`, indexées par la classe Ruby du receveur à l’exécution&nbsp;; un nom absent de la table de ce type échoue avec une `RuntimeError` — il n’y a pas de `method_missing`, pas de réflexion, et (d’après `Interpreter#call_method`) c’est précisément l’absence de `send` dans Spinel qui fait que c’est un `case` et non une recherche par métaprogrammation. Un template ne peut faire que ce que décrit ce document.
-
-## 2. Balises
+## Balises
 
 | Balise | Signification |
 | --- | --- |
@@ -53,7 +59,7 @@ Une balise de commentaire dont le contenu commence par `locals:` **et qui est la
 - **Sans** ce commentaire, un template ne déclare aucune liste de variables locales&nbsp;: `render` transmet toutes les variables locales qu’il reçoit, sans vérification, et le template peut aussi lire tout ce qui est déjà présent dans l’environnement de l’appelant (voir la section 8).
 - Si quoi que ce soit précède le commentaire sur une ligne antérieure (ne serait-ce qu’une ligne vide), ce n’est qu’un commentaire ordinaire et inerte, pas une déclaration de locals.
 
-## 3. Expressions
+## Expressions
 
 ### Littéraux
 
@@ -109,7 +115,7 @@ method arg1, key: value  # même appel, sans parenthèses (syntaxe « commande �
 
 L’indexation s’écrit `target[index]` **sans espace** avant `[` (`items [0]` est une erreur de syntaxe, `items[0]` non), et s’enchaîne comme tout suffixe&nbsp;: `h["k"].first`, `params[:id]`.
 
-## 4. Instructions
+## Instructions
 
 Une balise `<% %>` contient exactement une instruction&nbsp;: une affectation, ou une expression évaluée pour son effet de bord (valeur ignorée). `<%= %>`/`<%== %>` ne contiennent jamais qu’une expression — `<%= x = 1 %>` est une `SyntaxError`.
 
@@ -156,7 +162,7 @@ L’affichage ou non du résultat du bloc suit la balise&nbsp;: `<%= helper do |
 
 Uniquement `name = expr` pour une seule variable locale simple — pas de `@ivar = ...`, pas de `arr[0] = ...`/`h[:k] = ...`, pas de `a, b = ...`. La même règle de localité au bloc que pour `each` s’applique aux affectations dans des `if`/`unless` imbriqués dans un bloc.
 
-## 5. Table des méthodes par type
+## Table des méthodes par type
 
 `nil?`, `present?` et `blank?` sont vérifiés **avant** le dispatch par type, ils fonctionnent donc sur toutes les valeurs, y compris les modèles et les objets renvoyés par des helpers (`blank?` vaut `false` pour tout sauf `nil`/`false`/une `SafeString`/`String`/`Array`/`Hash`/`Errors`/`Params` vide). L’arithmétique (`+ - * / %`) et la comparaison (`== != < > <= >=`) n’existent que comme **opérateurs infixes**, jamais comme appels `.method` — un symbole d’opérateur ne peut jamais suivre un `.` dans cette grammaire.
 
@@ -179,7 +185,7 @@ L’indexation (`x[key]`) est une production distincte de la grammaire (section 
 
 Affichage (`<%= %>`/interpolation) au-delà du `to_s` ci-dessus&nbsp;: un `Array` s’affiche comme une liste à la manière d’inspect — `[1, "a", nil]` rend le texte `[1, "a", nil]` (puis est échappé, les guillemets deviennent donc `&quot;`)&nbsp;; un `Hash` se rabat sur le `Hash#to_s` de Ruby&nbsp;; un `Cybertrain::Model` s’affiche `#<Post id: 7>` (jamais ses attributs)&nbsp;; tout le reste s’affiche via son propre `to_s`. Une méthode non listée sur l’un de ces types est une `RuntimeError` (`"undefined method 'first' for Time"`). La division/le modulo d’un `Integer` par zéro donne `"divided by 0"`&nbsp;; `Float` suit plutôt l’IEEE-754 (`Infinity`/`NaN`, sans erreur).
 
-## 6. Les modèles dans les templates
+## Les modèles dans les templates
 
 Une sous-classe de `Cybertrain::Model` (un `Post`, un `Note` générés, ...) résout un nom nu dans cet ordre (`Interpreter#model_method`)&nbsp;:
 
@@ -201,7 +207,7 @@ Si les quatre répondent `nil`, `attribute_or_method?(:name)` décide s’il s�
 
 Deux modèles se comparent avec `==` par classe et par `id` (`Model#==`), accessible via l’opérateur `==` ordinaire (dispatch natif de l’égalité, pas `call_method`).
 
-## 7. Helpers et constructeur de formulaires
+## Helpers et constructeur de formulaires
 
 Chaque appel sans receveur va à `Helpers#helper_call` (`helpers.rb`), qui fait correspondre l’une des méthodes intégrées ci-dessous, traite un nom finissant par `_path`/`_url` comme un helper de route généré (via `Cybertrain::Views.url_resolver`, qui lève `"no routes"` tant que l’application n’en a pas installé un), ou lève `"undefined helper 'name'"`.
 
@@ -243,7 +249,7 @@ Chaque méthode renvoie une `SafeString`&nbsp;; une méthode non listée est une
 
 Avec un modèle, les champs sont nommés `post[title]`/`id="post_title"` (avec `Inflector.underscore(model.model_name)` comme portée)&nbsp;; avec `form_with(url: ...)` et sans modèle, le nom d’attribut nu est utilisé pour les deux. Les arguments nommés supplémentaires deviennent des attributs HTML dans l’ordre donné&nbsp;: `true` → `attr="attr"`, `false`/`nil` omis, tout le reste → `attr="value"` (échappé), les tirets bas deviennent des traits d’union (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), et `class:` est fusionné avec la classe automatique `field_with_errors` ajoutée quand `model.errors.key?(attr)`.
 
-## 8. Layouts, `yield`, `content_for`, partiels
+## Layouts, `yield`, `content_for`, partiels
 
 `Engine#render_with_layout(name, layout, env, helpers)` rend `name` dans `env["__content"]` (une `SafeString`), puis rend `layout` avec le même `env`&nbsp;:
 
@@ -278,7 +284,7 @@ Avec un modèle, les champs sont nommés `post[title]`/`id="post_title"` (avec `
 
 Les recherches de fichiers résolvent la racine des vues et le chemin du template à travers les liens symboliques, et ne chargent que des fichiers ordinaires situés dans cette racine. Les chemins qui en sortent (y compris via des liens symboliques) lèvent `MissingTemplate`&nbsp;; `exists?` renvoie false pour ces chemins.
 
-## 9. Erreurs
+## Erreurs
 
 Deux classes d’exception, toutes deux dans l’espace de noms `Cybertrain::Template` de `ast.rb` (distinctes de `::SyntaxError`/`::RuntimeError`)&nbsp;:
 
@@ -289,7 +295,7 @@ Toute `StandardError` ordinaire venant d’un helper ou d’un appel de méthode
 
 `MissingTemplate` (`StandardError`, `engine.rb`) est levée **sans emballage**, sans préfixe `template:line`, depuis un appel de premier niveau à `Engine#template`/`#render`/`#render_with_layout` (par ex. un contrôleur qui rend un template d’action ou un layout absent)&nbsp;: `"Missing template <path>"`. La même exception levée *à l’intérieur* d’un template via la recherche de partiel du helper `render` passe au contraire par la relocalisation et en ressort comme une `RuntimeError`&nbsp;: `"posts/inline:1: Missing template test/fixtures/views/posts/_nope.html.erb"`.
 
-## 10. Différences avec l’ERB de Rails
+## Différences avec l’ERB de Rails
 
 | ERB de Rails | Cybertrain |
 | --- | --- |
