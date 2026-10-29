@@ -241,6 +241,15 @@ class RenderTest < Minitest::Test
     assert_equal 1, html.scan("table-scroll").size
   end
 
+  # GFM reads `\|` in a table cell as `|`, inside a code span too; the page
+  # shows the pipe, not the backslash. Outside a table the backslash stays.
+  def test_escaped_pipe_in_table_code
+    html = body("| Rails | CyberTrain |\n|---|---|\n| `before_action { do_thing }` | `before_action { \\|c\\| c.do_thing }` |\n\n<!-- table: cmp -->\n| Rails | CyberTrain |\n|---|---|\n| a | `[ASC\\|DESC]` |\n\nOutside: `a \\| b`.\n")
+    assert_includes html, %(<td><code>before_action { |c| c.do_thing }</code></td>)
+    assert_includes html, %(<td data-label="CyberTrain"><code>[ASC|DESC]</code></td>)
+    assert_includes html, %(Outside: <code>a \\| b</code>.)
+  end
+
   def test_sub_heading_ids
     html = body("### Run the tests\n\nText.")
     assert_includes html, %(    <h3 class="sub" id="run-the-tests">Run the tests</h3>\n)

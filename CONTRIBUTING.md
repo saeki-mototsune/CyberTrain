@@ -51,7 +51,7 @@ spin test                      # the suite; see "Running the tests"
 ```
 
 `ruby -I. exe/cybertrain` runs the CLI from the checkout (`spin install`
-builds it into `~/.local/bin/cybertrain` instead), and `cybertrain new NAME
+instead builds `bin/cybertrain.rb` into `~/.local/bin/cybertrain`), and `cybertrain new NAME
 --path ~/src/cybertrain` creates an app against the checkout; `gem install
 cybertrain` gives you the released one instead, which installs the same
 Spinel. On an Ubuntu machine you can also run

@@ -316,7 +316,16 @@ module GuidePages
         %(#{" " * indent}<li>#{format_as_span_html("a", link_attrs(a.attr), %(<span class="next-t">#{inner(title, indent)}</span><span class="next-d">#{desc_html}</span>))}</li>\n)
       end
 
+      # In a table cell GFM reads `\|` as `|`, inside a code span too (the
+      # backslash is how a cell holds a pipe at all); kramdown keeps it in a
+      # code span, so the page would show the backslash.
+      def convert_codespan(el, indent)
+        return super unless @in_table
+        super(Kramdown::Element.new(:codespan, el.value.gsub("\\|", "|"), el.attr, el.options), indent)
+      end
+
       def convert_table(el, indent)
+        @in_table = true
         sp = " " * indent
         # A plain table scrolls sideways in its wrapper on a narrow screen.
         return %(#{sp}<div class="table-scroll">\n#{super(el, indent + 2)}#{sp}</div>\n) unless el.options[:table_kind] == "cmp"
@@ -337,6 +346,8 @@ module GuidePages
         out << %(#{sp}    </tbody>\n#{sp}  </table>\n)
         out << %(#{sp}  <p class="cmp-foot">#{inline_md(el.options[:foot])}</p>\n) if el.options[:foot]
         out << "#{sp}</div>\n"
+      ensure
+        @in_table = false
       end
 
       # --- helpers ---------------------------------------------------------
