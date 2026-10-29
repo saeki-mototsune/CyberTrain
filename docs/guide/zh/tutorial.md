@@ -1,5 +1,5 @@
 ---
-source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
+source_sha256: 05685b876f71d5e53c42b014ef9d30392c2d302ef4166806d21169552714ac05
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -634,7 +634,7 @@ end
 ```
 
 > [!NOTE]
-> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。不会生成的部分：密码重置（CyberTrain 没有邮件功能）和速率限制。
+> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。登录尝试会像 Rails 的生成器那样受到速率限制：`SessionsController` 声明了 `rate_limit to: 10, within: 3 * 60, only: [:create]`，每个客户端地址每三分钟最多 10 次，超过后会带着 "Try again later." 回到表单，直到时间窗口结束。不会生成的部分：密码重置（CyberTrain 没有邮件功能）。
 
 <!-- step 14 #attachments stage: 你编写 · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## 添加封面图片

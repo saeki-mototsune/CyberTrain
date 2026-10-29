@@ -909,8 +909,11 @@ end
 > [!NOTE]
 > Run `cybertrain spin test` as in [step 12](#test); `test/authentication.rb`
 > and this test use SQLite, so their snapshots come from the compiled binary.
-> `examples/blog` stops before this step. Not generated: password reset
-> (CyberTrain has no mailers) and rate limiting.
+> `examples/blog` stops before this step. Sign-in attempts are rate limited
+> as in Rails' generator: `SessionsController` declares `rate_limit to: 10,
+> within: 3 * 60, only: [:create]`, ten attempts per client address every
+> three minutes, then back to the form with "Try again later." until the
+> window closes. Not generated: password reset (CyberTrain has no mailers).
 
 <!-- step 14 #attachments stage: You write · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Add a cover image

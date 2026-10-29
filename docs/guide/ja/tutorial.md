@@ -1,5 +1,5 @@
 ---
-source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
+source_sha256: 05685b876f71d5e53c42b014ef9d30392c2d302ef4166806d21169552714ac05
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -634,7 +634,7 @@ end
 ```
 
 > [!NOTE]
-> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。パスワードリセット（CyberTrain にはメーラーがありません）とレート制限は生成されません。
+> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。パスワードリセット（CyberTrain にはメーラーがありません）は生成されません。
 
 <!-- step 14 #attachments stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## カバー画像を追加する

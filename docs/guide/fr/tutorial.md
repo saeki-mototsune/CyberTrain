@@ -1,5 +1,5 @@
 ---
-source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
+source_sha256: 05685b876f71d5e53c42b014ef9d30392c2d302ef4166806d21169552714ac05
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -966,9 +966,13 @@ end
 > [!NOTE]
 > Lancez `cybertrain spin test` comme à l’[étape 12](#test)&nbsp;;
 > `test/authentication.rb` et ce test utilisent SQLite, donc leurs instantanés
-> viennent du binaire compilé. `examples/blog` s’arrête avant cette étape. Non
-> générés&nbsp;: la réinitialisation du mot de passe (CyberTrain n’a pas de
-> mailers) et la limitation de débit.
+> viennent du binaire compilé. `examples/blog` s’arrête avant cette étape. Les
+> tentatives de connexion sont soumises à une limitation de débit, comme dans
+> le générateur de Rails&nbsp;: `SessionsController` déclare `rate_limit to:
+> 10, within: 3 * 60, only: [:create]`, dix tentatives par adresse du client
+> toutes les trois minutes, puis retour au formulaire avec "Try again later."
+> jusqu’à la fin de la fenêtre. Non générée&nbsp;: la réinitialisation du mot
+> de passe (CyberTrain n’a pas de mailers).
 
 <!-- step 14 #attachments stage: Vous écrivez · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Ajouter une image de couverture

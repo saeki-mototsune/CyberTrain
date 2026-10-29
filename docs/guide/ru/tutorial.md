@@ -1,5 +1,5 @@
 ---
-source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
+source_sha256: 05685b876f71d5e53c42b014ef9d30392c2d302ef4166806d21169552714ac05
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -938,8 +938,11 @@ end
 > Запускайте `cybertrain spin test`, как в [шаге 12](#test);
 > `test/authentication.rb` и этот тест используют SQLite, поэтому их снимки
 > берутся из скомпилированного бинарника. `examples/blog` заканчивается до
-> этого шага. Не генерируются: сброс пароля (в CyberTrain нет мейлеров) и
-> ограничение частоты запросов.
+> этого шага. Частота попыток входа ограничена, как в генераторе Rails:
+> `SessionsController` объявляет `rate_limit to: 10, within: 3 * 60, only:
+> [:create]`, десять попыток с одного адреса клиента за три минуты, затем
+> возврат к форме с "Try again later.", пока окно не закроется. Не
+> генерируется: сброс пароля (в CyberTrain нет мейлеров).
 
 <!-- step 14 #attachments stage: Вы пишете · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Добавление обложки
