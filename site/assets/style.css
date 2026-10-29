@@ -457,6 +457,14 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 .checklist, .points { margin-top: 20px; display: grid; gap: 10px; color: var(--ink-2); }
 .checklist li, .points li { position: relative; padding-left: 26px; }
 .checklist li::before, .points li::before { content: ""; position: absolute; left: 0; top: .78em; width: 12px; height: 1px; background: var(--ink-3); }
+/* A plain Markdown list in a guide (no list comment) reads like .points: a dash and a gap per item,
+   so it does not render as a run of unmarked paragraphs; an ordered one keeps its numbers. */
+.step ul:not([class]), .step ol:not([class]) { margin-top: 20px; display: grid; gap: 10px; color: var(--ink-2); max-width: 68ch; }
+.step ul:not([class]) li { position: relative; padding-left: 26px; }
+.step ul:not([class]) li::before { content: ""; position: absolute; left: 0; top: .78em; width: 12px; height: 1px; background: var(--ink-3); }
+.step ol:not([class]) { list-style: decimal; padding-left: 26px; }
+.step ul:not([class]) code, .step ol:not([class]) code { color: var(--ink); }
+.step li > ul:not([class]), .step li > ol:not([class]) { margin-top: 10px; }
 .callout { --c: 12px; --fill: var(--surface-2); margin-top: 32px; padding: 24px 28px 26px; max-width: 760px; }
 .callout-k { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 10px; }
 .callout-k::before { content: ""; width: 20px; height: 3px; background: var(--ink); clip-path: polygon(0 0, 100% 0, calc(100% - 3px) 100%, 0 100%); }
