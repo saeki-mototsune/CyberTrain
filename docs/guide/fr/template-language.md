@@ -1,5 +1,5 @@
 ---
-source_sha256: 9c348325e4945493aa6eeb42add294c7ce0b8bf34811b3014c18617dec0b0ef6
+source_sha256: c62dd8a199df41e47d7f65f6dabf83f2b548e103d5f59b2bd807b7433590bd06
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -56,7 +56,7 @@ Une balise de commentaire dont le contenu commence par `locals:` **et qui est la
 
 - `<%# locals: () %>` (liste vide) signifie «&nbsp;ce partiel ne prend aucune variable locale&nbsp;».
 - Chaque entrée doit être un simple `name:` en minuscules (`Lexer.identifier?` n’accepte que `[a-z_][a-z0-9_]*`). **Tel qu’implémenté&nbsp;:** contrairement à Rails 7.1, les entrées ne peuvent pas porter de valeur par défaut — `<%# locals: (post:, comment: nil) %>`, la forme exacte que prend en charge Rails 7.1, est une `SyntaxError`&nbsp;: `"t:1: bad strict locals entry 'comment: nil' (expected name:)"`, car `comment: nil` ne se termine pas par `:`. Chaque variable locale déclarée est de fait obligatoire. Une spécification mal formée (parenthèses manquantes) lève `"t:1: bad strict locals comment (expected locals: (name:, ...))"`.
-- **Sans** ce commentaire, un template ne déclare aucune liste de variables locales&nbsp;: `render` transmet toutes les variables locales qu’il reçoit, sans vérification, et le template peut aussi lire tout ce qui est déjà présent dans l’environnement de l’appelant (voir la section 8).
+- **Sans** ce commentaire, un template ne déclare aucune liste de variables locales&nbsp;: `render` transmet toutes les variables locales qu’il reçoit, sans vérification, et le template peut aussi lire tout ce qui est déjà présent dans l’environnement de l’appelant (voir [Layouts, `yield`, `content_for`, partiels](#layouts-yield-content_for-partials)).
 - Si quoi que ce soit précède le commentaire sur une ligne antérieure (ne serait-ce qu’une ligne vide), ce n’est qu’un commentaire ordinaire et inerte, pas une déclaration de locals.
 
 ## Expressions
@@ -93,7 +93,7 @@ method arg1, key: value  # même appel, sans parenthèses (syntaxe « commande �
 
 - Une liste d’arguments sans parenthèses («&nbsp;commande&nbsp;») n’est ouverte que pour l’appel **le plus externe** d’une expression&nbsp;: `link_to "Show", post_path(post)` fonctionne, mais `link_to "Show", post_path post` est une `SyntaxError` — les appels internes ont besoin de leurs propres parenthèses.
 - Aucun espace n’est autorisé entre la cible d’un appel et sa `(` ouvrante&nbsp;: `link_to("x")` et `link_to "x"` fonctionnent tous deux&nbsp;; `link_to ("x")` est une `SyntaxError`.
-- `yield` et `yield :key` sont toujours analysés comme des appels (voir la section 8).
+- `yield` et `yield :key` sont toujours analysés comme des appels (voir [Layouts, `yield`, `content_for`, partiels](#layouts-yield-content_for-partials)).
 - Un mot nu commençant par une majuscule est rejeté d’emblée — `"constants are not supported: 'Time'"` — les templates ne peuvent pas atteindre les constantes Ruby.
 - Ces mots sont réservés et rejetés avec un message dédié (`"'x' is not supported in templates"`)&nbsp;: `and or not do end if unless elsif else then while until case when def class module begin rescue return`.
 
@@ -181,7 +181,7 @@ Uniquement `name = expr` pour une seule variable locale simple — pas de `@ivar
 | `true`/`false` | `to_s` | `published.to_s` |
 | `nil` | `to_s` (renvoie `""`) | |
 
-L’indexation (`x[key]`) est une production distincte de la grammaire (section 3), pas un appel `.[]`&nbsp;: `Array`/`String` prennent un index entier, `Hash` fait correspondre n’importe quelle clé par son `to_s` (`h[:k]` et `h["k"]` sont la même entrée), `Errors` par symbole, `Params` par `to_s`.
+L’indexation (`x[key]`) est une production distincte de la grammaire ([Expressions](#expressions)), pas un appel `.[]`&nbsp;: `Array`/`String` prennent un index entier, `Hash` fait correspondre n’importe quelle clé par son `to_s` (`h[:k]` et `h["k"]` sont la même entrée), `Errors` par symbole, `Params` par `to_s`.
 
 Affichage (`<%= %>`/interpolation) au-delà du `to_s` ci-dessus&nbsp;: un `Array` s’affiche comme une liste à la manière d’inspect — `[1, "a", nil]` rend le texte `[1, "a", nil]` (puis est échappé, les guillemets deviennent donc `&quot;`)&nbsp;; un `Hash` se rabat sur le `Hash#to_s` de Ruby&nbsp;; un `Cybertrain::Model` s’affiche `#<Post id: 7>` (jamais ses attributs)&nbsp;; tout le reste s’affiche via son propre `to_s`. Une méthode non listée sur l’un de ces types est une `RuntimeError` (`"undefined method 'first' for Time"`). La division/le modulo d’un `Integer` par zéro donne `"divided by 0"`&nbsp;; `Float` suit plutôt l’IEEE-754 (`Infinity`/`NaN`, sans erreur).
 
@@ -189,7 +189,7 @@ Affichage (`<%= %>`/interpolation) au-delà du `to_s` ci-dessus&nbsp;: un `Array
 
 Une sous-classe de `Cybertrain::Model` (un `Post`, un `Note` générés, ...) résout un nom nu dans cet ordre (`Interpreter#model_method`)&nbsp;:
 
-1. Cinq méthodes intégrées, toujours disponibles&nbsp;: `id`, `persisted?`, `new_record?`, `to_param` (`id.to_s`), `errors` (un `Errors`, section 5).
+1. Cinq méthodes intégrées, toujours disponibles&nbsp;: `id`, `persisted?`, `new_record?`, `to_param` (`id.to_s`), `errors` (un `Errors`, [Table des méthodes par type](#per-type-method-table)).
 2. `read_attribute(:name)` — une colonne générée.
 3. `read_association(:name)` — un `has_many`/`belongs_to` généré.
 4. `call_view_method(:name)` — un `def` sans argument écrit à la main que le générateur de modèles a trouvé dans `app/models/**/*.rb` (jamais d’arité).
@@ -216,14 +216,14 @@ Chaque appel sans receveur va à `Helpers#helper_call` (`helpers.rb`), qui fait 
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` est échappé sauf s’il est déjà une `SafeString`&nbsp;; **pas de `method:`** — lève une erreur qui vous dit d’utiliser `button_to` (pas de liens DELETE simulés à la rails-ujs/turbo) |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | un `<form class="button_to">` à un seul bouton&nbsp;; un `_method` caché pour tout verbe autre que `get`/`post`, plus le champ CSRF quand une session existe |
 | `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | exige un bloc&nbsp;; `model:` nouveau → route de collection + POST, persisté → route de membre + PATCH&nbsp;; `[parent, child]` pour une route imbriquée&nbsp;; `url:`/`method:` remplacent l’action/le verbe déduits&nbsp;; `multipart: true` ajoute `enctype="multipart/form-data"` (requis pour `f.file_field`&nbsp;; ce n’est jamais deviné à partir du bloc, et cela lève `ArgumentError` sur un formulaire GET) |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | voir la section 8 |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | voir [Layouts, `yield`, `content_for`, partiels](#layouts-yield-content_for-partials) |
 | `h`, `escape` | `h(text)` | échappe&nbsp;; une `SafeString` passe sans être échappée |
 | `raw` | `raw(text)` | enveloppe le texte dans une `SafeString` (affiché sans échappement) |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`&nbsp;; `pluralize(2, "mouse")` → `"2 mice"` (les inflexions anglaises par défaut de Rails, via `Cybertrain::Inflector`&nbsp;; les inflexions définies par l’application ne sont pas prises en charge)&nbsp;; un troisième argument explicite l’emporte toujours |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
 | `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`&nbsp;; `-1000` → `"-1,000"`&nbsp;; `1234.5` → `"1,234.5"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Tranches à la Rails, sans précision à la seconde&nbsp;: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
-| `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | voir la section 8 |
+| `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | voir [Layouts, `yield`, `content_for`, partiels](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | vide / absent sans session de contrôleur |
 | `flash` | | à la manière d’un `Hash`&nbsp;: `flash[:notice]` |
 | `params` | | les `Cybertrain::Params` courants |
@@ -299,7 +299,7 @@ Toute `StandardError` ordinaire venant d’un helper ou d’un appel de méthode
 
 | ERB de Rails | Cybertrain |
 | --- | --- |
-| Compilé en méthode Ruby&nbsp;; n’importe quel Ruby, n’importe quel objet, n’importe quelle méthode fonctionne | Interprété selon des tables de dispatch fixes par type&nbsp;; seul ce que liste la section 5 peut être appelé |
+| Compilé en méthode Ruby&nbsp;; n’importe quel Ruby, n’importe quel objet, n’importe quelle méthode fonctionne | Interprété selon des tables de dispatch fixes par type&nbsp;; seul ce que liste la [table des méthodes par type](#per-type-method-table) peut être appelé |
 | `ActiveSupport::SafeBuffer` est une sous-classe de `String` | `SafeString` est une classe d’enveloppe distincte — seuls `to_s`/`html_safe?`/`size`/`length`/`empty?` peuvent être appelés dessus |
 | Blocs&nbsp;: `each`, `{ }`, `map`, n’importe quelle méthode d’Enumerable | Uniquement `do...end`, et uniquement sur `each`/`each_with_index`/un appel de helper |
 | `xs.each { }` — zéro paramètre de bloc, c’est permis | `each`/`each_with_index` exigent de déclarer 1 ou 2 paramètres de bloc |

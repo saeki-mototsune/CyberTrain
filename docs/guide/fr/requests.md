@@ -1,9 +1,9 @@
 ---
-source_sha256: a33d978bb9bf00664107e2af05925eddc07a89d8bffdfb2ca94e7dddd8b441eb
+source_sha256: 8139d87863b139634224e836699b97e3b4ccaddcbe6af45562216a3f8e30208d
 ---
 # Requêtes
 
-Ce qu’un contrôleur reçoit d’une requête et ce que le framework surveille pour lui&nbsp;: la limitation du débit et l’adresse du client derrière un proxy, les en-têtes paramétrés, et la façon dont les chaînes de requête et les corps de requête sont analysés et bornés.
+Ce qu’un contrôleur reçoit d’une requête et ce que le framework vérifie avant de l’exécuter&nbsp;: la limitation du débit et l’adresse du client derrière un proxy, les en-têtes paramétrés, et la façon dont les chaînes de requête et les corps de requête sont analysés et bornés.
 
 ## Limitation du débit et adresse du client
 
@@ -34,6 +34,8 @@ processus compte de son côté. Chaque requête vers une action limitée prend u
 verrou&nbsp;: nommez les actions avec `only:`. Dans un test,
 `Cybertrain::RateLimit.reset_all!` oublie tous les compteurs et
 `Cybertrain::RateLimit.current_time = n` fige l’horloge (`-1` la rétablit).
+
+### L’adresse du client derrière un proxy
 
 L’adresse comptée est `request.client_ip` (`by: :remote_addr` compte plutôt le
 pair de la connexion). C’est `request.remote_addr`, sauf si

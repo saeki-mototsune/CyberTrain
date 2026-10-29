@@ -1,5 +1,5 @@
 ---
-source_sha256: 5e99bb7df246d9c13729928998ed09710a52fc8b7856eeb0a806356f9ba7c03a
+source_sha256: f2fc66817b4de63dd2d3fa3ee4cdba0c25960cae6ec4de300b2cc3d671220cf2
 ---
 # Installer cybertrain
 
@@ -7,8 +7,8 @@ Ce dont CyberTrain a besoin sur votre machine, comment installer la commande `cy
 
 > [!NOTE]
 > Pour essayer CyberTrain sans rien installer, ouvrez [le bac à sable](site:playground.html)&nbsp;:
-> GitHub Codespaces exécute la commande `cybertrain`, Spinel `2026.10.27.7020` et
-> le blog du tutoriel dans votre navigateur. La même image tourne aussi en local avec Docker.
+> GitHub Codespaces ouvre le blog du tutoriel, la commande `cybertrain` et
+> Spinel `2026.10.27.7020` dans VS Code, dans votre navigateur. La même image tourne aussi en local avec Docker.
 
 ## Prérequis
 
@@ -16,7 +16,7 @@ Ce dont CyberTrain a besoin sur votre machine, comment installer la commande `cy
   `SPINEL_TAG` dans [.github/workflows/ci.yml](../../.github/workflows/ci.yml)),
   une version de [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)
   (`Cybertrain::SPINEL_REPOSITORY`), le fork de matz/spinel qui intègre les
-  corrections dont cybertrain a besoin avant une version amont&nbsp;; non testé
+  corrections dont CyberTrain a besoin avant une version amont&nbsp;; non testé
   avec d’autres versions. Vous ne l’installez pas à la main&nbsp;: la commande
   `cybertrain` compile cette version dans `~/.cybertrain` la première fois
   qu’elle en a besoin (`cybertrain setup` le fait à la demande), sauf si un
@@ -38,14 +38,14 @@ Ce dont CyberTrain a besoin sur votre machine, comment installer la commande `cy
 Spinel&nbsp;; quand un élément requis manque, il affiche aussi la commande
 d’installation pour votre plateforme.
 
-<details><summary>Paquets facultatifs — OpenSSL, jemalloc, et prism avec Ruby 3.2</summary>
+<details><summary>Autres paquets — prism avec Ruby 3.2&nbsp;; OpenSSL et jemalloc, facultatifs</summary>
 
 - La compilation de Spinel demande la gem `prism` de Ruby, que Ruby 3.3 et plus
   récent incluent&nbsp;; avec Ruby 3.2, `gem install prism` (avec les en-têtes
   de développement de Ruby, `ruby-dev` sous Debian/Ubuntu). `cybertrain doctor`
   le vérifie.
 - Les en-têtes OpenSSL (`libssl-dev`) sont facultatifs&nbsp;: sans eux, Spinel
-  est compilé sans son paquet `openssl`, que cybertrain n’utilise pas. Sous
+  est compilé sans son paquet `openssl`, que CyberTrain n’utilise pas. Sous
   macOS, une application qui requiert `openssl` a besoin de l’OpenSSL de
   Homebrew (keg-only) dans les chemins du compilateur&nbsp;: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`.
@@ -92,7 +92,7 @@ partir de là, de `cybertrain new` à `cybertrain build`.
   fichier à un modèle généré par scaffold&nbsp;: cinq colonnes de métadonnées,
   des méthodes et callbacks de modèle, une action de téléchargement, la route,
   le champ de formulaire et un test (voir
-  [Ajouter un envoi de fichier](tutorial.md#attachments)). Un champ de scaffold
+  [Ajouter une image de couverture](tutorial.md#attachments)). Un champ de scaffold
   `cover:attachment` fait la même chose.
 - `cybertrain db migrate` génère, applique les migrations en attente, puis
   génère à nouveau (`spin run gen; spin run db -- migrate; spin run gen`)&nbsp;;
@@ -130,7 +130,9 @@ est utilisée&nbsp;; sinon, `cybertrain` compile cette copie à partir du tag de
 version de `Cybertrain::SPINEL_REPOSITORY` (`git clone`, `make deps`,
 `make -j`, `make install PREFIX=...`), une seule fois, en quelques minutes. Le
 journal de compilation est `~/.cybertrain/log/spinel-2026.10.27.7020-build.log`
-(ses dernières lignes sont affichées si une étape échoue)&nbsp;; s’il manque un
+(ses dernières lignes sont affichées si une étape échoue).
+
+S’il manque un
 outil nécessaire à la compilation, `cybertrain` indique lequel et affiche la
 commande d’installation pour votre plateforme avant de commencer. Un `spinel`
 d’une autre version présent dans le `PATH` n’est jamais utilisé ni
@@ -196,11 +198,11 @@ Quatre options changent ce qu’elle écrit et lance&nbsp;:
   Spinel, pas de `spin lock`, pas de `spin run gen`.
 - `--path DIR` fait plutôt dépendre l’application d’une copie locale du dépôt
   (`--path ~/src/cybertrain`, là où se trouve la copie, pour travailler sur
-  cybertrain lui-même).
+  CyberTrain lui-même).
 - `--git URL [--ref R]` fait dépendre l’application du framework situé à URL
   (à la branche ou au tag R).
 - `--version V` fait dépendre l’application d’une version de l’index, une fois
-  que cybertrain sera sur un `spin-index`.
+  que le framework sera sur un `spin-index`.
 
 N’indiquez qu’une seule des options `--path`, `--version` et `--git`&nbsp;;
 `--ref` exige `--git`.

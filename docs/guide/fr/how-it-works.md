@@ -1,10 +1,10 @@
 ---
-source_sha256: dbc42178d5f6d75cdaeb5a45ea7c94a4462048b57ac21424a253347306264fc8
-description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et toutes les différences connues avec Rails.
+source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
+description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
 
-Cette page explique comment une application CyberTrain est construite et exécutée&nbsp;: le code généré à la compilation, les vues interprétées au moment de la requête, le serveur HTTP, SQLite via la FFI et la boucle de développement, puis toutes les différences connues avec Rails. La [section performances](site:index.html#performance) de la page d’accueil compare le résultat avec le même blog écrit en Rails 8.1. La méthode, chaque chiffre et la façon de refaire la mesure se trouvent dans [docs/benchmark.md](../benchmark.md).
+Cette page explique comment une application CyberTrain est construite et exécutée&nbsp;: le code généré à la compilation, les vues interprétées au moment de la requête, le serveur HTTP, SQLite via la FFI et la boucle de développement, puis un tableau des différences avec Rails. La [section performances](site:index.html#performance) de la page d’accueil compare le résultat avec le même blog écrit en Rails 8.1. La méthode, chaque chiffre et la façon de refaire la mesure se trouvent dans [docs/benchmark.md](../benchmark.md).
 
 ## Génération de code à la compilation
 
@@ -56,12 +56,12 @@ Comment une transaction emprunte l’une de ces connexions, et ce qui s’exécu
 
 Un changement lance `spin run gen && spin build NAME -- --incremental` en arrière-plan&nbsp;: la compilation incrémentale de Spinel, qui ne recompile que les unités C touchées par la modification. Une version de Spinel sans `--incremental` rejette l’option, et la boucle compile alors sans elle.
 
-Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` externe)&nbsp;: un thread de surveillance arrête l’écoute et laisse se terminer les requêtes ouvertes, puis le thread principal fait `execv` du nouveau binaire sur le même port et le même PID, de façon invisible pour un client en pleine session. Une compilation échouée continue de servir l’ancien binaire et affiche la sortie du compilateur en bannière sur chaque réponse HTML. Rien de tout cela n’est chargé en production.
+Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` externe)&nbsp;: un thread de surveillance arrête l’écoute et laisse se terminer les requêtes ouvertes, puis le thread principal fait `execv` du nouveau binaire sur le même port et le même PID, de façon invisible pour un client en pleine session. Une compilation échouée continue de servir l’ancien binaire et affiche la sortie du compilateur en bannière sur chaque réponse HTML. Les recompilations sont suspendues tant que `cybertrain build` détient `tmp/cybertrain-build.lock`. Rien de tout cela n’est chargé en production.
 
 ## Différences avec Rails
 
 <!-- table: cmp -->
-| Rails | cybertrain |
+| Rails | CyberTrain |
 | --- | --- |
 | `rails console` | Pas de console — Spinel n’a pas d’`eval` |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` dans `bin/<app>.rb`&nbsp;: `./<app> name ARGS` la lance avec la base de données connectée |
@@ -70,7 +70,7 @@ Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` exte
 | `def new` | `def new_action` (`new` masquerait `Klass.new(ctx)`) |
 | `before_action { do_thing }` (`self` implicite) | `before_action { \|c\| c.do_thing }` — pas d’`instance_exec` sur un bloc stocké, donc les callbacks reçoivent explicitement le contrôleur/l’enregistrement |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — les blocs imbriqués reçoivent le mapper explicitement |
-| ERB est compilé en méthode&nbsp;; n’importe quel objet, n’importe quelle méthode | Interprété selon une grammaire/table de dispatch fixe — [docs/guide/template-language.md](template-language.md) |
+| ERB est compilé en méthode&nbsp;; n’importe quel objet, n’importe quelle méthode | Interprété selon une grammaire/table de dispatch fixe ([Langage de templates](template-language.md)) |
 | La session contient n’importe quel objet sérialisé (marshal) | Valeurs de session de type String uniquement, cookie signé HMAC |
 | De nombreux adaptateurs de base de données | SQLite uniquement, via FFI |
 | `Article.transaction { ... }` renvoie la valeur du bloc&nbsp;; `raise ActiveRecord::Rollback`&nbsp;; savepoints avec `requires_new: true` | `Article.transaction { \|c\| ... }` passe la connexion au bloc et renvoie nil&nbsp;; on en sort en levant une exception&nbsp;; les appels imbriqués rejoignent la transaction externe, pas de savepoints ([Transactions](models.md#transactions)) |
@@ -85,8 +85,8 @@ Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` exte
 | Backtrace complète lors d’une exception | Classe, message, ligne de requête, nom/ligne du template — Spinel n’expose pas de backtraces |
 | Rack, ses middlewares, et n’importe quelle gem d’un `Gemfile` | Pas de compatibilité Rack&nbsp;; un petit ensemble fixe de middlewares&nbsp;; le `spin-index` propre à Spinel, limité à ce qui compile avec son sous-ensemble de Ruby |
 | minitest / RSpec | `Cybertrain::Test` — les runners fondés sur la réflexion ne peuvent pas fonctionner avec une compilation AOT |
-| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` écrit la même structure plus une page d’inscription&nbsp;; les mots de passe utilisent PBKDF2-HMAC-SHA256 (bcrypt demanderait une bibliothèque C&nbsp;; le `String#crypt` de macOS n’en a pas)&nbsp;; pas de réinitialisation du mot de passe ([Ajouter la connexion](tutorial.md#authentication)) |
-| Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` écrit cinq colonnes `cover_*` et les méthodes de modèle&nbsp;; les fichiers résident sur le disque local sous `storage/uploads/` et sont servis par `send_blob`&nbsp;; un fichier par champ, ni variantes ni envois directs ([Image de couverture](tutorial.md#attachments)) |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` écrit la même structure plus une page d’inscription&nbsp;; les mots de passe utilisent PBKDF2-HMAC-SHA256 (bcrypt demanderait une bibliothèque C&nbsp;; le `String#crypt` de macOS n’a pas bcrypt)&nbsp;; pas de réinitialisation du mot de passe ([Ajouter la connexion](tutorial.md#authentication)) |
+| Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` écrit cinq colonnes `cover_*` et les méthodes de modèle&nbsp;; les fichiers résident sur le disque local sous `storage/uploads/` et sont servis par `send_blob`&nbsp;; un fichier par champ, ni variantes ni envois directs ([Ajouter une image de couverture](tutorial.md#attachments)) |
 | `skip_before_action :x` | Pareil, pour les callbacks before nommés (un callback sous forme de bloc n’a pas de nom à sauter)&nbsp;; pas de `skip_after_action` |
 | `resource :session` | Les mêmes six routes vers `SessionsController`&nbsp;; pas d’imbrication en dessous |
 | `get "/x"` puis `post "/x"` | Les deux sont acceptés&nbsp;: le nom déduit de la seconde route est déjà pris, elle reste donc sans nom, comme dans Rails&nbsp;; un `as:` en double reste une erreur |

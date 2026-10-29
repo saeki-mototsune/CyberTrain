@@ -1,5 +1,5 @@
 ---
-source_sha256: 5778d1b05d81b6b389f1a3846deec6d58ffd763fb5e8339ce5d6115944d62d97
+source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -40,11 +40,8 @@ l’application dans un dossier `dist/` déployable. L’application terminée e
 
 <!-- list: checklist -->
 - Ruby 3.2+ et RubyGems, uniquement pour la commande `cybertrain`&nbsp;; les
-  applications ne tournent jamais sur CRuby. La compilation de Spinel demande
-  aussi la gem `prism` de Ruby&nbsp;: Ruby 3.3 et plus récent
-  l’incluent&nbsp;; avec Ruby 3.2, lancez `gem install prism` (avec les
-  en-têtes de développement de Ruby, `ruby-dev` sous Debian/Ubuntu).
-  `cybertrain doctor` le vérifie.
+  applications ne tournent jamais sur CRuby. Avec Ruby 3.2, ajoutez aussi
+  `gem install prism`.
 - Spinel `2026.10.27.7020`, une version du fork
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel), qui
   intègre les corrections dont CyberTrain a besoin avant une version
@@ -58,14 +55,10 @@ l’application dans un dossier `dist/` déployable. L’application terminée e
 - En-têtes et bibliothèques SQLite 3 et zlib&nbsp;: `libsqlite3-dev` et
   `zlib1g-dev` sous Debian/Ubuntu&nbsp;; fournis avec les Command Line Tools
   de Xcode sous macOS.
-- Les en-têtes OpenSSL (`libssl-dev`) sont facultatifs&nbsp;: sans eux, Spinel
-  est compilé sans son paquet `openssl`, que CyberTrain n’utilise pas.
 
-`cybertrain doctor` vérifie ces outils et en-têtes ainsi que l’installation de
-Spinel&nbsp;; quand un élément requis manque, il affiche aussi la commande
-d’installation pour votre plateforme.
-
-Où Spinel est placé, comment lancer `spin` vous-même et comment utiliser une autre installation&nbsp;:
+`cybertrain doctor` vérifie tout cela. La liste complète et ce qui est
+facultatif&nbsp;: [Prérequis](install.md#requirements)&nbsp;; où Spinel est placé
+et comment utiliser une autre installation&nbsp;:
 [comment Spinel est installé](install.md#how-spinel-is-installed).
 
 > [!NOTE]
@@ -1203,7 +1196,7 @@ et charge `config/deploy.yml` avec Kamal.
   l’exécute&nbsp;: le binaire est lié à la SQLite du système.
 - `SPINEL_WORKERS` vaut `1` par défaut.
 - Seul Spinel `2026.10.27.7020` est testé.
-- La liste complète des différences avec Rails&nbsp;: [Différences avec Rails](how-it-works.md#differences-from-rails).
+- D’autres différences avec Rails, dans un seul tableau&nbsp;: [Différences avec Rails](how-it-works.md#differences-from-rails).
 
 <!-- step → #where-next -->
 ## Pour aller plus loin

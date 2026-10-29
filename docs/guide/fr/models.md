@@ -1,9 +1,9 @@
 ---
-source_sha256: 1f3299ce753f9ca949e912a5d2848b2b028f258f8ebdcef7a3be7a74894d6104
+source_sha256: 75a49c15853d34f1c018af07c3f0d29bf29d1778a7e52b12a048c95f83b437e4
 ---
 # Modèles et base de données
 
-Ce que fait un modèle au-delà du scaffold&nbsp;: écrire des migrations, les requêtes qui vont plus loin que `where`, paginer une liste, les transactions, et les règles que suivent sous Spinel les noms de colonnes SQLite et les clauses `order`.
+Ce que fait un modèle au-delà du scaffold&nbsp;: écrire des migrations, les requêtes qui vont plus loin que `where`, paginer une liste, les transactions, et les règles que suivent sous Spinel les noms de colonnes et les clauses `order`.
 
 ## Migrations
 
@@ -62,7 +62,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
             conflict: [:project_id, :key],
             update: { calls: "calls + excluded.calls", max_ms: "MAX(max_ms, excluded.max_ms)",
                       seen_at: "excluded.seen_at" })
-Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1
+Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (existent aussi : pluck_str, pluck_float)
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
 Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # regroupement par heure
@@ -184,7 +184,7 @@ Une colonne nommée comme une méthode que la classe générée ou le framework 
 
 Une colonne nommée comme une autre méthode d’Object (`display`, `tap`, `methods`) est générée sous son propre nom avec une note. `cybertrain generate scaffold` refuse les mots-clés et les noms réservés (il devrait appeler un lecteur renommé) et accepte un nom masquant avec une note, comme le générateur.
 
-Là où Rails laisse une association masquer `errors`, une association dont le nom simple est déjà pris par une colonne, une autre association ou une méthode de `Model` est émise sous un nom de repli, avec un commentaire dans le fichier généré&nbsp;: `<table>_as_<column stem>` pour un `has_many` (`comments_as_article`), `<stem>_as_<column>` pour un `belongs_to` (`author_as_author_id`).
+Une association dont le nom simple est déjà pris par une colonne, une autre association ou une méthode de `Model` (Rails en laisse une masquer `errors`) est émise sous un nom de repli, avec un commentaire dans le fichier généré&nbsp;: `<table>_as_<column stem>` pour un `has_many` (`comments_as_article`), `<stem>_as_<column>` pour un `belongs_to` (`author_as_author_id`).
 
 ## Tri
 
