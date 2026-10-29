@@ -4,13 +4,13 @@
 
 [Open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
 to try cybertrain without installing anything: VS Code opens in your browser with
-Spinel 2026.10.27.7020, the `cybertrain` CLI and the blog from the walkthrough below
+Spinel 2026.10.27.7020, the `cybertrain` CLI and the blog from the [tutorial](tutorial.md)
 already created (`cybertrain new blog`, the article scaffold, the root route and
 the first migration, built once so the server starts without compiling), its
 development server running in a terminal and the app, showing the article list,
 in a new browser tab. The app is a git repository with one commit, so Source
 Control shows what you change. `PLAYGROUND.md` in the app lists what to try, from
-editing a view to carrying on with the walkthrough's comments. A view edit shows
+editing a view to continuing with the tutorial from step 08 (comments). A view edit shows
 on the next reload; a Ruby edit is a full rebuild, about a minute, after which the
 server restarts by itself; the app's tab does not reload by itself. `cybertrain new`
 works there with no network.
@@ -117,7 +117,7 @@ commands (`cybertrain help` prints them):
 - `cybertrain generate authentication` adds email-and-password sign-in to
   it: users and sessions tables, `User` and `Session` models, the sign-in
   and sign-up controllers and views, the routes, a `before_action` in
-  `ApplicationController` and a test (see [Add authentication](walkthrough.md#add-authentication)).
+  `ApplicationController` and a test (see [Add authentication](tutorial.md#authentication)).
   With `--invite-only` there is no sign-up page: users are created with
   `./NAME user EMAIL`, and the first one also at a `/setup` page that
   answers only to the server's own machine, with the one-time token its
@@ -125,7 +125,7 @@ commands (`cybertrain help` prints them):
 - `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
   to a scaffolded model: five metadata columns, model methods and
   callbacks, a download action, the route, the form field and a test (see
-  [Add a file upload](walkthrough.md#add-a-file-upload)). A scaffold field `cover:attachment` does the same.
+  [Add a file upload](tutorial.md#attachments)). A scaffold field `cover:attachment` does the same.
 - `cybertrain db migrate` generates, applies pending migrations, and
   generates again (`spin run gen; spin run db -- migrate; spin run gen`);
   `cybertrain migration` is kept as an alias.

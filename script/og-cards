@@ -4,7 +4,8 @@
 // card come from the page itself: the kicker is the hero's status line (home)
 // or the header link marked aria-current (tutorial, playground, deploy), the headline
 // is the tagline (home) or the <h1>. So after a page's tagline or title
-// changes, in any language, run this again and commit the PNGs.
+// changes, in any language, run this again and commit the PNGs. The tutorial
+// pages are built by script/guide-pages (not committed): run it first.
 //
 // Needs Node and Playwright with its Chromium (`npm install -g playwright`
 // then `npx playwright install chromium`). Archivo and JetBrains Mono come
@@ -128,6 +129,12 @@ ${scene()}
   const { chromium } = loadPlaywright();
   const langs = process.argv.slice(2).length ? process.argv.slice(2) : LANGS;
   for (const l of langs) if (!LANGS.includes(l)) { console.error(`script/og-cards: unknown language ${l}`); process.exit(1); }
+  // The tutorial pages are generated, not committed: build them first.
+  const missing = langs.flatMap((l) => PAGES.map((name) => path.join(SITE, l === 'en' ? '' : l, `${name}.html`))).filter((f) => !fs.existsSync(f));
+  if (missing.length) {
+    console.error(`script/og-cards: missing ${missing.map((f) => path.relative(path.join(SITE, '..'), f)).join(', ')}; run script/guide-pages first`);
+    process.exit(1);
+  }
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
   const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'og-cards-'));

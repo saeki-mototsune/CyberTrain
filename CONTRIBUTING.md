@@ -25,7 +25,7 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   records what was decided, what was rejected and why. Read the
   relevant section before changing a behaviour, and update it when a
   decision changes. [README.md](README.md) explains the framework to its
-  users and [docs/template-language.md](docs/template-language.md) the
+  users and [docs/guide/template-language.md](docs/guide/template-language.md) the
   template grammar.
 - **Generated code is committed.** `spin` has no build hooks, so
   `examples/blog/gen/` and the generated files in `test/fixtures/` are
@@ -195,6 +195,22 @@ and files named for what they hold. Prefer the plain construct Spinel compiles
 well over the clever one; when a compiler constraint forces an odd shape, say
 so in a comment at the spot.
 
+## Guides and translations
+
+The tutorial and the guides on the site are generated from the Markdown in
+[docs/guide/](docs/guide/), in English and in `ja/`, `zh/`, `ru/` and `fr/`;
+edit the Markdown, never the generated HTML. A change to an English guide
+changes its four translations in the same pull request, then
+`script/check-guide-i18n --update-sha docs/guide/<lang>/<name>.md` records
+that each matches it; the gate runs `script/check-guide-i18n` when a file
+under `docs/guide/` changes. If you cannot translate, say so in the pull
+request and leave the English change; a maintainer will follow up. The pull
+request's Gate check stays red until the four translations are updated in it,
+and merging it without them would block the Pages deploys.
+[docs/guide/README.md](docs/guide/README.md) has the front matter, the
+conventions the Markdown uses, how to build and preview the pages
+(`script/guide-pages`), and the translation rules.
+
 ## Commits
 
 A commit is a unit of review, so make each one about one thing, and write the
@@ -238,8 +254,13 @@ will land faster than it would inside yours. Changes to `docs/design.md`,
 `spikes/NOTES.md`, the README and `docs/guide/` belong in the same pull request as the code
 they describe.
 
-Documentation and translation pull requests need no Spinel at all:
-`script/gate` is the only check, and the site is plain HTML under `site/`.
+Documentation and translation pull requests need no Spinel at all: the site
+is plain HTML under `site/`, and previewing a guide needs only Ruby and three
+gems (see [docs/guide/README.md](docs/guide/README.md#building-and-previewing)).
+`script/gate` checks the guide translations but does not build the guides, so
+if you change `docs/guide/` also run `script/guide-pages --out <tmpdir>`, as
+the Gate workflow's `guide-pages` job does: it fails on a broken link or
+anchor, which the gate does not see.
 
 ## Releasing
 

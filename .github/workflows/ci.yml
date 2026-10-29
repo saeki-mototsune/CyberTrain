@@ -3,9 +3,8 @@ name: CI
 # A change that touches only documentation runs no tests: site/ (the
 # homepage, the tutorial, the deploy and playground pages: static files that
 # nothing below reads; pages.yml publishes it) and Markdown files anywhere.
-# The exceptions are the API reference's Markdown sources (docs/api/README.md,
-# docs/template-language.md, docs/guide/; see .yardopts), which the "API
-# reference builds" step below checks. Nor do the repository scripts and git hooks: the Gate
+# The exception is the API reference's Markdown source (docs/api/README.md;
+# see .yardopts), which the "API reference builds" step below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
 # reads them except script/api-docs, which is brought back in. Nor do the
 # other workflows (release, images, pages, gate): only this file is brought
@@ -26,8 +25,6 @@ on:
       - "!.github/workflows/**"
       - ".github/workflows/ci.yml"
       - "docs/api/**"
-      - "docs/template-language.md"
-      - "docs/guide/**"
       - "script/api-docs"
   pull_request:
     paths:
@@ -39,8 +36,6 @@ on:
       - "!.github/workflows/**"
       - ".github/workflows/ci.yml"
       - "docs/api/**"
-      - "docs/template-language.md"
-      - "docs/guide/**"
       - "script/api-docs"
 
 # A new push to a pull request cancels the run still going for its previous
@@ -92,7 +87,9 @@ jobs:
       - name: API reference builds
         if: runner.os == 'Linux'
         run: |
-          gem install --no-document yard kramdown kramdown-parser-gfm
+          gem install --no-document yard
+          gem install --no-document kramdown -v "~> 2.5"
+          gem install --no-document kramdown-parser-gfm -v "~> 1.1"
           script/api-docs
 
       # The gem ships the CLI only; it must run under CRuby and bring every

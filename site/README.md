@@ -1,13 +1,15 @@
 # site/
 
-The CyberTrain homepage (`index.html`), the getting-started tutorial
-(`tutorial.html`), the deploy page (`deploy.html`: how an app runs in
-production, Kamal or systemd behind Caddy) and the playground page
-(`playground.html`, the way into the GitHub Codespaces playground): static HTML and CSS with no build step, no
-framework and no third-party requests. `assets/site.js` only adds copy
-buttons, marks the current step in the contents lists and closes the language
-menu; every page works with JavaScript off. Each page is also translated
-into four languages (see [Translations](#translations)).
+The CyberTrain homepage (`index.html`), the deploy page (`deploy.html`: how an
+app runs in production, Kamal or systemd behind Caddy) and the playground page
+(`playground.html`, the way into the GitHub Codespaces playground) are written
+by hand: static HTML and CSS with no build step, no framework and no
+third-party requests. The getting-started tutorial (`tutorial.html`) and the
+guides (`guide/`) are generated from Markdown (see [Generated
+pages](#generated-pages)) into the same page shell. `assets/site.js` only adds
+copy buttons, marks the current step in the contents lists and closes the
+language menu; every page works with JavaScript off. Each page is also
+translated into four languages (see [Translations](#translations)).
 
 - `assets/brand/` — the logo files and [BRAND.md](assets/brand/BRAND.md)
   (construction system, colour tokens, clear space, which file to use where).
@@ -20,10 +22,28 @@ into four languages (see [Translations](#translations)).
 `script/api-docs` builds with YARD (see the comment at its top) and the
 Pages workflow builds before each deploy. The header and footer link to it.
 
-Preview locally:
+## Generated pages
+
+`tutorial.html`, `<lang>/tutorial.html`, `guide/<name>.html` and
+`<lang>/guide/<name>.html` are not in the repository either (they are in
+`.gitignore`): `script/guide-pages` builds them from the Markdown in
+[docs/guide/](../docs/guide) (`docs/guide/<lang>/` for the translations) and
+the Pages workflow runs it before each deploy. Edit the Markdown, never the
+HTML. The script also writes the old `api/file.<name>.html` URLs as redirects
+into `api/`. The header and footer link to the guides' index,
+`guide/index.html`. [docs/guide/README.md](../docs/guide/README.md) has the
+conventions: front matter, the markers the Markdown uses for the page's
+components, and the translation procedure.
+
+Preview locally. `script/guide-pages` needs the kramdown, kramdown-parser-gfm
+and rouge gems, `script/api-docs` yard, kramdown and kramdown-parser-gfm; the
+workflows pin kramdown `~> 2.5`, kramdown-parser-gfm `~> 1.1` and rouge
+`~> 5.1` (the install commands are in
+[docs/guide/README.md](../docs/guide/README.md#building-and-previewing)):
 
 ```sh
-script/api-docs                       # optional: builds site/api/ (needs the yard, kramdown, kramdown-parser-gfm gems)
+script/api-docs                       # optional: builds site/api/
+script/guide-pages                    # builds the tutorial and guides into site/
 python3 -m http.server -d site 8000   # http://localhost:8000
 ```
 
@@ -37,7 +57,8 @@ A change that touches only `site/` does not run
 [CI](../.github/workflows/ci.yml) (its `paths` filter; CI never checked the site),
 so run `script/check-site-i18n` before pushing one.
 
-Content rule: every command, code block and claim on these pages comes from
+Content rule: every command, code block and claim on these pages (the
+generated ones too, through their Markdown) comes from
 [README.md](../README.md), [examples/blog](../examples/blog) or
 [docs/](../docs); when those change, change the site to match.
 The home page's Performance section (06) shows the run recorded in
@@ -63,7 +84,8 @@ from the pages, so when a tagline or title changes, in any language, run
 script/og-cards                 # all languages; or: script/og-cards ja
 ```
 
-and commit the PNGs. It needs Node and Playwright with its Chromium, and Noto
+and commit the PNGs. Run `script/guide-pages` first: the cards of the tutorial and the guides read
+their words from the generated pages. It needs Node and Playwright with its Chromium, and Noto
 Sans JP, Noto Sans SC and Noto Sans installed for the Japanese, Chinese and
 Russian cards (the comment at the top of the script has the details). Social
 networks cache cards: after changing one, re-scrape the page with the
@@ -71,9 +93,9 @@ network's card validator.
 
 ## Translations
 
-The four pages are also published in Japanese (`ja/`), Simplified Chinese
-(`zh/`), Russian (`ru/`) and French (`fr/`), at the same file names:
-`ja/tutorial.html` is the Japanese `tutorial.html`. English is the source;
+The hand-written pages are also published in Japanese (`ja/`), Simplified
+Chinese (`zh/`), Russian (`ru/`) and French (`fr/`), at the same file names:
+`ja/deploy.html` is the Japanese `deploy.html`. English is the source;
 each translation is a copy of the English page with only its text translated:
 
 - same markup, ids, anchors and links, with `../` in front of `assets/` and
@@ -96,4 +118,15 @@ script/check-site-i18n          # all languages; or: script/check-site-i18n ja
 ```
 
 which fails when a translation's markup, code blocks or inline code no longer
-match the English page, and lists text nodes that still look English.
+match the English page, and lists text nodes that still look English. It covers
+`index`, `deploy` and `playground` only.
+
+The tutorial and the guides are translated in Markdown instead:
+`docs/guide/<lang>/<name>.md` next to the English `docs/guide/<name>.md`, with
+the same headings, code blocks and links. When an English source changes,
+change the four translations in the same pull request, then run
+`script/check-guide-i18n --update-sha docs/guide/<lang>/<name>.md` on each
+(see [docs/guide/README.md](../docs/guide/README.md)); `script/check-guide-i18n`
+without arguments lists the translations that are missing or out of date. The
+generated pages carry the same hreflang links, language menu and footer list as
+the hand-written ones.

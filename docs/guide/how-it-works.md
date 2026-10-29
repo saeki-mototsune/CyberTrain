@@ -30,7 +30,7 @@ template once) and refuses to boot when it is empty (`error: views are not
 embedded in this binary`). Spinel has no `eval`, so this is a closed grammar (literals, `@ivar`/local lookups, calls
 through fixed per-type dispatch tables, `if`/`unless`,
 `each`/`each_with_index`/one helper block), not real Ruby. Full grammar,
-helpers and gaps: [docs/template-language.md](../template-language.md).
+helpers and gaps: [docs/guide/template-language.md](template-language.md).
 
 **The HTTP server.** `Cybertrain::Server` is plain-Ruby HTTP/1.1:
 `TCPServer#accept` plus one Spinel green thread per connection (M:N
@@ -96,7 +96,7 @@ compiler output on every HTML response. None of this loads in production.
 | `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |
 | `before_action { do_thing }` (implicit `self`) | `before_action { \|c\| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — nested blocks take the mapper explicitly |
-| ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table — [docs/template-language.md](../template-language.md) |
+| ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table — [docs/guide/template-language.md](template-language.md) |
 | Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
 | Many database adapters | SQLite only, via FFI |
 | `Article.transaction { ... }` returns the block's value; `raise ActiveRecord::Rollback`; `requires_new: true` savepoints | `Article.transaction { \|c\| ... }` (= `Cybertrain::DB.transaction`) yields the connection and returns nil; leave it by raising (it re-raises after the rollback); nested calls join the outer transaction, no savepoints. `immediate: true` for SQLite's `BEGIN IMMEDIATE`. `c.transaction { }` cannot be called on the yielded `c` under Spinel: nest `DB.transaction`, or use `c.begin!` / `c.commit!` / `c.rollback!` |
@@ -122,7 +122,6 @@ compiler output on every HTML response. None of this loads in production.
 | Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind) { \|payload\| ... }` and `Job.enqueue(kind, payload, run_at:)` (a String payload in a `cybertrain_jobs` table, retried with backoff, then `failed`), `Cybertrain::Scheduler.every(seconds, name) { ... }`; one thread in the served process, `CYBERTRAIN_WORKER=0` elsewhere ([Background work](background-and-operations.md#background-work)) |
 | ActionCable client, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url).on_message { \|conn, data\| ... }` keeps a feed connected while the server runs (reconnects, pings, silence detection), `Cybertrain::WebSocket::Client` for one synchronous connection; outbound only, every wait bounded (see [Consuming WebSocket feeds](external-services.md#consuming-websocket-feeds)) |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` is an Array of Strings matched by substring, case-insensitively (no Regexps or lambdas); it applies to the request log and the development error page ([Filtered parameters](configuration.md#configuration-and-environment-variables)) |
-
 | `get "up" => "rails/health#show"` (a route to a controller) | `GET /up` is built in and answered before the static files, the session and the router, so no `before_action` runs; it queries the database and the background worker's last tick, `200 ok` or `503` ([Operations](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | `bin/rails db:...` tasks for backups (none built in) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renamed into place) and `./<app> db vacuum` |
 | ActionCable (the server), asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |

@@ -20,3 +20,9 @@ log/
 # YARD (API docs are built by the Pages workflow into site/api/)
 .yardoc/
 /site/api/
+
+# Guide pages (built by script/guide-pages from docs/guide/)
+/site/tutorial.html
+/site/*/tutorial.html
+/site/guide/
+/site/*/guide/

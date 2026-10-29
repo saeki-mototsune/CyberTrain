@@ -1,0 +1,145 @@
+# The Markdown outline parser for the guide pages: title, sections (with their
+# step comment, code blocks, table rows and markers) and links, by a line scan
+# in the style of script/check-docs-i18n. Standard library only, so that the
+# translation checker can run with no gems.
+
+require "cgi/escape"
+
+module GuidePages
+  class Error < StandardError; end
+
+  STEP = /\A\s*<!--\s*step\s+(\S+)\s+#(\S+)(?:\s+stage:\s*(.*?))?\s*-->\s*\z/
+  MARKER_COMMENT = /\A\s*<!--\s*(list|table):\s*(\S+(?:\s+\S+)*?)\s*-->\s*\z/
+  # The marker is the kind; text after it (a callout's aria-label) is prose.
+  ALERT = /\A>\s*\[!(WHY|RULE|COMPILE|EXAMPLE|NOTE)\](?:[ \t]+\S.*)?\s*\z/
+  LINK_RE = /!?\[[^\]]*\]\(\s*<?([^\s)>]+)>?(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)|<a\s[^>]*?href\s*=\s*["']([^"']+)["']/i
+  # A code fence opener, as in CommonMark: 3+ backticks (no backtick in the
+  # info string) or 3+ tildes; then LANG and an optional PLACE.
+  FENCE_OPEN = /\A(\s*)(`{3,}(?=[^`]*\z)|~{3,})(\S*)[ \t]*(.*?)\s*\z/
+  # A raw HTML code figure (the tutorial's step 01 overview).
+  CODE_FIGURE = /\A\s*<figure\s[^>]*\bclass="code[" ]/
+  REF_DEF = /\A {0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s+.*)?\z/
+
+  Step = Struct.new(:num, :id, :stage)
+  Code = Struct.new(:lang, :place, :text)
+  Section = Struct.new(:level, :text, :line, :step, :codes, :table_rows, :markers)
+
+  class Outline
+    attr_reader :title, :sections, :links
+
+    # GFM heading anchor: markup and tags stripped, entities decoded (a
+    # no-break space is a space), lowercased, only letters, digits, spaces,
+    # "-" and "_" kept, spaces turned into "-".
+    def self.slug(text)
+      t = text.gsub(/!?\[([^\]]*)\]\([^)]*\)/, '\1')
+      t = t.gsub(/<[^>]*>/, "").delete("`*~")
+      t = CGI.unescapeHTML(t.gsub("&nbsp;", " ")).tr("\u00A0", " ").gsub(/&[A-Za-z][A-Za-z0-9]*;/, "")
+      t.downcase.gsub(/[^\p{L}\p{N} _-]/, "").tr(" ", "-")
+    end
+
+    # The lines of a raw HTML code figure's <code> (its span.ln lines), tags
+    # stripped and entities decoded; the caption is not part of it.
+    def self.figure_code(html)
+      code = html[%r{<code\b[^>]*>(.*?)</code>}m, 1] || html[%r{<code\b[^>]*>(.*)}m, 1].to_s
+      text = CGI.unescapeHTML(code.gsub(/<[^>]*>/, "").gsub("&nbsp;", " ")).tr("\u00A0", " ")
+      text.empty? || text.end_with?("\n") ? text : "#{text}\n"
+    end
+
+    # Whether line closes a fence opened with mark (its run of ` or ~): the
+    # same character, at least as many, and only whitespace after.
+    def self.fence_close?(line, mark)
+      line.match?(/\A\s*#{Regexp.escape(mark[0])}{#{mark.size},}\s*\z/)
+    end
+
+    def self.parse(body) = new(body)
+
+    def initialize(body)
+      @sections = [Section.new(0, nil, 0, nil, [], 0, [])]
+      @links = []
+      titles = []
+      pending_step = nil
+      fence = nil
+      figure = nil
+      para = []
+      quote_open = false
+      body.each_line.with_index(1) do |raw, no|
+        line = raw.chomp
+        if fence
+          if Outline.fence_close?(line, fence[:mark])
+            @sections.last.codes << Code.new(fence[:lang], fence[:place], fence[:text])
+            fence = nil
+          else
+            fence[:text] << line.sub(/\A#{fence[:indent]}/, "") << "\n"
+          end
+          next
+        end
+        if figure
+          figure[:html] << line << "\n"
+          if line.include?("</figure>")
+            @sections.last.codes << Code.new(figure[:lang], nil, Outline.figure_code(figure[:html])) if figure[:html].include?("<code")
+            figure = nil
+          end
+          para << line
+          next
+        end
+        if line =~ CODE_FIGURE
+          figure = { lang: line[/\bdata-lang="([^"]*)"/, 1].to_s, html: +"", line: no }
+          redo
+        end
+        if (m = line.match(FENCE_OPEN))
+          flush_links(para)
+          place = m[4].empty? ? nil : m[4]
+          fence = { indent: m[1], mark: m[2], lang: m[3], place: place, text: +"", line: no }
+          next
+        end
+        line.strip.empty? ? flush_links(para) : para << line
+        if (m = line.match(STEP))
+          pending_step = Step.new(m[1], m[2], m[3])
+        elsif line =~ /\A# (.*)/
+          titles << $1.strip
+        elsif line =~ /\A(\#{2,6}) (.*)/
+          step, pending_step = pending_step, nil
+          @sections << Section.new($1.size, $2.strip, no, step, [], 0, [])
+        elsif line.start_with?("|")
+          @sections.last.table_rows += 1 unless line =~ /\A\|[\s:|-]+\|\s*\z/
+        elsif (m = line.match(ALERT))
+          @sections.last.markers << m[1] unless quote_open
+        elsif (m = line.match(MARKER_COMMENT))
+          @sections.last.markers << "#{m[1]}:#{m[2]}"
+        elsif line.start_with?("<details")
+          @sections.last.markers << "details"
+        end
+        quote_open = line.start_with?(">")
+      end
+      flush_links(para)
+      raise Error, "code fence opened at line #{fence[:line]} is not closed" if fence
+      raise Error, "code figure opened at line #{figure[:line]} is not closed" if figure
+      raise Error, "expected exactly one '# ' title, found #{titles.size}" unless titles.size == 1
+
+      @title = titles.first
+    end
+
+    private
+
+    # Links are scanned a paragraph at a time (outside fences), so that link
+    # text wrapped across lines is found; a reference definition is one line.
+    def flush_links(lines)
+      text = []
+      lines.each do |line|
+        if (m = line.match(REF_DEF))
+          scan_links(text.join("\n"))
+          text.clear
+          @links << m[1]
+        else
+          text << line
+        end
+      end
+      scan_links(text.join("\n"))
+      lines.clear
+    end
+
+    def scan_links(text)
+      text.scan(LINK_RE) { |inline, anchor| @links << (inline || anchor) }
+    end
+  end
+end

@@ -24,3 +24,23 @@ jobs:
         with:
           ruby-version: "3.3"
       - run: script/gate
+
+  # The guide pages' tests and a test build of docs/guide/ (script/guide-pages).
+  # A job of its own because they need gems (kramdown, kramdown-parser-gfm,
+  # rouge) and script/gate promises CRuby with no gems.
+  guide-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Install the gems (pinned as in docs/guide/README.md)
+        run: |
+          gem install --no-document kramdown -v "~> 2.5"
+          gem install --no-document kramdown-parser-gfm -v "~> 1.1"
+          gem install --no-document rouge -v "~> 5.1"
+      - name: Test script/guide-pages.d
+        run: for t in script/guide-pages.d/test/*_test.rb; do ruby -Iscript/guide-pages.d/lib "$t" || exit 1; done
+      - name: Build the guides
+        run: script/guide-pages --out "$RUNNER_TEMP/site"

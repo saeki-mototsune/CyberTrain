@@ -28,6 +28,9 @@
 # When docs/deploy.md, docs/deploy.en.md, docs/deploy-kamal.md or the script
 # that compares them is in the set:
 #   * script/check-docs-i18n passes (the English tutorial matches the Japanese).
+# When a file under docs/guide/, script/check-guide-i18n or script/guide-pages*
+# is in the set:
+#   * script/check-guide-i18n passes (the guide translations match the English).
 #
 # Exit status 1 when any check fails; the failing lines are printed. To commit
 # past the hook on purpose, `git commit --no-verify`; CI runs the gate anyway.
@@ -167,6 +170,18 @@ if mode != :all && files.none? { |f| f.match?(DOCS_I18N) }
 else
   out, status = Open3.capture2e("ruby", "script/check-docs-i18n")
   status.success? ? ok("deploy tutorial translations match", "script/check-docs-i18n") : fail!("deploy tutorial translations", out.lines.map(&:chomp))
+end
+
+# --- the guide pages and their translations ----------------------------------------
+
+# docs/guide/*.md is translated into docs/guide/{ja,zh,ru,fr}/; script/check-guide-i18n
+# compares them.
+GUIDE_I18N = %r{\A(docs/guide/|script/check-guide-i18n\z|script/guide-pages)}
+if mode != :all && files.none? { |f| f.match?(GUIDE_I18N) }
+  skip("guide translations", "no docs/guide file in the set")
+else
+  out, status = Open3.capture2e("ruby", "script/check-guide-i18n")
+  status.success? ? ok("guide translations match", "script/check-guide-i18n") : fail!("guide translations", out.lines.map(&:chomp))
 end
 
 # --- repository checks -----------------------------------------------------------

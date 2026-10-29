@@ -1,0 +1,160 @@
+<%# The page shell of the generated guide pages (script/guide-pages), taken
+    from the hand-written site/tutorial.html they replaced (`git show
+    2a73b58:site/tutorial.html`): head, header (with the Guides entry),
+    doc-hero, contents list (left out when the page has no sections) and
+    footer. Filled by GuidePages::Build with a View. -%>
+<!doctype html>
+<html lang="<%= html_lang %>">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0A0A">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="<%= up %>assets/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="<%= up %>assets/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="<%= up %>assets/brand/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="<%= up %>assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="<%= up %>assets/fonts/fonts.css">
+<link rel="stylesheet" href="<%= up %>assets/style.css">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="<%= og_locale %>">
+<% other_locales.each do |locale| -%>
+<meta property="og:locale:alternate" content="<%= locale %>">
+<% end -%>
+<meta property="og:site_name" content="CyberTrain">
+<meta property="og:url" content="<%= url %>">
+<meta property="og:image" content="<%= og_image %>">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="<%= og_title %>">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="<%= url %>">
+<% langs.each do |l| -%>
+<link rel="alternate" hreflang="<%= l.hreflang %>" href="<%= l.url %>">
+<% end -%>
+<link rel="alternate" hreflang="x-default" href="<%= langs.first.url %>">
+<script src="<%= up %>assets/site.js" defer></script>
+
+<title><%= title %> · CyberTrain</title>
+<meta name="description" content="<%= description %>">
+<meta property="og:title" content="<%= og_title %>">
+<meta property="og:description" content="<%= og_description %>">
+</head>
+<body class="tutorial">
+<a class="skip" href="#main"><%= w(:skip) %></a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="<%= home %>index.html" aria-label="<%= w(:home) %>">
+      <svg class="brand-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      <svg class="brand-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg>
+    </a>
+    <nav class="nav-links" aria-label="<%= w(:primary) %>">
+      <ul>
+        <li class="nav-wide-only"><a href="<%= home %>index.html#how-it-works"><%= w(:how) %></a></li>
+        <li><a href="<%= home %>tutorial.html"<%= current("tutorial") %>><%= w(:tutorial) %></a></li>
+        <li class="nav-wide-only"><a href="<%= home %>deploy.html"><%= w(:deploy) %></a></li>
+        <li class="nav-wide-only"><a href="<%= home %>guide/index.html"<%= current("guides") %>><%= w(:guides) %></a></li>
+        <li><a href="<%= home %>playground.html"><%= w(:playground) %></a></li>
+        <li class="nav-roomy-only"><a href="<%= up %>api/index.html">API</a></li>
+        <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub<span class="ext" aria-hidden="true">&#8599;</span></a></li>
+        <li><details class="lang-menu">
+          <summary aria-label="<%= w(:lang_label) %>"><%= lang.upcase %></summary>
+          <ul>
+<% langs.each do |l| -%>
+            <%= l.item %>
+<% end -%>
+          </ul>
+        </details></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="wrap">
+  <header class="doc-hero">
+    <p class="crumb"><a href="<%= home %>index.html">CyberTrain</a><% crumbs.each do |text, href| %><span aria-hidden="true"> / </span><%= href ? %(<a href="#{href}">#{text}</a>) : "<span>#{text}</span>" %><% end %></p>
+    <h1 id="<%= page.h1_id %>"><%= page.h1 %></h1>
+<% if page.intro_html -%>
+    <p class="doc-intro"><%= page.intro_html %></p>
+<% end -%>
+<% unless meta.empty? -%>
+    <dl class="doc-meta">
+<% meta.each do |term, text| -%>
+      <div><dt><%= term %></dt><dd><%= text %></dd></div>
+<% end -%>
+    </dl>
+<% end -%>
+  </header>
+</div>
+
+<div class="wrap <%= page.toc.empty? ? "doc-plain" : "doc" %>">
+<% unless page.toc.empty? -%>
+  <nav class="toc" aria-label="<%= toc_label %>">
+    <details class="toc-d" open>
+      <summary class="toc-sum"><span class="toc-title"><%= toc_title %></span><span class="toc-count" data-count aria-hidden="true"></span><span class="toc-chev" aria-hidden="true"></span></summary>
+      <div class="toc-bar" aria-hidden="true"><span data-bar></span></div>
+    <ol>
+<% page.toc.each do |e| -%>
+      <li<%= ' class="toc-x"' if e.extra %>><a href="#<%= e.id %>"><span class="toc-n"><%= toc_num(e.num) %></span><%= e.title_html %></a></li>
+<% end -%>
+    </ol>
+    </details>
+  </nav>
+
+<% end -%>
+  <article class="doc-body">
+
+<%= page.sections_html.chomp %>
+
+  </article>
+</div>
+
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <a class="foot-brand" href="<%= home %>index.html" aria-label="<%= w(:home) %>">
+        <svg class="foot-lockup" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056.8 102.4"><path fill="currentColor" fill-rule="evenodd" d="M114.59 37.18L114.59 23.04L91.55 0L30.11 0L7.07 23.04L7.07 37.18ZM104.59 27.18L17.07 27.18L34.25 10L87.41 10ZM114.59 56.32L7.07 56.32L24.99 74.24L96.67 74.24ZM106.3 87.04L97.34 78.08L90.27 78.08L99.23 87.04L22.43 87.04L31.39 78.08L24.32 78.08L15.36 87.04L7.8 87.04L7.8 92.04L10.36 92.04L0 102.4L7.07 102.4L17.43 92.04L104.23 92.04L114.59 102.4L121.66 102.4L111.3 92.04L113.86 92.04L113.86 87.04Z"/><path fill="#C8A96A" d="M114.59 43.75L7.07 43.75L7.07 49.75L114.59 49.75Z"/><path fill="currentColor" fill-rule="evenodd" d="M176.59 76.75L241.66 76.75L241.66 66.75L180.73 66.75L171.66 57.68L171.66 35.82L180.73 26.75L241.66 26.75L241.66 16.75L176.59 16.75L161.66 31.68L161.66 61.82ZM302.66 76.75L302.66 51.75L322.73 51.75L337.66 36.82L337.66 16.75L327.66 16.75L327.66 32.68L318.59 41.75L276.73 41.75L267.66 32.68L267.66 16.75L257.66 16.75L257.66 36.82L272.59 51.75L292.66 51.75L292.66 76.75ZM427.73 46.75L432.66 41.82L432.66 31.68L417.73 16.75L355.66 16.75L355.66 76.75L420.73 76.75L435.66 61.82L435.66 54.68ZM422.66 35.82L422.66 37.68L418.59 41.75L365.66 41.75L365.66 26.75L413.59 26.75ZM365.66 66.75L365.66 51.75L418.59 51.75L425.09 58.25L416.59 66.75ZM528.66 16.75L456.66 16.75L456.66 76.75L528.66 76.75L528.66 66.75L466.66 66.75L466.66 51.75L522.66 51.75L522.66 41.75L466.66 41.75L466.66 26.75L528.66 26.75ZM619.66 36.82L619.66 31.68L604.73 16.75L549.66 16.75L549.66 76.75L559.66 76.75L559.66 51.75L590.59 51.75L615.59 76.75L629.73 76.75L604.73 51.75ZM559.66 26.75L600.59 26.75L608.09 34.25L600.59 41.75L559.66 41.75ZM679.73 26.75L679.73 76.75L689.73 76.75L689.73 26.75L724.73 26.75L724.73 16.75L644.73 16.75L644.73 26.75ZM795.8 51.75L810.73 36.82L810.73 31.68L795.8 16.75L740.73 16.75L740.73 76.75L750.73 76.75L750.73 51.75L781.66 51.75L806.66 76.75L820.8 76.75ZM750.73 41.75L750.73 26.75L791.66 26.75L799.16 34.25L791.66 41.75ZM899.88 16.75L865.73 16.75L840.8 41.68L840.8 76.75L850.8 76.75L850.8 51.75L914.8 51.75L914.8 76.75L924.8 76.75L924.8 41.68ZM854.88 41.75L869.88 26.75L895.73 26.75L910.73 41.75ZM947.8 76.75L957.8 76.75L957.8 16.75L947.8 16.75ZM1056.8 76.75L1056.8 16.75L1046.8 16.75L1046.8 67.02L995.14 16.75L980.8 16.75L980.8 76.75L990.8 76.75L990.8 26.48L1042.47 76.75Z"/></svg>
+      </a>
+      <p class="foot-tag"><%= w(:tagline) %></p>
+    </div>
+    <div class="foot-cols">
+      <nav aria-label="<%= w(:project) %>">
+        <p class="foot-h"><%= w(:project) %></p>
+        <ul>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub</a></li>
+          <li><a href="<%= home %>tutorial.html"><%= w(:tutorial) %></a></li>
+          <li><a href="<%= home %>deploy.html"><%= w(:deploy) %></a></li>
+          <li><a href="<%= home %>guide/index.html"><%= w(:guides) %></a></li>
+          <li><a href="<%= up %>api/index.html">API</a></li>
+          <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog" rel="noopener">examples/blog</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="<%= w(:related_label) %>">
+        <p class="foot-h"><%= w(:related) %></p>
+        <ul>
+          <li><a href="https://github.com/matz/spinel" rel="noopener">Spinel</a></li>
+          <li><a href="https://github.com/rubys/roundhouse" rel="noopener">Roundhouse</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="<%= w(:languages_label) %>">
+        <p class="foot-h"><%= w(:language) %></p>
+        <ul>
+<% langs.each do |l| -%>
+          <%= l.item %>
+<% end -%>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-base">
+      <p><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/README.md#license" rel="noopener"><%= w(:license) %></a> <span aria-hidden="true">&middot;</span> <%= w(:prealpha) %></p>
+      <p><%= w(:independent) %></p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
