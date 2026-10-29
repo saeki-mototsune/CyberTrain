@@ -1,5 +1,5 @@
 ---
-source_sha256: 5fd1dcbbdc9f9499d55d66c8be021ada6717fce4bdd06c2b3f16f4702d16f6fa
+source_sha256: 438fc2c71e978981341d9c6453c440e4ddf31336c561b3788126cfef4875f9ec
 ---
 # バックグラウンド処理と運用
 
@@ -32,7 +32,7 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 - **タスクは短く保つ。** タスクとハンドラーはその 1 本のスレッドで一度に 1 つずつ実行され、SQLite の呼び出しは戻るまで OS のワーカーを占有します：`SPINEL_WORKERS=1`（デフォルト）では、長いクエリはその間すべてのリクエストを止めてしまいます。大きな作業は一度に済ませず、分割してください（1 回の実行で 1000 行ずつ削除する、項目ごとにジョブを 1 つキューに入れる）。
 - **テスト。** `Cybertrain::Scheduler.run_due(now)` はティックを 1 回、`Cybertrain::Job.work_one(now)` はジョブを 1 つ、自分で選んだエポック時刻で実行するので、テストがスリープすることはありません。
 
-cron の構文も、ジョブの優先度や一意性も、メーラーもありません：これが扱うのは「後で送る」と「N 秒ごとに実行する」です（`docs/design.md` D28）。
+cron の構文も、ジョブの優先度や一意性も、`deliver_later` もありません：メールを送るジョブは自分で `Cybertrain::Mailer` を呼びます（[メールを送る](external-services.md#sending-e-mail)）。これが扱うのは「後で送る」と「N 秒ごとに実行する」です（`docs/design.md` D28）。
 
 ## 運用：バックアップ、VACUUM、ヘルスチェック
 

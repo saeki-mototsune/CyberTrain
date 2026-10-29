@@ -1,5 +1,5 @@
 ---
-source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
+source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -832,9 +832,11 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   hôte qui n’ajoute pas `X-Forwarded-For` (nginx sans
   `proxy_set_header X-Forwarded-For ...`) fait passer chaque client pour du
   bouclage, et seul quelqu’un qui peut lire le journal du serveur a le jeton.
-  La ligne `Started GET "/setup?token=..."` du journal des requêtes l’écrit
-  dans le même journal&nbsp;; il n’ouvre plus rien une fois l’utilisateur
-  créé.
+  Le journal des requêtes ne le répète pas&nbsp;: `token` fait partie des
+  `filter_parameters` par défaut, donc la ligne s’écrit `Started GET
+  "/setup?token=[FILTERED]"` (sauf si `config.filter_parameters` ou
+  `CYBERTRAIN_FILTER_PARAMETERS` laisse `token` de côté). Le jeton n’ouvre
+  plus rien une fois l’utilisateur créé.
 - Pour un premier lancement derrière un proxy situé sur un autre hôte,
   `BLOG_SETUP_OPEN=1` (déclaré dans `config/app.rb` avec
   `c.setting_bool :setup_open`) lève la vérification d’adresse, toujours
@@ -966,9 +968,19 @@ end
 > [!NOTE]
 > Lancez `cybertrain spin test` comme à l’[étape 12](#test)&nbsp;;
 > `test/authentication.rb` et ce test utilisent SQLite, donc leurs instantanés
-> viennent du binaire compilé. `examples/blog` s’arrête avant cette étape. Non
-> générés&nbsp;: la réinitialisation du mot de passe (CyberTrain n’a pas de
-> mailers) et la limitation de débit.
+> viennent du binaire compilé. `examples/blog` s’arrête avant cette étape. Les
+> tentatives de connexion sont soumises à une limitation de débit, comme dans
+> le générateur de Rails&nbsp;: `SessionsController` déclare `rate_limit to:
+> 10, within: 3 * 60, only: [:create]`, dix tentatives par adresse du client
+> toutes les trois minutes, puis retour au formulaire avec "Try again later."
+> jusqu’à la fin de la fenêtre. Derrière un reverse proxy, chaque visiteur est
+> compté sous l’adresse du proxy, sauf si des [proxys de
+> confiance](requests.md#rate-limiting-and-the-client-address) sont
+> configurés. Non générée&nbsp;: la réinitialisation du mot
+> de passe, dont l’e-mail demande les réglages SMTP de l’application
+> (`Cybertrain::Mailer`,
+> [Envoyer des e-mails](external-services.md#sending-e-mail)), que le
+> générateur ne peut pas connaître.
 
 <!-- step 14 #attachments stage: Vous écrivez · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Ajouter une image de couverture
@@ -1283,8 +1295,8 @@ et charge `config/deploy.yml` avec Kamal.
 | Backtrace complète lors d’une exception | Classe, message, ligne de requête, nom/ligne du template — Spinel n’expose pas de backtraces |
 | Rack, ses middlewares, et n’importe quelle gem d’un `Gemfile` | Pas de compatibilité Rack&nbsp;; un petit ensemble fixe de middlewares&nbsp;; le `spin-index` propre à Spinel, limité à ce qui compile avec son sous-ensemble de Ruby |
 | minitest / RSpec | `Cybertrain::Test` — les runners fondés sur la réflexion ne peuvent pas fonctionner avec une compilation AOT |
-| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` écrit la même structure, plus une page d’inscription faute de console&nbsp;; `has_secure_password` est écrit en toutes lettres dans le modèle User au-dessus de `Cybertrain::Password` (PBKDF2)&nbsp;; pas de réinitialisation du mot de passe (pas de mailers) |
-| Mailers, jobs, ActionCable, asset pipeline, i18n | Non développé (hors du MVP) |
+| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` écrit la même structure, plus une page d’inscription faute de console&nbsp;; `has_secure_password` est écrit en toutes lettres dans le modèle User au-dessus de `Cybertrain::Password` (PBKDF2)&nbsp;; pas de réinitialisation du mot de passe (elle demande les réglages SMTP de l’application pour `Cybertrain::Mailer`) |
+| Mailers, jobs, ActionCable, asset pipeline, i18n | L’e-mail et les jobs sous une forme minimale&nbsp;: `Cybertrain::Mailer` envoie du texte brut par SMTP ([Envoyer des e-mails](external-services.md#sending-e-mail)), `Cybertrain::Job` et `Cybertrain::Scheduler` exécutent un travail plus tard ou toutes les N secondes ([Tâches de fond](background-and-operations.md#background-work)). Non développé (hors du MVP)&nbsp;: un serveur ActionCable (WebSocket sortant seulement), un asset pipeline (`public/` est servi comme fichiers statiques) et l’i18n |
 <!-- table-foot: Liste non exhaustive. -->
 
 <!-- step → #where-next -->

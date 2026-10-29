@@ -20,8 +20,8 @@
 # docs/design.md D26), and AppTest.sign_in resets the counts so a test
 # suite never reaches the limit.
 #
-# What it leaves out, and why: password reset (needs a mailer, which
-# cybertrain does not have) and a `Current` object (templates read `@current_user` instead, an ivar
+# What it leaves out, and why: password reset (its e-mail needs the app's
+# SMTP settings for Cybertrain::Mailer, which the generator cannot know) and a `Current` object (templates read `@current_user` instead, an ivar
 # `resume_session` sets on every controller). What it adds that Rails'
 # does not: a sign-up page, because there is no console to create the first
 # user in (Spinel has no `eval`).

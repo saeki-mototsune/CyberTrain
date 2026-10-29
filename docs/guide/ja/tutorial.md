@@ -1,5 +1,5 @@
 ---
-source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
+source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -584,7 +584,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 <!-- list: points -->
 - `app/commands/user_command.rb` は `Cybertrain::Main.command` で `user` コマンドを登録し（そのため `./blog help` に表示されます）、`bin/blog.rb` から require されます。`EMAIL [PASSWORD]` はユーザーを作成するか、そのアドレスを持つユーザーのパスワードを設定します（パスワードの変更はいつもそうですが、そのユーザーのブラウザーはサインアウトされます）。`created ADDRESS` または `updated ADDRESS` を表示して 0 で終了します。`PASSWORD` を省くと標準入力から 1 行を読み（端末からの場合はプロンプトを出します。入力した文字は表示されます）、末尾の改行を取り除くので、パスワードは `ps` にもシェルの履歴にも残りません。空のパスワード、バリデーションを通らないレコード（8 文字未満のパスワード）、誤った引数では、エラーまたは使い方の行を表示して 1 で終了します。
 - `SetupController`（`GET`/`POST /setup`、`app/views/setup/new.html.erb`）は最初のユーザーを作成し、サインインさせます。応答するのは、ユーザーがまだいない間だけ、ワンタイムトークン（下記）がある場合だけ、そしてソケットの接続相手がループバックアドレス（`request.loopback?`：`127.0.0.0/8` または `::1`）で、`X-Forwarded-For` ヘッダーを持たない接続に対してだけです（同じホスト上のプロキシを通すとどのリクエストもループバックからのものになりますが、プロキシはこのヘッダーを付けます）。ヘッダーはページを閉じることはあっても、開くことはありません。それ以外の相手と、トークンがない・誤っているリクエストには 404 を返します。
-- トークン：`SetupController::SETUP_TOKEN`。プログラムの起動時に作られる 32 文字のランダムな 16 進文字列（`Cybertrain::Crypto.random_token(16)`）で、終了するまで保持されるので、再起動すると新しくなります。`GET /setup` は `?token=` でこれを受け取り、フォームは hidden フィールドで送り返し、どちらも定数時間で比較します（`Cybertrain::Crypto.secure_compare`）。アドレスのチェックが役に立たないときにページを閉じておくのが、このトークンです：同じホスト上で `X-Forwarded-For` を付けないプロキシ（`proxy_set_header X-Forwarded-For ...` のない nginx）を通すと、どのクライアントもループバックに見えますが、トークンを知っているのはサーバーのログを読める人だけです。リクエストログの `Started GET "/setup?token=..."` の行も同じログにトークンを書き込みますが、ユーザーができた後は、このトークンでは何も開きません。
+- トークン：`SetupController::SETUP_TOKEN`。プログラムの起動時に作られる 32 文字のランダムな 16 進文字列（`Cybertrain::Crypto.random_token(16)`）で、終了するまで保持されるので、再起動すると新しくなります。`GET /setup` は `?token=` でこれを受け取り、フォームは hidden フィールドで送り返し、どちらも定数時間で比較します（`Cybertrain::Crypto.secure_compare`）。アドレスのチェックが役に立たないときにページを閉じておくのが、このトークンです：同じホスト上で `X-Forwarded-For` を付けないプロキシ（`proxy_set_header X-Forwarded-For ...` のない nginx）を通すと、どのクライアントもループバックに見えますが、トークンを知っているのはサーバーのログを読める人だけです。リクエストログがトークンを繰り返すことはありません：`token` はデフォルトの `filter_parameters` に含まれるので、その行は `Started GET "/setup?token=[FILTERED]"` となります（`config.filter_parameters` や `CYBERTRAIN_FILTER_PARAMETERS` で `token` を外した場合を除きます）。ユーザーができた後は、このトークンでは何も開きません。
 - 別のホストにあるプロキシの後ろで初めて起動するときは、`BLOG_SETUP_OPEN=1`（`config/app.rb` で `c.setting_bool :setup_open` として宣言）でアドレスのチェックを外せます。それでも、ユーザーがいない間だけ、トークンがある場合だけです。ユーザーができたら設定を外してください。
 - ユーザーがいない間、サーバーは起動前に `[WARN] no user exists yet: run ./blog user EMAIL, or open /setup?token=<token> from this machine` をログに出します（`UserCommand.warn_if_no_user`。`Cybertrain::Main.server?(ARGV)` のときに `bin/blog.rb` から呼ばれます。この確認のためだけにデータベースに接続し、users テーブルがまだマイグレーションされていなければ何も出しません）。トークンが表示されるのはこの行だけです。
 
@@ -634,7 +634,7 @@ end
 ```
 
 > [!NOTE]
-> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。パスワードリセット（CyberTrain にはメーラーがありません）とレート制限は生成されません。
+> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。リバースプロキシの背後では、[信頼するプロキシ](requests.md#rate-limiting-and-the-client-address)を設定しない限り、訪問者は全員がプロキシのアドレスとして数えられます。パスワードリセットは生成されません：そのメールにはアプリの SMTP 設定（`Cybertrain::Mailer`、[メールを送る](external-services.md#sending-e-mail)）が必要で、ジェネレーターはそれを知り得ません。
 
 <!-- step 14 #attachments stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## カバー画像を追加する
@@ -832,8 +832,8 @@ kamal deploy   # 以降のデプロイ
 | 例外時には完全なバックトレース | クラス、メッセージ、リクエスト行、テンプレート名と行番号 — Spinel はバックトレースを公開しない |
 | Rack とそのミドルウェア、`Gemfile` に書いた任意の gem | Rack 互換性なし。小さな固定のミドルウェアセット。Spinel 独自の `spin-index`（その Ruby サブセットでコンパイルできるものに限る） |
 | minitest / RSpec | `Cybertrain::Test` — リフレクションに基づくテストランナーは AOT では動かない |
-| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` が同じ構成を書き出し、コンソールがないためサインアップ画面も加える。`has_secure_password` は `Cybertrain::Password`（PBKDF2）を使って User モデルに書き下される。パスワードリセットはない（メーラーがない） |
-| メーラー、ジョブ、ActionCable、アセットパイプライン、i18n | 未構築（MVP の範囲外） |
+| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` が同じ構成を書き出し、コンソールがないためサインアップ画面も加える。`has_secure_password` は `Cybertrain::Password`（PBKDF2）を使って User モデルに書き下される。パスワードリセットはない（`Cybertrain::Mailer` のためのアプリの SMTP 設定が必要になる） |
+| メーラー、ジョブ、ActionCable、アセットパイプライン、i18n | メールとジョブは最小限の形である：`Cybertrain::Mailer` はプレーンテキストを SMTP で送り（[メールを送る](external-services.md#sending-e-mail)）、`Cybertrain::Job` と `Cybertrain::Scheduler` は処理を後で、または N 秒ごとに実行する（[バックグラウンド処理](background-and-operations.md#background-work)）。未構築（MVP の範囲外）：ActionCable のサーバー（WebSocket は外向きのみ）、アセットパイプライン（`public/` は静的ファイルとして配信される）、i18n |
 <!-- table-foot: すべてを網羅してはいません。 -->
 
 <!-- step → #where-next -->

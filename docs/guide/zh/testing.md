@@ -1,5 +1,5 @@
 ---
-source_sha256: 99e2fb00f24486c6277c57d7be1d6a62713b2318a44182d7fe3391ab2f9827bf
+source_sha256: b84259bcc4f0afd4ba917077642cbc181416a59a524e9e5dc26ec8a76530afb7
 ---
 # 测试应用
 
@@ -42,10 +42,11 @@ test/<name>.rb.expected 2>&1`（快照过时时 `cybertrain spin test` 以非零
 
 ## 测试出站调用
 
-当被测代码发送 webhook（[出站 HTTP](external-services.md#outbound-http)）或电子邮件（[发送电子邮件](external-services.md#sending-e-mail)）时，测试在进程内接收它：`Cybertrain::Test::HttpReceiver` 和 `Cybertrain::Test::SmtpReceiver` 在 `127.0.0.1` 上监听，记录收到的内容，并以预设的应答作答。
+当被测代码发送 webhook（[出站 HTTP](external-services.md#outbound-http)）或电子邮件（[发送电子邮件](external-services.md#sending-e-mail)）时，测试在进程内接收它：`Cybertrain::Test::HttpReceiver` 和 `Cybertrain::Test::SmtpReceiver` 在 `127.0.0.1` 上监听，记录收到的内容，并以预设的应答作答。文件以上面同一个辅助文件 `support/blog_test` 开头，并自行 require `cybertrain/mailer`：`require "cybertrain"` 不会加载它。
 
 ```ruby
-require_relative "support/app_test"
+require_relative "support/blog_test"   # 应用、BLOG 和 Cybertrain::Test
+require "cybertrain/mailer"
 require "cybertrain/test/http_receiver"
 require "cybertrain/test/smtp_receiver"
 
@@ -73,6 +74,8 @@ test "a refused recipient is reported" do
                mail.transcript.first(3)
   refute mail.delivered?
 end
+
+Cybertrain::Test.run!
 ```
 
 `HttpReceiver.new` 接收预设的 `status:`、`headers:`、`body:` 和 `chunked:`（`respond_with` 可以在请求之间修改它们）；请求以 `ReceivedRequest` 的形式返回（`http_method`、`http_target`、`http_path`、名称为小写的 `http_headers`、`http_header(name)`、已解码分块请求体的 `http_body`）。`SmtpReceiver` 依次扮演 220、EHLO（带 8BITMIME，除非 `eight_bit_mime: false`；`auth: true` 时带 AUTH PLAIN）、MAIL、RCPT、DATA 和 QUIT；`reject:` 会让 `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data` 或 `:message` 中的任意一步以给定的应答失败。`ReceivedMessage` 带有 `envelope_from`、`envelope_recipients`、`message_data`（已还原点填充）、`message_header(name)`、`message_body` 以及命令的 `transcript`。两者都只接受一个连接，除非 `max:` 指定了更多（`received_requests` / `received_messages` 会返回全部）。每次等待都有上限：接收器在 `accept_window:`（10 秒）内没有连接就会放弃，客户端静默超过 `read_timeout:`（5 秒）也会放弃，`stop`（可以安全地调用两次）会结束并 join 接收器的线程、关闭其端口，所以接收器永远不会接走后续测试的连接。它们只需要 Ruby 的 socket 库，不需要 openssl。

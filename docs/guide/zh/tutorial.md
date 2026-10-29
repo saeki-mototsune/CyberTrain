@@ -1,5 +1,5 @@
 ---
-source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
+source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -584,7 +584,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 <!-- list: points -->
 - `app/commands/user_command.rb` 用 `Cybertrain::Main.command` 注册 `user` 命令（所以 `./blog help` 会列出它），并由 `bin/blog.rb` require。`EMAIL [PASSWORD]` 会创建用户，或者为使用该地址的用户设置密码（和任何密码修改一样，这会让该用户的浏览器退出登录）；它会打印 `created ADDRESS` 或 `updated ADDRESS` 并以 0 退出。不带 `PASSWORD` 时，它从标准输入读取一行（标准输入是终端时会给出提示；输入的内容会回显），并去掉末尾的换行符，这样密码就不会出现在 `ps` 和 shell 历史中。空密码、无法通过验证的记录（不足 8 个字符的密码）或错误的参数，会打印错误或用法说明并以 1 退出。
 - `SetupController`（`GET`/`POST /setup`、`app/views/setup/new.html.erb`）创建第一个用户并让其登录。它只在还没有任何用户时、只在带有一次性令牌（见下文）时、并且只对套接字对端是环回地址（`request.loopback?`：`127.0.0.0/8` 或 `::1`）且不带 `X-Forwarded-For` 请求头的连接作出响应（同一主机上的代理会让每个请求都成为来自环回地址的请求，而代理会加上这个请求头）。请求头只能关闭这个页面，永远不能打开它。其他所有人，以及缺少令牌或令牌错误的请求，都会得到 404。
-- 令牌：`SetupController::SETUP_TOKEN`，32 个随机十六进制字符（`Cybertrain::Crypto.random_token(16)`），在程序启动时生成并一直保留到程序退出，所以重启后会换成新的。`GET /setup` 通过 `?token=` 接收它，表单在隐藏字段里把它带回来，两者都以恒定时间比较（`Cybertrain::Crypto.secure_compare`）。地址检查失效时，正是它让页面保持关闭：同一主机上不添加 `X-Forwarded-For` 的代理（没有 `proxy_set_header X-Forwarded-For ...` 的 nginx）会让每个客户端看起来都来自环回地址，而只有能读取服务器日志的人才拿得到令牌。请求日志中的 `Started GET "/setup?token=..."` 这一行也会把它写进同一份日志；一旦用户已存在，它就打不开任何东西。
+- 令牌：`SetupController::SETUP_TOKEN`，32 个随机十六进制字符（`Cybertrain::Crypto.random_token(16)`），在程序启动时生成并一直保留到程序退出，所以重启后会换成新的。`GET /setup` 通过 `?token=` 接收它，表单在隐藏字段里把它带回来，两者都以恒定时间比较（`Cybertrain::Crypto.secure_compare`）。地址检查失效时，正是它让页面保持关闭：同一主机上不添加 `X-Forwarded-For` 的代理（没有 `proxy_set_header X-Forwarded-For ...` 的 nginx）会让每个客户端看起来都来自环回地址，而只有能读取服务器日志的人才拿得到令牌。请求日志不会重复它：`token` 属于默认的 `filter_parameters`，所以这一行写作 `Started GET "/setup?token=[FILTERED]"`（除非 `config.filter_parameters` 或 `CYBERTRAIN_FILTER_PARAMETERS` 去掉了 `token`）。一旦用户已存在，令牌就打不开任何东西。
 - 如果首次运行时位于另一台主机上的代理之后，`BLOG_SETUP_OPEN=1`（在 `config/app.rb` 中用 `c.setting_bool :setup_open` 声明）会取消地址检查，但仍然只在还没有用户时、仍然只在带有令牌时有效。用户创建之后请取消这个设置。
 - 还没有任何用户时，服务器会在启动前记录 `[WARN] no user exists yet: run ./blog user EMAIL, or open /setup?token=<token> from this machine`（`UserCommand.warn_if_no_user`，在 `Cybertrain::Main.server?(ARGV)` 时由 `bin/blog.rb` 调用；它只为这一次查询连接数据库，users 表尚未迁移时什么也不输出）。这一行是唯一打印令牌的地方。
 
@@ -634,7 +634,7 @@ end
 ```
 
 > [!NOTE]
-> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。不会生成的部分：密码重置（CyberTrain 没有邮件功能）和速率限制。
+> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。登录尝试会像 Rails 的生成器那样受到速率限制：`SessionsController` 声明了 `rate_limit to: 10, within: 3 * 60, only: [:create]`，每个客户端地址每三分钟最多 10 次，超过后会带着 "Try again later." 回到表单，直到时间窗口结束。在反向代理后面，除非配置了[受信任的代理](requests.md#rate-limiting-and-the-client-address)，否则每位访客都按代理的地址计数。不会生成的部分：密码重置，它的邮件需要应用自己的 SMTP 设置（`Cybertrain::Mailer`，[发送电子邮件](external-services.md#sending-e-mail)），而生成器无从得知这些设置。
 
 <!-- step 14 #attachments stage: 你编写 · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## 添加封面图片
@@ -832,8 +832,8 @@ kamal deploy   # 之后的每次部署
 | 异常时显示完整回溯 | 类、消息、请求行、模板名/行号——Spinel 不提供回溯 |
 | Rack 及其中间件，以及 `Gemfile` 中的任何 gem | 不兼容 Rack；只有一小组固定的中间件；使用 Spinel 自己的 `spin-index`，仅限能在其 Ruby 子集下编译的内容 |
 | minitest / RSpec | `Cybertrain::Test`——基于反射的测试运行器无法在 AOT 编译下工作 |
-| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` 写出同样的结构，并因为没有控制台而额外加上注册页面；`has_secure_password` 基于 `Cybertrain::Password`（PBKDF2）逐一写在 User 模型里；没有密码重置（没有邮件功能） |
-| 邮件、后台任务、ActionCable、资源管道、i18n | 未构建（不在 MVP 范围内） |
+| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` 写出同样的结构，并因为没有控制台而额外加上注册页面；`has_secure_password` 基于 `Cybertrain::Password`（PBKDF2）逐一写在 User 模型里；没有密码重置（它需要应用为 `Cybertrain::Mailer` 提供的 SMTP 设置） |
+| 邮件、后台任务、ActionCable、资源管道、i18n | 邮件和后台任务以最小的形式提供：`Cybertrain::Mailer` 通过 SMTP 发送纯文本（[发送电子邮件](external-services.md#sending-e-mail)），`Cybertrain::Job` 和 `Cybertrain::Scheduler` 让工作稍后运行或每 N 秒运行一次（[后台任务](background-and-operations.md#background-work)）。未构建（不在 MVP 范围内）：ActionCable 服务器端（WebSocket 只支持出站）、资源管道（`public/` 作为静态文件提供）和 i18n |
 <!-- table-foot: 此表并不完整。 -->
 
 <!-- step → #where-next -->

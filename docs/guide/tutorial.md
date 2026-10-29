@@ -787,8 +787,11 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   same host that adds no `X-Forwarded-For` (nginx without
   `proxy_set_header X-Forwarded-For ...`) makes every client look like
   loopback, and only someone who can read the server's log has the token.
-  The request log's `Started GET "/setup?token=..."` line writes it to the
-  same log; it opens nothing once the user exists.
+  The request log does not repeat it: `token` is one of the default
+  `filter_parameters`, so the line reads `Started GET
+  "/setup?token=[FILTERED]"` (unless `config.filter_parameters` or
+  `CYBERTRAIN_FILTER_PARAMETERS` leaves `token` out). Once the user exists,
+  the token opens nothing.
 - For a first run behind a proxy on another host, `BLOG_SETUP_OPEN=1`
   (declared in `config/app.rb` with `c.setting_bool :setup_open`) lifts the
   address check, still only while no user exists and still only with the
@@ -909,8 +912,17 @@ end
 > [!NOTE]
 > Run `cybertrain spin test` as in [step 12](#test); `test/authentication.rb`
 > and this test use SQLite, so their snapshots come from the compiled binary.
-> `examples/blog` stops before this step. Not generated: password reset
-> (CyberTrain has no mailers) and rate limiting.
+> `examples/blog` stops before this step. Sign-in attempts are rate limited
+> as in Rails' generator: `SessionsController` declares `rate_limit to: 10,
+> within: 3 * 60, only: [:create]`, ten attempts per client address every
+> three minutes, then back to the form with "Try again later." until the
+> window closes. Behind a reverse proxy every visitor counts as the proxy's
+> address unless
+> [trusted proxies](requests.md#rate-limiting-and-the-client-address) are
+> configured. Not generated: password reset, whose e-mail needs the app's
+> SMTP settings (`Cybertrain::Mailer`,
+> [Sending e-mail](external-services.md#sending-e-mail)), which the generator
+> cannot know.
 
 <!-- step 14 #attachments stage: You write · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Add a cover image
@@ -1205,8 +1217,8 @@ a clean stop and the database kept on its volume, and loads
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
-| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` writes the same shape, plus a sign-up page since there is no console; `has_secure_password` is written out on the User model over `Cybertrain::Password` (PBKDF2); no password reset (no mailers) |
-| Mailers, jobs, ActionCable, asset pipeline, i18n | Not built (outside the MVP) |
+| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` writes the same shape, plus a sign-up page since there is no console; `has_secure_password` is written out on the User model over `Cybertrain::Password` (PBKDF2); no password reset (it needs the app's SMTP settings for `Cybertrain::Mailer`) |
+| Mailers, jobs, ActionCable, asset pipeline, i18n | Mail and jobs in a minimal form: `Cybertrain::Mailer` sends plain text over SMTP ([Sending e-mail](external-services.md#sending-e-mail)), `Cybertrain::Job` and `Cybertrain::Scheduler` run work later or every N seconds ([Background work](background-and-operations.md#background-work)). Not built (outside the MVP): an ActionCable server (WebSocket is outbound only), an asset pipeline (`public/` is served as static files) and i18n |
 <!-- table-foot: Not exhaustive. -->
 
 <!-- step → #where-next -->

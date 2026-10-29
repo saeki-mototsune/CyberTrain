@@ -1,5 +1,5 @@
 ---
-source_sha256: be6250416c64d3c07e705f9e3e4f04987365dbf6031cea8793a97c0452d9885f
+source_sha256: 86d3de9f2a69e668c822f68426aaf998fd7dfe3208df6d317b7a332ae7542ce5
 ---
 # 工作原理
 
@@ -22,7 +22,7 @@ Article.transaction(immediate: true) do |c|
 end
 ```
 
-嵌套在块中的 `DB.transaction` 会加入外层事务（只有最外层提交；任何地方抛出异常都会回滚全部内容；没有保存点）。必须把 `rescue` 写在普通方法中的代码可以使用不带块的形式：`c.begin!(immediate: true)` ... `c.commit!`，并在 rescue 中调用 `c.rollback!`。它返回 nil 而不是块的值；在 `DB.with` 块（它不是事务）中调用的 `DB.transaction` 会得到第二个连接。
+嵌套在块中的 `DB.transaction` 会加入外层事务（只有最外层提交；任何地方抛出异常都会回滚全部内容；没有保存点）。必须把 `rescue` 写在普通方法中的代码可以使用不带块的形式：`c.begin!(immediate: true)` ... `c.commit!`，并在 rescue 中调用 `c.rollback!`。它返回 nil 而不是块的值；在 `DB.with` 块（它不是事务）中调用的 `DB.transaction` 会取出第二个连接：在只有一个连接的连接池上（包括 `:memory:`），它会因此永远等待下去。请先开启事务，再在其中完成工作。
 
 **开发循环。** 在 `development` 模式下（默认的 `CYBERTRAIN_ENV`，`cybertrain build` 构建的二进制文件除外），`cybertrain server`（先 `spin run gen`，再 `spin run NAME`）还会每半秒轮询一次 `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb` 和 `gen/**/*.rb`（视图被排除在外——引擎会自己重新加载它们——`gen/views.rb` 也被排除，它在开发模式下为空）。发生改动时，会在后台运行 `spin run gen && spin build NAME -- --incremental`（Spinel 的增量构建，只重新编译这次编辑改动了的 C 单元；不支持 `--incremental` 的 Spinel 版本会拒绝这个参数，此时循环会不带它进行构建）；构建成功后会请求重启（与外部 `kill -HUP` 设置的是同一个标志）：一个监视线程停止监听并等待进行中的请求完成，然后主线程在同一端口和 PID 上 `execv` 新的二进制文件，会话进行中的客户端察觉不到。构建失败时继续用旧的二进制文件提供服务，并在每个 HTML 响应上以横幅显示编译器输出。这些在生产环境中都不会加载。
 
@@ -53,7 +53,7 @@ end
 | 异常时的完整回溯 | 类名、消息、请求行、模板名和行号——Spinel 不提供回溯 |
 | Rack、它的中间件，以及 `Gemfile` 中的任意 gem | 不兼容 Rack；一小组固定的中间件；Spinel 自己的 `spin-index`，仅限能在其 Ruby 子集下编译的内容 |
 | minitest / RSpec | `Cybertrain::Test`——基于反射的运行器无法在提前编译下工作 |
-| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` 写出同样的结构（User、Session、SessionsController、before_action），外加一个注册页面，因为没有可以用来创建用户的控制台；`has_secure_password` 被写成 User 模型上基于 `Cybertrain::Password` 的方法（用 Ruby 实现的 PBKDF2-HMAC-SHA256：bcrypt 需要让二进制链接一个 C 库，而 macOS 上的 `String#crypt` 不支持 bcrypt）。没有密码重置（没有邮件程序）；登录尝试由 `rate_limit` 限制（按进程计数；参见[限流](requests.md#rate-limiting-and-the-client-address)） |
+| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` 写出同样的结构（User、Session、SessionsController、before_action），外加一个注册页面，因为没有可以用来创建用户的控制台；`has_secure_password` 被写成 User 模型上基于 `Cybertrain::Password` 的方法（用 Ruby 实现的 PBKDF2-HMAC-SHA256：bcrypt 需要让二进制链接一个 C 库，而 macOS 上的 `String#crypt` 不支持 bcrypt）。没有密码重置（其邮件需要应用为 `Cybertrain::Mailer` 提供的 SMTP 设置，参见[发送电子邮件](external-services.md#sending-e-mail)）；登录尝试由 `rate_limit` 限制（按进程计数；参见[限流](requests.md#rate-limiting-and-the-client-address)） |
 | Active Storage、`has_one_attached :cover` | `cybertrain generate attachment post cover` 在所属表上写出五个 `cover_*` 列，并把模型方法（`cover_file=`、`cover_url` 等）写进应用；文件存放在磁盘上的 `storage/uploads/` 下，由一个生成的动作通过 `send_blob` 提供。每个字段一个文件，仅限本地磁盘，没有变体，也没有直接上传 |
 | `skip_before_action :x` | 相同，适用于有名称的 before 回调（块形式的回调没有可供跳过的名称）；没有 `skip_after_action` |
 | `resource :session` | 同样是指向 `SessionsController` 的六条路由；不能在其下嵌套 |

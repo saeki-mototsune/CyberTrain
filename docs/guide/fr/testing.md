@@ -1,5 +1,5 @@
 ---
-source_sha256: 99e2fb00f24486c6277c57d7be1d6a62713b2318a44182d7fe3391ab2f9827bf
+source_sha256: b84259bcc4f0afd4ba917077642cbc181416a59a524e9e5dc26ec8a76530afb7
 ---
 # Tester une application
 
@@ -69,10 +69,13 @@ Quand le code testé envoie un webhook ([HTTP sortant](external-services.md#outb
 ou un e-mail ([Envoyer des e-mails](external-services.md#sending-e-mail)), le
 test le reçoit dans le même processus&nbsp;: `Cybertrain::Test::HttpReceiver` et
 `Cybertrain::Test::SmtpReceiver` écoutent sur `127.0.0.1`, enregistrent ce qui
-arrive et répondent par une réponse préparée.
+arrive et répondent par une réponse préparée. Le fichier part du même
+helper que plus haut, `support/blog_test`, et requiert lui-même
+`cybertrain/mailer`&nbsp;: `require "cybertrain"` ne le charge pas.
 
 ```ruby
-require_relative "support/app_test"
+require_relative "support/blog_test"   # l’application, BLOG et Cybertrain::Test
+require "cybertrain/mailer"
 require "cybertrain/test/http_receiver"
 require "cybertrain/test/smtp_receiver"
 
@@ -100,6 +103,8 @@ test "a refused recipient is reported" do
                mail.transcript.first(3)
   refute mail.delivered?
 end
+
+Cybertrain::Test.run!
 ```
 
 `HttpReceiver.new` prend les `status:`, `headers:`, `body:` et `chunked:` de la

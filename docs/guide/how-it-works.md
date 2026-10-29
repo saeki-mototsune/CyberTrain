@@ -69,7 +69,9 @@ outermost commits; a raise anywhere rolls everything back; no savepoints).
 Code that must keep its `rescue` in a plain method uses the block-free form,
 `c.begin!(immediate: true)` ... `c.commit!`, with `c.rollback!` in the rescue.
 It returns nil rather than the block's value, and a `DB.transaction` called
-inside a `DB.with` block (which is not a transaction) gets a second connection.
+inside a `DB.with` block (which is not a transaction) checks out a second
+connection: on a one-connection pool (`:memory:` included) it then waits
+forever. Open the transaction first and do the work inside it.
 
 **The development loop.** `cybertrain server` (`spin run gen`, then `spin run NAME`) in
 `development` (the default `CYBERTRAIN_ENV`, except in a binary from
@@ -111,7 +113,7 @@ compiler output on every HTML response. None of this loads in production.
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
-| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape (User, Session, SessionsController, the before_action) plus a sign-up page, since there is no console to create a user in; `has_secure_password` is written out as methods on the User model over `Cybertrain::Password` (PBKDF2-HMAC-SHA256 in Ruby: bcrypt would need a C library the binary links, and `String#crypt` has no bcrypt on macOS). No password reset (no mailers); sign-in attempts are limited by `rate_limit` (counted per process; see [Rate limiting](requests.md#rate-limiting-and-the-client-address)) |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape (User, Session, SessionsController, the before_action) plus a sign-up page, since there is no console to create a user in; `has_secure_password` is written out as methods on the User model over `Cybertrain::Password` (PBKDF2-HMAC-SHA256 in Ruby: bcrypt would need a C library the binary links, and `String#crypt` has no bcrypt on macOS). No password reset (its e-mail needs the app's SMTP settings for `Cybertrain::Mailer`; see [Sending e-mail](external-services.md#sending-e-mail)); sign-in attempts are limited by `rate_limit` (counted per process; see [Rate limiting](requests.md#rate-limiting-and-the-client-address)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment post cover` writes five `cover_*` columns on the owner table and the model methods (`cover_file=`, `cover_url`, ...) into the app; files live on disk under `storage/uploads/` and are served by a generated action through `send_blob`. One file per field, local disk only, no variants or direct uploads |
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |

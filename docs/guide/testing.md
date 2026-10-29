@@ -63,9 +63,12 @@ When the code under test sends a webhook ([Outbound HTTP](external-services.md#o
 an e-mail ([Sending e-mail](external-services.md#sending-e-mail)), the test receives it
 in-process: `Cybertrain::Test::HttpReceiver` and `Cybertrain::Test::SmtpReceiver`
 listen on `127.0.0.1`, record what arrives and answer with a canned reply.
+The file starts from the same helper as above, `support/blog_test`, and
+requires `cybertrain/mailer` itself: `require "cybertrain"` does not load it.
 
 ```ruby
-require_relative "support/app_test"
+require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
+require "cybertrain/mailer"
 require "cybertrain/test/http_receiver"
 require "cybertrain/test/smtp_receiver"
 
@@ -93,6 +96,8 @@ test "a refused recipient is reported" do
                mail.transcript.first(3)
   refute mail.delivered?
 end
+
+Cybertrain::Test.run!
 ```
 
 `HttpReceiver.new` takes the canned `status:`, `headers:`, `body:` and

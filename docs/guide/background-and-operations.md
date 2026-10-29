@@ -61,8 +61,10 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   `Cybertrain::Job.work_one(now)` one job, with an epoch time you choose, so
   a test never sleeps.
 
-There is no cron syntax, no priority or uniqueness for jobs and no mailer:
-this covers "send later" and "run every N seconds" (`docs/design.md` D28).
+There is no cron syntax, no priority or uniqueness for jobs and no
+`deliver_later`: a job that sends mail calls `Cybertrain::Mailer` itself
+([Sending e-mail](external-services.md#sending-e-mail)). This covers "send
+later" and "run every N seconds" (`docs/design.md` D28).
 
 ## Operations: backups, vacuum, health check
 

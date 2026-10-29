@@ -1,5 +1,5 @@
 ---
-source_sha256: 99e2fb00f24486c6277c57d7be1d6a62713b2318a44182d7fe3391ab2f9827bf
+source_sha256: b84259bcc4f0afd4ba917077642cbc181416a59a524e9e5dc26ec8a76530afb7
 ---
 # Тестирование приложения
 
@@ -67,10 +67,12 @@ test/<name>.rb.expected 2>&1` (`cybertrain spin test` завершается с 
 письмо ([Отправка электронной почты](external-services.md#sending-e-mail)), тест получает его
 внутри процесса: `Cybertrain::Test::HttpReceiver` и `Cybertrain::Test::SmtpReceiver`
 слушают на `127.0.0.1`, записывают то, что приходит, и отвечают заготовленным
-ответом.
+ответом. Файл начинается с того же хелпера, что и выше, `support/blog_test`,
+и сам подключает `cybertrain/mailer`: `require "cybertrain"` его не загружает.
 
 ```ruby
-require_relative "support/app_test"
+require_relative "support/blog_test"   # приложение, BLOG и Cybertrain::Test
+require "cybertrain/mailer"
 require "cybertrain/test/http_receiver"
 require "cybertrain/test/smtp_receiver"
 
@@ -98,6 +100,8 @@ test "a refused recipient is reported" do
                mail.transcript.first(3)
   refute mail.delivered?
 end
+
+Cybertrain::Test.run!
 ```
 
 `HttpReceiver.new` принимает заготовленные `status:`, `headers:`, `body:` и

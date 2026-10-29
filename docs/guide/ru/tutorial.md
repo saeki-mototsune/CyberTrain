@@ -1,5 +1,5 @@
 ---
-source_sha256: 019e957af0a2a00fb7686104bf189fa14278c410e3ed256eaa217aad03e76a19
+source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -810,9 +810,12 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   когда проверка адреса бессильна: из-за прокси на том же хосте, который не
   добавляет `X-Forwarded-For` (nginx без
   `proxy_set_header X-Forwarded-For ...`), каждый клиент выглядит как
-  loopback, а токен есть только у того, кто может читать лог сервера. Строка
-  `Started GET "/setup?token=..."` в логе запросов записывает его в тот же
-  лог; когда пользователь уже существует, токен ничего не открывает.
+  loopback, а токен есть только у того, кто может читать лог сервера. Лог
+  запросов его не повторяет: `token` входит в `filter_parameters` по
+  умолчанию, поэтому строка выглядит как `Started GET
+  "/setup?token=[FILTERED]"` (если только `config.filter_parameters` или
+  `CYBERTRAIN_FILTER_PARAMETERS` не исключает `token`). Когда пользователь
+  уже существует, токен ничего не открывает.
 - Для первого запуска за прокси на другом хосте `BLOG_SETUP_OPEN=1` (объявлена
   в `config/app.rb` через `c.setting_bool :setup_open`) снимает проверку
   адреса — по-прежнему только пока нет ни одного пользователя и только с
@@ -938,8 +941,16 @@ end
 > Запускайте `cybertrain spin test`, как в [шаге 12](#test);
 > `test/authentication.rb` и этот тест используют SQLite, поэтому их снимки
 > берутся из скомпилированного бинарника. `examples/blog` заканчивается до
-> этого шага. Не генерируются: сброс пароля (в CyberTrain нет мейлеров) и
-> ограничение частоты запросов.
+> этого шага. Частота попыток входа ограничена, как в генераторе Rails:
+> `SessionsController` объявляет `rate_limit to: 10, within: 3 * 60, only:
+> [:create]`, десять попыток с одного адреса клиента за три минуты, затем
+> возврат к форме с "Try again later.", пока окно не закроется. За обратным
+> прокси каждый посетитель считается по адресу прокси, если не настроены
+> [доверенные прокси](requests.md#rate-limiting-and-the-client-address). Не
+> генерируется: сброс пароля — его письму нужны настройки SMTP приложения
+> (`Cybertrain::Mailer`,
+> [Отправка электронной почты](external-services.md#sending-e-mail)),
+> которых генератор знать не может.
 
 <!-- step 14 #attachments stage: Вы пишете · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Добавление обложки
@@ -1247,8 +1258,8 @@ kamal deploy   # каждое следующее развёртывание
 | Полный бэктрейс при исключении | Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов |
 | Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
 | minitest / RSpec | `Cybertrain::Test` — раннеры на основе рефлексии не могут работать при AOT-компиляции |
-| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` пишет то же самое и вдобавок страницу регистрации, раз консоли нет; `has_secure_password` расписан в модели User поверх `Cybertrain::Password` (PBKDF2); сброса пароля нет (нет мейлеров) |
-| Мейлеры, фоновые задачи, ActionCable, asset pipeline, i18n | Не сделано (за рамками MVP) |
+| `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` пишет то же самое и вдобавок страницу регистрации, раз консоли нет; `has_secure_password` расписан в модели User поверх `Cybertrain::Password` (PBKDF2); сброса пароля нет (ему нужны настройки SMTP приложения для `Cybertrain::Mailer`) |
+| Мейлеры, фоновые задачи, ActionCable, asset pipeline, i18n | Почта и фоновые задачи — в минимальном виде: `Cybertrain::Mailer` отправляет простой текст по SMTP ([Отправка электронной почты](external-services.md#sending-e-mail)), `Cybertrain::Job` и `Cybertrain::Scheduler` выполняют работу позже или каждые N секунд ([Фоновая работа](background-and-operations.md#background-work)). Не сделано (за рамками MVP): сервер ActionCable (WebSocket только исходящий), asset pipeline (`public/` раздаётся как статические файлы) и i18n |
 <!-- table-foot: Список не исчерпывающий. -->
 
 <!-- step → #where-next -->
