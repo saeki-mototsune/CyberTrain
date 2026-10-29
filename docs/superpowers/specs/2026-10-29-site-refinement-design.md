@@ -118,7 +118,10 @@ Sections stay in this order; the numbers in `.sec-num` renumber 01–06.
 | 07 Before you start | Removed. The hero's "before you start" link already goes to `guide/install.html#requirements` |
 | Closer | Unchanged |
 
-Target: under 1,500 words of visible text (from 2,544).
+Target: about 2,100 words of visible text (from about 2,650 by the same
+count): what remains is the hero, the code sample, the feature tiles, the
+performance figures and one- or two-sentence summaries. Nothing the guides
+hold in full is repeated.
 
 The header navigation on every page (`site/*.html`, `site/<lang>/*.html`,
 `script/guide-pages.d/layout.html.erb`) points "How it works" at
@@ -212,7 +215,8 @@ the page shell, and the four guides listed as untouched.
 - `how-it-works.html` has six contents entries and no body text before the
   first section; no `##` section on a touched page exceeds about 400 words
   of prose outside code blocks; no table cell exceeds about 30 words.
-- The home page's visible English text is under 1,500 words.
+- The home page's visible English text is about 2,100 words, and no
+  section repeats a guide's content beyond a summary.
 - Every link on the built English pages resolves (the build checks guide
   links; the site's hand-written links are checked by grep against the
   built tree).

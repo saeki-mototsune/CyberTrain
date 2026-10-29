@@ -121,11 +121,11 @@ Files: `site/index.html`, `site/deploy.html`, `site/playground.html`,
    `sec-label`s stay. Any link to `#requirements` on the page → `guide/install.html#requirements`.
 2. In all three English pages: the nav "How it works" href →
    `guide/how-it-works.html`.
-3. `site/README.md`: the Performance paragraph says §05, not §06; add the
+3. `site/README.md`: the Performance paragraph still says (06), which stays right; add the
    sentence that the home page carries summaries only and links the
    guides for detail.
 
-Verify: visible word count under 1,500
+Verify: visible word count about 2,100
 (`sed -e 's/<script[^>]*>.*<\/script>//g' site/index.html | sed 's/<[^>]*>/ /g' | wc -w`);
 every relative href in the three pages resolves against the built tree
 (`script/guide-pages --out /tmp/site-check`, then check each `href` that is
