@@ -1,10 +1,10 @@
 ---
-source_sha256: dbc42178d5f6d75cdaeb5a45ea7c94a4462048b57ac21424a253347306264fc8
-description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との既知の違いのすべて。"
+source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
+description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
 
-このページでは、CyberTrain のアプリがどのようにビルドされ、実行されるかを説明します：ビルド時に生成されるコード、リクエスト時に解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ、そして Rails との既知の違いのすべてです。ホームページの[パフォーマンスのセクション](site:index.html#performance)では、その結果を、同じブログを Rails 8.1 で書いたものと比べています。計測方法、すべての数値、計測をもう一度実行する方法は [docs/benchmark.md](../benchmark.md) にあります。
+このページでは、CyberTrain のアプリがどのようにビルドされ、実行されるかを説明します：ビルド時に生成されるコード、リクエスト時に解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ、そして Rails との違いの表です。ホームページの[パフォーマンスのセクション](site:index.html#performance)では、その結果を、同じブログを Rails 8.1 で書いたものと比べています。計測方法、すべての数値、計測をもう一度実行する方法は [docs/benchmark.md](../benchmark.md) にあります。
 
 ## ビルド時のコード生成
 
@@ -56,12 +56,12 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 
 変更があるとバックグラウンドで `spin run gen && spin build NAME -- --incremental` を実行します：Spinel のインクリメンタルビルドで、編集によって変わった C のユニットだけを再コンパイルします。`--incremental` のない Spinel のリリースはこのフラグを拒否し、その場合ループはフラグなしでビルドします。
 
-成功すると再起動を要求します（外部からの `kill -HUP` が立てるのと同じフラグです）：モニタースレッドがリスナーを止めて処理中のリクエストを捌き切り、その後メインスレッドが同じポートと PID のまま新しいバイナリを `execv` するので、セッションの途中のクライアントからは見えません。ビルドに失敗した場合は古いバイナリで配信を続け、すべての HTML レスポンスにコンパイラの出力をバナーとして表示します。本番環境ではこれらは一切読み込まれません。
+成功すると再起動を要求します（外部からの `kill -HUP` が立てるのと同じフラグです）：モニタースレッドがリスナーを止めて処理中のリクエストを捌き切り、その後メインスレッドが同じポートと PID のまま新しいバイナリを `execv` するので、セッションの途中のクライアントからは見えません。ビルドに失敗した場合は古いバイナリで配信を続け、すべての HTML レスポンスにコンパイラの出力をバナーとして表示します。`cybertrain build` が `tmp/cybertrain-build.lock` を保持している間は、再ビルドを行いません。本番環境ではこれらは一切読み込まれません。
 
 ## Rails との違い
 
 <!-- table: cmp -->
-| Rails | cybertrain |
+| Rails | CyberTrain |
 | --- | --- |
 | `rails console` | コンソールはない — Spinel には `eval` がない |
 | `rails runner`、`lib/tasks/*.rake` | `bin/<app>.rb` に `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }`：`./<app> name ARGS` でデータベースに接続した状態で実行される |
@@ -70,7 +70,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | `def new` | `def new_action`（`new` は `Klass.new(ctx)` を覆い隠してしまう） |
 | `before_action { do_thing }`（暗黙の `self`） | `before_action { \|c\| c.do_thing }` — 保存したブロックに対する `instance_exec` がないので、コールバックはコントローラーやレコードを明示的に受け取る |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — ネストしたブロックはマッパーを明示的に受け取る |
-| ERB はメソッドにコンパイルされる。どんなオブジェクトの、どんなメソッドでも呼べる | 固定の文法とディスパッチテーブルに対して解釈される — [docs/guide/template-language.md](template-language.md) |
+| ERB はメソッドにコンパイルされる。どんなオブジェクトの、どんなメソッドでも呼べる | 固定の文法とディスパッチテーブルに対して解釈される（[テンプレート言語](template-language.md)） |
 | セッションはマーシャルされた任意のオブジェクトを保持する | セッションの値は String だけで、HMAC 署名付きの cookie |
 | 多くのデータベースアダプター | FFI による SQLite のみ |
 | `Article.transaction { ... }` はブロックの値を返す。`raise ActiveRecord::Rollback`。`requires_new: true` のセーブポイント | `Article.transaction { \|c\| ... }` は接続を渡して nil を返す。抜けるには例外を出す。ネストした呼び出しは外側のトランザクションに合流し、セーブポイントはない（[トランザクション](models.md#transactions)） |
@@ -85,7 +85,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | 例外時の完全なバックトレース | クラス、メッセージ、リクエスト行、テンプレート名と行 — Spinel はバックトレースを公開していない |
 | Rack、そのミドルウェア、`Gemfile` の任意の gem | Rack 互換性はない。小さな固定のミドルウェア群。Spinel 自身の `spin-index` で、その Ruby サブセットでコンパイルできるものに限られる |
 | minitest / RSpec | `Cybertrain::Test` — リフレクションに基づくランナーは AOT では動かない |
-| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` は同じ形に加えてサインアップのページを書き出す。パスワードには PBKDF2-HMAC-SHA256 を使う（bcrypt は C ライブラリを必要とし、macOS の `String#crypt` にはそれがない）。パスワードのリセットはない（[サインインを追加する](tutorial.md#authentication)） |
+| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` は同じ形に加えてサインアップのページを書き出す。パスワードには PBKDF2-HMAC-SHA256 を使う（bcrypt は C ライブラリを必要とし、macOS の `String#crypt` には bcrypt がない）。パスワードのリセットはない（[サインインを追加する](tutorial.md#authentication)） |
 | Active Storage、`has_one_attached :cover` | `cybertrain generate attachment` は 5 つの `cover_*` カラムとモデルのメソッドを書き出す。ファイルはローカルディスクの `storage/uploads/` 以下に置かれ、`send_blob` で配信される。フィールドごとに 1 つで、バリアントやダイレクトアップロードはない（[カバー画像を追加する](tutorial.md#attachments)） |
 | `skip_before_action :x` | 名前付きの before コールバックについては同じ（ブロックのコールバックにはスキップする名前がない）。`skip_after_action` はない |
 | `resource :session` | `SessionsController` への同じ 6 つのルート。その下へのネストはない |

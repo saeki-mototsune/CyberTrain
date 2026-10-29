@@ -1,5 +1,5 @@
 ---
-source_sha256: 5778d1b05d81b6b389f1a3846deec6d58ffd763fb5e8339ce5d6115944d62d97
+source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -30,15 +30,12 @@ Rails 公式の [Getting Started](https://guides.rubyonrails.org/getting_started
 > CyberTrain は Spinel を通じて C にコンパイルされるため、C ツールチェーンと SQLite のヘッダーが必要です。`cybertrain` コマンドは gem なので、Ruby が必要です。
 
 <!-- list: checklist -->
-- Ruby 3.2+ と RubyGems。`cybertrain` コマンドのためだけに必要で、アプリケーションが CRuby 上で動くことはありません。Spinel のビルドには Ruby の `prism` gem も必要です：Ruby 3.3 以上には同梱されています。Ruby 3.2 では `gem install prism` を実行します（Ruby の開発用ヘッダーが必要です。Debian/Ubuntu なら `ruby-dev`）。`cybertrain doctor` が確認します。
+- Ruby 3.2+ と RubyGems。`cybertrain` コマンドのためだけに必要で、アプリケーションが CRuby 上で動くことはありません。Ruby 3.2 では `gem install prism` も実行します。
 - Spinel `2026.10.27.7020`。CyberTrain が必要とする修正を本家より先に取り込んだフォーク [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) のリリースです。他のバージョンでは未テストです。手動でインストールする必要はありません：Spinel を必要とする最初のコマンドが、そのリリースを `~/.cybertrain` にビルドします（数分、初回のみ）。ただし、そのリリースの `spinel` がすでに `PATH` 上にある場合は除きます。
 - C ツールチェーン（`cc`、または `CC` で指定したコンパイラ）と `make`、さらに `git` と `curl`。すべてのプログラムを C にコンパイルする Spinel をビルドするために使います。
 - SQLite 3 と zlib のヘッダーとライブラリ：Debian/Ubuntu では `libsqlite3-dev` と `zlib1g-dev`、macOS では Xcode のコマンドラインツールに含まれています。
-- OpenSSL のヘッダー（`libssl-dev`）は任意です：ない場合、Spinel は `openssl` パッケージなしでビルドされますが、CyberTrain はこのパッケージを使いません。
 
-`cybertrain doctor` はこれらのツールとヘッダー、Spinel のインストールを確認します。必要なものが欠けている場合は、プラットフォームに応じたインストールコマンドも表示します。
-
-Spinel がどこに置かれるか、`spin` を自分で実行する方法、別のインストールを使う方法：[Spinel のインストールの仕組み](install.md#how-spinel-is-installed)。
+`cybertrain doctor` がこれらすべてを確認します。完全な一覧と、どれが任意か：[必要なもの](install.md#requirements)。Spinel がどこに置かれるか、別のインストールを使う方法：[Spinel のインストールの仕組み](install.md#how-spinel-is-installed)。
 
 > [!NOTE]
 > インストールできるマシンがない場合は、[プレイグラウンド](site:playground.html)を使えば、ステップ 02、03、04、07 を済ませたこのブログを GitHub Codespace で開けます。
@@ -779,7 +776,7 @@ kamal deploy   # 以降のデプロイ
 - `dist/` は、実行するマシンと同じ OS と CPU でビルドしてください：バイナリはシステムの SQLite にリンクします。
 - `SPINEL_WORKERS` のデフォルトは `1` です。
 - テスト済みなのは Spinel `2026.10.27.7020` だけです。
-- Rails との違いの完全な一覧：[Rails との違い](how-it-works.md#differences-from-rails)。
+- Rails とのその他の違いは一つの表にまとめてあります：[Rails との違い](how-it-works.md#differences-from-rails)。
 
 <!-- step → #where-next -->
 ## 次に読むもの

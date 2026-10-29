@@ -1,16 +1,16 @@
 ---
-source_sha256: 5e99bb7df246d9c13729928998ed09710a52fc8b7856eeb0a806356f9ba7c03a
+source_sha256: f2fc66817b4de63dd2d3fa3ee4cdba0c25960cae6ec4de300b2cc3d671220cf2
 ---
 # インストール
 
 CyberTrain が手元のマシンに必要とするもの、`cybertrain` コマンドのインストール方法、そのすべてのコマンド、そしてこのコマンドが Spinel とフレームワークをどのようにインストールしてくれるかを説明します。
 
 > [!NOTE]
-> 何もインストールせずに CyberTrain を試すには、[プレイグラウンド](site:playground.html)を開いてください：GitHub Codespaces が `cybertrain` コマンド、Spinel `2026.10.27.7020`、チュートリアルのブログをブラウザーの中で動かします。同じイメージは Docker を使ってローカルでも動きます。
+> 何もインストールせずに CyberTrain を試すには、[プレイグラウンド](site:playground.html)を開いてください：GitHub Codespaces が、チュートリアルのブログ、`cybertrain` コマンド、Spinel `2026.10.27.7020` を、ブラウザーの中の VS Code で開きます。同じイメージは Docker を使ってローカルでも動きます。
 
 ## 必要なもの
 
-- Spinel `2026.10.27.7020`（`Cybertrain::SPINEL_TAG`。[.github/workflows/ci.yml](../../.github/workflows/ci.yml) の `SPINEL_TAG` と同じリリース）。[saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)（`Cybertrain::SPINEL_REPOSITORY`）のリリースで、cybertrain が必要とする修正を本家のリリースより先に取り込んだ matz/spinel のフォークです。他のバージョンでは未テストです。手動でインストールする必要はありません：`cybertrain` コマンドが、初めて必要になったときにそのリリースを `~/.cybertrain` にビルドします（`cybertrain setup` は求めに応じてそれを行います）。ただし、そのリリースの `spinel` がすでに `PATH` 上にある場合は除きます — [Spinel のインストールの仕組み](#how-spinel-is-installed)を参照してください。
+- Spinel `2026.10.27.7020`（`Cybertrain::SPINEL_TAG`。[.github/workflows/ci.yml](../../.github/workflows/ci.yml) の `SPINEL_TAG` と同じリリース）。[saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)（`Cybertrain::SPINEL_REPOSITORY`）のリリースで、CyberTrain が必要とする修正を本家のリリースより先に取り込んだ matz/spinel のフォークです。他のバージョンでは未テストです。手動でインストールする必要はありません：`cybertrain` コマンドが、初めて必要になったときにそのリリースを `~/.cybertrain` にビルドします（`cybertrain setup` は求めに応じてそれを行います）。ただし、そのリリースの `spinel` がすでに `PATH` 上にある場合は除きます — [Spinel のインストールの仕組み](#how-spinel-is-installed)を参照してください。
 - そのビルドには：C ツールチェーン（`cc`、または `CC` で指定したコンパイラ）と `make` — Spinel はすべてのプログラムを C にコンパイルします — さらに `git` と `curl`。
 - SQLite 3 のヘッダーとライブラリ（Debian/Ubuntu では `libsqlite3-dev`。macOS では Xcode のコマンドラインツールに含まれています） — モデルは gem ではなく、Spinel の FFI を直接使います。
 - zlib のヘッダーとライブラリ（Debian/Ubuntu では `zlib1g-dev`。macOS では SDK に含まれています） — gzip されたリクエストボディ（`request.decoded_body`）は、同じ方法でバインドしたシステムの zlib で展開されます。
@@ -18,10 +18,10 @@ CyberTrain が手元のマシンに必要とするもの、`cybertrain` コマ�
 
 `cybertrain doctor` はこれらのツールとヘッダー、Spinel のインストールを確認します。必要なものが欠けている場合は、プラットフォームに応じたインストールコマンドも表示します。
 
-<details><summary>任意のパッケージ — OpenSSL、jemalloc、Ruby 3.2 での prism</summary>
+<details><summary>その他のパッケージ — Ruby 3.2 での prism、どちらも任意の OpenSSL と jemalloc</summary>
 
 - Spinel のビルドには Ruby の `prism` gem が必要で、Ruby 3.3 以上には同梱されています。Ruby 3.2 では `gem install prism` を実行します（Ruby の開発用ヘッダーが必要です。Debian/Ubuntu なら `ruby-dev`）。`cybertrain doctor` が確認します。
-- OpenSSL のヘッダー（`libssl-dev`）は任意です：ない場合、Spinel は `openssl` パッケージなしでビルドされますが、cybertrain はこのパッケージを使いません。macOS で `openssl` を require するアプリケーションには、コンパイラのパス上に Homebrew の（keg-only の）OpenSSL が必要です：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+- OpenSSL のヘッダー（`libssl-dev`）は任意です：ない場合、Spinel は `openssl` パッケージなしでビルドされますが、CyberTrain はこのパッケージを使いません。macOS で `openssl` を require するアプリケーションには、コンパイラのパス上に Homebrew の（keg-only の）OpenSSL が必要です：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`。
 - jemalloc の開発用パッケージ（`libjemalloc-dev`、`brew install jemalloc`）は任意です：アプリがこれを必要とするのは、その `spin.toml` に `allocator = "jemalloc"` と書いたときだけで、`cybertrain new` はこの行をコメントアウトして書き出します。本番環境では有効にする価値があります：examples/blog で毎秒のリクエスト数が 1.1〜1.4 倍になります（[docs/benchmark.md](../benchmark.md)）。
 
@@ -44,7 +44,7 @@ cybertrain doctor
   [--skip-spin]` は NAME にアプリケーションを作成し、その中で `spin lock` と `spin run gen` を実行します。必要なら先に Spinel をインストールします。
 - `cybertrain generate scaffold NAME field:type ...`（エイリアスは `g scaffold`）は、カレントディレクトリのアプリケーションにリソースを追加します。
 - `cybertrain generate authentication` は、そのアプリケーションにメールアドレスとパスワードによるサインインを追加します：users と sessions のテーブル、`User` と `Session` のモデル、サインインとサインアップのコントローラーとビュー、ルート、`ApplicationController` の `before_action`、そしてテストです（[サインインを追加する](tutorial.md#authentication)を参照）。`--invite-only` を付けるとサインアップのページはありません：ユーザーは `./NAME user EMAIL` で作成し、ユーザーがまだいない間は、最初のユーザーを `/setup` ページでも作成できます。このページはサーバー自身のマシンにだけ応答し、起動時の警告が表示するワンタイムトークンを必要とします。
-- `cybertrain generate attachment MODEL FIELD [--any]` は、スキャフォールド済みのモデルにファイルアップロードを追加します：5 つのメタデータカラム、モデルのメソッドとコールバック、ダウンロードのアクション、ルート、フォームのフィールド、そしてテストです（[ファイルアップロードを追加する](tutorial.md#attachments)を参照）。スキャフォールドのフィールド `cover:attachment` も同じことを行います。
+- `cybertrain generate attachment MODEL FIELD [--any]` は、スキャフォールド済みのモデルにファイルアップロードを追加します：5 つのメタデータカラム、モデルのメソッドとコールバック、ダウンロードのアクション、ルート、フォームのフィールド、そしてテストです（[カバー画像を追加する](tutorial.md#attachments)を参照）。スキャフォールドのフィールド `cover:attachment` も同じことを行います。
 - `cybertrain db migrate` は生成を行い、未適用のマイグレーションを適用して、もう一度生成します（`spin run gen; spin run db -- migrate; spin run gen`）。`cybertrain migration` もエイリアスとして残されています。
 - `cybertrain db COMMAND...` は `spin
   run gen` の後に、その他のデータベースコマンドを実行します：`status`、`rollback [N]`（実行後にもう一度生成します）、`schema:dump`、`create`。
@@ -59,7 +59,9 @@ cybertrain doctor
 
 ## Spinel のインストールの仕組み
 
-`spin` を実行するすべてのコマンド（`new`、`db`、`server`、`build`、`spin`）は、まず `Cybertrain::SPINEL_TAG` のリリースの Spinel が使えることを確かめます。`PATH` 上の `spinel`（`spin` を伴うもの）の `spinel --version` がそのリリースを報告すれば、それをそのまま使います。そうでなければ、`cybertrain` が `~/.cybertrain/spinel/2026.10.27.7020/` 以下に置いているコピーを使います。それもなければ、`cybertrain` が `Cybertrain::SPINEL_REPOSITORY` のリリースタグからそのコピーをビルドします（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`）。ビルドは一度だけで、数分かかります。ビルドのログは `~/.cybertrain/log/spinel-2026.10.27.7020-build.log` です（手順が失敗すると、その最後の数行が表示されます）。ビルドに必要なツールが欠けている場合、`cybertrain` はビルドを始める前に、どれが足りないかを伝え、プラットフォームに応じたインストールコマンドを表示します。`PATH` 上にある別リリースの `spinel` が使われたり変更されたりすることはありません：`cybertrain` は自前のコピーを持ちます（そしてインストールするときにそう伝えます）。
+`spin` を実行するすべてのコマンド（`new`、`db`、`server`、`build`、`spin`）は、まず `Cybertrain::SPINEL_TAG` のリリースの Spinel が使えることを確かめます。`PATH` 上の `spinel`（`spin` を伴うもの）の `spinel --version` がそのリリースを報告すれば、それをそのまま使います。そうでなければ、`cybertrain` が `~/.cybertrain/spinel/2026.10.27.7020/` 以下に置いているコピーを使います。それもなければ、`cybertrain` が `Cybertrain::SPINEL_REPOSITORY` のリリースタグからそのコピーをビルドします（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`）。ビルドは一度だけで、数分かかります。ビルドのログは `~/.cybertrain/log/spinel-2026.10.27.7020-build.log` です（手順が失敗すると、その最後の数行が表示されます）。
+
+ビルドに必要なツールが欠けている場合、`cybertrain` はビルドを始める前に、どれが足りないかを伝え、プラットフォームに応じたインストールコマンドを表示します。`PATH` 上にある別リリースの `spinel` が使われたり変更されたりすることはありません：`cybertrain` は自前のコピーを持ちます（そしてインストールするときにそう伝えます）。
 
 `cybertrain setup` は同じことを求めに応じて行います。さらに、自前のコピーが使われている場合は、`spin` を自分で実行するために、それを `PATH` に加える行を表示します：
 
@@ -92,9 +94,9 @@ Spinel のインストールか、2 つの `spin` ステップのいずれかが
 4 つのオプションが、書き出すものと実行するものを変えます：
 
 - `--skip-spin` はファイルを書き出すだけです：Spinel のインストールも、`spin lock` も、`spin run gen` も行いません。
-- `--path DIR` は代わりにローカルのチェックアウトに依存します（cybertrain 自体を開発するときは、チェックアウトのある場所に合わせて `--path ~/src/cybertrain`）。
+- `--path DIR` は代わりにローカルのチェックアウトに依存します（CyberTrain 自体を開発するときは、チェックアウトのある場所に合わせて `--path ~/src/cybertrain`）。
 - `--git URL [--ref R]` は URL にあるフレームワーク（ブランチまたはタグ R）に依存します。
-- `--version V` は、cybertrain が `spin-index` に登録された後、インデックスのバージョンに依存します。
+- `--version V` は、フレームワークが `spin-index` に登録された後、インデックスのバージョンに依存します。
 
 `--path`、`--version`、`--git` はひとつだけ指定してください。`--ref` には `--git` が必要です。
 

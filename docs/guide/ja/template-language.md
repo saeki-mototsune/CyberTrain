@@ -1,5 +1,5 @@
 ---
-source_sha256: 9c348325e4945493aa6eeb42add294c7ce0b8bf34811b3014c18617dec0b0ef6
+source_sha256: c62dd8a199df41e47d7f65f6dabf83f2b548e103d5f59b2bd807b7433590bd06
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -56,7 +56,7 @@ Cybertrain のビュー（`app/views/**/*.html.erb`）は Rails の ERB のよ�
 
 - `<%# locals: () %>`（空のリスト）は「このパーシャルはローカル変数を取らない」という意味です。
 - 各エントリーは、素の小文字の `name:` でなければなりません（`Lexer.identifier?` は `[a-z_][a-z0-9_]*` だけを受け付けます）。**As built（実装の実態）：** Rails 7.1 と異なり、エントリーにデフォルト値を付けることはできません — Rails 7.1 がサポートするまさにその形 `<%# locals: (post:, comment: nil) %>` は `SyntaxError` になります：`"t:1: bad strict locals entry 'comment: nil' (expected name:)"`。`comment: nil` が `:` で終わっていないためです。宣言したローカル変数は、事実上すべて必須です。形式の壊れた指定（括弧がない）は `"t:1: bad strict locals comment (expected locals: (name:, ...))"` を出します。
-- このコメントが**ない**場合、テンプレートはローカル変数のリストを宣言しません：`render` は与えられたローカル変数を検査せずにそのまま渡し、テンプレートは呼び出し元の環境にすでにあるものを何でも読めます（8 節を参照）。
+- このコメントが**ない**場合、テンプレートはローカル変数のリストを宣言しません：`render` は与えられたローカル変数を検査せずにそのまま渡し、テンプレートは呼び出し元の環境にすでにあるものを何でも読めます（[レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)を参照）。
 - コメントより前の行に何かがある場合（空行 1 行でも）、それはローカル変数の宣言ではなく、何の効果もない普通のコメントです。
 
 ## 式
@@ -93,7 +93,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 
 - 括弧なしの（「コマンド」の）引数リストが開かれるのは、式の中の**最も外側の**呼び出しだけです：`link_to "Show", post_path(post)` は動きますが、`link_to "Show", post_path post` は `SyntaxError` です — 内側の呼び出しには自分の括弧が必要です。
 - 呼び出し対象と開き括弧 `(` の間に空白は置けません：`link_to("x")` と `link_to "x"` はどちらも動きますが、`link_to ("x")` は `SyntaxError` です。
-- `yield` と `yield :key` は常に呼び出しとしてパースされます（8 節を参照）。
+- `yield` と `yield :key` は常に呼び出しとしてパースされます（[レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)を参照）。
 - 大文字で始まる素の単語は即座に拒否されます — `"constants are not supported: 'Time'"` — テンプレートは Ruby の定数に到達できません。
 - 次の単語は予約されており、専用のメッセージ（`"'x' is not supported in templates"`）で拒否されます：`and or not do end if unless elsif else then while until case when def class module begin rescue return`。
 
@@ -181,7 +181,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `true`/`false` | `to_s` | `published.to_s` |
 | `nil` | `to_s`（`""` を返す） | |
 
-インデックス（`x[key]`）は `.[]` の呼び出しではなく、独立した文法の規則です（3 節）：`Array`/`String` は整数のインデックスを取り、`Hash` は任意のキーをその `to_s` で照合し（`h[:k]` と `h["k"]` は同じエントリー）、`Errors` はシンボルで、`Params` は `to_s` で照合します。
+インデックス（`x[key]`）は `.[]` の呼び出しではなく、独立した文法の規則です（[式](#expressions)）：`Array`/`String` は整数のインデックスを取り、`Hash` は任意のキーをその `to_s` で照合し（`h[:k]` と `h["k"]` は同じエントリー）、`Errors` はシンボルで、`Params` は `to_s` で照合します。
 
 上の `to_s` 以外の出力（`<%= %>` や式展開）：`Array` は inspect のようなリストとして出力されます — `[1, "a", nil]` はテキスト `[1, "a", nil]` をレンダリングします（その後エスケープされるので、引用符は `&quot;` になります）。`Hash` は Ruby 自身の `Hash#to_s` にフォールバックします。`Cybertrain::Model` は `#<Post id: 7>` と出力されます（属性は決して出力されません）。それ以外は自身の `to_s` で出力されます。上記のどの型でも、一覧にないメソッドは `RuntimeError`（`"undefined method 'first' for Time"`）です。`Integer` のゼロによる除算・剰余は `"divided by 0"` です。`Float` は代わりに IEEE-754 に従います（`Infinity`/`NaN` で、エラーにはなりません）。
 
@@ -189,7 +189,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 
 `Cybertrain::Model` のサブクラス（生成された `Post`、`Note` など）は、素の名前を次の順序で解決します（`Interpreter#model_method`）：
 
-1. 常に使える 5 つの組み込み：`id`、`persisted?`、`new_record?`、`to_param`（`id.to_s`）、`errors`（`Errors`。5 節）。
+1. 常に使える 5 つの組み込み：`id`、`persisted?`、`new_record?`、`to_param`（`id.to_s`）、`errors`（`Errors`。[型ごとのメソッドテーブル](#per-type-method-table)）。
 2. `read_attribute(:name)` — 生成されたカラム。
 3. `read_association(:name)` — 生成された `has_many`/`belongs_to`。
 4. `call_view_method(:name)` — モデルのジェネレーターが `app/models/**/*.rb` で見つけた、手書きの引数なしの `def`（引数を取ることは決してありません）。
@@ -216,14 +216,14 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` はすでに `SafeString` でなければエスケープされる。**`method:` はない** — 例外を出し、`button_to` を使うよう伝える（rails-ujs/turbo による DELETE リンクの偽装はない） |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | ボタン 1 つの `<form class="button_to">`。`get`/`post` 以外のメソッドには hidden の `_method`、セッションがあれば CSRF のフィールドも付く |
 | `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | ブロックが必要。`model:` が新規 → コレクションのルートと POST、保存済み → メンバーのルートと PATCH。ネストしたルートには `[parent, child]`。`url:`/`method:` は導かれたアクションやメソッドを上書きする。`multipart: true` は `enctype="multipart/form-data"` を追加する（`f.file_field` に必須。ブロックから推測されることはなく、GET のフォームでは `ArgumentError` を出す） |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | 8 節を参照 |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)を参照 |
 | `h`、`escape` | `h(text)` | エスケープする。`SafeString` はエスケープされずにそのまま通る |
 | `raw` | `raw(text)` | テキストを `SafeString` で包む（エスケープせずに出力される） |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`、`pluralize(2, "mouse")` → `"2 mice"`（`Cybertrain::Inflector` による Rails のデフォルトの英語の語形変化。アプリが定義する語形変化はサポートされない）。明示的な 3 つ目の引数が常に優先される |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
 | `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`、`-1000` → `"-1,000"`、`1234.5` → `"1,234.5"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails 風の区分で、秒単位の精度はない：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
-| `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | 8 節を参照 |
+| `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)を参照 |
 | `csrf_meta_tags` / `csrf_token` | | コントローラーのセッションがなければ空 / なし |
 | `flash` | | `Hash` のようなもの：`flash[:notice]` |
 | `params` | | 現在の `Cybertrain::Params` |
@@ -299,7 +299,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 
 | Rails の ERB | Cybertrain |
 | --- | --- |
-| Ruby のメソッドにコンパイルされる。どんな Ruby でも、どんなオブジェクトでも、どんなメソッドでも動く | 型ごとに固定されたディスパッチテーブルに対して解釈される。呼び出せるのは 5 節に挙げたものだけ |
+| Ruby のメソッドにコンパイルされる。どんな Ruby でも、どんなオブジェクトでも、どんなメソッドでも動く | 型ごとに固定されたディスパッチテーブルに対して解釈される。呼び出せるのは[型ごとのメソッドテーブル](#per-type-method-table)に挙げたものだけ |
 | `ActiveSupport::SafeBuffer` は `String` のサブクラス | `SafeString` は独立したラッパークラス — 呼び出せるのは `to_s`/`html_safe?`/`size`/`length`/`empty?` だけ |
 | ブロック：`each`、`{ }`、`map`、任意の Enumerable のメソッド | `do...end` だけで、`each`/`each_with_index`/ヘルパー呼び出しに対してだけ |
 | `xs.each { }` — ブロックパラメーターがゼロでもかまわない | `each`/`each_with_index` はブロックパラメーターを 1 つか 2 つ宣言する必要がある |

@@ -1,9 +1,9 @@
 ---
-source_sha256: 1f3299ce753f9ca949e912a5d2848b2b028f258f8ebdcef7a3be7a74894d6104
+source_sha256: 75a49c15853d34f1c018af07c3f0d29bf29d1778a7e52b12a048c95f83b437e4
 ---
 # モデルとデータベース
 
-スキャフォールドを超えてモデルが行うこと：マイグレーションの書き方、`where` を超えるクエリ、一覧のページ分け、トランザクション、そして Spinel のもとで SQLite のカラム名と `order` 句が従う規則です。
+スキャフォールドを超えてモデルが行うこと：マイグレーションの書き方、`where` を超えるクエリ、一覧のページ分け、トランザクション、そして Spinel のもとでカラム名と `order` 句が従う規則です。
 
 ## マイグレーション
 
@@ -38,7 +38,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
             conflict: [:project_id, :key],
             update: { calls: "calls + excluded.calls", max_ms: "MAX(max_ms, excluded.max_ms)",
                       seen_at: "excluded.seen_at" })
-Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1
+Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   （pluck_str、pluck_float もある）
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
 Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # 1 時間ごとの集計
@@ -115,7 +115,7 @@ Rails の `transaction` と異なる点と、避けるべきこと：
 
 その他の Object のメソッド（`display`、`tap`、`methods`）と同じ名前のカラムは、注記付きでその名前のまま生成されます。`cybertrain generate scaffold` はキーワードと予約名を拒否し（名前を変えたリーダーを呼ばなければならなくなるため）、覆い隠す名前はジェネレーターと同じく注記付きで受け付けます。
 
-Rails では関連付けが `errors` を覆い隠せますが、ここでは、素の名前がすでにカラム、別の関連付け、`Model` のメソッドに使われている関連付けは、生成ファイルにコメントを付けて代わりの名前で出力されます：`has_many` なら `<table>_as_<column stem>`（`comments_as_article`）、`belongs_to` なら `<stem>_as_<column>`（`author_as_author_id`）。
+素の名前がすでにカラム、別の関連付け、`Model` のメソッドに使われている関連付け（Rails では関連付けが `errors` を覆い隠せます）は、生成ファイルにコメントを付けて代わりの名前で出力されます：`has_many` なら `<table>_as_<column stem>`（`comments_as_article`）、`belongs_to` なら `<stem>_as_<column>`（`author_as_author_id`）。
 
 ## 並び順
 
