@@ -1,5 +1,9 @@
 # Models and the database
 
+What a model does beyond the scaffold: writing migrations, the queries that
+go past `where`, paging a list, transactions, and the rules SQLite column
+names and `order` clauses follow under Spinel.
+
 ## Migrations
 
 A migration in `db/migrate/<version>_<name>.rb` is a `Cybertrain::Migration::Base`
@@ -110,6 +114,7 @@ not a number, clamped to `1..max_page` (`config.max_page`, 10000 by default,
 raises `RangeError` past 2**63-1 under Spinel. `params.int(:per, default: 20,
 min: 1, max: 100)` is the same bounded read for any key (an optional `-` and
 at most 18 digits, else the default; clamped to `min..max`).
+
 `relation.page(n, per: 50)` sets `LIMIT per OFFSET (n - 1) * per` on the
 relation (replacing an earlier `limit`/`offset`, so call it last), clamps `n`
 the same way, so the offset never passes `(max_page - 1) * per`, and returns a
@@ -117,12 +122,16 @@ the same way, so the offset never passes `(max_page - 1) * per`, and returns a
 `SELECT 1 ... LIMIT per + 1` over the window, no `COUNT(*)`), `prev?`,
 `next_number`, `prev_number`. The rows stay on the relation, so
 `@articles.each` yields typed `Article`s; `per` outside 1..1000 is an
-`ArgumentError`. `paginate @page, path` renders `<nav class="pager">` with a
+`ArgumentError`.
+
+`paginate @page, path` renders `<nav class="pager">` with a
 "Newer" link (`rel="prev"`), "Page N" and an "Older" link (`rel="next"`),
 each left out when there is no such page; the links keep the current query
 string with `page` replaced (page 1 drops it), re-encoded and escaped, so a
 search or filter survives paging, and a path with its own query string
-(`"/search?q=x"`) uses that one instead. Offset pagination only: keyset
+(`"/search?q=x"`) uses that one instead.
+
+Offset pagination only: keyset
 pagination (`after: id`) for very large tables is not built yet. The scaffold's
 index view lists every record; add the three lines above to page it.
 

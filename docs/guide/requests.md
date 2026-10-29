@@ -1,4 +1,8 @@
-# Requests: rate limiting and headers
+# Requests
+
+What a controller gets from a request and what the framework guards for
+it: rate limiting and the client address behind a proxy, the parameterised
+headers, and how query strings and request bodies are parsed and bounded.
 
 ## Rate limiting and the client address
 
@@ -55,7 +59,9 @@ same way. An IPv4 entry also matches the IPv4-mapped form of its addresses
 (`::ffff:172.18.0.2`), and a peer's `%zone` is ignored. An entry that is not
 an address or CIDR, or has a prefix past `/32` (IPv4) or `/128` (IPv6),
 stops the server at boot. `CYBERTRAIN_TRUSTED_PROXY=1` is the shorthand for
-`127.0.0.0/8,::1`, and the two add up. This is the Kamal case: kamal-proxy
+`127.0.0.0/8,::1`, and the two add up.
+
+This is the Kamal case: kamal-proxy
 runs in its own Docker container and connects from its address on the Docker
 network, so the `config/deploy.yml` that `cybertrain new` writes sets
 `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` (Docker's default range; change
