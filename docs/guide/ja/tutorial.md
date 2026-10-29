@@ -1,5 +1,5 @@
 ---
-source_sha256: 209c983064395ad767eb6253c10339a0aad5f583d237d9c15791504fb819c47f
+source_sha256: 5778d1b05d81b6b389f1a3846deec6d58ffd763fb5e8339ce5d6115944d62d97
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -38,19 +38,7 @@ Rails 公式の [Getting Started](https://guides.rubyonrails.org/getting_started
 
 `cybertrain doctor` はこれらのツールとヘッダー、Spinel のインストールを確認します。必要なものが欠けている場合は、プラットフォームに応じたインストールコマンドも表示します。
 
-<details><summary>CyberTrain が Spinel をインストールする仕組み — コマンドが初めて `spin` を必要としたときに起きること</summary>
-
-`cybertrain new`、`db`、`server`、`build`、`spin` は、まず Spinel `2026.10.27.7020` を探します：そのリリースの `spinel` と `spin` がすでに `PATH` 上にあればそれを、なければ `~/.cybertrain/spinel/2026.10.27.7020/` 以下のコピーを使い、それもなければ Spinel のリリースタグからそのコピーをビルドします（`git clone`、`make deps`、`make -j`、`make install`）。ビルドは一度だけで、数分かかります。ログは `~/.cybertrain/log/spinel-2026.10.27.7020-build.log` です。ビルドに必要なツールが欠けている場合、`cybertrain` はビルドを始める前に、どれが足りないかを伝え、プラットフォームに応じたインストールコマンドを表示します。
-
-`cybertrain setup` は同じことを求めに応じて行います（`--force` は `~/.cybertrain` 以下のコピーを再ビルドします）。さらに、自前のコピーが使われている場合は、それを `PATH` に加える行を表示します。`spin` を自分で実行するためのものです：
-
-```shell ターミナル — 任意のディレクトリ
-export PATH="$HOME/.cybertrain/bin:$PATH"
-```
-
-`~/.cybertrain/bin` には、使用中のリリースを指す `spinel` と `spin` のリンクがあります。これを `PATH` に入れなくても、`cybertrain spin ARGS...` を使えば、任意のディレクトリからそのリリースの `spin` を実行できます。`CYBERTRAIN_HOME` は `~/.cybertrain` の代わりになり、`CYBERTRAIN_SPINEL_HOME=PREFIX` を指定すると、代わりに `PREFIX` にインストールされた Spinel を使います（そのリリースである必要があります）。`PATH` 上にある別リリースの `spinel` が使われたり変更されたりすることはありません。
-
-</details>
+Spinel がどこに置かれるか、`spin` を自分で実行する方法、別のインストールを使う方法：[Spinel のインストールの仕組み](install.md#how-spinel-is-installed)。
 
 > [!NOTE]
 > インストールできるマシンがない場合は、[プレイグラウンド](site:playground.html)を使えば、ステップ 02、03、04、07 を済ませたこのブログを GitHub Codespace で開けます。
@@ -74,24 +62,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 <span class="ln cmd">cybertrain build             <span class="c"># 本番用: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
 
-`cybertrain` コマンドは素の Ruby で書かれており、gem はこれを CRuby（3.2 以降）で実行します。フレームワークも Spinel も gem には含まれません。コマンドは次のとおりです（`cybertrain help` で表示されます）：
-
-<!-- list: points -->
-- `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]` は NAME にアプリケーションを作成し、その中で `spin lock` と `spin run gen` を実行します。必要なら先に Spinel をインストールします。
-- `cybertrain generate scaffold NAME field:type ...`（エイリアスは `g scaffold`）は、カレントディレクトリのアプリケーションにリソースを追加します。
-- `cybertrain generate authentication` は、カレントディレクトリのアプリケーションにメールアドレスとパスワードによるサインインを追加します（[ステップ 13](#authentication)）。
-- `cybertrain generate attachment MODEL FIELD [--any]` は、カレントディレクトリのアプリケーションのスキャフォールド済みモデルにファイルアップロードを追加します（[ステップ 14](#attachments)）。
-- `cybertrain db migrate` は生成を行い、未適用のマイグレーションを適用して、もう一度生成します（`spin run gen; spin run db -- migrate; spin run gen`）。`cybertrain migration` もエイリアスとして残されています。
-- `cybertrain db COMMAND...` は `spin run gen` の後に、その他のデータベースコマンドを実行します：`status`、`rollback [N]`（実行後にもう一度生成します）、`schema:dump`、`create`。
-- `cybertrain server [PORT]` は生成を行ってから開発サーバーを起動します（`spin run gen; spin run NAME`、または `spin run NAME -- PORT`。デフォルトのポートは 3000）。
-- `cybertrain build` は `app/views/` を埋め込んで NAME をビルドし、`dist/`（バイナリ、`public/`、`storage/`、`tmp/`）を組み立てます。
-- `cybertrain spin ARGS...` は、固定された Spinel で `spin` を任意のディレクトリから実行します：`cybertrain spin test`、`cybertrain spin run gen -- --check`。
-- `cybertrain setup [--force]` は Spinel `2026.10.27.7020` を `~/.cybertrain` にインストールします（そのリリースの `spinel` がすでに `PATH` 上にある場合を除く）。`--force` は `~/.cybertrain` 以下のコピーを再ビルドします。
-- `cybertrain doctor` は C ツールチェーン、SQLite のヘッダー、Spinel のインストールを確認します。
-- `cybertrain version` はバージョン（`cybertrain 0.3.1`）を、`cybertrain help` は使い方を表示します。
-
-> [!NOTE]
-> `db`、`server`、`build` はアプリケーションの中で実行します。NAME はそのアプリケーションの `spin.toml` にある `[package] name` です。
+[すべてのコマンド](install.md#the-cybertrain-command)とそのオプションは、インストールのガイドに一覧があります。
 
 <!-- step 02 #new-app stage: 自分で書く · `blog/` -->
 ## アプリケーションを作成する
@@ -808,33 +779,7 @@ kamal deploy   # 以降のデプロイ
 - `dist/` は、実行するマシンと同じ OS と CPU でビルドしてください：バイナリはシステムの SQLite にリンクします。
 - `SPINEL_WORKERS` のデフォルトは `1` です。
 - テスト済みなのは Spinel `2026.10.27.7020` だけです。
-
-<!-- step + #differences -->
-## Rails との違い
-
-> [!WHY]
-> README の完全な表を、ここにまとめて。
-
-<!-- table: cmp -->
-| Rails | CyberTrain |
-|---|---|
-| `rails console` | コンソールなし — Spinel には `eval` がない |
-| コードを編集すると、実行中のアプリに反映される | Ruby の変更には再ビルドが必要。開発環境では `cybertrain server` が代わりに行う（再ビルド、停止、`execv`） |
-| ビューを編集しても、リロードは不要 | 同じ — 開発環境ではビューをリクエストごとにディスクからパースする |
-| `def new` | `def new_action` （`new` だと `Klass.new(ctx)` を覆い隠してしまう） |
-| `before_action { do_thing }`（暗黙の `self`） | `before_action { |c| c.do_thing }` — 保存したブロックに対する `instance_exec` がないため、コールバックはコントローラー／レコードを明示的に受け取る |
-| `resources :posts do resources :comments end` | `resources :posts do |posts| posts.resources :comments end` — ネストしたブロックはマッパーを明示的に受け取る |
-| ERB はメソッドにコンパイルされる。任意のオブジェクト、任意のメソッドを使える | 固定の文法／ディスパッチテーブルに従って解釈される |
-| セッションにはマーシャリングした任意のオブジェクトを保持できる | セッションの値は String のみ、HMAC 署名付き cookie |
-| 多数のデータベースアダプター | SQLite のみ、FFI 経由 |
-| `has_many :through`、`includes`、`pluck`、`dependent:`、enum、STI、ポリモーフィック関連付け | 未実装。関連付けはスキーマの外部キーからのみ作られる |
-| `namespace`、フォーマット/`respond_to`、`constraints`、`mount` | 未実装 — フラットな名前、`render json:` のみ |
-| 例外時には完全なバックトレース | クラス、メッセージ、リクエスト行、テンプレート名と行番号 — Spinel はバックトレースを公開しない |
-| Rack とそのミドルウェア、`Gemfile` に書いた任意の gem | Rack 互換性なし。小さな固定のミドルウェアセット。Spinel 独自の `spin-index`（その Ruby サブセットでコンパイルできるものに限る） |
-| minitest / RSpec | `Cybertrain::Test` — リフレクションに基づくテストランナーは AOT では動かない |
-| `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` が同じ構成を書き出し、コンソールがないためサインアップ画面も加える。`has_secure_password` は `Cybertrain::Password`（PBKDF2）を使って User モデルに書き下される。パスワードリセットはない（`Cybertrain::Mailer` のためのアプリの SMTP 設定が必要になる） |
-| メーラー、ジョブ、ActionCable、アセットパイプライン、i18n | メールとジョブは最小限の形である：`Cybertrain::Mailer` はプレーンテキストを SMTP で送り（[メールを送る](external-services.md#sending-e-mail)）、`Cybertrain::Job` と `Cybertrain::Scheduler` は処理を後で、または N 秒ごとに実行する（[バックグラウンド処理](background-and-operations.md#background-work)）。未構築（MVP の範囲外）：ActionCable のサーバー（WebSocket は外向きのみ）、アセットパイプライン（`public/` は静的ファイルとして配信される）、i18n |
-<!-- table-foot: すべてを網羅してはいません。 -->
+- Rails との違いの完全な一覧：[Rails との違い](how-it-works.md#differences-from-rails)。
 
 <!-- step → #where-next -->
 ## 次に読むもの
