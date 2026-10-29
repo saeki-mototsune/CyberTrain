@@ -53,7 +53,7 @@ A comment tag whose content starts with `locals:` **and is the very first tag in
 
 - `<%# locals: () %>` (empty list) means "this partial takes no locals."
 - Each entry must be a bare, lowercase `name:` (`Lexer.identifier?` accepts only `[a-z_][a-z0-9_]*`). **As built:** unlike Rails 7.1, entries cannot carry a default value — `<%# locals: (post:, comment: nil) %>`, the exact form Rails 7.1 supports, is a `SyntaxError`: `"t:1: bad strict locals entry 'comment: nil' (expected name:)"`, because `comment: nil` does not end in `:`. Every declared local is effectively required. A malformed spec (missing parens) raises `"t:1: bad strict locals comment (expected locals: (name:, ...))"`.
-- **Without** this comment, a template declares no local list: `render` passes through whatever locals it is given, unchecked, and the template may also read anything already present in the caller's environment (see section 8).
+- **Without** this comment, a template declares no local list: `render` passes through whatever locals it is given, unchecked, and the template may also read anything already present in the caller's environment (see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials)).
 - If anything precedes the comment on an earlier line (even one blank line), it is just an ordinary, inert comment, not a locals declaration.
 
 ## Expressions
@@ -90,7 +90,7 @@ method arg1, key: value  # same call, no parentheses ("command" syntax)
 
 - A parenthesis-free ("command") argument list is only opened for the **outermost** call in an expression: `link_to "Show", post_path(post)` works, but `link_to "Show", post_path post` is a `SyntaxError` — inner calls need their own parens.
 - No space is allowed between a call target and its opening `(`: `link_to("x")` and `link_to "x"` both work; `link_to ("x")` is a `SyntaxError`.
-- `yield` and `yield :key` are always parsed as calls (see section 8).
+- `yield` and `yield :key` are always parsed as calls (see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials)).
 - A bare capitalized word is rejected outright — `"constants are not supported: 'Time'"` — templates cannot reach Ruby constants.
 - These words are reserved and rejected with a dedicated message (`"'x' is not supported in templates"`): `and or not do end if unless elsif else then while until case when def class module begin rescue return`.
 
@@ -178,7 +178,7 @@ Only `name = expr` for one plain local — no `@ivar = ...`, no `arr[0] = ...`/`
 | `true`/`false` | `to_s` | `published.to_s` |
 | `nil` | `to_s` (returns `""`) | |
 
-Indexing (`x[key]`) is a distinct grammar production (section 3), not a `.[]` call: `Array`/`String` take an integer index, `Hash` matches any key by its `to_s` (`h[:k]` and `h["k"]` are the same entry), `Errors` matches by symbol, `Params` by `to_s`.
+Indexing (`x[key]`) is a distinct grammar production ([Expressions](#expressions)), not a `.[]` call: `Array`/`String` take an integer index, `Hash` matches any key by its `to_s` (`h[:k]` and `h["k"]` are the same entry), `Errors` matches by symbol, `Params` by `to_s`.
 
 Printing (`<%= %>`/interpolation) beyond `to_s` above: `Array` prints as an inspect-like list — `[1, "a", nil]` renders the text `[1, "a", nil]` (then gets escaped, so quotes become `&quot;`); `Hash` falls back to Ruby's own `Hash#to_s`; a `Cybertrain::Model` prints as `#<Post id: 7>` (never its attributes); anything else prints via its own `to_s`. An unlisted method on any of the above is a `RuntimeError` (`"undefined method 'first' for Time"`). `Integer` division/modulo by zero is `"divided by 0"`; `Float` follows IEEE-754 instead (`Infinity`/`NaN`, no error).
 
@@ -186,7 +186,7 @@ Printing (`<%= %>`/interpolation) beyond `to_s` above: `Array` prints as an insp
 
 A `Cybertrain::Model` subclass (a generated `Post`, `Note`, ...) resolves a bare name in this order (`Interpreter#model_method`):
 
-1. Five built-ins, always available: `id`, `persisted?`, `new_record?`, `to_param` (`id.to_s`), `errors` (an `Errors`, section 5).
+1. Five built-ins, always available: `id`, `persisted?`, `new_record?`, `to_param` (`id.to_s`), `errors` (an `Errors`, [Per-type method table](#per-type-method-table)).
 2. `read_attribute(:name)` — a generated column.
 3. `read_association(:name)` — a generated `has_many`/`belongs_to`.
 4. `call_view_method(:name)` — a hand-written, argument-less `def` the model generator found in `app/models/**/*.rb` (no arity, ever).
@@ -213,14 +213,14 @@ Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matc
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` escaped unless already `SafeString`; **no `method:`** — raises, telling you to use `button_to` (no rails-ujs/turbo faking of DELETE links) |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | one-button `<form class="button_to">`; hidden `_method` for any verb but `get`/`post`, plus the CSRF field when a session exists |
 | `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | needs a block; `model:` new → collection route + POST, persisted → member route + PATCH; `[parent, child]` for a nested route; `url:`/`method:` override the derived action/verb; `multipart: true` adds `enctype="multipart/form-data"` (required for `f.file_field`; it is never guessed from the block, and raises `ArgumentError` on a GET form) |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | see section 8 |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials) |
 | `h`, `escape` | `h(text)` | escapes; a `SafeString` passes through unescaped |
 | `raw` | `raw(text)` | wraps text in a `SafeString` (prints unescaped) |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`; `pluralize(2, "mouse")` → `"2 mice"` (Rails' default English inflections, via `Cybertrain::Inflector`; app-defined inflections are not supported); explicit third arg always wins |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
 | `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`; `-1000` → `"-1,000"`; `1234.5` → `"1,234.5"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails-style buckets, no seconds precision: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
-| `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | see section 8 |
+| `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | empty / absent with no controller session |
 | `flash` | | `Hash`-like: `flash[:notice]` |
 | `params` | | the current `Cybertrain::Params` |
@@ -296,7 +296,7 @@ Any plain `StandardError` from a helper or `FormBuilder`/custom-object method ca
 
 | Rails ERB | Cybertrain |
 | --- | --- |
-| Compiled to a Ruby method; any Ruby, any object, any method works | Interpreted against fixed per-type dispatch tables; only what section 5 lists is callable |
+| Compiled to a Ruby method; any Ruby, any object, any method works | Interpreted against fixed per-type dispatch tables; only what the [per-type method table](#per-type-method-table) lists is callable |
 | `ActiveSupport::SafeBuffer` is a `String` subclass | `SafeString` is a separate wrapper class — only `to_s`/`html_safe?`/`size`/`length`/`empty?` are callable on it |
 | Blocks: `each`, `{ }`, `map`, any Enumerable method | Only `do...end`, and only on `each`/`each_with_index`/a helper call |
 | `xs.each { }` — zero block params is fine | `each`/`each_with_index` require declaring 1 or 2 block params |

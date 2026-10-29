@@ -6,8 +6,8 @@ for you.
 
 > [!NOTE]
 > To try CyberTrain without installing anything, open [the playground](site:playground.html):
-> GitHub Codespaces runs the `cybertrain` command, Spinel `2026.10.27.7020` and
-> the tutorial's blog in your browser. The same image also runs locally under Docker.
+> GitHub Codespaces opens the tutorial's blog, the `cybertrain` command and
+> Spinel `2026.10.27.7020` in VS Code in your browser. The same image also runs locally under Docker.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ for you.
   `SPINEL_TAG` in [.github/workflows/ci.yml](../../.github/workflows/ci.yml)), a
   release of [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)
   (`Cybertrain::SPINEL_REPOSITORY`), the fork of matz/spinel that carries
-  the fixes cybertrain needs ahead of an upstream release;
+  the fixes CyberTrain needs ahead of an upstream release;
   untested against other versions. You do not install it by hand: the
   `cybertrain` command builds that release into `~/.cybertrain` the first
   time it needs it (`cybertrain setup` does that on request), unless a
@@ -36,13 +36,13 @@ for you.
 when a required one is missing it also prints the install command for your
 platform.
 
-<details><summary>Optional packages — OpenSSL, jemalloc, and prism on Ruby 3.2</summary>
+<details><summary>More packages — prism on Ruby 3.2; OpenSSL and jemalloc, both optional</summary>
 
 - Building Spinel needs Ruby's `prism` gem, which Ruby 3.3 and newer bundle;
   on Ruby 3.2, `gem install prism` (with Ruby's development headers,
   `ruby-dev` on Debian/Ubuntu). `cybertrain doctor` checks it.
 - OpenSSL's headers (`libssl-dev`) are optional: without them Spinel builds
-  without its `openssl` package, which cybertrain does not use. On macOS an
+  without its `openssl` package, which CyberTrain does not use. On macOS an
   application that requires `openssl` needs Homebrew's (keg-only) OpenSSL on
   the compiler's paths: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`.
@@ -77,7 +77,7 @@ from there, from `cybertrain new` to `cybertrain build`.
 - `cybertrain generate authentication` adds email-and-password sign-in to
   it: users and sessions tables, `User` and `Session` models, the sign-in
   and sign-up controllers and views, the routes, a `before_action` in
-  `ApplicationController` and a test (see [Add authentication](tutorial.md#authentication)).
+  `ApplicationController` and a test (see [Add sign-in](tutorial.md#authentication)).
   With `--invite-only` there is no sign-up page: users are created with
   `./NAME user EMAIL`, and the first one also at a `/setup` page that
   answers only to the server's own machine, with the one-time token its
@@ -85,7 +85,7 @@ from there, from `cybertrain new` to `cybertrain build`.
 - `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
   to a scaffolded model: five metadata columns, model methods and
   callbacks, a download action, the route, the form field and a test (see
-  [Add a file upload](tutorial.md#attachments)). A scaffold field `cover:attachment` does the same.
+  [Add a cover image](tutorial.md#attachments)). A scaffold field `cover:attachment` does the same.
 - `cybertrain db migrate` generates, applies pending migrations, and
   generates again (`spin run gen; spin run db -- migrate; spin run gen`);
   `cybertrain migration` is kept as an alias.
@@ -119,7 +119,9 @@ release is used as it is; otherwise the copy `cybertrain` keeps under
 copy from the release tag of `Cybertrain::SPINEL_REPOSITORY` (`git clone`,
 `make deps`, `make -j`, `make install PREFIX=...`), once, in a few minutes,
 logging to `~/.cybertrain/log/spinel-2026.10.27.7020-build.log` (its last
-lines are printed if a step fails). If a tool the build needs is missing,
+lines are printed if a step fails).
+
+If a tool the build needs is missing,
 `cybertrain` says which and prints the install command for your platform
 before it starts. A `spinel` of another release on `PATH` is never used or
 touched: `cybertrain` keeps its own copy (and says so when it installs it).
@@ -178,11 +180,11 @@ Four options change what it writes and runs:
 
 - `--skip-spin` only writes the files: no Spinel install, no `spin lock`, no
   `spin run gen`.
-- `--path DIR` depends on a local checkout instead (`--path
-  ~/src/cybertrain`, wherever the checkout is, when working on cybertrain
-  itself).
+- `--path DIR` depends on a local checkout instead
+  (`--path ~/src/cybertrain`, wherever the checkout is, when working on
+  CyberTrain itself).
 - `--git URL [--ref R]` depends on the framework at URL (at branch or tag R).
-- `--version V` depends on an index version once cybertrain is on a
+- `--version V` depends on an index version once the framework is on a
   `spin-index`.
 
 Give only one of `--path`, `--version` and `--git`; `--ref` needs `--git`.

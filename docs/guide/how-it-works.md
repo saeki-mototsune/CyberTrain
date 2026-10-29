@@ -1,12 +1,12 @@
 ---
-description: How a CyberTrain app is built and run (build-time code generation, interpreted views, the HTTP server, SQLite via FFI, the development loop) and every known difference from Rails.
+description: How a CyberTrain app is built and run (build-time code generation, interpreted views, the HTTP server, SQLite via FFI, the development loop) and the differences from Rails.
 ---
 
 # How it works
 
 This page explains how a CyberTrain app is built and run: code generated at
 build time, views interpreted at request time, the HTTP server, SQLite
-through FFI and the development loop, then every known difference from Rails.
+through FFI and the development loop, then a table of the differences from Rails.
 The home page's [performance section](site:index.html#performance) compares
 the result with the same blog written in Rails 8.1. The method, every number
 and how to run the measurement again are in [docs/benchmark.md](../benchmark.md).
@@ -104,12 +104,14 @@ Success requests a restart (the same flag an external `kill -HUP` sets): a
 monitor thread stops the listener and drains open requests, then the main
 thread `execv`s the new binary on the same port and PID, invisible to a client
 mid-session. A failed build keeps serving the old binary and banners the
-compiler output on every HTML response. None of this loads in production.
+compiler output on every HTML response. Rebuilds are skipped while
+`cybertrain build` holds `tmp/cybertrain-build.lock`. None of this loads in
+production.
 
 ## Differences from Rails
 
 <!-- table: cmp -->
-| Rails | cybertrain |
+| Rails | CyberTrain |
 | --- | --- |
 | `rails console` | No console — Spinel has no `eval` |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` in `bin/<app>.rb`: `./<app> name ARGS` runs it with the database connected |
@@ -118,7 +120,7 @@ compiler output on every HTML response. None of this loads in production.
 | `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |
 | `before_action { do_thing }` (implicit `self`) | `before_action { \|c\| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — nested blocks take the mapper explicitly |
-| ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table — [docs/guide/template-language.md](template-language.md) |
+| ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table ([Template language](template-language.md)) |
 | Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
 | Many database adapters | SQLite only, via FFI |
 | `Article.transaction { ... }` returns the block's value; `raise ActiveRecord::Rollback`; `requires_new: true` savepoints | `Article.transaction { \|c\| ... }` yields the connection and returns nil; leave it by raising; nested calls join the outer transaction, no savepoints ([Transactions](models.md#transactions)) |
@@ -133,8 +135,8 @@ compiler output on every HTML response. None of this loads in production.
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
-| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape plus a sign-up page; passwords use PBKDF2-HMAC-SHA256 (bcrypt needs a C library; macOS `String#crypt` lacks it); no password reset ([Add sign-in](tutorial.md#authentication)) |
-| Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` writes five `cover_*` columns and model methods; files stay on local disk under `storage/uploads/`, served by `send_blob`; one per field, no variants or direct uploads ([Cover image](tutorial.md#attachments)) |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape plus a sign-up page; passwords use PBKDF2-HMAC-SHA256 (bcrypt needs a C library; macOS `String#crypt` has no bcrypt); no password reset ([Add sign-in](tutorial.md#authentication)) |
+| Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` writes five `cover_*` columns and model methods; files stay on local disk under `storage/uploads/`, served by `send_blob`; one per field, no variants or direct uploads ([Add a cover image](tutorial.md#attachments)) |
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |

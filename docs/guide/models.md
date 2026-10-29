@@ -1,8 +1,8 @@
 # Models and the database
 
 What a model does beyond the scaffold: writing migrations, the queries that
-go past `where`, paging a list, transactions, and the rules SQLite column
-names and `order` clauses follow under Spinel.
+go past `where`, paging a list, transactions, and the rules column names
+and `order` clauses follow under Spinel.
 
 ## Migrations
 
@@ -56,7 +56,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
             conflict: [:project_id, :key],
             update: { calls: "calls + excluded.calls", max_ms: "MAX(max_ms, excluded.max_ms)",
                       seen_at: "excluded.seen_at" })
-Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1
+Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (also pluck_str, pluck_float)
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
 Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # hour buckets
@@ -201,9 +201,9 @@ generates under its own name with a note. `cybertrain generate scaffold`
 refuses keywords and reserved names (it would have to call a renamed reader)
 and accepts a shadowing name with a note, like the generator.
 
-Where Rails lets an association shadow `errors`, an association whose plain
-name a column, another association or a `Model` method already owns is
-emitted under a fallback name, with a comment in the generated file:
+An association whose plain name a column, another association or a `Model`
+method already owns (Rails lets one shadow `errors`) is emitted under a
+fallback name, with a comment in the generated file:
 `<table>_as_<column stem>` for a `has_many` (`comments_as_article`),
 `<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`).
 

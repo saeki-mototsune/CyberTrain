@@ -1,7 +1,7 @@
 # Requests
 
-What a controller gets from a request and what the framework guards for
-it: rate limiting and the client address behind a proxy, the parameterised
+What a controller gets from a request and what the framework checks before
+it runs: rate limiting and the client address behind a proxy, the parameterised
 headers, and how query strings and request bodies are parsed and bounded.
 
 ## Rate limiting and the client address
@@ -33,6 +33,8 @@ name the actions with `only:`. In a test, `Cybertrain::RateLimit.reset_all!`
 forgets every count and `Cybertrain::RateLimit.current_time = n` fixes the
 clock (`-1` restores it).
 
+### The client address behind a proxy
+
 The address counted is `request.client_ip` (`by: :remote_addr` counts the
 connection's peer instead). It is `request.remote_addr` unless
 `config.trusted_proxy` is on (`CYBERTRAIN_TRUSTED_PROXY=1`) **and** the
@@ -61,8 +63,7 @@ an address or CIDR, or has a prefix past `/32` (IPv4) or `/128` (IPv6),
 stops the server at boot. `CYBERTRAIN_TRUSTED_PROXY=1` is the shorthand for
 `127.0.0.0/8,::1`, and the two add up.
 
-This is the Kamal case: kamal-proxy
-runs in its own Docker container and connects from its address on the Docker
+This is the Kamal case: kamal-proxy runs in its own Docker container and connects from its address on the Docker
 network, so the `config/deploy.yml` that `cybertrain new` writes sets
 `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` (Docker's default range; change
 it if your networks use another, `docker network inspect kamal`). Leave

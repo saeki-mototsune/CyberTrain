@@ -35,10 +35,7 @@ deployable `dist/` folder. The finished app is
 
 <!-- list: checklist -->
 - Ruby 3.2+ and RubyGems, for the `cybertrain` command only; applications
-  never run on CRuby. Building Spinel also needs Ruby&rsquo;s `prism` gem:
-  Ruby 3.3 and newer bundle it; on Ruby 3.2, run `gem install prism` (with
-  Ruby&rsquo;s development headers, `ruby-dev` on Debian/Ubuntu).
-  `cybertrain doctor` checks it.
+  never run on CRuby. On Ruby 3.2, also `gem install prism`.
 - Spinel `2026.10.27.7020`, a release of the
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork,
   which carries the fixes CyberTrain needs ahead of an upstream release;
@@ -49,15 +46,10 @@ deployable `dist/` folder. The finished app is
   `curl`, to build Spinel, which compiles every program to C.
 - SQLite 3 and zlib headers and libraries: `libsqlite3-dev` and `zlib1g-dev`
   on Debian/Ubuntu; present with Xcode's command line tools on macOS.
-- OpenSSL headers (`libssl-dev`) are optional: without them Spinel builds
-  without its `openssl` package, which CyberTrain does not use.
 
-`cybertrain doctor` checks these tools and headers and the Spinel install;
-when a required one is missing it also prints the install command for your
-platform.
-
-Where Spinel goes, how to run `spin` yourself and how to use another install:
-[how Spinel is installed](install.md#how-spinel-is-installed).
+`cybertrain doctor` checks all of this. The full list and what is optional:
+[Requirements](install.md#requirements); where Spinel goes and how to use
+another install: [how Spinel is installed](install.md#how-spinel-is-installed).
 
 > [!NOTE]
 > No machine to install on? The [playground](site:playground.html) opens this
@@ -1132,7 +1124,7 @@ a clean stop and the database kept on its volume, and loads
   links the system SQLite.
 - `SPINEL_WORKERS` defaults to `1`.
 - Only Spinel `2026.10.27.7020` is tested.
-- The full list of differences from Rails: [Differences from Rails](how-it-works.md#differences-from-rails).
+- More differences from Rails, in one table: [Differences from Rails](how-it-works.md#differences-from-rails).
 
 <!-- step → #where-next -->
 ## Where next
