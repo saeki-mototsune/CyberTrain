@@ -1,5 +1,5 @@
 ---
-source_sha256: 99e2fb00f24486c6277c57d7be1d6a62713b2318a44182d7fe3391ab2f9827bf
+source_sha256: b84259bcc4f0afd4ba917077642cbc181416a59a524e9e5dc26ec8a76530afb7
 ---
 # アプリをテストする
 
@@ -42,10 +42,11 @@ test/<name>.rb.expected 2>&1`（スナップショットが古い間は `cybertr
 
 ## 外向きの呼び出しをテストする
 
-テスト対象のコードが Webhook（[外向きの HTTP](external-services.md#outbound-http)）やメール（[メールを送る](external-services.md#sending-e-mail)）を送る場合、テストはそれをプロセス内で受け取ります：`Cybertrain::Test::HttpReceiver` と `Cybertrain::Test::SmtpReceiver` は `127.0.0.1` で待ち受け、届いたものを記録して、決まった応答を返します。
+テスト対象のコードが Webhook（[外向きの HTTP](external-services.md#outbound-http)）やメール（[メールを送る](external-services.md#sending-e-mail)）を送る場合、テストはそれをプロセス内で受け取ります：`Cybertrain::Test::HttpReceiver` と `Cybertrain::Test::SmtpReceiver` は `127.0.0.1` で待ち受け、届いたものを記録して、決まった応答を返します。ファイルは上と同じヘルパー `support/blog_test` から始め、`cybertrain/mailer` は自分で require します：`require "cybertrain"` はこれを読み込みません。
 
 ```ruby
-require_relative "support/app_test"
+require_relative "support/blog_test"   # アプリ、BLOG、Cybertrain::Test
+require "cybertrain/mailer"
 require "cybertrain/test/http_receiver"
 require "cybertrain/test/smtp_receiver"
 
@@ -73,6 +74,8 @@ test "a refused recipient is reported" do
                mail.transcript.first(3)
   refute mail.delivered?
 end
+
+Cybertrain::Test.run!
 ```
 
 `HttpReceiver.new` は決まった応答の `status:`、`headers:`、`body:`、`chunked:` を受け取ります（`respond_with` でリクエストの間に変更できます）。リクエストは `ReceivedRequest` として返ってきます（`http_method`、`http_target`、`http_path`、名前を小文字にした `http_headers`、`http_header(name)`、チャンク形式のボディをデコードした `http_body`）。`SmtpReceiver` は 220、EHLO（`eight_bit_mime: false` でなければ 8BITMIME 付き、`auth: true` なら AUTH PLAIN 付き）、MAIL、RCPT、DATA、QUIT を演じます。`reject:` は `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data`、`:message` のいずれかを、指定した応答で失敗させます。`ReceivedMessage` には、`envelope_from`、`envelope_recipients`、`message_data`（ドットスタッフィングは元に戻されています）、`message_header(name)`、`message_body`、そしてコマンドの `transcript` があります。どちらも、`max:` でそれ以上を指定しない限り、接続を 1 つだけ受け付けます（`received_requests` / `received_messages` がそのすべてを返します）。すべての待ちに上限があります：レシーバーは接続がないまま `accept_window:`（10 秒）たつと諦め、黙っているクライアントは `read_timeout:`（5 秒）で諦めます。`stop`（二度呼んでも安全）はレシーバーのスレッドを終わらせて join し、ポートを閉じるので、レシーバーが後のテストの接続を横取りすることはありません。必要なのは Ruby の socket ライブラリだけで、openssl は不要です。
