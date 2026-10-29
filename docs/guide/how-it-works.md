@@ -69,7 +69,9 @@ outermost commits; a raise anywhere rolls everything back; no savepoints).
 Code that must keep its `rescue` in a plain method uses the block-free form,
 `c.begin!(immediate: true)` ... `c.commit!`, with `c.rollback!` in the rescue.
 It returns nil rather than the block's value, and a `DB.transaction` called
-inside a `DB.with` block (which is not a transaction) gets a second connection.
+inside a `DB.with` block (which is not a transaction) checks out a second
+connection: on a one-connection pool (`:memory:` included) it then waits
+forever. Open the transaction first and do the work inside it.
 
 **The development loop.** `cybertrain server` (`spin run gen`, then `spin run NAME`) in
 `development` (the default `CYBERTRAIN_ENV`, except in a binary from

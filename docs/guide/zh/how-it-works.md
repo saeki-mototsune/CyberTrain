@@ -1,5 +1,5 @@
 ---
-source_sha256: be6250416c64d3c07e705f9e3e4f04987365dbf6031cea8793a97c0452d9885f
+source_sha256: 0b22d617a8f08f18b32c41e0dfd5bb3613626f655729e681ffcc6f36911c2f3a
 ---
 # 工作原理
 
@@ -22,7 +22,7 @@ Article.transaction(immediate: true) do |c|
 end
 ```
 
-嵌套在块中的 `DB.transaction` 会加入外层事务（只有最外层提交；任何地方抛出异常都会回滚全部内容；没有保存点）。必须把 `rescue` 写在普通方法中的代码可以使用不带块的形式：`c.begin!(immediate: true)` ... `c.commit!`，并在 rescue 中调用 `c.rollback!`。它返回 nil 而不是块的值；在 `DB.with` 块（它不是事务）中调用的 `DB.transaction` 会得到第二个连接。
+嵌套在块中的 `DB.transaction` 会加入外层事务（只有最外层提交；任何地方抛出异常都会回滚全部内容；没有保存点）。必须把 `rescue` 写在普通方法中的代码可以使用不带块的形式：`c.begin!(immediate: true)` ... `c.commit!`，并在 rescue 中调用 `c.rollback!`。它返回 nil 而不是块的值；在 `DB.with` 块（它不是事务）中调用的 `DB.transaction` 会取出第二个连接：在只有一个连接的连接池上（包括 `:memory:`），它会因此永远等待下去。请先开启事务，再在其中完成工作。
 
 **开发循环。** 在 `development` 模式下（默认的 `CYBERTRAIN_ENV`，`cybertrain build` 构建的二进制文件除外），`cybertrain server`（先 `spin run gen`，再 `spin run NAME`）还会每半秒轮询一次 `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb` 和 `gen/**/*.rb`（视图被排除在外——引擎会自己重新加载它们——`gen/views.rb` 也被排除，它在开发模式下为空）。发生改动时，会在后台运行 `spin run gen && spin build NAME -- --incremental`（Spinel 的增量构建，只重新编译这次编辑改动了的 C 单元；不支持 `--incremental` 的 Spinel 版本会拒绝这个参数，此时循环会不带它进行构建）；构建成功后会请求重启（与外部 `kill -HUP` 设置的是同一个标志）：一个监视线程停止监听并等待进行中的请求完成，然后主线程在同一端口和 PID 上 `execv` 新的二进制文件，会话进行中的客户端察觉不到。构建失败时继续用旧的二进制文件提供服务，并在每个 HTML 响应上以横幅显示编译器输出。这些在生产环境中都不会加载。
 

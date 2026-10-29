@@ -1,5 +1,5 @@
 ---
-source_sha256: be6250416c64d3c07e705f9e3e4f04987365dbf6031cea8793a97c0452d9885f
+source_sha256: 0b22d617a8f08f18b32c41e0dfd5bb3613626f655729e681ffcc6f36911c2f3a
 ---
 # Fonctionnement
 
@@ -86,7 +86,9 @@ tout&nbsp;; pas de savepoints). Le code qui doit garder son `rescue` dans une
 méthode simple utilise la forme sans bloc, `c.begin!(immediate: true)` ...
 `c.commit!`, avec `c.rollback!` dans le rescue. Elle renvoie nil plutôt que la
 valeur du bloc, et un `DB.transaction` appelé dans un bloc `DB.with` (qui n’est
-pas une transaction) obtient une seconde connexion.
+pas une transaction) emprunte une seconde connexion&nbsp;: avec un pool d’une
+seule connexion (`:memory:` compris), il attend alors indéfiniment. Ouvrez
+d’abord la transaction et faites le travail à l’intérieur.
 
 **La boucle de développement.** `cybertrain server` (`spin run gen`, puis
 `spin run NAME`) en `development` (le `CYBERTRAIN_ENV` par défaut, sauf dans un
