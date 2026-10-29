@@ -1,5 +1,5 @@
 ---
-source_sha256: 2ae2dd9bb6b7afdd62feb39694e29ca26b161f41a0465bd69f68f6d44d9d47d0
+source_sha256: 4a68c4e344de448d40e05831de345f8ba42623ab5d789b4d07715b47bf5e4b58
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -833,7 +833,7 @@ kamal deploy   # 以降のデプロイ
 | Rack とそのミドルウェア、`Gemfile` に書いた任意の gem | Rack 互換性なし。小さな固定のミドルウェアセット。Spinel 独自の `spin-index`（その Ruby サブセットでコンパイルできるものに限る） |
 | minitest / RSpec | `Cybertrain::Test` — リフレクションに基づくテストランナーは AOT では動かない |
 | `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` が同じ構成を書き出し、コンソールがないためサインアップ画面も加える。`has_secure_password` は `Cybertrain::Password`（PBKDF2）を使って User モデルに書き下される。パスワードリセットはない（`Cybertrain::Mailer` のためのアプリの SMTP 設定が必要になる） |
-| メーラー、ジョブ、ActionCable、アセットパイプライン、i18n | 未構築（MVP の範囲外） |
+| メーラー、ジョブ、ActionCable、アセットパイプライン、i18n | メールとジョブは最小限の形である：`Cybertrain::Mailer` はプレーンテキストを SMTP で送り（[メールを送る](external-services.md#sending-e-mail)）、`Cybertrain::Job` と `Cybertrain::Scheduler` は処理を後で、または N 秒ごとに実行する（[バックグラウンド処理](background-and-operations.md#background-work)）。未構築（MVP の範囲外）：ActionCable のサーバー（WebSocket は外向きのみ）、アセットパイプライン（`public/` は静的ファイルとして配信される）、i18n |
 <!-- table-foot: すべてを網羅してはいません。 -->
 
 <!-- step → #where-next -->

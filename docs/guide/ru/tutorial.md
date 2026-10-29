@@ -1,5 +1,5 @@
 ---
-source_sha256: 2ae2dd9bb6b7afdd62feb39694e29ca26b161f41a0465bd69f68f6d44d9d47d0
+source_sha256: 4a68c4e344de448d40e05831de345f8ba42623ab5d789b4d07715b47bf5e4b58
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -1257,7 +1257,7 @@ kamal deploy   # каждое следующее развёртывание
 | Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
 | minitest / RSpec | `Cybertrain::Test` — раннеры на основе рефлексии не могут работать при AOT-компиляции |
 | `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` пишет то же самое и вдобавок страницу регистрации, раз консоли нет; `has_secure_password` расписан в модели User поверх `Cybertrain::Password` (PBKDF2); сброса пароля нет (ему нужны настройки SMTP приложения для `Cybertrain::Mailer`) |
-| Мейлеры, фоновые задачи, ActionCable, asset pipeline, i18n | Не сделано (за рамками MVP) |
+| Мейлеры, фоновые задачи, ActionCable, asset pipeline, i18n | Почта и фоновые задачи — в минимальном виде: `Cybertrain::Mailer` отправляет простой текст по SMTP ([Отправка электронной почты](external-services.md#sending-e-mail)), `Cybertrain::Job` и `Cybertrain::Scheduler` выполняют работу позже или каждые N секунд ([Фоновая работа](background-and-operations.md#background-work)). Не сделано (за рамками MVP): сервер ActionCable (WebSocket только исходящий), asset pipeline (`public/` раздаётся как статические файлы) и i18n |
 <!-- table-foot: Список не исчерпывающий. -->
 
 <!-- step → #where-next -->

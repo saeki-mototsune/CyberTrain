@@ -1215,7 +1215,7 @@ a clean stop and the database kept on its volume, and loads
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
 | `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` writes the same shape, plus a sign-up page since there is no console; `has_secure_password` is written out on the User model over `Cybertrain::Password` (PBKDF2); no password reset (it needs the app's SMTP settings for `Cybertrain::Mailer`) |
-| Mailers, jobs, ActionCable, asset pipeline, i18n | Not built (outside the MVP) |
+| Mailers, jobs, ActionCable, asset pipeline, i18n | Mail and jobs in a minimal form: `Cybertrain::Mailer` sends plain text over SMTP ([Sending e-mail](external-services.md#sending-e-mail)), `Cybertrain::Job` and `Cybertrain::Scheduler` run work later or every N seconds ([Background work](background-and-operations.md#background-work)). Not built (outside the MVP): an ActionCable server (WebSocket is outbound only), an asset pipeline (`public/` is served as static files) and i18n |
 <!-- table-foot: Not exhaustive. -->
 
 <!-- step → #where-next -->

@@ -1,5 +1,5 @@
 ---
-source_sha256: 2ae2dd9bb6b7afdd62feb39694e29ca26b161f41a0465bd69f68f6d44d9d47d0
+source_sha256: 4a68c4e344de448d40e05831de345f8ba42623ab5d789b4d07715b47bf5e4b58
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -833,7 +833,7 @@ kamal deploy   # 之后的每次部署
 | Rack 及其中间件，以及 `Gemfile` 中的任何 gem | 不兼容 Rack；只有一小组固定的中间件；使用 Spinel 自己的 `spin-index`，仅限能在其 Ruby 子集下编译的内容 |
 | minitest / RSpec | `Cybertrain::Test`——基于反射的测试运行器无法在 AOT 编译下工作 |
 | `bin/rails generate authentication`、`has_secure_password` | `cybertrain generate authentication` 写出同样的结构，并因为没有控制台而额外加上注册页面；`has_secure_password` 基于 `Cybertrain::Password`（PBKDF2）逐一写在 User 模型里；没有密码重置（它需要应用为 `Cybertrain::Mailer` 提供的 SMTP 设置） |
-| 邮件、后台任务、ActionCable、资源管道、i18n | 未构建（不在 MVP 范围内） |
+| 邮件、后台任务、ActionCable、资源管道、i18n | 邮件和后台任务以最小的形式提供：`Cybertrain::Mailer` 通过 SMTP 发送纯文本（[发送电子邮件](external-services.md#sending-e-mail)），`Cybertrain::Job` 和 `Cybertrain::Scheduler` 让工作稍后运行或每 N 秒运行一次（[后台任务](background-and-operations.md#background-work)）。未构建（不在 MVP 范围内）：ActionCable 服务器端（WebSocket 只支持出站）、资源管道（`public/` 作为静态文件提供）和 i18n |
 <!-- table-foot: 此表并不完整。 -->
 
 <!-- step → #where-next -->

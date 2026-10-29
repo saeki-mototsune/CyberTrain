@@ -1,5 +1,5 @@
 ---
-source_sha256: 2ae2dd9bb6b7afdd62feb39694e29ca26b161f41a0465bd69f68f6d44d9d47d0
+source_sha256: 4a68c4e344de448d40e05831de345f8ba42623ab5d789b4d07715b47bf5e4b58
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -1293,7 +1293,7 @@ et charge `config/deploy.yml` avec Kamal.
 | Rack, ses middlewares, et n’importe quelle gem d’un `Gemfile` | Pas de compatibilité Rack&nbsp;; un petit ensemble fixe de middlewares&nbsp;; le `spin-index` propre à Spinel, limité à ce qui compile avec son sous-ensemble de Ruby |
 | minitest / RSpec | `Cybertrain::Test` — les runners fondés sur la réflexion ne peuvent pas fonctionner avec une compilation AOT |
 | `bin/rails generate authentication`, `has_secure_password` | `cybertrain generate authentication` écrit la même structure, plus une page d’inscription faute de console&nbsp;; `has_secure_password` est écrit en toutes lettres dans le modèle User au-dessus de `Cybertrain::Password` (PBKDF2)&nbsp;; pas de réinitialisation du mot de passe (elle demande les réglages SMTP de l’application pour `Cybertrain::Mailer`) |
-| Mailers, jobs, ActionCable, asset pipeline, i18n | Non développé (hors du MVP) |
+| Mailers, jobs, ActionCable, asset pipeline, i18n | L’e-mail et les jobs sous une forme minimale&nbsp;: `Cybertrain::Mailer` envoie du texte brut par SMTP ([Envoyer des e-mails](external-services.md#sending-e-mail)), `Cybertrain::Job` et `Cybertrain::Scheduler` exécutent un travail plus tard ou toutes les N secondes ([Tâches de fond](background-and-operations.md#background-work)). Non développé (hors du MVP)&nbsp;: un serveur ActionCable (WebSocket sortant seulement), un asset pipeline (`public/` est servi comme fichiers statiques) et l’i18n |
 <!-- table-foot: Liste non exhaustive. -->
 
 <!-- step → #where-next -->

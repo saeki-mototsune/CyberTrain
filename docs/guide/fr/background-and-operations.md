@@ -1,5 +1,5 @@
 ---
-source_sha256: 5fd1dcbbdc9f9499d55d66c8be021ada6717fce4bdd06c2b3f16f4702d16f6fa
+source_sha256: 438fc2c71e978981341d9c6453c440e4ddf31336c561b3788126cfef4875f9ec
 ---
 # Tâches de fond et exploitation
 
@@ -70,7 +70,9 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   choisissez, de sorte qu’un test n’attend jamais.
 
 Il n’y a pas de syntaxe cron, ni priorité ni unicité pour les jobs, ni
-mailer&nbsp;: cela couvre «&nbsp;envoyer plus tard&nbsp;» et «&nbsp;exécuter
+`deliver_later`&nbsp;: un job qui envoie un e-mail appelle lui-même
+`Cybertrain::Mailer` ([Envoyer des e-mails](external-services.md#sending-e-mail)).
+Cela couvre «&nbsp;envoyer plus tard&nbsp;» et «&nbsp;exécuter
 toutes les N secondes&nbsp;» (`docs/design.md` D28).
 
 ## Exploitation&nbsp;: sauvegardes, VACUUM, contrôle de santé

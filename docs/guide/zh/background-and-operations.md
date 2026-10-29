@@ -1,5 +1,5 @@
 ---
-source_sha256: 5fd1dcbbdc9f9499d55d66c8be021ada6717fce4bdd06c2b3f16f4702d16f6fa
+source_sha256: 438fc2c71e978981341d9c6453c440e4ddf31336c561b3788126cfef4875f9ec
 ---
 # 后台任务与运维
 
@@ -32,7 +32,7 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 - **让任务保持简短。** 任务和处理器在那一个线程上逐个运行，而一次 SQLite 调用会占用它的操作系统工作线程直到返回：在 `SPINEL_WORKERS=1`（默认值）时，一个耗时的查询会让所有请求停顿同样长的时间。请把大量工作分批进行（每次运行删除一千行，每个条目入队一个作业），而不是一次做完。
 - **测试。** `Cybertrain::Scheduler.run_due(now)` 运行一次心跳，`Cybertrain::Job.work_one(now)` 运行一个作业，时间是你选定的纪元时间，所以测试永远不必休眠。
 
-没有 cron 语法，作业没有优先级或唯一性，也没有邮件程序：这里涵盖的是“稍后发送”和“每 N 秒运行一次”（`docs/design.md` D28）。
+没有 cron 语法，作业没有优先级或唯一性，也没有 `deliver_later`：发送邮件的作业自己调用 `Cybertrain::Mailer`（[发送电子邮件](external-services.md#sending-e-mail)）。这里涵盖的是“稍后发送”和“每 N 秒运行一次”（`docs/design.md` D28）。
 
 ## 运维：备份、VACUUM、健康检查
 
