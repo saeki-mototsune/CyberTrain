@@ -560,6 +560,34 @@ test "an idle keep-alive connection does not hold up shutdown" do
   c.close
 end
 
+test "many idle keep-alive connections are closed by the drain, not waited out" do
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 30, drain_timeout: 5.0,
+                                                     logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  clients = []
+  i = 0
+  while i < 20
+    c = RawClient.new(server.port)
+    assert_equal "keep-alive", c.get("/hello").header("connection")
+    clients << c
+    i += 1
+  end
+  assert_equal 20, server.open_connections
+  started = Time.now
+  server.request_stop
+  runner.join
+  elapsed = Time.now - started
+  assert elapsed < 1.0, "run took #{elapsed}s to return with 20 idle connections"
+  assert_equal 0, server.open_connections
+  i = 0
+  while i < clients.size
+    assert clients[i].closed_by_server?
+    clients[i].close
+    i += 1
+  end
+end
+
 test "drain_timeout bounds the wait for a request that takes too long" do
   log = StringIO.new
   server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, drain_timeout: 0.3,

@@ -29,8 +29,9 @@ ok   run serves until stop is called
 ok   request_stop (what the TERM trap calls) makes run return without joining
 ok   request_stop waits for a request in flight and answers it completely
 ok   an idle keep-alive connection does not hold up shutdown
+ok   many idle keep-alive connections are closed by the drain, not waited out
 ok   drain_timeout bounds the wait for a request that takes too long
 ok   start raises Cybertrain::PortInUse when the port is already bound
 ok   PortInUse names the reason the port could not be bound
 ok   starting a server on port 80 as non-root reports permission denied
-35 tests, 122 assertions, 0 failures
+36 tests, 165 assertions, 0 failures
