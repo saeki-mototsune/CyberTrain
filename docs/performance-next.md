@@ -133,10 +133,13 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
 - Memory errors: an AddressSanitizer build is
   `spinel app.rb --cc=<script running cc -fsanitize=address
   -fno-sanitize-address-use-after-scope -fno-omit-frame-pointer -g>` with
-  `ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0`. Run it with
-  `SPINEL_GC_SLAB=0` on Spinel 2026.10.27.7020 and later: the object slab
-  recycles freed slots itself, so with it on AddressSanitizer does not see
-  a freed object being read (spinel-feedback.md J).
+  `ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0`. The object slab
+  (on by default; 2026.09.12 had none) recycles freed slots itself, so
+  with it on AddressSanitizer does not see a freed object being read. Run
+  the build both ways: with `SPINEL_GC_SLAB=0`, which is how J was found
+  (checked on 2026.10.27.7020 and fork master 49ccdced only), and with the
+  slab on, the configuration that ships, which no AddressSanitizer run has
+  cleared (spinel-feedback.md J).
 - Collector behaviour: `SPINEL_GC_STATS=1` prints collections, how many
   were full and the share of wall time once a second; `SPINEL_GC_PHASES=1`
   prints the mark, the sweep, the stop-the-world wait and the slab release

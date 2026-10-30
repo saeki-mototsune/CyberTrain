@@ -89,7 +89,7 @@ that it is fixed.
 | 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround; dropped) | not re-checked |
 | 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
 | 4. Parking a fiber goes through the monitor thread | yes (re-measured on 2026-10-30: 9.9 `futex` per request) | not re-measured | not re-measured | not re-checked | not re-checked | **fixed** (2.1 `futex` per request, none on the park path; #8702, #10024) | same counts as 2026.10.27.7020 on a minimal server; examples/blog does not build (I) |
-| 5. At one worker, most collections are full, and the sweep is handed to another thread | yes (as "a collection stops every thread") | not re-measured | not re-measured | not re-checked | not re-checked | **yes**, re-measured: the stop costs nothing at one worker, but 83% of collections are full (`SPINEL_GC_FULL_INTERVAL=8`: +16%) and the sweeper thread costs 5% on one CPU | not re-checked |
+| 5. At one worker, most collections are full, and the sweep is handed to another thread | yes (as "a collection stops every thread") | not re-measured | not re-measured | not re-checked | not re-checked | **yes**, re-measured: the stop-the-world wait is negligible at one worker (0.001 s over 2,852 collections), but 83% of collections are full (`SPINEL_GC_FULL_INTERVAL=8`: +16%) and the sweeper thread costs 5% on one CPU | not re-checked |
 | 6 and 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
 | `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked | not re-checked | not re-checked |
 | `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked | not re-checked | not re-checked |
@@ -102,7 +102,7 @@ that it is fixed.
 | G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
 | H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) | **fixed** (test/db_with_value.rb uses the block's own value) | not re-checked |
 | I. A constant written `Array.new(n) { Obj.new }` is refused | no | no | no | not checked | not checked | no | **yes** (new; from 8594f2be2, matz/spinel#10527) |
-| J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs | no (no slab; passes under AddressSanitizer) | not checked | not checked | not checked | not checked | **yes** with `SPINEL_GC_SLAB=0`; the default is unknown | **yes** with `SPINEL_GC_SLAB=0` |
+| J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs | not reproduced (2 of 2 runs under AddressSanitizer; it has no slab) | not checked | not checked | not checked | not checked | **yes** with `SPINEL_GC_SLAB=0`; the default is unknown | **yes** with `SPINEL_GC_SLAB=0` |
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked |
 | Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked |
 
@@ -526,7 +526,7 @@ from A, C, F and G prints Ruby's result on 2026.10.26.7019. H is new on
 still present, and D still raises, by design. H is fixed by #10415, merged
 2026-10-27 (master 003ceda5d). I is new on the fork's master 49ccdced
 (2026-10-30) and absent from 2026.10.27.7020. J is on both, seen only
-with the object slab off, and absent from 2026.09.12.
+with the object slab off, and not reproduced on 2026.09.12 (2 of 2 runs).
 
 On 2026.10.25-7018, the ten `spin test` failures:
 
@@ -1006,7 +1006,8 @@ slot is refused.
 ### J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs
 
 Found on 2026-10-30 on 2026.10.27.7020 while re-measuring 5, and present on
-the fork's master 49ccdced; not on 2026.09.12. The object slab
+the fork's master 49ccdced; not reproduced on 2026.09.12 (2 of 2 runs).
+The object slab
 (`lib/sp_slab.c`, on by default) recycles freed slots itself, so an
 AddressSanitizer build sees a use-after-free only when the slab is off
 (`SPINEL_GC_SLAB=0`, which allocates every object with `calloc`). With it
