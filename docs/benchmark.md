@@ -121,12 +121,15 @@ in two), so the key is remembered per request instead
 
 Measured and left out: reading a request without parking the fiber when its
 bytes are already there (a zero-timeout `wait_readable` before the real one,
-with a cap so one client cannot hold the worker). Each park is a hand-off to
-the scheduler's monitor thread and back, about 16 `futex` calls per request,
-but with wrk's 16 connections the next request is never in yet when the fiber
-comes back (`futex` and `epoll_wait` per request did not move; only an extra
-`poll` appeared), and a plain blocking `readpartial` would hold the only
-worker against the other connections ([NOTES](../spikes/NOTES.md) rule 20). A
+with a cap so one client cannot hold the worker). On 2026.09.12 each park
+was a hand-off to the scheduler's monitor thread and back, about 16 `futex`
+calls per request (on 2026.10.27.7020 the park makes none, and the 2
+`futex` per request left are the collector's and the monitor's: see
+[spinel-feedback.md](spinel-feedback.md) 4), but with wrk's 16 connections
+the next request is never in yet when the fiber comes back (`futex` and
+`epoll_wait` per request did not move; only an extra `poll` appeared), and a
+plain blocking `readpartial` would hold the only worker against the other
+connections ([NOTES](../spikes/NOTES.md) rule 20). A
 `Static` that lists `public/` once and keeps the
 small files in memory serves `GET /style.css` about 19% faster (17,060 to
 20,370 req/s), but changes nothing measurable for the pages (the 3 `stat`

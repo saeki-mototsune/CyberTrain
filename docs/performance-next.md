@@ -16,7 +16,7 @@ first recorded run). Per request, roughly:
 
 | Share | What |
 | --: | --- |
-| about 1/5 | OS thread switches: the fiber of a connection parks on `wait_readable`, the scheduler's monitor thread wakes it, and the collector stops the world (about 16 `futex` calls per request) |
+| about 1/5 on 2026.09.12 | OS thread switches: the fiber of a connection parked on `wait_readable` was woken through the scheduler's monitor thread and the scheduler lock (about 16 `futex` calls per request), and the collector stops the world. On 2026.10.27.7020 the park stays on the worker: 2 `futex` and 0.5 context switches per request, most of them the collector's sweeper hand-off and the rest the monitor's timer turns ([spinel-feedback.md](spinel-feedback.md) 4 and 5, re-measured 2026-10-30) |
 | about 1/5 | garbage collection and malloc/free, proportional to the objects above |
 | the rest | the template interpreter, SQLite, the HTTP parser, sessions |
 
@@ -79,7 +79,8 @@ All measured, see benchmark.md and spikes/NOTES.md for the numbers.
   noise of the defaults or slower.
 - A park-free read (`wait_readable(0)` before the real wait): the next
   request is never there yet with this load, so `futex` and `epoll_wait` per
-  request did not move.
+  request did not move. On 2026.10.27.7020 a park no longer leaves the
+  worker (one `epoll_ctl` and one `epoll_wait`); not re-measured there.
 - A `Static` that lists `public/` once: +19% for the static file, nothing for
   pages, and a file added later is not served until a restart.
 - A process-wide cache behind a `Mutex`: stalls requests with
@@ -94,9 +95,12 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
 
 - A constructor that roots its arguments before it allocates (the cause of
   rule 58).
-- Fiber parking without a hand-off to the monitor thread when the descriptor
-  is ready, or readiness checked by the worker itself at `N=1`.
-- A collection that does not stop every thread when there is one worker.
+- Fiber parking without a hand-off to the monitor thread: done on
+  2026.10.27.7020 (spinel-feedback.md 4).
+- A collection that does not stop every thread when there is one worker,
+  and sweeps on the worker instead of handing off to a sweeper thread at
+  `N=1` (spinel-feedback.md 5: one collection per 2.8 requests, each a
+  context switch and about four `futex` calls).
 - `Array#clear` and Hash values of objects boxing their containers (rule 56).
 
 ## How to measure
