@@ -85,7 +85,7 @@ that it is fixed.
 | 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround; dropped) | not re-checked |
 | 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
 | 4. Parking a fiber goes through the monitor thread | yes (re-measured on 2026-10-30: 9.9 `futex` per request) | not re-measured | not re-measured | not re-checked | not re-checked | **fixed** (2.1 `futex` per request, none on the park path; #8702, #10024) | same counts as 2026.10.27.7020 on a minimal server; examples/blog does not build (I) |
-| 5. A collection stops every thread even with one worker | yes | not re-measured | not re-measured | not re-checked | not re-checked | yes (one collection per 2.8 requests; its sweeper hand-off is what is left of 4's `futex` count) | not re-checked |
+| 5. A collection stops every thread even with one worker | yes | not re-measured | not re-measured | not re-checked | not re-checked | yes (one collection per 2.8 requests; its sweeper hand-off is most of what is left of 4's `futex` count) | not re-checked |
 | 6 and 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
 | `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked | not re-checked | not re-checked |
 | `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked | not re-checked | not re-checked |
@@ -287,7 +287,8 @@ neither can be changed from the application except by allocating less.
 Measured on 2026.09.12; 2026.10.25-7018 was not measured (examples/blog
 does not build on it, see A). 4 and 5 were re-measured on 2026-10-30 on
 2026.10.27.7020, with 2026.09.12 rebuilt from source beside it (the method
-is under 4): 4 is fixed, and the hand-offs that remain are 5's.
+is under 4): 4 is fixed. What remains of its `futex` count is the
+collector's sweeper hand-off (see 5) and the monitor's time-based turns.
 
 ### 4. Parking a fiber goes through the monitor thread
 
@@ -303,14 +304,20 @@ requests a second, so the rates are not comparable here and the counts
 are. Syscalls from `strace -f -c`, context switches from
 `/proc/<pid>/task/*/status` without strace, threads told apart with
 `strace --seccomp-bpf -f -e trace=futex` and the `futex` addresses
-resolved against `nm` with ASLR off.
+resolved against `nm` with ASLR off. The per-thread row is from its own
+run under `strace --seccomp-bpf`, which stops the server only at the
+traced calls: on 2026.10.27.7020 that run sums to 1.49 `futex` per
+request against 2.08 under `strace -f -c`, which stops it at every
+call and so makes the threads meet on their locks more often. The
+thread that runs the connections is the helper worker on 2026.09.12
+and main on 2026.10.27.7020, where main is the only worker.
 
 | Per request | 2026.09.12 | 2026.10.27.7020 |
 | --- | --: | --: |
 | `futex` | 9.85 | 2.08 |
 | OS thread context switches | 2.1 | 0.50 |
 | `epoll_ctl` / `epoll_wait` / `poll` | 1.05 / 1.03 / 1.00 | 1.03 / 1.03 / 2.01 |
-| `futex` by thread | monitor 4.1, worker 4.2, main 1.7 | GC sweeper 0.72, main 0.45, monitor 0.32 |
+| `futex` by thread, from a second run (below) | helper worker 4.2, monitor 4.1, main 1.7 (10.0 in all) | GC sweeper 0.72, main 0.45, monitor 0.32 (1.49 in all) |
 
 - What it was, on 2026.09.12: at `SPINEL_WORKERS=1` the connections ran
   on one helper OS thread beside main and the monitor. Every park woke the
@@ -333,9 +340,11 @@ resolved against `nm` with ASLR off.
   server (one green thread per connection, `wait_readable(5)` before
   `readpartial`) goes from 7.5 `futex` per request on 2026.09.12 to 0.3,
   on 2026.10.27.7020 and on the fork's master 49ccdced alike.
-- What is left: the 2.08 `futex` per request are the collector's
-  concurrent sweeper (see 5) and the monitor's time-based turns; none is
-  on the park path.
+- What is left: of the 1.49 `futex` per request in the per-thread run,
+  the sweeper's 0.72 and most of main's 0.45 are the collector's
+  concurrent-sweep hand-off (see 5), and the monitor's 0.32 are its
+  time-based turns (about 215 a second under load), each taking
+  `g_sched_lock`. None is on the park path.
 - Also seen: an idle keep-alive connection costs more in CyberTrain than
   in that minimal server, because `head_readable?` re-parks it every
   `ACCEPT_POLL` (0.1 s) with a new deadline so that `#stop` is noticed.
@@ -354,9 +363,9 @@ full, one per 2.8 requests, 0.15 ms each, 11.5% of the wall time. Each
 collection hands the sweep to the concurrent sweeper thread and back: two
 `futex` wakes from the worker on the sweep's condition variable, two waits
 and a wake of `g_cs_lock` by the sweeper, and one context switch of the
-sweeper; that is the GC sweeper 0.72 and most of the main 0.45 `futex` per
-request under 4. With `SPINEL_GC_CONC=0` (no sweeper) the worker's `futex`
-fall from 0.45 to 0.06 per request and the sweeper's to zero, and requests
+sweeper; that is the GC sweeper's 0.72 and most of main's 0.45 `futex`
+per request under 4 (main is the only worker). With `SPINEL_GC_CONC=0` (no
+sweeper) main's `futex` fall from 0.45 to 0.06 per request and the sweeper's to zero, and requests
 a second do not move (2,822 against 2,732, within the noise): at one
 worker the sweeper has no core of its own. 2026.09.12 made 1,591
 collections for the same requests (0.23 ms each, 12% of wall), so the

@@ -16,7 +16,7 @@ first recorded run). Per request, roughly:
 
 | Share | What |
 | --: | --- |
-| about 1/5 on 2026.09.12 | OS thread switches: the fiber of a connection parked on `wait_readable` was woken through the scheduler's monitor thread and the scheduler lock (about 16 `futex` calls per request), and the collector stops the world. On 2026.10.27.7020 the park stays on the worker: 2 `futex` and 0.5 context switches per request, almost all of them the collector's sweeper hand-off ([spinel-feedback.md](spinel-feedback.md) 4 and 5, re-measured 2026-10-30) |
+| about 1/5 on 2026.09.12 | OS thread switches: the fiber of a connection parked on `wait_readable` was woken through the scheduler's monitor thread and the scheduler lock (about 16 `futex` calls per request), and the collector stops the world. On 2026.10.27.7020 the park stays on the worker: 2 `futex` and 0.5 context switches per request, most of them the collector's sweeper hand-off and the rest the monitor's timer turns ([spinel-feedback.md](spinel-feedback.md) 4 and 5, re-measured 2026-10-30) |
 | about 1/5 | garbage collection and malloc/free, proportional to the objects above |
 | the rest | the template interpreter, SQLite, the HTTP parser, sessions |
 
@@ -80,7 +80,7 @@ All measured, see benchmark.md and spikes/NOTES.md for the numbers.
 - A park-free read (`wait_readable(0)` before the real wait): the next
   request is never there yet with this load, so `futex` and `epoll_wait` per
   request did not move. On 2026.10.27.7020 a park no longer leaves the
-  worker, so there is nothing for it to save.
+  worker (one `epoll_ctl` and one `epoll_wait`); not re-measured there.
 - A `Static` that lists `public/` once: +19% for the static file, nothing for
   pages, and a file added later is not served until a restart.
 - A process-wide cache behind a `Mutex`: stalls requests with

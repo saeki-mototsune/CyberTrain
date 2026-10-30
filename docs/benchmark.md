@@ -123,7 +123,8 @@ Measured and left out: reading a request without parking the fiber when its
 bytes are already there (a zero-timeout `wait_readable` before the real one,
 with a cap so one client cannot hold the worker). On 2026.09.12 each park
 was a hand-off to the scheduler's monitor thread and back, about 16 `futex`
-calls per request (gone on 2026.10.27.7020: see
+calls per request (on 2026.10.27.7020 the park makes none, and the 2
+`futex` per request left are the collector's and the monitor's: see
 [spinel-feedback.md](spinel-feedback.md) 4), but with wrk's 16 connections
 the next request is never in yet when the fiber comes back (`futex` and
 `epoll_wait` per request did not move; only an extra `poll` appeared), and a
