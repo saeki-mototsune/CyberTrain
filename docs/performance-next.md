@@ -70,19 +70,22 @@ Each is an object count per article page unless it says otherwise.
    `:str` return copies). Reading text columns lazily would need the
    statement to stay open, or a C helper that copies into a model-owned
    buffer; both change who owns the memory.
-8. **Idle keep-alive connections, CPU at rest (not objects).** Between
-   requests `Server#head_readable?` waits in `ACCEPT_POLL` (0.1 s) slices
-   so that a connection notices `#stop`, and each slice is a park, a timer
-   and a monitor turn. On one CPU, 1,000 idle connections cost 8.6% of it
-   and 2,349 context switches a second, against 0.5% for a server that
-   parks once per read timeout (spinel-feedback.md 4, measured
-   2026-10-30). Spinel 2026.10.27.7020 wakes a thread parked in
-   `wait_readable(t)` when another thread closes that socket (`IOError`,
-   as in CRuby), so the server could keep its idle connections in a set
-   under `@lock`, wait the whole `read_timeout` once, and have `drain`
-   close the idle ones. It changes the shutdown path of docs/design.md
-   D14, so it needs that design and test/server.rb's drain tests to
-   move with it. Requests a second would not change.
+8. **Idle keep-alive connections, CPU at rest (not objects): done
+   2026-10-30.** Between requests `Server#head_readable?` waited in
+   `ACCEPT_POLL` (0.1 s) slices so that a connection noticed `#stop`, and
+   each slice was a park, a timer and a monitor turn. It now parks once for
+   `read_timeout`, and the drain closes the idle connections (Spinel wakes
+   a thread parked in `wait_readable` when another thread closes its
+   socket). One CPU, 10 s windows, Spinel 2026.10.27.7020:
+
+   | Idle connections | Before | After |
+   | --: | --: | --: |
+   | 100 | 1.7% of the CPU, 289 switches/s | 0.6%, 193/s |
+   | 1,000 | 8.8%, 2,361/s | 0.8%, 192/s |
+
+   A TERM with 1,000 idle connections open now exits in 0.24 s. Requests a
+   second under load did not drop (2,674 / 2,496 / 2,984 before, 2,817 /
+   2,762 / 3,068 after, alternated on one CPU).
 
 ## Things that are not worth doing again
 
