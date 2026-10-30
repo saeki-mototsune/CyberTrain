@@ -9,7 +9,7 @@ Seven builds are covered:
 - **2026.09.12** (112bae85c1a2), matz/spinel's release, which CyberTrain
   was pinned to until 2026-10-26. Items 1 to 7 and the tables were found on
   it. Rebuilt from source on 2026-10-30 to measure 4 and 5 beside
-  2026.10.27.7020.
+  2026.10.27.7020, and to run J's program.
 - **2026.10.25-7018** (0e3ccff, `spinel --version`: `unreleased
   (0e3ccffa8)`), a package of the
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork
@@ -50,11 +50,12 @@ Seven builds are covered:
   `spin test` passes 106 of 106 (checked on 2026-10-28), including
   test/db_with_value.rb's use of a DB.with block's own value, which H made
   raise on 2026.10.26.7019 (issue #90). Items 4 and 5 were re-measured on
-  it on 2026-10-30 (see "Runtime cost"): 4 is fixed.
+  it on 2026-10-30 (see "Runtime cost"): 4 is fixed, and J was found on it.
 - **fork master 49ccdced** (2026-10-30, "Merge branch 'matz:master'"),
   built from source and checked on 2026-10-30. It does not build CyberTrain
-  (I, new); a minimal keep-alive server built with it gives 4 the same
-  counts as 2026.10.27.7020. Nothing else was checked on it.
+  (I, new; bisected to matz/spinel#10527); a minimal keep-alive server
+  built with it gives 4 the same counts as 2026.10.27.7020, and J's program
+  fails on it as on 2026.10.27.7020. Nothing else was checked on it.
 
 The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
@@ -62,8 +63,11 @@ The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 
 Suggested order for what is still open: the refusal under C (the one
 workaround left that a change in Spinel could remove; see "The refusal in
-test/template_engine.rb" under C), then 5 to 7 (4 is fixed on
-2026.10.27.7020, see 4), then I, then the rest. B, D and 1
+test/template_engine.rb" under C), then I (a regression on master that
+would block the next pin; reduced and bisected), then J (a use-after-free
+shown with the slab off, reduced; whether the default is affected is
+open), then 5 (measured, with two concrete fixes), then 6 and 7 (4 is
+fixed on 2026.10.27.7020, see 4), then the rest. B, D and 1
 are not on that list: they are accepted as Spinel's constraints (see
 "Accepted as Spinel constraints"). 2's workaround in `Html.escape` is dropped on
 2026.10.27.7020 (see 2). H and the two shapes found in review are fixed on
@@ -85,7 +89,7 @@ that it is fixed.
 | 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround; dropped) | not re-checked |
 | 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
 | 4. Parking a fiber goes through the monitor thread | yes (re-measured on 2026-10-30: 9.9 `futex` per request) | not re-measured | not re-measured | not re-checked | not re-checked | **fixed** (2.1 `futex` per request, none on the park path; #8702, #10024) | same counts as 2026.10.27.7020 on a minimal server; examples/blog does not build (I) |
-| 5. A collection stops every thread even with one worker | yes | not re-measured | not re-measured | not re-checked | not re-checked | yes (one collection per 2.8 requests; its sweeper hand-off is most of what is left of 4's `futex` count) | not re-checked |
+| 5. At one worker, most collections are full, and the sweep is handed to another thread | yes (as "a collection stops every thread") | not re-measured | not re-measured | not re-checked | not re-checked | **yes**, re-measured: the stop-the-world wait is negligible at one worker (0.001 s over 2,852 collections), but 83% of collections are full (`SPINEL_GC_FULL_INTERVAL=8`: +16%) and the sweeper thread costs 5% on one CPU | not re-checked |
 | 6 and 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
 | `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked | not re-checked | not re-checked |
 | `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked | not re-checked | not re-checked |
@@ -97,7 +101,8 @@ that it is fixed.
 | F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
 | G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
 | H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) | **fixed** (test/db_with_value.rb uses the block's own value) | not re-checked |
-| I. A constant seeded from `Array.new(0) { ... }` is refused; inference does not converge | no | no | no | not checked | not checked | no | **yes** (new) |
+| I. A constant written `Array.new(n) { Obj.new }` is refused | no | no | no | not checked | not checked | no | **yes** (new; from 8594f2be2, matz/spinel#10527) |
+| J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs | not reproduced (2 of 2 runs under AddressSanitizer; it has no slab) | not checked | not checked | not checked | not checked | **yes** with `SPINEL_GC_SLAB=0`; the default is unknown | **yes** with `SPINEL_GC_SLAB=0` |
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked |
 | Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked |
 
@@ -192,7 +197,10 @@ AddressSanitizer, report no use-after-free on either build, and
 the bug, and the check above says nothing about whether it is fixed; the
 shape the benchmark crashed on has not been reduced. CyberTrain keeps
 `SafeString.of` and the locals: they cost nothing, and the crash was rare
-and moved with allocation counts.
+and moved with allocation counts. That check ran with the object slab on,
+which hides a freed object from AddressSanitizer (the slab recycles its
+slots itself; 2026.09.12 has no slab): on 2026.10.27.7020 a check has to
+run with `SPINEL_GC_SLAB=0`, which found J.
 
 ### 2. A parameter used only through `to_s` is narrowed to one caller's type
 
@@ -348,35 +356,100 @@ and main on 2026.10.27.7020, where main is the only worker.
 - Also seen: an idle keep-alive connection costs more in CyberTrain than
   in that minimal server, because `head_readable?` re-parks it every
   `ACCEPT_POLL` (0.1 s) with a new deadline so that `#stop` is noticed.
-  16 idle connections make about 160 timer expiries a second, each a
-  monitor turn under `g_sched_lock`: the monitor's `futex` count over 3 s
-  is 1,073 against 173 for a server that parks once with a 5 s timeout.
-  That is CyberTrain's design, not a Spinel issue.
+  Each re-park is a timer expiry and a monitor turn under
+  `g_sched_lock`. With the server on one CPU and the connections open
+  for 10 s, 100 idle connections cost 1.6% of the CPU and 1,000 cost
+  8.6% (2,349 context switches a second), growing with the connections;
+  a server that parks each connection once with a 30 s timeout costs
+  0.4 to 0.5% (about 140 switches a second, the monitor's and the
+  trimmer's own) at either count. That is CyberTrain's design, not a
+  Spinel issue: on 2026.10.27.7020 a `close` from another thread wakes a
+  thread parked in `wait_readable(t)` on that socket at once, with
+  `IOError` ("stream closed in another thread", as in CRuby; checked at
+  `SPINEL_WORKERS=1` and 2), so the drain could close idle connections
+  instead of each one polling the flag. See
+  [performance-next.md](performance-next.md).
 - Today: nothing; the pinned release has the fix.
 - Fix: done.
 
-### 5. A collection stops every thread even with one worker
+### 5. At one worker, most collections are full, and the sweep is handed to another thread
 
-Re-measured on 2026-10-30 on 2026.10.27.7020 (the setup under 4,
-`SPINEL_GC_STATS=1`): 2,852 collections for 8,020 requests, 2,369 of them
-full, one per 2.8 requests, 0.15 ms each, 11.5% of the wall time. Each
-collection hands the sweep to the concurrent sweeper thread and back: two
-`futex` wakes from the worker on the sweep's condition variable, two waits
-and a wake of `g_cs_lock` by the sweeper, and one context switch of the
-sweeper; that is the GC sweeper's 0.72 and most of main's 0.45 `futex`
-per request under 4 (main is the only worker). With `SPINEL_GC_CONC=0` (no
-sweeper) main's `futex` fall from 0.45 to 0.06 per request and the sweeper's to zero, and requests
-a second do not move (2,822 against 2,732, within the noise): at one
-worker the sweeper has no core of its own. 2026.09.12 made 1,591
-collections for the same requests (0.23 ms each, 12% of wall), so the
-collector now runs more often for less time each.
+Re-measured on 2026-10-30 on 2026.10.27.7020. The title this item had on
+2026.09.12, "a collection stops every thread even with one worker", no
+longer describes a cost: at `SPINEL_WORKERS=1` the stop-the-world waits
+for nobody (`SPINEL_GC_PHASES=1`: 0.001 s waiting for workers to park over
+2,852 collections). What costs at one worker now is when the collector
+does a full mark, and that it hands the sweep to a sweeper thread.
 
-- None of `SPINEL_GC_AGE`, `SPINEL_GC_OBJ_BUDGET`, `SPINEL_GC_MINOR=0`, a
-  larger `SPINEL_GC_THRESHOLD_KB` or `SPINEL_SCHED_POLL` beat the defaults
-  (on 2026.09.12; not re-tried).
-- Fix: skip the stop-the-world rendezvous when there is one worker, and
-  sweep on the worker itself instead of handing off to a sweeper thread
-  when there is one.
+Setup, beside 4's: examples/blog on 2026.10.27.7020, `SPINEL_WORKERS=1`,
+the server pinned to one CPU (`taskset -c 0`, as bench/run's one-CPU
+configuration does), and the load from three Python processes on the
+other three CPUs, 16 keep-alive connections in all, 16,000 requests a run.
+The server used 97 to 98% of its CPU in every run, so requests a second
+measure it. Settings were alternated run by run, three runs each unless
+noted; the spread between runs of one setting is 3 to 6%.
+
+| `GET /articles`, one CPU | Requests a second | Server CPU per request | p99 latency | Full collections |
+| --- | --: | --: | --: | --: |
+| default | 2,930 | 0.331 ms | 9.3 ms | 83% of 5,784 |
+| `SPINEL_GC_CONC=0` (no sweeper thread) | 3,084 (+5%) | 0.314 ms | 8.3 ms | 83% |
+| `SPINEL_GC_FULL_INTERVAL=8` | 3,395 (+16%) | 0.285 ms | 7.7 ms | 12.5% of 4,814 |
+| both | 3,444 (+18%) | 0.281 ms | 8.1 ms | 12.5% |
+
+`GET /articles/1` moves the same way: +6% without the sweeper and +17%
+with the interval fixed at 8. Peak RSS is 14 to 15 MB in every row.
+
+- **Nearly every collection is a full one.** The full cadence adapts
+  (`sp_gc_full_interval`, lib/sp_gc.c): when what the minors between two
+  full collections promoted and the full then freed exceeds 1/16 of the
+  live set per minor (`SP_GC_PROMOTED_DEAD_CUT`), the interval halves, down
+  to 1, every cycle full. At 1 it tries 2 again after eight fulls, and
+  goes back to 1. A server's in-flight requests are exactly that
+  garbage: with a collection every 2.8 requests and 16 requests in flight,
+  each minor promotes the objects of the requests being served, and they
+  die as their responses go out, against a live set of 0.7 MB. Marking the
+  whole live set on 83% of collections costs more than carrying that
+  garbage for eight cycles: fixing the interval at 8 is worth 16 to 17%.
+  The rule was added for an interpreter whose promoted frames were 13% of
+  its live set per minor (390a0ec95, 2026-09-12); it weighs what is
+  promoted against the live set, not against what a full mark costs.
+  Aging, which keeps a first-time survivor young for one more minor and
+  is what would keep request objects out of the old generation, is off
+  whenever the slab allocator is on (`sp_gc_age_on` is cleared when
+  `sp_slab_on`). With the slab off (`SPINEL_GC_SLAB=0`) aging cuts the
+  full share from 83% to 51%, but the slab off costs 30% on its own (and
+  is where J shows), so that is not a way out today.
+- **The sweep goes to a thread that shares the CPU.** Since the
+  concurrent sweep (f98add994, 2026-09-14, measured on a 32-core machine)
+  the collector releases the world and hands the sweep to sweeper threads,
+  `min(workers, 8)` of them, so one at `SPINEL_WORKERS=1` however many
+  CPUs the process may use. On one CPU the hand-off is two `futex` wakes
+  and a wait, and the sweeper preempts the worker to do the sweep it would
+  have done itself: 1.64 context switches per request against 0.21, about
+  half of them involuntary. Over ten alternated runs each, no sweeper gave
+  +5.4% requests a second (3,083 against 2,925, Welch's t 2.4), 5.5% less
+  CPU per request and 12% lower p99. The handed-off sweep also makes the
+  slab's chunk release walk twenty times as many chunks (4.08 million in
+  74,401 releases, against 0.2 million in 2,369). With four CPUs and the
+  server unpinned, the sweeper's removal did not change requests a second
+  (the client was the limit there).
+- Re-tried on this build: a larger `SPINEL_GC_THRESHOLD_KB` (4096: a
+  sixth of the collections and 4.5% of wall instead of 13%, but the same
+  requests a second with the sweeper, and +12% instead of +5% without it,
+  at 18 MB; 16384: 9% slower and twice the RSS), and `SPINEL_GC_MINOR=0`
+  (+8%, less than the fixed interval).
+- Today: nothing in CyberTrain. `SPINEL_GC_FULL_INTERVAL=8` (and
+  `SPINEL_GC_CONC=0` on a one-CPU host) can be set in a deployment's
+  environment; the deploy files `cybertrain new` writes mention only
+  `SPINEL_WORKERS`.
+- Fix: (a) do not let the promoted-garbage rule take the full cadence
+  below the default when the live set is small, or weigh what a full mark
+  costs (the live set it walks) against the promoted garbage it frees;
+  or make aging work with the slab, so that a request's objects die young.
+  (b) Start no sweeper thread when the process may use one CPU
+  (`sp_available_cpus() == 1`, which already narrows by affinity and the
+  cgroup quota): the collector then sweeps inline, as `SPINEL_GC_CONC=0`
+  does, which the code already falls back to when no sweeper started.
 
 ### 6. The system allocator
 
@@ -452,7 +525,8 @@ from A, C, F and G prints Ruby's result on 2026.10.26.7019. H is new on
 #10263, 2026-10-26); on master 9b9972399 (re-checked on 2026-10-27) H is
 still present, and D still raises, by design. H is fixed by #10415, merged
 2026-10-27 (master 003ceda5d). I is new on the fork's master 49ccdced
-(2026-10-30) and absent from 2026.10.27.7020.
+(2026-10-30) and absent from 2026.10.27.7020. J is on both, seen only
+with the object slab off, and not reproduced on 2026.09.12 (2 of 2 runs).
 
 On 2026.10.25-7018, the ten `spin test` failures:
 
@@ -873,7 +947,7 @@ forwarded to a receiverless call of a method of the same class
 - Fix: carry the classes the block can return through the `&block`
   forward into the forwarding call's boxed value, as 2026.09.12 did.
 
-### I. A constant seeded from `Array.new(0) { ... }` is refused, and inference does not converge
+### I. A constant written `Array.new(n) { Obj.new }` is refused
 
 New on the fork's master 49ccdced (2026-10-30, "Merge branch
 'matz:master'"), built from source on 2026-10-30; 2026.10.27.7020 builds
@@ -887,11 +961,130 @@ spinel: 1 refusal, nothing written
 
 Line 111 is `NO_SKIPS = Array.new(0) { Callback.new(:skip, nil, nil, [],
 [], -1) }`, the Array seeded with its element type and emptied
-(spikes/NOTES.md rule 9). Not yet reduced to a small program, not
-bisected, and `spin test` was not run on that build; found while
-re-measuring 4, which is why the blog numbers under 4 are from
-2026.10.27.7020 and only a minimal server was measured on master.
+(spikes/NOTES.md rule 9). Of CyberTrain's tests, test/controller_status.rb
+makes the same refusal and test/controller.rb does not; `spin test` was
+not run in full on that build. Reduced (prints `0` in Ruby and on
+2026.10.27.7020; refused, with the same warning, on 49ccdced):
 
-- Today: nothing to do; CyberTrain is pinned to 2026.10.27.7020.
-- Fix: to be found once reduced; the non-convergence warning is probably
-  the lead, since the refusal reads like a type that never settled.
+```ruby
+class Cb
+  attr_reader :name
+  def initialize(name) = (@name = name)
+end
+NONE = Array.new(0) { Cb.new(nil) }
+p NONE.size
+```
+
+The same write inside a class (`K::NONE`) is refused too. These are not:
+a literal (`[Cb.new(:a)]`), `[1, 2].map { |i| Cb.new(i) }`,
+`Array.new(2) { |i| Cb.new(i) }.freeze`, a method's return value, and
+`Array.new(0) { ... }` assigned to a local.
+
+Bisected on 2026-10-30 (`git bisect run` on the fork's history between
+2026.10.27.7020 and 49ccdced, test/controller_status.rb compiled with
+`-c`): the first bad commit is 8594f2be2 (2026-10-29, "Narrow an object
+table handed to its elements' methods, and a constant one", merged as
+matz/spinel#10527). It gives a constant that holds a table of objects a
+slot of its own, narrowed to `sp_PtrArray *`, and takes the constant's
+statement-position writes as its sources (`narrow_object_arrays`, step
+5a' in src/analyze.c). The value of the write is classified as a local's
+would be, and `Array.new(n) { obj }` passes as an object table. Only an
+Array literal, though, is noted as built in place at the narrowed kind
+(`oa_note_src` is called for an `ArrayNode` alone): `Array.new`'s value
+is still built boxed, and the write of a boxed Array into the narrowed
+slot is refused.
+
+- Today: nothing to do; CyberTrain is pinned to 2026.10.27.7020. If a
+  later release keeps the refusal, a `.freeze` on the `Array.new`, or
+  `[Callback.new(...)][0, 0]`, avoids it: both forms of the reduced
+  program print Ruby's result on 49ccdced and on 2026.10.27.7020.
+- Fix: in step 5a', kill the constant's slot (keep it boxed) when a write's
+  value is not an Array literal, or build `Array.new(n) { ... }` at the
+  narrowed kind as a literal is; and add the program above as a test
+  beside test/object_array_constant.rb.
+
+### J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs
+
+Found on 2026-10-30 on 2026.10.27.7020 while re-measuring 5, and present on
+the fork's master 49ccdced; not reproduced on 2026.09.12 (2 of 2 runs).
+The object slab
+(`lib/sp_slab.c`, on by default) recycles freed slots itself, so an
+AddressSanitizer build sees a use-after-free only when the slab is off
+(`SPINEL_GC_SLAB=0`, which allocates every object with `calloc`). With it
+off, this program fails under AddressSanitizer in every run (3 of 3 on
+2026.10.27.7020, 2 of 2 on 49ccdced) when a client opens and closes
+connections quickly (8 at a time, each sending one to three requests),
+`SPINEL_WORKERS=1`:
+
+```ruby
+require "socket"
+
+class Srv
+  def run(port)
+    server = TCPServer.new("127.0.0.1", port)
+    Thread.new { accept_loop(server) }.join
+  end
+
+  def accept_loop(server)
+    while true
+      spawn_connection(server.accept) unless server.wait_readable(0.1).nil?
+    end
+  end
+
+  def spawn_connection(sock)
+    Thread.new { serve(sock) }
+  end
+
+  def serve(sock)
+    while !sock.wait_readable(5).nil?
+      req = sock.readpartial(4096)
+      body = "#{req.bytesize} #{Time.now.to_f}\n" * 20
+      sock.write("HTTP/1.1 200 OK\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
+    end
+  rescue EOFError, IOError, Errno::ECONNRESET, Errno::EPIPE
+  ensure
+    sock.close unless sock.closed?
+  end
+end
+
+Srv.new.run((ARGV[0] || "3570").to_i)
+```
+
+- What AddressSanitizer reports: the 64-byte object allocated at
+  `Thread.new { serve(sock) }` in `spawn_connection` (the block's capture
+  struct, `_fib_cap_Srv_spawn_connection_1`, holding `self` and `sock`) is
+  freed by a collection that another connection's `serve` started, and is
+  then read by the new thread's fiber body on its first line
+  (`sp_Srv *self = _fc->self_ptr`). The same happens with
+  `SPINEL_GC_CONC=0` (3 of 3) and with `SPINEL_GC_MINOR=0` (2 of 2), so
+  neither the concurrent sweep nor the minor collection is needed for it.
+  Built by 2026.09.12, which has no slab and so lets AddressSanitizer see
+  every object, the same program passed 2 of 2.
+- What was ruled out: the generated code roots the fiber and the capture
+  struct across the allocations and stores the struct into the fiber's
+  `user_data` behind a write barrier; the fiber's scan marks `user_data`,
+  and the live-thread registry marks every thread record, whose scan marks
+  its fiber. A counting variant of the program started `serve` exactly as
+  many times as it spawned threads (4,002 of 4,002, slab on and off), so a
+  finished thread is not run a second time. Where the chain breaks for a
+  thread that has been spawned but has not started is not known.
+- In examples/blog under the same conditions, AddressSanitizer reports
+  this and a second one: the frozen String `Module#name` caches
+  (`sp_str_frozen_name`, used by `Controller.chain_for`'s `k.name`) freed
+  by the object sweep and read again on a later request. A plain build
+  with the slab off also dies with SIGSEGV (in `sp_Controller_run_action`
+  where gdb caught it): 6 of 31 loaded runs, and 1 of 2 runs of 12,000
+  short connections.
+- Whether the default (slab on) is affected is open. A plain build with
+  the slab on did not crash in over 70 loaded runs and 36,000 short
+  connections, but the collector decides what to free the same way with
+  the slab on or off, and the slab can hand out a freed slot again
+  later. An AddressSanitizer build with the slab on stopped in 5 of 6
+  runs with a wild read inside `serve`'s `rescue StandardError` (a block
+  that plain builds never entered in any run), which may be an artifact of
+  AddressSanitizer and fiber stack switching rather than this bug.
+- Today: nothing in CyberTrain; it runs with the slab on.
+- Fix: find why a spawned thread's capture struct is unreachable before
+  the thread first runs, and add the program above to the tests with an
+  AddressSanitizer job that runs with `SPINEL_GC_SLAB=0`, since the slab
+  hides this class of bug from AddressSanitizer.
