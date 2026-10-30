@@ -54,9 +54,14 @@ COPY --from=build --chown=app:app /src/examples/blog/dist/ /app/
 # storage/ holds the SQLite database (storage/production.sqlite3); mount
 # a volume there so it outlives the container.
 USER app
+# SPINEL_GC_FULL_INTERVAL=8: a full collection every eighth one. Left to
+# adapt, Spinel's cadence falls to nearly every collection full under a
+# server's request garbage; fixed at 8 it serves about 16% more requests
+# a second on one CPU at the same memory (docs/spinel-feedback.md, 5).
 ENV CYBERTRAIN_ENV=production \
     CYBERTRAIN_HOST=0.0.0.0 \
-    PORT=3000
+    PORT=3000 \
+    SPINEL_GC_FULL_INTERVAL=8
 EXPOSE 3000
 
 # Apply pending migrations, then serve. exec hands SIGTERM to the server,

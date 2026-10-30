@@ -426,6 +426,7 @@ CYBERTRAIN_ENV=production
 CYBERTRAIN_SECRET_KEY_BASE=$SECRET
 CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3
 PORT=3000
+SPINEL_GC_FULL_INTERVAL=8
 EOF
 unset SECRET
 sudo chown root:notes /etc/notes/notes.env
@@ -438,6 +439,7 @@ sudo chmod 640 /etc/notes/notes.env
 | `CYBERTRAIN_SECRET_KEY_BASE` | **必須**。変えると全員のセッションが切れます |
 | `CYBERTRAIN_DATABASE` | DB ファイル。リリースをまたいで残るよう `shared/` に置きます |
 | `PORT` | 待ち受けポート。Caddy の設定と合わせます |
+| `SPINEL_GC_FULL_INTERVAL=8` | Spinel の GC が full collection を 8 回に 1 回にします。既定の自動調整では、Web サーバーの負荷でほぼ毎回 full になり、8 に固定すると 1 CPU で毎秒のリクエスト数が約 16% 増えます。メモリ使用量は変わりません（[spinel-feedback.md](spinel-feedback.md) の 5） |
 
 ---
 

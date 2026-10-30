@@ -476,6 +476,7 @@ CYBERTRAIN_ENV=production
 CYBERTRAIN_SECRET_KEY_BASE=$SECRET
 CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3
 PORT=3000
+SPINEL_GC_FULL_INTERVAL=8
 EOF
 unset SECRET
 sudo chown root:notes /etc/notes/notes.env
@@ -488,6 +489,7 @@ sudo chmod 640 /etc/notes/notes.env
 | `CYBERTRAIN_SECRET_KEY_BASE` | **Required**. Changing it ends everyone's session |
 | `CYBERTRAIN_DATABASE` | The database file. It goes in `shared/` so it outlives releases |
 | `PORT` | The port to listen on. Keep it in step with Caddy's configuration |
+| `SPINEL_GC_FULL_INTERVAL=8` | Spinel's collector does a full collection every eighth time. Left to adapt, it falls to nearly every collection full under a web server's load; fixed at 8, a one-CPU server answers about 16% more requests a second at the same memory ([spinel-feedback.md](spinel-feedback.md), 5) |
 
 ---
 

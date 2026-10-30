@@ -366,9 +366,12 @@ and main on 2026.10.27.7020, where main is the only worker.
   Spinel issue: on 2026.10.27.7020 a `close` from another thread wakes a
   thread parked in `wait_readable(t)` on that socket at once, with
   `IOError` ("stream closed in another thread", as in CRuby; checked at
-  `SPINEL_WORKERS=1` and 2), so the drain could close idle connections
-  instead of each one polling the flag. See
-  [performance-next.md](performance-next.md).
+  `SPINEL_WORKERS=1` and 2), and so does `shutdown(Socket::SHUT_RD)`,
+  with EOF, leaving the socket writable. So the drain can end idle
+  connections instead of each one polling the flag. CyberTrain does so
+  since 2026-10-30, with the read-side shutdown: 1,000 idle connections
+  now cost 0.8% of the CPU instead of 8.8% (see
+  [performance-next.md](performance-next.md), 8).
 - Today: nothing; the pinned release has the fix.
 - Fix: done.
 
@@ -438,10 +441,10 @@ with the interval fixed at 8. Peak RSS is 14 to 15 MB in every row.
   requests a second with the sweeper, and +12% instead of +5% without it,
   at 18 MB; 16384: 9% slower and twice the RSS), and `SPINEL_GC_MINOR=0`
   (+8%, less than the fixed interval).
-- Today: nothing in CyberTrain. `SPINEL_GC_FULL_INTERVAL=8` (and
-  `SPINEL_GC_CONC=0` on a one-CPU host) can be set in a deployment's
-  environment; the deploy files `cybertrain new` writes mention only
-  `SPINEL_WORKERS`.
+- Today: the Dockerfile `cybertrain new` writes, examples/blog's, and the
+  environment file in docs/deploy.md set `SPINEL_GC_FULL_INTERVAL=8`
+  (since 2026-10-30). `SPINEL_GC_CONC=0` is not set: it helps only on a
+  one-CPU host, which the deploy files cannot tell apart.
 - Fix: (a) do not let the promoted-garbage rule take the full cadence
   below the default when the live set is small, or weigh what a full mark
   costs (the live set it walks) against the promoted garbage it frees;

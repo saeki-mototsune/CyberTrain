@@ -432,4 +432,4 @@ Usage:
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-24 tests, 163 assertions, 0 failures
+24 tests, 164 assertions, 0 failures
