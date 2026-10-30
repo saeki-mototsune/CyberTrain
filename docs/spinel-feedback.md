@@ -366,10 +366,12 @@ and main on 2026.10.27.7020, where main is the only worker.
   Spinel issue: on 2026.10.27.7020 a `close` from another thread wakes a
   thread parked in `wait_readable(t)` on that socket at once, with
   `IOError` ("stream closed in another thread", as in CRuby; checked at
-  `SPINEL_WORKERS=1` and 2), so the drain can close idle connections
-  instead of each one polling the flag. CyberTrain does so since
-  2026-10-30: 1,000 idle connections now cost 0.8% of the CPU instead of
-  8.8% (see [performance-next.md](performance-next.md), 8).
+  `SPINEL_WORKERS=1` and 2), and so does `shutdown(Socket::SHUT_RD)`,
+  with EOF, leaving the socket writable. So the drain can end idle
+  connections instead of each one polling the flag. CyberTrain does so
+  since 2026-10-30, with the read-side shutdown: 1,000 idle connections
+  now cost 0.8% of the CPU instead of 8.8% (see
+  [performance-next.md](performance-next.md), 8).
 - Today: nothing; the pinned release has the fix.
 - Fix: done.
 

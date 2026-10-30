@@ -149,7 +149,8 @@ test "the Dockerfile builds dist/ in the image and runs it on 0.0.0.0:3000" do
   assert_includes dockerfile, "COPY --from=build --chown=app:app /src/dist/ /app/"
   assert_includes dockerfile, "CYBERTRAIN_HOST=0.0.0.0"
   assert_includes dockerfile, "EXPOSE 3000"
-  assert_includes dockerfile, "SPINEL_GC_FULL_INTERVAL=8"
+  # the ENV line itself, not the comment above it
+  assert_includes dockerfile, "\n    SPINEL_GC_FULL_INTERVAL=8\n"
   assert_includes dockerfile, "CMD [\"sh\", \"-c\", \"./blog migrate && exec ./blog\"]"
   # Both stages are the same release: the binary links its libc and SQLite.
   assert_equal 2, dockerfile.scan("FROM docker.io/library/ubuntu:$UBUNTU_VERSION").size

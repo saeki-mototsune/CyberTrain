@@ -45,9 +45,10 @@ module Cybertrain
   class Server
     # One open connection, as the drain sees it: its socket, and whether its
     # thread is waiting for the next request on it (idle). The flag is
-    # written by the connection's own thread without a lock; the drain only
-    # reads it, and a connection it misses or reads late still ends by
-    # read_timeout or the next drain pass.
+    # written by the connection's own thread without a lock (no lock per
+    # request, NOTES rule 57); the drain only reads it. A connection it
+    # misses is caught on its next pass, and one it reads late is harmless
+    # because the drain shuts only the read side.
     class Connection
       attr_reader :sock
       attr_accessor :id, :idle
@@ -73,7 +74,7 @@ module Cybertrain
     READ_CHUNK = 16384
     # How often the accept loop and the drain check whether #stop was
     # called. An idle keep-alive connection does not poll: it waits for its
-    # next request for up to read_timeout, and the drain closes it.
+    # next request for up to read_timeout, and the drain ends that wait.
     ACCEPT_POLL = 0.1
 
     # port is the bound port once #start has run (the ephemeral one with port: 0).
@@ -154,7 +155,7 @@ module Cybertrain
 
     # What a signal handler may call: only clears the flag the accept loop
     # polls, so #run stops accepting within ACCEPT_POLL seconds and then
-    # drains, which closes the idle connections. Spinel runs a trap block straight from its C
+    # drains, which ends the idle connections. Spinel runs a trap block straight from its C
     # signal handler, where #stop's Thread#join, the drain's sleep and the
     # Mutex are not async-signal-safe.
     def request_stop
@@ -190,12 +191,12 @@ module Cybertrain
 
     # Waits, in ordinary thread context, until every connection has closed
     # or drain_timeout seconds have passed. Whatever is still open then is
-    # cut off when the process exits. Each pass closes the connections that
-    # are waiting for a next request; one busy with a request answers it
-    # with Connection: close (respond) and ends.
+    # cut off when the process exits. Each pass shuts the read side of the
+    # connections that are waiting for a next request; one busy with a
+    # request answers it with Connection: close (respond) and ends.
     def drain
       started = Time.now
-      close_idle_connections
+      shut_idle_connections
       remaining = open_connections
       while remaining > 0
         if Time.now - started >= @drain_timeout
@@ -203,32 +204,37 @@ module Cybertrain
           break
         end
         sleep ACCEPT_POLL
-        close_idle_connections
+        shut_idle_connections
         remaining = open_connections
       end
       nil
     end
 
-    # Closes every connection whose thread is waiting for its next request
-    # and has nothing to read yet. Spinel wakes a thread parked in
-    # wait_readable on a socket another thread closes, with IOError ("stream
-    # closed in another thread", as CRuby does), and serve ends quietly on
-    # IOError. A connection whose next request has already arrived is left
-    # to read it: it sees the stop, answers with Connection: close and ends.
-    def close_idle_connections
+    # Ends the wait of every connection whose thread is waiting for its next
+    # request and has nothing to read yet, by shutting the socket's read
+    # side: the parked wait_readable wakes at once (CRuby and Spinel alike),
+    # the read that follows sees EOF, and serve ends quietly and closes the
+    # socket itself. Only the read side, because the snapshot can be stale:
+    # a connection that left its wait after the snapshot and has already
+    # read its next request still writes the whole response (with
+    # Connection: close, since the server is stopping) before it ends. A
+    # connection whose next request has arrived is left to read it. Every
+    # step tolerates the connection's own thread closing the socket first.
+    def shut_idle_connections
       idle = []
       @lock.synchronize do
         @connections.each_value { |c| idle << c if c.idle }
       end
       i = 0
       while i < idle.size
-        sock = idle[i].sock
-        if !sock.closed? && sock.wait_readable(0).nil?
-          begin
-            sock.close
-          rescue IOError
-            # its own thread closed it first
+        conn = idle[i]
+        sock = conn.sock
+        begin
+          if conn.idle && !sock.closed? && sock.wait_readable(0).nil?
+            sock.shutdown(Socket::SHUT_RD)
           end
+        rescue IOError, SystemCallError
+          # closed by its own thread, or the peer is already gone
         end
         i += 1
       end
@@ -357,19 +363,15 @@ module Cybertrain
     rescue StandardError => e
       @logger.error("connection error: #{e.class.name}: #{e.message}")
     ensure
-      begin
-        sock.close unless sock.closed?
-      rescue IOError
-        # the drain closed it between the check and the close
-      end
+      sock.close unless sock.closed?
       connection_closed(conn)
     end
 
     # Waits for more of a request head; false once the client has been silent
     # for read_timeout seconds. A connection with nothing buffered is idle
     # between requests: it is marked idle while it waits, in one park for the
-    # whole read_timeout, so that the drain can close it when the server
-    # stops (close_idle_connections). It used to wait in ACCEPT_POLL slices
+    # whole read_timeout, so that the drain can end that wait when the
+    # server stops (shut_idle_connections). It used to wait in ACCEPT_POLL slices
     # to notice the stop itself, which cost a timer and a scheduler turn per
     # idle connection ten times a second (spinel-feedback.md, 4).
     def head_readable?(sock, idle, conn)

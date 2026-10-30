@@ -74,16 +74,18 @@ Each is an object count per article page unless it says otherwise.
    2026-10-30.** Between requests `Server#head_readable?` waited in
    `ACCEPT_POLL` (0.1 s) slices so that a connection noticed `#stop`, and
    each slice was a park, a timer and a monitor turn. It now parks once for
-   `read_timeout`, and the drain closes the idle connections (Spinel wakes
-   a thread parked in `wait_readable` when another thread closes its
-   socket). One CPU, 10 s windows, Spinel 2026.10.27.7020:
+   `read_timeout`, and the drain shuts the read side of the idle
+   connections, which wakes their threads with EOF on CRuby and Spinel
+   alike (a close would too, but would cut off a connection that had just
+   taken its next request). One CPU, 10 s windows, Spinel 2026.10.27.7020:
 
    | Idle connections | Before | After |
    | --: | --: | --: |
    | 100 | 1.7% of the CPU, 289 switches/s | 0.6%, 193/s |
    | 1,000 | 8.8%, 2,361/s | 0.8%, 192/s |
 
-   A TERM with 1,000 idle connections open now exits in 0.24 s. Requests a
+   A TERM with 1,000 idle connections open now exits in 0.13 to 0.29 s
+   (three runs). Requests a
    second under load did not drop (2,674 / 2,496 / 2,984 before, 2,817 /
    2,762 / 3,068 after, alternated on one CPU).
 
