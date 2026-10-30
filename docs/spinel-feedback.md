@@ -4,11 +4,12 @@ What building and speeding up CyberTrain found in Spinel itself, written so
 each item can become an issue upstream. Each says what happens, how it was
 seen, what CyberTrain does about it today, and what would fix it in Spinel.
 
-Six builds are covered:
+Seven builds are covered:
 
 - **2026.09.12** (112bae85c1a2), matz/spinel's release, which CyberTrain
   was pinned to until 2026-10-26. Items 1 to 7 and the tables were found on
-  it.
+  it. Rebuilt from source on 2026-10-30 to measure 4 and 5 beside
+  2026.10.27.7020.
 - **2026.10.25-7018** (0e3ccff, `spinel --version`: `unreleased
   (0e3ccffa8)`), a package of the
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork
@@ -48,7 +49,12 @@ Six builds are covered:
   2026-10-28). With the toolchain `cybertrain setup` builds from that tag,
   `spin test` passes 106 of 106 (checked on 2026-10-28), including
   test/db_with_value.rb's use of a DB.with block's own value, which H made
-  raise on 2026.10.26.7019 (issue #90).
+  raise on 2026.10.26.7019 (issue #90). Items 4 and 5 were re-measured on
+  it on 2026-10-30 (see "Runtime cost"): 4 is fixed.
+- **fork master 49ccdced** (2026-10-30, "Merge branch 'matz:master'"),
+  built from source and checked on 2026-10-30. It does not build CyberTrain
+  (I, new); a minimal keep-alive server built with it gives 4 the same
+  counts as 2026.10.27.7020. Nothing else was checked on it.
 
 The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 59, 62), [benchmark.md](benchmark.md) and
@@ -56,7 +62,8 @@ The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
 
 Suggested order for what is still open: the refusal under C (the one
 workaround left that a change in Spinel could remove; see "The refusal in
-test/template_engine.rb" under C), then 4 to 7, then the rest. B, D and 1
+test/template_engine.rb" under C), then 5 to 7 (4 is fixed on
+2026.10.27.7020, see 4), then I, then the rest. B, D and 1
 are not on that list: they are accepted as Spinel's constraints (see
 "Accepted as Spinel constraints"). 2's workaround in `Html.escape` is dropped on
 2026.10.27.7020 (see 2). H and the two shapes found in review are fixed on
@@ -72,24 +79,27 @@ default `raise` mode's intended behaviour, and the experimental
 "Not re-checked" means no one has tried it on that build; it is not a claim
 that it is fixed.
 
-| Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 | master 003ceda5d | 2026.10.27.7020 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) | not re-checked | not reproduced under ASan, but neither on 2026.09.12 in that shape (workaround kept) |
-| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround; dropped) |
-| 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) | not re-checked |
-| 4 to 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
-| `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked | not re-checked |
-| `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked | not re-checked |
-| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) | **fixed** (its program prints Ruby's result) | not re-checked |
-| B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) | not re-checked | not re-checked |
-| C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made | not re-checked | not re-checked |
-| D. `String#to_i` raises `RangeError` on overflow | yes (re-checked on 2026-10-28; not a regression, see D) | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum | by design (still raises `RangeError` in raise mode) | not re-checked |
-| E. More allocation per request | no | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
-| F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) | **fixed** (its program prints Ruby's result) | not re-checked |
-| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked |
-| H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) | **fixed** (test/db_with_value.rb uses the block's own value) |
-| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked |
-| Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked |
+| Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 | master 003ceda5d | 2026.10.27.7020 | fork master 49ccdced |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) | not re-checked | not reproduced under ASan, but neither on 2026.09.12 in that shape (workaround kept) | not re-checked |
+| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround; dropped) | not re-checked |
+| 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
+| 4. Parking a fiber goes through the monitor thread | yes (re-measured on 2026-10-30: 9.9 `futex` per request) | not re-measured | not re-measured | not re-checked | not re-checked | **fixed** (2.1 `futex` per request, none on the park path; #8702, #10024) | same counts as 2026.10.27.7020 on a minimal server; examples/blog does not build (I) |
+| 5. A collection stops every thread even with one worker | yes | not re-measured | not re-measured | not re-checked | not re-checked | yes (one collection per 2.8 requests; its sweeper hand-off is what is left of 4's `futex` count) | not re-checked |
+| 6 and 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
+| `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked | not re-checked | not re-checked |
+| `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked | not re-checked | not re-checked |
+| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
+| B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) | not re-checked | not re-checked | not re-checked |
+| C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made | not re-checked | not re-checked | not re-checked |
+| D. `String#to_i` raises `RangeError` on overflow | yes (re-checked on 2026-10-28; not a regression, see D) | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum | by design (still raises `RangeError` in raise mode) | not re-checked | not re-checked |
+| E. More allocation per request | no | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
+| F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
+| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
+| H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) | **fixed** (test/db_with_value.rb uses the block's own value) | not re-checked |
+| I. A constant seeded from `Array.new(0) { ... }` is refused; inference does not converge | no | no | no | not checked | not checked | no | **yes** (new) |
+| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked |
+| Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked |
 
 ## What CyberTrain still works around
 
@@ -271,29 +281,93 @@ affected CyberTrain's own tests.
 
 ## Runtime cost
 
-On examples/blog, one core, about a fifth of each request is thread
-hand-offs and another fifth is collection and malloc/free; neither can be
-changed from the application except by allocating less. Measured on
-2026.09.12; 2026.10.25-7018 was not measured (examples/blog does not build
-on it, see A).
+On examples/blog, one core, about a fifth of each request was thread
+hand-offs and another fifth collection and malloc/free on 2026.09.12;
+neither can be changed from the application except by allocating less.
+Measured on 2026.09.12; 2026.10.25-7018 was not measured (examples/blog
+does not build on it, see A). 4 and 5 were re-measured on 2026-10-30 on
+2026.10.27.7020, with 2026.09.12 rebuilt from source beside it (the method
+is under 4): 4 is fixed, and the hand-offs that remain are 5's.
 
 ### 4. Parking a fiber goes through the monitor thread
 
-A connection's fiber that parks on `wait_readable` is woken by the
-scheduler's monitor thread and handed back: about 16 `futex` calls per
-request.
+**Fixed in 2026.10.27.7020** (re-measured on 2026-10-30). On 2026.09.12 a
+connection's fiber that parks on `wait_readable` is woken through the
+scheduler's monitor thread and the scheduler lock: about 16 `futex` calls
+per request on the benchmark machine, 10 on the one below.
 
-- Seen with `strace -c` and perf. A `wait_readable(0)` before the real wait
-  did not change `futex` or `epoll_wait` counts (the next request is never
-  there yet), and a blocking `readpartial` would hold the only worker.
-- Fix: continue without a hand-off when the descriptor is already ready,
-  or let the worker check readiness itself when `SPINEL_WORKERS=1`.
+Both builds compiled from source on one 4-vCPU cloud VM, examples/blog in
+production mode, `SPINEL_WORKERS=1`, `GET /articles`, 16 keep-alive
+connections, 8,000 requests from a Python client that tops out near 2,700
+requests a second, so the rates are not comparable here and the counts
+are. Syscalls from `strace -f -c`, context switches from
+`/proc/<pid>/task/*/status` without strace, threads told apart with
+`strace --seccomp-bpf -f -e trace=futex` and the `futex` addresses
+resolved against `nm` with ASLR off.
+
+| Per request | 2026.09.12 | 2026.10.27.7020 |
+| --- | --: | --: |
+| `futex` | 9.85 | 2.08 |
+| OS thread context switches | 2.1 | 0.50 |
+| `epoll_ctl` / `epoll_wait` / `poll` | 1.05 / 1.03 / 1.00 | 1.03 / 1.03 / 2.01 |
+| `futex` by thread | monitor 4.1, worker 4.2, main 1.7 | GC sweeper 0.72, main 0.45, monitor 0.32 |
+
+- What it was, on 2026.09.12: at `SPINEL_WORKERS=1` the connections ran
+  on one helper OS thread beside main and the monitor. Every park woke the
+  monitor (`g_sysmon_cv`), and every park and wake passed `g_sched_lock`
+  between the three threads, each hand-over a `futex` wait and wake. The
+  monitor made 7,492 turns for 8,032 parks (`SPINEL_SCHED_STATS=1`, on a
+  minimal server). A `wait_readable(0)` before the real wait did not
+  change the counts (the next request is never there yet), and a blocking
+  `readpartial` would hold the only worker.
+- What fixed it, upstream: per-worker readiness sets (#4306, in
+  2026.09.12 already), the scheduler's hand-offs leaving the global lock
+  and a park nudging the monitor only for an earlier deadline (#8702,
+  2026-10-14), and a thread start waking the monitor only when its wait
+  would end too late (#10024, 2026-10-23). On 2026.10.27.7020 a park is
+  one `epoll_ctl` (a one-shot re-arm in the worker's own set) and one
+  `epoll_wait` on the worker, no `futex`; the monitor made 630 turns for
+  8,070 parks, and the worker thread switched out 92 times in 8,000
+  requests. The two `poll` calls are the zero-timeout readiness checks
+  before the `readpartial` and before the write. A minimal keep-alive
+  server (one green thread per connection, `wait_readable(5)` before
+  `readpartial`) goes from 7.5 `futex` per request on 2026.09.12 to 0.3,
+  on 2026.10.27.7020 and on the fork's master 49ccdced alike.
+- What is left: the 2.08 `futex` per request are the collector's
+  concurrent sweeper (see 5) and the monitor's time-based turns; none is
+  on the park path.
+- Also seen: an idle keep-alive connection costs more in CyberTrain than
+  in that minimal server, because `head_readable?` re-parks it every
+  `ACCEPT_POLL` (0.1 s) with a new deadline so that `#stop` is noticed.
+  16 idle connections make about 160 timer expiries a second, each a
+  monitor turn under `g_sched_lock`: the monitor's `futex` count over 3 s
+  is 1,073 against 173 for a server that parks once with a 5 s timeout.
+  That is CyberTrain's design, not a Spinel issue.
+- Today: nothing; the pinned release has the fix.
+- Fix: done.
 
 ### 5. A collection stops every thread even with one worker
 
+Re-measured on 2026-10-30 on 2026.10.27.7020 (the setup under 4,
+`SPINEL_GC_STATS=1`): 2,852 collections for 8,020 requests, 2,369 of them
+full, one per 2.8 requests, 0.15 ms each, 11.5% of the wall time. Each
+collection hands the sweep to the concurrent sweeper thread and back: two
+`futex` wakes from the worker on the sweep's condition variable, two waits
+and a wake of `g_cs_lock` by the sweeper, and one context switch of the
+sweeper; that is the GC sweeper 0.72 and most of the main 0.45 `futex` per
+request under 4. With `SPINEL_GC_CONC=0` (no sweeper) the worker's `futex`
+fall from 0.45 to 0.06 per request and the sweeper's to zero, and requests
+a second do not move (2,822 against 2,732, within the noise): at one
+worker the sweeper has no core of its own. 2026.09.12 made 1,591
+collections for the same requests (0.23 ms each, 12% of wall), so the
+collector now runs more often for less time each.
+
 - None of `SPINEL_GC_AGE`, `SPINEL_GC_OBJ_BUDGET`, `SPINEL_GC_MINOR=0`, a
-  larger `SPINEL_GC_THRESHOLD_KB` or `SPINEL_SCHED_POLL` beat the defaults.
-- Fix: skip the stop-the-world rendezvous when there is one worker.
+  larger `SPINEL_GC_THRESHOLD_KB` or `SPINEL_SCHED_POLL` beat the defaults
+  (on 2026.09.12; not re-tried).
+- Fix: skip the stop-the-world rendezvous when there is one worker, and
+  sweep on the worker itself instead of handing off to a sweeper thread
+  when there is one.
 
 ### 6. The system allocator
 
@@ -368,7 +442,8 @@ from A, C, F and G prints Ruby's result on 2026.10.26.7019. H is new on
 2026.10.26.7019 itself. The fixes are merged into matz/spinel (#10254 to
 #10263, 2026-10-26); on master 9b9972399 (re-checked on 2026-10-27) H is
 still present, and D still raises, by design. H is fixed by #10415, merged
-2026-10-27 (master 003ceda5d).
+2026-10-27 (master 003ceda5d). I is new on the fork's master 49ccdced
+(2026-10-30) and absent from 2026.10.27.7020.
 
 On 2026.10.25-7018, the ten `spin test` failures:
 
@@ -788,3 +863,26 @@ forwarded to a receiverless call of a method of the same class
 
 - Fix: carry the classes the block can return through the `&block`
   forward into the forwarding call's boxed value, as 2026.09.12 did.
+
+### I. A constant seeded from `Array.new(0) { ... }` is refused, and inference does not converge
+
+New on the fork's master 49ccdced (2026-10-30, "Merge branch
+'matz:master'"), built from source on 2026-10-30; 2026.10.27.7020 builds
+the same source. In examples/blog, `spin build blog` stops with:
+
+```
+spinel: warning: type inference did not converge in 128 rounds; the output may be built from unsettled types (please report this program)
+spinel: cybertrain/controller.rb:111: a constant write given a Array, which no conversion keeps in its sp_PtrArray * slot
+spinel: 1 refusal, nothing written
+```
+
+Line 111 is `NO_SKIPS = Array.new(0) { Callback.new(:skip, nil, nil, [],
+[], -1) }`, the Array seeded with its element type and emptied
+(spikes/NOTES.md rule 9). Not yet reduced to a small program, not
+bisected, and `spin test` was not run on that build; found while
+re-measuring 4, which is why the blog numbers under 4 are from
+2026.10.27.7020 and only a minimal server was measured on master.
+
+- Today: nothing to do; CyberTrain is pinned to 2026.10.27.7020.
+- Fix: to be found once reduced; the non-convergence warning is probably
+  the lead, since the refusal reads like a type that never settled.
