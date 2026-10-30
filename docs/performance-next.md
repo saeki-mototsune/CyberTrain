@@ -70,13 +70,30 @@ Each is an object count per article page unless it says otherwise.
    `:str` return copies). Reading text columns lazily would need the
    statement to stay open, or a C helper that copies into a model-owned
    buffer; both change who owns the memory.
+8. **Idle keep-alive connections, CPU at rest (not objects).** Between
+   requests `Server#head_readable?` waits in `ACCEPT_POLL` (0.1 s) slices
+   so that a connection notices `#stop`, and each slice is a park, a timer
+   and a monitor turn. On one CPU, 1,000 idle connections cost 8.6% of it
+   and 2,349 context switches a second, against 0.5% for a server that
+   parks once per read timeout (spinel-feedback.md 4, measured
+   2026-10-30). Spinel 2026.10.27.7020 wakes a thread parked in
+   `wait_readable(t)` when another thread closes that socket (`IOError`,
+   as in CRuby), so the server could keep its idle connections in a set
+   under `@lock`, wait the whole `read_timeout` once, and have `drain`
+   close the idle ones. It changes the shutdown path of docs/design.md
+   D14, so it needs that design and test/server.rb's drain tests to
+   move with it. Requests a second would not change.
 
 ## Things that are not worth doing again
 
 All measured, see benchmark.md and spikes/NOTES.md for the numbers.
 
 - Spinel's collector settings (`SPINEL_GC_*`, `SPINEL_SCHED_POLL`): within
-  noise of the defaults or slower.
+  noise of the defaults or slower on 2026.09.12. Not so on 2026.10.27.7020:
+  on one CPU `SPINEL_GC_FULL_INTERVAL=8` gives +16 to 17% on both pages
+  and `SPINEL_GC_CONC=0` +5%, because the default full cadence collapses
+  to nearly every collection full (spinel-feedback.md 5). A larger
+  `SPINEL_GC_THRESHOLD_KB` still does not help on its own.
 - A park-free read (`wait_readable(0)` before the real wait): the next
   request is never there yet with this load, so `futex` and `epoll_wait` per
   request did not move. On 2026.10.27.7020 a park no longer leaves the
@@ -97,10 +114,10 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
   rule 58).
 - Fiber parking without a hand-off to the monitor thread: done on
   2026.10.27.7020 (spinel-feedback.md 4).
-- A collection that does not stop every thread when there is one worker,
-  and sweeps on the worker instead of handing off to a sweeper thread at
-  `N=1` (spinel-feedback.md 5: one collection per 2.8 requests, each a
-  context switch and about four `futex` calls).
+- A full-collection cadence that does not fall to every cycle for a
+  server's request garbage (spinel-feedback.md 5: 83% of collections are
+  full; fixing the interval at 8 is worth 16 to 17% on one CPU), and no
+  sweeper thread when the process has one CPU (5%).
 - `Array#clear` and Hash values of objects boxing their containers (rule 56).
 
 ## How to measure
@@ -116,4 +133,12 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
 - Memory errors: an AddressSanitizer build is
   `spinel app.rb --cc=<script running cc -fsanitize=address
   -fno-sanitize-address-use-after-scope -fno-omit-frame-pointer -g>` with
-  `ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0`.
+  `ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0`. Run it with
+  `SPINEL_GC_SLAB=0` on Spinel 2026.10.27.7020 and later: the object slab
+  recycles freed slots itself, so with it on AddressSanitizer does not see
+  a freed object being read (spinel-feedback.md J).
+- Collector behaviour: `SPINEL_GC_STATS=1` prints collections, how many
+  were full and the share of wall time once a second; `SPINEL_GC_PHASES=1`
+  prints the mark, the sweep, the stop-the-world wait and the slab release
+  at exit. On a one-CPU server, pin it (`taskset -c 0`) and drive the load
+  from the other CPUs, or the client is what gets measured.
