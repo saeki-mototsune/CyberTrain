@@ -1001,10 +1001,17 @@ slot is refused.
   later release keeps the refusal, a `.freeze` on the `Array.new`, or
   `[Callback.new(...)][0, 0]`, avoids it: both forms of the reduced
   program print Ruby's result on 49ccdced and on 2026.10.27.7020.
-- Fix: in step 5a', kill the constant's slot (keep it boxed) when a write's
-  value is not an Array literal, or build `Array.new(n) { ... }` at the
-  narrowed kind as a literal is; and add the program above as a test
-  beside test/object_array_constant.rb.
+- Fix: proposed upstream as matz/spinel#10735 (2026-11-01, open; one
+  commit on master 3e867e302, the same change as the fork's
+  saeki-mototsune/spinel#14). The constant's write builds
+  `Array.new(n) { ... }` at the narrowed kind (`emit_ptr_array_build`, as a
+  local's, an ivar's and a method return's write already do), and
+  `infer_global_const_types` keeps a constant narrowed to an object table
+  at that kind instead of unifying it back to the call's boxed Array each
+  round, which is what kept inference from converging. Test:
+  test/object_array_constant_array_new.rb. On that branch the reduced
+  program prints Ruby's result, and `make test-corpus` passes but for two
+  failures of the sandbox (no UDP socket; root ignores `chmod 0500`).
 
 ### J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs
 
