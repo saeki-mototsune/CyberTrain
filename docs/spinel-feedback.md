@@ -1008,8 +1008,13 @@ slot is refused.
   local's, an ivar's and a method return's write already do), and
   `infer_global_const_types` keeps a constant narrowed to an object table
   at that kind instead of unifying it back to the call's boxed Array each
-  round, which is what kept inference from converging. Test:
-  test/object_array_constant_array_new.rb. On that branch the reduced
+  round, which is what kept inference from converging. Tests:
+  test/object_array_constant_array_new.rb (the output), and
+  test/infer/const_array_new_object_table_converges.rb, which `make
+  infer-test` fails if inference runs to its 128-round cap (it settles in
+  4 rounds; with the codegen half of the fix alone the program still
+  compiles and prints the right answer, beside a "did not converge"
+  warning the corpus harness does not check). On that branch the reduced
   program prints Ruby's result, and `make test-corpus` passes but for two
   failures of the sandbox (no UDP socket; root ignores `chmod 0500`).
 
