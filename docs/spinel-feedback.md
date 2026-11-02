@@ -1001,9 +1001,9 @@ slot is refused.
   later release keeps the refusal, a `.freeze` on the `Array.new`, or
   `[Callback.new(...)][0, 0]`, avoids it: both forms of the reduced
   program print Ruby's result on 49ccdced and on 2026.10.27.7020.
-- Fix: proposed upstream as matz/spinel#10735 (2026-11-01, open; one
-  commit on master 3e867e302, the same change as the fork's
-  saeki-mototsune/spinel#14). The constant's write builds
+- Fix: matz/spinel#10735, merged on 2026-11-01 (the fork's
+  saeki-mototsune/spinel#14, the same change, was closed). The constant's
+  write builds
   `Array.new(n) { ... }` at the narrowed kind (`emit_ptr_array_build`, as a
   local's, an ivar's and a method return's write already do), and
   `infer_global_const_types` keeps a constant narrowed to an object table
@@ -1017,6 +1017,16 @@ slot is refused.
   warning the corpus harness does not check). On that branch the reduced
   program prints Ruby's result, and `make test-corpus` passes but for two
   failures of the sandbox (no UDP socket; root ignores `chmod 0500`).
+- Not covered by #10735: the same value written through the constant's
+  path from outside its module (`Reg::NONE = Array.new(0) { Cb.new(nil) }`)
+  takes another branch of the constant write, which still emitted the call
+  at its boxed type, and the C does not compile on master 52808c9c2
+  (`assignment to 'sp_PtrArray *' from incompatible pointer type
+  'sp_PolyArray *'`; 2026.10.27.7020 builds it). Found by CodeRabbit's
+  review of #10735; the fix, the same in-place build on that branch, is
+  matz/spinel#10786 (2026-11-02, open), with
+  test/object_array_constant_path_array_new.rb. CyberTrain does not write
+  this form.
 
 ### J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs
 
