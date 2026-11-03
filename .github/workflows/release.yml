@@ -3,6 +3,8 @@
 # (CONTRIBUTING.md "Releasing", step 2); a manual run takes an existing tag, for a tag
 # pushed before this workflow existed. A tag that already has a release fails
 # the run rather than overwriting it.
+# After the release is created, spinel-prebuilt.yml attaches a Linux build of
+# the latest Spinel release of the fork for Claude Code cloud sessions.
 name: Release
 
 on:
@@ -38,3 +40,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes
+
+  # Spinel prebuilt for Claude Code cloud sessions, attached to this release
+  # (script/claude-cloud-setup downloads it from the latest release).
+  spinel-prebuilt:
+    needs: release
+    uses: ./.github/workflows/spinel-prebuilt.yml
+    with:
+      release: ${{ inputs.tag || github.ref_name }}

@@ -284,7 +284,10 @@ before the gem is pushed:
 5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
    from the pull requests merged since the previous tag, through
    [.github/workflows/release.yml](.github/workflows/release.yml). For a tag
-   pushed without a release, run that workflow by hand with the tag.
+   pushed without a release, run that workflow by hand with the tag. The
+   same run attaches a Linux build of the fork's latest Spinel release
+   (`spinel-<tag>-linux-x86_64.tar.gz`, for Claude Code cloud sessions;
+   see below); check that its `spinel-prebuilt` job passed.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in
@@ -294,12 +297,13 @@ Spinel release. [script/claude-cloud-setup](script/claude-cloud-setup) is
 not pinned: it builds the latest release of the
 [saeki-mototsune fork](https://github.com/saeki-mototsune/spinel), which can
 be newer than `Cybertrain::SPINEL_TAG`. To start a cloud session in seconds
-rather than minutes, it downloads that release prebuilt:
+rather than minutes, it downloads that release prebuilt from the latest
+cybertrain release, to which
 [.github/workflows/spinel-prebuilt.yml](.github/workflows/spinel-prebuilt.yml)
-builds each new fork release in an `ubuntu:24.04` container every three
-hours and publishes it as the prerelease `spinel-<tag>` of this repository
-(run it by hand to prebuild a release at once). Without one, the script
-builds Spinel from source.
+(called by the Release workflow) attaches a build made in an `ubuntu:24.04`
+container. When the fork has released again since, the script builds Spinel
+from source; run that workflow by hand with the latest release (`vX.Y.Z`)
+to attach a build of the newer Spinel to it.
 
 
 ## Licensing

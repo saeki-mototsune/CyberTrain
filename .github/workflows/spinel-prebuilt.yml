@@ -1,92 +1,89 @@
-# Prebuilt Spinel for Claude Code cloud sessions (script/claude-cloud-setup).
+# Prebuilt Spinel for Claude Code cloud sessions (script/claude-cloud-setup),
+# attached to a cybertrain release.
 #
-# Builds the latest release of the saeki-mototsune fork of Spinel (or the
-# tag given to a manual run) in an ubuntu:24.04 container as root, which is
-# what the cloud VM runs, and publishes the installed tree as a release of
-# this repository, tag "spinel-<release>", with two assets:
+# The Release workflow calls this after it creates the release vX.Y.Z. It
+# builds the latest release of the saeki-mototsune fork of Spinel (or the
+# tag given) in an ubuntu:24.04 container as root, which is what the cloud
+# VM runs, and attaches the installed tree to vX.Y.Z as two assets:
 #
-#   spinel-<release>-linux-x86_64.tar.gz         the `make install` prefix,
-#                                                 its symlinks made relative
-#                                                 so it unpacks anywhere
-#   spinel-<release>-linux-x86_64.tar.gz.sha256  its checksum
+#   spinel-<spinel tag>-linux-x86_64.tar.gz         the `make install`
+#                                                    prefix, its symlinks
+#                                                    made relative so it
+#                                                    unpacks anywhere
+#   spinel-<spinel tag>-linux-x86_64.tar.gz.sha256  its checksum
 #
-# The setup script downloads and checks those (seconds) instead of building
-# Spinel from source (about four minutes), and builds only when no prebuilt
-# release is there. These releases are prereleases and never "latest", so
-# the framework's own vX.Y.Z releases stay what /releases/latest names.
+# The setup script fetches them from the latest cybertrain release
+# (/releases/latest/download/...) and checks them, in seconds, instead of
+# building Spinel from source (about four minutes); it builds from source
+# when the latest release carries no build of the Spinel release it wants
+# (the fork released again since).
 #
-# Runs every three hours, so a new fork release is prebuilt soon after it is
-# tagged, and does nothing when that release already has its prebuilt one.
+# Run it by hand to attach a build to a release made before this workflow,
+# or to rebuild one (the assets are replaced).
 name: Spinel prebuilt
 
 on:
-  schedule:
-    - cron: "17 */3 * * *"
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      tag:
-        description: "Spinel tag of the fork to prebuild (default: its latest release)"
+      release:
+        description: "cybertrain release (vX.Y.Z) to attach the build to"
+        type: string
+        required: true
+      spinel-tag:
+        description: "Spinel tag of the fork to build (default: its latest release)"
+        type: string
         required: false
         default: ""
-      force:
-        description: "Rebuild and replace the assets even if the release exists"
-        type: boolean
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "cybertrain release (vX.Y.Z) to attach the build to"
+        required: true
+      spinel-tag:
+        description: "Spinel tag of the fork to build (default: its latest release)"
         required: false
-        default: false
+        default: ""
 
 permissions:
   contents: write
 
-concurrency:
-  group: spinel-prebuilt
-  cancel-in-progress: false
-
 env:
   SPINEL_GIT: https://github.com/saeki-mototsune/spinel.git
+  RELEASE: ${{ inputs.release }}
 
 jobs:
-  resolve:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      tag: ${{ steps.tag.outputs.tag }}
-      build: ${{ steps.tag.outputs.build }}
+    timeout-minutes: 30
+    container: ubuntu:24.04
     steps:
-      - name: Pick the tag and check for an existing prebuilt release
-        id: tag
+      - name: Install the build packages and gh
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            build-essential git curl ca-certificates ruby libsqlite3-dev zlib1g-dev libssl-dev sqlite3 > /dev/null
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            > /etc/apt/sources.list.d/github-cli.list
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gh > /dev/null
+
+      - name: Check the release and pick the Spinel tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ inputs.tag }}
-          FORCE: ${{ inputs.force }}
+          INPUT_TAG: ${{ inputs.spinel-tag }}
         run: |
+          gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" > /dev/null \
+            || { echo "no release $RELEASE in $GITHUB_REPOSITORY"; exit 1; }
           tag="$INPUT_TAG"
           if [ -z "$tag" ]; then
             tag="$(git ls-remote --tags --refs "$SPINEL_GIT" | sed 's#.*refs/tags/##' \
               | grep -E '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$' | sort -V | tail -n 1)"
           fi
           test -n "$tag" || { echo "no release tag in $SPINEL_GIT"; exit 1; }
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          if [ "$FORCE" != "true" ] && gh release view "spinel-$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "spinel-$tag is already prebuilt"
-            echo "build=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "build=true" >> "$GITHUB_OUTPUT"
-          fi
-
-  build:
-    needs: resolve
-    if: needs.resolve.outputs.build == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    container: ubuntu:24.04
-    env:
-      TAG: ${{ needs.resolve.outputs.tag }}
-    steps:
-      - name: Install the build packages
-        run: |
-          apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            build-essential git curl ca-certificates ruby libsqlite3-dev zlib1g-dev libssl-dev sqlite3 > /dev/null
+          echo "Spinel $tag for $RELEASE"
+          echo "TAG=$tag" >> "$GITHUB_ENV"
 
       - name: Build and install Spinel
         run: |
@@ -120,33 +117,13 @@ jobs:
           test "$(/tmp/smoke)" = "spinel 6"
           mv "$prefix.hidden" "$prefix"
 
-      - name: Pack
+      - name: Pack and attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p /tmp/out
           asset="spinel-$TAG-linux-$(uname -m).tar.gz"
           tar -C "/root/.cybertrain/spinel" -czf "/tmp/out/$asset" "$TAG"
           (cd /tmp/out && sha256sum "$asset" > "$asset.sha256")
           ls -l /tmp/out
-
-      - name: Install gh
-        run: |
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-            -o /usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-            > /etc/apt/sources.list.d/github-cli.list
-          apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gh > /dev/null
-
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          rel="spinel-$TAG"
-          if gh release view "$rel" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release upload "$rel" /tmp/out/* --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$rel" /tmp/out/* --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" --prerelease --latest=false \
-              --title "Spinel $TAG (prebuilt for Claude Code cloud sessions)" \
-              --notes "Spinel $TAG from $SPINEL_GIT, built in ubuntu:24.04 by .github/workflows/spinel-prebuilt.yml. Used by script/claude-cloud-setup; not a cybertrain release."
-          fi
+          gh release upload "$RELEASE" /tmp/out/* --repo "$GITHUB_REPOSITORY" --clobber

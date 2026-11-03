@@ -16,13 +16,15 @@
 #   1. the environment's filesystem cache: it is saved after a run that
 #      finishes within about five minutes, so a later session finds the
 #      release already installed and does nothing (about a second);
-#   2. a prebuilt tree: .github/workflows/spinel-prebuilt.yml builds each
-#      fork release in an ubuntu:24.04 container (the cloud VM's OS) and
-#      publishes it as the release "spinel-<tag>" of this repository; it is
-#      downloaded, checked against its sha256 and unpacked (seconds);
+#   2. a prebuilt tree: when cybertrain is released, the Release workflow
+#      (.github/workflows/spinel-prebuilt.yml) builds the fork's latest
+#      release in an ubuntu:24.04 container (the cloud VM's OS) and attaches
+#      it to the release; it is downloaded from the latest cybertrain
+#      release, checked against its sha256 and unpacked (seconds);
 #   3. a source build, as `cybertrain setup` does it (git clone, make deps,
-#      make, make install; about four minutes), when there is no prebuilt
-#      tree yet or SPINEL_BUILD_FROM_SOURCE=1.
+#      make, make install; about four minutes), when the latest cybertrain
+#      release carries no build of this Spinel release (the fork released
+#      again since) or SPINEL_BUILD_FROM_SOURCE=1.
 # The gems are installed in the background meanwhile.
 #
 # Spinel comes from the saeki-mototsune fork (SPINEL_GIT, which must be
@@ -39,8 +41,9 @@ set -euo pipefail
 
 SPINEL_GIT="https://github.com/saeki-mototsune/spinel.git"
 CT_HOME="${CYBERTRAIN_HOME:-$HOME/.cybertrain}"
-# Where .github/workflows/spinel-prebuilt.yml publishes prebuilt releases.
-PREBUILT_BASE="https://github.com/saeki-mototsune/CyberTrain/releases/download"
+# The latest cybertrain release, which carries prebuilt Spinel
+# (.github/workflows/spinel-prebuilt.yml).
+PREBUILT_BASE="https://github.com/saeki-mototsune/CyberTrain/releases/latest/download"
 RELEASE_TAG_RE='^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$'
 
 # The newest release tag of the fork, or "" when it cannot be reached
@@ -102,7 +105,7 @@ fi
 # there is none, the checksum does not match or it does not run.
 install_prebuilt() {
   local asset="spinel-$SPINEL_TAG-linux-$(uname -m).tar.gz"
-  local url="$PREBUILT_BASE/spinel-$SPINEL_TAG/$asset"
+  local url="$PREBUILT_BASE/$asset"
   local tmp
   tmp="$(mktemp -d)"
   curl -fsL --retry 3 --connect-timeout 10 -o "$tmp/$asset" "$url" \
