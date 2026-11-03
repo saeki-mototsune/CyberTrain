@@ -1020,13 +1020,14 @@ slot is refused.
 - Not covered by #10735: the same value written through the constant's
   path from outside its module (`Reg::NONE = Array.new(0) { Cb.new(nil) }`)
   takes another branch of the constant write, which still emitted the call
-  at its boxed type, and the C does not compile on master 52808c9c2
+  at its boxed type, and the C did not compile on master 52808c9c2
   (`assignment to 'sp_PtrArray *' from incompatible pointer type
   'sp_PolyArray *'`; 2026.10.27.7020 builds it). Found by CodeRabbit's
   review of #10735; the fix, the same in-place build on that branch, is
-  matz/spinel#10786 (2026-11-02, open), with
+  matz/spinel#10786, merged on 2026-11-02, with
   test/object_array_constant_path_array_new.rb. CyberTrain does not write
-  this form.
+  this form. With both merged, upstream master builds the constant
+  written either way (`NONE = ...` and `Reg::NONE = ...`).
 
 ### J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs
 
