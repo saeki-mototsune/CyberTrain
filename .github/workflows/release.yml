@@ -13,6 +13,13 @@
 # it. If any of them fails, no release is created; fix it, move or re-push the
 # tag (or push a new one) and the checks run again.
 #
+# The version job resolves the tag to one commit, and every check and image
+# build checks out that commit, not the tag: a tag moved while a run is going
+# cannot make the jobs test different commits. Before the images are pushed
+# and again before the release is created, the run checks that the tag still
+# points to that commit, and stops if it does not (the run for the moved tag
+# tests the new commit).
+#
 # Only once they have all passed does it build, smoke-test and push the
 # playground image (playground-image.yml) and the blog image
 # (blog-image.yml with release_tag), each as X.Y.Z and latest, and the
@@ -41,13 +48,19 @@ jobs:
   version:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          ref: ${{ needs.version.outputs.sha }}
           persist-credentials: false
+
+      - name: Resolve the tag to one commit
+        id: resolve
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: The tag is v + Cybertrain::VERSION
         run: |
@@ -66,13 +79,13 @@ jobs:
     needs: version
     uses: ./.github/workflows/gate.yml
     with:
-      ref: refs/tags/${{ inputs.tag || github.ref_name }}
+      ref: ${{ needs.version.outputs.sha }}
 
   ci:
     needs: version
     uses: ./.github/workflows/ci.yml
     with:
-      ref: refs/tags/${{ inputs.tag || github.ref_name }}
+      ref: ${{ needs.version.outputs.sha }}
 
   # A check only: blog-image.yml pushes nothing without release_tag.
   # (The workflow asks for packages: write for its release push.)
@@ -83,28 +96,46 @@ jobs:
       packages: write
     uses: ./.github/workflows/blog-image.yml
     with:
-      ref: refs/tags/${{ inputs.tag || github.ref_name }}
+      ref: ${{ needs.version.outputs.sha }}
+
+  # Between the checks and the first push: the tag still names what was tested.
+  tag-unchanged:
+    needs: [version, gate, ci, blog-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: The tag still points to the tested commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          now=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)
+          test "$now" = "$SHA" || { echo "tag $TAG moved from $SHA to $now during this run; not publishing"; exit 1; }
 
   playground-image:
-    needs: [version, gate, ci, blog-image]
+    needs: [version, tag-unchanged]
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/playground-image.yml
     with:
+      ref: ${{ needs.version.outputs.sha }}
       release_tag: ${{ inputs.tag || github.ref_name }}
 
   blog-image-push:
-    needs: [version, gate, ci, blog-image]
+    needs: [version, tag-unchanged]
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/blog-image.yml
     with:
+      ref: ${{ needs.version.outputs.sha }}
       release_tag: ${{ inputs.tag || github.ref_name }}
 
   release:
-    needs: [version, gate, ci, blog-image, playground-image, blog-image-push]
+    needs: [version, gate, ci, blog-image, tag-unchanged, playground-image, blog-image-push]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -112,6 +143,14 @@ jobs:
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
+      - name: The tag still points to the tested commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          now=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)
+          test "$now" = "$SHA" || { echo "tag $TAG moved from $SHA to $now during this run; not publishing"; exit 1; }
+
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

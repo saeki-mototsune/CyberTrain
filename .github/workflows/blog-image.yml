@@ -64,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || inputs.ref }}
+          ref: ${{ inputs.ref || (inputs.release_tag && format('refs/tags/{0}', inputs.release_tag)) || '' }}
           persist-credentials: false
 
       - name: The tag is v + Cybertrain::VERSION
