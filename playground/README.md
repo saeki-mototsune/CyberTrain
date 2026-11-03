@@ -9,9 +9,8 @@ blog in `/workspace/blog`, created, scaffolded, migrated and built once.
 it in GitHub Codespaces ([the playground page](https://saeki-mototsune.github.io/CyberTrain/playground.html)
 says what to expect there).
 
-- Tags: `latest` is the latest tested build of `main`; `X.Y.Z` comes from the
-  release tag `vX.Y.Z` once every release check has passed on it, which also
-  moves `latest`; a manual run of the
+- Tags: `X.Y.Z` comes from the release tag `vX.Y.Z` once every release
+  check has passed on it, and `latest` is the latest such release; a manual run of the
   workflow pushes the tag it is given.
 - Platform: `linux/amd64` only. On an arm64 machine, build it yourself
   (below).
@@ -216,18 +215,17 @@ server started by hand (D4) and the offline app (B3).
 ## CI and publishing
 
 [.github/workflows/playground-image.yml](../.github/workflows/playground-image.yml)
-("Playground image") runs on pull requests and pushes to `main` that touch
-`playground/`, `.devcontainer/`, `cybertrain/`, `cybertrain.rb`,
-`cybertrain.gemspec`, `spin.toml`, `exe/` or the workflow itself, and by
-hand. A `v*` tag does not run it directly: the Release workflow
-([.github/workflows/release.yml](../.github/workflows/release.yml)) calls
-it only after the Gate, CI and the blog image have passed on the tag. It
+("Playground image") does not run on pull requests or pushes. It runs only
+from the Release workflow
+([.github/workflows/release.yml](../.github/workflows/release.yml)), which
+calls it for a tag `vX.Y.Z` after the Gate, CI and the blog image have
+passed on the tag, and by hand. It
 checks that `devcontainer.json` is valid JSON and, for a release tag, that
 the tag is `v` + `Cybertrain::VERSION`, builds the `playground` target for `linux/amd64` with the GitHub
 Actions cache (a change to the framework alone rebuilds only the mirror and
-the blog), runs the smoke test and then, except on pull requests, pushes the
-image it tested: `latest` from `main`, `X.Y.Z` and `latest` for a release
-tag `vX.Y.Z`, and the given tag from a manual run (Actions → Playground image →
+the blog), runs the smoke test and then pushes the image it tested:
+`X.Y.Z` and `latest` for a release tag `vX.Y.Z`, and the given tag from a
+manual run (Actions → Playground image →
 Run workflow, on `main`).
 
 ## Owner's one-time steps

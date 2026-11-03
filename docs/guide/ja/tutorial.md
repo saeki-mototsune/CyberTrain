@@ -1,5 +1,5 @@
 ---
-source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
+source_sha256: a7fba933f53c771e7fec2533d2d7361dbaaee7ea7b99b9d60b5ba632b6f6b4da
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -752,7 +752,7 @@ kamal deploy   # 以降のデプロイ
 
 バイナリはイメージの中でコンパイルされるので、OS は常にイメージと一致します。`config/deploy.yml` の `builder.arch` はサーバーの CPU に合わせてください。デプロイ先はサーバー 1 台です：データベースはそのサーバーのボリュームにある SQLite のファイルです。手順はバックアップも含めて [`docs/deploy.md`](../../docs/deploy.md#第-8-部-kamal-でデプロイする) の第 8 部にあります（英語版は [`docs/deploy-kamal.md`](../../docs/deploy-kamal.md)）。
 
-完成版のアプリ [`examples/blog`](../../examples/blog#deploying-with-kamal) にも同じ設定が入っています。違いは 1 つだけです：リポジトリのフレームワークに対してビルドする（`spin.toml` の `path = "../.."`）ので、その `Dockerfile` は gem を入れずにチェックアウトから `cybertrain setup` と `cybertrain build` を実行し、ビルドコンテキストはリポジトリのルートです（`builder.context: ../..`。送る中身は `Dockerfile.dockerignore` でフレームワークとアプリだけに絞ります）。CI（[`blog-image.yml`](../../.github/workflows/blog-image.yml)）は変更のたびにこのイメージをビルドし、ヘルスチェック、フォームからの記事の作成、正常な停止、ボリュームに残るデータベースを確かめ、`config/deploy.yml` を Kamal で読み込みます。
+完成版のアプリ [`examples/blog`](../../examples/blog#deploying-with-kamal) にも同じ設定が入っています。違いは 1 つだけです：リポジトリのフレームワークに対してビルドする（`spin.toml` の `path = "../.."`）ので、その `Dockerfile` は gem を入れずにチェックアウトから `cybertrain setup` と `cybertrain build` を実行し、ビルドコンテキストはリポジトリのルートです（`builder.context: ../..`。送る中身は `Dockerfile.dockerignore` でフレームワークとアプリだけに絞ります）。CI（[`blog-image.yml`](../../.github/workflows/blog-image.yml)）はリリースのたびにこのイメージをビルドし、ヘルスチェック、フォームからの記事の作成、正常な停止、ボリュームに残るデータベースを確かめ、`config/deploy.yml` を Kamal で読み込みます。
 
 > [!NOTE]
 > 各部品の組み合わせ方と、Kamal と Caddy の後ろのサーバーとの比較は、[デプロイのページ](site:deploy.html)にあります。

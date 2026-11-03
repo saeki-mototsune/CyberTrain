@@ -63,11 +63,11 @@ docker run --rm -p 127.0.0.1:3000:3000 -e CYBERTRAIN_SECRET_KEY_BASE="$(openssl 
 ```
 
 The [Blog image](../../.github/workflows/blog-image.yml) workflow builds this
-image on every change to the framework or the app, smoke-tests it (health
+image for every release (and when run by hand), smoke-tests it (health
 check, an article through the form, a clean SIGTERM stop, the database kept
-on its volume) and loads `config/deploy.yml` with Kamal. It pushes nothing,
-except for a release: once every check has passed on a tag `vX.Y.Z`, the
-Release workflow has it push the tested image as
+on its volume) and loads `config/deploy.yml` with Kamal. Pull requests and pushes do not run it. A
+manual run pushes nothing; for a release, once every check has passed on a
+tag `vX.Y.Z`, the Release workflow has it push the tested image as
 `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z` and `latest`.
 
 [docs/deploy-kamal.md](../../docs/deploy-kamal.md) (part 8 of docs/deploy.md, in English) covers the rest:

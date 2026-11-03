@@ -1,40 +1,13 @@
 # Builds the playground image (playground/Dockerfile, target playground) for
-# linux/amd64, smoke-tests it (playground/smoke.sh) and, except on pull
-# requests, pushes the tested image to GHCR: latest from main, X.Y.Z and
-# latest for a release tag vX.Y.Z, the given tag on a manual run.
-# A release tag does not trigger this file: release.yml calls it (with
-# release_tag) only after the Gate, CI and the blog image have passed on the
-# tag, so a release image is pushed only for a tag whose checks all passed.
-# A change to playground/README.md alone builds nothing (it is not in the
-# image); see the paths below. See playground/README.md.
+# linux/amd64, smoke-tests it (playground/smoke.sh) and pushes the tested
+# image to GHCR: X.Y.Z and latest for a release tag vX.Y.Z, the given tag on
+# a manual run. It runs only from release.yml, which calls it (with
+# release_tag) after the Gate, CI and the blog image have passed on the tag,
+# and by hand (Actions -> Playground image -> Run workflow); pull requests
+# and pushes do not run it. See playground/README.md.
 name: Playground image
 
 on:
-  pull_request:
-    paths:
-      - "playground/**"
-      # Documentation only; PLAYGROUND.md is not, the image ships it.
-      - "!playground/README.md"
-      - ".devcontainer/**"
-      - "cybertrain/**"
-      - "cybertrain.rb"
-      - "cybertrain.gemspec"
-      - "spin.toml"
-      - "exe/**"
-      - ".github/workflows/playground-image.yml"
-  push:
-    branches: [main]
-    paths:
-      - "playground/**"
-      # Documentation only; PLAYGROUND.md is not, the image ships it.
-      - "!playground/README.md"
-      - ".devcontainer/**"
-      - "cybertrain/**"
-      - "cybertrain.rb"
-      - "cybertrain.gemspec"
-      - "spin.toml"
-      - "exe/**"
-      - ".github/workflows/playground-image.yml"
   # From release.yml, after every check passed on the release tag.
   workflow_call:
     inputs:
@@ -59,8 +32,8 @@ permissions:
   packages: write
 
 concurrency:
-  group: playground-image-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: playground-image-${{ inputs.release_tag || github.ref }}
+  cancel-in-progress: false
 
 env:
   IMAGE: ghcr.io/saeki-mototsune/cybertrain-playground
@@ -96,7 +69,7 @@ jobs:
           flavor: |
             latest=false
           tags: |
-            type=raw,value=latest,enable=${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.release_tag != '' }}
+            type=raw,value=latest,enable=${{ inputs.release_tag != '' }}
             type=semver,pattern={{version}},value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
             type=raw,value=${{ inputs.tag || 'manual' }},enable=${{ github.event_name == 'workflow_dispatch' && !inputs.release_tag }}
 
@@ -118,7 +91,6 @@ jobs:
         run: bash playground/smoke.sh cybertrain-playground:ci
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -126,7 +98,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push the tested image
-        if: github.event_name != 'pull_request'
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
