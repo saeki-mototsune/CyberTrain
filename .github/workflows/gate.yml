@@ -25,9 +25,9 @@ permissions:
 
 jobs:
   gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
       - uses: ruby/setup-ruby@v1
@@ -39,9 +39,9 @@ jobs:
   # A job of its own because they need gems (kramdown, kramdown-parser-gfm,
   # rouge) and script/gate promises CRuby with no gems.
   guide-pages:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
       - uses: ruby/setup-ruby@v1

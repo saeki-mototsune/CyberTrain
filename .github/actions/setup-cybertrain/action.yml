@@ -2,7 +2,7 @@
 # kept in one place so that the workflow `cybertrain new` writes
 # (.github/workflows/ci.yml in the app) does not copy them and drift.
 #
-#   - uses: actions/checkout@v4
+#   - uses: actions/checkout@v7
 #   - uses: saeki-mototsune/CyberTrain/.github/actions/setup-cybertrain@vX.Y.Z  # the framework release
 #   - run: spin test
 #
@@ -141,7 +141,7 @@ runs:
 
     - name: Restore the Spinel toolchain
       id: spinel-cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v6
       with:
         path: ~/.cybertrain/spinel
         key: cybertrain-spinel-${{ steps.framework.outputs.spinel-tag }}-${{ runner.os }}-${{ steps.framework.outputs.image }}-${{ runner.arch }}
@@ -161,7 +161,7 @@ runs:
     # cost the next run another build.
     - name: Save the Spinel toolchain
       if: steps.spinel-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v6
       with:
         path: ~/.cybertrain/spinel
         key: ${{ steps.spinel-cache.outputs.cache-primary-key }}
