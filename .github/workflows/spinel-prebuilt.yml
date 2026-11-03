@@ -61,7 +61,7 @@ jobs:
         run: |
           apt-get update -qq
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            build-essential git curl ca-certificates ruby libsqlite3-dev zlib1g-dev libssl-dev sqlite3 > /dev/null
+            build-essential git curl ca-certificates ruby ruby-dev libsqlite3-dev zlib1g-dev libssl-dev sqlite3 > /dev/null
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
             -o /usr/share/keyrings/githubcli-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -85,10 +85,17 @@ jobs:
           echo "Spinel $tag for $RELEASE"
           echo "TAG=$tag" >> "$GITHUB_ENV"
 
+      # Spinel's build runs Ruby code generators (tools/gen_respond_to_tables.rb)
+      # that `require "prism"`. Ubuntu 24.04's Ruby is 3.2, which does not
+      # bundle prism, so the gem is installed at the Makefile's PRISM_VERSION,
+      # as Spinel's own Dockerfile does (ruby-dev above builds its extension).
       - name: Build and install Spinel
         run: |
           prefix="/root/.cybertrain/spinel/$TAG"
           git clone -q --depth 1 --branch "$TAG" "$SPINEL_GIT" /tmp/spinel
+          prism_version="$(sed -n 's/^PRISM_VERSION ?= *//p' /tmp/spinel/Makefile)"
+          test -n "$prism_version" || { echo "no PRISM_VERSION in Spinel's Makefile"; exit 1; }
+          gem install --no-document prism -v "$prism_version"
           make -C /tmp/spinel deps
           make -C /tmp/spinel -j"$(nproc)"
           make -C /tmp/spinel install PREFIX="$prefix"
