@@ -1,13 +1,22 @@
 # Builds the playground image (playground/Dockerfile, target playground) for
 # linux/amd64, smoke-tests it (playground/smoke.sh) and pushes the tested
 # image to GHCR: X.Y.Z and latest for a release tag vX.Y.Z, the given tag on
-# a manual run. It runs only from release.yml, which calls it (with
-# release_tag) after the Gate, CI and the blog image have passed on the tag,
-# and by hand (Actions -> Playground image -> Run workflow); pull requests
-# and pushes do not run it. See playground/README.md.
+# a manual run. It runs from release.yml, which calls it (with release_tag)
+# after the Gate, CI and the blog image have passed on the tag, and by hand
+# (Actions -> Playground image -> Run workflow). A pull request runs it,
+# without pushing, only when it touches the image's own files (below); a
+# framework change alone is tested by ci.yml and reaches the image at the
+# next release. Pushes to main do not run it. See playground/README.md.
 name: Playground image
 
 on:
+  pull_request:
+    paths:
+      - "playground/**"
+      # Documentation only; PLAYGROUND.md is not, the image ships it.
+      - "!playground/README.md"
+      - ".devcontainer/**"
+      - ".github/workflows/playground-image.yml"
   # From release.yml, after every check passed on the release tag.
   workflow_call:
     inputs:
@@ -33,7 +42,7 @@ permissions:
 
 concurrency:
   group: playground-image-${{ inputs.release_tag || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   IMAGE: ghcr.io/saeki-mototsune/cybertrain-playground
@@ -91,6 +100,7 @@ jobs:
         run: bash playground/smoke.sh cybertrain-playground:ci
 
       - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -98,6 +108,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push the tested image
+        if: github.event_name != 'pull_request'
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |

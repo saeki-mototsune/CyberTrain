@@ -215,8 +215,10 @@ server started by hand (D4) and the offline app (B3).
 ## CI and publishing
 
 [.github/workflows/playground-image.yml](../.github/workflows/playground-image.yml)
-("Playground image") does not run on pull requests or pushes. It runs only
-from the Release workflow
+("Playground image") runs on pull requests that touch `playground/` (except
+this README), `.devcontainer/` or the workflow itself, without pushing; a
+framework change alone does not run it. Pushes to `main` do not run it. It
+also runs from the Release workflow
 ([.github/workflows/release.yml](../.github/workflows/release.yml)), which
 calls it for a tag `vX.Y.Z` after the Gate, CI and the blog image have
 passed on the tag, and by hand. It

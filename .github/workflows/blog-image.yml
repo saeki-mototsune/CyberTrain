@@ -5,14 +5,21 @@
 # clean stop on SIGTERM and the database kept on its volume across
 # containers. Also loads examples/blog/config/deploy.yml with Kamal. See
 # examples/blog/README.md, "Deploying with Kamal".
-# It runs only from release.yml and by hand (Actions -> Blog image -> Run
-# workflow, which pushes nothing); pull requests and pushes do not run it.
+# It runs from release.yml, by hand (Actions -> Blog image -> Run workflow,
+# which pushes nothing), and on a pull request that touches the image's own
+# files (below; nothing is pushed). A framework change alone is tested by
+# ci.yml and reaches the image at the next release. Pushes to main do not
+# run it.
 # release.yml calls it twice for a tag vX.Y.Z: with `ref` as one of the
 # checks, and, only after every check has passed, with `release_tag`, which
 # also pushes the tested image to GHCR as X.Y.Z and latest.
 name: Blog image
 
 on:
+  pull_request:
+    paths:
+      - "examples/blog/**"
+      - ".github/workflows/blog-image.yml"
   workflow_dispatch:
   # release.yml runs this file on the tag before it creates a release.
   workflow_call:
@@ -34,7 +41,7 @@ permissions:
 
 concurrency:
   group: blog-image-${{ inputs.release_tag || inputs.ref || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   IMAGE: ghcr.io/saeki-mototsune/cybertrain-blog
