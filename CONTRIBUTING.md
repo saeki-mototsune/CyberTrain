@@ -280,14 +280,17 @@ before the gem is pushed:
    which tests the tag (below) and, only if every check passes, publishes the
    playground image `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
    (and `latest`) through
-   [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml);
+   [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml)
+   and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z` (and
+   `latest`) through
+   [.github/workflows/blog-image.yml](.github/workflows/blog-image.yml);
    check that run.
 5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
    from the pull requests merged since the previous tag, through
    [.github/workflows/release.yml](.github/workflows/release.yml). That
    workflow first runs the Gate, the full CI (Linux and macOS, built against
    the Spinel release the tag pins) and the blog image's smoke test on the
-   tagged commit, then pushes the playground image, and creates the release
+   tagged commit, then pushes the playground and blog images, and creates the release
    only if all of them pass; if one fails, neither the image nor the release
    is published. For a tag pushed without a release, run that
    workflow by hand with the tag.
