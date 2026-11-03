@@ -274,7 +274,19 @@ before the gem is pushed:
 
 1. Bump `Cybertrain::VERSION` (`cybertrain/version.rb`) and `version` in
    `spin.toml` together (CI checks they match); spin caches a git
-   dependency by that version.
+   dependency by that version. The **Bump version** workflow
+   ([.github/workflows/bump-version.yml](.github/workflows/bump-version.yml),
+   run by hand from the Actions tab) does this and opens the pull request:
+   give it the new version and, to move to another Spinel release, the new
+   `Cybertrain::SPINEL_TAG`. It runs
+   [script/bump-version](script/bump-version), which also moves
+   `SPINEL_TAG` in `ci.yml` and the numbers the tests expect. With the
+   repository secret `RELEASE_PR_TOKEN` set (a fine-grained token for this
+   repository with Contents, Pull requests and Workflows: read and write),
+   the Gate and CI run on that pull request. Without it a version-only bump
+   still opens the pull request, but the checks do not start until it is
+   closed and reopened, and a Spinel bump stops: only a token with Workflows
+   may push the change to `ci.yml`.
 2. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
 4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml),

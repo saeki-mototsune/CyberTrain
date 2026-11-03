@@ -1,0 +1,171 @@
+# Opens the pull request that moves main to the next release before it is
+# tagged (CONTRIBUTING.md "Releasing", step 1). Run it by hand from the Actions
+# tab with the new Cybertrain::VERSION and, if the framework moves to another
+# Spinel release, the new Cybertrain::SPINEL_TAG (blank keeps the current one).
+#
+# It checks that the version has no tag yet and that the Spinel tag exists in
+# Cybertrain::SPINEL_REPOSITORY, runs script/bump-version (cybertrain/version.rb,
+# spin.toml, ci.yml's SPINEL_TAG and the tests' expected numbers) and pushes
+# the result to release/bump-vX.Y.Z with a pull request against main. A second
+# run for the same version updates that branch and the open pull request's
+# title and body. The site and the guides move later, in the release run
+# (release.yml, sync-site-versions).
+#
+# The Gate and CI must run on this pull request, above all when Spinel moves,
+# but GitHub starts no workflows for a push or a pull request made with
+# GITHUB_TOKEN. Set the repository secret RELEASE_PR_TOKEN (a fine-grained
+# token for this repository with Contents, Pull requests and Workflows: read
+# and write) and the run pushes and opens the pull request with it, so they
+# run. Workflows is needed because a Spinel bump changes
+# .github/workflows/ci.yml, which GitHub refuses to take from a push without
+# it; GITHUB_TOKEN can never have it, so without RELEASE_PR_TOKEN a Spinel
+# bump stops before anything is pushed. A version-only bump still works
+# without it: the run uses GITHUB_TOKEN, which needs Settings -> Actions ->
+# General -> Workflow permissions -> "Allow GitHub Actions to create and
+# approve pull requests", and the pull request says the checks must be
+# started by hand.
+name: Bump version
+
+on:
+  workflow_dispatch:
+    inputs:
+      cybertrain_version:
+        description: "New Cybertrain::VERSION (X.Y.Z)"
+        required: true
+        type: string
+      spinel_tag:
+        description: "New Cybertrain::SPINEL_TAG (a tag of the Spinel fork; blank keeps the current one)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+# One bump at a time: two runs would race on main's numbers.
+concurrency:
+  group: bump-version
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      # Inputs reach the scripts only through the environment, never spliced
+      # into a command line.
+      VERSION_INPUT: ${{ inputs.cybertrain_version }}
+      SPINEL_INPUT: ${{ inputs.spinel_tag }}
+      HAS_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.RELEASE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Check the inputs
+        id: inputs
+        run: |
+          version="${VERSION_INPUT#v}"
+          version="$(printf '%s' "$version" | tr -d '[:space:]')"
+          spinel="$(printf '%s' "$SPINEL_INPUT" | tr -d '[:space:]')"
+          printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::cybertrain_version $VERSION_INPUT is not X.Y.Z"; exit 1; }
+          if [ -n "$spinel" ]; then
+            printf '%s' "$spinel" | grep -Eq '^[0-9A-Za-z][0-9A-Za-z._-]*$' || { echo "::error::spinel_tag $SPINEL_INPUT is not a tag name"; exit 1; }
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "spinel=$spinel" >> "$GITHUB_OUTPUT"
+
+      - name: The version has no tag yet
+        env:
+          VERSION: ${{ steps.inputs.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null; then
+            echo "::error::tag v$VERSION already exists"; exit 1
+          fi
+
+      - name: The Spinel tag exists in Cybertrain::SPINEL_REPOSITORY
+        if: steps.inputs.outputs.spinel != ''
+        env:
+          SPINEL: ${{ steps.inputs.outputs.spinel }}
+        run: |
+          repo=$(sed -n 's/^ *SPINEL_REPOSITORY = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+          test -n "$repo" || { echo "::error::no SPINEL_REPOSITORY in cybertrain/version.rb"; exit 1; }
+          git ls-remote --exit-code --tags "$repo" "refs/tags/$SPINEL" > /dev/null \
+            || { echo "::error::$repo has no tag $SPINEL"; exit 1; }
+
+      - name: Move the numbers
+        env:
+          VERSION: ${{ steps.inputs.outputs.version }}
+          SPINEL: ${{ steps.inputs.outputs.spinel }}
+        run: |
+          ruby script/bump-version "$VERSION" "$SPINEL"
+          git diff --stat
+
+      # The same pins script/gate checks, so a pull request that would fail the
+      # Gate on them is never opened.
+      # GITHUB_TOKEN cannot push a change to .github/workflows/ (no Workflows
+      # permission), so say why here rather than fail at the push.
+      - name: A change to ci.yml has a token that may push it
+        run: |
+          if ! git diff --quiet -- .github/workflows/ && [ "$HAS_PR_TOKEN" != "true" ]; then
+            echo "::error::moving Spinel changes .github/workflows/ci.yml, which GITHUB_TOKEN may not push; set the RELEASE_PR_TOKEN secret (Contents, Pull requests and Workflows: read and write)"
+            exit 1
+          fi
+
+      - name: The pins agree
+        run: |
+          ruby -e '
+            v = File.read("cybertrain/version.rb")
+            version = v[/^\s*VERSION = "([^"]+)"/, 1]
+            spinel = v[/^\s*SPINEL_TAG = "([^"]+)"/, 1]
+            spin = File.read("spin.toml")[/^version = "([^"]+)"/, 1]
+            ci = File.read(".github/workflows/ci.yml")[/^\s*SPINEL_TAG: "([^"]+)"/, 1]
+            abort "spin.toml #{spin} != #{version}" unless spin == version
+            abort "ci.yml SPINEL_TAG #{ci} != #{spinel}" unless ci == spinel
+            puts "cybertrain #{version}, spinel #{spinel}"
+          '
+
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.inputs.outputs.version }}
+          BRANCH: release/bump-v${{ steps.inputs.outputs.version }}
+        run: |
+          spinel=$(sed -n 's/^ *SPINEL_TAG = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+          old_spinel=$(git show HEAD:cybertrain/version.rb | sed -n 's/^ *SPINEL_TAG = "\([^"]*\)".*/\1/p' | head -n 1)
+          old_version=$(git show HEAD:cybertrain/version.rb | sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' | head -n 1)
+          title="Bump to $VERSION"
+          if [ "$spinel" != "$old_spinel" ]; then title="$title (Spinel $spinel)"; fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -q -a -m "$title" -m "Moved by script/bump-version in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          git push --force origin "$BRANCH"
+
+          if [ "$HAS_PR_TOKEN" = "true" ]; then
+            checks="The Gate and CI run on this pull request (its branch was pushed with RELEASE_PR_TOKEN)."
+          else
+            checks="**The Gate and CI did not start**: its branch was pushed with GITHUB_TOKEN, which starts no workflows. Close and reopen it (or push a commit to the branch) to run them, or set the RELEASE_PR_TOKEN secret (see .github/workflows/bump-version.yml)."
+          fi
+          body="Moves main from cybertrain $old_version (Spinel $old_spinel) to cybertrain $VERSION (Spinel $spinel), with \`script/bump-version\`: \`cybertrain/version.rb\`, \`spin.toml\`, \`SPINEL_TAG\` in \`.github/workflows/ci.yml\` and the numbers the tests expect.
+
+          $checks
+
+          After merging, tag and push \`v$VERSION\` (CONTRIBUTING.md \"Releasing\", step 2). The site and the guides move in the release run.
+
+          From $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+
+          # A second run for the same version (say, with another Spinel tag)
+          # moves the open pull request's title and body along with its branch.
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh pr edit "$open" --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+            echo "pull request #$open is already open; its branch, title and body are updated"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" --title "$title" --body "$body"
+          fi
