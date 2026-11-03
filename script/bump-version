@@ -1,0 +1,93 @@
+#!/usr/bin/env ruby
+# Moves the repository to the next release before it is tagged
+# (CONTRIBUTING.md "Releasing", step 1): Cybertrain::VERSION and, optionally,
+# Cybertrain::SPINEL_TAG, everywhere they must agree for the Gate and the tests
+# to pass:
+#   cybertrain/version.rb         VERSION and SPINEL_TAG
+#   spin.toml                     [package] version
+#   .github/workflows/ci.yml      SPINEL_TAG
+#   test/version.rb.expected, test/integration_m1.rb,
+#   test/cli_new.rb.expected, test/cli_toolchain.rb.expected
+#                                 the numbers the tests expect
+# The site and the guides are not touched: the release run moves them once the
+# release exists (script/sync-versions). The bump-version workflow
+# (.github/workflows/bump-version.yml) runs this and opens a pull request; it
+# can also be run by hand.
+#
+# usage: script/bump-version VERSION [SPINEL_TAG]
+#   VERSION     X.Y.Z, not lower than the current Cybertrain::VERSION
+#   SPINEL_TAG  a tag of Cybertrain::SPINEL_REPOSITORY (e.g. 2026.10.27.7020);
+#               left as it is when omitted or empty
+# Prints what it changed. Exits 1 on a malformed argument, a lower version, or
+# when nothing would change.
+require "rubygems"
+
+VERSION_RB = "cybertrain/version.rb"
+SPIN_TOML = "spin.toml"
+CI_YML = ".github/workflows/ci.yml"
+TESTS = %w[
+  test/version.rb.expected
+  test/integration_m1.rb
+  test/cli_new.rb.expected
+  test/cli_toolchain.rb.expected
+].freeze
+
+def die(message)
+  warn "bump-version: #{message}"
+  exit 1
+end
+
+# The number on its own: not inside a longer number such as 10.3.01 or 0.3.0.1.
+def exact(number)
+  /(?<![\d.])#{Regexp.escape(number)}(?!\d|\.\d)/
+end
+
+# Replaces the one line that matches re (its first group is the value).
+def set_pin(text, re, value, file)
+  die "no #{re.source} in #{file}" unless text.match?(re)
+  text.sub(re) { $&.sub($1, value) }
+end
+
+die "usage: script/bump-version VERSION [SPINEL_TAG]" unless (1..2).cover?(ARGV.size)
+new_version = ARGV[0].to_s.strip.delete_prefix("v")
+new_spinel = ARGV[1].to_s.strip
+die "#{ARGV[0].inspect} is not X.Y.Z" unless new_version.match?(/\A\d+\.\d+\.\d+\z/)
+unless new_spinel.empty? || new_spinel.match?(/\A[0-9A-Za-z][0-9A-Za-z._-]*\z/)
+  die "#{ARGV[1].inspect} is not a Spinel tag"
+end
+
+Dir.chdir(File.expand_path("..", __dir__))
+source = File.read(VERSION_RB)
+old_version = source[/^\s*VERSION = "([^"]+)"/, 1] or die "no VERSION in #{VERSION_RB}"
+old_spinel = source[/^\s*SPINEL_TAG = "([^"]+)"/, 1] or die "no SPINEL_TAG in #{VERSION_RB}"
+new_spinel = old_spinel if new_spinel.empty?
+
+if Gem::Version.new(new_version) < Gem::Version.new(old_version)
+  die "#{new_version} is lower than the current version #{old_version}"
+end
+if new_version == old_version && new_spinel == old_spinel
+  die "already at #{old_version} with Spinel #{old_spinel}: nothing to change"
+end
+
+puts "cybertrain #{old_version} -> #{new_version}, spinel #{old_spinel} -> #{new_spinel}"
+
+edits = {
+  VERSION_RB => lambda { |t|
+    t = set_pin(t, /^\s*VERSION = "([^"]+)"/, new_version, VERSION_RB)
+    set_pin(t, /^\s*SPINEL_TAG = "([^"]+)"/, new_spinel, VERSION_RB)
+  },
+  SPIN_TOML => ->(t) { set_pin(t, /^version = "([^"]+)"/, new_version, SPIN_TOML) },
+  CI_YML => ->(t) { set_pin(t, /^\s*SPINEL_TAG: "([^"]+)"/, new_spinel, CI_YML) }
+}
+moves = [[old_version, new_version], [old_spinel, new_spinel]].reject { |from, to| from == to }
+TESTS.each do |file|
+  edits[file] = ->(t) { moves.reduce(t) { |acc, (from, to)| acc.gsub(exact(from), to) } }
+end
+
+edits.each do |file, edit|
+  before = File.binread(file).force_encoding("UTF-8")
+  after = edit.call(before)
+  next if after == before
+  File.binwrite(file, after)
+  puts "changed #{file}"
+end
