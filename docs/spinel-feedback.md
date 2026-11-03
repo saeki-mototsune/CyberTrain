@@ -1026,8 +1026,8 @@ slot is refused.
   review of #10735; the fix, the same in-place build on that branch, is
   matz/spinel#10786, merged on 2026-11-02, with
   test/object_array_constant_path_array_new.rb. CyberTrain does not write
-  this form. With both merged, upstream master builds every form of the
-  write above.
+  this form. With both merged, upstream master builds the constant
+  written either way (`NONE = ...` and `Reg::NONE = ...`).
 
 ### J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs
 
