@@ -290,10 +290,12 @@ before the gem is pushed:
    [.github/workflows/release.yml](.github/workflows/release.yml). That
    workflow first runs the Gate, the full CI (Linux and macOS, built against
    the Spinel release the tag pins) and the blog image's smoke test on the
-   tagged commit, then pushes the playground and blog images, and creates the release
-   only if all of them pass; if one fails, neither the image nor the release
-   is published. For a tag pushed without a release, run that
-   workflow by hand with the tag.
+   tagged commit. If any of those fails, nothing is published. Once they
+   pass, it pushes the playground and blog images (in parallel) and then
+   creates the release. If one image push fails, no release is created, but
+   the other image's `X.Y.Z` and `latest` may already be pushed: check both
+   packages before re-running the failed jobs. For a tag pushed without a
+   release, run that workflow by hand with the tag.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in
