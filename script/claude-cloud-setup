@@ -108,8 +108,8 @@ install_prebuilt() {
   local url="$PREBUILT_BASE/$asset"
   local tmp
   tmp="$(mktemp -d)"
-  curl -fsL --retry 3 --connect-timeout 10 -o "$tmp/$asset" "$url" \
-    && curl -fsL --retry 3 --connect-timeout 10 -o "$tmp/$asset.sha256" "$url.sha256" \
+  curl -fsL --retry 3 --connect-timeout 10 --max-time 120 -o "$tmp/$asset" "$url" \
+    && curl -fsL --retry 3 --connect-timeout 10 --max-time 120 -o "$tmp/$asset.sha256" "$url.sha256" \
     && (cd "$tmp" && sha256sum -c --quiet "$asset.sha256") \
     && mkdir -p "$tmp/x" && tar -C "$tmp/x" -xzf "$tmp/$asset" \
     && "$tmp/x/$SPINEL_TAG/bin/spinel" --version 2> /dev/null | grep -q "^spinel $SPINEL_TAG (" \
