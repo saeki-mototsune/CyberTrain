@@ -27,6 +27,10 @@
 # playground image (playground-image.yml) and the blog image
 # (blog-image.yml with release_tag), each as X.Y.Z and latest, and the
 # release is created after both pushes succeed.
+#
+# After the release is created, spinel-prebuilt.yml attaches a Linux build of
+# the latest Spinel release of the fork, for Claude Code cloud sessions
+# (script/claude-cloud-setup downloads it from the latest release).
 name: Release
 
 on:
@@ -158,3 +162,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes
+
+  # Spinel prebuilt for Claude Code cloud sessions, attached to the release
+  # just created (script/claude-cloud-setup downloads it from the latest one).
+  spinel-prebuilt:
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/spinel-prebuilt.yml
+    with:
+      release: ${{ inputs.tag || github.ref_name }}

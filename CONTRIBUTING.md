@@ -173,7 +173,8 @@ way; the script or workflow step that checks it says so in its comment.
   built gem and runs it.
 - **Versions are pinned in one place.** `Cybertrain::VERSION` equals
   `spin.toml`'s version; `Cybertrain::SPINEL_TAG` equals `SPINEL_TAG` in
-  `ci.yml` and in `script/claude-cloud-setup`.
+  `ci.yml`. (`script/claude-cloud-setup` pins no tag: it builds the latest
+  release of the saeki-mototsune fork.)
 - **Public API is documented.** A class or method an application calls
   carries a YARD comment tagged `@api public`; the API reference is built from
   those and must build without a warning. Anything without the tag is
@@ -295,14 +296,26 @@ before the gem is pushed:
    creates the release. If one image push fails, no release is created, but
    the other image's `X.Y.Z` and `latest` may already be pushed: check both
    packages before re-running the failed jobs. For a tag pushed without a
-   release, run that workflow by hand with the tag.
+   release, run that workflow by hand with the tag. After the release is
+   created, the same run attaches a Linux build of the fork's latest Spinel
+   release (`spinel-<tag>-linux-x86_64.tar.gz`, for Claude Code cloud
+   sessions; see below); check that its `spinel-prebuilt` job passed.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in
-[.github/workflows/ci.yml](.github/workflows/ci.yml) and in
-[script/claude-cloud-setup](script/claude-cloud-setup), which `script/gate`
-checks, so change the three together when the framework moves to another
-Spinel release.
+[.github/workflows/ci.yml](.github/workflows/ci.yml), which `script/gate`
+checks, so change the two together when the framework moves to another
+Spinel release. [script/claude-cloud-setup](script/claude-cloud-setup) is
+not pinned: it builds the latest release of the
+[saeki-mototsune fork](https://github.com/saeki-mototsune/spinel), which can
+be newer than `Cybertrain::SPINEL_TAG`. To start a cloud session in seconds
+rather than minutes, it downloads that release prebuilt from the latest
+cybertrain release, to which
+[.github/workflows/spinel-prebuilt.yml](.github/workflows/spinel-prebuilt.yml)
+(called by the Release workflow) attaches a build made in an `ubuntu:24.04`
+container. When the fork has released again since, the script builds Spinel
+from source; run that workflow by hand with the latest release (`vX.Y.Z`)
+to attach a build of the newer Spinel to it.
 
 
 ## Licensing
