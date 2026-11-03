@@ -14,11 +14,16 @@
 # The Gate and CI must run on this pull request, above all when Spinel moves,
 # but GitHub starts no workflows for a push or a pull request made with
 # GITHUB_TOKEN. Set the repository secret RELEASE_PR_TOKEN (a fine-grained
-# token for this repository with Contents and Pull requests: read and write)
-# and the run pushes and opens the pull request with it, so they run. Without
-# it the run uses GITHUB_TOKEN, which needs Settings -> Actions -> General ->
-# Workflow permissions -> "Allow GitHub Actions to create and approve pull
-# requests", and the pull request says the checks must be started by hand.
+# token for this repository with Contents, Pull requests and Workflows: read
+# and write) and the run pushes and opens the pull request with it, so they
+# run. Workflows is needed because a Spinel bump changes
+# .github/workflows/ci.yml, which GitHub refuses to take from a push without
+# it; GITHUB_TOKEN can never have it, so without RELEASE_PR_TOKEN a Spinel
+# bump stops before anything is pushed. A version-only bump still works
+# without it: the run uses GITHUB_TOKEN, which needs Settings -> Actions ->
+# General -> Workflow permissions -> "Allow GitHub Actions to create and
+# approve pull requests", and the pull request says the checks must be
+# started by hand.
 name: Bump version
 
 on:
@@ -102,6 +107,15 @@ jobs:
 
       # The same pins script/gate checks, so a pull request that would fail the
       # Gate on them is never opened.
+      # GITHUB_TOKEN cannot push a change to .github/workflows/ (no Workflows
+      # permission), so say why here rather than fail at the push.
+      - name: A change to ci.yml has a token that may push it
+        run: |
+          if ! git diff --quiet -- .github/workflows/ && [ "$HAS_PR_TOKEN" != "true" ]; then
+            echo "::error::moving Spinel changes .github/workflows/ci.yml, which GITHUB_TOKEN may not push; set the RELEASE_PR_TOKEN secret (Contents, Pull requests and Workflows: read and write)"
+            exit 1
+          fi
+
       - name: The pins agree
         run: |
           ruby -e '
