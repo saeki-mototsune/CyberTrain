@@ -7,8 +7,8 @@
 # Cybertrain::SPINEL_REPOSITORY, runs script/bump-version (cybertrain/version.rb,
 # spin.toml, ci.yml's SPINEL_TAG and the tests' expected numbers) and pushes
 # the result to release/bump-vX.Y.Z with a pull request against main. A second
-# run for the same version updates that branch and leaves the open pull
-# request as it is. The site and the guides move later, in the release run
+# run for the same version updates that branch and the open pull request's
+# title and body. The site and the guides move later, in the release run
 # (release.yml, sync-site-versions).
 #
 # The Gate and CI must run on this pull request, above all when Spinel moves,
@@ -147,16 +147,10 @@ jobs:
           git commit -q -a -m "$title" -m "Moved by script/bump-version in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
           git push --force origin "$BRANCH"
 
-          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$open" ]; then
-            echo "pull request #$open is already open; its branch is updated"
-            exit 0
-          fi
-
           if [ "$HAS_PR_TOKEN" = "true" ]; then
-            checks="The Gate and CI run on this pull request (it was opened with RELEASE_PR_TOKEN)."
+            checks="The Gate and CI run on this pull request (its branch was pushed with RELEASE_PR_TOKEN)."
           else
-            checks="**The Gate and CI did not start**: this pull request was opened with GITHUB_TOKEN, which starts no workflows. Close and reopen it (or push a commit to the branch) to run them, or set the RELEASE_PR_TOKEN secret (see .github/workflows/bump-version.yml)."
+            checks="**The Gate and CI did not start**: its branch was pushed with GITHUB_TOKEN, which starts no workflows. Close and reopen it (or push a commit to the branch) to run them, or set the RELEASE_PR_TOKEN secret (see .github/workflows/bump-version.yml)."
           fi
           body="Moves main from cybertrain $old_version (Spinel $old_spinel) to cybertrain $VERSION (Spinel $spinel), with \`script/bump-version\`: \`cybertrain/version.rb\`, \`spin.toml\`, \`SPINEL_TAG\` in \`.github/workflows/ci.yml\` and the numbers the tests expect.
 
@@ -164,5 +158,14 @@ jobs:
 
           After merging, tag and push \`v$VERSION\` (CONTRIBUTING.md \"Releasing\", step 2). The site and the guides move in the release run.
 
-          Opened by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
-          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" --title "$title" --body "$body"
+          From $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+
+          # A second run for the same version (say, with another Spinel tag)
+          # moves the open pull request's title and body along with its branch.
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh pr edit "$open" --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+            echo "pull request #$open is already open; its branch, title and body are updated"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" --title "$title" --body "$body"
+          fi
