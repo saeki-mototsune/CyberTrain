@@ -10,7 +10,8 @@ it in GitHub Codespaces ([the playground page](https://saeki-mototsune.github.io
 says what to expect there).
 
 - Tags: `latest` is the latest tested build of `main`; `X.Y.Z` comes from the
-  release tag `vX.Y.Z`, which also moves `latest`; a manual run of the
+  release tag `vX.Y.Z` once every release check has passed on it, which also
+  moves `latest`; a manual run of the
   workflow pushes the tag it is given.
 - Platform: `linux/amd64` only. On an arm64 machine, build it yourself
   (below).
@@ -217,15 +218,16 @@ server started by hand (D4) and the offline app (B3).
 [.github/workflows/playground-image.yml](../.github/workflows/playground-image.yml)
 ("Playground image") runs on pull requests and pushes to `main` that touch
 `playground/`, `.devcontainer/`, `cybertrain/`, `cybertrain.rb`,
-`cybertrain.gemspec`, `spin.toml`, `exe/` or the workflow itself, on every
-`v*` tag (GitHub does not apply path filters to tags), and by hand. It
-checks that `devcontainer.json` is valid JSON and, on a tag, that the tag is
-`v` + `Cybertrain::VERSION` (any other `v*` tag fails the run before the
-build), builds the `playground` target for `linux/amd64` with the GitHub
+`cybertrain.gemspec`, `spin.toml`, `exe/` or the workflow itself, and by
+hand. A `v*` tag does not run it directly: the Release workflow
+([.github/workflows/release.yml](../.github/workflows/release.yml)) calls
+it only after the Gate, CI and the blog image have passed on the tag. It
+checks that `devcontainer.json` is valid JSON and, for a release tag, that
+the tag is `v` + `Cybertrain::VERSION`, builds the `playground` target for `linux/amd64` with the GitHub
 Actions cache (a change to the framework alone rebuilds only the mirror and
 the blog), runs the smoke test and then, except on pull requests, pushes the
-image it tested: `latest` from `main`, `X.Y.Z` and `latest` from a tag
-`vX.Y.Z`, and the given tag from a manual run (Actions → Playground image →
+image it tested: `latest` from `main`, `X.Y.Z` and `latest` for a release
+tag `vX.Y.Z`, and the given tag from a manual run (Actions → Playground image →
 Run workflow, on `main`).
 
 ## Owner's one-time steps

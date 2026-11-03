@@ -12,6 +12,10 @@
 # that moves to a new Spinel release is released only if everything passes on
 # it. If any of them fails, no release is created; fix it, move or re-push the
 # tag (or push a new one) and the checks run again.
+#
+# Only once they have all passed does it build, smoke-test and push the
+# playground image X.Y.Z and latest (playground-image.yml), and the release
+# is created after that push succeeds.
 name: Release
 
 on:
@@ -75,8 +79,17 @@ jobs:
     with:
       ref: refs/tags/${{ inputs.tag || github.ref_name }}
 
-  release:
+  playground-image:
     needs: [version, gate, ci, blog-image]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/playground-image.yml
+    with:
+      release_tag: ${{ inputs.tag || github.ref_name }}
+
+  release:
+    needs: [version, gate, ci, blog-image, playground-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

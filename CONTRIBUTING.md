@@ -276,8 +276,10 @@ before the gem is pushed:
    dependency by that version.
 2. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
-4. The tag also publishes the playground image
-   `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z` (and `latest`) through
+4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml),
+   which tests the tag (below) and, only if every check passes, publishes the
+   playground image `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
+   (and `latest`) through
    [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml);
    check that run.
 5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
@@ -285,8 +287,9 @@ before the gem is pushed:
    [.github/workflows/release.yml](.github/workflows/release.yml). That
    workflow first runs the Gate, the full CI (Linux and macOS, built against
    the Spinel release the tag pins) and the blog image's smoke test on the
-   tagged commit, and creates the release only if all of them pass; if one
-   fails, no release is made. For a tag pushed without a release, run that
+   tagged commit, then pushes the playground image, and creates the release
+   only if all of them pass; if one fails, neither the image nor the release
+   is published. For a tag pushed without a release, run that
    workflow by hand with the tag.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
