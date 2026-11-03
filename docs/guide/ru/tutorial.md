@@ -1,5 +1,5 @@
 ---
-source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
+source_sha256: a7fba933f53c771e7fec2533d2d7361dbaaee7ea7b99b9d60b5ba632b6f6b4da
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -1124,7 +1124,7 @@ kamal deploy   # каждое следующее развёртывание
 (`builder.context: ../..`; `Dockerfile.dockerignore` отправляет только
 фреймворк и приложение). CI
 ([`blog-image.yml`](../../.github/workflows/blog-image.yml)) собирает этот
-образ при каждом изменении и убеждается, что проходит проверка
+образ при каждом релизе и убеждается, что проходит проверка
 работоспособности, статья создаётся через форму, контейнер корректно
 останавливается, а база данных сохраняется на томе; кроме того, он загружает
 `config/deploy.yml` через Kamal.

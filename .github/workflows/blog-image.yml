@@ -3,38 +3,48 @@
 # and smoke-tests it the way kamal-proxy and a visitor use it: migrations on
 # boot, the /up.html health check, an article created through the form, a
 # clean stop on SIGTERM and the database kept on its volume across
-# containers. Also loads examples/blog/config/deploy.yml with Kamal. Nothing
-# is pushed. See examples/blog/README.md, "Deploying with Kamal".
+# containers. Also loads examples/blog/config/deploy.yml with Kamal. See
+# examples/blog/README.md, "Deploying with Kamal".
+# It runs from release.yml, by hand (Actions -> Blog image -> Run workflow,
+# which pushes nothing), and on a pull request that touches the image's own
+# files (below; nothing is pushed). A framework change alone is tested by
+# ci.yml and reaches the image at the next release. Pushes to main do not
+# run it.
+# release.yml calls it twice for a tag vX.Y.Z: with `ref` as one of the
+# checks, and, only after every check has passed, with `release_tag`, which
+# also pushes the tested image to GHCR as X.Y.Z and latest.
 name: Blog image
 
 on:
   pull_request:
     paths:
       - "examples/blog/**"
-      - "cybertrain/**"
-      - "cybertrain.rb"
-      - "cybertrain.gemspec"
-      - "spin.toml"
-      - "exe/**"
-      - ".github/workflows/blog-image.yml"
-  push:
-    branches: [main]
-    paths:
-      - "examples/blog/**"
-      - "cybertrain/**"
-      - "cybertrain.rb"
-      - "cybertrain.gemspec"
-      - "spin.toml"
-      - "exe/**"
       - ".github/workflows/blog-image.yml"
   workflow_dispatch:
+  # release.yml runs this file on the tag before it creates a release.
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to check out (default: the commit that triggered the run)"
+        type: string
+        required: false
+        default: ""
+      release_tag:
+        description: "Release tag vX.Y.Z to build, test and push as X.Y.Z and latest (default: push nothing)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
-  group: blog-image-${{ github.ref }}
+  group: blog-image-${{ inputs.release_tag || inputs.ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/saeki-mototsune/cybertrain-blog
 
 jobs:
   image:
@@ -43,7 +53,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref || (inputs.release_tag && format('refs/tags/{0}', inputs.release_tag)) || '' }}
           persist-credentials: false
+
+      - name: The tag is v + Cybertrain::VERSION
+        if: inputs.release_tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+          test "$RELEASE_TAG" = "v$version" || { echo "tag $RELEASE_TAG is not v$version (cybertrain/version.rb)"; exit 1; }
 
       - uses: ruby/setup-ruby@v1
         with:
@@ -114,3 +133,22 @@ jobs:
           docker exec blog ./blog db status | grep -q "up"
           docker rm -f blog > /dev/null
           echo "smoke: ok"
+
+      - name: Log in to GHCR
+        if: inputs.release_tag
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push the tested image
+        if: inputs.release_tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          for tag in "$version" latest; do
+            docker tag blog:ci "$IMAGE:$tag"
+            docker push "$IMAGE:$tag"
+          done

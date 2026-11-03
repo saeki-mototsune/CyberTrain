@@ -1089,7 +1089,7 @@ installing the gem, and the build context is the repository root
 (`builder.context: ../..`, with `Dockerfile.dockerignore` sending only the
 framework and the app). CI
 ([`blog-image.yml`](../../.github/workflows/blog-image.yml)) builds that image
-on every change, checks the health check, an article created through the form,
+for every release, checks the health check, an article created through the form,
 a clean stop and the database kept on its volume, and loads
 `config/deploy.yml` with Kamal.
 

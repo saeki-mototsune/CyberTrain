@@ -1,5 +1,5 @@
 ---
-source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
+source_sha256: a7fba933f53c771e7fec2533d2d7361dbaaee7ea7b99b9d60b5ba632b6f6b4da
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -1158,7 +1158,7 @@ d’installer la gem, et le contexte de build est la racine du dépôt
 (`builder.context: ../..`, `Dockerfile.dockerignore` n’envoyant que le
 framework et l’application). La CI
 ([`blog-image.yml`](../../.github/workflows/blog-image.yml)) construit cette
-image à chaque modification, vérifie le contrôle de santé, la création d’un
+image à chaque version publiée, vérifie le contrôle de santé, la création d’un
 article via le formulaire, l’arrêt propre et la base conservée sur son volume,
 et charge `config/deploy.yml` avec Kamal.
 
