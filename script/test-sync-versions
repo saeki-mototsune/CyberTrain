@@ -1,0 +1,154 @@
+#!/usr/bin/env ruby
+# Tests script/sync-versions in a throwaway git repository: two tagged
+# releases, pages that name the older one, and records of releases before it
+# that must stay as they are. CRuby only, no gems; script/gate runs it when
+# script/sync-versions or this file changes.
+#
+# usage: ruby script/test-sync-versions
+require "digest"
+require "fileutils"
+require "open3"
+require "tmpdir"
+
+SCRIPT = File.expand_path("sync-versions", __dir__)
+$failures = 0
+
+def check(name, cond, detail = nil)
+  if cond
+    puts "ok    #{name}"
+  else
+    $failures += 1
+    puts "FAIL  #{name}#{detail ? "\n      #{detail}" : ""}"
+  end
+end
+
+def sh!(dir, *cmd)
+  out, status = Open3.capture2e(*cmd, chdir: dir)
+  raise "#{cmd.join(" ")} failed:\n#{out}" unless status.success?
+  out
+end
+
+def version_rb(version, spinel)
+  <<~RB
+    module Cybertrain
+      VERSION = "#{version}"
+      SPINEL_TAG = "#{spinel}"
+    end
+  RB
+end
+
+def read(dir, path)
+  File.read(File.join(dir, path), encoding: "UTF-8")
+end
+
+def write(dir, path, text)
+  full = File.join(dir, path)
+  FileUtils.mkdir_p(File.dirname(full))
+  File.write(full, text)
+end
+
+Dir.mktmpdir("sync-versions") do |dir|
+  sh!(dir, "git", "init", "-q", "-b", "main")
+  sh!(dir, "git", "config", "user.email", "test@example.com")
+  sh!(dir, "git", "config", "user.name", "test")
+  sh!(dir, "git", "config", "commit.gpgsign", "false")
+  sh!(dir, "git", "config", "tag.gpgsign", "false")
+
+  # Two earlier releases, so the default OLD_TAG must pick the closest one.
+  write(dir, "cybertrain/version.rb", version_rb("0.2.9", "2026.08.01"))
+  sh!(dir, "git", "add", "-A")
+  sh!(dir, "git", "commit", "-q", "-m", "0.2.9")
+  sh!(dir, "git", "tag", "v0.2.9")
+
+  write(dir, "cybertrain/version.rb", version_rb("0.3.0", "2026.09.12"))
+  page = <<~HTML
+    <p>Spinel 2026.09.12, tag <code>v0.3.0</code>, gem 0.3.0.</p>
+    <p>Measured on CyberTrain 0.2.1 with Spinel 2026.08.01.</p>
+    <p>Not versions: 10.3.01, 0.3.00, 2026.09.123, v0.3.0.1</p>
+  HTML
+  write(dir, "site/index.html", page)
+  write(dir, "site/ja/index.html", page)
+  write(dir, "site/api/index.html", page)
+  write(dir, "docs/guide/install.md", "ref = \"v0.3.0\", Spinel `2026.09.12`\n")
+  write(dir, "docs/guide/ja/tutorial.md", "Booting cybertrain 0.3.0\n")
+  # Translations record the hash of the English page they were made from.
+  en_tutorial = "# Tutorial\n\nBooting cybertrain 0.3.0\n"
+  write(dir, "docs/guide/tutorial.md", en_tutorial)
+  write(dir, "docs/guide/ja/tutorial.md",
+        "---\nsource_sha256: #{Digest::SHA256.hexdigest(en_tutorial)}\n---\n# チュートリアル\n\nBooting cybertrain 0.3.0\n")
+  write(dir, "docs/guide/zh/tutorial.md",
+        "---\nsource_sha256: #{"0" * 64}\n---\n# 教程\n\nBooting cybertrain 0.3.0\n")
+  en_other = "# Other\n\nNo version here.\n"
+  write(dir, "docs/guide/other.md", en_other)
+  write(dir, "docs/guide/ja/other.md",
+        "---\nsource_sha256: #{Digest::SHA256.hexdigest(en_other)}\n---\n# その他\n")
+  write(dir, "docs/deploy.md", "gem install cybertrain -v 0.3.0\n")
+  write(dir, "docs/deploy.en.md", "gem install cybertrain -v 0.3.0\n")
+  write(dir, "docs/spinel-feedback.md", "Checked on 2026.09.12 with 0.3.0.\n")
+  write(dir, "README.md", "Version 0.3.0\n")
+  sh!(dir, "git", "add", "-A")
+  sh!(dir, "git", "commit", "-q", "-m", "0.3.0")
+  sh!(dir, "git", "tag", "v0.3.0")
+
+  write(dir, "cybertrain/version.rb", version_rb("0.3.1", "2026.10.27.7020"))
+  sh!(dir, "git", "add", "-A")
+  sh!(dir, "git", "commit", "-q", "-m", "0.3.1")
+  sh!(dir, "git", "tag", "v0.3.1")
+
+  out, status = Open3.capture2e("ruby", SCRIPT, "v0.3.1", chdir: dir)
+  check("exits 0", status.success?, out)
+  check("names the versions it moves from and to",
+        out.include?("0.3.0 -> 0.3.1") && out.include?("2026.09.12 -> 2026.10.27.7020"), out)
+
+  index = read(dir, "site/index.html")
+  check("site page: Spinel tag moved", index.include?("Spinel 2026.10.27.7020,"), index)
+  check("site page: release tag moved", index.include?("<code>v0.3.1</code>"), index)
+  check("site page: bare version moved", index.include?("gem 0.3.1."), index)
+  check("site page: older releases left alone",
+        index.include?("CyberTrain 0.2.1 with Spinel 2026.08.01"), index)
+  check("site page: longer numbers left alone",
+        index.include?("Not versions: 10.3.01, 0.3.00, 2026.09.123, v0.3.0.1"), index)
+  check("translated site page moved", read(dir, "site/ja/index.html") == index)
+  check("site/api/ left alone (generated)", read(dir, "site/api/index.html") == page)
+  check("guide moved",
+        read(dir, "docs/guide/install.md") == "ref = \"v0.3.1\", Spinel `2026.10.27.7020`\n")
+  new_en = read(dir, "docs/guide/tutorial.md")
+  check("English guide moved", new_en == "# Tutorial\n\nBooting cybertrain 0.3.1\n", new_en)
+  ja = read(dir, "docs/guide/ja/tutorial.md")
+  check("translated guide moved, its source_sha256 with it",
+        ja == "---\nsource_sha256: #{Digest::SHA256.hexdigest(new_en)}\n---\n# チュートリアル\n\nBooting cybertrain 0.3.1\n", ja)
+  zh = read(dir, "docs/guide/zh/tutorial.md")
+  check("a translation already out of step keeps its stale source_sha256",
+        zh == "---\nsource_sha256: #{"0" * 64}\n---\n# 教程\n\nBooting cybertrain 0.3.1\n", zh)
+  check("a translation whose English did not change is left alone",
+        read(dir, "docs/guide/ja/other.md").include?(Digest::SHA256.hexdigest(en_other)))
+  check("deploy docs moved",
+        read(dir, "docs/deploy.md") == "gem install cybertrain -v 0.3.1\n" &&
+        read(dir, "docs/deploy.en.md") == "gem install cybertrain -v 0.3.1\n")
+  check("records left alone",
+        read(dir, "docs/spinel-feedback.md") == "Checked on 2026.09.12 with 0.3.0.\n")
+  check("files outside the set left alone", read(dir, "README.md") == "Version 0.3.0\n")
+  check("lists the files it changed",
+        out.include?("site/index.html") && out.include?("docs/deploy.en.md") && !out.include?("README.md"), out)
+
+  snapshot = Dir.glob("**/*", base: dir).reject { |p| p.start_with?(".git") }.sort.map do |p|
+    full = File.join(dir, p)
+    [p, File.file?(full) ? File.read(full, encoding: "UTF-8") : nil]
+  end
+  out2, status2 = Open3.capture2e("ruby", SCRIPT, "v0.3.0", "v0.3.1", chdir: dir)
+  again = Dir.glob("**/*", base: dir).reject { |p| p.start_with?(".git") }.sort.map do |p|
+    full = File.join(dir, p)
+    [p, File.file?(full) ? File.read(full, encoding: "UTF-8") : nil]
+  end
+  check("second run exits 0", status2.success?, out2)
+  check("second run changes nothing", snapshot == again)
+  check("second run says nothing changed", out2.include?("nothing to change"), out2)
+
+  _, status3 = Open3.capture2e("ruby", SCRIPT, "v9.9.9", chdir: dir)
+  check("unknown tag fails", !status3.success?)
+  _, status4 = Open3.capture2e("ruby", SCRIPT, chdir: dir)
+  check("no tag given fails", !status4.success?)
+end
+
+puts($failures.zero? ? "all passed" : "#{$failures} failed")
+exit($failures.zero? ? 0 : 1)

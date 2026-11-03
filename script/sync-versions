@@ -1,0 +1,107 @@
+#!/usr/bin/env ruby
+# Moves the version numbers the site and the guides name from one release to
+# the next: Cybertrain::VERSION and Cybertrain::SPINEL_TAG as they were at
+# OLD_TAG become their values at NEW_TAG, read from cybertrain/version.rb at
+# each tag. The release workflow (.github/workflows/release.yml) runs it once
+# a release is created and opens a pull request with the result; it can also
+# be run by hand.
+#
+# Only exact numbers move: "0.3.0" moves, and "v0.3.0" with it, but
+# "10.3.01", "0.3.0.1" and the numbers of older releases do not. Only these
+# files are touched, the pages that describe the current release:
+#   site/**/*.html (not site/api/, which is generated)
+#   docs/guide/**/*.md
+#   docs/deploy.md, docs/deploy.en.md
+# Guide translations that were in step with their English page keep up with it
+# (their source_sha256 moves too; see below).
+# Records of what was measured on a given release (docs/benchmark.md,
+# docs/spinel-feedback.md, docs/performance-next.md) are left alone.
+#
+# usage: script/sync-versions NEW_TAG            from the release tag before NEW_TAG
+#        script/sync-versions OLD_TAG NEW_TAG
+# Prints the files it changed; prints "nothing to change" and exits 0 when
+# none needed it. Exits 1 when a tag or its cybertrain/version.rb is missing.
+require "digest"
+require "open3"
+require "rubygems"
+
+FILES = [
+  %r{\Asite/(?!api/).*\.html\z},
+  %r{\Adocs/guide/.*\.md\z},
+  %r{\Adocs/deploy(\.en)?\.md\z}
+].freeze
+TAG = /\Av(\d+\.\d+\.\d+)\z/
+
+def die(message)
+  warn "sync-versions: #{message}"
+  exit 1
+end
+
+def git(*args)
+  out, status = Open3.capture2("git", *args, err: File::NULL)
+  status.success? ? out : nil
+end
+
+def pins(tag)
+  source = git("show", "#{tag}:cybertrain/version.rb") or die "no cybertrain/version.rb at #{tag}"
+  version = source[/^\s*VERSION = "([^"]+)"/, 1] or die "no VERSION in cybertrain/version.rb at #{tag}"
+  spinel = source[/^\s*SPINEL_TAG = "([^"]+)"/, 1] or die "no SPINEL_TAG in cybertrain/version.rb at #{tag}"
+  { version: version, spinel: spinel }
+end
+
+# The highest vX.Y.Z tag below new_tag.
+def previous_tag(new_tag)
+  current = Gem::Version.new(new_tag[TAG, 1] || die("#{new_tag} is not vX.Y.Z"))
+  (git("tag", "--list", "v*") || "").split.select { |t| t.match?(TAG) }
+    .map { |t| [Gem::Version.new(t[TAG, 1]), t] }
+    .select { |v, _| v < current }.max&.last or die "no release tag before #{new_tag}"
+end
+
+# The number on its own: not inside a longer number such as 10.3.01 or 0.3.0.1.
+def exact(number)
+  /(?<![\d.])#{Regexp.escape(number)}(?!\d|\.\d)/
+end
+
+case ARGV.size
+when 1 then new_tag = ARGV[0]; old_tag = nil
+when 2 then old_tag, new_tag = ARGV
+else die "usage: script/sync-versions [OLD_TAG] NEW_TAG"
+end
+
+root = git("rev-parse", "--show-toplevel") or die "not in a git repository"
+Dir.chdir(root.chomp)
+git("rev-parse", "--verify", "--quiet", "refs/tags/#{new_tag}") or die "no tag #{new_tag}"
+old_tag ||= previous_tag(new_tag)
+git("rev-parse", "--verify", "--quiet", "refs/tags/#{old_tag}") or die "no tag #{old_tag}"
+
+old = pins(old_tag)
+new = pins(new_tag)
+moves = %i[version spinel].map { |k| [old[k], new[k]] }.reject { |from, to| from == to }
+puts "#{old_tag} -> #{new_tag}: #{%i[version spinel].map { |k| "#{old[k]} -> #{new[k]}" }.join(", ")}"
+
+files = git("ls-files", "-z").split("\0").select { |f| FILES.any? { |re| f.match?(re) } && File.file?(f) }.sort
+before = files.to_h { |f| [f, File.binread(f).force_encoding("UTF-8")] }
+after = before.transform_values { |text| moves.reduce(text) { |t, (from, to)| t.gsub(exact(from), to) } }
+
+# A guide translation records the SHA-256 of the English page it was made from
+# (source_sha256, see script/check-guide-i18n). When the English page only had
+# its numbers moved, a translation that was in step with it stays in step: its
+# hash moves to the new English page. One that was already behind keeps its
+# old hash, so the check still reports it.
+after.each_key do |file|
+  next unless (m = file.match(%r{\Adocs/guide/[a-z]{2}/(.+\.md)\z}))
+  english = "docs/guide/#{m[1]}"
+  next unless before.key?(english) && before[english] != after[english]
+  old_sha = Digest::SHA256.hexdigest(before[english])
+  new_sha = Digest::SHA256.hexdigest(after[english])
+  after[file] = after[file].sub(/^source_sha256: #{old_sha}$/) { "source_sha256: #{new_sha}" }
+end
+
+changed = files.reject { |f| after[f] == before[f] }
+changed.each { |f| File.binwrite(f, after[f]) }
+
+if changed.empty?
+  puts "nothing to change"
+else
+  changed.each { |f| puts "changed #{f}" }
+end

@@ -300,6 +300,21 @@ before the gem is pushed:
    created, the same run attaches a Linux build of the fork's latest Spinel
    release (`spinel-<tag>-linux-x86_64.tar.gz`, for Claude Code cloud
    sessions; see below); check that its `spinel-prebuilt` job passed.
+6. Once the release is created, the same run opens a pull request,
+   "Site and guides: name vX.Y.Z", that moves the version numbers the site
+   (`site/`) and the guides (`docs/guide/`, `docs/deploy.md`,
+   `docs/deploy.en.md`) name, `Cybertrain::VERSION` and
+   `Cybertrain::SPINEL_TAG`, from the previous release to this one, with
+   [script/sync-versions](script/sync-versions). Check the diff and merge it;
+   merging deploys the site. The Gate and CI do not run on that pull request
+   (GitHub starts no workflows for one opened by the workflow token), and it
+   only replaces numbers. It is opened only for the newest release tag, and
+   needs the repository setting Settings -> Actions -> General -> "Allow
+   GitHub Actions to create and approve pull requests". If that job fails,
+   run `script/sync-versions vX.Y.Z` on a branch from `main` and open the
+   pull request yourself. Pages that describe the current release should
+   name it by its number so the script finds it; a record of what was
+   measured on a given release belongs in `docs/` outside those files.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in

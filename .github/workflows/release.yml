@@ -31,6 +31,11 @@
 # After the release is created, spinel-prebuilt.yml attaches a Linux build of
 # the latest Spinel release of the fork, for Claude Code cloud sessions
 # (script/claude-cloud-setup downloads it from the latest release).
+#
+# After the release, for the newest release tag only, it opens a pull request
+# that moves the version numbers the site and the guides name to this release
+# (script/sync-versions; see the sync-site-versions job). Merging it deploys
+# the site.
 name: Release
 
 on:
@@ -172,3 +177,68 @@ jobs:
     uses: ./.github/workflows/spinel-prebuilt.yml
     with:
       release: ${{ inputs.tag || github.ref_name }}
+
+  # Once the release exists: a pull request against main that moves the version
+  # numbers the site and the guides name (Cybertrain::VERSION and SPINEL_TAG)
+  # from the previous release to this one, with script/sync-versions. Merging
+  # it deploys the site (pages.yml). Only for the newest release tag, so that
+  # releasing an older tag by hand does not move the site back. A second run
+  # for the same tag updates the branch and leaves the open pull request as it
+  # is. A pull request opened with GITHUB_TOKEN starts no workflows, so the
+  # Gate and CI do not run on it; it only replaces numbers.
+  # Needs Settings -> Actions -> General -> Workflow permissions -> "Allow
+  # GitHub Actions to create and approve pull requests". When this job fails,
+  # the release is already created: run script/sync-versions by hand.
+  sync-site-versions:
+    needs: [release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      BRANCH: release/sync-versions-${{ inputs.tag || github.ref_name }}
+    steps:
+      # All history and tags: the script reads cybertrain/version.rb at this
+      # tag and at the one before it.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Move the version numbers to this release
+        id: sync
+        run: |
+          newest=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          if [ "$TAG" != "$newest" ]; then
+            echo "$TAG is not the newest release tag ($newest); the site is left as it is"
+            exit 0
+          fi
+          script/sync-versions "$TAG"
+          if git diff --quiet; then
+            echo "the site and the guides already name $TAG"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open the pull request
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -q -a -m "Site and guides: name $TAG" -m "Moved by script/sync-versions in the release run for $TAG."
+          git push --force origin "$BRANCH"
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            echo "pull request #$open is already open; its branch is updated"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
+              --title "Site and guides: name $TAG" \
+              --body "The release $TAG is published. This moves the version numbers the site and the guides name (Cybertrain::VERSION and Cybertrain::SPINEL_TAG) from the previous release to $TAG, with \`script/sync-versions\`. Merging it deploys the site.
+
+          Opened by the release run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. The Gate and CI do not run on a pull request opened this way; check the diff, which only replaces numbers."
+          fi
