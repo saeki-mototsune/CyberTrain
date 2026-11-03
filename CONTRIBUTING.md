@@ -282,8 +282,12 @@ before the gem is pushed:
    check that run.
 5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
    from the pull requests merged since the previous tag, through
-   [.github/workflows/release.yml](.github/workflows/release.yml). For a tag
-   pushed without a release, run that workflow by hand with the tag.
+   [.github/workflows/release.yml](.github/workflows/release.yml). That
+   workflow first runs the Gate, the full CI (Linux and macOS, built against
+   the Spinel release the tag pins) and the blog image's smoke test on the
+   tagged commit, and creates the release only if all of them pass; if one
+   fails, no release is made. For a tag pushed without a release, run that
+   workflow by hand with the tag.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in

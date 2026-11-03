@@ -37,6 +37,16 @@ on:
       - ".github/workflows/ci.yml"
       - "docs/api/**"
       - "script/api-docs"
+  # release.yml runs this whole file on the tag before it creates a release
+  # (with `ref` set to the tag on a manual release run, which takes this file
+  # from the branch it was started on).
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to check out and test (default: the commit that triggered the run)"
+        type: string
+        required: false
+        default: ""
 
 # A new push to a pull request cancels the run still going for its previous
 # commit: only the latest commit's result matters, and a run takes about 15
@@ -48,6 +58,9 @@ concurrency:
 env:
   # Must equal Cybertrain::SPINEL_TAG (script/gate checks, in the Gate
   # workflow): the release the CLI installs and the framework is tested against.
+  # The cache key below reads the tag from the checked-out
+  # cybertrain/version.rb instead, so that a release run testing a tag with
+  # another branch's copy of this file still keys the toolchain it builds.
   SPINEL_TAG: "2026.10.27.7020"
 
 jobs:
@@ -59,6 +72,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: ruby/setup-ruby@v1
         with:
@@ -106,14 +121,18 @@ jobs:
       # a step copies them into an output first.
       - name: Name the runner image
         id: image
-        run: echo "id=${ImageOS:-unknown}-${ImageVersion:-0}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "id=${ImageOS:-unknown}-${ImageVersion:-0}" >> "$GITHUB_OUTPUT"
+          spinel_tag=$(sed -n 's/^ *SPINEL_TAG = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+          test -n "$spinel_tag" || { echo "no SPINEL_TAG in cybertrain/version.rb"; exit 1; }
+          echo "spinel_tag=$spinel_tag" >> "$GITHUB_OUTPUT"
 
       - name: Restore the Spinel toolchain
         id: spinel-cache
         uses: actions/cache/restore@v4
         with:
           path: ~/.cybertrain/spinel
-          key: spinel-${{ env.SPINEL_TAG }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v3
+          key: spinel-${{ steps.image.outputs.spinel_tag }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v3
 
       # `cybertrain setup` is how users get Spinel, so CI gets it the same
       # way: a cache miss builds the release, a hit verifies it.

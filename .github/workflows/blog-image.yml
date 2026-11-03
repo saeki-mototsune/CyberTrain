@@ -28,6 +28,14 @@ on:
       - "exe/**"
       - ".github/workflows/blog-image.yml"
   workflow_dispatch:
+  # release.yml runs this file on the tag before it creates a release.
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to check out (default: the commit that triggered the run)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -43,6 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - uses: ruby/setup-ruby@v1
