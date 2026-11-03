@@ -18,7 +18,10 @@
 # cannot make the jobs test different commits. Before the images are pushed
 # and again before the release is created, the run checks that the tag still
 # points to that commit, and stops if it does not (the run for the moved tag
-# tests the new commit).
+# tests the new commit). A tag moved after the first check, while the images
+# are being pushed, still stops the release, but the images built from the
+# tested commit stay pushed; only a tag ruleset (a repository setting) keeps
+# the tag from moving at all.
 #
 # Only once they have all passed does it build, smoke-test and push the
 # playground image (playground-image.yml) and the blog image
@@ -55,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.version.outputs.sha }}
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
           persist-credentials: false
 
       - name: Resolve the tag to one commit
