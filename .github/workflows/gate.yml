@@ -11,6 +11,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml runs this file on the tag before it creates a release.
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to check out (default: the commit that triggered the run)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -20,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
@@ -32,6 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"

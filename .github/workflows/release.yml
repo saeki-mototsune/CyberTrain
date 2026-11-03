@@ -3,6 +3,30 @@
 # (CONTRIBUTING.md "Releasing", step 2); a manual run takes an existing tag, for a tag
 # pushed before this workflow existed. A tag that already has a release fails
 # the run rather than overwriting it.
+#
+# The release is created only when the tag passes every check first: the
+# version check below, the Gate (gate.yml), the full test suite on Linux and
+# macOS (ci.yml) and the blog image's build and smoke test (blog-image.yml),
+# all run on the tagged commit. CI builds and tests against the Spinel release
+# that commit pins (Cybertrain::SPINEL_TAG in cybertrain/version.rb), so a tag
+# that moves to a new Spinel release is released only if everything passes on
+# it. If any of them fails, no release is created; fix it, move or re-push the
+# tag (or push a new one) and the checks run again.
+#
+# The version job resolves the tag to one commit, and every check and image
+# build checks out that commit, not the tag: a tag moved while a run is going
+# cannot make the jobs test different commits. Before the images are pushed
+# and again before the release is created, the run checks that the tag still
+# points to that commit, and stops if it does not (the run for the moved tag
+# tests the new commit). A tag moved after the first check, while the images
+# are being pushed, still stops the release, but the images built from the
+# tested commit stay pushed; only a tag ruleset (a repository setting) keeps
+# the tag from moving at all.
+#
+# Only once they have all passed does it build, smoke-test and push the
+# playground image (playground-image.yml) and the blog image
+# (blog-image.yml with release_tag), each as X.Y.Z and latest, and the
+# release is created after both pushes succeed.
 name: Release
 
 on:
@@ -14,13 +38,21 @@ on:
         description: "Existing tag to release (vX.Y.Z)"
         required: true
 
+# Each job below raises what it needs; the called workflows get read access only.
 permissions:
-  contents: write
+  contents: read
+
+# One release run per tag; a second run for the same tag waits for the first.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  release:
+  version:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
@@ -29,10 +61,98 @@ jobs:
           ref: refs/tags/${{ inputs.tag || github.ref_name }}
           persist-credentials: false
 
+      - name: Resolve the tag to one commit
+        id: resolve
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: The tag is v + Cybertrain::VERSION
         run: |
           version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
           test "$TAG" = "v$version" || { echo "tag $TAG is not v$version (cybertrain/version.rb)"; exit 1; }
+
+      - name: The tag has no release yet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "release $TAG already exists"; exit 1
+          fi
+
+  gate:
+    needs: version
+    uses: ./.github/workflows/gate.yml
+    with:
+      ref: ${{ needs.version.outputs.sha }}
+
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.version.outputs.sha }}
+
+  # A check only: blog-image.yml pushes nothing without release_tag.
+  # (The workflow asks for packages: write for its release push.)
+  blog-image:
+    needs: version
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/blog-image.yml
+    with:
+      ref: ${{ needs.version.outputs.sha }}
+
+  # Between the checks and the first push: the tag still names what was tested.
+  tag-unchanged:
+    needs: [version, gate, ci, blog-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: The tag still points to the tested commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          now=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)
+          test "$now" = "$SHA" || { echo "tag $TAG moved from $SHA to $now during this run; not publishing"; exit 1; }
+
+  playground-image:
+    needs: [version, tag-unchanged]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/playground-image.yml
+    with:
+      ref: ${{ needs.version.outputs.sha }}
+      release_tag: ${{ inputs.tag || github.ref_name }}
+
+  blog-image-push:
+    needs: [version, tag-unchanged]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/blog-image.yml
+    with:
+      ref: ${{ needs.version.outputs.sha }}
+      release_tag: ${{ inputs.tag || github.ref_name }}
+
+  release:
+    needs: [version, gate, ci, blog-image, tag-unchanged, playground-image, blog-image-push]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: The tag still points to the tested commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          now=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)
+          test "$now" = "$SHA" || { echo "tag $TAG moved from $SHA to $now during this run; not publishing"; exit 1; }
 
       - name: Create the release
         env:

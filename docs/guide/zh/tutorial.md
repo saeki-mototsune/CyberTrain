@@ -1,5 +1,5 @@
 ---
-source_sha256: d691894e4f45f3ee5fb2e51331b94c5dffa04f59d9509ebc3a0aab1fc31b4053
+source_sha256: a7fba933f53c771e7fec2533d2d7361dbaaee7ea7b99b9d60b5ba632b6f6b4da
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -752,7 +752,7 @@ kamal deploy   # 之后的每次部署
 
 二进制文件在镜像内编译，因此操作系统总与镜像一致；请把 `config/deploy.yml` 中的 `builder.arch` 设为服务器的 CPU 架构。只部署到一台服务器：数据库是该服务器卷上的一个 SQLite 文件。[`docs/deploy.md`](../../docs/deploy.md#第-8-部-kamal-でデプロイする)（日文；英文版见 [`docs/deploy-kamal.md`](../../docs/deploy-kamal.md)）第 8 部分完整介绍了这一流程，包括备份。
 
-完成的应用 [`examples/blog`](../../examples/blog#deploying-with-kamal) 也带有这套配置，只有一处不同：它针对仓库中的框架构建（其 `spin.toml` 中的 `path = "../.."`），因此它的 `Dockerfile` 不安装 gem，而是从检出目录运行 `cybertrain setup` 和 `cybertrain build`，构建上下文是仓库根目录（`builder.context: ../..`，由 `Dockerfile.dockerignore` 只发送框架和应用）。CI（[`blog-image.yml`](../../.github/workflows/blog-image.yml)）在每次变更时构建该镜像，检查健康检查、通过表单创建文章、正常停止以及数据库保留在卷上，并用 Kamal 加载 `config/deploy.yml`。
+完成的应用 [`examples/blog`](../../examples/blog#deploying-with-kamal) 也带有这套配置，只有一处不同：它针对仓库中的框架构建（其 `spin.toml` 中的 `path = "../.."`），因此它的 `Dockerfile` 不安装 gem，而是从检出目录运行 `cybertrain setup` 和 `cybertrain build`，构建上下文是仓库根目录（`builder.context: ../..`，由 `Dockerfile.dockerignore` 只发送框架和应用）。CI（[`blog-image.yml`](../../.github/workflows/blog-image.yml)）在每次发布时构建该镜像，检查健康检查、通过表单创建文章、正常停止以及数据库保留在卷上，并用 Kamal 加载 `config/deploy.yml`。
 
 > [!NOTE]
 > 这些部分如何组合，以及 Kamal 与 Caddy 之后的服务器的比较，见[部署页面](site:deploy.html)。

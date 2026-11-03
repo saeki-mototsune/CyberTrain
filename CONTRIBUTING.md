@@ -276,14 +276,26 @@ before the gem is pushed:
    dependency by that version.
 2. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
-4. The tag also publishes the playground image
-   `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z` (and `latest`) through
-   [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml);
+4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml),
+   which tests the tag (below) and, only if every check passes, publishes the
+   playground image `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
+   (and `latest`) through
+   [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml)
+   and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z` (and
+   `latest`) through
+   [.github/workflows/blog-image.yml](.github/workflows/blog-image.yml);
    check that run.
 5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
    from the pull requests merged since the previous tag, through
-   [.github/workflows/release.yml](.github/workflows/release.yml). For a tag
-   pushed without a release, run that workflow by hand with the tag.
+   [.github/workflows/release.yml](.github/workflows/release.yml). That
+   workflow first runs the Gate, the full CI (Linux and macOS, built against
+   the Spinel release the tag pins) and the blog image's smoke test on the
+   tagged commit. If any of those fails, nothing is published. Once they
+   pass, it pushes the playground and blog images (in parallel) and then
+   creates the release. If one image push fails, no release is created, but
+   the other image's `X.Y.Z` and `latest` may already be pushed: check both
+   packages before re-running the failed jobs. For a tag pushed without a
+   release, run that workflow by hand with the tag.
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in
