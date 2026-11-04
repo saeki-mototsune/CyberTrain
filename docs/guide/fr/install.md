@@ -1,5 +1,5 @@
 ---
-source_sha256: f2fc66817b4de63dd2d3fa3ee4cdba0c25960cae6ec4de300b2cc3d671220cf2
+source_sha256: c87ce67ac24c185871c4623dd507b98f101fdc2f82bdcabee74f046f8bda88e6
 ---
 # Installer cybertrain
 
@@ -8,11 +8,11 @@ Ce dont CyberTrain a besoin sur votre machine, comment installer la commande `cy
 > [!NOTE]
 > Pour essayer CyberTrain sans rien installer, ouvrez [le bac à sable](site:playground.html)&nbsp;:
 > GitHub Codespaces ouvre le blog du tutoriel, la commande `cybertrain` et
-> Spinel `2026.10.27.7020` dans VS Code, dans votre navigateur. La même image tourne aussi en local avec Docker.
+> Spinel `2026.11.04.7026` dans VS Code, dans votre navigateur. La même image tourne aussi en local avec Docker.
 
 ## Prérequis
 
-- Spinel `2026.10.27.7020` (`Cybertrain::SPINEL_TAG`, la même version que
+- Spinel `2026.11.04.7026` (`Cybertrain::SPINEL_TAG`, la même version que
   `SPINEL_TAG` dans [.github/workflows/ci.yml](../../.github/workflows/ci.yml)),
   une version de [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)
   (`Cybertrain::SPINEL_REPOSITORY`), le fork de matz/spinel qui intègre les
@@ -109,7 +109,7 @@ partir de là, de `cybertrain new` à `cybertrain build`.
 - `cybertrain spin ARGS...` lance `spin` avec le Spinel épinglé, depuis
   n’importe quel répertoire (`cybertrain spin test`,
   `cybertrain spin run gen -- --check`).
-- `cybertrain setup [--force]` installe Spinel `2026.10.27.7020` dans
+- `cybertrain setup [--force]` installe Spinel `2026.11.04.7026` dans
   `~/.cybertrain`, sauf si un `spinel` de cette version est déjà dans le
   `PATH`&nbsp;; `--force` recompile la copie sous `~/.cybertrain`.
 - `cybertrain doctor` vérifie la chaîne de compilation C, les en-têtes SQLite
@@ -125,11 +125,11 @@ Chaque commande qui lance `spin` (`new`, `db`, `server`, `build`, `spin`)
 s’assure d’abord qu’un Spinel de la version de `Cybertrain::SPINEL_TAG` est
 disponible. Un `spinel` du `PATH` (accompagné d’un `spin`) dont
 `spinel --version` indique cette version est utilisé tel quel&nbsp;; sinon, la
-copie que `cybertrain` conserve sous `~/.cybertrain/spinel/2026.10.27.7020/`
+copie que `cybertrain` conserve sous `~/.cybertrain/spinel/2026.11.04.7026/`
 est utilisée&nbsp;; sinon, `cybertrain` compile cette copie à partir du tag de
 version de `Cybertrain::SPINEL_REPOSITORY` (`git clone`, `make deps`,
 `make -j`, `make install PREFIX=...`), une seule fois, en quelques minutes. Le
-journal de compilation est `~/.cybertrain/log/spinel-2026.10.27.7020-build.log`
+journal de compilation est `~/.cybertrain/log/spinel-2026.11.04.7026-build.log`
 (ses dernières lignes sont affichées si une étape échoue).
 
 S’il manque un
@@ -180,7 +180,7 @@ Spinel.
 
 `cybertrain new` écrit l’application avec un `spin.toml` qui pointe vers la
 version correspondant à la CLI (`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }`), s’assure
+"https://github.com/saeki-mototsune/cybertrain", ref = "v0.4.1" }`), s’assure
 que Spinel est installé, puis lance `spin lock` (spin récupère le framework dans
 son cache, `~/.cache/spin/packages/`, et épingle le commit dans `spin.lock`) et
 `spin run gen`, un peu comme `rails new` lance `bundle install`, et affiche les
@@ -210,8 +210,8 @@ N’indiquez qu’une seule des options `--path`, `--version` et `--git`&nbsp;;
 ### Passer une application à une nouvelle version
 
 La gem et le framework sont publiés à partir du même tag, leurs versions
-correspondent donc&nbsp;: la gem 0.3.1 crée des applications qui dépendent du
-framework `v0.3.1`. Pour passer une application à une nouvelle version, mettez
+correspondent donc&nbsp;: la gem 0.4.1 crée des applications qui dépendent du
+framework `v0.4.1`. Pour passer une application à une nouvelle version, mettez
 à jour la gem, faites pointer `spin.toml` vers le nouveau tag, puis lancez, dans
 l’application&nbsp;:
 

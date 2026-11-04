@@ -1,5 +1,5 @@
 ---
-source_sha256: a7fba933f53c771e7fec2533d2d7361dbaaee7ea7b99b9d60b5ba632b6f6b4da
+source_sha256: 24ac85b8704e7f183c9b49989569291e2862dd443d72c06943660818d49fc228
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -11,7 +11,7 @@ nav: tutorial
 toc_title: "步骤 00–15"
 meta:
   - term: "你需要"
-    text: 'Ruby 3.2+、`cc`、`make`、`git`、`curl`、SQLite 3 头文件（Spinel `2026.10.27.7020` 会自动为你安装）<a class="meta-link" href="#requirements">第 00 步</a>'
+    text: 'Ruby 3.2+、`cc`、`make`、`git`、`curl`、SQLite 3 头文件（Spinel `2026.11.04.7026` 会自动为你安装）<a class="meta-link" href="#requirements">第 00 步</a>'
   - term: "从这里开始"
     text: "`gem install cybertrain`"
   - term: "最终得到"
@@ -31,7 +31,7 @@ meta:
 
 <!-- list: checklist -->
 - Ruby 3.2+ 和 RubyGems，仅供 `cybertrain` 命令使用；应用本身从不在 CRuby 上运行。在 Ruby 3.2 上，还需要 `gem install prism`。
-- Spinel `2026.10.27.7020`，即 [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) 分支的一个版本，它先于上游收录了 CyberTrain 所需的修复；未在其他版本上测试。你无需手动安装：第一个需要它的命令会把该版本构建到 `~/.cybertrain` 中（需要几分钟，仅一次），除非 `PATH` 上已有该版本的 `spinel`。
+- Spinel `2026.11.04.7026`，即 [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) 分支的一个版本，它先于上游收录了 CyberTrain 所需的修复；未在其他版本上测试。你无需手动安装：第一个需要它的命令会把该版本构建到 `~/.cybertrain` 中（需要几分钟，仅一次），除非 `PATH` 上已有该版本的 `spinel`。
 - C 工具链（`cc`，或 `CC` 指定的编译器）和 `make`，以及 `git` 和 `curl`，用于构建 Spinel；Spinel 会把每个程序编译为 C。
 - SQLite 3 和 zlib 头文件和库：Debian/Ubuntu 上为 `libsqlite3-dev` 和 `zlib1g-dev`；macOS 上随 Xcode 命令行工具提供。
 
@@ -51,7 +51,7 @@ meta:
 <figure class="code" data-lang="shell" markdown="0">
 <figcaption><span class="code-path">终端 &mdash; 任意目录，之后在&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="代码：终端 &mdash; 任意目录，之后在 blog/"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># 首次运行时安装 Spinel 2026.10.27.7020（需要几分钟）</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># 首次运行时安装 Spinel 2026.11.04.7026（需要几分钟）</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -80,10 +80,10 @@ name = "blog"
 version = "0.1.0"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.4.1" }
 ```
 
-然后它会确保 Spinel 已安装（第一次时，这意味着要把 Spinel `2026.10.27.7020` 构建到 `~/.cybertrain` 中：需要几分钟，仅一次；参见[第 00 步](#requirements)），并运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `spin run gen`，就像 `rails new` 会运行 `bundle install` 一样，所以 `cybertrain server` 可以立即使用。最后它会打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。
+然后它会确保 Spinel 已安装（第一次时，这意味着要把 Spinel `2026.11.04.7026` 构建到 `~/.cybertrain` 中：需要几分钟，仅一次；参见[第 00 步](#requirements)），并运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `spin run gen`，就像 `rails new` 会运行 `bundle install` 一样，所以 `cybertrain server` 可以立即使用。最后它会打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。
 
 > [!NOTE]
 > 如果 Spinel 或两个 `spin` 步骤之一失败，已写出的文件会保留，`new` 以状态码 1 退出，并打印排除原因后需要运行的命令（对于 Spinel：先运行 `cybertrain setup`，再在新目录中运行 `cybertrain spin lock && cybertrain spin run gen`）。`--skip-spin` 只写出文件；`--path DIR` 改为依赖本地检出的代码，`--git URL [--ref R]` 依赖位于 URL 的框架（分支或标签 R），`--version V` 则在 `cybertrain` 进入 `spin-index` 后依赖索引中的版本。
@@ -233,7 +233,7 @@ cybertrain server        # http://127.0.0.1:3000；修改 Ruby 后会重新构�
 `cybertrain server` 会打印它运行的每条 `spin` 命令，然后是应用的启动横幅。第一次启动需要编译应用，所以要花一些时间：
 
 ```text 输出 — cybertrain server
-=> Booting cybertrain 0.3.1
+=> Booting cybertrain 0.4.1
 => development environment (1 worker)
 => Watching app/, config/ and db/schema.rb for changes
 * Listening on http://127.0.0.1:3000
@@ -775,7 +775,7 @@ kamal deploy   # 之后的每次部署
 - 视图在构建时嵌入：即使只修改了视图，也需要运行 `cybertrain build` 并重启，改动才能到达生产环境。
 - 在与运行机器相同的操作系统和 CPU 上构建 `dist/`：该二进制文件链接系统的 SQLite。
 - `SPINEL_WORKERS` 默认为 `1`。
-- 只测试过 Spinel `2026.10.27.7020`。
+- 只测试过 Spinel `2026.11.04.7026`。
 - 更多与 Rails 的差异，汇总在一张表里：[与 Rails 的差异](how-it-works.md#differences-from-rails)。
 
 <!-- step → #where-next -->

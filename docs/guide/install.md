@@ -7,11 +7,11 @@ for you.
 > [!NOTE]
 > To try CyberTrain without installing anything, open [the playground](site:playground.html):
 > GitHub Codespaces opens the tutorial's blog, the `cybertrain` command and
-> Spinel `2026.10.27.7020` in VS Code in your browser. The same image also runs locally under Docker.
+> Spinel `2026.11.04.7026` in VS Code in your browser. The same image also runs locally under Docker.
 
 ## Requirements
 
-- Spinel `2026.10.27.7020` (`Cybertrain::SPINEL_TAG`, the same release as
+- Spinel `2026.11.04.7026` (`Cybertrain::SPINEL_TAG`, the same release as
   `SPINEL_TAG` in [.github/workflows/ci.yml](../../.github/workflows/ci.yml)), a
   release of [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)
   (`Cybertrain::SPINEL_REPOSITORY`), the fork of matz/spinel that carries
@@ -99,7 +99,7 @@ from there, from `cybertrain new` to `cybertrain build`.
   `dist/` (the binary, `public/`, `storage/`, `tmp/`).
 - `cybertrain spin ARGS...` runs `spin` with the pinned Spinel from any
   directory (`cybertrain spin test`, `cybertrain spin run gen -- --check`).
-- `cybertrain setup [--force]` installs Spinel `2026.10.27.7020` into
+- `cybertrain setup [--force]` installs Spinel `2026.11.04.7026` into
   `~/.cybertrain` unless a `spinel` of that release is already on `PATH`;
   `--force` rebuilds the copy under `~/.cybertrain`.
 - `cybertrain doctor` checks the C toolchain, the SQLite headers and the
@@ -115,10 +115,10 @@ Every command that runs `spin` (`new`, `db`, `server`, `build`, `spin`) first
 makes sure a Spinel of the release in `Cybertrain::SPINEL_TAG` is available. A
 `spinel` on `PATH` (with a `spin`) whose `spinel --version` reports that
 release is used as it is; otherwise the copy `cybertrain` keeps under
-`~/.cybertrain/spinel/2026.10.27.7020/`; otherwise `cybertrain` builds that
+`~/.cybertrain/spinel/2026.11.04.7026/`; otherwise `cybertrain` builds that
 copy from the release tag of `Cybertrain::SPINEL_REPOSITORY` (`git clone`,
 `make deps`, `make -j`, `make install PREFIX=...`), once, in a few minutes,
-logging to `~/.cybertrain/log/spinel-2026.10.27.7020-build.log` (its last
+logging to `~/.cybertrain/log/spinel-2026.11.04.7026-build.log` (its last
 lines are printed if a step fails).
 
 If a tool the build needs is missing,
@@ -164,7 +164,7 @@ time, so it never runs on CRuby, and it is the part that ships. The binary in
 
 `cybertrain new` writes the application with its `spin.toml` pointing at
 the release matching the CLI (`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }`), makes
+"https://github.com/saeki-mototsune/cybertrain", ref = "v0.4.1" }`), makes
 sure Spinel is installed, then runs `spin lock` (spin fetches the framework
 into its cache, `~/.cache/spin/packages/`, and pins the commit in
 `spin.lock`) and `spin run gen`, much as `rails new` runs `bundle install`,
@@ -192,7 +192,7 @@ Give only one of `--path`, `--version` and `--git`; `--ref` needs `--git`.
 ### Moving an app to a new release
 
 The gem and the framework are released from the same tag, so their versions
-match: the 0.3.1 gem writes apps that depend on framework `v0.3.1`. To move an
+match: the 0.4.1 gem writes apps that depend on framework `v0.4.1`. To move an
 app to a new release, update the gem, point `spin.toml` at the new tag, then
 run, in the app:
 

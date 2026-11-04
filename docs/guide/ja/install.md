@@ -1,16 +1,16 @@
 ---
-source_sha256: f2fc66817b4de63dd2d3fa3ee4cdba0c25960cae6ec4de300b2cc3d671220cf2
+source_sha256: c87ce67ac24c185871c4623dd507b98f101fdc2f82bdcabee74f046f8bda88e6
 ---
 # インストール
 
 CyberTrain が手元のマシンに必要とするもの、`cybertrain` コマンドのインストール方法、そのすべてのコマンド、そしてこのコマンドが Spinel とフレームワークをどのようにインストールしてくれるかを説明します。
 
 > [!NOTE]
-> 何もインストールせずに CyberTrain を試すには、[プレイグラウンド](site:playground.html)を開いてください：GitHub Codespaces が、チュートリアルのブログ、`cybertrain` コマンド、Spinel `2026.10.27.7020` を、ブラウザーの中の VS Code で開きます。同じイメージは Docker を使ってローカルでも動きます。
+> 何もインストールせずに CyberTrain を試すには、[プレイグラウンド](site:playground.html)を開いてください：GitHub Codespaces が、チュートリアルのブログ、`cybertrain` コマンド、Spinel `2026.11.04.7026` を、ブラウザーの中の VS Code で開きます。同じイメージは Docker を使ってローカルでも動きます。
 
 ## 必要なもの
 
-- Spinel `2026.10.27.7020`（`Cybertrain::SPINEL_TAG`。[.github/workflows/ci.yml](../../.github/workflows/ci.yml) の `SPINEL_TAG` と同じリリース）。[saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)（`Cybertrain::SPINEL_REPOSITORY`）のリリースで、CyberTrain が必要とする修正を本家のリリースより先に取り込んだ matz/spinel のフォークです。他のバージョンでは未テストです。手動でインストールする必要はありません：`cybertrain` コマンドが、初めて必要になったときにそのリリースを `~/.cybertrain` にビルドします（`cybertrain setup` は求めに応じてそれを行います）。ただし、そのリリースの `spinel` がすでに `PATH` 上にある場合は除きます — [Spinel のインストールの仕組み](#how-spinel-is-installed)を参照してください。
+- Spinel `2026.11.04.7026`（`Cybertrain::SPINEL_TAG`。[.github/workflows/ci.yml](../../.github/workflows/ci.yml) の `SPINEL_TAG` と同じリリース）。[saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)（`Cybertrain::SPINEL_REPOSITORY`）のリリースで、CyberTrain が必要とする修正を本家のリリースより先に取り込んだ matz/spinel のフォークです。他のバージョンでは未テストです。手動でインストールする必要はありません：`cybertrain` コマンドが、初めて必要になったときにそのリリースを `~/.cybertrain` にビルドします（`cybertrain setup` は求めに応じてそれを行います）。ただし、そのリリースの `spinel` がすでに `PATH` 上にある場合は除きます — [Spinel のインストールの仕組み](#how-spinel-is-installed)を参照してください。
 - そのビルドには：C ツールチェーン（`cc`、または `CC` で指定したコンパイラ）と `make` — Spinel はすべてのプログラムを C にコンパイルします — さらに `git` と `curl`。
 - SQLite 3 のヘッダーとライブラリ（Debian/Ubuntu では `libsqlite3-dev`。macOS では Xcode のコマンドラインツールに含まれています） — モデルは gem ではなく、Spinel の FFI を直接使います。
 - zlib のヘッダーとライブラリ（Debian/Ubuntu では `zlib1g-dev`。macOS では SDK に含まれています） — gzip されたリクエストボディ（`request.decoded_body`）は、同じ方法でバインドしたシステムの zlib で展開されます。
@@ -51,7 +51,7 @@ cybertrain doctor
 - `cybertrain server [PORT]` は生成を行ってから開発サーバーを起動します（`spin run gen; spin run NAME`、または `spin run NAME -- PORT`。デフォルトのポートは 3000）。
 - `cybertrain build` は `app/views/` を埋め込んで NAME をビルドし、`dist/`（バイナリ、`public/`、`storage/`、`tmp/`）を組み立てます。
 - `cybertrain spin ARGS...` は、固定された Spinel で `spin` を任意のディレクトリから実行します（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
-- `cybertrain setup [--force]` は Spinel `2026.10.27.7020` を `~/.cybertrain` にインストールします（そのリリースの `spinel` がすでに `PATH` 上にある場合を除く）。`--force` は `~/.cybertrain` 以下のコピーを再ビルドします。
+- `cybertrain setup [--force]` は Spinel `2026.11.04.7026` を `~/.cybertrain` にインストールします（そのリリースの `spinel` がすでに `PATH` 上にある場合を除く）。`--force` は `~/.cybertrain` 以下のコピーを再ビルドします。
 - `cybertrain doctor` は C ツールチェーン、SQLite のヘッダー、Spinel のインストールを確認します。
 - `cybertrain version` はバージョンを表示します。
 
@@ -59,7 +59,7 @@ cybertrain doctor
 
 ## Spinel のインストールの仕組み
 
-`spin` を実行するすべてのコマンド（`new`、`db`、`server`、`build`、`spin`）は、まず `Cybertrain::SPINEL_TAG` のリリースの Spinel が使えることを確かめます。`PATH` 上の `spinel`（`spin` を伴うもの）の `spinel --version` がそのリリースを報告すれば、それをそのまま使います。そうでなければ、`cybertrain` が `~/.cybertrain/spinel/2026.10.27.7020/` 以下に置いているコピーを使います。それもなければ、`cybertrain` が `Cybertrain::SPINEL_REPOSITORY` のリリースタグからそのコピーをビルドします（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`）。ビルドは一度だけで、数分かかります。ビルドのログは `~/.cybertrain/log/spinel-2026.10.27.7020-build.log` です（手順が失敗すると、その最後の数行が表示されます）。
+`spin` を実行するすべてのコマンド（`new`、`db`、`server`、`build`、`spin`）は、まず `Cybertrain::SPINEL_TAG` のリリースの Spinel が使えることを確かめます。`PATH` 上の `spinel`（`spin` を伴うもの）の `spinel --version` がそのリリースを報告すれば、それをそのまま使います。そうでなければ、`cybertrain` が `~/.cybertrain/spinel/2026.11.04.7026/` 以下に置いているコピーを使います。それもなければ、`cybertrain` が `Cybertrain::SPINEL_REPOSITORY` のリリースタグからそのコピーをビルドします（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`）。ビルドは一度だけで、数分かかります。ビルドのログは `~/.cybertrain/log/spinel-2026.11.04.7026-build.log` です（手順が失敗すると、その最後の数行が表示されます）。
 
 ビルドに必要なツールが欠けている場合、`cybertrain` はビルドを始める前に、どれが足りないかを伝え、プラットフォームに応じたインストールコマンドを表示します。`PATH` 上にある別リリースの `spinel` が使われたり変更されたりすることはありません：`cybertrain` は自前のコピーを持ちます（そしてインストールするときにそう伝えます）。
 
@@ -87,7 +87,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 ### `cybertrain new` が書き出すもの
 
 `cybertrain new` はアプリケーションを書き出し、その `spin.toml` は CLI と一致するリリースを指します（`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }`）。次に Spinel がインストールされていることを確認し、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `spin run gen` を実行します。`rails new` が `bundle install` を実行するのと同じようなものです。そして次の手順を表示します。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。
+"https://github.com/saeki-mototsune/cybertrain", ref = "v0.4.1" }`）。次に Spinel がインストールされていることを確認し、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `spin run gen` を実行します。`rails new` が `bundle install` を実行するのと同じようなものです。そして次の手順を表示します。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。
 
 Spinel のインストールか、2 つの `spin` ステップのいずれかが失敗した場合、ファイルは残したまま `new` は終了コード 1 で終了し、原因を解消した後に実行すべきコマンドを表示します（Spinel の場合：`cybertrain setup` を実行し、続いて新しいディレクトリで `cybertrain spin lock && cybertrain spin run gen`）。
 
@@ -102,7 +102,7 @@ Spinel のインストールか、2 つの `spin` ステップのいずれかが
 
 ### アプリを新しいリリースに移行する
 
-gem とフレームワークは同じタグからリリースされるため、バージョンは一致します：0.3.1 の gem は、フレームワーク `v0.3.1` に依存するアプリを書き出します。アプリを新しいリリースに移行するには、gem を更新し、`spin.toml` を新しいタグに向けてから、アプリの中で次を実行します：
+gem とフレームワークは同じタグからリリースされるため、バージョンは一致します：0.4.1 の gem は、フレームワーク `v0.4.1` に依存するアプリを書き出します。アプリを新しいリリースに移行するには、gem を更新し、`spin.toml` を新しいタグに向けてから、アプリの中で次を実行します：
 
 ```shell ターミナル — アプリのディレクトリ
 cybertrain spin lock

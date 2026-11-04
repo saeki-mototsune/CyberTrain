@@ -1,5 +1,5 @@
 ---
-source_sha256: a7fba933f53c771e7fec2533d2d7361dbaaee7ea7b99b9d60b5ba632b6f6b4da
+source_sha256: 24ac85b8704e7f183c9b49989569291e2862dd443d72c06943660818d49fc228
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -11,7 +11,7 @@ nav: tutorial
 toc_title: "Étapes 00–15"
 meta:
   - term: "Prérequis"
-    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, en-têtes SQLite 3 (Spinel `2026.10.27.7020` est installé pour vous) <a class="meta-link" href="#requirements">Étape 00</a>'
+    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, en-têtes SQLite 3 (Spinel `2026.11.04.7026` est installé pour vous) <a class="meta-link" href="#requirements">Étape 00</a>'
   - term: "Point de départ"
     text: "`gem install cybertrain`"
   - term: "Résultat"
@@ -42,7 +42,7 @@ l’application dans un dossier `dist/` déployable. L’application terminée e
 - Ruby 3.2+ et RubyGems, uniquement pour la commande `cybertrain`&nbsp;; les
   applications ne tournent jamais sur CRuby. Avec Ruby 3.2, ajoutez aussi
   `gem install prism`.
-- Spinel `2026.10.27.7020`, une version du fork
+- Spinel `2026.11.04.7026`, une version du fork
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel), qui
   intègre les corrections dont CyberTrain a besoin avant une version
   amont&nbsp;; non testé avec d’autres versions. Vous ne l’installez pas à la
@@ -80,7 +80,7 @@ fois.
 <figure class="code" data-lang="shell" markdown="0">
 <figcaption><span class="code-path">terminal &mdash; n’importe quel répertoire, puis&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code&nbsp;: terminal &mdash; n’importe quel répertoire, puis blog/"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># installe Spinel 2026.10.27.7020 la première fois (quelques minutes)</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># installe Spinel 2026.11.04.7026 la première fois (quelques minutes)</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -113,11 +113,11 @@ name = "blog"
 version = "0.1.0"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.4.1" }
 ```
 
 Ensuite, il s’assure que Spinel est installé (la première fois, cela signifie
-compiler Spinel `2026.10.27.7020` dans `~/.cybertrain`&nbsp;: quelques
+compiler Spinel `2026.11.04.7026` dans `~/.cybertrain`&nbsp;: quelques
 minutes, une seule fois&nbsp;; voir l’[étape 00](#requirements)) et lance
 `spin lock` (spin récupère le framework dans son cache,
 `~/.cache/spin/packages/`, et épingle le commit dans `spin.lock`) et
@@ -323,7 +323,7 @@ bannière de démarrage de l’application. Le premier démarrage compile
 l’application, il prend donc un moment&nbsp;:
 
 ```text sortie — cybertrain server
-=> Booting cybertrain 0.3.1
+=> Booting cybertrain 0.4.1
 => development environment (1 worker)
 => Watching app/, config/ and db/schema.rb for changes
 * Listening on http://127.0.0.1:3000
@@ -1195,7 +1195,7 @@ et charge `config/deploy.yml` avec Kamal.
 - Compilez `dist/` sur le même OS et le même CPU que la machine qui
   l’exécute&nbsp;: le binaire est lié à la SQLite du système.
 - `SPINEL_WORKERS` vaut `1` par défaut.
-- Seul Spinel `2026.10.27.7020` est testé.
+- Seul Spinel `2026.11.04.7026` est testé.
 - D’autres différences avec Rails, dans un seul tableau&nbsp;: [Différences avec Rails](how-it-works.md#differences-from-rails).
 
 <!-- step → #where-next -->

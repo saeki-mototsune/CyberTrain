@@ -1,5 +1,5 @@
 ---
-source_sha256: a7fba933f53c771e7fec2533d2d7361dbaaee7ea7b99b9d60b5ba632b6f6b4da
+source_sha256: 24ac85b8704e7f183c9b49989569291e2862dd443d72c06943660818d49fc228
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -11,7 +11,7 @@ nav: tutorial
 toc_title: "ステップ 00–15"
 meta:
   - term: "必要なもの"
-    text: 'Ruby 3.2+、`cc`、`make`、`git`、`curl`、SQLite 3 のヘッダー（Spinel `2026.10.27.7020` は自動でインストールされます） <a class="meta-link" href="#requirements">ステップ 00</a>'
+    text: 'Ruby 3.2+、`cc`、`make`、`git`、`curl`、SQLite 3 のヘッダー（Spinel `2026.11.04.7026` は自動でインストールされます） <a class="meta-link" href="#requirements">ステップ 00</a>'
   - term: "出発点"
     text: "`gem install cybertrain`"
   - term: "完成物"
@@ -31,7 +31,7 @@ Rails 公式の [Getting Started](https://guides.rubyonrails.org/getting_started
 
 <!-- list: checklist -->
 - Ruby 3.2+ と RubyGems。`cybertrain` コマンドのためだけに必要で、アプリケーションが CRuby 上で動くことはありません。Ruby 3.2 では `gem install prism` も実行します。
-- Spinel `2026.10.27.7020`。CyberTrain が必要とする修正を本家より先に取り込んだフォーク [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) のリリースです。他のバージョンでは未テストです。手動でインストールする必要はありません：Spinel を必要とする最初のコマンドが、そのリリースを `~/.cybertrain` にビルドします（数分、初回のみ）。ただし、そのリリースの `spinel` がすでに `PATH` 上にある場合は除きます。
+- Spinel `2026.11.04.7026`。CyberTrain が必要とする修正を本家より先に取り込んだフォーク [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) のリリースです。他のバージョンでは未テストです。手動でインストールする必要はありません：Spinel を必要とする最初のコマンドが、そのリリースを `~/.cybertrain` にビルドします（数分、初回のみ）。ただし、そのリリースの `spinel` がすでに `PATH` 上にある場合は除きます。
 - C ツールチェーン（`cc`、または `CC` で指定したコンパイラ）と `make`、さらに `git` と `curl`。すべてのプログラムを C にコンパイルする Spinel をビルドするために使います。
 - SQLite 3 と zlib のヘッダーとライブラリ：Debian/Ubuntu では `libsqlite3-dev` と `zlib1g-dev`、macOS では Xcode のコマンドラインツールに含まれています。
 
@@ -51,7 +51,7 @@ Rails 公式の [Getting Started](https://guides.rubyonrails.org/getting_started
 <figure class="code" data-lang="shell" markdown="0">
 <figcaption><span class="code-path">ターミナル &mdash; 任意のディレクトリ、その後 blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="コード：ターミナル &mdash; 任意のディレクトリ、その後 blog/"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># 初回は Spinel 2026.10.27.7020 をインストール（数分）</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># 初回は Spinel 2026.11.04.7026 をインストール（数分）</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -80,10 +80,10 @@ name = "blog"
 version = "0.1.0"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.4.1" }
 ```
 
-次に Spinel がインストールされていることを確認し（初回は Spinel `2026.10.27.7020` を `~/.cybertrain` にビルドします：数分、初回のみ。[ステップ 00](#requirements) を参照）、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `spin run gen` を実行します。`rails new` が `bundle install` を実行するのと同じようなもので、これで `cybertrain server` がすぐに動きます。最後に次の手順を表示して終わります。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。
+次に Spinel がインストールされていることを確認し（初回は Spinel `2026.11.04.7026` を `~/.cybertrain` にビルドします：数分、初回のみ。[ステップ 00](#requirements) を参照）、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `spin run gen` を実行します。`rails new` が `bundle install` を実行するのと同じようなもので、これで `cybertrain server` がすぐに動きます。最後に次の手順を表示して終わります。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。
 
 > [!NOTE]
 > Spinel のインストールか、2 つの `spin` ステップのいずれかが失敗した場合、ファイルは残したまま `new` は終了コード 1 で終了し、原因を解消した後に実行すべきコマンドを表示します（Spinel の場合：`cybertrain setup` を実行し、続いて新しいディレクトリで `cybertrain spin lock && cybertrain spin run gen`）。`--skip-spin` はファイルを書き出すだけです。`--path DIR` は代わりにローカルのチェックアウトに依存し、`--git URL [--ref R]` は URL にあるフレームワーク（ブランチまたはタグ R）に、`--version V` は `cybertrain` が `spin-index` に登録された後、インデックスのバージョンに依存します。
@@ -233,7 +233,7 @@ cybertrain server        # http://127.0.0.1:3000。Ruby を編集すると再ビ
 `cybertrain server` は実行する `spin` コマンドをひとつずつ表示し、続いてアプリの起動バナーを表示します。初回の起動ではアプリをコンパイルするため、しばらく時間がかかります：
 
 ```text 出力 — cybertrain server
-=> Booting cybertrain 0.3.1
+=> Booting cybertrain 0.4.1
 => development environment (1 worker)
 => Watching app/, config/ and db/schema.rb for changes
 * Listening on http://127.0.0.1:3000
@@ -775,7 +775,7 @@ kamal deploy   # 以降のデプロイ
 - ビューはビルド時に埋め込まれます：ビューだけの変更でも、本番環境に反映するには `cybertrain build` と再起動が必要です。
 - `dist/` は、実行するマシンと同じ OS と CPU でビルドしてください：バイナリはシステムの SQLite にリンクします。
 - `SPINEL_WORKERS` のデフォルトは `1` です。
-- テスト済みなのは Spinel `2026.10.27.7020` だけです。
+- テスト済みなのは Spinel `2026.11.04.7026` だけです。
 - Rails とのその他の違いは一つの表にまとめてあります：[Rails との違い](how-it-works.md#differences-from-rails)。
 
 <!-- step → #where-next -->

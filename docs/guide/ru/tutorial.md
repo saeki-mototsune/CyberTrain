@@ -1,5 +1,5 @@
 ---
-source_sha256: a7fba933f53c771e7fec2533d2d7361dbaaee7ea7b99b9d60b5ba632b6f6b4da
+source_sha256: 24ac85b8704e7f183c9b49989569291e2862dd443d72c06943660818d49fc228
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -11,7 +11,7 @@ nav: tutorial
 toc_title: "Шаги 00–15"
 meta:
   - term: "Что нужно"
-    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, заголовки SQLite 3 (Spinel `2026.10.27.7020` установится сам) <a class="meta-link" href="#requirements">Шаг 00</a>'
+    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, заголовки SQLite 3 (Spinel `2026.11.04.7026` установится сам) <a class="meta-link" href="#requirements">Шаг 00</a>'
   - term: "Начало"
     text: "`gem install cybertrain`"
   - term: "Результат"
@@ -40,7 +40,7 @@ CI на Linux и macOS.
 <!-- list: checklist -->
 - Ruby 3.2+ и RubyGems — только для команды `cybertrain`; приложения никогда
   не запускаются на CRuby. На Ruby 3.2 также `gem install prism`.
-- Spinel `2026.10.27.7020` — релиз форка
+- Spinel `2026.11.04.7026` — релиз форка
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel), в
   котором исправления, нужные CyberTrain, появляются раньше, чем в основном
   проекте; с другими версиями не тестировался. Вручную его устанавливать не
@@ -74,7 +74,7 @@ CI на Linux и macOS.
 <figure class="code" data-lang="shell" markdown="0">
 <figcaption><span class="code-path">терминал &mdash; любой каталог, затем&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Код: терминал &mdash; любой каталог, затем blog/"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># при первом запуске устанавливает Spinel 2026.10.27.7020 (несколько минут)</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># при первом запуске устанавливает Spinel 2026.11.04.7026 (несколько минут)</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -107,11 +107,11 @@ name = "blog"
 version = "0.1.0"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.4.1" }
 ```
 
 Затем она проверяет, что Spinel установлен (в первый раз это означает сборку
-Spinel `2026.10.27.7020` в `~/.cybertrain`: несколько минут, один раз; см.
+Spinel `2026.11.04.7026` в `~/.cybertrain`: несколько минут, один раз; см.
 [шаг 00](#requirements)), и запускает `spin lock` (spin загружает фреймворк в
 свой кэш `~/.cache/spin/packages/` и фиксирует коммит в `spin.lock`) и
 `spin run gen` — примерно так же, как `rails new` запускает `bundle install`,
@@ -310,7 +310,7 @@ cybertrain server        # http://127.0.0.1:3000; пересборка при п
 что это займёт некоторое время:
 
 ```text вывод — cybertrain server
-=> Booting cybertrain 0.3.1
+=> Booting cybertrain 0.4.1
 => development environment (1 worker)
 => Watching app/, config/ and db/schema.rb for changes
 * Listening on http://127.0.0.1:3000
@@ -1162,7 +1162,7 @@ kamal deploy   # каждое следующее развёртывание
 - Собирайте `dist/` на той же ОС и том же процессоре, что и у машины, где он
   будет работать: бинарный файл компонуется с системной SQLite.
 - `SPINEL_WORKERS` по умолчанию равен `1`.
-- Протестирован только Spinel `2026.10.27.7020`.
+- Протестирован только Spinel `2026.11.04.7026`.
 - Другие отличия от Rails, в одной таблице: [Отличия от Rails](how-it-works.md#differences-from-rails).
 
 <!-- step → #where-next -->
