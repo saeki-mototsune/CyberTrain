@@ -4,7 +4,7 @@ What building and speeding up CyberTrain found in Spinel itself, written so
 each item can become an issue upstream. Each says what happens, how it was
 seen, what CyberTrain does about it today, and what would fix it in Spinel.
 
-Seven builds are covered:
+Eight builds are covered:
 
 - **2026.09.12** (112bae85c1a2), matz/spinel's release, which CyberTrain
   was pinned to until 2026-10-26. Items 1 to 7 and the tables were found on
@@ -44,9 +44,8 @@ Seven builds are covered:
   F and G; D's still raises `RangeError` in the default mode, by design.
   Items not listed were not re-checked on it.
 - **2026.10.27.7020** (d37f38a), the fork's release tag carrying matz/spinel
-  master up to #10415 to #10417, and the build CyberTrain is pinned to now
-  (`Cybertrain::SPINEL_TAG`, `Cybertrain::SPINEL_REPOSITORY`; since
-  2026-10-28). With the toolchain `cybertrain setup` builds from that tag,
+  master up to #10415 to #10417, which CyberTrain was pinned to from
+  2026-10-28 until 2026-11-03. With the toolchain `cybertrain setup` builds from that tag,
   `spin test` passes 106 of 106 (checked on 2026-10-28), including
   test/db_with_value.rb's use of a DB.with block's own value, which H made
   raise on 2026.10.26.7019 (issue #90). Items 4 and 5 were re-measured on
@@ -56,23 +55,39 @@ Seven builds are covered:
   (I, new; bisected to matz/spinel#10527); a minimal keep-alive server
   built with it gives 4 the same counts as 2026.10.27.7020, and J's program
   fails on it as on 2026.10.27.7020. Nothing else was checked on it.
+- **2026.11.04.7026** (a2d06115f, `spinel 2026.11.04.7026 (a2d06115)`),
+  the fork's release tag carrying matz/spinel master up to #10959, and the
+  build CyberTrain is pinned to now (`Cybertrain::SPINEL_TAG`,
+  `Cybertrain::SPINEL_REPOSITORY`; since 2026-11-04, CyberTrain 0.4.1).
+  It carries #10524 and #10525 (the refusal under C), and #10735 and
+  #10786 (I). Checked on 2026-11-04 with the toolchain `cybertrain setup`
+  builds from that tag: `spin test` passes 106 of 106; examples/blog's
+  `spin run gen` writes files identical to the committed ones, `spin build
+  blog` builds it, and its tests pass; the reduced programs of 3, A, C, F,
+  G, H and I print Ruby's result; J's program fails as on 2026.10.27.7020.
+  4 and 5 were not re-measured. The release before it, 2026.11.03.7025
+  (25d8038d4, CyberTrain 0.4.0, pinned 2026-11-03 to 2026-11-04), carries
+  the same four PRs and was not checked on its own.
 
-The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22 and 56 to
-59, 62), [benchmark.md](benchmark.md) and
+The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22, 56 to
+59, 62, 64, 65 and 78), [benchmark.md](benchmark.md) and
 [performance-next.md](performance-next.md).
 
-Suggested order for what is still open: the refusal under C (the one
-workaround left that a change in Spinel could remove; see "The refusal in
-test/template_engine.rb" under C), then I (a regression on master that
-would block the next pin; reduced and bisected), then J (a use-after-free
-shown with the slab off, reduced; whether the default is affected is
-open), then 5 (measured, with two concrete fixes), then 6 and 7 (4 is
-fixed on 2026.10.27.7020, see 4), then the rest. B, D and 1
+Suggested order for what is still open: J (a use-after-free shown with
+the slab off, reduced, still there on 2026.11.04.7026; whether the
+default is affected is open), then 5 (measured, with two concrete fixes),
+then K (a compile failure still there on 2026.11.04.7026, worked
+around, not reduced), then 6 and 7 (4 is fixed on 2026.10.27.7020, see
+4), then the rest. The
+refusal under C and I, which used to lead this list, are fixed upstream
+and in the pinned 2026.11.04.7026 (#10524 and #10525; #10735 and #10786).
+The refusal's workaround in test/template_engine.rb is no longer needed
+there, but is still in the test (see C). B, D and 1
 are not on that list: they are accepted as Spinel's constraints (see
 "Accepted as Spinel constraints"). 2's workaround in `Html.escape` is dropped on
 2026.10.27.7020 (see 2). H and the two shapes found in review are fixed on
-master 003ceda5d (#10415 to #10417), and the fork's 2026.10.27.7020, which
-CyberTrain is now pinned to, carries #10415: H's workaround is dropped
+master 003ceda5d (#10415 to #10417), and every release CyberTrain has been
+pinned to since 2026.10.27.7020 carries #10415: H's workaround is dropped
 (issue #90). (B and D are settled as by design:
 since 2026.10.26.7019 B is a build error, see B; D's `RangeError` is the
 default `raise` mode's intended behaviour, and the experimental
@@ -83,63 +98,71 @@ default `raise` mode's intended behaviour, and the experimental
 "Not re-checked" means no one has tried it on that build; it is not a claim
 that it is fixed.
 
-| Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 | master 003ceda5d | 2026.10.27.7020 | fork master 49ccdced |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) | not re-checked | not reproduced under ASan, but neither on 2026.09.12 in that shape (workaround kept) | not re-checked |
-| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround; dropped) | not re-checked |
-| 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
-| 4. Parking a fiber goes through the monitor thread | yes (re-measured on 2026-10-30: 9.9 `futex` per request) | not re-measured | not re-measured | not re-checked | not re-checked | **fixed** (2.1 `futex` per request, none on the park path; #8702, #10024) | same counts as 2026.10.27.7020 on a minimal server; examples/blog does not build (I) |
-| 5. At one worker, most collections are full, and the sweep is handed to another thread | yes (as "a collection stops every thread") | not re-measured | not re-measured | not re-checked | not re-checked | **yes**, re-measured: the stop-the-world wait is negligible at one worker (0.001 s over 2,852 collections), but 83% of collections are full (`SPINEL_GC_FULL_INTERVAL=8`: +16%) and the sweeper thread costs 5% on one CPU | not re-checked |
-| 6 and 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
-| `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked | not re-checked | not re-checked |
-| `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked | not re-checked | not re-checked |
-| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
-| B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) | not re-checked | not re-checked | not re-checked |
-| C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made | not re-checked | not re-checked | not re-checked |
-| D. `String#to_i` raises `RangeError` on overflow | yes (re-checked on 2026-10-28; not a regression, see D) | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum | by design (still raises `RangeError` in raise mode) | not re-checked | not re-checked |
-| E. More allocation per request | no | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
-| F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
-| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked |
-| H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) | **fixed** (test/db_with_value.rb uses the block's own value) | not re-checked |
-| I. A constant written `Array.new(n) { Obj.new }` is refused | no | no | no | not checked | not checked | no | **yes** (new; from 8594f2be2, matz/spinel#10527) |
-| J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs | not reproduced (2 of 2 runs under AddressSanitizer; it has no slab) | not checked | not checked | not checked | not checked | **yes** with `SPINEL_GC_SLAB=0`; the default is unknown | **yes** with `SPINEL_GC_SLAB=0` |
-| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked |
-| Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked |
+| Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 | master 003ceda5d | 2026.10.27.7020 | fork master 49ccdced | 2026.11.04.7026 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) | not re-checked | not reproduced under ASan, but neither on 2026.09.12 in that shape (workaround kept) | not re-checked | not re-checked (accepted, see "Accepted as Spinel constraints") |
+| 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround; dropped) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround) |
+| 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked | **fixed** (its program prints Ruby's result) |
+| 4. Parking a fiber goes through the monitor thread | yes (re-measured on 2026-10-30: 9.9 `futex` per request) | not re-measured | not re-measured | not re-checked | not re-checked | **fixed** (2.1 `futex` per request, none on the park path; #8702, #10024) | same counts as 2026.10.27.7020 on a minimal server; examples/blog does not build (I) | not re-measured |
+| 5. At one worker, most collections are full, and the sweep is handed to another thread | yes (as "a collection stops every thread") | not re-measured | not re-measured | not re-checked | not re-checked | **yes**, re-measured: the stop-the-world wait is negligible at one worker (0.001 s over 2,852 collections), but 83% of collections are full (`SPINEL_GC_FULL_INTERVAL=8`: +16%) and the sweeper thread costs 5% on one CPU | not re-checked | not re-measured (the collector code behind it is unchanged, see 5) |
+| 6 and 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
+| `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked | not re-checked | not re-checked | not re-checked |
+| `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked | not re-checked | not re-checked | yes (the generated C allocates and copies) |
+| A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked | **fixed** (its program prints Ruby's result) |
+| B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) | not re-checked | not re-checked | not re-checked | not re-checked (accepted) |
+| C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made | not re-checked | not re-checked | not re-checked | not seen (106 of 106 pass); the template_engine.rb refusal is **fixed** (#10525), and so is the run-time `TypeError` beside it (#10524) |
+| D. `String#to_i` raises `RangeError` on overflow | yes (re-checked on 2026-10-28; not a regression, see D) | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum | by design (still raises `RangeError` in raise mode) | not re-checked | not re-checked | by design (still raises `RangeError` in raise mode; accepted) |
+| E. More allocation per request | no | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
+| F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked | **fixed** (its program prints Ruby's result) |
+| G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked | **fixed** (its program prints Ruby's result) |
+| H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) | **fixed** (test/db_with_value.rb uses the block's own value) | not re-checked | **fixed** (its two programs print Ruby's result) |
+| I. A constant written `Array.new(n) { Obj.new }` is refused | no | no | no | not checked | not checked | no | **yes** (new; from 8594f2be2, matz/spinel#10527) | **fixed** (#10735, #10786: both forms of the reduced program print Ruby's result; examples/blog builds) |
+| J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs | not reproduced (2 of 2 runs under AddressSanitizer; it has no slab) | not checked | not checked | not checked | not checked | **yes** with `SPINEL_GC_SLAB=0`; the default is unknown | **yes** with `SPINEL_GC_SLAB=0` | **yes** with `SPINEL_GC_SLAB=0` (3 of 3 runs); the default is unknown |
+| `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked | not re-checked (test/http_client.rb passes) |
+| Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked | not re-checked |
+| K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around) |
 
 ## What CyberTrain still works around
 
 Re-checked on 2026-10-27 against matz/spinel master 9b9972399, built from
 source; CyberTrain itself was then pinned to 2026.10.26.7019 (`spinel
 2026.10.26.7019 (80b2f988)`), where the rows were checked on 2026-10-26
-(the H row on 2026-10-27, when it was added). Since 2026-10-28 it is
+(the H row on 2026-10-27, when it was added). From 2026-10-28 it was
 pinned to 2026.10.27.7020; the H row and the workarounds for 1 and 2
-were re-checked there (2026-10-28). The regressions that release
-fixes (A, the generated C of C, F, G, and 3) never had a workaround in
-CyberTrain: it stayed on 2026.09.12, where they do not happen, until it
-moved to 2026.10.26.7019. The refusal listed under C is separate: every
-build checked still makes it (2026.10.26.7019, master 9b9972399 and
-2026.10.27.7020), and CyberTrain's workaround for it stays. The first
-four rows below are still needed on master 9b9972399; the last one did not
-reproduce there, but is kept (see 1). The workaround for 2 in
-`Html.escape` used to be in that row; it is dropped on 2026.10.27.7020
+were re-checked there (2026-10-28). Since 2026-11-04 it is pinned to
+2026.11.04.7026, where the refusal row was re-checked (2026-11-04). The
+regressions that 2026.10.26.7019 fixes (A, the generated C of C, F, G,
+and 3) never had a workaround in CyberTrain: it stayed on 2026.09.12,
+where they do not happen, until it moved to 2026.10.26.7019. The refusal
+listed under C is separate: every build checked up to 2026.10.27.7020
+makes it (2026.10.26.7019, master 9b9972399 and 2026.10.27.7020), and
+2026.11.04.7026 no longer does (#10525): test/template_engine.rb's
+earlier form passes there, so that row's workaround is no longer needed,
+though the test still has it. The first two rows are needed on every
+build checked, and are accepted as Spinel's constraints; the `SafeString.of`
+row did not reproduce on master 9b9972399, but is kept (see 1); the last
+row, for K, is still needed on 2026.11.04.7026. The workaround for 2 in
+`Html.escape` used to be in the `SafeString.of` row; it is dropped on 2026.10.27.7020
 (see 2). Master
-003ceda5d fixes H (#10415), and the H row is no longer needed now that
-CyberTrain is pinned to 2026.10.27.7020, which carries it (issue #90):
+003ceda5d fixes H (#10415), and the H row has not been needed since
+CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 
-| Workaround | Item | On 2026.10.26.7019 | On master 9b9972399 |
-| --- | --- | --- | --- |
-| `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error | required (#10255) |
-| `Request#content_length` refuses more than 18 digits before `to_i` (cybertrain/http/request.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` | still raises `RangeError`, by design in the default `raise` mode; kept (`--int-overflow=promote`, experimental, parses it as a Bignum; see D) |
-| test/template_engine.rb settles the layout Hash's value types where it is built (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged; still refused on 2026.10.27.7020 (see "The refusal in test/template_engine.rb") |
-| `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415). Dropped on 2026.10.27.7020: `DB.with`'s comment no longer asks for the local, and test/db_with_value.rb also covers the block's own value |
-| `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept |
+| Workaround | Item | On 2026.10.26.7019 | On master 9b9972399 | On 2026.11.04.7026 |
+| --- | --- | --- | --- | --- |
+| `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error | required (#10255) | not re-checked (accepted) |
+| `Request#content_length` answers `INT64_MAX` for more than 18 digits instead of calling `to_i` (cybertrain/http/request.rb), and `Server#body_length` answers one past the body limit (cybertrain/http/server.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` | still raises `RangeError`, by design in the default `raise` mode; kept (`--int-overflow=promote`, experimental, parses it as a Bignum; see D) | still raises `RangeError` (accepted) |
+| test/template_engine.rb settles the layout Hash's value types where it is built (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged; still refused on 2026.10.27.7020 (see "The refusal in test/template_engine.rb") | not needed: the earlier form (`git show 81778ea^:test/template_engine.rb`) passes (#10525); `layout_env` is still in the test |
+| `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415). Dropped on 2026.10.27.7020: `DB.with`'s comment no longer asks for the local, and test/db_with_value.rb also covers the block's own value | dropped (test/db_with_value.rb passes) |
+| `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept | not re-checked (accepted) |
+| `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile |
 
 Every fix the fork carried is now in matz/spinel master, not only in the
 fork (#10254 to #10263, and #10316). #10316 is the fork's
 `fix/empty-hash-through-param`, which this document used to name for the
-refusal under C; it is merged, and it does not remove that refusal (see C).
-The H row's workaround is dropped: CyberTrain is pinned to 2026.10.27.7020,
-which carries #10415 (issue #90); the row stays as a record.
+refusal under C; it is merged, and it does not remove that refusal (see C);
+#10525 does, merged 2026-10-29.
+The H row's workaround is dropped: every pin since 2026.10.27.7020 carries
+#10415 (issue #90); the row stays as a record.
 The row for D stays as long as CyberTrain builds in the default `raise`
 mode, where the `RangeError` is by design (see D).
 
@@ -372,12 +395,18 @@ and main on 2026.10.27.7020, where main is the only worker.
   since 2026-10-30, with the read-side shutdown: 1,000 idle connections
   now cost 0.8% of the CPU instead of 8.8% (see
   [performance-next.md](performance-next.md), 8).
-- Today: nothing; the pinned release has the fix.
+- Today: nothing; every release pinned since 2026.10.27.7020 has the fix
+  (2026.11.04.7026 was not re-measured).
 - Fix: done.
 
 ### 5. At one worker, most collections are full, and the sweep is handed to another thread
 
-Re-measured on 2026-10-30 on 2026.10.27.7020. The title this item had on
+Re-measured on 2026-10-30 on 2026.10.27.7020; not re-measured on the
+pinned 2026.11.04.7026, whose lib/sp_gc.c has the same full-cadence rule
+(`SP_GC_PROMOTED_DEAD_CUT`), the same aging switch (cleared when the slab
+is on); lib/sp_gc.c only gained `--gc=none` guards, and lib/sp_sched.c,
+which starts the sweepers, only code for a fork after threads have
+started. The title this item had on
 2026.09.12, "a collection stops every thread even with one worker", no
 longer describes a cost: at `SPINEL_WORKERS=1` the stop-the-world waits
 for nobody (`SPINEL_GC_PHASES=1`: 0.001 s waiting for workers to park over
@@ -479,20 +508,21 @@ passed once the lock was gone (rule 57).
 
 Each made code slower than it reads; all are in rule 56. `spinel
 --emit-types` and `-S` were how they were found. Status is for
-2026.10.25-7018 and 2026.10.26.7019 (the same on both), from their generated
-C for a small program.
+2026.10.25-7018 and 2026.10.26.7019 (the same on both), and for the rows
+re-checked on 2026.11.04.7026 (2026-11-04), from their generated C for a
+small program.
 
-| What happens | Cost | What would fix it | 2026.10.25-7018, 2026.10.26.7019 |
-| --- | --- | --- | --- |
-| `"#{v}"` allocates and copies even when `v` is a String | an object per call | skip the copy for a single String interpolation | still copies |
-| `Array#clear` anywhere makes that Array `sp_PolyArray` | every element access is dynamic | keep the element type through `clear` | not re-checked |
-| An Array of the class that holds it is `sp_PolyArray` | same | type self-referencing element Arrays | not re-checked |
-| A Hash with object values boxes them | every lookup is polymorphic | infer the value type | not re-checked |
-| A nullable object parameter is boxed, and so is what returns it | the method's result is polymorphic | a nullable object type | not re-checked |
-| A block (`each`, `map`, `times`) allocates a Proc and closure cells per call | the template interpreter's loops had to become `while` | inline blocks of known methods | not re-checked |
-| `each { return ... }` compiles to `setjmp` and a Proc | slow early exits | a non-local return without `setjmp` when the block is inlined | not re-checked |
-| `String#to_sym` searches the symbol table linearly | O(symbols) per call | a hashed symbol table | **fixed**: hashed lookup |
-| `str << int` makes a one-character String | an object per byte | append the byte directly | still builds a String (`sp_int_codepoint_to_str_in`) before appending |
+| What happens | Cost | What would fix it | 2026.10.25-7018, 2026.10.26.7019 | 2026.11.04.7026 |
+| --- | --- | --- | --- | --- |
+| `"#{v}"` allocates and copies even when `v` is a String | an object per call | skip the copy for a single String interpolation | still copies | still copies (`sp_str_alloc_raw` and `memcpy`) |
+| `Array#clear` anywhere makes that Array `sp_PolyArray` | every element access is dynamic | keep the element type through `clear` | not re-checked | not re-checked |
+| An Array of the class that holds it is `sp_PolyArray` | same | type self-referencing element Arrays | not re-checked | not re-checked |
+| A Hash with object values boxes them | every lookup is polymorphic | infer the value type | not re-checked | not re-checked |
+| A nullable object parameter is boxed, and so is what returns it | the method's result is polymorphic | a nullable object type | not re-checked | not re-checked |
+| A block (`each`, `map`, `times`) allocates a Proc and closure cells per call | the template interpreter's loops had to become `while` | inline blocks of known methods | not re-checked | not re-checked |
+| `each { return ... }` compiles to `setjmp` and a Proc | slow early exits | a non-local return without `setjmp` when the block is inlined | not re-checked | not re-checked |
+| `String#to_sym` searches the symbol table linearly | O(symbols) per call | a hashed symbol table | **fixed**: hashed lookup | not re-checked |
+| `str << int` makes a one-character String | an object per byte | append the byte directly | still builds a String (`sp_int_codepoint_to_str_in`) before appending | still builds a String (`sp_int_codepoint_to_str_in`) |
 
 ## FFI and tools
 
@@ -528,8 +558,11 @@ from A, C, F and G prints Ruby's result on 2026.10.26.7019. H is new on
 #10263, 2026-10-26); on master 9b9972399 (re-checked on 2026-10-27) H is
 still present, and D still raises, by design. H is fixed by #10415, merged
 2026-10-27 (master 003ceda5d). I is new on the fork's master 49ccdced
-(2026-10-30) and absent from 2026.10.27.7020. J is on both, seen only
-with the object slab off, and not reproduced on 2026.09.12 (2 of 2 runs).
+(2026-10-30) and absent from 2026.10.27.7020; it is fixed by #10735 and
+#10786 (merged 2026-11-01 and 2026-11-02), which 2026.11.03.7025 and
+2026.11.04.7026 carry. J is on 2026.10.27.7020, 49ccdced and
+2026.11.04.7026, seen only with the object slab off, and not reproduced
+on 2026.09.12 (2 of 2 runs).
 
 On 2026.10.25-7018, the ten `spin test` failures:
 
@@ -633,7 +666,9 @@ generating wrong code:
   callee wants", the fork's `fix/empty-hash-through-param`) is merged there:
   that fix does not cover this program. Fixed in CyberTrain by storing the
   title String into the Hash in `layout_env`, before it returns the Hash
-  (see the next section: passing a call alone is still refused).
+  (see the next section: passing a call alone was still refused). Not
+  refused any more on 2026.11.04.7026, which carries #10525 (see the next
+  section).
 - test/template_integration.rb (new): "a constant write given a Hash,
   which no conversion keeps in its `sp_StrPolyHash *` slot", at
   `Migration::Base::VERSIONS = begin h = { "" => "" }; h.delete(""); h end`
@@ -644,10 +679,20 @@ generating wrong code:
 
 #### The refusal in test/template_engine.rb
 
+**Fixed** by matz/spinel#10525 ("A Hash a method returns widens where it
+is built for a store through a parameter") and, for the run-time
+`TypeError` further down, #10524 ("A Hash parameter's reads are not typed
+as the one class the method stores"), both by SaekiMototsune, merged
+2026-10-29, and carried by 2026.11.03.7025 and 2026.11.04.7026. On
+2026.11.04.7026 (re-checked on 2026-11-04) the test's earlier form, `git
+show 81778ea^:test/template_engine.rb`, passes, and every program below
+prints CRuby's result, without the "did not converge" warning. What
+follows is how it stood on 2026.10.27.7020.
+
 Still refused on 2026.10.27.7020 (re-checked on 2026-10-28 with the test's
-earlier form, `git show 81778ea^:test/template_engine.rb`, refused at line
-49). It is the one CyberTrain workaround left that a change in Spinel could
-remove, and the candidate for an upstream pull request.
+earlier form, refused at line 49). It was then the one CyberTrain
+workaround left that a change in Spinel could remove, and the candidate
+for an upstream pull request.
 
 What happens: a Hash whose value type is settled in one method (say
 String => Integer), returned, and passed on to a method that stores a value
@@ -688,18 +733,18 @@ spinel: refusal.rb:22: a typed Hash is passed to `fill`'s parameter `env`, which
 spinel: 1 refusal, nothing written
 ```
 
-Variations, all on 2026.10.27.7020:
+Variations:
 
-| Shape | Result |
-| --- | --- |
-| The program above (Hash from `new_env` through a local) | refused |
-| `fill(new_env)`, the call itself as the argument | refused |
-| `env = new_env; env["title"] = "x"; fill(env)` (the caller widens it to String and Integer values first; this is test/template_engine.rb's earlier form) | refused |
-| The `"title"` store moved into a method that returns the Hash (`def titled_env; env = new_env; env["title"] = "x"; env; end`, then `fill(titled_env)`) | compiles, prints CRuby's result |
-| `env = {}; env["n"] = 7; fill(env)` at the call site, the literal visible to the call | compiles, prints CRuby's result |
-| The program above storing a String (`"page"`) instead of a `Box` | compiles and prints CRuby's result, with `warning: type inference did not converge in 128 rounds` |
+| Shape | 2026.10.27.7020 | 2026.11.04.7026 |
+| --- | --- | --- |
+| The program above (Hash from `new_env` through a local) | refused | prints CRuby's result |
+| `fill(new_env)`, the call itself as the argument | refused | prints CRuby's result |
+| `env = new_env; env["title"] = "x"; fill(env)` (the caller widens it to String and Integer values first; this is test/template_engine.rb's earlier form) | refused | prints CRuby's result |
+| The `"title"` store moved into a method that returns the Hash (`def titled_env; env = new_env; env["title"] = "x"; env; end`, then `fill(titled_env)`) | compiles, prints CRuby's result | prints CRuby's result |
+| `env = {}; env["n"] = 7; fill(env)` at the call site, the literal visible to the call | compiles, prints CRuby's result | prints CRuby's result |
+| The program above storing a String (`"page"`) instead of a `Box` | compiles and prints CRuby's result, with `warning: type inference did not converge in 128 rounds` | prints CRuby's result, no warning |
 
-So in the shapes checked, what decides it is where the Hash's value type
+So on 2026.10.27.7020, in the shapes checked, what decides it is where the Hash's value type
 is settled, not whether it reaches the call through a local: a Hash whose
 values are already polymorphic when it leaves the method that builds it is
 accepted, and a Hash whose only value type is Integer is refused when the
@@ -727,16 +772,20 @@ p fill(env)                # CRuby: 7
 (expected Box) (TypeError)`. 2026.09.12 generates C that does not compile.
 That is wrong code, not a refusal, and the more serious of the two for an
 upstream report. With a String stored instead of a `Box` it prints CRuby's
-result.
+result. 2026.11.04.7026 prints `7`, as CRuby does (#10524).
 
-Who meets it: anyone who builds a Hash in one method and hands it to
+Who met it, up to 2026.10.27.7020: anyone who builds a Hash in one method and hands it to
 another that adds values of another type. In CyberTrain that is a caller of
 `Engine#render_with_layout`, which stores the rendered page into `env`
 (`env["__content"] = SafeString.of(...)`). `Controller#render` is not
 affected, because the controller builds its environment where the store
-widens it. An application that calls the Engine directly is.
+widens it. An application that calls the Engine directly was.
 
-What would fix it in Spinel: widen a Hash where it is built when a store
+What this document asked of Spinel, and what #10525 does (it follows the
+Hash back through a local's writes and a method's values to the literal or
+`Hash.new`, and widens it there; an ivar, a block parameter or a method
+with another body is still refused, with a message naming what the call
+can follow): widen a Hash where it is built when a store
 reached through a parameter needs a wider type, following the Hash back
 through method returns and locals (#10316 does this for an empty `{}`
 handed on through a parameter, not for a Hash returned from a method). If
@@ -746,13 +795,15 @@ building it from a literal at the call is often not possible. The run-time
 `TypeError` above needs a fix either way: the callee's read of `env["n"]`
 must use the widened value type.
 
-Today: test/template_engine.rb builds the Hash in `layout_env`, which
+Today: test/template_engine.rb still builds the Hash in `layout_env`, which
 stores the title String into it before returning it, so its values are
-already polymorphic when it reaches `render_with_layout`. It is
-`layout_env`'s store that matters; passing the call instead of a local
-alone is still refused (second row of the table).
+already polymorphic when it reaches `render_with_layout`. On
+2026.10.27.7020 it was `layout_env`'s store that mattered; passing the
+call instead of a local alone was still refused (second row of the
+table). On the pinned 2026.11.04.7026 the workaround is not needed: the
+test's earlier form passes. It has not been dropped from the test.
 
-Not reported upstream yet.
+Reported and fixed upstream: #10524 and #10525, merged 2026-10-29.
 
 ### D. `String#to_i` on more digits than an Integer holds raises `RangeError`
 
@@ -997,10 +1048,13 @@ Array literal, though, is noted as built in place at the narrowed kind
 is still built boxed, and the write of a boxed Array into the narrowed
 slot is refused.
 
-- Today: nothing to do; CyberTrain is pinned to 2026.10.27.7020. If a
-  later release keeps the refusal, a `.freeze` on the `Array.new`, or
-  `[Callback.new(...)][0, 0]`, avoids it: both forms of the reduced
-  program print Ruby's result on 49ccdced and on 2026.10.27.7020.
+- Today: nothing to do. The pinned 2026.11.04.7026 carries both fixes
+  below: the reduced program and its `Reg::NONE = ...` form print Ruby's
+  result, examples/blog builds, and test/controller_status.rb passes
+  (re-checked on 2026-11-04). Before the fixes, a `.freeze` on the
+  `Array.new`, or `[Callback.new(...)][0, 0]`, avoided it: both forms of
+  the reduced program print Ruby's result on 49ccdced and on
+  2026.10.27.7020.
 - Fix: matz/spinel#10735, merged on 2026-11-01 (the fork's
   saeki-mototsune/spinel#14, the same change, was closed). The constant's
   write builds
@@ -1027,18 +1081,24 @@ slot is refused.
   matz/spinel#10786, merged on 2026-11-02, with
   test/object_array_constant_path_array_new.rb. CyberTrain does not write
   this form. With both merged, upstream master builds the constant
-  written either way (`NONE = ...` and `Reg::NONE = ...`).
+  written either way (`NONE = ...` and `Reg::NONE = ...`), and so does
+  2026.11.04.7026.
 
 ### J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs
 
 Found on 2026-10-30 on 2026.10.27.7020 while re-measuring 5, and present on
-the fork's master 49ccdced; not reproduced on 2026.09.12 (2 of 2 runs).
+the fork's master 49ccdced and on the pinned 2026.11.04.7026 (re-checked
+on 2026-11-04: 3 of 3 runs, the same 64-byte object from
+`sp_Srv_spawn_connection` freed by the sweep and read by
+`_fiber_body_Srv_spawn_connection_1`); not reproduced on 2026.09.12 (2
+of 2 runs).
 The object slab
 (`lib/sp_slab.c`, on by default) recycles freed slots itself, so an
 AddressSanitizer build sees a use-after-free only when the slab is off
 (`SPINEL_GC_SLAB=0`, which allocates every object with `calloc`). With it
 off, this program fails under AddressSanitizer in every run (3 of 3 on
-2026.10.27.7020, 2 of 2 on 49ccdced) when a client opens and closes
+2026.10.27.7020, 2 of 2 on 49ccdced, 3 of 3 on 2026.11.04.7026) when a
+client opens and closes
 connections quickly (8 at a time, each sending one to three requests),
 `SPINEL_WORKERS=1`:
 
@@ -1114,3 +1174,47 @@ Srv.new.run((ARGV[0] || "3570").to_i)
   the thread first runs, and add the program above to the tests with an
   AddressSanitizer job that runs with `SPINEL_GC_SLAB=0`, since the slab
   hides this class of bug from AddressSanitizer.
+
+## From spikes/NOTES.md, not written up before
+
+Three Spinel behaviours CyberTrain works around were recorded only as
+rules in spikes/NOTES.md. They were looked at on 2026.11.04.7026 on
+2026-11-04: one is still there (K), and the generated C of the other two
+no longer shows the cause in the shape checked.
+
+### K. `puts` on a nil-only receiver does not compile once the TLS layer is in the program
+
+Rule 78, found on 2026.10.26.7019; **still there on 2026.11.04.7026**.
+When a receiver's type is nil-only (Logger's `@io` in a program that never
+gives a logger an io), `@io.puts(line)` goes through the IO dispatch, and
+once cybertrain/net/tls (Spinel's openssl package) is in the program the
+dispatch's fallback does not compile: `passing argument 2 of
+'sp_File_puts_bin' from incompatible pointer type
+[-Werror=incompatible-pointer-types]`, an `sp_String *` where sp_io.h
+wants a `const char *`. Checked on 2026.11.04.7026 by putting
+`@io.puts(line)` back into `Logger#log` (cybertrain/logger.rb:57) and
+building test/logger_tls.rb, which then fails to build. A standalone class
+with a nil-default `@io` and `require "openssl"` did not reproduce it on
+2026.10.26.7019, so it has not been reduced.
+
+- Today: `Logger#log` calls `@io.write(line.end_with?("\n") ? line :
+  "#{line}\n")`, which compiles through the same dispatch with the right
+  argument type; test/logger_tls.rb is the regression program.
+- Fix: give the dispatch's `puts` fallback the argument type that
+  `sp_File_puts_bin` takes, as `write`'s already has.
+
+### Rules 64 and 65: roots that were missing on 2026.09.12
+
+- **Rule 64, class variables were not GC roots** (2026.09.12): `@@x`
+  compiled to a C static that `sp_mark_user_globals` never marked, so an
+  object reachable only from it was freed. On 2026.11.04.7026 a module's
+  `@@items` holding an object is marked there (`if (cvar_Reg_items)
+  sp_gc_mark(...)`) and survives `SPINEL_GC_STRESS=1`. CyberTrain keeps
+  objects out of class variables anyway (test/harness_gc.rb).
+- **Rule 65, a call's result in an argument list was not rooted while a
+  later argument allocated** (2026.09.12; `File.join(home, "spinel",
+  "#{tag}.lock")` read freed memory on macOS CI). On 2026.11.04.7026 the
+  same shape roots the call's result (`SP_GC_ROOT(_t5)`) before the
+  interpolation allocates. There was no AddressSanitizer run, so this is
+  not a claim that it is fixed in general; CyberTrain keeps building the
+  allocating argument first, in a local (cybertrain/cli/toolchain.rb).
