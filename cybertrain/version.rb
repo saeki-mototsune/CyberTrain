@@ -1,5 +1,5 @@
 module Cybertrain
-  VERSION = "0.4.0"
+  VERSION = "0.4.1"
 
   # Where `cybertrain new` points an app's spin.toml by default: the git tag
   # "v#{VERSION}" of this repository. Kept here because the gem (CRuby) and
@@ -8,7 +8,7 @@ module Cybertrain
 
   # The Spinel release cybertrain is written and tested against: the tag of
   # SPINEL_REPOSITORY that `cybertrain setup` builds, and CI's SPINEL_TAG.
-  SPINEL_TAG = "2026.11.03.7025"
+  SPINEL_TAG = "2026.11.04.7026"
 
   # Where that tag lives: the saeki-mototsune fork of matz/spinel, which
   # carries the fixes cybertrain needs ahead of an upstream release.
