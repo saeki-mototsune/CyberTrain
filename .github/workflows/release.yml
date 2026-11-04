@@ -58,14 +58,14 @@ concurrency:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ inputs.tag || github.ref_name }}
           persist-credentials: false
@@ -113,7 +113,7 @@ jobs:
   # Between the checks and the first push: the tag still names what was tested.
   tag-unchanged:
     needs: [version, gate, ci, blog-image]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
@@ -148,7 +148,7 @@ jobs:
 
   release:
     needs: [version, gate, ci, blog-image, tag-unchanged, playground-image, blog-image-push]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: write
@@ -191,7 +191,7 @@ jobs:
   # the release is already created: run script/sync-versions by hand.
   sync-site-versions:
     needs: [release]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: write
@@ -202,7 +202,7 @@ jobs:
     steps:
       # All history and tags: the script reads cybertrain/version.rb at this
       # tag and at the one before it.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0

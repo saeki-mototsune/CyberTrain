@@ -68,10 +68,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-26.04, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
@@ -129,7 +129,7 @@ jobs:
 
       - name: Restore the Spinel toolchain
         id: spinel-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cybertrain/spinel
           key: spinel-${{ steps.image.outputs.spinel_tag }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v3
@@ -146,7 +146,7 @@ jobs:
       # cost the next run another build.
       - name: Save the Spinel toolchain
         if: steps.spinel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/.cybertrain/spinel
           key: ${{ steps.spinel-cache.outputs.cache-primary-key }}

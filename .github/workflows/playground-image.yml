@@ -49,10 +49,10 @@ env:
 
 jobs:
   image:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || (inputs.release_tag && format('refs/tags/{0}', inputs.release_tag)) || '' }}
           persist-credentials: false
@@ -68,11 +68,11 @@ jobs:
       - name: devcontainer.json is valid JSON
         run: jq empty .devcontainer/devcontainer.json
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Tags and labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           flavor: |
@@ -83,7 +83,7 @@ jobs:
             type=raw,value=${{ inputs.tag || 'manual' }},enable=${{ github.event_name == 'workflow_dispatch' && !inputs.release_tag }}
 
       - name: Build (linux/amd64, target playground)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: playground/Dockerfile
@@ -101,7 +101,7 @@ jobs:
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
