@@ -59,8 +59,8 @@ Eight builds are covered:
   the fork's release tag carrying matz/spinel master up to #10959, and the
   build CyberTrain is pinned to now (`Cybertrain::SPINEL_TAG`,
   `Cybertrain::SPINEL_REPOSITORY`; since 2026-11-04, CyberTrain 0.4.1).
-  It carries #10524 and #10525 (the refusal under C), and #10735 and
-  #10786 (I). Checked on 2026-11-04 with the toolchain `cybertrain setup`
+  It carries #10525 (the refusal under C) and #10524 (the run-time
+  `TypeError` beside it), and #10735 and #10786 (I). Checked on 2026-11-04 with the toolchain `cybertrain setup`
   builds from that tag: `spin test` passes 106 of 106; examples/blog's
   `spin run gen` writes files identical to the committed ones, `spin build
   blog` builds it, and its tests pass; the reduced programs of 3, A, C, F,
@@ -79,8 +79,9 @@ default is affected is open), then 5 (measured, with two concrete fixes),
 then K (a compile failure still there on 2026.11.04.7026, worked
 around, not reduced), then 6 and 7 (4 is fixed on 2026.10.27.7020, see
 4), then the rest. The
-refusal under C and I, which used to lead this list, are fixed upstream
-and in the pinned 2026.11.04.7026 (#10524 and #10525; #10735 and #10786).
+refusal under C (#10525, with the run-time `TypeError` beside it fixed
+by #10524) and I (#10735 and #10786), which used to lead this list, are
+fixed upstream and in the pinned 2026.11.04.7026.
 The refusal's workaround in test/template_engine.rb is no longer needed
 there, but is still in the test (see C). B, D and 1
 are not on that list: they are accepted as Spinel's constraints (see
