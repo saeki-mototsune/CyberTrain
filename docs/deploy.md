@@ -688,7 +688,7 @@ curl -sI https://notes.example.com/
 ```sh
 ssh YOUR_SERVER
 sudo -iu notes /srv/notes/deploy.sh          # main を出す
-sudo -iu notes /srv/notes/deploy.sh v1.2.0   # タグやコミットを指定することもできる
+sudo -iu notes /srv/notes/deploy.sh v1.2     # タグやコミットを指定することもできる
 ```
 
 手元での変更の流れは開発時と同じです。スキーマ・ルート・コントローラのコールバックやインスタンス

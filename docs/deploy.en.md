@@ -753,7 +753,7 @@ Make the change locally, commit and push, then:
 ```sh
 ssh YOUR_SERVER
 sudo -iu notes /srv/notes/deploy.sh          # ships main
-sudo -iu notes /srv/notes/deploy.sh v1.2.0   # a tag or a commit works too
+sudo -iu notes /srv/notes/deploy.sh v1.2     # a tag or a commit works too
 ```
 
 The local workflow is the same as in development. After changing the schema,
