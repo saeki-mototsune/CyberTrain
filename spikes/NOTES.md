@@ -30,10 +30,10 @@ The verdicts are 2026.09.12's; row 2 is revisited under "Status on 2026.11.04.70
 ## Status on 2026.11.04.7026
 
 Checked on 2026-11-04 with Spinel 2026.11.04.7026 (a2d06115f), the pinned
-`Cybertrain::SPINEL_TAG`, built from source, by compiling each rule's
-reduced program (or, where the rule has none, a small probe of the shape it
-describes) and comparing its output with CRuby 3.3's. With that build `spin
-test` passes 106 of 106 of the framework's tests.
+`Cybertrain::SPINEL_TAG`, built from source, by compiling each re-checked
+rule's reduced program (or, where the rule has none, a small probe of the
+shape it describes; the rules marked "Not re-checked" were not run) and
+comparing its output with CRuby 3.3's. With that build `spin test` passes 106 of 106 of the framework's tests.
 
 - **Still there**: the program still differs from CRuby or does not compile.
 - **Reduced program passes**: the rule's own reduced program prints Ruby's
@@ -73,8 +73,9 @@ written up for upstream.
 | 70 | Probe passes in a small program; the rule was seen only with the whole framework required, so not conclusive. |
 | 72 | Probe passes for two parts: an unresolvable name raises SocketError, and `entry[3]` indexes a `getaddrinfo` entry. The rest was not re-checked. |
 | 75 | Probe passes: Kernel `spawn` and `Process.spawn` compile and `Process.wait` reaps the child. `VACUUM INTO` was not re-checked. |
-| 76 | **Still there**: a bare `DB` outside `module Cybertrain` raises NameError, which is CRuby's behaviour too. |
+| 76 | Matches CRuby: a bare `DB` outside `module Cybertrain` raises NameError, as under CRuby. The rule stays: such code must spell `Cybertrain::DB`. |
 | 78 | **Still there** (docs/spinel-feedback.md K). |
+| 79 | **Still there**: found on this build (its reduced program does not compile). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -145,7 +146,8 @@ The rules are numbered in the order they were found. By topic:
 19. `STDOUT` and a `StringIO` cannot share one polymorphic call site (`io.puts`
     where `io` is sometimes `STDOUT` and sometimes a `StringIO` raises
     NoMethodError for one branch). Keep such handles in separate typed slots
-    and branch explicitly (`if @io then @io.write(line) else STDOUT.puts(line) end`;
+    and branch explicitly (`if @io then @io.write(line.end_with?("\n") ? line : "#{line}\n") else
+    STDOUT.puts(line) end`;
     `write`, not `puts`, on `@io` because of rule 78).
     (`cybertrain/logger.rb`: never pass STDOUT/STDERR as a constructor
     argument next to a StringIO-accepting call site.)
