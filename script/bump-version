@@ -9,14 +9,14 @@
 #   test/version.rb.expected, test/integration_m1.rb,
 #   test/cli_new.rb.expected, test/cli_toolchain.rb.expected
 #                                 the numbers the tests expect
-# The site and the guides are not touched: the release run moves them once the
-# release exists (script/sync-versions). The bump-version workflow
+# The site and the guides are not touched: they name no release numbers
+# (script/check-version-mentions). The bump-version workflow
 # (.github/workflows/bump-version.yml) runs this and opens a pull request; it
 # can also be run by hand.
 #
 # usage: script/bump-version VERSION [SPINEL_TAG]
 #   VERSION     X.Y.Z, not lower than the current Cybertrain::VERSION
-#   SPINEL_TAG  a tag of Cybertrain::SPINEL_REPOSITORY (e.g. 2026.10.27.7020);
+#   SPINEL_TAG  a tag of Cybertrain::SPINEL_REPOSITORY (a tag name such as YYYY.MM.DD.NNNN);
 #               left as it is when omitted or empty
 # Prints what it changed. Exits 1 on a malformed argument, a lower version, or
 # when nothing would change.

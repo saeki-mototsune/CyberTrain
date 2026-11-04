@@ -1,5 +1,5 @@
 ---
-source_sha256: f2fc66817b4de63dd2d3fa3ee4cdba0c25960cae6ec4de300b2cc3d671220cf2
+source_sha256: 8c5fb31e9029aee83c444a7a42144a867952901bfc224f91835abbbf79439213
 ---
 # Установка
 
@@ -9,12 +9,13 @@ source_sha256: f2fc66817b4de63dd2d3fa3ee4cdba0c25960cae6ec4de300b2cc3d671220cf2
 > [!NOTE]
 > Чтобы попробовать CyberTrain, ничего не устанавливая, откройте [песочницу](site:playground.html):
 > GitHub Codespaces открывает в вашем браузере, в VS Code, блог из учебника, команду `cybertrain` и
-> Spinel `2026.10.27.7020`. Тот же образ запускается и локально под Docker.
+> зафиксированный релиз Spinel. Тот же образ запускается и локально под Docker.
 
 ## Требования
 
-- Spinel `2026.10.27.7020` (`Cybertrain::SPINEL_TAG`, тот же релиз, что и
-  `SPINEL_TAG` в [.github/workflows/ci.yml](../../.github/workflows/ci.yml)) —
+- Spinel в релизе из `Cybertrain::SPINEL_TAG`
+  ([cybertrain/version.rb](../../cybertrain/version.rb); его выводит `cybertrain doctor`, и
+  `SPINEL_TAG` CI в [.github/workflows/ci.yml](../../.github/workflows/ci.yml) тот же) —
   релиз [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)
   (`Cybertrain::SPINEL_REPOSITORY`), форка matz/spinel, в котором исправления,
   нужные CyberTrain, появляются раньше, чем в релизе основного проекта;
@@ -102,7 +103,7 @@ cybertrain doctor
   `dist/` (бинарный файл, `public/`, `storage/`, `tmp/`).
 - `cybertrain spin ARGS...` запускает `spin` с зафиксированным Spinel из
   любого каталога (`cybertrain spin test`, `cybertrain spin run gen -- --check`).
-- `cybertrain setup [--force]` устанавливает Spinel `2026.10.27.7020` в
+- `cybertrain setup [--force]` устанавливает зафиксированный релиз Spinel в
   `~/.cybertrain`, если `spinel` этого релиза ещё нет в `PATH`;
   `--force` пересобирает копию в `~/.cybertrain`.
 - `cybertrain doctor` проверяет инструменты C, заголовки SQLite и установку
@@ -118,10 +119,10 @@ cybertrain doctor
 сначала убеждается, что доступен Spinel релиза из `Cybertrain::SPINEL_TAG`.
 `spinel` в `PATH` (вместе с `spin`), чей `spinel --version` сообщает этот
 релиз, используется как есть; иначе используется копия, которую `cybertrain`
-хранит в `~/.cybertrain/spinel/2026.10.27.7020/`; иначе `cybertrain` собирает эту
+хранит в `~/.cybertrain/spinel/<SPINEL_TAG>/`; иначе `cybertrain` собирает эту
 копию из релизного тега `Cybertrain::SPINEL_REPOSITORY` (`git clone`,
 `make deps`, `make -j`, `make install PREFIX=...`) — один раз, за несколько
-минут, записывая лог в `~/.cybertrain/log/spinel-2026.10.27.7020-build.log`
+минут, записывая лог в `~/.cybertrain/log/spinel-<SPINEL_TAG>-build.log`
 (если шаг завершается сбоем, выводятся его последние строки).
 
 Если не хватает инструмента, нужного для сборки, `cybertrain` ещё до её начала
@@ -164,7 +165,8 @@ Spinel в геме нет. Фреймворк — это пакет Spinel, от
 
 `cybertrain new` записывает приложение, чей `spin.toml` указывает на релиз,
 соответствующий CLI (`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }`), проверяет,
+"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`, где
+X.Y.Z — то, что выводит `cybertrain version`), проверяет,
 что Spinel установлен, затем запускает `spin lock` (spin загружает фреймворк
 в свой кэш `~/.cache/spin/packages/` и фиксирует коммит в
 `spin.lock`) и `spin run gen` — примерно так же, как `rails new` запускает
@@ -191,7 +193,7 @@ Spinel в геме нет. Фреймворк — это пакет Spinel, от
 ### Перевод приложения на новый релиз
 
 Гем и фреймворк выпускаются из одного тега, поэтому их версии совпадают: гем
-0.3.1 создаёт приложения, зависящие от фреймворка `v0.3.1`. Чтобы перевести
+X.Y.Z создаёт приложения, зависящие от фреймворка `vX.Y.Z`. Чтобы перевести
 приложение на новый релиз, обновите гем, укажите в `spin.toml` новый тег, затем
 выполните в приложении:
 

@@ -8,8 +8,8 @@
 # spin.toml, ci.yml's SPINEL_TAG and the tests' expected numbers) and pushes
 # the result to release/bump-vX.Y.Z with a pull request against main. A second
 # run for the same version updates that branch and the open pull request's
-# title and body. The site and the guides move later, in the release run
-# (release.yml, sync-site-versions).
+# title and body. The site and the guides name no release numbers
+# (script/check-version-mentions), so they need no change.
 #
 # The Gate and CI must run on this pull request, above all when Spinel moves,
 # but GitHub starts no workflows for a push or a pull request made with

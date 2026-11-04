@@ -10,7 +10,7 @@ nav: tutorial
 toc_title: "Steps 00–15"
 meta:
   - term: You need
-    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, SQLite 3 headers (Spinel `2026.10.27.7020` is installed for you) <a class="meta-link" href="#requirements">Step 00</a>'
+    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, SQLite 3 headers (Spinel is installed for you) <a class="meta-link" href="#requirements">Step 00</a>'
   - term: You start from
     text: "`gem install cybertrain`"
   - term: You finish with
@@ -36,8 +36,8 @@ deployable `dist/` folder. The finished app is
 <!-- list: checklist -->
 - Ruby 3.2+ and RubyGems, for the `cybertrain` command only; applications
   never run on CRuby. On Ruby 3.2, also `gem install prism`.
-- Spinel `2026.10.27.7020`, a release of the
-  [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork,
+- Spinel, at the release CyberTrain pins (`cybertrain doctor` prints it), of
+  the [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork,
   which carries the fixes CyberTrain needs ahead of an upstream release;
   untested against other versions. You do not install it by hand: the first
   command that needs it builds that release into `~/.cybertrain` (a few
@@ -68,7 +68,7 @@ glance; the steps below take it one command at a time.
 <figure class="code" data-lang="shell" markdown="0">
 <figcaption><span class="code-path">terminal &mdash; any directory, then&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code: terminal &mdash; any directory, then blog/"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># installs Spinel 2026.10.27.7020 the first time (a few minutes)</span></span>
+<span class="ln cmd">cybertrain new blog          <span class="c"># installs Spinel the first time (a few minutes)</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
@@ -93,7 +93,7 @@ cd blog
 ```
 
 `cybertrain new` writes the application with its `spin.toml` pointing at the
-release matching the CLI:
+release matching the CLI (X.Y.Z is what `cybertrain version` prints):
 
 ```toml spin.toml
 [package]
@@ -101,11 +101,11 @@ name = "blog"
 version = "0.1.0"
 
 [dependencies]
-cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }
+cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }
 ```
 
 Then it makes sure Spinel is installed (the first time, that means building
-Spinel `2026.10.27.7020` into `~/.cybertrain`: a few minutes, once; see
+the pinned Spinel release into `~/.cybertrain`: a few minutes, once; see
 [step 00](#requirements)) and runs `spin lock` (spin fetches the framework
 into its cache, `~/.cache/spin/packages/`, and pins the commit in `spin.lock`)
 and `spin run gen`, much as `rails new` runs `bundle install`, so
@@ -302,7 +302,7 @@ builds the models from the rewritten `db/schema.rb`.
 banner. The first start compiles the app, so it takes a while:
 
 ```text output — cybertrain server
-=> Booting cybertrain 0.3.1
+=> Booting cybertrain X.Y.Z
 => development environment (1 worker)
 => Watching app/, config/ and db/schema.rb for changes
 * Listening on http://127.0.0.1:3000
@@ -1123,7 +1123,7 @@ a clean stop and the database kept on its volume, and loads
 - Build `dist/` on the same OS and CPU as the machine that runs it: the binary
   links the system SQLite.
 - `SPINEL_WORKERS` defaults to `1`.
-- Only Spinel `2026.10.27.7020` is tested.
+- Only the pinned Spinel release (`Cybertrain::SPINEL_TAG`) is tested.
 - More differences from Rails, in one table: [Differences from Rails](how-it-works.md#differences-from-rails).
 
 <!-- step → #where-next -->

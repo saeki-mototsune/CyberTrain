@@ -1,0 +1,63 @@
+#!/usr/bin/env ruby
+# Keeps the release numbers out of the pages a reader follows: the site, the
+# guides, the deployment tutorial and the READMEs must not name the current
+# Cybertrain::VERSION or Cybertrain::SPINEL_TAG (cybertrain/version.rb). Those
+# numbers change with every release, and a page that spells them out is wrong
+# the day after. Name what the number is instead: "the pinned Spinel
+# release" or `Cybertrain::SPINEL_TAG`, the placeholders `X.Y.Z`/`vX.Y.Z` and
+# `SPINEL_TAG` in commands and output, and point at `cybertrain version` or
+# `cybertrain doctor`, which print the numbers.
+#
+# Only exact numbers count: "0.3.0" (and "v0.3.0") is found, "10.3.01" and
+# "0.3.0.1" are not. A record of what was measured on a given release names an
+# older one and is left alone; such records belong in docs/ outside these
+# files (docs/benchmark.md, docs/spinel-feedback.md, docs/performance-next.md).
+#
+# Files checked:
+#   site/**/*.html (not site/api/, which is generated)
+#   docs/guide/**/*.md
+#   docs/deploy.md, docs/deploy.en.md, docs/deploy-kamal.md
+#   README.md, playground/README.md
+# script/gate runs this when one of them, cybertrain/version.rb or this script
+# is in the set. Standard library only.
+#
+# usage: script/check-version-mentions     (exit status 1 and the lines that name a number)
+require "open3"
+
+FILES = [
+  %r{\Asite/(?!api/).*\.html\z},
+  %r{\Adocs/guide/.*\.md\z},
+  %r{\Adocs/deploy(\.en|-kamal)?\.md\z},
+  %r{\A(playground/)?README\.md\z}
+].freeze
+
+Dir.chdir(File.expand_path("..", __dir__))
+source = File.read("cybertrain/version.rb")
+version = source[/^\s*VERSION = "([^"]+)"/, 1] or abort "check-version-mentions: no VERSION in cybertrain/version.rb"
+spinel = source[/^\s*SPINEL_TAG = "([^"]+)"/, 1] or abort "check-version-mentions: no SPINEL_TAG in cybertrain/version.rb"
+
+# The number on its own: not inside a longer number such as 10.3.01 or 0.3.0.1.
+def exact(number)
+  /(?<![\d.])#{Regexp.escape(number)}(?!\d|\.\d)/
+end
+pattern = Regexp.union(exact(version), exact(spinel))
+
+out, status = Open3.capture2("git", "ls-files", "-z")
+abort "check-version-mentions: git ls-files failed" unless status.success?
+files = out.split("\0").select { |f| FILES.any? { |re| f.match?(re) } && File.file?(f) }.sort
+
+hits = []
+files.each do |file|
+  File.foreach(file, encoding: "UTF-8").with_index(1) do |line, n|
+    hits << "#{file}:#{n}: #{line.strip[0, 160]}" if line.match?(pattern)
+  end
+end
+
+if hits.empty?
+  puts "#{files.size} files name neither cybertrain #{version} nor Spinel #{spinel}"
+else
+  puts hits
+  puts "these name the current release (cybertrain #{version} or Spinel #{spinel}): describe it instead"
+  puts "(see script/check-version-mentions)"
+  exit 1
+end
