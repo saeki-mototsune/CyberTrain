@@ -43,20 +43,14 @@ def new_env
   env
 end
 
-# new_env with the layout's title. The title is stored here, in the method
-# that returns the Hash, not by the caller: render_with_layout stores the
-# rendered page into the Hash, and Spinel since 2026.10.09-7009 refuses a
-# Hash whose value types are settled to one type where it is built and
-# widened only later (docs/spinel-feedback.md, "The refusal in
-# test/template_engine.rb").
-def layout_env
+test "renders a template with a loop inside the layout" do
+  # The caller widens new_env's Hash and render_with_layout stores the page
+  # into it: Spinel refused this shape up to 2026.10.27.7020 (fixed by
+  # matz/spinel#10525; docs/spinel-feedback.md, "The refusal in
+  # test/template_engine.rb").
   env = new_env
   env["__content_title"] = "All posts"
-  env
-end
-
-test "renders a template with a loop inside the layout" do
-  html = Engine.new(VIEWS).render_with_layout("posts/index", "layouts/application", layout_env, helpers)
+  html = Engine.new(VIEWS).render_with_layout("posts/index", "layouts/application", env, helpers)
   expected = <<~HTML
     <!DOCTYPE html>
     <html>

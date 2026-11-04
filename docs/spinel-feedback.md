@@ -82,8 +82,7 @@ around, not reduced), then 6 and 7 (4 is fixed on 2026.10.27.7020, see
 refusal under C (#10525, with the run-time `TypeError` beside it fixed
 by #10524) and I (#10735 and #10786), which used to lead this list, are
 fixed upstream and in the pinned 2026.11.04.7026.
-The refusal's workaround in test/template_engine.rb is no longer needed
-there, but is still in the test (see C). B, D and 1
+The refusal's workaround in test/template_engine.rb is dropped (see C). B, D and 1
 are not on that list: they are accepted as Spinel's constraints (see
 "Accepted as Spinel constraints"). 2's workaround in `Html.escape` is dropped on
 2026.10.27.7020 (see 2). H and the two shapes found in review are fixed on
@@ -138,8 +137,8 @@ where they do not happen, until it moved to 2026.10.26.7019. The refusal
 listed under C is separate: every build checked up to 2026.10.27.7020
 makes it (2026.10.26.7019, master 9b9972399 and 2026.10.27.7020), and
 2026.11.04.7026 no longer does (#10525): test/template_engine.rb's
-earlier form passes there, so that row's workaround is no longer needed,
-though the test still has it. The first two rows are needed on every
+earlier form passes there, and the test is back in that form, so that
+row's workaround is dropped. The first two rows are needed on every
 build checked, and are accepted as Spinel's constraints; the `SafeString.of`
 row did not reproduce on master 9b9972399, but is kept (see 1); the last
 row, for K, is still needed on 2026.11.04.7026. The workaround for 2 in
@@ -152,7 +151,7 @@ CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 | --- | --- | --- | --- | --- |
 | `extern` declarations in the `ffi_source` of cybertrain/db/sqlite_ffi.rb | B | required: an undeclared call is now a build error | required (#10255) | not re-checked (accepted) |
 | `Request#content_length` answers `INT64_MAX` for more than 18 digits instead of calling `to_i` (cybertrain/http/request.rb), and `Server#body_length` answers one past the body limit (cybertrain/http/server.rb) | D | `"99999999999999999999".to_i` still raises `RangeError` | still raises `RangeError`, by design in the default `raise` mode; kept (`--int-overflow=promote`, experimental, parses it as a Bignum; see D) | still raises `RangeError` (accepted) |
-| test/template_engine.rb settles the layout Hash's value types where it is built (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged; still refused on 2026.10.27.7020 (see "The refusal in test/template_engine.rb") | not needed: the earlier form (`git show 81778ea^:test/template_engine.rb`) passes (#10525); `layout_env` is still in the test |
+| test/template_engine.rb settles the layout Hash's value types where it is built (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged; still refused on 2026.10.27.7020 (see "The refusal in test/template_engine.rb") | not needed: the earlier form (`git show 81778ea^:test/template_engine.rb`) passes (#10525). Dropped: the test is back in that form, and `layout_env` is gone |
 | `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415). Dropped on 2026.10.27.7020: `DB.with`'s comment no longer asks for the local, and test/db_with_value.rb also covers the block's own value | dropped (test/db_with_value.rb passes) |
 | `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept | not re-checked (accepted) |
 | `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile |
@@ -668,8 +667,8 @@ generating wrong code:
   that fix does not cover this program. Fixed in CyberTrain by storing the
   title String into the Hash in `layout_env`, before it returns the Hash
   (see the next section: passing a call alone was still refused). Not
-  refused any more on 2026.11.04.7026, which carries #10525 (see the next
-  section).
+  refused any more on 2026.11.04.7026, which carries #10525, and the
+  workaround is dropped (see the next section).
 - test/template_integration.rb (new): "a constant write given a Hash,
   which no conversion keeps in its `sp_StrPolyHash *` slot", at
   `Migration::Base::VERSIONS = begin h = { "" => "" }; h.delete(""); h end`
@@ -796,13 +795,14 @@ building it from a literal at the call is often not possible. The run-time
 `TypeError` above needs a fix either way: the callee's read of `env["n"]`
 must use the widened value type.
 
-Today: test/template_engine.rb still builds the Hash in `layout_env`, which
-stores the title String into it before returning it, so its values are
-already polymorphic when it reaches `render_with_layout`. On
-2026.10.27.7020 it was `layout_env`'s store that mattered; passing the
-call instead of a local alone was still refused (second row of the
-table). On the pinned 2026.11.04.7026 the workaround is not needed: the
-test's earlier form passes. It has not been dropped from the test.
+Today: nothing. Up to 2026.10.27.7020, test/template_engine.rb built the
+Hash in `layout_env`, which stored the title String into it before
+returning it, so its values were already polymorphic when it reached
+`render_with_layout`. It was `layout_env`'s store that mattered; passing
+the call instead of a local alone was still refused (second row of the
+table). On the pinned 2026.11.04.7026 the earlier form passes, and the
+test is back in it (the caller stores the title into `new_env`'s Hash
+through a local), so it now covers the shape #10525 fixes.
 
 Reported and fixed upstream: #10524 and #10525, merged 2026-10-29.
 
