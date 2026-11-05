@@ -1,0 +1,4 @@
+ok   a write waiting for the lock lets the holder commit (one worker)
+ok   BEGIN IMMEDIATE waiting for the lock lets the holder commit (one worker)
+ok   a write gives up with database is locked after the wait limit
+3 tests, 10 assertions, 0 failures

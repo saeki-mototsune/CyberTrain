@@ -688,10 +688,10 @@ Each gets a validation line in `Config#scheduler_error` / a new
   grammar grows, constants stay out), "rails console" (replaced by the
   expression console); D5 gains streaming responses; D9 gains components,
   application helpers, `case`, blocks, `tag`; D28 gains job threads,
-  heartbeats, concurrency; D33 gains `feeds` and `only:`; new **D35**
-  (streaming responses and the stream endpoint), **D36** (the stream
-  pub/sub and Turbo), **D37** (application helpers and components), **D38**
-  (process roles and the scheduler lease), **D39** (BLOB), **D40** (the
+  heartbeats, concurrency; D33 gains `feeds` and `only:`; new **D36**
+  (streaming responses and the stream endpoint), **D37** (the stream
+  pub/sub and Turbo), **D38** (application helpers and components), **D39**
+  (process roles and the scheduler lease), **D40** (BLOB), **D41** (the
   console). Section 13 gets a 2026-11-05 entry.
 - **Guides**: new `docs/guide/realtime.md` (SSE, WebSocket, Turbo,
   broadcasting from jobs, the JavaScript side with `EventSource` and
