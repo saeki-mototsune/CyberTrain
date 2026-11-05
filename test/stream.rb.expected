@@ -2,6 +2,7 @@ ok   broadcast writes a row and returns increasing ids
 ok   broadcast refuses an invalid stream name
 ok   sign round-trips through verify
 ok   verify refuses a tampered, empty or foreign token
+ok   a stream token is not a session cookie
 ok   verify refuses tokens whose names are invalid, even when signed
 ok   sign refuses what verify would
 ok   name_for gives table:id for a record and passes a String through
@@ -25,4 +26,4 @@ ok   replay returns the backlog of the named streams after an id
 ok   broadcast_replace_to writes the Turbo Stream HTML
 ok   broadcast_replace_to with partial: keeps the partial's markup and escapes its locals
 ok   the other broadcast shortcuts
-27 tests, 98 assertions, 0 failures
+28 tests, 102 assertions, 0 failures

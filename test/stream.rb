@@ -54,6 +54,12 @@ def last_payload
   Cybertrain::Cast.str(rows[0]["payload"])
 end
 
+# The key Stream signs with: derived from the secret for this one purpose,
+# so a token is never a valid session cookie.
+def stream_key
+  Cybertrain::Crypto.hmac_hex("s" * 64, "cybertrain/stream")
+end
+
 def flipped(token)
   last = token.getbyte(token.bytesize - 1)
   swap = last == 48 ? "1" : "0"
@@ -99,6 +105,18 @@ test "verify refuses a tampered, empty or foreign token" do
   assert_nil Stream.verify(foreign)
 end
 
+test "a stream token is not a session cookie" do
+  # names that join into a session's JSON payload
+  token = Stream.sign(["{\"user_id\":\"1\"", "\"x\":\"y\"}"])
+  assert_equal ["{\"user_id\":\"1\"", "\"x\":\"y\"}"], Stream.verify(token)
+  session = Cybertrain::Session.load(token, "s" * 64)
+  assert_nil session["user_id"]
+  assert_equal 0, session.keys.size
+  # and a session cookie is not a stream token
+  cookie = Cybertrain::Session.dump(Cybertrain::Session.new({ "a" => "b" }), "s" * 64)
+  assert_nil Stream.verify(cookie)
+end
+
 test "verify refuses tokens whose names are invalid, even when signed" do
   many = Array.new(0) { "" }
   17.times { |i| many << "s#{i}" }
@@ -106,12 +124,12 @@ test "verify refuses tokens whose names are invalid, even when signed" do
   # verify checks the names too
   joined = many.join(",")
   encoded = Base64.urlsafe_encode64(joined, padding: false)
-  seventeen = encoded + "--" + Cybertrain::Crypto.hmac_hex("s" * 64, encoded)
+  seventeen = encoded + "--" + Cybertrain::Crypto.hmac_hex(stream_key, encoded)
   assert_nil Stream.verify(seventeen)
   long = Base64.urlsafe_encode64("x" * 201, padding: false)
-  assert_nil Stream.verify(long + "--" + Cybertrain::Crypto.hmac_hex("s" * 64, long))
+  assert_nil Stream.verify(long + "--" + Cybertrain::Crypto.hmac_hex(stream_key, long))
   newline = Base64.urlsafe_encode64("a\nb", padding: false)
-  assert_nil Stream.verify(newline + "--" + Cybertrain::Crypto.hmac_hex("s" * 64, newline))
+  assert_nil Stream.verify(newline + "--" + Cybertrain::Crypto.hmac_hex(stream_key, newline))
 end
 
 test "sign refuses what verify would" do

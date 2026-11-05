@@ -1,5 +1,5 @@
 ---
-source_sha256: f4be922d7dac043f5311071ba2434dbcca14da15433985cf7586c8ab04b0839e
+source_sha256: a7d344c625b8a0bdb65077dff896e07c8a6258a00ef38ebe3d533d3b20335e34
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -258,10 +258,15 @@ réponse.
 ## Noms de flux signés
 
 Une page ne peut lire un flux qu’avec un jeton qui le nomme. Le jeton est
-formé des noms de flux et d’une signature HMAC-SHA256 faite avec
-`secret_key_base`&nbsp;; le point d’entrée vérifie la signature et ne lit ni
+formé des noms de flux et d’une signature HMAC-SHA256 faite avec une clé
+dérivée de `secret_key_base` pour les seuls flux (comme
+`turbo/signed_stream_verifier_key` dans Rails), si bien qu’un jeton n’est
+jamais un cookie de session valide&nbsp;; le point d’entrée vérifie la signature et ne lit ni
 la session ni la base de données. C’est le modèle de Turbo&nbsp;: qui pouvait
-rendre la page pouvait lire ses flux.
+rendre la page pouvait lire ses flux. Les jetons n’expirent pas&nbsp;;
+changer `secret_key_base` les invalide tous, et une page restée ouverte à
+travers ce déploiement ne reçoit plus rien (un `EventSource` tient le 403
+pour définitif) jusqu’à son rechargement.
 
 <!-- list: points -->
 - Un flux propre à un utilisateur est un flux nommé d’après
