@@ -202,6 +202,16 @@ test "a body or a redirect set after a BodyWriter replaces the stream" do
   redirected.body_writer = ThreeChunks.new
   redirected.redirect("/next", 303)
   assert_equal false, redirected.streaming?
+  refused = Cybertrain::Response.new
+  refused.body_writer = ThreeChunks.new
+  raised = false
+  begin
+    refused.redirect("/next\r\nX: y", 303)
+  rescue ArgumentError
+    raised = true
+  end
+  assert_equal true, raised
+  assert_equal true, refused.streaming?
 end
 
 test "a client that never reads ends the stream when a write times out" do

@@ -7,4 +7,4 @@ ok   an error reset after a BodyWriter was set is an ordinary response
 ok   a body or a redirect set after a BodyWriter replaces the stream
 ok   a client that never reads ends the stream when a write times out
 ok   the connection count returns to zero
-9 tests, 24 assertions, 0 failures
+9 tests, 26 assertions, 0 failures

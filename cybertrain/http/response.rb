@@ -232,9 +232,9 @@ module Cybertrain
     # Raises ArgumentError (leaving the response untouched) when location
     # contains CR or LF, e.g. a percent-decoded return_to param.
     def redirect(location, status = 302)
+      set_header("Location", location) # raises on CR/LF: the stream stays
       @body_writer = nil
       @upgrade = false
-      set_header("Location", location)
       @status = status
       @performed = true
     end
