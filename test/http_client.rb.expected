@@ -22,7 +22,7 @@ ok   a closed port is refused
 ok   a name that does not resolve is refused
 ok   every error is a HttpClient::Error
 ok   loopback and private destinations are refused by default
-ok   the inet_aton spellings of a loopback address are refused as loopback
+ok   the inet_aton spellings of a loopback address never reach it
 ok   Config#http_allow_private is the default for allow_private
 ok   address classification
 ok   URLs the client does not take, without repeating them

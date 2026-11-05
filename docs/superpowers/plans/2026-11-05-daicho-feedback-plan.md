@@ -25,9 +25,11 @@ built with `cybertrain setup` to repeat the runs):
 - C3's table: `allow_private:` exists per client; 1xx responses are
   skipped (up to five, 101 refused); `max_body` raises `TooLargeError`
   rather than discarding; `127.1`, `0x7f.0.0.1`, `2130706433` and
-  `0177.0.0.1` are resolved by `getaddrinfo` (CRuby and Spinel alike) to
-  `127.0.0.1` and refused as loopback by `HttpClient`; IPv6 addresses are
-  dialled and classified.
+  `0177.0.0.1` are resolved by glibc's `getaddrinfo` (CRuby and Spinel
+  alike) to `127.0.0.1` and refused as loopback by `HttpClient`; macOS's
+  resolver hands them to DNS instead, where they fail to resolve or run
+  past the deadline (found by CI's macOS job), so they are refused as
+  unreachable there; IPv6 addresses are dialled and classified.
 
 ## Tasks
 

@@ -521,19 +521,37 @@ test "loopback and private destinations are refused by default" do
   assert_equal "blocked", outcome { client.get("http://0.0.0.0:#{$server.port}/") }.kind
 end
 
-test "the inet_aton spellings of a loopback address are refused as loopback" do
-  # getaddrinfo reads "127.1", "0x7f.0.0.1", "0177.0.0.1" and "2130706433"
-  # as 127.0.0.1, under CRuby and Spinel alike, and the policy is decided
-  # on the address it answers, so none of these spellings slips past it.
-  # Net::Address itself takes only the dotted quad: unresolved, such a
-  # spelling is "not an IP address" to it.
+# How a request to `url` ended, for a spelling that must never reach the
+# server: "blocked" (the policy refused the resolved address), "unreached"
+# (the name did not resolve, or resolving it ran past the deadline), or the
+# outcome's own kind, "ok 200" when it got through.
+def reach_kind(client, url)
+  got = outcome { client.get(url) }
+  return "unreached" if got.kind == "refused" || got.kind == "timeout"
+
+  got.kind
+end
+
+test "the inet_aton spellings of a loopback address never reach it" do
+  # "127.1", "0x7f.0.0.1", "0177.0.0.1" and "2130706433" are what inet_aton
+  # reads as 127.0.0.1. Net::Address takes only the dotted quad and needs no
+  # more: the policy is decided on the address getaddrinfo answers. What it
+  # answers is the C library's: glibc reads these spellings as 127.0.0.1,
+  # so they are refused as loopback; macOS's resolver treats them as names
+  # and hands them to DNS, where they do not resolve (refused) or run past
+  # the deadline (timeout). Either way the server on 127.0.0.1 is never
+  # reached, and the message never repeats the path.
   client = Cybertrain::HttpClient.new(timeout: 1, deadline: 2)
-  short = outcome { client.get("http://127.1/") }
-  assert_equal "blocked", short.kind
-  assert_includes short.text, "127.0.0.1 (loopback address)"
-  assert_equal "blocked", outcome { client.get("http://0x7f.0.0.1/") }.kind
-  assert_equal "blocked", outcome { client.get("http://0177.0.0.1/") }.kind
-  assert_equal "blocked", outcome { client.get("http://2130706433/") }.kind
+  short = outcome { client.get("http://127.1:#{$server.port}/hello") }
+  assert_includes ["blocked", "refused", "timeout"], short.kind
+  if short.kind == "blocked"
+    assert_includes short.text, "127.0.0.1 (loopback address)"
+  else
+    assert_nil short.text.index("hello")
+  end
+  assert_includes ["blocked", "unreached"], reach_kind(client, "http://0x7f.0.0.1:#{$server.port}/hello")
+  assert_includes ["blocked", "unreached"], reach_kind(client, "http://0177.0.0.1:#{$server.port}/hello")
+  assert_includes ["blocked", "unreached"], reach_kind(client, "http://2130706433:#{$server.port}/hello")
   assert_equal "not an IP address", reason_of("127.1")
   assert_equal "not an IP address", reason_of("2130706433")
 end
