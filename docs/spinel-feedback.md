@@ -121,6 +121,7 @@ that it is fixed.
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked | not re-checked (test/http_client.rb passes) |
 | Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked | not re-checked |
 | K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around) |
+| L. `gets` on STDIN does not flush a partial STDOUT line first | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (rule 82; worked around with `flush`) |
 
 ## What CyberTrain still works around
 
@@ -1219,3 +1220,11 @@ with a nil-default `@io` and `require "openssl"` did not reproduce it on
   interpolation allocates. There was no AddressSanitizer run, so this is
   not a claim that it is fixed in general; CyberTrain keeps building the
   allocating argument first, in a local (cybertrain/cli/toolchain.rb).
+
+### L. `gets` on STDIN does not flush a partial STDOUT line first
+
+- Found on 2026.11.04.7026 (spikes/NOTES.md rule 82): `STDOUT.write("A> ");
+  STDIN.gets` on a terminal shows `A> ` only after the line is read;
+  CRuby flushes STDOUT before the read blocks. CyberTrain's console calls
+  `flush` after its prompt. Fix: flush STDOUT (as CRuby's `rb_io_flush` on
+  the tied stdout does) before a read from STDIN blocks.

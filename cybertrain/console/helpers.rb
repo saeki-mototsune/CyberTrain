@@ -125,9 +125,7 @@ module Cybertrain
         when :first then record_at(rel, rel.first_row)
         when :last then record_at(rel, rel.last_row)
         when :find then find_record(rel, args, name)
-        when :find_by
-          rel.add_where(symbol_hash(kwargs))
-          record_at(rel, rel.first_row)
+        when :find_by then record_matching(rel, symbol_hash(kwargs))
         when :to_a then records(rel)
         when :count, :size, :length then rel.count
         when :exists?, :any? then rel.exists?
@@ -147,28 +145,60 @@ module Cybertrain
 
       # The record of `row` (a row the relation selected, or nil), loaded
       # through records_builder: the relation narrowed to that row's id.
+      # The record of `row` (a row the relation selected, or nil). It is
+      # loaded through a fresh relation of the same model narrowed to that
+      # row's id, so the relation the user holds (`r = Article.where(...)`,
+      # `r.first`) keeps its own conditions, limit and offset.
       def record_at(rel, row)
         return nil if row.nil?
 
-        id = Cast.int(row["id"])
-        rel.add_where(id_hash(id))
-        rel.set_limit(1)
-        rel.set_offset(0)
-        found = records(rel)
+        record_by_id(rel, Cast.int(row["id"]))
+      end
+
+      # The record with this id, or nil: a fresh relation from
+      # Console.scope_builder, never `rel` itself.
+      def record_by_id(rel, id)
+        fresh = Console.scope_builder.call(Helpers.model_name_of(rel))
+        fresh.add_where(id_hash(id))
+        fresh.set_limit(1)
+        found = records(fresh)
         found.empty? ? nil : found[0]
+      end
+
+      # `find` / `find_by`: the first row of `rel` that also matches
+      # `conditions` (column => value, nil as IS NULL), picked with a
+      # subquery over the relation's own SELECT so neither its conditions
+      # are lost nor the relation changed; then loaded by id.
+      def record_matching(rel, conditions)
+        sql = +"SELECT " << Relation.quote_ident("id") << " FROM (" << rel.to_sql << ")"
+        binds = Cast.empty_array
+        rel.binds.each { |b| binds << b }
+        clauses = Array.new(0) { "" }
+        conditions.each do |k, v|
+          column = Relation.checked_column("find_by", k.to_s)
+          if v.nil?
+            clauses << "#{column} IS NULL"
+          else
+            clauses << "#{column} = ?"
+            binds << Cast.to_sql(v)
+          end
+        end
+        sql << " WHERE " << clauses.join(" AND ") unless clauses.empty?
+        sql << " LIMIT 1"
+        found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+        return nil if found.empty?
+
+        record_by_id(rel, Cast.int(found[0]["id"]))
       end
 
       def find_record(rel, args, name)
         raise ArgumentError, "wrong number of arguments for '#{name}'" if args.empty?
 
         id = Cast.int(args[0])
-        rel.add_where(id_hash(id))
-        rel.set_limit(1)
-        rel.set_offset(0)
-        found = records(rel)
-        raise Cybertrain::RecordNotFound, "Couldn't find #{Helpers.model_name_of(rel)} with id=#{id}" if found.empty?
+        rec = record_matching(rel, id_hash(id))
+        raise Cybertrain::RecordNotFound, "Couldn't find #{Helpers.model_name_of(rel)} with id=#{id}" if rec.nil?
 
-        found[0]
+        rec
       end
 
       def records(rel)
@@ -207,7 +237,7 @@ module Cybertrain
         sql = text_arg_at(args, 0, "sql")
         binds = list_arg_at(args, 1)
         rows = Cybertrain::DB.with { |c| c.execute(sql, binds) }
-        Text.new(Printer.table(rows))
+        Text.new(Printer.rows_table(rows))
       end
 
       def tables_command

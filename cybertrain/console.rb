@@ -102,7 +102,8 @@ module Cybertrain
     # `no model "Nope" (models: Article, Comment)`. The `else` of a
     # generated scope / create table calls it. Typed as returning a
     # Relation (never reached), so a lambda that ends in it has the type of
-    # the real builder.
+    # the real builder: raise, then a typed value, so the method is never a
+    # body whose only expression is `raise` (NOTES rule 79).
     # @param name [String]
     # @return [Relation] never: it always raises
     # @raise [UnknownModel]
@@ -112,7 +113,12 @@ module Cybertrain
       Relation.new("")
     end
 
-    # unknown_model for create_builder: typed as returning a record.
+    # {Console.unknown_model} for create_builder: typed as returning a
+    # record (raise, then a typed value: NOTES rule 79).
+    # @param name [String]
+    # @return [Model] never: it always raises
+    # @raise [UnknownModel]
+    # @api public
     def self.unknown_record(name)
       raise UnknownModel, unknown_model_message(name)
       Model.new
@@ -125,7 +131,11 @@ module Cybertrain
     end
 
     # An empty Array of records: what the default records_builder returns
-    # (no relation reaches it, since no model name resolves).
+    # (no relation reaches it, since no model name resolves), and what a
+    # generated records table answers for a relation it does not know.
+    # @param relation [Relation]
+    # @return [Array<Model>] always empty
+    # @api public
     def self.no_records(relation)
       Array.new(0) { Model.new }
     end
@@ -148,11 +158,16 @@ module Cybertrain
       interp = Template::Interpreter.new(helpers)
       env = Cast.empty_hash
       env["_"] = nil
-      output.write(banner(config))
+      output.write(banner_text(config))
+      # Flushed before every read: under Spinel `gets` on STDIN does not
+      # flush a pending partial line on STDOUT, so the prompt would appear
+      # only after the user's line (NOTES rule 82).
+      output.flush
       lineno = 0
       running = true
       while running
         output.write(PROMPT)
+        output.flush
         line = input.gets
         if line.nil?
           output.write("\n")
@@ -171,7 +186,7 @@ module Cybertrain
     end
 
     # The lines printed before the first prompt.
-    def self.banner(config)
+    def self.banner_text(config)
       text = +""
       if config.production?
         text << "WARNING: this console runs against the production database (CYBERTRAIN_ENV=production).\n"
@@ -189,17 +204,47 @@ module Cybertrain
     # rescue clause is not found (NOTES rule 80).
     def self.evaluate_line(text, lineno, helpers, interp, env)
       helpers.clear_failure
+      names = Console.env_names(env)
       shown = ""
+      failed = true
+      # Every class the console prints is named exactly, from the top: a
+      # rescue clause does not see an exception's superclass under Spinel
+      # (NOTES rule 54) and a relative path can miss (rule 80).
       begin
         value = evaluate(text, lineno, interp, env)
         env["_"] = value
         shown = "#{Printer.format(value)}\n"
+        failed = false
       rescue Cybertrain::Template::SyntaxError => e
         shown = "SyntaxError: #{e.message}\n"
+      rescue Cybertrain::Template::RuntimeError => e
+        shown = "#{failure_text(helpers, e, lineno)}\n"
+      rescue Cybertrain::Console::UnknownModel => e
+        shown = "#{failure_text(helpers, e, lineno)}\n"
+      rescue Cybertrain::RecordNotFound => e
+        shown = "#{failure_text(helpers, e, lineno)}\n"
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
         shown = "#{failure_text(helpers, e, lineno)}\n"
       end
+      Console.drop_new_names(env, names) if failed
       shown
+    end
+
+    # The names bound in the console's environment.
+    def self.env_names(env)
+      names = Array.new(0) { "" }
+      env.each_key { |k| names << k }
+      names
+    end
+
+    # After a line that raised: forget any name the line bound (a block
+    # parameter or local an evaluation left behind when it stopped part
+    # way), so the next line sees the environment as it was.
+    def self.drop_new_names(env, names)
+      stale = Array.new(0) { "" }
+      env.each_key { |k| stale << k unless names.include?(k) }
+      stale.each { |k| env.delete(k) }
+      nil
     end
 
     # Parses (constants allowed) and evaluates one statement: `x = expr`

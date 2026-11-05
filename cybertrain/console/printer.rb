@@ -37,12 +37,12 @@ module Cybertrain
       def self.format(value)
         case value
         when Text then value.console_text
-        when Cybertrain::Model then record(value)
+        when Cybertrain::Model then record_text(value)
         # Time before Array: a Time in a polymorphic slot also matches Array
         # (NOTES rule 8).
         when Time then value.to_s
-        when Array then list(value)
-        when Cybertrain::Relation then relation(value)
+        when Array then list_text(value)
+        when Cybertrain::Relation then relation_text(value)
         else inline(value)
         end
       end
@@ -54,28 +54,30 @@ module Cybertrain
         when nil then "nil"
         when true then "true"
         when false then "false"
-        when SafeString then string(value.to_s)
-        when String then string(value)
+        when SafeString then string_text(value.to_s)
+        when String then string_text(value)
         when Integer then value.to_s
         when Float then value.to_s
         when Symbol then ":#{value}"
         when Time then value.to_s
         when Array then cut("[#{value.map { |v| inline(v) }.join(", ")}]")
-        when Hash then cut(hash(value))
+        when Hash then cut(hash_text(value))
         when Cybertrain::Errors then cut("#<Errors #{inline(value.full_messages)}>")
         when Cybertrain::Page then "#<Page number: #{value.number}, per: #{value.per}, next: #{value.next?}>"
-        when Cybertrain::Model then cut(record(value))
+        when Cybertrain::Model then cut(record_text(value))
         when Cybertrain::Relation then cut("#<#{value.class.name} #{value.to_sql}>")
         else "#<#{value.class.name}>"
         end
       end
 
-      # `"text"`, the first MAX_VALUE_BYTES bytes only (then "…").
-      def self.string(s)
+      # `"text"`, the first MAX_VALUE_BYTES bytes only (then "…"); a binary
+      # String (a BLOB cell or a binary attribute) as "<N bytes>".
+      def self.string_text(s)
         text = s.to_s
+        return Printer.bytes_text(text) if Printer.binary_string?(text)
         return text.inspect if text.bytesize <= MAX_VALUE_BYTES
 
-        "#{head(text).inspect}#{ELLIPSIS}"
+        "#{head_bytes(text).inspect}#{ELLIPSIS}"
       end
 
       # `text` cut after MAX_VALUE_BYTES bytes, with "…".
@@ -83,32 +85,32 @@ module Cybertrain
         s = text.to_s
         return s if s.bytesize <= MAX_VALUE_BYTES
 
-        "#{head(s)}#{ELLIPSIS}"
+        "#{head_bytes(s)}#{ELLIPSIS}"
       end
 
       # The first MAX_VALUE_BYTES bytes of `s`, backed off to the start of a
       # UTF-8 character (a continuation byte is 0b10xxxxxx).
-      def self.head(text)
+      def self.head_bytes(text)
         s = text.to_s
         n = MAX_VALUE_BYTES
         n -= 1 while n > 0 && s.getbyte(n) >= 128 && s.getbyte(n) < 192
         s.byteslice(0, n).to_s
       end
 
-      def self.hash(h)
+      def self.hash_text(h)
         parts = Array.new(0) { "" }
         h.each { |k, v| parts << "#{inline(k)} => #{inline(v)}" }
         "{#{parts.join(", ")}}"
       end
 
       # Every column, `id` first, each value inline.
-      def self.record(rec)
+      def self.record_text(rec)
         parts = Array.new(0) { "" }
         rec.attributes.each { |k, v| parts << "#{k}: #{inline(v)}" }
         "#<#{rec.class.name} #{parts.join(", ")}>"
       end
 
-      def self.list(items)
+      def self.list_text(items)
         return "[]" if items.empty?
 
         records = true
@@ -126,7 +128,7 @@ module Cybertrain
         out
       end
 
-      def self.relation(rel)
+      def self.relation_text(rel)
         text = +"#<#{rel.class.name} #{rel.to_sql}"
         binds = rel.binds
         text << " binds: " << inline(binds) unless binds.empty?
@@ -139,7 +141,7 @@ module Cybertrain
       # Rows of `sql` as a text table: a header, a rule, a line per row and
       # the row count. NULL for nil; a BLOB cell (a binary String) as
       # "<N bytes>"; every cell cut at MAX_VALUE_BYTES.
-      def self.table(rows)
+      def self.rows_table(rows)
         return "(0 rows)" if rows.empty?
 
         names = rows[0].keys
@@ -148,7 +150,7 @@ module Cybertrain
         rows.each do |row|
           line = Array.new(0) { "" }
           names.each_with_index do |name, i|
-            text = cell(row[name])
+            text = cell_text(row[name])
             widths[i] = text.size if text.size > widths[i]
             line << text
           end
@@ -172,11 +174,21 @@ module Cybertrain
         padded.join(" | ").rstrip
       end
 
-      def self.cell(v)
+      # Bytes read from a BLOB come back tagged binary (the :binstr bridge);
+      # text is UTF-8.
+      def self.binary_string?(s)
+        s.encoding.to_s == "ASCII-8BIT"
+      end
+
+      def self.bytes_text(s)
+        "<#{s.bytesize} bytes>"
+      end
+
+      def self.cell_text(v)
         case v
         when nil then "NULL"
         when String
-          return "<#{v.bytesize} bytes>" if v.encoding.to_s == "ASCII-8BIT"
+          return Printer.bytes_text(v) if Printer.binary_string?(v)
 
           cut(v)
         else cut(inline(v))

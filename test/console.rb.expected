@@ -2,6 +2,7 @@ ok   queries, a create, _ and errors that do not end the session
 ok   update, destroy, first, last, find_by, exists?, pluck and a local
 ok   sql, tables, help, a syntax error and a long value
 ok   a relation prints its SQL and count; delete_all
+ok   a stored relation keeps its conditions; offset, where_sql, page, save, errors, reload
 ok   the production banner, and EOF ends with status 0
 ok   templates still refuse constants
-6 tests, 14 assertions, 0 failures
+7 tests, 15 assertions, 0 failures

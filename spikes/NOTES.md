@@ -77,6 +77,7 @@ written up for upstream.
 | 78 | **Still there** (docs/spinel-feedback.md K). |
 | 79 | **Still there**: found on this build (its reduced program does not compile). |
 | 80 | **Still there**: found on this build. |
+| 82 | **Still there**: found on this build (a pty shows the prompt only after the line is read). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -95,7 +96,7 @@ The rules are numbered in the order they were found. By topic:
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
-- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78
+- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 82
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63
 
@@ -462,6 +463,13 @@ The rules are numbered in the order they were found. By topic:
     it the same way; concatenate with `<<` instead. Reduced repro: a method
     assigning `rest = buf.byteslice(4, n)` then `rest << "!"` in a `while`
     prints `[97, 98, 33]` for `"ab\x00cd"` under Spinel 2026.09.12.
+    The other direction is safe: a `:str` FFI argument keeps embedded NULs
+    when the C callee is given an explicit length (`sqlite3_bind_blob(stmt,
+    i, bytes, bytes.bytesize, -1)`, `cybertrain_gunzip_bounded(data,
+    data.bytesize, ...)`); only a callee given -1 (or one that calls strlen)
+    stops at the first NUL. The bytes are copied twice on the way, by
+    Spinel's dup of the argument and by SQLite's SQLITE_TRANSIENT copy
+    (2026.11.04.7026, test/db_blob.rb).
 61. `JSON::NestingError` (what `JSON.generate` raises past 100 levels, which
     a parsed document can reach: `JSON.parse` accepts 200) is a subclass of
     `JSON::ParserError` in the runtime's table, but `rescue
@@ -789,6 +797,16 @@ The rules are numbered in the order they were found. By topic:
     Inner` inside `Inner` both agree). Spell a rescued class from the top
     (`rescue Cybertrain::Template::SyntaxError => e`, as Interpreter does),
     and read the warnings `spin test` prints.
+82. `gets` on STDIN does not flush a pending partial line on STDOUT under
+    Spinel 2026.11.04.7026; flush before reading. CRuby flushes STDOUT
+    before it blocks on a terminal read, so `STDOUT.write("A> "); STDIN.gets`
+    shows the prompt first; the compiled program, run on a pty, prints
+    nothing until the line has been typed and then `A> ` after it. Reduced
+    repro: `STDOUT.write("A> "); line = STDIN.gets; STDOUT.write("got
+    #{line}")` under a pty (found by review of `./app console`, whose `>> `
+    prompt only appeared after each line). `STDOUT.flush` after the write
+    shows it at once; Console.run flushes after the banner and every prompt
+    (a StringIO answers flush too).
 
 ## Numbers worth remembering
 
