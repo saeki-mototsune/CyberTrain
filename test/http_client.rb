@@ -38,6 +38,11 @@ class ClientTestApp < Cybertrain::Middleware
     when "/big"
       res.content_type = "text/plain"
       res.body = "x" * 3000
+    when "/probe"
+      # Counted: a test that must never reach this server asks for it.
+      $probe_hits += 1
+      res.content_type = "text/plain"
+      res.body = "probed"
     else
       res.status = 404
       res.body = "Not Found"
@@ -47,6 +52,7 @@ class ClientTestApp < Cybertrain::Middleware
 end
 
 $log = StringIO.new
+$probe_hits = 0
 $server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ClientTestApp.new), port: 0, read_timeout: 2,
                                  logger: Cybertrain::Logger.new($log, :error))
 $server.start
@@ -521,20 +527,6 @@ test "loopback and private destinations are refused by default" do
   assert_equal "blocked", outcome { client.get("http://0.0.0.0:#{$server.port}/") }.kind
 end
 
-# How a request ended, for a spelling that must never reach the server:
-# "blocked" (the policy refused the resolved address), "unreached" (no byte
-# was exchanged with any server: the name did not resolve or resolving it
-# ran past the deadline, or the connect to the address it gave was refused
-# or ran out of time), or the outcome's own kind: "ok 200" when it got
-# through, and a refusal or timeout while reading or writing, which would
-# mean a connection was made.
-def reach_kind(got)
-  return got.kind unless got.kind == "refused" || got.kind == "timeout"
-  return got.kind unless got.text.index("reading").nil? && got.text.index("writing").nil?
-
-  "unreached"
-end
-
 test "the inet_aton spellings of a loopback address never reach it" do
   # "127.1", "0x7f.0.0.1", "0177.0.0.1" and "2130706433" are what inet_aton
   # reads as 127.0.0.1. Net::Address takes only the dotted quad and needs no
@@ -542,23 +534,29 @@ test "the inet_aton spellings of a loopback address never reach it" do
   # answers is the C library's: glibc reads these spellings as 127.0.0.1,
   # so they are refused as loopback. macOS's resolver does not read them as
   # inet_aton does: "127.1" and "0x7f.0.0.1" are names to it, handed to DNS,
-  # where they do not resolve (refused) or run past the deadline (timeout),
-  # and "0177.0.0.1" is read with its leading zero as decimal, an address
-  # that is not loopback, which the client may dial as it may any public
-  # address (in CI's macOS job that connect timed out). What is asserted is
-  # only what the policy claims: the server on 127.0.0.1 is never reached,
-  # and the message never repeats the path.
+  # where they do not resolve or run past the deadline (and a resolver with
+  # a search domain could answer any address for them), and "0177.0.0.1" is
+  # read with its leading zero as decimal, an address that is not loopback,
+  # which the client may dial as it may any public address. So the
+  # assertion is the policy's own claim, made where it can be seen: the
+  # server on 127.0.0.1 counts the requests to /probe, and the count does
+  # not move. When the spelling was refused, the message names the policy;
+  # whatever happened, it never repeats the path.
   client = Cybertrain::HttpClient.new(timeout: 1, deadline: 2)
-  short = outcome { client.get("http://127.1:#{$server.port}/hello") }
-  assert_includes ["blocked", "unreached"], reach_kind(short)
+  hits = $probe_hits
+  short = outcome { client.get("http://127.1:#{$server.port}/probe") }
+  assert_equal hits, $probe_hits
   if short.kind == "blocked"
-    assert_includes short.text, "127.0.0.1 (loopback address)"
+    assert_includes short.text, "refusing to connect to"
   else
-    assert_nil short.text.index("hello")
+    assert_nil short.text.index("/probe")
   end
-  assert_includes ["blocked", "unreached"], reach_kind(outcome { client.get("http://0x7f.0.0.1:#{$server.port}/hello") })
-  assert_includes ["blocked", "unreached"], reach_kind(outcome { client.get("http://0177.0.0.1:#{$server.port}/hello") })
-  assert_includes ["blocked", "unreached"], reach_kind(outcome { client.get("http://2130706433:#{$server.port}/hello") })
+  outcome { client.get("http://0x7f.0.0.1:#{$server.port}/probe") }
+  assert_equal hits, $probe_hits
+  outcome { client.get("http://0177.0.0.1:#{$server.port}/probe") }
+  assert_equal hits, $probe_hits
+  outcome { client.get("http://2130706433:#{$server.port}/probe") }
+  assert_equal hits, $probe_hits
   assert_equal "not an IP address", reason_of("127.1")
   assert_equal "not an IP address", reason_of("2130706433")
 end
