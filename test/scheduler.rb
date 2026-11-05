@@ -97,11 +97,50 @@ test "config: the worker switch and the intervals have their defaults, and boot 
   config = Cybertrain::Config.new
   assert config.worker
   assert_equal 1, config.scheduler_interval
-  assert_equal 5, config.job_poll_interval
+  assert_equal 1, config.job_poll_interval
   assert_equal 5, config.job_max_attempts
+  assert_equal 3, config.job_threads
+  assert_equal 30, config.job_heartbeat_interval
+  assert_equal 300, config.job_heartbeat_stale
+  assert_equal 10, config.job_drain_timeout
+  assert_equal 30, config.scheduler_lease_ttl
   assert_equal "", config.scheduler_error
   config.job_poll_interval = 0
   assert_includes config.scheduler_error, "job_poll_interval must be at least 1"
+end
+
+test "config: each job and lease setting must be at least 1, and stale more than the interval" do
+  config = Cybertrain::Config.new
+  config.job_threads = 0
+  assert_equal "job_threads must be at least 1 (got 0)", config.scheduler_error
+  config.job_threads = 3
+  config.job_heartbeat_interval = 0
+  assert_equal "job_heartbeat_interval must be at least 1 (got 0)", config.scheduler_error
+  config.job_heartbeat_interval = 30
+  config.job_heartbeat_stale = 0
+  assert_equal "job_heartbeat_stale must be at least 1 (got 0)", config.scheduler_error
+  config.job_heartbeat_stale = 30
+  assert_equal "job_heartbeat_stale (30) must be more than job_heartbeat_interval (30)", config.scheduler_error
+  config.job_heartbeat_stale = 31
+  assert_equal "", config.scheduler_error
+  config.job_drain_timeout = 0
+  assert_equal "job_drain_timeout must be at least 1 (got 0)", config.scheduler_error
+  config.job_drain_timeout = 10
+  config.scheduler_lease_ttl = -1
+  assert_equal "scheduler_lease_ttl must be at least 1 (got -1)", config.scheduler_error
+end
+
+test "config: CYBERTRAIN_JOB_THREADS sets job_threads; a word is the default, 0 is kept for boot to refuse" do
+  ENV["CYBERTRAIN_JOB_THREADS"] = "8"
+  assert_equal 8, Cybertrain::Config.new.job_threads
+  ENV["CYBERTRAIN_JOB_THREADS"] = "many"
+  assert_equal 3, Cybertrain::Config.new.job_threads
+  ENV["CYBERTRAIN_JOB_THREADS"] = "0"
+  zero = Cybertrain::Config.new
+  assert_equal 0, zero.job_threads
+  assert_includes zero.scheduler_error, "job_threads must be at least 1"
+  ENV.delete("CYBERTRAIN_JOB_THREADS")
+  assert_equal 3, Cybertrain::Config.new.job_threads
 end
 
 # Last: the thread it starts keeps running until the program exits. start!

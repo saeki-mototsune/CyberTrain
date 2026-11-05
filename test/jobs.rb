@@ -214,7 +214,7 @@ test "the scheduler adds the job worker task when handlers are registered" do
   assert Cybertrain::Scheduler.task_index(Cybertrain::Scheduler::JOB_TASK_NAME) >= 0
   assert_equal "queued", job_state(id)
   assert_includes LOG.string, "[WARN] Requeued 1 job(s) left running by a previous process"
-  assert_includes LOG.string, "Scheduler started: cybertrain jobs every 5s"
+  assert_includes LOG.string, "Scheduler started: cybertrain jobs every 1s"
   Cybertrain::Scheduler.stop!
 end
 

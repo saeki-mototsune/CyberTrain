@@ -5,5 +5,7 @@ ok   a raising task is logged and does not stop the others
 ok   last_tick is the time of the latest tick
 ok   start! does nothing when the worker switch is off
 ok   config: the worker switch and the intervals have their defaults, and boot checks them
+ok   config: each job and lease setting must be at least 1, and stale more than the interval
+ok   config: CYBERTRAIN_JOB_THREADS sets job_threads; a word is the default, 0 is kept for boot to refuse
 ok   start! starts the thread once; stop! asks it to end
-8 tests, 44 assertions, 0 failures
+10 tests, 61 assertions, 0 failures

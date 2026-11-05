@@ -342,11 +342,48 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :scheduler_interval
 
-    # Seconds between the job worker's polls of `cybertrain_jobs`, `5`: a
-    # job enqueued to run now starts within about this long. At least 1.
+    # Seconds an idle job thread waits before it looks at `cybertrain_jobs`
+    # again, `1`: a job enqueued to run now starts within about this long.
+    # At least 1.
     # @return [Integer]
     # @api public
     attr_accessor :job_poll_interval
+
+    # How many job threads a process that runs jobs starts, `3`, from
+    # `CYBERTRAIN_JOB_THREADS`: that many jobs run at once in it (green
+    # threads; a SQLite call still holds an OS worker while it runs). At
+    # least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :job_threads
+
+    # Seconds between the writes that mark this process's running jobs as
+    # alive (`heartbeat_at`), `30`. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :job_heartbeat_interval
+
+    # Seconds without a heartbeat after which a `running` job counts as
+    # abandoned (its process died) and {Job.recover!} queues it again,
+    # `300`. More than {#job_heartbeat_interval}.
+    # @return [Integer]
+    # @api public
+    attr_accessor :job_heartbeat_stale
+
+    # Seconds {Job.stop!} waits at shutdown for the jobs that are running
+    # to finish, `10`; the rows of jobs still running then are left to
+    # heartbeat recovery. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :job_drain_timeout
+
+    # Seconds the scheduler's lease lasts unless renewed, `30`: of several
+    # processes sharing a database, the one holding the lease runs the
+    # scheduled tasks, and another takes over at most this long after it
+    # stops ticking. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :scheduler_lease_ttl
 
     # How many attempts a {Job} gets before it is left `failed`, `5` (the
     # first run and four retries, 1, 5, 15 and 60 minutes apart).
@@ -380,6 +417,14 @@ attr_accessor :trusted_proxies
     def self.default_max_page
       n = Params.parse_int(env_or("CYBERTRAIN_MAX_PAGE", ""), 10_000)
       n < 1 ? 10_000 : n
+    end
+
+    # CYBERTRAIN_JOB_THREADS read without to_i on unbounded text (NOTES
+    # rule 25): 3 when it is unset or not a number. A number below 1 is
+    # kept, so that boot reports it (scheduler_error) rather than starting
+    # a different count than asked for.
+    def self.default_job_threads
+      Params.parse_int(env_or("CYBERTRAIN_JOB_THREADS", ""), 3)
     end
 
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
@@ -532,8 +577,13 @@ end
       # The background thread (Scheduler, Job).
       @worker = Config.bool_from_env("CYBERTRAIN_WORKER", true)
       @scheduler_interval = 1
-      @job_poll_interval = 5
+      @job_poll_interval = 1
       @job_max_attempts = 5
+      @job_threads = Config.default_job_threads
+      @job_heartbeat_interval = 30
+      @job_heartbeat_stale = 300
+      @job_drain_timeout = 10
+      @scheduler_lease_ttl = 30
       # ParameterFilter.names' list; Application#boot installs it there.
       @filter_parameters = Config.default_filter_parameters
       # The health check (HealthCheck). An empty variable turns it off,
@@ -907,13 +957,24 @@ end
     end
 
     # The error Application#boot reports when scheduler_interval,
-    # job_poll_interval or job_max_attempts is below 1, or "" when all are
-    # fine (a sleep of 0 would spin the scheduler thread; 0 attempts would
-    # fail every job unrun).
+    # job_poll_interval, job_max_attempts, job_threads,
+    # job_heartbeat_interval, job_heartbeat_stale, job_drain_timeout or
+    # scheduler_lease_ttl is below 1, or job_heartbeat_stale is not more
+    # than job_heartbeat_interval (every live job would look abandoned);
+    # "" when all are fine (a sleep of 0 would spin a thread; 0 attempts
+    # would fail every job unrun).
     def scheduler_error
       return "scheduler_interval must be at least 1 (got #{@scheduler_interval})" if @scheduler_interval < 1
       return "job_poll_interval must be at least 1 (got #{@job_poll_interval})" if @job_poll_interval < 1
       return "job_max_attempts must be at least 1 (got #{@job_max_attempts})" if @job_max_attempts < 1
+      return "job_threads must be at least 1 (got #{@job_threads})" if @job_threads < 1
+      return "job_heartbeat_interval must be at least 1 (got #{@job_heartbeat_interval})" if @job_heartbeat_interval < 1
+      return "job_heartbeat_stale must be at least 1 (got #{@job_heartbeat_stale})" if @job_heartbeat_stale < 1
+      if @job_heartbeat_stale <= @job_heartbeat_interval
+        return "job_heartbeat_stale (#{@job_heartbeat_stale}) must be more than job_heartbeat_interval (#{@job_heartbeat_interval})"
+      end
+      return "job_drain_timeout must be at least 1 (got #{@job_drain_timeout})" if @job_drain_timeout < 1
+      return "scheduler_lease_ttl must be at least 1 (got #{@scheduler_lease_ttl})" if @scheduler_lease_ttl < 1
 
       ""
     end
