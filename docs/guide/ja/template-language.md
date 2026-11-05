@@ -1,5 +1,5 @@
 ---
-source_sha256: 11e7333b2d2b8c4b6bedd02bb1d11425913e066441e6d2dd41b293624e28ba63
+source_sha256: 2a9e8e996256fc4501968bb672c57b50fbb1cda1f3f80d6640176de81db378d3
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -388,7 +388,7 @@ end
 <% end %>
 ```
 
-- テンプレートからは、コンポーネントのインスタンス変数がローカル変数（`title`）として、パラメーターのない公開メソッドが名前（`value_text`）で、そして `do` のブロックが出力したもの `content`（ブロックがなければ `""`）が見えます。レイアウトなしでレンダリングされ、パーシャルやほかのコンポーネントをレンダリングでき、パーシャルと同じく `max_render_depth` に数えられます。コンポーネントがレンダリングしたパーシャルからは、コンポーネントのメソッドは見えません。
+- テンプレートからは、コンポーネントのインスタンス変数がローカル変数（`title`）として、パラメーターのない公開メソッドが名前（`value_text`）で、そして `do` のブロックが出力したもの `content`（ブロックがなければ `""`）が見えます。レイアウトなしでレンダリングされ、パーシャルやほかのコンポーネントをレンダリングでき、パーシャルと同じく `max_render_depth` に数えられます。コンポーネントがレンダリングしたパーシャルからは、コンポーネントのメソッドは見えません。コンポーネントのテンプレート内でディレクトリのないパーシャル名（`render "chip"`）は `app/components/` の下（`app/components/_chip.html.erb`）から探され、ディレクトリ付きの名前（`render "shared/note"`）は通常どおり `app/views/` の下から探されます。
 - コンポーネントは、パーシャルがパスで指定されるのと同じく、`_component` を除いたスネークケースの名前で指定します：`CardComponent` なら `"card"`、`Admin::UserRowComponent`（`app/components/admin/user_row_component.rb`）なら `"admin/user_row"` です。テンプレートは定数を名指しできません。
 - `spin run gen` は、ヘルパーと同じく字句的な走査から `gen/components.rb` を書きます：クラスの行、`@x =` の代入、パラメーターのない `def`、`initialize` のキーワードです。`initialize` はキーワードだけを取り（省略可能なものは 3 つまで）、テンプレートがなければなりません。キーワードの不足や未知のキーワードはレンダリング時の `ArgumentError` です。未知のコンポーネントは `Cybertrain::Component::Unknown` です：`` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``。
 - `cybertrain generate component card title value:integer` は、クラス、そのテンプレート、そして `Cybertrain::Test.render_component` でそれをレンダリングするテストを書きます。
