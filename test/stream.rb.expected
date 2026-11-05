@@ -15,8 +15,10 @@ ok   the replay-to-live handoff sends every row once, in id order
 ok   a subscriber's cutoff is the poller's position when it subscribes
 ok   a row polled before subscribing is not delivered, one not yet polled is
 ok   a replay that finds nothing leaves the boundary at after
+ok   the poller starts on a database without the messages table
+ok   an after above the head is clamped to the subscriber's cursor
 ok   prune deletes the rows older than the cutoff
 ok   replay returns the backlog of the named streams after an id
 ok   broadcast_replace_to writes the Turbo Stream HTML
 ok   the other broadcast shortcuts
-21 tests, 70 assertions, 0 failures
+23 tests, 79 assertions, 0 failures

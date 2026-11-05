@@ -105,6 +105,15 @@ test "the handshake succeeds and a broadcast arrives as the JSON envelope" do
   assert subscribers_reach(0)
 end
 
+test "?after= above the head still gets the next broadcast" do
+  ws = connect("s=#{token("h")}&after=999999")
+  assert subscribers_reach(1)
+  Stream.broadcast("h", "next")
+  assert_equal "next", next_text(ws)
+  ws.close
+  assert subscribers_reach(0)
+end
+
 test "mode=raw delivers the payload as it is" do
   ws = connect("s=#{token("a")}")
   assert subscribers_reach(1)

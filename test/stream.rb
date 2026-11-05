@@ -271,6 +271,36 @@ test "a replay that finds nothing leaves the boundary at after" do
   assert_equal ["next"], payloads_of(late)
 end
 
+test "the poller starts on a database without the messages table" do
+  DB.connect(":memory:")
+  Stream::Poller.last_id = 0
+  hub = Stream::Hub.new(1000)
+  assert_equal 0, Stream::Poller.run_once(hub)
+  DB.connect(":memory:")
+  assert Stream::Poller.start!(Cybertrain.config)
+  assert_equal 0, Stream::Poller.last_id
+  Stream::Poller.stop!
+  sleep 0.2
+  assert_equal 0, row_count
+end
+
+test "an after above the head is clamped to the subscriber's cursor" do
+  fresh_db
+  hub = Stream::Hub.new(1000)
+  Stream.broadcast("a", "x")
+  Stream::Poller.run_once(hub)
+  sub = hub.subscribe(["a"])
+  start = Stream.replay_start(999_999, sub)
+  assert_equal sub.boundary, start
+  assert_equal 0, Stream.replay(["a"], start).size
+  sub.skip_through!(start)
+  Stream.broadcast("a", "next")
+  Stream::Poller.run_once(hub)
+  assert_equal ["next"], payloads_of(sub)
+  assert_equal 0, Stream.replay_start(0, sub)
+  assert_equal(-1, Stream.replay_start(-1, sub))
+end
+
 test "prune deletes the rows older than the cutoff" do
   fresh_db
   Stream.broadcast("a", "old")

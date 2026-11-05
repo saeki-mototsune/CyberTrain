@@ -244,6 +244,15 @@ test "Last-Event-ID replays the backlog once, then goes on live" do
   assert subscribers_reach(0)
 end
 
+test "a Last-Event-ID above the head still gets the next broadcast" do
+  c = sse("s=#{token("h")}", "Last-Event-ID: 999999\r\n")
+  assert subscribers_reach(1)
+  id = Stream.broadcast("h", "next")
+  assert c.wait_for("id: #{id}\ndata: next\n\n")
+  c.close
+  assert subscribers_reach(0)
+end
+
 test "a bad, foreign or missing token is a 403 with no body" do
   good = token("a")
   bad = plain_get("/cybertrain/stream?s=#{good}x")

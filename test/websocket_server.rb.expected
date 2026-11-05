@@ -1,4 +1,5 @@
 ok   the handshake succeeds and a broadcast arrives as the JSON envelope
+ok   ?after= above the head still gets the next broadcast
 ok   mode=raw delivers the payload as it is
 ok   subscribe and unsubscribe messages change the streams
 ok   mode=json without a token waits for subscribe messages
@@ -8,4 +9,4 @@ ok   a bad token is closed with 1008 after the handshake
 ok   a message above stream_max_message is closed with 1009
 ok   a wrong WebSocket version is a 400
 ok   stopping the server closes the WebSocket with 1000
-10 tests, 34 assertions, 0 failures
+11 tests, 37 assertions, 0 failures

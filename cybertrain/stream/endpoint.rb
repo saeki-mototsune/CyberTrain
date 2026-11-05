@@ -252,7 +252,7 @@ module Cybertrain
         # found nothing): a row broadcast while the replay ran is either in
         # the replay or queued, and skip_through! drops the queued copy of a
         # replayed one.
-        last = @after
+        last = Stream.replay_start(@after, sub)
         if last >= 0
           backlog = Stream.replay(@names, last)
           i = 0

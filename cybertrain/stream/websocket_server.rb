@@ -223,7 +223,7 @@ module Cybertrain
       private
 
       def ws_session(sink, sub)
-        last = @after
+        last = Stream.replay_start(@after, sub)
         if last >= 0
           backlog = Stream.replay(sub.stream_names, last)
           i = 0
