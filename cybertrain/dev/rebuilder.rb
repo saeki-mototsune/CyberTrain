@@ -123,11 +123,15 @@ module Cybertrain
           File.delete(check) if File.exist?(check)
           return false
         end
-        stamp = File.expand_path(GEN_STAMP, @root)
-        return false unless File.file?(compiled) && File.file?(stamp)
-        return false unless File.read(stamp) == gen_binary_stamp
+        return false unless File.file?(compiled) && File.binread(check) == File.binread(compiled)
 
-        File.binread(check) == File.binread(compiled)
+        stamp = File.expand_path(GEN_STAMP, @root)
+        return true if File.file?(stamp) && File.read(stamp) == gen_binary_stamp
+
+        # spin reuses a binary newer than its sources, so it must go.
+        binary = File.expand_path(GEN_BINARY, @root)
+        File.delete(binary) if File.exist?(binary)
+        false
       rescue StandardError
         false
       end

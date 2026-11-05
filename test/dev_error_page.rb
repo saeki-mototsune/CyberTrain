@@ -340,7 +340,7 @@ end
 # An app whose `spin` and `spinel` are scripts first on PATH. spin logs every
 # call but `flags`, which fails while flags-fails exists: `run gen` compiles
 # (leaves a build/bin/gen that logs when run, and exits as the file gen-status
-# says); `build` fails while build-fails exists, refuses --incremental while
+# says), unless spin-reuses exists and there is a binary already; `build` fails while build-fails exists, refuses --incremental while
 # no-incremental exists, and edits config/routes.rb while edit-during-build
 # exists. spinel's "C" is config/routes.rb; while check-fails exists it leaves
 # a partial file and fails, and while check-unreadable exists it leaves a
@@ -358,6 +358,7 @@ def fake_spin_app
                                          "fi\n" \
                                          "echo \"spin $*\" >> '#{GEN_CALLS}'\n" \
                                          "if [ \"$1\" = run ]; then\n" \
+                                         "  [ -e '#{GEN_ROOT}/spin-reuses' ] && [ -e '#{GEN_BINARY}' ] && exit 0\n" \
                                          "  cp '#{GEN_ROOT}/compiled-gen' '#{GEN_BINARY}'; chmod 755 '#{GEN_BINARY}'; exit 0\n" \
                                          "fi\n" \
                                          "[ -e '#{GEN_ROOT}/edit-during-build' ] && echo '# edit' >> '#{GEN_ROOT}/config/routes.rb'\n" \
@@ -445,6 +446,19 @@ test "a binary replaced behind the saved C compiles gen again" do
   assert_equal COMPILE_GEN, gen_calls
   assert r.rebuild
   assert_equal SKIP_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a replaced binary newer than its sources does not survive spin's own check" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.write("#{GEN_ROOT}/spin-reuses", "")
+  write_gen_binary("echo replaced >> '#{GEN_CALLS}'")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  assert_equal File.read("#{GEN_ROOT}/compiled-gen"), File.read(GEN_BINARY)
   finish_fake_spin_app(path)
 end
 
