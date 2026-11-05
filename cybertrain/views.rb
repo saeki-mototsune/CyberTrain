@@ -20,6 +20,15 @@ module Cybertrain
     @engine = nil
     @layout_name = "layouts/application"
     @url_resolver = ->(name, args) { raise NoRoutes, "no routes" }
+    # Template::Helpers is defined by cybertrain/template/helpers.rb, which
+    # requires this file; the lambda only names it when called. Returned by
+    # a method, not written here as a literal: a lambda literal assigned to
+    # a module-level ivar never learns its call sites' argument types
+    # (spikes/NOTES.md rule 79), so `controller` arrived as an Integer.
+    def self.default_helpers_builder
+      ->(controller) { Template::Helpers.new(controller) }
+    end
+    @helpers_builder = default_helpers_builder
 
     def self.engine
       @engine
@@ -57,6 +66,17 @@ module Cybertrain
 
     def self.url_resolver=(resolver)
       @url_resolver = resolver
+    end
+
+    # ->(controller Controller | nil) { Template::Helpers }: how controllers
+    # and render_partial build the helpers a template calls. gen/helpers.rb
+    # sets it to build the app's ApplicationHelpers (spec 3.1).
+    def self.helpers_builder
+      @helpers_builder
+    end
+
+    def self.helpers_builder=(builder)
+      @helpers_builder = builder
     end
   end
 end

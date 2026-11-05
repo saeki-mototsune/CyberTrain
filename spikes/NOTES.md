@@ -694,3 +694,18 @@ finds the commit that removed them).
     the right argument type, so Logger#log calls
     `@io.write(line.end_with?("\n") ? line : "#{line}\n")`.
     test/logger_tls.rb is the regression program.
+
+79. A lambda literal assigned to a module-level instance variable in the
+    module body (`module V; @b = ->(c) { H.new(c) }; end`) never learns the
+    argument types of its call sites (Spinel 2026.11.04.7026): its
+    parameter keeps the Integer default, so `V.b.call(controller)` handed
+    `H.new` a garbage Integer and the first method call on it raised
+    "undefined method 'session' for an instance of Integer"
+    (test/template_integration.rb, once `Views.helpers_builder` was
+    called by Controller#render_template). The same lambda returned by a
+    method (`def self.default_b = ->(c) { H.new(c) }; @b = default_b`), or
+    a literal passed positionally to the setter at top level
+    (`V.b = ->(c) { H2.new(c) }`, what gen/helpers.rb does), types its
+    parameter from the `.call` sites. Rule 42's cousin: create a stored
+    lambda in a method or pass it positionally, never as a module-body
+    ivar initialiser that is called with arguments.

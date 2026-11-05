@@ -67,8 +67,68 @@ module Cybertrain
         else
           return route(name, args) if name.end_with?("_path") || name.end_with?("_url")
 
-          super(name, args, kwargs, block, interp, env)
+          app_helper_call(name, args, kwargs, block, interp, env)
         end
+      end
+
+      # The application's helpers (app/helpers): gen/helpers.rb's
+      # ApplicationHelpers overrides this with a `case` over the names it
+      # scanned and calls super for the rest, which ends here.
+      def app_helper_call(name, args, kwargs, block, interp, env)
+        raise RuntimeError, "undefined helper '#{name}'"
+      end
+
+      # --- for the generated ApplicationHelpers and Ruby helpers ---------------
+
+      # The positional-argument check of a generated helper arm.
+      def helper_arity!(name, args, min, max)
+        n = args.size
+        return nil if n >= min && n <= max
+
+        expected = min == max ? min.to_s : "#{min}..#{max}"
+        raise ArgumentError, "wrong number of arguments for '#{name}' (given #{n}, expected #{expected})"
+      end
+
+      # A helper that takes no keywords was given some.
+      def helper_no_keywords!(name, kwargs)
+        return nil if kwargs.empty?
+
+        raise ArgumentError, "'#{name}' takes no keyword arguments (given #{kwargs.keys.join(", ")})"
+      end
+
+      # known: the helper's keywords, its `required` required ones first.
+      def helper_keywords!(name, kwargs, known, required)
+        i = 0
+        while i < required
+          raise ArgumentError, "missing keyword '#{known[i]}' for '#{name}'" unless kwargs.key?(known[i])
+
+          i += 1
+        end
+        kwargs.each_key do |key|
+          raise ArgumentError, "unknown keyword '#{key}' for '#{name}' (known: #{known.join(", ")})" unless Helpers.name_in?(known, key)
+        end
+        nil
+      end
+
+      # What a helper's block returns: the template block's output, or ""
+      # when the template passed no block.
+      def app_block_content(block, interp, env)
+        return SafeString.of("") if block.nil?
+
+        SafeString.of(interp.capture(block, env))
+      end
+
+      # link_to for Ruby helpers: `link_to_path("Edit", edit_article_path(a),
+      # class: "btn")`. The text is escaped unless it is a SafeString; attrs
+      # takes class:, id:, data_confirm: and data: as link_to does.
+      def link_to_path(text, path, attrs = {})
+        link_to([text, path], string_keys_of(attrs))
+      end
+
+      # button_to for Ruby helpers: `button_to_path("Delete", article_path(a),
+      # method: "delete", class: "danger")`.
+      def button_to_path(text, path, attrs = {})
+        button_to([text, path], string_keys_of(attrs))
       end
 
       # `f.label :title` and the other FormBuilder methods.
@@ -165,6 +225,15 @@ module Cybertrain
       end
 
       private
+
+      # `class: "c"` from Ruby comes with Symbol keys; the template-facing
+      # helpers look keywords up by String (typed Hash, rule 71).
+      def string_keys_of(attrs)
+        out = { "" => [nil, 0, 0.0, "", true][0] }
+        out.delete("")
+        attrs.each_key { |key| out[key.to_s] = attrs[key] }
+        out
+      end
 
       # --- links and forms ---------------------------------------------------
 
