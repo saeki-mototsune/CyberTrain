@@ -186,14 +186,15 @@ module Cybertrain
           # so a column-0 `end` of an unindented body does not close the
           # module, and nothing in the body is read as a def or `private`.
           skip_indent = indent unless ModelScan.one_line_block?(line) || endless?(text)
-          # A private or singleton def is checked too: `include` mixes a
-          # private method in as well, so a private `def params` would still
-          # replace the framework's.
-          next if setter?(text)
+          # A singleton method is not mixed in by `include`, so it is neither
+          # a helper nor a shadowing risk. A private def is checked, though:
+          # `include` mixes private methods in as well, so a private
+          # `def params` would still replace the framework's.
+          next if setter?(text) || line.start_with?("def self.")
 
           d = parse_def(file, start_line, text)
           check_name(file, d)
-          next if in_private || line.start_with?("def self.")
+          next if in_private
 
           owner = found_named(found, names.last)
           owner.defs << d unless owner.nil?
