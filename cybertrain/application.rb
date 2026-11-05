@@ -365,6 +365,10 @@ module Cybertrain
     def exec_new_build(srv, rebuilder)
       binary = rebuilder.binary_path
       STDOUT.flush # exec discards whatever the log has not written yet
+      # The new process inherits the environment and reads SPINEL_WORKERS
+      # as config.workers again: hand it the configured count, not the one
+      # #serve gave Spinel, or every rebuild would add a worker.
+      ENV["SPINEL_WORKERS"] = @config.workers.to_s
       Dev::Reexec.exec_self(binary, srv.port.to_s)
       Cybertrain.logger.error("could not exec #{binary}")
       exit(1)
