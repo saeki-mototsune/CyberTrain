@@ -15,13 +15,17 @@ module Cybertrain
   # or under Spinel the same ECONNREFUSED reclassified by bind_listener's
   # privileged_denied? since the exception class alone cannot tell the two
   # apart there) -- its own reason so the operator does not hunt for a
-  # process that is not there. The message is what Application#serve prints
-  # before exiting.
+  # process that is not there. With reuse_port a host that does not resolve
+  # or is not this machine's is a third reason and a name with several
+  # addresses a fourth, both naming the setting. The message is what
+  # Application#serve prints before exiting.
   class PortInUse < StandardError
     attr_reader :port
 
     IN_USE = "is already in use (stop the other server or set PORT)"
     PERMISSION_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"
+    REUSE_PORT_HOST = "cannot be bound with reuse_port: the host is not an address of this machine (check CYBERTRAIN_HOST)"
+    REUSE_PORT_NAME = "cannot be bound with reuse_port: the host names several addresses (set CYBERTRAIN_HOST to one of them)"
 
     def initialize(host, port, reason = IN_USE)
       super("port #{port} on #{host} #{reason}")
@@ -43,6 +47,10 @@ module Cybertrain
   # response (with Connection: close), idle keep-alive connections are
   # closed, and #run returns once every connection is gone or drain_timeout
   # seconds have passed.
+  #
+  # reuse_port: true binds with SO_REUSEPORT, so several processes can listen
+  # on one port and, on Linux, the kernel splits connections between them
+  # (docs/design.md D35). Off, a second server on the port raises PortInUse.
   class Server
     # One open connection, as the drain sees it: its socket, and whether its
     # thread is waiting for the next request on it (idle). The flag is
@@ -82,7 +90,7 @@ module Cybertrain
     ACCEPT_POLL = 0.1
 
     # port is the bound port once #start has run (the ephemeral one with port: 0).
-    attr_reader :host, :port
+    attr_reader :host, :port, :reuse_port
 
     # drain_timeout bounds how long #run and #stop wait for requests in
     # flight; keep it below the process manager's stop timeout (systemd's
@@ -92,11 +100,14 @@ module Cybertrain
     # Config#stream_ping_interval.
     def initialize(handler, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
                    max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: Cybertrain.logger,
+                   reuse_port: false,
                    stream_write_timeout: 15)
       @handler = handler
       @stream_write_timeout = stream_write_timeout
       @host = host
       @port = port
+      @reuse_port = reuse_port
+      @reuse_socket = nil
       @read_timeout = read_timeout
       @drain_timeout = drain_timeout
       @max_head_bytes = max_head_bytes
@@ -186,7 +197,7 @@ module Cybertrain
     # process is a permission problem, not a competing listener, because the
     # kernel checks the capability before it checks whether the port is free.
     def bind_listener
-      TCPServer.new(@host, @port)
+      @reuse_port ? reuse_port_listener : TCPServer.new(@host, @port)
     rescue Errno::EACCES
       raise PortInUse.new(@host, @port, PortInUse::PERMISSION_DENIED)
     rescue Errno::EADDRINUSE, Errno::ECONNREFUSED
@@ -196,6 +207,60 @@ module Cybertrain
 
     def privileged_denied?
       @port < 1024 && Process.uid != 0
+    end
+
+    # TCPServer.new has no option for SO_REUSEPORT, which must be set before
+    # bind, so the socket is built by hand and handed over by number. The
+    # TCPServer then owns the descriptor and accept_loop closes it. The Socket
+    # holds the same number: under Spinel and CRuby alike closing it as well
+    # (or collecting it with autoclose on) would close whatever has reused
+    # the number since, such as a connection, so autoclose goes off and the
+    # Socket is only kept alive, never closed.
+    def reuse_port_listener
+      sock = reuse_port_socket
+      sock.autoclose = false
+      @reuse_socket = sock
+      TCPServer.for_fd(sock.fileno)
+    end
+
+    # A separate method so its rescue stays away from the raw socket calls'
+    # own (EADDRINUSE and EACCES go on to bind_listener). A host without this
+    # address, or without IPv6 at all, is the setting's fault, not a busy port.
+    def reuse_port_socket
+      ip = reuse_port_ip
+      family = ip.include?(":") ? Socket::AF_INET6 : Socket::AF_INET
+      bind_reuse_port(Socket.new(family, Socket::SOCK_STREAM, 0), Socket.sockaddr_in(@port, ip))
+    rescue Errno::EADDRNOTAVAIL, Errno::EAFNOSUPPORT
+      raise PortInUse.new(@host, @port, PortInUse::REUSE_PORT_HOST)
+    end
+
+    def bind_reuse_port(sock, sockaddr)
+      sock.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, 1)
+      sock.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEPORT, 1)
+      sock.bind(sockaddr)
+      sock.listen(1024)
+      sock
+    rescue SystemCallError
+      sock.close
+      raise
+    end
+
+    # The one address @host names. A name with several stops the boot: a plain
+    # TCPServer takes the first and moves to the next when that one is busy,
+    # so whichever this bound, a process without reuse_port would boot on an
+    # address left over instead of being refused (design.md D35).
+    def reuse_port_ip
+      ips = []
+      Socket.getaddrinfo(@host, @port, nil, Socket::SOCK_STREAM).each do |_family_name, _port, _name, address, _family, _socktype, _protocol|
+        text = address.to_s
+        ips << text unless ips.include?(text)
+      end
+      raise PortInUse.new(@host, @port, PortInUse::REUSE_PORT_HOST) if ips.empty?
+      raise PortInUse.new(@host, @port, PortInUse::REUSE_PORT_NAME) if ips.size > 1
+
+      ips[0]
+    rescue SocketError
+      raise PortInUse.new(@host, @port, PortInUse::REUSE_PORT_HOST)
     end
 
     # Waits, in ordinary thread context, until every connection has closed
@@ -411,7 +476,7 @@ module Cybertrain
       keep_alive
     end
 
-    # A streaming response (docs/design.md D35): the head with
+    # A streaming response (docs/design.md D36): the head with
     # `Transfer-Encoding: chunked` (HTTP/1.1) or no framing (HTTP/1.0, and
     # a 101 upgrade), then the writer on this thread, then the terminating
     # chunk; always false, so serve closes the connection. A HEAD request
