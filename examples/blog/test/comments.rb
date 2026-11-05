@@ -20,7 +20,7 @@ test "the article page lists its comments and has a comment form" do
   BlogTest.comment(other, "Carol", "Wrong article")
   res = client.get(BlogTest.article_path(article))
   assert_response res, :ok
-  assert_includes res.body, "<strong>Commenter:</strong>\n    Alice"
+  assert_includes res.body, "<strong class=\"comment-author\">Alice</strong> wrote:"
   assert_includes res.body, "Great post!"
   assert_includes res.body, "Bob"
   assert_includes res.body, "Thanks &lt;b&gt;a lot&lt;/b&gt;"
@@ -124,6 +124,78 @@ test "comments have no pages of their own" do
   assert_response client.get("/comments/#{comment.id}"), :not_found
   assert_response client.get("#{comments_path(article)}/new"), :not_found
   assert_response client.get("#{comments_path(article)}/#{comment.id}"), :not_found
+end
+
+# The token a <turbo-stream-source src="/cybertrain/stream?s=TOKEN"> element
+# carries.
+def stream_token(body)
+  marker = "<turbo-stream-source src=\"/cybertrain/stream?s="
+  at = body.index(marker)
+  raise "no turbo-stream-source in the page" if at.nil?
+
+  start = at + marker.size
+  stop = body.index("\"", start)
+  raise "unterminated turbo-stream-source" if stop.nil?
+
+  body[start, stop - start].to_s
+end
+
+# The last row Cybertrain::Stream.broadcast wrote: [stream, payload].
+def last_message
+  rows = Cybertrain::DB.with { |c| c.execute("SELECT stream, payload FROM cybertrain_messages ORDER BY id DESC LIMIT 1") }
+  return ["", ""] if rows.empty?
+
+  [Cybertrain::Cast.str(rows[0]["stream"]), Cybertrain::Cast.str(rows[0]["payload"])]
+end
+
+test "the article page renders each comment with CommentComponent and subscribes to the article's stream" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  comment = BlogTest.comment(article, "Alice", "Great post!")
+  res = client.get(BlogTest.article_path(article))
+  assert_response res, :ok
+  assert_includes res.body, "<div id=\"comments\">"
+  assert_includes res.body, "<div class=\"comment\" id=\"comment_#{comment.id}\">"
+  assert_includes res.body, "<p><strong class=\"comment-author\">Alice</strong> wrote:</p>"
+  names = Cybertrain::Stream.verified_names(stream_token(res.body))
+  assert_equal 1, names.size
+  assert_equal "articles:#{article.id}", names[0]
+  # The layout loads Turbo, which makes <turbo-stream-source> live.
+  assert_includes res.body, "<script type=\"module\" src=\"https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js\""
+  assert_nil res.body.index("asset pipeline")
+end
+
+test "a new comment is broadcast as a Turbo Stream append to the article's stream" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  client.get(BlogTest.article_path(article))
+  before = Cybertrain::Stream.max_id
+  client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                        "comment[commenter]" => "Dave",
+                                        "comment[body]" => "Live <i>now</i>" })
+  comment = Comment.last
+  refute comment.nil?, "expected the comment to be saved"
+  assert Cybertrain::Stream.max_id > before, "expected a cybertrain_messages row"
+  message = last_message
+  stream = message[0]
+  payload = message[1]
+  assert_equal "articles:#{article.id}", stream
+  assert_includes payload, "<turbo-stream action=\"append\" target=\"comments\"><template>"
+  assert_includes payload, "<div class=\"comment\" id=\"comment_#{comment.id}\">"
+  assert_includes payload, "<strong class=\"comment-author\">Dave</strong> wrote:"
+  assert_includes payload, "Live &lt;i&gt;now&lt;/i&gt;"
+  assert_includes payload, "action=\"#{comments_path(article)}/#{comment.id}\""
+end
+
+test "a comment that is not saved broadcasts nothing" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  client.get(BlogTest.article_path(article))
+  before = Cybertrain::Stream.max_id
+  client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                        "comment[commenter]" => "",
+                                        "comment[body]" => "Anonymous words" })
+  assert_equal before, Cybertrain::Stream.max_id
 end
 
 Cybertrain::Test.run!
