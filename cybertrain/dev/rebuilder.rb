@@ -137,14 +137,24 @@ module Cybertrain
       end
 
       # The C that was checked becomes the saved one, after a full build, with
-      # the binary that build left. A failure only means the next rebuild
-      # compiles gen again.
+      # the binary that build left, if the compiler still gives that C: an
+      # edit during the build may be in the binary, and undoing it must not
+      # read as a match. Otherwise nothing is saved. A failure only means the
+      # next rebuild compiles gen again.
       def promote_gen_check
         check = File.expand_path(GEN_CHECK, @root)
+        compiled = File.expand_path(GEN_COMPILED, @root)
+        stamp = File.expand_path(GEN_STAMP, @root)
         return nil unless File.exist?(check)
 
-        File.write(File.expand_path(GEN_STAMP, @root), gen_binary_stamp)
-        File.rename(check, File.expand_path(GEN_COMPILED, @root))
+        checked = File.binread(check)
+        File.delete(check)
+        if system(gen_check_command) && File.binread(check) == checked
+          File.write(stamp, gen_binary_stamp)
+          File.rename(check, compiled)
+        else
+          [check, compiled, stamp].each { |path| File.delete(path) if File.exist?(path) }
+        end
         nil
       rescue StandardError
         nil

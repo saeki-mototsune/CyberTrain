@@ -649,6 +649,29 @@ test "an edit made during the build is seen by the next rebuild" do
   finish_fake_spin_app(path)
 end
 
+# The retry compiles gen, edited or not; undoing the edit must not match what
+# was saved before it.
+test "an edit during a failed retry saves nothing, so undoing it does not read as a match" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  write_gen_binary("echo broken-binary >> '#{GEN_CALLS}'; exit 1")
+  adopt_gen_binary(r)
+  File.write("#{GEN_ROOT}/edit-during-build", "")
+  File.write("#{GEN_ROOT}/build-fails", "")
+  refute r.rebuild
+  refute File.exist?(GEN_COMPILED)
+  refute File.exist?(GEN_STAMP)
+  File.delete("#{GEN_ROOT}/edit-during-build")
+  File.delete("#{GEN_ROOT}/build-fails")
+  File.write("#{GEN_ROOT}/config/routes.rb", "# routes\n")
+  gen_calls
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
 test "a toolchain that starts refusing --incremental still gets the plain build, and the saved C survives" do
   path = fake_spin_app
   r = gen_rebuilder
