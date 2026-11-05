@@ -77,12 +77,31 @@ Where the time went, per request, when it was last profiled (perf, on
 | about 1/5 | garbage collection and malloc/free, proportional to the objects above | On 2026.10.27.7020, one CPU, collections are 13% of wall time, 83% of them full; `SPINEL_GC_FULL_INTERVAL=8` gives 16 to 17% more requests a second (spinel-feedback.md 5). Not re-measured on 2026.11.04.7026, whose collector has the same cadence rule |
 | the rest | the template interpreter, SQLite, the HTTP parser, sessions | Not profiled again |
 
-There is no profile of the pinned build. The first two rows are Spinel's
-runtime, not the framework. Two things reach them from outside: fewer
+The first two rows are Spinel's runtime, not the framework. Two things reach them from outside: fewer
 objects, which is what the candidates below are, and
 `SPINEL_GC_FULL_INTERVAL=8`, which the Dockerfile `cybertrain new` writes,
 examples/blog's and the environment file in [deploy.en.md](deploy.en.md)
 set since 2026-10-30.
+
+A profile of the pinned build, at dade561 and so before candidate 9: macOS
+`sample` on an article page, 2,897 on-CPU samples, no `Set-Cookie` on the
+responses. These are macOS shares on arm64, not comparable to the perf table
+above:
+
+| Share of on-CPU samples | What |
+| --: | --- |
+| 74%, inclusive | rendering the template |
+| 45%, inclusive | helpers, 42 of it `render_helper` |
+| 20% | the collector (`gc_collect`) |
+| 16%, inclusive | the comment relation and SQLite |
+| at most 11.6% | the interpreter's own work: `Interpreter` and the polymorphic Hash and value calls under it |
+| 2.8 / 2.7 / 2.6 / 2 / 1.9% | `Session.load` / `eval_kwargs` / `HttpParser.parse_head` / `Logger` / `Inflector.pluralize` |
+
+`SPINEL_GC_FULL_INTERVAL=8` measured on 2026.11.04.7026 (Linux arm64 in Docker
+on a Mac, one process, wrk with 32 connections): `GET /articles` 8,050 to
+10,400 req/s, `GET /articles/1` about 9,000 to 11,400, the POST about 5% up.
+bench/run leaves it unset, so its published figures are below what a deployment
+gets; compare within one setting.
 
 ## Candidates, with what is known
 
@@ -208,6 +227,42 @@ that allocates. The code each item names was checked against dade561.
     one CPU's worth of time used out of two, so the second worker mostly
     waits. The cause has not been looked for
     ([benchmark.md](benchmark.md), "Reading the results").
+11. **Compiling templates to Ruby methods for production (held, not
+    objects).** The interpreter's own work was at most 11.6% of the profile
+    above, so removing all of it gives about 13% in requests per second. What
+    fewer objects would add to that through the collector has not been
+    measured, and candidate 9 has taken part of the interpreter's share since.
+    The environment stays a Hash of polymorphic values, because what a template reads is decided by the
+    controller, so generated code would not get fixed types. It would also
+    add a second way of running a template beside the one development uses.
+    Reopen it if a new profile puts the interpreter's own share well above
+    what candidates 1 to 7 could recover.
+12. **`includes`, a bulk `WHERE fk IN (...)` load (held, not objects).** The
+    article page runs 2 queries, not one per comment, so examples/blog does
+    not have the N+1 this would remove. It is a feature for applications
+    that do. Reopen it when one does, with its query count; generated models
+    would need a typed place to keep the preloaded records.
+13. **Several processes on one port (not objects): done 2026-11-05.**
+    `SPINEL_WORKERS=2` adds nothing to the pages (candidate 10), and processes
+    do. `CYBERTRAIN_REUSE_PORT` lets N processes share a port on Linux
+    ([design.md](design.md) D35, [deploy.en.md](deploy.en.md)). Linux arm64 in
+    Docker on a Mac, wrk with 32 connections, `GET /articles/1`, without
+    `SPINEL_GC_FULL_INTERVAL`: 9,100 req/s with one process, 15,200 to 16,900
+    with two, 27,300 to 28,000 with four; the POST stays at 5,000 to 6,000,
+    since SQLite has one writer. With the interval set, one against two
+    processes alternated over six rounds: median 10,055 and 16,702 req/s, 1.66
+    times. These are not figures for the VM above.
+14. **`Set-Cookie`, CPU rather than objects: done 2026-11-05.**
+    `URI.encode_www_form_component` runs a regular expression per character,
+    about 11% of the CPU on a page that writes the session on every response
+    in a macOS profile. `Cookies.serialize` now skips it for a value of
+    unreserved bytes (`Query.plain?`), and `Session.dump` no longer pads
+    base64, which is what kept 2 of 3 session lengths on the slow path. Old
+    cookies still load. Dump and serialize together went from 15.6 to 2.1 µs
+    for a value of about 205 bytes. On a page that writes one such cookie, six
+    alternated rounds gave a median of 1.24 times the requests against 1.03 for
+    the control (Linux arm64 in Docker on a Mac). The gain on a real session
+    POST could not be read: the comments table grew during the run.
 
 Not attributed yet on 2026.11.04.7026, and each larger than candidates 1
 to 7: the 187 Arrays from `sp_PolyArray_new` and the 119 allocations of
@@ -226,8 +281,9 @@ All measured, see benchmark.md and spikes/NOTES.md for the numbers.
   to nearly every collection full (spinel-feedback.md 5). A larger
   `SPINEL_GC_THRESHOLD_KB` still does not help on its own. The deploy
   files set the interval (above); `SPINEL_GC_CONC=0` is left out, because
-  it helps only on a one-CPU host. Neither was re-measured on
-  2026.11.04.7026.
+  it helps only on a one-CPU host. The interval's figures on
+  2026.11.04.7026 are above, measured with one process; `SPINEL_GC_CONC=0`
+  was not re-measured there.
 - jemalloc for the pages: 1.3 to 1.4 times the requests on 2026.09.12
   (2026-10-09), -3 to +1% in the run of 2026-11-05 on 2026.11.04.7026 (the
   POST still gains 18% on one core). It stays an option in spin.toml, off
@@ -237,7 +293,26 @@ All measured, see benchmark.md and spikes/NOTES.md for the numbers.
   request did not move. On 2026.10.27.7020 a park no longer leaves the
   worker (one `epoll_ctl` and one `epoll_wait`); not re-measured there.
 - A `Static` that lists `public/` once: +19% for the static file, nothing for
-  pages, and a file added later is not served until a restart.
+  pages, and a file added later is not served until a restart. Embedding
+  `public/` in the binary with a precomputed ETag has the same limit, and in
+  the deployment in deploy.md Caddy serves `dist/public` before the request
+  reaches the binary.
+- ccache, `-O0`/`-O1` and mold or lld for dev builds: of about 8 s for one edit
+  on examples/blog (2026-11-05), gen took 3.3 s, Spinel's analysis 3.9 s, and
+  the C compiler and linker together 0.75 s, of which compiling the two changed
+  units 0.2 s and linking 0.05 s. The optimization level made no difference to
+  an edit, and `--incremental` already has a content-addressed object cache.
+- A separate binary per model or per request, a thread per request, an external
+  SQLite connection layer, or async queries: each adds a boundary or a thread
+  switch to a request whose queries are already sub-millisecond, and a query on
+  another thread leaves `DB.transaction`.
+- HMAC or `read_row` in C by themselves: the Strings still have to be made, so
+  the objects stay. Candidates 6 and 7 say what would actually remove them.
+- Bundling the tests into fewer programs: whole-program typing means tests
+  sharing a program change each other's types, and they would share process
+  state. CI is sharded instead.
+- An interpreted development mode on CRuby: it hides the Spinel differences a
+  developer most needs to see, and needs a shim for every `ffi_func`.
 - A process-wide cache behind a `Mutex`: stalls requests with
   `SPINEL_WORKERS=2` (rule 57, seen on 2026.09.12 and not tried since).
 - `Foo.new(<fresh String>)`: do not write it; bind the String to a local, or
