@@ -72,6 +72,27 @@ test "a missing embedded template says so" do
   assert_equal "Missing template pages/nope.html.erb (embedded)", error
 end
 
+# Parsed when the engine is built, not on a first render: with
+# SPINEL_WORKERS > 1 two requests rendering a template for the first time
+# would write the shared cache at once (Spinel has no GVL), and a lock on
+# every render is what spikes/NOTES.md rule 57 rules out.
+test "every embedded template is parsed when the engine is built" do
+  engine = Engine.embedded(sources)
+  empty = { "" => "" }
+  empty.delete("")
+  engine.sources = empty
+  assert_equal "pages/index.html.erb", engine.template("pages/index").name
+  assert_equal "layouts/application.html.erb", engine.template("layouts/application").name
+  assert_equal "pages/_note.html.erb", engine.template("pages/_note").name
+end
+
+test "an embedded template that does not parse fails when the engine is built" do
+  table = sources
+  table["pages/unclosed.html.erb"] = "<% if true %>\n<p>never closed</p>\n"
+  error = assert_raises("Cybertrain::Template::SyntaxError") { Engine.embedded(table) }
+  assert_includes error, "pages/unclosed.html.erb"
+end
+
 test "Views.configure_embedded installs an embedded engine" do
   Cybertrain::Views.configure_embedded(sources)
   assert Cybertrain::Views.engine.exists?("pages/index")
