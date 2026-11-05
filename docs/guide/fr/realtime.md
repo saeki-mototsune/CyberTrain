@@ -1,5 +1,5 @@
 ---
-source_sha256: 5fc6cc8d9e5831fa63e5a5141b8ed18f0427aabe00a980f8e2d80ea57e0ced3b
+source_sha256: 8a6c557e664a06f14ea869c54e55f0be7156409b1d89d78faf5e886d358b9316
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -250,8 +250,10 @@ réponse.
 ## Noms de flux signés
 
 Une page ne peut lire un flux qu’avec un jeton qui le nomme. Le jeton est
-formé des noms de flux et d’une signature HMAC-SHA256 faite avec
-`secret_key_base`&nbsp;; le point d’entrée vérifie la signature et ne lit ni
+formé des noms de flux et d’une signature HMAC-SHA256 faite avec une clé
+dérivée de `secret_key_base` pour les seuls flux (comme
+`turbo/signed_stream_verifier_key` dans Rails), si bien qu’un jeton n’est
+jamais un cookie de session valide&nbsp;; le point d’entrée vérifie la signature et ne lit ni
 la session ni la base de données. C’est le modèle de Turbo&nbsp;: qui pouvait
 rendre la page pouvait lire ses flux.
 
