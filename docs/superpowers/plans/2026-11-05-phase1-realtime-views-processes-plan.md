@@ -27,7 +27,7 @@
 
 Inputs the spec implies but no task's tests cover unless added here (each has its test added to the owning task):
 
-1. A client that opens an SSE connection and sends nothing, then disconnects without a FIN while the server is blocked waiting for messages: the connection thread must end within one ping interval, not leak (C3: `test/stream_endpoint.rb` "a disconnected SSE client is noticed at the next ping").
+1. A client that opens an SSE connection and sends nothing, then disconnects (FIN or RST, or stops reading) while the server is blocked waiting for messages: the connection thread must end within one ping interval, not leak (C3: `test/stream_endpoint.rb` "a disconnected SSE client is noticed at the next ping").
 2. A token whose names are valid but whose signature was made with a different secret: 403 for SSE, close 1008 for WebSocket, no row read (C3).
 3. `tag.script("alert(1)")` and `tag.div(onclick: "x")`: content is escaped, attribute names are validated (`[a-zA-Z_:][-a-zA-Z0-9_:.]*`), an invalid attribute name raises (A3).
 4. Two worker processes recovering the same stale row: exactly one requeue counted, and a row whose handler is mid-run with a fresh heartbeat is never requeued (D2).
@@ -43,7 +43,7 @@ Inputs the spec implies but no task's tests cover unless added here (each has it
 - Modify: `cybertrain/template/ast.rb`, `cybertrain/template/inode.rb` (new node kinds `K_CASE`, block slot on `K_CALL`)
 - Modify: `cybertrain/template/interpreter.rb` (`exec_case`, `array_method` / `hash_method` with blocks, `call_object_method` signature)
 - Modify: `cybertrain/template/helpers.rb` (`tag`, `content_tag`, `safe_join`, `class_names`, `dom_id` arms; `TagBuilder` dispatch in `call_object_method`)
-- Modify: `cybertrain/html.rb` (`Html.tag`, `Html.attributes`, `Html.safe_join`, `Html.class_names`, `Html.dom_id`, `Html::TagBuilder`, `VOID_ELEMENTS`)
+- Modify: `cybertrain/html.rb` (`Html.tag`, `Html.tag_attributes`, `Html.safe_join`, `Html.class_names`, `Html.dom_id`, `Html::TagBuilder`, `VOID_ELEMENTS`)
 - Modify: `docs/guide/template-language.md` (every new rule; translations are F's)
 - Test: `test/template_case.rb`, `test/template_blocks.rb`, `test/template_tag.rb`, `test/html_tag.rb` (pure Ruby: runs under CRuby and Spinel)
 
@@ -72,7 +72,7 @@ Inputs the spec implies but no task's tests cover unless added here (each has it
 
 - [ ] **Step 1: Write `test/html_tag.rb`** (pure Ruby, `require "cybertrain/html"` only): `Html.tag("div")` is `<div></div>`; `Html.tag("br")` is `<br>`; `Html.tag("br", {}, "x")` raises "br is a void element"; `Html.tag("a", { href: "/x?a=1&b=2", class: ["btn", nil, "big"], disabled: true, hidden: false, data: { turbo_frame: "f", id: 3 }, aria: { label: "x" } }, "Go")` is `<a href="/x?a=1&amp;b=2" class="btn big" disabled data-turbo-frame="f" data-id="3" aria-label="x">Go</a>`; content `"<b>"` is escaped; a block's SafeString is not; `SafeString` attribute value **is** escaped; attribute name `"on click"` raises ArgumentError; element name `"Div"` and `"div x"` raise; `Html.safe_join(["<a>", SafeString.of("<b>")], ", ")` is `&lt;a&gt;, <b>`; `Html.class_names("a", ["b", nil], { "c" => true, "d" => false }, "")` is `"a b c"`; `Html.dom_id(record)` → `"article_12"`, new record → `"new_article"`, `Html.dom_id(record, "edit")` → `"edit_article_12"` (the prefix is positional, as Rails' `dom_id(record, prefix = nil)`; the default is `""`).
 - [ ] **Step 2: Run** `ruby -I. test/html_tag.rb`; expected NoMethodError `tag`.
-- [ ] **Step 3: Implement** in `cybertrain/html.rb` per spec 3.3 (`VOID_ELEMENTS`, `Html.tag`, `Html.attributes(attrs) -> String`, `Html.safe_join`, `Html.class_names`, `Html.dom_id` using `record.model_name` snake-cased with the existing `Gen::Inflector`, and `Html::TagBuilder`).
+- [ ] **Step 3: Implement** in `cybertrain/html.rb` per spec 3.3 (`VOID_ELEMENTS`, `Html.tag`, `Html.tag_attributes(attrs) -> String`, `Html.safe_join`, `Html.class_names`, `Html.dom_id` using `record.model_name` snake-cased with the existing `Gen::Inflector`, and `Html::TagBuilder`).
 - [ ] **Step 4: Write `test/template_tag.rb`**: `<%= tag.div(class: "c") do %>hi <%= name %><% end %>`; `<%= tag.span "t", class: "x" %>`; `<%= tag.input type: "text", name: "q" %>`; `<%= tag.path d: "M0 0" %>`; `<%= tag.br %>`; `tag.br do %>x<% end` raises; `<%= content_tag "p", "<i>", class: "n" %>` escapes; `<%= safe_join([tag.b("a"), "<"], " ") %>`; `<%= class_names("a", { "b" => true }) %>`; `<%= dom_id(@article) %>` and `<%= dom_id(@article, "edit") %>`; `tag.script("alert(1)")` prints escaped content; `tag.div(onclick: "x")` renders the attribute (allowed; it is the author's), `tag.div("on click": "x")` raises.
 - [ ] **Step 5: Implement** the arms in `Helpers#helper_call` (`"tag"` returns `Html::TAG_BUILDER`; `content_tag`, `safe_join`, `class_names`, `dom_id`) and a `when Html::TagBuilder` arm in `Helpers#call_object_method` that calls `Html.tag(name_str, kwargs, positional String, block captured through interp)`.
 - [ ] **Step 6: Run** all four tests under CRuby, regen snapshots, `spin test` on them; commit "Template: tag builder, content_tag, safe_join, class_names, dom_id".
