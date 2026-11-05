@@ -6,9 +6,10 @@ name: CI
 # The exception is the API reference's Markdown source (docs/api/README.md;
 # see .yardopts), which the "API reference builds" step below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
-# reads them except script/api-docs, which is brought back in. Nor do the
-# other workflows (release, images, pages, gate): only this file is brought
-# back in. A change that also touches anything else runs the tests. `paths`
+# reads them except script/api-docs and script/test-shard, which are brought
+# back in. Nor do the other workflows (release, images, pages, gate): only this
+# file is brought back in (the local actions under .github/actions/ were never
+# left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
 # files back in (a later pattern wins).
 # push runs only on main: a branch is tested by its pull request, and a push
@@ -26,6 +27,7 @@ on:
       - ".github/workflows/ci.yml"
       - "docs/api/**"
       - "script/api-docs"
+      - "script/test-shard"
   pull_request:
     paths:
       - "**"
@@ -37,9 +39,11 @@ on:
       - ".github/workflows/ci.yml"
       - "docs/api/**"
       - "script/api-docs"
+      - "script/test-shard"
   # release.yml runs this whole file on the tag before it creates a release
   # (with `ref` set to the tag on a manual release run, which takes this file
-  # from the branch it was started on).
+  # from the branch it was started on, but .github/actions/setup-spinel and
+  # script/test-shard from the tag: a tag older than those two fails here).
   workflow_call:
     inputs:
       ref:
@@ -58,12 +62,35 @@ concurrency:
 env:
   # Must equal Cybertrain::SPINEL_TAG (script/gate checks, in the Gate
   # workflow): the release the CLI installs and the framework is tested against.
-  # The cache key below reads the tag from the checked-out
+  # The cache key (.github/actions/setup-spinel) reads the tag from the checked-out
   # cybertrain/version.rb instead, so that a release run testing a tag with
   # another branch's copy of this file still keys the toolchain it builds.
   SPINEL_TAG: "2026.11.04.7026"
 
 jobs:
+  # The framework's test programs, in four parallel jobs per OS: each program
+  # is compiled on its own, so the compile is the wall-clock cost and it
+  # divides. A job of its own, not steps of `test`: that job keeps its name
+  # and the end-to-end checks.
+  framework-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-latest]
+        shard: [0, 1, 2, 3]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ./.github/actions/setup-spinel
+
+      - name: Framework tests
+        run: |
+          spinel --version
+          script/test-shard ${{ matrix.shard }} 4
+
   test:
     strategy:
       fail-fast: false
@@ -75,24 +102,7 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
-
-      - name: Install SQLite headers (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev libssl-dev
-
-      # Spinel's openssl package links `-lssl -lcrypto` with no search path;
-      # Homebrew's OpenSSL is keg-only, so a program that requires openssl
-      # (test/openssl_dispatch.rb) finds it through the compiler's
-      # LIBRARY_PATH / CPATH.
-      - name: Point the compiler at Homebrew's OpenSSL (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          prefix="$(brew --prefix openssl@3)"
-          echo "LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
-          echo "CPATH=$prefix/include" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-spinel
 
       # The version pins, script/check-reserved-names, check-client-faults and
       # check-http-layer run in the Gate workflow (script/gate), on every change.
@@ -106,55 +116,6 @@ jobs:
           gem install --no-document kramdown -v "~> 2.5"
           gem install --no-document kramdown-parser-gfm -v "~> 1.1"
           script/api-docs
-
-      # The gem ships the CLI only; it must run under CRuby and bring every
-      # file it requires (cybertrain.gemspec lists them by hand).
-      - name: Build and install the gem
-        run: |
-          gem build cybertrain.gemspec --output /tmp/cybertrain.gem
-          gem install --local --no-document /tmp/cybertrain.gem
-          cybertrain version
-
-      # The key names the runner image too: a toolchain built on one image
-      # is not assumed to run on the next. ImageOS and ImageVersion are
-      # variables of the runner process, not of the expression context, so
-      # a step copies them into an output first.
-      - name: Name the runner image
-        id: image
-        run: |
-          echo "id=${ImageOS:-unknown}-${ImageVersion:-0}" >> "$GITHUB_OUTPUT"
-          spinel_tag=$(sed -n 's/^ *SPINEL_TAG = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
-          test -n "$spinel_tag" || { echo "no SPINEL_TAG in cybertrain/version.rb"; exit 1; }
-          echo "spinel_tag=$spinel_tag" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the Spinel toolchain
-        id: spinel-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.cybertrain/spinel
-          key: spinel-${{ steps.image.outputs.spinel_tag }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v3
-
-      # `cybertrain setup` is how users get Spinel, so CI gets it the same
-      # way: a cache miss builds the release, a hit verifies it.
-      - name: Install Spinel with cybertrain setup
-        run: |
-          cybertrain doctor
-          cybertrain setup
-          echo "$HOME/.cybertrain/bin" >> "$GITHUB_PATH"
-
-      # Saved right after the build, so a failure later in the job does not
-      # cost the next run another build.
-      - name: Save the Spinel toolchain
-        if: steps.spinel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/.cybertrain/spinel
-          key: ${{ steps.spinel-cache.outputs.cache-primary-key }}
-
-      - name: Framework tests
-        run: |
-          spinel --version
-          spin test
 
       - name: Gem CLI scaffolds an app, migrates, builds dist/ and serves it
         run: |
