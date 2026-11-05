@@ -1,5 +1,5 @@
 ---
-source_sha256: 5904e09a007176aba046dad59aec644372364a8b38fe3d8a84c555bfe67c2e85
+source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
 ---
 # Конфигурация
 
@@ -33,6 +33,7 @@ end
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` или `false` не даёт процессу `server` выполнять задачи по расписанию, фоновые задачи и фиды WebSocket (см. [Роли процессов](background-and-operations.md#process-roles)); `./<app> worker` и `feeds` его игнорируют |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`: сколько задач один процесс выполняет одновременно (см. [Фоновая работа](background-and-operations.md#background-work)); не меньше 1 |
 | `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`: точка входа реального времени (см. [Реальное время](realtime.md#limits-and-settings)); пустое значение выключает потоки; путь должен начинаться с `/` и отличаться от `health_path` |
+| `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`; `1` или `true` выполняет bind с `SO_REUSEPORT`, так что несколько процессов могут слушать один порт, а в Linux ядро распределяет между ними соединения (в разработке игнорируется; см. [Running several processes](../deploy.en.md#running-several-processes)). Задайте `CYBERTRAIN_WORKER=0` во всех процессах, кроме одного |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`; путь встроенной проверки работоспособности (см. [Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check)); пустое значение её отключает; значение без ведущего `/` останавливает сервер при запуске. `health_worker_stale` (300 с) задаётся в `config/app.rb` |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` или `true` позволяет `Cybertrain::HttpClient` подключаться к loopback, частным и другим непубличным адресам (см. [Исходящий HTTP](external-services.md#outbound-http)) |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; SMTP-сервер, через который отправляет `Cybertrain::Mailer` (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |

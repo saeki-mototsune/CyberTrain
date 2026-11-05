@@ -243,8 +243,13 @@ module Cybertrain
       Session.new(data)
     end
 
+    # Without base64's `=` padding: it would be the only byte in the value
+    # Cookies.serialize has to encode, and 2 of 3 payload lengths have it, so
+    # every Set-Cookie would pay for the encoder. Cookies issued with padding
+    # still load: the HMAC covers the payload as sent, and urlsafe_decode64
+    # takes either form, on both runtimes.
     def self.dump(session, secret)
-      payload = Base64.urlsafe_encode64(JSON.generate(session.to_h))
+      payload = Base64.urlsafe_encode64(JSON.generate(session.to_h), padding: false)
       "#{payload}--#{Crypto.hmac_hex(secret, payload)}"
     end
   end

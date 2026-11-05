@@ -1,5 +1,5 @@
 ---
-source_sha256: e6054a1e3a5194a02270940c82ba0254133258775b0034aa29e5153607ba5489
+source_sha256: a7d344c625b8a0bdb65077dff896e07c8a6258a00ef38ebe3d533d3b20335e34
 ---
 # Реальное время: потоки в браузер
 
@@ -306,4 +306,4 @@ end
 
 Тестирование потока страницы: [Тестирование потоков и
 компонентов](testing.md#testing-streams-and-components). Устройство:
-[docs/design.md](../design.md) D35 и D36.
+[docs/design.md](../design.md) D36 и D37.

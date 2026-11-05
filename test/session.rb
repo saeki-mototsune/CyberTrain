@@ -6,6 +6,8 @@ require "cybertrain/http/request"
 require "cybertrain/http/cookies"
 require "cybertrain/context"
 require "uri"
+require "base64"
+require "json"
 
 SECRET = "s3cr3t"
 
@@ -73,6 +75,31 @@ test "tampered payload with recomputed signature over garbage JSON loads empty" 
   payload = "not valid base64 json!!"
   forged = "#{payload}--#{Cybertrain::Crypto.hmac_hex(SECRET, payload)}"
   assert Cybertrain::Session.load(forged, SECRET).to_h.empty?
+end
+
+test "dump writes no base64 padding, so serialize has nothing to encode at any length" do
+  value = ""
+  while value.size < 6
+    dumped = Cybertrain::Session.dump(Cybertrain::Session.new({ "v" => value }), SECRET)
+    assert Cybertrain::Query.plain?(dumped)
+    assert_equal value, Cybertrain::Session.load(dumped, SECRET)["v"]
+    value += "x"
+  end
+end
+
+# Cookies issued while dump still padded stay valid after a deploy: the HMAC
+# covers the payload as sent, and the decoder takes either form.
+test "a cookie written with base64 padding still loads" do
+  padded_seen = 0
+  value = ""
+  while value.size < 3
+    payload = Base64.urlsafe_encode64(JSON.generate({ "v" => value }))
+    padded_seen += 1 unless payload.index("=").nil?
+    cookie = "#{payload}--#{Cybertrain::Crypto.hmac_hex(SECRET, payload)}"
+    assert_equal value, Cybertrain::Session.load(cookie, SECRET)["v"]
+    value += "x"
+  end
+  assert_equal 2, padded_seen
 end
 
 test "changed? starts false" do
