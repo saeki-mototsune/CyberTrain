@@ -1,4 +1,6 @@
 ok   port_argument reads a port number from argv[0]
+ok   spinel_workers gives Spinel one helper per request worker
+ok   development serves one worker whatever SPINEL_WORKERS asks for
 ok   the development stack passes a good page through
 ok   a template error is a 500 page naming the template and line
 ok   a controller exception is a 500 page with the escaped message
@@ -6,4 +8,4 @@ ok   a failed build puts its output on every HTML page but not on JSON
 ok   static files still pass through the development stack
 ok   host rejection precedes diagnostics and failed-build output
 ok   the rebuilder targets the app's build/bin/blog
-8 tests, 39 assertions, 0 failures
+10 tests, 52 assertions, 0 failures

@@ -179,6 +179,11 @@ module Cybertrain
         end
       end
 
+      # The value of expression node n in env: a literal, a local or ivar
+      # of the template, a helper or method call, an operator, an Array or
+      # Hash literal. Recursive, and called for every expression a template
+      # evaluates, so it holds no block (see the Hash literal case). An
+      # unknown node kind raises RuntimeError through fail_at.
       def eval_expr(n, env)
         k = n.ikind
         if k == INode::K_CALL then eval_call(n, env)
@@ -236,8 +241,18 @@ module Cybertrain
           end
           items
         elsif k == INode::K_HASH
+          # while, not each_with_index: a block that captures n, env and
+          # hash makes Spinel allocate a heap cell for each of them on every
+          # call of eval_expr, Hash literal or not (three objects per
+          # expression evaluated; docs/performance-next.md 9).
           hash = {}
-          n.ipairs.each_with_index { |key, i| hash[key] = eval_expr(n.ikids[i], env) }
+          keys = n.ipairs
+          vals = n.ikids
+          j = 0
+          while j < keys.size
+            hash[keys[j]] = eval_expr(vals[j], env)
+            j += 1
+          end
           hash
         else
           fail_at(n, "cannot evaluate node kind #{k}")
