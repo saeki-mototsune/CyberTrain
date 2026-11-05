@@ -48,7 +48,17 @@ module Cybertrain
     # bodies of a nested `class`. Templates pass values by position or
     # keyword, so `*rest`, `**opts`, `...` and anonymous `*` / `**` / `&`
     # are errors, and so is the same helper name in two places (Rails'
-    # silent override is a classic bug).
+    # silent override is a classic bug), a name the framework's helpers
+    # already use (RESERVED_HELPER_NAMES: `include` would replace the
+    # framework method, or the built-in would answer first) and a name
+    # ending in _path or _url (the route helpers answer those).
+    #
+    # Being lexical, the scan follows indentation: a `def` body is skipped
+    # up to the `end` at the def's own indent, a `class` (also
+    # `class << self`, `class<<self`) up to its `end`, and a module ends at
+    # the `end` at its indent. A heredoc whose text holds a line shaped like
+    # `def x` or `end` at the wrong indent is an accepted limit (as for
+    # ControllerScan and ModelScan).
     module HelperScan
       class Error < StandardError
       end
@@ -57,8 +67,32 @@ module Cybertrain
       # arms for one helper (HelpersEmitter writes one per subset present).
       MAX_OPTIONAL = 3
 
+      # Every method of Template::Helpers and HelperBase (public and
+      # private: an app module's `def` of the same name, mixed in through
+      # `include`, would replace it for the framework too, and NOTES rule 34
+      # forbids the same name with another return type), every built-in
+      # name helper_call answers before app_helper_call, and the interpreter's
+      # `yield`. script/check-reserved-names keeps it complete against
+      # cybertrain/template/helpers.rb and interpreter.rb.
+      RESERVED_HELPER_NAMES = %w[
+        app_block_content app_helper_call arg button_to button_to_path
+        call_object_method class_names component_pop component_push content
+        content_for content_for? content_tag csrf_meta_tags csrf_token
+        data_attrs distance_of_time_in_words dom_id escape flash
+        flash_messages form_action form_record form_with h helper_arity!
+        helper_call helper_keywords! helper_no_keywords! hidden_fields
+        html_arg initialize int_text kwarg_attr link_to link_to_path
+        lower_text model_key nested_url number_with_delimiter
+        outside_request! page_method pager_href pager_html paginate params
+        partial_file plural_words pluralize raw render
+        render_component_helper render_helper request_bound! request_path
+        request_query_string route route_key_of safe_join session_csrf_token
+        signed_stream_name stream_source_path string_keys_of tag text_arg
+        time_ago_in_words time_arg to_html truncate turbo_stream_from
+        url_for yield
+      ]
+
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/
-      CLASS_LINE = /\A\s*class\s/
       DEF_LINE = /\A\s*def\s+([a-z_]\w*[?!]?)(.*)\z/m
 
       # Every module under dir (recursively, sorted by file), checked for a
@@ -98,6 +132,13 @@ module Cybertrain
             skip_indent = -1 if indent == skip_indent && ModelScan.closing_end?(line)
             next
           end
+          # A class (top-level or nested, `class << self` too) is skipped
+          # whole before modules are looked for: a module inside it is not
+          # a helper module.
+          if line.start_with?("class ") || line.start_with?("class<<")
+            skip_indent = indent unless ModelScan.one_line_block?(line)
+            next
+          end
           if !indents.empty? && indent <= indents.last && ModelScan.closing_end?(line)
             names.pop
             indents.pop
@@ -122,10 +163,6 @@ module Cybertrain
           end
           next if names.empty?
 
-          if raw.match?(CLASS_LINE)
-            skip_indent = indent unless ModelScan.one_line_block?(line)
-            next
-          end
           if line == "private" || line == "protected"
             in_private = true
             next
@@ -134,9 +171,7 @@ module Cybertrain
             in_private = false
             next
           end
-          next if in_private
           next unless line.start_with?("def ")
-          next if line.start_with?("def self.")
 
           # A parameter list may run over several lines: join them until
           # the parentheses balance.
@@ -146,7 +181,14 @@ module Cybertrain
             text = "#{text} #{lines[i].strip}"
             i += 1
           end
+          # The body (when it has one) is skipped up to the def's own `end`,
+          # so a column-0 `end` of an unindented body does not close the
+          # module, and nothing in the body is read as a def or `private`.
+          skip_indent = indent unless ModelScan.one_line_block?(line) || endless?(text)
+          next if in_private || line.start_with?("def self.") || setter?(text)
+
           d = parse_def(file, start_line, text)
+          check_name(file, d)
           owner = found_named(found, names.last)
           owner.defs << d unless owner.nil?
         end
@@ -155,6 +197,44 @@ module Cybertrain
           kept << mod if !wraps[j] || !mod.defs.empty?
         end
         kept
+      end
+
+      # A helper the framework would answer first, or whose `include`
+      # would replace a framework method.
+      def self.check_name(file, d)
+        name = d.name
+        if RESERVED_HELPER_NAMES.include?(name)
+          raise Error, "#{file}:#{d.line}: '#{name}' is a name the framework's template helpers already use; pick another helper name"
+        end
+        if name.end_with?("_path") || name.end_with?("_url")
+          raise Error, "#{file}:#{d.line}: '#{name}' ends in _path or _url, which the route helpers answer; pick another helper name"
+        end
+        nil
+      end
+
+      # `def value=(v)` / `def value= v`: a writer, not a helper.
+      def self.setter?(text)
+        m = text.match(DEF_LINE)
+        return false if m.nil?
+
+        m[2].to_s.start_with?("=")
+      end
+
+      # `def today = "now"` / `def price(v) = v.to_s`: no body to skip.
+      def self.endless?(text)
+        m = text.match(DEF_LINE)
+        return false if m.nil?
+
+        rest = m[2].to_s
+        return false if rest.start_with?("=")
+
+        rest = rest.strip
+        if rest.start_with?("(")
+          inner = inside_parens(rest)
+          close = rest.index(")", inner.size + 1)
+          rest = close.nil? ? "" : rest[close + 1, rest.size - close - 1].to_s.strip
+        end
+        rest.start_with?("=") && !rest.start_with?("==")
       end
 
       def self.found_named(found, name)

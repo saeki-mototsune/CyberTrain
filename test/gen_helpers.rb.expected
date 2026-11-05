@@ -6,7 +6,14 @@ ok   more than three optional parameters asks to split the helper
 ok   the same helper in two modules is an error naming both files
 ok   nested modules are named in full and a wrapper module is left out
 ok   a nested class's methods are not helpers
+ok   a name the framework's helpers use is an error naming the file and line
+ok   a name ending in _path or _url is an error
+ok   a setter is not a helper
+ok   class << self without spaces is skipped
+ok   a module inside a top-level class is not a helper module
+ok   an unindented module body keeps its later defs
+ok   a def body's lines are not read as defs or private
 ok   the emitter writes one arm per helper, one branch per optional subset
 ok   a tree with no app/helpers gets a class that only calls super
 ok   the output ends with the helpers_builder line
-11 tests, 28 assertions, 0 failures
+18 tests, 43 assertions, 0 failures
