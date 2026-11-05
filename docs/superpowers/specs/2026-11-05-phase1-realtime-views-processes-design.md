@@ -174,8 +174,10 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   still in the table. **The handoff is ordered so that no row is lost or
   doubled**: the connection first calls `Hub#subscribe` (its queue starts
   filling with live rows), then runs the replay query, then sets `boundary =
-  max(min(given, cursor), largest replayed id)`, where `cursor` is the
-  poller's `last_id` the subscription captured (`min(given, cursor)` alone
+  max(min(given, head), largest replayed id)`, where `head` is the table's
+  `MAX(id)` read at subscribe, not this process's poller cursor: a poller
+  can lag the head by a poll interval, and a client that got those rows
+  from another process would be sent them again (`min(given, head)` alone
   when the replay returns no rows: a reconnect at the head, or after
   retention emptied the table; the `min` clamps a `given` above the head,
   which a client can send with a valid token, so it cannot starve itself of
@@ -543,7 +545,9 @@ does the same with green threads:
   idempotent (the rule Solid Queue, Sidekiq and every at-least-once queue
   states; the README and the jobs guide say so). Completion is **fenced**:
   `finish` writes `done` / `failed` / the retry with `WHERE id = ? AND
-  state = 'running' AND claimed_by = ?`, so a late finisher whose row was
+  state = 'running' AND claimed_by = ? AND attempts = ?` (the attempt the
+  claim incremented, so a stale attempt of the same process cannot
+  overwrite a newer claim's outcome either), so a late finisher whose row was
   reclaimed changes nothing (`changes == 0`, logged at warn) and the second
   claimer's outcome stands. The fence prevents a stale worker from
   overwriting state; it does not prevent the overlap itself, which only

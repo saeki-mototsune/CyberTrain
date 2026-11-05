@@ -345,14 +345,14 @@ test "the poller starts on a database without the messages table" do
   assert_equal 0, row_count
 end
 
-test "an after above the head is clamped to the subscriber's cursor" do
+test "an after above the head is clamped to the table's head, not below it" do
   fresh_db
   hub = Stream::Hub.new(1000)
   Stream.broadcast("a", "x")
   Stream::Poller.run_once(hub)
   sub = hub.subscribe(["a"])
   start = Stream.replay_start(999_999, sub)
-  assert_equal sub.boundary, start
+  assert_equal Stream.max_id, start
   assert_equal 0, Stream.replay(["a"], start).size
   sub.skip_through!(start)
   Stream.broadcast("a", "next")
@@ -360,6 +360,26 @@ test "an after above the head is clamped to the subscriber's cursor" do
   assert_equal ["next"], payloads_of(sub)
   assert_equal 0, Stream.replay_start(0, sub)
   assert_equal(-1, Stream.replay_start(-1, sub))
+end
+
+test "a client ahead of a lagging poller is not sent its rows again" do
+  fresh_db
+  hub = Stream::Hub.new(1000)
+  Stream.broadcast("a", "1")
+  Stream::Poller.run_once(hub)
+  # rows 2 and 3 are in the table but this process's poller has not read
+  # them yet; the client got them from another process
+  Stream.broadcast("a", "2")
+  Stream.broadcast("a", "3")
+  sub = hub.subscribe(["a"])
+  assert_equal 1, sub.boundary
+  start = Stream.replay_start(3, sub)
+  assert_equal 3, start
+  assert_equal 0, Stream.replay(["a"], start).size
+  sub.skip_through!(start)
+  Stream.broadcast("a", "4")
+  Stream::Poller.run_once(hub)
+  assert_equal ["4"], payloads_of(sub)
 end
 
 test "prune deletes the rows older than the cutoff" do

@@ -368,19 +368,21 @@ module Cybertrain
     end
 
     # Where a replay for a new subscriber starts: the client's `after`
-    # (Last-Event-ID, ?after=) clamped to the poller cursor the subscriber
-    # took at subscribe (Subscriber#boundary), so an id above the head
-    # (another database, a pruned table) still lets the next broadcast
-    # through; -1 (no replay) stays -1. The handoff boundary is then
-    # max(this, the largest replayed id).
+    # (Last-Event-ID, ?after=) clamped to the table's head (MAX(id)), so an
+    # id above the head (another database, a pruned table) still lets the
+    # next broadcast through; -1 (no replay) stays -1. The handoff boundary
+    # is then max(this, the largest replayed id). The head, not this
+    # process's poller cursor (Subscriber#boundary): a client that got its
+    # rows from another process whose poller was ahead would otherwise be
+    # sent them again when this process's poller catches up.
     # @param after [Integer]
-    # @param sub [Subscriber]
+    # @param sub [Subscriber] (unused since the clamp reads the table; kept for the callers)
     # @return [Integer]
     def self.replay_start(after, sub)
       return after if after < 0
 
-      cursor = sub.boundary
-      after < cursor ? after : cursor
+      head = Stream.max_id
+      after < head ? after : head
     end
 
     # The process's hub ({Hub}), made on first use.
