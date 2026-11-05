@@ -242,6 +242,24 @@ test "recover! requeues rows a dead process left running once their heartbeat is
   assert_equal 0, Job.recover!(1301)
 end
 
+test "recover! fails a stale row that used its last attempt instead of requeueing it" do
+  fresh_db
+  Job.install!
+  # A payload that kills its process: every claim counted an attempt, and
+  # the row was left running each time.
+  last = insert_raw("record", "running")
+  spare = insert_raw("record", "running")
+  max = Cybertrain.config.job_max_attempts
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET attempts = ? WHERE id = ?", Cybertrain::Cast.binds(max, last)) }
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET attempts = ? WHERE id = ?", Cybertrain::Cast.binds(max - 1, spare)) }
+  assert_equal 1, Job.recover!(1301)
+  assert_equal "failed", job_state(last)
+  assert_equal "process stopped (heartbeat stale) during attempt #{max} of #{max}", job_error(last)
+  assert_equal "queued", job_state(spare)
+  assert_includes LOG.string, "[ERROR] job #{last} (record) failed: process stopped (heartbeat stale) during attempt #{max} of #{max}"
+  assert_equal 0, Job.recover!(1301)
+end
+
 test "a claim writes claimed_by and heartbeat_at; heartbeat! touches only the jobs in flight here" do
   fresh_db
   label = Job.process_label

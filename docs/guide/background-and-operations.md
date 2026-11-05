@@ -71,7 +71,11 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   heartbeat for the jobs it is running every `job_heartbeat_interval` (30 s).
   A `running` row whose heartbeat is older than `job_heartbeat_stale` (a
   process that crashed or was stopped mid-job) is queued again by whichever
-  process looks next, at its start and then once a minute. Scheduled tasks
+  process looks next, at its start and then once a minute, unless that
+  attempt was its last (`job_max_attempts`, as claiming counts an attempt):
+  then the row is left `failed`, with `process stopped (heartbeat stale)` in
+  `last_error`, so a job that kills its process is not retried for ever.
+  Scheduled tasks
   run in one process at a time: the processes share a lease in the
   database (`cybertrain_leases`, renewed every tick, `scheduler_lease_ttl`
   30 s), and only its holder runs due tasks; another takes over when it

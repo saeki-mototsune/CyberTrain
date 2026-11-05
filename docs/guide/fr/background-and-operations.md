@@ -1,5 +1,5 @@
 ---
-source_sha256: 77841c7742a645fc550aff1b97447e8c187efef9c00561905363ab8bed7e5a54
+source_sha256: 6cffd2efdf0a9c273a6d53c5fbddb044b804da29fb530b1f9a1601071a7accba
 ---
 # Tâches de fond et exploitation
 
@@ -87,7 +87,11 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   `job_heartbeat_interval` (30&nbsp;s). Une ligne `running` dont le
   battement de cœur est plus vieux que `job_heartbeat_stale` (un processus
   qui a planté ou a été arrêté en plein job) est remise en file par le
-  premier processus qui regarde, à son démarrage puis une fois par minute.
+  premier processus qui regarde, à son démarrage puis une fois par minute,
+  sauf si cette tentative était la dernière (`job_max_attempts`, la prise
+  d’un job comptant une tentative)&nbsp;: la ligne reste alors `failed`, avec
+  `process stopped (heartbeat stale)` dans `last_error`, si bien qu’un job
+  qui tue son processus n’est pas réessayé indéfiniment.
   Les tâches planifiées s’exécutent dans un seul processus à la fois&nbsp;:
   les processus partagent un bail dans la base (`cybertrain_leases`,
   renouvelé à chaque tick, `scheduler_lease_ttl` 30&nbsp;s), et seul son

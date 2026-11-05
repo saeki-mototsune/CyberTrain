@@ -1,5 +1,5 @@
 ---
-source_sha256: 77841c7742a645fc550aff1b97447e8c187efef9c00561905363ab8bed7e5a54
+source_sha256: 6cffd2efdf0a9c273a6d53c5fbddb044b804da29fb530b1f9a1601071a7accba
 ---
 # 后台任务与运维
 
@@ -29,7 +29,7 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 - **作业。** `Job.enqueue` 向 `cybertrain_jobs` 表添加一行，这张表由框架自己创建（`CREATE TABLE IF NOT EXISTS`，在首次使用时），并且不写入 `db/schema.rb`。负载是一个 String：结构化的数据请编码为 JSON。在 `DB.transaction` 内部，这一行会与其他内容一起提交或回滚。每个作业线程在一个简短的 `BEGIN IMMEDIATE` 事务中认领最早到期的作业，在事务之外运行其处理器，把它标记为 `done`，然后寻找下一个；没有到期的作业时，它等待 `job_poll_interval` 秒（1 秒），所以由请求入队的作业大约在一秒内开始。抛出异常的处理器会依次在 1、5、15 分钟之后，然后在 60 分钟之后重试，并把 `Class: message`（最多 1000 个字符）写入 `last_error`，直到失败次数达到 `job_max_attempts`（5）次：此时这一行变为 `failed`，并保留下来供你查看。种类没有处理器的作业会立即变为 `failed`；`Job.enqueue` 会拒绝未注册的种类。`Job.state_count("failed")` 和 `Job.prune_done(before_epoch)` 可用于健康页面和日常清理。
 - **至少一次。** 一个作业可能运行两次：被杀掉的进程，或停顿超过 `job_heartbeat_stale`（300 秒）的进程，在另一个进程收回这一行时（见下文）可能仍在运行该作业。只有持有该行的认领所写入的结果才算数（较早认领迟到的结果会被丢弃），但处理器的副作用已经发生了两次，所以请像使用任何作业队列一样，编写可以安全重复运行的处理器（检查邮件是否已经发出，使用 upsert 而不是 insert）。
 - **按种类限制并发。** `Job.handle("sync_account", concurrency: 1) { ... }` 让该种类的作业在所有共享该数据库的进程中同时最多运行这么多个（用于有速率限制的 API，或不能重叠的工作）；默认值 0 表示不限制。与此同时，其他种类照常运行。这个上限统计的是 `running` 行，所以只在心跳持续期间成立：心跳过期后仍在运行的处理器，会与被收回的行的下一次运行重叠（见下文）；绝不能重叠的工作需要自己的保护。
-- **每个数据库可以有多个 worker。** 每个运行作业的进程每隔 `job_heartbeat_interval`（30 秒）为它正在运行的作业写入心跳。心跳早于 `job_heartbeat_stale` 的 `running` 行（来自崩溃了或在作业中途被停止的进程）会由下一个检查的进程重新排队，检查发生在它启动时，之后每分钟一次。定时任务每次只在一个进程中运行：各进程在数据库中共享一个租约（`cybertrain_leases`，每次心跳续约，`scheduler_lease_ttl` 为 30 秒），只有租约持有者运行到期的任务；持有者停止续约后，另一个进程会接手。租约在每个任务之前续约，而不是在任务运行期间，所以比 ttl 更长的任务可能与下一个持有者的任务重叠：请让任务保持短小（把真正的工作 `Job.enqueue`），并且可以安全重复。因此，两个 `worker` 进程，或一个服务器和一个 worker，可以共享同一个 SQLite 文件；`CYBERTRAIN_WORKER=0` 会在只应提供 HTTP 的 `server` 进程中关闭作业、定时任务和数据订阅。
+- **每个数据库可以有多个 worker。** 每个运行作业的进程每隔 `job_heartbeat_interval`（30 秒）为它正在运行的作业写入心跳。心跳早于 `job_heartbeat_stale` 的 `running` 行（来自崩溃了或在作业中途被停止的进程）会由下一个检查的进程重新排队，检查发生在它启动时，之后每分钟一次；但如果那次尝试已是最后一次（`job_max_attempts`，认领时就计入一次尝试），这一行会被标为 `failed`，`last_error` 为 `process stopped (heartbeat stale)`，这样会让进程崩溃的作业不会被无休止地重试。定时任务每次只在一个进程中运行：各进程在数据库中共享一个租约（`cybertrain_leases`，每次心跳续约，`scheduler_lease_ttl` 为 30 秒），只有租约持有者运行到期的任务；持有者停止续约后，另一个进程会接手。租约在每个任务之前续约，而不是在任务运行期间，所以比 ttl 更长的任务可能与下一个持有者的任务重叠：请让任务保持短小（把真正的工作 `Job.enqueue`），并且可以安全重复。因此，两个 `worker` 进程，或一个服务器和一个 worker，可以共享同一个 SQLite 文件；`CYBERTRAIN_WORKER=0` 会在只应提供 HTTP 的 `server` 进程中关闭作业、定时任务和数据订阅。
 - **关闭。** 收到 `SIGTERM` 时，作业线程停止认领新作业，进程最多等待 `job_drain_timeout`（10 秒）让进行中的作业完成。届时仍在运行的作业的行保持 `running`；它的心跳已经停止，所以一旦过期，另一个进程会再次运行它。
 - **让定时任务保持简短。** 定时任务在调度器线程上逐个运行，而一次 SQLite 调用会占用它的操作系统工作线程直到返回：在 `SPINEL_WORKERS=1`（默认值）时，一个耗时的查询会让所有请求和所有其他线程停顿同样长的时间。把真正繁重的工作交给作业（在定时任务中 `Job.enqueue`），并把大量工作分批进行（每次运行删除一千行，每个条目入队一个作业），而不是一次做完。
 - **测试。** `Cybertrain::Scheduler.run_due(now)` 运行一次心跳，`Cybertrain::Job.work_one(now)` 运行一个作业，时间是你选定的纪元时间，所以测试永远不必休眠。

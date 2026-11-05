@@ -516,7 +516,10 @@ module Cybertrain
     # whose process still sends heartbeats ({Job.heartbeat!}) is never
     # touched, so every process that runs jobs may call it; the scheduler
     # does at start and once a minute. The attempt was already counted
-    # when the row was claimed.
+    # when the row was claimed, so a row whose stopped attempt was its
+    # last ({Config#job_max_attempts}) is left `failed` instead
+    # ({Job.fail_exhausted}): a payload that kills its process is not
+    # requeued for ever.
     # @param now [Integer] epoch seconds
     # @param stale [Integer] seconds without a heartbeat that make a row
     #   abandoned (by default the {Config#job_heartbeat_stale} of the
@@ -525,6 +528,7 @@ module Cybertrain
     # @api public
     def self.recover!(now, stale = Job.heartbeat_stale)
       ensure_installed
+      fail_exhausted(now, stale)
       binds = Cast.binds(now, now - stale)
       count = 0
       DB.with do |c|
@@ -532,6 +536,44 @@ module Cybertrain
         count = c.changes
       end
       count
+    end
+
+    # The part of recover! for rows whose stopped attempt was their last
+    # ({Config#job_max_attempts}; the claim counted it): they become
+    # `failed` with last_error "process stopped (heartbeat stale) during
+    # attempt N of MAX", logged as a handler's last failure is, rather than
+    # queued again, so a payload that kills its process is not retried for
+    # ever. Each row is updated only while it is still stale and running
+    # (another process may have recovered it in between).
+    def self.fail_exhausted(now, stale)
+      max = Cybertrain.config.job_max_attempts
+      cutoff = now - stale
+      ids = Array.new(0) { 0 }
+      kinds = Array.new(0) { "" }
+      messages = Array.new(0) { "" }
+      DB.with do |c|
+        rows = c.execute("SELECT id, kind, attempts FROM cybertrain_jobs WHERE state = 'running' " \
+                         "AND (heartbeat_at IS NULL OR heartbeat_at < ?) AND attempts >= ? ORDER BY id",
+                         Cast.binds(cutoff, max))
+        rows.each do |row|
+          id = Cast.int(row["id"])
+          message = "process stopped (heartbeat stale) during attempt #{Cast.int(row["attempts"])} of #{max}"
+          c.execute("UPDATE cybertrain_jobs SET state = 'failed', last_error = ?, updated_at = ? WHERE id = ? " \
+                    "AND state = 'running' AND (heartbeat_at IS NULL OR heartbeat_at < ?)",
+                    Cast.binds(message, now, id, cutoff))
+          next unless c.changes > 0
+
+          ids << id
+          kinds << Cast.str(row["kind"])
+          messages << message
+        end
+      end
+      i = 0
+      while i < ids.size
+        Cybertrain.logger.error("job #{ids[i]} (#{kinds[i]}) failed: #{messages[i]}")
+        i += 1
+      end
+      nil
     end
 
     # The stale default of recover!.
