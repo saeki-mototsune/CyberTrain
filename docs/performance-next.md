@@ -229,9 +229,10 @@ that allocates. The code each item names was checked against dade561.
     ([benchmark.md](benchmark.md), "Reading the results").
 11. **Compiling templates to Ruby methods for production (held, not
     objects).** The interpreter's own work was at most 11.6% of the profile
-    above, so 15 to 20% in requests per second is the best case, and
-    candidate 9 has taken part of it since. The environment stays a Hash of
-    polymorphic values, because what a template reads is decided by the
+    above, so removing all of it gives about 13% in requests per second. What
+    fewer objects would add to that through the collector has not been
+    measured, and candidate 9 has taken part of the interpreter's share since.
+    The environment stays a Hash of polymorphic values, because what a template reads is decided by the
     controller, so generated code would not get fixed types. It would also
     add a second way of running a template beside the one development uses.
     Reopen it if a new profile puts the interpreter's own share well above
@@ -280,8 +281,9 @@ All measured, see benchmark.md and spikes/NOTES.md for the numbers.
   to nearly every collection full (spinel-feedback.md 5). A larger
   `SPINEL_GC_THRESHOLD_KB` still does not help on its own. The deploy
   files set the interval (above); `SPINEL_GC_CONC=0` is left out, because
-  it helps only on a one-CPU host. Neither was re-measured on
-  2026.11.04.7026.
+  it helps only on a one-CPU host. The interval's figures on
+  2026.11.04.7026 are above, measured with one process; `SPINEL_GC_CONC=0`
+  was not re-measured there.
 - jemalloc for the pages: 1.3 to 1.4 times the requests on 2026.09.12
   (2026-10-09), -3 to +1% in the run of 2026-11-05 on 2026.11.04.7026 (the
   POST still gains 18% on one core). It stays an option in spin.toml, off
