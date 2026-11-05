@@ -1,5 +1,5 @@
 ---
-source_sha256: 0a46c494a9f3505a8b57df141c46dd68b7d02b968276ca4bec4957f41a224a68
+source_sha256: cd6c53969fe07a4ba778257843c8f8db6c9a412999f0379a7aafaf9c4c621b4a
 ---
 # Modèles et base de données
 
@@ -169,7 +169,7 @@ En quoi elle diffère du `transaction` de Rails, et ce qu’il faut éviter&nbsp
 - Un `DB.transaction` imbriqué dans le bloc rejoint la transaction externe&nbsp;: seule la plus externe fait le commit, une exception n’importe où annule tout, et il n’y a pas de savepoints (pas de `requires_new: true`).
 - `c.transaction { }` ne peut pas être appelé sur le `c` passé au bloc sous Spinel&nbsp;: imbriquez `DB.transaction`, ou utilisez la forme sans bloc ci-dessous.
 - Un `DB.transaction` appelé dans un bloc `DB.with` (qui n’est pas une transaction) emprunte une seconde connexion&nbsp;: avec un pool d’une seule connexion (`:memory:` compris), il attend alors indéfiniment. Ouvrez d’abord la transaction et faites le travail à l’intérieur.
-- Ne rattrapez pas une erreur de base de données dans le bloc pour continuer. Après «&nbsp;database or disk is full&nbsp;», une erreur d’E/S ou un délai d’attente de verrou dépassé, SQLite peut annuler toute la transaction de lui-même. Chaque instruction suivante du bloc lève alors `Cybertrain::DB::Error` («&nbsp;the enclosing transaction is no longer open&nbsp;») au lieu d’être validée seule, et la transaction lève une exception à la fin du bloc. Laissez l’erreur sortir du bloc et, si besoin, recommencez toute la transaction.
+- Ne rattrapez pas une erreur de base de données dans le bloc pour continuer. Après «&nbsp;database or disk is full&nbsp;», une erreur d’E/S ou un délai d’attente de verrou dépassé, SQLite peut annuler toute la transaction de lui-même. Chaque instruction suivante du bloc lève alors `Cybertrain::DB::Error` («&nbsp;the enclosing transaction is no longer open&nbsp;») au lieu d’être validée seule, et la transaction lève une exception à la fin du bloc. Laissez l’erreur sortir du bloc et, si besoin, recommencez toute la transaction. Une transaction ouverte avec `c.exec_script("BEGIN")` est traitée de la même façon jusqu’à ce que `COMMIT`, `END` ou `ROLLBACK` la termine&nbsp;; ce `ROLLBACK` réussit alors sans rien faire, puisque SQLite a déjà annulé la transaction.
 
 Le code qui doit garder son `rescue` dans une méthode simple utilise la forme sans bloc, `c.begin!(immediate: true)` ... `c.commit!`, avec `c.rollback!` dans le rescue.
 
