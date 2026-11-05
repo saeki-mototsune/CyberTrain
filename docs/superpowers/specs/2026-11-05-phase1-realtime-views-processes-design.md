@@ -138,6 +138,8 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   runs `SELECT MAX(id) FROM cybertrain_messages`; when it is larger than
   `last_id` it reads `SELECT id, stream, payload FROM cybertrain_messages
   WHERE id > ? ORDER BY id` and hands each row to the in-process hub.
+  The poller calls `Stream.install!` (the `ensure_installed` pattern of
+  `Job`) before its first `MAX(id)`, so a fresh database boots.
   `last_id` means "the highest row already delivered": it advances to a
   row's id only after `deliver` for that row has returned, and that advance
   happens under the hub's lock, the same lock `subscribe` takes to read it,
@@ -167,9 +169,12 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   still in the table. **The handoff is ordered so that no row is lost or
   doubled**: the connection first calls `Hub#subscribe` (its queue starts
   filling with live rows), then runs the replay query, then sets `boundary =
-  max(given, largest replayed id)` (`given` itself when the replay returns no
-  rows: a reconnect at the head, or after retention emptied the table) and
-  drains its queue skipping every message with `id <= boundary`. A row inserted between the replay query and the
+  max(min(given, cursor), largest replayed id)`, where `cursor` is the
+  poller's `last_id` the subscription captured (`min(given, cursor)` alone
+  when the replay returns no rows: a reconnect at the head, or after
+  retention emptied the table; the `min` clamps a `given` above the head,
+  which a client can send with a valid token, so it cannot starve itself of
+  every future row) and drains its queue skipping every message with `id <= boundary`. A row inserted between the replay query and the
   subscription cannot exist (the subscription came first); a row both
   replayed and delivered live is dropped by the boundary. Acceptance: a
   fresh connection with no `Last-Event-ID` receives no row the poller had
