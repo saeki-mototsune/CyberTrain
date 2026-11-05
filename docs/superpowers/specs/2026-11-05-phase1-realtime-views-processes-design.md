@@ -137,7 +137,12 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   stays free of SQL. Every `Config#stream_poll_ms` (default 100) it
   runs `SELECT MAX(id) FROM cybertrain_messages`; when it is larger than
   `last_id` it reads `SELECT id, stream, payload FROM cybertrain_messages
-  WHERE id > ? ORDER BY id` and hands each row to the in-process hub. A
+  WHERE id > ? ORDER BY id` and hands each row to the in-process hub.
+  `last_id` means "the highest row already delivered": it advances to a
+  row's id only after `deliver` for that row has returned, and that advance
+  happens under the hub's lock, the same lock `subscribe` takes to read it,
+  so a subscription taken while row N is in flight sets its boundary below
+  N and receives N. A
   `PRAGMA data_version` check was considered and rejected: its value is per
   connection, and the pool hands out any connection, so it cannot be
   compared across polls. `MAX(id)` on the primary key is an O(1) B-tree
@@ -162,7 +167,7 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   still in the table. **The handoff is ordered so that no row is lost or
   doubled**: the connection first calls `Hub#subscribe` (its queue starts
   filling with live rows), then runs the replay query, then sets `boundary =
-  max(given, last replayed id)` (`given` itself when the replay returns no
+  max(given, largest replayed id)` (`given` itself when the replay returns no
   rows: a reconnect at the head, or after retention emptied the table) and
   drains its queue skipping every message with `id <= boundary`. A row inserted between the replay query and the
   subscription cannot exist (the subscription came first); a row both
