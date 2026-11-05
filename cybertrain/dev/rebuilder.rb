@@ -1,5 +1,6 @@
 require "cybertrain/app_name"
 require "cybertrain/cast"
+require "cybertrain/dev/gen_stamp"
 require "cybertrain/shell"
 
 module Cybertrain
@@ -8,7 +9,8 @@ module Cybertrain
     # root, logging both steps' stdout and stderr to log_path (relative to
     # root unless absolute). The build is Spinel's `--incremental` one, which
     # recompiles only the C units an edit changed; a toolchain that predates
-    # the flag refuses it, and from then on #rebuild builds without it.
+    # the flag refuses it, and from then on #rebuild builds without it. An
+    # edit that leaves GenStamp's inputs alone skips compiling gen as well.
     # ErrorPage shows last_output while last_failed.
     # target is the app's bin/<name>.rb executable (the package name);
     # "server" only as a default for tests. ArgumentError when
@@ -26,6 +28,9 @@ module Cybertrain
       # What spinel says to a flag it does not know: a Spinel release older
       # than `--incremental` fails the build with it.
       UNSUPPORTED_INCREMENTAL = "unknown option '--incremental'"
+
+      # What `spin run gen` leaves behind, run without compiling it again.
+      DIRECT_GEN = "./build/bin/gen"
 
       # A lock older than this is presumed abandoned (the build that held it
       # was SIGKILLed, or the machine rebooted) rather than genuinely
@@ -49,11 +54,17 @@ module Cybertrain
         @last_failed = false
         @last_skipped = false
         @incremental = true
+        @gen_stamp = GenStamp.new(root)
       end
 
       # Runs `spin run gen && spin build <target> -- --incremental` in root;
-      # true on success. When the toolchain refuses `--incremental`, runs the
-      # plain build at once and keeps to it for the rest of the process.
+      # true on success. While GenStamp says gen's inputs have not moved, gen
+      # is the binary already built, which saves compiling it; if that run
+      # fails, for whatever reason, the full command follows, so a broken
+      # binary never strands the loop. When the toolchain refuses
+      # `--incremental`, runs the plain build at once and keeps to it for the
+      # rest of the process. The signature is taken before building: an edit
+      # made during the build then reads as a change next time.
       def rebuild
         if build_in_progress?
           @last_failed = true
@@ -61,13 +72,16 @@ module Cybertrain
           return false
         end
 
-        ok = system(command(@incremental))
+        signature = @gen_stamp.signature
+        direct = @gen_stamp.fresh? && system(command(@incremental, DIRECT_GEN))
+        ok = direct || system(command(@incremental))
         output = read_log
         if !ok && @incremental && Rebuilder.incremental_unsupported?(output)
           @incremental = false
           ok = system(command(false))
           output = read_log
         end
+        @gen_stamp.record(signature) if ok && !direct
         record_build(ok, output)
         ok
       end
@@ -141,12 +155,12 @@ module Cybertrain
       # Everything after `spin build`'s `--` goes to spinel. A build with
       # such flags is never "up to date" to spin, which a rebuild that a
       # change triggered never is anyway.
-      def command(incremental = true)
+      def command(incremental = true, gen = "spin run gen")
         log = log_file
         build = "spin build #{Shell.quote(@target)}"
         build += " -- --incremental" if incremental
         "mkdir -p #{Shell.quote(File.dirname(log))} && " \
-          "{ cd #{Shell.quote(@root)} && spin run gen && #{build}; } " \
+          "{ cd #{Shell.quote(@root)} && #{gen} && #{build}; } " \
           "> #{Shell.quote(log)} 2>&1"
       end
 

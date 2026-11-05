@@ -24,10 +24,19 @@ ok   without --incremental the rebuild command is the plain spin build
 ok   only spinel refusing the flag reads as a toolchain without --incremental
 ok   a failing rebuild keeps the command output
 ok   a toolchain that refuses --incremental gets the plain build at once, and from then on
+ok   the rebuild command takes the gen step it is given
+ok   gen is compiled once, then run directly while its inputs stand still
+ok   a change to gen's inputs compiles gen again
+ok   a missing build/bin/gen does not fail the rebuild
+ok   a gen binary that fails falls back to one full build in the same rebuild
+ok   a failed build records nothing, so the next one compiles gen again
+ok   a failed build on the direct path keeps its output through the full retry
+ok   an edit made during the build is seen by the next rebuild
+ok   a toolchain that starts refusing --incremental still gets the plain build, and the stamp survives
 ok   no rebuild while cybertrain build holds tmp/cybertrain-build.lock
 ok   a lock whose build process is gone is stale: removed and ignored
 ok   a lock older than 30 minutes is stale even with a live PID: age wins over aliveness
 ok   the rebuild command quotes the build target like every other interpolated value
 ok   the Rebuilder refuses a build target that is not usable for spin build
 ok   shell_quote escapes single quotes
-32 tests, 121 assertions, 0 failures
+41 tests, 163 assertions, 0 failures
