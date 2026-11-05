@@ -51,6 +51,12 @@ module Cybertrain
         @path = path
         @closed = false
         @transaction_depth = 0
+        # True once SQLite rolled back a transaction on its own while a
+        # statement failed, until the application ends it with COMMIT, END
+        # or ROLLBACK (#note_lost_transaction, #refuse_if_transaction_gone).
+        # Covers transactions opened with SQL too, which @transaction_depth
+        # does not see.
+        @transaction_lost = false
         # The busy handler's slot (SQLite3.cybertrain_sqlite_set_busy_handler):
         # its mode and whether SQLite asked to wait. Freed by #close, after
         # sqlite3_close, the last call that could reach the handler.
@@ -132,7 +138,11 @@ module Cybertrain
 
       def run_statement(sql, binds, epoch)
         raise Error, "connection closed (sql: #{sql})" if @closed
-        refuse_if_transaction_gone(sql)
+        rows = []
+        # A ROLLBACK of a transaction SQLite already rolled back: nothing
+        # left to do (see #exec_script).
+        return rows if refuse_if_transaction_gone(sql)
+
         stmt = @statements[sql]
         cached = !stmt.nil?
         unless cached
@@ -151,7 +161,6 @@ module Cybertrain
           end
         end
 
-        rows = []
         begin
           index = 1
           while index <= binds.size
@@ -165,7 +174,8 @@ module Cybertrain
           # names (and any later row) describe the new table. Only this first
           # step waits for a lock: a statement takes its locks before it
           # changes or returns anything.
-          rc = step_waiting(stmt)
+          in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
+          rc = step_waiting(stmt, in_transaction)
           columns = SQLite3.sqlite3_column_count(stmt)
           # The names once per SQL text (and the count must still match),
           # not once per row and column.
@@ -187,7 +197,10 @@ module Cybertrain
             rows << read_row(stmt, names, flags, epoch)
             rc = SQLite3.sqlite3_step(stmt)
           end
-          raise Error, error_message(sql) if rc != SQLite3::DONE
+          if rc != SQLite3::DONE
+            note_lost_transaction(in_transaction, sql)
+            raise Error, error_message(sql)
+          end
         ensure
           if cached
             # Back to the start, holding nothing: reset ends the statement
@@ -209,12 +222,30 @@ module Cybertrain
       # migrations, not per request.
       def exec_script(sql)
         raise Error, "connection closed (sql: #{sql})" if @closed
-        refuse_if_transaction_gone(sql)
+        # A ROLLBACK of a transaction SQLite already rolled back has nothing
+        # left to do: running it would raise "no transaction is active" and
+        # mask the error the application is cleaning up after.
+        return nil if refuse_if_transaction_gone(sql)
+
         forget_names
+        in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
         SQLite3.cybertrain_sqlite_busy_report(@busy, 0)
         rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
         SQLite3.cybertrain_sqlite_busy_report(@busy, 1)
-        raise Error, error_message(sql) if rc != SQLite3::OK
+        if rc != SQLite3::OK
+          # A script that opens its own transaction (`BEGIN; ...`) starts in
+          # autocommit, so it counts as inside one when its first keyword is
+          # BEGIN and another statement follows. A bare BEGIN that fails
+          # opened nothing. Not seen: a BEGIN further into the script (no
+          # keyword search over the whole text, since `CREATE TRIGGER ...
+          # BEGIN ... END` would match it; saeki-mototsune/CyberTrain#164),
+          # and the reverse slip, `BEGIN IMMEDIATE; ...` whose own BEGIN
+          # fails (SQLITE_BUSY), which marks the connection although no
+          # transaction opened; the next COMMIT, END or ROLLBACK clears it.
+          opened_here = Connection.begins_transaction?(sql) && Connection.statement_follows?(sql)
+          note_lost_transaction(in_transaction || opened_here, sql)
+          raise Error, error_message(sql)
+        end
         nil
       end
 
@@ -313,6 +344,7 @@ module Cybertrain
           @transaction_depth += 1
           return nil
         end
+        refuse_if_transaction_gone(immediate ? "BEGIN IMMEDIATE" : "BEGIN")
 
         exec_waiting(immediate ? "BEGIN IMMEDIATE" : "BEGIN")
         @transaction_depth = 1
@@ -389,6 +421,7 @@ module Cybertrain
         # transaction block must not keep a stale depth for whoever still
         # holds it.
         @transaction_depth = 0
+        @transaction_lost = false
         return :clean if @closed
         return :clean if SQLite3.sqlite3_get_autocommit(@db) != 0
 
@@ -528,11 +561,12 @@ module Cybertrain
       # worker (saeki-mototsune/CyberTrain#134). A BUSY the handler was not
       # asked about cannot clear by waiting and is returned at once, as is
       # the last one after BUSY_WAIT_LIMIT.
-      def step_waiting(stmt)
-        # Whether SQLite was inside a transaction before this statement: one
-        # opened by #begin! or by SQL (`exec_script("BEGIN")`), which leaves
-        # @transaction_depth at 0.
-        in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
+      #
+      # in_transaction: whether SQLite was inside a transaction before this
+      # statement, one opened by #begin! or by SQL (`exec_script("BEGIN")`,
+      # which leaves @transaction_depth at 0). #run_statement reads it once
+      # for this and for #note_lost_transaction.
+      def step_waiting(stmt, in_transaction)
         rc = SQLite3.sqlite3_step(stmt)
         return rc if rc != SQLite3::BUSY
 
@@ -581,23 +615,209 @@ module Cybertrain
         Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
-      # Raises instead of running sql when the transaction #begin! opened is
-      # gone: a depth above 0 while SQLite is in autocommit means SQLite rolled
-      # it back on its own (SQLITE_FULL / IOERR / BUSY / NOMEM) and the
-      # application rescued that and went on. Run now, the statement would
-      # commit by itself while the block's COMMIT then fails, so the
-      # transaction would be neither all nor nothing
-      # (saeki-mototsune/CyberTrain#158). #begin! makes the same check before
-      # nesting. The depth is back to 0 once the transaction ends (#commit!,
-      # #rollback!, Pool#check_in), so the connection works again after. A
-      # transaction opened with SQL (`exec_script("BEGIN")`) keeps the depth
-      # at 0 and is not covered: its caller owns it.
+      # Raises instead of running sql when the application's transaction is
+      # gone: SQLite rolled it back on its own (SQLITE_FULL / IOERR / BUSY /
+      # NOMEM) and the application rescued that and went on. Run now, the
+      # statement would commit by itself while the transaction's COMMIT then
+      # fails, so the transaction would be neither all nor nothing
+      # (saeki-mototsune/CyberTrain#158). Two signs, either is enough:
+      #
+      # * @transaction_lost: a statement that started inside a transaction
+      #   failed and left SQLite in autocommit (#note_lost_transaction). This
+      #   sees a transaction opened with SQL (`exec_script("BEGIN")`) too.
+      #   COMMIT, END and ROLLBACK end the lost transaction and are let
+      #   through; true is returned for a ROLLBACK, which has nothing left to
+      #   do, so #exec_script skips it.
+      # * a depth above 0 while SQLite is in autocommit: the transaction
+      #   #begin! opened is gone, however it went.
+      #
+      # #abandon_transaction! (#commit!, #rollback!, Pool#check_in) clears
+      # both, so the connection works again afterwards. Returns false when
+      # sql may run.
       def refuse_if_transaction_gone(sql)
-        return nil if @transaction_depth == 0
-        return nil if SQLite3.sqlite3_get_autocommit(@db) == 0
+        if @transaction_lost
+          if Connection.ends_transaction?(sql)
+            @transaction_lost = false
+            return Connection.rollback_statement?(sql)
+          end
+          raise Error, Connection.transaction_gone_message(sql)
+        end
+        return false if @transaction_depth == 0
+        return false if SQLite3.sqlite3_get_autocommit(@db) == 0
 
-        raise Error, "the enclosing transaction is no longer open (SQLite rolled it back after an error); " \
-                     "the statement was not run (sql: #{sql})"
+        raise Error, Connection.transaction_gone_message(sql)
+      end
+
+      # After sql failed: a statement that started inside a transaction and
+      # left SQLite in autocommit means SQLite rolled the transaction back
+      # on its own (a constraint error undoes only its own statement and
+      # leaves the transaction open). A failed COMMIT, END or ROLLBACK is
+      # the application ending the transaction itself and marks nothing.
+      def note_lost_transaction(in_transaction, sql)
+        return nil unless in_transaction
+        return nil if SQLite3.sqlite3_get_autocommit(@db) == 0
+        return nil if Connection.ends_transaction?(sql)
+
+        @transaction_lost = true
+        nil
+      end
+
+      def self.transaction_gone_message(sql)
+        "the enclosing transaction is no longer open (SQLite rolled it back after an error); " \
+          "the statement was not run (sql: #{sql})"
+      end
+
+      # The statements around a transaction are recognised by a small lexer
+      # that reads SQL the way SQLite tokenizes it: whitespace (line breaks
+      # included), `-- ...` and `/* ... */` comments separate tokens and are
+      # otherwise ignored, a ";" inside a comment or a quoted name does not
+      # end a statement, and keywords are case-insensitive. Only the first
+      # statement's leading keywords are read; nothing is parsed further.
+
+      # Whether the first statement of sql is COMMIT, END or ROLLBACK, each
+      # optionally followed by TRANSACTION and nothing else: the statements
+      # that end a transaction. ROLLBACK [TRANSACTION] TO a savepoint undoes
+      # part of one and does not, and anything more (`ROLLBACK BOGUS`,
+      # `COMMIT 'x'`) is not a statement SQLite would run, so it must not
+      # clear the lost-transaction mark either.
+      def self.ends_transaction?(sql)
+        words = Connection.statement_words(sql)
+        Connection.bare_keyword?(words, "COMMIT") || Connection.bare_keyword?(words, "END") ||
+          Connection.full_rollback?(words)
+      end
+
+      # A ROLLBACK and nothing else (comments, empty statements and a
+      # trailing ";" allowed): the one statement #refuse_if_transaction_gone
+      # skips after SQLite rolled the transaction back. A script that goes on
+      # after its ROLLBACK (`ROLLBACK; BEGIN`) runs, so what follows is never
+      # dropped silently.
+      def self.rollback_statement?(sql)
+        Connection.full_rollback?(Connection.statement_words(sql)) && !Connection.statement_follows?(sql)
+      end
+
+      # A script or statement whose first keyword is BEGIN.
+      def self.begins_transaction?(sql)
+        words = Connection.first_keywords(sql)
+        !words.empty? && words[0] == "BEGIN"
+      end
+
+      # ROLLBACK or ROLLBACK TRANSACTION, nothing more (so not ROLLBACK TO);
+      # words from #statement_words.
+      def self.full_rollback?(words)
+        Connection.bare_keyword?(words, "ROLLBACK")
+      end
+
+      # words is exactly [keyword] or [keyword, "TRANSACTION"].
+      def self.bare_keyword?(words, keyword)
+        return false if words.empty? || words[0] != keyword
+        return true if words.size == 1
+
+        words.size == 2 && words[1] == "TRANSACTION"
+      end
+
+      # Every word of the first statement, upcased, up to its ";" or the end
+      # of sql. Empty when the statement holds anything but words (a quoted
+      # name, a number, a symbol), which none of the statements classified
+      # here do.
+      def self.statement_words(sql)
+        words = Array.new(0) { "" }
+        n = sql.bytesize
+        i = Connection.skip_blank(sql, 0)
+        while i < n && sql.getbyte(i) != 59 # ;
+          return Array.new(0) { "" } unless Connection.word_byte?(sql.getbyte(i))
+
+          start = i
+          i += 1 while i < n && Connection.word_byte?(sql.getbyte(i))
+          words << sql.byteslice(start, i - start).to_s.upcase
+          i = Connection.skip_blank(sql, i)
+        end
+        words
+      end
+
+      # Up to three leading keywords of the first statement, upcased. Stops
+      # at the end of the statement or at the first token that is not a word.
+      def self.first_keywords(sql)
+        words = Array.new(0) { "" }
+        n = sql.bytesize
+        i = Connection.skip_blank(sql, 0)
+        while i < n && words.size < 3
+          break unless Connection.word_byte?(sql.getbyte(i))
+
+          start = i
+          i += 1 while i < n && Connection.word_byte?(sql.getbyte(i))
+          words << sql.byteslice(start, i - start).to_s.upcase
+          i = Connection.skip_blank(sql, i)
+        end
+        words
+      end
+
+      # Whether a statement follows the first one: anything but whitespace,
+      # comments and empty statements after the first ";" that is outside a
+      # comment or a quoted string or name.
+      def self.statement_follows?(sql)
+        n = sql.bytesize
+        i = 0
+        while i < n
+          i = Connection.skip_blank(sql, i)
+          break if i >= n
+
+          c = sql.getbyte(i)
+          if c == 59 # ;
+            i = Connection.skip_blank(sql, i + 1)
+            i = Connection.skip_blank(sql, i + 1) while i < n && sql.getbyte(i) == 59
+            return i < n
+          elsif c == 39 || c == 34 || c == 96 # ' " `
+            i = Connection.skip_quoted(sql, i, c)
+          elsif c == 91 # [
+            i = Connection.skip_quoted(sql, i, 93)
+          else
+            i += 1
+          end
+        end
+        false
+      end
+
+      # The index after whitespace and comments from i (sql.bytesize at the
+      # end). An unterminated /* comment runs to the end, as in SQLite.
+      def self.skip_blank(sql, i)
+        n = sql.bytesize
+        while i < n
+          c = sql.getbyte(i)
+          if c == 32 || (c >= 9 && c <= 13)
+            i += 1
+          elsif c == 45 && i + 1 < n && sql.getbyte(i + 1) == 45 # --
+            i += 2
+            i += 1 while i < n && sql.getbyte(i) != 10
+          elsif c == 47 && i + 1 < n && sql.getbyte(i + 1) == 42 # /*
+            i += 2
+            i += 1 while i + 1 < n && !(sql.getbyte(i) == 42 && sql.getbyte(i + 1) == 47)
+            i = i + 1 < n ? i + 2 : n
+          else
+            return i
+          end
+        end
+        n
+      end
+
+      # The index after the quoted token that opens at i and closes with
+      # close; a doubled close quote is part of the token.
+      def self.skip_quoted(sql, i, close)
+        n = sql.bytesize
+        i += 1
+        while i < n
+          if sql.getbyte(i) == close
+            return i + 1 unless i + 1 < n && sql.getbyte(i + 1) == close
+
+            i += 2
+          else
+            i += 1
+          end
+        end
+        n
+      end
+
+      def self.word_byte?(c)
+        (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95
       end
 
       def error_message(sql)
