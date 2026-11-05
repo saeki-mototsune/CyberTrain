@@ -192,9 +192,14 @@ module Cybertrain
           # `def params` would still replace the framework's.
           next if setter?(text) || line.start_with?("def self.")
 
+          if in_private
+            # Only the name: a template cannot call a private method, so its
+            # parameters (`*parts`, a block) are its own business.
+            check_name(file, HelperDef.new(def_name(file, start_line, text), start_line, [], [], [], [], ""))
+            next
+          end
           d = parse_def(file, start_line, text)
           check_name(file, d)
-          next if in_private
 
           owner = found_named(found, names.last)
           owner.defs << d unless owner.nil?
@@ -268,6 +273,14 @@ module Cybertrain
       end
 
       # "def price(value, unit: \"USD\", precision: 2)" -> a HelperDef.
+      # The method name of a def line, and nothing else.
+      def self.def_name(file, line_no, text)
+        m = text.match(DEF_LINE)
+        raise Error, "#{file}:#{line_no}: cannot read this def" if m.nil?
+
+        m[1].to_s
+      end
+
       def self.parse_def(file, line_no, text)
         m = text.match(DEF_LINE)
         raise Error, "#{file}:#{line_no}: cannot read this def" if m.nil?
