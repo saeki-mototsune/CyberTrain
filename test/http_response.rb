@@ -24,6 +24,21 @@ test "status_text falls back to Unknown" do
   assert_equal "Unknown", res.status_text
 end
 
+test "to_http writes the standard reason phrase for 202 and 429" do
+  res = Response.new
+  res.status = 202
+  assert_equal "Accepted", res.status_text
+  assert_includes res.to_http, "HTTP/1.1 202 Accepted\r\n"
+  res.status = 429
+  assert_equal "Too Many Requests", res.status_text
+  assert_includes res.to_http, "HTTP/1.1 429 Too Many Requests\r\n"
+  # the codes an application's guard or API is likely to answer
+  assert_equal "Unauthorized", Response.status_text(401)
+  assert_equal "Conflict", Response.status_text(409)
+  assert_equal "Temporary Redirect", Response.status_text(307)
+  assert_equal "Service Unavailable", Response.status_text(503)
+end
+
 test "header lookup is case-insensitive" do
   res = Response.new
   res.set_header("X-Frame-Options", "DENY")
