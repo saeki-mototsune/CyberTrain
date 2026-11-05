@@ -76,6 +76,7 @@ written up for upstream.
 | 76 | Matches CRuby: a bare `DB` outside `module Cybertrain` raises NameError, as under CRuby. The rule stays: such code must spell `Cybertrain::DB`. |
 | 78 | **Still there** (docs/spinel-feedback.md K). |
 | 79 | **Still there**: found on this build (its reduced program does not compile). |
+| 80 | **Still there**: found on this build. |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -88,9 +89,9 @@ The rules are numbered in the order they were found. By topic:
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
   37, 46 (Hash literals), 56, 63, 71, 73
 - Polymorphic values and narrowing: 8, 14, 29, 35
-- Constants, class variables, module state: 17, 18, 64, 70, 74, 76
+- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 80
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
-  79
+  79, 80
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
@@ -771,6 +772,23 @@ The rules are numbered in the order they were found. By topic:
     if x > 0; "ok"`). Found while re-checking rule 32. In a test of a
     rescuing helper, give the block a value after the raise or pass the
     result through a method.
+80. A relative constant path in a `rescue` clause whose first segment names
+    a module that holds a class of the same name is not found: inside
+    `module Cybertrain::Console`, `rescue Template::SyntaxError => e`
+    (`Cybertrain::Template` holds the class `Cybertrain::Template::Template`)
+    compiles with only the warning "uninitialized constant Template: defined
+    nowhere in the program", and at run time the whole `begin` swallows the
+    exception without running any clause, not even a later `rescue
+    StandardError` (Spinel 2026.11.04.7026; CRuby rescues it). The same path
+    outside a rescue clause (`Template::Interpreter.new`) resolves.
+    Reduced repro: `module Outer; module Inner; class Inner; end; class Oops
+    < StandardError; end; def self.boom = raise(Oops, "x"); end; end`, then
+    in `module Outer; module User` a method with `begin; Inner.boom; rescue
+    Inner::Oops => e; s = "oops"; rescue StandardError => e; s = "std";
+    end`: CRuby takes the first clause, Spinel neither (without `class
+    Inner` inside `Inner` both agree). Spell a rescued class from the top
+    (`rescue Cybertrain::Template::SyntaxError => e`, as Interpreter does),
+    and read the warnings `spin test` prints.
 
 ## Numbers worth remembering
 

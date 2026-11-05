@@ -27,6 +27,7 @@
 #   K_ARRAY        ikids ; K_HASH ipairs (keys) + ikids (values) ; K_INTERP ikids
 #   binary ops     ia, ib ; istr (the operator, for error messages)
 #   K_NOT          ia ; K_TERNARY ia ? ib : ic ; K_INDEX ia[ib]
+#   K_CONST        istr (the constant's name; console only, Parser constants: true)
 # iline is the template line for error messages (0 where none is needed).
 require "cybertrain/template/ast"
 
@@ -73,6 +74,9 @@ module Cybertrain
       K_INTERP = 36
       K_INDEX = 37
       K_NONE = 38   # LEAF: "no node here"
+      # Console only (ExprParser constants: true). Numbered apart from the
+      # template kinds so that kinds added to templates keep their own run.
+      K_CONST = 50
 
       # Shared, never mutated: Compile always builds new Arrays for real lists.
       # The seed blocks never run; they only give the Arrays their element
@@ -188,6 +192,10 @@ module Cybertrain
         when IVar
           t = node(INode::K_IVAR, 0)
           t.istr = n.name
+          t
+        when ConstRef
+          t = node(INode::K_CONST, n.line)
+          t.istr = n.const_name
           t
         when StrLit
           t = node(INode::K_STR, 0)

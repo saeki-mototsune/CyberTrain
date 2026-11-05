@@ -16,6 +16,16 @@ module Cybertrain
       def self.parse(tokens, name)
         TreeBuilder.new(name).build(tokens)
       end
+
+      # One statement outside any template: `name = expr` (an AssignNode) or
+      # an expression, what the console reads per line. `constants: true`
+      # (the console's) parses a capitalised name such as `Article` into a
+      # ConstRef, which the interpreter resolves through the helpers'
+      # `constant(name)` hook; with the default a constant is the same
+      # SyntaxError as in a template.
+      def self.parse_statement(source, name, line, constants: false)
+        ExprParser.new(source, name, line, constants: constants).parse_statement
+      end
     end
 
     # One token of an expression. `spaced` records whitespace before it,
@@ -34,10 +44,13 @@ module Cybertrain
     class ExprParser
       KEYWORDS = %w[and or not do end if unless elsif else then while until case when def class module begin rescue return]
 
-      def initialize(source, name, line)
+      # constants: true turns a capitalised name into a ConstRef (the
+      # console); false, the default, refuses it as templates always have.
+      def initialize(source, name, line, constants: false)
         @src = source
         @name = name
         @line = line
+        @constants = constants
         @toks = Array.new(0) { ExprToken.new(:eof, "", false) }
         @pos = 0
         @command_depth = 0
@@ -239,7 +252,7 @@ module Cybertrain
             end
             buf = +""
             inner = raw[i + 2, close - i - 3].to_s
-            parts << ExprParser.new(inner, @name, @line).parse_all
+            parts << ExprParser.new(inner, @name, @line, constants: @constants).parse_all
             interpolated = true
             i = close
           else
@@ -405,7 +418,11 @@ module Cybertrain
         when "true" then return TrueLit.new
         when "false" then return FalseLit.new
         end
-        error("constants are not supported: '#{word}'") if word[0] >= "A" && word[0] <= "Z"
+        if word[0] >= "A" && word[0] <= "Z"
+          return ConstRef.new(word, @line) if @constants
+
+          error("constants are not supported: '#{word}'")
+        end
         error("'#{word}' is not supported in templates") if KEYWORDS.include?(word)
         t = peek
         if word == "yield" || (op_token?(t, "(") && !t.spaced) || command_arg_start?(t)
