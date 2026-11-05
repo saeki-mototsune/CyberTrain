@@ -1,0 +1,8 @@
+ok   start! requeues a dead process's stale rows, runs them, and starts only once
+ok   two job threads: a slow and a fast job are claimed together, and the fast one ends first
+ok   an idle job thread picks up a job enqueued after it started within the poll interval
+ok   the heartbeat thread moves a running job's heartbeat_at
+ok   the scheduler no longer runs jobs as a task
+ok   request_stop (the TERM trap) starts the drain: stop! waits only what is left of it
+ok   stop! waits at most job_drain_timeout and leaves an unfinished job running for recovery
+7 tests, 49 assertions, 0 failures

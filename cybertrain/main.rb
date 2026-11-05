@@ -13,6 +13,8 @@ module Cybertrain
   #   ./blog migrate      apply db/migrate (gen/migrations.rb)
   #   ./blog db status    any DB::CLI command: status, rollback N, schema:dump, create,
   #                       backup PATH, vacuum
+  #   ./blog worker       jobs and scheduled tasks, no HTTP (several may share a database)
+  #   ./blog feeds [NAME...]  the WebSocket subscriptions (all, or the named ones)
   #   ./blog console      the expression console over the models (Console.run)
   #   ./blog dbconsole    the sqlite3 shell on the configured database
   #   ./blog user a@b.c   a command the application registered with Main.command
@@ -40,7 +42,7 @@ module Cybertrain
 
     # The words Main itself answers to; an application command may not take
     # one (it would never run, or would hide the built-in).
-    BUILTIN_WORDS = ["server", "migrate", "db", "console", "dbconsole", "help", "--help", "-h"].freeze
+    BUILTIN_WORDS = ["server", "worker", "feeds", "migrate", "db", "console", "dbconsole", "help", "--help", "-h"].freeze
 
     # Registers an operational command for the application's binary:
     # `./<name> NAME ARGS...` runs the block instead of the server, and
@@ -113,6 +115,10 @@ module Cybertrain
       return serve(name, argv, router, url_resolver, views) if server?(argv)
 
       case argv[0]
+      when "worker"
+        role_app(name, router, url_resolver, views).run_worker(argv[1, argv.size - 1])
+      when "feeds"
+        role_app(name, router, url_resolver, views).run_feeds(argv[1, argv.size - 1])
       when "migrate"
         DB::CLI.run(["migrate"], ".", name)
       when "db"
@@ -226,6 +232,28 @@ module Cybertrain
       Application.port_argument(argv) > 0
     end
 
+    # Whether {Main.run} runs these arguments as `./<app> worker`: the
+    # jobs and the scheduler, no HTTP.
+    # @param argv [Array<String>] the binary's ARGV
+    # @return [Boolean]
+    # @api public
+    def self.worker?(argv)
+      !argv.empty? && argv[0] == "worker"
+    end
+
+    # Whether {Main.run} runs these arguments as `./<app> feeds [NAME...]`:
+    # the WebSocket subscriptions, no HTTP and no jobs.
+    # @param argv [Array<String>] the binary's ARGV
+    # @return [Boolean]
+    # @api public
+    def self.feeds?(argv)
+      !argv.empty? && argv[0] == "feeds"
+    end
+
+    def self.role_app(name, router, url_resolver, views)
+      Application.new(router: router, url_resolver: url_resolver, views: views, name: name)
+    end
+
     # The port argument Application#run expects, without the "server" word.
     def self.server_args(argv)
       return argv[1, argv.size - 1] if !argv.empty? && argv[0] == "server"
@@ -249,6 +277,8 @@ module Cybertrain
     def self.usage(name)
       text = +"Usage:\n"
       text << "  ./#{name} [server [PORT]]   start the server\n"
+      text << "  ./#{name} worker            run jobs and scheduled tasks, without HTTP\n"
+      text << "  ./#{name} feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)\n"
       text << "  ./#{name} migrate           apply pending migrations\n"
       text << "  ./#{name} db COMMAND        migrate | rollback [N] | status | schema:dump | create\n"
       # The continuation lines up under "migrate" whatever the name.

@@ -869,6 +869,65 @@ sudo systemctl enable --now notes@2 notes@3
   出して起動を止めます。`localhost` はたいてい `127.0.0.1` と `::1` の両方を持つので、どちらかを
   直接指定してください。そうしないと、設定のないプロセスが残ったアドレスで起動できてしまいます。
 
+### 役割を分ける（`worker` と `feeds`）
+
+1 つのバイナリは 3 つの役割で動きます。`./notes`（`server`）は HTTP に加えて、
+`CYBERTRAIN_WORKER=0` でない限りジョブ、定期タスク、WebSocket の購読も動かします。
+`./notes worker` はポートを開かず、ジョブ（`job_threads` 本のスレッド。既定は 3、
+`CYBERTRAIN_JOB_THREADS`）と定期タスクだけを動かします。`./notes feeds [NAME...]` は
+WebSocket の購読だけを動かします（名前を並べるとその購読だけ）。
+
+ジョブを Web のプロセスから切り離すには、`notes.service` と同じ形のユニットをもう一つ作ります。
+
+```sh
+sudo tee /etc/systemd/system/notes-worker.service > /dev/null <<'EOF'
+[Unit]
+Description=notes worker (cybertrain)
+After=network.target
+
+[Service]
+Type=simple
+User=notes
+Group=notes
+WorkingDirectory=/srv/notes/current/dist
+EnvironmentFile=/etc/notes/notes.env
+ExecStart=/srv/notes/current/dist/notes worker
+Restart=always
+RestartSec=2
+TimeoutStopSec=15
+
+# 書き込めるのは DB のディレクトリだけにする
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/notes/shared
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now notes-worker
+```
+
+- 同じデータベースを複数のプロセスで使えます。定期タスクを動かすのはリース（`cybertrain_leases`
+  テーブル）を持つ 1 プロセスだけで、ジョブは各プロセスがハートビートを書き、止まった
+  プロセスのジョブは 5 分（`job_heartbeat_stale`）後に別のプロセスが拾い直します。
+- Web 側でジョブを動かさないなら `sudo systemctl edit notes` で `[Service]` に
+  `Environment=CYBERTRAIN_WORKER=0` を足します。
+- 停止（SIGTERM）では実行中のジョブを最大 10 秒（`job_drain_timeout`）待ってから終了します。
+  終わらなかったジョブは、ハートビートが古くなった時点で次に動くプロセスが再実行します。
+- ジョブは少なくとも 1 回実行されます（止まったプロセスのジョブは再実行されるので、2 回
+  動いても困らないハンドラーにしてください）。
+- デプロイスクリプト（5-3）の再起動に `notes-worker` を足し、5-2 の sudoers にも同じ形の行を
+  加えてください。
+- ハートビートのない古い cybertrain から上げるときは、古いプロセス（`notes` と `notes-worker`）を
+  すべて止めてから、新しいものを起動してください。古いワーカーはハートビートを書かないので、
+  新しいワーカーの回収がその実行中のジョブをキューに戻し、二重に実行してしまいます。
+- 購読ごとにプロセスを分けるときは、`ExecStart` を `/srv/notes/current/dist/notes feeds %i` に
+  した `notes-feeds@.service` を作り、`sudo systemctl enable --now notes-feeds@trades` のように
+  購読の名前で起動します（Web 側は `CYBERTRAIN_WORKER=0` にして、同じ購読を二重に開かないように
+  します）。
+
 ---
 
 ## 第 8 部: Kamal でデプロイする
@@ -916,7 +975,12 @@ image: YOUR_DOCKERHUB_USER/notes      # ghcr.io なら YOUR_GITHUB/notes
 
 servers:
   web:
-    - 203.0.113.10                    # サーバーの IP アドレスかホスト名
+    hosts:
+      - 203.0.113.10                  # サーバーの IP アドレスかホスト名
+  worker:
+    hosts:
+      - 203.0.113.10
+    cmd: ./notes worker
 
 proxy:
   ssl: true
@@ -939,6 +1003,15 @@ registry:
 
 `proxy.ssl` は外さないでください。本番のセッション Cookie は `Secure` なので、HTTP ではフォーム
 送信が 403 になります。
+
+`servers` の役割はどれも同じイメージで動きます。`web` は HTTP（と、`CYBERTRAIN_WORKER=0` で
+ない限りジョブと定期タスク）、`worker` はジョブと定期タスクだけを `./notes worker` で動かします。
+同じボリュームのデータベースを共有し、定期タスクはリースを持つ 1 つだけが動かします（第 7 部
+「役割を分ける」）。WebSocket の購読を自分のコンテナで動かすときは、生成されたファイルで
+コメントになっている `feeds` の役割（`cmd: ./notes feeds trades`）を有効にし、`web` に
+`env: clear: CYBERTRAIN_WORKER: 0` を足します。ハートビートのない古い cybertrain のリリースから
+上げる 1 回目は、`kamal app stop` で古いコンテナをすべて止めてから `kamal deploy` してください
+（古いワーカーの実行中のジョブを新しいワーカーが二重に実行しないように）。
 
 組み込みのヘルスチェック（`GET /up`、README の「Operations」）があるフレームワークで作ったアプリなら、
 `healthcheck` の `path` を `/up.html` から `/up` に変えられます。`/up` はデータベースのスキーマを

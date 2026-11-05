@@ -375,11 +375,30 @@ module Cybertrain
           # The image to build and push. CHANGE ME: your registry user.
           image: your-user/#{package}
 
-          # The servers to deploy to. CHANGE ME: the server's address. One
-          # server: the database is a SQLite file on that server's volume.
+          # The servers to deploy to, by role; every role runs this one image.
+          # CHANGE ME: the server's address. One server: the database is a
+          # SQLite file on that server's volume, which every role shares.
           servers:
+            # The app (`./#{package}`): HTTP, and also jobs, scheduled tasks and
+            # WebSocket feeds unless CYBERTRAIN_WORKER is 0.
             web:
-              - 192.168.0.1
+              hosts:
+                - 192.168.0.1
+            # Jobs and scheduled tasks without HTTP. Several workers (and the
+            # web role) may share the database: one at a time leads the
+            # scheduled tasks, and the jobs of one that dies are picked up by
+            # the others.
+            worker:
+              hosts:
+                - 192.168.0.1
+              cmd: ./#{package} worker
+            # One container per WebSocket feed (Cybertrain::WebSocket.subscribe
+            # names). If you use it, give web `env: clear: CYBERTRAIN_WORKER: 0`
+            # so that the web role does not open the same feeds too.
+            # feeds:
+            #   hosts:
+            #     - 192.168.0.1
+            #   cmd: ./#{package} feeds trades
 
           # kamal-proxy terminates TLS (a Let's Encrypt certificate for host)
           # and forwards to the app on port 3000. Keep ssl on: in production the

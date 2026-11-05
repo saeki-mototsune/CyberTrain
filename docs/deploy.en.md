@@ -962,6 +962,71 @@ What to keep in mind:
   instead; otherwise a process without the setting could boot on the address
   left over.
 
+### Splitting the roles (`worker` and `feeds`)
+
+The one binary runs in three roles. `./notes` (`server`) serves HTTP and, unless
+`CYBERTRAIN_WORKER=0`, also runs the jobs, the scheduled tasks and the
+WebSocket subscriptions. `./notes worker` opens no port and runs only the jobs
+(on `job_threads` threads: 3 by default, `CYBERTRAIN_JOB_THREADS`) and the
+scheduled tasks. `./notes feeds [NAME...]` runs only the WebSocket
+subscriptions (only the named ones when you list names).
+
+To take the jobs out of the web process, add a second unit shaped like
+`notes.service`:
+
+```sh
+sudo tee /etc/systemd/system/notes-worker.service > /dev/null <<'EOF'
+[Unit]
+Description=notes worker (cybertrain)
+After=network.target
+
+[Service]
+Type=simple
+User=notes
+Group=notes
+WorkingDirectory=/srv/notes/current/dist
+EnvironmentFile=/etc/notes/notes.env
+ExecStart=/srv/notes/current/dist/notes worker
+Restart=always
+RestartSec=2
+TimeoutStopSec=15
+
+# only the database's directory is writable
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/notes/shared
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now notes-worker
+```
+
+- Several processes can share the database. Only the one that holds the
+  lease (the `cybertrain_leases` table) runs the scheduled tasks; every
+  process writes heartbeats for its jobs, and the jobs of a process that
+  stopped are picked up by another after 5 minutes (`job_heartbeat_stale`).
+- To keep jobs out of the web process, `sudo systemctl edit notes` and add
+  `Environment=CYBERTRAIN_WORKER=0` under `[Service]`.
+- On stop (SIGTERM) it waits up to 10 seconds (`job_drain_timeout`) for the
+  running jobs, then exits. A job that did not finish is run again by the next
+  process once its heartbeat is stale.
+- Jobs run at least once (a stopped process's jobs are run again), so write
+  handlers that do no harm when they run twice.
+- Add `notes-worker` to the restart in the deploy script (5-3), and a line of
+  the same shape to the sudoers file of 5-2.
+- When you upgrade from a cybertrain without heartbeats, stop every old
+  process (`notes` and `notes-worker`) before starting the first new one. An
+  old worker writes no heartbeat, so a new worker's recovery would put its
+  running job back in the queue and run it twice.
+- For one process per subscription, make a `notes-feeds@.service` whose
+  `ExecStart` is `/srv/notes/current/dist/notes feeds %i` and start it by the
+  subscription's name, as in `sudo systemctl enable --now notes-feeds@trades`
+  (and set `CYBERTRAIN_WORKER=0` on the web side, so that it does not open
+  the same subscriptions too).
+
 ---
 
 ## Part 8: Deploying with Kamal

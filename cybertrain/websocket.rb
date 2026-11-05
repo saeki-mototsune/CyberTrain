@@ -356,14 +356,37 @@ module Cybertrain
       ""
     end
 
-    # Starts one thread per subscription, unless {Config#worker} is off,
-    # nothing is subscribed or the feeds already run. Application#serve
-    # calls it (through the Background service).
-    # @param config [Config]
-    # @return [Boolean] true when it started the threads
-    # @raise [ArgumentError] when a subscription has no on_message
+    # The names of the registered subscriptions, in registration order.
+    # @return [Array<String>]
     # @api public
-    def self.start!(config = Cybertrain.config)
+    def self.feed_names
+      out = Array.new(0) { "" }
+      SUBSCRIPTIONS.each { |sub| out << sub.sub_name }
+      out
+    end
+
+    # `unknown feed "NAME" (registered: a, b)` for the first of `names`
+    # that is not a subscription's name, "" when all are (`./<app> feeds
+    # NAME...` checks its arguments with it, through Background).
+    # @param names [Array<String>]
+    # @return [String]
+    # @api public
+    def self.unknown_feed(names)
+      Background.unknown_name_in(names, feed_names)
+    end
+
+    # Starts one thread per subscription (only those named in `only`, when
+    # it is not empty), unless {Config#worker} is off, nothing is
+    # subscribed or the feeds already run. Application#serve calls it
+    # (through the Background service) with every subscription; `./<app>
+    # feeds NAME...` with the named ones.
+    # @param config [Config]
+    # @param only [Array<String>] subscription names; empty for all
+    # @return [Boolean] true when it started the threads
+    # @raise [ArgumentError] when a subscription has no on_message, or a
+    #   name in `only` is not subscribed
+    # @api public
+    def self.start!(config = Cybertrain.config, only: Background::NO_NAMES)
       return false if @running
       unless config.worker
         Cybertrain.logger.info("Background worker off (CYBERTRAIN_WORKER=0): WebSocket subscriptions run elsewhere")
@@ -373,6 +396,8 @@ module Cybertrain
 
       problem = subscriptions_problem
       raise ArgumentError, "WebSocket.start!: #{problem}" unless problem.empty?
+      unknown = unknown_feed(only)
+      raise ArgumentError, "WebSocket.start!: #{unknown}" unless unknown.empty?
 
       # spikes/NOTES.md rule 22: before the first Thread.new.
       ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]
@@ -382,8 +407,10 @@ module Cybertrain
       i = 0
       while i < SUBSCRIPTIONS.size
         sub = SUBSCRIPTIONS[i]
-        Cybertrain.logger.info("WebSocket started: #{sub.sub_name} (#{sub.sub_origin})")
-        sub.sub_thread!(spawn_feed(sub, generation))
+        if only.empty? || only.include?(sub.sub_name)
+          Cybertrain.logger.info("WebSocket started: #{sub.sub_name} (#{sub.sub_origin})")
+          sub.sub_thread!(spawn_feed(sub, generation))
+        end
         i += 1
       end
       true
@@ -602,6 +629,14 @@ module Cybertrain
 
       def service_start(config)
         WebSocket.start!(config)
+      end
+
+      def service_start_only(config, names)
+        WebSocket.start!(config, only: names)
+      end
+
+      def service_feed_names
+        WebSocket.feed_names
       end
 
       def service_stop

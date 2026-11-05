@@ -3,7 +3,13 @@ ok   every refuses a bad interval, an empty name and a taken one
 ok   the first tick only schedules; a task runs when due and not before
 ok   a raising task is logged and does not stop the others
 ok   last_tick is the time of the latest tick
+ok   only the lease holder runs due tasks; another takes over once the lease expires
+ok   a tick that cannot reach the database runs nothing, logs, and leads again later
+ok   while job threads run, every tick (leader or not) recovers stale jobs, at most once a minute
+ok   a leader that loses the lease during a tick runs no further task in it
 ok   start! does nothing when the worker switch is off
 ok   config: the worker switch and the intervals have their defaults, and boot checks them
+ok   config: each job and lease setting must be at least 1, and stale more than the interval
+ok   config: CYBERTRAIN_JOB_THREADS sets job_threads; a word is the default, 0 is kept for boot to refuse
 ok   start! starts the thread once; stop! asks it to end
-8 tests, 44 assertions, 0 failures
+14 tests, 106 assertions, 0 failures
