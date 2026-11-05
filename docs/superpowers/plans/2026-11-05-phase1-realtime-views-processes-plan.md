@@ -260,7 +260,7 @@ Inputs the spec implies but no task's tests cover unless added here (each has it
 ## Package F: integration, blog example, docs, verification (spec 9, 12; runs after A to E are merged)
 
 **Files:**
-- Modify: `docs/design.md` (D1, 2.3, 8, D5, D9, D28, D33, new D35 to D40, section 13), `README.md`, `docs/guide/realtime.md` (new) and its `fr/ja/ru/zh` copies, `docs/guide/template-language.md` translations, `docs/guide/background-and-operations.md` (+ translations), `docs/guide/models.md` (+), `docs/guide/testing.md` (+), `docs/guide/index.md` / `README.md` under guide (link the new page), `spikes/NOTES.md`, `examples/blog/**`, `cybertrain/turbo.rb` (`Html.dom_id` swap), `cybertrain/version.rb` (0.5.0: a new subsystem) and `spin.toml`
+- Modify: `docs/design.md` (D1, 2.3, 8, D5, D9, D28, D33, new D36 to D41, section 13), `README.md`, `docs/guide/realtime.md` (new) and its `fr/ja/ru/zh` copies, `docs/guide/template-language.md` translations, `docs/guide/background-and-operations.md` (+ translations), `docs/guide/models.md` (+), `docs/guide/testing.md` (+), `docs/guide/index.md` / `README.md` under guide (link the new page), `spikes/NOTES.md`, `examples/blog/**`, `cybertrain/turbo.rb` (`Html.dom_id` swap), `cybertrain/version.rb` (0.5.0: a new subsystem) and `spin.toml`
 
 ### Task F1: merge and compile
 
