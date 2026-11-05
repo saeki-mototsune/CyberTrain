@@ -738,6 +738,16 @@ Each item is written as "Decision / Reason / Rejected alternatives / Consequence
 
 All generated code is committed. CI runs `git diff --exit-code gen/` after `spin run gen` to check that it is up to date.
 
+The inputs above are what gen reads when it runs. What it is compiled from is a different set: whatever `bin/gen.rb` reaches through its requires, which `config/routes.rb` can extend with `app/routes/extra.rb` or a package called through `Package.draw(r)`.
+
+The development rebuild (D12) uses that difference. spin recompiles an executable when any Ruby file of the package or of a path dependency changes, so an edit to a controller used to spend about 3 s of an 8 s rebuild compiling a generator identical to the one on disk. So `Dev::Rebuilder` first asks the compiler what gen is now: `spinel bin/gen.rb -c -o build/gen-check.c --force --no-line-map $(spin flags)`, quietly, about 0.3 s on `examples/blog`. If that succeeds, `build/bin/gen` exists and the C is byte-identical to `build/gen-compiled.c`, the C saved from the last successful full rebuild, the rebuild runs `./build/bin/gen` instead of `spin run gen`. The rebuild always runs gen, because a controller edit can change `gen/controllers.rb`.
+
+The check compares the compiler's output because only the compiler knows what is compiled in. An earlier version followed `require`s by regex and signed the files it found, and disagreed with the compiler on `require File.join(__dir__, "..", "app", "routes", "x")`, which is folded and compiled but was not followed: the stale gen then wrote wrong `gen/` output with no error. Comparing C needs no list of inputs, so there is none to get wrong. `--no-line-map` drops the `#line` directives, so a comment moved in a required file costs no compile; the 0.3 s is paid on every rebuild, and it is what buys back the 3 s. The two files live in `build/` because spin warns on every command about spinel's output anywhere else in the package, and because they should go when `build/bin/gen` goes.
+
+Any failure of the check (no `spinel` on `PATH`, `spin flags` failing, a compile error, an unreadable file) means not fresh, and the full `spin run gen` reports what is really wrong. The check runs before the build, so an edit made during the build reads as a change next time. After a successful full run the checked C is renamed to the saved one; a direct run or a failed one records nothing. A stale check deletes the saved C right away, because `spin run gen` replaces the binary even if the build after it fails, and undoing the edit must then not read as a match. A failed direct run is followed at once by the full command, so a broken binary never strands the loop; the price is that a compile error in the application is built twice.
+
+What the check does not see is whatever reaches gen's binary without changing its C: a `.c` file of a path dependency, which spin compiles but gen's output does not depend on unless a generator calls into it, and the Spinel runtime, which the C only `#include`s. Nor does it notice `build/bin/gen` being replaced behind the rebuild: `spin run gen` by hand from edited sources, then the edit undone, leaves a stale binary reading as fresh until the next change to gen.
+
 ## 7. Draft specification of the template language
 
 ERB tags: `<% %>`, `<%= %>` (escaped), `<%== %>` (unescaped), `<%# %>`, `<%- -%>` (trim), and a leading `<%# locals: (a:, b:) %>`.
@@ -806,7 +816,7 @@ cybertrain/
     schema/      # table.rb  definition.rb  dumper.rb (the db/schema.rb DSL)
     db/          # sqlite_ffi.rb  connection.rb  pool.rb  migrator.rb  schema_dumper.rb  sqlite_ddl.rb  cli.rb  error.rb
     generator/   # runner.rb  routes_dsl.rb  *_emitter.rb  model_scan.rb  controller_scan.rb  manifest.rb  inflector.rb  url_support.rb
-    dev/         # watcher.rb  rebuilder.rb  reexec.rb  error_page.rb (D12)
+    dev/         # watcher.rb  rebuilder.rb  reexec.rb  error_page.rb (D12, section 6)
     cli.rb  cli/ # new_app.rb  scaffold.rb  templates.rb  build.rb
     test.rb  test/client.rb  html.rb  crypto.rb  logger.rb
   bin/cybertrain.rb  exe/cybertrain   # CLI (spin install / gem)
