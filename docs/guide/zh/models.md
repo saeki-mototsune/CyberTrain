@@ -1,5 +1,5 @@
 ---
-source_sha256: 06a2682369ca0548625787806e6294f318e2302f347f98d610de9f3f8afb8e10
+source_sha256: 9611182b4eb6d6446cbc762f59710844e389112b4d966663252c35c9cffc065c
 ---
 # 模型与数据库
 
@@ -118,7 +118,7 @@ end
 
 ## 二进制列
 
-`t.binary` 创建一个 `BLOB` 列，用于存放不是文本的字节：缩略图、压缩的快照、密钥。属性是一个 String，原样保存所存储的字节，包括 NUL 字节和大于 127 的字节：
+`t.binary` 创建一个 `BLOB` 列，用于存放不是文本的字节：缩略图、压缩的快照、密钥。属性是一个 String，原样保存所存储的字节，包括 NUL 字节和大于 127 的字节；`NULL` 时为 `nil`（除非声明 `null: false`，否则该列可为空，所以在添加该列之前保存的照片没有缩略图：调用 `bytesize` 之前请先检查 `nil`）：
 
 ```ruby
 # db/migrate/20261105090000_add_thumbnail_to_photos.rb
@@ -136,6 +136,7 @@ Photo.find(photo.id).thumbnail.bytesize   # 读回的是同样的字节
 ```
 
 - 生成的模型在保存时把二进制列作为 BLOB 绑定；其他 String 仍然作为 TEXT 绑定，而 TEXT 会在 NUL 字节处截断。在原始 SQL 中，把字节包进 `Cybertrain::DB::Blob.new(bytes)`，即可作为 BLOB 绑定（`c.execute("INSERT INTO photos (thumbnail) VALUES (?)", [Cybertrain::DB::Blob.new(bytes)])`）。
+- `Photo.where(thumbnail: bytes)` 同样把字节绑定为 BLOB（TEXT 绑定永远不等于已存储的 BLOB）。
 - 用原始 SQL 读出的 BLOB 单元格是由其字节组成的 String；`Cybertrain::Cast.binary(value)` 用于收窄它（`NULL` 时为 `""`）。
 - `db/schema.rb` 会把该列重新写成 `t.binary`，控制台把二进制值打印为 `<N bytes>`。
 - 不要把大文件放进数据库：上传的文件（[添加文件上传](tutorial.md#attachments)）是 `storage/uploads/` 下的一个文件，而 BLOB 会连同所在的行一起被整个读入内存，并让每次备份和 WAL 都变大。

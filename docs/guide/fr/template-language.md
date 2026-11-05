@@ -1,5 +1,5 @@
 ---
-source_sha256: 2a9e8e996256fc4501968bb672c57b50fbb1cda1f3f80d6640176de81db378d3
+source_sha256: dc08486ed6d7b740c1b6bfbae1fec83b86dfe7632d2bed2bc8ed5ecccc737230
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -181,7 +181,7 @@ Un appel avec receveur peut prendre un bloc, `{ |x| expr }` ou `do |x| ... end`,
 | Receveur | Méthodes qui prennent un bloc | La valeur du bloc sert de |
 | --- | --- | --- |
 | `Array` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | valeur transformée, test, terme de la somme, clé de tri, clé de groupe |
-| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | la même chose, le bloc voyant `|key, value|` (un seul paramètre reçoit la paire `[key, value]`)&nbsp;; `select`/`reject` renvoient un Hash, les autres ce que la méthode d’Array renvoie sur les paires |
+| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | la même chose, le bloc voyant `\|key, value\|` (un seul paramètre reçoit la paire `[key, value]`)&nbsp;; `select`/`reject` renvoient un Hash, les autres ce que la méthode d’Array renvoie sur les paires |
 | le constructeur `tag` | chaque élément (`tag.div do ... end`) | sa **sortie** est le contenu de l’élément ([Le constructeur tag](#the-tag-builder)) |
 
 ```erb

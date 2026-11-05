@@ -54,15 +54,19 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   health page and housekeeping.
 - **At least once.** A job can run twice: a process that is killed, or that
   stalls for longer than `job_heartbeat_stale` (300 s), may still be running
-  a job when another process takes the row back (below). Only the first
-  outcome written counts, but the handler's side effects happened twice, so
+  a job when another process takes the row back (below). Only the outcome
+  of the claim that holds the row counts (an earlier claimer's result,
+  finishing late, is discarded), but the handler's side effects happened twice, so
   write handlers that can safely run again (check whether the mail was
   already sent, upsert rather than insert), as with any job queue.
 - **Concurrency per kind.** `Job.handle("sync_account", concurrency: 1) {
   ... }` lets at most that many jobs of the kind run at once, across every
   process sharing the database (for a rate-limited API, or work that must
   not overlap); the default, 0, is no limit. Other kinds go on running
-  meanwhile.
+  meanwhile. The limit counts `running` rows, so it holds as long as
+  heartbeats do: a handler still running after its heartbeat went stale is
+  overlapped by the recovered row's next run (below); work that must never
+  overlap needs a guard of its own.
 - **Several workers per database.** Every process that runs jobs writes a
   heartbeat for the jobs it is running every `job_heartbeat_interval` (30 s).
   A `running` row whose heartbeat is older than `job_heartbeat_stale` (a
@@ -71,7 +75,9 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   run in one process at a time: the processes share a lease in the
   database (`cybertrain_leases`, renewed every tick, `scheduler_lease_ttl`
   30 s), and only its holder runs due tasks; another takes over when it
-  stops renewing. So two `worker` processes, or a server and a worker, can
+  stops renewing. The lease is renewed before each task, not while one
+  runs, so a task longer than the ttl can overlap with the next holder's:
+  keep tasks short (`Job.enqueue` the real work) and safe to repeat. So two `worker` processes, or a server and a worker, can
   share one SQLite file; `CYBERTRAIN_WORKER=0` turns jobs, tasks and feeds
   off in a `server` process that should only serve HTTP.
 - **Shutting down.** On `SIGTERM` the job threads stop claiming new jobs, and
@@ -154,7 +160,9 @@ true
 - `x = expr` keeps a value for the following lines, and `_` is the last
   value. `sql "..."` runs SQL and prints the rows as a table, with a cell's
   control characters escaped (`\e`, `\n`), so data can neither send the
-  terminal an escape sequence nor break the table; `tables` lists the tables; `exit`, `quit` or Ctrl-D leaves.
+  terminal an escape sequence nor break the table (a TEXT value holding a NUL
+  byte is cut at the NUL when it is read, as in every raw-SQL read; a BLOB
+  keeps every byte); `tables` lists the tables; `exit`, `quit` or Ctrl-D leaves.
 - A line that does not parse prints its error, a line that raises prints
   `Class: message`, and the prompt comes back. A binary value prints as
   `<N bytes>`.

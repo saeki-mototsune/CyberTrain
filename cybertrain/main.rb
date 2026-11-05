@@ -150,7 +150,7 @@ module Cybertrain
     def self.run_command(command, args, views, url_resolver)
       begin
         DB.connect(Cybertrain.config.database_path, size: 1)
-        Application.configure_views(Cybertrain.config, views, url_resolver)
+        Application.configure_views(Cybertrain.config, views, url_resolver, eager: false)
         command.command_block.call(args)
       rescue DB::Error => e
         puts "#{command.command_name} failed: #{e.message}"
