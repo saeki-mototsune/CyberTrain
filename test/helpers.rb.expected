@@ -12,9 +12,10 @@ ok   render a partial with strict locals
 ok   content_for and yield :title
 ok   url helpers go through the url_resolver with name and args
 ok   url_for derives the route name from the model
+ok   url_for names the route of an Array of one or three records
 ok   an unknown helper is a RuntimeError
 ok   paginate renders Newer / Older around Page N, keeping the query minus page
 ok   paginate leaves out a link to a page that does not exist
 ok   paginate escapes what it is given and takes a path's own query string
 ok   a template reads the Page
-19 tests, 76 assertions, 0 failures
+20 tests, 83 assertions, 0 failures
