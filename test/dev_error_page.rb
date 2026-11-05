@@ -322,10 +322,18 @@ GEN_CALLS = "#{GEN_ROOT}/calls"
 GEN_BINARY = "#{GEN_ROOT}/build/bin/gen"
 GEN_CHECK = "#{GEN_ROOT}/build/gen-check.c"
 GEN_COMPILED = "#{GEN_ROOT}/build/gen-compiled.c"
+GEN_STAMP = "#{GEN_ROOT}/build/gen-compiled.stamp"
 
 def write_gen_binary(body)
   File.write(GEN_BINARY, "#!/bin/sh\n#{body}\n")
   File.chmod(0o755, GEN_BINARY)
+  nil
+end
+
+# Records the binary now there as the one the saved C compiled to.
+def adopt_gen_binary(rebuilder)
+  File.write(GEN_CHECK, File.read(GEN_COMPILED))
+  rebuilder.promote_gen_check
   nil
 end
 
@@ -422,6 +430,32 @@ test "a full build promotes the checked C, a direct run records nothing" do
   assert r.rebuild
   assert_equal SKIP_GEN, gen_calls
   assert File.exist?(GEN_CHECK)
+  finish_fake_spin_app(path)
+end
+
+# `spin run gen` by hand, from an edit undone since: the C matches, the binary
+# is not the one it was compiled to.
+test "a binary replaced behind the saved C compiles gen again" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  write_gen_binary("echo replaced >> '#{GEN_CALLS}'")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  assert r.rebuild
+  assert_equal SKIP_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a saved C with no stamp compiles gen again" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.delete(GEN_STAMP)
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
   finish_fake_spin_app(path)
 end
 
@@ -533,6 +567,7 @@ test "a gen binary that fails falls back to one full build in the same rebuild" 
   assert r.rebuild
   gen_calls
   write_gen_binary("echo broken-binary >> '#{GEN_CALLS}'; exit 1")
+  adopt_gen_binary(r)
   assert r.rebuild
   assert_equal "broken-binary\n#{COMPILE_GEN}", gen_calls
   refute r.last_failed

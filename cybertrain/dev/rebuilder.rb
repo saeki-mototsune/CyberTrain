@@ -38,6 +38,11 @@ module Cybertrain
       GEN_CHECK = "build/gen-check.c"
       GEN_COMPILED = "build/gen-compiled.c"
 
+      # The binary that C was compiled to, as modification time and size: a
+      # `spin run gen` by hand replaces it behind the saved C.
+      GEN_BINARY = "build/bin/gen"
+      GEN_STAMP = "build/gen-compiled.stamp"
+
       # A lock older than this is presumed abandoned (the build that held it
       # was SIGKILLed, or the machine rebooted) rather than genuinely
       # long-running, so build_in_progress? stops honoring it. Long enough
@@ -69,7 +74,9 @@ module Cybertrain
       # the toolchain refuses `--incremental`, runs the plain build at once
       # and keeps to it for the rest of the process. The check comes before
       # the build: an edit made during the build then reads as a change next
-      # time.
+      # time. A retry after a fresh check records the binary even if the
+      # build fails: it came from the same C, and an error in the application
+      # must not cost a compile of gen on every attempt to fix it.
       def rebuild
         if build_in_progress?
           @last_failed = true
@@ -77,7 +84,8 @@ module Cybertrain
           return false
         end
 
-        direct = gen_fresh? && system(command(@incremental, DIRECT_GEN))
+        fresh = gen_fresh?
+        direct = fresh && system(command(@incremental, DIRECT_GEN))
         ok = direct || system(command(@incremental))
         output = read_log
         if !ok && @incremental && Rebuilder.incremental_unsupported?(output)
@@ -85,12 +93,13 @@ module Cybertrain
           ok = system(command(false))
           output = read_log
         end
-        promote_gen_check if ok && !direct
+        promote_gen_check if !direct && (ok || fresh)
         record_build(ok, output)
         ok
       end
 
-      # True when build/bin/gen is what bin/gen.rb compiles to now. Anything
+      # True when build/bin/gen is what bin/gen.rb compiles to now: the C is
+      # the saved one, and the binary is the one saved with it. Anything
       # else, a check that fails included, means the full command, which
       # reports real errors. A stale check forgets the saved C at once: the
       # full command replaces the binary even if the build then fails, and
@@ -114,18 +123,24 @@ module Cybertrain
           File.delete(check) if File.exist?(check)
           return false
         end
-        return false unless File.file?(File.expand_path("build/bin/gen", @root)) && File.file?(compiled)
+        stamp = File.expand_path(GEN_STAMP, @root)
+        return false unless File.file?(compiled) && File.file?(stamp)
+        return false unless File.read(stamp) == gen_binary_stamp
 
         File.binread(check) == File.binread(compiled)
       rescue StandardError
         false
       end
 
-      # The C that was checked becomes the saved one, after a full build. A
-      # failed rename only means the next rebuild compiles gen again.
+      # The C that was checked becomes the saved one, after a full build, with
+      # the binary that build left. A failure only means the next rebuild
+      # compiles gen again.
       def promote_gen_check
         check = File.expand_path(GEN_CHECK, @root)
-        File.rename(check, File.expand_path(GEN_COMPILED, @root)) if File.exist?(check)
+        return nil unless File.exist?(check)
+
+        File.write(File.expand_path(GEN_STAMP, @root), gen_binary_stamp)
+        File.rename(check, File.expand_path(GEN_COMPILED, @root))
         nil
       rescue StandardError
         nil
@@ -218,6 +233,13 @@ module Cybertrain
         "{ cd #{Shell.quote(@root)} && mkdir -p build && flags=$(spin flags) && " \
           "spinel bin/gen.rb -c -o #{GEN_CHECK} --force --no-line-map $flags; } " \
           "> /dev/null 2>&1"
+      end
+
+      # Raises when there is no binary, which reads as not fresh.
+      def gen_binary_stamp
+        binary = File.expand_path(GEN_BINARY, @root)
+        time = File.mtime(binary)
+        "#{time.to_i}.#{time.nsec}:#{File.size(binary)}"
       end
 
       def log_file
