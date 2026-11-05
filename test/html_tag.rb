@@ -17,7 +17,6 @@ class FakeRecord
 
   def model_name = @model_name
   def id = @id
-  def new_record? = @id == 0
 end
 
 test "an element with no content, a void element" do

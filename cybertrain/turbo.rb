@@ -1,6 +1,5 @@
 require "cybertrain/html"
 require "cybertrain/model"
-require "cybertrain/generator/inflector"
 
 module Cybertrain
   # Turbo Stream elements (turbo-rails' `turbo_stream.replace` and the
@@ -78,12 +77,11 @@ module Cybertrain
       end
     end
 
-    # A record's DOM id, "article_12". (Html.dom_id replaces it once the
-    # view helpers have one.)
+    # A record's DOM id, "article_12" ("admin_user_3" for Admin::User): the
+    # id `dom_id` prints in a template, so a broadcast finds the element the
+    # page rendered.
     def self.target_id(record)
-      name = Inflector.underscore(record.model_name)
-      id = record.id.to_s
-      "#{name}_#{id}"
+      Html.dom_id(record, "")
     end
     private_class_method :target_id
   end

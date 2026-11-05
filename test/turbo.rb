@@ -10,6 +10,12 @@ class BlogPost < Cybertrain::Model
   def model_name = "BlogPost"
 end
 
+# A namespaced model: dom_id joins the namespace with "_", as Rails does.
+class AdminNote < Cybertrain::Model
+  def self.table_name = "admin_notes"
+  def model_name = "Admin::Note"
+end
+
 def blog_post(id)
   post = BlogPost.new
   post.set_id(id)
@@ -44,6 +50,10 @@ test "a record target becomes its dom id" do
   assert_equal "<turbo-stream action=\"remove\" target=\"blog_post_12\"></turbo-stream>", Turbo.remove(blog_post(12)).to_s
   assert_equal "<turbo-stream action=\"replace\" target=\"blog_post_3\"><template>x</template></turbo-stream>",
                Turbo.replace(blog_post(3), safe("x")).to_s
+  note = AdminNote.new
+  note.set_id(7)
+  assert_equal "<turbo-stream action=\"remove\" target=\"admin_note_7\"></turbo-stream>", Turbo.remove(note).to_s
+  assert_equal "<turbo-stream action=\"remove\" target=\"new_blog_post\"></turbo-stream>", Turbo.remove(BlogPost.new).to_s
 end
 
 test "plain text is escaped, a SafeString is not, and the target is escaped" do
