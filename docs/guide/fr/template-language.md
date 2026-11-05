@@ -1,5 +1,5 @@
 ---
-source_sha256: f0bc19c92741dbde18fbe1606ff34e4f4b15d432bb549a1e710cadd61c75a005
+source_sha256: cbafc075f79120cfbccea15794b9ef0959ea1dd39b237ae20b298537ccb81d95
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -390,7 +390,7 @@ end
 
 - Le template voit les variables d’instance du composant comme des variables locales (`title`), ses méthodes publiques sans paramètre par leur nom (`value_text`), et `content`, ce qu’a affiché le bloc `do` (`""` sans bloc). Il se rend sans layout, peut rendre des partiels et d’autres composants, et compte pour `max_render_depth` comme un partiel. Un partiel qu’il rend ne voit pas les méthodes du composant.
 - Un composant est désigné par son nom en snake_case sans `_component`, comme un partiel l’est par son chemin&nbsp;: `"card"` pour `CardComponent`, `"admin/user_row"` pour `Admin::UserRowComponent` (`app/components/admin/user_row_component.rb`). Les templates ne peuvent pas nommer de constantes.
-- `spin run gen` écrit `gen/components.rb` à partir d’une analyse lexicale, comme pour les helpers&nbsp;: la ligne de classe, les affectations `@x =`, les `def` sans paramètre et les mots-clés d’`initialize`. `initialize` ne prend que des mots-clés (au plus trois optionnels), et son template doit exister&nbsp;; un mot-clé manquant ou inconnu est une `ArgumentError` au rendu. Un composant inconnu est un `Cybertrain::Component::Unknown`&nbsp;: `` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``.
+- `spin run gen` écrit `gen/components.rb` à partir d’une analyse lexicale, comme pour les helpers&nbsp;: la ligne de classe, les affectations `@x =`, les `def` sans paramètre et les mots-clés d’`initialize`. `initialize` ne prend que des mots-clés (au plus trois optionnels), et son template doit exister&nbsp;; un mot-clé manquant ou inconnu est une `ArgumentError` au rendu. Un composant inconnu est un `Cybertrain::Component::Unknown`&nbsp;: `` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``. `content` est réservé&nbsp;: un mot-clé d’`initialize` ou une variable d’instance `@content` de ce nom serait écrasé par la sortie du bloc, donc `spin run gen` le refuse en nommant le fichier et la ligne. `app/views/components/` reste un répertoire de vues comme un autre (celui d’un `ComponentsController`)&nbsp;; seul `app/views/__components/` est réservé, les noms sous lesquels sont rangés les templates des composants.
 - `cybertrain generate component card title value:integer` écrit la classe, son template et un test qui le rend avec `Cybertrain::Test.render_component`.
 
 ### Rendre hors d’une requête

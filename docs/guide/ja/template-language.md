@@ -1,5 +1,5 @@
 ---
-source_sha256: f0bc19c92741dbde18fbe1606ff34e4f4b15d432bb549a1e710cadd61c75a005
+source_sha256: cbafc075f79120cfbccea15794b9ef0959ea1dd39b237ae20b298537ccb81d95
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -390,7 +390,7 @@ end
 
 - テンプレートからは、コンポーネントのインスタンス変数がローカル変数（`title`）として、パラメーターのない公開メソッドが名前（`value_text`）で、そして `do` のブロックが出力したもの `content`（ブロックがなければ `""`）が見えます。レイアウトなしでレンダリングされ、パーシャルやほかのコンポーネントをレンダリングでき、パーシャルと同じく `max_render_depth` に数えられます。コンポーネントがレンダリングしたパーシャルからは、コンポーネントのメソッドは見えません。
 - コンポーネントは、パーシャルがパスで指定されるのと同じく、`_component` を除いたスネークケースの名前で指定します：`CardComponent` なら `"card"`、`Admin::UserRowComponent`（`app/components/admin/user_row_component.rb`）なら `"admin/user_row"` です。テンプレートは定数を名指しできません。
-- `spin run gen` は、ヘルパーと同じく字句的な走査から `gen/components.rb` を書きます：クラスの行、`@x =` の代入、パラメーターのない `def`、`initialize` のキーワードです。`initialize` はキーワードだけを取り（省略可能なものは 3 つまで）、テンプレートがなければなりません。キーワードの不足や未知のキーワードはレンダリング時の `ArgumentError` です。未知のコンポーネントは `Cybertrain::Component::Unknown` です：`` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``。
+- `spin run gen` は、ヘルパーと同じく字句的な走査から `gen/components.rb` を書きます：クラスの行、`@x =` の代入、パラメーターのない `def`、`initialize` のキーワードです。`initialize` はキーワードだけを取り（省略可能なものは 3 つまで）、テンプレートがなければなりません。キーワードの不足や未知のキーワードはレンダリング時の `ArgumentError` です。未知のコンポーネントは `Cybertrain::Component::Unknown` です：`` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``。`content` は予約されています：その名前の `initialize` のキーワードや `@content` インスタンス変数はブロックの出力で上書きされてしまうので、`spin run gen` はファイルと行を示して拒否します。`app/views/components/` はほかと同じビューのディレクトリのままです（`ComponentsController` のもの）。予約されているのは、コンポーネントのテンプレートが置かれる名前の `app/views/__components/` だけです。
 - `cybertrain generate component card title value:integer` は、クラス、そのテンプレート、そして `Cybertrain::Test.render_component` でそれをレンダリングするテストを書きます。
 
 ### リクエストの外でのレンダリング

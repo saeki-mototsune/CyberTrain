@@ -1,5 +1,5 @@
 ---
-source_sha256: f0bc19c92741dbde18fbe1606ff34e4f4b15d432bb549a1e710cadd61c75a005
+source_sha256: cbafc075f79120cfbccea15794b9ef0959ea1dd39b237ae20b298537ccb81d95
 ---
 # Справочник по языку шаблонов Cybertrain
 
@@ -390,7 +390,7 @@ end
 
 - Шаблон видит переменные экземпляра компонента как локальные (`title`), его публичные методы без параметров по имени (`value_text`) и `content` — то, что вывел блок `do` (`""` без него). Он отрисовывается без макета, может отрисовывать партиалы и другие компоненты и учитывается в `max_render_depth`, как партиал. Партиал, который он отрисовывает, методов компонента не видит.
 - Компонент называют по его имени в snake_case без `_component`, как партиал называют по пути: `"card"` для `CardComponent`, `"admin/user_row"` для `Admin::UserRowComponent` (`app/components/admin/user_row_component.rb`). Шаблоны не могут называть константы.
-- `spin run gen` пишет `gen/components.rb` по лексическому разбору, как для хелперов: строка класса, присваивания `@x =`, `def` без параметров и ключи `initialize`. `initialize` принимает только именованные аргументы (из них не больше трёх необязательных), и его шаблон должен существовать; отсутствующий или неизвестный ключ — это `ArgumentError` при отрисовке. Неизвестный компонент — `Cybertrain::Component::Unknown`: `` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``.
+- `spin run gen` пишет `gen/components.rb` по лексическому разбору, как для хелперов: строка класса, присваивания `@x =`, `def` без параметров и ключи `initialize`. `initialize` принимает только именованные аргументы (из них не больше трёх необязательных), и его шаблон должен существовать; отсутствующий или неизвестный ключ — это `ArgumentError` при отрисовке. Неизвестный компонент — `Cybertrain::Component::Unknown`: `` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``. Имя `content` зарезервировано: ключ `initialize` или переменная экземпляра `@content` с этим именем были бы перезаписаны выводом блока, поэтому `spin run gen` отказывается от них, называя файл и строку. `app/views/components/` остаётся обычным каталогом представлений (например, для `ComponentsController`); зарезервирован только `app/views/__components/` — имена, под которыми хранятся шаблоны компонентов.
 - `cybertrain generate component card title value:integer` пишет класс, его шаблон и тест, который отрисовывает его через `Cybertrain::Test.render_component`.
 
 ### Отрисовка вне запроса
