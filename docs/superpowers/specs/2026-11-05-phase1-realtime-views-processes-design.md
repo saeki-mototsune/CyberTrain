@@ -101,7 +101,8 @@ end
   end
   ```
   `stream` marks the response performed (like `render`). `Cybertrain::SSE`
-  (`SSE.event(data, event: "", id: "", retry: 0)` -> String) formats
+  (`SSE.event(data, event: "", id: "", retry_ms: 0)` -> String; `retry` is a
+  Ruby keyword, so the field is `retry_ms`) formats
   events; a controller writes `out.write(SSE.event(json))`.
 - A streaming response has no `Content-Length`; `head?` requests get the
   head only. The HTTP parser is untouched (inbound chunked bodies stay 411).
@@ -124,7 +125,10 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   and one id space. Latency is bounded by the poll interval.
 - **The poller** (`Stream::Poller`, one thread per process that has
   subscribers, started lazily by the first subscription and stopped with the
-  server) keeps `last_id`. Every `Config#stream_poll_ms` (default 100) it
+  server) keeps `last_id`, **initialised to the current `MAX(id)` (0 on an
+  empty table) when the poller starts**: a fresh subscription receives only
+  rows written after it, never the backlog within retention, unless it asks
+  for a replay (below). Every `Config#stream_poll_ms` (default 100) it
   runs `SELECT MAX(id) FROM cybertrain_messages`; when it is larger than
   `last_id` it reads `SELECT id, stream, payload FROM cybertrain_messages
   WHERE id > ? ORDER BY id` and hands each row to the in-process hub. A
@@ -144,8 +148,18 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   a client cannot keep up).
 - `Last-Event-ID` (SSE) or `?after=<id>` (WebSocket) replays the rows with
   `id > given` for the subscribed streams from the table (within retention)
-  before live delivery starts, so a reconnecting EventSource misses nothing
-  that is still in the table.
+  before live delivery, so a reconnecting EventSource misses nothing that is
+  still in the table. **The handoff is ordered so that no row is lost or
+  doubled**: the connection first calls `Hub#subscribe` (its queue starts
+  filling with live rows), then runs the replay query, then sets `boundary =
+  max(given, last replayed id)` and drains its queue skipping every message
+  with `id <= boundary`. A row inserted between the replay query and the
+  subscription cannot exist (the subscription came first); a row both
+  replayed and delivered live is dropped by the boundary. Acceptance: a
+  fresh connection with no `Last-Event-ID` receives only rows broadcast
+  after it connected; a reconnect with `Last-Event-ID` receives each row
+  with a larger id exactly once, including one broadcast between the replay
+  query and the first live event.
 
 ### 2.3 The delivery endpoint: SSE and WebSocket (RT-1, RT-5)
 
@@ -387,8 +401,9 @@ updated with every rule below):
   fixed per type:
   - Array: `map`, `select`, `reject`, `find`, `any?`, `all?`, `none?`,
     `sum`, `sort_by`, `min_by`, `max_by`, `group_by`, `each_slice(n)`,
-    `each_with_object(init)`, `count`, `index_by`-style via `group_by`
-    first, plus `each`/`each_with_index` as today.
+    `count`, plus `each`/`each_with_index` as today. `each_with_object` and
+    `inject` are left out: templates cannot mutate an accumulator, and the
+    error is the ordinary "undefined method".
   - Hash: `map`, `select`, `reject`, `any?`, `all?`, `sum`, `sort_by`, `find`
     (two parameters: key, value).
   - Without a block: Array `sum`, `min`, `max`, `sort`, `uniq`, `compact`,
@@ -427,8 +442,10 @@ updated with every rule below):
 - **New built-in helpers**: `content_tag(name, content, attrs)`,
   `safe_join(array, sep = "")`, `class_names(*values)` (Strings, Arrays,
   `{ "name" => cond }` Hashes; Rails' `token_list` semantics),
-  `dom_id(record, prefix = nil)` (`"article_12"`, `"new_article"`,
-  `"edit_article_12"`), and the three from 2.4.
+  `dom_id(record, prefix = "")` (positional, as Rails: `dom_id(@article)` is
+  `"article_12"`, a new record `"new_article"`, `dom_id(@article, "edit")`
+  `"edit_article_12"`), and the three from 2.4. `Html.dom_id(record, prefix =
+  "")` is the Ruby-side form.
 - Constants, `while`, `def`, `return`, `rescue` stay out; the error messages
   are unchanged.
 
@@ -476,10 +493,13 @@ does the same with green threads:
   thread** per worker process runs `UPDATE cybertrain_jobs SET heartbeat_at
   = ? WHERE state = 'running' AND claimed_by = ?` every
   `Config#job_heartbeat_interval` seconds (30). `Job.recover!(now)` requeues
-  only `running` rows whose `heartbeat_at < now - Config#job_heartbeat_stale`
-  (300 s); the scheduler runs it at start and every 60 s in every process
-  that runs jobs. A worker's own rows are recovered by the next worker if it
-  dies.
+  only `running` rows whose `heartbeat_at IS NULL OR heartbeat_at < now -
+  Config#job_heartbeat_stale` (300 s); the scheduler runs it at start and
+  every 60 s in every process that runs jobs, leader or not. The `IS NULL`
+  arm covers rows that were `running` when the table was upgraded (they have
+  no heartbeat and their process is from before the upgrade); every claim
+  made by the new code writes a heartbeat, so a NULL is never a live job. A
+  worker's own rows are recovered by the next worker if it dies.
 - **Shutdown**: on SIGTERM the job threads finish their current job and
   stop; `Job.stop!` waits up to `Config#job_drain_timeout` (10 s, like the
   server's) and then returns, leaving still-running rows to heartbeat
@@ -521,8 +541,10 @@ does the same with green threads:
   holder runs due tasks; the others tick and try again. A tick that cannot
   reach the database logs and retries. `Scheduler.leader?` is readable (the
   health check keeps reporting `last_tick`; a non-leader still ticks).
-  `Job.recover!`, `Stream.prune` and the heartbeat run in every worker
-  process (they are idempotent).
+  `Job.recover!` and the heartbeat run in every worker process (they are
+  idempotent). `Stream.prune` has one owner, the stream poller (2.2), which
+  runs in every process that delivers to browsers; a deployment with only
+  `worker` processes and no `server` has no readers and is not a target.
 - `WebSocket.start!(config, only: names)`: with an empty list every
   subscription starts; otherwise the named ones. `Background::Service`
   gets `service_start_only(config, names)` with a default that calls
