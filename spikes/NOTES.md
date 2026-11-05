@@ -77,9 +77,9 @@ written up for upstream.
 | 78 | **Still there** (docs/spinel-feedback.md K). |
 | 79 | **Still there**: found on this build (its reduced program does not compile), and not new in it: the same program fails the same way on 2026.10.27.7020 and 2026.11.03.7025 (checked 2026-11-05; docs/spinel-feedback.md, "Rule 79"). |
 | 80 | **Still there**: found on this build. |
-| 81 | **Still there**: found on this build (its reduced program, a lambda literal in a module-body ivar called with an argument, prints garbage for the argument). |
-| 82 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
-| 83 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
+| 82 | **Still there**: found on this build (its reduced program, a lambda literal in a module-body ivar called with an argument, prints garbage for the argument). |
+| 83 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
+| 85 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -98,9 +98,9 @@ The rules are numbered in the order they were found. By topic:
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
-- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 84
+- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85
 - FFI: 15, 59
-- Tests and tools: 23, 24, 36, 41, 63
+- Tests and tools: 23, 24, 36, 41, 63, 84
 
 ## Rules every framework file must follow (derived from the spikes)
 
@@ -470,7 +470,18 @@ The rules are numbered in the order they were found. By topic:
     written on a template's first render, which two workers could do at
     once; `Engine.embedded` now parses every embedded template at boot
     (2026-11-05, found in review of the `SPINEL_WORKERS` fix, rule 22).
-    Development's engine still writes on a changed file.
+    Development's engine (`cache: false`) still writes the cache, and
+    `@stamps`, on the request that renders a changed file, so development
+    serves on one worker whatever `SPINEL_WORKERS` says
+    (`Application.serving_workers`; the boot banner names an ignored
+    count). Rejected: re-parsing on the watcher thread and swapping in a
+    new engine (`Views.configure`), or copy-on-write ivars inside the
+    engine. Both need a request thread to see a fully built object through
+    one plain reference store, and Spinel compiles an ivar store to a plain
+    C store plus the GC write barrier (`sp_gc.h` `SP_WBO`), with no
+    release/acquire ordering its docs promise. The cost: development no
+    longer runs requests in parallel; check parallel behaviour against a
+    `cybertrain build` binary.
 58. `Foo.new(<a String made in the argument>)` can free that String before the
     object has it (Spinel 2026.09.12): the generated `new` allocates the
     object, which may collect, and only then roots its arguments. A freshly
@@ -708,7 +719,10 @@ The rules are numbered in the order they were found. By topic:
     has the whole framework and the openssl package in one program, and
     there rule 62 caught two more byte scans that only that combination
     boxes: `Query.split_key` and `BlobStore.valid_key?` (both now read
-    through a `to_s` local).
+    through a `to_s` local). `TCPSocket.new(host, port, connect_timeout:
+    t)` is not a bounded connect: the keyword is read by no code path and
+    the connect blocks until the kernel gives up (checked 2026-11-05 on
+    2026.11.03.7025 and 2026.11.04.7026; docs/spinel-feedback.md O).
 73. An instance variable first assigned in a helper method that `initialize`
     calls, rather than in `initialize` itself, is typed as a boxed value
     (`sp_RbVal`) even when every assignment is a String (Spinel
@@ -855,9 +869,12 @@ The rules are numbered in the order they were found. By topic:
     tokenizer does (substring checks missed `ROLLBACK /* ; */ TO s` and
     `ROLLBACK` + line break + `TO s`). That ROLLBACK is skipped, since
     running it would raise "no transaction is active" over the
-    application's own error. A script whose first keyword is BEGIN counts
-    as inside the transaction it opens; a BEGIN further into a script is
-    not seen (a keyword search would match `CREATE TRIGGER ... BEGIN`)
+    application's own error. `exec_script` runs a script one statement at
+    a time (`cybertrain_sqlite_prepare_at`, SQLite's own parser splitting
+    the text, trigger bodies included), reading SQLite's transaction state
+    before each statement, so a BEGIN anywhere in a script is seen and a
+    BEGIN that fails marks nothing (saeki-mototsune/CyberTrain#164;
+    sqlite3_exec showed the state only before and after the whole script)
     (test/db_raw_transaction_rollback.rb).
 81. A relative constant path in a `rescue` clause whose first segment names
     a module that holds a class of the same name is not found: inside
@@ -901,8 +918,26 @@ The rules are numbered in the order they were found. By topic:
     prompt only appeared after each line). `STDOUT.flush` after the write
     shows it at once; Console.run flushes after the banner and every prompt
     (a StringIO answers flush too).
+84. A call to a class method that no class in the program defines is
+    refused at compile time, even from a method nothing calls: `module
+    Cybertrain; end`, `def f = Cybertrain.config.port`, `puts(ARGV.size >
+    5 ? f : 0)` prints `0` under CRuby and is refused by Spinel
+    2026.11.03.7025 and 2026.11.04.7026 ("undefined method 'config' for a
+    Class: no class in the program defines a class method 'config'
+    (NoMethodError)"; checked 2026-11-05). An undefined *constant* in the
+    same place is only a warning ("uninitialized constant ... (raises
+    NameError when reached)") and raises when reached. The refusal is by
+    design (`CR_NOMETHOD` in src/codegen_util.c: a NoMethodError found
+    ahead of time; docs/spinel-feedback.md, "A refusal of a never-reached
+    class-method call"). So a test program that loads part of the
+    framework must require every file whose class methods its code names,
+    reached or not: code that says `Cybertrain.config` needs `require
+    "cybertrain/config"`. `--defer-refusals` (or `# spinel:
+    defer-refusals` at the top of the file) builds it anyway, but what is
+    raised when the call is reached is NotImplementedError, not CRuby's
+    NoMethodError, so a test cannot rescue it as CRuby would.
 
-84. `Queue#pop(timeout: seconds)` works under Spinel 2026.11.04.7026 as
+85. `Queue#pop(timeout: seconds)` works under Spinel 2026.11.04.7026 as
     under CRuby: it answers the next element, or nil once the timeout has
     passed, and parks the green thread while it waits (another thread's
     `q << x` wakes it; checked with a reduced program, a Queue of a user

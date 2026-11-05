@@ -229,24 +229,11 @@ module Cybertrain
         return nil if refuse_if_transaction_gone(sql)
 
         forget_names
-        in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
         SQLite3.cybertrain_sqlite_busy_report(@busy, 0)
-        rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
+        message = run_script(sql)
         SQLite3.cybertrain_sqlite_busy_report(@busy, 1)
-        if rc != SQLite3::OK
-          # A script that opens its own transaction (`BEGIN; ...`) starts in
-          # autocommit, so it counts as inside one when its first keyword is
-          # BEGIN and another statement follows. A bare BEGIN that fails
-          # opened nothing. Not seen: a BEGIN further into the script (no
-          # keyword search over the whole text, since `CREATE TRIGGER ...
-          # BEGIN ... END` would match it; saeki-mototsune/CyberTrain#164),
-          # and the reverse slip, `BEGIN IMMEDIATE; ...` whose own BEGIN
-          # fails (SQLITE_BUSY), which marks the connection although no
-          # transaction opened; the next COMMIT, END or ROLLBACK clears it.
-          opened_here = Connection.begins_transaction?(sql) && Connection.statement_follows?(sql)
-          note_lost_transaction(in_transaction || opened_here, sql)
-          raise Error, error_message(sql)
-        end
+        raise Error, message unless message.empty?
+
         nil
       end
 
@@ -704,12 +691,6 @@ module Cybertrain
         Connection.full_rollback?(Connection.statement_words(sql)) && !Connection.statement_follows?(sql)
       end
 
-      # A script or statement whose first keyword is BEGIN.
-      def self.begins_transaction?(sql)
-        words = Connection.first_keywords(sql)
-        !words.empty? && words[0] == "BEGIN"
-      end
-
       # ROLLBACK or ROLLBACK TRANSACTION, nothing more (so not ROLLBACK TO);
       # words from #statement_words.
       def self.full_rollback?(words)
@@ -734,23 +715,6 @@ module Cybertrain
         i = Connection.skip_blank(sql, 0)
         while i < n && sql.getbyte(i) != 59 # ;
           return Array.new(0) { "" } unless Connection.word_byte?(sql.getbyte(i))
-
-          start = i
-          i += 1 while i < n && Connection.word_byte?(sql.getbyte(i))
-          words << sql.byteslice(start, i - start).to_s.upcase
-          i = Connection.skip_blank(sql, i)
-        end
-        words
-      end
-
-      # Up to three leading keywords of the first statement, upcased. Stops
-      # at the end of the statement or at the first token that is not a word.
-      def self.first_keywords(sql)
-        words = Array.new(0) { "" }
-        n = sql.bytesize
-        i = Connection.skip_blank(sql, 0)
-        while i < n && words.size < 3
-          break unless Connection.word_byte?(sql.getbyte(i))
 
           start = i
           i += 1 while i < n && Connection.word_byte?(sql.getbyte(i))
@@ -827,6 +791,49 @@ module Cybertrain
 
       def self.word_byte?(c)
         (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95
+      end
+
+      # Runs sql one statement at a time, as sqlite3_exec would but seeing
+      # SQLite's transaction state before each statement: a statement that
+      # started inside a transaction and failed with SQLite back in
+      # autocommit marks the transaction lost (#note_lost_transaction),
+      # however the script got into it (`CREATE ...; BEGIN; ...`,
+      # saeki-mototsune/CyberTrain#164), and a BEGIN that fails opened
+      # nothing. Stops at the first failing statement, as sqlite3_exec does,
+      # and returns its message ("" when every statement ran), so that
+      # #exec_script restores the busy handler's mode before raising.
+      def run_script(sql)
+        n = sql.bytesize
+        offset = 0
+        while offset < n
+          in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
+          scratch = SQLite3.malloc(8)
+          next_offset = SQLite3.cybertrain_sqlite_prepare_at(@db, sql, offset, scratch)
+          stmt = SQLite3.read_ptr(scratch)
+          SQLite3.free(scratch)
+          return "" if next_offset == SQLite3::NO_STATEMENT
+          if next_offset < 0
+            # Preparing can fail with SQLite rolling the transaction back too
+            # (IOERR or NOMEM while it reads the schema): the same check as
+            # for a failed step, against what is left of the script.
+            message = error_message(sql)
+            note_lost_transaction(in_transaction, sql.byteslice(offset, n - offset).to_s)
+            return message
+          end
+
+          statement = sql.byteslice(offset, next_offset - offset).to_s
+          offset = next_offset
+          rc = SQLite3.sqlite3_step(stmt)
+          rc = SQLite3.sqlite3_step(stmt) while rc == SQLite3::ROW
+          if rc != SQLite3::DONE
+            message = error_message(sql)
+            SQLite3.sqlite3_finalize(stmt)
+            note_lost_transaction(in_transaction, statement)
+            return message
+          end
+          SQLite3.sqlite3_finalize(stmt)
+        end
+        ""
       end
 
       def error_message(sql)

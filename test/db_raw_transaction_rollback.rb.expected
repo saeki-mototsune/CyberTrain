@@ -6,5 +6,8 @@ ok   ROLLBACK TO is told from ROLLBACK through comments and line breaks
 ok   the statement classifiers read SQL the way SQLite tokenizes it
 ok   a script that opened the transaction itself is covered too
 ok   a BEGIN that fails on its own opened nothing and marks nothing
+ok   a script that opens its transaction after other statements is covered
+ok   a script whose own BEGIN fails opened nothing and marks nothing
+ok   a script runs each statement once, trigger bodies as part of theirs
 ok   a failed statement that leaves the transaction open is not a rollback
-9 tests, 73 assertions, 0 failures
+12 tests, 80 assertions, 0 failures

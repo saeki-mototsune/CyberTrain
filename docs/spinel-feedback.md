@@ -91,8 +91,16 @@ one workaround left that an upstream fix would remove; see K), then J (a
 use-after-free shown with the slab off, reduced, still there on
 2026.11.04.7026; whether the default is affected is open), then 5
 (measured, with two concrete fixes), then L (found on 2026-11-05, worked
-around, with a program that shows it), then 6 and 7 (4 is fixed on 2026.10.27.7020, see
-4), then the rest. The
+around, with a program that shows it), then O and N (reported on
+2026-11-05 by Daicho, an application built on CyberTrain, each with a
+reduced program, re-checked here on 2026.11.03.7025 and 2026.11.04.7026;
+O's runtime half is already in Spinel and only the code generator does
+not call it; neither is reported upstream yet; see "Found by Daicho"),
+then 6 and 7 (4 is fixed on 2026.10.27.7020, see
+4), then the rest. P (Net::HTTP against a TLS peer that never answers,
+from the same report) needs nothing written: it is fixed on matz/spinel
+master dcc46945c (2026-11-05) and waits for a fork tag that carries it
+(see P). The
 refusal under C (#10525, with the run-time `TypeError` beside it fixed
 by #10524) and I (#10735 and #10786), which used to lead this list, are
 fixed upstream and in the pinned 2026.11.04.7026.
@@ -126,6 +134,9 @@ has a workaround in CyberTrain or an open bug:
 | Rule 64 | none (CyberTrain keeps objects out of class variables anyway) | Nothing: a class variable's object is marked on 2026.11.04.7026 and survives `SPINEL_GC_STRESS=1` (see "Rules 64 and 65") |
 | Rule 79 | none (a test gives the block a value after the `raise`, or passes the result through a method) | **Ready to report**: an eight-line reduced program that CRuby runs and 2026.10.27.7020, 2026.11.03.7025 and 2026.11.04.7026 all refuse with the same C error (see "Rule 79"); no fix written. Not reported upstream yet |
 | Rule 65 | building the allocating argument first, in a local (cybertrain/cli/toolchain.rb) | Not known yet: the shape checked is rooted on 2026.11.04.7026, but only in its generated C, with no AddressSanitizer run; a shape still left unrooted would first have to be found (see "Rules 64 and 65") |
+| N | none (the shape is not in the framework) | **Ready to report**: Daicho's 16-line program (CRuby prints `0`; the C does not compile on 2026.11.03.7025, 2026.11.04.7026 and master 60381c464) and the two fixes the report suggests (see N). Not reported upstream yet |
+| O | the non-blocking connect of cybertrain/net/socket.rb (rule 72), kept anyway for the deadline; a sentence in socket.rb's header and the guides | **Ready to report**: a nine-line program, and the cause named to the line: `sp_net_connect_timeout` has been in lib/sp_net.c since 59c06d979 and nothing emits a call to it (see O). Not reported upstream yet |
+| P | none (`HttpClient` stays for the deadline and the address policy); the header comment of cybertrain/http_client.rb and the guides describe the pinned behaviour | Nothing: fixed on matz/spinel master dcc46945c (2026-11-05). Needs a fork tag that carries it, then a `SPINEL_TAG` move and the comment revised (see P) |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026; some of their
@@ -162,6 +173,9 @@ that it is fixed.
 | L. `SPINEL_WORKERS=N` counts main, which a server keeps waiting | no (N helpers beside main) | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05: its reduced program uses 1.01 CPUs at N=2, 1.97 at N=3) | not checked | **yes** (from #9840; worked around; 1.01 CPUs at N=2, 1.97 at N=3, the same on 2026.11.03.7025, so not new here) |
 | Rule 79. A rescuing method's value, from a block that only raises, does not compile when appended | not checked | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05) | not checked | **yes** (found 2026-11-04; also on 2026.11.03.7025, so not new here) |
 | M. `gets` on STDIN does not flush a partial STDOUT line first | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (rule 83; worked around with `flush`) |
+| N. A method's return type does not follow an ivar widened through an `attr_accessor` writer | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report, 2026-11-05; re-checked here, and the same on 2026.11.03.7025, so not new here; still on master 60381c464 per the report) |
+| O. `TCPSocket.new` ignores `connect_timeout:` | yes (docs/design.md D24: "60 seconds or more against an unreachable address") | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report; re-checked here, and the same on 2026.11.03.7025; still on master 60381c464 per the report) |
+| P. Net::HTTP against a TLS peer that never answers does not return at the timeout | yes, as "the handshake and the reads are blocking C calls" (D24) | not checked | not checked | not checked | not checked | yes: returns at the timeout, but other threads stop meanwhile (the report) | not checked | **yes**: does not return at all (the report, 40 s; here it returns only when the peer closes, 30 s, the same on 2026.11.03.7025); **fixed** on matz/spinel master dcc46945c (2026-11-05), in no fork tag yet |
 
 ## What CyberTrain still works around
 
@@ -198,6 +212,8 @@ CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 | `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile |
 | `Application#serve` sets `SPINEL_WORKERS` to `workers + 1` when `workers > 1` (`Application.spinel_workers`, cybertrain/application.rb) | L | not checked | not checked | required: `SPINEL_WORKERS=2` starts one helper, which main does not help |
 | `Console.run` flushes after the banner and after every prompt (cybertrain/console.rb, rule 83) | M | not checked | not checked | required: without it the prompt appears only after the line is read |
+| `Net::TcpStream` connects with `connect_nonblock` + `wait_writable` + `SO_ERROR` (cybertrain/net/socket.rb, rule 72), not `TCPSocket.new(connect_timeout:)`; socket.rb's header and the guides say why | O | not checked | not checked | required: the keyword is still ignored (checked 2026-11-05 here and in Daicho's report). The connect stays for the deadline either way; a fix retires the sentence |
+| `HttpClient` does the TLS handshake and every read itself, with bounded waits (D24), and its header comment and the guides' "why it exists" name Net::HTTP's blocking waits | P | not checked | not checked | required: against a silent TLS peer Net::HTTP does not return (Daicho's report; checked here). Fixed on matz/spinel master dcc46945c; the client stays either way (deadline, address policy), and the comment is revised when the pin carries the fix |
 
 Every fix the fork carried is now in matz/spinel master, not only in the
 fork (#10254 to #10263, and #10316). #10316 is the fork's
@@ -1532,3 +1548,229 @@ p out
   CRuby flushes STDOUT before the read blocks. CyberTrain's console calls
   `flush` after its prompt. Fix: flush STDOUT (as CRuby's `rb_io_flush` on
   the tied stdout does) before a read from STDIN blocks.
+## Found by Daicho, an application built on CyberTrain
+
+Reported on 2026-11-05 by the authors of Daicho, an application built on
+CyberTrain 0.4.1, from reduced programs they built on 2026.11.04.7026 and
+on matz/spinel master 60381c464: three Spinel behaviours (N, O, P) and
+one refusal that is by design. Each was re-checked here on 2026-11-05 on
+2026.11.03.7025 (the prebuilt release on the machine) and on
+2026.11.04.7026 (built with `cybertrain setup`), with the programs below
+as given, and the two releases behave alike on every one; the figures for
+2026.10.27.7020 and for master are the report's. None has a workaround in
+CyberTrain that an upstream fix would remove: N's shape is not in the
+framework, and O and P are two of the reasons cybertrain/net/socket.rb
+and `HttpClient` exist (docs/design.md D24), which stay for the
+whole-request deadline and the address policy whatever Spinel fixes.
+
+### N. A method's return type does not follow an ivar widened through an `attr_accessor` writer, and the C does not compile
+
+Daicho's app/lib/daicho/prune.rb hit it in `delete_batches`. CRuby prints
+`0`:
+
+```ruby
+class T
+  attr_accessor :a
+  def initialize
+    @a = 0
+  end
+  def h
+    { "a" => @a }
+  end
+end
+def run
+  t = T.new
+  n = DB.with { |c| c.changes }   # a block call on a constant defined nowhere
+  t.a = t.a + n
+  t.h
+end
+p(ARGV.size > 5 ? run : 0)
+```
+
+2026.11.03.7025 and 2026.11.04.7026 (here) and master 60381c464 (the
+report) stop in the C compiler:
+
+```
+m.rb:7: error: returning 'sp_StrPolyHash *' from a function with incompatible
+       return type 'sp_StrIntHash *' [-Werror=incompatible-pointer-types]
+```
+
+- What it takes (the report tried each variation): a value of undecided
+  type, the answer of a block call on an undefined constant, written to an
+  ivar through an `attr_accessor` writer, and another method returning
+  that ivar inside a Hash literal. A call without a block (`DB.count`) is
+  inferred Integer and compiles; writing the ivar through an ordinary
+  method's parameter compiles, and so does returning it in an Array
+  literal.
+- Cause (the report's `--emit-types` run): `h`'s body infers the Hash
+  literal as `str_poly_hash`, which is right, while `h`'s signature stays
+  `() -> Hash[String, Integer]` and the caller `t.h` is typed
+  `str_int_hash`; in the generated struct the ivar is `sp_RbVal`. `@a` was
+  Integer from `initialize`'s `0`, widened by the write in `run`, and the
+  widening did not reach the method's return type.
+- Fix, two the report suggests: recompute a method's return type from its
+  body's final value when a later inference pass widens an ivar it reads
+  (which pass fixes the return type was not traced); or, as a stopgap, a
+  conversion in `emit_ret_hash_widen_conv` (src/codegen_stmt.c) for a
+  `TY_STR_POLY_HASH` value returned where `TY_STR_INT_HASH` or
+  `TY_STR_STR_HASH` is expected, built like `sp_StrIntHash_from_poly_hash`
+  (lib/spinel_rt.h), which does this for `TY_POLY_POLY_HASH` today,
+  raising TypeError for an element of the wrong type. The program above is
+  the regression test (`.expected`: `0`).
+- Today: Daicho writes `count = n.to_i` before the addition. Nothing in
+  CyberTrain has the shape, so there is no workaround to drop here.
+- Not reported upstream yet.
+
+### O. `TCPSocket.new(host, port, connect_timeout: t)` ignores the timeout
+
+Known to CyberTrain since the HTTP client was designed (docs/design.md
+D24, on 2026.09.12: "ignored on Spinel, 60 seconds or more against an
+unreachable address") but never written up with a program. Daicho's
+report has one; here it does not return within 20 s on 2026.11.03.7025
+or 2026.11.04.7026 (killed), and the report says the same of
+2026.11.04.7026 and master 60381c464 (70 s). CRuby prints `err
+IO::TimeoutError` and `bounded`:
+
+```ruby
+require "socket"
+t = Time.now.to_f
+begin
+  TCPSocket.new("10.255.255.1", 81, connect_timeout: 2)
+  puts "connected"
+rescue SocketError, StandardError => e
+  puts "err " + e.class.name
+end
+puts((Time.now.to_f - t) < 5 ? "bounded" : "unbounded")
+```
+
+- Cause (the report's): the `TCPSocket.new` emission in
+  src/codegen_call.c (near line 15965) passes `argv[0]` and `argv[1]` to
+  `sp_net_connect` and reads no keyword, and nothing warns.
+  `sp_net_connect_timeout(host, port, timeout_s)` and
+  `sp_net_take_connect_timeout()` have been in lib/sp_net.c since
+  59c06d979 (2026-10-19), with tests (test/sp_net_connect_timeout*.rb),
+  and no code generation calls them.
+- Fix (the report's): emit `sp_net_connect_timeout` when
+  `connect_timeout:` is given; on -1 with `sp_net_take_connect_timeout()`
+  set, raise `IO::TimeoutError` (CRuby's text is `Connect timed out!`),
+  otherwise fail as `sp_net_connect`'s failure does; `connect_timeout:
+  nil` is no limit, as in CRuby (a negative value does that in the
+  runtime function today); refuse the other keywords (`resolv_timeout:`)
+  instead of dropping them.
+- Today: cybertrain/net/socket.rb connects with `connect_nonblock` +
+  `wait_writable` + `SO_ERROR` (spikes/NOTES.md rule 72) and never calls
+  `TCPSocket.new`, so nothing in the framework is affected, and the
+  socket layer stays after a fix for the per-request deadline. A fix
+  removes a sentence, not code: socket.rb's header,
+  docs/guide/external-services.md and its translations name the ignored
+  keyword.
+- Not reported upstream yet.
+
+### P. Net::HTTP against a TLS peer that accepts and never answers does not return at `open_timeout` / `read_timeout`
+
+The report: on 2026.10.27.7020 the request returned at the timeout but
+other threads stopped while it waited; on 2026.11.04.7026 it had not
+returned when killed at 40 s; on matz/spinel master 60381c464 it does
+what CRuby does (an error at the timeout, the other threads running),
+since dcc46945c ("Bound Net::HTTP TLS handshakes and response reads",
+2026-11-05). Here, with the program below at `SPINEL_WORKERS=1`,
+2026.11.03.7025 and 2026.11.04.7026 both return only when the server
+closes the socket after 30 s (`err OpenSSL::SSL::SSLError: SSL_connect
+returned an error: TLS handshake failed`, `unbounded 30.1`), 28 s past
+`open_timeout`; the counting thread did advance here (`other thread
+ran`), unlike in the report's 2026.10.27.7020 run. CRuby prints `err
+Net::OpenTimeout: Net::OpenTimeout`, `bounded 2.1`, `other thread ran`.
+(`require "openssl"` is needed: without it Spinel's net/http raises
+`an https request needs the openssl package` at once.)
+
+```ruby
+require "socket"
+require "net/http"
+require "openssl"
+srv = TCPServer.new("127.0.0.1", 0)
+port = srv.addr[1]
+holder = Thread.new do
+  s = srv.accept
+  sleep 30
+  s.close
+end
+ticks = 0
+counter = Thread.new do
+  while ticks < 100
+    ticks += 1
+    sleep 0.2
+  end
+end
+t0 = Time.now.to_f
+http = Net::HTTP.new("127.0.0.1", port)
+http.use_ssl = true
+http.open_timeout = 2
+http.read_timeout = 2
+begin
+  http.get("/")
+  puts "ok"
+rescue StandardError => e
+  puts "err " + e.class.name + ": " + e.message
+end
+el = Time.now.to_f - t0
+puts((el < 10 ? "bounded" : "unbounded") + " " + el.round(1).to_s)
+puts(ticks >= 5 ? "other thread ran" : "other thread stalled #{ticks}")
+```
+
+- Cause: the handshake (`SSL_connect`) and the reads after it are
+  blocking calls inside the package that `open_timeout` / `read_timeout`
+  do not bound (docs/design.md D24, which is why `HttpClient` does its
+  own). The connect itself, `open_timeout` against an address that does
+  not answer, is bounded on 2026.11.04.7026 and lets other threads run,
+  per the report.
+- Fix: dcc46945c on matz/spinel master. Nothing to write; what is left is
+  a fork tag that carries it and a `SPINEL_TAG` move.
+- Today: `Cybertrain::HttpClient` (D24) does the handshake and every read
+  with `connect_nonblock` / `read_nonblock` and bounded waits, and stays
+  whatever Net::HTTP does: the whole-request `deadline` and the refusal of
+  non-public addresses are its own. The header comment of
+  cybertrain/http_client.rb and the guides' "why it exists" describe
+  Net::HTTP's blocking waits, which is true on the pinned release; once
+  the pin is on a tag that carries dcc46945c, that sentence is history and
+  is to be revised with the move. What Net::HTTP would still lack for a
+  webhook sender, the report notes, is `Net::HTTP#ipaddr=` (CRuby's:
+  connect to a given address while Host and SNI keep the name, the usual
+  shape of a DNS-rebinding defence; not in packages/net/net/http.rb on
+  master 60381c464) and a deadline for the whole request, which CRuby's
+  Net::HTTP has not either.
+
+### A refusal of a never-reached class-method call (by design)
+
+Daicho's test/envelope.rb, which loads part of the framework, met it;
+re-checked here on 2026.11.03.7025 and 2026.11.04.7026. CRuby prints `0`:
+
+```ruby
+module Cybertrain
+end
+def f = Cybertrain.config.port
+puts(ARGV.size > 5 ? f : 0)
+```
+
+Spinel refuses it: `undefined method 'config' for a Class: no class in
+the program defines a class method 'config' (NoMethodError)`, `1 refusal,
+nothing written`. Deliberate: `unsup_message` in src/codegen_util.c
+classes the call `CR_NOMETHOD`, a NoMethodError found ahead of time. An
+undefined *constant* in the same position is treated the other way:
+`warning: uninitialized constant Nope: defined nowhere in the program
+(raises NameError when reached)`, and the program builds and raises
+NameError only when the call runs (checked here). `--defer-refusals`, or
+`# spinel: defer-refusals` at the top of the file, builds the refused
+program too, and what it raises when reached is NotImplementedError
+carrying the refusal's text, not CRuby's NoMethodError (checked here).
+
+The question for upstream, if one is sent: whether `CR_NOMETHOD` should
+match the constant case (warn, raise NoMethodError when reached), which
+would let a program that loads part of a library build, at the price of a
+real mistake surfacing at run time. CyberTrain asks for nothing: a file
+that names `Cybertrain.config` requires cybertrain/config, which is right
+under CRuby too (spikes/NOTES.md rule 84).
+
+The report's other note, that `"99999999999999999999999".to_i` raises
+`RangeError` where a comparison of the parsed value works, is D, by
+design in the default `--int-overflow=raise` mode; its "compare before
+converting" is the right shape in either mode.
