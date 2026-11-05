@@ -1,5 +1,5 @@
 ---
-source_sha256: 47cec345af917f10d20312f6d5213a44e55bb8ca2858f1b3289f596960a73533
+source_sha256: 840774b1782d6a4c5d4e5c2f880f39aa1960df5563f27409553fccbfbb117fd8
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -246,9 +246,9 @@ Use Ctrl-C to stop
 - `spin run db` 要求在参数前加上 `--`，`cybertrain db` 会替你加上；`cybertrain db status` 和其他数据库命令也是如此。
 
 > [!RULE]
-> ### 没有控制台
+> ### 控制台不是 Ruby
 >
-> `rails console` 没有对应的功能：Spinel 没有 `eval`。修改 Ruby 代码需要重新构建，开发时 `cybertrain server` 会替你完成（重新构建、停止、`execv`）。开发时视图在每次请求时从磁盘解析，所以修改视图无需重新构建；`cybertrain build` 会为生产环境把它们嵌入。
+> `rails console` 没有完全对应的功能：Spinel 没有 `eval`。`cybertrain spin run blog -- console`（构建之后为 `./blog console`）在模型上求值模板表达式，例如 `Article.where(title: "x").count`，而 `dbconsole` 打开 `sqlite3`（[控制台](background-and-operations.md#the-console)）。修改 Ruby 代码需要重新构建，开发时 `cybertrain server` 会替你完成（重新构建、停止、`execv`）。开发时视图在每次请求时从磁盘解析，所以修改视图无需重新构建；`cybertrain build` 会为生产环境把它们嵌入。
 
 <!-- step 08 #scaffold-comment stage: 你编写 · `db/migrate/`, `app/` -->
 ## 生成评论脚手架
@@ -529,7 +529,7 @@ class ArticlesController < ApplicationController
 <% end %>
 ```
 
-启动服务器并打开 `http://127.0.0.1:3000/sign_up`，创建第一个用户。Rails 的生成器没有注册页面，第一个用户要在控制台里创建；CyberTrain 没有控制台，所以会写出 `RegistrationsController`。如果应用只接受邀请，请删除它及其路由。
+启动服务器并打开 `http://127.0.0.1:3000/sign_up`，创建第一个用户。Rails 的生成器没有注册页面，第一个用户要在控制台里创建；CyberTrain 会写出 `RegistrationsController`，让第一个用户在浏览器中注册。如果应用只接受邀请，请删除它及其路由。
 
 <details><summary>只接受邀请的应用：`--invite-only` — 没有注册页面；第一个用户来自命令行，或来自只有服务器所在机器才能打开的页面</summary>
 

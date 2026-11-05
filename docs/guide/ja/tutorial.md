@@ -1,5 +1,5 @@
 ---
-source_sha256: 47cec345af917f10d20312f6d5213a44e55bb8ca2858f1b3289f596960a73533
+source_sha256: 840774b1782d6a4c5d4e5c2f880f39aa1960df5563f27409553fccbfbb117fd8
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -245,10 +245,10 @@ Use Ctrl-C to stop
 - ポートは `cybertrain server 4000`（または `PORT=4000`）で変更できます。
 - `cybertrain db` は、`--`（`spin run db` が引数の前に必要とするもの）を補います。`cybertrain db status` などのデータベースコマンドも同じように動きます。
 
-> [!RULE] Spinel のルール：コンソールなし
-> ### コンソールはない
+> [!RULE] Spinel のルール：コンソールは Ruby ではない
+> ### コンソールは Ruby ではない
 >
-> `rails console` に相当するものはありません：Spinel には `eval` がないからです。Ruby の変更には再ビルドが必要ですが、開発環境では `cybertrain server` が代わりに行います（再ビルド、停止、`execv`）。開発環境ではビューはリクエストごとにディスクからパースされるので、ビューの編集に再ビルドは不要です。本番用には `cybertrain build` がビューを埋め込みます。
+> `rails console` にそのまま相当するものはありません：Spinel には `eval` がないからです。`cybertrain spin run blog -- console`（ビルド後は `./blog console`）は、`Article.where(title: "x").count` のようなテンプレートの式をモデルに対して評価し、`dbconsole` は `sqlite3` を開きます（[コンソール](background-and-operations.md#the-console)）。Ruby の変更には再ビルドが必要ですが、開発環境では `cybertrain server` が代わりに行います（再ビルド、停止、`execv`）。開発環境ではビューはリクエストごとにディスクからパースされるので、ビューの編集に再ビルドは不要です。本番用には `cybertrain build` がビューを埋め込みます。
 
 <!-- step 08 #scaffold-comment stage: 自分で書く · `db/migrate/`, `app/` -->
 ## コメントをスキャフォールドする
@@ -529,7 +529,7 @@ class ArticlesController < ApplicationController
 <% end %>
 ```
 
-サーバーを起動して `http://127.0.0.1:3000/sign_up` を開き、最初のユーザーを作成します。Rails のジェネレーターにはサインアップ画面がなく、最初のユーザーはコンソールで作りますが、CyberTrain にはコンソールがないため `RegistrationsController` を書き出します。招待制のアプリでは、これとそのルートを削除してください。
+サーバーを起動して `http://127.0.0.1:3000/sign_up` を開き、最初のユーザーを作成します。Rails のジェネレーターにはサインアップ画面がなく、最初のユーザーはコンソールで作りますが、CyberTrain は `RegistrationsController` を書き出すので、最初のユーザーはブラウザーでサインアップします。招待制のアプリでは、これとそのルートを削除してください。
 
 <details><summary>招待制のアプリ：`--invite-only` — サインアップ画面はなく、最初のユーザーはコマンドラインか、サーバーのマシンからしか開けないページで作る</summary>
 

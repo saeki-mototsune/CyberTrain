@@ -1,5 +1,5 @@
 ---
-source_sha256: 9774dd81ce04a49d069a89de780211e2926fa128c494ae7a4cd3c1b4fc1d55b6
+source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
 ---
 # 配置
 
@@ -30,7 +30,9 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`；以逗号分隔的 IPv4/IPv6 地址或 CIDR（`172.16.0.0/12,10.0.0.0/8`），来自这些地址的连接的 `request.client_ip` 取自 `X-Forwarded-For` 中的最后一个地址，用于通过网络访问的代理，例如运行在自己容器中的 kamal-proxy；无效的条目会让服务器在启动时停止 |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`：`params.page_number` 给出、`Relation#page` 接受的最大页码（参见[分页](models.md#pagination)）；不是最多 18 位的数字或小于 1 的值按默认值处理 |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`；以逗号分隔的名称会替换这个列表。名称中包含其中任一项的参数（按 ASCII 不区分大小写：`password` 也匹配 `user[password]`），其值在请求日志和开发时的错误页面上会写成 `[FILTERED]`；在 `config/app.rb` 中设为 `[]` 可关闭此功能 |
-| `CYBERTRAIN_WORKER` | `worker` | `true`；`0` 或 `false` 会让这个进程不运行定时任务和作业（参见[后台任务](background-and-operations.md#background-work)）；`scheduler_interval`（1 秒）、`job_poll_interval`（5 秒）和 `job_max_attempts`（5）在 `config/app.rb` 中设置 |
+| `CYBERTRAIN_WORKER` | `worker` | `true`；`0` 或 `false` 会让 `server` 进程不运行定时任务、作业和 WebSocket 数据订阅（参见[进程角色](background-and-operations.md#process-roles)）；`./<app> worker` 和 `feeds` 会忽略它 |
+| `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`：一个进程同时运行的作业数（参见[后台任务](background-and-operations.md#background-work)）；至少为 1 |
+| `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`：实时端点（参见[实时](realtime.md#limits-and-settings)）；空值会关闭流；它必须以 `/` 开头，并且不同于 `health_path` |
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`；`1` 或 `true` 会以 `SO_REUSEPORT` 绑定，让多个进程监听同一端口，在 Linux 上由内核在它们之间分配连接（开发环境中会被忽略；参见 [Running several processes](../deploy.en.md#running-several-processes)）。除一个进程外，其余都设置 `CYBERTRAIN_WORKER=0` |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`；内置健康检查的路径（参见[运维](background-and-operations.md#operations-backups-vacuum-health-check)）；空值会关闭它；不以 `/` 开头的值会让服务器在启动时停止。`health_worker_stale`（300 秒）在 `config/app.rb` 中设置 |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`；`1` 或 `true` 允许 `Cybertrain::HttpClient` 连接环回地址、私有地址和其他非公网地址（参见[出站 HTTP](external-services.md#outbound-http)） |
@@ -44,6 +46,8 @@ end
 只有在应用显示于另一个网站的框架内时，才使用 `None`（配合 `CYBERTRAIN_SESSION_PARTITIONED=1`）；浏览器必须通过 HTTPS 访问应用。
 
 其他带有固定且可覆盖默认值的属性：`views_root`（`"app/views"`）、`public_root`（`"public"`）、`layout`（`"layouts/application"`）、`log_level`（`:info`）、`session_cookie_name`、`session_max_age`（两周）、`session_secure`（生产环境中为 `true`，会把会话 cookie 标记为 `Secure`；其他环境中为 `false`，不过 `SameSite=None` 和 `Partitioned` 无论如何都会加上 `Secure`）、`pool_size`（4）、`static_files`/`csrf`（`true`）、`csrf_exempt_prefixes`（`[]`：路径前缀，例如 `"/api/"`，其下的非 GET 请求跳过 CSRF 检查，用于由程序携带自己的凭据调用的端点；每个前缀都必须以 `/` 开头和结尾，且不能只是 `/`，否则启动失败；前缀与发送时的路径进行匹配，所以百分号编码的写法仍会被检查；任何其他路由都不得匹配该前缀下的路径，并且被豁免的控制器不得依赖会话进行身份验证，因为那里仍然会加载会话）、`max_body_bytes`（10 MiB：发送时长度超过此值的请求体，会在读取之前以 413 响应；需要上传大文件时请调高它；gzip 请求体解压后的大小由 `request.decoded_body(limit)` 另行限制）、`max_render_depth`（同时打开的渲染最多 12 层：页面及其局部模板；局部模板确实需要更深的递归时请调高它；它必须至少为 1，否则启动失败）。升级说明：渲染嵌套以前没有限制，现在默认上限为 12（页面是第 1 层，所以局部模板可以嵌套 11 层；布局在页面之后渲染，不算嵌套），树更深的应用（分层评论、分类菜单）在设置 `max_render_depth` 之前会得到模板错误。文件上传：`max_upload_bytes`（每个上传文件 5 MiB；不得超过 `max_body_bytes`）、`max_multipart_parts`（128 个部分，包括文本字段，最多 4096）、`upload_root`（`"storage/uploads"`，`Cybertrain::BlobStore` 写入的位置；在第一次上传时创建，而不是在启动时）。
+
+**作业与流**：除了上面的变量，`config/app.rb` 还设置 `scheduler_interval`（1 秒，调度器的心跳间隔）、`job_poll_interval`（1 秒，空闲的作业线程等待的时间；在有作业线程之前是 5）、`job_max_attempts`（5）、`job_heartbeat_interval`（30 秒）、`job_heartbeat_stale`（300 秒，必须大于心跳间隔）、`job_drain_timeout`（10 秒，`SIGTERM` 等待运行中作业的时间）和 `scheduler_lease_ttl`（30 秒，至少是 `scheduler_interval` 的两倍），以及流的设置 `stream_poll_ms`、`stream_retention`、`stream_ping_interval`、`stream_max_connections`、`stream_max_message` 和 `stream_max_backlog`（[限制与设置](realtime.md#limits-and-settings)）。超出范围的值会让启动停止，并给出指明该值的消息。
 
 **安全响应头**：服务器写出的每个响应（动作、静态文件中间件、错误页面和开发时的诊断页面、服务器自己的 400/411/413/500，以及 HEAD）都带有 `X-Content-Type-Options: nosniff` 和 `X-Frame-Options: SAMEORIGIN`，除非响应已经设置了同名的响应头（不区分大小写）：`Response#to_http` 在响应自己的响应头之后添加它们，并且只在缺失时添加，所以在动作中写 `response.set_header("X-Frame-Options", "DENY")` 会恰好发送一次你设置的值。刻意没有在全应用范围内关闭它们的 `Config` 开关；可嵌入的小部件在自己的响应上覆盖该响应头（在当前的浏览器中，`Content-Security-Policy: frame-ancestors ...` 响应头优先于 `X-Frame-Options`）。由于 `nosniff`，浏览器会按字面理解 `Content-Type`：静态文件中间件认识 `public/` 中常见的扩展名（html、css、js/mjs、包括 webp 和 avif 在内的图片、字体、wasm、pdf、音频和视频、json、csv、xml），其他任何文件都以 `application/octet-stream` 提供，即作为下载；如果应用需要内联显示其他类型，请把扩展名加入 `Cybertrain::Static::EXTENSIONS`。自己提供 `public/` 的反向代理会绕过这些响应头（参见 [docs/deploy.en.md](../deploy.en.md)）。`Cybertrain::Test::Client` 在进程内调用应用，从不序列化响应，所以看不到这两个默认响应头；请在 `response.to_http` 上断言它们。
 

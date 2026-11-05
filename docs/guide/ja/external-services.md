@@ -1,5 +1,5 @@
 ---
-source_sha256: 0a5a051dced3255b5cbc72eeeaa180f28cc8bf726dc0fce839c7885938c65379
+source_sha256: 55cb8796599b6e9b68995c0bcfae429599010685c795da99ca191458d5507df2
 ---
 # 外向きの HTTP、WebSocket フィード、メール
 
@@ -61,7 +61,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
 
 `cybertrain/websocket` を require すると、フィードが `Cybertrain::Background` に登録されます。`Application#serve` がスケジューラーの後にこれを開始し、シャットダウン時に停止するので、呼び出すものは何もありません。購読ごとに 1 本のスレッドが付きます。スレッドは接続し、`on_open` を実行し（購読のメッセージはここで送ってください：再接続のたびに再び実行されます）、その後、各メッセージを `Connection`（`send_text`、`send_binary`、`close`、そして `:text` か `:binary` の `last_opcode`）とともに `on_message` に渡します。ブロックは引数を受け取り、`self` は使えません（Spinel には `instance_eval` がありません）。
 
-- **いつ実行されるか。** フィードは、スケジューラーと同じく、バイナリが配信を行うときに始まります（[バックグラウンド処理](background-and-operations.md#background-work)）。`migrate`、`db ...`、`Main.command` のコマンドと `Cybertrain::Test::Client` では決して始まりません。`CYBERTRAIN_WORKER=0`（`config.worker = false`）では、そのプロセスでは動きません（単に始まらないだけです。唯一の知らせはスケジューラーの「run elsewhere」の行で、`WebSocket.start!` を直接呼んだ場合は自分でログを出します）：複数のプロセスが配信する場合は、1 つを除いてすべてで無効にしてください。そうしないと、それぞれがフィード全体を受信します。`subscribe` はサーバーが始まる前に呼ぶ必要があります。動作中にフィードを追加したり削除したりすることはできません。名前は一意で（`ArgumentError`）、`on_message` のないフィードは、ポートをバインドする前に起動を失敗させます（`error: WebSocket subscription "trades" has no on_message`、終了コード 1）。
+- **いつ実行されるか。** フィードは、スケジューラーと同じく、バイナリが配信を行うときに始まります（[バックグラウンド処理](background-and-operations.md#background-work)）。`migrate`、`db ...`、`Main.command` のコマンドと `Cybertrain::Test::Client` では決して始まりません。`./<app> feeds [NAME...]` は、それらのすべて、または名前を挙げたものを専用のプロセスで動かします（[プロセスの役割](background-and-operations.md#process-roles)）。`CYBERTRAIN_WORKER=0`（`config.worker = false`）では、そのプロセスでは動きません（単に始まらないだけです。唯一の知らせはスケジューラーの「run elsewhere」の行で、`WebSocket.start!` を直接呼んだ場合は自分でログを出します）：複数のプロセスが配信する場合は、1 つを除いてすべてで無効にしてください。そうしないと、それぞれがフィード全体を受信します。`subscribe` はサーバーが始まる前に呼ぶ必要があります。動作中にフィードを追加したり削除したりすることはできません。名前は一意で（`ArgumentError`）、`on_message` のないフィードは、ポートをバインドする前に起動を失敗させます（`error: WebSocket subscription "trades" has no on_message`、終了コード 1）。
 - **オプション。** `headers:`（ハンドシェイクに追加するヘッダー）、`timeout:`（接続中の各待ちと各書き込みに 5 秒）、`max_message:`（1 MiB。それより大きいメッセージは 1009 で接続を閉じます）、`ping_interval:`（15）と `stale_after:`（45）、そして `allow_private:`（下記の `HttpClient` と同じ）。
 - **待機と再接続。** 失敗のたびに、スレッドは `min(60, 2 ** (attempt - 1))` 秒、前後 20 % のジッター付きで待ちます：1、2、4、... 60。60 秒続いた接続は、再び 1 から始まります。すべての待ちに上限があります。`WebSocket.stop!` は、サーバーが何をしても約 2 秒以内に戻ります：すべてのスレッドを合わせて最大 2 秒待ち、接続中のフィードはクローズ（1000）を送ってサーバーの応答を最大 1 秒待ち、戻った時点ですべてのフィードの `connected?` は false です（まだ閉じている途中のスレッドは自分で終わります）。
 - **無音。** フィードは接続を閉じないまま静かになることがあるので、スレッドはフレームが何もないまま `ping_interval` 秒たつと ping を送り（その後は間隔ごとに 1 回）、pong も含めてフレームが `stale_after` 秒まったく届かなければ、接続を閉じて再接続します。`stale_after` は `ping_interval` より大きくなければならず、`ping_interval` は 1 以上でなければなりません（`subscribe` からの `ArgumentError`）。
@@ -81,7 +81,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
 - **ヘルス。** `Cybertrain::WebSocket.feed_status("trades")` は `Status` を返します：`connected?`、`last_message_at`（エポック秒。最初のメッセージの前は 0）、`reconnects`。これは `GET /up` には含まれません。自前のチェックで使ってください。3 つは 1 つのスナップショットとしてではなく順に読まれ、`connected?` は接続ができた時点、`on_open` の実行前に true になります。
 - **`on_message` は短く保つ。** スレッドは `wait_readable` か `sleep` で待つので、止まったフィードが待っている間 OS のワーカーを占有することはありません。占有するものは 2 つあります：各接続の試行はブロッキングする `getaddrinfo` でホスト名を解決します（[外向きの
   HTTP](#outbound-http) の「名前解決はブロックする」を参照。`SPINEL_WORKERS=1` では、死んだリゾルバーがフィードごと・試行ごとに 1 回、リゾルバーのタイムアウトの間すべてのリクエストを止めます。URL に IP アドレスを書けば問い合わせを避けられます）。そして `on_message` の中の SQLite の呼び出しは、定期タスクと同じく戻るまで占有します（[バックグラウンド処理](background-and-operations.md#background-work)）：`SPINEL_WORKERS=1` では、長い書き込みがすべてのリクエストを止めます。忙しいフィードでは小さな行を 1 つ挿入するか、メッセージをメモリーに集めて `Scheduler.every` のタスクからまとめて書き込んでください。
-- **作られていないもの。** 拡張（`permessage-deflate`）とサブプロトコルはネゴシエートされません。プロキシ、リダイレクト、cookie のサポートも、メッセージの自動保存も、WebSocket サーバー（ActionCable）もありません。テキストフレームが有効な UTF-8 かは検査されません（RFC 6455 の 8.1 節からの逸脱）：バイト列は届いたまま渡されます。`Connection` が有効なのはコールバックの間だけです。リクエストやタスクから送信することはサポートされていません。
+- **作られていないもの。** 拡張（`permessage-deflate`）とサブプロトコルはネゴシエートされません。プロキシ、リダイレクト、cookie のサポートも、メッセージの自動保存もありません（ブラウザーには専用のエンドポイントがあります：[リアルタイム](realtime.md)）。テキストフレームが有効な UTF-8 かは検査されません（RFC 6455 の 8.1 節からの逸脱）：バイト列は届いたまま渡されます。`Connection` が有効なのはコールバックの間だけです。リクエストやタスクから送信することはサポートされていません。
 
 再接続のループなしの 1 本の接続（スクリプト、1 回だけの読み取り）には、同期的なクライアントを使います：
 

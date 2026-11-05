@@ -23,11 +23,14 @@ in production. The Rails vocabulary (`before_action`, `Article.where(...)`,
 of runtime metaprogramming.
 
 **Status:** pre-alpha. Routing, controllers, sessions/CSRF, ERB-style
-templates, SQLite models with validations and associations, migrations,
-authentication and file-upload generators, background jobs, outbound HTTP,
-SMTP and WebSocket clients all work end to end;
+templates with components and application helpers, SQLite models with
+validations and associations, migrations, authentication and file-upload
+generators, background jobs, Turbo Streams over Server-Sent Events or
+WebSocket, outbound HTTP, SMTP and WebSocket clients all work end to end;
 [examples/blog](examples/blog) is the Rails "Getting Started" blog built on
-it. Not built: a WebSocket server, an asset pipeline, i18n, mailer classes
+it. Since 2026-11-05 porting an existing Rails application is a goal, in
+five phases ([design record](docs/design.md), D1). Not built: an asset
+pipeline, i18n, mailer classes, HTTP/2
 ([what differs from Rails](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html#differences-from-rails)).
 
 ## Quick start
@@ -45,6 +48,13 @@ cybertrain db migrate
 cybertrain server      # http://127.0.0.1:3000
 cybertrain build       # production: one binary in dist/
 ```
+
+The binary runs every role a deployment needs: `./blog server` for HTTP and
+the realtime endpoint (`turbo_stream_from @article` on a page,
+`Cybertrain::Stream.broadcast_append_to` from an action or a job),
+`./blog worker` for jobs and scheduled tasks (several may share the
+database; jobs are delivered at least once), `./blog feeds` for WebSocket
+subscriptions, and `./blog console` for a prompt over the models.
 
 Or try it with nothing installed:
 [open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
@@ -64,7 +74,8 @@ the same app in Rails 8.1, in about a tenth of the memory
 | [Models and the database](https://saeki-mototsune.github.io/CyberTrain/guide/models.html) | Migrations, queries beyond `where`, pagination, transactions, column names, ordering |
 | [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Rate limiting, the client address, parameterised headers, query strings and request bodies |
 | [Configuration](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
-| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Jobs (on `job_threads` threads; delivered at least once, so make handlers idempotent), scheduled tasks, the `worker` and `feeds` process roles, backups, the health check |
+| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Jobs (on `job_threads` threads; delivered at least once, so make handlers idempotent), scheduled tasks, the `worker` and `feeds` process roles, the console, backups, the health check |
+| [Realtime](https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names |
 | [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html) | `HttpClient`, `WebSocket.subscribe`, `Mailer` |
 | [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Writing tests for an app, outbound calls, CI |
 | [Deploying](https://saeki-mototsune.github.io/CyberTrain/deploy.html) | To a server with systemd, or with Kamal |

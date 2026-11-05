@@ -1,5 +1,5 @@
 ---
-source_sha256: b84259bcc4f0afd4ba917077642cbc181416a59a524e9e5dc26ec8a76530afb7
+source_sha256: c5ef44e9a88b3fbef4099d33b8ea7e47c5b10fb95eeef6e39fae0a8151f22a9e
 ---
 # 测试应用
 
@@ -112,6 +112,45 @@ end
 ```
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` 让重试延迟变得精确。本仓库中的 `test/websocket_integration.rb` 展示了一个完整的测试。
+
+## 测试流和组件
+
+`require "cybertrain/test/views"` 增加了两个不需要请求的渲染器，用于对局部模板或[组件](template-language.md#components)的 HTML 做断言：
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/views"
+
+test "the comment component names its author" do
+  html = Cybertrain::Test.render_component(CommentComponent.new(comment: Comment.first))
+  assert_includes html, "<strong>"
+end
+
+test "the article partial links to the article" do
+  article = Article.create(title: "Hello", body: "Rendered for the test")
+  html = Cybertrain::Test.render_partial("articles/article", article: article)
+  assert_includes html, BlogTest.article_path(article)
+end
+```
+
+`Test.render_component(component, content: "")` 把 `content:` 作为块的 HTML 传入。两者都像广播那样渲染，所以需要请求的辅助方法在这里同样会抛出 `Cybertrain::Views::OutsideRequest`。
+
+[流](realtime.md)通过端点来测试。`client.get_stream(path, events: n, timeout: 2, headers: {})` 在内存中运行流式响应，直到写出 `n` 个事件（ping 不计入）或超时，然后返回它，以写出的内容作为响应体。在流轮询器运行之前，端点回答 503，而测试客户端不会启动它，所以请在文件中启动一次：
+
+```ruby
+Cybertrain::Stream::Poller.start!
+
+test "a new comment is broadcast to the article's stream" do
+  article = Article.create(title: "Live comments", body: "Posted for the test")
+  Cybertrain::Stream.broadcast_append_to(article, target: "comments", html: "hi")
+  token = Cybertrain::Stream.sign([Cybertrain::Stream.name_for(article)])
+  client = Cybertrain::Test::Client.new(BLOG)
+  res = client.get_stream("/cybertrain/stream?s=#{token}", events: 1, headers: { "last-event-id" => "0" })
+  assert_includes res.body, '<turbo-stream action="append" target="comments">'
+end
+```
+
+新连接只会收到它连接之后广播的内容；把 `last-event-id` 设为 `0` 会重发表中已有的内容，这样测试就可以先广播、后读取。如果只想检查某个动作是否进行了广播，就读取这张表：`Cybertrain::DB.with { |c| c.execute("SELECT stream, payload FROM cybertrain_messages ORDER BY id DESC LIMIT 1") }`。
 
 ## 持续集成
 

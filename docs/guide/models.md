@@ -217,6 +217,45 @@ fallback name, with a comment in the generated file:
 `<table>_as_<column stem>` for a `has_many` (`comments_as_article`),
 `<stem>_as_<column>` for a `belongs_to` (`author_as_author_id`).
 
+## Binary columns
+
+`t.binary` makes a `BLOB` column, for bytes that are not text: a thumbnail,
+a compressed snapshot, a key. The attribute is a String holding exactly the
+stored bytes, NUL bytes and bytes above 127 included, or `nil` for a `NULL`
+(the column is nullable unless declared `null: false`, so a photo saved
+before the column was added has no thumbnail: check for `nil` before
+`bytesize`):
+
+```ruby
+# db/migrate/20261105090000_add_thumbnail_to_photos.rb
+class AddThumbnailToPhotos < Cybertrain::Migration::Base
+  def change
+    add_column "photos", "thumbnail", :binary
+  end
+end
+```
+
+```ruby
+photo.thumbnail = File.binread("thumb.webp")
+photo.save
+Photo.find(photo.id).thumbnail.bytesize   # the same bytes back
+```
+
+- The generated model binds a binary column as a BLOB on save, and
+  `Photo.where(thumbnail: bytes)` binds the bytes as a BLOB too (a TEXT bind
+  never equals a stored BLOB); every other
+  String still binds as TEXT, which stops at a NUL byte. In raw SQL, wrap the
+  bytes in `Cybertrain::DB::Blob.new(bytes)` to bind them as a BLOB
+  (`c.execute("INSERT INTO photos (thumbnail) VALUES (?)", [Cybertrain::DB::Blob.new(bytes)])`).
+- A BLOB cell read with raw SQL is a String of its bytes;
+  `Cybertrain::Cast.binary(value)` narrows it (`""` for `NULL`).
+- `db/schema.rb` dumps the column back as `t.binary`, and the console prints
+  a binary value as `<N bytes>`.
+- Keep large files out of the database: an upload ([Add a file
+  upload](tutorial.md#attachments)) is a file under `storage/uploads/`, while
+  a BLOB is read into memory whole with its row and makes every backup and
+  the WAL larger.
+
 ## Ordering
 
 Where Rails' `order` takes any SQL (`order("lower(title)")`,

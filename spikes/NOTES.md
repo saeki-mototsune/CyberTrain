@@ -78,7 +78,8 @@ written up for upstream.
 | 79 | **Still there**: found on this build (its reduced program does not compile), and not new in it: the same program fails the same way on 2026.10.27.7020 and 2026.11.03.7025 (checked 2026-11-05; docs/spinel-feedback.md, "Rule 79"). |
 | 80 | **Still there**: found on this build. |
 | 81 | **Still there**: found on this build (its reduced program, a lambda literal in a module-body ivar called with an argument, prints garbage for the argument). |
-| 82 | **Still there**: found on this build (a pty shows the prompt only after the line is read). |
+| 82 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
+| 83 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -469,18 +470,7 @@ The rules are numbered in the order they were found. By topic:
     written on a template's first render, which two workers could do at
     once; `Engine.embedded` now parses every embedded template at boot
     (2026-11-05, found in review of the `SPINEL_WORKERS` fix, rule 22).
-    Development's engine (`cache: false`) still writes the cache, and
-    `@stamps`, on the request that renders a changed file, so development
-    serves on one worker whatever `SPINEL_WORKERS` says
-    (`Application.serving_workers`; the boot banner names an ignored
-    count). Rejected: re-parsing on the watcher thread and swapping in a
-    new engine (`Views.configure`), or copy-on-write ivars inside the
-    engine. Both need a request thread to see a fully built object through
-    one plain reference store, and Spinel compiles an ivar store to a plain
-    C store plus the GC write barrier (`sp_gc.h` `SP_WBO`), with no
-    release/acquire ordering its docs promise. The cost: development no
-    longer runs requests in parallel; check parallel behaviour against a
-    `cybertrain build` binary.
+    Development's engine still writes on a changed file.
 58. `Foo.new(<a String made in the argument>)` can free that String before the
     object has it (Spinel 2026.09.12): the generated `new` allocates the
     object, which may collect, and only then roots its arguments. A freshly

@@ -6,7 +6,7 @@ This document describes exactly what that pipeline accepts and executes. Where i
 
 ## What is, and is not, Ruby here
 
-Templates are **not** Ruby. Spinel (the Matz-Ruby AOT compiler cybertrain targets) has no `eval`, so "interpret the view's own Ruby at request time" was never on the table (D9 in `docs/design.md`); what runs instead is a small, closed grammar that only wears ERB/Ruby-looking syntax. There is no arbitrary Ruby inside a tag — only what `ExprParser` (`parser.rb`) recognizes as a statement or expression. There is no `eval`, `send`, `instance_eval`, method/class/module definitions, `require`, exceptions (`begin/rescue`), `case/when`, ranges, regexes, or multiple assignment. The only blocks are `each`, `each_with_index`, and a call to a helper (`form_with(...) do |f| ... end`) — no `{ }` blocks, no `map`/`select`/any other Enumerable-with-a-block. Every method call (`recv.name`) is resolved by hand-written `case` dispatch tables in `interpreter.rb`, keyed on the receiver's runtime Ruby class; a name missing from that type's table fails with a `RuntimeError` — there is no `method_missing`, no reflection, and (per `Interpreter#call_method`) Spinel's lack of `send` is exactly why this is a `case`, not a metaprogrammed lookup. A template can only do what this document describes.
+Templates are **not** Ruby. Spinel (the Matz-Ruby AOT compiler cybertrain targets) has no `eval`, so "interpret the view's own Ruby at request time" was never on the table (D9 in `docs/design.md`); what runs instead is a small, closed grammar that only wears ERB/Ruby-looking syntax. There is no arbitrary Ruby inside a tag — only what `ExprParser` (`parser.rb`) recognizes as a statement or expression. There is no `eval`, `send`, `instance_eval`, method/class/module definitions, `require`, exceptions (`begin/rescue`), ranges, regexes, or multiple assignment. Blocks exist only where this document lists them: `each`/`each_with_index`/`each_slice` loops, a fixed set of Array and Hash methods (`map`, `select`, `sum`, `group_by` ... — see [Blocks](#blocks)), helper calls (`form_with(...) do |f| ... end`) and the `tag` builder. Every method call (`recv.name`) is resolved by hand-written `case` dispatch tables in `interpreter.rb`, keyed on the receiver's runtime Ruby class; a name missing from that type's table fails with a `RuntimeError` — there is no `method_missing`, no reflection, and (per `Interpreter#call_method`) Spinel's lack of `send` is exactly why this is a `case`, not a metaprogrammed lookup. A template can only do what this document describes.
 
 <details><summary>Where this lives in the source — the eight files of the template pipeline</summary>
 
@@ -92,7 +92,7 @@ method arg1, key: value  # same call, no parentheses ("command" syntax)
 - No space is allowed between a call target and its opening `(`: `link_to("x")` and `link_to "x"` both work; `link_to ("x")` is a `SyntaxError`.
 - `yield` and `yield :key` are always parsed as calls (see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials)).
 - A bare capitalized word is rejected outright — `"constants are not supported: 'Time'"` — templates cannot reach Ruby constants.
-- These words are reserved and rejected with a dedicated message (`"'x' is not supported in templates"`): `and or not do end if unless elsif else then while until case when def class module begin rescue return`.
+- These words are reserved and rejected with a dedicated message (`"'x' is not supported in templates"`) wherever an expression is expected: `and or not do end if unless elsif else then while until def class module begin rescue return`. `case` and `when` are statements of their own ([`case`](#case)); inside an expression (`<%= case x %>`) they are rejected the same way.
 
 ### Operators, precedence (low to high)
 
@@ -125,6 +125,25 @@ A `<% %>` tag holds exactly one statement: an assignment, or an expression evalu
 
 `unless`/`else`/`elsif` follow Ruby's rules; `elsif` after `else`, a stray `else`/`elsif`/`end`, or a block never closed by `end` are all `SyntaxError`s naming the opening line.
 
+### `case`
+
+```erb
+<% case @article.status %>
+  <% when :draft, :review %>
+  <span class="badge">unpublished</span>
+  <% when :published %>
+  <span class="badge">live</span>
+  <% else %>
+  <span class="badge">?</span>
+<% end %>
+```
+
+- The subject is evaluated once; each `when`'s values (one or more, separated by commas) are compared in order with the template's `==`, and the first branch with an equal value runs. Numbers compare by value (`1` matches `1.0`); Strings and Symbols by value and type (`"a"` does not match `:a`); records as `==` does (class and `id`); Arrays and Hashes as `==` does (by value, element by element); a `SafeString` and a `String` with the same text are equal. There is no `===`: no ranges, classes or regexes after `when`.
+- `else` runs when no value matched; with no `else` and no match nothing is printed.
+- Only blank text (indentation, newlines) may stand between `case` and its first `when`; it is dropped. Anything else there is a `SyntaxError` (`"text between 'case' and its first 'when'"`).
+- `when` outside a `case` (`"'when' without 'case'"`), a `case` with no subject or no `when`, a `when` with no value or after `else`, and a `case` never closed by `end` are `SyntaxError`s naming the line. `then` stays reserved: `<% when :a then x %>` is a `SyntaxError`.
+- A local first assigned inside a branch follows the block-local rule of the block it sits in, as with `if`.
+
 ### Loops
 
 ```erb
@@ -133,7 +152,8 @@ A `<% %>` tag holds exactly one statement: an assignment, or an expression evalu
 <% items.each_with_index do |item, i| %>...<% end %>
 ```
 
-- `each`/`each_with_index` are recognized only as a suffix on the block head (`x.each do |...|`). **As built**, both require declaring one or two block parameters — `xs.each do end` is a `SyntaxError` ("takes one or two block parameters"), where plain Ruby allows zero.
+- `each`/`each_with_index` are recognized only as a suffix on the block head (`x.each do |...|`); the collection may be any expression, a block-taking call included (`<% items.group_by { |i| i.kind }.each do |kind, list| %>`). **As built**, both require declaring one or two block parameters — `xs.each do end` is a `SyntaxError` ("takes one or two block parameters"), where plain Ruby allows zero.
+- `<% x.each_slice(n) do |slice| %>...<% end %>` iterates over the slices of `n` items (the last may be shorter), and also needs one or two parameters; with two a slice is taken apart (`do |a, b|`), the second `nil` when the slice is short.
 - Array + one param: the item. Array + two params: an `Array` item is destructured (`a, b = item[0], item[1]`); otherwise the second is `nil`.
 - `each_with_index` on an Array: `item, i`. On a Hash: the first param is a `[key, value]` pair, the second the index.
 - `each` on a Hash with two params: `key, value` directly; with one param: a `[key, value]` pair.
@@ -142,7 +162,7 @@ A `<% %>` tag holds exactly one statement: an assignment, or an expression evalu
 
 ### Block calls (helpers)
 
-`do ... end` is also how a receiverless helper call takes a block — the only other legal use of a block, and only when there is no receiver (`f.each do |x| end` is refused: "blocks are only supported on each, each_with_index and helper calls"):
+`do ... end` is also how a receiverless helper call takes a block (for a call with a receiver, see [Blocks](#blocks)):
 
 ```erb
 <%= form_with(model: @post) do |f| %>...<% end %>   <%# printed: form_with returns the <form> HTML %>
@@ -150,6 +170,39 @@ A `<% %>` tag holds exactly one statement: an assignment, or an expression evalu
 ```
 
 Whether the block's result is printed follows the tag: `<%= helper do |x| %>` prints it, `<% helper do |x| %>` discards it. Exactly one block parameter is ever bound; a helper block never gets an index or a second value.
+
+### Blocks
+
+A call with a receiver may take a block, `{ |x| expr }` or `do |x| ... end`, with zero, one or two parameters. Which methods accept one is fixed per type; a block anywhere else is a `SyntaxError` raised when the call runs (`"String#upcase takes no block"`), and a method the type does not have is the ordinary `"undefined method 'x' for Array"`, with or without a block.
+
+| Receiver | Methods taking a block | The block's value is used as |
+| --- | --- | --- |
+| `Array` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | the mapped value, the test, the summand, the sort key, the group key |
+| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | the same, the block seeing `\|key, value\|` (one parameter gets the `[key, value]` pair); `select`/`reject` answer a Hash, the others what the Array method answers over the pairs |
+| the `tag` builder | every element (`tag.div do ... end`) | its **output** is the element's content ([The tag builder](#the-tag-builder)) |
+
+```erb
+<%= @items.map { |i| i.name }.join(", ") %>
+<%= @line_items.sum { |li| li.price } %>
+<% @items.group_by { |i| i.kind }.each do |kind, list| %>
+  <h2><%= kind %></h2> <%= list.size %>
+<% end %>
+<% total = @line_items.sum do |li| %>
+  <% li.price * li.quantity %>
+<% end %>
+```
+
+- **Value, not output.** For the Array and Hash methods the block's *value* counts: a `{ }` block's expression, or a `do` block's last statement, which must be an expression statement (`<% x * 2 %>`); `"map's block must end in a value"` otherwise (an assignment, or text). What the earlier statements of a `do` block print is discarded. A `do` block on such a method sits on its own tag, assigned (`<% total = items.sum do |li| %>`) or printed (`<%= items.map do |x| %>`).
+- **No mutation.** Templates have no way to change an accumulator, so `each_with_object` and `inject` are not in the table (`"undefined method 'each_with_object' for Array"`): use `map`, `select`, `sum` or `group_by`.
+- Two parameters take an Array item apart, as `each` does (`pairs.map { |a, b| a }`).
+- `sum` of an empty Array is `0`; Integers sum to an Integer, a Float anywhere makes it a Float (added with the same compensation as Ruby's, so `[0.1, 0.2, 0.3].sum` is `0.6`); Strings are refused (`"sum: use join for Strings"`), as is anything that is not a number.
+- `sort_by`, `min_by`, `max_by` (and blockless `sort`, `min`, `max`) compare as `<` does (numbers, Strings, Times; `"comparison of String with Integer failed"` otherwise). `sort_by` is stable: equal keys keep their order. `min_by`/`max_by` of an empty Array are `nil`.
+- `group_by` answers a Hash from each key **as a String** (every template Hash is String-keyed: `:fruit` and `"fruit"` are one group) to the items with that key, in first-seen order.
+- `each`, `each_with_index` and `each_slice` take their block in a `<% %>` tag ([Loops](#loops)); `items.each { |x| x }` is a `SyntaxError`.
+- A block on a `FormBuilder` or `Page` method is refused the same way (`"FormBuilder#label takes no block"`), and the blockless Array methods take no arguments (`nums.sum(10)` is `"wrong number of arguments for 'sum'"`).
+- If a block raises, its parameters and locals are restored before the error leaves the call.
+- A `{ }` block needs a receiver: `shout { |x| x }` is a `SyntaxError` (helper calls take `do ... end`).
+- Block parameters shadow outer names during the call and are restored after it; a local first assigned in a `do` block is block-local, as in `each`.
 
 ### Assignment
 
@@ -170,8 +223,8 @@ Only `name = expr` for one plain local — no `@ivar = ...`, no `arr[0] = ...`/`
 | `Integer` | `to_s` `to_i` `to_f` `zero?` `positive?` `negative?` `abs` | `post.comments.size.zero?` |
 | `Float` | `to_s` `to_i` `to_f` `zero?` `positive?` `negative?` `abs` `round` `round(n)` `floor` `ceil` | `price.round(2)` |
 | `Time` | `year` `month` `day` `hour` `min` `sec` `strftime(fmt)` `to_s` `to_i` | `post.created_at.strftime('%Y-%m-%d')` |
-| `Array` | `size`/`length`/`count` `empty?` `any?` `first` `last` `reverse` `include?(x)` `join(sep)` `to_a` | `post.comments.any?` |
-| `Hash` | `key?(k)` `fetch(k, default)` `size`/`length`/`count` `empty?` `any?` `keys` `values`, plus `h[key]` | `flash.key?(:notice)` |
+| `Array` | `size`/`length`/`count` `empty?` `any?` `first` `last` `reverse` `include?(x)` `join(sep)` `to_a` `sum` `min` `max` `sort` `uniq` `compact` `flatten` `take(n)` `drop(n)` `each_slice(n)` (an Array of Arrays) `zip(other)`, and the block methods of [Blocks](#blocks) | `post.comments.any?` |
+| `Hash` | `key?(k)` `fetch(k, default)` `size`/`length`/`count` `empty?` `any?` `keys` `values` `to_a` (the `[key, value]` pairs), plus `h[key]` and the block methods of [Blocks](#blocks) | `flash.key?(:notice)` |
 | `Errors` | `any?` `empty?` `count`/`size` `full_messages` `key?(a)`/`include?(a)`, plus `errors[:attr]` | `post.errors.full_messages.join(', ')` |
 | `Params` | `key?(k)` `empty?`, plus `params[key]` | `params[:id]` |
 | `Page` (`Relation#page`) | `number` `per` `row_offset` `next?` `prev?` `next_number` `prev_number` | `@page.next?` |
@@ -206,14 +259,14 @@ Two models compare with `==` by class and `id` (`Model#==`), reachable as the or
 
 ## Helpers and the form builder
 
-Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matches one of the built-ins below, treats a name ending in `_path`/`_url` as a generated route helper (via `Cybertrain::Views.url_resolver`, raising `"no routes"` until the app installs one), or raises `"undefined helper 'name'"`.
+Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matches one of the built-ins below; inside a [component's](#components) template, then tries that component's view methods; treats a name ending in `_path`/`_url` as a generated route helper (via `Cybertrain::Views.url_resolver`, raising `"no routes"` until the app installs one); then tries the [application's helpers](#application-helpers); or raises `"undefined helper 'name'"`.
 
 | Helper | Signature | Notes / example |
 | --- | --- | --- |
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` escaped unless already `SafeString`; **no `method:`** — raises, telling you to use `button_to` (no rails-ujs/turbo faking of DELETE links) |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | one-button `<form class="button_to">`; hidden `_method` for any verb but `get`/`post`, plus the CSRF field when a session exists |
 | `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | needs a block; `model:` new → collection route + POST, persisted → member route + PATCH; `[parent, child]` for a nested route; `url:`/`method:` override the derived action/verb; `multipart: true` adds `enctype="multipart/form-data"` (required for `f.file_field`; it is never guessed from the block, and raises `ArgumentError` on a GET form) |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials) |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render component: "card", k: v` | see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials) and [Components](#components) |
 | `h`, `escape` | `h(text)` | escapes; a `SafeString` passes through unescaped |
 | `raw` | `raw(text)` | wraps text in a `SafeString` (prints unescaped) |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`; `pluralize(2, "mouse")` → `"2 mice"` (Rails' default English inflections, via `Cybertrain::Inflector`; app-defined inflections are not supported); explicit third arg always wins |
@@ -228,8 +281,35 @@ Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matc
 | `url_for` | `url_for(target)` | `String` as-is, `Model` → member route, `[parent, child]` → nested route |
 | `paginate` | `paginate(page, path)` | `page` is a `Cybertrain::Page` (from `Relation#page`); renders `<nav class="pager">` with "Newer" (`rel="prev"`), `<span class="pager-current">Page N</span>` and "Older" (`rel="next"`), a link left out when there is no such page. Each link is `path` plus the current request's query string with `page` replaced (dropped for page 1), re-encoded and HTML-escaped; a `path` with its own `?query` uses that instead. A `Page` also answers `number`, `per`, `row_offset`, `next?`, `prev?`, `next_number`, `prev_number` in a template (`<% if @page.next? %>`) |
 | `*_path` / `*_url` | e.g. `post_path(post)` | generated by the app, resolved via `Cybertrain::Views.url_resolver` |
+| `tag` | `tag.div(content, attrs) do ... end` | the tag builder: see [The tag builder](#the-tag-builder) |
+| `content_tag` | `content_tag(name, content = nil, attrs)`, or with a `do` block | `content_tag "p", "<i>", class: "n"` → `<p class="n">&lt;i&gt;</p>`; the same rules as `tag` |
+| `safe_join` | `safe_join(array, sep = "")` (no keyword arguments) | joins into a `SafeString`, escaping every item and the separator that is not already a `SafeString`: `safe_join([tag.b("a"), "<"], " ")` → `<b>a</b> &lt;` |
+| `class_names` | `class_names(*values)` | Rails' `class_names`/`token_list`: the words of Strings and Symbols, of Arrays (nested too) and of each Hash key whose value is truthy, each word once; keyword arguments are one more such Hash: `class_names("btn", active: @on, big: false)` → `"btn active"` |
+| `dom_id` | `dom_id(record, prefix = "")` (the prefix is positional, as in Rails) | `"article_12"`, `"new_article"` for an unsaved record, `dom_id(@article, "edit")` → `"edit_article_12"` (`Cybertrain::Html.dom_id` in Ruby) |
+| `turbo_stream_from` | `turbo_stream_from(*streams, ws: false)` | one `<turbo-stream-source>` subscribing the page to the streams (Strings, or records named `"articles:12"`); `ws: true` gives a `ws://`/`wss://` URL and needs a request. See [Realtime](realtime.md#turbo-streams) |
+| `signed_stream_name` | `signed_stream_name(*streams)` | the signed token alone, for hand-written JavaScript |
+| `stream_source_path` | `stream_source_path(*streams, mode: "json")` | the stream endpoint's path with the token and `mode=json` (or `"raw"`) |
 
 Every helper text argument follows one rule: a `SafeString` passes through unescaped, anything else is escaped — `link_to raw('<b>raw</b>'), post` prints the bold tag literally, but `link_to post.title, post` escapes it.
+
+### The tag builder
+
+`tag` evaluates to a builder (`Cybertrain::Html::TagBuilder`); any method called on it is an element, rendered by `Cybertrain::Html.tag` (also callable from Ruby: `Html.tag("a", { href: "/x" }, "Go")`):
+
+```erb
+<%= tag.div(class: "card") do %>
+  <%= tag.h2 @article.title, id: dom_id(@article) %>
+<% end %>
+<%= tag.input type: "text", name: "q", disabled: true %>   <%# <input type="text" name="q" disabled> %>
+<%= tag.path d: "M0 0 L10 10" %>                         <%# SVG elements work %>
+<%= tag.my_widget data: { turbo_frame: "f" } %>          <%# <my-widget data-turbo-frame="f"></my-widget> %>
+```
+
+- `<%= tag %>` alone prints nothing.
+- The element name is the method name with `_` turned into `-`; it must match `[a-z][a-z0-9-]*` (`"invalid element name 'Div'"` otherwise, from `Html.tag`).
+- Content is the one positional argument (escaped unless a `SafeString`, so `tag.script("alert(1)")` prints its text escaped) or the block's **output** (`do ... end`, or `{ expr }` whose value is printed escaped); the block wins. With neither, `tag.div` is `<div></div>`.
+- Void elements (`area base br col embed hr img input link meta source track wbr`) render without a closing tag; content or a block for one is an error (`"br is a void element"`).
+- Attributes are the keyword arguments, in order: `nil` and `false` drop the attribute, `true` renders it bare (`disabled`), an Array joins its non-`nil` items with spaces (`data: { ids: [1, 2] }` gives `data-ids="1 2"`, not Rails' JSON), `class:` takes what `class_names` takes (`class: ["btn", { active: @on }]`), `data:` and `aria:` Hashes nest to `data-key="v"` / `aria-key="v"` with underscores turned into dashes (and `true`/`false` written out there); any other Hash value is an error (`"attribute 'title' cannot be a Hash"`). Every value is escaped, a `SafeString` too. Attribute names must match `[a-zA-Z_:][-a-zA-Z0-9_:.]*` (`"invalid attribute name 'data-a b'"`); `onclick:` and the like are allowed, being the author's.
 
 ### FormBuilder (`f` in `form_with ... do |f|`)
 
@@ -245,6 +325,81 @@ Every method returns a `SafeString`; an unlisted one is a `RuntimeError` (`"unde
 | `f.submit` / `f.submit "Text"` | default text `"Create Post"`/`"Update Post"` (by `persisted?`), or `"Save changes"` with no model |
 
 With a model, fields are named `post[title]`/`id="post_title"` (`Inflector.underscore(model.model_name)` as scope); with `form_with(url: ...)` and no model, the bare attribute name is used for both. Extra keyword args become HTML attributes in order given: `true` → `attr="attr"`, `false`/`nil` dropped, anything else → `attr="value"` (escaped), underscores become hyphens (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), and `class:` merges with the automatic `field_with_errors` class added when `model.errors.key?(attr)`.
+
+## Application helpers
+
+A module under `app/helpers/` is a helper module, as in Rails: every public method in it can be called from any template, without a receiver.
+
+```ruby app/helpers/prices_helper.rb
+module PricesHelper
+  def price(value, unit: "USD", precision: 2)
+    amount = Cybertrain::Cast.float(value).round(Cybertrain::Cast.int(precision))
+    Cybertrain::Html.tag("span", { class: "price" }, "#{amount} #{unit}")
+  end
+
+  def panel(title, &block)
+    Cybertrain::Html.tag("section", { class: "panel" }, Cybertrain::Html.safe_join([Cybertrain::Html.tag("h2", {}, title), yield]))
+  end
+end
+```
+
+```erb
+<%= price @item.cost %>                  <%# <span class="price">12.5 USD</span> %>
+<%= price @item.cost, unit: "EUR" %>
+<%= panel "Totals" do %><p><%= @total %></p><% end %>
+```
+
+- **Generated dispatch.** Templates cannot `send`, so `spin run gen` reads `app/helpers/**/*.rb` as text and writes `gen/helpers.rb`: an `ApplicationHelpers` class that includes every module (and the route helpers) and a `case` over the helper names. Add or change a helper's signature, and the next build regenerates it (the development server does both). `cybertrain generate helper prices` writes an empty `PricesHelper` and a test.
+- **What is a helper.** Public instance methods of a `module` (`def self.x`, setters and everything after `private` or `protected` are not), whatever their file. A template passes values by position or keyword, so every parameter is named: `*rest`, `**opts`, `...` are generator errors, as is a required parameter after an optional one. A helper takes at most three optional parameters (the generated `case` has one arm per combination given, so an omitted keyword gets the method's own default). A wrong call is an `ArgumentError` at render time: `"wrong number of arguments for 'price' (given 0, expected 1)"`, `"unknown keyword 'cur' for 'price' (known: unit, precision)"`.
+- **Reserved names.** A helper may not be named like a framework helper (`link_to`, `render`, `tag`, `dom_id`, `params`, `content`, ...), like a method of `Cybertrain::Template::Helpers` (public or private: the `include` would replace it for the framework too), `yield`, or with a `_path` / `_url` ending (the route helpers answer those); the same name in two modules is an error as well. `spin run gen` stops with the file, the line and the reason.
+- **Values.** Arguments arrive as the template's values (String, Integer, Float, `nil`, a record, an Array, a Hash); narrow them with `Cybertrain::Cast` (`Cast.str`, `Cast.int`, `Cast.float`) before arithmetic. What a helper returns is printed like any value: a `String` is escaped, a `SafeString` is not, so build HTML with `Cybertrain::Html.tag(name, attrs, content)`, `Html.safe_join`, `Html.class_names`, `Html.dom_id`, `Html.escape`, `Cybertrain::SafeString.of` or the Ruby forms of the link helpers, `link_to_path(text, path, attrs)` and `button_to_path(text, path, attrs)` (`method:` inside `attrs`).
+- **Blocks.** A helper with a `&block` parameter takes a `do ... end` block; `yield` (no arguments) returns what the block printed, as a `SafeString`.
+
+## Components
+
+A component is a class with keyword arguments and a template beside it, in [ViewComponent](https://viewcomponent.org)'s shape:
+
+```ruby app/components/card_component.rb
+class CardComponent < Cybertrain::Component
+  def initialize(title:, value: 0, tone: "neutral")
+    @title = title
+    @value = value
+    @tone = tone
+  end
+
+  def value_text = "#{@value} pts"
+  def tone_class = "card--#{@tone}"
+end
+```
+
+```erb app/components/card_component.html.erb
+<%= tag.div(class: class_names("card", tone_class)) do %>
+  <h3><%= title %></h3><p><%= value_text %></p><%= content %>
+<% end %>
+```
+
+```erb
+<%= render component: "card", title: "Visitors", value: @count %>
+<%= render component: "card", title: "Notes", tone: "warm" do %>
+  <p><%= @note %></p>
+<% end %>
+```
+
+- The template sees the component's instance variables as locals (`title`), its public methods without parameters by name (`value_text`), and `content`, what the `do` block printed (`""` without one). It renders without a layout, can render partials and other components, and counts toward `max_render_depth` like a partial. A partial it renders does not see the component's methods.
+- A component is named by its snake-case name without `_component`, as a partial is named by its path: `"card"` for `CardComponent`, `"admin/user_row"` for `Admin::UserRowComponent` (`app/components/admin/user_row_component.rb`). Templates cannot name constants.
+- `spin run gen` writes `gen/components.rb` from a lexical scan, as for helpers: the class line, the `@x =` assignments, the parameterless `def`s and the `initialize` keywords. `initialize` takes keywords only (at most three of them optional), and its template must exist; a missing keyword or an unknown one is an `ArgumentError` at render time. An unknown component is `Cybertrain::Component::Unknown`: `` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``.
+- `cybertrain generate component card title value:integer` writes the class, its template and a test that renders it with `Cybertrain::Test.render_component`.
+
+### Rendering outside a request
+
+A broadcast, a job or a mail body renders without a request:
+
+```ruby
+html = Cybertrain::Views.render_partial("articles/article", article: article)   # app/views/articles/_article.html.erb
+card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", value: 12))
+```
+
+Both return the HTML as a String, with the application's helpers. Path helpers work (`article_path(article)`), strict locals are checked, and forms (`form_with`, `button_to`) render without the authenticity token (a Turbo page submits the one from `csrf_meta_tags`). A helper that needs a request raises `Cybertrain::Views::OutsideRequest` (`"csrf_token needs a request"`): `csrf_token`, `csrf_meta_tags`, `params`, `flash`, `request_path`, any `*_url` helper and `turbo_stream_from ... ws: true`. `paginate` links carry only the path's own query string. (A bare `Cybertrain::Template::Helpers.new(nil)`, as a unit test might build, answers those with empty values instead.)
 
 ## Layouts, `yield`, `content_for`, partials
 
@@ -290,6 +445,8 @@ Two exception classes, both in `ast.rb`'s `Cybertrain::Template` namespace (dist
 
 Any plain `StandardError` from a helper or `FormBuilder`/custom-object method call (a bare `raise "text"`, `ArgumentError`, `KeyError`, even a `Cybertrain::Template::RuntimeError` from a nested `render`) is caught and "relocated": rewritten to `"<current template>:<current line>: <original message>"`, unless it is already exactly the last-relocated message (a nested `render` already stamped its own, more specific location), in which case it passes through unchanged. A `Cybertrain::Template::SyntaxError` raised by a helper (a partial that fails to parse, mid-render) is never rewrapped — it keeps its own `"<partial>:<line>: ..."` message and class, so a broken partial is always reported as a `SyntaxError` about itself, not a `RuntimeError` about whoever rendered it.
 
+`Cybertrain::Views::OutsideRequest` and `Cybertrain::Component::Unknown` also pass through unwrapped, keeping their class, so a caller of `Views.render_partial` can rescue them.
+
 `MissingTemplate` (`StandardError`, `engine.rb`) is raised **unwrapped**, no `template:line` prefix, from a top-level `Engine#template`/`#render`/`#render_with_layout` call (e.g. a controller rendering a missing action template or layout): `"Missing template <path>"`. The same exception raised *inside* a template via the `render` helper's partial lookup goes through relocation instead and comes out a `RuntimeError`: `"posts/inline:1: Missing template test/fixtures/views/posts/_nope.html.erb"`.
 
 ## Differences from Rails ERB
@@ -298,12 +455,13 @@ Any plain `StandardError` from a helper or `FormBuilder`/custom-object method ca
 | --- | --- |
 | Compiled to a Ruby method; any Ruby, any object, any method works | Interpreted against fixed per-type dispatch tables; only what the [per-type method table](#per-type-method-table) lists is callable |
 | `ActiveSupport::SafeBuffer` is a `String` subclass | `SafeString` is a separate wrapper class — only `to_s`/`html_safe?`/`size`/`length`/`empty?` are callable on it |
-| Blocks: `each`, `{ }`, `map`, any Enumerable method | Only `do...end`, and only on `each`/`each_with_index`/a helper call |
+| Blocks: `each`, `{ }`, `map`, any Enumerable method | `{ }` and `do...end` on a fixed list of Array/Hash methods (no `each_with_object`, `inject`), `each`/`each_with_index`/`each_slice` loops, helper calls and `tag` |
 | `xs.each { }` — zero block params is fine | `each`/`each_with_index` require declaring 1 or 2 block params |
 | `link_to text, path, method: :delete` (JS-driven) | No `method:` on `link_to` — use `button_to` for a real non-GET form |
 | Strict locals accept `name: default_expr` (Rails 7.1) | Only bare `name:` (required); a default-value entry is a `SyntaxError` |
 | Undefined ivar/local resolves via Ruby / the view context's methods | `@x` is a plain, never-failing env lookup; a bare undefined local is an explicit, closed helper-call attempt (`"undefined helper"` if no match) |
-| `and`/`or`/`not`, `case/when`, ranges, regexes, multiple assignment all work | None exist; the reserved words fail with a specific "not supported in templates" message, not a generic parse error |
+| `case/when` with `===` (ranges, classes, regexes) | `case/when` with `==` only (numbers by value) |
+| `and`/`or`/`not`, ranges, regexes, multiple assignment all work | None exist; the reserved words fail with a specific "not supported in templates" message, not a generic parse error |
 | Numeric literals: hex, octal, binary, exponents, rationals | Only decimal integers/floats with optional `_` separators |
 | `:"quoted symbol"`, `:+` operator symbols | Symbols are identifier characters only |
 | `foo (x)`, `foo [x]` (space tolerated, sometimes with a warning) | Both are hard `SyntaxError`s — no space before a call's `(` or an index's `[` |
@@ -311,3 +469,5 @@ Any plain `StandardError` from a helper or `FormBuilder`/custom-object method ca
 | An undeclared/misspelled attribute reliably raises `NoMethodError` | Silently renders blank unless the specific generated model overrides `attribute_or_method?` (tracked gap, not a guarantee) |
 | `1 / 0` and `1.0 / 0` both raise `ZeroDivisionError` | `Integer` division/modulo by zero raises `"divided by 0"`; `Float` follows IEEE-754 (`Infinity`/`NaN`), no error |
 | `distance_of_time_in_words`/pluralization support i18n locales | English-only, no locale support |
+| Every module in `app/helpers` is mixed in; any signature; a helper may override a framework one | Modules are scanned at build time into a generated `case`: named parameters only, at most three optional, no framework helper name and no `_path`/`_url` ending ([Application helpers](#application-helpers)) |
+| ViewComponent: `render CardComponent.new(title: "x")`, `with_collection`, slots | `render component: "card", title: "x"` by name, `content` from the block; no collections or slots ([Components](#components)) |

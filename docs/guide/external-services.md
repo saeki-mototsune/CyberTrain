@@ -133,6 +133,8 @@ blocks take their arguments and cannot use `self` (Spinel has no
 - **When it runs.** The feeds start when the binary serves, like the
   scheduler ([Background work](background-and-operations.md#background-work)); `migrate`, `db ...`,
   `Main.command` commands and `Cybertrain::Test::Client` never start them.
+  `./<app> feeds [NAME...]` runs them in a process of their own, all of them
+  or the named ones ([Process roles](background-and-operations.md#process-roles)).
   With `CYBERTRAIN_WORKER=0` (`config.worker = false`) they do not run in
   that process (they simply do not start; the only notice is the
   scheduler's "run elsewhere" line, and `WebSocket.start!` called directly
@@ -206,7 +208,8 @@ blocks take their arguments and cannot use `self` (Spinel has no
   memory and write them in batches from a `Scheduler.every` task.
 - **Not built.** Extensions (`permessage-deflate`) and subprotocols are not
   negotiated. There is no proxy, redirect or cookie support, no automatic
-  saving of messages, and no WebSocket server (ActionCable). Text frames are
+  saving of messages (browsers have an endpoint of their own:
+  [Realtime](realtime.md)). Text frames are
   not checked for valid UTF-8 (a departure from RFC 6455 section 8.1): the
   bytes are passed on as they came. The `Connection` is valid only during
   the callback; sending from a request or a task is not supported.

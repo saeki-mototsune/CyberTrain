@@ -1,5 +1,5 @@
 ---
-source_sha256: cd6c53969fe07a4ba778257843c8f8db6c9a412999f0379a7aafaf9c4c621b4a
+source_sha256: f1c57df606a0e210a2c5e99b1cf824f1ef22496aa20ab44f4a04e802df0a1f04
 ---
 # Modèles et base de données
 
@@ -186,6 +186,47 @@ Une colonne nommée comme une méthode que la classe générée ou le framework 
 Une colonne nommée comme une autre méthode d’Object (`display`, `tap`, `methods`) est générée sous son propre nom avec une note. `cybertrain generate scaffold` refuse les mots-clés et les noms réservés (il devrait appeler un lecteur renommé) et accepte un nom masquant avec une note, comme le générateur.
 
 Une association dont le nom simple est déjà pris par une colonne, une autre association ou une méthode de `Model` (Rails en laisse une masquer `errors`) est émise sous un nom de repli, avec un commentaire dans le fichier généré&nbsp;: `<table>_as_<column stem>` pour un `has_many` (`comments_as_article`), `<stem>_as_<column>` pour un `belongs_to` (`author_as_author_id`).
+
+## Colonnes binaires
+
+`t.binary` crée une colonne `BLOB`, pour des octets qui ne sont pas du
+texte&nbsp;: une vignette, un instantané compressé, une clé. L’attribut est
+une String qui contient exactement les octets stockés, octets NUL et octets
+au-dessus de 127 compris, ou `nil` pour un `NULL` (la colonne accepte NULL
+sauf si elle est déclarée `null: false`&nbsp;: une photo enregistrée avant
+l’ajout de la colonne n’a pas de vignette, vérifiez `nil` avant
+`bytesize`)&nbsp;:
+
+```ruby
+# db/migrate/20261105090000_add_thumbnail_to_photos.rb
+class AddThumbnailToPhotos < Cybertrain::Migration::Base
+  def change
+    add_column "photos", "thumbnail", :binary
+  end
+end
+```
+
+```ruby
+photo.thumbnail = File.binread("thumb.webp")
+photo.save
+Photo.find(photo.id).thumbnail.bytesize   # les mêmes octets en retour
+```
+
+- Le modèle généré lie une colonne binaire comme un BLOB à
+  l’enregistrement&nbsp;; toute autre String se lie toujours comme TEXT, qui
+  s’arrête à un octet NUL. En SQL brut, enveloppez les octets dans
+  `Cybertrain::DB::Blob.new(bytes)` pour les lier comme un BLOB
+  (`c.execute("INSERT INTO photos (thumbnail) VALUES (?)", [Cybertrain::DB::Blob.new(bytes)])`).
+- Une cellule BLOB lue en SQL brut est une String de ses octets&nbsp;;
+  `Cybertrain::Cast.binary(value)` la restreint (`""` pour `NULL`).
+- `Photo.where(thumbnail: bytes)` lie aussi les octets comme un BLOB (un
+  TEXT lié n’est jamais égal à un BLOB stocké).
+- `db/schema.rb` réécrit la colonne sous la forme `t.binary`, et la console
+  affiche une valeur binaire comme `<N bytes>`.
+- Gardez les gros fichiers hors de la base&nbsp;: un envoi de fichier
+  ([Ajouter un envoi de fichier](tutorial.md#attachments)) est un fichier
+  sous `storage/uploads/`, alors qu’un BLOB est lu entièrement en mémoire
+  avec sa ligne et grossit chaque sauvegarde et le WAL.
 
 ## Tri
 

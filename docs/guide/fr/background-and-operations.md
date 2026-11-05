@@ -1,5 +1,5 @@
 ---
-source_sha256: 438fc2c71e978981341d9c6453c440e4ddf31336c561b3788126cfef4875f9ec
+source_sha256: 0baa2cbe2f6ba4660c7c7cc119800b524b5117dcc1e3d25d565af42ef866d793
 ---
 # Tâches de fond et exploitation
 
@@ -8,7 +8,8 @@ source_sha256: 438fc2c71e978981341d9c6453c440e4ddf31336c561b3788126cfef4875f9ec
 Une application qui doit faire quelque chose en dehors d’une requête (envoyer
 une notification une fois la réponse partie, purger les anciennes lignes toutes
 les heures, réessayer un appel qui a échoué) l’enregistre auprès du framework,
-qui l’exécute sur un thread d’arrière-plan du processus qui sert&nbsp;:
+qui l’exécute sur des threads d’arrière-plan du processus qui sert, ou d’un
+processus worker séparé&nbsp;:
 
 ```ruby
 # config/app.rb (ou un fichier que bin/<app>.rb requiert avant Cybertrain::Main.run)
@@ -28,52 +29,175 @@ Cybertrain::Job.enqueue("welcome_mail", JSON.generate({ "email" => @user.email }
 Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 ```
 
-- **Quand il s’exécute.** Le thread démarre quand le binaire sert (`./<app>`,
-  `./<app> server`), après que le démarrage a connecté la base de données, lié
-  le port et défini `SPINEL_WORKERS`&nbsp;; les commandes `migrate`, `db ...` et
-  `Main.command` ne le démarrent jamais, pas plus que
-  `Cybertrain::Test::Client`. Une tâche s’exécute une première fois `seconds`
-  après le démarrage, puis `seconds` après le début de chaque exécution. Chaque
-  exécution est enveloppée dans un rescue qui journalise `[ERROR] Scheduled task
-  "name" failed: ...`, et la boucle continue. Le bloc ne prend pas d’argument
-  (Spinel n’a pas d’`instance_eval`). `Cybertrain::Scheduler.last_tick` est la
-  seconde epoch du dernier tick, pour un contrôle de santé de votre cru.
-- **Jobs.** `Job.enqueue` ajoute une ligne à la table `cybertrain_jobs`, que le
-  framework crée lui-même (`CREATE TABLE IF NOT EXISTS`, à la première
+- **Où cela s’exécute.** Les tâches planifiées s’exécutent sur un thread de
+  scheduler&nbsp;; les jobs s’exécutent sur `job_threads` threads de jobs
+  bien à eux (3, `CYBERTRAIN_JOB_THREADS`), si bien qu’un long job ne
+  retarde jamais une tâche. Les deux démarrent quand le binaire sert
+  (`./<app>`, `./<app> server`) ou tourne comme worker (`./<app> worker`,
+  voir [Rôles des processus](#process-roles)), après que le démarrage a
+  connecté la base de données et défini `SPINEL_WORKERS`&nbsp;; les
+  commandes `migrate`, `db ...`, `console` et `Main.command` ne les
+  démarrent jamais, pas plus que `Cybertrain::Test::Client`. Une tâche
+  s’exécute une première fois `seconds` après le démarrage, puis `seconds`
+  après le début de chaque exécution. Chaque exécution est enveloppée dans
+  un rescue qui journalise `[ERROR] Scheduled task "name" failed: ...`, et
+  la boucle continue. Le bloc ne prend pas d’argument (Spinel n’a pas
+  d’`instance_eval`). `Cybertrain::Scheduler.last_tick` est la seconde epoch
+  du dernier tick, pour un contrôle de santé de votre cru.
+- **Jobs.** `Job.enqueue` ajoute une ligne à la table `cybertrain_jobs`, que
+  le framework crée lui-même (`CREATE TABLE IF NOT EXISTS`, à la première
   utilisation) et laisse hors de `db/schema.rb`. La charge utile est une
-  String&nbsp;: encodez en JSON les données structurées. Dans un
-  `DB.transaction`, la ligne est validée ou annulée avec le reste. Le worker,
-  une tâche du scheduler qui interroge la table toutes les `job_poll_interval`
-  secondes (5), réserve le plus ancien job échu dans une courte transaction
-  `BEGIN IMMEDIATE`, exécute son handler en dehors de celle-ci, et le marque
-  `done`. Un handler qui lève une exception est réessayé 1, 5, 15 puis
-  60 minutes plus tard, avec `Class: message` (jusqu’à 1000 caractères) dans
-  `last_error`, jusqu’à ce que `job_max_attempts` (5) tentatives aient
-  échoué&nbsp;: la ligne est alors `failed` et reste là pour que vous
-  l’examiniez. Un job dont le type n’a pas de handler est immédiatement
-  `failed`&nbsp;; `Job.enqueue` refuse un type non enregistré. Les lignes qu’un
-  processus planté a laissées `running` sont remises en file au démarrage du
-  worker. `Job.state_count("failed")` et `Job.prune_done(before_epoch)` aident
-  pour une page de santé et le ménage.
-- **Un worker par base de données.** Chaque processus qui sert exécute le
-  thread, sauf avec `CYBERTRAIN_WORKER=0` (`config.worker = false`)&nbsp;: quand
-  plusieurs processus partagent un même fichier SQLite, désactivez-le dans tous
-  sauf un, sinon chaque tâche planifiée s’exécute une fois par processus.
-- **Gardez les tâches courtes.** Les tâches et les handlers s’exécutent un par
-  un sur ce seul thread, et un appel SQLite occupe son worker OS jusqu’à ce
-  qu’il rende la main&nbsp;: avec `SPINEL_WORKERS=1` (la valeur par défaut), une
-  longue requête bloque chaque requête HTTP pendant tout ce temps. Découpez les
-  gros travaux en lots (supprimer mille lignes par exécution, mettre un job en
-  file par élément) plutôt que de tout faire d’un coup.
+  String&nbsp;: encodez en JSON les données structurées. Dans une
+  `DB.transaction`, la ligne est validée ou annulée avec le reste. Chaque
+  thread de jobs réserve le job échu le plus ancien dans une courte
+  transaction `BEGIN IMMEDIATE`, exécute son handler hors de celle-ci, le
+  marque `done` et cherche le suivant&nbsp;; quand rien n’est échu, il
+  attend `job_poll_interval` secondes (1), si bien qu’un job mis en file par
+  une requête démarre en une seconde environ. Un handler qui lève une
+  exception est réessayé 1, 5, 15 puis 60 minutes plus tard, avec
+  `Class: message` (jusqu’à 1000 caractères) dans `last_error`, jusqu’à ce
+  que `job_max_attempts` (5) tentatives aient échoué&nbsp;: la ligne passe
+  alors à `failed` et reste là pour que vous l’examiniez. Un job dont le
+  type n’a pas de handler passe aussitôt à `failed`&nbsp;; `Job.enqueue`
+  refuse un type non enregistré. `Job.state_count("failed")` et
+  `Job.prune_done(before_epoch)` aident pour une page de santé et le
+  ménage.
+- **Au moins une fois.** Un job peut s’exécuter deux fois&nbsp;: un
+  processus tué, ou bloqué plus longtemps que `job_heartbeat_stale`
+  (300&nbsp;s), peut encore exécuter un job quand un autre processus
+  reprend la ligne (ci-dessous). Seul le résultat de la réservation qui
+  détient la ligne compte (le résultat tardif d’une réservation antérieure
+  est ignoré), mais les effets de bord du handler ont eu lieu deux
+  fois&nbsp;: écrivez des
+  handlers qui peuvent sans risque s’exécuter de nouveau (vérifiez si le
+  mail est déjà parti, faites un upsert plutôt qu’un insert), comme avec
+  toute file de jobs.
+- **Concurrence par type.** `Job.handle("sync_account", concurrency: 1) {
+  ... }` laisse au plus ce nombre de jobs de ce type s’exécuter en même
+  temps, sur tous les processus qui partagent la base (pour une API à débit
+  limité, ou un travail qui ne doit pas se chevaucher)&nbsp;; la valeur par
+  défaut, 0, signifie aucune limite. Les autres types continuent pendant ce
+  temps. La limite compte les lignes `running`, elle tient donc tant que
+  les battements de cœur tiennent&nbsp;: un handler qui tourne encore après
+  que son battement de cœur a vieilli est chevauché par la prochaine
+  exécution de la ligne reprise (ci-dessous)&nbsp;; un travail qui ne doit
+  jamais se chevaucher a besoin de sa propre protection.
+- **Plusieurs workers par base de données.** Chaque processus qui exécute
+  des jobs écrit un battement de cœur pour les jobs en cours toutes les
+  `job_heartbeat_interval` (30&nbsp;s). Une ligne `running` dont le
+  battement de cœur est plus vieux que `job_heartbeat_stale` (un processus
+  qui a planté ou a été arrêté en plein job) est remise en file par le
+  premier processus qui regarde, à son démarrage puis une fois par minute.
+  Les tâches planifiées s’exécutent dans un seul processus à la fois&nbsp;:
+  les processus partagent un bail dans la base (`cybertrain_leases`,
+  renouvelé à chaque tick, `scheduler_lease_ttl` 30&nbsp;s), et seul son
+  détenteur exécute les tâches échues&nbsp;; un autre prend le relais quand
+  il cesse de le renouveler. Le bail est renouvelé avant chaque tâche, pas
+  pendant qu’elle tourne&nbsp;: une tâche plus longue que le ttl peut donc
+  chevaucher celles du détenteur suivant. Gardez les tâches courtes
+  (`Job.enqueue` pour le vrai travail) et sûres à répéter. Deux processus `worker`, ou un serveur et un
+  worker, peuvent donc partager un même fichier SQLite&nbsp;;
+  `CYBERTRAIN_WORKER=0` désactive les jobs, les tâches et les flux dans un
+  processus `server` qui ne doit servir que du HTTP.
+- **Arrêt.** Sur `SIGTERM`, les threads de jobs cessent de réserver de
+  nouveaux jobs, et le processus attend jusqu’à `job_drain_timeout`
+  (10&nbsp;s) les jobs en cours. Un job qui tourne encore garde alors sa
+  ligne `running`&nbsp;; son battement de cœur s’est arrêté, donc un autre
+  processus l’exécute de nouveau une fois qu’il est périmé.
+- **Gardez les tâches courtes.** Les tâches s’exécutent une par une sur le
+  thread du scheduler, et un appel SQLite occupe son worker OS jusqu’à ce
+  qu’il revienne&nbsp;: avec `SPINEL_WORKERS=1` (la valeur par défaut), une
+  longue requête bloque toutes les requêtes, et tous les autres threads,
+  aussi longtemps. Confiez à un job une tâche qui a du vrai travail
+  (`Job.enqueue` depuis la tâche), et découpez les gros travaux (supprimer
+  mille lignes par exécution, mettre en file un job par élément) plutôt que
+  de tout faire d’un coup.
 - **Tests.** `Cybertrain::Scheduler.run_due(now)` exécute un tick et
-  `Cybertrain::Job.work_one(now)` un job, avec une heure epoch que vous
-  choisissez, de sorte qu’un test n’attend jamais.
+  `Cybertrain::Job.work_one(now)` un job, avec un temps epoch de votre
+  choix, si bien qu’un test ne dort jamais.
 
-Il n’y a pas de syntaxe cron, ni priorité ni unicité pour les jobs, ni
-`deliver_later`&nbsp;: un job qui envoie un e-mail appelle lui-même
+Il n’y a pas de syntaxe cron, ni de priorité ou d’unicité pour les jobs, ni
+de `deliver_later`&nbsp;: un job qui envoie un mail appelle lui-même
 `Cybertrain::Mailer` ([Envoyer des e-mails](external-services.md#sending-e-mail)).
-Cela couvre «&nbsp;envoyer plus tard&nbsp;» et «&nbsp;exécuter
-toutes les N secondes&nbsp;» (`docs/design.md` D28).
+Cela couvre «&nbsp;envoyer plus tard&nbsp;» et «&nbsp;exécuter toutes les N
+secondes&nbsp;» (`docs/design.md` D28).
+
+## Rôles des processus
+
+Un seul binaire tourne dans trois rôles. Par défaut, `./<app> server` fait
+tout, comme `rails server` avec Solid Queue dans Puma&nbsp;; les deux autres
+permettent à un déploiement de répartir le travail entre des processus ou
+des conteneurs, tous à partir de la même image et de la même base&nbsp;:
+
+| Commande | Exécute | Écoute |
+| --- | --- | --- |
+| `./<app> server [PORT]` | le HTTP, le [point d’entrée des flux](realtime.md#which-process-does-what), et sauf avec `CYBERTRAIN_WORKER=0` les tâches planifiées, les threads de jobs et les flux WebSocket | oui |
+| `./<app> worker` | les tâches planifiées (un processus à la fois, grâce au bail), les threads de jobs, les battements de cœur et la reprise | non |
+| `./<app> feeds [NAME...]` | les [flux WebSocket](external-services.md#consuming-websocket-feeds), tous ou ceux nommés | non |
+
+- `worker` et `feeds` affichent une bannière (`=> worker: 3 job threads, 2
+  scheduled tasks`), tournent jusqu’à `SIGTERM` puis s’arrêtent comme le fait
+  un serveur. Ils exécutent toujours leur travail&nbsp;: `CYBERTRAIN_WORKER=0`,
+  réglé pour le rôle web, ne les désactive pas.
+- `feeds` avec des noms n’exécute que ces abonnements (un conteneur par
+  flux), et un nom inconnu arrête le démarrage avec la liste des noms
+  enregistrés. Avec les flux dans leur propre processus, réglez
+  `CYBERTRAIN_WORKER=0` sur les serveurs, sinon chaque processus recevrait
+  chaque flux.
+- Un découpage typique&nbsp;: `server` avec `CYBERTRAIN_WORKER=0` derrière le
+  proxy, un ou plusieurs `worker`, et `feeds` s’il y a des abonnements.
+  `cybertrain new` écrit un rôle `web` et un rôle `worker` dans
+  `config/deploy.yml` (et un `feeds` en commentaire)&nbsp;;
+  [docs/deploy.en.md](../deploy.en.md), partie 7, «&nbsp;Splitting the
+  roles&nbsp;», donne les unités systemd.
+- **Mise à jour depuis une version sans battements de cœur**&nbsp;: arrêtez
+  tous les anciens processus avant de démarrer le premier nouveau. Un nouveau
+  worker prendrait pour abandonnés les jobs qu’un ancien exécute encore,
+  puisqu’un ancien processus n’écrit aucun battement de cœur.
+- `Cybertrain::Main.worker?(ARGV)` et `Main.feeds?(ARGV)`, comme
+  `Main.server?(ARGV)`, indiquent à `bin/<app>.rb` quel rôle il démarre.
+
+## La console
+
+`./<app> console` est une invite sur les modèles de l’application. Spinel
+n’a pas d’`eval`, donc elle n’exécute pas de Ruby&nbsp;: elle évalue les
+expressions qu’évalue le `<%= %>` d’un template ([le langage de
+templates](template-language.md#expressions), sans blocs), plus les noms de
+modèles. En développement, lancez-la avec
+`cybertrain spin run <app> -- console`.
+
+```console
+$ ./blog console
+Cybertrain console (production). Type help for commands, exit to quit.
+>> Article.where(title: "Hello").count
+1
+>> a = Article.find(1)
+#<Article id: 1, title: "Hello", body: "First post", created_at: 2026-11-05 10:00:00 UTC, updated_at: 2026-11-05 10:00:00 UTC>
+>> a.update(title: "Hello again")
+true
+```
+
+- Un nom de modèle est sa relation (`Article`), avec `where`, `where_like`,
+  `order`, `limit`, `offset`, `page`, `first`, `last`, `find`, `find_by`,
+  `to_a`, `count`, `exists?`, `pluck_str` / `pluck_int` / `pluck_float`,
+  `sum_int`, `count_by`, `delete_all`, `to_sql` et `create`. Un
+  enregistrement a ses attributs et ses méthodes, `update`, `save`,
+  `destroy`, `reload`, `valid?`, `errors` et `attributes`. `help` les liste
+  tous.
+- `x = expr` garde une valeur pour les lignes suivantes, et `_` est la
+  dernière valeur. `sql "..."` exécute du SQL et affiche les lignes en
+  tableau&nbsp;; `tables` liste les tables&nbsp;; `exit`, `quit` ou Ctrl-D
+  quitte.
+- Une ligne qui ne s’analyse pas affiche son erreur, une ligne qui lève une
+  exception affiche `Class: message`, et l’invite revient. Une valeur binaire
+  s’affiche comme `<N bytes>`.
+- Les écritures sont réelles. En production, la console le signale d’abord
+  dans une bannière.
+
+`./<app> dbconsole` ouvre le shell `sqlite3` sur la base configurée
+(`CYBERTRAIN_DATABASE`), comme le `dbconsole` de Rails&nbsp;; il faut que la
+commande `sqlite3` soit installée, et son code de sortie est transmis. Aucune
+de ces deux commandes ne démarre le scheduler, les jobs ou les flux.
 
 ## Exploitation&nbsp;: sauvegardes, VACUUM, contrôle de santé
 
@@ -136,9 +260,8 @@ Une application qui veut faire ses sauvegardes elle-même peut lancer son propre
 binaire comme processus enfant depuis une tâche planifiée, plutôt que
 d’exécuter le SQL sur son propre thread&nbsp;: `system` n’attend l’enfant que
 sur le thread du scheduler, et les requêtes continuent d’être servies pendant
-ce temps (Spinel n’a pas de `Process.wait`, et un `Process.spawn` sans lui
-laisse un zombie&nbsp;: utilisez donc `system` avec une liste d’arguments, jamais
-une chaîne contenant des données de la requête). Une copie qui dure plus
+ce temps (utilisez `system` avec une liste d’arguments, jamais une chaîne
+contenant des données de la requête). Une copie qui dure plus
 longtemps que `health_worker_stale` fait répondre `worker stale` au contrôle de
 santé jusqu’à ce qu’elle soit terminée.
 

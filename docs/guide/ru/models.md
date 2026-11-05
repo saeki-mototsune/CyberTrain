@@ -1,5 +1,5 @@
 ---
-source_sha256: cd6c53969fe07a4ba778257843c8f8db6c9a412999f0379a7aafaf9c4c621b4a
+source_sha256: f1c57df606a0e210a2c5e99b1cf824f1ef22496aa20ab44f4a04e802df0a1f04
 ---
 # Модели и база данных
 
@@ -209,6 +209,46 @@ ivar) с примечанием в сгенерированном файле. Д
 именем с комментарием в сгенерированном файле: `<table>_as_<column stem>`
 для `has_many` (`comments_as_article`), `<stem>_as_<column>` для `belongs_to`
 (`author_as_author_id`).
+
+## Двоичные столбцы
+
+`t.binary` создаёт столбец `BLOB` для байтов, которые не являются текстом:
+миниатюры, сжатого снимка, ключа. Атрибут — String, содержащая ровно
+сохранённые байты, включая байты NUL и байты больше 127, либо `nil` для
+`NULL` (столбец допускает NULL, если не объявлен `null: false`, так что у
+фотографии, сохранённой до добавления столбца, миниатюры нет: проверьте
+`nil` перед `bytesize`):
+
+```ruby
+# db/migrate/20261105090000_add_thumbnail_to_photos.rb
+class AddThumbnailToPhotos < Cybertrain::Migration::Base
+  def change
+    add_column "photos", "thumbnail", :binary
+  end
+end
+```
+
+```ruby
+photo.thumbnail = File.binread("thumb.webp")
+photo.save
+Photo.find(photo.id).thumbnail.bytesize   # те же байты обратно
+```
+
+- Сгенерированная модель при сохранении привязывает двоичный столбец как
+  BLOB; любая другая String по-прежнему привязывается как TEXT, который
+  обрывается на байте NUL. В сыром SQL оберните байты в
+  `Cybertrain::DB::Blob.new(bytes)`, чтобы привязать их как BLOB
+  (`c.execute("INSERT INTO photos (thumbnail) VALUES (?)", [Cybertrain::DB::Blob.new(bytes)])`).
+- Ячейка BLOB, прочитанная сырым SQL, — это String с её байтами;
+  `Cybertrain::Cast.binary(value)` сужает её (`""` для `NULL`).
+- `Photo.where(thumbnail: bytes)` тоже привязывает байты как BLOB (TEXT в
+  привязке никогда не равен сохранённому BLOB).
+- `db/schema.rb` записывает столбец обратно как `t.binary`, а консоль
+  печатает двоичное значение как `<N bytes>`.
+- Большие файлы держите вне базы: загрузка ([Добавить загрузку
+  файла](tutorial.md#attachments)) — это файл в `storage/uploads/`, а BLOB
+  читается в память целиком вместе со строкой и увеличивает каждую
+  резервную копию и WAL.
 
 ## Порядок
 

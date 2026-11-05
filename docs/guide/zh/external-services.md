@@ -1,5 +1,5 @@
 ---
-source_sha256: 0a5a051dced3255b5cbc72eeeaa180f28cc8bf726dc0fce839c7885938c65379
+source_sha256: 55cb8796599b6e9b68995c0bcfae429599010685c795da99ca191458d5507df2
 ---
 # 出站 HTTP、WebSocket 订阅与电子邮件
 
@@ -61,7 +61,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
 
 require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Background`，`Application#serve` 在调度器之后启动它，并在关闭时停止它，所以无需调用任何东西。每个订阅有一个线程。它会建立连接，运行 `on_open`（在那里发送你的订阅消息：每次重连之后它都会再次运行），然后把每条消息连同 `Connection`（`send_text`、`send_binary`、`close`，以及 `last_opcode`，值为 `:text` 或 `:binary`）交给 `on_message`。这些块接收参数，不能使用 `self`（Spinel 没有 `instance_eval`）。
 
-- **运行时机。** 与调度器一样，订阅在二进制文件提供服务时启动（[后台任务](background-and-operations.md#background-work)）；`migrate`、`db ...`、`Main.command` 命令和 `Cybertrain::Test::Client` 从不启动它们。在 `CYBERTRAIN_WORKER=0`（`config.worker = false`）时，它们不会在该进程中运行（只是不启动；唯一的提示是调度器的 “run elsewhere” 那一行，直接调用的 `WebSocket.start!` 则会记录自己的提示）：当多个进程提供服务时，请在除一个之外的所有进程中关闭它，否则每个进程都会接收完整的数据流。`subscribe` 必须在服务器启动之前调用；服务器运行期间无法添加或移除订阅。名称必须唯一（否则引发 `ArgumentError`），没有 `on_message` 的订阅会在绑定端口之前让启动失败（`error: WebSocket subscription "trades" has no on_message`，退出码 1）。
+- **运行时机。** 与调度器一样，订阅在二进制文件提供服务时启动（[后台任务](background-and-operations.md#background-work)）；`migrate`、`db ...`、`Main.command` 命令和 `Cybertrain::Test::Client` 从不启动它们。`./<app> feeds [NAME...]` 在单独的进程中运行它们，全部或指定名称的订阅（[进程角色](background-and-operations.md#process-roles)）。在 `CYBERTRAIN_WORKER=0`（`config.worker = false`）时，它们不会在该进程中运行（只是不启动；唯一的提示是调度器的 “run elsewhere” 那一行，直接调用的 `WebSocket.start!` 则会记录自己的提示）：当多个进程提供服务时，请在除一个之外的所有进程中关闭它，否则每个进程都会接收完整的数据流。`subscribe` 必须在服务器启动之前调用；服务器运行期间无法添加或移除订阅。名称必须唯一（否则引发 `ArgumentError`），没有 `on_message` 的订阅会在绑定端口之前让启动失败（`error: WebSocket subscription "trades" has no on_message`，退出码 1）。
 - **选项。** `headers:`（额外的握手请求头）、`timeout:`（连接时每次等待以及每次写入 5 秒）、`max_message:`（1 MiB；更大的消息会以 1009 关闭连接）、`ping_interval:`（15）和 `stale_after:`（45），以及 `allow_private:`（与下文的 `HttpClient` 相同）。
 - **等待与重连。** 任何失败之后，线程会等待 `min(60, 2 ** (attempt - 1))` 秒，上下各有 20% 的随机抖动：1、2、4……60。持续了 60 秒的连接会从 1 重新开始。每次等待都有上限。无论服务器如何表现，`WebSocket.stop!` 都会在大约 2 秒内返回：它为所有线程合计最多等待 2 秒，已连接的订阅会发送关闭帧（1000），并最多等待 1 秒的服务器应答，它返回时每个订阅的 `connected?` 都为 false（仍在关闭中的线程会自行结束）。
 - **静默。** 数据流可能在不关闭连接的情况下变得安静，所以线程会在 `ping_interval` 秒内没有收到任何帧之后发送 ping（之后每个间隔一次）；如果在 `stale_after` 秒内完全没有收到任何帧（包括 pong），它就关闭连接并重连。`stale_after` 必须大于 `ping_interval`，而后者必须至少为 1（否则 `subscribe` 会引发 `ArgumentError`）。
@@ -81,7 +81,7 @@ require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Backgrou
 - **健康状况。** `Cybertrain::WebSocket.feed_status("trades")` 返回一个 `Status`：`connected?`、`last_message_at`（纪元秒数，收到第一条消息之前为 0）和 `reconnects`。它不属于 `GET /up`；请在你自己的检查中使用它。这三项是依次读取的，而不是作为一个快照，并且 `connected?` 在连接建立时就变为 true，早于 `on_open` 运行。
 - **让 `on_message` 保持简短。** 线程用 `wait_readable` 或 `sleep` 等待，所以停滞的数据流在等待期间不会占用操作系统工作线程。有两件事会占用：每次连接尝试都用阻塞的 `getaddrinfo` 解析主机名（参见[出站
   HTTP](#outbound-http) 中的“域名解析会阻塞”；在 `SPINEL_WORKERS=1` 时，失效的解析器会让每个请求停顿解析器的超时时间，每个订阅每次尝试一次，而在 URL 中使用 IP 地址可以避免查询），以及 `on_message` 中的 SQLite 调用，直到它返回为止，与定时任务中一样（[后台任务](background-and-operations.md#background-work)）：在 `SPINEL_WORKERS=1` 时，一次耗时的写入会让每个请求停顿。对于繁忙的数据流，请只插入一个小行，或者把消息收集在内存中，再从 `Scheduler.every` 任务中分批写入。
-- **未实现。** 不协商扩展（`permessage-deflate`）和子协议。不支持代理、重定向或 cookie，不会自动保存消息，也没有 WebSocket 服务器（ActionCable）。文本帧不检查是否为有效的 UTF-8（与 RFC 6455 第 8.1 节不同）：字节按收到时的原样传递。`Connection` 只在回调期间有效；不支持从请求或任务中发送。
+- **未实现。** 不协商扩展（`permessage-deflate`）和子协议。不支持代理、重定向或 cookie，不会自动保存消息（浏览器有自己的端点：[实时](realtime.md)）。文本帧不检查是否为有效的 UTF-8（与 RFC 6455 第 8.1 节不同）：字节按收到时的原样传递。`Connection` 只在回调期间有效；不支持从请求或任务中发送。
 
 对于不需要重连循环的单个连接（脚本、一次性读取），请使用同步客户端：
 

@@ -115,7 +115,7 @@ production.
 <!-- table: cmp -->
 | Rails | CyberTrain |
 | --- | --- |
-| `rails console` | No console — Spinel has no `eval` |
+| `rails console`, `rails dbconsole` | `./<app> console` evaluates the template expression language over the models (Spinel has no `eval`, so not Ruby); `./<app> dbconsole` opens `sqlite3` ([The console](background-and-operations.md#the-console)) |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` in `bin/<app>.rb`: `./<app> name ARGS` runs it with the database connected |
 | Edit code, the running app picks it up | Ruby needs a rebuild; `cybertrain server` in development does this for you (rebuild, stop, `execv`) |
 | Edit a view, no reload needed | Same — views are parsed from disk per request in development |
@@ -145,11 +145,12 @@ production.
 | `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, ActiveSupport's bundled zone data | `Cybertrain::TimeZone.find("Asia/Tokyo")` reads the system's TZif files (`/usr/share/zoneinfo`, or `TZDIR`) and converts Integer epoch seconds (`utc_offset_at`, `utc_to_local`, `local_to_utc`); no per-request `Time.zone` and no `l(time, zone:)` yet ([Time zones](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, no redirects or keep-alive (see [Outbound HTTP](external-services.md#outbound-http)); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
 | Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` sends plain text over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); no templates, HTML, attachments or queue (see [Sending e-mail](external-services.md#sending-e-mail)) |
-| Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind)` and `Job.enqueue(kind, payload, run_at:)` (a String payload, retried with backoff), `Cybertrain::Scheduler.every(seconds, name)`; one thread in the served process ([Background work](background-and-operations.md#background-work)) |
+| Active Job, `perform_later`, `solid_queue`, recurring tasks | `Cybertrain::Job.handle(kind)` and `Job.enqueue(kind, payload, run_at:)` (a String payload, retried with backoff), `Cybertrain::Scheduler.every(seconds, name)`; `job_threads` threads per process, in the server or in `./<app> worker` processes, delivered at least once ([Background work](background-and-operations.md#background-work)) |
 | ActionCable client, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` keeps a feed connected while the server runs (reconnects, pings, silence detection); `WebSocket::Client` for one synchronous connection; outbound only ([Consuming WebSocket feeds](external-services.md#consuming-websocket-feeds)) |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` is an Array of Strings matched by substring, case-insensitively (no Regexps or lambdas); it applies to the request log and the development error page ([Filtered parameters](configuration.md#configuration-and-environment-variables)) |
 | `get "up" => "rails/health#show"` (a route to a controller) | `GET /up` is built in, answered before static files, session and router, so no `before_action` runs; it checks the database and the worker, `200 ok` or `503` ([Operations](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | `bin/rails db:...` tasks for backups (none built in) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renamed into place) and `./<app> db vacuum` |
-| ActionCable (the server), asset pipeline, i18n | Not built (MVP non-goals, `docs/design.md` §2.3) |
+| Action Cable, `turbo_stream_from`, `broadcast_append_to` | The same helper names over signed streams, delivered by Server-Sent Events or WebSocket from one SQLite table; no channel classes ([Realtime](realtime.md)) |
+| Asset pipeline, i18n | Not built yet (later phases, `docs/design.md` D1) |
 
 <!-- table-foot: Not exhaustive: docs/design.md §8 ("What was deliberately left out") is the fuller record. -->

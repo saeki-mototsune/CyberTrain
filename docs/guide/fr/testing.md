@@ -1,5 +1,5 @@
 ---
-source_sha256: b84259bcc4f0afd4ba917077642cbc181416a59a524e9e5dc26ec8a76530afb7
+source_sha256: c5ef44e9a88b3fbef4099d33b8ea7e47c5b10fb95eeef6e39fae0a8151f22a9e
 ---
 # Tester une application
 
@@ -164,6 +164,59 @@ end
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` rend les délais de nouvelle
 tentative exacts. `test/websocket_integration.rb`, dans ce dépôt, montre un test
 complet.
+
+## Tester les flux et les composants
+
+`require "cybertrain/test/views"` ajoute deux fonctions de rendu qui n’ont
+besoin d’aucune requête, pour vérifier le HTML d’un partiel ou d’un
+[composant](template-language.md#components)&nbsp;:
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/views"
+
+test "the comment component names its author" do
+  html = Cybertrain::Test.render_component(CommentComponent.new(comment: Comment.first))
+  assert_includes html, "<strong>"
+end
+
+test "the article partial links to the article" do
+  article = Article.create(title: "Hello", body: "Rendered for the test")
+  html = Cybertrain::Test.render_partial("articles/article", article: article)
+  assert_includes html, BlogTest.article_path(article)
+end
+```
+
+`Test.render_component(component, content: "")` passe `content:` comme HTML
+du bloc. Les deux rendent comme le fait une diffusion, donc un helper qui a
+besoin d’une requête lève ici aussi `Cybertrain::Views::OutsideRequest`.
+
+Un [flux](realtime.md) se teste à travers le point d’entrée.
+`client.get_stream(path, events: n, timeout: 2, headers: {})` exécute une
+réponse en streaming en mémoire jusqu’à ce que `n` événements aient été
+écrits (les pings ne comptent pas) ou que le délai soit écoulé, et la renvoie
+avec ce qui a été écrit comme corps. Le point d’entrée répond 503 tant que le
+poller des flux ne tourne pas, et un client de test ne le démarre pas&nbsp;:
+démarrez-le donc une fois dans le fichier&nbsp;:
+
+```ruby
+Cybertrain::Stream::Poller.start!
+
+test "a new comment is broadcast to the article's stream" do
+  article = Article.create(title: "Live comments", body: "Posted for the test")
+  Cybertrain::Stream.broadcast_append_to(article, target: "comments", html: "hi")
+  token = Cybertrain::Stream.sign([Cybertrain::Stream.name_for(article)])
+  client = Cybertrain::Test::Client.new(BLOG)
+  res = client.get_stream("/cybertrain/stream?s=#{token}", events: 1, headers: { "last-event-id" => "0" })
+  assert_includes res.body, '<turbo-stream action="append" target="comments">'
+end
+```
+
+Une nouvelle connexion ne reçoit que ce qui est diffusé après sa
+connexion&nbsp;; `last-event-id` mis à `0` rejoue ce qui est déjà dans la
+table, ce qui permet à un test de diffuser d’abord et de lire ensuite. Pour
+vérifier seulement qu’une action a diffusé, lisez la table&nbsp;:
+`Cybertrain::DB.with { |c| c.execute("SELECT stream, payload FROM cybertrain_messages ORDER BY id DESC LIMIT 1") }`.
 
 ## Intégration continue
 
