@@ -65,6 +65,13 @@ test "a positional initialize parameter is an error" do
                scan_error("class CardComponent < Cybertrain::Component\n  def initialize(title, value: 0)\n  end\nend\n")
 end
 
+test "a content keyword or @content ivar is an error: content is the block's output" do
+  assert_equal "app/components/card_component.rb:2: 'content' is reserved in a component (it is what the render block printed, Component#content); give the keyword another name",
+               scan_error("class CardComponent < Cybertrain::Component\n  def initialize(title:, content: \"\")\n    @title = title\n  end\nend\n")
+  assert_equal "app/components/card_component.rb:4: '@content' is reserved in a component (rendering sets it to what the render block printed, Component#content); give the instance variable another name",
+               scan_error("class CardComponent < Cybertrain::Component\n  def initialize(body:)\n    @title = body\n    @content = body\n  end\nend\n")
+end
+
 test "component names follow the class, namespaces included" do
   info = scan("module Admin\n  class UserRowComponent < Cybertrain::Component\n    def initialize(user:)\n      @user = user\n    end\n  end\nend\n", "admin/user_row_component.rb")
   assert_equal "Admin::UserRowComponent", info.class_name
