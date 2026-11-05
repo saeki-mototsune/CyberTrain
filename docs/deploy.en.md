@@ -929,9 +929,9 @@ What to keep in mind:
 - **Only Linux balances.** macOS binds but does not distribute. The split is per
   connection, so a keep-alive connection Caddy holds stays on one process.
 - **`CYBERTRAIN_WORKER=0` on all but one process.** Without it every process
-  runs the `Scheduler` and the `Job` worker, and each scheduled task runs once
-  per process. `Background` services (WebSocket subscriptions and the like)
-  follow the same switch, so they run in the process that keeps the worker.
+  starts job threads and the `Background` services (WebSocket subscriptions
+  and the like), so each feed is received once per process. Scheduled tasks
+  run in one process only, the holder of the `cybertrain_leases` lease.
 - **`RateLimit` counts per process,** so with N processes a limit is effectively
   N times looser. The sign-in limit `cybertrain generate authentication` writes
   (`rate_limit to: 10`) becomes up to 30 attempts per address with three
