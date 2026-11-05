@@ -97,6 +97,41 @@ test "port_argument reads a port number from argv[0]" do
   assert_equal 0, Cybertrain::Application.port_argument([""])
 end
 
+# Spinel counts main among SPINEL_WORKERS (N-1 helpers), and main only waits
+# in a server, so the binary asks Spinel for one more than the request
+# workers; 1 stays 1, main running every thread (spikes/NOTES.md rule 22).
+test "spinel_workers gives Spinel one helper per request worker" do
+  assert_equal 1, Cybertrain::Application.spinel_workers(1)
+  assert_equal 1, Cybertrain::Application.spinel_workers(0)
+  assert_equal 3, Cybertrain::Application.spinel_workers(2)
+  assert_equal 5, Cybertrain::Application.spinel_workers(4)
+end
+
+# Development re-parses an edited template on the request that renders it,
+# writing the engine's cache; with two workers two requests could write it at
+# once (spikes/NOTES.md rule 57), so development serves on one.
+test "development serves one worker whatever SPINEL_WORKERS asks for" do
+  dev = Cybertrain::Config.new
+  dev.env = "development"
+  dev.workers = 4
+  assert_equal 1, Cybertrain::Application.serving_workers(dev)
+  assert_equal 1, Cybertrain::Application.spinel_workers_for(dev)
+  assert_equal "=> development environment (1 worker; workers = 4 is ignored in development)",
+               Cybertrain::Application.environment_banner(dev)
+  dev.workers = 1
+  assert_equal 1, Cybertrain::Application.serving_workers(dev)
+  assert_equal "=> development environment (1 worker)", Cybertrain::Application.environment_banner(dev)
+
+  prod = Cybertrain::Config.new
+  prod.env = "production"
+  prod.workers = 4
+  assert_equal 4, Cybertrain::Application.serving_workers(prod)
+  assert_equal 5, Cybertrain::Application.spinel_workers_for(prod)
+  assert_equal "=> production environment (4 workers)", Cybertrain::Application.environment_banner(prod)
+  prod.workers = 1
+  assert_equal "=> production environment (1 worker)", Cybertrain::Application.environment_banner(prod)
+end
+
 test "the development stack passes a good page through" do
   res = CLIENT.get("/")
   assert_equal 200, res.status
