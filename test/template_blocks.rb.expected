@@ -12,4 +12,4 @@ ok   a block on a method that takes none is a SyntaxError
 ok   block parameters shadow and are restored after the call
 ok   locals and the output are restored when a block raises
 ok   blocks nest
-14 tests, 98 assertions, 0 failures
+14 tests, 108 assertions, 0 failures
