@@ -66,6 +66,35 @@ module Cybertrain
         }
       C
       ffi_func :cybertrain_sqlite_set_busy_handler, [:ptr, :ptr], :int
+
+      # The next statement of a script, prepared from byte offset `offset` of
+      # sql: Connection#exec_script runs a script one statement at a time
+      # (saeki-mototsune/CyberTrain#164), where sqlite3_exec would run it
+      # whole and show SQLite's state only before and after. Empty
+      # statements (whitespace, comments, a lone ";") are skipped here.
+      # Returns the offset just past the statement, with the statement in
+      # *stmt_out; NO_STATEMENT when none is left; or -rc when preparing
+      # failed (sqlite3_errmsg has the message). A trigger body's ";" stays
+      # inside its CREATE TRIGGER: SQLite's own parser splits the text.
+      ffi_source <<~C
+        extern int sqlite3_prepare_v2(void *, const char *, int, void **, const char **);
+        extern int sqlite3_finalize(void *);
+        long cybertrain_sqlite_prepare_at(void *db, const char *sql, long offset, void **stmt_out) {
+          const char *at = sql + offset;
+          *stmt_out = 0;
+          while (*at) {
+            const char *tail = at;
+            int rc = sqlite3_prepare_v2(db, at, -1, stmt_out, &tail);
+            if (rc != 0) return -(long)rc;
+            if (*stmt_out) return (long)(tail - sql);
+            if (tail == at) break;
+            at = tail;
+          }
+          return -1000000;
+        }
+      C
+      ffi_func :cybertrain_sqlite_prepare_at, [:ptr, :str, :long, :ptr], :long
+      ffi_const :NO_STATEMENT, -1000000
       ffi_func :cybertrain_sqlite_busy_report, [:ptr, :int], :void
       ffi_func :cybertrain_sqlite_busy_asked, [:ptr], :int
 
