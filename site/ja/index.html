@@ -358,7 +358,7 @@
       <p class="footnote">サーバーの全プロセスの常駐メモリ（<code>/proc</code> から読んだ RSS）を合計し、すべての負荷計測のあとに読んだ値です。Rails は 1 コアでは 3 スレッドの Puma プロセス 1 つ、2 コアではワーカー 2 つです。RSS は Puma のワーカー間で共有されるページをワーカーごとに数えます。共有ページをプロセスで按分する PSS で数えると、2 コアの Rails は 253.9&nbsp;MB（jemalloc では 222.5&nbsp;MB）で、CyberTrain の 14.1&nbsp;MB（15.4&nbsp;MB）に対してなお大きな差があります。</p>
       <ul class="perf-stats" aria-label="メモリ、起動、サイズ、ビルド">
         <li><p class="perf-k">負荷をかけた後のメモリ</p><p class="perf-v">13.9&nbsp;MB</p><p class="perf-d">Rails は 133&nbsp;MB（Puma 1 プロセス、3 スレッド）。</p></li>
-        <li><p class="perf-k">起動から最初の応答まで</p><p class="perf-v">0.02 秒</p><p class="perf-d">Rails は 0.75 秒。</p></li>
+        <li><p class="perf-k">起動から最初の応答まで</p><p class="perf-v">0.015 秒</p><p class="perf-d">Rails は 0.75 秒。</p></li>
         <li><p class="perf-k">サーバーに置くもの</p><p class="perf-v">4.0&nbsp;MB</p><p class="perf-d">バイナリ 1 つ。Rails は Ruby、69 個の gem、アプリで 121&nbsp;MB。</p></li>
         <li><p class="perf-k">代わりに要るもの：ビルド</p><p class="perf-v">50 秒</p><p class="perf-d"><code>cybertrain build</code> でバイナリをコンパイルする時間。Rails はソースのまま動きます。</p></li>
       </ul>

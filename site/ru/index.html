@@ -358,7 +358,7 @@
       <p class="footnote">Резидентная память (RSS из <code>/proc</code>) всех процессов сервера в сумме, считанная после всех прогонов нагрузки. Rails работает как один процесс Puma с 3 потоками на одном ядре и как два воркера на двух. RSS считает страницу, общую для воркеров Puma, по разу на каждый воркер; по PSS, который делит общие страницы между процессами, Rails на двух ядрах занимает 253,9&nbsp;МБ (222,5&nbsp;МБ с jemalloc) против 14,1&nbsp;МБ (15,4&nbsp;МБ) у CyberTrain.</p>
       <ul class="perf-stats" aria-label="Память, запуск, размер и сборка">
         <li><p class="perf-k">Память под нагрузкой</p><p class="perf-v">13,9&nbsp;МБ</p><p class="perf-d">Rails: 133&nbsp;МБ, один процесс Puma с 3 потоками.</p></li>
-        <li><p class="perf-k">От запуска до первого ответа</p><p class="perf-v">0,02&nbsp;с</p><p class="perf-d">Rails: 0,75&nbsp;с.</p></li>
+        <li><p class="perf-k">От запуска до первого ответа</p><p class="perf-v">0,015&nbsp;с</p><p class="perf-d">Rails: 0,75&nbsp;с.</p></li>
         <li><p class="perf-k">Что нужно на сервере</p><p class="perf-v">4,0&nbsp;МБ</p><p class="perf-d">Один бинарник. Rails: 121&nbsp;МБ — Ruby, 69 gem-пакетов и приложение.</p></li>
         <li><p class="perf-k">Цена: сборка</p><p class="perf-v">50&nbsp;с</p><p class="perf-d">на компиляцию бинарника командой <code>cybertrain build</code>. Rails запускает исходники как есть.</p></li>
       </ul>

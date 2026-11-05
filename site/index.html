@@ -358,7 +358,7 @@
       <p class="footnote">Resident memory (RSS, from <code>/proc</code>) summed over all of the server&rsquo;s processes, read after all the load runs. Rails runs one Puma process with 3 threads on one core and two workers on two. RSS counts a page that Puma&rsquo;s workers share once per worker; by PSS, which splits shared pages between processes, Rails on two cores takes 253.9&nbsp;MB (222.5&nbsp;MB with jemalloc) against CyberTrain&rsquo;s 14.1&nbsp;MB (15.4&nbsp;MB).</p>
       <ul class="perf-stats" aria-label="Memory, startup, size and build">
         <li><p class="perf-k">Memory under load</p><p class="perf-v">13.9&nbsp;MB</p><p class="perf-d">Rails: 133&nbsp;MB, one Puma process with 3 threads.</p></li>
-        <li><p class="perf-k">Start to first response</p><p class="perf-v">0.02&nbsp;s</p><p class="perf-d">Rails: 0.75&nbsp;s.</p></li>
+        <li><p class="perf-k">Start to first response</p><p class="perf-v">0.015&nbsp;s</p><p class="perf-d">Rails: 0.75&nbsp;s.</p></li>
         <li><p class="perf-k">What the server needs</p><p class="perf-v">4.0&nbsp;MB</p><p class="perf-d">One binary. Rails: 121&nbsp;MB of Ruby, 69 gems and the app.</p></li>
         <li><p class="perf-k">The price: a build</p><p class="perf-v">50&nbsp;s</p><p class="perf-d">to compile the binary with <code>cybertrain build</code>. Rails runs its source as it is.</p></li>
       </ul>

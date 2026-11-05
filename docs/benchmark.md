@@ -364,7 +364,7 @@ Recorded 2026-11-05 at commit 0d8a942: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 C
   1.1 to 4.4 times. That is less than on 2026-10-09 (9 to 25% on the pages,
   58% on the POST): with two workers on two CPUs, the server used about 8
   CPU-seconds in an 8-second run of `GET /articles`, one CPU's worth, so the
-  second worker mostly waits. Why has not been looked into yet.
+  second worker mostly waits. The cause has not been investigated yet.
   `SPINEL_WORKERS` stays 1 by default
   ([spikes/NOTES.md](../spikes/NOTES.md) rule 22 has the earlier measurements).
   The static file tops out near 22,000 req/s for CyberTrain on one core and on

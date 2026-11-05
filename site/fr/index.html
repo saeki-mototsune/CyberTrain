@@ -358,7 +358,7 @@
       <p class="footnote">Mémoire résidente (RSS, lue dans <code>/proc</code>) additionnée sur tous les processus du serveur, relevée après toutes les passes de charge. Rails tourne en un processus Puma à 3 threads sur un cœur et en deux workers sur deux. Le RSS compte une page partagée entre les workers de Puma une fois par worker&nbsp;; en PSS, qui répartit les pages partagées entre les processus, Rails sur deux cœurs occupe 253,9&nbsp;Mo (222,5&nbsp;Mo avec jemalloc) contre 14,1&nbsp;Mo (15,4&nbsp;Mo) pour CyberTrain.</p>
       <ul class="perf-stats" aria-label="Mémoire, démarrage, taille et compilation">
         <li><p class="perf-k">Mémoire sous charge</p><p class="perf-v">13,9&nbsp;Mo</p><p class="perf-d">Rails&nbsp;: 133&nbsp;Mo, un processus Puma à 3 threads.</p></li>
-        <li><p class="perf-k">Du lancement à la première réponse</p><p class="perf-v">0,02&nbsp;s</p><p class="perf-d">Rails&nbsp;: 0,75&nbsp;s.</p></li>
+        <li><p class="perf-k">Du lancement à la première réponse</p><p class="perf-v">0,015&nbsp;s</p><p class="perf-d">Rails&nbsp;: 0,75&nbsp;s.</p></li>
         <li><p class="perf-k">Ce qu’il faut sur le serveur</p><p class="perf-v">4,0&nbsp;Mo</p><p class="perf-d">Un seul binaire. Rails&nbsp;: 121&nbsp;Mo de Ruby, de 69 gems et de l’application.</p></li>
         <li><p class="perf-k">Le prix&nbsp;: une compilation</p><p class="perf-v">50&nbsp;s</p><p class="perf-d">pour compiler le binaire avec <code>cybertrain build</code>. Rails exécute ses sources telles quelles.</p></li>
       </ul>

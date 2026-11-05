@@ -358,7 +358,7 @@
       <p class="footnote">服务器所有进程的常驻内存（从 <code>/proc</code> 读取的 RSS）之和，在全部负载运行结束后读取。Rails 在一个核心上运行一个 3 线程的 Puma 进程，在两个核心上运行两个工作进程。RSS 会把 Puma 工作进程共享的页面按每个进程各算一次；按在进程间分摊共享页面的 PSS 计算，两个核心上的 Rails 占用 253.9&nbsp;MB（使用 jemalloc 时为 222.5&nbsp;MB），而 CyberTrain 为 14.1&nbsp;MB（15.4&nbsp;MB）。</p>
       <ul class="perf-stats" aria-label="内存、启动、体积和构建">
         <li><p class="perf-k">负载下的内存</p><p class="perf-v">13.9&nbsp;MB</p><p class="perf-d">Rails：133&nbsp;MB（一个 Puma 进程，3 个线程）。</p></li>
-        <li><p class="perf-k">从启动到首个响应</p><p class="perf-v">0.02 秒</p><p class="perf-d">Rails：0.75 秒。</p></li>
+        <li><p class="perf-k">从启动到首个响应</p><p class="perf-v">0.015 秒</p><p class="perf-d">Rails：0.75 秒。</p></li>
         <li><p class="perf-k">服务器上需要的东西</p><p class="perf-v">4.0&nbsp;MB</p><p class="perf-d">一个二进制文件。Rails：Ruby、69 个 gem 和应用，共 121&nbsp;MB。</p></li>
         <li><p class="perf-k">代价：一次构建</p><p class="perf-v">50 秒</p><p class="perf-d">用 <code>cybertrain build</code> 编译二进制文件所需的时间。Rails 直接运行源代码。</p></li>
       </ul>
