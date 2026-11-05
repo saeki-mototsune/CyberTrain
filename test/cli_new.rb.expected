@@ -287,6 +287,16 @@ Usage:
       also at /setup, which answers only to this machine, only with the
       one-time token the server's boot warning prints, and only while
       no user exists (NAME_SETUP_OPEN=1 lifts the address check).
+  cybertrain generate helper NAME [--force]
+      Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
+      `spin run gen` makes callable from every template) and a test.
+  cybertrain generate component NAME [attr[:type] ...] [--force]
+      Add a view component: app/components/NAME_component.rb (one
+      keyword per attribute), its template NAME_component.html.erb and
+      a test rendering it. Types: string, text, integer, float, boolean
+      (default string). Templates render it with
+      <%= render component: "NAME", attr: value %>.
+      --force overwrites files that already exist.
   cybertrain db migrate
       Generate, apply pending migrations, generate again
       (spin run gen; spin run db -- migrate; spin run gen).
@@ -347,6 +357,16 @@ Usage:
       also at /setup, which answers only to this machine, only with the
       one-time token the server's boot warning prints, and only while
       no user exists (NAME_SETUP_OPEN=1 lifts the address check).
+  cybertrain generate helper NAME [--force]
+      Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
+      `spin run gen` makes callable from every template) and a test.
+  cybertrain generate component NAME [attr[:type] ...] [--force]
+      Add a view component: app/components/NAME_component.rb (one
+      keyword per attribute), its template NAME_component.html.erb and
+      a test rendering it. Types: string, text, integer, float, boolean
+      (default string). Templates render it with
+      <%= render component: "NAME", attr: value %>.
+      --force overwrites files that already exist.
   cybertrain db migrate
       Generate, apply pending migrations, generate again
       (spin run gen; spin run db -- migrate; spin run gen).
@@ -406,6 +426,16 @@ Usage:
       also at /setup, which answers only to this machine, only with the
       one-time token the server's boot warning prints, and only while
       no user exists (NAME_SETUP_OPEN=1 lifts the address check).
+  cybertrain generate helper NAME [--force]
+      Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
+      `spin run gen` makes callable from every template) and a test.
+  cybertrain generate component NAME [attr[:type] ...] [--force]
+      Add a view component: app/components/NAME_component.rb (one
+      keyword per attribute), its template NAME_component.html.erb and
+      a test rendering it. Types: string, text, integer, float, boolean
+      (default string). Templates render it with
+      <%= render component: "NAME", attr: value %>.
+      --force overwrites files that already exist.
   cybertrain db migrate
       Generate, apply pending migrations, generate again
       (spin run gen; spin run db -- migrate; spin run gen).

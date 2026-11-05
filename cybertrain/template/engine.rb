@@ -50,9 +50,11 @@ module Cybertrain
     end
 
     class Engine
-      attr_reader :root
+      attr_reader :root, :components_root
 
-      def initialize(root, cache: true, max_render_depth: MAX_RENDER_DEPTH)
+      # components_root: where names under "components/" are read from
+      # (app/components beside app/views, spec 3.2); "" derives it from root.
+      def initialize(root, cache: true, max_render_depth: MAX_RENDER_DEPTH, components_root: "")
         # Views.configure and Views.configure_embedded (Engine.embedded) both
         # end here. A ceiling below 1 would fail `@depth >= @max_depth` at
         # depth 0 and turn every page into a 500, so refuse it at boot. No nil
@@ -61,6 +63,7 @@ module Cybertrain
         raise ArgumentError, "max_render_depth must be at least 1 (got #{max_render_depth})" if max_render_depth < 1
 
         @root = root
+        @components_root = components_root.empty? ? File.join(File.dirname(root), "components") : components_root
         @cache = cache
         @max_render_depth = max_render_depth
         # nil: read files under root. A Hash: the embedded table.
@@ -124,8 +127,8 @@ module Cybertrain
         end
         return cached if @cache && !cached.nil?
 
-        path = File.join(@root, key)
-        resolved = resolved_template_path(path)
+        path = disk_path(key)
+        resolved = resolved_template_path(path, disk_root(key))
         raise MissingTemplate, "Missing template #{path}" if resolved.empty?
 
         stamp = file_stamp(resolved)
@@ -142,7 +145,13 @@ module Cybertrain
         sources = @sources
         return sources.key?(key) unless sources.nil?
 
-        !resolved_template_path(File.join(@root, key)).empty?
+        !resolved_template_path(disk_path(key), disk_root(key)).empty?
+      end
+
+      # An interpreter with this engine's render-depth ceiling, for callers
+      # that render several templates on one (Views.render_component).
+      def interpreter(helpers)
+        Interpreter.new(helpers, @max_render_depth)
       end
 
       def render(name, env, helpers)
@@ -217,11 +226,28 @@ module Cybertrain
         text.end_with?(".erb") ? text : "#{text}.html.erb"
       end
 
+      # "components/card_component.html.erb" is read from components_root,
+      # everything else from root.
+      def component_key?(key)
+        key.start_with?("components/")
+      end
+
+      def disk_root(key)
+        component_key?(key) ? @components_root : @root
+      end
+
+      def disk_path(key)
+        return File.join(@root, key) unless component_key?(key)
+
+        rest = key[11, key.size - 11].to_s
+        File.join(@components_root, rest)
+      end
+
       # Resolve symlinks before checking the root boundary, and read this
       # canonical path rather than following the original name again.
       # Keep the caller's path separately for source paths and diagnostics.
-      def resolved_template_path(path)
-        root = File.realpath(@root)
+      def resolved_template_path(path, base)
+        root = File.realpath(base)
         resolved = File.realpath(path)
         prefix = root.end_with?("/") ? root : "#{root}/"
         return "" unless resolved.start_with?(prefix) && File.file?(resolved)

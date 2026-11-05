@@ -27,8 +27,13 @@ module Cybertrain
       def self.emit_embedded(root)
         dir = "#{root}/app/views"
         files = view_files(dir)
-        buf = +HEADER
-        if files.size == 0
+        # Component templates (app/components/**/*.erb) under the
+        # "components/" names the engine reads them by (spec 3.2).
+        components_dir = "#{root}/app/components"
+        components = view_files(components_dir)
+        buf = +""
+        buf << HEADER
+        if files.size == 0 && components.size == 0
           # No views to embed: still a typed empty Hash (seed-then-delete),
           # never a bare `{}` -- an untyped empty Hash literal risks a
           # Spinel compile failure (spikes/NOTES.md rule 9).
@@ -37,6 +42,9 @@ module Cybertrain
           buf << "module Gen\n  module Views\n    SOURCES = {\n"
           files.each do |rel|
             buf << "      #{literal(rel)} => #{literal(File.read("#{dir}/#{rel}"))},\n"
+          end
+          components.each do |rel|
+            buf << "      #{literal("components/#{rel}")} => #{literal(File.read("#{components_dir}/#{rel}"))},\n"
           end
           buf << "    }\n  end\nend\n"
         end

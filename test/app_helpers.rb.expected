@@ -1,0 +1,10 @@
+ok   a controller's template reaches the application's helpers
+ok   a controller's partial reaches them too
+ok   an optional positional and a block
+ok   block_given? is false when the template passes no block
+ok   an unknown name is still an undefined helper
+ok   the generated arms check their arguments
+ok   an omitted keyword gets the method's own default
+ok   link_to_path and button_to_path from a Ruby helper
+ok   the built-in helpers still come first
+9 tests, 14 assertions, 0 failures

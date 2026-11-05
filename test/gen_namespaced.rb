@@ -20,6 +20,9 @@ def fixture_outputs
   {
     "gen/routes.rb" => Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs),
     "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers")),
+    "gen/helpers.rb" => Cybertrain::Gen::HelpersEmitter.emit(Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),
+    "gen/components.rb" => Cybertrain::Gen::ComponentsEmitter.emit(Cybertrain::Gen::ComponentScan.scan_dir("#{FIXTURE}/app/components")),
+    "gen/console.rb" => Cybertrain::Gen::ConsoleEmitter.emit(Array.new(0) { "" }),
     "gen/app.rb" => Cybertrain::Gen::Manifest.emit(FIXTURE)
   }
 end

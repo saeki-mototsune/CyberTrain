@@ -8,6 +8,9 @@ require "cybertrain/generator/model_scan"
 require "cybertrain/generator/models_emitter"
 require "cybertrain/generator/migrations_emitter"
 require "cybertrain/generator/views_emitter"
+require "cybertrain/generator/helpers_emitter"
+require "cybertrain/generator/components_emitter"
+require "cybertrain/generator/console_emitter"
 
 module Cybertrain
   module Gen
@@ -24,7 +27,9 @@ module Cybertrain
         outputs = [
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
           ["gen/controllers.rb", ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"))],
-          ["gen/views.rb", ViewsEmitter.emit(root, embed)]
+          ["gen/views.rb", ViewsEmitter.emit(root, embed)],
+          ["gen/helpers.rb", HelpersEmitter.emit(HelperScan.scan_dir("#{root}/app/helpers"))],
+          ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))]
         ]
         # gen/migrations.rb only once an app has a db/migrate directory (a
         # fixture or test tree with no db/ at all skips it entirely).
@@ -33,6 +38,7 @@ module Cybertrain
         schema = Cybertrain::Schema.current
         stale = 0
         if schema.nil?
+          outputs << ["gen/console.rb", ConsoleEmitter.emit(Array.new(0) { "" })]
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
           stale += sync_file(root, "gen/app.rb", Manifest.emit(root), check)
         else
@@ -43,6 +49,9 @@ module Cybertrain
             models << rel.delete_suffix(".rb")
           end
           models = models.sort
+          names = Array.new(0) { "" }
+          schema.tables.each { |t| names << ModelsEmitter.model_class_name(t.name) }
+          outputs << ["gen/console.rb", ConsoleEmitter.emit(names.sort)]
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
           # A gen/models file whose table is gone from the schema.
           Manifest.rb_files(root, "gen/models").each do |f|

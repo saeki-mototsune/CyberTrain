@@ -501,7 +501,7 @@ module Cybertrain
 
       path = "#{controller_path}/#{name}"
       env = view_env(string_keys(locals))
-      helpers = Template::Helpers.new(self)
+      helpers = Views.helpers_builder.call(self)
       frame = Views.layout_name
       if layout && !frame.empty? && engine.exists?(frame)
         send_html(engine.render_with_layout(path, frame, env, helpers))
@@ -867,7 +867,7 @@ module Cybertrain
       path = Template::Helpers.partial_path(controller_path, name)
       given = string_keys(locals)
       Template::Helpers.check_locals(engine.template(path), given.keys)
-      send_html(engine.render(path, view_env(given), Template::Helpers.new(self)))
+      send_html(engine.render(path, view_env(given), Views.helpers_builder.call(self)))
     end
 
     def send_html(body)

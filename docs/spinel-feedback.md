@@ -161,6 +161,7 @@ that it is fixed.
 | K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around; reduced, fix tested, see K) |
 | L. `SPINEL_WORKERS=N` counts main, which a server keeps waiting | no (N helpers beside main) | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05: its reduced program uses 1.01 CPUs at N=2, 1.97 at N=3) | not checked | **yes** (from #9840; worked around; 1.01 CPUs at N=2, 1.97 at N=3, the same on 2026.11.03.7025, so not new here) |
 | Rule 79. A rescuing method's value, from a block that only raises, does not compile when appended | not checked | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05) | not checked | **yes** (found 2026-11-04; also on 2026.11.03.7025, so not new here) |
+| M. `gets` on STDIN does not flush a partial STDOUT line first | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (rule 83; worked around with `flush`) |
 
 ## What CyberTrain still works around
 
@@ -1522,3 +1523,11 @@ p out
   value slot (as the method's own `rescue` value is what the call
   answers), or type the call by the method's return type rather than the
   block's.
+
+### M. `gets` on STDIN does not flush a partial STDOUT line first
+
+- Found on 2026.11.04.7026 (spikes/NOTES.md rule 83): `STDOUT.write("A> ");
+  STDIN.gets` on a terminal shows `A> ` only after the line is read;
+  CRuby flushes STDOUT before the read blocks. CyberTrain's console calls
+  `flush` after its prompt. Fix: flush STDOUT (as CRuby's `rb_io_flush` on
+  the tied stdout does) before a read from STDIN blocks.

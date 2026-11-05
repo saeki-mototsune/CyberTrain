@@ -1,0 +1,70 @@
+create spin.toml
+create .gitignore
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/shop.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create app/components/card_component.rb
+create app/components/card_component.html.erb
+create test/card_component.rb
+
+next:
+  spin run gen           # writes gen/components.rb
+  cybertrain spin test   # test/card_component.rb; snapshot it from the binary
+ok   generate component card title value:integer writes the class with one keyword per attribute
+ok   the template prints each attribute, then the content
+ok   the test renders it through Cybertrain::Test.render_component
+ok   spin run gen's scan accepts the generated component
+create app/components/admin/user_row_component.rb
+create app/components/admin/user_row_component.html.erb
+create test/admin_user_row_component.rb
+
+next:
+  spin run gen           # writes gen/components.rb
+  cybertrain spin test   # test/admin_user_row_component.rb; snapshot it from the binary
+ok   a namespaced component is nested in its module
+error: app/components/card_component.rb already exists (pass --force to overwrite it)
+force app/components/card_component.rb
+force app/components/card_component.html.erb
+force test/card_component.rb
+
+next:
+  spin run gen           # writes gen/components.rb
+  cybertrain spin test   # test/card_component.rb; snapshot it from the binary
+identical app/components/card_component.rb
+identical app/components/card_component.html.erb
+identical test/card_component.rb
+
+next:
+  spin run gen           # writes gen/components.rb
+  cybertrain spin test   # test/card_component.rb; snapshot it from the binary
+ok   an existing, different file is refused unless --force
+error: 'content' is a name Cybertrain::Component already uses; pick another attribute
+error: unknown type 'date' for label (use string, text, integer, float, boolean)
+error: 'class' is a Ruby keyword and cannot name an attribute
+error: duplicate attribute 'a'
+error: bad attribute 'a:b:c': use name[:type]
+error: usage: cybertrain generate component NAME [attr[:type] ...] [--force]
+ok   bad attributes and usage are rejected before anything is written
+7 tests, 26 assertions, 0 failures

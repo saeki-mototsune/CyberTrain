@@ -21,7 +21,9 @@
 # reader of that name raises ArgumentError at Ruby's call. They must be in
 # RESERVED_COLUMN_NAMES, never a plain reader and never merely "shadowing".
 # It also guards the attachment generator's ATTACHMENT_RESERVED_ACTIONS
-# against Cybertrain::Controller growing (see below). Run by CI.
+# against Cybertrain::Controller growing (see below), and the helper
+# generator's HelperScan::RESERVED_HELPER_NAMES against Template::Helpers
+# and HelperBase growing (see below). Run by CI.
 #
 # usage: ruby script/check-reserved-names
 require File.expand_path("../cybertrain/ident", __dir__)
@@ -98,9 +100,30 @@ end
 action_names = action_names.uniq.sort.grep(/\A[a-z][a-z0-9_]*\z/)
 actions_missing = action_names - Cybertrain::CLI::Templates::ATTACHMENT_RESERVED_ACTIONS
 
-if missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty?
-  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names"
+# The helper generator mixes every app/helpers module into a subclass of
+# Template::Helpers, so Gen::HelperScan::RESERVED_HELPER_NAMES must name
+# every method of cybertrain/template/helpers.rb and of HelperBase
+# (interpreter.rb), public or private, and every name helper_call answers
+# itself (its `when "..."` arms, which reach no app helper).
+require "cybertrain/generator/helper_scan"
+helpers_source = File.read(File.expand_path("../cybertrain/template/helpers.rb", __dir__))
+interpreter_source = File.read(File.expand_path("../cybertrain/template/interpreter.rb", __dir__))
+helper_names = helpers_source.scan(/^\s*def\s+(?!self\.)([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten
+base = interpreter_source[/class HelperBase\b.*?\n    end\n/m].to_s
+helper_names.concat(base.scan(/^\s*def\s+(?!self\.)([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten)
+dispatch = helpers_source[/def helper_call\(.*?\n      end\n/m].to_s
+dispatch.scan(/^\s*when ((?:"[^"]+"(?:,\s*)?)+)/) { |(list)| helper_names.concat(list.scan(/"([^"]+)"/).flatten) }
+helper_names = helper_names.uniq.sort
+helpers_missing = helper_names - Cybertrain::Gen::HelperScan::RESERVED_HELPER_NAMES
+
+if missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty? && helpers_missing.empty?
+  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names"
 else
+  unless helpers_missing.empty?
+    warn "check-reserved-names: the template helpers define or answer #{helpers_missing.map(&:inspect).join(", ")} " \
+         "(cybertrain/template/helpers.rb or HelperBase) but Cybertrain::Gen::HelperScan::RESERVED_HELPER_NAMES " \
+         "(cybertrain/generator/helper_scan.rb) does not refuse it as an app helper name; add it"
+  end
   unless actions_missing.empty?
     warn "check-reserved-names: a controller already has #{actions_missing.map(&:inspect).join(", ")} " \
          "(cybertrain/controller.rb or the generated ApplicationController) but Cybertrain::CLI::Templates::ATTACHMENT_RESERVED_ACTIONS " \
