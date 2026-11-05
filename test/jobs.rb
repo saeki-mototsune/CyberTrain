@@ -28,6 +28,11 @@ Job.handle("boom") { |payload| raise "boom #{payload}" }
 Job.handle("long") { |payload| raise "x" * 5000 }
 Job.handle("paid", concurrency: 1) { |payload| SEEN << "paid #{payload}" }
 Job.handle("other") { |payload| SEEN << "other #{payload}" }
+# Runs recover! at the time in its payload while its own row is running.
+Job.handle("probe") do |payload|
+  requeued = Job.recover!(payload.to_i)
+  SEEN << "#{requeued} #{job_state(1)}"
+end
 # Fails twice, then succeeds.
 Job.handle("flaky") do |payload|
   SEEN << "flaky"
@@ -257,14 +262,15 @@ test "install! adds claimed_by and heartbeat_at to a table made before them" do
   refute job_columns.include?("claimed_by")
   Job.install!
   assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at", job_columns
-  # The old release's running row counts its updated_at as its heartbeat.
-  assert_equal 1200, job_heartbeat(1)
   Job.install!
-  assert_equal 1, Job.recover!(1501)
-  queued = Job.enqueue("record", "after", run_at: Time.at(1000))
+  # A probe job, claimed by work_one at 2000, calls recover!(2001) from its
+  # handler: the old release's running row (no heartbeat) is requeued at
+  # once, the probe's own row, claimed a second before, is left running.
+  probe = Job.enqueue("probe", "2001", run_at: Time.at(1000))
   assert Job.work_one(2000)
-  assert Job.work_one(2000)
-  assert_equal "done", job_state(queued)
+  assert_equal "1 queued", SEEN.join(",")
+  assert_equal "done", job_state(probe)
+  assert_equal 0, Job.recover!(2001)
 end
 
 test "concurrency: a kind at its limit is skipped and another kind's job claimed" do

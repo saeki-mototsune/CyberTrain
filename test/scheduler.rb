@@ -146,7 +146,7 @@ test "a tick that cannot reach the database runs nothing, logs, and leads again 
   assert S.leader?
 end
 
-test "while job threads run, a tick recovers stale jobs at most once a minute" do
+test "while job threads run, every tick (leader or not) recovers stale jobs, at most once a minute" do
   Job.install!
   stale_one = insert_stale_running
   # Job threads do not run yet: the tick leaves the row alone.
@@ -167,6 +167,16 @@ test "while job threads run, a tick recovers stale jobs at most once a minute" d
   S.run_due(4061)
   assert_equal "queued", job_state(stale_three)
   assert_includes LOG.string, "[WARN] Requeued 1 job(s) whose process stopped sending heartbeats"
+  # Recovery does not wait for the lease: with another process leading, no
+  # task runs, but the tick still recovers.
+  assert Lease.acquire("scheduler", "other:1:1", 4100, ttl: 100)
+  stale_five = insert_stale_running
+  assert_equal 0, S.run_due(4121)
+  refute S.leader?
+  assert_equal "queued", job_state(stale_five)
+  # The other's lease ran out at 4200: this process leads and runs the tasks.
+  assert_equal 3, S.run_due(4201)
+  assert S.leader?
   Job.stop!
   # Without job threads, no more recovery.
   stale_four = insert_stale_running

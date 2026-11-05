@@ -29,8 +29,9 @@ module Cybertrain
   # the lease "scheduler" ({Lease.acquire}, {Config#scheduler_lease_ttl}
   # seconds), and only the process holding it runs the due tasks; the
   # others keep ticking and take over once the leader's lease expires.
-  # Every tick of a process that runs jobs also calls {Job.recover!}, at
-  # most once a minute.
+  # Every tick of a process that runs jobs, leader or not, also calls
+  # {Job.recover!}, at most once a minute (recovery is idempotent, so it
+  # needs no lease).
   # @api public
   module Scheduler
     # One registered task. Distinctive accessor names and no #call

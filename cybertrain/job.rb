@@ -361,8 +361,8 @@ module Cybertrain
 
     # Creates the table and its index if they are missing, and adds the
     # columns a table made by an earlier release lacks (`claimed_by`,
-    # `heartbeat_at`; a row such a release left `running` gets its
-    # `updated_at` as its heartbeat, so staleness recovery covers it). The
+    # `heartbeat_at`; a row such a release left `running` keeps a NULL
+    # heartbeat, which {Job.recover!} requeues at once). The
     # job threads and {Job.enqueue} call it once per connected database;
     # call it yourself only to create the table ahead of time.
     # @return [nil]
@@ -384,16 +384,11 @@ module Cybertrain
       rows = DB.with { |c| c.execute("PRAGMA table_info('cybertrain_jobs')") }
       present = Array.new(0) { "" }
       rows.each { |r| present << Cast.str(r["name"]) }
-      added = false
       ALTER_COLUMNS.each do |pair|
         next if present.include?(pair[0])
 
         sql = pair[1]
         DB.with { |c| c.execute(sql) }
-        added = true
-      end
-      if added
-        DB.with { |c| c.execute("UPDATE cybertrain_jobs SET heartbeat_at = updated_at WHERE state = 'running' AND heartbeat_at IS NULL") }
       end
       nil
     end
@@ -406,7 +401,10 @@ module Cybertrain
 
     # Puts `running` rows whose process stopped saying they run back in the
     # queue: those whose `heartbeat_at` is older than `now - stale` (the
-    # process died mid-job, or was stopped before the job finished). A row
+    # process died mid-job, or was stopped before the job finished), and
+    # those with no heartbeat at all (left `running` by a release before
+    # heartbeats, when install! added the column: every claim since writes
+    # one, so NULL is never a live job). A row
     # whose process still sends heartbeats ({Job.heartbeat!}) is never
     # touched, so every process that runs jobs may call it; the scheduler
     # does at start and once a minute. The attempt was already counted
@@ -421,7 +419,7 @@ module Cybertrain
       binds = Cast.binds(now, now - stale)
       count = 0
       DB.with do |c|
-        c.execute("UPDATE cybertrain_jobs SET state = 'queued', updated_at = ? WHERE state = 'running' AND heartbeat_at < ?", binds)
+        c.execute("UPDATE cybertrain_jobs SET state = 'queued', updated_at = ? WHERE state = 'running' AND (heartbeat_at IS NULL OR heartbeat_at < ?)", binds)
         count = c.changes
       end
       count
