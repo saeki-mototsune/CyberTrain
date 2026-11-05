@@ -1,5 +1,5 @@
 ---
-source_sha256: 11e7333b2d2b8c4b6bedd02bb1d11425913e066441e6d2dd41b293624e28ba63
+source_sha256: 2a9e8e996256fc4501968bb672c57b50fbb1cda1f3f80d6640176de81db378d3
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -388,7 +388,7 @@ end
 <% end %>
 ```
 
-- Le template voit les variables d’instance du composant comme des variables locales (`title`), ses méthodes publiques sans paramètre par leur nom (`value_text`), et `content`, ce qu’a affiché le bloc `do` (`""` sans bloc). Il se rend sans layout, peut rendre des partiels et d’autres composants, et compte pour `max_render_depth` comme un partiel. Un partiel qu’il rend ne voit pas les méthodes du composant.
+- Le template voit les variables d’instance du composant comme des variables locales (`title`), ses méthodes publiques sans paramètre par leur nom (`value_text`), et `content`, ce qu’a affiché le bloc `do` (`""` sans bloc). Il se rend sans layout, peut rendre des partiels et d’autres composants, et compte pour `max_render_depth` comme un partiel. Un partiel qu’il rend ne voit pas les méthodes du composant. Un nom de partiel sans répertoire dans le template d’un composant (`render "chip"`) est cherché sous `app/components/` (`app/components/_chip.html.erb`) ; un nom avec répertoire (`render "shared/note"`) sous `app/views/`, comme d’habitude.
 - Un composant est désigné par son nom en snake_case sans `_component`, comme un partiel l’est par son chemin&nbsp;: `"card"` pour `CardComponent`, `"admin/user_row"` pour `Admin::UserRowComponent` (`app/components/admin/user_row_component.rb`). Les templates ne peuvent pas nommer de constantes.
 - `spin run gen` écrit `gen/components.rb` à partir d’une analyse lexicale, comme pour les helpers&nbsp;: la ligne de classe, les affectations `@x =`, les `def` sans paramètre et les mots-clés d’`initialize`. `initialize` ne prend que des mots-clés (au plus trois optionnels), et son template doit exister&nbsp;; un mot-clé manquant ou inconnu est une `ArgumentError` au rendu. Un composant inconnu est un `Cybertrain::Component::Unknown`&nbsp;: `` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``.
 - `cybertrain generate component card title value:integer` écrit la classe, son template et un test qui le rend avec `Cybertrain::Test.render_component`.

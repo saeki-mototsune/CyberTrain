@@ -63,6 +63,26 @@ class FrameComponent < Cybertrain::Component
   end
 end
 
+# Renders a bare partial: it must come from app/components/, not from the
+# views directory of the same name.
+class BadgeComponent < Cybertrain::Component
+  def initialize(label:)
+    @label = label
+  end
+
+  def view_assigns
+    { "label" => @label }
+  end
+
+  def component_name
+    "badge"
+  end
+
+  def component_template
+    "__components/badge_component.html.erb"
+  end
+end
+
 # A view method its own template calls, and a partial that must not see it.
 class ProbeComponent < Cybertrain::Component
   def secret = "s3"
@@ -113,6 +133,9 @@ module Gen
       when "frame"
         Cybertrain::Component.check_keywords!(name, kwargs, ["label"], 1)
         ::FrameComponent.new(label: kwargs["label"])
+      when "badge"
+        Cybertrain::Component.check_keywords!(name, kwargs, ["label"], 1)
+        ::BadgeComponent.new(label: kwargs["label"])
       when "probe"
         Cybertrain::Component.check_keywords!(name, kwargs, Array.new(0) { "" }, 0)
         ::ProbeComponent.new
@@ -139,7 +162,12 @@ FILES = {
   # A ComponentsController's views: app/views/components/ is a view
   # directory like any other, beside the component of the same name.
   "app/views/components/_card.html.erb" => "<p>the view <%= title %></p>",
-  "app/views/components/card_component.html.erb" => "<p>a page</p>"
+  "app/views/components/card_component.html.erb" => "<p>a page</p>",
+  # A bare partial from a component template, and a view partial of the
+  # same name that must not be picked instead.
+  "app/components/badge_component.html.erb" => "<%= render \"chip\", text: label %>",
+  "app/components/_chip.html.erb" => "<em>component chip <%= text %></em>",
+  "app/views/components/_chip.html.erb" => "<em>view chip <%= text %></em>"
 }
 DIRS = ["app", "app/views", "app/views/shared", "app/views/components", "app/components"]
 DIRS.each { |d| Dir.mkdir("#{ROOT}/#{d}") }
@@ -217,14 +245,23 @@ end
 test "the same, from embedded templates" do
   sources = {
     "components/_card.html.erb" => "<p>embedded view <%= title %></p>",
-    "__components/card_component.html.erb" => "<b><%= title %></b>"
+    "__components/card_component.html.erb" => "<b><%= title %></b>",
+    "__components/badge_component.html.erb" => "<%= render \"chip\", text: label %>",
+    "__components/_chip.html.erb" => "[<%= text %>]",
+    "components/_chip.html.erb" => "view chip"
   }
   Cybertrain::Views.configure_embedded(sources)
   view = Cybertrain::Views.render_partial("components/card", title: "V")
   component = render_inline("<%= render component: \"card\", title: \"C\" %>")
+  badge = render_inline("<%= render component: \"badge\", label: \"B\" %>")
   Cybertrain::Views.configure("#{ROOT}/app/views", cache: false)
   assert_equal "<p>embedded view V</p>", view
   assert_equal "<b>C</b>", component
+  assert_equal "[B]", badge
+end
+
+test "a bare partial in a component template comes from app/components/, not app/views/components/" do
+  assert_equal "<em>component chip B</em>", render_inline("<%= render component: \"badge\", label: \"B\" %>")
 end
 
 test "the derived names of the base class" do
