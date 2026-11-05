@@ -6,6 +6,8 @@ Usage:
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+  ./blog console           evaluate expressions over the models (help inside)
+  ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
 ok   help lists worker and feeds
 => test environment
