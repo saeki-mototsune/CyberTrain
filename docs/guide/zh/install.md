@@ -1,16 +1,16 @@
 ---
-source_sha256: f2fc66817b4de63dd2d3fa3ee4cdba0c25960cae6ec4de300b2cc3d671220cf2
+source_sha256: 8c5fb31e9029aee83c444a7a42144a867952901bfc224f91835abbbf79439213
 ---
 # 安装
 
 在你的机器上运行 CyberTrain 需要什么、如何安装 `cybertrain` 命令、它有哪些命令，以及它如何替你安装 Spinel 和框架。
 
 > [!NOTE]
-> 想不安装任何东西就试用 CyberTrain，请打开[在线试用](site:playground.html)：GitHub Codespaces 会在你浏览器中的 VS Code 里打开教程中的博客、`cybertrain` 命令和 Spinel `2026.10.27.7020`。同一个镜像也可以在 Docker 下本地运行。
+> 想不安装任何东西就试用 CyberTrain，请打开[在线试用](site:playground.html)：GitHub Codespaces 会在你浏览器中的 VS Code 里打开教程中的博客、`cybertrain` 命令和锁定版本的 Spinel。同一个镜像也可以在 Docker 下本地运行。
 
 ## 环境要求
 
-- Spinel `2026.10.27.7020`（`Cybertrain::SPINEL_TAG`，与 [.github/workflows/ci.yml](../../.github/workflows/ci.yml) 中 `SPINEL_TAG` 的版本相同），即 [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)（`Cybertrain::SPINEL_REPOSITORY`）的一个版本；它是 matz/spinel 的分支，先于上游版本收录了 CyberTrain 所需的修复；未在其他版本上测试。你无需手动安装：`cybertrain` 命令在第一次需要它时会把该版本构建到 `~/.cybertrain` 中（`cybertrain setup` 可按需执行这一步），除非 `PATH` 上已有该版本的 `spinel`——参见 [Spinel 是如何安装的](#how-spinel-is-installed)。
+- Spinel，版本为 `Cybertrain::SPINEL_TAG` 所指的版本（[cybertrain/version.rb](../../cybertrain/version.rb)；`cybertrain doctor` 会打印它，与 [.github/workflows/ci.yml](../../.github/workflows/ci.yml) 中 CI 的 `SPINEL_TAG` 相同），即 [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel)（`Cybertrain::SPINEL_REPOSITORY`）的一个版本；它是 matz/spinel 的分支，先于上游版本收录了 CyberTrain 所需的修复；未在其他版本上测试。你无需手动安装：`cybertrain` 命令在第一次需要它时会把该版本构建到 `~/.cybertrain` 中（`cybertrain setup` 可按需执行这一步），除非 `PATH` 上已有该版本的 `spinel`——参见 [Spinel 是如何安装的](#how-spinel-is-installed)。
 - 构建它需要：C 工具链（`cc`，或 `CC` 指定的编译器）和 `make`——Spinel 会把每个程序编译为 C——以及 `git` 和 `curl`。
 - SQLite 3 头文件和库（Debian/Ubuntu 上为 `libsqlite3-dev`；macOS 上随 Xcode 命令行工具提供）——模型直接使用 Spinel 的 FFI，而不是 gem。
 - zlib 头文件和库（Debian/Ubuntu 上为 `zlib1g-dev`；macOS 上在 SDK 中）——gzip 压缩的请求体（`request.decoded_body`）通过系统的 zlib 解压，绑定方式相同。
@@ -51,7 +51,7 @@ cybertrain doctor
 - `cybertrain server [PORT]` 先生成代码，然后启动开发服务器（`spin run gen; spin run NAME`，或 `spin run NAME -- PORT`；默认端口 3000）。
 - `cybertrain build` 构建嵌入了 `app/views/` 的 NAME，并组装 `dist/`（二进制文件、`public/`、`storage/`、`tmp/`）。
 - `cybertrain spin ARGS...` 在任意目录下用锁定版本的 Spinel 运行 `spin`（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
-- `cybertrain setup [--force]` 把 Spinel `2026.10.27.7020` 安装到 `~/.cybertrain` 中，除非 `PATH` 上已有该版本的 `spinel`；`--force` 会重新构建 `~/.cybertrain` 下的副本。
+- `cybertrain setup [--force]` 把锁定版本的 Spinel 安装到 `~/.cybertrain` 中，除非 `PATH` 上已有该版本的 `spinel`；`--force` 会重新构建 `~/.cybertrain` 下的副本。
 - `cybertrain doctor` 检查 C 工具链、SQLite 头文件和 Spinel 的安装情况。
 - `cybertrain version` 打印版本。
 
@@ -59,7 +59,7 @@ cybertrain doctor
 
 ## Spinel 是如何安装的
 
-每个运行 `spin` 的命令（`new`、`db`、`server`、`build`、`spin`）都会先确保有 `Cybertrain::SPINEL_TAG` 所指版本的 Spinel 可用。如果 `PATH` 上有 `spinel`（以及 `spin`），且其 `spinel --version` 报告的正是该版本，就直接使用它；否则使用 `cybertrain` 保存在 `~/.cybertrain/spinel/2026.10.27.7020/` 下的副本；如果也没有，`cybertrain` 就从 `Cybertrain::SPINEL_REPOSITORY` 的发布标签构建这份副本（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`），只需一次，耗时几分钟，并把日志写入 `~/.cybertrain/log/spinel-2026.10.27.7020-build.log`（某一步失败时会打印其最后几行）。
+每个运行 `spin` 的命令（`new`、`db`、`server`、`build`、`spin`）都会先确保有 `Cybertrain::SPINEL_TAG` 所指版本的 Spinel 可用。如果 `PATH` 上有 `spinel`（以及 `spin`），且其 `spinel --version` 报告的正是该版本，就直接使用它；否则使用 `cybertrain` 保存在 `~/.cybertrain/spinel/<SPINEL_TAG>/` 下的副本；如果也没有，`cybertrain` 就从 `Cybertrain::SPINEL_REPOSITORY` 的发布标签构建这份副本（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`），只需一次，耗时几分钟，并把日志写入 `~/.cybertrain/log/spinel-<SPINEL_TAG>-build.log`（某一步失败时会打印其最后几行）。
 
 如果缺少构建所需的工具，`cybertrain` 会在开始前指出缺少哪个，并打印适用于你的平台的安装命令。`PATH` 上其他版本的 `spinel` 永远不会被使用或改动：`cybertrain` 会保留自己的副本（并在安装时说明这一点）。
 
@@ -87,7 +87,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 ### `cybertrain new` 写出什么
 
 `cybertrain new` 会写出应用，其 `spin.toml` 指向与 CLI 相匹配的版本（`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "v0.3.1" }`），确保 Spinel 已安装，然后运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `spin run gen`，就像 `rails new` 会运行 `bundle install` 一样，最后打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。
+"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`，X.Y.Z 即 `cybertrain version` 打印的版本），确保 Spinel 已安装，然后运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `spin run gen`，就像 `rails new` 会运行 `bundle install` 一样，最后打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。
 
 如果 Spinel 或两个 `spin` 步骤之一失败，已写出的文件会保留，`new` 以状态码 1 退出，并打印排除原因后需要运行的命令（对于 Spinel：先运行 `cybertrain setup`，再在新目录中运行 `cybertrain spin lock && cybertrain spin run gen`）。
 
@@ -103,7 +103,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 
 ### 把应用迁移到新版本
 
-gem 和框架从同一个标签发布，因此版本一致：0.3.1 版的 gem 生成的应用依赖框架 `v0.3.1`。要把应用迁移到新版本，先更新 gem，把 `spin.toml` 指向新标签，然后在应用中运行：
+gem 和框架从同一个标签发布，因此版本一致：X.Y.Z 版的 gem 生成的应用依赖框架 `vX.Y.Z`。要把应用迁移到新版本，先更新 gem，把 `spin.toml` 指向新标签，然后在应用中运行：
 
 ```shell 终端 — 应用目录
 cybertrain spin lock

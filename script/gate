@@ -22,8 +22,8 @@
 #     equals SPINEL_TAG in .github/workflows/ci.yml, and
 #     script/claude-cloud-setup's SPINEL_GIT is Cybertrain::SPINEL_REPOSITORY's
 #     (that script builds the fork's latest release, so it pins no tag);
-#   * script/check-reserved-names, check-client-faults, check-http-layer and
-#     test-sync-versions pass;
+#   * script/check-reserved-names, check-client-faults and check-http-layer
+#     pass;
 #   * every file cybertrain.gemspec lists exists, and the CLI loads under CRuby;
 #   * playground/Dockerfile's cli-src stage copies every file the gemspec lists;
 #   * every test/*.rb has its .expected snapshot, and every snapshot its test.
@@ -33,6 +33,11 @@
 # When a file under docs/guide/, script/check-guide-i18n or script/guide-pages*
 # is in the set:
 #   * script/check-guide-i18n passes (the guide translations match the English).
+# When a page script/check-version-mentions reads (site/, docs/guide/,
+# docs/deploy*.md, the READMEs), cybertrain/version.rb or that script is in
+# the set:
+#   * script/check-version-mentions passes (no page names the current release's
+#     numbers).
 #
 # Exit status 1 when any check fails; the failing lines are printed. To commit
 # past the hook on purpose, `git commit --no-verify`; CI runs the gate anyway.
@@ -186,6 +191,18 @@ else
   status.success? ? ok("guide translations match", "script/check-guide-i18n") : fail!("guide translations", out.lines.map(&:chomp))
 end
 
+# --- release numbers in the pages ------------------------------------------------
+
+# The site, the guides, the deployment tutorial and the READMEs describe the
+# current release without naming its numbers, which move with every release.
+VERSION_MENTIONS = %r{\A(site/(?!api/).*\.html|docs/guide/.*\.md|docs/deploy(\.en|-kamal)?\.md|(playground/)?README\.md|cybertrain/version\.rb|script/check-version-mentions)\z}
+if mode != :all && files.none? { |f| f.match?(VERSION_MENTIONS) }
+  skip("release numbers in the pages", "no page, cybertrain/version.rb or script/check-version-mentions in the set")
+else
+  out, status = Open3.capture2e("ruby", "script/check-version-mentions")
+  status.success? ? ok("no page names the release numbers", "script/check-version-mentions") : fail!("release numbers in the pages", out.lines.map(&:chomp))
+end
+
 # --- repository checks -----------------------------------------------------------
 
 if mode == :staged && files.none? { |f| f.match?(REPO_INPUTS) }
@@ -204,7 +221,7 @@ else
   pins << "script/claude-cloud-setup SPINEL_GIT #{setup_git.inspect} != Cybertrain::SPINEL_REPOSITORY + \".git\" #{"#{spinel_repo}.git".inspect}" unless setup_git == "#{spinel_repo}.git"
   pins.empty? ? ok("version and Spinel tag pinned in one place", "#{version}, spinel #{spinel_tag}") : fail!("version pins", pins)
 
-  %w[check-reserved-names check-client-faults check-http-layer test-sync-versions].each do |script|
+  %w[check-reserved-names check-client-faults check-http-layer].each do |script|
     out, status = Open3.capture2e("ruby", "script/#{script}")
     status.success? ? ok("script/#{script}") : fail!("script/#{script}", out.lines.map(&:chomp))
   end
