@@ -94,7 +94,7 @@ The rules are numbered in the order they were found. By topic:
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
-- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78
+- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63
 
@@ -171,7 +171,8 @@ The rules are numbered in the order they were found. By topic:
     `SPINEL_WORKERS=2` adds 16-27% to the pages, 51% to a comment POST and
     49% to a static file. The POST used to lose a quarter: SQLite's
     busy_timeout slept a millisecond or more holding the worker, until a
-    busy handler retrying every 100 us replaced it (cybertrain/db/sqlite_ffi.rb). 1 stays
+    busy handler retrying every 100 us replaced it (cybertrain/db/sqlite_ffi.rb;
+    since rule 80 the wait is a green-thread `sleep` starting at 100 us). 1 stays
     the default (a one-core server); set it to the core count otherwise.
     **Since Spinel #9840 (in 2026.11.04.7026, not in 2026.09.12) an explicit
     `SPINEL_WORKERS=N` counts main among the N** and starts N-1 helpers
@@ -819,6 +820,26 @@ The rules are numbered in the order they were found. By topic:
     if x > 0; "ok"`). Found while re-checking rule 32. In a test of a
     rescuing helper, give the block a value after the raise or pass the
     result through a method.
+80. Never wait for another connection's SQLite lock inside the SQLite call
+    on the request path: an FFI call holds its OS worker for as long as it
+    runs (`blocking: true` is accepted and ignored), and with one worker
+    every green thread is on that OS thread. A transaction that holds the
+    write lock and parks its green thread (I/O, a `sleep`, a safepoint)
+    then cannot reach its COMMIT while a second writer sits in the busy
+    handler, which slept 100 us at a time inside `sqlite3_step` for about
+    5 s: every request stalled for those 5 s and the second write failed
+    with "database is locked" (reproduced by test/db_busy_wait.rb,
+    saeki-mototsune/CyberTrain#134, 2026-11-05). The busy handler now only
+    records that SQLite asked to wait and returns 0, and
+    `Connection#step_waiting` / `#exec_waiting` retry after a green-thread
+    `sleep` (100 us doubling to 1 ms, 5 s in all), which lets the holder
+    run. "Asked" is the retry signal: SQLite calls the handler only when
+    waiting can help, so a BUSY it was not asked about (a stale WAL
+    snapshot) still fails at once. Only the first step waits (a statement
+    takes its locks before it changes or returns anything), and only
+    single statements are retried: a multi-statement `exec_script` (schema,
+    migrations, the WAL switch at open) and ROLLBACK still wait in C,
+    since a script refused half way cannot be re-run from the top.
 
 ## Numbers worth remembering
 

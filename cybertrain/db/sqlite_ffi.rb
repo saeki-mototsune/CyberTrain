@@ -11,34 +11,62 @@
 #   argument: that is SQLITE_TRANSIENT, so SQLite copies the string.
 #
 # `blocking: true` marks the calls that can wait on disk or on another
-# connection's lock (busy_timeout). Spinel 2026.09.12 accepts and ignores the
-# option, so today such a call still holds its OS worker while it waits.
+# connection's lock. Spinel 2026.09.12 accepts and ignores the option, so
+# such a call holds its OS worker for as long as it runs: a lock wait inside
+# it is why the busy handler below can report instead of sleeping.
 module Cybertrain
   module DB
     module SQLite3
       ffi_lib "sqlite3"
 
-      # A busy handler that retries every 100 microseconds, for about five
-      # seconds (the busy_timeout it replaces). SQLite's own busy_timeout
-      # sleeps 1, 2, 5, 10 ... 100 ms between tries; with SPINEL_WORKERS > 1
-      # two inserts meet on the write lock often, and the loser slept a whole
-      # millisecond or more (holding its OS worker, see above) for a lock
-      # held for microseconds.
+      # The busy handler, with two modes kept in a per-connection slot of two
+      # ints (malloc(8), owned by the Connection): slot[0] the mode, slot[1]
+      # set when SQLite asked to wait.
+      #
+      # * Report (slot[0] = 1, the default): note that SQLite asked and
+      #   return 0 at once, so the call returns SQLITE_BUSY and the
+      #   Connection waits in Ruby, where `sleep` parks the green thread and
+      #   the lock holder can run on the same OS worker
+      #   (saeki-mototsune/CyberTrain#134). SQLite calls the handler only
+      #   when waiting can help, so "asked" also tells a retriable BUSY from
+      #   one that is not (a stale WAL snapshot).
+      # * Wait here (slot[0] = 0): retry every 100 microseconds for about
+      #   five seconds, inside the call. For scripts (several statements:
+      #   one that stops at a lock half way cannot be re-run from the top)
+      #   and ROLLBACK. SQLite's own busy_timeout slept 1, 2, 5 ... 100 ms
+      #   between tries; with SPINEL_WORKERS > 1 the loser of two inserts
+      #   slept a millisecond or more for a lock held for microseconds.
       ffi_source <<~C
         #include <time.h>
         extern int sqlite3_busy_handler(void *db, int (*cb)(void *, int), void *arg);
         static int cybertrain_sqlite_busy(void *arg, int count) {
-          (void)arg;
+          int *slot = (int *)arg;
+          if (slot[0]) { slot[1] = 1; return 0; }
           if (count >= 50000) return 0;
           struct timespec ts = { 0, 100000 };
           nanosleep(&ts, NULL);
           return 1;
         }
-        int cybertrain_sqlite_set_busy_handler(void *db) {
-          return sqlite3_busy_handler(db, cybertrain_sqlite_busy, NULL);
+        int cybertrain_sqlite_set_busy_handler(void *db, void *slot) {
+          ((int *)slot)[0] = 1;
+          ((int *)slot)[1] = 0;
+          return sqlite3_busy_handler(db, cybertrain_sqlite_busy, slot);
+        }
+        /* 1: report (the default), 0: wait inside the call. Clears "asked". */
+        void cybertrain_sqlite_busy_report(void *slot, int on) {
+          ((int *)slot)[0] = on;
+          ((int *)slot)[1] = 0;
+        }
+        /* 1 when SQLite asked to wait since the last call; clears it. */
+        int cybertrain_sqlite_busy_asked(void *slot) {
+          int asked = ((int *)slot)[1];
+          ((int *)slot)[1] = 0;
+          return asked;
         }
       C
-      ffi_func :cybertrain_sqlite_set_busy_handler, [:ptr], :int
+      ffi_func :cybertrain_sqlite_set_busy_handler, [:ptr, :ptr], :int
+      ffi_func :cybertrain_sqlite_busy_report, [:ptr, :int], :void
+      ffi_func :cybertrain_sqlite_busy_asked, [:ptr], :int
 
       # A DATETIME column read straight into UTC epoch seconds, with no Ruby
       # String in between: the text SQLite already holds is parsed in place.
@@ -84,6 +112,7 @@ module Cybertrain
       ffi_func :cybertrain_sqlite_column_epoch, [:ptr, :int], :long
 
       ffi_const :OK, 0
+      ffi_const :BUSY, 5
       ffi_const :ROW, 100
       ffi_const :DONE, 101
 
