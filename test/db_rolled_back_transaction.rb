@@ -59,6 +59,15 @@ rescue DB::Error => e
   e.message
 end
 
+# Runs one script through exec_script; returns the error message, or ""
+# when it ran.
+def try_script(c)
+  c.exec_script("INSERT INTO t (v) VALUES ('after the rollback, as a script');")
+  ""
+rescue DB::Error => e
+  e.message
+end
+
 def row_count
   DB.with { |c| c.execute("SELECT COUNT(*) AS n FROM t")[0]["n"].to_s.to_i }
 end
@@ -69,6 +78,7 @@ def run_rescuing_transaction(log)
   DB.transaction do |c|
     log << fill_until_full(c)
     log << try_insert(c, "after the rollback")
+    log << try_script(c)
   end
   ""
 rescue DB::Error => e
@@ -83,8 +93,10 @@ test "a statement after SQLite rolled the transaction back is refused" do
   assert_includes log[0], "database or disk is full"
   # The statement after the rollback did not run...
   assert_includes log[1], "the enclosing transaction is no longer open"
+  # exec_script is refused the same way.
+  assert_includes log[2], "the enclosing transaction is no longer open"
   # ...so nothing of the transaction is left: the rows before the failure
-  # went with SQLite's rollback, and the one after never ran.
+  # went with SQLite's rollback, and the ones after never ran.
   assert_equal 0, row_count
   # The block's own end still reports the transaction as failed.
   refute outcome.empty?, "the transaction reported success"
