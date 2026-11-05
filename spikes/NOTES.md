@@ -173,6 +173,37 @@ The rules are numbered in the order they were found. By topic:
     busy_timeout slept a millisecond or more holding the worker, until a
     busy handler retrying every 100 us replaced it (cybertrain/db/sqlite_ffi.rb). 1 stays
     the default (a one-core server); set it to the core count otherwise.
+    **Since Spinel #9840 (in 2026.11.04.7026, not in 2026.09.12) an explicit
+    `SPINEL_WORKERS=N` counts main among the N** and starts N-1 helpers
+    (`g_worker_cap--` in lib/sp_sched.c's `sp_sched_start_workers`); unset,
+    it is still one helper per core beside main. With helpers present main
+    runs no general green thread (`sched_place_unstarted` skips worker 0,
+    and main's join pump runs only threads already pinned to it), and in
+    the server main only waits in `Server#wait`. So on 2026.11.04.7026,
+    `SPINEL_WORKERS=2` served examples/blog from one helper: the run of
+    2026-11-05 measured 0-2% over 1 on the pages. Measured on 2026-11-05
+    (2 CPUs, `taskset -c 0,1`, wrk -t2 -c16 on CPUs 2 and 3), with
+    `SPINEL_SCHED_STATS=2`: `pinned per worker: 0 18`, `workers=2 busy=1
+    runnable=14`, one OS thread at 7.85 s of CPU in 8 s and main at 0.15 s;
+    `mutex-wait n=0` (no lock in the framework) and the sweeper threads at
+    0.07 s (not GC). A program with no server (4 CPU-bound threads that
+    main joins) uses 1.97 CPUs at `SPINEL_WORKERS=2` on 2026.09.12 and 0.99
+    on 2026.11.04.7026, which needs 3 for 1.97. **`Application#serve`
+    therefore hands Spinel `workers + 1` when `workers > 1`
+    (`Application.spinel_workers`)**; 1 stays 1, where main runs every
+    thread itself. `config.workers` (`SPINEL_WORKERS` as CyberTrain reads it)
+    keeps meaning the threads that serve requests, so "the core count" is
+    right again. Same session, medians of 3 x 8 s, 2 over 1: before, +10%
+    (`GET /articles`), -3% (`/articles/1`), +2% (`/style.css`), +4% (the
+    comment POST); after, +24%, +44%, +22%, +44%; perf sched over 4 s
+    then counts 8.0 s of CPU on the two CPUs (two helpers at 3.49 s each,
+    main 0.59, the sweepers 0.36). A second effect, on latency rather
+    than throughput: a thread spawned by a helper (every connection: the
+    accept loop is a `Thread.new`) goes onto that helper's own queue and is
+    not placed (`sched_place_unstarted` runs only for main's spawns and the
+    global queue), so with two helpers the connections split 15 to 3 (9 to 8
+    with the accept loop on main, as an experiment, for the same
+    throughput). Both are in [docs/spinel-feedback.md](../docs/spinel-feedback.md) item L.
 23. `spin test --regen` writes `.expected` from CRuby's output; `spin test` diffs
     the Spinel binary's output (stdout and stderr merged) against it. Tests must
     therefore be CRuby/Spinel-portable;
