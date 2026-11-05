@@ -10,7 +10,7 @@ module Cybertrain
       attr_reader :file, :class_name, :superclass_name, :ivars, :view_methods, :keywords_required, :keywords_optional, :template
 
       # template: the Views engine name of its .html.erb
-      # ("components/card_component.html.erb").
+      # ("__components/card_component.html.erb").
       def initialize(file, class_name, superclass_name, ivars, view_methods, keywords_required, keywords_optional, template)
         @file = file
         @class_name = class_name
@@ -146,7 +146,7 @@ module Cybertrain
           raise Error, "#{file}: #{class_name}#initialize has #{kw_optional.size} optional keywords (at most #{HelperScan::MAX_OPTIONAL}: each one doubles the construction arms); give some of them no default"
         end
 
-        template = "components/#{rel.delete_suffix(".rb")}.html.erb"
+        template = "__components/#{rel.delete_suffix(".rb")}.html.erb"
         ComponentInfo.new(file, class_name, superclass, ivars, methods, kw_required, kw_optional, template)
       end
     end

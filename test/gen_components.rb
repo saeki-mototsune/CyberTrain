@@ -50,7 +50,7 @@ test "the scan finds the class, its ivars, view methods and keywords" do
   assert_equal ["value_text", "title"], info.view_methods
   assert_equal ["title"], info.keywords_required
   assert_equal ["value"], info.keywords_optional
-  assert_equal "components/card_component.html.erb", info.template
+  assert_equal "__components/card_component.html.erb", info.template
   assert_equal "card", info.component_name
 end
 
@@ -69,7 +69,7 @@ test "component names follow the class, namespaces included" do
   info = scan("module Admin\n  class UserRowComponent < Cybertrain::Component\n    def initialize(user:)\n      @user = user\n    end\n  end\nend\n", "admin/user_row_component.rb")
   assert_equal "Admin::UserRowComponent", info.class_name
   assert_equal "admin/user_row", info.component_name
-  assert_equal "components/admin/user_row_component.html.erb", info.template
+  assert_equal "__components/admin/user_row_component.html.erb", info.template
   assert_equal "admin/user_row", scan("class Admin::UserRowComponent < Cybertrain::Component\nend\n").component_name
 end
 
@@ -136,7 +136,7 @@ EXPECTED_CARD = <<~'RUBY'
     end
 
     def component_template
-      "components/card_component.html.erb"
+      "__components/card_component.html.erb"
     end
   end
 
@@ -159,7 +159,7 @@ EXPECTED_CARD = <<~'RUBY'
       end
 
       def component_template
-        "components/admin/badge_component.html.erb"
+        "__components/admin/badge_component.html.erb"
       end
     end
   end

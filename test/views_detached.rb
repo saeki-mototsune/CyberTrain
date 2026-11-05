@@ -43,7 +43,7 @@ class CardComponent < Cybertrain::Component
   end
 
   def component_template
-    "components/card_component.html.erb"
+    "__components/card_component.html.erb"
   end
 end
 

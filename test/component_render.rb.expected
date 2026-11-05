@@ -6,5 +6,8 @@ ok   an unknown component raises Component::Unknown with the file hint
 ok   keywords are checked
 ok   a partial rendered from a component does not see the component's view methods
 ok   component nesting counts toward max_render_depth
+ok   a view under app/views/components/ and a component render side by side
+ok   the same, from embedded templates
+ok   a bare partial in a component template comes from app/components/, not app/views/components/
 ok   the derived names of the base class
-9 tests, 12 assertions, 0 failures
+12 tests, 19 assertions, 0 failures

@@ -91,12 +91,15 @@ File.write("#{RUNNER_ROOT}/app/views/a.html.erb", "<p>a</p>\n")
 Dir.mkdir("#{RUNNER_ROOT}/app/controllers")
 Dir.mkdir("#{RUNNER_ROOT}/app/components")
 File.write("#{RUNNER_ROOT}/app/components/b_component.html.erb", "<p>b</p>\n")
+# A view of a ComponentsController with the component template's own name.
+Dir.mkdir("#{RUNNER_ROOT}/app/views/components")
+File.write("#{RUNNER_ROOT}/app/views/components/b_component.html.erb", "<p>view b</p>\n")
 
 at_exit do
-  ["gen/views.rb", "gen/routes.rb", "gen/controllers.rb", "gen/helpers.rb", "gen/components.rb", "gen/console.rb", "gen/app.rb", "app/views/a.html.erb", "app/components/b_component.html.erb"].each do |f|
+  ["gen/views.rb", "gen/routes.rb", "gen/controllers.rb", "gen/helpers.rb", "gen/components.rb", "gen/console.rb", "gen/app.rb", "app/views/a.html.erb", "app/views/components/b_component.html.erb", "app/components/b_component.html.erb"].each do |f|
     File.delete("#{RUNNER_ROOT}/#{f}") if File.exist?("#{RUNNER_ROOT}/#{f}")
   end
-  ["gen", "app/views", "app/components", "app/controllers", "app"].each do |d|
+  ["gen", "app/views/components", "app/views", "app/components", "app/controllers", "app"].each do |d|
     Dir.rmdir("#{RUNNER_ROOT}/#{d}") if File.directory?("#{RUNNER_ROOT}/#{d}")
   end
   Dir.rmdir(RUNNER_ROOT)
@@ -108,8 +111,10 @@ test "the runner writes gen/views.rb, empty by default and full with --embed-vie
   assert_nil File.read("#{RUNNER_ROOT}/gen/views.rb").index("a.html.erb")
   Cybertrain::Gen::Runner.run(RUNNER_ROOT, ["--embed-views"])
   assert_includes File.read("#{RUNNER_ROOT}/gen/views.rb"), "\"a.html.erb\" => \"<p>a</p>\\n\","
-  # Component templates are embedded under components/.
-  assert_includes File.read("#{RUNNER_ROOT}/gen/views.rb"), "\"components/b_component.html.erb\" => \"<p>b</p>\\n\","
+  # Component templates are embedded under __components/, a prefix no view
+  # path has, so app/views/components/ keeps its own key.
+  assert_includes File.read("#{RUNNER_ROOT}/gen/views.rb"), "\"__components/b_component.html.erb\" => \"<p>b</p>\\n\","
+  assert_includes File.read("#{RUNNER_ROOT}/gen/views.rb"), "\"components/b_component.html.erb\" => \"<p>view b</p>\\n\","
   Cybertrain::Gen::Runner.run(RUNNER_ROOT, [])
   assert_nil File.read("#{RUNNER_ROOT}/gen/views.rb").index("a.html.erb")
 end

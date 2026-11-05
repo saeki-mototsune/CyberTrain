@@ -18,7 +18,7 @@ class CommentComponent < Cybertrain::Component
   end
 
   def component_template
-    "components/comment_component.html.erb"
+    "__components/comment_component.html.erb"
   end
 end
 
