@@ -75,7 +75,7 @@ written up for upstream.
 | 75 | Probe passes: Kernel `spawn` and `Process.spawn` compile and `Process.wait` reaps the child. `VACUUM INTO` was not re-checked. |
 | 76 | Matches CRuby: a bare `DB` outside `module Cybertrain` raises NameError, as under CRuby. The rule stays: such code must spell `Cybertrain::DB`. |
 | 78 | **Still there** (docs/spinel-feedback.md K). |
-| 79 | **Still there**: found on this build (its reduced program does not compile). |
+| 79 | **Still there**: found on this build (its reduced program does not compile), and not new in it: the same program fails the same way on 2026.10.27.7020 and 2026.11.03.7025 (checked 2026-11-05; docs/spinel-feedback.md, "Rule 79"). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
