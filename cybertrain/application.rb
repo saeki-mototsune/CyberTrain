@@ -174,7 +174,7 @@ module Cybertrain
     # listener is bound before it prints) and exits 1: without this the
     # process died with a misleading "Connection refused".
     def serve(argv)
-      ENV["SPINEL_WORKERS"] = @config.workers.to_s
+      ENV["SPINEL_WORKERS"] = Application.spinel_workers(@config.workers).to_s
       port = Application.port_argument(argv)
       @config.port = port if port > 0
       # The rebuilder must exist before #server builds the stack (front_app
@@ -262,6 +262,15 @@ module Cybertrain
     def request_restart
       @restart_requested = true
       nil
+    end
+
+    # What SPINEL_WORKERS must say for `workers` threads to serve requests in
+    # parallel. Spinel counts main among its N workers and runs the other
+    # threads on N-1 helpers, and main only waits in #serve, so N = workers
+    # leaves workers - 1 for the requests (2 gave one core's worth on two:
+    # spikes/NOTES.md rule 22). 1 stays 1: main runs every thread itself.
+    def self.spinel_workers(workers)
+      workers > 1 ? workers + 1 : 1
     end
 
     # The port number in argv[0], or 0 when there is none.
@@ -356,6 +365,10 @@ module Cybertrain
     def exec_new_build(srv, rebuilder)
       binary = rebuilder.binary_path
       STDOUT.flush # exec discards whatever the log has not written yet
+      # The new process inherits the environment and reads SPINEL_WORKERS
+      # as config.workers again: hand it the configured count, not the one
+      # #serve gave Spinel, or every rebuild would add a worker.
+      ENV["SPINEL_WORKERS"] = @config.workers.to_s
       Dev::Reexec.exec_self(binary, srv.port.to_s)
       Cybertrain.logger.error("could not exec #{binary}")
       exit(1)
