@@ -148,13 +148,7 @@ module Cybertrain
       fail_boot(stream_error) unless stream_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
-      if c.production?
-        Views.configure_embedded(@views, max_render_depth: c.max_render_depth)
-      else
-        Views.configure(c.views_root, cache: !c.development?, max_render_depth: c.max_render_depth)
-      end
-      Views.url_resolver = @url_resolver
-      Views.layout_name = c.layout
+      Application.configure_views(c, @views, @url_resolver)
       # Module-level settings, like Views': the parser and the blob store are
       # reached from places that have no Config. The upload directory is made
       # by the first write, not here, so a read-only deploy still boots.
@@ -405,6 +399,22 @@ module Cybertrain
     # threads on N-1 helpers, and main only waits in #serve, so N = workers
     # leaves workers - 1 for the requests (2 gave one core's worth on two:
     # spikes/NOTES.md rule 22). 1 stays 1: main runs every thread itself.
+    # Views as a process renders them: the embedded templates in
+    # production, the files under views_root otherwise (cached outside
+    # development), the URL resolver and the layout. Boot calls it, and so
+    # does Main.command's runner, so a command renders partials and
+    # components (a mail body, a broadcast) as an action does.
+    def self.configure_views(c, views, url_resolver)
+      if c.production?
+        Views.configure_embedded(views, max_render_depth: c.max_render_depth)
+      else
+        Views.configure(c.views_root, cache: !c.development?, max_render_depth: c.max_render_depth)
+      end
+      Views.url_resolver = url_resolver
+      Views.layout_name = c.layout
+      nil
+    end
+
     def self.spinel_workers(workers)
       workers > 1 ? workers + 1 : 1
     end
