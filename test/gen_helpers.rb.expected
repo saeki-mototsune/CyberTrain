@@ -1,0 +1,12 @@
+ok   the scan finds the module, its public defs and their parameters
+ok   keyword arguments with defaults count as optional, bare ones as required
+ok   a parameter list over several lines is joined
+ok   splats, ... and anonymous parameters are errors naming the file and line
+ok   more than three optional parameters asks to split the helper
+ok   the same helper in two modules is an error naming both files
+ok   nested modules are named in full and a wrapper module is left out
+ok   a nested class's methods are not helpers
+ok   the emitter writes one arm per helper, one branch per optional subset
+ok   a tree with no app/helpers gets a class that only calls super
+ok   the output ends with the helpers_builder line
+11 tests, 28 assertions, 0 failures
