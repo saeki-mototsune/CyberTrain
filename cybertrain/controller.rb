@@ -670,6 +670,39 @@ module Cybertrain
       nil
     end
 
+    # Answers with a streaming response (Rails' ActionController::Live,
+    # without the module): the block runs after the action has returned, on
+    # the connection's thread, once the head is sent, and receives the
+    # {Sink} to write to. The connection closes when the block returns, or
+    # when the client goes away ({Sink#closed?}: end the loop then). The
+    # block must not touch the session, flash or response any more: they
+    # were sent with the head. Marks the response performed, like {#render}.
+    # @example Server-Sent Events
+    #   def events
+    #     stream do |out|
+    #       5.times do |i|
+    #         out.write(Cybertrain::SSE.event("tick #{i}"))
+    #         break if out.wait_closed(1)
+    #       end
+    #     end
+    #   end
+    # @param content_type [String]
+    # @param status [Integer, Symbol] see {STATUS_SYMBOLS}
+    # @yieldparam out [Sink]
+    # @return [nil]
+    # @api public
+    def stream(content_type: "text/event-stream", status: DEFAULT_STATUS, &block)
+      r = @response
+      r.status = Controller.status_code(status)
+      r.content_type = content_type
+      r.set_header("Cache-Control", "no-store")
+      # Stored and called later from BlockWriter#write_body, a plain method
+      # (spikes/NOTES.md rules 2, 69).
+      r.body_writer = BlockWriter.new(block)
+      r.performed!
+      nil
+    end
+
     # Serves stored bytes that came from a user (an upload), safely. This is
     # the only supported way to send an upload back: never put uploads under
     # `public/`, because {Static} serves them with whatever type their

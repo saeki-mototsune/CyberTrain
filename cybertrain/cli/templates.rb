@@ -557,7 +557,7 @@ module Cybertrain
         index show new new_action edit create update destroy
         ctx request response params action_name rescued_exception session flash
         initialize process run_callback default_render view_assigns view_env
-        controller_path render_template render redirect_to head send_blob
+        controller_path render_template render redirect_to head send_blob stream
         run_action run_before_callbacks run_after_callbacks run_one
         rescue_with_handler render_partial send_html string_keys json_body
         safe_redirect_path

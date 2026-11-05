@@ -4,6 +4,7 @@ require "cybertrain/http/parser"
 require "cybertrain/http/request"
 require "cybertrain/http/response"
 require "cybertrain/http/handler"
+require "cybertrain/http/body_writer"
 require "cybertrain/http/client_error"
 require "cybertrain/logger"
 
@@ -51,12 +52,15 @@ module Cybertrain
     # because the drain shuts only the read side.
     class Connection
       attr_reader :sock
-      attr_accessor :id, :idle
+      attr_accessor :id, :idle, :streaming
 
       def initialize(sock)
         @id = 0
         @sock = sock
         @idle = false
+        # Set while a BodyWriter runs on it: the drain shuts its read side
+        # so the writer sees the end (Sink#closed?) and returns.
+        @streaming = false
       end
     end
 
@@ -223,14 +227,17 @@ module Cybertrain
     def shut_idle_connections
       idle = []
       @lock.synchronize do
-        @connections.each_value { |c| idle << c if c.idle }
+        @connections.each_value { |c| idle << c if c.idle || c.streaming }
       end
       i = 0
       while i < idle.size
         conn = idle[i]
         sock = conn.sock
         begin
-          if conn.idle && !sock.closed? && sock.wait_readable(0).nil?
+          # A streaming response's read side is shut whatever is waiting:
+          # its writer looks at Sink#wait_closed (SSE) or reads frames
+          # (WebSocket), sees EOF and ends the stream.
+          if !sock.closed? && (conn.streaming || (conn.idle && sock.wait_readable(0).nil?))
             sock.shutdown(Socket::SHUT_RD)
           end
         rescue IOError, SystemCallError
@@ -352,7 +359,7 @@ module Cybertrain
         buf = rest.byteslice(length, rest.bytesize - length)
 
         request = Request.new(head.method, head.target, head.headers, body, remote_addr, head.http_version)
-        break unless respond(sock, request)
+        break unless respond(sock, request, conn)
       end
     rescue Rejected => e
       reject(sock, e.reject_status)
@@ -386,13 +393,49 @@ module Cybertrain
     end
 
     # Runs the app and writes its response; true when the connection stays
-    # open, which it does not once the server is stopping.
-    def respond(sock, request)
+    # open, which it does not once the server is stopping, nor after a
+    # streaming response.
+    def respond(sock, request, conn)
       response = handle(request)
+      writer = response.body_writer
+      return respond_streaming(sock, request, response, writer, conn) unless writer.nil?
+
       keep_alive = request.keep_alive? && @running
       response.set_header("Connection", keep_alive ? "keep-alive" : "close")
       sock.write(response.to_http(request.head?))
       keep_alive
+    end
+
+    # A streaming response (docs/design.md D35): the head with
+    # `Transfer-Encoding: chunked` (HTTP/1.1) or no framing (HTTP/1.0, and
+    # a 101 upgrade), then the writer on this thread, then the terminating
+    # chunk; always false, so serve closes the connection. A HEAD request
+    # gets the head only. What the writer raises is logged and ends the
+    # connection without the terminator: nothing can be sent at that point.
+    def respond_streaming(sock, request, response, writer, conn)
+      upgrade = response.upgrade?
+      response.set_header("Connection", upgrade ? "Upgrade" : "close")
+      if request.head?
+        sock.write(response.to_http_head(false))
+        return false
+      end
+      chunked = !upgrade && request.http_version == "HTTP/1.1"
+      sock.write(response.to_http_head(chunked))
+      sink = Sink.new(sock, chunked)
+      conn.streaming = true
+      sink.sink_finish if run_writer(writer, sink)
+      false
+    end
+
+    # The writer with its rescue, in a plain method (spikes/NOTES.md rules
+    # 32/45); JSON::NestingError named first (rule 61). False when it raised.
+    def run_writer(writer, sink)
+      writer.write_body(sink)
+      true
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      @logger.error("stream error: #{e.class.name}: #{e.message}")
+      sink.sink_close!
+      false
     end
 
     # The handler's Response, or the error response for what it raised.

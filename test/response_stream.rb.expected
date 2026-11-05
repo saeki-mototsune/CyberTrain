@@ -1,0 +1,7 @@
+ok   a BodyWriter's chunks go out with chunked framing and the terminator
+ok   HTTP/1.0 gets the body unframed and the connection closes
+ok   HEAD gets the head only
+ok   a writer that raises ends the connection and is logged
+ok   Sink#wait_closed answers true once the client closes
+ok   the connection count returns to zero
+6 tests, 16 assertions, 0 failures
