@@ -1,5 +1,5 @@
 ---
-source_sha256: d8fb004a68aa107d7af3c93f20e9b75128f7653639c6fb550d00805087109e9a
+source_sha256: 9a38157ca8fcf9552b83fff749960770a975fe4abdfa33b4dce1ffb2b4b16a70
 ---
 # 后台任务与运维
 
@@ -46,7 +46,7 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 | `./<app> worker` | 定时任务（借助租约，每次只在一个进程中）、作业线程、心跳和回收 | 否 |
 | `./<app> feeds [NAME...]` | 全部或指定名称的 [WebSocket 数据订阅](external-services.md#consuming-websocket-feeds) | 否 |
 
-- `worker` 和 `feeds` 会打印一条横幅（`=> worker: 3 job threads, 2 scheduled tasks`），一直运行到收到 `SIGTERM`，然后像服务器一样停止。它们总是执行自己的工作：为 Web 角色设置的 `CYBERTRAIN_WORKER=0` 不会关闭它们。
+- `worker` 和 `feeds` 会打印一条横幅（`=> worker: 3 job threads, 2 scheduled tasks`），一直运行到收到 `SIGTERM` 或 `SIGINT`（Ctrl-C），然后像服务器一样停止。它们总是执行自己的工作：为 Web 角色设置的 `CYBERTRAIN_WORKER=0` 不会关闭它们。
 - 带名称的 `feeds` 只运行这些订阅（每个订阅一个容器），未知的名称会让启动停止，并列出已注册的名称。当数据订阅在自己的进程中运行时，请在服务器上设置 `CYBERTRAIN_WORKER=0`，否则每个进程都会接收每个订阅。
 - 典型的拆分方式：代理之后是设置了 `CYBERTRAIN_WORKER=0` 的 `server`，一个或多个 `worker`，有订阅时再加上 `feeds`。`cybertrain new` 会在 `config/deploy.yml` 中写入 `web` 和 `worker` 角色（以及被注释掉的 `feeds`）；systemd 单元见 [docs/deploy.en.md](../deploy.en.md) 第 7 部分 “Splitting the roles”。
 - **从没有心跳的版本升级时**：在启动第一个新进程之前，先停止所有旧进程。旧进程不写心跳，所以新的 worker 会把旧 worker 仍在运行的作业当作被遗弃的作业取走。

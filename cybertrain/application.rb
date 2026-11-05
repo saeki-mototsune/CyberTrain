@@ -251,7 +251,7 @@ module Cybertrain
     # `./<app> worker` (Main.run): boots (the config checks, the database),
     # prints a banner, starts the scheduler (lease-gated: several workers
     # may share the database) and the job threads, and runs until SIGTERM
-    # (or Application.request_stop_roles), then stops the job threads (they
+    # or SIGINT (or Application.request_stop_roles), then stops the job threads (they
     # finish their jobs, for at most Config#job_drain_timeout seconds) and
     # the scheduler. No port, no HTTP. Config#worker is set: in this role
     # it is what the process is for.
@@ -274,7 +274,12 @@ module Cybertrain
       tasks = Scheduler::TASKS.size
       jobs = Job.handlers? ? "#{threads} job thread#{threads == 1 ? "" : "s"}" : "no job handler"
       print_role_banner("worker: #{jobs}, #{tasks} scheduled task#{tasks == 1 ? "" : "s"}")
+      # INT as TERM: a worker run in a terminal and stopped with Ctrl-C
+      # drains its jobs too, rather than dying with its rows left
+      # `running` until job_heartbeat_stale. (Not covered by a test: the
+      # tests stop the role through request_stop_roles, as the traps do.)
       trap("TERM") { Application.request_stop_roles }
+      trap("INT") { Application.request_stop_roles }
       Scheduler.start!(@config)
       Job.start!(@config)
       Application.wait_roles_stop
@@ -286,7 +291,8 @@ module Cybertrain
     # `./<app> feeds [NAME...]` (Main.run): boots, checks the names against
     # the registered feeds (an unknown one is an error that lists them),
     # starts the WebSocket subscriptions (all of them, or the named ones:
-    # Background.start_only) and runs until SIGTERM, then stops them. No
+    # Background.start_only) and runs until SIGTERM or SIGINT, then stops
+    # them. No
     # port, no jobs, no scheduler. With no subscription registered it says
     # so and returns 0.
     # @param names [Array<String>] the feeds to run; empty for all
@@ -309,7 +315,9 @@ module Cybertrain
         return 0
       end
       print_role_banner("feeds: #{(names.empty? ? known : names).join(", ")}")
+      # INT as TERM (Ctrl-C), as in run_worker.
       trap("TERM") { Application.request_stop_roles }
+      trap("INT") { Application.request_stop_roles }
       Background.start_only(@config, names)
       Application.wait_roles_stop
       Background.stop_all
