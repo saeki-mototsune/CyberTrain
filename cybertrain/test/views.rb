@@ -14,11 +14,13 @@ require "cybertrain/template/helpers"
 module Cybertrain
   module Test
     # Views.render_partial("articles/article", article: a).
+    # @api public
     def self.render_partial(name, locals = {})
       Views.render_partial(name, locals)
     end
 
     # Views.render_component, with the block's HTML as `content:`.
+    # @api public
     def self.render_component(component, content: "")
       Views.render_component(component, content)
     end

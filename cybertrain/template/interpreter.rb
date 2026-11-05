@@ -32,6 +32,7 @@ module Cybertrain
     # here, not in cybertrain/views.rb, because Interpreter#call_helper lets
     # it through unchanged (every other helper error gets the template's
     # "name:line:" prefix and becomes a Template::RuntimeError).
+    # @api public
     class OutsideRequest < StandardError
     end
   end

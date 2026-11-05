@@ -28,6 +28,7 @@ module Cybertrain
     # a method, not written here as a literal: a lambda literal assigned to
     # a module-level ivar never learns its call sites' argument types
     # (spikes/NOTES.md rule 81), so `controller` arrived as an Integer.
+    # @api private
     def self.default_helpers_builder
       ->(controller) { Template::Helpers.new(controller) }
     end
@@ -36,6 +37,7 @@ module Cybertrain
     # The default component_builder: gen/components.rb replaces it with
     # Gen::Components.build. Component is defined by cybertrain/component.rb
     # (required by the helpers), named only when called.
+    # @api private
     def self.default_component_builder
       ->(name, kwargs) { raise Component::Unknown, "no component '#{name}' (app/components/#{name}_component.rb, then `spin run gen`)" }
     end
@@ -84,20 +86,24 @@ module Cybertrain
     # ->(controller Controller | nil) { Template::Helpers }: how controllers
     # and render_partial build the helpers a template calls. gen/helpers.rb
     # sets it to build the app's ApplicationHelpers (spec 3.1).
+    # @api public
     def self.helpers_builder
       @helpers_builder
     end
 
+    # @api public
     def self.helpers_builder=(builder)
       @helpers_builder = builder
     end
 
     # ->(name String, kwargs Hash<String, polymorphic>) { Component }: how
     # `render component: "card", title: "x"` builds the component.
+    # @api public
     def self.component_builder
       @component_builder
     end
 
+    # @api public
     def self.component_builder=(builder)
       @component_builder = builder
     end
@@ -112,6 +118,7 @@ module Cybertrain
     # (csrf_token, csrf_meta_tags, params, flash, request_path, *_url)
     # raise OutsideRequest. Strict locals are checked as in a request.
     # @return [String]
+    # @api public
     def self.render_partial(name, locals = {})
       engine = configured_engine
       helpers = detached_helpers
@@ -138,6 +145,7 @@ module Cybertrain
     #
     #   Cybertrain::Views.render_component(CardComponent.new(title: "x"))
     # @return [String]
+    # @api public
     def self.render_component(component, content = "")
       engine = configured_engine
       helpers = detached_helpers

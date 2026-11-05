@@ -167,12 +167,14 @@ module Cybertrain
       # link_to for Ruby helpers: `link_to_path("Edit", edit_article_path(a),
       # class: "btn")`. The text is escaped unless it is a SafeString; attrs
       # takes class:, id:, data_confirm: and data: as link_to does.
+      # @api public
       def link_to_path(text, path, attrs = {})
         link_to([text, path], string_keys_of(attrs))
       end
 
       # button_to for Ruby helpers: `button_to_path("Delete", article_path(a),
       # method: "delete", class: "danger")`.
+      # @api public
       def button_to_path(text, path, attrs = {})
         button_to([text, path], string_keys_of(attrs))
       end

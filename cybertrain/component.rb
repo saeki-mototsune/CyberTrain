@@ -24,14 +24,17 @@ require "cybertrain/views"
 require "cybertrain/generator/inflector"
 
 module Cybertrain
+  # @api public
   class Component
     # No component of that name: `render component: "nope"`.
+    # @api public
     class Unknown < StandardError
     end
 
     # The instance variables the template reads, by name. Typed empty Hash
     # of polymorphic values (spikes/NOTES.md rules 9, 71); gen/components.rb
     # overrides it.
+    # @api public
     def view_assigns
       out = { "" => [nil, 0, 0.0, "", true][0] }
       out.delete("")
@@ -39,6 +42,7 @@ module Cybertrain
     end
 
     # A parameterless public method, by name (gen/components.rb); nil here.
+    # @api public
     def call_view_method(name)
       nil
     end
@@ -52,6 +56,7 @@ module Cybertrain
     # "card" for CardComponent, "admin/user_row" for Admin::UserRowComponent:
     # the name `render component:` uses. gen/components.rb spells it out
     # per class (under Spinel Class#name has no namespace, rule 46).
+    # @api public
     def component_name
       Component.name_for(self.class.name)
     end
@@ -64,6 +69,7 @@ module Cybertrain
     # The block a template passed (`render component: "card" do ... end`),
     # "" when there was none. Subclasses do not call super in initialize,
     # so it may never have been assigned.
+    # @api public
     def content
       c = @content
       return SafeString.of("") if c.nil?
@@ -71,6 +77,7 @@ module Cybertrain
       c
     end
 
+    # @api public
     def content=(html)
       @content = SafeString.of(html.to_s)
     end
