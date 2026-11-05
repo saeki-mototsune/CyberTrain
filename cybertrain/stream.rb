@@ -102,9 +102,11 @@ module Cybertrain
     end
 
     # A token naming `names`: base64url of the names joined by ",", then
-    # "--", then the hex HMAC-SHA256 of that text keyed with
-    # {Config#secret_key_base}. Tokens do not expire; changing the secret
-    # invalidates all of them.
+    # "--", then the hex HMAC-SHA256 of that text keyed with a key derived
+    # from {Config#secret_key_base} for streams alone ({Stream.signing_key},
+    # as Rails' "turbo/signed_stream_verifier_key"), so a token never
+    # verifies as a session cookie, whose layout is the same. Tokens do not
+    # expire; changing the secret invalidates all of them.
     # @param names [Array<String>]
     # @return [String]
     # @raise [ArgumentError] for no names, more than {MAX_NAMES}, or an
@@ -123,7 +125,7 @@ module Cybertrain
       end
       joined = names.join(",")
       encoded = Base64.urlsafe_encode64(joined, padding: false)
-      signature = Crypto.hmac_hex(Stream.secret, encoded)
+      signature = Crypto.hmac_hex(Stream.signing_key, encoded)
       out = +""
       out << encoded
       out << "--"
@@ -155,7 +157,7 @@ module Cybertrain
       signature = text.byteslice(len - SIGNATURE_LENGTH, SIGNATURE_LENGTH)
       return none unless Stream.base64?(encoded)
 
-      expected = Crypto.hmac_hex(Stream.secret, encoded)
+      expected = Crypto.hmac_hex(Stream.signing_key, encoded)
       return none unless Crypto.secure_compare(signature, expected)
 
       joined = Stream.decode64(encoded)
@@ -198,6 +200,15 @@ module Cybertrain
 
     def self.secret
       Cybertrain.config.resolve_secret!
+    end
+
+    # The key tokens are signed with: the hex HMAC-SHA256 of
+    # "cybertrain/stream" keyed with the secret. A key of its own keeps a
+    # token from being a session cookie (the same "<base64>--<hex HMAC>"
+    # layout, signed with the secret itself).
+    # @return [String]
+    def self.signing_key
+      Crypto.hmac_hex(Stream.secret, "cybertrain/stream")
     end
 
     # The urlsafe alphabet without padding.
