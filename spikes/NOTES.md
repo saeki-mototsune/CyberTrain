@@ -849,9 +849,12 @@ The rules are numbered in the order they were found. By topic:
     a statement that started inside a transaction and failed with SQLite
     back in autocommit marks the connection (`@transaction_lost`; a
     constraint error leaves the transaction open and marks nothing), and
-    only COMMIT, END or ROLLBACK, read from the first keyword, run until
-    then. That ROLLBACK is skipped, since running it would raise "no
-    transaction is active" over the application's own error
+    only COMMIT, END or ROLLBACK (not ROLLBACK TO a savepoint), read from
+    the first keyword, run until then. That ROLLBACK is skipped, since
+    running it would raise "no transaction is active" over the
+    application's own error. A script whose first keyword is BEGIN counts
+    as inside the transaction it opens; a BEGIN further into a script is
+    not seen (a keyword search would match `CREATE TRIGGER ... BEGIN`)
     (test/db_raw_transaction_rollback.rb).
 
 ## Numbers worth remembering

@@ -107,6 +107,42 @@ test "a ROLLBACK after SQLite already rolled back is accepted, not an error" do
   c.close
 end
 
+test "ROLLBACK TO a savepoint does not end a lost transaction" do
+  c = small_database
+  c.exec_script("BEGIN")
+  fill_until_full(c)
+  assert_includes try_insert(c, "after the rollback"), GONE
+  # ROLLBACK TO undoes part of a transaction and does not end it, so the
+  # connection stays refused.
+  assert_includes try_script(c, "ROLLBACK TO s"), GONE
+  assert_includes try_insert(c, "still after the rollback"), GONE
+  assert_equal "", try_script(c, "ROLLBACK")
+  assert_equal [], rows(c)
+  c.close
+end
+
+# A script whose own BEGIN opened the transaction SQLite then rolled back.
+def full_script
+  big = "x" * 2000
+  script = +"BEGIN;"
+  i = 0
+  while i < 50
+    script << " INSERT INTO t (v) VALUES ('#{big}');"
+    i += 1
+  end
+  script
+end
+
+test "a script that opened the transaction itself is covered too" do
+  c = small_database
+  assert_includes try_script(c, full_script), "database or disk is full"
+  assert_includes try_insert(c, "after the script"), GONE
+  assert_equal "", try_script(c, "ROLLBACK")
+  assert_equal "", try_insert(c, "next")
+  assert_equal ["next"], rows(c)
+  c.close
+end
+
 test "a failed statement that leaves the transaction open is not a rollback" do
   c = small_database
   c.exec_script("BEGIN")

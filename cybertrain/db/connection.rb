@@ -233,7 +233,12 @@ module Cybertrain
         rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
         SQLite3.cybertrain_sqlite_busy_report(@busy, 1)
         if rc != SQLite3::OK
-          note_lost_transaction(in_transaction, sql)
+          # A script that opens its own transaction (`BEGIN; ...`) starts in
+          # autocommit, so it counts as inside one when its first keyword is
+          # BEGIN. A BEGIN further into the script is not seen: no keyword
+          # search over the whole text, since `CREATE TRIGGER ... BEGIN ...
+          # END` would match it.
+          note_lost_transaction(in_transaction || Connection.begins_transaction?(sql), sql)
           raise Error, error_message(sql)
         end
         nil
@@ -658,17 +663,23 @@ module Cybertrain
       end
 
       # COMMIT, END or ROLLBACK (any case, after leading whitespace), the
-      # statements that end a transaction. Only the first keyword is read.
+      # statements that end a transaction; ROLLBACK TO a savepoint undoes
+      # part of one and does not. Only the first keywords are read.
       def self.ends_transaction?(sql)
         t = sql.lstrip.upcase
-        t.start_with?("COMMIT") || t.start_with?("END") || t.start_with?("ROLLBACK")
+        t.start_with?("COMMIT") || t.start_with?("END") || Connection.rollback_statement?(sql)
       end
 
-      # ROLLBACK itself, not ROLLBACK TO a savepoint (which does not end the
-      # transaction).
+      # ROLLBACK or ROLLBACK TRANSACTION, not ROLLBACK [TRANSACTION] TO a
+      # savepoint.
       def self.rollback_statement?(sql)
         t = sql.lstrip.upcase
         t.start_with?("ROLLBACK") && !t.include?(" TO ")
+      end
+
+      # A script or statement whose first keyword is BEGIN.
+      def self.begins_transaction?(sql)
+        sql.lstrip.upcase.start_with?("BEGIN")
       end
 
       def error_message(sql)
