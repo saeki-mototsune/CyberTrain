@@ -129,8 +129,12 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   cursor below is taken, and the endpoint answers 503 while the poller is
   not running) keeps `last_id`, **initialised to the current `MAX(id)` (0 on an
   empty table) when the poller starts**: a fresh subscription receives only
-  rows written after it, never the backlog within retention, unless it asks
-  for a replay (below). Every `Config#stream_poll_ms` (default 100) it
+  rows the poller had not yet delivered when it subscribed (a row committed
+  within the last poll interval, up to 100 ms earlier, still arrives), never
+  the backlog within retention, unless it asks for a replay (below). The
+  cutoff is the poller's cursor, not a database query per connection: one
+  poll interval of slack costs nothing a client can observe, and a connect
+  stays free of SQL. Every `Config#stream_poll_ms` (default 100) it
   runs `SELECT MAX(id) FROM cybertrain_messages`; when it is larger than
   `last_id` it reads `SELECT id, stream, payload FROM cybertrain_messages
   WHERE id > ? ORDER BY id` and hands each row to the in-process hub. A
@@ -158,12 +162,13 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   still in the table. **The handoff is ordered so that no row is lost or
   doubled**: the connection first calls `Hub#subscribe` (its queue starts
   filling with live rows), then runs the replay query, then sets `boundary =
-  max(given, last replayed id)` and drains its queue skipping every message
-  with `id <= boundary`. A row inserted between the replay query and the
+  max(given, last replayed id)` (`given` itself when the replay returns no
+  rows: a reconnect at the head, or after retention emptied the table) and
+  drains its queue skipping every message with `id <= boundary`. A row inserted between the replay query and the
   subscription cannot exist (the subscription came first); a row both
   replayed and delivered live is dropped by the boundary. Acceptance: a
-  fresh connection with no `Last-Event-ID` receives only rows broadcast
-  after it connected; a reconnect with `Last-Event-ID` receives each row
+  fresh connection with no `Last-Event-ID` receives no row the poller had
+  already delivered when it connected, and every row broadcast after; a reconnect with `Last-Event-ID` receives each row
   with a larger id exactly once, including one broadcast between the replay
   query and the first live event.
 
