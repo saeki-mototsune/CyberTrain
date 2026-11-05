@@ -72,7 +72,7 @@ module Cybertrain
   # escaping, so its parameters keep the Integer default and every path
   # helper receives a garbage route name (e.g. 4295868465 instead of
   # "notes_path") while CRuby works. A method-returned lambda (as above), a
-  # positional argument, &block or **{...} all compile correctly.
+  # positional argument, a block argument or a double-splatted Hash all compile correctly.
   class Application
     attr_reader :config, :router
 
