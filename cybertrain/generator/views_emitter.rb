@@ -28,7 +28,9 @@ module Cybertrain
         dir = "#{root}/app/views"
         files = view_files(dir)
         # Component templates (app/components/**/*.erb) under the
-        # "components/" names the engine reads them by (spec 3.2).
+        # "__components/" names the engine reads them by (spec 3.2;
+        # Template::Engine::COMPONENTS_PREFIX), which no view path has: a
+        # view under app/views/components/ keeps its own key.
         components_dir = "#{root}/app/components"
         components = view_files(components_dir)
         buf = +""
@@ -44,7 +46,7 @@ module Cybertrain
             buf << "      #{literal(rel)} => #{literal(File.read("#{dir}/#{rel}"))},\n"
           end
           components.each do |rel|
-            buf << "      #{literal("components/#{rel}")} => #{literal(File.read("#{components_dir}/#{rel}"))},\n"
+            buf << "      #{literal("__components/#{rel}")} => #{literal(File.read("#{components_dir}/#{rel}"))},\n"
           end
           buf << "    }\n  end\nend\n"
         end

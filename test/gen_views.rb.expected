@@ -27,4 +27,4 @@ identical gen/components.rb
 identical gen/console.rb
 identical gen/app.rb
 ok   the runner writes gen/views.rb, empty by default and full with --embed-views
-8 tests, 23 assertions, 0 failures
+8 tests, 24 assertions, 0 failures
