@@ -17,7 +17,8 @@ to 0.4 ms against 1.3 to 2.6 ms, uses a tenth of the memory, starts in 0.015 s
 against 0.75 s, and deploys as one 4.0 MB file against 121 MB of Ruby, gems
 and source. With jemalloc in both, it is 2.1 to 8.5 times on one core. A
 second core helps Rails more (Puma adds a whole process, which doubles it;
-CyberTrain's second worker thread adds 0 to 19%), so on two cores the lead is
+CyberTrain's second worker thread adds 0 to 19% here, for a reason in Spinel's
+worker count that "Two cores" below explains), so on two cores the lead is
 1.1 to 4.4 times, with jemalloc or without. The price is a compile of about a
 minute (50 s here).
 
@@ -362,16 +363,30 @@ Recorded 2026-11-05 at commit 0d8a942: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 C
   its one-core rate). `SPINEL_WORKERS=2` gives CyberTrain 0 to 2% more on the
   pages, 19% on the POST and 3% on the static file, so the lead narrows to
   1.1 to 4.4 times. That is less than on 2026-10-09 (9 to 25% on the pages,
-  58% on the POST). A separate check after the recorded run (`dist/blog` with
-  `SPINEL_WORKERS=2` on CPUs 0-1, `wrk -t2 -c16 -d8s` on `GET /articles` from
-  CPUs 2-3, the process's user and system time from `/proc/<pid>/stat`) found
-  about 8 CPU-seconds used in the 8 seconds, one CPU's worth of two, so the
-  second worker mostly waits. The cause has not been investigated yet.
-  `SPINEL_WORKERS` stays 1 by default
-  ([spikes/NOTES.md](../spikes/NOTES.md) rule 22 has the earlier measurements).
+  58% on the POST). The cause is in how this Spinel counts workers, not in
+  CyberTrain, SQLite or the collector. Since 2026.11.04.7026, an explicit
+  `SPINEL_WORKERS=N` counts the main thread among the N and starts N-1 helper
+  workers (2026.09.12 started N beside main). Main runs no request threads
+  while helpers exist, and in the server it only waits, so `SPINEL_WORKERS=2`
+  served every request from one OS thread. A check after the recorded run
+  (`dist/blog` on CPUs 0-1, `wrk -t2 -c16 -d8s` on `GET /articles` from CPUs
+  2-3) found one thread using 7.85 of the process's 8 CPU-seconds and main
+  0.15. Spinel's own scheduler statistics (`SPINEL_SCHED_STATS=2`) showed one
+  busy worker with 14 threads queued behind it, no thread waiting on a
+  `Mutex`, and the collector's sweep threads at 0.07 s.
+  [saeki-mototsune/CyberTrain#128](https://github.com/saeki-mototsune/CyberTrain/pull/128)
+  makes the server ask Spinel for one more worker than `SPINEL_WORKERS` says.
+  Measured in one later session (medians of 3 runs of 8 s, on another host),
+  2 workers over 1 went from +10%, -3%, +2% and +4% (list, article, static
+  file, POST) to +24%, +44%, +22% and +44%. The two-core rows above predate
+  that change and were not re-recorded. `SPINEL_WORKERS` stays 1 by default
+  ([spikes/NOTES.md](../spikes/NOTES.md) rule 22 has the measurements).
   The static file tops out near 22,000 req/s for CyberTrain on one core and on
-  two, and Rails reaches 20,000 on two: that is probably near what wrk on its
-  two CPUs can send, so the 1.1x there says little.
+  two in this run, and Rails reaches 20,000 on two. That looked like the limit
+  of wrk on its two CPUs, but in the later session CyberTrain's static file
+  reached 22,500 (median) and 26,800 (one run) on two cores with the same wrk
+  settings, so the 22,000 here more likely is CyberTrain's single worker
+  than wrk.
 - **jemalloc.** In this run it moves CyberTrain's pages by -3 to +1% and its
   POST by +18% on one core, and Rails by -1 to +3%: mostly within the spread,
   where on 2026-10-09 it gave CyberTrain 1.3 to 1.4 times on the dynamic

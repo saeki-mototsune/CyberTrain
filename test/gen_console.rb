@@ -18,7 +18,7 @@ test "two models: scope, records and create arms, the names, the four builders" 
           case name
           when "Article" then Article.all
           when "Comment" then Comment.all
-          else raise Cybertrain::Console::UnknownModel, "no model \"#{name}\" (models: #{MODEL_NAMES.join(", ")})"
+          else Cybertrain::Console.unknown_model(name)
           end
         end
 
@@ -37,7 +37,7 @@ test "two models: scope, records and create arms, the names, the four builders" 
           case name
           when "Article" then Article.create(attrs)
           when "Comment" then Comment.create(attrs)
-          else raise Cybertrain::Console::UnknownModel, "no model \"#{name}\" (models: #{MODEL_NAMES.join(", ")})"
+          else Cybertrain::Console.unknown_record(name)
           end
         end
       end
@@ -53,7 +53,8 @@ end
 test "no models: scope and create always raise, records is empty" do
   source = Cybertrain::Gen::ConsoleEmitter.emit(Array.new(0) { "" })
   assert_includes source, "    MODEL_NAMES = Array.new(0) { \"\" }\n"
-  assert_includes source, "    def self.scope(name)\n      raise Cybertrain::Console::UnknownModel, \"no model \\\"\#{name}\\\" (models: \#{MODEL_NAMES.join(\", \")})\"\n    end\n"
+  assert_includes source, "    def self.scope(name)\n      Cybertrain::Console.unknown_model(name)\n    end\n"
+  assert_includes source, "    def self.create(name, attrs)\n      Cybertrain::Console.unknown_record(name)\n    end\n"
   assert_includes source, "    def self.records(relation)\n      out = Array.new(0) { Cybertrain::Model.new }\n      out\n    end\n"
   assert source.end_with?("Cybertrain::Console.model_names = Gen::Console::MODEL_NAMES\n")
 end

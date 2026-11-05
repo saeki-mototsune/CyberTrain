@@ -10,4 +10,7 @@ ok   DELETE /articles/:article_id/comments/:id (POST with _method) removes the c
 ok   a comment is only reachable through its own article
 ok   comments on a missing article are 404
 ok   comments have no pages of their own
-8 tests, 40 assertions, 0 failures
+ok   the article page renders each comment with CommentComponent and subscribes to the article's stream
+ok   a new comment is broadcast as a Turbo Stream append to the article's stream
+ok   a comment that is not saved broadcasts nothing
+11 tests, 57 assertions, 0 failures

@@ -1,5 +1,5 @@
 ---
-source_sha256: 4304a1a769e8fd95d0fc37da7bcf3453af7b40937eaee96233d218e8f99ab6cd
+source_sha256: f0bc19c92741dbde18fbe1606ff34e4f4b15d432bb549a1e710cadd61c75a005
 ---
 # Справочник по языку шаблонов Cybertrain
 
@@ -435,7 +435,7 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 
 ### Разрешение файлов (`engine.rb`)
 
-`"posts/show"` и `"posts/show.html.erb"` называют один и тот же шаблон. Режим разработки читает `app/views/` с диска с `cache: false` (файл перечитывается и заново разбирается, когда меняются его mtime или размер); тестовое окружение читает с диска с `cache: true` (разбор один раз). Продакшен-бинарник никогда не обращается к диску: `cybertrain build` запускает `spin run gen -- --embed-views`, который записывает каждый `*.erb` из `app/views/` (скрытые файлы и каталоги-символические ссылки пропускаются) в `gen/views.rb`, а `Engine.embedded(sources)` разбирает каждую запись один раз (сообщения об ошибках сохраняют ту же форму `posts/show.html.erb:12`); бинарный файл с пустой таблицей отказывается запускаться в production. Отсутствующий шаблон возбуждает `Cybertrain::Template::MissingTemplate` — `"Missing template <full path>"` с диска, `"Missing template posts/nope.html.erb (embedded)"` из таблицы.
+`"posts/show"` и `"posts/show.html.erb"` называют один и тот же шаблон. Режим разработки читает `app/views/` с диска с `cache: false` (файл перечитывается и заново разбирается, когда меняются его mtime или размер); тестовое окружение читает с диска с `cache: true` (разбор один раз). Продакшен-бинарник никогда не обращается к диску: `cybertrain build` запускает `spin run gen -- --embed-views`, который записывает каждый `*.erb` из `app/views/` (скрытые файлы и каталоги-символические ссылки пропускаются) в `gen/views.rb`, а `Engine.embedded(sources)` разбирает каждую запись один раз, при запуске бинарника (сообщения об ошибках сохраняют ту же форму `posts/show.html.erb:12`), так что шаблон с синтаксической ошибкой останавливает запуск, а не ломает свою страницу; бинарный файл с пустой таблицей отказывается запускаться в production. Отсутствующий шаблон возбуждает `Cybertrain::Template::MissingTemplate` — `"Missing template <full path>"` с диска, `"Missing template posts/nope.html.erb (embedded)"` из таблицы.
 
 Поиск файлов разрешает корень представлений и путь к шаблону через символические ссылки и загружает только обычные файлы внутри этого корня. Пути, выходящие за его пределы (в том числе через символические ссылки), возбуждают `MissingTemplate`; `exists?` возвращает для таких путей false.
 

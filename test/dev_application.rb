@@ -97,6 +97,16 @@ test "port_argument reads a port number from argv[0]" do
   assert_equal 0, Cybertrain::Application.port_argument([""])
 end
 
+# Spinel counts main among SPINEL_WORKERS (N-1 helpers), and main only waits
+# in a server, so the binary asks Spinel for one more than the request
+# workers; 1 stays 1, main running every thread (spikes/NOTES.md rule 22).
+test "spinel_workers gives Spinel one helper per request worker" do
+  assert_equal 1, Cybertrain::Application.spinel_workers(1)
+  assert_equal 1, Cybertrain::Application.spinel_workers(0)
+  assert_equal 3, Cybertrain::Application.spinel_workers(2)
+  assert_equal 5, Cybertrain::Application.spinel_workers(4)
+end
+
 test "the development stack passes a good page through" do
   res = CLIENT.get("/")
   assert_equal 200, res.status

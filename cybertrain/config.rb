@@ -300,7 +300,10 @@ attr_accessor :trusted_proxies
 
     # ---- end of the Mailer settings ----------------------------------------
 
-    # Spinel worker threads, `1`, from `SPINEL_WORKERS`.
+    # Spinel worker threads that serve requests, `1`, from `SPINEL_WORKERS`:
+    # the core count on a server with more than one. Above 1 the server
+    # hands Spinel one more, since Spinel counts the main thread, which
+    # only waits ({Application.spinel_workers}).
     # @return [Integer]
     # @api public
     attr_accessor :workers
