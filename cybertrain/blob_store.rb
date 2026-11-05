@@ -1,9 +1,11 @@
 # Cybertrain::BlobStore -- stored upload bytes, one file per random key.
 #
-# SQLite cannot hold binary data here (it binds and reads text, which stops
-# at the first NUL), so the bytes of an upload live on disk under a root
-# directory (storage/uploads by default, on the persistent storage volume)
-# and the model keeps only the key and the metadata.
+# The bytes of an upload live on disk under a root directory
+# (storage/uploads by default, on the persistent storage volume) and the
+# model keeps only the key and the metadata: an upload can be large, and a
+# file is served without loading it into the database or a request. (Small
+# binary values can live in SQLite instead, in a `t.binary` column, which a
+# model binds as a DB::Blob.)
 #
 # The path is built from the key alone: 32 lowercase hex characters, which
 # {BlobStore.valid_key?} checks byte by byte before any path is made. A

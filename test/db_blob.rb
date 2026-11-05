@@ -146,6 +146,78 @@ class Image < Cybertrain::Model
   def self.find(id) = all.find(id)
 end
 
+# docs.body is a nullable binary column: str_or_nil, and nil binds NULL
+# through Blob.wrap.
+class DocRelation < Cybertrain::Relation
+  def where(h) = (add_where(h); self)
+
+  def first
+    r = first_row
+    return nil if r.nil?
+    Doc.from_row(r)
+  end
+end
+
+class Doc < Cybertrain::Model
+  def self.table_name = "docs"
+  def self.column_names = ["id", "body", "note"]
+  def model_name = "Doc"
+
+  attr_accessor :body, :note
+
+  def initialize(attrs = {})
+    super()
+    @body = nil
+    @note = nil
+    assign_attributes(attrs) unless attrs.empty?
+  end
+
+  def self.from_row(row)
+    rec = Doc.new(Cybertrain::Model::NO_ATTRIBUTES)
+    rec.load_row(row)
+    rec
+  end
+
+  def load_row(row)
+    set_id(Cybertrain::Cast.int(row["id"]))
+    @body = Cybertrain::Cast.str_or_nil(row["body"])
+    @note = Cybertrain::Cast.str_or_nil(row["note"])
+    mark_persisted!
+    nil
+  end
+
+  def read_attribute(name)
+    case name
+    when :id then @id
+    when :body then @body
+    when :note then @note
+    else nil
+    end
+  end
+
+  def write_attribute(name, value)
+    case name
+    when :body then @body = Cybertrain::Cast.str_or_nil(value)
+    when :note then @note = Cybertrain::Cast.str_or_nil(value)
+    end
+    nil
+  end
+
+  def assign_attributes(attrs)
+    attrs.each { |k, v| write_attribute(k.to_s.to_sym, v) }
+    self
+  end
+
+  def to_row
+    {
+      "body" => Cybertrain::DB::Blob.wrap(@body),
+      "note" => Cybertrain::Cast.to_sql(@note)
+    }
+  end
+
+  def self.all = DocRelation.new("docs")
+end
+
 test "t.binary declares a BLOB column" do
   table = docs_schema.table("docs")
   assert_equal "binary", table.column("body").type.to_s
@@ -251,6 +323,29 @@ test "a model with a binary attribute saves and reloads its bytes" do
   assert_equal 2, again.data.getbyte(2)
   kind = DB.with { |c| c.execute("SELECT typeof(data) AS t FROM images") }
   assert_equal "blob", kind[0]["t"]
+
+  # 0 and 1 bytes through the model.
+  empty = Image.new(name: "empty")
+  empty.data = ""
+  assert empty.save
+  assert_equal 0, Image.find(empty.id).data.bytesize
+  one = Image.new(name: "one")
+  one.data = "\0"
+  assert one.save
+  loaded_one = Image.find(one.id)
+  assert_equal 1, loaded_one.data.bytesize
+  assert_equal 0, loaded_one.data.getbyte(0)
+
+  # A nullable binary attribute set to nil stores NULL; bytes come back.
+  DB.with { |c| c.exec_script(DB::SqliteDDL.create_table(definition.table("docs"))) }
+  doc = Doc.new(note: "none")
+  assert doc.save
+  stored = DB.with { |c| c.execute("SELECT typeof(body) AS t FROM docs WHERE id = ?", [doc.id]) }
+  assert_equal "null", stored[0]["t"]
+  assert_nil Doc.all.where(id: doc.id).first.body
+  doc.body = "\0z"
+  assert doc.save
+  assert_equal 2, Doc.all.where(id: doc.id).first.body.to_s.bytesize
   DB.disconnect
   [path, "#{path}-wal", "#{path}-shm"].each { |f| File.delete(f) if File.exist?(f) }
 end
