@@ -234,8 +234,18 @@ module Cybertrain
           end
           items
         elsif k == INode::K_HASH
+          # while, not each_with_index: a block that captures n, env and
+          # hash makes Spinel allocate a heap cell for each of them on every
+          # call of eval_expr, Hash literal or not (three objects per
+          # expression evaluated; docs/performance-next.md 9).
           hash = {}
-          n.ipairs.each_with_index { |key, i| hash[key] = eval_expr(n.ikids[i], env) }
+          keys = n.ipairs
+          vals = n.ikids
+          j = 0
+          while j < keys.size
+            hash[keys[j]] = eval_expr(vals[j], env)
+            j += 1
+          end
           hash
         else
           fail_at(n, "cannot evaluate node kind #{k}")

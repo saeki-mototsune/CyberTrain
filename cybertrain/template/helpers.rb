@@ -349,9 +349,14 @@ module Cybertrain
             end
           end
         end
+        # while, not each_with_index: a block capturing items, name and
+        # route_args costs three heap cells on every call, the two-item
+        # ones above included (docs/performance-next.md 9).
         name = +""
         route_args = []
-        items.each_with_index do |item, i|
+        i = 0
+        while i < items.size
+          item = items[i]
           case item
           when Cybertrain::Model
             last = i == items.size - 1
@@ -364,6 +369,7 @@ module Cybertrain
             name << "_" unless last
           else raise ArgumentError, "url_for expects records in a nested route"
           end
+          i += 1
         end
         route("#{name}_path", route_args)
       end

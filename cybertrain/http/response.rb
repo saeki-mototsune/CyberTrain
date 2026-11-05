@@ -111,17 +111,7 @@ module Cybertrain
       if existing.nil? || existing == name
         @headers[name] = value
       else
-        # Rebuilt in place (clear, then put back in order): `headers` is a
-        # public reader, so a Hash a before_action or middleware kept must
-        # stay the live one.
-        names = []
-        values = []
-        @headers.each do |k, v|
-          names << (k == existing ? name : k)
-          values << v
-        end
-        @headers.clear
-        names.each_with_index { |k, i| @headers[k] = k == name ? value : values[i] }
+        respell_header(existing, name, value)
       end
     end
 
@@ -234,6 +224,24 @@ module Cybertrain
       if text.include?("\r") || text.include?("\n")
         raise ArgumentError, "header #{name} must not contain CR or LF"
       end
+    end
+
+    # set_header's rare case: the header is there under another spelling
+    # (`existing`). Rebuilt in place (clear, then put back in order):
+    # `headers` is a public reader, so a Hash a before_action or middleware
+    # kept must stay the live one. A method of its own because of its
+    # blocks: Spinel allocates a heap cell per captured local on entry to
+    # the method that holds a block, and set_header runs on every response
+    # (docs/performance-next.md 9).
+    def respell_header(existing, name, value)
+      names = []
+      values = []
+      @headers.each do |k, v|
+        names << (k == existing ? name : k)
+        values << v
+      end
+      @headers.clear
+      names.each_with_index { |k, i| @headers[k] = k == name ? value : values[i] }
     end
 
     def header_key(name)
