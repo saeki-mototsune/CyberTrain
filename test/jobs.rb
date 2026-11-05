@@ -28,6 +28,22 @@ Job.handle("boom") { |payload| raise "boom #{payload}" }
 Job.handle("long") { |payload| raise "x" * 5000 }
 Job.handle("paid", concurrency: 1) { |payload| SEEN << "paid #{payload}" }
 Job.handle("other") { |payload| SEEN << "other #{payload}" }
+# Plays a worker whose heartbeat went stale mid-job: while it runs (as
+# "host-a"), the row is recovered and claimed again by "host-b"
+# (work_one under that label runs the nested call, which just records),
+# and then this first run ends normally, or raises with "fail".
+Job.handle("reclaim") do |payload|
+  if SEEN.empty?
+    SEEN << "first"
+    Job.recover!(5000, 300)
+    mine = Job.override_process_label("host-b:2:1")
+    SEEN << "reclaimed" if Job.work_one(5000)
+    Job.override_process_label(mine)
+    raise "first run failed" if payload == "fail"
+  else
+    SEEN << "second"
+  end
+end
 # Runs recover! at the time in its payload while its own row is running.
 Job.handle("probe") do |payload|
   requeued = Job.recover!(payload.to_i)
@@ -292,6 +308,24 @@ test "concurrency: a kind at its limit is skipped and another kind's job claimed
   assert Job.work_one(2000)
   assert_equal "done", job_state(waiting)
   assert_equal "other x,paid second", SEEN.join(",")
+end
+
+test "an outcome written after the row was reclaimed is discarded" do
+  ["ok", "fail"].each do |mode|
+    fresh_db
+    Job.override_process_label("host-a:1:1")
+    id = Job.enqueue("reclaim", mode, run_at: Time.at(1000))
+    # Claimed at 1000; by 5000 its heartbeat is stale.
+    assert Job.work_one(1000)
+    assert_equal "first,second,reclaimed", SEEN.join(",")
+    # The second claimer's outcome stands, with its claim.
+    assert_equal "done", job_state(id)
+    assert_equal "host-b:2:1", job_claimed_by(id)
+    assert_equal 2, job_attempts(id)
+    assert_equal "", job_error(id)
+    assert_includes LOG.string, "[WARN] job #{id} (reclaim) finished after it was reclaimed; outcome discarded"
+    Job.override_process_label("")
+  end
 end
 
 test "concurrency must not be negative" do

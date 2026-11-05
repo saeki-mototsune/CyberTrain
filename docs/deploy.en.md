@@ -934,8 +934,14 @@ sudo systemctl enable --now notes-worker
 - On stop (SIGTERM) it waits up to 10 seconds (`job_drain_timeout`) for the
   running jobs, then exits. A job that did not finish is run again by the next
   process once its heartbeat is stale.
+- Jobs run at least once (a stopped process's jobs are run again), so write
+  handlers that do no harm when they run twice.
 - Add `notes-worker` to the restart in the deploy script (5-3), and a line of
   the same shape to the sudoers file of 5-2.
+- When you upgrade from a cybertrain without heartbeats, stop every old
+  process (`notes` and `notes-worker`) before starting the first new one. An
+  old worker writes no heartbeat, so a new worker's recovery would put its
+  running job back in the queue and run it twice.
 - For one process per subscription, make a `notes-feeds@.service` whose
   `ExecStart` is `/srv/notes/current/dist/notes feeds %i` and start it by the
   subscription's name, as in `sudo systemctl enable --now notes-feeds@trades`

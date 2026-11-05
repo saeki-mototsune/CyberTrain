@@ -168,6 +168,17 @@ module Cybertrain
       label
     end
 
+    # Replaces {Job.process_label} (tests that play two processes in one;
+    # "" computes the real one again on next use). Returns the label it
+    # replaced.
+    # @param label [String]
+    # @return [String]
+    def self.override_process_label(label)
+      old = @process_label
+      @process_label = label
+      old
+    end
+
     # True once some handler is registered ({Job.start!} starts the job
     # threads only then).
     # @return [Boolean]
@@ -542,7 +553,7 @@ module Cybertrain
       end
       return false if id < 0
 
-      finish(id, kind, payload, attempts, now)
+      finish(id, kind, payload, attempts, now, label)
       true
     end
 
@@ -599,31 +610,45 @@ module Cybertrain
       BACKOFF[i]
     end
 
-    # Runs a claimed job's handler and writes the outcome back.
-    def self.finish(id, kind, payload, attempts, now)
+    # Runs a claimed job's handler and writes the outcome back, fenced by
+    # the claim (`label`): when the row was recovered and claimed again
+    # while the handler ran (its heartbeat went stale), the outcome is
+    # discarded and the row is left to its new claimer. Delivery is
+    # therefore at least once: write handlers so that running twice is
+    # harmless.
+    def self.finish(id, kind, payload, attempts, now, label)
       logger = Cybertrain.logger
       index = handler_index(kind)
       if index < 0
         message = "no handler registered for kind #{kind.inspect}"
-        record(id, "failed", now, message, now)
+        return reclaimed(id, kind) unless record(id, "failed", now, message, now, label)
+
         logger.error("job #{id} (#{kind}) failed: #{message}")
         return nil
       end
       error = run_handler(HANDLERS[index], payload)
       if error.empty?
-        record(id, "done", now, "", now)
+        return reclaimed(id, kind) unless record(id, "done", now, "", now, label)
+
         logger.info("job #{id} (#{kind}) done")
         return nil
       end
       max = Cybertrain.config.job_max_attempts
       if attempts >= max
-        record(id, "failed", now, error, now)
+        return reclaimed(id, kind) unless record(id, "failed", now, error, now, label)
+
         logger.error("job #{id} (#{kind}) failed after #{attempts} attempts: #{error}")
       else
         wait = backoff(attempts)
-        record(id, "queued", now + wait, error, now)
+        return reclaimed(id, kind) unless record(id, "queued", now + wait, error, now, label)
+
         logger.error("job #{id} (#{kind}) attempt #{attempts} of #{max} failed: #{error}; retrying in #{wait} s")
       end
+      nil
+    end
+
+    def self.reclaimed(id, kind)
+      Cybertrain.logger.warn("job #{id} (#{kind}) finished after it was reclaimed; outcome discarded")
       nil
     end
 
@@ -644,12 +669,17 @@ module Cybertrain
       text[0, MAX_ERROR_LENGTH]
     end
 
-    def self.record(id, state, run_at, error, now)
-      binds = Cast.binds(state, run_at, error, now, id)
+    # The outcome of the claim `label` holds; false (nothing written) when
+    # the row is no longer running under that claim.
+    def self.record(id, state, run_at, error, now, label)
+      binds = Cast.binds(state, run_at, error, now, id, label)
+      written = false
       DB.with do |c|
-        c.execute("UPDATE cybertrain_jobs SET state = ?, run_at = ?, last_error = ?, updated_at = ? WHERE id = ?", binds)
+        c.execute("UPDATE cybertrain_jobs SET state = ?, run_at = ?, last_error = ?, updated_at = ? " \
+                  "WHERE id = ? AND state = 'running' AND claimed_by = ?", binds)
+        written = c.changes == 1
       end
-      nil
+      written
     end
   end
 end

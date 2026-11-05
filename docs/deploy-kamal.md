@@ -94,7 +94,10 @@ the volume, and only the one holding the lease runs the scheduled tasks
 ([deploy.en.md](deploy.en.md), part 7, "Splitting the roles"). To run the
 WebSocket subscriptions in a container of their own, turn on the `feeds` role
 that the generated file has commented out (`cmd: ./notes feeds trades`) and
-give `web` `env: clear: CYBERTRAIN_WORKER: 0`.
+give `web` `env: clear: CYBERTRAIN_WORKER: 0`. The first time you upgrade from
+a cybertrain release without heartbeats, stop every old container with `kamal
+app stop` before `kamal deploy`, so that a new worker does not run an old
+worker's running job a second time.
 
 With a framework that has the built-in health check (`GET /up`, README
 "Operations"), you can change the `healthcheck` `path` from `/up.html` to

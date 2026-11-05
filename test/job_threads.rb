@@ -196,6 +196,9 @@ test "stop! waits at most job_drain_timeout and leaves an unfinished job running
   # The old thread finishes the job it had and ends.
   assert wait_until(4.0) { Job.live_loops == 0 }
   assert_equal "long", events_text
+  # Its outcome is fenced off: the requeued row stays queued.
+  assert_equal "queued", job_state(long)
+  assert_includes LOG.string, "[WARN] job #{long} (long) finished after it was reclaimed; outcome discarded"
 end
 
 Cybertrain::Test.run!

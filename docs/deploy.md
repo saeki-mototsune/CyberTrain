@@ -856,8 +856,13 @@ sudo systemctl enable --now notes-worker
   `Environment=CYBERTRAIN_WORKER=0` を足します。
 - 停止（SIGTERM）では実行中のジョブを最大 10 秒（`job_drain_timeout`）待ってから終了します。
   終わらなかったジョブは、ハートビートが古くなった時点で次に動くプロセスが再実行します。
+- ジョブは少なくとも 1 回実行されます（止まったプロセスのジョブは再実行されるので、2 回
+  動いても困らないハンドラーにしてください）。
 - デプロイスクリプト（5-3）の再起動に `notes-worker` を足し、5-2 の sudoers にも同じ形の行を
   加えてください。
+- ハートビートのない古い cybertrain から上げるときは、古いプロセス（`notes` と `notes-worker`）を
+  すべて止めてから、新しいものを起動してください。古いワーカーはハートビートを書かないので、
+  新しいワーカーの回収がその実行中のジョブをキューに戻し、二重に実行してしまいます。
 - 購読ごとにプロセスを分けるときは、`ExecStart` を `/srv/notes/current/dist/notes feeds %i` に
   した `notes-feeds@.service` を作り、`sudo systemctl enable --now notes-feeds@trades` のように
   購読の名前で起動します（Web 側は `CYBERTRAIN_WORKER=0` にして、同じ購読を二重に開かないように
@@ -944,7 +949,9 @@ registry:
 同じボリュームのデータベースを共有し、定期タスクはリースを持つ 1 つだけが動かします（第 7 部
 「役割を分ける」）。WebSocket の購読を自分のコンテナで動かすときは、生成されたファイルで
 コメントになっている `feeds` の役割（`cmd: ./notes feeds trades`）を有効にし、`web` に
-`env: clear: CYBERTRAIN_WORKER: 0` を足します。
+`env: clear: CYBERTRAIN_WORKER: 0` を足します。ハートビートのない古い cybertrain のリリースから
+上げる 1 回目は、`kamal app stop` で古いコンテナをすべて止めてから `kamal deploy` してください
+（古いワーカーの実行中のジョブを新しいワーカーが二重に実行しないように）。
 
 組み込みのヘルスチェック（`GET /up`、README の「Operations」）があるフレームワークで作ったアプリなら、
 `healthcheck` の `path` を `/up.html` から `/up` に変えられます。`/up` はデータベースのスキーマを
