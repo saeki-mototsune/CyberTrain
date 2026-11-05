@@ -544,9 +544,10 @@ test "the inet_aton spellings of a loopback address never reach it" do
   # inet_aton does: "127.1" and "0x7f.0.0.1" are names to it, handed to DNS,
   # where they do not resolve (refused) or run past the deadline (timeout),
   # and "0177.0.0.1" is read with its leading zero as decimal, an address
-  # that is not loopback and did not answer the connect (CI's macOS job).
-  # Either way the server on 127.0.0.1 is never reached, and the message
-  # never repeats the path.
+  # that is not loopback, which the client may dial as it may any public
+  # address (in CI's macOS job that connect timed out). What is asserted is
+  # only what the policy claims: the server on 127.0.0.1 is never reached,
+  # and the message never repeats the path.
   client = Cybertrain::HttpClient.new(timeout: 1, deadline: 2)
   short = outcome { client.get("http://127.1:#{$server.port}/hello") }
   assert_includes ["blocked", "unreached"], reach_kind(short)
