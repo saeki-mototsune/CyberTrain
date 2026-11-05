@@ -47,13 +47,18 @@ module Cybertrain
       end
 
       # Starts only the parts of the service named in `names` (`./<app>
-      # feeds NAME...`); all of it when `names` is empty. The default
-      # ignores the names and calls {#service_start}.
+      # feeds NAME...`); all of it when `names` is empty. The default, for a
+      # service without named parts, calls {#service_start} when `names` is
+      # empty and starts nothing otherwise: `./<app> feeds trades` runs that
+      # one feed and nothing else, while a bare `./<app> feeds` runs every
+      # service (judgement call).
       # @param config [Config]
       # @param names [Array<String>]
       # @return [Boolean] true when it started something
       # @api public
       def service_start_only(config, names)
+        return false unless names.empty?
+
         service_start(config)
       end
 
@@ -200,6 +205,7 @@ module Cybertrain
     # @param names [Array<String>]
     # @param known [Array<String>]
     # @return [String]
+    # @api private
     def self.unknown_name_in(names, known)
       i = 0
       while i < names.size

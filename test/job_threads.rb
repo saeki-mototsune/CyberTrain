@@ -168,8 +168,30 @@ test "the scheduler no longer runs jobs as a task" do
   # Handlers alone start it (its ticks recover jobs), with no task of its own.
   assert Cybertrain::Scheduler.start!(pool_config(1))
   assert_equal(-1, Cybertrain::Scheduler.task_index("cybertrain jobs"))
-  assert_includes LOG.string, "[INFO] Scheduler started: no scheduled tasks"
+  assert_includes LOG.string, "[INFO] Scheduler started: no scheduled tasks (job recovery only)"
   Cybertrain::Scheduler.stop!
+end
+
+test "request_stop (the TERM trap) starts the drain: stop! waits only what is left of it" do
+  fresh_db
+  id = enqueue_now("beat", "")
+  assert Job.start!(pool_config(1))
+  assert wait_until(0.5) { Job.running_count("beat") == 1 }
+  asked = monotonic
+  Job.request_stop
+  refute Job.running?
+  # The requests drain meanwhile (Application#serve's Server#wait).
+  sleep 0.6
+  before_stop = monotonic
+  Job.stop!
+  done_at = monotonic
+  # job_drain_timeout is 1 s from the request, not from stop!.
+  assert done_at - before_stop < 0.7
+  assert done_at - asked >= 0.9
+  assert_equal "running", job_state(id)
+  # The beat job's thread finishes on its own.
+  assert wait_until(3.0) { Job.live_loops == 0 }
+  clear_events
 end
 
 # Last: the long job's thread outlives stop!, so the program waits for it.

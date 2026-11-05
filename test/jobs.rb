@@ -28,6 +28,20 @@ Job.handle("boom") { |payload| raise "boom #{payload}" }
 Job.handle("long") { |payload| raise "x" * 5000 }
 Job.handle("paid", concurrency: 1) { |payload| SEEN << "paid #{payload}" }
 Job.handle("other") { |payload| SEEN << "other #{payload}" }
+Job.handle("api", concurrency: 2) { |payload| SEEN << "api #{payload}" }
+# Beats from inside its own run: heartbeat! touches the rows in flight.
+Job.handle("beater") { |payload| SEEN << Job.heartbeat!(payload.to_i).to_s }
+# While it runs, the row is recovered and claimed again by this same
+# process (a second attempt): only the attempt number tells the claims
+# apart.
+Job.handle("again") do |payload|
+  Job.recover!(5000, 300)
+  DB.with do |c|
+    c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, heartbeat_at = 5000 " \
+              "WHERE kind = 'again' AND state = 'queued'")
+  end
+  SEEN << "again"
+end
 # Plays a worker whose heartbeat went stale mid-job: while it runs (as
 # "host-a"), the row is recovered and claimed again by "host-b"
 # (work_one under that label runs the nested call, which just records),
@@ -228,23 +242,77 @@ test "recover! requeues rows a dead process left running once their heartbeat is
   assert_equal 0, Job.recover!(1301)
 end
 
-test "a claim writes claimed_by and heartbeat_at; heartbeat! touches only this process's running rows" do
+test "a claim writes claimed_by and heartbeat_at; heartbeat! touches only the jobs in flight here" do
   fresh_db
   label = Job.process_label
-  assert_equal 3, label.split(":").size
+  # host:pid:epoch:random
+  assert_equal 4, label.split(":").size
+  assert_equal 6, label.split(":")[3].size
   assert_equal label, Job.process_label
   id = Job.enqueue("record", "one", run_at: Time.at(1000))
   assert Job.work_one(1000)
   assert_equal label, job_claimed_by(id)
   assert_equal 1000, job_heartbeat(id)
+  # Running rows under this label that no thread here is running (a lost
+  # outcome write), another process's, and a done one: none is touched.
   mine = insert_claimed("record", "running", label, 1000)
-  theirs = insert_claimed("record", "running", "other-host:7:1", 1000)
+  theirs = insert_claimed("record", "running", "other-host:7:1:abcdef", 1000)
   done = insert_claimed("record", "done", label, 1000)
-  assert_equal 1, Job.heartbeat!(1100)
-  assert_equal 1100, job_heartbeat(mine)
+  assert_equal 0, Job.heartbeat!(1100)
+  assert_equal 1000, job_heartbeat(mine)
+  # A job that beats while it runs touches its own row, and only that.
+  beater = Job.enqueue("beater", "1200", run_at: Time.at(1000))
+  assert Job.work_one(1100)
+  assert_equal "one,1", SEEN.join(",")
+  assert_equal 1200, job_heartbeat(beater)
+  assert_equal 1000, job_heartbeat(mine)
   assert_equal 1000, job_heartbeat(theirs)
   assert_equal 1000, job_heartbeat(done)
+  assert_equal 0, Job.in_flight_ids.size
+end
+
+test "an outcome write that keeps failing leaves the row to staleness recovery" do
+  fresh_db
+  id = Job.enqueue("record", "lost", run_at: Time.at(1000))
+  # Every try of the outcome write raises (a database locked past its busy
+  # timeout).
+  Job.fail_outcome_writes(Job::OUTCOME_TRIES)
+  assert Job.work_one(1000)
+  assert_equal "lost", SEEN.join(",")
+  assert_equal "running", job_state(id)
+  assert_includes LOG.string, "outcome write 3 of 3 failed: Cybertrain::DB::Error: outcome write failed on purpose"
+  assert_includes LOG.string, "[ERROR] job #{id} (record) finished but its outcome could not be written; left running for heartbeat recovery"
+  # It is no longer in flight: the heartbeat does not keep it alive ...
+  assert_equal 0, Job.heartbeat!(1200)
   assert_equal 1000, job_heartbeat(id)
+  # ... so it is recovered once stale, and runs again.
+  assert_equal 0, Job.recover!(1300)
+  assert_equal 1, Job.recover!(1301)
+  assert Job.work_one(1301)
+  assert_equal "done", job_state(id)
+  assert_equal "lost,lost", SEEN.join(",")
+end
+
+test "an outcome write that fails once is retried and written" do
+  fresh_db
+  id = Job.enqueue("record", "kept", run_at: Time.at(1000))
+  Job.fail_outcome_writes(1)
+  assert Job.work_one(1000)
+  assert_equal "done", job_state(id)
+  assert_includes LOG.string, "[ERROR] job #{id}: outcome write 1 of 3 failed"
+end
+
+test "the outcome is fenced by the attempt: a later claim by this same process wins" do
+  fresh_db
+  id = Job.enqueue("again", "", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal "again", SEEN.join(",")
+  # The second claim (attempt 2, same label) still runs; the first run's
+  # outcome was discarded.
+  assert_equal "running", job_state(id)
+  assert_equal 2, job_attempts(id)
+  assert_equal Job.process_label, job_claimed_by(id)
+  assert_includes LOG.string, "[WARN] job #{id} (again) finished after it was reclaimed; outcome discarded"
 end
 
 test "two processes recovering: only the stale row is requeued, and only once" do
@@ -276,6 +344,9 @@ test "install! adds claimed_by and heartbeat_at to a table made before them" do
     c.execute("INSERT INTO cybertrain_jobs (kind, run_at, state, created_at, updated_at) VALUES ('record', 1000, 'running', 1000, 1200)")
   end
   refute job_columns.include?("claimed_by")
+  # The table needs no ALTER when another process already upgraded it;
+  # here one of the two columns is already there.
+  DB.with { |c| c.execute("ALTER TABLE cybertrain_jobs ADD COLUMN claimed_by TEXT") }
   Job.install!
   assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at", job_columns
   Job.install!
@@ -326,6 +397,28 @@ test "an outcome written after the row was reclaimed is discarded" do
     assert_includes LOG.string, "[WARN] job #{id} (reclaim) finished after it was reclaimed; outcome discarded"
     Job.override_process_label("")
   end
+end
+
+test "concurrency: two kinds at their limits at once are both left out" do
+  fresh_db
+  Job.install!
+  insert_claimed("paid", "running", "host-a:10:1:aaaaaa", 1000)
+  insert_claimed("api", "running", "host-a:10:1:aaaaaa", 1000)
+  insert_claimed("api", "running", "host-b:20:1:bbbbbb", 1000)
+  paid = Job.enqueue("paid", "p", run_at: Time.at(1000))
+  api = Job.enqueue("api", "a", run_at: Time.at(1000))
+  other = Job.enqueue("other", "o", run_at: Time.at(1002))
+  assert Job.work_one(2000)
+  assert_equal "other o", SEEN.join(",")
+  assert_equal "queued", job_state(paid)
+  assert_equal "queued", job_state(api)
+  refute Job.work_one(2000)
+  # One api slot frees up: api runs, paid still waits.
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET state = 'done' WHERE kind = 'api' AND claimed_by = 'host-b:20:1:bbbbbb'") }
+  assert Job.work_one(2000)
+  assert_equal "done", job_state(api)
+  assert_equal "queued", job_state(paid)
+  assert_equal "other o,api a", SEEN.join(",")
 end
 
 test "concurrency must not be negative" do

@@ -327,11 +327,12 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :max_page
 
-    # Whether this process runs the background thread ({Scheduler}: the
-    # scheduled tasks and the {Job} worker) when it serves, `true`; `false`
-    # from `CYBERTRAIN_WORKER=0` (or `false`). When several processes share
-    # one database, turn it off in all but one of them, or every scheduled
-    # task runs once per process.
+    # Whether a `server` process also runs the background work (the
+    # {Scheduler}'s tasks, the {Job} threads, the Background services such
+    # as WebSocket subscriptions), `true`; `false` from
+    # `CYBERTRAIN_WORKER=0` (or `false`), when `./<app> worker` and
+    # `./<app> feeds` processes do that work instead. Those two roles set it
+    # to true themselves: running it is what they are for.
     # @return [Boolean]
     # @api public
     attr_accessor :worker
@@ -959,8 +960,10 @@ end
     # The error Application#boot reports when scheduler_interval,
     # job_poll_interval, job_max_attempts, job_threads,
     # job_heartbeat_interval, job_heartbeat_stale, job_drain_timeout or
-    # scheduler_lease_ttl is below 1, or job_heartbeat_stale is not more
-    # than job_heartbeat_interval (every live job would look abandoned);
+    # scheduler_lease_ttl is below 1, job_heartbeat_stale is not more
+    # than job_heartbeat_interval (every live job would look abandoned), or
+    # scheduler_lease_ttl is less than twice scheduler_interval (the lease
+    # would lapse between two ticks of its holder);
     # "" when all are fine (a sleep of 0 would spin a thread; 0 attempts
     # would fail every job unrun).
     def scheduler_error
@@ -975,6 +978,9 @@ end
       end
       return "job_drain_timeout must be at least 1 (got #{@job_drain_timeout})" if @job_drain_timeout < 1
       return "scheduler_lease_ttl must be at least 1 (got #{@scheduler_lease_ttl})" if @scheduler_lease_ttl < 1
+      if @scheduler_lease_ttl < 2 * @scheduler_interval
+        return "scheduler_lease_ttl (#{@scheduler_lease_ttl}) must be at least twice scheduler_interval (#{@scheduler_interval})"
+      end
 
       ""
     end

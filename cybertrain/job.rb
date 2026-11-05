@@ -1,5 +1,6 @@
 require "json"
 require "socket"
+require "securerandom"
 require "cybertrain/logger"
 require "cybertrain/cast"
 require "cybertrain/config"
@@ -101,8 +102,19 @@ module Cybertrain
     # Job.process_label, computed on first use; "" until then.
     @process_label = ""
 
-    # Guards @live_loops, which every job thread changes and stop! reads.
+    # Guards @live_loops and IN_FLIGHT, which every job thread changes and
+    # stop! and the heartbeat thread read.
     LOCK = Mutex.new
+
+    # The ids of the jobs this process has claimed and not yet finished
+    # writing the outcome of: the only rows its heartbeat keeps alive. A
+    # constant (NOTES rule 64), seeded and emptied (rule 9).
+    IN_FLIGHT = Array.new(0) { 0 }
+
+    # How many times an outcome write is tried before the row is left to
+    # staleness recovery, and the pause before each retry (times the try).
+    OUTCOME_TRIES = 3
+    OUTCOME_RETRY_PAUSE = 0.05
 
     # How long an idle wait sleeps between looks at the stop flag.
     WAIT_SLICE = 0.1
@@ -111,12 +123,24 @@ module Cybertrain
     # rules 18/64). @generation counts start!s: a loop left from before a
     # stop! sees a newer number and ends instead of running beside the new
     # pool. The intervals are copied from the Config start! was given.
+    # @running is "claim more jobs" (request_stop clears it, from a trap);
+    # @started is "the pool exists" (until stop! has drained it).
     @running = false
+    @started = false
     @generation = 0
     @live_loops = 0
     @poll_interval = 1
     @heartbeat_interval = 30
     @drain_timeout = 10
+    # Config#job_heartbeat_stale of the last start!; 0 before one (recover!
+    # then reads Cybertrain.config).
+    @heartbeat_stale = 0
+    # Monotonic seconds when a job thread first saw the stop; 0.0 until
+    # then. Written by the threads, not the trap (no clock call in a
+    # signal handler).
+    @stop_seen_at = 0.0
+    # Test hook: how many outcome writes still fail on purpose.
+    @failing_outcome_writes = 0
 
     # Registers the code that runs jobs of `kind`. The block receives the
     # payload String given to {Job.enqueue} (encode structured data as JSON
@@ -133,6 +157,13 @@ module Cybertrain
     # `concurrency: n` caps how many jobs of this kind run at once, counted
     # over every process sharing the database (a paid API that must not be
     # called twice at a time: `concurrency: 1`); 0, the default, is no cap.
+    # The count is of `running` rows, so a job of a process that died keeps
+    # its slot until it is recovered ({Config#job_heartbeat_stale} plus up
+    # to a minute: 5 to 6 minutes by default).
+    #
+    # Delivery is at least once: a job whose process stopped beating (it
+    # died, or was stopped mid-job) runs again elsewhere, so write handlers
+    # that do no harm when they run twice.
     # @example
     #   Cybertrain::Job.handle("notify") { |payload| Notifier.post(payload) }
     #   Cybertrain::Job.handle("quote", concurrency: 1) { |payload| PaidApi.fetch(payload) }
@@ -155,14 +186,15 @@ module Cybertrain
     end
 
     # Who this process is in `claimed_by`: "<hostname>:<pid>:<epoch of the
-    # first call>", computed once, so neither two processes on one host nor
-    # a restarted one that got the same pid share a label.
+    # first call>:<6 random hex digits>", computed once, so neither two
+    # processes on one host nor a container restarted within the same
+    # second with the same pid share a label.
     # @return [String]
     # @api public
     def self.process_label
       label = @process_label
       if label.empty?
-        label = "#{Socket.gethostname}:#{Process.pid}:#{Time.now.to_i}"
+        label = "#{Socket.gethostname}:#{Process.pid}:#{Time.now.to_i}:#{SecureRandom.hex(3)}"
         @process_label = label
       end
       label
@@ -173,6 +205,7 @@ module Cybertrain
     # replaced.
     # @param label [String]
     # @return [String]
+    # @api private
     def self.override_process_label(label)
       old = @process_label
       @process_label = label
@@ -198,10 +231,14 @@ module Cybertrain
     # @return [Boolean] true when it started the threads
     # @api public
     def self.start!(config = Cybertrain.config)
-      return false if @running
-      return false unless handlers?
+      return false if @started
+      unless handlers?
+        Cybertrain.logger.info("No job handler registered; job threads not started")
+        return false
+      end
 
       install!
+      @heartbeat_stale = config.job_heartbeat_stale
       now = Time.now.to_i
       requeued = recover!(now, config.job_heartbeat_stale)
       Cybertrain.logger.warn("Requeued #{requeued} job(s) whose process stopped sending heartbeats") if requeued > 0
@@ -210,6 +247,8 @@ module Cybertrain
       @poll_interval = config.job_poll_interval
       @heartbeat_interval = config.job_heartbeat_interval
       @drain_timeout = config.job_drain_timeout
+      @stop_seen_at = 0.0
+      @started = true
       @running = true
       @generation += 1
       generation = @generation
@@ -226,33 +265,64 @@ module Cybertrain
     end
 
     # Asks the job threads to end and waits, at most
-    # {Config#job_drain_timeout} seconds, for those running a job to finish
-    # it. A job still running then keeps its row `running`; its heartbeat
-    # stops with this call, so another process's {Job.recover!} queues it
-    # again once it is stale. Does nothing when the threads do not run.
+    # {Config#job_drain_timeout} seconds from when they first saw the stop
+    # (a {Job.request_stop} earlier, during the server's drain, counts), for
+    # those running a job to finish it. A job still running then keeps its
+    # row `running`; its heartbeat has stopped, so another process's
+    # {Job.recover!} queues it again once it is stale. Does nothing when
+    # the threads do not run.
     # @return [nil]
     # @api public
     def self.stop!
-      return nil unless @running
+      return nil unless @started
 
       @running = false
-      ends_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @drain_timeout
+      seen = stop_seen_at
+      started_at = seen > 0.0 ? seen : Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      ends_at = started_at + @drain_timeout
       while live_loops > 0 && Process.clock_gettime(Process::CLOCK_MONOTONIC) < ends_at
         sleep 0.05
       end
+      @started = false
       left = live_loops
       Cybertrain.logger.warn("#{left} job(s) still running at shutdown; left to heartbeat recovery") if left > 0
       nil
     end
 
-    # @return [Boolean] true between {Job.start!} and {Job.stop!}
+    # Tells the job threads to claim nothing more, and nothing else: safe
+    # in a signal handler (Application#serve's TERM trap calls it next to
+    # the server's request_stop, so the jobs drain during the requests'
+    # drain). {Job.stop!} still has to be called to wait for them.
+    # @return [nil]
+    # @api public
+    def self.request_stop
+      @running = false
+      nil
+    end
+
+    # @return [Boolean] true between {Job.start!} and {Job.stop!} (or
+    #   {Job.request_stop})
     # @api public
     def self.running?
       @running
     end
 
+    # When a job thread first saw the stop (monotonic seconds), 0.0 before.
+    def self.stop_seen_at
+      at = 0.0
+      LOCK.synchronize { at = @stop_seen_at }
+      at
+    end
+
+    def self.note_stop_seen
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      LOCK.synchronize { @stop_seen_at = now if @stop_seen_at == 0.0 }
+      nil
+    end
+
     # How many job threads have not ended yet (a thread finishing its job
     # after stop! counts until it has).
+    # @api private
     def self.live_loops
       n = 0
       LOCK.synchronize { n = @live_loops }
@@ -285,6 +355,7 @@ module Cybertrain
       while pool_live?(generation)
         idle_wait(@poll_interval, generation) unless claim_safely(Time.now.to_i, index)
       end
+      note_stop_seen
       loop_ended
       nil
     end
@@ -295,7 +366,7 @@ module Cybertrain
     def self.claim_safely(now, index)
       work_one(now)
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      Cybertrain.logger.error("job thread #{index}: #{e.class.name}: #{e.message}")
+      Cybertrain.logger.error("Job thread #{index}: #{e.class.name}: #{e.message}")
       false
     end
 
@@ -320,13 +391,16 @@ module Cybertrain
         idle_wait(@heartbeat_interval, generation)
         beat_safely(Time.now.to_i) if pool_live?(generation)
       end
+      # The heartbeat thread is never busy with a job, so it is the one
+      # that notices a request_stop within WAIT_SLICE.
+      note_stop_seen
       nil
     end
 
     def self.beat_safely(now)
       heartbeat!(now)
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      Cybertrain.logger.error("job heartbeat: #{e.class.name}: #{e.message}")
+      Cybertrain.logger.error("Job heartbeat: #{e.class.name}: #{e.message}")
       0
     end
 
@@ -390,16 +464,35 @@ module Cybertrain
     end
 
     # The ALTER TABLEs of the ALTER_COLUMNS `PRAGMA table_info` does not
-    # list.
+    # list. Two processes upgrading at once could both see a column missing:
+    # outside a transaction the read and the ALTERs run under the write lock
+    # (BEGIN IMMEDIATE), and a "duplicate column name" from a process that
+    # still won the race (inside a caller's transaction, or an older
+    # release's ALTER) is taken as "already there" and the check runs again.
     def self.add_missing_columns
-      rows = DB.with { |c| c.execute("PRAGMA table_info('cybertrain_jobs')") }
+      add_columns_once
+    rescue Cybertrain::DB::Error => e
+      raise e unless e.message.include?("duplicate column")
+
+      add_columns_once
+    end
+
+    def self.add_columns_once
+      pool = DB.pool
+      if !pool.nil? && pool.held_index < 0
+        DB.transaction(immediate: true) { |c| alter_missing(c) }
+      else
+        DB.with { |c| alter_missing(c) }
+      end
+      nil
+    end
+
+    def self.alter_missing(conn)
+      rows = conn.execute("PRAGMA table_info('cybertrain_jobs')")
       present = Array.new(0) { "" }
       rows.each { |r| present << Cast.str(r["name"]) }
       ALTER_COLUMNS.each do |pair|
-        next if present.include?(pair[0])
-
-        sql = pair[1]
-        DB.with { |c| c.execute(sql) }
+        conn.execute(pair[1]) unless present.include?(pair[0])
       end
       nil
     end
@@ -422,10 +515,11 @@ module Cybertrain
     # when the row was claimed.
     # @param now [Integer] epoch seconds
     # @param stale [Integer] seconds without a heartbeat that make a row
-    #   abandoned ({Config#job_heartbeat_stale} by default)
+    #   abandoned (by default the {Config#job_heartbeat_stale} of the
+    #   Config {Job.start!} was given, or of Cybertrain.config before it)
     # @return [Integer] how many rows were requeued
     # @api public
-    def self.recover!(now, stale = Cybertrain.config.job_heartbeat_stale)
+    def self.recover!(now, stale = Job.heartbeat_stale)
       ensure_installed
       binds = Cast.binds(now, now - stale)
       count = 0
@@ -436,21 +530,66 @@ module Cybertrain
       count
     end
 
-    # Marks this process's `running` rows as alive at `now` (the heartbeat
-    # thread does it every {Config#job_heartbeat_interval} seconds), so no
-    # other process's {Job.recover!} takes them.
+    # The stale default of recover!.
+    def self.heartbeat_stale
+      @heartbeat_stale > 0 ? @heartbeat_stale : Cybertrain.config.job_heartbeat_stale
+    end
+
+    # Marks the jobs this process is running now as alive at `now` (the
+    # heartbeat thread does it every {Config#job_heartbeat_interval}
+    # seconds), so no other process's {Job.recover!} takes them. Only rows
+    # in flight here: a row whose outcome could not be written (the
+    # database stayed locked) is no longer in flight, so its heartbeat stops
+    # and staleness recovery runs it again, rather than it staying
+    # `running` (and holding a concurrency slot) for as long as the
+    # process lives. Judgement call: the spec's statement was `WHERE state
+    # = 'running' AND claimed_by = ?`; this adds `AND id IN (...)`.
     # @param now [Integer] epoch seconds
     # @return [Integer] how many rows it touched
     # @api public
     def self.heartbeat!(now)
       ensure_installed
+      ids = in_flight_ids
+      return 0 if ids.empty?
+
       binds = Cast.binds(now, process_label)
+      sql = +"UPDATE cybertrain_jobs SET heartbeat_at = ? WHERE state = 'running' AND claimed_by = ? AND id IN ("
+      i = 0
+      while i < ids.size
+        sql << ", " if i > 0
+        sql << "?"
+        binds << ids[i]
+        i += 1
+      end
+      sql << ")"
       count = 0
       DB.with do |c|
-        c.execute("UPDATE cybertrain_jobs SET heartbeat_at = ? WHERE state = 'running' AND claimed_by = ?", binds)
+        c.execute(sql, binds)
         count = c.changes
       end
       count
+    end
+
+    # A copy of IN_FLIGHT.
+    def self.in_flight_ids
+      out = Array.new(0) { 0 }
+      LOCK.synchronize { IN_FLIGHT.each { |id| out << id } }
+      out
+    end
+
+    def self.in_flight_add(id)
+      LOCK.synchronize { IN_FLIGHT << id }
+      nil
+    end
+
+    # Removes one entry for id (the same row can be in flight twice when it
+    # was recovered and claimed again here while its first run went on).
+    def self.in_flight_remove(id)
+      LOCK.synchronize do
+        at = IN_FLIGHT.index(id)
+        IN_FLIGHT.delete_at(at) unless at.nil?
+      end
+      nil
     end
 
     # How many jobs of `kind` are `running` now, in every process sharing
@@ -519,6 +658,12 @@ module Cybertrain
     # @api public
     def self.work_one(now)
       ensure_installed
+      # A read outside any transaction first: an idle thread then takes no
+      # write lock (three BEGIN IMMEDIATEs a second per process otherwise,
+      # each able to hold an OS worker in the busy handler while another
+      # process writes).
+      return false unless due_exists?(now)
+
       id = -1
       kind = ""
       payload = ""
@@ -541,6 +686,7 @@ module Cybertrain
           row = rows[0]
           found = Cast.int(row["id"])
           claim = Cast.binds(label, now, now, found)
+          # (attempts is counted here; the outcome write is fenced by it.)
           c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, claimed_by = ?, " \
                     "heartbeat_at = ?, updated_at = ? WHERE id = ? AND state = 'queued'", claim)
           if c.changes == 1
@@ -553,8 +699,16 @@ module Cybertrain
       end
       return false if id < 0
 
+      in_flight_add(id)
       finish(id, kind, payload, attempts, now, label)
+      in_flight_remove(id)
       true
+    end
+
+    # Whether some queued row is due at `now` (a plain read).
+    def self.due_exists?(now)
+      rows = DB.with { |c| c.execute("SELECT 1 AS one FROM cybertrain_jobs WHERE state = 'queued' AND run_at <= ? LIMIT 1", [now]) }
+      !rows.empty?
     end
 
     # Works through due jobs, at most `limit` of them, one after another on
@@ -611,45 +765,54 @@ module Cybertrain
     end
 
     # Runs a claimed job's handler and writes the outcome back, fenced by
-    # the claim (`label`): when the row was recovered and claimed again
-    # while the handler ran (its heartbeat went stale), the outcome is
-    # discarded and the row is left to its new claimer. Delivery is
-    # therefore at least once: write handlers so that running twice is
-    # harmless.
+    # the claim (`label` and the attempt number): when the row was
+    # recovered and claimed again while the handler ran (its heartbeat went
+    # stale), the outcome is discarded and the row is left to its new
+    # claimer. Delivery is therefore at least once: write handlers so that
+    # running twice is harmless.
     def self.finish(id, kind, payload, attempts, now, label)
       logger = Cybertrain.logger
       index = handler_index(kind)
       if index < 0
         message = "no handler registered for kind #{kind.inspect}"
-        return reclaimed(id, kind) unless record(id, "failed", now, message, now, label)
+        return nil unless outcome_written?(id, kind, record_outcome(id, "failed", now, message, now, label, attempts))
 
         logger.error("job #{id} (#{kind}) failed: #{message}")
         return nil
       end
       error = run_handler(HANDLERS[index], payload)
       if error.empty?
-        return reclaimed(id, kind) unless record(id, "done", now, "", now, label)
+        return nil unless outcome_written?(id, kind, record_outcome(id, "done", now, "", now, label, attempts))
 
         logger.info("job #{id} (#{kind}) done")
         return nil
       end
       max = Cybertrain.config.job_max_attempts
       if attempts >= max
-        return reclaimed(id, kind) unless record(id, "failed", now, error, now, label)
+        return nil unless outcome_written?(id, kind, record_outcome(id, "failed", now, error, now, label, attempts))
 
         logger.error("job #{id} (#{kind}) failed after #{attempts} attempts: #{error}")
       else
         wait = backoff(attempts)
-        return reclaimed(id, kind) unless record(id, "queued", now + wait, error, now, label)
+        return nil unless outcome_written?(id, kind, record_outcome(id, "queued", now + wait, error, now, label, attempts))
 
         logger.error("job #{id} (#{kind}) attempt #{attempts} of #{max} failed: #{error}; retrying in #{wait} s")
       end
       nil
     end
 
-    def self.reclaimed(id, kind)
-      Cybertrain.logger.warn("job #{id} (#{kind}) finished after it was reclaimed; outcome discarded")
-      nil
+    # Logs what record_outcome's code means unless the outcome was written
+    # (1): 0, the row was reclaimed; -1, the write failed every try.
+    def self.outcome_written?(id, kind, code)
+      return true if code == 1
+
+      if code == 0
+        Cybertrain.logger.warn("job #{id} (#{kind}) finished after it was reclaimed; outcome discarded")
+      else
+        Cybertrain.logger.error("job #{id} (#{kind}) finished but its outcome could not be written; " \
+                                "left running for heartbeat recovery")
+      end
+      false
     end
 
     # The handler call with its rescue in a plain method that receives the
@@ -669,17 +832,50 @@ module Cybertrain
       text[0, MAX_ERROR_LENGTH]
     end
 
-    # The outcome of the claim `label` holds; false (nothing written) when
-    # the row is no longer running under that claim.
-    def self.record(id, state, run_at, error, now, label)
-      binds = Cast.binds(state, run_at, error, now, id, label)
-      written = false
+    # Writes the outcome of the claim (`label`, `attempts`), trying
+    # OUTCOME_TRIES times when the database raises (busy past its busy
+    # timeout, a disk error): 1 when written, 0 when the row is no longer
+    # running under that claim (nothing written), -1 when every try failed
+    # (logged). Never raises.
+    def self.record_outcome(id, state, run_at, error, now, label, attempts)
+      try = 1
+      while try <= OUTCOME_TRIES
+        code = write_outcome_safely(id, state, run_at, error, now, label, attempts, try)
+        return code if code >= 0
+
+        sleep OUTCOME_RETRY_PAUSE * try if try < OUTCOME_TRIES
+        try += 1
+      end
+      -1
+    end
+
+    # One try, its rescue in a plain method (NOTES rules 32/45).
+    def self.write_outcome_safely(id, state, run_at, error, now, label, attempts, try)
+      if @failing_outcome_writes > 0
+        @failing_outcome_writes -= 1
+        raise Cybertrain::DB::Error, "outcome write failed on purpose (test hook)"
+      end
+      binds = Cast.binds(state, run_at, error, now, id, label, attempts)
+      written = 0
       DB.with do |c|
         c.execute("UPDATE cybertrain_jobs SET state = ?, run_at = ?, last_error = ?, updated_at = ? " \
-                  "WHERE id = ? AND state = 'running' AND claimed_by = ?", binds)
-        written = c.changes == 1
+                  "WHERE id = ? AND state = 'running' AND claimed_by = ? AND attempts = ?", binds)
+        written = c.changes == 1 ? 1 : 0
       end
       written
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      Cybertrain.logger.error("job #{id}: outcome write #{try} of #{OUTCOME_TRIES} failed: #{e.class.name}: #{e.message}")
+      -1
+    end
+
+    # Makes the next `count` outcome writes raise, for tests of a database
+    # that stays locked.
+    # @param count [Integer]
+    # @return [nil]
+    # @api private
+    def self.fail_outcome_writes(count)
+      @failing_outcome_writes = count
+      nil
     end
   end
 end

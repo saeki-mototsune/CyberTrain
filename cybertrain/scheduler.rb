@@ -87,6 +87,14 @@ module Cybertrain
     # worker until it returns, so with `SPINEL_WORKERS=1` a task's long
     # query stalls every request for as long: keep tasks short and batch
     # big work (delete a thousand rows per run, not a million).
+    #
+    # With several processes, the one holding the scheduler lease runs the
+    # tasks. The lease is renewed before each task, so one task must finish
+    # within {Config#scheduler_lease_ttl} seconds, or another process may
+    # take the lease and run tasks beside it. After a change of leader a
+    # task can run again sooner than `seconds` (each process keeps its own
+    # timetable), and a task the old leader was running when it died runs
+    # again: write tasks that do no harm when they run twice.
     # @example
     #   Cybertrain::Scheduler.every(60, "expire carts") { Cart.where_sql("updated_at < ?", [cutoff]).delete_all }
     # @param seconds [Integer] at least 1
@@ -199,6 +207,7 @@ module Cybertrain
     # @return [Integer] how many tasks ran (including ones that raised)
     # @api public
     def self.run_due(now)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       leader = acquire_safely(now)
       @leader = leader
       ran = 0
@@ -208,10 +217,22 @@ module Cybertrain
         due = task.task_next_run
         if due == 0
           task.task_next_run = now + task.task_interval
-        elsif due <= now && leader
+        elsif due <= now
+          # A process that does not lead keeps the timetable too, so that it
+          # does not run every overdue task at once when it takes over.
           task.task_next_run = now + task.task_interval
-          run_task(task)
-          ran += 1
+          if leader
+            # Renewed before each task (the tick's own `now` plus the time
+            # the tick has taken): a leader that lost the lease while a
+            # task ran stops running tasks in this tick.
+            elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to_i
+            leader = acquire_safely(now + elapsed)
+            @leader = leader
+          end
+          if leader
+            run_task(task)
+            ran += 1
+          end
         end
         i += 1
       end
@@ -272,10 +293,10 @@ module Cybertrain
       nil
     end
 
-    # "name every Ns, ..." for the start line; "no scheduled tasks" when
-    # none is registered.
+    # "name every Ns, ..." for the start line; "no scheduled tasks (job
+    # recovery only)" when none is registered.
     def self.task_summary
-      return "no scheduled tasks" if TASKS.empty?
+      return "no scheduled tasks (job recovery only)" if TASKS.empty?
 
       out = +""
       i = 0

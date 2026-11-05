@@ -25,6 +25,7 @@ module Cybertrain
   # The flag that ends `./<app> worker` and `./<app> feeds`
   # (Application.request_stop_roles sets it; the TERM trap calls that).
   # A module-level ivar, not a class variable (NOTES rules 18/64).
+  # @api private
   module RoleStop
     @requested = false
 
@@ -227,7 +228,13 @@ module Cybertrain
       if @config.development?
         serve_development(srv)
       else
-        trap("TERM") { srv.request_stop }
+        # Flags only (safe in a trap): the job threads stop claiming while
+        # the requests drain, so Job.stop! waits out only what is left of
+        # its job_drain_timeout, inside systemd's TimeoutStopSec.
+        trap("TERM") do
+          srv.request_stop
+          Job.request_stop
+        end
         srv.wait
       end
       Job.stop!
@@ -247,20 +254,22 @@ module Cybertrain
     # it is what the process is for.
     # @param argv [Array<String>] what follows `worker`; must be empty
     # @return [Integer] the exit status
+    # @api public
     def run_worker(argv)
       unless argv.empty?
         puts "error: worker takes no arguments (got #{argv.join(" ")})"
         STDOUT.flush
         return 1
       end
+      # Before boot: a stop asked for while booting is kept.
+      Application.reset_roles_stop
       @config.worker = true
       boot
       ENV["SPINEL_WORKERS"] = @config.workers.to_s
       threads = @config.job_threads
       tasks = Scheduler::TASKS.size
-      print_role_banner("worker: #{threads} job thread#{threads == 1 ? "" : "s"}, " \
-                        "#{tasks} scheduled task#{tasks == 1 ? "" : "s"}")
-      Application.reset_roles_stop
+      jobs = Job.handlers? ? "#{threads} job thread#{threads == 1 ? "" : "s"}" : "no job handler"
+      print_role_banner("worker: #{jobs}, #{tasks} scheduled task#{tasks == 1 ? "" : "s"}")
       trap("TERM") { Application.request_stop_roles }
       Scheduler.start!(@config)
       Job.start!(@config)
@@ -278,7 +287,9 @@ module Cybertrain
     # so and returns 0.
     # @param names [Array<String>] the feeds to run; empty for all
     # @return [Integer] the exit status
+    # @api public
     def run_feeds(names)
+      Application.reset_roles_stop
       @config.worker = true
       boot
       unknown = Background.unknown_feed(names)
@@ -294,7 +305,6 @@ module Cybertrain
         return 0
       end
       print_role_banner("feeds: #{(names.empty? ? known : names).join(", ")}")
-      Application.reset_roles_stop
       trap("TERM") { Application.request_stop_roles }
       Background.start_only(@config, names)
       Application.wait_roles_stop
@@ -307,11 +317,15 @@ module Cybertrain
     # see serve_development). Also callable from another thread, as tests
     # do.
     # @return [nil]
+    # @api public
     def request_stop_roles
       Application.request_stop_roles
     end
 
+    # The same as {#request_stop_roles}, for code (a test, a trap) that
+    # does not hold the Application instance Main.run made.
     # @return [nil]
+    # @api public
     def self.request_stop_roles
       RoleStop.stop_roles!
     end
@@ -356,7 +370,10 @@ module Cybertrain
     # is only picked up by the next change.
     def serve_development(srv)
       rebuilder = @rebuilder
-      trap("TERM") { srv.request_stop }
+      trap("TERM") do
+        srv.request_stop
+        Job.request_stop
+      end
       trap("HUP") { request_restart }
       watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"], Dev::IGNORED)
       watcher.start { |paths| rebuild_after_change(rebuilder, paths) }

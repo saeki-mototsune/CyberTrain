@@ -28,6 +28,17 @@ Cybertrain.logger = Cybertrain::Logger.new(LOG)
 S.every(10, "tick ten") { RUNS << "ten" }
 S.every(25, "boom") { raise "it broke" }
 S.every(30, "thirty") { RUNS << "thirty" }
+# Not due before 1000 + 999999: only the lease-loss test reaches them. The
+# first hands the lease to another holder while the tick runs, when STEAL
+# is set.
+STEAL = Array.new(0) { "" }
+S.every(999_999, "steal") do
+  RUNS << "steal"
+  unless STEAL.empty?
+    DB.with { |c| c.execute("UPDATE cybertrain_leases SET holder = 'thief:1:1:000000', expires_at = 9999999 WHERE name = 'scheduler'") }
+  end
+end
+S.every(999_999, "after steal") { RUNS << "after steal" }
 
 Job.handle("noop") { |payload| RUNS << "job" }
 
@@ -121,17 +132,19 @@ test "only the lease holder runs due tasks; another takes over once the lease ex
   # Another process takes it once it has expired.
   assert Lease.acquire("scheduler", "other:1:1", 2000, ttl: 30)
   before = runs_text
-  # Every task is overdue, but this process does not lead.
+  # Every task is overdue, but this process does not lead: it runs none,
+  # and keeps the timetable (ten next at 2011, boom 2026, thirty 2031).
   assert_equal 0, S.run_due(2001)
   refute S.leader?
   assert_equal 0, S.run_due(2030)
   assert_equal before, runs_text
   assert_equal 2030, S.last_tick
-  # The other's lease ran out at 2030: the next tick leads and catches up once.
-  assert_equal 3, S.run_due(2031)
+  # The other's lease ran out at 2030: the next tick leads and runs what
+  # is due by the timetable, not every task the other led through.
+  assert_equal 1, S.run_due(2031)
   assert S.leader?
   assert_equal S.holder, Lease.lease_holder("scheduler")
-  assert_equal "#{before},ten,thirty", runs_text
+  assert_equal "#{before},thirty", runs_text
   refute Lease.acquire("scheduler", "other:1:1", 2032, ttl: 30)
 end
 
@@ -142,8 +155,10 @@ test "a tick that cannot reach the database runs nothing, logs, and leads again 
   assert_equal 3000, S.last_tick
   assert_includes LOG.string, "[ERROR] Scheduler lease: Cybertrain::DB::Error: not connected"
   DB.connect(":memory:")
-  assert_equal 3, S.run_due(3001)
+  # The failed tick kept the timetable: nothing is due at 3001, ten at 3010.
+  assert_equal 0, S.run_due(3001)
   assert S.leader?
+  assert_equal 1, S.run_due(3010)
 end
 
 test "while job threads run, every tick (leader or not) recovers stale jobs, at most once a minute" do
@@ -184,6 +199,19 @@ test "while job threads run, every tick (leader or not) recovers stale jobs, at 
   assert_equal "running", job_state(stale_four)
 end
 
+test "a leader that loses the lease during a tick runs no further task in it" do
+  STEAL << "on"
+  before = runs_text
+  # ten, boom, thirty, then steal (which hands the lease away); "after
+  # steal" is due too, but the lease is renewed before each task and the
+  # renewal now fails.
+  assert_equal 4, S.run_due(2_000_000)
+  refute S.leader?
+  assert_equal "#{before},ten,thirty,steal", runs_text
+  assert_equal "thief:1:1:000000", Lease.lease_holder("scheduler")
+  STEAL.pop
+end
+
 test "start! does nothing when the worker switch is off" do
   config = Cybertrain::Config.new
   config.worker = false
@@ -222,6 +250,11 @@ test "config: each job and lease setting must be at least 1, and stale more than
   assert_equal "job_heartbeat_stale (30) must be more than job_heartbeat_interval (30)", config.scheduler_error
   config.job_heartbeat_stale = 31
   assert_equal "", config.scheduler_error
+  config.scheduler_interval = 16
+  assert_equal "scheduler_lease_ttl (30) must be at least twice scheduler_interval (16)", config.scheduler_error
+  config.scheduler_interval = 15
+  assert_equal "", config.scheduler_error
+  config.scheduler_interval = 1
   config.job_drain_timeout = 0
   assert_equal "job_drain_timeout must be at least 1 (got 0)", config.scheduler_error
   config.job_drain_timeout = 10
@@ -254,7 +287,7 @@ test "start! starts the thread once; stop! asks it to end" do
   # The thread ticks at once (with the real time) when this one yields.
   sleep 0.3
   assert S.last_tick >= started
-  assert_includes LOG.string, "[INFO] Scheduler started: tick ten every 10s, boom every 25s, thirty every 30s"
+  assert_includes LOG.string, "[INFO] Scheduler started: tick ten every 10s, boom every 25s, thirty every 30s, steal every 999999s, after steal every 999999s"
   assert S.leader?
   S.stop!
   refute S.running?
