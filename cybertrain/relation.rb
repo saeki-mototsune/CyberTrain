@@ -34,9 +34,9 @@ module Cybertrain
     def initialize(table)
       @table = table
       @wheres = Array.new(0) { "" }
-      # Binds hold nil/Integer/Float/String: seed with more than one type so
-      # the Array is polymorphic from the start (rule 9).
-      @binds = [nil, 0, 0.0, ""]
+      # Binds hold nil/Integer/Float/String/DB::Blob: seed with more than
+      # one type so the Array is polymorphic from the start (rule 9).
+      @binds = [nil, 0, 0.0, "", DB::Blob.new("")]
       @binds.clear
       @order = ""
       @limit = -1
@@ -69,14 +69,33 @@ module Cybertrain
           else
             marks = Array.new(value.size) { "?" }
             @wheres << "#{column} IN (#{marks.join(", ")})"
-            value.each { |v| @binds << Cast.to_sql(v) }
+            value.each { |v| @binds << bind_for(key.to_s, v) }
           end
         else
           @wheres << "#{column} = ?"
-          @binds << Cast.to_sql(value)
+          @binds << bind_for(key.to_s, value)
         end
       end
       nil
+    end
+
+    # Whether `name` is a binary column of the table. The generated
+    # subclass answers from the schema; here nothing is.
+    # @param name [String]
+    # @return [Boolean]
+    def binary_column?(name)
+      false
+    end
+
+    # The bind for `column = value`: the bytes of a binary column wrapped
+    # in a {DB::Blob}, so SQLite compares BLOB to BLOB (a TEXT bind never
+    # equals the stored BLOB); a Blob as it is; anything else as
+    # {Cast.to_sql} writes it.
+    def bind_for(column, value)
+      case value
+      when DB::Blob then value
+      else binary_column?(column) ? DB::Blob.new(value.to_s) : Cast.to_sql(value)
+      end
     end
 
     # A raw SQL fragment with its own `?` binds: where_sql("views > ?", [10]).
