@@ -10,4 +10,5 @@ ok   a script that opens its transaction after other statements is covered
 ok   a script whose own BEGIN fails opened nothing and marks nothing
 ok   a script runs each statement once, trigger bodies as part of theirs
 ok   a failed statement that leaves the transaction open is not a rollback
-12 tests, 80 assertions, 0 failures
+ok   a prepare that fails after SQLite rolled back marks the transaction lost
+13 tests, 86 assertions, 0 failures

@@ -874,7 +874,11 @@ The rules are numbered in the order they were found. By topic:
     before each statement, so a BEGIN anywhere in a script is seen and a
     BEGIN that fails marks nothing (saeki-mototsune/CyberTrain#164;
     sqlite3_exec showed the state only before and after the whole script)
-    (test/db_raw_transaction_rollback.rb).
+    (test/db_raw_transaction_rollback.rb). A prepare that fails is checked
+    the same way, since SQLite can roll back while it reads the schema
+    (IOERR / NOMEM). No real SQLite does that on demand, so the test
+    overrides `Connection#prepare_next` in a subclass that rolls back
+    before preparing (saeki-mototsune/CyberTrain#167).
 81. A relative constant path in a `rescue` clause whose first segment names
     a module that holds a class of the same name is not found: inside
     `module Cybertrain::Console`, `rescue Template::SyntaxError => e`
