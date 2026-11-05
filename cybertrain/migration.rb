@@ -259,7 +259,7 @@ module Cybertrain
       # @param table [String, Symbol]
       # @param name [String, Symbol]
       # @param type [Symbol] `:string`, `:text`, `:integer`, `:float`,
-      #   `:boolean`, `:datetime` or `:date`
+      #   `:boolean`, `:datetime`, `:date` or `:binary` (BLOB)
       # @param null [Boolean]
       # @param default [String, nil] SQL literal text
       # @param limit [Integer] `VARCHAR(n)` for a string when positive

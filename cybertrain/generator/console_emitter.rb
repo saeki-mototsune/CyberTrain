@@ -25,7 +25,7 @@ module Cybertrain
         out << "\n"
         out << "    # Article -> Article.all, as a Cybertrain::Relation.\n"
         out << "    def self.scope(name)\n"
-        out << name_case(models, "\#{m}.all")
+        out << name_case(models, "\#{m}.all", "Cybertrain::Console.unknown_model(name)")
         out << "    end\n"
         out << "\n"
         out << "    # The records of a relation scope returned, as Array<Cybertrain::Model>.\n"
@@ -43,7 +43,7 @@ module Cybertrain
         out << "\n"
         out << "    # Article.create(attrs); attrs: Hash<Symbol, polymorphic>.\n"
         out << "    def self.create(name, attrs)\n"
-        out << name_case(models, "\#{m}.create(attrs)")
+        out << name_case(models, "\#{m}.create(attrs)", "Cybertrain::Console.unknown_record(name)")
         out << "    end\n"
         out << "  end\n"
         out << "end\n"
@@ -56,10 +56,13 @@ module Cybertrain
       end
 
       # `case name when "Article" then <expr>` with expr's "#{m}" replaced
-      # by the model; an unknown name raises UnknownModel listing them.
-      def self.name_case(models, template)
+      # by the model; an unknown name goes to `unknown`, one of
+      # Cybertrain::Console's raising helpers, which raises UnknownModel
+      # listing the models and is typed as returning what the arm returns
+      # (a Relation for scope, a Model for create), so an app with no
+      # tables still compiles (NOTES rule 79).
+      def self.name_case(models, template, unknown)
         out = +""
-        unknown = "raise Cybertrain::Console::UnknownModel, \"no model \\\"\#{name}\\\" (models: \#{MODEL_NAMES.join(\", \")})\""
         if models.empty?
           out << "      #{unknown}\n"
           return out

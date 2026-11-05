@@ -282,7 +282,7 @@ module Cybertrain
         src << "\n"
         src << "  def to_row\n"
         src << "    {\n"
-        pairs = table.columns.map { |c| "      \"#{c.name}\" => Cybertrain::Cast.to_sql(#{ivar_name(c.name)})" }.join(",\n")
+        pairs = table.columns.map { |c| "      \"#{c.name}\" => #{bind_expression(c)}" }.join(",\n")
         src << "#{pairs}\n"
         src << "    }\n"
         src << "  end\n"
@@ -493,8 +493,22 @@ module Cybertrain
         when :boolean then null ? "bool_or_nil" : "bool"
         when :datetime then "time_or_nil"
         when :date then "str_or_nil"
+        # A String of raw bytes, like a text column (Cast.binary is for
+        # raw-SQL callers; it reads nil as "", which a nullable one must not).
+        when :binary then null ? "str_or_nil" : "binary"
         else null ? "str_or_nil" : "str"
         end
+      end
+
+      # What to_row binds for a column: a binary column's bytes wrapped in a
+      # DB::Blob (nil stays nil), so Connection#bind sends them with
+      # sqlite3_bind_blob and their length; every other column its
+      # Cast.to_sql value.
+      def self.bind_expression(column)
+        ivar = ivar_name(column.name)
+        return "Cybertrain::DB::Blob.wrap(#{ivar})" if column.type == :binary
+
+        "Cybertrain::Cast.to_sql(#{ivar})"
       end
 
       # The ivar's value in `initialize`: the column's SQL default when it

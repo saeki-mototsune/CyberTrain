@@ -8,9 +8,9 @@ module Cybertrain
     # into a Cybertrain::Schema::Definition, the reverse of SqliteDDL.
     #
     # SqliteDDL declares one SQL type name per schema type (VARCHAR, TEXT,
-    # INTEGER, REAL, BOOLEAN, DATETIME, DATE) and SQLite keeps that name in
+    # INTEGER, REAL, BOOLEAN, DATETIME, DATE, BLOB) and SQLite keeps that name in
     # PRAGMA table_info, so the dump recovers :text vs :string, :boolean vs
-    # :integer and :datetime/:date exactly. Unknown names (a table created
+    # :integer, :datetime/:date and :binary exactly. Unknown names (a table created
     # by hand) fall back to SQLite's own affinity rules.
     module SchemaDumper
       def self.dump(connection)
@@ -73,6 +73,7 @@ module Cybertrain
           when :boolean then t.boolean(name, null: null, default: default)
           when :datetime then t.datetime(name, null: null, default: default)
           when :date then t.date(name, null: null, default: default)
+          when :binary then t.binary(name, null: null, default: default)
           else t.text(name, null: null, default: default)
           end
         end
@@ -93,6 +94,7 @@ module Cybertrain
         when "BOOLEAN" then :boolean
         when "DATETIME", "TIMESTAMP" then :datetime
         when "DATE" then :date
+        when "BLOB" then :binary
         else
           if !base.index("INT").nil?
             :integer

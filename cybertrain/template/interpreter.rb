@@ -65,6 +65,20 @@ module Cybertrain
       def call_object_method(recv, name_sym, name_str, args, kwargs, block, interp, env)
         raise RuntimeError, "undefined method '#{name_str}' for #{recv.class.name}"
       end
+
+      # The value of a constant (a K_CONST node, which only the console's
+      # parser produces: Parser.parse_statement(..., constants: true)).
+      # Console::Helpers resolves model names; templates have none.
+      def constant(name)
+        raise RuntimeError, "constants are not supported: '#{name}'"
+      end
+
+      # Whether a method call on a record goes to call_object_method instead
+      # of the record's attribute table (the console's update / destroy /
+      # save). Templates read records only.
+      def model_call?(name_sym)
+        false
+      end
     end
 
     class Interpreter
@@ -247,6 +261,7 @@ module Cybertrain
           buf
         elsif k == INode::K_INDEX then index(eval_expr(n.ia, env), eval_expr(n.ib, env), n)
         elsif k == INode::K_FLOAT then n.iflt
+        elsif k == INode::K_CONST then @helpers.constant(n.istr)
         elsif k == INode::K_ARRAY
           items = []
           elems = n.ikids
@@ -312,7 +327,10 @@ module Cybertrain
         when Hash then hash_method(recv, name_sym, name_str, args, node)
         when Cybertrain::Errors then errors_method(recv, name_sym, name_str, args, node)
         when Cybertrain::Params then params_method(recv, name_sym, name_str, args, node)
-        when Cybertrain::Model then model_method(recv, name_sym, name_str, node)
+        when Cybertrain::Model
+          return object_method(recv, name_sym, name_str, args, kwargs, block, env, node) if @helpers.model_call?(name_sym)
+
+          model_method(recv, name_sym, name_str, node)
         when nil
           return "" if name_sym == :to_s
           undefined(node, name_str, "nil")
@@ -320,18 +338,24 @@ module Cybertrain
           return recv.to_s if name_sym == :to_s
           undefined(node, name_str, recv.to_s)
         else
-          result = nil
-          begin
-            result = @helpers.call_object_method(recv, name_sym, name_str, args, kwargs, block, self, env)
-          rescue Cybertrain::Template::CallSyntaxError => e
-            raise SyntaxError, "#{@name}:#{node.iline}: #{e.message}"
-          rescue Cybertrain::Template::SyntaxError => e
-            raise e
-          rescue StandardError => e
-            relocate(e, node)
-          end
-          result
+          object_method(recv, name_sym, name_str, args, kwargs, block, env, node)
         end
+      end
+
+      # A call the helpers answer (HelperBase#call_object_method), with what
+      # it raises relocated to this template's line.
+      def object_method(recv, name_sym, name_str, args, kwargs, block, env, node)
+        result = nil
+        begin
+          result = @helpers.call_object_method(recv, name_sym, name_str, args, kwargs, block, self, env)
+        rescue Cybertrain::Template::CallSyntaxError => e
+          raise SyntaxError, "#{@name}:#{node.iline}: #{e.message}"
+        rescue Cybertrain::Template::SyntaxError => e
+          raise e
+        rescue StandardError => e
+          relocate(e, node)
+        end
+        result
       end
 
       private

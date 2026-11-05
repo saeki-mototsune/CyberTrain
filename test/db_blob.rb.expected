@@ -1,0 +1,9 @@
+ok   t.binary declares a BLOB column
+ok   a Blob bind round-trips 70,003 bytes byte for byte, next to invalid UTF-8 text
+ok   empty and one-byte blobs, a NULL, and Cast.binds
+ok   Cast.binary narrows
+ok   the dumper writes t.binary back
+ok   add_column with :binary adds a BLOB column
+ok   the generator types a binary column as a String and binds it as a Blob
+ok   a model with a binary attribute saves and reloads its bytes
+8 tests, 53 assertions, 0 failures

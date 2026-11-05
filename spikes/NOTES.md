@@ -76,25 +76,28 @@ written up for upstream.
 | 76 | Matches CRuby: a bare `DB` outside `module Cybertrain` raises NameError, as under CRuby. The rule stays: such code must spell `Cybertrain::DB`. |
 | 78 | **Still there** (docs/spinel-feedback.md K). |
 | 79 | **Still there**: found on this build (its reduced program does not compile). |
+| 80 | **Still there**: found on this build. |
+| 81 | **Still there**: found on this build (its reduced program, a lambda literal in a module-body ivar called with an argument, prints garbage for the argument). |
+| 82 | **Still there**: found on this build (a pty shows the prompt only after the line is read). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
 
 The rules are numbered in the order they were found. By topic:
 
-- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77
+- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 81
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph)
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
   37, 46 (Hash literals), 56, 63, 71, 73
 - Polymorphic values and narrowing: 8, 14, 29, 35
-- Constants, class variables, module state: 17, 18, 64, 70, 74, 76
+- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 80
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
-  79
+  79, 80
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
-- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78
+- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 82
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63
 
@@ -461,6 +464,13 @@ The rules are numbered in the order they were found. By topic:
     it the same way; concatenate with `<<` instead. Reduced repro: a method
     assigning `rest = buf.byteslice(4, n)` then `rest << "!"` in a `while`
     prints `[97, 98, 33]` for `"ab\x00cd"` under Spinel 2026.09.12.
+    The other direction is safe: a `:str` FFI argument keeps embedded NULs
+    when the C callee is given an explicit length (`sqlite3_bind_blob(stmt,
+    i, bytes, bytes.bytesize, -1)`, `cybertrain_gunzip_bounded(data,
+    data.bytesize, ...)`); only a callee given -1 (or one that calls strlen)
+    stops at the first NUL. The bytes are copied twice on the way, by
+    Spinel's dup of the argument and by SQLite's SQLITE_TRANSIENT copy
+    (2026.11.04.7026, test/db_blob.rb).
 61. `JSON::NestingError` (what `JSON.generate` raises past 100 levels, which
     a parsed document can reach: `JSON.parse` accepts 200) is a subclass of
     `JSON::ParserError` in the runtime's table, but `rescue
@@ -771,7 +781,23 @@ The rules are numbered in the order they were found. By topic:
     if x > 0; "ok"`). Found while re-checking rule 32. In a test of a
     rescuing helper, give the block a value after the raise or pass the
     result through a method.
-
+80. A relative constant path in a `rescue` clause whose first segment names
+    a module that holds a class of the same name is not found: inside
+    `module Cybertrain::Console`, `rescue Template::SyntaxError => e`
+    (`Cybertrain::Template` holds the class `Cybertrain::Template::Template`)
+    compiles with only the warning "uninitialized constant Template: defined
+    nowhere in the program", and at run time the whole `begin` swallows the
+    exception without running any clause, not even a later `rescue
+    StandardError` (Spinel 2026.11.04.7026; CRuby rescues it). The same path
+    outside a rescue clause (`Template::Interpreter.new`) resolves.
+    Reduced repro: `module Outer; module Inner; class Inner; end; class Oops
+    < StandardError; end; def self.boom = raise(Oops, "x"); end; end`, then
+    in `module Outer; module User` a method with `begin; Inner.boom; rescue
+    Inner::Oops => e; s = "oops"; rescue StandardError => e; s = "std";
+    end`: CRuby takes the first clause, Spinel neither (without `class
+    Inner` inside `Inner` both agree). Spell a rescued class from the top
+    (`rescue Cybertrain::Template::SyntaxError => e`, as Interpreter does),
+    and read the warnings `spin test` prints.
 81. A lambda literal assigned to a module-level instance variable in the
     module body (`module V; @b = ->(c) { H.new(c) }; end`) never learns the
     argument types of its call sites (Spinel 2026.11.04.7026): its
@@ -786,6 +812,17 @@ The rules are numbered in the order they were found. By topic:
     parameter from the `.call` sites. Rule 42's cousin: create a stored
     lambda in a method or pass it positionally, never as a module-body
     ivar initialiser that is called with arguments.
+
+82. `gets` on STDIN does not flush a pending partial line on STDOUT under
+    Spinel 2026.11.04.7026; flush before reading. CRuby flushes STDOUT
+    before it blocks on a terminal read, so `STDOUT.write("A> "); STDIN.gets`
+    shows the prompt first; the compiled program, run on a pty, prints
+    nothing until the line has been typed and then `A> ` after it. Reduced
+    repro: `STDOUT.write("A> "); line = STDIN.gets; STDOUT.write("got
+    #{line}")` under a pty (found by review of `./app console`, whose `>> `
+    prompt only appeared after each line). `STDOUT.flush` after the write
+    shows it at once; Console.run flushes after the banner and every prompt
+    (a StringIO answers flush too).
 
 ## Numbers worth remembering
 

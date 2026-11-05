@@ -309,6 +309,21 @@ module Cybertrain
       end
     end
 
+    # A capitalised name (`Article`), parsed only with the console's
+    # `constants: true` (templates refuse constants). The interpreter asks
+    # the helpers' `constant(name)` hook for its value. A distinctive reader
+    # name (spikes/NOTES.md rules 10/34).
+    class ConstRef < Node
+      attr_reader :const_name, :line
+
+      def initialize(const_name, line)
+        @const_name = const_name
+        @line = line
+      end
+
+      def to_sexp = @const_name
+    end
+
     # recv.name(args, key: value), recv&.name, or a helper call name(args)
     # when recv is nil. call_block: the BlockNode of a call with a receiver
     # (`items.map { |x| x }`), else nil.

@@ -1,5 +1,6 @@
 require "json"
 require "cybertrain/cast"
+require "cybertrain/db/blob"
 require "cybertrain/db/error"
 require "cybertrain/db/sqlite_ffi"
 
@@ -460,6 +461,11 @@ module Cybertrain
         when Integer then SQLite3.sqlite3_bind_int64(stmt, index, value)
         when Float then SQLite3.sqlite3_bind_double(stmt, index, value)
         when Time then SQLite3.sqlite3_bind_text(stmt, index, Cast.iso8601(value), -1, -1)
+        # Its byte length, not -1 (which makes SQLite stop at the first NUL,
+        # as it does for bind_text): every byte is stored.
+        when Blob
+          bytes = value.blob_bytes
+          SQLite3.sqlite3_bind_blob(stmt, index, bytes, bytes.bytesize, -1)
         else SQLite3.sqlite3_bind_text(stmt, index, value.to_s, -1, -1)
         end
       end
@@ -478,6 +484,9 @@ module Cybertrain
           when SQLite3::NULL_TYPE then row[name] = nil
           when SQLite3::INTEGER then row[name] = SQLite3.sqlite3_column_int64(stmt, column)
           when SQLite3::FLOAT then row[name] = SQLite3.sqlite3_column_double(stmt, column)
+          # The exact bytes, NULs included (a :binstr copy; the :str text
+          # path would stop at the first NUL). A String like a TEXT cell.
+          when SQLite3::BLOB then row[name] = SQLite3.cybertrain_sqlite_column_blob(stmt, column)
           else
             seconds = epoch && datetimes[column] == 1 ? SQLite3.cybertrain_sqlite_column_epoch(stmt, column) : -1
             if seconds >= 0
