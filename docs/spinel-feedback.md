@@ -73,11 +73,12 @@ The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22, 56 to
 59, 62, 64, 65 and 78), [benchmark.md](benchmark.md) and
 [performance-next.md](performance-next.md).
 
-Suggested order for what is still open: J (a use-after-free shown with
-the slab off, reduced, still there on 2026.11.04.7026; whether the
-default is affected is open), then 5 (measured, with two concrete fixes),
-then K (a compile failure still there on 2026.11.04.7026, worked
-around, not reduced), then 6 and 7 (4 is fixed on 2026.10.27.7020, see
+Suggested order for what is still open: K (a compile failure still
+there on 2026.11.04.7026, reduced, with a one-line fix tested, and the
+one workaround left that an upstream fix would remove; see K), then J (a
+use-after-free shown with the slab off, reduced, still there on
+2026.11.04.7026; whether the default is affected is open), then 5
+(measured, with two concrete fixes), then 6 and 7 (4 is fixed on 2026.10.27.7020, see
 4), then the rest. The
 refusal under C (#10525, with the run-time `TypeError` beside it fixed
 by #10524) and I (#10735 and #10786), which used to lead this list, are
@@ -92,6 +93,27 @@ pinned to since 2026.10.27.7020 carries #10415: H's workaround is dropped
 since 2026.10.26.7019 B is a build error, see B; D's `RangeError` is the
 default `raise` mode's intended behaviour, and the experimental
 `--int-overflow=promote` parses CRuby's Bignum, see D.)
+
+## What can go upstream
+
+Looked at on 2026-11-05, against 2026.11.04.7026 and the fork's master
+(one commit past it, none in the code below), for each item that still
+has a workaround in CyberTrain or an open bug:
+
+| Item | Workaround it would remove | What can be sent |
+| --- | --- | --- |
+| K | `Logger#log`'s `@io.write` instead of `@io.puts` | **Ready**: a nine-line reduced program and a one-line fix in src/codegen_call_io.c, tested on a build of 2026.11.04.7026 (see K). Spinel's own test suite was not run with it. Not reported upstream yet |
+| 5 (a) | `SPINEL_GC_FULL_INTERVAL=8` in the deploy files | A change to the full-collection cadence rule (`SP_GC_PROMOTED_DEAD_CUT`), a policy change that upstream's benchmarks would have to support; not written yet |
+| 5 (b) | none (a gain of about 5% on one CPU) | Small: start no sweeper in `sp_cs_start_sweepers` (lib/sp_sched.c) when `SPINEL_GC_SWEEPERS` is unset and the process may use one CPU; not written or measured as a patch |
+| J | none | Nothing yet: where the capture struct becomes unreachable is not known |
+| `"#{v}"` copies | the idioms of rule 56 | Not as stated in the table: CRuby's `"#{s}"` also answers a new, unfrozen String that `<<` does not share with `s`, so the copy can only be skipped where the result is never mutated |
+| `str << int` | the idioms of rule 56 | A codegen change appending the byte directly; a speed gain, not a correctness fix; not written |
+| B, D, 1 | — | Nothing, by decision (see "Accepted as Spinel constraints") |
+| Rules 64 and 65 | none upstream | Nothing: rooted in the shapes checked on 2026.11.04.7026 (see "Rules 64 and 65") |
+
+The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
+rules 18 and 19) were not re-checked on 2026.11.04.7026; some of their
+workarounds may also have an upstream fix to send.
 
 ## Status at a glance
 
@@ -120,7 +142,7 @@ that it is fixed.
 | J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs | not reproduced (2 of 2 runs under AddressSanitizer; it has no slab) | not checked | not checked | not checked | not checked | **yes** with `SPINEL_GC_SLAB=0`; the default is unknown | **yes** with `SPINEL_GC_SLAB=0` | **yes** with `SPINEL_GC_SLAB=0` (3 of 3 runs); the default is unknown |
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked | not re-checked (test/http_client.rb passes) |
 | Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked | not re-checked |
-| K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around) |
+| K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around; reduced, fix tested, see K) |
 
 ## What CyberTrain still works around
 
@@ -482,6 +504,11 @@ with the interval fixed at 8. Peak RSS is 14 to 15 MB in every row.
   (`sp_available_cpus() == 1`, which already narrows by affinity and the
   cgroup quota): the collector then sweeps inline, as `SPINEL_GC_CONC=0`
   does, which the code already falls back to when no sweeper started.
+  On 2026.11.04.7026 that is a few lines in `sp_cs_start_sweepers`
+  (lib/sp_sched.c), which takes the count from `SPINEL_GC_SWEEPERS` or
+  the worker cap and leaves the concurrent-sweep hooks unset when no
+  sweeper started. (b) is a gain only; it is (a) that would let the
+  deploy files drop `SPINEL_GC_FULL_INTERVAL=8`.
 
 ### 6. The system allocator
 
@@ -514,7 +541,7 @@ small program.
 
 | What happens | Cost | What would fix it | 2026.10.25-7018, 2026.10.26.7019 | 2026.11.04.7026 |
 | --- | --- | --- | --- | --- |
-| `"#{v}"` allocates and copies even when `v` is a String | an object per call | skip the copy for a single String interpolation | still copies | still copies (`sp_str_alloc_raw` and `memcpy`) |
+| `"#{v}"` allocates and copies even when `v` is a String | an object per call | skip the copy for a single String interpolation where the result is never mutated (CRuby's `"#{s}"` is a new, unfrozen String too) | still copies | still copies (`sp_str_alloc_raw` and `memcpy`) |
 | `Array#clear` anywhere makes that Array `sp_PolyArray` | every element access is dynamic | keep the element type through `clear` | not re-checked | not re-checked |
 | An Array of the class that holds it is `sp_PolyArray` | same | type self-referencing element Arrays | not re-checked | not re-checked |
 | A Hash with object values boxes them | every lookup is polymorphic | infer the value type | not re-checked | not re-checked |
@@ -1194,15 +1221,55 @@ dispatch's fallback does not compile: `passing argument 2 of
 [-Werror=incompatible-pointer-types]`, an `sp_String *` where sp_io.h
 wants a `const char *`. Checked on 2026.11.04.7026 by putting
 `@io.puts(line)` back into `Logger#log` (cybertrain/logger.rb:57) and
-building test/logger_tls.rb, which then fails to build. A standalone class
-with a nil-default `@io` and `require "openssl"` did not reproduce it on
-2026.10.26.7019, so it has not been reduced.
+building test/logger_tls.rb, which then fails to build.
 
+Reduced on 2026-11-05 on 2026.11.04.7026 (a standalone class with a
+nil-default `@io` and `require "openssl"` had not reproduced it on
+2026.10.26.7019; what it takes is a String held in a variable):
+
+```ruby
+require "openssl"
+class Lg
+  def initialize = (@io = nil)
+  def log(line)
+    @io.puts(line) if @io
+    nil
+  end
+end
+Lg.new.log("hello")
+puts "ok"                # CRuby: ok
+```
+
+2026.11.04.7026 stops at `@io.puts(line)` with the error above. Without
+`require "openssl"` it builds, and so does `@io.puts("x#{msg}")`, an
+interpolation in place of the parameter.
+
+- Cause: with the openssl package in the program, `@io`'s `puts` goes
+  through `emit_call_poly_io_arms` (src/codegen_call_io.c), and its
+  default arm writes a String argument as `sp_File_puts_bin(_t13,
+  lv_line)`: `lv_line` is the String's `sp_String *` handle, emitted
+  without the conversion to its bytes. `STDOUT.puts(line)` in the same
+  method passes `sp_strbuf_read_pub(lv_line)`.
+- Fix, tested on a build of 2026.11.04.7026: wrap the argument in
+  `SP_STR_B(...)`, which takes either an `sp_String *` or a `const char
+  *`:
+
+  ```diff
+  -            if (bin2) buf_printf(b, "sp_File_puts_bin(_t%d, %s); ", tio2, at2);
+  +            if (bin2) buf_printf(b, "sp_File_puts_bin(_t%d, SP_STR_B(%s)); ", tio2, at2);
+  ```
+
+  With it, the program above prints `ok`, the same class writing to a
+  StringIO prints what CRuby prints, and test/logger_tls.rb with
+  `@io.puts(line)` back in `Logger#log` passes. Spinel's own test suite
+  was not run with the change, and the `print` arm beside it was not
+  looked at. The fork's master (one commit past 2026.11.04.7026) has not
+  touched this code.
 - Today: `Logger#log` calls `@io.write(line.end_with?("\n") ? line :
   "#{line}\n")`, which compiles through the same dispatch with the right
-  argument type; test/logger_tls.rb is the regression program.
-- Fix: give the dispatch's `puts` fallback the argument type that
-  `sp_File_puts_bin` takes, as `write`'s already has.
+  argument type; test/logger_tls.rb is the regression program. With the
+  fix released, `Logger#log` could go back to `@io.puts(line)`.
+- Not reported upstream yet.
 
 ### Rules 64 and 65: roots that were missing on 2026.09.12
 
