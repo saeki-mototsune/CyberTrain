@@ -12,6 +12,23 @@ require_relative "../gen/migrations"
 #     0
 #   end
 
+# A job, to see which process runs jobs (README, "Deploying with Kamal"):
+# `./blog touch 12` enqueues it from its own process, and `./blog worker`
+# (or `./blog server`, unless CYBERTRAIN_WORKER=0) runs it and logs the
+# article's title.
+Cybertrain::Job.handle("touch") do |payload|
+  article = Article.find_by(id: payload.to_i)
+  title = article.nil? ? "(no such article)" : article.title.to_s
+  Cybertrain.logger.info("touch: article #{payload}: #{title}")
+end
+
+Cybertrain::Main.command("touch", "enqueue a touch job for an article ID (run by the worker)") do |argv|
+  payload = argv.empty? ? "0" : argv[0].to_s
+  id = Cybertrain::Job.enqueue("touch", payload)
+  puts "enqueued touch job #{id} for article #{payload}"
+  0
+end
+
 exit(Cybertrain::Main.run("blog", ARGV,
                           router: Gen::Routes.build(Cybertrain::Router.new),
                           url_resolver: Gen::Routes.url_resolver,

@@ -81,6 +81,12 @@ one starts (`kamal app stop`, then `kamal deploy`): a new worker would
 otherwise take an old worker's running job for abandoned and run it a
 second time.
 
+`bin/blog.rb` registers one job, `touch`, to see the roles at work:
+`./blog touch 1` enqueues it, and the process that runs jobs (`./blog
+worker`, or `./blog server` unless `CYBERTRAIN_WORKER=0`) logs
+`touch: article 1: <title>`. On Kamal: `kamal app exec --reuse "./blog touch 1"`,
+then `kamal app logs --roles worker`.
+
 With a context set, Kamal builds the working tree (uncommitted changes
 included), not a clone of HEAD. To try the image without Kamal, from the
 repository root:
