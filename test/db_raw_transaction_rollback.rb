@@ -121,6 +121,20 @@ test "ROLLBACK TO a savepoint does not end a lost transaction" do
   c.close
 end
 
+test "a script that starts with ROLLBACK is run, not skipped" do
+  c = small_database
+  c.exec_script("BEGIN")
+  fill_until_full(c)
+  assert_includes try_insert(c, "after the rollback"), GONE
+  # Only a ROLLBACK on its own is skipped. Here the BEGIN after it must not
+  # vanish silently: the script runs, and SQLite stops at its ROLLBACK.
+  assert_includes try_script(c, "ROLLBACK; BEGIN"), "no transaction is active"
+  # The ROLLBACK ended the lost transaction all the same.
+  assert_equal "", try_insert(c, "next")
+  assert_equal ["next"], rows(c)
+  c.close
+end
+
 # A script whose own BEGIN opened the transaction SQLite then rolled back.
 def full_script
   big = "x" * 2000

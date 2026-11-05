@@ -662,19 +662,35 @@ module Cybertrain
           "the statement was not run (sql: #{sql})"
       end
 
-      # COMMIT, END or ROLLBACK (any case, after leading whitespace), the
-      # statements that end a transaction; ROLLBACK TO a savepoint undoes
-      # part of one and does not. Only the first keywords are read.
+      # Whether the first statement of sql is COMMIT, END or ROLLBACK (any
+      # case, after leading whitespace), the statements that end a
+      # transaction; ROLLBACK TO a savepoint undoes part of one and does not.
+      # Only the first statement's keywords are read.
       def self.ends_transaction?(sql)
-        t = sql.lstrip.upcase
-        t.start_with?("COMMIT") || t.start_with?("END") || Connection.rollback_statement?(sql)
+        first = Connection.first_statement(sql)
+        first.start_with?("COMMIT") || first.start_with?("END") || Connection.full_rollback?(first)
+      end
+
+      # A ROLLBACK and nothing else (a trailing ";" allowed): the one
+      # statement #refuse_if_transaction_gone skips after SQLite rolled the
+      # transaction back. A script that goes on after its ROLLBACK
+      # (`ROLLBACK; BEGIN`) runs, so what follows is never dropped silently.
+      def self.rollback_statement?(sql)
+        first = Connection.first_statement(sql)
+        rest = sql.include?(";") ? sql[(sql.index(";") + 1)..].to_s.strip : ""
+        Connection.full_rollback?(first) && rest.empty?
       end
 
       # ROLLBACK or ROLLBACK TRANSACTION, not ROLLBACK [TRANSACTION] TO a
-      # savepoint.
-      def self.rollback_statement?(sql)
-        t = sql.lstrip.upcase
-        t.start_with?("ROLLBACK") && !t.include?(" TO ")
+      # savepoint; statement is upcased and stripped.
+      def self.full_rollback?(statement)
+        statement.start_with?("ROLLBACK") && !statement.include?(" TO ")
+      end
+
+      # The text before the first ";", upcased and stripped.
+      def self.first_statement(sql)
+        cut = sql.include?(";") ? sql[0, sql.index(";").to_i].to_s : sql
+        cut.strip.upcase
       end
 
       # A script or statement whose first keyword is BEGIN.
