@@ -17,7 +17,6 @@ class FakeRecord
 
   def model_name = @model_name
   def id = @id
-  def new_record? = @id == 0
 end
 
 test "an element with no content, a void element" do
@@ -85,6 +84,9 @@ test "dom_id" do
   assert_equal "new_article", Html.dom_id(FakeRecord.new("Article", 0))
   assert_equal "edit_article_12", Html.dom_id(FakeRecord.new("Article", 12), "edit")
   assert_equal "edit_article", Html.dom_id(FakeRecord.new("Article", 0), "edit")
+  # A record-like object with no id at all (nil) is new as well.
+  assert_equal "new_article", Html.dom_id(FakeRecord.new("Article", nil))
+  assert_equal "edit_article", Html.dom_id(FakeRecord.new("Article", nil), "edit")
   assert_equal "blog_post_3", Html.dom_id(FakeRecord.new("BlogPost", 3))
   assert_equal "admin_user_4", Html.dom_id(FakeRecord.new("Admin::User", 4))
 end

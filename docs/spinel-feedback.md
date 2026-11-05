@@ -181,8 +181,8 @@ makes it (2026.10.26.7019, master 9b9972399 and 2026.10.27.7020), and
 earlier form passes there, and the test is back in that form, so that
 row's workaround is dropped. The first two rows are needed on every
 build checked, and are accepted as Spinel's constraints; the `SafeString.of`
-row did not reproduce on master 9b9972399, but is kept (see 1); the last
-row, for K, is still needed on 2026.11.04.7026. The workaround for 2 in
+row did not reproduce on master 9b9972399, but is kept (see 1); the K, L
+and M rows are still needed on 2026.11.04.7026. The workaround for 2 in
 `Html.escape` used to be in the `SafeString.of` row; it is dropped on 2026.10.27.7020
 (see 2). Master
 003ceda5d fixes H (#10415), and the H row has not been needed since
