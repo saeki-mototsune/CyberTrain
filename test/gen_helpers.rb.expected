@@ -11,9 +11,10 @@ ok   a name ending in _path or _url is an error
 ok   a setter is not a helper
 ok   class << self without spaces is skipped
 ok   a module inside a top-level class is not a helper module
+ok   a private def is checked by name only
 ok   an unindented module body keeps its later defs
 ok   a def body's lines are not read as defs or private
 ok   the emitter writes one arm per helper, one branch per optional subset
 ok   a tree with no app/helpers gets a class that only calls super
 ok   the output ends with the helpers_builder line
-18 tests, 43 assertions, 0 failures
+19 tests, 45 assertions, 0 failures

@@ -263,6 +263,7 @@ module Cybertrain
         slice = ping < SLICE ? ping : SLICE
         started = Time.now.to_f
         quiet_since = started
+        empty_since = started
         while !sink.closed?
           if sub.dropped?
             ws_close(sink, sub, 1013)
@@ -279,8 +280,13 @@ module Cybertrain
           end
           # Decision: a connection that listens to nothing (mode=json with
           # no token and no subscribe) for one ping interval is closed with
-          # 1008, so it cannot hold a connection slot on pings alone.
-          if sub.name_count == 0 && Time.now.to_f - started >= ping
+          # 1008, so it cannot hold a connection slot on pings alone. The
+          # interval counts from when the name list became (or stayed)
+          # empty, so a client that unsubscribes its last stream and then
+          # subscribes another is not cut off between the two.
+          if sub.name_count > 0
+            empty_since = Time.now.to_f
+          elsif Time.now.to_f - empty_since >= ping
             ws_close(sink, sub, 1008)
             return nil
           end
