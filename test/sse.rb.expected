@@ -1,0 +1,6 @@
+ok   every field, and one data line per line
+ok   the defaults leave the fields out
+ok   CR and CRLF in the data start new data lines
+ok   an event or id with a newline raises
+ok   a comment line
+5 tests, 7 assertions, 0 failures

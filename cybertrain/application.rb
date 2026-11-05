@@ -13,6 +13,7 @@ require "cybertrain/middleware/csrf_protection"
 require "cybertrain/middleware/error_pages"
 require "cybertrain/middleware/host_authorization"
 require "cybertrain/middleware/health_check"
+require "cybertrain/stream/endpoint"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
@@ -107,7 +108,8 @@ module Cybertrain
 
     # HostAuthorization (in development) -> ErrorPages (in production) ->
     # RequestLogger (unless log_level :none) ->
-    # HealthCheck (unless health_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
+    # Stream::Endpoint (unless stream_path is "") -> HealthCheck (unless
+    # health_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
     # CsrfProtection (if csrf; paths under csrf_exempt_prefixes pass it) ->
     # router. Built on first use, after boot has resolved the session secret.
     def stack
@@ -142,6 +144,8 @@ module Cybertrain
       fail_boot(proxies_error) unless proxies_error.empty?
       health_error = c.health_error
       fail_boot(health_error) unless health_error.empty?
+      stream_error = c.stream_error
+      fail_boot(stream_error) unless stream_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
@@ -174,7 +178,8 @@ module Cybertrain
       built = @server
       if built.nil?
         built = Server.new(ContextHandler.new(front_app), host: @config.host, port: @config.port,
-                                                          max_body_bytes: @config.max_body_bytes)
+                                                          max_body_bytes: @config.max_body_bytes,
+                                                          stream_write_timeout: @config.stream_ping_interval)
         @server = built
       end
       built
@@ -217,6 +222,9 @@ module Cybertrain
       service_problem = Background.boot_problem(@config)
       fail_boot(service_problem) unless service_problem.empty?
       srv = server
+      # The stream poller before the listener: its start position (MAX(id))
+      # must come before any subscription. Only with the endpoint mounted.
+      Stream::Poller.start!(@config) unless @config.stream_path.empty?
       srv.start # bind first: a PortInUse error must not come after the banner
       print_boot_banner
       # After boot connected the database and SPINEL_WORKERS is set; only
@@ -240,6 +248,7 @@ module Cybertrain
       Job.stop!
       Scheduler.stop!
       Background.stop_all
+      Stream::Poller.stop!
       nil
     rescue PortInUse => e
       fail_boot(e.message)
@@ -521,7 +530,11 @@ module Cybertrain
       # Before Static and the session: no public/ file shadows it, and it
       # sets no cookie. Inside RequestLogger, so polls are logged as usual.
       app = HealthCheck.new(app, c.health_path, c.health_worker_stale) unless c.health_path.empty?
-      app = RequestLogger.new(app) unless c.log_level == :none
+      # The realtime endpoint (Stream::Endpoint), also before the session:
+      # its authorisation is the signed token, and it sets no cookie.
+      app = Stream::Endpoint.new(app, c) unless c.stream_path.empty?
+      # The stream path's `s` tokens are logged as [FILTERED].
+      app = RequestLogger.new(app, Cybertrain.logger, c.stream_path) unless c.log_level == :none
       app = ErrorPages.new(app, c.public_root) if c.production?
       app = HostAuthorization.new(app, c.allowed_hosts) if c.development?
       app

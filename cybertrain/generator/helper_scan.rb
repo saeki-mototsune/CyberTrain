@@ -76,7 +76,7 @@ module Cybertrain
       # cybertrain/template/helpers.rb and interpreter.rb.
       RESERVED_HELPER_NAMES = %w[
         app_block_content app_helper_call arg button_to button_to_path
-        constant current_query_string model_call? no_kwargs tag_builder_call
+        constant current_query_string model_call? no_kwargs stream_ws_base tag_builder_call
         call_object_method class_names component_pop component_push content
         content_for content_for? content_tag csrf_meta_tags csrf_token
         data_attrs distance_of_time_in_words dom_id escape flash

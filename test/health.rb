@@ -101,7 +101,7 @@ def trail_text
 end
 
 test "the check sits inside RequestLogger and before Static" do
-  assert_equal ["Cybertrain::RequestLogger", "Cybertrain::HealthCheck", "Cybertrain::Static", "Cybertrain::MethodOverride",
+  assert_equal ["Cybertrain::RequestLogger", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static", "Cybertrain::MethodOverride",
                 "Cybertrain::SessionStore", "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(APP)
 end
 
@@ -167,7 +167,7 @@ end
 
 test "health_path \"\" turns the check off: the rest of the stack answers /up" do
   off = build_app(build_config(""))
-  assert_equal ["Cybertrain::RequestLogger", "Cybertrain::Static", "Cybertrain::MethodOverride",
+  assert_equal ["Cybertrain::RequestLogger", "Cybertrain::Stream::Endpoint", "Cybertrain::Static", "Cybertrain::MethodOverride",
                 "Cybertrain::SessionStore", "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(off)
   res = Cybertrain::Test::Client.new(off).get("/up")
   assert_equal 200, res.status

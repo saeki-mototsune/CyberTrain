@@ -1,4 +1,5 @@
 require "cybertrain/http/header_name"
+require "cybertrain/http/body_writer"
 
 module Cybertrain
   # The response a request builds up on its way through the stack; the
@@ -20,11 +21,12 @@ module Cybertrain
   # @api public
   class Response
     STATUS_TEXT = {
+      101 => "Switching Protocols",
       200 => "OK", 201 => "Created", 204 => "No Content",
       301 => "Moved Permanently", 302 => "Found", 303 => "See Other", 304 => "Not Modified",
       400 => "Bad Request", 403 => "Forbidden", 404 => "Not Found", 405 => "Method Not Allowed",
       411 => "Length Required", 413 => "Payload Too Large", 422 => "Unprocessable Entity",
-      500 => "Internal Server Error"
+      500 => "Internal Server Error", 503 => "Service Unavailable"
     }
     DEFAULT_CONTENT_TYPE = "text/html; charset=utf-8"
     # Sent on every response unless the response already carries a header of
@@ -65,6 +67,49 @@ module Cybertrain
       @headers.delete("")
       @cookies = []
       @performed = false
+      # Set by Controller#stream (or a middleware such as Stream::Endpoint);
+      # nil for an ordinary response.
+      @body_writer = nil
+      @upgrade = false
+    end
+
+    # The writer of a streaming response (docs/design.md D35), nil for an
+    # ordinary one.
+    # @return [BodyWriter, nil]
+    # @api public
+    attr_reader :body_writer
+
+    # Makes this a streaming response: the Server sends the head without a
+    # Content-Length, then runs the writer on the connection's thread
+    # ({BodyWriter#write_body}) and closes the connection when it returns.
+    # @param writer [BodyWriter]
+    # @api public
+    def body_writer=(writer)
+      @body_writer = writer
+    end
+
+    # @return [Boolean] true when a {BodyWriter} is set
+    # @api public
+    def streaming?
+      !@body_writer.nil?
+    end
+
+    # Marks a 101 Switching Protocols answer (the WebSocket handshake): the
+    # Server writes the status line, the headers set on the response and
+    # nothing else (no default headers, no body framing), then hands the
+    # socket to the writer through {Sink#socket}.
+    # @param writer [BodyWriter]
+    def upgrade!(writer)
+      @status = 101
+      @upgrade = true
+      @body_writer = writer
+      @performed = true
+      nil
+    end
+
+    # @return [Boolean] whether #upgrade! was called
+    def upgrade?
+      @upgrade
     end
 
     # Starts the response over as a plain-text error: every header and
@@ -219,11 +264,42 @@ module Cybertrain
       out
     end
 
+    # The head of a streaming response, ending with the blank line: what
+    # #to_http writes minus Content-Length (a streaming body has none), plus
+    # `Transfer-Encoding: chunked` when `chunked`. An upgrade (#upgrade!)
+    # gets only the status line, its own headers and its cookies.
+    # @param chunked [Boolean]
+    # @return [String]
+    def to_http_head(chunked)
+      out = +"HTTP/1.1 #{@status} #{status_text}\r\n"
+      upgrade = @upgrade
+      out << "Content-Type: #{DEFAULT_CONTENT_TYPE}\r\n" if !upgrade && header_key("content-type").nil?
+      @headers.each do |name, value|
+        next if HeaderName.same?(name, "content-length") || HeaderName.same?(name, "transfer-encoding")
+
+        out << name << ": " << value << "\r\n"
+      end
+      unless upgrade
+        out << "X-Content-Type-Options: #{DEFAULT_NOSNIFF}\r\n" if header_key("x-content-type-options").nil?
+        out << "X-Frame-Options: #{DEFAULT_FRAME_OPTIONS}\r\n" if header_key("x-frame-options").nil?
+      end
+      out << "Transfer-Encoding: chunked\r\n" if chunked
+      @cookies.each do |cookie|
+        out << "Set-Cookie: " << cookie << "\r\n"
+      end
+      out << "\r\n"
+      out
+    end
+
     private
 
     # The tail both reset policies share: status, text/plain content type
     # and the body ("" means the status text). Returns nil.
     def plain_error(status, body)
+      # An error after Controller#stream (or an upgrade) is an ordinary
+      # response: no writer runs and nothing is sent chunked.
+      @body_writer = nil
+      @upgrade = false
       @status = status
       self.content_type = "text/plain; charset=utf-8"
       @body = body == "" ? status_text : body

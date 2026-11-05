@@ -413,6 +413,51 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :health_worker_stale
 
+    # The path of the realtime endpoint (Stream::Endpoint: Server-Sent
+    # Events and WebSocket), `"/cybertrain/stream"`, from
+    # `CYBERTRAIN_STREAM_PATH` (an empty value, or `c.stream_path = ""`,
+    # turns the endpoint off). Must start with "/".
+    # @return [String]
+    # @api public
+    attr_accessor :stream_path
+
+    # Milliseconds between the stream poller's looks at
+    # `cybertrain_messages`, `100`: a broadcast reaches the browsers within
+    # about this long. At least 10.
+    # @return [Integer]
+    # @api public
+    attr_accessor :stream_poll_ms
+
+    # Seconds a broadcast stays in `cybertrain_messages`, `60`: what a
+    # reconnecting client can still ask for (`Last-Event-ID`). At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :stream_retention
+
+    # Seconds of silence after which the endpoint sends a keep-alive (an SSE
+    # `: ping` comment, a WebSocket ping), `15`. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :stream_ping_interval
+
+    # The most stream connections one process serves at once, `1000`; past
+    # it the endpoint answers 503 (SSE) or closes with 1013 (WebSocket).
+    # @return [Integer]
+    # @api public
+    attr_accessor :stream_max_connections
+
+    # The largest WebSocket message the endpoint accepts from a client, in
+    # bytes, `65536`; a larger one closes the connection with 1009.
+    # @return [Integer]
+    # @api public
+    attr_accessor :stream_max_message
+
+    # The most undelivered messages one connection may have waiting,
+    # `1000`; past it the connection is closed and the client reconnects.
+    # @return [Integer]
+    # @api public
+    attr_accessor :stream_max_backlog
+
     # CYBERTRAIN_MAX_PAGE read without to_i on unbounded text (NOTES rule
     # 25): 10000 when it is unset, not a number, or below 1.
     def self.default_max_page
@@ -592,6 +637,15 @@ end
       # way to switch off a default-on path from the environment.
       @health_path = ENV["CYBERTRAIN_HEALTH_PATH"] || "/up"
       @health_worker_stale = 300
+      # The realtime endpoint (Stream, Stream::Endpoint); an empty variable
+      # turns it off, as for health_path.
+      @stream_path = ENV["CYBERTRAIN_STREAM_PATH"] || "/cybertrain/stream"
+      @stream_poll_ms = 100
+      @stream_retention = 60
+      @stream_ping_interval = 15
+      @stream_max_connections = 1000
+      @stream_max_message = 65536
+      @stream_max_backlog = 1000
     end
 
     # The parameter names whose values are replaced with `[FILTERED]` in the
@@ -994,6 +1048,25 @@ end
         return "health_path must start with \"/\" (or be \"\" to turn the health check off), got #{path.inspect}"
       end
       return "health_worker_stale must be at least 1 (got #{@health_worker_stale})" if @health_worker_stale < 1
+
+      ""
+    end
+
+    # The error Application#boot reports when stream_path is neither "" nor
+    # a path starting with "/" (or is health_path), or a stream_* number is
+    # below its minimum; "" when all are fine.
+    def stream_error
+      path = @stream_path
+      unless path.empty? || path.start_with?("/")
+        return "stream_path must start with \"/\" (or be \"\" to turn the stream endpoint off), got #{path.inspect}"
+      end
+      return "stream_path must differ from health_path (both are #{path.inspect})" if !path.empty? && path == @health_path
+      return "stream_poll_ms must be at least 10 (got #{@stream_poll_ms})" if @stream_poll_ms < 10
+      return "stream_retention must be at least 1 (got #{@stream_retention})" if @stream_retention < 1
+      return "stream_ping_interval must be at least 1 (got #{@stream_ping_interval})" if @stream_ping_interval < 1
+      return "stream_max_connections must be at least 1 (got #{@stream_max_connections})" if @stream_max_connections < 1
+      return "stream_max_message must be at least 125 (got #{@stream_max_message})" if @stream_max_message < 125
+      return "stream_max_backlog must be at least 1 (got #{@stream_max_backlog})" if @stream_max_backlog < 1
 
       ""
     end
