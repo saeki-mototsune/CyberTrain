@@ -14,8 +14,13 @@ built with `cybertrain setup` to repeat the runs):
 - S1 (a method's return type does not follow a widened ivar): the C does
   not compile, as reported. S2 (`TCPSocket.new` ignores
   `connect_timeout:`): hangs, as reported. S3 (Net::HTTP against a silent
-  TLS peer): returns at the timeout on 2026.11.03.7025 but stalls every
-  other thread, the 2026.10.27.7020 behaviour the report describes.
+  TLS peer, `SPINEL_WORKERS=1`): on 2026.11.03.7025 and 2026.11.04.7026
+  the request returned only when the peer closed the socket after 30 s,
+  28 s past `open_timeout`, and the other thread ran meanwhile; the
+  report's 2026.10.27.7020 run (returned at the timeout, other threads
+  stalled) was not repeated here. A first run without `require "openssl"`
+  failed at once with Spinel's "an https request needs the openssl
+  package" and showed nothing about the timeout.
 - The refusal of a never-reached class-method call: refused, as reported.
 - C3's table: `allow_private:` exists per client; 1xx responses are
   skipped (up to five, 101 refused); `max_body` raises `TooLargeError`
