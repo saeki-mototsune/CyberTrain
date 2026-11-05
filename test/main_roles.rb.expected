@@ -34,4 +34,12 @@ ok   worker and feeds give Spinel the SPINEL_WORKERS serve does
 => development environment
 => worker: 3 job threads, 1 scheduled task
 ok   in development the roles run on one worker, as serve does
-9 tests, 40 assertions, 0 failures
+=> test environment
+=> worker: 3 job threads, 1 scheduled task
+=> test environment
+=> feeds: trades
+ok   worker stops on SIGINT and feeds on SIGTERM, as the traps ask
+=> test environment
+=> worker: 3 job threads, 1 scheduled task
+ok   a role hands back the INT and TERM handlers it replaced
+11 tests, 47 assertions, 0 failures

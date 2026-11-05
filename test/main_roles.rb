@@ -166,4 +166,45 @@ test "in development the roles run on one worker, as serve does" do
   assert_equal "1", env
 end
 
+# A thread that sends the process a signal, through a method whose
+# parameters the closure captures (NOTES rule 21), like spawn_stopper.
+def spawn_signaller(delay, signal)
+  Thread.new { signal_after(delay, signal) }
+end
+
+def signal_after(delay, signal)
+  sleep delay
+  Process.kill(signal, Process.pid)
+  nil
+end
+
+# The INT handler of a caller of the roles (a block seeing only a constant,
+# NOTES rule 64), installed to see it come back after a role ran.
+def install_caller_int_handler
+  trap("INT") { DONE << "caller's INT handler" }
+  nil
+end
+
+test "worker stops on SIGINT and feeds on SIGTERM, as the traps ask" do
+  spawn_signaller(0.3, "INT")
+  assert_equal 0, run(["worker"])
+  refute Cybertrain::Job.running?
+  spawn_signaller(0.3, "TERM")
+  assert_equal 0, run(["feeds", "trades"])
+  refute Cybertrain::WebSocket.running?
+end
+
+test "a role hands back the INT and TERM handlers it replaced" do
+  install_caller_int_handler
+  spawn_stopper(0.3)
+  assert_equal 0, run(["worker"])
+  # Delivered to the caller's handler again, not to the role's.
+  Process.kill("INT", Process.pid)
+  sleep 0.2
+  trap("INT", "DEFAULT")
+  assert_includes DONE, "caller's INT handler"
+  # TERM was the default before any role ran here, and is again.
+  assert_equal "DEFAULT", trap("TERM", "DEFAULT").to_s
+end
+
 Cybertrain::Test.run!
