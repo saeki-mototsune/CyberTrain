@@ -48,9 +48,12 @@ module Cybertrain
   #   end
   # @api public
   class Sink
-    def initialize(socket, chunked)
+    # write_timeout: seconds one write may wait for the client to take
+    # bytes (a client that stops reading); past it the sink is closed.
+    def initialize(socket, chunked, write_timeout = 15)
       @socket = socket
       @chunked = chunked
+      @write_timeout = write_timeout
       @closed = false
       # A write failed: nothing more can be sent, not even the terminator.
       @broken = false
@@ -123,11 +126,7 @@ module Cybertrain
     def sink_finish
       return nil if @broken || !@chunked
 
-      @socket.write("0\r\n\r\n")
-      nil
-    rescue IOError, SystemCallError
-      @broken = true
-      nil
+      sink_send("0\r\n\r\n")
     end
 
     # Marks the client gone without touching the socket.
@@ -138,10 +137,35 @@ module Cybertrain
 
     private
 
+    # write_nonblock and wait_writable, so a client that stops reading
+    # cannot hold this thread in a blocking write: after write_timeout
+    # seconds without progress the sink is closed (and broken: not even
+    # the terminator is sent).
     def sink_send(frame)
-      @socket.write(frame)
-      nil
+      sink_push(frame)
     rescue IOError, SystemCallError
+      sink_broken!
+    end
+
+    def sink_push(frame)
+      sock = @socket
+      n = frame.bytesize
+      off = 0
+      while off < n
+        piece = off == 0 ? frame : frame.byteslice(off, n - off)
+        wrote = sock.write_nonblock(piece, exception: false)
+        case wrote
+        when Integer
+          off += wrote.to_i
+        else
+          return sink_broken! if wrote.nil?
+          return sink_broken! if sock.wait_writable(@write_timeout).nil?
+        end
+      end
+      nil
+    end
+
+    def sink_broken!
       @closed = true
       @broken = true
       nil

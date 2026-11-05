@@ -296,6 +296,10 @@ module Cybertrain
     # The tail both reset policies share: status, text/plain content type
     # and the body ("" means the status text). Returns nil.
     def plain_error(status, body)
+      # An error after Controller#stream (or an upgrade) is an ordinary
+      # response: no writer runs and nothing is sent chunked.
+      @body_writer = nil
+      @upgrade = false
       @status = status
       self.content_type = "text/plain; charset=utf-8"
       @body = body == "" ? status_text : body

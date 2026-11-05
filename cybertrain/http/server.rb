@@ -87,9 +87,14 @@ module Cybertrain
     # drain_timeout bounds how long #run and #stop wait for requests in
     # flight; keep it below the process manager's stop timeout (systemd's
     # TimeoutStopSec, 15 s in docs/deploy.md).
+    # stream_write_timeout: how long one write of a streaming response may
+    # wait for a client that does not read (Sink); Application passes
+    # Config#stream_ping_interval.
     def initialize(handler, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
-                   max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: Cybertrain.logger)
+                   max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: Cybertrain.logger,
+                   stream_write_timeout: 15)
       @handler = handler
+      @stream_write_timeout = stream_write_timeout
       @host = host
       @port = port
       @read_timeout = read_timeout
@@ -421,10 +426,22 @@ module Cybertrain
       end
       chunked = !upgrade && request.http_version == "HTTP/1.1"
       sock.write(response.to_http_head(chunked))
-      sink = Sink.new(sock, chunked)
+      sink = Sink.new(sock, chunked, @stream_write_timeout)
+      Server.keep_alive_probes(sock)
       conn.streaming = true
       sink.sink_finish if run_writer(writer, sink)
       false
+    end
+
+    # TCP keep-alive on a streaming connection, best effort: a peer that
+    # vanished without a FIN or RST is then found by the kernel's probes
+    # (its timing, not ours), besides a write that times out (Sink).
+    # Integer socket options work under Spinel (SO_REUSEADDR above).
+    def self.keep_alive_probes(sock)
+      sock.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, 1)
+      nil
+    rescue IOError, SystemCallError
+      nil
     end
 
     # The writer with its rescue, in a plain method (spikes/NOTES.md rules

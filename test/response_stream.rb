@@ -45,6 +45,22 @@ class WaitsForClose < Cybertrain::BodyWriter
   end
 end
 
+# Writes 1 MB chunks to a client that never reads, until the sink gives
+# up (the server's stream_write_timeout is 1 s here).
+BIG = "x" * 1_048_576
+
+class Floods < Cybertrain::BodyWriter
+  def write_body(sink)
+    n = 0
+    while n < 400 && !sink.closed?
+      sink.write(BIG)
+      n += 1
+    end
+    SEEN << (sink.closed? ? "write timed out" : "never blocked")
+    nil
+  end
+end
+
 class StreamHandler < Cybertrain::HttpHandler
   def call(request)
     response = Cybertrain::Response.new
@@ -53,6 +69,10 @@ class StreamHandler < Cybertrain::HttpHandler
     when "/three" then response.body_writer = ThreeChunks.new
     when "/raise" then response.body_writer = RaisesAfterOne.new
     when "/wait" then response.body_writer = WaitsForClose.new
+    when "/flood" then response.body_writer = Floods.new
+    when "/reset"
+      response.body_writer = ThreeChunks.new
+      response.reset_to(500)
     else response.body = "plain"
     end
     response
@@ -104,7 +124,7 @@ def header_lines(raw)
 end
 
 LOG = StringIO.new
-SERVER = Cybertrain::Server.new(StreamHandler.new, port: 0, read_timeout: 2,
+SERVER = Cybertrain::Server.new(StreamHandler.new, port: 0, read_timeout: 2, stream_write_timeout: 1,
                                 logger: Cybertrain::Logger.new(LOG, :info))
 SERVER.start
 
@@ -161,6 +181,28 @@ test "Sink#wait_closed answers true once the client closes" do
     tries += 1
   end
   assert_equal ["closed"], SEEN
+end
+
+test "an error reset after a BodyWriter was set is an ordinary response" do
+  raw = exchange(SERVER.port, "GET /reset HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n")
+  lines = header_lines(raw)
+  assert_equal "HTTP/1.1 500 Internal Server Error", lines[0]
+  assert_includes lines, "Content-Length: 21"
+  assert_equal 0, lines.count { |l| l.downcase.start_with?("transfer-encoding") }
+  assert_equal "Internal Server Error", body_of(raw)
+end
+
+test "a client that never reads ends the stream when a write times out" do
+  SEEN.pop until SEEN.empty?
+  sock = TCPSocket.new("127.0.0.1", SERVER.port)
+  sock.write("GET /flood HTTP/1.1\r\nHost: t\r\n\r\n")
+  tries = 0
+  while SEEN.empty? && tries < 300
+    sleep 0.05
+    tries += 1
+  end
+  sock.close
+  assert_equal ["write timed out"], SEEN
 end
 
 test "the connection count returns to zero" do
