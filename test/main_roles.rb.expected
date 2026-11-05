@@ -26,4 +26,9 @@ error: unknown feed "nosuch" (registered: trades, quotes)
 => test environment
 => feeds: trades
 ok   feeds runs only the named subscription and stops it
-7 tests, 34 assertions, 0 failures
+=> test environment
+=> worker: 3 job threads, 1 scheduled task
+=> test environment
+=> feeds: trades
+ok   worker and feeds give Spinel the SPINEL_WORKERS serve does
+8 tests, 38 assertions, 0 failures

@@ -132,4 +132,21 @@ test "feeds runs only the named subscription and stops it" do
   refute LOG.string.include?("WebSocket started: quotes")
 end
 
+test "worker and feeds give Spinel the SPINEL_WORKERS serve does" do
+  Cybertrain.config.workers = 2
+  spawn_stopper(0.3)
+  worker_status = run(["worker"])
+  worker_env = ENV["SPINEL_WORKERS"].to_s
+  ENV["SPINEL_WORKERS"] = "1"
+  spawn_stopper(0.3)
+  feeds_status = run(["feeds", "trades"])
+  feeds_env = ENV["SPINEL_WORKERS"].to_s
+  ENV["SPINEL_WORKERS"] = "1"
+  Cybertrain.config.workers = 1
+  assert_equal 0, worker_status
+  assert_equal 0, feeds_status
+  assert_equal Cybertrain::Application.spinel_workers(2).to_s, worker_env
+  assert_equal "3", feeds_env
+end
+
 Cybertrain::Test.run!
