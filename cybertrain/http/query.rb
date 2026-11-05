@@ -476,9 +476,10 @@ module Cybertrain
 
     # True when encode_www_form_component would return value unchanged: only
     # the bytes it leaves alone (ASCII letters and digits, `*`, `-`, `.`,
-    # `_`). Ids, most slugs and most cookie values are, and skip the encoder,
-    # whose per-character work shows in a profile. Takes the String from a
-    # value.to_s, so the byte reads compile to plain C (see Html.escape).
+    # `_`). Ids, most slugs and the session cookie (see Session.dump) are, and
+    # skip the encoder, whose per-character work shows in a profile. Takes the
+    # String from a value.to_s, so the byte reads compile to plain C (see
+    # Html.escape).
     def self.plain?(value)
       i = 0
       n = value.bytesize
