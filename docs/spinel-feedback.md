@@ -65,12 +65,24 @@ Eight builds are covered:
   `spin run gen` writes files identical to the committed ones, `spin build
   blog` builds it, and its tests pass; the reduced programs of 3, A, C, F,
   G, H and I print Ruby's result; J's program fails as on 2026.10.27.7020.
-  4 and 5 were not re-measured. The release before it, 2026.11.03.7025
+  Re-checked on 2026-11-05 for regressions against the pin before it:
+  2026.10.27.7020 and 2026.11.03.7025 (built from source), and
+  2026.11.04.7026 (the prebuilt tree) side by side on one 4-vCPU VM, all building the
+  same CyberTrain source (ae195f4). `spin test` passes 106 of 106 on
+  2026.11.04.7026 there too, examples/blog's `spin run gen` writes
+  identical files and its tests pass, and examples/blog built by each of
+  the three serves the same requests a second, CPU per request, objects
+  per request, collections, `futex` calls and peak RSS within the spread
+  between runs ("Re-checked side by side" under "Runtime cost"). Nothing
+  found is new in 2026.11.04.7026: L (an explicit `SPINEL_WORKERS=N`
+  counts the main thread) is on 2026.10.27.7020 and 2026.11.03.7025 as
+  well, and rule 79's compile failure is too (see "Rule 79"). The release
+  before it, 2026.11.03.7025
   (25d8038d4, CyberTrain 0.4.0, pinned 2026-11-03 to 2026-11-04), carries
-  the same four PRs and was not checked on its own.
+  the same four PRs and was not checked on its own until 2026-11-05.
 
 The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22, 56 to
-59, 62, 64, 65 and 78), [benchmark.md](benchmark.md) and
+59, 62, 64, 65, 78 and 79), [benchmark.md](benchmark.md) and
 [performance-next.md](performance-next.md).
 
 Suggested order for what is still open: K (a compile failure still
@@ -112,6 +124,7 @@ has a workaround in CyberTrain or an open bug:
 | `str << int` | the idioms of rule 56 | A codegen change appending the byte directly; a speed gain, not a correctness fix; not written |
 | B, D, 1 | — | Nothing, by decision (see "Accepted as Spinel constraints") |
 | Rule 64 | none (CyberTrain keeps objects out of class variables anyway) | Nothing: a class variable's object is marked on 2026.11.04.7026 and survives `SPINEL_GC_STRESS=1` (see "Rules 64 and 65") |
+| Rule 79 | none (a test gives the block a value after the `raise`, or passes the result through a method) | **Ready to report**: an eight-line reduced program that CRuby runs and 2026.10.27.7020, 2026.11.03.7025 and 2026.11.04.7026 all refuse with the same C error (see "Rule 79"); no fix written. Not reported upstream yet |
 | Rule 65 | building the allocating argument first, in a local (cybertrain/cli/toolchain.rb) | Not known yet: the shape checked is rooted on 2026.11.04.7026, but only in its generated C, with no AddressSanitizer run; a shape still left unrooted would first have to be found (see "Rules 64 and 65") |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
@@ -128,16 +141,16 @@ that it is fixed.
 | 1. A generated `new` frees its own arguments | yes | not re-checked | not re-checked | not reproduced (arguments rooted at the call site; no ASan run) | not re-checked | not reproduced under ASan, but neither on 2026.09.12 in that shape (workaround kept) | not re-checked | not re-checked (accepted, see "Accepted as Spinel constraints") |
 | 2. A `to_s`-only parameter narrowed to one caller's type | yes | not re-checked | not re-checked | not reproduced (47 of 47 related test files pass without the workaround) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround; dropped) | not re-checked | not reproduced (106 of 106 and examples/blog pass without the workaround) |
 | 3. An Array assigned to a wider local is copied | yes | yes | **fixed** | **fixed** (#10257) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked | **fixed** (its program prints Ruby's result) |
-| 4. Parking a fiber goes through the monitor thread | yes (re-measured on 2026-10-30: 9.9 `futex` per request) | not re-measured | not re-measured | not re-checked | not re-checked | **fixed** (2.1 `futex` per request, none on the park path; #8702, #10024) | same counts as 2026.10.27.7020 on a minimal server; examples/blog does not build (I) | not re-measured |
-| 5. At one worker, most collections are full, and the sweep is handed to another thread | yes (as "a collection stops every thread") | not re-measured | not re-measured | not re-checked | not re-checked | **yes**, re-measured: the stop-the-world wait is negligible at one worker (0.001 s over 2,852 collections), but 83% of collections are full (`SPINEL_GC_FULL_INTERVAL=8`: +16%) and the sweeper thread costs 5% on one CPU | not re-checked | not re-measured (the collector code behind it is unchanged, see 5) |
-| 6 and 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
+| 4. Parking a fiber goes through the monitor thread | yes (re-measured on 2026-10-30: 9.9 `futex` per request) | not re-measured | not re-measured | not re-checked | not re-checked | **fixed** (2.1 `futex` per request, none on the park path; #8702, #10024) | same counts as 2026.10.27.7020 on a minimal server; examples/blog does not build (I) | **fixed**, re-measured 2026-11-05 beside 2026.10.27.7020: 3.7 `futex` per request against 3.6, the same `epoll_wait`, `epoll_ctl` and `poll` counts (see "Re-checked side by side") |
+| 5. At one worker, most collections are full, and the sweep is handed to another thread | yes (as "a collection stops every thread") | not re-measured | not re-measured | not re-checked | not re-checked | **yes**, re-measured: the stop-the-world wait is negligible at one worker (0.001 s over 2,852 collections), but 83% of collections are full (`SPINEL_GC_FULL_INTERVAL=8`: +16%) and the sweeper thread costs 5% on one CPU | not re-checked | **yes**, re-measured 2026-11-05 beside 2026.10.27.7020: 83% of collections full on both, the collector 14 to 17% of wall on both (see 5) |
+| 6 and 7. Runtime cost | yes | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured (7: no stall in 6 two-worker runs of 16,000 requests, with no lock on the request path) |
 | `String#to_sym` searches linearly | yes | **fixed** (hashed) | fixed | not re-checked | not re-checked | not re-checked | not re-checked | not re-checked |
 | `"#{v}"` copies a String | yes | yes | yes | not re-checked | not re-checked | not re-checked | not re-checked | yes (the generated C allocates and copies) |
 | A. Block call inside `instance_eval` is `NoMethodError` | no | **yes** | **fixed** | **fixed** (#10254) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked | **fixed** (its program prints Ruby's result) |
 | B. `ffi_func` declared under another name | no | yes (worked around) | by design: an undeclared call is a build error; CyberTrain declares it | by design (#10255) | not re-checked | not re-checked | not re-checked | not re-checked (accepted) |
 | C. Generated C that does not compile | no | yes, other shapes | **fixed** (not seen) | **fixed** (#10258, #10259); the template_engine.rb refusal is still made | not re-checked | not re-checked | not re-checked | not seen (106 of 106 pass); the template_engine.rb refusal is **fixed** (#10525), and so is the run-time `TypeError` beside it (#10524) |
 | D. `String#to_i` raises `RangeError` on overflow | yes (re-checked on 2026-10-28; not a regression, see D) | yes (worked around) | yes (worked around, re-checked) | by design (raise mode); promote (experimental) parses a Bignum | by design (still raises `RangeError` in raise mode) | not re-checked | not re-checked | by design (still raises `RangeError` in raise mode; accepted) |
-| E. More allocation per request | no | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured |
+| E. More allocation per request | no | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | not re-measured | no change against 2026.10.27.7020, measured 2026-11-05: 1% fewer objects for the same requests (see E) |
 | F. A call whose result is always nil is dropped | no | **yes** | **fixed** | **fixed** (#10260) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked | **fixed** (its program prints Ruby's result) |
 | G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked | **fixed** (its program prints Ruby's result) |
 | H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) | **fixed** (test/db_with_value.rb uses the block's own value) | not re-checked | **fixed** (its two programs print Ruby's result) |
@@ -146,7 +159,8 @@ that it is fixed.
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked | not re-checked (test/http_client.rb passes) |
 | Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked | not re-checked |
 | K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around; reduced, fix tested, see K) |
-| L. `SPINEL_WORKERS=N` counts main, which a server keeps waiting | no (N helpers beside main) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (new; from #9840; worked around) |
+| L. `SPINEL_WORKERS=N` counts main, which a server keeps waiting | no (N helpers beside main) | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05: its reduced program uses 1.01 CPUs at N=2, 1.97 at N=3) | not checked | **yes** (from #9840; worked around; 1.01 CPUs at N=2, 1.97 at N=3, the same on 2026.11.03.7025, so not new here) |
+| Rule 79. A rescuing method's value, from a block that only raises, does not compile when appended | not checked | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05) | not checked | **yes** (found 2026-11-04; also on 2026.11.03.7025, so not new here) |
 
 ## What CyberTrain still works around
 
@@ -348,6 +362,68 @@ does not build on it, see A). 4 and 5 were re-measured on 2026-10-30 on
 is under 4): 4 is fixed. What remains of its `futex` count is the
 collector's sweeper hand-off (see 5) and the monitor's time-based turns.
 
+### Re-checked side by side: 2026.11.04.7026 against 2026.10.27.7020 and 2026.11.03.7025
+
+Done on 2026-11-05 to see whether moving the pin from 2026.10.27.7020 to
+2026.11.04.7026 cost CyberTrain anything at run time, since the tests
+only say that the programs still pass. The three releases were installed
+beside each other on one 4-vCPU cloud VM (2026.10.27.7020 and
+2026.11.03.7025 built from source as `cybertrain setup` does,
+2026.11.04.7026 from the prebuilt tree the Release workflow attaches), and
+each built examples/blog from the
+same CyberTrain source (ae195f4), production mode. The server ran pinned
+to CPU 0 with `SPINEL_WORKERS=1`, the load came from a Python client on
+the other CPUs (16 keep-alive connections, 16,000 requests a run, after
+2,000 of warm-up, 30 articles seeded through the form), three runs per
+release, alternated. The server used its whole CPU in every run, so
+requests a second measure it; the spread between runs of one release is
+up to 15% here, more than on the benchmark machine.
+
+| `GET /articles`, one CPU, medians of 3 | 2026.10.27.7020 | 2026.11.03.7025 | 2026.11.04.7026 |
+| --- | --: | --: | --: |
+| Requests a second | 1,114 | 1,193 | 1,246 |
+| Server CPU per request | 0.88 ms | 0.83 ms | 0.80 ms |
+| p99 latency | 29.2 ms | 26.2 ms | 24.1 ms |
+| OS thread context switches per request | 2.9 | 2.9 | 2.9 |
+| Peak RSS | 15.6 MB | 15.7 MB | 15.8 MB |
+| `GET /articles/1`, requests a second (2 runs) | 2,150 / 2,382 | 2,258 / 2,018 | 2,304 / 2,277 |
+
+The runs of the three releases overlap on every `GET /articles` row:
+requests a second were 1,023 to 1,234 on 2026.10.27.7020, 1,143 to 1,275
+on 2026.11.03.7025 and 1,171 to 1,304 on 2026.11.04.7026, and p99 was
+25.0 to 29.6 ms, 25.4 to 27.8 ms and 23.8 to 30.1 ms. The medians put
+2026.11.04.7026 12% ahead on requests a second and 17% ahead on p99, but
+one run of 2026.10.27.7020 (1,234 requests a second, p99 25.0 ms) sits
+inside 2026.11.04.7026's range. On `GET /articles/1` (two runs each)
+2026.10.27.7020's range covers 2026.11.04.7026's, and 2026.11.03.7025's
+two runs both fall below 2026.11.04.7026's. No slowdown was seen in these
+runs, but two or three runs per release neither establish a difference
+nor rule out a small one either way. Alongside: the objects allocated (`SPINEL_ALLOC_REPORT`, see
+E) are 1% fewer on 2026.11.04.7026 for the same requests; `futex` calls
+per request are the same (see 4); the collector's cadence is the same
+(see 5); the blog binary grew from 3.80 MB on 2026.10.27.7020 to 4.00 MB
+on 2026.11.03.7025 and 2026.11.04.7026 (`build/bin/blog`; the runtime
+gained code, among it the fork support in lib/sp_sched.c). Nothing here
+is a regression of the move to 2026.11.04.7026.
+
+Two workers, the one place a difference from an older release shows,
+and it is older than 2026.11.04.7026. With the server on CPUs 0 and 1 and
+`SPINEL_WORKERS=2` as `Application#serve` sets it today (two runs each,
+alternated), 2026.10.27.7020 served 1,180 and 1,201 requests a second and
+2026.11.04.7026 1,329 and 1,319, no more than at one worker on either,
+and on both one OS thread had 13.7 to 15.1 s of the 16,000 requests' CPU
+while the next busiest had 0.2 s: every request ran on one worker. L
+explains it (since #9840 an explicit `SPINEL_WORKERS=N` counts the main
+thread, which only waits in a server, and starts N-1 helpers), and since
+saeki-mototsune/CyberTrain#128 `Application#serve` asks for `workers +
+1`. L's reduced program (four CPU-bound threads, main joins them) gives the same
+answer on all three releases here: 1.01 CPUs at `SPINEL_WORKERS=2` and
+1.94 to 1.97 at 3 (1.00 at 1), on 2026.10.27.7020 as on 2026.11.03.7025
+and 2026.11.04.7026. So the two-worker figures of 2026-10-09 (on
+2026.09.12, +9 to 25%) were already not reachable on the 2026.10.27.7020
+pin; no two-worker benchmark was recorded on it. Item 7's stall did not
+show in these six two-worker runs (no lock is on the request path now).
+
 ### 4. Parking a fiber goes through the monitor thread
 
 **Fixed in 2026.10.27.7020** (re-measured on 2026-10-30). On 2026.09.12 a
@@ -422,14 +498,31 @@ and main on 2026.10.27.7020, where main is the only worker.
   since 2026-10-30, with the read-side shutdown: 1,000 idle connections
   now cost 0.8% of the CPU instead of 8.8% (see
   [performance-next.md](performance-next.md), 8).
-- Today: nothing; every release pinned since 2026.10.27.7020 has the fix
-  (2026.11.04.7026 was not re-measured).
+- Today: nothing; every release pinned since 2026.10.27.7020 has the fix.
+  Re-measured on 2026-11-05 on 2026.11.04.7026 beside 2026.10.27.7020
+  (same VM, same CyberTrain source, server pinned to one CPU with
+  `SPINEL_WORKERS=1`, `strace -f -c` over 8,000 keep-alive `GET
+  /articles`, two runs each, alternated): 3.72 and 3.76 `futex` per
+  request on 2026.11.04.7026 against 3.63 and 3.62 on 2026.10.27.7020,
+  with 1.03 `epoll_wait`, 1.02 `epoll_ctl` and 2.0 `poll` per request on
+  both. The counts are higher than the 2.08 above because the sweeper
+  and monitor threads share the server's one CPU here (the 2026-10-30 run
+  let them use the others), and they include the start, the seeding and
+  the stop; the two builds are within 4% of each other (3.76 against
+  3.62 at the widest), which the alternated runs do not separate.
 - Fix: done.
 
 ### 5. At one worker, most collections are full, and the sweep is handed to another thread
 
-Re-measured on 2026-10-30 on 2026.10.27.7020; not re-measured on the
-pinned 2026.11.04.7026, whose lib/sp_gc.c has the same full-cadence rule
+Re-measured on 2026-10-30 on 2026.10.27.7020, and on 2026-11-05 on the
+pinned 2026.11.04.7026 beside it, where it is unchanged: with
+`SPINEL_GC_PHASES=1` on the one-CPU setup of "Re-checked side by side",
+83% of collections are full on both builds (2,707 of 3,258 in the first
+five seconds on 2026.10.27.7020, 3,063 of 3,686 on 2026.11.04.7026, which
+served more requests in them), the collector takes 14 to 17% of wall on
+both, and the sweeper thread is there on both (`sp-sweeper`, 0.13 s of
+CPU over 16,000 requests). That matches the code: 2026.11.04.7026's
+lib/sp_gc.c has the same full-cadence rule
 (`SP_GC_PROMOTED_DEAD_CUT`), the same aging switch (cleared when the slab
 is on); lib/sp_gc.c only gained `--gc=none` guards, and lib/sp_sched.c,
 which starts the sweepers, only code for a fork after threads have
@@ -885,6 +978,18 @@ polymorphic Hash (`sp_poly_each_elem`), about 92 more Strings inside
 pages were 7 to 15% slower than on 2026.09.12; with system malloc the other
 gains covered it.
 
+Measured again on 2026-11-05 across the three releases of "Re-checked
+side by side" (`SPINEL_ALLOC_REPORT`, one process each: start, 30
+articles seeded through the form, 200 `GET /articles`, stop), where the
+report is deterministic: 658,405 objects on 2026.10.27.7020, 650,413 on
+2026.11.03.7025 and 650,411 on 2026.11.04.7026: 9,097 `Hash(String)` and
+6,061 `Article` on each, 819 fewer Strings of 167 thousand and 1,350
+fewer `Array`s on the newer two, the rest of the difference in two
+internal scan types. So the
+pin's move from 2026.10.27.7020 allocates 1% less, not more; what grew
+since this item was written is CyberTrain's own code
+([performance-next.md](performance-next.md)), not Spinel's.
+
 ### F. A call whose result is always nil is dropped when passed to a typed parameter
 
 New on 2026.10.25-7018, and silent. When a method that always returns nil
@@ -1214,7 +1319,12 @@ Found on 2026-11-05 on the pinned 2026.11.04.7026, from the benchmark run
 of that day: `SPINEL_WORKERS=2` gave examples/blog 0 to 2% more requests
 than 1 on the pages, where 2026.09.12 gave 9 to 25% (2026-10-09). Not a
 bug in any one line: two deliberate changes meet in a program whose main
-thread only waits.
+thread only waits. Not new in 2026.11.04.7026: checked on 2026-11-05, the
+reduced program below gives the same figures on 2026.10.27.7020 and
+2026.11.03.7025 (1.01 CPUs at N=2), and examples/blog built by
+2026.10.27.7020 also serves every request on one OS thread at
+`SPINEL_WORKERS=2` (see "Re-checked side by side" under "Runtime cost"),
+so it entered between 2026.09.12 and 2026.10.27.7020, with #9840.
 
 - **What changed.** Since #9840, an explicit `SPINEL_WORKERS=N` counts main
   among the N workers, as docs/thread.md says, and starts N-1 helpers
@@ -1297,7 +1407,9 @@ thread only waits.
 Three Spinel behaviours CyberTrain works around were recorded only as
 rules in spikes/NOTES.md. They were looked at on 2026.11.04.7026 on
 2026-11-04: one is still there (K), and the generated C of the other two
-no longer shows the cause in the shape checked.
+no longer shows the cause in the shape checked. A fourth, rule 79, was
+found on 2026.11.04.7026 on 2026-11-04 and checked against the two
+releases before it on 2026-11-05 (at the end).
 
 ### K. `puts` on a nil-only receiver does not compile once the TLS layer is in the program
 
@@ -1375,3 +1487,38 @@ interpolation in place of the parameter.
   interpolation allocates. There was no AddressSanitizer run, so this is
   not a claim that it is fixed in general; CyberTrain keeps building the
   allocating argument first, in a local (cybertrain/cli/toolchain.rb).
+
+### Rule 79: a rescuing method's value does not compile when its block only raises
+
+Found on 2026-11-04 on 2026.11.04.7026 while re-checking rule 32, and
+**not new in 2026.11.04.7026**: on 2026-11-05 the same program failed the same way on
+2026.10.27.7020 and 2026.11.03.7025, so it is not a regression of the
+2026-11-04 pin, only one that had not been tried before. CRuby prints
+`["b"]`:
+
+```ruby
+def g
+  yield
+rescue => e
+  e.message
+end
+out = []
+out << g { raise "b" }
+p out
+```
+
+- What happens: `spinel r79.rb` stops in the C compiler with "variable or
+  field '_sp_fv' declared void" in spinel_rt.h (on all three releases,
+  the note trail ends at the `SP_STR_HDL` expansion for line 2 and the
+  `SP_STR_B` expansion for line 7). The block's only expression is a
+  `raise`, so its value type is empty (void), and the code that appends
+  `g`'s result declares a slot of that type. `p g { raise "b" }` and
+  `p h(g { raise "b" })` compile, and so does a block that can also
+  return a value (`raise "b" if x > 0; "ok"`).
+- Today: nothing in the framework; a test of a rescuing helper gives the
+  block a value after the `raise`, or passes the result through a method
+  (spikes/NOTES.md rule 79).
+- Fix: give a block whose body cannot complete the bottom type at the
+  value slot (as the method's own `rescue` value is what the call
+  answers), or type the call by the method's return type rather than the
+  block's.

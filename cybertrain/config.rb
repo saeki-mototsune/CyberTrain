@@ -303,7 +303,8 @@ attr_accessor :trusted_proxies
     # Spinel worker threads that serve requests, `1`, from `SPINEL_WORKERS`:
     # the core count on a server with more than one. Above 1 the server
     # hands Spinel one more, since Spinel counts the main thread, which
-    # only waits ({Application.spinel_workers}).
+    # only waits ({Application.spinel_workers}). Development always serves
+    # on one and ignores this ({Application.serving_workers}).
     # @return [Integer]
     # @api public
     attr_accessor :workers

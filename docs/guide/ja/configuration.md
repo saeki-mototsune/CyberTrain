@@ -1,5 +1,5 @@
 ---
-source_sha256: 039549726c23e50a79c8d34e0cb7f4a2238d1d53af132a5b129406fd88f88868
+source_sha256: 9774dd81ce04a49d069a89de780211e2926fa128c494ae7a4cd3c1b4fc1d55b6
 ---
 # 設定
 
@@ -21,7 +21,7 @@ end
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | 本番環境では必須。開発環境とテスト環境では `tmp/secret_key` に自動生成される |
-| `SPINEL_WORKERS` | `workers` | `1` |
+| `SPINEL_WORKERS` | `workers` | `1`。開発サーバーはこの値を無視して常に 1 ワーカーで動きます（[理由](template-language.md#file-resolution-enginerb)） |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`。`0.0.0.0` はすべてのインターフェースで待ち受ける（コンテナー向け） |
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | 開発環境は `localhost`、`127.0.0.1`、`[::1]` を受け付ける。カンマ区切りの完全なホスト名でこのリストを拡張できる（スキーム、ポート、ワイルドカードは不可）。その他のホストには、静的ファイル、セッション、ルーティング、診断の前に 403 を返す。これは待ち受けアドレスとは別のもので、本番環境とテスト環境はこの開発用のガードを適用しない |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`。`Strict` や `None` も可（`None` は常に `Secure` を追加する）。それ以外の値ではサーバーが起動時に停止する |

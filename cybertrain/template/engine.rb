@@ -7,6 +7,8 @@
 #   Engine.new("app/views", cache: false)   -- files under a root; with
 #     `cache: true` (production) each file is parsed once, with `cache: false`
 #     (development) a file is re-parsed whenever its mtime or size changes.
+#     That re-parse writes the cache on the request thread, so development
+#     serves on one worker (Application.serving_workers, NOTES rule 57).
 #   Engine.embedded(sources)                -- a Hash of "posts/index.html.erb"
 #     => source, generated into the binary by `spin run gen -- --embed-views`;
 #     all parsed when the engine is built, never re-read.

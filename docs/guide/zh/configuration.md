@@ -1,5 +1,5 @@
 ---
-source_sha256: 039549726c23e50a79c8d34e0cb7f4a2238d1d53af132a5b129406fd88f88868
+source_sha256: 9774dd81ce04a49d069a89de780211e2926fa128c494ae7a4cd3c1b4fc1d55b6
 ---
 # 配置
 
@@ -21,7 +21,7 @@ end
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | 生产环境中必需；开发和测试环境会自动生成一个，写入 `tmp/secret_key` |
-| `SPINEL_WORKERS` | `workers` | `1` |
+| `SPINEL_WORKERS` | `workers` | `1`；开发服务器忽略此值，总是只用一个 worker（[原因](template-language.md#file-resolution-enginerb)） |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`；`0.0.0.0` 在所有网络接口上监听（容器） |
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | 开发环境接受 `localhost`、`127.0.0.1`、`[::1]`；以逗号分隔的精确主机名会扩展这个列表（不带协议、端口或通配符）。其他主机会在静态文件、会话、路由或诊断之前得到 403。这与监听地址无关；生产和测试环境不应用这项开发时的防护 |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`；也可以是 `Strict` 或 `None`（`None` 总会加上 `Secure`）；其他任何值都会让服务器在启动时停止 |
