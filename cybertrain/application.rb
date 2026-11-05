@@ -268,7 +268,8 @@ module Cybertrain
       Application.reset_roles_stop
       @config.worker = true
       boot
-      ENV["SPINEL_WORKERS"] = @config.workers.to_s
+      # What serve gives Spinel for the same config (NOTES rule 22).
+      ENV["SPINEL_WORKERS"] = Application.spinel_workers(@config.workers).to_s
       threads = @config.job_threads
       tasks = Scheduler::TASKS.size
       jobs = Job.handlers? ? "#{threads} job thread#{threads == 1 ? "" : "s"}" : "no job handler"
@@ -302,7 +303,7 @@ module Cybertrain
       return role_error(problem) unless problem.empty?
 
       known = Background.feed_names
-      ENV["SPINEL_WORKERS"] = @config.workers.to_s
+      ENV["SPINEL_WORKERS"] = Application.spinel_workers(@config.workers).to_s
       if known.empty?
         print_role_banner("feeds: no WebSocket subscription is registered; nothing to run")
         return 0
