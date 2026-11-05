@@ -15,14 +15,16 @@ module Cybertrain
   # privileged_denied? since the exception class alone cannot tell the two
   # apart there) -- its own reason so the operator does not hunt for a
   # process that is not there. With reuse_port a host that does not resolve
-  # or is not this machine's is a third reason, naming the setting. The
-  # message is what Application#serve prints before exiting.
+  # or is not this machine's is a third reason and a name with several
+  # addresses a fourth, both naming the setting. The message is what
+  # Application#serve prints before exiting.
   class PortInUse < StandardError
     attr_reader :port
 
     IN_USE = "is already in use (stop the other server or set PORT)"
     PERMISSION_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"
     REUSE_PORT_HOST = "cannot be bound with reuse_port: the host is not an address of this machine (check CYBERTRAIN_HOST)"
+    REUSE_PORT_NAME = "cannot be bound with reuse_port: the host names several addresses (set CYBERTRAIN_HOST to one of them)"
 
     def initialize(host, port, reason = IN_USE)
       super("port #{port} on #{host} #{reason}")
@@ -234,17 +236,20 @@ module Cybertrain
       raise
     end
 
-    # The address @host names. A name with both families takes IPv4, which is
-    # what TCPServer.new binds for "localhost".
+    # The one address @host names. A name with several stops the boot: a plain
+    # TCPServer takes the first and moves to the next when that one is busy,
+    # so whichever this bound, a process without reuse_port would boot on an
+    # address left over instead of being refused (design.md D35).
     def reuse_port_ip
-      ip = ""
+      ips = []
       Socket.getaddrinfo(@host, @port, nil, Socket::SOCK_STREAM).each do |_family_name, _port, _name, address, _family, _socktype, _protocol|
         text = address.to_s
-        ip = text if ip.empty? || (ip.include?(":") && !text.include?(":"))
+        ips << text unless ips.include?(text)
       end
-      raise PortInUse.new(@host, @port, PortInUse::REUSE_PORT_HOST) if ip.empty?
+      raise PortInUse.new(@host, @port, PortInUse::REUSE_PORT_HOST) if ips.empty?
+      raise PortInUse.new(@host, @port, PortInUse::REUSE_PORT_NAME) if ips.size > 1
 
-      ip
+      ips[0]
     rescue SocketError
       raise PortInUse.new(@host, @port, PortInUse::REUSE_PORT_HOST)
     end

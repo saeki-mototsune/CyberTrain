@@ -783,12 +783,33 @@ test "a reuse_port listener on the port still raises PortInUse for a plain serve
   held.stop
 end
 
-test "reuse_port binds a name to its IPv4 address, as a plain server does" do
+def localhost_addresses
+  addresses = []
+  Socket.getaddrinfo("localhost", 0, nil, Socket::SOCK_STREAM).each do |_family_name, _port, _name, address, _family, _socktype, _protocol|
+    text = address.to_s
+    addresses << text unless addresses.include?(text)
+  end
+  addresses
+end
+
+# A plain TCPServer takes the first address of such a name and moves to the
+# next when that one is busy, so processes on it would not refuse each other.
+# localhost has both families on macOS and in the Linux container, not
+# everywhere: with only one it binds (the same number of assertions on either
+# path, for the snapshot).
+test "reuse_port stops on a name with several addresses and binds a name with one" do
   server = reuse_port_server(TaggedHandler.new("named"), "localhost", 0)
-  server.start
-  assert server.port > 0
-  assert_equal "named", reuse_port_get(server.port).body
-  server.stop
+  if localhost_addresses.size > 1
+    message = assert_raises("Cybertrain::PortInUse") { server.start }
+    assert_equal "port 0 on localhost #{Cybertrain::PortInUse::REUSE_PORT_NAME}", message
+    assert_includes message, "reuse_port"
+  else
+    server.start
+    assert server.reuse_port
+    assert server.port > 0
+    assert_equal "named", reuse_port_get(server.port).body
+    server.stop
+  end
 end
 
 # Whether the machine has ::1 at all varies (a container often does not):

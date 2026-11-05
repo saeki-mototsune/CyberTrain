@@ -930,9 +930,12 @@ What to keep in mind:
   "already in use".
 - Development ignores the setting, with one warning: the dev
   server re-execs itself, and a second process would answer with stale code.
-- `CYBERTRAIN_HOST` may be a hostname or an IPv6 address. A host that does not
-  resolve, or an address this machine does not have, stops the boot with a
-  message naming `reuse_port`.
+- `CYBERTRAIN_HOST` may be an IPv6 address, or a hostname with one address. A
+  host that does not resolve, an address this machine does not have, or a name
+  with several addresses stops the boot with a message naming `reuse_port`.
+  `localhost` usually has both `127.0.0.1` and `::1`, so use one of those
+  instead; otherwise a process without the setting could boot on the address
+  left over.
 
 ---
 
