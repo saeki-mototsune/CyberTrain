@@ -1,0 +1,10 @@
+ok   render component: renders the template with the ivars, view methods and an empty content
+ok   an omitted keyword gets initialize's own default
+ok   a block becomes the content, unescaped
+ok   components render other components and partials
+ok   an unknown component raises Component::Unknown with the file hint
+ok   keywords are checked
+ok   a partial rendered from a component does not see the component's view methods
+ok   component nesting counts toward max_render_depth
+ok   the derived names of the base class
+9 tests, 12 assertions, 0 failures

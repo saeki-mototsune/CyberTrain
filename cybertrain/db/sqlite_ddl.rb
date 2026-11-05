@@ -9,7 +9,7 @@ module Cybertrain
     #
     # Every schema type gets its own declared SQL type name, as Rails'
     # SQLite adapter does (VARCHAR, TEXT, INTEGER, REAL, BOOLEAN, DATETIME,
-    # DATE). SQLite derives the storage affinity from the name (VARCHAR ->
+    # DATE, BLOB). SQLite derives the storage affinity from the name (VARCHAR ->
     # TEXT, BOOLEAN/DATETIME/DATE -> NUMERIC, which keeps ISO 8601 strings
     # as text) and remembers the name itself, so SchemaDumper can read the
     # original type back: db/schema.rb is dumped from the database and the
@@ -137,6 +137,7 @@ module Cybertrain
         when :boolean then "BOOLEAN"
         when :datetime then "DATETIME"
         when :date then "DATE"
+        when :binary then "BLOB"
         else "TEXT"
         end
       end

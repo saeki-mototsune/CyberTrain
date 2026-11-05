@@ -1,3 +1,5 @@
+require "cybertrain/db/blob"
+
 module Cybertrain
   # Converts loosely typed values (SQLite cells, form strings) into the one
   # concrete type each model attribute holds. Generated models call these from
@@ -44,6 +46,21 @@ module Cybertrain
       when nil then nil
       when String then v
       when Time then iso8601(v)
+      else v.to_s
+      end
+    end
+
+    # A binary (BLOB) cell or attribute as its bytes: the String itself (a
+    # BLOB cell from `Connection#execute` is a String of the exact bytes),
+    # a {DB::Blob}'s bytes, "" for nil.
+    # @param v [String, DB::Blob, nil]
+    # @return [String]
+    # @api public
+    def self.binary(v)
+      case v
+      when nil then ""
+      when String then v
+      when DB::Blob then v.blob_bytes
       else v.to_s
       end
     end
@@ -200,11 +217,13 @@ module Cybertrain
     # @example
     #   sql = "SELECT COUNT(*) AS n FROM stats WHERE project_id = ? AND at >= ?"
     #   Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(project.id, since)) }
-    # @param values [Array<Object>] nil, Integer, Float, String, true/false or Time
+    # A {DB::Blob} passes through and binds as a BLOB.
+    # @param values [Array<Object>] nil, Integer, Float, String, true/false,
+    #   Time or DB::Blob
     # @return [Array<Object>]
     # @api public
     def self.binds(*values)
-      out = [nil, 0, 0.0, ""]
+      out = [nil, 0, 0.0, "", DB::Blob.new("")]
       out.clear
       values.each { |v| out << to_sql(v) }
       out

@@ -5,6 +5,7 @@
 #   cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
 #   cybertrain generate attachment MODEL FIELD [--any]
 #   cybertrain generate authentication [--invite-only]
+#   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
 #   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
 #   cybertrain setup [--force] | doctor | version | help
 #
@@ -16,6 +17,8 @@ require "cybertrain/cli/new_app"
 require "cybertrain/cli/scaffold"
 require "cybertrain/cli/authentication"
 require "cybertrain/cli/attachment"
+require "cybertrain/cli/helper"
+require "cybertrain/cli/component"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
 
@@ -56,6 +59,16 @@ module Cybertrain
             also at /setup, which answers only to this machine, only with the
             one-time token the server's boot warning prints, and only while
             no user exists (NAME_SETUP_OPEN=1 lifts the address check).
+        cybertrain generate helper NAME [--force]
+            Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
+            `spin run gen` makes callable from every template) and a test.
+        cybertrain generate component NAME [attr[:type] ...] [--force]
+            Add a view component: app/components/NAME_component.rb (one
+            keyword per attribute), its template NAME_component.html.erb and
+            a test rendering it. Types: #{Component::TYPES.join(", ")}
+            (default string). Templates render it with
+            <%= render component: "NAME", attr: value %>.
+            --force overwrites files that already exist.
         cybertrain db migrate
             Generate, apply pending migrations, generate again
             (spin run gen; spin run db -- migrate; spin run gen).
@@ -305,8 +318,26 @@ module Cybertrain
           puts "  cybertrain server      # then open /sign_up"
         end
         puts "  cybertrain spin test   # test/authentication.rb; snapshot it from the binary"
+      when "helper"
+        args = without_flag(argv[2, argv.size - 2], "--force")
+        raise InvalidArgument, "usage: cybertrain generate helper NAME [--force]" unless args.size == 1
+
+        Helper.generate(".", args[0], argv.include?("--force"))
+        puts ""
+        puts "next:"
+        puts "  spin run gen           # includes the module into the app's helpers"
+        puts "  cybertrain spin test   # test/#{args[0].tr("/", "_").delete_suffix("_helper")}_helper.rb; snapshot it from the binary"
+      when "component"
+        args = without_flag(argv[2, argv.size - 2], "--force")
+        raise InvalidArgument, "usage: cybertrain generate component NAME [attr[:type] ...] [--force]" if args.empty?
+
+        Component.generate(".", args[0], args[1, args.size - 1], argv.include?("--force"))
+        puts ""
+        puts "next:"
+        puts "  spin run gen           # writes gen/components.rb"
+        puts "  cybertrain spin test   # test/#{args[0].tr("/", "_").delete_suffix("_component")}_component.rb; snapshot it from the binary"
       else
-        raise InvalidArgument, "only `generate scaffold`, `generate attachment` and `generate authentication` are supported"
+        raise InvalidArgument, "only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper` and `generate component` are supported"
       end
       0
     end

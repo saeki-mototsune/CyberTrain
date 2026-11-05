@@ -12,6 +12,8 @@ Usage:
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+  ./blog console           evaluate expressions over the models (help inside)
+  ./blog dbconsole         open the sqlite3 shell on the database
   ./blog user              create a user: EMAIL
   ./blog status            exit with ARG as the status
   ./blog broken            run SQL that fails
@@ -27,6 +29,8 @@ Usage:
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+  ./blog console           evaluate expressions over the models (help inside)
+  ./blog dbconsole         open the sqlite3 shell on the database
   ./blog user              create a user: EMAIL
   ./blog status            exit with ARG as the status
   ./blog broken            run SQL that fails

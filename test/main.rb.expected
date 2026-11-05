@@ -5,18 +5,24 @@ Usage:
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+  ./blog console           evaluate expressions over the models (help inside)
+  ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
 Usage:
   ./blog [server [PORT]]   start the server
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+  ./blog console           evaluate expressions over the models (help inside)
+  ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
 Usage:
   ./blog [server [PORT]]   start the server
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+  ./blog console           evaluate expressions over the models (help inside)
+  ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
 ok   help prints the usage for this app and exits 0
 Unknown command 'frobnicate'
@@ -25,6 +31,8 @@ Usage:
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+  ./blog console           evaluate expressions over the models (help inside)
+  ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
 ok   an unknown word prints the usage and exits 1
 created :memory:

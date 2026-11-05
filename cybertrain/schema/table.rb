@@ -10,7 +10,7 @@ module Cybertrain
       attr_reader :name, :type, :null, :default, :limit
 
       # type: Symbol (:string, :text, :integer, :float, :boolean, :datetime,
-      # :date). default: String|nil holding the SQL literal text exactly as
+      # :date, :binary). default: String|nil holding the SQL literal text exactly as
       # written in the DSL (e.g. "0", "'x'", "false"), never a Ruby value.
       def initialize(name, type, null, default, limit)
         @name = name.to_s
@@ -120,7 +120,7 @@ module Cybertrain
     #
     # Every table also gets `id INTEGER PRIMARY KEY AUTOINCREMENT`; do not
     # declare it. The types are those below; there is no `decimal`, `bigint`,
-    # `json`, `binary` or `time`. `default:` is SQL literal text, and a new
+    # `json` or `time`. `default:` is SQL literal text, and a new
     # record starts with it when it is a plain literal.
     # @example
     #   create_table "articles" do |t|
@@ -218,6 +218,18 @@ module Cybertrain
       # @api public
       def date(name, null: true, default: nil, limit: 0)
         push_column(name, :date, null, default, limit)
+      end
+
+      # A `BLOB` column, a String of raw bytes in the model (NUL and bytes
+      # above 127 included; the model binds it as a {DB::Blob}).
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"x''"`
+      # @param limit [Integer] ignored
+      # @return [nil]
+      # @api public
+      def binary(name, null: true, default: nil, limit: 0)
+        push_column(name, :binary, null, default, limit)
       end
 
       # Adds "<name>_id" (Integer), an index on it, and -- unless

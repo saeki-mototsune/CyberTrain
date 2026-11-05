@@ -35,7 +35,7 @@ built with `cybertrain setup` to repeat the runs):
 
 ## Tasks
 
-1. docs/spinel-feedback.md: items M (S1), N (S2) and O (S3), each with the
+1. docs/spinel-feedback.md: items N (S1), O (S2) and P (S3), each with the
    reduced program, what happens on each build (which runs were made here
    and which are the report's), the cause and the fix the report gives,
    and what CyberTrain does today; the refusal of a never-reached
@@ -43,7 +43,7 @@ built with `cybertrain setup` to repeat the runs):
    in "What can go upstream", "Status at a glance" and "What CyberTrain
    still works around"; the suggested order. Check: `script/gate
    docs/spinel-feedback.md`.
-2. spikes/NOTES.md: rule 72 gains the `connect_timeout:` sentence; rule 81
+2. spikes/NOTES.md: rule 72 gains the `connect_timeout:` sentence; rule 84
    records the compile-time refusal and what a test program does about
    it; "Rules by topic" lists 81. Check: `script/gate spikes/NOTES.md`.
 3. test/http_client.rb: one test that the `inet_aton` spellings of a

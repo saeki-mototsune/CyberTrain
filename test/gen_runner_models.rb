@@ -17,13 +17,18 @@ APP_FILES = [
   "app/controllers/application_controller.rb",
   "app/controllers/comments_controller.rb",
   "app/controllers/pages_controller.rb",
-  "app/controllers/posts_controller.rb"
+  "app/controllers/posts_controller.rb",
+  "app/helpers/prices_helper.rb",
+  "app/components/card_component.rb",
+  "app/components/card_component.html.erb"
 ]
-GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
-DIRS = ["app", "app/models", "app/controllers", "gen", "gen/models"]
+GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/console.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
+DIRS = ["app", "app/models", "app/controllers", "app/helpers", "app/components", "gen", "gen/models"]
 Dir.mkdir("#{ROOT}/app")
 Dir.mkdir("#{ROOT}/app/models")
 Dir.mkdir("#{ROOT}/app/controllers")
+Dir.mkdir("#{ROOT}/app/helpers")
+Dir.mkdir("#{ROOT}/app/components")
 APP_FILES.each { |f| File.write("#{ROOT}/#{f}", File.read("#{FIXTURE}/#{f}")) }
 
 at_exit do
@@ -97,6 +102,7 @@ test "a table added to the schema makes both its model and the manifest stale" d
   assert_equal 0, Cybertrain::Gen::Runner.run(ROOT, [])
   assert File.exist?("#{ROOT}/gen/models/tag.rb")
   assert_includes File.read("#{ROOT}/gen/app.rb"), "require_relative \"models/tag\"\n"
+  assert_includes File.read("#{ROOT}/gen/console.rb"), "MODEL_NAMES = [\"Comment\", \"Post\", \"Tag\"]\n"
 end
 
 test "a dropped table's gen/models file is reported stale, then removed" do

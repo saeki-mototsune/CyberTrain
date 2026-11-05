@@ -1,0 +1,11 @@
+ok   console evaluates lines from the terminal until exit
+ok   console ends with status 0 at the end of its input
+ok   console and dbconsole are built-in words, not server words
+ok   dbconsole runs sqlite3 on the database and passes its exit status through
+ok   dbconsole answers 1 when a signal ends sqlite3
+ok   a database path starting with - reaches sqlite3 as ./-...
+sqlite3 could not be started: Errno::EACCES: Permission denied - sqlite3
+ok   dbconsole reports an sqlite3 it cannot run, not a missing one
+sqlite3 not found: install the sqlite3 CLI
+ok   dbconsole without sqlite3 says how to get it
+8 tests, 19 assertions, 0 failures

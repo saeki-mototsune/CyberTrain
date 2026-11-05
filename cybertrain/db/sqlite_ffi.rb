@@ -7,8 +7,9 @@
 #   prepare_v2) go through a fresh `malloc(8)` scratch slot per call, read
 #   back with `read_ptr` and then `free`d. A static `ffi_buffer` is shared by
 #   the whole process and crashes as soon as two threads prepare at once.
-# * `sqlite3_bind_text` takes the integer literal -1 as its destructor
-#   argument: that is SQLITE_TRANSIENT, so SQLite copies the string.
+# * `sqlite3_bind_text` and `sqlite3_bind_blob` take the integer literal -1
+#   as their destructor argument: that is SQLITE_TRANSIENT, so SQLite copies
+#   the bytes.
 #
 # `blocking: true` marks the calls that can wait on disk or on another
 # connection's lock. Spinel 2026.09.12 accepts and ignores the option, so
@@ -111,6 +112,27 @@ module Cybertrain
       C
       ffi_func :cybertrain_sqlite_column_epoch, [:ptr, :int], :long
 
+      # A BLOB cell's bytes, NULs included: the :binstr bridge of
+      # GzipFFI.cybertrain_bytes_at. It publishes the byte count in
+      # sp_ffi_bin_len (the TLS int the codegen declares for a module with a
+      # :binstr function) and returns SQLite's pointer, so Spinel copies
+      # exactly that many bytes into a new String before the next step can
+      # reuse the buffer. sqlite3_column_blob comes first, then
+      # sqlite3_column_bytes, the order SQLite documents. A zero-length blob
+      # has a NULL pointer: "" is returned for it, so the String is empty,
+      # never nil. Called only after sqlite3_column_type said BLOB.
+      ffi_source <<~C
+        extern const void *sqlite3_column_blob(void *, int);
+        const char *cybertrain_sqlite_column_blob(void *stmt, int col) {
+          const void *p = sqlite3_column_blob(stmt, col);
+          int n = sqlite3_column_bytes(stmt, col);
+          if (!p) n = 0;
+          sp_ffi_bin_len = n;
+          return p ? (const char *)p : "";
+        }
+      C
+      ffi_func :cybertrain_sqlite_column_blob, [:ptr, :int], :binstr
+
       ffi_const :OK, 0
       ffi_const :BUSY, 5
       ffi_const :ROW, 100
@@ -137,6 +159,10 @@ module Cybertrain
       ffi_func :sqlite3_bind_int64, [:ptr, :int, :long], :int
       ffi_func :sqlite3_bind_double, [:ptr, :int, :double], :int
       ffi_func :sqlite3_bind_text, [:ptr, :int, :str, :int, :ptr], :int
+      # The bytes go through :str with their explicit length, as
+      # GzipFFI.cybertrain_gunzip_bounded receives a body: SQLite reads that
+      # many bytes from the pointer, so a NUL inside does not end them.
+      ffi_func :sqlite3_bind_blob, [:ptr, :int, :str, :int, :ptr], :int
       ffi_func :sqlite3_bind_null, [:ptr, :int], :int
       ffi_func :sqlite3_step, [:ptr], :int, blocking: true
       ffi_func :sqlite3_finalize, [:ptr], :int
