@@ -152,8 +152,9 @@ true
   attributes and methods, `update`, `save`, `destroy`, `reload`, `valid?`,
   `errors` and `attributes`. `help` lists them all.
 - `x = expr` keeps a value for the following lines, and `_` is the last
-  value. `sql "..."` runs SQL and prints the rows as a table; `tables` lists
-  the tables; `exit`, `quit` or Ctrl-D leaves.
+  value. `sql "..."` runs SQL and prints the rows as a table, with a cell's
+  control characters escaped (`\e`, `\n`), so data can neither send the
+  terminal an escape sequence nor break the table; `tables` lists the tables; `exit`, `quit` or Ctrl-D leaves.
 - A line that does not parse prints its error, a line that raises prints
   `Class: message`, and the prompt comes back. A binary value prints as
   `<N bytes>`.
