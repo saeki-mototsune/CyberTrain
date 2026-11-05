@@ -28,6 +28,9 @@ ok   the rebuild command takes the gen step it is given
 ok   the gen check compiles bin/gen.rb to C quietly, with spin's flags and no line map
 ok   gen is compiled once, then run directly while its C stands still
 ok   a full build promotes the checked C, a direct run records nothing
+ok   a binary replaced behind the saved C compiles gen again
+ok   a replaced binary newer than its sources does not survive spin's own check
+ok   a saved C with no stamp compiles gen again
 ok   differing C compiles gen again
 ok   a missing build/bin/gen does not fail the rebuild
 ok   no saved C compiles gen, even with a build/bin/gen there
@@ -41,6 +44,7 @@ ok   a failed build records nothing, so the next one compiles gen again
 ok   undoing an edit whose full build failed does not read as a match: the binary has moved on
 ok   a failed build on the direct path keeps its output through the full retry, and the saved C
 ok   an edit made during the build is seen by the next rebuild
+ok   an edit during a failed retry saves nothing, so undoing it does not read as a match
 ok   a toolchain that starts refusing --incremental still gets the plain build, and the saved C survives
 ok   the build lock stops the gen check as well
 ok   no rebuild while cybertrain build holds tmp/cybertrain-build.lock
@@ -49,4 +53,4 @@ ok   a lock older than 30 minutes is stale even with a live PID: age wins over a
 ok   the rebuild command quotes the build target like every other interpolated value
 ok   the Rebuilder refuses a build target that is not usable for spin build
 ok   shell_quote escapes single quotes
-51 tests, 206 assertions, 0 failures
+55 tests, 224 assertions, 0 failures
