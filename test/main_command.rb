@@ -33,7 +33,7 @@ def no_views
   none
 end
 
-def resolver = ->(name, args) { "/" }
+def resolver = ->(name, args) { "/#{name}" }
 
 def run(argv)
   Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)
@@ -68,6 +68,43 @@ end
 
 Cybertrain::Main.command("backup", "raise a DB::Error itself") do |argv|
   raise Cybertrain::DB::Error, "nothing to back up" if argv.empty?
+  0
+end
+
+# A partial under the development views root (app/views beside the
+# program's working directory), rendered by a command as a mail body or a
+# broadcast would be.
+Dir.mkdir("app")
+Dir.mkdir("app/views")
+File.write("app/views/_greeting.html.erb", "<%# locals: (name:) %>Hi <%= name %>, <%= home_path %>")
+
+Cybertrain::Main.command("greet", "render a partial") do |argv|
+  SEEN << Cybertrain::Views.render_partial("greeting", name: argv[0]).to_s
+  0
+end
+
+# Production: the embedded templates, parsed when a command renders them.
+# Saved and restored in a plain method, whatever the command does.
+def run_embedded(argv, sources)
+  saved = Cybertrain.config.env
+  Cybertrain.config.env = "production"
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: sources)
+ensure
+  Cybertrain.config.env = saved.to_s
+end
+
+EMBEDDED = {
+  "_hello.html.erb" => "<%# locals: (name:) %>Hello <%= name %>, <%= home_path %>",
+  "_broken.html.erb" => "<% if %>"
+}
+
+Cybertrain::Main.command("embedded_greet", "render an embedded partial") do |argv|
+  SEEN << Cybertrain::Views.render_partial("hello", name: argv[0]).to_s
+  0
+end
+
+Cybertrain::Main.command("embedded_broken", "render a partial that does not parse") do |argv|
+  SEEN << Cybertrain::Views.render_partial("broken").to_s
   0
 end
 
@@ -110,6 +147,24 @@ test "a database that cannot be opened is a DB::Error too" do
   Cybertrain.config.database_path = "no/such/dir/x.sqlite3"
   assert_equal 1, run(["user", "d@example.com"])
   Cybertrain.config.database_path = "commands.sqlite3"
+end
+
+test "a command can render a partial, path helpers included" do
+  base = SEEN.size
+  assert_equal 0, run(["greet", "Ann"])
+  assert_equal "Hi Ann, /home_path", SEEN[base]
+end
+
+test "in production a command parses embedded templates only when it renders them" do
+  base = SEEN.size
+  # A template that does not parse stops a server at boot, not a command
+  # that renders nothing, nor one that renders another template.
+  assert_equal 3, run_embedded(["status", "3"], EMBEDDED)
+  assert_equal 0, run_embedded(["embedded_greet", "Bo"], EMBEDDED)
+  assert_equal "Hello Bo, /home_path", SEEN[base]
+  msg = assert_raises("SyntaxError") { run_embedded(["embedded_broken"], EMBEDDED) }
+  assert_includes msg, "_broken.html.erb:1"
+  refute Cybertrain::DB.connected?
 end
 
 test "server? is false for a registered name" do
