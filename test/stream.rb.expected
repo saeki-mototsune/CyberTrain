@@ -1,0 +1,17 @@
+ok   broadcast writes a row and returns increasing ids
+ok   broadcast refuses an invalid stream name
+ok   sign round-trips through verify
+ok   verify refuses a tampered, empty or foreign token
+ok   verify refuses tokens whose names are invalid, even when signed
+ok   sign refuses what verify would
+ok   name_for gives table:id for a record and passes a String through
+ok   the hub delivers to every matching subscriber in order
+ok   an idle pop returns nil and unsubscribe stops delivery
+ok   a subscriber whose backlog overflows is dropped
+ok   names can be added and removed
+ok   a poller tick delivers only the rows after the last id
+ok   prune deletes the rows older than the cutoff
+ok   replay returns the backlog of the named streams after an id
+ok   broadcast_replace_to writes the Turbo Stream HTML
+ok   the other broadcast shortcuts
+16 tests, 54 assertions, 0 failures

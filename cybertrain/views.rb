@@ -58,5 +58,11 @@ module Cybertrain
     def self.url_resolver=(resolver)
       @url_resolver = resolver
     end
+
+    # Stubs until the view helpers' rendering outside a request lands
+    # (package B defines both; the integration keeps those). Stream's
+    # broadcast_*_to call them for `partial:` and `component:`.
+    def self.render_partial(name, locals = {}) = raise(NotImplementedError, "render_partial arrives with package B")
+    def self.render_component(component, content = "") = raise(NotImplementedError, "render_component arrives with package B")
   end
 end

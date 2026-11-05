@@ -120,6 +120,8 @@ module Cybertrain
       fail_boot(proxies_error) unless proxies_error.empty?
       health_error = c.health_error
       fail_boot(health_error) unless health_error.empty?
+      stream_error = c.stream_error
+      fail_boot(stream_error) unless stream_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       if c.production?
