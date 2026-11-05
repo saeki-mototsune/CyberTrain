@@ -97,4 +97,17 @@ test "serialize encodes exactly as encode_www_form_component, plain or not" do
   assert_serialized_as_encoded("abc--DEF_-.")
 end
 
+test "plain? is true exactly for the ASCII bytes the encoder leaves alone" do
+  byte = 0
+  while byte < 128
+    char = byte.chr
+    assert_equal URI.encode_www_form_component(char) == char, Cybertrain::Query.plain?(char)
+    byte += 1
+  end
+  assert Cybertrain::Query.plain?("")
+  assert Cybertrain::Query.plain?("abc--DEF_-.")
+  assert !Cybertrain::Query.plain?("a=")
+  assert !Cybertrain::Query.plain?("\u00e9")
+end
+
 Cybertrain::Test.run!

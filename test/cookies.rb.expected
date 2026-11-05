@@ -10,4 +10,5 @@ ok   serialize with same_site None adds Secure even when secure is false
 ok   serialize with partitioned appends Partitioned and implies Secure
 ok   serialize writes Secure once when secure, same_site None and partitioned are all set
 ok   serialize encodes exactly as encode_www_form_component, plain or not
-12 tests, 153 assertions, 0 failures
+ok   plain? is true exactly for the ASCII bytes the encoder leaves alone
+13 tests, 285 assertions, 0 failures

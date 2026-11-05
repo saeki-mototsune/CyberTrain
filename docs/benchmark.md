@@ -45,7 +45,7 @@ the collector's stop-the-world drives), and the rest spread over the template
 interpreter. An article page allocated about 1,100 Strings. What changed:
 
 - **Typed byte loops.** `Html.escape` (every `<%= %>`), `Cast.parse_time`
-  (every datetime column of every row) and the new `Router.plain_segment?`
+  (every datetime column of every row) and the new `Query.plain?`
   read bytes of a String whose type Spinel knows. Their parameters were
   polymorphic, so each `getbyte` and each `==` was a dynamic call
   (`sp_poly_eq` alone was 5% of an article page). The generated C is the place
