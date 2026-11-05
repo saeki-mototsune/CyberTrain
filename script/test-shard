@@ -1,0 +1,52 @@
+#!/bin/sh
+# One shard of the framework tests: `spin test` on the sorted test/*.rb whose
+# zero-based position modulo <total> equals <index>. CI runs the shards as
+# parallel jobs (.github/workflows/ci.yml, job framework-tests); the same
+# command reproduces one of them locally.
+#
+# usage: script/test-shard <index> <total>         run the shard
+#        script/test-shard --list <index> <total>  print its files, one a line
+#
+# Exit status 2 for a bad argument; otherwise spin's.
+
+usage() {
+  echo "usage: script/test-shard [--list] <index> <total>, with 0 <= index < total" >&2
+  exit 2
+}
+
+list=false
+if [ "$1" = "--list" ]; then
+  list=true
+  shift
+fi
+[ $# -eq 2 ] || usage
+
+# Nine digits at most: past the shell's integers `[` fails, and an `if` would
+# read that failure as "in range".
+for number in "$1" "$2"; do
+  case "$number" in
+    "" | *[!0-9]* | ??????????*) usage ;;
+  esac
+done
+[ "$1" -lt "$2" ] || usage
+
+cd "$(dirname "$0")/.." || exit 2
+
+# The C locale for the sort alone, so that every machine agrees on the shards
+# and the tests still run in the caller's locale.
+files=$(printf '%s\n' test/*.rb | LC_ALL=C sort | awk -v index_="$1" -v total="$2" '(NR - 1) % total == index_')
+
+if [ "$list" = true ]; then
+  [ -z "$files" ] || printf '%s\n' "$files"
+  exit 0
+fi
+
+# `spin test` with no file runs everything, which is not what an empty shard
+# (more shards than tests) means.
+if [ -z "$files" ]; then
+  echo "test-shard: shard $1 of $2 has no tests"
+  exit 0
+fi
+
+# Unquoted to split into one argument per file: test names have no spaces.
+exec spin test $files
