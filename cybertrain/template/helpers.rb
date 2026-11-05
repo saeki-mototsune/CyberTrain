@@ -594,6 +594,9 @@ module Cybertrain
       # opens it as an EventSource; `ws: true` gives a ws:// (wss:// behind
       # an https proxy) URL instead, built from the request, which Turbo
       # opens as a WebSocket.
+      # The token is in the URL, so a proxy's access log sees it (the
+      # framework's own request log writes it as [FILTERED]); anyone holding
+      # it can read those streams.
       def turbo_stream_from(args, kwargs)
         token = signed_stream_name(args)
         src = +""
@@ -647,6 +650,9 @@ module Cybertrain
 
       # "ws://host" from the request's base URL ("wss://" for https).
       def stream_ws_base
+        # For the merge: call B's request_bound!("turbo_stream_from") here
+        # first (raise only when rendering outside a request); this nil
+        # check stays as the fallback.
         controller = @controller
         raise Views::OutsideRequest, "turbo_stream_from ws: true needs a request" if controller.nil?
 

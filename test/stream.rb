@@ -128,6 +128,48 @@ test "name_for gives table:id for a record and passes a String through" do
   post.set_id(12)
   assert_equal "blog_posts:12", Stream.name_for(post)
   assert_equal "alerts", Stream.name_for("alerts")
+  assert_raises("ArgumentError") { Stream.name_for(BlogPost.new) }
+end
+
+test "replay filters by stream in SQL and reads one chunk at a time" do
+  fresh_db
+  250.times do |i|
+    Stream.broadcast("big", "b#{i}")
+    Stream.broadcast("noise", "n#{i}")
+  end
+  first = Stream.replay(["big"], 0)
+  assert_equal Stream::REPLAY_CHUNK, first.size
+  assert_equal "b0", first[0].message_payload
+  rest = Stream.replay(["big"], first[first.size - 1].message_id)
+  assert_equal 50, rest.size
+  assert_equal "b249", rest[rest.size - 1].message_payload
+  assert_equal 3, Stream.replay(["big", "noise"], 0, 3).size
+  assert_equal 0, Stream.replay(Array.new(0) { "" }, 0).size
+end
+
+test "a subscriber takes at most 64 waiting control messages" do
+  sub = Stream::Subscriber.new(["a"], 1000)
+  ok = 0
+  64.times { ok += 1 if sub.stream_control(Stream::Message.new(-1, "ping", "")) }
+  assert_equal 64, ok
+  refute sub.control_overflow?
+  refute sub.stream_control(Stream::Message.new(-1, "ping", ""))
+  assert sub.control_overflow?
+end
+
+test "subscribe names are capped and subscribe_within keeps the limit" do
+  hub = Stream::Hub.new(1000)
+  sub = hub.subscribe(["a"])
+  many = Array.new(0) { "" }
+  63.times { |i| many << "n#{i}" }
+  assert hub.add_names(sub, many)
+  assert_equal 64, sub.name_count
+  refute hub.add_names(sub, ["one more"])
+  assert_equal 64, sub.name_count
+  other = Stream::Hub.new(1000)
+  assert !other.subscribe_within(["a"], 1).nil?
+  assert other.subscribe_within(["b"], 1).nil?
+  assert_equal 1, other.subscriber_count
 end
 
 test "the hub delivers to every matching subscriber in order" do
@@ -211,8 +253,9 @@ test "the replay-to-live handoff sends every row once, in id order" do
   Stream.broadcast("a", "2")
   Stream::Poller.run_once(hub)
   sent = Array.new(0) { "" }
-  backlog = Stream.replay(["a"], 0)
-  boundary = 0
+  start = Stream.replay_start(0, sub)
+  backlog = Stream.replay(["a"], start)
+  boundary = start
   backlog.each do |m|
     sent << m.message_payload
     boundary = m.message_id

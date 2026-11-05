@@ -11,9 +11,13 @@ module Cybertrain
   # with each filtered parameter's value in the query string written as
   # `[FILTERED]` (ParameterFilter, Config#filter_parameters).
   class RequestLogger < Middleware
-    def initialize(app, logger = Cybertrain.logger)
+    # stream_path: the stream endpoint's path (Config#stream_path), whose
+    # `s` parameters are signed stream tokens and are logged as
+    # `[FILTERED]` whatever Config#filter_parameters says; "" for none.
+    def initialize(app, logger = Cybertrain.logger, stream_path = "")
       super(app)
       @logger = logger
+      @stream_path = stream_path
     end
 
     def call(ctx)
@@ -21,7 +25,11 @@ module Cybertrain
       target = log_field(request.path)
       # The values of filtered parameters (Config#filter_parameters) never
       # reach the log: replaced before the escaping, on the raw bytes.
-      target = "#{target}?#{log_field(ParameterFilter.filter_query(request.query_string))}" unless request.query_string.empty?
+      unless request.query_string.empty?
+        query = request.query_string
+        query = RequestLogger.filter_tokens(query) if !@stream_path.empty? && request.path == @stream_path
+        target = "#{target}?#{log_field(ParameterFilter.filter_query(query))}"
+      end
       @logger.info("Started #{log_field(request.method)} \"#{target}\" for #{request.remote_addr}")
       started = Time.now
       begin
@@ -40,6 +48,26 @@ module Cybertrain
       end
       log_completed(ctx.response.status, started)
       nil
+    end
+
+    # The query with the value of every pair named exactly `s` replaced by
+    # [FILTERED] (a substring filter would also take `sort=`).
+    def self.filter_tokens(text)
+      s = text.to_s # NOTES rule 62
+      parts = s.split("&")
+      out = +""
+      i = 0
+      while i < parts.size
+        part = parts[i]
+        out << "&" if i > 0
+        if part.start_with?("s=")
+          out << "s=[FILTERED]"
+        else
+          out << part
+        end
+        i += 1
+      end
+      out
     end
 
     private

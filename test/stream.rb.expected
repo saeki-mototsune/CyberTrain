@@ -5,6 +5,9 @@ ok   verify refuses a tampered, empty or foreign token
 ok   verify refuses tokens whose names are invalid, even when signed
 ok   sign refuses what verify would
 ok   name_for gives table:id for a record and passes a String through
+ok   replay filters by stream in SQL and reads one chunk at a time
+ok   a subscriber takes at most 64 waiting control messages
+ok   subscribe names are capped and subscribe_within keeps the limit
 ok   the hub delivers to every matching subscriber in order
 ok   an idle pop returns nil and unsubscribe stops delivery
 ok   a subscriber whose backlog overflows is dropped
@@ -21,4 +24,4 @@ ok   prune deletes the rows older than the cutoff
 ok   replay returns the backlog of the named streams after an id
 ok   broadcast_replace_to writes the Turbo Stream HTML
 ok   the other broadcast shortcuts
-23 tests, 79 assertions, 0 failures
+26 tests, 97 assertions, 0 failures

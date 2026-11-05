@@ -84,7 +84,7 @@ module Cybertrain
         response.set_header("X-Accel-Buffering", "no")
         after = Endpoint.last_event_id(request.header("last-event-id").to_s, wanted.request_after)
         response.body_writer = SSEWriter.new(hub, wanted.request_names, wanted.request_json, after,
-                                             config.stream_ping_interval)
+                                             config.stream_ping_interval, config.stream_max_connections)
         nil
       end
 
@@ -122,7 +122,8 @@ module Cybertrain
         close_code = 1013 if close_code == 0 && hub.subscriber_count >= config.stream_max_connections
         names = close_code == 0 ? wanted.request_names : Array.new(0) { "" }
         writer = WebSocketWriter.new(hub, names, wanted.request_json, wanted.request_after,
-                                     config.stream_ping_interval, config.stream_max_message, close_code)
+                                     config.stream_ping_interval, config.stream_max_message, close_code,
+                                     config.stream_max_connections)
         response.set_header("Upgrade", "websocket")
         response.set_header("Sec-WebSocket-Accept", WebSocket::Frame.accept_key(key))
         response.upgrade!(writer)
@@ -225,7 +226,8 @@ module Cybertrain
     class SSEWriter < BodyWriter
       SLICE = 1.0
 
-      def initialize(hub, names, json, after, ping_interval)
+      def initialize(hub, names, json, after, ping_interval, max_connections)
+        @max_connections = max_connections
         @hub = hub
         @names = names
         @json = json
@@ -235,7 +237,12 @@ module Cybertrain
 
       def write_body(sink)
         hub = @hub
-        sub = hub.subscribe(@names)
+        # The limit again, under the hub's lock (Endpoint#call's check is
+        # the fast 503; two connections can pass it together): a stream
+        # that does not fit ends at once.
+        sub = hub.subscribe_within(@names, @max_connections)
+        return nil if sub.nil?
+
         begin
           sse_session(sink, sub)
         ensure
@@ -254,13 +261,19 @@ module Cybertrain
         # replayed one.
         last = Stream.replay_start(@after, sub)
         if last >= 0
-          backlog = Stream.replay(@names, last)
-          i = 0
-          while i < backlog.size
-            msg = backlog[i]
-            sink.write(sse_event(msg))
-            last = msg.message_id
-            i += 1
+          # By chunks, each written before the next query; the boundary
+          # never passes a row that was not sent.
+          cursor = sub.boundary
+          while !sink.closed?
+            backlog = Stream.replay(@names, last)
+            i = 0
+            while i < backlog.size
+              msg = backlog[i]
+              sink.write(sse_event(msg))
+              last = msg.message_id
+              i += 1
+            end
+            break if backlog.size < Stream::REPLAY_CHUNK || last >= cursor
           end
           sub.skip_through!(last)
         end

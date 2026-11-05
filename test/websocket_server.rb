@@ -114,6 +114,48 @@ test "?after= above the head still gets the next broadcast" do
   assert subscribers_reach(0)
 end
 
+test "?after= below the head replays what was missed, then goes on live" do
+  first = Stream.broadcast("past", "p1")
+  Stream.broadcast("past", "p2")
+  ws = connect("s=#{token("past")}&after=#{first - 1}")
+  assert_equal "p1", next_text(ws)
+  assert_equal "p2", next_text(ws)
+  assert subscribers_reach(1)
+  Stream.broadcast("past", "p3")
+  assert_equal "p3", next_text(ws)
+  ws.close
+  assert subscribers_reach(0)
+end
+
+test "a token signed with another secret is closed with 1008" do
+  CONFIG.secret_key_base = "q" * 64
+  foreign = token("a")
+  CONFIG.secret_key_base = "w" * 64
+  ws = connect("s=#{foreign}")
+  assert_equal 1008, closed_code(ws)
+  assert subscribers_reach(0)
+end
+
+test "a connection that listens to nothing is closed with 1008 after the ping interval" do
+  ws = connect("mode=json")
+  assert_equal 1008, closed_code(ws)
+  assert subscribers_reach(0)
+end
+
+test "subscribe messages are capped at 64 names" do
+  ws = connect("mode=json")
+  4.times do |t|
+    names = Array.new(0) { "" }
+    16.times { |i| names << "t#{t}n#{i}" }
+    ws.send_text("{\"subscribe\":\"#{Stream.sign(names)}\"}")
+    assert next_text(ws).start_with?("{\"subscribed\":")
+  end
+  ws.send_text("{\"subscribe\":\"#{token("extra")}\"}")
+  assert_equal "{\"error\":\"too many streams\"}", next_text(ws)
+  ws.close
+  assert subscribers_reach(0)
+end
+
 test "mode=raw delivers the payload as it is" do
   ws = connect("s=#{token("a")}")
   assert subscribers_reach(1)

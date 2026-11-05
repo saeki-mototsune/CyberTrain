@@ -27,6 +27,12 @@ module Cybertrain
       # @return [Boolean]
       # @api public
       def self.start!(config = Cybertrain.config)
+        return false if @running
+
+        # Read before anything is marked running: a database that fails
+        # here leaves the poller stopped, not "running" with no thread.
+        # (Stream.max_id creates the table on a fresh database.)
+        head = Stream.max_id
         started = false
         generation = 0
         LOCK.synchronize do
@@ -39,7 +45,7 @@ module Cybertrain
         end
         return false unless started
 
-        @last_id = Stream.max_id
+        @last_id = head
         @last_prune = Time.now.to_i
         Poller.spawn_loop(config.stream_poll_ms, config.stream_retention, generation)
         true

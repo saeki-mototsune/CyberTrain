@@ -91,6 +91,8 @@ module Cybertrain
     def self.name_for(record_or_string)
       case record_or_string
       when Cybertrain::Model
+        raise ArgumentError, "Stream.name_for: the record is not saved (it has no id)" if record_or_string.id.to_i == 0
+
         table = record_or_string.class.table_name
         id = record_or_string.id.to_s
         "#{table}:#{id}"
@@ -299,21 +301,45 @@ module Cybertrain
       out
     end
 
+    # Rows one replay query reads: a connection writes each chunk before
+    # it asks for the next, so a long backlog never sits in memory whole.
+    REPLAY_CHUNK = 200
+
     # The messages of `names` still in the table with an id above
-    # `after_id`, oldest first: what a reconnecting client missed
-    # (`Last-Event-ID`, `?after=`). At most {Config#stream_max_backlog}.
+    # `after_id`, oldest first, at most `limit` (one chunk): what a
+    # reconnecting client missed (`Last-Event-ID`, `?after=`). Filtered in
+    # SQL on the (stream, id) index. The endpoint pages through the backlog
+    # with it, from the last id it sent, until a chunk comes back short or
+    # passes the subscriber's cursor; retention is what bounds it.
     # @param names [Array<String>]
     # @param after_id [Integer]
+    # @param limit [Integer]
     # @return [Array<Message>]
     # @api public
-    def self.replay(names, after_id)
-      limit = Cybertrain.config.stream_max_backlog
-      all = Stream.messages_after(after_id, limit * MAX_NAMES)
+    def self.replay(names, after_id, limit = REPLAY_CHUNK)
       out = Array.new(0) { Message.new(0, "", "") }
+      return out if names.empty?
+
+      ensure_installed
+      marks = +""
+      binds = Cast.binds
       i = 0
-      while i < all.size && out.size < limit
-        msg = all[i]
-        out << msg if Stream.name_in?(names, msg.message_stream)
+      while i < names.size
+        marks << ", " if i > 0
+        marks << "?"
+        binds << Cast.to_sql(names[i])
+        i += 1
+      end
+      binds << Cast.to_sql(after_id)
+      binds << Cast.to_sql(limit)
+      sql = +"SELECT id, stream, payload FROM cybertrain_messages WHERE stream IN ("
+      sql << marks
+      sql << ") AND id > ? ORDER BY id LIMIT ?"
+      rows = DB.with { |c| c.execute(sql, binds) }
+      i = 0
+      while i < rows.size
+        row = rows[i]
+        out << Message.new(Cast.int(row["id"]), Cast.str(row["stream"]), Cast.str(row["payload"]))
         i += 1
       end
       out

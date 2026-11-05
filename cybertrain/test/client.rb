@@ -71,25 +71,6 @@ module Cybertrain
       out.b
     end
 
-    # Drives an App (or a bare Router) in-process, the way Rails integration
-    # tests do: no socket, one Context per request, and a cookie jar that
-    # carries Set-Cookie values into the next request's Cookie header.
-    #
-    # Sessions, flash and CSRF behave as behind a browser: a form POST needs
-    # the `authenticity_token` from a page the client rendered. Redirects
-    # are not followed unless you call {#follow_redirect!}. Requires
-    # `require "cybertrain/test/client"` (which also loads {Test}).
-    # @example
-    #   # BLOG and BlogTest come from examples/blog/test/support/blog_test.rb
-    #   client = Cybertrain::Test::Client.new(BLOG)
-    #   client.get("/articles/new")
-    #   res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
-    #                                    "article[title]" => "Hello Rails",
-    #                                    "article[body]" => "I am on Rails! This is my first article." })
-    #   assert_response res, :see_other
-    #   client.follow_redirect!
-    #   assert_includes client.response.body, "Hello Rails"
-    # @api public
     # The Sink {Client#get_stream} hands a writer: it keeps what is written
     # and reports itself closed once `events` events were written or the
     # timeout passed, so the writer's loop ends.
@@ -98,6 +79,7 @@ module Cybertrain
         @closed = false
         @chunked = false
         @broken = false
+        @write_timeout = 0
         @memory = +""
         @memory_events = 0
         @memory_wanted = events
@@ -135,6 +117,25 @@ module Cybertrain
       end
     end
 
+    # Drives an App (or a bare Router) in-process, the way Rails integration
+    # tests do: no socket, one Context per request, and a cookie jar that
+    # carries Set-Cookie values into the next request's Cookie header.
+    #
+    # Sessions, flash and CSRF behave as behind a browser: a form POST needs
+    # the `authenticity_token` from a page the client rendered. Redirects
+    # are not followed unless you call {#follow_redirect!}. Requires
+    # `require "cybertrain/test/client"` (which also loads {Test}).
+    # @example
+    #   # BLOG and BlogTest come from examples/blog/test/support/blog_test.rb
+    #   client = Cybertrain::Test::Client.new(BLOG)
+    #   client.get("/articles/new")
+    #   res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
+    #                                    "article[title]" => "Hello Rails",
+    #                                    "article[body]" => "I am on Rails! This is my first article." })
+    #   assert_response res, :see_other
+    #   client.follow_redirect!
+    #   assert_includes client.response.body, "Hello Rails"
+    # @api public
     class Client
       FORM_TYPE = "application/x-www-form-urlencoded"
       REMOTE_ADDR = "127.0.0.1"

@@ -159,6 +159,19 @@ def subscribers_reach(n, seconds = 3.0)
   true
 end
 
+def occurrences(text, needle)
+  n = 0
+  from = 0
+  while true
+    at = text.byteindex(needle, from)
+    break if at.nil?
+
+    n += 1
+    from = at + needle.bytesize
+  end
+  n
+end
+
 def token(*names)
   list = Array.new(0) { "" }
   names.each { |n| list << n }
@@ -324,6 +337,35 @@ test "Test::Client#get_stream runs the writer in memory" do
   assert_equal 0, Stream.hub.subscriber_count
   live = client.get_stream("/live", events: 5)
   assert_equal "data: hi\n\ndata: bye\n\n", live.body
+end
+
+test "a backlog longer than one replay chunk arrives whole and once" do
+  first = 0
+  450.times do |i|
+    id = Stream.broadcast("long", "l#{i}")
+    first = id if i == 0
+    Stream.broadcast("other", "o#{i}")
+  end
+  client = Cybertrain::Test::Client.new(STACK)
+  res = client.get_stream("/cybertrain/stream?s=#{token("long")}", events: 450, timeout: 5,
+                                                                    headers: { "last-event-id" => (first - 1).to_s })
+  text = res.body
+  seen = 0
+  450.times { |i| seen += 1 unless text.byteindex("data: l#{i}\n\n").nil? }
+  assert_equal 450, seen
+  assert_equal 450, occurrences(text, "data: l")
+  assert_equal 0, occurrences(text, "data: o")
+end
+
+test "the request log writes the stream tokens as [FILTERED]" do
+  io = StringIO.new
+  logged = Cybertrain::RequestLogger.new(STACK, Cybertrain::Logger.new(io), "/cybertrain/stream")
+  tok = token("a")
+  Cybertrain::Test::Client.new(logged).get("/cybertrain/stream?s=#{tok}&mode=raw&s=#{tok}")
+  Cybertrain::Test::Client.new(logged).get("/elsewhere?s=kept")
+  assert_includes io.string, "\"/cybertrain/stream?s=[FILTERED]&mode=raw&s=[FILTERED]\""
+  assert_includes io.string, "\"/elsewhere?s=kept\""
+  assert_nil io.string.index(tok)
 end
 
 test "stream_path \"\" leaves the endpoint out of the stack; stream_error checks the keys" do

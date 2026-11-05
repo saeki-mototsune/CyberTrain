@@ -86,8 +86,8 @@ module Cybertrain
 
     # HostAuthorization (in development) -> ErrorPages (in production) ->
     # RequestLogger (unless log_level :none) ->
-    # HealthCheck (unless health_path is "") -> Stream::Endpoint (unless
-    # stream_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
+    # Stream::Endpoint (unless stream_path is "") -> HealthCheck (unless
+    # health_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
     # CsrfProtection (if csrf; paths under csrf_exempt_prefixes pass it) ->
     # router. Built on first use, after boot has resolved the session secret.
     def stack
@@ -156,7 +156,8 @@ module Cybertrain
       built = @server
       if built.nil?
         built = Server.new(ContextHandler.new(front_app), host: @config.host, port: @config.port,
-                                                          max_body_bytes: @config.max_body_bytes)
+                                                          max_body_bytes: @config.max_body_bytes,
+                                                          stream_write_timeout: @config.stream_ping_interval)
         @server = built
       end
       built
@@ -385,7 +386,8 @@ module Cybertrain
       # The realtime endpoint (Stream::Endpoint), also before the session:
       # its authorisation is the signed token, and it sets no cookie.
       app = Stream::Endpoint.new(app, c) unless c.stream_path.empty?
-      app = RequestLogger.new(app) unless c.log_level == :none
+      # The stream path's `s` tokens are logged as [FILTERED].
+      app = RequestLogger.new(app, Cybertrain.logger, c.stream_path) unless c.log_level == :none
       app = ErrorPages.new(app, c.public_root) if c.production?
       app = HostAuthorization.new(app, c.allowed_hosts) if c.development?
       app

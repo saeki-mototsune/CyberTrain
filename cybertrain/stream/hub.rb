@@ -26,6 +26,10 @@ module Cybertrain
     # cannot keep up.
     # @api public
     class Subscriber
+      # Control messages one WebSocket may have waiting (decision: past it
+      # the connection is closed with 1008).
+      MAX_CONTROLS = 64
+
       def initialize(names, max_backlog)
         @names = Array.new(0) { "" }
         i = 0
@@ -39,6 +43,25 @@ module Cybertrain
         # The cutoff: messages with an id at or below it are not this
         # subscriber's (written before it subscribed, or sent by a replay).
         @boundary = 0
+        # WebSocket control messages queued and not yet taken, under their
+        # own lock (the reader and the session are two threads).
+        @controls = 0
+        @control_overflow = false
+        @control_lock = Mutex.new
+      end
+
+      # How many names it listens to.
+      # @return [Integer]
+      def name_count
+        @names.size
+      end
+
+      # True once the reader queued more than MAX_CONTROLS control
+      # messages the session had not taken (a client flooding pings or
+      # subscribe messages while it does not read): closed with 1008.
+      # @return [Boolean]
+      def control_overflow?
+        @control_overflow
       end
 
       # Messages with an id at or below this are skipped (Hub#deliver and
@@ -88,8 +111,13 @@ module Cybertrain
 
           message = @queue.pop(timeout: wait)
           return nil if @dropped || message.nil?
+
           # a negative id is a WebSocket reader's control message
-          return message if message.message_id > @boundary || message.message_id < 0
+          if message.message_id < 0
+            @control_lock.synchronize { @controls -= 1 }
+            return message
+          end
+          return message if message.message_id > @boundary
 
           wait = deadline - Time.now.to_f
           wait = 0.0 if wait < 0.0
@@ -139,10 +167,26 @@ module Cybertrain
       end
 
       # A WebSocket reader's control message (Stream::CONTROL_ID): queued
-      # whatever the backlog, never counted as a broadcast.
+      # outside the broadcast backlog, at most MAX_CONTROLS waiting; false
+      # (and #control_overflow?) past that, when the reader stops.
+      # @return [Boolean]
       def stream_control(message)
+        over = false
+        @control_lock.synchronize do
+          if @controls >= Subscriber::MAX_CONTROLS
+            over = true
+          else
+            @controls += 1
+          end
+        end
+        if over
+          @control_overflow = true
+          # wakes the session, which then sees control_overflow?
+          @queue << Message.new(-2, "overflow", "")
+          return false
+        end
         @queue << message
-        nil
+        true
       end
 
       def add_stream_names(names)
@@ -175,6 +219,10 @@ module Cybertrain
     # request (spikes/NOTES.md rule 57).
     # @api public
     class Hub
+      # The most names one subscription may listen to (a WebSocket client's
+      # subscribe messages): four tokens' worth.
+      MAX_SUBSCRIBED_NAMES = 64 # Stream::MAX_NAMES * 4 (stream.rb defines it after requiring this file)
+
       def initialize(max_backlog = 1000)
         @max_backlog = max_backlog
         @lock = Mutex.new
@@ -196,6 +244,27 @@ module Cybertrain
           sub.skip_through!(Poller.last_id)
           @subscribers << sub
         end
+        sub
+      end
+
+      # #subscribe unless the process already has `max` subscribers, checked
+      # under the same lock, so concurrent connections cannot overshoot
+      # Config#stream_max_connections; nil when full.
+      # @param names [Array<String>]
+      # @param max [Integer]
+      # @return [Subscriber, nil]
+      def subscribe_within(names, max)
+        sub = Subscriber.new(names, @max_backlog)
+        added = false
+        @lock.synchronize do
+          if @subscribers.size < max
+            sub.skip_through!(Poller.last_id)
+            @subscribers << sub
+            added = true
+          end
+        end
+        return nil unless added
+
         sub
       end
 
@@ -236,9 +305,18 @@ module Cybertrain
 
       # Adds or removes names of a subscription (a WebSocket client's
       # `subscribe` / `unsubscribe`), under the lock deliver takes.
+      # False (nothing added) when the subscription would pass
+      # MAX_SUBSCRIBED_NAMES names.
+      # @return [Boolean]
       def add_names(sub, names)
-        @lock.synchronize { sub.add_stream_names(names) }
-        nil
+        added = false
+        @lock.synchronize do
+          if sub.name_count + names.size <= Hub::MAX_SUBSCRIBED_NAMES
+            sub.add_stream_names(names)
+            added = true
+          end
+        end
+        added
       end
 
       def remove_names(sub, names)

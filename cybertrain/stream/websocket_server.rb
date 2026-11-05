@@ -68,8 +68,10 @@ module Cybertrain
         ""
       end
 
+      # False once the subscriber's control queue is full (the reader stops).
       def reader_push(kind, payload)
-        @sub.stream_control(Message.new(CONTROL_ID, kind, payload))
+        @done = true unless @sub.stream_control(Message.new(CONTROL_ID, kind, payload))
+        !@done
       end
 
       # Takes every whole frame off the buffer; false once the connection
@@ -111,17 +113,19 @@ module Cybertrain
         payload = WebSocket::Frame.unmask(@buf.byteslice(@pos + size, length), header.frame_mask_key)
         reader_consume(size + length)
         if op == WebSocket::Frame::OP_PING
-          reader_push("ping", payload)
+          return -1 unless reader_push("ping", payload)
         elsif op == WebSocket::Frame::OP_PONG
           reader_push("pong", "")
         elsif op == WebSocket::Frame::OP_CLOSE
+          # A close code a peer may not send is a framing error (1002).
+          WebSocket::Frame.close_code(payload)
           reader_push("close", payload)
           return -1
         else
           if @assembler.add(op, header.frame_fin, payload)
             @assembled = 0
             msg = @assembler.take_message
-            reader_push(msg.ws_opcode == :text ? "text" : "binary", msg.ws_data)
+            return -1 unless reader_push(msg.ws_opcode == :text ? "text" : "binary", msg.ws_data)
           else
             @assembled = op == WebSocket::Frame::OP_CONTINUATION ? @assembled + payload.bytesize : payload.bytesize
           end
@@ -168,7 +172,8 @@ module Cybertrain
       CLOSE_WAIT = 1.0
 
       # close_code > 0: answer the handshake with that close at once.
-      def initialize(hub, names, json, after, ping_interval, max_message, close_code)
+      def initialize(hub, names, json, after, ping_interval, max_message, close_code, max_connections)
+        @max_connections = max_connections
         @hub = hub
         @names = names
         @json = json
@@ -180,13 +185,26 @@ module Cybertrain
 
       def write_body(sink)
         hub = @hub
-        sub = hub.subscribe(@names)
+        code = @close_code
+        sub = Subscriber.new(Array.new(0) { "" }, 1)
+        if code == 0
+          # The limit under the hub's lock (see SSEWriter#write_body).
+          within = hub.subscribe_within(@names, @max_connections)
+          if within.nil?
+            code = 1013
+          else
+            sub = within
+          end
+        end
+        # A connection closed at once keeps a subscriber of its own, outside
+        # the hub, for the reader's control messages while it waits for the
+        # client's close.
         sock = sink.socket
         reader = WsReader.new(sock, sub, @max_message)
         thread = WebSocketWriter.spawn_reader(reader)
         begin
-          if @close_code > 0
-            ws_close(sink, sub, @close_code)
+          if code > 0
+            ws_close(sink, sub, code)
           else
             ws_session(sink, sub)
           end
@@ -225,22 +243,45 @@ module Cybertrain
       def ws_session(sink, sub)
         last = Stream.replay_start(@after, sub)
         if last >= 0
-          backlog = Stream.replay(sub.stream_names, last)
-          i = 0
-          while i < backlog.size
-            msg = backlog[i]
-            ws_send(sink, WebSocket::Frame::OP_TEXT, ws_text(msg))
-            last = msg.message_id
-            i += 1
+          # By chunks, as SSEWriter does.
+          cursor = sub.boundary
+          names = sub.stream_names
+          while !sink.closed?
+            backlog = Stream.replay(names, last)
+            i = 0
+            while i < backlog.size
+              msg = backlog[i]
+              ws_send(sink, WebSocket::Frame::OP_TEXT, ws_text(msg))
+              last = msg.message_id
+              i += 1
+            end
+            break if backlog.size < Stream::REPLAY_CHUNK || last >= cursor
           end
           sub.skip_through!(last)
         end
         ping = @ping_interval.to_f
         slice = ping < SLICE ? ping : SLICE
-        quiet_since = Time.now.to_f
+        started = Time.now.to_f
+        quiet_since = started
         while !sink.closed?
           if sub.dropped?
             ws_close(sink, sub, 1013)
+            return nil
+          end
+          if sub.control_overflow?
+            ws_close(sink, sub, 1008)
+            return nil
+          end
+          # The server stops (as the SSE loop ends with the poller).
+          unless Poller.running?
+            ws_close(sink, sub, 1000)
+            return nil
+          end
+          # Decision: a connection that listens to nothing (mode=json with
+          # no token and no subscribe) for one ping interval is closed with
+          # 1008, so it cannot hold a connection slot on pings alone.
+          if sub.name_count == 0 && Time.now.to_f - started >= ping
+            ws_close(sink, sub, 1008)
             return nil
           end
           msg = sub.stream_pop(slice)
@@ -268,9 +309,14 @@ module Cybertrain
         when "text"
           ws_client_text(sink, sub, payload) if @json
         when "close"
-          # answered with the client's code (none for an empty close)
-          answer = payload.bytesize >= 2 ? payload.byteslice(0, 2) : ""
+          # The reader validated it (Frame.close_code); answered with the
+          # client's code, none for an empty close, never its raw bytes.
+          code = WebSocket::Frame.close_code(payload)
+          answer = code == 1005 ? "" : WebSocket::Frame.close_payload(code, "")
           ws_send(sink, WebSocket::Frame::OP_CLOSE, answer)
+          return false
+        when "overflow"
+          ws_close(sink, sub, 1008)
           return false
         when "eof"
           # the client is gone, or the server shut the read side to stop:
@@ -301,7 +347,10 @@ module Cybertrain
           return nil
         end
         if kind == "subscribe"
-          @hub.add_names(sub, names)
+          unless @hub.add_names(sub, names)
+            ws_send(sink, WebSocket::Frame::OP_TEXT, "{\"error\":\"too many streams\"}")
+            return nil
+          end
           ws_send(sink, WebSocket::Frame::OP_TEXT, JSON.generate({ "subscribed" => sub.stream_names }))
         else
           @hub.remove_names(sub, names)
