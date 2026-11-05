@@ -1,9 +1,18 @@
-# M0 spike verdicts (Spinel 2026.09.12)
+# M0 spike verdicts and Spinel rules
 
 Throwaway programs under `spikes/` answered the design questions in
-`docs/design.md` section 9. This file is the durable record; the programs
-themselves were deleted once the framework covered them (`git log -- spikes/`
-finds the commit that removed them).
+`docs/design.md` section 9, on Spinel 2026.09.12. This file is the durable
+record; the programs themselves were deleted once the framework covered
+them (828e220, 2026-09-27; `git log --diff-filter=D -- spikes/` in a full
+clone).
+
+The rules below grew from those spikes and from everything found since,
+most of it on 2026.09.12. A rule says which build it was seen on; where it
+says nothing, that is 2026.09.12. Whether a rule still reproduces on the
+build CyberTrain is pinned to now is in "Status on 2026.11.04.7026" below.
+Rules are cited by number across the repository ("NOTES rule 62"), so they
+are never renumbered: a new finding gets the next number, and a rule that
+no longer holds is marked, not removed.
 
 | # | Question | Verdict |
 | --- | --- | --- |
@@ -15,6 +24,79 @@ finds the commit that removed them).
 | 6 | SQLite FFI + pool | **Go.** All bindings work; `-1` literal is `SQLITE_TRANSIENT`; static `ffi_buffer` out-params crash under threads, use `malloc`ed scratch per call. |
 | 7 | trap / execv / SO_REUSEADDR | **Go.** `trap("HUP")` fires in compiled binaries; execv via a 6-line `ffi_source` shim keeps the PID; same port rebinds immediately. |
 | 8 | stdlib packages | **Go.** json, openssl (HMAC needs Homebrew OpenSSL on the link path), securerandom, base64, uri, strscan, stringio all work. `cgi` is absent at this tag. |
+
+The verdicts are 2026.09.12's; row 2 is revisited under "Status on 2026.11.04.7026".
+
+## Status on 2026.11.04.7026
+
+Checked on 2026-11-04 with Spinel 2026.11.04.7026 (a2d06115f), the pinned
+`Cybertrain::SPINEL_TAG`, built from source, by compiling each re-checked
+rule's reduced program (or, where the rule has none, a small probe of the
+shape it describes; the rules marked "Not re-checked" were not run) and
+comparing its output with CRuby 3.3's. With that build `spin test` passes 106 of 106 of the framework's tests.
+
+- **Still there**: the program still differs from CRuby or does not compile.
+- **Reduced program passes**: the rule's own reduced program prints Ruby's
+  result. The rule's cause is gone in that shape.
+- **Probe passes**: a small program of the shape the rule describes prints
+  Ruby's result, but the rule was seen in a larger program and never
+  reduced, so this does not show that it is gone.
+- **Not re-checked**: no one has tried it on this build. That is not a
+  claim either way.
+
+A rule whose program passes is not a licence to drop the workaround: the
+framework keeps following every rule until a change removes the workaround
+together with a test that covers the shape (as rule 77's did), and new code
+keeps following them. docs/spinel-feedback.md has the items that were
+written up for upstream.
+
+| Rule | On 2026.11.04.7026 |
+| --- | --- |
+| 2 | **Still there** for `instance_exec(&stored)` ("unsupported call: CallNode `instance_exec`"). A computed `send` over 150 method names in one class dispatches and `respond_to?` answers (probe passes); Spinel's docs/limitations.md now caps such a dispatch at 1024 arms. |
+| 7, 8, 9, 10/34, 14, 29, 31, 40, 42, 43, 55, 67, 68 | Probe passes. |
+| 12, 18, 26, 47, 53, 54, 66, 73, 74, 77 | Reduced program passes (18: the class variable is also marked as a GC root, see 64). 47's last sentence (a `begin ... ensure ... end` ending a block) passes as a probe. |
+| 25 | **Still there**, by design (docs/spinel-feedback.md D). |
+| 28 | Probe passes: `URI.decode_www_form_component("%ZZ")` raises ArgumentError as under CRuby. |
+| 32 | The shape described (a yielding method with `rescue => e` called from a block nested in another block) compiles when the inner block has a value; a block whose only expression is `raise` fails to compile, a different trigger (rule 79). Rule 45's C error was not re-checked. |
+| 38 | Not a Spinel rule: CRuby raises NoMethodError too (a protected method is callable only with an instance of the class as `self`, not from a class method). |
+| 44 | Probe passes (`break` out of a block whose `yield` sits inside `begin/rescue`). |
+| 46 | `Class#name` now carries the namespace (`"JSON::ParserError"`, as CRuby). The thread stack and Hash literal parts were not re-checked. |
+| 48 | Probe passes: `klass = JSON::ParserError` is a value. |
+| 49 | **Still there**: decoding e-acute + 50,000 / 100,000 / 200,000 bytes takes 224 / 855 / 3,668 ms (quadratic). |
+| 51 | `Hash#keys` next to a user class's `keys` dispatches (probe passes); the Symbol-and-String key part was not re-checked. |
+| 52 | **Still there**: `"a=1&\x81b=2".byteindex("b", 4)` returns 5 where CRuby raises IndexError. |
+| 56 | `String#to_sym` is hashed since 2026.10.25-7018 (docs/spinel-feedback.md); the rest was not re-checked. |
+| 60 | Reduced program passes (the NUL byte and what follows are kept). |
+| 61 | Probe passes: `rescue JSON::ParserError, StandardError` catches `JSON.generate`'s NestingError. |
+| 62 | Reduced program passes: with `require "openssl"`, `getbyte` on a boxed String prints 97, and the C has no `sp_nomethod_msg("getbyte"` switch. |
+| 64, 65 | Marked / rooted in the shape checked (docs/spinel-feedback.md, "From spikes/NOTES.md"). |
+| 70 | Probe passes in a small program; the rule was seen only with the whole framework required, so not conclusive. |
+| 72 | Probe passes for two parts: an unresolvable name raises SocketError, and `entry[3]` indexes a `getaddrinfo` entry. The rest was not re-checked. |
+| 75 | Probe passes: Kernel `spawn` and `Process.spawn` compile and `Process.wait` reaps the child. `VACUUM INTO` was not re-checked. |
+| 76 | Matches CRuby: a bare `DB` outside `module Cybertrain` raises NameError, as under CRuby. The rule stays: such code must spell `Cybertrain::DB`. |
+| 78 | **Still there** (docs/spinel-feedback.md K). |
+| 79 | **Still there**: found on this build (its reduced program does not compile). |
+| 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
+
+## Rules by topic
+
+The rules are numbered in the order they were found. By topic:
+
+- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77
+- A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
+  43, 51, 62, 66 (second paragraph)
+- Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
+  37, 46 (Hash literals), 56, 63, 71, 73
+- Polymorphic values and narrowing: 8, 14, 29, 35
+- Constants, class variables, module state: 17, 18, 64, 70, 74, 76
+- Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
+  79
+- Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
+- Memory and GC roots: 58, 64, 65
+- Request decoding: 28, 49, 52
+- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78
+- FFI: 15, 59
+- Tests and tools: 23, 24, 36, 41, 63
 
 ## Rules every framework file must follow (derived from the spikes)
 
@@ -64,7 +146,9 @@ finds the commit that removed them).
 19. `STDOUT` and a `StringIO` cannot share one polymorphic call site (`io.puts`
     where `io` is sometimes `STDOUT` and sometimes a `StringIO` raises
     NoMethodError for one branch). Keep such handles in separate typed slots
-    and branch explicitly (`if @io then @io.puts(line) else STDOUT.puts(line) end`).
+    and branch explicitly (`if @io then @io.write(line.end_with?("\n") ? line : "#{line}\n") else
+    STDOUT.puts(line) end`;
+    `write`, not `puts`, on `@io` because of rule 78).
     (`cybertrain/logger.rb`: never pass STDOUT/STDERR as a constructor
     argument next to a StringIO-accepting call site.)
 20. Sockets: never call `readpartial` without `sock.wait_readable(timeout)`
@@ -77,14 +161,17 @@ finds the commit that removed them).
     Spawn through a method whose parameter the closure captures:
     `def spawn_conn(sock); Thread.new { serve(sock) }; end`.
 22. For I/O-bound servers `SPINEL_WORKERS=1` was faster (54-58k rps) than the
-    10-worker default (25-45k rps) and had no 40-80 ms stalls; set it from the
-    binary (`ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]`) before
-    the first `Thread.new`, and re-measure once templates and SQLite add CPU work.
+    10-worker default of 2026.09.12 (25-45k rps) and had no 40-80 ms stalls
+    (newer Spinel defaults to the number of online cores: Spinel's
+    docs/thread.md); set it from the binary before the first `Thread.new`
+    (`Application#serve` assigns `ENV["SPINEL_WORKERS"] = @config.workers.to_s`,
+    and `Config#workers` reads `SPINEL_WORKERS`, default 1), and re-measure
+    once templates and SQLite add CPU work.
     Re-measured with examples/blog on two cores ([docs/benchmark.md](../docs/benchmark.md)):
     `SPINEL_WORKERS=2` adds 16-27% to the pages, 51% to a comment POST and
     49% to a static file. The POST used to lose a quarter: SQLite's
     busy_timeout slept a millisecond or more holding the worker, until a
-    busy handler retrying every 100 us replaced it (db/sqlite_ffi.rb). 1 stays
+    busy handler retrying every 100 us replaced it (cybertrain/db/sqlite_ffi.rb). 1 stays
     the default (a one-core server); set it to the core count otherwise.
 23. `spin test --regen` writes `.expected` from CRuby's output; `spin test` diffs
     the Spinel binary's output (stdout and stderr merged) against it. Tests must
@@ -92,14 +179,16 @@ finds the commit that removed them).
     FFI tests get their snapshot from the compiled binary
     (`./build/test/<name> > test/<name>.rb.expected`). CRuby is only needed for
     `--regen`, never for `spin test` with committed snapshots.
-24. `spin test` compiles the test program with `--require-gate`; a test must
-    `require "cybertrain/test"` itself or `test "..."` fails to compile with an
-    'unsupported call' error.
+24. A test must `require "cybertrain/test"` itself or `test "..."` fails to
+    compile with an 'unsupported call' error. (On 2026.09.12 `spin test`
+    compiled test programs with `--require-gate`; the `spin` of 2026.11.04.7026,
+    tools/spin.rb, passes no such flag.)
 25. `String#to_i` raises `RangeError` ("integer overflow parsing ...") past
     2**63-1 instead of promoting to Bignum (verified on 2026.09.12; an
     earlier note said it saturates, which it does not). Request data that
     is parsed with `to_i` (an id, a page number) must be length-checked
-    first, as Server#body_length does, or a 20-digit parameter is a 500.
+    first, as Server#body_length and Request#content_length do, or a
+    20-digit parameter is a 500.
 26. `obj.attr += x` (an operator-assignment on a method call) does not compile
     inside a block or lambda ("unsupported expression: CallOperatorWriteNode");
     write `obj.attr = obj.attr + x`. It is fine at top level and in method bodies.
@@ -132,7 +221,9 @@ finds the commit that removed them).
     nested in another block gets a polymorphic `e` slot and fails to compile.
     Keep begin/rescue in a non-yielding method that receives the block as a Proc.
 33. `JSON::ParserError` is not a `StandardError` in the runtime's exception
-    table: write `rescue JSON::ParserError, StandardError`.
+    table: write `rescue JSON::ParserError, StandardError`, and name
+    `JSON::NestingError` before both (rule 61): `rescue JSON::NestingError,
+    JSON::ParserError, StandardError`.
 34. Rule 10 is stronger than stated: two methods sharing a name on unrelated
     classes whose return types differ (`add_index` returning an Index vs an
     Array) corrupt inference even when no polymorphic receiver exists, with the
@@ -174,7 +265,6 @@ finds the commit that removed them).
     called later (`url_resolver: ->(name, args) { ... }` gave name = 4295868465).
     Pass lambdas positionally, as `&block`, or return them from a method
     (`Gen::Routes.url_resolver`).
-
 43. A `def x=(v)` on one class next to an `attr_accessor :x` on another makes
     the accessor's writer undefined at run time for a boxed receiver
     ("undefined method 'body=' for an instance of Cybertrain::Response" once
@@ -213,8 +303,8 @@ finds the commit that removed them).
     the last expression of a block does not type either (same C error as
     rule 32's); end the block with an explicit `nil` after it.
 48. `JSON::ParserError` exists only in a rescue clause. `rescue
-    JSON::ParserError, StandardError => e` compiles and catches it (rule
-    33), but the constant as a value -- `rescue_from(JSON::ParserError)`,
+    JSON::NestingError, JSON::ParserError, StandardError => e` compiles and
+    catches it (rules 33 and 61), but the constant as a value -- `rescue_from(JSON::ParserError)`,
     `klass = JSON::ParserError` -- is "uninitialized constant
     JSON::ParserError (NameError)" when the program starts. So an app cannot
     register a `rescue_from` handler for it under Spinel; Controller#run_action
@@ -304,7 +394,6 @@ finds the commit that removed them).
     (runtime-dependent); assert only that the other tree (a merge!
     source) is untouched. merge!'s per-String copies are what make that true
     under CRuby; under Spinel they cost a copy and change nothing.
-
 56. Typing for speed (Spinel 2026.09.12; `spinel app.rb --emit-types` writes
     `app.types.json`, whose diagnostics name each method "widened to
     untyped", and `-S` shows the C):
@@ -329,8 +418,10 @@ finds the commit that removed them).
       assigns a fresh Array.
     - A nullable object passed as a parameter is boxed; returning it from
       there makes the method's result polymorphic.
-    - `String#to_sym` searches the whole symbol table linearly. Keep the
-      Symbol a template passes rather than round-tripping through a String.
+    - `String#to_sym` searches the whole symbol table linearly (hashed since
+      2026.10.25-7018, docs/spinel-feedback.md). Keeping the Symbol a
+      template passes rather than round-tripping through a String still
+      saves the lookup.
     - `str.setbyte` writes a heap String in place; `str << int` makes a
       one-character String per call.
 57. A `Mutex#synchronize` taken on every request stalls requests for seconds
@@ -358,7 +449,6 @@ finds the commit that removed them).
     `const unsigned char *`) and an `:long` return is `long` (not `long
     long`), or the build stops with "conflicting types". Cast inside the
     function instead (`db/sqlite_ffi.rb`, `cybertrain_sqlite_column_epoch`).
-
 60. A String local that is appended to inside a loop (`rest << chunk`) and
     not read in that loop is compiled as a growable buffer, and a String
     ASSIGNED to it (`rest = buf.byteslice(...)`) is copied into the buffer
@@ -371,7 +461,6 @@ finds the commit that removed them).
     it the same way; concatenate with `<<` instead. Reduced repro: a method
     assigning `rest = buf.byteslice(4, n)` then `rest << "!"` in a `while`
     prints `[97, 98, 33]` for `"ab\x00cd"` under Spinel 2026.09.12.
-
 61. `JSON::NestingError` (what `JSON.generate` raises past 100 levels, which
     a parsed document can reach: `JSON.parse` accepts 200) is a subclass of
     `JSON::ParserError` in the runtime's table, but `rescue
@@ -381,7 +470,6 @@ finds the commit that removed them).
     leaked the socket and its connection count. Every rescue that names
     `JSON::ParserError` names `JSON::NestingError` first, and an app's
     rescue around JSON.generate of request data must too.
-
 62. A method defined in Ruby source with the name of a builtin method
     (`getbyte`, `puts`, `read`, `gets`, `close`, `write`, `<<`) changes how
     every call of that name on a **boxed** receiver compiles: a switch over
@@ -481,7 +569,6 @@ finds the commit that removed them).
     class and `x.class.name` on a boxed value did not fail, so the trigger
     is something else in the framework. The reader is `zone_name`; a new
     framework class should not define `name` as a plain method.
-
 67. A yielding method is never emitted as a C function: Spinel inlines it at
     each call site whose receiver it knows. Called on a boxed receiver it is
     therefore NoMethodError at run time (the dispatch `switch` has no case),
@@ -493,7 +580,6 @@ finds the commit that removed them).
     has to be called on a typed receiver (`Connection.new`'s result, as the
     migrator does). `DB.transaction` and `Connection#begin!` / `commit!` /
     `rollback!` (plain methods) are the forms for a pooled connection.
-
 68. A block that reads a parameter of an enclosing block does not compile
     when it is a Proc (taken as `&block` and called with `block.call`) and
     the enclosing block itself sits in another block: "'lv_i__bpN'
@@ -505,7 +591,6 @@ finds the commit that removed them).
     an action) compiles (2026-10-25). Keep framework methods that every
     application nests deeply (DB.with) yielding, and hoist such loops into a
     method.
-
 69. A method that takes `&block` and calls `block.call` is inlined at its
     call sites like a yielding one, so a rescue or ensure in it hits rules
     32/45 ("incompatible types when returning type 'sp_RbVal' but 'sp_int'
@@ -519,14 +604,12 @@ finds the commit that removed them).
     block passes it to still worked, since the helper learned the class from
     its other callers, which is how a test can miss it. Test such a block
     with a method call written in the block itself.
-
 70. `rescue DB::Error => e`, with `DB = Cybertrain::DB` at the top of a test
     program, compiled to a match on the names "Error" / "DB::Error" in a
     program that requires the whole framework (test/db_transaction_api.rb,
     2026-10-25), so it never caught a raised `Cybertrain::DB::Error`; in
     test/db_transaction.rb, which requires only the db files, the same
     clause matches the full name. Spell the full name in a rescue clause.
-
 71. Narrowing does not type a return value: `case v when Hash then v else
     {} end` on a polymorphic `v` (a `JSON.parse` result) is
     `(untyped) -> untyped` in `spinel --emit-rbs` (2026.09.12), so every
@@ -541,16 +624,6 @@ finds the commit that removed them).
     also with no arguments), and a class method inherited from a base
     class that calls an overridden class method on implicit self
     (`Model.upsert` reading each subclass's `table_name`).
-
-## Numbers worth remembering
-
-- HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.
-- Template render (32 KB page, 50 posts): hand-written 122-136 µs, interpreter 203 µs.
-- HTML escape: byte scan with fast path 506 ns / 2 strings; `gsub` with a Hash 587 ns; `each_char` 2541 ns.
-- SQLite: 1.5 M inserts/s inside one transaction, ~70 K/s autocommit; pool of 4 serving 8 threads: ~55 K statements/s.
-- HMAC-SHA256 via `OpenSSL::HMAC.hexdigest("SHA256", key, data)`; `Digest::SHA256.digest` is vendored in the runtime (no OpenSSL link needed), so the framework implements HMAC in Ruby on top of it.
-- PBKDF2-HMAC-SHA256 in Ruby over that digest (`Cybertrain::Password`, two `Digest::SHA256.digest` calls and two concatenations per iteration; the runtime has no incremental digest API): 100,000 iterations 197 ms compiled, 660 ms under CRuby 3.3; 600,000 iterations 1.09 s compiled (2026-10-22, one cloud vCPU). `String#crypt` exists but is libc crypt(3), so bcrypt only where libxcrypt is (not macOS). The `while` loop's back-edges are safepoints, so a hash in progress is preempted like any other thread (docs/thread.md).
-
 72. Outbound sockets under Spinel 2026.09.12 (cybertrain/net/socket.rb):
     `Socket.getaddrinfo(host, port)` works and answers CRuby's arrays, but
     an unresolvable name gives `[]` instead of raising `SocketError`, and an
@@ -587,7 +660,6 @@ finds the commit that removed them).
     there rule 62 caught two more byte scans that only that combination
     boxes: `Query.split_key` and `BlobStore.valid_key?` (both now read
     through a `to_s` local).
-
 73. An instance variable first assigned in a helper method that `initialize`
     calls, rather than in `initialize` itself, is typed as a boxed value
     (`sp_RbVal`) even when every assignment is a String (Spinel
@@ -599,7 +671,6 @@ finds the commit that removed them).
     ""; end; end` and `def show(name: Conf.new.name) = puts(name.bytesize)`;
     the struct has `sp_RbVal iv_name`. Assign every ivar in `initialize`
     (Config's `smtp_*` settings, cybertrain/mailer.rb, issue #64).
-
 74. A constant a subclass inherits from its superclass is not found by its
     bare name in the subclass's methods once another class anywhere in the
     program defines a constant of the same name (Spinel 2026.09.12): the
@@ -614,7 +685,6 @@ finds the commit that removed them).
     constants of that name (issue #78). Spell an inherited constant with its
     owner (`Receiver::MAX_LINE_BYTES`, which is what the receivers do now),
     and read the warnings `spin test` prints.
-
 75. Files and child processes for `db backup` (Spinel 2026.09.12, issue
     #76): `File.open(path, File::WRONLY | File::CREAT | File::EXCL, 0o600)`
     creates the file with that mode and raises `Errno::EEXIST` for an
@@ -633,7 +703,6 @@ finds the commit that removed them).
     "backup", ...)` from a Scheduler task) instead of running a long
     `VACUUM INTO` on a thread of the server, where the SQLite call would hold
     its OS worker until it returns.
-
 76. Spinel 2026.10.26.7019 resolves constants as CRuby does: a bare `DB`
     in an application class outside `module Cybertrain` (`class
     SessionsController < ApplicationController; def x = DB.with { ... }`)
@@ -643,7 +712,6 @@ finds the commit that removed them).
     Cybertrain` (the app, generator templates, tests, README snippets)
     writes `Cybertrain::DB`, `Cybertrain::Job`, `Cybertrain::Password` and
     so on, or aliases one at the top (`DB = Cybertrain::DB`, as the tests do).
-
 77. The value of a block forwarded with `&block` to a yielding method loses
     an application class once the program's blocks for that method return
     different types (Spinel 2026.10.26.7019; fine on 2026.09.12; on
@@ -677,7 +745,6 @@ finds the commit that removed them).
     2026.10.27.7020** (matz/spinel#10415, issue #90): the block's own value
     keeps the class, so the typed local is no longer needed with the
     pinned release; the test covers both forms.
-
 78. `puts` on a receiver whose type is nil-only (an ivar only ever assigned
     nil, like Logger's `@io` in a program that never passes a logger an
     io) goes through the IO dispatch, and on Spinel 2026.10.26.7019 that
@@ -694,3 +761,22 @@ finds the commit that removed them).
     the right argument type, so Logger#log calls
     `@io.write(line.end_with?("\n") ? line : "#{line}\n")`.
     test/logger_tls.rb is the regression program.
+79. A yielding method with a `rescue` clause, given a block whose only
+    expression is `raise`, does not compile when its value is appended
+    (`out << g { raise "b" }`): "variable or field '_sp_fv' declared void"
+    in spinel_rt.h (Spinel 2026.11.04.7026). Reduced repro: `def g; yield;
+    rescue => e; e.message; end`, `out = []`, `out << g { raise "b" }`, `p
+    out` (CRuby: `["b"]`); `p g { raise "b" }` and `p h(g { raise "b" })`
+    compile, and so does a block that can also return a value (`raise "b"
+    if x > 0; "ok"`). Found while re-checking rule 32. In a test of a
+    rescuing helper, give the block a value after the raise or pass the
+    result through a method.
+
+## Numbers worth remembering
+
+- HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.
+- Template render (32 KB page, 50 posts): hand-written 122-136 µs, interpreter 203 µs.
+- HTML escape: byte scan with fast path 506 ns / 2 strings; `gsub` with a Hash 587 ns; `each_char` 2541 ns.
+- SQLite: 1.5 M inserts/s inside one transaction, ~70 K/s autocommit; pool of 4 serving 8 threads: ~55 K statements/s.
+- HMAC-SHA256 via `OpenSSL::HMAC.hexdigest("SHA256", key, data)`; `Digest::SHA256.digest` is vendored in the runtime (no OpenSSL link needed), so the framework implements HMAC in Ruby on top of it.
+- PBKDF2-HMAC-SHA256 in Ruby over that digest (`Cybertrain::Password`, two `Digest::SHA256.digest` calls and two concatenations per iteration; the runtime has no incremental digest API): 100,000 iterations 197 ms compiled, 660 ms under CRuby 3.3; 600,000 iterations 1.09 s compiled (2026-10-22, one cloud vCPU). `String#crypt` exists but is libc crypt(3), so bcrypt only where libxcrypt is (not macOS). The `while` loop's back-edges are safepoints, so a hash in progress is preempted like any other thread (Spinel's docs/thread.md, "The execution model").
