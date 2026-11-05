@@ -386,9 +386,15 @@ up to 15% here, more than on the benchmark machine.
 | Peak RSS | 15.6 MB | 15.7 MB | 15.8 MB |
 | `GET /articles/1`, requests a second (2 runs) | 2,150 / 2,382 | 2,258 / 2,018 | 2,304 / 2,277 |
 
-The three are within the spread of each other on every row; if anything
-2026.11.04.7026 is a few percent quicker, which these runs cannot
-establish. Alongside: the objects allocated (`SPINEL_ALLOC_REPORT`, see
+The runs of the three releases overlap on every row: requests a second
+were 1,023 to 1,234 on 2026.10.27.7020, 1,143 to 1,275 on 2026.11.03.7025
+and 1,171 to 1,304 on 2026.11.04.7026, and p99 was 25.0 to 29.6 ms, 25.4
+to 27.8 ms and 23.8 to 30.1 ms. The medians put 2026.11.04.7026 12% ahead
+on requests a second and 17% ahead on p99, but one run of 2026.10.27.7020
+(1,234 requests a second, p99 25.0 ms) sits inside 2026.11.04.7026's
+range, so three runs per release do not establish a difference either
+way; what they do establish is that 2026.11.04.7026 is not slower.
+Alongside: the objects allocated (`SPINEL_ALLOC_REPORT`, see
 E) are 1% fewer on 2026.11.04.7026 for the same requests; `futex` calls
 per request are the same (see 4); the collector's cadence is the same
 (see 5); the blog binary grew from 3.80 MB on 2026.10.27.7020 to 4.00 MB
@@ -1392,7 +1398,7 @@ interpolation in place of the parameter.
 ### Rule 79: a rescuing method's value does not compile when its block only raises
 
 Found on 2026-11-04 on 2026.11.04.7026 while re-checking rule 32, and
-**not new there**: on 2026-11-05 the same program failed the same way on
+**not new in 2026.11.04.7026**: on 2026-11-05 the same program failed the same way on
 2026.10.27.7020 and 2026.11.03.7025, so it is not a regression of the
 2026-11-04 pin, only one that had not been tried before. CRuby prints
 `["b"]`:
