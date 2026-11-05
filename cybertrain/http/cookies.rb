@@ -77,7 +77,9 @@ module Cybertrain
     # @api public
     def self.serialize(name, value, path: "/", max_age: -1, http_only: true, same_site: "Lax", secure: false,
                        partitioned: false)
-      out = +"#{name}=#{URI.encode_www_form_component(value)}"
+      text = value.to_s # a String for Query.plain?'s byte reads (see Html.escape)
+      encoded = Query.plain?(text) ? text : URI.encode_www_form_component(text)
+      out = +"#{name}=#{encoded}"
       out << "; Path=#{path}"
       out << "; HttpOnly" if http_only
       out << "; SameSite=#{same_site}"
