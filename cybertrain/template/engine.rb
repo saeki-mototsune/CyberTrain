@@ -48,9 +48,15 @@ module Cybertrain
     end
 
     class Engine
+      # The key prefix of a component template ("__components/card_component.html.erb"):
+      # one no view under app/views has unless it sits in a directory named
+      # "__components", which is reserved. gen/views.rb embeds the component
+      # templates under it (Gen::ViewsEmitter), next to the views.
+      COMPONENTS_PREFIX = "__components/"
+
       attr_reader :root, :components_root
 
-      # components_root: where names under "components/" are read from
+      # components_root: where names under COMPONENTS_PREFIX are read from
       # (app/components beside app/views, spec 3.2); "" derives it from root.
       def initialize(root, cache: true, max_render_depth: MAX_RENDER_DEPTH, components_root: "")
         # Views.configure and Views.configure_embedded (Engine.embedded) both
@@ -224,10 +230,11 @@ module Cybertrain
         text.end_with?(".erb") ? text : "#{text}.html.erb"
       end
 
-      # "components/card_component.html.erb" is read from components_root,
-      # everything else from root.
+      # "__components/card_component.html.erb" is read from components_root,
+      # everything else from root (so app/views/components/, a
+      # ComponentsController's views, stays a view directory).
       def component_key?(key)
-        key.start_with?("components/")
+        key.start_with?(COMPONENTS_PREFIX)
       end
 
       def disk_root(key)
@@ -237,7 +244,8 @@ module Cybertrain
       def disk_path(key)
         return File.join(@root, key) unless component_key?(key)
 
-        rest = key[11, key.size - 11].to_s
+        skip = COMPONENTS_PREFIX.size
+        rest = key[skip, key.size - skip].to_s
         File.join(@components_root, rest)
       end
 

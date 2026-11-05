@@ -61,9 +61,10 @@ module Cybertrain
       Component.name_for(self.class.name)
     end
 
-    # The template, as a Views engine name.
+    # The template, as a Views engine name (under
+    # Template::Engine::COMPONENTS_PREFIX, apart from the views).
     def component_template
-      "components/#{component_name}_component.html.erb"
+      "__components/#{component_name}_component.html.erb"
     end
 
     # The block a template passed (`render component: "card" do ... end`),
