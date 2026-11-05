@@ -5,30 +5,33 @@ blog built on CyberTrain. [bench/rails_blog](../bench/rails_blog) is the same
 blog written in Rails 8.1. [bench/run](../bench/run) builds both, runs each in
 production mode on the same machine and loads them with the same requests;
 [bench/report](../bench/report) turns its JSON into the tables below. The
-recorded run is [bench/results/2026-10-09.json](../bench/results/2026-10-09.json); the first one,
-before the speedups described below, is [2026-10-07.json](../bench/results/2026-10-07.json).
+recorded run is [bench/results/2026-11-05.json](../bench/results/2026-11-05.json)
+(cybertrain 0.4.1, Spinel 2026.11.04.7026); the one before it,
+[2026-10-09.json](../bench/results/2026-10-09.json) (cybertrain 0.2.1, Spinel
+2026.09.12), is the "after" of the speedups described below, and the first,
+before them, is [2026-10-07.json](../bench/results/2026-10-07.json).
 
-On one CPU core, CyberTrain serves 2.6 to 12.2 times the requests per second
-of Rails 8.1 (YJIT, Puma) for the same pages, answers a single page in 0.4 to
-0.6 ms against 1.9 to 4.7 ms, uses a twelfth of the memory, starts in 0.02 s
-against 1.3 s, and deploys as one 2.5 MB file against 109 MB of Ruby, gems and
-source. With jemalloc in both, it is 2.8 to 14.6 times on one core. A second
-core helps Rails more (Puma adds a whole process, which doubles it; CyberTrain's
-second worker thread adds 9 to 58%), so on two cores the lead is 2.0 to 5.5
-times, and 2.2 to 7.6 with jemalloc. The price is a compile of about three
-minutes.
+On one CPU core, CyberTrain serves 2.2 to 8.8 times the requests per second
+of Rails 8.1 (YJIT, Puma) for the same pages, answers a single request in 0.3
+to 0.4 ms against 1.3 to 2.6 ms, uses a tenth of the memory, starts in 0.015 s
+against 0.75 s, and deploys as one 4.0 MB file against 121 MB of Ruby, gems
+and source. With jemalloc in both, it is 2.1 to 8.5 times on one core. A
+second core helps Rails more (Puma adds a whole process, which doubles it;
+CyberTrain's second worker thread adds 0 to 19%), so on two cores the lead is
+1.1 to 4.4 times, with jemalloc or without. The price is a compile of about a
+minute (50 s here).
 
 | 16 connections, req/s | 1 core: CyberTrain | Rails | | 2 cores: CyberTrain | Rails | |
 | --- | --: | --: | --: | --: | --: | --: |
-| `GET /articles` | 2,641 | 468 | 5.6x | 3,289 | 1,036 | 3.2x |
-| `GET /articles/1` | 2,450 | 201 | 12.2x | 2,662 | 486 | 5.5x |
-| `POST /articles/2/comments` | 1,507 | 390 | 3.9x | 2,379 | 870 | 2.7x |
-| `GET /style.css` | 13,300 | 5,127 | 2.6x | 20,589 | 10,311 | 2.0x |
+| `GET /articles` | 3,218 | 709 | 4.5x | 3,294 | 1,453 | 2.3x |
+| `GET /articles/1` | 3,201 | 364 | 8.8x | 3,211 | 735 | 4.4x |
+| `POST /articles/2/comments` | 2,081 | 576 | 3.6x | 2,478 | 1,089 | 2.3x |
+| `GET /style.css` | 22,112 | 10,144 | 2.2x | 22,735 | 20,105 | 1.1x |
 | *with jemalloc in both:* | | | | | | |
-| `GET /articles` | 3,589 | 540 | 6.6x | 4,155 | 995 | 4.2x |
-| `GET /articles/1` | 3,217 | 220 | 14.6x | 3,329 | 437 | 7.6x |
-| `POST /articles/2/comments` | 1,983 | 436 | 4.5x | 2,369 | 819 | 2.9x |
-| `GET /style.css` | 14,658 | 5,254 | 2.8x | 22,055 | 10,227 | 2.2x |
+| `GET /articles` | 3,247 | 732 | 4.4x | 3,337 | 1,390 | 2.4x |
+| `GET /articles/1` | 3,106 | 364 | 8.5x | 3,241 | 741 | 4.4x |
+| `POST /articles/2/comments` | 2,446 | 568 | 4.3x | 2,456 | 1,035 | 2.4x |
+| `GET /style.css` | 22,026 | 10,273 | 2.1x | 22,342 | 19,604 | 1.1x |
 
 ## How CyberTrain got faster
 
@@ -245,144 +248,154 @@ puts one CSRF token per session in every form.
 
 ## Results
 
-Recorded 2026-10-09 at commit 0bb5cb8: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 CPUs, 15.7 GB, Ubuntu 24.04.5 LTS (Linux 6.18.44-fc-v80).
+Recorded 2026-11-05 at commit 0d8a942: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 CPUs, 15.7 GB, Ubuntu 24.04.5 LTS (Linux 6.18.44-fc-v236).
 
 | | CyberTrain | Rails |
 | --- | --- | --- |
-| Version | cybertrain 0.2.1, spinel 112bae85c1a2 (2026.09.12) | Rails 8.1.4, Puma 8.0.2, sqlite3 gem 2.9.6 |
+| Version | cybertrain 0.4.1, spinel 2026.11.04.7026 (a2d06115) | Rails 8.1.4, Puma 8.0.2, sqlite3 gem 2.9.6 |
 | Runtime | native binary (cc 13.3.0, `-O2`), system SQLite 3.45.1 | ruby 3.4.6, YJIT on, SQLite 3.53.2 (the gem's own) |
 
 ### One CPU core, system malloc: server on CPU 0 (CyberTrain `SPINEL_WORKERS=1`; Puma single mode, 3 threads)
 
 | Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
 | --- | --: | --: | --: | --: | --: | --: |
-| GET /articles (30 articles) | 1 | 2,286 | 461 | 5.0x | 0.38 / 1.27 ms | 1.92 / 5.12 ms |
-| GET /articles (30 articles) | 16 | 2,641 | 468 | 5.6x | 5.83 / 9.85 ms | 33.1 / 64.2 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 2,132 | 198 | 10.8x | 0.42 / 1.23 ms | 4.74 / 8.99 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 2,450 | 201 | 12.2x | 6.32 / 10.8 ms | 73.8 / 262.9 ms |
-| GET /style.css (public/) | 1 | 10,696 | 4,566 | 2.3x | 0.09 / 0.39 ms | 0.18 / 1.51 ms |
-| GET /style.css (public/) | 16 | 13,300 | 5,127 | 2.6x | 1.18 / 2.06 ms | 2.94 / 8.84 ms |
-| POST /articles/2/comments (insert, 303) | 1 | 1,549 | 351 | 4.4x | 0.58 / 1.79 ms | 2.60 / 7.81 ms |
-| POST /articles/2/comments (insert, 303) | 16 | 1,507 | 390 | 3.9x | 10.1 / 18.8 ms | 38.3 / 84.5 ms |
+| GET /articles (30 articles) | 1 | 2,746 | 703 | 3.9x | 0.32 / 0.82 ms | 1.28 / 2.68 ms |
+| GET /articles (30 articles) | 16 | 3,218 | 709 | 4.5x | 4.87 / 8.30 ms | 22.1 / 32.8 ms |
+| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 2,739 | 366 | 7.5x | 0.32 / 0.84 ms | 2.62 / 4.60 ms |
+| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 3,201 | 364 | 8.8x | 4.93 / 8.44 ms | 41.9 / 70.4 ms |
+| GET /style.css (public/) | 1 | 17,166 | 9,000 | 1.9x | 0.05 / 0.20 ms | 0.09 / 1.06 ms |
+| GET /style.css (public/) | 16 | 22,112 | 10,144 | 2.2x | 0.72 / 1.19 ms | 1.48 / 4.75 ms |
+| POST /articles/2/comments (insert, 303) | 1 | 2,147 | 595 | 3.6x | 0.44 / 1.38 ms | 1.54 / 4.73 ms |
+| POST /articles/2/comments (insert, 303) | 16 | 2,081 | 576 | 3.6x | 7.38 / 12.1 ms | 25.6 / 55.8 ms |
 
 | Memory (RSS, all processes) | CyberTrain | Rails |
 | --- | --: | --: |
-| After seeding, before load | 9.3 MB | 111.5 MB |
-| After the load runs | 10.6 MB | 125.9 MB |
-| After the load runs (PSS) | 8.8 MB | 121.0 MB |
+| After seeding, before load | 12.8 MB | 111.8 MB |
+| After the load runs | 13.9 MB | 132.8 MB |
+| After the load runs (PSS) | 12.0 MB | 130.6 MB |
 
 ### Two CPU cores, system malloc: server on CPU 0,1 (CyberTrain `SPINEL_WORKERS=2`; Puma 2 workers x 3 threads)
 
 | Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
 | --- | --: | --: | --: | --: | --: | --: |
-| GET /articles (30 articles) | 1 | 2,007 | 470 | 4.3x | 0.41 / 1.78 ms | 1.91 / 4.90 ms |
-| GET /articles (30 articles) | 16 | 3,289 | 1,036 | 3.2x | 5.58 / 13.2 ms | 15.4 / 30.1 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 1,893 | 223 | 8.5x | 0.48 / 1.27 ms | 4.20 / 8.48 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 2,662 | 486 | 5.5x | 7.36 / 16.7 ms | 30.2 / 178.7 ms |
-| GET /style.css (public/) | 1 | 10,411 | 3,771 | 2.8x | 0.08 / 0.86 ms | 0.23 / 1.60 ms |
-| GET /style.css (public/) | 16 | 20,589 | 10,311 | 2.0x | 0.87 / 3.47 ms | 1.40 / 5.43 ms |
-| POST /articles/2/comments (insert, 303) | 1 | 1,388 | 467 | 3.0x | 0.61 / 3.31 ms | 1.92 / 5.70 ms |
-| POST /articles/2/comments (insert, 303) | 16 | 2,379 | 870 | 2.7x | 7.77 / 17.6 ms | 17.5 / 38.9 ms |
+| GET /articles (30 articles) | 1 | 2,854 | 687 | 4.2x | 0.30 / 0.80 ms | 1.32 / 3.17 ms |
+| GET /articles (30 articles) | 16 | 3,294 | 1,453 | 2.3x | 4.75 / 8.20 ms | 11.0 / 20.0 ms |
+| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 2,704 | 356 | 7.6x | 0.32 / 0.81 ms | 2.69 / 5.18 ms |
+| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 3,211 | 735 | 4.4x | 4.82 / 8.18 ms | 21.1 / 41.3 ms |
+| GET /style.css (public/) | 1 | 19,668 | 6,753 | 2.9x | 0.05 / 0.22 ms | 0.12 / 1.24 ms |
+| GET /style.css (public/) | 16 | 22,735 | 20,105 | 1.1x | 0.72 / 1.36 ms | 0.71 / 2.92 ms |
+| POST /articles/2/comments (insert, 303) | 1 | 2,298 | 588 | 3.9x | 0.41 / 1.24 ms | 1.57 / 4.63 ms |
+| POST /articles/2/comments (insert, 303) | 16 | 2,478 | 1,089 | 2.3x | 6.21 / 11.4 ms | 14.0 / 30.6 ms |
 
 | Memory (RSS, all processes) | CyberTrain | Rails |
 | --- | --: | --: |
-| After seeding, before load | 10.3 MB | 291.8 MB |
-| After the load runs | 12.0 MB | 331.4 MB |
-| After the load runs (PSS) | 10.2 MB | 249.1 MB |
+| After seeding, before load | 13.9 MB | 294.0 MB |
+| After the load runs | 16.0 MB | 332.7 MB |
+| After the load runs (PSS) | 14.1 MB | 253.9 MB |
 
 ### One CPU core, jemalloc: server on CPU 0 (CyberTrain `SPINEL_WORKERS=1`; Puma single mode, 3 threads; jemalloc preloaded into both)
 
 | Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
 | --- | --: | --: | --: | --: | --: | --: |
-| GET /articles (30 articles) | 1 | 3,034 | 561 | 5.4x | 0.31 / 0.74 ms | 1.60 / 3.69 ms |
-| GET /articles (30 articles) | 16 | 3,589 | 540 | 6.6x | 4.28 / 7.27 ms | 28.8 / 44.8 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 2,821 | 248 | 11.4x | 0.34 / 0.71 ms | 3.77 / 7.53 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 3,217 | 220 | 14.6x | 4.77 / 8.14 ms | 65.7 / 224.6 ms |
-| GET /style.css (public/) | 1 | 11,432 | 4,463 | 2.6x | 0.08 / 0.32 ms | 0.20 / 1.48 ms |
-| GET /style.css (public/) | 16 | 14,658 | 5,254 | 2.8x | 1.06 / 1.82 ms | 2.87 / 8.11 ms |
-| POST /articles/2/comments (insert, 303) | 1 | 1,892 | 434 | 4.4x | 0.49 / 1.60 ms | 2.03 / 7.05 ms |
-| POST /articles/2/comments (insert, 303) | 16 | 1,983 | 436 | 4.5x | 7.64 / 35.0 ms | 33.6 / 74.0 ms |
+| GET /articles (30 articles) | 1 | 2,802 | 738 | 3.8x | 0.32 / 0.82 ms | 1.22 / 2.80 ms |
+| GET /articles (30 articles) | 16 | 3,247 | 732 | 4.4x | 4.80 / 8.00 ms | 21.3 / 32.0 ms |
+| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 2,887 | 366 | 7.9x | 0.30 / 0.73 ms | 2.53 / 5.01 ms |
+| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 3,106 | 364 | 8.5x | 5.03 / 8.49 ms | 42.0 / 68.7 ms |
+| GET /style.css (public/) | 1 | 16,258 | 8,516 | 1.9x | 0.06 / 0.23 ms | 0.10 / 1.11 ms |
+| GET /style.css (public/) | 16 | 22,026 | 10,273 | 2.1x | 0.72 / 1.27 ms | 1.47 / 4.25 ms |
+| POST /articles/2/comments (insert, 303) | 1 | 2,281 | 578 | 3.9x | 0.41 / 1.12 ms | 1.56 / 5.38 ms |
+| POST /articles/2/comments (insert, 303) | 16 | 2,446 | 568 | 4.3x | 6.27 / 12.8 ms | 26.1 / 56.0 ms |
 
 | Memory (RSS, all processes) | CyberTrain | Rails |
 | --- | --: | --: |
-| After seeding, before load | 12.0 MB | 108.1 MB |
-| After the load runs | 13.3 MB | 119.9 MB |
-| After the load runs (PSS) | 10.4 MB | 114.1 MB |
+| After seeding, before load | 15.4 MB | 109.9 MB |
+| After the load runs | 17.4 MB | 122.5 MB |
+| After the load runs (PSS) | 14.5 MB | 119.5 MB |
 
 ### Two CPU cores, jemalloc: server on CPU 0,1 (CyberTrain `SPINEL_WORKERS=2`; Puma 2 workers x 3 threads; jemalloc preloaded into both)
 
 | Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
 | --- | --: | --: | --: | --: | --: | --: |
-| GET /articles (30 articles) | 1 | 2,455 | 424 | 5.8x | 0.35 / 1.31 ms | 2.11 / 5.27 ms |
-| GET /articles (30 articles) | 16 | 4,155 | 995 | 4.2x | 4.46 / 11.0 ms | 15.3 / 30.2 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 2,288 | 192 | 11.9x | 0.42 / 1.76 ms | 4.84 / 9.65 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 3,329 | 437 | 7.6x | 5.60 / 13.8 ms | 33.1 / 199.7 ms |
-| GET /style.css (public/) | 1 | 10,178 | 3,387 | 3.0x | 0.09 / 0.63 ms | 0.26 / 1.76 ms |
-| GET /style.css (public/) | 16 | 22,055 | 10,227 | 2.2x | 0.84 / 3.86 ms | 1.42 / 5.14 ms |
-| POST /articles/2/comments (insert, 303) | 1 | 1,522 | 392 | 3.9x | 0.59 / 2.08 ms | 2.31 / 7.66 ms |
-| POST /articles/2/comments (insert, 303) | 16 | 2,369 | 819 | 2.9x | 8.03 / 17.7 ms | 18.1 / 41.2 ms |
+| GET /articles (30 articles) | 1 | 2,716 | 672 | 4.0x | 0.32 / 0.82 ms | 1.33 / 3.41 ms |
+| GET /articles (30 articles) | 16 | 3,337 | 1,390 | 2.4x | 4.61 / 6.50 ms | 11.0 / 20.8 ms |
+| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 2,783 | 363 | 7.7x | 0.31 / 0.86 ms | 2.56 / 5.45 ms |
+| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 3,241 | 741 | 4.4x | 4.77 / 8.75 ms | 20.4 / 43.9 ms |
+| GET /style.css (public/) | 1 | 17,667 | 6,556 | 2.7x | 0.05 / 0.18 ms | 0.13 / 1.23 ms |
+| GET /style.css (public/) | 16 | 22,342 | 19,604 | 1.1x | 0.73 / 1.26 ms | 0.73 / 3.13 ms |
+| POST /articles/2/comments (insert, 303) | 1 | 2,160 | 555 | 3.9x | 0.42 / 2.02 ms | 1.63 / 5.59 ms |
+| POST /articles/2/comments (insert, 303) | 16 | 2,456 | 1,035 | 2.4x | 6.24 / 11.1 ms | 14.2 / 32.1 ms |
 
 | Memory (RSS, all processes) | CyberTrain | Rails |
 | --- | --: | --: |
-| After seeding, before load | 13.5 MB | 287.5 MB |
-| After the load runs | 15.1 MB | 313.2 MB |
-| After the load runs (PSS) | 12.3 MB | 222.5 MB |
+| After seeding, before load | 16.6 MB | 289.4 MB |
+| After the load runs | 18.3 MB | 312.7 MB |
+| After the load runs (PSS) | 15.4 MB | 222.5 MB |
 
 | Startup (5 boots, median) | CyberTrain | Rails |
 | --- | --: | --: |
-| Spawn to first 200 for `GET /` | 0.016 s | 1.299 s |
-| RSS then | 8.4 MB | 87.1 MB |
+| Spawn to first 200 for `GET /` | 0.015 s | 0.752 s |
+| RSS then | 12.3 MB | 87.5 MB |
 
 | What the server needs | CyberTrain | Rails |
 | --- | --: | --: |
-| The application | 2.5 MB binary (`dist/blog`) | 0.06 MB of source |
+| The application | 4.0 MB binary (`dist/blog`) | 0.06 MB of source |
 | Gems | none | 58.3 MB (69 gems) |
-| Ruby | none | 50.5 MB |
-| Total | 2.5 MB | 108.8 MB |
-| Shared libraries | libm.so.6, libcrypt.so.1, libsqlite3.so.0, libc.so.6, /lib64/ld-linux-x86-64.so.2 | (Ruby's own, and the gems' native extensions) |
+| Ruby | none | 62.4 MB |
+| Total | 4.0 MB | 120.7 MB |
+| Shared libraries | libm.so.6, libz.so.1, libsqlite3.so.0, libc.so.6, /lib64/ld-linux-x86-64.so.2 | (Ruby's own, and the gems' native extensions) |
 
-`cybertrain build` took 173 s.
+`cybertrain build` took 50 s.
 
 ## Reading the results
 
-- **One core: 2.6 to 12.2 times the requests** (2.8 to 14.6 with jemalloc in
+- **One core: 2.2 to 8.8 times the requests** (2.1 to 8.5 with jemalloc in
   both). The gap is widest on the article page, the request with the most view
   work: 10 partials and 12 forms, each with a CSRF token (a separately signed one
-  per form in Rails). CyberTrain renders the list and the article page in about
-  the same time; Rails takes twice as long for the article as for the list.
-- **Latency.** One request at a time, CyberTrain answers the pages in 0.4 to
-  0.6 ms (median) and Rails in 1.9 to 4.7 ms. With 16 connections on one core,
-  CyberTrain's 99th percentile is 10 to 19 ms against 64 to 263 ms for the
-  dynamic pages; on two cores 13 to 18 ms against 30 to 179 ms.
-- **Two cores.** Puma's second worker process doubles Rails (2.0 to 2.4 times
-  its one-core rate). `SPINEL_WORKERS=2` gives CyberTrain 9 to 25% more on the
-  pages, 58% on the POST and 55% on the static file: less than a whole second
-  process, so the lead narrows to 2.0 to 5.5 times. `SPINEL_WORKERS` stays 1 by
-  default; on a server with more than one core, set it to the core count
-  ([spikes/NOTES.md](../spikes/NOTES.md) rule 22 has the measurements).
-- **jemalloc.** It gives CyberTrain 1.3 to 1.4 times on the three dynamic requests
-  and 1.1 on the static file, on one core, and Rails up to 1.15 times: CyberTrain spends more of its time in malloc, though less than
-  before the allocation cuts above (1.2 to 1.5 times then).
-- **Memory.** One CyberTrain process serving 16 connections stays near 11 MB
-  (13 MB with jemalloc). One Puma process with Rails loaded is 125 MB after the
-  load; two workers are 331 MB.
-- **Startup.** The binary answers its first request 0.016 s after it is
-  spawned; Rails takes 1.3 s with bootsnap's cache warm.
-- **Size.** The server needs one 2.5 MB file, which links libc and the
+  per form in Rails). CyberTrain renders the list and the article page in the
+  same time (3,218 and 3,201 req/s); Rails takes twice as long for the article
+  as for the list.
+- **Latency.** One request at a time, CyberTrain answers the pages and the POST
+  in 0.3 to 0.4 ms (median) and Rails in 1.3 to 2.6 ms. With 16 connections on
+  one core, CyberTrain's 99th percentile is 8 to 12 ms against 33 to 70 ms for
+  the dynamic requests; on two cores 8 to 11 ms against 20 to 41 ms.
+- **Two cores.** Puma's second worker process doubles Rails (1.9 to 2.0 times
+  its one-core rate). `SPINEL_WORKERS=2` gives CyberTrain 0 to 2% more on the
+  pages, 19% on the POST and 3% on the static file, so the lead narrows to
+  1.1 to 4.4 times. That is less than on 2026-10-09 (9 to 25% on the pages,
+  58% on the POST): with two workers on two CPUs, the server used about 8
+  CPU-seconds in an 8-second run of `GET /articles`, one CPU's worth, so the
+  second worker mostly waits. Why has not been looked into yet.
+  `SPINEL_WORKERS` stays 1 by default
+  ([spikes/NOTES.md](../spikes/NOTES.md) rule 22 has the earlier measurements).
+  The static file tops out near 22,000 req/s for CyberTrain on one core and on
+  two, and Rails reaches 20,000 on two: that is probably near what wrk on its
+  two CPUs can send, so the 1.1x there says little.
+- **jemalloc.** In this run it moves CyberTrain's pages by -3 to +1% and its
+  POST by +18% on one core, and Rails by -1 to +3%: mostly within the spread,
+  where on 2026-10-09 it gave CyberTrain 1.3 to 1.4 times on the dynamic
+  requests.
+- **Memory.** One CyberTrain process serving 16 connections stays near 14 MB
+  (17 MB with jemalloc). One Puma process with Rails loaded is 133 MB after the
+  load; two workers are 333 MB.
+- **Startup.** The binary answers its first request 0.015 s after it is
+  spawned; Rails takes 0.75 s with bootsnap's cache warm.
+- **Size.** The server needs one 4.0 MB file, which links libc, zlib and the
   system SQLite (and libjemalloc when chosen), against Ruby, 69 gems and the
-  app: 109 MB.
+  app: 121 MB. The binary was 2.5 MB on 2026-10-09; the framework has grown
+  since. The Ruby counted here is a different install of 3.4.6 (built with
+  ruby-build) from the one counted then.
 - **What it costs.** The binary has to be built: `cybertrain build` took
-  173 s on this machine (183 s on 2026-10-07, 137 to 152 s earlier on
-  2026-10-08: the VM's speed varies), and
-  every Ruby change needs a rebuild (`cybertrain server` does it for you in
-  development), where Rails runs its source as it is. And the comparison covers
-  only the slice of Rails both apps use: CyberTrain has no jobs, mailers,
+  50 s on this machine (173 s on 2026-10-09, with an older Spinel on another
+  host), and every Ruby change needs a rebuild (`cybertrain server` does it
+  for you in development), where Rails runs its source as it is. And the
+  comparison covers only the slice of Rails both apps use: CyberTrain has no
   Action Cable, asset pipeline or i18n, and its ORM and router are smaller (see
   [Differences from Rails](guide/how-it-works.md#differences-from-rails)).
 - **The machine.** It is a shared cloud VM and not the same host from day to
   day: the runs of 2026-10-07 and 2026-10-08 were on a 2.10 GHz Xeon, the run
-  of 2026-10-09 on a 2.80 GHz one, and Rails, unchanged, moved by 20 to 25%
-  between the first two. Compare numbers within one run, not across runs. The
+  of 2026-10-09 on a 2.80 GHz one, the run of 2026-11-05 on a 2.30 GHz one.
+  Rails, unchanged, did 468 req/s on the list on 2026-10-09 and 709 on
+  2026-11-05. Compare numbers within one run, not across runs. The
   before/after table above was measured in one session.
 - **Static files.** In production both apps would usually sit behind a proxy
   that serves `public/` itself ([deploy.en.md](deploy.en.md) puts Caddy in front),

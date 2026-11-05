@@ -50,7 +50,7 @@ Or try it with nothing installed:
 [open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
 ([what the playground holds](https://saeki-mototsune.github.io/CyberTrain/playground.html)).
 
-On one CPU core the blog serves 2.6 to 12.2 times the requests per second of
+On one CPU core the blog serves 2.2 to 8.8 times the requests per second of
 the same app in Rails 8.1, in about a tenth of the memory
 ([numbers](https://saeki-mototsune.github.io/CyberTrain/index.html#performance)).
 
