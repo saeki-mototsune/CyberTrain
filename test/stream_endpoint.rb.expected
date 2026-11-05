@@ -12,9 +12,10 @@ ok   Controller#stream writes its block's chunks
 ok   Test::Client#get_stream runs the writer in memory
 ok   a backlog longer than one replay chunk arrives whole and once
 ok   the request log writes the stream tokens as [FILTERED]
+ok   a stream token under a percent-encoded name is filtered too
 ok   stream_path "" leaves the endpoint out of the stack; stream_error checks the keys
 ok   turbo_stream_from renders a source whose token names the streams
 ok   turbo_stream_from ws: true builds a ws:// URL from the request
 ok   signed_stream_name and stream_source_path
 ok   stopping the server ends an open stream
-19 tests, 92 assertions, 0 failures
+20 tests, 93 assertions, 0 failures

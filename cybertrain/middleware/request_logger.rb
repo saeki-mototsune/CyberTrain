@@ -51,7 +51,9 @@ module Cybertrain
     end
 
     # The query with the value of every pair named exactly `s` replaced by
-    # [FILTERED] (a substring filter would also take `sort=`).
+    # [FILTERED] (a substring filter would also take `sort=`). The name is
+    # compared percent-decoded, so `%73=` is a token too: a token that a
+    # client sent under an encoded name is still a valid token.
     def self.filter_tokens(text)
       s = text.to_s # NOTES rule 62
       n = s.bytesize
@@ -62,8 +64,10 @@ module Cybertrain
       while start <= n
         amp = s.byteindex("&", start)
         stop = amp.nil? ? n : amp
-        if stop - start >= 2 && s.getbyte(start) == 115 && s.getbyte(start + 1) == 61 # "s="
-          out << "s=[FILTERED]"
+        eq = s.byteindex("=", start)
+        if !eq.nil? && eq < stop && RequestLogger.token_name?(s, start, eq)
+          out << s.byteslice(start, eq - start + 1).to_s
+          out << "[FILTERED]"
         else
           out << s.byteslice(start, stop - start)
         end
@@ -73,6 +77,21 @@ module Cybertrain
         start = amp + 1
       end
       out
+    end
+
+    # Whether bytes [from, stop) of s, percent-decoded (`+` as a space, any
+    # case), are exactly `s`: one byte, or one escape for it.
+    def self.token_name?(s, from, stop)
+      len = stop - from
+      return s.getbyte(from) == 115 || s.getbyte(from) == 83 if len == 1
+      return false unless len == 3 && s.getbyte(from) == 37
+
+      hi = ParameterFilter.hex_value(s.getbyte(from + 1))
+      lo = ParameterFilter.hex_value(s.getbyte(from + 2))
+      return false if hi < 0 || lo < 0
+
+      b = hi * 16 + lo
+      b == 115 || b == 83
     end
 
     private

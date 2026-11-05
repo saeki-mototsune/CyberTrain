@@ -368,6 +368,11 @@ test "the request log writes the stream tokens as [FILTERED]" do
   assert_nil io.string.index(tok)
 end
 
+test "a stream token under a percent-encoded name is filtered too" do
+  assert_equal "%73=[FILTERED]&%53=[FILTERED]&sort=a&ss=b&%73s=c&s",
+               Cybertrain::RequestLogger.filter_tokens("%73=t1&%53=t2&sort=a&ss=b&%73s=c&s")
+end
+
 test "stream_path \"\" leaves the endpoint out of the stack; stream_error checks the keys" do
   c = Cybertrain::Config.new
   c.env = "test"
