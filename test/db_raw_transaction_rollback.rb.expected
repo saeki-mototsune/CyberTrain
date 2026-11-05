@@ -1,0 +1,10 @@
+ok   after SQLite rolled back a SQL BEGIN, statements are refused until COMMIT
+ok   a ROLLBACK after SQLite already rolled back is accepted, not an error
+ok   ROLLBACK TO a savepoint does not end a lost transaction
+ok   a script that starts with ROLLBACK is run, not skipped
+ok   ROLLBACK TO is told from ROLLBACK through comments and line breaks
+ok   the statement classifiers read SQL the way SQLite tokenizes it
+ok   a script that opened the transaction itself is covered too
+ok   a BEGIN that fails on its own opened nothing and marks nothing
+ok   a failed statement that leaves the transaction open is not a rollback
+9 tests, 73 assertions, 0 failures
