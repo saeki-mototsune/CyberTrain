@@ -1,4 +1,4 @@
-# Streaming responses end to end (docs/design.md D35): a real Server on an
+# Streaming responses end to end (docs/design.md D36): a real Server on an
 # ephemeral port whose handler answers with a BodyWriter, read by raw
 # TCPSockets. The chunked framing, HTTP/1.0's unframed body, HEAD, a writer
 # that raises, and Sink#wait_closed noticing a client that closes. Ports

@@ -9,6 +9,7 @@
 # It links SQLite through FFI (Application#boot connects the database), so
 # it cannot run under CRuby: its snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23).
+require "stringio"
 require "zlib"
 require "cybertrain"
 require "cybertrain/application"
@@ -51,7 +52,8 @@ at_exit { remove_tree(ROOT) }
 
 # Every variable Config reads, cleared so the defaults are deterministic.
 CONFIG_ENV = ["CYBERTRAIN_ENV", "PORT", "CYBERTRAIN_DATABASE", "CYBERTRAIN_SECRET_KEY_BASE", "SPINEL_WORKERS",
-              "CYBERTRAIN_HOST", "CYBERTRAIN_ALLOWED_HOSTS", "CYBERTRAIN_SESSION_SAME_SITE", "CYBERTRAIN_SESSION_PARTITIONED"]
+              "CYBERTRAIN_HOST", "CYBERTRAIN_ALLOWED_HOSTS", "CYBERTRAIN_SESSION_SAME_SITE", "CYBERTRAIN_SESSION_PARTITIONED",
+              "CYBERTRAIN_REUSE_PORT"]
 SAVED_ENV = {}
 CONFIG_ENV.each do |name|
   value = ENV[name]
@@ -113,7 +115,19 @@ test "config defaults in development" do
   assert_equal 128, c.max_multipart_parts
   assert_equal "storage/uploads", c.upload_root
   assert_equal 1, c.workers
+  refute c.reuse_port
   assert_equal "tmp/secret_key", c.secret_key_path
+end
+
+test "CYBERTRAIN_REUSE_PORT turns reuse_port on" do
+  clear_config_env
+  ENV["CYBERTRAIN_REUSE_PORT"] = "1"
+  on = Cybertrain::Config.new
+  ENV["CYBERTRAIN_REUSE_PORT"] = "0"
+  off = Cybertrain::Config.new
+  restore_config_env
+  assert on.reuse_port
+  refute off.reuse_port
 end
 
 test "configured forwarding hosts extend the explicit loopback hosts" do
@@ -707,6 +721,33 @@ test "max_body_bytes reaches the server: a longer Content-Length is 413 before t
   sock.close
   server.stop
   assert_includes raw, "HTTP/1.1 413"
+end
+
+# The stack is built only to look at the Server's settings: no boot, no bind.
+def reuse_port_app(env)
+  c = Cybertrain::Config.new
+  c.env = env
+  c.reuse_port = true
+  c.secret_key_base = "reuse-port-secret"
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/" }, config: c)
+end
+
+test "reuse_port reaches the server outside development" do
+  assert reuse_port_app("production").server.reuse_port
+  assert reuse_port_app("test").server.reuse_port
+end
+
+test "development warns once and ignores reuse_port" do
+  saved = Cybertrain.logger
+  sink = StringIO.new
+  Cybertrain.logger = Cybertrain::Logger.new(sink)
+  app = reuse_port_app("development")
+  first = app.server
+  app.server
+  Cybertrain.logger = saved
+  refute first.reuse_port
+  assert_includes sink.string, "[WARN] reuse_port is ignored in development"
+  assert_equal 1, sink.string.split("reuse_port is ignored").size - 1
 end
 
 test "the server listens on the configured host and port" do

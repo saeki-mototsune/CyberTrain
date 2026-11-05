@@ -14,7 +14,7 @@ require "cybertrain/stream/hub"
 
 module Cybertrain
   # Cybertrain::Stream -- the pub/sub behind the realtime endpoint
-  # (docs/design.md D36). A broadcast is a row in the application's own
+  # (docs/design.md D37). A broadcast is a row in the application's own
   # SQLite database, in the `cybertrain_messages` table the framework creates
   # itself (`CREATE TABLE IF NOT EXISTS`) and leaves out of `db/schema.rb`;
   # every web process polls the table ({Stream::Poller}, every

@@ -34,4 +34,13 @@ ok   drain_timeout bounds the wait for a request that takes too long
 ok   start raises Cybertrain::PortInUse when the port is already bound
 ok   PortInUse names the reason the port could not be bound
 ok   starting a server on port 80 as non-root reports permission denied
-36 tests, 165 assertions, 0 failures
+ok   reuse_port lets two servers bind one port and both answer
+ok   reuse_port survives stop: the port binds again and the collector leaves the number alone
+ok   a plain listener on the port still raises PortInUse for reuse_port
+ok   a reuse_port listener on the port still raises PortInUse for a plain server
+ok   reuse_port stops on a name with several addresses and binds a name with one
+ok   reuse_port on an IPv6 literal binds it or says why not
+ok   reuse_port on a host that does not resolve stops with a message naming the setting
+ok   reuse_port on an address this machine does not have stops with the same message
+ok   reuse_port is off unless asked for
+45 tests, 187 assertions, 0 failures
