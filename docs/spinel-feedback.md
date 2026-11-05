@@ -161,7 +161,7 @@ that it is fixed.
 | K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around; reduced, fix tested, see K) |
 | L. `SPINEL_WORKERS=N` counts main, which a server keeps waiting | no (N helpers beside main) | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05: its reduced program uses 1.01 CPUs at N=2, 1.97 at N=3) | not checked | **yes** (from #9840; worked around; 1.01 CPUs at N=2, 1.97 at N=3, the same on 2026.11.03.7025, so not new here) |
 | Rule 79. A rescuing method's value, from a block that only raises, does not compile when appended | not checked | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05) | not checked | **yes** (found 2026-11-04; also on 2026.11.03.7025, so not new here) |
-| M. `gets` on STDIN does not flush a partial STDOUT line first | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (rule 82; worked around with `flush`) |
+| M. `gets` on STDIN does not flush a partial STDOUT line first | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (rule 83; worked around with `flush`) |
 
 ## What CyberTrain still works around
 
@@ -197,7 +197,7 @@ CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 | `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept | not re-checked (accepted) |
 | `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile |
 | `Application#serve` sets `SPINEL_WORKERS` to `workers + 1` when `workers > 1` (`Application.spinel_workers`, cybertrain/application.rb) | L | not checked | not checked | required: `SPINEL_WORKERS=2` starts one helper, which main does not help |
-| `Console.run` flushes after the banner and after every prompt (cybertrain/console.rb, rule 82) | M | not checked | not checked | required: without it the prompt appears only after the line is read |
+| `Console.run` flushes after the banner and after every prompt (cybertrain/console.rb, rule 83) | M | not checked | not checked | required: without it the prompt appears only after the line is read |
 
 Every fix the fork carried is now in matz/spinel master, not only in the
 fork (#10254 to #10263, and #10316). #10316 is the fork's
@@ -1527,7 +1527,7 @@ p out
 
 ### M. `gets` on STDIN does not flush a partial STDOUT line first
 
-- Found on 2026.11.04.7026 (spikes/NOTES.md rule 82): `STDOUT.write("A> ");
+- Found on 2026.11.04.7026 (spikes/NOTES.md rule 83): `STDOUT.write("A> ");
   STDIN.gets` on a terminal shows `A> ` only after the line is read;
   CRuby flushes STDOUT before the read blocks. CyberTrain's console calls
   `flush` after its prompt. Fix: flush STDOUT (as CRuby's `rb_io_flush` on

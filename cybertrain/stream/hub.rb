@@ -99,7 +99,7 @@ module Cybertrain
       # came, or once the subscriber is dropped. Messages with an id at or
       # below the #skip_through! boundary are dropped on the way.
       # (Queue#pop(timeout:) parks the green thread under Spinel too:
-      # spikes/NOTES.md rule 83.)
+      # spikes/NOTES.md rule 84.)
       # @param timeout [Numeric] seconds
       # @return [Message, nil]
       # @api public

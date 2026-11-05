@@ -1,5 +1,5 @@
 ---
-source_sha256: 5904e09a007176aba046dad59aec644372364a8b38fe3d8a84c555bfe67c2e85
+source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
 ---
 # Configuration
 
@@ -34,6 +34,7 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_WORKER` | `worker` | `true`&nbsp;; `0` ou `false` empêche un processus `server` d’exécuter les tâches planifiées, les jobs et les flux WebSocket (voir [Rôles des processus](background-and-operations.md#process-roles))&nbsp;; `./<app> worker` et `feeds` l’ignorent |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`&nbsp;: le nombre de jobs qu’un processus exécute en même temps (voir [Tâches de fond](background-and-operations.md#background-work))&nbsp;; au moins 1 |
 | `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`&nbsp;: le point d’entrée temps réel (voir [Temps réel](realtime.md#limits-and-settings))&nbsp;; une valeur vide désactive les flux&nbsp;; il doit commencer par `/` et différer de `health_path` |
+| `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`&nbsp;; `1` ou `true` lie le port avec `SO_REUSEPORT`, de sorte que plusieurs processus peuvent écouter sur un même port et que, sous Linux, le noyau répartit les connexions entre eux (ignoré en développement&nbsp;; voir [Running several processes](../deploy.en.md#running-several-processes)). Mettez `CYBERTRAIN_WORKER=0` dans tous les processus sauf un |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`&nbsp;; le chemin du contrôle de santé intégré (voir [Exploitation](background-and-operations.md#operations-backups-vacuum-health-check))&nbsp;; une valeur vide le désactive&nbsp;; une valeur sans `/` initial arrête le serveur au démarrage. `health_worker_stale` (300&nbsp;s) se règle dans `config/app.rb` |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`&nbsp;; `1` ou `true` permet à `Cybertrain::HttpClient` de se connecter au loopback, aux adresses privées et aux autres adresses non publiques (voir [HTTP sortant](external-services.md#outbound-http)) |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`&nbsp;; le serveur SMTP par lequel envoie `Cybertrain::Mailer` (voir [Envoyer des e-mails](external-services.md#sending-e-mail)) |
