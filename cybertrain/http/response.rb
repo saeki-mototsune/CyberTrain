@@ -60,7 +60,18 @@ module Cybertrain
     # The body, `""` until set.
     # @return [String]
     # @api public
-    attr_accessor :body
+    attr_reader :body
+
+    # Sets the body. A body replaces a stream: an action that called
+    # Controller#stream and then render or head answers with the body, so
+    # the writer is dropped, as {#redirect} and an error reset drop it.
+    # @param text [String]
+    # @api public
+    def body=(text)
+      @body_writer = nil
+      @upgrade = false
+      @body = text
+    end
 
     # The headers set so far, in the case they were set with; change them
     # through {#set_header} and {#drop_header}.
@@ -221,6 +232,8 @@ module Cybertrain
     # Raises ArgumentError (leaving the response untouched) when location
     # contains CR or LF, e.g. a percent-decoded return_to param.
     def redirect(location, status = 302)
+      @body_writer = nil
+      @upgrade = false
       set_header("Location", location)
       @status = status
       @performed = true

@@ -192,6 +192,18 @@ test "an error reset after a BodyWriter was set is an ordinary response" do
   assert_equal "Internal Server Error", body_of(raw)
 end
 
+test "a body or a redirect set after a BodyWriter replaces the stream" do
+  rendered = Cybertrain::Response.new
+  rendered.body_writer = ThreeChunks.new
+  rendered.body = "rendered"
+  assert_equal false, rendered.streaming?
+  assert_includes rendered.to_http, "Content-Length: 8\r\n"
+  redirected = Cybertrain::Response.new
+  redirected.body_writer = ThreeChunks.new
+  redirected.redirect("/next", 303)
+  assert_equal false, redirected.streaming?
+end
+
 test "a client that never reads ends the stream when a write times out" do
   SEEN.pop until SEEN.empty?
   sock = TCPSocket.new("127.0.0.1", SERVER.port)
