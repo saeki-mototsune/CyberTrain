@@ -337,6 +337,15 @@ test "sql, tables, help, a syntax error and a long value" do
   assert_includes out, "Models: Article, Photo\n>> \n"
 end
 
+test "sql escapes control bytes in a cell, so they reach neither the terminal nor the layout" do
+  lines = +""
+  lines << "sql \"SELECT char(27) || '[31mred' || char(10) || 'x' || char(9) || char(1) AS t, 'été' AS u\"\n"
+  out = session(lines)
+  assert !out.include?("\e")
+  assert_includes out, ">> t                  | u\n"
+  assert_includes out, "\n\\e[31mred\\nx\\t\\x01 | été\n(1 row)\n"
+end
+
 test "a relation prints its SQL and count; delete_all" do
   lines = +""
   lines << "Article.where(title: \"y\")\n"

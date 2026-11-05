@@ -1,5 +1,5 @@
 ---
-source_sha256: 0baa2cbe2f6ba4660c7c7cc119800b524b5117dcc1e3d25d565af42ef866d793
+source_sha256: 77841c7742a645fc550aff1b97447e8c187efef9c00561905363ab8bed7e5a54
 ---
 # 后台任务与运维
 
@@ -68,7 +68,7 @@ true
 ```
 
 - 模型名称就是它的关系（`Article`），可以使用 `where`、`where_like`、`order`、`limit`、`offset`、`page`、`first`、`last`、`find`、`find_by`、`to_a`、`count`、`exists?`、`pluck_str` / `pluck_int` / `pluck_float`、`sum_int`、`count_by`、`delete_all`、`to_sql` 和 `create`。记录有它的属性和方法，以及 `update`、`save`、`destroy`、`reload`、`valid?`、`errors` 和 `attributes`。`help` 会把它们全部列出来。
-- `x = expr` 把一个值留给后面的行使用，`_` 是上一个值。`sql "..."` 执行 SQL 并以表格形式打印各行；`tables` 列出所有表；`exit`、`quit` 或 Ctrl-D 退出。
+- `x = expr` 把一个值留给后面的行使用，`_` 是上一个值。`sql "..."` 执行 SQL 并以表格形式打印各行，单元格中的控制字符会被转义（`\e`、`\n`），因此数据既不能向终端发送转义序列，也不会打乱表格（含有 NUL 字节的 TEXT 值在读取时会在 NUL 处被截断，与所有原始 SQL 读取一样；BLOB 保留每一个字节）；`tables` 列出所有表；`exit`、`quit` 或 Ctrl-D 退出。
 - 无法解析的行会打印它的错误，抛出异常的行会打印 `Class: message`，然后提示符回来。二进制值打印为 `<N bytes>`。
 - 写入是真实的。在生产环境中，控制台会先用一条横幅说明这一点。
 

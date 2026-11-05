@@ -1,5 +1,5 @@
 ---
-source_sha256: 0baa2cbe2f6ba4660c7c7cc119800b524b5117dcc1e3d25d565af42ef866d793
+source_sha256: 77841c7742a645fc550aff1b97447e8c187efef9c00561905363ab8bed7e5a54
 ---
 # Tâches de fond et exploitation
 
@@ -186,7 +186,11 @@ true
   tous.
 - `x = expr` garde une valeur pour les lignes suivantes, et `_` est la
   dernière valeur. `sql "..."` exécute du SQL et affiche les lignes en
-  tableau&nbsp;; `tables` liste les tables&nbsp;; `exit`, `quit` ou Ctrl-D
+  tableau, les caractères de contrôle d’une cellule échappés (`\e`, `\n`)&nbsp;:
+  les données ne peuvent ni envoyer une séquence d’échappement au terminal ni
+  casser le tableau (une valeur TEXT contenant un octet NUL est coupée au NUL
+  à la lecture, comme dans toute lecture en SQL brut&nbsp;; un BLOB garde tous
+  ses octets)&nbsp;; `tables` liste les tables&nbsp;; `exit`, `quit` ou Ctrl-D
   quitte.
 - Une ligne qui ne s’analyse pas affiche son erreur, une ligne qui lève une
   exception affiche `Class: message`, et l’invite revient. Une valeur binaire

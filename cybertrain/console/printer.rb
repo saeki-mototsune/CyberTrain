@@ -140,7 +140,8 @@ module Cybertrain
 
       # Rows of `sql` as a text table: a header, a rule, a line per row and
       # the row count. NULL for nil; a BLOB cell (a binary String) as
-      # "<N bytes>"; every cell cut at MAX_VALUE_BYTES.
+      # "<N bytes>"; a text cell's control bytes escaped ({escape_controls});
+      # every cell cut at MAX_VALUE_BYTES.
       def self.rows_table(rows)
         return "(0 rows)" if rows.empty?
 
@@ -184,14 +185,60 @@ module Cybertrain
         "<#{s.bytesize} bytes>"
       end
 
+      # A cell's text. A String cell's control bytes are escaped (`\e`,
+      # `\n`, `\t`, `\r`, else `\xNN`), so an escape sequence in the
+      # data never reaches the operator's terminal and a newline never
+      # breaks the table; the rest of the text is shown as it is.
       def self.cell_text(v)
         case v
         when nil then "NULL"
         when String
           return Printer.bytes_text(v) if Printer.binary_string?(v)
 
-          cut(v)
+          cut(Printer.escape_controls(v))
         else cut(inline(v))
+        end
+      end
+
+      # `s` with its control bytes (0..31 and 127) escaped; `s` itself
+      # when it has none. The console assumes a UTF-8 terminal, where the
+      # C1 range (U+0080..U+009F, two bytes each in UTF-8) is not parsed as
+      # 8-bit control sequences, so those are left as they are. A TEXT cell
+      # with a NUL ends at the NUL before it gets here (Connection#read_row
+      # reads TEXT through a NUL-terminated bridge; BLOBs keep every byte).
+      def self.escape_controls(s)
+        n = s.bytesize
+        i = 0
+        found = false
+        while i < n
+          b = s.getbyte(i)
+          if b < 32 || b == 127
+            found = true
+            break
+          end
+          i += 1
+        end
+        return s unless found
+
+        out = +""
+        s.each_char do |c|
+          b = c.getbyte(0)
+          if c.bytesize == 1 && (b < 32 || b == 127)
+            out << Printer.control_escape(b)
+          else
+            out << c
+          end
+        end
+        out
+      end
+
+      def self.control_escape(b)
+        case b
+        when 9 then "\\t"
+        when 10 then "\\n"
+        when 13 then "\\r"
+        when 27 then "\\e"
+        else "\\x#{b.to_s(16).upcase.rjust(2, "0")}"
         end
       end
     end
