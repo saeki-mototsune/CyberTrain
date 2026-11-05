@@ -883,6 +883,57 @@ Change `CYBERTRAIN_SECRET_KEY_BASE` in `/etc/notes/notes.env` to a new value
 (`openssl rand -hex 32`) and `sudo systemctl restart notes`. Everyone's
 session and flash are gone, and forms left open get a CSRF error.
 
+### Running several processes
+
+On a server with more than one CPU, several processes can share the port. With
+`CYBERTRAIN_REUSE_PORT=1` each one listens with `SO_REUSEPORT` and the Linux
+kernel splits the connections between them. Spinel has no `fork`, so no parent
+starts children: systemd runs independent processes. On `examples/blog`'s
+article page one process gave about 9,100 req/s, two about 16,000 and four about
+27,600 (Linux arm64, wrk with 32 connections; D35 in `docs/design.md`).
+
+`notes.service` stays as it is and keeps the scheduled tasks and jobs; the extra
+processes come from a template unit, `notes@.service`. `CYBERTRAIN_WORKER=0`
+goes in the template only (in `notes.env` it would reach every process and
+leave no worker).
+
+```sh
+echo 'CYBERTRAIN_REUSE_PORT=1' | sudo tee -a /etc/notes/notes.env > /dev/null
+sudo sed -e 's/^After=.*/&\nPartOf=notes.service/' \
+  -e 's/^ExecStart=/Environment=CYBERTRAIN_WORKER=0\n&/' \
+  /etc/systemd/system/notes.service | sudo tee /etc/systemd/system/notes@.service > /dev/null
+sudo systemctl daemon-reload
+sudo systemctl restart notes
+sudo systemctl enable --now notes@2 notes@3
+```
+
+`PartOf=notes.service` makes `systemctl restart notes` restart `notes@2` and
+`notes@3` too, so the deploy script and the sudo rule from 5-2 work unchanged.
+
+What to keep in mind:
+
+- **Only Linux balances.** macOS binds but does not distribute. The split is per
+  connection, so a keep-alive connection Caddy holds stays on one process.
+- **`CYBERTRAIN_WORKER=0` on all but one process.** Without it every process
+  runs the `Scheduler` and the `Job` worker, and each scheduled task runs once
+  per process. `Background` services (WebSocket subscriptions and the like)
+  follow the same switch, so they run in the process that keeps the worker.
+- **`RateLimit` counts per process,** so with N processes a limit is effectively
+  N times looser.
+- **POST does not scale.** SQLite has one writer; only reads go up.
+- **Leave `SPINEL_WORKERS` at 1.** Add processes instead.
+- **A leftover process gets no bind error.** A second process joining the port
+  is the feature, so one you forgot keeps taking traffic with its old code. When
+  you reduce the count, stop it with `sudo systemctl disable --now notes@3` and
+  check with `systemctl list-units 'notes*' --no-pager`. A process without
+  `CYBERTRAIN_REUSE_PORT` cannot share the port: it still fails to boot with
+  "already in use".
+- Development ignores the setting, with one warning: the dev
+  server re-execs itself, and a second process would answer with stale code.
+- `CYBERTRAIN_HOST` may be a hostname or an IPv6 address. A host that does not
+  resolve, or an address this machine does not have, stops the boot with a
+  message naming `reuse_port`.
+
 ---
 
 ## Part 8: Deploying with Kamal
@@ -915,8 +966,9 @@ day-to-day operation.
 
 ## cybertrain's current limits (what to keep in mind in production)
 
-- **SQLite is the only database.** It is meant to run as one process on one
-  server; it cannot be scaled out.
+- **SQLite is the only database.** It is meant to run on one server; it cannot
+  be scaled out (for more processes on that server, see "Running several
+  processes").
 - **Connections fail for a few seconds during a restart (a deploy).** On
   SIGTERM the server stops accepting new connections and finishes answering
   the requests in flight before it exits, but connections that arrive before

@@ -1,5 +1,5 @@
 ---
-source_sha256: 73e63b06a3c0e42694f5489b74b58f65464e506bfc88c1ba18759c91bd5771dd
+source_sha256: 039549726c23e50a79c8d34e0cb7f4a2238d1d53af132a5b129406fd88f88868
 ---
 # 配置
 
@@ -31,6 +31,7 @@ end
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`：`params.page_number` 给出、`Relation#page` 接受的最大页码（参见[分页](models.md#pagination)）；不是最多 18 位的数字或小于 1 的值按默认值处理 |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`；以逗号分隔的名称会替换这个列表。名称中包含其中任一项的参数（按 ASCII 不区分大小写：`password` 也匹配 `user[password]`），其值在请求日志和开发时的错误页面上会写成 `[FILTERED]`；在 `config/app.rb` 中设为 `[]` 可关闭此功能 |
 | `CYBERTRAIN_WORKER` | `worker` | `true`；`0` 或 `false` 会让这个进程不运行定时任务和作业（参见[后台任务](background-and-operations.md#background-work)）；`scheduler_interval`（1 秒）、`job_poll_interval`（5 秒）和 `job_max_attempts`（5）在 `config/app.rb` 中设置 |
+| `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`；`1` 或 `true` 会以 `SO_REUSEPORT` 绑定，让多个进程监听同一端口，在 Linux 上由内核在它们之间分配连接（开发环境中会被忽略；参见 [Running several processes](../deploy.en.md#running-several-processes)）。除一个进程外，其余都设置 `CYBERTRAIN_WORKER=0` |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`；内置健康检查的路径（参见[运维](background-and-operations.md#operations-backups-vacuum-health-check)）；空值会关闭它；不以 `/` 开头的值会让服务器在启动时停止。`health_worker_stale`（300 秒）在 `config/app.rb` 中设置 |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`；`1` 或 `true` 允许 `Cybertrain::HttpClient` 连接环回地址、私有地址和其他非公网地址（参见[出站 HTTP](external-services.md#outbound-http)） |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`；`Cybertrain::Mailer` 用来发送邮件的 SMTP 服务器（参见[发送电子邮件](external-services.md#sending-e-mail)） |

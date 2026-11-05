@@ -809,6 +809,51 @@ git push
 書き換えて `sudo systemctl restart notes`。全員のセッションとフラッシュが消え、開きっぱなしの
 フォームは CSRF エラーになります。
 
+### 複数のプロセスで動かす
+
+CPU が複数あるサーバーでは、同じポートで複数のプロセスを動かせます。`CYBERTRAIN_REUSE_PORT=1`
+にすると各プロセスが `SO_REUSEPORT` で listen し、Linux のカーネルが接続を振り分けます。
+Spinel に `fork` はないので、親が子を起動するのではなく、独立したプロセスを systemd で並べます。
+`examples/blog` の記事ページでは、1 プロセスで約 9,100 req/s、2 プロセスで約 16,000、4 プロセスで
+約 27,600 でした（Linux arm64、wrk 32 接続。`docs/design.md` の D35）。
+
+`notes.service` はそのまま残して定期タスクとジョブを担当させ、増やす分はテンプレートユニット
+`notes@.service` にします。`CYBERTRAIN_WORKER=0` はテンプレートにだけ書きます（`notes.env` に
+書くと全プロセスに効き、ワーカーがなくなります）。
+
+```sh
+echo 'CYBERTRAIN_REUSE_PORT=1' | sudo tee -a /etc/notes/notes.env > /dev/null
+sudo sed -e 's/^After=.*/&\nPartOf=notes.service/' \
+  -e 's/^ExecStart=/Environment=CYBERTRAIN_WORKER=0\n&/' \
+  /etc/systemd/system/notes.service | sudo tee /etc/systemd/system/notes@.service > /dev/null
+sudo systemctl daemon-reload
+sudo systemctl restart notes
+sudo systemctl enable --now notes@2 notes@3
+```
+
+`PartOf=notes.service` により、`systemctl restart notes` は `notes@2` と `notes@3` も再起動します。
+デプロイスクリプトも 5-2 の sudo の設定も、このままで使えます。
+
+知っておくこと:
+
+- **振り分けは Linux だけです。** macOS でも bind はできますが、接続は分散しません。振り分けは
+  接続単位なので、Caddy が keep-alive で持ち続ける接続は同じプロセスに届き続けます。
+- **`CYBERTRAIN_WORKER=0` は 1 つを除くすべてのプロセスに必要です。** 指定しないと各プロセスが
+  `Scheduler` と `Job` のワーカーを動かし、定期タスクがプロセスの数だけ実行されます。
+  `Background` のサービス（WebSocket の購読など）も同じで、ワーカーを残したプロセスでだけ動きます。
+- **`RateLimit` はプロセスごとに数えます。** N プロセスなら、制限は実質 N 倍ゆるくなります。
+- **POST は増えません。** SQLite の書き込みは同時に 1 つなので、読み取りだけが伸びます。
+- **`SPINEL_WORKERS` は 1 のままにします。** プロセスを増やしてください。
+- **古いプロセスが残っていても、bind エラーは出ません。** 2 つ目のプロセスが同じポートに
+  入れること自体がこの機能なので、消し忘れたプロセスは古いコードのまま接続を受け続けます。
+  プロセス数を減らしたら `sudo systemctl disable --now notes@3` で止め、
+  `systemctl list-units 'notes*' --no-pager` で確認してください。一方、`CYBERTRAIN_REUSE_PORT`
+  のないプロセスとは同じポートを共有できず、これまでどおり「ポートが使用中」で起動に失敗します。
+- 開発環境では無視されます（警告が 1 回出ます）。開発サーバーは自分自身を
+  再実行するので、2 つ目のプロセスが古いコードで応答してしまうからです。
+- `CYBERTRAIN_HOST` にはホスト名も IPv6 アドレスも使えます。解決できないホストや、このマシンの
+  ものではないアドレスは、`reuse_port` の名前を出して起動を止めます。
+
 ---
 
 ## 第 8 部: Kamal でデプロイする
@@ -976,7 +1021,8 @@ https://notes.example.com を開いて確かめます。
 
 ## いまの cybertrain の制約（本番で気にしておくこと）
 
-- **DB は SQLite だけ**です。サーバー 1 台・1 プロセスで動かす前提で、横に並べることはできません。
+- **DB は SQLite だけ**です。サーバー 1 台で動かす前提で、横に並べることはできません（同じサーバーの
+  中でプロセスを増やすのは「複数のプロセスで動かす」のとおりです）。
 - **再起動（デプロイ）のあいだは数秒つながりません**。SIGTERM を受けると新しい接続の受け付けを
   止め、処理中のリクエストには応答し終えてから終了しますが、新しいプロセスが listen するまでの
   間に来た接続は拒否されます（Caddy は 502 を返します）。処理中のリクエストを待つのは最大 10 秒

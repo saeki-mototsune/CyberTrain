@@ -125,7 +125,7 @@ Each item is written as "Decision / Reason / Rejected alternatives / Consequence
 - Decision: accept with `TCPServer`, one green thread per connection. HTTP parsing, keep-alive and chunked are written in Ruby inside the framework. TLS and HTTP/2 are left to a reverse proxy (nginx / Caddy). One process, with the number of workers following `SPINEL_WORKERS`.
 - Reason: the whole thing stays closed within Spinel's Ruby and becomes a single binary with one `spin build`.
 - Rejected: using a C HTTP library through FFI (manual management of pointer lifetimes, a build dependency), CGI / FastCGI (a process start every time, or a socket is needed anyway).
-- Consequences: the server sits behind a small interface that "builds a Request from an accepted socket and writes a Response back", so that picohttpparser can later be bundled as a `.c` in a spin package and swapped in with `ffi_func`. prefork is not handled, since the Spinel side states it is unfinished. Implementation rules settled in spike 5: (1) call `sock.wait_readable(timeout)` right before every `readpartial` (nil means an idle timeout). A bare `readpartial` blocks an OS worker in `read(2)` and stops other connections' I/O. (2) Do not pass the socket as an argument of `Thread.new`; capture a method argument in a closure, as in `def spawn_conn(sock); Thread.new { serve(sock) }; end` (passing it as an argument loses the static type). (3) Under I/O-bound load `SPINEL_WORKERS=1` is faster (54 to 58k rps versus 25 to 45k), so `config.workers` defaults to 1 and can be overridden with the environment variable. Re-measure after templates and SQLite are in.
+- Consequences: the server sits behind a small interface that "builds a Request from an accepted socket and writes a Response back", so that picohttpparser can later be bundled as a `.c` in a spin package and swapped in with `ffi_func`. prefork is not handled, since the Spinel side states it is unfinished (several processes came later, without it: D35). Implementation rules settled in spike 5: (1) call `sock.wait_readable(timeout)` right before every `readpartial` (nil means an idle timeout). A bare `readpartial` blocks an OS worker in `read(2)` and stops other connections' I/O. (2) Do not pass the socket as an argument of `Thread.new`; capture a method argument in a closure, as in `def spawn_conn(sock); Thread.new { serve(sock) }; end` (passing it as an argument loses the static type). (3) Under I/O-bound load `SPINEL_WORKERS=1` is faster (54 to 58k rps versus 25 to 45k), so `config.workers` defaults to 1 and can be overridden with the environment variable. Re-measure after templates and SQLite are in.
 
 ### D6. Typed Request / Response, not Rack-compatible
 
@@ -688,6 +688,33 @@ Each item is written as "Decision / Reason / Rejected alternatives / Consequence
   - Publishing the playground image only on tags: `.devcontainer` uses `:latest`, so main keeps publishing it.
 - Deferred: the 9-minute full compile itself, which needs a faster Spinel compile, fewer test binaries (bundling the 82 programs, a change to how tests are written) or dependency-based freshness in spin (a proposal to matz/spinel), all outside this design; whether to take the schedule variant for macOS; the `ci:images` label; `test/cli_new.rb` hanging partway through its first test block under `spin test` in the cloud session (4 of 4 runs; the same binary run directly from /tmp passes 23 tests, 154 assertions, and CI passes), to be investigated separately (cwd, or stdout under `xargs -P`).
 - Implementation status (2026-10-28): none of it. ci.yml still runs the `[ubuntu-latest, macos-latest]` matrix on both `pull_request` and `push` with the docs-only rule as `paths`, has no `plan` or `ci` job and no `timeout-minutes`; the Playground and Blog image workflows still list the framework paths under `pull_request`; examples/blog/Dockerfile still copies all of `cybertrain/` before `cybertrain setup`; there is no `script/ci-local`, `.githooks/pre-push` (only pre-commit and commit-msg) or root `CLAUDE.md`, and the PR template still asks for `spin test`. Since the measurement, ci.yml gained a fourth E2E app (club, `generate authentication --invite-only`, D29), so the E2E merge above should be re-planned with it.
+
+### D35. Several processes on one port with `SO_REUSEPORT`, not prefork (2026-11-05)
+
+- Context: with `SPINEL_WORKERS=1` a server uses one CPU, and rule 22 keeps that the fast setting. Reads are what a second CPU can help. Measured on `examples/blog`'s `show` page (Linux arm64 in Docker on a Mac, wrk 32 connections, a process per CPU):
+
+| Processes | `show` req/s | POST |
+| --- | --- | --- |
+| 1 | about 9,100 | flat |
+| 2 | about 16,000 | flat |
+| 4 | about 27,600 | flat |
+
+- Decision: `Server.new(..., reuse_port: false)` and `Config#reuse_port` (`CYBERTRAIN_REUSE_PORT`, default off). On, each process binds with `SO_REUSEPORT` and the Linux kernel splits connections between the listeners. Processes are independent: systemd starts them, nothing supervises them from inside (docs/deploy.md, "Running several processes").
+  - Why not prefork: Spinel has no `fork` (a compiled `fork` raises `NameError`), so no parent can share a listener with its children, and `SO_REUSEPORT` needs no parent at all.
+  - `TCPServer.new` has no option for it, so `bind_listener` builds a `Socket` (`SO_REUSEADDR`, `SO_REUSEPORT`, `bind`, `listen(1024)`) and hands it over with `TCPServer.for_fd`. The accepted sockets match a plain listener's: compared under Spinel, the same close-on-exec and non-blocking flags and `TCP_NODELAY`.
+  - **One descriptor, two objects.** After `for_fd` the `Socket` and the `TCPServer` hold one number, each thinking it owns it. Measured under Spinel: closing the second closes whatever has reused the number, and collecting the `Socket` does the same (the test fails with `EPIPE` on a pipe that took the number; `EBADF` under CRuby). So the `Socket` has `autoclose = false`, stays in `@reuse_socket`, and the `TCPServer` closes, once, in `accept_loop`.
+  - A host is resolved first, because the family must be known before `Socket.new`. A name with both families takes IPv4, which is what `TCPServer.new` binds for `localhost`; an IPv6 literal binds as `AF_INET6`. A host that does not resolve or that this machine does not have raises `PortInUse` with `REUSE_PORT_HOST`, naming `reuse_port`, and `Application#serve` prints it as any other boot failure. That is also why there is no `Config#reuse_port_error`: only a bind can tell, and the plain path reports through the same exception.
+  - Development ignores the setting with one warning: the dev server re-execs itself, and a stray second process would answer with stale code.
+- Consequences:
+  - A leftover process gets no bind error and keeps taking traffic with its old code. A plain listener and a `reuse_port` one still refuse each other in both orders (`PortInUse`, tested), so only processes that all asked for it share.
+  - The balancing is Linux's. macOS binds both and gives every connection to the last one bound (1000 of 1000 measured), so `test/server.rb` asserts the split only when `RUBY_PLATFORM` says Linux.
+  - Everything kept in process memory is per process: `RateLimit` is N times looser. `Scheduler`, the `Job` worker and `Background` run in every process that keeps `CYBERTRAIN_WORKER`, so all but one set it to 0.
+  - POST does not scale: SQLite has one writer.
+  - Linux drops the connections still in the accept queue of a listener that closes, as with any restart; not measured here.
+- Rejected:
+  - `SPINEL_WORKERS` above 1: slower than one (rule 22), and a process is the unit that scales here.
+  - A proxy in front balancing several ports: more moving parts in the deploy for what the kernel does.
+- Verification: `test/server.rb` (two servers on one port both answer, both take connections on Linux, one stopping leaves the other; stop closes the descriptor once and the port binds again; plain and `reuse_port` refuse each other; a name, an IPv6 literal, a host that does not resolve, an address not on this machine), `test/application.rb` (the environment variable, production and test pass it on, development warns once and ignores it). Two processes through wrk on `/articles/1`, one CPU each, alternating, in the same container with other benchmarks running: 1.49, 1.56, 1.73, 1.75, 1.86, 1.94 times one process (median of each 10,055 and 16,702 req/s, 1.66), with both processes taking the same CPU time in every round.
 
 ## 5. Request flow
 
