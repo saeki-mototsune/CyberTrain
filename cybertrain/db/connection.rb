@@ -812,7 +812,14 @@ module Cybertrain
           stmt = SQLite3.read_ptr(scratch)
           SQLite3.free(scratch)
           return "" if next_offset == SQLite3::NO_STATEMENT
-          return error_message(sql) if next_offset < 0
+          if next_offset < 0
+            # Preparing can fail with SQLite rolling the transaction back too
+            # (IOERR or NOMEM while it reads the schema): the same check as
+            # for a failed step, against what is left of the script.
+            message = error_message(sql)
+            note_lost_transaction(in_transaction, sql.byteslice(offset, n - offset).to_s)
+            return message
+          end
 
           statement = sql.byteslice(offset, next_offset - offset).to_s
           offset = next_offset
