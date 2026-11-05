@@ -162,7 +162,7 @@ end
 test "syntax error: unsupported constructs" do
   assert_equal "posts/show:1: unterminated string", syntax_error("<%= \"abc %>")
   assert_equal "posts/show:1: constants are not supported: 'Time'", syntax_error("<%= Time.now %>")
-  assert_equal "posts/show:1: blocks are only supported on each, each_with_index and helper calls", syntax_error("<% xs.map do |x| %><% end %>")
+  assert_equal "posts/show:1: a do block needs a method call: '1 + 2'", syntax_error("<% 1 + 2 do |x| %><% end %>")
   assert_equal "posts/show:1: empty <%= %> tag", syntax_error("<%= %>")
 end
 

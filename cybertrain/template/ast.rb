@@ -282,10 +282,32 @@ module Cybertrain
       def to_sexp = @name
     end
 
+    # The block of a call with a receiver: `{ |a, b| expr }` (brace: true,
+    # brace_expr the expression) or `do |a, b| ... end` (brace: false, the
+    # tags up to `end` in body_nodes).
+    class BlockNode < Node
+      attr_reader :params, :brace, :brace_expr, :body_nodes, :line
+
+      def initialize(params, brace, brace_expr, line)
+        @params = params
+        @brace = brace
+        @brace_expr = brace_expr
+        @line = line
+        @body_nodes = Node.list
+      end
+
+      def to_sexp
+        inner = @brace ? @brace_expr.to_sexp : "(#{Cybertrain::Template.sexp_list(@body_nodes)})"
+        "{|#{@params.join(", ")}| #{inner}}"
+      end
+    end
+
     # recv.name(args, key: value), recv&.name, or a helper call name(args)
-    # when recv is nil.
+    # when recv is nil. call_block: the BlockNode of a call with a receiver
+    # (`items.map { |x| x }`), else nil.
     class Call < Node
       attr_reader :recv, :name, :args, :kwarg_names, :kwarg_values, :safe_nav, :line
+      attr_accessor :call_block
 
       def initialize(recv, name, args, kwarg_names, kwarg_values, safe_nav, line)
         @recv = recv
@@ -295,6 +317,7 @@ module Cybertrain
         @kwarg_values = kwarg_values
         @safe_nav = safe_nav
         @line = line
+        @call_block = nil
       end
 
       def to_sexp
@@ -303,6 +326,8 @@ module Cybertrain
         s << " #{r.nil? ? "_" : r.to_sexp}"
         @args.each { |a| s << " #{a.to_sexp}" }
         @kwarg_names.each_with_index { |k, i| s << " #{k}: #{@kwarg_values[i].to_sexp}" }
+        b = @call_block
+        s << " #{b.to_sexp}" unless b.nil?
         s << ")"
         s
       end

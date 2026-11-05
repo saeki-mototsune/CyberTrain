@@ -25,7 +25,14 @@
 #                  ipairs (locals assigned in the body: block-local unless they exist outside)
 #   K_BLOCK_CALL   ia (the K_CALL), inames (block params), ikids (body), iint (1 = <%= %>), ipairs (as K_EACH)
 #   K_CALL         ia (receiver, LEAF for a helper call), istr/isym (method name),
-#                  ikids (positional args), ipairs/ikids2 (keyword names/values), iint (1 = &.)
+#                  ikids (positional args), ipairs/ikids2 (keyword names/values), iint (1 = &.),
+#                  ib (the K_BLOCK of `recv.name { |x| ... }` / `do |x| ... end`, else LEAF)
+#   K_BLOCK        inames (block params), ipairs (locals assigned in the body, as K_EACH),
+#                  ikids (what Interpreter#capture renders: the body of a do block, or one
+#                  K_OUT of a { } block's expression), ic (the expression that is the block's
+#                  value: a { } block's, or a do block's last statement; LEAF when that last
+#                  statement is not an expression), ikids2 (a do block's statements before
+#                  that last one, run first when the value is wanted), iint (1 = { })
 #   K_STR/INT/FLOAT/SYM   istr / iint / iflt / isym
 #   K_IVAR/K_LVAR  istr (name without "@")
 #   K_ARRAY        ikids ; K_HASH ipairs (keys) + ikids (values) ; K_INTERP ikids
@@ -79,6 +86,7 @@ module Cybertrain
       K_NONE = 38   # LEAF: "no node here"
       K_CASE = 39
       K_BODY = 40
+      K_BLOCK = 41
 
       # Shared, never mutated: Compile always builds new Arrays for real lists.
       # The seed blocks never run; they only give the Arrays their element
@@ -286,6 +294,40 @@ module Cybertrain
         t.ipairs = n.kwarg_names
         t.ikids2 = convert(n.kwarg_values)
         t.iint = n.safe_nav ? 1 : 0
+        b = n.call_block
+        t.ib = convert_block(b) unless b.nil?
+        t
+      end
+
+      # The block of a call with a receiver (slot layout at the top).
+      def self.convert_block(b)
+        t = node(INode::K_BLOCK, b.line)
+        t.inames = b.params
+        if b.brace
+          expr = convert_node(b.brace_expr)
+          t.ic = expr
+          body = INode.list
+          body << unary(INode::K_OUT, expr, b.line)
+          t.ikids = body
+          t.iint = 1
+          return t
+        end
+        body = convert(b.body_nodes)
+        t.ikids = body
+        t.ipairs = assigned_names(body, t.inames)
+        # The last statement that is not blank text gives the value.
+        last = body.size - 1
+        last -= 1 while last >= 0 && body[last].ikind == INode::K_TEXT && body[last].istr.strip.empty?
+        if last >= 0 && body[last].ikind == INode::K_STMT
+          t.ic = body[last].ia
+          before = INode.list
+          i = 0
+          while i < last
+            before << body[i]
+            i += 1
+          end
+          t.ikids2 = before
+        end
         t
       end
 

@@ -38,8 +38,10 @@ module Cybertrain
       end
 
       # A method call on a value the interpreter has no table for (a
-      # FormBuilder): subclasses narrow `recv` with `case` and dispatch.
-      def call_object_method(recv, name_sym, name_str, args, kwargs)
+      # FormBuilder, the `tag` builder): subclasses narrow `recv` with `case`
+      # and dispatch. block: the call's K_BLOCK INode (`tag.div do ... end`,
+      # `x.y { |a| ... }`), else nil; render it with interp.capture(block, env).
+      def call_object_method(recv, name_sym, name_str, args, kwargs, block, interp, env)
         raise RuntimeError, "undefined method '#{name_str}' for #{recv.class.name}"
       end
     end
@@ -242,11 +244,35 @@ module Cybertrain
         end
       end
 
-      def call_method(recv, name_sym, name_str, args, kwargs, node)
+      # block: the call's K_BLOCK INode (`items.map { |x| ... }`), else nil.
+      # Array and Hash take blocks on a fixed set of methods
+      # (array_block_method, hash_block_method); objects with no table get
+      # the block in call_object_method; any other block is a SyntaxError.
+      def call_method(recv, name_sym, name_str, args, kwargs, block, env, node)
+        case name_sym
+        when :nil?, :present?, :blank?
+          no_block(node, type_name(recv), name_str) unless block.nil?
+        end
         case name_sym
         when :nil? then return recv.nil?
         when :present? then return !blank?(recv)
         when :blank? then return blank?(recv)
+        end
+
+        unless block.nil?
+          # A method the type does not have at all is the ordinary
+          # "undefined method" (the blockless call raises it); one it has
+          # takes no block. Time before Array (spikes/NOTES.md rule 8).
+          case recv
+          when Time
+            call_method(recv, name_sym, name_str, args, kwargs, nil, env, node)
+            no_block(node, "Time", name_str)
+          when Array then return array_block_method(recv, name_sym, name_str, args, block, env, node)
+          when Hash then return hash_block_method(recv, name_sym, name_str, args, block, env, node)
+          when SafeString, String, Integer, Float, Symbol, Cybertrain::Errors, Cybertrain::Params, Cybertrain::Model, nil, true, false
+            call_method(recv, name_sym, name_str, args, kwargs, nil, env, node)
+            no_block(node, type_name(recv), name_str)
+          end
         end
 
         # nil/true/false last: Spinel tests them with a generic equality.
@@ -275,7 +301,7 @@ module Cybertrain
         else
           result = nil
           begin
-            result = @helpers.call_object_method(recv, name_sym, name_str, args, kwargs)
+            result = @helpers.call_object_method(recv, name_sym, name_str, args, kwargs, block, self, env)
           rescue Cybertrain::Template::SyntaxError => e
             raise e
           rescue StandardError => e
@@ -472,7 +498,9 @@ module Cybertrain
         recv = eval_expr(n.ia, env)
         return nil if recv.nil? && n.iint == 1
 
-        call_method(recv, n.isym, n.istr, eval_args(n, env), eval_kwargs(n, env), n)
+        blk = n.ib
+        block = blk.ikind == INode::K_BLOCK ? blk : nil
+        call_method(recv, n.isym, n.istr, eval_args(n, env), eval_kwargs(n, env), block, env, n)
       end
 
       def eval_helper_call(n, env)
@@ -537,6 +565,13 @@ module Cybertrain
 
       def undefined(node, name, type)
         fail_at(node, "undefined method '#{name}' for #{type}")
+      end
+
+      # A block given to a method that takes none: the template is wrong
+      # whatever the data, so it is reported as a SyntaxError (at run time:
+      # only then is the receiver's type known).
+      def no_block(node, type, name)
+        raise SyntaxError, "#{@name}:#{node.iline}: #{type}##{name} takes no block"
       end
 
       # Any StandardError raised by a helper (a plain `raise "no routes"`,
@@ -841,8 +876,367 @@ module Cybertrain
           sep = args.empty? ? "" : string_arg(args, 0, node, name)
           a.map { |x| to_s_value(x) }.join(sep)
         when :to_a then a
+        when :sum then sum_values(a, node)
+        when :min then extreme(a, a, -1, node)
+        when :max then extreme(a, a, 1, node)
+        when :sort then pick(a, sorted_indices(a, node))
+        when :uniq then uniq_values(a)
+        when :compact
+          out = []
+          a.each do |x|
+            case x
+            when nil then nil
+            else out << x
+            end
+          end
+          out
+        when :flatten
+          out = []
+          flatten_into(out, a)
+          out
+        when :take
+          n = size_arg(args, node, name)
+          out = []
+          i = 0
+          while i < n && i < a.size
+            out << a[i]
+            i += 1
+          end
+          out
+        when :drop
+          out = []
+          i = size_arg(args, node, name)
+          while i < a.size
+            out << a[i]
+            i += 1
+          end
+          out
+        when :each_slice then slices(a, args, node)
+        when :zip
+          fail_at(node, "wrong number of arguments for 'zip'") if args.empty?
+          other = args[0]
+          case other
+          when Time then fail_at(node, "'zip' expects an Array, got Time")
+          when Array then return zip_values(a, other)
+          end
+          fail_at(node, "'zip' expects an Array, got #{type_name(other)}")
         else undefined(node, name, "Array")
         end
+      end
+
+      # --- blocks ------------------------------------------------------------
+
+      # The methods an Array takes a block on. The block's value for an
+      # element is block_value's; `each` and `each_slice` iterate with a
+      # `do` block in a <% %> tag instead (EachNode).
+      def array_block_method(a, sym, name, args, block, env, node)
+        case sym
+        when :map, :collect then block_values(block, env, a, name, node)
+        when :select, :filter then pick_truthy(a, block_values(block, env, a, name, node), true)
+        when :reject then pick_truthy(a, block_values(block, env, a, name, node), false)
+        when :find, :detect
+          i = block_find(block, env, a, true, name, node)
+          i < 0 ? nil : a[i]
+        when :any? then block_find(block, env, a, true, name, node) >= 0
+        when :all? then block_find(block, env, a, false, name, node) < 0
+        when :none? then block_find(block, env, a, true, name, node) < 0
+        when :count then pick_truthy(a, block_values(block, env, a, name, node), true).size
+        when :sum then sum_values(block_values(block, env, a, name, node), node)
+        when :sort_by then pick(a, sorted_indices(block_values(block, env, a, name, node), node))
+        when :min_by then extreme(a, block_values(block, env, a, name, node), -1, node)
+        when :max_by then extreme(a, block_values(block, env, a, name, node), 1, node)
+        when :group_by then group_values(a, block_values(block, env, a, name, node))
+        when :each, :each_with_index, :each_slice
+          raise SyntaxError, "#{@name}:#{node.iline}: #{name} takes a do block in a <% %> tag (<% x.#{name} do |y| %>...<% end %>)"
+        else
+          array_method(a, sym, name, args, node)
+          no_block(node, "Array", name)
+        end
+      end
+
+      # A Hash's block methods see [key, value] pairs (two block parameters
+      # take them apart); select and reject answer a Hash, the rest what the
+      # Array method does over the pairs.
+      def hash_block_method(h, sym, name, args, block, env, node)
+        case sym
+        when :select, :filter, :reject
+          pairs = hash_pairs(h)
+          keep = pick_truthy(pairs, block_values(block, env, pairs, name, node), sym != :reject)
+          out = {}
+          keep.each do |pair|
+            case pair
+            when Array then out[hash_key(pair[0])] = pair[1]
+            end
+          end
+          out
+        when :map, :collect, :find, :detect, :any?, :all?, :none?, :count, :sum, :sort_by, :min_by, :max_by, :group_by
+          array_block_method(hash_pairs(h), sym, name, args, block, env, node)
+        else
+          hash_method(h, sym, name, args, node)
+          no_block(node, "Hash", name)
+        end
+      end
+
+      def hash_pairs(h)
+        pairs = []
+        h.each do |key, value|
+          pair = []
+          pair << key
+          pair << value
+          pairs << pair
+        end
+        pairs
+      end
+
+      # The block's value for every item, in order. Block parameters shadow
+      # outer names for the call and are restored after it, as each's are.
+      def block_values(block, env, items, name, node)
+        names = block.inames
+        saved = save_locals(env, names)
+        fresh = fresh_locals(env, block.ipairs)
+        out = []
+        i = 0
+        while i < items.size
+          out << block_value(block, env, fresh, items[i], name, node)
+          i += 1
+        end
+        restore_locals(env, names, saved)
+        drop_locals(env, fresh)
+        out
+      end
+
+      # The index of the first item whose block value is truthy (want true)
+      # or falsy (want false), or -1; stops there, as Ruby's find and any? do.
+      def block_find(block, env, items, want, name, node)
+        names = block.inames
+        saved = save_locals(env, names)
+        fresh = fresh_locals(env, block.ipairs)
+        found = -1
+        i = 0
+        while found < 0 && i < items.size
+          found = i if truthy?(block_value(block, env, fresh, items[i], name, node)) == want
+          i += 1
+        end
+        restore_locals(env, names, saved)
+        drop_locals(env, fresh)
+        found
+      end
+
+      # Binds item to the block's parameters (two parameters take an Array
+      # item apart, as each does) and evaluates the block: a { } block's
+      # expression, or a do block's statements and then its last one, whose
+      # value it is. What the statements print is discarded.
+      def block_value(block, env, fresh, item, name, node)
+        names = block.inames
+        if names.size > 1
+          # Time before Array (spikes/NOTES.md rule 8).
+          case item
+          when Time
+            env[names[0]] = item
+            env[names[1]] = nil
+          when Array
+            env[names[0]] = item[0]
+            env[names[1]] = item[1]
+          else
+            env[names[0]] = item
+            env[names[1]] = nil
+          end
+        elsif names.size == 1
+          env[names[0]] = item
+        end
+        reset_locals(env, fresh)
+        value = block.ic
+        fail_at(node, "#{name}'s block must end in a value") if value.ikind == INode::K_NONE
+        before = block.ikids2
+        unless before.empty?
+          saved_out = @out
+          @out = String.new
+          exec_nodes(before, env)
+          @out = saved_out
+        end
+        eval_expr(value, env)
+      end
+
+      def pick_truthy(items, values, want)
+        out = []
+        i = 0
+        while i < items.size
+          out << items[i] if truthy?(values[i]) == want
+          i += 1
+        end
+        out
+      end
+
+      def pick(items, indices)
+        out = []
+        i = 0
+        while i < indices.size
+          out << items[indices[i]]
+          i += 1
+        end
+        out
+      end
+
+      # Integers add to an Integer; one Float makes the sum a Float; an
+      # empty list is 0. Strings are refused (Ruby's sum would need a "" start).
+      def sum_values(values, node)
+        int_total = 0
+        flt_total = 0.0
+        float = false
+        i = 0
+        while i < values.size
+          v = values[i]
+          case v
+          when Integer then int_total += v
+          when Float
+            flt_total += v
+            float = true
+          when SafeString, String then fail_at(node, "sum: use join for Strings")
+          else fail_at(node, "sum: cannot add #{type_name(v)}")
+          end
+          i += 1
+        end
+        return int_total.to_f + flt_total if float
+
+        int_total
+      end
+
+      # The item whose key is smallest (dir -1) or largest (dir 1), the first
+      # of equals, or nil for no items; keys compare as `<` does.
+      def extreme(items, keys, dir, node)
+        return nil if items.empty?
+
+        best = 0
+        i = 1
+        while i < keys.size
+          best = i if compare(keys[i], keys[best], node) * dir > 0
+          i += 1
+        end
+        items[best]
+      end
+
+      # The indices of keys in ascending order, equal keys keeping their
+      # order: a merge sort of our own, so that CRuby and Spinel agree on
+      # ties (neither runtime's sort is stable).
+      def sorted_indices(keys, node)
+        n = keys.size
+        src = Array.new(0) { 0 }
+        i = 0
+        while i < n
+          src << i
+          i += 1
+        end
+        width = 1
+        while width < n
+          dst = Array.new(0) { 0 }
+          lo = 0
+          while lo < n
+            mid = lo + width
+            mid = n if mid > n
+            hi = lo + width + width
+            hi = n if hi > n
+            a = lo
+            b = mid
+            while a < mid && b < hi
+              if compare(keys[src[a]], keys[src[b]], node) > 0
+                dst << src[b]
+                b += 1
+              else
+                dst << src[a]
+                a += 1
+              end
+            end
+            while a < mid
+              dst << src[a]
+              a += 1
+            end
+            while b < hi
+              dst << src[b]
+              b += 1
+            end
+            lo = hi
+          end
+          src = dst
+          width += width
+        end
+        src
+      end
+
+      # group_by: a Hash from each key (as a String, like every template
+      # Hash) to the items with that key, in first-seen order.
+      def group_values(items, keys)
+        groups = {}
+        i = 0
+        while i < items.size
+          key = hash_key(keys[i])
+          list = groups[key]
+          if list.nil?
+            list = []
+            groups[key] = list
+          end
+          list << items[i]
+          i += 1
+        end
+        groups
+      end
+
+      # Ruby's uniq compares with eql?: 1 and 1.0 stay apart.
+      def uniq_values(a)
+        out = []
+        a.each do |x|
+          seen = false
+          out.each { |y| seen = true if type_name(x) == type_name(y) && x == y }
+          out << x unless seen
+        end
+        out
+      end
+
+      def flatten_into(out, a)
+        a.each do |x|
+          case x
+          when Time then out << x
+          when Array then flatten_into(out, x)
+          else out << x
+          end
+        end
+        nil
+      end
+
+      def slices(a, args, node)
+        n = int_arg(args, 0, node, "each_slice")
+        fail_at(node, "'each_slice' expects a positive size, got #{n}") if n <= 0
+        out = []
+        i = 0
+        while i < a.size
+          slice = []
+          j = i
+          while j < i + n && j < a.size
+            slice << a[j]
+            j += 1
+          end
+          out << slice
+          i += n
+        end
+        out
+      end
+
+      def zip_values(a, other)
+        out = []
+        i = 0
+        while i < a.size
+          pair = []
+          pair << a[i]
+          pair << other[i]
+          out << pair
+          i += 1
+        end
+        out
+      end
+
+      def size_arg(args, node, name)
+        n = int_arg(args, 0, node, name)
+        fail_at(node, "'#{name}' expects a non-negative size, got #{n}") if n < 0
+        n
       end
 
       def hash_method(h, sym, name, args, node)
@@ -864,6 +1258,7 @@ module Cybertrain
         when :any? then !h.empty?
         when :keys then h.keys
         when :values then h.values
+        when :to_a then hash_pairs(h)
         else undefined(node, name, "Hash")
         end
       end

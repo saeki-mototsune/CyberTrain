@@ -71,12 +71,13 @@ module Cybertrain
         end
       end
 
-      # `f.label :title` and the other FormBuilder methods.
-      def call_object_method(recv, name_sym, name_str, args, kwargs)
+      # `f.label :title` and the other FormBuilder methods (which take no
+      # block: one given is ignored), `@page.next?`.
+      def call_object_method(recv, name_sym, name_str, args, kwargs, block, interp, env)
         case recv
         when FormBuilder then recv.call_method(name_sym, args, kwargs)
         when Cybertrain::Page then page_method(recv, name_sym, name_str)
-        else super(recv, name_sym, name_str, args, kwargs)
+        else super(recv, name_sym, name_str, args, kwargs, block, interp, env)
         end
       end
 
