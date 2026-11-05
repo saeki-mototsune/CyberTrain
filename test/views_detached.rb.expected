@@ -2,7 +2,9 @@ ok   render_partial returns the HTML, path helpers included
 ok   strict locals are checked
 ok   a partial name without a directory is at the views root
 ok   request-bound helpers raise OutsideRequest
+ok   a Ruby helper reading the request raises OutsideRequest too
+ok   outside render_partial a nil controller keeps the readers lenient
 ok   a form renders without the authenticity token
 ok   render_component returns the HTML with the content unescaped
 ok   Cybertrain::Test wraps both
-7 tests, 14 assertions, 0 failures
+9 tests, 17 assertions, 0 failures

@@ -47,6 +47,32 @@ class CardComponent < Cybertrain::Component
   end
 end
 
+# A Ruby helper that reads the request: the check is in the reader, so it
+# raises outside a request as the template helper does.
+module WhereHelper
+  def where_am_i
+    "at #{request_path}"
+  end
+
+  def token_of_form
+    "[#{csrf_token}]"
+  end
+end
+
+class ApplicationHelpers < Cybertrain::Template::Helpers
+  include ::WhereHelper
+
+  def app_helper_call(name, args, kwargs, block, interp, env)
+    case name
+    when "where_am_i" then where_am_i
+    when "token_of_form" then token_of_form
+    else super(name, args, kwargs, block, interp, env)
+    end
+  end
+end
+
+Cybertrain::Views.helpers_builder = ->(controller) { ApplicationHelpers.new(controller) }
+
 Cybertrain::Views.url_resolver = lambda do |name, args|
   case name
   when "article_path"
@@ -70,6 +96,8 @@ FILES = {
   "app/views/articles/_url.html.erb" => "<%= article_url(1) %>",
   "app/views/articles/_button.html.erb" => "<%= button_to 'Go', '/go' %>",
   "app/views/_top.html.erb" => "top <%= n %>",
+  "app/views/_where.html.erb" => "<%= where_am_i %>",
+  "app/views/_token.html.erb" => "<%= token_of_form %>",
   "app/components/card_component.html.erb" => "<h3><%= title %></h3><%= content %>"
 }
 DIRS = ["app", "app/views", "app/views/articles", "app/components"]
@@ -120,6 +148,17 @@ test "request-bound helpers raise OutsideRequest" do
   assert_equal "OutsideRequest: flash needs a request", outside_error("articles/flash")
   assert_equal "OutsideRequest: request_path needs a request", outside_error("articles/path")
   assert_equal "OutsideRequest: article_url needs a request", outside_error("articles/url")
+end
+
+test "a Ruby helper reading the request raises OutsideRequest too" do
+  assert_equal "OutsideRequest: request_path needs a request", outside_error("where")
+  assert_equal "OutsideRequest: csrf_token needs a request", outside_error("token")
+end
+
+test "outside render_partial a nil controller keeps the readers lenient" do
+  helpers = Cybertrain::Views.helpers_builder.call(nil)
+  template = Cybertrain::Template::Template.parse("<%= where_am_i %>|<%= csrf_meta_tags %>", "x/inline")
+  assert_equal "at |", Cybertrain::Template::Interpreter.new(helpers).render(template, { "__template_dir" => "x" })
 end
 
 test "a form renders without the authenticity token" do

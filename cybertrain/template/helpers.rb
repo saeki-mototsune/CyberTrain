@@ -95,21 +95,11 @@ module Cybertrain
         when "time_ago_in_words" then distance_of_time_in_words(time_arg(args, 0, name), Time.now)
         when "content_for" then content_for(args, block, interp, env)
         when "content_for?" then !env["__content_#{text_arg(args, 0, name)}"].nil?
-        when "csrf_meta_tags"
-          request_bound!(name)
-          csrf_meta_tags
-        when "csrf_token"
-          request_bound!(name)
-          csrf_token
-        when "flash"
-          request_bound!(name)
-          flash_messages
-        when "params"
-          request_bound!(name)
-          params
-        when "request_path"
-          request_bound!(name)
-          request_path
+        when "csrf_meta_tags" then csrf_meta_tags
+        when "csrf_token" then csrf_token
+        when "flash" then flash_messages
+        when "params" then params
+        when "request_path" then request_path
         when "url_for" then url_for(arg(args, 0, name))
         when "paginate" then paginate(args)
         else
@@ -409,7 +399,7 @@ module Cybertrain
         return "" if verb == "get"
 
         method_field = verb == "post" ? "" : "<input type=\"hidden\" name=\"_method\" value=\"#{Html.escape(verb)}\">"
-        token = csrf_token
+        token = session_csrf_token
         return method_field if token.empty?
 
         "#{method_field}<input type=\"hidden\" name=\"authenticity_token\" value=\"#{Html.escape(token)}\">"
@@ -728,8 +718,13 @@ module Cybertrain
 
       # --- request state ------------------------------------------------------
 
+      # The request-bound readers below raise Views::OutsideRequest when
+      # these helpers render outside a request (request_bound!), whether a
+      # template or a Ruby helper calls them; a nil controller otherwise
+      # answers "" and empty values.
       def csrf_meta_tags
-        token = csrf_token
+        request_bound!("csrf_meta_tags")
+        token = session_csrf_token
         return SafeString.of("") if token.empty?
 
         SafeString.of("<meta name=\"csrf-param\" content=\"authenticity_token\">\n<meta name=\"csrf-token\" content=\"#{Html.escape(token)}\">")
@@ -737,6 +732,13 @@ module Cybertrain
 
       # The session's token, minted on first use; "" without a session.
       def csrf_token
+        request_bound!("csrf_token")
+        session_csrf_token
+      end
+
+      # csrf_token without the request check: forms (hidden_fields) render
+      # outside a request too, without a token.
+      def session_csrf_token
         controller = @controller
         return "" if controller.nil?
 
@@ -747,21 +749,25 @@ module Cybertrain
       end
 
       def flash_messages
+        request_bound!("flash")
         controller = @controller
         controller.nil? ? Helpers.flash_messages(nil) : Helpers.flash_messages(controller.flash)
       end
 
       def params
+        request_bound!("params")
         controller = @controller
         controller.nil? ? Params.new : controller.params
       end
 
       def request_path
+        request_bound!("request_path")
         controller = @controller
         controller.nil? ? "" : controller.request.path
       end
 
       def request_query_string
+        request_bound!("request_query_string")
         controller = @controller
         controller.nil? ? "" : controller.request.query_string.to_s
       end
