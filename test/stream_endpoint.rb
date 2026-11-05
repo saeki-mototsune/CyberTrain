@@ -444,7 +444,9 @@ test "turbo_stream_from ws: true builds a ws:// URL from the request" do
   html = render_with(Cybertrain::Template::Helpers.new(request_controller), "<%= turbo_stream_from 'alerts', ws: true %>")
   assert html.start_with?("<turbo-stream-source src=\"ws://example.test/cybertrain/stream?s=")
   assert_equal ["alerts"], Stream.verify(token_in(html))
-  message = assert_raises("Cybertrain::Template::RuntimeError") do
+  # OutsideRequest reaches the caller by class (not relocated into a
+  # Template::RuntimeError), as every helper that needs a request raises it.
+  message = assert_raises("Cybertrain::Views::OutsideRequest") do
     render_with(Cybertrain::Template::Helpers.new(nil), "<%= turbo_stream_from 'alerts', ws: true %>")
   end
   assert_includes message, "turbo_stream_from ws: true needs a request"
