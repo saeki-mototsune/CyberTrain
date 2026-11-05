@@ -31,4 +31,7 @@ ok   feeds runs only the named subscription and stops it
 => test environment
 => feeds: trades
 ok   worker and feeds give Spinel the SPINEL_WORKERS serve does
-8 tests, 38 assertions, 0 failures
+=> development environment
+=> worker: 3 job threads, 1 scheduled task
+ok   in development the roles run on one worker, as serve does
+9 tests, 40 assertions, 0 failures

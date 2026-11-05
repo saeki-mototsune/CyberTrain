@@ -26,6 +26,11 @@ PRICES = <<~'RUBY'
     def hidden(x)
       x
     end
+
+    # Templates cannot call it, so its parameters are not checked.
+    def format_parts(*parts, &block)
+      parts.join
+    end
   end
 RUBY
 
@@ -142,6 +147,28 @@ end
 test "a module inside a top-level class is not a helper module" do
   assert_equal [], scan("class Foo\n  module Bar\n    def baz\n    end\n  end\nend\n").map { |m| m.name }
   assert_equal ["After"], scan("class Foo\n  module Bar\n  end\nend\nmodule After\nend\n").map { |m| m.name }
+end
+
+test "a private def is checked by name only" do
+  assert_equal ["one"], scan("module A
+  def one
+  end
+
+  private
+
+  def two(*rest, **opts)
+  end
+end
+")[0].defs.map { |d| d.name }
+  assert_equal "app/helpers/x.rb:5: 'params' is a name the framework's template helpers already use; pick another helper name",
+               scan_error("module A
+  def one
+  end
+  private
+  def params(*rest)
+  end
+end
+")
 end
 
 test "an unindented module body keeps its later defs" do
