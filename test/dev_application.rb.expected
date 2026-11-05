@@ -8,4 +8,4 @@ ok   a failed build puts its output on every HTML page but not on JSON
 ok   static files still pass through the development stack
 ok   host rejection precedes diagnostics and failed-build output
 ok   the rebuilder targets the app's build/bin/blog
-10 tests, 50 assertions, 0 failures
+10 tests, 52 assertions, 0 failures

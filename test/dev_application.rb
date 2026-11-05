@@ -115,7 +115,8 @@ test "development serves one worker whatever SPINEL_WORKERS asks for" do
   dev.env = "development"
   dev.workers = 4
   assert_equal 1, Cybertrain::Application.serving_workers(dev)
-  assert_equal "=> development environment (1 worker; SPINEL_WORKERS=4 is ignored in development)",
+  assert_equal 1, Cybertrain::Application.spinel_workers_for(dev)
+  assert_equal "=> development environment (1 worker; workers = 4 is ignored in development)",
                Cybertrain::Application.environment_banner(dev)
   dev.workers = 1
   assert_equal 1, Cybertrain::Application.serving_workers(dev)
@@ -125,6 +126,7 @@ test "development serves one worker whatever SPINEL_WORKERS asks for" do
   prod.env = "production"
   prod.workers = 4
   assert_equal 4, Cybertrain::Application.serving_workers(prod)
+  assert_equal 5, Cybertrain::Application.spinel_workers_for(prod)
   assert_equal "=> production environment (4 workers)", Cybertrain::Application.environment_banner(prod)
   prod.workers = 1
   assert_equal "=> production environment (1 worker)", Cybertrain::Application.environment_banner(prod)

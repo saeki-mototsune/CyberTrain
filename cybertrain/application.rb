@@ -174,7 +174,7 @@ module Cybertrain
     # listener is bound before it prints) and exits 1: without this the
     # process died with a misleading "Connection refused".
     def serve(argv)
-      ENV["SPINEL_WORKERS"] = Application.spinel_workers(Application.serving_workers(@config)).to_s
+      ENV["SPINEL_WORKERS"] = Application.spinel_workers_for(@config).to_s
       port = Application.port_argument(argv)
       @config.port = port if port > 0
       # The rebuilder must exist before #server builds the stack (front_app
@@ -285,12 +285,19 @@ module Cybertrain
       config.development? ? 1 : config.workers
     end
 
+    # What #serve sets SPINEL_WORKERS to before the first thread starts.
+    def self.spinel_workers_for(config)
+      Application.spinel_workers(Application.serving_workers(config))
+    end
+
     # The banner's environment line, naming the worker count #serve uses
-    # and, in development, a SPINEL_WORKERS above 1 that it ignored.
+    # and, in development, a configured count above 1 that it ignored
+    # (named as `workers`: it may come from SPINEL_WORKERS or from
+    # config/app.rb).
     def self.environment_banner(config)
       n = Application.serving_workers(config)
       line = "=> #{config.env} environment (#{n} worker#{n == 1 ? "" : "s"}"
-      line += "; SPINEL_WORKERS=#{config.workers} is ignored in development" if n != config.workers && config.workers > 1
+      line += "; workers = #{config.workers} is ignored in development" if n != config.workers && config.workers > 1
       "#{line})"
     end
 
