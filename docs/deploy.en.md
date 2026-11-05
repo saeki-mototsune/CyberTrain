@@ -920,6 +920,9 @@ What to keep in mind:
   follow the same switch, so they run in the process that keeps the worker.
 - **`RateLimit` counts per process,** so with N processes a limit is effectively
   N times looser.
+- **An `--invite-only` first run needs one process.** Each process makes its own
+  setup token at start, so `/setup` answers 404 on the others. Create the first
+  user before adding processes, or with `./notes user EMAIL`.
 - **POST does not scale.** SQLite has one writer; only reads go up.
 - **Leave `SPINEL_WORKERS` at 1.** Add processes instead.
 - **A leftover process gets no bind error.** A second process joining the port

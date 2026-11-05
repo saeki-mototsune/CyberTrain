@@ -741,7 +741,7 @@ def reuse_port_started_and_stopped
   server.port
 end
 
-test "reuse_port survives stop: the port binds again and the descriptor is closed once" do
+test "reuse_port survives stop: the port binds again and the collector leaves the number alone" do
   port = reuse_port_started_and_stopped
   # The stopped listener's number is free now, so these take it. A second
   # close of that number, now or by the collector, would end this pipe.
