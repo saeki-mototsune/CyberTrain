@@ -29,6 +29,7 @@ ok   the gen check compiles bin/gen.rb to C quietly, with spin's flags and no li
 ok   gen is compiled once, then run directly while its C stands still
 ok   a full build promotes the checked C, a direct run records nothing
 ok   a binary replaced behind the saved C compiles gen again
+ok   a replaced binary newer than its sources does not survive spin's own check
 ok   a saved C with no stamp compiles gen again
 ok   differing C compiles gen again
 ok   a missing build/bin/gen does not fail the rebuild
@@ -51,4 +52,4 @@ ok   a lock older than 30 minutes is stale even with a live PID: age wins over a
 ok   the rebuild command quotes the build target like every other interpolated value
 ok   the Rebuilder refuses a build target that is not usable for spin build
 ok   shell_quote escapes single quotes
-53 tests, 214 assertions, 0 failures
+54 tests, 218 assertions, 0 failures
