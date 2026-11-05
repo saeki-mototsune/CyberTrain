@@ -6,6 +6,7 @@ ok   a connection that listens to nothing is closed with 1008 after the ping int
 ok   subscribe messages are capped at 64 names
 ok   mode=raw delivers the payload as it is
 ok   subscribe and unsubscribe messages change the streams
+ok   unsubscribing the last stream after the ping interval does not close the connection at once
 ok   mode=json without a token waits for subscribe messages
 ok   a client ping is answered with a pong
 ok   the server pings after the ping interval
@@ -13,4 +14,4 @@ ok   a bad token is closed with 1008 after the handshake
 ok   a message above stream_max_message is closed with 1009
 ok   a wrong WebSocket version is a 400
 ok   stopping the server closes the WebSocket with 1000
-15 tests, 52 assertions, 0 failures
+16 tests, 56 assertions, 0 failures

@@ -57,7 +57,11 @@ or a copy in `public/`), and subscribe a page with `turbo_stream_from`:
 writes one `<turbo-stream-source>` element whose URL carries one token for
 all of them. Turbo opens it as an `EventSource`; `turbo_stream_from @article,
 ws: true` gives a `ws://` URL (`wss://` behind HTTPS) instead, which Turbo
-opens as a WebSocket. Either way the page needs no JavaScript of yours.
+opens as a WebSocket. Either way the page needs no JavaScript of yours. Turbo
+does not reopen a WebSocket it lost (a network cut, a restart of the server):
+that page gets no more updates until it is reloaded, where an `EventSource`
+reconnects by itself and replays what it missed. Keep the default unless you
+need WebSocket, or reconnect from your own JavaScript (`&after=`, below).
 
 Then broadcast from the action that changed something:
 
@@ -157,7 +161,10 @@ The browser reconnects by itself when the connection drops, and sends the
 id of the last event it saw (`Last-Event-ID`). The endpoint then first
 replays every message of those streams with a larger id that is still in the
 table (within `stream_retention`), so nothing in between is lost. A page
-away for longer than that should reload. A comment line (`: ping`) goes out
+away for longer than that should reload. Before its first event arrives the
+browser has no id to send, so a connection that drops in that window replays
+nothing: what the page rendered on load is its state until the next
+broadcast. A comment line (`: ping`) goes out
 after 15 seconds of silence so that proxies keep the connection open.
 
 ## WebSocket from JavaScript
@@ -235,7 +242,9 @@ stream names and an HMAC-SHA256 signature made with a key derived from
 `turbo/signed_stream_verifier_key`), so a token is never a valid session
 cookie; the endpoint checks the signature and reads neither the session nor the
 database. That is Turbo's model: whoever could render the page could read
-its streams.
+its streams. Tokens do not expire; changing `secret_key_base` invalidates
+every one, and a page open across that deploy stops receiving (an
+`EventSource` treats the 403 as final) until it is reloaded.
 
 <!-- list: points -->
 - A stream for one user is a stream named after that user's record,

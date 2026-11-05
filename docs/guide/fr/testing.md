@@ -1,5 +1,5 @@
 ---
-source_sha256: 8c76494c9be045125698d151a1c9910bb58e3af399a71637479b25e214b6f798
+source_sha256: c5ef44e9a88b3fbef4099d33b8ea7e47c5b10fb95eeef6e39fae0a8151f22a9e
 ---
 # Tester une application
 
@@ -181,8 +181,9 @@ test "the comment component names its author" do
 end
 
 test "the article partial links to the article" do
-  html = Cybertrain::Test.render_partial("articles/article", article: Article.first)
-  assert_includes html, BlogTest.article_path(Article.first)
+  article = Article.create(title: "Hello", body: "Rendered for the test")
+  html = Cybertrain::Test.render_partial("articles/article", article: article)
+  assert_includes html, BlogTest.article_path(article)
 end
 ```
 
@@ -202,7 +203,7 @@ démarrez-le donc une fois dans le fichier&nbsp;:
 Cybertrain::Stream::Poller.start!
 
 test "a new comment is broadcast to the article's stream" do
-  article = Article.first
+  article = Article.create(title: "Live comments", body: "Posted for the test")
   Cybertrain::Stream.broadcast_append_to(article, target: "comments", html: "hi")
   token = Cybertrain::Stream.sign([Cybertrain::Stream.name_for(article)])
   client = Cybertrain::Test::Client.new(BLOG)

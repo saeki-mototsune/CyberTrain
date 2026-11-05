@@ -83,6 +83,31 @@ Cybertrain::Main.command("greet", "render a partial") do |argv|
   0
 end
 
+# Production: the embedded templates, parsed when a command renders them.
+# Saved and restored in a plain method, whatever the command does.
+def run_embedded(argv, sources)
+  saved = Cybertrain.config.env
+  Cybertrain.config.env = "production"
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: sources)
+ensure
+  Cybertrain.config.env = saved.to_s
+end
+
+EMBEDDED = {
+  "_hello.html.erb" => "<%# locals: (name:) %>Hello <%= name %>, <%= home_path %>",
+  "_broken.html.erb" => "<% if %>"
+}
+
+Cybertrain::Main.command("embedded_greet", "render an embedded partial") do |argv|
+  SEEN << Cybertrain::Views.render_partial("hello", name: argv[0]).to_s
+  0
+end
+
+Cybertrain::Main.command("embedded_broken", "render a partial that does not parse") do |argv|
+  SEEN << Cybertrain::Views.render_partial("broken").to_s
+  0
+end
+
 def refusal(word)
   Cybertrain::Main.command(word, "never registered") { |argv| 0 }
   "registered"
@@ -128,6 +153,18 @@ test "a command can render a partial, path helpers included" do
   base = SEEN.size
   assert_equal 0, run(["greet", "Ann"])
   assert_equal "Hi Ann, /home_path", SEEN[base]
+end
+
+test "in production a command parses embedded templates only when it renders them" do
+  base = SEEN.size
+  # A template that does not parse stops a server at boot, not a command
+  # that renders nothing, nor one that renders another template.
+  assert_equal 3, run_embedded(["status", "3"], EMBEDDED)
+  assert_equal 0, run_embedded(["embedded_greet", "Bo"], EMBEDDED)
+  assert_equal "Hello Bo, /home_path", SEEN[base]
+  msg = assert_raises("SyntaxError") { run_embedded(["embedded_broken"], EMBEDDED) }
+  assert_includes msg, "_broken.html.erb:1"
+  refute Cybertrain::DB.connected?
 end
 
 test "server? is false for a registered name" do
