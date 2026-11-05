@@ -662,40 +662,131 @@ module Cybertrain
           "the statement was not run (sql: #{sql})"
       end
 
-      # Whether the first statement of sql is COMMIT, END or ROLLBACK (any
-      # case, after leading whitespace), the statements that end a
-      # transaction; ROLLBACK TO a savepoint undoes part of one and does not.
-      # Only the first statement's keywords are read.
+      # The statements around a transaction are recognised by a small lexer
+      # that reads SQL the way SQLite tokenizes it: whitespace (line breaks
+      # included), `-- ...` and `/* ... */` comments separate tokens and are
+      # otherwise ignored, a ";" inside a comment or a quoted name does not
+      # end a statement, and keywords are case-insensitive. Only the first
+      # statement's leading keywords are read; nothing is parsed further.
+
+      # Whether the first statement of sql is COMMIT, END or a full ROLLBACK,
+      # the statements that end a transaction. ROLLBACK [TRANSACTION] TO a
+      # savepoint undoes part of one and does not.
       def self.ends_transaction?(sql)
-        first = Connection.first_statement(sql)
-        first.start_with?("COMMIT") || first.start_with?("END") || Connection.full_rollback?(first)
+        words = Connection.first_keywords(sql)
+        return false if words.empty?
+
+        words[0] == "COMMIT" || words[0] == "END" || Connection.full_rollback?(words)
       end
 
-      # A ROLLBACK and nothing else (a trailing ";" allowed): the one
-      # statement #refuse_if_transaction_gone skips after SQLite rolled the
-      # transaction back. A script that goes on after its ROLLBACK
-      # (`ROLLBACK; BEGIN`) runs, so what follows is never dropped silently.
+      # A ROLLBACK and nothing else (comments, empty statements and a
+      # trailing ";" allowed): the one statement #refuse_if_transaction_gone
+      # skips after SQLite rolled the transaction back. A script that goes on
+      # after its ROLLBACK (`ROLLBACK; BEGIN`) runs, so what follows is never
+      # dropped silently.
       def self.rollback_statement?(sql)
-        first = Connection.first_statement(sql)
-        rest = sql.include?(";") ? sql[(sql.index(";") + 1)..].to_s.strip : ""
-        Connection.full_rollback?(first) && rest.empty?
-      end
-
-      # ROLLBACK or ROLLBACK TRANSACTION, not ROLLBACK [TRANSACTION] TO a
-      # savepoint; statement is upcased and stripped.
-      def self.full_rollback?(statement)
-        statement.start_with?("ROLLBACK") && !statement.include?(" TO ")
-      end
-
-      # The text before the first ";", upcased and stripped.
-      def self.first_statement(sql)
-        cut = sql.include?(";") ? sql[0, sql.index(";").to_i].to_s : sql
-        cut.strip.upcase
+        Connection.full_rollback?(Connection.first_keywords(sql)) && !Connection.statement_follows?(sql)
       end
 
       # A script or statement whose first keyword is BEGIN.
       def self.begins_transaction?(sql)
-        sql.lstrip.upcase.start_with?("BEGIN")
+        words = Connection.first_keywords(sql)
+        !words.empty? && words[0] == "BEGIN"
+      end
+
+      # ROLLBACK or ROLLBACK TRANSACTION, not ROLLBACK [TRANSACTION] TO.
+      def self.full_rollback?(words)
+        return false if words.empty? || words[0] != "ROLLBACK"
+        return false if words.size > 1 && words[1] == "TO"
+        return false if words.size > 2 && words[1] == "TRANSACTION" && words[2] == "TO"
+
+        true
+      end
+
+      # Up to three leading keywords of the first statement, upcased. Stops
+      # at the end of the statement or at the first token that is not a word.
+      def self.first_keywords(sql)
+        words = Array.new(0) { "" }
+        n = sql.bytesize
+        i = Connection.skip_blank(sql, 0)
+        while i < n && words.size < 3
+          break unless Connection.word_byte?(sql.getbyte(i))
+
+          start = i
+          i += 1 while i < n && Connection.word_byte?(sql.getbyte(i))
+          words << sql.byteslice(start, i - start).to_s.upcase
+          i = Connection.skip_blank(sql, i)
+        end
+        words
+      end
+
+      # Whether a statement follows the first one: anything but whitespace,
+      # comments and empty statements after the first ";" that is outside a
+      # comment or a quoted string or name.
+      def self.statement_follows?(sql)
+        n = sql.bytesize
+        i = 0
+        while i < n
+          i = Connection.skip_blank(sql, i)
+          break if i >= n
+
+          c = sql.getbyte(i)
+          if c == 59 # ;
+            i = Connection.skip_blank(sql, i + 1)
+            i = Connection.skip_blank(sql, i + 1) while i < n && sql.getbyte(i) == 59
+            return i < n
+          elsif c == 39 || c == 34 || c == 96 # ' " `
+            i = Connection.skip_quoted(sql, i, c)
+          elsif c == 91 # [
+            i = Connection.skip_quoted(sql, i, 93)
+          else
+            i += 1
+          end
+        end
+        false
+      end
+
+      # The index after whitespace and comments from i (sql.bytesize at the
+      # end). An unterminated /* comment runs to the end, as in SQLite.
+      def self.skip_blank(sql, i)
+        n = sql.bytesize
+        while i < n
+          c = sql.getbyte(i)
+          if c == 32 || (c >= 9 && c <= 13)
+            i += 1
+          elsif c == 45 && i + 1 < n && sql.getbyte(i + 1) == 45 # --
+            i += 2
+            i += 1 while i < n && sql.getbyte(i) != 10
+          elsif c == 47 && i + 1 < n && sql.getbyte(i + 1) == 42 # /*
+            i += 2
+            i += 1 while i + 1 < n && !(sql.getbyte(i) == 42 && sql.getbyte(i + 1) == 47)
+            i = i + 1 < n ? i + 2 : n
+          else
+            return i
+          end
+        end
+        n
+      end
+
+      # The index after the quoted token that opens at i and closes with
+      # close; a doubled close quote is part of the token.
+      def self.skip_quoted(sql, i, close)
+        n = sql.bytesize
+        i += 1
+        while i < n
+          if sql.getbyte(i) == close
+            return i + 1 unless i + 1 < n && sql.getbyte(i + 1) == close
+
+            i += 2
+          else
+            i += 1
+          end
+        end
+        n
+      end
+
+      def self.word_byte?(c)
+        (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95
       end
 
       def error_message(sql)

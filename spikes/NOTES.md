@@ -849,8 +849,11 @@ The rules are numbered in the order they were found. By topic:
     a statement that started inside a transaction and failed with SQLite
     back in autocommit marks the connection (`@transaction_lost`; a
     constraint error leaves the transaction open and marks nothing), and
-    only COMMIT, END or ROLLBACK (not ROLLBACK TO a savepoint), read from
-    the first keyword, run until then. That ROLLBACK is skipped, since
+    only COMMIT, END or ROLLBACK (not ROLLBACK TO a savepoint) run until
+    then, told apart by a small lexer over the first statement's leading
+    keywords that skips whitespace, comments and quoted names as SQLite's
+    tokenizer does (substring checks missed `ROLLBACK /* ; */ TO s` and
+    `ROLLBACK` + line break + `TO s`). That ROLLBACK is skipped, since
     running it would raise "no transaction is active" over the
     application's own error. A script whose first keyword is BEGIN counts
     as inside the transaction it opens; a BEGIN further into a script is

@@ -135,6 +135,51 @@ test "a script that starts with ROLLBACK is run, not skipped" do
   c.close
 end
 
+test "ROLLBACK TO is told from ROLLBACK through comments and line breaks" do
+  c = small_database
+  c.exec_script("BEGIN")
+  fill_until_full(c)
+  assert_includes try_insert(c, "after the rollback"), GONE
+  # A ";" inside a comment does not end the statement, and a line break
+  # separates keywords as a space does.
+  assert_includes try_script(c, "ROLLBACK /* ; */ TO s"), GONE
+  assert_includes try_script(c, "ROLLBACK\nTO s"), GONE
+  assert_includes try_insert(c, "still after the rollback"), GONE
+  # A comment after the ROLLBACK is not a second statement: still skipped.
+  assert_equal "", try_script(c, "ROLLBACK; -- cleanup")
+  assert_equal "", try_insert(c, "next")
+  assert_equal ["next"], rows(c)
+  c.close
+end
+
+test "the statement classifiers read SQL the way SQLite tokenizes it" do
+  conn = DB::Connection
+  # Ends a transaction (first statement only).
+  assert conn.ends_transaction?("COMMIT")
+  assert conn.ends_transaction?("  end transaction;")
+  assert conn.ends_transaction?("/* why */ ROLLBACK")
+  assert conn.ends_transaction?("-- note\nrollback transaction")
+  assert conn.ends_transaction?("ROLLBACK; BEGIN")
+  refute conn.ends_transaction?("ROLLBACK TO s")
+  refute conn.ends_transaction?("ROLLBACK TRANSACTION TO SAVEPOINT s")
+  refute conn.ends_transaction?("ROLLBACK /* ; */ TO s")
+  refute conn.ends_transaction?("ROLLBACK\n\tTO s")
+  refute conn.ends_transaction?("INSERT INTO t (v) VALUES ('ROLLBACK')")
+  refute conn.ends_transaction?("BEGIN; ROLLBACK")
+  # A standalone ROLLBACK: the one statement skipped after SQLite's rollback.
+  assert conn.rollback_statement?("ROLLBACK")
+  assert conn.rollback_statement?("rollback;")
+  assert conn.rollback_statement?("ROLLBACK; -- cleanup")
+  assert conn.rollback_statement?("ROLLBACK /* x; y */ ;  ;")
+  refute conn.rollback_statement?("ROLLBACK; BEGIN")
+  refute conn.rollback_statement?("ROLLBACK; /* c */ INSERT INTO t (v) VALUES ('a')")
+  refute conn.rollback_statement?("ROLLBACK TO s")
+  # Opens a transaction.
+  assert conn.begins_transaction?("BEGIN; INSERT INTO t (v) VALUES ('a')")
+  assert conn.begins_transaction?("/* tx */ begin immediate")
+  refute conn.begins_transaction?("CREATE TRIGGER g AFTER INSERT ON t BEGIN SELECT 1; END")
+end
+
 # A script whose own BEGIN opened the transaction SQLite then rolled back.
 def full_script
   big = "x" * 2000
