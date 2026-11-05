@@ -235,10 +235,15 @@ module Cybertrain
         if rc != SQLite3::OK
           # A script that opens its own transaction (`BEGIN; ...`) starts in
           # autocommit, so it counts as inside one when its first keyword is
-          # BEGIN. A BEGIN further into the script is not seen: no keyword
-          # search over the whole text, since `CREATE TRIGGER ... BEGIN ...
-          # END` would match it.
-          note_lost_transaction(in_transaction || Connection.begins_transaction?(sql), sql)
+          # BEGIN and another statement follows. A bare BEGIN that fails
+          # opened nothing. Not seen: a BEGIN further into the script (no
+          # keyword search over the whole text, since `CREATE TRIGGER ...
+          # BEGIN ... END` would match it; saeki-mototsune/CyberTrain#164),
+          # and the reverse slip, `BEGIN IMMEDIATE; ...` whose own BEGIN
+          # fails (SQLITE_BUSY), which marks the connection although no
+          # transaction opened; the next COMMIT, END or ROLLBACK clears it.
+          opened_here = Connection.begins_transaction?(sql) && Connection.statement_follows?(sql)
+          note_lost_transaction(in_transaction || opened_here, sql)
           raise Error, error_message(sql)
         end
         nil

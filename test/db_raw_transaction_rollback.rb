@@ -202,6 +202,16 @@ test "a script that opened the transaction itself is covered too" do
   c.close
 end
 
+test "a BEGIN that fails on its own opened nothing and marks nothing" do
+  c = small_database
+  # A bare BEGIN that fails (here a syntax error; SQLITE_BUSY on BEGIN
+  # IMMEDIATE is the same) never opened a transaction.
+  assert_includes try_script(c, "BEGIN BOGUS"), "syntax error"
+  assert_equal "", try_insert(c, "after the failed begin")
+  assert_equal ["after the failed begin"], rows(c)
+  c.close
+end
+
 test "a failed statement that leaves the transaction open is not a rollback" do
   c = small_database
   c.exec_script("BEGIN")
