@@ -460,6 +460,12 @@ The rules are numbered in the order they were found. By topic:
     bench/run's two-core config failed about one run in two with wrk
     timeouts or a dead server, and five runs out of five passed once the
     lock was gone. Keep locks off the per-request path; cache per request.
+    A process-wide cache that requests only read needs no lock: the
+    template engine's (`@template_index`, `@template_list`) used to be
+    written on a template's first render, which two workers could do at
+    once; `Engine.embedded` now parses every embedded template at boot
+    (2026-11-05, found in review of the `SPINEL_WORKERS` fix, rule 22).
+    Development's engine still writes on a changed file.
 58. `Foo.new(<a String made in the argument>)` can free that String before the
     object has it (Spinel 2026.09.12): the generated `new` allocates the
     object, which may collect, and only then roots its arguments. A freshly
