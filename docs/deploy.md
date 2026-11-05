@@ -831,8 +831,20 @@ sudo systemctl restart notes
 sudo systemctl enable --now notes@2 notes@3
 ```
 
-`PartOf=notes.service` により、`systemctl restart notes` は `notes@2` と `notes@3` も再起動します。
-デプロイスクリプトも 5-2 の sudo の設定も、このままで使えます。
+`PartOf=notes.service` により、`systemctl restart notes` は `notes@2` と `notes@3` も再起動するので、
+5-2 の sudo の設定はこのままで使えます。`systemctl stop notes` も両方を止めますが、
+`systemctl start notes` は起動しません。「ロールバック」と「バックアップ」の手順では、
+`sudo systemctl start notes` のあとに `sudo systemctl start notes@2 notes@3` も実行してください。
+
+デプロイスクリプトは 1 か所だけ変えます。バックグラウンドサービスの起動前チェックで失敗すると `notes` は
+ポートを開く前に終了しますが、このチェックを飛ばす `notes@2` は `/up.html` に応答するので、
+ワーカーがないままデプロイが成功扱いになります。そこで、ページの応答に加えて `notes` の状態も確認します
+（`sleep 3` は `RestartSec=2` より長く待つためです。`is-active` に sudo は要りません）:
+
+```sh
+  if curl -fs --max-time 2 -o /dev/null "http://127.0.0.1:$PORT/up.html" \
+     && sleep 3 && systemctl is-active --quiet "$APP"; then up=1; break; fi
+```
 
 知っておくこと:
 

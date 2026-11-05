@@ -908,7 +908,21 @@ sudo systemctl enable --now notes@2 notes@3
 ```
 
 `PartOf=notes.service` makes `systemctl restart notes` restart `notes@2` and
-`notes@3` too, so the deploy script and the sudo rule from 5-2 work unchanged.
+`notes@3` too, so the sudo rule from 5-2 works unchanged. `systemctl stop notes`
+stops them as well, but `systemctl start notes` does not start them: in the
+procedures under "Rolling back" and "Backups", run
+`sudo systemctl start notes@2 notes@3` after `sudo systemctl start notes`.
+
+The deploy script needs one change. When a background service fails its check
+before boot, `notes` exits before it binds the port, but `notes@2` skips that
+check and answers `/up.html`, so the deploy would succeed with no worker. So
+check the state of `notes` as well as the page (`sleep 3` outlasts
+`RestartSec=2`, and `is-active` needs no sudo):
+
+```sh
+  if curl -fs --max-time 2 -o /dev/null "http://127.0.0.1:$PORT/up.html" \
+     && sleep 3 && systemctl is-active --quiet "$APP"; then up=1; break; fi
+```
 
 What to keep in mind:
 

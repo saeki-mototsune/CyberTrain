@@ -97,8 +97,8 @@ end
 # The main thread shares the scheduler with the server, so the client obeys
 # the same rule as the server: wait_readable before every readpartial.
 class RawClient
-  def initialize(port)
-    @sock = TCPSocket.new("127.0.0.1", port)
+  def initialize(port, host = "127.0.0.1")
+    @sock = TCPSocket.new(host, port)
     @buf = +""
   end
 
@@ -695,8 +695,8 @@ def reuse_port_server(handler, host, port)
   Cybertrain::Server.new(handler, host: host, port: port, reuse_port: true, logger: Cybertrain::Logger.new($log, :info))
 end
 
-def reuse_port_get(port)
-  c = RawClient.new(port)
+def reuse_port_get(port, host = "127.0.0.1")
+  c = RawClient.new(port, host)
   res = c.get("/", "Connection: close\r\n")
   c.close
   res
@@ -807,7 +807,7 @@ test "reuse_port stops on a name with several addresses and binds a name with on
     server.start
     assert server.reuse_port
     assert server.port > 0
-    assert_equal "named", reuse_port_get(server.port).body
+    assert_equal "named", reuse_port_get(server.port, localhost_addresses.first).body
     server.stop
   end
 end
