@@ -1,5 +1,6 @@
 require "cybertrain/application"
 require "cybertrain/db/cli"
+require "cybertrain/console"
 
 module Cybertrain
   # Cybertrain::Main -- what bin/<name>.rb runs, the one binary an app
@@ -12,6 +13,8 @@ module Cybertrain
   #   ./blog migrate      apply db/migrate (gen/migrations.rb)
   #   ./blog db status    any DB::CLI command: status, rollback N, schema:dump, create,
   #                       backup PATH, vacuum
+  #   ./blog console     the expression console over the models (Console.run)
+  #   ./blog dbconsole   the sqlite3 shell on the configured database
   #   ./blog user a@b.c   a command the application registered with Main.command
   #
   # `gen` stays a separate bin/gen.rb: it needs the generator and the
@@ -37,7 +40,7 @@ module Cybertrain
 
     # The words Main itself answers to; an application command may not take
     # one (it would never run, or would hide the built-in).
-    BUILTIN_WORDS = ["server", "migrate", "db", "help", "--help", "-h"].freeze
+    BUILTIN_WORDS = ["server", "migrate", "db", "console", "dbconsole", "help", "--help", "-h"].freeze
 
     # Registers an operational command for the application's binary:
     # `./<name> NAME ARGS...` runs the block instead of the server, and
@@ -65,7 +68,8 @@ module Cybertrain
     #     0
     #   end
     # @param name [String] the first command-line word; not a built-in one
-    #   (`server`, `migrate`, `db`, `help`), not a port number, not taken
+    #   (`server`, `migrate`, `db`, `console`, `dbconsole`, `help`), not a
+    #   port number, not taken
     # @param description [String] the line `help` prints next to it
     # @yieldparam argv [Array<String>] the arguments after `name`
     # @yieldreturn [Integer] the process's exit status
@@ -113,6 +117,10 @@ module Cybertrain
         DB::CLI.run(["migrate"], ".", name)
       when "db"
         DB::CLI.run(argv[1, argv.size - 1], ".", name)
+      when "console"
+        run_console
+      when "dbconsole"
+        run_dbconsole
       when "help", "--help", "-h"
         puts usage(name)
         0
@@ -137,6 +145,44 @@ module Cybertrain
       ensure
         DB.disconnect
       end
+    end
+
+    # `./<name> console`: Console.run on the terminal, with the database
+    # connected as for a registered command (a pool of one; no server, no
+    # scheduler). The models reach the console through the builders
+    # gen/console.rb sets. Returns the console's exit status, or 1 when the
+    # database cannot be opened. The rescue sits in this plain method (NOTES
+    # rules 32/45).
+    def self.run_console
+      status = 0
+      begin
+        DB.connect(Cybertrain.config.database_path, size: 1)
+        status = Console.run(STDIN, STDOUT, Cybertrain.config)
+      rescue DB::Error => e
+        puts "console failed: #{e.message}"
+        status = 1
+      ensure
+        DB.disconnect
+      end
+      status
+    end
+
+    # `./<name> dbconsole`: the sqlite3 shell on the configured database
+    # (Rails' dbconsole), its exit status passed through. Process.spawn and
+    # Process.wait compile and reap under the pinned Spinel (NOTES rule 75);
+    # a missing binary is Errno::ENOENT from the spawn.
+    def self.run_dbconsole
+      path = Cybertrain.config.database_path
+      pid = 0
+      begin
+        pid = Process.spawn("sqlite3", path)
+      rescue SystemCallError => e
+        puts "sqlite3 not found: install the sqlite3 CLI"
+        return 1
+      end
+      Process.wait(pid)
+      status = $?
+      status.nil? ? 1 : Cast.int(status.exitstatus)
     end
 
     # Whether {Main.run} starts the server for these arguments: [],
@@ -185,6 +231,8 @@ module Cybertrain
       # The continuation lines up under "migrate" whatever the name.
       indent = "".ljust(name.size + 23)
       text << "#{indent}backup PATH [--force] | backup DIR/ [--keep N] | vacuum\n"
+      text << "  ./#{name} console           evaluate expressions over the models (help inside)\n"
+      text << "  ./#{name} dbconsole         open the sqlite3 shell on the database\n"
       COMMANDS.each do |command|
         word = command.command_name.ljust(17)
         text << "  ./#{name} #{word} #{command.command_description}\n"
