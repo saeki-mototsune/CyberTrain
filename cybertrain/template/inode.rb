@@ -17,6 +17,10 @@
 #   K_STMT         ia (expression, value discarded)
 #   K_ASSIGN       istr (local name), ia (expression)
 #   K_IF/K_UNLESS  ia (condition), ikids (then), ikids2 (else; an elsif is a nested K_IF)
+#   K_CASE         ia (subject), ikids (the branches, two slots each: a K_ARRAY whose ikids
+#                  are the `when` values, then a K_BODY whose ikids are the branch's body),
+#                  ikids2 (else)
+#   K_BODY         ikids (a list of statements; only ever a K_CASE branch, never evaluated)
 #   K_EACH         ia (collection), inames (block params), ikids (body), iint (1 = each_with_index),
 #                  ipairs (locals assigned in the body: block-local unless they exist outside)
 #   K_BLOCK_CALL   ia (the K_CALL), inames (block params), ikids (body), iint (1 = <%= %>), ipairs (as K_EACH)
@@ -73,6 +77,8 @@ module Cybertrain
       K_INTERP = 36
       K_INDEX = 37
       K_NONE = 38   # LEAF: "no node here"
+      K_CASE = 39
+      K_BODY = 40
 
       # Shared, never mutated: Compile always builds new Arrays for real lists.
       # The seed blocks never run; they only give the Arrays their element
@@ -161,6 +167,7 @@ module Cybertrain
           t.istr = n.var_name
           t
         when IfNode then convert_if(n)
+        when CaseNode then convert_case(n)
         when UnlessNode
           t = unary(INode::K_UNLESS, convert_node(n.cond), n.line)
           t.ikids = convert(n.then_nodes)
@@ -259,6 +266,9 @@ module Cybertrain
           elsif kind == INode::K_IF || kind == INode::K_UNLESS
             collect_assigned(k.ikids, params, out)
             collect_assigned(k.ikids2, params, out)
+          elsif kind == INode::K_CASE
+            k.ikids.each { |branch| collect_assigned(branch.ikids, params, out) if branch.ikind == INode::K_BODY }
+            collect_assigned(k.ikids2, params, out)
           end
         end
         nil
@@ -276,6 +286,23 @@ module Cybertrain
         t.ipairs = n.kwarg_names
         t.ikids2 = convert(n.kwarg_values)
         t.iint = n.safe_nav ? 1 : 0
+        t
+      end
+
+      # case: the slot layout is in the table at the top of this file.
+      def self.convert_case(n)
+        t = unary(INode::K_CASE, convert_node(n.subject), n.line)
+        branches = INode.list
+        n.when_values.each_with_index do |values, i|
+          v = node(INode::K_ARRAY, n.line)
+          v.ikids = convert(values)
+          branches << v
+          body = node(INode::K_BODY, n.line)
+          body.ikids = convert(n.when_bodies[i])
+          branches << body
+        end
+        t.ikids = branches
+        t.ikids2 = convert(n.else_nodes)
         t
       end
 

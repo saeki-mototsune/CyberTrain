@@ -50,6 +50,17 @@ module Cybertrain
         e
       end
 
+      # A `when` tag's values: one or more expressions separated by commas.
+      def parse_list
+        items = Node.list
+        items << parse_ternary
+        items << parse_ternary while accept_op(",")
+        t = peek
+        error("'#{t.tok_text}' is not supported in templates") if t.tok_kind == :ident && KEYWORDS.include?(t.tok_text)
+        unexpected(t) unless t.tok_kind == :eof
+        items
+      end
+
       # A code tag's content: `name = expr` or an expression.
       def parse_statement
         if @toks.size > 2 && @toks[0].tok_kind == :ident && op_token?(@toks[1], "=")
@@ -570,11 +581,21 @@ module Cybertrain
         top = @stack.last
         if code == "end"
           error(line, "'end' without an opening block") if @stack.size == 1
+          finish_case(top)
           @stack.pop
         elsif code == "else"
           start_else(top, line)
         elsif word == "elsif"
           start_elsif(top, rest, line)
+        elsif word == "case"
+          error(line, "'case' without a subject") if rest.empty?
+          node = CaseNode.new(expression(rest, line), line)
+          top.frame_target << node
+          # Until the first `when`, tags land in a scratch list that
+          # start_when checks holds only blank text (and drops).
+          @stack << Frame.new(node, "case", line, Node.list)
+        elsif word == "when"
+          start_when(top, rest, line)
         elsif word == "if" || word == "unless"
           error(line, "'#{word}' without a condition") if rest.empty?
           cond = expression(rest, line)
@@ -607,9 +628,49 @@ module Cybertrain
         case op
         when IfNode then top.frame_target = op.else_nodes
         when UnlessNode then top.frame_target = op.else_nodes
+        when CaseNode
+          finish_case(top)
+          top.frame_target = op.else_nodes
         else error(line, "'else' without 'if'")
         end
         top.in_else = true
+      end
+
+      # `when a, b`: a new branch of the innermost open `case`. Blank text
+      # between `case` and its first `when` (indentation, newlines) is
+      # dropped; anything else there is an error.
+      def start_when(top, rest, line)
+        op = top.opener
+        case op
+        when CaseNode
+          error(line, "'when' after 'else'") if top.in_else
+          error(line, "'when' without a value") if rest.empty?
+          if op.when_values.empty?
+            top.frame_target.each do |n|
+              blank = false
+              case n
+              when TextNode then blank = n.text.strip.empty?
+              end
+              error(top.line, "text between 'case' and its first 'when'") unless blank
+            end
+          end
+          body = Node.list
+          op.when_values << ExprParser.new(rest, @name, line).parse_list
+          op.when_bodies << body
+          top.frame_target = body
+        else
+          error(line, "'when' without 'case'")
+        end
+      end
+
+      # A `case` closed (by `else` or `end`) before any `when`.
+      def finish_case(top)
+        op = top.opener
+        case op
+        when CaseNode
+          error(top.line, "'case' without 'when'") if op.when_values.empty?
+        end
+        nil
       end
 
       def start_elsif(top, rest, line)

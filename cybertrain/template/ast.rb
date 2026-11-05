@@ -118,6 +118,30 @@ module Cybertrain
       end
     end
 
+    # case subject / when a, b / ... / else / end: the when branches are two
+    # parallel typed Arrays (each branch's values, each branch's body).
+    class CaseNode < Node
+      attr_reader :subject, :when_values, :when_bodies, :else_nodes, :line
+
+      def initialize(subject, line)
+        @subject = subject
+        @line = line
+        @when_values = Array.new(0) { Node.list }
+        @when_bodies = Array.new(0) { Node.list }
+        @else_nodes = Node.list
+      end
+
+      def to_sexp
+        s = +"(case #{@subject.to_sexp}"
+        @when_values.each_with_index do |values, i|
+          s << " (when (#{Cybertrain::Template.sexp_list(values)}) (#{Cybertrain::Template.sexp_list(@when_bodies[i])}))"
+        end
+        s << " (else #{Cybertrain::Template.sexp_list(@else_nodes)})" unless @else_nodes.empty?
+        s << ")"
+        s
+      end
+    end
+
     # x.each do |a| ... end, x.each do |k, v| ... end,
     # x.each_with_index do |item, i| ... end
     class EachNode < Node

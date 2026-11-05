@@ -308,9 +308,51 @@ module Cybertrain
             @out << to_output(v) if n.iint == 1
           elsif k == INode::K_STMT then eval_expr(n.ia, env)
           elsif k == INode::K_ASSIGN then env[n.istr] = eval_expr(n.ia, env)
+          elsif k == INode::K_CASE then exec_case(n, env)
           end
         end
         nil
+      end
+
+      # case/when: the subject is evaluated once, then each branch's values in
+      # order until one equals it (case_equal?); else runs when none does.
+      # The slot layout is in cybertrain/template/inode.rb.
+      def exec_case(n, env)
+        subject = eval_expr(n.ia, env)
+        branches = n.ikids
+        i = 0
+        while i + 1 < branches.size
+          values = branches[i].ikids
+          j = 0
+          while j < values.size
+            if case_equal?(subject, eval_expr(values[j], env))
+              exec_nodes(branches[i + 1].ikids, env)
+              return nil
+            end
+            j += 1
+          end
+          i += 2
+        end
+        exec_nodes(n.ikids2, env)
+        nil
+      end
+
+      # The template's `==`, with numbers compared by value (Integer 1
+      # matches Float 1.0, as Ruby's `1.0 === 1` does).
+      def case_equal?(l, r)
+        case l
+        when Integer
+          case r
+          when Integer then return l == r
+          when Float then return l.to_f == r
+          end
+        when Float
+          case r
+          when Integer then return l == r.to_f
+          when Float then return l == r
+          end
+        end
+        l == r
       end
 
       def exec_each(n, env)
