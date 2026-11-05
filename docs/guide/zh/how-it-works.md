@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 037e0a7442cccd5d99176ce5c5bf00f3475b11a64fe98311f35c1017cc78ee4c
+source_sha256: a0fe78f06a9b4553bbbfb31ceac28f9973806efcac17684819ec9c073e830347
 ---
 # 工作原理
 
@@ -44,7 +44,7 @@ source_sha256: 037e0a7442cccd5d99176ce5c5bf00f3475b11a64fe98311f35c1017cc78ee4c
 一个连接池（`SizedQueue`，默认 4 个连接）分发连接，这些连接带有：
 
 - WAL；
-- 约五秒的忙等待超时（一个每 100 µs 重试一次的忙处理器，而 SQLite 的 `busy_timeout` 每次会休眠一毫秒或更久）；
+- 约五秒的忙等待超时，通过绿色线程的 `sleep` 等待（起初 100 µs，之后最多 1 ms），因此即使只有一个 worker，持有锁的连接也能继续运行；模式脚本则在 SQLite 内部等待（SQLite 自己的 `busy_timeout` 每次会休眠一毫秒或更久）；
 - 最多 64 条缓存的预编译语句；
 - 开启的外键。
 

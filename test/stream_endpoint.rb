@@ -1,4 +1,4 @@
-# The SSE side of the stream endpoint end to end (docs/design.md D35): a
+# The SSE side of the stream endpoint end to end (docs/design.md D36): a
 # real Server on an ephemeral port running Stream::Endpoint in front of a
 # fallback middleware, the poller running, raw TCPSocket clients. Live
 # delivery, mode=json, Last-Event-ID replay, 403 for a bad or foreign token,
