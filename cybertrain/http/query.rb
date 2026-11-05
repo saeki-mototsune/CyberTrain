@@ -473,5 +473,24 @@ module Cybertrain
       end
       parts.join("&")
     end
+
+    # True when encode_www_form_component would return value unchanged: only
+    # the bytes it leaves alone (ASCII letters and digits, `*`, `-`, `.`,
+    # `_`). Ids, most slugs and the session cookie (see Session.dump) are, and
+    # skip the encoder, whose per-character work shows in a profile. Takes the
+    # String from a value.to_s, so the byte reads compile to plain C (see
+    # Html.escape).
+    def self.plain?(value)
+      i = 0
+      n = value.bytesize
+      while i < n
+        b = value.getbyte(i)
+        unless (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 42 || b == 45 || b == 46 || b == 95
+          return false
+        end
+        i += 1
+      end
+      true
+    end
   end
 end

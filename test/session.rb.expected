@@ -3,6 +3,8 @@ ok   tampered signature loads empty
 ok   wrong secret loads empty
 ok   garbage loads empty
 ok   tampered payload with recomputed signature over garbage JSON loads empty
+ok   dump writes no base64 padding, so serialize has nothing to encode at any length
+ok   a cookie written with base64 padding still loads
 ok   changed? starts false
 ok   changed? true after a new write
 ok   changed? false when the same value is written again
@@ -19,4 +21,4 @@ ok   absolute_max_age stamps the first write and caps the cookie's Max-Age
 ok   a cookie past the absolute lifetime loads empty however recently it was used
 ok   a cookie without a start gets one; restart_lifetime! starts the count again
 ok   absolute_max_age 0 (SessionStore's default) leaves the start alone
-21 tests, 61 assertions, 0 failures
+23 tests, 77 assertions, 0 failures

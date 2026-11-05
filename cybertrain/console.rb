@@ -161,7 +161,7 @@ module Cybertrain
       output.write(banner_text(config))
       # Flushed before every read: under Spinel `gets` on STDIN does not
       # flush a pending partial line on STDOUT, so the prompt would appear
-      # only after the user's line (NOTES rule 82).
+      # only after the user's line (NOTES rule 83).
       output.flush
       lineno = 0
       running = true
@@ -201,7 +201,7 @@ module Cybertrain
     # errors are named because they are not StandardErrors under Spinel
     # (rules 33 and 61). The rescued class is spelt from the top
     # (`Cybertrain::Template::...`): a relative `Template::SyntaxError` in a
-    # rescue clause is not found (NOTES rule 80).
+    # rescue clause is not found (NOTES rule 81).
     def self.evaluate_line(text, lineno, helpers, interp, env)
       helpers.clear_failure
       names = Console.env_names(env)
@@ -209,7 +209,7 @@ module Cybertrain
       failed = true
       # Every class the console prints is named exactly, from the top: a
       # rescue clause does not see an exception's superclass under Spinel
-      # (NOTES rule 54) and a relative path can miss (rule 80).
+      # (NOTES rule 54) and a relative path can miss (rule 81).
       begin
         value = evaluate(text, lineno, interp, env)
         env["_"] = value
