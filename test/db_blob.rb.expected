@@ -5,5 +5,6 @@ ok   Cast.binary narrows
 ok   the dumper writes t.binary back
 ok   add_column with :binary adds a BLOB column
 ok   the generator types a binary column as a String and binds it as a Blob
+ok   a binary column with a default is refused by the generator
 ok   a model with a binary attribute saves and reloads its bytes
-8 tests, 53 assertions, 0 failures
+9 tests, 65 assertions, 0 failures

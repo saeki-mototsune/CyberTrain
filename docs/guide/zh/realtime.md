@@ -1,5 +1,5 @@
 ---
-source_sha256: 9b59e533788ea708d97747619f1c8ded7a617781dc9a58f29808bf2bdc016a82
+source_sha256: e6054a1e3a5194a02270940c82ba0254133258775b0034aa29e5153607ba5489
 ---
 # 实时：推送到浏览器的流
 
@@ -36,7 +36,7 @@ source_sha256: 9b59e533788ea708d97747619f1c8ded7a617781dc9a58f29808bf2bdc016a82
 </div>
 ```
 
-`turbo_stream_from` 接受任意数量的 String 和记录，并输出一个 `<turbo-stream-source>` 元素，其 URL 为它们全部携带一个令牌。Turbo 把它作为 `EventSource` 打开；`turbo_stream_from @article, ws: true` 则改为给出一个 `ws://` URL（在 HTTPS 之后为 `wss://`），Turbo 把它作为 WebSocket 打开。无论哪种方式，页面都不需要你写任何 JavaScript。
+`turbo_stream_from` 接受任意数量的 String 和记录，并输出一个 `<turbo-stream-source>` 元素，其 URL 为它们全部携带一个令牌。Turbo 把它作为 `EventSource` 打开；`turbo_stream_from @article, ws: true` 则改为给出一个 `ws://` URL（在 HTTPS 之后为 `wss://`），Turbo 把它作为 WebSocket 打开。无论哪种方式，页面都不需要你写任何 JavaScript。不过 Turbo 不会重新打开丢失的 WebSocket（网络中断、服务器重启）：那个页面在重新加载之前收不到更多更新，而 `EventSource` 会自行重连并重放错过的内容。除非确实需要 WebSocket，否则请保留默认方式，或者用你自己的 JavaScript 重连（见下文的 `&after=`）。
 
 然后在改变了数据的动作中广播：
 
@@ -106,7 +106,7 @@ partial 由 `Cybertrain::Views.render_partial` 渲染，它在没有请求的情
 
 在 `mode=json` 下，每条消息都是一个以其流命名的事件，其数据为 `{"stream": ..., "id": ..., "data": ...}`，负载放在 `data` 中（以 String 的形式广播 JSON：`Stream.broadcast("prices", JSON.generate({ "price" => 12.5 }))`）。在默认的 `mode=raw` 下，负载原样作为普通的 `message` 事件发出，这正是 Turbo 读取的内容。
 
-连接断开时浏览器会自动重连，并发送它看到的最后一个事件的 id（`Last-Event-ID`）。端点随后会先重发这些流中 id 更大、且仍在表中（在 `stream_retention` 之内）的所有消息，因此中间的内容不会丢失。离开时间更长的页面应当重新加载。静默 15 秒后会发出一行注释（`: ping`），以便代理保持连接打开。
+连接断开时浏览器会自动重连，并发送它看到的最后一个事件的 id（`Last-Event-ID`）。端点随后会先重发这些流中 id 更大、且仍在表中（在 `stream_retention` 之内）的所有消息，因此中间的内容不会丢失。离开时间更长的页面应当重新加载。在第一个事件到达之前，浏览器没有可发送的 id，所以在这段窗口内断开的连接不会得到任何重放：页面加载时渲染的内容就是它在下一次广播到达之前的状态。静默 15 秒后会发出一行注释（`: ping`），以便代理保持连接打开。
 
 ## 在 JavaScript 中使用 WebSocket
 

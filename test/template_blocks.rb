@@ -93,6 +93,13 @@ test "sum with and without a block" do
   assert_equal "items/blocks:1: wrong number of arguments for 'sum'", blocks_runtime_error("<%= nums.sum(10) %>")
   assert_equal "items/blocks:1: wrong number of arguments for 'min'", blocks_runtime_error("<%= nums.min(2) %>")
   assert_equal "items/blocks:1: wrong number of arguments for 'flatten'", blocks_runtime_error("<%= mixed.flatten(1) %>")
+  # With a block too: Ruby's sum(0.0) { } would make the sum a Float here,
+  # so the argument is refused rather than dropped.
+  assert_equal "items/blocks:1: wrong number of arguments for 'sum'", blocks_runtime_error("<%= nums.sum(0.0) { |n| n } %>")
+  assert_equal "items/blocks:1: wrong number of arguments for 'map'", blocks_runtime_error("<%= nums.map(1) { |n| n } %>")
+  assert_equal "items/blocks:1: wrong number of arguments for 'count'", blocks_runtime_error("<%= nums.count(2) { |n| n } %>")
+  assert_equal "items/blocks:1: wrong number of arguments for 'select'", blocks_runtime_error("<%= counts.select(1) { |k, v| v } %>")
+  assert_equal "items/blocks:1: wrong number of arguments for 'sum'", blocks_runtime_error("<%= counts.sum(0) { |k, v| v } %>")
 end
 
 test "sort_by, min_by, max_by" do
