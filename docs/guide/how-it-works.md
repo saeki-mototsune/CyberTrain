@@ -79,8 +79,10 @@ adapter today (PostgreSQL via `libpq` FFI is noted as possible future work).
 A pool (`SizedQueue`, 4 connections by default) hands out connections with:
 
 - WAL;
-- a busy timeout of about five seconds (a busy handler retrying every 100 µs,
-  where SQLite's `busy_timeout` sleeps a millisecond or more);
+- a busy timeout of about five seconds, waited out in a green-thread `sleep`
+  (100 µs at first, then up to 1 ms) so the connection holding the lock keeps
+  running even on one worker; a schema script waits inside SQLite instead
+  (where SQLite's own `busy_timeout` sleeps a millisecond or more);
 - up to 64 cached prepared statements;
 - foreign keys on.
 

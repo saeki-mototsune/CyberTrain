@@ -321,8 +321,9 @@ module Cybertrain
       Base64.urlsafe_encode64(bytes, padding: false)
     end
 
-    # Decoding pads the text back up: Base64.urlsafe_decode64 accepts
-    # unpadded input under CRuby but is not relied on to under Spinel. Text
+    # Decoding pads the text back up: Base64.urlsafe_decode64 takes unpadded
+    # input on both runtimes (Session relies on it), and a stored digest
+    # should not depend on that. Text
     # that is not base64 at all (a length no padding fixes) decodes to "",
     # which verify? then rejects by length; a login form must never raise
     # on what the database holds.
