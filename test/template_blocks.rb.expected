@@ -1,0 +1,15 @@
+ok   map with a brace block, then a chained call
+ok   select, reject, find, any?, all?, none?, count
+ok   sum with and without a block
+ok   sort_by, min_by, max_by
+ok   group_by, then each over the groups
+ok   each_slice with a do block and as a value
+ok   each_with_object is an undefined method
+ok   Hash map, select, reject, sort_by, find, any?, all?, sum, to_a
+ok   Array methods without a block
+ok   do ... end blocks: the last statement is the value
+ok   a block on a method that takes none is a SyntaxError
+ok   block parameters shadow and are restored after the call
+ok   locals and the output are restored when a block raises
+ok   blocks nest
+14 tests, 98 assertions, 0 failures

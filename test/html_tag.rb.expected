@@ -1,0 +1,11 @@
+ok   an element with no content, a void element
+ok   attributes: nil and false drop, true is bare, Arrays join, data and aria nest
+ok   attribute values are always escaped, SafeStrings too
+ok   content is escaped; a SafeString content and a block's SafeString are not
+ok   element and attribute names are checked
+ok   safe_join escapes what is not safe
+ok   class_names
+ok   dom_id
+ok   the tag builder prints as nothing
+ok   class Hashes and Arrays go through class_names; other Hashes are refused
+10 tests, 54 assertions, 0 failures

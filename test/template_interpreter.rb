@@ -107,7 +107,7 @@ class TestHelpers < Cybertrain::Template::HelperBase
     end
   end
 
-  def call_object_method(recv, name_sym, name_str, args, kwargs)
+  def call_object_method(recv, name_sym, name_str, args, kwargs, block, interp, env)
     case recv
     when Widget
       case name_sym
@@ -115,7 +115,7 @@ class TestHelpers < Cybertrain::Template::HelperBase
       when :explode then raise "widget broke"
       end
     end
-    super(recv, name_sym, name_str, args, kwargs)
+    super(recv, name_sym, name_str, args, kwargs, block, interp, env)
   end
 end
 

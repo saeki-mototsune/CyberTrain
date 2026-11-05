@@ -50,6 +50,17 @@ module Cybertrain
         e
       end
 
+      # A `when` tag's values: one or more expressions separated by commas.
+      def parse_list
+        items = Node.list
+        items << parse_ternary
+        items << parse_ternary while accept_op(",")
+        t = peek
+        error("'#{t.tok_text}' is not supported in templates") if t.tok_kind == :ident && KEYWORDS.include?(t.tok_text)
+        unexpected(t) unless t.tok_kind == :eof
+        items
+      end
+
       # A code tag's content: `name = expr` or an expression.
       def parse_statement
         if @toks.size > 2 && @toks[0].tok_kind == :ident && op_token?(@toks[1], "=")
@@ -152,7 +163,7 @@ module Cybertrain
             if two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "&&" || two == "||" || two == "&."
               push(:op, two, spaced)
               i += 2
-            elsif "<>+-*/%!?:.,()[]{}=".index(c)
+            elsif "<>+-*/%!?:.,()[]{}=|".index(c)
               push(:op, c, spaced)
               i += 1
             else
@@ -408,6 +419,7 @@ module Cybertrain
         error("constants are not supported: '#{word}'") if word[0] >= "A" && word[0] <= "Z"
         error("'#{word}' is not supported in templates") if KEYWORDS.include?(word)
         t = peek
+        no_receiver_block! if op_token?(t, "{")
         if word == "yield" || (op_token?(t, "(") && !t.spaced) || command_arg_start?(t)
           return parse_call(nil, word, false)
         end
@@ -485,7 +497,35 @@ module Cybertrain
           end
           @command_depth -= 1
         end
-        Call.new(recv, name, args, kw_names, kw_values, safe, @line)
+        call = Call.new(recv, name, args, kw_names, kw_values, safe, @line)
+        if op_token?(peek, "{")
+          no_receiver_block! if recv.nil?
+          advance
+          call.call_block = parse_brace_block
+        end
+        call
+      end
+
+      def no_receiver_block!
+        error("a { } block needs a receiver (helper calls take do ... end)")
+      end
+
+      # `{ |a, b| expr }` after its `{`: one expression, at most two parameters.
+      def parse_brace_block
+        params = Array.new(0) { "" }
+        if accept_op("|")
+          loop do
+            t = advance
+            unexpected(t) unless t.tok_kind == :ident && Lexer.identifier?(t.tok_text)
+            params << t.tok_text
+            break unless accept_op(",")
+          end
+          expect_op("|")
+        end
+        error("a block takes at most two parameters") if params.size > 2
+        body = parse_ternary
+        expect_op("}")
+        BlockNode.new(params, true, body, @line)
       end
 
       def parse_argument(args, kw_names, kw_values)
@@ -551,7 +591,7 @@ module Cybertrain
         error(line, raw ? "empty <%== %> tag" : "empty <%= %> tag") if code.empty?
         at = do_index(code)
         if at >= 0
-          open_block(code, at, true, line)
+          open_block(code, at, true, raw, line)
         else
           @stack.last.frame_target << OutputNode.new(expression(code, line), raw, line)
         end
@@ -570,11 +610,21 @@ module Cybertrain
         top = @stack.last
         if code == "end"
           error(line, "'end' without an opening block") if @stack.size == 1
+          finish_case(top)
           @stack.pop
         elsif code == "else"
           start_else(top, line)
         elsif word == "elsif"
           start_elsif(top, rest, line)
+        elsif word == "case"
+          error(line, "'case' without a subject") if rest.empty?
+          node = CaseNode.new(expression(rest, line), line)
+          top.frame_target << node
+          # Until the first `when`, tags land in a scratch list that
+          # start_when checks holds only blank text (and drops).
+          @stack << Frame.new(node, "case", line, Node.list)
+        elsif word == "when"
+          start_when(top, rest, line)
         elsif word == "if" || word == "unless"
           error(line, "'#{word}' without a condition") if rest.empty?
           cond = expression(rest, line)
@@ -590,7 +640,7 @@ module Cybertrain
         else
           at = do_index(code)
           if at >= 0
-            open_block(code, at, false, line)
+            open_block(code, at, false, false, line)
           else
             parsed = ExprParser.new(code, @name, line).parse_statement
             case parsed
@@ -607,9 +657,49 @@ module Cybertrain
         case op
         when IfNode then top.frame_target = op.else_nodes
         when UnlessNode then top.frame_target = op.else_nodes
+        when CaseNode
+          finish_case(top)
+          top.frame_target = op.else_nodes
         else error(line, "'else' without 'if'")
         end
         top.in_else = true
+      end
+
+      # `when a, b`: a new branch of the innermost open `case`. Blank text
+      # between `case` and its first `when` (indentation, newlines) is
+      # dropped; anything else there is an error.
+      def start_when(top, rest, line)
+        op = top.opener
+        case op
+        when CaseNode
+          error(line, "'when' after 'else'") if top.in_else
+          error(line, "'when' without a value") if rest.empty?
+          if op.when_values.empty?
+            top.frame_target.each do |n|
+              blank = false
+              case n
+              when TextNode then blank = n.text.strip.empty?
+              end
+              error(top.line, "text between 'case' and its first 'when'") unless blank
+            end
+          end
+          body = Node.list
+          op.when_values << ExprParser.new(rest, @name, line).parse_list
+          op.when_bodies << body
+          top.frame_target = body
+        else
+          error(line, "'when' without 'case'")
+        end
+      end
+
+      # A `case` closed (by `else` or `end`) before any `when`.
+      def finish_case(top)
+        op = top.opener
+        case op
+        when CaseNode
+          error(top.line, "'case' without 'when'") if op.when_values.empty?
+        end
+        nil
       end
 
       def start_elsif(top, rest, line)
@@ -637,7 +727,8 @@ module Cybertrain
         -1
       end
 
-      def open_block(code, at, output, line)
+      # output/raw: the tag was <%= %> / <%== %>.
+      def open_block(code, at, output, raw, line)
         head = code[0, at].strip
         params = block_params(code[at + 3, code.length - at - 3].strip, line)
         top = @stack.last
@@ -653,19 +744,55 @@ module Cybertrain
           return
         end
 
-        call = expression(head, line)
+        # `<% total = items.sum do |x| %>`: the block belongs to the call
+        # on the right of the assignment.
+        stmt = ExprParser.new(head, @name, line).parse_statement
+        assign_name = ""
+        call = stmt
+        case stmt
+        when AssignNode
+          error(line, "unexpected '=' in '#{head}'") if output
+          assign_name = stmt.var_name
+          call = stmt.expr
+        end
         case call
         when LVar
           call = Call.new(nil, call.name, Node.list, Array.new(0) { "" }, Node.list, false, line)
         end
         case call
         when Call
-          error(line, "blocks are only supported on each, each_with_index and helper calls") unless call.recv.nil?
-          node = BlockCallNode.new(call, params, output, line)
-          top.frame_target << node
-          @stack << Frame.new(node, call.name, line, node.body_nodes)
+          if call.recv.nil?
+            error(line, "a helper call with a block cannot be assigned: '#{head}'") unless assign_name.empty?
+            node = BlockCallNode.new(call, params, output, line)
+            top.frame_target << node
+            @stack << Frame.new(node, call.name, line, node.body_nodes)
+            return
+          end
+          error(line, "'#{call.name}' already has a { } block") unless call.call_block.nil?
+          error(line, "a block takes at most two parameters") if params.size > 2
+          if call.name == "each_slice"
+            # Iterates like each, over the Array of slices the call returns.
+            error(line, "'each_slice' with a block cannot be assigned") unless assign_name.empty?
+            error(line, "'each_slice' takes one or two block parameters") if params.empty?
+            node = EachNode.new(call, params, false, line)
+            top.frame_target << node
+            @stack << Frame.new(node, "each_slice", line, node.body_nodes)
+            return
+          end
+          # A value block (map, select ...) or an output block (tag.div):
+          # the call is an ordinary expression whose Call carries the block.
+          block = BlockNode.new(params, false, NilLit.new, line)
+          call.call_block = block
+          if !assign_name.empty?
+            top.frame_target << AssignNode.new(assign_name, call)
+          elsif output
+            top.frame_target << OutputNode.new(call, raw, line)
+          else
+            top.frame_target << StatementNode.new(call, line)
+          end
+          @stack << Frame.new(block, call.name, line, block.body_nodes)
         else
-          error(line, "blocks are only supported on each, each_with_index and helper calls")
+          error(line, "a do block needs a method call: '#{head}'")
         end
       end
 
