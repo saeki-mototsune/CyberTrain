@@ -845,6 +845,14 @@ The rules are numbered in the order they were found. By topic:
     block) is refused rather than run in autocommit, where it would commit by
     itself (`Connection#refuse_if_transaction_gone`, saeki-mototsune/CyberTrain#158,
     reproduced with `PRAGMA max_page_count` in test/db_rolled_back_transaction.rb).
+    A transaction opened with SQL (`exec_script("BEGIN")`) is covered too:
+    a statement that started inside a transaction and failed with SQLite
+    back in autocommit marks the connection (`@transaction_lost`; a
+    constraint error leaves the transaction open and marks nothing), and
+    only COMMIT, END or ROLLBACK, read from the first keyword, run until
+    then. That ROLLBACK is skipped, since running it would raise "no
+    transaction is active" over the application's own error
+    (test/db_raw_transaction_rollback.rb).
 
 ## Numbers worth remembering
 

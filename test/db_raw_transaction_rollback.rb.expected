@@ -1,0 +1,4 @@
+ok   after SQLite rolled back a SQL BEGIN, statements are refused until COMMIT
+ok   a ROLLBACK after SQLite already rolled back is accepted, not an error
+ok   a failed statement that leaves the transaction open is not a rollback
+3 tests, 22 assertions, 0 failures

@@ -51,6 +51,12 @@ module Cybertrain
         @path = path
         @closed = false
         @transaction_depth = 0
+        # True once SQLite rolled back a transaction on its own while a
+        # statement failed, until the application ends it with COMMIT, END
+        # or ROLLBACK (#note_lost_transaction, #refuse_if_transaction_gone).
+        # Covers transactions opened with SQL too, which @transaction_depth
+        # does not see.
+        @transaction_lost = false
         # The busy handler's slot (SQLite3.cybertrain_sqlite_set_busy_handler):
         # its mode and whether SQLite asked to wait. Freed by #close, after
         # sqlite3_close, the last call that could reach the handler.
@@ -132,7 +138,11 @@ module Cybertrain
 
       def run_statement(sql, binds, epoch)
         raise Error, "connection closed (sql: #{sql})" if @closed
-        refuse_if_transaction_gone(sql)
+        rows = []
+        # A ROLLBACK of a transaction SQLite already rolled back: nothing
+        # left to do (see #exec_script).
+        return rows if refuse_if_transaction_gone(sql)
+
         stmt = @statements[sql]
         cached = !stmt.nil?
         unless cached
@@ -151,7 +161,6 @@ module Cybertrain
           end
         end
 
-        rows = []
         begin
           index = 1
           while index <= binds.size
@@ -165,7 +174,8 @@ module Cybertrain
           # names (and any later row) describe the new table. Only this first
           # step waits for a lock: a statement takes its locks before it
           # changes or returns anything.
-          rc = step_waiting(stmt)
+          in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
+          rc = step_waiting(stmt, in_transaction)
           columns = SQLite3.sqlite3_column_count(stmt)
           # The names once per SQL text (and the count must still match),
           # not once per row and column.
@@ -187,7 +197,10 @@ module Cybertrain
             rows << read_row(stmt, names, flags, epoch)
             rc = SQLite3.sqlite3_step(stmt)
           end
-          raise Error, error_message(sql) if rc != SQLite3::DONE
+          if rc != SQLite3::DONE
+            note_lost_transaction(in_transaction, sql)
+            raise Error, error_message(sql)
+          end
         ensure
           if cached
             # Back to the start, holding nothing: reset ends the statement
@@ -209,12 +222,20 @@ module Cybertrain
       # migrations, not per request.
       def exec_script(sql)
         raise Error, "connection closed (sql: #{sql})" if @closed
-        refuse_if_transaction_gone(sql)
+        # A ROLLBACK of a transaction SQLite already rolled back has nothing
+        # left to do: running it would raise "no transaction is active" and
+        # mask the error the application is cleaning up after.
+        return nil if refuse_if_transaction_gone(sql)
+
         forget_names
+        in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
         SQLite3.cybertrain_sqlite_busy_report(@busy, 0)
         rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
         SQLite3.cybertrain_sqlite_busy_report(@busy, 1)
-        raise Error, error_message(sql) if rc != SQLite3::OK
+        if rc != SQLite3::OK
+          note_lost_transaction(in_transaction, sql)
+          raise Error, error_message(sql)
+        end
         nil
       end
 
@@ -313,6 +334,7 @@ module Cybertrain
           @transaction_depth += 1
           return nil
         end
+        refuse_if_transaction_gone(immediate ? "BEGIN IMMEDIATE" : "BEGIN")
 
         exec_waiting(immediate ? "BEGIN IMMEDIATE" : "BEGIN")
         @transaction_depth = 1
@@ -389,6 +411,7 @@ module Cybertrain
         # transaction block must not keep a stale depth for whoever still
         # holds it.
         @transaction_depth = 0
+        @transaction_lost = false
         return :clean if @closed
         return :clean if SQLite3.sqlite3_get_autocommit(@db) != 0
 
@@ -528,11 +551,12 @@ module Cybertrain
       # worker (saeki-mototsune/CyberTrain#134). A BUSY the handler was not
       # asked about cannot clear by waiting and is returned at once, as is
       # the last one after BUSY_WAIT_LIMIT.
-      def step_waiting(stmt)
-        # Whether SQLite was inside a transaction before this statement: one
-        # opened by #begin! or by SQL (`exec_script("BEGIN")`), which leaves
-        # @transaction_depth at 0.
-        in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
+      #
+      # in_transaction: whether SQLite was inside a transaction before this
+      # statement, one opened by #begin! or by SQL (`exec_script("BEGIN")`,
+      # which leaves @transaction_depth at 0). #run_statement reads it once
+      # for this and for #note_lost_transaction.
+      def step_waiting(stmt, in_transaction)
         rc = SQLite3.sqlite3_step(stmt)
         return rc if rc != SQLite3::BUSY
 
@@ -581,23 +605,70 @@ module Cybertrain
         Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
-      # Raises instead of running sql when the transaction #begin! opened is
-      # gone: a depth above 0 while SQLite is in autocommit means SQLite rolled
-      # it back on its own (SQLITE_FULL / IOERR / BUSY / NOMEM) and the
-      # application rescued that and went on. Run now, the statement would
-      # commit by itself while the block's COMMIT then fails, so the
-      # transaction would be neither all nor nothing
-      # (saeki-mototsune/CyberTrain#158). #begin! makes the same check before
-      # nesting. The depth is back to 0 once the transaction ends (#commit!,
-      # #rollback!, Pool#check_in), so the connection works again after. A
-      # transaction opened with SQL (`exec_script("BEGIN")`) keeps the depth
-      # at 0 and is not covered: its caller owns it.
+      # Raises instead of running sql when the application's transaction is
+      # gone: SQLite rolled it back on its own (SQLITE_FULL / IOERR / BUSY /
+      # NOMEM) and the application rescued that and went on. Run now, the
+      # statement would commit by itself while the transaction's COMMIT then
+      # fails, so the transaction would be neither all nor nothing
+      # (saeki-mototsune/CyberTrain#158). Two signs, either is enough:
+      #
+      # * @transaction_lost: a statement that started inside a transaction
+      #   failed and left SQLite in autocommit (#note_lost_transaction). This
+      #   sees a transaction opened with SQL (`exec_script("BEGIN")`) too.
+      #   COMMIT, END and ROLLBACK end the lost transaction and are let
+      #   through; true is returned for a ROLLBACK, which has nothing left to
+      #   do, so #exec_script skips it.
+      # * a depth above 0 while SQLite is in autocommit: the transaction
+      #   #begin! opened is gone, however it went.
+      #
+      # #abandon_transaction! (#commit!, #rollback!, Pool#check_in) clears
+      # both, so the connection works again afterwards. Returns false when
+      # sql may run.
       def refuse_if_transaction_gone(sql)
-        return nil if @transaction_depth == 0
-        return nil if SQLite3.sqlite3_get_autocommit(@db) == 0
+        if @transaction_lost
+          if Connection.ends_transaction?(sql)
+            @transaction_lost = false
+            return Connection.rollback_statement?(sql)
+          end
+          raise Error, Connection.transaction_gone_message(sql)
+        end
+        return false if @transaction_depth == 0
+        return false if SQLite3.sqlite3_get_autocommit(@db) == 0
 
-        raise Error, "the enclosing transaction is no longer open (SQLite rolled it back after an error); " \
-                     "the statement was not run (sql: #{sql})"
+        raise Error, Connection.transaction_gone_message(sql)
+      end
+
+      # After sql failed: a statement that started inside a transaction and
+      # left SQLite in autocommit means SQLite rolled the transaction back
+      # on its own (a constraint error undoes only its own statement and
+      # leaves the transaction open). A failed COMMIT, END or ROLLBACK is
+      # the application ending the transaction itself and marks nothing.
+      def note_lost_transaction(in_transaction, sql)
+        return nil unless in_transaction
+        return nil if SQLite3.sqlite3_get_autocommit(@db) == 0
+        return nil if Connection.ends_transaction?(sql)
+
+        @transaction_lost = true
+        nil
+      end
+
+      def self.transaction_gone_message(sql)
+        "the enclosing transaction is no longer open (SQLite rolled it back after an error); " \
+          "the statement was not run (sql: #{sql})"
+      end
+
+      # COMMIT, END or ROLLBACK (any case, after leading whitespace), the
+      # statements that end a transaction. Only the first keyword is read.
+      def self.ends_transaction?(sql)
+        t = sql.lstrip.upcase
+        t.start_with?("COMMIT") || t.start_with?("END") || t.start_with?("ROLLBACK")
+      end
+
+      # ROLLBACK itself, not ROLLBACK TO a savepoint (which does not end the
+      # transaction).
+      def self.rollback_statement?(sql)
+        t = sql.lstrip.upcase
+        t.start_with?("ROLLBACK") && !t.include?(" TO ")
       end
 
       def error_message(sql)
