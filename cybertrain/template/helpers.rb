@@ -563,7 +563,9 @@ module Cybertrain
       def pager_html(page, path)
         q = path.index("?")
         base = q.nil? ? path : path[0, q].to_s
-        query = q.nil? ? request_query_string : path[(q + 1)..-1].to_s
+        # The current query string when there is a request; a pager in a
+        # broadcast partial (no request) carries only the path's own query.
+        query = q.nil? ? current_query_string : path[(q + 1)..-1].to_s
         rest = Query.without_key(query, "page")
         buf = +"<nav class=\"pager\">"
         if page.prev?
@@ -871,6 +873,11 @@ module Cybertrain
 
       def request_query_string
         request_bound!("request_query_string")
+        current_query_string
+      end
+
+      # The query string, "" without a request (does not raise).
+      def current_query_string
         controller = @controller
         controller.nil? ? "" : controller.request.query_string.to_s
       end

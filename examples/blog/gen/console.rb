@@ -10,7 +10,7 @@ module Gen
       case name
       when "Article" then Article.all
       when "Comment" then Comment.all
-      else raise Cybertrain::Console::UnknownModel, "no model \"#{name}\" (models: #{MODEL_NAMES.join(", ")})"
+      else Cybertrain::Console.unknown_model(name)
       end
     end
 
@@ -29,7 +29,7 @@ module Gen
       case name
       when "Article" then Article.create(attrs)
       when "Comment" then Comment.create(attrs)
-      else raise Cybertrain::Console::UnknownModel, "no model \"#{name}\" (models: #{MODEL_NAMES.join(", ")})"
+      else Cybertrain::Console.unknown_record(name)
       end
     end
   end

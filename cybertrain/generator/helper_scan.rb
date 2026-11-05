@@ -76,6 +76,7 @@ module Cybertrain
       # cybertrain/template/helpers.rb and interpreter.rb.
       RESERVED_HELPER_NAMES = %w[
         app_block_content app_helper_call arg button_to button_to_path
+        constant current_query_string model_call? no_kwargs tag_builder_call
         call_object_method class_names component_pop component_push content
         content_for content_for? content_tag csrf_meta_tags csrf_token
         data_attrs distance_of_time_in_words dom_id escape flash
@@ -185,10 +186,15 @@ module Cybertrain
           # so a column-0 `end` of an unindented body does not close the
           # module, and nothing in the body is read as a def or `private`.
           skip_indent = indent unless ModelScan.one_line_block?(line) || endless?(text)
-          next if in_private || line.start_with?("def self.") || setter?(text)
+          # A private or singleton def is checked too: `include` mixes a
+          # private method in as well, so a private `def params` would still
+          # replace the framework's.
+          next if setter?(text)
 
           d = parse_def(file, start_line, text)
           check_name(file, d)
+          next if in_private || line.start_with?("def self.")
+
           owner = found_named(found, names.last)
           owner.defs << d unless owner.nil?
         end
