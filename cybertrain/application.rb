@@ -394,11 +394,6 @@ module Cybertrain
       nil
     end
 
-    # What SPINEL_WORKERS must say for `workers` threads to serve requests in
-    # parallel. Spinel counts main among its N workers and runs the other
-    # threads on N-1 helpers, and main only waits in #serve, so N = workers
-    # leaves workers - 1 for the requests (2 gave one core's worth on two:
-    # spikes/NOTES.md rule 22). 1 stays 1: main runs every thread itself.
     # Views as a process renders them: the embedded templates in
     # production, the files under views_root otherwise (cached outside
     # development), the URL resolver and the layout. Boot calls it, and so
@@ -415,6 +410,11 @@ module Cybertrain
       nil
     end
 
+    # What SPINEL_WORKERS must say for `workers` threads to serve requests in
+    # parallel. Spinel counts main among its N workers and runs the other
+    # threads on N-1 helpers, and main only waits in #serve, so N = workers
+    # leaves workers - 1 for the requests (2 gave one core's worth on two:
+    # spikes/NOTES.md rule 22). 1 stays 1: main runs every thread itself.
     def self.spinel_workers(workers)
       workers > 1 ? workers + 1 : 1
     end
