@@ -74,8 +74,7 @@ Eight builds are covered:
   the three serves the same requests a second, CPU per request, objects
   per request, collections, `futex` calls and peak RSS within the spread
   between runs ("Re-checked side by side" under "Runtime cost"). Nothing
-  found is new in 2026.11.04.7026: the two-worker behaviour
-  saeki-mototsune/CyberTrain#128 writes up (an explicit `SPINEL_WORKERS=N`
+  found is new in 2026.11.04.7026: L (an explicit `SPINEL_WORKERS=N`
   counts the main thread) is on 2026.10.27.7020 and 2026.11.03.7025 as
   well, and rule 79's compile failure is too (see "Rule 79"). The release
   before it, 2026.11.03.7025
@@ -91,7 +90,8 @@ there on 2026.11.04.7026, reduced, with a one-line fix tested, and the
 one workaround left that an upstream fix would remove; see K), then J (a
 use-after-free shown with the slab off, reduced, still there on
 2026.11.04.7026; whether the default is affected is open), then 5
-(measured, with two concrete fixes), then 6 and 7 (4 is fixed on 2026.10.27.7020, see
+(measured, with two concrete fixes), then L (found on 2026-11-05, worked
+around, with a program that shows it), then 6 and 7 (4 is fixed on 2026.10.27.7020, see
 4), then the rest. The
 refusal under C (#10525, with the run-time `TypeError` beside it fixed
 by #10524) and I (#10735 and #10786), which used to lead this list, are
@@ -119,6 +119,7 @@ has a workaround in CyberTrain or an open bug:
 | 5 (a) | `SPINEL_GC_FULL_INTERVAL=8` in the deploy files | A change to the full-collection cadence rule (`SP_GC_PROMOTED_DEAD_CUT`), a policy change that upstream's benchmarks would have to support; not written yet |
 | 5 (b) | none (a gain of about 5% on one CPU) | Small: start no sweeper in `sp_cs_start_sweepers` (lib/sp_sched.c) when `SPINEL_GC_SWEEPERS` is unset and the process may use one CPU; not written or measured as a patch |
 | J | none | Nothing yet: where the capture struct becomes unreachable is not known |
+| L | `Application.spinel_workers` (`workers + 1` above 1) | **Ready to report**: the 15-line program and its table in L show it without a server; a choice of fix for upstream (main pumps while it joins, or N helpers when main only waits), plus the separate placement of a helper's spawns. No patch written. Not reported upstream yet |
 | `"#{v}"` copies | the idioms of rule 56 | Not as stated in the table: CRuby's `"#{s}"` also answers a new, unfrozen String that `<<` does not share with `s`, so the copy can only be skipped where the result is never mutated |
 | `str << int` | the idioms of rule 56 | A codegen change appending the byte directly; a speed gain, not a correctness fix; not written |
 | B, D, 1 | — | Nothing, by decision (see "Accepted as Spinel constraints") |
@@ -158,8 +159,8 @@ that it is fixed.
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked | not re-checked (test/http_client.rb passes) |
 | Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked | not re-checked |
 | K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around; reduced, fix tested, see K) |
+| L. `SPINEL_WORKERS=N` counts main, which a server keeps waiting | no (N helpers beside main) | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05: its reduced program uses 1.01 CPUs at N=2, 1.97 at N=3) | not checked | **yes** (from #9840; worked around; 1.01 CPUs at N=2, 1.97 at N=3, the same on 2026.11.03.7025, so not new here) |
 | Rule 79. A rescuing method's value, from a block that only raises, does not compile when appended | not checked | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05) | not checked | **yes** (found 2026-11-04; also on 2026.11.03.7025, so not new here) |
-| `SPINEL_WORKERS=N` counts the main thread, which a server keeps waiting (saeki-mototsune/CyberTrain#128) | no (N helpers beside main) | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05: its reduced program uses 1.01 CPUs at N=2, 1.97 at N=3) | not checked | **yes** (1.01 CPUs at N=2, 1.97 at N=3; the same on 2026.11.03.7025) |
 
 ## What CyberTrain still works around
 
@@ -194,6 +195,7 @@ CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 | `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415). Dropped on 2026.10.27.7020: `DB.with`'s comment no longer asks for the local, and test/db_with_value.rb also covers the block's own value | dropped (test/db_with_value.rb passes) |
 | `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept | not re-checked (accepted) |
 | `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile |
+| `Application#serve` sets `SPINEL_WORKERS` to `workers + 1` when `workers > 1` (`Application.spinel_workers`, cybertrain/application.rb) | L | not checked | not checked | required: `SPINEL_WORKERS=2` starts one helper, which main does not help |
 
 Every fix the fork carried is now in matz/spinel master, not only in the
 fork (#10254 to #10263, and #10316). #10316 is the fork's
@@ -408,11 +410,11 @@ and it is older than 2026.11.04.7026. With the server on CPUs 0 and 1 and
 alternated), 2026.10.27.7020 served 1,180 and 1,201 requests a second and
 2026.11.04.7026 1,329 and 1,319, no more than at one worker on either,
 and on both one OS thread had 13.7 to 15.1 s of the 16,000 requests' CPU
-while the next busiest had 0.2 s: every request ran on one worker.
-saeki-mototsune/CyberTrain#128 explains it (since #9840 an explicit
-`SPINEL_WORKERS=N` counts the main thread, which only waits in a server,
-and starts N-1 helpers) and has CyberTrain ask for `workers + 1`. Its
-reduced program (four CPU-bound threads, main joins them) gives the same
+while the next busiest had 0.2 s: every request ran on one worker. L
+explains it (since #9840 an explicit `SPINEL_WORKERS=N` counts the main
+thread, which only waits in a server, and starts N-1 helpers), and since
+saeki-mototsune/CyberTrain#128 `Application#serve` asks for `workers +
+1`. L's reduced program (four CPU-bound threads, main joins them) gives the same
 answer on all three releases here: 1.01 CPUs at `SPINEL_WORKERS=2` and
 1.94 to 1.97 at 3 (1.00 at 1), on 2026.10.27.7020 as on 2026.11.03.7025
 and 2026.11.04.7026. So the two-worker figures of 2026-10-09 (on
@@ -1308,6 +1310,95 @@ Srv.new.run((ARGV[0] || "3570").to_i)
   the thread first runs, and add the program above to the tests with an
   AddressSanitizer job that runs with `SPINEL_GC_SLAB=0`, since the slab
   hides this class of bug from AddressSanitizer.
+
+### L. `SPINEL_WORKERS=N` counts main, which a server keeps waiting: 2 runs on one worker
+
+Found on 2026-11-05 on the pinned 2026.11.04.7026, from the benchmark run
+of that day: `SPINEL_WORKERS=2` gave examples/blog 0 to 2% more requests
+than 1 on the pages, where 2026.09.12 gave 9 to 25% (2026-10-09). Not a
+bug in any one line: two deliberate changes meet in a program whose main
+thread only waits. Not new in 2026.11.04.7026: checked on 2026-11-05, the
+reduced program below gives the same figures on 2026.10.27.7020 and
+2026.11.03.7025 (1.01 CPUs at N=2), and examples/blog built by
+2026.10.27.7020 also serves every request on one OS thread at
+`SPINEL_WORKERS=2` (see "Re-checked side by side" under "Runtime cost"),
+so it entered between 2026.09.12 and 2026.10.27.7020, with #9840.
+
+- **What changed.** Since #9840, an explicit `SPINEL_WORKERS=N` counts main
+  among the N workers, as docs/thread.md says, and starts N-1 helpers
+  (`sp_sched_start_workers`: `if (e && *e) g_worker_cap--;`). On
+  2026.09.12 `g_worker_cap = sp_worker_count()` started N helpers beside
+  main. Unset, both start one helper per online core beside main.
+- **Why main does not make up for it.** With helpers present, main runs no
+  general green thread: `sched_place_unstarted` places threads on workers
+  1 and up (`/* worker 0 (main) runs no general thread */`), and main's
+  join pump runs only threads already pinned to worker 0 (the published
+  root-fiber snapshot, see the comment there). A server's main thread
+  starts the accept thread and joins it, so it runs nothing for the whole
+  run. At N=2 that leaves one OS thread for every request.
+- **How it was seen.** examples/blog on two CPUs (`taskset -c 0,1`,
+  `SPINEL_WORKERS=2`), wrk -t2 -c16 on CPUs 2 and 3, 8 s: one OS thread
+  used 7.85 s of CPU and main 0.15 s (/proc/<pid>/task/*/stat);
+  `SPINEL_SCHED_STATS=2` printed `workers=2 busy=1 runnable=14` and `pinned
+  per worker: 0 18`, with run-queue waits of 4 to 8 ms. Nothing else
+  serialized the requests: `mutex-wait n=0`, and the sweeper threads used
+  0.07 s. With `SPINEL_WORKERS=3` on the same two CPUs, `perf sched` counted
+  8.0 s of CPU in 4 s (two helpers at 3.49 s each), and the pages gained 24
+  to 44% over 1 (medians of 3, same session).
+- **Without a server** (4 CPU-bound threads; main joins them):
+
+  ```ruby
+  def burn(n)
+    x = 0
+    i = 0
+    while i < n
+      x = (x * 31 + i) % 1000003
+      i += 1
+    end
+    x
+  end
+  t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  c0 = Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID)
+  ths = []
+  4.times { ths << Thread.new { burn(150_000_000) } }
+  ths.each(&:join)
+  wall = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+  cpu = Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID) - c0
+  puts "wall=#{wall.round(2)} cpu=#{cpu.round(2)} parallelism=#{(cpu / wall).round(2)}"
+  ```
+
+  CPUs used (cpu / wall) on a 4-core VM:
+
+  | `SPINEL_WORKERS` | 2026.09.12 | 2026.11.04.7026 |
+  | --- | --- | --- |
+  | 1 | 1.00 | 0.99 |
+  | 2 | 1.97 | 0.99 |
+  | 3 | 2.00 | 1.97 |
+  | 4 | not run | 2.01 |
+  | 5 | not run | 3.66 |
+  | unset | not run | 3.43 |
+
+  So on 2026.11.04.7026 the advice "set it to the core count" gives one
+  worker fewer than leaving the variable unset, and at 2 it gives none.
+- **A second effect, on latency.** A thread spawned by a helper goes onto
+  that helper's own queue (`lrq_push(sp_worker_id, t)` in the spawn path),
+  and only main's spawns and the global queue go through
+  `sched_place_unstarted`. A server's accept loop is a thread on a helper,
+  so its connections stay there unless another helper steals one while
+  idle: with two helpers, 15 and 3 of 18 threads. Moving the accept loop
+  onto main (an experiment, not kept) placed them 9 and 8, at the same
+  throughput, since the two CPUs were already saturated; the 15-thread
+  queue is what a request waits behind.
+- Today: `Application#serve` sets `SPINEL_WORKERS` to `workers + 1` when
+  `workers > 1` (`Application.spinel_workers`), so `SPINEL_WORKERS=2` as
+  CyberTrain reads it starts two helpers again (spikes/NOTES.md rule 22).
+- Fix, any of: (a) let main pump general threads while it blocks in
+  `#join` / `#value` with helpers present, re-publishing its roots when it
+  returns to the root fiber; (b) do not count a main that is blocked in
+  `#join` among the N, e.g. start N helpers when main parks, or document
+  that a program whose main only joins needs N+1; (c) for the second
+  effect, place an unstarted thread spawned by a helper as main's spawns
+  are placed, onto the worker with the fewest pinned threads.
 
 ## From spikes/NOTES.md, not written up before
 
