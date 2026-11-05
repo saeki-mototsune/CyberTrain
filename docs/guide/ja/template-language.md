@@ -1,5 +1,5 @@
 ---
-source_sha256: f0bc19c92741dbde18fbe1606ff34e4f4b15d432bb549a1e710cadd61c75a005
+source_sha256: 11e7333b2d2b8c4b6bedd02bb1d11425913e066441e6d2dd41b293624e28ba63
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -435,7 +435,7 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 
 ### ファイルの解決（`engine.rb`）
 
-`"posts/show"` と `"posts/show.html.erb"` は同じテンプレートを指します。開発環境は `cache: false` で `app/views/` をディスクから読みます（mtime かサイズが変わるたびに、ファイルを読み直して再パースします）。テスト環境は `cache: true` でディスクから読みます（一度だけパースします）。本番用のバイナリは決してディスクに触れません：`cybertrain build` は `spin run gen -- --embed-views` を実行し、`app/views/` 以下のすべての `*.erb`（ドットファイルとシンボリックリンクのディレクトリはスキップ）を `gen/views.rb` に書き込みます。`Engine.embedded(sources)` はバイナリの起動時にすべてのエントリーを一度だけパースします（エラーメッセージは同じ `posts/show.html.erb:12` の形を保ちます）。そのため、構文エラーのあるテンプレートはそのページではなく起動を失敗させます。テーブルが空のバイナリは、本番環境での起動を拒否します。存在しないテンプレートは `Cybertrain::Template::MissingTemplate` を出します — ディスクからなら `"Missing template <full path>"`、テーブルからなら `"Missing template posts/nope.html.erb (embedded)"` です。
+`"posts/show"` と `"posts/show.html.erb"` は同じテンプレートを指します。開発環境は `cache: false` で `app/views/` をディスクから読みます（mtime かサイズが変わるたびに、ファイルを読み直して再パースします。この再パースはエンジンのキャッシュに書き込むので、開発サーバーは `SPINEL_WORKERS` を無視して常に 1 ワーカーで動き、そのことを起動バナーに表示します）。テスト環境は `cache: true` でディスクから読みます（一度だけパースします）。本番用のバイナリは決してディスクに触れません：`cybertrain build` は `spin run gen -- --embed-views` を実行し、`app/views/` 以下のすべての `*.erb`（ドットファイルとシンボリックリンクのディレクトリはスキップ）を `gen/views.rb` に書き込みます。`Engine.embedded(sources)` はバイナリの起動時にすべてのエントリーを一度だけパースします（エラーメッセージは同じ `posts/show.html.erb:12` の形を保ちます）。そのため、構文エラーのあるテンプレートはそのページではなく起動を失敗させます。テーブルが空のバイナリは、本番環境での起動を拒否します。存在しないテンプレートは `Cybertrain::Template::MissingTemplate` を出します — ディスクからなら `"Missing template <full path>"`、テーブルからなら `"Missing template posts/nope.html.erb (embedded)"` です。
 
 ファイルの検索は、ビューのルートとテンプレートのパスをシンボリックリンクを辿って解決し、そのルートの中にある通常のファイルだけを読み込みます。ルートの外に出るパスは（シンボリックリンクを通じたものも含めて）`MissingTemplate` を出し、そうしたパスに対して `exists?` は false を返します。
 
