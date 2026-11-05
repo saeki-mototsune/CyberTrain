@@ -132,6 +132,7 @@ module Cybertrain
 
       def run_statement(sql, binds, epoch)
         raise Error, "connection closed (sql: #{sql})" if @closed
+        refuse_if_transaction_gone(sql)
         stmt = @statements[sql]
         cached = !stmt.nil?
         unless cached
@@ -208,6 +209,7 @@ module Cybertrain
       # migrations, not per request.
       def exec_script(sql)
         raise Error, "connection closed (sql: #{sql})" if @closed
+        refuse_if_transaction_gone(sql)
         forget_names
         SQLite3.cybertrain_sqlite_busy_report(@busy, 0)
         rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
@@ -577,6 +579,25 @@ module Cybertrain
 
       def self.monotonic
         Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      end
+
+      # Raises instead of running sql when the transaction #begin! opened is
+      # gone: a depth above 0 while SQLite is in autocommit means SQLite rolled
+      # it back on its own (SQLITE_FULL / IOERR / BUSY / NOMEM) and the
+      # application rescued that and went on. Run now, the statement would
+      # commit by itself while the block's COMMIT then fails, so the
+      # transaction would be neither all nor nothing
+      # (saeki-mototsune/CyberTrain#158). #begin! makes the same check before
+      # nesting. The depth is back to 0 once the transaction ends (#commit!,
+      # #rollback!, Pool#check_in), so the connection works again after. A
+      # transaction opened with SQL (`exec_script("BEGIN")`) keeps the depth
+      # at 0 and is not covered: its caller owns it.
+      def refuse_if_transaction_gone(sql)
+        return nil if @transaction_depth == 0
+        return nil if SQLite3.sqlite3_get_autocommit(@db) == 0
+
+        raise Error, "the enclosing transaction is no longer open (SQLite rolled it back after an error); " \
+                     "the statement was not run (sql: #{sql})"
       end
 
       def error_message(sql)

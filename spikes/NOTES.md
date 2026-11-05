@@ -843,6 +843,11 @@ The rules are numbered in the order they were found. By topic:
     single statements are retried: a multi-statement `exec_script` (schema,
     migrations, the WAL switch at open) and ROLLBACK still wait in C,
     since a script refused half way cannot be re-run from the top.
+    A statement in a transaction SQLite already rolled back on its own
+    (FULL / IOERR / BUSY / NOMEM, rescued by the application inside the
+    block) is refused rather than run in autocommit, where it would commit by
+    itself (`Connection#refuse_if_transaction_gone`, saeki-mototsune/CyberTrain#158,
+    reproduced with `PRAGMA max_page_count` in test/db_rolled_back_transaction.rb).
 81. A call to a class method that no class in the program defines is
     refused at compile time, even from a method nothing calls: `module
     Cybertrain; end`, `def f = Cybertrain.config.port`, `puts(ARGV.size >

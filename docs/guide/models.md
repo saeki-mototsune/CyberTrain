@@ -169,6 +169,13 @@ Where it differs from Rails' `transaction`, and what to avoid:
   transaction) checks out a second connection: on a one-connection pool
   (`:memory:` included) it then waits forever. Open the transaction first and
   do the work inside it.
+- Don't rescue a database error inside the block and carry on. After
+  "database or disk is full", an I/O error or a lock timeout, SQLite may roll
+  the whole transaction back by itself. Every later statement in the block
+  then raises `Cybertrain::DB::Error` ("the enclosing transaction is no longer
+  open") instead of committing on its own, and the transaction raises when the
+  block ends. Let the error leave the block, and retry the whole transaction
+  if you need to.
 
 Code that must keep its `rescue` in a plain method uses the block-free form,
 `c.begin!(immediate: true)` ... `c.commit!`, with `c.rollback!` in the rescue.
