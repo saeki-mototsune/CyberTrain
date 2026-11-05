@@ -6,5 +6,6 @@ ok   element and attribute names are checked
 ok   safe_join escapes what is not safe
 ok   class_names
 ok   dom_id
-ok   the tag builder is one value with no state
-9 tests, 51 assertions, 0 failures
+ok   the tag builder prints as nothing
+ok   class Hashes and Arrays go through class_names; other Hashes are refused
+10 tests, 54 assertions, 0 failures

@@ -89,8 +89,13 @@ test "dom_id" do
   assert_equal "admin_user_4", Html.dom_id(FakeRecord.new("Admin::User", 4))
 end
 
-test "the tag builder is one value with no state" do
-  assert Html::TAG_BUILDER.tag_builder?
+test "the tag builder prints as nothing" do
+  assert_equal "", Html::TAG_BUILDER.to_s
+end
+
+test "class Hashes and Arrays go through class_names; other Hashes are refused" do
+  assert_equal "<i class=\"a\"></i>", Html.tag("i", { class: { "a" => true, "b" => nil } }).to_s
+  assert_equal "attribute 'style' cannot be a Hash", assert_raises("ArgumentError") { Html.tag("i", { style: { "a" => 1 } }) }
 end
 
 Cybertrain::Test.run!

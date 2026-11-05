@@ -212,6 +212,7 @@ module Cybertrain
 
     # Html.tag with the content already HTML (inner; given false for none):
     # what the template helpers call, with a block's output as `inner`.
+    # @api private
     def self.build_tag(name, attrs, inner, given)
       tag_name = name.to_s
       raise ArgumentError, "invalid element name '#{tag_name}'" unless element_name?(tag_name)
@@ -249,13 +250,27 @@ module Cybertrain
             end
           end
         end
+        if !nested && attr_name == "class"
+          # class: { active: on } / ["btn", { big: x }]: Rails' class_names.
+          case value
+          when Time then nil
+          when Array, Hash
+            nested = true
+            list = []
+            list << value
+            words = class_names_of(list)
+            buf << attribute_html(attr_name, words, false)
+          end
+        end
         buf << attribute_html(attr_name, value, false) unless nested
       end
       buf
     end
 
     # One attribute, ` name="value"` ("" when it is dropped). nested: inside
-    # data:/aria:, where true and false are written out as Rails does.
+    # data:/aria:, where true and false are written out as Rails does. An
+    # Array joins with spaces (inside data: too).
+    # @api private
     def self.attribute_html(attr_name, value, nested)
       raise ArgumentError, "invalid attribute name '#{attr_name}'" unless attribute_name?(attr_name)
 
@@ -276,12 +291,14 @@ module Cybertrain
         end
         joined = words.join(" ")
         return " #{attr_name}=\"#{escape(joined)}\""
+      when Hash then raise ArgumentError, "attribute '#{attr_name}' cannot be a Hash"
       end
       " #{attr_name}=\"#{escape(value.to_s)}\""
     end
 
     # Content for a tag or safe_join: a SafeString as it is, nil as nothing,
     # anything else escaped.
+    # @api private
     def self.content_html(value)
       case value
       when nil then ""
@@ -290,6 +307,7 @@ module Cybertrain
       end
     end
 
+    # @api private
     def self.key_text(key)
       case key
       when Symbol then key.to_s
@@ -298,6 +316,7 @@ module Cybertrain
       end
     end
 
+    # @api private
     def self.void_element?(tag_name)
       i = 0
       while i < VOID_ELEMENTS.size
@@ -308,6 +327,7 @@ module Cybertrain
     end
 
     # [a-z][a-z0-9-]*: lowercase HTML, SVG and custom elements.
+    # @api private
     def self.element_name?(text)
       s = text.to_s
       n = s.bytesize
@@ -325,6 +345,7 @@ module Cybertrain
     end
 
     # [a-zA-Z_:][-a-zA-Z0-9_:.]*, which leaves no way to break out of the tag.
+    # @api private
     def self.attribute_name?(text)
       s = text.to_s
       n = s.bytesize
@@ -366,12 +387,14 @@ module Cybertrain
     end
 
     # class_names for an Array of values (the template helper's arguments).
+    # @api private
     def self.class_names_of(values)
       words = Array.new(0) { "" }
       add_class_words(words, values)
       words.join(" ")
     end
 
+    # @api private
     def self.add_class_words(words, values)
       values.each do |value|
         case value
@@ -389,6 +412,7 @@ module Cybertrain
       nil
     end
 
+    # @api private
     def self.add_words(words, text)
       text.split(" ").each do |word|
         next if word.empty?
@@ -418,10 +442,10 @@ module Cybertrain
     # What `tag` evaluates to in a template: `tag.div(...)` is a method call
     # on it, which Template::Helpers#call_object_method turns into
     # Html.build_tag("div", ...). It has no state; TAG_BUILDER is the one
-    # instance.
+    # instance. `<%= tag %>` alone prints nothing.
     # @api public
     class TagBuilder
-      def tag_builder? = true
+      def to_s = ""
     end
 
     # @api public

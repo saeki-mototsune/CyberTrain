@@ -66,9 +66,13 @@ module Cybertrain
         when "paginate" then paginate(args)
         when "tag" then Html::TAG_BUILDER
         when "content_tag" then content_tag(args, kwargs, block, interp, env)
-        when "safe_join" then safe_join(args)
-        when "class_names" then Html.class_names_of(args)
-        when "dom_id" then dom_id(args)
+        when "safe_join"
+          no_kwargs(kwargs, name)
+          safe_join(args)
+        when "class_names" then class_names(args, kwargs)
+        when "dom_id"
+          no_kwargs(kwargs, name)
+          dom_id(args)
         else
           return route(name, args) if name.end_with?("_path") || name.end_with?("_url")
 
@@ -76,12 +80,18 @@ module Cybertrain
         end
       end
 
-      # `f.label :title` and the other FormBuilder methods (which take no
-      # block: one given is ignored), `@page.next?`.
+      # `f.label :title` and the other FormBuilder methods, `@page.next?`
+      # (neither takes a block), and the `tag` builder.
       def call_object_method(recv, name_sym, name_str, args, kwargs, block, interp, env)
         case recv
-        when FormBuilder then recv.call_method(name_sym, args, kwargs)
-        when Cybertrain::Page then page_method(recv, name_sym, name_str)
+        when FormBuilder
+          raise CallSyntaxError, "FormBuilder##{name_str} takes no block" unless block.nil?
+
+          recv.call_method(name_sym, args, kwargs)
+        when Cybertrain::Page
+          raise CallSyntaxError, "Page##{name_str} takes no block" unless block.nil?
+
+          page_method(recv, name_sym, name_str)
         when Html::TagBuilder then tag_builder_call(name_str, args, kwargs, block, interp, env)
         else super(recv, name_sym, name_str, args, kwargs, block, interp, env)
         end
@@ -506,6 +516,25 @@ module Cybertrain
           return Html.build_tag(element, kwargs, Html.content_html(args[1]), true)
         end
         Html.build_tag(element, kwargs, interp.capture(block, env), true)
+      end
+
+      # class_names("btn", active: on): the keyword arguments are one more
+      # { name => condition } Hash, as in Rails.
+      def class_names(args, kwargs)
+        return Html.class_names_of(args) if kwargs.empty?
+
+        values = []
+        args.each { |a| values << a }
+        values << kwargs
+        Html.class_names_of(values)
+      end
+
+      def no_kwargs(kwargs, name)
+        return nil if kwargs.empty?
+
+        given = Array.new(0) { "" }
+        kwargs.each_key { |k| given << "#{k}:" }
+        raise CallSyntaxError, "#{name} takes no keyword arguments (got #{given.join(", ")})"
       end
 
       # safe_join(items, sep = ""): Html.safe_join.

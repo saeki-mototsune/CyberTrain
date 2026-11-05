@@ -1,6 +1,8 @@
 ok   tag with a do block captures the block's output
 ok   content, attributes, void and custom elements
+ok   class takes class_names values; other Hash values are refused
+ok   blocks on FormBuilder and Page methods are refused
 ok   content is escaped and attribute names are checked
 ok   content_tag
 ok   safe_join, class_names, dom_id
-5 tests, 29 assertions, 0 failures
+7 tests, 44 assertions, 0 failures
