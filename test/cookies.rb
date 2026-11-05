@@ -73,4 +73,41 @@ test "serialize writes Secure once when secure, same_site None and partitioned a
   assert_equal "s=v; Path=/; HttpOnly; SameSite=None; Max-Age=60; Secure; Partitioned", value
 end
 
+# Query.plain? lets serialize skip the encoder, so a value must come out the
+# same down either path. Compared whole, not by prefix: a prefix match would
+# let a plain path drop the end of a value.
+def assert_serialized_as_encoded(value)
+  encoded = URI.encode_www_form_component(value)
+  assert_equal "k=#{encoded}; Path=/; HttpOnly; SameSite=Lax", Cybertrain::Cookies.serialize("k", value)
+end
+
+test "serialize encodes exactly as encode_www_form_component, plain or not" do
+  byte = 0
+  while byte < 128
+    assert_serialized_as_encoded(byte.chr)
+    byte += 1
+  end
+  assert_serialized_as_encoded("a b")
+  assert_serialized_as_encoded("a+b")
+  assert_serialized_as_encoded("50%")
+  assert_serialized_as_encoded("a;b")
+  assert_serialized_as_encoded("a=b")
+  assert_serialized_as_encoded("\u65E5\u672C\u8A9E")
+  assert_serialized_as_encoded("")
+  assert_serialized_as_encoded("abc--DEF_-.")
+end
+
+test "plain? is true exactly for the ASCII bytes the encoder leaves alone" do
+  byte = 0
+  while byte < 128
+    char = byte.chr
+    assert_equal URI.encode_www_form_component(char) == char, Cybertrain::Query.plain?(char)
+    byte += 1
+  end
+  assert Cybertrain::Query.plain?("")
+  assert Cybertrain::Query.plain?("abc--DEF_-.")
+  assert !Cybertrain::Query.plain?("a=")
+  assert !Cybertrain::Query.plain?("\u00e9")
+end
+
 Cybertrain::Test.run!
