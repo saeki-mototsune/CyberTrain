@@ -269,7 +269,10 @@ module Cybertrain
       Application.reset_roles_stop
       @config.worker = true
       boot
-      ENV["SPINEL_WORKERS"] = @config.workers.to_s
+      # What serve gives Spinel for the same config (NOTES rule 22), the
+      # development limit of one included: a job or feed callback renders
+      # partials and components through the same cache: false engine.
+      ENV["SPINEL_WORKERS"] = Application.spinel_workers_for(@config).to_s
       threads = @config.job_threads
       tasks = Scheduler::TASKS.size
       jobs = Job.handlers? ? "#{threads} job thread#{threads == 1 ? "" : "s"}" : "no job handler"
@@ -303,7 +306,7 @@ module Cybertrain
       return role_error(problem) unless problem.empty?
 
       known = Background.feed_names
-      ENV["SPINEL_WORKERS"] = @config.workers.to_s
+      ENV["SPINEL_WORKERS"] = Application.spinel_workers_for(@config).to_s
       if known.empty?
         print_role_banner("feeds: no WebSocket subscription is registered; nothing to run")
         return 0
@@ -395,11 +398,6 @@ module Cybertrain
       nil
     end
 
-    # What SPINEL_WORKERS must say for `workers` threads to serve requests in
-    # parallel. Spinel counts main among its N workers and runs the other
-    # threads on N-1 helpers, and main only waits in #serve, so N = workers
-    # leaves workers - 1 for the requests (2 gave one core's worth on two:
-    # spikes/NOTES.md rule 22). 1 stays 1: main runs every thread itself.
     # Views as a process renders them: the embedded templates in
     # production, the files under views_root otherwise (cached outside
     # development), the URL resolver and the layout. Boot calls it, and so
@@ -420,6 +418,11 @@ module Cybertrain
       nil
     end
 
+    # What SPINEL_WORKERS must say for `workers` threads to serve requests in
+    # parallel. Spinel counts main among its N workers and runs the other
+    # threads on N-1 helpers, and main only waits in #serve, so N = workers
+    # leaves workers - 1 for the requests (2 gave one core's worth on two:
+    # spikes/NOTES.md rule 22). 1 stays 1: main runs every thread itself.
     def self.spinel_workers(workers)
       workers > 1 ? workers + 1 : 1
     end
