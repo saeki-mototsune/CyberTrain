@@ -69,9 +69,8 @@ env:
 
 jobs:
   # The framework's test programs, in four parallel jobs per OS: each program
-  # is compiled on its own, so the compile is the wall-clock cost and it
-  # divides. A job of its own, not steps of `test`: that job keeps its name
-  # and the end-to-end checks.
+  # is compiled on its own, so the programs split cleanly. A job of its own,
+  # not steps of `test`: that job keeps its name and the end-to-end checks.
   framework-tests:
     strategy:
       fail-fast: false
