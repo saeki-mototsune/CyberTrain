@@ -3,5 +3,7 @@ ok   renders inside the embedded layout
 ok   names with and without the extension are the same template, parsed once
 ok   the template name is the key, so errors keep the name:line shape
 ok   a missing embedded template says so
+ok   every embedded template is parsed when the engine is built
+ok   an embedded template that does not parse fails when the engine is built
 ok   Views.configure_embedded installs an embedded engine
-6 tests, 14 assertions, 0 failures
+8 tests, 19 assertions, 0 failures
