@@ -1,5 +1,5 @@
 ---
-source_sha256: f0bc19c92741dbde18fbe1606ff34e4f4b15d432bb549a1e710cadd61c75a005
+source_sha256: 11e7333b2d2b8c4b6bedd02bb1d11425913e066441e6d2dd41b293624e28ba63
 ---
 # Cybertrain 模板语言参考
 
@@ -435,7 +435,7 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 
 ### 文件解析（`engine.rb`）
 
-`"posts/show"` 和 `"posts/show.html.erb"` 指的是同一个模板。开发环境以 `cache: false` 从磁盘读取 `app/views/`（文件的 mtime 或大小一旦变化，就重新读取并重新解析）；测试环境以 `cache: true` 从磁盘读取（只解析一次）。生产环境的二进制文件从不访问磁盘：`cybertrain build` 运行 `spin run gen -- --embed-views`，它把 `app/views/` 下的每个 `*.erb`（跳过点文件和符号链接目录）写入 `gen/views.rb`，`Engine.embedded(sources)` 在二进制文件启动时把每个条目解析一次（错误消息保持同样的 `posts/show.html.erb:12` 形式），因此有语法错误的模板会让启动失败，而不是让它的页面失败；表为空的二进制文件在生产环境中拒绝启动。缺失的模板会引发 `Cybertrain::Template::MissingTemplate`——来自磁盘时为 `"Missing template <full path>"`，来自表时为 `"Missing template posts/nope.html.erb (embedded)"`。
+`"posts/show"` 和 `"posts/show.html.erb"` 指的是同一个模板。开发环境以 `cache: false` 从磁盘读取 `app/views/`（文件的 mtime 或大小一旦变化，就重新读取并重新解析；这次重新解析会写入引擎的缓存，所以开发服务器总是只用一个 worker 运行，忽略 `SPINEL_WORKERS`，并在启动横幅中说明这一点）；测试环境以 `cache: true` 从磁盘读取（只解析一次）。生产环境的二进制文件从不访问磁盘：`cybertrain build` 运行 `spin run gen -- --embed-views`，它把 `app/views/` 下的每个 `*.erb`（跳过点文件和符号链接目录）写入 `gen/views.rb`，`Engine.embedded(sources)` 在二进制文件启动时把每个条目解析一次（错误消息保持同样的 `posts/show.html.erb:12` 形式），因此有语法错误的模板会让启动失败，而不是让它的页面失败；表为空的二进制文件在生产环境中拒绝启动。缺失的模板会引发 `Cybertrain::Template::MissingTemplate`——来自磁盘时为 `"Missing template <full path>"`，来自表时为 `"Missing template posts/nope.html.erb (embedded)"`。
 
 文件查找会通过符号链接解析视图根目录和模板路径，并且只加载该根目录内的普通文件。逃出该目录的路径（包括通过符号链接）会引发 `MissingTemplate`；对于这些路径，`exists?` 返回 false。
 
