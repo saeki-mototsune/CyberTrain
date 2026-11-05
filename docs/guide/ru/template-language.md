@@ -1,5 +1,5 @@
 ---
-source_sha256: 2a9e8e996256fc4501968bb672c57b50fbb1cda1f3f80d6640176de81db378d3
+source_sha256: dc08486ed6d7b740c1b6bfbae1fec83b86dfe7632d2bed2bc8ed5ecccc737230
 ---
 # Справочник по языку шаблонов Cybertrain
 
@@ -181,7 +181,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | Получатель | Методы, принимающие блок | Значение блока используется как |
 | --- | --- | --- |
 | `Array` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | преобразованное значение, проверка, слагаемое, ключ сортировки, ключ группы |
-| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | то же самое, блок видит `|key, value|` (один параметр получает пару `[key, value]`); `select`/`reject` возвращают Hash, остальные — то, что метод Array возвращает для пар |
+| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | то же самое, блок видит `\|key, value\|` (один параметр получает пару `[key, value]`); `select`/`reject` возвращают Hash, остальные — то, что метод Array возвращает для пар |
 | построитель `tag` | каждый элемент (`tag.div do ... end`) | его **вывод** становится содержимым элемента ([Построитель tag](#the-tag-builder)) |
 
 ```erb

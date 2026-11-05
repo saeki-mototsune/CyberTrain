@@ -351,13 +351,17 @@ module Cybertrain
 
     # One job thread: claim and run a due job, or wait a poll interval,
     # until stop!. A job that is running when stop! comes is finished first.
+    # (loop_ended in an `ensure`, so a thread that dies of an exception
+    # claim_safely does not rescue still leaves the live-loop count right;
+    # otherwise every stop! would wait the whole job_drain_timeout for it.)
     def self.run_job_loop(index, generation)
       while pool_live?(generation)
         idle_wait(@poll_interval, generation) unless claim_safely(Time.now.to_i, index)
       end
       note_stop_seen
-      loop_ended
       nil
+    ensure
+      loop_ended
     end
 
     # work_one with its rescue in a plain method (NOTES rules 32/45): a
@@ -741,10 +745,21 @@ module Cybertrain
       end
       return false if id < 0
 
+      finish_in_flight(id, kind, payload, attempts, now, label)
+      true
+    end
+
+    # finish between in_flight_add and in_flight_remove, in a plain method
+    # with an `ensure` (NOTES rules 32/45): the id leaves IN_FLIGHT whatever
+    # the handler raised. run_handler rescues StandardError; anything else
+    # (a NotImplementedError, a SystemStackError) ends the job thread, and
+    # without this the row would be heartbeated for the life of the process
+    # and never recovered.
+    def self.finish_in_flight(id, kind, payload, attempts, now, label)
       in_flight_add(id)
       finish(id, kind, payload, attempts, now, label)
+    ensure
       in_flight_remove(id)
-      true
     end
 
     # Whether some queued row is due at `now` (a plain read).

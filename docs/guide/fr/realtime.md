@@ -1,5 +1,5 @@
 ---
-source_sha256: 8a6c557e664a06f14ea869c54e55f0be7156409b1d89d78faf5e886d358b9316
+source_sha256: e6054a1e3a5194a02270940c82ba0254133258775b0034aa29e5153607ba5489
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -66,7 +66,12 @@ voulu, et écrit un seul élément `<turbo-stream-source>` dont l’URL porte un
 seul jeton pour tous. Turbo l’ouvre comme un `EventSource`&nbsp;;
 `turbo_stream_from @article, ws: true` donne à la place une URL `ws://`
 (`wss://` derrière HTTPS), que Turbo ouvre comme un WebSocket. Dans les deux
-cas, la page n’a besoin d’aucun JavaScript de votre part.
+cas, la page n’a besoin d’aucun JavaScript de votre part. Turbo ne rouvre
+pas un WebSocket perdu (coupure réseau, redémarrage du serveur)&nbsp;: cette
+page ne reçoit plus rien jusqu’à son rechargement, là où un `EventSource` se
+reconnecte tout seul et rejoue ce qu’il a manqué. Gardez la valeur par défaut
+sauf besoin de WebSocket, ou reconnectez depuis votre propre JavaScript
+(`&after=`, ci-dessous).
 
 Diffusez ensuite depuis l’action qui a changé quelque chose&nbsp;:
 
@@ -172,7 +177,10 @@ l’id du dernier événement qu’il a vu (`Last-Event-ID`). Le point d’entr�
 rejoue alors d’abord chaque message de ces flux dont l’id est plus grand et
 qui est encore dans la table (dans la limite de `stream_retention`), si bien
 que rien n’est perdu entre-temps. Une page absente plus longtemps devrait se
-recharger. Une ligne de commentaire (`: ping`) part après 15&nbsp;secondes de
+recharger. Avant l’arrivée de son premier événement, le navigateur n’a pas
+d’id à envoyer&nbsp;: une connexion qui tombe dans cette fenêtre ne rejoue
+rien, et ce que la page a rendu au chargement reste son état jusqu’à la
+diffusion suivante. Une ligne de commentaire (`: ping`) part après 15&nbsp;secondes de
 silence pour que les proxies gardent la connexion ouverte.
 
 ## WebSocket depuis JavaScript
@@ -255,7 +263,10 @@ dérivée de `secret_key_base` pour les seuls flux (comme
 `turbo/signed_stream_verifier_key` dans Rails), si bien qu’un jeton n’est
 jamais un cookie de session valide&nbsp;; le point d’entrée vérifie la signature et ne lit ni
 la session ni la base de données. C’est le modèle de Turbo&nbsp;: qui pouvait
-rendre la page pouvait lire ses flux.
+rendre la page pouvait lire ses flux. Les jetons n’expirent pas&nbsp;;
+changer `secret_key_base` les invalide tous, et une page restée ouverte à
+travers ce déploiement ne reçoit plus rien (un `EventSource` tient le 403
+pour définitif) jusqu’à son rechargement.
 
 <!-- list: points -->
 - Un flux propre à un utilisateur est un flux nommé d’après

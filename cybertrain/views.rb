@@ -59,9 +59,10 @@ module Cybertrain
       nil
     end
 
-    # Production: the templates `spin run gen -- --embed-views` compiled in.
-    def self.configure_embedded(sources, max_render_depth: Template::MAX_RENDER_DEPTH)
-      @engine = Template::Engine.embedded(sources, max_render_depth: max_render_depth)
+    # Production: the templates `spin run gen -- --embed-views` compiled in,
+    # all parsed now (`eager`), or each when first rendered ({Template::Engine.embedded}).
+    def self.configure_embedded(sources, max_render_depth: Template::MAX_RENDER_DEPTH, eager: true)
+      @engine = Template::Engine.embedded(sources, max_render_depth: max_render_depth, eager: eager)
       nil
     end
 
