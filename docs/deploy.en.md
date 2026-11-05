@@ -933,7 +933,15 @@ What to keep in mind:
   per process. `Background` services (WebSocket subscriptions and the like)
   follow the same switch, so they run in the process that keeps the worker.
 - **`RateLimit` counts per process,** so with N processes a limit is effectively
-  N times looser.
+  N times looser. The sign-in limit `cybertrain generate authentication` writes
+  (`rate_limit to: 10`) becomes up to 30 attempts per address with three
+  processes. To keep roughly the same limit for the whole deployment, divide
+  `to:` in `SessionsController` by N (`to: 3` gives at most 9 per window with
+  three processes). This is not a strict ceiling: each process opens its own
+  window for each address, and a restart clears the counts. A visitor whose
+  connections stay on one process meets that smaller number. Division works
+  only while N is at most the original limit: `to:` must be at least 1, and 0
+  stops the application from booting. Above that, use fewer processes.
 - **An `--invite-only` first run needs one process.** Each process makes its own
   setup token at start, so `/setup` answers 404 on the others. Create the first
   user before adding processes, or with `./notes user EMAIL`.

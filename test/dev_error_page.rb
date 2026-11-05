@@ -322,6 +322,7 @@ GEN_CALLS = "#{GEN_ROOT}/calls"
 GEN_BINARY = "#{GEN_ROOT}/build/bin/gen"
 GEN_CHECK = "#{GEN_ROOT}/build/gen-check.c"
 GEN_COMPILED = "#{GEN_ROOT}/build/gen-compiled.c"
+GEN_STAMP = "#{GEN_ROOT}/build/gen-compiled.stamp"
 
 def write_gen_binary(body)
   File.write(GEN_BINARY, "#!/bin/sh\n#{body}\n")
@@ -329,10 +330,17 @@ def write_gen_binary(body)
   nil
 end
 
+# Records the binary now there as the one the saved C compiled to.
+def adopt_gen_binary(rebuilder)
+  File.write(GEN_CHECK, File.read(GEN_COMPILED))
+  rebuilder.promote_gen_check
+  nil
+end
+
 # An app whose `spin` and `spinel` are scripts first on PATH. spin logs every
 # call but `flags`, which fails while flags-fails exists: `run gen` compiles
 # (leaves a build/bin/gen that logs when run, and exits as the file gen-status
-# says); `build` fails while build-fails exists, refuses --incremental while
+# says), unless spin-reuses exists and there is a binary already; `build` fails while build-fails exists, refuses --incremental while
 # no-incremental exists, and edits config/routes.rb while edit-during-build
 # exists. spinel's "C" is config/routes.rb; while check-fails exists it leaves
 # a partial file and fails, and while check-unreadable exists it leaves a
@@ -350,6 +358,7 @@ def fake_spin_app
                                          "fi\n" \
                                          "echo \"spin $*\" >> '#{GEN_CALLS}'\n" \
                                          "if [ \"$1\" = run ]; then\n" \
+                                         "  [ -e '#{GEN_ROOT}/spin-reuses' ] && [ -e '#{GEN_BINARY}' ] && exit 0\n" \
                                          "  cp '#{GEN_ROOT}/compiled-gen' '#{GEN_BINARY}'; chmod 755 '#{GEN_BINARY}'; exit 0\n" \
                                          "fi\n" \
                                          "[ -e '#{GEN_ROOT}/edit-during-build' ] && echo '# edit' >> '#{GEN_ROOT}/config/routes.rb'\n" \
@@ -422,6 +431,45 @@ test "a full build promotes the checked C, a direct run records nothing" do
   assert r.rebuild
   assert_equal SKIP_GEN, gen_calls
   assert File.exist?(GEN_CHECK)
+  finish_fake_spin_app(path)
+end
+
+# `spin run gen` by hand, from an edit undone since: the C matches, the binary
+# is not the one it was compiled to.
+test "a binary replaced behind the saved C compiles gen again" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  write_gen_binary("echo replaced >> '#{GEN_CALLS}'")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  assert r.rebuild
+  assert_equal SKIP_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a replaced binary newer than its sources does not survive spin's own check" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.write("#{GEN_ROOT}/spin-reuses", "")
+  write_gen_binary("echo replaced >> '#{GEN_CALLS}'")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  assert_equal File.read("#{GEN_ROOT}/compiled-gen"), File.read(GEN_BINARY)
+  finish_fake_spin_app(path)
+end
+
+test "a saved C with no stamp compiles gen again" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.delete(GEN_STAMP)
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
   finish_fake_spin_app(path)
 end
 
@@ -533,6 +581,7 @@ test "a gen binary that fails falls back to one full build in the same rebuild" 
   assert r.rebuild
   gen_calls
   write_gen_binary("echo broken-binary >> '#{GEN_CALLS}'; exit 1")
+  adopt_gen_binary(r)
   assert r.rebuild
   assert_equal "broken-binary\n#{COMPILE_GEN}", gen_calls
   refute r.last_failed
@@ -594,6 +643,29 @@ test "an edit made during the build is seen by the next rebuild" do
   File.write("#{GEN_ROOT}/edit-during-build", "")
   assert r.rebuild
   File.delete("#{GEN_ROOT}/edit-during-build")
+  gen_calls
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+# The retry compiles gen, edited or not; undoing the edit must not match what
+# was saved before it.
+test "an edit during a failed retry saves nothing, so undoing it does not read as a match" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  write_gen_binary("echo broken-binary >> '#{GEN_CALLS}'; exit 1")
+  adopt_gen_binary(r)
+  File.write("#{GEN_ROOT}/edit-during-build", "")
+  File.write("#{GEN_ROOT}/build-fails", "")
+  refute r.rebuild
+  refute File.exist?(GEN_COMPILED)
+  refute File.exist?(GEN_STAMP)
+  File.delete("#{GEN_ROOT}/edit-during-build")
+  File.delete("#{GEN_ROOT}/build-fails")
+  File.write("#{GEN_ROOT}/config/routes.rb", "# routes\n")
   gen_calls
   assert r.rebuild
   assert_equal COMPILE_GEN, gen_calls
