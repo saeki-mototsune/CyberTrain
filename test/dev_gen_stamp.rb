@@ -28,8 +28,13 @@ def write_file(path, content)
   nil
 end
 
+# bin/gen.rb reaches a dependency only through what it requires, so the
+# fixtures that have one require the files the tests edit.
+GEN_RB = "require \"cybertrain\"\nrequire \"cybertrain/generator/runner\"\n" \
+         "require \"cybertrain/router\"\n"
+
 def app_at(root, toml)
-  write_file("#{root}/bin/gen.rb", "# gen\n")
+  write_file("#{root}/bin/gen.rb", GEN_RB)
   write_file("#{root}/config/routes.rb", "# routes\n")
   write_file("#{root}/db/schema.rb", "# schema\n")
   write_file("#{root}/spin.toml", toml)
@@ -147,8 +152,8 @@ test "not stale after app/controllers/a.rb changes" do
   assert stamp.fresh?
 end
 
-# The framework is compiled into gen, and with a path dependency nothing moves
-# spin.lock when it is edited.
+# What gen requires is compiled into it, and with a path dependency nothing
+# moves spin.lock when it is edited.
 test "stale after a path dependency's generator changes" do
   reset_app(PATH_TOML)
   write_file("#{ROOT}/fw/cybertrain/generator/runner.rb", "# runner\n")
@@ -182,6 +187,168 @@ test "a path dependency is found however spin.toml spells it" do
     write_file("#{ROOT}/outside/cybertrain/router.rb", "# router, longer\n")
     refute stamp.fresh?, toml
   end
+end
+
+def assert_stale_when_required_from(entry, line, target)
+  reset_app(PATH_TOML)
+  write_file("#{ROOT}/#{entry}", line)
+  write_file("#{ROOT}/#{target}", "# target\n")
+  stamp = recorded(ROOT)
+  assert stamp.fresh?, "fresh before #{target} changes"
+  write_file("#{ROOT}/#{target}", "# target, longer\n")
+  refute stamp.fresh?, "stale after #{target} changes, from #{line}"
+end
+
+# A library laid out as `spin new --lib` does it, drawn from config/routes.rb.
+test "stale after a path dependency that is not the framework changes" do
+  assert_stale_when_required_from("config/routes.rb", "require \"mylib\"\n", "fw/mylib.rb")
+end
+
+test "stale after a file a path dependency requires changes" do
+  reset_app("[dependencies]\nmylib = { path = \"mylib\" }\n")
+  write_file("#{ROOT}/config/routes.rb", "require \"mylib\"\n")
+  write_file("#{ROOT}/mylib/mylib.rb", "require_relative \"mylib/one\"\nrequire \"mylib/two\"\n")
+  write_file("#{ROOT}/mylib/mylib/one.rb", "# one\n")
+  write_file("#{ROOT}/mylib/mylib/two.rb", "# two\n")
+  stamp = recorded(ROOT)
+  write_file("#{ROOT}/mylib/mylib/one.rb", "# one, longer\n")
+  refute stamp.fresh?, "reached by require_relative"
+  stamp = recorded(ROOT)
+  write_file("#{ROOT}/mylib/mylib/two.rb", "# two, longer\n")
+  refute stamp.fresh?, "reached by require"
+end
+
+# Its path is relative to the dependency that names it, and the app's spin.toml
+# does not name it at all.
+test "stale after a path dependency of a path dependency changes" do
+  reset_app("[dependencies]\nliba = { path = \"deps/liba\" }\n")
+  write_file("#{ROOT}/config/routes.rb", "require \"liba\"\n")
+  write_file("#{ROOT}/deps/liba/spin.toml", "[dependencies]\nlibb = { path = \"../libb\" }\n")
+  write_file("#{ROOT}/deps/liba/liba.rb", "require \"libb\"\n")
+  write_file("#{ROOT}/deps/libb/libb.rb", "# libb\n")
+  stamp = recorded(ROOT)
+  write_file("#{ROOT}/deps/libb/libb.rb", "# libb, longer\n")
+  refute stamp.fresh?
+end
+
+test "stale after a path dependency's spin.toml changes" do
+  reset_app(PATH_TOML)
+  write_file("#{ROOT}/fw/spin.toml", "# before\n")
+  stamp = recorded(ROOT)
+  write_file("#{ROOT}/fw/spin.toml", "# after, longer\n")
+  refute stamp.fresh?
+end
+
+test "path dependencies that name each other are no loop" do
+  reset_app("[dependencies]\nliba = { path = \"liba\" }\n")
+  write_file("#{ROOT}/liba/spin.toml", "[dependencies]\nlibb = { path = \"../libb\" }\n")
+  write_file("#{ROOT}/libb/spin.toml", "[dependencies]\nliba = { path = \"../liba\" }\n")
+  assert recorded(ROOT).fresh?
+end
+
+# `spin vendor` copies every dependency here and compiles it from here.
+test "stale after a vendored package changes" do
+  reset_app(PLAIN_TOML)
+  write_file("#{ROOT}/config/routes.rb", "require \"mylib\"\n")
+  write_file("#{ROOT}/vendor/packages/mylib-0.1.0/mylib.rb", "# mylib\n")
+  stamp = recorded(ROOT)
+  write_file("#{ROOT}/vendor/packages/mylib-0.1.0/mylib.rb", "# mylib, longer\n")
+  refute stamp.fresh?
+end
+
+# gen compiles what its entry files require, wherever in the package that is.
+test "stale after an app file config/routes.rb requires changes" do
+  assert_stale_when_required_from("config/routes.rb", "require_relative \"../app/routes/extra\"\n",
+                                  "app/routes/extra.rb")
+end
+
+test "stale after a lib file config/routes.rb requires changes" do
+  assert_stale_when_required_from("config/routes.rb", "require_relative \"../lib/extra_routes\"\n",
+                                  "lib/extra_routes.rb")
+end
+
+test "stale after a file db/schema.rb requires changes" do
+  assert_stale_when_required_from("db/schema.rb", "require_relative \"tables/users\"\n", "db/tables/users.rb")
+end
+
+test "stale after a file bin/gen.rb requires changes" do
+  assert_stale_when_required_from("bin/gen.rb", "require_relative \"../lib/gen_helper\"\n", "lib/gen_helper.rb")
+end
+
+test "stale after a file reached through several requires changes" do
+  reset_app(PLAIN_TOML)
+  write_file("#{ROOT}/config/routes.rb", "require_relative \"../lib/one\"\n")
+  write_file("#{ROOT}/lib/one.rb", "require_relative \"deep/two\"\n")
+  write_file("#{ROOT}/lib/deep/two.rb", "require \"lib/three\"\n")
+  write_file("#{ROOT}/lib/three.rb", "# three\n")
+  stamp = recorded(ROOT)
+  write_file("#{ROOT}/lib/three.rb", "# three, longer\n")
+  refute stamp.fresh?
+end
+
+test "files that require each other are no loop" do
+  reset_app(PLAIN_TOML)
+  write_file("#{ROOT}/config/routes.rb", "require_relative \"../lib/one\"\n")
+  write_file("#{ROOT}/lib/one.rb", "require_relative \"two\"\n")
+  write_file("#{ROOT}/lib/two.rb", "require_relative \"one\"\nrequire_relative \"two\"\n")
+  assert recorded(ROOT).fresh?
+end
+
+# Each spelling here is one the pinned Spinel follows at compile time.
+test "every spelling of a require the compiler follows is followed" do
+  ["require_relative 'extra'\n",
+   "require_relative \"extra.rb\"\n",
+   "require_relative(\"extra\")\n",
+   "require_relative(\n  \"extra\"\n)\n",
+   "require_relative \"extra\" if true\n",
+   "x = 1; require_relative \"extra\"\n",
+   "require_relative \"\#{__dir__}/extra\"\n",
+   "require_relative __dir__ + \"/extra\"\n",
+   "require File.expand_path(\"extra\", __dir__)\n",
+   "require \"./lib/extra\"\n",
+   "autoload :Extra, \"lib/extra\"\n"].each do |line|
+    reset_app(PLAIN_TOML)
+    write_file("#{ROOT}/config/routes.rb", "require_relative \"../lib/entry\"\n")
+    write_file("#{ROOT}/lib/entry.rb", line)
+    write_file("#{ROOT}/lib/extra.rb", "# extra\n")
+    stamp = recorded(ROOT)
+    write_file("#{ROOT}/lib/extra.rb", "# extra, longer\n")
+    refute stamp.fresh?, line
+  end
+end
+
+test "a require after non-ASCII text is still read" do
+  assert_stale_when_required_from("config/routes.rb", "# 日本語 — routes\nrequire_relative \"../lib/after\"\n",
+                                  "lib/after.rb")
+end
+
+test "a require of a file that does not exist, or of the stdlib, is no error" do
+  reset_app(PLAIN_TOML)
+  write_file("#{ROOT}/config/routes.rb", "require \"json\"\nrequire_relative \"gone\"\n")
+  assert recorded(ROOT).fresh?
+end
+
+test "not stale after an app file nothing gen compiles requires changes" do
+  reset_app(PLAIN_TOML)
+  write_file("#{ROOT}/config/routes.rb", "require_relative \"../lib/used\"\n")
+  write_file("#{ROOT}/lib/used.rb", "# used\n")
+  write_file("#{ROOT}/lib/unused.rb", "# unused\n")
+  stamp = recorded(ROOT)
+  write_file("#{ROOT}/lib/unused.rb", "# unused, longer\n")
+  assert stamp.fresh?
+end
+
+# examples/* depend on the repository they sit in, so a walk of the whole
+# dependency would count every controller edit and the skip would never fire.
+test "not stale after a controller changes in an app inside its path dependency" do
+  remove_tree(ROOT)
+  app_at("#{ROOT}/fw/examples/blog", "[dependencies]\ncybertrain = { path = \"../..\" }\n")
+  write_file("#{ROOT}/fw/cybertrain.rb", "# entry\n")
+  write_file("#{ROOT}/fw/cybertrain/router.rb", "# router\n")
+  stamp = recorded("#{ROOT}/fw/examples/blog")
+  write_file("#{ROOT}/fw/examples/blog/app/controllers/a.rb", "# a, longer\n")
+  write_file("#{ROOT}/fw/test/other.rb", "# other\n")
+  assert stamp.fresh?
 end
 
 # Dir.glob would read these names as patterns, match nothing, and leave every

@@ -15,9 +15,26 @@ ok   not stale after app/controllers/a.rb changes
 ok   stale after a path dependency's generator changes
 ok   stale after a path dependency's cybertrain.rb changes
 ok   a path dependency is found however spin.toml spells it
+ok   stale after a path dependency that is not the framework changes
+ok   stale after a file a path dependency requires changes
+ok   stale after a path dependency of a path dependency changes
+ok   stale after a path dependency's spin.toml changes
+ok   path dependencies that name each other are no loop
+ok   stale after a vendored package changes
+ok   stale after an app file config/routes.rb requires changes
+ok   stale after a lib file config/routes.rb requires changes
+ok   stale after a file db/schema.rb requires changes
+ok   stale after a file bin/gen.rb requires changes
+ok   stale after a file reached through several requires changes
+ok   files that require each other are no loop
+ok   every spelling of a require the compiler follows is followed
+ok   a require after non-ASCII text is still read
+ok   a require of a file that does not exist, or of the stdlib, is no error
+ok   not stale after an app file nothing gen compiles requires changes
+ok   not stale after a controller changes in an app inside its path dependency
 ok   directories whose names hold glob characters are still walked
 ok   a dependency directory that does not exist is no error
 ok   a root with nothing in it signs nothing and is stale
 ok   record writes tmp/gen-inputs, creating tmp
 ok   a stamp that cannot be written costs a compile, not the rebuild
-22 tests, 47 assertions, 0 failures
+39 tests, 81 assertions, 0 failures
