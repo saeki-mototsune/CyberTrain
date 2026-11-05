@@ -175,7 +175,10 @@ Where it differs from Rails' `transaction`, and what to avoid:
   then raises `Cybertrain::DB::Error` ("the enclosing transaction is no longer
   open") instead of committing on its own, and the transaction raises when the
   block ends. Let the error leave the block, and retry the whole transaction
-  if you need to.
+  if you need to. A transaction opened with `c.exec_script("BEGIN")` is
+  treated the same way until `COMMIT`, `END` or `ROLLBACK` ends it; a
+  `ROLLBACK` then succeeds without doing anything, because SQLite has
+  already rolled the transaction back.
 
 Code that must keep its `rescue` in a plain method uses the block-free form,
 `c.begin!(immediate: true)` ... `c.commit!`, with `c.rollback!` in the rescue.
