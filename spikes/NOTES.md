@@ -96,7 +96,7 @@ The rules are numbered in the order they were found. By topic:
 - Request decoding: 28, 49, 52
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80
 - FFI: 15, 59
-- Tests and tools: 23, 24, 36, 41, 63
+- Tests and tools: 23, 24, 36, 41, 63, 81
 
 ## Rules every framework file must follow (derived from the spikes)
 
@@ -708,7 +708,10 @@ The rules are numbered in the order they were found. By topic:
     has the whole framework and the openssl package in one program, and
     there rule 62 caught two more byte scans that only that combination
     boxes: `Query.split_key` and `BlobStore.valid_key?` (both now read
-    through a `to_s` local).
+    through a `to_s` local). `TCPSocket.new(host, port, connect_timeout:
+    t)` is not a bounded connect: the keyword is read by no code path and
+    the connect blocks until the kernel gives up (checked 2026-11-05 on
+    2026.11.03.7025 and 2026.11.04.7026; docs/spinel-feedback.md N).
 73. An instance variable first assigned in a helper method that `initialize`
     calls, rather than in `initialize` itself, is typed as a boxed value
     (`sp_RbVal`) even when every assignment is a String (Spinel
@@ -840,6 +843,24 @@ The rules are numbered in the order they were found. By topic:
     single statements are retried: a multi-statement `exec_script` (schema,
     migrations, the WAL switch at open) and ROLLBACK still wait in C,
     since a script refused half way cannot be re-run from the top.
+81. A call to a class method that no class in the program defines is
+    refused at compile time, even from a method nothing calls: `module
+    Cybertrain; end`, `def f = Cybertrain.config.port`, `puts(ARGV.size >
+    5 ? f : 0)` prints `0` under CRuby and is refused by Spinel
+    2026.11.03.7025 and 2026.11.04.7026 ("undefined method 'config' for a
+    Class: no class in the program defines a class method 'config'
+    (NoMethodError)"; checked 2026-11-05). An undefined *constant* in the
+    same place is only a warning ("uninitialized constant ... (raises
+    NameError when reached)") and raises when reached. The refusal is by
+    design (`CR_NOMETHOD` in src/codegen_util.c: a NoMethodError found
+    ahead of time; docs/spinel-feedback.md, "A refusal of a never-reached
+    class-method call"). So a test program that loads part of the
+    framework must require every file whose class methods its code names,
+    reached or not: code that says `Cybertrain.config` needs `require
+    "cybertrain/config"`. `--defer-refusals` (or `# spinel:
+    defer-refusals` at the top of the file) builds it anyway, but what is
+    raised when the call is reached is NotImplementedError, not CRuby's
+    NoMethodError, so a test cannot rescue it as CRuby would.
 
 ## Numbers worth remembering
 

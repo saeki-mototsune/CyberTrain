@@ -521,6 +521,23 @@ test "loopback and private destinations are refused by default" do
   assert_equal "blocked", outcome { client.get("http://0.0.0.0:#{$server.port}/") }.kind
 end
 
+test "the inet_aton spellings of a loopback address are refused as loopback" do
+  # getaddrinfo reads "127.1", "0x7f.0.0.1", "0177.0.0.1" and "2130706433"
+  # as 127.0.0.1, under CRuby and Spinel alike, and the policy is decided
+  # on the address it answers, so none of these spellings slips past it.
+  # Net::Address itself takes only the dotted quad: unresolved, such a
+  # spelling is "not an IP address" to it.
+  client = Cybertrain::HttpClient.new(timeout: 1, deadline: 2)
+  short = outcome { client.get("http://127.1/") }
+  assert_equal "blocked", short.kind
+  assert_includes short.text, "127.0.0.1 (loopback address)"
+  assert_equal "blocked", outcome { client.get("http://0x7f.0.0.1/") }.kind
+  assert_equal "blocked", outcome { client.get("http://0177.0.0.1/") }.kind
+  assert_equal "blocked", outcome { client.get("http://2130706433/") }.kind
+  assert_equal "not an IP address", reason_of("127.1")
+  assert_equal "not an IP address", reason_of("2130706433")
+end
+
 test "Config#http_allow_private is the default for allow_private" do
   assert_equal false, Cybertrain.config.http_allow_private
   Cybertrain.config.http_allow_private = true
