@@ -8,7 +8,7 @@
 
 cybertrain is a **web application framework with a Rails-like development experience** that runs on **Spinel**, matz's AOT compiler for Ruby. It replaces the parts that correspond to Rails' run-time metaprogramming with "build-time code generation" and "run-time data", and turns an application into a single native binary with `spin build`.
 
-Its goal differs from that of **Roundhouse** (Sam Ruby), which runs existing Rails applications on Spinel. A cybertrain application is written for cybertrain from the start, in Spinel's subset of Ruby.
+It does not run existing Rails applications: a cybertrain application is written for cybertrain from the start, in Spinel's subset of Ruby.
 
 ## 1. Context and assumptions
 
@@ -51,12 +51,6 @@ Caveats:
 - (Found in spike 2) Putting `Method` objects in an array and calling `call` gives a run-time `NoMethodError`. Put lambdas in collections instead.
 - (Found while implementing the harness) Calling `include?` on a polymorphic receiver with a polymorphic argument gives a wrong result. Narrow the receiver's type with `case` before calling it.
 - The bug where a green thread blocked on a socket read stops other I/O (issue #4528) is closed, but there were reports of degradation depending on the relation between the number of workers and the number of concurrent connections.
-- Roundhouse's Spinel target runs in production with "a green thread per connection, Spinel's own network layer, linking with `-lsqlite3`, prefork not finished".
-
-### 1.3 Relation to Roundhouse
-
-- Roundhouse is a transpiler that "treats Rails as the specification and converts a Rails application into plain Ruby (no metaprogramming) for Spinel". cybertrain does not aim for Rails compatibility and builds a new framework native to Spinel.
-- Roundhouse's `runtime/ruby/` (equivalents of router, action_view and active_record written without metaprogramming) is consulted as prior art, not used as a dependency.
 
 ## 2. Goals, acceptance criteria, non-goals
 
@@ -98,8 +92,8 @@ Each item is written as "Decision / Reason / Rejected alternatives / Consequence
 ### D1. Positioning: a Spinel-native framework
 
 - Decision: porting existing Rails applications is out of scope. Applications are written directly against cybertrain's API.
-- Reason: porting existing Rails applications is Roundhouse's job, and competing with it is pointless. Being native lets the API be designed around Spinel's constraints, and allows "a design that uses Spinel's strengths", which Roundhouse cannot offer.
-- Rejected: a Rails transpiler (duplicates Roundhouse), a runtime as Roundhouse's output target (Roundhouse has its own runtime).
+- Reason: being native lets the API be designed around Spinel's constraints, and allows "a design that uses Spinel's strengths".
+- Rejected: a Rails transpiler (it would tie the API to Rails' semantics instead of Spinel's constraints).
 
 ### D2. Acceptance criteria: a blog, server-side HTML
 
@@ -129,7 +123,7 @@ Each item is written as "Decision / Reason / Rejected alternatives / Consequence
 ### D5. The HTTP server is pure-Ruby HTTP/1.1
 
 - Decision: accept with `TCPServer`, one green thread per connection. HTTP parsing, keep-alive and chunked are written in Ruby inside the framework. TLS and HTTP/2 are left to a reverse proxy (nginx / Caddy). One process, with the number of workers following `SPINEL_WORKERS`.
-- Reason: the whole thing stays closed within Spinel's Ruby and becomes a single binary with one `spin build`. Roundhouse runs the same setup in production.
+- Reason: the whole thing stays closed within Spinel's Ruby and becomes a single binary with one `spin build`.
 - Rejected: using a C HTTP library through FFI (manual management of pointer lifetimes, a build dependency), CGI / FastCGI (a process start every time, or a socket is needed anyway).
 - Consequences: the server sits behind a small interface that "builds a Request from an accepted socket and writes a Response back", so that picohttpparser can later be bundled as a `.c` in a spin package and swapped in with `ffi_func`. prefork is not handled, since the Spinel side states it is unfinished. Implementation rules settled in spike 5: (1) call `sock.wait_readable(timeout)` right before every `readpartial` (nil means an idle timeout). A bare `readpartial` blocks an OS worker in `read(2)` and stops other connections' I/O. (2) Do not pass the socket as an argument of `Thread.new`; capture a method argument in a closure, as in `def spawn_conn(sock); Thread.new { serve(sock) }; end` (passing it as an argument loses the static type). (3) Under I/O-bound load `SPINEL_WORKERS=1` is faster (54 to 58k rps versus 25 to 45k), so `config.workers` defaults to 1 and can be overridden with the environment variable. Re-measure after templates and SQLite are in.
 
@@ -819,7 +813,6 @@ blog/
 - Spinel: https://github.com/matz/spinel (README, `docs/limitations.md`, `docs/FFI.md`, `docs/spin.md`, `packages/`)
 - Spinel issue #4528 (a thread stalled on a socket read stops other I/O): https://github.com/matz/spinel/issues/4528
 - spin-index: https://github.com/matz/spin-index
-- Roundhouse: https://github.com/rubys/roundhouse (`docs/guide/spinel.md`, `runtime/ruby/`)
 - spinelgems (gem compatibility survey, bundler-spinel): https://github.com/OriPekelman/spinelgems
 - rubocop_spinel: https://github.com/gurgeous/rubocop_spinel
 

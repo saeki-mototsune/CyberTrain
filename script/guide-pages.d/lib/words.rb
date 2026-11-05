@@ -30,7 +30,7 @@ module GuidePages
       primary: "Primary", how: "How it works", tutorial: "Tutorial", deploy: "Deploy", playground: "Playground",
       steps_label: "Tutorial steps", tagline: "Rails-shaped web apps, compiled to one native binary.",
       project: "Project", related: "Related", related_label: "Related projects", language: "Language", languages_label: "Languages",
-      license: "MIT License", prealpha: "Pre-alpha", independent: "CyberTrain is an independent project, not affiliated with Rails, Spinel or Roundhouse.",
+      license: "MIT License", prealpha: "Pre-alpha", independent: "CyberTrain is an independent project, not affiliated with Rails or Spinel.",
     },
     "ja" => {
       why: "なぜ", rule: "Spinel のルール", compile: "コンパイルする前に", example: "完成版のサンプルから",
@@ -41,7 +41,7 @@ module GuidePages
       primary: "メイン", how: "仕組み", tutorial: "チュートリアル", deploy: "デプロイ", playground: "試す",
       steps_label: "チュートリアルのステップ", tagline: "Rails 流の Web アプリを、ひとつのネイティブバイナリに。",
       project: "プロジェクト", related: "関連", related_label: "関連プロジェクト", language: "言語", languages_label: "言語",
-      license: "MIT ライセンス", prealpha: "プレアルファ", independent: "CyberTrain は独立したプロジェクトであり、Rails、Spinel、Roundhouse とは提携関係にありません。",
+      license: "MIT ライセンス", prealpha: "プレアルファ", independent: "CyberTrain は独立したプロジェクトであり、Rails、Spinel とは提携関係にありません。",
     },
     "zh" => {
       why: "为什么", rule: "Spinel 规则", compile: "编译之前", example: "来自完成后的示例",
@@ -52,7 +52,7 @@ module GuidePages
       primary: "主导航", how: "原理", tutorial: "教程", deploy: "部署", playground: "在线试用",
       steps_label: "教程步骤", tagline: "Rails 风格的 Web 应用，编译为单个原生二进制文件。",
       project: "项目", related: "相关", related_label: "相关项目", language: "语言", languages_label: "语言",
-      license: "MIT 许可证", prealpha: "预 Alpha 版", independent: "CyberTrain 是一个独立项目，与 Rails、Spinel 或 Roundhouse 均无关联。",
+      license: "MIT 许可证", prealpha: "预 Alpha 版", independent: "CyberTrain 是一个独立项目，与 Rails 或 Spinel 均无关联。",
     },
     "ru" => {
       why: "Зачем", rule: "Правило Spinel", compile: "Чтобы скомпилировалось", example: "Из готового примера",
@@ -63,7 +63,7 @@ module GuidePages
       primary: "Основная навигация", how: "Как это работает", tutorial: "Учебник", deploy: "Деплой", playground: "Песочница",
       steps_label: "Шаги учебника", tagline: "Веб-приложения в духе Rails, скомпилированные в один нативный бинарный файл.",
       project: "Проект", related: "Связанные", related_label: "Связанные проекты", language: "Язык", languages_label: "Языки",
-      license: "Лицензия MIT", prealpha: "Пре-альфа", independent: "CyberTrain — независимый проект, не связанный с Rails, Spinel или Roundhouse.",
+      license: "Лицензия MIT", prealpha: "Пре-альфа", independent: "CyberTrain — независимый проект, не связанный с Rails или Spinel.",
     },
     "fr" => {
       why: "Pourquoi", rule: "Règle Spinel", compile: "Avant de compiler", example: "Tiré de l’exemple final",
@@ -74,7 +74,7 @@ module GuidePages
       primary: "Navigation principale", how: "Fonctionnement", tutorial: "Tutoriel", deploy: "Déployer", playground: "Essayer",
       steps_label: "Étapes du tutoriel", tagline: "Des applications web à la Rails, compilées en un seul binaire natif.",
       project: "Projet", related: "Voir aussi", related_label: "Projets liés", language: "Langue", languages_label: "Langues",
-      license: "Licence MIT", prealpha: "Pré-alpha", independent: "CyberTrain est un projet indépendant, sans lien avec Rails, Spinel ou Roundhouse.",
+      license: "Licence MIT", prealpha: "Pré-alpha", independent: "CyberTrain est un projet indépendant, sans lien avec Rails ou Spinel.",
     },
   }.freeze
 end
