@@ -99,11 +99,11 @@ module Cybertrain
         case sym
         when :all then rel
         when :where
-          rel.add_where_sql(text_arg_at(args, 0, name), list_arg_at(args, 1)) unless args.empty?
+          rel.add_where_sql(text_arg_at(args, 0, name), binds_from(args, 1)) unless args.empty?
           rel.add_where(symbol_hash(kwargs)) unless kwargs.empty?
           rel
         when :where_sql
-          rel.add_where_sql(text_arg_at(args, 0, name), list_arg_at(args, 1))
+          rel.add_where_sql(text_arg_at(args, 0, name), binds_from(args, 1))
           rel
         when :where_like
           rel.add_where_like(text_arg_at(args, 0, name), text_arg_at(args, 1, name))
@@ -330,6 +330,22 @@ module Cybertrain
       end
 
       # Argument i as a bind Array, empty when absent.
+      # The binds of `where("a = ? AND b = ?", x, y)` / `where_sql(sql, [x, y])`:
+      # the arguments from `i` on, each one bind, or the elements of a
+      # single Array there. (Reading only args[i] dropped the rest, and an
+      # unbound `?` is NULL to SQLite: a wrong answer with no error.)
+      def binds_from(args, i)
+        return list_arg_at(args, i) if args.size <= i + 1
+
+        out = Cast.empty_array
+        j = i
+        while j < args.size
+          out << args[j]
+          j += 1
+        end
+        out
+      end
+
       def list_arg_at(args, i)
         out = Cast.empty_array
         return out if args.size <= i
