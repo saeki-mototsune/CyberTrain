@@ -7,7 +7,7 @@ module Gen
 
     # Article -> Article.all, as a Cybertrain::Relation.
     def self.scope(name)
-      raise Cybertrain::Console::UnknownModel, "no model \"#{name}\" (models: #{MODEL_NAMES.join(", ")})"
+      Cybertrain::Console.unknown_model(name)
     end
 
     # The records of a relation scope returned, as Array<Cybertrain::Model>.
@@ -18,7 +18,7 @@ module Gen
 
     # Article.create(attrs); attrs: Hash<Symbol, polymorphic>.
     def self.create(name, attrs)
-      raise Cybertrain::Console::UnknownModel, "no model \"#{name}\" (models: #{MODEL_NAMES.join(", ")})"
+      Cybertrain::Console.unknown_record(name)
     end
   end
 end
