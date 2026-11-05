@@ -1,5 +1,5 @@
 ---
-source_sha256: d8fb004a68aa107d7af3c93f20e9b75128f7653639c6fb550d00805087109e9a
+source_sha256: 9a38157ca8fcf9552b83fff749960770a975fe4abdfa33b4dce1ffb2b4b16a70
 ---
 # Фоновая работа и эксплуатация
 
@@ -126,7 +126,7 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 | `./<app> feeds [NAME...]` | [фиды WebSocket](external-services.md#consuming-websocket-feeds), все или названные | нет |
 
 - `worker` и `feeds` печатают баннер (`=> worker: 3 job threads, 2
-  scheduled tasks`), работают до `SIGTERM`, а затем останавливаются так же,
+  scheduled tasks`), работают до `SIGTERM` или `SIGINT` (Ctrl-C), а затем останавливаются так же,
   как сервер. Свою работу они выполняют всегда: `CYBERTRAIN_WORKER=0`,
   заданный для веб-роли, их не выключает.
 - `feeds` с именами запускает только эти подписки (по контейнеру на фид), а

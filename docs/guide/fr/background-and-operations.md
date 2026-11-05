@@ -1,5 +1,5 @@
 ---
-source_sha256: d8fb004a68aa107d7af3c93f20e9b75128f7653639c6fb550d00805087109e9a
+source_sha256: 9a38157ca8fcf9552b83fff749960770a975fe4abdfa33b4dce1ffb2b4b16a70
 ---
 # Tâches de fond et exploitation
 
@@ -131,7 +131,7 @@ des conteneurs, tous à partir de la même image et de la même base&nbsp;:
 | `./<app> feeds [NAME...]` | les [flux WebSocket](external-services.md#consuming-websocket-feeds), tous ou ceux nommés | non |
 
 - `worker` et `feeds` affichent une bannière (`=> worker: 3 job threads, 2
-  scheduled tasks`), tournent jusqu’à `SIGTERM` puis s’arrêtent comme le fait
+  scheduled tasks`), tournent jusqu’à `SIGTERM` ou `SIGINT` (Ctrl-C) puis s’arrêtent comme le fait
   un serveur. Ils exécutent toujours leur travail&nbsp;: `CYBERTRAIN_WORKER=0`,
   réglé pour le rôle web, ne les désactive pas.
 - `feeds` avec des noms n’exécute que ces abonnements (un conteneur par
