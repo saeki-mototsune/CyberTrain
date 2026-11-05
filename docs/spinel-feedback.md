@@ -392,8 +392,8 @@ and 1,171 to 1,304 on 2026.11.04.7026, and p99 was 25.0 to 29.6 ms, 25.4
 to 27.8 ms and 23.8 to 30.1 ms. The medians put 2026.11.04.7026 12% ahead
 on requests a second and 17% ahead on p99, but one run of 2026.10.27.7020
 (1,234 requests a second, p99 25.0 ms) sits inside 2026.11.04.7026's
-range, so three runs per release do not establish a difference either
-way; what they do establish is that 2026.11.04.7026 is not slower.
+range. No slowdown was seen in these runs, but three runs per release
+neither establish a difference nor rule out a small one either way.
 Alongside: the objects allocated (`SPINEL_ALLOC_REPORT`, see
 E) are 1% fewer on 2026.11.04.7026 for the same requests; `futex` calls
 per request are the same (see 4); the collector's cadence is the same
