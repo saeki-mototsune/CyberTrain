@@ -15,6 +15,9 @@ module Cybertrain
     class NoRoutes < StandardError
     end
 
+    # OutsideRequest (a request-bound helper outside a request) is defined
+    # in cybertrain/template/interpreter.rb, which this file requires.
+
     # nil until the app configures one; controllers then fall back to the
     # base MissingTemplate errors.
     @engine = nil
@@ -97,6 +100,61 @@ module Cybertrain
 
     def self.component_builder=(builder)
       @component_builder = builder
+    end
+
+    # A partial rendered with no request (a broadcast, a mail body):
+    #
+    #   Cybertrain::Views.render_partial("articles/article", article: article)
+    #
+    # "articles/article" is app/views/articles/_article.html.erb. The
+    # helpers are the app's (helpers_builder) with no controller: path
+    # helpers work (url_resolver is process-wide), the request-bound ones
+    # (csrf_token, csrf_meta_tags, params, flash, request_path, *_url)
+    # raise OutsideRequest. Strict locals are checked as in a request.
+    # @return [String]
+    def self.render_partial(name, locals = {})
+      engine = configured_engine
+      helpers = detached_helpers
+      slash = name.rindex("/")
+      dir = slash.nil? ? "" : name[0, slash].to_s
+      path = slash.nil? ? "_#{name}" : Template::Helpers.partial_path(dir, name)
+      env = { "__template_dir" => [nil, 0, 0.0, "", true][3] }
+      env["__template_dir"] = dir
+      given = Array.new(0) { "" }
+      keys = locals.keys
+      i = 0
+      while i < keys.size
+        key = keys[i].to_s
+        given << key
+        env[key] = locals[keys[i]]
+        i += 1
+      end
+      Template::Helpers.check_locals(engine.template(path), given)
+      engine.render(path, env, helpers).to_s
+    end
+
+    # A component rendered with no request, `content` (HTML, not escaped)
+    # as its block:
+    #
+    #   Cybertrain::Views.render_component(CardComponent.new(title: "x"))
+    # @return [String]
+    def self.render_component(component, content = "")
+      engine = configured_engine
+      helpers = detached_helpers
+      component.render_with(helpers, content, engine.interpreter(helpers)).to_s
+    end
+
+    def self.configured_engine
+      engine = @engine
+      raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
+
+      engine
+    end
+
+    def self.detached_helpers
+      helpers = @helpers_builder.call(nil)
+      helpers.outside_request!
+      helpers
     end
   end
 end

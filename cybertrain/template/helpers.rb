@@ -46,6 +46,25 @@ module Cybertrain
         # answer receiverless names (render_with pushes and pops). Typed
         # empty Array (rule 9).
         @components = Array.new(0) { Component.new }
+        # Set by Views.render_partial / render_component: the request-bound
+        # helpers then raise Views::OutsideRequest. A plain nil controller
+        # (unit tests) keeps answering "" and empty values.
+        @outside_request = false
+      end
+
+      # Marks these helpers as rendering with no request (Views.render_partial).
+      def outside_request!
+        @outside_request = true
+        nil
+      end
+
+      # Raises when a helper that needs a request runs outside one. Forms
+      # (button_to, form_with) still render outside a request, without the
+      # authenticity token, so a broadcast partial can hold one.
+      def request_bound!(name)
+        return nil unless @outside_request
+
+        raise Views::OutsideRequest, "#{name} needs a request"
       end
 
       # Component#render_with, around its template.
@@ -76,11 +95,21 @@ module Cybertrain
         when "time_ago_in_words" then distance_of_time_in_words(time_arg(args, 0, name), Time.now)
         when "content_for" then content_for(args, block, interp, env)
         when "content_for?" then !env["__content_#{text_arg(args, 0, name)}"].nil?
-        when "csrf_meta_tags" then csrf_meta_tags
-        when "csrf_token" then csrf_token
-        when "flash" then flash_messages
-        when "params" then params
-        when "request_path" then request_path
+        when "csrf_meta_tags"
+          request_bound!(name)
+          csrf_meta_tags
+        when "csrf_token"
+          request_bound!(name)
+          csrf_token
+        when "flash"
+          request_bound!(name)
+          flash_messages
+        when "params"
+          request_bound!(name)
+          params
+        when "request_path"
+          request_bound!(name)
+          request_path
         when "url_for" then url_for(arg(args, 0, name))
         when "paginate" then paginate(args)
         else
@@ -91,6 +120,7 @@ module Cybertrain
             component = @components[depth - 1]
             return component.call_view_method(name.to_sym) if component.view_method?(name)
           end
+          request_bound!(name) if name.end_with?("_url")
           return route(name, args) if name.end_with?("_path") || name.end_with?("_url")
 
           app_helper_call(name, args, kwargs, block, interp, env)

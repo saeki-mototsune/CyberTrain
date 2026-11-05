@@ -26,6 +26,16 @@ module Cybertrain
     def attribute_or_method?(name) = true
   end
 
+  module Views
+    # A helper that needs a request (csrf_token, params, ...) called while
+    # rendering outside one (Views.render_partial, render_component). Defined
+    # here, not in cybertrain/views.rb, because Interpreter#call_helper lets
+    # it through unchanged (every other helper error gets the template's
+    # "name:line:" prefix and becomes a Template::RuntimeError).
+    class OutsideRequest < StandardError
+    end
+  end
+
   module Template
     # What templates call without a receiver (link_to, form_with, render ...).
     # Template::Helpers (cybertrain/template/helpers.rb) implements the real
@@ -447,6 +457,9 @@ module Cybertrain
           result = @helpers.helper_call(name, args, kwargs, block, self, env)
         rescue Cybertrain::Template::SyntaxError => e
           # A partial that failed to parse: already "<partial>:<line>: ...".
+          raise e
+        rescue Cybertrain::Views::OutsideRequest => e
+          # Kept as is, so a broadcast's caller can rescue it by class.
           raise e
         rescue StandardError => e
           relocate(e, node)

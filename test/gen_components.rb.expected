@@ -6,4 +6,5 @@ ok   a component without its template is an error naming the expected path
 ok   the emitter writes the per-class tables and the construction arms
 ok   two optional keywords give four arms, the most complete first
 ok   no components: build always raises
-8 tests, 21 assertions, 0 failures
+ok   the output always ends with the component_builder line
+9 tests, 23 assertions, 0 failures

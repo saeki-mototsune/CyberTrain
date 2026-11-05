@@ -205,4 +205,10 @@ test "no components: build always raises" do
   RUBY
 end
 
+test "the output always ends with the component_builder line" do
+  line = "Cybertrain::Views.component_builder = ->(name, kwargs) { Gen::Components.build(name, kwargs) }\n"
+  assert Cybertrain::Gen::ComponentsEmitter.emit([scan(CARD)]).end_with?(line)
+  assert Cybertrain::Gen::ComponentsEmitter.emit([]).end_with?(line)
+end
+
 Cybertrain::Test.run!
