@@ -388,15 +388,17 @@ up to 15% here, more than on the benchmark machine.
 | Peak RSS | 15.6 MB | 15.7 MB | 15.8 MB |
 | `GET /articles/1`, requests a second (2 runs) | 2,150 / 2,382 | 2,258 / 2,018 | 2,304 / 2,277 |
 
-The runs of the three releases overlap on every row: requests a second
-were 1,023 to 1,234 on 2026.10.27.7020, 1,143 to 1,275 on 2026.11.03.7025
-and 1,171 to 1,304 on 2026.11.04.7026, and p99 was 25.0 to 29.6 ms, 25.4
-to 27.8 ms and 23.8 to 30.1 ms. The medians put 2026.11.04.7026 12% ahead
-on requests a second and 17% ahead on p99, but one run of 2026.10.27.7020
-(1,234 requests a second, p99 25.0 ms) sits inside 2026.11.04.7026's
-range. No slowdown was seen in these runs, but three runs per release
-neither establish a difference nor rule out a small one either way.
-Alongside: the objects allocated (`SPINEL_ALLOC_REPORT`, see
+The runs of the three releases overlap on every `GET /articles` row:
+requests a second were 1,023 to 1,234 on 2026.10.27.7020, 1,143 to 1,275
+on 2026.11.03.7025 and 1,171 to 1,304 on 2026.11.04.7026, and p99 was
+25.0 to 29.6 ms, 25.4 to 27.8 ms and 23.8 to 30.1 ms. The medians put
+2026.11.04.7026 12% ahead on requests a second and 17% ahead on p99, but
+one run of 2026.10.27.7020 (1,234 requests a second, p99 25.0 ms) sits
+inside 2026.11.04.7026's range. On `GET /articles/1` (two runs each)
+2026.10.27.7020's range covers 2026.11.04.7026's, and 2026.11.03.7025's
+two runs both fall below 2026.11.04.7026's. No slowdown was seen in these
+runs, but two or three runs per release neither establish a difference
+nor rule out a small one either way. Alongside: the objects allocated (`SPINEL_ALLOC_REPORT`, see
 E) are 1% fewer on 2026.11.04.7026 for the same requests; `futex` calls
 per request are the same (see 4); the collector's cadence is the same
 (see 5); the blog binary grew from 3.80 MB on 2026.10.27.7020 to 4.00 MB
@@ -506,8 +508,8 @@ and main on 2026.10.27.7020, where main is the only worker.
   both. The counts are higher than the 2.08 above because the sweeper
   and monitor threads share the server's one CPU here (the 2026-10-30 run
   let them use the others), and they include the start, the seeding and
-  the stop; the two builds are within 3% of each other, which the
-  alternated runs do not separate.
+  the stop; the two builds are within 4% of each other (3.76 against
+  3.62 at the widest), which the alternated runs do not separate.
 - Fix: done.
 
 ### 5. At one worker, most collections are full, and the sweep is handed to another thread
