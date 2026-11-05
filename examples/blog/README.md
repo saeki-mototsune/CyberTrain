@@ -71,6 +71,16 @@ kamal setup    # first time: Docker and kamal-proxy on the server, build, push, 
 kamal deploy   # after that
 ```
 
+The file has two roles from the one image: `web` (`./blog server`, behind
+kamal-proxy with the `/up.html` health check) and `worker` (`./blog
+worker`: the jobs and scheduled tasks, no HTTP), sharing the SQLite volume;
+a `feeds` role for WebSocket subscriptions is there, commented out (the
+blog has none). When you upgrade from a cybertrain release without job
+heartbeats (0.4.x and earlier), stop every old process before the first new
+one starts (`kamal app stop`, then `kamal deploy`): a new worker would
+otherwise take an old worker's running job for abandoned and run it a
+second time.
+
 With a context set, Kamal builds the working tree (uncommitted changes
 included), not a clone of HEAD. To try the image without Kamal, from the
 repository root:
