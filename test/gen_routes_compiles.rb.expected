@@ -13,4 +13,7 @@ ok   path_for resolves helpers by name
 ok   the router knows the route names
 ok   gen/app.rb loads the generated models next to the controllers
 ok   view_assigns exposes the scanned ivars
-15 tests, 37 assertions, 0 failures
+ok   the generated ApplicationHelpers dispatches to the fixture's helpers
+ok   the generated Gen::Components builds and renders the fixture's component
+ok   the generated Gen::Console tables
+18 tests, 45 assertions, 0 failures

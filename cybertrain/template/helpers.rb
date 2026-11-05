@@ -17,6 +17,7 @@ require "cybertrain/model"
 require "cybertrain/pagination"
 require "cybertrain/params"
 require "cybertrain/views"
+require "cybertrain/component"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
 require "cybertrain/generator/inflector"
@@ -41,6 +42,40 @@ module Cybertrain
         # only (a collection renders the same partial once per record).
         @partial_files = { "" => { "" => "" } }
         @partial_files.delete("")
+        # The components being rendered, innermost last: their view methods
+        # answer receiverless names (render_with pushes and pops). Typed
+        # empty Array (rule 9).
+        @components = Array.new(0) { Component.new }
+        # Set by Views.render_partial / render_component: the request-bound
+        # helpers then raise Views::OutsideRequest. A plain nil controller
+        # (unit tests) keeps answering "" and empty values.
+        @outside_request = false
+      end
+
+      # Marks these helpers as rendering with no request (Views.render_partial).
+      def outside_request!
+        @outside_request = true
+        nil
+      end
+
+      # Raises when a helper that needs a request runs outside one. Forms
+      # (button_to, form_with) still render outside a request, without the
+      # authenticity token, so a broadcast partial can hold one.
+      def request_bound!(name)
+        return nil unless @outside_request
+
+        raise Views::OutsideRequest, "#{name} needs a request"
+      end
+
+      # Component#render_with, around its template.
+      def component_push(component)
+        @components << component
+        nil
+      end
+
+      def component_pop
+        @components.pop
+        nil
       end
 
       def helper_call(name, args, kwargs, block, interp, env)
@@ -48,7 +83,10 @@ module Cybertrain
         when "link_to" then link_to(args, kwargs)
         when "button_to" then button_to(args, kwargs)
         when "form_with" then form_with(kwargs, block, interp, env)
-        when "render" then render_helper(args, kwargs, interp, env)
+        when "render"
+          return render_component_helper(kwargs, block, interp, env) if args.empty? && !kwargs["component"].nil?
+
+          render_helper(args, kwargs, interp, env)
         when "h", "escape" then SafeString.of(html_arg(args, 0, name))
         when "raw" then SafeString.of(text_arg(args, 0, name))
         when "pluralize" then pluralize(args)
@@ -74,10 +112,80 @@ module Cybertrain
           no_kwargs(kwargs, name)
           dom_id(args)
         else
+          # Inside a component's template its view methods come first (the
+          # component is the template's self, as in ViewComponent).
+          depth = @components.size
+          if depth > 0 && args.empty? && block.nil?
+            component = @components[depth - 1]
+            return component.call_view_method(name.to_sym) if component.view_method?(name)
+          end
+          request_bound!(name) if name.end_with?("_url")
           return route(name, args) if name.end_with?("_path") || name.end_with?("_url")
 
-          super(name, args, kwargs, block, interp, env)
+          app_helper_call(name, args, kwargs, block, interp, env)
         end
+      end
+
+      # The application's helpers (app/helpers): gen/helpers.rb's
+      # ApplicationHelpers overrides this with a `case` over the names it
+      # scanned and calls super for the rest, which ends here.
+      def app_helper_call(name, args, kwargs, block, interp, env)
+        raise RuntimeError, "undefined helper '#{name}'"
+      end
+
+      # --- for the generated ApplicationHelpers and Ruby helpers ---------------
+
+      # The positional-argument check of a generated helper arm.
+      def helper_arity!(name, args, min, max)
+        n = args.size
+        return nil if n >= min && n <= max
+
+        expected = min == max ? min.to_s : "#{min}..#{max}"
+        raise ArgumentError, "wrong number of arguments for '#{name}' (given #{n}, expected #{expected})"
+      end
+
+      # A helper that takes no keywords was given some.
+      def helper_no_keywords!(name, kwargs)
+        return nil if kwargs.empty?
+
+        raise ArgumentError, "'#{name}' takes no keyword arguments (given #{kwargs.keys.join(", ")})"
+      end
+
+      # known: the helper's keywords, its `required` required ones first.
+      def helper_keywords!(name, kwargs, known, required)
+        i = 0
+        while i < required
+          raise ArgumentError, "missing keyword '#{known[i]}' for '#{name}'" unless kwargs.key?(known[i])
+
+          i += 1
+        end
+        kwargs.each_key do |key|
+          raise ArgumentError, "unknown keyword '#{key}' for '#{name}' (known: #{known.join(", ")})" unless Helpers.name_in?(known, key)
+        end
+        nil
+      end
+
+      # What a helper's block returns: the template block's output, or ""
+      # when the template passed no block.
+      def app_block_content(block, interp, env)
+        return SafeString.of("") if block.nil?
+
+        SafeString.of(interp.capture(block, env))
+      end
+
+      # link_to for Ruby helpers: `link_to_path("Edit", edit_article_path(a),
+      # class: "btn")`. The text is escaped unless it is a SafeString; attrs
+      # takes class:, id:, data_confirm: and data: as link_to does.
+      # @api public
+      def link_to_path(text, path, attrs = {})
+        link_to([text, path], string_keys_of(attrs))
+      end
+
+      # button_to for Ruby helpers: `button_to_path("Delete", article_path(a),
+      # method: "delete", class: "danger")`.
+      # @api public
+      def button_to_path(text, path, attrs = {})
+        button_to([text, path], string_keys_of(attrs))
       end
 
       # `f.label :title` and the other FormBuilder methods, `@page.next?`
@@ -182,6 +290,15 @@ module Cybertrain
       end
 
       private
+
+      # `class: "c"` from Ruby comes with Symbol keys; the template-facing
+      # helpers look keywords up by String (typed Hash, rule 71).
+      def string_keys_of(attrs)
+        out = { "" => [nil, 0, 0.0, "", true][0] }
+        out.delete("")
+        attrs.each_key { |key| out[key.to_s] = attrs[key] }
+        out
+      end
 
       # --- links and forms ---------------------------------------------------
 
@@ -301,7 +418,7 @@ module Cybertrain
         return "" if verb == "get"
 
         method_field = verb == "post" ? "" : "<input type=\"hidden\" name=\"_method\" value=\"#{Html.escape(verb)}\">"
-        token = csrf_token
+        token = session_csrf_token
         return method_field if token.empty?
 
         "#{method_field}<input type=\"hidden\" name=\"authenticity_token\" value=\"#{Html.escape(token)}\">"
@@ -596,9 +713,41 @@ module Cybertrain
           scope[key] = locals[key]
           i += 1
         end
-        html = interp.render(template, scope)
+        html = ""
+        if @components.empty?
+          html = interp.render(template, scope)
+        else
+          # A partial rendered from a component's template is not the
+          # component's: a base Component (no view methods) on top of the
+          # stack keeps the component's methods out of its names.
+          component_push(Component.new)
+          begin
+            html = interp.render(template, scope)
+          ensure
+            component_pop
+          end
+        end
         scope.each_key { |key| env[key] = scope[key] if key.start_with?("__content_") }
         SafeString.of(html)
+      end
+
+      # render component: "card", title: "x" [do ... end]: the component the
+      # app's Gen::Components.build makes from the other keywords (through
+      # Views.component_builder), rendered with the block's output as its
+      # content.
+      def render_component_helper(kwargs, block, interp, env)
+        name = FormBuilder.value_text(kwargs["component"])
+        attrs = { "" => [nil, 0, 0.0, "", true][0] }
+        attrs.delete("")
+        kwargs.each_key { |key| attrs[key] = kwargs[key] unless key == "component" }
+        built = Views.component_builder.call(name, attrs)
+        content = block.nil? ? "" : interp.capture(block, env)
+        # The case types the builder's result (a lambda's value is
+        # polymorphic) before the method call.
+        case built
+        when Cybertrain::Component then built.render_with(self, content, interp)
+        else raise Component::Unknown, "component_builder returned no component for '#{name}'"
+        end
       end
 
       # content_for :title do ... end  or  content_for :title, "text";
@@ -672,8 +821,13 @@ module Cybertrain
 
       # --- request state ------------------------------------------------------
 
+      # The request-bound readers below raise Views::OutsideRequest when
+      # these helpers render outside a request (request_bound!), whether a
+      # template or a Ruby helper calls them; a nil controller otherwise
+      # answers "" and empty values.
       def csrf_meta_tags
-        token = csrf_token
+        request_bound!("csrf_meta_tags")
+        token = session_csrf_token
         return SafeString.of("") if token.empty?
 
         SafeString.of("<meta name=\"csrf-param\" content=\"authenticity_token\">\n<meta name=\"csrf-token\" content=\"#{Html.escape(token)}\">")
@@ -681,6 +835,13 @@ module Cybertrain
 
       # The session's token, minted on first use; "" without a session.
       def csrf_token
+        request_bound!("csrf_token")
+        session_csrf_token
+      end
+
+      # csrf_token without the request check: forms (hidden_fields) render
+      # outside a request too, without a token.
+      def session_csrf_token
         controller = @controller
         return "" if controller.nil?
 
@@ -691,21 +852,25 @@ module Cybertrain
       end
 
       def flash_messages
+        request_bound!("flash")
         controller = @controller
         controller.nil? ? Helpers.flash_messages(nil) : Helpers.flash_messages(controller.flash)
       end
 
       def params
+        request_bound!("params")
         controller = @controller
         controller.nil? ? Params.new : controller.params
       end
 
       def request_path
+        request_bound!("request_path")
         controller = @controller
         controller.nil? ? "" : controller.request.path
       end
 
       def request_query_string
+        request_bound!("request_query_string")
         controller = @controller
         controller.nil? ? "" : controller.request.query_string.to_s
       end
