@@ -185,6 +185,20 @@ test "subscribe and unsubscribe messages change the streams" do
   assert subscribers_reach(0)
 end
 
+test "unsubscribing the last stream after the ping interval does not close the connection at once" do
+  ws = connect("s=#{token("a")}&mode=json")
+  assert subscribers_reach(1)
+  # Past one ping interval since the connect: the idle close must count
+  # from when the name list became empty, not from the connect.
+  sleep 1.2
+  ws.send_text("{\"unsubscribe\":\"#{token("a")}\"}")
+  assert_equal "{\"unsubscribed\":[\"a\"]}", next_text(ws)
+  ws.send_text("{\"subscribe\":\"#{token("b")}\"}")
+  assert_equal "{\"subscribed\":[\"b\"]}", next_text(ws)
+  ws.close
+  assert subscribers_reach(0)
+end
+
 test "mode=json without a token waits for subscribe messages" do
   ws = connect("mode=json")
   ws.send_text("{\"subscribe\":\"#{token("late")}\"}")

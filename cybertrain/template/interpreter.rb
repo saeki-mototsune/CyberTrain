@@ -1016,6 +1016,12 @@ module Cybertrain
       # element is block_value's; `each` and `each_slice` iterate with a
       # `do` block in a <% %> tag instead (EachNode).
       def array_block_method(a, sym, name, args, block, env, node)
+        # None of the block methods takes an argument: `sum(0.0) { ... }`
+        # would silently drop the 0.0, so it is refused as `sum(10)` is.
+        case sym
+        when :map, :collect, :select, :filter, :reject, :find, :detect, :any?, :all?, :none?, :count, :sum, :sort_by, :min_by, :max_by, :group_by
+          no_args(args, node, name)
+        end
         case sym
         when :map, :collect then block_values(block, env, a, name, node)
         when :select, :filter then pick_truthy(a, block_values(block, env, a, name, node), true)
@@ -1046,6 +1052,7 @@ module Cybertrain
       def hash_block_method(h, sym, name, args, block, env, node)
         case sym
         when :select, :filter, :reject
+          no_args(args, node, name)
           pairs = hash_pairs(h)
           keep = pick_truthy(pairs, block_values(block, env, pairs, name, node), sym != :reject)
           out = {}
