@@ -362,8 +362,10 @@ Recorded 2026-11-05 at commit 0d8a942: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 C
   its one-core rate). `SPINEL_WORKERS=2` gives CyberTrain 0 to 2% more on the
   pages, 19% on the POST and 3% on the static file, so the lead narrows to
   1.1 to 4.4 times. That is less than on 2026-10-09 (9 to 25% on the pages,
-  58% on the POST): with two workers on two CPUs, the server used about 8
-  CPU-seconds in an 8-second run of `GET /articles`, one CPU's worth, so the
+  58% on the POST). A separate check after the recorded run (`dist/blog` with
+  `SPINEL_WORKERS=2` on CPUs 0-1, `wrk -t2 -c16 -d8s` on `GET /articles` from
+  CPUs 2-3, the process's user and system time from `/proc/<pid>/stat`) found
+  about 8 CPU-seconds used in the 8 seconds, one CPU's worth of two, so the
   second worker mostly waits. The cause has not been investigated yet.
   `SPINEL_WORKERS` stays 1 by default
   ([spikes/NOTES.md](../spikes/NOTES.md) rule 22 has the earlier measurements).
