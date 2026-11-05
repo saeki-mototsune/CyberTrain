@@ -82,12 +82,12 @@ module Cybertrain
         flash_messages form_action form_record form_with h helper_arity!
         helper_call helper_keywords! helper_no_keywords! hidden_fields
         html_arg initialize int_text kwarg_attr link_to link_to_path
-        lower_text model_key nested_url number_with_delimiter
+        lower_text model_key nested_url no_kwargs number_with_delimiter
         outside_request! page_method pager_href pager_html paginate params
         partial_file plural_words pluralize raw render
         render_component_helper render_helper request_bound! request_path
         request_query_string route route_key_of safe_join session_csrf_token
-        signed_stream_name stream_source_path string_keys_of tag text_arg
+        signed_stream_name stream_source_path string_keys_of tag tag_builder_call text_arg
         time_ago_in_words time_arg to_html truncate turbo_stream_from
         url_for yield
       ]
