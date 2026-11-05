@@ -200,6 +200,7 @@ module Cybertrain
       # After boot connected the database and SPINEL_WORKERS is set; only
       # here, so `migrate`, `db` and Main.command never start it.
       Scheduler.start!(@config)
+      Job.start!(@config) if @config.worker
       # Services files like cybertrain/websocket registered when required.
       Background.start_all(@config)
       if @config.development?
@@ -208,6 +209,7 @@ module Cybertrain
         trap("TERM") { srv.request_stop }
         srv.wait
       end
+      Job.stop!
       Scheduler.stop!
       Background.stop_all
       nil

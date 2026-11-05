@@ -21,12 +21,17 @@ module Cybertrain
   #   # in an action, after saving the user:
   #   Cybertrain::Job.enqueue("welcome_mail", JSON.generate({ "email" => user.email }))
   #
-  # The worker is a {Scheduler} task the framework adds when the server
-  # starts (and {Config#worker} is on): every {Config#job_poll_interval}
-  # seconds it claims the oldest due row, runs its handler and marks it
-  # `done`; a handler that raises is retried after 1, 5, 15 and then 60
-  # minutes, until {Config#job_max_attempts} attempts have failed, when the
-  # row is left `failed` with the error in `last_error`.
+  # A process that runs jobs (`./<app> server` unless {Config#worker} is
+  # off, and `./<app> worker`) starts {Config#job_threads} job threads
+  # ({Job.start!}). Each claims the oldest due row, runs its handler and
+  # marks it `done`, then looks again, waiting {Config#job_poll_interval}
+  # seconds when nothing is due; a handler that raises is retried after 1,
+  # 5, 15 and then 60 minutes, until {Config#job_max_attempts} attempts have
+  # failed, when the row is left `failed` with the error in `last_error`.
+  # A heartbeat thread marks the process's running rows alive every
+  # {Config#job_heartbeat_interval} seconds, and {Job.recover!} queues again
+  # the rows of a process that stopped beating ({Config#job_heartbeat_stale}),
+  # so several worker processes can share one database.
   # @api public
   module Job
     # One registered handler. Distinctive accessor names and no #call
@@ -55,9 +60,8 @@ module Cybertrain
     # last_error keeps at most this many characters of the message.
     MAX_ERROR_LENGTH = 1000
 
-    # The most due jobs one poll works through before the worker yields to
-    # the next tick: a SQLite call holds its OS worker until it returns, so
-    # an unbounded drain could keep requests waiting.
+    # Job.work_due's default bound: a SQLite call holds its OS worker until
+    # it returns, so an unbounded drain could keep requests waiting.
     JOBS_PER_POLL = 20
 
     TABLE = "cybertrain_jobs"
@@ -96,6 +100,23 @@ module Cybertrain
 
     # Job.process_label, computed on first use; "" until then.
     @process_label = ""
+
+    # Guards @live_loops, which every job thread changes and stop! reads.
+    LOCK = Mutex.new
+
+    # How long an idle wait sleeps between looks at the stop flag.
+    WAIT_SLICE = 0.1
+
+    # The thread pool's state (module ivars, not class variables: NOTES
+    # rules 18/64). @generation counts start!s: a loop left from before a
+    # stop! sees a newer number and ends instead of running beside the new
+    # pool. The intervals are copied from the Config start! was given.
+    @running = false
+    @generation = 0
+    @live_loops = 0
+    @poll_interval = 1
+    @heartbeat_interval = 30
+    @drain_timeout = 10
 
     # Registers the code that runs jobs of `kind`. The block receives the
     # payload String given to {Job.enqueue} (encode structured data as JSON
@@ -147,12 +168,155 @@ module Cybertrain
       label
     end
 
-    # True once some handler is registered (the scheduler starts the worker
-    # task only then).
+    # True once some handler is registered ({Job.start!} starts the job
+    # threads only then).
     # @return [Boolean]
     # @api public
     def self.handlers?
       !HANDLERS.empty?
+    end
+
+    # Starts {Config#job_threads} job threads and the heartbeat thread,
+    # unless no handler is registered or they already run. It first
+    # creates the table if needed and queues again the rows whose heartbeat
+    # is stale ({Job.recover!}). The database must be connected.
+    # Application#serve calls it (when {Config#worker} is on) after
+    # Scheduler.start!, and so does `./<app> worker`; the caller decides
+    # whether this process runs jobs.
+    # @param config [Config]
+    # @return [Boolean] true when it started the threads
+    # @api public
+    def self.start!(config = Cybertrain.config)
+      return false if @running
+      return false unless handlers?
+
+      install!
+      now = Time.now.to_i
+      requeued = recover!(now, config.job_heartbeat_stale)
+      Cybertrain.logger.warn("Requeued #{requeued} job(s) whose process stopped sending heartbeats") if requeued > 0
+      # spikes/NOTES.md rule 22: before the first Thread.new.
+      ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]
+      @poll_interval = config.job_poll_interval
+      @heartbeat_interval = config.job_heartbeat_interval
+      @drain_timeout = config.job_drain_timeout
+      @running = true
+      @generation += 1
+      generation = @generation
+      count = config.job_threads
+      Cybertrain.logger.info("Job threads started: #{count} (#{process_label})")
+      i = 0
+      while i < count
+        loop_started
+        spawn_job_thread(i, generation)
+        i += 1
+      end
+      spawn_heartbeat(generation)
+      true
+    end
+
+    # Asks the job threads to end and waits, at most
+    # {Config#job_drain_timeout} seconds, for those running a job to finish
+    # it. A job still running then keeps its row `running`; its heartbeat
+    # stops with this call, so another process's {Job.recover!} queues it
+    # again once it is stale. Does nothing when the threads do not run.
+    # @return [nil]
+    # @api public
+    def self.stop!
+      return nil unless @running
+
+      @running = false
+      ends_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @drain_timeout
+      while live_loops > 0 && Process.clock_gettime(Process::CLOCK_MONOTONIC) < ends_at
+        sleep 0.05
+      end
+      left = live_loops
+      Cybertrain.logger.warn("#{left} job(s) still running at shutdown; left to heartbeat recovery") if left > 0
+      nil
+    end
+
+    # @return [Boolean] true between {Job.start!} and {Job.stop!}
+    # @api public
+    def self.running?
+      @running
+    end
+
+    # How many job threads have not ended yet (a thread finishing its job
+    # after stop! counts until it has).
+    def self.live_loops
+      n = 0
+      LOCK.synchronize { n = @live_loops }
+      n
+    end
+
+    def self.loop_started
+      LOCK.synchronize { @live_loops += 1 }
+      nil
+    end
+
+    def self.loop_ended
+      LOCK.synchronize { @live_loops -= 1 }
+      nil
+    end
+
+    def self.pool_live?(generation)
+      @running && @generation == generation
+    end
+
+    # Through a method whose parameters the closure captures (NOTES rule
+    # 21), as Scheduler.spawn_loop.
+    def self.spawn_job_thread(index, generation)
+      Thread.new { run_job_loop(index, generation) }
+    end
+
+    # One job thread: claim and run a due job, or wait a poll interval,
+    # until stop!. A job that is running when stop! comes is finished first.
+    def self.run_job_loop(index, generation)
+      while pool_live?(generation)
+        idle_wait(@poll_interval, generation) unless claim_safely(Time.now.to_i, index)
+      end
+      loop_ended
+      nil
+    end
+
+    # work_one with its rescue in a plain method (NOTES rules 32/45): a
+    # database error (locked past the busy timeout, a disk error) is logged
+    # and the thread waits a poll interval instead of dying. False then.
+    def self.claim_safely(now, index)
+      work_one(now)
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      Cybertrain.logger.error("job thread #{index}: #{e.class.name}: #{e.message}")
+      false
+    end
+
+    # Sleeps `seconds` in WAIT_SLICE steps, returning early once the pool
+    # is stopped.
+    def self.idle_wait(seconds, generation)
+      ends_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
+      while pool_live?(generation) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < ends_at
+        sleep WAIT_SLICE
+      end
+      nil
+    end
+
+    def self.spawn_heartbeat(generation)
+      Thread.new { run_heartbeat(generation) }
+    end
+
+    # The heartbeat thread: heartbeat! every job_heartbeat_interval seconds
+    # until stop!.
+    def self.run_heartbeat(generation)
+      while pool_live?(generation)
+        idle_wait(@heartbeat_interval, generation)
+        beat_safely(Time.now.to_i) if pool_live?(generation)
+      end
+      nil
+    end
+
+    def self.beat_safely(now)
+      heartbeat!(now)
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      Cybertrain.logger.error("job heartbeat: #{e.class.name}: #{e.message}")
+      0
     end
 
     # The index of kind's handler in HANDLERS, -1 when none (an Integer
@@ -384,8 +548,9 @@ module Cybertrain
       true
     end
 
-    # Works through due jobs, at most `limit` of them; the worker task's
-    # body. Returns how many it claimed.
+    # Works through due jobs, at most `limit` of them, one after another on
+    # the calling thread (a {Main.command} that drains the queue, or a
+    # test). Returns how many it claimed.
     # @param now [Integer] epoch seconds
     # @param limit [Integer]
     # @return [Integer]

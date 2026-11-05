@@ -17,10 +17,11 @@ module Cybertrain
   # (spikes/NOTES.md rule 22), and only when the process serves: `./<app>
   # migrate`, `db ...` and {Main.command} commands never start it. Each run
   # is wrapped in a rescue that logs `[ERROR]`, so a failing task does not
-  # end the loop. When {Job} handlers are registered the scheduler also runs
-  # the job worker as one more task. {Config#worker} (`CYBERTRAIN_WORKER=0`)
-  # turns the whole thread off, for every process but one when several
-  # share a database.
+  # end the loop. Jobs do not run here: {Job.start!} runs them on threads of
+  # their own, so a long job never delays a task (a long task still delays
+  # the other tasks: a task with real work to do should {Job.enqueue} it).
+  # {Config#worker} (`CYBERTRAIN_WORKER=0`) turns the thread off in a
+  # `server` process.
   # @api public
   module Scheduler
     # One registered task. Distinctive accessor names and no #call
@@ -41,9 +42,6 @@ module Cybertrain
     # The registry: a constant, which Spinel roots for the collector (a
     # class variable it does not: NOTES rule 64), seeded and emptied (rule 9).
     TASKS = Array.new(0) { Task.new("", 0, nil) }
-
-    # The name of the task that runs the job worker.
-    JOB_TASK_NAME = "cybertrain jobs"
 
     # Guards @last_tick, which the scheduler thread writes and a request
     # thread (a health check) reads.
@@ -94,11 +92,9 @@ module Cybertrain
     end
 
     # Starts the scheduler thread, unless {Config#worker} is off, nothing is
-    # registered (no task and no {Job} handler), or it already runs.
-    # Application#serve calls it; the database must be connected. With job
-    # handlers it first creates the job table if needed, requeues jobs a
-    # dead process left running ({Job.recover!}) and adds the worker task
-    # (every {Config#job_poll_interval} seconds).
+    # registered (no task and no {Job} handler, whose rows the ticks
+    # recover), or it already runs. Application#serve calls it; the
+    # database must be connected.
     # @param config [Config]
     # @return [Boolean] true when it started the thread
     # @api public
@@ -109,8 +105,7 @@ module Cybertrain
         return false
       end
 
-      add_job_task(config) if Job.handlers?
-      return false if TASKS.empty?
+      return false if TASKS.empty? && !Job.handlers?
 
       schedule_all(Time.now.to_i)
       @running = true
@@ -198,19 +193,11 @@ module Cybertrain
       nil
     end
 
-    # The job worker as a task, added once.
-    def self.add_job_task(config)
-      return nil if task_index(JOB_TASK_NAME) >= 0
-
-      Job.install!
-      requeued = Job.recover!(Time.now.to_i)
-      Cybertrain.logger.warn("Requeued #{requeued} job(s) left running by a previous process") if requeued > 0
-      every(config.job_poll_interval, JOB_TASK_NAME) { Job.work_due(Time.now.to_i) }
-      nil
-    end
-
-    # "name every Ns, ..." for the start line.
+    # "name every Ns, ..." for the start line; "no scheduled tasks" when
+    # none is registered.
     def self.task_summary
+      return "no scheduled tasks" if TASKS.empty?
+
       out = +""
       i = 0
       while i < TASKS.size

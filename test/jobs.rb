@@ -8,8 +8,8 @@ require "cybertrain/test"
 # state, an unknown kind, a bounded last_error, recovery of rows left
 # `running`, claimed_by and heartbeats, recovery by staleness only (two
 # processes' labels in one database), the in-place column upgrade,
-# per-kind concurrency limits, and the scheduler adding the worker task.
-# Jobs are worked
+# and per-kind concurrency limits (test/job_threads.rb starts the real
+# threads). Jobs are worked
 # with chosen epoch times through Job.work_one, so nothing sleeps. It
 # links SQLite through FFI, so its snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23).
@@ -320,20 +320,6 @@ test "schema dumps leave the jobs table out" do
   Job.install!
   DB.with { |c| c.exec_script("CREATE TABLE posts (id INTEGER PRIMARY KEY, title TEXT);") }
   assert_equal "posts", dumped_tables.join(",")
-end
-
-# Last: start! leaves a thread running until the program exits.
-test "the scheduler adds the job worker task when handlers are registered" do
-  fresh_db
-  Job.install!
-  id = insert_raw("record", "running")
-  config = Cybertrain::Config.new
-  assert Cybertrain::Scheduler.start!(config)
-  assert Cybertrain::Scheduler.task_index(Cybertrain::Scheduler::JOB_TASK_NAME) >= 0
-  assert_equal "queued", job_state(id)
-  assert_includes LOG.string, "[WARN] Requeued 1 job(s) left running by a previous process"
-  assert_includes LOG.string, "Scheduler started: cybertrain jobs every 1s"
-  Cybertrain::Scheduler.stop!
 end
 
 Cybertrain::Test.run!
