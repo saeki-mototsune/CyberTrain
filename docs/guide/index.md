@@ -12,7 +12,8 @@ Everything CyberTrain's documentation covers beyond the API reference: the tutor
 - [**Models and the database**](models.md) — Migrations, queries beyond `where`, pagination, transactions, column names, ordering
 - [**Requests**](requests.md) — Rate limiting, the client address, parameterised headers, query strings and request bodies
 - [**Configuration**](configuration.md) — `config/app.rb`, environment variables, time zones
-- [**Background work and operations**](background-and-operations.md) — Jobs, scheduled tasks, backups, the health check
+- [**Background work and operations**](background-and-operations.md) — Jobs on several threads, scheduled tasks, the `worker` and `feeds` process roles, the console, backups, the health check
+- [**Realtime**](realtime.md) — Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names
 - [**Outbound HTTP, WebSocket feeds and e-mail**](external-services.md) — `HttpClient`, `WebSocket.subscribe`, `Mailer`
 - [**Testing**](testing.md) — Writing tests for an app, outbound calls, CI
-- [**The template language**](template-language.md) — Helpers, the form builder and what a template may call in `app/views/**/*.html.erb`
+- [**The template language**](template-language.md) — Helpers, components, the form builder and what a template may call in `app/views/**/*.html.erb`

@@ -317,10 +317,14 @@ Use Ctrl-C to stop
 - `cybertrain db` adds the `--` that `spin run db` needs before its arguments;
   `cybertrain db status` and the other database commands work the same way.
 
-> [!RULE] Spinel rule: no console
-> ### There is no console
+> [!RULE] Spinel rule: the console is not Ruby
+> ### The console is not Ruby
 >
-> `rails console` has no counterpart: Spinel has no `eval`. Ruby changes need a
+> `rails console` has no exact counterpart: Spinel has no `eval`.
+> `cybertrain spin run blog -- console` (`./blog console` once built)
+> evaluates template expressions over the models, such as
+> `Article.where(title: "x").count`, and `dbconsole` opens `sqlite3`
+> ([The console](background-and-operations.md#the-console)). Ruby changes need a
 > rebuild, which `cybertrain server` does for you in development (rebuild, stop,
 > `execv`). In development views are parsed from disk per request, so editing
 > one needs no rebuild; `cybertrain build` embeds them for production.
@@ -663,7 +667,8 @@ class ArticlesController < ApplicationController
 
 Start the server and open `http://127.0.0.1:3000/sign_up` to create the first
 user. Rails&rsquo; generator has no sign-up page and leaves that to the
-console; CyberTrain has no console, so it writes `RegistrationsController`.
+console; CyberTrain writes `RegistrationsController`, so the first user signs
+up in the browser.
 Delete it and its routes for an invitation-only app.
 
 <details><summary>An invitation-only app: `--invite-only` — No sign-up page; the first user comes from the command line or a page only the server's machine can open</summary>

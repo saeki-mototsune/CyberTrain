@@ -1,5 +1,5 @@
 ---
-source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
+source_sha256: 037e0a7442cccd5d99176ce5c5bf00f3475b11a64fe98311f35c1017cc78ee4c
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -63,7 +63,7 @@ Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` exte
 <!-- table: cmp -->
 | Rails | CyberTrain |
 | --- | --- |
-| `rails console` | Pas de console — Spinel n’a pas d’`eval` |
+| `rails console`, `rails dbconsole` | `./<app> console` évalue le langage d’expressions des templates sur les modèles (Spinel n’a pas d’`eval`, donc pas de Ruby)&nbsp;; `./<app> dbconsole` ouvre `sqlite3` ([La console](background-and-operations.md#the-console)) |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` dans `bin/<app>.rb`&nbsp;: `./<app> name ARGS` la lance avec la base de données connectée |
 | Modifiez le code, l’application en cours d’exécution le prend en compte | Le Ruby demande une recompilation&nbsp;; en développement, `cybertrain server` s’en charge pour vous (recompilation, arrêt, `execv`) |
 | Modifiez une vue, aucun rechargement nécessaire | Pareil — en développement, les vues sont analysées depuis le disque à chaque requête |
@@ -93,11 +93,12 @@ Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` exte
 | `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, les données de fuseaux fournies avec ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` lit les fichiers TZif du système (`/usr/share/zoneinfo`, ou `TZDIR`) et convertit des secondes epoch Integer (`utc_offset_at`, `utc_to_local`, `local_to_utc`)&nbsp;; pas encore de `Time.zone` par requête ni de `l(time, zone:)` ([Fuseaux horaires](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` pour les webhooks et les API&nbsp;: chaque attente est bornée, les destinations non publiques sont refusées par défaut, ni redirections ni keep-alive (voir [HTTP sortant](external-services.md#outbound-http))&nbsp;; le `Net::HTTP` de Spinel bloque tout le serveur quand un pair ne répond plus |
 | Action Mailer (`deliver_later`, classes de mailer, vues) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` envoie du texte brut en SMTP (STARTTLS, TLS implicite ou en clair vers le loopback&nbsp;; AUTH PLAIN&nbsp;; chaque attente bornée)&nbsp;; ni templates, ni HTML, ni pièces jointes, ni file d’attente (voir [Envoyer des e-mails](external-services.md#sending-e-mail)) |
-| Active Job, `perform_later`, `solid_queue`, tâches récurrentes | `Cybertrain::Job.handle(kind)` et `Job.enqueue(kind, payload, run_at:)` (une charge utile String, réessayée avec un délai croissant), `Cybertrain::Scheduler.every(seconds, name)`&nbsp;; un thread dans le processus qui sert ([Tâches de fond](background-and-operations.md#background-work)) |
+| Active Job, `perform_later`, `solid_queue`, tâches récurrentes | `Cybertrain::Job.handle(kind)` et `Job.enqueue(kind, payload, run_at:)` (une charge utile String, réessayée avec un délai croissant), `Cybertrain::Scheduler.every(seconds, name)`&nbsp;; `job_threads` threads par processus, dans le serveur ou dans des processus `./<app> worker`, livrés au moins une fois ([Tâches de fond](background-and-operations.md#background-work)) |
 | Client ActionCable, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` garde un flux connecté tant que le serveur tourne (reconnexions, pings, détection de silence)&nbsp;; `WebSocket::Client` pour une connexion synchrone unique&nbsp;; sortant uniquement ([Consommer des flux WebSocket](external-services.md#consuming-websocket-feeds)) |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` est un Array de String comparées par sous-chaîne, sans tenir compte de la casse (ni Regexp ni lambdas)&nbsp;; il s’applique au journal des requêtes et à la page d’erreur de développement ([Paramètres filtrés](configuration.md#configuration-and-environment-variables)) |
 | `get "up" => "rails/health#show"` (une route vers un contrôleur) | `GET /up` est intégré et reçoit sa réponse avant les fichiers statiques, la session et le routeur, donc aucun `before_action` ne s’exécute&nbsp;; il interroge la base de données et le worker, `200 ok` ou `503` ([Exploitation](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | Tâches `bin/rails db:...` pour les sauvegardes (aucune intégrée) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renommé à sa place) et `./<app> db vacuum` |
-| ActionCable (le serveur), asset pipeline, i18n | Non développé (hors des objectifs du MVP, `docs/design.md` §2.3) |
+| Action Cable, `turbo_stream_from`, `broadcast_append_to` | Les mêmes noms de helpers sur des flux signés, livrés en Server-Sent Events ou en WebSocket depuis une seule table SQLite&nbsp;; pas de classes de canaux ([Temps réel](realtime.md)) |
+| Asset pipeline, i18n | Pas encore développé (phases ultérieures, `docs/design.md` D1) |
 
 <!-- table-foot: Liste non exhaustive&nbsp;: `docs/design.md` §8 («&nbsp;What was deliberately left out&nbsp;») en est l’inventaire plus complet. -->

@@ -27,7 +27,9 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; comma-separated IPv4/IPv6 addresses or CIDRs (`172.16.0.0/12,10.0.0.0/8`) whose connections have `request.client_ip` taken from the last `X-Forwarded-For` address, for a proxy reached over a network, such as kamal-proxy in its container; a bad entry stops the server at boot |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](models.md#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; comma-separated names replace the list. A parameter whose name contains one of them (ASCII case-insensitively: `password` also matches `user[password]`) has its value written as `[FILTERED]` in the request log and on the development error page; `[]` in `config/app.rb` turns this off |
-| `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps this process from running scheduled tasks and jobs (see [Background work](background-and-operations.md#background-work)); `scheduler_interval` (1 s), `job_poll_interval` (5 s) and `job_max_attempts` (5) are set in `config/app.rb` |
+| `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps a `server` process from running scheduled tasks, jobs and WebSocket feeds (see [Process roles](background-and-operations.md#process-roles)); `./<app> worker` and `feeds` ignore it |
+| `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`: how many jobs one process runs at once (see [Background work](background-and-operations.md#background-work)); at least 1 |
+| `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`: the realtime endpoint (see [Realtime](realtime.md#limits-and-settings)); an empty value turns streams off; it must start with `/` and differ from `health_path` |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`; the built-in health check's path (see [Operations](background-and-operations.md#operations-backups-vacuum-health-check)); an empty value turns it off; one without a leading `/` stops the server at boot. `health_worker_stale` (300 s) is set in `config/app.rb` |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` or `true` lets `Cybertrain::HttpClient` connect to loopback, private and other non-public addresses (see [Outbound HTTP](external-services.md#outbound-http)) |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; the SMTP server `Cybertrain::Mailer` sends through (see [Sending e-mail](external-services.md#sending-e-mail)) |
@@ -66,6 +68,18 @@ uploaded file; it must not exceed `max_body_bytes`), `max_multipart_parts`
 (128 parts, text fields included, at most 4096), `upload_root`
 (`"storage/uploads"`, where `Cybertrain::BlobStore` writes; created on the
 first upload, not at boot).
+
+**Jobs and streams:** besides the variables above, `config/app.rb` sets
+`scheduler_interval` (1 s, the scheduler's tick), `job_poll_interval` (1 s,
+how long an idle job thread waits; it was 5 before job threads),
+`job_max_attempts` (5), `job_heartbeat_interval` (30 s),
+`job_heartbeat_stale` (300 s, more than the interval),
+`job_drain_timeout` (10 s, how long `SIGTERM` waits for running jobs) and
+`scheduler_lease_ttl` (30 s, at least twice `scheduler_interval`), and the
+stream settings `stream_poll_ms`, `stream_retention`,
+`stream_ping_interval`, `stream_max_connections`, `stream_max_message` and
+`stream_max_backlog` ([Limits and settings](realtime.md#limits-and-settings)).
+A value out of range stops the boot with a message naming it.
 
 **Security headers:** every response the server writes (actions, the
 static-file middleware, error pages and the development diagnostics page,

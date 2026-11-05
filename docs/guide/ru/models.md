@@ -1,5 +1,5 @@
 ---
-source_sha256: 75a49c15853d34f1c018af07c3f0d29bf29d1778a7e52b12a048c95f83b437e4
+source_sha256: 06a2682369ca0548625787806e6294f318e2302f347f98d610de9f3f8afb8e10
 ---
 # Модели и база данных
 
@@ -208,6 +208,41 @@ ivar) с примечанием в сгенерированном файле. Д
 именем с комментарием в сгенерированном файле: `<table>_as_<column stem>`
 для `has_many` (`comments_as_article`), `<stem>_as_<column>` для `belongs_to`
 (`author_as_author_id`).
+
+## Двоичные столбцы
+
+`t.binary` создаёт столбец `BLOB` для байтов, которые не являются текстом:
+миниатюры, сжатого снимка, ключа. Атрибут — String, содержащая ровно
+сохранённые байты, включая байты NUL и байты больше 127:
+
+```ruby
+# db/migrate/20261105090000_add_thumbnail_to_photos.rb
+class AddThumbnailToPhotos < Cybertrain::Migration::Base
+  def change
+    add_column "photos", "thumbnail", :binary
+  end
+end
+```
+
+```ruby
+photo.thumbnail = File.binread("thumb.webp")
+photo.save
+Photo.find(photo.id).thumbnail.bytesize   # те же байты обратно
+```
+
+- Сгенерированная модель при сохранении привязывает двоичный столбец как
+  BLOB; любая другая String по-прежнему привязывается как TEXT, который
+  обрывается на байте NUL. В сыром SQL оберните байты в
+  `Cybertrain::DB::Blob.new(bytes)`, чтобы привязать их как BLOB
+  (`c.execute("INSERT INTO photos (thumbnail) VALUES (?)", [Cybertrain::DB::Blob.new(bytes)])`).
+- Ячейка BLOB, прочитанная сырым SQL, — это String с её байтами;
+  `Cybertrain::Cast.binary(value)` сужает её (`""` для `NULL`).
+- `db/schema.rb` записывает столбец обратно как `t.binary`, а консоль
+  печатает двоичное значение как `<N bytes>`.
+- Большие файлы держите вне базы: загрузка ([Добавить загрузку
+  файла](tutorial.md#attachments)) — это файл в `storage/uploads/`, а BLOB
+  читается в память целиком вместе со строкой и увеличивает каждую
+  резервную копию и WAL.
 
 ## Порядок
 

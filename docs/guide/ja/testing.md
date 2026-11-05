@@ -1,5 +1,5 @@
 ---
-source_sha256: b84259bcc4f0afd4ba917077642cbc181416a59a524e9e5dc26ec8a76530afb7
+source_sha256: 8c76494c9be045125698d151a1c9910bb58e3af399a71637479b25e214b6f798
 ---
 # アプリをテストする
 
@@ -112,6 +112,44 @@ end
 ```
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` にすると、再試行の遅延が正確な値になります。このリポジトリの `test/websocket_integration.rb` に、完全なテストがあります。
+
+## ストリームとコンポーネントのテスト
+
+`require "cybertrain/test/views"` は、リクエストを必要としない 2 つのレンダラーを加えます。パーシャルや[コンポーネント](template-language.md#components)の HTML を検証するためのものです：
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/views"
+
+test "the comment component names its author" do
+  html = Cybertrain::Test.render_component(CommentComponent.new(comment: Comment.first))
+  assert_includes html, "<strong>"
+end
+
+test "the article partial links to the article" do
+  html = Cybertrain::Test.render_partial("articles/article", article: Article.first)
+  assert_includes html, BlogTest.article_path(Article.first)
+end
+```
+
+`Test.render_component(component, content: "")` は `content:` をブロックの HTML として渡します。どちらもブロードキャストと同じようにレンダリングするので、リクエストを必要とするヘルパーはここでも `Cybertrain::Views::OutsideRequest` を出します。
+
+[ストリーム](realtime.md)はエンドポイントを通してテストします。`client.get_stream(path, events: n, timeout: 2, headers: {})` は、`n` 個のイベントが書かれる（ping は数えません）かタイムアウトするまで、ストリーミングのレスポンスをメモリー上で実行し、書かれたものをボディとしてそれを返します。エンドポイントはストリームのポーラーが動くまで 503 を返し、テストクライアントはポーラーを始めないので、ファイルの中で一度始めてください：
+
+```ruby
+Cybertrain::Stream::Poller.start!
+
+test "a new comment is broadcast to the article's stream" do
+  article = Article.first
+  Cybertrain::Stream.broadcast_append_to(article, target: "comments", html: "hi")
+  token = Cybertrain::Stream.sign([Cybertrain::Stream.name_for(article)])
+  client = Cybertrain::Test::Client.new(BLOG)
+  res = client.get_stream("/cybertrain/stream?s=#{token}", events: 1, headers: { "last-event-id" => "0" })
+  assert_includes res.body, '<turbo-stream action="append" target="comments">'
+end
+```
+
+新しい接続が受け取るのは、接続した後にブロードキャストされたものだけです。`last-event-id` を `0` にすると、すでにテーブルにあるものが再送されるので、テストは先にブロードキャストして後から読めます。アクションがブロードキャストしたことだけを確かめるなら、テーブルを読みます：`Cybertrain::DB.with { |c| c.execute("SELECT stream, payload FROM cybertrain_messages ORDER BY id DESC LIMIT 1") }`。
 
 ## 継続的インテグレーション
 

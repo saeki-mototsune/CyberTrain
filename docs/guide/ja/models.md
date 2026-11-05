@@ -1,5 +1,5 @@
 ---
-source_sha256: 75a49c15853d34f1c018af07c3f0d29bf29d1778a7e52b12a048c95f83b437e4
+source_sha256: 06a2682369ca0548625787806e6294f318e2302f347f98d610de9f3f8afb8e10
 ---
 # モデルとデータベース
 
@@ -116,6 +116,30 @@ Rails の `transaction` と異なる点と、避けるべきこと：
 その他の Object のメソッド（`display`、`tap`、`methods`）と同じ名前のカラムは、注記付きでその名前のまま生成されます。`cybertrain generate scaffold` はキーワードと予約名を拒否し（名前を変えたリーダーを呼ばなければならなくなるため）、覆い隠す名前はジェネレーターと同じく注記付きで受け付けます。
 
 素の名前がすでにカラム、別の関連付け、`Model` のメソッドに使われている関連付け（Rails では関連付けが `errors` を覆い隠せます）は、生成ファイルにコメントを付けて代わりの名前で出力されます：`has_many` なら `<table>_as_<column stem>`（`comments_as_article`）、`belongs_to` なら `<stem>_as_<column>`（`author_as_author_id`）。
+
+## バイナリのカラム
+
+`t.binary` は、テキストではないバイト列（サムネイル、圧縮したスナップショット、鍵）のための `BLOB` のカラムを作ります。属性は、NUL バイトや 127 を超えるバイトも含めて、保存したバイト列そのままの String です：
+
+```ruby
+# db/migrate/20261105090000_add_thumbnail_to_photos.rb
+class AddThumbnailToPhotos < Cybertrain::Migration::Base
+  def change
+    add_column "photos", "thumbnail", :binary
+  end
+end
+```
+
+```ruby
+photo.thumbnail = File.binread("thumb.webp")
+photo.save
+Photo.find(photo.id).thumbnail.bytesize   # 同じバイト列が戻る
+```
+
+- 生成されたモデルは、保存時にバイナリのカラムを BLOB としてバインドします。ほかの String は従来どおり TEXT としてバインドされ、TEXT は NUL バイトで止まります。生の SQL では、バイト列を `Cybertrain::DB::Blob.new(bytes)` で包むと BLOB としてバインドされます（`c.execute("INSERT INTO photos (thumbnail) VALUES (?)", [Cybertrain::DB::Blob.new(bytes)])`）。
+- 生の SQL で読んだ BLOB のセルは、そのバイト列の String です。`Cybertrain::Cast.binary(value)` で絞り込めます（`NULL` なら `""`）。
+- `db/schema.rb` はこのカラムを `t.binary` として書き戻し、コンソールはバイナリの値を `<N bytes>` と表示します。
+- 大きなファイルはデータベースに入れないでください：アップロード（[ファイルアップロードを追加する](tutorial.md#attachments)）は `storage/uploads/` の下のファイルですが、BLOB は行と一緒に丸ごとメモリーに読み込まれ、バックアップと WAL を大きくします。
 
 ## 並び順
 

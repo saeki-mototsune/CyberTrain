@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
+source_sha256: 037e0a7442cccd5d99176ce5c5bf00f3475b11a64fe98311f35c1017cc78ee4c
 ---
 # 工作原理
 
@@ -63,7 +63,7 @@ source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
 <!-- table: cmp -->
 | Rails | CyberTrain |
 | --- | --- |
-| `rails console` | 没有控制台——Spinel 没有 `eval` |
+| `rails console`、`rails dbconsole` | `./<app> console` 在模型上求值模板的表达式语言（Spinel 没有 `eval`，所以不是 Ruby）；`./<app> dbconsole` 打开 `sqlite3`（[控制台](background-and-operations.md#the-console)） |
 | `rails runner`、`lib/tasks/*.rake` | 在 `bin/<app>.rb` 中写 `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }`：`./<app> name ARGS` 会在连接好数据库的情况下运行它 |
 | 修改代码，正在运行的应用会自动采用 | Ruby 需要重新构建；开发时 `cybertrain server` 会替你完成（重新构建、停止、`execv`） |
 | 修改视图，无需重新加载 | 相同——开发时视图在每次请求时从磁盘解析 |
@@ -93,11 +93,12 @@ source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
 | `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport 自带的时区数据 | `Cybertrain::TimeZone.find("Asia/Tokyo")` 读取系统的 TZif 文件（`/usr/share/zoneinfo`，或 `TZDIR`），并转换 Integer 类型的纪元秒数（`utc_offset_at`、`utc_to_local`、`local_to_utc`）；暂时没有按请求设置的 `Time.zone`，也没有 `l(time, zone:)`（[时区](configuration.md#time-zones)） |
 | `Net::HTTP`、Faraday | 用于 webhook 和 API 的 `Cybertrain::HttpClient`：每次等待都有上限，默认拒绝非公网目标，不跟随重定向，也不保持连接（参见[出站 HTTP](external-services.md#outbound-http)）；Spinel 的 `Net::HTTP` 遇到停滞的对端会阻塞整个服务器 |
 | Action Mailer（`deliver_later`、邮件程序类、视图） | `Cybertrain::Mailer.deliver(to:, subject:, body:)` 通过 SMTP 发送纯文本（STARTTLS、隐式 TLS，或对环回地址使用明文；AUTH PLAIN；每次等待都有上限）；没有模板、HTML、附件或队列（参见[发送电子邮件](external-services.md#sending-e-mail)） |
-| Active Job、`perform_later`、`solid_queue`、周期性任务 | `Cybertrain::Job.handle(kind)` 和 `Job.enqueue(kind, payload, run_at:)`（String 类型的负载，按退避策略重试），`Cybertrain::Scheduler.every(seconds, name)`；在提供服务的进程中运行一个线程（[后台任务](background-and-operations.md#background-work)） |
+| Active Job、`perform_later`、`solid_queue`、周期性任务 | `Cybertrain::Job.handle(kind)` 和 `Job.enqueue(kind, payload, run_at:)`（String 类型的负载，按退避策略重试），`Cybertrain::Scheduler.every(seconds, name)`；每个进程 `job_threads` 个线程，在服务器或 `./<app> worker` 进程中运行，至少投递一次（[后台任务](background-and-operations.md#background-work)） |
 | ActionCable 客户端、faye-websocket、websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` 在服务器运行期间保持订阅连接（重连、ping、静默检测）；`WebSocket::Client` 用于单个同步连接；仅限出站（[订阅 WebSocket 数据流](external-services.md#consuming-websocket-feeds)） |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` 是一个 String 数组，按子串不区分大小写地匹配（不支持正则表达式或 lambda）；它作用于请求日志和开发时的错误页面（[过滤的参数](configuration.md#configuration-and-environment-variables)） |
 | `get "up" => "rails/health#show"`（指向控制器的路由） | `GET /up` 是内置的，在静态文件、会话和路由器之前就作出响应，所以不会运行任何 `before_action`；它检查数据库和后台工作线程，返回 `200 ok` 或 `503`（[运维](background-and-operations.md#operations-backups-vacuum-health-check)） |
 | 用于备份的 `bin/rails db:...` 任务（没有内置） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`，权限 0600，重命名到位）和 `./<app> db vacuum` |
-| ActionCable（服务器端）、资源管道、i18n | 未构建（不在 MVP 范围内，`docs/design.md` §2.3） |
+| Action Cable、`turbo_stream_from`、`broadcast_append_to` | 相同的辅助方法名称，基于签名的流，从一张 SQLite 表通过 Server-Sent Events 或 WebSocket 投递；没有频道类（[实时](realtime.md)） |
+| 资源管道、i18n | 尚未构建（后续阶段，`docs/design.md` D1） |
 
 <!-- table-foot: 并不详尽：`docs/design.md` §8（“What was deliberately left out”）是更完整的记录。 -->

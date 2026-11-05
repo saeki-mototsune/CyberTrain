@@ -1,5 +1,5 @@
 ---
-source_sha256: 0a5a051dced3255b5cbc72eeeaa180f28cc8bf726dc0fce839c7885938c65379
+source_sha256: 55cb8796599b6e9b68995c0bcfae429599010685c795da99ca191458d5507df2
 ---
 # Исходящий HTTP, потоки WebSocket и электронная почта
 
@@ -140,7 +140,9 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   обслуживает запросы, как и планировщик
   ([Фоновая работа](background-and-operations.md#background-work)); команды
   `migrate`, `db ...`, `Main.command` и `Cybertrain::Test::Client` никогда их не
-  запускают. С `CYBERTRAIN_WORKER=0` (`config.worker = false`) они не работают в
+  запускают. `./<app> feeds [NAME...]` запускает их в отдельном процессе, все
+  или названные ([Роли процессов](background-and-operations.md#process-roles)).
+  С `CYBERTRAIN_WORKER=0` (`config.worker = false`) они не работают в
   этом процессе (они просто не запускаются; единственное уведомление — строка
   планировщика «run elsewhere», а `WebSocket.start!`, вызванный напрямую,
   пишет в лог свою): когда запросы обслуживают несколько процессов, отключите
@@ -217,7 +219,8 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   пакетами из задачи `Scheduler.every`.
 - **Не реализовано.** Расширения (`permessage-deflate`) и подпротоколы не
   согласовываются. Нет поддержки прокси, редиректов и cookie, нет
-  автоматического сохранения сообщений и нет сервера WebSocket (ActionCable).
+  автоматического сохранения сообщений (у браузеров есть своя точка входа:
+  [Реальное время](realtime.md)).
   Текстовые фреймы не проверяются на допустимый UTF-8 (отступление от
   RFC 6455, раздел 8.1): байты передаются дальше в том виде, в каком пришли.
   `Connection` действителен только во время колбэка; отправка из запроса или

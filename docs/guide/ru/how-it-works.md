@@ -1,6 +1,6 @@
 ---
 description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
+source_sha256: 037e0a7442cccd5d99176ce5c5bf00f3475b11a64fe98311f35c1017cc78ee4c
 ---
 
 # Как это работает
@@ -111,7 +111,7 @@ Spinel нет `eval`, поэтому это замкнутая граммати�
 <!-- table: cmp -->
 | Rails | CyberTrain |
 | --- | --- |
-| `rails console` | Консоли нет — в Spinel нет `eval` |
+| `rails console`, `rails dbconsole` | `./<app> console` вычисляет язык выражений шаблонов над моделями (в Spinel нет `eval`, так что это не Ruby); `./<app> dbconsole` открывает `sqlite3` ([Консоль](background-and-operations.md#the-console)) |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` в `bin/<app>.rb`: `./<app> name ARGS` запускает её с подключённой базой данных |
 | Правите код — запущенное приложение подхватывает изменения | Ruby требует пересборки; в режиме разработки `cybertrain server` делает это за вас (пересборка, остановка, `execv`) |
 | Правите представление — перезагрузка не нужна | Так же — в режиме разработки представления разбираются с диска при каждом запросе |
@@ -141,11 +141,12 @@ Spinel нет `eval`, поэтому это замкнутая граммати�
 | `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, данные часовых поясов из ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` читает системные файлы TZif (`/usr/share/zoneinfo` или `TZDIR`) и преобразует целые секунды эпохи Unix (`utc_offset_at`, `utc_to_local`, `local_to_utc`); `Time.zone` на запрос и `l(time, zone:)` пока нет ([Часовые пояса](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` для вебхуков и API: каждое ожидание ограничено, непубличные адреса назначения по умолчанию отвергаются, без редиректов и keep-alive (см. [Исходящий HTTP](external-services.md#outbound-http)); `Net::HTTP` из Spinel блокирует весь сервер на зависшем собеседнике |
 | Action Mailer (`deliver_later`, классы мейлеров, представления) | `Cybertrain::Mailer.deliver(to:, subject:, body:)` отправляет простой текст по SMTP (STARTTLS, неявный TLS или открытым текстом на loopback; AUTH PLAIN; каждое ожидание ограничено); без шаблонов, HTML, вложений и очереди (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |
-| Active Job, `perform_later`, `solid_queue`, повторяющиеся задачи | `Cybertrain::Job.handle(kind)` и `Job.enqueue(kind, payload, run_at:)` (полезная нагрузка String, повтор с нарастающей задержкой), `Cybertrain::Scheduler.every(seconds, name)`; один поток в обслуживающем процессе ([Фоновая работа](background-and-operations.md#background-work)) |
+| Active Job, `perform_later`, `solid_queue`, повторяющиеся задачи | `Cybertrain::Job.handle(kind)` и `Job.enqueue(kind, payload, run_at:)` (полезная нагрузка String, повтор с нарастающей задержкой), `Cybertrain::Scheduler.every(seconds, name)`; `job_threads` потоков на процесс, на сервере или в процессах `./<app> worker`, доставка хотя бы один раз ([Фоновая работа](background-and-operations.md#background-work)) |
 | Клиент ActionCable, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` держит поток подключённым, пока работает сервер (переподключения, пинги, обнаружение тишины); `WebSocket::Client` — для одного синхронного соединения; только исходящие ([Потребление потоков WebSocket](external-services.md#consuming-websocket-feeds)) |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` — массив строк, сопоставляемых по подстроке без учёта регистра (без Regexp и лямбд); применяется к логу запросов и странице ошибок в режиме разработки ([Фильтруемые параметры](configuration.md#configuration-and-environment-variables)) |
 | `get "up" => "rails/health#show"` (маршрут к контроллеру) | `GET /up` встроен и получает ответ до статических файлов, сессии и маршрутизатора, поэтому никакой `before_action` не выполняется; он проверяет базу данных и обработчик фоновых задач: `200 ok` или `503` ([Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | Задачи `bin/rails db:...` для резервных копий (встроенных нет) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, режим 0600, переименование на место) и `./<app> db vacuum` |
-| ActionCable (сервер), asset pipeline, i18n | Не сделано (за рамками MVP, `docs/design.md` §2.3) |
+| Action Cable, `turbo_stream_from`, `broadcast_append_to` | Те же имена хелперов поверх подписанных потоков, доставляемых через Server-Sent Events или WebSocket из одной таблицы SQLite; без классов каналов ([Реальное время](realtime.md)) |
+| Asset pipeline, i18n | Пока не сделано (следующие фазы, `docs/design.md` D1) |
 
 <!-- table-foot: Список не исчерпывающий: более полная запись в `docs/design.md` §8 («What was deliberately left out»). -->

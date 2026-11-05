@@ -1,11 +1,11 @@
 ---
-source_sha256: 438fc2c71e978981341d9c6453c440e4ddf31336c561b3788126cfef4875f9ec
+source_sha256: 35fc0e5c228f34a8c15c44c58d5c58633e69b4a21120981888c4a548b130385c
 ---
 # バックグラウンド処理と運用
 
 ## バックグラウンド処理
 
-リクエストの外で何かをしなければならないアプリケーション（レスポンスを返した後に通知を送る、1 時間ごとに古い行を掃除する、失敗した呼び出しを再試行する）は、それをフレームワークに登録します。フレームワークは、配信を行うプロセスの 1 本のバックグラウンドスレッドでそれを実行します：
+リクエストの外で何かをしなければならないアプリケーション（レスポンスを返した後に通知を送る、1 時間ごとに古い行を掃除する、失敗した呼び出しを再試行する）は、それをフレームワークに登録します。フレームワークは、配信を行うプロセス、または別のワーカープロセスのバックグラウンドスレッドでそれを実行します：
 
 ```ruby
 # config/app.rb（または bin/<app>.rb が Cybertrain::Main.run の前に require するファイル）
@@ -25,14 +25,54 @@ Cybertrain::Job.enqueue("welcome_mail", JSON.generate({ "email" => @user.email }
 Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 ```
 
-- **いつ実行されるか。** スレッドは、バイナリが配信を行うとき（`./<app>`、`./<app> server`）、起動処理がデータベースに接続し、ポートをバインドし、`SPINEL_WORKERS` を設定した後に始まります。`migrate`、`db ...`、`Main.command` のコマンドでは決して始まらず、`Cybertrain::Test::Client` でも始まりません。タスクは開始から `seconds` 秒後に初めて実行され、その後は各実行の開始から `seconds` 秒後に実行されます。各実行は rescue で包まれており、`[ERROR] Scheduled task
-  "name" failed: ...` をログに出してループは続きます。ブロックは引数を取りません（Spinel には `instance_eval` がありません）。`Cybertrain::Scheduler.last_tick` は最後のティックのエポック秒で、自前のヘルスチェックに使えます。
-- **ジョブ。** `Job.enqueue` は `cybertrain_jobs` テーブルに行を追加します。このテーブルはフレームワークが自分で作り（最初の使用時に `CREATE TABLE IF NOT EXISTS`）、`db/schema.rb` には含めません。ペイロードは String です：構造化されたデータは JSON でエンコードしてください。`DB.transaction` の中では、行は他のものと一緒にコミットまたはロールバックされます。ワーカーは `job_poll_interval` 秒（5）ごとにポーリングするスケジューラーのタスクで、期限の来た最も古いジョブを短い `BEGIN IMMEDIATE` トランザクションで確保し、そのハンドラーをトランザクションの外で実行して、`done` にします。例外を出したハンドラーは 1 分、5 分、15 分、その後は 60 分後に再試行され、`last_error` には `Class: message`（最大 1000 文字）が入ります。これは `job_max_attempts`（5）回の試行が失敗するまで続き、その後、行は `failed` になって、調べられるように残ります。種類にハンドラーのないジョブはすぐに `failed` になります。`Job.enqueue` は登録されていない種類を拒否します。クラッシュしたプロセスが `running` のまま残した行は、ワーカーの開始時にキューに戻されます。`Job.state_count("failed")` と `Job.prune_done(before_epoch)` は、ヘルスページや後片付けに役立ちます。
-- **データベースごとにワーカーは 1 つ。** 配信を行うすべてのプロセスは、`CYBERTRAIN_WORKER=0`（`config.worker = false`）でない限りスレッドを実行します：複数のプロセスが 1 つの SQLite ファイルを共有する場合は、1 つを除いてすべてで無効にしてください。そうしないと、各定期タスクがプロセスごとに 1 回実行されます。
-- **タスクは短く保つ。** タスクとハンドラーはその 1 本のスレッドで一度に 1 つずつ実行され、SQLite の呼び出しは戻るまで OS のワーカーを占有します：`SPINEL_WORKERS=1`（デフォルト）では、長いクエリはその間すべてのリクエストを止めてしまいます。大きな作業は一度に済ませず、分割してください（1 回の実行で 1000 行ずつ削除する、項目ごとにジョブを 1 つキューに入れる）。
+- **どこで実行されるか。** 定期タスクは 1 本のスケジューラーのスレッドで、ジョブはそれ専用の `job_threads` 本のジョブスレッド（3、`CYBERTRAIN_JOB_THREADS`）で実行されるので、長いジョブがタスクを遅らせることはありません。どちらも、バイナリが配信を行うとき（`./<app>`、`./<app> server`）か、ワーカーとして動くとき（`./<app> worker`。[プロセスの役割](#process-roles)を参照）に、起動処理がデータベースに接続し `SPINEL_WORKERS` を設定した後で始まります。`migrate`、`db ...`、`console`、`Main.command` のコマンドでは決して始まらず、`Cybertrain::Test::Client` でも始まりません。タスクは開始から `seconds` 秒後に初めて実行され、その後は各実行の開始から `seconds` 秒後に実行されます。各実行は rescue で包まれており、`[ERROR] Scheduled task "name" failed: ...` をログに出してループは続きます。ブロックは引数を取りません（Spinel には `instance_eval` がありません）。`Cybertrain::Scheduler.last_tick` は最後のティックのエポック秒で、自前のヘルスチェックに使えます。
+- **ジョブ。** `Job.enqueue` は `cybertrain_jobs` テーブルに行を追加します。このテーブルはフレームワークが自分で作り（最初の使用時に `CREATE TABLE IF NOT EXISTS`）、`db/schema.rb` には含めません。ペイロードは String です：構造化されたデータは JSON でエンコードしてください。`DB.transaction` の中では、行は他のものと一緒にコミットまたはロールバックされます。各ジョブスレッドは、期限の来た最も古いジョブを短い `BEGIN IMMEDIATE` トランザクションで確保し、そのハンドラーをトランザクションの外で実行して `done` にし、次を探します。期限の来たものがなければ `job_poll_interval` 秒（1）待つので、リクエストがキューに入れたジョブは 1 秒ほどで始まります。例外を出したハンドラーは 1 分、5 分、15 分、その後は 60 分後に再試行され、`last_error` には `Class: message`（最大 1000 文字）が入ります。これは `job_max_attempts`（5）回の試行が失敗するまで続き、その後、行は `failed` になって、調べられるように残ります。種類にハンドラーのないジョブはすぐに `failed` になります。`Job.enqueue` は登録されていない種類を拒否します。`Job.state_count("failed")` と `Job.prune_done(before_epoch)` は、ヘルスページや後片付けに役立ちます。
+- **少なくとも 1 回。** ジョブは 2 回実行されることがあります：強制終了されたプロセスや、`job_heartbeat_stale`（300 秒）より長く止まったプロセスは、別のプロセスが行を取り戻したとき（下記）にまだジョブを実行しているかもしれません。数えられるのは最初に書かれた結果だけですが、ハンドラーの副作用は 2 回起きています。どのジョブキューでもそうであるように、もう一度実行しても安全なハンドラーを書いてください（メールがもう送られたかを確かめる、insert ではなく upsert する）。
+- **種類ごとの同時実行数。** `Job.handle("sync_account", concurrency: 1) { ... }` は、データベースを共有するすべてのプロセスを通じて、その種類のジョブが同時にその数までしか実行されないようにします（レート制限のある API や、重なってはいけない作業のため）。デフォルトの 0 は無制限です。その間もほかの種類は実行され続けます。
+- **データベースごとに複数のワーカー。** ジョブを実行するプロセスはどれも、`job_heartbeat_interval`（30 秒）ごとに実行中のジョブのハートビートを書きます。ハートビートが `job_heartbeat_stale` より古い `running` の行（クラッシュしたプロセスや、ジョブの途中で止められたプロセスのもの）は、次に見たプロセスが、その開始時とその後 1 分に 1 回、キューに戻します。定期タスクは一度に 1 つのプロセスでしか実行されません：プロセスはデータベースのリース（`cybertrain_leases`。ティックごとに更新、`scheduler_lease_ttl` は 30 秒）を共有し、その保持者だけが期限の来たタスクを実行します。保持者が更新をやめると、別のプロセスが引き継ぎます。こうして、2 つの `worker` プロセスや、サーバーとワーカーが 1 つの SQLite ファイルを共有できます。`CYBERTRAIN_WORKER=0` は、HTTP だけを提供すべき `server` プロセスでジョブ、タスク、フィードを止めます。
+- **停止。** `SIGTERM` を受けると、ジョブスレッドは新しいジョブの確保をやめ、プロセスは実行中のジョブを最大 `job_drain_timeout`（10 秒）待ちます。それでも実行中のジョブの行は `running` のまま残ります。ハートビートは止まっているので、古くなった時点で別のプロセスがもう一度実行します。
+- **タスクは短く保つ。** タスクはスケジューラーのスレッドで一度に 1 つずつ実行され、SQLite の呼び出しは戻るまで OS のワーカーを占有します：`SPINEL_WORKERS=1`（デフォルト）では、長いクエリはその間すべてのリクエストとほかのすべてのスレッドを止めてしまいます。本格的な作業のあるタスクはジョブに任せ（タスクから `Job.enqueue`）、大きな作業は一度に済ませずに分割してください（1 回の実行で 1000 行ずつ削除する、項目ごとにジョブを 1 つキューに入れる）。
 - **テスト。** `Cybertrain::Scheduler.run_due(now)` はティックを 1 回、`Cybertrain::Job.work_one(now)` はジョブを 1 つ、自分で選んだエポック時刻で実行するので、テストがスリープすることはありません。
 
 cron の構文も、ジョブの優先度や一意性も、`deliver_later` もありません：メールを送るジョブは自分で `Cybertrain::Mailer` を呼びます（[メールを送る](external-services.md#sending-e-mail)）。これが扱うのは「後で送る」と「N 秒ごとに実行する」です（`docs/design.md` D28）。
+
+## プロセスの役割
+
+1 つのバイナリが 3 つの役割で動きます。デフォルトでは、Puma の中で Solid Queue を動かす `rails server` と同じく、`./<app> server` がすべてを行います。残りの 2 つを使うと、デプロイは同じイメージと同じデータベースのまま、作業をプロセスやコンテナーに分けられます：
+
+| コマンド | 実行するもの | 待ち受け |
+| --- | --- | --- |
+| `./<app> server [PORT]` | HTTP、[ストリームのエンドポイント](realtime.md#which-process-does-what)、そして `CYBERTRAIN_WORKER=0` でなければ定期タスク、ジョブスレッド、WebSocket のフィード | する |
+| `./<app> worker` | 定期タスク（リースにより一度に 1 プロセス）、ジョブスレッド、ハートビートと回収 | しない |
+| `./<app> feeds [NAME...]` | [WebSocket のフィード](external-services.md#consuming-websocket-feeds)のすべて、または名前を挙げたもの | しない |
+
+- `worker` と `feeds` はバナー（`=> worker: 3 job threads, 2 scheduled tasks`）を出し、`SIGTERM` まで動き、それからサーバーと同じように止まります。これらは常に自分の作業を行います：Web の役割のために設定した `CYBERTRAIN_WORKER=0` では止まりません。
+- 名前を付けた `feeds` はその購読だけを動かし（フィードごとに 1 つのコンテナー）、未知の名前は、登録された名前の一覧を出して起動を止めます。フィードを専用のプロセスで動かすときは、サーバーに `CYBERTRAIN_WORKER=0` を設定してください。そうしないと、どのプロセスもすべてのフィードを受信します。
+- よくある分け方：プロキシの後ろに `CYBERTRAIN_WORKER=0` の `server`、1 つ以上の `worker`、購読があれば `feeds`。`cybertrain new` は `config/deploy.yml` に `web` と `worker` の役割（とコメントにした `feeds`）を書きます。systemd のユニットは [docs/deploy.en.md](../deploy.en.md) のパート 7「Splitting the roles」にあります。
+- **ハートビートのないリリースから上げるとき**：最初の新しいプロセスを起動する前に、古いプロセスをすべて止めてください。古いプロセスはハートビートを書かないので、新しいワーカーは、古いワーカーがまだ実行しているジョブを放棄されたものとして取ってしまいます。
+- `Cybertrain::Main.worker?(ARGV)` と `Main.feeds?(ARGV)` は、`Main.server?(ARGV)` と同じく、`bin/<app>.rb` にどの役割を起動しているかを教えます。
+
+## コンソール
+
+`./<app> console` は、アプリケーションのモデルを扱うプロンプトです。Spinel には `eval` がないので、Ruby は実行しません：テンプレートの `<%= %>` が評価する式（[テンプレート言語](template-language.md#expressions)。ブロックは除く）に、モデル名を加えたものを評価します。開発中は `cybertrain spin run <app> -- console` で起動します。
+
+```console
+$ ./blog console
+Cybertrain console (production). Type help for commands, exit to quit.
+>> Article.where(title: "Hello").count
+1
+>> a = Article.find(1)
+#<Article id: 1, title: "Hello", body: "First post", created_at: 2026-11-05 10:00:00 UTC, updated_at: 2026-11-05 10:00:00 UTC>
+>> a.update(title: "Hello again")
+true
+```
+
+- モデル名はそのリレーション（`Article`）で、`where`、`where_like`、`order`、`limit`、`offset`、`page`、`first`、`last`、`find`、`find_by`、`to_a`、`count`、`exists?`、`pluck_str` / `pluck_int` / `pluck_float`、`sum_int`、`count_by`、`delete_all`、`to_sql`、`create` が使えます。レコードには属性とメソッド、`update`、`save`、`destroy`、`reload`、`valid?`、`errors`、`attributes` があります。`help` がすべてを一覧にします。
+- `x = expr` は値を後の行のために取っておき、`_` は直前の値です。`sql "..."` は SQL を実行して行を表として出力し、`tables` はテーブルを一覧にし、`exit`、`quit`、Ctrl-D で終わります。
+- パースできない行はそのエラーを、例外を出した行は `Class: message` を出力し、プロンプトに戻ります。バイナリの値は `<N bytes>` と表示されます。
+- 書き込みは本物です。本番では、コンソールは最初にバナーでそう告げます。
+
+`./<app> dbconsole` は、Rails の `dbconsole` と同じく、設定されたデータベース（`CYBERTRAIN_DATABASE`）で `sqlite3` のシェルを開きます。`sqlite3` コマンドがインストールされている必要があり、その終了ステータスをそのまま返します。どちらのコマンドも、スケジューラー、ジョブ、フィードは始めません。
 
 ## 運用：バックアップ、VACUUM、ヘルスチェック
 
@@ -56,7 +96,7 @@ cron の構文も、ジョブの優先度や一意性も、`deliver_later` も�
 15 3 * * * cd /srv/blog/current && ./blog db backup /srv/blog/backups/ --keep 14
 ```
 
-自分でバックアップを取りたいアプリケーションは、SQL を自分のスレッドで実行するのではなく、定期タスクから自分自身のバイナリを子プロセスとして実行できます：`system` が子プロセスを待つのはスケジューラーのスレッドだけで、その間もリクエストは配信され続けます（Spinel には `Process.wait` がなく、それなしの `Process.spawn` はゾンビを残すので、`system` を引数のリストで使い、リクエストのデータを含む文字列では決して使わないでください）。`health_worker_stale` より長くかかるコピーの間は、終わるまでヘルスチェックが `worker stale` を返します。
+自分でバックアップを取りたいアプリケーションは、SQL を自分のスレッドで実行するのではなく、定期タスクから自分自身のバイナリを子プロセスとして実行できます：`system` が子プロセスを待つのはスケジューラーのスレッドだけで、その間もリクエストは配信され続けます（`system` は引数のリストで使い、リクエストのデータを含む文字列では決して使わないでください）。`health_worker_stale` より長くかかるコピーの間は、終わるまでヘルスチェックが `worker stale` を返します。
 
 ```ruby
 # config/app.rb。自身のディレクトリ（dist/）から起動された、配信を行うバイナリで

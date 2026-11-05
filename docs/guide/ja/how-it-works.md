@@ -1,5 +1,5 @@
 ---
-source_sha256: e51e959017a031fc0c47aaef26b3c057773c2dc7b94c1fd7c634dd77767f06f2
+source_sha256: 037e0a7442cccd5d99176ce5c5bf00f3475b11a64fe98311f35c1017cc78ee4c
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -63,7 +63,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 <!-- table: cmp -->
 | Rails | CyberTrain |
 | --- | --- |
-| `rails console` | コンソールはない — Spinel には `eval` がない |
+| `rails console`、`rails dbconsole` | `./<app> console` はモデルに対してテンプレートの式言語を評価する（Spinel には `eval` がないので Ruby ではない）。`./<app> dbconsole` は `sqlite3` を開く（[コンソール](background-and-operations.md#the-console)） |
 | `rails runner`、`lib/tasks/*.rake` | `bin/<app>.rb` に `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }`：`./<app> name ARGS` でデータベースに接続した状態で実行される |
 | コードを編集すると、動いているアプリが取り込む | Ruby の変更には再ビルドが必要。開発環境では `cybertrain server` が代わりに行う（再ビルド、停止、`execv`） |
 | ビューを編集しても再読み込みは不要 | 同じ — 開発環境ではビューはリクエストごとにディスクからパースされる |
@@ -93,11 +93,12 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport に同梱のタイムゾーンデータ | `Cybertrain::TimeZone.find("Asia/Tokyo")` はシステムの TZif ファイル（`/usr/share/zoneinfo`、または `TZDIR`）を読み、Integer のエポック秒を変換する（`utc_offset_at`、`utc_to_local`、`local_to_utc`）。リクエストごとの `Time.zone` や `l(time, zone:)` はまだない（[タイムゾーン](configuration.md#time-zones)） |
 | `Net::HTTP`、Faraday | Webhook や API には `Cybertrain::HttpClient`：すべての待ちに上限があり、公開されていない宛先はデフォルトで拒否され、リダイレクトや keep-alive はない（[外向きの HTTP](external-services.md#outbound-http) を参照）。Spinel の `Net::HTTP` は、相手が止まるとサーバー全体を止めてしまう |
 | Action Mailer（`deliver_later`、メーラークラス、ビュー） | `Cybertrain::Mailer.deliver(to:, subject:, body:)` はプレーンテキストを SMTP で送る（STARTTLS、暗黙の TLS、またはループバックへの平文。AUTH PLAIN。すべての待ちに上限がある）。テンプレート、HTML、添付ファイル、キューはない（[メールを送る](external-services.md#sending-e-mail)を参照） |
-| Active Job、`perform_later`、`solid_queue`、定期タスク | `Cybertrain::Job.handle(kind)` と `Job.enqueue(kind, payload, run_at:)`（String のペイロードで、バックオフ付きで再試行される）、`Cybertrain::Scheduler.every(seconds, name)`。配信を行うプロセスで 1 スレッド（[バックグラウンド処理](background-and-operations.md#background-work)） |
+| Active Job、`perform_later`、`solid_queue`、定期タスク | `Cybertrain::Job.handle(kind)` と `Job.enqueue(kind, payload, run_at:)`（String のペイロードで、バックオフ付きで再試行される）、`Cybertrain::Scheduler.every(seconds, name)`。サーバーか `./<app> worker` のプロセスで、プロセスあたり `job_threads` 本のスレッド。少なくとも 1 回の配信（[バックグラウンド処理](background-and-operations.md#background-work)） |
 | ActionCable クライアント、faye-websocket、websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` はサーバーの動作中、フィードを接続したまま保つ（再接続、ping、無音の検出）。同期的な 1 本の接続には `WebSocket::Client`。外向きのみ（[WebSocket フィードを購読する](external-services.md#consuming-websocket-feeds)） |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` は String の Array で、大文字小文字を区別せず部分文字列で照合される（Regexp やラムダは使えない）。リクエストログと開発環境のエラーページに適用される（[フィルターされるパラメーター](configuration.md#configuration-and-environment-variables)） |
 | `get "up" => "rails/health#show"`（コントローラーへのルート） | `GET /up` は組み込みで、静的ファイル、セッション、ルーターより前に応答するので、`before_action` は実行されない。データベースとワーカーを確認し、`200 ok` または `503` を返す（[運用](background-and-operations.md#operations-backups-vacuum-health-check)） |
 | バックアップ用の `bin/rails db:...` タスク（組み込みはない） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`、モード 0600、所定の場所にリネーム）と `./<app> db vacuum` |
-| ActionCable（サーバー）、アセットパイプライン、i18n | 作られていない（MVP の対象外。`docs/design.md` §2.3） |
+| Action Cable、`turbo_stream_from`、`broadcast_append_to` | 同じヘルパー名で、1 つの SQLite テーブルから Server-Sent Events か WebSocket で配信される署名付きストリーム。チャンネルのクラスはない（[リアルタイム](realtime.md)） |
+| アセットパイプライン、i18n | まだ作られていない（後のフェーズ。`docs/design.md` D1） |
 
 <!-- table-foot: これですべてではありません：より詳しい記録は docs/design.md §8（「What was deliberately left out」）にあります。 -->

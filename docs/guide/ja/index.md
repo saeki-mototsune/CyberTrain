@@ -1,5 +1,5 @@
 ---
-source_sha256: 6b6acef2aeb60289c1882d9a367d782f35a67a456ff5b367fbd4c7eb7a0eaade
+source_sha256: 02b6af743ad823cd90594a88e40d3594e25244a063e7be2d82f628582e136fc7
 title: ガイド
 ---
 # ガイド
@@ -13,7 +13,8 @@ API リファレンス以外に CyberTrain のドキュメントが扱うすべ�
 - [**モデルとデータベース**](models.md) — マイグレーション、`where` を超えるクエリ、ページネーション、トランザクション、カラム名、並び順
 - [**リクエスト**](requests.md) — レート制限、クライアントのアドレス、パラメーター付きヘッダー、クエリ文字列とリクエストボディ
 - [**設定**](configuration.md) — `config/app.rb`、環境変数、タイムゾーン
-- [**バックグラウンド処理と運用**](background-and-operations.md) — ジョブ、定期タスク、バックアップ、ヘルスチェック
+- [**バックグラウンド処理と運用**](background-and-operations.md) — 複数スレッドで動くジョブ、定期タスク、`worker` と `feeds` のプロセスの役割、コンソール、バックアップ、ヘルスチェック
+- [**リアルタイム**](realtime.md) — Server-Sent Events または WebSocket の上の Turbo Streams、アクション・ジョブ・フィードからのブロードキャスト、署名付きストリーム名
 - [**外向きの HTTP、WebSocket フィード、メール**](external-services.md) — `HttpClient`、`WebSocket.subscribe`、`Mailer`
 - [**テスト**](testing.md) — アプリのテストの書き方、外向きの呼び出し、CI
-- [**テンプレート言語**](template-language.md) — ヘルパー、フォームビルダー、`app/views/**/*.html.erb` のテンプレートが呼び出せるもの
+- [**テンプレート言語**](template-language.md) — ヘルパー、コンポーネント、フォームビルダー、`app/views/**/*.html.erb` のテンプレートが呼び出せるもの

@@ -1,5 +1,5 @@
 ---
-source_sha256: c62dd8a199df41e47d7f65f6dabf83f2b548e103d5f59b2bd807b7433590bd06
+source_sha256: 4304a1a769e8fd95d0fc37da7bcf3453af7b40937eaee96233d218e8f99ab6cd
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -9,7 +9,7 @@ Cybertrain のビュー（`app/views/**/*.html.erb`）は Rails の ERB のよ�
 
 ## ここで Ruby であるもの、そうでないもの
 
-テンプレートは Ruby **ではありません**。Spinel（cybertrain が対象とする、Matz の Ruby の AOT コンパイラ）には `eval` がないので、「リクエスト時にビュー自身の Ruby を解釈する」ことは最初から選択肢にありませんでした（`docs/design.md` の D9）。代わりに動くのは、ERB や Ruby のような見た目の構文をまとっただけの、小さな閉じた文法です。タグの中に任意の Ruby を書くことはできません — 書けるのは、`ExprParser`（`parser.rb`）が文または式として認識するものだけです。`eval`、`send`、`instance_eval`、メソッド・クラス・モジュールの定義、`require`、例外（`begin/rescue`）、`case/when`、範囲、正規表現、多重代入はありません。ブロックは `each`、`each_with_index`、ヘルパーの呼び出し（`form_with(...) do |f| ... end`）だけです — `{ }` のブロックも、`map`/`select` などのブロックを取る Enumerable のメソッドもありません。すべてのメソッド呼び出し（`recv.name`）は、`interpreter.rb` に手書きされた `case` のディスパッチテーブルで、レシーバーの実行時の Ruby のクラスをキーにして解決されます。その型のテーブルにない名前は `RuntimeError` で失敗します — `method_missing` もリフレクションもなく、（`Interpreter#call_method` にあるとおり）これがメタプログラミングによる検索ではなく `case` になっているのは、まさに Spinel に `send` がないためです。テンプレートにできるのは、この文書に書かれていることだけです。
+テンプレートは Ruby **ではありません**。Spinel（cybertrain が対象とする、Matz の Ruby の AOT コンパイラ）には `eval` がないので、「リクエスト時にビュー自身の Ruby を解釈する」ことは最初から選択肢にありませんでした（`docs/design.md` の D9）。代わりに動くのは、ERB や Ruby のような見た目の構文をまとっただけの、小さな閉じた文法です。タグの中に任意の Ruby を書くことはできません — 書けるのは、`ExprParser`（`parser.rb`）が文または式として認識するものだけです。`eval`、`send`、`instance_eval`、メソッド・クラス・モジュールの定義、`require`、例外（`begin/rescue`）、範囲、正規表現、多重代入はありません。ブロックがあるのは、この文書が挙げる場所だけです：`each`/`each_with_index`/`each_slice` のループ、Array と Hash の決まったメソッド（`map`、`select`、`sum`、`group_by` など — [ブロック](#blocks)を参照）、ヘルパーの呼び出し（`form_with(...) do |f| ... end`）、そして `tag` ビルダーです。すべてのメソッド呼び出し（`recv.name`）は、`interpreter.rb` に手書きされた `case` のディスパッチテーブルで、レシーバーの実行時の Ruby のクラスをキーにして解決されます。その型のテーブルにない名前は `RuntimeError` で失敗します — `method_missing` もリフレクションもなく、（`Interpreter#call_method` にあるとおり）これがメタプログラミングによる検索ではなく `case` になっているのは、まさに Spinel に `send` がないためです。テンプレートにできるのは、この文書に書かれていることだけです。
 
 <details><summary>ソースのどこにあるか — テンプレートのパイプラインを成す 8 つのファイル</summary>
 
@@ -95,7 +95,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 - 呼び出し対象と開き括弧 `(` の間に空白は置けません：`link_to("x")` と `link_to "x"` はどちらも動きますが、`link_to ("x")` は `SyntaxError` です。
 - `yield` と `yield :key` は常に呼び出しとしてパースされます（[レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)を参照）。
 - 大文字で始まる素の単語は即座に拒否されます — `"constants are not supported: 'Time'"` — テンプレートは Ruby の定数に到達できません。
-- 次の単語は予約されており、専用のメッセージ（`"'x' is not supported in templates"`）で拒否されます：`and or not do end if unless elsif else then while until case when def class module begin rescue return`。
+- 次の単語は予約されており、式が来るべき場所ではどこでも専用のメッセージ（`"'x' is not supported in templates"`）で拒否されます：`and or not do end if unless elsif else then while until def class module begin rescue return`。`case` と `when` はそれ自体が文です（[`case`](#case)）。式の中（`<%= case x %>`）では同じように拒否されます。
 
 ### 演算子と優先順位（低いものから高いものへ）
 
@@ -128,6 +128,25 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 
 `unless`/`else`/`elsif` は Ruby の規則に従います。`else` の後の `elsif`、迷子の `else`/`elsif`/`end`、`end` で閉じられないブロックは、どれも開始行を示す `SyntaxError` です。
 
+### `case`
+
+```erb
+<% case @article.status %>
+  <% when :draft, :review %>
+  <span class="badge">unpublished</span>
+  <% when :published %>
+  <span class="badge">live</span>
+  <% else %>
+  <span class="badge">?</span>
+<% end %>
+```
+
+- 対象は 1 回だけ評価されます。各 `when` の値（1 つ以上、カンマ区切り）は、順にテンプレートの `==` で比較され、等しい値を持つ最初の分岐が実行されます。数値は値で比較されます（`1` は `1.0` に一致します）。String と Symbol は値と型で比較されます（`"a"` は `:a` に一致しません）。レコードは `==` と同じく（クラスと `id`）、Array と Hash も `==` と同じく（値で、要素ごとに）比較されます。同じテキストの `SafeString` と `String` は等しくなります。`===` はありません：`when` の後に範囲、クラス、正規表現は書けません。
+- `else` は、どの値も一致しなかったときに実行されます。`else` がなく一致もしなければ、何も出力されません。
+- `case` と最初の `when` の間に置けるのは空白のテキスト（インデント、改行）だけで、それは捨てられます。それ以外のものがあると `SyntaxError`（`"text between 'case' and its first 'when'"`）です。
+- `case` の外の `when`（`"'when' without 'case'"`）、対象や `when` のない `case`、値のない `when` や `else` の後の `when`、`end` で閉じられない `case` は、行を示す `SyntaxError` です。`then` は予約されたままです：`<% when :a then x %>` は `SyntaxError` です。
+- 分岐の中で初めて代入されたローカル変数は、`if` と同じく、それを囲むブロックのブロックローカルの規則に従います。
+
 ### ループ
 
 ```erb
@@ -136,7 +155,8 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 <% items.each_with_index do |item, i| %>...<% end %>
 ```
 
-- `each`/`each_with_index` が認識されるのは、ブロックの先頭の接尾辞（`x.each do |...|`）としてだけです。**As built（実装の実態）では**、どちらもブロックパラメーターを 1 つか 2 つ宣言する必要があります — 素の Ruby ではゼロでもかまいませんが、`xs.each do end` は `SyntaxError`（「takes one or two block parameters」）です。
+- `each`/`each_with_index` が認識されるのは、ブロックの先頭の接尾辞（`x.each do |...|`）としてだけです。コレクションは任意の式でよく、ブロックを取る呼び出しも含まれます（`<% items.group_by { |i| i.kind }.each do |kind, list| %>`）。**As built（実装の実態）では**、どちらもブロックパラメーターを 1 つか 2 つ宣言する必要があります — 素の Ruby ではゼロでもかまいませんが、`xs.each do end` は `SyntaxError`（「takes one or two block parameters」）です。
+- `<% x.each_slice(n) do |slice| %>...<% end %>` は `n` 個ずつの区切り（最後は短いこともあります）を順にたどり、これもパラメーターを 1 つか 2 つ必要とします。2 つなら区切りは分解され（`do |a, b|`）、区切りが短いときは 2 つ目が `nil` になります。
 - Array とパラメーター 1 つ：要素。Array とパラメーター 2 つ：`Array` の要素は分解され（`a, b = item[0], item[1]`）、そうでなければ 2 つ目は `nil` です。
 - Array に対する `each_with_index`：`item, i`。Hash に対しては：最初のパラメーターが `[key, value]` のペア、2 つ目がインデックスです。
 - Hash に対するパラメーター 2 つの `each`：`key, value` を直接。パラメーター 1 つでは `[key, value]` のペアです。
@@ -145,7 +165,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 
 ### ブロック付きの呼び出し（ヘルパー）
 
-`do ... end` は、レシーバーのないヘルパー呼び出しがブロックを受け取る方法でもあります — ブロックの唯一の他の正当な使い方で、レシーバーがない場合に限られます（`f.each do |x| end` は拒否されます：「blocks are only supported on each, each_with_index and helper calls」）：
+`do ... end` は、レシーバーのないヘルパー呼び出しがブロックを受け取る方法でもあります（レシーバーのある呼び出しについては[ブロック](#blocks)を参照）：
 
 ```erb
 <%= form_with(model: @post) do |f| %>...<% end %>   <%# printed: form_with returns the <form> HTML %>
@@ -153,6 +173,39 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 ```
 
 ブロックの結果が出力されるかどうかはタグに従います：`<%= helper do |x| %>` は出力し、`<% helper do |x| %>` は捨てます。束縛されるブロックパラメーターは常にちょうど 1 つです。ヘルパーのブロックがインデックスや 2 つ目の値を受け取ることはありません。
+
+### ブロック
+
+レシーバーのある呼び出しは、パラメーターが 0〜2 個のブロック `{ |x| expr }` または `do |x| ... end` を取れます。どのメソッドがブロックを受け付けるかは型ごとに決まっています。それ以外の場所のブロックは、呼び出しの実行時に出る `SyntaxError`（`"String#upcase takes no block"`）で、型にないメソッドは、ブロックの有無にかかわらず、いつもの `"undefined method 'x' for Array"` です。
+
+| レシーバー | ブロックを取るメソッド | ブロックの値の使われ方 |
+| --- | --- | --- |
+| `Array` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 変換後の値、判定、加える値、並べ替えのキー、グループのキー |
+| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 同じで、ブロックには `|key, value|` が渡されます（パラメーターが 1 つなら `[key, value]` の組）。`select`/`reject` は Hash を返し、ほかは組に対して Array のメソッドが返すものを返します |
+| `tag` ビルダー | すべての要素（`tag.div do ... end`） | その**出力**が要素の内容になります（[tag ビルダー](#the-tag-builder)） |
+
+```erb
+<%= @items.map { |i| i.name }.join(", ") %>
+<%= @line_items.sum { |li| li.price } %>
+<% @items.group_by { |i| i.kind }.each do |kind, list| %>
+  <h2><%= kind %></h2> <%= list.size %>
+<% end %>
+<% total = @line_items.sum do |li| %>
+  <% li.price * li.quantity %>
+<% end %>
+```
+
+- **出力ではなく値。** Array と Hash のメソッドでは、ブロックの*値*が意味を持ちます：`{ }` のブロックなら式、`do` のブロックなら最後の文で、これは式の文（`<% x * 2 %>`）でなければなりません。そうでなければ（代入やテキスト）`"map's block must end in a value"` です。`do` のブロックの手前の文が出力したものは捨てられます。そうしたメソッドの `do` のブロックは、代入する（`<% total = items.sum do |li| %>`）か出力する（`<%= items.map do |x| %>`）形で、それだけのタグに置きます。
+- **変更はできない。** テンプレートには累積値を変える手段がないので、`each_with_object` と `inject` は表にありません（`"undefined method 'each_with_object' for Array"`）：`map`、`select`、`sum`、`group_by` を使ってください。
+- パラメーターが 2 つなら、`each` と同じく Array の要素を分解します（`pairs.map { |a, b| a }`）。
+- 空の Array の `sum` は `0` です。Integer の合計は Integer で、どこかに Float があれば Float になります（Ruby と同じ補正付きで足されるので、`[0.1, 0.2, 0.3].sum` は `0.6` です）。String は拒否され（`"sum: use join for Strings"`）、数値でないものもすべて同様です。
+- `sort_by`、`min_by`、`max_by`（とブロックなしの `sort`、`min`、`max`）は `<` と同じように比較します（数値、String、Time。それ以外は `"comparison of String with Integer failed"`）。`sort_by` は安定で、等しいキーは順序を保ちます。空の Array の `min_by`/`max_by` は `nil` です。
+- `group_by` は、**String にした**各キー（テンプレートの Hash はすべて String のキーです：`:fruit` と `"fruit"` は 1 つのグループ）から、そのキーを持つ要素への Hash を、最初に現れた順で返します。
+- `each`、`each_with_index`、`each_slice` は、ブロックを `<% %>` タグで取ります（[ループ](#loops)）。`items.each { |x| x }` は `SyntaxError` です。
+- `FormBuilder` や `Page` のメソッドへのブロックも同じように拒否され（`"FormBuilder#label takes no block"`）、ブロックなしの Array のメソッドは引数を取りません（`nums.sum(10)` は `"wrong number of arguments for 'sum'"`）。
+- ブロックが例外を出した場合、エラーが呼び出しから出ていく前に、そのパラメーターとローカル変数は元に戻されます。
+- `{ }` のブロックにはレシーバーが必要です：`shout { |x| x }` は `SyntaxError` です（ヘルパー呼び出しは `do ... end` を取ります）。
+- ブロックパラメーターは呼び出しの間だけ外側の名前を隠し、その後で元に戻されます。`do` のブロックの中で初めて代入されたローカル変数は、`each` と同じくブロックローカルです。
 
 ### 代入
 
@@ -173,8 +226,8 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `Integer` | `to_s` `to_i` `to_f` `zero?` `positive?` `negative?` `abs` | `post.comments.size.zero?` |
 | `Float` | `to_s` `to_i` `to_f` `zero?` `positive?` `negative?` `abs` `round` `round(n)` `floor` `ceil` | `price.round(2)` |
 | `Time` | `year` `month` `day` `hour` `min` `sec` `strftime(fmt)` `to_s` `to_i` | `post.created_at.strftime('%Y-%m-%d')` |
-| `Array` | `size`/`length`/`count` `empty?` `any?` `first` `last` `reverse` `include?(x)` `join(sep)` `to_a` | `post.comments.any?` |
-| `Hash` | `key?(k)` `fetch(k, default)` `size`/`length`/`count` `empty?` `any?` `keys` `values`、および `h[key]` | `flash.key?(:notice)` |
+| `Array` | `size`/`length`/`count` `empty?` `any?` `first` `last` `reverse` `include?(x)` `join(sep)` `to_a` `sum` `min` `max` `sort` `uniq` `compact` `flatten` `take(n)` `drop(n)` `each_slice(n)`（Array の Array） `zip(other)`、および[ブロック](#blocks)のブロック付きメソッド | `post.comments.any?` |
+| `Hash` | `key?(k)` `fetch(k, default)` `size`/`length`/`count` `empty?` `any?` `keys` `values` `to_a`（`[key, value]` の組）、および `h[key]` と[ブロック](#blocks)のブロック付きメソッド | `flash.key?(:notice)` |
 | `Errors` | `any?` `empty?` `count`/`size` `full_messages` `key?(a)`/`include?(a)`、および `errors[:attr]` | `post.errors.full_messages.join(', ')` |
 | `Params` | `key?(k)` `empty?`、および `params[key]` | `params[:id]` |
 | `Page`（`Relation#page`） | `number` `per` `row_offset` `next?` `prev?` `next_number` `prev_number` | `@page.next?` |
@@ -209,14 +262,14 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 
 ## ヘルパーとフォームビルダー
 
-レシーバーのない呼び出しはすべて `Helpers#helper_call`（`helpers.rb`）に行きます。これは以下の組み込みのいずれかに一致させるか、`_path`/`_url` で終わる名前を生成されたルートヘルパーとして扱うか（`Cybertrain::Views.url_resolver` 経由。アプリがリゾルバーを設定するまでは `"no routes"` を出します）、`"undefined helper 'name'"` を出します。
+レシーバーのない呼び出しはすべて `Helpers#helper_call`（`helpers.rb`）に行きます。これは以下の組み込みのいずれかに一致させ、[コンポーネント](#components)のテンプレートの中ならそのコンポーネントのビューメソッドを試し、`_path`/`_url` で終わる名前を生成されたルートヘルパーとして扱い（`Cybertrain::Views.url_resolver` 経由。アプリがリゾルバーを設定するまでは `"no routes"` を出します）、次に[アプリケーションのヘルパー](#application-helpers)を試し、それでもなければ `"undefined helper 'name'"` を出します。
 
 | ヘルパー | シグネチャ | 注記と例 |
 | --- | --- | --- |
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` はすでに `SafeString` でなければエスケープされる。**`method:` はない** — 例外を出し、`button_to` を使うよう伝える（rails-ujs/turbo による DELETE リンクの偽装はない） |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | ボタン 1 つの `<form class="button_to">`。`get`/`post` 以外のメソッドには hidden の `_method`、セッションがあれば CSRF のフィールドも付く |
 | `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | ブロックが必要。`model:` が新規 → コレクションのルートと POST、保存済み → メンバーのルートと PATCH。ネストしたルートには `[parent, child]`。`url:`/`method:` は導かれたアクションやメソッドを上書きする。`multipart: true` は `enctype="multipart/form-data"` を追加する（`f.file_field` に必須。ブロックから推測されることはなく、GET のフォームでは `ArgumentError` を出す） |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)を参照 |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render component: "card", k: v` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)と[コンポーネント](#components)を参照 |
 | `h`、`escape` | `h(text)` | エスケープする。`SafeString` はエスケープされずにそのまま通る |
 | `raw` | `raw(text)` | テキストを `SafeString` で包む（エスケープせずに出力される） |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`、`pluralize(2, "mouse")` → `"2 mice"`（`Cybertrain::Inflector` による Rails のデフォルトの英語の語形変化。アプリが定義する語形変化はサポートされない）。明示的な 3 つ目の引数が常に優先される |
@@ -231,8 +284,35 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `url_for` | `url_for(target)` | `String` はそのまま、`Model` → メンバーのルート、`[parent, child]` → ネストしたルート |
 | `paginate` | `paginate(page, path)` | `page` は `Cybertrain::Page`（`Relation#page` から）。`<nav class="pager">` をレンダリングし、「Newer」（`rel="prev"`）、`<span class="pager-current">Page N</span>`、「Older」（`rel="next"`）を含める。該当するページがなければリンクは省かれる。各リンクは `path` に、`page` を置き換えた（1 ページ目では取り除いた）現在のリクエストのクエリ文字列を付けたもので、再エンコードされ HTML エスケープされる。独自の `?query` を持つ `path` では代わりにそれを使う。`Page` はテンプレートの中で `number`、`per`、`row_offset`、`next?`、`prev?`、`next_number`、`prev_number` にも応える（`<% if @page.next? %>`） |
 | `*_path` / `*_url` | 例：`post_path(post)` | アプリが生成し、`Cybertrain::Views.url_resolver` 経由で解決される |
+| `tag` | `tag.div(content, attrs) do ... end` | tag ビルダー：[tag ビルダー](#the-tag-builder)を参照 |
+| `content_tag` | `content_tag(name, content = nil, attrs)`、または `do` のブロック付き | `content_tag "p", "<i>", class: "n"` → `<p class="n">&lt;i&gt;</p>`。規則は `tag` と同じ |
+| `safe_join` | `safe_join(array, sep = "")`（キーワード引数なし） | `SafeString` に連結します。まだ `SafeString` でない各要素と区切りはエスケープします：`safe_join([tag.b("a"), "<"], " ")` → `<b>a</b> &lt;` |
+| `class_names` | `class_names(*values)` | Rails の `class_names`/`token_list`：String と Symbol の単語、Array（入れ子も）の単語、値が真である Hash の各キーの単語を、それぞれ 1 回ずつ。キーワード引数はもう 1 つの Hash になります：`class_names("btn", active: @on, big: false)` → `"btn active"` |
+| `dom_id` | `dom_id(record, prefix = "")`（Rails と同じく接頭辞は位置引数） | `"article_12"`、保存されていないレコードなら `"new_article"`、`dom_id(@article, "edit")` → `"edit_article_12"`（Ruby では `Cybertrain::Html.dom_id`） |
+| `turbo_stream_from` | `turbo_stream_from(*streams, ws: false)` | ページをストリーム（String、または `"articles:12"` と名付けられるレコード）に購読させる `<turbo-stream-source>` を 1 つ。`ws: true` は `ws://`/`wss://` の URL を返し、リクエストが必要です。[リアルタイム](realtime.md#turbo-streams)を参照 |
+| `signed_stream_name` | `signed_stream_name(*streams)` | 署名付きトークンだけ。手書きの JavaScript 用 |
+| `stream_source_path` | `stream_source_path(*streams, mode: "json")` | トークンと `mode=json`（または `"raw"`）付きのストリームのエンドポイントのパス |
 
 ヘルパーのテキスト引数はすべて 1 つの規則に従います：`SafeString` はエスケープされずにそのまま通り、それ以外はエスケープされます — `link_to raw('<b>raw</b>'), post` は太字のタグを文字どおりに出力しますが、`link_to post.title, post` はエスケープします。
+
+### tag ビルダー
+
+`tag` はビルダー（`Cybertrain::Html::TagBuilder`）に評価されます。それに対して呼んだメソッドはどれも要素で、`Cybertrain::Html.tag` がレンダリングします（Ruby からも呼べます：`Html.tag("a", { href: "/x" }, "Go")`）：
+
+```erb
+<%= tag.div(class: "card") do %>
+  <%= tag.h2 @article.title, id: dom_id(@article) %>
+<% end %>
+<%= tag.input type: "text", name: "q", disabled: true %>   <%# <input type="text" name="q" disabled> %>
+<%= tag.path d: "M0 0 L10 10" %>                         <%# SVG elements work %>
+<%= tag.my_widget data: { turbo_frame: "f" } %>          <%# <my-widget data-turbo-frame="f"></my-widget> %>
+```
+
+- `<%= tag %>` だけでは何も出力しません。
+- 要素名は、メソッド名の `_` を `-` にしたものです。`[a-z][a-z0-9-]*` に一致しなければなりません（そうでなければ `Html.tag` が `"invalid element name 'Div'"` を出します）。
+- 内容は 1 つの位置引数（`SafeString` でなければエスケープされるので、`tag.script("alert(1)")` はテキストをエスケープして出力します）か、ブロックの**出力**（`do ... end`、または値がエスケープされて出力される `{ expr }`）で、ブロックが優先されます。どちらもなければ、`tag.div` は `<div></div>` です。
+- 空要素（`area base br col embed hr img input link meta source track wbr`）は閉じタグなしでレンダリングされます。それに内容やブロックを与えるとエラーです（`"br is a void element"`）。
+- 属性はキーワード引数で、順序どおりです：`nil` と `false` は属性を落とし、`true` は値なしの属性（`disabled`）にし、Array は `nil` でない要素を空白でつなぎ（`data: { ids: [1, 2] }` は Rails の JSON ではなく `data-ids="1 2"`）、`class:` は `class_names` と同じものを受け取り（`class: ["btn", { active: @on }]`）、`data:` と `aria:` の Hash は下線をダッシュにして `data-key="v"` / `aria-key="v"` に展開されます（そこでは `true`/`false` も文字として書かれます）。それ以外の Hash の値はエラーです（`"attribute 'title' cannot be a Hash"`）。値はすべてエスケープされ、`SafeString` も同じです。属性名は `[a-zA-Z_:][-a-zA-Z0-9_:.]*` に一致しなければなりません（`"invalid attribute name 'data-a b'"`）。`onclick:` なども、書き手のものなので許されます。
 
 ### FormBuilder（`form_with ... do |f|` の `f`）
 
@@ -248,6 +328,81 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `f.submit` / `f.submit "Text"` | デフォルトのテキストは（`persisted?` によって）`"Create Post"`/`"Update Post"`、モデルがなければ `"Save changes"` |
 
 モデルがある場合、フィールドの名前は `post[title]`/`id="post_title"` になります（スコープは `Inflector.underscore(model.model_name)`）。モデルなしの `form_with(url: ...)` では、どちらにも素の属性名が使われます。追加のキーワード引数は、与えた順に HTML の属性になります：`true` → `attr="attr"`、`false`/`nil` は捨てられ、それ以外は → `attr="value"`（エスケープされます）。アンダースコアはハイフンになり（`data_confirm: "Sure?"` → `data-confirm="Sure?"`）、`class:` は、`model.errors.key?(attr)` のときに自動で付く `field_with_errors` クラスと合わせられます。
+
+## アプリケーションのヘルパー
+
+`app/helpers/` の下のモジュールは、Rails と同じくヘルパーモジュールです：その公開メソッドはどれも、レシーバーなしでどのテンプレートからでも呼べます。
+
+```ruby app/helpers/prices_helper.rb
+module PricesHelper
+  def price(value, unit: "USD", precision: 2)
+    amount = Cybertrain::Cast.float(value).round(Cybertrain::Cast.int(precision))
+    Cybertrain::Html.tag("span", { class: "price" }, "#{amount} #{unit}")
+  end
+
+  def panel(title, &block)
+    Cybertrain::Html.tag("section", { class: "panel" }, Cybertrain::Html.safe_join([Cybertrain::Html.tag("h2", {}, title), yield]))
+  end
+end
+```
+
+```erb
+<%= price @item.cost %>                  <%# <span class="price">12.5 USD</span> %>
+<%= price @item.cost, unit: "EUR" %>
+<%= panel "Totals" do %><p><%= @total %></p><% end %>
+```
+
+- **生成されるディスパッチ。** テンプレートは `send` できないので、`spin run gen` が `app/helpers/**/*.rb` をテキストとして読み、`gen/helpers.rb` を書きます：すべてのモジュール（とルートヘルパー）を include する `ApplicationHelpers` クラスと、ヘルパー名の `case` です。ヘルパーを追加したりシグネチャを変えたりすると、次のビルドがそれを生成し直します（開発サーバーは両方を行います）。`cybertrain generate helper prices` は空の `PricesHelper` とテストを書きます。
+- **何がヘルパーか。** `module` の公開インスタンスメソッドです（`def self.x`、セッター、`private` や `protected` の後のものは含みません）。ファイルは問いません。テンプレートは値を位置かキーワードで渡すので、パラメーターにはすべて名前があります：`*rest`、`**opts`、`...` は生成時のエラーで、省略可能なパラメーターの後の必須パラメーターも同様です。省略可能なパラメーターは 3 つまでです（生成される `case` には与えられた組み合わせごとに 1 つの分岐があるので、省略したキーワードにはメソッド自身のデフォルトが使われます）。呼び方の誤りはレンダリング時の `ArgumentError` です：`"wrong number of arguments for 'price' (given 0, expected 1)"`、`"unknown keyword 'cur' for 'price' (known: unit, precision)"`。
+- **予約された名前。** ヘルパーには、フレームワークのヘルパーの名前（`link_to`、`render`、`tag`、`dom_id`、`params`、`content` など）、`Cybertrain::Template::Helpers` のメソッドの名前（公開・非公開を問いません：`include` がフレームワークにとってもそれを置き換えてしまいます）、`yield`、`_path` / `_url` で終わる名前（それにはルートヘルパーが応答します）は付けられません。2 つのモジュールに同じ名前があるのもエラーです。`spin run gen` はファイル、行、理由を示して止まります。
+- **値。** 引数はテンプレートの値（String、Integer、Float、`nil`、レコード、Array、Hash）として届きます。計算の前に `Cybertrain::Cast`（`Cast.str`、`Cast.int`、`Cast.float`）で絞り込んでください。ヘルパーが返したものは、ほかの値と同じように出力されます：`String` はエスケープされ、`SafeString` はされないので、HTML は `Cybertrain::Html.tag(name, attrs, content)`、`Html.safe_join`、`Html.class_names`、`Html.dom_id`、`Html.escape`、`Cybertrain::SafeString.of`、あるいはリンクヘルパーの Ruby の形 `link_to_path(text, path, attrs)` と `button_to_path(text, path, attrs)`（`method:` は `attrs` の中）で組み立てます。
+- **ブロック。** `&block` パラメーターを持つヘルパーは `do ... end` のブロックを取ります。`yield`（引数なし）は、ブロックが出力したものを `SafeString` として返します。
+
+## コンポーネント
+
+コンポーネントは、キーワード引数を取るクラスと、その隣のテンプレートです。[ViewComponent](https://viewcomponent.org) と同じ形です：
+
+```ruby app/components/card_component.rb
+class CardComponent < Cybertrain::Component
+  def initialize(title:, value: 0, tone: "neutral")
+    @title = title
+    @value = value
+    @tone = tone
+  end
+
+  def value_text = "#{@value} pts"
+  def tone_class = "card--#{@tone}"
+end
+```
+
+```erb app/components/card_component.html.erb
+<%= tag.div(class: class_names("card", tone_class)) do %>
+  <h3><%= title %></h3><p><%= value_text %></p><%= content %>
+<% end %>
+```
+
+```erb
+<%= render component: "card", title: "Visitors", value: @count %>
+<%= render component: "card", title: "Notes", tone: "warm" do %>
+  <p><%= @note %></p>
+<% end %>
+```
+
+- テンプレートからは、コンポーネントのインスタンス変数がローカル変数（`title`）として、パラメーターのない公開メソッドが名前（`value_text`）で、そして `do` のブロックが出力したもの `content`（ブロックがなければ `""`）が見えます。レイアウトなしでレンダリングされ、パーシャルやほかのコンポーネントをレンダリングでき、パーシャルと同じく `max_render_depth` に数えられます。コンポーネントがレンダリングしたパーシャルからは、コンポーネントのメソッドは見えません。
+- コンポーネントは、パーシャルがパスで指定されるのと同じく、`_component` を除いたスネークケースの名前で指定します：`CardComponent` なら `"card"`、`Admin::UserRowComponent`（`app/components/admin/user_row_component.rb`）なら `"admin/user_row"` です。テンプレートは定数を名指しできません。
+- `spin run gen` は、ヘルパーと同じく字句的な走査から `gen/components.rb` を書きます：クラスの行、`@x =` の代入、パラメーターのない `def`、`initialize` のキーワードです。`initialize` はキーワードだけを取り（省略可能なものは 3 つまで）、テンプレートがなければなりません。キーワードの不足や未知のキーワードはレンダリング時の `ArgumentError` です。未知のコンポーネントは `Cybertrain::Component::Unknown` です：`` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``。
+- `cybertrain generate component card title value:integer` は、クラス、そのテンプレート、そして `Cybertrain::Test.render_component` でそれをレンダリングするテストを書きます。
+
+### リクエストの外でのレンダリング
+
+ブロードキャスト、ジョブ、メールの本文は、リクエストなしでレンダリングします：
+
+```ruby
+html = Cybertrain::Views.render_partial("articles/article", article: article)   # app/views/articles/_article.html.erb
+card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", value: 12))
+```
+
+どちらも、アプリケーションのヘルパーを使って HTML を String で返します。パスヘルパーは動き（`article_path(article)`）、strict locals は検査され、フォーム（`form_with`、`button_to`）は認証トークンなしでレンダリングされます（Turbo のページは `csrf_meta_tags` のトークンを送信します）。リクエストを必要とするヘルパーは `Cybertrain::Views::OutsideRequest`（`"csrf_token needs a request"`）を出します：`csrf_token`、`csrf_meta_tags`、`params`、`flash`、`request_path`、あらゆる `*_url` ヘルパー、`turbo_stream_from ... ws: true` です。`paginate` のリンクは、パス自身のクエリ文字列だけを持ちます。（単体テストで作るような素の `Cybertrain::Template::Helpers.new(nil)` は、それらに代わりに空の値で応えます。）
 
 ## レイアウト、`yield`、`content_for`、パーシャル
 
@@ -293,6 +448,8 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 
 ヘルパーや `FormBuilder`・独自オブジェクトのメソッド呼び出しから出た素の `StandardError`（素の `raise "text"`、`ArgumentError`、`KeyError`、さらにはネストした `render` からの `Cybertrain::Template::RuntimeError`）は捕まえられて「再配置」されます：`"<current template>:<current line>: <original message>"` に書き換えられます。ただし、それがすでに最後に再配置したメッセージとまったく同じ場合（ネストした `render` がすでに、より具体的な自分の位置を付けている場合）は、変更されずにそのまま通ります。ヘルパーが出した `Cybertrain::Template::SyntaxError`（レンダリング中にパースに失敗したパーシャル）は決して包み直されません — 自身の `"<partial>:<line>: ..."` のメッセージとクラスを保つので、壊れたパーシャルは常に、それをレンダリングした側についての `RuntimeError` ではなく、自分自身についての `SyntaxError` として報告されます。
 
+`Cybertrain::Views::OutsideRequest` と `Cybertrain::Component::Unknown` も、包まれずにクラスを保ったまま伝わるので、`Views.render_partial` の呼び出し元はそれらを rescue できます。
+
 `MissingTemplate`（`StandardError`、`engine.rb`）は、トップレベルの `Engine#template`/`#render`/`#render_with_layout` の呼び出し（例えば、存在しないアクションのテンプレートやレイアウトをレンダリングするコントローラー）からは、**包まれずに**、`template:line` の接頭辞なしで出されます：`"Missing template <path>"`。同じ例外でも、`render` ヘルパーのパーシャル検索によってテンプレートの*中で*出されたものは、代わりに再配置を経て `RuntimeError` として出てきます：`"posts/inline:1: Missing template test/fixtures/views/posts/_nope.html.erb"`。
 
 ## Rails の ERB との違い
@@ -301,12 +458,13 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | --- | --- |
 | Ruby のメソッドにコンパイルされる。どんな Ruby でも、どんなオブジェクトでも、どんなメソッドでも動く | 型ごとに固定されたディスパッチテーブルに対して解釈される。呼び出せるのは[型ごとのメソッドテーブル](#per-type-method-table)に挙げたものだけ |
 | `ActiveSupport::SafeBuffer` は `String` のサブクラス | `SafeString` は独立したラッパークラス — 呼び出せるのは `to_s`/`html_safe?`/`size`/`length`/`empty?` だけ |
-| ブロック：`each`、`{ }`、`map`、任意の Enumerable のメソッド | `do...end` だけで、`each`/`each_with_index`/ヘルパー呼び出しに対してだけ |
+| ブロック：`each`、`{ }`、`map`、任意の Enumerable のメソッド | Array/Hash の決まったメソッド（`each_with_object`、`inject` はない）への `{ }` と `do...end`、`each`/`each_with_index`/`each_slice` のループ、ヘルパー呼び出し、`tag` |
 | `xs.each { }` — ブロックパラメーターがゼロでもかまわない | `each`/`each_with_index` はブロックパラメーターを 1 つか 2 つ宣言する必要がある |
 | `link_to text, path, method: :delete`（JS 駆動） | `link_to` に `method:` はない — GET 以外の本物のフォームには `button_to` を使う |
 | strict locals は `name: default_expr` を受け付ける（Rails 7.1） | 素の `name:`（必須）だけ。デフォルト値付きのエントリーは `SyntaxError` |
 | 未定義のインスタンス変数やローカル変数は Ruby やビューコンテキストのメソッドで解決される | `@x` は決して失敗しない単純な環境の参照。未定義の素のローカル変数は、明示的で閉じたヘルパー呼び出しの試み（一致しなければ `"undefined helper"`） |
-| `and`/`or`/`not`、`case/when`、範囲、正規表現、多重代入がすべて動く | どれも存在しない。予約語は、一般的なパースエラーではなく、「not supported in templates」という専用のメッセージで失敗する |
+| `===` による `case/when`（範囲、クラス、正規表現） | `==` だけによる `case/when`（数値は値で比較） |
+| `and`/`or`/`not`、範囲、正規表現、多重代入がすべて動く | どれも存在しない。予約語は、一般的なパースエラーではなく、「not supported in templates」という専用のメッセージで失敗する |
 | 数値リテラル：16 進、8 進、2 進、指数、有理数 | `_` の区切りを使える 10 進の整数と浮動小数点数だけ |
 | `:"quoted symbol"`、`:+` の演算子シンボル | シンボルは識別子の文字だけ |
 | `foo (x)`、`foo [x]`（空白は許容され、警告が出ることもある） | どちらも厳格な `SyntaxError` — 呼び出しの `(` やインデックスの `[` の前に空白は置けない |
@@ -314,3 +472,5 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | 宣言されていない・綴りを間違えた属性は確実に `NoMethodError` を出す | 特定の生成モデルが `attribute_or_method?` をオーバーライドしていない限り、黙って空としてレンダリングされる（記録されている欠落で、保証ではない） |
 | `1 / 0` と `1.0 / 0` はどちらも `ZeroDivisionError` を出す | `Integer` のゼロによる除算・剰余は `"divided by 0"` を出す。`Float` は IEEE-754 に従い（`Infinity`/`NaN`）、エラーにならない |
 | `distance_of_time_in_words` や複数形化は i18n のロケールをサポートする | 英語のみで、ロケールのサポートはない |
+| `app/helpers` のモジュールはすべて混ぜ込まれる。シグネチャは自由で、ヘルパーがフレームワークのものを上書きできる | モジュールはビルド時に走査され、生成された `case` になる：名前付きのパラメーターだけ、省略可能なものは 3 つまで、フレームワークのヘルパー名と `_path`/`_url` で終わる名前は不可（[アプリケーションのヘルパー](#application-helpers)） |
+| ViewComponent：`render CardComponent.new(title: "x")`、`with_collection`、スロット | 名前による `render component: "card", title: "x"`、ブロックからの `content`。コレクションとスロットはない（[コンポーネント](#components)） |

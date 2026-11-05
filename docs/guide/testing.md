@@ -156,6 +156,56 @@ end
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` makes the retry delays exact.
 `test/websocket_integration.rb` in this repository shows a complete test.
 
+## Testing streams and components
+
+`require "cybertrain/test/views"` adds two renderers that need no request,
+for asserting on the HTML of a partial or a [component](template-language.md#components):
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/views"
+
+test "the comment component names its author" do
+  html = Cybertrain::Test.render_component(CommentComponent.new(comment: Comment.first))
+  assert_includes html, "<strong>"
+end
+
+test "the article partial links to the article" do
+  html = Cybertrain::Test.render_partial("articles/article", article: Article.first)
+  assert_includes html, BlogTest.article_path(Article.first)
+end
+```
+
+`Test.render_component(component, content: "")` passes `content:` as the
+block's HTML. Both render as a broadcast does, so a helper that needs a
+request raises `Cybertrain::Views::OutsideRequest` here too.
+
+A [stream](realtime.md) is tested through the endpoint.
+`client.get_stream(path, events: n, timeout: 2, headers: {})` runs a streaming
+response in memory until `n` events have been written (pings do not count)
+or the timeout has passed, and returns it with what was written as its body.
+The endpoint answers 503 until the stream poller runs, and a test client does
+not start it, so start it once in the file:
+
+```ruby
+Cybertrain::Stream::Poller.start!
+
+test "a new comment is broadcast to the article's stream" do
+  article = Article.first
+  Cybertrain::Stream.broadcast_append_to(article, target: "comments", html: "hi")
+  token = Cybertrain::Stream.sign([Cybertrain::Stream.name_for(article)])
+  client = Cybertrain::Test::Client.new(BLOG)
+  res = client.get_stream("/cybertrain/stream?s=#{token}", events: 1, headers: { "last-event-id" => "0" })
+  assert_includes res.body, '<turbo-stream action="append" target="comments">'
+end
+```
+
+A new connection receives only what is broadcast after it connects;
+`last-event-id` set to `0` replays what is already in the table, which is
+what lets a test broadcast first and read after. To check only that an action
+broadcast, read the table: `Cybertrain::DB.with { |c| c.execute("SELECT
+stream, payload FROM cybertrain_messages ORDER BY id DESC LIMIT 1") }`.
+
 ## Continuous integration
 
 `cybertrain new` writes `.github/workflows/ci.yml` for the app. It calls the

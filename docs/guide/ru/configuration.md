@@ -1,5 +1,5 @@
 ---
-source_sha256: 73e63b06a3c0e42694f5489b74b58f65464e506bfc88c1ba18759c91bd5771dd
+source_sha256: e5b04b253971efda0699a036e9a66764b2b46acdcba2bb8a8cee0254dc09af56
 ---
 # Конфигурация
 
@@ -30,7 +30,9 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; разделённые запятыми адреса IPv4/IPv6 или CIDR (`172.16.0.0/12,10.0.0.0/8`), для соединений с которых `request.client_ip` берётся из последнего адреса `X-Forwarded-For`, — для прокси, доступного по сети, например kamal-proxy в его контейнере; неверная запись останавливает сервер при запуске |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: наибольшая страница, которую выдаёт `params.page_number` и принимает `Relation#page` (см. [Постраничный вывод](models.md#pagination)); значение, не являющееся числом не более чем из 18 цифр, или меньше 1 заменяется значением по умолчанию |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; разделённые запятыми имена заменяют список. Значение параметра, имя которого содержит одно из них (без учёта регистра ASCII: `password` совпадает и с `user[password]`), записывается как `[FILTERED]` в лог запросов и на страницу ошибок режима разработки; `[]` в `config/app.rb` это отключает |
-| `CYBERTRAIN_WORKER` | `worker` | `true`; `0` или `false` не даёт этому процессу выполнять задачи по расписанию и фоновые задачи (см. [Фоновая работа](background-and-operations.md#background-work)); `scheduler_interval` (1 с), `job_poll_interval` (5 с) и `job_max_attempts` (5) задаются в `config/app.rb` |
+| `CYBERTRAIN_WORKER` | `worker` | `true`; `0` или `false` не даёт процессу `server` выполнять задачи по расписанию, фоновые задачи и фиды WebSocket (см. [Роли процессов](background-and-operations.md#process-roles)); `./<app> worker` и `feeds` его игнорируют |
+| `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`: сколько задач один процесс выполняет одновременно (см. [Фоновая работа](background-and-operations.md#background-work)); не меньше 1 |
+| `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`: точка входа реального времени (см. [Реальное время](realtime.md#limits-and-settings)); пустое значение выключает потоки; путь должен начинаться с `/` и отличаться от `health_path` |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`; путь встроенной проверки работоспособности (см. [Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check)); пустое значение её отключает; значение без ведущего `/` останавливает сервер при запуске. `health_worker_stale` (300 с) задаётся в `config/app.rb` |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` или `true` позволяет `Cybertrain::HttpClient` подключаться к loopback, частным и другим непубличным адресам (см. [Исходящий HTTP](external-services.md#outbound-http)) |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; SMTP-сервер, через который отправляет `Cybertrain::Mailer` (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |
@@ -74,6 +76,19 @@ end
 `max_body_bytes`), `max_multipart_parts` (128 частей, включая текстовые поля,
 не более 4096), `upload_root` (`"storage/uploads"`, куда пишет
 `Cybertrain::BlobStore`; создаётся при первой загрузке, а не при запуске).
+
+**Задачи и потоки:** помимо переменных выше, `config/app.rb` задаёт
+`scheduler_interval` (1 с, такт планировщика), `job_poll_interval` (1 с,
+сколько ждёт свободный поток задач; до потоков задач было 5),
+`job_max_attempts` (5), `job_heartbeat_interval` (30 с),
+`job_heartbeat_stale` (300 с, больше интервала), `job_drain_timeout`
+(10 с, сколько `SIGTERM` ждёт выполняющиеся задачи) и
+`scheduler_lease_ttl` (30 с, не меньше двух `scheduler_interval`), а также
+настройки потоков `stream_poll_ms`, `stream_retention`,
+`stream_ping_interval`, `stream_max_connections`, `stream_max_message` и
+`stream_max_backlog` ([Ограничения и настройки](realtime.md#limits-and-settings)).
+Значение вне диапазона останавливает запуск с сообщением, которое его
+называет.
 
 **Заголовки безопасности:** каждый ответ, который пишет сервер (действия,
 middleware статических файлов, страницы ошибок и страница диагностики режима
