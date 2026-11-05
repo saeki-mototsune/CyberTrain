@@ -1,0 +1,23 @@
+ok   fresh after record
+ok   stale with no stamp
+ok   stale when build/bin/gen is missing
+ok   stale after bin/gen.rb changes
+ok   stale after config/routes.rb changes
+ok   stale after any other config/**/*.rb changes
+ok   stale after db/schema.rb changes
+ok   stale after spin.toml changes
+ok   stale after spin.lock changes
+ok   stale after a rewrite of the same size: the mtime counts
+ok   stale after a file of the same mtime changes size: the size counts
+ok   stale after a config file is added
+ok   stale after an input is removed
+ok   not stale after app/controllers/a.rb changes
+ok   stale after a path dependency's generator changes
+ok   stale after a path dependency's cybertrain.rb changes
+ok   a path dependency is found however spin.toml spells it
+ok   directories whose names hold glob characters are still walked
+ok   a dependency directory that does not exist is no error
+ok   a root with nothing in it signs nothing and is stale
+ok   record writes tmp/gen-inputs, creating tmp
+ok   a stamp that cannot be written costs a compile, not the rebuild
+22 tests, 47 assertions, 0 failures
