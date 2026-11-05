@@ -1,5 +1,5 @@
 ---
-source_sha256: e6054a1e3a5194a02270940c82ba0254133258775b0034aa29e5153607ba5489
+source_sha256: a7d344c625b8a0bdb65077dff896e07c8a6258a00ef38ebe3d533d3b20335e34
 ---
 # 实时：推送到浏览器的流
 
@@ -190,4 +190,4 @@ end
 - **`./<app> worker`** 和 **`./<app> feeds`** 不提供 HTTP，也不运行轮询器。它们的广播是行，由服务器投递（[进程角色](background-and-operations.md#process-roles)）。
 - 共享一个数据库的多个服务器，各自把每条消息以相同的顺序和相同的 id 投递给自己的浏览器。
 
-测试页面的流：[测试流和组件](testing.md#testing-streams-and-components)。设计：[docs/design.md](../design.md) D35 和 D36。
+测试页面的流：[测试流和组件](testing.md#testing-streams-and-components)。设计：[docs/design.md](../design.md) D36 和 D37。

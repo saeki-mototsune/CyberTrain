@@ -27,7 +27,7 @@ module Cybertrain
     # requires this file; the lambda only names it when called. Returned by
     # a method, not written here as a literal: a lambda literal assigned to
     # a module-level ivar never learns its call sites' argument types
-    # (spikes/NOTES.md rule 81), so `controller` arrived as an Integer.
+    # (spikes/NOTES.md rule 82), so `controller` arrived as an Integer.
     # @api private
     def self.default_helpers_builder
       ->(controller) { Template::Helpers.new(controller) }

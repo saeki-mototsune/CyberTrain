@@ -23,7 +23,7 @@ module Cybertrain
       end
     end
 
-    # The realtime endpoint (docs/design.md D35), mounted by
+    # The realtime endpoint (docs/design.md D36), mounted by
     # Application#build_stack at {Config#stream_path}
     # (`/cybertrain/stream`) unless that is "". A GET with `s=<token>`
     # (repeatable; {Stream.sign}, what `turbo_stream_from` writes) and

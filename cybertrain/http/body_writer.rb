@@ -1,7 +1,7 @@
 require "socket"
 
 module Cybertrain
-  # What a streaming response carries instead of a body (docs/design.md D35):
+  # What a streaming response carries instead of a body (docs/design.md D36):
   # the Server sends the head, then calls #write_body on the connection's
   # thread with a {Sink} on the socket, then ends the response and closes
   # the connection. A subclass overrides #write_body; the base is typed like

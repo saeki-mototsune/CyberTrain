@@ -298,4 +298,4 @@ turns buffering off; for WebSocket the proxy must pass `Upgrade` and
 
 Testing a page's stream: [Testing streams and
 components](testing.md#testing-streams-and-components). The design:
-[docs/design.md](../design.md) D35 and D36.
+[docs/design.md](../design.md) D36 and D37.

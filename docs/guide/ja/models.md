@@ -1,5 +1,5 @@
 ---
-source_sha256: 9611182b4eb6d6446cbc762f59710844e389112b4d966663252c35c9cffc065c
+source_sha256: c3ddb89dca3e2f789931e99be553afc17be5cf8d36853cbd2d2411eb6bc53c19
 ---
 # モデルとデータベース
 
@@ -100,6 +100,7 @@ Rails の `transaction` と異なる点と、避けるべきこと：
 - ブロックの中でネストした `DB.transaction` は外側のものに合流します：コミットするのは最も外側だけで、どこで例外が出てもすべてロールバックされ、セーブポイントはありません（`requires_new: true` はありません）。
 - Spinel では、渡された `c` に対して `c.transaction { }` は呼べません：`DB.transaction` をネストするか、下のブロックを使わない形を使ってください。
 - `DB.with` のブロック（これはトランザクションではありません）の中で呼んだ `DB.transaction` は、2 つ目の接続を借ります：接続が 1 つだけのプール（`:memory:` も含む）では、そのまま永遠に待ち続けます。先にトランザクションを開き、その中で処理を行ってください。
+- ブロックの中でデータベースのエラーを rescue して処理を続けないでください。「database or disk is full」や I/O エラー、ロック待ちのタイムアウトの後、SQLite はトランザクション全体を自分でロールバックすることがあります。そうなると、ブロック内のその後の文は単独でコミットされる代わりに `Cybertrain::DB::Error`（「the enclosing transaction is no longer open」）を出し、ブロックの終わりでトランザクションも例外を出します。エラーはブロックの外に出し、必要ならトランザクション全体をやり直してください。
 
 `rescue` を普通のメソッドに置いておく必要があるコードは、ブロックを使わない形 `c.begin!(immediate: true)` ... `c.commit!` を使い、rescue で `c.rollback!` を呼びます。
 
