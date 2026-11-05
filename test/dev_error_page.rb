@@ -304,7 +304,326 @@ test "a toolchain that refuses --incremental gets the plain build at once, and f
   ENV["PATH"] = path
   assert_equal "build server -- --incremental\nbuild server\nbuild server\n", File.read(calls)
   [calls, "#{bin}/spin", "#{root}/tmp/rebuild.log"].each { |f| File.delete(f) if File.exist?(f) }
-  ["#{root}/tmp", bin, root].each { |d| Dir.rmdir(d) if File.directory?(d) }
+  ["#{root}/tmp", "#{root}/build", bin, root].each { |d| Dir.rmdir(d) if File.directory?(d) }
+end
+
+def remove_tree(path)
+  if File.directory?(path)
+    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
+    Dir.rmdir(path)
+  elsif File.exist?(path)
+    File.delete(path)
+  end
+  nil
+end
+
+GEN_ROOT = File.expand_path("tmp/dev_error_page_gen_root")
+GEN_CALLS = "#{GEN_ROOT}/calls"
+GEN_BINARY = "#{GEN_ROOT}/build/bin/gen"
+GEN_CHECK = "#{GEN_ROOT}/build/gen-check.c"
+GEN_COMPILED = "#{GEN_ROOT}/build/gen-compiled.c"
+
+def write_gen_binary(body)
+  File.write(GEN_BINARY, "#!/bin/sh\n#{body}\n")
+  File.chmod(0o755, GEN_BINARY)
+  nil
+end
+
+# An app whose `spin` and `spinel` are scripts first on PATH. spin logs every
+# call but `flags`, which fails while flags-fails exists: `run gen` compiles
+# (leaves a build/bin/gen that logs when run, and exits as the file gen-status
+# says); `build` fails while build-fails exists, refuses --incremental while
+# no-incremental exists, and edits config/routes.rb while edit-during-build
+# exists. spinel's "C" is config/routes.rb; while check-fails exists it leaves
+# a partial file and fails, and while check-unreadable exists it leaves a
+# directory. Returns the PATH to restore.
+def fake_spin_app
+  remove_tree(GEN_ROOT)
+  Dir.mkdir("tmp") unless File.directory?("tmp")
+  ["", "/fakebin", "/config", "/build", "/build/bin"].each { |d| Dir.mkdir("#{GEN_ROOT}#{d}") }
+  File.write("#{GEN_ROOT}/config/routes.rb", "# routes\n")
+  File.write("#{GEN_ROOT}/compiled-gen", "#!/bin/sh\necho gen-binary >> '#{GEN_CALLS}'\n")
+  File.write("#{GEN_ROOT}/fakebin/spin", "#!/bin/sh\n" \
+                                         "if [ \"$1\" = flags ]; then\n" \
+                                         "  [ -e '#{GEN_ROOT}/flags-fails' ] && exit 1\n" \
+                                         "  echo '-I .'; exit 0\n" \
+                                         "fi\n" \
+                                         "echo \"spin $*\" >> '#{GEN_CALLS}'\n" \
+                                         "if [ \"$1\" = run ]; then\n" \
+                                         "  cp '#{GEN_ROOT}/compiled-gen' '#{GEN_BINARY}'; chmod 755 '#{GEN_BINARY}'; exit 0\n" \
+                                         "fi\n" \
+                                         "[ -e '#{GEN_ROOT}/edit-during-build' ] && echo '# edit' >> '#{GEN_ROOT}/config/routes.rb'\n" \
+                                         "[ -e '#{GEN_ROOT}/build-fails' ] && { echo 'syntax error'; exit 1; }\n" \
+                                         "case \"$*\" in *--incremental*)\n" \
+                                         "  [ -e '#{GEN_ROOT}/no-incremental' ] && { echo \"spinel: unknown option '--incremental'\"; exit 1; };;\n" \
+                                         "esac\n" \
+                                         "echo built\n")
+  File.write("#{GEN_ROOT}/fakebin/spinel", "#!/bin/sh\n" \
+                                           "[ -e '#{GEN_ROOT}/check-fails' ] && { echo partial > \"$4\"; exit 1; }\n" \
+                                           "[ -e '#{GEN_ROOT}/check-unreadable' ] && { mkdir \"$4\"; exit 0; }\n" \
+                                           "cat config/routes.rb > \"$4\"\n")
+  File.chmod(0o755, "#{GEN_ROOT}/fakebin/spin")
+  File.chmod(0o755, "#{GEN_ROOT}/fakebin/spinel")
+  path = ENV["PATH"] || ""
+  ENV["PATH"] = "#{GEN_ROOT}/fakebin:#{path}"
+  path
+end
+
+def gen_rebuilder
+  Cybertrain::Dev::Rebuilder.new(GEN_ROOT, "server", "#{GEN_ROOT}/tmp/rebuild.log")
+end
+
+# What ran since the last call.
+def gen_calls
+  text = File.exist?(GEN_CALLS) ? File.read(GEN_CALLS) : ""
+  File.delete(GEN_CALLS) if File.exist?(GEN_CALLS)
+  text
+end
+
+def finish_fake_spin_app(path)
+  ENV["PATH"] = path
+  remove_tree(GEN_ROOT)
+end
+
+COMPILE_GEN = "spin run gen\nspin build server -- --incremental\n"
+SKIP_GEN = "gen-binary\nspin build server -- --incremental\n"
+
+test "the rebuild command takes the gen step it is given" do
+  r = Cybertrain::Dev::Rebuilder.new("/apps/my blog")
+  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && ./build/bin/gen && spin build 'server' -- --incremental; } " \
+               "> '/apps/my blog/tmp/rebuild.log' 2>&1", r.command(true, "./build/bin/gen")
+end
+
+test "the gen check compiles bin/gen.rb to C quietly, with spin's flags and no line map" do
+  r = Cybertrain::Dev::Rebuilder.new("/apps/my blog")
+  assert_equal "{ cd '/apps/my blog' && mkdir -p build && flags=$(spin flags) && " \
+               "spinel bin/gen.rb -c -o build/gen-check.c --force --no-line-map $flags; } > /dev/null 2>&1", r.gen_check_command
+end
+
+test "gen is compiled once, then run directly while its C stands still" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  assert r.rebuild
+  assert_equal SKIP_GEN, gen_calls
+  refute r.last_failed
+  assert_equal "built\n", r.last_output
+  finish_fake_spin_app(path)
+end
+
+test "a full build promotes the checked C, a direct run records nothing" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  assert_equal "# routes\n", File.read(GEN_COMPILED)
+  refute File.exist?(GEN_CHECK)
+  gen_calls
+  assert r.rebuild
+  assert_equal SKIP_GEN, gen_calls
+  assert File.exist?(GEN_CHECK)
+  finish_fake_spin_app(path)
+end
+
+test "differing C compiles gen again" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.write("#{GEN_ROOT}/config/routes.rb", "# routes, longer\n")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  assert_equal "# routes, longer\n", File.read(GEN_COMPILED)
+  assert r.rebuild
+  assert_equal SKIP_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a missing build/bin/gen does not fail the rebuild" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.delete(GEN_BINARY)
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  refute r.last_failed
+  finish_fake_spin_app(path)
+end
+
+test "no saved C compiles gen, even with a build/bin/gen there" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.delete(GEN_COMPILED)
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a compile error in the check takes the full command, and its partial C is not promoted" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.write("#{GEN_ROOT}/check-fails", "")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  refute File.exist?(GEN_CHECK)
+  refute File.exist?(GEN_COMPILED)
+  File.delete("#{GEN_ROOT}/check-fails")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  assert r.rebuild
+  assert_equal SKIP_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "spin flags failing takes the full command" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.write("#{GEN_ROOT}/flags-fails", "")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "no spinel on PATH takes the full command" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.delete("#{GEN_ROOT}/fakebin/spinel")
+  ENV["PATH"] = "#{GEN_ROOT}/fakebin:/usr/bin:/bin"
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  refute File.exist?(GEN_COMPILED)
+  finish_fake_spin_app(path)
+end
+
+test "a check whose C cannot be read takes the full command and raises nothing" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.write("#{GEN_ROOT}/check-unreadable", "")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a saved C that cannot be read takes the full command and raises nothing" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.delete(GEN_COMPILED)
+  Dir.mkdir(GEN_COMPILED)
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a gen binary that fails falls back to one full build in the same rebuild" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  write_gen_binary("echo broken-binary >> '#{GEN_CALLS}'; exit 1")
+  assert r.rebuild
+  assert_equal "broken-binary\n#{COMPILE_GEN}", gen_calls
+  refute r.last_failed
+  assert_equal "built\n", r.last_output
+  assert r.rebuild
+  assert_equal SKIP_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a failed build records nothing, so the next one compiles gen again" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  File.write("#{GEN_ROOT}/build-fails", "")
+  refute r.rebuild
+  assert r.last_failed
+  assert_includes r.last_output, "syntax error"
+  refute File.exist?(GEN_COMPILED)
+  gen_calls
+  File.delete("#{GEN_ROOT}/build-fails")
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "undoing an edit whose full build failed does not read as a match: the binary has moved on" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.write("#{GEN_ROOT}/config/routes.rb", "# routes, longer\n")
+  File.write("#{GEN_ROOT}/build-fails", "")
+  refute r.rebuild
+  File.delete("#{GEN_ROOT}/build-fails")
+  File.write("#{GEN_ROOT}/config/routes.rb", "# routes\n")
+  gen_calls
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a failed build on the direct path keeps its output through the full retry, and the saved C" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.write("#{GEN_ROOT}/build-fails", "")
+  refute r.rebuild
+  assert_equal "#{SKIP_GEN}#{COMPILE_GEN}", gen_calls
+  assert_includes r.last_output, "syntax error"
+  File.delete("#{GEN_ROOT}/build-fails")
+  assert r.rebuild
+  assert_equal SKIP_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "an edit made during the build is seen by the next rebuild" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  File.write("#{GEN_ROOT}/edit-during-build", "")
+  assert r.rebuild
+  File.delete("#{GEN_ROOT}/edit-during-build")
+  gen_calls
+  assert r.rebuild
+  assert_equal COMPILE_GEN, gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "a toolchain that starts refusing --incremental still gets the plain build, and the saved C survives" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  assert r.rebuild
+  gen_calls
+  File.write("#{GEN_ROOT}/no-incremental", "")
+  assert r.rebuild
+  assert_equal "#{SKIP_GEN}#{COMPILE_GEN}spin run gen\nspin build server\n", gen_calls
+  refute r.incremental
+  assert r.rebuild
+  assert_equal "gen-binary\nspin build server\n", gen_calls
+  finish_fake_spin_app(path)
+end
+
+test "the build lock stops the gen check as well" do
+  path = fake_spin_app
+  r = gen_rebuilder
+  Dir.mkdir("#{GEN_ROOT}/tmp")
+  File.write("#{GEN_ROOT}/tmp/cybertrain-build.lock", "")
+  refute r.rebuild
+  assert r.last_skipped
+  assert_equal "", gen_calls
+  refute File.exist?(GEN_CHECK)
+  finish_fake_spin_app(path)
 end
 
 test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
