@@ -333,6 +333,11 @@ module Cybertrain
         end
       end
 
+      # url_for's Array case: the route named after the records in items,
+      # in order ("post_comment_path"), called with those records. A last
+      # record that is new names the collection route instead
+      # ("post_comments_path") and is left out of the arguments. Raises
+      # ArgumentError when an item of the general case is not a record.
       def nested_url(items)
         # [parent, child], the usual shape, in one interpolation.
         if items.size == 2
