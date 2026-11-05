@@ -1,5 +1,5 @@
 ---
-source_sha256: f0bc19c92741dbde18fbe1606ff34e4f4b15d432bb549a1e710cadd61c75a005
+source_sha256: 11e7333b2d2b8c4b6bedd02bb1d11425913e066441e6d2dd41b293624e28ba63
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -435,7 +435,7 @@ Les deux renvoient le HTML sous forme de String, avec les helpers de l’applica
 
 ### Résolution des fichiers (`engine.rb`)
 
-`"posts/show"` et `"posts/show.html.erb"` désignent le même template. Le développement lit `app/views/` depuis le disque avec `cache: false` (un fichier est relu et réanalysé chaque fois que son mtime ou sa taille change)&nbsp;; l’environnement de test lit depuis le disque avec `cache: true` (analysé une fois). Un binaire de production ne touche jamais au disque&nbsp;: `cybertrain build` lance `spin run gen -- --embed-views`, qui écrit chaque `*.erb` de `app/views/` (fichiers cachés et répertoires liés symboliquement exclus) dans `gen/views.rb`, et `Engine.embedded(sources)` analyse chaque entrée une fois, au démarrage du binaire (les messages d’erreur gardent la même forme `posts/show.html.erb:12`), si bien qu’un template avec une erreur de syntaxe arrête le démarrage au lieu de faire échouer sa page&nbsp;; un binaire dont la table est vide refuse de démarrer en production. Un template absent lève `Cybertrain::Template::MissingTemplate` — `"Missing template <full path>"` depuis le disque, `"Missing template posts/nope.html.erb (embedded)"` depuis la table.
+`"posts/show"` et `"posts/show.html.erb"` désignent le même template. Le développement lit `app/views/` depuis le disque avec `cache: false` (un fichier est relu et réanalysé chaque fois que son mtime ou sa taille change, et cette réanalyse écrit dans le cache du moteur, si bien que le serveur de développement tourne toujours avec un seul worker et ignore `SPINEL_WORKERS`, ce que dit sa bannière de démarrage)&nbsp;; l’environnement de test lit depuis le disque avec `cache: true` (analysé une fois). Un binaire de production ne touche jamais au disque&nbsp;: `cybertrain build` lance `spin run gen -- --embed-views`, qui écrit chaque `*.erb` de `app/views/` (fichiers cachés et répertoires liés symboliquement exclus) dans `gen/views.rb`, et `Engine.embedded(sources)` analyse chaque entrée une fois, au démarrage du binaire (les messages d’erreur gardent la même forme `posts/show.html.erb:12`), si bien qu’un template avec une erreur de syntaxe arrête le démarrage au lieu de faire échouer sa page&nbsp;; un binaire dont la table est vide refuse de démarrer en production. Un template absent lève `Cybertrain::Template::MissingTemplate` — `"Missing template <full path>"` depuis le disque, `"Missing template posts/nope.html.erb (embedded)"` depuis la table.
 
 Les recherches de fichiers résolvent la racine des vues et le chemin du template à travers les liens symboliques, et ne chargent que des fichiers ordinaires situés dans cette racine. Les chemins qui en sortent (y compris via des liens symboliques) lèvent `MissingTemplate`&nbsp;; `exists?` renvoie false pour ces chemins.
 
