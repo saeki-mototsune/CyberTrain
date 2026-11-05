@@ -123,9 +123,11 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
 - Every broadcast goes through the table, also from the web process itself:
   with two web processes both must deliver, and the table gives one order
   and one id space. Latency is bounded by the poll interval.
-- **The poller** (`Stream::Poller`, one thread per process that has
-  subscribers, started lazily by the first subscription and stopped with the
-  server) keeps `last_id`, **initialised to the current `MAX(id)` (0 on an
+- **The poller** (`Stream::Poller`, one thread per `server` process,
+  started by `Application#serve` **before the listener binds** and stopped
+  with the server; never lazily, so no subscription can exist before the
+  cursor below is taken, and the endpoint answers 503 while the poller is
+  not running) keeps `last_id`, **initialised to the current `MAX(id)` (0 on an
   empty table) when the poller starts**: a fresh subscription receives only
   rows written after it, never the backlog within retention, unless it asks
   for a replay (below). Every `Config#stream_poll_ms` (default 100) it
@@ -145,7 +147,11 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   the result in spikes/NOTES.md). A queue longer than
   `Config#stream_max_backlog` (1000) messages drops the subscriber: the
   connection is closed and the client reconnects (as Action Cable does when
-  a client cannot keep up).
+  a client cannot keep up). Each `Subscriber` carries a **boundary**: set to
+  the poller's `last_id` under the hub's lock when it subscribes (so it is
+  ordered with respect to `deliver`), and raised by the replay handoff
+  below; `deliver` skips a message with `id <= boundary` for that
+  subscriber. The cutoff is therefore per subscriber, not process-wide.
 - `Last-Event-ID` (SSE) or `?after=<id>` (WebSocket) replays the rows with
   `id > given` for the subscribed streams from the table (within retention)
   before live delivery, so a reconnecting EventSource misses nothing that is
@@ -376,7 +382,9 @@ it.
   is named by its snake-case string as a partial is; `render "x"` stays the
   partial. From Ruby: `Views.render_component(CardComponent.new(...))`,
   `component.render_in(view)` is not offered (there is no view object).
-- Rendering: `Component#render_with(helpers, content)` resolves the template
+- Rendering: `Component#render_with(helpers, content, interp)` (the
+  interpreter is passed so nesting counts against the depth limit) resolves
+  the template
   `components/card_component` (`Views` gets a second root, `app/components`,
   for names starting with `components/`; `ViewsEmitter` embeds
   `app/components/**/*.erb` under that prefix), builds the env from
@@ -417,7 +425,7 @@ updated with every rule below):
     statement's value; for `tag.*`, `render component:` and helper calls the
     block's **output** is captured. The parser knows which from the method
     name on the receiverless/`tag` side; the interpreter raises
-    `"map's block must have a value"` when a `do` block's last statement is
+    `"map's block must end in a value"` when a `do` block's last statement is
     not an expression.
   - `sum` of an empty Array is `0`; `sum` mixing Integer and Float gives a
     Float; `sum` of Strings is a `RuntimeError` (use `join`).
@@ -504,7 +512,25 @@ does the same with green threads:
   stop; `Job.stop!` waits up to `Config#job_drain_timeout` (10 s, like the
   server's) and then returns, leaving still-running rows to heartbeat
   recovery (they are marked `running` with a stale heartbeat within 5
-  minutes). Solid Queue does the same with `shutdown_timeout`.
+  minutes).
+- **Delivery is at least once.** A handler that outlives the drain timeout,
+  or whose process stalls past `job_heartbeat_stale`, can still be running
+  when another worker reclaims the row, so a job's side effects must be
+  idempotent (the rule Solid Queue, Sidekiq and every at-least-once queue
+  states; the README and the jobs guide say so). Completion is **fenced**:
+  `finish` writes `done` / `failed` / the retry with `WHERE id = ? AND
+  state = 'running' AND claimed_by = ?`, so a late finisher whose row was
+  reclaimed changes nothing (`changes == 0`, logged at warn) and the second
+  claimer's outcome stands. The fence prevents a stale worker from
+  overwriting state; it does not prevent the overlap itself, which only
+  idempotent handlers can absorb.
+- **Upgrading a running deployment.** The NULL-heartbeat rule holds only
+  once no pre-upgrade worker is running: a legacy worker still executing a
+  `running` row has no heartbeat to write, and a new worker would requeue
+  its job. Stop every old process before starting the first new one (the
+  previous design already allowed one worker per database, so this is the
+  existing deploy order, not a new constraint); `docs/deploy.md` says so
+  under "Roles". Solid Queue does the same with `shutdown_timeout`.
 - Spinel: a job thread is started through a method (`spawn_job_thread(i,
   generation)`, NOTES rule 21); the handler's exceptions are rescued in a
   plain method (rules 32 / 45); `Job::HANDLERS` keeps the concurrency limit
