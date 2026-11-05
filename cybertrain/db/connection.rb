@@ -534,6 +534,11 @@ module Cybertrain
         pause = BUSY_FIRST_PAUSE
         while rc == SQLite3::BUSY && SQLite3.cybertrain_sqlite_busy_asked(@busy) == 1
           break if Connection.monotonic >= deadline
+          # SQLite may roll an explicit transaction back on its own after
+          # SQLITE_BUSY (as #begin! notes); the statement re-run then would
+          # commit by itself, outside the transaction the caller opened.
+          # Return the BUSY instead, so the transaction fails as a whole.
+          break if @transaction_depth > 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
 
           SQLite3.sqlite3_reset(stmt)
           sleep pause
