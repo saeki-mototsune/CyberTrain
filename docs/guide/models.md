@@ -211,7 +211,10 @@ fallback name, with a comment in the generated file:
 
 `t.binary` makes a `BLOB` column, for bytes that are not text: a thumbnail,
 a compressed snapshot, a key. The attribute is a String holding exactly the
-stored bytes, NUL bytes and bytes above 127 included:
+stored bytes, NUL bytes and bytes above 127 included, or `nil` for a `NULL`
+(the column is nullable unless declared `null: false`, so a photo saved
+before the column was added has no thumbnail: check for `nil` before
+`bytesize`):
 
 ```ruby
 # db/migrate/20261105090000_add_thumbnail_to_photos.rb
@@ -228,7 +231,9 @@ photo.save
 Photo.find(photo.id).thumbnail.bytesize   # the same bytes back
 ```
 
-- The generated model binds a binary column as a BLOB on save; every other
+- The generated model binds a binary column as a BLOB on save, and
+  `Photo.where(thumbnail: bytes)` binds the bytes as a BLOB too (a TEXT bind
+  never equals a stored BLOB); every other
   String still binds as TEXT, which stops at a NUL byte. In raw SQL, wrap the
   bytes in `Cybertrain::DB::Blob.new(bytes)` to bind them as a BLOB
   (`c.execute("INSERT INTO photos (thumbnail) VALUES (?)", [Cybertrain::DB::Blob.new(bytes)])`).
