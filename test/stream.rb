@@ -373,6 +373,13 @@ test "broadcast_replace_to writes the Turbo Stream HTML" do
   assert_equal "<turbo-stream action=\"append\" target=\"t\"><template>&lt;b&gt;</template></turbo-stream>", last_payload
 end
 
+test "broadcast_replace_to with partial: keeps the partial's markup and escapes its locals" do
+  fresh_db
+  Cybertrain::Views.configure_embedded({ "_row.html.erb" => "<%# locals: (name:) %><li><%= name %></li>" })
+  Stream.broadcast_replace_to("s", target: "t", partial: "row", locals: { name: "a <b>" })
+  assert_equal "<turbo-stream action=\"replace\" target=\"t\"><template><li>a &lt;b&gt;</li></template></turbo-stream>", last_payload
+end
+
 test "the other broadcast shortcuts" do
   fresh_db
   post = BlogPost.new
