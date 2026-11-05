@@ -527,6 +527,10 @@ module Cybertrain
       # asked about cannot clear by waiting and is returned at once, as is
       # the last one after BUSY_WAIT_LIMIT.
       def step_waiting(stmt)
+        # Whether SQLite was inside a transaction before this statement: one
+        # opened by #begin! or by SQL (`exec_script("BEGIN")`), which leaves
+        # @transaction_depth at 0.
+        in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
         rc = SQLite3.sqlite3_step(stmt)
         return rc if rc != SQLite3::BUSY
 
@@ -538,7 +542,7 @@ module Cybertrain
           # SQLITE_BUSY (as #begin! notes); the statement re-run then would
           # commit by itself, outside the transaction the caller opened.
           # Return the BUSY instead, so the transaction fails as a whole.
-          break if @transaction_depth > 0 && SQLite3.sqlite3_get_autocommit(@db) != 0
+          break if in_transaction && SQLite3.sqlite3_get_autocommit(@db) != 0
 
           SQLite3.sqlite3_reset(stmt)
           sleep pause
