@@ -75,7 +75,7 @@ written up for upstream.
 | 75 | Probe passes: Kernel `spawn` and `Process.spawn` compile and `Process.wait` reaps the child. `VACUUM INTO` was not re-checked. |
 | 76 | Matches CRuby: a bare `DB` outside `module Cybertrain` raises NameError, as under CRuby. The rule stays: such code must spell `Cybertrain::DB`. |
 | 78 | **Still there** (docs/spinel-feedback.md K). |
-| 79 | **Still there**: found on this build (its reduced program does not compile). |
+| 79 | **Still there**: found on this build (its reduced program does not compile), and not new in it: the same program fails the same way on 2026.10.27.7020 and 2026.11.03.7025 (checked 2026-11-05; docs/spinel-feedback.md, "Rule 79"). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -173,6 +173,37 @@ The rules are numbered in the order they were found. By topic:
     busy_timeout slept a millisecond or more holding the worker, until a
     busy handler retrying every 100 us replaced it (cybertrain/db/sqlite_ffi.rb). 1 stays
     the default (a one-core server); set it to the core count otherwise.
+    **Since Spinel #9840 (in 2026.11.04.7026, not in 2026.09.12) an explicit
+    `SPINEL_WORKERS=N` counts main among the N** and starts N-1 helpers
+    (`g_worker_cap--` in lib/sp_sched.c's `sp_sched_start_workers`); unset,
+    it is still one helper per core beside main. With helpers present main
+    runs no general green thread (`sched_place_unstarted` skips worker 0,
+    and main's join pump runs only threads already pinned to it), and in
+    the server main only waits in `Server#wait`. So on 2026.11.04.7026,
+    `SPINEL_WORKERS=2` served examples/blog from one helper: the run of
+    2026-11-05 measured 0-2% over 1 on the pages. Measured on 2026-11-05
+    (2 CPUs, `taskset -c 0,1`, wrk -t2 -c16 on CPUs 2 and 3), with
+    `SPINEL_SCHED_STATS=2`: `pinned per worker: 0 18`, `workers=2 busy=1
+    runnable=14`, one OS thread at 7.85 s of CPU in 8 s and main at 0.15 s;
+    `mutex-wait n=0` (no lock in the framework) and the sweeper threads at
+    0.07 s (not GC). A program with no server (4 CPU-bound threads that
+    main joins) uses 1.97 CPUs at `SPINEL_WORKERS=2` on 2026.09.12 and 0.99
+    on 2026.11.04.7026, which needs 3 for 1.97. **`Application#serve`
+    therefore hands Spinel `workers + 1` when `workers > 1`
+    (`Application.spinel_workers`)**; 1 stays 1, where main runs every
+    thread itself. `config.workers` (`SPINEL_WORKERS` as CyberTrain reads it)
+    keeps meaning the threads that serve requests, so "the core count" is
+    right again. Same session, medians of 3 x 8 s, 2 over 1: before, +10%
+    (`GET /articles`), -3% (`/articles/1`), +2% (`/style.css`), +4% (the
+    comment POST); after, +24%, +44%, +22%, +44%; perf sched over 4 s
+    then counts 8.0 s of CPU on the two CPUs (two helpers at 3.49 s each,
+    main 0.59, the sweepers 0.36). A second effect, on latency rather
+    than throughput: a thread spawned by a helper (every connection: the
+    accept loop is a `Thread.new`) goes onto that helper's own queue and is
+    not placed (`sched_place_unstarted` runs only for main's spawns and the
+    global queue), so with two helpers the connections split 15 to 3 (9 to 8
+    with the accept loop on main, as an experiment, for the same
+    throughput). Both are in [docs/spinel-feedback.md](../docs/spinel-feedback.md) item L.
 23. `spin test --regen` writes `.expected` from CRuby's output; `spin test` diffs
     the Spinel binary's output (stdout and stderr merged) against it. Tests must
     therefore be CRuby/Spinel-portable;
@@ -429,6 +460,23 @@ The rules are numbered in the order they were found. By topic:
     bench/run's two-core config failed about one run in two with wrk
     timeouts or a dead server, and five runs out of five passed once the
     lock was gone. Keep locks off the per-request path; cache per request.
+    A process-wide cache that requests only read needs no lock: the
+    template engine's (`@template_index`, `@template_list`) used to be
+    written on a template's first render, which two workers could do at
+    once; `Engine.embedded` now parses every embedded template at boot
+    (2026-11-05, found in review of the `SPINEL_WORKERS` fix, rule 22).
+    Development's engine (`cache: false`) still writes the cache, and
+    `@stamps`, on the request that renders a changed file, so development
+    serves on one worker whatever `SPINEL_WORKERS` says
+    (`Application.serving_workers`; the boot banner names an ignored
+    count). Rejected: re-parsing on the watcher thread and swapping in a
+    new engine (`Views.configure`), or copy-on-write ivars inside the
+    engine. Both need a request thread to see a fully built object through
+    one plain reference store, and Spinel compiles an ivar store to a plain
+    C store plus the GC write barrier (`sp_gc.h` `SP_WBO`), with no
+    release/acquire ordering its docs promise. The cost: development no
+    longer runs requests in parallel; check parallel behaviour against a
+    `cybertrain build` binary.
 58. `Foo.new(<a String made in the argument>)` can free that String before the
     object has it (Spinel 2026.09.12): the generated `new` allocates the
     object, which may collect, and only then roots its arguments. A freshly
