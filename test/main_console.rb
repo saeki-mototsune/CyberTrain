@@ -89,6 +89,48 @@ test "dbconsole runs sqlite3 on the database and passes its exit status through"
   assert_equal "#{TMP}/console.sqlite3", File.read("#{fake}.args")
 end
 
+test "dbconsole answers 1 when a signal ends sqlite3" do
+  bin = "#{TMP}/killed"
+  Dir.mkdir(bin)
+  fake = "#{bin}/sqlite3"
+  File.write(fake, "#!/bin/sh\nkill -TERM $$\n")
+  File.chmod(0o755, fake)
+  ENV["PATH"] = "#{bin}:/bin:/usr/bin"
+  status = run(["dbconsole"])
+  ENV["PATH"] = PATH_BEFORE
+  assert_equal 1, status
+end
+
+test "a database path starting with - reaches sqlite3 as ./-..." do
+  assert_equal "./-odd.sqlite3", Cybertrain::Main.dbconsole_path("-odd.sqlite3")
+  assert_equal "/a/b.sqlite3", Cybertrain::Main.dbconsole_path("/a/b.sqlite3")
+  bin = "#{TMP}/dash"
+  Dir.mkdir(bin)
+  fake = "#{bin}/sqlite3"
+  File.write(fake, "#!/bin/sh\nprintf '%s' \"$1\" > \"$0.args\"\n")
+  File.chmod(0o755, fake)
+  ENV["PATH"] = bin
+  before = Cybertrain.config.database_path
+  Cybertrain.config.database_path = "-dash.sqlite3"
+  status = run(["dbconsole"])
+  ENV["PATH"] = PATH_BEFORE
+  Cybertrain.config.database_path = before
+  assert_equal 0, status
+  assert_equal "./-dash.sqlite3", File.read("#{fake}.args")
+end
+
+test "dbconsole reports an sqlite3 it cannot run, not a missing one" do
+  bin = "#{TMP}/noexec"
+  Dir.mkdir(bin)
+  fake = "#{bin}/sqlite3"
+  File.write(fake, "#!/bin/sh\nexit 0\n")
+  File.chmod(0o644, fake)
+  ENV["PATH"] = bin
+  status = run(["dbconsole"])
+  ENV["PATH"] = PATH_BEFORE
+  assert_equal 1, status
+end
+
 test "dbconsole without sqlite3 says how to get it" do
   ENV["PATH"] = ""
   status = run(["dbconsole"])

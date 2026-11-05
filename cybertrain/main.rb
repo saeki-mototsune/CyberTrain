@@ -13,8 +13,8 @@ module Cybertrain
   #   ./blog migrate      apply db/migrate (gen/migrations.rb)
   #   ./blog db status    any DB::CLI command: status, rollback N, schema:dump, create,
   #                       backup PATH, vacuum
-  #   ./blog console     the expression console over the models (Console.run)
-  #   ./blog dbconsole   the sqlite3 shell on the configured database
+  #   ./blog console      the expression console over the models (Console.run)
+  #   ./blog dbconsole    the sqlite3 shell on the configured database
   #   ./blog user a@b.c   a command the application registered with Main.command
   #
   # `gen` stays a separate bin/gen.rb: it needs the generator and the
@@ -168,21 +168,44 @@ module Cybertrain
     end
 
     # `./<name> dbconsole`: the sqlite3 shell on the configured database
-    # (Rails' dbconsole), its exit status passed through. Process.spawn and
-    # Process.wait compile and reap under the pinned Spinel (NOTES rule 75);
-    # a missing binary is Errno::ENOENT from the spawn.
+    # (Rails' dbconsole), its exit status passed through (1 when a signal
+    # ended it). Process.spawn and Process.wait compile and reap under the
+    # pinned Spinel (NOTES rule 75); a missing binary is Errno::ENOENT from
+    # the spawn. Ctrl-C at the sqlite3 prompt reaches this process too (the
+    # terminal signals the whole foreground group), so INT is trapped here
+    # first: without it this process died with 130 and left sqlite3 reading
+    # the terminal. The child's exec resets a handled signal to its default,
+    # so sqlite3 still answers Ctrl-C itself. A path starting with "-" is
+    # given as "./-...", so sqlite3 does not take it for an option.
     def self.run_dbconsole
-      path = Cybertrain.config.database_path
+      path = Main.dbconsole_path(Cybertrain.config.database_path)
+      trap("INT") { nil }
       pid = 0
       begin
         pid = Process.spawn("sqlite3", path)
-      rescue SystemCallError => e
+      rescue Errno::ENOENT
         puts "sqlite3 not found: install the sqlite3 CLI"
+        return 1
+      rescue SystemCallError => e
+        puts "sqlite3 could not be started: #{e.class.name}: #{e.message}"
         return 1
       end
       Process.wait(pid)
-      status = $?
-      status.nil? ? 1 : Cast.int(status.exitstatus)
+      Main.child_exit_code($?)
+    end
+
+    # The database path as sqlite3's argument: "./" before one that starts
+    # with "-".
+    def self.dbconsole_path(path)
+      path.start_with?("-") ? "./#{path}" : path
+    end
+
+    # A child's exit status, 1 when it has none (a signal ended it).
+    def self.child_exit_code(status)
+      return 1 if status.nil?
+
+      code = status.exitstatus
+      code.nil? ? 1 : code
     end
 
     # Whether {Main.run} starts the server for these arguments: [],
@@ -231,8 +254,8 @@ module Cybertrain
       # The continuation lines up under "migrate" whatever the name.
       indent = "".ljust(name.size + 23)
       text << "#{indent}backup PATH [--force] | backup DIR/ [--keep N] | vacuum\n"
-      text << "  ./#{name} console           evaluate expressions over the models (help inside)\n"
-      text << "  ./#{name} dbconsole         open the sqlite3 shell on the database\n"
+      text << "  ./#{name} #{"console".ljust(17)} evaluate expressions over the models (help inside)\n"
+      text << "  ./#{name} #{"dbconsole".ljust(17)} open the sqlite3 shell on the database\n"
       COMMANDS.each do |command|
         word = command.command_name.ljust(17)
         text << "  ./#{name} #{word} #{command.command_description}\n"
