@@ -93,7 +93,7 @@ module Cybertrain
           return -1000000;
         }
       C
-      ffi_func :cybertrain_sqlite_prepare_at, [:ptr, :str, :long, :ptr], :long
+      ffi_func :cybertrain_sqlite_prepare_at, [:ptr, :str, :long, :ptr], :long, blocking: true
       ffi_const :NO_STATEMENT, -1000000
       ffi_func :cybertrain_sqlite_busy_report, [:ptr, :int], :void
       ffi_func :cybertrain_sqlite_busy_asked, [:ptr], :int
