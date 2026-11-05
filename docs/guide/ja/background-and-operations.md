@@ -1,5 +1,5 @@
 ---
-source_sha256: 6cffd2efdf0a9c273a6d53c5fbddb044b804da29fb530b1f9a1601071a7accba
+source_sha256: a2275aa045e19fe2001578b76f46094a266e675337f8364c4f8446e5a3630257
 ---
 # バックグラウンド処理と運用
 
@@ -46,7 +46,7 @@ cron の構文も、ジョブの優先度や一意性も、`deliver_later` も�
 | `./<app> worker` | 定期タスク（リースにより一度に 1 プロセス）、ジョブスレッド、ハートビートと回収 | しない |
 | `./<app> feeds [NAME...]` | [WebSocket のフィード](external-services.md#consuming-websocket-feeds)のすべて、または名前を挙げたもの | しない |
 
-- `worker` と `feeds` はバナー（`=> worker: 3 job threads, 2 scheduled tasks`）を出し、`SIGTERM` まで動き、それからサーバーと同じように止まります。これらは常に自分の作業を行います：Web の役割のために設定した `CYBERTRAIN_WORKER=0` では止まりません。
+- `worker` と `feeds` はバナー（`=> worker: 3 job threads, 2 scheduled tasks`）を出し、`SIGTERM` か `SIGINT`（Ctrl-C）まで動き、それからサーバーと同じように止まります。これらは常に自分の作業を行います：Web の役割のために設定した `CYBERTRAIN_WORKER=0` では止まりません。
 - 名前を付けた `feeds` はその購読だけを動かし（フィードごとに 1 つのコンテナー）、未知の名前は、登録された名前の一覧を出して起動を止めます。フィードを専用のプロセスで動かすときは、サーバーに `CYBERTRAIN_WORKER=0` を設定してください。そうしないと、どのプロセスもすべてのフィードを受信します。
 - よくある分け方：プロキシの後ろに `CYBERTRAIN_WORKER=0` の `server`、1 つ以上の `worker`、購読があれば `feeds`。`cybertrain new` は `config/deploy.yml` に `web` と `worker` の役割（とコメントにした `feeds`）を書きます。systemd のユニットは [docs/deploy.en.md](../deploy.en.md) のパート 7「Splitting the roles」にあります。
 - **ハートビートのないリリースから上げるとき**：最初の新しいプロセスを起動する前に、古いプロセスをすべて止めてください。古いプロセスはハートビートを書かないので、新しいワーカーは、古いワーカーがまだ実行しているジョブを放棄されたものとして取ってしまいます。

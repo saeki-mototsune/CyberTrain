@@ -252,7 +252,7 @@ module Cybertrain
     # `./<app> worker` (Main.run): boots (the config checks, the database),
     # prints a banner, starts the scheduler (lease-gated: several workers
     # may share the database) and the job threads, and runs until SIGTERM
-    # (or Application.request_stop_roles), then stops the job threads (they
+    # or SIGINT (or Application.request_stop_roles), then stops the job threads (they
     # finish their jobs, for at most Config#job_drain_timeout seconds) and
     # the scheduler. No port, no HTTP. Config#worker is set: in this role
     # it is what the process is for.
@@ -277,19 +277,42 @@ module Cybertrain
       tasks = Scheduler::TASKS.size
       jobs = Job.handlers? ? "#{threads} job thread#{threads == 1 ? "" : "s"}" : "no job handler"
       print_role_banner("worker: #{jobs}, #{tasks} scheduled task#{tasks == 1 ? "" : "s"}")
-      trap("TERM") { Application.request_stop_roles }
+      # INT as TERM: a worker run in a terminal and stopped with Ctrl-C
+      # drains its jobs too, rather than dying with its rows left
+      # `running` until job_heartbeat_stale. Both handlers are given back
+      # when the role ends (test/main_roles.rb sends the signals and
+      # checks the handlers come back).
+      previous_term = trap("TERM") { Application.request_stop_roles }
+      previous_int = trap("INT") { Application.request_stop_roles }
+      run_worker_threads(previous_term, previous_int)
+    end
+
+    # The worker's lifetime: the scheduler and the job threads until the
+    # stop, then their shutdown. Restores the TERM and INT handlers the
+    # role replaced, also when a start or a stop raises: an in-process
+    # caller (a test) keeps its own handlers, and a later Ctrl-C ends the
+    # process again instead of setting a flag nobody waits for.
+    # @param previous_term [Object] what trap("TERM") answered: the
+    #   handler Proc, or a name such as "DEFAULT"
+    # @param previous_int [Object] the same for INT
+    # @return [Integer] 0
+    def run_worker_threads(previous_term, previous_int)
       Scheduler.start!(@config)
       Job.start!(@config)
       Application.wait_roles_stop
       Job.stop!
       Scheduler.stop!
       0
+    ensure
+      trap("TERM", previous_term)
+      trap("INT", previous_int)
     end
 
     # `./<app> feeds [NAME...]` (Main.run): boots, checks the names against
     # the registered feeds (an unknown one is an error that lists them),
     # starts the WebSocket subscriptions (all of them, or the named ones:
-    # Background.start_only) and runs until SIGTERM, then stops them. No
+    # Background.start_only) and runs until SIGTERM or SIGINT, then stops
+    # them. No
     # port, no jobs, no scheduler. With no subscription registered it says
     # so and returns 0.
     # @param names [Array<String>] the feeds to run; empty for all
@@ -312,11 +335,27 @@ module Cybertrain
         return 0
       end
       print_role_banner("feeds: #{(names.empty? ? known : names).join(", ")}")
-      trap("TERM") { Application.request_stop_roles }
+      # INT as TERM (Ctrl-C), and the handlers given back, as in run_worker.
+      previous_term = trap("TERM") { Application.request_stop_roles }
+      previous_int = trap("INT") { Application.request_stop_roles }
+      run_feeds_threads(names, previous_term, previous_int)
+    end
+
+    # The feeds' lifetime, the counterpart of run_worker_threads: the named
+    # subscriptions until the stop, then their shutdown, and the TERM and
+    # INT handlers restored whatever happens.
+    # @param names [Array<String>] the feeds to run; empty for all
+    # @param previous_term [Object] what trap("TERM") answered
+    # @param previous_int [Object] what trap("INT") answered
+    # @return [Integer] 0
+    def run_feeds_threads(names, previous_term, previous_int)
       Background.start_only(@config, names)
       Application.wait_roles_stop
       Background.stop_all
       0
+    ensure
+      trap("TERM", previous_term)
+      trap("INT", previous_int)
     end
 
     # Ends a run_worker or run_feeds: sets a flag the waiting main thread

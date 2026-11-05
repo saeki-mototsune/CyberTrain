@@ -117,8 +117,8 @@ image and the same database:
 | `./<app> feeds [NAME...]` | the [WebSocket feeds](external-services.md#consuming-websocket-feeds), all of them or the named ones | no |
 
 - `worker` and `feeds` print a banner (`=> worker: 3 job threads, 2
-  scheduled tasks`), run until `SIGTERM` and then stop the way a server
-  does. They always run their work: `CYBERTRAIN_WORKER=0`, set for the web
+  scheduled tasks`), run until `SIGTERM` or `SIGINT` (Ctrl-C) and then stop
+  the way a server does. They always run their work: `CYBERTRAIN_WORKER=0`, set for the web
   role, does not turn them off.
 - `feeds` with names runs only those subscriptions (one container per feed),
   and an unknown name stops the boot with the list of registered ones. With
