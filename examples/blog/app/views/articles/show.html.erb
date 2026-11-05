@@ -11,9 +11,14 @@
 
 <h2>Comments</h2>
 
-<% @article.comments.each do |comment| %>
-  <%= render "comments/comment", comment: comment %>
-<% end %>
+<%# New comments arrive over SSE: CommentsController#create appends to #comments. %>
+<%= turbo_stream_from @article %>
+
+<div id="comments">
+  <% @article.comments.each do |comment| %>
+    <%= render component: "comment", comment: comment %>
+  <% end %>
+</div>
 
 <h2>Add a comment:</h2>
 

@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <%= csrf_meta_tags %>
     <link rel="stylesheet" href="/style.css">
+    <%# Turbo (https://turbo.hotwired.dev) makes <turbo-stream-source> live:
+        without it the element on the article page is inert. The framework
+        has no asset pipeline, so the blog loads one pinned release from a
+        CDN, checked by its hash; to serve it yourself, copy the file into
+        public/ and point src at /turbo.es2017-esm.js. %>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js" integrity="sha384-hCWFOKOoN+uZzWiJ8bt9yV3Jo0dFo9j9jOcCQKLmSs5EHENOwNNQ5yfLqoGcQ0Ig" crossorigin="anonymous"></script>
   </head>
   <body>
     <main>

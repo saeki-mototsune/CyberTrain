@@ -17,9 +17,27 @@ cybertrain generate scaffold comment commenter:string body:text article:referenc
 - `Article` validates the title and a body of at least 10 characters, and
   deletes its comments before it is destroyed. `Article#comments` and
   `Comment#article` are generated from the `comments.article_id` foreign key.
-- `articles/show.html.erb` lists the comments (`comments/_comment`) and
-  ends with the comment form (`comments/_form`,
+- `articles/show.html.erb` lists the comments inside `<div id="comments">`
+  and ends with the comment form (`comments/_form`,
   `form_with(model: [@article, @comment])`).
+
+The comment list is live. Each comment is a component,
+`app/components/comment_component.rb` with its template beside it
+(`<%= render component: "comment", comment: c %>`; its `id` is
+`dom_id(comment)`), and shows its author through an application helper,
+`comment_author` in `app/helpers/comments_helper.rb`, which builds a
+`<strong>` with `Cybertrain::Html.tag`. The article page subscribes with
+`<%= turbo_stream_from @article %>` (Server-Sent Events on the stream
+`articles:<id>`), and `CommentsController#create`, once the comment is
+saved, calls `Cybertrain::Stream.broadcast_append_to(@article, target:
+"comments", component: CommentComponent.new(comment: @comment))`: every
+open page of that article appends the new comment without a reload (a tab
+that already has it, the one that posted, keeps one copy, as Turbo replaces
+an element with the same id). The layout loads Turbo 8.0.12 from
+jsDelivr with a `<script type="module">` tag (pinned, with its
+`integrity` hash): the framework has no asset pipeline, and without Turbo
+the `<turbo-stream-source>` element does nothing. To serve Turbo yourself,
+copy `turbo.es2017-esm.js` into `public/` and change the `src`.
 
 ```sh
 cybertrain db migrate  # spin run gen; spin run db -- migrate; spin run gen
@@ -52,6 +70,22 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"  # once; keep it
 kamal setup    # first time: Docker and kamal-proxy on the server, build, push, start
 kamal deploy   # after that
 ```
+
+The file has two roles from the one image: `web` (`./blog server`, behind
+kamal-proxy with the `/up.html` health check) and `worker` (`./blog
+worker`: the jobs and scheduled tasks, no HTTP), sharing the SQLite volume;
+a `feeds` role for WebSocket subscriptions is there, commented out (the
+blog has none). When you upgrade from a cybertrain release without job
+heartbeats (0.4.x and earlier), stop every old process before the first new
+one starts (`kamal app stop`, then `kamal deploy`): a new worker would
+otherwise take an old worker's running job for abandoned and run it a
+second time.
+
+`bin/blog.rb` registers one job, `touch`, to see the roles at work:
+`./blog touch 1` enqueues it, and the process that runs jobs (`./blog
+worker`, or `./blog server` unless `CYBERTRAIN_WORKER=0`) logs
+`touch: article 1: <title>`. On Kamal: `kamal app exec --reuse "./blog touch 1"`,
+then `kamal app logs --roles worker`.
 
 With a context set, Kamal builds the working tree (uncommitted changes
 included), not a clone of HEAD. To try the image without Kamal, from the
