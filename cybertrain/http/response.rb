@@ -73,7 +73,7 @@ module Cybertrain
       @upgrade = false
     end
 
-    # The writer of a streaming response (docs/design.md D35), nil for an
+    # The writer of a streaming response (docs/design.md D36), nil for an
     # ordinary one.
     # @return [BodyWriter, nil]
     # @api public

@@ -1,5 +1,5 @@
 ---
-source_sha256: b0c63be0215a23c8933cee7ffda4c74f0ae2a67d4fa63f95cc28ee13903a6607
+source_sha256: f4be922d7dac043f5311071ba2434dbcca14da15433985cf7586c8ab04b0839e
 ---
 # リアルタイム：ブラウザーへのストリーム
 
@@ -190,4 +190,4 @@ end
 - **`./<app> worker`** と **`./<app> feeds`** は HTTP を提供せず、ポーラーも動かしません。そのブロードキャストは行であり、サーバーが配信します（[プロセスの役割](background-and-operations.md#process-roles)）。
 - 1 つのデータベースを共有する複数のサーバーは、それぞれ自分のブラウザーにすべてのメッセージを、同じ順序・同じ id で配信します。
 
-ページのストリームのテスト：[ストリームとコンポーネントのテスト](testing.md#testing-streams-and-components)。設計：[docs/design.md](../design.md) D35 と D36。
+ページのストリームのテスト：[ストリームとコンポーネントのテスト](testing.md#testing-streams-and-components)。設計：[docs/design.md](../design.md) D36 と D37。

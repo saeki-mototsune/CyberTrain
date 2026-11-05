@@ -1,5 +1,5 @@
 ---
-source_sha256: b0c63be0215a23c8933cee7ffda4c74f0ae2a67d4fa63f95cc28ee13903a6607
+source_sha256: f4be922d7dac043f5311071ba2434dbcca14da15433985cf7586c8ab04b0839e
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -316,4 +316,4 @@ transmettre `Upgrade` et `Connection` (Caddy et kamal-proxy le font).
 
 Tester le flux d’une page&nbsp;: [Tester les flux et les
 composants](testing.md#testing-streams-and-components). La
-conception&nbsp;: [docs/design.md](../design.md) D35 et D36.
+conception&nbsp;: [docs/design.md](../design.md) D36 et D37.
