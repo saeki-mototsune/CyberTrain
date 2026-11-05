@@ -1,5 +1,6 @@
 ok   the first matching when wins, values separated by commas
 ok   Integer 1 matches Float 1.0 and the subject is evaluated once
+ok   Strings and SafeStrings compare by their text, both ways round
 ok   else is taken when nothing matches
 ok   no else and no match prints nothing
 ok   a String does not match Symbols
@@ -7,4 +8,4 @@ ok   blank text between case and the first when is dropped
 ok   case inside each, and an assignment inside a when stays block-local
 ok   nested case
 ok   syntax errors name the line
-9 tests, 32 assertions, 0 failures
+10 tests, 35 assertions, 0 failures

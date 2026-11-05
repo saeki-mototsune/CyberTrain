@@ -87,6 +87,12 @@ test "sum with and without a block" do
   assert_equal "3.5", render_blocks("<%= [1, 2.5].sum %>", env)
   assert_equal "items/blocks:1: sum: use join for Strings", blocks_runtime_error("<%= ['a'].sum %>")
   assert_equal "items/blocks:1: sum: cannot add nil", blocks_runtime_error("<%= [1, nil].sum %>")
+  # Kahan-Babuska compensation, as CRuby's Array#sum: 0.6, not 0.6000000000000001.
+  assert_equal "0.6 0.6", render_blocks("<%= [0.1, 0.2, 0.3].sum %> <%= [0.1, 0.2, 0.3].sum { |f| f } %>", env)
+  assert_equal "3.5", render_blocks("<%= [1, 0.5, 2].sum %>", env)
+  assert_equal "items/blocks:1: wrong number of arguments for 'sum'", blocks_runtime_error("<%= nums.sum(10) %>")
+  assert_equal "items/blocks:1: wrong number of arguments for 'min'", blocks_runtime_error("<%= nums.min(2) %>")
+  assert_equal "items/blocks:1: wrong number of arguments for 'flatten'", blocks_runtime_error("<%= mixed.flatten(1) %>")
 end
 
 test "sort_by, min_by, max_by" do
@@ -173,6 +179,17 @@ test "block parameters shadow and are restored after the call" do
   render_blocks("<%= counts.map { |k, v| v } %>", env)
   refute env.key?("k")
   refute env.key?("v")
+end
+
+test "locals and the output are restored when a block raises" do
+  env = blocks_env
+  env["n"] = [1, 2]
+  assert_equal "items/blocks:1: undefined method 'nope' for Integer", assert_raises("Cybertrain::Template::RuntimeError") { render_blocks("<%= n.map { |x| x.nope } %>", env) }
+  assert_equal "outer", env["x"]
+  assert_raises("Cybertrain::Template::RuntimeError") { render_blocks("<%= n.any? do |x| %><% y = 1 %>text<% x.nope %><% end %>", env) }
+  assert_equal "outer", env["x"]
+  refute env.key?("y")
+  assert_equal "kept outer", render_blocks("kept <%= x %>", env)
 end
 
 test "blocks nest" do

@@ -15,6 +15,13 @@ module Cybertrain
     class RuntimeError < StandardError
     end
 
+    # Raised by a helper for a call the template wrote wrongly (a block
+    # where none is taken, an unknown keyword): the interpreter re-raises it
+    # as a SyntaxError carrying the template's name and line, which the
+    # helper does not know.
+    class CallSyntaxError < SyntaxError
+    end
+
     class Node
       # A typed empty Array<Node> (spikes/NOTES.md rule 9).
       def self.list = Array.new(0) { Node.new }

@@ -302,6 +302,8 @@ module Cybertrain
           result = nil
           begin
             result = @helpers.call_object_method(recv, name_sym, name_str, args, kwargs, block, self, env)
+          rescue Cybertrain::Template::CallSyntaxError => e
+            raise SyntaxError, "#{@name}:#{node.iline}: #{e.message}"
           rescue Cybertrain::Template::SyntaxError => e
             raise e
           rescue StandardError => e
@@ -367,6 +369,10 @@ module Cybertrain
       # matches Float 1.0, as Ruby's `1.0 === 1` does).
       def case_equal?(l, r)
         case l
+        when SafeString, String
+          case r
+          when SafeString, String then return l.to_s == r.to_s
+          end
         when Integer
           case r
           when Integer then return l == r
@@ -515,6 +521,8 @@ module Cybertrain
         result = nil
         begin
           result = @helpers.helper_call(name, args, kwargs, block, self, env)
+        rescue Cybertrain::Template::CallSyntaxError => e
+          raise SyntaxError, "#{@name}:#{node.iline}: #{e.message}"
         rescue Cybertrain::Template::SyntaxError => e
           # A partial that failed to parse: already "<partial>:<line>: ...".
           raise e
@@ -876,12 +884,23 @@ module Cybertrain
           sep = args.empty? ? "" : string_arg(args, 0, node, name)
           a.map { |x| to_s_value(x) }.join(sep)
         when :to_a then a
-        when :sum then sum_values(a, node)
-        when :min then extreme(a, a, -1, node)
-        when :max then extreme(a, a, 1, node)
-        when :sort then pick(a, sorted_indices(a, node))
-        when :uniq then uniq_values(a)
+        when :sum
+          no_args(args, node, name)
+          sum_values(a, node)
+        when :min
+          no_args(args, node, name)
+          extreme(a, a, -1, node)
+        when :max
+          no_args(args, node, name)
+          extreme(a, a, 1, node)
+        when :sort
+          no_args(args, node, name)
+          pick(a, sorted_indices(a, node))
+        when :uniq
+          no_args(args, node, name)
+          uniq_values(a)
         when :compact
+          no_args(args, node, name)
           out = []
           a.each do |x|
             case x
@@ -891,6 +910,7 @@ module Cybertrain
           end
           out
         when :flatten
+          no_args(args, node, name)
           out = []
           flatten_into(out, a)
           out
@@ -947,7 +967,7 @@ module Cybertrain
         when :max_by then extreme(a, block_values(block, env, a, name, node), 1, node)
         when :group_by then group_values(a, block_values(block, env, a, name, node))
         when :each, :each_with_index, :each_slice
-          raise SyntaxError, "#{@name}:#{node.iline}: #{name} takes a do block in a <% %> tag (<% x.#{name} do |y| %>...<% end %>)"
+          raise SyntaxError, "#{@name}:#{node.iline}: #{name} takes a do block in a <% %> tag (<% x.each_slice(n) do |y| %>...<% end %> for each_slice)"
         else
           array_method(a, sym, name, args, node)
           no_block(node, "Array", name)
@@ -990,15 +1010,27 @@ module Cybertrain
 
       # The block's value for every item, in order. Block parameters shadow
       # outer names for the call and are restored after it, as each's are.
+      # A block that raises still restores them (and the output buffer):
+      # the console keeps one environment from line to line. Plain methods,
+      # not yielding ones, so the rescue is allowed (spikes/NOTES.md rules
+      # 32 and 45).
       def block_values(block, env, items, name, node)
         names = block.inames
         saved = save_locals(env, names)
         fresh = fresh_locals(env, block.ipairs)
+        saved_out = @out
         out = []
-        i = 0
-        while i < items.size
-          out << block_value(block, env, fresh, items[i], name, node)
-          i += 1
+        begin
+          i = 0
+          while i < items.size
+            out << block_value(block, env, fresh, items[i], name, node)
+            i += 1
+          end
+        rescue StandardError => e
+          @out = saved_out
+          restore_locals(env, names, saved)
+          drop_locals(env, fresh)
+          raise e
         end
         restore_locals(env, names, saved)
         drop_locals(env, fresh)
@@ -1011,11 +1043,19 @@ module Cybertrain
         names = block.inames
         saved = save_locals(env, names)
         fresh = fresh_locals(env, block.ipairs)
+        saved_out = @out
         found = -1
-        i = 0
-        while found < 0 && i < items.size
-          found = i if truthy?(block_value(block, env, fresh, items[i], name, node)) == want
-          i += 1
+        begin
+          i = 0
+          while found < 0 && i < items.size
+            found = i if truthy?(block_value(block, env, fresh, items[i], name, node)) == want
+            i += 1
+          end
+        rescue StandardError => e
+          @out = saved_out
+          restore_locals(env, names, saved)
+          drop_locals(env, fresh)
+          raise e
         end
         restore_locals(env, names, saved)
         drop_locals(env, fresh)
@@ -1077,28 +1117,65 @@ module Cybertrain
         out
       end
 
-      # Integers add to an Integer; one Float makes the sum a Float; an
-      # empty list is 0. Strings are refused (Ruby's sum would need a "" start).
+      # Integers add to an Integer; from the first Float on the sum is a
+      # Float, added with Kahan-Babuska compensation as CRuby's Array#sum
+      # does (so [0.1, 0.2, 0.3].sum is 0.6 on both runtimes); an empty list
+      # is 0. Strings are refused (Ruby's sum would need a "" start).
       def sum_values(values, node)
         int_total = 0
-        flt_total = 0.0
+        f = 0.0
+        c = 0.0
         float = false
         i = 0
         while i < values.size
           v = values[i]
+          x = 0.0
           case v
-          when Integer then int_total += v
+          when Integer
+            if float
+              x = v.to_f
+            else
+              int_total += v
+            end
           when Float
-            flt_total += v
-            float = true
+            unless float
+              float = true
+              f = int_total.to_f
+            end
+            x = v
           when SafeString, String then fail_at(node, "sum: use join for Strings")
           else fail_at(node, "sum: cannot add #{type_name(v)}")
           end
+          if float
+            # NaN and infinities as CRuby: x - x is NaN for both.
+            if f != f
+              nil
+            elsif x != x
+              f = x
+            elsif x - x != 0.0
+              f = (f - f != 0.0 && (f > 0.0) != (x > 0.0)) ? 0.0 / 0.0 : x
+            elsif f - f != 0.0
+              nil
+            else
+              t = f + x
+              if f.abs >= x.abs
+                c += (f - t) + x
+              else
+                c += (x - t) + f
+              end
+              f = t
+            end
+          end
           i += 1
         end
-        return int_total.to_f + flt_total if float
+        return f + c if float
 
         int_total
+      end
+
+      def no_args(args, node, name)
+        fail_at(node, "wrong number of arguments for '#{name}'") unless args.empty?
+        nil
       end
 
       # The item whose key is smallest (dir -1) or largest (dir 1), the first

@@ -5,7 +5,21 @@ require "cybertrain/template"
 # "case"). cybertrain/model links SQLite through FFI, so this program only
 # runs compiled: its snapshot comes from the binary (spikes/NOTES.md rule 23).
 
+# `tick` counts its calls, so a test can see how often the subject ran.
 class CaseHelpers < Cybertrain::Template::HelperBase
+  def initialize
+    @ticks = 0
+  end
+
+  def helper_call(name, args, kwargs, block, interp, env)
+    case name
+    when "tick"
+      @ticks += 1
+      @ticks
+    when "safe" then Cybertrain::SafeString.of("a")
+    else super(name, args, kwargs, block, interp, env)
+    end
+  end
 end
 
 def render_case(src, env)
@@ -39,6 +53,12 @@ end
 test "Integer 1 matches Float 1.0 and the subject is evaluated once" do
   assert_equal "one", render_case("<% case one %><% when 1.0 %>one<% else %>other<% end %>", case_env)
   assert_equal "two", render_case("<% case one + 1 %><% when 1 %>one<% when 2 %>two<% end %>", case_env)
+  assert_equal "one 2", render_case("<% case tick %><% when 5 %>five<% when 3, 1 %>one<% end %> <%= tick %>", case_env)
+end
+
+test "Strings and SafeStrings compare by their text, both ways round" do
+  assert_equal "safe", render_case("<% case safe %><% when 'a' %>safe<% end %>", case_env)
+  assert_equal "str", render_case("<% case word %><% when safe %>str<% end %>", case_env)
 end
 
 test "else is taken when nothing matches" do
