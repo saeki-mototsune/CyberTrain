@@ -152,7 +152,8 @@ module Cybertrain
       built = @server
       if built.nil?
         built = Server.new(ContextHandler.new(front_app), host: @config.host, port: @config.port,
-                                                          max_body_bytes: @config.max_body_bytes)
+                                                          max_body_bytes: @config.max_body_bytes,
+                                                          reuse_port: reuse_port?)
         @server = built
       end
       built
@@ -314,6 +315,17 @@ module Cybertrain
     end
 
     private
+
+    # Config#reuse_port, except in development: the dev server re-execs
+    # itself, and a stray second process on the port would answer with stale
+    # code. #server builds once, so this warns once.
+    def reuse_port?
+      return false unless @config.reuse_port
+      return true unless @config.development?
+
+      Cybertrain.logger.warn("reuse_port is ignored in development: a second process on the port would answer with stale code")
+      false
+    end
 
     # A boot failure: the message on STDOUT in place of the banner, exit 1.
     def fail_boot(message)

@@ -1,5 +1,5 @@
 ---
-source_sha256: 1d50e90dfdcb613ff87e9755fd0f54f80f23ce1bfccf5b67b0f63ac1230c10df
+source_sha256: 9774dd81ce04a49d069a89de780211e2926fa128c494ae7a4cd3c1b4fc1d55b6
 ---
 # Конфигурация
 
@@ -31,6 +31,7 @@ end
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: наибольшая страница, которую выдаёт `params.page_number` и принимает `Relation#page` (см. [Постраничный вывод](models.md#pagination)); значение, не являющееся числом не более чем из 18 цифр, или меньше 1 заменяется значением по умолчанию |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; разделённые запятыми имена заменяют список. Значение параметра, имя которого содержит одно из них (без учёта регистра ASCII: `password` совпадает и с `user[password]`), записывается как `[FILTERED]` в лог запросов и на страницу ошибок режима разработки; `[]` в `config/app.rb` это отключает |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` или `false` не даёт этому процессу выполнять задачи по расписанию и фоновые задачи (см. [Фоновая работа](background-and-operations.md#background-work)); `scheduler_interval` (1 с), `job_poll_interval` (5 с) и `job_max_attempts` (5) задаются в `config/app.rb` |
+| `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`; `1` или `true` выполняет bind с `SO_REUSEPORT`, так что несколько процессов могут слушать один порт, а в Linux ядро распределяет между ними соединения (в разработке игнорируется; см. [Running several processes](../deploy.en.md#running-several-processes)). Задайте `CYBERTRAIN_WORKER=0` во всех процессах, кроме одного |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`; путь встроенной проверки работоспособности (см. [Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check)); пустое значение её отключает; значение без ведущего `/` останавливает сервер при запуске. `health_worker_stale` (300 с) задаётся в `config/app.rb` |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` или `true` позволяет `Cybertrain::HttpClient` подключаться к loopback, частным и другим непубличным адресам (см. [Исходящий HTTP](external-services.md#outbound-http)) |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; SMTP-сервер, через который отправляет `Cybertrain::Mailer` (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |
