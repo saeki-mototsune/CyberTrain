@@ -25,5 +25,6 @@ ok   a client ahead of a lagging poller is not sent its rows again
 ok   prune deletes the rows older than the cutoff
 ok   replay returns the backlog of the named streams after an id
 ok   broadcast_replace_to writes the Turbo Stream HTML
+ok   broadcast_replace_to with partial: keeps the partial's markup and escapes its locals
 ok   the other broadcast shortcuts
-28 tests, 105 assertions, 0 failures
+29 tests, 106 assertions, 0 failures
