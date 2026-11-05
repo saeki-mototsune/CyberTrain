@@ -85,19 +85,19 @@ written up for upstream.
 
 The rules are numbered in the order they were found. By topic:
 
-- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 81
+- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph)
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
   37, 46 (Hash literals), 56, 63, 71, 73
 - Polymorphic values and narrowing: 8, 14, 29, 35
-- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 80
+- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
-  79, 80
+  79, 81
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
-- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 82, 83
+- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 84
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63
 
@@ -174,7 +174,8 @@ The rules are numbered in the order they were found. By topic:
     `SPINEL_WORKERS=2` adds 16-27% to the pages, 51% to a comment POST and
     49% to a static file. The POST used to lose a quarter: SQLite's
     busy_timeout slept a millisecond or more holding the worker, until a
-    busy handler retrying every 100 us replaced it (cybertrain/db/sqlite_ffi.rb). 1 stays
+    busy handler retrying every 100 us replaced it (cybertrain/db/sqlite_ffi.rb;
+    since rule 80 the wait is a green-thread `sleep` starting at 100 us). 1 stays
     the default (a one-core server); set it to the core count otherwise.
     **Since Spinel #9840 (in 2026.11.04.7026, not in 2026.09.12) an explicit
     `SPINEL_WORKERS=N` counts main among the N** and starts N-1 helpers
@@ -829,7 +830,32 @@ The rules are numbered in the order they were found. By topic:
     if x > 0; "ok"`). Found while re-checking rule 32. In a test of a
     rescuing helper, give the block a value after the raise or pass the
     result through a method.
-80. A relative constant path in a `rescue` clause whose first segment names
+80. Never wait for another connection's SQLite lock inside the SQLite call
+    on the request path: an FFI call holds its OS worker for as long as it
+    runs (`blocking: true` is accepted and ignored), and with one worker
+    every green thread is on that OS thread. A transaction that holds the
+    write lock and parks its green thread (I/O, a `sleep`, a safepoint)
+    then cannot reach its COMMIT while a second writer sits in the busy
+    handler, which slept 100 us at a time inside `sqlite3_step` for about
+    5 s: every request stalled for those 5 s and the second write failed
+    with "database is locked" (reproduced by test/db_busy_wait.rb,
+    saeki-mototsune/CyberTrain#134, 2026-11-05). The busy handler now only
+    records that SQLite asked to wait and returns 0, and
+    `Connection#step_waiting` / `#exec_waiting` retry after a green-thread
+    `sleep` (100 us doubling to 1 ms, 5 s in all), which lets the holder
+    run. "Asked" is the retry signal: SQLite calls the handler only when
+    waiting can help, so a BUSY it was not asked about (a stale WAL
+    snapshot) still fails at once. Only the first step waits (a statement
+    takes its locks before it changes or returns anything), and only
+    single statements are retried: a multi-statement `exec_script` (schema,
+    migrations, the WAL switch at open) and ROLLBACK still wait in C,
+    since a script refused half way cannot be re-run from the top.
+    A statement in a transaction SQLite already rolled back on its own
+    (FULL / IOERR / BUSY / NOMEM, rescued by the application inside the
+    block) is refused rather than run in autocommit, where it would commit by
+    itself (`Connection#refuse_if_transaction_gone`, saeki-mototsune/CyberTrain#158,
+    reproduced with `PRAGMA max_page_count` in test/db_rolled_back_transaction.rb).
+81. A relative constant path in a `rescue` clause whose first segment names
     a module that holds a class of the same name is not found: inside
     `module Cybertrain::Console`, `rescue Template::SyntaxError => e`
     (`Cybertrain::Template` holds the class `Cybertrain::Template::Template`)
@@ -846,7 +872,7 @@ The rules are numbered in the order they were found. By topic:
     Inner` inside `Inner` both agree). Spell a rescued class from the top
     (`rescue Cybertrain::Template::SyntaxError => e`, as Interpreter does),
     and read the warnings `spin test` prints.
-81. A lambda literal assigned to a module-level instance variable in the
+82. A lambda literal assigned to a module-level instance variable in the
     module body (`module V; @b = ->(c) { H.new(c) }; end`) never learns the
     argument types of its call sites (Spinel 2026.11.04.7026): its
     parameter keeps the Integer default, so `V.b.call(controller)` handed
@@ -861,7 +887,7 @@ The rules are numbered in the order they were found. By topic:
     lambda in a method or pass it positionally, never as a module-body
     ivar initialiser that is called with arguments.
 
-82. `gets` on STDIN does not flush a pending partial line on STDOUT under
+83. `gets` on STDIN does not flush a pending partial line on STDOUT under
     Spinel 2026.11.04.7026; flush before reading. CRuby flushes STDOUT
     before it blocks on a terminal read, so `STDOUT.write("A> "); STDIN.gets`
     shows the prompt first; the compiled program, run on a pty, prints
@@ -872,7 +898,7 @@ The rules are numbered in the order they were found. By topic:
     shows it at once; Console.run flushes after the banner and every prompt
     (a StringIO answers flush too).
 
-83. `Queue#pop(timeout: seconds)` works under Spinel 2026.11.04.7026 as
+84. `Queue#pop(timeout: seconds)` works under Spinel 2026.11.04.7026 as
     under CRuby: it answers the next element, or nil once the timeout has
     passed, and parks the green thread while it waits (another thread's
     `q << x` wakes it; checked with a reduced program, a Queue of a user
