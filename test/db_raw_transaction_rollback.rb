@@ -166,6 +166,12 @@ test "the statement classifiers read SQL the way SQLite tokenizes it" do
   refute conn.ends_transaction?("ROLLBACK\n\tTO s")
   refute conn.ends_transaction?("INSERT INTO t (v) VALUES ('ROLLBACK')")
   refute conn.ends_transaction?("BEGIN; ROLLBACK")
+  # Only the exact statements: anything more in the first statement is not
+  # an end SQLite would accept.
+  assert conn.ends_transaction?("COMMIT TRANSACTION")
+  refute conn.ends_transaction?("COMMIT 'bogus'")
+  refute conn.ends_transaction?("ROLLBACK BOGUS")
+  refute conn.ends_transaction?("END TRANSACTION now")
   # A standalone ROLLBACK: the one statement skipped after SQLite's rollback.
   assert conn.rollback_statement?("ROLLBACK")
   assert conn.rollback_statement?("rollback;")
@@ -174,6 +180,8 @@ test "the statement classifiers read SQL the way SQLite tokenizes it" do
   refute conn.rollback_statement?("ROLLBACK; BEGIN")
   refute conn.rollback_statement?("ROLLBACK; /* c */ INSERT INTO t (v) VALUES ('a')")
   refute conn.rollback_statement?("ROLLBACK TO s")
+  refute conn.rollback_statement?("ROLLBACK BOGUS")
+  refute conn.rollback_statement?("ROLLBACK 'x'")
   # Opens a transaction.
   assert conn.begins_transaction?("BEGIN; INSERT INTO t (v) VALUES ('a')")
   assert conn.begins_transaction?("/* tx */ begin immediate")

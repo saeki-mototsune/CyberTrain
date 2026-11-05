@@ -674,14 +674,16 @@ module Cybertrain
       # end a statement, and keywords are case-insensitive. Only the first
       # statement's leading keywords are read; nothing is parsed further.
 
-      # Whether the first statement of sql is COMMIT, END or a full ROLLBACK,
-      # the statements that end a transaction. ROLLBACK [TRANSACTION] TO a
-      # savepoint undoes part of one and does not.
+      # Whether the first statement of sql is COMMIT, END or ROLLBACK, each
+      # optionally followed by TRANSACTION and nothing else: the statements
+      # that end a transaction. ROLLBACK [TRANSACTION] TO a savepoint undoes
+      # part of one and does not, and anything more (`ROLLBACK BOGUS`,
+      # `COMMIT 'x'`) is not a statement SQLite would run, so it must not
+      # clear the lost-transaction mark either.
       def self.ends_transaction?(sql)
-        words = Connection.first_keywords(sql)
-        return false if words.empty?
-
-        words[0] == "COMMIT" || words[0] == "END" || Connection.full_rollback?(words)
+        words = Connection.statement_words(sql)
+        Connection.bare_keyword?(words, "COMMIT") || Connection.bare_keyword?(words, "END") ||
+          Connection.full_rollback?(words)
       end
 
       # A ROLLBACK and nothing else (comments, empty statements and a
@@ -690,7 +692,7 @@ module Cybertrain
       # after its ROLLBACK (`ROLLBACK; BEGIN`) runs, so what follows is never
       # dropped silently.
       def self.rollback_statement?(sql)
-        Connection.full_rollback?(Connection.first_keywords(sql)) && !Connection.statement_follows?(sql)
+        Connection.full_rollback?(Connection.statement_words(sql)) && !Connection.statement_follows?(sql)
       end
 
       # A script or statement whose first keyword is BEGIN.
@@ -699,13 +701,37 @@ module Cybertrain
         !words.empty? && words[0] == "BEGIN"
       end
 
-      # ROLLBACK or ROLLBACK TRANSACTION, not ROLLBACK [TRANSACTION] TO.
+      # ROLLBACK or ROLLBACK TRANSACTION, nothing more (so not ROLLBACK TO);
+      # words from #statement_words.
       def self.full_rollback?(words)
-        return false if words.empty? || words[0] != "ROLLBACK"
-        return false if words.size > 1 && words[1] == "TO"
-        return false if words.size > 2 && words[1] == "TRANSACTION" && words[2] == "TO"
+        Connection.bare_keyword?(words, "ROLLBACK")
+      end
 
-        true
+      # words is exactly [keyword] or [keyword, "TRANSACTION"].
+      def self.bare_keyword?(words, keyword)
+        return false if words.empty? || words[0] != keyword
+        return true if words.size == 1
+
+        words.size == 2 && words[1] == "TRANSACTION"
+      end
+
+      # Every word of the first statement, upcased, up to its ";" or the end
+      # of sql. Empty when the statement holds anything but words (a quoted
+      # name, a number, a symbol), which none of the statements classified
+      # here do.
+      def self.statement_words(sql)
+        words = Array.new(0) { "" }
+        n = sql.bytesize
+        i = Connection.skip_blank(sql, 0)
+        while i < n && sql.getbyte(i) != 59 # ;
+          return Array.new(0) { "" } unless Connection.word_byte?(sql.getbyte(i))
+
+          start = i
+          i += 1 while i < n && Connection.word_byte?(sql.getbyte(i))
+          words << sql.byteslice(start, i - start).to_s.upcase
+          i = Connection.skip_blank(sql, i)
+        end
+        words
       end
 
       # Up to three leading keywords of the first statement, upcased. Stops
