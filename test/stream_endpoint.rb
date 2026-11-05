@@ -51,6 +51,8 @@ end
 STACK = Stream::Endpoint.new(Fallback.new, CONFIG)
 SERVER = Cybertrain::Server.new(Cybertrain::ContextHandler.new(STACK), port: 0, read_timeout: 2, drain_timeout: 3.0,
                                 logger: Cybertrain::Logger.new(LOG, :info))
+# As Application#serve does: the poller before the listener.
+Stream::Poller.start!(CONFIG)
 SERVER.start
 
 # A raw client; every read is bounded (wait_readable first, rule 20).
@@ -183,16 +185,33 @@ test "a GET with a token is an event stream that delivers a broadcast" do
   assert subscribers_reach(0)
 end
 
-test "a fresh connection gets only what was broadcast after it connected" do
+# Restarts the poller with another interval (its first tick is at once).
+def restart_poller(poll_ms)
+  Stream::Poller.stop!
+  sleep 0.05
+  CONFIG.stream_poll_ms = poll_ms
+  Stream::Poller.start!(CONFIG)
+  sleep 0.05
+  nil
+end
+
+test "a fresh connection gets what was not yet polled when it connected, not what was" do
   Stream.broadcast("f", "old")
-  sleep 0.1
+  # polled (every 20 ms) before the connection subscribes
+  sleep 0.3
+  # a slow poller, so the next row is still unpolled when the client connects
+  restart_poller(2000)
+  Stream.broadcast("f", "pending")
   c = sse("s=#{token("f")}")
   assert subscribers_reach(1)
   Stream.broadcast("f", "new")
-  assert c.wait_for("data: new\n\n")
+  assert c.wait_for("data: new\n\n", 4.0)
+  assert_equal 1, c.count("data: pending\n")
   assert_equal 0, c.count("data: old")
+  assert c.text.byteindex("data: pending").to_i < c.text.byteindex("data: new").to_i
   c.close
   assert subscribers_reach(0)
+  restart_poller(20)
 end
 
 test "mode=json names the stream and sends the envelope" do
@@ -246,6 +265,19 @@ test "past stream_max_connections the answer is 503" do
   busy = plain_get("/cybertrain/stream?s=#{token("a")}")
   assert_equal "HTTP/1.1 503 Service Unavailable", head_lines(busy)[0]
   CONFIG.stream_max_connections = 1000
+  c.close
+  assert subscribers_reach(0)
+end
+
+test "without the poller the endpoint answers 503" do
+  Stream::Poller.stop!
+  sleep 0.1
+  res = plain_get("/cybertrain/stream?s=#{token("a")}")
+  assert_equal "HTTP/1.1 503 Service Unavailable", head_lines(res)[0]
+  assert res.text.end_with?("\r\n\r\nstream poller is not running")
+  assert Stream::Poller.start!(CONFIG)
+  c = sse("s=#{token("a")}")
+  assert subscribers_reach(1)
   c.close
   assert subscribers_reach(0)
 end

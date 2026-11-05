@@ -1,9 +1,10 @@
 ok   a GET with a token is an event stream that delivers a broadcast
-ok   a fresh connection gets only what was broadcast after it connected
+ok   a fresh connection gets what was not yet polled when it connected, not what was
 ok   mode=json names the stream and sends the envelope
 ok   Last-Event-ID replays the backlog once, then goes on live
 ok   a bad, foreign or missing token is a 403 with no body
 ok   past stream_max_connections the answer is 503
+ok   without the poller the endpoint answers 503
 ok   a client that goes away while idle is noticed within the ping interval
 ok   a ping comment goes out after the interval
 ok   Controller#stream writes its block's chunks
@@ -13,4 +14,4 @@ ok   turbo_stream_from renders a source whose token names the streams
 ok   turbo_stream_from ws: true builds a ws:// URL from the request
 ok   signed_stream_name and stream_source_path
 ok   stopping the server ends an open stream
-15 tests, 76 assertions, 0 failures
+16 tests, 83 assertions, 0 failures

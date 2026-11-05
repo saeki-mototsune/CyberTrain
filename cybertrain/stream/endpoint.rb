@@ -5,6 +5,7 @@ require "cybertrain/http/sse"
 require "cybertrain/http/parser"
 require "cybertrain/http/query"
 require "cybertrain/stream"
+require "cybertrain/stream/websocket_server"
 
 module Cybertrain
   module Stream
@@ -56,7 +57,16 @@ module Cybertrain
           response.set_header("Allow", "GET")
           return nil
         end
+        # Application#serve starts the poller before it binds the port; a
+        # stack without it would subscribe connections nothing feeds.
+        unless Poller.running?
+          Endpoint.plain(response, 503)
+          response.body = "stream poller is not running"
+          return nil
+        end
         wanted = Endpoint.parse(request)
+        return Endpoint.upgrade(ctx, wanted, @config) if Endpoint.websocket?(request)
+
         problem = wanted.request_problem
         if problem > 0
           Endpoint.plain(response, problem)
@@ -68,7 +78,6 @@ module Cybertrain
           Endpoint.plain(response, 503)
           return nil
         end
-        Poller.start!(config) unless Poller.running?
         response.status = 200
         response.content_type = "text/event-stream"
         response.set_header("Cache-Control", "no-store")
@@ -77,6 +86,59 @@ module Cybertrain
         response.body_writer = SSEWriter.new(hub, wanted.request_names, wanted.request_json, after,
                                              config.stream_ping_interval)
         nil
+      end
+
+      # Whether the request asks for a WebSocket (`Upgrade: websocket`).
+      def self.websocket?(request)
+        HeaderName.lower(request.header("upgrade").to_s) == "websocket"
+      end
+
+      # The WebSocket branch: the RFC 6455 handshake checks (a 400 when one
+      # fails: version 13, a 16-byte key, `Connection: upgrade`), then the
+      # 101 with the accept key; a bad token or a full process still gets
+      # the 101, then the close (1008, 1013), which is what a browser's
+      # WebSocket can report. Extensions and subprotocols are not
+      # negotiated (permessage-deflate is answered without it).
+      def self.upgrade(ctx, wanted, config)
+        request = ctx.request
+        response = ctx.response
+        key = request.header("sec-websocket-key").to_s
+        unless request.get? && request.header("sec-websocket-version").to_s == "13" &&
+               Stream.base64_key?(key) && Endpoint.upgrade_token?(request.header("connection").to_s)
+          Endpoint.plain(response, 400)
+          response.set_header("Sec-WebSocket-Version", "13")
+          return nil
+        end
+        problem = wanted.request_problem
+        if problem == 400
+          Endpoint.plain(response, 400)
+          return nil
+        end
+        close_code = 0
+        # A token that did not verify; none at all is fine in mode=json,
+        # where the client subscribes with messages.
+        close_code = 1008 if problem == 403 && (wanted.request_tokens > 0 || !wanted.request_json)
+        hub = Stream.hub
+        close_code = 1013 if close_code == 0 && hub.subscriber_count >= config.stream_max_connections
+        names = close_code == 0 ? wanted.request_names : Array.new(0) { "" }
+        writer = WebSocketWriter.new(hub, names, wanted.request_json, wanted.request_after,
+                                     config.stream_ping_interval, config.stream_max_message, close_code)
+        response.set_header("Upgrade", "websocket")
+        response.set_header("Sec-WebSocket-Accept", WebSocket::Frame.accept_key(key))
+        response.upgrade!(writer)
+        nil
+      end
+
+      # Whether a Connection header's comma-separated list holds "upgrade".
+      def self.upgrade_token?(value)
+        parts = value.split(",")
+        i = 0
+        while i < parts.size
+          return true if HeaderName.lower(parts[i].strip) == "upgrade"
+
+          i += 1
+        end
+        false
       end
 
       # An empty-bodied answer: 403, 400, 405 or 503.
@@ -185,9 +247,11 @@ module Cybertrain
       private
 
       def sse_session(sink, sub)
-        # Subscribed first (write_body), then the replay, then the boundary:
-        # a row broadcast while the replay ran is either in the replay or
-        # queued, and skip_through! drops the queued copy of a replayed one.
+        # Subscribed first (write_body), then the replay, then the boundary,
+        # max(after, the last replayed id) (`after` itself when the replay
+        # found nothing): a row broadcast while the replay ran is either in
+        # the replay or queued, and skip_through! drops the queued copy of a
+        # replayed one.
         last = @after
         if last >= 0
           backlog = Stream.replay(@names, last)

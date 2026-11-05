@@ -5,8 +5,10 @@ module Cybertrain
     # `SELECT MAX(id)` (one B-tree descent on the primary key) and, when that
     # passed the last id it delivered, the new rows, which it hands to
     # {Stream.hub}. Every minute it also deletes the rows older than
-    # {Config#stream_retention} seconds. Started by the first subscription
-    # ({Stream::Endpoint}), stopped with the server (Application#serve). It
+    # {Config#stream_retention} seconds; the one place that prunes. Started
+    # by Application#serve before it binds the port (so no subscription can
+    # come before the start position) and stopped with the server; the
+    # endpoint answers 503 while it is not running. It
     # starts at the current MAX(id): a message is delivered live only to
     # the subscribers present when it is polled; a reconnecting client asks
     # for what it missed (Stream.replay).
@@ -74,13 +76,24 @@ module Cybertrain
         nil
       end
 
+      # Moves last_id up to `id` (never down); Hub#deliver_polled calls it
+      # under the hub's lock.
+      def self.advance(id)
+        @last_id = id if id > @last_id
+        nil
+      end
+
       # Sets where the next tick starts (tests).
       def self.last_id=(id)
         @last_id = id
       end
 
       # One tick: delivers the rows above last_id to `hub`, in id order.
-      # The thread calls it; tests call it instead of waiting.
+      # The thread calls it; tests call it instead of waiting. last_id is
+      # "the highest row already delivered": it moves to a row's id inside
+      # Hub#deliver_polled, under the hub's lock and after the row went to
+      # the subscribers, so a subscription taken while a row is in flight
+      # gets a boundary below it and receives it.
       # @param hub [Hub]
       # @return [Integer] how many rows it delivered
       # @api public
@@ -92,11 +105,9 @@ module Cybertrain
         i = 0
         while i < rows.size
           msg = rows[i]
-          hub.deliver(msg.message_id, msg.message_stream, msg.message_payload)
-          last = msg.message_id
+          hub.deliver_polled(msg.message_id, msg.message_stream, msg.message_payload)
           i += 1
         end
-        @last_id = last
         rows.size
       end
 

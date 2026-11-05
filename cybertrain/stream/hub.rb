@@ -36,8 +36,16 @@ module Cybertrain
         @max_backlog = max_backlog
         @queue = Queue.new
         @dropped = false
-        # Messages with an id at or below this were sent by a replay.
-        @skip_through = 0
+        # The cutoff: messages with an id at or below it are not this
+        # subscriber's (written before it subscribed, or sent by a replay).
+        @boundary = 0
+      end
+
+      # Messages with an id at or below this are skipped (Hub#deliver and
+      # #stream_pop): set by Hub#subscribe, raised by #skip_through!.
+      # @return [Integer]
+      def boundary
+        @boundary
       end
 
       # The names listened to (a copy).
@@ -81,7 +89,7 @@ module Cybertrain
           message = @queue.pop(timeout: wait)
           return nil if @dropped || message.nil?
           # a negative id is a WebSocket reader's control message
-          return message if message.message_id > @skip_through || message.message_id < 0
+          return message if message.message_id > @boundary || message.message_id < 0
 
           wait = deadline - Time.now.to_f
           wait = 0.0 if wait < 0.0
@@ -98,7 +106,7 @@ module Cybertrain
       # @return [nil]
       # @api public
       def skip_through!(boundary)
-        @skip_through = boundary if boundary > @skip_through
+        @boundary = boundary if boundary > @boundary
         nil
       end
 
@@ -177,9 +185,17 @@ module Cybertrain
       # @param names [Array<String>]
       # @return [Subscriber]
       # @api public
+      # The new subscriber's cutoff is the poller's position (Poller.last_id,
+      # no query), taken under the lock #deliver takes: every row the poller
+      # delivers after this call is above it, every row it delivered before
+      # is not. So a row committed within the last poll interval before the
+      # subscription is still delivered.
       def subscribe(names)
         sub = Subscriber.new(names, @max_backlog)
-        @lock.synchronize { @subscribers << sub }
+        @lock.synchronize do
+          sub.skip_through!(Poller.last_id)
+          @subscribers << sub
+        end
         sub
       end
 
@@ -201,6 +217,20 @@ module Cybertrain
         message = Message.new(id, stream, payload)
         count = 0
         @lock.synchronize { count = hub_offer(message) }
+        count
+      end
+
+      # #deliver for the poller: the message goes to the subscribers and
+      # Poller.last_id moves to its id in one hold of the lock #subscribe
+      # takes to read it.
+      # @return [Integer] how many subscribers it went to
+      def deliver_polled(id, stream, payload)
+        message = Message.new(id, stream, payload)
+        count = 0
+        @lock.synchronize do
+          count = hub_offer(message)
+          Poller.advance(id)
+        end
         count
       end
 
@@ -233,7 +263,7 @@ module Cybertrain
         i = 0
         while i < @subscribers.size
           sub = @subscribers[i]
-          if sub.listens?(stream)
+          if message.message_id > sub.boundary && sub.listens?(stream)
             sub.stream_offer(message)
             count += 1
           end

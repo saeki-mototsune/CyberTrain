@@ -225,6 +225,52 @@ test "the replay-to-live handoff sends every row once, in id order" do
   assert_equal ["1", "2", "3"], sent
 end
 
+test "a subscriber's cutoff is the poller's position when it subscribes" do
+  hub = Stream::Hub.new(1000)
+  Stream::Poller.last_id = 5
+  sub = hub.subscribe(["a"])
+  assert_equal 5, sub.boundary
+  assert_equal 0, hub.deliver(5, "a", "delivered before")
+  assert_equal 1, hub.deliver(6, "a", "after")
+  assert_equal ["after"], payloads_of(sub)
+  Stream::Poller.last_id = 0
+end
+
+test "a row polled before subscribing is not delivered, one not yet polled is" do
+  fresh_db
+  hub = Stream::Hub.new(1000)
+  Stream.broadcast("a", "polled before")
+  assert_equal 1, Stream::Poller.run_once(hub)
+  Stream.broadcast("a", "committed before, not yet polled")
+  sub = hub.subscribe(["a"])
+  Stream.broadcast("a", "after")
+  assert_equal 2, Stream::Poller.run_once(hub)
+  assert_equal ["committed before, not yet polled", "after"], payloads_of(sub)
+end
+
+test "a replay that finds nothing leaves the boundary at after" do
+  fresh_db
+  hub = Stream::Hub.new(1000)
+  head = Stream.broadcast("a", "head")
+  Stream::Poller.reset!(hub)
+  sub = hub.subscribe(["a"])
+  assert_equal 0, Stream.replay(["a"], head).size
+  sub.skip_through!(head)
+  assert_equal head, sub.boundary
+  Stream.broadcast("a", "live")
+  Stream::Poller.run_once(hub)
+  assert_equal ["live"], payloads_of(sub)
+  # after below a pruned range: nothing to replay, live goes on from there
+  DB.with { |c| c.execute("UPDATE cybertrain_messages SET created_at = ?", [Time.now.to_i - 120]) }
+  Stream.prune(Time.now.to_i - 60)
+  late = hub.subscribe(["a"])
+  assert_equal 0, Stream.replay(["a"], 1).size
+  late.skip_through!(1)
+  Stream.broadcast("a", "next")
+  Stream::Poller.run_once(hub)
+  assert_equal ["next"], payloads_of(late)
+end
+
 test "prune deletes the rows older than the cutoff" do
   fresh_db
   Stream.broadcast("a", "old")

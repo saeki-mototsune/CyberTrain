@@ -12,8 +12,11 @@ ok   names can be added and removed
 ok   a poller tick delivers only the rows after the last id
 ok   Poller.reset! starts after the rows already written
 ok   the replay-to-live handoff sends every row once, in id order
+ok   a subscriber's cutoff is the poller's position when it subscribes
+ok   a row polled before subscribing is not delivered, one not yet polled is
+ok   a replay that finds nothing leaves the boundary at after
 ok   prune deletes the rows older than the cutoff
 ok   replay returns the backlog of the named streams after an id
 ok   broadcast_replace_to writes the Turbo Stream HTML
 ok   the other broadcast shortcuts
-18 tests, 58 assertions, 0 failures
+21 tests, 70 assertions, 0 failures

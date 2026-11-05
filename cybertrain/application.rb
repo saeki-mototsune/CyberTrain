@@ -199,6 +199,9 @@ module Cybertrain
       service_problem = Background.boot_problem(@config)
       fail_boot(service_problem) unless service_problem.empty?
       srv = server
+      # The stream poller before the listener: its start position (MAX(id))
+      # must come before any subscription. Only with the endpoint mounted.
+      Stream::Poller.start!(@config) unless @config.stream_path.empty?
       srv.start # bind first: a PortInUse error must not come after the banner
       print_boot_banner
       # After boot connected the database and SPINEL_WORKERS is set; only
@@ -214,7 +217,6 @@ module Cybertrain
       end
       Scheduler.stop!
       Background.stop_all
-      # Started by the first stream subscription, if any.
       Stream::Poller.stop!
       nil
     rescue PortInUse => e
