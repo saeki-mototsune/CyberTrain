@@ -1,5 +1,5 @@
 ---
-source_sha256: 73e63b06a3c0e42694f5489b74b58f65464e506bfc88c1ba18759c91bd5771dd
+source_sha256: ad53253b004ba194e54d04ee89ab0af9334d61a767eb103ce49f905a90700e85
 ---
 # Configuration
 
@@ -22,7 +22,7 @@ dernier mot&nbsp;:
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | requis en production&nbsp;; en dev/test, un secret est généré automatiquement dans `tmp/secret_key` |
-| `SPINEL_WORKERS` | `workers` | `1` |
+| `SPINEL_WORKERS` | `workers` | `1`&nbsp;; le serveur de développement l’ignore et tourne toujours avec un seul worker ([pourquoi]((template-language.md#file-resolution-enginerb))) |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`&nbsp;; `0.0.0.0` écoute sur toutes les interfaces (conteneurs) |
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Le développement accepte `localhost`, `127.0.0.1`, `[::1]`&nbsp;; des noms d’hôte exacts séparés par des virgules étendent cette liste (sans schéma, port ni joker). Les autres hôtes reçoivent une 403 avant les fichiers statiques, les sessions, le routage ou les diagnostics. C’est distinct de l’adresse d’écoute&nbsp;; la production et le test n’appliquent pas cette protection propre au développement |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`&nbsp;; aussi `Strict` ou `None` (`None` ajoute toujours `Secure`)&nbsp;; toute autre valeur arrête le serveur au démarrage |

@@ -174,7 +174,7 @@ module Cybertrain
     # listener is bound before it prints) and exits 1: without this the
     # process died with a misleading "Connection refused".
     def serve(argv)
-      ENV["SPINEL_WORKERS"] = Application.spinel_workers(@config.workers).to_s
+      ENV["SPINEL_WORKERS"] = Application.spinel_workers(Application.serving_workers(@config)).to_s
       port = Application.port_argument(argv)
       @config.port = port if port > 0
       # The rebuilder must exist before #server builds the stack (front_app
@@ -273,6 +273,27 @@ module Cybertrain
       workers > 1 ? workers + 1 : 1
     end
 
+    # How many request workers #serve runs: config.workers, except that
+    # development always serves on one. Its engine (cache: false) re-parses
+    # an edited template on the request that renders it and writes the
+    # parsed-template cache there; two workers could write it at once
+    # (Spinel has no GVL), and a lock on every render stalls requests for
+    # seconds (spikes/NOTES.md rule 57). Production and test engines are
+    # only read once booted. config.workers keeps the requested count, which
+    # the banner reports and #exec_new_build hands the next process.
+    def self.serving_workers(config)
+      config.development? ? 1 : config.workers
+    end
+
+    # The banner's environment line, naming the worker count #serve uses
+    # and, in development, a SPINEL_WORKERS above 1 that it ignored.
+    def self.environment_banner(config)
+      n = Application.serving_workers(config)
+      line = "=> #{config.env} environment (#{n} worker#{n == 1 ? "" : "s"}"
+      line += "; SPINEL_WORKERS=#{config.workers} is ignored in development" if n != config.workers && config.workers > 1
+      "#{line})"
+    end
+
     # The port number in argv[0], or 0 when there is none.
     def self.port_argument(argv)
       return 0 if argv.empty?
@@ -302,7 +323,7 @@ module Cybertrain
     def print_boot_banner
       c = @config
       puts "=> Booting cybertrain #{Cybertrain::VERSION}"
-      puts "=> #{c.env} environment (#{c.workers} worker#{c.workers == 1 ? "" : "s"})"
+      puts Application.environment_banner(c)
       # Application settings (Config#setting_string ...), secrets filtered.
       settings = c.settings_summary
       puts "=> Settings: #{settings}" unless settings.empty?

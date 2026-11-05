@@ -1,5 +1,5 @@
 ---
-source_sha256: 73e63b06a3c0e42694f5489b74b58f65464e506bfc88c1ba18759c91bd5771dd
+source_sha256: ad53253b004ba194e54d04ee89ab0af9334d61a767eb103ce49f905a90700e85
 ---
 # Конфигурация
 
@@ -21,7 +21,7 @@ end
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | обязательна в production; в dev/test генерируется автоматически в `tmp/secret_key` |
-| `SPINEL_WORKERS` | `workers` | `1` |
+| `SPINEL_WORKERS` | `workers` | `1`; сервер разработки игнорирует это значение и всегда работает с одним воркером ([почему]((template-language.md#file-resolution-enginerb))) |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`; `0.0.0.0` слушает на всех интерфейсах (контейнеры) |
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Режим разработки принимает `localhost`, `127.0.0.1`, `[::1]`; разделённые запятыми точные имена хостов расширяют этот список (без схемы, порта и подстановочных знаков). Другие хосты получают 403 до статических файлов, сессий, маршрутизации и диагностики. Это не связано с адресом прослушивания; production и test не применяют эту защиту режима разработки |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; также `Strict` или `None` (`None` всегда добавляет `Secure`); любое другое значение останавливает сервер при запуске |

@@ -107,6 +107,29 @@ test "spinel_workers gives Spinel one helper per request worker" do
   assert_equal 5, Cybertrain::Application.spinel_workers(4)
 end
 
+# Development re-parses an edited template on the request that renders it,
+# writing the engine's cache; with two workers two requests could write it at
+# once (spikes/NOTES.md rule 57), so development serves on one.
+test "development serves one worker whatever SPINEL_WORKERS asks for" do
+  dev = Cybertrain::Config.new
+  dev.env = "development"
+  dev.workers = 4
+  assert_equal 1, Cybertrain::Application.serving_workers(dev)
+  assert_equal "=> development environment (1 worker; SPINEL_WORKERS=4 is ignored in development)",
+               Cybertrain::Application.environment_banner(dev)
+  dev.workers = 1
+  assert_equal 1, Cybertrain::Application.serving_workers(dev)
+  assert_equal "=> development environment (1 worker)", Cybertrain::Application.environment_banner(dev)
+
+  prod = Cybertrain::Config.new
+  prod.env = "production"
+  prod.workers = 4
+  assert_equal 4, Cybertrain::Application.serving_workers(prod)
+  assert_equal "=> production environment (4 workers)", Cybertrain::Application.environment_banner(prod)
+  prod.workers = 1
+  assert_equal "=> production environment (1 worker)", Cybertrain::Application.environment_banner(prod)
+end
+
 test "the development stack passes a good page through" do
   res = CLIENT.get("/")
   assert_equal 200, res.status
