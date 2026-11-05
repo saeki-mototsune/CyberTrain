@@ -78,7 +78,8 @@ written up for upstream.
 | 79 | **Still there**: found on this build (its reduced program does not compile), and not new in it: the same program fails the same way on 2026.10.27.7020 and 2026.11.03.7025 (checked 2026-11-05; docs/spinel-feedback.md, "Rule 79"). |
 | 80 | **Still there**: found on this build. |
 | 81 | **Still there**: found on this build (its reduced program, a lambda literal in a module-body ivar called with an argument, prints garbage for the argument). |
-| 82 | **Still there**: found on this build (a pty shows the prompt only after the line is read). |
+| 82 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
+| 83 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -849,7 +850,6 @@ The rules are numbered in the order they were found. By topic:
     parameter from the `.call` sites. Rule 42's cousin: create a stored
     lambda in a method or pass it positionally, never as a module-body
     ivar initialiser that is called with arguments.
-
 82. `gets` on STDIN does not flush a pending partial line on STDOUT under
     Spinel 2026.11.04.7026; flush before reading. CRuby flushes STDOUT
     before it blocks on a terminal read, so `STDOUT.write("A> "); STDIN.gets`
@@ -860,7 +860,6 @@ The rules are numbered in the order they were found. By topic:
     prompt only appeared after each line). `STDOUT.flush` after the write
     shows it at once; Console.run flushes after the banner and every prompt
     (a StringIO answers flush too).
-
 83. `Queue#pop(timeout: seconds)` works under Spinel 2026.11.04.7026 as
     under CRuby: it answers the next element, or nil once the timeout has
     passed, and parks the green thread while it waits (another thread's

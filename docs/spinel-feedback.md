@@ -197,6 +197,7 @@ CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 | `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept | not re-checked (accepted) |
 | `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile |
 | `Application#serve` sets `SPINEL_WORKERS` to `workers + 1` when `workers > 1` (`Application.spinel_workers`, cybertrain/application.rb) | L | not checked | not checked | required: `SPINEL_WORKERS=2` starts one helper, which main does not help |
+| `Console.run` flushes after the banner and after every prompt (cybertrain/console.rb, rule 82) | M | not checked | not checked | required: without it the prompt appears only after the line is read |
 
 Every fix the fork carried is now in matz/spinel master, not only in the
 fork (#10254 to #10263, and #10316). #10316 is the fork's
