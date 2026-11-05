@@ -1,5 +1,8 @@
 # Cybertrain::Html -- escaping helpers and Cybertrain::SafeString, the marker
-# type views use to say "this string is already safe to drop into HTML".
+# type views use to say "this string is already safe to drop into HTML",
+# and the tag builder (Html.tag and friends).
+require "cybertrain/generator/inflector"
+
 module Cybertrain
   # HTML escaping for controllers and models. Templates escape `<%= %>`
   # output themselves; these are for building HTML in Ruby, e.g. for
@@ -168,5 +171,260 @@ module Cybertrain
     # boxed value, whose `getbyte` raises NoMethodError once the openssl
     # package is in the program (spikes/NOTES.md rules 56 and 62).
     EMPTY = SafeString.new("")
+  end
+
+  # Building tags in Ruby and in templates (`tag.div`, `content_tag`,
+  # `safe_join`, `class_names`, `dom_id`): docs/guide/template-language.md,
+  # "The tag builder".
+  module Html
+    # Elements that have no content and no closing tag.
+    # @api public
+    VOID_ELEMENTS = %w[area base br col embed hr img input link meta source track wbr]
+
+    # An element: `Html.tag("a", { href: "/x", class: ["btn", "big"] }, "Go")`
+    # is `<a href="/x" class="btn big">Go</a>`. The block's value, when
+    # given, is the content instead of `content`. Content that is not a
+    # SafeString is escaped; a void element (`br`, `input`, ...) takes none.
+    # Attributes: `nil` and `false` drop the attribute, `true` writes it bare
+    # (`disabled`), an Array joins its non-nil items with spaces, `data:` and
+    # `aria:` Hashes become `data-*` / `aria-*` attributes (underscores
+    # become dashes, `true`/`false` are written out), and every value is
+    # escaped, a SafeString too.
+    # @param name [String] the element name, `[a-z][a-z0-9-]*`
+    # @param attrs [Hash{String, Symbol => Object}]
+    # @param content [Object, nil]
+    # @return [SafeString]
+    # @raise [ArgumentError] for an invalid element or attribute name
+    # @raise [RuntimeError] for content in a void element
+    # @api public
+    def self.tag(name, attrs = {}, content = nil, &block)
+      inner = ""
+      given = false
+      if block
+        inner = content_html(block.call)
+        given = true
+      elsif !content.nil?
+        inner = content_html(content)
+        given = true
+      end
+      build_tag(name, attrs, inner, given)
+    end
+
+    # Html.tag with the content already HTML (inner; given false for none):
+    # what the template helpers call, with a block's output as `inner`.
+    def self.build_tag(name, attrs, inner, given)
+      tag_name = name.to_s
+      raise ArgumentError, "invalid element name '#{tag_name}'" unless element_name?(tag_name)
+
+      void = void_element?(tag_name)
+      raise "#{tag_name} is a void element" if void && given
+
+      attr_text = tag_attributes(attrs)
+      return SafeString.of("<#{tag_name}#{attr_text}>") if void
+
+      SafeString.of("<#{tag_name}#{attr_text}>#{inner}</#{tag_name}>")
+    end
+
+    # The attributes of Html.tag as HTML, each with its leading space ("" for
+    # none). Not named `attributes`: Model#attributes returns a Hash, and one
+    # name with two return types corrupts inference (spikes/NOTES.md rule 34).
+    # @param attrs [Hash{String, Symbol => Object}]
+    # @return [String]
+    # @api public
+    def self.tag_attributes(attrs)
+      buf = +""
+      # each_key: iterating a Hash of mixed keys into a String sink can box
+      # the key (spikes/NOTES.md rule 29).
+      attrs.each_key do |key|
+        attr_name = key_text(key)
+        value = attrs[key]
+        nested = false
+        if attr_name == "data" || attr_name == "aria"
+          case value
+          when Hash
+            nested = true
+            value.each_key do |sub|
+              sub_name = "#{attr_name}-#{key_text(sub).tr("_", "-")}"
+              buf << attribute_html(sub_name, value[sub], true)
+            end
+          end
+        end
+        buf << attribute_html(attr_name, value, false) unless nested
+      end
+      buf
+    end
+
+    # One attribute, ` name="value"` ("" when it is dropped). nested: inside
+    # data:/aria:, where true and false are written out as Rails does.
+    def self.attribute_html(attr_name, value, nested)
+      raise ArgumentError, "invalid attribute name '#{attr_name}'" unless attribute_name?(attr_name)
+
+      case value
+      when nil then return ""
+      when true then return nested ? " #{attr_name}=\"true\"" : " #{attr_name}"
+      when false then return nested ? " #{attr_name}=\"false\"" : ""
+      # Time before Array: a Time in a polymorphic slot matches Array
+      # (spikes/NOTES.md rule 8).
+      when Time then return " #{attr_name}=\"#{escape(value.to_s)}\""
+      when Array
+        words = Array.new(0) { "" }
+        value.each do |item|
+          case item
+          when nil then nil
+          else words << item.to_s
+          end
+        end
+        joined = words.join(" ")
+        return " #{attr_name}=\"#{escape(joined)}\""
+      end
+      " #{attr_name}=\"#{escape(value.to_s)}\""
+    end
+
+    # Content for a tag or safe_join: a SafeString as it is, nil as nothing,
+    # anything else escaped.
+    def self.content_html(value)
+      case value
+      when nil then ""
+      when SafeString then value.to_s
+      else escape(value.to_s)
+      end
+    end
+
+    def self.key_text(key)
+      case key
+      when Symbol then key.to_s
+      when String then key
+      else key.to_s
+      end
+    end
+
+    def self.void_element?(tag_name)
+      i = 0
+      while i < VOID_ELEMENTS.size
+        return true if VOID_ELEMENTS[i] == tag_name
+        i += 1
+      end
+      false
+    end
+
+    # [a-z][a-z0-9-]*: lowercase HTML, SVG and custom elements.
+    def self.element_name?(text)
+      s = text.to_s
+      n = s.bytesize
+      return false if n == 0
+
+      i = 0
+      while i < n
+        b = s.getbyte(i)
+        lower = b >= 97 && b <= 122
+        ok = i == 0 ? lower : (lower || (b >= 48 && b <= 57) || b == 45)
+        return false unless ok
+        i += 1
+      end
+      true
+    end
+
+    # [a-zA-Z_:][-a-zA-Z0-9_:.]*, which leaves no way to break out of the tag.
+    def self.attribute_name?(text)
+      s = text.to_s
+      n = s.bytesize
+      return false if n == 0
+
+      i = 0
+      while i < n
+        b = s.getbyte(i)
+        start = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || b == 95 || b == 58
+        ok = i == 0 ? start : (start || (b >= 48 && b <= 57) || b == 45 || b == 46)
+        return false unless ok
+        i += 1
+      end
+      true
+    end
+
+    # Joins items into HTML, escaping every item (and the separator) that
+    # is not a SafeString: `safe_join([tag.b("a"), "<"], " ")`.
+    # @param items [Array]
+    # @param sep [String, SafeString]
+    # @return [SafeString]
+    # @api public
+    def self.safe_join(items, sep = "")
+      glue = content_html(sep)
+      parts = Array.new(0) { "" }
+      items.each { |item| parts << content_html(item) }
+      joined = parts.join(glue)
+      SafeString.of(joined)
+    end
+
+    # Rails' class_names / token_list: the words of Strings and Symbols, of
+    # Arrays (nested too) and of each Hash key whose value is truthy, each
+    # word once, in order. `class_names("a", { "b" => true, "c" => false })`
+    # is "a b".
+    # @return [String]
+    # @api public
+    def self.class_names(*values)
+      class_names_of(values)
+    end
+
+    # class_names for an Array of values (the template helper's arguments).
+    def self.class_names_of(values)
+      words = Array.new(0) { "" }
+      add_class_words(words, values)
+      words.join(" ")
+    end
+
+    def self.add_class_words(words, values)
+      values.each do |value|
+        case value
+        when nil, false, true then nil
+        when Time then add_words(words, value.to_s)
+        when Array then add_class_words(words, value)
+        when Hash
+          value.each_key do |key|
+            on = value[key]
+            add_words(words, key_text(key)) unless on.nil? || on == false
+          end
+        else add_words(words, value.to_s)
+        end
+      end
+      nil
+    end
+
+    def self.add_words(words, text)
+      text.split(" ").each do |word|
+        next if word.empty?
+
+        seen = false
+        words.each { |w| seen = true if w == word }
+        words << word unless seen
+      end
+      nil
+    end
+
+    # The DOM id Rails' dom_id gives a record: "article_12", "new_article"
+    # for an unsaved one, "edit_article_12" with a prefix. The record answers
+    # model_name, id and new_record? (a Cybertrain::Model does).
+    # @param prefix [String] "" for none
+    # @return [String]
+    # @api public
+    def self.dom_id(record, prefix = "")
+      key = Inflector.underscore(record.model_name).tr("/", "_")
+      if record.new_record?
+        return prefix.empty? ? "new_#{key}" : "#{prefix}_#{key}"
+      end
+
+      prefix.empty? ? "#{key}_#{record.id}" : "#{prefix}_#{key}_#{record.id}"
+    end
+
+    # What `tag` evaluates to in a template: `tag.div(...)` is a method call
+    # on it, which Template::Helpers#call_object_method turns into
+    # Html.build_tag("div", ...). It has no state; TAG_BUILDER is the one
+    # instance.
+    # @api public
+    class TagBuilder
+      def tag_builder? = true
+    end
+
+    # @api public
+    TAG_BUILDER = TagBuilder.new
   end
 end

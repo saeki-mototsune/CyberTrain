@@ -1,0 +1,6 @@
+ok   tag with a do block captures the block's output
+ok   content, attributes, void and custom elements
+ok   content is escaped and attribute names are checked
+ok   content_tag
+ok   safe_join, class_names, dom_id
+5 tests, 29 assertions, 0 failures

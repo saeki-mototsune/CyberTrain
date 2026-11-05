@@ -64,6 +64,11 @@ module Cybertrain
         when "request_path" then request_path
         when "url_for" then url_for(arg(args, 0, name))
         when "paginate" then paginate(args)
+        when "tag" then Html::TAG_BUILDER
+        when "content_tag" then content_tag(args, kwargs, block, interp, env)
+        when "safe_join" then safe_join(args)
+        when "class_names" then Html.class_names_of(args)
+        when "dom_id" then dom_id(args)
         else
           return route(name, args) if name.end_with?("_path") || name.end_with?("_url")
 
@@ -77,6 +82,7 @@ module Cybertrain
         case recv
         when FormBuilder then recv.call_method(name_sym, args, kwargs)
         when Cybertrain::Page then page_method(recv, name_sym, name_str)
+        when Html::TagBuilder then tag_builder_call(name_str, args, kwargs, block, interp, env)
         else super(recv, name_sym, name_str, args, kwargs, block, interp, env)
         end
       end
@@ -469,6 +475,58 @@ module Cybertrain
         when :prev_number then page.prev_number
         else raise ArgumentError, "undefined method '#{name}' for Page"
         end
+      end
+
+      # --- tag, content_tag, safe_join, dom_id --------------------------------
+
+      # tag.div(class: "c"), tag.span("text"), tag.my_widget (<my-widget>),
+      # tag.div do ... end: the method name is the element, the keyword
+      # arguments its attributes (Html.tag's rules), the one positional
+      # argument or the block's output its content.
+      def tag_builder_call(name_str, args, kwargs, block, interp, env)
+        raise ArgumentError, "tag.#{name_str} takes at most one positional argument (the content)" if args.size > 1
+
+        element = name_str.tr("_", "-")
+        if block.nil?
+          return Html.build_tag(element, kwargs, "", false) if args.empty? || args[0].nil?
+
+          return Html.build_tag(element, kwargs, Html.content_html(args[0]), true)
+        end
+        Html.build_tag(element, kwargs, interp.capture(block, env), true)
+      end
+
+      # content_tag "p", "text", class: "x" / content_tag :p, class: "x" do ... end
+      def content_tag(args, kwargs, block, interp, env)
+        element = text_arg(args, 0, "content_tag")
+        raise ArgumentError, "content_tag takes a name and at most one content argument" if args.size > 2
+
+        if block.nil?
+          return Html.build_tag(element, kwargs, "", false) if args.size < 2 || args[1].nil?
+
+          return Html.build_tag(element, kwargs, Html.content_html(args[1]), true)
+        end
+        Html.build_tag(element, kwargs, interp.capture(block, env), true)
+      end
+
+      # safe_join(items, sep = ""): Html.safe_join.
+      def safe_join(args)
+        items = arg(args, 0, "safe_join")
+        sep = args.size > 1 ? args[1] : ""
+        case items
+        when Time then nil
+        when Array then return Html.safe_join(items, sep)
+        end
+        raise ArgumentError, "safe_join expects an Array, got #{FormBuilder.value_text(items)}"
+      end
+
+      # dom_id(record) / dom_id(record, "edit"): Html.dom_id.
+      def dom_id(args)
+        record = arg(args, 0, "dom_id")
+        prefix = args.size > 1 ? text_arg(args, 1, "dom_id") : ""
+        case record
+        when Cybertrain::Model then return Html.dom_id(record, prefix)
+        end
+        raise ArgumentError, "dom_id expects a record, got #{FormBuilder.value_text(record)}"
       end
 
       # --- partials and content_for ----------------------------------------
