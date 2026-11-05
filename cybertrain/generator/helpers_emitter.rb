@@ -116,7 +116,9 @@ module Cybertrain
         d.keywords_required.each { |k| args << "#{k}: kwargs[#{literal(k)}]" }
         keys.each { |k| args << "#{k}: kwargs[#{literal(k)}]" }
         call = args.empty? ? d.name : "#{d.name}(#{args.join(", ")})"
-        call = "#{call} { app_block_content(block, interp, env) }" if d.block?
+        # Only when the template passed a block, so `block_given?` in the
+        # helper answers as in Ruby.
+        call = "block.nil? ? #{call} : #{call} { app_block_content(block, interp, env) }" if d.block?
         call
       end
 

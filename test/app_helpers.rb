@@ -24,7 +24,11 @@ module ShoutHelper
   end
 
   def badge(text, kind = "info", &block)
-    Cybertrain::SafeString.of("<span class=\"#{kind}\">#{Cybertrain::Html.escape(Cybertrain::FormBuilder.value_text(text))}#{yield}</span>")
+    Cybertrain::SafeString.of("<span class=\"#{kind}\">#{Cybertrain::Html.escape(Cybertrain::FormBuilder.value_text(text))}#{block_given? ? yield : ""}</span>")
+  end
+
+  def given(&block)
+    block_given? ? "block: #{yield}" : "no block"
   end
 
   def price(value, unit: "USD")
@@ -53,9 +57,13 @@ class ApplicationHelpers < Cybertrain::Template::Helpers
     when "badge"
       helper_arity!(name, args, 1, 2)
       helper_no_keywords!(name, kwargs)
-      if args.size >= 2 then badge(args[0], args[1]) { app_block_content(block, interp, env) }
-      else badge(args[0]) { app_block_content(block, interp, env) }
+      if args.size >= 2 then block.nil? ? badge(args[0], args[1]) : badge(args[0], args[1]) { app_block_content(block, interp, env) }
+      else block.nil? ? badge(args[0]) : badge(args[0]) { app_block_content(block, interp, env) }
       end
+    when "given"
+      helper_arity!(name, args, 0, 0)
+      helper_no_keywords!(name, kwargs)
+      block.nil? ? given : given { app_block_content(block, interp, env) }
     when "price"
       helper_arity!(name, args, 1, 1)
       helper_keywords!(name, kwargs, ["unit"], 0)
@@ -139,6 +147,10 @@ end
 test "an optional positional and a block" do
   assert_equal "<span class=\"info\">a&amp;b</span>", render_inline("<%= badge 'a&b' %>")
   assert_equal "<span class=\"warn\">x <i>y</i></span>", render_inline("<%= badge 'x', 'warn' do %> <i>y</i><% end %>")
+end
+
+test "block_given? is false when the template passes no block" do
+  assert_equal "no block|block: x", render_inline("<%= given %>|<%= given do %>x<% end %>")
 end
 
 test "an unknown name is still an undefined helper" do

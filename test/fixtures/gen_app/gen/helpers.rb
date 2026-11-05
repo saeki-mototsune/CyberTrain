@@ -16,8 +16,8 @@ class ApplicationHelpers < Cybertrain::Template::Helpers
     when "post_badge"
       helper_arity!(name, args, 1, 2)
       helper_no_keywords!(name, kwargs)
-      if args.size >= 2 then post_badge(args[0], args[1]) { app_block_content(block, interp, env) }
-      else post_badge(args[0]) { app_block_content(block, interp, env) }
+      if args.size >= 2 then block.nil? ? post_badge(args[0], args[1]) : post_badge(args[0], args[1]) { app_block_content(block, interp, env) }
+      else block.nil? ? post_badge(args[0]) : post_badge(args[0]) { app_block_content(block, interp, env) }
       end
     else super(name, args, kwargs, block, interp, env)
     end

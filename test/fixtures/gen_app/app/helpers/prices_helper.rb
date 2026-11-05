@@ -4,6 +4,6 @@ module PricesHelper
   end
 
   def post_badge(post, kind = "info", &block)
-    link_to_path("#{kind}: #{yield}", post_path(post), class: "badge")
+    link_to_path("#{kind}: #{block_given? ? yield : "-"}", post_path(post), class: "badge")
   end
 end

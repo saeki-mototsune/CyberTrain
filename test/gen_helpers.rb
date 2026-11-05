@@ -175,8 +175,8 @@ EXPECTED_PRICES = <<~'RUBY'
       when "badge"
         helper_arity!(name, args, 1, 2)
         helper_no_keywords!(name, kwargs)
-        if args.size >= 2 then badge(args[0], args[1]) { app_block_content(block, interp, env) }
-        else badge(args[0]) { app_block_content(block, interp, env) }
+        if args.size >= 2 then block.nil? ? badge(args[0], args[1]) : badge(args[0], args[1]) { app_block_content(block, interp, env) }
+        else block.nil? ? badge(args[0]) : badge(args[0]) { app_block_content(block, interp, env) }
         end
       when "today"
         helper_arity!(name, args, 0, 0)

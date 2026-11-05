@@ -153,6 +153,8 @@ test "the generated ApplicationHelpers dispatches to the fixture's helpers" do
   # The block arrives as a SafeString; interpolated into a plain String it
   # is text again, and link_to_path escapes it.
   assert_equal "<a href=\"/posts/0\" class=\"badge\">warn: &lt;b&gt;x&lt;/b&gt;</a>", render_inline("<%= post_badge post, 'warn' do %><b>x</b><% end %>")
+  # No block: block_given? is false in the helper.
+  assert_equal "<a href=\"/posts/0\" class=\"badge\">info: -</a>", render_inline("<%= post_badge post %>")
 end
 
 test "the generated Gen::Components builds and renders the fixture's component" do

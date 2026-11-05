@@ -16,4 +16,4 @@ ok   view_assigns exposes the scanned ivars
 ok   the generated ApplicationHelpers dispatches to the fixture's helpers
 ok   the generated Gen::Components builds and renders the fixture's component
 ok   the generated Gen::Console tables
-18 tests, 44 assertions, 0 failures
+18 tests, 45 assertions, 0 failures
