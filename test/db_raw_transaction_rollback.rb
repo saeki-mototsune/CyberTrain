@@ -279,4 +279,35 @@ test "a failed statement that leaves the transaction open is not a rollback" do
   c.close
 end
 
+# A connection whose prepare rolls the open transaction back before it
+# fails, as SQLite does after an IOERR or NOMEM while it reads the schema
+# (saeki-mototsune/CyberTrain#167). No real SQLite does that on demand, so
+# this stands in for Connection#prepare_next: it rolls back, then prepares
+# for real, and the test's SQL makes that prepare fail.
+class LosingPrepareConnection < DB::Connection
+  def prepare_next(sql, offset, stmt_out)
+    DB::SQLite3.sqlite3_exec(@db, "ROLLBACK", nil, nil, nil) if DB::SQLite3.sqlite3_get_autocommit(@db) == 0
+    super(sql, offset, stmt_out)
+  end
+end
+
+test "a prepare that fails after SQLite rolled back marks the transaction lost" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  [RAW_PATH, RAW_PATH + "-wal", RAW_PATH + "-shm"].each do |f|
+    File.delete(f) if File.exist?(f)
+  end
+  c = LosingPrepareConnection.new(RAW_PATH)
+  c.exec_script("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT NOT NULL);")
+  c.exec_script("BEGIN")
+  assert_equal "", try_insert(c, "inside")
+  # The prepare fails (a syntax error) with the transaction already gone.
+  assert_includes try_script(c, "SELEC 1"), "syntax error"
+  assert_includes try_insert(c, "after the rollback"), GONE
+  assert_equal "", try_script(c, "ROLLBACK")
+  assert_equal "", try_insert(c, "next")
+  # The row inserted inside went with the rollback.
+  assert_equal ["next"], rows(c)
+  c.close
+end
+
 Cybertrain::Test.run!

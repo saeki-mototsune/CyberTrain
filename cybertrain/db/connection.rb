@@ -808,7 +808,7 @@ module Cybertrain
         while offset < n
           in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
           scratch = SQLite3.malloc(8)
-          next_offset = SQLite3.cybertrain_sqlite_prepare_at(@db, sql, offset, scratch)
+          next_offset = prepare_next(sql, offset, scratch)
           stmt = SQLite3.read_ptr(scratch)
           SQLite3.free(scratch)
           return "" if next_offset == SQLite3::NO_STATEMENT
@@ -834,6 +834,18 @@ module Cybertrain
           SQLite3.sqlite3_finalize(stmt)
         end
         ""
+      end
+
+      # Prepares the statement of sql that starts at byte offset into
+      # stmt_out (malloc(8)): the offset just past it, SQLite3::NO_STATEMENT
+      # when only blanks and comments are left, or a negated SQLite error
+      # code. A method of its own so that a test can stand in for it: no
+      # real SQLite fails a prepare and rolls the transaction back on demand
+      # (an IOERR or NOMEM while it reads the schema), and
+      # test/db_raw_transaction_rollback.rb needs that to check #run_script's
+      # guard on that path (saeki-mototsune/CyberTrain#167).
+      def prepare_next(sql, offset, stmt_out)
+        SQLite3.cybertrain_sqlite_prepare_at(@db, sql, offset, stmt_out)
       end
 
       def error_message(sql)
