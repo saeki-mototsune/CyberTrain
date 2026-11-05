@@ -134,6 +134,7 @@ end
 
 test "worker and feeds give Spinel the SPINEL_WORKERS serve does" do
   Cybertrain.config.workers = 2
+  expected = Cybertrain::Application.spinel_workers_for(Cybertrain.config).to_s
   spawn_stopper(0.3)
   worker_status = run(["worker"])
   worker_env = ENV["SPINEL_WORKERS"].to_s
@@ -145,8 +146,24 @@ test "worker and feeds give Spinel the SPINEL_WORKERS serve does" do
   Cybertrain.config.workers = 1
   assert_equal 0, worker_status
   assert_equal 0, feeds_status
-  assert_equal Cybertrain::Application.spinel_workers(2).to_s, worker_env
-  assert_equal "3", feeds_env
+  assert_equal expected, worker_env
+  assert_equal expected, feeds_env
+end
+
+test "in development the roles run on one worker, as serve does" do
+  # A job or feed callback renders through the development engine, whose
+  # parsed-template cache two workers must not write at once.
+  saved = Cybertrain.config.env
+  Cybertrain.config.env = "development"
+  Cybertrain.config.workers = 2
+  spawn_stopper(0.3)
+  status = run(["worker"])
+  env = ENV["SPINEL_WORKERS"].to_s
+  ENV["SPINEL_WORKERS"] = "1"
+  Cybertrain.config.workers = 1
+  Cybertrain.config.env = saved.to_s
+  assert_equal 0, status
+  assert_equal "1", env
 end
 
 Cybertrain::Test.run!
