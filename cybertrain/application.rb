@@ -22,6 +22,27 @@ require "cybertrain/views"
 require "cybertrain/dev"
 
 module Cybertrain
+  # The flag that ends `./<app> worker` and `./<app> feeds`
+  # (Application.request_stop_roles sets it; the TERM trap calls that).
+  # A module-level ivar, not a class variable (NOTES rules 18/64).
+  module RoleStop
+    @requested = false
+
+    def self.stop_roles!
+      @requested = true
+      nil
+    end
+
+    def self.resume_roles!
+      @requested = false
+      nil
+    end
+
+    def self.roles_stopped?
+      @requested
+    end
+  end
+
   # The booted application: config, database, views and the middleware
   # stack in front of the generated router. bin/<name>.rb builds one and
   # hands it Cybertrain::Main's argv:
@@ -217,6 +238,93 @@ module Cybertrain
       fail_boot(e.message)
     end
 
+    # `./<app> worker` (Main.run): boots (the config checks, the database),
+    # prints a banner, starts the scheduler (lease-gated: several workers
+    # may share the database) and the job threads, and runs until SIGTERM
+    # (or Application.request_stop_roles), then stops the job threads (they
+    # finish their jobs, for at most Config#job_drain_timeout seconds) and
+    # the scheduler. No port, no HTTP. Config#worker is set: in this role
+    # it is what the process is for.
+    # @param argv [Array<String>] what follows `worker`; must be empty
+    # @return [Integer] the exit status
+    def run_worker(argv)
+      unless argv.empty?
+        puts "error: worker takes no arguments (got #{argv.join(" ")})"
+        STDOUT.flush
+        return 1
+      end
+      @config.worker = true
+      boot
+      ENV["SPINEL_WORKERS"] = @config.workers.to_s
+      threads = @config.job_threads
+      tasks = Scheduler::TASKS.size
+      print_role_banner("worker: #{threads} job thread#{threads == 1 ? "" : "s"}, " \
+                        "#{tasks} scheduled task#{tasks == 1 ? "" : "s"}")
+      Application.reset_roles_stop
+      trap("TERM") { Application.request_stop_roles }
+      Scheduler.start!(@config)
+      Job.start!(@config)
+      Application.wait_roles_stop
+      Job.stop!
+      Scheduler.stop!
+      0
+    end
+
+    # `./<app> feeds [NAME...]` (Main.run): boots, checks the names against
+    # the registered feeds (an unknown one is an error that lists them),
+    # starts the WebSocket subscriptions (all of them, or the named ones:
+    # Background.start_only) and runs until SIGTERM, then stops them. No
+    # port, no jobs, no scheduler. With no subscription registered it says
+    # so and returns 0.
+    # @param names [Array<String>] the feeds to run; empty for all
+    # @return [Integer] the exit status
+    def run_feeds(names)
+      @config.worker = true
+      boot
+      unknown = Background.unknown_feed(names)
+      return role_error(unknown) unless unknown.empty?
+
+      problem = Background.boot_problem(@config)
+      return role_error(problem) unless problem.empty?
+
+      known = Background.feed_names
+      ENV["SPINEL_WORKERS"] = @config.workers.to_s
+      if known.empty?
+        print_role_banner("feeds: no WebSocket subscription is registered; nothing to run")
+        return 0
+      end
+      print_role_banner("feeds: #{(names.empty? ? known : names).join(", ")}")
+      Application.reset_roles_stop
+      trap("TERM") { Application.request_stop_roles }
+      Background.start_only(@config, names)
+      Application.wait_roles_stop
+      Background.stop_all
+      0
+    end
+
+    # Ends a run_worker or run_feeds: sets a flag the waiting main thread
+    # sees within 0.1 s (and nothing else, so the TERM trap can call it:
+    # see serve_development). Also callable from another thread, as tests
+    # do.
+    # @return [nil]
+    def request_stop_roles
+      Application.request_stop_roles
+    end
+
+    # @return [nil]
+    def self.request_stop_roles
+      RoleStop.stop_roles!
+    end
+
+    def self.reset_roles_stop
+      RoleStop.resume_roles!
+    end
+
+    def self.wait_roles_stop
+      sleep 0.1 until RoleStop.roles_stopped?
+      nil
+    end
+
     # "" when name works as the development build target, else the
     # `application name "<name>" <reason>` text serve prints after "error: ".
     # AppName.problem is the one predicate (Rebuilder.new and the CLI ask it
@@ -304,6 +412,26 @@ module Cybertrain
       puts "Use Ctrl-C to stop"
       STDOUT.flush
       nil
+    end
+
+    # The banner of a role without a port (worker, feeds): the environment
+    # and what the process runs.
+    def print_role_banner(what)
+      c = @config
+      puts "=> #{c.env} environment"
+      settings = c.settings_summary
+      puts "=> Settings: #{settings}" unless settings.empty?
+      puts "=> #{what}"
+      STDOUT.flush
+      nil
+    end
+
+    # A role's refusal to start: `error: MESSAGE`, exit status 1 (returned,
+    # not exit(1): Main.run's caller exits with it).
+    def role_error(message)
+      puts "error: #{message}"
+      STDOUT.flush
+      1
     end
 
     # The stack the server runs: diagnostics must stay inside hostname

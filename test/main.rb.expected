@@ -2,18 +2,24 @@ ok   server_args keeps only a port
 ok   server? recognises the bare, named and port forms
 Usage:
   ./blog [server [PORT]]   start the server
+  ./blog worker            run jobs and scheduled tasks, without HTTP
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
   ./blog help
 Usage:
   ./blog [server [PORT]]   start the server
+  ./blog worker            run jobs and scheduled tasks, without HTTP
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
   ./blog help
 Usage:
   ./blog [server [PORT]]   start the server
+  ./blog worker            run jobs and scheduled tasks, without HTTP
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
@@ -22,6 +28,8 @@ ok   help prints the usage for this app and exits 0
 Unknown command 'frobnicate'
 Usage:
   ./blog [server [PORT]]   start the server
+  ./blog worker            run jobs and scheduled tasks, without HTTP
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum

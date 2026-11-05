@@ -46,6 +46,26 @@ module Cybertrain
         false
       end
 
+      # Starts only the parts of the service named in `names` (`./<app>
+      # feeds NAME...`); all of it when `names` is empty. The default
+      # ignores the names and calls {#service_start}.
+      # @param config [Config]
+      # @param names [Array<String>]
+      # @return [Boolean] true when it started something
+      # @api public
+      def service_start_only(config, names)
+        service_start(config)
+      end
+
+      # The names {#service_start_only} accepts (a feed service's feeds),
+      # for `./<app> feeds NAME...` to check its arguments against. The
+      # default has none.
+      # @return [Array<String>]
+      # @api public
+      def service_feed_names
+        Background::NO_NAMES
+      end
+
       # Asks the service to end. Called once at shutdown, also for a
       # service whose service_start returned false: then it does nothing.
       # @return [nil]
@@ -63,6 +83,9 @@ module Cybertrain
         ""
       end
     end
+
+    # A typed empty list of names (NOTES rule 9), shared and never added to.
+    NO_NAMES = Array.new(0) { "" }
 
     # The registry: a constant, which Spinel roots for the collector (NOTES
     # rule 64), seeded with the base class and emptied (rule 9), so a
@@ -129,6 +152,65 @@ module Cybertrain
         i += 1
       end
       started
+    end
+
+    # Starts every registered service with {Service#service_start_only}, in
+    # registration order: what `./<app> feeds [NAME...]` runs. Unlike
+    # {Background.start_all} it ignores {Config#worker}: the role was asked
+    # for by name.
+    # @param config [Config]
+    # @param names [Array<String>] empty for everything
+    # @return [Integer] how many services started something
+    # @api public
+    def self.start_only(config, names)
+      started = 0
+      i = 0
+      while i < SERVICES.size
+        started += 1 if SERVICES[i].service_start_only(config, names)
+        i += 1
+      end
+      started
+    end
+
+    # Every registered service's {Service#service_feed_names}, in order.
+    # @return [Array<String>]
+    # @api public
+    def self.feed_names
+      out = Array.new(0) { "" }
+      i = 0
+      while i < SERVICES.size
+        SERVICES[i].service_feed_names.each { |name| out << name }
+        i += 1
+      end
+      out
+    end
+
+    # `unknown feed "NAME" (registered: a, b)` for the first of `names`
+    # that no service lists in {Service#service_feed_names}, "" when every
+    # one is known.
+    # @param names [Array<String>]
+    # @return [String]
+    # @api public
+    def self.unknown_feed(names)
+      Background.unknown_name_in(names, feed_names)
+    end
+
+    # The unknown_feed text for `names` checked against `known` (shared
+    # with WebSocket.unknown_feed).
+    # @param names [Array<String>]
+    # @param known [Array<String>]
+    # @return [String]
+    def self.unknown_name_in(names, known)
+      i = 0
+      while i < names.size
+        name = names[i]
+        unless known.include?(name)
+          listed = known.empty? ? "none" : known.join(", ")
+          return "unknown feed #{name.inspect} (registered: #{listed})"
+        end
+        i += 1
+      end
+      ""
     end
 
     # Asks every registered service to end, in registration order.

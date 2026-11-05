@@ -57,7 +57,12 @@ image: YOUR_DOCKERHUB_USER/notes      # YOUR_GITHUB/notes for ghcr.io
 
 servers:
   web:
-    - 203.0.113.10                    # the server's IP address or host name
+    hosts:
+      - 203.0.113.10                  # the server's IP address or host name
+  worker:
+    hosts:
+      - 203.0.113.10
+    cmd: ./notes worker
 
 proxy:
   ssl: true
@@ -81,6 +86,15 @@ server build it.
 
 Do not turn `proxy.ssl` off. The session cookie is `Secure` in production, so
 over plain HTTP every form submission gets a 403.
+
+Every role under `servers` runs the same image. `web` serves HTTP (and, unless
+`CYBERTRAIN_WORKER=0`, the jobs and scheduled tasks); `worker` runs only the
+jobs and scheduled tasks, with `./notes worker`. They share the database on
+the volume, and only the one holding the lease runs the scheduled tasks
+([deploy.en.md](deploy.en.md), part 7, "Splitting the roles"). To run the
+WebSocket subscriptions in a container of their own, turn on the `feeds` role
+that the generated file has commented out (`cmd: ./notes feeds trades`) and
+give `web` `env: clear: CYBERTRAIN_WORKER: 0`.
 
 With a framework that has the built-in health check (`GET /up`, README
 "Operations"), you can change the `healthcheck` `path` from `/up.html` to

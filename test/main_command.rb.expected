@@ -9,6 +9,8 @@ ok   a database that cannot be opened is a DB::Error too
 ok   server? is false for a registered name
 Usage:
   ./blog [server [PORT]]   start the server
+  ./blog worker            run jobs and scheduled tasks, without HTTP
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
@@ -24,6 +26,8 @@ Status  Migration ID    Migration Name
 Unknown command 'frobnicate'
 Usage:
   ./blog [server [PORT]]   start the server
+  ./blog worker            run jobs and scheduled tasks, without HTTP
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum

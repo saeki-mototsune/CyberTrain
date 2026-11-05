@@ -170,6 +170,10 @@ test "config/deploy.yml and .kamal/secrets configure Kamal for the app" do
   assert_includes deploy, "    CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12\n"
   assert_includes deploy, "  - \"blog_storage:/app/storage\"\n"
   assert_includes deploy, "db_status: app exec --reuse \"./blog db status\""
+  # The roles: web, a worker on the same image, and a commented feeds role.
+  assert_includes deploy, "  web:\n    hosts:\n      - 192.168.0.1\n"
+  assert_includes deploy, "  worker:\n    hosts:\n      - 192.168.0.1\n    cmd: ./blog worker\n"
+  assert_includes deploy, "  #   cmd: ./blog feeds trades\n"
   secrets = read("blog/.kamal/secrets")
   assert_includes secrets, "KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD\n"
   assert_includes secrets, "CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE\n"

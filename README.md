@@ -64,7 +64,7 @@ the same app in Rails 8.1, in about a tenth of the memory
 | [Models and the database](https://saeki-mototsune.github.io/CyberTrain/guide/models.html) | Migrations, queries beyond `where`, pagination, transactions, column names, ordering |
 | [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Rate limiting, the client address, parameterised headers, query strings and request bodies |
 | [Configuration](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
-| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Jobs, scheduled tasks, backups, the health check |
+| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Jobs (on `job_threads` threads), scheduled tasks, the `worker` and `feeds` process roles, backups, the health check |
 | [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html) | `HttpClient`, `WebSocket.subscribe`, `Mailer` |
 | [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Writing tests for an app, outbound calls, CI |
 | [Deploying](https://saeki-mototsune.github.io/CyberTrain/deploy.html) | To a server with systemd, or with Kamal |
