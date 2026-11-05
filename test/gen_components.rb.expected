@@ -9,4 +9,4 @@ ok   the emitter writes the per-class tables and the construction arms
 ok   two optional keywords give four arms, the most complete first
 ok   no components: build always raises
 ok   the output always ends with the component_builder line
-11 tests, 26 assertions, 0 failures
+11 tests, 29 assertions, 0 failures

@@ -402,9 +402,13 @@ module Cybertrain
     # development), the URL resolver and the layout. Boot calls it, and so
     # does Main.command's runner, so a command renders partials and
     # components (a mail body, a broadcast) as an action does.
-    def self.configure_views(c, views, url_resolver)
+    # `eager: false` leaves the embedded templates to be parsed when first
+    # rendered: a registered command runs on one thread and may render
+    # nothing, so a template that does not parse must not stop it (the
+    # server parses them all at boot and fails there instead).
+    def self.configure_views(c, views, url_resolver, eager: true)
       if c.production?
-        Views.configure_embedded(views, max_render_depth: c.max_render_depth)
+        Views.configure_embedded(views, max_render_depth: c.max_render_depth, eager: eager)
       else
         Views.configure(c.views_root, cache: !c.development?, max_render_depth: c.max_render_depth)
       end

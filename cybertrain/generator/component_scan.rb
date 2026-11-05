@@ -70,6 +70,24 @@ module Cybertrain
         infos
       end
 
+      # Raises when `line` (line `line_no` of `file`) assigns @content.
+      def self.reserved_ivar!(file, line_no, line)
+        return nil unless ControllerScan.ivar_names(line.strip).include?(RESERVED_NAME)
+
+        raise Error, "#{file}:#{line_no}: '@#{RESERVED_NAME}' is reserved in a component (rendering sets it to what the render block printed, Component#content); give the instance variable another name"
+      end
+
+      # The @content check over the lines from index `from` on (the body of
+      # ApplicationComponent, which is scanned for nothing else).
+      def self.check_reserved_ivars(file, lines, from)
+        j = from
+        while j < lines.size
+          reserved_ivar!(file, j + 1, lines[j])
+          j += 1
+        end
+        nil
+      end
+
       # rel: the file's path under app/components ("admin/user_row_component.rb").
       def self.scan_source(file, rel, source)
         modules = Array.new(0) { "" }
@@ -109,7 +127,12 @@ module Cybertrain
 
             full = (modules + [cm[1].to_s]).join("::")
             return nil unless BASES.include?(cm[2].to_s)
-            return nil if full == "ApplicationComponent"
+            if full == "ApplicationComponent"
+              # Not a component itself, but its methods run in every child:
+              # one assigning @content would be overwritten at render time.
+              check_reserved_ivars(file, lines, i)
+              return nil
+            end
 
             class_name = full
             superclass = cm[2].to_s
@@ -123,9 +146,7 @@ module Cybertrain
           break if indent <= class_indent && ModelScan.closing_end?(line)
 
           names = ControllerScan.ivar_names(line)
-          if names.include?(RESERVED_NAME)
-            raise Error, "#{file}:#{i}: '@#{RESERVED_NAME}' is reserved in a component (rendering sets it to what the render block printed, Component#content); give the instance variable another name"
-          end
+          reserved_ivar!(file, i, line)
           names.each { |n| ivars << n unless ivars.include?(n) }
           if ModelScan.opens_block?(line)
             skip_indent = indent unless ModelScan.one_line_block?(line)
@@ -137,6 +158,9 @@ module Cybertrain
             text = line
             start_line = i
             while HelperScan.open_parens(text) > 0 && i < lines.size
+              # A default such as `body: (@content = "x")` on a continued
+              # line is an assignment too.
+              reserved_ivar!(file, i + 1, lines[i])
               text = "#{text} #{lines[i].strip}"
               i += 1
             end

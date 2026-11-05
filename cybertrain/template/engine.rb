@@ -97,11 +97,14 @@ module Cybertrain
       # the first time would write @template_index and @template_list at once
       # (Spinel has no GVL), and a lock on every render stalled requests for
       # seconds (spikes/NOTES.md rule 57). A template that does not parse
-      # therefore fails the boot, not its page.
-      def self.embedded(sources, max_render_depth: MAX_RENDER_DEPTH)
+      # therefore fails the boot, not its page. `eager: false` parses each
+      # template when it is first rendered instead: for a single-threaded
+      # process that may render nothing (a registered command), so a
+      # template that does not parse stops only what renders it.
+      def self.embedded(sources, max_render_depth: MAX_RENDER_DEPTH, eager: true)
         engine = Engine.new("", cache: true, max_render_depth: max_render_depth)
         engine.sources = sources
-        engine.parse_all_embedded
+        engine.parse_all_embedded if eager
         engine
       end
 

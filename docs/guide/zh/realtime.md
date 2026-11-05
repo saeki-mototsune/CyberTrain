@@ -1,5 +1,5 @@
 ---
-source_sha256: 8a6c557e664a06f14ea869c54e55f0be7156409b1d89d78faf5e886d358b9316
+source_sha256: e6054a1e3a5194a02270940c82ba0254133258775b0034aa29e5153607ba5489
 ---
 # 实时：推送到浏览器的流
 
@@ -36,7 +36,7 @@ source_sha256: 8a6c557e664a06f14ea869c54e55f0be7156409b1d89d78faf5e886d358b9316
 </div>
 ```
 
-`turbo_stream_from` 接受任意数量的 String 和记录，并输出一个 `<turbo-stream-source>` 元素，其 URL 为它们全部携带一个令牌。Turbo 把它作为 `EventSource` 打开；`turbo_stream_from @article, ws: true` 则改为给出一个 `ws://` URL（在 HTTPS 之后为 `wss://`），Turbo 把它作为 WebSocket 打开。无论哪种方式，页面都不需要你写任何 JavaScript。
+`turbo_stream_from` 接受任意数量的 String 和记录，并输出一个 `<turbo-stream-source>` 元素，其 URL 为它们全部携带一个令牌。Turbo 把它作为 `EventSource` 打开；`turbo_stream_from @article, ws: true` 则改为给出一个 `ws://` URL（在 HTTPS 之后为 `wss://`），Turbo 把它作为 WebSocket 打开。无论哪种方式，页面都不需要你写任何 JavaScript。不过 Turbo 不会重新打开丢失的 WebSocket（网络中断、服务器重启）：那个页面在重新加载之前收不到更多更新，而 `EventSource` 会自行重连并重放错过的内容。除非确实需要 WebSocket，否则请保留默认方式，或者用你自己的 JavaScript 重连（见下文的 `&after=`）。
 
 然后在改变了数据的动作中广播：
 
@@ -106,7 +106,7 @@ partial 由 `Cybertrain::Views.render_partial` 渲染，它在没有请求的情
 
 在 `mode=json` 下，每条消息都是一个以其流命名的事件，其数据为 `{"stream": ..., "id": ..., "data": ...}`，负载放在 `data` 中（以 String 的形式广播 JSON：`Stream.broadcast("prices", JSON.generate({ "price" => 12.5 }))`）。在默认的 `mode=raw` 下，负载原样作为普通的 `message` 事件发出，这正是 Turbo 读取的内容。
 
-连接断开时浏览器会自动重连，并发送它看到的最后一个事件的 id（`Last-Event-ID`）。端点随后会先重发这些流中 id 更大、且仍在表中（在 `stream_retention` 之内）的所有消息，因此中间的内容不会丢失。离开时间更长的页面应当重新加载。静默 15 秒后会发出一行注释（`: ping`），以便代理保持连接打开。
+连接断开时浏览器会自动重连，并发送它看到的最后一个事件的 id（`Last-Event-ID`）。端点随后会先重发这些流中 id 更大、且仍在表中（在 `stream_retention` 之内）的所有消息，因此中间的内容不会丢失。离开时间更长的页面应当重新加载。在第一个事件到达之前，浏览器没有可发送的 id，所以在这段窗口内断开的连接不会得到任何重放：页面加载时渲染的内容就是它在下一次广播到达之前的状态。静默 15 秒后会发出一行注释（`: ping`），以便代理保持连接打开。
 
 ## 在 JavaScript 中使用 WebSocket
 
@@ -158,7 +158,7 @@ end
 
 ## 签名的流名称
 
-页面只有持有指明某个流的令牌，才能读取该流。令牌由流名称和一个 HMAC-SHA256 签名组成，签名的密钥是从 `secret_key_base` 专为流派生出来的（如同 Rails 的 `turbo/signed_stream_verifier_key`），因此令牌绝不会是有效的会话 cookie；端点检查签名，既不读取会话，也不读取数据库。这就是 Turbo 的模型：能够渲染该页面的人就能读取它的流。
+页面只有持有指明某个流的令牌，才能读取该流。令牌由流名称和一个 HMAC-SHA256 签名组成，签名的密钥是从 `secret_key_base` 专为流派生出来的（如同 Rails 的 `turbo/signed_stream_verifier_key`），因此令牌绝不会是有效的会话 cookie；端点检查签名，既不读取会话，也不读取数据库。这就是 Turbo 的模型：能够渲染该页面的人就能读取它的流。令牌不会过期；更改 `secret_key_base` 会使所有令牌失效，跨越这次部署仍然打开的页面在重新加载之前收不到更新（`EventSource` 把 403 视为最终结果）。
 
 <!-- list: points -->
 - 专属于某个用户的流，是以该用户的记录命名的流 `turbo_stream_from @user`（`"users:7"`），只在该用户的页面上渲染。任何拿到该令牌的人，只要密钥不变，都能读取这个流。

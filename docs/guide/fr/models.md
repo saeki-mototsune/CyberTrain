@@ -1,5 +1,5 @@
 ---
-source_sha256: 06a2682369ca0548625787806e6294f318e2302f347f98d610de9f3f8afb8e10
+source_sha256: 9611182b4eb6d6446cbc762f59710844e389112b4d966663252c35c9cffc065c
 ---
 # Modèles et base de données
 
@@ -191,7 +191,10 @@ Une association dont le nom simple est déjà pris par une colonne, une autre as
 `t.binary` crée une colonne `BLOB`, pour des octets qui ne sont pas du
 texte&nbsp;: une vignette, un instantané compressé, une clé. L’attribut est
 une String qui contient exactement les octets stockés, octets NUL et octets
-au-dessus de 127 compris&nbsp;:
+au-dessus de 127 compris, ou `nil` pour un `NULL` (la colonne accepte NULL
+sauf si elle est déclarée `null: false`&nbsp;: une photo enregistrée avant
+l’ajout de la colonne n’a pas de vignette, vérifiez `nil` avant
+`bytesize`)&nbsp;:
 
 ```ruby
 # db/migrate/20261105090000_add_thumbnail_to_photos.rb
@@ -215,6 +218,8 @@ Photo.find(photo.id).thumbnail.bytesize   # les mêmes octets en retour
   (`c.execute("INSERT INTO photos (thumbnail) VALUES (?)", [Cybertrain::DB::Blob.new(bytes)])`).
 - Une cellule BLOB lue en SQL brut est une String de ses octets&nbsp;;
   `Cybertrain::Cast.binary(value)` la restreint (`""` pour `NULL`).
+- `Photo.where(thumbnail: bytes)` lie aussi les octets comme un BLOB (un
+  TEXT lié n’est jamais égal à un BLOB stocké).
 - `db/schema.rb` réécrit la colonne sous la forme `t.binary`, et la console
   affiche une valeur binaire comme `<N bytes>`.
 - Gardez les gros fichiers hors de la base&nbsp;: un envoi de fichier

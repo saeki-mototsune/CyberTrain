@@ -8,4 +8,4 @@ ok   class_names
 ok   dom_id
 ok   the tag builder prints as nothing
 ok   class Hashes and Arrays go through class_names; other Hashes are refused
-10 tests, 54 assertions, 0 failures
+10 tests, 56 assertions, 0 failures

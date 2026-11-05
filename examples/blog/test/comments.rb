@@ -187,6 +187,21 @@ test "a new comment is broadcast as a Turbo Stream append to the article's strea
   assert_includes payload, "action=\"#{comments_path(article)}/#{comment.id}\""
 end
 
+test "a destroyed comment is broadcast as a Turbo Stream remove of its element" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  doomed = BlogTest.comment(article, "Bob", "Delete me")
+  client.get(BlogTest.article_path(article))
+  before = Cybertrain::Stream.max_id
+  client.post("#{comments_path(article)}/#{doomed.id}", { "_method" => "delete",
+                                                          "authenticity_token" => BlogTest.form_token(client) })
+  assert_equal 0, Comment.count
+  assert Cybertrain::Stream.max_id > before, "expected a cybertrain_messages row"
+  message = last_message
+  assert_equal "articles:#{article.id}", message[0]
+  assert_equal "<turbo-stream action=\"remove\" target=\"comment_#{doomed.id}\"></turbo-stream>", message[1]
+end
+
 test "a comment that is not saved broadcasts nothing" do
   client = new_client
   article = BlogTest.article("Hello Rails")
