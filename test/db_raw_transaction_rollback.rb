@@ -182,10 +182,6 @@ test "the statement classifiers read SQL the way SQLite tokenizes it" do
   refute conn.rollback_statement?("ROLLBACK TO s")
   refute conn.rollback_statement?("ROLLBACK BOGUS")
   refute conn.rollback_statement?("ROLLBACK 'x'")
-  # Opens a transaction.
-  assert conn.begins_transaction?("BEGIN; INSERT INTO t (v) VALUES ('a')")
-  assert conn.begins_transaction?("/* tx */ begin immediate")
-  refute conn.begins_transaction?("CREATE TRIGGER g AFTER INSERT ON t BEGIN SELECT 1; END")
 end
 
 # A script whose own BEGIN opened the transaction SQLite then rolled back.
@@ -217,6 +213,52 @@ test "a BEGIN that fails on its own opened nothing and marks nothing" do
   assert_includes try_script(c, "BEGIN BOGUS"), "syntax error"
   assert_equal "", try_insert(c, "after the failed begin")
   assert_equal ["after the failed begin"], rows(c)
+  c.close
+end
+
+# A script that opens its transaction after other statements
+# (saeki-mototsune/CyberTrain#164): exec_script runs a script one statement
+# at a time, so it sees the transaction open whatever came before the BEGIN.
+def late_begin_script
+  big = "x" * 2000
+  script = +"CREATE TABLE IF NOT EXISTS u (v TEXT); BEGIN;"
+  i = 0
+  while i < 50
+    script << " INSERT INTO t (v) VALUES ('#{big}');"
+    i += 1
+  end
+  script
+end
+
+test "a script that opens its transaction after other statements is covered" do
+  c = small_database
+  assert_includes try_script(c, late_begin_script), "database or disk is full"
+  assert_includes try_insert(c, "after the script"), GONE
+  assert_equal "", try_script(c, "ROLLBACK")
+  assert_equal "", try_insert(c, "next")
+  assert_equal ["next"], rows(c)
+  c.close
+end
+
+test "a script whose own BEGIN fails opened nothing and marks nothing" do
+  c = small_database
+  assert_includes try_script(c, "BEGIN BOGUS; INSERT INTO t (v) VALUES ('never');"), "syntax error"
+  assert_equal "", try_insert(c, "after the failed script")
+  assert_equal ["after the failed script"], rows(c)
+  c.close
+end
+
+test "a script runs each statement once, trigger bodies as part of theirs" do
+  c = small_database
+  c.exec_script(
+    "CREATE TABLE log (v TEXT); " \
+    "CREATE TRIGGER g AFTER INSERT ON t BEGIN INSERT INTO log (v) VALUES (new.v); END; " \
+    "INSERT INTO t (v) VALUES ('a'); -- a comment; not a statement\n" \
+    "INSERT INTO t (v) VALUES ('b; with a semicolon');"
+  )
+  assert_equal ["a", "b; with a semicolon"], rows(c)
+  logged = c.execute("SELECT v FROM log ORDER BY rowid").map { |r| r["v"].to_s }
+  assert_equal ["a", "b; with a semicolon"], logged
   c.close
 end
 

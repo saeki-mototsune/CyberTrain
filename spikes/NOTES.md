@@ -865,9 +865,12 @@ The rules are numbered in the order they were found. By topic:
     tokenizer does (substring checks missed `ROLLBACK /* ; */ TO s` and
     `ROLLBACK` + line break + `TO s`). That ROLLBACK is skipped, since
     running it would raise "no transaction is active" over the
-    application's own error. A script whose first keyword is BEGIN counts
-    as inside the transaction it opens; a BEGIN further into a script is
-    not seen (a keyword search would match `CREATE TRIGGER ... BEGIN`)
+    application's own error. `exec_script` runs a script one statement at
+    a time (`cybertrain_sqlite_prepare_at`, SQLite's own parser splitting
+    the text, trigger bodies included), reading SQLite's transaction state
+    before each statement, so a BEGIN anywhere in a script is seen and a
+    BEGIN that fails marks nothing (saeki-mototsune/CyberTrain#164;
+    sqlite3_exec showed the state only before and after the whole script)
     (test/db_raw_transaction_rollback.rb).
 81. A relative constant path in a `rescue` clause whose first segment names
     a module that holds a class of the same name is not found: inside
