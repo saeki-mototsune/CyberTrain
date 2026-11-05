@@ -35,7 +35,8 @@ module Cybertrain
     # parameterless public `def`s (ModelScan's: callable by name) and the
     # keyword parameters of `initialize` (the construction arm). A file
     # whose class inherits from neither is skipped, and so is
-    # ApplicationComponent itself (an abstract base with no template).
+    # ApplicationComponent itself (an abstract base with no template). A
+    # `content` keyword or `@content` ivar is an Error (RESERVED_NAME).
     module ComponentScan
       class Error < StandardError
       end
@@ -43,6 +44,11 @@ module Cybertrain
       BASES = ["Cybertrain::Component", "::Cybertrain::Component", "ApplicationComponent", "::ApplicationComponent"]
       CLASS_LINE = /\A\s*class\s+([A-Z][\w:]*)\s*<\s*([A-Z:][\w:]*)/
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/
+      # Neither an `initialize` keyword nor an ivar may be called this:
+      # Component#render_with sets @content to the block's output, so either
+      # would be overwritten without a word (ViewComponent raises
+      # ReservedParameterError for the same name).
+      RESERVED_NAME = "content"
 
       def self.scan_dir(dir)
         infos = Array.new(0) { ComponentInfo.new("", "", "", [], [], [], [], "") }
@@ -62,6 +68,24 @@ module Cybertrain
           infos << info
         end
         infos
+      end
+
+      # Raises when `line` (line `line_no` of `file`) assigns @content.
+      def self.reserved_ivar!(file, line_no, line)
+        return nil unless ControllerScan.ivar_names(line.strip).include?(RESERVED_NAME)
+
+        raise Error, "#{file}:#{line_no}: '@#{RESERVED_NAME}' is reserved in a component (rendering sets it to what the render block printed, Component#content); give the instance variable another name"
+      end
+
+      # The @content check over the lines from index `from` on (the body of
+      # ApplicationComponent, which is scanned for nothing else).
+      def self.check_reserved_ivars(file, lines, from)
+        j = from
+        while j < lines.size
+          reserved_ivar!(file, j + 1, lines[j])
+          j += 1
+        end
+        nil
       end
 
       # rel: the file's path under app/components ("admin/user_row_component.rb").
@@ -103,7 +127,12 @@ module Cybertrain
 
             full = (modules + [cm[1].to_s]).join("::")
             return nil unless BASES.include?(cm[2].to_s)
-            return nil if full == "ApplicationComponent"
+            if full == "ApplicationComponent"
+              # Not a component itself, but its methods run in every child:
+              # one assigning @content would be overwritten at render time.
+              check_reserved_ivars(file, lines, i)
+              return nil
+            end
 
             class_name = full
             superclass = cm[2].to_s
@@ -116,7 +145,9 @@ module Cybertrain
           end
           break if indent <= class_indent && ModelScan.closing_end?(line)
 
-          ControllerScan.ivar_names(line).each { |n| ivars << n unless ivars.include?(n) }
+          names = ControllerScan.ivar_names(line)
+          reserved_ivar!(file, i, line)
+          names.each { |n| ivars << n unless ivars.include?(n) }
           if ModelScan.opens_block?(line)
             skip_indent = indent unless ModelScan.one_line_block?(line)
           elsif line == "private" || line == "protected"
@@ -127,12 +158,18 @@ module Cybertrain
             text = line
             start_line = i
             while HelperScan.open_parens(text) > 0 && i < lines.size
+              # A default such as `body: (@content = "x")` on a continued
+              # line is an assignment too.
+              reserved_ivar!(file, i + 1, lines[i])
               text = "#{text} #{lines[i].strip}"
               i += 1
             end
             d = HelperScan.parse_def(file, start_line, text)
             unless d.required.empty? && d.optional.empty? && !d.block?
               raise Error, "#{file}:#{start_line}: component parameters must be keywords (render component: passes them by name)"
+            end
+            if d.keywords_required.include?(RESERVED_NAME) || d.keywords_optional.include?(RESERVED_NAME)
+              raise Error, "#{file}:#{start_line}: '#{RESERVED_NAME}' is reserved in a component (it is what the render block printed, Component#content); give the keyword another name"
             end
             d.keywords_required.each { |k| kw_required << k }
             d.keywords_optional.each { |k| kw_optional << k }

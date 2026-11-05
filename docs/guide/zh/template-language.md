@@ -1,5 +1,5 @@
 ---
-source_sha256: dc08486ed6d7b740c1b6bfbae1fec83b86dfe7632d2bed2bc8ed5ecccc737230
+source_sha256: 3354d343281bf776b3016f5d1c574c1b5d5c88983a4c9e70b418a9427b206039
 ---
 # Cybertrain 模板语言参考
 
@@ -390,7 +390,7 @@ end
 
 - 模板把组件的实例变量看作局部变量（`title`），按名称看到它不带参数的公开方法（`value_text`），以及 `content`，即 `do` 块输出的内容（没有块时为 `""`）。它在没有布局的情况下渲染，可以渲染局部模板和其他组件，并像局部模板一样计入 `max_render_depth`。它渲染的局部模板看不到组件的方法。组件模板中不带目录的局部模板名（`render "chip"`）在 `app/components/` 下查找（`app/components/_chip.html.erb`）；带目录的名字（`render "shared/note"`）照常在 `app/views/` 下查找。
 - 组件用去掉 `_component` 的 snake_case 名称来指定，就像局部模板用路径来指定一样：`CardComponent` 为 `"card"`，`Admin::UserRowComponent`（`app/components/admin/user_row_component.rb`）为 `"admin/user_row"`。模板不能指名常量。
-- `spin run gen` 像处理辅助方法一样，通过词法扫描写出 `gen/components.rb`：类定义行、`@x =` 赋值、不带参数的 `def`，以及 `initialize` 的关键字。`initialize` 只接受关键字参数（其中最多三个可选），并且它的模板必须存在；缺少关键字或出现未知关键字在渲染时是 `ArgumentError`。未知的组件是 `Cybertrain::Component::Unknown`：`` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``。
+- `spin run gen` 像处理辅助方法一样，通过词法扫描写出 `gen/components.rb`：类定义行、`@x =` 赋值、不带参数的 `def`，以及 `initialize` 的关键字。`initialize` 只接受关键字参数（其中最多三个可选），并且它的模板必须存在；缺少关键字或出现未知关键字在渲染时是 `ArgumentError`。未知的组件是 `Cybertrain::Component::Unknown`：`` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``。`content` 是保留名：同名的 `initialize` 关键字或 `@content` 实例变量会被块的输出覆盖，所以 `spin run gen` 会拒绝它，并指出文件和行号。`app/views/components/` 仍然是和其他目录一样的视图目录（属于 `ComponentsController`）；只有 `app/views/__components/` 是保留的，组件模板就存放在这个名称下。
 - `cybertrain generate component card title value:integer` 会写出这个类、它的模板，以及一个用 `Cybertrain::Test.render_component` 渲染它的测试。
 
 ### 在请求之外渲染
