@@ -521,13 +521,14 @@ test "loopback and private destinations are refused by default" do
   assert_equal "blocked", outcome { client.get("http://0.0.0.0:#{$server.port}/") }.kind
 end
 
-# How a request to `url` ended, for a spelling that must never reach the
-# server: "blocked" (the policy refused the resolved address), "unreached"
-# (the name did not resolve, or resolving it ran past the deadline), or the
-# outcome's own kind, "ok 200" when it got through.
-def reach_kind(client, url)
-  got = outcome { client.get(url) }
-  return "unreached" if got.kind == "refused" || got.kind == "timeout"
+# How a request ended, for a spelling that must never reach the server:
+# "blocked" (the policy refused the resolved address), "unreached" (the
+# name resolution itself failed, or ran past the deadline: a refusal or
+# timeout after a connection would not count), or the outcome's own kind,
+# "ok 200" when it got through.
+def reach_kind(got)
+  return "unreached" if got.kind == "refused" && !got.text.index("could not resolve the host name").nil?
+  return "unreached" if got.kind == "timeout" && !got.text.index("resolving the host name").nil?
 
   got.kind
 end
@@ -543,15 +544,15 @@ test "the inet_aton spellings of a loopback address never reach it" do
   # reached, and the message never repeats the path.
   client = Cybertrain::HttpClient.new(timeout: 1, deadline: 2)
   short = outcome { client.get("http://127.1:#{$server.port}/hello") }
-  assert_includes ["blocked", "refused", "timeout"], short.kind
+  assert_includes ["blocked", "unreached"], reach_kind(short)
   if short.kind == "blocked"
     assert_includes short.text, "127.0.0.1 (loopback address)"
   else
     assert_nil short.text.index("hello")
   end
-  assert_includes ["blocked", "unreached"], reach_kind(client, "http://0x7f.0.0.1:#{$server.port}/hello")
-  assert_includes ["blocked", "unreached"], reach_kind(client, "http://0177.0.0.1:#{$server.port}/hello")
-  assert_includes ["blocked", "unreached"], reach_kind(client, "http://2130706433:#{$server.port}/hello")
+  assert_includes ["blocked", "unreached"], reach_kind(outcome { client.get("http://0x7f.0.0.1:#{$server.port}/hello") })
+  assert_includes ["blocked", "unreached"], reach_kind(outcome { client.get("http://0177.0.0.1:#{$server.port}/hello") })
+  assert_includes ["blocked", "unreached"], reach_kind(outcome { client.get("http://2130706433:#{$server.port}/hello") })
   assert_equal "not an IP address", reason_of("127.1")
   assert_equal "not an IP address", reason_of("2130706433")
 end
