@@ -1,4 +1,5 @@
 require "json"
+require "socket"
 require "cybertrain/logger"
 require "cybertrain/cast"
 require "cybertrain/config"
@@ -31,17 +32,21 @@ module Cybertrain
     # One registered handler. Distinctive accessor names and no #call
     # (spikes/NOTES.md rules 10/34/40), like Main::Command.
     class Handler
-      attr_reader :handler_kind, :handler_block
+      # handler_concurrency: the most jobs of this kind that may be
+      # `running` at once across every process sharing the database; 0 for
+      # no limit.
+      attr_reader :handler_kind, :handler_block, :handler_concurrency
 
-      def initialize(handler_kind, handler_block)
+      def initialize(handler_kind, handler_block, handler_concurrency)
         @handler_kind = handler_kind
         @handler_block = handler_block
+        @handler_concurrency = handler_concurrency
       end
     end
 
     # The registry: a constant (class variables are not GC roots, NOTES
     # rule 64), seeded with its element type and emptied (rule 9).
-    HANDLERS = Array.new(0) { Handler.new("", nil) }
+    HANDLERS = Array.new(0) { Handler.new("", nil, 0) }
 
     # Seconds to wait before the retry after the 1st, 2nd, 3rd and every
     # later failed attempt.
@@ -60,6 +65,10 @@ module Cybertrain
     # Times are Integer epoch seconds (UTC), not DATETIME text: the worker
     # compares run_at with `now` in SQL and needs no parsing. The index
     # serves the worker's "oldest due queued row" query.
+    # claimed_by is the claiming process's {Job.process_label} and
+    # heartbeat_at the last time that process said the job still runs
+    # ({Job.heartbeat!}); both are NULL until the first claim. A table made
+    # before they existed gets them from install! (ALTER_COLUMNS).
     TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_jobs (" \
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, " \
                 "kind TEXT NOT NULL, " \
@@ -69,12 +78,24 @@ module Cybertrain
                 "last_error TEXT NOT NULL DEFAULT '', " \
                 "state TEXT NOT NULL DEFAULT 'queued', " \
                 "created_at INTEGER NOT NULL, " \
-                "updated_at INTEGER NOT NULL); " \
+                "updated_at INTEGER NOT NULL, " \
+                "claimed_by TEXT, " \
+                "heartbeat_at INTEGER); " \
                 "CREATE INDEX IF NOT EXISTS index_cybertrain_jobs_on_state_and_run_at " \
                 "ON cybertrain_jobs (state, run_at);"
 
+    # The columns added after the table's first release, each with the
+    # ALTER TABLE that adds it to an older table.
+    ALTER_COLUMNS = [
+      ["claimed_by", "ALTER TABLE cybertrain_jobs ADD COLUMN claimed_by TEXT"],
+      ["heartbeat_at", "ALTER TABLE cybertrain_jobs ADD COLUMN heartbeat_at INTEGER"]
+    ].freeze
+
     # The DB.generation the table was last ensured for; -1 for never.
     @installed_generation = -1
+
+    # Job.process_label, computed on first use; "" until then.
+    @process_label = ""
 
     # Registers the code that runs jobs of `kind`. The block receives the
     # payload String given to {Job.enqueue} (encode structured data as JSON
@@ -83,23 +104,47 @@ module Cybertrain
     # in every process (bin/<app>.rb runs before Main.run in all of them):
     # {Job.enqueue} refuses a kind with no handler.
     #
-    # A handler runs on the scheduler's thread, outside any request and
-    # outside any transaction. Keep it short: a SQLite call holds the OS
-    # worker, so with `SPINEL_WORKERS=1` a long one stalls every request
+    # A handler runs on one of the job threads ({Job.start!}), outside any
+    # request and outside any transaction. A SQLite call holds the OS
+    # worker, so with `SPINEL_WORKERS=1` a long query stalls every request
     # (batch big work over several jobs).
+    #
+    # `concurrency: n` caps how many jobs of this kind run at once, counted
+    # over every process sharing the database (a paid API that must not be
+    # called twice at a time: `concurrency: 1`); 0, the default, is no cap.
     # @example
     #   Cybertrain::Job.handle("notify") { |payload| Notifier.post(payload) }
+    #   Cybertrain::Job.handle("quote", concurrency: 1) { |payload| PaidApi.fetch(payload) }
     # @param kind [String] the name jobs are enqueued under
+    # @param concurrency [Integer] the most running at once; 0 for no limit
     # @yieldparam payload [String]
     # @return [nil]
-    # @raise [ArgumentError] for an empty kind or one already registered
+    # @raise [ArgumentError] for an empty kind, one already registered, or a
+    #   negative concurrency
     # @api public
-    def self.handle(kind, &block)
+    def self.handle(kind, concurrency: 0, &block)
       raise ArgumentError, "Job.handle: the kind is empty" if kind.empty?
       raise ArgumentError, "Job.handle #{kind.inspect}: already registered" if handler_index(kind) >= 0
+      if concurrency < 0
+        raise ArgumentError, "Job.handle #{kind.inspect}: concurrency must be 0 (no limit) or more (got #{concurrency})"
+      end
 
-      HANDLERS << Handler.new(kind, block)
+      HANDLERS << Handler.new(kind, block, concurrency)
       nil
+    end
+
+    # Who this process is in `claimed_by`: "<hostname>:<pid>:<epoch of the
+    # first call>", computed once, so neither two processes on one host nor
+    # a restarted one that got the same pid share a label.
+    # @return [String]
+    # @api public
+    def self.process_label
+      label = @process_label
+      if label.empty?
+        label = "#{Socket.gethostname}:#{Process.pid}:#{Time.now.to_i}"
+        @process_label = label
+      end
+      label
     end
 
     # True once some handler is registered (the scheduler starts the worker
@@ -150,18 +195,42 @@ module Cybertrain
       id
     end
 
-    # Creates the table and its index if they are missing. The worker and
-    # {Job.enqueue} call it once per connected database; call it yourself
-    # only to create the table ahead of time.
+    # Creates the table and its index if they are missing, and adds the
+    # columns a table made by an earlier release lacks (`claimed_by`,
+    # `heartbeat_at`; a row such a release left `running` gets its
+    # `updated_at` as its heartbeat, so staleness recovery covers it). The
+    # job threads and {Job.enqueue} call it once per connected database;
+    # call it yourself only to create the table ahead of time.
     # @return [nil]
     # @api public
     def self.install!
       DB.with { |c| c.exec_script(TABLE_SQL) }
+      add_missing_columns
       # SQLite's DDL is transactional: a table created inside a
       # DB.transaction that later rolls back is gone again, so only a
       # CREATE outside one is remembered.
       pool = DB.pool
       @installed_generation = DB.generation if !pool.nil? && pool.held_index < 0
+      nil
+    end
+
+    # The ALTER TABLEs of the ALTER_COLUMNS `PRAGMA table_info` does not
+    # list.
+    def self.add_missing_columns
+      rows = DB.with { |c| c.execute("PRAGMA table_info('cybertrain_jobs')") }
+      present = Array.new(0) { "" }
+      rows.each { |r| present << Cast.str(r["name"]) }
+      added = false
+      ALTER_COLUMNS.each do |pair|
+        next if present.include?(pair[0])
+
+        sql = pair[1]
+        DB.with { |c| c.execute(sql) }
+        added = true
+      end
+      if added
+        DB.with { |c| c.execute("UPDATE cybertrain_jobs SET heartbeat_at = updated_at WHERE state = 'running' AND heartbeat_at IS NULL") }
+      end
       nil
     end
 
@@ -171,22 +240,100 @@ module Cybertrain
       nil
     end
 
-    # Puts rows a previous process left `running` (it died mid-job) back in
-    # the queue; the scheduler calls it when it starts the worker. Only one
-    # process may run the worker per database ({Config#worker}), so at that
-    # point no other process can be running them. Their attempt was already
-    # counted when it was claimed.
+    # Puts `running` rows whose process stopped saying they run back in the
+    # queue: those whose `heartbeat_at` is older than `now - stale` (the
+    # process died mid-job, or was stopped before the job finished). A row
+    # whose process still sends heartbeats ({Job.heartbeat!}) is never
+    # touched, so every process that runs jobs may call it; the scheduler
+    # does at start and once a minute. The attempt was already counted
+    # when the row was claimed.
     # @param now [Integer] epoch seconds
+    # @param stale [Integer] seconds without a heartbeat that make a row
+    #   abandoned ({Config#job_heartbeat_stale} by default)
     # @return [Integer] how many rows were requeued
     # @api public
-    def self.recover!(now)
+    def self.recover!(now, stale = Cybertrain.config.job_heartbeat_stale)
       ensure_installed
+      binds = Cast.binds(now, now - stale)
       count = 0
       DB.with do |c|
-        c.execute("UPDATE cybertrain_jobs SET state = 'queued', updated_at = ? WHERE state = 'running'", [now])
+        c.execute("UPDATE cybertrain_jobs SET state = 'queued', updated_at = ? WHERE state = 'running' AND heartbeat_at < ?", binds)
         count = c.changes
       end
       count
+    end
+
+    # Marks this process's `running` rows as alive at `now` (the heartbeat
+    # thread does it every {Config#job_heartbeat_interval} seconds), so no
+    # other process's {Job.recover!} takes them.
+    # @param now [Integer] epoch seconds
+    # @return [Integer] how many rows it touched
+    # @api public
+    def self.heartbeat!(now)
+      ensure_installed
+      binds = Cast.binds(now, process_label)
+      count = 0
+      DB.with do |c|
+        c.execute("UPDATE cybertrain_jobs SET heartbeat_at = ? WHERE state = 'running' AND claimed_by = ?", binds)
+        count = c.changes
+      end
+      count
+    end
+
+    # How many jobs of `kind` are `running` now, in every process sharing
+    # the database.
+    # @param kind [String]
+    # @return [Integer]
+    # @api public
+    def self.running_count(kind)
+      ensure_installed
+      rows = DB.with { |c| c.execute("SELECT COUNT(*) AS n FROM cybertrain_jobs WHERE state = 'running' AND kind = ?", [kind]) }
+      Cast.int(rows[0]["n"])
+    end
+
+    # True when some handler has a concurrency limit (only then does the
+    # claim count the running rows).
+    def self.limits?
+      i = 0
+      while i < HANDLERS.size
+        return true if HANDLERS[i].handler_concurrency > 0
+        i += 1
+      end
+      false
+    end
+
+    # The kinds whose running rows have reached their handler's limit, read
+    # on the claim's connection inside its transaction.
+    def self.kinds_at_limit(conn)
+      full = Array.new(0) { "" }
+      rows = conn.execute("SELECT kind, COUNT(*) AS n FROM cybertrain_jobs WHERE state = 'running' GROUP BY kind")
+      rows.each do |r|
+        kind = Cast.str(r["kind"])
+        index = handler_index(kind)
+        next if index < 0
+
+        limit = HANDLERS[index].handler_concurrency
+        full << kind if limit > 0 && Cast.int(r["n"]) >= limit
+      end
+      full
+    end
+
+    # The claim's SELECT, leaving out the `excluded` kinds (one bound `?`
+    # each, after run_at's).
+    def self.claim_sql(excluded)
+      sql = +"SELECT id, kind, payload, attempts FROM cybertrain_jobs WHERE state = 'queued' AND run_at <= ?"
+      unless excluded.empty?
+        sql << " AND kind NOT IN ("
+        i = 0
+        while i < excluded.size
+          sql << ", " if i > 0
+          sql << "?"
+          i += 1
+        end
+        sql << ")"
+      end
+      sql << " ORDER BY run_at, id LIMIT 1"
+      sql
     end
 
     # Claims and runs the oldest due job, if there is one, and records the
@@ -207,14 +354,22 @@ module Cybertrain
       # and the UPDATE run under the write lock, and the `state = 'queued'`
       # guard with the changes check refuses a row another claimer took.
       # The handler runs after the COMMIT, holding no lock.
+      # With a concurrency limit, the kinds at their limit are read under
+      # the same lock and left out, so no two claimers (threads or
+      # processes) can both take a kind's last free slot.
+      label = process_label
+      limited = limits?
       DB.transaction(immediate: true) do |c|
-        rows = c.execute("SELECT id, kind, payload, attempts FROM cybertrain_jobs " \
-                         "WHERE state = 'queued' AND run_at <= ? ORDER BY run_at, id LIMIT 1", [now])
+        excluded = limited ? kinds_at_limit(c) : Array.new(0) { "" }
+        binds = Cast.binds(now)
+        excluded.each { |k| binds << k }
+        rows = c.execute(claim_sql(excluded), binds)
         unless rows.empty?
           row = rows[0]
           found = Cast.int(row["id"])
-          c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, updated_at = ? " \
-                    "WHERE id = ? AND state = 'queued'", [now, found])
+          claim = Cast.binds(label, now, now, found)
+          c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, claimed_by = ?, " \
+                    "heartbeat_at = ?, updated_at = ? WHERE id = ? AND state = 'queued'", claim)
           if c.changes == 1
             id = found
             kind = Cast.str(row["kind"])

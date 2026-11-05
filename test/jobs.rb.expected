@@ -5,9 +5,14 @@ ok   a job that fails and then succeeds ends done
 ok   the backoff list is 1, 5, 15 and then 60 minutes
 ok   a job of a kind with no handler is failed at once, with last_error
 ok   last_error is bounded
-ok   recover! requeues rows a dead process left running
+ok   recover! requeues rows a dead process left running once their heartbeat is stale
+ok   a claim writes claimed_by and heartbeat_at; heartbeat! touches only this process's running rows
+ok   two processes recovering: only the stale row is requeued, and only once
+ok   install! adds claimed_by and heartbeat_at to a table made before them
+ok   concurrency: a kind at its limit is skipped and another kind's job claimed
+ok   concurrency must not be negative
 ok   a job enqueued in a transaction that rolls back is gone with it
 ok   prune_done deletes old done rows and keeps failed ones
 ok   schema dumps leave the jobs table out
 ok   the scheduler adds the job worker task when handlers are registered
-12 tests, 70 assertions, 0 failures
+17 tests, 112 assertions, 0 failures
