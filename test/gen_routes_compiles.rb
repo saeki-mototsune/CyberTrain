@@ -21,6 +21,9 @@ def fixture_outputs
   {
     "gen/routes.rb" => Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs),
     "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers")),
+    "gen/helpers.rb" => Cybertrain::Gen::HelpersEmitter.emit(Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),
+    "gen/components.rb" => Cybertrain::Gen::ComponentsEmitter.emit(Cybertrain::Gen::ComponentScan.scan_dir("#{FIXTURE}/app/components")),
+    "gen/console.rb" => Cybertrain::Gen::ConsoleEmitter.emit(["Comment", "Post"]),
     "gen/app.rb" => Cybertrain::Gen::Manifest.emit(FIXTURE)
   }
 end
@@ -130,6 +133,43 @@ test "view_assigns exposes the scanned ivars" do
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/posts", {}, ""))
   assert_equal ["viewer", "posts", "post"], PostsController.new(ctx).view_assigns.keys
   assert_equal ["viewer"], PagesController.new(ctx).view_assigns.keys
+end
+
+# gen/helpers.rb and gen/components.rb, loaded by gen/app.rb, installed
+# the app's builders; templates reach the fixture's PricesHelper and
+# CardComponent through them.
+Cybertrain::Views.configure("#{FIXTURE}/app/views", cache: false)
+
+def render_inline(src)
+  template = Cybertrain::Template::Template.parse(src, "posts/inline")
+  env = { "__template_dir" => "posts" }
+  env["post"] = Post.new
+  Cybertrain::Template::Interpreter.new(Cybertrain::Views.helpers_builder.call(nil)).render(template, env)
+end
+
+test "the generated ApplicationHelpers dispatches to the fixture's helpers" do
+  Cybertrain::Views.url_resolver = Gen::Routes.url_resolver
+  assert_equal "3.14 USD|3.1 EUR", render_inline("<%= price 3.14159 %>|<%= price 3.14159, unit: 'EUR', precision: 1 %>")
+  # The block arrives as a SafeString; interpolated into a plain String it
+  # is text again, and link_to_path escapes it.
+  assert_equal "<a href=\"/posts/0\" class=\"badge\">warn: &lt;b&gt;x&lt;/b&gt;</a>", render_inline("<%= post_badge post, 'warn' do %><b>x</b><% end %>")
+end
+
+test "the generated Gen::Components builds and renders the fixture's component" do
+  assert_equal "<div class=\"card\"><h3>T</h3><p>2 pts</p></div>\n", render_inline("<%= render component: \"card\", title: \"T\", value: 2 %>")
+  assert_equal "<div class=\"card\"><h3>x</h3><p>0 pts</p><i>c</i></div>\n", Cybertrain::Views.render_component(CardComponent.new(title: "x"), "<i>c</i>")
+end
+
+test "the generated Gen::Console tables" do
+  assert_equal "SELECT * FROM `posts`", Gen::Console.scope("Post").to_sql
+  assert_equal ["Comment", "Post"], Gen::Console::MODEL_NAMES
+  msg = ""
+  begin
+    Gen::Console.scope("Nope")
+  rescue Cybertrain::Console::UnknownModel => e
+    msg = e.message
+  end
+  assert_equal "no model \"Nope\" (models: Comment, Post)", msg
 end
 
 Cybertrain::Test.run!

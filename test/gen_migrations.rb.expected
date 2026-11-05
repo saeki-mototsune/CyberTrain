@@ -6,7 +6,10 @@ ok   version_of / name_of split the timestamp prefix
 wrote gen/routes.rb
 wrote gen/controllers.rb
 wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
 wrote gen/migrations.rb
+wrote gen/console.rb
 wrote gen/app.rb
 ok   runner writes gen/migrations.rb when db/migrate exists
 ok   runner --check is fresh once gen/migrations.rb is written
