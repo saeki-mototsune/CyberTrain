@@ -1,5 +1,5 @@
 ---
-source_sha256: 1d50e90dfdcb613ff87e9755fd0f54f80f23ce1bfccf5b67b0f63ac1230c10df
+source_sha256: 9774dd81ce04a49d069a89de780211e2926fa128c494ae7a4cd3c1b4fc1d55b6
 ---
 # 設定
 
@@ -31,6 +31,7 @@ end
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`：`params.page_number` が返し、`Relation#page` が受け付ける最大のページ（[ページネーション](models.md#pagination)を参照）。最大 18 桁の数値でない値や、1 未満の値はデフォルトになる |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`。カンマ区切りの名前でリストを置き換える。名前にこれらのいずれかを含むパラメーター（ASCII の大文字小文字を区別しない：`password` は `user[password]` にも一致する）は、リクエストログと開発環境のエラーページで値が `[FILTERED]` と書かれる。`config/app.rb` で `[]` にすると無効になる |
 | `CYBERTRAIN_WORKER` | `worker` | `true`。`0` または `false` にすると、このプロセスは定期タスクとジョブを実行しない（[バックグラウンド処理](background-and-operations.md#background-work)を参照）。`scheduler_interval`（1 秒）、`job_poll_interval`（5 秒）、`job_max_attempts`（5）は `config/app.rb` で設定する |
+| `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`。`1` または `true` にすると `SO_REUSEPORT` で bind し、複数のプロセスが 1 つのポートで listen でき、Linux ではカーネルが接続を振り分ける（開発環境では無視される。[Running several processes](../deploy.en.md#running-several-processes)を参照）。1 つを除くすべてのプロセスで `CYBERTRAIN_WORKER=0` にする |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`。組み込みのヘルスチェックのパス（[運用](background-and-operations.md#operations-backups-vacuum-health-check)を参照）。空の値で無効になり、先頭に `/` のない値ではサーバーが起動時に停止する。`health_worker_stale`（300 秒）は `config/app.rb` で設定する |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`。`1` または `true` にすると、`Cybertrain::HttpClient` がループバック、プライベート、その他の公開されていないアドレスに接続できる（[外向きの HTTP](external-services.md#outbound-http) を参照） |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`。`Cybertrain::Mailer` が送信に使う SMTP サーバー（[メールを送る](external-services.md#sending-e-mail)を参照） |
