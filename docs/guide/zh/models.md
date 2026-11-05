@@ -1,5 +1,5 @@
 ---
-source_sha256: 75a49c15853d34f1c018af07c3f0d29bf29d1778a7e52b12a048c95f83b437e4
+source_sha256: 0a46c494a9f3505a8b57df141c46dd68b7d02b968276ca4bec4957f41a224a68
 ---
 # 模型与数据库
 
@@ -99,6 +99,7 @@ end
 - 嵌套在块中的 `DB.transaction` 会加入外层事务：只有最外层提交，任何地方抛出异常都会回滚全部内容，没有保存点（没有 `requires_new: true`）。
 - 在 Spinel 下不能对传入的 `c` 调用 `c.transaction { }`：请嵌套 `DB.transaction`，或使用下面不带块的形式。
 - 在 `DB.with` 块（它不是事务）中调用的 `DB.transaction` 会取出第二个连接：在只有一个连接的连接池上（包括 `:memory:`），它会因此永远等待下去。请先开启事务，再在其中完成工作。
+- 不要在块中 rescue 数据库错误后继续执行。出现 “database or disk is full”、I/O 错误或锁等待超时后，SQLite 可能会自行回滚整个事务。此后块中的每条语句都会抛出 `Cybertrain::DB::Error`（“the enclosing transaction is no longer open”），而不是单独提交，块结束时事务也会抛出异常。请让错误离开块，需要时重试整个事务。
 
 必须把 `rescue` 写在普通方法中的代码可以使用不带块的形式：`c.begin!(immediate: true)` ... `c.commit!`，并在 rescue 中调用 `c.rollback!`。
 
