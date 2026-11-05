@@ -5,13 +5,18 @@ require "cybertrain/test"
 # Cybertrain::Scheduler: tasks registered with `every` run when due and
 # not before, a raising task is logged and the others (and its own next
 # run) go on, last_tick follows the ticks, and start! honours
-# Config#worker. The ticks are driven with chosen epoch times through
-# Scheduler.run_due, so nothing sleeps; only the last test starts the real
-# thread. It requires the job queue (and so SQLite through FFI) with the
-# scheduler, so its snapshot comes from the compiled binary
-# (spikes/NOTES.md rule 23).
+# Config#worker; only the holder of the "scheduler" lease runs tasks, and
+# a tick recovers stale jobs at most once a minute while job threads run.
+# The ticks are driven with chosen epoch times through Scheduler.run_due,
+# so nothing sleeps; the job threads of the recovery test and the last
+# test's scheduler thread are real. It requires the job queue (and so
+# SQLite through FFI) with the scheduler, so its snapshot comes from the
+# compiled binary (spikes/NOTES.md rule 23).
 
 S = Cybertrain::Scheduler
+Lease = Cybertrain::Lease
+DB = Cybertrain::DB
+Job = Cybertrain::Job
 
 # What the tasks did, read back by the tests (a constant: NOTES rule 64).
 RUNS = Array.new(0) { "" }
@@ -23,6 +28,39 @@ Cybertrain.logger = Cybertrain::Logger.new(LOG)
 S.every(10, "tick ten") { RUNS << "ten" }
 S.every(25, "boom") { raise "it broke" }
 S.every(30, "thirty") { RUNS << "thirty" }
+# Not due before 1000 + 999999: only the lease-loss test reaches them. The
+# first hands the lease to another holder while the tick runs, when STEAL
+# is set.
+STEAL = Array.new(0) { "" }
+S.every(999_999, "steal") do
+  RUNS << "steal"
+  unless STEAL.empty?
+    DB.with { |c| c.execute("UPDATE cybertrain_leases SET holder = 'thief:1:1:000000', expires_at = 9999999 WHERE name = 'scheduler'") }
+  end
+end
+S.every(999_999, "after steal") { RUNS << "after steal" }
+
+Job.handle("noop") { |payload| RUNS << "job" }
+
+# The lease lives in the database: every tick takes or renews it.
+DB.connect(":memory:")
+
+# A running row a dead process left, not due again until far in the
+# future (so the job thread never claims it once it is requeued).
+def insert_stale_running
+  id = 0
+  DB.with do |c|
+    c.execute("INSERT INTO cybertrain_jobs (kind, payload, run_at, state, attempts, created_at, updated_at, claimed_by, heartbeat_at) " \
+              "VALUES ('noop', '', 9999999999, 'running', 1, 1000, 1000, 'gone:1:1', 1000)")
+    id = c.last_insert_id
+  end
+  id
+end
+
+def job_state(id)
+  rows = DB.with { |c| c.execute("SELECT state FROM cybertrain_jobs WHERE id = ?", [id]) }
+  Cybertrain::Cast.str(rows[0]["state"])
+end
 
 def runs_text
   RUNS.join(",")
@@ -85,6 +123,95 @@ test "last_tick is the time of the latest tick" do
   assert_equal 1061, S.last_tick
 end
 
+test "only the lease holder runs due tasks; another takes over once the lease expires" do
+  assert_equal Job.process_label, S.holder
+  # The ticks so far took the lease (last renewed at 1061, for 30 s).
+  assert S.leader?
+  assert_equal S.holder, Lease.lease_holder("scheduler")
+  assert_equal 1091, Lease.lease_expires_at("scheduler")
+  # Another process takes it once it has expired.
+  assert Lease.acquire("scheduler", "other:1:1", 2000, ttl: 30)
+  before = runs_text
+  # Every task is overdue, but this process does not lead: it runs none,
+  # and keeps the timetable (ten next at 2011, boom 2026, thirty 2031).
+  assert_equal 0, S.run_due(2001)
+  refute S.leader?
+  assert_equal 0, S.run_due(2030)
+  assert_equal before, runs_text
+  assert_equal 2030, S.last_tick
+  # The other's lease ran out at 2030: the next tick leads and runs what
+  # is due by the timetable, not every task the other led through.
+  assert_equal 1, S.run_due(2031)
+  assert S.leader?
+  assert_equal S.holder, Lease.lease_holder("scheduler")
+  assert_equal "#{before},thirty", runs_text
+  refute Lease.acquire("scheduler", "other:1:1", 2032, ttl: 30)
+end
+
+test "a tick that cannot reach the database runs nothing, logs, and leads again later" do
+  DB.disconnect
+  assert_equal 0, S.run_due(3000)
+  refute S.leader?
+  assert_equal 3000, S.last_tick
+  assert_includes LOG.string, "[ERROR] Scheduler lease: Cybertrain::DB::Error: not connected"
+  DB.connect(":memory:")
+  # The failed tick kept the timetable: nothing is due at 3001, ten at 3010.
+  assert_equal 0, S.run_due(3001)
+  assert S.leader?
+  assert_equal 1, S.run_due(3010)
+end
+
+test "while job threads run, every tick (leader or not) recovers stale jobs, at most once a minute" do
+  Job.install!
+  stale_one = insert_stale_running
+  # Job threads do not run yet: the tick leaves the row alone.
+  S.run_due(4000)
+  assert_equal "running", job_state(stale_one)
+  config = Cybertrain::Config.new
+  config.job_threads = 1
+  # start! recovers with the real time, so the row is requeued at once.
+  assert Job.start!(config)
+  assert_equal "queued", job_state(stale_one)
+  stale_two = insert_stale_running
+  S.run_due(4001)
+  assert_equal "queued", job_state(stale_two)
+  stale_three = insert_stale_running
+  S.run_due(4031)
+  S.run_due(4060)
+  assert_equal "running", job_state(stale_three)
+  S.run_due(4061)
+  assert_equal "queued", job_state(stale_three)
+  assert_includes LOG.string, "[WARN] Requeued 1 job(s) whose process stopped sending heartbeats"
+  # Recovery does not wait for the lease: with another process leading, no
+  # task runs, but the tick still recovers.
+  assert Lease.acquire("scheduler", "other:1:1", 4100, ttl: 100)
+  stale_five = insert_stale_running
+  assert_equal 0, S.run_due(4121)
+  refute S.leader?
+  assert_equal "queued", job_state(stale_five)
+  # The other's lease ran out at 4200: this process leads and runs the tasks.
+  assert_equal 3, S.run_due(4201)
+  assert S.leader?
+  Job.stop!
+  # Without job threads, no more recovery.
+  stale_four = insert_stale_running
+  S.run_due(5000)
+  assert_equal "running", job_state(stale_four)
+end
+
+test "a leader that loses the lease during a tick runs no further task in it" do
+  STEAL << "on"
+  before = runs_text
+  # ten, boom, thirty, then steal (which hands the lease away); "after
+  # steal" is due too, but the lease is renewed before each task and the
+  # renewal now fails.
+  assert_equal 4, S.run_due(2_000_000)
+  refute S.leader?
+  assert_equal "#{before},ten,thirty,steal", runs_text
+  assert_equal "thief:1:1:000000", Lease.lease_holder("scheduler")
+  STEAL.pop
+end
+
 test "start! does nothing when the worker switch is off" do
   config = Cybertrain::Config.new
   config.worker = false
@@ -97,11 +224,55 @@ test "config: the worker switch and the intervals have their defaults, and boot 
   config = Cybertrain::Config.new
   assert config.worker
   assert_equal 1, config.scheduler_interval
-  assert_equal 5, config.job_poll_interval
+  assert_equal 1, config.job_poll_interval
   assert_equal 5, config.job_max_attempts
+  assert_equal 3, config.job_threads
+  assert_equal 30, config.job_heartbeat_interval
+  assert_equal 300, config.job_heartbeat_stale
+  assert_equal 10, config.job_drain_timeout
+  assert_equal 30, config.scheduler_lease_ttl
   assert_equal "", config.scheduler_error
   config.job_poll_interval = 0
   assert_includes config.scheduler_error, "job_poll_interval must be at least 1"
+end
+
+test "config: each job and lease setting must be at least 1, and stale more than the interval" do
+  config = Cybertrain::Config.new
+  config.job_threads = 0
+  assert_equal "job_threads must be at least 1 (got 0)", config.scheduler_error
+  config.job_threads = 3
+  config.job_heartbeat_interval = 0
+  assert_equal "job_heartbeat_interval must be at least 1 (got 0)", config.scheduler_error
+  config.job_heartbeat_interval = 30
+  config.job_heartbeat_stale = 0
+  assert_equal "job_heartbeat_stale must be at least 1 (got 0)", config.scheduler_error
+  config.job_heartbeat_stale = 30
+  assert_equal "job_heartbeat_stale (30) must be more than job_heartbeat_interval (30)", config.scheduler_error
+  config.job_heartbeat_stale = 31
+  assert_equal "", config.scheduler_error
+  config.scheduler_interval = 16
+  assert_equal "scheduler_lease_ttl (30) must be at least twice scheduler_interval (16)", config.scheduler_error
+  config.scheduler_interval = 15
+  assert_equal "", config.scheduler_error
+  config.scheduler_interval = 1
+  config.job_drain_timeout = 0
+  assert_equal "job_drain_timeout must be at least 1 (got 0)", config.scheduler_error
+  config.job_drain_timeout = 10
+  config.scheduler_lease_ttl = -1
+  assert_equal "scheduler_lease_ttl must be at least 1 (got -1)", config.scheduler_error
+end
+
+test "config: CYBERTRAIN_JOB_THREADS sets job_threads; a word is the default, 0 is kept for boot to refuse" do
+  ENV["CYBERTRAIN_JOB_THREADS"] = "8"
+  assert_equal 8, Cybertrain::Config.new.job_threads
+  ENV["CYBERTRAIN_JOB_THREADS"] = "many"
+  assert_equal 3, Cybertrain::Config.new.job_threads
+  ENV["CYBERTRAIN_JOB_THREADS"] = "0"
+  zero = Cybertrain::Config.new
+  assert_equal 0, zero.job_threads
+  assert_includes zero.scheduler_error, "job_threads must be at least 1"
+  ENV.delete("CYBERTRAIN_JOB_THREADS")
+  assert_equal 3, Cybertrain::Config.new.job_threads
 end
 
 # Last: the thread it starts keeps running until the program exits. start!
@@ -116,9 +287,13 @@ test "start! starts the thread once; stop! asks it to end" do
   # The thread ticks at once (with the real time) when this one yields.
   sleep 0.3
   assert S.last_tick >= started
-  assert_includes LOG.string, "[INFO] Scheduler started: tick ten every 10s, boom every 25s, thirty every 30s"
+  assert_includes LOG.string, "[INFO] Scheduler started: tick ten every 10s, boom every 25s, thirty every 30s, steal every 999999s, after steal every 999999s"
+  assert S.leader?
   S.stop!
   refute S.running?
+  # stop! handed the lease back.
+  refute S.leader?
+  assert_equal "", Lease.lease_holder("scheduler")
 end
 
 Cybertrain::Test.run!
