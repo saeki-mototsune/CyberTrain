@@ -154,7 +154,9 @@ true
 - `x = expr` keeps a value for the following lines, and `_` is the last
   value. `sql "..."` runs SQL and prints the rows as a table, with a cell's
   control characters escaped (`\e`, `\n`), so data can neither send the
-  terminal an escape sequence nor break the table; `tables` lists the tables; `exit`, `quit` or Ctrl-D leaves.
+  terminal an escape sequence nor break the table (a TEXT value holding a NUL
+  byte is cut at the NUL when it is read, as in every raw-SQL read; a BLOB
+  keeps every byte); `tables` lists the tables; `exit`, `quit` or Ctrl-D leaves.
 - A line that does not parse prints its error, a line that raises prints
   `Class: message`, and the prompt comes back. A binary value prints as
   `<N bytes>`.

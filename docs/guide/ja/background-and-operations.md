@@ -1,5 +1,5 @@
 ---
-source_sha256: 08570eefba7bb5692eade27e3bd69ee189166e3447a5dc5494f16dbf79a623c9
+source_sha256: f4c2cf0bc31393a04e0d78046e3a0bd28ecb5b2a951930d95e0dfe91b753450c
 ---
 # バックグラウンド処理と運用
 
@@ -68,7 +68,7 @@ true
 ```
 
 - モデル名はそのリレーション（`Article`）で、`where`、`where_like`、`order`、`limit`、`offset`、`page`、`first`、`last`、`find`、`find_by`、`to_a`、`count`、`exists?`、`pluck_str` / `pluck_int` / `pluck_float`、`sum_int`、`count_by`、`delete_all`、`to_sql`、`create` が使えます。レコードには属性とメソッド、`update`、`save`、`destroy`、`reload`、`valid?`、`errors`、`attributes` があります。`help` がすべてを一覧にします。
-- `x = expr` は値を後の行のために取っておき、`_` は直前の値です。`sql "..."` は SQL を実行して行を表として出力し（セルの制御文字は `\e` や `\n` とエスケープするので、データが端末にエスケープシーケンスを送ることも表を崩すこともありません）、`tables` はテーブルを一覧にし、`exit`、`quit`、Ctrl-D で終わります。
+- `x = expr` は値を後の行のために取っておき、`_` は直前の値です。`sql "..."` は SQL を実行して行を表として出力し（セルの制御文字は `\e` や `\n` とエスケープするので、データが端末にエスケープシーケンスを送ることも表を崩すこともありません。NUL バイトを含む TEXT の値は、生の SQL で読むときと同じく、読み出しの時点で NUL のところで切れます。BLOB はすべてのバイトを保ちます）、`tables` はテーブルを一覧にし、`exit`、`quit`、Ctrl-D で終わります。
 - パースできない行はそのエラーを、例外を出した行は `Class: message` を出力し、プロンプトに戻ります。バイナリの値は `<N bytes>` と表示されます。
 - 書き込みは本物です。本番では、コンソールは最初にバナーでそう告げます。
 

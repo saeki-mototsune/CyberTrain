@@ -1,5 +1,5 @@
 ---
-source_sha256: 08570eefba7bb5692eade27e3bd69ee189166e3447a5dc5494f16dbf79a623c9
+source_sha256: f4c2cf0bc31393a04e0d78046e3a0bd28ecb5b2a951930d95e0dfe91b753450c
 ---
 # Tâches de fond et exploitation
 
@@ -179,7 +179,9 @@ true
   dernière valeur. `sql "..."` exécute du SQL et affiche les lignes en
   tableau, les caractères de contrôle d’une cellule échappés (`\e`, `\n`)&nbsp;:
   les données ne peuvent ni envoyer une séquence d’échappement au terminal ni
-  casser le tableau&nbsp;; `tables` liste les tables&nbsp;; `exit`, `quit` ou Ctrl-D
+  casser le tableau (une valeur TEXT contenant un octet NUL est coupée au NUL
+  à la lecture, comme dans toute lecture en SQL brut&nbsp;; un BLOB garde tous
+  ses octets)&nbsp;; `tables` liste les tables&nbsp;; `exit`, `quit` ou Ctrl-D
   quitte.
 - Une ligne qui ne s’analyse pas affiche son erreur, une ligne qui lève une
   exception affiche `Class: message`, et l’invite revient. Une valeur binaire

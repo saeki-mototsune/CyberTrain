@@ -201,7 +201,11 @@ module Cybertrain
       end
 
       # `s` with its control bytes (0..31 and 127) escaped; `s` itself
-      # when it has none.
+      # when it has none. The console assumes a UTF-8 terminal, where the
+      # C1 range (U+0080..U+009F, two bytes each in UTF-8) is not parsed as
+      # 8-bit control sequences, so those are left as they are. A TEXT cell
+      # with a NUL ends at the NUL before it gets here (Connection#read_row
+      # reads TEXT through a NUL-terminated bridge; BLOBs keep every byte).
       def self.escape_controls(s)
         n = s.bytesize
         i = 0
