@@ -368,21 +368,34 @@ module Cybertrain
     end
 
     # Where a replay for a new subscriber starts: the client's `after`
-    # (Last-Event-ID, ?after=) clamped to the table's head (MAX(id)), so an
-    # id above the head (another database, a pruned table) still lets the
-    # next broadcast through; -1 (no replay) stays -1. The handoff boundary
-    # is then max(this, the largest replayed id). The head, not this
-    # process's poller cursor (Subscriber#boundary): a client that got its
-    # rows from another process whose poller was ahead would otherwise be
-    # sent them again when this process's poller catches up.
+    # (Last-Event-ID, ?after=) clamped to the table's head, so an id above
+    # the head (another database, a pruned table) still lets the next
+    # broadcast through; -1 (no replay) stays -1. The handoff boundary is
+    # then max(this, the largest replayed id). The head, not this process's
+    # poller cursor (Subscriber#boundary): a client that got its rows from
+    # another process whose poller was ahead would otherwise be sent them
+    # again when this process's poller catches up.
+    #
+    # `head` is {replay_head}, read before the subscriber was added: a row
+    # broadcast between the subscription and a later MAX(id) would be the
+    # clamp itself, so neither replayed nor kept on the queue.
     # @param after [Integer]
-    # @param sub [Subscriber] (unused since the clamp reads the table; kept for the callers)
+    # @param head [Integer] {replay_head} taken before subscribing
     # @return [Integer]
-    def self.replay_start(after, sub)
+    def self.replay_start(after, head)
       return after if after < 0
 
-      head = Stream.max_id
       after < head ? after : head
+    end
+
+    # The table's head for {replay_start}, read before subscribing; -1
+    # without a replay (after -1), which runs no query.
+    # @param after [Integer]
+    # @return [Integer]
+    def self.replay_head(after)
+      return -1 if after < 0
+
+      Stream.max_id
     end
 
     # The process's hub ({Hub}), made on first use.

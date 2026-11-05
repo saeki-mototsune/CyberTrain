@@ -64,8 +64,11 @@ module Cybertrain
       while start <= n
         amp = s.byteindex("&", start)
         stop = amp.nil? ? n : amp
-        eq = s.byteindex("=", start)
-        if !eq.nil? && eq < stop && RequestLogger.token_name?(s, start, eq)
+        # The `=` searched for within this pair only: a query of many pairs
+        # without one must not be scanned to its end for each.
+        eq = start
+        eq += 1 while eq < stop && s.getbyte(eq) != 61
+        if eq < stop && RequestLogger.token_name?(s, start, eq)
           out << s.byteslice(start, eq - start + 1).to_s
           out << "[FILTERED]"
         else

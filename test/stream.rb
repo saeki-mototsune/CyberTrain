@@ -267,11 +267,12 @@ test "the replay-to-live handoff sends every row once, in id order" do
   Stream::Poller.reset!(hub)
   # subscribe first; a row written before the replay is both replayed and
   # delivered live
+  head = Stream.replay_head(0)
   sub = hub.subscribe(["a"])
   Stream.broadcast("a", "2")
   Stream::Poller.run_once(hub)
   sent = Array.new(0) { "" }
-  start = Stream.replay_start(0, sub)
+  start = Stream.replay_start(0, head)
   backlog = Stream.replay(["a"], start)
   boundary = start
   backlog.each do |m|
@@ -350,16 +351,35 @@ test "an after above the head is clamped to the table's head, not below it" do
   hub = Stream::Hub.new(1000)
   Stream.broadcast("a", "x")
   Stream::Poller.run_once(hub)
+  head = Stream.replay_head(999_999)
   sub = hub.subscribe(["a"])
-  start = Stream.replay_start(999_999, sub)
+  start = Stream.replay_start(999_999, head)
   assert_equal Stream.max_id, start
   assert_equal 0, Stream.replay(["a"], start).size
   sub.skip_through!(start)
   Stream.broadcast("a", "next")
   Stream::Poller.run_once(hub)
   assert_equal ["next"], payloads_of(sub)
-  assert_equal 0, Stream.replay_start(0, sub)
-  assert_equal(-1, Stream.replay_start(-1, sub))
+  assert_equal 0, Stream.replay_start(0, Stream.replay_head(0))
+  assert_equal(-1, Stream.replay_head(-1))
+  assert_equal(-1, Stream.replay_start(-1, Stream.replay_head(-1)))
+end
+
+test "a row broadcast between the head and the subscription is replayed, not lost" do
+  fresh_db
+  hub = Stream::Hub.new(1000)
+  Stream.broadcast("a", "x")
+  Stream::Poller.run_once(hub)
+  head = Stream.replay_head(999_999)
+  sub = hub.subscribe(["a"])
+  Stream.broadcast("a", "raced")
+  Stream::Poller.run_once(hub)
+  start = Stream.replay_start(999_999, head)
+  assert_equal head, start
+  backlog = Stream.replay(["a"], start)
+  assert_equal ["raced"], backlog.map { |m| m.message_payload }
+  sub.skip_through!(backlog[backlog.size - 1].message_id)
+  assert_equal 0, payloads_of(sub).size
 end
 
 test "a client ahead of a lagging poller is not sent its rows again" do
@@ -371,9 +391,10 @@ test "a client ahead of a lagging poller is not sent its rows again" do
   # them yet; the client got them from another process
   Stream.broadcast("a", "2")
   Stream.broadcast("a", "3")
+  head = Stream.replay_head(3)
   sub = hub.subscribe(["a"])
   assert_equal 1, sub.boundary
-  start = Stream.replay_start(3, sub)
+  start = Stream.replay_start(3, head)
   assert_equal 3, start
   assert_equal 0, Stream.replay(["a"], start).size
   sub.skip_through!(start)

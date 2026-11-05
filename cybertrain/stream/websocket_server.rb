@@ -178,6 +178,7 @@ module Cybertrain
         @names = names
         @json = json
         @after = after
+        @head = -1
         @ping_interval = ping_interval
         @max_message = max_message
         @close_code = close_code
@@ -188,6 +189,8 @@ module Cybertrain
         code = @close_code
         sub = Subscriber.new(Array.new(0) { "" }, 1)
         if code == 0
+          # The head before the subscription (Stream.replay_start).
+          @head = Stream.replay_head(@after)
           # The limit under the hub's lock (see SSEWriter#write_body).
           within = hub.subscribe_within(@names, @max_connections)
           if within.nil?
@@ -241,7 +244,7 @@ module Cybertrain
       private
 
       def ws_session(sink, sub)
-        last = Stream.replay_start(@after, sub)
+        last = Stream.replay_start(@after, @head)
         if last >= 0
           # By chunks, as SSEWriter does.
           cursor = sub.boundary

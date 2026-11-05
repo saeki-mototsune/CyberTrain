@@ -21,10 +21,11 @@ ok   a row polled before subscribing is not delivered, one not yet polled is
 ok   a replay that finds nothing leaves the boundary at after
 ok   the poller starts on a database without the messages table
 ok   an after above the head is clamped to the table's head, not below it
+ok   a row broadcast between the head and the subscription is replayed, not lost
 ok   a client ahead of a lagging poller is not sent its rows again
 ok   prune deletes the rows older than the cutoff
 ok   replay returns the backlog of the named streams after an id
 ok   broadcast_replace_to writes the Turbo Stream HTML
 ok   broadcast_replace_to with partial: keeps the partial's markup and escapes its locals
 ok   the other broadcast shortcuts
-29 tests, 106 assertions, 0 failures
+30 tests, 110 assertions, 0 failures
