@@ -695,7 +695,7 @@ finds the commit that removed them).
     `@io.write(line.end_with?("\n") ? line : "#{line}\n")`.
     test/logger_tls.rb is the regression program.
 
-79. A lambda literal assigned to a module-level instance variable in the
+81. A lambda literal assigned to a module-level instance variable in the
     module body (`module V; @b = ->(c) { H.new(c) }; end`) never learns the
     argument types of its call sites (Spinel 2026.11.04.7026): its
     parameter keeps the Integer default, so `V.b.call(controller)` handed
