@@ -522,15 +522,17 @@ test "loopback and private destinations are refused by default" do
 end
 
 # How a request ended, for a spelling that must never reach the server:
-# "blocked" (the policy refused the resolved address), "unreached" (the
-# name resolution itself failed, or ran past the deadline: a refusal or
-# timeout after a connection would not count), or the outcome's own kind,
-# "ok 200" when it got through.
+# "blocked" (the policy refused the resolved address), "unreached" (no byte
+# was exchanged with any server: the name did not resolve or resolving it
+# ran past the deadline, or the connect to the address it gave was refused
+# or ran out of time), or the outcome's own kind: "ok 200" when it got
+# through, and a refusal or timeout while reading or writing, which would
+# mean a connection was made.
 def reach_kind(got)
-  return "unreached" if got.kind == "refused" && !got.text.index("could not resolve the host name").nil?
-  return "unreached" if got.kind == "timeout" && !got.text.index("resolving the host name").nil?
+  return got.kind unless got.kind == "refused" || got.kind == "timeout"
+  return got.kind unless got.text.index("reading").nil? && got.text.index("writing").nil?
 
-  got.kind
+  "unreached"
 end
 
 test "the inet_aton spellings of a loopback address never reach it" do
@@ -538,10 +540,13 @@ test "the inet_aton spellings of a loopback address never reach it" do
   # reads as 127.0.0.1. Net::Address takes only the dotted quad and needs no
   # more: the policy is decided on the address getaddrinfo answers. What it
   # answers is the C library's: glibc reads these spellings as 127.0.0.1,
-  # so they are refused as loopback; macOS's resolver treats them as names
-  # and hands them to DNS, where they do not resolve (refused) or run past
-  # the deadline (timeout). Either way the server on 127.0.0.1 is never
-  # reached, and the message never repeats the path.
+  # so they are refused as loopback. macOS's resolver does not read them as
+  # inet_aton does: "127.1" and "0x7f.0.0.1" are names to it, handed to DNS,
+  # where they do not resolve (refused) or run past the deadline (timeout),
+  # and "0177.0.0.1" is read with its leading zero as decimal, an address
+  # that is not loopback and did not answer the connect (CI's macOS job).
+  # Either way the server on 127.0.0.1 is never reached, and the message
+  # never repeats the path.
   client = Cybertrain::HttpClient.new(timeout: 1, deadline: 2)
   short = outcome { client.get("http://127.1:#{$server.port}/hello") }
   assert_includes ["blocked", "unreached"], reach_kind(short)

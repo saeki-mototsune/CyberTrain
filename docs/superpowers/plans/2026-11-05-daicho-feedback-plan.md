@@ -27,9 +27,11 @@ built with `cybertrain setup` to repeat the runs):
   rather than discarding; `127.1`, `0x7f.0.0.1`, `2130706433` and
   `0177.0.0.1` are resolved by glibc's `getaddrinfo` (CRuby and Spinel
   alike) to `127.0.0.1` and refused as loopback by `HttpClient`; macOS's
-  resolver hands them to DNS instead, where they fail to resolve or run
-  past the deadline (found by CI's macOS job), so they are refused as
-  unreachable there; IPv6 addresses are dialled and classified.
+  resolver does not read them as inet_aton does (found by CI's macOS job):
+  `127.1` and `0x7f.0.0.1` go to DNS and fail to resolve or run past the
+  deadline, and `0177.0.0.1` is read with the leading zero as decimal, an
+  address that is not loopback and did not answer the connect; none
+  reaches 127.0.0.1; IPv6 addresses are dialled and classified.
 
 ## Tasks
 
