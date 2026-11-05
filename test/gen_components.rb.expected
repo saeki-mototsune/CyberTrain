@@ -3,8 +3,9 @@ ok   a class that is not a component is skipped, and so is ApplicationComponent
 ok   a positional initialize parameter is an error
 ok   component names follow the class, namespaces included
 ok   a component without its template is an error naming the expected path
+ok   two classes with the same component name are an error naming both files
 ok   the emitter writes the per-class tables and the construction arms
 ok   two optional keywords give four arms, the most complete first
 ok   no components: build always raises
 ok   the output always ends with the component_builder line
-9 tests, 23 assertions, 0 failures
+10 tests, 24 assertions, 0 failures

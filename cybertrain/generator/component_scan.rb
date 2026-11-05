@@ -54,6 +54,11 @@ module Cybertrain
           erb = "#{path.delete_suffix(".rb")}.html.erb"
           raise Error, "#{path}: no template; expected #{erb}" unless File.file?(erb)
 
+          infos.each do |other|
+            next unless other.component_name == info.component_name
+
+            raise Error, "component '#{info.component_name}' is defined twice: #{other.file} (#{other.class_name}) and #{path} (#{info.class_name})"
+          end
           infos << info
         end
         infos
