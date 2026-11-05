@@ -1,5 +1,5 @@
 ---
-source_sha256: 5904e09a007176aba046dad59aec644372364a8b38fe3d8a84c555bfe67c2e85
+source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
 ---
 # 設定
 
@@ -33,6 +33,7 @@ end
 | `CYBERTRAIN_WORKER` | `worker` | `true`。`0` または `false` にすると、`server` プロセスは定期タスク、ジョブ、WebSocket のフィードを実行しない（[プロセスの役割](background-and-operations.md#process-roles)を参照）。`./<app> worker` と `feeds` はこれを無視する |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`：1 つのプロセスが同時に実行するジョブの数（[バックグラウンド処理](background-and-operations.md#background-work)を参照）。1 以上 |
 | `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`：リアルタイムのエンドポイント（[リアルタイム](realtime.md#limits-and-settings)を参照）。空の値でストリームが無効になる。`/` で始まり、`health_path` と異なっていなければならない |
+| `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`。`1` または `true` にすると `SO_REUSEPORT` で bind し、複数のプロセスが 1 つのポートで listen でき、Linux ではカーネルが接続を振り分ける（開発環境では無視される。[Running several processes](../deploy.en.md#running-several-processes)を参照）。1 つを除くすべてのプロセスで `CYBERTRAIN_WORKER=0` にする |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`。組み込みのヘルスチェックのパス（[運用](background-and-operations.md#operations-backups-vacuum-health-check)を参照）。空の値で無効になり、先頭に `/` のない値ではサーバーが起動時に停止する。`health_worker_stale`（300 秒）は `config/app.rb` で設定する |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`。`1` または `true` にすると、`Cybertrain::HttpClient` がループバック、プライベート、その他の公開されていないアドレスに接続できる（[外向きの HTTP](external-services.md#outbound-http) を参照） |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`。`Cybertrain::Mailer` が送信に使う SMTP サーバー（[メールを送る](external-services.md#sending-e-mail)を参照） |
