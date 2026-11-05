@@ -813,6 +813,20 @@ end
       Request.loopback_address?(@remote_addr)
     end
 
+    # The scheme and host the client used, `"http://www.example.com"`:
+    # `https` when a trusted proxy (as for {#client_ip}) says so in
+    # `X-Forwarded-Proto`, else `http`; the host is the Host header ("" when
+    # there is none). For absolute URLs (a WebSocket URL from
+    # `turbo_stream_from ws: true`).
+    # @return [String]
+    # @api public
+    def base_url
+      host = header("host").to_s
+      proto = header("x-forwarded-proto").to_s
+      scheme = Request.trusted_peer?(@remote_addr) && proto == "https" ? "https" : "http"
+      "#{scheme}://#{host}"
+    end
+
 # The client's address: {#remote_addr}, unless the connection comes from
 # a trusted proxy, in which case the last hop of X-Forwarded-For, the
 # address the proxy appended. A trusted proxy is a loopback peer

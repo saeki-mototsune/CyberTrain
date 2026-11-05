@@ -18,6 +18,7 @@ require "cybertrain/pagination"
 require "cybertrain/params"
 require "cybertrain/views"
 require "cybertrain/component"
+require "cybertrain/stream"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
 require "cybertrain/generator/inflector"
@@ -111,6 +112,9 @@ module Cybertrain
         when "dom_id"
           no_kwargs(kwargs, name)
           dom_id(args)
+        when "turbo_stream_from" then turbo_stream_from(args, kwargs)
+        when "signed_stream_name" then signed_stream_name(args)
+        when "stream_source_path" then stream_source_path(args, kwargs)
         else
           # Inside a component's template its view methods come first (the
           # component is the template's self, as in ViewComponent).
@@ -830,6 +834,82 @@ module Cybertrain
       # A value for HTML: SafeString as is, anything else escaped.
       def to_html(v)
         FormBuilder.html_text(v)
+      end
+
+      # --- streams (turbo-rails' names) ----------------------------------------
+
+      # turbo_stream_from "alerts", @article: a <turbo-stream-source> whose
+      # src is the stream endpoint with one signed token for all the names
+      # (a String as it is, a record as Stream.name_for gives it). Turbo
+      # opens it as an EventSource; `ws: true` gives a ws:// (wss:// behind
+      # an https proxy) URL instead, built from the request, which Turbo
+      # opens as a WebSocket.
+      # The token is in the URL, so a proxy's access log sees it (the
+      # framework's own request log writes it as [FILTERED]); anyone holding
+      # it can read those streams.
+      def turbo_stream_from(args, kwargs)
+        token = signed_stream_name(args)
+        src = +""
+        src << stream_ws_base if kwargs["ws"] == true
+        src << Helpers.stream_endpoint_path
+        src << "?s="
+        src << token
+        escaped = Html.escape(src)
+        SafeString.of("<turbo-stream-source src=\"#{escaped}\"></turbo-stream-source>")
+      end
+
+      # The signed token naming the streams, for hand-written JavaScript.
+      def signed_stream_name(args)
+        raise ArgumentError, "signed_stream_name needs at least one stream" if args.empty?
+
+        names = Array.new(0) { "" }
+        i = 0
+        while i < args.size
+          value = args[i]
+          case value
+          when Cybertrain::Model then names << Stream.name_for(value)
+          else names << FormBuilder.value_text(value)
+          end
+          i += 1
+        end
+        Stream.sign(names)
+      end
+
+      # The endpoint URL with the token and `mode=json` (or mode: "raw"),
+      # for an EventSource or WebSocket written by hand.
+      def stream_source_path(args, kwargs)
+        mode = kwargs["mode"].nil? ? "json" : lower_text(kwargs["mode"])
+        raise ArgumentError, "stream_source_path mode: must be \"json\" or \"raw\", got #{mode.inspect}" unless mode == "json" || mode == "raw"
+
+        token = signed_stream_name(args)
+        out = +""
+        out << Helpers.stream_endpoint_path
+        out << "?s="
+        out << token
+        out << "&mode="
+        out << mode
+        out
+      end
+
+      def self.stream_endpoint_path
+        path = Cybertrain.config.stream_path
+        raise ArgumentError, "the stream endpoint is off (Config#stream_path is \"\")" if path.empty?
+
+        path
+      end
+
+      # "ws://host" from the request's base URL ("wss://" for https).
+      def stream_ws_base
+        # Raises OutsideRequest when rendering outside a request (B's rule);
+        # the nil check below is the fallback for a bare Helpers.new(nil).
+        request_bound!("turbo_stream_from")
+        controller = @controller
+        raise Views::OutsideRequest, "turbo_stream_from ws: true needs a request" if controller.nil?
+
+        base = controller.request.base_url
+        return "wss://#{base.byteslice(8, base.bytesize - 8)}" if base.start_with?("https://")
+
+        "ws://#{base.byteslice(7, base.bytesize - 7)}"
       end
 
       # --- request state ------------------------------------------------------

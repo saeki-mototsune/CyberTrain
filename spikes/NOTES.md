@@ -97,7 +97,7 @@ The rules are numbered in the order they were found. By topic:
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
-- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83
+- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 84
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63
 
@@ -911,6 +911,17 @@ The rules are numbered in the order they were found. By topic:
     prompt only appeared after each line). `STDOUT.flush` after the write
     shows it at once; Console.run flushes after the banner and every prompt
     (a StringIO answers flush too).
+
+84. `Queue#pop(timeout: seconds)` works under Spinel 2026.11.04.7026 as
+    under CRuby: it answers the next element, or nil once the timeout has
+    passed, and parks the green thread while it waits (another thread's
+    `q << x` wakes it; checked with a reduced program, a Queue of a user
+    class, one pushing thread spawned through a method as rule 21 says).
+    So a connection thread waits for its next message with it (the stream
+    hub's Subscriber#stream_pop, cybertrain/stream/hub.rb) and needs no
+    ConditionVariable. A nil element would be indistinguishable from the
+    timeout: push a sentinel object instead and look at a flag after the
+    pop (Subscriber#stream_offer on a dropped subscriber).
 
 ## Numbers worth remembering
 

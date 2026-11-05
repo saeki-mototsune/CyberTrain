@@ -1,0 +1,6 @@
+ok   each action wraps the HTML in a template
+ok   remove has no template and refresh has no target
+ok   a record target becomes its dom id
+ok   plain text is escaped, a SafeString is not, and the target is escaped
+ok   the result is a SafeString
+5 tests, 13 assertions, 0 failures
