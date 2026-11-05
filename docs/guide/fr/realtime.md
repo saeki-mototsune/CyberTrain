@@ -1,5 +1,5 @@
 ---
-source_sha256: 8a6c557e664a06f14ea869c54e55f0be7156409b1d89d78faf5e886d358b9316
+source_sha256: 9b59e533788ea708d97747619f1c8ded7a617781dc9a58f29808bf2bdc016a82
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -255,7 +255,10 @@ dérivée de `secret_key_base` pour les seuls flux (comme
 `turbo/signed_stream_verifier_key` dans Rails), si bien qu’un jeton n’est
 jamais un cookie de session valide&nbsp;; le point d’entrée vérifie la signature et ne lit ni
 la session ni la base de données. C’est le modèle de Turbo&nbsp;: qui pouvait
-rendre la page pouvait lire ses flux.
+rendre la page pouvait lire ses flux. Les jetons n’expirent pas&nbsp;;
+changer `secret_key_base` les invalide tous, et une page restée ouverte à
+travers ce déploiement ne reçoit plus rien (un `EventSource` tient le 403
+pour définitif) jusqu’à son rechargement.
 
 <!-- list: points -->
 - Un flux propre à un utilisateur est un flux nommé d’après

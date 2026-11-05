@@ -1,5 +1,5 @@
 ---
-source_sha256: 8a6c557e664a06f14ea869c54e55f0be7156409b1d89d78faf5e886d358b9316
+source_sha256: 9b59e533788ea708d97747619f1c8ded7a617781dc9a58f29808bf2bdc016a82
 ---
 # 实时：推送到浏览器的流
 
@@ -158,7 +158,7 @@ end
 
 ## 签名的流名称
 
-页面只有持有指明某个流的令牌，才能读取该流。令牌由流名称和一个 HMAC-SHA256 签名组成，签名的密钥是从 `secret_key_base` 专为流派生出来的（如同 Rails 的 `turbo/signed_stream_verifier_key`），因此令牌绝不会是有效的会话 cookie；端点检查签名，既不读取会话，也不读取数据库。这就是 Turbo 的模型：能够渲染该页面的人就能读取它的流。
+页面只有持有指明某个流的令牌，才能读取该流。令牌由流名称和一个 HMAC-SHA256 签名组成，签名的密钥是从 `secret_key_base` 专为流派生出来的（如同 Rails 的 `turbo/signed_stream_verifier_key`），因此令牌绝不会是有效的会话 cookie；端点检查签名，既不读取会话，也不读取数据库。这就是 Turbo 的模型：能够渲染该页面的人就能读取它的流。令牌不会过期；更改 `secret_key_base` 会使所有令牌失效，跨越这次部署仍然打开的页面在重新加载之前收不到更新（`EventSource` 把 403 视为最终结果）。
 
 <!-- list: points -->
 - 专属于某个用户的流，是以该用户的记录命名的流 `turbo_stream_from @user`（`"users:7"`），只在该用户的页面上渲染。任何拿到该令牌的人，只要密钥不变，都能读取这个流。
