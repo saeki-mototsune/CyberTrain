@@ -63,6 +63,33 @@ class FrameComponent < Cybertrain::Component
   end
 end
 
+# A view method its own template calls, and a partial that must not see it.
+class ProbeComponent < Cybertrain::Component
+  def secret = "s3"
+
+  def call_view_method(name)
+    case name
+    when :secret then secret
+    else nil
+    end
+  end
+
+  def view_method?(name)
+    case name
+    when "secret" then true
+    else false
+    end
+  end
+
+  def component_name
+    "probe"
+  end
+
+  def component_template
+    "components/probe_component.html.erb"
+  end
+end
+
 # Renders itself without end, to reach max_render_depth.
 class LoopComponent < Cybertrain::Component
   def component_name
@@ -86,6 +113,9 @@ module Gen
       when "frame"
         Cybertrain::Component.check_keywords!(name, kwargs, ["label"], 1)
         ::FrameComponent.new(label: kwargs["label"])
+      when "probe"
+        Cybertrain::Component.check_keywords!(name, kwargs, Array.new(0) { "" }, 0)
+        ::ProbeComponent.new
       when "loop"
         Cybertrain::Component.check_keywords!(name, kwargs, Array.new(0) { "" }, 0)
         ::LoopComponent.new
@@ -103,7 +133,9 @@ FILES = {
   "app/components/card_component.html.erb" => "<div class=\"card\"><h3><%= title %></h3><p><%= value_text %></p><%= content %></div>",
   "app/components/frame_component.html.erb" => "<section><%= label %>:<%= render component: \"card\", title: label %>|<%= render \"shared/note\", text: label %></section>",
   "app/components/loop_component.html.erb" => "<%= render component: \"loop\" %>",
-  "app/views/shared/_note.html.erb" => "<i><%= text %></i>"
+  "app/views/shared/_note.html.erb" => "<i><%= text %></i>",
+  "app/components/probe_component.html.erb" => "<%= secret %>|<%= render \"shared/probe\" %>",
+  "app/views/shared/_probe.html.erb" => "<%= secret %>"
 }
 DIRS = ["app", "app/views", "app/views/shared", "app/components"]
 DIRS.each { |d| Dir.mkdir("#{ROOT}/#{d}") }
@@ -126,6 +158,8 @@ def render_error(src, max_depth = 12)
   msg = ""
   begin
     render_inline(src, max_depth)
+  rescue Cybertrain::Component::Unknown => e
+    msg = "Unknown: #{e.message}"
   rescue StandardError => e
     msg = e.message
   end
@@ -151,12 +185,16 @@ end
 
 test "an unknown component raises Component::Unknown with the file hint" do
   msg = render_error("<%= render component: \"nope\" %>")
-  assert_equal "pages/inline:1: no component 'nope' (app/components/nope_component.rb, then `spin run gen`)", msg
+  assert_equal "Unknown: no component 'nope' (app/components/nope_component.rb, then `spin run gen`)", msg
 end
 
 test "keywords are checked" do
   assert_equal "pages/inline:1: missing keyword 'title' for component 'card'", render_error("<%= render component: \"card\" %>")
   assert_equal "pages/inline:1: unknown keyword 'titel' for component 'card' (known: title, value)", render_error("<%= render component: \"card\", title: \"x\", titel: \"y\" %>")
+end
+
+test "a partial rendered from a component does not see the component's view methods" do
+  assert_equal "shared/_probe.html.erb:1: undefined helper 'secret'", render_error("<%= render component: \"probe\" %>")
 end
 
 test "component nesting counts toward max_render_depth" do

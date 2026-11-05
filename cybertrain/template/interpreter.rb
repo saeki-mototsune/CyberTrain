@@ -37,6 +37,16 @@ module Cybertrain
     end
   end
 
+  # Defined here for the same reason as Views::OutsideRequest (the class
+  # body is in cybertrain/component.rb): `render component:` of an unknown
+  # name reaches the caller as Component::Unknown, not as a
+  # Template::RuntimeError.
+  class Component
+    # @api public
+    class Unknown < StandardError
+    end
+  end
+
   module Template
     # What templates call without a receiver (link_to, form_with, render ...).
     # Template::Helpers (cybertrain/template/helpers.rb) implements the real
@@ -461,6 +471,9 @@ module Cybertrain
           raise e
         rescue Cybertrain::Views::OutsideRequest => e
           # Kept as is, so a broadcast's caller can rescue it by class.
+          raise e
+        rescue Cybertrain::Component::Unknown => e
+          # Kept as is too (the message names the file to add).
           raise e
         rescue StandardError => e
           relocate(e, node)

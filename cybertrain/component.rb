@@ -21,15 +21,15 @@
 # `const_get`, spikes/NOTES.md rule 1).
 require "cybertrain/html"
 require "cybertrain/views"
+require "cybertrain/template/interpreter"
 require "cybertrain/generator/inflector"
 
 module Cybertrain
   # @api public
   class Component
-    # No component of that name: `render component: "nope"`.
-    # @api public
-    class Unknown < StandardError
-    end
+    # No component of that name: `render component: "nope"`. The class
+    # itself (Component::Unknown < StandardError) is defined in
+    # cybertrain/template/interpreter.rb, which lets it through unwrapped.
 
     # The instance variables the template reads, by name. Typed empty Hash
     # of polymorphic values (spikes/NOTES.md rules 9, 71); gen/components.rb

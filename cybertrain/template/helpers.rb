@@ -625,7 +625,20 @@ module Cybertrain
           scope[key] = locals[key]
           i += 1
         end
-        html = interp.render(template, scope)
+        html = ""
+        if @components.empty?
+          html = interp.render(template, scope)
+        else
+          # A partial rendered from a component's template is not the
+          # component's: a base Component (no view methods) on top of the
+          # stack keeps the component's methods out of its names.
+          component_push(Component.new)
+          begin
+            html = interp.render(template, scope)
+          ensure
+            component_pop
+          end
+        end
         scope.each_key { |key| env[key] = scope[key] if key.start_with?("__content_") }
         SafeString.of(html)
       end
