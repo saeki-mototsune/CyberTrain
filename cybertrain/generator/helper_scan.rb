@@ -76,13 +76,13 @@ module Cybertrain
       # cybertrain/template/helpers.rb and interpreter.rb.
       RESERVED_HELPER_NAMES = %w[
         app_block_content app_helper_call arg button_to button_to_path
-        call_object_method class_names component_pop component_push content
+        call_object_method class_names component_pop component_push constant content
         content_for content_for? content_tag csrf_meta_tags csrf_token
         data_attrs distance_of_time_in_words dom_id escape flash
         flash_messages form_action form_record form_with h helper_arity!
         helper_call helper_keywords! helper_no_keywords! hidden_fields
         html_arg initialize int_text kwarg_attr link_to link_to_path
-        lower_text model_key nested_url no_kwargs number_with_delimiter
+        lower_text model_call? model_key nested_url no_kwargs number_with_delimiter
         outside_request! page_method pager_href pager_html paginate params
         partial_file plural_words pluralize raw render
         render_component_helper render_helper request_bound! request_path
