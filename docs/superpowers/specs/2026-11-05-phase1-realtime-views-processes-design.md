@@ -157,8 +157,13 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   otherwise a `ConditionVariable` wait: the implementer checks and records
   the result in spikes/NOTES.md). A queue longer than
   `Config#stream_max_backlog` (1000) messages drops the subscriber: the
-  connection is closed and the client reconnects (as Action Cable does when
-  a client cannot keep up). Each `Subscriber` carries a **boundary**: set to
+  connection is closed (as Action Cable does when a client cannot keep
+  up). An `EventSource` reconnects by itself and replays with
+  `Last-Event-ID`; a WebSocket client has to reopen the connection itself
+  and may catch up with `?after=<id>`. Turbo's `<turbo-stream-source>` does
+  not reopen a lost WebSocket, so a page subscribed with `ws: true` gets no
+  more updates until it is reloaded; the guide says so and keeps SSE the
+  default. Each `Subscriber` carries a **boundary**: set to
   the poller's `last_id` under the hub's lock when it subscribes (so it is
   ordered with respect to `deliver`), and raised by the replay handoff
   below; `deliver` skips a message with `id <= boundary` for that
@@ -195,6 +200,10 @@ feature off). It answers two kinds of request at that path:
   `mode=raw|json`. The response carries `Cache-Control: no-store`,
   `X-Accel-Buffering: no`. A comment line `: ping` goes out every
   `Config#stream_ping_interval` seconds (15) so proxies keep the connection.
+  The token is a credential, so `RequestLogger` writes `s=[FILTERED]` for
+  every `s` pair of a request to `Config#stream_path`, the SSE request and
+  the WebSocket upgrade alike: an exact-name filter, because the substring
+  list in `Config#filter_parameters` would also take `sort=`.
 - **`GET` with `Upgrade: websocket`**: RFC 6455 server handshake (the key
   from `websocket/frame.rb`'s `accept_key`), then a frame loop on the same
   connection thread: `wait_readable` before every read (NOTES rule 20),
@@ -583,7 +592,16 @@ does the same with green threads:
   UPDATE SET holder = excluded.holder, expires_at = excluded.expires_at
   WHERE cybertrain_leases.holder = excluded.holder OR
   cybertrain_leases.expires_at < ?`, success when `changes == 1`. Only the
-  holder runs due tasks; the others tick and try again. A tick that cannot
+  holder runs due tasks; the others tick and try again. The lease is
+  renewed before each task, not while one runs, so a task must finish
+  within `scheduler_lease_ttl` or another process may take the lease and
+  run tasks beside it; each process keeps its own timetable in memory, so
+  after a change of leader a task can run sooner than its interval, and a
+  task the old leader was running when it died runs again. Tasks are
+  therefore written to do no harm when they run twice (the rule the jobs
+  already follow, 3.1). Renewing the lease from a second thread while a
+  task runs, and persisting the timetable, are left for a later phase. A
+  tick that cannot
   reach the database logs and retries. `Scheduler.leader?` is readable (the
   health check keeps reporting `last_tick`; a non-leader still ticks).
   `Job.recover!` and the heartbeat run in every worker process (they are
