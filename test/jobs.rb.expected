@@ -6,6 +6,7 @@ ok   the backoff list is 1, 5, 15 and then 60 minutes
 ok   a job of a kind with no handler is failed at once, with last_error
 ok   last_error is bounded
 ok   recover! requeues rows a dead process left running once their heartbeat is stale
+ok   recover! fails a stale row that used its last attempt instead of requeueing it
 ok   a claim writes claimed_by and heartbeat_at; heartbeat! touches only the jobs in flight here
 ok   an outcome write that keeps failing leaves the row to staleness recovery
 ok   an outcome write that fails once is retried and written
@@ -19,4 +20,4 @@ ok   concurrency must not be negative
 ok   a job enqueued in a transaction that rolls back is gone with it
 ok   prune_done deletes old done rows and keeps failed ones
 ok   schema dumps leave the jobs table out
-21 tests, 155 assertions, 0 failures
+22 tests, 161 assertions, 0 failures

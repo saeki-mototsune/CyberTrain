@@ -51,8 +51,11 @@ module Cybertrain
     #
     # Before the block runs, `Cybertrain::DB` is connected to
     # `Cybertrain.config.database_path` with a pool of one connection (and
-    # disconnected afterwards), the way `./<name> db ...` works; no server,
-    # views or session secret are set up. A `Cybertrain::DB::Error` raised
+    # disconnected afterwards), the way `./<name> db ...` works, and the
+    # views and the URL resolver are configured as the server's boot does,
+    # so `Cybertrain::Views.render_partial`, `render_component` and the
+    # `Stream.broadcast_*_to(partial: / component:)` shortcuts work; no
+    # server, scheduler, threads or session secret are set up. A `Cybertrain::DB::Error` raised
     # by the block (or by the connect) prints `NAME failed: MESSAGE` and
     # exits 1. Any other exception is not rescued.
     #
@@ -110,7 +113,7 @@ module Cybertrain
     def self.run(name, argv, router:, url_resolver:, views:)
       unless argv.empty?
         index = command_index(argv[0])
-        return run_command(COMMANDS[index], argv[1, argv.size - 1]) if index >= 0
+        return run_command(COMMANDS[index], argv[1, argv.size - 1], views, url_resolver) if index >= 0
       end
       return serve(name, argv, router, url_resolver, views) if server?(argv)
 
@@ -139,11 +142,15 @@ module Cybertrain
 
     # A registered command with a pool of one: a one-shot process needs no
     # more, and the server's pool_size of connections would only be opened
-    # and closed again. The begin/rescue sits in this plain method, which
-    # calls the stored block rather than yielding (NOTES rules 32/45).
-    def self.run_command(command, args)
+    # and closed again. Views are configured as boot does
+    # (Application.configure_views), so the block can render a partial or a
+    # component; there is no server, scheduler or thread. The begin/rescue
+    # sits in this plain method, which calls the stored block rather than
+    # yielding (NOTES rules 32/45).
+    def self.run_command(command, args, views, url_resolver)
       begin
         DB.connect(Cybertrain.config.database_path, size: 1)
+        Application.configure_views(Cybertrain.config, views, url_resolver)
         command.command_block.call(args)
       rescue DB::Error => e
         puts "#{command.command_name} failed: #{e.message}"

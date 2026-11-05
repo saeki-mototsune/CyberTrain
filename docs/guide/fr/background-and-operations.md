@@ -1,5 +1,5 @@
 ---
-source_sha256: 35fc0e5c228f34a8c15c44c58d5c58633e69b4a21120981888c4a548b130385c
+source_sha256: d8fb004a68aa107d7af3c93f20e9b75128f7653639c6fb550d00805087109e9a
 ---
 # Tâches de fond et exploitation
 
@@ -81,7 +81,11 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   `job_heartbeat_interval` (30&nbsp;s). Une ligne `running` dont le
   battement de cœur est plus vieux que `job_heartbeat_stale` (un processus
   qui a planté ou a été arrêté en plein job) est remise en file par le
-  premier processus qui regarde, à son démarrage puis une fois par minute.
+  premier processus qui regarde, à son démarrage puis une fois par minute,
+  sauf si cette tentative était la dernière (`job_max_attempts`, la prise
+  d’un job comptant une tentative)&nbsp;: la ligne reste alors `failed`, avec
+  `process stopped (heartbeat stale)` dans `last_error`, si bien qu’un job
+  qui tue son processus n’est pas réessayé indéfiniment.
   Les tâches planifiées s’exécutent dans un seul processus à la fois&nbsp;:
   les processus partagent un bail dans la base (`cybertrain_leases`,
   renouvelé à chaque tick, `scheduler_lease_ttl` 30&nbsp;s), et seul son
@@ -177,7 +181,9 @@ true
   tous.
 - `x = expr` garde une valeur pour les lignes suivantes, et `_` est la
   dernière valeur. `sql "..."` exécute du SQL et affiche les lignes en
-  tableau&nbsp;; `tables` liste les tables&nbsp;; `exit`, `quit` ou Ctrl-D
+  tableau, les caractères de contrôle d’une cellule échappés (`\e`, `\n`)&nbsp;:
+  les données ne peuvent ni envoyer une séquence d’échappement au terminal ni
+  casser le tableau&nbsp;; `tables` liste les tables&nbsp;; `exit`, `quit` ou Ctrl-D
   quitte.
 - Une ligne qui ne s’analyse pas affiche son erreur, une ligne qui lève une
   exception affiche `Class: message`, et l’invite revient. Une valeur binaire

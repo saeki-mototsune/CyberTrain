@@ -230,8 +230,10 @@ sent with the head.
 ## Signed stream names
 
 A page may read a stream only with a token that names it. The token is the
-stream names and an HMAC-SHA256 signature made with `secret_key_base`; the
-endpoint checks the signature and reads neither the session nor the
+stream names and an HMAC-SHA256 signature made with a key derived from
+`secret_key_base` for streams alone (as Rails'
+`turbo/signed_stream_verifier_key`), so a token is never a valid session
+cookie; the endpoint checks the signature and reads neither the session nor the
 database. That is Turbo's model: whoever could render the page could read
 its streams.
 

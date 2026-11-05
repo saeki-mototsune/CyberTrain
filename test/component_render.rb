@@ -41,7 +41,7 @@ class CardComponent < Cybertrain::Component
   end
 
   def component_template
-    "components/card_component.html.erb"
+    "__components/card_component.html.erb"
   end
 end
 
@@ -59,7 +59,7 @@ class FrameComponent < Cybertrain::Component
   end
 
   def component_template
-    "components/frame_component.html.erb"
+    "__components/frame_component.html.erb"
   end
 end
 
@@ -86,7 +86,7 @@ class ProbeComponent < Cybertrain::Component
   end
 
   def component_template
-    "components/probe_component.html.erb"
+    "__components/probe_component.html.erb"
   end
 end
 
@@ -97,7 +97,7 @@ class LoopComponent < Cybertrain::Component
   end
 
   def component_template
-    "components/loop_component.html.erb"
+    "__components/loop_component.html.erb"
   end
 end
 
@@ -135,9 +135,13 @@ FILES = {
   "app/components/loop_component.html.erb" => "<%= render component: \"loop\" %>",
   "app/views/shared/_note.html.erb" => "<i><%= text %></i>",
   "app/components/probe_component.html.erb" => "<%= secret %>|<%= render \"shared/probe\" %>",
-  "app/views/shared/_probe.html.erb" => "<%= secret %>"
+  "app/views/shared/_probe.html.erb" => "<%= secret %>",
+  # A ComponentsController's views: app/views/components/ is a view
+  # directory like any other, beside the component of the same name.
+  "app/views/components/_card.html.erb" => "<p>the view <%= title %></p>",
+  "app/views/components/card_component.html.erb" => "<p>a page</p>"
 }
-DIRS = ["app", "app/views", "app/views/shared", "app/components"]
+DIRS = ["app", "app/views", "app/views/shared", "app/views/components", "app/components"]
 DIRS.each { |d| Dir.mkdir("#{ROOT}/#{d}") }
 FILES.each_key { |f| File.write("#{ROOT}/#{f}", FILES[f]) }
 at_exit do
@@ -199,6 +203,28 @@ end
 
 test "component nesting counts toward max_render_depth" do
   assert_includes render_error("<%= render component: \"loop\" %>", 4), "partial nesting too deep (> 4)"
+end
+
+test "a view under app/views/components/ and a component render side by side" do
+  assert_equal "<p>the view V</p>", Cybertrain::Views.render_partial("components/card", title: "V")
+  env = { "__template_dir" => "components" }
+  env["v"] = 2
+  page = Cybertrain::Views.configured_engine.render("components/card_component", env, Cybertrain::Template::Helpers.new(nil))
+  assert_equal "<p>a page</p>", page
+  assert_equal "<div class=\"card\"><h3>C</h3><p>0 pts</p></div>", render_inline("<%= render component: \"card\", title: \"C\" %>")
+end
+
+test "the same, from embedded templates" do
+  sources = {
+    "components/_card.html.erb" => "<p>embedded view <%= title %></p>",
+    "__components/card_component.html.erb" => "<b><%= title %></b>"
+  }
+  Cybertrain::Views.configure_embedded(sources)
+  view = Cybertrain::Views.render_partial("components/card", title: "V")
+  component = render_inline("<%= render component: \"card\", title: \"C\" %>")
+  Cybertrain::Views.configure("#{ROOT}/app/views", cache: false)
+  assert_equal "<p>embedded view V</p>", view
+  assert_equal "<b>C</b>", component
 end
 
 test "the derived names of the base class" do

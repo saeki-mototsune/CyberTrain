@@ -6,6 +6,7 @@ backup failed: nothing to back up
 ok   a DB::Error becomes an error line and exit 1
 user failed: cannot open database no/such/dir/x.sqlite3: unable to open database file (rc 14)
 ok   a database that cannot be opened is a DB::Error too
+ok   a command can render a partial, path helpers included
 ok   server? is false for a registered name
 Usage:
   ./blog [server [PORT]]   start the server
@@ -20,6 +21,7 @@ Usage:
   ./blog status            exit with ARG as the status
   ./blog broken            run SQL that fails
   ./blog backup            raise a DB::Error itself
+  ./blog greet             render a partial
   ./blog help
 ok   help lists the registered commands after the built-in ones
 ok   built-in, numeric, empty and taken names are refused
@@ -39,6 +41,7 @@ Usage:
   ./blog status            exit with ARG as the status
   ./blog broken            run SQL that fails
   ./blog backup            raise a DB::Error itself
+  ./blog greet             render a partial
   ./blog help
 ok   the built-ins still work next to registered commands
-9 tests, 32 assertions, 0 failures
+10 tests, 34 assertions, 0 failures

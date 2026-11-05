@@ -469,18 +469,7 @@ The rules are numbered in the order they were found. By topic:
     written on a template's first render, which two workers could do at
     once; `Engine.embedded` now parses every embedded template at boot
     (2026-11-05, found in review of the `SPINEL_WORKERS` fix, rule 22).
-    Development's engine (`cache: false`) still writes the cache, and
-    `@stamps`, on the request that renders a changed file, so development
-    serves on one worker whatever `SPINEL_WORKERS` says
-    (`Application.serving_workers`; the boot banner names an ignored
-    count). Rejected: re-parsing on the watcher thread and swapping in a
-    new engine (`Views.configure`), or copy-on-write ivars inside the
-    engine. Both need a request thread to see a fully built object through
-    one plain reference store, and Spinel compiles an ivar store to a plain
-    C store plus the GC write barrier (`sp_gc.h` `SP_WBO`), with no
-    release/acquire ordering its docs promise. The cost: development no
-    longer runs requests in parallel; check parallel behaviour against a
-    `cybertrain build` binary.
+    Development's engine still writes on a changed file.
 58. `Foo.new(<a String made in the argument>)` can free that String before the
     object has it (Spinel 2026.09.12): the generated `new` allocates the
     object, which may collect, and only then roots its arguments. A freshly

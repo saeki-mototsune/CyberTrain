@@ -33,7 +33,7 @@ def no_views
   none
 end
 
-def resolver = ->(name, args) { "/" }
+def resolver = ->(name, args) { "/#{name}" }
 
 def run(argv)
   Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)
@@ -68,6 +68,18 @@ end
 
 Cybertrain::Main.command("backup", "raise a DB::Error itself") do |argv|
   raise Cybertrain::DB::Error, "nothing to back up" if argv.empty?
+  0
+end
+
+# A partial under the development views root (app/views beside the
+# program's working directory), rendered by a command as a mail body or a
+# broadcast would be.
+Dir.mkdir("app")
+Dir.mkdir("app/views")
+File.write("app/views/_greeting.html.erb", "<%# locals: (name:) %>Hi <%= name %>, <%= home_path %>")
+
+Cybertrain::Main.command("greet", "render a partial") do |argv|
+  SEEN << Cybertrain::Views.render_partial("greeting", name: argv[0]).to_s
   0
 end
 
@@ -110,6 +122,12 @@ test "a database that cannot be opened is a DB::Error too" do
   Cybertrain.config.database_path = "no/such/dir/x.sqlite3"
   assert_equal 1, run(["user", "d@example.com"])
   Cybertrain.config.database_path = "commands.sqlite3"
+end
+
+test "a command can render a partial, path helpers included" do
+  base = SEEN.size
+  assert_equal 0, run(["greet", "Ann"])
+  assert_equal "Hi Ann, /home_path", SEEN[base]
 end
 
 test "server? is false for a registered name" do
