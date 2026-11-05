@@ -16,9 +16,17 @@ require_relative "../gen/migrations"
 # `./blog touch 12` enqueues it from its own process, and `./blog worker`
 # (or `./blog server`, unless CYBERTRAIN_WORKER=0) runs it and logs the
 # article's title.
+# A title is visitor-supplied text: a newline in it would start a line of
+# its own in the log, so control characters are shown as spaces.
+def log_text(text)
+  out = +""
+  text.each_char { |ch| out << (ch.ord < 32 || ch.ord == 127 ? " " : ch) }
+  out
+end
+
 Cybertrain::Job.handle("touch") do |payload|
   article = Article.find_by(id: payload.to_i)
-  title = article.nil? ? "(no such article)" : article.title.to_s
+  title = article.nil? ? "(no such article)" : log_text(article.title.to_s)
   Cybertrain.logger.info("touch: article #{payload}: #{title}")
 end
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 11e7333b2d2b8c4b6bedd02bb1d11425913e066441e6d2dd41b293624e28ba63
+source_sha256: 0ea47a773f4db8094f7ab603448e3a0c43ff58b3eaf8630a1c405885888bfe09
 ---
 # Cybertrain 模板语言参考
 
@@ -181,7 +181,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | 接收者 | 接受块的方法 | 块的值用作 |
 | --- | --- | --- |
 | `Array` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 映射后的值、判断条件、被加数、排序键、分组键 |
-| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 同上，块看到的是 `|key, value|`（一个参数时得到 `[key, value]` 对）；`select`/`reject` 返回 Hash，其他方法返回 Array 的方法对这些键值对返回的结果 |
+| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 同上，块看到的是 `\|key, value\|`（一个参数时得到 `[key, value]` 对）；`select`/`reject` 返回 Hash，其他方法返回 Array 的方法对这些键值对返回的结果 |
 | `tag` 构建器 | 每个元素（`tag.div do ... end`） | 它的**输出**就是元素的内容（[tag 构建器](#the-tag-builder)） |
 
 ```erb
