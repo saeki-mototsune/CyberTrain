@@ -710,6 +710,12 @@ Each item is written as "Decision / Reason / Rejected alternatives / Consequence
 
 All generated code is committed. CI runs `git diff --exit-code gen/` after `spin run gen` to check that it is up to date.
 
+The inputs above are what gen reads when it runs. What it is compiled from is a different set: `bin/gen.rb`, `config/**/*.rb`, `db/schema.rb`, `spin.toml`, `spin.lock`, and for each `path = "..."` in `spin.toml` that directory's `cybertrain.rb` and `cybertrain/**/*.rb`. `config/**` is wider than what `bin/gen.rb` requires, because `config/routes.rb` may `require_relative` a neighbour. A registry or git dependency moves `spin.lock`, so it needs no walk.
+
+The development rebuild (D12) uses that difference. spin recompiles an executable when any Ruby file of the package or of a path dependency changes, so an edit to a controller used to spend about 3 s of an 8 s rebuild compiling a generator identical to the one on disk. `Dev::GenStamp` signs the compiled-from set (`path:mtime:size`, in `tmp/gen-inputs`), and while the signature stands the rebuild runs `./build/bin/gen` instead of `spin run gen`. The signature is taken before building, so an edit made during the build reads as a change next time, and it is recorded only after a successful build that went through `spin run gen`. A failed direct run is followed at once by the full command, so a broken binary never strands the loop; the price is that a compile error in the application is built twice. The rebuild always runs gen, because a controller edit can change `gen/controllers.rb`.
+
+The skip keys on gen's inputs, not its output: the cost being saved is compiling gen, which comes before there is any output to compare.
+
 ## 7. Draft specification of the template language
 
 ERB tags: `<% %>`, `<%= %>` (escaped), `<%== %>` (unescaped), `<%# %>`, `<%- -%>` (trim), and a leading `<%# locals: (a:, b:) %>`.
@@ -778,7 +784,7 @@ cybertrain/
     schema/      # table.rb  definition.rb  dumper.rb (the db/schema.rb DSL)
     db/          # sqlite_ffi.rb  connection.rb  pool.rb  migrator.rb  schema_dumper.rb  sqlite_ddl.rb  cli.rb  error.rb
     generator/   # runner.rb  routes_dsl.rb  *_emitter.rb  model_scan.rb  controller_scan.rb  manifest.rb  inflector.rb  url_support.rb
-    dev/         # watcher.rb  rebuilder.rb  reexec.rb  error_page.rb (D12)
+    dev/         # watcher.rb  rebuilder.rb  gen_stamp.rb  reexec.rb  error_page.rb (D12, section 6)
     cli.rb  cli/ # new_app.rb  scaffold.rb  templates.rb  build.rb
     test.rb  test/client.rb  html.rb  crypto.rb  logger.rb
   bin/cybertrain.rb  exe/cybertrain   # CLI (spin install / gem)
