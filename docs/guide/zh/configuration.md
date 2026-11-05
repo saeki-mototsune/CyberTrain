@@ -1,5 +1,5 @@
 ---
-source_sha256: 5904e09a007176aba046dad59aec644372364a8b38fe3d8a84c555bfe67c2e85
+source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
 ---
 # 配置
 
@@ -33,6 +33,7 @@ end
 | `CYBERTRAIN_WORKER` | `worker` | `true`；`0` 或 `false` 会让 `server` 进程不运行定时任务、作业和 WebSocket 数据订阅（参见[进程角色](background-and-operations.md#process-roles)）；`./<app> worker` 和 `feeds` 会忽略它 |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`：一个进程同时运行的作业数（参见[后台任务](background-and-operations.md#background-work)）；至少为 1 |
 | `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`：实时端点（参见[实时](realtime.md#limits-and-settings)）；空值会关闭流；它必须以 `/` 开头，并且不同于 `health_path` |
+| `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`；`1` 或 `true` 会以 `SO_REUSEPORT` 绑定，让多个进程监听同一端口，在 Linux 上由内核在它们之间分配连接（开发环境中会被忽略；参见 [Running several processes](../deploy.en.md#running-several-processes)）。除一个进程外，其余都设置 `CYBERTRAIN_WORKER=0` |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`；内置健康检查的路径（参见[运维](background-and-operations.md#operations-backups-vacuum-health-check)）；空值会关闭它；不以 `/` 开头的值会让服务器在启动时停止。`health_worker_stale`（300 秒）在 `config/app.rb` 中设置 |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`；`1` 或 `true` 允许 `Cybertrain::HttpClient` 连接环回地址、私有地址和其他非公网地址（参见[出站 HTTP](external-services.md#outbound-http)） |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`；`Cybertrain::Mailer` 用来发送邮件的 SMTP 服务器（参见[发送电子邮件](external-services.md#sending-e-mail)） |

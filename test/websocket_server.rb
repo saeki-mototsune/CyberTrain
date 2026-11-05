@@ -1,4 +1,4 @@
-# The WebSocket side of the stream endpoint (docs/design.md D35), end to
+# The WebSocket side of the stream endpoint (docs/design.md D36), end to
 # end: a real Server on an ephemeral port running Stream::Endpoint, the
 # framework's own WebSocket::Client connecting to it. The handshake, the
 # JSON envelope and raw payloads, subscribe / unsubscribe messages, ping and
