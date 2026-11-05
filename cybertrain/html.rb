@@ -428,17 +428,19 @@ module Cybertrain
     # for one without an id yet, "edit_article_12" with a prefix. The record
     # answers model_name and id (a Cybertrain::Model does); as in Rails the
     # id decides, not whether the record is saved, so a record built with an
-    # id (set_id) names the element the page rendered for it.
+    # id (set_id) names the element the page rendered for it. No id is 0 (a
+    # Model's) or nil (another record-like object's).
     # @param prefix [String] "" for none
     # @return [String]
     # @api public
     def self.dom_id(record, prefix = "")
       key = Inflector.underscore(record.model_name).tr("/", "_")
-      if record.id == 0
+      id = record.id
+      if id.nil? || id == 0
         return prefix.empty? ? "new_#{key}" : "#{prefix}_#{key}"
       end
 
-      prefix.empty? ? "#{key}_#{record.id}" : "#{prefix}_#{key}_#{record.id}"
+      prefix.empty? ? "#{key}_#{id}" : "#{prefix}_#{key}_#{id}"
     end
 
     # What `tag` evaluates to in a template: `tag.div(...)` is a method call

@@ -1,5 +1,5 @@
 ---
-source_sha256: 11e7333b2d2b8c4b6bedd02bb1d11425913e066441e6d2dd41b293624e28ba63
+source_sha256: 0ea47a773f4db8094f7ab603448e3a0c43ff58b3eaf8630a1c405885888bfe09
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -181,7 +181,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | レシーバー | ブロックを取るメソッド | ブロックの値の使われ方 |
 | --- | --- | --- |
 | `Array` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 変換後の値、判定、加える値、並べ替えのキー、グループのキー |
-| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 同じで、ブロックには `|key, value|` が渡されます（パラメーターが 1 つなら `[key, value]` の組）。`select`/`reject` は Hash を返し、ほかは組に対して Array のメソッドが返すものを返します |
+| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 同じで、ブロックには `\|key, value\|` が渡されます（パラメーターが 1 つなら `[key, value]` の組）。`select`/`reject` は Hash を返し、ほかは組に対して Array のメソッドが返すものを返します |
 | `tag` ビルダー | すべての要素（`tag.div do ... end`） | その**出力**が要素の内容になります（[tag ビルダー](#the-tag-builder)） |
 
 ```erb

@@ -1,5 +1,5 @@
 ---
-source_sha256: f4c2cf0bc31393a04e0d78046e3a0bd28ecb5b2a951930d95e0dfe91b753450c
+source_sha256: 77841c7742a645fc550aff1b97447e8c187efef9c00561905363ab8bed7e5a54
 ---
 # Tâches de fond et exploitation
 
@@ -65,8 +65,10 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
 - **Au moins une fois.** Un job peut s’exécuter deux fois&nbsp;: un
   processus tué, ou bloqué plus longtemps que `job_heartbeat_stale`
   (300&nbsp;s), peut encore exécuter un job quand un autre processus
-  reprend la ligne (ci-dessous). Seul le premier résultat écrit compte, mais
-  les effets de bord du handler ont eu lieu deux fois&nbsp;: écrivez des
+  reprend la ligne (ci-dessous). Seul le résultat de la réservation qui
+  détient la ligne compte (le résultat tardif d’une réservation antérieure
+  est ignoré), mais les effets de bord du handler ont eu lieu deux
+  fois&nbsp;: écrivez des
   handlers qui peuvent sans risque s’exécuter de nouveau (vérifiez si le
   mail est déjà parti, faites un upsert plutôt qu’un insert), comme avec
   toute file de jobs.
@@ -75,7 +77,11 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   temps, sur tous les processus qui partagent la base (pour une API à débit
   limité, ou un travail qui ne doit pas se chevaucher)&nbsp;; la valeur par
   défaut, 0, signifie aucune limite. Les autres types continuent pendant ce
-  temps.
+  temps. La limite compte les lignes `running`, elle tient donc tant que
+  les battements de cœur tiennent&nbsp;: un handler qui tourne encore après
+  que son battement de cœur a vieilli est chevauché par la prochaine
+  exécution de la ligne reprise (ci-dessous)&nbsp;; un travail qui ne doit
+  jamais se chevaucher a besoin de sa propre protection.
 - **Plusieurs workers par base de données.** Chaque processus qui exécute
   des jobs écrit un battement de cœur pour les jobs en cours toutes les
   `job_heartbeat_interval` (30&nbsp;s). Une ligne `running` dont le
@@ -86,7 +92,10 @@ Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
   les processus partagent un bail dans la base (`cybertrain_leases`,
   renouvelé à chaque tick, `scheduler_lease_ttl` 30&nbsp;s), et seul son
   détenteur exécute les tâches échues&nbsp;; un autre prend le relais quand
-  il cesse de le renouveler. Deux processus `worker`, ou un serveur et un
+  il cesse de le renouveler. Le bail est renouvelé avant chaque tâche, pas
+  pendant qu’elle tourne&nbsp;: une tâche plus longue que le ttl peut donc
+  chevaucher celles du détenteur suivant. Gardez les tâches courtes
+  (`Job.enqueue` pour le vrai travail) et sûres à répéter. Deux processus `worker`, ou un serveur et un
   worker, peuvent donc partager un même fichier SQLite&nbsp;;
   `CYBERTRAIN_WORKER=0` désactive les jobs, les tâches et les flux dans un
   processus `server` qui ne doit servir que du HTTP.

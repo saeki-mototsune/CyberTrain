@@ -178,7 +178,7 @@ A call with a receiver may take a block, `{ |x| expr }` or `do |x| ... end`, wit
 | Receiver | Methods taking a block | The block's value is used as |
 | --- | --- | --- |
 | `Array` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | the mapped value, the test, the summand, the sort key, the group key |
-| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | the same, the block seeing `|key, value|` (one parameter gets the `[key, value]` pair); `select`/`reject` answer a Hash, the others what the Array method answers over the pairs |
+| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | the same, the block seeing `\|key, value\|` (one parameter gets the `[key, value]` pair); `select`/`reject` answer a Hash, the others what the Array method answers over the pairs |
 | the `tag` builder | every element (`tag.div do ... end`) | its **output** is the element's content ([The tag builder](#the-tag-builder)) |
 
 ```erb
