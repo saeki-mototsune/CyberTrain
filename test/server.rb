@@ -672,4 +672,159 @@ test "starting a server on port 80 as non-root reports permission denied" do
   end
 end
 
+# Answers with its tag and counts what it answered, so a test can tell which
+# of two servers on one port took a connection.
+class TaggedHandler < Cybertrain::HttpHandler
+  attr_reader :hits
+
+  def initialize(tag)
+    @tag = tag
+    @hits = 0
+  end
+
+  def call(request)
+    @hits += 1
+    response = Cybertrain::Response.new
+    response.content_type = "text/plain"
+    response.body = @tag
+    response
+  end
+end
+
+def reuse_port_server(handler, host, port)
+  Cybertrain::Server.new(handler, host: host, port: port, reuse_port: true, logger: Cybertrain::Logger.new($log, :info))
+end
+
+def reuse_port_get(port)
+  c = RawClient.new(port)
+  res = c.get("/", "Connection: close\r\n")
+  c.close
+  res
+end
+
+# The kernel's split is Linux's: macOS binds both and gives every connection
+# to one of them, so there the test only asserts that one answered (the same
+# number of assertions on either path, for the snapshot). The throughput is
+# measured in docs/design.md D35.
+test "reuse_port lets two servers bind one port and both answer" do
+  first = TaggedHandler.new("first")
+  second = TaggedHandler.new("second")
+  a = reuse_port_server(first, "127.0.0.1", 0)
+  a.start
+  b = reuse_port_server(second, "127.0.0.1", a.port)
+  b.start
+  assert_equal a.port, b.port
+  assert a.reuse_port
+  assert_equal "HTTP/1.1 200 OK", reuse_port_get(a.port).status_line
+  i = 0
+  while i < 500 && (first.hits == 0 || second.hits == 0)
+    reuse_port_get(a.port)
+    i += 1
+  end
+  if RUBY_PLATFORM.include?("linux")
+    assert first.hits > 0 && second.hits > 0, "first #{first.hits}, second #{second.hits} after #{i} connections"
+  else
+    assert first.hits + second.hits > 0
+  end
+  # one of them stopping leaves the other on the port
+  b.stop
+  assert_equal "first", reuse_port_get(a.port).body
+  a.stop
+end
+
+# In a method of its own so the Server is garbage by the time the test runs
+# the collector.
+def reuse_port_started_and_stopped
+  server = reuse_port_server(TaggedHandler.new("a"), "127.0.0.1", 0)
+  server.start
+  server.stop
+  server.port
+end
+
+test "reuse_port survives stop: the port binds again and the descriptor is closed once" do
+  port = reuse_port_started_and_stopped
+  # The stopped listener's number is free now, so these take it. A second
+  # close of that number, now or by the collector, would end this pipe.
+  r, w = IO.pipe
+  GC.start
+  w.write("alive")
+  assert_equal "alive", r.readpartial(16)
+  w.close
+  r.close
+  b = reuse_port_server(TaggedHandler.new("b"), "127.0.0.1", port)
+  b.start
+  res = reuse_port_get(port)
+  assert_equal "HTTP/1.1 200 OK", res.status_line
+  assert_equal "b", res.body
+  b.stop
+  # a plain server takes the port once the reuse_port ones are gone
+  plain = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, logger: Cybertrain::Logger.new($log, :info))
+  plain.start
+  plain.stop
+end
+
+test "a plain listener on the port still raises PortInUse for reuse_port" do
+  plain = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
+  plain.start
+  port = plain.port
+  blocked = reuse_port_server(TaggedHandler.new("blocked"), "127.0.0.1", port)
+  message = assert_raises("Cybertrain::PortInUse") { blocked.start }
+  assert_equal "port #{port} on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}", message
+  plain.stop
+end
+
+test "a reuse_port listener on the port still raises PortInUse for a plain server" do
+  held = reuse_port_server(TaggedHandler.new("held"), "127.0.0.1", 0)
+  held.start
+  port = held.port
+  plain = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, logger: Cybertrain::Logger.new($log, :info))
+  message = assert_raises("Cybertrain::PortInUse") { plain.start }
+  assert_equal "port #{port} on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}", message
+  held.stop
+end
+
+test "reuse_port binds a name to its IPv4 address, as a plain server does" do
+  server = reuse_port_server(TaggedHandler.new("named"), "localhost", 0)
+  server.start
+  assert server.port > 0
+  assert_equal "named", reuse_port_get(server.port).body
+  server.stop
+end
+
+# Whether the machine has ::1 at all varies (a container often does not):
+# what must not happen is a bind to some other address.
+def ipv6_reuse_port_outcome
+  server = reuse_port_server(TaggedHandler.new("six"), "::1", 0)
+  server.start
+  sock = TCPSocket.new("::1", server.port)
+  sock.close
+  server.stop
+  "answered"
+rescue Cybertrain::PortInUse => e
+  e.message
+end
+
+test "reuse_port on an IPv6 literal binds it or says why not" do
+  outcome = ipv6_reuse_port_outcome
+  assert outcome == "answered" || outcome.include?("reuse_port"), outcome
+end
+
+test "reuse_port on a host that does not resolve stops with a message naming the setting" do
+  server = reuse_port_server(TaggedHandler.new("nowhere"), "no-such-host.invalid", 3000)
+  message = assert_raises("Cybertrain::PortInUse") { server.start }
+  assert_equal "port 3000 on no-such-host.invalid #{Cybertrain::PortInUse::REUSE_PORT_HOST}", message
+  assert_includes message, "reuse_port"
+end
+
+test "reuse_port on an address this machine does not have stops with the same message" do
+  server = reuse_port_server(TaggedHandler.new("elsewhere"), "192.0.2.1", 3000)
+  message = assert_raises("Cybertrain::PortInUse") { server.start }
+  assert_equal "port 3000 on 192.0.2.1 #{Cybertrain::PortInUse::REUSE_PORT_HOST}", message
+end
+
+test "reuse_port is off unless asked for" do
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
+  refute server.reuse_port
+end
+
 Cybertrain::Test.run!

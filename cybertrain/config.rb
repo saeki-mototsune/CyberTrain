@@ -339,6 +339,16 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :worker
 
+    # Whether the server binds with `SO_REUSEPORT`, `false`; `true` from
+    # `CYBERTRAIN_REUSE_PORT=1` (or `true`). Several processes then listen on
+    # one port and, on Linux, the kernel splits connections between them
+    # (docs/deploy.md); macOS binds but does not distribute. A process left
+    # running keeps taking traffic without any bind error. Ignored, with a
+    # warning, in development.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :reuse_port
+
     # Seconds the scheduler thread sleeps between ticks, `1`: a task runs
     # at most this late. At least 1.
     # @return [Integer]
@@ -396,7 +406,7 @@ attr_accessor :trusted_proxies
     end
 
     # CYBERTRAIN_HOST, or "127.0.0.1" when it is unset or empty. Not
-    # validated: TCPServer.new gets it as it is ("0.0.0.0" listens on every
+    # validated: the server gets it as it is ("0.0.0.0" listens on every
     # interface, which a container needs).
     def self.default_host
       env_or("CYBERTRAIN_HOST", "127.0.0.1")
@@ -534,6 +544,7 @@ end
       @max_page = Config.default_max_page
       # The background thread (Scheduler, Job).
       @worker = Config.bool_from_env("CYBERTRAIN_WORKER", true)
+      @reuse_port = Config.bool_from_env("CYBERTRAIN_REUSE_PORT", false)
       @scheduler_interval = 1
       @job_poll_interval = 5
       @job_max_attempts = 5
