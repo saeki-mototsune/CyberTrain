@@ -1,0 +1,84 @@
+# setup-spinel: the toolchain the framework's own CI jobs need, in the
+# framework's checkout, with the `cybertrain` gem CLI built from that checkout
+# and `spin` and `spinel` on PATH. The jobs of .github/workflows/ci.yml share
+# it. Not to be confused with setup-cybertrain, which is for an application's
+# CI and reads the framework commit out of the application's spin.lock.
+#
+# A local action comes from the checkout, so every job runs actions/checkout
+# first (with ref: ${{ inputs.ref }}) and takes this file from the same commit
+# it tests.
+name: Set up Spinel
+description: Install Ruby, the system packages, the gem CLI of this checkout and the Spinel release it pins.
+
+runs:
+  using: composite
+  steps:
+    - uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: "3.3"
+
+    - name: Install SQLite headers (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev libssl-dev
+
+    # Spinel's openssl package links `-lssl -lcrypto` with no search path;
+    # Homebrew's OpenSSL is keg-only, so a program that requires openssl
+    # (test/openssl_dispatch.rb) finds it through the compiler's
+    # LIBRARY_PATH / CPATH.
+    - name: Point the compiler at Homebrew's OpenSSL (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        prefix="$(brew --prefix openssl@3)"
+        echo "LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
+        echo "CPATH=$prefix/include" >> "$GITHUB_ENV"
+
+    # The gem ships the CLI only; it must run under CRuby and bring every
+    # file it requires (cybertrain.gemspec lists them by hand).
+    - name: Build and install the gem
+      shell: bash
+      run: |
+        gem build cybertrain.gemspec --output /tmp/cybertrain.gem
+        gem install --local --no-document /tmp/cybertrain.gem
+        cybertrain version
+
+    # The key names the runner image too: a toolchain built on one image
+    # is not assumed to run on the next. ImageOS and ImageVersion are
+    # variables of the runner process, not of the expression context, so
+    # a step copies them into an output first.
+    - name: Name the runner image
+      id: image
+      shell: bash
+      run: |
+        echo "id=${ImageOS:-unknown}-${ImageVersion:-0}" >> "$GITHUB_OUTPUT"
+        spinel_tag=$(sed -n 's/^ *SPINEL_TAG = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+        test -n "$spinel_tag" || { echo "no SPINEL_TAG in cybertrain/version.rb"; exit 1; }
+        echo "spinel_tag=$spinel_tag" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the Spinel toolchain
+      id: spinel-cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.cybertrain/spinel
+        key: spinel-${{ steps.image.outputs.spinel_tag }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v3
+
+    # `cybertrain setup` is how users get Spinel, so CI gets it the same
+    # way: a cache miss builds the release, a hit verifies it.
+    - name: Install Spinel with cybertrain setup
+      shell: bash
+      run: |
+        cybertrain doctor
+        cybertrain setup
+        echo "$HOME/.cybertrain/bin" >> "$GITHUB_PATH"
+
+    # Saved right after the build, so a failure later in the job does not
+    # cost the next run another build. After a new pin every job of a run
+    # misses and builds; the first to finish saves, the others' saves are
+    # refused with a warning.
+    - name: Save the Spinel toolchain
+      if: steps.spinel-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.cybertrain/spinel
+        key: ${{ steps.spinel-cache.outputs.cache-primary-key }}
