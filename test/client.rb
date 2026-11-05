@@ -270,4 +270,39 @@ test "status symbols cover payload_too_large and unsupported_media_type" do
   assert_equal "expected response :payload_too_large, got 400", message
 end
 
+# One pair per entry of Controller::STATUS_SYMBOLS (cybertrain/controller.rb),
+# which this program cannot load: the two lists are kept the same by hand,
+# and this is where a drift shows.
+STATUS_PAIRS = [
+  [200, :ok], [201, :created], [202, :accepted], [204, :no_content],
+  [205, :reset_content], [206, :partial_content],
+  [300, :multiple_choices], [301, :moved_permanently], [302, :found], [303, :see_other],
+  [304, :not_modified], [307, :temporary_redirect], [308, :permanent_redirect],
+  [400, :bad_request], [401, :unauthorized], [402, :payment_required], [403, :forbidden],
+  [404, :not_found], [405, :method_not_allowed], [406, :not_acceptable],
+  [408, :request_timeout], [409, :conflict], [410, :gone], [411, :length_required],
+  [412, :precondition_failed], [413, :payload_too_large], [415, :unsupported_media_type],
+  [416, :range_not_satisfiable], [417, :expectation_failed], [422, :unprocessable_entity],
+  [429, :too_many_requests], [431, :request_header_fields_too_large],
+  [500, :internal_server_error], [501, :not_implemented], [502, :bad_gateway],
+  [503, :service_unavailable], [504, :gateway_timeout]
+]
+
+test "every Controller::STATUS_SYMBOLS name is an exact match for its code" do
+  res = Cybertrain::Response.new
+  STATUS_PAIRS.each do |pair|
+    res.status = pair[0]
+    assert_response res, pair[1]
+    assert_equal [pair[0], pair[0]], Cybertrain::Test::Client.status_range(pair[1])
+  end
+  assert_equal 37, STATUS_PAIRS.size
+  # the neighbouring code does not pass: an exact match, not a range
+  res.status = 200
+  message = assert_raises("AssertionFailed") { assert_response res, :accepted }
+  assert_equal "expected response :accepted, got 200", message
+  res.status = 429
+  message = assert_raises("AssertionFailed") { assert_response res, :unauthorized }
+  assert_equal "expected response :unauthorized, got 429", message
+end
+
 Cybertrain::Test.run!

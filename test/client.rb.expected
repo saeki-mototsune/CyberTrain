@@ -32,4 +32,5 @@ text _method=patch
 file f f.txt text/plain 2 8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4
 ok   patch_multipart sends a POST with _method=patch, which MethodOverride turns into the PATCH route
 ok   status symbols cover payload_too_large and unsupported_media_type
-22 tests, 90 assertions, 0 failures
+ok   every Controller::STATUS_SYMBOLS name is an exact match for its code
+23 tests, 171 assertions, 0 failures

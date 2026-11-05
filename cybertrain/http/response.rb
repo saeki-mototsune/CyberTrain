@@ -20,13 +20,28 @@ module Cybertrain
   #   response.add_cookie(Cybertrain::Cookies.serialize("theme", "dark", max_age: 31_536_000))
   # @api public
   class Response
+    # The reason phrase of each status the framework, its generators and an
+    # application built on them answer (RFC 9110 section 15), sent on the
+    # status line by #to_http. Browsers ignore the phrase, but curl and the
+    # logs show it, so a code missing here would be written as "Unknown"
+    # (`HTTP/1.1 202 Unknown`). A new code goes here and, as a Symbol, into
+    # Controller::STATUS_SYMBOLS; the two tables list the same codes, except
+    # 101, which only the server's WebSocket upgrade sends (D36), never a
+    # controller.
     STATUS_TEXT = {
       101 => "Switching Protocols",
-      200 => "OK", 201 => "Created", 204 => "No Content",
-      301 => "Moved Permanently", 302 => "Found", 303 => "See Other", 304 => "Not Modified",
-      400 => "Bad Request", 403 => "Forbidden", 404 => "Not Found", 405 => "Method Not Allowed",
-      411 => "Length Required", 413 => "Payload Too Large", 422 => "Unprocessable Entity",
-      500 => "Internal Server Error", 503 => "Service Unavailable"
+      200 => "OK", 201 => "Created", 202 => "Accepted", 204 => "No Content",
+      205 => "Reset Content", 206 => "Partial Content",
+      300 => "Multiple Choices", 301 => "Moved Permanently", 302 => "Found", 303 => "See Other",
+      304 => "Not Modified", 307 => "Temporary Redirect", 308 => "Permanent Redirect",
+      400 => "Bad Request", 401 => "Unauthorized", 402 => "Payment Required", 403 => "Forbidden",
+      404 => "Not Found", 405 => "Method Not Allowed", 406 => "Not Acceptable",
+      408 => "Request Timeout", 409 => "Conflict", 410 => "Gone", 411 => "Length Required",
+      412 => "Precondition Failed", 413 => "Payload Too Large", 415 => "Unsupported Media Type",
+      416 => "Range Not Satisfiable", 417 => "Expectation Failed", 422 => "Unprocessable Entity",
+      429 => "Too Many Requests", 431 => "Request Header Fields Too Large",
+      500 => "Internal Server Error", 501 => "Not Implemented", 502 => "Bad Gateway",
+      503 => "Service Unavailable", 504 => "Gateway Timeout"
     }
     DEFAULT_CONTENT_TYPE = "text/html; charset=utf-8"
     # Sent on every response unless the response already carries a header of
@@ -35,8 +50,9 @@ module Cybertrain
     DEFAULT_NOSNIFF = "nosniff"
     DEFAULT_FRAME_OPTIONS = "SAMEORIGIN"
 
-    # The status code, 200 until set. A code missing from STATUS_TEXT
-    # (401, 409, ...) is sent with the reason phrase "Unknown".
+    # The status code, 200 until set. The status line carries the reason
+    # phrase STATUS_TEXT gives the code; a code the table lacks (418, 451,
+    # a non-standard code) is sent with the phrase "Unknown".
     # @return [Integer]
     # @api public
     attr_accessor :status
@@ -222,7 +238,7 @@ module Cybertrain
       Response.status_text(@status)
     end
 
-    # "Bad Request" for 400; "Unknown" for a status the table lacks.
+    # "Bad Request" for 400; "Unknown" for a status STATUS_TEXT lacks.
     def self.status_text(status)
       STATUS_TEXT[status] || "Unknown"
     end

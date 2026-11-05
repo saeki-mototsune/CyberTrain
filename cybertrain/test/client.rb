@@ -326,23 +326,54 @@ module Cybertrain
       end
 
       # The status a Rails-style symbol stands for, as [low, high]; [0, 0]
-      # when the symbol is unknown.
+      # when the symbol is unknown. Every Symbol of
+      # Controller::STATUS_SYMBOLS is here with its one code (the same list,
+      # kept by hand: the test layer loads without the Controller), plus the
+      # three ranges :success, :redirect and :error. A case, not a Hash, so
+      # a Symbol the program never mentions elsewhere still compiles to a
+      # comparison (test/client.rb checks every pair).
       def self.status_range(symbol)
         case symbol
         when :ok then [200, 200]
         when :success then [200, 299]
         when :created then [201, 201]
+        when :accepted then [202, 202]
         when :no_content then [204, 204]
+        when :reset_content then [205, 205]
+        when :partial_content then [206, 206]
         when :redirect then [300, 399]
+        when :multiple_choices then [300, 300]
+        when :moved_permanently then [301, 301]
+        when :found then [302, 302]
         when :see_other then [303, 303]
+        when :not_modified then [304, 304]
+        when :temporary_redirect then [307, 307]
+        when :permanent_redirect then [308, 308]
         when :bad_request then [400, 400]
+        when :unauthorized then [401, 401]
+        when :payment_required then [402, 402]
         when :forbidden then [403, 403]
         when :not_found then [404, 404]
+        when :method_not_allowed then [405, 405]
+        when :not_acceptable then [406, 406]
+        when :request_timeout then [408, 408]
+        when :conflict then [409, 409]
+        when :gone then [410, 410]
+        when :length_required then [411, 411]
+        when :precondition_failed then [412, 412]
         when :payload_too_large then [413, 413]
         when :unsupported_media_type then [415, 415]
+        when :range_not_satisfiable then [416, 416]
+        when :expectation_failed then [417, 417]
         when :unprocessable_entity then [422, 422]
         when :too_many_requests then [429, 429]
+        when :request_header_fields_too_large then [431, 431]
         when :error then [500, 500]
+        when :internal_server_error then [500, 500]
+        when :not_implemented then [501, 501]
+        when :bad_gateway then [502, 502]
+        when :service_unavailable then [503, 503]
+        when :gateway_timeout then [504, 504]
         else [0, 0]
         end
       end
@@ -425,10 +456,13 @@ end
 
 # assert_response res, :ok / :not_found / 201 ...; :redirect accepts any 3xx.
 #
-# Symbols: `:ok`, `:success` (2xx), `:created`, `:no_content`, `:redirect`
-# (3xx), `:see_other`, `:bad_request`, `:forbidden`, `:not_found`,
-# `:payload_too_large` (413), `:unsupported_media_type` (415),
-# `:unprocessable_entity`, `:error` (500). Needs `cybertrain/test/client`.
+# Symbols: every one `Controller::STATUS_SYMBOLS` accepts (`:ok`,
+# `:created`, `:accepted`, `:no_content`, `:see_other`, `:bad_request`,
+# `:unauthorized`, `:forbidden`, `:not_found`, `:conflict`,
+# `:payload_too_large`, `:unsupported_media_type`, `:unprocessable_entity`,
+# `:too_many_requests`, `:service_unavailable`, ...), each standing for its
+# one code, plus the ranges `:success` (2xx), `:redirect` (3xx) and `:error`
+# (exactly 500). Needs `cybertrain/test/client`.
 # @param response [Cybertrain::Response]
 # @param expected [Integer, Symbol]
 # @return [void]
