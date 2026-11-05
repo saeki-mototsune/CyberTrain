@@ -68,16 +68,17 @@ env:
   SPINEL_TAG: "2026.11.04.7026"
 
 jobs:
-  # The framework's test programs, in four parallel jobs per OS: each program
-  # is compiled on its own, so the programs split cleanly. A job of its own,
-  # not steps of `test`: that job keeps its name and the end-to-end checks.
+  # The framework's test programs on Ubuntu, in four parallel jobs: each
+  # program is compiled on its own, so the programs split cleanly. A job of
+  # its own, not steps of `test`: that job keeps its name and the end-to-end
+  # checks. macOS stays one job (the step in `test`): shards there ran one
+  # after another, so the run waited on them (docs/design.md, D34).
   framework-tests:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-latest]
         shard: [0, 1, 2, 3]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -115,6 +116,12 @@ jobs:
           gem install --no-document kramdown -v "~> 2.5"
           gem install --no-document kramdown-parser-gfm -v "~> 1.1"
           script/api-docs
+
+      - name: Framework tests
+        if: runner.os == 'macOS'
+        run: |
+          spinel --version
+          spin test
 
       - name: Gem CLI scaffolds an app, migrates, builds dist/ and serves it
         run: |

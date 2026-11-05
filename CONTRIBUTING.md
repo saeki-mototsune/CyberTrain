@@ -100,9 +100,10 @@ spin test                      # everything (one program per test/*.rb; minutes 
 spin test test/router.rb       # one program
 ```
 
-CI divides the programs into four shards per OS, the `framework-tests` jobs in
-[.github/workflows/ci.yml](.github/workflows/ci.yml). To reproduce a failing
-job `framework-tests (ubuntu-26.04, 2)`, run its shard:
+On Ubuntu, CI divides the programs into four shards, the `framework-tests` jobs
+in [.github/workflows/ci.yml](.github/workflows/ci.yml); on macOS they run in
+one job, `test (macos-latest)`. To reproduce a failing job `framework-tests (2)`,
+run its shard:
 
 ```sh
 script/test-shard 2 4          # the sorted test/*.rb at positions 2, 6, 10, ...
