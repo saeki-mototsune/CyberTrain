@@ -17,6 +17,7 @@ require "cybertrain/model"
 require "cybertrain/pagination"
 require "cybertrain/params"
 require "cybertrain/views"
+require "cybertrain/component"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
 require "cybertrain/generator/inflector"
@@ -41,6 +42,21 @@ module Cybertrain
         # only (a collection renders the same partial once per record).
         @partial_files = { "" => { "" => "" } }
         @partial_files.delete("")
+        # The components being rendered, innermost last: their view methods
+        # answer receiverless names (render_with pushes and pops). Typed
+        # empty Array (rule 9).
+        @components = Array.new(0) { Component.new }
+      end
+
+      # Component#render_with, around its template.
+      def component_push(component)
+        @components << component
+        nil
+      end
+
+      def component_pop
+        @components.pop
+        nil
       end
 
       def helper_call(name, args, kwargs, block, interp, env)
@@ -48,7 +64,10 @@ module Cybertrain
         when "link_to" then link_to(args, kwargs)
         when "button_to" then button_to(args, kwargs)
         when "form_with" then form_with(kwargs, block, interp, env)
-        when "render" then render_helper(args, kwargs, interp, env)
+        when "render"
+          return render_component_helper(kwargs, block, interp, env) if args.empty? && !kwargs["component"].nil?
+
+          render_helper(args, kwargs, interp, env)
         when "h", "escape" then SafeString.of(html_arg(args, 0, name))
         when "raw" then SafeString.of(text_arg(args, 0, name))
         when "pluralize" then pluralize(args)
@@ -65,6 +84,13 @@ module Cybertrain
         when "url_for" then url_for(arg(args, 0, name))
         when "paginate" then paginate(args)
         else
+          # Inside a component's template its view methods come first (the
+          # component is the template's self, as in ViewComponent).
+          depth = @components.size
+          if depth > 0 && args.empty? && block.nil?
+            component = @components[depth - 1]
+            return component.call_view_method(name.to_sym) if component.view_method?(name)
+          end
           return route(name, args) if name.end_with?("_path") || name.end_with?("_url")
 
           app_helper_call(name, args, kwargs, block, interp, env)
@@ -580,6 +606,25 @@ module Cybertrain
         html = interp.render(template, scope)
         scope.each_key { |key| env[key] = scope[key] if key.start_with?("__content_") }
         SafeString.of(html)
+      end
+
+      # render component: "card", title: "x" [do ... end]: the component the
+      # app's Gen::Components.build makes from the other keywords (through
+      # Views.component_builder), rendered with the block's output as its
+      # content.
+      def render_component_helper(kwargs, block, interp, env)
+        name = FormBuilder.value_text(kwargs["component"])
+        attrs = { "" => [nil, 0, 0.0, "", true][0] }
+        attrs.delete("")
+        kwargs.each_key { |key| attrs[key] = kwargs[key] unless key == "component" }
+        built = Views.component_builder.call(name, attrs)
+        content = block.nil? ? "" : interp.capture(block, env)
+        # The case types the builder's result (a lambda's value is
+        # polymorphic) before the method call.
+        case built
+        when Cybertrain::Component then built.render_with(self, content, interp)
+        else raise Component::Unknown, "component_builder returned no component for '#{name}'"
+        end
       end
 
       # content_for :title do ... end  or  content_for :title, "text";

@@ -30,6 +30,14 @@ module Cybertrain
     end
     @helpers_builder = default_helpers_builder
 
+    # The default component_builder: gen/components.rb replaces it with
+    # Gen::Components.build. Component is defined by cybertrain/component.rb
+    # (required by the helpers), named only when called.
+    def self.default_component_builder
+      ->(name, kwargs) { raise Component::Unknown, "no component '#{name}' (app/components/#{name}_component.rb, then `spin run gen`)" }
+    end
+    @component_builder = default_component_builder
+
     def self.engine
       @engine
     end
@@ -39,8 +47,10 @@ module Cybertrain
     # Template::MAX_RENDER_DEPTH (12) unless the
     # app's partials legitimately recurse deeper. Must be at least 1: the
     # engine raises ArgumentError for anything lower.
-    def self.configure(root, cache: true, max_render_depth: Template::MAX_RENDER_DEPTH)
-      @engine = Template::Engine.new(root, cache: cache, max_render_depth: max_render_depth)
+    # components_root: where `render component:` templates live; "" means
+    # the `components` directory beside root (app/components for app/views).
+    def self.configure(root, cache: true, max_render_depth: Template::MAX_RENDER_DEPTH, components_root: "")
+      @engine = Template::Engine.new(root, cache: cache, max_render_depth: max_render_depth, components_root: components_root)
       nil
     end
 
@@ -77,6 +87,16 @@ module Cybertrain
 
     def self.helpers_builder=(builder)
       @helpers_builder = builder
+    end
+
+    # ->(name String, kwargs Hash<String, polymorphic>) { Component }: how
+    # `render component: "card", title: "x"` builds the component.
+    def self.component_builder
+      @component_builder
+    end
+
+    def self.component_builder=(builder)
+      @component_builder = builder
     end
   end
 end
