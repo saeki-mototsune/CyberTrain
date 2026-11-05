@@ -24,5 +24,6 @@ ok   an after above the head is clamped to the subscriber's cursor
 ok   prune deletes the rows older than the cutoff
 ok   replay returns the backlog of the named streams after an id
 ok   broadcast_replace_to writes the Turbo Stream HTML
+ok   broadcast_replace_to with partial: keeps the partial's markup and escapes its locals
 ok   the other broadcast shortcuts
-27 tests, 101 assertions, 0 failures
+28 tests, 102 assertions, 0 failures
