@@ -404,8 +404,8 @@ def page_token(body)
   body[from, body.index("\"", from).to_i - from].to_s
 end
 
-test "the stack is RequestLogger, HealthCheck, Static, MethodOverride, SessionStore, CsrfProtection, Router" do
-  assert_equal ["Cybertrain::RequestLogger", "Cybertrain::HealthCheck", "Cybertrain::Static", "Cybertrain::MethodOverride",
+test "the stack is RequestLogger, Stream::Endpoint, HealthCheck, Static, MethodOverride, SessionStore, CsrfProtection, Router" do
+  assert_equal ["Cybertrain::RequestLogger", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static", "Cybertrain::MethodOverride",
                 "Cybertrain::SessionStore", "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(APP)
 end
 
@@ -416,7 +416,7 @@ test "log_level :none, static_files and csrf switch their middleware off" do
   c.csrf = false
   c.secret_key_base = "bare-secret"
   bare = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/bare/#{name}" }, config: c)
-  assert_equal ["Cybertrain::HostAuthorization", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
+  assert_equal ["Cybertrain::HostAuthorization", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
                 "Cybertrain::Router"], stack_names(bare)
 end
 
@@ -471,7 +471,7 @@ test "production puts ErrorPages outermost" do
   c.csrf = false
   c.secret_key_base = "production-secret"
   prod = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/prod/#{name}" }, config: c)
-  assert_equal ["Cybertrain::ErrorPages", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
+  assert_equal ["Cybertrain::ErrorPages", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
                 "Cybertrain::Router"], stack_names(prod)
   # Run it once too (spikes/NOTES.md rule 36). There is no public/404.html
   # under the framework root, so the Router's plain text stays.

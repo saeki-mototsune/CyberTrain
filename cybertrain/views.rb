@@ -59,6 +59,11 @@ module Cybertrain
       @url_resolver = resolver
     end
 
+    # Raised by a helper that needs a request (a controller) when there is
+    # none.
+    class OutsideRequest < StandardError
+    end
+
     # Stubs until the view helpers' rendering outside a request lands
     # (package B defines both; the integration keeps those). Stream's
     # broadcast_*_to call them for `partial:` and `component:`.

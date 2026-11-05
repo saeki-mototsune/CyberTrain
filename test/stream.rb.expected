@@ -10,8 +10,10 @@ ok   an idle pop returns nil and unsubscribe stops delivery
 ok   a subscriber whose backlog overflows is dropped
 ok   names can be added and removed
 ok   a poller tick delivers only the rows after the last id
+ok   Poller.reset! starts after the rows already written
+ok   the replay-to-live handoff sends every row once, in id order
 ok   prune deletes the rows older than the cutoff
 ok   replay returns the backlog of the named streams after an id
 ok   broadcast_replace_to writes the Turbo Stream HTML
 ok   the other broadcast shortcuts
-16 tests, 54 assertions, 0 failures
+18 tests, 58 assertions, 0 failures

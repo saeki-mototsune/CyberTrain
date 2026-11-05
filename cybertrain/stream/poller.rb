@@ -63,6 +63,17 @@ module Cybertrain
         @last_id
       end
 
+      # What start! does to the position, for a test that ticks by hand:
+      # the next run_once delivers only rows written after this call. The
+      # hub is the one the test ticks (accepted for symmetry with run_once;
+      # it holds no position of its own).
+      # @param hub [Hub]
+      # @return [nil]
+      def self.reset!(hub)
+        @last_id = Stream.max_id
+        nil
+      end
+
       # Sets where the next tick starts (tests).
       def self.last_id=(id)
         @last_id = id

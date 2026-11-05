@@ -13,6 +13,7 @@ require "cybertrain/middleware/csrf_protection"
 require "cybertrain/middleware/error_pages"
 require "cybertrain/middleware/host_authorization"
 require "cybertrain/middleware/health_check"
+require "cybertrain/stream/endpoint"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
@@ -85,7 +86,8 @@ module Cybertrain
 
     # HostAuthorization (in development) -> ErrorPages (in production) ->
     # RequestLogger (unless log_level :none) ->
-    # HealthCheck (unless health_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
+    # HealthCheck (unless health_path is "") -> Stream::Endpoint (unless
+    # stream_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
     # CsrfProtection (if csrf; paths under csrf_exempt_prefixes pass it) ->
     # router. Built on first use, after boot has resolved the session secret.
     def stack
@@ -212,6 +214,8 @@ module Cybertrain
       end
       Scheduler.stop!
       Background.stop_all
+      # Started by the first stream subscription, if any.
+      Stream::Poller.stop!
       nil
     rescue PortInUse => e
       fail_boot(e.message)
@@ -376,6 +380,9 @@ module Cybertrain
       # Before Static and the session: no public/ file shadows it, and it
       # sets no cookie. Inside RequestLogger, so polls are logged as usual.
       app = HealthCheck.new(app, c.health_path, c.health_worker_stale) unless c.health_path.empty?
+      # The realtime endpoint (Stream::Endpoint), also before the session:
+      # its authorisation is the signed token, and it sets no cookie.
+      app = Stream::Endpoint.new(app, c) unless c.stream_path.empty?
       app = RequestLogger.new(app) unless c.log_level == :none
       app = ErrorPages.new(app, c.public_root) if c.production?
       app = HostAuthorization.new(app, c.allowed_hosts) if c.development?

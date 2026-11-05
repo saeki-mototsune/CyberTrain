@@ -211,6 +211,22 @@ module Cybertrain
       true
     end
 
+    # A Sec-WebSocket-Key: the standard base64 of 16 bytes (24 characters,
+    # the last two "==").
+    def self.base64_key?(text)
+      return false unless text.bytesize == 24 && text.end_with?("==")
+
+      i = 0
+      while i < 22
+        b = text.getbyte(i)
+        ok = (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 43 || b == 47
+        return false unless ok
+
+        i += 1
+      end
+      true
+    end
+
     # Pads the text back up (Base64.urlsafe_decode64 is not relied on to
     # accept unpadded input under Spinel, as in Password.decode); "" for
     # text no padding fixes.

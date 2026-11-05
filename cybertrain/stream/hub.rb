@@ -36,6 +36,8 @@ module Cybertrain
         @max_backlog = max_backlog
         @queue = Queue.new
         @dropped = false
+        # Messages with an id at or below this were sent by a replay.
+        @skip_through = 0
       end
 
       # The names listened to (a copy).
@@ -63,19 +65,41 @@ module Cybertrain
       end
 
       # The next message, waiting at most `timeout` seconds; nil when none
-      # came, or once the subscriber is dropped.
+      # came, or once the subscriber is dropped. Messages with an id at or
+      # below the #skip_through! boundary are dropped on the way.
       # (Queue#pop(timeout:) parks the green thread under Spinel too:
       # spikes/NOTES.md rule 80.)
       # @param timeout [Numeric] seconds
       # @return [Message, nil]
       # @api public
       def stream_pop(timeout)
-        return nil if @dropped
+        wait = timeout.to_f
+        deadline = Time.now.to_f + wait
+        while true
+          return nil if @dropped
 
-        message = @queue.pop(timeout: timeout)
-        return nil if @dropped
+          message = @queue.pop(timeout: wait)
+          return nil if @dropped || message.nil?
+          # a negative id is a WebSocket reader's control message
+          return message if message.message_id > @skip_through || message.message_id < 0
 
-        message
+          wait = deadline - Time.now.to_f
+          wait = 0.0 if wait < 0.0
+        end
+        nil
+      end
+
+      # The replay-to-live handoff: after a connection has subscribed and
+      # then written the replayed rows (Stream.replay), the messages queued
+      # meanwhile with an id at or below `boundary` (the larger of the
+      # replay's start and the last replayed id) were already sent, and are
+      # dropped, so every row reaches the client once, in id order.
+      # @param boundary [Integer]
+      # @return [nil]
+      # @api public
+      def skip_through!(boundary)
+        @skip_through = boundary if boundary > @skip_through
+        nil
       end
 
       # True once the backlog overflowed.
@@ -103,6 +127,13 @@ module Cybertrain
         else
           @queue << message
         end
+        nil
+      end
+
+      # A WebSocket reader's control message (Stream::CONTROL_ID): queued
+      # whatever the backlog, never counted as a broadcast.
+      def stream_control(message)
+        @queue << message
         nil
       end
 

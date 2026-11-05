@@ -52,6 +52,8 @@ module Cybertrain
       @socket = socket
       @chunked = chunked
       @closed = false
+      # A write failed: nothing more can be sent, not even the terminator.
+      @broken = false
     end
 
     # The connection's socket, for a writer that speaks its own protocol on
@@ -115,11 +117,17 @@ module Cybertrain
     end
 
     # The end of the body: the terminating chunk of a chunked response.
-    # The Server calls it after #write_body returned.
+    # The Server calls it after #write_body returned. Also after a read saw
+    # EOF (the client half-closed, or the server shut the read side to
+    # stop): the write side may still be open.
     def sink_finish
-      return nil if @closed || !@chunked
+      return nil if @broken || !@chunked
 
-      sink_send("0\r\n\r\n")
+      @socket.write("0\r\n\r\n")
+      nil
+    rescue IOError, SystemCallError
+      @broken = true
+      nil
     end
 
     # Marks the client gone without touching the socket.
@@ -135,6 +143,7 @@ module Cybertrain
       nil
     rescue IOError, SystemCallError
       @closed = true
+      @broken = true
       nil
     end
 
