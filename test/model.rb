@@ -525,13 +525,13 @@ end
 test "Cast.time_or_nil parses both SQLite datetime formats" do
   t = Cybertrain::Cast.time_or_nil("2026-09-24T12:30:05Z")
   assert !t.nil?
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.iso8601(t)
+  assert_equal "2026-09-24T12:30:05.000Z", Cybertrain::Cast.iso8601(t)
   t2 = Cybertrain::Cast.time_or_nil("2026-09-24 12:30:05")
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.iso8601(t2)
+  assert_equal "2026-09-24T12:30:05.000Z", Cybertrain::Cast.iso8601(t2)
   t3 = Cybertrain::Cast.time_or_nil(fixed_time)
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.iso8601(t3)
+  assert_equal "2026-09-24T12:30:05.000Z", Cybertrain::Cast.iso8601(t3)
   t4 = Cybertrain::Cast.time_or_nil(0)
-  assert_equal "1970-01-01T00:00:00Z", Cybertrain::Cast.iso8601(t4)
+  assert_equal "1970-01-01T00:00:00.000Z", Cybertrain::Cast.iso8601(t4)
   assert_nil Cybertrain::Cast.time_or_nil(nil)
   assert_nil Cybertrain::Cast.time_or_nil("")
   assert_nil Cybertrain::Cast.time_or_nil("yesterday")
@@ -547,14 +547,14 @@ test "Cast.time_or_nil returns nil for well-formed but out-of-range values" do
   assert_nil Cybertrain::Cast.time_or_nil("2026-01-01 24:00:00")
   assert_nil Cybertrain::Cast.time_or_nil("2026-01-01 23:60:00")
   assert_nil Cybertrain::Cast.time_or_nil("2026-01-01T23:59:60Z")
-  assert_equal "2024-02-29T23:59:59Z", Cybertrain::Cast.iso8601(Cybertrain::Cast.time_or_nil("2024-02-29 23:59:59"))
-  assert_equal "2026-12-31T00:00:00Z", Cybertrain::Cast.iso8601(Cybertrain::Cast.time_or_nil("2026-12-31T00:00:00Z"))
+  assert_equal "2024-02-29T23:59:59.000Z", Cybertrain::Cast.iso8601(Cybertrain::Cast.time_or_nil("2024-02-29 23:59:59"))
+  assert_equal "2026-12-31T00:00:00.000Z", Cybertrain::Cast.iso8601(Cybertrain::Cast.time_or_nil("2026-12-31T00:00:00.000Z"))
   post = Post.new(title: "Bad date", created_at: "2026-13-01 00:00:00")
   assert_nil post.created_at
 end
 
 test "Cast.to_sql turns Time and booleans into SQLite values" do
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.to_sql(fixed_time)
+  assert_equal "2026-09-24 12:30:05.000000", Cybertrain::Cast.to_sql(fixed_time)
   assert_equal 1, Cybertrain::Cast.to_sql(true)
   assert_equal 0, Cybertrain::Cast.to_sql(false)
   assert_equal 7, Cybertrain::Cast.to_sql(7)
@@ -945,7 +945,7 @@ test "to_json exact string" do
   reset_tables
   post = Post.create(title: "JSON \"quoted\"", created_at: fixed_time, updated_at: fixed_time)
   expected = "{\"id\":#{post.id},\"title\":\"JSON \\\"quoted\\\"\",\"body\":null," \
-             "\"created_at\":\"2026-09-24T12:30:05Z\",\"updated_at\":\"2026-09-24T12:30:05Z\"}"
+             "\"created_at\":\"2026-09-24T12:30:05.000Z\",\"updated_at\":\"2026-09-24T12:30:05.000Z\"}"
   assert_equal expected, post.to_json
   attrs = post.attributes
   assert_equal ["id", "title", "body", "created_at", "updated_at"], attrs.keys
@@ -1018,7 +1018,7 @@ test "created_at is a Time after reload" do
   created = post.created_at
   assert_equal "Time", created.class.name
   assert_equal 2026, created.year
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.iso8601(created)
+  assert_equal "2026-09-24T12:30:05.000Z", Cybertrain::Cast.iso8601(created)
   refute post.updated_at.nil?
   assert post.updated_at.year >= 2026
 end

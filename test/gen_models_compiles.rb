@@ -153,11 +153,11 @@ test "to_json of a generated model" do
   at = Time.utc(2026, 9, 25, 8, 0, 0)
   post = Post.create(title: "JSON", created_at: at, updated_at: at)
   expected = "{\"id\":#{post.id},\"title\":\"JSON\",\"body\":null,\"views\":0," \
-             "\"created_at\":\"2026-09-25T08:00:00Z\",\"updated_at\":\"2026-09-25T08:00:00Z\"}"
+             "\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
   assert_equal expected, post.to_json
   comment = Comment.create(post_id: post.id, commenter: "ann", body: "b", created_at: at, updated_at: at)
   expected_comment = "{\"id\":#{comment.id},\"post_id\":#{post.id},\"commenter\":\"ann\",\"body\":\"b\"," \
-                     "\"approved\":false,\"created_at\":\"2026-09-25T08:00:00Z\",\"updated_at\":\"2026-09-25T08:00:00Z\"}"
+                     "\"approved\":false,\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
   assert_equal expected_comment, Comment.find(comment.id).to_json
 end
 

@@ -1,0 +1,9 @@
+ok   sql_datetime writes Rails' format in UTC with microseconds
+ok   iso8601 is the display format with milliseconds and Z
+ok   parse_time reads both separators, any fraction length, Z and offsets
+ok   parse_time reads RFC 2822
+ok   a stored datetime round-trips through the connection with microseconds
+ok   the epoch reader accepts a Rails fraction, an old T...Z value and an offset
+ok   date, date_or_nil, hash_or_nil, json_text, round_scale
+ok   a Date binds as its text and reads back from a DATE column
+8 tests, 32 assertions, 0 failures

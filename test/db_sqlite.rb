@@ -46,7 +46,7 @@ test "binds Integer, Float, String, nil, true and Time and reads back Ruby types
   assert_equal "Float", row["rating"].class.name
   assert_equal 4.5, row["rating"]
   assert_equal 1, row["published"]
-  assert_equal "2026-09-24T12:30:05Z", row["published_at"]
+  assert_equal "2026-09-24 12:30:05.000000", row["published_at"]
   draft = rows[1]
   assert_nil draft["views"]
   assert_nil draft["rating"]
@@ -55,11 +55,11 @@ test "binds Integer, Float, String, nil, true and Time and reads back Ruby types
   conn.close
 end
 
-test "a Time bind in another zone is stored as the UTC ISO string" do
+test "a Time bind in another zone is stored in UTC in the storage format" do
   conn = posts_db
   at = Time.new(2026, 9, 24, 21, 0, 0, "+09:00")
   conn.execute("INSERT INTO posts (title, published_at) VALUES (?, ?)", ["tokyo", at])
-  assert_equal "2026-09-24T12:00:00Z", conn.execute("SELECT published_at FROM posts")[0]["published_at"]
+  assert_equal "2026-09-24 12:00:00.000000", conn.execute("SELECT published_at FROM posts")[0]["published_at"]
   conn.close
 end
 
@@ -405,7 +405,7 @@ test "remembered column names follow a changed schema" do
   conn.close
 end
 
-test "execute_models reads DATETIME columns as epoch seconds and leaves other values alone" do
+test "execute_models reads DATETIME columns as UTC Times and leaves other values alone" do
   conn = posts_db
   conn.exec_script("ALTER TABLE posts ADD COLUMN made_at DATETIME; ALTER TABLE posts ADD COLUMN note TEXT")
   at = Time.utc(2026, 9, 24, 12, 30, 5)
@@ -418,21 +418,21 @@ test "execute_models reads DATETIME columns as epoch seconds and leaves other va
   conn.execute("INSERT INTO posts (title, made_at, note) VALUES (?, ?, ?)", ["g", "2024-02-29T23:59:59.123Z", "x"])
   sql = "SELECT title, made_at, note FROM posts ORDER BY id"
   rows = conn.execute_models(sql)
-  assert_equal at.to_i, rows[0]["made_at"]
-  assert_equal at.to_i, rows[1]["made_at"]          # a space instead of the T
+  assert_equal at, rows[0]["made_at"]
+  assert_equal at, rows[1]["made_at"]               # no fraction
   assert_equal "not a time", rows[2]["made_at"]    # not a timestamp: text
   assert_equal nil, rows[3]["made_at"]
   assert_equal "1969-12-31T23:59:59Z", rows[4]["made_at"]  # before 1970: text
   assert_equal "2026-02-30T00:00:00Z", rows[5]["made_at"]  # no such day: text
-  assert_equal Time.utc(2024, 2, 29, 23, 59, 59).to_i, rows[6]["made_at"] # fraction ignored, as in Cast.parse_time
+  assert_equal Time.utc(2024, 2, 29, 23, 59, 59, 123000), rows[6]["made_at"] # the T...Z shape, with its fraction
   assert_equal "2026-09-24T12:30:05Z", rows[0]["note"]     # a TEXT column is never parsed
   plain = conn.execute(sql)
-  assert_equal "2026-09-24T12:30:05Z", plain[0]["made_at"] # execute is unchanged
+  assert_equal "2026-09-24 12:30:05.000000", plain[0]["made_at"] # execute answers the text
   # the expression has no declared type: text
   expr = conn.execute_models("SELECT made_at || '' AS m FROM posts ORDER BY id")
-  assert_equal "2026-09-24T12:30:05Z", expr[0]["m"]
+  assert_equal "2026-09-24 12:30:05.000000", expr[0]["m"]
   # and the Time a model builds from either is the same
-  assert_equal Time.at(rows[0]["made_at"]).utc, Cybertrain::Cast.time_or_nil(plain[0]["made_at"])
+  assert_equal Cybertrain::Cast.time_or_nil(rows[0]["made_at"]), Cybertrain::Cast.time_or_nil(plain[0]["made_at"])
   conn.close
 end
 

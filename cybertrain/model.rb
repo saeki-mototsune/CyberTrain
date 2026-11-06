@@ -174,7 +174,7 @@ module Cybertrain
     end
 
     def self.now_string
-      Cast.iso8601(Time.now.utc)
+      Cast.sql_datetime(Time.now.utc)
     end
 
     # `Cybertrain::DB.transaction`, under the name Rails gives it: saves,
@@ -475,7 +475,7 @@ module Cybertrain
     end
 
     # {#attributes}, ready for JSON: a Time becomes its ISO 8601 String
-    # (`"2026-10-05T09:00:00Z"`); booleans, numbers, Strings and nil
+    # (`"2026-10-05T09:00:00.000Z"`); booleans, numbers, Strings and nil
     # stay as they are (Cast.to_sql would turn booleans into 1/0).
     # @return [Hash{String => Object}]
     # @api public

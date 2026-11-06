@@ -178,8 +178,8 @@ module Cybertrain
     end
 
     # The rows this relation selects, for Model.from_row: a DATETIME column is
-    # an Integer (UTC epoch seconds, see Connection#execute_models) rather than
-    # its text; Cast.time_or_nil takes either.
+    # a UTC Time (see Connection#execute_models) rather than its text;
+    # Cast.time_or_nil takes either.
     def rows
       sql = to_sql
       binds = @binds

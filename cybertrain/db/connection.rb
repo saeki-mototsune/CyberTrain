@@ -128,9 +128,9 @@ module Cybertrain
         run_statement(sql, binds, false)
       end
 
-      # execute for the ORM: a DATETIME column comes back as UTC epoch seconds
-      # (an Integer, which Cast.time_or_nil turns into a Time) instead of its
-      # text, parsed in C without a Ruby String; a value that is not a
+      # execute for the ORM: a DATETIME column comes back as a UTC Time (with
+      # microseconds; Cast.time_or_nil takes it as is) instead of its text,
+      # parsed in C without a Ruby String; a value that is not a
       # timestamp stays text. Relation reads its rows through this; execute
       # keeps returning the text SQLite stores.
       def execute_models(sql, binds = [])
@@ -509,7 +509,8 @@ module Cybertrain
         when false then SQLite3.sqlite3_bind_int64(stmt, index, 0)
         when Integer then SQLite3.sqlite3_bind_int64(stmt, index, value)
         when Float then SQLite3.sqlite3_bind_double(stmt, index, value)
-        when Time then SQLite3.sqlite3_bind_text(stmt, index, Cast.iso8601(value), -1, -1)
+        when Time then SQLite3.sqlite3_bind_text(stmt, index, Cast.sql_datetime(value), -1, -1)
+        when Date then SQLite3.sqlite3_bind_text(stmt, index, value.to_s, -1, -1)
         # Its byte length, not -1 (which makes SQLite stop at the first NUL,
         # as it does for bind_text): every byte is stored.
         when Blob
@@ -537,9 +538,11 @@ module Cybertrain
           # path would stop at the first NUL). A String like a TEXT cell.
           when SQLite3::BLOB then row[name] = SQLite3.cybertrain_sqlite_column_blob(stmt, column)
           else
-            seconds = epoch && datetimes[column] == 1 ? SQLite3.cybertrain_sqlite_column_epoch(stmt, column) : -1
-            if seconds >= 0
-              row[name] = seconds
+            # Epoch microseconds (sqlite_ffi.rb), -1 for text that is not a
+            # datetime. A Time in the row: Cast.time_or_nil takes it as is.
+            us = epoch && datetimes[column] == 1 ? SQLite3.cybertrain_sqlite_column_epoch(stmt, column) : -1
+            if us >= 0
+              row[name] = Time.at(us / 1_000_000, us % 1_000_000).utc
             else
               text = SQLite3.sqlite3_column_text(stmt, column)
               row[name] = text.nil? ? "" : text

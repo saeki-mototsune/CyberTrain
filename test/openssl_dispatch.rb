@@ -93,7 +93,7 @@ end
 test "a time read out of parsed JSON casts" do
   doc = JSON.parse("{\"at\":\"2026-10-22 09:30:15\",\"bad\":\"2026-13-01 00:00:00\"}")
   at = Cybertrain::Cast.time_or_nil(doc["at"])
-  assert_equal "2026-10-22T09:30:15Z", Cybertrain::Cast.iso8601(at)
+  assert_equal "2026-10-22T09:30:15.000Z", Cybertrain::Cast.iso8601(at)
   assert_nil Cybertrain::Cast.time_or_nil(doc["bad"])
   text = Cybertrain::Cast.str(doc["at"])
   assert_equal 2026, Cybertrain::Cast.parse_time(text).year
