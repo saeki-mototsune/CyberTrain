@@ -235,9 +235,12 @@ checked against the columns and `:asc` / `:desc` values. The existing
 
 ### 3.3 Other additions (Q-7, Q-8, M-5)
 
-- `distinct`: a flag; `pluck*`, `count`, `exists?` and the aggregates emit
-  `SELECT DISTINCT` (count as `SELECT COUNT(*) FROM (SELECT DISTINCT …)`).
-  `to_a` is unaffected (rows are distinct by id).
+- `distinct`: a flag. `pluck*` and `exists?` emit `SELECT DISTINCT`; `count`
+  becomes `SELECT COUNT(*) FROM (SELECT DISTINCT …)`. For the aggregates
+  (section 5) the flag applies to the **aggregate's input**, `SUM(DISTINCT
+  price)` / `AVG(DISTINCT …)` (`SELECT DISTINCT SUM(price)` would dedupe the
+  one result row, not the inputs); `MIN` / `MAX` ignore it. `to_a` is
+  unaffected (rows are distinct by id).
 - `update_all(hash)` → `UPDATE t SET … WHERE …`, the limit / offset window as
   an id subselect (as `delete_all`), values through the save-time casts
   (decimal rounding, json, Time, Blob), `updated_at` untouched (Rails);
@@ -307,8 +310,10 @@ Following `sum_int` / `sum_float` / `count_by` / `count_by_sql` (D22):
 | `sum_float_sql(expr)`, `minimum_float_sql(expr)`, `maximum_float_sql(expr)`, `average_sql(expr)` | `Float \| nil`; `expr` is raw SQL as in `count_by_sql` |
 | `having_sql(sql, binds = [])` | a chain method; applies to the `_by` methods (`GROUP BY … HAVING …`) |
 
-`group` is not a separate flag: a flag that changes a method's return type
-cannot exist. An aggregate over an expression *and* a group, or one that
+With `distinct` set, every aggregate above is written over distinct inputs
+(`SUM(DISTINCT col)`, `AVG(DISTINCT expr)`, also inside the `_by` forms);
+`MIN` and `MAX` are the same either way. `group` is not a separate flag: a
+flag that changes a method's return type cannot exist. An aggregate over an expression *and* a group, or one that
 needs a second table (`joins`), is written with `DB.with`. The guide's models
 page shows the Rails spelling next to each name once.
 
@@ -327,9 +332,13 @@ is in `Model` as `insert_all_into(table, rows, …)`.
   violation raises the connection's error.
 - `Model.upsert_all(rows, unique_by: [:id], update_only: nil, returning:
   [:id], record_timestamps: true)`: `ON CONFLICT (unique_by) DO UPDATE SET c =
-  excluded.c` for every column except `id`, the `unique_by` columns and
-  `created_at` (or only `update_only`); `updated_at = excluded.updated_at` is
-  always in the SET when the column exists.
+  excluded.c` for the **columns the rows supply**, minus `id`, the
+  `unique_by` columns and `created_at` (or only those of `update_only` that
+  the rows supply). A column absent from the rows is never in the SET, so an
+  upsert of `id` and `title` leaves `body` as it was. `updated_at =
+  excluded.updated_at` is added only when `record_timestamps` is true and the
+  column exists (the rows then carry it, section below); with
+  `record_timestamps: false` it is touched only if the rows supply it.
 - `rows` is `Array<Hash<Symbol, value>>`; every row must have the same key
   set or `ArgumentError`. Values take the save-time casts (section 2:
   Time → stored format, Hash → JSON text, binary → Blob, decimal → rounded,
@@ -374,14 +383,20 @@ foreign key suppresses the generated `has_many` for it.
   returns `to_a`, so templates are unchanged. Application code that used
   Array methods on the result (`map`, `select`, `[]`) adds `.to_a`
   (section 16).
-- `belongs_to`: `def author = cached_author || User.find_by(id: @author_id)`.
-  The cache is `@author_record` (set by `includes`, section 8, and by nothing
-  else) and is used only when `@author_record.id == @author_id`, so a
-  reassigned `author_id` never answers the stale parent even though the
-  writer is a plain `attr_accessor` (NOTES 43 forbids a custom `author_id=`).
-  `reload` clears every record cache and preload.
-- `has_one`: `def profile = cached_profile || Profile.find_by(user_id: @id)`,
-  the same cache rule on `@profile_record.user_id == @id`.
+- `belongs_to`: `def author` answers from the preload cache when it is
+  valid, otherwise `User.find_by(id: @author_id)`. The cache is two ivars set
+  only by `includes` (section 8): `@author_loaded_id` (the foreign key value
+  the preload ran for; `-1` when not loaded) and `@author_record` (the parent,
+  **or nil when the preload found none**). It is used when `@author_loaded_id
+  == @author_id`, so a parent that does not exist is answered as nil without
+  a query, and a reassigned `author_id` never answers the stale parent even
+  though the writer is a plain `attr_accessor` (NOTES 43 forbids a custom
+  `author_id=`). `reload` resets every cache and preload.
+- `has_one`: `def profile` follows the same shape with `@profile_loaded`
+  (Boolean) and `@profile_record` (`Profile | nil`): a preloaded owner with
+  no profile answers nil from the cache, so a list of owners without
+  profiles stays at two queries. Without a preload,
+  `Profile.find_by(user_id: @id)`.
 - `dependent:` is applied inside `destroy`, before the row's DELETE, in one
   `DB.transaction` (joining an open one): `:destroy` loads the children and
   `destroy`s each (their callbacks and their own `dependent:` run);
@@ -390,7 +405,13 @@ foreign key suppresses the generated `has_many` for it.
   behaviour (the database's foreign key decides, see 7.3).
 - `counter_cache: true` on `belongs_to`: `after_create` increments and
   `after_destroy` decrements `<children>_count` on the parent with
-  `increment`; the column must exist (generation error otherwise).
+  `increment`. A **moved child** is counted too: the generated model keeps
+  the persisted foreign key in `@author_id_persisted` (set by `load_row` and
+  after every save; a per-counter-cache snapshot, not general dirty
+  tracking), and `after_update` compares it with `@author_id`; when they
+  differ it decrements the old parent and increments the new one. The UPDATE
+  and the two increments run in one `DB.transaction` (joining an open one).
+  The column must exist (generation error otherwise).
 - A declared `belongs_to` without `optional: true` adds a presence validation
   on the foreign key (Rails 5 default). Undeclared, foreign-key-derived
   associations add nothing (the column's NOT NULL is the rule).
@@ -428,8 +449,10 @@ instead), `inverse_of`, `dependent: :restrict_with_error`.
   `first`, `last`, `size`, `empty?` answer from memory; `count` runs SQL
   (Rails); any chain method (`where`, `order`, `limit`, `includes`, …) drops
   the preload and the relation queries as usual.
-- `belongs_to` / `has_one`: `@author_record` / `@profile_record` are set
-  (section 7.2).
+- `belongs_to` / `has_one`: `@author_loaded_id` + `@author_record` and
+  `@profile_loaded` + `@profile_record` are set for **every** record in the
+  batch, with a nil record where the query found no row (section 7.2), so a
+  missing parent or profile costs no further query.
 - Templates: `read_association` returns the preloaded `to_a`, so a loop over
   `@articles` with `article.comments.size` runs two queries instead of N+1,
   with no template change.
@@ -553,10 +576,15 @@ validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on:
   all through one `SqliteDDL.rebuild_table(definition, table)` that follows
   SQLite's documented procedure (create `<table>_new` from the new
   definition, `INSERT INTO … SELECT` the common columns, drop the old table,
-  rename, recreate the indexes, `PRAGMA foreign_key_check`), inside the
-  migration's transaction with `PRAGMA foreign_keys` handled as the
-  procedure requires (`defer_foreign_keys`). `remove_column` keeps its
-  current implementation.
+  rename, recreate the indexes). Foreign keys follow SQLite's procedure to
+  the letter: `PRAGMA foreign_keys = OFF` is a no-op inside a transaction,
+  so for a version that contains a rebuild the **migrator turns it off
+  before `BEGIN`**, runs `PRAGMA foreign_key_check` before `COMMIT` (a
+  violation rolls the version back with the offending rows in the message),
+  and turns it back on after. With enforcement left on, dropping the old
+  table would fire `ON DELETE CASCADE` on its children and the check would
+  then find nothing wrong (`defer_foreign_keys` does not prevent that).
+  `remove_column` keeps its current implementation.
 - Reversibility: `rename_table` inverts; `change_column_default` and
   `change_column_null` invert when `from:` / `to:` (or the `default`
   argument) make the previous state known, otherwise `IrreversibleMigration`
