@@ -345,8 +345,10 @@ is in `Model` as `insert_all_into(table, rows, …)`.
   Date → text). Columns absent from the rows are left to the table DEFAULT
   (`save` writes every column; bulk writes name only the given ones, as
   Rails does).
-- Timestamps: when the table has `created_at` / `updated_at` and a row lacks
-  them, both are filled with one `now` per call.
+- Timestamps: with `record_timestamps: true` (the default), when the table has
+  `created_at` / `updated_at` and a row lacks them, both are filled with one
+  `now` per call; with `record_timestamps: false` nothing is filled and the
+  rows' own values, if any, are written as given.
 - Chunking: rows per statement = `sqlite3_limit(db, SQLITE_LIMIT_VARIABLE_NUMBER, -1)
   / columns` (a new FFI binding; the default is 32766, older builds 999).
   All chunks run in **one transaction** (`DB.transaction`, joining an open
