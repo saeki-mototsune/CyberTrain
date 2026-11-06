@@ -23,7 +23,9 @@ module Cybertrain
       end
 
       # The subset of `migrations` not yet in `applied_versions`, in the
-      # order they were given (Migration.all is already version-sorted).
+      # order they were given (Migration.all is already version-sorted). An
+      # applied version that no entry carries (a database Rails created, its
+      # db/migrate not copied) is not pending and is never run.
       def pending(migrations)
         applied = applied_versions
         result = Cybertrain::Migration.empty_entries
@@ -95,15 +97,28 @@ module Cybertrain
       end
 
       # Array<[status "up"/"down", version, class name]> for every entry of
-      # `migrations`, in the order given.
+      # `migrations`, in the order given, with each applied version that no
+      # entry carries listed as ["up", version, "applied (no file)"] among
+      # them in version order.
       def status(migrations)
         applied = applied_versions
+        known = migrations.map { |entry| entry[0] }
+        orphans = applied.reject { |version| known.include?(version) }
         result = Array.new(0) { ["", "", ""] }
+        k = 0
         migrations.each do |entry|
           version = entry[0]
+          while k < orphans.size && orphans[k] < version
+            result << ["up", orphans[k], "applied (no file)"]
+            k += 1
+          end
           migration = entry[1]
           state = applied.include?(version) ? "up" : "down"
           result << [state, version, migration.class.name]
+        end
+        while k < orphans.size
+          result << ["up", orphans[k], "applied (no file)"]
+          k += 1
         end
         result
       end

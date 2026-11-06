@@ -172,10 +172,10 @@ module Cybertrain
       end
 
       # `db schema`: db/schema.rb from the database as it is (one Rails or
-      # another tool created, say), without migrating; prints the path.
+      # another tool created, say), without migrating; prints both paths.
       def self.schema(root)
         return 1 if schema_dump(root) != 0
-        puts "wrote #{root}/db/schema.rb"
+        puts "wrote #{root}/db/schema.rb from #{resolved_path(root)}"
         0
       end
 

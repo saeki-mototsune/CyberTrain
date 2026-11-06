@@ -105,4 +105,9 @@ done
 == 20260101000100 CreateComments: migrating
 done
 ok   rollback raises when the newest applied version has no migration
-25 tests, 81 assertions, 0 failures
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   an applied version with no file is never pending or run, and status lists it as applied (no file)
+26 tests, 90 assertions, 0 failures

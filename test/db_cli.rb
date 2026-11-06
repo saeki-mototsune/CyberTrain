@@ -157,7 +157,7 @@ test "schema:dump rewrites db/schema.rb from the database" do
   assert_includes File.read("#{ROOT}/db/schema.rb"), "s.create_table \"posts\" do |t|"
 end
 
-test "schema writes db/schema.rb from the existing database and prints its path" do
+test "schema writes db/schema.rb from the existing database and prints both paths" do
   File.delete("#{ROOT}/db/schema.rb")
   assert_equal 0, run_db("schema")
   assert_includes File.read("#{ROOT}/db/schema.rb"), "s.create_table \"posts\" do |t|"

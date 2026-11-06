@@ -40,8 +40,8 @@ Status  Migration ID    Migration Name
   down  20260101000100  CreateComments
 ok   rollback reverts the newest migration and rewrites db/schema.rb
 ok   schema:dump rewrites db/schema.rb from the database
-wrote tmp/db_cli_test/db/schema.rb
-ok   schema writes db/schema.rb from the existing database and prints its path
+wrote tmp/db_cli_test/db/schema.rb from tmp/db_cli_test/storage/test.sqlite3
+ok   schema writes db/schema.rb from the existing database and prints both paths
 == 20260101000100 CreateComments: migrating
 done
 == 20260101000100 CreateComments: reverting
@@ -71,6 +71,7 @@ db rollback failed: no migration for applied version 4 (was its file in db/migra
 Status  Migration ID    Migration Name
   down  20260101000000  CreatePosts
   down  20260101000100  CreateComments
+    up  4  applied (no file)
 ok   rollback fails with exit code 1 when an applied version has no migration
 skipped stamps.at: without rowid (1 rows still need normalization)
 done

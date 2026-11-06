@@ -4,4 +4,5 @@ ok   the other ON DELETE actions read back as their Symbols
 ok   a numeric column without precision and a quoted expression read back
 ok   the dump describes the same schema as the DSL written from it
 ok   the schema the DDL writes for the new types dumps back unchanged
-6 tests, 47 assertions, 0 failures
+ok   after the dump, a migrator with no migrations finds nothing to do
+7 tests, 50 assertions, 0 failures

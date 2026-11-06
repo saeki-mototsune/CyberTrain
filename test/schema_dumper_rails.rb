@@ -1,5 +1,6 @@
 require "cybertrain/db/connection"
 require "cybertrain/db/schema_dumper"
+require "cybertrain/db/migrator"
 require "cybertrain/db/sqlite_ddl"
 require "cybertrain/test"
 
@@ -172,6 +173,16 @@ test "the schema the DDL writes for the new types dumps back unchanged" do
   end
   assert_equal Cybertrain::Schema::Dumper.to_ruby(written),
                Cybertrain::Schema::Dumper.to_ruby(Cybertrain::DB::SchemaDumper.dump(connection))
+  connection.close
+end
+
+test "after the dump, a migrator with no migrations finds nothing to do" do
+  connection = rails_connection
+  Cybertrain::DB::SchemaDumper.dump_to_ruby(connection)
+  migrator = Cybertrain::DB::Migrator.new(connection)
+  assert_equal 0, migrator.pending(Cybertrain::Migration.empty_entries).size
+  assert_equal 0, migrator.migrate(Cybertrain::Migration.empty_entries)
+  assert_equal [["up", "20260101000000", "applied (no file)"]], migrator.status(Cybertrain::Migration.empty_entries)
   connection.close
 end
 
