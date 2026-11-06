@@ -131,7 +131,9 @@ module Cybertrain
     # an Array. A schema foreign key gives the same reader without a
     # declaration; a declaration names it, or adds `dependent:`.
     #
-    # One line, literal options only: `class_name:` (a String or Symbol;
+    # The macro is alone on its line, at class level, with literal options
+    # only (a trailing comment, a `;` or a parenthesised call stops the
+    # generator): `class_name:` (a String or Symbol;
     # inferred from the name, `comments` -> Comment), `foreign_key:` (the
     # children's column; inferred `post_id`) and `dependent:` -- `:destroy`
     # (each child is loaded and destroyed, so its callbacks and its own
@@ -155,8 +157,9 @@ module Cybertrain
 
     # Declares that each record has at most one child: `has_one :profile`
     # reads `Profile.find_by(user_id: id)` (nil when there is none). Read as
-    # text by the generator, like {.has_many}, and takes the same options;
-    # a has_one on a foreign key replaces the has_many the key would give.
+    # text by the generator, like {.has_many}: alone on its line, literal
+    # options only (a trailing comment is refused), the same options; a
+    # has_one on a foreign key replaces the has_many the key would give.
     # @example
     #   has_one :profile, dependent: :destroy
     # @param name [Symbol] the reader's name
@@ -171,14 +174,17 @@ module Cybertrain
 
     # Declares the parent a record points to: `belongs_to :author` reads
     # `Author.find_by(id: author_id)` and keeps it until `author_id`
-    # changes or {#reload}. Read as text by the generator, like {.has_many}.
+    # changes or {#reload}. Read as text by the generator, like {.has_many}:
+    # alone on its line, literal options only (a trailing comment is
+    # refused).
     #
     # Unless `optional: true`, the record is invalid while the key is nil
     # or 0 ("can't be blank" on `author_id`; {.validates_foreign_key}).
     # `counter_cache: true` keeps the parent's `<children>_count` column
     # (`posts.comments_count`, or `<has_many name>_count` when the parent
     # declares one over this key) in step: +1 after create, -1 after
-    # destroy, and a move to another parent counted on both sides; the
+    # destroy (from the key the row holds, read inside destroy's
+    # transaction), and a move to another parent counted on both sides; the
     # update and both counts run in one transaction. The column must exist;
     # the parent's own {#save} leaves it alone (its copy may be stale).
     # @example

@@ -492,6 +492,32 @@ test "two loaded copies of one comment moved to different posts leave every coun
   assert_equal 1, count_on(c)
 end
 
+test "destroy decrements the post the row points to, not a stale or unsaved in-memory key" do
+  reset_tables
+  a = Post.create(title: "A")
+  b = Post.create(title: "B")
+  c = Post.create(title: "C")
+  comment = comment_on(a, "moving")
+  stale = Comment.find(comment.id)
+  moved = Comment.find(comment.id)
+  moved.post_id = b.id
+  assert moved.save
+  assert stale.destroy
+  assert_equal 0, count_on(a)
+  assert_equal 0, count_on(b)
+  other = comment_on(c, "reassigned")
+  other.post_id = a.id
+  assert other.destroy
+  assert_equal 0, count_on(a)
+  assert_equal 0, count_on(c)
+  # A copy whose row is already gone counts nothing.
+  gone = comment_on(c, "gone")
+  copy = Comment.find(gone.id)
+  assert gone.destroy
+  assert copy.destroy
+  assert_equal 0, count_on(c)
+end
+
 test "a move whose save raises inside the transaction leaves the counts and the row as they were" do
   reset_tables
   a = Post.create(title: "A")

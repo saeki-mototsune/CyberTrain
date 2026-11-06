@@ -24,5 +24,6 @@ ok   post.destroy destroys each of its comments (their callbacks run), then the 
 ok   a destroy that raises rolls back the post and every comment and keeps the record persisted
 ok   comments_count follows create, destroy and a moved comment; the post's own save leaves it alone
 ok   two loaded copies of one comment moved to different posts leave every count right
+ok   destroy decrements the post the row points to, not a stale or unsaved in-memory key
 ok   a move whose save raises inside the transaction leaves the counts and the row as they were
-27 tests, 188 assertions, 0 failures
+28 tests, 198 assertions, 0 failures

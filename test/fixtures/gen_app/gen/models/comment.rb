@@ -139,6 +139,7 @@ class Comment < Cybertrain::Model
   after_create { |record| record.counter_cache_created }
   before_update { |record| record.counter_cache_was }
   after_update { |record| record.counter_cache_moved }
+  before_destroy { |record| record.counter_cache_was }
   after_destroy { |record| record.counter_cache_destroyed }
 
   def initialize(attrs = {})
@@ -156,6 +157,7 @@ class Comment < Cybertrain::Model
     @post_loaded_key = 0
     @post_record = nil
     @post_id_was = 0
+    @counter_cache_found = false
     assign_attributes(attrs) unless attrs.empty?
   end
 
@@ -343,18 +345,23 @@ class Comment < Cybertrain::Model
   end
 
   def counter_cache_destroyed
-    PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: -1)
+    return nil unless @counter_cache_found
+
+    PostRelation.new("posts").where(id: @post_id_was).increment(:comments_count, by: -1)
     nil
   end
 
   def counter_cache_was
     id = @id
     found = Cybertrain::DB.with { |c| c.execute("SELECT \"post_id\" FROM \"comments\" WHERE \"id\" = ?", [id]) }
+    @counter_cache_found = !found.empty?
     @post_id_was = Cybertrain::Cast.int(found.empty? ? nil : found[0]["post_id"])
     nil
   end
 
   def counter_cache_moved
+    return nil unless @counter_cache_found
+
     unless @post_id_was == @post_id
       PostRelation.new("posts").where(id: @post_id_was).increment(:comments_count, by: -1)
       PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: 1)

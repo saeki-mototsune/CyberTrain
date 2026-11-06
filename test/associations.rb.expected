@@ -5,4 +5,5 @@ ok   destroy: has_one :delete_all, has_many :nullify and :delete_all run inside 
 ok   without dependent: the database's foreign key refuses, and the dependents' work is rolled back
 ok   destroy joins a transaction the application opened
 ok   reload clears the belongs_to cache
-7 tests, 38 assertions, 0 failures
+ok   validates_foreign_key: nil, blank and 0 are blank; a saved parent's id is not
+8 tests, 51 assertions, 0 failures

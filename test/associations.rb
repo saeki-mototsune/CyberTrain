@@ -645,6 +645,16 @@ class Audit < Cybertrain::Model
   end
 end
 
+# app/models: a non-optional belongs_to on a nullable key, and one on a
+# NOT NULL key (the generator writes this line; see ModelsEmitter).
+class Profile
+  validates_foreign_key :user_id
+end
+
+class Task
+  validates_foreign_key :user_id
+end
+
 Cybertrain::DB.connect(":memory:", size: 1)
 Cybertrain::DB.with do |c|
   c.exec_script(
@@ -777,6 +787,34 @@ test "reload clears the belongs_to cache" do
   assert_equal "ann", task.user.name
   task.reload
   assert_equal "ann2", task.user.name
+end
+
+test "validates_foreign_key: nil, blank and 0 are blank; a saved parent's id is not" do
+  reset_tables
+  ann = User.create(name: "ann")
+  orphan = Profile.new(bio: "x")
+  assert_nil orphan.user_id
+  refute orphan.valid?
+  assert_equal ["can't be blank"], orphan.errors[:user_id]
+  orphan.write_attribute(:user_id, "")
+  assert_nil orphan.user_id
+  refute orphan.valid?
+  orphan.user_id = ann.id
+  assert orphan.valid?
+  task = Task.new(title: "t")
+  assert_equal 0, task.user_id
+  refute task.valid?
+  assert_equal ["can't be blank"], task.errors[:user_id]
+  refute task.save
+  task.user_id = ann.id
+  assert task.save
+  # A blank String value, through the validator itself.
+  profile = Profile.new(user_id: ann.id, bio: "  ")
+  Cybertrain::Validator.new(:bio, :foreign_key).validate(profile)
+  assert_equal ["can't be blank"], profile.errors[:bio]
+  profile.bio = ""
+  Cybertrain::Validator.new(:bio, :foreign_key).validate(profile)
+  assert_equal ["can't be blank", "can't be blank"], profile.errors[:bio]
 end
 
 Cybertrain::Test.run!

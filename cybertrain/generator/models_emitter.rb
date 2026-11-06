@@ -495,6 +495,7 @@ module Cybertrain
         src << "    super()\n"
         table.columns.each { |c| src << "    #{ivar_name(c.name)} = #{initial_value(c)}\n" }
         plans.each { |plan| src << association_ivars(plan) }
+        src << "    @counter_cache_found = false\n" unless plans.select { |plan| plan.counter_cache }.empty?
         # A record loaded from a row (from_row) passes no attributes: skip
         # the each, and the Proc it allocates, for every row of every query.
         src << "    assign_attributes(attrs) unless attrs.empty?\n"
@@ -917,7 +918,10 @@ module Cybertrain
         return [n + "_loaded", n + "_record"] if plan.kind == :has_one
 
         list = [n + "_loaded", n + "_loaded_key", n + "_record"]
-        list << ivar_name(plan.foreign_key) + "_was" if plan.counter_cache
+        if plan.counter_cache
+          list << ivar_name(plan.foreign_key) + "_was"
+          list << "@counter_cache_found"
+        end
         list
       end
 
@@ -1038,6 +1042,7 @@ module Cybertrain
           src << "  after_create { |record| record.counter_cache_created }\n"
           src << "  before_update { |record| record.counter_cache_was }\n"
           src << "  after_update { |record| record.counter_cache_moved }\n"
+          src << "  before_destroy { |record| record.counter_cache_was }\n"
           src << "  after_destroy { |record| record.counter_cache_destroyed }\n"
         end
         src << "\n" unless src == ""
@@ -1045,12 +1050,15 @@ module Cybertrain
       end
 
       # The counter_cache methods (spec 7.2): increment the parent's counter
-      # after create, decrement it after destroy, and for an update read the
-      # persisted foreign key inside the save's transaction (before_update)
-      # and move one count from the old parent to the new one when it
-      # changed (after_update). The key is read from the row, not kept from
-      # load time, so a second instance of the same child or a rolled-back
-      # save leaves no stale key. "" without counter_cache.
+      # after create; for an update or a destroy, read the persisted foreign
+      # key inside the transaction (before_update / before_destroy:
+      # counter_cache_was, which also notes whether the row was there), then
+      # move one count from the old parent to the new one when it changed
+      # (after_update) or take one from the persisted parent (after_destroy).
+      # The key is read from the row, not kept from load time, so a second
+      # instance of the same child, an unsaved reassignment or a rolled-back
+      # save leaves no stale key; a row already gone, or a nil key, counts
+      # nothing. "" without counter_cache.
       def self.emit_counter_cache(table, plans)
         cached = plans.select { |plan| plan.counter_cache }
         return "" if cached.empty?
@@ -1060,13 +1068,19 @@ module Cybertrain
         cached.each { |plan| src << "    #{counter_update(plan, ivar_name(plan.foreign_key), 1)}\n" }
         src << "    nil\n  end\n\n"
         src << "  def counter_cache_destroyed\n"
-        cached.each { |plan| src << "    #{counter_update(plan, ivar_name(plan.foreign_key), -1)}\n" }
+        src << "    return nil unless @counter_cache_found\n\n"
+        cached.each do |plan|
+          key = ivar_name(plan.foreign_key) + "_was"
+          guard = plan.fk_null ? " unless #{key}.nil?" : ""
+          src << "    #{counter_update(plan, key, -1)}#{guard}\n"
+        end
         src << "    nil\n  end\n\n"
         columns = cached.map { |plan| "\\\"#{plan.foreign_key}\\\"" }.join(", ")
         sql = "SELECT #{columns} FROM \\\"#{table.name}\\\" WHERE \\\"id\\\" = ?"
         src << "  def counter_cache_was\n"
         src << "    id = @id\n"
         src << "    found = Cybertrain::DB.with { |c| c.execute(\"#{sql}\", [id]) }\n"
+        src << "    @counter_cache_found = !found.empty?\n"
         cached.each do |plan|
           cast = plan.fk_null ? "int_or_nil" : "int"
           src << "    #{ivar_name(plan.foreign_key)}_was = Cybertrain::Cast.#{cast}(found.empty? ? nil : " \
@@ -1074,6 +1088,7 @@ module Cybertrain
         end
         src << "    nil\n  end\n\n"
         src << "  def counter_cache_moved\n"
+        src << "    return nil unless @counter_cache_found\n\n"
         cached.each do |plan|
           key = ivar_name(plan.foreign_key)
           src << "    unless #{key}_was == #{key}\n"

@@ -61,6 +61,7 @@ ok   scan_source reads has_many, has_one and belongs_to lines with their literal
 ok   an association macro inside a method body, or not followed by a Symbol, is plain code
 ok   an association line that is not one line of literal options raises with the file and line
 ok   an unknown option, a wrong value or a repeated association raises with the file and line
+ok   code in a class_name, a foreign_key or an association name is refused
 ok   a declared has_many returns the model's Relation; read_association turns it into an Array
 ok   a declared belongs_to caches its parent keyed by the foreign key; a nullable key answers nil without a query
 ok   a declared has_one reads the preload cache, else queries by the owner's id
@@ -69,8 +70,9 @@ ok   dependent: destroy, delete_all and nullify become destroy_dependents
 ok   a declared belongs_to validates its foreign key unless optional: true; undeclared ones add nothing
 ok   counter_cache: callbacks in the class body and the four counter_cache methods
 ok   the parent of a counter_cache leaves the counter column out of its own UPDATE
+ok   a nullable counter_cache key is read with int_or_nil and a nil one counts nothing on destroy
 ok   the counter column follows the parent's has_many name
 ok   a declaration whose model, foreign key column or counter column does not exist fails with the file and line
 ok   a declared belongs_to replaces the reader the same foreign key would give
 ok   a column named like an association cache ivar fails
-75 tests, 734 assertions, 0 failures
+77 tests, 753 assertions, 0 failures

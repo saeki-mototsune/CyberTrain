@@ -2275,6 +2275,21 @@ test "an unknown option, a wrong value or a repeated association raises with the
   assert_equal "app/models/post.rb:4: has_one :comments: an association named comments is already declared on line 2", msg
 end
 
+# The scanner copies names into generated Ruby, so only identifiers get
+# through: anything else is refused before the emitter sees it.
+test "code in a class_name, a foreign_key or an association name is refused" do
+  assert_equal "app/models/post.rb:3: belongs_to :post: class_name: takes a model name (got \"X; system\")",
+               association_error("belongs_to :post, class_name: \"X; system\"")
+  assert_equal "app/models/post.rb:3: belongs_to :post: class_name: takes a model name (got 'X.new')",
+               association_error("belongs_to :post, class_name: 'X.new'")
+  assert_equal "app/models/post.rb:3: belongs_to :post: foreign_key: takes a column name (got \"x); y(\")",
+               association_error("belongs_to :post, foreign_key: \"x); y(\"")
+  ["has_many :foo; bar", "has_many :foo;bar", "has_many :\"foo; bar\""].each do |line|
+    assert_equal "app/models/post.rb:3: has_many must be one line with literal options: " \
+                 "has_many :name, option: value, ...", association_error(line)
+  end
+end
+
 test "a declared has_many returns the model's Relation; read_association turns it into an Array" do
   post = assoc_emit("post")
   assert_lines(post, [
@@ -2369,6 +2384,7 @@ test "counter_cache: callbacks in the class body and the four counter_cache meth
   assert_includes comment, "  after_create { |record| record.counter_cache_created }\n" \
                            "  before_update { |record| record.counter_cache_was }\n" \
                            "  after_update { |record| record.counter_cache_moved }\n" \
+                           "  before_destroy { |record| record.counter_cache_was }\n" \
                            "  after_destroy { |record| record.counter_cache_destroyed }\n"
   assert_includes comment, indent_body(<<~'RUBY')
     def counter_cached? = true
@@ -2379,18 +2395,23 @@ test "counter_cache: callbacks in the class body and the four counter_cache meth
     end
 
     def counter_cache_destroyed
-      PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: -1)
+      return nil unless @counter_cache_found
+
+      PostRelation.new("posts").where(id: @post_id_was).increment(:comments_count, by: -1)
       nil
     end
 
     def counter_cache_was
       id = @id
       found = Cybertrain::DB.with { |c| c.execute("SELECT \"post_id\" FROM \"comments\" WHERE \"id\" = ?", [id]) }
+      @counter_cache_found = !found.empty?
       @post_id_was = Cybertrain::Cast.int(found.empty? ? nil : found[0]["post_id"])
       nil
     end
 
     def counter_cache_moved
+      return nil unless @counter_cache_found
+
       unless @post_id_was == @post_id
         PostRelation.new("posts").where(id: @post_id_was).increment(:comments_count, by: -1)
         PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: 1)
@@ -2398,7 +2419,7 @@ test "counter_cache: callbacks in the class body and the four counter_cache meth
       nil
     end
   RUBY
-  assert_lines(comment, ["@post_id_was = 0"])
+  assert_lines(comment, ["@post_id_was = 0", "@counter_cache_found = false"])
   refute_line(assoc_emit("post"), "def counter_cached? = true")
 end
 
@@ -2406,6 +2427,22 @@ test "the parent of a counter_cache leaves the counter column out of its own UPD
   assert_lines(assoc_emit("post"), ['def counter_cache_columns = ["comments_count"]'])
   refute_line(assoc_emit("user"), "def counter_cache_columns")
   refute_line(assoc_emit("comment"), "def counter_cache_columns")
+end
+
+test "a nullable counter_cache key is read with int_or_nil and a nil one counts nothing on destroy" do
+  definition = assoc_schema
+  definition.table("users").add_column(Cybertrain::Schema::Column.new("comments_count", :integer, false, "0", 0))
+  comment = ASSOC_COMMENT_SOURCE.sub("optional: true", "optional: true, counter_cache: true")
+  outputs = Cybertrain::Gen::ModelsEmitter.outputs(definition, assoc_infos(ASSOC_POST_SOURCE, comment))
+  source = outputs["gen/models/comment.rb"]
+  assert_lines(source, [
+    "@editor_id_was = nil",
+    '@editor_id_was = Cybertrain::Cast.int_or_nil(found.empty? ? nil : found[0]["editor_id"])',
+    'UserRelation.new("users").where(id: @editor_id_was).increment(:comments_count, by: -1) unless @editor_id_was.nil?',
+    'PostRelation.new("posts").where(id: @post_id_was).increment(:comments_count, by: -1)'
+  ])
+  assert_equal 1, source.lines.count { |l| l.strip == "@counter_cache_found = false" }
+  assert_includes source, "SELECT \\\"post_id\\\", \\\"editor_id\\\" FROM"
 end
 
 test "the counter column follows the parent's has_many name" do
