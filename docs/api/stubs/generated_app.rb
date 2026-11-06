@@ -384,13 +384,15 @@ class Article < Cybertrain::Model
   # another row holds `value` in the column `attr`. Every model gets it,
   # built through the relation (the value is always a bind):
   # `where(attr => value)` -- `LOWER(attr) = LOWER(?)` when
-  # `case_sensitive` is false --, narrowed by `where(scope_attr =>
+  # `case_sensitive` is false; a nil value is `IS NULL` either way --,
+  # narrowed by `where(scope_attr =>
   # scope_value)` when a `scope:` is given, and `where.not(id: exclude_id)`
   # for a saved record, then `exists?`.
   #
   # The model file's `if:` / `unless:` names and `validate :method` lines
   # are generated too, as `validation_condition?(name)` (a `case` calling
-  # the named method) and `run_custom_validations(context)` (each
+  # the named method, raising ArgumentError for a name the file does not
+  # declare; every model has one) and `run_custom_validations(context)` (each
   # `validate` method in order, under its `on:` / `if:` / `unless:`); a
   # name the model file does not define stops the generator.
   # @example

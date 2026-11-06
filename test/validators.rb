@@ -35,11 +35,13 @@ end
 class Thing < Cybertrain::Model
   def self.table_name = "things"
   def self.column_names = ["id", "name", "code", "state", "rating", "slug", "handle", "count_text", "qty", "price",
-                           "level", "ratio", "whole", "email", "account_id", "nickname", "note"]
+                           "level", "ratio", "whole", "email", "account_id", "nickname", "note", "tier", "age", "bonus",
+                           "motto", "token"]
   def model_name = "Thing"
 
   attr_accessor :name, :code, :state, :rating, :slug, :handle, :count_text, :qty, :price, :level, :ratio, :whole,
-                :email, :account_id, :nickname, :note, :needs_note, :draft_mode, :strict
+                :email, :account_id, :nickname, :note, :tier, :age, :bonus, :motto, :token, :needs_note, :draft_mode,
+                :strict
 
   def initialize(attrs = {})
     super()
@@ -59,6 +61,11 @@ class Thing < Cybertrain::Model
     @account_id = 1
     @nickname = nil
     @note = nil
+    @tier = 1
+    @age = 18
+    @bonus = nil
+    @motto = nil
+    @token = "abc"
     @needs_note = false
     @draft_mode = false
     @strict = false
@@ -84,6 +91,11 @@ class Thing < Cybertrain::Model
     when :account_id then @account_id
     when :nickname then @nickname
     when :note then @note
+    when :tier then @tier
+    when :age then @age
+    when :bonus then @bonus
+    when :motto then @motto
+    when :token then @token
     else nil
     end
   end
@@ -106,6 +118,11 @@ class Thing < Cybertrain::Model
     when :account_id then @account_id = Cybertrain::Cast.int(value)
     when :nickname then @nickname = Cybertrain::Cast.str_or_nil(value)
     when :note then @note = Cybertrain::Cast.str_or_nil(value)
+    when :tier then @tier = Cybertrain::Cast.int(value)
+    when :age then @age = Cybertrain::Cast.int(value)
+    when :bonus then @bonus = Cybertrain::Cast.float_or_nil(value)
+    when :motto then @motto = Cybertrain::Cast.str_or_nil(value)
+    when :token then @token = Cybertrain::Cast.str_or_nil(value)
     end
     nil
   end
@@ -132,7 +149,12 @@ class Thing < Cybertrain::Model
       "email" => Cybertrain::Cast.to_sql(@email),
       "account_id" => Cybertrain::Cast.to_sql(@account_id),
       "nickname" => Cybertrain::Cast.to_sql(@nickname),
-      "note" => Cybertrain::Cast.to_sql(@note)
+      "note" => Cybertrain::Cast.to_sql(@note),
+      "tier" => Cybertrain::Cast.to_sql(@tier),
+      "age" => Cybertrain::Cast.to_sql(@age),
+      "bonus" => Cybertrain::Cast.to_sql(@bonus),
+      "motto" => Cybertrain::Cast.to_sql(@motto),
+      "token" => Cybertrain::Cast.to_sql(@token)
     }
   end
 
@@ -182,6 +204,11 @@ class Thing
   validates :code, :slug, presence: true, if: :strict?
   validates :name, uniqueness: true, on: :update
   validate :name_not_admin, :handle_not_root
+  validates :tier, inclusion: { in: 1...5 }
+  validates :age, inclusion: { in: 18.. }
+  validates :bonus, numericality: { greater_than: 0, allow_nil: true }
+  validates :motto, format: { without: /!/ }
+  validates :token, format: { with: /\A[a-z]+\z/ }
 
   def needs_note? = @needs_note
   def draft_mode? = @draft_mode
@@ -201,7 +228,8 @@ Cybertrain::DB.with do |c|
   c.exec_script(
     "CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, code TEXT, state TEXT, " \
     "rating INTEGER, slug TEXT, handle TEXT, count_text TEXT, qty INTEGER, price REAL, level INTEGER, " \
-    "ratio REAL, whole REAL, email TEXT, account_id INTEGER, nickname TEXT, note TEXT);"
+    "ratio REAL, whole REAL, email TEXT, account_id INTEGER, nickname TEXT, note TEXT, tier INTEGER, " \
+    "age INTEGER, bonus REAL, motto TEXT, token TEXT);"
   )
 end
 
@@ -280,6 +308,29 @@ test "numericality comparisons print their limits as written" do
   assert_equal ["must be equal to 2"], messages_for(:level, { level: 3 })
   assert_equal ["must be other than 7"], messages_for(:ratio, { ratio: 7.0 })
   assert_equal [], messages_for(:ratio, { ratio: 7.5 })
+end
+
+test "inclusion in an exclusive-end Range and an endless Range" do
+  assert_equal [], messages_for(:tier, { tier: 4 })
+  assert_equal ["is not included in the list"], messages_for(:tier, { tier: 5 })
+  assert_equal ["is not included in the list"], messages_for(:tier, { tier: 0 })
+  assert_equal [], messages_for(:age, { age: 18 })
+  assert_equal [], messages_for(:age, { age: 120 })
+  assert_equal ["is not included in the list"], messages_for(:age, { age: 17 })
+end
+
+test "allow_nil inside a rule's Hash skips nil for that rule" do
+  assert_equal [], messages_for(:bonus, { bonus: nil })
+  assert_equal ["must be greater than 0"], messages_for(:bonus, { bonus: 0 })
+  assert_equal [], messages_for(:bonus, { bonus: 0.5 })
+end
+
+test "format: nil fails a with: rule and passes a without:-only rule" do
+  assert_equal [], messages_for(:motto, { motto: nil })
+  assert_equal ["is invalid"], messages_for(:motto, { motto: "wow!" })
+  assert_equal [], messages_for(:motto, { motto: "calm" })
+  assert_equal ["is invalid"], messages_for(:token, { token: nil })
+  assert_equal [], messages_for(:token, { token: "abc" })
 end
 
 test "allow_blank skips nil and blank Strings only" do

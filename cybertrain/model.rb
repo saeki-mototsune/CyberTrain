@@ -77,7 +77,8 @@ module Cybertrain
     #   `"is not included in the list"` / `"is reserved"`.
     # - `format: { with: /re/, without: /re/ }`: the value as a String must
     #   match `with:` and must not match `without:`, else `"is invalid"`
-    #   (nil is invalid unless `allow_nil:`).
+    #   (nil fails `with:` unless `allow_nil:`, and passes a `without:`
+    #   rule alone).
     # - `numericality: true | { only_integer:, greater_than:,
     #   greater_than_or_equal_to:, equal_to:, less_than:,
     #   less_than_or_equal_to:, other_than: }`: a String is parsed as a
@@ -88,13 +89,14 @@ module Cybertrain
     #   written.
     # - `uniqueness: true | { scope: :column, case_sensitive: false }`:
     #   `"has already been taken"` when another row holds the value
-    #   (`LOWER()` on both sides when not case-sensitive), through the
-    #   generated `unique_value_taken?`.
+    #   (`LOWER()` on both sides when not case-sensitive; nil is `IS NULL`),
+    #   through the generated `unique_value_taken?`.
     # - On every rule: `allow_nil:` skips nil, `allow_blank:` nil and blank
     #   Strings; `on: :create | :update` runs it for a new or a persisted
     #   record only; `if:` / `unless:` name a method of the model (a Symbol:
     #   the generator writes the `validation_condition?` table that calls it,
-    #   and refuses a lambda); `message:` replaces the default (also inside
+    #   and refuses a lambda and the `:if =>` / `"if":` spellings; a name the
+    #   table lacks raises ArgumentError); `message:` replaces the default (also inside
     #   a rule's Hash, for that rule).
     #
     # An unknown option or a value of the wrong kind raises ArgumentError

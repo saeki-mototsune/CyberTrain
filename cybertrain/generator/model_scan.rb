@@ -323,7 +323,11 @@ module Cybertrain
               quote = ""
             end
           elsif ch == "\"" || ch == "'"
+            refuse_condition_spelling(file, lineno, text[i + 1, text.size - i - 1], ch)
             quote = ch
+          elsif ch == ":" && (i == 0 || !word_char?(text[i - 1, 1]))
+            refuse_condition_spelling(file, lineno, text[i + 1, text.size - i - 1], "")
+            i += 1
           elsif (i == 0 || !word_char?(text[i - 1, 1])) &&
                 (text[i, 3] == "if:" || text[i, 7] == "unless:")
             key_size = text[i, 3] == "if:" ? 3 : 7
@@ -337,6 +341,27 @@ module Cybertrain
             next
           end
           i += 1
+        end
+        nil
+      end
+
+      # Refuses `:if => :x` and `"if": :x` / `'unless': :x` (`rest` is the
+      # text after the `:` or the opening `quote`): Ruby reads them as if: /
+      # unless:, but the scan keys on the `if:` spelling, and a missed
+      # condition would run or skip its rule silently.
+      def self.refuse_condition_spelling(file, lineno, rest, quote)
+        ["if", "unless"].each do |key|
+          next unless rest.start_with?(key)
+
+          tail = rest[key.size, rest.size - key.size]
+          if quote == ""
+            next if tail != "" && (word_char?(tail[0, 1]) || tail[0, 1] == "?" || tail[0, 1] == "!")
+            next unless tail.lstrip.start_with?("=>")
+          else
+            next unless tail.start_with?(quote + ":")
+          end
+          raise Error, "#{file}:#{lineno}: validates must spell its conditions if: :method and unless: :method " \
+                       "(not :#{key} => or \"#{key}\":): the generator reads only that spelling"
         end
         nil
       end

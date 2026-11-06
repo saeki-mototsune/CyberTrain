@@ -159,6 +159,19 @@ test "the generated unique_value_taken?: case_sensitive false compares LOWER(), 
   # A quote in the value is a bind, not SQL.
   refute probe.unique_value_taken?(:title, "x') OR ('1' = '1", nil, nil, 0, false)
   assert_raises("ArgumentError") { probe.unique_value_taken?(:"title) OR (1", "x", nil, nil, 0, false) }
+  # nil is IS NULL whether or not case-sensitive (LOWER(NULL) never matches).
+  # (post's body is NULL; no title is.)
+  assert probe.unique_value_taken?(:body, nil, nil, nil, 0, false)
+  refute probe.unique_value_taken?(:body, nil, nil, nil, post.id, false)
+  refute probe.unique_value_taken?(:title, nil, nil, nil, 0, false)
+  assert probe.unique_value_taken?(:body, nil, nil, nil, 0, true)
+end
+
+test "validation_condition? raises for a name app/models never declared, so a missed condition is loud" do
+  msg = assert_raises("ArgumentError") { Post.new.validation_condition?(:draft?) }
+  assert_equal "validation_condition?: draft? is not an if:/unless: name app/models/post.rb declares " \
+               "(write if: :draft? on the validates line)", msg
+  assert_raises("ArgumentError") { Comment.new.validation_condition?(:ready?) }
 end
 
 test "numericality and the custom validation with its if: from app/models/post.rb" do

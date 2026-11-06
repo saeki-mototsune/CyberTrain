@@ -450,7 +450,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
 
       def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
         rel = PostRelation.new("posts")
-        if case_sensitive
+        if case_sensitive || value.nil?
           rel.where({ attr => value })
         else
           column = Cybertrain::Relation.checked_column("uniqueness", attr)
@@ -459,6 +459,11 @@ EXPECTED_POST = HEADER + <<~'RUBY'
         rel.where({ scope_attr => scope_value }) unless scope_attr.nil?
         rel.where.not(id: exclude_id) unless exclude_id == 0
         rel.exists?
+      end
+
+      def validation_condition?(name)
+        raise ArgumentError, "validation_condition?: #{name} is not an if:/unless: name app/models/post.rb declares (write if: :#{name} on the validates line)" unless name.nil?
+        false
       end
     end
   RUBY
@@ -872,7 +877,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
 
       def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
         rel = CommentRelation.new("comments")
-        if case_sensitive
+        if case_sensitive || value.nil?
           rel.where({ attr => value })
         else
           column = Cybertrain::Relation.checked_column("uniqueness", attr)
@@ -881,6 +886,11 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
         rel.where({ scope_attr => scope_value }) unless scope_attr.nil?
         rel.where.not(id: exclude_id) unless exclude_id == 0
         rel.exists?
+      end
+
+      def validation_condition?(name)
+        raise ArgumentError, "validation_condition?: #{name} is not an if:/unless: name app/models/comment.rb declares (write if: :#{name} on the validates line)" unless name.nil?
+        false
       end
     end
   RUBY
@@ -1202,7 +1212,7 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
 
       def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
         rel = FlagRelation.new("flags")
-        if case_sensitive
+        if case_sensitive || value.nil?
           rel.where({ attr => value })
         else
           column = Cybertrain::Relation.checked_column("uniqueness", attr)
@@ -1211,6 +1221,11 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
         rel.where({ scope_attr => scope_value }) unless scope_attr.nil?
         rel.where.not(id: exclude_id) unless exclude_id == 0
         rel.exists?
+      end
+
+      def validation_condition?(name)
+        raise ArgumentError, "validation_condition?: #{name} is not an if:/unless: name app/models/flag.rb declares (write if: :#{name} on the validates line)" unless name.nil?
+        false
       end
     end
   RUBY
@@ -3082,7 +3097,7 @@ test "validation_condition? is a case over the validates names, run_custom_valid
       when :published? then self.published? ? true : false
       when :draft? then self.draft? ? true : false
       when :counted? then self.counted? ? true : false
-      else true
+      else raise ArgumentError, "validation_condition?: #{name} is not an if:/unless: name app/models/post.rb declares (write if: :#{name} on the validates line)"
       end
     end
   RUBY
@@ -3100,7 +3115,7 @@ test "unique_value_taken? goes through where, where.not and exists?, with LOWER(
   assert_includes emit_for("posts"), <<~'RUBY'.gsub(/^/, "  ")
     def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
       rel = PostRelation.new("posts")
-      if case_sensitive
+      if case_sensitive || value.nil?
         rel.where({ attr => value })
       else
         column = Cybertrain::Relation.checked_column("uniqueness", attr)
@@ -3113,10 +3128,35 @@ test "unique_value_taken? goes through where, where.not and exists?, with LOWER(
   RUBY
 end
 
-test "a model without validate lines or conditions keeps the base stubs" do
+test "a model without conditions still gets a validation_condition? that raises; no run_custom_validations" do
   post = emit_for("posts")
-  refute_line(post, "def validation_condition?(name)")
+  assert_includes post, <<~'RUBY'.gsub(/^/, "  ")
+    def validation_condition?(name)
+      raise ArgumentError, "validation_condition?: #{name} is not an if:/unless: name app/models/post.rb declares (write if: :#{name} on the validates line)" unless name.nil?
+      false
+    end
+  RUBY
   refute_line(post, "def run_custom_validations(context)")
+end
+
+test "the :if => and \"if\": spellings are refused, so no condition is missed silently" do
+  message = "app/models/post.rb:3: validates must spell its conditions if: :method and unless: :method " \
+            "(not :%s => or \"%s\":): the generator reads only that spelling"
+  {
+    "validates :title, presence: true, :unless => :draft?" => "unless",
+    "validates :title, presence: true, :if=>:ready?" => "if",
+    "validates :title, presence: true, \"if\": :ready?" => "if",
+    "validates :title, presence: true, 'unless': :draft?" => "unless",
+    "validates :title,\n            presence: true, :if => :ready?" => "if"
+  }.each do |line, key|
+    assert_equal format(message, key, key), validation_error(line)
+  end
+  # A Symbol or String that merely reads "if" is not an option.
+  source = "class Post\n  validates :state, inclusion: { in: [:if, \"unless\"] }, message: \"if: so\"\nend\n"
+  assert_equal [], Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source).condition_methods
+  shape = "app/models/post.rb:3: validate must be one line of method names and literal options: " \
+          "validate :name, ..., on: :create, if: :method, unless: :method"
+  assert_equal shape, validation_error("validate :check, :if => :ready?")
 end
 
 test "a condition or validate method the model file does not define raises with the file and line" do

@@ -87,6 +87,7 @@ ok   an open bracket in a validates Regexp does not swallow the lines after it
 ok   validate and validates as plain code are not the macros
 ok   validation_condition? is a case over the validates names, run_custom_validations calls each method
 ok   unique_value_taken? goes through where, where.not and exists?, with LOWER() when not case-sensitive
-ok   a model without validate lines or conditions keeps the base stubs
+ok   a model without conditions still gets a validation_condition? that raises; no run_custom_validations
+ok   the :if => and "if": spellings are refused, so no condition is missed silently
 ok   a condition or validate method the model file does not define raises with the file and line
-91 tests, 854 assertions, 0 failures
+92 tests, 867 assertions, 0 failures

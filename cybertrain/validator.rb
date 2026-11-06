@@ -431,10 +431,13 @@ module Cybertrain
     end
 
     # with: must match and without: must not, on the value as a String; a
-    # nil value is invalid (Rails matches nil.to_s, "") unless allow_nil.
+    # nil value fails a with: rule (unless allow_nil) and passes a
+    # without:-only one.
     def check_format(record, value)
       if value.nil?
-        add_message(record, "is invalid")
+        # nil matches no Regexp: a with: rule fails it, a without: rule
+        # alone passes it (Rails).
+        add_message(record, "is invalid") unless @pattern.nil?
         return nil
       end
       text = Cast.str(value)

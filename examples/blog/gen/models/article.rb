@@ -396,7 +396,7 @@ class Article < Cybertrain::Model
 
   def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
     rel = ArticleRelation.new("articles")
-    if case_sensitive
+    if case_sensitive || value.nil?
       rel.where({ attr => value })
     else
       column = Cybertrain::Relation.checked_column("uniqueness", attr)
@@ -405,5 +405,10 @@ class Article < Cybertrain::Model
     rel.where({ scope_attr => scope_value }) unless scope_attr.nil?
     rel.where.not(id: exclude_id) unless exclude_id == 0
     rel.exists?
+  end
+
+  def validation_condition?(name)
+    raise ArgumentError, "validation_condition?: #{name} is not an if:/unless: name app/models/article.rb declares (write if: :#{name} on the validates line)" unless name.nil?
+    false
   end
 end

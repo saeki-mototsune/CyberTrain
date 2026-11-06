@@ -106,13 +106,17 @@ module Cybertrain
       def self.emit_validations(model, table, infos, plans)
         src = +"\n"
         src << emit_unique_value_taken(model, table)
+        names = Array.new(0) { "" }
+        validations = Array.new(0) { CustomValidationInfo.new("", "", "", "", "", 0) }
         infos.each do |info|
           next unless info.class_name == model
 
           check_validation_methods(model, table, info, plans)
-          src << emit_validation_condition(info.condition_methods)
-          src << emit_custom_validations(info.custom_validations)
+          names = info.condition_methods
+          validations = info.custom_validations
         end
+        src << emit_validation_condition(names, "app/models/#{file_name(table.name)}")
+        src << emit_custom_validations(validations)
         src
       end
 
@@ -122,13 +126,14 @@ module Cybertrain
       # when one is given). Built through the Relation (`where`, `where_sql`
       # with the value bound, `where.not`, `exists?`); `case_sensitive:
       # false` compares LOWER() of both sides, the column quoted by
-      # Relation.checked_column. exclude_id is the record's own id (0 for a
+      # Relation.checked_column; a nil value is `IS NULL` either way, as in
+      # Rails. exclude_id is the record's own id (0 for a
       # new record, which no row has).
       def self.emit_unique_value_taken(model, table)
         src = +""
         src << "  def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)\n"
         src << "    rel = #{model}Relation.new(\"#{table.name}\")\n"
-        src << "    if case_sensitive\n"
+        src << "    if case_sensitive || value.nil?\n"
         src << "      rel.where({ attr => value })\n"
         src << "    else\n"
         src << "      column = Cybertrain::Relation.checked_column(\"uniqueness\", attr)\n"
@@ -142,19 +147,25 @@ module Cybertrain
       end
 
       # `validation_condition?(name)`: the truthiness of the named method as
-      # a Boolean; a name the generator did not see answers true, as the
-      # base stub does (every `validates` if: / unless: is collected, so
-      # only a hand-written call reaches it). "" without any names: the
-      # stub stays.
-      def self.emit_validation_condition(names)
-        return "" if names.empty?
-
+      # a Boolean, for every model. A name the scan did not collect (an
+      # if: / unless: spelling it cannot read) raises ArgumentError at the
+      # first validation instead of letting the rule run or skip silently;
+      # a model whose file names none raises for any name. The raise keeps
+      # the one Boolean return type (NOTES rule 34).
+      def self.emit_validation_condition(names, file)
+        message = "validation_condition?: \#{name} is not an if:/unless: name #{file} declares " \
+                  "(write if: :\#{name} on the validates line)"
         src = +"\n"
         src << "  def validation_condition?(name)\n"
-        src << "    case name\n"
-        names.each { |n| src << "    when :#{n} then self.#{n} ? true : false\n" }
-        src << "    else true\n"
-        src << "    end\n"
+        if names.empty?
+          src << "    raise ArgumentError, \"#{message}\" unless name.nil?\n"
+          src << "    false\n"
+        else
+          src << "    case name\n"
+          names.each { |n| src << "    when :#{n} then self.#{n} ? true : false\n" }
+          src << "    else raise ArgumentError, \"#{message}\"\n"
+          src << "    end\n"
+        end
         src << "  end\n"
         src
       end
