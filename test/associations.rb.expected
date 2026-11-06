@@ -6,4 +6,7 @@ ok   without dependent: the database's foreign key refuses, and the dependents' 
 ok   destroy joins a transaction the application opened
 ok   reload clears the belongs_to cache
 ok   validates_foreign_key: nil, blank and 0 are blank; a saved parent's id is not
-8 tests, 51 assertions, 0 failures
+ok   includes(:profile) fills every user's has_one, nil where there is none, in one query
+ok   includes(:notes, :profile) runs one query per association; a nullable key groups its children
+ok   Note.includes(:user) on a nullable key: a nil key queries nothing and answers nil
+11 tests, 67 assertions, 0 failures

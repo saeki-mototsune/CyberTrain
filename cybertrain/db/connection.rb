@@ -54,6 +54,8 @@ module Cybertrain
         @transaction_depth = 0
         # SQLITE_LIMIT_VARIABLE_NUMBER, read on the first #variable_limit.
         @variable_limit = -1
+        # Statements run so far (#statements_run).
+        @statements_run = 0
         # True once SQLite rolled back a transaction on its own while a
         # statement failed, until the application ends it with COMMIT, END
         # or ROLLBACK (#note_lost_transaction, #refuse_if_transaction_gone).
@@ -146,6 +148,7 @@ module Cybertrain
         # left to do (see #exec_script).
         return rows if refuse_if_transaction_gone(sql)
 
+        @statements_run += 1
         stmt = @statements[sql]
         cached = !stmt.nil?
         unless cached
@@ -260,6 +263,19 @@ module Cybertrain
         raise Error, "connection closed (variable_limit)" if @closed
         @variable_limit = SQLite3.sqlite3_limit(@db, SQLite3::LIMIT_VARIABLE_NUMBER, -1) if @variable_limit < 0
         @variable_limit
+      end
+
+      # How many statements #execute and #execute_models have run on this
+      # connection (exec_script's are not counted), for a test that asserts
+      # how many queries something costs:
+      #
+      #     before = Cybertrain::DB.with { |c| c.statements_run }
+      #     Article.includes(:comments).to_a.each { |a| a.comments.size }
+      #     Cybertrain::DB.with { |c| c.statements_run } - before  # => 2
+      # @return [Integer]
+      # @api public
+      def statements_run
+        @statements_run
       end
 
       # Whether a transaction is open on this connection, however it was

@@ -6,21 +6,53 @@ require "cybertrain/model"
 # gen/models (ModelsEmitter.association_reader and friends; spec section 7.2),
 # hand-written here for the cases test/gen_models_compiles.rb's fixture does
 # not have: a has_one, `dependent: :nullify` and `:delete_all`, a nullable
-# belongs_to, and a foreign key without `dependent:` (the database decides).
+# belongs_to, and a foreign key without `dependent:` (the database decides),
+# plus includes (spec section 8) over the has_one and the nullable keys.
 # The Relations carry only the methods these tests use. SQLite is FFI, so the
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 
 class UserRelation < Cybertrain::Relation
+  def initialize(table)
+    super(table)
+    @preloaded = Array.new(0) { User.new }
+  end
+
   def where(h) = (add_where(h); self)
   def order(o) = (set_order_hash(o); self)
   def limit(n) = (set_limit(n); self)
 
+  def includes(*names)
+    names.each do |name|
+      case name
+      when :profile, :notes then add_include(name)
+      else raise ArgumentError, "unknown association #{name} for User"
+      end
+    end
+    self
+  end
+
+  def preload(*names) = includes(*names)
+
+  def preloaded(records)
+    @preloaded = records
+    mark_records_preloaded
+    self
+  end
+
   def to_a
+    return @preloaded if records_preloaded?
+
     out = Array.new(0) { User.new }
     found = rows
     i = 0
     while i < found.size
       out << User.from_row(found[i])
+      i += 1
+    end
+    names = includes_names
+    i = 0
+    while i < names.size
+      preload_association(names[i], out)
       i += 1
     end
     out
@@ -42,6 +74,67 @@ class UserRelation < Cybertrain::Relation
       i += 1
     end
     out
+  end
+
+  def preload_association(name, records)
+    return nil if records.empty?
+
+    step = Cybertrain::DB.with { |c| c.variable_limit }
+    case name
+    when :profile
+      ids = Array.new(0) { 0 }
+      index = { 0 => Profile.new }
+      index.delete(0)
+      i = 0
+      while i < records.size
+        ids << records[i].id
+        i += 1
+      end
+      start = 0
+      while start < ids.size
+        found = ProfileRelation.new("profiles").where(user_id: ids[start, step]).to_a
+        j = 0
+        while j < found.size
+          key = Cybertrain::Cast.int(found[j].user_id)
+          index[key] = found[j] unless index.key?(key)
+          j += 1
+        end
+        start += step
+      end
+      i = 0
+      while i < records.size
+        records[i].profile_preload!(index[records[i].id])
+        i += 1
+      end
+    when :notes
+      ids = Array.new(0) { 0 }
+      groups = { 0 => Array.new(0) { Note.new } }
+      groups.delete(0)
+      i = 0
+      while i < records.size
+        ids << records[i].id
+        groups[records[i].id] = Array.new(0) { Note.new }
+        i += 1
+      end
+      start = 0
+      while start < ids.size
+        found = NoteRelation.new("notes").where(user_id: ids[start, step]).to_a
+        j = 0
+        while j < found.size
+          key = Cybertrain::Cast.int(found[j].user_id)
+          list = groups[key]
+          list << found[j] unless list.nil?
+          j += 1
+        end
+        start += step
+      end
+      i = 0
+      while i < records.size
+        records[i].notes_preload!(groups[records[i].id])
+        i += 1
+      end
+    end
+    nil
   end
 end
 
@@ -103,6 +196,7 @@ class User < Cybertrain::Model
   end
 
   def self.all = UserRelation.new("users")
+  def self.includes(...) = all.includes(...)
   def self.where(h) = all.where(h)
   def self.count = all.count
   def self.find_by(h) = all.find_by(h)
@@ -124,7 +218,13 @@ class User < Cybertrain::Model
     Profile.find_by(user_id: @id)
   end
 
-  def notes = NoteRelation.new("notes").where(user_id: @id)
+  def notes
+    rel = NoteRelation.new("notes").where(user_id: @id)
+    return rel if @notes_preloaded.nil?
+
+    rel.preloaded(@notes_preloaded)
+  end
+
   def tasks = TaskRelation.new("tasks").where(user_id: @id)
   def audits = AuditRelation.new("audits").where(user_id: @id)
 
@@ -132,6 +232,17 @@ class User < Cybertrain::Model
     ProfileRelation.new("profiles").where(user_id: @id).delete_all
     NoteRelation.new("notes").where(user_id: @id).update_all(user_id: nil)
     TaskRelation.new("tasks").where(user_id: @id).delete_all
+    nil
+  end
+
+  def profile_preload!(found)
+    @profile_record = found
+    @profile_loaded = true
+    nil
+  end
+
+  def notes_preload!(records)
+    @notes_preloaded = records
     nil
   end
 
@@ -279,16 +390,47 @@ class Profile < Cybertrain::Model
 end
 
 class NoteRelation < Cybertrain::Relation
+  def initialize(table)
+    super(table)
+    @preloaded = Array.new(0) { Note.new }
+  end
+
   def where(h) = (add_where(h); self)
   def order(o) = (set_order_hash(o); self)
   def limit(n) = (set_limit(n); self)
 
+  def includes(*names)
+    names.each do |name|
+      case name
+      when :user then add_include(name)
+      else raise ArgumentError, "unknown association #{name} for Note"
+      end
+    end
+    self
+  end
+
+  def preload(*names) = includes(*names)
+
+  def preloaded(records)
+    @preloaded = records
+    mark_records_preloaded
+    self
+  end
+
   def to_a
+    return @preloaded if records_preloaded?
+
     out = Array.new(0) { Note.new }
     found = rows
     i = 0
     while i < found.size
       out << Note.from_row(found[i])
+      i += 1
+    end
+    names = includes_names
+    i = 0
+    while i < names.size
+      preload_association(names[i], out)
       i += 1
     end
     out
@@ -310,6 +452,46 @@ class NoteRelation < Cybertrain::Relation
       i += 1
     end
     out
+  end
+
+  def preload_association(name, records)
+    return nil if records.empty?
+
+    step = Cybertrain::DB.with { |c| c.variable_limit }
+    case name
+    when :user
+      ids = Array.new(0) { 0 }
+      seen = { 0 => true }
+      seen.delete(0)
+      index = { 0 => User.new }
+      index.delete(0)
+      i = 0
+      while i < records.size
+        raw = records[i].user_id
+        key = Cybertrain::Cast.int(raw)
+        unless raw.nil? || seen.key?(key)
+          seen[key] = true
+          ids << key
+        end
+        i += 1
+      end
+      start = 0
+      while start < ids.size
+        found = UserRelation.new("users").where(id: ids[start, step]).to_a
+        j = 0
+        while j < found.size
+          index[found[j].id] = found[j]
+          j += 1
+        end
+        start += step
+      end
+      i = 0
+      while i < records.size
+        records[i].user_preload!(index[Cybertrain::Cast.int(records[i].user_id)])
+        i += 1
+      end
+    end
+    nil
   end
 end
 
@@ -374,6 +556,7 @@ class Note < Cybertrain::Model
   end
 
   def self.all = NoteRelation.new("notes")
+  def self.includes(...) = all.includes(...)
   def self.where(h) = all.where(h)
   def self.count = all.count
   def self.find_by(h) = all.find_by(h)
@@ -392,6 +575,13 @@ class Note < Cybertrain::Model
     @user_loaded = true
     @user_loaded_key = Cybertrain::Cast.int(@user_id)
     @user_record
+  end
+
+  def user_preload!(found)
+    @user_record = found
+    @user_loaded = true
+    @user_loaded_key = Cybertrain::Cast.int(@user_id)
+    nil
   end
 
   def reset_association_caches
@@ -815,6 +1005,56 @@ test "validates_foreign_key: nil, blank and 0 are blank; a saved parent's id is 
   profile.bio = ""
   Cybertrain::Validator.new(:bio, :foreign_key).validate(profile)
   assert_equal ["can't be blank", "can't be blank"], profile.errors[:bio]
+end
+
+def statements = Cybertrain::DB.with { |c| c.statements_run }
+
+test "includes(:profile) fills every user's has_one, nil where there is none, in one query" do
+  reset_tables
+  ann = User.create(name: "ann")
+  User.create(name: "bob")
+  Profile.create(user_id: ann.id, bio: "hi")
+  before = statements
+  users = User.where(name: ["ann", "bob"]).order(id: :asc).includes(:profile).to_a
+  assert_equal 2, statements - before
+  bios = users.map { |u| u.profile.nil? ? "none" : u.profile.bio }
+  assert_equal ["hi", "none"], bios
+  assert_equal 2, statements - before
+  users[1].reload
+  assert_nil users[1].profile
+  assert_equal 4, statements - before
+end
+
+test "includes(:notes, :profile) runs one query per association; a nullable key groups its children" do
+  reset_tables
+  ann = User.create(name: "ann")
+  bob = User.create(name: "bob")
+  Note.create(user_id: ann.id, body: "a1")
+  Note.create(user_id: nil, body: "loose")
+  Note.create(user_id: ann.id, body: "a2")
+  before = statements
+  users = User.all.order(id: :asc).includes(:notes, :profile).to_a
+  assert_equal 3, statements - before
+  assert_equal [["a1", "a2"], []], users.map { |u| u.notes.to_a.map { |n| n.body } }
+  assert_equal 3, statements - before
+  assert_equal bob.id, users[1].id
+  assert_equal 2, users[0].notes.count
+  assert_equal 4, statements - before
+end
+
+test "Note.includes(:user) on a nullable key: a nil key queries nothing and answers nil" do
+  reset_tables
+  ann = User.create(name: "ann")
+  Note.create(user_id: ann.id, body: "a")
+  Note.create(user_id: nil, body: "loose")
+  Note.create(user_id: ann.id, body: "b")
+  before = statements
+  notes = Note.includes(:user).order(id: :asc).to_a
+  assert_equal 2, statements - before
+  names = notes.map { |n| n.user.nil? ? "nil" : n.user.name }
+  assert_equal ["ann", "nil", "ann"], names
+  assert_equal 2, statements - before
+  assert_equal "unknown association notes for Note", assert_raises("ArgumentError") { Note.includes(:notes) }
 end
 
 Cybertrain::Test.run!

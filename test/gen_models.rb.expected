@@ -65,6 +65,11 @@ ok   code in a class_name, a foreign_key or an association name is refused
 ok   a declared has_many returns the model's Relation; read_association turns it into an Array
 ok   a declared belongs_to caches its parent keyed by the foreign key; a nullable key answers nil without a query
 ok   a declared has_one reads the preload cache, else queries by the owner's id
+ok   includes checks each name by a case over the associations; preload is the same; the class delegates both
+ok   to_a, first, last, size and empty? answer from the preloaded records; to_a preloads each included name
+ok   a has_many reader is created preloaded from its cache; includes fills the cache grouped by key, chunked
+ok   includes of a has_one indexes the first child per key; every record gets its child or nil
+ok   includes of a belongs_to queries the distinct non-nil keys; a missing parent is cached as nil
 ok   reset_association_caches clears every cache; reload calls it
 ok   dependent: destroy, delete_all and nullify become destroy_dependents
 ok   a declared belongs_to validates its foreign key unless optional: true; undeclared ones add nothing
@@ -75,4 +80,4 @@ ok   the counter column follows the parent's has_many name
 ok   a declaration whose model, foreign key column or counter column does not exist fails with the file and line
 ok   a declared belongs_to replaces the reader the same foreign key would give
 ok   a column named like an association cache ivar fails
-77 tests, 753 assertions, 0 failures
+82 tests, 799 assertions, 0 failures

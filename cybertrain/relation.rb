@@ -10,9 +10,11 @@ module Cybertrain
   # Each generated model gets its own subclass, `<Model>Relation`, which adds
   # the chainable query methods (`where`, `not`, `where_sql`, `where_like`,
   # `where_between`, `or`, `order`, `order_sql`, `limit`, `offset`,
-  # `distinct`, `none`, `having_sql`) and the methods that return records (`to_a`, `each`,
-  # `first`, `last`, `find`, `find_by`, `find_by!`, `find_or_create_by`,
-  # `find_or_initialize_by`, `destroy_all`, `find_each`, `size`); see
+  # `distinct`, `none`, `having_sql`, `includes`, `preload`) and the
+  # methods that return records (`to_a`, `each`, `first`, `last`, `find`,
+  # `find_by`, `find_by!`, `find_or_create_by`, `find_or_initialize_by`,
+  # `destroy_all`, `find_each`, `size`, `empty?`, and `preloaded`, which a
+  # has_many reader uses after `includes`); see
   # {ArticleRelation}. The model class answers each query method too
   # (`Article.where(...)` is `Article.all.where(...)`). The methods
   # documented here are the ones every relation shares.
@@ -51,6 +53,11 @@ module Cybertrain
       @having = ""
       @having_binds = [nil, 0, 0.0, "", DB::Blob.new("")]
       @having_binds.clear
+      # includes / preload (spec section 8): the association names `to_a`
+      # preloads, and whether the subclass's `preloaded` records answer the
+      # record readers (true from `preloaded` until the next chain method).
+      @includes = Array.new(0) { :x }
+      @records_preloaded = false
     end
 
     # Table and column names are backtick-quoted in every generated fragment
@@ -70,6 +77,7 @@ module Cybertrain
     # A json column raises ArgumentError: its stored text is not a value
     # to compare.
     def add_where(hash)
+      drop_preloaded
       hash.each { |key, value| @wheres << where_term(key.to_s, value) }
       nil
     end
@@ -78,6 +86,7 @@ module Cybertrain
     # as one: `NOT (a AND b)` (Rails 6.1+). where.not(id: []) is
     # `NOT (1 = 0)`, every row: the complement of where(id: []).
     def add_where_not(hash)
+      drop_preloaded
       terms = Array.new(0) { "" }
       hash.each { |key, value| terms << where_term(key.to_s, value) }
       return nil if terms.empty?
@@ -150,6 +159,7 @@ module Cybertrain
     # stored text (Cast.to_sql), so the comparison is the stored column's;
     # nil for an open end; both nil raises ArgumentError.
     def add_where_between(column, from, to, exclude_end)
+      drop_preloaded
       quoted = Relation.checked_column("where_between", column)
       check_not_json("where_between", column.to_s)
       if from.nil? && to.nil?
@@ -175,6 +185,7 @@ module Cybertrain
     # conditions matches every row, so the result has none. A `none` side
     # contributes its `1 = 0`.
     def merge_or(other)
+      drop_preloaded
       raise ArgumentError, "or: a relation with having_sql cannot be combined" if @having != ""
       unless relation_shape == other.relation_shape
         raise ArgumentError, "or: the relations differ in order, limit, offset or distinct"
@@ -218,6 +229,7 @@ module Cybertrain
     # SELECT DISTINCT from now on: the column readers (pluck_*, ids) dedupe;
     # a SELECT * row carries its id, so count and to_a are unchanged.
     def set_distinct
+      drop_preloaded
       @distinct = true
       nil
     end
@@ -228,6 +240,7 @@ module Cybertrain
     # second call ANDs its text onto the first. The text is the
     # developer's SQL, never request data; its values go in `binds`.
     def set_having_sql(sql, binds)
+      drop_preloaded
       @having = @having == "" ? "(#{sql})" : "#{@having} AND (#{sql})"
       binds.each do |v|
         case v
@@ -244,6 +257,7 @@ module Cybertrain
     # delete_all answer 0 / false without a statement; the readers run
     # theirs with `1 = 0` in the WHERE.
     def set_none
+      drop_preloaded
       @none = true
       nil
     end
@@ -293,6 +307,7 @@ module Cybertrain
     # (where("a = ? OR b = ?", 1, 2).where(c: 3) is `(a = ? OR b = ?) AND c = ?`).
     # An Array bind raises: one `?` is one value, never a list.
     def add_where_sql(sql, binds)
+      drop_preloaded
       binds.each do |v|
         case v
         when Time then nil # before `when Array` (rule 8)
@@ -321,6 +336,7 @@ module Cybertrain
     # goes through Ident.column?) and nil as no order. One to_s up front, so
     # a non-String never reaches `strip` as a NoMethodError.
     def set_order(order)
+      drop_preloaded
       stripped = order.to_s.strip
       if stripped == ""
         @order = ""
@@ -352,6 +368,7 @@ module Cybertrain
     # order(views: :desc, name: :asc): each key a column (checked and
     # quoted), each value :asc or :desc (a String works too, any case).
     def set_order_hash(hash)
+      drop_preloaded
       terms = Array.new(0) { "" }
       hash.each do |key, dir|
         quoted = Relation.checked_column("order", key)
@@ -372,17 +389,64 @@ module Cybertrain
     # `order` output but can mangle raw text with commas inside parentheses
     # (`COALESCE(a, b)`); call `order_sql` with the reversed text yourself then.
     def add_order_sql(sql)
+      drop_preloaded
       @order = sql
       nil
     end
 
     def set_limit(n)
+      drop_preloaded
       @limit = n
       nil
     end
 
     def set_offset(n)
+      drop_preloaded
       @offset = n
+      nil
+    end
+
+    # --- includes / preload (spec section 8) --------------------------------
+    # The generated subclass's `includes(*names)` checks each name against
+    # the model's associations and adds it here; its `to_a` runs
+    # `preload_association(name, records)` for each after loading the rows.
+    # Its `preloaded(records)` keeps an Array of records (typed by the
+    # subclass) and calls mark_records_preloaded, so `to_a`, `each`,
+    # `first`, `last`, `size` and `empty?` answer from it until a chain
+    # method (every setter here runs drop_preloaded) changes the result set.
+
+    # Adds an association name to preload (once); a chain method, so it
+    # drops the preloaded records.
+    def add_include(name)
+      drop_preloaded
+      @includes << name unless @includes.include?(name)
+      nil
+    end
+
+    # The association names `to_a` preloads, in the order given.
+    def includes_names
+      @includes
+    end
+
+    # Whether the subclass's preloaded records answer the record readers.
+    def records_preloaded?
+      @records_preloaded
+    end
+
+    def mark_records_preloaded
+      @records_preloaded = true
+      nil
+    end
+
+    def drop_preloaded
+      @records_preloaded = false
+      nil
+    end
+
+    # Loads the association `name` of `records` in one query per chunk of
+    # ids and stores it in each record's cache. The generated subclass
+    # answers for its model's associations; here there are none.
+    def preload_association(name, records)
       nil
     end
 
@@ -510,6 +574,7 @@ module Cybertrain
     # @raise [ArgumentError] when per is out of range (a programmer error)
     # @api public
     def page(number, per: 50)
+      drop_preloaded
       if per < 1 || per > Page::MAX_PER
         raise ArgumentError, "page: per must be from 1 to #{Page::MAX_PER} (got #{per})"
       end
@@ -571,6 +636,7 @@ module Cybertrain
     # where_like(:title, "50%") -> `title` LIKE ? ESCAPE '\' with "%50\%%":
     # a substring search, the text's `\`, `%` and `_` escaped (Cast.like_escape).
     def add_where_like(column, text)
+      drop_preloaded
       quoted = Relation.checked_column("where_like", column)
       @wheres << "#{quoted} LIKE ? ESCAPE '\\'"
       escaped = Cast.like_escape(text)

@@ -300,14 +300,18 @@ module Cybertrain
       end
 
       # A reader (spec 7.2). has_many: the children's Relation, so
-      # `post.comments.where(...).count` chains. belongs_to: the parent,
-      # cached with the foreign key it was read for, so a reassigned key
-      # never answers the old parent; a nil key answers nil. has_one: the
-      # preload cache when Task 12's includes filled it, else a query.
+      # `post.comments.where(...).count` chains, created preloaded with the
+      # records includes left in the cache (spec 8: to_a, each, first,
+      # last, size and empty? answer from memory until a chain method).
+      # belongs_to: the parent, cached with the foreign key it was read
+      # for, so a reassigned key never answers the old parent; a nil key
+      # answers nil. has_one: the preload cache when includes filled it,
+      # else a query.
       def self.association_reader(plan)
         n = plan.name
         if plan.kind == :has_many
-          return "  def #{n} = #{plan.model}Relation.new(\"#{plan.target_table}\").where(#{plan.foreign_key}: @id)\n"
+          return "  def #{n}\n    rel = #{children_relation(plan)}\n    return rel if @#{n}_preloaded.nil?\n\n" \
+                 "    rel.preloaded(@#{n}_preloaded)\n  end\n"
         end
         if plan.kind == :has_one
           return "  def #{n}\n    return @#{n}_record if @#{n}_loaded\n\n" \
@@ -327,6 +331,174 @@ module Cybertrain
         src << "    @#{n}_loaded_key = #{stored}\n"
         src << "    @#{n}_record\n"
         src << "  end\n"
+        src
+      end
+
+      # `<name>_preload!(value)`, which the Relation's preload_association
+      # calls on each record to fill the reader's cache (a `!` name, so no
+      # column reader can be spelled like it): has_many the children's
+      # Array, belongs_to the parent (or nil) with the key it was read for,
+      # has_one the child (or nil).
+      def self.association_preload_setter(plan)
+        n = plan.name
+        if plan.kind == :has_many
+          return "  def #{n}_preload!(records)\n    @#{n}_preloaded = records\n    nil\n  end\n"
+        end
+        return "  def #{n}_preload!(found)\n    @#{n}_record = found\n    @#{n}_loaded = true\n    nil\n  end\n" if plan.kind == :has_one
+
+        key = ivar_name(plan.foreign_key)
+        stored = plan.fk_null || !plan.fk_integer ? "Cybertrain::Cast.int(#{key})" : key
+        "  def #{n}_preload!(found)\n    @#{n}_record = found\n    @#{n}_loaded = true\n" \
+          "    @#{n}_loaded_key = #{stored}\n    nil\n  end\n"
+      end
+
+      # The Relation's `includes(*names)` (spec 8): each name checked by a
+      # `case` over the model's associations (no computed send, NOTES rule
+      # 1), an unknown one an ArgumentError; `preload` is the same. With no
+      # association every name is unknown.
+      def self.emit_includes(model, plans)
+        src = +"  def includes(*names)\n"
+        if plans.empty?
+          src << "    raise ArgumentError, \"unknown association \#{names[0]} for #{model}\" unless names.empty?\n"
+          src << "\n"
+        else
+          src << "    names.each do |name|\n"
+          src << "      case name\n"
+          src << "      when #{plans.map { |plan| ":" + plan.name }.join(", ")} then add_include(name)\n"
+          src << "      else raise ArgumentError, \"unknown association \#{name} for #{model}\"\n"
+          src << "      end\n"
+          src << "    end\n"
+        end
+        src << "    self\n"
+        src << "  end\n"
+        src << "\n"
+        src << "  def preload(*names) = includes(*names)\n"
+        src << "\n"
+        src << "  def preloaded(records)\n"
+        src << "    @preloaded = records\n"
+        src << "    mark_records_preloaded\n"
+        src << "    self\n"
+        src << "  end\n"
+        src << "\n"
+        src
+      end
+
+      # `expr`, the value of a foreign key column, as the Integer it is
+      # matched by: a nullable or non-integer column through Cast.int.
+      def self.key_expr(plan, expr)
+        plan.fk_null || !plan.fk_integer ? "Cybertrain::Cast.int(#{expr})" : expr
+      end
+
+      # The Relation's `preload_association(name, records)`, which to_a
+      # runs for each included name: per association, one query per chunk
+      # of at most Connection#variable_limit ids, its rows distributed into
+      # every record's cache through `<name>_preload!` -- has_many an
+      # Array per record (empty for a record with no child), belongs_to
+      # and has_one the row or nil -- so no reader queries again. No
+      # statement for no records. The Hashes are seeded with the concrete
+      # types (NOTES rule 9). "" without associations (the base stub).
+      def self.emit_preload_association(plans)
+        return "" if plans.empty?
+
+        src = +"\n  def preload_association(name, records)\n"
+        src << "    return nil if records.empty?\n"
+        src << "\n"
+        src << "    step = Cybertrain::DB.with { |c| c.variable_limit }\n"
+        src << "    case name\n"
+        plans.each do |plan|
+          src << "    when :#{plan.name}\n"
+          src << (plan.kind == :belongs_to ? preload_parents(plan) : preload_children(plan))
+        end
+        src << "    end\n"
+        src << "    nil\n"
+        src << "  end\n"
+        src
+      end
+
+      # The `when` body for a has_many / has_one: the records' ids, the
+      # children `where(fk: ids)` grouped (has_many) or indexed, first one
+      # kept (has_one), by their foreign key.
+      def self.preload_children(plan)
+        many = plan.kind == :has_many
+        fk = reader_name(plan.foreign_key)
+        src = +"      ids = Array.new(0) { 0 }\n"
+        if many
+          src << "      groups = { 0 => Array.new(0) { #{plan.model}.new } }\n"
+          src << "      groups.delete(0)\n"
+        else
+          src << "      index = { 0 => #{plan.model}.new }\n"
+          src << "      index.delete(0)\n"
+        end
+        src << "      i = 0\n"
+        src << "      while i < records.size\n"
+        src << "        ids << records[i].id\n"
+        src << "        groups[records[i].id] = Array.new(0) { #{plan.model}.new }\n" if many
+        src << "        i += 1\n"
+        src << "      end\n"
+        src << "      start = 0\n"
+        src << "      while start < ids.size\n"
+        src << "        found = #{plan.model}Relation.new(\"#{plan.target_table}\").where(#{plan.foreign_key}: ids[start, step]).to_a\n"
+        src << "        j = 0\n"
+        src << "        while j < found.size\n"
+        src << "          key = #{key_expr(plan, "found[j].#{fk}")}\n"
+        if many
+          src << "          list = groups[key]\n"
+          src << "          list << found[j] unless list.nil?\n"
+        else
+          src << "          index[key] = found[j] unless index.key?(key)\n"
+        end
+        src << "          j += 1\n"
+        src << "        end\n"
+        src << "        start += step\n"
+        src << "      end\n"
+        src << "      i = 0\n"
+        src << "      while i < records.size\n"
+        src << "        records[i].#{plan.name}_preload!(#{many ? "groups" : "index"}[records[i].id])\n"
+        src << "        i += 1\n"
+        src << "      end\n"
+        src
+      end
+
+      # The `when` body for a belongs_to: the records' distinct non-nil
+      # keys, the parents `where(id: keys)` indexed by id; a record whose
+      # parent is missing gets nil.
+      def self.preload_parents(plan)
+        fk = reader_name(plan.foreign_key)
+        src = +"      ids = Array.new(0) { 0 }\n"
+        src << "      seen = { 0 => true }\n"
+        src << "      seen.delete(0)\n"
+        src << "      index = { 0 => #{plan.model}.new }\n"
+        src << "      index.delete(0)\n"
+        src << "      i = 0\n"
+        src << "      while i < records.size\n"
+        if plan.fk_null
+          src << "        raw = records[i].#{fk}\n"
+          src << "        key = #{key_expr(plan, "raw")}\n"
+          src << "        unless raw.nil? || seen.key?(key)\n"
+        else
+          src << "        key = #{key_expr(plan, "records[i].#{fk}")}\n"
+          src << "        unless seen.key?(key)\n"
+        end
+        src << "          seen[key] = true\n"
+        src << "          ids << key\n"
+        src << "        end\n"
+        src << "        i += 1\n"
+        src << "      end\n"
+        src << "      start = 0\n"
+        src << "      while start < ids.size\n"
+        src << "        found = #{plan.model}Relation.new(\"#{plan.target_table}\").where(id: ids[start, step]).to_a\n"
+        src << "        j = 0\n"
+        src << "        while j < found.size\n"
+        src << "          index[found[j].id] = found[j]\n"
+        src << "          j += 1\n"
+        src << "        end\n"
+        src << "        start += step\n"
+        src << "      end\n"
+        src << "      i = 0\n"
+        src << "      while i < records.size\n"
+        src << "        records[i].#{plan.name}_preload!(index[#{key_expr(plan, "records[i].#{fk}")}])\n"
+        src << "        i += 1\n"
+        src << "      end\n"
         src
       end
 

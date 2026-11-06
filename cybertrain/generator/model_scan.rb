@@ -87,6 +87,8 @@ module Cybertrain
         minimum_int_by minimum_float_by minimum_time_by maximum_int_by maximum_float_by maximum_time_by average_by
         aggregate_expr aggregate_arg grouped_by grouped_cell int_totals float_totals int_cells float_cells
         time_cells cell_rows refuse_having select_from_sql having_sql
+        add_include includes_names records_preloaded? mark_records_preloaded drop_preloaded preload_association
+        includes preload preloaded empty?
         where not where_sql where_like where_between or order order_sql limit offset distinct none to_a each
         first last find_by find_by! find find_or_create_by find_or_initialize_by destroy_all find_each size
         all create create! from_row table_name column_names new name class

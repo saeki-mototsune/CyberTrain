@@ -87,8 +87,8 @@ class Article < Cybertrain::Model
   # `pick`, `minimum_int`, `minimum_float`, `minimum_time`, `maximum_int`,
   # `maximum_float`, `maximum_time`, `average`, their `_by` forms,
   # `sum_int_by`, `sum_float_by`, `sum_float_sql`, `minimum_float_sql`,
-  # `maximum_float_sql`, `average_sql` and `having_sql`. The ones
-  # documented here are the common ones.
+  # `maximum_float_sql`, `average_sql`, `having_sql`, `includes` and
+  # `preload`. The ones documented here are the common ones.
   # @see ArticleRelation#where
   # @example
   #   Article.where(title: "Hello").first
@@ -166,6 +166,20 @@ class Article < Cybertrain::Model
   # @return [Integer] the number of rows in the table
   # @api public
   def self.count = all.count
+
+  # @see ArticleRelation#includes
+  # @example
+  #   @articles = Article.includes(:comments).to_a
+  # @param names [Array<Symbol>] association names of Article
+  # @return [ArticleRelation]
+  # @raise [ArgumentError] `"unknown association <name> for Article"`
+  # @api public
+  def self.includes(*names) = all.includes(*names)
+
+  # Same as {.includes}.
+  # @return [ArticleRelation]
+  # @api public
+  def self.preload(*names) = all.preload(*names)
 
   # Builds a record and saves it. Returns the record whether or not it was
   # saved: check {Cybertrain::Model#persisted? persisted?} or
@@ -345,13 +359,25 @@ class Article < Cybertrain::Model
   # Add `.to_a` for an Array; templates iterate it as one. When two foreign
   # keys of one table point here, each reader is named
   # `<table>_as_<key stem>` (`messages_as_sender`).
+  #
+  # When the article was loaded with {Article.includes
+  # Article.includes(:comments)}, the relation is created holding the
+  # preloaded comments: `to_a`, `each`, `first`, `last`, `size` and
+  # `empty?` answer from them without a query; `count` and `exists?` still
+  # run SQL, and a chain method (`where`, `order`, `limit`, ...) drops them
+  # and queries as usual. {Cybertrain::Model#reload reload} forgets them.
   # @example
   #   <% @article.comments.each do |comment| %>
   #   @article.comments.where(approved: true).count
   #   @article.comments.find(params[:id])
   # @return [CommentRelation]
   # @api public
-  def comments = CommentRelation.new("comments").where(article_id: @id)
+  def comments
+    rel = CommentRelation.new("comments").where(article_id: @id)
+    return rel if @comments_preloaded.nil?
+
+    rel.preloaded(@comments_preloaded)
+  end
 end
 
 # The relation `spin run gen` writes next to each model (`ArticleRelation`
@@ -548,8 +574,42 @@ class ArticleRelation < Cybertrain::Relation
   # @api public
   def having_sql(sql, binds = []) = (set_having_sql(sql, binds); self)
 
-  # Runs the query. Templates iterate an Array, so controllers usually
-  # end a query with `to_a`.
+  # Preloads the named associations when {#to_a} (or {#each}) loads the
+  # records: one more query per association (`Comment.where(article_id:
+  # ids)` for a has_many or has_one, `User.where(id: author_ids)` for a
+  # belongs_to, the ids split into chunks of
+  # {Cybertrain::DB::Connection#variable_limit} when there are more), its
+  # rows handed to each record's reader, so `article.comments.size` or
+  # `comment.article` in a loop runs no query of its own; a record with no
+  # child gets an empty list, a missing parent nil. One level only; the
+  # other readers ({Cybertrain::Relation#count count}, `pluck`, `first`,
+  # ...) ignore it. With no names it does nothing.
+  # @example
+  #   @articles = Article.order(created_at: :desc).includes(:comments).to_a
+  #   # in the template, @articles.each { |a| a.comments.size } runs no query
+  # @param names [Array<Symbol>] association names of Article
+  # @return [ArticleRelation]
+  # @raise [ArgumentError] `"unknown association <name> for Article"`
+  # @api public
+  def includes(*names); end
+
+  # Same as {#includes} (there is no JOIN strategy to choose between).
+  # @return [ArticleRelation]
+  # @api public
+  def preload(*names) = includes(*names)
+
+  # The relation answers `to_a`, `each`, `first`, `last`, `size` and
+  # `empty?` from `records` until a chain method changes it: what a
+  # has_many reader returns after {#includes}. `count` and `exists?` still
+  # query.
+  # @param records [Array<Article>]
+  # @return [ArticleRelation]
+  # @api public
+  def preloaded(records); end
+
+  # Runs the query, then the {#includes} queries. Templates iterate an
+  # Array, so controllers usually end a query with `to_a`. A
+  # {#preloaded} relation answers from its records.
   # @example
   #   @articles = Article.all.to_a
   # @return [Array<Article>]
@@ -630,10 +690,16 @@ class ArticleRelation < Cybertrain::Relation
   # @api public
   def find(id); end
 
-  # Same as {Cybertrain::Relation#count count}.
+  # The number of {#preloaded} records, else the same as
+  # {Cybertrain::Relation#count count}.
   # @return [Integer]
   # @api public
-  def size = count
+  def size; end
+
+  # Whether the {#preloaded} records are none, else `!exists?`.
+  # @return [Boolean]
+  # @api public
+  def empty?; end
 end
 
 # The other side of {Article#comments}: what `spin run gen` writes for a
