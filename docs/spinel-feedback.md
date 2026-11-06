@@ -86,23 +86,20 @@ The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22, 56 to
 [performance-next.md](performance-next.md).
 
 Suggested order for what is still open: 5 (measured, with two concrete
-fixes; not sent, by decision), then O and N (reported on
-2026-11-05 by Daicho, an application built on CyberTrain, each with a
-reduced program, re-checked here on 2026.11.03.7025 and 2026.11.04.7026;
-O's runtime half is already in Spinel and only the code generator does
-not call it; neither is reported upstream yet; see "Found by Daicho"),
-then 6 and 7 (4 is fixed on 2026.10.27.7020, see
-4), then the rest. P (Net::HTTP against a TLS peer that never answers,
-from the same report) needs nothing written: it is fixed on matz/spinel
-master dcc46945c (2026-11-05) and waits for a fork tag that carries it
-(see P). K, J, L and rule 79, which used
-to lead this list, went upstream on 2026-11-06 (see "Sent upstream on
-2026-11-06"): K and rule 79 are fixed on matz/spinel master (#11129,
-#11137), L is settled as documented behaviour (issue #11135: such a
-program is given `SPINEL_WORKERS=N+1`, which is what CyberTrain does),
-and J was how its AddressSanitizer binary was built, not a Spinel bug
-(see J). None of those fixes is in a release yet, so on the pinned
-2026.11.04.7026 K and rule 79 are as described below. The
+fixes; not sent, by decision), then 6 and 7 (4 is fixed on
+2026.10.27.7020, see 4), then the rest. Nothing else is open against
+Spinel: K, J, L, rule 79, M, N and O, which used to lead this list, went
+upstream on 2026-11-06 (see "Sent upstream on 2026-11-06"). K, rule 79,
+M, N and O are fixed on matz/spinel master (#11129, #11137, #11193,
+#11184, #11183), L is settled as documented behaviour (issue #11135:
+such a program is given `SPINEL_WORKERS=N+1`, which is what CyberTrain
+does), and J was how its AddressSanitizer binary was built, not a Spinel
+bug (see J). P (Net::HTTP against a TLS peer that never answers, from
+Daicho's report) needed nothing written: it is fixed on matz/spinel
+master dcc46945c (2026-11-05). None of these fixes is in a release yet,
+so on the pinned 2026.11.04.7026 K, rule 79, M, N, O and P are as
+described below, and all of them wait for a fork tag that carries them
+and a `SPINEL_TAG` move. The
 refusal under C (#10525, with the run-time `TypeError` beside it fixed
 by #10524) and I (#10735 and #10786), which used to lead this list, are
 fixed upstream and in the pinned 2026.11.04.7026.
@@ -119,14 +116,14 @@ default `raise` mode's intended behaviour, and the experimental
 
 ## Sent upstream on 2026-11-06
 
-K, rule 79, J and L, the items of "What can go upstream" that were
-ready when it was looked at, went to matz/spinel on
-2026-11-06 (+0900), each fix as its own pull request against master
-(all by SaekiMototsune), each with Spinel's `make gate` green on macOS
-arm64. All six are merged. None is in a release yet: the pinned
-2026.11.04.7026 behaves as the rest of this document says until
-CyberTrain moves to a release that carries them, and none was re-checked
-with CyberTrain's own programs on a build of master.
+Every open item that was ready went to matz/spinel on 2026-11-06
+(+0900): K, rule 79, J and L first, then M, N and O later the same day,
+each fix as its own pull request against master (all by SaekiMototsune),
+each with Spinel's `make gate` green on macOS arm64. All nine pull
+requests are merged. None is in a release yet: the pinned 2026.11.04.7026
+behaves as the rest of this document says until CyberTrain moves to a
+release that carries them, and none was re-checked with CyberTrain's own
+programs on a build of master.
 
 | Item | Sent | Outcome |
 | --- | --- | --- |
@@ -135,22 +132,24 @@ with CyberTrain's own programs on a build of master.
 | Three neighbours of rule 79, found while fixing it | #11143 (a block that ends in `exit` or `abort`, under a rescuing method), #11144 (a block that leaves through `next` and otherwise raises), #11145 (a block that leaves by `throw` or `exit`, read where a String or an Integer is kept) | merged (21fcd2296, e6430f10e, 9bef56395); see "Rule 79" |
 | J | nothing for J itself, which is not a Spinel bug (see J). Its second report was one: #11138, "A frozen heap String outside the slab is kept alive, as one inside it is" | merged (a794e3f2c) |
 | L | issue #11135, with the reduced program, its tables and three choices of fix | answered and closed by Matz the same day: documented, not changed. docs/thread.md (da4485a58) now says a program whose main only joins is given `SPINEL_WORKERS=N+1`; see L |
+| M | #11193, "STDOUT on a terminal is written through, as CRuby's is" | merged (fafc17cc9). The cause was the terminal's line buffering, not a missing flush before a read; see M |
+| N | #11184, "A method answering a Hash of an ivar widened late returns the boxed-value Hash" | merged (3f5d3e93c). A one-condition change in the inference, no change in code generation; see N |
+| O | #11183, "TCPSocket.new gives up on an unanswered connect after connect_timeout:" | merged (81b789d52). The other keywords are still ignored, by choice; see O |
 
 Not sent, by decision: 5 (a) and (b), the two code-generation gains
 (`"#{v}"` copies and `str << int`), and the FFI and tools requests.
 They would change Spinel's policy, speed or features, not correct it.
 6, 7 and the other rows of the typing table were not looked at for
-sending. M, N and O were not part of this either: they came into this
-document after the copy the sending worked from, and N and O are still
-"ready to report" below.
+sending. P needed nothing: it was fixed on master the day before (see
+P).
 
 ## What can go upstream
 
 Looked at on 2026-11-05, against 2026.11.04.7026 and the fork's master
 (one commit past it, none in the code below), for each item that still
 has a workaround in CyberTrain or an open bug. The K, 5, J, L, `"#{v}"`,
-`str << int` and rule 79 rows were updated on 2026-11-06 with what was
-sent:
+`str << int`, rule 79, N and O rows were updated on 2026-11-06 with what
+was sent:
 
 | Item | Workaround it would remove | What can be sent |
 | --- | --- | --- |
@@ -165,8 +164,8 @@ sent:
 | Rule 64 | none (CyberTrain keeps objects out of class variables anyway) | Nothing: a class variable's object is marked on 2026.11.04.7026 and survives `SPINEL_GC_STRESS=1` (see "Rules 64 and 65") |
 | Rule 79 | none (a test gives the block a value after the `raise`, or passes the result through a method) | **Sent and merged** (#11137, 2026-11-06): the eight-line reduced program that CRuby runs and 2026.10.27.7020, 2026.11.03.7025 and 2026.11.04.7026 all refuse with the same C error, with its fix; three neighbouring shapes found on the way are fixed too (#11143 to #11145, merged; see "Rule 79") |
 | Rule 65 | building the allocating argument first, in a local (cybertrain/cli/toolchain.rb) | Not known yet: the shape checked is rooted on 2026.11.04.7026, but only in its generated C, with no AddressSanitizer run; a shape still left unrooted would first have to be found (see "Rules 64 and 65") |
-| N | none (the shape is not in the framework) | **Ready to report**: Daicho's 16-line program (CRuby prints `0`; the C does not compile on 2026.11.03.7025, 2026.11.04.7026 and master 60381c464) and the two fixes the report suggests (see N). Not reported upstream yet |
-| O | the non-blocking connect of cybertrain/net/socket.rb (rule 72), kept anyway for the deadline; a sentence in socket.rb's header and the guides | **Ready to report**: a nine-line program, and the cause named to the line: `sp_net_connect_timeout` has been in lib/sp_net.c since 59c06d979 and nothing emits a call to it (see O). Not reported upstream yet |
+| N | none (the shape is not in the framework) | **Sent and merged** (#11184, 2026-11-06): Daicho's 16-line program (CRuby prints `0`; the C does not compile on 2026.11.03.7025, 2026.11.04.7026 and master 60381c464) with a fix in the inference, the first of the two the report suggested, narrowed to one gate (see N) |
+| O | the non-blocking connect of cybertrain/net/socket.rb (rule 72), kept anyway for the deadline; a sentence in socket.rb's header and the guides | **Sent and merged** (#11183, 2026-11-06): the nine-line program, and the emission now calls the runtime's `sp_net_connect_timeout` through a helper that raises `IO::TimeoutError` (see O). The sentence goes when the pin carries it |
 | P | none (`HttpClient` stays for the deadline and the address policy); the header comment of cybertrain/http_client.rb and the guides describe the pinned behaviour | Nothing: fixed on matz/spinel master dcc46945c (2026-11-05). Needs a fork tag that carries it, then a `SPINEL_TAG` move and the comment revised (see P) |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
@@ -203,9 +202,9 @@ that it is fixed.
 | K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around; reduced, see K). **Fixed upstream** (#11129, merged 2026-11-06; in no release yet) |
 | L. `SPINEL_WORKERS=N` counts main, which a server keeps waiting | no (N helpers beside main) | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05: its reduced program uses 1.01 CPUs at N=2, 1.97 at N=3) | not checked | **yes** (from #9840; worked around; 1.01 CPUs at N=2, 1.97 at N=3, the same on 2026.11.03.7025, so not new here). Reported (#11135) and kept by upstream as documented behaviour (da4485a58, 2026-11-06): the workaround is the documented way to run |
 | Rule 79. A rescuing method's value, from a block that only raises, does not compile when appended | not checked | not checked | not checked | not checked | not checked | **yes** (checked 2026-11-05) | not checked | **yes** (found 2026-11-04; also on 2026.11.03.7025, so not new here). **Fixed upstream** (#11137, merged 2026-11-06; in no release yet) |
-| M. `gets` on STDIN does not flush a partial STDOUT line first | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (rule 83; worked around with `flush`) |
-| N. A method's return type does not follow an ivar widened through an `attr_accessor` writer | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report, 2026-11-05; re-checked here, and the same on 2026.11.03.7025, so not new here; still on master 60381c464 per the report) |
-| O. `TCPSocket.new` ignores `connect_timeout:` | yes (docs/design.md D24: "60 seconds or more against an unreachable address") | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report; re-checked here, and the same on 2026.11.03.7025; still on master 60381c464 per the report) |
+| M. `gets` on STDIN does not flush a partial STDOUT line first | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (rule 83; worked around with `flush`). **Fixed upstream** (#11193, merged 2026-11-06; in no release yet) |
+| N. A method's return type does not follow an ivar widened through an `attr_accessor` writer | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report, 2026-11-05; re-checked here, and the same on 2026.11.03.7025, so not new here; still on master 60381c464 per the report). **Fixed upstream** (#11184, merged 2026-11-06; in no release yet) |
+| O. `TCPSocket.new` ignores `connect_timeout:` | yes (docs/design.md D24: "60 seconds or more against an unreachable address") | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report; re-checked here, and the same on 2026.11.03.7025; still on master 60381c464 per the report). **Fixed upstream** (#11183, merged 2026-11-06; in no release yet) |
 | P. Net::HTTP against a TLS peer that never answers does not return at the timeout | yes, as "the handshake and the reads are blocking C calls" (D24) | not checked | not checked | not checked | not checked | yes: returns at the timeout, but other threads stop meanwhile (the report) | not checked | **yes**: does not return at all (the report, 40 s; here it returns only when the peer closes, 30 s, the same on 2026.11.03.7025); **fixed** on matz/spinel master dcc46945c (2026-11-05), in no fork tag yet |
 
 ## What CyberTrain still works around
@@ -242,8 +241,8 @@ CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 | `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept | not re-checked (accepted) |
 | `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile. Fixed upstream (#11129, merged 2026-11-06): the row can go with the first release CyberTrain is pinned to that carries it |
 | `Application#serve` sets `SPINEL_WORKERS` to `workers + 1` when `workers > 1` (`Application.spinel_workers`, cybertrain/application.rb) | L | not checked | not checked | required: `SPINEL_WORKERS=2` starts one helper, which main does not help. Kept for good: upstream documents this and tells such a program to set N+1 (issue #11135, da4485a58; accepted, see "Accepted as Spinel constraints") |
-| `Console.run` flushes after the banner and after every prompt (cybertrain/console.rb, rule 83) | M | not checked | not checked | required: without it the prompt appears only after the line is read |
-| `Net::TcpStream` connects with `connect_nonblock` + `wait_writable` + `SO_ERROR` (cybertrain/net/socket.rb, rule 72), not `TCPSocket.new(connect_timeout:)`; socket.rb's header and the guides say why | O | not checked | not checked | required: the keyword is still ignored (checked 2026-11-05 here and in Daicho's report). The connect stays for the deadline either way; a fix retires the sentence |
+| `Console.run` flushes after the banner and after every prompt (cybertrain/console.rb, rule 83) | M | not checked | not checked | required: without it the prompt appears only after the line is read. Fixed upstream (#11193, merged 2026-11-06): once the pin carries it the `flush` is harmless and the row can go |
+| `Net::TcpStream` connects with `connect_nonblock` + `wait_writable` + `SO_ERROR` (cybertrain/net/socket.rb, rule 72), not `TCPSocket.new(connect_timeout:)`; socket.rb's header and the guides say why | O | not checked | not checked | required: the keyword is still ignored (checked 2026-11-05 here and in Daicho's report). The connect stays for the deadline either way; a fix retires the sentence. Fixed upstream (#11183, merged 2026-11-06): the sentence goes when the pin carries it |
 | `HttpClient` does the TLS handshake and every read itself, with bounded waits (D24), and its header comment and the guides' "why it exists" name Net::HTTP's blocking waits | P | not checked | not checked | required: against a silent TLS peer Net::HTTP does not return (Daicho's report; checked here). Fixed on matz/spinel master dcc46945c; the client stays either way (deadline, address policy), and the comment is revised when the pin carries the fix |
 
 Every fix the fork carried is now in matz/spinel master, not only in the
@@ -1814,6 +1813,23 @@ p out
   CRuby flushes STDOUT before the read blocks. CyberTrain's console calls
   `flush` after its prompt. Fix: flush STDOUT (as CRuby's `rb_io_flush` on
   the tied stdout does) before a read from STDIN blocks.
+- **Sent and merged on 2026-11-06**: matz/spinel#11193, "STDOUT on a
+  terminal is written through, as CRuby's is" (merge fafc17cc9). In no
+  release yet. The cause is not the one above: it is not about reading
+  STDIN at all. CRuby writes a terminal through on every write, whatever
+  `STDOUT.sync` says; Spinel left stdio's line buffering on the stream,
+  so a partial line waited for a newline or exit. `print "A> "; sleep 3`
+  showed nothing for three seconds either, and only `print` followed by
+  `Kernel#gets` showed its prompt, because libc flushes a line-buffered
+  stdout inside `fgets`. The fix makes `stdout` unbuffered when the
+  program starts with STDOUT on a terminal, keeps a terminal unbuffered
+  under `sync = false`, and follows the descriptor on `STDOUT.reopen`. A
+  file or a pipe keeps its buffering; on a terminal a `puts` line is now
+  two `write(2)` calls where it was one. Its test runs the cases on a
+  pseudo-terminal (packages/pty). The console's `flush` after the prompt
+  stays until the pin carries the fix; after that it is harmless and rule
+  83 can go.
+
 ## Found by Daicho, an application built on CyberTrain
 
 Reported on 2026-11-05 by the authors of Daicho, an application built on
@@ -1828,6 +1844,9 @@ CyberTrain that an upstream fix would remove: N's shape is not in the
 framework, and O and P are two of the reasons cybertrain/net/socket.rb
 and `HttpClient` exist (docs/design.md D24), which stay for the
 whole-request deadline and the address policy whatever Spinel fixes.
+N and O were sent to matz/spinel on 2026-11-06 and merged the same day
+(#11184, #11183); each item says what went in. P was already fixed
+there.
 
 ### N. A method's return type does not follow an ivar widened through an `attr_accessor` writer, and the C does not compile
 
@@ -1885,7 +1904,26 @@ m.rb:7: error: returning 'sp_StrPolyHash *' from a function with incompatible
   the regression test (`.expected`: `0`).
 - Today: Daicho writes `count = n.to_i` before the addition. Nothing in
   CyberTrain has the shape, so there is no workaround to drop here.
-- Not reported upstream yet.
+- **Sent and merged on 2026-11-06**: matz/spinel#11184, "A method
+  answering a Hash of an ivar widened late returns the boxed-value Hash"
+  (merge 3f5d3e93c), with the program above as the base of its test. In
+  no release yet. The cause is in the inference, not in code generation,
+  and the writer is not what matters:
+  - `n` has no type until a late pass boxes it, so `@a` is widened only
+    in the ivar re-run after that, when `h` had already been derived as
+    `Hash[String, Integer]`. That re-run derives the returns again under
+    a gate that let a return follow its widened ivar in two cases only,
+    a concrete type to poly and an Integer to a Bignum; a Hash of typed
+    values becoming a Hash of boxed values was neither, so the return
+    stayed.
+  - An ivar that a method's own write widens the same way (`@a = @a +
+    n`) failed too, and so did a String-valued and an Integer-keyed Hash.
+    Writing through an ordinary method's parameter compiled because such
+    a parameter is boxed earlier, by a pass whose rounds have no gate.
+  - The fix is the first of the two suggested above, narrowed to the
+    gate: it takes that one more transition. No conversion in the
+    generated C; the C of 12,463 programs is the same before and after,
+    except for the new test.
 
 ### O. `TCPSocket.new(host, port, connect_timeout: t)` ignores the timeout
 
@@ -1930,7 +1968,32 @@ puts((Time.now.to_f - t) < 5 ? "bounded" : "unbounded")
   removes a sentence, not code: socket.rb's header,
   docs/guide/external-services.md and its translations name the ignored
   keyword.
-- Not reported upstream yet.
+- **Sent and merged on 2026-11-06**: matz/spinel#11183, "TCPSocket.new
+  gives up on an unanswered connect after connect_timeout:" (merge
+  81b789d52), with the program above. In no release yet. What went in,
+  against the fix suggested above:
+  - The emission goes to a new runtime helper when the keyword is
+    written in the call; it connects through `sp_net_connect_timeout`
+    and raises `IO::TimeoutError` once the deadline has passed. The
+    message is CRuby's for this case, `user specified timeout for
+    10.255.255.1:81`, not `Connect timed out!`.
+  - `nil` is no limit; any other value converts as a time interval does
+    (an Integer, a Float, a value known only at run time), and a negative
+    number or a non-number raises as in CRuby. Host, port and the value
+    are evaluated once, in that order. `TCPSocket.open` without a block
+    is the same call.
+  - Not taken: the other keywords (`resolv_timeout:`) and the positional
+    local address are still ignored, not refused, and a `connect_timeout`
+    passed through `**opts` is not seen. Spinel's docs/limitations.md
+    says so.
+  - The timeout itself is tested only on Linux (`# spinel: linux`, as
+    Spinel's own `sp_net_connect_timeout` tests are), since a connect
+    nothing answers is reliably made there alone; the keyword's
+    evaluation, `nil`, `open` and the error cases are tested everywhere.
+  - For CyberTrain: when the pin carries it, socket.rb's header and
+    docs/guide/external-services.md (and its translations) stop saying
+    the keyword is ignored. The non-blocking connect itself stays, for
+    the per-request deadline.
 
 ### P. Net::HTTP against a TLS peer that accepts and never answers does not return at `open_timeout` / `read_timeout`
 
