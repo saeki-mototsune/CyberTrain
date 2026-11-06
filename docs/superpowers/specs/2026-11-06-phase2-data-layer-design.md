@@ -140,14 +140,18 @@ value regardless of date (byte 10: `T` 0x54 > space 0x20), which broke
   `to_json` and `Cast.str(time)` use it. The storage and display formats are
   two methods on purpose.
 - Existing rows in the old format: **`./app db normalize`** rewrites every
-  DATETIME column of every table (decltype `DATETIME` from `PRAGMA
-  table_info`) with `UPDATE t SET c = <space, no Z, '.000000' appended> WHERE c
-  LIKE '____-__-__T%'`, one transaction, and prints the count per table.
-  It is idempotent and safe to run twice. The deploy guides say: stop the
-  old binaries, `db migrate`, `db normalize` once, start the new ones. This
-  is an explicit command, not a hidden step in `db migrate`: an alpha
-  release can ask for one command, and nothing in the migrator gets a
-  reserved version row.
+  DATETIME cell of every table (decltype `DATETIME` from `PRAGMA
+  table_info`) that is **not already in the canonical format** (the pattern
+  `____-__-__ __:__:__.______`): each such cell is read, parsed with
+  `Cast.parse_time` (so `T…Z` rows, short fractions and offset-bearing
+  values all land on the same UTC six-digit text) and written back with
+  `Cast.sql_datetime`, row by row in one transaction; a cell `parse_time`
+  cannot read is left alone and counted separately. It prints the count per
+  table and column. It is idempotent and safe to run twice. The deploy
+  guides say: stop the old binaries, `db migrate`, `db normalize` once,
+  start the new ones. This is an explicit command, not a hidden step in `db
+  migrate`: an alpha release can ask for one command, and nothing in the
+  migrator gets a reserved version row.
 
 ### 2.4 `date` (D-7, N-4)
 
@@ -393,12 +397,14 @@ foreign key suppresses the generated `has_many` for it.
   Array methods on the result (`map`, `select`, `[]`) adds `.to_a`
   (section 16).
 - `belongs_to`: `def author` answers from the preload cache when it is
-  valid, otherwise `User.find_by(id: @author_id)`. The cache is two ivars set
-  only by `includes` (section 8): `@author_loaded_id` (the foreign key value
-  the preload ran for; `-1` when not loaded) and `@author_record` (the parent,
-  **or nil when the preload found none**). It is used when `@author_loaded_id
-  == @author_id`, so a parent that does not exist is answered as nil without
-  a query, and a reassigned `author_id` never answers the stale parent even
+  valid, otherwise `User.find_by(id: @author_id)`. The cache is three ivars
+  set only by `includes` (section 8): `@author_loaded` (Boolean; a separate
+  flag, because SQLite lets an explicit id be any Integer, so no Integer
+  sentinel is safe), `@author_loaded_key` (the foreign key value the preload
+  ran for) and `@author_record` (the parent, **or nil when the preload found
+  none**). It is used when `@author_loaded && @author_loaded_key ==
+  @author_id`, so a parent that does not exist is answered as nil without a
+  query, and a reassigned `author_id` never answers the stale parent even
   though the writer is a plain `attr_accessor` (NOTES 43 forbids a custom
   `author_id=`). `reload` resets every cache and preload.
 - `has_one`: `def profile` follows the same shape with `@profile_loaded`
@@ -458,8 +464,8 @@ instead), `inverse_of`, `dependent: :restrict_with_error`.
   `first`, `last`, `size`, `empty?` answer from memory; `count` runs SQL
   (Rails); any chain method (`where`, `order`, `limit`, `includes`, …) drops
   the preload and the relation queries as usual.
-- `belongs_to` / `has_one`: `@author_loaded_id` + `@author_record` and
-  `@profile_loaded` + `@profile_record` are set for **every** record in the
+- `belongs_to` / `has_one`: `@author_loaded` + `@author_loaded_key` +
+  `@author_record` and `@profile_loaded` + `@profile_record` are set for **every** record in the
   batch, with a nil record where the query found no row (section 7.2), so a
   missing parent or profile costs no further query.
 - Templates: `read_association` returns the preloaded `to_a`, so a loop over
@@ -585,7 +591,13 @@ validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on:
   all through one `SqliteDDL.rebuild_table(definition, table)` that follows
   SQLite's documented procedure (create `<table>_new` from the new
   definition, `INSERT INTO … SELECT` the common columns, drop the old table,
-  rename, recreate the indexes). Foreign keys follow SQLite's procedure to
+  rename, recreate the indexes **and the table's triggers** from their
+  `sqlite_master.sql`, and restore the table's `sqlite_sequence` high-water
+  mark captured before the drop when it is above the copied rows' maximum,
+  so `AUTOINCREMENT` never reuses a deleted id). `change_column_null(table,
+  column, false, default)`'s fourth argument **backfills** the existing NULL
+  cells (`UPDATE t SET c = ? WHERE c IS NULL`) before the copy and is never
+  written as the column's DEFAULT (Rails' contract). Foreign keys follow SQLite's procedure to
   the letter: `PRAGMA foreign_keys = OFF` is a no-op inside a transaction,
   so for a version that contains a rebuild the **migrator turns it off
   before `BEGIN`**, runs `PRAGMA foreign_key_check` before `COMMIT` (a

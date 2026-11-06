@@ -1800,8 +1800,11 @@ def ends_of(v)
   out
 end
 
-test "Float and String ranges through a boxed value" do
+test "Float range through a boxed value" do
   assert_equal ["1.5", "2.5"], ends_of(1.5..2.5)
+end
+
+test "String range through a boxed value" do
   assert_equal ["a", "z"], ends_of("a".."z")
 end
 
@@ -1813,9 +1816,10 @@ test "Time range in a Hash value" do
 end
 ```
 
-The build accepts it. The first test fails: `1.5..2.5` and `"a".."z"` are
-not matched by `when Range` once passed through the boxed parameter `v`,
-so `ends_of` answers an empty Array. The second raises `TypeError: no
+The build accepts it. The first two tests fail: `1.5..2.5` and `"a".."z"`
+are not matched by `when Range` once passed through the boxed parameter
+`v`, so `ends_of` answers an empty Array (each in its own test, so one
+failure does not hide the other). The third raises `TypeError: no
 implicit conversion of Time into Integer` when `t1..t2` is built.
 
 The second program reads the same Ranges directly, with no boxed value:
@@ -1845,8 +1849,11 @@ A Float (and a String) Range reads back directly, and an Integer Range is
 matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
 `TypeError` as the literal `t1..t2`, and so does a Range of `Date` ends.
 
-- Today: `where(col: a..b)` (cybertrain/relation.rb) accepts Integer ends
-  only; any other bound goes through `where_between(col, from, to)`, and a
-  validator's `inclusion: { in: }` takes an Integer Range or an Array
-  (spikes/NOTES.md rule 86).
+- What CyberTrain does with it (phase 2 of the Rails-gap programme,
+  docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md 3.1 and
+  9.1; the query methods land with that phase, until then `where_sql` is the
+  way to write a range): `where(col: a..b)` (cybertrain/relation.rb)
+  accepts Integer ends only; any other bound goes through
+  `where_between(col, from, to)`, and a validator's `inclusion: { in: }`
+  takes an Integer Range or an Array (spikes/NOTES.md rule 86).
 - Not reported upstream yet.
