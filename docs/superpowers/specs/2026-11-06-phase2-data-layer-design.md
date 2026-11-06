@@ -55,7 +55,7 @@ answers a number, cannot be written; the typed names below (`sum_int`,
 | Q3 | `t.json` in Ruby | `Hash<String, Object>` (object root only); `JSON` in SQL; `Cast.hash` rules for anything else |
 | Q4 | datetime | Rails' stored format `YYYY-MM-DD HH:MM:SS.ffffff` (UTC, microseconds); reads accept `T` / space, fractions, `Z` / `±HH:MM`; `as_json` writes `2026-10-05T09:00:00.000Z`; existing `T…Z` rows are rewritten by an explicit `db normalize` |
 | Q5 | `t.date` and parsing | `Date` (Spinel's `date` package, spiked first); `Time.iso8601` / `Time.rfc2822` / `Time.strptime` as class methods on `Time` (spiked; `Cast` is the fallback home) |
-| Q6 | Relation additions | Range `where`, `where.not`, `or`, `distinct`, `update_all`, `destroy_all`, `find_each`, `find_or_create_by`, `find_or_initialize_by`, `find_by!`, `none`, `update_columns`; `where("sql ?", …)` and `order(col: :desc)` forms; no `select` |
+| Q6 | Relation additions | Range `where` (Integer ends; `where_between` for Time, Date, Float and String), `where.not`, `or`, `distinct`, `update_all`, `destroy_all`, `find_each`, `find_or_create_by`, `find_or_initialize_by`, `find_by!`, `none`, `update_columns`; `where("sql ?", …)` and `order(col: :desc)` forms; no `select` |
 | Q7 | Multi-column pluck | `pluck(*columns)` → rows of column-typed cells; one column is an `ArgumentError` pointing at `pluck_str` / `pluck_int` / `pluck_float`; `pick` |
 | Q8 | Bulk writes | `insert_all` / `insert_all!` / `upsert_all` in one multi-row statement per chunk, `RETURNING id` by default, timestamps filled, one transaction |
 | Q9 | Aggregates | Typed names: `minimum_int` / `_float` / `_time`, `maximum_*`, `average`; grouped `*_by(group, col)` → `Hash<String, T>`; four `_sql` expression forms; `having_sql` |
@@ -204,12 +204,19 @@ copy-on-write relation is not part of this phase.
 
 ### 3.1 `where` (Q-1, Q-6, R1, R2)
 
-- `where(hash)` as today, plus a **Range** value: `a..b` → `` `c` >= ? AND
-  `c` <= ? ``, `a...b` → `>= ? AND < ?`, `a..` → `>= ?`, `..b` → `<= ?`
-  (`...b` → `< ?`). Ends go through `bind_for` (a Time becomes the stored
-  format, a Date its text). Beginless and endless Range literals are in the
-  spike; if Spinel rejects them, `where_between(:c, from, to)` (nil for an
-  open end) replaces the open forms and D43 records it.
+- `where(hash)` as today, plus a **Range** value with Integer ends: `a..b`
+  → `` `c` >= ? AND `c` <= ? ``, `a...b` → `>= ? AND < ?`, `a..` → `>= ?`,
+  `..b` → `<= ?` (`...b` → `< ?`). **Only Integer ends** (spike result,
+  section 14): under Spinel a Range of Time or Date raises `TypeError` when
+  it is built, and a Float or String Range held in a Hash value is not
+  matched by `when Range`, so `where(created_at: from..to)` cannot exist.
+  Time, Date, Float and String bounds are written as
+  **`where_between(:created_at, from, to)`** (`nil` for an open end, both
+  ends inclusive; `where_between(:c, from, to, exclude_end: true)` for
+  `<`), or as the String form `where("created_at >= ? AND created_at < ?",
+  from, to)`. The ends go through `bind_for` (a Time becomes the stored
+  format, a Date its text). D43 records the reason; the guide shows
+  `where_between` next to Rails' Range form.
 - `where(sql, *binds)`: a String first argument is a SQL fragment with `?`
   placeholders, as Rails' `where("views > ?", 10)`. The method takes one
   parameter typed `Hash | String` plus a splat; a `case` picks the branch.
@@ -473,8 +480,8 @@ validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on:
 ```
 
 - Options: `presence`, `length` (`minimum`, `maximum`, `is`, `in`),
-  `inclusion` / `exclusion` (`in:` an Array or a Range; the Range form
-  follows the Q6 spike), `format` (`with:`, `without:` Regexp),
+  `inclusion` / `exclusion` (`in:` an Array, or a Range of Integers; other
+  Ranges cannot be built under Spinel, section 3.1), `format` (`with:`, `without:` Regexp),
   `numericality` (`only_integer`, `greater_than`,
   `greater_than_or_equal_to`, `less_than`, `less_than_or_equal_to`,
   `equal_to`, `other_than`; a String attribute is parsed as a number first,
@@ -682,8 +689,38 @@ records each answer in spikes/NOTES.md:
    (`where(cond, *binds)`), dispatching with `case cond when Hash … when
    String` (3.1).
 
-Each fallback named in this document is taken when its check fails, and the
-section that names it is amended before implementation continues.
+**Results (2026-11-06, Spinel 2026.11.04.7026, programs kept in the plan's
+task 1 and recorded in spikes/NOTES.md):**
+
+1. `Date`: passes. `Date.new`, `to_s`, `strftime`, `year` / `month` / `day`,
+   `+` / `-`, `<`, `==` all work beside `Time` in one class.
+2. Ranges: open and closed **Integer** ranges work, including `begin` / `end`
+   / `exclude_end?` on a Range read from a polymorphic Hash value. A Range
+   of `Time` or `Date` raises `TypeError: no implicit conversion of Time
+   into Integer` at construction (`t1..t2` and `Range.new(t1, t2)` alike);
+   a Float or String Range reads back directly but is **not matched by
+   `when Range`** once held in a Hash value or passed through a boxed
+   parameter. Fallback taken: section 3.1's `where_between`; `inclusion:
+   { in: }` takes Integer ranges only (9.1). Reported in
+   docs/spinel-feedback.md as a new item.
+3. `def not(hash)` and `rel.where.not(x: 1)`: pass.
+4. Class methods added to `Time` (`iso8601`, `rfc2822`, and one literally
+   named `strptime`): pass; the earlier refusal was of the missing method,
+   not of the name. `Time.at(ms / 1000.0)` is exact.
+5. `OpenSSL::Cipher.new("aes-256-gcm")` with `cybertrain` required: passes;
+   a flipped ciphertext byte fails `final`. Keys and nonces must be raw
+   bytes (`Crypto.random_token` answers hex, so `Encryptor` derives bytes
+   from the hex configuration value with `[hex].pack("H*")`).
+6. The bundled SQLite is **3.45.1**; `RETURNING` works for a multi-row
+   `INSERT` and for `ON CONFLICT … DO UPDATE`; a 1000-bind statement runs;
+   `ffi_func :sqlite3_limit, [:ptr, :int, :int], :int` compiles and answers
+   `SQLITE_LIMIT_VARIABLE_NUMBER` = 250000 on this build (the chunking in
+   section 6 still asks the library, since another build may differ).
+7. A parameter typed `Hash | String` with a splat, dispatched by `case`:
+   passes.
+
+Each fallback named in this document is taken when its check fails; item 2
+is the one taken, and sections 3.1 and 9.1 were amended accordingly.
 
 Rules already known that bound the design: one return type per method name
 (NOTES 10 / 34 / 41, sections 3 to 5); `attr_accessor` only on generated
@@ -725,8 +762,9 @@ guide's upgrade notes.
    works; string concatenation needs `to_s`.
 5. A declared `belongs_to` without `optional: true` validates presence of
    the foreign key (undeclared ones are unchanged).
-6. `where(x: a..b)` is now a range condition (it was a text equality that
-   never matched).
+6. `where(x: a..b)` with Integer ends is now a range condition (it was a
+   text equality that never matched); Time and Date bounds use
+   `where_between`.
 7. `Cast.iso8601` is the display format; code that used it to build SQL text
    switches to `Cast.sql_datetime`.
 
