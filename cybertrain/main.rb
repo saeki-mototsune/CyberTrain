@@ -290,7 +290,7 @@ module Cybertrain
       text << "  ./#{name} db COMMAND        migrate | rollback [N] | status | schema:dump | create\n"
       # The continuation lines up under "migrate" whatever the name.
       indent = "".ljust(name.size + 23)
-      text << "#{indent}backup PATH [--force] | backup DIR/ [--keep N] | vacuum\n"
+      text << "#{indent}backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize\n"
       text << "  ./#{name} #{"console".ljust(17)} evaluate expressions over the models (help inside)\n"
       text << "  ./#{name} #{"dbconsole".ljust(17)} open the sqlite3 shell on the database\n"
       COMMANDS.each do |command|

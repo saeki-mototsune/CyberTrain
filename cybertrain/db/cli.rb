@@ -2,6 +2,7 @@ require "cybertrain/db/error"
 require "cybertrain/db/connection"
 require "cybertrain/db/migrator"
 require "cybertrain/db/schema_dumper"
+require "cybertrain/db/normalizer"
 require "cybertrain/migration"
 require "cybertrain/config"
 require "cybertrain/cast"
@@ -57,6 +58,9 @@ module Cybertrain
         when "vacuum"
           return usage if argv.size > 1
           vacuum(root)
+        when "normalize"
+          return usage if argv.size > 1
+          normalize(root)
         else
           puts "unknown command: #{argv[0]}"
           usage
@@ -65,7 +69,7 @@ module Cybertrain
       end
 
       def self.usage
-        puts "usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)"
+        puts "usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum|normalize)"
         1
       end
 
@@ -163,6 +167,25 @@ module Cybertrain
           connection.close
         end
         written ? 0 : 1
+      end
+
+      # Rewrites 0.4's "...T...Z" datetime cells into the stored format
+      # (Normalizer); one line per DATETIME column.
+      def self.normalize(root)
+        connection = open_existing(root)
+        begin
+          Normalizer.run(connection).each do |row|
+            if row[2].to_i < 0
+              puts "skipped #{row[0]}.#{row[1]}: no id column"
+            else
+              puts "normalized #{row[0]}.#{row[1]}: #{row[2]} rows (#{row[3]} unreadable left alone)"
+            end
+          end
+        ensure
+          connection.close
+        end
+        puts "done"
+        0
       end
 
       # rollback/status/schema:dump never create a database file by

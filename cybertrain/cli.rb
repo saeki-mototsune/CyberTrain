@@ -254,7 +254,7 @@ module Cybertrain
     def self.run_db(argv)
       args = argv[1, argv.size - 1]
       if args.empty?
-        puts "usage: cybertrain db (migrate|rollback [N]|status|schema:dump|create)"
+        puts "usage: cybertrain db (migrate|rollback [N]|status|schema:dump|create|normalize)"
         return 1
       end
       run_spin(Build.db_commands(args))

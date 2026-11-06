@@ -1,0 +1,4 @@
+ok   normalize rewrites every non-canonical datetime once, leaves canonical rows, and is idempotent
+ok   normalized values sort with Rails-format values by time
+ok   a table without an id column is reported and skipped
+3 tests, 16 assertions, 0 failures
