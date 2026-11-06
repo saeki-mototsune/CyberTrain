@@ -24,6 +24,7 @@ module Cybertrain
         files = [
           ["spin.toml", Templates.spin_toml(package, framework_dep)],
           [".gitignore", Templates.gitignore],
+          [".env.example", Templates.env_example],
           ["README.md", Templates.readme(title, package)],
           ["config/app.rb", Templates.config_app],
           ["config/routes.rb", Templates.routes],

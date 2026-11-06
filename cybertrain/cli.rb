@@ -7,11 +7,12 @@
 #   cybertrain generate authentication [--invite-only]
 #   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
 #   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
-#   cybertrain setup [--force] | doctor | version | help
+#   cybertrain secret [--hex] | setup [--force] | doctor | version | help
 #
 # Every command that runs spin first puts a Spinel of the pinned release on
 # PATH (Toolchain.ensure!), installing it under ~/.cybertrain the first time.
 require "cybertrain/version"
+require "cybertrain/crypto"
 require "cybertrain/cli/templates"
 require "cybertrain/cli/new_app"
 require "cybertrain/cli/scaffold"
@@ -86,6 +87,12 @@ module Cybertrain
         cybertrain spin ARGS...
             Run spin with the pinned Spinel, from any directory
             (cybertrain spin test; cybertrain spin run gen -- --check).
+        cybertrain secret [--hex]
+            Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (signs
+            the session cookie); with --hex, a new key for
+            CYBERTRAIN_ENCRYPTION_KEY (encrypts the columns of `encrypts`).
+            Both are 64 hex digits (32 random bytes). Keep the encryption
+            key: data encrypted with it cannot be read without it.
         cybertrain setup [--force]
             Install Spinel #{Cybertrain::SPINEL_TAG} into ~/.cybertrain (CYBERTRAIN_HOME)
             unless a spinel of that release is already on PATH, and print
@@ -108,6 +115,9 @@ module Cybertrain
       when "server" then run_in_app { |name| run_server(name, argv) }
       when "build" then run_in_app { |name| build_app(name) }
       when "spin" then run_spin_passthrough(argv)
+      when "secret"
+        puts secret_text(argv[1, argv.size - 1])
+        0
       when "setup" then Toolchain.setup(argv[1, argv.size - 1])
       when "doctor" then run_doctor(argv)
       when "version", "--version", "-v"
@@ -124,6 +134,15 @@ module Cybertrain
     rescue InvalidArgument => e
       puts "error: #{e.message}"
       1
+    end
+
+    # `cybertrain secret`: a session secret; `secret --hex`: an encryption
+    # key. Both 64 hex digits; kept apart so that each says what it is for.
+    def self.secret_text(args)
+      return Crypto.random_token(32) if args.empty?
+      return Crypto.encryption_key_hex if args == ["--hex"]
+
+      raise InvalidArgument, "usage: cybertrain secret [--hex]"
     end
 
     def self.run_new(argv)

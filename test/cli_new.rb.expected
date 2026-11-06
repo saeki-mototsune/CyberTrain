@@ -1,5 +1,6 @@
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -39,6 +40,7 @@ ok   config/deploy.yml and .kamal/secrets configure Kamal for the app
 ok   .github/workflows/ci.yml sets up the toolchain and runs the app's checks
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -67,6 +69,7 @@ create test/.keep
 ok   CLI new --path expands a relative DIR against the current directory
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -101,6 +104,7 @@ error: pass only one of --path, --version and --git
 ok   CLI new rejects --path together with --version
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -129,6 +133,7 @@ create test/.keep
 ok   CLI new --version writes an index constraint
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -156,6 +161,7 @@ create tmp/.keep
 create test/.keep
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -188,6 +194,7 @@ error: pass only one of --path, --version and --git
 ok   CLI new --git writes a git dependency, with or without --ref
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -217,6 +224,7 @@ error: control characters are not allowed in --path, --version, --git or --ref
 ok   CLI new writes dependency values as TOML strings
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -314,6 +322,12 @@ Usage:
   cybertrain spin ARGS...
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
+  cybertrain secret [--hex]
+      Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (signs
+      the session cookie); with --hex, a new key for
+      CYBERTRAIN_ENCRYPTION_KEY (encrypts the columns of `encrypts`).
+      Both are 64 hex digits (32 random bytes). Keep the encryption
+      key: data encrypted with it cannot be read without it.
   cybertrain setup [--force]
       Install Spinel 2026.11.04.7026 into ~/.cybertrain (CYBERTRAIN_HOME)
       unless a spinel of that release is already on PATH, and print
@@ -385,6 +399,12 @@ Usage:
   cybertrain spin ARGS...
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
+  cybertrain secret [--hex]
+      Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (signs
+      the session cookie); with --hex, a new key for
+      CYBERTRAIN_ENCRYPTION_KEY (encrypts the columns of `encrypts`).
+      Both are 64 hex digits (32 random bytes). Keep the encryption
+      key: data encrypted with it cannot be read without it.
   cybertrain setup [--force]
       Install Spinel 2026.11.04.7026 into ~/.cybertrain (CYBERTRAIN_HOME)
       unless a spinel of that release is already on PATH, and print
@@ -455,6 +475,12 @@ Usage:
   cybertrain spin ARGS...
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
+  cybertrain secret [--hex]
+      Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (signs
+      the session cookie); with --hex, a new key for
+      CYBERTRAIN_ENCRYPTION_KEY (encrypts the columns of `encrypts`).
+      Both are 64 hex digits (32 random bytes). Keep the encryption
+      key: data encrypted with it cannot be read without it.
   cybertrain setup [--force]
       Install Spinel 2026.11.04.7026 into ~/.cybertrain (CYBERTRAIN_HOME)
       unless a spinel of that release is already on PATH, and print
@@ -465,4 +491,22 @@ Usage:
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands
-24 tests, 167 assertions, 0 failures
+# The secrets this application reads from its environment. This file
+# is committed: copy a line into the environment (or your deploy's
+# secrets) with a value, never write the value here.
+
+# Signs the session cookie; changing it signs everyone out. Required in
+# production; development and test keep one in tmp/secret_key.
+# Make one with `cybertrain secret`.
+# CYBERTRAIN_SECRET_KEY_BASE=
+
+# Encrypts the columns a model declares with `encrypts`; boot fails
+# without it once one does. Keep it safe: encrypted data cannot be
+# read without it. To rotate, move the old key to
+# CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS (comma-separated) and re-save.
+# CYBERTRAIN_ENCRYPTION_KEY=  # cybertrain secret --hex
+ok   .env.example lists the secrets, commented, with how to make each
+error: usage: cybertrain secret [--hex]
+error: usage: cybertrain secret [--hex]
+ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
+26 tests, 305 assertions, 0 failures
