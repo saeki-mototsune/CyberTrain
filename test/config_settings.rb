@@ -196,4 +196,50 @@ test "help lists every declared setting with its variable and default" do
                Cybertrain.config.settings_summary
 end
 
+# The encryption key (cybertrain/encryptor.rb uses it; the checks here are
+# string-level and need no openssl). A set but malformed key fails boot;
+# an empty one only when the generated app declares `encrypts`
+# (Config.encryption_required, set by gen/app.rb).
+VALID_KEY = "0123456789abcdef0123456789abcdef0123456789ABCDEF0123456789abcdef"
+
+test "the encryption keys are read from their variables, the previous ones as a comma list" do
+  ENV["CYBERTRAIN_ENCRYPTION_KEY"] = VALID_KEY
+  ENV["CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS"] = " #{"a" * 64}, ,#{"b" * 64}"
+  keyed = Cybertrain::Config.new
+  assert_equal VALID_KEY, keyed.encryption_key
+  assert_equal ["a" * 64, "b" * 64], keyed.encryption_keys_previous
+  ENV["CYBERTRAIN_ENCRYPTION_KEY"] = ""
+  ENV["CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS"] = ""
+  unkeyed = Cybertrain::Config.new
+  assert_equal "", unkeyed.encryption_key
+  assert_equal 0, unkeyed.encryption_keys_previous.size
+end
+
+test "encryption_error: a malformed key fails, an unset one only when encryption is required" do
+  checked = Cybertrain::Config.new
+  checked.encryption_key = ""
+  assert_equal "", checked.encryption_error
+  checked.encryption_key = VALID_KEY
+  assert_equal "", checked.encryption_error
+  checked.encryption_key = VALID_KEY[0, 63].to_s
+  assert_equal "CYBERTRAIN_ENCRYPTION_KEY must be 64 hex characters; make one with `cybertrain secret --hex`",
+               checked.encryption_error
+  checked.encryption_key = VALID_KEY[0, 63].to_s + "g"
+  assert_equal "CYBERTRAIN_ENCRYPTION_KEY must be 64 hex characters; make one with `cybertrain secret --hex`",
+               checked.encryption_error
+  checked.encryption_key = VALID_KEY
+  checked.encryption_keys_previous = [VALID_KEY, "abc"]
+  assert_equal "CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS entry 2 must be 64 hex characters", checked.encryption_error
+  checked.encryption_keys_previous = [VALID_KEY]
+  assert_equal "", checked.encryption_error
+  checked.encryption_key = ""
+  Cybertrain::Config.encryption_required = true
+  assert_equal "CYBERTRAIN_ENCRYPTION_KEY is not set; make one with `cybertrain secret --hex`",
+               checked.encryption_error
+  checked.encryption_key = VALID_KEY
+  assert_equal "", checked.encryption_error
+  Cybertrain::Config.encryption_required = false
+  assert_equal false, Cybertrain::Config.encryption_required
+end
+
 Cybertrain::Test.run!

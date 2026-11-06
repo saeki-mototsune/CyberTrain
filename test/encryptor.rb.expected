@@ -1,0 +1,16 @@
+ok   a round trip gives the text back, UTF-8 included
+ok   the payload is version 1, Base64 of nonce, ciphertext and tag
+ok   two encryptions of one text differ (a fresh nonce each)
+ok   a changed byte anywhere in the payload raises Encryptor::Error
+ok   a payload made with another key raises
+ok   a previous key decrypts; encryption always uses the current one
+ok   an unknown version, bad Base64 and a short payload each raise their own message
+ok   an empty stored value decrypts to an empty String
+ok   from_hex takes 64 hex characters, either case, and nothing else
+ok   a key of the wrong size is refused by the constructor
+ok   Crypto.encrypt without a key raises the configuration message
+ok   Crypto.encrypt / decrypt use the configured key and the previous ones
+ok   the configured encryptor is built once per key
+ok   encrypt_or_nil and decrypt_or_nil keep nil nil
+ok   encryption_key_hex is 64 lowercase hex characters, a fresh one each call
+15 tests, 113 assertions, 0 failures

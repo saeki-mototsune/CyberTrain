@@ -146,6 +146,10 @@ module Cybertrain
       fail_boot(health_error) unless health_error.empty?
       stream_error = c.stream_error
       fail_boot(stream_error) unless stream_error.empty?
+      # A string check, no openssl: a malformed key always, an unset one when
+      # gen/app.rb says a model declares `encrypts`.
+      encryption_error = c.encryption_error
+      fail_boot(encryption_error) unless encryption_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       Application.configure_views(c, @views, @url_resolver)

@@ -5,6 +5,8 @@
 # rather than via `require "openssl"`: the `openssl` package links against
 # Homebrew's OpenSSL, which is not on this build's link path, while `digest`
 # is the runtime's own vendored SHA-256 (spikes/NOTES.md numbers table).
+# Column encryption, which does need openssl, is cybertrain/encryptor.rb,
+# required only by an application that declares `encrypts`.
 require "digest"
 require "securerandom"
 
@@ -66,6 +68,18 @@ module Cybertrain
     # @api public
     def self.random_token(bytes = 32)
       Crypto.hex(SecureRandom.random_bytes(bytes))
+    end
+
+    # A fresh key for `CYBERTRAIN_ENCRYPTION_KEY`: 32 random bytes as 64
+    # lowercase hex digits (what `cybertrain secret --hex` prints). The
+    # encryption itself is cybertrain/encryptor.rb's, which links openssl;
+    # making a key does not.
+    # @example
+    #   Cybertrain::Crypto.encryption_key_hex   # => "9b1f..." (64 hex digits)
+    # @return [String]
+    # @api public
+    def self.encryption_key_hex
+      Crypto.random_token(32)
     end
 
     # RFC 2104 HMAC over Digest::SHA256, keyed the way every implementation
