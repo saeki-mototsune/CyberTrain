@@ -56,4 +56,4 @@ ok   a scope local or call inside a method body, or not followed by a Symbol, is
 ok   def_opens_body? tells a method with a body from endless and one-line ones
 ok   a repeated scope raises
 ok   a scope named like a column raises
-58 tests, 544 assertions, 0 failures
+58 tests, 591 assertions, 0 failures

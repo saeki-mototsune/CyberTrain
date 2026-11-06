@@ -41,8 +41,10 @@ module Cybertrain
   # and the development server do it for you).
   #
   # Not available (compared with ActiveRecord): declared associations,
-  # `has_many :through`, `includes`, an untyped `pluck` (relations have
-  # `pluck_str` / `pluck_int` / `pluck_float`), a `where` over a Range with
+  # `has_many :through`, `includes`, a one-column `pluck` (relations have
+  # `pluck_str` / `pluck_int` / `pluck_float`; `pluck` takes two or more
+  # columns), a polymorphic `sum` / `minimum` / `maximum` (they come typed:
+  # `sum_int`, `minimum_time`, ...), a `where` over a Range with
   # other than Integer ends (use `where_between`), dirty tracking,
   # transactions around `save`, STI and enums.
   #

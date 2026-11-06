@@ -93,6 +93,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       def offset(n) = (set_offset(n); self)
       def distinct = (set_distinct; self)
       def none = (set_none; self)
+      def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
       def to_a
         out = Array.new(0) { Post.new }
@@ -266,6 +267,29 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       def self.delete_all(...) = all.delete_all(...)
       def self.destroy_all(...) = all.destroy_all(...)
       def self.find_each(...) = all.find_each(...)
+      def self.pluck(...) = all.pluck(...)
+      def self.pick(...) = all.pick(...)
+      def self.minimum_int(...) = all.minimum_int(...)
+      def self.minimum_float(...) = all.minimum_float(...)
+      def self.minimum_time(...) = all.minimum_time(...)
+      def self.maximum_int(...) = all.maximum_int(...)
+      def self.maximum_float(...) = all.maximum_float(...)
+      def self.maximum_time(...) = all.maximum_time(...)
+      def self.average(...) = all.average(...)
+      def self.minimum_int_by(...) = all.minimum_int_by(...)
+      def self.minimum_float_by(...) = all.minimum_float_by(...)
+      def self.minimum_time_by(...) = all.minimum_time_by(...)
+      def self.maximum_int_by(...) = all.maximum_int_by(...)
+      def self.maximum_float_by(...) = all.maximum_float_by(...)
+      def self.maximum_time_by(...) = all.maximum_time_by(...)
+      def self.average_by(...) = all.average_by(...)
+      def self.sum_int_by(...) = all.sum_int_by(...)
+      def self.sum_float_by(...) = all.sum_float_by(...)
+      def self.sum_float_sql(...) = all.sum_float_sql(...)
+      def self.minimum_float_sql(...) = all.minimum_float_sql(...)
+      def self.maximum_float_sql(...) = all.maximum_float_sql(...)
+      def self.average_sql(...) = all.average_sql(...)
+      def self.having_sql(...) = all.having_sql(...)
 
       def self.create(attrs = {})
         rec = Post.new(attrs)
@@ -338,6 +362,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       def offset(n) = (set_offset(n); self)
       def distinct = (set_distinct; self)
       def none = (set_none; self)
+      def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
       def to_a
         out = Array.new(0) { Comment.new }
@@ -516,6 +541,29 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       def self.delete_all(...) = all.delete_all(...)
       def self.destroy_all(...) = all.destroy_all(...)
       def self.find_each(...) = all.find_each(...)
+      def self.pluck(...) = all.pluck(...)
+      def self.pick(...) = all.pick(...)
+      def self.minimum_int(...) = all.minimum_int(...)
+      def self.minimum_float(...) = all.minimum_float(...)
+      def self.minimum_time(...) = all.minimum_time(...)
+      def self.maximum_int(...) = all.maximum_int(...)
+      def self.maximum_float(...) = all.maximum_float(...)
+      def self.maximum_time(...) = all.maximum_time(...)
+      def self.average(...) = all.average(...)
+      def self.minimum_int_by(...) = all.minimum_int_by(...)
+      def self.minimum_float_by(...) = all.minimum_float_by(...)
+      def self.minimum_time_by(...) = all.minimum_time_by(...)
+      def self.maximum_int_by(...) = all.maximum_int_by(...)
+      def self.maximum_float_by(...) = all.maximum_float_by(...)
+      def self.maximum_time_by(...) = all.maximum_time_by(...)
+      def self.average_by(...) = all.average_by(...)
+      def self.sum_int_by(...) = all.sum_int_by(...)
+      def self.sum_float_by(...) = all.sum_float_by(...)
+      def self.sum_float_sql(...) = all.sum_float_sql(...)
+      def self.minimum_float_sql(...) = all.minimum_float_sql(...)
+      def self.maximum_float_sql(...) = all.maximum_float_sql(...)
+      def self.average_sql(...) = all.average_sql(...)
+      def self.having_sql(...) = all.having_sql(...)
 
       def self.create(attrs = {})
         rec = Comment.new(attrs)
@@ -583,6 +631,7 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def offset(n) = (set_offset(n); self)
       def distinct = (set_distinct; self)
       def none = (set_none; self)
+      def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
       def to_a
         out = Array.new(0) { Flag.new }
@@ -751,6 +800,29 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def self.delete_all(...) = all.delete_all(...)
       def self.destroy_all(...) = all.destroy_all(...)
       def self.find_each(...) = all.find_each(...)
+      def self.pluck(...) = all.pluck(...)
+      def self.pick(...) = all.pick(...)
+      def self.minimum_int(...) = all.minimum_int(...)
+      def self.minimum_float(...) = all.minimum_float(...)
+      def self.minimum_time(...) = all.minimum_time(...)
+      def self.maximum_int(...) = all.maximum_int(...)
+      def self.maximum_float(...) = all.maximum_float(...)
+      def self.maximum_time(...) = all.maximum_time(...)
+      def self.average(...) = all.average(...)
+      def self.minimum_int_by(...) = all.minimum_int_by(...)
+      def self.minimum_float_by(...) = all.minimum_float_by(...)
+      def self.minimum_time_by(...) = all.minimum_time_by(...)
+      def self.maximum_int_by(...) = all.maximum_int_by(...)
+      def self.maximum_float_by(...) = all.maximum_float_by(...)
+      def self.maximum_time_by(...) = all.maximum_time_by(...)
+      def self.average_by(...) = all.average_by(...)
+      def self.sum_int_by(...) = all.sum_int_by(...)
+      def self.sum_float_by(...) = all.sum_float_by(...)
+      def self.sum_float_sql(...) = all.sum_float_sql(...)
+      def self.minimum_float_sql(...) = all.minimum_float_sql(...)
+      def self.maximum_float_sql(...) = all.maximum_float_sql(...)
+      def self.average_sql(...) = all.average_sql(...)
+      def self.having_sql(...) = all.having_sql(...)
 
       def self.create(attrs = {})
         rec = Flag.new(attrs)
@@ -1058,7 +1130,11 @@ test "the model class delegates every DELEGATED query method to all, and has cre
   names = Cybertrain::Gen::ModelsEmitter::DELEGATED
   assert_equal %w[where where_like where_between order order_sql limit offset distinct none ids find find_by find_by!
                   find_or_create_by find_or_initialize_by first last count exists? update_all delete_all
-                  destroy_all find_each], names
+                  destroy_all find_each pluck pick minimum_int minimum_float minimum_time maximum_int
+                  maximum_float maximum_time average minimum_int_by minimum_float_by minimum_time_by
+                  maximum_int_by maximum_float_by maximum_time_by average_by sum_int_by sum_float_by
+                  sum_float_sql minimum_float_sql maximum_float_sql average_sql having_sql], names
+  assert_lines(flag, ["def having_sql(s, b = []) = (set_having_sql(s, b); self)"])
   names.each { |name| assert_lines(flag, ["def self.#{name}(...) = all.#{name}(...)"]) }
   assert_includes flag, "  def self.create!(attrs = {})\n    rec = Flag.new(attrs)\n    rec.save!\n    rec\n  end\n"
 end
@@ -1738,7 +1814,7 @@ test "a scope becomes a Relation method and a class method delegating to all" do
   assert_includes relation, "  def size = count\n\n  def recent = (order(created_at: :desc))\n"
   assert_includes relation, "  def titled(t) = (where(title: t))\nend\n"
   model = post[post.index("class Post < Cybertrain::Model"), post.size]
-  assert_includes model, "  def self.find_each(...) = all.find_each(...)\n  def self.recent = all.recent\n"
+  assert_includes model, "  def self.having_sql(...) = all.having_sql(...)\n  def self.recent = all.recent\n"
   # No scopes: the generated files do not change.
   assert_equal EXPECTED_POST, emit_for("posts", ["summary"])
 end

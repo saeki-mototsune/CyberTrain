@@ -79,7 +79,11 @@ class Article < Cybertrain::Model
   # `where_between`, `order`, `order_sql`, `limit`, `offset`, `distinct`,
   # `none`, `ids`, `find`, `find_by`, `find_by!`, `find_or_create_by`,
   # `find_or_initialize_by`, `first`, `last`, `count`, `exists?`,
-  # `update_all`, `delete_all`, `destroy_all` and `find_each`. The ones
+  # `update_all`, `delete_all`, `destroy_all`, `find_each`, `pluck`,
+  # `pick`, `minimum_int`, `minimum_float`, `minimum_time`, `maximum_int`,
+  # `maximum_float`, `maximum_time`, `average`, their `_by` forms,
+  # `sum_int_by`, `sum_float_by`, `sum_float_sql`, `minimum_float_sql`,
+  # `maximum_float_sql`, `average_sql` and `having_sql`. The ones
   # documented here are the common ones.
   # @see ArticleRelation#where
   # @example
@@ -427,6 +431,24 @@ class ArticleRelation < Cybertrain::Relation
   # @return [self]
   # @api public
   def none = (set_none; self)
+
+  # A HAVING clause for the grouped readers
+  # ({Cybertrain::Relation#count_by count_by},
+  # {Cybertrain::Relation#sum_float_by sum_float_by},
+  # {Cybertrain::Relation#average_by average_by}, ...), in parentheses and
+  # ANDed onto an earlier one; its values bind through `?`. Every other
+  # reader of a relation with a HAVING raises ArgumentError rather than
+  # drop it, and so does a grouped reader under a limit or offset. The
+  # text is trusted SQL, like {#order_sql}'s: never build it from request
+  # data.
+  # @example
+  #   Reading.all.having_sql("SUM(value) > ?", [2.0]).sum_float_by(:kind, :value)
+  #   # => {"a" => 3.0}
+  # @param sql [String] SQL text
+  # @param binds [Array] values for its `?` placeholders
+  # @return [self]
+  # @api public
+  def having_sql(sql, binds = []) = (set_having_sql(sql, binds); self)
 
   # Runs the query. Templates iterate an Array, so controllers usually
   # end a query with `to_a`.

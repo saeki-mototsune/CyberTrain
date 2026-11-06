@@ -57,8 +57,13 @@ module Cybertrain
         relation_shape condition_sql set_distinct set_none column_type decimal_scale binary_column? bind_for
         add_where_sql set_order set_order_hash add_order_sql set_limit set_offset to_sql rows count exists?
         delete_all first_row last_row page add_where_like pluck_str pluck_int pluck_float count_by count_by_sql
-        sum_int sum_float increment update_all ids batch_rows pluck_rows aggregate_cell grouped_counts
+        sum_int sum_float increment update_all ids batch_rows pluck_rows aggregate_cell
         order_or_id pick_row write_scope_sql select_sql
+        set_having_sql pluck pick minimum_int minimum_float minimum_time maximum_int maximum_float maximum_time
+        average sum_float_sql minimum_float_sql maximum_float_sql average_sql sum_int_by sum_float_by
+        minimum_int_by minimum_float_by minimum_time_by maximum_int_by maximum_float_by maximum_time_by average_by
+        aggregate_expr aggregate_arg grouped_by grouped_cell int_totals float_totals int_cells float_cells
+        time_cells cell_rows refuse_having select_from_sql having_sql
         where not where_sql where_like where_between or order order_sql limit offset distinct none to_a each
         first last find_by find_by! find find_or_create_by find_or_initialize_by destroy_all find_each size
         all create create! from_row table_name column_names new name class

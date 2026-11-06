@@ -252,6 +252,7 @@ module Cybertrain
         src << "  def offset(n) = (set_offset(n); self)\n"
         src << "  def distinct = (set_distinct; self)\n"
         src << "  def none = (set_none; self)\n"
+        src << "  def having_sql(s, b = []) = (set_having_sql(s, b); self)\n"
         src << "\n"
         src << "  def to_a\n"
         # A while loop: an each block is a Proc per query.
@@ -501,10 +502,13 @@ module Cybertrain
 
       # The query methods the model class answers by delegating to `all`:
       # each is emitted as `def self.x(...) = all.x(...)`. Later work adds
-      # its names here (pluck and the aggregates, includes).
+      # its names here (includes).
       DELEGATED = %w[where where_like where_between order order_sql limit offset distinct none ids find find_by find_by!
                      find_or_create_by find_or_initialize_by first last count exists? update_all delete_all
-                     destroy_all find_each]
+                     destroy_all find_each pluck pick minimum_int minimum_float minimum_time maximum_int
+                     maximum_float maximum_time average minimum_int_by minimum_float_by minimum_time_by
+                     maximum_int_by maximum_float_by maximum_time_by average_by sum_int_by sum_float_by
+                     sum_float_sql minimum_float_sql maximum_float_sql average_sql having_sql]
 
       def self.emit_persistence(model, table, scopes)
         src = +""
