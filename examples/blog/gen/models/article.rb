@@ -135,6 +135,7 @@ class Article < Cybertrain::Model
     @body = nil
     @created_at = nil
     @updated_at = nil
+    @comments_preloaded = nil
     assign_attributes(attrs) unless attrs.empty?
   end
 
@@ -274,11 +275,21 @@ class Article < Cybertrain::Model
                                       returning, record_timestamps, :update, unique_by, update_only)
   end
 
-  def comments = CommentRelation.new("comments").where(article_id: @id).to_a
+  def comments = CommentRelation.new("comments").where(article_id: @id)
+
+  def destroy_dependents
+    CommentRelation.new("comments").where(article_id: @id).delete_all
+    nil
+  end
+
+  def reset_association_caches
+    @comments_preloaded = nil
+    nil
+  end
 
   def read_association(name)
     case name
-    when :comments then self.comments
+    when :comments then self.comments.to_a
     else nil
     end
   end

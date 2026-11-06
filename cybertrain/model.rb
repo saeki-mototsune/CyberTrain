@@ -40,13 +40,17 @@ module Cybertrain
   # Re-run `spin run gen` after changing the schema (`cybertrain db migrate`
   # and the development server do it for you).
   #
-  # Not available (compared with ActiveRecord): declared associations,
+  # Associations come from the schema's foreign keys and from
+  # {.has_many} / {.has_one} / {.belongs_to} lines in the app/models file.
+  #
+  # Not available (compared with ActiveRecord): polymorphic associations,
   # `has_many :through`, `includes`, a one-column `pluck` (relations have
   # `pluck_str` / `pluck_int` / `pluck_float`; `pluck` takes two or more
   # columns), a polymorphic `sum` / `minimum` / `maximum` (they come typed:
   # `sum_int`, `minimum_time`, ...), a `where` over a Range with
   # other than Integer ends (use `where_between`), dirty tracking,
-  # transactions around `save`, STI and enums.
+  # transactions around `save` (except a counter_cache child's update),
+  # STI and enums.
   #
   # Implementation: validations and callbacks are runtime data keyed by model
   # name, since Spinel cannot define methods at runtime.
@@ -117,14 +121,103 @@ module Cybertrain
     # @api public
     def self.scope(name, body) = nil
 
+    # Declares that each record has many children: `has_many :comments`
+    # reads the comments whose `<singular of this table>_id` is this
+    # record's id. Like {.scope}, the generator reads the line as text and
+    # writes the reader into gen/models (`def comments =
+    # CommentRelation.new("comments").where(post_id: @id)`); at run time this
+    # method does nothing. The reader returns the children's Relation, so it
+    # chains: `post.comments.where(approved: true).count`; add `.to_a` for
+    # an Array. A schema foreign key gives the same reader without a
+    # declaration; a declaration names it, or adds `dependent:`.
+    #
+    # One line, literal options only: `class_name:` (a String or Symbol;
+    # inferred from the name, `comments` -> Comment), `foreign_key:` (the
+    # children's column; inferred `post_id`) and `dependent:` -- `:destroy`
+    # (each child is loaded and destroyed, so its callbacks and its own
+    # `dependent:` run), `:delete_all` (one DELETE) or `:nullify` (one
+    # UPDATE setting the key to NULL; the column must be nullable), applied
+    # by {#destroy} before its DELETE in the same transaction. Without
+    # `dependent:` the database's foreign key decides (`on_delete:` in the
+    # schema). A model, column or option that does not exist stops the
+    # generator with the file and line. No `:through`, scope lambda,
+    # `inverse_of` or `counter_cache:` (that goes on the {.belongs_to}).
+    # @example
+    #   has_many :comments, dependent: :destroy
+    #   has_many :drafts, class_name: "Post", foreign_key: :author_id
+    # @param name [Symbol] the reader's name
+    # @param dependent [Symbol, nil] `:destroy`, `:delete_all` or `:nullify`
+    # @param class_name [String, Symbol, nil] the children's model
+    # @param foreign_key [Symbol, String, nil] the children's key column
+    # @return [nil]
+    # @api public
+    def self.has_many(name, dependent: nil, class_name: nil, foreign_key: nil) = nil
+
+    # Declares that each record has at most one child: `has_one :profile`
+    # reads `Profile.find_by(user_id: id)` (nil when there is none). Read as
+    # text by the generator, like {.has_many}, and takes the same options;
+    # a has_one on a foreign key replaces the has_many the key would give.
+    # @example
+    #   has_one :profile, dependent: :destroy
+    # @param name [Symbol] the reader's name
+    # @param dependent [Symbol, nil] `:destroy`, `:delete_all` or `:nullify`
+    # @param class_name [String, Symbol, nil] the child's model (inferred
+    #   `Profile`)
+    # @param foreign_key [Symbol, String, nil] the child's key column
+    #   (inferred `<singular of this table>_id`)
+    # @return [nil]
+    # @api public
+    def self.has_one(name, dependent: nil, class_name: nil, foreign_key: nil) = nil
+
+    # Declares the parent a record points to: `belongs_to :author` reads
+    # `Author.find_by(id: author_id)` and keeps it until `author_id`
+    # changes or {#reload}. Read as text by the generator, like {.has_many}.
+    #
+    # Unless `optional: true`, the record is invalid while the key is nil
+    # or 0 ("can't be blank" on `author_id`; {.validates_foreign_key}).
+    # `counter_cache: true` keeps the parent's `<children>_count` column
+    # (`posts.comments_count`, or `<has_many name>_count` when the parent
+    # declares one over this key) in step: +1 after create, -1 after
+    # destroy, and a move to another parent counted on both sides; the
+    # update and both counts run in one transaction. The column must exist;
+    # the parent's own {#save} leaves it alone (its copy may be stale).
+    # @example
+    #   belongs_to :post, counter_cache: true
+    #   belongs_to :author, class_name: "User", optional: true
+    # @param name [Symbol] the reader's name
+    # @param class_name [String, Symbol, nil] the parent's model (inferred
+    #   from the name)
+    # @param foreign_key [Symbol, String, nil] this table's key column
+    #   (inferred `<name>_id`)
+    # @param optional [Boolean] skip the foreign key validation
+    # @param counter_cache [Boolean] count the children on the parent
+    # @return [nil]
+    # @api public
+    def self.belongs_to(name, class_name: nil, foreign_key: nil, optional: false, counter_cache: false) = nil
+
+    # The validation a declared {.belongs_to} adds to its generated class:
+    # "can't be blank" on the foreign key while it is nil, blank or 0 (the
+    # id of no saved record), so `save` returns false instead of the
+    # database refusing the row.
+    # @param attr [Symbol] the foreign key column
+    # @return [nil]
+    # @api public
+    def self.validates_foreign_key(attr)
+      list = (VALIDATORS[self.name] ||= Array.new(0) { Validator.new(:base, :presence) })
+      list << Validator.new(attr, :foreign_key)
+      nil
+    end
+
     # Callback blocks receive the record as their argument
     # (`before_save { |post| post.title = post.title.strip }`): Spinel cannot
     # instance_exec a stored block (spikes/NOTES.md rule 2).
     #
     # Callbacks take a block only (no `before_save :method_name`, no `if:`),
     # run in the order they were declared, and their return value is ignored:
-    # raising is the only way to stop the operation, and nothing is rolled
-    # back. {Relation#delete_all} runs none.
+    # raising is the only way to stop the operation. {#destroy} runs in a
+    # transaction, so a raise there rolls its DELETE back; {#save} does not
+    # (except a counter_cache child's update). {Relation#delete_all} runs
+    # none.
 
     # Runs at the start of every {#valid?} (so of every {#save}), after the
     # errors are cleared and before the declared validations. Errors added
@@ -170,10 +263,10 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.after_update(&block) = add_model_callback("after_update", block)
-    # Runs in {#destroy} before the DELETE. There is no `dependent:`; delete
-    # children here:
+    # Runs in {#destroy} before the `dependent:` children go and before the
+    # DELETE, inside destroy's transaction.
     # @example
-    #   before_destroy { |article| Comment.where(article_id: article.id).delete_all }
+    #   before_destroy { |article| AuditLog.create(note: "deleted #{article.id}") }
     # @yieldparam record [Model]
     # @return [nil]
     # @api public
@@ -583,6 +676,15 @@ module Cybertrain
     def load_row(row) = nil
     def read_association(name) = nil
     def call_view_method(name) = nil
+    # Declared associations (has_many / has_one / belongs_to): the
+    # `dependent:` children, the caches {#reload} clears, and counter_cache.
+    # counter_cache_created / _destroyed / _was / _moved have no stub: only
+    # the generated callback blocks call them, and a block's record is typed
+    # Cybertrain::Model, so a stub here would be the method they call.
+    def destroy_dependents = nil
+    def reset_association_caches = nil
+    def counter_cached? = false
+    def counter_cache_columns = Array.new(0) { "" }
 
     # --- concrete ----------------------------------------------------------
 
@@ -679,9 +781,14 @@ module Cybertrain
 
       run_callbacks("before_save")
       if @persisted
-        run_callbacks("before_update")
-        update_row
-        run_callbacks("after_update")
+        # A counter_cache child reads its persisted key (before_update),
+        # writes the row and moves the counts (after_update) in one
+        # transaction, so a raise leaves the counters as they were.
+        if counter_cached? && !Cybertrain::DB.in_transaction?
+          Cybertrain::DB.transaction { |_c| update_with_callbacks }
+        else
+          update_with_callbacks
+        end
       else
         run_callbacks("before_create")
         insert_row
@@ -759,7 +866,10 @@ module Cybertrain
       true
     end
 
-    # Runs {.before_destroy}, deletes the row, runs {.after_destroy}. The
+    # Runs {.before_destroy}, removes the `dependent:` children of
+    # {.has_many} / {.has_one}, deletes the row, runs {.after_destroy}, all
+    # in one transaction (joining one already open): a raise anywhere rolls
+    # every step back and the record stays {#persisted?}. Afterwards the
     # record keeps its attributes and id but is no longer {#persisted?}.
     #
     # A record that was never saved has no row: destroy then runs no
@@ -769,16 +879,21 @@ module Cybertrain
     def destroy
       return false unless @persisted
 
-      run_callbacks("before_destroy")
-      sql = "DELETE FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
-      id = @id
-      Cybertrain::DB.with { |c| c.execute(sql, [id]) }
-      @persisted = false
-      run_callbacks("after_destroy")
+      begin
+        if Cybertrain::DB.in_transaction?
+          destroy_with_callbacks
+        else
+          Cybertrain::DB.transaction { |_c| destroy_with_callbacks }
+        end
+      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        @persisted = true
+        raise e
+      end
       true
     end
 
-    # Re-reads every column from the database.
+    # Re-reads every column from the database and forgets every
+    # association it had read (a belongs_to parent, a preload).
     # @return [self]
     # @raise [RecordNotFound] when the row is gone
     # @api public
@@ -788,6 +903,7 @@ module Cybertrain
       found = Cybertrain::DB.with { |c| c.execute_models(sql, [id]) }
       raise RecordNotFound, "Couldn't find #{model_name} with id=#{id}" if found.empty?
       load_row(found[0])
+      reset_association_caches
       self
     end
 
@@ -849,6 +965,24 @@ module Cybertrain
       self.class.column_names.include?(name)
     end
 
+    def update_with_callbacks
+      run_callbacks("before_update")
+      update_row
+      run_callbacks("after_update")
+      nil
+    end
+
+    def destroy_with_callbacks
+      run_callbacks("before_destroy")
+      destroy_dependents
+      sql = "DELETE FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
+      id = @id
+      Cybertrain::DB.with { |c| c.execute(sql, [id]) }
+      @persisted = false
+      run_callbacks("after_destroy")
+      nil
+    end
+
     # created_at/updated_at are filled in when the table has them and the
     # record does not already carry a value (as ActiveRecord does).
     def insert_row
@@ -872,9 +1006,19 @@ module Cybertrain
     def update_row
       write_attribute(:updated_at, Model.now_string) if column?("updated_at")
       row = to_row
-      sets = row.keys.map { |k| "#{Relation.quote_ident(k)} = ?" }
-      sql = "UPDATE #{Relation.quote_ident(self.class.table_name)} SET #{sets.join(", ")} WHERE #{Relation.quote_ident("id")} = ?"
+      # A counter_cache column is the children's to change (Rails'
+      # attr_readonly): this record's copy may be stale.
+      skipped = counter_cache_columns
+      sets = Array.new(0) { "" }
       binds = row.values
+      binds.clear
+      row.each do |k, v|
+        next if skipped.include?(k)
+
+        sets << "#{Relation.quote_ident(k)} = ?"
+        binds << v
+      end
+      sql = "UPDATE #{Relation.quote_ident(self.class.table_name)} SET #{sets.join(", ")} WHERE #{Relation.quote_ident("id")} = ?"
       binds << @id
       Cybertrain::DB.with { |c| c.execute(sql, binds) }
       nil

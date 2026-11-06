@@ -34,6 +34,11 @@ module Cybertrain
       "load_row", "set_id", "run_callbacks", "insert_row", "update_row",
       "read_attribute", "write_attribute", "assign_attributes",
       "read_association", "call_view_method", "initialize",
+      "update_with_callbacks", "destroy_with_callbacks",
+      # declared associations: dependent:, the caches reload clears,
+      # counter_cache
+      "destroy_dependents", "reset_association_caches", "counter_cache_created",
+      "counter_cache_destroyed", "counter_cache_was", "counter_cache_moved", "counter_cache_columns",
       # Object methods Ruby or the framework calls on a record without being
       # asked: string interpolation and templates (to_s), error messages
       # (inspect), Hash keys (hash)

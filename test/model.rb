@@ -139,11 +139,11 @@ class Post < Cybertrain::Model
     rec
   end
 
-  def comments = CommentRelation.new("comments").where(post_id: @id).to_a
+  def comments = CommentRelation.new("comments").where(post_id: @id)
 
   def read_association(name)
     case name
-    when :comments then comments
+    when :comments then comments.to_a
     else nil
     end
   end
@@ -913,7 +913,7 @@ test "comments association through comments.post_id" do
   Comment.create(post_id: post.id, body: "first", author: "alice")
   Comment.create(post_id: other.id, body: "elsewhere")
   Comment.create(post_id: post.id, body: "second", author: "bob")
-  bodies = post.comments.map { |c| c.body }
+  bodies = post.comments.to_a.map { |c| c.body }
   assert_equal ["first", "second"], bodies
   assert_equal 2, Comment.where(post_id: post.id).count
   comment = Comment.find_by(body: "second")

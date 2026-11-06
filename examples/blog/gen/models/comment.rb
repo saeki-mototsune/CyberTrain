@@ -136,6 +136,9 @@ class Comment < Cybertrain::Model
     @article_id = 0
     @created_at = nil
     @updated_at = nil
+    @article_loaded = false
+    @article_loaded_key = 0
+    @article_record = nil
     assign_attributes(attrs) unless attrs.empty?
   end
 
@@ -280,7 +283,20 @@ class Comment < Cybertrain::Model
                                       returning, record_timestamps, :update, unique_by, update_only)
   end
 
-  def article = Article.find_by(id: @article_id)
+  def article
+    return @article_record if @article_loaded && @article_loaded_key == @article_id
+
+    @article_record = Article.find_by(id: @article_id)
+    @article_loaded = true
+    @article_loaded_key = @article_id
+    @article_record
+  end
+
+  def reset_association_caches
+    @article_loaded = false
+    @article_record = nil
+    nil
+  end
 
   def read_association(name)
     case name

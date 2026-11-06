@@ -13,6 +13,7 @@ require_relative "fixtures/gen_app/db/schema"
 FIXTURE = "test/fixtures/gen_app"
 ROOT = Dir.mktmpdir("cybertrain-gen-models")
 APP_FILES = [
+  "app/models/comment.rb",
   "app/models/post.rb",
   "app/controllers/application_controller.rb",
   "app/controllers/comments_controller.rb",
@@ -62,6 +63,7 @@ def load_fixture_schema
       t.text "body"
       t.integer "views", null: false, default: "0"
       t.decimal "price", precision: 10, scale: 2
+      t.integer "comments_count", null: false, default: "0"
       t.json "meta"
       t.date "published_on"
       t.timestamps
@@ -101,6 +103,7 @@ test "a table added to the schema makes both its model and the manifest stale" d
       t.text "body"
       t.integer "views", null: false, default: "0"
       t.decimal "price", precision: 10, scale: 2
+      t.integer "comments_count", null: false, default: "0"
       t.json "meta"
       t.date "published_on"
       t.timestamps

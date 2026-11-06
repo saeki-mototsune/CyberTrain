@@ -2,7 +2,7 @@
 class PostRelation < Cybertrain::Relation
   def column_type(name)
     case name
-    when "id", "views" then :integer
+    when "id", "views", "comments_count" then :integer
     when "price" then :decimal
     when "created_at", "updated_at" then :datetime
     when "published_on" then :date
@@ -137,10 +137,10 @@ end
 
 class Post < Cybertrain::Model
   def self.table_name = "posts"
-  def self.column_names = ["id", "title", "body", "views", "price", "meta", "published_on", "created_at", "updated_at"]
+  def self.column_names = ["id", "title", "body", "views", "price", "comments_count", "meta", "published_on", "created_at", "updated_at"]
   def model_name = "Post"
 
-  attr_accessor :title, :body, :views, :price, :meta, :published_on, :created_at, :updated_at
+  attr_accessor :title, :body, :views, :price, :comments_count, :meta, :published_on, :created_at, :updated_at
 
   def initialize(attrs = {})
     super()
@@ -148,10 +148,12 @@ class Post < Cybertrain::Model
     @body = nil
     @views = 0
     @price = nil
+    @comments_count = 0
     @meta = nil
     @published_on = nil
     @created_at = nil
     @updated_at = nil
+    @comments_preloaded = nil
     assign_attributes(attrs) unless attrs.empty?
   end
 
@@ -167,6 +169,7 @@ class Post < Cybertrain::Model
     @body = Cybertrain::Cast.str_or_nil(row["body"])
     @views = Cybertrain::Cast.int(row["views"])
     @price = Cybertrain::Cast.float_or_nil(row["price"])
+    @comments_count = Cybertrain::Cast.int(row["comments_count"])
     @meta = Cybertrain::Cast.hash_or_nil(row["meta"])
     @published_on = Cybertrain::Cast.date_or_nil(row["published_on"])
     @created_at = Cybertrain::Cast.time_or_nil(row["created_at"])
@@ -182,6 +185,7 @@ class Post < Cybertrain::Model
     when :body then @body
     when :views then @views
     when :price then @price
+    when :comments_count then @comments_count
     when :meta then @meta
     when :published_on then @published_on
     when :created_at then @created_at
@@ -196,6 +200,7 @@ class Post < Cybertrain::Model
     when :body then @body = Cybertrain::Cast.str_or_nil(value)
     when :views then @views = Cybertrain::Cast.int(value)
     when :price then @price = Cybertrain::Cast.float_or_nil(value)
+    when :comments_count then @comments_count = Cybertrain::Cast.int(value)
     when :meta then @meta = Cybertrain::Cast.hash_or_nil(value)
     when :published_on then @published_on = Cybertrain::Cast.date_or_nil(value)
     when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
@@ -215,6 +220,7 @@ class Post < Cybertrain::Model
       "body" => Cybertrain::Cast.to_sql(@body),
       "views" => Cybertrain::Cast.to_sql(@views),
       "price" => Cybertrain::Cast.round_scale_or_nil(@price, 2),
+      "comments_count" => Cybertrain::Cast.to_sql(@comments_count),
       "meta" => Cybertrain::Cast.json_text(@meta),
       "published_on" => Cybertrain::Cast.to_sql(@published_on),
       "created_at" => Cybertrain::Cast.to_sql(@created_at),
@@ -290,6 +296,7 @@ class Post < Cybertrain::Model
     "body" => :text,
     "views" => :integer,
     "price" => :decimal,
+    "comments_count" => :integer,
     "meta" => :json,
     "published_on" => :date,
     "created_at" => :datetime,
@@ -313,11 +320,23 @@ class Post < Cybertrain::Model
                                       returning, record_timestamps, :update, unique_by, update_only)
   end
 
-  def comments = CommentRelation.new("comments").where(post_id: @id).to_a
+  def comments = CommentRelation.new("comments").where(post_id: @id)
+
+  def destroy_dependents
+    CommentRelation.new("comments").where(post_id: @id).destroy_all
+    nil
+  end
+
+  def reset_association_caches
+    @comments_preloaded = nil
+    nil
+  end
+
+  def counter_cache_columns = ["comments_count"]
 
   def read_association(name)
     case name
-    when :comments then self.comments
+    when :comments then self.comments.to_a
     else nil
     end
   end

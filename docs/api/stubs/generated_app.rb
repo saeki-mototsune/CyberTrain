@@ -49,11 +49,15 @@
 # `class`) gets a reader named `<column>_column`, with a note in the
 # generated file; queries keep using the SQL name.
 #
-# **Associations** come from foreign keys only (`t.references :article` in a
+# **Associations** come from foreign keys (`t.references :article` in a
 # migration, or `add_reference`): the table with the key gets a `belongs_to`
 # reader ({Comment#article}), the table it points to a `has_many` reader
-# ({#comments}). There is no `has_many`/`belongs_to` to declare, and no
-# `has_one`, `:through`, `dependent:` or `includes`.
+# ({#comments}). The app/models file can declare them too, to name them or
+# add options: {Cybertrain::Model.has_many has_many} (`dependent:`),
+# {Cybertrain::Model.has_one has_one} and
+# {Cybertrain::Model.belongs_to belongs_to} (`optional:`, `counter_cache:`),
+# with `class_name:` and `foreign_key:`. There is no `:through`,
+# polymorphic association or `includes`.
 # @api public
 class Article < Cybertrain::Model
   # @!group Class methods (finders)
@@ -335,16 +339,19 @@ class Article < Cybertrain::Model
   # @api public
   def assign_attributes(attrs); end
 
-  # `has_many`, from the foreign key `comments.article_id`: this article's
-  # comments, by id. A fresh query on every call; it returns an Array, so
-  # filter with {Comment.where} instead when you need more than all of them.
-  # When two foreign keys of one table point here, each reader is named
+  # `has_many`, from the foreign key `comments.article_id` (or a
+  # `has_many :comments` line): this article's comments, as the comments'
+  # Relation, so it chains like any query and runs when rows are needed.
+  # Add `.to_a` for an Array; templates iterate it as one. When two foreign
+  # keys of one table point here, each reader is named
   # `<table>_as_<key stem>` (`messages_as_sender`).
   # @example
   #   <% @article.comments.each do |comment| %>
-  # @return [Array<Comment>]
+  #   @article.comments.where(approved: true).count
+  #   @article.comments.find(params[:id])
+  # @return [CommentRelation]
   # @api public
-  def comments = CommentRelation.new("comments").where(article_id: @id).to_a
+  def comments = CommentRelation.new("comments").where(article_id: @id)
 end
 
 # The relation `spin run gen` writes next to each model (`ArticleRelation`
@@ -657,12 +664,22 @@ class Comment < Cybertrain::Model
   # @api public
   attr_accessor :article_id
 
-  # `belongs_to`, from the foreign key `article_id`: the article, or nil
-  # when there is none. A fresh query on every call. When a column already
-  # has the name, the reader is `<stem>_as_<column>` (`author_as_author_id`).
+  # `belongs_to`, from the foreign key `article_id` (or a
+  # `belongs_to :article` line): the article, or nil when there is none. The
+  # answer is kept for the `article_id` it was read for: the next call with
+  # the same key runs no query, a changed key reads again, and
+  # {Cybertrain::Model#reload reload} forgets it. When a column already has
+  # the name, the reader is `<stem>_as_<column>` (`author_as_author_id`).
   # @return [Article, nil]
   # @api public
-  def article = Article.find_by(id: @article_id)
+  def article
+    return @article_record if @article_loaded && @article_loaded_key == @article_id
+
+    @article_record = Article.find_by(id: @article_id)
+    @article_loaded = true
+    @article_loaded_key = @article_id
+    @article_record
+  end
 end
 
 # The relation for {Comment}; the same methods as {ArticleRelation}.

@@ -7,11 +7,12 @@ require "cybertrain/generator/models_emitter"
 
 # Proves the model generator's output compiles and runs: the checked-in
 # gen/models files of the fixture app are required together with the
-# fixture's own app/models/post.rb and driven against SQLite. SQLite is FFI,
+# fixture's own app/models files and driven against SQLite. SQLite is FFI,
 # so the snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 require_relative "fixtures/gen_app/db/schema"
 require_relative "fixtures/gen_app/gen/models/comment"
 require_relative "fixtures/gen_app/gen/models/post"
+require_relative "fixtures/gen_app/app/models/comment"
 require_relative "fixtures/gen_app/app/models/post"
 
 FIXTURE = "test/fixtures/gen_app"
@@ -63,13 +64,16 @@ test "the checked-in gen/models files match the emitter (fixture stale otherwise
   end
 end
 
-test "scan_dir finds Post and its summary view method" do
+test "scan_dir finds Comment and Post, Post's summary view method and both declarations" do
   infos = Cybertrain::Gen::ModelScan.scan_dir(FIXTURE + "/app/models")
-  assert_equal 1, infos.size
-  assert_equal "Post", infos[0].class_name
-  assert_equal FIXTURE + "/app/models/post.rb", infos[0].file
-  assert_equal ["summary"], infos[0].view_methods
-  assert_equal ["recent", "min_views"], infos[0].scopes.map { |sc| sc.name }
+  assert_equal ["Comment", "Post"], infos.map { |info| info.class_name }
+  assert_equal FIXTURE + "/app/models/post.rb", infos[1].file
+  assert_equal ["summary"], infos[1].view_methods
+  assert_equal ["recent", "min_views"], infos[1].scopes.map { |sc| sc.name }
+  assert_equal ["comments"], infos[1].associations.map { |a| a.name }
+  assert_equal [:destroy], infos[1].associations.map { |a| a.dependent }
+  assert_equal ["post"], infos[0].associations.map { |a| a.name }
+  assert_equal [true], infos[0].associations.map { |a| a.counter_cache }
 end
 
 test "write_all writes every model file under gen/models" do
@@ -128,7 +132,7 @@ test "belongs_to and has_many associations" do
   Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "first")
   Comment.create(post_id: other.id, seen_on: "2026-10-05", commenter: "bob", body: "elsewhere")
   Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "cy", body: "second")
-  assert_equal ["first", "second"], post.comments.map { |c| c.body }
+  assert_equal ["first", "second"], post.comments.to_a.map { |c| c.body }
   comment = Comment.find_by(body: "second")
   assert_equal "Parent", comment.post.title
   assoc = post.read_association(:comments)
@@ -155,7 +159,7 @@ test "to_json of a generated model" do
   at = Time.utc(2026, 9, 25, 8, 0, 0)
   post = Post.create(title: "JSON", created_at: at, updated_at: at)
   expected = "{\"id\":#{post.id},\"title\":\"JSON\",\"body\":null,\"views\":0," \
-             "\"price\":null,\"meta\":null,\"published_on\":null," \
+             "\"price\":null,\"comments_count\":0,\"meta\":null,\"published_on\":null," \
              "\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
   assert_equal expected, post.to_json
   comment = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "b", created_at: at, updated_at: at)
@@ -340,6 +344,171 @@ test "scopes from app/models/post.rb run as class methods and chain on a relatio
   assert_equal ["Mid", "Old"], Post.min_views(2).recent.to_a.map { |p| p.title }
   assert_equal "Old", Post.where(title: "Old").min_views(2).first.title
   assert_equal 0, Post.min_views(6).count
+end
+
+# ---- declared associations (app/models/post.rb and comment.rb) ----------
+
+DESTROYED_COMMENT_IDS = Array.new(0) { 0 }
+
+# A comment whose body is "explode" refuses its update and its destroy
+# after the row was written, so the tests below can watch the transaction
+# roll back.
+class Comment
+  after_destroy { |c| DESTROYED_COMMENT_IDS << c.id }
+  after_update do |c|
+    body = Cybertrain::Cast.str(c.read_attribute(:body))
+    raise ArgumentError, "after_update refused" if body == "explode"
+  end
+  after_destroy do |c|
+    body = Cybertrain::Cast.str(c.read_attribute(:body))
+    raise ArgumentError, "after_destroy refused" if body == "explode"
+  end
+end
+
+def comment_on(post, body)
+  Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: body)
+end
+
+def count_on(post)
+  Post.find(post.id).comments_count
+end
+
+test "post.comments is the comments' Relation: it chains, counts and orders" do
+  reset_tables
+  post = Post.create(title: "Parent")
+  other = Post.create(title: "Other")
+  comment_on(post, "a")
+  Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "bob", body: "b", approved: true)
+  comment_on(other, "elsewhere")
+  assert_equal 2, post.comments.count
+  assert_equal 1, post.comments.where(approved: true).count
+  assert_equal ["b", "a"], post.comments.order(id: :desc).to_a.map { |c| c.body }
+  assert_equal "a", post.comments.first.body
+  assert_equal 0, Post.new.comments.count
+end
+
+test "comment.post is read once per foreign key, again when the key changes, and after reload" do
+  reset_tables
+  a = Post.create(title: "A")
+  b = Post.create(title: "B")
+  comment = comment_on(a, "c")
+  assert_equal "A", comment.post.title
+  Post.where(id: a.id).update_all(title: "A2")
+  assert_equal "A", comment.post.title
+  comment.post_id = b.id
+  assert_equal "B", comment.post.title
+  comment.post_id = a.id
+  assert_equal "A2", comment.post.title
+  Post.where(id: a.id).update_all(title: "A3")
+  comment.reload
+  assert_equal "A3", comment.post.title
+  # A key with no parent caches nil, and the next key is read again.
+  comment.post_id = b.id + 100
+  assert_nil comment.post
+  comment.post_id = b.id
+  assert_equal "B", comment.post.title
+end
+
+test "belongs_to :post without optional: validates post_id" do
+  reset_tables
+  comment = Comment.new(seen_on: "2026-10-05", commenter: "ann", body: "x")
+  refute comment.valid?
+  assert_equal ["can't be blank"], comment.errors[:post_id]
+  refute comment.save
+  assert_equal 0, Comment.count
+  comment.post_id = Post.create(title: "P").id
+  assert comment.valid?
+  assert comment.save
+end
+
+test "post.destroy destroys each of its comments (their callbacks run), then the post" do
+  reset_tables
+  DESTROYED_COMMENT_IDS.clear
+  post = Post.create(title: "Parent")
+  other = Post.create(title: "Other")
+  first = comment_on(post, "first")
+  second = comment_on(post, "second")
+  kept = comment_on(other, "kept")
+  assert post.destroy
+  refute post.persisted?
+  assert_equal [first.id, second.id], DESTROYED_COMMENT_IDS
+  assert_equal [kept.id], Comment.all.ids
+  assert_equal [other.id], Post.all.ids
+end
+
+test "a destroy that raises rolls back the post and every comment and keeps the record persisted" do
+  reset_tables
+  post = Post.create(title: "Parent")
+  comment_on(post, "first")
+  comment_on(post, "explode")
+  assert_equal "after_destroy refused", assert_raises("ArgumentError") { post.destroy }
+  assert post.persisted?
+  assert_equal 1, Post.count
+  assert_equal 2, Comment.count
+  assert_equal 2, count_on(post)
+  refute Cybertrain::DB.in_transaction?
+end
+
+test "comments_count follows create, destroy and a moved comment; the post's own save leaves it alone" do
+  reset_tables
+  a = Post.create(title: "A")
+  b = Post.create(title: "B")
+  one = comment_on(a, "one")
+  two = comment_on(a, "two")
+  assert_equal 2, count_on(a)
+  assert_equal 0, count_on(b)
+  one.post_id = b.id
+  assert one.save
+  assert_equal 1, count_on(a)
+  assert_equal 1, count_on(b)
+  one.body = "edited"
+  assert one.save
+  assert_equal 1, count_on(a)
+  assert_equal 1, count_on(b)
+  assert two.destroy
+  assert_equal 0, count_on(a)
+  # b was loaded at 0 before its comment arrived: saving it keeps the 1.
+  assert_equal 0, b.comments_count
+  b.title = "B2"
+  assert b.save
+  assert_equal 1, count_on(b)
+  assert_equal "B2", Post.find(b.id).title
+end
+
+test "two loaded copies of one comment moved to different posts leave every count right" do
+  reset_tables
+  a = Post.create(title: "A")
+  b = Post.create(title: "B")
+  c = Post.create(title: "C")
+  comment = comment_on(a, "moving")
+  first = Comment.find(comment.id)
+  second = Comment.find(comment.id)
+  first.post_id = b.id
+  assert first.save
+  second.post_id = c.id
+  assert second.save
+  assert_equal 0, count_on(a)
+  assert_equal 0, count_on(b)
+  assert_equal 1, count_on(c)
+end
+
+test "a move whose save raises inside the transaction leaves the counts and the row as they were" do
+  reset_tables
+  a = Post.create(title: "A")
+  b = Post.create(title: "B")
+  comment = comment_on(a, "fine")
+  comment.post_id = b.id
+  comment.body = "explode"
+  assert_equal "after_update refused", assert_raises("ArgumentError") { comment.save }
+  assert_equal 1, count_on(a)
+  assert_equal 0, count_on(b)
+  assert_equal a.id, Comment.find(comment.id).post_id
+  refute Cybertrain::DB.in_transaction?
+  # Inside a transaction the application opened, the save joins it.
+  comment.body = "fine"
+  Cybertrain::DB.transaction { |_c| comment.save }
+  assert_equal 0, count_on(a)
+  assert_equal 1, count_on(b)
 end
 
 Cybertrain::Test.run!

@@ -135,6 +135,12 @@ class Comment < Cybertrain::Model
   validates :seen_on, presence: true
   validates :due_on, presence: true
 
+  validates_foreign_key :post_id
+  after_create { |record| record.counter_cache_created }
+  before_update { |record| record.counter_cache_was }
+  after_update { |record| record.counter_cache_moved }
+  after_destroy { |record| record.counter_cache_destroyed }
+
   def initialize(attrs = {})
     super()
     @post_id = 0
@@ -146,6 +152,10 @@ class Comment < Cybertrain::Model
     @due_on = Cybertrain::Cast.date_or_nil("2026-01-01")
     @created_at = nil
     @updated_at = nil
+    @post_loaded = false
+    @post_loaded_key = 0
+    @post_record = nil
+    @post_id_was = 0
     assign_attributes(attrs) unless attrs.empty?
   end
 
@@ -310,7 +320,47 @@ class Comment < Cybertrain::Model
                                       returning, record_timestamps, :update, unique_by, update_only)
   end
 
-  def post = Post.find_by(id: @post_id)
+  def post
+    return @post_record if @post_loaded && @post_loaded_key == @post_id
+
+    @post_record = Post.find_by(id: @post_id)
+    @post_loaded = true
+    @post_loaded_key = @post_id
+    @post_record
+  end
+
+  def reset_association_caches
+    @post_loaded = false
+    @post_record = nil
+    nil
+  end
+
+  def counter_cached? = true
+
+  def counter_cache_created
+    PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: 1)
+    nil
+  end
+
+  def counter_cache_destroyed
+    PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: -1)
+    nil
+  end
+
+  def counter_cache_was
+    id = @id
+    found = Cybertrain::DB.with { |c| c.execute("SELECT \"post_id\" FROM \"comments\" WHERE \"id\" = ?", [id]) }
+    @post_id_was = Cybertrain::Cast.int(found.empty? ? nil : found[0]["post_id"])
+    nil
+  end
+
+  def counter_cache_moved
+    unless @post_id_was == @post_id
+      PostRelation.new("posts").where(id: @post_id_was).increment(:comments_count, by: -1)
+      PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: 1)
+    end
+    nil
+  end
 
   def read_association(name)
     case name

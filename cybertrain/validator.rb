@@ -2,7 +2,8 @@ module Cybertrain
   # One `validates` rule, kept as data: Spinel cannot define validation
   # methods at runtime, so Model#valid? walks these instead.
   class Validator
-    # kind is :presence or :length; minimum/maximum are -1 when unset.
+    # kind is :presence, :length or :foreign_key (a declared belongs_to's
+    # key: Model.validates_foreign_key); minimum/maximum are -1 when unset.
     attr_reader :attr, :kind, :minimum, :maximum, :allow_blank
 
     def initialize(attr, kind, minimum = -1, maximum = -1, allow_blank = false)
@@ -21,6 +22,9 @@ module Cybertrain
       case @kind
       when :presence
         record.errors.add(@attr, "can't be blank") if blank
+      when :foreign_key
+        # 0 is the id of no saved record (Model#id before the first save).
+        record.errors.add(@attr, "can't be blank") if blank || value == 0
       when :length
         # nil is left to a presence rule, as `length` alone allows it.
         return nil if value.nil?

@@ -73,6 +73,7 @@ test "manifest for the fixture app" do
     require_relative "components"
     require_relative "console"
     require_relative "controllers"
+    require_relative "../app/models/comment"
     require_relative "../app/models/post"
     require_relative "../app/controllers/application_controller"
     require_relative "../app/controllers/comments_controller"

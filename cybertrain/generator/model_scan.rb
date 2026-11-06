@@ -4,13 +4,36 @@ module Cybertrain
   module Gen
     # What the model generator needs to know about one app/models/*.rb file.
     class ModelInfo
-      attr_reader :file, :class_name, :view_methods, :scopes
+      attr_reader :file, :class_name, :view_methods, :scopes, :associations
 
-      def initialize(file, class_name, view_methods, scopes)
+      def initialize(file, class_name, view_methods, scopes, associations)
         @file = file
         @class_name = class_name
         @view_methods = view_methods
         @scopes = scopes
+        @associations = associations
+      end
+    end
+
+    # One `has_many` / `has_one` / `belongs_to` line of a model file (spec
+    # section 7.1). `kind` is :has_many, :has_one or :belongs_to; `class_name`
+    # and `foreign_key` are "" when the line does not give them (the emitter
+    # infers them); `dependent` is :destroy, :delete_all, :nullify or :none;
+    # `optional` and `counter_cache` are belongs_to's (false elsewhere);
+    # `file` and `line` place the error messages.
+    class AssociationInfo
+      attr_reader :file, :kind, :name, :class_name, :foreign_key, :dependent, :optional, :counter_cache, :line
+
+      def initialize(file, kind, name, class_name, foreign_key, dependent, optional, counter_cache, line)
+        @file = file
+        @kind = kind
+        @name = name
+        @class_name = class_name
+        @foreign_key = foreign_key
+        @dependent = dependent
+        @optional = optional
+        @counter_cache = counter_cache
+        @line = line
       end
     end
 
@@ -69,7 +92,7 @@ module Cybertrain
         all create create! from_row table_name column_names new name class
         validates before_validation before_save after_save before_create after_create before_update
         after_update before_destroy after_destroy add_model_callback validators_for callbacks_for now_string
-        transaction upsert upsert_into scope
+        transaction upsert upsert_into scope has_many has_one belongs_to validates_foreign_key
         insert_all insert_all! upsert_all insert_all_into no_decimal_scales no_encrypted_columns bulk_method_name
         bulk_empty_row bulk_column bulk_columns bulk_cells bulk_bind bulk_conflict_sql bulk_returned_row
         hash inspect to_s then raise fail
@@ -96,6 +119,11 @@ module Cybertrain
       # in source order (scope_on). A `scope` line of any other shape, or a
       # scope named like a Relation method (RESERVED_SCOPE_NAMES) or like an
       # earlier scope, raises Error with the file and line.
+      #
+      # associations are the class-level `has_many`, `has_one` and
+      # `belongs_to` lines, in source order (association_on): one line each,
+      # literal options only; any other shape raises Error with the file and
+      # line.
       def self.scan_source(file, source)
         class_name = ""
         class_indent = -1
@@ -106,6 +134,7 @@ module Cybertrain
         def_indent = -1
         methods = Array.new(0) { "" }
         scopes = Array.new(0) { ScopeInfo.new("", "", "", "", 0) }
+        associations = Array.new(0) { AssociationInfo.new("", :has_many, "", "", "", :none, false, false, 0) }
         in_private = false
         lineno = 0
         source.each_line do |raw|
@@ -127,6 +156,8 @@ module Cybertrain
             skip_indent = indent unless one_line_block?(line)
           elsif def_indent < 0 && scope_line?(line)
             scopes << scope_on(file, line, lineno, scopes)
+          elsif def_indent < 0 && association_kind(line) != ""
+            associations << association_on(file, line, lineno, associations)
           elsif line == "private" || line == "protected"
             in_private = true
           elsif line == "public"
@@ -139,7 +170,165 @@ module Cybertrain
         end
         return nil if class_name == ""
 
-        ModelInfo.new(file, class_name, methods, scopes)
+        ModelInfo.new(file, class_name, methods, scopes, associations)
+      end
+
+      # "has_many", "has_one" or "belongs_to" when the line calls that macro
+      # (the macro's name, then a Symbol: `has_many :x`, or `has_many(:x`,
+      # which association_on refuses), else "". `has_many = 1` or
+      # `belongs_to.x` are plain code.
+      def self.association_kind(line)
+        ["has_many", "has_one", "belongs_to"].each do |kind|
+          next unless line.start_with?(kind + " ") || line.start_with?(kind + "(")
+
+          rest = line[kind.size, line.size - kind.size].lstrip
+          rest = rest[1, rest.size - 1].lstrip if rest.start_with?("(")
+          return kind if rest.start_with?(":")
+        end
+        ""
+      end
+
+      # The options each macro takes, in the order the messages list them.
+      def self.association_options(kind)
+        return ["class_name", "foreign_key", "optional", "counter_cache"] if kind == "belongs_to"
+
+        ["dependent", "class_name", "foreign_key"]
+      end
+
+      # The AssociationInfo of a macro line; raises Error unless it is
+      # `kind :name` followed by `, option: literal` pairs on one line, each
+      # option one the macro takes (association_options), given once, with a
+      # value of its type, and the name free among `earlier`.
+      def self.association_on(file, line, lineno, earlier)
+        kind = association_kind(line)
+        at = "#{file}:#{lineno}: "
+        shape = at + "#{kind} must be one line with literal options: #{kind} :name, option: value, ..."
+        rest = line[kind.size, line.size - kind.size].lstrip
+        raise Error, shape unless rest.start_with?(":")
+
+        name = word_at(rest, 1)
+        raise Error, shape if name == "" || (name[0] >= "0" && name[0] <= "9")
+
+        what = at + "#{kind} :#{name}: "
+        rest = rest[name.size + 1, rest.size - name.size - 1].lstrip
+        class_name = ""
+        foreign_key = ""
+        dependent = :none
+        optional = false
+        counter_cache = false
+        seen = Array.new(0) { "" }
+        while rest != ""
+          raise Error, shape unless rest.start_with?(",")
+
+          rest = rest[1, rest.size - 1].lstrip
+          key = word_at(rest, 0)
+          raise Error, shape if key == "" || rest[key.size, 1] != ":"
+
+          rest = rest[key.size + 1, rest.size - key.size - 1].lstrip
+          size = literal_size(rest)
+          raise Error, shape if size <= 0
+
+          value = rest[0, size]
+          rest = rest[size, rest.size - size].lstrip
+          raise Error, shape unless rest == "" || rest.start_with?(",")
+
+          allowed = association_options(kind)
+          unless allowed.include?(key)
+            raise Error, what + "unknown option #{key}: (#{kind} takes #{allowed.map { |o| o + ":" }.join(", ")})"
+          end
+          raise Error, what + "#{key}: is given twice" if seen.include?(key)
+
+          seen << key
+          text = literal_text(value)
+          if key == "dependent"
+            unless value.start_with?(":") && (text == "destroy" || text == "delete_all" || text == "nullify")
+              raise Error, what + "dependent: takes :destroy, :delete_all or :nullify (got #{value})"
+            end
+
+            dependent = text.to_sym
+          elsif key == "optional" || key == "counter_cache"
+            raise Error, what + "#{key}: takes true or false (got #{value})" unless value == "true" || value == "false"
+
+            optional = value == "true" if key == "optional"
+            counter_cache = value == "true" if key == "counter_cache"
+          elsif key == "class_name"
+            unless (value.start_with?(":") || quoted_literal?(value)) && constant_name?(text)
+              raise Error, what + "class_name: takes a model name (got #{value})"
+            end
+
+            class_name = text
+          else
+            unless (value.start_with?(":") || quoted_literal?(value)) && Ident.column?(text)
+              raise Error, what + "foreign_key: takes a column name (got #{value})"
+            end
+
+            foreign_key = text
+          end
+        end
+        earlier.each do |a|
+          next unless a.name == name
+
+          raise Error, what + "an association named #{name} is already declared on line #{a.line}"
+        end
+        AssociationInfo.new(file, kind.to_sym, name, class_name, foreign_key, dependent, optional, counter_cache, lineno)
+      end
+
+      # The identifier (word characters) of `text` from index `from`.
+      def self.word_at(text, from)
+        name = +""
+        i = from
+        while i < text.size
+          ch = text[i, 1]
+          break unless word_char?(ch)
+
+          name << ch
+          i += 1
+        end
+        name
+      end
+
+      # The length of the literal option value at the start of `text`: a
+      # Symbol (`:word`), a String without escapes or interpolation
+      # (`"..."`, `'...'`), `true` or `false`; 0 when there is none.
+      def self.literal_size(text)
+        if text.start_with?(":")
+          word = word_at(text, 1)
+          return word == "" ? 0 : word.size + 1
+        end
+        if text.start_with?("\"") || text.start_with?("'")
+          quote = text[0, 1]
+          i = 1
+          while i < text.size
+            ch = text[i, 1]
+            return 0 if ch == "\\" || (quote == "\"" && ch == "#" && text[i + 1, 1] == "{")
+            return i + 1 if ch == quote
+
+            i += 1
+          end
+          return 0
+        end
+        word = word_at(text, 0)
+        word == "true" || word == "false" ? word.size : 0
+      end
+
+      # A literal's text: a Symbol's name, a String's contents, else itself.
+      def self.literal_text(value)
+        return value[1, value.size - 1] if value.start_with?(":")
+        return value[1, value.size - 2] if quoted_literal?(value)
+
+        value
+      end
+
+      def self.quoted_literal?(value)
+        value.start_with?("\"") || value.start_with?("'")
+      end
+
+      # "Comment", "BlogPost": a capital letter, then word characters.
+      def self.constant_name?(text)
+        return false if text == "" || !(text[0] >= "A" && text[0] <= "Z")
+
+        text.each_char { |ch| return false unless word_char?(ch) }
+        true
       end
 
       # A line calling the `scope` macro: `scope` then a Symbol, `scope :x,
@@ -317,7 +506,7 @@ module Cybertrain
 
       # Every app/models/*.rb under `dir` that defines a class, sorted by file.
       def self.scan_dir(dir)
-        infos = Array.new(0) { ModelInfo.new("", "", [], []) }
+        infos = Array.new(0) { ModelInfo.new("", "", [], [], []) }
         Dir.glob(dir + "/*.rb").sort.each do |path|
           info = scan_source(path, File.read(path))
           infos << info unless info.nil?

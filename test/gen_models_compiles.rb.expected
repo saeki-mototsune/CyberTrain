@@ -1,5 +1,5 @@
 ok   the checked-in gen/models files match the emitter (fixture stale otherwise)
-ok   scan_dir finds Post and its summary view method
+ok   scan_dir finds Comment and Post, Post's summary view method and both declarations
 ok   write_all writes every model file under gen/models
 ok   create and find through the generated classes
 ok   column defaults become initial values and reach the database
@@ -17,4 +17,12 @@ ok   a NOT NULL date: invalid assigned text stays nil and the save fails validat
 ok   a NOT NULL date with a default: a fresh record holds the default, invalid text fails validation
 ok   update_all rounds a decimal to its scale as save does, and nil stores NULL
 ok   scopes from app/models/post.rb run as class methods and chain on a relation
-19 tests, 128 assertions, 0 failures
+ok   post.comments is the comments' Relation: it chains, counts and orders
+ok   comment.post is read once per foreign key, again when the key changes, and after reload
+ok   belongs_to :post without optional: validates post_id
+ok   post.destroy destroys each of its comments (their callbacks run), then the post
+ok   a destroy that raises rolls back the post and every comment and keeps the record persisted
+ok   comments_count follows create, destroy and a moved comment; the post's own save leaves it alone
+ok   two loaded copies of one comment moved to different posts leave every count right
+ok   a move whose save raises inside the transaction leaves the counts and the row as they were
+27 tests, 188 assertions, 0 failures

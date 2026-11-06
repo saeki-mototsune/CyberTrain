@@ -189,6 +189,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
         @body = nil
         @created_at = nil
         @updated_at = nil
+        @comments_preloaded = nil
         assign_attributes(attrs) unless attrs.empty?
       end
 
@@ -328,11 +329,16 @@ EXPECTED_POST = HEADER + <<~'RUBY'
                                           returning, record_timestamps, :update, unique_by, update_only)
       end
 
-      def comments = CommentRelation.new("comments").where(post_id: @id).to_a
+      def comments = CommentRelation.new("comments").where(post_id: @id)
+
+      def reset_association_caches
+        @comments_preloaded = nil
+        nil
+      end
 
       def read_association(name)
         case name
-        when :comments then self.comments
+        when :comments then self.comments.to_a
         else nil
         end
       end
@@ -484,6 +490,9 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
         @body = ""
         @created_at = nil
         @updated_at = nil
+        @post_loaded = false
+        @post_loaded_key = 0
+        @post_record = nil
         assign_attributes(attrs) unless attrs.empty?
       end
 
@@ -628,7 +637,20 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
                                           returning, record_timestamps, :update, unique_by, update_only)
       end
 
-      def post = Post.find_by(id: @post_id)
+      def post
+        return @post_record if @post_loaded && @post_loaded_key == @post_id
+
+        @post_record = Post.find_by(id: @post_id)
+        @post_loaded = true
+        @post_loaded_key = @post_id
+        @post_record
+      end
+
+      def reset_association_caches
+        @post_loaded = false
+        @post_record = nil
+        nil
+      end
 
       def read_association(name)
         case name
@@ -980,13 +1002,13 @@ test "casts per column follow type and null" do
 end
 
 test "def post (belongs_to) and def comments (has_many)" do
-  assert_lines(emit_for("comments"), ["def post = Post.find_by(id: @post_id)"])
-  assert_lines(emit_for("posts"), ['def comments = CommentRelation.new("comments").where(post_id: @id).to_a'])
-  refute_line(emit_for("flags"), "def post = Post.find_by(id: @post_id)")
+  assert_lines(emit_for("comments"), ["def post", "@post_record = Post.find_by(id: @post_id)"])
+  assert_lines(emit_for("posts"), ['def comments = CommentRelation.new("comments").where(post_id: @id)'])
+  refute_line(emit_for("flags"), "@post_record = Post.find_by(id: @post_id)")
 end
 
 test "read_association case covers belongs_to and has_many" do
-  assert_lines(emit_for("posts"), ["def read_association(name)", "when :comments then self.comments"])
+  assert_lines(emit_for("posts"), ["def read_association(name)", "when :comments then self.comments.to_a"])
   assert_lines(emit_for("comments"), ["def read_association(name)", "when :post then self.post"])
   assert_lines(emit_for("flags"), ["def read_association(name) = nil"])
 end
@@ -1495,7 +1517,7 @@ test "an association cannot land on the renamed reader of a reserved column" do
   assert_lines(file, [
     "attr_accessor :hash_column",
     '# has_many hash_column reads as hash_column_as_file: "hash_column" is a column, another association or a Cybertrain::Model method',
-    'def hash_column_as_file = HashColumnRelation.new("hash_column").where(file_id: @id).to_a'
+    'def hash_column_as_file = HashColumnRelation.new("hash_column").where(file_id: @id)'
   ])
   refute file.include?("def hash_column = ")
 end
@@ -1518,9 +1540,9 @@ test "an association reader named like an Object method keeps its name and gets 
   post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [], [])
   assert_lines(post, [
     '# NOTE: belongs_to reader "send" shadows Object#send on this model (nothing in Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)',
-    "def send = User.find_by(id: @send_id)",
+    "def send", "@send_record = User.find_by(id: @send_id)",
     '# NOTE: has_many reader "methods" shadows Object#methods on this model (nothing in Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)',
-    'def methods = MethodRelation.new("methods").where(post_id: @id).to_a'
+    'def methods = MethodRelation.new("methods").where(post_id: @id)'
   ])
 end
 
@@ -1536,7 +1558,7 @@ test "a capitalised foreign key gets a capitalised reader, dispatched with an ex
   end
   post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [], [])
   # Bare, `Author` would be a constant lookup; `self.Author` is the reader.
-  assert_lines(post, ["def Author = User.find_by(id: @Author_id)", "when :Author then self.Author"])
+  assert_lines(post, ["def Author", "@Author_record = User.find_by(id: @Author_id)", "when :Author then self.Author"])
 end
 
 test "an association named like a Model method moves to its fallback name instead of shadowing it" do
@@ -1560,15 +1582,15 @@ test "an association named like a Model method moves to its fallback name instea
   post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [], [])
   assert_lines(post, [
     '# has_many errors reads as errors_as_post: "errors" is a column, another association or a Cybertrain::Model method',
-    'def errors_as_post = ErrorRelation.new("errors").where(post_id: @id).to_a',
-    "when :errors_as_post then self.errors_as_post"
+    'def errors_as_post = ErrorRelation.new("errors").where(post_id: @id)',
+    "when :errors_as_post then self.errors_as_post.to_a"
   ])
   refute post.include?("def errors ")
   # Thing#hash stays Object#hash; the belongs_to takes <stem>_as_<column>.
   thing = Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [], [])
   assert_lines(thing, [
     '# belongs_to hash_id reads as hash_as_hash_id: "hash" is a column, another association or a Cybertrain::Model method',
-    "def hash_as_hash_id = Hash.find_by(id: @hash_id)",
+    "def hash_as_hash_id", "@hash_as_hash_id_record = Hash.find_by(id: @hash_id)",
     "when :hash_as_hash_id then self.hash_as_hash_id"
   ])
   refute thing.include?("def hash ")
@@ -1587,7 +1609,7 @@ test "an association named like a Ruby keyword moves to its fallback name and th
   lesson = Cybertrain::Gen::ModelsEmitter.emit(definition.table("lessons"), definition, [], [])
   assert_lines(lesson, [
     '# belongs_to class_id reads as class_as_class_id: "class" is a Ruby keyword',
-    "def class_as_class_id = Klass.find_by(id: @class_id)"
+    "def class_as_class_id", "@class_as_class_id_record = Klass.find_by(id: @class_id)"
   ])
   refute lesson.include?("Cybertrain::Model method")
 end
@@ -1617,8 +1639,8 @@ test "a column named like an association reader keeps its name; the association 
   assert_lines(article, [
     "attr_accessor :title, :comments",
     '# has_many comments reads as comments_as_article: "comments" is a column, another association or a Cybertrain::Model method',
-    'def comments_as_article = CommentRelation.new("comments").where(article_id: @id).to_a',
-    "when :comments_as_article then self.comments_as_article"
+    'def comments_as_article = CommentRelation.new("comments").where(article_id: @id)',
+    "when :comments_as_article then self.comments_as_article.to_a"
   ])
   refute article.include?("def comments ")
   # comments.article (a string column) next to comments.article_id: the
@@ -1628,7 +1650,7 @@ test "a column named like an association reader keeps its name; the association 
   assert_lines(comment, [
     "attr_accessor :article_id, :article",
     '# belongs_to article_id reads as article_as_article_id: "article" is a column, another association or a Cybertrain::Model method',
-    "def article_as_article_id = Article.find_by(id: @article_id)",
+    "def article_as_article_id", "@article_as_article_id_record = Article.find_by(id: @article_id)",
     "when :article_as_article_id then self.article_as_article_id"
   ])
   refute comment.include?("def article ")
@@ -1655,8 +1677,8 @@ test "a has_many through two foreign keys whose _as_<stem> name is taken falls b
   user = Cybertrain::Gen::ModelsEmitter.emit(definition.table("users"), definition, [], [])
   assert_lines(user, [
     '# has_many messages reads as messages_as_sender_id: "messages_as_sender" is a column, another association or a Cybertrain::Model method',
-    'def messages_as_sender_id = MessageRelation.new("messages").where(sender_id: @id).to_a',
-    'def messages_as_recipient = MessageRelation.new("messages").where(recipient_id: @id).to_a'
+    'def messages_as_sender_id = MessageRelation.new("messages").where(sender_id: @id)',
+    'def messages_as_recipient = MessageRelation.new("messages").where(recipient_id: @id)'
   ])
 end
 
@@ -1675,11 +1697,11 @@ test "a has_many named like a belongs_to reader of the same model is renamed, no
   end
   post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [], [])
   assert_lines(post, [
-    "def comments = Comment.find_by(id: @comments_id)",
+    "def comments", "@comments_record = Comment.find_by(id: @comments_id)",
     '# has_many comments reads as comments_as_post: "comments" is a column, another association or a Cybertrain::Model method',
-    'def comments_as_post = CommentRelation.new("comments").where(post_id: @id).to_a',
+    'def comments_as_post = CommentRelation.new("comments").where(post_id: @id)',
     "when :comments then self.comments",
-    "when :comments_as_post then self.comments_as_post"
+    "when :comments_as_post then self.comments_as_post.to_a"
   ])
 end
 
@@ -1722,15 +1744,15 @@ test "a nullable foreign key and a foreign key to a differently named column" do
   end
   article = Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [], [])
   assert_lines(article, [
-    "def writer = Person.find_by(id: @writer_id)",
+    "def writer", "@writer_record = Person.find_by(id: @writer_id)",
     "when :writer then self.writer",
     '@editor_id = Cybertrain::Cast.int_or_nil(row["editor_id"])'
   ])
-  refute_line(article, "def editor = Editor.find_by(id: @editor_id)")
+  refute_line(article, "@editor_record = Editor.find_by(id: @editor_id)")
   person = Cybertrain::Gen::ModelsEmitter.emit(definition.table("people"), definition, [], [])
   assert_lines(person, [
-    'def articles = ArticleRelation.new("articles").where(writer_id: @id).to_a',
-    "when :articles then self.articles",
+    'def articles = ArticleRelation.new("articles").where(writer_id: @id)',
+    "when :articles then self.articles.to_a",
     "class PersonRelation < Cybertrain::Relation",
     'raise Cybertrain::RecordNotFound, "Couldn\'t find Person with id=#{id}" if rec.nil?'
   ])
@@ -1754,18 +1776,18 @@ test "two foreign keys to one table get distinct has_many names" do
   end
   user = Cybertrain::Gen::ModelsEmitter.emit(definition.table("users"), definition, [], [])
   assert_lines(user, [
-    'def messages_as_sender = MessageRelation.new("messages").where(sender_id: @id).to_a',
-    'def messages_as_recipient = MessageRelation.new("messages").where(recipient_id: @id).to_a',
-    'def posts = PostRelation.new("posts").where(user_id: @id).to_a',
-    "when :messages_as_sender then self.messages_as_sender",
-    "when :messages_as_recipient then self.messages_as_recipient",
-    "when :posts then self.posts"
+    'def messages_as_sender = MessageRelation.new("messages").where(sender_id: @id)',
+    'def messages_as_recipient = MessageRelation.new("messages").where(recipient_id: @id)',
+    'def posts = PostRelation.new("posts").where(user_id: @id)',
+    "when :messages_as_sender then self.messages_as_sender.to_a",
+    "when :messages_as_recipient then self.messages_as_recipient.to_a",
+    "when :posts then self.posts.to_a"
   ])
   refute_line(user, "when :messages then self.messages")
   message = Cybertrain::Gen::ModelsEmitter.emit(definition.table("messages"), definition, [], [])
   assert_lines(message, [
-    "def sender = User.find_by(id: @sender_id)",
-    "def recipient = User.find_by(id: @recipient_id)"
+    "def sender", "@sender_record = User.find_by(id: @sender_id)",
+    "def recipient", "@recipient_record = User.find_by(id: @recipient_id)"
   ])
 end
 
@@ -1773,7 +1795,7 @@ test "view methods that collide with columns or associations are skipped" do
   post = emit_for("posts", ["title", "comments", "summary", "published?"])
   assert_lines(post, ["when :summary then self.summary", "when :published? then self.published?"])
   refute_line(post, "when :title then self.title")
-  assert_equal 1, post.lines.count { |l| l.strip == "when :comments then self.comments" }
+  assert_equal 1, post.lines.count { |l| l.strip == "when :comments then self.comments.to_a" }
 end
 
 # ---- ModelScan -------------------------------------------------------------
@@ -1872,8 +1894,8 @@ end
 
 test "view_methods_for picks the scanned methods of one model" do
   list = [
-    Cybertrain::Gen::ModelInfo.new("comment.rb", "Comment", ["short"], []),
-    Cybertrain::Gen::ModelInfo.new("post.rb", "Post", ["summary"], [])
+    Cybertrain::Gen::ModelInfo.new("comment.rb", "Comment", ["short"], [], []),
+    Cybertrain::Gen::ModelInfo.new("post.rb", "Post", ["summary"], [], [])
   ]
   assert_equal ["summary"], Cybertrain::Gen::ModelsEmitter.view_methods_for("Post", list)
   assert_equal [], Cybertrain::Gen::ModelsEmitter.view_methods_for("Tag", list)
@@ -2093,6 +2115,360 @@ test "a scope named like a column raises" do
     info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  scope :#{col}, -> { limit(1) }\nend\n")
     assert_includes assert_raises("ModelScan::Error") { emit_for("posts", [], info.scopes) }, "clashes with the column #{col}"
   end
+end
+
+# ---- declared associations -------------------------------------------------
+
+def assoc_schema
+  Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "users" do |t|
+      t.string "name", null: false
+    end
+    s.create_table "profiles" do |t|
+      t.references :user, null: true
+      t.string "bio"
+    end
+    s.create_table "posts" do |t|
+      t.references :user, null: true
+      t.string "title", null: false
+      t.integer "comments_count", null: false, default: "0"
+    end
+    s.create_table "comments" do |t|
+      t.references :post
+      t.integer "editor_id"
+      t.text "body", null: false
+    end
+  end
+end
+
+ASSOC_USER_SOURCE = <<~'SRC'
+  class User
+    has_one :profile, dependent: :destroy
+    has_many :posts, dependent: :nullify
+  end
+SRC
+
+ASSOC_POST_SOURCE = <<~'SRC'
+  class Post
+    validates :title, presence: true
+    belongs_to :user, optional: true
+    has_many :comments, dependent: :delete_all
+
+    def summary = title[0, 3]
+  end
+SRC
+
+ASSOC_COMMENT_SOURCE = <<~'SRC'
+  class Comment
+    belongs_to :post, counter_cache: true
+    belongs_to :editor, class_name: "User", optional: true
+  end
+SRC
+
+def assoc_infos(post = ASSOC_POST_SOURCE, comment = ASSOC_COMMENT_SOURCE, user = ASSOC_USER_SOURCE)
+  [Cybertrain::Gen::ModelScan.scan_source("app/models/comment.rb", comment),
+   Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", post),
+   Cybertrain::Gen::ModelScan.scan_source("app/models/user.rb", user)]
+end
+
+# The key in a local before the outputs exist (NOTES rule 65: a receiver
+# is not rooted while a later argument allocates).
+def assoc_emit(name, infos = assoc_infos)
+  key = "gen/models/#{name}.rb"
+  outputs = Cybertrain::Gen::ModelsEmitter.outputs(assoc_schema, infos)
+  outputs[key]
+end
+
+test "scan_source reads has_many, has_one and belongs_to lines with their literal options" do
+  source = <<~'SRC'
+    class Post
+      has_many :comments, dependent: :destroy, class_name: "Comment", foreign_key: :article_id
+      has_one :cover, class_name: :Image, dependent: :nullify
+      belongs_to :author, class_name: 'User', foreign_key: "writer_id", optional: true, counter_cache: true
+      belongs_to :blog
+
+      def has_many = 1
+
+      private
+
+      has_many :tags, dependent: :delete_all
+    end
+  SRC
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source)
+  a = info.associations
+  assert_equal [:has_many, :has_one, :belongs_to, :belongs_to, :has_many], a.map { |x| x.kind }
+  assert_equal ["comments", "cover", "author", "blog", "tags"], a.map { |x| x.name }
+  assert_equal ["Comment", "Image", "User", "", ""], a.map { |x| x.class_name }
+  assert_equal ["article_id", "", "writer_id", "", ""], a.map { |x| x.foreign_key }
+  assert_equal [:destroy, :nullify, :none, :none, :delete_all], a.map { |x| x.dependent }
+  assert_equal [false, false, true, false, false], a.map { |x| x.optional }
+  assert_equal [false, false, true, false, false], a.map { |x| x.counter_cache }
+  assert_equal [2, 3, 4, 5, 11], a.map { |x| x.line }
+  assert_equal ["app/models/post.rb"], a.map { |x| x.file }.uniq
+  assert_equal ["has_many"], info.view_methods
+  assert_equal [], Cybertrain::Gen::ModelScan.scan_source("c.rb", "class Comment\nend\n").associations
+end
+
+test "an association macro inside a method body, or not followed by a Symbol, is plain code" do
+  source = "class Post\n  def x\n    has_many :nope\n  end\n  has_many = 1\n  belongs_to.foo\n  has_one :cover\nend\n"
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source)
+  assert_equal ["cover"], info.associations.map { |x| x.name }
+end
+
+def association_error(line)
+  assert_raises("ModelScan::Error") do
+    Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  def summary = 1\n  #{line}\nend\n")
+  end
+end
+
+test "an association line that is not one line of literal options raises with the file and line" do
+  shapes = {
+    "has_many(:comments)" => "has_many",
+    "has_many :comments, -> { order(:id) }" => "has_many",
+    "has_many :comments," => "has_many",
+    "has_many :comments, dependent:" => "has_many",
+    "has_many :comments, class_name:, foreign_key: :x" => "has_many",
+    "has_many :comments, dependent: :destroy # newest first" => "has_many",
+    "has_many :comments, class_name: KLASS" => "has_many",
+    "has_many :comments, class_name: \"C\#{x}\"" => "has_many",
+    "has_many :comments do" => "has_many",
+    "has_many :1x" => "has_many",
+    "has_one :profile, dependent: :destroy; has_one :x" => "has_one",
+    "belongs_to :author, optional: true," => "belongs_to",
+    "belongs_to :author, optional: maybe" => "belongs_to"
+  }
+  shapes.each do |line, kind|
+    assert_equal "app/models/post.rb:3: #{kind} must be one line with literal options: " \
+                 "#{kind} :name, option: value, ...", association_error(line)
+  end
+end
+
+test "an unknown option, a wrong value or a repeated association raises with the file and line" do
+  assert_equal "app/models/post.rb:3: has_many :comments: unknown option through: (has_many takes dependent:, " \
+               "class_name:, foreign_key:)", association_error("has_many :comments, through: :posts")
+  assert_equal "app/models/post.rb:3: has_many :comments: unknown option counter_cache: (has_many takes " \
+               "dependent:, class_name:, foreign_key:)", association_error("has_many :comments, counter_cache: true")
+  assert_equal "app/models/post.rb:3: has_one :cover: unknown option optional: (has_one takes dependent:, " \
+               "class_name:, foreign_key:)", association_error("has_one :cover, optional: true")
+  assert_equal "app/models/post.rb:3: belongs_to :blog: unknown option dependent: (belongs_to takes class_name:, " \
+               "foreign_key:, optional:, counter_cache:)", association_error("belongs_to :blog, dependent: :destroy")
+  assert_equal "app/models/post.rb:3: belongs_to :blog: unknown option polymorphic: (belongs_to takes " \
+               "class_name:, foreign_key:, optional:, counter_cache:)", association_error("belongs_to :blog, polymorphic: true")
+  assert_equal "app/models/post.rb:3: has_many :comments: dependent: takes :destroy, :delete_all or :nullify " \
+               "(got :restrict_with_error)", association_error("has_many :comments, dependent: :restrict_with_error")
+  assert_equal "app/models/post.rb:3: has_many :comments: dependent: takes :destroy, :delete_all or :nullify " \
+               "(got \"destroy\")", association_error("has_many :comments, dependent: \"destroy\"")
+  assert_equal "app/models/post.rb:3: belongs_to :blog: optional: takes true or false (got :yes)",
+               association_error("belongs_to :blog, optional: :yes")
+  assert_equal "app/models/post.rb:3: belongs_to :blog: counter_cache: takes true or false (got :blog_count)",
+               association_error("belongs_to :blog, counter_cache: :blog_count")
+  assert_equal "app/models/post.rb:3: has_many :comments: class_name: takes a model name (got true)",
+               association_error("has_many :comments, class_name: true")
+  assert_equal "app/models/post.rb:3: has_many :comments: class_name: takes a model name (got \"\")",
+               association_error("has_many :comments, class_name: \"\"")
+  assert_equal "app/models/post.rb:3: has_many :comments: foreign_key: takes a column name (got \"post id\")",
+               association_error("has_many :comments, foreign_key: \"post id\"")
+  assert_equal "app/models/post.rb:3: has_many :comments: dependent: is given twice",
+               association_error("has_many :comments, dependent: :destroy, dependent: :nullify")
+  source = "class Post\n  has_many :comments\n\n  has_one :comments\nend\n"
+  msg = assert_raises("ModelScan::Error") { Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source) }
+  assert_equal "app/models/post.rb:4: has_one :comments: an association named comments is already declared on line 2", msg
+end
+
+test "a declared has_many returns the model's Relation; read_association turns it into an Array" do
+  post = assoc_emit("post")
+  assert_lines(post, [
+    'def comments = CommentRelation.new("comments").where(post_id: @id)',
+    "@comments_preloaded = nil",
+    "when :comments then self.comments.to_a"
+  ])
+  # User: posts.user_id is a schema foreign key and the declaration names it.
+  user = assoc_emit("user")
+  assert_lines(user, ['def posts = PostRelation.new("posts").where(user_id: @id)', "when :posts then self.posts.to_a"])
+  assert_equal 1, user.lines.count { |l| l.include?("def posts") }
+end
+
+test "a declared belongs_to caches its parent keyed by the foreign key; a nullable key answers nil without a query" do
+  comment = assoc_emit("comment")
+  assert_includes comment, indent_body(<<~'RUBY')
+    def post
+      return @post_record if @post_loaded && @post_loaded_key == @post_id
+
+      @post_record = Post.find_by(id: @post_id)
+      @post_loaded = true
+      @post_loaded_key = @post_id
+      @post_record
+    end
+  RUBY
+  # comments.editor_id has no schema foreign key: the declaration alone
+  # makes the reader, with class_name.
+  assert_includes comment, indent_body(<<~'RUBY')
+    def editor
+      return nil if @editor_id.nil?
+      return @editor_record if @editor_loaded && @editor_loaded_key == @editor_id
+
+      @editor_record = User.find_by(id: @editor_id)
+      @editor_loaded = true
+      @editor_loaded_key = Cybertrain::Cast.int(@editor_id)
+      @editor_record
+    end
+  RUBY
+  assert_lines(comment, ["@post_loaded = false", "@post_loaded_key = 0", "@post_record = nil",
+                         "@editor_loaded = false", "@editor_loaded_key = 0", "@editor_record = nil",
+                         "when :post then self.post", "when :editor then self.editor"])
+end
+
+test "a declared has_one reads the preload cache, else queries by the owner's id" do
+  user = assoc_emit("user")
+  assert_includes user, indent_body(<<~'RUBY')
+    def profile
+      return @profile_record if @profile_loaded
+
+      Profile.find_by(user_id: @id)
+    end
+  RUBY
+  assert_lines(user, ["@profile_loaded = false", "@profile_record = nil", "when :profile then self.profile"])
+  # has_one on profiles.user_id suppresses the has_many the foreign key gives.
+  refute_line(user, 'def profiles = ProfileRelation.new("profiles").where(user_id: @id)')
+end
+
+test "reset_association_caches clears every cache; reload calls it" do
+  comment = assoc_emit("comment")
+  assert_includes comment, "  def reset_association_caches\n    @post_loaded = false\n    @post_record = nil\n" \
+                           "    @editor_loaded = false\n    @editor_record = nil\n    nil\n  end\n"
+  user = assoc_emit("user")
+  assert_includes user, "  def reset_association_caches\n    @profile_loaded = false\n    @profile_record = nil\n" \
+                        "    @posts_preloaded = nil\n    nil\n  end\n"
+end
+
+test "dependent: destroy, delete_all and nullify become destroy_dependents" do
+  user = assoc_emit("user")
+  assert_includes user, "  def destroy_dependents\n" \
+                        "    ProfileRelation.new(\"profiles\").where(user_id: @id).destroy_all\n" \
+                        "    PostRelation.new(\"posts\").where(user_id: @id).update_all(user_id: nil)\n" \
+                        "    nil\n  end\n"
+  post = assoc_emit("post")
+  assert_includes post, "  def destroy_dependents\n" \
+                        "    CommentRelation.new(\"comments\").where(post_id: @id).delete_all\n    nil\n  end\n"
+  destroying = ASSOC_POST_SOURCE.sub("dependent: :delete_all", "dependent: :destroy")
+  assert_lines(assoc_emit("post", assoc_infos(destroying)), ['CommentRelation.new("comments").where(post_id: @id).destroy_all'])
+  # No dependent: no destroy_dependents (Model's stub; the database's key decides).
+  refute_line(assoc_emit("comment"), "def destroy_dependents")
+end
+
+test "a declared belongs_to validates its foreign key unless optional: true; undeclared ones add nothing" do
+  comment = assoc_emit("comment")
+  assert_lines(comment, ["validates_foreign_key :post_id"])
+  refute_line(comment, "validates_foreign_key :editor_id")
+  refute_line(assoc_emit("post"), "validates_foreign_key :user_id")
+  refute_line(assoc_emit("profile"), "validates_foreign_key :user_id")
+end
+
+test "counter_cache: callbacks in the class body and the four counter_cache methods" do
+  comment = assoc_emit("comment")
+  assert_includes comment, "  after_create { |record| record.counter_cache_created }\n" \
+                           "  before_update { |record| record.counter_cache_was }\n" \
+                           "  after_update { |record| record.counter_cache_moved }\n" \
+                           "  after_destroy { |record| record.counter_cache_destroyed }\n"
+  assert_includes comment, indent_body(<<~'RUBY')
+    def counter_cached? = true
+
+    def counter_cache_created
+      PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: 1)
+      nil
+    end
+
+    def counter_cache_destroyed
+      PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: -1)
+      nil
+    end
+
+    def counter_cache_was
+      id = @id
+      found = Cybertrain::DB.with { |c| c.execute("SELECT \"post_id\" FROM \"comments\" WHERE \"id\" = ?", [id]) }
+      @post_id_was = Cybertrain::Cast.int(found.empty? ? nil : found[0]["post_id"])
+      nil
+    end
+
+    def counter_cache_moved
+      unless @post_id_was == @post_id
+        PostRelation.new("posts").where(id: @post_id_was).increment(:comments_count, by: -1)
+        PostRelation.new("posts").where(id: @post_id).increment(:comments_count, by: 1)
+      end
+      nil
+    end
+  RUBY
+  assert_lines(comment, ["@post_id_was = 0"])
+  refute_line(assoc_emit("post"), "def counter_cached? = true")
+end
+
+test "the parent of a counter_cache leaves the counter column out of its own UPDATE" do
+  assert_lines(assoc_emit("post"), ['def counter_cache_columns = ["comments_count"]'])
+  refute_line(assoc_emit("user"), "def counter_cache_columns")
+  refute_line(assoc_emit("comment"), "def counter_cache_columns")
+end
+
+test "the counter column follows the parent's has_many name" do
+  post = ASSOC_POST_SOURCE.sub("has_many :comments, dependent: :delete_all", "has_many :notes, class_name: \"Comment\"")
+  definition = assoc_schema
+  definition.table("posts").add_column(Cybertrain::Schema::Column.new("notes_count", :integer, false, "0", 0))
+  outputs = Cybertrain::Gen::ModelsEmitter.outputs(definition, assoc_infos(post))
+  comment = outputs["gen/models/comment.rb"]
+  assert_lines(comment, ['PostRelation.new("posts").where(id: @post_id).increment(:notes_count, by: 1)'])
+end
+
+def assoc_error(post = ASSOC_POST_SOURCE, comment = ASSOC_COMMENT_SOURCE, user = ASSOC_USER_SOURCE)
+  assert_raises("ModelScan::Error") { Cybertrain::Gen::ModelsEmitter.outputs(assoc_schema, assoc_infos(post, comment, user)) }
+end
+
+test "a declaration whose model, foreign key column or counter column does not exist fails with the file and line" do
+  assert_equal "app/models/comment.rb:3: belongs_to :editor: User2 is not a model (no table of db/schema.rb " \
+               "generates it); set class_name:",
+               assoc_error(ASSOC_POST_SOURCE, ASSOC_COMMENT_SOURCE.sub("\"User\"", "\"User2\""))
+  assert_equal "app/models/post.rb:5: has_many :widgets: Widget is not a model (no table of db/schema.rb " \
+               "generates it); set class_name:",
+               assoc_error(ASSOC_POST_SOURCE.sub("\n\n", "\n  has_many :widgets\n\n"))
+  assert_equal "app/models/comment.rb:3: belongs_to :reviewer: no column comments.reviewer_id for its foreign " \
+               "key; set foreign_key:",
+               assoc_error(ASSOC_POST_SOURCE, ASSOC_COMMENT_SOURCE.sub(":editor,", ":reviewer,"))
+  assert_equal "app/models/user.rb:3: has_many :posts: no column posts.owner_id for its foreign key; set foreign_key:",
+               assoc_error(ASSOC_POST_SOURCE, ASSOC_COMMENT_SOURCE, ASSOC_USER_SOURCE.sub(":nullify", ":nullify, foreign_key: :owner_id"))
+  assert_equal "app/models/comment.rb:2: belongs_to :post: counter_cache: needs the integer column posts.comments_count",
+               assoc_raises_without_counter
+  assert_equal "app/models/post.rb:4: has_many :comments: dependent: :nullify needs comments.post_id to be nullable",
+               assoc_error(ASSOC_POST_SOURCE.sub(":delete_all", ":nullify"))
+  assert_equal "app/models/post.rb:3: belongs_to :title: the reader title is taken (a column, another association, " \
+               "a Cybertrain::Model method or a Ruby keyword); rename the association and set class_name: and foreign_key:",
+               assoc_error(ASSOC_POST_SOURCE.sub(":user, optional: true", ":title, class_name: \"User\", foreign_key: :user_id, optional: true"))
+end
+
+def assoc_raises_without_counter
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "posts" do |t|
+      t.string "title", null: false
+    end
+    s.create_table "comments" do |t|
+      t.references :post
+      t.text "body", null: false
+    end
+  end
+  infos = [Cybertrain::Gen::ModelScan.scan_source("app/models/comment.rb", "class Comment\n  belongs_to :post, counter_cache: true\nend\n")]
+  assert_raises("ModelScan::Error") { Cybertrain::Gen::ModelsEmitter.outputs(definition, infos) }
+end
+
+test "a declared belongs_to replaces the reader the same foreign key would give" do
+  comment = ASSOC_COMMENT_SOURCE.sub("belongs_to :post, counter_cache: true", "belongs_to :article, class_name: \"Post\", foreign_key: :post_id")
+  source = assoc_emit("comment", assoc_infos(ASSOC_POST_SOURCE, comment))
+  assert_lines(source, ["def article", "@article_record = Post.find_by(id: @post_id)", "validates_foreign_key :post_id"])
+  refute_line(source, "def post")
+end
+
+test "a column named like an association cache ivar fails" do
+  definition = assoc_schema
+  definition.table("comments").add_column(Cybertrain::Schema::Column.new("post_loaded", :boolean, true, nil, 0))
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ModelsEmitter.outputs(definition, assoc_infos) }
+  assert_equal "table comments: column \"post_loaded\" is the ivar @post_loaded the post association caches in; " \
+               "rename the column", msg
 end
 
 Cybertrain::Test.run!

@@ -1,0 +1,8 @@
+ok   has_one answers the child or nil
+ok   has_many readers are Relations; read_association gives an Array
+ok   a nullable belongs_to answers nil for a nil key and caches the parent per key
+ok   destroy: has_one :delete_all, has_many :nullify and :delete_all run inside destroy's transaction
+ok   without dependent: the database's foreign key refuses, and the dependents' work is rolled back
+ok   destroy joins a transaction the application opened
+ok   reload clears the belongs_to cache
+7 tests, 38 assertions, 0 failures
