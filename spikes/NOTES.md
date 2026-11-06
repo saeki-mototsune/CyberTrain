@@ -88,10 +88,10 @@ The rules are numbered in the order they were found. By topic:
 
 - Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
-  43, 51, 62, 66 (second paragraph)
+  43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
-  37, 46 (Hash literals), 56, 63, 71, 73
-- Polymorphic values and narrowing: 8, 14, 29, 35
+  37, 46 (Hash literals), 56, 63, 71, 73, 86
+- Polymorphic values and narrowing: 8, 14, 29, 35, 86
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
   79, 81
@@ -951,6 +951,24 @@ The rules are numbered in the order they were found. By topic:
     ConditionVariable. A nil element would be indistinguishable from the
     timeout: push a sentinel object instead and look at a flag after the
     pop (Subscriber#stream_offer on a dropped subscriber).
+
+86. A Range under Spinel 2026.11.04.7026 carries Integer ends only.
+    `t1..t2` or `Range.new(t1, t2)` with Time or Date ends raises
+    `TypeError: no implicit conversion of Time into Integer` when the Range
+    is built; a Float or String Range reads back directly
+    (`(1.5..2.5).begin`) but once held in a Hash value or passed through a
+    boxed parameter it is not matched by `when Range`. So `where(col: a..b)`
+    accepts Integer ends only and other bounds go through
+    `where_between(col, from, to)` (relation.rb); a validator's
+    `inclusion: { in: }` takes an Integer Range or an Array
+    (docs/spinel-feedback.md Q).
+
+87. Class methods added to a core class from Ruby source compile and
+    dispatch: `class Time; def self.iso8601(text) ...` is reached by
+    `Time.iso8601(s)`, including a method literally named `strptime`, whose
+    earlier compile-time refusal was of the missing method, not of the name
+    (cybertrain/time_ext.rb). Instance methods are a different matter
+    (rule 62).
 
 ## Numbers worth remembering
 
