@@ -1,5 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/db"
+require "cybertrain/schema"
 
 # Cast's phase-2 types (design 2026-11-06, sections 2.2-2.4): the storage
 # format Rails writes to SQLite (`YYYY-MM-DD HH:MM:SS.ffffff`, UTC),
@@ -31,6 +32,9 @@ test "parse_time reads both separators, any fraction length, Z and offsets" do
   assert_equal Time.utc(2026, 10, 5, 9, 0, 0, 123456), Cast.parse_time("2026-10-05T09:00:00.1234567-00:00")
   assert_equal Time.utc(2026, 10, 5, 9, 0, 0, 250000), Cast.parse_time("2026-10-05T18:00:00.250+0900")
   assert_nil Cast.parse_time("2026-10-05 09:00:00 trailing")
+  assert_nil Cast.parse_time("2026-10-05 09:00:00+")
+  assert_nil Cast.parse_time("2026-10-05 09:00:00+0")
+  assert_nil Cast.parse_time("2026-10-05 09:00:00-09:0")
   assert_nil Cast.parse_time("2026-13-05 09:00:00")
 end
 
@@ -58,12 +62,14 @@ test "the epoch reader accepts a Rails fraction, an old T...Z value and an offse
   DB.with do |c|
     c.exec_script("INSERT INTO t (at) VALUES ('2026-10-05 09:00:00.5'); " \
                   "INSERT INTO t (at) VALUES ('2026-10-05T09:00:00Z'); " \
-                  "INSERT INTO t (at) VALUES ('2026-10-05T18:00:00.250+0900')")
+                  "INSERT INTO t (at) VALUES ('2026-10-05T18:00:00.250+0900'); " \
+                  "INSERT INTO t (at) VALUES ('2026-10-05 09:00:00+')")
   end
   rows = DB.with { |c| c.execute_models("SELECT at FROM t ORDER BY id", []) }
   assert_equal Time.utc(2026, 10, 5, 9, 0, 0, 500000), Cast.time_or_nil(rows[0]["at"])
   assert_equal Time.utc(2026, 10, 5, 9, 0, 0), Cast.time_or_nil(rows[1]["at"])
   assert_equal Time.utc(2026, 10, 5, 9, 0, 0, 250000), Cast.time_or_nil(rows[2]["at"])
+  assert_equal "2026-10-05 09:00:00+", Cast.str(rows[3]["at"]) # a cut offset: text
 end
 
 test "date, date_or_nil, hash_or_nil, json_text, round_scale" do
@@ -85,6 +91,15 @@ test "a Date binds as its text and reads back from a DATE column" do
   DB.with { |c| c.execute("INSERT INTO t (day) VALUES (?)", [Date.new(2026, 10, 5)]) }
   rows = DB.with { |c| c.execute("SELECT day FROM t", []) }
   assert_equal "2026-10-05", Cast.str(rows[0]["day"])
+end
+
+# Cast.date beside the schema DSL's TableDef#date (an instance method that
+# returns nil): one program compiles both (NOTES rules 34 and 41).
+test "Cast.date coexists with the schema DSL's t.date" do
+  definition = Cybertrain::Schema.define(version: "1") { |s| s.create_table("days") { |t| t.date "day" } }
+  assert_equal :date, definition.tables[0].columns[0].type
+  assert_equal "2026-10-05", Cast.date("2026-10-05").to_s
+  assert_equal 5, Cast.date_or_nil("2026-10-05").day
 end
 
 Cybertrain::Test.run!

@@ -157,6 +157,7 @@ module Cybertrain
             if (s[i] == 'Z') {
               if (rest != 1) return -1;
             } else if (s[i] == '+' || s[i] == '-') {
+              if (rest != 5 && rest != 6) return -1;
               oh = cybertrain_digits(s, i + 1, 2);
               if (rest == 6 && s[i + 3] == ':') om = cybertrain_digits(s, i + 4, 2);
               else if (rest == 5) om = cybertrain_digits(s, i + 3, 2);

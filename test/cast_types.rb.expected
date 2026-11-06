@@ -6,4 +6,5 @@ ok   a stored datetime round-trips through the connection with microseconds
 ok   the epoch reader accepts a Rails fraction, an old T...Z value and an offset
 ok   date, date_or_nil, hash_or_nil, json_text, round_scale
 ok   a Date binds as its text and reads back from a DATE column
-8 tests, 32 assertions, 0 failures
+ok   Cast.date coexists with the schema DSL's t.date
+9 tests, 39 assertions, 0 failures

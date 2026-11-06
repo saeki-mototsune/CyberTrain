@@ -236,6 +236,8 @@ module Cybertrain
       sign = s.getbyte(from)
       return(rest == 1 ? 0 : OFFSET_INVALID) if sign == 90
       return OFFSET_INVALID unless sign == 43 || sign == 45
+      # The length first: number_at reads every byte it is asked for.
+      return OFFSET_INVALID unless rest == 5 || rest == 6
       hours = number_at(s, from + 1, 2)
       if rest == 6 && s.getbyte(from + 3) == 58
         minutes = number_at(s, from + 4, 2)
