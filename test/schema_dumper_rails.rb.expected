@@ -1,0 +1,7 @@
+ok   dump_to_ruby maps Rails 8.1's column types, indexes and foreign keys
+ok   dump reads precision, scale, limit, where, expression and on_delete
+ok   the other ON DELETE actions read back as their Symbols
+ok   a numeric column without precision and a quoted expression read back
+ok   the dump describes the same schema as the DSL written from it
+ok   the schema the DDL writes for the new types dumps back unchanged
+6 tests, 47 assertions, 0 failures

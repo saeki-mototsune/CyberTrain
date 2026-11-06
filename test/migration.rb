@@ -1,4 +1,5 @@
 require "cybertrain/migration"
+require "cybertrain/db/sqlite_ddl"
 require "cybertrain/test"
 
 class CreatePosts < Cybertrain::Migration::Base
@@ -220,6 +221,64 @@ test "add_index name: overrides the derived name, for symmetry with Definition#a
   migration.add_index("posts", ["title"], name: "custom_name")
   op = migration.operations[migration.operations.size - 1]
   assert_equal "custom_name", op.name
+end
+
+test "add_column takes precision: and scale: for a decimal" do
+  migration = CreatePosts.new
+  migration.add_column("posts", "price", :decimal, precision: 18, scale: 8)
+  migration.add_column("posts", "meta", :json)
+  migration.add_column("posts", "views", :integer, limit: 8, null: false, default: "0")
+  price = migration.operations[0]
+  assert_equal :decimal, price.type
+  assert_equal 18, price.precision
+  assert_equal 8, price.scale
+  assert_equal 0, migration.operations[1].precision
+  assert_equal(-1, migration.operations[1].scale)
+  stmts = migration.operations.map { |op| Cybertrain::DB::SqliteDDL.statements(op)[0] }
+  assert_equal ["ALTER TABLE posts ADD COLUMN price DECIMAL(18,8)",
+                "ALTER TABLE posts ADD COLUMN meta JSON",
+                "ALTER TABLE posts ADD COLUMN views BIGINT NOT NULL DEFAULT 0"], stmts
+end
+
+test "add_index takes where: for a partial index" do
+  migration = CreatePosts.new
+  migration.add_index("posts", ["deleted_at"], where: "deleted_at IS NULL")
+  op = migration.operations[0]
+  assert_equal "deleted_at IS NULL", op.where
+  assert_equal ["CREATE INDEX index_posts_on_deleted_at ON posts(deleted_at) WHERE deleted_at IS NULL"],
+               Cybertrain::DB::SqliteDDL.statements(op)
+  plain = CreatePosts.new
+  plain.add_index("posts", ["title"])
+  assert_equal "", plain.operations[0].where
+end
+
+test "add_reference and add_foreign_key take on_delete:" do
+  migration = AddCommentsTable.new
+  migration.add_reference("comments", "post", null: true, on_delete: :nullify)
+  migration.add_foreign_key("comments", "authors", on_delete: :cascade)
+  migration.add_reference("comments", "editor", null: true)
+  ops = migration.operations
+  assert_equal :nullify, ops[0].on_delete
+  assert_equal :nullify, ops[1].on_delete
+  assert_equal :cascade, ops[2].on_delete
+  assert_equal :no_action, ops[3].on_delete
+  assert_equal ["ALTER TABLE comments ADD COLUMN post_id INTEGER REFERENCES posts(id) ON DELETE SET NULL",
+                "CREATE INDEX index_comments_on_post_id ON comments(post_id)"],
+               Cybertrain::DB::SqliteDDL.add_reference_statements(ops[0], ops[1].to_table)
+  assert_equal "ALTER TABLE comments ADD COLUMN editor_id INTEGER REFERENCES editors(id)",
+               Cybertrain::DB::SqliteDDL.add_reference_statements(ops[3], ops[4].to_table)[0]
+end
+
+test "a create_table recorded by a migration emits its expression and partial indexes" do
+  migration = CreatePosts.new
+  migration.create_table("trades") do |t|
+    t.decimal "price", precision: 18, scale: 8
+    t.references :post, on_delete: :restrict
+  end
+  stmts = Cybertrain::DB::SqliteDDL.statements(migration.operations[0])
+  assert_equal "CREATE TABLE trades (id INTEGER PRIMARY KEY AUTOINCREMENT, price DECIMAL(18,8), " \
+               "post_id INTEGER NOT NULL, FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE RESTRICT)", stmts[0]
+  assert_equal "CREATE INDEX index_trades_on_post_id ON trades(post_id)", stmts[1]
 end
 
 Cybertrain::Test.run!

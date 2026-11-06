@@ -33,23 +33,39 @@ module Cybertrain
       # text Dumper.to_ruby prints (which always includes `name:`) loads
       # back through this same method. Raises when the table is unknown --
       # a typo in db/schema.rb must be loud, not a silently dropped index.
-      def add_index(table_name, columns, unique: false, name: "")
-        cols = columns.map { |c| c.to_s }
+      #
+      # `columns` is an Array of column names, or a String holding an
+      # expression index's key (`"LOWER(email)"`), which needs `name:`.
+      # `where:` makes it a partial index (`"deleted_at IS NULL"`).
+      def add_index(table_name, columns, unique: false, name: "", where: "")
+        cols = Array.new(0) { "" }
+        expression = ""
+        case columns
+        when String
+          expression = columns.to_s
+        when Array
+          columns.each { |c| cols << c.to_s }
+        end
         target = table(table_name)
         raise ArgumentError, "unknown table #{table_name.to_s}" if target.nil?
-        index = Index.new(table_name, cols, unique, name)
+        if expression != "" && name.to_s == ""
+          raise ArgumentError, "an expression index on #{table_name.to_s} needs name:"
+        end
+        index = Index.new(table_name, cols, unique, name.to_s, where.to_s, expression)
         target.add_index(index)
         nil
       end
 
       # Returns nil for the same reason as `add_index` above. Raises when
       # the table is unknown, for the same reason as `add_index` above.
-      def add_foreign_key(from_table, to_table, column: "")
+      # `on_delete:` is :no_action, :cascade, :nullify or :restrict.
+      def add_foreign_key(from_table, to_table, column: "", on_delete: :no_action)
+        Cybertrain::Schema::ForeignKey.check_on_delete(on_delete)
         col = column
         col = Cybertrain::Schema::ForeignKey.default_column(to_table) if col == ""
         target = table(from_table)
         raise ArgumentError, "unknown table #{from_table.to_s}" if target.nil?
-        foreign_key = ForeignKey.new(from_table, col, to_table)
+        foreign_key = ForeignKey.new(from_table, col, to_table, on_delete)
         target.add_foreign_key(foreign_key)
         nil
       end

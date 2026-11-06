@@ -8,10 +8,13 @@ module Cybertrain
     # into a Cybertrain::Schema::Definition, the reverse of SqliteDDL.
     #
     # SqliteDDL declares one SQL type name per schema type (VARCHAR, TEXT,
-    # INTEGER, REAL, BOOLEAN, DATETIME, DATE, BLOB) and SQLite keeps that name in
-    # PRAGMA table_info, so the dump recovers :text vs :string, :boolean vs
-    # :integer, :datetime/:date and :binary exactly. Unknown names (a table created
-    # by hand) fall back to SQLite's own affinity rules.
+    # INTEGER, BIGINT, REAL, DECIMAL, BOOLEAN, DATETIME, DATE, BLOB, JSON) and
+    # SQLite keeps that name in PRAGMA table_info, so the dump recovers :text
+    # vs :string, :boolean vs :integer, :datetime/:date, :decimal, :json and
+    # :binary exactly. Rails' SQLite adapter writes the same names in lower
+    # case (`decimal(18,8)`, `json`, `bigint`, `datetime(6)`), so a database
+    # Rails created dumps the same way. Unknown names (a table created by
+    # hand) fall back to SQLite's own affinity rules.
     module SchemaDumper
       def self.dump(connection)
         definition = Cybertrain::Schema::Definition.new(max_version(connection))
@@ -30,7 +33,8 @@ module Cybertrain
         Cybertrain::Schema::Dumper.to_ruby(dump(connection))
       end
 
-      # Every user table, excluding schema_migrations, the framework's own
+      # Every user table, excluding schema_migrations and Rails'
+      # ar_internal_metadata, the framework's own
       # cybertrain_jobs, cybertrain_leases and cybertrain_messages (Job, Lease
       # and Stream create them at run time; in db/schema.rb the generator
       # would make models of them) and SQLite's bookkeeping tables
@@ -40,7 +44,7 @@ module Cybertrain
         names = Array.new(0) { "" }
         rows.each do |r|
           name = r["name"].to_s
-          next if name == "schema_migrations" || name.start_with?("sqlite_")
+          next if name == "schema_migrations" || name == "ar_internal_metadata" || name.start_with?("sqlite_")
           next if name == "cybertrain_jobs" || name == "cybertrain_leases" || name == "cybertrain_messages"
           names << name
         end
@@ -70,8 +74,17 @@ module Cybertrain
           case column_type(declared)
           when :string then t.string(name, null: null, default: default, limit: limit)
           when :text then t.text(name, null: null, default: default)
-          when :integer then t.integer(name, null: null, default: default)
+          when :integer
+            if bigint_decl?(declared)
+              t.bigint(name, null: null, default: default)
+            else
+              t.integer(name, null: null, default: default)
+            end
           when :float then t.float(name, null: null, default: default)
+          when :decimal
+            t.decimal(name, precision: decimal_precision(declared), scale: decimal_scale(declared),
+                            null: null, default: default)
+          when :json then t.json(name, null: null, default: default)
           when :boolean then t.boolean(name, null: null, default: default)
           when :datetime then t.datetime(name, null: null, default: default)
           when :date then t.date(name, null: null, default: default)
@@ -83,7 +96,9 @@ module Cybertrain
       end
 
       # "VARCHAR(80)" -> :string. Exact names first (what SqliteDDL writes),
-      # then SQLite's affinity rules for anything else.
+      # then SQLite's affinity rules for anything else. "DATETIME(6)" is a
+      # plain :datetime (its precision is dropped; Connection reads any
+      # DATETIME(N) back as a Time).
       def self.column_type(declared)
         base = declared.upcase
         paren = base.index("(")
@@ -93,6 +108,8 @@ module Cybertrain
         when "TEXT" then :text
         when "INTEGER", "INT", "BIGINT" then :integer
         when "REAL", "FLOAT", "DOUBLE" then :float
+        when "DECIMAL", "NUMERIC" then :decimal
+        when "JSON" then :json
         when "BOOLEAN" then :boolean
         when "DATETIME", "TIMESTAMP" then :datetime
         when "DATE" then :date
@@ -112,21 +129,153 @@ module Cybertrain
 
       # "VARCHAR(80)" -> 80; 0 when the declared type has no length.
       def self.type_limit(declared)
-        open = declared.index("(")
-        close = declared.index(")")
-        return 0 if open.nil? || close.nil? || close < open
-        declared[open + 1, close - open - 1].strip.to_i
+        type_params(declared).to_i
       end
 
+      # The text between a declared type's parentheses ("18,8" for
+      # "decimal(18,8)"), "" when it has none.
+      def self.type_params(declared)
+        open = declared.index("(")
+        close = declared.index(")")
+        return "" if open.nil? || close.nil? || close < open
+        declared[open + 1, close - open - 1].strip
+      end
+
+      # "BIGINT" (Rails' `bigint`) is an :integer with limit 8.
+      def self.bigint_decl?(declared)
+        base = declared.upcase.strip
+        base == "BIGINT" || base.start_with?("BIGINT(")
+      end
+
+      # "decimal(18,8)" -> 18; 0 when there is no precision.
+      def self.decimal_precision(declared)
+        params = type_params(declared)
+        comma = params.index(",")
+        return params.to_i if comma.nil?
+        params[0, comma].strip.to_i
+      end
+
+      # "decimal(18,8)" -> 8; -1 when there is no scale.
+      def self.decimal_scale(declared)
+        params = type_params(declared)
+        comma = params.index(",")
+        return -1 if comma.nil?
+        params[comma + 1, params.size - comma - 1].strip.to_i
+      end
+
+      # A plain index's columns come from PRAGMA index_info; its CREATE
+      # INDEX text in sqlite_master gives the rest: the key, when it is not
+      # a list of column names, is an expression index's expression, and a
+      # WHERE after it a partial index's predicate.
       def self.add_indexes(definition, connection, table_name)
         rows = connection.execute("PRAGMA index_list(#{table_name})")
         rows.each do |r|
           name = r["name"].to_s
           next if name.start_with?("sqlite_autoindex_")
-          columns = index_columns(connection, name)
-          definition.add_index(table_name, columns, unique: Cybertrain::Cast.int(r["unique"]) != 0, name: name)
+          unique = Cybertrain::Cast.int(r["unique"]) != 0
+          parts = index_key_and_where(index_sql_text(connection, name))
+          if parts[0] == "" || column_list?(parts[0])
+            columns = index_columns(connection, name)
+            definition.add_index(table_name, columns, unique: unique, name: name, where: parts[1])
+          else
+            definition.add_index(table_name, parts[0], unique: unique, name: name, where: parts[1])
+          end
         end
         nil
+      end
+
+      def self.index_sql_text(connection, index_name)
+        rows = connection.execute("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?", [index_name])
+        return "" if rows.empty?
+        Cybertrain::Cast.str_or_nil(rows[0]["sql"]).to_s
+      end
+
+      # CREATE INDEX text -> [key, where]: the text between the first "("
+      # after " ON " and its matching ")", and the predicate after a WHERE
+      # that follows it ("" when there is none). Quoted text ('...', "...",
+      # `...`, [...]) is skipped, so a parenthesis inside a string literal
+      # or a quoted name does not count. Byte-level on a `to_s` local
+      # (spikes/NOTES.md rule 62). ["", ""] when the text has no key.
+      def self.index_key_and_where(text)
+        s = text.to_s
+        n = s.bytesize
+        i = 0
+        quote = 0
+        depth = 0
+        open = -1
+        close = -1
+        seen_on = false
+        while i < n
+          b = s.getbyte(i)
+          if quote != 0
+            quote = 0 if b == quote
+          elsif b == 39 || b == 34 || b == 96
+            quote = b
+          elsif b == 91
+            quote = 93
+          elsif open < 0
+            seen_on = true if !seen_on && b == 32 && s.byteslice(i, 4).upcase == " ON "
+            if seen_on && b == 40
+              open = i
+              depth = 1
+            end
+          elsif b == 40
+            depth += 1
+          elsif b == 41
+            depth -= 1
+            if depth == 0
+              close = i
+              break
+            end
+          end
+          i += 1
+        end
+        return ["", ""] if close < 0
+        key = s.byteslice(open + 1, close - open - 1).strip
+        rest = s.byteslice(close + 1, n - close - 1).strip
+        where = ""
+        where = rest.byteslice(5, rest.bytesize - 5).strip if rest.upcase.start_with?("WHERE")
+        [key, where]
+      end
+
+      # True when an index key is a comma list of column names, bare or
+      # quoted ("views", `views`, [views], views); anything else (a call,
+      # an operator, a COLLATE or DESC) makes it an expression.
+      def self.column_list?(key)
+        parts = key.to_s.split(",")
+        return false if parts.empty?
+        parts.each do |part|
+          return false unless identifier?(part.strip)
+        end
+        true
+      end
+
+      def self.identifier?(text)
+        s = text.to_s
+        n = s.bytesize
+        return false if n == 0
+        first = s.getbyte(0)
+        last = s.getbyte(n - 1)
+        quoted = (first == 34 && last == 34) || (first == 96 && last == 96) || (first == 91 && last == 93)
+        if quoted
+          return false if n < 3
+          i = 1
+          while i < n - 1
+            b = s.getbyte(i)
+            return false if b == first || b == last
+            i += 1
+          end
+          return true
+        end
+        i = 0
+        while i < n
+          b = s.getbyte(i)
+          letter = (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95
+          digit = b >= 48 && b <= 57
+          return false unless letter || (digit && i > 0)
+          i += 1
+        end
+        true
       end
 
       def self.index_columns(connection, index_name)
@@ -138,9 +287,22 @@ module Cybertrain
       def self.add_foreign_keys(definition, connection, table_name)
         rows = connection.execute("PRAGMA foreign_key_list(#{table_name})")
         rows.each do |r|
-          definition.add_foreign_key(table_name, r["table"].to_s, column: r["from"].to_s)
+          definition.add_foreign_key(table_name, r["table"].to_s, column: r["from"].to_s,
+                                                                  on_delete: on_delete_action(r["on_delete"].to_s))
         end
         nil
+      end
+
+      # PRAGMA foreign_key_list's on_delete text -> the ForeignKey Symbol.
+      # SET DEFAULT has no Symbol (the DSL does not support it) and reads
+      # as :no_action, like NO ACTION itself.
+      def self.on_delete_action(text)
+        case text.upcase
+        when "CASCADE" then :cascade
+        when "SET NULL" then :nullify
+        when "RESTRICT" then :restrict
+        else :no_action
+        end
       end
     end
   end

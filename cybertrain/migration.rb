@@ -26,9 +26,15 @@ module Cybertrain
     # its binds in `exec_binds` instead; every other kind leaves them "" and
     # empty. The names are distinctive on purpose: Relation has a `binds`
     # (spikes/NOTES.md rules 10/34).
+    #
+    # An :add_column's decimal `precision`/`scale` (0 and -1 for none), an
+    # :add_index's partial `where` ("" for none) and an :add_reference's or
+    # :add_foreign_key's `on_delete` (:no_action by default) are assigned
+    # after `new` too, the same way and for the same reason.
     class Operation
       attr_reader :kind, :table, :name, :type, :null, :default, :limit,
-                  :to_table, :columns, :unique, :new_name, :exec_sql, :exec_binds
+                  :to_table, :columns, :unique, :new_name, :exec_sql, :exec_binds,
+                  :precision, :scale, :where, :on_delete
 
       def initialize(kind, table, name, type, null, default, limit, to_table, columns, unique, new_name)
         @kind = kind
@@ -44,6 +50,10 @@ module Cybertrain
         @new_name = new_name.to_s
         @exec_sql = ""
         @exec_binds = Operation.no_binds
+        @precision = 0
+        @scale = -1
+        @where = ""
+        @on_delete = :no_action
       end
 
       # An empty bind list typed for the values Cast.to_sql returns (nil,
@@ -72,6 +82,23 @@ module Cybertrain
         nil
       end
 
+      # Public for the same reason as assign_exec.
+      def assign_decimal(precision, scale)
+        @precision = precision
+        @scale = scale
+        nil
+      end
+
+      def assign_where(where)
+        @where = where
+        nil
+      end
+
+      def assign_on_delete(action)
+        @on_delete = action
+        nil
+      end
+
       def self.for_create_table(table)
         new(:create_table, table, "", :string, true, nil, 0, "", [], false, "")
       end
@@ -80,8 +107,10 @@ module Cybertrain
         new(:drop_table, name, "", :string, true, nil, 0, "", [], false, "")
       end
 
-      def self.for_add_column(table, name, type, null, default, limit)
-        new(:add_column, table, name, type, null, default, limit, "", [], false, "")
+      def self.for_add_column(table, name, type, null, default, limit, precision = 0, scale = -1)
+        op = new(:add_column, table, name, type, null, default, limit, "", [], false, "")
+        op.assign_decimal(precision, scale)
+        op
       end
 
       def self.for_remove_column(table, name)
@@ -95,20 +124,27 @@ module Cybertrain
       # `name` overrides the derived index name (empty means "derive it the
       # way Cybertrain::Schema::Index does"), for symmetry with
       # Definition#add_index.
-      def self.for_add_index(table, columns, unique, name)
-        new(:add_index, table, name, :string, true, nil, 0, "", columns, unique, "")
+      # `where` non-empty makes it a partial index.
+      def self.for_add_index(table, columns, unique, name, where = "")
+        op = new(:add_index, table, name, :string, true, nil, 0, "", columns, unique, "")
+        op.assign_where(where)
+        op
       end
 
       def self.for_remove_index(table, columns)
         new(:remove_index, table, "", :string, true, nil, 0, "", columns, false, "")
       end
 
-      def self.for_add_reference(table, name, null)
-        new(:add_reference, table, name, :integer, null, nil, 0, "", [], false, "")
+      def self.for_add_reference(table, name, null, on_delete = :no_action)
+        op = new(:add_reference, table, name, :integer, null, nil, 0, "", [], false, "")
+        op.assign_on_delete(on_delete)
+        op
       end
 
-      def self.for_add_foreign_key(from_table, to_table, column)
-        new(:add_foreign_key, from_table, column, :string, true, nil, 0, to_table, [], false, "")
+      def self.for_add_foreign_key(from_table, to_table, column, on_delete = :no_action)
+        op = new(:add_foreign_key, from_table, column, :string, true, nil, 0, to_table, [], false, "")
+        op.assign_on_delete(on_delete)
+        op
       end
 
       # `table` is a String for every kind except :create_table (a Table);
@@ -259,14 +295,18 @@ module Cybertrain
       # @param table [String, Symbol]
       # @param name [String, Symbol]
       # @param type [Symbol] `:string`, `:text`, `:integer`, `:float`,
-      #   `:boolean`, `:datetime`, `:date` or `:binary` (BLOB)
+      #   `:decimal`, `:boolean`, `:datetime`, `:date`, `:binary` (BLOB) or
+      #   `:json`
       # @param null [Boolean]
       # @param default [String, nil] SQL literal text
-      # @param limit [Integer] `VARCHAR(n)` for a string when positive
+      # @param limit [Integer] `VARCHAR(n)` for a string when positive;
+      #   8 makes an integer a `BIGINT`
+      # @param precision [Integer] a decimal's total digits; 0 for none
+      # @param scale [Integer] a decimal's digits after the point; -1 for none
       # @return [nil]
       # @api public
-      def add_column(table, name, type, null: true, default: nil, limit: 0)
-        @operations << Operation.for_add_column(table.to_s, name.to_s, type, null, default, limit)
+      def add_column(table, name, type, null: true, default: nil, limit: 0, precision: 0, scale: -1)
+        @operations << Operation.for_add_column(table.to_s, name.to_s, type, null, default, limit, precision, scale)
         nil
       end
 
@@ -300,11 +340,13 @@ module Cybertrain
       # @param columns [Array<String, Symbol>]
       # @param unique [Boolean]
       # @param name [String]
+      # @param where [String] a partial index's predicate
+      #   (`"deleted_at IS NULL"`); "" for none
       # @return [nil]
       # @api public
-      def add_index(table, columns, unique: false, name: "")
+      def add_index(table, columns, unique: false, name: "", where: "")
         cols = columns.map { |c| c.to_s }
-        @operations << Operation.for_add_index(table.to_s, cols, unique, name.to_s)
+        @operations << Operation.for_add_index(table.to_s, cols, unique, name.to_s, where.to_s)
         nil
       end
 
@@ -328,14 +370,17 @@ module Cybertrain
       # @param name [Symbol, String] the singular (`:author`)
       # @param null [Boolean]
       # @param foreign_key [Boolean]
+      # @param on_delete [Symbol] `:no_action`, `:cascade`, `:nullify` or
+      #   `:restrict`, as {Schema::TableDef#references}
       # @return [nil]
       # @api public
-      def add_reference(table, name, null: false, foreign_key: true)
+      def add_reference(table, name, null: false, foreign_key: true, on_delete: :no_action)
+        Cybertrain::Schema::ForeignKey.check_on_delete(on_delete)
         column_name = "#{name}_id"
-        @operations << Operation.for_add_reference(table.to_s, column_name, null)
+        @operations << Operation.for_add_reference(table.to_s, column_name, null, on_delete)
         if foreign_key
           to_table = Cybertrain::Inflector.pluralize(name.to_s)
-          @operations << Operation.for_add_foreign_key(table, to_table, column_name)
+          @operations << Operation.for_add_foreign_key(table, to_table, column_name, on_delete)
         end
         nil
       end
@@ -378,10 +423,11 @@ module Cybertrain
         nil
       end
 
-      def add_foreign_key(from_table, to_table, column: "")
+      def add_foreign_key(from_table, to_table, column: "", on_delete: :no_action)
+        Cybertrain::Schema::ForeignKey.check_on_delete(on_delete)
         col = column
         col = Cybertrain::Schema::ForeignKey.default_column(to_table) if col == ""
-        @operations << Operation.for_add_foreign_key(from_table.to_s, to_table.to_s, col.to_s)
+        @operations << Operation.for_add_foreign_key(from_table.to_s, to_table.to_s, col.to_s, on_delete)
         nil
       end
 

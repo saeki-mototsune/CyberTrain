@@ -7,33 +7,45 @@ require "cybertrain/generator/inflector"
 module Cybertrain
   module Schema
     class Column
-      attr_reader :name, :type, :null, :default, :limit
+      attr_reader :name, :type, :null, :default, :limit, :precision, :scale
 
-      # type: Symbol (:string, :text, :integer, :float, :boolean, :datetime,
-      # :date, :binary). default: String|nil holding the SQL literal text exactly as
-      # written in the DSL (e.g. "0", "'x'", "false"), never a Ruby value.
-      def initialize(name, type, null, default, limit)
+      # type: Symbol (:string, :text, :integer, :float, :decimal, :boolean,
+      # :datetime, :date, :binary, :json). default: String|nil holding the SQL
+      # literal text exactly as written in the DSL (e.g. "0", "'x'",
+      # "false"), never a Ruby value. limit: a string's VARCHAR length, or 8
+      # for a bigint (an :integer declared BIGINT); 0 none. precision and
+      # scale: a decimal's DECIMAL(p,s); precision 0 and scale -1 mean none.
+      def initialize(name, type, null, default, limit, precision = 0, scale = -1)
         @name = name.to_s
         @type = type
         @null = null
         @default = default
         @limit = limit
+        @precision = precision
+        @scale = scale
       end
     end
 
     class Index
-      attr_reader :table, :columns, :unique, :name
+      attr_reader :table, :columns, :unique, :name, :where, :expression
 
       # `name` overrides the derived "index_<table>_on_<cols>" name when
       # non-empty; this is what lets the exact text Dumper.to_ruby prints
       # (which always includes `name:`, since the name is deterministic)
       # round-trip through Definition#add_index without ever landing on a
       # name that disagrees with the derived one.
-      def initialize(table, columns, unique, name = "")
+      #
+      # `where` is a partial index's predicate (`"deleted_at IS NULL"`) and
+      # `expression` an expression index's key text (`"LOWER(email)"`, with
+      # `columns` empty); "" means none for both, never nil (one type per
+      # attribute).
+      def initialize(table, columns, unique, name = "", where = "", expression = "")
         @table = table.to_s
         @columns = columns
         @unique = unique
         @name = name == "" ? Index.derived_name(@table, @columns) : name
+        @where = where
+        @expression = expression
       end
 
       # "index_<table>_on_<col>_and_<col>": the one definition of the
@@ -45,12 +57,26 @@ module Cybertrain
     end
 
     class ForeignKey
-      attr_reader :from_table, :column, :to_table
+      attr_reader :from_table, :column, :to_table, :on_delete
 
-      def initialize(from_table, column, to_table)
+      # on_delete: :no_action (the default; the DDL writes no ON DELETE),
+      # :cascade, :nullify (SET NULL) or :restrict.
+      def initialize(from_table, column, to_table, on_delete = :no_action)
         @from_table = from_table.to_s
         @column = column.to_s
         @to_table = to_table.to_s
+        @on_delete = on_delete
+      end
+
+      # Raises unless `action` is one of the four on_delete Symbols, so a
+      # typo (`on_delete: :casade`) fails where it is written.
+      def self.check_on_delete(action)
+        case action
+        when :no_action, :cascade, :nullify, :restrict
+          nil
+        else
+          raise ArgumentError, "on_delete must be :no_action, :cascade, :nullify or :restrict, got #{action.inspect}"
+        end
       end
 
       # The column a foreign key to `to_table` uses when none is given:
@@ -119,8 +145,8 @@ module Cybertrain
     # The `t` a `create_table` block yields.
     #
     # Every table also gets `id INTEGER PRIMARY KEY AUTOINCREMENT`; do not
-    # declare it. The types are those below; there is no `decimal`, `bigint`,
-    # `json` or `time`. `default:` is SQL literal text, and a new
+    # declare it. The types are those below; there is no `time`.
+    # `default:` is SQL literal text, and a new
     # record starts with it when it is a plain literal.
     # @example
     #   create_table "articles" do |t|
@@ -202,10 +228,49 @@ module Cybertrain
       # @param default [String, nil] SQL literal text: `"0"`, `"'draft'"`,
       #   `"false"`
       # @param limit [Integer] ignored
+      # @param precision [Integer] accepted for Rails' `precision: 6` and
+      #   ignored (Rails' `datetime(6)` reads back as a plain datetime)
       # @return [nil]
       # @api public
-      def datetime(name, null: true, default: nil, limit: 0)
+      def datetime(name, null: true, default: nil, limit: 0, precision: 0)
         push_column(name, :datetime, null, default, limit)
+      end
+
+      # A `DECIMAL(precision,scale)` column (`DECIMAL(precision)` without a
+      # scale, plain `DECIMAL` without either), as Rails declares one.
+      # @example
+      #   t.decimal "price", precision: 18, scale: 8
+      # @param name [String, Symbol]
+      # @param precision [Integer] total digits; 0 for none
+      # @param scale [Integer] digits after the point; -1 for none
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"0"`
+      # @return [nil]
+      # @api public
+      def decimal(name, precision: 0, scale: -1, null: true, default: nil)
+        @table.add_column(Column.new(name, :decimal, null, default, 0, precision, scale))
+      end
+
+      # A `JSON` column, as Rails declares one on SQLite (the text of the
+      # document).
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"'{}'"`
+      # @return [nil]
+      # @api public
+      def json(name, null: true, default: nil)
+        push_column(name, :json, null, default, 0)
+      end
+
+      # A `BIGINT` column, an Integer in the model: an `:integer` column
+      # with `limit` 8.
+      # @param name [String, Symbol]
+      # @param null [Boolean] false adds NOT NULL
+      # @param default [String, nil] SQL literal text: `"0"`
+      # @return [nil]
+      # @api public
+      def bigint(name, null: true, default: nil)
+        push_column(name, :integer, null, default, 8)
       end
 
       # A `DATE` column, a String (`"2026-10-05"`) in the model.
@@ -243,16 +308,23 @@ module Cybertrain
       # @param name [Symbol, String] the singular (`:article`)
       # @param null [Boolean] the column is NOT NULL unless true
       # @param foreign_key [Boolean]
+      # @param on_delete [Symbol] what deleting the referenced row does:
+      #   `:no_action` (refused while referenced), `:cascade` (deletes this
+      #   row too), `:nullify` (sets the column NULL; pass `null: true`) or
+      #   `:restrict`
+      # @param index [Boolean] false skips the index
       # @return [nil]
       # @api public
-      def references(name, null: false, foreign_key: true)
+      def references(name, null: false, foreign_key: true, on_delete: :no_action, index: true)
+        Cybertrain::Schema::ForeignKey.check_on_delete(on_delete)
         column_name = "#{name}_id"
         push_column(column_name, :integer, null, nil, 0)
-        @table.add_index(Index.new(@table.name, [column_name], false))
+        @table.add_index(Index.new(@table.name, [column_name], false)) if index
         if foreign_key
           to_table = Cybertrain::Inflector.pluralize(name.to_s)
-          @table.add_foreign_key(ForeignKey.new(@table.name, column_name, to_table))
+          @table.add_foreign_key(ForeignKey.new(@table.name, column_name, to_table, on_delete))
         end
+        nil
       end
 
       # `created_at` and `updated_at`, NOT NULL datetimes that

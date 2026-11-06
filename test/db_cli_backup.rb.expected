@@ -19,7 +19,7 @@ db backup failed: --keep needs a positive number, got "0"
 db backup failed: --keep needs a positive number, got ""
 db backup failed: unknown option --fast
 db backup failed: unexpected argument "other.sqlite3"
-usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum|normalize)
+usage: db (migrate|rollback [N]|status|schema|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum|normalize)
 ok   bad arguments are refused
 ok   dated_backup? matches only <name>-YYYYmmddTHHMMSSZ.sqlite3
 backed up tmp/db_cli_backup_test/storage/test.sqlite3 to tmp/db_cli_backup_test/backups/app-20261025T123456Z.sqlite3

@@ -1,5 +1,6 @@
 require "cybertrain/schema"
 require "cybertrain/schema/dumper"
+require "cybertrain/db/sqlite_ddl"
 require "cybertrain/test"
 
 test "create_table records columns with type, null and default" do
@@ -286,6 +287,153 @@ test "add_foreign_key raises ArgumentError for an unknown table" do
   end
 
   assert_raises("ArgumentError") { definition.add_foreign_key("missing", "posts") }
+end
+
+def rails_types_definition
+  Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "posts" do |t|
+      t.string "title"
+      t.datetime "deleted_at", precision: 0
+    end
+    s.create_table "users" do |t|
+      t.string "email", null: false
+    end
+    s.create_table "trades" do |t|
+      t.decimal "price", precision: 18, scale: 8
+      t.decimal "amount", precision: 10
+      t.decimal "ratio"
+      t.json "meta"
+      t.bigint "views", null: false, default: "0"
+      t.references :post, on_delete: :cascade
+      t.references :user, null: true, on_delete: :nullify, index: false
+    end
+    s.add_index "users", "LOWER(email)", name: "index_users_on_lower_email"
+    s.add_index "posts", ["deleted_at"], where: "deleted_at IS NULL"
+  end
+end
+
+test "decimal, json and bigint columns record their type, precision, scale and limit" do
+  trades = rails_types_definition.table("trades")
+  price = trades.column("price")
+  assert_equal :decimal, price.type
+  assert_equal 18, price.precision
+  assert_equal 8, price.scale
+  amount = trades.column("amount")
+  assert_equal 10, amount.precision
+  assert_equal(-1, amount.scale)
+  ratio = trades.column("ratio")
+  assert_equal 0, ratio.precision
+  assert_equal(-1, ratio.scale)
+  assert_equal :json, trades.column("meta").type
+  views = trades.column("views")
+  assert_equal :integer, views.type
+  assert_equal 8, views.limit
+  assert_equal "0", views.default
+  assert_equal 0, trades.column("meta").precision
+  assert_equal(-1, trades.column("meta").scale)
+end
+
+test "datetime accepts precision: and ignores it" do
+  deleted_at = rails_types_definition.table("posts").column("deleted_at")
+  assert_equal :datetime, deleted_at.type
+  assert_equal 0, deleted_at.precision
+end
+
+test "references takes on_delete: and index:" do
+  trades = rails_types_definition.table("trades")
+  assert_equal 2, trades.references.size
+  assert_equal :cascade, trades.references[0].on_delete
+  assert_equal :nullify, trades.references[1].on_delete
+  assert_equal ["index_trades_on_post_id"], trades.indexes.map { |i| i.name }
+end
+
+test "a foreign key defaults to on_delete :no_action" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "posts" do |t|
+      t.string "title"
+    end
+    s.create_table "comments" do |t|
+      t.references :post
+      t.integer "author_id"
+    end
+    s.add_foreign_key "comments", "posts", column: "author_id", on_delete: :restrict
+  end
+  refs = definition.table("comments").references
+  assert_equal :no_action, refs[0].on_delete
+  assert_equal :restrict, refs[1].on_delete
+end
+
+test "add_index takes an expression String and a where: predicate" do
+  definition = rails_types_definition
+  expr = definition.table("users").indexes[0]
+  assert_equal "LOWER(email)", expr.expression
+  assert_equal [], expr.columns
+  assert_equal "index_users_on_lower_email", expr.name
+  assert_equal "", expr.where
+  partial = definition.table("posts").indexes[0]
+  assert_equal "deleted_at IS NULL", partial.where
+  assert_equal "", partial.expression
+  assert_equal ["deleted_at"], partial.columns
+  assert_equal "index_posts_on_deleted_at", partial.name
+end
+
+test "an expression index without name: raises ArgumentError" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "users" do |t|
+      t.string "email"
+    end
+  end
+  assert_raises("ArgumentError") { definition.add_index("users", "LOWER(email)") }
+end
+
+test "SqliteDDL writes DECIMAL, JSON, BIGINT and ON DELETE" do
+  sql = Cybertrain::DB::SqliteDDL.create_table(rails_types_definition.table("trades"))
+  assert_includes sql, "price DECIMAL(18,8)"
+  assert_includes sql, "amount DECIMAL(10),"
+  assert_includes sql, "ratio DECIMAL,"
+  assert_includes sql, "meta JSON"
+  assert_includes sql, "views BIGINT NOT NULL DEFAULT 0"
+  assert_includes sql, "FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE"
+  assert_includes sql, "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL"
+end
+
+test "SqliteDDL writes ON DELETE RESTRICT and nothing for :no_action" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "posts" do |t|
+      t.string "title"
+    end
+    s.create_table "comments" do |t|
+      t.references :post, on_delete: :restrict
+      t.references :author
+    end
+  end
+  sql = Cybertrain::DB::SqliteDDL.create_table(definition.table("comments"))
+  assert_includes sql, "REFERENCES posts(id) ON DELETE RESTRICT"
+  assert_includes sql, "FOREIGN KEY (author_id) REFERENCES authors(id))"
+end
+
+test "SqliteDDL index_sql writes expression and partial indexes" do
+  definition = rails_types_definition
+  expr = definition.table("users").indexes[0]
+  partial = definition.table("posts").indexes[0]
+  assert_equal "CREATE INDEX index_users_on_lower_email ON users(LOWER(email))",
+               Cybertrain::DB::SqliteDDL.index_sql(expr.table, expr.columns, expr.unique, expr.name, expr.where, expr.expression)
+  assert_equal "CREATE INDEX index_posts_on_deleted_at ON posts(deleted_at) WHERE deleted_at IS NULL",
+               Cybertrain::DB::SqliteDDL.index_sql(partial.table, partial.columns, partial.unique, partial.name, partial.where, partial.expression)
+end
+
+test "Dumper.to_ruby writes decimal, json, bigint, on_delete, expression and partial indexes" do
+  ruby = Cybertrain::Schema::Dumper.to_ruby(rails_types_definition)
+  assert_includes ruby, "    t.decimal \"price\", precision: 18, scale: 8\n"
+  assert_includes ruby, "    t.decimal \"amount\", precision: 10\n"
+  assert_includes ruby, "    t.decimal \"ratio\"\n"
+  assert_includes ruby, "    t.json \"meta\"\n"
+  assert_includes ruby, "    t.bigint \"views\", null: false, default: \"0\"\n"
+  assert_includes ruby, "    t.datetime \"deleted_at\"\n"
+  assert_includes ruby, "  s.add_index \"users\", \"LOWER(email)\", name: \"index_users_on_lower_email\"\n"
+  assert_includes ruby, "  s.add_index \"posts\", [\"deleted_at\"], name: \"index_posts_on_deleted_at\", where: \"deleted_at IS NULL\"\n"
+  assert_includes ruby, "  s.add_foreign_key \"trades\", \"posts\", column: \"post_id\", on_delete: :cascade\n"
+  assert_includes ruby, "  s.add_foreign_key \"trades\", \"users\", column: \"user_id\", on_delete: :nullify\n"
 end
 
 Cybertrain::Test.run!

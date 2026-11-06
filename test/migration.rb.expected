@@ -16,4 +16,8 @@ ok   down resets operations, so calling it twice does not duplicate them
 ok   down raises IrreversibleMigration when change recorded a non-invertible operation
 ok   add_index accepts Symbol columns
 ok   add_index name: overrides the derived name, for symmetry with Definition#add_index
-18 tests, 58 assertions, 0 failures
+ok   add_column takes precision: and scale: for a decimal
+ok   add_index takes where: for a partial index
+ok   add_reference and add_foreign_key take on_delete:
+ok   a create_table recorded by a migration emits its expression and partial indexes
+22 tests, 75 assertions, 0 failures

@@ -51,6 +51,8 @@ module Cybertrain
           status(root)
         when "schema:dump"
           schema_dump(root)
+        when "schema"
+          schema(root)
         when "create"
           create(root)
         when "backup"
@@ -69,7 +71,7 @@ module Cybertrain
       end
 
       def self.usage
-        puts "usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum|normalize)"
+        puts "usage: db (migrate|rollback [N]|status|schema|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum|normalize)"
         1
       end
 
@@ -169,6 +171,14 @@ module Cybertrain
         written ? 0 : 1
       end
 
+      # `db schema`: db/schema.rb from the database as it is (one Rails or
+      # another tool created, say), without migrating; prints the path.
+      def self.schema(root)
+        return 1 if schema_dump(root) != 0
+        puts "wrote #{root}/db/schema.rb"
+        0
+      end
+
       # Rewrites 0.4's "...T...Z" datetime cells into the stored format
       # (Normalizer); one line per DATETIME column.
       def self.normalize(root)
@@ -188,7 +198,7 @@ module Cybertrain
         0
       end
 
-      # rollback/status/schema:dump never create a database file by
+      # rollback/status/schema/schema:dump never create a database file by
       # accident: a plain path is checked here for a clear message, and the
       # connection is opened without OPEN_CREATE so that SQLite refuses a
       # missing file named any other way (a "file:" URI) as well. An
