@@ -75,4 +75,20 @@ test "reserved-word and odd table and column names are quoted" do
   conn.close
 end
 
+test "a datetime(6) column is normalized like DATETIME" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE events (id INTEGER PRIMARY KEY, at datetime(6), label varchar)")
+  conn.execute("INSERT INTO events (at, label) VALUES ('2026-10-05T09:00:00Z', '2026-10-05T09:00:00Z')")
+  conn.execute("INSERT INTO events (at, label) VALUES ('2026-10-05 09:00:00.12', 'x')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 1, report.size
+  assert_equal "at", report[0][1].to_s
+  assert_equal 2, report[0][2].to_i
+  rows = conn.execute("SELECT at, label FROM events ORDER BY id")
+  assert_equal "2026-10-05 09:00:00.000000", rows[0]["at"].to_s
+  assert_equal "2026-10-05 09:00:00.120000", rows[1]["at"].to_s
+  assert_equal "2026-10-05T09:00:00Z", rows[0]["label"].to_s
+  conn.close
+end
+
 Cybertrain::Test.run!

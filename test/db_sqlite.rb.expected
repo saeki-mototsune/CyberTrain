@@ -23,4 +23,5 @@ ok   pool: 8 threads x 100 inserts through DB.with
 ok   DB.connect, DB.with and DB.disconnect
 ok   remembered column names follow a changed schema
 ok   execute_models reads DATETIME columns as UTC Times and leaves other values alone
-25 tests, 108 assertions, 0 failures
+ok   execute_models reads a precision-qualified datetime(6) column as a Time
+26 tests, 110 assertions, 0 failures

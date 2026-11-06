@@ -45,7 +45,7 @@ module Cybertrain
         columns.each do |c|
           name = c["name"].to_s
           has_id = true if name == "id"
-          datetimes << name if c["type"].to_s.upcase == "DATETIME"
+          datetimes << name if Connection.datetime_decl?(c["type"].to_s)
         end
         datetimes.each do |column|
           if has_id

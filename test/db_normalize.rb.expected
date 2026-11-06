@@ -2,4 +2,5 @@ ok   normalize rewrites every non-canonical datetime once, leaves canonical rows
 ok   normalized values sort with Rails-format values by time
 ok   a table without an id column is reported and skipped
 ok   reserved-word and odd table and column names are quoted
-4 tests, 18 assertions, 0 failures
+ok   a datetime(6) column is normalized like DATETIME
+5 tests, 24 assertions, 0 failures

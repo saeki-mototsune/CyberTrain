@@ -436,4 +436,14 @@ test "execute_models reads DATETIME columns as UTC Times and leaves other values
   conn.close
 end
 
+test "execute_models reads a precision-qualified datetime(6) column as a Time" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE events (id INTEGER PRIMARY KEY, at datetime(6), label TEXT)")
+  conn.execute("INSERT INTO events (at, label) VALUES (?, ?)", ["2026-09-24 12:30:05.123456", "2026-09-24 12:30:05.123456"])
+  rows = conn.execute_models("SELECT at, label FROM events")
+  assert_equal Time.utc(2026, 9, 24, 12, 30, 5, 123456), rows[0]["at"]
+  assert_equal "2026-09-24 12:30:05.123456", rows[0]["label"]
+  conn.close
+end
+
 Cybertrain::Test.run!

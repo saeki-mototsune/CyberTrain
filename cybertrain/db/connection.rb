@@ -455,11 +455,12 @@ module Cybertrain
       end
 
       # sqlite3_column_decltype is nil for an expression; a table column
-      # answers the type its CREATE TABLE gave (DATETIME for t.datetime).
+      # answers the type its CREATE TABLE gave (DATETIME for t.datetime;
+      # Rails writes datetime(6)): any type that starts with DATETIME.
       def self.datetime_decl?(decl)
         return false if decl.nil?
 
-        decl.upcase == "DATETIME"
+        decl.upcase.start_with?("DATETIME")
       end
 
       private
