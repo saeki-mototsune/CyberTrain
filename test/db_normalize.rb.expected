@@ -1,6 +1,9 @@
 ok   normalize rewrites every non-canonical datetime once, leaves canonical rows, and is idempotent
 ok   normalized values sort with Rails-format values by time
-ok   a table without an id column is reported and skipped
+ok   a table without an id column is normalized by rowid
+ok   a duplicated id does not make one row overwrite another
+ok   WITHOUT ROWID tables and tables declaring _rowid_ are reported and left untouched
+ok   a cell that only looks canonical to LIKE is rewritten and a canonical one is left alone
 ok   reserved-word and odd table and column names are quoted
 ok   a datetime(6) column is normalized like DATETIME
-5 tests, 24 assertions, 0 failures
+8 tests, 40 assertions, 0 failures

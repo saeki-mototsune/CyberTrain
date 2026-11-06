@@ -10,13 +10,22 @@ module Cybertrain
     # HH:MM:SS.ffffff" (UTC), so they sort correctly against new rows.
     # Behind `db normalize`.
     module Normalizer
-      # SQL LIKE pattern of a cell already in the stored format.
-      CANONICAL = "____-__-__ __:__:__.______"
+      # SQL GLOB pattern of a cell already in the stored format (a [0-9]
+      # class at every digit: LIKE's "_" would take any character).
+      CANONICAL = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] " \
+                  "[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]"
+
+      # The skipped slot of a rewritten -1 entry says why: WITHOUT ROWID.
+      WITHOUT_ROWID = 1
+      # ... or a column named _rowid_ that shadows SQLite's alias.
+      DECLARES_ROWID = 2
 
       # Normalizes every DATETIME column of every user table, in one
       # transaction. A cell Cast.parse_time cannot read is left alone and
-      # counted. A table without an `id` column cannot be updated by row and
-      # is reported with rewritten -1 and skipped.
+      # counted. Rows are located by SQLite's _rowid_, so a table needs no `id`
+      # column; one that has no rowid (WITHOUT ROWID) or declares a column
+      # named _rowid_ is reported with rewritten -1 and skipped, the reason
+      # (WITHOUT_ROWID or DECLARES_ROWID) in the skipped slot.
       # @param connection [Cybertrain::DB::Connection]
       # @return [Array<Array>] one [table, column, rewritten, skipped] per
       #   DATETIME column
@@ -24,11 +33,11 @@ module Cybertrain
         report = Array.new(0) { ["", "", 0, 0] }
         connection.transaction do
           tables = connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
           )
           tables.each do |t|
             table = t["name"].to_s
-            normalize_table(connection, table, report)
+            normalize_table(connection, table, t["sql"].to_s, report)
           end
         end
         report
@@ -36,25 +45,37 @@ module Cybertrain
 
       # @param connection [Cybertrain::DB::Connection]
       # @param table [String]
+      # @param create_sql [String] the table's CREATE statement
       # @param report [Array<Array>] receives one entry per DATETIME column
       # @return [nil]
-      def self.normalize_table(connection, table, report)
+      def self.normalize_table(connection, table, create_sql, report)
         columns = connection.execute("PRAGMA table_info(#{pragma_quote(table)})")
-        has_id = false
+        reason = 0
+        reason = WITHOUT_ROWID if without_rowid?(create_sql)
         datetimes = Array.new(0) { "" }
         columns.each do |c|
           name = c["name"].to_s
-          has_id = true if name == "id"
+          reason = DECLARES_ROWID if name == "_rowid_" && reason == 0
           datetimes << name if Connection.datetime_decl?(c["type"].to_s)
         end
         datetimes.each do |column|
-          if has_id
+          if reason == 0
             report << normalize_column(connection, table, column)
           else
-            report << [table, column, -1, 0]
+            report << [table, column, -1, reason]
           end
         end
         nil
+      end
+
+      # True when the CREATE statement ends with WITHOUT ROWID (trailing
+      # spaces and semicolons allowed).
+      # @param create_sql [String]
+      # @return [Boolean]
+      def self.without_rowid?(create_sql)
+        text = create_sql.upcase.strip
+        text = text[0, text.size - 1].strip while text.end_with?(";")
+        text.end_with?("WITHOUT ROWID")
       end
 
       # "a\"b" -> "\"a\"\"b\"": PRAGMA takes a double-quoted identifier.
@@ -71,9 +92,8 @@ module Cybertrain
       def self.normalize_column(connection, table, column)
         t = Cybertrain::Relation.quote_ident(table)
         c = Cybertrain::Relation.quote_ident(column)
-        id = Cybertrain::Relation.quote_ident("id")
         rows = connection.execute(
-          "SELECT #{id}, #{c} AS v FROM #{t} WHERE #{c} IS NOT NULL AND #{c} NOT LIKE '#{CANONICAL}'"
+          "SELECT _rowid_ AS rid, #{c} AS v FROM #{t} WHERE #{c} IS NOT NULL AND #{c} NOT GLOB '#{CANONICAL}'"
         )
         rewritten = 0
         skipped = 0
@@ -83,8 +103,8 @@ module Cybertrain
             skipped += 1
           else
             connection.execute(
-              "UPDATE #{t} SET #{c} = ? WHERE #{id} = ?",
-              [Cybertrain::Cast.sql_datetime(time), r["id"]]
+              "UPDATE #{t} SET #{c} = ? WHERE _rowid_ = ?",
+              [Cybertrain::Cast.sql_datetime(time), r["rid"]]
             )
             rewritten += 1
           end

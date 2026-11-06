@@ -186,7 +186,8 @@ module Cybertrain
         begin
           Normalizer.run(connection).each do |row|
             if row[2].to_i < 0
-              puts "skipped #{row[0]}.#{row[1]}: no id column"
+              why = row[3].to_i == Normalizer::WITHOUT_ROWID ? "without rowid" : "declares _rowid_"
+              puts "skipped #{row[0]}.#{row[1]}: #{why}"
             else
               puts "normalized #{row[0]}.#{row[1]}: #{row[2]} rows (#{row[3]} unreadable left alone)"
             end

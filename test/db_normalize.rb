@@ -53,15 +53,61 @@ test "normalized values sort with Rails-format values by time" do
   conn.close
 end
 
-test "a table without an id column is reported and skipped" do
+test "a table without an id column is normalized by rowid" do
   conn = Cybertrain::DB::Connection.new(":memory:")
   conn.exec_script("CREATE TABLE tags (name TEXT, seen_at DATETIME)")
   conn.execute("INSERT INTO tags VALUES ('a', '2026-10-05T09:00:00Z')")
   report = Cybertrain::DB::Normalizer.run(conn)
   assert_equal 1, report.size
   assert_equal "tags", report[0][0].to_s
+  assert_equal 1, report[0][2].to_i
+  assert_equal "2026-10-05 09:00:00.000000", conn.execute("SELECT seen_at FROM tags")[0]["seen_at"].to_s
+  conn.close
+end
+
+test "a duplicated id does not make one row overwrite another" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE dup (id INTEGER, at DATETIME)")
+  conn.execute("INSERT INTO dup VALUES (1, '2026-10-05T09:00:00Z')")
+  conn.execute("INSERT INTO dup VALUES (1, '2026-10-06T10:00:00Z')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 2, report[0][2].to_i
+  rows = conn.execute("SELECT at FROM dup ORDER BY rowid")
+  assert_equal "2026-10-05 09:00:00.000000", rows[0]["at"].to_s
+  assert_equal "2026-10-06 10:00:00.000000", rows[1]["at"].to_s
+  conn.close
+end
+
+test "WITHOUT ROWID tables and tables declaring _rowid_ are reported and left untouched" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE nr (k TEXT PRIMARY KEY, at DATETIME) WITHOUT ROWID ;")
+  conn.exec_script("CREATE TABLE sh (_rowid_ INTEGER, at DATETIME)")
+  conn.execute("INSERT INTO nr VALUES ('a', '2026-10-05T09:00:00Z')")
+  conn.execute("INSERT INTO sh VALUES (1, '2026-10-05T09:00:00Z')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 2, report.size
+  assert_equal "nr", report[0][0].to_s
   assert_equal(-1, report[0][2].to_i)
-  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT seen_at FROM tags")[0]["seen_at"].to_s
+  assert_equal Cybertrain::DB::Normalizer::WITHOUT_ROWID, report[0][3].to_i
+  assert_equal "sh", report[1][0].to_s
+  assert_equal(-1, report[1][2].to_i)
+  assert_equal Cybertrain::DB::Normalizer::DECLARES_ROWID, report[1][3].to_i
+  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM nr")[0]["at"].to_s
+  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM sh")[0]["at"].to_s
+  conn.close
+end
+
+test "a cell that only looks canonical to LIKE is rewritten and a canonical one is left alone" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE ev (id INTEGER PRIMARY KEY, at DATETIME)")
+  conn.execute("INSERT INTO ev (at) VALUES ('2026-10-05 09:00:00.12345Z')")
+  conn.execute("INSERT INTO ev (at) VALUES ('2026-10-05 09:00:00.123456')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 1, report[0][2].to_i
+  assert_equal 0, report[0][3].to_i
+  rows = conn.execute("SELECT at FROM ev ORDER BY id")
+  assert_equal "2026-10-05 09:00:00.123450", rows[0]["at"].to_s
+  assert_equal "2026-10-05 09:00:00.123456", rows[1]["at"].to_s
   conn.close
 end
 
