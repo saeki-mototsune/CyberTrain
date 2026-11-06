@@ -62,41 +62,83 @@ module Cybertrain
     # skips assign_attributes for an empty Hash), so one serves every row.
     NO_ATTRIBUTES = {}
 
-    # Declares validations for one attribute, run by {#valid?} (and so by
-    # {#save}) in declaration order. Only `presence` and `length` exist.
+    # Declares validations for one or more attributes, run by {#valid?}
+    # (and so by {#save}) in declaration order, with Rails' default English
+    # messages (`message:` replaces them).
     #
-    # - `presence: true` adds `"can't be blank"` when the value is `nil` or a
+    # - `presence: true`: `"can't be blank"` when the value is `nil` or a
     #   String that is empty after `strip`. `false` and `0` are present.
-    # - `length: { minimum: n, maximum: m }` (either key) adds
-    #   `"is too short (minimum is n characters)"` or
-    #   `"is too long (maximum is m characters)"`. A `nil` value is left to
-    #   `presence`; other keys (`is:`, `in:`) are ignored.
-    # - `allow_blank: true` skips the length rule for a blank value. It does
-    #   not apply to `presence`.
+    # - `length: { minimum:, maximum:, is:, in: }` (`in:` / `within:` an
+    #   Integer Range): `"is too short (minimum is n characters)"`, `"is too
+    #   long (maximum is m characters)"`, `"is the wrong length (should be n
+    #   characters)"`. A `nil` value is left to `presence`.
+    # - `inclusion: { in: }` / `exclusion: { in: }`: an Array of Strings or
+    #   Integers, or a Range of Integers (Spinel builds no other Range);
+    #   `"is not included in the list"` / `"is reserved"`.
+    # - `format: { with: /re/, without: /re/ }`: the value as a String must
+    #   match `with:` and must not match `without:`, else `"is invalid"`
+    #   (nil is invalid unless `allow_nil:`).
+    # - `numericality: true | { only_integer:, greater_than:,
+    #   greater_than_or_equal_to:, equal_to:, less_than:,
+    #   less_than_or_equal_to:, other_than: }`: a String is parsed as a
+    #   number first (`"12"` passes, `"abc"` is `"is not a number"`, as is
+    #   nil); `only_integer` takes an Integer or an integer String
+    #   (`"must be an integer"`; a Float fails it, as in Rails); each failing
+    #   comparison adds `"must be greater than 0"` and so on, the limit as
+    #   written.
+    # - `uniqueness: true | { scope: :column, case_sensitive: false }`:
+    #   `"has already been taken"` when another row holds the value
+    #   (`LOWER()` on both sides when not case-sensitive), through the
+    #   generated `unique_value_taken?`.
+    # - On every rule: `allow_nil:` skips nil, `allow_blank:` nil and blank
+    #   Strings; `on: :create | :update` runs it for a new or a persisted
+    #   record only; `if:` / `unless:` name a method of the model (a Symbol:
+    #   the generator writes the `validation_condition?` table that calls it,
+    #   and refuses a lambda); `message:` replaces the default (also inside
+    #   a rule's Hash, for that rule).
     #
-    # For anything else (uniqueness, formats, cross-field rules), add errors
-    # yourself in a {.before_validation} block: `valid?` clears the errors,
-    # runs that block, then the declared rules.
+    # An unknown option or a value of the wrong kind raises ArgumentError
+    # when the model loads, and the line declares nothing. For cross-field
+    # rules, name a method with {.validate}.
     #
     # @example
-    #   validates :title, presence: true, length: { minimum: 3, maximum: 40 }
-    #   validates :subtitle, length: { maximum: 80 }, allow_blank: true
-    # @param attr [Symbol] the attribute (its SQL column name)
-    # @param presence [Boolean]
-    # @param length [Hash{Symbol => Integer}, nil] `:minimum` and/or `:maximum`
-    # @param allow_blank [Boolean] skip the length rule when the value is blank
+    #   validates :title, presence: true, length: { minimum: 3, maximum: 40 }, uniqueness: true
+    #   validates :state, inclusion: { in: ["draft", "published"] }, allow_nil: true
+    #   validates :slug, format: { with: /\A[a-z0-9-]+\z/ }, exclusion: { in: ["new", "edit"] }
+    #   validates :views, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+    #   validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on: :create
+    #   validates :summary, presence: true, if: :published?
+    # @param args [Array<Symbol, Hash>] the attributes (their SQL column
+    #   names), then the options
     # @return [nil]
+    # @raise [ArgumentError] for an unknown option or a malformed value
     # @api public
-    def self.validates(attr, presence: false, length: nil, allow_blank: false)
+    def self.validates(*args)
+      built = Validator.build_all(args)
       list = (VALIDATORS[self.name] ||= Array.new(0) { Validator.new(:base, :presence) })
-      list << Validator.new(attr, :presence) if presence
-      unless length.nil?
-        minimum = length.key?(:minimum) ? length[:minimum] : -1
-        maximum = length.key?(:maximum) ? length[:maximum] : -1
-        list << Validator.new(attr, :length, minimum, maximum, allow_blank)
-      end
+      built.each { |v| list << v }
       nil
     end
+
+    # Declares methods that validate the record by adding to {#errors}
+    # themselves, run by {#valid?} after the {.validates} rules:
+    # `validate :check_dates, :check_totals, on: :update, if: :published?,
+    # unless: :imported?`. The generator reads the line as text (like
+    # {.scope}) and writes `run_custom_validations` calling each method by
+    # name; at run time this method does nothing. One line, Symbol method
+    # names defined in the model file, and `on:` / `if:` / `unless:` with
+    # literal values; a block or a lambda stops the generator.
+    # @example
+    #   validate :ends_after_start
+    #
+    #   def ends_after_start
+    #     errors.add(:ends_on, "must be after the start") if ends_on < starts_on
+    #   end
+    # @param args [Array<Symbol, Hash>] the method names, then `on:`, `if:`,
+    #   `unless:`
+    # @return [nil]
+    # @api public
+    def self.validate(*args) = nil
 
     # Declares a named query: `scope :recent, -> { order(created_at: :desc) }`
     # or, with parameters, `scope :min_views, ->(n) { where("views >= ?", n) }`.
@@ -689,6 +731,14 @@ module Cybertrain
     # Cybertrain::Model, so a stub here would be the method they call.
     def destroy_dependents = nil
     def reset_association_caches = nil
+    # Validations (spec section 9): the generated model answers uniqueness
+    # with a query, if: / unless: through a `case` over the names the model
+    # file gives, and `validate :method` lines by calling each method. A
+    # hand-written model has no uniqueness conflicts, every condition true
+    # and no custom validations.
+    def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive) = false
+    def validation_condition?(name) = true
+    def run_custom_validations(context) = nil
     def counter_cached? = false
     def counter_cache_columns = Array.new(0) { "" }
 
@@ -752,13 +802,17 @@ module Cybertrain
     end
 
     # Clears {#errors}, runs the {.before_validation} callbacks, then every
-    # rule declared with {.validates}.
+    # rule declared with {.validates}, then the {.validate} methods. The
+    # context is `:create` for a new record and `:update` for a persisted
+    # one (rules with `on:` run in theirs only).
     # @return [Boolean] true when no errors were added
     # @api public
     def valid?
       errors.clear
       run_callbacks("before_validation")
-      Model.validators_for(model_name).each { |v| v.validate(self) }
+      context = new_record? ? :create : :update
+      Model.validators_for(model_name).each { |v| v.validate(self, context) }
+      run_custom_validations(context)
       errors.empty?
     end
 

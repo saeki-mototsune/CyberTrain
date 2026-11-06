@@ -22,7 +22,8 @@
 # The class is named after the singular of the table (`articles` → `Article`,
 # `blog_posts` → `BlogPost`), with one accessor per column, the finders below
 # and an association per foreign key. `app/models/article.rb` reopens it, with
-# no superclass, for {Cybertrain::Model.validates validations},
+# no superclass, for {Cybertrain::Model.validates validations} (and
+# {Cybertrain::Model.validate validate :method}),
 # {Cybertrain::Model.before_save callbacks} and your own methods; never edit
 # the generated file.
 #
@@ -378,6 +379,32 @@ class Article < Cybertrain::Model
 
     rel.preloaded(@comments_preloaded)
   end
+
+  # What a {Cybertrain::Model.validates `uniqueness:`} rule asks: whether
+  # another row holds `value` in the column `attr`. Every model gets it,
+  # built through the relation (the value is always a bind):
+  # `where(attr => value)` -- `LOWER(attr) = LOWER(?)` when
+  # `case_sensitive` is false --, narrowed by `where(scope_attr =>
+  # scope_value)` when a `scope:` is given, and `where.not(id: exclude_id)`
+  # for a saved record, then `exists?`.
+  #
+  # The model file's `if:` / `unless:` names and `validate :method` lines
+  # are generated too, as `validation_condition?(name)` (a `case` calling
+  # the named method) and `run_custom_validations(context)` (each
+  # `validate` method in order, under its `on:` / `if:` / `unless:`); a
+  # name the model file does not define stops the generator.
+  # @example
+  #   Article.new.unique_value_taken?(:title, "Hello", nil, nil, 0, false)
+  # @param attr [Symbol] the column
+  # @param value [Object] the value to look for
+  # @param scope_attr [Symbol, nil] a column that must hold `scope_value` too
+  # @param scope_value [Object]
+  # @param exclude_id [Integer] the record's own id (`0` for a new record)
+  # @param case_sensitive [Boolean]
+  # @return [Boolean]
+  # @raise [ArgumentError] when `attr` is not a column name (case_sensitive false)
+  # @api public
+  def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive); end
 end
 
 # The relation `spin run gen` writes next to each model (`ArticleRelation`

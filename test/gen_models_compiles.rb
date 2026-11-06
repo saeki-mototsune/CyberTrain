@@ -68,7 +68,9 @@ test "scan_dir finds Comment and Post, Post's summary view method and both decla
   infos = Cybertrain::Gen::ModelScan.scan_dir(FIXTURE + "/app/models")
   assert_equal ["Comment", "Post"], infos.map { |info| info.class_name }
   assert_equal FIXTURE + "/app/models/post.rb", infos[1].file
-  assert_equal ["summary"], infos[1].view_methods
+  assert_equal ["summary", "published?"], infos[1].view_methods
+  assert_equal ["title_not_reserved"], infos[1].custom_validations.map { |v| v.name }
+  assert_equal ["published?"], infos[1].custom_validations.map { |v| v.condition_if }
   assert_equal ["recent", "min_views"], infos[1].scopes.map { |sc| sc.name }
   assert_equal ["comments"], infos[1].associations.map { |a| a.name }
   assert_equal [:destroy], infos[1].associations.map { |a| a.dependent }
@@ -123,6 +125,55 @@ test "validations from app/models/post.rb apply to the generated class" do
   post = Post.new(title: "")
   refute post.save
   assert_equal ["Title can't be blank"], post.errors.full_messages
+end
+
+test "uniqueness from app/models/post.rb: a taken title fails on create and on update, not the record's own" do
+  reset_tables
+  first = Post.create(title: "Unique")
+  assert first.persisted?
+  dup = Post.new(title: "Unique")
+  refute dup.save
+  assert_equal ["Title has already been taken"], dup.errors.full_messages
+  # Case-sensitive by default (SQLite's BINARY collation).
+  assert Post.new(title: "unique").valid?
+  # The record's own row is not a conflict.
+  first.body = "edited"
+  assert first.save
+  other = Post.create(title: "Other")
+  other.title = "Unique"
+  refute other.save
+  assert_equal ["Title has already been taken"], other.errors.full_messages
+  assert_equal ["Title is too long (maximum is 40 characters)"], Post.create(title: "x" * 41).errors.full_messages
+end
+
+test "the generated unique_value_taken?: case_sensitive false compares LOWER(), scope narrows, the own id is excluded" do
+  reset_tables
+  post = Post.create(title: "MiXed", views: 3)
+  probe = Post.new
+  assert probe.unique_value_taken?(:title, "MiXed", nil, nil, 0, true)
+  refute probe.unique_value_taken?(:title, "mixed", nil, nil, 0, true)
+  assert probe.unique_value_taken?(:title, "mixed", nil, nil, 0, false)
+  assert probe.unique_value_taken?(:title, "MIXED", :views, 3, 0, false)
+  refute probe.unique_value_taken?(:title, "MIXED", :views, 4, 0, false)
+  refute probe.unique_value_taken?(:title, "mixed", nil, nil, post.id, false)
+  # A quote in the value is a bind, not SQL.
+  refute probe.unique_value_taken?(:title, "x') OR ('1' = '1", nil, nil, 0, false)
+  assert_raises("ArgumentError") { probe.unique_value_taken?(:"title) OR (1", "x", nil, nil, 0, false) }
+end
+
+test "numericality and the custom validation with its if: from app/models/post.rb" do
+  reset_tables
+  post = Post.new(title: "Count", views: -1)
+  refute post.save
+  assert_equal ["Views must be greater than or equal to 0"], post.errors.full_messages
+  # title_not_reserved runs only once published? is true.
+  draft = Post.new(title: "admin")
+  assert draft.save
+  published = Post.new(title: "Admin", published_on: "2026-11-06")
+  refute published.save
+  assert_equal ["Title is reserved once published"], published.errors.full_messages
+  published.title = "News"
+  assert published.save
 end
 
 test "belongs_to and has_many associations" do

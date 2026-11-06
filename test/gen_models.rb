@@ -447,6 +447,19 @@ EXPECTED_POST = HEADER + <<~'RUBY'
         else nil
         end
       end
+
+      def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
+        rel = PostRelation.new("posts")
+        if case_sensitive
+          rel.where({ attr => value })
+        else
+          column = Cybertrain::Relation.checked_column("uniqueness", attr)
+          rel.where_sql("LOWER(#{column}) = LOWER(?)", [value])
+        end
+        rel.where({ scope_attr => scope_value }) unless scope_attr.nil?
+        rel.where.not(id: exclude_id) unless exclude_id == 0
+        rel.exists?
+      end
     end
   RUBY
 
@@ -856,6 +869,19 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       end
 
       def call_view_method(name) = nil
+
+      def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
+        rel = CommentRelation.new("comments")
+        if case_sensitive
+          rel.where({ attr => value })
+        else
+          column = Cybertrain::Relation.checked_column("uniqueness", attr)
+          rel.where_sql("LOWER(#{column}) = LOWER(?)", [value])
+        end
+        rel.where({ scope_attr => scope_value }) unless scope_attr.nil?
+        rel.where.not(id: exclude_id) unless exclude_id == 0
+        rel.exists?
+      end
     end
   RUBY
 
@@ -1173,6 +1199,19 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
 
       def read_association(name) = nil
       def call_view_method(name) = nil
+
+      def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
+        rel = FlagRelation.new("flags")
+        if case_sensitive
+          rel.where({ attr => value })
+        else
+          column = Cybertrain::Relation.checked_column("uniqueness", attr)
+          rel.where_sql("LOWER(#{column}) = LOWER(?)", [value])
+        end
+        rel.where({ scope_attr => scope_value }) unless scope_attr.nil?
+        rel.where.not(id: exclude_id) unless exclude_id == 0
+        rel.exists?
+      end
     end
   RUBY
 
@@ -2132,8 +2171,8 @@ end
 
 test "view_methods_for picks the scanned methods of one model" do
   list = [
-    Cybertrain::Gen::ModelInfo.new("comment.rb", "Comment", ["short"], [], []),
-    Cybertrain::Gen::ModelInfo.new("post.rb", "Post", ["summary"], [], [])
+    Cybertrain::Gen::ModelInfo.empty("comment.rb", "Comment", ["short"]),
+    Cybertrain::Gen::ModelInfo.empty("post.rb", "Post", ["summary"])
   ]
   assert_equal ["summary"], Cybertrain::Gen::ModelsEmitter.view_methods_for("Post", list)
   assert_equal [], Cybertrain::Gen::ModelsEmitter.view_methods_for("Tag", list)
@@ -2933,6 +2972,170 @@ test "a column named like an association cache ivar fails" do
   msg = assert_raises("ArgumentError") { Cybertrain::Gen::ModelsEmitter.outputs(definition, assoc_infos) }
   assert_equal "table comments: column \"post_loaded\" is the ivar @post_loaded the post association caches in; " \
                "rename the column", msg
+end
+
+# ---- validations (spec section 9) -------------------------------------------
+
+VALIDATED_MODEL_SOURCE = <<~'RUBY'
+  class Post
+    validates :title, presence: true, if: :published?
+    validates :body, length: { maximum: 9 }, unless: :draft?, message: "if: :no"
+    validates :views,
+              numericality: { greater_than: 0 },
+              if: :counted?
+    validate :title_not_reserved, :body_sane, on: :update, if: :published?, unless: :draft?
+    validate :checked?
+
+    def published? = !title.nil?
+    def counted? = true
+
+    private
+
+    def draft? = false
+    def title_not_reserved = nil
+    def body_sane = nil
+    def checked? = nil
+  end
+RUBY
+
+def validated_info
+  Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", VALIDATED_MODEL_SOURCE)
+end
+
+test "scan_source reads validate lines and the if:/unless: Symbols of validates lines" do
+  info = validated_info
+  v = info.custom_validations
+  assert_equal ["title_not_reserved", "body_sane", "checked?"], v.map { |x| x.name }
+  assert_equal ["update", "update", ""], v.map { |x| x.on }
+  assert_equal ["published?", "published?", ""], v.map { |x| x.condition_if }
+  assert_equal ["draft?", "draft?", ""], v.map { |x| x.condition_unless }
+  assert_equal [7, 7, 8], v.map { |x| x.line }
+  # A quoted "if: :no" is text; a validates line continued after a comma is read whole.
+  assert_equal ["published?", "draft?", "counted?"], info.condition_methods
+  assert_equal [2, 3, 4], info.condition_lines
+  assert_equal ["published?", "counted?", "draft?", "title_not_reserved", "body_sane", "checked?"], info.defined_methods
+  assert_equal ["published?", "counted?"], info.view_methods
+  assert_equal [], Cybertrain::Gen::ModelScan.scan_source("c.rb", "class Comment\nend\n").custom_validations
+end
+
+def validation_error(line)
+  assert_raises("ModelScan::Error") do
+    Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  def summary = 1\n  #{line}\nend\n")
+  end
+end
+
+test "a lambda or anything but a Symbol in if: or unless: raises with the file and line" do
+  [
+    "validates :title, presence: true, if: -> { published? }",
+    "validates :title, presence: true, unless: ->(p) { p.draft? }",
+    "validates :title, presence: true, if: [:a, :b]",
+    "validates :title, presence: true, if: \"published?\"",
+    "validate :check, if: -> { true }",
+    "validate :check, unless: proc { true }"
+  ].each do |line|
+    assert_includes validation_error(line), "app/models/post.rb:3: if: and unless: take a Symbol method name"
+  end
+end
+
+test "a validate line of any other shape raises" do
+  shape = "app/models/post.rb:3: validate must be one line of method names and literal options: " \
+          "validate :name, ..., on: :create, if: :method, unless: :method"
+  ["validate :check,", "validate :check, :other # why", "validate :check; validate :x", "validate(:check)",
+   "validate :check, on:", "validate :1x"].each do |line|
+    assert_equal shape, validation_error(line)
+  end
+  assert_equal "app/models/post.rb:3: validate takes method names, not a block: validate :name (a block cannot " \
+               "be called by name under Spinel)", validation_error("validate do |r| r.errors.add(:base, \"x\") end")
+  assert_equal "app/models/post.rb:3: validate takes method names, not a block: validate :name (a block cannot " \
+               "be called by name under Spinel)", validation_error("validate { |r| r }")
+  assert_equal "app/models/post.rb:3: validate: on: takes :create or :update (got :save)",
+               validation_error("validate :check, on: :save")
+  assert_equal "app/models/post.rb:3: validate: unknown option message: (validate takes on:, if:, unless:)",
+               validation_error("validate :check, message: \"x\"")
+end
+
+test "an open bracket in a validates Regexp does not swallow the lines after it" do
+  source = "class Post\n  validates :slug, format: { with: /[(]/ }\n  validate :check, if: :ready?\n" \
+           "  def check = nil\n  def ready? = true\nend\n"
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source)
+  assert_equal ["check"], info.custom_validations.map { |x| x.name }
+  assert_equal ["check", "ready?"], info.defined_methods
+end
+
+test "validate and validates as plain code are not the macros" do
+  source = "class Post\n  def x\n    validate :nope\n  end\n  validate = 1\n  validates_with Foo\n  validate :ok\n" \
+           "  def ok = nil\nend\n"
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source)
+  assert_equal ["ok"], info.custom_validations.map { |x| x.name }
+end
+
+def validated_emit
+  definition = model_spec_schema
+  Cybertrain::Gen::ModelsEmitter.outputs(definition, [validated_info])["gen/models/post.rb"]
+end
+
+test "validation_condition? is a case over the validates names, run_custom_validations calls each method" do
+  src = validated_emit
+  assert_includes src, <<~'RUBY'.gsub(/^/, "  ")
+    def validation_condition?(name)
+      case name
+      when :published? then self.published? ? true : false
+      when :draft? then self.draft? ? true : false
+      when :counted? then self.counted? ? true : false
+      else true
+      end
+    end
+  RUBY
+  assert_includes src, <<~'RUBY'.gsub(/^/, "  ")
+    def run_custom_validations(context)
+      self.title_not_reserved if context == :update && self.published? && !self.draft?
+      self.body_sane if context == :update && self.published? && !self.draft?
+      self.checked?
+      nil
+    end
+  RUBY
+end
+
+test "unique_value_taken? goes through where, where.not and exists?, with LOWER() when not case-sensitive" do
+  assert_includes emit_for("posts"), <<~'RUBY'.gsub(/^/, "  ")
+    def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
+      rel = PostRelation.new("posts")
+      if case_sensitive
+        rel.where({ attr => value })
+      else
+        column = Cybertrain::Relation.checked_column("uniqueness", attr)
+        rel.where_sql("LOWER(#{column}) = LOWER(?)", [value])
+      end
+      rel.where({ scope_attr => scope_value }) unless scope_attr.nil?
+      rel.where.not(id: exclude_id) unless exclude_id == 0
+      rel.exists?
+    end
+  RUBY
+end
+
+test "a model without validate lines or conditions keeps the base stubs" do
+  post = emit_for("posts")
+  refute_line(post, "def validation_condition?(name)")
+  refute_line(post, "def run_custom_validations(context)")
+end
+
+test "a condition or validate method the model file does not define raises with the file and line" do
+  definition = model_spec_schema
+  source = "class Post\n  validates :title, presence: true, if: :ready?\nend\n"
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source)
+  msg = assert_raises("ModelScan::Error") { Cybertrain::Gen::ModelsEmitter.outputs(definition, [info]) }
+  assert_equal "app/models/post.rb:2: if: / unless: :ready? names no method of Post: define it in " \
+               "app/models/post.rb (the generated validation_condition? calls it)", msg
+  source = "class Post\n  validate :check_title\nend\n"
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source)
+  msg = assert_raises("ModelScan::Error") { Cybertrain::Gen::ModelsEmitter.outputs(definition, [info]) }
+  assert_equal "app/models/post.rb:2: validate :check_title names no method of Post: define it in " \
+               "app/models/post.rb (the generated run_custom_validations calls it)", msg
+  # A column reader is a method of the model.
+  source = "class Post\n  validates :body, presence: true, unless: :title\nend\n"
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source)
+  assert_includes Cybertrain::Gen::ModelsEmitter.outputs(definition, [info])["gen/models/post.rb"],
+                  "when :title then self.title ? true : false"
 end
 
 Cybertrain::Test.run!

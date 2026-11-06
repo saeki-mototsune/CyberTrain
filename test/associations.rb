@@ -1016,10 +1016,10 @@ test "validates_foreign_key: nil, blank and 0 are blank; a saved parent's id is 
   assert task.save
   # A blank String value, through the validator itself.
   profile = Profile.new(user_id: ann.id, bio: "  ")
-  Cybertrain::Validator.new(:bio, :foreign_key).validate(profile)
+  Cybertrain::Validator.new(:bio, :foreign_key).validate(profile, :create)
   assert_equal ["can't be blank"], profile.errors[:bio]
   profile.bio = ""
-  Cybertrain::Validator.new(:bio, :foreign_key).validate(profile)
+  Cybertrain::Validator.new(:bio, :foreign_key).validate(profile, :create)
   assert_equal ["can't be blank", "can't be blank"], profile.errors[:bio]
 end
 

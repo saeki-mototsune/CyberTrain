@@ -3,15 +3,51 @@ require "cybertrain/ident"
 module Cybertrain
   module Gen
     # What the model generator needs to know about one app/models/*.rb file.
+    # custom_validations are the `validate :name, ...` lines (one
+    # CustomValidationInfo per method name); condition_methods the if: /
+    # unless: Symbols of the `validates` lines, in first-seen order, with
+    # the line each was first seen on in condition_lines; defined_methods
+    # every instance method the class body defines, private ones included
+    # (the emitter checks the names above against them).
     class ModelInfo
-      attr_reader :file, :class_name, :view_methods, :scopes, :associations
+      attr_reader :file, :class_name, :view_methods, :scopes, :associations, :custom_validations,
+                  :condition_methods, :condition_lines, :defined_methods
 
-      def initialize(file, class_name, view_methods, scopes, associations)
+      def initialize(file, class_name, view_methods, scopes, associations, custom_validations,
+                     condition_methods, condition_lines, defined_methods)
         @file = file
         @class_name = class_name
         @view_methods = view_methods
         @scopes = scopes
         @associations = associations
+        @custom_validations = custom_validations
+        @condition_methods = condition_methods
+        @condition_lines = condition_lines
+        @defined_methods = defined_methods
+      end
+
+      # A ModelInfo with nothing declared, for callers that have no model file.
+      def self.empty(file, class_name, view_methods)
+        ModelInfo.new(file, class_name, view_methods, Array.new(0) { ScopeInfo.new("", "", "", "", 0) },
+                      Array.new(0) { AssociationInfo.new("", :has_many, "", "", "", :none, false, false, 0) },
+                      Array.new(0) { CustomValidationInfo.new("", "", "", "", "", 0) },
+                      Array.new(0) { "" }, Array.new(0) { 0 }, Array.new(0) { "" })
+      end
+    end
+
+    # One method of a `validate :a, :b, on: :update, if: :x, unless: :y`
+    # line (spec section 9.2): `on` is "create", "update" or "" (every
+    # context), `condition_if` / `condition_unless` a method name or "".
+    class CustomValidationInfo
+      attr_reader :file, :name, :on, :condition_if, :condition_unless, :line
+
+      def initialize(file, name, on, condition_if, condition_unless, line)
+        @file = file
+        @name = name
+        @on = on
+        @condition_if = condition_if
+        @condition_unless = condition_unless
+        @line = line
       end
     end
 
@@ -94,7 +130,7 @@ module Cybertrain
         all create create! from_row table_name column_names new name class
         validates before_validation before_save after_save before_create after_create before_update
         after_update before_destroy after_destroy add_model_callback validators_for callbacks_for now_string
-        transaction upsert upsert_into scope has_many has_one belongs_to validates_foreign_key
+        transaction upsert upsert_into scope has_many has_one belongs_to validates_foreign_key validate
         insert_all insert_all! upsert_all insert_all_into no_decimal_scales no_encrypted_columns bulk_method_name
         bulk_empty_row bulk_column bulk_columns bulk_cells bulk_bind bulk_conflict_sql bulk_returned_row
         hash inspect to_s then raise fail
@@ -137,11 +173,36 @@ module Cybertrain
         methods = Array.new(0) { "" }
         scopes = Array.new(0) { ScopeInfo.new("", "", "", "", 0) }
         associations = Array.new(0) { AssociationInfo.new("", :has_many, "", "", "", :none, false, false, 0) }
+        validations = Array.new(0) { CustomValidationInfo.new("", "", "", "", "", 0) }
+        conditions = Array.new(0) { "" }
+        condition_lines = Array.new(0) { 0 }
+        defined = Array.new(0) { "" }
+        # A `validates` call continued on the next lines (a trailing comma,
+        # a backslash or an open bracket): its text so far, and its line.
+        pending = +""
+        pending_line = 0
+        pending_indent = 0
         in_private = false
         lineno = 0
         source.each_line do |raw|
           lineno += 1
           line = raw.strip
+          # A line back at the call's own indent (or left of it) that does
+          # not close a bracket is the next statement: an unbalanced
+          # bracket inside a Regexp literal cannot swallow the class.
+          if pending != "" && line != "" && indent_of(raw) <= pending_indent && !line.start_with?(")") &&
+             !line.start_with?("}") && !line.start_with?("]")
+            collect_conditions(file, pending, pending_line, conditions, condition_lines)
+            pending = +""
+          end
+          if pending != ""
+            pending << " " << line
+            next if continued?(pending)
+
+            collect_conditions(file, pending, pending_line, conditions, condition_lines)
+            pending = +""
+            next
+          end
           next if line == ""
 
           indent = indent_of(raw)
@@ -160,19 +221,231 @@ module Cybertrain
             scopes << scope_on(file, line, lineno, scopes)
           elsif def_indent < 0 && association_kind(line) != ""
             associations << association_on(file, line, lineno, associations)
+          elsif def_indent < 0 && validates_line?(line)
+            if continued?(line)
+              pending << line
+              pending_line = lineno
+              pending_indent = indent
+            else
+              collect_conditions(file, line, lineno, conditions, condition_lines)
+            end
+          elsif def_indent < 0 && validate_line?(line)
+            validate_on(file, line, lineno).each { |v| validations << v }
           elsif line == "private" || line == "protected"
             in_private = true
           elsif line == "public"
             in_private = false
-          elsif !in_private
-            name = view_method_name(line)
-            methods << name if name != "" && !methods.include?(name)
+          else
+            defined_name = def_name(line)
+            defined << defined_name if def_indent < 0 && defined_name != "" && !defined.include?(defined_name)
+            unless in_private
+              name = view_method_name(line)
+              methods << name if name != "" && !methods.include?(name)
+            end
           end
           def_indent = indent if class_name != "" && def_indent < 0 && skip_indent < 0 && def_opens_body?(line)
         end
+        collect_conditions(file, pending, pending_line, conditions, condition_lines) if pending != ""
         return nil if class_name == ""
 
-        ModelInfo.new(file, class_name, methods, scopes, associations)
+        ModelInfo.new(file, class_name, methods, scopes, associations, validations, conditions, condition_lines,
+                      defined)
+      end
+
+      # A `validates :attr, ...` call (`validates(:attr` too). The options
+      # are Ruby that CRuby and Spinel evaluate at load (Model.validates);
+      # the scan only reads their if: / unless: names.
+      def self.validates_line?(line)
+        return false unless line.start_with?("validates ") || line.start_with?("validates(")
+
+        rest = line[9, line.size - 9].lstrip
+        rest = rest[1, rest.size - 1].lstrip if rest.start_with?("(")
+        rest.start_with?(":")
+      end
+
+      # A `validate` macro line: `validate` then a Symbol, a block or a
+      # parenthesis. `validate = 1` or `validate.x` are plain code.
+      def self.validate_line?(line)
+        return false unless line.start_with?("validate ") || line.start_with?("validate(") ||
+                            line.start_with?("validate{")
+
+        rest = line[8, line.size - 8].lstrip
+        rest.start_with?(":") || rest.start_with?("(") || rest.start_with?("{") || rest == "do" ||
+          rest.start_with?("do ") || rest.start_with?("do|")
+      end
+
+      # Whether a `validates` call goes on past this text: it ends with a
+      # comma or a backslash, or a ( [ { is still open (quoted text skipped).
+      def self.continued?(text)
+        return true if text.end_with?(",") || text.end_with?("\\")
+
+        depth = 0
+        quote = ""
+        escaped = false
+        text.each_char do |ch|
+          if quote != ""
+            if escaped
+              escaped = false
+            elsif ch == "\\"
+              escaped = true
+            elsif ch == quote
+              quote = ""
+            end
+          elsif ch == "\"" || ch == "'"
+            quote = ch
+          elsif ch == "(" || ch == "[" || ch == "{"
+            depth += 1
+          elsif ch == ")" || ch == "]" || ch == "}"
+            depth -= 1
+          end
+        end
+        depth > 0
+      end
+
+      # Adds the if: / unless: method names of a `validates` call to
+      # `names` (first-seen order; `lines` gets the line of each). Quoted
+      # text is skipped, so `message: "if: x"` is not an option. Anything
+      # but a Symbol raises Error: the generated validation_condition? calls
+      # the method by name, and a lambda has none (Spinel cannot call a
+      # stored lambda on the record).
+      def self.collect_conditions(file, text, lineno, names, lines)
+        quote = ""
+        escaped = false
+        i = 0
+        while i < text.size
+          ch = text[i, 1]
+          if quote != ""
+            if escaped
+              escaped = false
+            elsif ch == "\\"
+              escaped = true
+            elsif ch == quote
+              quote = ""
+            end
+          elsif ch == "\"" || ch == "'"
+            quote = ch
+          elsif (i == 0 || !word_char?(text[i - 1, 1])) &&
+                (text[i, 3] == "if:" || text[i, 7] == "unless:")
+            key_size = text[i, 3] == "if:" ? 3 : 7
+            rest = text[i + key_size, text.size - i - key_size].lstrip
+            name = condition_value(file, lineno, rest)
+            unless names.include?(name)
+              names << name
+              lines << lineno
+            end
+            i += key_size
+            next
+          end
+          i += 1
+        end
+        nil
+      end
+
+      # The method name of an if: / unless: value (`:published?`), which
+      # must be all of the value; raises Error otherwise.
+      def self.condition_value(file, lineno, rest)
+        name = rest.start_with?(":") ? method_name_at(rest, 1) : ""
+        after = rest[name.size + 1, rest.size - name.size - 1].to_s.lstrip
+        if name == "" || (name[0] >= "0" && name[0] <= "9") ||
+           !(after == "" || after.start_with?(",") || after.start_with?(")") || after.start_with?("}"))
+          value = rest.split(",")[0].to_s.strip
+          raise Error, "#{file}:#{lineno}: if: and unless: take a Symbol method name (got #{value}): " \
+                       "name a method of the model"
+        end
+        name
+      end
+
+      # A method name at `from`: word characters and an optional ? or !.
+      def self.method_name_at(text, from)
+        name = word_at(text, from)
+        return name if name == ""
+
+        mark = text[from + name.size, 1]
+        mark == "?" || mark == "!" ? name + mark : name
+      end
+
+      # The CustomValidationInfo of each name on a `validate` line: Symbol
+      # method names, then on: / if: / unless: with Symbol values, all on
+      # one line. Raises Error for any other shape.
+      def self.validate_on(file, line, lineno)
+        at = "#{file}:#{lineno}: "
+        shape = at + "validate must be one line of method names and literal options: " \
+                     "validate :name, ..., on: :create, if: :method, unless: :method"
+        rest = line[8, line.size - 8].lstrip
+        if rest.start_with?("{") || rest == "do" || rest.start_with?("do ") || rest.start_with?("do|")
+          raise Error, at + "validate takes method names, not a block: validate :name (a block cannot be " \
+                            "called by name under Spinel)"
+        end
+        raise Error, shape unless rest.start_with?(":")
+
+        names = Array.new(0) { "" }
+        on = ""
+        condition_if = ""
+        condition_unless = ""
+        first = true
+        options_seen = false
+        while rest != ""
+          unless first
+            raise Error, shape unless rest.start_with?(",")
+
+            rest = rest[1, rest.size - 1].lstrip
+          end
+          first = false
+          if rest.start_with?(":")
+            name = method_name_at(rest, 1)
+            raise Error, shape if name == "" || (name[0] >= "0" && name[0] <= "9") || options_seen
+
+            names << name
+            rest = rest[name.size + 1, rest.size - name.size - 1].lstrip
+            next
+          end
+          key = word_at(rest, 0)
+          raise Error, shape if key == "" || rest[key.size, 1] != ":"
+
+          rest = rest[key.size + 1, rest.size - key.size - 1].lstrip
+          options_seen = true
+          if key == "if" || key == "unless"
+            value = condition_value(file, lineno, rest)
+            if key == "if"
+              condition_if = value
+            else
+              condition_unless = value
+            end
+            rest = rest[value.size + 1, rest.size - value.size - 1].lstrip
+          elsif key == "on"
+            size = literal_size(rest)
+            raise Error, shape if size <= 0
+
+            value = rest[0, size]
+            unless value == ":create" || value == ":update"
+              raise Error, at + "validate: on: takes :create or :update (got #{value})"
+            end
+
+            on = value[1, value.size - 1]
+            rest = rest[size, rest.size - size].lstrip
+          else
+            raise Error, at + "validate: unknown option #{key}: (validate takes on:, if:, unless:)"
+          end
+          raise Error, shape unless rest == "" || rest.start_with?(",")
+        end
+        raise Error, shape if names.empty?
+
+        out = Array.new(0) { CustomValidationInfo.new("", "", "", "", "", 0) }
+        names.each { |name| out << CustomValidationInfo.new(file, name, on, condition_if, condition_unless, lineno) }
+        out
+      end
+
+      # The name of any instance method a line defines (`def check`,
+      # `def ready?(x)`, `def ok = 1`); "" for any other line and for
+      # `def self.x`.
+      def self.def_name(line)
+        return "" unless line.start_with?("def ")
+
+        rest = line[4, line.size - 4].lstrip
+        return "" if rest.start_with?("self.")
+
+        name = method_name_at(rest, 0)
+        name == "initialize" ? "" : name
       end
 
       # "has_many", "has_one" or "belongs_to" when the line calls that macro
@@ -508,7 +781,7 @@ module Cybertrain
 
       # Every app/models/*.rb under `dir` that defines a class, sorted by file.
       def self.scan_dir(dir)
-        infos = Array.new(0) { ModelInfo.new("", "", [], [], []) }
+        infos = Array.new(0) { ModelInfo.empty("", "", Array.new(0) { "" }) }
         Dir.glob(dir + "/*.rb").sort.each do |path|
           info = scan_source(path, File.read(path))
           infos << info unless info.nil?

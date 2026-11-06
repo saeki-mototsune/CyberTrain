@@ -80,4 +80,13 @@ ok   the counter column follows the parent's has_many name
 ok   a declaration whose model, foreign key column or counter column does not exist fails with the file and line
 ok   a declared belongs_to replaces the reader the same foreign key would give
 ok   a column named like an association cache ivar fails
-82 tests, 799 assertions, 0 failures
+ok   scan_source reads validate lines and the if:/unless: Symbols of validates lines
+ok   a lambda or anything but a Symbol in if: or unless: raises with the file and line
+ok   a validate line of any other shape raises
+ok   an open bracket in a validates Regexp does not swallow the lines after it
+ok   validate and validates as plain code are not the macros
+ok   validation_condition? is a case over the validates names, run_custom_validations calls each method
+ok   unique_value_taken? goes through where, where.not and exists?, with LOWER() when not case-sensitive
+ok   a model without validate lines or conditions keeps the base stubs
+ok   a condition or validate method the model file does not define raises with the file and line
+91 tests, 854 assertions, 0 failures

@@ -475,4 +475,17 @@ class Comment < Cybertrain::Model
   end
 
   def call_view_method(name) = nil
+
+  def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
+    rel = CommentRelation.new("comments")
+    if case_sensitive
+      rel.where({ attr => value })
+    else
+      column = Cybertrain::Relation.checked_column("uniqueness", attr)
+      rel.where_sql("LOWER(#{column}) = LOWER(?)", [value])
+    end
+    rel.where({ scope_attr => scope_value }) unless scope_attr.nil?
+    rel.where.not(id: exclude_id) unless exclude_id == 0
+    rel.exists?
+  end
 end

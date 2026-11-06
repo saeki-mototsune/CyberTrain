@@ -4,6 +4,9 @@ ok   write_all writes every model file under gen/models
 ok   create and find through the generated classes
 ok   column defaults become initial values and reach the database
 ok   validations from app/models/post.rb apply to the generated class
+ok   uniqueness from app/models/post.rb: a taken title fails on create and on update, not the record's own
+ok   the generated unique_value_taken?: case_sensitive false compares LOWER(), scope narrows, the own id is excluded
+ok   numericality and the custom validation with its if: from app/models/post.rb
 ok   belongs_to and has_many associations
 ok   call_view_method reaches the scanned summary
 ok   to_json of a generated model
@@ -26,4 +29,4 @@ ok   comments_count follows create, destroy and a moved comment; the post's own 
 ok   two loaded copies of one comment moved to different posts leave every count right
 ok   destroy decrements the post the row points to, not a stale or unsaved in-memory key
 ok   a move whose save raises inside the transaction leaves the counts and the row as they were
-28 tests, 198 assertions, 0 failures
+31 tests, 222 assertions, 0 failures

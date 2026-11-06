@@ -39,6 +39,9 @@ module Cybertrain
       # counter_cache
       "destroy_dependents", "reset_association_caches", "counter_cache_created",
       "counter_cache_destroyed", "counter_cache_was", "counter_cache_moved", "counter_cache_columns",
+      # validations: the generated `validate :method` calls (unique_value_taken?
+      # and validation_condition? end in `?` and need no entry)
+      "run_custom_validations",
       # Object methods Ruby or the framework calls on a record without being
       # asked: string interpolation and templates (to_s), error messages
       # (inspect), Hash keys (hash)

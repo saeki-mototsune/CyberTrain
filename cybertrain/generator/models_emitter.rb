@@ -66,7 +66,7 @@ module Cybertrain
       # emit_model without any app/models declarations: the associations
       # come from the schema's foreign keys alone.
       def self.emit(table, definition, view_methods, scopes)
-        emit_model(table, definition, view_methods, scopes, Array.new(0) { ModelInfo.new("", "", [], [], []) })
+        emit_model(table, definition, view_methods, scopes, Array.new(0) { ModelInfo.empty("", "", Array.new(0) { "" }) })
       end
 
       # The gen/models file of `table`. `infos` are every scanned model file:
@@ -90,8 +90,122 @@ module Cybertrain
         src << emit_model_head(model, table, plans)
         src << emit_persistence(model, table, scopes)
         src << emit_dispatch(table, definition, infos, plans, view_methods)
+        src << emit_validations(model, table, infos, plans)
         src << "end\n"
         src
+      end
+
+      # The validation hooks Cybertrain::Model stubs (spec section 9):
+      # unique_value_taken? for every model, then validation_condition? (a
+      # `case` over the if: / unless: names of the model file's `validates`
+      # lines) and run_custom_validations (its `validate` lines) when the
+      # file has any. Each name must be a method the model has -- a `def` in
+      # its file or a column or association reader -- or this raises
+      # ModelScan::Error with the file and line, rather than the generated
+      # call failing at run time.
+      def self.emit_validations(model, table, infos, plans)
+        src = +"\n"
+        src << emit_unique_value_taken(model, table)
+        infos.each do |info|
+          next unless info.class_name == model
+
+          check_validation_methods(model, table, info, plans)
+          src << emit_validation_condition(info.condition_methods)
+          src << emit_custom_validations(info.custom_validations)
+        end
+        src
+      end
+
+      # `unique_value_taken?(attr, value, scope_attr, scope_value,
+      # exclude_id, case_sensitive)`, what a `uniqueness:` rule asks: whether
+      # another row holds `value` in `attr` (in the same `scope_attr` value
+      # when one is given). Built through the Relation (`where`, `where_sql`
+      # with the value bound, `where.not`, `exists?`); `case_sensitive:
+      # false` compares LOWER() of both sides, the column quoted by
+      # Relation.checked_column. exclude_id is the record's own id (0 for a
+      # new record, which no row has).
+      def self.emit_unique_value_taken(model, table)
+        src = +""
+        src << "  def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)\n"
+        src << "    rel = #{model}Relation.new(\"#{table.name}\")\n"
+        src << "    if case_sensitive\n"
+        src << "      rel.where({ attr => value })\n"
+        src << "    else\n"
+        src << "      column = Cybertrain::Relation.checked_column(\"uniqueness\", attr)\n"
+        src << "      rel.where_sql(\"LOWER(\#{column}) = LOWER(?)\", [value])\n"
+        src << "    end\n"
+        src << "    rel.where({ scope_attr => scope_value }) unless scope_attr.nil?\n"
+        src << "    rel.where.not(id: exclude_id) unless exclude_id == 0\n"
+        src << "    rel.exists?\n"
+        src << "  end\n"
+        src
+      end
+
+      # `validation_condition?(name)`: the truthiness of the named method as
+      # a Boolean; a name the generator did not see answers true, as the
+      # base stub does (every `validates` if: / unless: is collected, so
+      # only a hand-written call reaches it). "" without any names: the
+      # stub stays.
+      def self.emit_validation_condition(names)
+        return "" if names.empty?
+
+        src = +"\n"
+        src << "  def validation_condition?(name)\n"
+        src << "    case name\n"
+        names.each { |n| src << "    when :#{n} then self.#{n} ? true : false\n" }
+        src << "    else true\n"
+        src << "    end\n"
+        src << "  end\n"
+        src
+      end
+
+      # `run_custom_validations(context)`: each `validate` method in source
+      # order, called when its on: matches `context` and its if: / unless:
+      # methods allow it. "" without any: the stub stays.
+      def self.emit_custom_validations(validations)
+        return "" if validations.empty?
+
+        src = +"\n"
+        src << "  def run_custom_validations(context)\n"
+        validations.each do |v|
+          checks = Array.new(0) { "" }
+          checks << "context == :#{v.on}" if v.on != ""
+          checks << "self.#{v.condition_if}" if v.condition_if != ""
+          checks << "!self.#{v.condition_unless}" if v.condition_unless != ""
+          src << "    self.#{v.name}"
+          src << " if " << checks.join(" && ") unless checks.empty?
+          src << "\n"
+        end
+        src << "    nil\n"
+        src << "  end\n"
+        src
+      end
+
+      def self.check_validation_methods(model, table, info, plans)
+        known = Array.new(0) { "" }
+        info.defined_methods.each { |m| known << m }
+        table.columns.each { |c| known << reader_name(c.name) }
+        plans.each { |plan| known << plan.name }
+        where = info.file
+        i = 0
+        while i < info.condition_methods.size
+          name = info.condition_methods[i]
+          unless known.include?(name)
+            raise ModelScan::Error, "#{where}:#{info.condition_lines[i]}: if: / unless: :#{name} names no method " \
+                                    "of #{model}: define it in #{where} (the generated validation_condition? calls it)"
+          end
+          i += 1
+        end
+        info.custom_validations.each do |v|
+          [v.name, v.condition_if, v.condition_unless].each do |name|
+            next if name == "" || known.include?(name)
+
+            what = name == v.name ? "validate :#{name}" : "validate :#{v.name}: if: / unless: :#{name}"
+            raise ModelScan::Error, "#{where}:#{v.line}: #{what} names no method of #{model}: define it in " \
+                                    "#{where} (the generated run_custom_validations calls it)"
+          end
+        end
+        nil
       end
 
       # The Ruby name a column's reader, writer and ivar carry: the column's
