@@ -182,8 +182,10 @@ module Cybertrain
         # nil (Post.where.not(...)) is the relation itself; a Hash | String
         # parameter dispatches by case under Spinel.
         src << "    case cond\n"
+        src << "    when nil then nil\n"
         src << "    when Hash then add_where(cond)\n"
         src << "    when String then add_where_sql(cond, binds)\n"
+        src << "    else raise ArgumentError, \"where takes a Hash or a SQL String\"\n"
         src << "    end\n"
         src << "    self\n"
         src << "  end\n"
@@ -410,7 +412,7 @@ module Cybertrain
         src << "\n"
         src << "  def write_attribute(name, value)\n"
         src << "    case name\n"
-        table.columns.each { |c| src << "    when #{attribute_keys(c.name)} then #{ivar_name(c.name)} = Cybertrain::Cast.#{cast_for(c)}(value)\n" }
+        table.columns.each { |c| src << "    when #{attribute_keys(c.name)} then #{ivar_name(c.name)} = Cybertrain::Cast.#{writer_cast_for(c)}(value)\n" }
         src << "    end\n"
         src << "    nil\n"
         src << "  end\n"
@@ -646,6 +648,16 @@ module Cybertrain
         when :binary then null ? "str_or_nil" : "binary"
         else null ? "str_or_nil" : "str"
         end
+      end
+
+      # The cast write_attribute applies: cast_for's, except that every date
+      # column, NOT NULL included, takes date_or_nil. An assigned "" or
+      # "2026-13-01" then stays nil, so the NOT NULL constraint (or a
+      # presence validation) refuses the save instead of Cast.date's
+      # 1970-01-01 fallback being stored. load_row keeps Cast.date for a
+      # NOT NULL date: a corrupt stored cell reads as the epoch.
+      def self.writer_cast_for(column)
+        column.type == :date ? "date_or_nil" : cast_for(column)
       end
 
       # What to_row binds for a column: a binary column's bytes wrapped in a

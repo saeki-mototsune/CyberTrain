@@ -5,6 +5,7 @@ class CommentRelation < Cybertrain::Relation
     when "id", "post_id" then :integer
     when "approved" then :boolean
     when "created_at", "updated_at" then :datetime
+    when "seen_on" then :date
     when "extras" then :json
     when "commenter" then :string
     when "body" then :text
@@ -14,8 +15,10 @@ class CommentRelation < Cybertrain::Relation
 
   def where(cond = nil, *binds)
     case cond
+    when nil then nil
     when Hash then add_where(cond)
     when String then add_where_sql(cond, binds)
+    else raise ArgumentError, "where takes a Hash or a SQL String"
     end
     self
   end
@@ -123,10 +126,10 @@ end
 
 class Comment < Cybertrain::Model
   def self.table_name = "comments"
-  def self.column_names = ["id", "post_id", "commenter", "body", "approved", "extras", "created_at", "updated_at"]
+  def self.column_names = ["id", "post_id", "commenter", "body", "approved", "extras", "seen_on", "created_at", "updated_at"]
   def model_name = "Comment"
 
-  attr_accessor :post_id, :commenter, :body, :approved, :extras, :created_at, :updated_at
+  attr_accessor :post_id, :commenter, :body, :approved, :extras, :seen_on, :created_at, :updated_at
 
   def initialize(attrs = {})
     super()
@@ -135,6 +138,7 @@ class Comment < Cybertrain::Model
     @body = ""
     @approved = Cybertrain::Cast.bool_or_nil(false)
     @extras = Cybertrain::Cast.empty_hash
+    @seen_on = nil
     @created_at = nil
     @updated_at = nil
     assign_attributes(attrs) unless attrs.empty?
@@ -153,6 +157,7 @@ class Comment < Cybertrain::Model
     @body = Cybertrain::Cast.str(row["body"])
     @approved = Cybertrain::Cast.bool_or_nil(row["approved"])
     @extras = Cybertrain::Cast.json_hash(row["extras"])
+    @seen_on = Cybertrain::Cast.date(row["seen_on"])
     @created_at = Cybertrain::Cast.time_or_nil(row["created_at"])
     @updated_at = Cybertrain::Cast.time_or_nil(row["updated_at"])
     mark_persisted!
@@ -167,6 +172,7 @@ class Comment < Cybertrain::Model
     when :body then @body
     when :approved then @approved
     when :extras then @extras
+    when :seen_on then @seen_on
     when :created_at then @created_at
     when :updated_at then @updated_at
     else nil
@@ -180,6 +186,7 @@ class Comment < Cybertrain::Model
     when :body then @body = Cybertrain::Cast.str(value)
     when :approved then @approved = Cybertrain::Cast.bool_or_nil(value)
     when :extras then @extras = Cybertrain::Cast.json_hash(value)
+    when :seen_on then @seen_on = Cybertrain::Cast.date_or_nil(value)
     when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
     when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
     end
@@ -198,6 +205,7 @@ class Comment < Cybertrain::Model
       "body" => Cybertrain::Cast.to_sql(@body),
       "approved" => Cybertrain::Cast.to_sql(@approved),
       "extras" => Cybertrain::Cast.json_text(@extras),
+      "seen_on" => Cybertrain::Cast.to_sql(@seen_on),
       "created_at" => Cybertrain::Cast.to_sql(@created_at),
       "updated_at" => Cybertrain::Cast.to_sql(@updated_at)
     }

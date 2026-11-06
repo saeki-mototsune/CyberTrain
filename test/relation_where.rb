@@ -25,8 +25,10 @@ class EventRelation < Cybertrain::Relation
 
   def where(cond = nil, *binds)
     case cond
+    when nil then nil
     when Hash then add_where(cond)
     when String then add_where_sql(cond, binds)
+    else raise ArgumentError, "where takes a Hash or a SQL String"
     end
     self
   end
@@ -301,6 +303,23 @@ test "where with a SQL string and binds, and where_sql still works" do
   assert_equal 1, Event.where("views > ? AND kind = ?", 4, "a").count
   assert_equal 3, Event.where("views > 0").count
   assert_equal 2, Event.all.where_sql("views > ?", [4]).count
+  assert_equal "SELECT * FROM `events` WHERE (views > ?)", Event.where("views > ?", 4).to_sql
+  # A String condition is parenthesized, so its OR cannot take the terms
+  # ANDed after it: (kind = b OR views = 1) AND views = 1 is one row; the
+  # bare text would be kind = b OR (views = 1 AND views = 1), two rows.
+  assert_equal 1, Event.where("kind = ? OR views = ?", "b", 1).where(views: 1).count
+  assert_equal ["one"], names_of(Event.where("kind = ? OR views = ?", "b", 1).where(views: 1).to_a)
+  assert_equal 2, Event.where("kind = ? OR kind = ?", "a", "b").not(views: 1).count
+  assert_equal 1, Event.where("kind = ? OR kind = ?", "a", "b").where_between(:views, 1, 1).count
+  assert_equal 1, Event.all.where_sql("kind = ? OR views = ?", ["b", 1]).where(views: 1).count
+  # Neither nil, a Hash nor a String: an error, not every row.
+  message = assert_raises("ArgumentError") { Event.where(:views) }
+  assert_equal "where takes a Hash or a SQL String", message
+  # One ? is one value: an Array bind is refused, not bound as its text.
+  message = assert_raises("ArgumentError") { Event.where("id IN (?)", [1, 2]) }
+  assert_equal "where: an Array bind is not expanded; use where(column: [...])", message
+  assert_raises("ArgumentError") { Event.all.where_sql("id IN (?)", [[1, 2]]) }
+  assert_equal 1, Event.where("at = ?", T0).count
   # where with no argument is the relation itself (where.not reads as in Rails).
   assert_equal 3, Event.where.count
   rel = Event.all
@@ -378,7 +397,9 @@ test "order with a Hash, distinct pluck and count" do
   assert_equal 2, Event.distinct.order("kind").pluck_str(:kind).size
   assert_equal ["a", "b"], Event.distinct.order("kind").pluck_str(:kind)
   assert_equal "SELECT DISTINCT * FROM `events`", Event.distinct.to_sql
-  # count over the DISTINCT subquery: two rows of kind a, both distinct rows.
+  # distinct dedupes what the column readers return (pluck_*, ids). A
+  # SELECT * row carries its id, so count of a distinct relation (run over
+  # the DISTINCT subquery) is the plain count.
   assert_equal 2, Event.where(kind: "a").distinct.count
   assert_equal 3, Event.distinct.count
   assert Event.distinct.exists?

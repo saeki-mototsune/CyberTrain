@@ -83,13 +83,20 @@ module Cybertrain
       nil
     end
 
+    # A json column's stored text is not a value to compare: raises
+    # `"<method> on a json column (<name>) is not supported"`.
+    def check_not_json(method, name)
+      if column_type(name) == :json
+        raise ArgumentError, "#{method} on a json column (#{name}) is not supported"
+      end
+
+      nil
+    end
+
     # One `column <op> ?` term for add_where / add_where_not; its binds go
     # onto @binds in order.
     def where_term(name, value)
-      if column_type(name) == :json
-        raise ArgumentError, "where on a json column (#{name}) is not supported"
-      end
-
+      check_not_json("where", name)
       column = Relation.quote_ident(name)
       case value
       when nil
@@ -140,6 +147,7 @@ module Cybertrain
     # nil for an open end; both nil raises ArgumentError.
     def add_where_between(column, from, to, exclude_end)
       quoted = Relation.checked_column("where_between", column)
+      check_not_json("where_between", column.to_s)
       if from.nil? && to.nil?
         raise ArgumentError, "where_between: from and to are both nil (give at least one bound)"
       end
@@ -202,7 +210,8 @@ module Cybertrain
       text == "" ? "1 = 0" : "#{text} AND 1 = 0"
     end
 
-    # SELECT DISTINCT from now on (pluck_str of a column then dedupes).
+    # SELECT DISTINCT from now on: the column readers (pluck_*, ids) dedupe;
+    # a SELECT * row carries its id, so count and to_a are unchanged.
     def set_distinct
       @distinct = true
       nil
@@ -256,8 +265,19 @@ module Cybertrain
     end
 
     # A raw SQL fragment with its own `?` binds: where_sql("views > ?", [10]).
+    # The fragment is stored in parentheses, as Rails does, so an `OR`
+    # inside it cannot take the ANDed terms around it
+    # (where("a = ? OR b = ?", 1, 2).where(c: 3) is `(a = ? OR b = ?) AND c = ?`).
+    # An Array bind raises: one `?` is one value, never a list.
     def add_where_sql(sql, binds)
-      @wheres << sql
+      binds.each do |v|
+        case v
+        when Time then nil # before `when Array` (rule 8)
+        when Array
+          raise ArgumentError, "where: an Array bind is not expanded; use where(column: [...])"
+        end
+      end
+      @wheres << "(#{sql})"
       binds.each { |v| @binds << Cast.to_sql(v) }
       nil
     end
@@ -370,7 +390,8 @@ module Cybertrain
       return 0 if @none
 
       sql = if @distinct
-              # DISTINCT over the rows, not over a constant column.
+              # Over the DISTINCT rows, not `SELECT DISTINCT 1` (one row); with
+              # `*` every row is distinct, so this equals the plain count.
               inner = select_sql("*", "", @limit, @offset)
               "SELECT COUNT(*) AS n FROM (#{inner})"
             elsif @limit >= 0 || @offset > 0
@@ -666,7 +687,8 @@ module Cybertrain
 
     # Sets each column to its value in every matching row with one
     # `UPDATE ... SET a = ?, b = ?`, each value bound as Cast.to_sql writes
-    # it (a Time as its stored text, a Hash as JSON): no model is loaded, no
+    # it (a Time as its stored text, a Hash as JSON; a decimal with a scale
+    # rounded to it, as save stores it): no model is loaded, no
     # callback or validation runs, `updated_at` is left alone. A limit or
     # offset picks the rows by an `id` subselect, as {#delete_all} does.
     # @example
@@ -685,7 +707,14 @@ module Cybertrain
       hash.each do |key, value|
         quoted = Relation.checked_column("update_all", key)
         sets << "#{quoted} = ?"
-        binds << bind_for(key.to_s, value)
+        name = key.to_s
+        scale = decimal_scale(name)
+        # A decimal with a scale is rounded as save stores it (nil stays NULL).
+        if scale >= 0
+          binds << Cast.round_scale_or_nil(value, scale)
+        else
+          binds << bind_for(name, value)
+        end
       end
       table = Relation.quote_ident(@table)
       set_list = sets.join(", ")

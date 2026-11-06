@@ -53,6 +53,7 @@ def load_fixture_schema
       t.text "body", null: false
       t.boolean "approved", default: "false"
       t.json "extras", null: false
+      t.date "seen_on", null: false
       t.timestamps
     end
     s.create_table "posts" do |t|
@@ -90,6 +91,7 @@ test "a table added to the schema makes both its model and the manifest stale" d
       t.text "body", null: false
       t.boolean "approved", default: "false"
       t.json "extras", null: false
+      t.date "seen_on", null: false
       t.timestamps
     end
     s.create_table "posts" do |t|

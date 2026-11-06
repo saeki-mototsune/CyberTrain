@@ -22,8 +22,10 @@ class PostRelation < Cybertrain::Relation
 
   def where(cond = nil, *binds)
     case cond
+    when nil then nil
     when Hash then add_where(cond)
     when String then add_where_sql(cond, binds)
+    else raise ArgumentError, "where takes a Hash or a SQL String"
     end
     self
   end

@@ -4,8 +4,10 @@ require "cybertrain/generator/model_scan"
 require "cybertrain/generator/models_emitter"
 
 # Pure text tests of the model generator (no database: CRuby-portable).
-# The expected sources below are copied verbatim from test/model.rb, the
-# hand-written executable specification of the generated shape.
+# The expected sources below (EXPECTED_POST, _COMMENT, _FLAG) are the
+# emitter's exact output for model_spec_schema. test/model.rb hand-writes an
+# older subset of that shape for its own database tests and is not kept
+# identical; test/relation_where.rb hand-writes the current relation shape.
 
 def model_spec_schema
   Cybertrain::Schema.define(version: "1") do |s|
@@ -64,8 +66,10 @@ EXPECTED_POST = HEADER + <<~'RUBY'
 
       def where(cond = nil, *binds)
         case cond
+        when nil then nil
         when Hash then add_where(cond)
         when String then add_where_sql(cond, binds)
+        else raise ArgumentError, "where takes a Hash or a SQL String"
         end
         self
       end
@@ -307,8 +311,10 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
 
       def where(cond = nil, *binds)
         case cond
+        when nil then nil
         when Hash then add_where(cond)
         when String then add_where_sql(cond, binds)
+        else raise ArgumentError, "where takes a Hash or a SQL String"
         end
         self
       end
@@ -550,8 +556,10 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
 
       def where(cond = nil, *binds)
         case cond
+        when nil then nil
         when Hash then add_where(cond)
         when String then add_where_sql(cond, binds)
+        else raise ArgumentError, "where takes a Hash or a SQL String"
         end
         self
       end
@@ -926,8 +934,12 @@ test "decimal reads as Float, json as Hash and date as Date" do
     'when :meta then @meta = Cybertrain::Cast.hash_or_nil(value)',
     'when :extras then @extras = Cybertrain::Cast.json_hash(value)',
     'when :day then @day = Cybertrain::Cast.date_or_nil(value)',
-    'when :due_on then @due_on = Cybertrain::Cast.date(value)'
+    'when :due_on then @due_on = Cybertrain::Cast.date_or_nil(value)'
   ])
+  # A NOT NULL date: Cast.date reads a stored cell (a corrupt one is the
+  # epoch), date_or_nil casts an assignment (invalid input stays nil, so
+  # the NOT NULL constraint refuses the save).
+  refute_line(phase2_source, 'when :due_on then @due_on = Cybertrain::Cast.date(value)')
 end
 
 test "to_row rounds a decimal to its scale, writes json as text and a date through to_sql" do
@@ -1008,8 +1020,10 @@ test "the relation emits where (Hash, String or none), not, where_between, or, o
   assert_includes post, <<~'RUBY'.lines.map { |l| l == "\n" ? l : "  " + l }.join
     def where(cond = nil, *binds)
       case cond
+      when nil then nil
       when Hash then add_where(cond)
       when String then add_where_sql(cond, binds)
+      else raise ArgumentError, "where takes a Hash or a SQL String"
       end
       self
     end

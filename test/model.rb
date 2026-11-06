@@ -595,7 +595,7 @@ test "Relation builds SQL from where, order, limit and offset" do
   assert_equal 'SELECT * FROM `posts` WHERE `title` = ? AND `body` IS NULL ORDER BY `id` DESC LIMIT 2 OFFSET 4', rel.to_sql
   assert_equal 1, rel.binds.size
   assert_equal 'SELECT * FROM `posts` WHERE `id` IN (?, ?)', Post.where(id: [3, 4]).to_sql
-  assert_equal 'SELECT * FROM `posts` WHERE views > ?', Post.all.where_sql("views > ?", [3]).to_sql
+  assert_equal 'SELECT * FROM `posts` WHERE (views > ?)', Post.all.where_sql("views > ?", [3]).to_sql
   assert_equal 'SELECT * FROM `posts`', Post.all.to_sql
   assert_equal 'SELECT * FROM `flags` WHERE `group` = ?', Flag.where(group: "x").to_sql
   assert_equal '`a``b`', Cybertrain::Relation.quote_ident('a`b')

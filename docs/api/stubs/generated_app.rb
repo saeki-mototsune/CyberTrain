@@ -294,8 +294,10 @@ class ArticleRelation < Cybertrain::Relation
   # A Range takes Integer ends only; other bounds (Time, Date, Float,
   # String) go through {#where_between}. A json column cannot be compared
   # (ArgumentError). With a String, it is a raw SQL condition with `?`
-  # placeholders and the binds after it, as {#where_sql}. With no argument
-  # it is the relation itself, so `where.not(...)` reads as in Rails.
+  # placeholders and the binds after it, as {#where_sql}, wrapped in
+  # parentheses so an `OR` in it stays inside; an Array bind raises (use the
+  # Hash form for `IN`). With no argument it is the relation itself, so
+  # `where.not(...)` reads as in Rails; any other argument raises.
   # @example
   #   Article.where(title: ["Hello", "Bye"]).where(body: nil)
   #   Article.where("created_at >= ?", Time.now - 86_400)
@@ -303,7 +305,8 @@ class ArticleRelation < Cybertrain::Relation
   # @param cond [Hash{Symbol => Object}, String, nil]
   # @param binds [Array] one value per `?` of a String condition
   # @return [self]
-  # @raise [ArgumentError] for a json column
+  # @raise [ArgumentError] for a json column, an Array bind, or a `cond`
+  #   that is neither nil, a Hash nor a String
   # @api public
   def where(cond = nil, *binds); end
 
@@ -328,8 +331,8 @@ class ArticleRelation < Cybertrain::Relation
   # @param from [Integer, Float, String, Time, Date, nil]
   # @param to [Integer, Float, String, Time, Date, nil]
   # @return [self]
-  # @raise [ArgumentError] when both bounds are nil or `column` is not a
-  #   column name
+  # @raise [ArgumentError] when both bounds are nil, `column` is not a
+  #   column name, or it is a json column
   # @api public
   def where_between(column, from, to, exclude_end: false) = (add_where_between(column, from, to, exclude_end); self)
 
@@ -345,8 +348,9 @@ class ArticleRelation < Cybertrain::Relation
   def or(other) = (merge_or(other); self)
 
   # Adds a raw SQL condition with `?` placeholders, AND-ed with the others.
-  # The fragment is used as written: never build it from request data; pass
-  # values as binds.
+  # The fragment is used as written, in parentheses: never build it from
+  # request data; pass values as binds (one value per `?`; an Array bind
+  # raises ArgumentError).
   # @example
   #   Article.all.where_sql("created_at >= ?", [Time.now - 86_400])
   # @param sql [String]
@@ -410,8 +414,10 @@ class ArticleRelation < Cybertrain::Relation
   # @api public
   def offset(n) = (set_offset(n); self)
 
-  # `SELECT DISTINCT`: `distinct.pluck_str(:kind)` has each value once;
-  # {Cybertrain::Relation#count count} counts the distinct rows.
+  # `SELECT DISTINCT`: the column readers return each value once
+  # (`distinct.pluck_str(:kind)`, `ids`). A row of `SELECT *` carries its
+  # id, so every row is distinct and {Cybertrain::Relation#count count}
+  # (and `to_a`) of a distinct relation is the same as without it.
   # @return [self]
   # @api public
   def distinct = (set_distinct; self)
@@ -470,7 +476,7 @@ class ArticleRelation < Cybertrain::Relation
   # @api public
   def find_or_create_by(conditions); end
 
-  # {#find_by}, or else an unsaved {Article.new} with the same attributes.
+  # {#find_by}, or else an unsaved {Article#initialize Article.new} with the same attributes.
   # @param conditions [Hash{Symbol => Object}]
   # @return [Article]
   # @api public

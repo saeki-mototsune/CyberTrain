@@ -103,9 +103,9 @@ end
 test "column defaults become initial values and reach the database" do
   reset_tables
   post = Post.create(title: "Defaults")
-  comment = Comment.create(post_id: post.id, commenter: "ann", body: "hi")
+  comment = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "hi")
   assert_equal false, Comment.find(comment.id).approved
-  Comment.create(post_id: post.id, commenter: "bob", body: "yo", approved: "1")
+  Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "bob", body: "yo", approved: "1")
   assert_equal 1, Comment.where(approved: true).count
   assert_equal 0, Post.find(post.id).views
   post.views = 5
@@ -124,9 +124,9 @@ test "belongs_to and has_many associations" do
   reset_tables
   post = Post.create(title: "Parent")
   other = Post.create(title: "Other")
-  Comment.create(post_id: post.id, commenter: "ann", body: "first")
-  Comment.create(post_id: other.id, commenter: "bob", body: "elsewhere")
-  Comment.create(post_id: post.id, commenter: "cy", body: "second")
+  Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "first")
+  Comment.create(post_id: other.id, seen_on: "2026-10-05", commenter: "bob", body: "elsewhere")
+  Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "cy", body: "second")
   assert_equal ["first", "second"], post.comments.map { |c| c.body }
   comment = Comment.find_by(body: "second")
   assert_equal "Parent", comment.post.title
@@ -145,7 +145,7 @@ test "call_view_method reaches the scanned summary" do
   post = Post.create(title: "Summarized")
   assert_equal "Sum", post.call_view_method(:summary)
   assert_nil post.call_view_method(:nope)
-  comment = Comment.create(post_id: post.id, commenter: "ann", body: "x")
+  comment = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "x")
   assert_nil comment.call_view_method(:summary)
 end
 
@@ -157,9 +157,9 @@ test "to_json of a generated model" do
              "\"price\":null,\"meta\":null,\"published_on\":null," \
              "\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
   assert_equal expected, post.to_json
-  comment = Comment.create(post_id: post.id, commenter: "ann", body: "b", created_at: at, updated_at: at)
+  comment = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "b", created_at: at, updated_at: at)
   expected_comment = "{\"id\":#{comment.id},\"post_id\":#{post.id},\"commenter\":\"ann\",\"body\":\"b\"," \
-                     "\"approved\":false,\"extras\":{},\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
+                     "\"approved\":false,\"extras\":{},\"seen_on\":\"2026-10-05\",\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
   assert_equal expected_comment, Comment.find(comment.id).to_json
 end
 
@@ -194,9 +194,9 @@ end
 test "a NOT NULL json column starts as {} and round-trips a Hash" do
   reset_tables
   post = Post.create(title: "Parent")
-  empty = Comment.create(post_id: post.id, commenter: "ann", body: "a")
+  empty = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "a")
   assert_equal({}, Comment.find(empty.id).extras)
-  comment = Comment.create(post_id: post.id, commenter: "bob", body: "b", extras: { "a" => 1 })
+  comment = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "bob", body: "b", extras: { "a" => 1 })
   assert_equal 1, Cybertrain::Cast.int(Comment.find(comment.id).extras["a"])
   comment.extras = { "b" => "two" }
   comment.save
@@ -247,6 +247,8 @@ test "the generated query methods: where.not, where with a String and a Range, w
   message = assert_raises("ArgumentError") { Post.where(meta: { "a" => 1 }) }
   assert_equal "where on a json column (meta) is not supported", message
   assert_raises("ArgumentError") { Post.where.not(meta: nil) }
+  message = assert_raises("ArgumentError") { Post.where_between(:meta, "a", "b") }
+  assert_equal "where_between on a json column (meta) is not supported", message
   assert_raises("RecordInvalid") { Post.create!(title: "") }
   assert_equal 4, Post.destroy_all.size
   assert_equal 0, Post.count
@@ -262,6 +264,40 @@ test "update_columns writes through the generated to_row: decimal rounded to its
   assert_equal '{"k":"v"}', Cybertrain::Cast.str(raw[0]["meta"])
   assert_equal "v", Cybertrain::Cast.str(Post.find(post.id).meta["k"])
   assert_equal before, Post.find(post.id).updated_at
+end
+
+test "a NOT NULL date: invalid assigned text stays nil and the save fails; a valid date round-trips" do
+  reset_tables
+  post = Post.create(title: "Dates")
+  comment = Comment.new(post_id: post.id, commenter: "ann", body: "b", seen_on: "2026-13-01")
+  assert_nil comment.seen_on
+  comment.write_attribute(:seen_on, "")
+  assert_nil comment.seen_on
+  # nil binds as NULL (to_row does not raise); the database refuses it.
+  assert_nil comment.to_row["seen_on"]
+  message = assert_raises { comment.save }
+  assert_includes message, "NOT NULL"
+  assert_equal 0, Comment.count
+  comment.seen_on = nil
+  comment.write_attribute(:seen_on, "2026-10-05")
+  assert_equal Date.new(2026, 10, 5), comment.seen_on
+  assert comment.save
+  assert_equal Date.new(2026, 10, 5), Comment.find(comment.id).seen_on
+  raw = Cybertrain::DB.with { |c| c.execute("SELECT seen_on FROM comments WHERE id = ?", [comment.id]) }
+  assert_equal "2026-10-05", Cybertrain::Cast.str(raw[0]["seen_on"])
+end
+
+test "update_all rounds a decimal to its scale as save does, and nil stores NULL" do
+  reset_tables
+  post = Post.create(title: "Priced", price: 1.0)
+  assert_equal 1, Post.where(id: post.id).update_all(price: 2.345)
+  raw = Cybertrain::DB.with { |c| c.execute("SELECT price FROM posts WHERE id = ?", [post.id]) }
+  assert_equal 2.35, Cybertrain::Cast.float(raw[0]["price"])
+  assert_equal 2.35, Post.find(post.id).price
+  assert_equal 1, Post.where(id: post.id).update_all(price: nil)
+  raw = Cybertrain::DB.with { |c| c.execute("SELECT price IS NULL AS n FROM posts WHERE id = ?", [post.id]) }
+  assert_equal 1, Cybertrain::Cast.int(raw[0]["n"])
+  assert_nil Post.find(post.id).price
 end
 
 Cybertrain::Test.run!
