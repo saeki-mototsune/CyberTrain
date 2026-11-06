@@ -957,11 +957,11 @@ The rules are numbered in the order they were found. By topic:
     `TypeError: no implicit conversion of Time into Integer` when the Range
     is built; a Float or String Range reads back directly
     (`(1.5..2.5).begin`) but once held in a Hash value or passed through a
-    boxed parameter it is not matched by `when Range`. So `where(col: a..b)`
-    accepts Integer ends only and other bounds go through
-    `where_between(col, from, to)` (relation.rb); a validator's
-    `inclusion: { in: }` takes an Integer Range or an Array
-    (docs/spinel-feedback.md Q).
+    boxed parameter it is not matched by `when Range`. So the planned
+    `where(col: a..b)` (phase 2, relation.rb) accepts Integer ends only and
+    other bounds go through the planned `where_between(col, from, to)`; the
+    planned validator option `inclusion: { in: }` takes an Integer Range or
+    an Array (docs/spinel-feedback.md Q).
 
 87. Class methods added to a core class from Ruby source compile and
     dispatch: `class Time; def self.iso8601(text) ...` is reached by
