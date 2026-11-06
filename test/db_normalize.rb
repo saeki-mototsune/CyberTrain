@@ -65,4 +65,14 @@ test "a table without an id column is reported and skipped" do
   conn.close
 end
 
+test "reserved-word and odd table and column names are quoted" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE \"order\" (id INTEGER PRIMARY KEY, \"when\" DATETIME, \"a-b\" DATETIME)")
+  conn.execute("INSERT INTO \"order\" (\"when\", \"a-b\") VALUES ('2026-10-05T09:00:00Z', NULL)")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 2, report.size
+  assert_equal "2026-10-05 09:00:00.000000", conn.execute("SELECT \"when\" FROM \"order\"")[0]["when"].to_s
+  conn.close
+end
+
 Cybertrain::Test.run!

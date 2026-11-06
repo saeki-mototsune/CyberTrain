@@ -1,5 +1,6 @@
 require "cybertrain/db/connection"
 require "cybertrain/cast"
+require "cybertrain/relation"
 
 module Cybertrain
   module DB
@@ -38,7 +39,7 @@ module Cybertrain
       # @param report [Array<Array>] receives one entry per DATETIME column
       # @return [nil]
       def self.normalize_table(connection, table, report)
-        columns = connection.execute("PRAGMA table_info(#{table})")
+        columns = connection.execute("PRAGMA table_info(#{pragma_quote(table)})")
         has_id = false
         datetimes = Array.new(0) { "" }
         columns.each do |c|
@@ -56,13 +57,23 @@ module Cybertrain
         nil
       end
 
+      # "a\"b" -> "\"a\"\"b\"": PRAGMA takes a double-quoted identifier.
+      # @param name [String]
+      # @return [String]
+      def self.pragma_quote(name)
+        "\"" + name.gsub("\"", "\"\"") + "\""
+      end
+
       # @param connection [Cybertrain::DB::Connection]
       # @param table [String]
       # @param column [String]
       # @return [Array] [table, column, rewritten, skipped]
       def self.normalize_column(connection, table, column)
+        t = Cybertrain::Relation.quote_ident(table)
+        c = Cybertrain::Relation.quote_ident(column)
+        id = Cybertrain::Relation.quote_ident("id")
         rows = connection.execute(
-          "SELECT id, #{column} AS v FROM #{table} WHERE #{column} IS NOT NULL AND #{column} NOT LIKE '#{CANONICAL}'"
+          "SELECT #{id}, #{c} AS v FROM #{t} WHERE #{c} IS NOT NULL AND #{c} NOT LIKE '#{CANONICAL}'"
         )
         rewritten = 0
         skipped = 0
@@ -72,7 +83,7 @@ module Cybertrain
             skipped += 1
           else
             connection.execute(
-              "UPDATE #{table} SET #{column} = ? WHERE id = ?",
+              "UPDATE #{t} SET #{c} = ? WHERE #{id} = ?",
               [Cybertrain::Cast.sql_datetime(time), r["id"]]
             )
             rewritten += 1
