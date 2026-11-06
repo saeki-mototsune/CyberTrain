@@ -31,7 +31,8 @@ ok   inverse of change_column_default with from: and to: swaps them
 ok   inverse of change_column_null flips null when the previous state can be restored
 ok   change_column, remove_reference and remove_foreign_key have no automatic inverse
 ok   reversible records the up block as :reversible_up and the down block as :reversible_down
+ok   a rollback runs each reversible block's statements in the order written
 ok   reversible's blocks take only execute
 ok   rebuild_table copies the common columns through <table>_new and restores indexes, triggers and the sequence
 ok   table_after applies each rebuild kind to a copy of the table
-36 tests, 158 assertions, 0 failures
+37 tests, 160 assertions, 0 failures

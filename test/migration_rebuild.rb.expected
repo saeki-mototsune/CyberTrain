@@ -89,4 +89,93 @@ ok   a foreign key violation found before the commit rolls the version back
 == 20260301000100 TitleNotNull: migrating
 done
 ok   a table Rails created rebuilds with its expression and partial indexes
-17 tests, 68 assertions, 0 failures
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 OrderedSteps: migrating
+done
+== 20260301000100 OrderedSteps: reverting
+done
+ok   reversible keeps the written order of each block's statements, both ways
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 DropViewsDefault: migrating
+done
+== 20260301000100 DropViewsDefault: reverting
+done
+ok   change_column_default from: a default to: nil drops it, and the rollback puts it back
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 AddViewsDefault: migrating
+done
+== 20260301000100 AddViewsDefault: reverting
+done
+ok   change_column_default from: nil adds a default, and the rollback drops it
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 RemoveAuthorForeignKey: migrating
+done
+ok   remove_foreign_key with column: drops that foreign key only
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 ChangeViewsDefault: migrating
+done
+ok   a view over the rebuilt table and a trigger on another table naming it survive the rebuild
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+ok   a rebuild refuses a table with constructs the schema does not model
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+done
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+done
+ok   a rebuild ignores those words where they are quoted, and takes a REFERENCES to id
+24 tests, 134 assertions, 0 failures

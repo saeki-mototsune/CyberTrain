@@ -69,6 +69,7 @@ module Cybertrain
           name = r["name"].to_s
           null = Cybertrain::Cast.int(r["notnull"]) == 0
           default = Cybertrain::Cast.str_or_nil(r["dflt_value"])
+          default = default_sql(default.to_s) unless default.nil?
           declared = r["type"].to_s
           limit = type_limit(declared)
           case column_type(declared)
@@ -93,6 +94,79 @@ module Cybertrain
           end
         end
         nil
+      end
+
+      # A column default as DDL can declare it again. PRAGMA table_info
+      # reports an expression default without the parentheses it was
+      # declared in (`DEFAULT (datetime('now'))`, as Rails writes one, reads
+      # as `datetime('now')`), and `DEFAULT datetime('now')` is a syntax
+      # error, so anything but a plain literal -- a number, a '...' string,
+      # an X'...' blob, NULL, TRUE / FALSE, CURRENT_TIME / CURRENT_DATE /
+      # CURRENT_TIMESTAMP -- gets them back.
+      def self.default_sql(text)
+        s = text.to_s.strip
+        return s if plain_literal?(s)
+        "(#{s})"
+      end
+
+      def self.plain_literal?(text)
+        s = text.to_s
+        case s.upcase
+        when "NULL", "TRUE", "FALSE", "CURRENT_TIME", "CURRENT_DATE", "CURRENT_TIMESTAMP"
+          return true
+        end
+        return number_literal?(s) unless s.start_with?("'") || s.upcase.start_with?("X'")
+        sql_string_literal?(s.upcase.start_with?("X'") ? s.byteslice(1, s.bytesize - 1) : s)
+      end
+
+      # One '...' literal and nothing after it ('' inside is a quote).
+      def self.sql_string_literal?(text)
+        s = text.to_s
+        n = s.bytesize
+        return false if n < 2 || s.getbyte(0) != 39
+        i = 1
+        while i < n
+          if s.getbyte(i) == 39
+            return true if i == n - 1
+            return false if s.getbyte(i + 1) != 39
+            i += 2
+          else
+            i += 1
+          end
+        end
+        false
+      end
+
+      # [+-]digits[.digits][e[+-]digits], or [+-].digits[...].
+      def self.number_literal?(text)
+        s = text.to_s
+        n = s.bytesize
+        i = 0
+        i += 1 if i < n && (s.getbyte(i) == 43 || s.getbyte(i) == 45)
+        digits = 0
+        while i < n && s.getbyte(i) >= 48 && s.getbyte(i) <= 57
+          i += 1
+          digits += 1
+        end
+        if i < n && s.getbyte(i) == 46
+          i += 1
+          while i < n && s.getbyte(i) >= 48 && s.getbyte(i) <= 57
+            i += 1
+            digits += 1
+          end
+        end
+        return false if digits == 0
+        if i < n && (s.getbyte(i) == 101 || s.getbyte(i) == 69)
+          i += 1
+          i += 1 if i < n && (s.getbyte(i) == 43 || s.getbyte(i) == 45)
+          exponent = 0
+          while i < n && s.getbyte(i) >= 48 && s.getbyte(i) <= 57
+            i += 1
+            exponent += 1
+          end
+          return false if exponent == 0
+        end
+        i == n
       end
 
       # "VARCHAR(80)" -> :string. Exact names first (what SqliteDDL writes),

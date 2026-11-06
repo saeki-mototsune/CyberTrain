@@ -210,12 +210,46 @@ module Cybertrain
           message = "cannot #{op.kind} on #{table_name}: no such table"
           raise Error, message
         end
+        refused = Cybertrain::DB::SqliteDDL.rebuild_refusal(table_sql(table_name))
+        if refused != ""
+          message = "rebuilding #{table_name} would drop #{refused}: rewrite the migration with execute"
+          raise Error, message
+        end
         definition.replace_table(Cybertrain::DB::SqliteDDL.table_after(table, op))
         triggers = table_triggers(table_name)
         sequence = table_sequence(table_name)
         @connection.execute(op.exec_sql, op.exec_binds) if op.kind == :change_column_null && !op.null && op.exec_sql != ""
-        run_sql(Cybertrain::DB::SqliteDDL.rebuild_table(definition, table_name, triggers, sequence))
+        rename = Cybertrain::DB::SqliteDDL.rename_new_sql(table_name)
+        Cybertrain::DB::SqliteDDL.rebuild_table(definition, table_name, triggers, sequence).each do |sql|
+          if sql == rename
+            run_legacy_rename(sql)
+          else
+            @connection.exec_script(sql)
+          end
+        end
         nil
+      end
+
+      # The rebuild's RENAME with legacy_alter_table on, so the views and
+      # the other tables' triggers that name the table are not checked
+      # while it does not exist (they would refuse the RENAME). The pragma
+      # is not transactional, so it is turned off again whatever happens.
+      # Never used for a plain rename_table, which needs it off for the
+      # references to follow the new name.
+      def run_legacy_rename(sql)
+        @connection.exec_script("PRAGMA legacy_alter_table = ON")
+        begin
+          @connection.exec_script(sql)
+        ensure
+          @connection.exec_script("PRAGMA legacy_alter_table = OFF")
+        end
+        nil
+      end
+
+      def table_sql(table_name)
+        rows = @connection.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", [table_name])
+        return "" if rows.empty?
+        Cybertrain::Cast.str_or_nil(rows[0]["sql"]).to_s
       end
 
       def table_triggers(table_name)

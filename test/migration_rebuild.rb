@@ -141,6 +141,59 @@ class OrphanAndRebuild < Cybertrain::Migration::Base
   end
 end
 
+# Dependent statements in each block: each must run in the order written,
+# both ways.
+class OrderedSteps < Cybertrain::Migration::Base
+  version "20260301000100"
+
+  def change
+    reversible do |dir|
+      dir.up do
+        execute "CREATE TABLE up_t (x TEXT)"
+        execute "INSERT INTO up_t (x) VALUES ('one')"
+      end
+      dir.down do
+        execute "CREATE TABLE down_t (x TEXT)"
+        execute "INSERT INTO down_t (x) VALUES ('one')"
+      end
+    end
+  end
+end
+
+class DropViewsDefault < Cybertrain::Migration::Base
+  version "20260301000100"
+
+  def change
+    change_column_default :posts, :views, from: "0", to: nil
+  end
+end
+
+class AddViewsDefault < Cybertrain::Migration::Base
+  version "20260301000100"
+
+  def change
+    change_column_default :posts, :body, from: nil, to: "'empty'"
+  end
+end
+
+class RemoveAuthorForeignKey < Cybertrain::Migration::Base
+  version "20260301000100"
+
+  def change
+    remove_foreign_key :comments, :people, column: "author_id"
+  end
+end
+
+# The one rebuild the refusal tests run, on a `things` table each test
+# creates its own way.
+class RebuildThings < Cybertrain::Migration::Base
+  version "20260301000200"
+
+  def change
+    change_column_default :things, :note, from: nil, to: "'n'"
+  end
+end
+
 def blog_migrations(second)
   [["20260301000000", CreateBlog.new], ["20260301000100", second]]
 end
@@ -391,11 +444,138 @@ test "a table Rails created rebuilds with its expression and partial indexes" do
   assert_equal "title VARCHAR 1 nil", column_info(connection, "posts", "title")
   assert_equal "views BIGINT 1 0", column_info(connection, "posts", "views")
   assert_equal ["index_posts_on_lower_title", "index_posts_on_views"], index_names(connection, "posts")
+  unique = connection.execute("PRAGMA index_list(posts)").select { |r| r["name"].to_s == "index_posts_on_lower_title" }
+  assert_equal 1, Cybertrain::Cast.int(unique[0]["unique"])
+  assert_equal ["CREATE UNIQUE INDEX index_posts_on_lower_title ON posts(LOWER(title))"],
+               column_values(connection, "SELECT sql AS v FROM sqlite_master WHERE name = 'index_posts_on_lower_title'")
+  message = assert_raises("Cybertrain::DB::Error") { connection.execute("INSERT INTO posts (title, created_at) VALUES ('FIRST', 'x')") }
+  assert_includes message, "UNIQUE"
   ruby = Cybertrain::DB::SchemaDumper.dump_to_ruby(connection)
   assert_includes ruby, "s.add_index \"posts\", \"LOWER(title)\", unique: true, name: \"index_posts_on_lower_title\""
   assert_includes ruby, "s.add_index \"posts\", [\"views\"], name: \"index_posts_on_views\", where: \"views > 0\""
   assert_equal ["a"], column_values(connection, "SELECT body AS v FROM comments")
   connection.close
+end
+
+test "reversible keeps the written order of each block's statements, both ways" do
+  connection = blog
+  migrate_blog(connection, OrderedSteps.new)
+  assert_equal ["one"], column_values(connection, "SELECT x AS v FROM up_t")
+  rollback_blog(connection, OrderedSteps.new)
+  assert_equal ["one"], column_values(connection, "SELECT x AS v FROM down_t")
+  connection.close
+end
+
+test "change_column_default from: a default to: nil drops it, and the rollback puts it back" do
+  connection = blog
+  migrate_blog(connection, DropViewsDefault.new)
+  assert_equal "views INTEGER 0 nil", column_info(connection, "posts", "views")
+  rollback_blog(connection, DropViewsDefault.new)
+  assert_equal "views INTEGER 0 0", column_info(connection, "posts", "views")
+  connection.close
+end
+
+test "change_column_default from: nil adds a default, and the rollback drops it" do
+  connection = blog
+  migrate_blog(connection, AddViewsDefault.new)
+  assert_equal "body TEXT 0 'empty'", column_info(connection, "posts", "body")
+  rollback_blog(connection, AddViewsDefault.new)
+  assert_equal "body TEXT 0 nil", column_info(connection, "posts", "body")
+  connection.close
+end
+
+test "remove_foreign_key with column: drops that foreign key only" do
+  connection = blog
+  connection.exec_script("CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR)")
+  connection.exec_script("ALTER TABLE comments ADD COLUMN author_id INTEGER REFERENCES people(id)")
+  assert_equal ["author_id->people NO ACTION", "post_id->posts CASCADE"], foreign_keys(connection, "comments").sort
+  migrate_blog(connection, RemoveAuthorForeignKey.new)
+  assert_equal ["post_id->posts CASCADE"], foreign_keys(connection, "comments")
+  assert_equal "author_id INTEGER 0 nil", column_info(connection, "comments", "author_id")
+  connection.close
+end
+
+test "a view over the rebuilt table and a trigger on another table naming it survive the rebuild" do
+  connection = blog
+  connection.exec_script("CREATE VIEW titled AS SELECT title FROM posts WHERE title IS NOT NULL")
+  connection.exec_script("CREATE TABLE logs (note TEXT)")
+  connection.exec_script("CREATE TRIGGER logs_post AFTER INSERT ON logs BEGIN INSERT INTO posts (title) VALUES (NEW.note); END")
+  migrate_blog(connection, ChangeViewsDefault.new)
+  assert_equal "views INTEGER 0 10", column_info(connection, "posts", "views")
+  connection.execute("INSERT INTO logs (note) VALUES ('from log')")
+  assert_equal ["first", "from log"], column_values(connection, "SELECT title AS v FROM titled ORDER BY title")
+  assert_equal 0, Cybertrain::Cast.int(connection.execute("PRAGMA legacy_alter_table")[0]["legacy_alter_table"])
+  connection.close
+end
+
+def things(sql)
+  connection = blog
+  connection.exec_script(sql)
+  connection
+end
+
+# The refusal message for `sql`'s things table, "" when the rebuild runs.
+def refusal(sql)
+  connection = things(sql)
+  migrations = [["20260301000000", CreateBlog.new], ["20260301000200", RebuildThings.new]]
+  message = ""
+  begin
+    Cybertrain::DB::Migrator.new(connection).migrate(migrations)
+  rescue Cybertrain::DB::Error => e
+    message = e.message
+  end
+  unless message == ""
+    # Nothing ran: the table is as it was and the version is not recorded.
+    assert_equal "note TEXT 0 nil", column_info(connection, "things", "note")
+    assert_equal ["20260301000000"], Cybertrain::DB::Migrator.new(connection).applied_versions
+  end
+  connection.close
+  message
+end
+
+test "a rebuild refuses a table with constructs the schema does not model" do
+  prefix = "rebuilding things would drop "
+  suffix = ": rewrite the migration with execute"
+  assert_equal "#{prefix}a UNIQUE constraint#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, code VARCHAR UNIQUE)")
+  assert_equal "#{prefix}a UNIQUE constraint#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, a INTEGER, b INTEGER, UNIQUE (a, b))")
+  assert_equal "#{prefix}a CHECK constraint#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, n INTEGER CHECK (n > 0))")
+  assert_equal "#{prefix}a CHECK constraint#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, n INTEGER, CONSTRAINT positive CHECK (n > 0))")
+  assert_equal "#{prefix}a COLLATE clause#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, name VARCHAR COLLATE NOCASE)")
+  assert_equal "#{prefix}a generated column#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, n INTEGER, twice INTEGER GENERATED ALWAYS AS (n * 2))")
+  assert_equal "#{prefix}a generated column#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, n INTEGER, twice INTEGER AS (n * 2))")
+  assert_equal "#{prefix}an ON UPDATE action#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, post_id INTEGER REFERENCES posts(id) ON UPDATE CASCADE)")
+  assert_equal "#{prefix}an ON DELETE SET DEFAULT action#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, post_id INTEGER REFERENCES posts(id) ON DELETE SET DEFAULT)")
+  assert_equal "#{prefix}a foreign key to posts(title)#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, post_title VARCHAR REFERENCES posts(title))")
+  assert_equal "#{prefix}a foreign key to posts(title)#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, t VARCHAR, FOREIGN KEY (t) REFERENCES \"posts\" (\"title\"))")
+  assert_equal "#{prefix}the untyped column stuff#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, stuff)")
+  assert_equal "#{prefix}the untyped column stuff#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, \"stuff\" NOT NULL DEFAULT 1)")
+  assert_equal "#{prefix}a primary key on code#{suffix}",
+               refusal("CREATE TABLE things (code TEXT PRIMARY KEY, note TEXT)")
+  assert_equal "#{prefix}the table option WITHOUT#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY, note TEXT) WITHOUT ROWID")
+  assert_equal "#{prefix}a DEFERRABLE foreign key#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, post_id INTEGER REFERENCES posts(id) DEFERRABLE INITIALLY DEFERRED)")
+end
+
+test "a rebuild ignores those words where they are quoted, and takes a REFERENCES to id" do
+  assert_equal "", refusal("CREATE TABLE \"things\" (\"id\" integer PRIMARY KEY AUTOINCREMENT NOT NULL, \"note\" text, " \
+                           "\"kind\" varchar DEFAULT 'UNIQUE CHECK (x)', \"post_id\" integer, -- a COLLATE comment\n" \
+                           "CONSTRAINT \"fk_rails_2\" FOREIGN KEY (\"post_id\") REFERENCES \"posts\" (\"id\") ON DELETE CASCADE)")
+  assert_equal "", refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, post_id INTEGER REFERENCES posts, " \
+                           "price DECIMAL(18,8) DEFAULT (round(1.5, 0)))")
 end
 
 Cybertrain::Test.run!

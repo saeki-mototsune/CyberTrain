@@ -443,6 +443,34 @@ test "reversible records the up block as :reversible_up and the down block as :r
   assert_equal "UPDATE posts SET slug = title", back.operations[1].exec_sql
 end
 
+class TwoStepDown < Cybertrain::Migration::Base
+  version "20260104000200"
+
+  def change
+    reversible do |dir|
+      dir.up do
+        execute "UP 1"
+        execute "UP 2"
+      end
+      dir.down do
+        execute "DOWN 1"
+        execute "DOWN 2"
+      end
+    end
+  end
+end
+
+test "a rollback runs each reversible block's statements in the order written" do
+  forward = TwoStepDown.new
+  forward.up
+  ups = forward.operations.select { |op| op.kind == :reversible_up }.map { |op| op.exec_sql }
+  assert_equal ["UP 1", "UP 2"], ups
+  back = TwoStepDown.new
+  back.down
+  downs = back.operations.select { |op| op.kind == :reversible_up }.map { |op| op.exec_sql }
+  assert_equal ["DOWN 1", "DOWN 2"], downs
+end
+
 test "reversible's blocks take only execute" do
   m = ReversibleWithSchemaStep.new
   message = assert_raises("ArgumentError") { m.up }

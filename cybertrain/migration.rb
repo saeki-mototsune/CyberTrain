@@ -258,7 +258,16 @@ module Cybertrain
     # {#change_column}, {#change_column_default}, {#change_column_null},
     # {#remove_reference} and {#remove_foreign_key} rebuild the table (SQLite
     # has no ALTER COLUMN), with foreign key enforcement off for the version
-    # and checked before its commit. Not available: `create_join_table`.
+    # and checked before its commit. The rebuilt table is declared from the
+    # schema, so a rebuild refuses (DB::Error "rebuilding <table> would drop
+    # <what>: rewrite the migration with execute", before it touches the
+    # table, and the version rolls back) a table whose CREATE TABLE has
+    # what the schema does not model: a CHECK or inline UNIQUE constraint (a unique index is fine),
+    # COLLATE, a generated column, ON UPDATE, ON DELETE SET DEFAULT,
+    # DEFERRABLE, a foreign key to a column other than id, a column with no
+    # type, a primary key other than id, WITHOUT ROWID or STRICT. Write
+    # such a change as {#execute} statements. Not available:
+    # `create_join_table`.
     # @example
     #   class CreateComments < Cybertrain::Migration::Base
     #     def change
@@ -538,6 +547,8 @@ module Cybertrain
       # @param precision [Integer] as {#add_column}
       # @param scale [Integer] as {#add_column}
       # @return [nil]
+      # @raise [Cybertrain::DB::Error] when migrating, if the table has something a
+      #   rebuild would drop (see the class notes); the version rolls back
       # @api public
       def change_column(table, column, type, null: true, default: nil, limit: 0, precision: 0, scale: -1)
         Cybertrain::Schema::Column.check_decimal(precision, scale)
@@ -561,6 +572,8 @@ module Cybertrain
       # @param from [String, nil] the previous default, SQL literal text
       # @param to [String, nil] the new default, SQL literal text; nil drops it
       # @return [nil]
+      # @raise [Cybertrain::DB::Error] when migrating, if the table has something a
+      #   rebuild would drop (see the class notes); the version rolls back
       # @api public
       def change_column_default(table, column, from: UNKNOWN_DEFAULT, to:)
         given = from != UNKNOWN_DEFAULT
@@ -582,6 +595,8 @@ module Cybertrain
       # @param default [String, Integer, Float, Boolean, Time, nil] a value
       #   (not SQL text) for the NULL cells
       # @return [nil]
+      # @raise [Cybertrain::DB::Error] when migrating, if the table has something a
+      #   rebuild would drop (see the class notes); the version rolls back
       # @api public
       def change_column_null(table, column, null, default = nil)
         values = Operation.no_binds
@@ -595,6 +610,8 @@ module Cybertrain
       # @param table [String, Symbol]
       # @param name [Symbol, String] the singular (`:author`)
       # @return [nil]
+      # @raise [Cybertrain::DB::Error] when migrating, if the table has something a
+      #   rebuild would drop (see the class notes); the version rolls back
       # @api public
       def remove_reference(table, name)
         @operations << Operation.for_remove_reference(table.to_s, "#{name}_id")
@@ -609,6 +626,8 @@ module Cybertrain
       # @param column [String] the referencing column; "" means
       #   singularize(to_table) + "_id"
       # @return [nil]
+      # @raise [Cybertrain::DB::Error] when migrating, if the table has something a
+      #   rebuild would drop (see the class notes); the version rolls back
       # @api public
       def remove_foreign_key(from_table, to_table, column: "")
         col = column.to_s
@@ -635,7 +654,15 @@ module Cybertrain
 
       # Turns the :execute operations recorded since index `start` into
       # `kind` (:reversible_up / :reversible_down). Public for Direction.
+      #
+      # A down block's statements are stored in reverse: the Migrator skips
+      # :reversible_down going forward, so their order there does not
+      # matter, and a rollback (the default `down`) reverses the whole list,
+      # which puts them back in the order they were written. An up block's
+      # stay as written: they run forward, and a rollback turns them into
+      # skipped :reversible_down operations.
       def mark_reversible(start, kind)
+        segment = Array.new(0) { Operation.for_drop_table("") }
         i = start
         while i < @operations.size
           op = @operations[i]
@@ -643,8 +670,14 @@ module Cybertrain
             message = "only execute goes inside reversible's up and down blocks, not #{op.kind}"
             raise ArgumentError, message
           end
-          @operations[i] = Operation.for_reversible(kind, op)
+          segment << Operation.for_reversible(kind, op)
           i += 1
+        end
+        segment = segment.reverse if kind == :reversible_down
+        j = 0
+        while j < segment.size
+          @operations[start + j] = segment[j]
+          j += 1
         end
         nil
       end

@@ -186,4 +186,39 @@ test "after the dump, a migrator with no migrations finds nothing to do" do
   connection.close
 end
 
+class StampNoteNotNull < Cybertrain::Migration::Base
+  version "20260301000000"
+
+  def change
+    change_column_null :stamps, :note, false, "n"
+  end
+end
+
+test "an expression default keeps its parentheses: it dumps, loads and rebuilds" do
+  connection = Cybertrain::DB::Connection.new(":memory:")
+  connection.exec_script(<<~SQL)
+    CREATE TABLE "stamps" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "note" varchar, "at" datetime(6) DEFAULT (datetime('now')), "n" integer DEFAULT (1 + 2), "s" varchar DEFAULT 'a''b', "t" datetime DEFAULT CURRENT_TIMESTAMP);
+    INSERT INTO stamps (note) VALUES (NULL);
+  SQL
+  stamps = Cybertrain::DB::SchemaDumper.dump(connection).table("stamps")
+  assert_equal "(datetime('now'))", stamps.column("at").default
+  assert_equal "(1 + 2)", stamps.column("n").default
+  assert_equal "'a''b'", stamps.column("s").default
+  assert_equal "CURRENT_TIMESTAMP", stamps.column("t").default
+  ruby = Cybertrain::DB::SchemaDumper.dump_to_ruby(connection)
+  assert_includes ruby, "t.datetime \"at\", default: \"(datetime('now'))\""
+  loaded = Cybertrain::DB::Connection.new(":memory:")
+  loaded.exec_script(Cybertrain::DB::SqliteDDL.create_table(stamps))
+  assert_equal ruby.sub("version: \"0\"", ""), Cybertrain::DB::SchemaDumper.dump_to_ruby(loaded).sub("version: \"0\"", "")
+  loaded.close
+  Cybertrain::DB::Migrator.new(connection).migrate([["20260301000000", StampNoteNotNull.new]])
+  assert_equal "(datetime('now'))", Cybertrain::DB::SchemaDumper.dump(connection).table("stamps").column("at").default
+  connection.execute("INSERT INTO stamps (note) VALUES ('later')")
+  rows = connection.execute("SELECT note, at, n FROM stamps ORDER BY id")
+  assert_equal "n", rows[0]["note"].to_s
+  refute rows[1]["at"].nil?
+  assert_equal "3", rows[1]["n"].to_s
+  connection.close
+end
+
 Cybertrain::Test.run!

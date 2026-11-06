@@ -221,4 +221,15 @@ test "migrated decimal, json, bigint, on_delete and partial indexes dump back" d
   connection.close
 end
 
+test "default_sql wraps an expression in parentheses and leaves a plain literal alone" do
+  plain = ["0", "-1", "+2", "1.5", "-0.25", "1e3", ".5", "'x'", "'a''b'", "''", "NULL", "null", "TRUE", "false",
+           "CURRENT_TIMESTAMP", "current_date", "CURRENT_TIME", "X'00ff'", "x''"]
+  plain.each { |text| assert_equal text, Cybertrain::DB::SchemaDumper.default_sql(text) }
+  assert_equal "(datetime('now'))", Cybertrain::DB::SchemaDumper.default_sql("datetime('now')")
+  assert_equal "(1 + 2)", Cybertrain::DB::SchemaDumper.default_sql("1 + 2")
+  assert_equal "('a' || 'b')", Cybertrain::DB::SchemaDumper.default_sql("'a' || 'b'")
+  assert_equal "(-x)", Cybertrain::DB::SchemaDumper.default_sql("-x")
+  assert_equal "(1-2)", Cybertrain::DB::SchemaDumper.default_sql("1-2")
+end
+
 Cybertrain::Test.run!

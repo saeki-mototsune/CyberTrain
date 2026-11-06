@@ -93,7 +93,7 @@ module Cybertrain
         stmts << create_table(table, temp)
         stmts << "INSERT INTO #{temp} (#{columns}) SELECT #{columns} FROM #{table_name}"
         stmts << "DROP TABLE #{table_name}"
-        stmts << "ALTER TABLE #{temp} RENAME TO #{table_name}"
+        stmts << rename_new_sql(table_name)
         table.indexes.each do |idx|
           stmts << index_sql(table_name, idx.columns, idx.unique, idx.name, idx.where, idx.expression)
         end
@@ -105,6 +105,176 @@ module Cybertrain
                    "WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = #{quoted})"
         end
         stmts
+      end
+
+      # The rebuild's RENAME of `<table>_new` back to `<table>`. The Migrator
+      # runs it with `PRAGMA legacy_alter_table = ON`: otherwise SQLite
+      # checks every view and trigger that names `<table>` while it does not
+      # exist yet and refuses the RENAME.
+      def self.rename_new_sql(table_name)
+        "ALTER TABLE #{table_name}_new RENAME TO #{table_name}"
+      end
+
+      # What a rebuild of the table declared by `create_sql` (its CREATE
+      # TABLE text from sqlite_master) would silently lose, because the
+      # schema (and so the rebuilt table) does not model it: "a CHECK
+      # constraint", "a UNIQUE constraint" (a UNIQUE INDEX is kept), "a
+      # COLLATE clause", "a generated column", "an ON UPDATE action", "an ON
+      # DELETE SET DEFAULT action", "a DEFERRABLE foreign key", "a foreign
+      # key to <table>(<column>)" (a column other than id), "the untyped
+      # column <name>" (the copy would turn its integers into text), "a
+      # primary key on <name>" (one other than id), "the table option
+      # <word>" (WITHOUT ROWID, STRICT). "" when there is nothing. Words
+      # inside quotes and comments do not count.
+      def self.rebuild_refusal(create_sql)
+        tokens = sql_tokens(create_sql)
+        i = 0
+        while i < tokens.size
+          case tokens[i].upcase
+          when "CHECK" then return "a CHECK constraint"
+          when "UNIQUE" then return "a UNIQUE constraint"
+          when "COLLATE" then return "a COLLATE clause"
+          when "GENERATED" then return "a generated column"
+          when "DEFERRABLE" then return "a DEFERRABLE foreign key"
+          when "ON"
+            return "an ON UPDATE action" if i + 1 < tokens.size && tokens[i + 1].upcase == "UPDATE"
+            if i + 3 < tokens.size && tokens[i + 1].upcase == "DELETE" && tokens[i + 2].upcase == "SET" &&
+               tokens[i + 3].upcase == "DEFAULT"
+              return "an ON DELETE SET DEFAULT action"
+            end
+          when "REFERENCES"
+            target = refused_reference(tokens, i)
+            return target if target != ""
+          end
+          i += 1
+        end
+        refused_definition(tokens)
+      end
+
+      # "a foreign key to t(col)" when the REFERENCES at `at` names a
+      # column list with anything but id, else "".
+      def self.refused_reference(tokens, at)
+        return "" if at + 2 >= tokens.size || tokens[at + 2] != "("
+        target = identifier_text(tokens[at + 1])
+        j = at + 3
+        while j < tokens.size && tokens[j] != ")"
+          name = identifier_text(tokens[j])
+          return "a foreign key to #{target}(#{name})" if tokens[j] != "," && name.downcase != "id"
+          j += 1
+        end
+        ""
+      end
+
+      # The column definitions and table options: an untyped column, a
+      # primary key other than id, a generated column's `AS (...)`, a word
+      # after the closing parenthesis.
+      def self.refused_definition(tokens)
+        i = 0
+        i += 1 while i < tokens.size && tokens[i] != "("
+        i += 1
+        depth = 1
+        segment = Array.new(0) { "" }
+        while i < tokens.size
+          token = tokens[i]
+          if depth == 1 && (token == "," || token == ")")
+            refused = refused_segment(segment)
+            return refused if refused != ""
+            segment = Array.new(0) { "" }
+            if token == ")"
+              i += 1
+              break
+            end
+          else
+            depth += 1 if token == "("
+            depth -= 1 if token == ")"
+            segment << token
+          end
+          i += 1
+        end
+        return "the table option #{tokens[i]}" if i < tokens.size
+        ""
+      end
+
+      CONSTRAINT_WORDS = ["CONSTRAINT", "PRIMARY", "NOT", "NULL", "UNIQUE", "CHECK", "DEFAULT", "COLLATE",
+                          "REFERENCES", "GENERATED", "AS"].freeze
+
+      def self.refused_segment(segment)
+        return "" if segment.empty?
+        first = segment[0].upcase
+        return "a PRIMARY KEY table constraint" if first == "PRIMARY"
+        if first == "CONSTRAINT"
+          return segment.size > 2 && segment[2].upcase == "PRIMARY" ? "a PRIMARY KEY table constraint" : ""
+        end
+        return "" if first == "FOREIGN" || first == "UNIQUE" || first == "CHECK"
+        name = identifier_text(segment[0])
+        if segment.size < 2 || CONSTRAINT_WORDS.include?(segment[1].upcase) || segment[1] == "("
+          return "the untyped column #{name}"
+        end
+        depth = 0
+        segment.each do |token|
+          depth += 1 if token == "("
+          depth -= 1 if token == ")"
+          word = token.upcase
+          return "a generated column" if depth == 0 && word == "AS"
+          return "a primary key on #{name}" if depth == 0 && word == "PRIMARY" && name.downcase != "id"
+        end
+        ""
+      end
+
+      # A quoted identifier token ("\"name") as its name; any other token
+      # as it is.
+      def self.identifier_text(token)
+        t = token.to_s
+        return t.byteslice(1, t.bytesize - 1) if t.start_with?("\"")
+        t
+      end
+
+      # SQL text -> tokens: unquoted words as written, a quoted identifier
+      # ("...", `...`, [...]) as `"` plus its text, a '...' string as `'`,
+      # every other character but white space on its own; comments
+      # dropped. Byte-level on a `to_s` local (spikes/NOTES.md rule 62).
+      def self.sql_tokens(sql)
+        s = sql.to_s
+        n = s.bytesize
+        tokens = Array.new(0) { "" }
+        i = 0
+        while i < n
+          b = s.getbyte(i)
+          if b == 32 || b == 9 || b == 10 || b == 13
+            i += 1
+          elsif b == 45 && i + 1 < n && s.getbyte(i + 1) == 45
+            i += 1 while i < n && s.getbyte(i) != 10
+          elsif b == 47 && i + 1 < n && s.getbyte(i + 1) == 42
+            i += 2
+            i += 1 while i + 1 < n && !(s.getbyte(i) == 42 && s.getbyte(i + 1) == 47)
+            i += 2
+          elsif b == 39 || b == 34 || b == 96 || b == 91
+            close = b == 91 ? 93 : b
+            j = i + 1
+            while j < n
+              if s.getbyte(j) == close
+                break unless close != 93 && j + 1 < n && s.getbyte(j + 1) == close
+                j += 1
+              end
+              j += 1
+            end
+            tokens << (b == 39 ? "'" : "\"#{s.byteslice(i + 1, j - i - 1)}")
+            i = j + 1
+          elsif ddl_word_byte?(b)
+            j = i
+            j += 1 while j < n && ddl_word_byte?(s.getbyte(j))
+            tokens << s.byteslice(i, j - i)
+            i = j
+          else
+            tokens << s.byteslice(i, 1)
+            i += 1
+          end
+        end
+        tokens
+      end
+
+      def self.ddl_word_byte?(b)
+        (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 || b == 36 || b >= 128
       end
 
       # A copy of `table` with the rebuild operation `op` applied: a
