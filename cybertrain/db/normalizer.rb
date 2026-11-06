@@ -9,7 +9,15 @@ module Cybertrain
     # Cast.parse_time reads) into the stored format "YYYY-MM-DD
     # HH:MM:SS.ffffff" (UTC), so they sort correctly against new rows.
     # Behind `db normalize`.
+    #
+    # Needs SQLite 3.37.0 or newer: WITHOUT ROWID tables are found through
+    # PRAGMA table_list, which an older SQLite ignores without an error
+    # (CyberTrain links the system SQLite), so run refuses an older one
+    # before touching anything.
     module Normalizer
+      # The oldest SQLite with PRAGMA table_list, as [major, minor, patch].
+      MIN_SQLITE = [3, 37, 0]
+
       # SQL GLOB pattern of a cell already in the stored format (a [0-9]
       # class at every digit: LIKE's "_" would take any character).
       CANONICAL = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] " \
@@ -31,11 +39,19 @@ module Cybertrain
       # @param connection [Cybertrain::DB::Connection]
       # @return [Array<Array>] one [table, column, rewritten, skipped,
       #   pending] per DATETIME column; pending is 0 for a normalized column
+      # @raise [Cybertrain::DB::Error] when the linked SQLite is older than
+      #   3.37.0 (MIN_SQLITE)
       def self.run(connection)
+        version = connection.execute("SELECT sqlite_version() AS v")[0]["v"].to_s
+        raise Cybertrain::DB::Error, version_message(version) unless sqlite_supported?(version)
+
         report = Array.new(0) { ["", "", 0, 0, 0] }
         connection.transaction do
+          # SQLite's own tables are sqlite_*; LIKE's "_" would match any
+          # character (skipping a user table named sqliteData), so it is
+          # escaped.
           tables = connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite!_%' ESCAPE '!' ORDER BY name"
           )
           tables.each do |t|
             table = t["name"].to_s
@@ -87,6 +103,29 @@ module Cybertrain
           found = true if r["wr"].to_i == 1
         end
         found
+      end
+
+      # Whether a dotted sqlite_version() ("3.45.1") is at least MIN_SQLITE,
+      # compared part by part as Integers ("3.100.0" is newer than "3.37.0").
+      # @param version [String]
+      # @return [Boolean]
+      def self.sqlite_supported?(version)
+        parts = version.split(".")
+        i = 0
+        while i < MIN_SQLITE.size
+          have = i < parts.size ? parts[i].to_i : 0
+          return have > MIN_SQLITE[i] if have != MIN_SQLITE[i]
+
+          i += 1
+        end
+        true
+      end
+
+      # The refusal run raises for an older SQLite.
+      # @param version [String] the linked SQLite's sqlite_version()
+      # @return [String]
+      def self.version_message(version)
+        "db normalize needs SQLite 3.37.0 or newer (PRAGMA table_list); this build links #{version}"
       end
 
       # "a\"b" -> "\"a\"\"b\"": PRAGMA takes a double-quoted identifier.

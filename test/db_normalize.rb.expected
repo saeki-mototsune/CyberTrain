@@ -14,4 +14,6 @@ ok   WITHOUT ROWID is seen in a table-option list in either order
 ok   a rowid table whose last column default says without rowid is normalized
 ok   a generated DATETIME column is neither reported nor written
 ok   a skipped table counts the cells that still need normalization
-16 tests, 92 assertions, 0 failures
+ok   a user table whose name starts with sqlite followed by another character is normalized
+ok   db normalize needs SQLite 3.37.0 or newer for PRAGMA table_list
+18 tests, 105 assertions, 0 failures

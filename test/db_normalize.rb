@@ -263,4 +263,33 @@ test "a skipped table counts the cells that still need normalization" do
   conn.close
 end
 
+test "a user table whose name starts with sqlite followed by another character is normalized" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE sqliteData (id INTEGER PRIMARY KEY, at DATETIME)")
+  conn.execute("INSERT INTO sqliteData (at) VALUES ('2026-10-05T09:00:00Z')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 1, report.size
+  assert_equal "sqliteData", report[0][0].to_s
+  assert_equal 1, report[0][2].to_i
+  assert_equal "2026-10-05 09:00:00.000000", conn.execute("SELECT at FROM sqliteData")[0]["at"].to_s
+  conn.close
+end
+
+test "db normalize needs SQLite 3.37.0 or newer for PRAGMA table_list" do
+  n = Cybertrain::DB::Normalizer
+  assert_equal false, n.sqlite_supported?("3.36.0")
+  assert_equal false, n.sqlite_supported?("3.36.9")
+  assert_equal false, n.sqlite_supported?("2.99.99")
+  assert_equal true, n.sqlite_supported?("3.37.0")
+  assert_equal true, n.sqlite_supported?("3.45.1")
+  assert_equal true, n.sqlite_supported?("3.100.0")
+  assert_equal true, n.sqlite_supported?("4.0.0")
+  assert_equal "db normalize needs SQLite 3.37.0 or newer (PRAGMA table_list); this build links 3.36.0",
+               n.version_message("3.36.0")
+  # The linked SQLite (3.45.1 here) passes the check that run makes.
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  assert n.sqlite_supported?(conn.execute("SELECT sqlite_version() AS v")[0]["v"].to_s)
+  conn.close
+end
+
 Cybertrain::Test.run!

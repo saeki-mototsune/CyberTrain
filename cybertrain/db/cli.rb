@@ -183,6 +183,9 @@ module Cybertrain
       # (Normalizer); one line per DATETIME column. Exits 1 when a skipped
       # table still holds cells that need normalization, so a deploy does not
       # start the new binaries on old-format rows.
+      # Needs SQLite 3.37.0 or newer (PRAGMA table_list); an older linked
+      # SQLite is refused with "db normalize failed: ..." and exit 1 before
+      # anything is read or written.
       def self.normalize(root)
         connection = open_existing(root)
         status = 0
