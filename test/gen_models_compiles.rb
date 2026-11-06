@@ -160,7 +160,7 @@ test "to_json of a generated model" do
   assert_equal expected, post.to_json
   comment = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "b", created_at: at, updated_at: at)
   expected_comment = "{\"id\":#{comment.id},\"post_id\":#{post.id},\"commenter\":\"ann\",\"body\":\"b\"," \
-                     "\"approved\":false,\"extras\":{},\"seen_on\":\"2026-10-05\",\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
+                     "\"approved\":false,\"extras\":{},\"seen_on\":\"2026-10-05\",\"due_on\":\"2026-01-01\",\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
   assert_equal expected_comment, Comment.find(comment.id).to_json
 end
 
@@ -289,6 +289,30 @@ test "a NOT NULL date: invalid assigned text stays nil and the save fails valida
   assert_equal Date.new(2026, 10, 5), Comment.find(comment.id).seen_on
   raw = Cybertrain::DB.with { |c| c.execute("SELECT seen_on FROM comments WHERE id = ?", [comment.id]) }
   assert_equal "2026-10-05", Cybertrain::Cast.str(raw[0]["seen_on"])
+end
+
+test "a NOT NULL date with a default: a fresh record holds the default, invalid text fails validation" do
+  reset_tables
+  post = Post.create(title: "Due")
+  comment = Comment.new(post_id: post.id, commenter: "ann", body: "b", seen_on: "2026-10-05")
+  # Every column is inserted, so SQLite would never apply the default: the
+  # generated initial value is it.
+  assert_equal Date.new(2026, 1, 1), comment.due_on
+  assert comment.valid?
+  comment.write_attribute(:due_on, "2026-13-01")
+  assert_nil comment.due_on
+  refute comment.valid?
+  assert_equal ["can't be blank"], comment.errors[:due_on]
+  refute comment.save
+  assert_equal 0, Comment.count
+  comment.write_attribute(:due_on, "2026-11-30")
+  assert comment.save
+  assert_equal Date.new(2026, 11, 30), Comment.find(comment.id).due_on
+  fresh = Comment.create(post_id: post.id, commenter: "bob", body: "c", seen_on: "2026-10-05")
+  assert fresh.persisted?
+  assert_equal Date.new(2026, 1, 1), Comment.find(fresh.id).due_on
+  raw = Cybertrain::DB.with { |c| c.execute("SELECT due_on FROM comments WHERE id = ?", [fresh.id]) }
+  assert_equal "2026-01-01", Cybertrain::Cast.str(raw[0]["due_on"])
 end
 
 test "update_all rounds a decimal to its scale as save does, and nil stores NULL" do

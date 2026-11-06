@@ -1824,7 +1824,7 @@ test "a scope body with ; or `or` stays inside the parenthesized endless method"
   assert_lines(emit_for("posts", [], info.scopes), ["def odd = (x = 1; limit(x))", "def self.odd = all.odd"])
 end
 
-test "a NOT NULL date column without a default gets a presence validation" do
+test "every NOT NULL date column gets a presence validation; a defaulted one starts at its default" do
   definition = Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "shifts" do |t|
       t.date "seen_on", null: false
@@ -1834,10 +1834,14 @@ test "a NOT NULL date column without a default gets a presence validation" do
     end
   end
   shift = Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [], [])
-  assert_includes shift, "  attr_accessor :seen_on, :due_on, :start_on, :name\n\n  validates :seen_on, presence: true\n\n  def initialize"
+  assert_includes shift, "  attr_accessor :seen_on, :due_on, :start_on, :name\n\n" \
+                         "  validates :seen_on, presence: true\n  validates :start_on, presence: true\n\n  def initialize"
   refute_line(shift, "validates :due_on, presence: true")
-  refute_line(shift, "validates :start_on, presence: true")
   refute_line(shift, "validates :name, presence: true")
+  # Every column is inserted, so SQLite never applies the default: the
+  # record starts with it instead.
+  assert_lines(shift, ["@seen_on = nil", "@due_on = nil",
+                       "@start_on = Cybertrain::Cast.date_or_nil(\"2026-01-01\")"])
 end
 
 test "scopes_for picks the scopes of one model" do

@@ -47,7 +47,7 @@ ok   outputs maps gen/models paths to sources for every table
 ok   scan_source reads one-line scope lambdas: name, parameter text, body and line
 ok   a scope becomes a Relation method and a class method delegating to all
 ok   a scope body with ; or `or` stays inside the parenthesized endless method
-ok   a NOT NULL date column without a default gets a presence validation
+ok   every NOT NULL date column gets a presence validation; a defaulted one starts at its default
 ok   scopes_for picks the scopes of one model
 ok   a scope that is not a one-line lambda raises
 ok   a scope named like a Relation method raises
@@ -56,4 +56,4 @@ ok   a scope local or call inside a method body, or not followed by a Symbol, is
 ok   def_opens_body? tells a method with a body from endless and one-line ones
 ok   a repeated scope raises
 ok   a scope named like a column raises
-58 tests, 591 assertions, 0 failures
+58 tests, 593 assertions, 0 failures

@@ -2,8 +2,8 @@
 # default (posts.views) and a nullable boolean with a default
 # (comments.approved) to exercise the generated initial values, and the
 # phase-2 types: a nullable decimal with a scale, a nullable json and a
-# nullable date on posts, and a NOT NULL json and a NOT NULL date on
-# comments.
+# nullable date on posts, and a NOT NULL json, a NOT NULL date and a NOT
+# NULL date with a default on comments.
 Cybertrain::Schema.define(version: "20260924120000") do |s|
   s.create_table "comments" do |t|
     t.references :post
@@ -12,6 +12,7 @@ Cybertrain::Schema.define(version: "20260924120000") do |s|
     t.boolean "approved", default: "false"
     t.json "extras", null: false
     t.date "seen_on", null: false
+    t.date "due_on", null: false, default: "'2026-01-01'"
     t.timestamps
   end
 

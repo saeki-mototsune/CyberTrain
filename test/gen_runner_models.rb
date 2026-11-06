@@ -54,6 +54,7 @@ def load_fixture_schema
       t.boolean "approved", default: "false"
       t.json "extras", null: false
       t.date "seen_on", null: false
+      t.date "due_on", null: false, default: "'2026-01-01'"
       t.timestamps
     end
     s.create_table "posts" do |t|
@@ -92,6 +93,7 @@ test "a table added to the schema makes both its model and the manifest stale" d
       t.boolean "approved", default: "false"
       t.json "extras", null: false
       t.date "seen_on", null: false
+      t.date "due_on", null: false, default: "'2026-01-01'"
       t.timestamps
     end
     s.create_table "posts" do |t|

@@ -379,19 +379,19 @@ module Cybertrain
         src
       end
 
-      # `validates :seen_on, presence: true` for every NOT NULL date column
-      # without a default. write_attribute keeps invalid or blank input nil
-      # (writer_cast_for), and an INSERT would then fail on the NOT NULL
-      # constraint with a DB::Error; the validation makes it an error on the
-      # record instead, so `save` returns false. Keyed by the SQL name, as
-      # validates is. "" when there is no such column.
+      # `validates :seen_on, presence: true` for every NOT NULL date column,
+      # with a default or without. write_attribute keeps invalid or blank
+      # input nil (writer_cast_for), and an INSERT would then fail on the
+      # NOT NULL constraint with a DB::Error (every column is inserted, so
+      # SQLite never applies a default to the explicit NULL); the validation
+      # makes it an error on the record instead, so `save` returns false. A
+      # defaulted column starts at its default (initial_value), so a fresh
+      # record passes. Keyed by the SQL name, as validates is. "" when there
+      # is no such column.
       def self.emit_date_presence(table)
         src = +""
         table.columns.each do |c|
           next unless c.type == :date && !c.null
-
-          raw = c.default
-          next unless raw.nil? || raw.strip.upcase == "NULL"
 
           src << "  validates :#{c.name}, presence: true\n"
         end
@@ -762,6 +762,7 @@ module Cybertrain
       # date"; saving one unset fails on the constraint, as in Rails); a
       # json column's default text is not read (it starts empty or nil).
       def self.initial_value(column)
+        return date_default(column) if column.type == :date && !column.null
         return "nil" if column.type == :datetime || column.type == :date
 
         literal = default_literal(column)
@@ -778,6 +779,23 @@ module Cybertrain
           else "\"\""
           end
         end
+      end
+
+      # A NOT NULL date column's initial value: its SQL default
+      # (`'2026-01-01'`, quoted or not) through Cast.date_or_nil, since the
+      # INSERT names every column and SQLite never applies the default; nil
+      # when it has none. A default that is not `YYYY-MM-DD` text
+      # (CURRENT_DATE) reads as nil, so the presence validation asks for a
+      # value.
+      def self.date_default(column)
+        raw = column.default
+        return "nil" if raw.nil?
+
+        text = raw.strip
+        return "nil" if text.upcase == "NULL"
+
+        text = text[1, text.size - 2].gsub("''", "'") if quoted_sql?(text)
+        "Cybertrain::Cast.date_or_nil(#{ruby_string(text)})"
       end
 
       # The Ruby literal for a column's SQL default text ("0", "'x'",
