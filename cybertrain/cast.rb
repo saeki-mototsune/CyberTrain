@@ -551,7 +551,8 @@ module Cybertrain
     # @api public
     def self.round_scale(v, scale)
       f = float(v)
-      scale < 0 ? f : f.round(scale).to_f
+      # Float#round raises FloatDomainError on Infinity/NaN ("1e999").
+      (scale < 0 || !f.finite?) ? f : f.round(scale).to_f
     end
 
     # {Cast.round_scale} for a nullable decimal column: nil (and `""`, an
@@ -565,7 +566,8 @@ module Cybertrain
     def self.round_scale_or_nil(v, scale)
       f = float_or_nil(v)
       return nil if f.nil?
-      scale < 0 ? f : f.round(scale).to_f
+      # Float#round raises FloatDomainError on Infinity/NaN ("1e999").
+      (scale < 0 || !f.finite?) ? f : f.round(scale).to_f
     end
 
     # A NOT NULL json column's value as a Hash: a Hash's pairs (keys

@@ -33,6 +33,7 @@ test "normalize rewrites every non-canonical datetime once, leaves canonical row
   assert_equal "created_at", first[0][1].to_s
   assert_equal 3, first[0][2].to_i
   assert_equal 1, first[0][3].to_i
+  assert_equal 0, first[0][4].to_i
   assert_equal ["2026-10-05 09:00:00.000000", "2026-10-05 09:00:00.120000",
                 "2026-10-05 00:00:00.000000", "2026-10-05 09:00:00.123456", "garbage"], created_ats(conn)
   notes = conn.execute("SELECT note FROM posts WHERE id = 1")
@@ -89,9 +90,11 @@ test "WITHOUT ROWID tables and tables declaring _rowid_ are reported and left un
   assert_equal "nr", report[0][0].to_s
   assert_equal(-1, report[0][2].to_i)
   assert_equal Cybertrain::DB::Normalizer::WITHOUT_ROWID, report[0][3].to_i
+  assert_equal 1, report[0][4].to_i
   assert_equal "sh", report[1][0].to_s
   assert_equal(-1, report[1][2].to_i)
   assert_equal Cybertrain::DB::Normalizer::DECLARES_ROWID, report[1][3].to_i
+  assert_equal 1, report[1][4].to_i
   assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM nr")[0]["at"].to_s
   assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM sh")[0]["at"].to_s
   conn.close
@@ -134,6 +137,111 @@ test "a datetime(6) column is normalized like DATETIME" do
   assert_equal "2026-10-05 09:00:00.000000", rows[0]["at"].to_s
   assert_equal "2026-10-05 09:00:00.120000", rows[1]["at"].to_s
   assert_equal "2026-10-05T09:00:00Z", rows[0]["label"].to_s
+  conn.close
+end
+
+test "a column declared _ROWID_ in upper case is seen as declaring _rowid_" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE up (\"_ROWID_\" TEXT, at DATETIME)")
+  conn.execute("INSERT INTO up VALUES ('x', '2026-10-05T09:00:00Z')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 1, report.size
+  assert_equal(-1, report[0][2].to_i)
+  assert_equal Cybertrain::DB::Normalizer::DECLARES_ROWID, report[0][3].to_i
+  assert_equal 1, report[0][4].to_i
+  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM up")[0]["at"].to_s
+  conn.close
+end
+
+test "a generated column named _rowid_ is seen as declaring _rowid_" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE gen (v TEXT, \"_rowid_\" TEXT GENERATED ALWAYS AS (v) VIRTUAL, at DATETIME)")
+  conn.execute("INSERT INTO gen (v, at) VALUES ('x', '2026-10-05T09:00:00Z')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 1, report.size
+  assert_equal "at", report[0][1].to_s
+  assert_equal(-1, report[0][2].to_i)
+  assert_equal Cybertrain::DB::Normalizer::DECLARES_ROWID, report[0][3].to_i
+  assert_equal 1, report[0][4].to_i
+  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM gen")[0]["at"].to_s
+  conn.close
+end
+
+test "WITHOUT ROWID is seen with extra whitespace between the words" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE w1 (k TEXT PRIMARY KEY, at DATETIME) WITHOUT  ROWID")
+  conn.exec_script("CREATE TABLE w2 (k TEXT PRIMARY KEY, at DATETIME) without\n\tRowId ;")
+  conn.execute("INSERT INTO w1 VALUES ('a', '2026-10-05T09:00:00Z')")
+  conn.execute("INSERT INTO w2 VALUES ('a', '2026-10-05T09:00:00Z')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 2, report.size
+  assert_equal "w1", report[0][0].to_s
+  assert_equal "w2", report[1][0].to_s
+  report.each do |entry|
+    assert_equal(-1, entry[2].to_i)
+    assert_equal Cybertrain::DB::Normalizer::WITHOUT_ROWID, entry[3].to_i
+    assert_equal 1, entry[4].to_i
+  end
+  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM w1")[0]["at"].to_s
+  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM w2")[0]["at"].to_s
+  conn.close
+end
+
+# A STRICT table cannot declare DATETIME (SQLite refuses the type), so an
+# option list is checked on the predicate itself.
+test "WITHOUT ROWID is seen in a table-option list in either order" do
+  n = Cybertrain::DB::Normalizer
+  assert_equal true, n.without_rowid?("CREATE TABLE s (k INTEGER PRIMARY KEY, at TEXT) STRICT, WITHOUT ROWID")
+  assert_equal true, n.without_rowid?("CREATE TABLE s (k INTEGER PRIMARY KEY, at TEXT) WITHOUT ROWID, STRICT")
+  assert_equal true, n.without_rowid?("CREATE TABLE s (k INTEGER PRIMARY KEY) WITHOUT\r\n ROWID -- options")
+  assert_equal false, n.without_rowid?("CREATE TABLE s (k INTEGER PRIMARY KEY, at TEXT) STRICT")
+  assert_equal false, n.without_rowid?("CREATE TABLE s (note TEXT DEFAULT 'without rowid')")
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE s (k INTEGER PRIMARY KEY, at TEXT) STRICT, WITHOUT ROWID")
+  conn.exec_script("CREATE TABLE r (k INTEGER PRIMARY KEY, at TEXT) WITHOUT ROWID, STRICT")
+  rows = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' ORDER BY name")
+  assert_equal 2, rows.size
+  assert_equal true, n.without_rowid?(rows[0]["sql"].to_s)
+  assert_equal true, n.without_rowid?(rows[1]["sql"].to_s)
+  conn.close
+end
+
+test "a rowid table whose last column default says without rowid is normalized" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE dn (at DATETIME, note TEXT DEFAULT 'without rowid')")
+  conn.execute("INSERT INTO dn (at) VALUES ('2026-10-05T09:00:00Z')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 1, report.size
+  assert_equal 1, report[0][2].to_i
+  assert_equal 0, report[0][3].to_i
+  assert_equal "2026-10-05 09:00:00.000000", conn.execute("SELECT at FROM dn")[0]["at"].to_s
+  conn.close
+end
+
+test "a generated DATETIME column is neither reported nor written" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE gd (raw TEXT, at DATETIME, g DATETIME GENERATED ALWAYS AS (raw) VIRTUAL)")
+  conn.execute("INSERT INTO gd (raw, at) VALUES ('2026-10-05T09:00:00Z', '2026-10-05T09:00:00Z')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 1, report.size
+  assert_equal "at", report[0][1].to_s
+  assert_equal 1, report[0][2].to_i
+  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT g FROM gd")[0]["g"].to_s
+  conn.close
+end
+
+test "a skipped table counts the cells that still need normalization" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE pn (k TEXT PRIMARY KEY, at DATETIME) WITHOUT ROWID")
+  conn.execute("INSERT INTO pn VALUES ('a', '2026-10-05T09:00:00Z')")
+  conn.execute("INSERT INTO pn VALUES ('b', '2026-10-05 09:00:00.000000')")
+  conn.execute("INSERT INTO pn VALUES ('c', NULL)")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 1, report.size
+  assert_equal(-1, report[0][2].to_i)
+  assert_equal 1, report[0][4].to_i
+  conn.execute("UPDATE pn SET at = '2026-10-05 09:00:00.000000' WHERE k = 'a'")
+  assert_equal 0, Cybertrain::DB::Normalizer.run(conn)[0][4].to_i
   conn.close
 end
 

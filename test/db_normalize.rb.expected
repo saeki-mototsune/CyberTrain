@@ -6,4 +6,11 @@ ok   WITHOUT ROWID tables and tables declaring _rowid_ are reported and left unt
 ok   a cell that only looks canonical to LIKE is rewritten and a canonical one is left alone
 ok   reserved-word and odd table and column names are quoted
 ok   a datetime(6) column is normalized like DATETIME
-8 tests, 40 assertions, 0 failures
+ok   a column declared _ROWID_ in upper case is seen as declaring _rowid_
+ok   a generated column named _rowid_ is seen as declaring _rowid_
+ok   WITHOUT ROWID is seen with extra whitespace between the words
+ok   WITHOUT ROWID is seen in a table-option list in either order
+ok   a rowid table whose last column default says without rowid is normalized
+ok   a generated DATETIME column is neither reported nor written
+ok   a skipped table counts the cells that still need normalization
+15 tests, 85 assertions, 0 failures

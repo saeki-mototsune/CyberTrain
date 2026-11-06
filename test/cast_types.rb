@@ -97,6 +97,16 @@ test "round_scale and round_scale_or_nil answer a Float, even at scale 0" do
   assert_nil Cast.round_scale_or_nil("", 2)
 end
 
+# Float#round raises FloatDomainError on Infinity/NaN: a form value "1e999"
+# for a scale-0 decimal must come back unchanged, not 500 the save.
+test "round_scale and round_scale_or_nil return a non-finite Float unchanged" do
+  assert_equal false, Cast.round_scale(Float::INFINITY, 0).finite?
+  assert_equal false, Cast.round_scale(-Float::INFINITY, 2).finite?
+  assert_equal true, Cast.round_scale(Float::NAN, 0).nan?
+  assert_equal false, Cast.round_scale_or_nil("1e999", 0).finite?
+  assert_equal false, Cast.round_scale_or_nil(Float::INFINITY, 2).finite?
+end
+
 test "json_hash reads a json cell as a Hash, {} for anything it cannot" do
   assert_equal 1, Cast.int(Cast.json_hash('{"a": 1}')["a"])
   assert_equal 2, Cast.int(Cast.json_hash({ "b" => 2 })["b"])

@@ -72,4 +72,9 @@ Status  Migration ID    Migration Name
   down  20260101000000  CreatePosts
   down  20260101000100  CreateComments
 ok   rollback fails with exit code 1 when an applied version has no migration
-21 tests, 62 assertions, 0 failures
+skipped stamps.at: without rowid (1 rows still need normalization)
+done
+skipped stamps.at: without rowid
+done
+ok   normalize exits 1 while a skipped table still holds cells to normalize
+22 tests, 64 assertions, 0 failures

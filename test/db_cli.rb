@@ -214,4 +214,19 @@ test "rollback fails with exit code 1 when an applied version has no migration" 
   assert_equal 0, run_db("status")
 end
 
+test "normalize exits 1 while a skipped table still holds cells to normalize" do
+  connection = Cybertrain::DB::Connection.new(Cybertrain::DB::CLI.resolved_path(ROOT))
+  connection.exec_script("CREATE TABLE stamps (k TEXT PRIMARY KEY, at DATETIME) WITHOUT ROWID")
+  connection.execute("INSERT INTO stamps VALUES ('a', '2026-10-05T09:00:00Z')")
+  connection.close
+  assert_equal 1, run_db("normalize")
+  connection = Cybertrain::DB::Connection.new(Cybertrain::DB::CLI.resolved_path(ROOT))
+  connection.execute("UPDATE stamps SET at = '2026-10-05 09:00:00.000000'")
+  connection.close
+  assert_equal 0, run_db("normalize")
+  connection = Cybertrain::DB::Connection.new(Cybertrain::DB::CLI.resolved_path(ROOT))
+  connection.exec_script("DROP TABLE stamps")
+  connection.close
+end
+
 Cybertrain::Test.run!

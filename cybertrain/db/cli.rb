@@ -180,14 +180,23 @@ module Cybertrain
       end
 
       # Rewrites 0.4's "...T...Z" datetime cells into the stored format
-      # (Normalizer); one line per DATETIME column.
+      # (Normalizer); one line per DATETIME column. Exits 1 when a skipped
+      # table still holds cells that need normalization, so a deploy does not
+      # start the new binaries on old-format rows.
       def self.normalize(root)
         connection = open_existing(root)
+        status = 0
         begin
           Normalizer.run(connection).each do |row|
             if row[2].to_i < 0
               why = row[3].to_i == Normalizer::WITHOUT_ROWID ? "without rowid" : "declares _rowid_"
-              puts "skipped #{row[0]}.#{row[1]}: #{why}"
+              left = row[4].to_i
+              if left > 0
+                puts "skipped #{row[0]}.#{row[1]}: #{why} (#{left} rows still need normalization)"
+                status = 1
+              else
+                puts "skipped #{row[0]}.#{row[1]}: #{why}"
+              end
             else
               puts "normalized #{row[0]}.#{row[1]}: #{row[2]} rows (#{row[3]} unreadable left alone)"
             end
@@ -196,7 +205,7 @@ module Cybertrain
           connection.close
         end
         puts "done"
-        0
+        status
       end
 
       # rollback/status/schema/schema:dump never create a database file by
