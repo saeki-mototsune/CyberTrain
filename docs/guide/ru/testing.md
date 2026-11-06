@@ -1,5 +1,5 @@
 ---
-source_sha256: b84259bcc4f0afd4ba917077642cbc181416a59a524e9e5dc26ec8a76530afb7
+source_sha256: c5ef44e9a88b3fbef4099d33b8ea7e47c5b10fb95eeef6e39fae0a8151f22a9e
 ---
 # Тестирование приложения
 
@@ -159,6 +159,58 @@ end
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` делает задержки повторов точными.
 `test/websocket_integration.rb` в этом репозитории показывает полный тест.
+
+## Тестирование потоков и компонентов
+
+`require "cybertrain/test/views"` добавляет две функции отрисовки, которым
+не нужен запрос, чтобы проверять HTML партиала или
+[компонента](template-language.md#components):
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/views"
+
+test "the comment component names its author" do
+  html = Cybertrain::Test.render_component(CommentComponent.new(comment: Comment.first))
+  assert_includes html, "<strong>"
+end
+
+test "the article partial links to the article" do
+  article = Article.create(title: "Hello", body: "Rendered for the test")
+  html = Cybertrain::Test.render_partial("articles/article", article: article)
+  assert_includes html, BlogTest.article_path(article)
+end
+```
+
+`Test.render_component(component, content: "")` передаёт `content:` как HTML
+блока. Обе отрисовывают так же, как рассылка, поэтому хелпер, которому нужен
+запрос, и здесь возбуждает `Cybertrain::Views::OutsideRequest`.
+
+[Поток](realtime.md) тестируется через точку входа.
+`client.get_stream(path, events: n, timeout: 2, headers: {})` выполняет
+потоковый ответ в памяти, пока не будут записаны `n` событий (ping не
+считаются) или не истечёт время ожидания, и возвращает его с записанным в
+качестве тела. Пока опросчик потоков не работает, точка входа отвечает 503,
+а тестовый клиент его не запускает, поэтому запустите его один раз в файле:
+
+```ruby
+Cybertrain::Stream::Poller.start!
+
+test "a new comment is broadcast to the article's stream" do
+  article = Article.create(title: "Live comments", body: "Posted for the test")
+  Cybertrain::Stream.broadcast_append_to(article, target: "comments", html: "hi")
+  token = Cybertrain::Stream.sign([Cybertrain::Stream.name_for(article)])
+  client = Cybertrain::Test::Client.new(BLOG)
+  res = client.get_stream("/cybertrain/stream?s=#{token}", events: 1, headers: { "last-event-id" => "0" })
+  assert_includes res.body, '<turbo-stream action="append" target="comments">'
+end
+```
+
+Новое соединение получает только то, что разослано после подключения;
+`last-event-id`, равный `0`, повторяет то, что уже есть в таблице, — так тест
+может сначала разослать, а потом прочитать. Чтобы проверить только то, что
+действие сделало рассылку, прочитайте таблицу:
+`Cybertrain::DB.with { |c| c.execute("SELECT stream, payload FROM cybertrain_messages ORDER BY id DESC LIMIT 1") }`.
 
 ## Непрерывная интеграция
 

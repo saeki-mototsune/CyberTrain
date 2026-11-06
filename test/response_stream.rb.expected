@@ -1,0 +1,10 @@
+ok   a BodyWriter's chunks go out with chunked framing and the terminator
+ok   HTTP/1.0 gets the body unframed and the connection closes
+ok   HEAD gets the head only
+ok   a writer that raises ends the connection and is logged
+ok   Sink#wait_closed answers true once the client closes
+ok   an error reset after a BodyWriter was set is an ordinary response
+ok   a body or a redirect set after a BodyWriter replaces the stream
+ok   a client that never reads ends the stream when a write times out
+ok   the connection count returns to zero
+9 tests, 26 assertions, 0 failures

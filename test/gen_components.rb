@@ -32,10 +32,10 @@ def scan(source, rel = "card_component.rb")
   Cybertrain::Gen::ComponentScan.scan_source("app/components/#{rel}", rel, source)
 end
 
-def scan_error(source)
+def scan_error(source, rel = "card_component.rb")
   msg = ""
   begin
-    scan(source)
+    scan(source, rel)
   rescue Cybertrain::Gen::ComponentScan::Error => e
     msg = e.message
   end
@@ -50,7 +50,7 @@ test "the scan finds the class, its ivars, view methods and keywords" do
   assert_equal ["value_text", "title"], info.view_methods
   assert_equal ["title"], info.keywords_required
   assert_equal ["value"], info.keywords_optional
-  assert_equal "components/card_component.html.erb", info.template
+  assert_equal "__components/card_component.html.erb", info.template
   assert_equal "card", info.component_name
 end
 
@@ -65,11 +65,25 @@ test "a positional initialize parameter is an error" do
                scan_error("class CardComponent < Cybertrain::Component\n  def initialize(title, value: 0)\n  end\nend\n")
 end
 
+test "a content keyword or @content ivar is an error: content is the block's output" do
+  assert_equal "app/components/card_component.rb:2: 'content' is reserved in a component (it is what the render block printed, Component#content); give the keyword another name",
+               scan_error("class CardComponent < Cybertrain::Component\n  def initialize(title:, content: \"\")\n    @title = title\n  end\nend\n")
+  assert_equal "app/components/card_component.rb:4: '@content' is reserved in a component (rendering sets it to what the render block printed, Component#content); give the instance variable another name",
+               scan_error("class CardComponent < Cybertrain::Component\n  def initialize(body:)\n    @title = body\n    @content = body\n  end\nend\n")
+  # On a continued line of the signature (a default that assigns), and in
+  # ApplicationComponent, whose methods every child runs.
+  assert_equal "app/components/card_component.rb:3: '@content' is reserved in a component (rendering sets it to what the render block printed, Component#content); give the instance variable another name",
+               scan_error("class CardComponent < Cybertrain::Component\n  def initialize(\n    body: (@content = \"fallback\")\n  )\n    @title = body\n  end\nend\n")
+  assert_equal "app/components/application_component.rb:3: '@content' is reserved in a component (rendering sets it to what the render block printed, Component#content); give the instance variable another name",
+               scan_error("class ApplicationComponent < Cybertrain::Component\n  def fallback\n    @content = \"x\"\n  end\nend\n", "application_component.rb")
+  assert_nil scan("class ApplicationComponent < Cybertrain::Component\n  def helper\n    @note = \"x\"\n  end\nend\n", "application_component.rb")
+end
+
 test "component names follow the class, namespaces included" do
   info = scan("module Admin\n  class UserRowComponent < Cybertrain::Component\n    def initialize(user:)\n      @user = user\n    end\n  end\nend\n", "admin/user_row_component.rb")
   assert_equal "Admin::UserRowComponent", info.class_name
   assert_equal "admin/user_row", info.component_name
-  assert_equal "components/admin/user_row_component.html.erb", info.template
+  assert_equal "__components/admin/user_row_component.html.erb", info.template
   assert_equal "admin/user_row", scan("class Admin::UserRowComponent < Cybertrain::Component\nend\n").component_name
 end
 
@@ -136,7 +150,7 @@ EXPECTED_CARD = <<~'RUBY'
     end
 
     def component_template
-      "components/card_component.html.erb"
+      "__components/card_component.html.erb"
     end
   end
 
@@ -159,7 +173,7 @@ EXPECTED_CARD = <<~'RUBY'
       end
 
       def component_template
-        "components/admin/badge_component.html.erb"
+        "__components/admin/badge_component.html.erb"
       end
     end
   end

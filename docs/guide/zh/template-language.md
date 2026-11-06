@@ -1,5 +1,5 @@
 ---
-source_sha256: 67c44686c12ed1918728048607363cd1f1b5b6ad64491b406e0f9a48de0c25c7
+source_sha256: 3354d343281bf776b3016f5d1c574c1b5d5c88983a4c9e70b418a9427b206039
 ---
 # Cybertrain 模板语言参考
 
@@ -9,7 +9,7 @@ Cybertrain 的视图（`app/views/**/*.html.erb`）看起来像 Rails 的 ERB，
 
 ## 这里什么是 Ruby，什么不是
 
-模板**不是** Ruby。Spinel（cybertrain 所面向的 Matz-Ruby AOT 编译器）没有 `eval`，所以“在请求时解释视图自身的 Ruby 代码”从来就不在考虑之列（`docs/design.md` 中的 D9）；实际运行的是一套小巧、封闭的语法，只是披着 ERB/Ruby 风格的外衣。标签内不能写任意 Ruby——只能写 `ExprParser`（`parser.rb`）识别为语句或表达式的内容。没有 `eval`、`send`、`instance_eval`、方法/类/模块定义、`require`、异常（`begin/rescue`）、`case/when`、范围、正则表达式或多重赋值。仅有的块是 `each`、`each_with_index` 以及对辅助方法的调用（`form_with(...) do |f| ... end`）——没有 `{ }` 块，没有 `map`/`select`/其他任何带块的 Enumerable 方法。每个方法调用（`recv.name`）都由 `interpreter.rb` 中手写的 `case` 分派表解析，以接收者在运行时的 Ruby 类为键；不在该类型表中的名称会以 `RuntimeError` 失败——没有 `method_missing`，没有反射，并且（见 `Interpreter#call_method`）正是因为 Spinel 没有 `send`，这里才是一个 `case`，而不是元编程的查找。模板只能做本文档所描述的事情。
+模板**不是** Ruby。Spinel（cybertrain 所面向的 Matz-Ruby AOT 编译器）没有 `eval`，所以“在请求时解释视图自身的 Ruby 代码”从来就不在考虑之列（`docs/design.md` 中的 D9）；实际运行的是一套小巧、封闭的语法，只是披着 ERB/Ruby 风格的外衣。标签内不能写任意 Ruby——只能写 `ExprParser`（`parser.rb`）识别为语句或表达式的内容。没有 `eval`、`send`、`instance_eval`、方法/类/模块定义、`require`、异常（`begin/rescue`）、范围、正则表达式或多重赋值。块只出现在本文档列出的地方：`each`/`each_with_index`/`each_slice` 循环、Array 和 Hash 的一组固定方法（`map`、`select`、`sum`、`group_by` ……——参见[块](#blocks)）、辅助方法调用（`form_with(...) do |f| ... end`）以及 `tag` 构建器。每个方法调用（`recv.name`）都由 `interpreter.rb` 中手写的 `case` 分派表解析，以接收者在运行时的 Ruby 类为键；不在该类型表中的名称会以 `RuntimeError` 失败——没有 `method_missing`，没有反射，并且（见 `Interpreter#call_method`）正是因为 Spinel 没有 `send`，这里才是一个 `case`，而不是元编程的查找。模板只能做本文档所描述的事情。
 
 <details><summary>这些代码在源码中的位置 — 模板流水线的八个文件</summary>
 
@@ -95,7 +95,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 - 调用目标与其左括号 `(` 之间不允许有空格：`link_to("x")` 和 `link_to "x"` 都可以；`link_to ("x")` 是 `SyntaxError`。
 - `yield` 和 `yield :key` 总是被解析为调用（参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials)）。
 - 不带修饰的大写开头单词会被直接拒绝——`"constants are not supported: 'Time'"`——模板无法访问 Ruby 常量。
-- 以下单词是保留字，会以专门的消息（`"'x' is not supported in templates"`）被拒绝：`and or not do end if unless elsif else then while until case when def class module begin rescue return`。
+- 以下单词是保留字，在任何需要表达式的地方都会以专门的消息（`"'x' is not supported in templates"`）被拒绝：`and or not do end if unless elsif else then while until def class module begin rescue return`。`case` 和 `when` 是独立的语句（[`case`](#case)）；在表达式内部（`<%= case x %>`）它们同样会被拒绝。
 
 ### 运算符与优先级（从低到高）
 
@@ -128,6 +128,25 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 `unless`/`else`/`elsif` 遵循 Ruby 的规则；`else` 之后的 `elsif`、多余的 `else`/`elsif`/`end`，或从未被 `end` 关闭的块，都是 `SyntaxError`，并指出起始行。
 
+### `case`
+
+```erb
+<% case @article.status %>
+  <% when :draft, :review %>
+  <span class="badge">unpublished</span>
+  <% when :published %>
+  <span class="badge">live</span>
+  <% else %>
+  <span class="badge">?</span>
+<% end %>
+```
+
+- 主体只求值一次；每个 `when` 的值（一个或多个，用逗号分隔）按顺序用模板的 `==` 比较，第一个值相等的分支运行。数字按值比较（`1` 匹配 `1.0`）；String 和 Symbol 按值和类型比较（`"a"` 不匹配 `:a`）；记录按 `==` 的方式比较（类和 `id`）；Array 和 Hash 也按 `==` 的方式比较（按值，逐个元素）；文本相同的 `SafeString` 和 `String` 相等。没有 `===`：`when` 之后不能写范围、类或正则表达式。
+- 没有值匹配时运行 `else`；既没有 `else` 也没有匹配时，什么都不输出。
+- `case` 与其第一个 `when` 之间只能有空白文本（缩进、换行），它会被丢弃。那里出现其他任何内容都是 `SyntaxError`（`"text between 'case' and its first 'when'"`）。
+- `case` 之外的 `when`（`"'when' without 'case'"`）、没有主体或没有 `when` 的 `case`、没有值或位于 `else` 之后的 `when`，以及始终没有用 `end` 关闭的 `case`，都是指明行号的 `SyntaxError`。`then` 仍是保留字：`<% when :a then x %>` 是 `SyntaxError`。
+- 在分支中首次赋值的局部变量，与 `if` 一样，遵循它所在块的块局部规则。
+
 ### 循环
 
 ```erb
@@ -136,7 +155,8 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 <% items.each_with_index do |item, i| %>...<% end %>
 ```
 
-- `each`/`each_with_index` 只有作为块头的后缀（`x.each do |...|`）时才会被识别。**实际实现**：两者都要求声明一个或两个块参数——`xs.each do end` 是 `SyntaxError`（“takes one or two block parameters”），而普通的 Ruby 允许零个。
+- `each`/`each_with_index` 只有作为块头的后缀（`x.each do |...|`）时才会被识别；集合可以是任意表达式，包括带块的调用（`<% items.group_by { |i| i.kind }.each do |kind, list| %>`）。**实际实现**：两者都要求声明一个或两个块参数——`xs.each do end` 是 `SyntaxError`（“takes one or two block parameters”），而普通的 Ruby 允许零个。
+- `<% x.each_slice(n) do |slice| %>...<% end %>` 依次遍历每 `n` 个元素的切片（最后一片可能更短），同样需要一个或两个参数；有两个参数时切片会被拆开（`do |a, b|`），切片不够长时第二个为 `nil`。
 - Array 加一个参数：元素本身。Array 加两个参数：`Array` 类型的元素会被解构（`a, b = item[0], item[1]`）；否则第二个参数为 `nil`。
 - Array 上的 `each_with_index`：`item, i`。Hash 上的：第一个参数是 `[key, value]` 对，第二个是索引。
 - Hash 上带两个参数的 `each`：直接是 `key, value`；带一个参数时：是 `[key, value]` 对。
@@ -145,7 +165,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 ### 块调用（辅助方法）
 
-`do ... end` 也是不带接收者的辅助方法调用接收块的方式——这是块唯一的另一种合法用法，并且只在没有接收者时可用（`f.each do |x| end` 会被拒绝：“blocks are only supported on each, each_with_index and helper calls”）：
+`do ... end` 也是不带接收者的辅助方法调用接收块的方式（带接收者的调用参见[块](#blocks)）：
 
 ```erb
 <%= form_with(model: @post) do |f| %>...<% end %>   <%# printed: form_with returns the <form> HTML %>
@@ -153,6 +173,39 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 ```
 
 块的结果是否输出取决于标签：`<%= helper do |x| %>` 会输出它，`<% helper do |x| %>` 会丢弃它。始终只绑定一个块参数；辅助方法的块永远不会得到索引或第二个值。
+
+### 块
+
+带接收者的调用可以接收一个块，`{ |x| expr }` 或 `do |x| ... end`，带零个、一个或两个参数。哪些方法接受块是按类型固定的；其他任何地方的块都是在调用运行时抛出的 `SyntaxError`（`"String#upcase takes no block"`），而类型没有的方法，无论带不带块，都是通常的 `"undefined method 'x' for Array"`。
+
+| 接收者 | 接受块的方法 | 块的值用作 |
+| --- | --- | --- |
+| `Array` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 映射后的值、判断条件、被加数、排序键、分组键 |
+| `Hash` | `map` `select` `reject` `find` `any?` `all?` `none?` `count` `sum` `sort_by` `min_by` `max_by` `group_by` | 同上，块看到的是 `\|key, value\|`（一个参数时得到 `[key, value]` 对）；`select`/`reject` 返回 Hash，其他方法返回 Array 的方法对这些键值对返回的结果 |
+| `tag` 构建器 | 每个元素（`tag.div do ... end`） | 它的**输出**就是元素的内容（[tag 构建器](#the-tag-builder)） |
+
+```erb
+<%= @items.map { |i| i.name }.join(", ") %>
+<%= @line_items.sum { |li| li.price } %>
+<% @items.group_by { |i| i.kind }.each do |kind, list| %>
+  <h2><%= kind %></h2> <%= list.size %>
+<% end %>
+<% total = @line_items.sum do |li| %>
+  <% li.price * li.quantity %>
+<% end %>
+```
+
+- **是值，不是输出。** 对 Array 和 Hash 的方法来说，起作用的是块的*值*：`{ }` 块的表达式，或 `do` 块的最后一条语句，它必须是表达式语句（`<% x * 2 %>`）；否则（赋值或文本）就是 `"map's block must end in a value"`。`do` 块前面的语句输出的内容会被丢弃。这类方法上的 `do` 块独占一个标签，要么赋值（`<% total = items.sum do |li| %>`），要么输出（`<%= items.map do |x| %>`）。
+- **不能修改。** 模板无法改变累加器，所以 `each_with_object` 和 `inject` 不在表中（`"undefined method 'each_with_object' for Array"`）：请使用 `map`、`select`、`sum` 或 `group_by`。
+- 两个参数会像 `each` 那样拆开 Array 的元素（`pairs.map { |a, b| a }`）。
+- 空 Array 的 `sum` 是 `0`；Integer 相加得到 Integer，只要有一个 Float 就得到 Float（使用与 Ruby 相同的补偿算法相加，所以 `[0.1, 0.2, 0.3].sum` 是 `0.6`）；String 会被拒绝（`"sum: use join for Strings"`），任何不是数字的值也一样。
+- `sort_by`、`min_by`、`max_by`（以及不带块的 `sort`、`min`、`max`）按 `<` 的方式比较（数字、String、Time；否则为 `"comparison of String with Integer failed"`）。`sort_by` 是稳定的：相等的键保持原有顺序。空 Array 的 `min_by`/`max_by` 为 `nil`。
+- `group_by` 返回一个 Hash，从每个**转为 String 的**键（模板中的 Hash 一律以 String 为键：`:fruit` 和 `"fruit"` 是同一组）映射到具有该键的元素，按首次出现的顺序排列。
+- `each`、`each_with_index` 和 `each_slice` 在 `<% %>` 标签中接收块（[循环](#loops)）；`items.each { |x| x }` 是 `SyntaxError`。
+- `FormBuilder` 或 `Page` 方法上的块同样会被拒绝（`"FormBuilder#label takes no block"`），不带块的 Array 方法不接受参数（`nums.sum(10)` 是 `"wrong number of arguments for 'sum'"`）。
+- 如果块抛出异常，在错误离开调用之前，它的参数和局部变量会被恢复。
+- `{ }` 块需要接收者：`shout { |x| x }` 是 `SyntaxError`（辅助方法调用接收 `do ... end`）。
+- 块参数在调用期间遮蔽外部同名变量，调用之后恢复；在 `do` 块中首次赋值的局部变量是块局部的，与 `each` 中一样。
 
 ### 赋值
 
@@ -173,8 +226,8 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `Integer` | `to_s` `to_i` `to_f` `zero?` `positive?` `negative?` `abs` | `post.comments.size.zero?` |
 | `Float` | `to_s` `to_i` `to_f` `zero?` `positive?` `negative?` `abs` `round` `round(n)` `floor` `ceil` | `price.round(2)` |
 | `Time` | `year` `month` `day` `hour` `min` `sec` `strftime(fmt)` `to_s` `to_i` | `post.created_at.strftime('%Y-%m-%d')` |
-| `Array` | `size`/`length`/`count` `empty?` `any?` `first` `last` `reverse` `include?(x)` `join(sep)` `to_a` | `post.comments.any?` |
-| `Hash` | `key?(k)` `fetch(k, default)` `size`/`length`/`count` `empty?` `any?` `keys` `values`，以及 `h[key]` | `flash.key?(:notice)` |
+| `Array` | `size`/`length`/`count` `empty?` `any?` `first` `last` `reverse` `include?(x)` `join(sep)` `to_a` `sum` `min` `max` `sort` `uniq` `compact` `flatten` `take(n)` `drop(n)` `each_slice(n)`（由 Array 组成的 Array） `zip(other)`，以及[块](#blocks)中带块的方法 | `post.comments.any?` |
+| `Hash` | `key?(k)` `fetch(k, default)` `size`/`length`/`count` `empty?` `any?` `keys` `values` `to_a`（`[key, value]` 对），以及 `h[key]` 和[块](#blocks)中带块的方法 | `flash.key?(:notice)` |
 | `Errors` | `any?` `empty?` `count`/`size` `full_messages` `key?(a)`/`include?(a)`，以及 `errors[:attr]` | `post.errors.full_messages.join(', ')` |
 | `Params` | `key?(k)` `empty?`，以及 `params[key]` | `params[:id]` |
 | `Page`（`Relation#page`） | `number` `per` `row_offset` `next?` `prev?` `next_number` `prev_number` | `@page.next?` |
@@ -209,14 +262,14 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 ## 辅助方法与表单构建器
 
-每个不带接收者的调用都交给 `Helpers#helper_call`（`helpers.rb`），它要么匹配下面的某个内置辅助方法，要么把以 `_path`/`_url` 结尾的名称当作生成的路由辅助方法（通过 `Cybertrain::Views.url_resolver`，在应用安装解析器之前会抛出 `"no routes"`），否则抛出 `"undefined helper 'name'"`。
+每个不带接收者的调用都交给 `Helpers#helper_call`（`helpers.rb`），它先匹配下面的内置辅助方法；在[组件](#components)的模板中，接着尝试该组件的视图方法；把以 `_path`/`_url` 结尾的名称当作生成的路由辅助方法（通过 `Cybertrain::Views.url_resolver`，在应用安装解析器之前会抛出 `"no routes"`）；然后尝试[应用的辅助方法](#application-helpers)；否则抛出 `"undefined helper 'name'"`。
 
 | 辅助方法 | 签名 | 说明 / 示例 |
 | --- | --- | --- |
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` 会被转义，除非它已经是 `SafeString`；**没有 `method:`**——使用它会抛出异常，提示你改用 `button_to`（不用 rails-ujs/turbo 伪造 DELETE 链接） |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | 只有一个按钮的 `<form class="button_to">`；`get`/`post` 以外的任何动词都带隐藏的 `_method`，存在会话时还带 CSRF 字段 |
 | `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | 需要一个块；`model:` 为新记录 → 集合路由 + POST，已持久化 → 成员路由 + PATCH；嵌套路由用 `[parent, child]`；`url:`/`method:` 会覆盖推导出的动作/动词；`multipart: true` 会加上 `enctype="multipart/form-data"`（`f.file_field` 需要它；它从不根据块推断，在 GET 表单上会抛出 `ArgumentError`） |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials) |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render component: "card", k: v` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials)和[组件](#components) |
 | `h`、`escape` | `h(text)` | 进行转义；`SafeString` 不经转义直接通过 |
 | `raw` | `raw(text)` | 把文本包装为 `SafeString`（不转义输出） |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`；`pluralize(2, "mouse")` → `"2 mice"`（Rails 默认的英语词形变化规则，经由 `Cybertrain::Inflector`；不支持应用自定义的词形变化）；显式给出的第三个参数总是优先 |
@@ -231,8 +284,35 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `url_for` | `url_for(target)` | `String` 原样返回，`Model` → 成员路由，`[parent, child]` → 嵌套路由 |
 | `paginate` | `paginate(page, path)` | `page` 是一个 `Cybertrain::Page`（来自 `Relation#page`）；渲染 `<nav class="pager">`，其中有 “Newer”（`rel="prev"`）、`<span class="pager-current">Page N</span>` 和 “Older”（`rel="next"`），没有对应页面时省略相应链接。每个链接都是 `path` 加上当前请求的查询字符串，其中 `page` 被替换（第 1 页时去掉），并重新编码和进行 HTML 转义；带有自己 `?query` 的 `path` 则改用它自己的查询字符串。在模板中，`Page` 还响应 `number`、`per`、`row_offset`、`next?`、`prev?`、`next_number`、`prev_number`（`<% if @page.next? %>`） |
 | `*_path` / `*_url` | 例如 `post_path(post)` | 由应用生成，通过 `Cybertrain::Views.url_resolver` 解析 |
+| `tag` | `tag.div(content, attrs) do ... end` | tag 构建器：参见[tag 构建器](#the-tag-builder) |
+| `content_tag` | `content_tag(name, content = nil, attrs)`，或带 `do` 块 | `content_tag "p", "<i>", class: "n"` → `<p class="n">&lt;i&gt;</p>`；规则与 `tag` 相同 |
+| `safe_join` | `safe_join(array, sep = "")`（没有关键字参数） | 连接成一个 `SafeString`，转义每个尚不是 `SafeString` 的元素和分隔符：`safe_join([tag.b("a"), "<"], " ")` → `<b>a</b> &lt;` |
+| `class_names` | `class_names(*values)` | Rails 的 `class_names`/`token_list`：String 和 Symbol 中的单词、Array（包括嵌套的）中的单词，以及值为真的每个 Hash 键的单词，每个单词只出现一次；关键字参数相当于再多一个这样的 Hash：`class_names("btn", active: @on, big: false)` → `"btn active"` |
+| `dom_id` | `dom_id(record, prefix = "")`（前缀是位置参数，与 Rails 相同） | `"article_12"`，未保存的记录为 `"new_article"`，`dom_id(@article, "edit")` → `"edit_article_12"`（Ruby 中为 `Cybertrain::Html.dom_id`） |
+| `turbo_stream_from` | `turbo_stream_from(*streams, ws: false)` | 一个让页面订阅这些流（String，或名为 `"articles:12"` 这样的记录）的 `<turbo-stream-source>`；`ws: true` 给出 `ws://`/`wss://` URL，并且需要请求。参见[实时](realtime.md#turbo-streams) |
+| `signed_stream_name` | `signed_stream_name(*streams)` | 只有签名令牌，供手写的 JavaScript 使用 |
+| `stream_source_path` | `stream_source_path(*streams, mode: "json")` | 带令牌和 `mode=json`（或 `"raw"`）的流端点路径 |
 
 每个辅助方法的文本参数都遵循同一条规则：`SafeString` 不经转义直接通过，其他任何内容都会被转义——`link_to raw('<b>raw</b>'), post` 会原样输出加粗标签，而 `link_to post.title, post` 会转义它。
+
+### tag 构建器
+
+`tag` 求值为一个构建器（`Cybertrain::Html::TagBuilder`）；对它调用的任何方法都是一个元素，由 `Cybertrain::Html.tag` 渲染（也可以在 Ruby 中调用：`Html.tag("a", { href: "/x" }, "Go")`）：
+
+```erb
+<%= tag.div(class: "card") do %>
+  <%= tag.h2 @article.title, id: dom_id(@article) %>
+<% end %>
+<%= tag.input type: "text", name: "q", disabled: true %>   <%# <input type="text" name="q" disabled> %>
+<%= tag.path d: "M0 0 L10 10" %>                         <%# SVG elements work %>
+<%= tag.my_widget data: { turbo_frame: "f" } %>          <%# <my-widget data-turbo-frame="f"></my-widget> %>
+```
+
+- 单独的 `<%= tag %>` 什么都不输出。
+- 元素名是把方法名中的 `_` 换成 `-` 后的名称；它必须匹配 `[a-z][a-z0-9-]*`（否则 `Html.tag` 抛出 `"invalid element name 'Div'"`）。
+- 内容是唯一的位置参数（除非是 `SafeString`，否则会被转义，所以 `tag.script("alert(1)")` 输出的是转义后的文本），或块的**输出**（`do ... end`，或值会被转义输出的 `{ expr }`）；块优先。两者都没有时，`tag.div` 为 `<div></div>`。
+- 空元素（`area base br col embed hr img input link meta source track wbr`）渲染时没有结束标签；给它们内容或块是错误（`"br is a void element"`）。
+- 属性就是关键字参数，按顺序：`nil` 和 `false` 去掉该属性，`true` 把它渲染为无值属性（`disabled`），Array 用空格连接其非 `nil` 的元素（`data: { ids: [1, 2] }` 得到 `data-ids="1 2"`，而不是 Rails 的 JSON），`class:` 接受 `class_names` 所接受的内容（`class: ["btn", { active: @on }]`），`data:` 和 `aria:` 的 Hash 展开为 `data-key="v"` / `aria-key="v"`，下划线变为连字符（在那里 `true`/`false` 也会写成文字）；其他任何 Hash 值都是错误（`"attribute 'title' cannot be a Hash"`）。每个值都会被转义，`SafeString` 也一样。属性名必须匹配 `[a-zA-Z_:][-a-zA-Z0-9_:.]*`（`"invalid attribute name 'data-a b'"`）；`onclick:` 之类是允许的，因为它们出自作者之手。
 
 ### FormBuilder（`form_with ... do |f|` 中的 `f`）
 
@@ -248,6 +328,81 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `f.submit` / `f.submit "Text"` | 默认文本为 `"Create Post"`/`"Update Post"`（根据 `persisted?`），没有模型时为 `"Save changes"` |
 
 有模型时，字段命名为 `post[title]`/`id="post_title"`（以 `Inflector.underscore(model.model_name)` 作为作用域）；使用 `form_with(url: ...)` 且没有模型时，两者都直接使用属性名。额外的关键字参数按给出的顺序变为 HTML 属性：`true` → `attr="attr"`，`false`/`nil` 被丢弃，其他任何值 → `attr="value"`（经过转义），下划线变为连字符（`data_confirm: "Sure?"` → `data-confirm="Sure?"`），并且 `class:` 会与 `model.errors.key?(attr)` 时自动添加的 `field_with_errors` 类合并。
+
+## 应用的辅助方法
+
+`app/helpers/` 下的模块就是辅助方法模块，与 Rails 相同：其中的每个公开方法都可以在任何模板中不带接收者地调用。
+
+```ruby app/helpers/prices_helper.rb
+module PricesHelper
+  def price(value, unit: "USD", precision: 2)
+    amount = Cybertrain::Cast.float(value).round(Cybertrain::Cast.int(precision))
+    Cybertrain::Html.tag("span", { class: "price" }, "#{amount} #{unit}")
+  end
+
+  def panel(title, &block)
+    Cybertrain::Html.tag("section", { class: "panel" }, Cybertrain::Html.safe_join([Cybertrain::Html.tag("h2", {}, title), yield]))
+  end
+end
+```
+
+```erb
+<%= price @item.cost %>                  <%# <span class="price">12.5 USD</span> %>
+<%= price @item.cost, unit: "EUR" %>
+<%= panel "Totals" do %><p><%= @total %></p><% end %>
+```
+
+- **生成的分派。** 模板不能 `send`，所以 `spin run gen` 把 `app/helpers/**/*.rb` 当作文本读取，并写出 `gen/helpers.rb`：一个 include 了每个模块（以及路由辅助方法）的 `ApplicationHelpers` 类，和一个按辅助方法名称分派的 `case`。添加辅助方法或修改其签名后，下一次构建会重新生成它（开发服务器两件事都会做）。`cybertrain generate helper prices` 会写出一个空的 `PricesHelper` 和一个测试。
+- **什么是辅助方法。** `module` 的公开实例方法（`def self.x`、setter 以及 `private` 或 `protected` 之后的一切都不算），不论在哪个文件中。模板按位置或关键字传值，所以每个参数都必须有名称：`*rest`、`**opts`、`...` 是生成器错误，可选参数之后的必需参数也是。一个辅助方法最多有三个可选参数（生成的 `case` 对每种给出的组合有一个分支，因此省略的关键字会得到方法自身的默认值）。错误的调用在渲染时是 `ArgumentError`：`"wrong number of arguments for 'price' (given 0, expected 1)"`、`"unknown keyword 'cur' for 'price' (known: unit, precision)"`。
+- **保留的名称。** 辅助方法不能使用框架辅助方法的名称（`link_to`、`render`、`tag`、`dom_id`、`params`、`content` 等）、`Cybertrain::Template::Helpers` 的方法名（无论公开还是私有：`include` 会连框架的那个方法也一起替换掉）、`yield`，也不能以 `_path` / `_url` 结尾（这些由路由辅助方法回答）；同一个名称出现在两个模块中也是错误。`spin run gen` 会停下来，指出文件、行号和原因。
+- **值。** 参数以模板中的值（String、Integer、Float、`nil`、记录、Array、Hash）传入；做算术之前，请用 `Cybertrain::Cast`（`Cast.str`、`Cast.int`、`Cast.float`）收窄类型。辅助方法的返回值像其他值一样输出：`String` 会被转义，`SafeString` 不会，因此请用 `Cybertrain::Html.tag(name, attrs, content)`、`Html.safe_join`、`Html.class_names`、`Html.dom_id`、`Html.escape`、`Cybertrain::SafeString.of`，或链接辅助方法的 Ruby 形式 `link_to_path(text, path, attrs)` 和 `button_to_path(text, path, attrs)`（`method:` 放在 `attrs` 中）构造 HTML。
+- **块。** 带 `&block` 参数的辅助方法接收一个 `do ... end` 块；`yield`（不带参数）以 `SafeString` 的形式返回块输出的内容。
+
+## 组件
+
+组件是一个接收关键字参数的类，旁边配一个模板，采用 [ViewComponent](https://viewcomponent.org) 的形式：
+
+```ruby app/components/card_component.rb
+class CardComponent < Cybertrain::Component
+  def initialize(title:, value: 0, tone: "neutral")
+    @title = title
+    @value = value
+    @tone = tone
+  end
+
+  def value_text = "#{@value} pts"
+  def tone_class = "card--#{@tone}"
+end
+```
+
+```erb app/components/card_component.html.erb
+<%= tag.div(class: class_names("card", tone_class)) do %>
+  <h3><%= title %></h3><p><%= value_text %></p><%= content %>
+<% end %>
+```
+
+```erb
+<%= render component: "card", title: "Visitors", value: @count %>
+<%= render component: "card", title: "Notes", tone: "warm" do %>
+  <p><%= @note %></p>
+<% end %>
+```
+
+- 模板把组件的实例变量看作局部变量（`title`），按名称看到它不带参数的公开方法（`value_text`），以及 `content`，即 `do` 块输出的内容（没有块时为 `""`）。它在没有布局的情况下渲染，可以渲染局部模板和其他组件，并像局部模板一样计入 `max_render_depth`。它渲染的局部模板看不到组件的方法。组件模板中不带目录的局部模板名（`render "chip"`）在 `app/components/` 下查找（`app/components/_chip.html.erb`）；带目录的名字（`render "shared/note"`）照常在 `app/views/` 下查找。
+- 组件用去掉 `_component` 的 snake_case 名称来指定，就像局部模板用路径来指定一样：`CardComponent` 为 `"card"`，`Admin::UserRowComponent`（`app/components/admin/user_row_component.rb`）为 `"admin/user_row"`。模板不能指名常量。
+- `spin run gen` 像处理辅助方法一样，通过词法扫描写出 `gen/components.rb`：类定义行、`@x =` 赋值、不带参数的 `def`，以及 `initialize` 的关键字。`initialize` 只接受关键字参数（其中最多三个可选），并且它的模板必须存在；缺少关键字或出现未知关键字在渲染时是 `ArgumentError`。未知的组件是 `Cybertrain::Component::Unknown`：`` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``。`content` 是保留名：同名的 `initialize` 关键字或 `@content` 实例变量会被块的输出覆盖，所以 `spin run gen` 会拒绝它，并指出文件和行号。`app/views/components/` 仍然是和其他目录一样的视图目录（属于 `ComponentsController`）；只有 `app/views/__components/` 是保留的，组件模板就存放在这个名称下。
+- `cybertrain generate component card title value:integer` 会写出这个类、它的模板，以及一个用 `Cybertrain::Test.render_component` 渲染它的测试。
+
+### 在请求之外渲染
+
+广播、作业或邮件正文在没有请求的情况下渲染：
+
+```ruby
+html = Cybertrain::Views.render_partial("articles/article", article: article)   # app/views/articles/_article.html.erb
+card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", value: 12))
+```
+
+两者都会使用应用的辅助方法，以 String 返回 HTML。路径辅助方法可以使用（`article_path(article)`），strict locals 会被检查，表单（`form_with`、`button_to`）渲染时不带真实性令牌（Turbo 页面会提交来自 `csrf_meta_tags` 的令牌）。需要请求的辅助方法会抛出 `Cybertrain::Views::OutsideRequest`（`"csrf_token needs a request"`）：`csrf_token`、`csrf_meta_tags`、`params`、`flash`、`request_path`、任何 `*_url` 辅助方法，以及 `turbo_stream_from ... ws: true`。`paginate` 的链接只带路径自身的查询字符串。（单元测试可能构造的裸 `Cybertrain::Template::Helpers.new(nil)` 则对它们返回空值。）
 
 ## 布局、`yield`、`content_for`、局部模板
 
@@ -293,6 +448,8 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 来自辅助方法或 `FormBuilder`/自定义对象方法调用的任何普通 `StandardError`（单纯的 `raise "text"`、`ArgumentError`、`KeyError`，甚至来自嵌套 `render` 的 `Cybertrain::Template::RuntimeError`）都会被捕获并“重新定位”：改写为 `"<current template>:<current line>: <original message>"`，除非它恰好已经是上一次重新定位的消息（嵌套的 `render` 已经标上了它自己更具体的位置），这种情况下它原样通过。由辅助方法抛出的 `Cybertrain::Template::SyntaxError`（在渲染中途解析失败的局部模板）从不被重新包装——它保留自己的 `"<partial>:<line>: ..."` 消息和类，所以损坏的局部模板总是被报告为关于它自身的 `SyntaxError`，而不是关于渲染它的那个模板的 `RuntimeError`。
 
+`Cybertrain::Views::OutsideRequest` 和 `Cybertrain::Component::Unknown` 同样不经包装、保留各自的类传递出去，所以 `Views.render_partial` 的调用者可以 rescue 它们。
+
 `MissingTemplate`（`StandardError`，`engine.rb`）从顶层的 `Engine#template`/`#render`/`#render_with_layout` 调用中（例如控制器渲染缺失的动作模板或布局）**不经包装**地抛出，不带 `template:line` 前缀：`"Missing template <path>"`。同一个异常如果是在模板*内部*通过 `render` 辅助方法查找局部模板时抛出的，则会经过重新定位，最终成为 `RuntimeError`：`"posts/inline:1: Missing template test/fixtures/views/posts/_nope.html.erb"`。
 
 ## 与 Rails ERB 的差异
@@ -301,12 +458,13 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | --- | --- |
 | 编译为 Ruby 方法；任何 Ruby、任何对象、任何方法都可以 | 按固定的、按类型划分的分派表解释执行；只能调用[各类型的方法表](#per-type-method-table)列出的内容 |
 | `ActiveSupport::SafeBuffer` 是 `String` 的子类 | `SafeString` 是一个独立的包装类——在它上面只能调用 `to_s`/`html_safe?`/`size`/`length`/`empty?` |
-| 块：`each`、`{ }`、`map`、任何 Enumerable 方法 | 只有 `do...end`，并且只能用于 `each`/`each_with_index`/辅助方法调用 |
+| 块：`each`、`{ }`、`map`、任何 Enumerable 方法 | 在一组固定的 Array/Hash 方法上使用 `{ }` 和 `do...end`（没有 `each_with_object`、`inject`），`each`/`each_with_index`/`each_slice` 循环，辅助方法调用和 `tag` |
 | `xs.each { }`——零个块参数没有问题 | `each`/`each_with_index` 要求声明 1 个或 2 个块参数 |
 | `link_to text, path, method: :delete`（由 JS 驱动） | `link_to` 上没有 `method:`——要发出真正的非 GET 表单请使用 `button_to` |
 | 严格局部变量接受 `name: default_expr`（Rails 7.1） | 只能写不带修饰的 `name:`（必需）；带默认值的条目是 `SyntaxError` |
 | 未定义的实例变量/局部变量通过 Ruby / 视图上下文的方法解析 | `@x` 是简单的、从不失败的 env 查找；未定义的裸局部变量是一次显式的、封闭的辅助方法调用尝试（找不到时为 `"undefined helper"`） |
-| `and`/`or`/`not`、`case/when`、范围、正则表达式、多重赋值都可以使用 | 这些都不存在；保留字会以专门的 “not supported in templates” 消息失败，而不是一般的解析错误 |
+| 使用 `===` 的 `case/when`（范围、类、正则表达式） | 只使用 `==` 的 `case/when`（数字按值比较） |
+| `and`/`or`/`not`、范围、正则表达式、多重赋值都可以使用 | 这些都不存在；保留字会以专门的 “not supported in templates” 消息失败，而不是一般的解析错误 |
 | 数字字面量：十六进制、八进制、二进制、指数、有理数 | 只有十进制整数/浮点数，可以用 `_` 作分隔符 |
 | `:"quoted symbol"`、`:+` 运算符符号 | 符号只能由标识符字符组成 |
 | `foo (x)`、`foo [x]`（允许空格，有时会给出警告） | 两者都是硬性的 `SyntaxError`——调用的 `(` 或索引的 `[` 之前不能有空格 |
@@ -314,3 +472,5 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | 未声明/拼错的属性必定会抛出 `NoMethodError` | 会悄悄地渲染为空，除非特定的生成模型覆盖了 `attribute_or_method?`（已记录的缺口，并非保证） |
 | `1 / 0` 和 `1.0 / 0` 都会抛出 `ZeroDivisionError` | `Integer` 除以零或对零取模会抛出 `"divided by 0"`；`Float` 遵循 IEEE-754（`Infinity`/`NaN`），不报错 |
 | `distance_of_time_in_words`/复数化支持 i18n 语言区域 | 仅限英语，不支持语言区域 |
+| `app/helpers` 中的每个模块都会被混入；签名任意；辅助方法可以覆盖框架的辅助方法 | 模块在构建时被扫描为生成的 `case`：只能用具名参数，最多三个可选参数，不能使用框架辅助方法的名称，也不能以 `_path`/`_url` 结尾（[应用的辅助方法](#application-helpers)） |
+| ViewComponent：`render CardComponent.new(title: "x")`、`with_collection`、插槽 | 按名称 `render component: "card", title: "x"`，`content` 来自块；没有集合或插槽（[组件](#components)） |

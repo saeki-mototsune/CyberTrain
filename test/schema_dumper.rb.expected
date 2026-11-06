@@ -7,7 +7,7 @@ ok   dump reproduces tables, columns, types, null and defaults
 done
 == 20260101000100 CreateComments: migrating
 done
-ok   dump excludes schema_migrations and sqlite_* tables and never lists the id column
+ok   dump excludes schema_migrations, sqlite_* and the framework's tables and never lists the id column
 == 20260101000000 CreatePosts: migrating
 done
 == 20260101000100 CreateComments: migrating
@@ -29,4 +29,4 @@ done
 == 20260101000100 CreateComments: migrating
 done
 ok   the dumped schema loads back into an identical dump
-7 tests, 28 assertions, 0 failures
+7 tests, 32 assertions, 0 failures

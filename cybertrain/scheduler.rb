@@ -2,6 +2,7 @@ require "json"
 require "cybertrain/logger"
 require "cybertrain/config"
 require "cybertrain/job"
+require "cybertrain/lease"
 
 module Cybertrain
   # Cybertrain::Scheduler -- "run this every N seconds" for a served
@@ -17,10 +18,20 @@ module Cybertrain
   # (spikes/NOTES.md rule 22), and only when the process serves: `./<app>
   # migrate`, `db ...` and {Main.command} commands never start it. Each run
   # is wrapped in a rescue that logs `[ERROR]`, so a failing task does not
-  # end the loop. When {Job} handlers are registered the scheduler also runs
-  # the job worker as one more task. {Config#worker} (`CYBERTRAIN_WORKER=0`)
-  # turns the whole thread off, for every process but one when several
-  # share a database.
+  # end the loop. Jobs do not run here: {Job.start!} runs them on threads of
+  # their own, so a long job never delays a task (a long task still delays
+  # the other tasks: a task with real work to do should {Job.enqueue} it).
+  # {Config#worker} (`CYBERTRAIN_WORKER=0`) turns the thread off in a
+  # `server` process.
+  #
+  # Several processes may run the scheduler against one database (`./<app>
+  # worker` twice, or a server and a worker): every tick takes or renews
+  # the lease "scheduler" ({Lease.acquire}, {Config#scheduler_lease_ttl}
+  # seconds), and only the process holding it runs the due tasks; the
+  # others keep ticking and take over once the leader's lease expires.
+  # Every tick of a process that runs jobs, leader or not, also calls
+  # {Job.recover!}, at most once a minute (recovery is idempotent, so it
+  # needs no lease).
   # @api public
   module Scheduler
     # One registered task. Distinctive accessor names and no #call
@@ -42,9 +53,6 @@ module Cybertrain
     # class variable it does not: NOTES rule 64), seeded and emptied (rule 9).
     TASKS = Array.new(0) { Task.new("", 0, nil) }
 
-    # The name of the task that runs the job worker.
-    JOB_TASK_NAME = "cybertrain jobs"
-
     # Guards @last_tick, which the scheduler thread writes and a request
     # thread (a health check) reads.
     LOCK = Mutex.new
@@ -54,6 +62,18 @@ module Cybertrain
     # Counts start!s: a loop left from before a stop! and a new start!
     # sees a newer number and ends instead of running beside the new one.
     @generation = 0
+    # Whether the last tick held the lease.
+    @leader = false
+    # Config#scheduler_lease_ttl, copied by start! (the default until then).
+    @lease_ttl = 30
+    # The `now` of the last tick that ran Job.recover!; 0 for none.
+    @last_recovery = 0
+
+    # The name of the lease the leader holds.
+    LEASE_NAME = "scheduler"
+
+    # The most often a tick runs Job.recover!, in seconds.
+    RECOVERY_INTERVAL = 60
 
     # Registers a task that runs every `seconds` seconds while the server
     # runs: first `seconds` after the scheduler starts, then `seconds` after
@@ -67,6 +87,14 @@ module Cybertrain
     # worker until it returns, so with `SPINEL_WORKERS=1` a task's long
     # query stalls every request for as long: keep tasks short and batch
     # big work (delete a thousand rows per run, not a million).
+    #
+    # With several processes, the one holding the scheduler lease runs the
+    # tasks. The lease is renewed before each task, so one task must finish
+    # within {Config#scheduler_lease_ttl} seconds, or another process may
+    # take the lease and run tasks beside it. After a change of leader a
+    # task can run again sooner than `seconds` (each process keeps its own
+    # timetable), and a task the old leader was running when it died runs
+    # again: write tasks that do no harm when they run twice.
     # @example
     #   Cybertrain::Scheduler.every(60, "expire carts") { Cart.where_sql("updated_at < ?", [cutoff]).delete_all }
     # @param seconds [Integer] at least 1
@@ -94,11 +122,9 @@ module Cybertrain
     end
 
     # Starts the scheduler thread, unless {Config#worker} is off, nothing is
-    # registered (no task and no {Job} handler), or it already runs.
-    # Application#serve calls it; the database must be connected. With job
-    # handlers it first creates the job table if needed, requeues jobs a
-    # dead process left running ({Job.recover!}) and adds the worker task
-    # (every {Config#job_poll_interval} seconds).
+    # registered (no task and no {Job} handler, whose rows the ticks
+    # recover), or it already runs. Application#serve calls it; the
+    # database must be connected.
     # @param config [Config]
     # @return [Boolean] true when it started the thread
     # @api public
@@ -109,10 +135,10 @@ module Cybertrain
         return false
       end
 
-      add_job_task(config) if Job.handlers?
-      return false if TASKS.empty?
+      return false if TASKS.empty? && !Job.handlers?
 
       schedule_all(Time.now.to_i)
+      @lease_ttl = config.scheduler_lease_ttl
       @running = true
       @generation += 1
       Cybertrain.logger.info("Scheduler started: #{task_summary}")
@@ -126,8 +152,28 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.stop!
+      was_running = @running
       @running = false
+      # Hand the lease over at once rather than after its ttl. (A tick in
+      # progress on the thread may still renew it; it then expires.)
+      release_safely if was_running && @leader
       nil
+    end
+
+    # Whether this process held the scheduler lease at its last tick, and
+    # so ran the due tasks. A process that is not the leader still ticks
+    # ({Scheduler.last_tick}).
+    # @return [Boolean]
+    # @api public
+    def self.leader?
+      @leader
+    end
+
+    # Who this process is in the lease: {Job.process_label}.
+    # @return [String]
+    # @api public
+    def self.holder
+      Job.process_label
     end
 
     # @return [Boolean] true between {Scheduler.start!} and {Scheduler.stop!}
@@ -148,15 +194,22 @@ module Cybertrain
       tick
     end
 
-    # One tick: runs every task whose time has come (in registration order)
-    # and records `now` as {Scheduler.last_tick}. A task the scheduler sees
-    # for the first time is only scheduled, `seconds` after `now`. The
-    # thread calls it with the current time; tests call it with chosen
-    # times instead of sleeping.
+    # One tick: takes or renews the scheduler lease, and, holding it, runs
+    # every task whose time has come (in registration order); then, when
+    # {Job} threads run in this process and a minute has passed since the
+    # last one, {Job.recover!}; and records `now` as {Scheduler.last_tick}.
+    # A task the scheduler sees for the first time is only scheduled,
+    # `seconds` after `now`. A tick that cannot reach the database logs the
+    # error, runs nothing and counts as not leading; the next one tries
+    # again. The thread calls it with the current time; tests call it with
+    # chosen times instead of sleeping.
     # @param now [Integer] epoch seconds
     # @return [Integer] how many tasks ran (including ones that raised)
     # @api public
     def self.run_due(now)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      leader = acquire_safely(now)
+      @leader = leader
       ran = 0
       i = 0
       while i < TASKS.size
@@ -165,14 +218,56 @@ module Cybertrain
         if due == 0
           task.task_next_run = now + task.task_interval
         elsif due <= now
+          # A process that does not lead keeps the timetable too, so that it
+          # does not run every overdue task at once when it takes over.
           task.task_next_run = now + task.task_interval
-          run_task(task)
-          ran += 1
+          if leader
+            # Renewed before each task (the tick's own `now` plus the time
+            # the tick has taken): a leader that lost the lease while a
+            # task ran stops running tasks in this tick.
+            elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to_i
+            leader = acquire_safely(now + elapsed)
+            @leader = leader
+          end
+          if leader
+            run_task(task)
+            ran += 1
+          end
         end
         i += 1
       end
+      recover_jobs(now) if Job.running? && (@last_recovery == 0 || now - @last_recovery >= RECOVERY_INTERVAL)
       LOCK.synchronize { @last_tick = now }
       ran
+    end
+
+    # Lease.acquire with its rescue in a plain method (NOTES rules 32/45):
+    # false, and the error logged, when the database cannot be reached.
+    def self.acquire_safely(now)
+      Lease.acquire(LEASE_NAME, holder, now, ttl: @lease_ttl)
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      Cybertrain.logger.error("Scheduler lease: #{e.class.name}: #{e.message}")
+      false
+    end
+
+    def self.release_safely
+      Lease.release(LEASE_NAME, holder)
+      @leader = false
+      nil
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      Cybertrain.logger.error("Scheduler lease release: #{e.class.name}: #{e.message}")
+      nil
+    end
+
+    # Job.recover! for the tick, logged when it requeued something.
+    def self.recover_jobs(now)
+      @last_recovery = now
+      requeued = Job.recover!(now)
+      Cybertrain.logger.warn("Requeued #{requeued} job(s) whose process stopped sending heartbeats") if requeued > 0
+      requeued
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      Cybertrain.logger.error("Job recovery: #{e.class.name}: #{e.message}")
+      0
     end
 
     # Runs one task with its rescue in a plain method that reads the Proc
@@ -198,19 +293,11 @@ module Cybertrain
       nil
     end
 
-    # The job worker as a task, added once.
-    def self.add_job_task(config)
-      return nil if task_index(JOB_TASK_NAME) >= 0
-
-      Job.install!
-      requeued = Job.recover!(Time.now.to_i)
-      Cybertrain.logger.warn("Requeued #{requeued} job(s) left running by a previous process") if requeued > 0
-      every(config.job_poll_interval, JOB_TASK_NAME) { Job.work_due(Time.now.to_i) }
-      nil
-    end
-
-    # "name every Ns, ..." for the start line.
+    # "name every Ns, ..." for the start line; "no scheduled tasks (job
+    # recovery only)" when none is registered.
     def self.task_summary
+      return "no scheduled tasks (job recovery only)" if TASKS.empty?
+
       out = +""
       i = 0
       while i < TASKS.size

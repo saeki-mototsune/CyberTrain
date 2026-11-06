@@ -13,6 +13,8 @@ module Cybertrain
   #   ./blog migrate      apply db/migrate (gen/migrations.rb)
   #   ./blog db status    any DB::CLI command: status, rollback N, schema:dump, create,
   #                       backup PATH, vacuum
+  #   ./blog worker       jobs and scheduled tasks, no HTTP (several may share a database)
+  #   ./blog feeds [NAME...]  the WebSocket subscriptions (all, or the named ones)
   #   ./blog console      the expression console over the models (Console.run)
   #   ./blog dbconsole    the sqlite3 shell on the configured database
   #   ./blog user a@b.c   a command the application registered with Main.command
@@ -40,7 +42,7 @@ module Cybertrain
 
     # The words Main itself answers to; an application command may not take
     # one (it would never run, or would hide the built-in).
-    BUILTIN_WORDS = ["server", "migrate", "db", "console", "dbconsole", "help", "--help", "-h"].freeze
+    BUILTIN_WORDS = ["server", "worker", "feeds", "migrate", "db", "console", "dbconsole", "help", "--help", "-h"].freeze
 
     # Registers an operational command for the application's binary:
     # `./<name> NAME ARGS...` runs the block instead of the server, and
@@ -49,8 +51,11 @@ module Cybertrain
     #
     # Before the block runs, `Cybertrain::DB` is connected to
     # `Cybertrain.config.database_path` with a pool of one connection (and
-    # disconnected afterwards), the way `./<name> db ...` works; no server,
-    # views or session secret are set up. A `Cybertrain::DB::Error` raised
+    # disconnected afterwards), the way `./<name> db ...` works, and the
+    # views and the URL resolver are configured as the server's boot does,
+    # so `Cybertrain::Views.render_partial`, `render_component` and the
+    # `Stream.broadcast_*_to(partial: / component:)` shortcuts work; no
+    # server, scheduler, threads or session secret are set up. A `Cybertrain::DB::Error` raised
     # by the block (or by the connect) prints `NAME failed: MESSAGE` and
     # exits 1. Any other exception is not rescued.
     #
@@ -108,11 +113,15 @@ module Cybertrain
     def self.run(name, argv, router:, url_resolver:, views:)
       unless argv.empty?
         index = command_index(argv[0])
-        return run_command(COMMANDS[index], argv[1, argv.size - 1]) if index >= 0
+        return run_command(COMMANDS[index], argv[1, argv.size - 1], views, url_resolver) if index >= 0
       end
       return serve(name, argv, router, url_resolver, views) if server?(argv)
 
       case argv[0]
+      when "worker"
+        role_app(name, router, url_resolver, views).run_worker(argv[1, argv.size - 1])
+      when "feeds"
+        role_app(name, router, url_resolver, views).run_feeds(argv[1, argv.size - 1])
       when "migrate"
         DB::CLI.run(["migrate"], ".", name)
       when "db"
@@ -133,11 +142,15 @@ module Cybertrain
 
     # A registered command with a pool of one: a one-shot process needs no
     # more, and the server's pool_size of connections would only be opened
-    # and closed again. The begin/rescue sits in this plain method, which
-    # calls the stored block rather than yielding (NOTES rules 32/45).
-    def self.run_command(command, args)
+    # and closed again. Views are configured as boot does
+    # (Application.configure_views), so the block can render a partial or a
+    # component; there is no server, scheduler or thread. The begin/rescue
+    # sits in this plain method, which calls the stored block rather than
+    # yielding (NOTES rules 32/45).
+    def self.run_command(command, args, views, url_resolver)
       begin
         DB.connect(Cybertrain.config.database_path, size: 1)
+        Application.configure_views(Cybertrain.config, views, url_resolver, eager: false)
         command.command_block.call(args)
       rescue DB::Error => e
         puts "#{command.command_name} failed: #{e.message}"
@@ -226,6 +239,28 @@ module Cybertrain
       Application.port_argument(argv) > 0
     end
 
+    # Whether {Main.run} runs these arguments as `./<app> worker`: the
+    # jobs and the scheduler, no HTTP.
+    # @param argv [Array<String>] the binary's ARGV
+    # @return [Boolean]
+    # @api public
+    def self.worker?(argv)
+      !argv.empty? && argv[0] == "worker"
+    end
+
+    # Whether {Main.run} runs these arguments as `./<app> feeds [NAME...]`:
+    # the WebSocket subscriptions, no HTTP and no jobs.
+    # @param argv [Array<String>] the binary's ARGV
+    # @return [Boolean]
+    # @api public
+    def self.feeds?(argv)
+      !argv.empty? && argv[0] == "feeds"
+    end
+
+    def self.role_app(name, router, url_resolver, views)
+      Application.new(router: router, url_resolver: url_resolver, views: views, name: name)
+    end
+
     # The port argument Application#run expects, without the "server" word.
     def self.server_args(argv)
       return argv[1, argv.size - 1] if !argv.empty? && argv[0] == "server"
@@ -249,6 +284,8 @@ module Cybertrain
     def self.usage(name)
       text = +"Usage:\n"
       text << "  ./#{name} [server [PORT]]   start the server\n"
+      text << "  ./#{name} worker            run jobs and scheduled tasks, without HTTP\n"
+      text << "  ./#{name} feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)\n"
       text << "  ./#{name} migrate           apply pending migrations\n"
       text << "  ./#{name} db COMMAND        migrate | rollback [N] | status | schema:dump | create\n"
       # The continuation lines up under "migrate" whatever the name.

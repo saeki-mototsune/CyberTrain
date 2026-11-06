@@ -425,18 +425,22 @@ module Cybertrain
     end
 
     # The DOM id Rails' dom_id gives a record: "article_12", "new_article"
-    # for an unsaved one, "edit_article_12" with a prefix. The record answers
-    # model_name, id and new_record? (a Cybertrain::Model does).
+    # for one without an id yet, "edit_article_12" with a prefix. The record
+    # answers model_name and id (a Cybertrain::Model does); as in Rails the
+    # id decides, not whether the record is saved, so a record built with an
+    # id (set_id) names the element the page rendered for it. No id is 0 (a
+    # Model's) or nil (another record-like object's).
     # @param prefix [String] "" for none
     # @return [String]
     # @api public
     def self.dom_id(record, prefix = "")
       key = Inflector.underscore(record.model_name).tr("/", "_")
-      if record.new_record?
+      id = record.id
+      if id.nil? || id == 0
         return prefix.empty? ? "new_#{key}" : "#{prefix}_#{key}"
       end
 
-      prefix.empty? ? "#{key}_#{record.id}" : "#{prefix}_#{key}_#{record.id}"
+      prefix.empty? ? "#{key}_#{id}" : "#{prefix}_#{key}_#{id}"
     end
 
     # What `tag` evaluates to in a template: `tag.div(...)` is a method call

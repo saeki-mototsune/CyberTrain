@@ -76,18 +76,19 @@ module Cybertrain
       # cybertrain/template/helpers.rb and interpreter.rb.
       RESERVED_HELPER_NAMES = %w[
         app_block_content app_helper_call arg button_to button_to_path
-        call_object_method class_names component_pop component_push constant content
+        constant current_query_string model_call? no_kwargs stream_ws_base tag_builder_call
+        call_object_method class_names component_pop component_push content
         content_for content_for? content_tag csrf_meta_tags csrf_token
         data_attrs distance_of_time_in_words dom_id escape flash
         flash_messages form_action form_record form_with h helper_arity!
         helper_call helper_keywords! helper_no_keywords! hidden_fields
         html_arg initialize int_text kwarg_attr link_to link_to_path
-        lower_text model_call? model_key nested_url no_kwargs number_with_delimiter
+        lower_text model_key nested_url number_with_delimiter
         outside_request! page_method pager_href pager_html paginate params
         partial_file plural_words pluralize raw render
         render_component_helper render_helper request_bound! request_path
         request_query_string route route_key_of safe_join session_csrf_token
-        signed_stream_name stream_source_path string_keys_of tag tag_builder_call text_arg
+        signed_stream_name stream_source_path string_keys_of tag text_arg
         time_ago_in_words time_arg to_html truncate turbo_stream_from
         url_for yield
       ]
@@ -185,10 +186,21 @@ module Cybertrain
           # so a column-0 `end` of an unindented body does not close the
           # module, and nothing in the body is read as a def or `private`.
           skip_indent = indent unless ModelScan.one_line_block?(line) || endless?(text)
-          next if in_private || line.start_with?("def self.") || setter?(text)
+          # A singleton method is not mixed in by `include`, so it is neither
+          # a helper nor a shadowing risk. A private def is checked, though:
+          # `include` mixes private methods in as well, so a private
+          # `def params` would still replace the framework's.
+          next if setter?(text) || line.start_with?("def self.")
 
+          if in_private
+            # Only the name: a template cannot call a private method, so its
+            # parameters (`*parts`, a block) are its own business.
+            check_name(file, HelperDef.new(def_name(file, start_line, text), start_line, [], [], [], [], ""))
+            next
+          end
           d = parse_def(file, start_line, text)
           check_name(file, d)
+
           owner = found_named(found, names.last)
           owner.defs << d unless owner.nil?
         end
@@ -261,6 +273,14 @@ module Cybertrain
       end
 
       # "def price(value, unit: \"USD\", precision: 2)" -> a HelperDef.
+      # The method name of a def line, and nothing else.
+      def self.def_name(file, line_no, text)
+        m = text.match(DEF_LINE)
+        raise Error, "#{file}:#{line_no}: cannot read this def" if m.nil?
+
+        m[1].to_s
+      end
+
       def self.parse_def(file, line_no, text)
         m = text.match(DEF_LINE)
         raise Error, "#{file}:#{line_no}: cannot read this def" if m.nil?

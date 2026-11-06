@@ -6,9 +6,13 @@ backup failed: nothing to back up
 ok   a DB::Error becomes an error line and exit 1
 user failed: cannot open database no/such/dir/x.sqlite3: unable to open database file (rc 14)
 ok   a database that cannot be opened is a DB::Error too
+ok   a command can render a partial, path helpers included
+ok   in production a command parses embedded templates only when it renders them
 ok   server? is false for a registered name
 Usage:
   ./blog [server [PORT]]   start the server
+  ./blog worker            run jobs and scheduled tasks, without HTTP
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
@@ -18,6 +22,9 @@ Usage:
   ./blog status            exit with ARG as the status
   ./blog broken            run SQL that fails
   ./blog backup            raise a DB::Error itself
+  ./blog greet             render a partial
+  ./blog embedded_greet    render an embedded partial
+  ./blog embedded_broken   render a partial that does not parse
   ./blog help
 ok   help lists the registered commands after the built-in ones
 ok   built-in, numeric, empty and taken names are refused
@@ -26,6 +33,8 @@ Status  Migration ID    Migration Name
 Unknown command 'frobnicate'
 Usage:
   ./blog [server [PORT]]   start the server
+  ./blog worker            run jobs and scheduled tasks, without HTTP
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum
@@ -35,6 +44,9 @@ Usage:
   ./blog status            exit with ARG as the status
   ./blog broken            run SQL that fails
   ./blog backup            raise a DB::Error itself
+  ./blog greet             render a partial
+  ./blog embedded_greet    render an embedded partial
+  ./blog embedded_broken   render a partial that does not parse
   ./blog help
 ok   the built-ins still work next to registered commands
-9 tests, 32 assertions, 0 failures
+11 tests, 40 assertions, 0 failures

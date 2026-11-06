@@ -71,6 +71,52 @@ module Cybertrain
       out.b
     end
 
+    # The Sink {Client#get_stream} hands a writer: it keeps what is written
+    # and reports itself closed once `events` events were written or the
+    # timeout passed, so the writer's loop ends.
+    class MemorySink < Cybertrain::Sink
+      def initialize(events, timeout)
+        @closed = false
+        @chunked = false
+        @broken = false
+        @write_timeout = 0
+        @memory = +""
+        @memory_events = 0
+        @memory_wanted = events
+        @memory_deadline = Time.now.to_f + timeout.to_f
+      end
+
+      def write(bytes)
+        return nil if closed?
+
+        data = bytes.to_s
+        @memory << data
+        @memory_events += 1 unless data.start_with?(":")
+        @closed = true if @memory_events >= @memory_wanted
+        nil
+      end
+
+      def closed?
+        @closed = true if Time.now.to_f >= @memory_deadline
+        @closed
+      end
+
+      def wait_closed(seconds)
+        return true if closed?
+
+        left = @memory_deadline - Time.now.to_f
+        wait = seconds.to_f
+        wait = left if left < wait
+        sleep wait if wait > 0
+        closed?
+      end
+
+      # What was written.
+      def memory_text
+        @memory
+      end
+    end
+
     # Drives an App (or a bare Router) in-process, the way Rails integration
     # tests do: no socket, one Context per request, and a cookie jar that
     # carries Set-Cookie values into the next request's Cookie header.
@@ -203,6 +249,33 @@ module Cybertrain
         fields.each { |k, v| with_method[k] = v }
         with_method["_method"] = "patch"
         multipart_request(path, with_method, uploads, headers)
+      end
+
+      # GETs a streaming path (the stream endpoint, an action that calls
+      # {Controller#stream}) and runs its writer against an in-memory sink
+      # until `events` events (SSE comments such as `: ping` do not count)
+      # have been written or `timeout` seconds have passed. The Response's
+      # body is then what was written. A response that does not stream is
+      # returned as {#get} returns it.
+      # @example
+      #   Cybertrain::Stream.broadcast("alerts", "hi")
+      #   res = client.get_stream("/cybertrain/stream?s=#{token}", events: 1, headers: { "last-event-id" => "0" })
+      #   assert_includes res.body, "data: hi"
+      # @param path [String]
+      # @param events [Integer]
+      # @param timeout [Numeric] seconds
+      # @param headers [Hash{String => String}]
+      # @return [Response]
+      # @api public
+      def get_stream(path, events:, timeout: 2, headers: {})
+        response = request("GET", path, "", headers)
+        writer = response.body_writer
+        return response if writer.nil?
+
+        sink = MemorySink.new(events, timeout)
+        writer.write_body(sink)
+        response.body = sink.memory_text
+        response
       end
 
       # Runs one request through the app and returns (and remembers) its

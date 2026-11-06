@@ -1,0 +1,7 @@
+ok   a free lease is taken; another holder waits for it to expire; the holder renews
+ok   a renewal moves the expiry: at 131 the lease renewed at 110 is still held
+ok   release frees the lease at once, and only for its holder
+ok   leases of different names are independent
+ok   install! is idempotent and the table stays out of the schema dump
+ok   acquire without a database is a DB::Error
+6 tests, 31 assertions, 0 failures

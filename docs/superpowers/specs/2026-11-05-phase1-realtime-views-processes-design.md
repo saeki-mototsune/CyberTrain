@@ -174,8 +174,10 @@ Stream.prune(before)                     # DELETE WHERE created_at < before; the
   still in the table. **The handoff is ordered so that no row is lost or
   doubled**: the connection first calls `Hub#subscribe` (its queue starts
   filling with live rows), then runs the replay query, then sets `boundary =
-  max(min(given, cursor), largest replayed id)`, where `cursor` is the
-  poller's `last_id` the subscription captured (`min(given, cursor)` alone
+  max(min(given, head), largest replayed id)`, where `head` is the table's
+  `MAX(id)` read at subscribe, not this process's poller cursor: a poller
+  can lag the head by a poll interval, and a client that got those rows
+  from another process would be sent them again (`min(given, head)` alone
   when the replay returns no rows: a reconnect at the head, or after
   retention emptied the table; the `min` clamps a `given` above the head,
   which a client can send with a valid token, so it cannot starve itself of
@@ -211,8 +213,8 @@ feature off). It answers two kinds of request at that path:
   ignored, messages above `Config#stream_max_message` (65536 bytes)
   rejected with 1009. Masked frames from the client are unmasked with the
   existing `Frame.unmask`; frames to the client are unmasked
-  (`Frame.encode(opcode, payload, nil)`: the encoder gets a `nil` mask key
-  option, the one change to frame.rb). Extensions and subprotocols are not
+  (`Frame.encode(opcode, payload, "")`: an empty mask key already means
+  an unmasked frame, so frame.rb is unchanged). Extensions and subprotocols are not
   negotiated (a request for `permessage-deflate` is answered without it,
   which RFC 6455 allows).
 - Both transports share **two modes**:
@@ -543,7 +545,9 @@ does the same with green threads:
   idempotent (the rule Solid Queue, Sidekiq and every at-least-once queue
   states; the README and the jobs guide say so). Completion is **fenced**:
   `finish` writes `done` / `failed` / the retry with `WHERE id = ? AND
-  state = 'running' AND claimed_by = ?`, so a late finisher whose row was
+  state = 'running' AND claimed_by = ? AND attempts = ?` (the attempt the
+  claim incremented, so a stale attempt of the same process cannot
+  overwrite a newer claim's outcome either), so a late finisher whose row was
   reclaimed changes nothing (`changes == 0`, logged at warn) and the second
   claimer's outcome stands. The fence prevents a stale worker from
   overwriting state; it does not prevent the overlap itself, which only
@@ -777,3 +781,46 @@ browser's `EventSource` and `WebSocket` are documented instead),
    `./blog server` with `CYBERTRAIN_WORKER=0` share the database and a job
    enqueued by the server runs in the worker; `./blog console` runs
    `Article.where(title: "x").count`.
+
+## 13. Implementation notes (2026-11-05, after the five packages landed)
+
+Judgement calls made while implementing, each recorded in the code too:
+
+- `Html.attributes` is named `Html.tag_attributes` (`Model#attributes` returns
+  a Hash; NOTES rule 34). `each_with_object` and `inject` stay out of
+  templates. `dom_id`'s prefix is positional. `button_to_path(text, path,
+  attrs = {})` takes `method:` inside `attrs`.
+- Rendering outside a request: request-bound helpers raise `OutsideRequest`
+  only when the helpers were built by `Views.render_partial` /
+  `render_component`; a bare `Helpers.new(nil)` stays lenient for unit
+  tests. `form_with` and `button_to` render without an authenticity token
+  outside a request (a Turbo page submits it from `csrf_meta_tags`). A
+  pager in a broadcast partial carries only the path's own query string.
+- Application helpers may not reuse a framework helper name, a built-in
+  helper name or a `_path` / `_url` suffix (`HelperScan::RESERVED_HELPER_NAMES`,
+  guarded by `script/check-reserved-names`); the lexical scan skips def
+  bodies, setters and singleton methods, and a `def` inside a heredoc is an
+  accepted limit.
+- Jobs: the heartbeat touches only the ids this process has in flight
+  (`Job::IN_FLIGHT`), an outcome write is retried three times and otherwise
+  logged, leaving the row to staleness recovery; the fence is
+  `claimed_by` plus `attempts`; `process_label` carries a random suffix;
+  the TERM trap also stops claiming (`Job.request_stop`) so the shutdown
+  stays inside systemd's 15 s; a non-leader tick advances the timetable, so
+  a task may run again sooner than its interval after a leader change, and
+  the lease is re-acquired before each task; `service_start_only` starts
+  nothing when feed names are given.
+- Streams: replay is paged (200 rows a chunk, filtered by stream in SQL)
+  and the boundary only passes rows that were sent; a replay start above
+  the head is clamped to the subscription's cursor; writes to a client time
+  out after `stream_ping_interval` (`write_nonblock` + `wait_writable`) and
+  `SO_KEEPALIVE` is set best effort, so "within one ping interval" in 2.3
+  means after a FIN or RST or a timed-out write, not a silently vanished
+  peer; a WebSocket reader queues at most 64 control messages and a
+  connection with no streams closes with 1008 after one ping interval; the
+  `s` token is `[FILTERED]` in the request log on the stream path.
+- BLOB: `t.binary` emits `BLOB` unquoted like the other types; a `:str` FFI
+  argument keeps embedded NULs when the callee is given an explicit length
+  (NOTES rule 60). Console: `Printer` methods carry `_text` suffixes; the
+  prompt is flushed before `gets` (NOTES rule 83); `dbconsole` traps INT.
+

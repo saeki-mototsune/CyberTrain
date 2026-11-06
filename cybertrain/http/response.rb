@@ -1,4 +1,5 @@
 require "cybertrain/http/header_name"
+require "cybertrain/http/body_writer"
 
 module Cybertrain
   # The response a request builds up on its way through the stack; the
@@ -24,8 +25,11 @@ module Cybertrain
     # status line by #to_http. Browsers ignore the phrase, but curl and the
     # logs show it, so a code missing here would be written as "Unknown"
     # (`HTTP/1.1 202 Unknown`). A new code goes here and, as a Symbol, into
-    # Controller::STATUS_SYMBOLS; the two tables list the same codes.
+    # Controller::STATUS_SYMBOLS; the two tables list the same codes, except
+    # 101, which only the server's WebSocket upgrade sends (D36), never a
+    # controller.
     STATUS_TEXT = {
+      101 => "Switching Protocols",
       200 => "OK", 201 => "Created", 202 => "Accepted", 204 => "No Content",
       205 => "Reset Content", 206 => "Partial Content",
       300 => "Multiple Choices", 301 => "Moved Permanently", 302 => "Found", 303 => "See Other",
@@ -56,7 +60,18 @@ module Cybertrain
     # The body, `""` until set.
     # @return [String]
     # @api public
-    attr_accessor :body
+    attr_reader :body
+
+    # Sets the body. A body replaces a stream: an action that called
+    # Controller#stream and then render or head answers with the body, so
+    # the writer is dropped, as {#redirect} and an error reset drop it.
+    # @param text [String]
+    # @api public
+    def body=(text)
+      @body_writer = nil
+      @upgrade = false
+      @body = text
+    end
 
     # The headers set so far, in the case they were set with; change them
     # through {#set_header} and {#drop_header}.
@@ -79,6 +94,49 @@ module Cybertrain
       @headers.delete("")
       @cookies = []
       @performed = false
+      # Set by Controller#stream (or a middleware such as Stream::Endpoint);
+      # nil for an ordinary response.
+      @body_writer = nil
+      @upgrade = false
+    end
+
+    # The writer of a streaming response (docs/design.md D36), nil for an
+    # ordinary one.
+    # @return [BodyWriter, nil]
+    # @api public
+    attr_reader :body_writer
+
+    # Makes this a streaming response: the Server sends the head without a
+    # Content-Length, then runs the writer on the connection's thread
+    # ({BodyWriter#write_body}) and closes the connection when it returns.
+    # @param writer [BodyWriter]
+    # @api public
+    def body_writer=(writer)
+      @body_writer = writer
+    end
+
+    # @return [Boolean] true when a {BodyWriter} is set
+    # @api public
+    def streaming?
+      !@body_writer.nil?
+    end
+
+    # Marks a 101 Switching Protocols answer (the WebSocket handshake): the
+    # Server writes the status line, the headers set on the response and
+    # nothing else (no default headers, no body framing), then hands the
+    # socket to the writer through {Sink#socket}.
+    # @param writer [BodyWriter]
+    def upgrade!(writer)
+      @status = 101
+      @upgrade = true
+      @body_writer = writer
+      @performed = true
+      nil
+    end
+
+    # @return [Boolean] whether #upgrade! was called
+    def upgrade?
+      @upgrade
     end
 
     # Starts the response over as a plain-text error: every header and
@@ -174,7 +232,9 @@ module Cybertrain
     # Raises ArgumentError (leaving the response untouched) when location
     # contains CR or LF, e.g. a percent-decoded return_to param.
     def redirect(location, status = 302)
-      set_header("Location", location)
+      set_header("Location", location) # raises on CR/LF: the stream stays
+      @body_writer = nil
+      @upgrade = false
       @status = status
       @performed = true
     end
@@ -223,11 +283,42 @@ module Cybertrain
       out
     end
 
+    # The head of a streaming response, ending with the blank line: what
+    # #to_http writes minus Content-Length (a streaming body has none), plus
+    # `Transfer-Encoding: chunked` when `chunked`. An upgrade (#upgrade!)
+    # gets only the status line, its own headers and its cookies.
+    # @param chunked [Boolean]
+    # @return [String]
+    def to_http_head(chunked)
+      out = +"HTTP/1.1 #{@status} #{status_text}\r\n"
+      upgrade = @upgrade
+      out << "Content-Type: #{DEFAULT_CONTENT_TYPE}\r\n" if !upgrade && header_key("content-type").nil?
+      @headers.each do |name, value|
+        next if HeaderName.same?(name, "content-length") || HeaderName.same?(name, "transfer-encoding")
+
+        out << name << ": " << value << "\r\n"
+      end
+      unless upgrade
+        out << "X-Content-Type-Options: #{DEFAULT_NOSNIFF}\r\n" if header_key("x-content-type-options").nil?
+        out << "X-Frame-Options: #{DEFAULT_FRAME_OPTIONS}\r\n" if header_key("x-frame-options").nil?
+      end
+      out << "Transfer-Encoding: chunked\r\n" if chunked
+      @cookies.each do |cookie|
+        out << "Set-Cookie: " << cookie << "\r\n"
+      end
+      out << "\r\n"
+      out
+    end
+
     private
 
     # The tail both reset policies share: status, text/plain content type
     # and the body ("" means the status text). Returns nil.
     def plain_error(status, body)
+      # An error after Controller#stream (or an upgrade) is an ordinary
+      # response: no writer runs and nothing is sent chunked.
+      @body_writer = nil
+      @upgrade = false
       @status = status
       self.content_type = "text/plain; charset=utf-8"
       @body = body == "" ? status_text : body

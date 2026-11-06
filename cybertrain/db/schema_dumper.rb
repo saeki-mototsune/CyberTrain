@@ -31,15 +31,17 @@ module Cybertrain
       end
 
       # Every user table, excluding schema_migrations, the framework's own
-      # cybertrain_jobs (Job creates it at run time; in db/schema.rb the
-      # generator would make a model of it) and SQLite's bookkeeping tables
+      # cybertrain_jobs, cybertrain_leases and cybertrain_messages (Job, Lease
+      # and Stream create them at run time; in db/schema.rb the generator
+      # would make models of them) and SQLite's bookkeeping tables
       # (sqlite_sequence, sqlite_stat*, ...).
       def self.table_names(connection)
         rows = connection.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
         names = Array.new(0) { "" }
         rows.each do |r|
           name = r["name"].to_s
-          next if name == "schema_migrations" || name == "cybertrain_jobs" || name.start_with?("sqlite_")
+          next if name == "schema_migrations" || name.start_with?("sqlite_")
+          next if name == "cybertrain_jobs" || name == "cybertrain_leases" || name == "cybertrain_messages"
           names << name
         end
         names

@@ -195,8 +195,8 @@ makes it (2026.10.26.7019, master 9b9972399 and 2026.10.27.7020), and
 earlier form passes there, and the test is back in that form, so that
 row's workaround is dropped. The first two rows are needed on every
 build checked, and are accepted as Spinel's constraints; the `SafeString.of`
-row did not reproduce on master 9b9972399, but is kept (see 1); the last
-row, for K, is still needed on 2026.11.04.7026. The workaround for 2 in
+row did not reproduce on master 9b9972399, but is kept (see 1); the K, L
+and M rows are still needed on 2026.11.04.7026. The workaround for 2 in
 `Html.escape` used to be in the `SafeString.of` row; it is dropped on 2026.10.27.7020
 (see 2). Master
 003ceda5d fixes H (#10415), and the H row has not been needed since
@@ -211,6 +211,7 @@ CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 | `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept | not re-checked (accepted) |
 | `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile |
 | `Application#serve` sets `SPINEL_WORKERS` to `workers + 1` when `workers > 1` (`Application.spinel_workers`, cybertrain/application.rb) | L | not checked | not checked | required: `SPINEL_WORKERS=2` starts one helper, which main does not help |
+| `Console.run` flushes after the banner and after every prompt (cybertrain/console.rb, rule 83) | M | not checked | not checked | required: without it the prompt appears only after the line is read |
 | `Net::TcpStream` connects with `connect_nonblock` + `wait_writable` + `SO_ERROR` (cybertrain/net/socket.rb, rule 72), not `TCPSocket.new(connect_timeout:)`; socket.rb's header and the guides say why | O | not checked | not checked | required: the keyword is still ignored (checked 2026-11-05 here and in Daicho's report). The connect stays for the deadline either way; a fix retires the sentence |
 | `HttpClient` does the TLS handshake and every read itself, with bounded waits (D24), and its header comment and the guides' "why it exists" name Net::HTTP's blocking waits | P | not checked | not checked | required: against a silent TLS peer Net::HTTP does not return (Daicho's report; checked here). Fixed on matz/spinel master dcc46945c; the client stays either way (deadline, address policy), and the comment is revised when the pin carries the fix |
 

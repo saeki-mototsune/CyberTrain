@@ -1,5 +1,5 @@
 ---
-source_sha256: 0a5a051dced3255b5cbc72eeeaa180f28cc8bf726dc0fce839c7885938c65379
+source_sha256: 55cb8796599b6e9b68995c0bcfae429599010685c795da99ca191458d5507df2
 ---
 # HTTP sortant, flux WebSocket et e-mail
 
@@ -146,7 +146,9 @@ d’`instance_eval`).
 - **Quand ils s’exécutent.** Les flux démarrent quand le binaire sert, comme le
   scheduler ([Tâches de fond](background-and-operations.md#background-work))&nbsp;;
   les commandes `migrate`, `db ...`, `Main.command` et
-  `Cybertrain::Test::Client` ne les démarrent jamais. Avec
+  `Cybertrain::Test::Client` ne les démarrent jamais. `./<app> feeds [NAME...]`
+  les fait tourner dans un processus à part, tous ou ceux nommés ([Rôles des
+  processus](background-and-operations.md#process-roles)). Avec
   `CYBERTRAIN_WORKER=0` (`config.worker = false`), ils ne tournent pas dans ce
   processus (ils ne démarrent tout simplement pas&nbsp;; le seul signalement est
   la ligne «&nbsp;run elsewhere&nbsp;» du scheduler, et `WebSocket.start!`
@@ -230,8 +232,8 @@ d’`instance_eval`).
   écrivez-les par lots depuis une tâche `Scheduler.every`.
 - **Non développé.** Les extensions (`permessage-deflate`) et les
   sous-protocoles ne sont pas négociés. Il n’y a ni proxy, ni redirections, ni
-  cookies, ni enregistrement automatique des messages, ni serveur WebSocket
-  (ActionCable). La validité UTF-8 des trames texte n’est pas vérifiée (un
+  cookies, ni enregistrement automatique des messages (les navigateurs ont
+  leur propre point d’entrée&nbsp;: [Temps réel](realtime.md)). La validité UTF-8 des trames texte n’est pas vérifiée (un
   écart par rapport à la section 8.1 de la RFC 6455)&nbsp;: les octets sont
   transmis tels qu’ils sont arrivés. La `Connection` n’est valide que pendant
   le callback&nbsp;; envoyer depuis une requête ou une tâche n’est pas pris en

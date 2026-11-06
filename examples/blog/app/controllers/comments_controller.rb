@@ -6,6 +6,10 @@ class CommentsController < ApplicationController
     @comment = Comment.new(comment_params)
     @comment.article_id = @article.id
     if @comment.save
+      # Every page subscribed with `turbo_stream_from @article` (stream
+      # "articles:<id>") appends the new comment to its #comments list.
+      Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
+                                                       component: CommentComponent.new(comment: @comment))
       flash[:notice] = "Comment was successfully created."
     else
       flash[:alert] = "Comment could not be saved: #{@comment.errors.full_messages.join(", ")}"
@@ -17,7 +21,12 @@ class CommentsController < ApplicationController
   def destroy
     # Rails' @article.comments.find(params[:id]): Article#comments is an Array here.
     @comment = Comment.where(article_id: @article.id).find(params[:id])
+    # The element's id before destroy clears the record's id (dom_id of a
+    # destroyed record is "new_comment"): the other pages of this article
+    # drop that element; this tab reloads anyway.
+    target = Cybertrain::Html.dom_id(@comment)
     @comment.destroy
+    Cybertrain::Stream.broadcast_remove_to(@article, target: target)
     flash[:notice] = "Comment was successfully destroyed."
     redirect_to article_path(@article), status: :see_other
   end

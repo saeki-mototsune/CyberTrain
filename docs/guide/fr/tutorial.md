@@ -1,5 +1,5 @@
 ---
-source_sha256: 47cec345af917f10d20312f6d5213a44e55bb8ca2858f1b3289f596960a73533
+source_sha256: 840774b1782d6a4c5d4e5c2f880f39aa1960df5563f27409553fccbfbb117fd8
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -339,10 +339,14 @@ Use Ctrl-C to stop
   arguments&nbsp;; `cybertrain db status` et les autres commandes de base de
   données fonctionnent de la même façon.
 
-> [!RULE] Règle Spinel&nbsp;: pas de console
-> ### Il n’y a pas de console
+> [!RULE] Règle Spinel&nbsp;: la console n’est pas du Ruby
+> ### La console n’est pas du Ruby
 >
-> `rails console` n’a pas d’équivalent&nbsp;: Spinel n’a pas d’`eval`. Les
+> `rails console` n’a pas d’équivalent exact&nbsp;: Spinel n’a pas d’`eval`.
+> `cybertrain spin run blog -- console` (`./blog console` une fois compilé)
+> évalue des expressions de template sur les modèles, comme
+> `Article.where(title: "x").count`, et `dbconsole` ouvre `sqlite3`
+> ([La console](background-and-operations.md#the-console)). Les
 > modifications Ruby demandent une recompilation, que `cybertrain server` fait
 > pour vous en développement (recompilation, arrêt, `execv`). En développement,
 > les vues sont analysées depuis le disque à chaque requête, donc en modifier
@@ -697,8 +701,8 @@ lire `@current_user`. Masquez ce qu’un visiteur ne peut pas utiliser&nbsp;:
 
 Lancez le serveur et ouvrez `http://127.0.0.1:3000/sign_up` pour créer le
 premier utilisateur. Le générateur de Rails n’a pas de page d’inscription et
-laisse cela à la console&nbsp;; CyberTrain n’a pas de console, il écrit donc
-`RegistrationsController`. Supprimez-le, avec ses routes, pour une application
+laisse cela à la console&nbsp;; CyberTrain écrit `RegistrationsController`,
+pour que le premier utilisateur s’inscrive dans le navigateur. Supprimez-le, avec ses routes, pour une application
 sur invitation.
 
 <details><summary>Une application sur invitation&nbsp;: `--invite-only` — Pas de page d’inscription&nbsp;; le premier utilisateur vient de la ligne de commande ou d’une page que seule la machine du serveur peut ouvrir</summary>

@@ -13,6 +13,7 @@ require "cybertrain/middleware/csrf_protection"
 require "cybertrain/middleware/error_pages"
 require "cybertrain/middleware/host_authorization"
 require "cybertrain/middleware/health_check"
+require "cybertrain/stream/endpoint"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
@@ -22,6 +23,28 @@ require "cybertrain/views"
 require "cybertrain/dev"
 
 module Cybertrain
+  # The flag that ends `./<app> worker` and `./<app> feeds`
+  # (Application.request_stop_roles sets it; the TERM trap calls that).
+  # A module-level ivar, not a class variable (NOTES rules 18/64).
+  # @api private
+  module RoleStop
+    @requested = false
+
+    def self.stop_roles!
+      @requested = true
+      nil
+    end
+
+    def self.resume_roles!
+      @requested = false
+      nil
+    end
+
+    def self.roles_stopped?
+      @requested
+    end
+  end
+
   # The booted application: config, database, views and the middleware
   # stack in front of the generated router. bin/<name>.rb builds one and
   # hands it Cybertrain::Main's argv:
@@ -49,7 +72,7 @@ module Cybertrain
   # escaping, so its parameters keep the Integer default and every path
   # helper receives a garbage route name (e.g. 4295868465 instead of
   # "notes_path") while CRuby works. A method-returned lambda (as above), a
-  # positional argument, &block or **{...} all compile correctly.
+  # positional argument, a block argument or a double-splatted Hash all compile correctly.
   class Application
     attr_reader :config, :router
 
@@ -85,7 +108,8 @@ module Cybertrain
 
     # HostAuthorization (in development) -> ErrorPages (in production) ->
     # RequestLogger (unless log_level :none) ->
-    # HealthCheck (unless health_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
+    # Stream::Endpoint (unless stream_path is "") -> HealthCheck (unless
+    # health_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
     # CsrfProtection (if csrf; paths under csrf_exempt_prefixes pass it) ->
     # router. Built on first use, after boot has resolved the session secret.
     def stack
@@ -120,15 +144,11 @@ module Cybertrain
       fail_boot(proxies_error) unless proxies_error.empty?
       health_error = c.health_error
       fail_boot(health_error) unless health_error.empty?
+      stream_error = c.stream_error
+      fail_boot(stream_error) unless stream_error.empty?
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
-      if c.production?
-        Views.configure_embedded(@views, max_render_depth: c.max_render_depth)
-      else
-        Views.configure(c.views_root, cache: !c.development?, max_render_depth: c.max_render_depth)
-      end
-      Views.url_resolver = @url_resolver
-      Views.layout_name = c.layout
+      Application.configure_views(c, @views, @url_resolver)
       # Module-level settings, like Views': the parser and the blob store are
       # reached from places that have no Config. The upload directory is made
       # by the first write, not here, so a read-only deploy still boots.
@@ -153,7 +173,8 @@ module Cybertrain
       if built.nil?
         built = Server.new(ContextHandler.new(front_app), host: @config.host, port: @config.port,
                                                           max_body_bytes: @config.max_body_bytes,
-                                                          reuse_port: reuse_port?)
+                                                          reuse_port: reuse_port?,
+                                                          stream_write_timeout: @config.stream_ping_interval)
         @server = built
       end
       built
@@ -196,24 +217,172 @@ module Cybertrain
       service_problem = Background.boot_problem(@config)
       fail_boot(service_problem) unless service_problem.empty?
       srv = server
+      # The stream poller before the listener: its start position (MAX(id))
+      # must come before any subscription. Only with the endpoint mounted.
+      Stream::Poller.start!(@config) unless @config.stream_path.empty?
       srv.start # bind first: a PortInUse error must not come after the banner
       print_boot_banner
       # After boot connected the database and SPINEL_WORKERS is set; only
       # here, so `migrate`, `db` and Main.command never start it.
       Scheduler.start!(@config)
+      Job.start!(@config) if @config.worker
       # Services files like cybertrain/websocket registered when required.
       Background.start_all(@config)
       if @config.development?
         serve_development(srv)
       else
-        trap("TERM") { srv.request_stop }
+        # Flags only (safe in a trap): the job threads stop claiming while
+        # the requests drain, so Job.stop! waits out only what is left of
+        # its job_drain_timeout, inside systemd's TimeoutStopSec.
+        trap("TERM") do
+          srv.request_stop
+          Job.request_stop
+        end
         srv.wait
       end
+      Job.stop!
       Scheduler.stop!
       Background.stop_all
+      Stream::Poller.stop!
       nil
     rescue PortInUse => e
       fail_boot(e.message)
+    end
+
+    # `./<app> worker` (Main.run): boots (the config checks, the database),
+    # prints a banner, starts the scheduler (lease-gated: several workers
+    # may share the database) and the job threads, and runs until SIGTERM
+    # or SIGINT (or Application.request_stop_roles), then stops the job threads (they
+    # finish their jobs, for at most Config#job_drain_timeout seconds) and
+    # the scheduler. No port, no HTTP. Config#worker is set: in this role
+    # it is what the process is for.
+    # @param argv [Array<String>] what follows `worker`; must be empty
+    # @return [Integer] the exit status
+    # @api public
+    def run_worker(argv)
+      unless argv.empty?
+        puts "error: worker takes no arguments (got #{argv.join(" ")})"
+        STDOUT.flush
+        return 1
+      end
+      # Before boot: a stop asked for while booting is kept.
+      Application.reset_roles_stop
+      @config.worker = true
+      boot
+      # What serve gives Spinel for the same config (NOTES rule 22), the
+      # development limit of one included: a job or feed callback renders
+      # partials and components through the same cache: false engine.
+      ENV["SPINEL_WORKERS"] = Application.spinel_workers_for(@config).to_s
+      threads = @config.job_threads
+      tasks = Scheduler::TASKS.size
+      jobs = Job.handlers? ? "#{threads} job thread#{threads == 1 ? "" : "s"}" : "no job handler"
+      print_role_banner("worker: #{jobs}, #{tasks} scheduled task#{tasks == 1 ? "" : "s"}")
+      # INT as TERM: a worker run in a terminal and stopped with Ctrl-C
+      # drains its jobs too, rather than dying with its rows left
+      # `running` until job_heartbeat_stale. Both handlers are given back
+      # when the role ends (test/main_roles.rb sends the signals and
+      # checks the handlers come back).
+      previous_term = trap("TERM") { Application.request_stop_roles }
+      previous_int = trap("INT") { Application.request_stop_roles }
+      run_worker_threads(previous_term, previous_int)
+    end
+
+    # The worker's lifetime: the scheduler and the job threads until the
+    # stop, then their shutdown. Restores the TERM and INT handlers the
+    # role replaced, also when a start or a stop raises: an in-process
+    # caller (a test) keeps its own handlers, and a later Ctrl-C ends the
+    # process again instead of setting a flag nobody waits for.
+    # @param previous_term [Object] what trap("TERM") answered: the
+    #   handler Proc, or a name such as "DEFAULT"
+    # @param previous_int [Object] the same for INT
+    # @return [Integer] 0
+    def run_worker_threads(previous_term, previous_int)
+      Scheduler.start!(@config)
+      Job.start!(@config)
+      Application.wait_roles_stop
+      Job.stop!
+      Scheduler.stop!
+      0
+    ensure
+      trap("TERM", previous_term)
+      trap("INT", previous_int)
+    end
+
+    # `./<app> feeds [NAME...]` (Main.run): boots, checks the names against
+    # the registered feeds (an unknown one is an error that lists them),
+    # starts the WebSocket subscriptions (all of them, or the named ones:
+    # Background.start_only) and runs until SIGTERM or SIGINT, then stops
+    # them. No
+    # port, no jobs, no scheduler. With no subscription registered it says
+    # so and returns 0.
+    # @param names [Array<String>] the feeds to run; empty for all
+    # @return [Integer] the exit status
+    # @api public
+    def run_feeds(names)
+      Application.reset_roles_stop
+      @config.worker = true
+      boot
+      unknown = Background.unknown_feed(names)
+      return role_error(unknown) unless unknown.empty?
+
+      problem = Background.boot_problem(@config)
+      return role_error(problem) unless problem.empty?
+
+      known = Background.feed_names
+      ENV["SPINEL_WORKERS"] = Application.spinel_workers_for(@config).to_s
+      if known.empty?
+        print_role_banner("feeds: no WebSocket subscription is registered; nothing to run")
+        return 0
+      end
+      print_role_banner("feeds: #{(names.empty? ? known : names).join(", ")}")
+      # INT as TERM (Ctrl-C), and the handlers given back, as in run_worker.
+      previous_term = trap("TERM") { Application.request_stop_roles }
+      previous_int = trap("INT") { Application.request_stop_roles }
+      run_feeds_threads(names, previous_term, previous_int)
+    end
+
+    # The feeds' lifetime, the counterpart of run_worker_threads: the named
+    # subscriptions until the stop, then their shutdown, and the TERM and
+    # INT handlers restored whatever happens.
+    # @param names [Array<String>] the feeds to run; empty for all
+    # @param previous_term [Object] what trap("TERM") answered
+    # @param previous_int [Object] what trap("INT") answered
+    # @return [Integer] 0
+    def run_feeds_threads(names, previous_term, previous_int)
+      Background.start_only(@config, names)
+      Application.wait_roles_stop
+      Background.stop_all
+      0
+    ensure
+      trap("TERM", previous_term)
+      trap("INT", previous_int)
+    end
+
+    # Ends a run_worker or run_feeds: sets a flag the waiting main thread
+    # sees within 0.1 s (and nothing else, so the TERM trap can call it:
+    # see serve_development). Also callable from another thread, as tests
+    # do.
+    # @return [nil]
+    # @api public
+    def request_stop_roles
+      Application.request_stop_roles
+    end
+
+    # The same as {#request_stop_roles}, for code (a test, a trap) that
+    # does not hold the Application instance Main.run made.
+    # @return [nil]
+    # @api public
+    def self.request_stop_roles
+      RoleStop.stop_roles!
+    end
+
+    def self.reset_roles_stop
+      RoleStop.resume_roles!
+    end
+
+    def self.wait_roles_stop
+      sleep 0.1 until RoleStop.roles_stopped?
+      nil
     end
 
     # "" when name works as the development build target, else the
@@ -247,7 +416,10 @@ module Cybertrain
     # is only picked up by the next change.
     def serve_development(srv)
       rebuilder = @rebuilder
-      trap("TERM") { srv.request_stop }
+      trap("TERM") do
+        srv.request_stop
+        Job.request_stop
+      end
       trap("HUP") { request_restart }
       watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"], Dev::IGNORED)
       watcher.start { |paths| rebuild_after_change(rebuilder, paths) }
@@ -262,6 +434,26 @@ module Cybertrain
     # What the SIGHUP handler does: nothing but set a flag.
     def request_restart
       @restart_requested = true
+      nil
+    end
+
+    # Views as a process renders them: the embedded templates in
+    # production, the files under views_root otherwise (cached outside
+    # development), the URL resolver and the layout. Boot calls it, and so
+    # does Main.command's runner, so a command renders partials and
+    # components (a mail body, a broadcast) as an action does.
+    # `eager: false` leaves the embedded templates to be parsed when first
+    # rendered: a registered command runs on one thread and may render
+    # nothing, so a template that does not parse must not stop it (the
+    # server parses them all at boot and fails there instead).
+    def self.configure_views(c, views, url_resolver, eager: true)
+      if c.production?
+        Views.configure_embedded(views, max_render_depth: c.max_render_depth, eager: eager)
+      else
+        Views.configure(c.views_root, cache: !c.development?, max_render_depth: c.max_render_depth)
+      end
+      Views.url_resolver = url_resolver
+      Views.layout_name = c.layout
       nil
     end
 
@@ -353,6 +545,26 @@ module Cybertrain
       nil
     end
 
+    # The banner of a role without a port (worker, feeds): the environment
+    # and what the process runs.
+    def print_role_banner(what)
+      c = @config
+      puts "=> #{c.env} environment"
+      settings = c.settings_summary
+      puts "=> Settings: #{settings}" unless settings.empty?
+      puts "=> #{what}"
+      STDOUT.flush
+      nil
+    end
+
+    # A role's refusal to start: `error: MESSAGE`, exit status 1 (returned,
+    # not exit(1): Main.run's caller exits with it).
+    def role_error(message)
+      puts "error: #{message}"
+      STDOUT.flush
+      1
+    end
+
     # The stack the server runs: diagnostics must stay inside hostname
     # authorization too, including when #stack was built before serving.
     def front_app
@@ -427,7 +639,11 @@ module Cybertrain
       # Before Static and the session: no public/ file shadows it, and it
       # sets no cookie. Inside RequestLogger, so polls are logged as usual.
       app = HealthCheck.new(app, c.health_path, c.health_worker_stale) unless c.health_path.empty?
-      app = RequestLogger.new(app) unless c.log_level == :none
+      # The realtime endpoint (Stream::Endpoint), also before the session:
+      # its authorisation is the signed token, and it sets no cookie.
+      app = Stream::Endpoint.new(app, c) unless c.stream_path.empty?
+      # The stream path's `s` tokens are logged as [FILTERED].
+      app = RequestLogger.new(app, Cybertrain.logger, c.stream_path) unless c.log_level == :none
       app = ErrorPages.new(app, c.public_root) if c.production?
       app = HostAuthorization.new(app, c.allowed_hosts) if c.development?
       app

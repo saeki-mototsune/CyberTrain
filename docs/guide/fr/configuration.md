@@ -1,5 +1,5 @@
 ---
-source_sha256: 9774dd81ce04a49d069a89de780211e2926fa128c494ae7a4cd3c1b4fc1d55b6
+source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
 ---
 # Configuration
 
@@ -31,7 +31,9 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`&nbsp;; des adresses IPv4/IPv6 ou des CIDR séparés par des virgules (`172.16.0.0/12,10.0.0.0/8`) dont les connexions ont leur `request.client_ip` tiré de la dernière adresse de `X-Forwarded-For`, pour un proxy atteint par un réseau, comme kamal-proxy dans son conteneur&nbsp;; une entrée invalide arrête le serveur au démarrage |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`&nbsp;: la plus grande page que donne `params.page_number` et qu’accepte `Relation#page` (voir [Pagination](models.md#pagination))&nbsp;; une valeur qui n’est pas un nombre d’au plus 18 chiffres, ou inférieure à 1, donne la valeur par défaut |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`&nbsp;; des noms séparés par des virgules remplacent la liste. Un paramètre dont le nom contient l’un d’eux (sans tenir compte de la casse ASCII&nbsp;: `password` correspond aussi à `user[password]`) voit sa valeur écrite `[FILTERED]` dans le journal des requêtes et sur la page d’erreur de développement&nbsp;; `[]` dans `config/app.rb` désactive ce filtrage |
-| `CYBERTRAIN_WORKER` | `worker` | `true`&nbsp;; `0` ou `false` empêche ce processus d’exécuter les tâches planifiées et les jobs (voir [Tâches de fond](background-and-operations.md#background-work))&nbsp;; `scheduler_interval` (1&nbsp;s), `job_poll_interval` (5&nbsp;s) et `job_max_attempts` (5) se règlent dans `config/app.rb` |
+| `CYBERTRAIN_WORKER` | `worker` | `true`&nbsp;; `0` ou `false` empêche un processus `server` d’exécuter les tâches planifiées, les jobs et les flux WebSocket (voir [Rôles des processus](background-and-operations.md#process-roles))&nbsp;; `./<app> worker` et `feeds` l’ignorent |
+| `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`&nbsp;: le nombre de jobs qu’un processus exécute en même temps (voir [Tâches de fond](background-and-operations.md#background-work))&nbsp;; au moins 1 |
+| `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`&nbsp;: le point d’entrée temps réel (voir [Temps réel](realtime.md#limits-and-settings))&nbsp;; une valeur vide désactive les flux&nbsp;; il doit commencer par `/` et différer de `health_path` |
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`&nbsp;; `1` ou `true` lie le port avec `SO_REUSEPORT`, de sorte que plusieurs processus peuvent écouter sur un même port et que, sous Linux, le noyau répartit les connexions entre eux (ignoré en développement&nbsp;; voir [Running several processes](../deploy.en.md#running-several-processes)). Mettez `CYBERTRAIN_WORKER=0` dans tous les processus sauf un |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`&nbsp;; le chemin du contrôle de santé intégré (voir [Exploitation](background-and-operations.md#operations-backups-vacuum-health-check))&nbsp;; une valeur vide le désactive&nbsp;; une valeur sans `/` initial arrête le serveur au démarrage. `health_worker_stale` (300&nbsp;s) se règle dans `config/app.rb` |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`&nbsp;; `1` ou `true` permet à `Cybertrain::HttpClient` de se connecter au loopback, aux adresses privées et aux autres adresses non publiques (voir [HTTP sortant](external-services.md#outbound-http)) |
@@ -78,6 +80,19 @@ pas `max_render_depth`. Envois de fichiers&nbsp;: `max_upload_bytes`
 `max_multipart_parts` (128 parties, champs texte compris, au plus 4096),
 `upload_root` (`"storage/uploads"`, où écrit `Cybertrain::BlobStore`&nbsp;; créé
 au premier envoi, pas au démarrage).
+
+**Jobs et flux&nbsp;:** en plus des variables ci-dessus, `config/app.rb` règle
+`scheduler_interval` (1&nbsp;s, le tick du scheduler), `job_poll_interval`
+(1&nbsp;s, l’attente d’un thread de jobs inoccupé&nbsp;; c’était 5 avant les
+threads de jobs), `job_max_attempts` (5), `job_heartbeat_interval`
+(30&nbsp;s), `job_heartbeat_stale` (300&nbsp;s, plus que l’intervalle),
+`job_drain_timeout` (10&nbsp;s, le temps que `SIGTERM` attend les jobs en
+cours) et `scheduler_lease_ttl` (30&nbsp;s, au moins deux fois
+`scheduler_interval`), ainsi que les réglages des flux `stream_poll_ms`,
+`stream_retention`, `stream_ping_interval`, `stream_max_connections`,
+`stream_max_message` et `stream_max_backlog` ([Limites et
+réglages](realtime.md#limits-and-settings)). Une valeur hors limites arrête
+le démarrage avec un message qui la nomme.
 
 **En-têtes de sécurité&nbsp;:** chaque réponse qu’écrit le serveur (actions,
 middleware des fichiers statiques, pages d’erreur et page de diagnostic de
