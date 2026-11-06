@@ -23,4 +23,15 @@ ok   a create_table recorded by a migration writes DECIMAL(p,s) and ON DELETE RE
 ok   add_column raises ArgumentError for a scale without a precision
 ok   add_reference raises ArgumentError for on_delete: :nullify on a NOT NULL column
 ok   add_reference with Symbol arguments folds its foreign key into the ADD COLUMN
-25 tests, 82 assertions, 0 failures
+ok   the new kinds record one Operation each, with the fields they reuse
+ok   change_column_default without from: is recorded as not knowing the previous default
+ok   change_column_null without a default backfills nothing
+ok   inverse of rename_table swaps the names
+ok   inverse of change_column_default with from: and to: swaps them
+ok   inverse of change_column_null flips null when the previous state can be restored
+ok   change_column, remove_reference and remove_foreign_key have no automatic inverse
+ok   reversible records the up block as :reversible_up and the down block as :reversible_down
+ok   reversible's blocks take only execute
+ok   rebuild_table copies the common columns through <table>_new and restores indexes, triggers and the sequence
+ok   table_after applies each rebuild kind to a copy of the table
+36 tests, 158 assertions, 0 failures

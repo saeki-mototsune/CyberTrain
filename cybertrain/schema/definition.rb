@@ -70,6 +70,21 @@ module Cybertrain
         nil
       end
 
+      # Swaps in `table` for the table of the same name (the Migrator's
+      # in-memory picture of a rebuild). Raises when there is none.
+      def replace_table(table)
+        i = 0
+        while i < @tables.size
+          if @tables[i].name == table.name
+            @tables[i] = table
+            return nil
+          end
+          i += 1
+        end
+        message = "unknown table #{table.name}"
+        raise ArgumentError, message
+      end
+
       def table(name)
         target = name.to_s
         @tables.each do |t|

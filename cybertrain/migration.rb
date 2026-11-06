@@ -9,9 +9,11 @@ require "cybertrain/cast"
 module Cybertrain
   module Migration
     # Raised when rolling back a `change` that recorded an operation with no
-    # automatic inverse (anything but create_table, add_column, add_index and
-    # rename_column, including an {Base#execute}); write `down` (and `up`
-    # where `change` cannot run forward either) instead.
+    # automatic inverse (anything but create_table, add_column, add_index,
+    # rename_column, rename_table, {Base#reversible} and the
+    # change_column_default / change_column_null calls whose previous state
+    # is known, including an {Base#execute}); write `down` (and `up` where
+    # `change` cannot run forward either) instead.
     # @api public
     class IrreversibleMigration < StandardError
     end
@@ -31,10 +33,22 @@ module Cybertrain
     # :add_index's partial `where` ("" for none) and an :add_reference's or
     # :add_foreign_key's `on_delete` (:no_action by default) are assigned
     # after `new` too, the same way and for the same reason.
+    #
+    # The kinds that rebuild a table (`rebuilds?`): :change_column (name,
+    # type, null, default, limit, precision, scale), :change_column_default
+    # (name; `default` the new one, `from_default` the previous one when
+    # `from_given`), :change_column_null (name, null; a backfill UPDATE in
+    # `exec_sql` / `exec_binds` when a default was given), :remove_reference
+    # (name: the "<ref>_id" column) and :remove_foreign_key (name: the
+    # column, to_table). :rename_table keeps the old name in `table` and the
+    # new one in `new_name`. :reversible_up / :reversible_down carry one
+    # statement of a {Base#reversible} block in `exec_sql` / `exec_binds`;
+    # the Migrator runs the up ones and skips the down ones, and `inverse`
+    # swaps the two kinds.
     class Operation
       attr_reader :kind, :table, :name, :type, :null, :default, :limit,
                   :to_table, :columns, :unique, :new_name, :exec_sql, :exec_binds,
-                  :precision, :scale, :where, :on_delete
+                  :precision, :scale, :where, :on_delete, :from_default, :from_given
 
       def initialize(kind, table, name, type, null, default, limit, to_table, columns, unique, new_name)
         @kind = kind
@@ -54,6 +68,25 @@ module Cybertrain
         @scale = -1
         @where = ""
         @on_delete = :no_action
+        @from_default = Operation.no_default
+        @from_given = false
+      end
+
+      # true for the kinds the Migrator applies by rebuilding the table
+      # (SqliteDDL.rebuild_table).
+      def rebuilds?
+        case @kind
+        when :change_column, :change_column_default, :change_column_null, :remove_reference, :remove_foreign_key
+          true
+        else
+          false
+        end
+      end
+
+      # nil typed as the String-or-nil a default holds.
+      def self.no_default
+        values = ["", nil]
+        values[1]
       end
 
       # An empty bind list typed for the values Cast.to_sql returns (nil,
@@ -96,6 +129,12 @@ module Cybertrain
 
       def assign_on_delete(action)
         @on_delete = action
+        nil
+      end
+
+      def assign_from(given, value)
+        @from_given = given
+        @from_default = value
         nil
       end
 
@@ -147,6 +186,47 @@ module Cybertrain
         op
       end
 
+      def self.for_rename_table(old_name, new_name)
+        new(:rename_table, old_name, "", :string, true, nil, 0, "", [], false, new_name)
+      end
+
+      def self.for_change_column(table, name, type, null, default, limit, precision, scale)
+        op = new(:change_column, table, name, type, null, default, limit, "", [], false, "")
+        op.assign_decimal(precision, scale)
+        op
+      end
+
+      # `from_given` false: the previous default is unknown, so the
+      # operation has no inverse.
+      def self.for_change_column_default(table, name, from_given, from, to)
+        op = new(:change_column_default, table, name, :string, true, to, 0, "", [], false, "")
+        op.assign_from(from_given, from)
+        op
+      end
+
+      # `binds` holds the backfill value (already Cast.to_sql) or nothing.
+      def self.for_change_column_null(table, name, null, binds)
+        op = new(:change_column_null, table, name, :string, null, nil, 0, "", [], false, "")
+        op.assign_exec("UPDATE #{table} SET #{name} = ? WHERE #{name} IS NULL", binds) unless binds.empty?
+        op
+      end
+
+      def self.for_remove_reference(table, column)
+        new(:remove_reference, table, column, :integer, true, nil, 0, "", [], false, "")
+      end
+
+      def self.for_remove_foreign_key(from_table, to_table, column)
+        new(:remove_foreign_key, from_table, column, :string, true, nil, 0, to_table, [], false, "")
+      end
+
+      # `kind` :reversible_up or :reversible_down, with the statement of
+      # `op` (an :execute).
+      def self.for_reversible(kind, op)
+        result = new(kind, "", "", :string, true, nil, 0, "", [], false, "")
+        result.assign_exec(op.exec_sql, op.exec_binds)
+        result
+      end
+
       # `table` is a String for every kind except :create_table (a Table);
       # this narrows it back to a plain name either way.
       def self.table_name(value)
@@ -174,9 +254,11 @@ module Cybertrain
     # A data step goes through {#execute}, which runs in order with the
     # schema operations, in the same transaction.
     # SQLite cannot add a foreign key to an existing table, so declare
-    # references in `create_table` or with {#add_reference}. Not available:
-    # `rename_table`, `change_column`, `change_column_default`,
-    # `change_column_null`, `create_join_table`.
+    # references in `create_table` or with {#add_reference}.
+    # {#change_column}, {#change_column_default}, {#change_column_null},
+    # {#remove_reference} and {#remove_foreign_key} rebuild the table (SQLite
+    # has no ALTER COLUMN), with foreign key enforcement off for the version
+    # and checked before its commit. Not available: `create_join_table`.
     # @example
     #   class CreateComments < Cybertrain::Migration::Base
     #     def change
@@ -206,6 +288,10 @@ module Cybertrain
       # Seeded with its element type per spikes/NOTES.md rule 9 (h = { "" =>
       # "" }; h.delete("")), so a program that never declares a migration
       # version still compiles.
+      # change_column_default's `from:` when it is not given (the previous
+      # default is then unknown). Not a default anyone writes.
+      UNKNOWN_DEFAULT = "<unknown default>"
+
       VERSIONS = begin
         h = { "" => "" }
         h.delete("")
@@ -426,6 +512,143 @@ module Cybertrain
         nil
       end
 
+      # Renames a table (`ALTER TABLE ... RENAME TO ...`); the foreign keys
+      # that point at it follow. Its indexes keep their names. Reversible.
+      # @param old_name [String, Symbol]
+      # @param new_name [String, Symbol]
+      # @return [nil]
+      # @api public
+      def rename_table(old_name, new_name)
+        @operations << Operation.for_rename_table(old_name.to_s, new_name.to_s)
+        nil
+      end
+
+      # Redefines a column: the table is rebuilt with the column declared
+      # as given (everything not given is reset, as in Rails), its rows
+      # copied over. Not reversible inside `change`: write `up` and `down`.
+      # @example
+      #   change_column :posts, :views, :bigint
+      #   change_column :posts, :price, :decimal, precision: 10, scale: 2, null: false, default: "0"
+      # @param table [String, Symbol]
+      # @param column [String, Symbol]
+      # @param type [Symbol] a type {#add_column} takes, or `:bigint`
+      # @param null [Boolean]
+      # @param default [String, nil] SQL literal text
+      # @param limit [Integer] as {#add_column}
+      # @param precision [Integer] as {#add_column}
+      # @param scale [Integer] as {#add_column}
+      # @return [nil]
+      # @api public
+      def change_column(table, column, type, null: true, default: nil, limit: 0, precision: 0, scale: -1)
+        Cybertrain::Schema::Column.check_decimal(precision, scale)
+        kind = type
+        size = limit
+        if type == :bigint
+          kind = :integer
+          size = 8
+        end
+        @operations << Operation.for_change_column(table.to_s, column.to_s, kind, null, default, size, precision, scale)
+        nil
+      end
+
+      # Changes a column's default (by rebuilding the table). Reversible
+      # when `from:` names the previous default (`from: nil` when there was
+      # none); without it a rollback raises {IrreversibleMigration}.
+      # @example
+      #   change_column_default :posts, :state, from: nil, to: "'draft'"
+      # @param table [String, Symbol]
+      # @param column [String, Symbol]
+      # @param from [String, nil] the previous default, SQL literal text
+      # @param to [String, nil] the new default, SQL literal text; nil drops it
+      # @return [nil]
+      # @api public
+      def change_column_default(table, column, from: UNKNOWN_DEFAULT, to:)
+        given = from != UNKNOWN_DEFAULT
+        previous = given ? from : Operation.no_default
+        @operations << Operation.for_change_column_default(table.to_s, column.to_s, given, previous, to)
+        nil
+      end
+
+      # Adds or drops a column's NOT NULL (by rebuilding the table). With
+      # `null` false, `default` is first written into the cells that are
+      # NULL (`UPDATE ... WHERE column IS NULL`); it does not become the
+      # column's DEFAULT. Reversible, except that rolling back a `null`
+      # true needs `default` for the cells that became NULL since.
+      # @example
+      #   change_column_null :posts, :title, false, "untitled"
+      # @param table [String, Symbol]
+      # @param column [String, Symbol]
+      # @param null [Boolean]
+      # @param default [String, Integer, Float, Boolean, Time, nil] a value
+      #   (not SQL text) for the NULL cells
+      # @return [nil]
+      # @api public
+      def change_column_null(table, column, null, default = nil)
+        values = Operation.no_binds
+        values << Cybertrain::Cast.to_sql(default) unless default.nil?
+        @operations << Operation.for_change_column_null(table.to_s, column.to_s, null, values)
+        nil
+      end
+
+      # Drops `<name>_id`, its indexes and its foreign key (by rebuilding
+      # the table). Not reversible inside `change`.
+      # @param table [String, Symbol]
+      # @param name [Symbol, String] the singular (`:author`)
+      # @return [nil]
+      # @api public
+      def remove_reference(table, name)
+        @operations << Operation.for_remove_reference(table.to_s, "#{name}_id")
+        nil
+      end
+
+      # Drops the foreign key from `from_table` to `to_table` (by rebuilding
+      # the table); the column and its index stay. Not reversible inside
+      # `change`.
+      # @param from_table [String, Symbol]
+      # @param to_table [String, Symbol]
+      # @param column [String] the referencing column; "" means
+      #   singularize(to_table) + "_id"
+      # @return [nil]
+      # @api public
+      def remove_foreign_key(from_table, to_table, column: "")
+        col = column.to_s
+        col = Cybertrain::Schema::ForeignKey.default_column(to_table) if col == ""
+        @operations << Operation.for_remove_foreign_key(from_table.to_s, to_table.to_s, col)
+        nil
+      end
+
+      # A data step written both ways inside `change`: `dir.up`'s
+      # {#execute} statements run on migrate, `dir.down`'s on rollback.
+      # Only {#execute} goes inside the blocks.
+      # @example
+      #   reversible do |dir|
+      #     dir.up { execute "UPDATE posts SET slug = lower(title)" }
+      #     dir.down { execute "UPDATE posts SET slug = NULL" }
+      #   end
+      # @yieldparam dir [Direction]
+      # @return [nil]
+      # @api public
+      def reversible
+        yield Direction.new(self)
+        nil
+      end
+
+      # Turns the :execute operations recorded since index `start` into
+      # `kind` (:reversible_up / :reversible_down). Public for Direction.
+      def mark_reversible(start, kind)
+        i = start
+        while i < @operations.size
+          op = @operations[i]
+          if op.kind != :execute
+            message = "only execute goes inside reversible's up and down blocks, not #{op.kind}"
+            raise ArgumentError, message
+          end
+          @operations[i] = Operation.for_reversible(kind, op)
+          i += 1
+        end
+        nil
+      end
+
       def add_foreign_key(from_table, to_table, column: "", on_delete: :no_action)
         Cybertrain::Schema::ForeignKey.check_on_delete(on_delete)
         col = column
@@ -447,9 +670,10 @@ module Cybertrain
       end
 
       # The `down` counterpart of one `change`-recorded operation. Only the
-      # four mechanically-reversible kinds invert; everything else (drops,
-      # removals, references, foreign keys) needs an explicit `down` and
-      # raises here.
+      # mechanically-reversible kinds invert (change_column_default when its
+      # `from:` was given, change_column_null when the state before it can
+      # be restored); everything else (drops, removals, references, foreign
+      # keys, change_column) needs an explicit `down` and raises here.
       def inverse(op)
         case op.kind
         when :create_table
@@ -460,6 +684,24 @@ module Cybertrain
           Operation.for_remove_index(op.table, op.columns)
         when :rename_column
           Operation.for_rename_column(op.table, op.new_name, op.name)
+        when :rename_table
+          Operation.for_rename_table(op.new_name, Operation.table_name(op.table))
+        when :change_column_default
+          unless op.from_given
+            raise IrreversibleMigration, "change_column_default without from: has no automatic inverse; pass from: or write down"
+          end
+          Operation.for_change_column_default(op.table, op.name, true, op.default, op.from_default)
+        when :change_column_null
+          if op.null && op.exec_binds.empty?
+            raise IrreversibleMigration,
+                  "change_column_null to null: true has no automatic inverse without a default for the NULL cells; " \
+                  "pass the fourth argument or write down"
+          end
+          Operation.for_change_column_null(op.table, op.name, !op.null, op.exec_binds)
+        when :reversible_up
+          Operation.for_reversible(:reversible_down, op)
+        when :reversible_down
+          Operation.for_reversible(:reversible_up, op)
         when :execute
           raise IrreversibleMigration, "it executes SQL in change; write down"
         else
@@ -474,6 +716,34 @@ module Cybertrain
       # compiles.
       def empty_operations
         Array.new(0) { Operation.for_create_table(Cybertrain::Schema::Table.new("")) }
+      end
+    end
+
+    # The `dir` a {Base#reversible} block receives.
+    # @api public
+    class Direction
+      def initialize(migration)
+        @migration = migration
+      end
+
+      # The block's {Base#execute} statements run when migrating.
+      # @return [nil]
+      # @api public
+      def up
+        start = @migration.operations.size
+        yield
+        @migration.mark_reversible(start, :reversible_up)
+        nil
+      end
+
+      # The block's {Base#execute} statements run when rolling back.
+      # @return [nil]
+      # @api public
+      def down
+        start = @migration.operations.size
+        yield
+        @migration.mark_reversible(start, :reversible_down)
+        nil
       end
     end
 

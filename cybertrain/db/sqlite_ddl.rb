@@ -17,9 +17,11 @@ module Cybertrain
     # model generator types attributes from it.
     module SqliteDDL
       # Schema::Table -> the full CREATE TABLE statement, implicit "id"
-      # primary key first, then declared columns, then foreign keys.
-      def self.create_table(table)
-        buf = +"CREATE TABLE #{table.name} (id INTEGER PRIMARY KEY AUTOINCREMENT"
+      # primary key first, then declared columns, then foreign keys. `name`
+      # replaces the table's own name (rebuild_table's "<table>_new").
+      def self.create_table(table, name = "")
+        table_name = name == "" ? table.name : name
+        buf = +"CREATE TABLE #{table_name} (id INTEGER PRIMARY KEY AUTOINCREMENT"
         table.columns.each do |c|
           buf << ", " << column_def(c.name, c.type, c.null, c.default, c.limit, c.precision, c.scale)
         end
@@ -54,9 +56,108 @@ module Cybertrain
           raise Cybertrain::Migration::IrreversibleMigration,
                 "SQLite cannot add a foreign key to an existing table; declare it in create_table " \
                 "(or use add_reference, which adds it with the column)"
+        when :rename_table
+          ["ALTER TABLE #{Cybertrain::Migration::Operation.table_name(op.table)} RENAME TO #{op.new_name}"]
+        when :change_column, :change_column_default, :change_column_null, :remove_reference, :remove_foreign_key
+          message = "#{op.kind} rebuilds the table from the live schema (SqliteDDL.rebuild_table)"
+          raise ArgumentError, message
         else
           raise ArgumentError, "unknown operation kind #{op.kind}"
         end
+      end
+
+      # SQLite's procedure for a change ALTER TABLE cannot make: the
+      # statements that rebuild `table_name` as `definition_after` declares
+      # it. `<table>_new` is created from the new definition, the columns it
+      # shares with the old table (all of its own: a rebuild only changes or
+      # drops columns) are copied with their ids, the old table is dropped
+      # and the new one renamed, then the table's indexes and `triggers_sql`
+      # (its CREATE TRIGGER statements, read before the drop, which drops
+      # them) are recreated. `sequence` is the table's sqlite_sequence value
+      # before the drop (-1 for no row): it is put back when it is above the
+      # copied rows' highest id, so AUTOINCREMENT never hands out the id of
+      # a deleted row again. Run with foreign key enforcement off (the
+      # Migrator does), or the DROP would fire the children's ON DELETE.
+      def self.rebuild_table(definition_after, table_name, triggers_sql, sequence)
+        stmts = Array.new(0) { "" }
+        table = definition_after.table(table_name)
+        if table.nil?
+          message = "no table #{table_name} to rebuild"
+          raise ArgumentError, message
+        end
+        temp = "#{table_name}_new"
+        names = Array.new(0) { "" }
+        names << "id"
+        table.columns.each { |c| names << c.name }
+        columns = names.join(", ")
+        stmts << create_table(table, temp)
+        stmts << "INSERT INTO #{temp} (#{columns}) SELECT #{columns} FROM #{table_name}"
+        stmts << "DROP TABLE #{table_name}"
+        stmts << "ALTER TABLE #{temp} RENAME TO #{table_name}"
+        table.indexes.each do |idx|
+          stmts << index_sql(table_name, idx.columns, idx.unique, idx.name, idx.where, idx.expression)
+        end
+        triggers_sql.each { |sql| stmts << sql }
+        if sequence >= 0
+          quoted = "'#{table_name.gsub("'", "''")}'"
+          stmts << "UPDATE sqlite_sequence SET seq = max(seq, #{sequence}) WHERE name = #{quoted}"
+          stmts << "INSERT INTO sqlite_sequence (name, seq) SELECT #{quoted}, #{sequence} " \
+                   "WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = #{quoted})"
+        end
+        stmts
+      end
+
+      # A copy of `table` with the rebuild operation `op` applied: a
+      # changed column (change_column, change_column_default,
+      # change_column_null), a dropped reference column with its indexes
+      # and foreign keys (remove_reference), a dropped foreign key
+      # (remove_foreign_key). `table` itself is left as it was. Raises
+      # ArgumentError when the column or the foreign key does not exist.
+      def self.table_after(table, op)
+        result = Cybertrain::Schema::Table.new(table.name)
+        found = false
+        table.columns.each do |c|
+          if c.name != op.name
+            result.add_column(c)
+          else
+            found = true
+            case op.kind
+            when :change_column
+              result.add_column(Cybertrain::Schema::Column.new(c.name, op.type, op.null, op.default, op.limit, op.precision, op.scale))
+            when :change_column_default
+              result.add_column(Cybertrain::Schema::Column.new(c.name, c.type, c.null, op.default, c.limit, c.precision, c.scale))
+            when :change_column_null
+              result.add_column(Cybertrain::Schema::Column.new(c.name, c.type, op.null, c.default, c.limit, c.precision, c.scale))
+            when :remove_reference
+              nil
+            else
+              result.add_column(c)
+            end
+          end
+        end
+        unless found || op.kind == :remove_foreign_key
+          message = "#{op.kind}: no column #{table.name}.#{op.name}"
+          raise ArgumentError, message
+        end
+        table.indexes.each do |idx|
+          result.add_index(idx) unless op.kind == :remove_reference && idx.columns.include?(op.name)
+        end
+        removed = false
+        table.foreign_keys.each do |fk|
+          drop = false
+          drop = true if op.kind == :remove_reference && fk.column == op.name
+          drop = true if op.kind == :remove_foreign_key && fk.column == op.name && fk.to_table == op.to_table
+          if drop
+            removed = true
+          else
+            result.add_foreign_key(fk)
+          end
+        end
+        if op.kind == :remove_foreign_key && !removed
+          message = "remove_foreign_key: no foreign key from #{table.name}.#{op.name} to #{op.to_table}"
+          raise ArgumentError, message
+        end
+        result
       end
 
       def self.create_table_statements(op)

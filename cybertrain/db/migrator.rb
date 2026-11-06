@@ -1,5 +1,6 @@
 require "cybertrain/db/error"
 require "cybertrain/db/sqlite_ddl"
+require "cybertrain/db/schema_dumper"
 require "cybertrain/migration"
 
 module Cybertrain
@@ -113,16 +114,113 @@ module Cybertrain
       # schema_migrations INSERT or DELETE for `version`) in one transaction,
       # then prints "done". The "== <version> <class>: <verb>" line stays in
       # the callers, before record(), so it still prints when up raises (an
-      # irreversible down is caught earlier, by check_reversible). Called
-      # from a method body so the transaction (a yielding method with
-      # rescue) is never inside a nested block (spikes/NOTES.md rule 45).
+      # irreversible down is caught earlier, by check_reversible).
+      #
+      # A version with an operation that rebuilds a table runs with foreign
+      # key enforcement off, as SQLite's procedure requires: dropping the old
+      # table would otherwise fire ON DELETE CASCADE on its children.
+      # `PRAGMA foreign_keys = OFF` does nothing inside a transaction, so it
+      # is issued before BEGIN, and enforcement is restored after the
+      # version, whether it committed or not.
       def apply_version(version, ops, forward, sql)
-        @connection.transaction do
-          run_operations(ops, forward)
-          @connection.execute(sql, [version])
+        rebuilt = rebuilt_tables(ops)
+        if rebuilt == ""
+          run_version(version, ops, forward, sql, rebuilt)
+        else
+          enforced = foreign_keys_enforced?
+          @connection.exec_script("PRAGMA foreign_keys = OFF")
+          begin
+            if foreign_keys_enforced?
+              message = "cannot rebuild #{rebuilt}: foreign key enforcement stayed on (is a transaction open?)"
+              raise Error, message
+            end
+            run_version(version, ops, forward, sql, rebuilt)
+          ensure
+            @connection.exec_script("PRAGMA foreign_keys = ON") if enforced
+          end
         end
         puts "done"
         nil
+      end
+
+      # The version's transaction. With `rebuilt` (the rebuilt tables'
+      # names) non-empty, `PRAGMA foreign_key_check` runs before the commit
+      # and a violation raises, which rolls the version back. Called from a
+      # method body so the transaction (a yielding method with rescue) is
+      # never inside a nested block (spikes/NOTES.md rule 45).
+      def run_version(version, ops, forward, sql, rebuilt)
+        @connection.transaction do
+          run_operations(ops, forward)
+          check_foreign_keys(rebuilt) if rebuilt != ""
+          @connection.execute(sql, [version])
+        end
+        nil
+      end
+
+      def foreign_keys_enforced?
+        rows = @connection.execute("PRAGMA foreign_keys")
+        !rows.empty? && Cybertrain::Cast.int(rows[0]["foreign_keys"]) != 0
+      end
+
+      # "posts, comments": the tables `ops` rebuild, each once, "" for none.
+      def rebuilt_tables(ops)
+        names = Array.new(0) { "" }
+        ops.each do |op|
+          next unless op.rebuilds?
+          name = Cybertrain::Migration::Operation.table_name(op.table)
+          names << name unless names.include?(name)
+        end
+        names.join(", ")
+      end
+
+      def check_foreign_keys(rebuilt)
+        rows = @connection.execute("PRAGMA foreign_key_check")
+        return nil if rows.empty?
+        found = Array.new(0) { "" }
+        rows.each { |r| found << "#{r["table"]} row #{r["rowid"]} -> #{r["parent"]}" }
+        message = "foreign key check failed after rebuilding #{rebuilt}: #{found.join(", ")}"
+        raise Error, message
+      end
+
+      # One rebuild operation: the live schema dumped now (after the
+      # version's earlier operations), the operation applied to it in
+      # memory, and the table rebuilt from the result with its triggers and
+      # its sqlite_sequence value as they were. A change_column_null to NOT
+      # NULL with a default first backfills the NULL cells.
+      def run_rebuild(op)
+        table_name = Cybertrain::Migration::Operation.table_name(op.table)
+        definition = Cybertrain::DB::SchemaDumper.dump(@connection)
+        table = definition.table(table_name)
+        if table.nil?
+          message = "cannot #{op.kind} on #{table_name}: no such table"
+          raise Error, message
+        end
+        definition.replace_table(Cybertrain::DB::SqliteDDL.table_after(table, op))
+        triggers = table_triggers(table_name)
+        sequence = table_sequence(table_name)
+        @connection.execute(op.exec_sql, op.exec_binds) if op.kind == :change_column_null && !op.null && op.exec_sql != ""
+        run_sql(Cybertrain::DB::SqliteDDL.rebuild_table(definition, table_name, triggers, sequence))
+        nil
+      end
+
+      def table_triggers(table_name)
+        rows = @connection.execute("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? ORDER BY name", [table_name])
+        result = Array.new(0) { "" }
+        rows.each do |r|
+          sql = Cybertrain::Cast.str_or_nil(r["sql"])
+          result << sql.to_s unless sql.nil?
+        end
+        result
+      end
+
+      # The table's sqlite_sequence value, -1 when it has none (or the
+      # database has no AUTOINCREMENT table at all).
+      def table_sequence(table_name)
+        exists = @connection.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'")
+        return -1 if exists.empty?
+        rows = @connection.execute("SELECT seq FROM sqlite_sequence WHERE name = ?", [table_name])
+        return -1 if rows.empty?
+        Cybertrain::Cast.int(rows[0]["seq"])
       end
 
       # Base#up/#down start from an empty operation list, but a migration
@@ -155,7 +253,9 @@ module Cybertrain
       # Runs `ops` in order. An :execute (Base#execute) runs its statement on
       # this connection, inside the version's transaction like the rest;
       # without binds it goes through exec_script, so it may hold several
-      # statements. Two other operations get special handling:
+      # statements; a :reversible_up runs the same way and a :reversible_down
+      # (the other direction's statement) is skipped. A rebuild operation
+      # goes through `run_rebuild`. Two other operations get special handling:
       # - an :add_reference directly followed by its :add_foreign_key
       #   (Base#add_reference's default) runs as one ADD COLUMN ... REFERENCES,
       #   since SQLite cannot add a foreign key on its own;
@@ -171,8 +271,12 @@ module Cybertrain
             run_sql(Cybertrain::DB::SqliteDDL.add_reference_statements(op, ops[i + 1].to_table))
             i += 2
           else
-            if op.kind == :execute
+            if op.kind == :execute || op.kind == :reversible_up
               run_data_statement(op)
+            elsif op.kind == :reversible_down
+              nil
+            elsif op.rebuilds?
+              run_rebuild(op)
             elsif op.kind == :remove_index && op.name == ""
               @connection.exec_script(Cybertrain::DB::SqliteDDL.drop_index_sql(index_to_remove(op, forward)))
             else
