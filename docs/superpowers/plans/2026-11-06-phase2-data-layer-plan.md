@@ -193,7 +193,7 @@ end
 - Test: `test/db_normalize.rb` (new)
 
 **Interfaces:**
-- Produces: `Cybertrain::DB::Normalizer.run(connection) -> Array<Array>` of `[table, column, rewritten, skipped]`: for every table in `sqlite_master` (type `table`, name not `sqlite_%`), for every column whose `PRAGMA table_info` type upcases to `DATETIME`, selects `id, c` for the rows where `c IS NOT NULL AND c NOT LIKE '____-__-__ __:__:__.______'`, parses each cell with `Cast.parse_time` and writes `Cast.sql_datetime` back with `UPDATE t SET c = ? WHERE id = ?` (a cell `parse_time` cannot read is skipped and counted); the whole run is one transaction; the CLI prints `normalized <table>.<column>: <n> rows (<k> unreadable left alone)` per column and `done`. Tables without an `id` column are reported and skipped.
+- Produces: `Cybertrain::DB::Normalizer.run(connection) -> Array<Array>` of `[table, column, rewritten, skipped]`: for every table in `sqlite_master` (type `table`, name not `sqlite_%`), for every column whose `PRAGMA table_info` declared type upcases to a text that starts with `DATETIME` (`DATETIME`, `datetime(6)`; decided by the shared `Connection.datetime_decl?`, which reads the same way), selects `id, c` for the rows where `c IS NOT NULL AND c NOT LIKE '____-__-__ __:__:__.______'`, parses each cell with `Cast.parse_time` and writes `Cast.sql_datetime` back with `UPDATE t SET c = ? WHERE id = ?` (a cell `parse_time` cannot read is skipped and counted); the whole run is one transaction; the CLI prints `normalized <table>.<column>: <n> rows (<k> unreadable left alone)` per column and `done`. Tables without an `id` column are reported and skipped.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -278,7 +278,7 @@ Assert `SchemaDumper.dump_to_ruby(conn)` contains `t.decimal "balance", precisio
 - Consumes: `Cast.to_sql` (Task 2), `column_type` (Task 6: `where` on a `:json` column raises `ArgumentError, "where on a json column (meta) is not supported"`).
 - Produces: on Relation: `where(cond = nil, *binds)`, `not(hash)`, `where_between(column, from, to, exclude_end: false)` (nil for an open end; raises `ArgumentError` when both are nil), `or(other)` (raises `ArgumentError, "or: the relations differ in order, limit, offset or distinct"`), `order(String | Hash)`, `distinct`, `none`, `ids -> Array<Integer>`, `update_all(hash) -> Integer`, `destroy_all -> Array<Model>`, `find_each(batch: 1000) { |rec| }`, `find_or_create_by(h)`, `find_or_initialize_by(h)`, `find_by!(h)`; on Model: `update_columns(hash) -> true`, `Model.create!(attrs)`.
 
-- [ ] **Step 1: Write the failing test `test/relation_where.rb`** with a hand-written `Event` model (table events: name TEXT, views INTEGER, kind TEXT, at DATETIME) and its relation written in the generated shape:
+- [ ] **Step 1: Write the failing test `test/relation_where.rb`** with a hand-written `Event` model (table events: name TEXT, views INTEGER, kind TEXT, at datetime(6) -- the precision-qualified declaration Rails writes) and its relation written in the generated shape:
 
 ```ruby
 test "where with an Integer Range and open ranges" do
@@ -292,7 +292,7 @@ test "where.not negates equality, nil, arrays and ranges" do
   # where.not(id: []) matches every row (Review Focus 2)
 end
 test "where_between on a datetime column, inclusive, exclusive and open-ended" do
-  # at: three Times; where_between(:at, t1, t2).count, exclude_end: true, (nil, t2), (t1, nil); both nil raises ArgumentError
+  # at: three Times, the last exactly t2 with a nonzero microsecond part; where_between(:at, t1, t2).count includes that row (inclusive boundary on a datetime(6) column), exclude_end: true excludes it, (nil, t2), (t1, nil); both nil raises ArgumentError
 end
 test "or joins two relations and refuses a different order" do
   # Event.where(kind: "a").or(Event.where(views: 10)).count == 3; .or(Event.order(views: :desc)) raises
