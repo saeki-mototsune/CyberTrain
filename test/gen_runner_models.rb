@@ -66,6 +66,7 @@ def load_fixture_schema
       t.integer "comments_count", null: false, default: "0"
       t.json "meta"
       t.date "published_on"
+      t.text "secret_note"
       t.timestamps
     end
   end
@@ -106,6 +107,7 @@ test "a table added to the schema makes both its model and the manifest stale" d
       t.integer "comments_count", null: false, default: "0"
       t.json "meta"
       t.date "published_on"
+      t.text "secret_note"
       t.timestamps
     end
     s.create_table "tags" do |t|

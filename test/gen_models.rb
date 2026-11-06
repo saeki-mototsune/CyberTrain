@@ -3178,4 +3178,71 @@ test "a condition or validate method the model file does not define raises with 
                   "when :title then self.title ? true : false"
 end
 
+# `encrypts` (spec section 10): the scan reads the names, the emitter
+# decrypts in load_row and encrypts in to_row, fills ENCRYPTED_COLUMNS and
+# answers encrypted_column? on the Relation (where / update_all refuse it).
+def encrypted_emit(line)
+  definition = model_spec_schema
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  #{line}\nend\n")
+  Cybertrain::Gen::ModelsEmitter.outputs(definition, [info])["gen/models/post.rb"]
+end
+
+def encrypts_error(line)
+  definition = model_spec_schema
+  assert_raises("ModelScan::Error") do
+    info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  #{line}\nend\n")
+    Cybertrain::Gen::ModelsEmitter.outputs(definition, [info])
+  end
+end
+
+test "scan_source reads encrypts lines: the names in order, each once, with its line" do
+  source = "class Post\n  encrypts :body\n  encrypts(:title, :body)\n  def encrypts_note = 1\nend\n"
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source)
+  assert_equal ["body", "title"], info.encrypted
+  assert_equal [2, 3], info.encrypted_lines
+  assert_equal [], Cybertrain::Gen::ModelScan.scan_source("c.rb", "class Comment\n  def short = 1\nend\n").encrypted
+  # Inside a method body it is code, not the macro.
+  code = "class Post\n  def x\n    encrypts :title\n  end\nend\n"
+  assert_equal [], Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", code).encrypted
+end
+
+test "an encrypted column is decrypted by load_row and encrypted by to_row, nil kept nil" do
+  src = encrypted_emit("encrypts :title, :body")
+  assert_lines(src, [
+    '@title = Cybertrain::Crypto.decrypt(Cybertrain::Cast.str(row["title"]))',
+    '@body = Cybertrain::Crypto.decrypt_or_nil(Cybertrain::Cast.str_or_nil(row["body"]))',
+    '"title" => Cybertrain::Crypto.encrypt(@title),',
+    '"body" => Cybertrain::Crypto.encrypt_or_nil(@body),',
+    'ENCRYPTED_COLUMNS = ["title", "body"]',
+    'def encrypted_column?(name) = name == "title" || name == "body"',
+    # The column type is unchanged: the stored text is a String.
+    'when "title" then :string',
+    'when "body" then :text'
+  ])
+  # write_attribute casts the plaintext as before.
+  assert_lines(src, ["when :body then @body = Cybertrain::Cast.str_or_nil(value)"])
+  refute_line(src, "ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns")
+end
+
+test "a model without encrypts keeps the plain casts and the base encrypted_column?" do
+  post = emit_for("posts")
+  assert_lines(post, ['@body = Cybertrain::Cast.str_or_nil(row["body"])', '"body" => Cybertrain::Cast.to_sql(@body),',
+                      "ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns"])
+  refute post.include?("def encrypted_column?")
+  assert Cybertrain::Gen::ModelScan.reserved_scope_name?("encrypted_column?")
+  assert Cybertrain::Gen::ModelScan.reserved_scope_name?("check_not_encrypted")
+  assert Cybertrain::Gen::ModelScan.reserved_scope_name?("encrypts")
+end
+
+test "encrypts of a missing or non-text column, an option or another shape raises with the file and line" do
+  assert_equal "app/models/post.rb:2: encrypts :secret names no column of posts", encrypts_error("encrypts :secret")
+  assert_equal "app/models/post.rb:2: encrypts :created_at: only a string or text column can be encrypted " \
+               "(created_at is datetime)", encrypts_error("encrypts :created_at")
+  shape = "app/models/post.rb:2: encrypts must be one line of column names: encrypts :name, ... " \
+          "(no options: deterministic encryption is not supported)"
+  assert_equal shape, encrypts_error("encrypts :title, deterministic: true")
+  assert_equal shape, encrypts_error("encrypts \"title\"")
+  assert_equal shape, encrypts_error("encrypts :title,")
+end
+
 Cybertrain::Test.run!

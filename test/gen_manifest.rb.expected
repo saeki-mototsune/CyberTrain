@@ -1,5 +1,5 @@
 ok   manifest lists gen models and routes, helpers, components and console, then controllers and app models
-ok   manifest for the fixture app
+ok   manifest for the fixture app, whose Post encrypts a column
 wrote gen/routes.rb
 wrote gen/controllers.rb
 wrote gen/views.rb

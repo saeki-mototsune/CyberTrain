@@ -50,6 +50,17 @@
 # `class`) gets a reader named `<column>_column`, with a note in the
 # generated file; queries keep using the SQL name.
 #
+# **Encrypted columns.** `encrypts :body` in app/models/article.rb
+# ({Cybertrain::Model.encrypts}) makes the generated `load_row` decrypt the
+# column ({Cybertrain::Crypto.decrypt}, `decrypt_or_nil` for a nullable one)
+# and `to_row` encrypt it, so the record holds the text and the table an
+# AES-256-GCM payload (`"1:..."`); {ENCRYPTED_COLUMNS} lists it and the
+# relation answers `encrypted_column?` for it, so `where`, `where_like`,
+# `where_between`, `update_all` and the bulk writes refuse it
+# (ArgumentError), while `pluck` answers the payload.
+# gen/app.rb then requires `cybertrain/encryptor` (openssl) and boot requires
+# `CYBERTRAIN_ENCRYPTION_KEY` ({Cybertrain::Config#encryption_key}).
+#
 # **Associations** come from foreign keys (`t.references :article` in a
 # migration, or `add_reference`): the table with the key gets a `belongs_to`
 # reader ({Comment#article}), the table it points to a `has_many` reader
@@ -224,7 +235,9 @@ class Article < Cybertrain::Model
   # @api public
   DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales
 
-  # The encrypted columns, which the bulk writes refuse (none here).
+  # The columns app/models/article.rb encrypts (`encrypts :name`, as
+  # `["name"]`), which the bulk writes refuse as a row key and in
+  # `returning:`, `unique_by:` and `update_only:` (none here).
   # @api public
   ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
 

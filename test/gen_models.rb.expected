@@ -90,4 +90,8 @@ ok   unique_value_taken? goes through where, where.not and exists?, with LOWER()
 ok   a model without conditions still gets a validation_condition? that raises; no run_custom_validations
 ok   the :if => and "if": spellings are refused, so no condition is missed silently
 ok   a condition or validate method the model file does not define raises with the file and line
-92 tests, 867 assertions, 0 failures
+ok   scan_source reads encrypts lines: the names in order, each once, with its line
+ok   an encrypted column is decrypted by load_row and encrypted by to_row, nil kept nil
+ok   a model without encrypts keeps the plain casts and the base encrypted_column?
+ok   encrypts of a missing or non-text column, an option or another shape raises with the file and line
+96 tests, 898 assertions, 0 failures

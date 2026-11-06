@@ -75,7 +75,7 @@ module Cybertrain
     # where(views: 1...5)  -> `views` >= ? AND `views` < ?
     # where(views: 5..)    -> `views` >= ?
     # A json column raises ArgumentError: its stored text is not a value
-    # to compare.
+    # to compare; so does an encrypted one.
     def add_where(hash)
       drop_preloaded
       hash.each { |key, value| @wheres << where_term(key.to_s, value) }
@@ -106,10 +106,22 @@ module Cybertrain
       nil
     end
 
+    # An encrypted column (`encrypts` in the model) stores a payload with a
+    # fresh nonce per save, so no value compares equal to it: raises
+    # `"<method> on an encrypted column (<name>) is not supported"`.
+    def check_not_encrypted(method, name)
+      if encrypted_column?(name)
+        raise ArgumentError, "#{method} on an encrypted column (#{name}) is not supported"
+      end
+
+      nil
+    end
+
     # One `column <op> ?` term for add_where / add_where_not; its binds go
     # onto @binds in order.
     def where_term(name, value)
       check_not_json("where", name)
+      check_not_encrypted("where", name)
       column = Relation.quote_ident(name)
       case value
       when nil
@@ -162,6 +174,7 @@ module Cybertrain
       drop_preloaded
       quoted = Relation.checked_column("where_between", column)
       check_not_json("where_between", column.to_s)
+      check_not_encrypted("where_between", column.to_s)
       if from.nil? && to.nil?
         raise ArgumentError, "where_between: from and to are both nil (give at least one bound)"
       end
@@ -287,6 +300,15 @@ module Cybertrain
     # @param name [String]
     # @return [Boolean]
     def binary_column?(name)
+      false
+    end
+
+    # Whether `name` is an encrypted column of the table (`encrypts` in the
+    # model). The generated subclass of a model that declares one answers
+    # it; here nothing is.
+    # @param name [String]
+    # @return [Boolean]
+    def encrypted_column?(name)
       false
     end
 
@@ -638,6 +660,7 @@ module Cybertrain
     def add_where_like(column, text)
       drop_preloaded
       quoted = Relation.checked_column("where_like", column)
+      check_not_encrypted("where_like", column.to_s)
       @wheres << "#{quoted} LIKE ? ESCAPE '\\'"
       escaped = Cast.like_escape(text)
       pattern = "%#{escaped}%"
@@ -646,7 +669,9 @@ module Cybertrain
     end
 
     # One column of the matching rows, in the relation's order, as Strings
-    # (NULL is `""`, a DATETIME its stored text).
+    # (NULL is `""`, a DATETIME its stored text). Every pluck reads the
+    # stored cells, so an encrypted column (`encrypts`) answers its payloads
+    # (`"1:..."`), not the text: load the records to decrypt.
     # @example
     #   Article.all.order("title").pluck_str(:title)  # => ["Bye", "Hello"]
     # @param column [Symbol, String] a column name
@@ -1045,7 +1070,8 @@ module Cybertrain
     #   Comment.where(article_id: article.id).update_all(approved: true)
     # @param hash [Hash{Symbol => Object}] column => value
     # @return [Integer] the number of rows updated
-    # @raise [ArgumentError] on an empty Hash or a key that is not a column name
+    # @raise [ArgumentError] on an empty Hash, a key that is not a column
+    #   name, or an encrypted column (which only a save can encrypt)
     # @api public
     def update_all(hash)
       raise ArgumentError, "update_all: no attributes" if hash.empty?
@@ -1058,6 +1084,7 @@ module Cybertrain
         quoted = Relation.checked_column("update_all", key)
         sets << "#{quoted} = ?"
         name = key.to_s
+        check_not_encrypted("update_all", name)
         scale = decimal_scale(name)
         # A decimal with a scale is rounded as save stores it (nil stays NULL).
         if scale >= 0

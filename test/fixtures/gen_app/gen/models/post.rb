@@ -13,7 +13,7 @@ class PostRelation < Cybertrain::Relation
     when "published_on" then :date
     when "meta" then :json
     when "title" then :string
-    when "body" then :text
+    when "body", "secret_note" then :text
     else :unknown
     end
   end
@@ -24,6 +24,8 @@ class PostRelation < Cybertrain::Relation
     else -1
     end
   end
+
+  def encrypted_column?(name) = name == "secret_note"
 
   def where(cond = nil, *binds)
     case cond
@@ -223,10 +225,10 @@ end
 
 class Post < Cybertrain::Model
   def self.table_name = "posts"
-  def self.column_names = ["id", "title", "body", "views", "price", "comments_count", "meta", "published_on", "created_at", "updated_at"]
+  def self.column_names = ["id", "title", "body", "views", "price", "comments_count", "meta", "published_on", "secret_note", "created_at", "updated_at"]
   def model_name = "Post"
 
-  attr_accessor :title, :body, :views, :price, :comments_count, :meta, :published_on, :created_at, :updated_at
+  attr_accessor :title, :body, :views, :price, :comments_count, :meta, :published_on, :secret_note, :created_at, :updated_at
 
   def initialize(attrs = {})
     super()
@@ -237,6 +239,7 @@ class Post < Cybertrain::Model
     @comments_count = 0
     @meta = nil
     @published_on = nil
+    @secret_note = nil
     @created_at = nil
     @updated_at = nil
     @comments_preloaded = nil
@@ -258,6 +261,7 @@ class Post < Cybertrain::Model
     @comments_count = Cybertrain::Cast.int(row["comments_count"])
     @meta = Cybertrain::Cast.hash_or_nil(row["meta"])
     @published_on = Cybertrain::Cast.date_or_nil(row["published_on"])
+    @secret_note = Cybertrain::Crypto.decrypt_or_nil(Cybertrain::Cast.str_or_nil(row["secret_note"]))
     @created_at = Cybertrain::Cast.time_or_nil(row["created_at"])
     @updated_at = Cybertrain::Cast.time_or_nil(row["updated_at"])
     mark_persisted!
@@ -274,6 +278,7 @@ class Post < Cybertrain::Model
     when :comments_count then @comments_count
     when :meta then @meta
     when :published_on then @published_on
+    when :secret_note then @secret_note
     when :created_at then @created_at
     when :updated_at then @updated_at
     else nil
@@ -289,6 +294,7 @@ class Post < Cybertrain::Model
     when :comments_count then @comments_count = Cybertrain::Cast.int(value)
     when :meta then @meta = Cybertrain::Cast.hash_or_nil(value)
     when :published_on then @published_on = Cybertrain::Cast.date_or_nil(value)
+    when :secret_note then @secret_note = Cybertrain::Cast.str_or_nil(value)
     when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
     when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
     end
@@ -309,6 +315,7 @@ class Post < Cybertrain::Model
       "comments_count" => Cybertrain::Cast.to_sql(@comments_count),
       "meta" => Cybertrain::Cast.json_text(@meta),
       "published_on" => Cybertrain::Cast.to_sql(@published_on),
+      "secret_note" => Cybertrain::Crypto.encrypt_or_nil(@secret_note),
       "created_at" => Cybertrain::Cast.to_sql(@created_at),
       "updated_at" => Cybertrain::Cast.to_sql(@updated_at)
     }
@@ -387,11 +394,12 @@ class Post < Cybertrain::Model
     "comments_count" => :integer,
     "meta" => :json,
     "published_on" => :date,
+    "secret_note" => :text,
     "created_at" => :datetime,
     "updated_at" => :datetime
   }
   DECIMAL_SCALES = { "price" => 2 }
-  ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
+  ENCRYPTED_COLUMNS = ["secret_note"]
 
   def self.insert_all(rows, returning: [:id], record_timestamps: true)
     Cybertrain::Model.insert_all_into("posts", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,

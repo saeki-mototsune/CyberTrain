@@ -1,4 +1,5 @@
 class Post
+  encrypts :secret_note
   validates :title, presence: true
   validates :title, uniqueness: true, length: { maximum: 40 }
   validates :views, numericality: { greater_than_or_equal_to: 0 }

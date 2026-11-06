@@ -25,6 +25,7 @@ Cybertrain::Schema.define(version: "20260924120000") do |s|
     t.integer "comments_count", null: false, default: "0"
     t.json "meta"
     t.date "published_on"
+    t.text "secret_note"
     t.timestamps
   end
 end

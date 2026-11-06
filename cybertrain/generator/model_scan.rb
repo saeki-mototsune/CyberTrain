@@ -8,13 +8,15 @@ module Cybertrain
     # unless: Symbols of the `validates` lines, in first-seen order, with
     # the line each was first seen on in condition_lines; defined_methods
     # every instance method the class body defines, private ones included
-    # (the emitter checks the names above against them).
+    # (the emitter checks the names above against them); encrypted the
+    # columns of its `encrypts` lines, each once in first-seen order, with
+    # the line each was first seen on in encrypted_lines.
     class ModelInfo
       attr_reader :file, :class_name, :view_methods, :scopes, :associations, :custom_validations,
-                  :condition_methods, :condition_lines, :defined_methods
+                  :condition_methods, :condition_lines, :defined_methods, :encrypted, :encrypted_lines
 
       def initialize(file, class_name, view_methods, scopes, associations, custom_validations,
-                     condition_methods, condition_lines, defined_methods)
+                     condition_methods, condition_lines, defined_methods, encrypted, encrypted_lines)
         @file = file
         @class_name = class_name
         @view_methods = view_methods
@@ -24,6 +26,8 @@ module Cybertrain
         @condition_methods = condition_methods
         @condition_lines = condition_lines
         @defined_methods = defined_methods
+        @encrypted = encrypted
+        @encrypted_lines = encrypted_lines
       end
 
       # A ModelInfo with nothing declared, for callers that have no model file.
@@ -31,7 +35,8 @@ module Cybertrain
         ModelInfo.new(file, class_name, view_methods, Array.new(0) { ScopeInfo.new("", "", "", "", 0) },
                       Array.new(0) { AssociationInfo.new("", :has_many, "", "", "", :none, false, false, 0) },
                       Array.new(0) { CustomValidationInfo.new("", "", "", "", "", 0) },
-                      Array.new(0) { "" }, Array.new(0) { 0 }, Array.new(0) { "" })
+                      Array.new(0) { "" }, Array.new(0) { 0 }, Array.new(0) { "" }, Array.new(0) { "" },
+                      Array.new(0) { 0 })
       end
     end
 
@@ -114,7 +119,7 @@ module Cybertrain
       RESERVED_SCOPE_NAMES = %w[
         initialize binds add_where add_where_not check_not_json where_term range_term add_where_between merge_or
         relation_shape condition_sql set_distinct set_none column_type decimal_scale binary_column? bind_for
-        add_where_sql set_order set_order_hash add_order_sql set_limit set_offset to_sql rows count exists?
+        encrypted_column? check_not_encrypted add_where_sql set_order set_order_hash add_order_sql set_limit set_offset to_sql rows count exists?
         delete_all first_row last_row page add_where_like pluck_str pluck_int pluck_float count_by count_by_sql
         sum_int sum_float increment update_all ids batch_rows pluck_rows aggregate_cell
         order_or_id pick_row write_scope_sql select_sql
@@ -130,7 +135,7 @@ module Cybertrain
         all create create! from_row table_name column_names new name class
         validates before_validation before_save after_save before_create after_create before_update
         after_update before_destroy after_destroy add_model_callback validators_for callbacks_for now_string
-        transaction upsert upsert_into scope has_many has_one belongs_to validates_foreign_key validate
+        transaction upsert upsert_into scope encrypts refuse_encrypted has_many has_one belongs_to validates_foreign_key validate
         insert_all insert_all! upsert_all insert_all_into no_decimal_scales no_encrypted_columns bulk_method_name
         bulk_empty_row bulk_column bulk_columns bulk_cells bulk_bind bulk_conflict_sql bulk_returned_row
         hash inspect to_s then raise fail
@@ -177,6 +182,8 @@ module Cybertrain
         conditions = Array.new(0) { "" }
         condition_lines = Array.new(0) { 0 }
         defined = Array.new(0) { "" }
+        encrypted = Array.new(0) { "" }
+        encrypted_lines = Array.new(0) { 0 }
         # A `validates` call continued on the next lines (a trailing comma,
         # a backslash or an open bracket): its text so far, and its line.
         pending = +""
@@ -231,6 +238,13 @@ module Cybertrain
             end
           elsif def_indent < 0 && validate_line?(line)
             validate_on(file, line, lineno).each { |v| validations << v }
+          elsif def_indent < 0 && encrypts_line?(line)
+            encrypts_on(file, line, lineno).each do |name|
+              next if encrypted.include?(name)
+
+              encrypted << name
+              encrypted_lines << lineno
+            end
           elsif line == "private" || line == "protected"
             in_private = true
           elsif line == "public"
@@ -249,7 +263,7 @@ module Cybertrain
         return nil if class_name == ""
 
         ModelInfo.new(file, class_name, methods, scopes, associations, validations, conditions, condition_lines,
-                      defined)
+                      defined, encrypted, encrypted_lines)
       end
 
       # A `validates :attr, ...` call (`validates(:attr` too). The options
@@ -272,6 +286,45 @@ module Cybertrain
         rest = line[8, line.size - 8].lstrip
         rest.start_with?(":") || rest.start_with?("(") || rest.start_with?("{") || rest == "do" ||
           rest.start_with?("do ") || rest.start_with?("do|")
+      end
+
+      # An `encrypts` macro line: `encrypts` then anything but `=` or `.`
+      # (`encrypts = 1` is plain code). encrypts_on checks its shape.
+      def self.encrypts_line?(line)
+        return false unless line.start_with?("encrypts ") || line.start_with?("encrypts(")
+
+        rest = line[8, line.size - 8].lstrip
+        !(rest.start_with?("=") || rest.start_with?("."))
+      end
+
+      # The column names of `encrypts :a, :b` (or `encrypts(:a, :b)`): a
+      # Symbol list on one line, no options; any other shape raises Error
+      # with the file and line. Whether each names a string or text column
+      # is the emitter's check (it has the schema).
+      def self.encrypts_on(file, line, lineno)
+        shape = "#{file}:#{lineno}: encrypts must be one line of column names: encrypts :name, ... " \
+                "(no options: deterministic encryption is not supported)"
+        rest = line[8, line.size - 8].strip
+        if rest.start_with?("(")
+          raise Error, shape unless rest.end_with?(")")
+
+          rest = rest[1, rest.size - 2].strip
+        end
+        names = Array.new(0) { "" }
+        while true
+          raise Error, shape unless rest.start_with?(":")
+
+          name = word_at(rest, 1)
+          raise Error, shape if name == "" || (name[0] >= "0" && name[0] <= "9")
+
+          names << name
+          rest = rest[name.size + 1, rest.size - name.size - 1].lstrip
+          break if rest == ""
+          raise Error, shape unless rest.start_with?(",")
+
+          rest = rest[1, rest.size - 1].lstrip
+        end
+        names
       end
 
       # Whether a `validates` call goes on past this text: it ends with a

@@ -30,4 +30,7 @@ ok   comments_count follows create, destroy and a moved comment; the post's own 
 ok   two loaded copies of one comment moved to different posts leave every count right
 ok   destroy decrements the post the row points to, not a stale or unsaved in-memory key
 ok   a move whose save raises inside the transaction leaves the counts and the row as they were
-32 tests, 229 assertions, 0 failures
+ok   an encrypted column is stored as a payload and read back as the text; nil stays NULL
+ok   where, update_all and the bulk writes refuse an encrypted column
+ok   a stored payload made with another key raises Encryptor::Error on read
+35 tests, 258 assertions, 0 failures

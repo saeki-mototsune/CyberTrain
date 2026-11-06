@@ -142,6 +142,27 @@ module Cybertrain
     # @api public
     def self.validate(*args) = nil
 
+    # Encrypts columns at rest: `encrypts :api_key, :notes` (spec section
+    # 10). The generator reads the line as text: the generated load_row
+    # decrypts each column ({Crypto.decrypt}) and to_row encrypts it with a
+    # fresh nonce, so the record holds the text and the table the payload
+    # (`"1:..."`, AES-256-GCM). Each must be a string or text column, named
+    # with Symbols, no options (there is no deterministic encryption). The
+    # application then needs `CYBERTRAIN_ENCRYPTION_KEY` (boot fails
+    # without it) and links openssl (cybertrain/encryptor.rb, which
+    # gen/app.rb requires). `where`, `where_like`, `where_between`,
+    # `update_all` and the bulk writes refuse an encrypted column
+    # (ArgumentError); `pluck` answers the stored payload. At run time this
+    # method does nothing; it exists so the model file loads.
+    # @example
+    #   class Account
+    #     encrypts :api_key
+    #   end
+    # @param attrs [Array<Symbol>] the column names
+    # @return [nil]
+    # @api public
+    def self.encrypts(*attrs) = nil
+
     # Declares a named query: `scope :recent, -> { order(created_at: :desc) }`
     # or, with parameters, `scope :min_views, ->(n) { where("views >= ?", n) }`.
     # The generator reads the line as text (nothing is evaluated): it copies
@@ -455,7 +476,7 @@ module Cybertrain
     end
 
     # A typed empty `ENCRYPTED_COLUMNS` for a generated model with no
-    # encrypted column.
+    # encrypted column (a model that declares `encrypts` lists them).
     # @return [Array<String>]
     def self.no_encrypted_columns = Array.new(0) { "" }
 
@@ -486,7 +507,8 @@ module Cybertrain
     # inside one {DB.transaction} (joining one already open on this thread),
     # so a failure in any statement leaves nothing of the call written. No
     # model is built, no validation or callback runs, and a column in
-    # `encrypted` is refused (ArgumentError).
+    # `encrypted` is refused (ArgumentError), as a row key and in
+    # `returning`, `unique_by` and `update_only` alike.
     #
     # Returns the `RETURNING` rows, `returning`'s columns each cast by its
     # type as {Relation#pluck} casts it (an Integer id, a Time for a
@@ -518,6 +540,12 @@ module Cybertrain
       targets = Model.bulk_columns(caller_name, unique_by, column_types)
       restricted = !update_only.nil?
       only = Model.bulk_columns(caller_name, update_only, column_types)
+      # An encrypted column holds payloads: returned, it would be the
+      # ciphertext; as a conflict target or an update it would compare or
+      # copy ciphertext. Refused wherever it is named.
+      Model.refuse_encrypted(caller_name, "returning: ", returned, encrypted)
+      Model.refuse_encrypted(caller_name, "unique_by: ", targets, encrypted)
+      Model.refuse_encrypted(caller_name, "update_only: ", only, encrypted)
       if on_conflict == :update && targets.empty?
         raise ArgumentError, "#{caller_name}: unique_by names no column"
       end
@@ -613,6 +641,19 @@ module Cybertrain
         end
       end
       out
+    end
+
+    # Raises ArgumentError when one of `names` is in `encrypted`
+    # (insert_all_into's returning:, unique_by: and update_only:).
+    def self.refuse_encrypted(caller_name, option, names, encrypted)
+      i = 0
+      while i < names.size
+        name = names[i]
+        raise ArgumentError, "#{caller_name}: #{option}#{name} is an encrypted column" if encrypted.include?(name)
+
+        i += 1
+      end
+      nil
     end
 
     # The generated method an `on_conflict` belongs to, for messages.

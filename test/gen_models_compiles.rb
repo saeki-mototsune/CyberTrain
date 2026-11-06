@@ -2,6 +2,7 @@ require "cybertrain/test"
 require "cybertrain/db"
 require "cybertrain/model"
 require "cybertrain/schema"
+require "cybertrain/encryptor"
 require "cybertrain/generator/model_scan"
 require "cybertrain/generator/models_emitter"
 
@@ -9,6 +10,8 @@ require "cybertrain/generator/models_emitter"
 # gen/models files of the fixture app are required together with the
 # fixture's own app/models files and driven against SQLite. SQLite is FFI,
 # so the snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
+# Post encrypts secret_note, so the program links cybertrain/encryptor (the
+# openssl package; gen/app.rb requires it in an app) and sets a key here.
 require_relative "fixtures/gen_app/db/schema"
 require_relative "fixtures/gen_app/gen/models/comment"
 require_relative "fixtures/gen_app/gen/models/post"
@@ -47,6 +50,7 @@ def create_tables_sql(definition)
   sql
 end
 
+Cybertrain.config.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 Cybertrain::DB.connect(":memory:", size: 1)
 Cybertrain::DB.with { |c| c.exec_script(create_tables_sql(Cybertrain::Schema.current)) }
 
@@ -223,7 +227,7 @@ test "to_json of a generated model" do
   at = Time.utc(2026, 9, 25, 8, 0, 0)
   post = Post.create(title: "JSON", created_at: at, updated_at: at)
   expected = "{\"id\":#{post.id},\"title\":\"JSON\",\"body\":null,\"views\":0," \
-             "\"price\":null,\"comments_count\":0,\"meta\":null,\"published_on\":null," \
+             "\"price\":null,\"comments_count\":0,\"meta\":null,\"published_on\":null,\"secret_note\":null," \
              "\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
   assert_equal expected, post.to_json
   comment = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "b", created_at: at, updated_at: at)
@@ -599,6 +603,63 @@ test "a move whose save raises inside the transaction leaves the counts and the 
   Cybertrain::DB.transaction { |_c| comment.save }
   assert_equal 0, count_on(a)
   assert_equal 1, count_on(b)
+end
+
+test "an encrypted column is stored as a payload and read back as the text; nil stays NULL" do
+  reset_tables
+  post = Post.create(title: "Locked", secret_note: "k")
+  assert post.persisted?
+  stored = Cybertrain::DB.with { |c| c.execute("SELECT secret_note FROM posts WHERE id = ?", [post.id]) }
+  raw = stored[0]["secret_note"].to_s
+  assert raw.start_with?("1:")
+  refute raw == "k"
+  assert_equal "k", Post.first.secret_note
+  assert_equal "k", Post.find(post.id).secret_note
+  # pluck answers the stored payload, not the text.
+  assert Post.all.pluck_str(:secret_note)[0].start_with?("1:")
+  blank = Post.create(title: "Open")
+  assert_nil Post.find(blank.id).secret_note
+  nulls = Cybertrain::DB.with { |c| c.execute("SELECT COUNT(*) AS n FROM posts WHERE secret_note IS NULL", []) }
+  assert_equal 1, Cybertrain::Cast.int(nulls[0]["n"])
+  # A save writes a fresh payload (a new nonce), still the same text.
+  found = Post.find(post.id)
+  found.secret_note = "changed"
+  assert found.save
+  assert_equal "changed", Post.find(post.id).secret_note
+end
+
+test "where, update_all and the bulk writes refuse an encrypted column" do
+  reset_tables
+  Post.create(title: "Locked", secret_note: "k")
+  message = assert_raises("ArgumentError") { Post.where(secret_note: "k") }
+  assert_equal "where on an encrypted column (secret_note) is not supported", message
+  assert_raises("ArgumentError") { Post.where.not(secret_note: "k") }
+  assert_raises("ArgumentError") { Post.find_by(secret_note: "k") }
+  assert_equal "where_like on an encrypted column (secret_note) is not supported",
+               assert_raises("ArgumentError") { Post.where_like(:secret_note, "k") }
+  assert_equal "update_all on an encrypted column (secret_note) is not supported",
+               assert_raises("ArgumentError") { Post.update_all(secret_note: "x") }
+  assert_equal "insert_all: secret_note is an encrypted column",
+               assert_raises("ArgumentError") { Post.insert_all([{ title: "Bulk", secret_note: "x" }]) }
+  assert_equal "insert_all: returning: secret_note is an encrypted column",
+               assert_raises("ArgumentError") { Post.insert_all([{ title: "Bulk" }], returning: [:secret_note]) }
+  assert_equal "upsert_all: unique_by: secret_note is an encrypted column",
+               assert_raises("ArgumentError") { Post.upsert_all([{ title: "Bulk" }], unique_by: [:secret_note]) }
+  assert_equal "upsert_all: update_only: secret_note is an encrypted column",
+               assert_raises("ArgumentError") { Post.upsert_all([{ title: "Bulk" }], unique_by: [:title], update_only: [:secret_note]) }
+  assert_equal 1, Post.count
+end
+
+test "a stored payload made with another key raises Encryptor::Error on read" do
+  reset_tables
+  post = Post.create(title: "Locked", secret_note: "k")
+  saved_key = Cybertrain.config.encryption_key
+  Cybertrain.config.encryption_key = "00" * 32
+  assert_raises("Encryptor::Error") { Post.find(post.id) }
+  Cybertrain.config.encryption_keys_previous = [saved_key]
+  assert_equal "k", Post.find(post.id).secret_note
+  Cybertrain.config.encryption_key = saved_key
+  Cybertrain.config.encryption_keys_previous = Array.new(0) { "" }
 end
 
 Cybertrain::Test.run!
