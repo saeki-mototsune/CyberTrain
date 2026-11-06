@@ -267,17 +267,20 @@ test "update_columns writes through the generated to_row: decimal rounded to its
   assert_equal before, Post.find(post.id).updated_at
 end
 
-test "a NOT NULL date: invalid assigned text stays nil and the save fails; a valid date round-trips" do
+test "a NOT NULL date: invalid assigned text stays nil and the save fails validation; a valid date round-trips" do
   reset_tables
   post = Post.create(title: "Dates")
   comment = Comment.new(post_id: post.id, commenter: "ann", body: "b", seen_on: "2026-13-01")
   assert_nil comment.seen_on
+  # The generated presence validation catches it before the NOT NULL
+  # constraint would: an error on the record, save returns false.
+  refute comment.valid?
+  assert_equal ["can't be blank"], comment.errors[:seen_on]
+  refute comment.save
   comment.write_attribute(:seen_on, "")
   assert_nil comment.seen_on
-  # nil binds as NULL (to_row does not raise); the database refuses it.
   assert_nil comment.to_row["seen_on"]
-  message = assert_raises { comment.save }
-  assert_includes message, "NOT NULL"
+  refute comment.save
   assert_equal 0, Comment.count
   comment.seen_on = nil
   comment.write_attribute(:seen_on, "2026-10-05")

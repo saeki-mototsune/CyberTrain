@@ -6,4 +6,4 @@ ok   or joins two relations and refuses a different order
 ok   order with a Hash, distinct pluck and count
 ok   update_all, update_columns, destroy_all, none, ids, find_each
 ok   find_or_create_by, find_or_initialize_by, find_by!, create!
-8 tests, 129 assertions, 0 failures
+8 tests, 132 assertions, 0 failures

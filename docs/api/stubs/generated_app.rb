@@ -37,7 +37,7 @@
 # | `decimal` | Float, rounded to the column's `scale:` when saved |
 # | `boolean` | true / false |
 # | `datetime` | Time (UTC), nil until set |
-# | `date` | Date (`Date.new(2026, 10, 5)`, stored as `"2026-10-05"`), nil until set |
+# | `date` | Date (`Date.new(2026, 10, 5)`, stored as `"2026-10-05"`), nil until set; invalid or blank input stays nil, and a `null: false` date without a default gets a generated `presence` validation, so `save` returns false with an error on the column |
 # | `json` | Hash with String keys (`{}` for a new record when `null: false`, else nil); its values read through `Cybertrain::Cast.int`, `Cast.hash`, `Cast.array` |
 #
 # `new`, `update` and {#write_attribute} cast what they are given (`"42"`

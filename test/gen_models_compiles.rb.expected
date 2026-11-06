@@ -13,7 +13,7 @@ ok   a NOT NULL json column starts as {} and round-trips a Hash
 ok   column_type and decimal_scale answer per column from the schema
 ok   the generated query methods: where.not, where with a String and a Range, where_between on a date, or, order by Hash
 ok   update_columns writes through the generated to_row: decimal rounded to its scale, json as text
-ok   a NOT NULL date: invalid assigned text stays nil and the save fails; a valid date round-trips
+ok   a NOT NULL date: invalid assigned text stays nil and the save fails validation; a valid date round-trips
 ok   update_all rounds a decimal to its scale as save does, and nil stores NULL
 ok   scopes from app/models/post.rb run as class methods and chain on a relation
-18 tests, 114 assertions, 0 failures
+18 tests, 116 assertions, 0 failures

@@ -403,6 +403,10 @@ test "order with a Hash, distinct pluck and count" do
   assert_equal 2, Event.where(kind: "a").distinct.count
   assert_equal 3, Event.distinct.count
   assert Event.distinct.exists?
+  # An offset under distinct skips whole rows, not the one `DISTINCT 1` row.
+  assert Event.distinct.offset(1).exists?
+  assert Event.distinct.offset(2).exists?
+  refute Event.distinct.offset(3).exists?
   pg = Event.distinct.page(1, per: 2)
   assert pg.next?
 end

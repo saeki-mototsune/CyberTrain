@@ -131,6 +131,8 @@ class Comment < Cybertrain::Model
 
   attr_accessor :post_id, :commenter, :body, :approved, :extras, :seen_on, :created_at, :updated_at
 
+  validates :seen_on, presence: true
+
   def initialize(attrs = {})
     super()
     @post_id = 0

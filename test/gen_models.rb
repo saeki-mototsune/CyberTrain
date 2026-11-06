@@ -1725,22 +1725,43 @@ end
 test "a scope becomes a Relation method and a class method delegating to all" do
   post = emit_for("posts", ["summary"], scoped_infos[0].scopes)
   assert_lines(post, [
-    "def recent = order(created_at: :desc)",
-    "def min_views(n) = where(\"views >= ?\", n)",
-    "def window(from, to = 10) = where_between(\"views\", from, to).limit(5)",
-    "def titled(t) = where(title: t)",
+    "def recent = (order(created_at: :desc))",
+    "def min_views(n) = (where(\"views >= ?\", n))",
+    "def window(from, to = 10) = (where_between(\"views\", from, to).limit(5))",
+    "def titled(t) = (where(title: t))",
     "def self.recent = all.recent",
     "def self.min_views(n) = all.min_views(n)",
     "def self.window(from, to = 10) = all.window(from, to)",
     "def self.titled(t) = all.titled(t)"
   ])
   relation = post[0, post.index("class Post < Cybertrain::Model")]
-  assert_includes relation, "  def size = count\n\n  def recent = order(created_at: :desc)\n"
-  assert_includes relation, "  def titled(t) = where(title: t)\nend\n"
+  assert_includes relation, "  def size = count\n\n  def recent = (order(created_at: :desc))\n"
+  assert_includes relation, "  def titled(t) = (where(title: t))\nend\n"
   model = post[post.index("class Post < Cybertrain::Model"), post.size]
   assert_includes model, "  def self.find_each(...) = all.find_each(...)\n  def self.recent = all.recent\n"
   # No scopes: the generated files do not change.
   assert_equal EXPECTED_POST, emit_for("posts", ["summary"])
+end
+
+test "a scope body with ; or `or` stays inside the parenthesized endless method" do
+  info = Cybertrain::Gen::ModelScan.scan_source("p.rb", "class Post\n  scope :odd, -> { x = 1; limit(x) }\nend\n")
+  assert_lines(emit_for("posts", [], info.scopes), ["def odd = (x = 1; limit(x))", "def self.odd = all.odd"])
+end
+
+test "a NOT NULL date column without a default gets a presence validation" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "shifts" do |t|
+      t.date "seen_on", null: false
+      t.date "due_on"
+      t.date "start_on", null: false, default: "'2026-01-01'"
+      t.string "name", null: false
+    end
+  end
+  shift = Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [], [])
+  assert_includes shift, "  attr_accessor :seen_on, :due_on, :start_on, :name\n\n  validates :seen_on, presence: true\n\n  def initialize"
+  refute_line(shift, "validates :due_on, presence: true")
+  refute_line(shift, "validates :start_on, presence: true")
+  refute_line(shift, "validates :name, presence: true")
 end
 
 test "scopes_for picks the scopes of one model" do
@@ -1771,9 +1792,13 @@ test "a scope that is not a one-line lambda raises" do
     "scope :recent do",
     "scope :recent",
     "scope(:recent, -> { order(\"id\") })",
-    "scope \"recent\", -> { order(\"id\") }",
     "scope :recent, -> { }",
     "scope :recent, -> { order(\"id\") } # newest first",
+    "scope :recent, -> { order(\"id\") } # see {}",
+    "scope :recent, -> { order(\"id\") }; scope :old, -> { order(\"id\") }",
+    "scope :recent, -> { where(\"a = '}'\") } }",
+    "scope :recent, -> { where(x: { a: 1 }) ",
+    "scope :1x, -> { limit(1) }",
     "scope :recent, ->(n { limit(n) }",
     "scope :recent, ->(*ns) { limit(ns[0]) }",
     "scope :recent, ->(n:) { limit(n) }",
@@ -1786,7 +1811,9 @@ test "a scope that is not a one-line lambda raises" do
 end
 
 test "a scope named like a Relation method raises" do
-  ["where", "order", "limit", "count", "first", "all", "none", "find_each", "to_a", "pluck_str", "create"].each do |name|
+  ["where", "order", "limit", "count", "first", "all", "none", "find_each", "to_a", "pluck_str", "create",
+   "hash", "inspect", "to_s", "then", "dup", "clone", "freeze", "tap", "send", "object_id", "class", "method",
+   "methods", "end", "raise", "fail"].each do |name|
     assert_equal "app/models/post.rb:3: scope :#{name} clashes with the method #{name} of the model's Relation " \
                  "or class (a scope is generated as both); rename the scope",
                  scope_error("scope :#{name}, -> { limit(1) }")
@@ -1797,6 +1824,56 @@ test "every class delegation and generated Relation method is a name a scope may
   Cybertrain::Gen::ModelsEmitter::DELEGATED.each do |name|
     Cybertrain::Test.count_assertion
     flunk("#{name} is not in ModelScan::RESERVED_SCOPE_NAMES") unless Cybertrain::Gen::ModelScan::RESERVED_SCOPE_NAMES.include?(name)
+  end
+end
+
+SCOPE_AS_CODE_SOURCE = <<~'RUBY'
+  class Post
+    scope :recent, -> { order(created_at: :desc) }
+
+    def search(q)
+      scope = Post.all
+      scope ||= Post.none
+      scope = scope.where(title: q) unless q.nil?
+      scope.where(title: q)
+      scope :not_a_macro, -> { this is code }
+      scope
+    end
+
+    def self.lookup(q)
+      scope = where(title: q)
+      scope.first
+    end
+
+    def summary = title[0, 3]
+    def label(a) = "x"
+    def count_all; scope = 1; end
+    scope :titled, ->(t) { where(title: "{" + t + '}') }
+    scope = 1
+  end
+RUBY
+
+test "a scope local or call inside a method body, or not followed by a Symbol, is plain code" do
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", SCOPE_AS_CODE_SOURCE)
+  assert_equal ["recent", "titled"], info.scopes.map { |s| s.name }
+  assert_equal "where(title: \"{\" + t + '}')", info.scopes[1].body
+  assert_equal 21, info.scopes[1].line
+  assert_equal ["summary", "count_all"], info.view_methods
+  source = "class Post\n  def search(q)\n    scope = Post.all\n    scope.where(title: q)\n  end\nend\n"
+  assert_equal [], Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source).scopes
+  # A malformed macro at class level still raises, after a method body too.
+  bad = "class Post\n  def search(q)\n    scope = 1\n  end\n  scope :recent, -> {\nend\n"
+  msg = assert_raises("ModelScan::Error") { Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", bad) }
+  assert_equal "app/models/post.rb:5: scope must be a one-line lambda: scope :name, ->(args) { ... }", msg
+end
+
+test "def_opens_body? tells a method with a body from endless and one-line ones" do
+  ["def search(q)", "def published?", "def ==(other)", "def x a, b", "def self.find_all(n)", "def x(a = (1))"].each do |l|
+    assert Cybertrain::Gen::ModelScan.def_opens_body?(l)
+  end
+  ["def summary = title", "def label(a) = a", "def ==(other) = super", "def x() = 1", "def x; 1; end", "def y =",
+   "def self.z(n) = n", "scope = 1"].each do |l|
+    assert !Cybertrain::Gen::ModelScan.def_opens_body?(l)
   end
 end
 

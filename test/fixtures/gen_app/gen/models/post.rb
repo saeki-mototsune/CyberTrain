@@ -130,8 +130,8 @@ class PostRelation < Cybertrain::Relation
 
   def size = count
 
-  def recent = order(created_at: :desc)
-  def min_views(n) = where("views >= ?", n)
+  def recent = (order(created_at: :desc))
+  def min_views(n) = (where("views >= ?", n))
 end
 
 class Post < Cybertrain::Model

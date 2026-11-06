@@ -199,11 +199,13 @@ module Cybertrain
         nil
       end
 
-      # `def recent = order(created_at: :desc)`: the scope's parameter text
-      # and body, verbatim; the body runs with the relation as receiver.
+      # `def recent = (order(created_at: :desc))`: the scope's parameter
+      # text and body, verbatim; the body runs with the relation as
+      # receiver. The parentheses keep a body holding `;`, `and` or `or`
+      # inside the endless method.
       def self.scope_relation_method(scope)
         params = scope.params == "" ? "" : "(#{scope.params})"
-        "  def #{scope.name}#{params} = #{scope.body}\n"
+        "  def #{scope.name}#{params} = (#{scope.body})\n"
       end
 
       # `def self.min_views(n) = all.min_views(n)`: the parameter text, and
@@ -376,6 +378,26 @@ module Cybertrain
         src
       end
 
+      # `validates :seen_on, presence: true` for every NOT NULL date column
+      # without a default. write_attribute keeps invalid or blank input nil
+      # (writer_cast_for), and an INSERT would then fail on the NOT NULL
+      # constraint with a DB::Error; the validation makes it an error on the
+      # record instead, so `save` returns false. Keyed by the SQL name, as
+      # validates is. "" when there is no such column.
+      def self.emit_date_presence(table)
+        src = +""
+        table.columns.each do |c|
+          next unless c.type == :date && !c.null
+
+          raw = c.default
+          next unless raw.nil? || raw.strip.upcase == "NULL"
+
+          src << "  validates :#{c.name}, presence: true\n"
+        end
+        src << "\n" unless src == ""
+        src
+      end
+
       # `decimal_scale(name)`: one `when` per decimal column with a scale.
       def self.emit_decimal_scale(table)
         scaled = table.columns.select { |c| c.type == :decimal && c.scale >= 0 }
@@ -424,6 +446,7 @@ module Cybertrain
         end
         src << "  attr_accessor #{symbols}\n"
         src << "\n"
+        src << emit_date_presence(table)
         src << "  def initialize(attrs = {})\n"
         src << "    super()\n"
         table.columns.each { |c| src << "    #{ivar_name(c.name)} = #{initial_value(c)}\n" }

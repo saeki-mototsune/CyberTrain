@@ -411,7 +411,10 @@ module Cybertrain
     def exists?
       return false if @limit == 0 || @none
 
-      sql = select_sql("1 AS one", "", 1, @offset)
+      # Under distinct, `SELECT DISTINCT 1` is one row, so an offset would
+      # skip past every match: probe whole rows, as page does.
+      probe = @distinct ? "*" : "1 AS one"
+      sql = select_sql(probe, "", 1, @offset)
       binds = @binds
       found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
       !found.empty?
