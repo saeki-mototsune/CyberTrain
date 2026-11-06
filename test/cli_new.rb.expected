@@ -302,7 +302,8 @@ Usage:
       (spin run gen; spin run db -- migrate; spin run gen).
   cybertrain db COMMAND...
       Any other database command, after `spin run gen`: status,
-      rollback [N] (generates again afterwards), schema:dump, create.
+      rollback [N] (generates again afterwards), schema, schema:dump,
+      create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
   cybertrain server [PORT]
       Generate, then start the development server
@@ -372,7 +373,8 @@ Usage:
       (spin run gen; spin run db -- migrate; spin run gen).
   cybertrain db COMMAND...
       Any other database command, after `spin run gen`: status,
-      rollback [N] (generates again afterwards), schema:dump, create.
+      rollback [N] (generates again afterwards), schema, schema:dump,
+      create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
   cybertrain server [PORT]
       Generate, then start the development server
@@ -441,7 +443,8 @@ Usage:
       (spin run gen; spin run db -- migrate; spin run gen).
   cybertrain db COMMAND...
       Any other database command, after `spin run gen`: status,
-      rollback [N] (generates again afterwards), schema:dump, create.
+      rollback [N] (generates again afterwards), schema, schema:dump,
+      create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
   cybertrain server [PORT]
       Generate, then start the development server

@@ -74,7 +74,8 @@ module Cybertrain
             (spin run gen; spin run db -- migrate; spin run gen).
         cybertrain db COMMAND...
             Any other database command, after `spin run gen`: status,
-            rollback [N] (generates again afterwards), schema:dump, create.
+            rollback [N] (generates again afterwards), schema, schema:dump,
+            create.
             `cybertrain migration` is the same as `cybertrain db migrate`.
         cybertrain server [PORT]
             Generate, then start the development server
@@ -254,7 +255,7 @@ module Cybertrain
     def self.run_db(argv)
       args = argv[1, argv.size - 1]
       if args.empty?
-        puts "usage: cybertrain db (migrate|rollback [N]|status|schema:dump|create|normalize)"
+        puts "usage: cybertrain db (migrate|rollback [N]|status|schema|schema:dump|create|normalize)"
         return 1
       end
       run_spin(Build.db_commands(args))

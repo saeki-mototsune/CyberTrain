@@ -302,10 +302,12 @@ module Cybertrain
       # @param limit [Integer] `VARCHAR(n)` for a string when positive;
       #   8 makes an integer a `BIGINT`
       # @param precision [Integer] a decimal's total digits; 0 for none
-      # @param scale [Integer] a decimal's digits after the point; -1 for none
+      # @param scale [Integer] a decimal's digits after the point; -1 for
+      #   none (a scale needs a precision: ArgumentError otherwise)
       # @return [nil]
       # @api public
       def add_column(table, name, type, null: true, default: nil, limit: 0, precision: 0, scale: -1)
+        Cybertrain::Schema::Column.check_decimal(precision, scale)
         @operations << Operation.for_add_column(table.to_s, name.to_s, type, null, default, limit, precision, scale)
         nil
       end
@@ -370,17 +372,18 @@ module Cybertrain
       # @param name [Symbol, String] the singular (`:author`)
       # @param null [Boolean]
       # @param foreign_key [Boolean]
-      # @param on_delete [Symbol] `:no_action`, `:cascade`, `:nullify` or
-      #   `:restrict`, as {Schema::TableDef#references}
+      # @param on_delete [Symbol] `:no_action`, `:cascade`, `:nullify` (needs
+      #   `null: true`) or `:restrict`, as {Schema::TableDef#references}
       # @return [nil]
       # @api public
       def add_reference(table, name, null: false, foreign_key: true, on_delete: :no_action)
         Cybertrain::Schema::ForeignKey.check_on_delete(on_delete)
+        Cybertrain::Schema::ForeignKey.check_nullify(on_delete, null)
         column_name = "#{name}_id"
         @operations << Operation.for_add_reference(table.to_s, column_name, null, on_delete)
         if foreign_key
           to_table = Cybertrain::Inflector.pluralize(name.to_s)
-          @operations << Operation.for_add_foreign_key(table, to_table, column_name, on_delete)
+          @operations << Operation.for_add_foreign_key(table.to_s, to_table, column_name, on_delete)
         end
         nil
       end

@@ -19,5 +19,8 @@ ok   add_index name: overrides the derived name, for symmetry with Definition#ad
 ok   add_column takes precision: and scale: for a decimal
 ok   add_index takes where: for a partial index
 ok   add_reference and add_foreign_key take on_delete:
-ok   a create_table recorded by a migration emits its expression and partial indexes
-22 tests, 75 assertions, 0 failures
+ok   a create_table recorded by a migration writes DECIMAL(p,s) and ON DELETE RESTRICT
+ok   add_column raises ArgumentError for a scale without a precision
+ok   add_reference raises ArgumentError for on_delete: :nullify on a NOT NULL column
+ok   add_reference with Symbol arguments folds its foreign key into the ADD COLUMN
+25 tests, 82 assertions, 0 failures

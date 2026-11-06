@@ -269,7 +269,7 @@ test "add_reference and add_foreign_key take on_delete:" do
                Cybertrain::DB::SqliteDDL.add_reference_statements(ops[3], ops[4].to_table)[0]
 end
 
-test "a create_table recorded by a migration emits its expression and partial indexes" do
+test "a create_table recorded by a migration writes DECIMAL(p,s) and ON DELETE RESTRICT" do
   migration = CreatePosts.new
   migration.create_table("trades") do |t|
     t.decimal "price", precision: 18, scale: 8
@@ -279,6 +279,29 @@ test "a create_table recorded by a migration emits its expression and partial in
   assert_equal "CREATE TABLE trades (id INTEGER PRIMARY KEY AUTOINCREMENT, price DECIMAL(18,8), " \
                "post_id INTEGER NOT NULL, FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE RESTRICT)", stmts[0]
   assert_equal "CREATE INDEX index_trades_on_post_id ON trades(post_id)", stmts[1]
+end
+
+test "add_column raises ArgumentError for a scale without a precision" do
+  migration = CreatePosts.new
+  assert_raises("ArgumentError") { migration.add_column("posts", "price", :decimal, scale: 2) }
+  assert_equal 0, migration.operations.size
+end
+
+test "add_reference raises ArgumentError for on_delete: :nullify on a NOT NULL column" do
+  migration = AddCommentsTable.new
+  assert_raises("ArgumentError") { migration.add_reference("comments", "post", on_delete: :nullify) }
+  assert_equal 0, migration.operations.size
+end
+
+test "add_reference with Symbol arguments folds its foreign key into the ADD COLUMN" do
+  migration = AddCommentsTable.new
+  migration.add_reference(:comments, :post, null: true, on_delete: :cascade)
+  ops = migration.operations
+  assert_equal "comments", ops[1].table
+  assert Cybertrain::DB::SqliteDDL.folds_foreign_key?(ops[0], ops[1])
+  assert_equal ["ALTER TABLE comments ADD COLUMN post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE",
+                "CREATE INDEX index_comments_on_post_id ON comments(post_id)"],
+               Cybertrain::DB::SqliteDDL.add_reference_statements(ops[0], ops[1].to_table)
 end
 
 Cybertrain::Test.run!

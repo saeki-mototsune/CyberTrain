@@ -11,7 +11,7 @@ module Cybertrain
   #   ./blog server 3000  serve on 3000 (a bare "3000" too: the dev loop's
   #                       execv passes the port that way)
   #   ./blog migrate      apply db/migrate (gen/migrations.rb)
-  #   ./blog db status    any DB::CLI command: status, rollback N, schema:dump, create,
+  #   ./blog db status    any DB::CLI command: status, rollback N, schema, schema:dump, create,
   #                       backup PATH, vacuum
   #   ./blog worker       jobs and scheduled tasks, no HTTP (several may share a database)
   #   ./blog feeds [NAME...]  the WebSocket subscriptions (all, or the named ones)
@@ -287,7 +287,7 @@ module Cybertrain
       text << "  ./#{name} worker            run jobs and scheduled tasks, without HTTP\n"
       text << "  ./#{name} feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)\n"
       text << "  ./#{name} migrate           apply pending migrations\n"
-      text << "  ./#{name} db COMMAND        migrate | rollback [N] | status | schema:dump | create\n"
+      text << "  ./#{name} db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create\n"
       # The continuation lines up under "migrate" whatever the name.
       indent = "".ljust(name.size + 23)
       text << "#{indent}backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize\n"

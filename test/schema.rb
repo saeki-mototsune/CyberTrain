@@ -436,4 +436,35 @@ test "Dumper.to_ruby writes decimal, json, bigint, on_delete, expression and par
   assert_includes ruby, "  s.add_foreign_key \"trades\", \"users\", column: \"user_id\", on_delete: :nullify\n"
 end
 
+test "decimal raises ArgumentError for a scale without a precision" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "users" do |t|
+      t.string "email"
+    end
+  end
+  table = definition.table("users")
+  assert_raises("ArgumentError") { Cybertrain::Schema::TableDef.new(table).decimal("price", scale: 2) }
+  assert_nil table.column("price")
+end
+
+test "references raises ArgumentError for on_delete: :nullify on a NOT NULL column" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "posts" do |t|
+      t.string "title"
+    end
+  end
+  table = definition.table("posts")
+  assert_raises("ArgumentError") { Cybertrain::Schema::TableDef.new(table).references(:user, on_delete: :nullify) }
+  assert_nil table.column("user_id")
+end
+
+test "an unknown on_delete raises ArgumentError" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "posts" do |t|
+      t.string "title"
+    end
+  end
+  assert_raises("ArgumentError") { definition.add_foreign_key("posts", "users", on_delete: :casade) }
+end
+
 Cybertrain::Test.run!

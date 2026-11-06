@@ -4,7 +4,7 @@ Usage:
   ./blog worker            run jobs and scheduled tasks, without HTTP
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
-  ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
+  ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database

@@ -22,4 +22,7 @@ ok   SqliteDDL writes DECIMAL, JSON, BIGINT and ON DELETE
 ok   SqliteDDL writes ON DELETE RESTRICT and nothing for :no_action
 ok   SqliteDDL index_sql writes expression and partial indexes
 ok   Dumper.to_ruby writes decimal, json, bigint, on_delete, expression and partial indexes
-24 tests, 101 assertions, 0 failures
+ok   decimal raises ArgumentError for a scale without a precision
+ok   references raises ArgumentError for on_delete: :nullify on a NOT NULL column
+ok   an unknown on_delete raises ArgumentError
+27 tests, 106 assertions, 0 failures

@@ -24,6 +24,16 @@ module Cybertrain
         @precision = precision
         @scale = scale
       end
+
+      # Raises when a decimal's `scale:` comes without a `precision:`:
+      # DECIMAL(,s) does not exist, so the scale would be dropped silently.
+      # Shared by TableDef#decimal and Migration::Base#add_column.
+      def self.check_decimal(precision, scale)
+        if scale >= 0 && precision <= 0
+          raise ArgumentError, "scale: #{scale} needs a precision: (DECIMAL(precision,scale))"
+        end
+        nil
+      end
     end
 
     class Index
@@ -77,6 +87,16 @@ module Cybertrain
         else
           raise ArgumentError, "on_delete must be :no_action, :cascade, :nullify or :restrict, got #{action.inspect}"
         end
+      end
+
+      # Raises for on_delete: :nullify on a NOT NULL column: SET NULL would
+      # fail at delete time. Shared by TableDef#references and
+      # Migration::Base#add_reference.
+      def self.check_nullify(action, null)
+        if action == :nullify && !null
+          raise ArgumentError, "on_delete: :nullify needs null: true (the column is NOT NULL)"
+        end
+        nil
       end
 
       # The column a foreign key to `to_table` uses when none is given:
@@ -242,12 +262,14 @@ module Cybertrain
       #   t.decimal "price", precision: 18, scale: 8
       # @param name [String, Symbol]
       # @param precision [Integer] total digits; 0 for none
-      # @param scale [Integer] digits after the point; -1 for none
+      # @param scale [Integer] digits after the point; -1 for none (a
+      #   scale needs a precision: ArgumentError otherwise)
       # @param null [Boolean] false adds NOT NULL
       # @param default [String, nil] SQL literal text: `"0"`
       # @return [nil]
       # @api public
       def decimal(name, precision: 0, scale: -1, null: true, default: nil)
+        Cybertrain::Schema::Column.check_decimal(precision, scale)
         @table.add_column(Column.new(name, :decimal, null, default, 0, precision, scale))
       end
 
@@ -317,6 +339,7 @@ module Cybertrain
       # @api public
       def references(name, null: false, foreign_key: true, on_delete: :no_action, index: true)
         Cybertrain::Schema::ForeignKey.check_on_delete(on_delete)
+        Cybertrain::Schema::ForeignKey.check_nullify(on_delete, null)
         column_name = "#{name}_id"
         push_column(column_name, :integer, null, nil, 0)
         @table.add_index(Index.new(@table.name, [column_name], false)) if index

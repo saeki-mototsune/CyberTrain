@@ -7,7 +7,7 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 ok   an empty application name never reaches the commands from the CLI
 ok   build embeds the views, builds, then restores the empty table
 ok   db commands generate first, and again after migrate and rollback
-usage: cybertrain db (migrate|rollback [N]|status|schema:dump|create|normalize)
+usage: cybertrain db (migrate|rollback [N]|status|schema|schema:dump|create|normalize)
 ok   db without a command prints its usage
 ok   server generates first and passes an optional port
 error: PORT must be a number
