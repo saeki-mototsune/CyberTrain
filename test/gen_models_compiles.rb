@@ -224,4 +224,44 @@ test "column_type and decimal_scale answer per column from the schema" do
   refute rel.binary_column?("body")
 end
 
+test "the generated query methods: where.not, where with a String and a Range, where_between on a date, or, order by Hash" do
+  reset_tables
+  a = Post.create(title: "Alpha", views: 1, published_on: Date.new(2026, 10, 1))
+  b = Post.create(title: "Beta", views: 5, published_on: Date.new(2026, 10, 15))
+  c = Post.create(title: "Gamma", views: 10)
+  assert_equal ["Beta", "Gamma"], Post.where.not(title: "Alpha").order("id").pluck_str(:title)
+  assert_equal 2, Post.where("views > ?", 2).count
+  assert_equal 2, Post.where(views: 1..5).count
+  assert_equal [b.id], Post.where_between(:published_on, Date.new(2026, 10, 2), Date.new(2026, 10, 15)).ids
+  assert_equal [a.id, c.id], Post.where(views: 1).or(Post.where(views: 10)).order(id: :asc).ids
+  assert_equal [c.id, b.id, a.id], Post.order(views: :desc).ids
+  assert_equal 1, Post.where(title: "Gamma").update_all(views: 11)
+  assert_equal 11, Post.find_by!(title: "Gamma").views
+  assert Post.exists?
+  refute Post.none.exists?
+  seen = Array.new(0) { "" }
+  Post.find_each(batch: 1) { |p| seen << p.title }
+  assert_equal ["Alpha", "Beta", "Gamma"], seen
+  assert_equal "Delta", Post.find_or_create_by(title: "Delta").title
+  assert_equal 4, Post.count
+  message = assert_raises("ArgumentError") { Post.where(meta: { "a" => 1 }) }
+  assert_equal "where on a json column (meta) is not supported", message
+  assert_raises("ArgumentError") { Post.where.not(meta: nil) }
+  assert_raises("RecordInvalid") { Post.create!(title: "") }
+  assert_equal 4, Post.destroy_all.size
+  assert_equal 0, Post.count
+end
+
+test "update_columns writes through the generated to_row: decimal rounded to its scale, json as text" do
+  reset_tables
+  post = Post.create(title: "Cols", price: 1.0)
+  before = Post.find(post.id).updated_at
+  assert_equal true, post.update_columns(price: 2.345, meta: { "k" => "v" })
+  assert_equal 2.35, Post.find(post.id).price
+  raw = Cybertrain::DB.with { |c| c.execute("SELECT meta, price FROM posts WHERE id = ?", [post.id]) }
+  assert_equal '{"k":"v"}', Cybertrain::Cast.str(raw[0]["meta"])
+  assert_equal "v", Cybertrain::Cast.str(Post.find(post.id).meta["k"])
+  assert_equal before, Post.find(post.id).updated_at
+end
+
 Cybertrain::Test.run!

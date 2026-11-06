@@ -10,13 +10,33 @@ class CommentRelation < Cybertrain::Relation
     end
   end
 
-  def where(h) = (add_where(h); self)
+  def where(cond = nil, *binds)
+    case cond
+    when Hash then add_where(cond)
+    when String then add_where_sql(cond, binds)
+    end
+    self
+  end
+
+  def not(h) = (add_where_not(h); self)
   def where_sql(s, b = []) = (add_where_sql(s, b); self)
   def where_like(c, t) = (add_where_like(c, t); self)
-  def order(o) = (set_order(o); self)
+  def where_between(c, from, to, exclude_end: false) = (add_where_between(c, from, to, exclude_end); self)
+  def or(other) = (merge_or(other); self)
+
+  def order(o)
+    case o
+    when Hash then set_order_hash(o)
+    else set_order(o)
+    end
+    self
+  end
+
   def order_sql(s) = (add_order_sql(s); self)
   def limit(n) = (set_limit(n); self)
   def offset(n) = (set_offset(n); self)
+  def distinct = (set_distinct; self)
+  def none = (set_none; self)
 
   def to_a
     out = Array.new(0) { Comment.new }
@@ -45,10 +65,55 @@ class CommentRelation < Cybertrain::Relation
 
   def find_by(h) = where(h).first
 
+  def find_by!(h)
+    rec = find_by(h)
+    raise Cybertrain::RecordNotFound, "Couldn't find Comment" if rec.nil?
+    rec
+  end
+
   def find(id)
     rec = where(id: id).first
     raise Cybertrain::RecordNotFound, "Couldn't find Comment with id=#{id}" if rec.nil?
     rec
+  end
+
+  def find_or_create_by(h)
+    rec = find_by(h)
+    return rec unless rec.nil?
+    Comment.create(h)
+  end
+
+  def find_or_initialize_by(h)
+    rec = find_by(h)
+    return rec unless rec.nil?
+    Comment.new(h)
+  end
+
+  def destroy_all
+    out = to_a
+    i = 0
+    while i < out.size
+      out[i].destroy
+      i += 1
+    end
+    out
+  end
+
+  def find_each(batch: 1000, &blk)
+    raise ArgumentError, "find_each: batch must be at least 1 (got #{batch})" if batch < 1
+    last_id = 0
+    while true
+      found = batch_rows(last_id, batch)
+      i = 0
+      while i < found.size
+        rec = Comment.from_row(found[i])
+        last_id = rec.id
+        blk.call(rec)
+        i += 1
+      end
+      break if found.size < batch
+    end
+    nil
   end
 
   def size = count
@@ -127,20 +192,39 @@ class Comment < Cybertrain::Model
   end
 
   def self.all = CommentRelation.new("comments")
-  def self.where(h) = all.where(h)
-  def self.where_like(c, t) = all.where_like(c, t)
-  def self.order(o) = all.order(o)
-  def self.order_sql(s) = all.order_sql(s)
-  def self.limit(n) = all.limit(n)
-  def self.find(id) = all.find(id)
-  def self.find_by(h) = all.find_by(h)
-  def self.first = all.first
-  def self.last = all.last
-  def self.count = all.count
+  def self.where(...) = all.where(...)
+  def self.where_like(...) = all.where_like(...)
+  def self.where_between(...) = all.where_between(...)
+  def self.order(...) = all.order(...)
+  def self.order_sql(...) = all.order_sql(...)
+  def self.limit(...) = all.limit(...)
+  def self.offset(...) = all.offset(...)
+  def self.distinct(...) = all.distinct(...)
+  def self.none(...) = all.none(...)
+  def self.ids(...) = all.ids(...)
+  def self.find(...) = all.find(...)
+  def self.find_by(...) = all.find_by(...)
+  def self.find_by!(...) = all.find_by!(...)
+  def self.find_or_create_by(...) = all.find_or_create_by(...)
+  def self.find_or_initialize_by(...) = all.find_or_initialize_by(...)
+  def self.first(...) = all.first(...)
+  def self.last(...) = all.last(...)
+  def self.count(...) = all.count(...)
+  def self.exists?(...) = all.exists?(...)
+  def self.update_all(...) = all.update_all(...)
+  def self.delete_all(...) = all.delete_all(...)
+  def self.destroy_all(...) = all.destroy_all(...)
+  def self.find_each(...) = all.find_each(...)
 
   def self.create(attrs = {})
     rec = Comment.new(attrs)
     rec.save
+    rec
+  end
+
+  def self.create!(attrs = {})
+    rec = Comment.new(attrs)
+    rec.save!
     rec
   end
 

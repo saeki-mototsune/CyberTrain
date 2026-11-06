@@ -8,10 +8,14 @@ module Cybertrain
   # needs rows ({#count}, {#exists?}, `to_a`, `first`, `each`, ...).
   #
   # Each generated model gets its own subclass, `<Model>Relation`, which adds
-  # the chainable query methods (`where`, `where_sql`, `order`, `order_sql`,
-  # `limit`, `offset`) and the methods that return records (`to_a`, `each`,
-  # `first`, `last`, `find`, `find_by`, `size`); see {ArticleRelation}. The
-  # methods documented here are the ones every relation shares.
+  # the chainable query methods (`where`, `not`, `where_sql`, `where_like`,
+  # `where_between`, `or`, `order`, `order_sql`, `limit`, `offset`,
+  # `distinct`, `none`) and the methods that return records (`to_a`, `each`,
+  # `first`, `last`, `find`, `find_by`, `find_by!`, `find_or_create_by`,
+  # `find_or_initialize_by`, `destroy_all`, `find_each`, `size`); see
+  # {ArticleRelation}. The model class answers each query method too
+  # (`Article.where(...)` is `Article.all.where(...)`). The methods
+  # documented here are the ones every relation shares.
   #
   # The chain methods change the relation they are called on and return it
   # (they do not copy it), so keep one relation per query:
@@ -41,6 +45,8 @@ module Cybertrain
       @order = ""
       @limit = -1
       @offset = 0
+      @distinct = false
+      @none = false
     end
 
     # Table and column names are backtick-quoted in every generated fragment
@@ -53,29 +59,160 @@ module Cybertrain
     # where(title: "x")    -> `title` = ?
     # where(body: nil)     -> `body` IS NULL
     # where(id: [1, 2])    -> `id` IN (?, ?)
+    # where(views: 1..5)   -> `views` BETWEEN ? AND ?   (Integer ends only:
+    #                         NOTES rule 86; other bounds use where_between)
+    # where(views: 1...5)  -> `views` >= ? AND `views` < ?
+    # where(views: 5..)    -> `views` >= ?
+    # A json column raises ArgumentError: its stored text is not a value
+    # to compare.
     def add_where(hash)
-      hash.each do |key, value|
-        column = Relation.quote_ident(key.to_s)
-        case value
-        when nil
-          @wheres << "#{column} IS NULL"
-        when Time
-          # Before `when Array`: a Time in a poly slot matches Array (rule 8).
-          @wheres << "#{column} = ?"
-          @binds << Cast.to_sql(value)
-        when Array
-          if value.empty?
-            @wheres << "1 = 0"
-          else
-            marks = Array.new(value.size) { "?" }
-            @wheres << "#{column} IN (#{marks.join(", ")})"
-            value.each { |v| @binds << bind_for(key.to_s, v) }
-          end
-        else
-          @wheres << "#{column} = ?"
-          @binds << bind_for(key.to_s, value)
-        end
+      hash.each { |key, value| @wheres << where_term(key.to_s, value) }
+      nil
+    end
+
+    # where.not(hash): the terms add_where would write, ANDed and negated
+    # as one: `NOT (a AND b)` (Rails 6.1+). where.not(id: []) is
+    # `NOT (1 = 0)`, every row: the complement of where(id: []).
+    def add_where_not(hash)
+      terms = Array.new(0) { "" }
+      hash.each { |key, value| terms << where_term(key.to_s, value) }
+      return nil if terms.empty?
+
+      joined = terms.join(" AND ")
+      @wheres << "NOT (#{joined})"
+      nil
+    end
+
+    # One `column <op> ?` term for add_where / add_where_not; its binds go
+    # onto @binds in order.
+    def where_term(name, value)
+      if column_type(name) == :json
+        raise ArgumentError, "where on a json column (#{name}) is not supported"
       end
+
+      column = Relation.quote_ident(name)
+      case value
+      when nil
+        "#{column} IS NULL"
+      when Time
+        # Before `when Array`: a Time in a poly slot matches Array (rule 8).
+        @binds << Cast.to_sql(value)
+        "#{column} = ?"
+      when Array
+        return "1 = 0" if value.empty?
+
+        marks = Array.new(value.size) { "?" }
+        value.each { |v| @binds << bind_for(name, v) }
+        list = marks.join(", ")
+        "#{column} IN (#{list})"
+      when Range
+        # Integer ends only (NOTES rule 86); placed before `else`.
+        range_term(column, name, value.begin, value.end, value.exclude_end?)
+      else
+        @binds << bind_for(name, value)
+        "#{column} = ?"
+      end
+    end
+
+    # The term of an Integer Range `from..to` (either end nil for an open
+    # range): BETWEEN for a closed inclusive one, `>=` / `<` / `<=` else.
+    def range_term(column, name, from, to, exclude_end)
+      return "1 = 1" if from.nil? && to.nil?
+
+      upper = exclude_end ? "<" : "<="
+      if from.nil?
+        @binds << bind_for(name, to)
+        return "#{column} #{upper} ?"
+      end
+      @binds << bind_for(name, from)
+      return "#{column} >= ?" if to.nil?
+
+      @binds << bind_for(name, to)
+      return "#{column} >= ? AND #{column} < ?" if exclude_end
+
+      "#{column} BETWEEN ? AND ?"
+    end
+
+    # where_between(:at, t1, t2): `at` >= ? AND `at` <= ? (`<` with
+    # exclude_end), for any bounds a Range cannot carry under Spinel (Time,
+    # Date, Float, String: NOTES rule 86). A Time or Date is bound as its
+    # stored text (Cast.to_sql), so the comparison is the stored column's;
+    # nil for an open end; both nil raises ArgumentError.
+    def add_where_between(column, from, to, exclude_end)
+      quoted = Relation.checked_column("where_between", column)
+      if from.nil? && to.nil?
+        raise ArgumentError, "where_between: from and to are both nil (give at least one bound)"
+      end
+
+      name = column.to_s
+      unless from.nil?
+        @wheres << "#{quoted} >= ?"
+        @binds << bind_for(name, from)
+      end
+      unless to.nil?
+        op = exclude_end ? "<" : "<="
+        @wheres << "#{quoted} #{op} ?"
+        @binds << bind_for(name, to)
+      end
+      nil
+    end
+
+    # a.or(b): one WHERE term `((a) OR (b))`, a's binds then b's. The two
+    # relations must agree on order, limit, offset and distinct (as Rails
+    # requires them to be structurally compatible); a side with no
+    # conditions matches every row, so the result has none. A `none` side
+    # contributes its `1 = 0`.
+    def merge_or(other)
+      unless relation_shape == other.relation_shape
+        raise ArgumentError, "or: the relations differ in order, limit, offset or distinct"
+      end
+
+      mine = condition_sql
+      theirs = other.condition_sql
+      @wheres.clear
+      @none = false
+      if mine == "" || theirs == ""
+        @binds.clear
+        return nil
+      end
+
+      @wheres << "((#{mine}) OR (#{theirs}))"
+      # By index up to the size read first: `a.or(a)` hands in @binds itself.
+      extra = other.binds
+      n = extra.size
+      i = 0
+      while i < n
+        @binds << extra[i]
+        i += 1
+      end
+      nil
+    end
+
+    # What `or` requires two relations to share, as one String.
+    def relation_shape
+      "#{@order}|#{@limit}|#{@offset}|#{@distinct}"
+    end
+
+    # The WHERE text without the keyword ("" for none): the terms ANDed,
+    # with `1 = 0` when the relation is `none`.
+    def condition_sql
+      text = @wheres.join(" AND ")
+      return text unless @none
+
+      text == "" ? "1 = 0" : "#{text} AND 1 = 0"
+    end
+
+    # SELECT DISTINCT from now on (pluck_str of a column then dedupes).
+    def set_distinct
+      @distinct = true
+      nil
+    end
+
+    # The relation matches no row: count, exists?, update_all and
+    # delete_all answer 0 / false without a statement; the readers run
+    # theirs with `1 = 0` in the WHERE.
+    def set_none
+      @none = true
       nil
     end
 
@@ -169,6 +306,23 @@ module Cybertrain
       nil
     end
 
+    # order(views: :desc, name: :asc): each key a column (checked and
+    # quoted), each value :asc or :desc (a String works too, any case).
+    def set_order_hash(hash)
+      terms = Array.new(0) { "" }
+      hash.each do |key, dir|
+        quoted = Relation.checked_column("order", key)
+        word = dir.to_s.upcase
+        unless word == "ASC" || word == "DESC"
+          raise ArgumentError, "order: #{key.to_s.inspect} => #{dir.to_s.inspect} is not :asc or :desc"
+        end
+
+        terms << "#{quoted} #{word}"
+      end
+      @order = terms.join(", ")
+      nil
+    end
+
     # A raw ORDER BY fragment, stored verbatim: order_sql("lower(title) DESC").
     # Never pass request data here. `last` reverses the order by splitting on
     # commas and flipping ASC/DESC (Relation.reverse_order), which is right for
@@ -213,7 +367,13 @@ module Cybertrain
     # @return [Integer]
     # @api public
     def count
-      sql = if @limit >= 0 || @offset > 0
+      return 0 if @none
+
+      sql = if @distinct
+              # DISTINCT over the rows, not over a constant column.
+              inner = select_sql("*", "", @limit, @offset)
+              "SELECT COUNT(*) AS n FROM (#{inner})"
+            elsif @limit >= 0 || @offset > 0
               "SELECT COUNT(*) AS n FROM (#{select_sql("1", "", @limit, @offset)})"
             else
               select_sql("COUNT(*) AS n", "", -1, 0)
@@ -228,7 +388,7 @@ module Cybertrain
     # @return [Boolean]
     # @api public
     def exists?
-      return false if @limit == 0
+      return false if @limit == 0 || @none
 
       sql = select_sql("1 AS one", "", 1, @offset)
       binds = @binds
@@ -247,16 +407,10 @@ module Cybertrain
     # @return [Integer] the number of rows deleted
     # @api public
     def delete_all
+      return 0 if @none
+
       sql = +"DELETE FROM #{Relation.quote_ident(@table)}"
-      if @limit >= 0 || @offset > 0
-        # By id when the relation has no order, as first_row/last_row do, so
-        # Post.limit(1).delete_all removes the row Post.limit(1).first returns
-        # rather than whichever row SQLite scans first.
-        id = Relation.quote_ident("id")
-        sql << " WHERE #{id} IN (" << select_sql(id, order_or_id, @limit, @offset) << ")"
-      else
-        sql << " WHERE " << @wheres.join(" AND ") unless @wheres.empty?
-      end
+      sql << write_scope_sql
       binds = @binds
       Cybertrain::DB.with do |c|
         c.execute(sql, binds)
@@ -315,7 +469,9 @@ module Cybertrain
 
       n = Page.clamp_number(number, Params.max_page)
       skip = (n - 1) * per
-      sql = select_sql("1 AS one", "", per + 1, skip)
+      # Under distinct, `SELECT DISTINCT 1` would be one row.
+      probe = @distinct ? "*" : "1 AS one"
+      sql = select_sql(probe, "", per + 1, skip)
       binds = @binds
       found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
       @limit = per
@@ -496,13 +652,7 @@ module Cybertrain
       binds = [nil, 0, 0.0, ""]
       binds.clear
       binds << Cast.to_sql(by)
-      if @limit >= 0 || @offset > 0
-        id = Relation.quote_ident("id")
-        window = select_sql(id, order_or_id, @limit, @offset)
-        sql << " WHERE " << id << " IN (" << window << ")"
-      else
-        sql << " WHERE " << @wheres.join(" AND ") unless @wheres.empty?
-      end
+      sql << write_scope_sql
       i = 0
       while i < @binds.size
         binds << @binds[i]
@@ -512,6 +662,87 @@ module Cybertrain
         c.execute(sql, binds)
         c.changes
       end
+    end
+
+    # Sets each column to its value in every matching row with one
+    # `UPDATE ... SET a = ?, b = ?`, each value bound as Cast.to_sql writes
+    # it (a Time as its stored text, a Hash as JSON): no model is loaded, no
+    # callback or validation runs, `updated_at` is left alone. A limit or
+    # offset picks the rows by an `id` subselect, as {#delete_all} does.
+    # @example
+    #   Comment.where(article_id: article.id).update_all(approved: true)
+    # @param hash [Hash{Symbol => Object}] column => value
+    # @return [Integer] the number of rows updated
+    # @raise [ArgumentError] on an empty Hash or a key that is not a column name
+    # @api public
+    def update_all(hash)
+      raise ArgumentError, "update_all: no attributes" if hash.empty?
+      return 0 if @none
+
+      sets = Array.new(0) { "" }
+      binds = [nil, 0, 0.0, "", DB::Blob.new("")]
+      binds.clear
+      hash.each do |key, value|
+        quoted = Relation.checked_column("update_all", key)
+        sets << "#{quoted} = ?"
+        binds << bind_for(key.to_s, value)
+      end
+      table = Relation.quote_ident(@table)
+      set_list = sets.join(", ")
+      sql = +"UPDATE #{table} SET #{set_list}"
+      sql << write_scope_sql
+      i = 0
+      while i < @binds.size
+        binds << @binds[i]
+        i += 1
+      end
+      Cybertrain::DB.with do |c|
+        c.execute(sql, binds)
+        c.changes
+      end
+    end
+
+    # The ids of the matching rows, in the relation's order (by id when it
+    # has none).
+    # @example
+    #   Comment.where(article_id: article.id).ids  # => [3, 7]
+    # @return [Array<Integer>]
+    # @api public
+    def ids
+      id = Relation.quote_ident("id")
+      columns = "#{id} AS v"
+      sql = select_sql(columns, order_or_id, @limit, @offset)
+      binds = @binds
+      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      out = Array.new(0) { 0 }
+      i = 0
+      while i < found.size
+        out << Cast.int(found[i]["v"])
+        i += 1
+      end
+      out
+    end
+
+    # One batch for the generated find_each: up to `batch` rows with
+    # `id > after_id`, by id, under the relation's conditions (its order,
+    # limit and offset are not used, as in Rails' find_each).
+    def batch_rows(after_id, batch)
+      id = Relation.quote_ident("id")
+      where = condition_sql
+      clause = where == "" ? "#{id} > ?" : "(#{where}) AND #{id} > ?"
+      head = @distinct ? "SELECT DISTINCT *" : "SELECT *"
+      table = Relation.quote_ident(@table)
+      size = batch.to_s
+      sql = "#{head} FROM #{table} WHERE #{clause} ORDER BY #{id} LIMIT #{size}"
+      binds = [nil, 0, 0.0, "", DB::Blob.new("")]
+      binds.clear
+      i = 0
+      while i < @binds.size
+        binds << @binds[i]
+        i += 1
+      end
+      binds << after_id
+      Cybertrain::DB.with { |c| c.execute_models(sql, binds) }
     end
 
     def pluck_rows(method, column)
@@ -581,9 +812,26 @@ module Cybertrain
       found.empty? ? nil : found[0]
     end
 
+    # The WHERE of an UPDATE or DELETE over this relation: its conditions,
+    # or, with a limit or offset, the window picked by an `id` subselect
+    # (by id when the relation has no order, as first_row/last_row do, so
+    # Post.limit(1).delete_all removes the row Post.limit(1).first returns
+    # rather than whichever row SQLite scans first). "" for every row.
+    def write_scope_sql
+      if @limit >= 0 || @offset > 0
+        id = Relation.quote_ident("id")
+        window = select_sql(id, order_or_id, @limit, @offset)
+        return " WHERE #{id} IN (#{window})"
+      end
+      where = condition_sql
+      where == "" ? "" : " WHERE #{where}"
+    end
+
     def select_sql(columns, order, limit, offset)
-      sql = +"SELECT #{columns} FROM #{Relation.quote_ident(@table)}"
-      sql << " WHERE " << @wheres.join(" AND ") unless @wheres.empty?
+      head = @distinct ? "SELECT DISTINCT" : "SELECT"
+      sql = +"#{head} #{columns} FROM #{Relation.quote_ident(@table)}"
+      where = condition_sql
+      sql << " WHERE " << where if where != ""
       sql << " ORDER BY " << order if order != ""
       if limit >= 0
         sql << " LIMIT " << limit.to_s

@@ -74,13 +74,28 @@ class Article < Cybertrain::Model
   # @api public
   def self.all = ArticleRelation.new("articles")
 
+  # Every query method of {ArticleRelation} is also a class method, written
+  # as `def self.x(...) = all.x(...)`: `where`, `where_like`,
+  # `where_between`, `order`, `order_sql`, `limit`, `offset`, `distinct`,
+  # `none`, `ids`, `find`, `find_by`, `find_by!`, `find_or_create_by`,
+  # `find_or_initialize_by`, `first`, `last`, `count`, `exists?`,
+  # `update_all`, `delete_all`, `destroy_all` and `find_each`. The ones
+  # documented here are the common ones.
   # @see ArticleRelation#where
   # @example
   #   Article.where(title: "Hello").first
-  # @param conditions [Hash{Symbol => Object}]
+  #   Article.where("created_at >= ?", Time.now - 86_400)
+  #   Article.where.not(body: nil)
+  # @param cond [Hash{Symbol => Object}, String, nil]
+  # @param binds [Array] values for a String condition's `?` placeholders
   # @return [ArticleRelation]
   # @api public
-  def self.where(conditions) = all.where(conditions)
+  def self.where(cond = nil, *binds) = all.where(cond, *binds)
+
+  # @see ArticleRelation#where_between
+  # @return [ArticleRelation]
+  # @api public
+  def self.where_between(column, from, to, exclude_end: false) = all.where_between(column, from, to, exclude_end: exclude_end)
 
   # @see ArticleRelation#where_like
   # @param column [Symbol, String] a column name
@@ -90,7 +105,8 @@ class Article < Cybertrain::Model
   def self.where_like(column, text) = all.where_like(column, text)
 
   # @see ArticleRelation#order
-  # @param order [String, Symbol] `column [ASC|DESC]`, comma-separated
+  # @param order [String, Symbol, Hash{Symbol => Symbol}] `column [ASC|DESC]`,
+  #   comma-separated, or `{ column: :asc | :desc }`
   # @return [ArticleRelation]
   # @api public
   def self.order(order) = all.order(order)
@@ -125,6 +141,12 @@ class Article < Cybertrain::Model
   # @api public
   def self.find_by(conditions) = all.find_by(conditions)
 
+  # @see ArticleRelation#find_by!
+  # @return [Article]
+  # @raise [Cybertrain::RecordNotFound] `"Couldn't find Article"`
+  # @api public
+  def self.find_by!(conditions) = all.find_by!(conditions)
+
   # @return [Article, nil] the record with the lowest id
   # @api public
   def self.first = all.first
@@ -139,7 +161,7 @@ class Article < Cybertrain::Model
 
   # Builds a record and saves it. Returns the record whether or not it was
   # saved: check {Cybertrain::Model#persisted? persisted?} or
-  # {Cybertrain::Model#errors errors}. There is no `create!`.
+  # {Cybertrain::Model#errors errors}, or use {.create!}.
   # @example
   #   article = Article.create(title: "Hello", body: "A body long enough")
   #   article.persisted?  # => true
@@ -149,6 +171,17 @@ class Article < Cybertrain::Model
   def self.create(attrs = {})
     rec = Article.new(attrs)
     rec.save
+    rec
+  end
+
+  # Builds a record and saves it with {Cybertrain::Model#save! save!}.
+  # @param attrs [Hash{String, Symbol => Object}]
+  # @return [Article] the saved record
+  # @raise [Cybertrain::RecordInvalid] when validation fails
+  # @api public
+  def self.create!(attrs = {})
+    rec = Article.new(attrs)
+    rec.save!
     rec
   end
 
@@ -245,24 +278,71 @@ class ArticleRelation < Cybertrain::Relation
   # @api public
   def decimal_scale(name) = -1
 
-  # Adds equality conditions, AND-ed with any already there. Keys are SQL
-  # column names; values are bound, never interpolated.
+  # Adds conditions, AND-ed with any already there. With a Hash, keys are
+  # SQL column names and values are bound, never interpolated:
   #
   # | Value | SQL |
   # | --- | --- |
   # | `nil` | `` `col` IS NULL `` |
   # | an Array | `` `col` IN (?, ?) `` (an empty Array matches nothing) |
-  # | a Time | `` `col` = ? `` with the UTC ISO 8601 text |
+  # | an Integer Range `1..5` | `` `col` BETWEEN ? AND ? `` |
+  # | `1...5`, `5..`, `..5` | `` `col` >= ? AND `col` < ? ``, `` `col` >= ? ``, `` `col` <= ? `` |
+  # | a Time | `` `col` = ? `` with the stored datetime text |
   # | `true` / `false` | `` `col` = ? `` with 1 / 0 |
   # | anything else | `` `col` = ? `` |
   #
-  # No ranges, no `not`, no `or`: use {#where_sql} for those.
+  # A Range takes Integer ends only; other bounds (Time, Date, Float,
+  # String) go through {#where_between}. A json column cannot be compared
+  # (ArgumentError). With a String, it is a raw SQL condition with `?`
+  # placeholders and the binds after it, as {#where_sql}. With no argument
+  # it is the relation itself, so `where.not(...)` reads as in Rails.
   # @example
   #   Article.where(title: ["Hello", "Bye"]).where(body: nil)
+  #   Article.where("created_at >= ?", Time.now - 86_400)
+  #   Article.where.not(body: nil)
+  # @param cond [Hash{Symbol => Object}, String, nil]
+  # @param binds [Array] one value per `?` of a String condition
+  # @return [self]
+  # @raise [ArgumentError] for a json column
+  # @api public
+  def where(cond = nil, *binds); end
+
+  # The negation of {#where}'s Hash form, AND-ed with the other conditions:
+  # `NOT (a AND b)` over the terms `where` would write (Rails 6.1+). So
+  # `where.not(body: nil)` is `NOT (`body` IS NULL)`, `where.not(id: [])`
+  # matches every row, and `where.not(kind: "a")` leaves out NULL kinds,
+  # as SQL's `!=` does.
+  # @example
+  #   Article.where.not(title: "Draft")
   # @param conditions [Hash{Symbol => Object}]
   # @return [self]
   # @api public
-  def where(conditions) = (add_where(conditions); self)
+  def not(conditions) = (add_where_not(conditions); self)
+
+  # A bounded range on one column: `` `col` >= ? AND `col` <= ? `` (`<` with
+  # `exclude_end: true`), either bound nil for an open end. A Time or Date
+  # bound is compared as the stored text, which orders as the instant does.
+  # @example
+  #   Article.where_between(:created_at, Time.now - 86_400, nil)
+  # @param column [Symbol, String] a column name
+  # @param from [Integer, Float, String, Time, Date, nil]
+  # @param to [Integer, Float, String, Time, Date, nil]
+  # @return [self]
+  # @raise [ArgumentError] when both bounds are nil or `column` is not a
+  #   column name
+  # @api public
+  def where_between(column, from, to, exclude_end: false) = (add_where_between(column, from, to, exclude_end); self)
+
+  # Rows matching this relation's conditions or the other's: one
+  # `((a) OR (b))` term. A side with no conditions matches every row.
+  # @example
+  #   Article.where(title: "Hello").or(Article.where(body: nil))
+  # @param other [ArticleRelation]
+  # @return [self]
+  # @raise [ArgumentError] `"or: the relations differ in order, limit,
+  #   offset or distinct"`
+  # @api public
+  def or(other) = (merge_or(other); self)
 
   # Adds a raw SQL condition with `?` placeholders, AND-ed with the others.
   # The fragment is used as written: never build it from request data; pass
@@ -301,12 +381,14 @@ class ArticleRelation < Cybertrain::Relation
   #   Article.order("created_at DESC, id")
   #   SORTS = { "title" => "title", "newest" => "created_at DESC" }
   #   Article.order(SORTS.fetch(params[:sort].to_s, "id"))
-  # @param order [String, Symbol, nil]
+  #   Article.order(created_at: :desc, id: :asc)
+  # @param order [String, Symbol, Hash{Symbol => Symbol}, nil] a Hash maps
+  #   each column to `:asc` or `:desc`
   # @return [self]
   # @raise [ArgumentError] for anything else (`lower(title)`,
   #   `articles.title`): use {#order_sql} for raw SQL
   # @api public
-  def order(order) = (set_order(order); self)
+  def order(order); end
 
   # Sets a raw ORDER BY fragment, replacing any earlier order. Never pass
   # request data. {#last} reverses it by flipping ASC/DESC around commas,
@@ -327,6 +409,18 @@ class ArticleRelation < Cybertrain::Relation
   # @return [self]
   # @api public
   def offset(n) = (set_offset(n); self)
+
+  # `SELECT DISTINCT`: `distinct.pluck_str(:kind)` has each value once;
+  # {Cybertrain::Relation#count count} counts the distinct rows.
+  # @return [self]
+  # @api public
+  def distinct = (set_distinct; self)
+
+  # A relation that matches no row: `count`, `exists?`, `update_all` and
+  # `delete_all` answer 0 / false without a query, the readers are empty.
+  # @return [self]
+  # @api public
+  def none = (set_none; self)
 
   # Runs the query. Templates iterate an Array, so controllers usually
   # end a query with `to_a`.
@@ -361,6 +455,46 @@ class ArticleRelation < Cybertrain::Relation
   # @api public
   def find_by(conditions) = where(conditions).first
 
+  # {#find_by}, raising when nothing matches.
+  # @param conditions [Hash{Symbol => Object}]
+  # @return [Article]
+  # @raise [Cybertrain::RecordNotFound] `"Couldn't find Article"`
+  # @api public
+  def find_by!(conditions); end
+
+  # {#find_by}, or else {Article.create} with the same attributes.
+  # @example
+  #   Tag.find_or_create_by(name: "ruby")
+  # @param conditions [Hash{Symbol => Object}]
+  # @return [Article]
+  # @api public
+  def find_or_create_by(conditions); end
+
+  # {#find_by}, or else an unsaved {Article.new} with the same attributes.
+  # @param conditions [Hash{Symbol => Object}]
+  # @return [Article]
+  # @api public
+  def find_or_initialize_by(conditions); end
+
+  # Loads the matching records and calls {Cybertrain::Model#destroy destroy}
+  # on each, so the destroy callbacks run (one DELETE per record; use
+  # {Cybertrain::Relation#delete_all delete_all} for one statement).
+  # @return [Array<Article>] the destroyed records
+  # @api public
+  def destroy_all; end
+
+  # Yields every matching record, loading `batch` rows at a time
+  # (`id > last_id ORDER BY id LIMIT batch`), so a large table is walked
+  # without loading it whole. Records come in id order; the relation's own
+  # order, limit and offset are not used.
+  # @example
+  #   Article.where(body: nil).find_each(batch: 500) { |a| a.update_columns(body: "") }
+  # @param batch [Integer] rows per query, at least 1
+  # @yieldparam article [Article]
+  # @return [nil]
+  # @api public
+  def find_each(batch: 1000, &blk); end
+
   # The record with this id within the relation.
   # @example
   #   Comment.where(article_id: @article.id).find(params[:id])
@@ -386,10 +520,10 @@ class Comment < Cybertrain::Model
   # @api public
   def self.all = CommentRelation.new("comments")
 
-  # @param conditions [Hash{Symbol => Object}]
+  # @param cond [Hash{Symbol => Object}, String, nil]
   # @return [CommentRelation]
   # @api public
-  def self.where(conditions) = all.where(conditions)
+  def self.where(cond = nil, *binds) = all.where(cond, *binds)
 
   # @return [String, nil]
   # @api public

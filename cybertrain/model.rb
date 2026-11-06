@@ -42,9 +42,10 @@ module Cybertrain
   #
   # Not available (compared with ActiveRecord): declared associations,
   # `has_many :through`, `includes`, an untyped `pluck` (relations have
-  # `pluck_str` / `pluck_int` / `pluck_float`), `update_all`, `destroy_all`,
-  # dirty tracking, transactions around `save`, STI, enums and the `scope`
-  # macro (write `def self.published = where(published: true)` instead).
+  # `pluck_str` / `pluck_int` / `pluck_float`), a `where` over a Range with
+  # other than Integer ends (use `where_between`), dirty tracking,
+  # transactions around `save`, STI, enums and the `scope` macro (write
+  # `def self.published = where(published: true)` instead).
   #
   # Implementation: validations and callbacks are runtime data keyed by model
   # name, since Spinel cannot define methods at runtime.
@@ -417,6 +418,52 @@ module Cybertrain
     def update(attrs)
       assign_attributes(attrs)
       save
+    end
+
+    # Writes the given columns straight to the row with one UPDATE of
+    # exactly those columns, then keeps the new values on the record: no
+    # validation, no callback, `updated_at` left alone. Each value is cast
+    # as the attribute writer casts it and stored as {#save} would store it
+    # (a decimal rounded to its scale, a Hash as JSON text). Keys are SQL
+    # column names.
+    # @example
+    #   article.update_columns(views: article.views + 1)
+    # @param attrs [Hash{Symbol => Object}] column => value
+    # @return [true]
+    # @raise [ArgumentError] on an empty Hash, a key that is not a column
+    #   of the model (or is `id`), or a record that was never saved
+    # @api public
+    def update_columns(attrs)
+      raise ArgumentError, "update_columns: no attributes" if attrs.empty?
+      raise ArgumentError, "update_columns: #{model_name} is not saved (a new record has no row)" unless @persisted
+
+      names = Array.new(0) { "" }
+      attrs.each do |key, _value|
+        name = key.to_s
+        unless name != "id" && column?(name)
+          raise ArgumentError, "update_columns: #{name.inspect} is not a column of #{model_name}"
+        end
+
+        names << name
+      end
+      attrs.each { |key, value| write_attribute(key.to_s.to_sym, value) }
+      # to_row's expressions for those columns: the generated casts and
+      # scale rounding, read off the values just written.
+      row = to_row
+      sets = Array.new(0) { "" }
+      binds = [nil, 0, 0.0, "", DB::Blob.new("")]
+      binds.clear
+      names.each do |name|
+        sets << "#{Relation.quote_ident(name)} = ?"
+        binds << row[name]
+      end
+      binds << @id
+      table = Relation.quote_ident(self.class.table_name)
+      id_column = Relation.quote_ident("id")
+      set_list = sets.join(", ")
+      sql = "UPDATE #{table} SET #{set_list} WHERE #{id_column} = ?"
+      Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      true
     end
 
     # Runs {.before_destroy}, deletes the row, runs {.after_destroy}. The

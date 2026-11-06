@@ -11,4 +11,6 @@ ok   decimal, json and date attributes round-trip as Float, Hash and Date
 ok   a nullable decimal, json and date left unset load back as nil and are stored as NULL
 ok   a NOT NULL json column starts as {} and round-trips a Hash
 ok   column_type and decimal_scale answer per column from the schema
-13 tests, 65 assertions, 0 failures
+ok   the generated query methods: where.not, where with a String and a Range, where_between on a date, or, order by Hash
+ok   update_columns writes through the generated to_row: decimal rounded to its scale, json as text
+15 tests, 89 assertions, 0 failures

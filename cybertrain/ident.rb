@@ -29,7 +29,7 @@ module Cybertrain
     RESERVED_COLUMN_NAMES = [
       # Cybertrain::Model: its methods and the ivars behind them (`errors`,
       # `persisted` -> @errors, @persisted)
-      "errors", "persisted", "attributes", "save", "update", "destroy",
+      "errors", "persisted", "attributes", "save", "update", "update_columns", "destroy",
       "reload", "model_name", "to_json", "as_json", "to_param", "to_row",
       "load_row", "set_id", "run_callbacks", "insert_row", "update_row",
       "read_attribute", "write_attribute", "assign_attributes",

@@ -15,6 +15,9 @@ ok   initial values: decimal as a float, NOT NULL json as an empty Hash, dates n
 ok   column_type answers every column's type, decimal_scale the scales, binary_column? the BLOBs
 ok   a table without decimals or BLOBs keeps the base decimal_scale and binary_column?
 ok   attributes stay attr_accessors (no def writers: NOTES rule 43) and order_sql is emitted
+ok   the relation emits where (Hash, String or none), not, where_between, or, order by Hash, distinct and none
+ok   the relation emits find_by!, find_or_create_by, find_or_initialize_by, destroy_all and find_each
+ok   the model class delegates every DELEGATED query method to all, and has create!
 ok   emit rejects column names that are invalid; reserved ones and keywords are renamed, not refused
 ok   a reserved column name generates under <column>_column with a note; read_attribute and write_attribute take either spelling
 ok   a column named like a hook Ruby calls with an argument reads as <column>_column
@@ -41,4 +44,4 @@ ok   scan_source skips class << self, nested classes and later classes
 ok   scan_source inside a module stops at the class's own end
 ok   view_methods_for picks the scanned methods of one model
 ok   outputs maps gen/models paths to sources for every table
-43 tests, 319 assertions, 0 failures
+46 tests, 364 assertions, 0 failures
