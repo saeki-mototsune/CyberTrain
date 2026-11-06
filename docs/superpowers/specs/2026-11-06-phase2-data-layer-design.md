@@ -140,12 +140,17 @@ value regardless of date (byte 10: `T` 0x54 > space 0x20), which broke
   `to_json` and `Cast.str(time)` use it. The storage and display formats are
   two methods on purpose.
 - Existing rows in the old format: **`./app db normalize`** rewrites every
-  DATETIME cell of every table (decltype `DATETIME` from `PRAGMA
-  table_info`) that is **not already in the canonical format** (the pattern
-  `____-__-__ __:__:__.______`): each such cell is read, parsed with
-  `Cast.parse_time` (so `T…Z` rows, short fractions and offset-bearing
-  values all land on the same UTC six-digit text) and written back with
-  `Cast.sql_datetime`, row by row in one transaction; a cell `parse_time`
+  DATETIME cell of every table (a declared type starting with `DATETIME`,
+  as `Connection.datetime_decl?` reads it) that is **not already in the
+  canonical format** (checked with `GLOB` and a `[0-9]` class at every digit
+  position, `[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]`;
+  `LIKE`'s `_` would accept `2026-10-05 09:00:00.12345Z` as canonical): each
+  such cell is read, parsed with `Cast.parse_time` (so `T…Z` rows, short
+  fractions and offset-bearing values all land on the same UTC six-digit
+  text) and written back with `Cast.sql_datetime`, row by row, located by
+  `rowid` (no `id` column is needed, and a duplicated `id` cannot make one
+  UPDATE touch two rows; a `WITHOUT ROWID` table is reported and skipped),
+  in one transaction; a cell `parse_time`
   cannot read is left alone and counted separately. It prints the count per
   table and column. It is idempotent and safe to run twice. The deploy
   guides say: stop the old binaries, `db migrate`, `db normalize` once,
@@ -420,12 +425,15 @@ foreign key suppresses the generated `has_many` for it.
   behaviour (the database's foreign key decides, see 7.3).
 - `counter_cache: true` on `belongs_to`: `after_create` increments and
   `after_destroy` decrements `<children>_count` on the parent with
-  `increment`. A **moved child** is counted too: the generated model keeps
-  the persisted foreign key in `@author_id_persisted` (set by `load_row` and
-  after every save; a per-counter-cache snapshot, not general dirty
-  tracking), and `after_update` compares it with `@author_id`; when they
-  differ it decrements the old parent and increments the new one. The UPDATE
-  and the two increments run in one `DB.transaction` (joining an open one).
+  `increment`. A **moved child** is counted too: inside the save's
+  `DB.transaction` (joining an open one) a generated `before_update` hook
+  reads the persisted foreign key straight from the database (`SELECT
+  author_id FROM posts WHERE id = ?`) into `@author_id_was`, valid for that
+  save only, and `after_update` compares it with `@author_id`; when they
+  differ it decrements the old parent and increments the new one. There is
+  no long-lived snapshot: two instances of one child, or a rolled-back save,
+  cannot leave a stale key behind. The read, the UPDATE and the two
+  increments run in that one transaction.
   The column must exist (generation error otherwise).
 - A declared `belongs_to` without `optional: true` adds a presence validation
   on the foreign key (Rails 5 default). Undeclared, foreign-key-derived
