@@ -5,6 +5,8 @@ ok   parse_time reads RFC 2822
 ok   a stored datetime round-trips through the connection with microseconds
 ok   the epoch reader accepts a Rails fraction, an old T...Z value and an offset
 ok   date, date_or_nil, hash_or_nil, json_text, round_scale
+ok   round_scale and round_scale_or_nil answer a Float, even at scale 0
+ok   json_hash reads a json cell as a Hash, {} for anything it cannot
 ok   a Date binds as its text and reads back from a DATE column
 ok   Cast.date coexists with the schema DSL's t.date
-9 tests, 39 assertions, 0 failures
+11 tests, 55 assertions, 0 failures

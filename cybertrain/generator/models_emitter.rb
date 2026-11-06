@@ -177,7 +177,7 @@ module Cybertrain
       def self.emit_relation(model, table)
         src = +""
         src << "class #{model}Relation < Cybertrain::Relation\n"
-        src << emit_binary_columns(table)
+        src << emit_column_types(table)
         src << "  def where(h) = (add_where(h); self)\n"
         src << "  def where_sql(s, b = []) = (add_where_sql(s, b); self)\n"
         src << "  def where_like(c, t) = (add_where_like(c, t); self)\n"
@@ -225,18 +225,52 @@ module Cybertrain
         src
       end
 
-      # `binary_column?` for a table with BLOB columns, so `where(data: bytes)`
-      # binds a Blob (Relation#bind_for); a table without them keeps the
-      # base method's false.
-      def self.emit_binary_columns(table)
-        names = table.columns.select { |c| c.type == :binary }.map { |c| c.name }
-        return "" if names.empty?
+      # The column types `column_type` answers, in the order its `when`
+      # lines are written. A column of any other type answers :unknown.
+      COLUMN_TYPES = [:integer, :float, :decimal, :boolean, :datetime, :date, :json, :binary, :string, :text]
+
+      # The schema, per column, on the Relation: `column_type(name)`, a
+      # `case` over the SQL column names (`id` included, an :integer) with
+      # one `when` per type that has columns, else :unknown;
+      # `decimal_scale(name)` for a table with a decimal column that
+      # declares a scale (else the base method's -1); `binary_column?`
+      # for a table with BLOB columns, so `where(data: bytes)` binds a Blob
+      # (Relation#bind_for; a table without them keeps the base method's
+      # false). Every override returns the base method's type (Symbol,
+      # Integer, Boolean: NOTES rules 10/34).
+      def self.emit_column_types(table)
+        src = +""
+        src << "  def column_type(name)\n"
+        src << "    case name\n"
+        COLUMN_TYPES.each do |type|
+          names = type == :integer ? ["\"id\""] : Array.new(0) { "" }
+          table.columns.each { |c| names << "\"#{c.name}\"" if c.type == type }
+          next if names.empty?
+
+          src << "    when #{names.join(", ")} then :#{type}\n"
+        end
+        src << "    else :unknown\n"
+        src << "    end\n"
+        src << "  end\n"
+        src << "\n"
+        src << emit_decimal_scale(table)
+        return src if table.columns.select { |c| c.type == :binary }.empty?
+
+        src << "  def binary_column?(name) = column_type(name) == :binary\n"
+        src << "\n"
+        src
+      end
+
+      # `decimal_scale(name)`: one `when` per decimal column with a scale.
+      def self.emit_decimal_scale(table)
+        scaled = table.columns.select { |c| c.type == :decimal && c.scale >= 0 }
+        return "" if scaled.empty?
 
         src = +""
-        src << "  def binary_column?(name)\n"
+        src << "  def decimal_scale(name)\n"
         src << "    case name\n"
-        src << "    when #{names.map { |n| "\"#{n}\"" }.join(", ")} then true\n"
-        src << "    else false\n"
+        scaled.each { |c| src << "    when \"#{c.name}\" then #{c.scale}\n" }
+        src << "    else -1\n"
         src << "    end\n"
         src << "  end\n"
         src << "\n"
@@ -521,15 +555,19 @@ module Cybertrain
       end
 
       # The Cast helper that reads and writes this column (spikes/NOTES.md
-      # rule 7: Time ivars always go through time_or_nil).
+      # rule 7: Time ivars always go through time_or_nil, nullable ones
+      # through a helper that can return nil). A decimal is a Float; a json
+      # column a Hash (json_hash parses the stored text; hash_or_nil too,
+      # and keeps NULL nil); a date a Date.
       def self.cast_for(column)
         null = column.null
         case column.type
         when :integer then null ? "int_or_nil" : "int"
-        when :float then null ? "float_or_nil" : "float"
+        when :float, :decimal then null ? "float_or_nil" : "float"
         when :boolean then null ? "bool_or_nil" : "bool"
         when :datetime then "time_or_nil"
-        when :date then "str_or_nil"
+        when :date then null ? "date_or_nil" : "date"
+        when :json then null ? "hash_or_nil" : "json_hash"
         # A String of raw bytes, like a text column (Cast.binary is for
         # raw-SQL callers; it reads nil as "", which a nullable one must not).
         when :binary then null ? "str_or_nil" : "binary"
@@ -539,20 +577,33 @@ module Cybertrain
 
       # What to_row binds for a column: a binary column's bytes wrapped in a
       # DB::Blob (nil stays nil), so Connection#bind sends them with
-      # sqlite3_bind_blob and their length; every other column its
-      # Cast.to_sql value.
+      # sqlite3_bind_blob and their length; a decimal with a scale rounded
+      # to it (round_scale_or_nil keeps a nullable one's nil, so it is
+      # stored as NULL, not 0.0); a json column its JSON text (nil for
+      # nil); every other column (a date included) its Cast.to_sql value.
       def self.bind_expression(column)
         ivar = ivar_name(column.name)
-        return "Cybertrain::DB::Blob.wrap(#{ivar})" if column.type == :binary
+        case column.type
+        when :binary then "Cybertrain::DB::Blob.wrap(#{ivar})"
+        when :json then "Cybertrain::Cast.json_text(#{ivar})"
+        when :decimal
+          return "Cybertrain::Cast.to_sql(#{ivar})" if column.scale < 0
 
-        "Cybertrain::Cast.to_sql(#{ivar})"
+          helper = column.null ? "round_scale_or_nil" : "round_scale"
+          "Cybertrain::Cast.#{helper}(#{ivar}, #{column.scale})"
+        else "Cybertrain::Cast.to_sql(#{ivar})"
+        end
       end
 
       # The ivar's value in `initialize`: the column's SQL default when it
       # has a simple one (INSERT writes every column, so the database's own
-      # DEFAULT never applies), else "" / 0 / 0.0 / false for NOT NULL
-      # columns and nil for nullable ones. Nullable columns with a default
-      # still go through their Cast helper to keep the ivar's nullable type.
+      # DEFAULT never applies), else "" / 0 / 0.0 / false / an empty Hash
+      # (json) for NOT NULL columns and nil for nullable ones. A decimal is
+      # a float here too. Nullable columns with a default still go through
+      # their Cast helper to keep the ivar's nullable type. A datetime or
+      # date starts as nil even when NOT NULL (no zero value stands for "no
+      # date"; saving one unset fails on the constraint, as in Rails); a
+      # json column's default text is not read (it starts empty or nil).
       def self.initial_value(column)
         return "nil" if column.type == :datetime || column.type == :date
 
@@ -564,8 +615,9 @@ module Cybertrain
         else
           case column.type
           when :integer then "0"
-          when :float then "0.0"
+          when :float, :decimal then "0.0"
           when :boolean then "false"
+          when :json then "Cybertrain::Cast.empty_hash"
           else "\"\""
           end
         end
@@ -583,7 +635,7 @@ module Cybertrain
         case column.type
         when :integer
           integer_text?(text) ? text : ""
-        when :float
+        when :float, :decimal
           if integer_text?(text)
             text + ".0"
           elsif float_text?(text)

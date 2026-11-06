@@ -1,12 +1,15 @@
 # The fixture app's schema: the blog tables, plus a NOT NULL column with a
 # default (posts.views) and a nullable boolean with a default
-# (comments.approved) to exercise the generated initial values.
+# (comments.approved) to exercise the generated initial values, and the
+# phase-2 types: a nullable decimal with a scale, a nullable json and a
+# nullable date on posts, and a NOT NULL json on comments.
 Cybertrain::Schema.define(version: "20260924120000") do |s|
   s.create_table "comments" do |t|
     t.references :post
     t.string "commenter", null: false
     t.text "body", null: false
     t.boolean "approved", default: "false"
+    t.json "extras", null: false
     t.timestamps
   end
 
@@ -14,6 +17,9 @@ Cybertrain::Schema.define(version: "20260924120000") do |s|
     t.string "title", null: false
     t.text "body"
     t.integer "views", null: false, default: "0"
+    t.decimal "price", precision: 10, scale: 2
+    t.json "meta"
+    t.date "published_on"
     t.timestamps
   end
 end

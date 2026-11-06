@@ -308,9 +308,13 @@ test "the generator types a binary column as a String and binds it as a Blob" do
   assert_includes images, "    @data = Cybertrain::Cast.binary(row[\"data\"])\n"
   assert_includes images, "    when :data then @data = Cybertrain::Cast.binary(value)\n"
   assert_includes images, "      \"data\" => Cybertrain::DB::Blob.wrap(@data),\n"
-  # ImageRelation answers binary_column? for data, so where(data: bytes) binds a Blob.
-  assert_includes images, "class ImageRelation < Cybertrain::Relation\n  def binary_column?(name)\n    case name\n    when \"data\" then true\n    else false\n    end\n  end\n"
-  assert_includes docs, "  def binary_column?(name)\n    case name\n    when \"body\" then true\n"
+  # ImageRelation answers binary_column? for data (through column_type), so
+  # where(data: bytes) binds a Blob.
+  assert_includes images, "class ImageRelation < Cybertrain::Relation\n  def column_type(name)\n    case name\n" \
+                          "    when \"id\" then :integer\n    when \"data\" then :binary\n"
+  assert_includes images, "  def binary_column?(name) = column_type(name) == :binary\n"
+  assert_includes docs, "    when \"body\" then :binary\n"
+  assert_includes docs, "  def binary_column?(name) = column_type(name) == :binary\n"
   articles = Cybertrain::Schema.define(version: "1") { |s| s.create_table("articles") { |t| t.string "title" } }
   assert_nil Cybertrain::Gen::ModelsEmitter.emit(articles.table("articles"), articles, none).index("binary_column?")
 end

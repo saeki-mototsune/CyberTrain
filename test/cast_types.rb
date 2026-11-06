@@ -86,6 +86,29 @@ test "date, date_or_nil, hash_or_nil, json_text, round_scale" do
   assert_equal 1.2345, Cast.round_scale(1.2345, -1)
 end
 
+# Float#round(0) answers an Integer; round_scale keeps the Float it promises.
+test "round_scale and round_scale_or_nil answer a Float, even at scale 0" do
+  assert_equal 3.0, Cast.round_scale(2.6, 0)
+  assert_equal "Float", Cast.round_scale(2.6, 0).class.to_s
+  assert_nil Cast.round_scale_or_nil(nil, 2)
+  assert_equal 1.01, Cast.round_scale_or_nil("1.006", 2)
+  assert_equal "Float", Cast.round_scale_or_nil(2.6, 0).class.to_s
+  assert_equal 1.2345, Cast.round_scale_or_nil(1.2345, -1)
+  assert_nil Cast.round_scale_or_nil("", 2)
+end
+
+test "json_hash reads a json cell as a Hash, {} for anything it cannot" do
+  assert_equal 1, Cast.int(Cast.json_hash('{"a": 1}')["a"])
+  assert_equal 2, Cast.int(Cast.json_hash({ "b" => 2 })["b"])
+  assert_equal 3, Cast.int(Cast.json_hash({ c: 3 })["c"])
+  assert_equal({}, Cast.json_hash("[1, 2]"))
+  assert_equal({}, Cast.json_hash("7"))
+  assert_equal({}, Cast.json_hash("{not json"))
+  assert_equal({}, Cast.json_hash(""))
+  assert_equal({}, Cast.json_hash(nil))
+  assert_equal({}, Cast.json_hash(5))
+end
+
 test "a Date binds as its text and reads back from a DATE column" do
   DB.with { |c| c.execute("DELETE FROM t", []) }
   DB.with { |c| c.execute("INSERT INTO t (day) VALUES (?)", [Date.new(2026, 10, 5)]) }

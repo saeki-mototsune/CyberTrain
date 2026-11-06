@@ -7,4 +7,8 @@ ok   validations from app/models/post.rb apply to the generated class
 ok   belongs_to and has_many associations
 ok   call_view_method reaches the scanned summary
 ok   to_json of a generated model
-9 tests, 34 assertions, 0 failures
+ok   decimal, json and date attributes round-trip as Float, Hash and Date
+ok   a nullable decimal, json and date left unset load back as nil and are stored as NULL
+ok   a NOT NULL json column starts as {} and round-trips a Hash
+ok   column_type and decimal_scale answer per column from the schema
+13 tests, 65 assertions, 0 failures

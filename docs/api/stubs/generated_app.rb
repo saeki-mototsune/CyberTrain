@@ -34,9 +34,11 @@
 # | `string`, `text` | String (`""` for a new record when `null: false`, else nil) |
 # | `integer`, `references` | Integer (`0` when `null: false`, else nil) |
 # | `float` | Float |
+# | `decimal` | Float, rounded to the column's `scale:` when saved |
 # | `boolean` | true / false |
-# | `datetime` | Time (UTC, to the second), nil until set |
-# | `date` | String (`"2026-10-05"`); there is no Date class |
+# | `datetime` | Time (UTC), nil until set |
+# | `date` | Date (`Date.new(2026, 10, 5)`, stored as `"2026-10-05"`), nil until set |
+# | `json` | Hash with String keys (`{}` for a new record when `null: false`, else nil); its values read through `Cybertrain::Cast.int`, `Cast.hash`, `Cast.array` |
 #
 # `new`, `update` and {#write_attribute} cast what they are given (`"42"`
 # becomes `42` for an integer column, `"1"`/`"true"`/`"on"` becomes `true`); the
@@ -226,6 +228,23 @@ end
 #   Comment.where(article_id: @article.id).count
 # @api public
 class ArticleRelation < Cybertrain::Relation
+  # The schema type of a column: `:integer` (`"id"` included), `:float`,
+  # `:decimal`, `:boolean`, `:datetime`, `:date`, `:json`, `:binary`,
+  # `:string` or `:text`; `:unknown` for a name that is not a column.
+  # @example
+  #   Article.all.column_type("title") # => :string
+  # @param name [String] the SQL column name
+  # @return [Symbol]
+  # @api public
+  def column_type(name); end
+
+  # A decimal column's `scale:`; -1 for any other column or a decimal
+  # declared without one.
+  # @param name [String] the SQL column name
+  # @return [Integer]
+  # @api public
+  def decimal_scale(name) = -1
+
   # Adds equality conditions, AND-ed with any already there. Keys are SQL
   # column names; values are bound, never interpolated.
   #

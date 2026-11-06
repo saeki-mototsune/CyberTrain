@@ -79,6 +79,26 @@ module Cybertrain
       nil
     end
 
+    # The type of the column `name` (its SQL name, a String): one of
+    # `:integer`, `:float`, `:decimal`, `:boolean`, `:datetime`, `:date`,
+    # `:json`, `:binary`, `:string`, `:text`, or `:unknown` for a name that
+    # is not a column. The generated subclass answers from db/schema.rb;
+    # here every name is unknown.
+    # @param name [String]
+    # @return [Symbol]
+    def column_type(name)
+      :unknown
+    end
+
+    # The scale of the decimal column `name`, -1 when it is not a decimal
+    # column or declares no scale. The generated subclass answers from
+    # db/schema.rb; here none has one.
+    # @param name [String]
+    # @return [Integer]
+    def decimal_scale(name)
+      -1
+    end
+
     # Whether `name` is a binary column of the table. The generated
     # subclass answers from the schema; here nothing is.
     # @param name [String]

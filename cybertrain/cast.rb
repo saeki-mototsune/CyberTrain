@@ -543,13 +543,51 @@ module Cybertrain
 
     # A decimal value rounded to the column's scale: `v` as a Float,
     # `round(scale)`; a negative scale (none declared) leaves it unrounded.
+    # A Float at every scale: `Float#round(0)` answers an Integer, so the
+    # rounded value goes through `to_f`.
     # @param v [Float, Integer, String]
     # @param scale [Integer]
     # @return [Float]
     # @api public
     def self.round_scale(v, scale)
       f = float(v)
-      scale < 0 ? f : f.round(scale)
+      scale < 0 ? f : f.round(scale).to_f
+    end
+
+    # {Cast.round_scale} for a nullable decimal column: nil (and `""`, an
+    # empty form field) stay nil, so an unset value is stored as NULL,
+    # never 0.0; anything else is {Cast.float_or_nil}'s Float rounded to
+    # `scale`.
+    # @param v [Float, Integer, String, nil]
+    # @param scale [Integer]
+    # @return [Float, nil]
+    # @api public
+    def self.round_scale_or_nil(v, scale)
+      f = float_or_nil(v)
+      return nil if f.nil?
+      scale < 0 ? f : f.round(scale).to_f
+    end
+
+    # A NOT NULL json column's value as a Hash: a Hash's pairs (keys
+    # through to_s, {Cast.hash}'s typed copy); a String is the stored JSON
+    # text, parsed and then narrowed by {Cast.hash}, so an object root is
+    # its Hash and an array or scalar root, invalid JSON or `""` is `{}`
+    # (a corrupt cell does not take the row down); anything else is `{}`.
+    # {Cast.hash} alone would read the stored text as `{}`.
+    # `when Time` first (NOTES rule 8).
+    # @example
+    #   meta = Cybertrain::Cast.json_hash(row["meta"])
+    # @param v [String, Hash, nil]
+    # @return [Hash{String => Object}]
+    # @api public
+    def self.json_hash(v)
+      case v
+      when Time then empty_hash
+      when String
+        text = v.to_s
+        text.empty? ? empty_hash : hash(parse_json(text))
+      else hash(v)
+      end
     end
 
     # {Cast.hash} for Arrays: `v`'s elements in a fresh {Cast.empty_array},
