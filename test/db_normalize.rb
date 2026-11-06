@@ -187,22 +187,40 @@ test "WITHOUT ROWID is seen with extra whitespace between the words" do
   conn.close
 end
 
-# A STRICT table cannot declare DATETIME (SQLite refuses the type), so an
-# option list is checked on the predicate itself.
+test "WITHOUT ROWID is seen through SQL comments" do
+  conn = Cybertrain::DB::Connection.new(":memory:")
+  conn.exec_script("CREATE TABLE c1 (k TEXT PRIMARY KEY, at DATETIME) WITHOUT /* comment */ ROWID")
+  conn.exec_script("CREATE TABLE c2 (k TEXT PRIMARY KEY, at DATETIME) WITHOUT ROWID /* ) */")
+  conn.execute("INSERT INTO c1 VALUES ('a', '2026-10-05T09:00:00Z')")
+  conn.execute("INSERT INTO c2 VALUES ('a', '2026-10-05T09:00:00Z')")
+  report = Cybertrain::DB::Normalizer.run(conn)
+  assert_equal 2, report.size
+  assert_equal "c1", report[0][0].to_s
+  assert_equal "c2", report[1][0].to_s
+  report.each do |entry|
+    assert_equal(-1, entry[2].to_i)
+    assert_equal Cybertrain::DB::Normalizer::WITHOUT_ROWID, entry[3].to_i
+    assert_equal 1, entry[4].to_i
+  end
+  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM c1")[0]["at"].to_s
+  assert_equal "2026-10-05T09:00:00Z", conn.execute("SELECT at FROM c2")[0]["at"].to_s
+  conn.close
+end
+
+# A STRICT table cannot declare DATETIME (SQLite refuses the type), so it
+# never reaches the report: the option orders are asked of the predicate,
+# on real tables.
 test "WITHOUT ROWID is seen in a table-option list in either order" do
   n = Cybertrain::DB::Normalizer
-  assert_equal true, n.without_rowid?("CREATE TABLE s (k INTEGER PRIMARY KEY, at TEXT) STRICT, WITHOUT ROWID")
-  assert_equal true, n.without_rowid?("CREATE TABLE s (k INTEGER PRIMARY KEY, at TEXT) WITHOUT ROWID, STRICT")
-  assert_equal true, n.without_rowid?("CREATE TABLE s (k INTEGER PRIMARY KEY) WITHOUT\r\n ROWID -- options")
-  assert_equal false, n.without_rowid?("CREATE TABLE s (k INTEGER PRIMARY KEY, at TEXT) STRICT")
-  assert_equal false, n.without_rowid?("CREATE TABLE s (note TEXT DEFAULT 'without rowid')")
   conn = Cybertrain::DB::Connection.new(":memory:")
   conn.exec_script("CREATE TABLE s (k INTEGER PRIMARY KEY, at TEXT) STRICT, WITHOUT ROWID")
   conn.exec_script("CREATE TABLE r (k INTEGER PRIMARY KEY, at TEXT) WITHOUT ROWID, STRICT")
-  rows = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' ORDER BY name")
-  assert_equal 2, rows.size
-  assert_equal true, n.without_rowid?(rows[0]["sql"].to_s)
-  assert_equal true, n.without_rowid?(rows[1]["sql"].to_s)
+  conn.exec_script("CREATE TABLE p (k INTEGER PRIMARY KEY, at TEXT) STRICT")
+  conn.exec_script("CREATE TABLE \"odd \"\"name\" (k TEXT PRIMARY KEY) WITHOUT ROWID")
+  assert_equal true, n.without_rowid?(conn, "s")
+  assert_equal true, n.without_rowid?(conn, "r")
+  assert_equal false, n.without_rowid?(conn, "p")
+  assert_equal true, n.without_rowid?(conn, "odd \"name")
   conn.close
 end
 

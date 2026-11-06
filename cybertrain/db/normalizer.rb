@@ -25,7 +25,8 @@ module Cybertrain
       # counted. Rows are located by SQLite's _rowid_, so a table needs no `id`
       # column; one that has no rowid (WITHOUT ROWID) or declares a column
       # named _rowid_ is reported with rewritten -1 and skipped, the reason
-      # (WITHOUT_ROWID or DECLARES_ROWID) in the skipped slot and the count
+      # (WITHOUT_ROWID, as PRAGMA table_list's wr column says, or
+      # DECLARES_ROWID) in the skipped slot and the count
       # of its cells that still need normalization in the pending slot.
       # @param connection [Cybertrain::DB::Connection]
       # @return [Array<Array>] one [table, column, rewritten, skipped,
@@ -34,11 +35,11 @@ module Cybertrain
         report = Array.new(0) { ["", "", 0, 0, 0] }
         connection.transaction do
           tables = connection.execute(
-            "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
           )
           tables.each do |t|
             table = t["name"].to_s
-            normalize_table(connection, table, t["sql"].to_s, report)
+            normalize_table(connection, table, report)
           end
         end
         report
@@ -46,15 +47,14 @@ module Cybertrain
 
       # @param connection [Cybertrain::DB::Connection]
       # @param table [String]
-      # @param create_sql [String] the table's CREATE statement
       # @param report [Array<Array>] receives one entry per DATETIME column
       # @return [nil]
-      def self.normalize_table(connection, table, create_sql, report)
+      def self.normalize_table(connection, table, report)
         # table_xinfo, not table_info: it also lists generated columns
         # (hidden 2 or 3), whose names can shadow _rowid_ too.
         columns = connection.execute("PRAGMA table_xinfo(#{pragma_quote(table)})")
         reason = 0
-        reason = WITHOUT_ROWID if without_rowid?(create_sql)
+        reason = WITHOUT_ROWID if without_rowid?(connection, table)
         datetimes = Array.new(0) { "" }
         columns.each do |c|
           name = c["name"].to_s
@@ -75,36 +75,18 @@ module Cybertrain
         nil
       end
 
-      # True when the table options -- the text after the CREATE
-      # statement's last ")" -- contain WITHOUT ROWID, in any case, with any
-      # run of whitespace between the words and in either order with STRICT.
-      # @param create_sql [String]
+      # True when the table is WITHOUT ROWID, as SQLite itself says (PRAGMA
+      # table_list's wr column, SQLite 3.37+): parsing the CREATE text is
+      # defeated by comments such as `WITHOUT /* x */ ROWID`.
+      # @param connection [Cybertrain::DB::Connection]
+      # @param table [String]
       # @return [Boolean]
-      def self.without_rowid?(create_sql)
-        s = create_sql.to_s
-        n = s.bytesize
-        last = -1
-        i = 0
-        while i < n
-          last = i if s.getbyte(i) == 41 # ")"
-          i += 1
+      def self.without_rowid?(connection, table)
+        found = false
+        connection.execute("PRAGMA table_list(#{pragma_quote(table)})").each do |r|
+          found = true if r["wr"].to_i == 1
         end
-        tail = +""
-        space = false
-        i = last + 1
-        while i < n
-          b = s.getbyte(i)
-          # 32 space, 9 tab, 10 newline, 13 carriage return
-          if b == 32 || b == 9 || b == 10 || b == 13
-            space = true
-          else
-            tail << " " if space
-            space = false
-            tail << s.byteslice(i, 1)
-          end
-          i += 1
-        end
-        tail.upcase.include?("WITHOUT ROWID")
+        found
       end
 
       # "a\"b" -> "\"a\"\"b\"": PRAGMA takes a double-quoted identifier.
