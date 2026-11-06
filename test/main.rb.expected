@@ -6,7 +6,7 @@ Usage:
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
-                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
@@ -16,7 +16,7 @@ Usage:
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
-                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
@@ -26,7 +26,7 @@ Usage:
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
-                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
@@ -38,7 +38,7 @@ Usage:
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema:dump | create
-                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum
+                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
@@ -46,8 +46,8 @@ ok   an unknown word prints the usage and exits 1
 created :memory:
 Status  Migration ID    Migration Name
 db rollback: N must be a positive integer, got "x"
-usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)
-usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)
+usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum|normalize)
+usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum|normalize)
 ok   db passes its arguments to DB::CLI
 schema dump skipped (no db/ directory here)
 ok   migrate is db migrate
