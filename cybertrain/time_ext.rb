@@ -132,7 +132,8 @@ class Time
         i += strptime_name_length(s, i, STRPTIME_DAYS[idx])
       elsif d == "Z"
         w = strptime_word(s, i)
-        raise ArgumentError, "invalid date: #{text}" if w == 0
+        zone = s.byteslice(i, w).downcase
+        raise ArgumentError, "invalid date: #{text}" unless zone == "utc" || zone == "gmt" || zone == "z"
         i += w
       elsif d == "z"
         sign = i < n ? s.getbyte(i) : 0
@@ -166,7 +167,9 @@ class Time
     end
     time = Cybertrain::Cast.utc_time(year, month, day, hour, minute, second, usec, offset)
     raise ArgumentError, "invalid date: #{text}" if time.nil?
-    yday > 0 ? (time + (yday - 1) * 86400).utc : time
+    return time if yday == 0
+    raise ArgumentError, "invalid date: #{text}" if yday == 366 && Cybertrain::Cast.days_in_month(year, 2) == 28
+    (time + (yday - 1) * 86400).utc
   end
 
   # How many ASCII digits (at most `max`) `s` has from byte `from`.
@@ -214,4 +217,6 @@ class Time
     w = strptime_word(s, from)
     w >= full.bytesize && s.byteslice(from, full.bytesize).downcase == full ? full.bytesize : 3
   end
+
+  private_class_method :strptime_digits, :strptime_word, :strptime_name, :strptime_name_length
 end

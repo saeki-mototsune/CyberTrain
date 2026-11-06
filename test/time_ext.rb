@@ -26,6 +26,11 @@ test "Time.strptime names, zones and malformed input" do
   assert_equal Time.utc(2026, 11, 5, 9, 30), Time.strptime("Thu 5 nov 2026 10:30 +01:00", "%a %d %b %Y %H:%M %z")
   assert_equal Time.utc(2026, 11, 5, 9), Time.strptime("2026-11-05 09Z100%", "%Y-%m-%d %H%Z100%%")
   assert_equal Time.utc(1969, 12, 31, 23, 59, 59), Time.strptime("-1", "%s")
+  assert_equal Time.utc(2026, 11, 5, 9), Time.strptime("2026-11-05 09:00 utc", "%Y-%m-%d %H:%M %Z")
+  assert_equal Time.utc(2026, 11, 5, 9), Time.strptime("2026-11-05 09:00 Z", "%Y-%m-%d %H:%M %Z")
+  assert_includes assert_raises("ArgumentError") { Time.strptime("2026-11-05 09:00 EST", "%Y-%m-%d %H:%M %Z") }, "invalid date"
+  assert_includes assert_raises("ArgumentError") { Time.strptime("2026 366", "%Y %j") }, "invalid date"
+  assert_equal Time.utc(2028, 12, 31), Time.strptime("2028 366", "%Y %j")
   assert_includes assert_raises("ArgumentError") { Time.strptime("2026-13-05", "%Y-%m-%d") }, "invalid date"
   assert_includes assert_raises("ArgumentError") { Time.strptime("2026-1", "%Y-%m-%d") }, "invalid date"
   assert_includes assert_raises("ArgumentError") { Time.strptime("2026-10-05 extra", "%Y-%m-%d") }, "invalid date"
