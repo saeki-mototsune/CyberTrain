@@ -205,4 +205,40 @@ test "reload drops the preloaded comments" do
   assert_equal 1, statements - before
 end
 
+test "the Array to_a hands out from a preload is a copy: mutating it leaves the association alone" do
+  seed_posts
+  post = Post.where(title: "A").includes(:comments).to_a[0]
+  before = statements
+  list = post.comments.to_a
+  list.reverse!
+  list << list[0]
+  list.delete_if { |c| c.body == "a1" }
+  assert_equal 2, post.comments.size
+  assert_equal ["a1", "a2"], post.comments.to_a.map { |c| c.body }
+  assert_equal 0, statements - before
+end
+
+test "preloaded first and last are the queried ones: children come in id order" do
+  Cybertrain::DB.with { |c| c.exec_script("DELETE FROM comments; DELETE FROM posts;") }
+  post = Post.create(title: "Ordered")
+  pid = post.id
+  # Ids inserted out of order, and an index under which SQLite would hand
+  # the rows back by commenter descending (ids 3, 2, 1) rather than by id.
+  Cybertrain::DB.with do |c|
+    c.exec_script("CREATE INDEX IF NOT EXISTS comments_post_commenter ON comments (post_id, commenter DESC)")
+    c.execute("INSERT INTO comments (id, post_id, commenter, body, extras, seen_on, due_on, created_at, updated_at) " \
+              "VALUES (3, ?, 'z', 'three', '{}', '2026-10-05', '2026-10-05', 'now', 'now')", [pid])
+    c.execute("INSERT INTO comments (id, post_id, commenter, body, extras, seen_on, due_on, created_at, updated_at) " \
+              "VALUES (1, ?, 'x', 'one', '{}', '2026-10-05', '2026-10-05', 'now', 'now')", [pid])
+    c.execute("INSERT INTO comments (id, post_id, commenter, body, extras, seen_on, due_on, created_at, updated_at) " \
+              "VALUES (2, ?, 'y', 'two', '{}', '2026-10-05', '2026-10-05', 'now', 'now')", [pid])
+  end
+  queried = Post.find(pid)
+  preloaded = Post.where(id: pid).includes(:comments).to_a[0]
+  assert_equal queried.comments.first.body, preloaded.comments.first.body
+  assert_equal queried.comments.last.body, preloaded.comments.last.body
+  assert_equal ["one", "two", "three"], preloaded.comments.to_a.map { |c| c.body }
+  Cybertrain::DB.with { |c| c.exec_script("DROP INDEX comments_post_commenter") }
+end
+
 Cybertrain::Test.run!

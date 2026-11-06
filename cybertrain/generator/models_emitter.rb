@@ -275,7 +275,17 @@ module Cybertrain
         src << "\n"
         src << emit_includes(model, plans)
         src << "  def to_a\n"
-        src << "    return @preloaded if records_preloaded?\n"
+        # A preloaded relation hands out a copy: the Array is the record's
+        # cache, and the caller may mutate what to_a returns.
+        src << "    if records_preloaded?\n"
+        src << "      copy = Array.new(0) { #{model}.new }\n"
+        src << "      i = 0\n"
+        src << "      while i < @preloaded.size\n"
+        src << "        copy << @preloaded[i]\n"
+        src << "        i += 1\n"
+        src << "      end\n"
+        src << "      return copy\n"
+        src << "    end\n"
         src << "\n"
         # A while loop: an each block is a Proc per query.
         src << "    out = Array.new(0) { #{model}.new }\n"

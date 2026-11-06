@@ -68,7 +68,7 @@ ok   a declared has_one reads the preload cache, else queries by the owner's id
 ok   includes checks each name by a case over the associations; preload is the same; the class delegates both
 ok   to_a, first, last, size and empty? answer from the preloaded records; to_a preloads each included name
 ok   a has_many reader is created preloaded from its cache; includes fills the cache grouped by key, chunked
-ok   includes of a has_one indexes the first child per key; every record gets its child or nil
+ok   includes of a has_one indexes the lowest-id child per key; every record gets its child or nil
 ok   includes of a belongs_to queries the distinct non-nil keys; a missing parent is cached as nil
 ok   reset_association_caches clears every cache; reload calls it
 ok   dependent: destroy, delete_all and nullify become destroy_dependents

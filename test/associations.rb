@@ -40,7 +40,15 @@ class UserRelation < Cybertrain::Relation
   end
 
   def to_a
-    return @preloaded if records_preloaded?
+    if records_preloaded?
+      copy = Array.new(0) { User.new }
+      i = 0
+      while i < @preloaded.size
+        copy << @preloaded[i]
+        i += 1
+      end
+      return copy
+    end
 
     out = Array.new(0) { User.new }
     found = rows
@@ -92,7 +100,7 @@ class UserRelation < Cybertrain::Relation
       end
       start = 0
       while start < ids.size
-        found = ProfileRelation.new("profiles").where(user_id: ids[start, step]).to_a
+        found = ProfileRelation.new("profiles").where(user_id: ids[start, step]).order(id: :asc).to_a
         j = 0
         while j < found.size
           key = Cybertrain::Cast.int(found[j].user_id)
@@ -118,7 +126,7 @@ class UserRelation < Cybertrain::Relation
       end
       start = 0
       while start < ids.size
-        found = NoteRelation.new("notes").where(user_id: ids[start, step]).to_a
+        found = NoteRelation.new("notes").where(user_id: ids[start, step]).order(id: :asc).to_a
         j = 0
         while j < found.size
           key = Cybertrain::Cast.int(found[j].user_id)
@@ -418,7 +426,15 @@ class NoteRelation < Cybertrain::Relation
   end
 
   def to_a
-    return @preloaded if records_preloaded?
+    if records_preloaded?
+      copy = Array.new(0) { Note.new }
+      i = 0
+      while i < @preloaded.size
+        copy << @preloaded[i]
+        i += 1
+      end
+      return copy
+    end
 
     out = Array.new(0) { Note.new }
     found = rows

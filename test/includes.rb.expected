@@ -10,4 +10,6 @@ ok   an empty result runs only its own statement (Review Focus 4)
 ok   includes leaves the other readers alone
 ok   read_association(:comments) on a preloaded post answers the Array without a statement
 ok   reload drops the preloaded comments
-12 tests, 52 assertions, 0 failures
+ok   the Array to_a hands out from a preload is a copy: mutating it leaves the association alone
+ok   preloaded first and last are the queried ones: children come in id order
+14 tests, 58 assertions, 0 failures

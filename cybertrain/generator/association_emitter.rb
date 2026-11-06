@@ -416,8 +416,9 @@ module Cybertrain
       end
 
       # The `when` body for a has_many / has_one: the records' ids, the
-      # children `where(fk: ids)` grouped (has_many) or indexed, first one
-      # kept (has_one), by their foreign key.
+      # children `where(fk: ids)` in id order (so the preloaded first and
+      # last are the queried ones) grouped (has_many) or indexed, lowest id
+      # kept (has_one, as its reader's find_by), by their foreign key.
       def self.preload_children(plan)
         many = plan.kind == :has_many
         fk = reader_name(plan.foreign_key)
@@ -437,7 +438,8 @@ module Cybertrain
         src << "      end\n"
         src << "      start = 0\n"
         src << "      while start < ids.size\n"
-        src << "        found = #{plan.model}Relation.new(\"#{plan.target_table}\").where(#{plan.foreign_key}: ids[start, step]).to_a\n"
+        src << "        found = #{plan.model}Relation.new(\"#{plan.target_table}\").where(#{plan.foreign_key}: ids[start, step])" \
+               ".order(id: :asc).to_a\n"
         src << "        j = 0\n"
         src << "        while j < found.size\n"
         src << "          key = #{key_expr(plan, "found[j].#{fk}")}\n"

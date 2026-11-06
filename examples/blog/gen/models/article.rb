@@ -65,7 +65,15 @@ class ArticleRelation < Cybertrain::Relation
   end
 
   def to_a
-    return @preloaded if records_preloaded?
+    if records_preloaded?
+      copy = Array.new(0) { Article.new }
+      i = 0
+      while i < @preloaded.size
+        copy << @preloaded[i]
+        i += 1
+      end
+      return copy
+    end
 
     out = Array.new(0) { Article.new }
     found = rows
@@ -180,7 +188,7 @@ class ArticleRelation < Cybertrain::Relation
       end
       start = 0
       while start < ids.size
-        found = CommentRelation.new("comments").where(article_id: ids[start, step]).to_a
+        found = CommentRelation.new("comments").where(article_id: ids[start, step]).order(id: :asc).to_a
         j = 0
         while j < found.size
           key = found[j].article_id

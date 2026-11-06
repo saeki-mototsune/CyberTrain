@@ -65,7 +65,15 @@ class CommentRelation < Cybertrain::Relation
   end
 
   def to_a
-    return @preloaded if records_preloaded?
+    if records_preloaded?
+      copy = Array.new(0) { Comment.new }
+      i = 0
+      while i < @preloaded.size
+        copy << @preloaded[i]
+        i += 1
+      end
+      return copy
+    end
 
     out = Array.new(0) { Comment.new }
     found = rows

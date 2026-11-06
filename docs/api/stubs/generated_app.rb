@@ -609,7 +609,8 @@ class ArticleRelation < Cybertrain::Relation
 
   # Runs the query, then the {#includes} queries. Templates iterate an
   # Array, so controllers usually end a query with `to_a`. A
-  # {#preloaded} relation answers from its records.
+  # {#preloaded} relation answers a new Array of its records (changing it
+  # leaves the association as it was).
   # @example
   #   @articles = Article.all.to_a
   # @return [Array<Article>]
@@ -622,14 +623,16 @@ class ArticleRelation < Cybertrain::Relation
   def each(&blk) = to_a.each(&blk)
 
   # The first record by the relation's order (by id when it has none),
-  # from the {#offset} on.
+  # from the {#offset} on. A {#preloaded} relation answers its first
+  # preloaded record (preloaded children come in id order) without a query.
   # @return [Article, nil]
   # @api public
   def first; end
 
   # Without a limit or offset, the first record of the reversed order (the
   # highest id when there is no order); with them, the last record of that
-  # window.
+  # window. A {#preloaded} relation answers its last preloaded record
+  # without a query.
   # @return [Article, nil]
   # @api public
   def last; end

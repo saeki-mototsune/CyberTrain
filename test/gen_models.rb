@@ -119,7 +119,15 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       end
 
       def to_a
-        return @preloaded if records_preloaded?
+        if records_preloaded?
+          copy = Array.new(0) { Post.new }
+          i = 0
+          while i < @preloaded.size
+            copy << @preloaded[i]
+            i += 1
+          end
+          return copy
+        end
 
         out = Array.new(0) { Post.new }
         found = rows
@@ -234,7 +242,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
           end
           start = 0
           while start < ids.size
-            found = CommentRelation.new("comments").where(post_id: ids[start, step]).to_a
+            found = CommentRelation.new("comments").where(post_id: ids[start, step]).order(id: :asc).to_a
             j = 0
             while j < found.size
               key = found[j].post_id
@@ -509,7 +517,15 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       end
 
       def to_a
-        return @preloaded if records_preloaded?
+        if records_preloaded?
+          copy = Array.new(0) { Comment.new }
+          i = 0
+          while i < @preloaded.size
+            copy << @preloaded[i]
+            i += 1
+          end
+          return copy
+        end
 
         out = Array.new(0) { Comment.new }
         found = rows
@@ -906,7 +922,15 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       end
 
       def to_a
-        return @preloaded if records_preloaded?
+        if records_preloaded?
+          copy = Array.new(0) { Flag.new }
+          i = 0
+          while i < @preloaded.size
+            copy << @preloaded[i]
+            i += 1
+          end
+          return copy
+        end
 
         out = Array.new(0) { Flag.new }
         found = rows
@@ -2596,7 +2620,15 @@ test "to_a, first, last, size and empty? answer from the preloaded records; to_a
   post = assoc_emit("post")
   assert_includes post, indent_body(<<~'RUBY')
     def to_a
-      return @preloaded if records_preloaded?
+      if records_preloaded?
+        copy = Array.new(0) { Post.new }
+        i = 0
+        while i < @preloaded.size
+          copy << @preloaded[i]
+          i += 1
+        end
+        return copy
+      end
 
       out = Array.new(0) { Post.new }
       found = rows
@@ -2656,7 +2688,7 @@ test "a has_many reader is created preloaded from its cache; includes fills the 
         end
         start = 0
         while start < ids.size
-          found = PostRelation.new("posts").where(user_id: ids[start, step]).to_a
+          found = PostRelation.new("posts").where(user_id: ids[start, step]).order(id: :asc).to_a
           j = 0
           while j < found.size
             key = Cybertrain::Cast.int(found[j].user_id)
@@ -2675,12 +2707,12 @@ test "a has_many reader is created preloaded from its cache; includes fills the 
   assert_lines(user, ["return nil if records.empty?", "step = Cybertrain::DB.with { |c| c.variable_limit }"])
 end
 
-test "includes of a has_one indexes the first child per key; every record gets its child or nil" do
+test "includes of a has_one indexes the lowest-id child per key; every record gets its child or nil" do
   user = assoc_emit("user")
   assert_lines(user, [
     "when :profile",
     "index = { 0 => Profile.new }",
-    'found = ProfileRelation.new("profiles").where(user_id: ids[start, step]).to_a',
+    'found = ProfileRelation.new("profiles").where(user_id: ids[start, step]).order(id: :asc).to_a',
     "index[key] = found[j] unless index.key?(key)",
     "records[i].profile_preload!(index[records[i].id])"
   ])
