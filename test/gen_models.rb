@@ -30,9 +30,9 @@ def model_spec_schema
   end
 end
 
-def emit_for(name, view_methods = [])
+def emit_for(name, view_methods = [], scopes = [])
   definition = model_spec_schema
-  Cybertrain::Gen::ModelsEmitter.emit(definition.table(name), definition, view_methods)
+  Cybertrain::Gen::ModelsEmitter.emit(definition.table(name), definition, view_methods, scopes)
 end
 
 # One line of `source` per entry, compared after stripping indentation.
@@ -873,7 +873,7 @@ end
 
 def events_source
   definition = typed_schema
-  Cybertrain::Gen::ModelsEmitter.emit(definition.table("events"), definition, [])
+  Cybertrain::Gen::ModelsEmitter.emit(definition.table("events"), definition, [], [])
 end
 
 test "integer, float, boolean, date and datetime casts" do
@@ -913,7 +913,7 @@ def phase2_source
       t.datetime "at"
     end
   end
-  Cybertrain::Gen::ModelsEmitter.emit(definition.table("readings"), definition, [])
+  Cybertrain::Gen::ModelsEmitter.emit(definition.table("readings"), definition, [], [])
 end
 
 # A class body's text: two spaces before every non-blank line.
@@ -1074,7 +1074,7 @@ end
 def emit_error(name)
   definition = raising_columns(name)
   begin
-    Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [])
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [], [])
     ""
   rescue ArgumentError => e
     e.message
@@ -1125,7 +1125,7 @@ test "emit rejects column names that are invalid; reserved ones and keywords are
   ["display", "tap", "methods", "send", "object_id", "freeze", "method", "instance_variable_get"].each do |noted|
     assert_equal "", emit_error(noted)
   end
-  display = Cybertrain::Gen::ModelsEmitter.emit(raising_columns("display").table("things"), raising_columns("display"), [])
+  display = Cybertrain::Gen::ModelsEmitter.emit(raising_columns("display").table("things"), raising_columns("display"), [], [])
   assert_lines(display, [
     '# NOTE: column "display" shadows Object#display on this model (nothing in Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)',
     "attr_accessor :display"
@@ -1146,7 +1146,7 @@ end
 
 test "a reserved column name generates under <column>_column with a note; read_attribute and write_attribute take either spelling" do
   definition = reserved_columns_schema
-  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [], [])
   assert_lines(file, [
     '# column "hash" reads as hash_column: "hash" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); queries (where, order, find_by) take the SQL name "hash"',
     '# column "attributes" reads as attributes_column: "attributes" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); queries (where, order, find_by) take the SQL name "attributes"',
@@ -1193,7 +1193,7 @@ test "a column named like a hook Ruby calls with an argument reads as <column>_c
       t.string "singleton_method_added"
     end
   end
-  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [], [])
   assert_lines(file, [
     "attr_accessor :initialize_copy_column, :singleton_method_added_column",
     "when :initialize_copy, :initialize_copy_column then @initialize_copy_column",
@@ -1220,7 +1220,7 @@ test "a reserved column or keyword whose fallback name is taken still fails" do
     end
   end
   msg = assert_raises("ArgumentError") do
-    Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [], [])
   end
   assert_includes msg, 'column "hash" can be neither "hash" nor "hash_column"'
   assert_includes msg, "another column of the table owns the second"
@@ -1241,7 +1241,7 @@ end
 
 test "a keyword column generates under <column>_column with a note that says keyword; a column named defined keeps its name" do
   definition = keyword_columns_schema
-  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [])
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [], [])
   assert_lines(file, [
     '# column "begin" reads as begin_column: "begin" is a Ruby keyword; queries (where, order, find_by) take the SQL name "begin"',
     '# column "end" reads as end_column: "end" is a Ruby keyword; queries (where, order, find_by) take the SQL name "end"',
@@ -1275,7 +1275,7 @@ test "a keyword column whose fallback name is a column fails, naming the keyword
     end
   end
   msg = assert_raises("ArgumentError") do
-    Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [])
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [], [])
   end
   assert_includes msg, 'column "end" can be neither "end" nor "end_column"'
   assert_includes msg, "a Ruby keyword"
@@ -1293,7 +1293,7 @@ test "an association cannot land on the renamed reader of a reserved column" do
       t.references :file
     end
   end
-  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [])
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("files"), definition, [], [])
   assert_lines(file, [
     "attr_accessor :hash_column",
     '# has_many hash_column reads as hash_column_as_file: "hash_column" is a column, another association or a Cybertrain::Model method',
@@ -1317,7 +1317,7 @@ test "an association reader named like an Object method keeps its name and gets 
       t.string "body"
     end
   end
-  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
+  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [], [])
   assert_lines(post, [
     '# NOTE: belongs_to reader "send" shadows Object#send on this model (nothing in Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)',
     "def send = User.find_by(id: @send_id)",
@@ -1336,7 +1336,7 @@ test "a capitalised foreign key gets a capitalised reader, dispatched with an ex
     end
     s.add_foreign_key "posts", "users", column: "Author_id"
   end
-  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
+  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [], [])
   # Bare, `Author` would be a constant lookup; `self.Author` is the reader.
   assert_lines(post, ["def Author = User.find_by(id: @Author_id)", "when :Author then self.Author"])
 end
@@ -1359,7 +1359,7 @@ test "an association named like a Model method moves to its fallback name instea
     s.add_foreign_key "things", "hashes", column: "hash_id"
   end
   # Post#errors stays Model#errors; the derived has_many takes <table>_as_<stem>.
-  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
+  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [], [])
   assert_lines(post, [
     '# has_many errors reads as errors_as_post: "errors" is a column, another association or a Cybertrain::Model method',
     'def errors_as_post = ErrorRelation.new("errors").where(post_id: @id).to_a',
@@ -1367,7 +1367,7 @@ test "an association named like a Model method moves to its fallback name instea
   ])
   refute post.include?("def errors ")
   # Thing#hash stays Object#hash; the belongs_to takes <stem>_as_<column>.
-  thing = Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [])
+  thing = Cybertrain::Gen::ModelsEmitter.emit(definition.table("things"), definition, [], [])
   assert_lines(thing, [
     '# belongs_to hash_id reads as hash_as_hash_id: "hash" is a column, another association or a Cybertrain::Model method',
     "def hash_as_hash_id = Hash.find_by(id: @hash_id)",
@@ -1386,7 +1386,7 @@ test "an association named like a Ruby keyword moves to its fallback name and th
     end
     s.add_foreign_key "lessons", "klasses", column: "class_id"
   end
-  lesson = Cybertrain::Gen::ModelsEmitter.emit(definition.table("lessons"), definition, [])
+  lesson = Cybertrain::Gen::ModelsEmitter.emit(definition.table("lessons"), definition, [], [])
   assert_lines(lesson, [
     '# belongs_to class_id reads as class_as_class_id: "class" is a Ruby keyword',
     "def class_as_class_id = Klass.find_by(id: @class_id)"
@@ -1415,7 +1415,7 @@ test "a column named like an association reader keeps its name; the association 
   end
   # articles.comments (a text column) wins the plain name, as it did before
   # the generator checked for the clash; the association is not lost.
-  article = Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [])
+  article = Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [], [])
   assert_lines(article, [
     "attr_accessor :title, :comments",
     '# has_many comments reads as comments_as_article: "comments" is a column, another association or a Cybertrain::Model method',
@@ -1426,7 +1426,7 @@ test "a column named like an association reader keeps its name; the association 
   # comments.article (a string column) next to comments.article_id: the
   # column keeps `article`, the belongs_to reads as article_as_article_id --
   # a schema that generated before PR #10 still generates.
-  comment = Cybertrain::Gen::ModelsEmitter.emit(definition.table("comments"), definition, [])
+  comment = Cybertrain::Gen::ModelsEmitter.emit(definition.table("comments"), definition, [], [])
   assert_lines(comment, [
     "attr_accessor :article_id, :article",
     '# belongs_to article_id reads as article_as_article_id: "article" is a column, another association or a Cybertrain::Model method',
@@ -1435,7 +1435,7 @@ test "a column named like an association reader keeps its name; the association 
   ])
   refute comment.include?("def article ")
   note = assert_raises("ArgumentError") do
-    Cybertrain::Gen::ModelsEmitter.emit(definition.table("notes"), definition, [])
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("notes"), definition, [], [])
   end
   assert_includes note, 'the has_many (tags.note_id) association can be neither "tags" nor "tags_as_note"'
 end
@@ -1454,7 +1454,7 @@ test "a has_many through two foreign keys whose _as_<stem> name is taken falls b
     s.add_foreign_key "messages", "users", column: "sender_id"
     s.add_foreign_key "messages", "users", column: "recipient_id"
   end
-  user = Cybertrain::Gen::ModelsEmitter.emit(definition.table("users"), definition, [])
+  user = Cybertrain::Gen::ModelsEmitter.emit(definition.table("users"), definition, [], [])
   assert_lines(user, [
     '# has_many messages reads as messages_as_sender_id: "messages_as_sender" is a column, another association or a Cybertrain::Model method',
     'def messages_as_sender_id = MessageRelation.new("messages").where(sender_id: @id).to_a',
@@ -1475,7 +1475,7 @@ test "a has_many named like a belongs_to reader of the same model is renamed, no
       t.string "body"
     end
   end
-  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [])
+  post = Cybertrain::Gen::ModelsEmitter.emit(definition.table("posts"), definition, [], [])
   assert_lines(post, [
     "def comments = Comment.find_by(id: @comments_id)",
     '# has_many comments reads as comments_as_post: "comments" is a column, another association or a Cybertrain::Model method',
@@ -1507,7 +1507,7 @@ test "string defaults are emitted as escaped Ruby literals" do
       t.string "title", null: false, default: %q('it''s "#{x}"')
     end
   end
-  source = Cybertrain::Gen::ModelsEmitter.emit(definition.table("notes"), definition, [])
+  source = Cybertrain::Gen::ModelsEmitter.emit(definition.table("notes"), definition, [], [])
   assert_lines(source, ['@title = "it\'s \"\#{x}\""'])
 end
 
@@ -1522,14 +1522,14 @@ test "a nullable foreign key and a foreign key to a differently named column" do
     end
     s.add_foreign_key "articles", "people", column: "writer_id"
   end
-  article = Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [])
+  article = Cybertrain::Gen::ModelsEmitter.emit(definition.table("articles"), definition, [], [])
   assert_lines(article, [
     "def writer = Person.find_by(id: @writer_id)",
     "when :writer then self.writer",
     '@editor_id = Cybertrain::Cast.int_or_nil(row["editor_id"])'
   ])
   refute_line(article, "def editor = Editor.find_by(id: @editor_id)")
-  person = Cybertrain::Gen::ModelsEmitter.emit(definition.table("people"), definition, [])
+  person = Cybertrain::Gen::ModelsEmitter.emit(definition.table("people"), definition, [], [])
   assert_lines(person, [
     'def articles = ArticleRelation.new("articles").where(writer_id: @id).to_a',
     "when :articles then self.articles",
@@ -1554,7 +1554,7 @@ test "two foreign keys to one table get distinct has_many names" do
     s.add_foreign_key "messages", "users", column: "sender_id"
     s.add_foreign_key "messages", "users", column: "recipient_id"
   end
-  user = Cybertrain::Gen::ModelsEmitter.emit(definition.table("users"), definition, [])
+  user = Cybertrain::Gen::ModelsEmitter.emit(definition.table("users"), definition, [], [])
   assert_lines(user, [
     'def messages_as_sender = MessageRelation.new("messages").where(sender_id: @id).to_a',
     'def messages_as_recipient = MessageRelation.new("messages").where(recipient_id: @id).to_a',
@@ -1564,7 +1564,7 @@ test "two foreign keys to one table get distinct has_many names" do
     "when :posts then self.posts"
   ])
   refute_line(user, "when :messages then self.messages")
-  message = Cybertrain::Gen::ModelsEmitter.emit(definition.table("messages"), definition, [])
+  message = Cybertrain::Gen::ModelsEmitter.emit(definition.table("messages"), definition, [], [])
   assert_lines(message, [
     "def sender = User.find_by(id: @sender_id)",
     "def recipient = User.find_by(id: @recipient_id)"
@@ -1674,8 +1674,8 @@ end
 
 test "view_methods_for picks the scanned methods of one model" do
   list = [
-    Cybertrain::Gen::ModelInfo.new("comment.rb", "Comment", ["short"]),
-    Cybertrain::Gen::ModelInfo.new("post.rb", "Post", ["summary"])
+    Cybertrain::Gen::ModelInfo.new("comment.rb", "Comment", ["short"], []),
+    Cybertrain::Gen::ModelInfo.new("post.rb", "Post", ["summary"], [])
   ]
   assert_equal ["summary"], Cybertrain::Gen::ModelsEmitter.view_methods_for("Post", list)
   assert_equal [], Cybertrain::Gen::ModelsEmitter.view_methods_for("Tag", list)
@@ -1686,6 +1686,134 @@ test "outputs maps gen/models paths to sources for every table" do
   outputs = Cybertrain::Gen::ModelsEmitter.outputs(definition, [])
   assert_equal ["gen/models/comment.rb", "gen/models/flag.rb", "gen/models/post.rb"], outputs.keys
   assert_equal EXPECTED_COMMENT, outputs["gen/models/comment.rb"]
+end
+
+# ---- scope ----------------------------------------------------------------
+
+SCOPED_MODEL_SOURCE = <<~'RUBY'
+  class Post
+    validates :title, presence: true
+    scope :recent, -> { order(created_at: :desc) }
+    scope :min_views, ->(n) { where("views >= ?", n) }
+    scope :window,->(from, to = 10){ where_between("views", from, to).limit(5) }
+
+    def summary = title[0, 3]
+
+    private
+
+    scope :titled, -> (t) { where(title: t) }
+  end
+RUBY
+
+def scoped_infos
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", SCOPED_MODEL_SOURCE)
+  [info]
+end
+
+test "scan_source reads one-line scope lambdas: name, parameter text, body and line" do
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", SCOPED_MODEL_SOURCE)
+  assert_equal ["summary"], info.view_methods
+  assert_equal ["recent", "min_views", "window", "titled"], info.scopes.map { |s| s.name }
+  assert_equal ["", "n", "from, to = 10", "t"], info.scopes.map { |s| s.params }
+  assert_equal ["order(created_at: :desc)", "where(\"views >= ?\", n)",
+                "where_between(\"views\", from, to).limit(5)", "where(title: t)"], info.scopes.map { |s| s.body }
+  assert_equal [3, 4, 5, 11], info.scopes.map { |s| s.line }
+  assert_equal ["app/models/post.rb"], info.scopes.map { |s| s.file }.uniq
+  assert_equal [], Cybertrain::Gen::ModelScan.scan_source("c.rb", "class Comment\n  def short = 1\nend\n").scopes
+end
+
+test "a scope becomes a Relation method and a class method delegating to all" do
+  post = emit_for("posts", ["summary"], scoped_infos[0].scopes)
+  assert_lines(post, [
+    "def recent = order(created_at: :desc)",
+    "def min_views(n) = where(\"views >= ?\", n)",
+    "def window(from, to = 10) = where_between(\"views\", from, to).limit(5)",
+    "def titled(t) = where(title: t)",
+    "def self.recent = all.recent",
+    "def self.min_views(n) = all.min_views(n)",
+    "def self.window(from, to = 10) = all.window(from, to)",
+    "def self.titled(t) = all.titled(t)"
+  ])
+  relation = post[0, post.index("class Post < Cybertrain::Model")]
+  assert_includes relation, "  def size = count\n\n  def recent = order(created_at: :desc)\n"
+  assert_includes relation, "  def titled(t) = where(title: t)\nend\n"
+  model = post[post.index("class Post < Cybertrain::Model"), post.size]
+  assert_includes model, "  def self.find_each(...) = all.find_each(...)\n  def self.recent = all.recent\n"
+  # No scopes: the generated files do not change.
+  assert_equal EXPECTED_POST, emit_for("posts", ["summary"])
+end
+
+test "scopes_for picks the scopes of one model" do
+  infos = scoped_infos
+  assert_equal ["recent", "min_views", "window", "titled"], Cybertrain::Gen::ModelsEmitter.scopes_for("Post", infos).map { |s| s.name }
+  assert_equal [], Cybertrain::Gen::ModelsEmitter.scopes_for("Comment", infos)
+  outputs = Cybertrain::Gen::ModelsEmitter.outputs(model_spec_schema, infos)
+  assert_includes outputs["gen/models/post.rb"], "  def self.recent = all.recent\n"
+  assert_equal EXPECTED_COMMENT, outputs["gen/models/comment.rb"]
+end
+
+def scope_error(line)
+  assert_raises("ModelScan::Error") do
+    Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  def summary = 1\n  #{line}\nend\n")
+  end
+end
+
+ONE_LINE_MESSAGE = "app/models/post.rb:3: scope must be a one-line lambda: scope :name, ->(args) { ... }"
+
+test "a scope that is not a one-line lambda raises" do
+  [
+    "scope :recent, -> {",
+    "scope :recent, -> do",
+    "scope :recent, lambda { order(\"id\") }",
+    "scope :recent, lambda do",
+    "scope :recent, proc { order(\"id\") }",
+    "scope :recent, :published",
+    "scope :recent do",
+    "scope :recent",
+    "scope(:recent, -> { order(\"id\") })",
+    "scope \"recent\", -> { order(\"id\") }",
+    "scope :recent, -> { }",
+    "scope :recent, -> { order(\"id\") } # newest first",
+    "scope :recent, ->(n { limit(n) }",
+    "scope :recent, ->(*ns) { limit(ns[0]) }",
+    "scope :recent, ->(n:) { limit(n) }",
+    "scope :recent, ->(n, &blk) { limit(n) }",
+    "scope :recent, ->(n, m: 2) { limit(n) }",
+    "scope :recent, ->(n = [1, 2]) { limit(n) }"
+  ].each do |line|
+    assert_equal ONE_LINE_MESSAGE, scope_error(line)
+  end
+end
+
+test "a scope named like a Relation method raises" do
+  ["where", "order", "limit", "count", "first", "all", "none", "find_each", "to_a", "pluck_str", "create"].each do |name|
+    assert_equal "app/models/post.rb:3: scope :#{name} clashes with the method #{name} of the model's Relation " \
+                 "or class (a scope is generated as both); rename the scope",
+                 scope_error("scope :#{name}, -> { limit(1) }")
+  end
+end
+
+test "every class delegation and generated Relation method is a name a scope may not take" do
+  Cybertrain::Gen::ModelsEmitter::DELEGATED.each do |name|
+    Cybertrain::Test.count_assertion
+    flunk("#{name} is not in ModelScan::RESERVED_SCOPE_NAMES") unless Cybertrain::Gen::ModelScan::RESERVED_SCOPE_NAMES.include?(name)
+  end
+end
+
+test "a repeated scope raises" do
+  source = "class Post\n  scope :recent, -> { limit(1) }\n\n  scope :recent, ->(n) { limit(n) }\nend\n"
+  msg = assert_raises("ModelScan::Error") { Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", source) }
+  assert_equal "app/models/post.rb:4: scope :recent is already defined on line 2; rename one of them", msg
+end
+
+test "a scope named like a column raises" do
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  scope :title, -> { limit(1) }\nend\n")
+  msg = assert_raises("ModelScan::Error") { emit_for("posts", [], info.scopes) }
+  assert_equal "app/models/post.rb:2: scope :title clashes with the column title of table posts; rename the scope", msg
+  ["id", "created_at"].each do |col|
+    info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  scope :#{col}, -> { limit(1) }\nend\n")
+    assert_includes assert_raises("ModelScan::Error") { emit_for("posts", [], info.scopes) }, "clashes with the column #{col}"
+  end
 end
 
 Cybertrain::Test.run!

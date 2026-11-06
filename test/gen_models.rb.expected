@@ -44,4 +44,12 @@ ok   scan_source skips class << self, nested classes and later classes
 ok   scan_source inside a module stops at the class's own end
 ok   view_methods_for picks the scanned methods of one model
 ok   outputs maps gen/models paths to sources for every table
-46 tests, 365 assertions, 0 failures
+ok   scan_source reads one-line scope lambdas: name, parameter text, body and line
+ok   a scope becomes a Relation method and a class method delegating to all
+ok   scopes_for picks the scopes of one model
+ok   a scope that is not a one-line lambda raises
+ok   a scope named like a Relation method raises
+ok   every class delegation and generated Relation method is a name a scope may not take
+ok   a repeated scope raises
+ok   a scope named like a column raises
+54 tests, 477 assertions, 0 failures

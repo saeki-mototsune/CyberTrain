@@ -44,8 +44,7 @@ module Cybertrain
   # `has_many :through`, `includes`, an untyped `pluck` (relations have
   # `pluck_str` / `pluck_int` / `pluck_float`), a `where` over a Range with
   # other than Integer ends (use `where_between`), dirty tracking,
-  # transactions around `save`, STI, enums and the `scope` macro (write
-  # `def self.published = where(published: true)` instead).
+  # transactions around `save`, STI and enums.
   #
   # Implementation: validations and callbacks are runtime data keyed by model
   # name, since Spinel cannot define methods at runtime.
@@ -92,6 +91,29 @@ module Cybertrain
       end
       nil
     end
+
+    # Declares a named query: `scope :recent, -> { order(created_at: :desc) }`
+    # or, with parameters, `scope :min_views, ->(n) { where("views >= ?", n) }`.
+    # The generator reads the line as text (nothing is evaluated): it copies
+    # the lambda's parameters and body into a method of the model's Relation
+    # (`def min_views(n) = where("views >= ?", n)`, so the body runs on the
+    # relation) and a class method (`def self.min_views(n) = all.min_views(n)`),
+    # so `Post.recent.min_views(2).first` chains like any other query. At run
+    # time this method does nothing; it exists so the model file loads.
+    #
+    # A scope is one line, a `->` lambda with plain or defaulted positional
+    # parameters; any other `scope` line (a multi-line lambda, `lambda do`, a
+    # `proc`, keyword or splat parameters) stops the generator, as does a
+    # scope named like a column, a query method (`where`, `count`, `first`,
+    # ...) or another scope of the model.
+    # @example
+    #   scope :published, -> { where(published: true) }
+    #   scope :since, ->(time) { where("created_at > ?", time) }
+    # @param name [Symbol] the scope's name
+    # @param body [Proc] the lambda (never called)
+    # @return [nil]
+    # @api public
+    def self.scope(name, body) = nil
 
     # Callback blocks receive the record as their argument
     # (`before_save { |post| post.title = post.title.strip }`): Spinel cannot

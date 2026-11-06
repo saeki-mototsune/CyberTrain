@@ -129,6 +129,9 @@ class PostRelation < Cybertrain::Relation
   end
 
   def size = count
+
+  def recent = order(created_at: :desc)
+  def min_views(n) = where("views >= ?", n)
 end
 
 class Post < Cybertrain::Model
@@ -242,6 +245,8 @@ class Post < Cybertrain::Model
   def self.delete_all(...) = all.delete_all(...)
   def self.destroy_all(...) = all.destroy_all(...)
   def self.find_each(...) = all.find_each(...)
+  def self.recent = all.recent
+  def self.min_views(n) = all.min_views(n)
 
   def self.create(attrs = {})
     rec = Post.new(attrs)

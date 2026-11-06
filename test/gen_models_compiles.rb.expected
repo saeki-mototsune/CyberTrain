@@ -15,4 +15,5 @@ ok   the generated query methods: where.not, where with a String and a Range, wh
 ok   update_columns writes through the generated to_row: decimal rounded to its scale, json as text
 ok   a NOT NULL date: invalid assigned text stays nil and the save fails; a valid date round-trips
 ok   update_all rounds a decimal to its scale as save does, and nil stores NULL
-17 tests, 107 assertions, 0 failures
+ok   scopes from app/models/post.rb run as class methods and chain on a relation
+18 tests, 114 assertions, 0 failures

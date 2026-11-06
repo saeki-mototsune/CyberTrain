@@ -69,6 +69,7 @@ test "scan_dir finds Post and its summary view method" do
   assert_equal "Post", infos[0].class_name
   assert_equal FIXTURE + "/app/models/post.rb", infos[0].file
   assert_equal ["summary"], infos[0].view_methods
+  assert_equal ["recent", "min_views"], infos[0].scopes.map { |sc| sc.name }
 end
 
 test "write_all writes every model file under gen/models" do
@@ -298,6 +299,20 @@ test "update_all rounds a decimal to its scale as save does, and nil stores NULL
   raw = Cybertrain::DB.with { |c| c.execute("SELECT price IS NULL AS n FROM posts WHERE id = ?", [post.id]) }
   assert_equal 1, Cybertrain::Cast.int(raw[0]["n"])
   assert_nil Post.find(post.id).price
+end
+
+test "scopes from app/models/post.rb run as class methods and chain on a relation" do
+  reset_tables
+  at = Time.utc(2026, 10, 1, 12, 0, 0)
+  Post.create(title: "Old", views: 5, created_at: at, updated_at: at)
+  Post.create(title: "New", views: 1, created_at: at + 60, updated_at: at + 60)
+  Post.create(title: "Mid", views: 2, created_at: at + 30, updated_at: at + 30)
+  assert_equal "New", Post.recent.first.title
+  assert_equal 2, Post.min_views(2).count
+  assert_equal ["Mid", "Old"], Post.recent.min_views(2).to_a.map { |p| p.title }
+  assert_equal ["Mid", "Old"], Post.min_views(2).recent.to_a.map { |p| p.title }
+  assert_equal "Old", Post.where(title: "Old").min_views(2).first.title
+  assert_equal 0, Post.min_views(6).count
 end
 
 Cybertrain::Test.run!

@@ -116,9 +116,33 @@ dispatch.scan(/^\s*when ((?:"[^"]+"(?:,\s*)?)+)/) { |(list)| helper_names.concat
 helper_names = helper_names.uniq.sort
 helpers_missing = helper_names - Cybertrain::Gen::HelperScan::RESERVED_HELPER_NAMES
 
-if missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty? && helpers_missing.empty?
-  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names"
+# A model's `scope :x` is generated as `def x` on its Relation and
+# `def self.x` on the model, so Gen::ModelScan::RESERVED_SCOPE_NAMES must
+# name every instance method of cybertrain/relation.rb (public or private),
+# every `def` the model generator writes into the Relation and the model
+# class (models_emitter.rb's emitted `def` and `def self.` lines and its
+# DELEGATED list), and every class method of cybertrain/model.rb.
+require "cybertrain/generator/models_emitter"
+relation_source = File.read(File.expand_path("../cybertrain/relation.rb", __dir__))
+emitter_source = File.read(File.expand_path("../cybertrain/generator/models_emitter.rb", __dir__))
+scope_names = relation_source.scan(/^\s*def\s+(?!self\.)([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten
+scope_names.concat(relation_source.scan(/^\s*attr_reader\s+((?::\w+\s*,?\s*)+)/).flatten.join(" ").scan(/:(\w+)/).flatten)
+emitted_relation = emitter_source[/def self\.emit_relation\(.*?\n      end\n/m].to_s
+scope_names.concat(emitted_relation.scan(/src << "  def ([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten)
+scope_names.concat(emitter_source.scan(/src << "  def self\.([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten)
+scope_names.concat(Cybertrain::Gen::ModelsEmitter::DELEGATED)
+scope_names.concat(source.scan(/^\s*def\s+self\.([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten)
+scope_names = scope_names.uniq.sort
+scopes_missing = scope_names - Cybertrain::Gen::ModelScan::RESERVED_SCOPE_NAMES
+
+if missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty? && helpers_missing.empty? && scopes_missing.empty?
+  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names; #{scope_names.size} Relation and model class methods refused as scope names"
 else
+  unless scopes_missing.empty?
+    warn "check-reserved-names: a model's Relation or class already has #{scopes_missing.map(&:inspect).join(", ")} " \
+         "(cybertrain/relation.rb, cybertrain/model.rb or what models_emitter.rb generates) but " \
+         "Cybertrain::Gen::ModelScan::RESERVED_SCOPE_NAMES (cybertrain/generator/model_scan.rb) does not refuse it as a scope name; add it"
+  end
   unless helpers_missing.empty?
     warn "check-reserved-names: the template helpers define or answer #{helpers_missing.map(&:inspect).join(", ")} " \
          "(cybertrain/template/helpers.rb or HelperBase) but Cybertrain::Gen::HelperScan::RESERVED_HELPER_NAMES " \
