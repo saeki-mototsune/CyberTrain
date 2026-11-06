@@ -388,7 +388,7 @@ is in `Model` as `insert_all_into(table, rows, …)`.
 The generator scans `app/models/*.rb` (the D38 scanner) for
 
 ```ruby
-has_many :comments, dependent: :destroy, class_name: "Comment", foreign_key: :article_id, counter_cache: true
+has_many :comments, dependent: :destroy, class_name: "Comment", foreign_key: :article_id
 has_one :profile, dependent: :destroy, class_name:, foreign_key:
 belongs_to :author, class_name: "User", foreign_key: :author_id, optional: true, counter_cache: true
 ```
