@@ -1,0 +1,11 @@
+ok   insert_all returns the ids of the rows it inserted and skips duplicates
+ok   returning: names the columns, cast by type; [] and nil return nothing
+ok   insert_all! raises on a duplicate
+ok   insert_all fills created_at and updated_at once per call, and not with record_timestamps: false
+ok   rows with different keys raise before anything is written
+ok   an encrypted column is refused in a bulk row
+ok   upsert_all updates only the supplied columns and keeps created_at
+ok   upsert_all with update_only and returning
+ok   a call with more binds than the variable limit is chunked inside one transaction
+ok   decimal rounding, json text, Date text and Time format in bulk rows
+10 tests, 95 assertions, 0 failures

@@ -284,6 +284,35 @@ class Post < Cybertrain::Model
     rec
   end
 
+  COLUMN_TYPES = {
+    "id" => :integer,
+    "title" => :string,
+    "body" => :text,
+    "views" => :integer,
+    "price" => :decimal,
+    "meta" => :json,
+    "published_on" => :date,
+    "created_at" => :datetime,
+    "updated_at" => :datetime
+  }
+  DECIMAL_SCALES = { "price" => 2 }
+  ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
+
+  def self.insert_all(rows, returning: [:id], record_timestamps: true)
+    Cybertrain::Model.insert_all_into("posts", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                      returning, record_timestamps, :nothing, nil, nil)
+  end
+
+  def self.insert_all!(rows, returning: [:id], record_timestamps: true)
+    Cybertrain::Model.insert_all_into("posts", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                      returning, record_timestamps, :raise, nil, nil)
+  end
+
+  def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)
+    Cybertrain::Model.insert_all_into("posts", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                      returning, record_timestamps, :update, unique_by, update_only)
+  end
+
   def comments = CommentRelation.new("comments").where(post_id: @id).to_a
 
   def read_association(name)

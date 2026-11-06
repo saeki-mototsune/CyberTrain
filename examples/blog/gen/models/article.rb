@@ -249,6 +249,31 @@ class Article < Cybertrain::Model
     rec
   end
 
+  COLUMN_TYPES = {
+    "id" => :integer,
+    "title" => :string,
+    "body" => :text,
+    "created_at" => :datetime,
+    "updated_at" => :datetime
+  }
+  DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales
+  ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
+
+  def self.insert_all(rows, returning: [:id], record_timestamps: true)
+    Cybertrain::Model.insert_all_into("articles", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                      returning, record_timestamps, :nothing, nil, nil)
+  end
+
+  def self.insert_all!(rows, returning: [:id], record_timestamps: true)
+    Cybertrain::Model.insert_all_into("articles", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                      returning, record_timestamps, :raise, nil, nil)
+  end
+
+  def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)
+    Cybertrain::Model.insert_all_into("articles", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                      returning, record_timestamps, :update, unique_by, update_only)
+  end
+
   def comments = CommentRelation.new("comments").where(article_id: @id).to_a
 
   def read_association(name)

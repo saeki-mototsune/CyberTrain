@@ -303,6 +303,31 @@ EXPECTED_POST = HEADER + <<~'RUBY'
         rec
       end
 
+      COLUMN_TYPES = {
+        "id" => :integer,
+        "title" => :string,
+        "body" => :text,
+        "created_at" => :datetime,
+        "updated_at" => :datetime
+      }
+      DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales
+      ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
+
+      def self.insert_all(rows, returning: [:id], record_timestamps: true)
+        Cybertrain::Model.insert_all_into("posts", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                          returning, record_timestamps, :nothing, nil, nil)
+      end
+
+      def self.insert_all!(rows, returning: [:id], record_timestamps: true)
+        Cybertrain::Model.insert_all_into("posts", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                          returning, record_timestamps, :raise, nil, nil)
+      end
+
+      def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)
+        Cybertrain::Model.insert_all_into("posts", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                          returning, record_timestamps, :update, unique_by, update_only)
+      end
+
       def comments = CommentRelation.new("comments").where(post_id: @id).to_a
 
       def read_association(name)
@@ -577,6 +602,32 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
         rec
       end
 
+      COLUMN_TYPES = {
+        "id" => :integer,
+        "post_id" => :integer,
+        "author" => :string,
+        "body" => :text,
+        "created_at" => :datetime,
+        "updated_at" => :datetime
+      }
+      DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales
+      ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
+
+      def self.insert_all(rows, returning: [:id], record_timestamps: true)
+        Cybertrain::Model.insert_all_into("comments", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                          returning, record_timestamps, :nothing, nil, nil)
+      end
+
+      def self.insert_all!(rows, returning: [:id], record_timestamps: true)
+        Cybertrain::Model.insert_all_into("comments", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                          returning, record_timestamps, :raise, nil, nil)
+      end
+
+      def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)
+        Cybertrain::Model.insert_all_into("comments", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                          returning, record_timestamps, :update, unique_by, update_only)
+      end
+
       def post = Post.find_by(id: @post_id)
 
       def read_association(name)
@@ -836,6 +887,30 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
         rec
       end
 
+      COLUMN_TYPES = {
+        "id" => :integer,
+        "active" => :boolean,
+        "score" => :float,
+        "group" => :string
+      }
+      DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales
+      ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
+
+      def self.insert_all(rows, returning: [:id], record_timestamps: true)
+        Cybertrain::Model.insert_all_into("flags", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                          returning, record_timestamps, :nothing, nil, nil)
+      end
+
+      def self.insert_all!(rows, returning: [:id], record_timestamps: true)
+        Cybertrain::Model.insert_all_into("flags", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                          returning, record_timestamps, :raise, nil, nil)
+      end
+
+      def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)
+        Cybertrain::Model.insert_all_into("flags", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                          returning, record_timestamps, :update, unique_by, update_only)
+      end
+
       def read_association(name) = nil
       def call_view_method(name) = nil
     end
@@ -1070,6 +1145,53 @@ test "column_type answers every column's type, decimal_scale the scales, binary_
     def binary_column?(name) = column_type(name) == :binary
 
   RUBY
+end
+
+test "bulk writes: COLUMN_TYPES, DECIMAL_SCALES and ENCRYPTED_COLUMNS, and three methods calling insert_all_into" do
+  source = phase2_source
+  assert_includes source, indent_body(<<~'RUBY')
+    COLUMN_TYPES = {
+      "id" => :integer,
+      "price" => :decimal,
+      "amount" => :decimal,
+      "loose" => :decimal,
+      "whole" => :decimal,
+      "meta" => :json,
+      "extras" => :json,
+      "day" => :date,
+      "due_on" => :date,
+      "big" => :integer,
+      "ratio" => :float,
+      "flag" => :boolean,
+      "data" => :binary,
+      "name" => :string,
+      "notes" => :text,
+      "at" => :datetime
+    }
+    DECIMAL_SCALES = { "price" => 2, "amount" => 8, "whole" => 0 }
+    ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
+
+    def self.insert_all(rows, returning: [:id], record_timestamps: true)
+      Cybertrain::Model.insert_all_into("readings", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                        returning, record_timestamps, :nothing, nil, nil)
+    end
+
+    def self.insert_all!(rows, returning: [:id], record_timestamps: true)
+      Cybertrain::Model.insert_all_into("readings", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                        returning, record_timestamps, :raise, nil, nil)
+    end
+
+    def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)
+      Cybertrain::Model.insert_all_into("readings", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                        returning, record_timestamps, :update, unique_by, update_only)
+    end
+  RUBY
+  # No scaled decimal: the typed empty Hash.
+  assert_includes emit_for("flags"), "  DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales\n"
+  # A name the generated class answers, so a scope cannot take it.
+  %w[insert_all insert_all! upsert_all insert_all_into].each do |name|
+    assert Cybertrain::Gen::ModelScan.reserved_scope_name?(name)
+  end
 end
 
 test "a table without decimals or BLOBs keeps the base decimal_scale and binary_column?" do

@@ -217,11 +217,17 @@ module Cybertrain
       ffi_const :BLOB, 4
       ffi_const :NULL_TYPE, 5
 
+      # sqlite3_limit categories.
+      ffi_const :LIMIT_VARIABLE_NUMBER, 9
+
       ffi_func :sqlite3_open_v2, [:str, :ptr, :int, :ptr], :int
       ffi_func :sqlite3_close, [:ptr], :int
       ffi_func :sqlite3_exec, [:ptr, :str, :ptr, :ptr, :ptr], :int, blocking: true
       ffi_func :sqlite3_errmsg, [:ptr], :str
       ffi_func :sqlite3_get_autocommit, [:ptr], :int
+      # sqlite3_limit(db, id, -1) reads a limit without changing it
+      # (Connection#variable_limit asks SQLITE_LIMIT_VARIABLE_NUMBER, 9).
+      ffi_func :sqlite3_limit, [:ptr, :int, :int], :int
 
       ffi_func :sqlite3_prepare_v2, [:ptr, :str, :int, :ptr, :ptr], :int, blocking: true
       ffi_func :sqlite3_bind_int64, [:ptr, :int, :long], :int

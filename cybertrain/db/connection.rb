@@ -52,6 +52,8 @@ module Cybertrain
         @path = path
         @closed = false
         @transaction_depth = 0
+        # SQLITE_LIMIT_VARIABLE_NUMBER, read on the first #variable_limit.
+        @variable_limit = -1
         # True once SQLite rolled back a transaction on its own while a
         # statement failed, until the application ends it with COMMIT, END
         # or ROLLBACK (#note_lost_transaction, #refuse_if_transaction_gone).
@@ -245,6 +247,30 @@ module Cybertrain
       def last_insert_id
         raise Error, "connection closed (last_insert_id)" if @closed
         SQLite3.sqlite3_last_insert_rowid(@db)
+      end
+
+      # The most `?` binds one statement may carry
+      # (SQLITE_LIMIT_VARIABLE_NUMBER: 32766 by default since SQLite 3.32,
+      # 999 before, 250000 in the bundled build), asked of the library once
+      # and then cached. Model.insert_all_into sizes its chunks by it.
+      # @return [Integer]
+      # @raise [Cybertrain::DB::Error] when the connection is closed
+      # @api public
+      def variable_limit
+        raise Error, "connection closed (variable_limit)" if @closed
+        @variable_limit = SQLite3.sqlite3_limit(@db, SQLite3::LIMIT_VARIABLE_NUMBER, -1) if @variable_limit < 0
+        @variable_limit
+      end
+
+      # Whether a transaction is open on this connection, however it was
+      # opened ({#begin!}, a `transaction` block or a BEGIN run as SQL):
+      # SQLite is out of autocommit mode.
+      # @return [Boolean]
+      # @raise [Cybertrain::DB::Error] when the connection is closed
+      # @api public
+      def in_transaction?
+        raise Error, "connection closed (in_transaction?)" if @closed
+        SQLite3.sqlite3_get_autocommit(@db) == 0
       end
 
       # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises

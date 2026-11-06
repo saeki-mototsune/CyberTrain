@@ -528,6 +528,50 @@ module Cybertrain
         src << "    rec\n"
         src << "  end\n"
         src << "\n"
+        src << emit_bulk_writes(table)
+        src
+      end
+
+      # The schema constants the bulk writes read -- COLUMN_TYPES (every
+      # column, `id` included, with column_type's type), DECIMAL_SCALES (the
+      # decimal columns that declare a scale) and ENCRYPTED_COLUMNS (empty
+      # until `encrypts` exists) -- and insert_all, insert_all! and
+      # upsert_all, each one call of Cybertrain::Model.insert_all_into
+      # (spec section 6). The empty containers come from typed helpers
+      # (NOTES rule 9).
+      def self.emit_bulk_writes(table)
+        src = +""
+        src << "  COLUMN_TYPES = {\n"
+        pairs = ["    \"id\" => :integer"]
+        table.columns.each do |c|
+          type = COLUMN_TYPES.include?(c.type) ? c.type : :unknown
+          pairs << "    \"#{c.name}\" => :#{type}"
+        end
+        src << pairs.join(",\n") << "\n"
+        src << "  }\n"
+        scaled = table.columns.select { |c| c.type == :decimal && c.scale >= 0 }
+        if scaled.empty?
+          src << "  DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales\n"
+        else
+          scales = scaled.map { |c| "\"#{c.name}\" => #{c.scale}" }.join(", ")
+          src << "  DECIMAL_SCALES = { #{scales} }\n"
+        end
+        src << "  ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns\n"
+        src << "\n"
+        head = "    Cybertrain::Model.insert_all_into(\"#{table.name}\", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,\n"
+        pad = "                                      "
+        src << "  def self.insert_all(rows, returning: [:id], record_timestamps: true)\n"
+        src << head << pad << "returning, record_timestamps, :nothing, nil, nil)\n"
+        src << "  end\n"
+        src << "\n"
+        src << "  def self.insert_all!(rows, returning: [:id], record_timestamps: true)\n"
+        src << head << pad << "returning, record_timestamps, :raise, nil, nil)\n"
+        src << "  end\n"
+        src << "\n"
+        src << "  def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)\n"
+        src << head << pad << "returning, record_timestamps, :update, unique_by, update_only)\n"
+        src << "  end\n"
+        src << "\n"
         src
       end
 

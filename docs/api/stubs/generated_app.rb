@@ -189,6 +189,97 @@ class Article < Cybertrain::Model
     rec
   end
 
+  # Every column with its type (`id` included), what the bulk writes cast
+  # by: `:integer`, `:float`, `:decimal`, `:boolean`, `:datetime`, `:date`,
+  # `:json`, `:binary`, `:string`, `:text`, or `:unknown`.
+  # @api public
+  COLUMN_TYPES = {
+    "id" => :integer,
+    "title" => :string,
+    "body" => :text,
+    "created_at" => :datetime,
+    "updated_at" => :datetime
+  }
+
+  # The decimal columns that declare a `scale:`, column => scale (none here).
+  # @api public
+  DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales
+
+  # The encrypted columns, which the bulk writes refuse (none here).
+  # @api public
+  ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
+
+  # Inserts many rows in multi-row statements (`INSERT ... VALUES (...),
+  # (...) ON CONFLICT DO NOTHING RETURNING ...`), as many rows per statement
+  # as SQLite's bind limit allows ({Cybertrain::DB::Connection#variable_limit}),
+  # every statement in one transaction (joining one already open), so a
+  # failure leaves nothing of the call written. A row that collides with an
+  # existing one on a UNIQUE index or the primary key is skipped silently.
+  #
+  # Every row must have the same keys (Symbols or Strings, any order), or
+  # ArgumentError before anything is written; columns no row names take the
+  # table's DEFAULT. Values take the casts a save gives them (a Time in the
+  # storage format, a Hash as JSON text, a decimal rounded to its scale, a
+  # Date as text, booleans as 1/0). `created_at` / `updated_at`, when the
+  # table has them and the rows do not, get one `now` for the whole call
+  # unless `record_timestamps: false`. No validation or callback runs.
+  # @example
+  #   Article.insert_all([{ title: "One" }, { title: "Two" }]).size  # => 2
+  #   Article.insert_all(rows, returning: [:id, :title]).first  # => {"id" => 3, "title" => "One"}
+  # @param rows [Array<Hash{Symbol, String => Object}>]
+  # @param returning [Array<Symbol>, nil] columns of the inserted rows to
+  #   return, cast by type; `[]` or nil returns `[]`
+  # @param record_timestamps [Boolean]
+  # @return [Array<Hash{String => Object}>] one Hash per row inserted
+  # @raise [ArgumentError] on rows with different keys, an unknown column,
+  #   or an encrypted one
+  # @raise [Cybertrain::DB::Error] when SQLite refuses a statement (a NOT
+  #   NULL column left out); nothing is written
+  # @api public
+  def self.insert_all(rows, returning: [:id], record_timestamps: true)
+    Cybertrain::Model.insert_all_into("articles", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                      returning, record_timestamps, :nothing, nil, nil)
+  end
+
+  # {.insert_all} without `ON CONFLICT DO NOTHING`: a duplicate raises,
+  # and nothing of the call is written.
+  # @param rows [Array<Hash{Symbol, String => Object}>]
+  # @param returning [Array<Symbol>, nil]
+  # @param record_timestamps [Boolean]
+  # @return [Array<Hash{String => Object}>] one Hash per row inserted
+  # @raise [ArgumentError] as {.insert_all}
+  # @raise [Cybertrain::DB::Error] on a duplicate or another constraint
+  # @api public
+  def self.insert_all!(rows, returning: [:id], record_timestamps: true)
+    Cybertrain::Model.insert_all_into("articles", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                      returning, record_timestamps, :raise, nil, nil)
+  end
+
+  # {.insert_all} that updates a row colliding on `unique_by` instead of
+  # skipping it: `ON CONFLICT (unique_by) DO UPDATE SET c = excluded.c` for
+  # every column the rows supply except `id`, the `unique_by` columns and
+  # `created_at` (only those in `update_only`, when given), plus
+  # `updated_at` unless `record_timestamps: false`. A column the rows do not
+  # supply keeps its value. `unique_by` must match a UNIQUE index or the
+  # primary key.
+  # @example
+  #   Article.upsert_all([{ id: 1, title: "Renamed" }])            # body unchanged
+  #   Article.upsert_all(rows, unique_by: [:title], update_only: [:body])
+  # @param rows [Array<Hash{Symbol, String => Object}>]
+  # @param unique_by [Array<Symbol>] the conflict target
+  # @param update_only [Array<Symbol>, nil] the columns a conflict may update
+  # @param returning [Array<Symbol>, nil]
+  # @param record_timestamps [Boolean]
+  # @return [Array<Hash{String => Object}>] one Hash per row inserted or updated
+  # @raise [ArgumentError] as {.insert_all}, or without `unique_by`
+  # @raise [Cybertrain::DB::Error] when SQLite refuses a statement (no
+  #   UNIQUE index matches `unique_by`)
+  # @api public
+  def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)
+    Cybertrain::Model.insert_all_into("articles", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
+                                      returning, record_timestamps, :update, unique_by, update_only)
+  end
+
   # @!endgroup
 
   # A new, unsaved record. Keys may be Strings or Symbols; values are cast

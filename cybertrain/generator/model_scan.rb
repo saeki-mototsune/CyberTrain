@@ -70,6 +70,8 @@ module Cybertrain
         validates before_validation before_save after_save before_create after_create before_update
         after_update before_destroy after_destroy add_model_callback validators_for callbacks_for now_string
         transaction upsert upsert_into scope
+        insert_all insert_all! upsert_all insert_all_into no_decimal_scales no_encrypted_columns bulk_method_name
+        bulk_empty_row bulk_column bulk_columns bulk_cells bulk_bind bulk_conflict_sql bulk_returned_row
         hash inspect to_s then raise fail
       ]
 

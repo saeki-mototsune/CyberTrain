@@ -56,6 +56,16 @@ module Cybertrain
       current.with(&block)
     end
 
+    # Whether the connection this thread's DB.with would use has a
+    # transaction open: true inside a {DB.transaction} block (or after a
+    # BEGIN run by hand in the same DB.with), false otherwise.
+    # @return [Boolean]
+    # @raise [Cybertrain::DB::Error] when not connected
+    # @api public
+    def self.in_transaction?
+      with { |c| c.in_transaction? }
+    end
+
     # Checks a connection out, opens a transaction on it (BEGIN, or BEGIN
     # IMMEDIATE), yields the connection, COMMITs when the block returns and
     # ROLLBACKs and re-raises when it raises; the connection goes back to the
