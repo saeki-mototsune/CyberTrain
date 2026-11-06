@@ -59,6 +59,16 @@ module Cybertrain
             out << name
             i += 1
           end
+          j = 0
+          while j < info.unique_columns.size
+            name = info.unique_columns[j]
+            if info.encrypted.include?(name)
+              raise ModelScan::Error, "#{info.file}:#{info.unique_lines[j]}: validates :#{name}, uniqueness: " \
+                                      "#{name} is encrypted (encrypts :#{name}), and its stored payloads never " \
+                                      "compare equal: uniqueness on an encrypted column is not supported"
+            end
+            j += 1
+          end
         end
         out
       end
@@ -118,7 +128,7 @@ module Cybertrain
         src << emit_model_head(model, table, plans, encrypted)
         src << emit_persistence(model, table, scopes, encrypted)
         src << emit_dispatch(table, definition, infos, plans, view_methods)
-        src << emit_validations(model, table, infos, plans)
+        src << emit_validations(model, table, infos, plans, encrypted)
         src << "end\n"
         src
       end
@@ -131,9 +141,9 @@ module Cybertrain
       # its file or a column or association reader -- or this raises
       # ModelScan::Error with the file and line, rather than the generated
       # call failing at run time.
-      def self.emit_validations(model, table, infos, plans)
+      def self.emit_validations(model, table, infos, plans, encrypted)
         src = +"\n"
-        src << emit_unique_value_taken(model, table)
+        src << emit_unique_value_taken(model, table, encrypted)
         names = Array.new(0) { "" }
         validations = Array.new(0) { CustomValidationInfo.new("", "", "", "", "", 0) }
         infos.each do |info|
@@ -157,10 +167,18 @@ module Cybertrain
       # Relation.checked_column; a nil value is `IS NULL` either way, as in
       # Rails. exclude_id is the record's own id (0 for a
       # new record, which no row has).
-      def self.emit_unique_value_taken(model, table)
+      def self.emit_unique_value_taken(model, table, encrypted)
         src = +""
         src << "  def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)\n"
         src << "    rel = #{model}Relation.new(\"#{table.name}\")\n"
+        # The generator refuses `uniqueness` on an encrypted column; this
+        # covers a validation it cannot see (and the LOWER() branch, which
+        # does not go through where's check).
+        unless encrypted.empty?
+          src << "    if rel.encrypted_column?(attr.to_s)\n"
+          src << "      raise ArgumentError, \"uniqueness on an encrypted column (\#{attr}) is not supported\"\n"
+          src << "    end\n"
+        end
         src << "    if case_sensitive || value.nil?\n"
         src << "      rel.where({ attr => value })\n"
         src << "    else\n"

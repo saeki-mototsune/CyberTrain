@@ -208,6 +208,11 @@ test "the encryption keys are read from their variables, the previous ones as a 
   keyed = Cybertrain::Config.new
   assert_equal VALID_KEY, keyed.encryption_key
   assert_equal ["a" * 64, "b" * 64], keyed.encryption_keys_previous
+  # Surrounding whitespace (a .env line's newline) is not part of the key.
+  ENV["CYBERTRAIN_ENCRYPTION_KEY"] = " #{VALID_KEY}\n"
+  padded = Cybertrain::Config.new
+  assert_equal VALID_KEY, padded.encryption_key
+  assert_equal "", padded.encryption_error
   ENV["CYBERTRAIN_ENCRYPTION_KEY"] = ""
   ENV["CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS"] = ""
   unkeyed = Cybertrain::Config.new

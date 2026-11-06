@@ -457,6 +457,9 @@ class Post < Cybertrain::Model
 
   def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
     rel = PostRelation.new("posts")
+    if rel.encrypted_column?(attr.to_s)
+      raise ArgumentError, "uniqueness on an encrypted column (#{attr}) is not supported"
+    end
     if case_sensitive || value.nil?
       rel.where({ attr => value })
     else

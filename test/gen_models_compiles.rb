@@ -662,4 +662,16 @@ test "a stored payload made with another key raises Encryptor::Error on read" do
   Cybertrain.config.encryption_keys_previous = Array.new(0) { "" }
 end
 
+test "unique_value_taken? on an encrypted column raises, case-sensitive or not" do
+  reset_tables
+  Post.create(title: "Locked", secret_note: "k")
+  probe = Post.new
+  [true, false].each do |sensitive|
+    message = assert_raises("ArgumentError") { probe.unique_value_taken?(:secret_note, "k", nil, nil, 0, sensitive) }
+    assert_equal "uniqueness on an encrypted column (secret_note) is not supported", message
+  end
+  # Other columns are unaffected.
+  assert probe.unique_value_taken?(:title, "locked", nil, nil, 0, false)
+end
+
 Cybertrain::Test.run!

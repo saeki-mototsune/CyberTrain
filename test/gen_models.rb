@@ -3245,4 +3245,35 @@ test "encrypts of a missing or non-text column, an option or another shape raise
   assert_equal shape, encrypts_error("encrypts :title,")
 end
 
+test "uniqueness on a column the model encrypts is refused at generation, with the file and line" do
+  message = "app/models/post.rb:3: validates :title, uniqueness: title is encrypted (encrypts :title), " \
+            "and its stored payloads never compare equal: uniqueness on an encrypted column is not supported"
+  assert_equal message, encrypts_error("encrypts :title\n  validates :title, uniqueness: true")
+  assert_equal message, encrypts_error("encrypts :title\n  validates :body, :title, uniqueness: { case_sensitive: false }")
+  assert_equal message, encrypts_error("encrypts :title\n  validates :title, presence: true,\n            uniqueness: true")
+  # Declared before the encrypts line, it is refused all the same.
+  assert_equal message.sub("post.rb:3", "post.rb:2"),
+               encrypts_error("validates :title, uniqueness: true\n  encrypts :title")
+  # Another column's uniqueness, or the word in a message, is fine.
+  src = encrypted_emit("encrypts :body\n  validates :title, uniqueness: true, message: \"needs uniqueness: yes\"")
+  assert_includes src, "ENCRYPTED_COLUMNS = [\"body\"]"
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb",
+                                                "class Post\n  validates :title, :body, uniqueness: true\n  validates :views, presence: true, message: \"uniqueness: no\"\nend\n")
+  assert_equal ["title", "body"], info.unique_columns
+  assert_equal [2, 2], info.unique_lines
+end
+
+test "unique_value_taken? of a model with encrypted columns raises on one before either branch" do
+  src = encrypted_emit("encrypts :body")
+  assert_includes src, <<~'RUBY'.gsub(/^/, "  ")
+    def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
+      rel = PostRelation.new("posts")
+      if rel.encrypted_column?(attr.to_s)
+        raise ArgumentError, "uniqueness on an encrypted column (#{attr}) is not supported"
+      end
+      if case_sensitive || value.nil?
+  RUBY
+  refute emit_for("posts").include?("uniqueness on an encrypted column")
+end
+
 Cybertrain::Test.run!

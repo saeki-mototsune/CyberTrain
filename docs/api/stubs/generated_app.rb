@@ -417,7 +417,9 @@ class Article < Cybertrain::Model
   # @param exclude_id [Integer] the record's own id (`0` for a new record)
   # @param case_sensitive [Boolean]
   # @return [Boolean]
-  # @raise [ArgumentError] when `attr` is not a column name (case_sensitive false)
+  # @raise [ArgumentError] when `attr` is not a column name (case_sensitive
+  #   false), or is an encrypted column (a model with `encrypts` checks it
+  #   first; the generator already refuses `uniqueness` on such a column)
   # @api public
   def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive); end
 end

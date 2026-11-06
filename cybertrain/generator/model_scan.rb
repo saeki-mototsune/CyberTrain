@@ -10,13 +10,17 @@ module Cybertrain
     # every instance method the class body defines, private ones included
     # (the emitter checks the names above against them); encrypted the
     # columns of its `encrypts` lines, each once in first-seen order, with
-    # the line each was first seen on in encrypted_lines.
+    # the line each was first seen on in encrypted_lines; unique_columns
+    # the attributes of its `validates ..., uniqueness:` calls, with their
+    # lines in unique_lines (the emitter refuses an encrypted one).
     class ModelInfo
       attr_reader :file, :class_name, :view_methods, :scopes, :associations, :custom_validations,
-                  :condition_methods, :condition_lines, :defined_methods, :encrypted, :encrypted_lines
+                  :condition_methods, :condition_lines, :defined_methods, :encrypted, :encrypted_lines,
+                  :unique_columns, :unique_lines
 
       def initialize(file, class_name, view_methods, scopes, associations, custom_validations,
-                     condition_methods, condition_lines, defined_methods, encrypted, encrypted_lines)
+                     condition_methods, condition_lines, defined_methods, encrypted, encrypted_lines,
+                     unique_columns, unique_lines)
         @file = file
         @class_name = class_name
         @view_methods = view_methods
@@ -28,6 +32,8 @@ module Cybertrain
         @defined_methods = defined_methods
         @encrypted = encrypted
         @encrypted_lines = encrypted_lines
+        @unique_columns = unique_columns
+        @unique_lines = unique_lines
       end
 
       # A ModelInfo with nothing declared, for callers that have no model file.
@@ -36,7 +42,7 @@ module Cybertrain
                       Array.new(0) { AssociationInfo.new("", :has_many, "", "", "", :none, false, false, 0) },
                       Array.new(0) { CustomValidationInfo.new("", "", "", "", "", 0) },
                       Array.new(0) { "" }, Array.new(0) { 0 }, Array.new(0) { "" }, Array.new(0) { "" },
-                      Array.new(0) { 0 })
+                      Array.new(0) { 0 }, Array.new(0) { "" }, Array.new(0) { 0 })
       end
     end
 
@@ -184,6 +190,8 @@ module Cybertrain
         defined = Array.new(0) { "" }
         encrypted = Array.new(0) { "" }
         encrypted_lines = Array.new(0) { 0 }
+        unique = Array.new(0) { "" }
+        unique_lines = Array.new(0) { 0 }
         # A `validates` call continued on the next lines (a trailing comma,
         # a backslash or an open bracket): its text so far, and its line.
         pending = +""
@@ -199,14 +207,14 @@ module Cybertrain
           # bracket inside a Regexp literal cannot swallow the class.
           if pending != "" && line != "" && indent_of(raw) <= pending_indent && !line.start_with?(")") &&
              !line.start_with?("}") && !line.start_with?("]")
-            collect_conditions(file, pending, pending_line, conditions, condition_lines)
+            collect_validates(file, pending, pending_line, conditions, condition_lines, unique, unique_lines)
             pending = +""
           end
           if pending != ""
             pending << " " << line
             next if continued?(pending)
 
-            collect_conditions(file, pending, pending_line, conditions, condition_lines)
+            collect_validates(file, pending, pending_line, conditions, condition_lines, unique, unique_lines)
             pending = +""
             next
           end
@@ -234,7 +242,7 @@ module Cybertrain
               pending_line = lineno
               pending_indent = indent
             else
-              collect_conditions(file, line, lineno, conditions, condition_lines)
+              collect_validates(file, line, lineno, conditions, condition_lines, unique, unique_lines)
             end
           elsif def_indent < 0 && validate_line?(line)
             validate_on(file, line, lineno).each { |v| validations << v }
@@ -259,11 +267,11 @@ module Cybertrain
           end
           def_indent = indent if class_name != "" && def_indent < 0 && skip_indent < 0 && def_opens_body?(line)
         end
-        collect_conditions(file, pending, pending_line, conditions, condition_lines) if pending != ""
+        collect_validates(file, pending, pending_line, conditions, condition_lines, unique, unique_lines) if pending != ""
         return nil if class_name == ""
 
         ModelInfo.new(file, class_name, methods, scopes, associations, validations, conditions, condition_lines,
-                      defined, encrypted, encrypted_lines)
+                      defined, encrypted, encrypted_lines, unique, unique_lines)
       end
 
       # A `validates :attr, ...` call (`validates(:attr` too). The options
@@ -361,6 +369,61 @@ module Cybertrain
       # but a Symbol raises Error: the generated validation_condition? calls
       # the method by name, and a lambda has none (Spinel cannot call a
       # stored lambda on the record).
+      # Both reads of one `validates` call: its if: / unless: names
+      # (collect_conditions) and, when it validates uniqueness, its
+      # attributes (collect_uniqueness).
+      def self.collect_validates(file, text, lineno, names, lines, unique, unique_lines)
+        collect_conditions(file, text, lineno, names, lines)
+        collect_uniqueness(text, lineno, unique, unique_lines)
+        nil
+      end
+
+      # Adds the attributes of a `validates :a, :b, ..., uniqueness: ...`
+      # call to `names` (first-seen order, `lines` gets the line of each):
+      # the leading Symbols, when a `uniqueness:` key appears outside quoted
+      # text. Any other call adds nothing.
+      def self.collect_uniqueness(text, lineno, names, lines)
+        quote = ""
+        escaped = false
+        found = false
+        i = 0
+        while i < text.size && !found
+          ch = text[i, 1]
+          if quote != ""
+            if escaped
+              escaped = false
+            elsif ch == "\\"
+              escaped = true
+            elsif ch == quote
+              quote = ""
+            end
+          elsif ch == "\"" || ch == "'"
+            quote = ch
+          elsif (i == 0 || !word_char?(text[i - 1, 1])) && text[i, 11] == "uniqueness:"
+            found = true
+          end
+          i += 1
+        end
+        return nil unless found
+
+        rest = text[9, text.size - 9].lstrip
+        rest = rest[1, rest.size - 1].lstrip if rest.start_with?("(")
+        while rest.start_with?(":")
+          name = word_at(rest, 1)
+          break if name == "" || rest[name.size + 1, 1] == ":"
+
+          unless names.include?(name)
+            names << name
+            lines << lineno
+          end
+          rest = rest[name.size + 1, rest.size - name.size - 1].lstrip
+          break unless rest.start_with?(",")
+
+          rest = rest[1, rest.size - 1].lstrip
+        end
+        nil
+      end
+
       def self.collect_conditions(file, text, lineno, names, lines)
         quote = ""
         escaped = false

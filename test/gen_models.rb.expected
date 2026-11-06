@@ -94,4 +94,6 @@ ok   scan_source reads encrypts lines: the names in order, each once, with its l
 ok   an encrypted column is decrypted by load_row and encrypted by to_row, nil kept nil
 ok   a model without encrypts keeps the plain casts and the base encrypted_column?
 ok   encrypts of a missing or non-text column, an option or another shape raises with the file and line
-96 tests, 898 assertions, 0 failures
+ok   uniqueness on a column the model encrypts is refused at generation, with the file and line
+ok   unique_value_taken? of a model with encrypted columns raises on one before either branch
+98 tests, 911 assertions, 0 failures

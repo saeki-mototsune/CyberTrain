@@ -568,7 +568,8 @@ attr_accessor :trusted_proxies
       @port = (ENV["PORT"] || "3000").to_i
       @database_path = Config.default_database_path(@env)
       @secret_key_base = ENV["CYBERTRAIN_SECRET_KEY_BASE"] || ""
-      @encryption_key = ENV["CYBERTRAIN_ENCRYPTION_KEY"] || ""
+      # Stripped, like the previous keys: a .env line's newline is not part of it.
+      @encryption_key = (ENV["CYBERTRAIN_ENCRYPTION_KEY"] || "").strip
       # Typed seed (rule 9); empty entries of the comma list are dropped.
       @encryption_keys_previous = Array.new(0) { "" }
       (ENV["CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS"] || "").split(",").each do |entry|
