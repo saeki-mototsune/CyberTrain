@@ -188,7 +188,7 @@ end
 
 **Files:**
 - Modify: `cybertrain/db/cli.rb` (`dispatch` 38-65: `when "normalize"`; `usage` 67; new `def self.normalize(root)`)
-- Create: `cybertrain/db/normalizer.rb` (`DB::Normalizer.run(connection) -> Array<[table, count]>`)
+- Create: `cybertrain/db/normalizer.rb` (`DB::Normalizer.run(connection) -> Array<[table, column, rewritten, skipped, pending]>`)
 - Modify: `cybertrain/cli.rb` USAGE text if it lists db subcommands
 - Test: `test/db_normalize.rb` (new)
 
@@ -200,8 +200,8 @@ end
 ```ruby
 test "normalize rewrites every non-canonical datetime once, leaves canonical rows, and is idempotent" do
   # table posts(created_at DATETIME, note TEXT) with created_at rows "2026-10-05T09:00:00Z", "2026-10-05 09:00:00.12", "2026-10-05T09:00:00+09:00", "2026-10-05 09:00:00.123456", "garbage"; note "2026-10-05T09:00:00Z"
-  # run → [["posts", "created_at", 3, 1]]; the values: "2026-10-05 09:00:00.000000", "2026-10-05 09:00:00.120000", "2026-10-05 00:00:00.000000", "2026-10-05 09:00:00.123456", "garbage"; note untouched
-  # run again → [["posts", "created_at", 0, 1]]
+  # run → [["posts", "created_at", 3, 1, 0]]; the values: "2026-10-05 09:00:00.000000", "2026-10-05 09:00:00.120000", "2026-10-05 00:00:00.000000", "2026-10-05 09:00:00.123456", "garbage"; note untouched
+  # run again → [["posts", "created_at", 0, 1, 0]]
 end
 test "normalized values sort with Rails-format values by time" do
   # ORDER BY created_at returns the 09:00:00.000000 row before the 09:00:00.123456 row
