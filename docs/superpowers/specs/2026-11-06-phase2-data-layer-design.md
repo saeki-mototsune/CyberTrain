@@ -148,11 +148,18 @@ value regardless of date (byte 10: `T` 0x54 > space 0x20), which broke
   such cell is read, parsed with `Cast.parse_time` (so `T…Z` rows, short
   fractions and offset-bearing values all land on the same UTC six-digit
   text) and written back with `Cast.sql_datetime`, row by row, located by
-  `rowid` (no `id` column is needed, and a duplicated `id` cannot make one
-  UPDATE touch two rows; a `WITHOUT ROWID` table is reported and skipped),
-  in one transaction; a cell `parse_time`
-  cannot read is left alone and counted separately. It prints the count per
-  table and column. It is idempotent and safe to run twice. The deploy
+  `_rowid_` (no `id` column is needed, and a duplicated `id` cannot make one
+  UPDATE touch two rows; a `WITHOUT ROWID` table, or one declaring a column
+  named `_rowid_` in any letter case, generated columns included, is
+  reported and skipped), in one transaction; a cell `parse_time` cannot read
+  is left alone and counted separately. It prints the count per table and
+  column. A skipped table is not silently left behind: its non-canonical
+  cells are still counted, the CLI prints `skipped t.c: without rowid (N rows
+  still need normalization)`, and **the command exits 1 when any skipped
+  column still has such cells**, so the deploy procedure below stops before
+  the new binaries start; those tables are rewritten by hand (`UPDATE` by
+  primary key) and `db normalize` is run again. It is idempotent and safe to
+  run twice. The deploy
   guides say: stop the old binaries, `db migrate`, `db normalize` once,
   start the new ones. This is an explicit command, not a hidden step in `db
   migrate`: an alpha release can ask for one command, and nothing in the
