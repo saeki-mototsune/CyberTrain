@@ -428,17 +428,27 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
 - Health across roles: a `feeds` process serves no HTTP (D39), so its status
   is **published through the database**. Every process that runs feeds
   writes one row per subscription into `cybertrain_feeds (name TEXT PRIMARY
-  KEY, process TEXT, connected INTEGER, last_message_at INTEGER, restarts
-  INTEGER, updated_at INTEGER)` every `Config#feed_status_interval` (10 s)
-  from the supervisor thread (created on first use, left out of
-  `db/schema.rb`, as the leases table). `GET /up` in a `server` process
-  reads the table when `Config#health_feeds` is on and answers `503 feed
-  stale` when a row's `last_message_at` and `updated_at` are both older than
-  `Config#health_feed_stale` (180 s) — a feed silent beyond its
-  `stale_after` plus a reconnect cycle, or a feeds process that stopped
-  publishing. `./<app> feeds status` prints the table for an operator;
-  `CYBERTRAIN_HEALTH_FEEDS=0` turns the `/up` check off (a feed that is
-  legitimately quiet).
+  KEY, process TEXT, connected INTEGER, started_at INTEGER NOT NULL,
+  last_activity_at INTEGER, restarts INTEGER, updated_at INTEGER NOT NULL)`
+  every `Config#feed_status_interval` (10 s) from the supervisor thread
+  (created on first use, left out of `db/schema.rb`, as the leases table).
+  `last_activity_at` is the epoch of the last message **or the last pong
+  answered to the client's ping** (a quiet but live feed keeps it fresh; the
+  subscription already pings after `ping_interval`), NULL until the first;
+  `started_at` is when this process started the subscription. `GET /up` in a
+  `server` process reads the table when `Config#health_feeds` is on and
+  answers `503 feed stale` when **either** condition holds for a row:
+  (a) the publisher is stale — `updated_at` older than
+  `Config#health_feed_stale` (180 s): the feeds process stopped publishing
+  (died, hung, or its database connection is gone); (b) the feed is silent —
+  `COALESCE(last_activity_at, started_at)` older than `health_feed_stale`
+  while `updated_at` is fresh: the process is alive but the feed has neither
+  delivered a message nor answered a ping for that long, that is, beyond its
+  `stale_after` plus a reconnect cycle. The two are checked independently,
+  so a live publisher never masks a silent feed. `./<app> feeds status`
+  prints the table for an operator; `CYBERTRAIN_HEALTH_FEEDS=0` turns the
+  `/up` check off (a feed that is legitimately quiet for longer than the
+  threshold).
 - Restarting the process: `/up` alone restarts nothing in a feeds container
   (Kamal 2 polls the health endpoint only during a deploy and only for the
   proxied web role; Docker's restart policy acts when the process exits).
@@ -696,10 +706,14 @@ cover the cases).
    cases.
 7. `on_tick` fires while disconnected and connected; a feed thread that
    raises past its rescues is restarted by the supervisor within the backoff
-   and `restarts` counts it; the status row is written and `./<app> feeds
-   status` prints it; a `server` process's `/up` answers `503 feed stale`
-   from a stale row (a feeds process that stopped publishing, simulated by
-   an old `updated_at`) and `200` with `CYBERTRAIN_HEALTH_FEEDS=0`; a feeds
+   and `restarts` counts it; the status row is written (a pong refreshes
+   `last_activity_at`) and `./<app> feeds status` prints it; a `server`
+   process's `/up` answers `503 feed stale` for a feeds process that
+   stopped publishing (an old `updated_at`), `503 feed stale` for a silent
+   feed under a live publisher (a fresh `updated_at`, an old
+   `last_activity_at`), `503` for a feed that never received anything past
+   the threshold (NULL `last_activity_at`, an old `started_at`), `200` for a
+   fresh row, and `200` with `CYBERTRAIN_HEALTH_FEEDS=0`; a feeds
    process whose feed dies past `feed_restart_limit` within the window exits
    with status 1 (tested as a child process, the boot_encryption pattern).
 8. `deliver(html:)` produces a `multipart/alternative` message the SMTP
