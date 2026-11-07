@@ -42,6 +42,8 @@ module Cybertrain
       @range_max = 0
       @range_has_min = false
       @range_has_max = false
+      # 1...5: the end is kept as 5 and compared with <, so 4.5 is in.
+      @range_exclusive = false
       @pattern = nil
       @without = nil
       @only_integer = false
@@ -216,7 +218,8 @@ module Cybertrain
         case to
         when nil then @range_has_max = false
         when Integer
-          @range_max = value.exclude_end? ? to.to_i - 1 : to.to_i
+          @range_max = to.to_i
+          @range_exclusive = value.exclude_end?
           @range_has_max = true
         else raise ArgumentError, "validates: #{@kind}: in: takes a Range of Integers only"
         end
@@ -411,6 +414,7 @@ module Cybertrain
         else return false
         end
         return false if @range_has_min && number < @range_min.to_f
+        return false if @range_has_max && @range_exclusive && number >= @range_max.to_f
         return false if @range_has_max && number > @range_max.to_f
 
         return true

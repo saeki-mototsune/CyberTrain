@@ -468,7 +468,7 @@ class ArticleRelation < Cybertrain::Relation
   # @param name [String] the SQL column name
   # @return [Symbol]
   # @api public
-  def column_type(name); end
+  def column_type(name) = :unknown
 
   # A decimal column's `scale:`; -1 for any other column or a decimal
   # declared without one.

@@ -36,12 +36,12 @@ class Thing < Cybertrain::Model
   def self.table_name = "things"
   def self.column_names = ["id", "name", "code", "state", "rating", "slug", "handle", "count_text", "qty", "price",
                            "level", "ratio", "whole", "email", "account_id", "nickname", "note", "tier", "age", "bonus",
-                           "motto", "token"]
+                           "motto", "token", "score"]
   def model_name = "Thing"
 
   attr_accessor :name, :code, :state, :rating, :slug, :handle, :count_text, :qty, :price, :level, :ratio, :whole,
                 :email, :account_id, :nickname, :note, :tier, :age, :bonus, :motto, :token, :needs_note, :draft_mode,
-                :strict
+                :strict, :score
 
   def initialize(attrs = {})
     super()
@@ -66,6 +66,7 @@ class Thing < Cybertrain::Model
     @bonus = nil
     @motto = nil
     @token = "abc"
+    @score = 1.0
     @needs_note = false
     @draft_mode = false
     @strict = false
@@ -96,6 +97,7 @@ class Thing < Cybertrain::Model
     when :bonus then @bonus
     when :motto then @motto
     when :token then @token
+    when :score then @score
     else nil
     end
   end
@@ -123,6 +125,7 @@ class Thing < Cybertrain::Model
     when :bonus then @bonus = Cybertrain::Cast.float_or_nil(value)
     when :motto then @motto = Cybertrain::Cast.str_or_nil(value)
     when :token then @token = Cybertrain::Cast.str_or_nil(value)
+    when :score then @score = Cybertrain::Cast.float(value)
     end
     nil
   end
@@ -206,6 +209,7 @@ class Thing
   validate :name_not_admin, :handle_not_root
   validates :tier, inclusion: { in: 1...5 }
   validates :age, inclusion: { in: 18.. }
+  validates :score, inclusion: { in: 1...5 }
   validates :bonus, numericality: { greater_than: 0, allow_nil: true }
   validates :motto, format: { without: /!/ }
   validates :token, format: { with: /\A[a-z]+\z/ }
@@ -317,6 +321,16 @@ test "inclusion in an exclusive-end Range and an endless Range" do
   assert_equal [], messages_for(:age, { age: 18 })
   assert_equal [], messages_for(:age, { age: 120 })
   assert_equal ["is not included in the list"], messages_for(:age, { age: 17 })
+end
+
+# Rails' (1...5).include?(4.5) is true: the exclusive end is compared as
+# itself, not as 4 (which refused 4.5 on a float or decimal column).
+test "an exclusive-end Integer Range admits a Float below its end" do
+  assert_equal [], messages_for(:score, { score: 4.5 })
+  assert_equal [], messages_for(:score, { score: 4.999 })
+  assert_equal [], messages_for(:score, { score: 1.0 })
+  assert_equal ["is not included in the list"], messages_for(:score, { score: 5.0 })
+  assert_equal ["is not included in the list"], messages_for(:score, { score: 0.5 })
 end
 
 test "allow_nil inside a rule's Hash skips nil for that rule" do

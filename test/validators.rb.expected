@@ -8,6 +8,7 @@ ok   numericality on a String attribute: a number passes, else not a number, onl
 ok   numericality only_integer on a Float, and nil is not a number
 ok   numericality comparisons print their limits as written
 ok   inclusion in an exclusive-end Range and an endless Range
+ok   an exclusive-end Integer Range admits a Float below its end
 ok   allow_nil inside a rule's Hash skips nil for that rule
 ok   format: nil fails a with: rule and passes a without:-only rule
 ok   allow_blank skips nil and blank Strings only
@@ -17,4 +18,4 @@ ok   if: and unless: go through validation_condition?
 ok   one validates line for two attributes, under if:
 ok   run_custom_validations runs after the declared rules with the context
 ok   an unknown option, a lambda condition and an on: other than :create or :update raise ArgumentError
-19 tests, 91 assertions, 0 failures
+20 tests, 96 assertions, 0 failures

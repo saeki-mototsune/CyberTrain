@@ -2336,18 +2336,23 @@ test "every NOT NULL date column gets a presence validation; a defaulted one sta
       t.date "seen_on", null: false
       t.date "due_on"
       t.date "start_on", null: false, default: "'2026-01-01'"
+      t.date "made_on", null: false, default: "CURRENT_DATE"
       t.string "name", null: false
     end
   end
   shift = Cybertrain::Gen::ModelsEmitter.emit(definition.table("shifts"), definition, [], [])
-  assert_includes shift, "  attr_accessor :seen_on, :due_on, :start_on, :name\n\n" \
-                         "  validates :seen_on, presence: true\n  validates :start_on, presence: true\n\n  def initialize"
+  assert_includes shift, "  attr_accessor :seen_on, :due_on, :start_on, :made_on, :name\n\n" \
+                         "  validates :seen_on, presence: true\n  validates :start_on, presence: true\n" \
+                         "  validates :made_on, presence: true\n\n  def initialize"
   refute_line(shift, "validates :due_on, presence: true")
   refute_line(shift, "validates :name, presence: true")
   # Every column is inserted, so SQLite never applies the default: the
   # record starts with it instead.
   assert_lines(shift, ["@seen_on = nil", "@due_on = nil",
-                       "@start_on = Cybertrain::Cast.date_or_nil(\"2026-01-01\")"])
+                       "@start_on = Cybertrain::Cast.date_or_nil(\"2026-01-01\")", "@made_on = nil"])
+  # A default that is not YYYY-MM-DD text (CURRENT_DATE) would read as nil
+  # at run time: the emitted code says nil rather than cast the word.
+  refute shift.include?("CURRENT_DATE")
 end
 
 test "scopes_for picks the scopes of one model" do

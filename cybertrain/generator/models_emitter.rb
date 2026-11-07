@@ -1012,10 +1012,12 @@ module Cybertrain
       # DEFAULT never applies), else "" / 0 / 0.0 / false / an empty Hash
       # (json) for NOT NULL columns and nil for nullable ones. A decimal is
       # a float here too. Nullable columns with a default still go through
-      # their Cast helper to keep the ivar's nullable type. A datetime or
-      # date starts as nil even when NOT NULL (no zero value stands for "no
-      # date"; saving one unset fails on the constraint, as in Rails); a
-      # json column's default text is not read (it starts empty or nil).
+      # their Cast helper to keep the ivar's nullable type. A datetime, and
+      # a date without a `YYYY-MM-DD` default, starts as nil even when NOT
+      # NULL (no zero value stands for "no date"; saving one unset fails on
+      # the presence validation or the constraint, as in Rails); a NOT NULL
+      # date with such a default starts at it (date_default); a json
+      # column's default text is not read (it starts empty or nil).
       def self.initial_value(column)
         return date_default(column) if column.type == :date && !column.null
         return "nil" if column.type == :datetime || column.type == :date
@@ -1040,8 +1042,8 @@ module Cybertrain
       # (`'2026-01-01'`, quoted or not) through Cast.date_or_nil, since the
       # INSERT names every column and SQLite never applies the default; nil
       # when it has none. A default that is not `YYYY-MM-DD` text
-      # (CURRENT_DATE) reads as nil, so the presence validation asks for a
-      # value.
+      # (CURRENT_DATE) would read as nil, so it is emitted as nil and the
+      # presence validation asks for a value.
       def self.date_default(column)
         raw = column.default
         return "nil" if raw.nil?
@@ -1050,7 +1052,28 @@ module Cybertrain
         return "nil" if text.upcase == "NULL"
 
         text = text[1, text.size - 2].gsub("''", "'") if quoted_sql?(text)
+        return "nil" unless date_shaped?(text)
+
         "Cybertrain::Cast.date_or_nil(#{ruby_string(text)})"
+      end
+
+      # Whether `text` has the shape `YYYY-MM-DD` (digits, dashes at 4 and
+      # 7); Cast.date_or_nil checks the month and day when the model loads.
+      def self.date_shaped?(text)
+        s = text.to_s
+        return false unless s.bytesize == 10
+
+        i = 0
+        while i < 10
+          b = s.getbyte(i)
+          if i == 4 || i == 7
+            return false unless b == 45
+          else
+            return false unless b >= 48 && b <= 57
+          end
+          i += 1
+        end
+        true
       end
 
       # The Ruby literal for a column's SQL default text ("0", "'x'",
