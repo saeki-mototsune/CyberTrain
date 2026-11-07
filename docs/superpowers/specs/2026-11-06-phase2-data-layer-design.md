@@ -571,8 +571,9 @@ validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on:
   nil stays nil) and `to_row` encrypts. The column is `text` (payload length
   varies; Rails recommends text too). `where(api_key: …)` raises
   `ArgumentError` from the generated column check; `pluck(:api_key)` answers
-  the ciphertext (documented). `update_all` / `insert_all` / `upsert_all` on
-  an encrypted column raise `ArgumentError`.
+  the ciphertext (documented). `update_all` / `increment` / `upsert` /
+  `insert_all` / `upsert_all` on an encrypted column raise `ArgumentError`
+  (the generated model's own `upsert` passes `ENCRYPTED_COLUMNS`).
 - Not in phase 2: `deterministic: true` (searchable encryption), compatibility
   with Rails' `ActiveRecord::Encryption` envelope (its key derivation
   differs; a migration re-encrypts, and the guide shows the loop).
@@ -651,8 +652,9 @@ A section in the migrations guide, with the test in 11.4 as proof:
    older `t` / `f` is in `Cast::TRUE_STRINGS`), decimals (REAL, read as
    Float), json (TEXT, read as Hash), `datetime(6)` / `decimal(18,8)` /
    `varchar` / `bigint` / `json` type names (the dumper maps them).
-5. Limits: a table without `id` (`id: false`, join tables) is not modelled
-   and is reached with `DB.with`; `ar_internal_metadata` is left alone;
+5. Limits: a table without an integer `id` primary key (`id: false`, join
+   tables, and Rails' `id: :uuid` / `id: :string`, whose varchar `id` is kept
+   as a plain column) is not modelled and is reached with `DB.with`; `ar_internal_metadata` is left alone;
    encrypted columns are re-encrypted (section 10).
 
 ### 11.4 Tests for this section
@@ -871,7 +873,12 @@ in the code and in docs/design.md D42 to D50 too.
 - Bulk writes: an `update_only` name the rows do not supply is skipped; `ON
   CONFLICT DO NOTHING` consumes ids for skipped duplicates (as Rails); an
   unknown column raises before writing; an encrypted column is refused as a
-  row key and in `returning:`, `unique_by:` and `update_only:`.
+  row key and in `returning:`, `unique_by:` and `update_only:`. After the
+  final review: rows with no keys raise (Rails' "Empty list of
+  attributes"); `returning:`, `unique_by:` and `update_only:` take one
+  Symbol or String as one name and `false` as none, and anything else
+  raises; the values go through `Relation.typed_bind`, the cast table
+  `update_all` and `Model.upsert` share.
 - Associations: every `belongs_to` caches and every `has_many` returns a
   Relation, foreign-key-derived ones included (compatibility change 1). A
   declared `belongs_to` adds `validates_foreign_key` (nil, blank or 0 is
@@ -912,10 +919,12 @@ in the code and in docs/design.md D42 to D50 too.
   naming the table survive; expression defaults keep their parentheses; a
   foreign key violation raises `DB::Error` (there is no Migration error
   class). A rebuild refuses, by a token scan of the `CREATE TABLE` text
-  (`MATCH` and `ON CONFLICT` clauses could pass it), CHECK, inline UNIQUE,
+  (`MATCH` and `ON CONFLICT` clauses, which once passed it, are refused
+  since the final review), CHECK, inline UNIQUE,
   COLLATE, generated columns, ON UPDATE, ON DELETE SET DEFAULT, DEFERRABLE, a
   foreign key to a non-id column, an untyped column, a primary key other than
-  `id`, WITHOUT ROWID and STRICT; a plain `id INTEGER PRIMARY KEY` gains
+  `id` or a non-integer `id` one, WITHOUT ROWID and STRICT; a table without
+  id rebuilds without copying one; a plain `id INTEGER PRIMARY KEY` gains
   AUTOINCREMENT. `rename_table` keeps index names (Rails renames them).
   `PRAGMA foreign_key_check` covers the whole database, so a pre-existing
   violation elsewhere blocks a rebuilding version (as Rails).
@@ -938,7 +947,10 @@ in the code and in docs/design.md D42 to D50 too.
   table whose primary key is not an `id` column dumps as `create_table "x",
   id: false` with every column, `SqliteDDL` writes no id for it, and the
   generator makes no model of it (and no `has_many` pointing at it), printing
-  `skipped x: no id column`.
+  `skipped x: no id column`. The final review added a non-integer `id`
+  primary key (Rails' `id: :uuid` / `id: :string`): it takes the same path
+  (the dumper requires INTEGER affinity), and a rebuild refuses it ("a
+  non-integer primary key on id").
 - Takeover (11.3): step 1's path is `storage/<env>.sqlite3` (the default
   `database_path`), not `db/<env>.sqlite3`. `db schema` prints `wrote
   <root>/db/schema.rb from <path>`; `db status` lists a version without a

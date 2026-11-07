@@ -1,5 +1,5 @@
 ---
-source_sha256: 1b75a8cb6cc5f39be25f87f30bbbb124f8c6543bfdbdca023f225a1aa2f13404
+source_sha256: 2e61a5d003a8cdf4e505fa9aa88b96424b88abb33047c541a8ddecaca5b1f59b
 ---
 # モデルとデータベース
 
@@ -214,7 +214,7 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
 ```
 
 - どれも型付きです。Spinel のメソッドは戻り値の型がひとつだからです：`pluck_str` / `pluck_int` / `pluck_float` は 1 カラムだけを読み、`sum_int` / `sum_float` は 1 カラムを合計し、`count_by` は `Hash{String => Integer}` を返します。
-- `upsert` の `update` の値と `count_by_sql` の式は、`order_sql` と同じく SQL テキストです：決してリクエストのデータから組み立てないでください。空の `update` は `DO NOTHING` です。`upsert` と `increment` はモデルを読み込まず、バリデーションもコールバックも実行せず、タイムスタンプも埋めません。
+- `upsert` の `update` の値と `count_by_sql` の式は、`order_sql` と同じく SQL テキストです：決してリクエストのデータから組み立てないでください。空の `update` は `DO NOTHING` です。`upsert` と `increment` はモデルを読み込まず、バリデーションもコールバックも実行せず、タイムスタンプも埋めません。`upsert` は各値を `save` が保存するのと同じく変換します。
 - `count_by` のキーは String（`Cast.str` を通したもの）で、昇順です。NULL と `""` はキー `""` を共有します。`limit` / `offset` がある場合、`count_by`、`sum_*`、`increment` は、`count` や `delete_all`（サブセレクトを通して）と同じく、その範囲に対して働きます。
 - `where_like` はテキスト中の `\`、`%`、`_` をエスケープしてくれ、部分文字列の一致です（SQLite の LIKE と同じく、ASCII については大文字小文字を区別しません）。前方一致の検索では自分でパターンを書きます：`Article.all.where_sql("title LIKE ? ESCAPE '\\'", [Cybertrain::Cast.like_escape(q) + "%"])`。
 - 手書きの SQL には、`Cybertrain::Cast.binds(a, b, c)` が `execute` の受け取るバインドの Array を組み立てます（Time は保存用の datetime の形、Date は `YYYY-MM-DD`、真偽値は 1/0）：`Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(id, since)) }`。
@@ -260,11 +260,12 @@ Article.upsert_all(rows, unique_by: [:slug], update_only: [:title], returning: [
 
 `insert_all` は多数の行を、`ON CONFLICT DO NOTHING` 付きの複数行の `INSERT` 文で書き、既存の行とぶつかる行は飛ばします。`insert_all!` は代わりに例外を出し、`upsert_all` はぶつかった行を `ON CONFLICT (unique_by) DO UPDATE` で更新します。結果は `RETURNING` の行（デフォルトでは `[{"id" => 3}, ...]`）を型で変換したもので、`.size` が書かれた行の数です。
 
-- どの行も同じキーを持ちます。そうでなければ何も書く前に `ArgumentError` です。未知のカラムも同じように例外を出します。どの行も指定しないカラムはテーブルの DEFAULT になります。
+- どの行も同じキーを持ちます。そうでなければ何も書く前に `ArgumentError` です。未知のカラムや、キーのない行（`[{}]`）も同じように例外を出します。どの行も指定しないカラムはテーブルの DEFAULT になります。
 - 値は `save` と同じ変換を受けます（Time は保存用の形、Hash は JSON、decimal はその scale に丸め、Date はテキスト）。
 - `upsert_all` は、行が持つカラムのうち `id`、`unique_by` のカラム、`created_at` を除いたものを更新します。`update_only:` はその一覧を絞り、そこにあっても行が持たない名前は飛ばされます。
+- `returning:`、`unique_by:`、`update_only:` は Array か一つの名前（`returning: :id`）を取ります。`false` は「なし」で、それ以外の値は `ArgumentError` です。
 - テーブルに `created_at` / `updated_at` があって行がそれを持たないとき、`record_timestamps: false` でなければ、呼び出し全体で一つの `now` が入ります。
-- 文は SQLite のバインドの上限に合わせて分けられ、一つのトランザクション（すでに開いているものがあればそれに合流）で実行されるので、失敗すると呼び出しの分は何も残りません。
+- 文は SQLite のバインドの上限に合わせて分けられ、一つのトランザクション（すでに開いているものがあればそれに合流）で実行されるので、失敗すると呼び出しの分は何も残りません。自分で開いたトランザクションの中では、そのロールバックが決めます。
 - バリデーションもコールバックも暗号化も行われません：行に暗号化されたカラムがあると `ArgumentError` です。Rails と同じく、飛ばした重複も id を一つ使います。
 - `RETURNING` には SQLite 3.35.0 以降（CyberTrain がリンクするシステムのライブラリ）が必要です。それより古いと、その文は SQLite 自身の構文エラーで拒まれます（`Cybertrain::DB::Error`）。
 
@@ -333,7 +334,7 @@ end
 メッセージは Rails の英語のデフォルトです：「can't be blank」、「is too short (minimum is 3 characters)」、「is the wrong length (should be 5 characters)」、「is not included in the list」、「is reserved」、「is invalid」、「is not a number」、「must be an integer」、「must be greater than or equal to 0」、「has already been taken」。`message:` は行の上でもルールの Hash の中でも、メッセージを置き換えます。Rails の単数形（「1 character」）はなく、上限 1 は「1 characters」になります。
 
 - `length` は `minimum`、`maximum`、`is`、`in`（Integer の Range）を取ります。
-- `inclusion` と `exclusion` は Array か Integer の Range を取ります（Spinel はほかの Range を作れません）。
+- `inclusion` と `exclusion` は Array か Integer の Range を取ります（Spinel はほかの Range を作れません）。Rails と同じく、`1...5` は float カラムの 4.5 を通します。
 - `numericality` はまず String をパースします（`"12"` は通ります）。Float は Rails と同じく `only_integer` に通りません。
 - `uniqueness` は、その値を持つ別の行があるかをデータベースに問い合わせます（`case_sensitive: false` なら `LOWER(col) = LOWER(?)`、nil なら `IS NULL`）。`scope:` で範囲を絞ります。暗号化されたカラムには使えません。
 - `allow_nil:` と `allow_blank:` は、その行のすべてのルール（`presence` も含む）で nil や空の値を飛ばします。`on: :create` か `on: :update`（Symbol 一つ）は、新しいレコードか保存済みのレコードのときだけその行を実行します。
@@ -366,7 +367,7 @@ end
 
 `encrypts` は string か text のカラムを名指しします（保存される暗号文はテキストより長いので text がよいでしょう）。生成されるモデルは行を書くときに値を暗号化し、読むときに復号するので、`account.api_key` はテキストで、テーブルには `1:` に続いて、ランダムな nonce、AES-256-GCM の暗号文、そのタグを Base64 にしたものが入ります。同じ値を二回保存しても異なる暗号文になるので、このカラムは検索できません：
 
-- `where`、`where_like`、`where_between`、`update_all`、`uniqueness`、一括書き込みはこのカラムを拒みます（`ArgumentError`）。`pluck` は暗号文を返します。
+- `where`、`where_like`、`where_between`、`update_all`、`increment`、`upsert`、`uniqueness`、一括書き込みはこのカラムを拒みます（`ArgumentError`）。`pluck` は暗号文を返します。
 - `to_json` と `as_json` は、Rails と同じく復号したテキストを含みます。ページに出すものからはこのカラムを外してください。
 - 保存された値が空なら `""` と読まれるので、`default: "''"` で追加した NOT NULL のカラムは、行が保存し直される前でも読めます。
 - ないもの：`deterministic: true`、Rails の `ActiveRecord::Encryption` の暗号文を読むこと（鍵の導出と形式が違います）。
@@ -511,7 +512,7 @@ Rails 8 のアプリケーションが作った SQLite のファイルは、そ�
 2. `cybertrain db schema`（ビルドしたバイナリなら `./<app> db schema`）を実行します。`db migrate` が使うのと同じダンパーでデータベースから `db/schema.rb` を書き、`wrote .../db/schema.rb from <path>` と表示し、ほかには何もしません。そのあと `cybertrain db migrate` は適用するものを見つけず、モデルを生成します。
 3. Rails の `db/migrate/*.rb` はコピーしません：新しいマイグレーションはここから始めます。`schema_migrations`（どちらでも同じテーブル）にすでにある Rails のバージョンにはここにファイルがないので、マイグレーターはそれを実行もロールバックもせず、`db status` は `applied (no file)` と一覧します。
 4. 変換が要らないもの：日時（Rails の形が保存用の形です）、真偽値（`1` / `0`、古い `t` / `f`）、decimal（Rails は REAL の値を書くので Float として読めます）、json（TEXT で、Hash として読めます）、Rails が書く型名（`datetime(6)`、`decimal(18,8)`、`varchar`、`bigint`、`json`）。部分インデックス、式インデックス、`ON DELETE` の動作もダンプされます。
-5. 制限：主キーが `id` カラムでないテーブル（結合テーブル）は `create_table "articles_tags", id: false` としてダンプされ、モデルはありません（`spin run gen` が `skipped articles_tags: no id column` と表示します）。`DB.with` で扱います。`ar_internal_metadata` はそのままにします。スキーマが表せないものを `CREATE TABLE` に含むテーブルは、作り直すヘルパーでは変えられません（[テーブルを変える](#changing-a-table)）。Rails が暗号化したカラムは暗号化し直します（[すでにテキストのあるカラムを暗号化する](#encrypting-a-column-that-already-holds-text)）。
+5. 制限：主キーが `id` カラムでないテーブル（結合テーブル）は `create_table "articles_tags", id: false` としてダンプされ、モデルはありません（`spin run gen` が `skipped articles_tags: no id column` と表示します）。`DB.with` で扱います。整数でない `id` 主キー（Rails の `id: :uuid` や `id: :string`）も同じようにダンプされ、`id` は PRIMARY KEY のない普通のカラムとして残ります。`ar_internal_metadata` はそのままにします。スキーマが表せないものを `CREATE TABLE` に含むテーブルは、作り直すヘルパーでは変えられません（[テーブルを変える](#changing-a-table)）。Rails が暗号化したカラムは暗号化し直します（[すでにテキストのあるカラムを暗号化する](#encrypting-a-column-that-already-holds-text)）。
 
 そのうえで、Rails のモデルにあったバリデーション、関連付け、スコープを、このページの形で `app/models/*.rb` に書きます。
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 1b75a8cb6cc5f39be25f87f30bbbb124f8c6543bfdbdca023f225a1aa2f13404
+source_sha256: 2e61a5d003a8cdf4e505fa9aa88b96424b88abb33047c541a8ddecaca5b1f59b
 ---
 # Modèles et base de données
 
@@ -387,7 +387,8 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
   texte SQL, comme `order_sql`&nbsp;: ne les construisez jamais à partir de
   données de la requête. Un `update` vide donne `DO NOTHING`. `upsert` et
   `increment` ne chargent aucun modèle, n’exécutent ni validation ni callback,
-  et ne remplissent aucun horodatage.
+  et ne remplissent aucun horodatage&nbsp;; `upsert` convertit chaque valeur
+  comme `save` la stocke.
 - Les clés de `count_by` sont des String (via `Cast.str`), en ordre
   croissant&nbsp;; NULL et `""` partagent la clé `""`. Avec un `limit` /
   `offset`, `count_by`, `sum_*` et `increment` travaillent sur cette fenêtre,
@@ -473,7 +474,8 @@ place&nbsp;; `upsert_all` met à jour la ligne en collision avec
 bien que `.size` est le nombre de lignes écrites.
 
 - Chaque ligne a les mêmes clés, sinon `ArgumentError` avant toute
-  écriture&nbsp;; une colonne inconnue lève de la même façon. Les colonnes
+  écriture&nbsp;; une colonne inconnue, ou des lignes sans clé (`[{}]`),
+  lèvent de la même façon. Les colonnes
   qu’aucune ligne ne nomme prennent le DEFAULT de la table.
 - Les valeurs reçoivent les conversions que leur donne `save` (un Time au
   format stocké, un Hash en JSON, un decimal arrondi à son échelle, une Date
@@ -482,12 +484,16 @@ bien que `.size` est le nombre de lignes écrites.
   les colonnes de `unique_by` et `created_at`&nbsp;; `update_only:` restreint
   cette liste, et un nom qu’elle contient mais que les lignes ne fournissent
   pas est ignoré.
+- `returning:`, `unique_by:` et `update_only:` acceptent un Array ou un seul
+  nom (`returning: :id`)&nbsp;; `false` n’en désigne aucun&nbsp;; toute autre
+  valeur lève `ArgumentError`.
 - `created_at` / `updated_at` reçoivent un seul `now` pour tout l’appel quand
   la table les a et que les lignes ne les donnent pas, sauf avec
   `record_timestamps: false`.
 - Les instructions sont découpées selon la limite de binds de SQLite et
   s’exécutent dans une seule transaction (qui rejoint une transaction déjà
-  ouverte), si bien qu’un échec ne laisse rien de l’appel.
+  ouverte), si bien qu’un échec ne laisse rien de l’appel&nbsp;; dans une
+  transaction que vous avez ouverte, c’est votre rollback qui décide.
 - Aucune validation, aucun callback ni chiffrement ne s’exécute&nbsp;: une
   colonne chiffrée dans une ligne lève `ArgumentError`. Comme dans Rails, un
   doublon sauté consomme quand même un id.
@@ -618,7 +624,8 @@ pas&nbsp;: une limite de 1 donne «&nbsp;1 characters&nbsp;».
 
 - `length` accepte `minimum`, `maximum`, `is` et `in` (une Range d’Integer).
 - `inclusion` et `exclusion` acceptent un Array, ou une Range d’Integer
-  (Spinel ne construit pas d’autre Range).
+  (Spinel ne construit pas d’autre Range)&nbsp;; `1...5` accepte 4.5 sur une
+  colonne float, comme dans Rails.
 - `numericality` analyse d’abord une String (`"12"` passe)&nbsp;; un Float
   échoue à `only_integer`, comme dans Rails.
 - `uniqueness` demande à la base s’il existe une autre ligne avec la valeur
@@ -672,8 +679,8 @@ Base64 d’un nonce aléatoire, du chiffré AES-256-GCM et de son tag. Deux
 enregistrements d’une même valeur stockent des charges différentes, donc la
 colonne ne peut pas être cherchée&nbsp;:
 
-- `where`, `where_like`, `where_between`, `update_all`, `uniqueness` et les
-  écritures en masse la refusent (`ArgumentError`)&nbsp;; `pluck` répond la
+- `where`, `where_like`, `where_between`, `update_all`, `increment`,
+  `upsert`, `uniqueness` et les écritures en masse la refusent (`ArgumentError`)&nbsp;; `pluck` répond la
   charge chiffrée.
 - `to_json` et `as_json` incluent le texte déchiffré, comme dans
   Rails&nbsp;; laissez la colonne hors de ce qu’affiche une page.
@@ -900,7 +907,10 @@ Un fichier SQLite créé par une application Rails 8 se lit tel quel&nbsp;:
 5. Limites&nbsp;: une table dont la clé primaire n’est pas une colonne `id`
    (une table de jointure) est exportée en `create_table "articles_tags",
    id: false` et n’a pas de modèle (`spin run gen` affiche `skipped
-   articles_tags: no id column`)&nbsp;; atteignez-la avec `DB.with`&nbsp;;
+   articles_tags: no id column`)&nbsp;; atteignez-la avec `DB.with`&nbsp;; une
+   clé primaire `id` qui n’est pas un entier (`id: :uuid` ou `id: :string`
+   dans Rails) est exportée de la même façon, son `id` gardé comme une
+   colonne ordinaire sans PRIMARY KEY&nbsp;;
    `ar_internal_metadata` est laissée telle quelle&nbsp;; une table dont le
    `CREATE TABLE` contient ce que le schéma ne modélise pas ne peut pas être
    modifiée avec les assistants qui reconstruisent ([Modifier une

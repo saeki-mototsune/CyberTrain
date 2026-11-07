@@ -1,5 +1,5 @@
 ---
-source_sha256: 1b75a8cb6cc5f39be25f87f30bbbb124f8c6543bfdbdca023f225a1aa2f13404
+source_sha256: 2e61a5d003a8cdf4e505fa9aa88b96424b88abb33047c541a8ddecaca5b1f59b
 ---
 # 模型与数据库
 
@@ -214,7 +214,7 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
 ```
 
 - 每个方法都带类型，因为 Spinel 的方法只有一种返回类型：`pluck_str` / `pluck_int` / `pluck_float` 只读取一列，`sum_int` / `sum_float` 只对一列求和，`count_by` 返回 `Hash{String => Integer}`。
-- `upsert` 的 `update` 值和 `count_by_sql` 的表达式都是 SQL 文本，与 `order_sql` 一样：绝不要用请求数据来构造它们。空的 `update` 相当于 `DO NOTHING`。`upsert` 和 `increment` 不加载模型，不运行验证或回调，也不填写时间戳。
+- `upsert` 的 `update` 值和 `count_by_sql` 的表达式都是 SQL 文本，与 `order_sql` 一样：绝不要用请求数据来构造它们。空的 `update` 相当于 `DO NOTHING`。`upsert` 和 `increment` 不加载模型，不运行验证或回调，也不填写时间戳；`upsert` 对每个值做与 `save` 存储时相同的转换。
 - `count_by` 的键是 String（经由 `Cast.str`），按升序排列；NULL 和 `""` 共用键 `""`。带有 `limit` / `offset` 时，`count_by`、`sum_*` 和 `increment` 作用于那个窗口，与 `count` 和 `delete_all`（通过子查询）一样。
 - `where_like` 会替你转义文本中的 `\`、`%` 和 `_`，并且是子串匹配（对 ASCII 不区分大小写，与 SQLite 的 LIKE 相同）。前缀搜索需要自己写模式：`Article.all.where_sql("title LIKE ? ESCAPE '\\'", [Cybertrain::Cast.like_escape(q) + "%"])`。
 - 对于手写的 SQL，`Cybertrain::Cast.binds(a, b, c)` 会构造 `execute` 所需的绑定 Array（Time 用存储的 datetime 格式，Date 用 `YYYY-MM-DD`，布尔值为 1/0）：`Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(id, since)) }`。
@@ -260,11 +260,12 @@ Article.upsert_all(rows, unique_by: [:slug], update_only: [:title], returning: [
 
 `insert_all` 用带 `ON CONFLICT DO NOTHING` 的多行 `INSERT` 语句写入大量行，跳过与已有行冲突的行；`insert_all!` 则改为抛出异常；`upsert_all` 用 `ON CONFLICT (unique_by) DO UPDATE` 更新冲突的行。结果是 `RETURNING` 的各行（默认为 `[{"id" => 3}, ...]`），按类型转换，所以 `.size` 就是写入的行数。
 
-- 每行的键都相同，否则在写入任何内容之前就是 `ArgumentError`；未知的列同样抛出异常。没有任何行提到的列取表的 DEFAULT。
+- 每行的键都相同，否则在写入任何内容之前就是 `ArgumentError`；未知的列或没有键的行（`[{}]`）同样抛出异常。没有任何行提到的列取表的 DEFAULT。
 - 值经过与 `save` 相同的转换（Time 用存储格式，Hash 转成 JSON，decimal 按其 scale 舍入，Date 转成文本）。
 - `upsert_all` 更新各行提供的列，但不包括 `id`、`unique_by` 的列和 `created_at`；`update_only:` 缩小这个列表，其中有但各行没有提供的名字会被跳过。
+- `returning:`、`unique_by:` 和 `update_only:` 接受 Array 或单个名字（`returning: :id`）；`false` 表示没有；其他值抛出 `ArgumentError`。
 - 当表有 `created_at` / `updated_at` 而各行没有给出时，整个调用共用一个 `now`，除非 `record_timestamps: false`。
-- 语句按 SQLite 的绑定上限切分，并在一个事务中运行（若已有打开的事务则加入其中），所以失败时这次调用不会留下任何内容。
+- 语句按 SQLite 的绑定上限切分，并在一个事务中运行（若已有打开的事务则加入其中），所以失败时这次调用不会留下任何内容；在你自己打开的事务中，由你的回滚决定。
 - 不运行校验、回调或加密：行中有加密列会抛出 `ArgumentError`。与 Rails 一样，跳过的重复行仍会消耗一个 id。
 - `RETURNING` 需要 SQLite 3.35.0 或更新版本（CyberTrain 链接的系统库）；更旧的版本会以其自身的语法错误拒绝该语句（`Cybertrain::DB::Error`）。
 
@@ -333,7 +334,7 @@ end
 消息是 Rails 的英文默认值：“can't be blank”、“is too short (minimum is 3 characters)”、“is the wrong length (should be 5 characters)”、“is not included in the list”、“is reserved”、“is invalid”、“is not a number”、“must be an integer”、“must be greater than or equal to 0”、“has already been taken”。`message:` 可在行上或规则的 Hash 中替换消息。没有 Rails 的单数形式（“1 character”）：上限为 1 时显示 “1 characters”。
 
 - `length` 接受 `minimum`、`maximum`、`is` 和 `in`（Integer 的 Range）。
-- `inclusion` 和 `exclusion` 接受 Array 或 Integer 的 Range（Spinel 无法构造其他 Range）。
+- `inclusion` 和 `exclusion` 接受 Array 或 Integer 的 Range（Spinel 无法构造其他 Range）；与 Rails 一样，`1...5` 接受 float 列上的 4.5。
 - `numericality` 先解析 String（`"12"` 通过）；Float 不通过 `only_integer`，与 Rails 相同。
 - `uniqueness` 向数据库查询是否有另一行具有该值（`case_sensitive: false` 时为 `LOWER(col) = LOWER(?)`，nil 时为 `IS NULL`），并按 `scope:` 限定范围。不能用于加密列。
 - `allow_nil:` 和 `allow_blank:` 对其所在行的每条规则（包括 `presence`）跳过 nil 或空白值；`on: :create` 或 `on: :update`（一个 Symbol）只对新记录或已保存的记录运行该行。
@@ -366,7 +367,7 @@ end
 
 `encrypts` 指定 string 或 text 列（text 更合适：存储的密文比文本长）。生成的模型在写入行时加密该值，读取时解密，所以 `account.api_key` 是明文，而表中存的是 `1:` 后接随机 nonce、AES-256-GCM 密文及其标签的 Base64。同一个值保存两次会得到不同的密文，因此该列无法搜索：
 
-- `where`、`where_like`、`where_between`、`update_all`、`uniqueness` 和批量写入都会拒绝它（`ArgumentError`）；`pluck` 返回密文。
+- `where`、`where_like`、`where_between`、`update_all`、`increment`、`upsert`、`uniqueness` 和批量写入都会拒绝它（`ArgumentError`）；`pluck` 返回密文。
 - `to_json` 和 `as_json` 包含解密后的文本，与 Rails 相同；不要把这一列放进页面输出的内容。
 - 存储的空值读作 `""`，所以用 `default: "''"` 添加的 NOT NULL 列在其各行重新保存之前也能读取。
 - 不提供：`deterministic: true`，以及读取 Rails 的 `ActiveRecord::Encryption` 的密文（它的密钥派生和格式不同）。
@@ -511,7 +512,7 @@ Rails 8 应用创建的 SQLite 文件可以直接读取：
 2. 运行 `cybertrain db schema`（对构建好的二进制为 `./<app> db schema`）。它用 `db migrate` 所用的导出器根据数据库写出 `db/schema.rb`，打印 `wrote .../db/schema.rb from <path>`，此外什么都不做。之后 `cybertrain db migrate` 找不到需要应用的内容，并生成模型。
 3. 不要复制 Rails 的 `db/migrate/*.rb`：新的迁移从这里开始。`schema_migrations`（两边是同一张表）中已有的 Rails 版本在这里没有文件，所以迁移器既不运行也不回滚它们，`db status` 把它们列为 `applied (no file)`。
 4. 不需要转换的：日期时间（Rails 的格式就是存储格式）、布尔值（`1` / `0`，以及旧的 `t` / `f`）、decimal（Rails 写的是 REAL 值，读作 Float）、json（TEXT，读作 Hash），以及 Rails 写的类型名（`datetime(6)`、`decimal(18,8)`、`varchar`、`bigint`、`json`）。部分索引、表达式索引和 `ON DELETE` 动作也会导出。
-5. 限制：主键不是 `id` 列的表（连接表）会导出为 `create_table "articles_tags", id: false`，没有模型（`spin run gen` 会打印 `skipped articles_tags: no id column`），通过 `DB.with` 访问；`ar_internal_metadata` 保持不动；`CREATE TABLE` 中含有 schema 无法表达内容的表，不能用重建类辅助方法修改（[修改表](#changing-a-table)）；Rails 加密过的列需要重新加密（[加密已有文本的列](#encrypting-a-column-that-already-holds-text)）。
+5. 限制：主键不是 `id` 列的表（连接表）会导出为 `create_table "articles_tags", id: false`，没有模型（`spin run gen` 会打印 `skipped articles_tags: no id column`），通过 `DB.with` 访问；不是整数的 `id` 主键（Rails 的 `id: :uuid` 或 `id: :string`）也同样导出，`id` 保留为没有 PRIMARY KEY 的普通列；`ar_internal_metadata` 保持不动；`CREATE TABLE` 中含有 schema 无法表达内容的表，不能用重建类辅助方法修改（[修改表](#changing-a-table)）；Rails 加密过的列需要重新加密（[加密已有文本的列](#encrypting-a-column-that-already-holds-text)）。
 
 然后按本页所示的形式，在 `app/models/*.rb` 中写出 Rails 模型原有的校验、关联和 scope。
 

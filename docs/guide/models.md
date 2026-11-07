@@ -357,7 +357,8 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
 - `upsert`'s `update` values and `count_by_sql`'s expression are SQL text, like
   `order_sql`: never build them from request data. An empty `update` is
   `DO NOTHING`. `upsert` and `increment` load no model and run no
-  validation or callback, and fill in no timestamps.
+  validation or callback, and fill in no timestamps; `upsert` casts each
+  value as `save` stores it.
 - `count_by` keys are Strings (through `Cast.str`), ascending; NULL and `""`
   share the key `""`. With a `limit` / `offset`, `count_by`, `sum_*` and
   `increment` work on that window, as `count` and `delete_all` (through a
@@ -434,17 +435,22 @@ Article.upsert_all(rows, unique_by: [:slug], update_only: [:title], returning: [
 default `[{"id" => 3}, ...]`), cast by type, so `.size` is the number written.
 
 - Every row has the same keys, or `ArgumentError` before anything is
-  written; an unknown column raises the same way. Columns no row names take
+  written; an unknown column, or rows with no keys (`[{}]`), raise the same
+  way. Columns no row names take
   the table's DEFAULT.
 - Values take the casts `save` gives them (a Time in the stored format, a Hash
   as JSON, a decimal rounded to its scale, a Date as text).
 - `upsert_all` updates the columns the rows supply, except `id`, the
   `unique_by` columns and `created_at`; `update_only:` narrows that list, and
   a name in it that the rows do not supply is skipped.
+- `returning:`, `unique_by:` and `update_only:` take an Array or one name
+  (`returning: :id`); `false` is none; any other value raises
+  `ArgumentError`.
 - `created_at` / `updated_at` get one `now` for the whole call when the table
   has them and the rows do not, unless `record_timestamps: false`.
 - The statements are cut to SQLite's bind limit and run in one transaction
-  (joining one already open), so a failure leaves nothing of the call.
+  (joining one already open), so a failure leaves nothing of the call;
+  inside a transaction you opened, your rollback decides.
 - No validation, callback or encryption runs: an encrypted column in a row
   raises `ArgumentError`. As in Rails, a skipped duplicate still uses up an
   id.
@@ -565,7 +571,7 @@ Hash. Rails' singular form ("1 character") is not there: a limit of 1 reads
 
 - `length` takes `minimum`, `maximum`, `is` and `in` (an Integer Range).
 - `inclusion` and `exclusion` take an Array, or a Range of Integers (Spinel
-  builds no other Range).
+  builds no other Range); `1...5` takes 4.5 on a float column, as in Rails.
 - `numericality` parses a String first (`"12"` passes); a Float fails
   `only_integer`, as in Rails.
 - `uniqueness` asks the database for another row with the value
@@ -615,8 +621,9 @@ value when it writes the row and decrypts it when it reads one, so
 a random nonce, the AES-256-GCM ciphertext and its tag. Two saves of one
 value store different payloads, so the column cannot be searched:
 
-- `where`, `where_like`, `where_between`, `update_all`, `uniqueness` and the
-  bulk writes refuse it (`ArgumentError`); `pluck` answers the payload.
+- `where`, `where_like`, `where_between`, `update_all`, `increment`,
+  `upsert`, `uniqueness` and the bulk writes refuse it (`ArgumentError`);
+  `pluck` answers the payload.
 - `to_json` and `as_json` include the decrypted text, as in Rails; leave the
   column out of what a page renders.
 - An empty stored value reads as `""`, so a NOT NULL column added with
@@ -879,7 +886,9 @@ A SQLite file that a Rails 8 application created can be read as it is:
 5. Limits: a table whose primary key is not an `id` column (a join table) is
    dumped as `create_table "articles_tags", id: false` and gets no model
    (`spin run gen` prints `skipped articles_tags: no id column`); reach it
-   with `DB.with`. `ar_internal_metadata` is left
+   with `DB.with`. An `id` primary key that is not an integer (Rails'
+   `id: :uuid` or `id: :string`) is dumped the same way, its `id` kept as a
+   plain column without the PRIMARY KEY. `ar_internal_metadata` is left
    alone; a table whose `CREATE TABLE` holds what the schema does not model
    cannot be changed with the rebuilding helpers ([Changing a
    table](#changing-a-table)); columns Rails encrypted are re-encrypted
