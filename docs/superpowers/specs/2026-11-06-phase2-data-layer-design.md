@@ -824,3 +824,119 @@ guide's upgrade notes.
    1.day.ago..)` (as a Time range) answers the right rows.
 5. docs/design.md D42 to D50, the guides and their four translations, README
    and the deploy guides are updated as section 13 says.
+
+## 18. Implementation notes (2026-11-07, after Tasks 1 to 17 landed)
+
+What differed from the plan or from this document, and why; each is recorded
+in the code and in docs/design.md D42 to D50 too.
+
+- Spike (section 14): item 2 was the one fallback taken, as amended above
+  (Integer Ranges only, `where_between`; NOTES rule 86, docs/spinel-feedback.md
+  Q). Rule 87 records that class methods added to `Time` compile. Rule 88 is
+  new, found while writing declared associations: a stored block called with
+  a base-class receiver runs the base class's stub, not the override, so the
+  generated counter-cache hooks have no stub on `Model`.
+- Column types: a declared type whose upcased text starts with `DATETIME`
+  (`datetime(6)`) is a datetime everywhere, through one
+  `Connection.datetime_decl?`. A NOT NULL date reads through `Cast.date` but
+  every write goes through `Cast.date_or_nil`, so invalid input stays nil, and
+  every NOT NULL date column gets a generated presence validation (a defaulted
+  one starts at its default), superseding the earlier "nil persists as
+  1970-01-01". `round_scale` passes non-finite Floats through. `t.bigint` is
+  dumped back as `t.bigint` (limit 8), not as `t.integer` (2.5).
+- `db normalize` (2.3): rows are located by `_rowid_`, the canonical check is
+  a `GLOB` with a `[0-9]` class per digit, `WITHOUT ROWID` is read from
+  `PRAGMA table_list` (so SQLite 3.37.0 or newer, refused clearly below it),
+  a table declaring `_rowid_` in any case (`PRAGMA table_xinfo`) is skipped,
+  and the command exits 1 while a skipped table holds pending cells. Trailing
+  text after a datetime (` UTC`) reads as nil and is counted as unreadable.
+- Query API: a String `where` fragment is parenthesized, an Array bind in it
+  and an unknown argument type raise; `or` wraps as `((a) OR (b))`;
+  `exists?` under `distinct` probes `*`; `update_all` rounds decimals;
+  `update_columns` assigns before its UPDATE (as Rails); `find_or_create_by`
+  on a narrowed relation creates from the given Hash only (Rails also merges
+  the relation's equality conditions), accepted for alpha and documented.
+- `scope`: one line, nothing after the closing brace (a trailing comment is
+  refused), no parentheses or commas in a default, the body parenthesized in
+  the generated method, and reserved names (`ModelScan::RESERVED_SCOPE_NAMES`,
+  `raise` and Object / Kernel names included) refused with a one-line
+  message. There is no `test/scopes.rb` (17, item 2): scopes are covered in
+  `test/gen_models.rb` and examples/blog.
+- `pluck` / aggregates: the template interpreter's private `pick` was renamed
+  `pick_indices` (rule 34); NULL and `""` share the group key `""`; a
+  windowed distinct aggregate reads the first n distinct values; a relation
+  with `having_sql` refuses the non-grouped readers, and a grouped reader
+  under a limit or offset refuses `having_sql`.
+- Bulk writes: an `update_only` name the rows do not supply is skipped; `ON
+  CONFLICT DO NOTHING` consumes ids for skipped duplicates (as Rails); an
+  unknown column raises before writing; an encrypted column is refused as a
+  row key and in `returning:`, `unique_by:` and `update_only:`.
+- Associations: every `belongs_to` caches and every `has_many` returns a
+  Relation, foreign-key-derived ones included (compatibility change 1). A
+  declared `belongs_to` adds `validates_foreign_key` (nil, blank or 0 is
+  blank) rather than `presence` (7.2), since a NOT NULL integer key starts at
+  0. `counter_cache:` is accepted on `belongs_to` only; the moved-child read
+  happens in a `before_update` inside the save's transaction, the destroy
+  decrement reads the key from the row, the parent's own save leaves the
+  counter out of its UPDATE, and a parent destroyed with `dependent: :destroy`
+  issues one harmless decrement per child. `has_one` answers the first child
+  by id. The association planning and emission moved into
+  generator/association_emitter.rb. `includes` orders preloaded children by
+  id and does not set a preloaded child's parent.
+- Validators: `validates(*args)` with a trailing options Hash (the plan's
+  `*attrs, options = {}` is not valid Ruby); `unique_value_taken?` takes six
+  arguments (`case_sensitive` reaches the query), queries `IS NULL` for nil,
+  and `uniqueness` on an encrypted column is refused at generation; `on:`
+  takes one Symbol; `if:` / `unless:` inside a rule's Hash, `:if =>` and
+  `"if":` are refused; a name must be a `def` in the model file, a column or
+  an association; `allow_blank:` now also applies to `presence` on the same
+  line; messages have no singular form ("1 characters").
+- Encryption (section 10, amended above): openssl stays opt-in.
+  cybertrain/encryptor.rb is required by gen/app.rb when a model declares
+  `encrypts` (which also sets `Config.encryption_required`) and by hand for
+  `Crypto.encrypt`; config.rb keeps only the String checks, run at every
+  boot. A malformed `_PREVIOUS` entry fails boot, the key is stripped,
+  `decrypt("")` answers `""`, `where_like` and `where_between` refuse the
+  column too, plaintext rows written before `encrypts` raise on read (the
+  guide shows the re-encrypt command), and `to_json` includes the text (as
+  Rails). The CLI flag is `cybertrain secret --hex`, without a length.
+- Migrations (Tasks 15 and 16 went to one implementer and one review):
+  `change_column_default` requires `to:`, and `from:` (`nil` included) makes
+  it reversible; rolling back `change_column_null(..., true)` needs the
+  default argument; only `execute` goes inside `reversible`'s blocks, each
+  in written order; the live table is dumped before each rebuild; the
+  RENAME runs inside `PRAGMA legacy_alter_table = ON` so views and triggers
+  naming the table survive; expression defaults keep their parentheses; a
+  foreign key violation raises `DB::Error` (there is no Migration error
+  class). A rebuild refuses, by a token scan of the `CREATE TABLE` text
+  (`MATCH` and `ON CONFLICT` clauses could pass it), CHECK, inline UNIQUE,
+  COLLATE, generated columns, ON UPDATE, ON DELETE SET DEFAULT, DEFERRABLE, a
+  foreign key to a non-id column, an untyped column, a primary key other than
+  `id`, WITHOUT ROWID and STRICT; a plain `id INTEGER PRIMARY KEY` gains
+  AUTOINCREMENT. `rename_table` keeps index names (Rails renames them).
+  `PRAGMA foreign_key_check` covers the whole database, so a pre-existing
+  violation elsewhere blocks a rebuilding version (as Rails).
+- Expression indexes (11.1): the String column spec exists in the schema DSL
+  (`db/schema.rb`, with `name:` required); the migration helper `add_index`
+  takes an Array of columns only, so a migration creates one with `execute`,
+  and the dump keeps it.
+- Takeover (11.3): step 1's path is `storage/<env>.sqlite3` (the default
+  `database_path`), not `db/<env>.sqlite3`. `db schema` prints `wrote
+  <root>/db/schema.rb from <path>`; `db status` lists a version without a
+  file as `applied (no file)`.
+- Documentation (section 13): there is no docs/guide/migrations.md; the
+  migration helpers, `reversible`, `db schema` and the takeover are sections
+  of docs/guide/models.md, so no new page needs four translations and
+  navigation entries. The Encryptor's `require` is documented in the models
+  and install guides. `test/boot_encryption.rb` was added (a child process
+  boots with and without the key).
+- Test counts (2026-11-07, Spinel 2026.11.04.7026): `script/test-shard 0 1`
+  (the full `spin test`) passes 147 of 147 programs; `cd examples/blog &&
+  spin test` passes its 2 programs, 30 tests and 157 assertions
+  (`articles.rb` 18 / 96, `comments.rb` 12 / 61).
+- Acceptance item 4 (17.4), the manual check against a SQLite file made by
+  Rails 8.1, was not run here: this environment has no Ruby with Rails.
+  `test/schema_dumper_rails.rb` stands in for it with the DDL Rails 8.1
+  writes (`datetime(6)`, `decimal(18,8)`, `json`, `bigint`, a partial and an
+  expression index, `ON DELETE CASCADE`, `ar_internal_metadata`,
+  `schema_migrations` rows); the live check is left to the maintainer.

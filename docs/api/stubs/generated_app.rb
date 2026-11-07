@@ -68,8 +68,9 @@
 # add options: {Cybertrain::Model.has_many has_many} (`dependent:`),
 # {Cybertrain::Model.has_one has_one} and
 # {Cybertrain::Model.belongs_to belongs_to} (`optional:`, `counter_cache:`),
-# with `class_name:` and `foreign_key:`. There is no `:through`,
-# polymorphic association or `includes`.
+# with `class_name:` and `foreign_key:`; {Article.includes includes}
+# preloads them one level deep. There is no `:through` or polymorphic
+# association.
 # @api public
 class Article < Cybertrain::Model
   # @!group Class methods (finders)

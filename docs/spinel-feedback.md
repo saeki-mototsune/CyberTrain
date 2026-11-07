@@ -137,7 +137,7 @@ has a workaround in CyberTrain or an open bug:
 | N | none (the shape is not in the framework) | **Ready to report**: Daicho's 16-line program (CRuby prints `0`; the C does not compile on 2026.11.03.7025, 2026.11.04.7026 and master 60381c464) and the two fixes the report suggests (see N). Not reported upstream yet |
 | O | the non-blocking connect of cybertrain/net/socket.rb (rule 72), kept anyway for the deadline; a sentence in socket.rb's header and the guides | **Ready to report**: a nine-line program, and the cause named to the line: `sp_net_connect_timeout` has been in lib/sp_net.c since 59c06d979 and nothing emits a call to it (see O). Not reported upstream yet |
 | P | none (`HttpClient` stays for the deadline and the address policy); the header comment of cybertrain/http_client.rb and the guides describe the pinned behaviour | Nothing: fixed on matz/spinel master dcc46945c (2026-11-05). Needs a fork tag that carries it, then a `SPINEL_TAG` move and the comment revised (see P) |
-| Q | the planned `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through the planned `where_between(col, from, to)`, and the planned validator option `inclusion: { in: }` takes an Integer Range or an Array; until they land, `where_sql` writes a range | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float and String `when Range` miss are separate defects. Not reported upstream yet |
+| Q | `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through `where_between(col, from, to)`, and the validator options `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an Array | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float and String `when Range` miss are separate defects. Not reported upstream yet |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026; some of their
@@ -177,7 +177,7 @@ that it is fixed.
 | N. A method's return type does not follow an ivar widened through an `attr_accessor` writer | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report, 2026-11-05; re-checked here, and the same on 2026.11.03.7025, so not new here; still on master 60381c464 per the report) |
 | O. `TCPSocket.new` ignores `connect_timeout:` | yes (docs/design.md D24: "60 seconds or more against an unreachable address") | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report; re-checked here, and the same on 2026.11.03.7025; still on master 60381c464 per the report) |
 | P. Net::HTTP against a TLS peer that never answers does not return at the timeout | yes, as "the handshake and the reads are blocking C calls" (D24) | not checked | not checked | not checked | not checked | yes: returns at the timeout, but other threads stop meanwhile (the report) | not checked | **yes**: does not return at all (the report, 40 s; here it returns only when the peer closes, 30 s, the same on 2026.11.03.7025); **fixed** on matz/spinel master dcc46945c (2026-11-05), in no fork tag yet |
-| Q. A Range of Time or Date raises at construction; a Float or String Range is not a Range once boxed | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 2 spike, 2026-11-06; the phase 2 design routes non-Integer bounds through a planned `where_between`) |
+| Q. A Range of Time or Date raises at construction; a Float or String Range is not a Range once boxed | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 2 spike, 2026-11-06; phase 2 routes non-Integer bounds through `where_between`) |
 
 ## What CyberTrain still works around
 
@@ -1851,10 +1851,9 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
 
 - What CyberTrain does with it (phase 2 of the Rails-gap programme,
   docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md 3.1 and
-  9.1; the query methods land with that phase, until then `where_sql` is the
-  way to write a range): the planned `where(col: a..b)`
-  (cybertrain/relation.rb) accepts Integer ends only; any other bound goes
-  through the planned `where_between(col, from, to)`, and the planned
-  validator option `inclusion: { in: }` takes an Integer Range or an Array
-  (spikes/NOTES.md rule 86).
+  9.1, delivered 2026-11-07): `where(col: a..b)` (cybertrain/relation.rb)
+  accepts Integer ends only; any other bound goes through
+  `where_between(col, from, to)`, and the validator options
+  `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an
+  Array (cybertrain/validator.rb; spikes/NOTES.md rule 86).
 - Not reported upstream yet.

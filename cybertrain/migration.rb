@@ -267,7 +267,9 @@ module Cybertrain
     # DEFERRABLE, a foreign key to a column other than id, a column with no
     # type, a primary key other than id, WITHOUT ROWID or STRICT. Write
     # such a change as {#execute} statements. Not available:
-    # `create_join_table`.
+    # `create_join_table`, `change_table`, `rename_index`, `add_timestamps`,
+    # an expression index in {#add_index} (write it with {#execute}; the
+    # schema dump keeps it).
     # @example
     #   class CreateComments < Cybertrain::Migration::Base
     #     def change
