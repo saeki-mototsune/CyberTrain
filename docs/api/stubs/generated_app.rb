@@ -251,7 +251,8 @@ class Article < Cybertrain::Model
   # (...) ON CONFLICT DO NOTHING RETURNING ...`), as many rows per statement
   # as SQLite's bind limit allows ({Cybertrain::DB::Connection#variable_limit}),
   # every statement in one transaction (joining one already open), so a
-  # failure leaves nothing of the call written. A row that collides with an
+  # failure leaves nothing of the call written; inside a transaction you
+  # opened, your rollback decides. A row that collides with an
   # existing one on a UNIQUE index or the primary key is skipped silently.
   #
   # Every row must have the same keys (Symbols or Strings, any order), or

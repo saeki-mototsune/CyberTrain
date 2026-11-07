@@ -560,6 +560,34 @@ test "comments_count follows create, destroy and a moved comment; the post's own
   assert_equal "B2", Post.find(b.id).title
 end
 
+# The create path runs the INSERT and the after_create increment in one
+# transaction, as the update path does: an increment that raises (here a
+# trigger refusing the UPDATE) takes the child's row with it.
+test "a create whose counter increment raises leaves neither the child nor a changed count" do
+  reset_tables
+  a = Post.create(title: "A")
+  Cybertrain::DB.with do |c|
+    c.exec_script("CREATE TRIGGER cap BEFORE UPDATE OF comments_count ON posts WHEN NEW.comments_count > 1 " \
+                  "BEGIN SELECT RAISE(ABORT, 'too many comments'); END;")
+  end
+  comment_on(a, "one")
+  assert_equal 1, count_on(a)
+  late = Comment.new(post_id: a.id, commenter: "ann", body: "two", seen_on: "2026-10-05")
+  message = assert_raises("Error") { late.save }
+  assert_includes message, "too many comments"
+  refute Cybertrain::DB.in_transaction?
+  refute late.persisted?
+  assert late.new_record?
+  assert_equal 1, Comment.count
+  assert_equal 1, count_on(a)
+  Cybertrain::DB.with { |c| c.exec_script("DROP TRIGGER cap;") }
+  # The same record saves once the increment can run.
+  assert late.save
+  assert late.persisted?
+  assert_equal 2, Comment.count
+  assert_equal 2, count_on(a)
+end
+
 test "two loaded copies of one comment moved to different posts leave every count right" do
   reset_tables
   a = Post.create(title: "A")

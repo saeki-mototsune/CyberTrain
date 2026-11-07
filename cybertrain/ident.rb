@@ -34,7 +34,7 @@ module Cybertrain
       "load_row", "set_id", "run_callbacks", "insert_row", "update_row",
       "read_attribute", "write_attribute", "assign_attributes",
       "read_association", "call_view_method", "initialize",
-      "update_with_callbacks", "destroy_with_callbacks",
+      "create_with_callbacks", "update_with_callbacks", "destroy_with_callbacks",
       # declared associations: dependent:, the caches reload clears,
       # counter_cache
       "destroy_dependents", "reset_association_caches", "counter_cache_created",

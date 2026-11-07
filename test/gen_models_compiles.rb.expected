@@ -28,6 +28,7 @@ ok   belongs_to :post without optional: validates post_id
 ok   post.destroy destroys each of its comments (their callbacks run), then the post
 ok   a destroy that raises rolls back the post and every comment and keeps the record persisted
 ok   comments_count follows create, destroy and a moved comment; the post's own save leaves it alone
+ok   a create whose counter increment raises leaves neither the child nor a changed count
 ok   two loaded copies of one comment moved to different posts leave every count right
 ok   destroy decrements the post the row points to, not a stale or unsaved in-memory key
 ok   a move whose save raises inside the transaction leaves the counts and the row as they were
@@ -36,4 +37,4 @@ ok   where, update_all and the bulk writes refuse an encrypted column
 ok   upsert and increment refuse an encrypted column; upsert casts by column type
 ok   a stored payload made with another key raises Encryptor::Error on read
 ok   unique_value_taken? on an encrypted column raises, case-sensitive or not
-38 tests, 293 assertions, 0 failures
+39 tests, 305 assertions, 0 failures

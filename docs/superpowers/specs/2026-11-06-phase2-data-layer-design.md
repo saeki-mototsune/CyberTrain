@@ -375,7 +375,8 @@ is in `Model` as `insert_all_into(table, rows, …)`.
 - Chunking: rows per statement = `sqlite3_limit(db, SQLITE_LIMIT_VARIABLE_NUMBER, -1)
   / columns` (a new FFI binding; the default is 32766, older builds 999).
   All chunks run in **one transaction** (`DB.transaction`, joining an open
-  one), so a failure in chunk 3 leaves nothing of chunks 1 and 2.
+  one), so a failure in chunk 3 leaves nothing of chunks 1 and 2 (inside a
+  transaction the caller opened, the caller's rollback decides).
 - No callbacks, no validations, no `encrypts` (an encrypted column in a bulk
   row raises `ArgumentError`): the guide says so.
 - `RETURNING` needs SQLite 3.35 (2021-03); the spike reads

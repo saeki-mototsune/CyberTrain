@@ -529,10 +529,19 @@ module Cybertrain
         else
           update_with_callbacks
         end
+      elsif counter_cached? && !Cybertrain::DB.in_transaction?
+        # A counter_cache child writes the row and increments the parent's
+        # count (after_create) in one transaction too.
+        begin
+          Cybertrain::DB.transaction { |_c| create_with_callbacks }
+        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+          # Rolled back: the record is new again.
+          @persisted = false
+          @id = 0
+          raise e
+        end
       else
-        run_callbacks("before_create")
-        insert_row
-        run_callbacks("after_create")
+        create_with_callbacks
       end
       run_callbacks("after_save")
       true
@@ -703,6 +712,13 @@ module Cybertrain
 
     def column?(name)
       self.class.column_names.include?(name)
+    end
+
+    def create_with_callbacks
+      run_callbacks("before_create")
+      insert_row
+      run_callbacks("after_create")
+      nil
     end
 
     def update_with_callbacks

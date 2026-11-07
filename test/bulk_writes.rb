@@ -416,6 +416,16 @@ test "bulk rows bind a boolean as 1/0 and a binary value as a BLOB" do
   assert_equal "a", Item.where(ok: false).pluck_str(:code)[0]
 end
 
+# insert_all([{}]) used to divide by zero choosing the rows per statement
+# (a table without timestamps); Rails raises "Empty list of attributes".
+test "rows with no columns raise before anything is written" do
+  reset_items
+  assert_equal "insert_all: rows have no columns", assert_raises("ArgumentError") { Secret.insert_all([{}]) }
+  assert_equal "insert_all: rows have no columns", assert_raises("ArgumentError") { Item.insert_all([{}, {}]) }
+  assert_equal "upsert_all: rows have no columns", assert_raises("ArgumentError") { Item.upsert_all([{}]) }
+  assert_equal 0, Item.count
+end
+
 # Rails accepts one Symbol for returning:, unique_by: and update_only:;
 # update_only: :qty used to answer no columns, so the upsert set nothing.
 test "returning:, unique_by: and update_only: take one Symbol or String as one column" do

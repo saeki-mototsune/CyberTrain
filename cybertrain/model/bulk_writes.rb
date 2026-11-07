@@ -150,8 +150,10 @@ module Cybertrain
     #
     # The rows go in statements of `variable_limit / columns` rows each, all
     # inside one {DB.transaction} (joining one already open on this thread),
-    # so a failure in any statement leaves nothing of the call written. No
-    # model is built, no validation or callback runs, and a column in
+    # so a failure in any statement leaves nothing of the call written
+    # (inside a transaction the caller opened, which nested transactions
+    # join, the caller's rollback decides: rescued and committed, the
+    # earlier statements stay). No model is built, no validation or callback runs, and a column in
     # `encrypted` is refused (ArgumentError), as a row key and in
     # `returning`, `unique_by` and `update_only` alike.
     #
@@ -173,7 +175,7 @@ module Cybertrain
     # @param update_only [Array<Symbol, String>, Symbol, String, false, nil]
     #   the columns an upsert may set; false (as `[]`) sets none
     # @return [Array<Hash{String => Object}>]
-    # @raise [ArgumentError] on rows with different key sets, a name that is
+    # @raise [ArgumentError] on rows with no keys or different key sets, a name that is
     #   not a column of the table, an encrypted column, an upsert without
     #   `unique_by`, or a `returning`, `unique_by` or `update_only` that is
     #   neither an Array, a Symbol or String, false nor nil
@@ -211,6 +213,10 @@ module Cybertrain
         j += 1
       end
       supplied = columns.size
+      # Rails: "Empty list of attributes passed" (and no column would divide
+      # the bind limit by zero below).
+      raise ArgumentError, "#{caller_name}: rows have no columns" if supplied == 0
+
       now = Model.now_string
       fill_created = record_timestamps && column_types.key?("created_at") && !columns.include?("created_at")
       fill_updated = record_timestamps && column_types.key?("updated_at") && !columns.include?("updated_at")
