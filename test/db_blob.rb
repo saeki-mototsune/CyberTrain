@@ -155,7 +155,7 @@ class Image < Cybertrain::Model
   def self.find(id) = all.find(id)
 end
 
-# docs.body is a nullable binary column: str_or_nil, and nil binds NULL
+# docs.body is a nullable binary column: binary_or_nil, and nil binds NULL
 # through Blob.wrap.
 class DocRelation < Cybertrain::Relation
   def where(h) = (add_where(h); self)
@@ -189,7 +189,7 @@ class Doc < Cybertrain::Model
 
   def load_row(row)
     set_id(Cybertrain::Cast.int(row["id"]))
-    @body = Cybertrain::Cast.str_or_nil(row["body"])
+    @body = Cybertrain::Cast.binary_or_nil(row["body"])
     @note = Cybertrain::Cast.str_or_nil(row["note"])
     mark_persisted!
     nil
@@ -206,7 +206,7 @@ class Doc < Cybertrain::Model
 
   def write_attribute(name, value)
     case name
-    when :body then @body = Cybertrain::Cast.str_or_nil(value)
+    when :body then @body = Cybertrain::Cast.binary_or_nil(value)
     when :note then @note = Cybertrain::Cast.str_or_nil(value)
     end
     nil
@@ -301,7 +301,8 @@ test "the generator types a binary column as a String and binds it as a Blob" do
   none = Array.new(0) { "" }
   no_scopes = Array.new(0) { Cybertrain::Gen::ScopeInfo.new("", "", "", "", 0) }
   docs = Cybertrain::Gen::ModelsEmitter.emit(definition.table("docs"), definition, none, no_scopes)
-  assert_includes docs, "    @body = Cybertrain::Cast.str_or_nil(row[\"body\"])\n"
+  assert_includes docs, "    @body = Cybertrain::Cast.binary_or_nil(row[\"body\"])\n"
+  assert_includes docs, "    when :body then @body = Cybertrain::Cast.binary_or_nil(value)\n"
   assert_includes docs, "      \"body\" => Cybertrain::DB::Blob.wrap(@body),\n"
   assert_includes docs, "      \"note\" => Cybertrain::Cast.to_sql(@note)\n"
   images = Cybertrain::Gen::ModelsEmitter.emit(definition.table("images"), definition, none, no_scopes)
