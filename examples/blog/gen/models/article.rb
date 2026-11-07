@@ -206,6 +206,8 @@ class ArticleRelation < Cybertrain::Relation
     end
     nil
   end
+
+  def recent = (order(created_at: :desc))
 end
 
 class Article < Cybertrain::Model
@@ -325,6 +327,7 @@ class Article < Cybertrain::Model
   def self.having_sql(...) = all.having_sql(...)
   def self.includes(...) = all.includes(...)
   def self.preload(...) = all.preload(...)
+  def self.recent = all.recent
 
   def self.create(attrs = {})
     rec = Article.new(attrs)
@@ -376,7 +379,7 @@ class Article < Cybertrain::Model
   end
 
   def destroy_dependents
-    CommentRelation.new("comments").where(article_id: @id).delete_all
+    CommentRelation.new("comments").where(article_id: @id).destroy_all
     nil
   end
 

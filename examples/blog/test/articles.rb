@@ -177,4 +177,111 @@ test "a missing article is 404" do
   assert_response client.get("/nowhere"), :not_found
 end
 
+# Every statement run so far, over the pool's connections (requests and
+# the test share them).
+def statements
+  pool = Cybertrain::DB.pool
+  total = 0
+  i = 0
+  while i < pool.size
+    total += pool.connection_at(i).statements_run
+    i += 1
+  end
+  total
+end
+
+test "the index shows each article's comment count from one preload" do
+  client = new_client
+  article = BlogTest.article("Commented article")
+  BlogTest.comment(article, "Alice", "First!")
+  BlogTest.comment(article, "Bob", "Second!")
+  before = statements
+  res = client.get("/articles")
+  one_article = statements - before
+  assert_response res, :ok
+  assert_includes res.body, "<th>Comments</th>"
+  assert_includes res.body, "<td class=\"comment-count\">2</td>"
+
+  BlogTest.article("Second article")
+  BlogTest.article("Third article")
+  before = statements
+  res = client.get("/articles")
+  assert_equal one_article, statements - before
+  assert_equal 2, one_article
+  assert_includes res.body, "<td class=\"comment-count\">0</td>"
+end
+
+test "destroying an article destroys its comments" do
+  BlogTest.reset
+  article = BlogTest.article("Doomed article")
+  kept = BlogTest.article("Kept article")
+  BlogTest.comment(article, "Alice", "Going")
+  BlogTest.comment(article, "Bob", "Going too")
+  BlogTest.comment(kept, "Carol", "Staying")
+  article.destroy
+  assert_equal 1, Article.count
+  assert_equal 1, Comment.count
+  assert_equal "Staying", Comment.first.body
+end
+
+test "a duplicate title is refused with has already been taken" do
+  client = new_client
+  BlogTest.article("Hello Rails")
+  client.get("/articles/new")
+  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
+                                   "article[title]" => "Hello Rails",
+                                   "article[body]" => "Another article with the same title." })
+  assert_response res, :unprocessable_entity
+  assert_includes res.body, "<li>Title has already been taken</li>"
+  assert_equal 1, Article.count
+end
+
+test "the date filter leaves out articles created outside the range" do
+  client = new_client
+  early = BlogTest.article("Early article")
+  inside = BlogTest.article("Inside article")
+  last_day = BlogTest.article("Last day article")
+  late = BlogTest.article("Late article")
+  early.update_columns(created_at: Time.utc(2024, 3, 9, 23, 59, 59))
+  inside.update_columns(created_at: Time.utc(2024, 3, 10, 0, 0, 0))
+  last_day.update_columns(created_at: Time.utc(2024, 3, 20, 23, 59, 59))
+  late.update_columns(created_at: Time.utc(2024, 3, 21, 0, 0, 0))
+
+  res = client.get("/articles")
+  assert_includes res.body, "<form action=\"/articles\" method=\"get\">"
+  assert_includes res.body, "<input type=\"date\" name=\"from\" id=\"from\">"
+  assert_includes res.body, "<input type=\"date\" name=\"to\" id=\"to\">"
+  assert_includes res.body, "Early article"
+
+  res = client.get("/articles?from=2024-03-10&to=2024-03-20")
+  assert_response res, :ok
+  assert_nil res.body.index("Early article")
+  assert_includes res.body, "Inside article"
+  assert_includes res.body, "Last day article"
+  assert_nil res.body.index("Late article")
+  assert_includes res.body, "<input type=\"date\" name=\"from\" id=\"from\" value=\"2024-03-10\">"
+
+  res = client.get("/articles?from=2024-03-21")
+  assert_nil res.body.index("Inside article")
+  assert_includes res.body, "Late article"
+
+  res = client.get("/articles?to=2024-03-09")
+  assert_includes res.body, "Early article"
+  assert_nil res.body.index("Inside article")
+
+  res = client.get("/articles?from=not-a-date&to=")
+  assert_includes res.body, "Early article"
+  assert_includes res.body, "Late article"
+end
+
+test "Article.recent puts the newest first" do
+  BlogTest.reset
+  older = BlogTest.article("Older article")
+  newer = BlogTest.article("Newer article")
+  older.update_columns(created_at: Time.utc(2024, 1, 1, 0, 0, 0))
+  newer.update_columns(created_at: Time.utc(2024, 6, 1, 0, 0, 0))
+  assert_equal newer.id, Article.recent.first.id
+  assert_equal ["Newer article", "Older article"], Article.recent.to_a.map { |a| a.title }
+end
+
 Cybertrain::Test.run!

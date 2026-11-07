@@ -218,6 +218,8 @@ class Comment < Cybertrain::Model
 
   attr_accessor :commenter, :body, :article_id, :created_at, :updated_at
 
+  validates_foreign_key :article_id
+
   def initialize(attrs = {})
     super()
     @commenter = nil

@@ -15,4 +15,9 @@ ok   PATCH /articles/:id (POST with _method) updates and redirects with a notice
 ok   PATCH /articles/:id with invalid values re-renders the edit form
 ok   DELETE /articles/:id (POST with _method) destroys and redirects to the index
 ok   a missing article is 404
-13 tests, 66 assertions, 0 failures
+ok   the index shows each article's comment count from one preload
+ok   destroying an article destroys its comments
+ok   a duplicate title is refused with has already been taken
+ok   the date filter leaves out articles created outside the range
+ok   Article.recent puts the newest first
+18 tests, 96 assertions, 0 failures

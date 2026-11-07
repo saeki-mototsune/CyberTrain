@@ -1,9 +1,22 @@
 class ArticlesController < ApplicationController
   before_action :set_article, only: [:show, :edit, :update, :destroy]
 
-  # GET /articles
+  # GET /articles (?from=YYYY-MM-DD&to=YYYY-MM-DD, either end optional)
+  # Newest first, each article's comments preloaded for the Comments
+  # column (two queries, however many articles). A date that does not
+  # parse is ignored; `to` takes in the whole of its day.
   def index
-    @articles = Article.all.to_a
+    from_date = Cybertrain::Cast.date_or_nil(params[:from])
+    to_date = Cybertrain::Cast.date_or_nil(params[:to])
+    @from = from_date.nil? ? nil : params[:from]
+    @to = to_date.nil? ? nil : params[:to]
+    articles = Article.recent.includes(:comments)
+    unless from_date.nil? && to_date.nil?
+      from_time = from_date.nil? ? nil : Time.utc(from_date.year, from_date.month, from_date.day)
+      to_time = to_date.nil? ? nil : Time.utc(to_date.year, to_date.month, to_date.day) + 86_400
+      articles = articles.where_between(:created_at, from_time, to_time, exclude_end: true)
+    end
+    @articles = articles.to_a
   end
 
   # GET /articles/1
