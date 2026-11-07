@@ -10,8 +10,13 @@ module Cybertrain
     # row instead: SQLite's `INSERT ... ON CONFLICT (...) DO UPDATE SET`.
     # The counter-and-statistics shape in one statement.
     #
-    # `attrs` are column => value, bound (through Cast.to_sql), never
-    # interpolated. `update` is column => SQL expression, where `excluded.x`
+    # `attrs` are column => value, bound, never interpolated; a generated
+    # model casts each by its column's type as a save does
+    # ({Relation.typed_bind}: a decimal rounded to its scale, a boolean as
+    # 1/0, a Hash as JSON, a Time in the storage format) and refuses an
+    # encrypted column (`encrypts`) among the attrs, the conflict columns
+    # and the update keys, which only a save can encrypt. A hand-written
+    # subclass binds through Cast.to_sql. `update` is column => SQL expression, where `excluded.x`
     # is the value this INSERT tried to write; like {ArticleRelation#order_sql}
     # it is the developer's SQL text and must never see request data. An
     # empty `update` is `DO NOTHING`. Every column name (attrs, conflict,
@@ -31,34 +36,49 @@ module Cybertrain
     # @param update [Hash{Symbol => String}] column => SQL expression
     # @return [Integer] rows written: 1 inserted or updated, 0 when an empty
     #   `update` skipped a conflicting row
-    # @raise [ArgumentError] on an empty `attrs` or `conflict`, or a name
-    #   that is not a column name
+    # @raise [ArgumentError] on an empty `attrs` or `conflict`, a name
+    #   that is not a column name, or an encrypted column
     # @raise [DB::Error] when SQLite refuses the statement (no UNIQUE index
     #   matches `conflict`, a NOT NULL column is missing)
     # @api public
     def self.upsert(attrs, conflict:, update: {})
-      Model.upsert_into(table_name, attrs, conflict, update)
+      Model.upsert_into(table_name, attrs, conflict, update, Model.no_column_types, Model.no_decimal_scales,
+                        Model.no_encrypted_columns)
     end
 
-    # The work of {.upsert}, given the table: a class method on Model
-    # itself so the generated subclasses need no code of their own (their
-    # table_name override is what `upsert` passes).
-    def self.upsert_into(table, attrs, conflict, update)
+    # The work of {.upsert}, given the table and its schema: a class method
+    # on Model itself. The generated model's own `upsert` passes its
+    # COLUMN_TYPES, DECIMAL_SCALES and ENCRYPTED_COLUMNS (a base-class
+    # method cannot read a subclass's constants, NOTES rules 3 and 4); the
+    # base {.upsert} passes none, so every value binds through Cast.to_sql.
+    def self.upsert_into(table, attrs, conflict, update, column_types, scales, encrypted)
       raise ArgumentError, "upsert: no attributes" if attrs.empty?
       raise ArgumentError, "upsert: no conflict columns" if conflict.empty?
 
       columns = Array.new(0) { "" }
-      binds = [nil, 0, 0.0, ""]
+      binds = [nil, 0, 0.0, "", Cybertrain::DB::Blob.new("")]
       binds.clear
       attrs.each do |key, value|
         columns << Relation.checked_column("upsert", key)
-        binds << Cast.to_sql(value)
+        name = key.to_s
+        raise ArgumentError, "upsert: #{name} is an encrypted column" if encrypted.include?(name)
+
+        type = column_types.key?(name) ? column_types[name] : :unknown
+        scale = scales.key?(name) ? scales[name].to_i : -1
+        binds << Relation.typed_bind(type, scale, value)
       end
       target = Array.new(0) { "" }
-      conflict.each { |key| target << Relation.checked_column("upsert", key) }
+      conflict.each do |key|
+        target << Relation.checked_column("upsert", key)
+        name = key.to_s
+        raise ArgumentError, "upsert: conflict: #{name} is an encrypted column" if encrypted.include?(name)
+      end
       sets = Array.new(0) { "" }
       update.each do |key, expr|
         quoted = Relation.checked_column("upsert", key)
+        name = key.to_s
+        raise ArgumentError, "upsert: update: #{name} is an encrypted column" if encrypted.include?(name)
+
         sets << "#{quoted} = #{expr}"
       end
       marks = Array.new(columns.size) { "?" }
@@ -87,6 +107,15 @@ module Cybertrain
     # @return [Hash{String => Integer}]
     def self.no_decimal_scales
       h = { "" => 0 }
+      h.delete("")
+      h
+    end
+
+    # A typed empty `COLUMN_TYPES` (column => type), for the base
+    # {.upsert}, which knows no schema (NOTES rule 9).
+    # @return [Hash{String => Symbol}]
+    def self.no_column_types
+      h = { "" => :unknown }
       h.delete("")
       h
     end

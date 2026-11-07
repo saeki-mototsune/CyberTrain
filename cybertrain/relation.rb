@@ -709,10 +709,13 @@ module Cybertrain
     # @param column [Symbol, String] a column name
     # @param by [Integer, Float]
     # @return [Integer] the number of rows updated
-    # @raise [ArgumentError] when `column` is not a column name
+    # @raise [ArgumentError] when `column` is not a column name, or is an
+    #   encrypted column
     # @api public
     def increment(column, by: 1)
       quoted = Relation.checked_column("increment", column)
+      # A payload plus 1 would destroy it.
+      check_not_encrypted("increment", column.to_s)
       table = Relation.quote_ident(@table)
       sql = +"UPDATE #{table} SET #{quoted} = #{quoted} + ?"
       binds = [nil, 0, 0.0, ""]

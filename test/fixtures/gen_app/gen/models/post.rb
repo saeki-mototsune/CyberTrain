@@ -425,6 +425,11 @@ class Post < Cybertrain::Model
                                       returning, record_timestamps, :update, unique_by, update_only)
   end
 
+  def self.upsert(attrs, conflict:, update: {})
+    Cybertrain::Model.upsert_into("posts", attrs, conflict, update, COLUMN_TYPES, DECIMAL_SCALES,
+                                  ENCRYPTED_COLUMNS)
+  end
+
   def comments
     rel = CommentRelation.new("comments").where(post_id: @id)
     return rel if @comments_preloaded.nil?

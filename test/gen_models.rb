@@ -426,6 +426,11 @@ EXPECTED_POST = HEADER + <<~'RUBY'
                                           returning, record_timestamps, :update, unique_by, update_only)
       end
 
+      def self.upsert(attrs, conflict:, update: {})
+        Cybertrain::Model.upsert_into("posts", attrs, conflict, update, COLUMN_TYPES, DECIMAL_SCALES,
+                                      ENCRYPTED_COLUMNS)
+      end
+
       def comments
         rel = CommentRelation.new("comments").where(post_id: @id)
         return rel if @comments_preloaded.nil?
@@ -862,6 +867,11 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
                                           returning, record_timestamps, :update, unique_by, update_only)
       end
 
+      def self.upsert(attrs, conflict:, update: {})
+        Cybertrain::Model.upsert_into("comments", attrs, conflict, update, COLUMN_TYPES, DECIMAL_SCALES,
+                                      ENCRYPTED_COLUMNS)
+      end
+
       def post
         return @post_record if @post_loaded && @post_loaded_key == @post_id
 
@@ -1234,6 +1244,11 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
                                           returning, record_timestamps, :update, unique_by, update_only)
       end
 
+      def self.upsert(attrs, conflict:, update: {})
+        Cybertrain::Model.upsert_into("flags", attrs, conflict, update, COLUMN_TYPES, DECIMAL_SCALES,
+                                      ENCRYPTED_COLUMNS)
+      end
+
       def read_association(name) = nil
       def call_view_method(name) = nil
 
@@ -1526,11 +1541,16 @@ test "bulk writes: COLUMN_TYPES, DECIMAL_SCALES and ENCRYPTED_COLUMNS, and three
       Cybertrain::Model.insert_all_into("readings", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
                                         returning, record_timestamps, :update, unique_by, update_only)
     end
+
+    def self.upsert(attrs, conflict:, update: {})
+      Cybertrain::Model.upsert_into("readings", attrs, conflict, update, COLUMN_TYPES, DECIMAL_SCALES,
+                                    ENCRYPTED_COLUMNS)
+    end
   RUBY
   # No scaled decimal: the typed empty Hash.
   assert_includes emit_for("flags"), "  DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales\n"
   # A name the generated class answers, so a scope cannot take it.
-  %w[insert_all insert_all! upsert_all insert_all_into].each do |name|
+  %w[insert_all insert_all! upsert_all insert_all_into upsert upsert_into].each do |name|
     assert Cybertrain::Gen::ModelScan.reserved_scope_name?(name)
   end
 end

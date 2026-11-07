@@ -667,6 +667,41 @@ test "where, update_all and the bulk writes refuse an encrypted column" do
   assert_equal 1, Post.count
 end
 
+test "upsert and increment refuse an encrypted column; upsert casts by column type" do
+  reset_tables
+  post = Post.create(title: "Locked", secret_note: "k")
+  assert_equal "upsert: secret_note is an encrypted column",
+               assert_raises("ArgumentError") { Post.upsert({ id: post.id, title: "T", secret_note: "x" }, conflict: [:id]) }
+  assert_equal "upsert: conflict: secret_note is an encrypted column",
+               assert_raises("ArgumentError") { Post.upsert({ title: "T" }, conflict: [:secret_note]) }
+  assert_equal "upsert: update: secret_note is an encrypted column",
+               assert_raises("ArgumentError") {
+                 Post.upsert({ id: post.id, title: "T" }, conflict: [:id], update: { secret_note: "excluded.title" })
+               }
+  assert_equal "increment on an encrypted column (secret_note) is not supported",
+               assert_raises("ArgumentError") { Post.where(id: post.id).increment(:secret_note) }
+  # Nothing was written: the payload still decrypts.
+  assert_equal "k", Post.find(post.id).secret_note
+  assert_equal "Locked", Post.find(post.id).title
+  # The values take the casts a save gives them.
+  assert_equal 1, Post.upsert({ id: 900, title: "Up", price: 2.345, meta: "{\"a\":1}", published_on: "2026-11-06",
+                                views: "3", created_at: "2026-10-05T09:00:00Z", updated_at: Time.utc(2026, 10, 5) },
+                              conflict: [:id])
+  raw = Cybertrain::DB.with do |c|
+    c.execute("SELECT price, meta, published_on, typeof(views) AS t, created_at FROM posts WHERE id = 900", [])
+  end
+  assert_equal 2.35, Cybertrain::Cast.float(raw[0]["price"])
+  assert_equal "{\"a\":1}", Cybertrain::Cast.str(raw[0]["meta"])
+  assert_equal "2026-11-06", Cybertrain::Cast.str(raw[0]["published_on"])
+  assert_equal "integer", Cybertrain::Cast.str(raw[0]["t"])
+  assert_equal "2026-10-05 09:00:00.000000", Cybertrain::Cast.str(raw[0]["created_at"])
+  stamp = Time.utc(2026, 10, 6)
+  assert_equal 1, Post.upsert({ id: 900, title: "Up2", created_at: stamp, updated_at: stamp }, conflict: [:id],
+                              update: { title: "excluded.title" })
+  assert_equal "Up2", Post.find(900).title
+  assert_equal 2.35, Post.find(900).price
+end
+
 test "a stored payload made with another key raises Encryptor::Error on read" do
   reset_tables
   post = Post.create(title: "Locked", secret_note: "k")

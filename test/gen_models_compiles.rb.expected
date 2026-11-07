@@ -33,6 +33,7 @@ ok   destroy decrements the post the row points to, not a stale or unsaved in-me
 ok   a move whose save raises inside the transaction leaves the counts and the row as they were
 ok   an encrypted column is stored as a payload and read back as the text; nil stays NULL
 ok   where, update_all and the bulk writes refuse an encrypted column
+ok   upsert and increment refuse an encrypted column; upsert casts by column type
 ok   a stored payload made with another key raises Encryptor::Error on read
 ok   unique_value_taken? on an encrypted column raises, case-sensitive or not
-37 tests, 274 assertions, 0 failures
+38 tests, 293 assertions, 0 failures

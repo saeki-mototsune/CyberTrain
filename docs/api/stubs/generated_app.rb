@@ -242,7 +242,8 @@ class Article < Cybertrain::Model
 
   # The columns app/models/article.rb encrypts (`encrypts :name`, as
   # `["name"]`), which the bulk writes refuse as a row key and in
-  # `returning:`, `unique_by:` and `update_only:` (none here).
+  # `returning:`, `unique_by:` and `update_only:`, and {.upsert} in its
+  # attrs, conflict and update (none here).
   # @api public
   ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
 
@@ -315,6 +316,24 @@ class Article < Cybertrain::Model
   def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)
     Cybertrain::Model.insert_all_into("articles", rows, COLUMN_TYPES, DECIMAL_SCALES, ENCRYPTED_COLUMNS,
                                       returning, record_timestamps, :update, unique_by, update_only)
+  end
+
+  # {Cybertrain::Model.upsert} for this table: one row, `ON CONFLICT
+  # (conflict) DO UPDATE SET` the `update` expressions. The values take
+  # the casts a save gives them, as the bulk writes' do, and an encrypted
+  # column is refused among the attrs, the conflict columns and the
+  # update keys (ArgumentError).
+  # @example
+  #   Article.upsert({ id: 1, title: "Hello" }, conflict: [:id], update: { title: "excluded.title" })
+  # @param attrs [Hash{Symbol => Object}] the row to insert
+  # @param conflict [Array<Symbol>] the conflict target's columns
+  # @param update [Hash{Symbol => String}] column => SQL expression
+  # @return [Integer] rows written
+  # @raise [ArgumentError] as {Cybertrain::Model.upsert}, or on an encrypted column
+  # @api public
+  def self.upsert(attrs, conflict:, update: {})
+    Cybertrain::Model.upsert_into("articles", attrs, conflict, update, COLUMN_TYPES, DECIMAL_SCALES,
+                                  ENCRYPTED_COLUMNS)
   end
 
   # @!endgroup

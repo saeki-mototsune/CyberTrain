@@ -790,7 +790,9 @@ module Cybertrain
       # column, `id` included, with column_type's type), DECIMAL_SCALES (the
       # decimal columns that declare a scale) and ENCRYPTED_COLUMNS (the
       # model's `encrypts` columns, refused by the bulk writes) -- and insert_all, insert_all! and
-      # upsert_all, each one call of Cybertrain::Model.insert_all_into
+      # upsert_all, each one call of Cybertrain::Model.insert_all_into, and
+      # upsert, one call of Cybertrain::Model.upsert_into with the same
+      # constants (so it casts by type and refuses an encrypted column)
       # (spec section 6). The empty containers come from typed helpers
       # (NOTES rule 9).
       def self.emit_bulk_writes(table, encrypted)
@@ -829,6 +831,11 @@ module Cybertrain
         src << "\n"
         src << "  def self.upsert_all(rows, unique_by: [:id], update_only: nil, returning: [:id], record_timestamps: true)\n"
         src << head << pad << "returning, record_timestamps, :update, unique_by, update_only)\n"
+        src << "  end\n"
+        src << "\n"
+        src << "  def self.upsert(attrs, conflict:, update: {})\n"
+        src << "    Cybertrain::Model.upsert_into(\"#{table.name}\", attrs, conflict, update, COLUMN_TYPES, DECIMAL_SCALES,\n"
+        src << "                                  ENCRYPTED_COLUMNS)\n"
         src << "  end\n"
         src << "\n"
         src

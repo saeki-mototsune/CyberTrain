@@ -422,6 +422,11 @@ class Comment < Cybertrain::Model
                                       returning, record_timestamps, :update, unique_by, update_only)
   end
 
+  def self.upsert(attrs, conflict:, update: {})
+    Cybertrain::Model.upsert_into("comments", attrs, conflict, update, COLUMN_TYPES, DECIMAL_SCALES,
+                                  ENCRYPTED_COLUMNS)
+  end
+
   def post
     return @post_record if @post_loaded && @post_loaded_key == @post_id
 
