@@ -168,6 +168,12 @@ done
 == 20260301000000 CreateBlog: migrating
 done
 == 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
 ok   a rebuild refuses a table with constructs the schema does not model
 == 20260301000000 CreateBlog: migrating
 done
@@ -177,5 +183,9 @@ done
 done
 == 20260301000200 RebuildThings: migrating
 done
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+done
 ok   a rebuild ignores those words where they are quoted, and takes a REFERENCES to id
-24 tests, 134 assertions, 0 failures
+24 tests, 141 assertions, 0 failures

@@ -232,6 +232,30 @@ test "a Rails join table without id dumps as id: false, loads and dumps back the
   connection.close
 end
 
+# Rails' `create_table :tokens, id: :uuid` (or `id: :string`) on SQLite: a
+# varchar id primary key. It is not the implicit integer id (a model would
+# read "550e8400-..." as 550 and save to no row), so it dumps as id: false
+# with the id column kept, as a join table does.
+test "a non-integer id primary key dumps as id: false with the id column kept" do
+  connection = Cybertrain::DB::Connection.new(":memory:")
+  connection.exec_script(<<~SQL)
+    CREATE TABLE "tokens" ("id" varchar NOT NULL PRIMARY KEY, "name" varchar);
+    CREATE TABLE "big_ids" ("id" bigint NOT NULL PRIMARY KEY, "note" text);
+  SQL
+  dumped = Cybertrain::DB::SchemaDumper.dump(connection)
+  tokens = dumped.table("tokens")
+  assert tokens.without_id?
+  assert_equal ["id", "name"], tokens.columns.map { |c| c.name }
+  refute dumped.table("big_ids").without_id?
+  ruby = Cybertrain::Schema::Dumper.to_ruby(dumped)
+  assert_includes ruby, "  s.create_table \"tokens\", id: false do |t|\n    t.string \"id\", null: false\n" \
+                        "    t.string \"name\"\n  end\n"
+  assert_equal "", Cybertrain::DB::SqliteDDL.rebuild_refusal("CREATE TABLE \"big_ids\" (\"id\" bigint NOT NULL PRIMARY KEY, \"note\" text)")
+  assert_equal "a non-integer primary key on id",
+               Cybertrain::DB::SqliteDDL.rebuild_refusal("CREATE TABLE \"tokens\" (\"id\" varchar NOT NULL PRIMARY KEY, \"name\" varchar)")
+  connection.close
+end
+
 class StampNoteNotNull < Cybertrain::Migration::Base
   version "20260301000000"
 

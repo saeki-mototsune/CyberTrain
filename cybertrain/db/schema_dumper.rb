@@ -63,14 +63,20 @@ module Cybertrain
         rows.empty? ? "0" : rows[0]["version"].to_s
       end
 
-      # Whether the table's primary key is a column named id (any case), as
-      # every table the framework (or Rails, by default) creates has. A
-      # table without one (a Rails join table, `id: false`) is dumped as
-      # `create_table "x", id: false`, with every column.
+      # Whether the table's primary key is an integer column named id (any
+      # case), as every table the framework (or Rails, by default) creates
+      # has: its declared type has INTEGER affinity (contains INT: integer,
+      # bigint). A table without one -- a Rails join table, or Rails'
+      # `id: :uuid` / `id: :string` (a varchar id, which a model reading
+      # ids as Integers would save to no row) -- is dumped as
+      # `create_table "x", id: false`, with every column; the PRIMARY KEY
+      # of a kept column is not recorded.
       def self.id_primary_key?(connection, table_name)
         rows = connection.execute("PRAGMA table_info(#{table_name})")
         rows.each do |r|
-          return true if Cybertrain::Cast.int(r["pk"]) != 0 && r["name"].to_s.downcase == "id"
+          next unless Cybertrain::Cast.int(r["pk"]) != 0 && r["name"].to_s.downcase == "id"
+
+          return r["type"].to_s.upcase.include?("INT")
         end
         false
       end

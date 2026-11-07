@@ -564,6 +564,11 @@ test "a rebuild refuses a table with constructs the schema does not model" do
                refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, \"stuff\" NOT NULL DEFAULT 1)")
   assert_equal "#{prefix}a primary key on code#{suffix}",
                refusal("CREATE TABLE things (code TEXT PRIMARY KEY, note TEXT)")
+  # Rails' id: :uuid / id: :string: the rebuild would make id an INTEGER.
+  assert_equal "#{prefix}a non-integer primary key on id#{suffix}",
+               refusal("CREATE TABLE things (\"id\" varchar NOT NULL PRIMARY KEY, note TEXT)")
+  assert_equal "#{prefix}a non-integer primary key on id#{suffix}",
+               refusal("CREATE TABLE things (id TEXT PRIMARY KEY, note TEXT)")
   assert_equal "#{prefix}the table option WITHOUT#{suffix}",
                refusal("CREATE TABLE things (id INTEGER PRIMARY KEY, note TEXT) WITHOUT ROWID")
   assert_equal "#{prefix}a DEFERRABLE foreign key#{suffix}",
@@ -574,6 +579,7 @@ test "a rebuild ignores those words where they are quoted, and takes a REFERENCE
   assert_equal "", refusal("CREATE TABLE \"things\" (\"id\" integer PRIMARY KEY AUTOINCREMENT NOT NULL, \"note\" text, " \
                            "\"kind\" varchar DEFAULT 'UNIQUE CHECK (x)', \"post_id\" integer, -- a COLLATE comment\n" \
                            "CONSTRAINT \"fk_rails_2\" FOREIGN KEY (\"post_id\") REFERENCES \"posts\" (\"id\") ON DELETE CASCADE)")
+  assert_equal "", refusal("CREATE TABLE things (\"id\" bigint NOT NULL PRIMARY KEY, note TEXT)")
   assert_equal "", refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, post_id INTEGER REFERENCES posts, " \
                            "price DECIMAL(18,8) DEFAULT (round(1.5, 0)))")
 end

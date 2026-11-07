@@ -127,7 +127,8 @@ module Cybertrain
       # DELETE SET DEFAULT action", "a DEFERRABLE foreign key", "a foreign
       # key to <table>(<column>)" (a column other than id), "the untyped
       # column <name>" (the copy would turn its integers into text), "a
-      # primary key on <name>" (one other than id), "the table option
+      # primary key on <name>" (one other than id), "a non-integer primary
+      # key on id" (a varchar id, Rails' id: :uuid), "the table option
       # <word>" (WITHOUT ROWID, STRICT). "" when there is nothing. Words
       # inside quotes and comments do not count.
       def self.rebuild_refusal(create_sql)
@@ -220,7 +221,10 @@ module Cybertrain
           depth -= 1 if token == ")"
           word = token.upcase
           return "a generated column" if depth == 0 && word == "AS"
-          return "a primary key on #{name}" if depth == 0 && word == "PRIMARY" && name.downcase != "id"
+          next unless depth == 0 && word == "PRIMARY"
+          return "a primary key on #{name}" if name.downcase != "id"
+          # Rails' id: :uuid / id: :string: the rebuilt id would be INTEGER.
+          return "a non-integer primary key on id" unless segment[1].upcase.include?("INT")
         end
         ""
       end
