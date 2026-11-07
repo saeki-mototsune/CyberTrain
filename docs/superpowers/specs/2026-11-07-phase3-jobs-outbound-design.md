@@ -237,10 +237,17 @@ end
   = ? AND state = 'queued' AND concurrency_key = ''`, one statement per keyed
   kind, idempotent, so every later start is a no-op. A row the backfill
   cannot key (a payload without the field) stays `""` and is listed at warn.
-  `running` rows need no backfill because the deploy order of D39 ("stop
-  every old process before the first new one starts") leaves none, and a
-  stale one is recovered to `queued` first and then backfilled by the same
-  start. The guide's upgrade notes state the order (section 16).
+  `running` rows left by the old processes (D39's deploy order stops them
+  first, but a row whose heartbeat is still fresh stays `running` until it
+  goes stale, which can be minutes after the new workers started) are keyed
+  **by the recovery itself**: `Job.recover!`'s requeue becomes one statement
+  per keyed kind that sets `state = 'queued'` and `concurrency_key =
+  COALESCE(json_extract(payload, '$.' || ?), '')` in the same UPDATE
+  (atomic, so no claim can see a requeued row with `""`), and the unkeyed
+  kinds keep today's single statement. Recovery runs at start and from
+  every scheduler tick at most once a minute, so a row that goes stale
+  after the startup backfill is still keyed the moment it is requeued. The
+  guide's upgrade notes state the order (section 16).
 - Rails' `duration:` (a slot that expires) is not built: a stale heartbeat
   frees the slot (D28 revised), which is the same guarantee.
 
@@ -686,8 +693,11 @@ cover the cases).
    policy and the fence are covered in compiled tests on a temporary
    database; `limits_concurrency` with a key keeps two rows of the same key
    from running at once across two `claimed_by` labels; a `queued` row
-   enqueued without a key is backfilled at `Job.start!`; a stale row of a
-   kind with `attempts: 20` recovered on attempt 5 is requeued, not failed.
+   enqueued without a key is backfilled at `Job.start!`; a `running` row
+   with `""` whose heartbeat goes stale after the new worker started is
+   requeued with its key set in the same statement (an old worker's row
+   simulated by a fresh then aged heartbeat); a stale row of a kind with
+   `attempts: 20` recovered on attempt 5 is requeued, not failed.
 3. `Cron.next_after` is tested over DST transitions in two zones; a cron
    task runs at its minute and not before; the timetable survives a
    simulated restart (`Scheduler.start!` twice on one database); `catch_up`
