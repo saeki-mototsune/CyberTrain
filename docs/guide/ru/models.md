@@ -1,5 +1,5 @@
 ---
-source_sha256: d9ce725c5da8567438445ddf71053a1796eda528ead6db993d32a30a49bb4752
+source_sha256: 1b75a8cb6cc5f39be25f87f30bbbb124f8c6543bfdbdca023f225a1aa2f13404
 ---
 # Модели и база данных
 
@@ -51,8 +51,9 @@ end
 
 ### Индексы и внешние ключи
 
-`add_index` принимает `where:` для частичного индекса, а `t.references` /
-`add_reference` принимают `on_delete:` и `index: false`:
+`add_index` принимает `where:` для частичного индекса; `t.references`
+принимает `on_delete:` и `index: false`, а `add_reference` принимает
+`on_delete:` и всегда добавляет индекс:
 
 ```ruby
 create_table "comments" do |t|
@@ -246,11 +247,14 @@ done
 (включая `datetime(6)`), которая ещё не в хранимом формате, строку за строкой
 в одной транзакции, и её безопасно запускать дважды. Ячейка, которую нельзя
 прочитать как время (с лишним текстом вроде ` UTC`), остаётся как есть и
-учитывается. Таблица `WITHOUT ROWID` пропускается; если в ней ещё есть старые
-ячейки, команда печатает `skipped t.c: without rowid (N rows still need
-normalization)` и завершается с кодом 1: обновите эти строки вручную и
-запустите её снова. Нужен SQLite 3.37.0 или новее (встроенная библиотека
-подходит). В продакшене запускайте `./<app> db normalize` между `migrate` и
+учитывается. Таблица `WITHOUT ROWID` или таблица со столбцом `_rowid_`
+пропускается; если в ней ещё есть старые ячейки, команда печатает
+`skipped t.c: without rowid (N rows still need normalization)` (или
+`declares _rowid_`) и завершается с кодом 1: обновите эти строки вручную и
+запустите её снова. Нужен SQLite 3.37.0 или новее: CyberTrain связывается с
+системной libsqlite3 (её показывает `sqlite3 --version`), а с более старой
+команда останавливается на `db normalize failed: ...`, ничего не прочитав. В
+продакшене запускайте `./<app> db normalize` между `migrate` и
 запуском новых бинарников ([развёртывание
 обновления](../deploy.en.md#upgrading-the-framework)).
 
@@ -274,9 +278,11 @@ nil. Столбец даты NOT NULL получает сгенерирован�
 
 ## Условия и поиск
 
-Каждый метод запроса сгенерированного relation есть и как метод класса,
-так что запись из Rails работает как есть: `Article.where.not(body: nil)`,
-`Article.find_each { }`, `Article.pluck(:id, :title)`.
+Методы запроса сгенерированного relation есть и как методы класса (все,
+кроме `or`, `not`, `page` и `to_sql`, и похожих на Array `to_a`, `each`,
+`size`, `empty?`), так что запись из Rails работает как есть:
+`Article.where.not(body: nil)`, `Article.find_each { }`,
+`Article.pluck(:id, :title)`, `Article.pluck_int(:id)`.
 
 | Rails | CyberTrain |
 | --- | --- |
@@ -287,7 +293,7 @@ nil. Столбец даты NOT NULL получает сгенерирован�
 | `order(created_at: :desc)` | То же |
 | `distinct`, `none`, `ids` | То же |
 | `find_by!`, `find_or_create_by`, `find_or_initialize_by` | То же |
-| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | То же, `find_each(batch: 500)` |
+| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | То же |
 
 - Range в Hash для `where` принимает концы Integer: под Spinel нельзя
@@ -468,6 +474,9 @@ Article.upsert_all(rows, unique_by: [:slug], update_only: [:title], returning: [
 - Не выполняются ни валидации, ни колбэки, ни шифрование: зашифрованный
   столбец в строке выбрасывает `ArgumentError`. Как в Rails, пропущенный
   дубликат всё равно расходует id.
+- `RETURNING` требует SQLite 3.35.0 или новее (системной библиотеки, с
+  которой связывается CyberTrain); более старая отвергает оператор своей
+  синтаксической ошибкой (`Cybertrain::DB::Error`).
 
 ## Ассоциации
 
@@ -570,6 +579,8 @@ class Article
   validates :views, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on: :create
   validates :summary, presence: true, if: :published?
+
+  def published? = state == "published"
 end
 ```
 
@@ -885,8 +896,10 @@ Post.order(SORTS.fetch(params[:sort].to_s, "id"))
    Hash) и имена типов, которые пишет Rails (`datetime(6)`, `decimal(18,8)`,
    `varchar`, `bigint`, `json`). Частичные индексы, индексы по выражениям и
    действия `ON DELETE` тоже выгружаются.
-5. Ограничения: таблица без столбца `id` (`id: false`, таблица связей) не
-   получает модели и доступна через `DB.with`; `ar_internal_metadata`
+5. Ограничения: таблица, чей первичный ключ — не столбец `id` (таблица
+   связей), выгружается как `create_table "articles_tags", id: false` и не
+   получает модели (`spin run gen` печатает `skipped articles_tags: no id
+   column`); обращайтесь к ней через `DB.with`; `ar_internal_metadata`
    остаётся как есть; таблицу, в `CREATE TABLE` которой есть то, чего схема
    не моделирует, нельзя изменить перестраивающими помощниками ([Изменение
    таблицы](#changing-a-table)); столбцы, зашифрованные Rails, шифруются
@@ -926,3 +939,6 @@ Post.order(SORTS.fetch(params[:sort].to_s, "id"))
 9. Столбец, названный как метод, который теперь есть у каждой модели
    (`update_columns`, `destroy_dependents`, `run_custom_validations`, ...),
    генерируется как `<column>_column` ([Имена столбцов](#column-names)).
+10. Метод чтения `belongs_to` хранит прочитанного родителя, пока не
+    изменится внешний ключ (раньше он читал его при каждом вызове): вызовите
+    `reload`, чтобы увидеть изменение, сделанное другим процессом.

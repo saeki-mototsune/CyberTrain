@@ -753,7 +753,7 @@ module Cybertrain
       # each is emitted as `def self.x(...) = all.x(...)`, so `Article.x`
       # reads as in Rails. Every chain, finder, reader and aggregate of the
       # Relation is here; left out are `or` and `not` (they take or follow
-      # a relation), `page` (a Relation's pager), and the Array-like readers
+      # a relation), `page` (a Relation's pager), `to_sql`, and the Array-like readers
       # `to_a`, `each`, `size`, `empty?`, which Rails' model class does not
       # answer either.
       DELEGATED = %w[where where_like where_between order order_sql limit offset distinct none ids find find_by find_by!

@@ -1,5 +1,5 @@
 ---
-source_sha256: d9ce725c5da8567438445ddf71053a1796eda528ead6db993d32a30a49bb4752
+source_sha256: 1b75a8cb6cc5f39be25f87f30bbbb124f8c6543bfdbdca023f225a1aa2f13404
 ---
 # モデルとデータベース
 
@@ -29,7 +29,7 @@ end
 
 ### インデックスと外部キー
 
-`add_index` は部分インデックスのための `where:` を、`t.references` / `add_reference` は `on_delete:` と `index: false` を受け付けます：
+`add_index` は部分インデックスのための `where:` を受け付けます。`t.references` は `on_delete:` と `index: false` を受け付け、`add_reference` は `on_delete:` を受け付けて、インデックスを必ず追加します：
 
 ```ruby
 create_table "comments" do |t|
@@ -143,7 +143,7 @@ normalized articles.updated_at: 12 rows (0 unreadable left alone)
 done
 ```
 
-このコマンドは、すべてのテーブルのすべての `DATETIME` カラム（`datetime(6)` を含む）のうち、まだ保存用の形でないセルを、一つのトランザクションの中で行ごとに書き直します。二回実行しても問題ありません。時刻として読めないセル（` UTC` のような余分なテキスト付き）はそのまま残され、数えられます。`WITHOUT ROWID` のテーブルは飛ばされ、古いセルがまだ残っていれば `skipped t.c: without rowid (N rows still need normalization)` と表示して終了コード 1 で終わります。その行を手で直してからもう一度実行してください。SQLite 3.37.0 以降が必要です（同梱のライブラリはそうです）。本番では `migrate` と新しいバイナリの起動の間に `./<app> db normalize` を実行します（[更新のデプロイ](../deploy.en.md#upgrading-the-framework)）。
+このコマンドは、すべてのテーブルのすべての `DATETIME` カラム（`datetime(6)` を含む）のうち、まだ保存用の形でないセルを、一つのトランザクションの中で行ごとに書き直します。二回実行しても問題ありません。時刻として読めないセル（` UTC` のような余分なテキスト付き）はそのまま残され、数えられます。`WITHOUT ROWID` のテーブルと、`_rowid_` という名前のカラムを持つテーブルは飛ばされ、古いセルがまだ残っていれば `skipped t.c: without rowid (N rows still need normalization)`（または `declares _rowid_`）と表示して終了コード 1 で終わります。その行を手で直してからもう一度実行してください。SQLite 3.37.0 以降が必要です：CyberTrain はシステムの libsqlite3 をリンクし（`sqlite3 --version` で分かります）、それより古いと何も読む前に `db normalize failed: ...` で止まります。本番では `migrate` と新しいバイナリの起動の間に `./<app> db normalize` を実行します（[更新のデプロイ](../deploy.en.md#upgrading-the-framework)）。
 
 ### 日付
 
@@ -155,7 +155,7 @@ done
 
 ## 条件と検索
 
-生成されるリレーションのクエリメソッドはすべてクラスメソッドでもあるので、Rails の書き方がそのまま動きます：`Article.where.not(body: nil)`、`Article.find_each { }`、`Article.pluck(:id, :title)`。
+生成されるリレーションのクエリメソッドはクラスメソッドでもあるので（`or`、`not`、`page`、`to_sql` と、Array のような `to_a`、`each`、`size`、`empty?` を除く）、Rails の書き方がそのまま動きます：`Article.where.not(body: nil)`、`Article.find_each { }`、`Article.pluck(:id, :title)`、`Article.pluck_int(:id)`。
 
 | Rails | CyberTrain |
 | --- | --- |
@@ -166,7 +166,7 @@ done
 | `order(created_at: :desc)` | 同じ |
 | `distinct`, `none`, `ids` | 同じ |
 | `find_by!`, `find_or_create_by`, `find_or_initialize_by` | 同じ |
-| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | 同じ。`find_each(batch: 500)` |
+| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | 同じ |
 
 - `where` の Hash の中の Range は Integer の端を取ります：Spinel のもとでは Time や Date の Range は作れず、Float や String の Range は Range として扱われないので、そうした端は `where_between` を通します。その Time と Date の端は、保存されたテキストとして比べられます（テキストの順は時刻の順と同じです）。
@@ -266,6 +266,7 @@ Article.upsert_all(rows, unique_by: [:slug], update_only: [:title], returning: [
 - テーブルに `created_at` / `updated_at` があって行がそれを持たないとき、`record_timestamps: false` でなければ、呼び出し全体で一つの `now` が入ります。
 - 文は SQLite のバインドの上限に合わせて分けられ、一つのトランザクション（すでに開いているものがあればそれに合流）で実行されるので、失敗すると呼び出しの分は何も残りません。
 - バリデーションもコールバックも暗号化も行われません：行に暗号化されたカラムがあると `ArgumentError` です。Rails と同じく、飛ばした重複も id を一つ使います。
+- `RETURNING` には SQLite 3.35.0 以降（CyberTrain がリンクするシステムのライブラリ）が必要です。それより古いと、その文は SQLite 自身の構文エラーで拒まれます（`Cybertrain::DB::Error`）。
 
 ## 関連付け
 
@@ -324,6 +325,8 @@ class Article
   validates :views, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on: :create
   validates :summary, presence: true, if: :published?
+
+  def published? = state == "published"
 end
 ```
 
@@ -508,7 +511,7 @@ Rails 8 のアプリケーションが作った SQLite のファイルは、そ�
 2. `cybertrain db schema`（ビルドしたバイナリなら `./<app> db schema`）を実行します。`db migrate` が使うのと同じダンパーでデータベースから `db/schema.rb` を書き、`wrote .../db/schema.rb from <path>` と表示し、ほかには何もしません。そのあと `cybertrain db migrate` は適用するものを見つけず、モデルを生成します。
 3. Rails の `db/migrate/*.rb` はコピーしません：新しいマイグレーションはここから始めます。`schema_migrations`（どちらでも同じテーブル）にすでにある Rails のバージョンにはここにファイルがないので、マイグレーターはそれを実行もロールバックもせず、`db status` は `applied (no file)` と一覧します。
 4. 変換が要らないもの：日時（Rails の形が保存用の形です）、真偽値（`1` / `0`、古い `t` / `f`）、decimal（Rails は REAL の値を書くので Float として読めます）、json（TEXT で、Hash として読めます）、Rails が書く型名（`datetime(6)`、`decimal(18,8)`、`varchar`、`bigint`、`json`）。部分インデックス、式インデックス、`ON DELETE` の動作もダンプされます。
-5. 制限：`id` カラムのないテーブル（`id: false`、結合テーブル）にはモデルがなく、`DB.with` で扱います。`ar_internal_metadata` はそのままにします。スキーマが表せないものを `CREATE TABLE` に含むテーブルは、作り直すヘルパーでは変えられません（[テーブルを変える](#changing-a-table)）。Rails が暗号化したカラムは暗号化し直します（[すでにテキストのあるカラムを暗号化する](#encrypting-a-column-that-already-holds-text)）。
+5. 制限：主キーが `id` カラムでないテーブル（結合テーブル）は `create_table "articles_tags", id: false` としてダンプされ、モデルはありません（`spin run gen` が `skipped articles_tags: no id column` と表示します）。`DB.with` で扱います。`ar_internal_metadata` はそのままにします。スキーマが表せないものを `CREATE TABLE` に含むテーブルは、作り直すヘルパーでは変えられません（[テーブルを変える](#changing-a-table)）。Rails が暗号化したカラムは暗号化し直します（[すでにテキストのあるカラムを暗号化する](#encrypting-a-column-that-already-holds-text)）。
 
 そのうえで、Rails のモデルにあったバリデーション、関連付け、スコープを、このページの形で `app/models/*.rb` に書きます。
 
@@ -525,3 +528,4 @@ Rails 8 のアプリケーションが作った SQLite のファイルは、そ�
 7. `Cybertrain::Cast.iso8601` は表示用の形です：これで SQL のテキストを組み立てていたコードは `Cast.sql_datetime` に替え、`Cast.binds` は Time を保存用の形でバインドします。
 8. `validates` の行の `allow_blank: true` は、Rails と同じく、その行の `presence` にも空の値を通させます（以前は `length` にだけ効きました）。
 9. すべてのモデルが持つようになったメソッドと同じ名前のカラム（`update_columns`、`destroy_dependents`、`run_custom_validations` など）は `<column>_column` として生成されます（[カラム名](#column-names)）。
+10. `belongs_to` の読み出しは、外部キーが変わるまで読んだ親を覚えています（以前は呼ぶたびに読みました）：別のプロセスによる変更を見るには `reload` を呼んでください。

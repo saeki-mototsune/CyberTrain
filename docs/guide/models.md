@@ -45,8 +45,9 @@ the statement runs exactly once per `migrate` of its version.
 
 ### Indexes and foreign keys
 
-`add_index` takes `where:` for a partial index, and `t.references` /
-`add_reference` take `on_delete:` and `index: false`:
+`add_index` takes `where:` for a partial index; `t.references` takes
+`on_delete:` and `index: false`, and `add_reference` takes `on_delete:` and
+always adds the index:
 
 ```ruby
 create_table "comments" do |t|
@@ -231,10 +232,13 @@ done
 It rewrites every cell of every `DATETIME` column (`datetime(6)` included)
 that is not already in the stored format, row by row in one transaction, and
 is safe to run twice. A cell it cannot read as a time (trailing text such as
-` UTC`) is left alone and counted. A `WITHOUT ROWID` table is skipped; when it
-still holds old cells the command prints `skipped t.c: without rowid (N rows
-still need normalization)` and exits 1, so update those rows by hand and run
-it again. It needs SQLite 3.37.0 or newer (the bundled library is). In
+` UTC`) is left alone and counted. A `WITHOUT ROWID` table, or one with a
+column named `_rowid_`, is skipped; when it still holds old cells the command
+prints `skipped t.c: without rowid (N rows still need normalization)` (or
+`declares _rowid_`) and exits 1, so update those rows by hand and run it
+again. It needs SQLite 3.37.0 or newer: CyberTrain links the system's
+libsqlite3 (`sqlite3 --version` shows it), and with an older one the command
+stops with `db normalize failed: ...` before reading anything. In
 production run `./<app> db normalize` between `migrate` and starting the new
 binaries ([deploying the upgrade](../deploy.en.md#upgrading-the-framework)).
 
@@ -258,9 +262,11 @@ millisecond epoch into a Time.
 
 ## Conditions and finders
 
-Every query method of the generated relation is also a class method, so the
-Rails spelling works as written: `Article.where.not(body: nil)`,
-`Article.find_each { }`, `Article.pluck(:id, :title)`.
+The query methods of the generated relation are class methods too (all but
+`or`, `not`, `page` and `to_sql`, and the Array-like `to_a`, `each`, `size`,
+`empty?`), so the Rails spelling works as written: `Article.where.not(body:
+nil)`, `Article.find_each { }`, `Article.pluck(:id, :title)`,
+`Article.pluck_int(:id)`.
 
 | Rails | CyberTrain |
 | --- | --- |
@@ -271,7 +277,7 @@ Rails spelling works as written: `Article.where.not(body: nil)`,
 | `order(created_at: :desc)` | The same |
 | `distinct`, `none`, `ids` | The same |
 | `find_by!`, `find_or_create_by`, `find_or_initialize_by` | The same |
-| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | The same, `find_each(batch: 500)` |
+| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | The same |
 
 - A Range in a `where` Hash takes Integer ends: under Spinel a Range of
@@ -442,6 +448,9 @@ default `[{"id" => 3}, ...]`), cast by type, so `.size` is the number written.
 - No validation, callback or encryption runs: an encrypted column in a row
   raises `ArgumentError`. As in Rails, a skipped duplicate still uses up an
   id.
+- `RETURNING` needs SQLite 3.35.0 or newer (the system library CyberTrain
+  links); an older one refuses the statement with its own syntax error
+  (`Cybertrain::DB::Error`).
 
 ## Associations
 
@@ -541,6 +550,8 @@ class Article
   validates :views, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on: :create
   validates :summary, presence: true, if: :published?
+
+  def published? = state == "published"
 end
 ```
 
@@ -865,8 +876,10 @@ A SQLite file that a Rails 8 application created can be read as it is:
    names Rails writes (`datetime(6)`, `decimal(18,8)`, `varchar`, `bigint`,
    `json`). Partial and expression indexes and `ON DELETE` actions are dumped
    too.
-5. Limits: a table without an `id` column (`id: false`, a join table) gets
-   no model and is reached with `DB.with`; `ar_internal_metadata` is left
+5. Limits: a table whose primary key is not an `id` column (a join table) is
+   dumped as `create_table "articles_tags", id: false` and gets no model
+   (`spin run gen` prints `skipped articles_tags: no id column`); reach it
+   with `DB.with`. `ar_internal_metadata` is left
    alone; a table whose `CREATE TABLE` holds what the schema does not model
    cannot be changed with the rebuilding helpers ([Changing a
    table](#changing-a-table)); columns Rails encrypted are re-encrypted
@@ -903,3 +916,6 @@ CyberTrain 0.4:
 9. A column named like a method every model now has (`update_columns`,
    `destroy_dependents`, `run_custom_validations`, ...) is generated as
    `<column>_column` ([Column names](#column-names)).
+10. A `belongs_to` reader keeps the parent it read until the foreign key
+    changes (it read it again on every call): call `reload` to see a change
+    another process made.

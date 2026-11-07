@@ -103,7 +103,7 @@ class Article < Cybertrain::Model
   # `maximum_float_sql`, `average_sql`, `having_sql`, `includes`,
   # `preload`, `where_sql`, `pluck_str`, `pluck_int`, `pluck_float`,
   # `count_by`, `count_by_sql`, `sum_int`, `sum_float` and `increment`. Not
-  # delegated: `or` and `not` (they take or follow a relation), `page`, and
+  # delegated: `or` and `not` (they take or follow a relation), `page`, `to_sql`, and
   # `to_a`, `each`, `size`, `empty?`. The ones documented here are the
   # common ones.
   # @see ArticleRelation#where

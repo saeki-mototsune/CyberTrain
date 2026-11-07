@@ -897,9 +897,11 @@ in the code and in docs/design.md D42 to D50 too.
   `Crypto.encrypt`; config.rb keeps only the String checks, run at every
   boot. A malformed `_PREVIOUS` entry fails boot, the key is stripped,
   `decrypt("")` answers `""`, `where_like` and `where_between` refuse the
-  column too, plaintext rows written before `encrypts` raise on read (the
-  guide shows the re-encrypt command), and `to_json` includes the text (as
-  Rails). The CLI flag is `cybertrain secret --hex`, without a length.
+  column too, plaintext rows written before `encrypts` raise on read, and
+  `to_json` includes the text (as Rails). The guide's re-encrypt step is an
+  application command (`Main.command`) with raw SQL, not the plan's `DB.with`
+  plus `update_columns` or a migration: loading a plaintext row through the
+  model raises, and a migration cannot read rows into Ruby. The CLI flag is `cybertrain secret --hex`, without a length.
 - Migrations (Tasks 15 and 16 went to one implementer and one review):
   `change_column_default` requires `to:`, and `from:` (`nil` included) makes
   it reversible; rolling back `change_column_null(..., true)` needs the
@@ -920,6 +922,22 @@ in the code and in docs/design.md D42 to D50 too.
   (`db/schema.rb`, with `name:` required); the migration helper `add_index`
   takes an Array of columns only, so a migration creates one with `execute`,
   and the dump keeps it.
+- Class delegations (section 3, R3): `DELEGATED` first lacked `where_sql`,
+  `pluck_str` / `pluck_int` / `pluck_float`, `count_by`, `count_by_sql`,
+  `sum_int`, `sum_float` and `increment`; the Task 18 review found it and
+  they were added (test/gen_models_compiles.rb calls each through the class).
+  Not delegated: `or`, `not`, `page`, `to_sql`, `to_a`, `each`, `size`,
+  `empty?`.
+- SQLite version: "the bundled SQLite" above means the library the spike
+  ran against. CyberTrain links the system libsqlite3; `db normalize` checks
+  for 3.37.0 and refuses below it, and the bulk writes' `RETURNING` (3.35.0)
+  is not checked: an older library refuses the statement with its own error.
+- Tables without `id` (11.3, item 5): the Task 18 review found that the
+  dumper gave every table an implicit id and the generator a model. Now a
+  table whose primary key is not an `id` column dumps as `create_table "x",
+  id: false` with every column, `SqliteDDL` writes no id for it, and the
+  generator makes no model of it (and no `has_many` pointing at it), printing
+  `skipped x: no id column`.
 - Takeover (11.3): step 1's path is `storage/<env>.sqlite3` (the default
   `database_path`), not `db/<env>.sqlite3`. `db schema` prints `wrote
   <root>/db/schema.rb from <path>`; `db status` lists a version without a

@@ -1,5 +1,5 @@
 ---
-source_sha256: d9ce725c5da8567438445ddf71053a1796eda528ead6db993d32a30a49bb4752
+source_sha256: 1b75a8cb6cc5f39be25f87f30bbbb124f8c6543bfdbdca023f225a1aa2f13404
 ---
 # 模型与数据库
 
@@ -29,7 +29,7 @@ end
 
 ### 索引与外键
 
-`add_index` 接受 `where:` 来建部分索引，`t.references` / `add_reference` 接受 `on_delete:` 和 `index: false`：
+`add_index` 接受 `where:` 来建部分索引；`t.references` 接受 `on_delete:` 和 `index: false`，`add_reference` 接受 `on_delete:` 并且总会添加索引：
 
 ```ruby
 create_table "comments" do |t|
@@ -143,7 +143,7 @@ normalized articles.updated_at: 12 rows (0 unreadable left alone)
 done
 ```
 
-它在一个事务中逐行重写每张表每个 `DATETIME` 列（包括 `datetime(6)`）中尚不是存储格式的单元格，运行两次也安全。无法读成时间的单元格（带有 ` UTC` 这类多余文本）保持不变并计数。`WITHOUT ROWID` 表会被跳过；如果其中仍有旧单元格，命令会打印 `skipped t.c: without rowid (N rows still need normalization)` 并以 1 退出：请手工更新这些行后再运行一次。它需要 SQLite 3.37.0 或更新版本（内置的库满足要求）。在生产环境中，在 `migrate` 和启动新二进制之间运行 `./<app> db normalize`（[部署升级](../deploy.en.md#upgrading-the-framework)）。
+它在一个事务中逐行重写每张表每个 `DATETIME` 列（包括 `datetime(6)`）中尚不是存储格式的单元格，运行两次也安全。无法读成时间的单元格（带有 ` UTC` 这类多余文本）保持不变并计数。`WITHOUT ROWID` 表，以及有名为 `_rowid_` 的列的表，会被跳过；如果其中仍有旧单元格，命令会打印 `skipped t.c: without rowid (N rows still need normalization)`（或 `declares _rowid_`）并以 1 退出：请手工更新这些行后再运行一次。它需要 SQLite 3.37.0 或更新版本：CyberTrain 链接系统的 libsqlite3（`sqlite3 --version` 可查看），版本更旧时命令会在读取任何内容之前以 `db normalize failed: ...` 停止。在生产环境中，在 `migrate` 和启动新二进制之间运行 `./<app> db normalize`（[部署升级](../deploy.en.md#upgrading-the-framework)）。
 
 ### 日期
 
@@ -155,7 +155,7 @@ done
 
 ## 条件与查找
 
-生成的 relation 的每个查询方法也都是类方法，所以 Rails 的写法照样可用：`Article.where.not(body: nil)`、`Article.find_each { }`、`Article.pluck(:id, :title)`。
+生成的 relation 的查询方法也都是类方法（除了 `or`、`not`、`page`、`to_sql`，以及类似 Array 的 `to_a`、`each`、`size`、`empty?`），所以 Rails 的写法照样可用：`Article.where.not(body: nil)`、`Article.find_each { }`、`Article.pluck(:id, :title)`、`Article.pluck_int(:id)`。
 
 | Rails | CyberTrain |
 | --- | --- |
@@ -166,7 +166,7 @@ done
 | `order(created_at: :desc)` | 相同 |
 | `distinct`, `none`, `ids` | 相同 |
 | `find_by!`, `find_or_create_by`, `find_or_initialize_by` | 相同 |
-| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | 相同，`find_each(batch: 500)` |
+| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | 相同 |
 
 - `where` 的 Hash 中的 Range 只接受 Integer 端点：在 Spinel 下无法构造 Time 或 Date 的 Range，Float 或 String 的 Range 也不会被识别为 Range，所以这些边界走 `where_between`，其 Time 和 Date 边界按存储文本比较（文本的顺序与时刻的顺序一致）。
@@ -266,6 +266,7 @@ Article.upsert_all(rows, unique_by: [:slug], update_only: [:title], returning: [
 - 当表有 `created_at` / `updated_at` 而各行没有给出时，整个调用共用一个 `now`，除非 `record_timestamps: false`。
 - 语句按 SQLite 的绑定上限切分，并在一个事务中运行（若已有打开的事务则加入其中），所以失败时这次调用不会留下任何内容。
 - 不运行校验、回调或加密：行中有加密列会抛出 `ArgumentError`。与 Rails 一样，跳过的重复行仍会消耗一个 id。
+- `RETURNING` 需要 SQLite 3.35.0 或更新版本（CyberTrain 链接的系统库）；更旧的版本会以其自身的语法错误拒绝该语句（`Cybertrain::DB::Error`）。
 
 ## 关联
 
@@ -324,6 +325,8 @@ class Article
   validates :views, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on: :create
   validates :summary, presence: true, if: :published?
+
+  def published? = state == "published"
 end
 ```
 
@@ -508,7 +511,7 @@ Rails 8 应用创建的 SQLite 文件可以直接读取：
 2. 运行 `cybertrain db schema`（对构建好的二进制为 `./<app> db schema`）。它用 `db migrate` 所用的导出器根据数据库写出 `db/schema.rb`，打印 `wrote .../db/schema.rb from <path>`，此外什么都不做。之后 `cybertrain db migrate` 找不到需要应用的内容，并生成模型。
 3. 不要复制 Rails 的 `db/migrate/*.rb`：新的迁移从这里开始。`schema_migrations`（两边是同一张表）中已有的 Rails 版本在这里没有文件，所以迁移器既不运行也不回滚它们，`db status` 把它们列为 `applied (no file)`。
 4. 不需要转换的：日期时间（Rails 的格式就是存储格式）、布尔值（`1` / `0`，以及旧的 `t` / `f`）、decimal（Rails 写的是 REAL 值，读作 Float）、json（TEXT，读作 Hash），以及 Rails 写的类型名（`datetime(6)`、`decimal(18,8)`、`varchar`、`bigint`、`json`）。部分索引、表达式索引和 `ON DELETE` 动作也会导出。
-5. 限制：没有 `id` 列的表（`id: false`、连接表）没有模型，通过 `DB.with` 访问；`ar_internal_metadata` 保持不动；`CREATE TABLE` 中含有 schema 无法表达内容的表，不能用重建类辅助方法修改（[修改表](#changing-a-table)）；Rails 加密过的列需要重新加密（[加密已有文本的列](#encrypting-a-column-that-already-holds-text)）。
+5. 限制：主键不是 `id` 列的表（连接表）会导出为 `create_table "articles_tags", id: false`，没有模型（`spin run gen` 会打印 `skipped articles_tags: no id column`），通过 `DB.with` 访问；`ar_internal_metadata` 保持不动；`CREATE TABLE` 中含有 schema 无法表达内容的表，不能用重建类辅助方法修改（[修改表](#changing-a-table)）；Rails 加密过的列需要重新加密（[加密已有文本的列](#encrypting-a-column-that-already-holds-text)）。
 
 然后按本页所示的形式，在 `app/models/*.rb` 中写出 Rails 模型原有的校验、关联和 scope。
 
@@ -525,3 +528,4 @@ Rails 8 应用创建的 SQLite 文件可以直接读取：
 7. `Cybertrain::Cast.iso8601` 是显示格式：用它拼 SQL 文本的代码改用 `Cast.sql_datetime`，`Cast.binds` 以存储格式绑定 Time。
 8. `validates` 行上的 `allow_blank: true` 也让该行的 `presence` 放过空白值，与 Rails 相同（以前只作用于 `length`）。
 9. 与每个模型现在都有的方法同名的列（`update_columns`、`destroy_dependents`、`run_custom_validations` 等）会生成为 `<column>_column`（[列名](#column-names)）。
+10. `belongs_to` 读取方法会记住读到的父记录，直到外键改变（以前每次调用都会重新读取）：要看到其他进程所做的修改，请调用 `reload`。

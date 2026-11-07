@@ -1,5 +1,5 @@
 ---
-source_sha256: d9ce725c5da8567438445ddf71053a1796eda528ead6db993d32a30a49bb4752
+source_sha256: 1b75a8cb6cc5f39be25f87f30bbbb124f8c6543bfdbdca023f225a1aa2f13404
 ---
 # Modèles et base de données
 
@@ -49,8 +49,9 @@ par `migrate` de sa version.
 
 ### Index et clés étrangères
 
-`add_index` accepte `where:` pour un index partiel, et `t.references` /
-`add_reference` acceptent `on_delete:` et `index: false`&nbsp;:
+`add_index` accepte `where:` pour un index partiel&nbsp;; `t.references`
+accepte `on_delete:` et `index: false`, et `add_reference` accepte
+`on_delete:` et ajoute toujours l’index&nbsp;:
 
 ```ruby
 create_table "comments" do |t|
@@ -249,11 +250,15 @@ La commande réécrit chaque cellule de chaque colonne `DATETIME`
 (`datetime(6)` compris) qui n’est pas déjà au format stocké, ligne par ligne
 dans une seule transaction, et peut être lancée deux fois sans risque. Une
 cellule qu’elle ne peut pas lire comme une heure (un texte en trop comme
-` UTC`) est laissée telle quelle et comptée. Une table `WITHOUT ROWID` est
-sautée&nbsp;; si elle contient encore d’anciennes cellules, la commande
-affiche `skipped t.c: without rowid (N rows still need normalization)` et
+` UTC`) est laissée telle quelle et comptée. Une table `WITHOUT ROWID`, ou
+une table avec une colonne nommée `_rowid_`, est sautée&nbsp;; si elle
+contient encore d’anciennes cellules, la commande affiche `skipped t.c:
+without rowid (N rows still need normalization)` (ou `declares _rowid_`) et
 sort avec 1&nbsp;: mettez ces lignes à jour à la main et relancez-la. Elle
-demande SQLite 3.37.0 ou plus récent (la bibliothèque fournie l’est). En
+demande SQLite 3.37.0 ou plus récent&nbsp;: CyberTrain lie la libsqlite3 du
+système (`sqlite3 --version` l’affiche), et avec une version plus ancienne la
+commande s’arrête sur `db normalize failed: ...` avant de lire quoi que ce
+soit. En
 production, lancez `./<app> db normalize` entre `migrate` et le démarrage des
 nouveaux binaires ([déployer la mise à jour](../deploy.en.md#upgrading-the-framework)).
 
@@ -278,10 +283,12 @@ transforme une époque en millisecondes en Time.
 
 ## Conditions et recherches
 
-Chaque méthode de requête de la relation générée est aussi une méthode de
-classe, si bien que l’écriture Rails fonctionne telle quelle&nbsp;:
-`Article.where.not(body: nil)`, `Article.find_each { }`,
-`Article.pluck(:id, :title)`.
+Les méthodes de requête de la relation générée sont aussi des méthodes de
+classe (toutes sauf `or`, `not`, `page` et `to_sql`, et les méthodes à la
+manière d’un Array `to_a`, `each`, `size`, `empty?`), si bien que l’écriture
+Rails fonctionne telle quelle&nbsp;: `Article.where.not(body: nil)`,
+`Article.find_each { }`, `Article.pluck(:id, :title)`,
+`Article.pluck_int(:id)`.
 
 | Rails | CyberTrain |
 | --- | --- |
@@ -292,7 +299,7 @@ classe, si bien que l’écriture Rails fonctionne telle quelle&nbsp;:
 | `order(created_at: :desc)` | La même chose |
 | `distinct`, `none`, `ids` | La même chose |
 | `find_by!`, `find_or_create_by`, `find_or_initialize_by` | La même chose |
-| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | La même chose, `find_each(batch: 500)` |
+| `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | La même chose |
 
 - Une Range dans un Hash de `where` prend des bornes Integer&nbsp;: sous
@@ -484,6 +491,9 @@ bien que `.size` est le nombre de lignes écrites.
 - Aucune validation, aucun callback ni chiffrement ne s’exécute&nbsp;: une
   colonne chiffrée dans une ligne lève `ArgumentError`. Comme dans Rails, un
   doublon sauté consomme quand même un id.
+- `RETURNING` demande SQLite 3.35.0 ou plus récent (la bibliothèque du
+  système que lie CyberTrain)&nbsp;; une version plus ancienne refuse
+  l’instruction avec sa propre erreur de syntaxe (`Cybertrain::DB::Error`).
 
 ## Associations
 
@@ -591,6 +601,8 @@ class Article
   validates :views, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on: :create
   validates :summary, presence: true, if: :published?
+
+  def published? = state == "published"
 end
 ```
 
@@ -885,8 +897,10 @@ Un fichier SQLite créé par une application Rails 8 se lit tel quel&nbsp;:
    types qu’écrit Rails (`datetime(6)`, `decimal(18,8)`, `varchar`,
    `bigint`, `json`). Les index partiels et d’expression et les actions
    `ON DELETE` sont exportés aussi.
-5. Limites&nbsp;: une table sans colonne `id` (`id: false`, une table de
-   jointure) n’a pas de modèle et s’atteint avec `DB.with`&nbsp;;
+5. Limites&nbsp;: une table dont la clé primaire n’est pas une colonne `id`
+   (une table de jointure) est exportée en `create_table "articles_tags",
+   id: false` et n’a pas de modèle (`spin run gen` affiche `skipped
+   articles_tags: no id column`)&nbsp;; atteignez-la avec `DB.with`&nbsp;;
    `ar_internal_metadata` est laissée telle quelle&nbsp;; une table dont le
    `CREATE TABLE` contient ce que le schéma ne modélise pas ne peut pas être
    modifiée avec les assistants qui reconstruisent ([Modifier une
@@ -930,3 +944,6 @@ une application écrite pour CyberTrain 0.4&nbsp;:
 9. Une colonne nommée comme une méthode qu’a maintenant chaque modèle
    (`update_columns`, `destroy_dependents`, `run_custom_validations`, ...) est
    générée sous `<column>_column` ([Noms de colonnes](#column-names)).
+10. Un lecteur `belongs_to` garde le parent qu’il a lu jusqu’à ce que la clé
+    étrangère change (il le relisait à chaque appel)&nbsp;: appelez `reload`
+    pour voir un changement fait par un autre processus.
