@@ -1,5 +1,5 @@
 ---
-source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
+source_sha256: b0f8f7ce8f29151195c929b5aa6f2cf9769a7d0b96b72d53cdddc87a88d32c9e
 ---
 # Configuration
 
@@ -22,6 +22,8 @@ dernier mot&nbsp;:
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | requis en production&nbsp;; en dev/test, un secret est généré automatiquement dans `tmp/secret_key` |
+| `CYBERTRAIN_ENCRYPTION_KEY` | `encryption_key` | `""`&nbsp;; 64 caractères hexadécimaux (`cybertrain secret --hex`), la clé des colonnes qu’un modèle chiffre avec `encrypts`. Le démarrage échoue si elle est mal formée, ou vide dès qu’un modèle déclare `encrypts` (voir [Colonnes chiffrées](models.md#encrypted-columns)) |
+| `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`&nbsp;; d’anciennes clés séparées par des virgules, essayées pour le déchiffrement seulement, pour changer de clé en réenregistrant les enregistrements&nbsp;; une entrée mal formée arrête le démarrage |
 | `SPINEL_WORKERS` | `workers` | `1`&nbsp;; le serveur de développement l’ignore et tourne toujours avec un seul worker ([pourquoi](template-language.md#file-resolution-enginerb)) |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`&nbsp;; `0.0.0.0` écoute sur toutes les interfaces (conteneurs) |
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Le développement accepte `localhost`, `127.0.0.1`, `[::1]`&nbsp;; des noms d’hôte exacts séparés par des virgules étendent cette liste (sans schéma, port ni joker). Les autres hôtes reçoivent une 403 avant les fichiers statiques, les sessions, le routage ou les diagnostics. C’est distinct de l’adresse d’écoute&nbsp;; la production et le test n’appliquent pas cette protection propre au développement |

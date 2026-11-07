@@ -19,8 +19,7 @@ class CommentsController < ApplicationController
 
   # DELETE /articles/1/comments/1
   def destroy
-    # Rails' @article.comments.find(params[:id]): Article#comments is an Array here.
-    @comment = Comment.where(article_id: @article.id).find(params[:id])
+    @comment = @article.comments.find(params[:id])
     # The element's id before destroy clears the record's id (dom_id of a
     # destroyed record is "new_comment"): the other pages of this article
     # drop that element; this tab reloads anyway.

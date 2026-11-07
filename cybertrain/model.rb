@@ -40,11 +40,18 @@ module Cybertrain
   # Re-run `spin run gen` after changing the schema (`cybertrain db migrate`
   # and the development server do it for you).
   #
-  # Not available (compared with ActiveRecord): declared associations,
-  # `has_many :through`, `includes`, an untyped `pluck` (relations have
-  # `pluck_str` / `pluck_int` / `pluck_float`), `update_all`, `destroy_all`,
-  # dirty tracking, transactions around `save`, STI, enums and the `scope`
-  # macro (write `def self.published = where(published: true)` instead).
+  # Associations come from the schema's foreign keys and from
+  # {.has_many} / {.has_one} / {.belongs_to} lines in the app/models file.
+  #
+  # Not available (compared with ActiveRecord): polymorphic associations,
+  # `has_many :through`, nested `includes`, `eager_load` and `joins`,
+  # `select`, a one-column `pluck` (relations have `pluck_str` /
+  # `pluck_int` / `pluck_float`; `pluck` takes two or more columns), a
+  # polymorphic `sum` / `minimum` / `maximum` (they come typed: `sum_int`,
+  # `minimum_time`, ...), a `where` over a Range with other than Integer
+  # ends (use `where_between`), deterministic encryption, dirty tracking,
+  # transactions around `save` (except a counter_cache child's update),
+  # STI and enums.
   #
   # Implementation: validations and callbacks are runtime data keyed by model
   # name, since Spinel cannot define methods at runtime.
@@ -56,39 +63,220 @@ module Cybertrain
     # skips assign_attributes for an empty Hash), so one serves every row.
     NO_ATTRIBUTES = {}
 
-    # Declares validations for one attribute, run by {#valid?} (and so by
-    # {#save}) in declaration order. Only `presence` and `length` exist.
+    # Declares validations for one or more attributes, run by {#valid?}
+    # (and so by {#save}) in declaration order, with Rails' default English
+    # messages (`message:` replaces them).
     #
-    # - `presence: true` adds `"can't be blank"` when the value is `nil` or a
+    # - `presence: true`: `"can't be blank"` when the value is `nil` or a
     #   String that is empty after `strip`. `false` and `0` are present.
-    # - `length: { minimum: n, maximum: m }` (either key) adds
-    #   `"is too short (minimum is n characters)"` or
-    #   `"is too long (maximum is m characters)"`. A `nil` value is left to
-    #   `presence`; other keys (`is:`, `in:`) are ignored.
-    # - `allow_blank: true` skips the length rule for a blank value. It does
-    #   not apply to `presence`.
+    # - `length: { minimum:, maximum:, is:, in: }` (`in:` / `within:` an
+    #   Integer Range): `"is too short (minimum is n characters)"`, `"is too
+    #   long (maximum is m characters)"`, `"is the wrong length (should be n
+    #   characters)"`. A `nil` value is left to `presence`.
+    # - `inclusion: { in: }` / `exclusion: { in: }`: an Array of Strings or
+    #   Integers, or a Range of Integers (Spinel builds no other Range);
+    #   `"is not included in the list"` / `"is reserved"`.
+    # - `format: { with: /re/, without: /re/ }`: the value as a String must
+    #   match `with:` and must not match `without:`, else `"is invalid"`
+    #   (nil fails `with:` unless `allow_nil:`, and passes a `without:`
+    #   rule alone).
+    # - `numericality: true | { only_integer:, greater_than:,
+    #   greater_than_or_equal_to:, equal_to:, less_than:,
+    #   less_than_or_equal_to:, other_than: }`: a String is parsed as a
+    #   number first (`"12"` passes, `"abc"` is `"is not a number"`, as is
+    #   nil); `only_integer` takes an Integer or an integer String
+    #   (`"must be an integer"`; a Float fails it, as in Rails); each failing
+    #   comparison adds `"must be greater than 0"` and so on, the limit as
+    #   written.
+    # - `uniqueness: true | { scope: :column, case_sensitive: false }`:
+    #   `"has already been taken"` when another row holds the value
+    #   (`LOWER()` on both sides when not case-sensitive; nil is `IS NULL`),
+    #   through the generated `unique_value_taken?`.
+    # - On every rule: `allow_nil:` skips nil, `allow_blank:` nil and blank
+    #   Strings; `on: :create | :update` runs it for a new or a persisted
+    #   record only; `if:` / `unless:` name a method of the model (a Symbol:
+    #   the generator writes the `validation_condition?` table that calls it,
+    #   and refuses a lambda and the `:if =>` / `"if":` spellings; a name the
+    #   table lacks raises ArgumentError); `message:` replaces the default (also inside
+    #   a rule's Hash, for that rule).
     #
-    # For anything else (uniqueness, formats, cross-field rules), add errors
-    # yourself in a {.before_validation} block: `valid?` clears the errors,
-    # runs that block, then the declared rules.
+    # An unknown option or a value of the wrong kind raises ArgumentError
+    # when the model loads, and the line declares nothing. For cross-field
+    # rules, name a method with {.validate}.
     #
     # @example
-    #   validates :title, presence: true, length: { minimum: 3, maximum: 40 }
-    #   validates :subtitle, length: { maximum: 80 }, allow_blank: true
-    # @param attr [Symbol] the attribute (its SQL column name)
-    # @param presence [Boolean]
-    # @param length [Hash{Symbol => Integer}, nil] `:minimum` and/or `:maximum`
-    # @param allow_blank [Boolean] skip the length rule when the value is blank
+    #   validates :title, presence: true, length: { minimum: 3, maximum: 40 }, uniqueness: true
+    #   validates :state, inclusion: { in: ["draft", "published"] }, allow_nil: true
+    #   validates :slug, format: { with: /\A[a-z0-9-]+\z/ }, exclusion: { in: ["new", "edit"] }
+    #   validates :views, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+    #   validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on: :create
+    #   validates :summary, presence: true, if: :published?
+    # @param args [Array<Symbol, Hash>] the attributes (their SQL column
+    #   names), then the options
+    # @return [nil]
+    # @raise [ArgumentError] for an unknown option or a malformed value
+    # @api public
+    def self.validates(*args)
+      built = Validator.build_all(args)
+      list = (VALIDATORS[self.name] ||= Array.new(0) { Validator.new(:base, :presence) })
+      built.each { |v| list << v }
+      nil
+    end
+
+    # Declares methods that validate the record by adding to {#errors}
+    # themselves, run by {#valid?} after the {.validates} rules:
+    # `validate :check_dates, :check_totals, on: :update, if: :published?,
+    # unless: :imported?`. The generator reads the line as text (like
+    # {.scope}) and writes `run_custom_validations` calling each method by
+    # name; at run time this method does nothing. One line, Symbol method
+    # names defined in the model file, and `on:` / `if:` / `unless:` with
+    # literal values; a block or a lambda stops the generator.
+    # @example
+    #   validate :ends_after_start
+    #
+    #   def ends_after_start
+    #     errors.add(:ends_on, "must be after the start") if ends_on < starts_on
+    #   end
+    # @param args [Array<Symbol, Hash>] the method names, then `on:`, `if:`,
+    #   `unless:`
     # @return [nil]
     # @api public
-    def self.validates(attr, presence: false, length: nil, allow_blank: false)
+    def self.validate(*args) = nil
+
+    # Encrypts columns at rest: `encrypts :api_key, :notes` (spec section
+    # 10). The generator reads the line as text: the generated load_row
+    # decrypts each column ({Crypto.decrypt}) and to_row encrypts it with a
+    # fresh nonce, so the record holds the text and the table the payload
+    # (`"1:..."`, AES-256-GCM). Each must be a string or text column, named
+    # with Symbols, no options (there is no deterministic encryption). The
+    # application then needs `CYBERTRAIN_ENCRYPTION_KEY` (boot fails
+    # without it) and links openssl (cybertrain/encryptor.rb, which
+    # gen/app.rb requires). `where`, `where_like`, `where_between`,
+    # `update_all` and the bulk writes refuse an encrypted column
+    # (ArgumentError); `pluck` answers the stored payload. At run time this
+    # method does nothing; it exists so the model file loads.
+    # @example
+    #   class Account
+    #     encrypts :api_key
+    #   end
+    # @param attrs [Array<Symbol>] the column names
+    # @return [nil]
+    # @api public
+    def self.encrypts(*attrs) = nil
+
+    # Declares a named query: `scope :recent, -> { order(created_at: :desc) }`
+    # or, with parameters, `scope :min_views, ->(n) { where("views >= ?", n) }`.
+    # The generator reads the line as text (nothing is evaluated): it copies
+    # the lambda's parameters and body into a method of the model's Relation
+    # (`def min_views(n) = where("views >= ?", n)`, so the body runs on the
+    # relation) and a class method (`def self.min_views(n) = all.min_views(n)`),
+    # so `Post.recent.min_views(2).first` chains like any other query. At run
+    # time this method does nothing; it exists so the model file loads.
+    #
+    # A scope is one line, a `->` lambda with plain or defaulted positional
+    # parameters; any other `scope` line (a multi-line lambda, `lambda do`, a
+    # `proc`, keyword or splat parameters) stops the generator, as does a
+    # scope named like a column, a query method (`where`, `count`, `first`,
+    # ...) or another scope of the model.
+    # @example
+    #   scope :published, -> { where(published: true) }
+    #   scope :since, ->(time) { where("created_at > ?", time) }
+    # @param name [Symbol] the scope's name
+    # @param body [Proc] the lambda (never called)
+    # @return [nil]
+    # @api public
+    def self.scope(name, body) = nil
+
+    # Declares that each record has many children: `has_many :comments`
+    # reads the comments whose `<singular of this table>_id` is this
+    # record's id. Like {.scope}, the generator reads the line as text and
+    # writes the reader into gen/models (`def comments =
+    # CommentRelation.new("comments").where(post_id: @id)`); at run time this
+    # method does nothing. The reader returns the children's Relation, so it
+    # chains: `post.comments.where(approved: true).count`; add `.to_a` for
+    # an Array. A schema foreign key gives the same reader without a
+    # declaration; a declaration names it, or adds `dependent:`.
+    #
+    # The macro is alone on its line, at class level, with literal options
+    # only (a trailing comment, a `;` or a parenthesised call stops the
+    # generator): `class_name:` (a String or Symbol;
+    # inferred from the name, `comments` -> Comment), `foreign_key:` (the
+    # children's column; inferred `post_id`) and `dependent:` -- `:destroy`
+    # (each child is loaded and destroyed, so its callbacks and its own
+    # `dependent:` run), `:delete_all` (one DELETE) or `:nullify` (one
+    # UPDATE setting the key to NULL; the column must be nullable), applied
+    # by {#destroy} before its DELETE in the same transaction. Without
+    # `dependent:` the database's foreign key decides (`on_delete:` in the
+    # schema). A model, column or option that does not exist stops the
+    # generator with the file and line. No `:through`, scope lambda,
+    # `inverse_of` or `counter_cache:` (that goes on the {.belongs_to}).
+    # @example
+    #   has_many :comments, dependent: :destroy
+    #   has_many :drafts, class_name: "Post", foreign_key: :author_id
+    # @param name [Symbol] the reader's name
+    # @param dependent [Symbol, nil] `:destroy`, `:delete_all` or `:nullify`
+    # @param class_name [String, Symbol, nil] the children's model
+    # @param foreign_key [Symbol, String, nil] the children's key column
+    # @return [nil]
+    # @api public
+    def self.has_many(name, dependent: nil, class_name: nil, foreign_key: nil) = nil
+
+    # Declares that each record has at most one child: `has_one :profile`
+    # reads `Profile.find_by(user_id: id)` (nil when there is none). Read as
+    # text by the generator, like {.has_many}: alone on its line, literal
+    # options only (a trailing comment is refused), the same options; a
+    # has_one on a foreign key replaces the has_many the key would give.
+    # @example
+    #   has_one :profile, dependent: :destroy
+    # @param name [Symbol] the reader's name
+    # @param dependent [Symbol, nil] `:destroy`, `:delete_all` or `:nullify`
+    # @param class_name [String, Symbol, nil] the child's model (inferred
+    #   `Profile`)
+    # @param foreign_key [Symbol, String, nil] the child's key column
+    #   (inferred `<singular of this table>_id`)
+    # @return [nil]
+    # @api public
+    def self.has_one(name, dependent: nil, class_name: nil, foreign_key: nil) = nil
+
+    # Declares the parent a record points to: `belongs_to :author` reads
+    # `Author.find_by(id: author_id)` and keeps it until `author_id`
+    # changes or {#reload}. Read as text by the generator, like {.has_many}:
+    # alone on its line, literal options only (a trailing comment is
+    # refused).
+    #
+    # Unless `optional: true`, the record is invalid while the key is nil
+    # or 0 ("can't be blank" on `author_id`; {.validates_foreign_key}).
+    # `counter_cache: true` keeps the parent's `<children>_count` column
+    # (`posts.comments_count`, or `<has_many name>_count` when the parent
+    # declares one over this key) in step: +1 after create, -1 after
+    # destroy (from the key the row holds, read inside destroy's
+    # transaction), and a move to another parent counted on both sides; the
+    # update and both counts run in one transaction. The column must exist;
+    # the parent's own {#save} leaves it alone (its copy may be stale).
+    # @example
+    #   belongs_to :post, counter_cache: true
+    #   belongs_to :author, class_name: "User", optional: true
+    # @param name [Symbol] the reader's name
+    # @param class_name [String, Symbol, nil] the parent's model (inferred
+    #   from the name)
+    # @param foreign_key [Symbol, String, nil] this table's key column
+    #   (inferred `<name>_id`)
+    # @param optional [Boolean] skip the foreign key validation
+    # @param counter_cache [Boolean] count the children on the parent
+    # @return [nil]
+    # @api public
+    def self.belongs_to(name, class_name: nil, foreign_key: nil, optional: false, counter_cache: false) = nil
+
+    # The validation a declared {.belongs_to} adds to its generated class:
+    # "can't be blank" on the foreign key while it is nil, blank or 0 (the
+    # id of no saved record), so `save` returns false instead of the
+    # database refusing the row.
+    # @param attr [Symbol] the foreign key column
+    # @return [nil]
+    # @api public
+    def self.validates_foreign_key(attr)
       list = (VALIDATORS[self.name] ||= Array.new(0) { Validator.new(:base, :presence) })
-      list << Validator.new(attr, :presence) if presence
-      unless length.nil?
-        minimum = length.key?(:minimum) ? length[:minimum] : -1
-        maximum = length.key?(:maximum) ? length[:maximum] : -1
-        list << Validator.new(attr, :length, minimum, maximum, allow_blank)
-      end
+      list << Validator.new(attr, :foreign_key)
       nil
     end
 
@@ -98,8 +286,10 @@ module Cybertrain
     #
     # Callbacks take a block only (no `before_save :method_name`, no `if:`),
     # run in the order they were declared, and their return value is ignored:
-    # raising is the only way to stop the operation, and nothing is rolled
-    # back. {Relation#delete_all} runs none.
+    # raising is the only way to stop the operation. {#destroy} runs in a
+    # transaction, so a raise there rolls its DELETE back; {#save} does not
+    # (except a counter_cache child's update). {Relation#delete_all} runs
+    # none.
 
     # Runs at the start of every {#valid?} (so of every {#save}), after the
     # errors are cleared and before the declared validations. Errors added
@@ -145,10 +335,10 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.after_update(&block) = add_model_callback("after_update", block)
-    # Runs in {#destroy} before the DELETE. There is no `dependent:`; delete
-    # children here:
+    # Runs in {#destroy} before the `dependent:` children go and before the
+    # DELETE, inside destroy's transaction.
     # @example
-    #   before_destroy { |article| Comment.where(article_id: article.id).delete_all }
+    #   before_destroy { |article| AuditLog.create(note: "deleted #{article.id}") }
     # @yieldparam record [Model]
     # @return [nil]
     # @api public
@@ -174,7 +364,7 @@ module Cybertrain
     end
 
     def self.now_string
-      Cast.iso8601(Time.now.utc)
+      Cast.sql_datetime(Time.now.utc)
     end
 
     # `Cybertrain::DB.transaction`, under the name Rails gives it: saves,
@@ -200,81 +390,6 @@ module Cybertrain
       Cybertrain::DB.transaction(immediate: immediate, &block)
     end
 
-    # Inserts one row, or, when it collides with an existing row on the
-    # `conflict` columns (a UNIQUE index or the primary key), updates that
-    # row instead: SQLite's `INSERT ... ON CONFLICT (...) DO UPDATE SET`.
-    # The counter-and-statistics shape in one statement.
-    #
-    # `attrs` are column => value, bound (through Cast.to_sql), never
-    # interpolated. `update` is column => SQL expression, where `excluded.x`
-    # is the value this INSERT tried to write; like {ArticleRelation#order_sql}
-    # it is the developer's SQL text and must never see request data. An
-    # empty `update` is `DO NOTHING`. Every column name (attrs, conflict,
-    # update keys) must be a column name (Ident), or ArgumentError.
-    #
-    # No model is built, no validation or callback runs, and
-    # `created_at` / `updated_at` are not filled in: pass them in `attrs`
-    # (and in `update`, `updated_at: "excluded.updated_at"`) when the table
-    # has them. Use Symbol keys throughout (NOTES rule 51).
-    # @example
-    #   Stat.upsert({ project_id: 1, key: "GET /", calls: 1, max_ms: 12.5 },
-    #               conflict: [:project_id, :key],
-    #               update: { calls: "calls + excluded.calls",
-    #                         max_ms: "MAX(max_ms, excluded.max_ms)" })
-    # @param attrs [Hash{Symbol => Object}] the row to insert
-    # @param conflict [Array<Symbol>] the conflict target's columns
-    # @param update [Hash{Symbol => String}] column => SQL expression
-    # @return [Integer] rows written: 1 inserted or updated, 0 when an empty
-    #   `update` skipped a conflicting row
-    # @raise [ArgumentError] on an empty `attrs` or `conflict`, or a name
-    #   that is not a column name
-    # @raise [DB::Error] when SQLite refuses the statement (no UNIQUE index
-    #   matches `conflict`, a NOT NULL column is missing)
-    # @api public
-    def self.upsert(attrs, conflict:, update: {})
-      Model.upsert_into(table_name, attrs, conflict, update)
-    end
-
-    # The work of {.upsert}, given the table: a class method on Model
-    # itself so the generated subclasses need no code of their own (their
-    # table_name override is what `upsert` passes).
-    def self.upsert_into(table, attrs, conflict, update)
-      raise ArgumentError, "upsert: no attributes" if attrs.empty?
-      raise ArgumentError, "upsert: no conflict columns" if conflict.empty?
-
-      columns = Array.new(0) { "" }
-      binds = [nil, 0, 0.0, ""]
-      binds.clear
-      attrs.each do |key, value|
-        columns << Relation.checked_column("upsert", key)
-        binds << Cast.to_sql(value)
-      end
-      target = Array.new(0) { "" }
-      conflict.each { |key| target << Relation.checked_column("upsert", key) }
-      sets = Array.new(0) { "" }
-      update.each do |key, expr|
-        quoted = Relation.checked_column("upsert", key)
-        sets << "#{quoted} = #{expr}"
-      end
-      marks = Array.new(columns.size) { "?" }
-      # Each piece in a local before it is interpolated (NOTES rule 65).
-      quoted_table = Relation.quote_ident(table)
-      column_list = columns.join(", ")
-      mark_list = marks.join(", ")
-      target_list = target.join(", ")
-      sql = +"INSERT INTO #{quoted_table} (#{column_list}) VALUES (#{mark_list})"
-      sql << " ON CONFLICT (" << target_list << ")"
-      if sets.empty?
-        sql << " DO NOTHING"
-      else
-        sql << " DO UPDATE SET " << sets.join(", ")
-      end
-      Cybertrain::DB.with do |c|
-        c.execute(sql, binds)
-        c.changes
-      end
-    end
-
     # --- hooks every generated subclass overrides ---------------------------
     # The stubs are required: a base method calling a method only subclasses
     # define crashes the compiler (spikes/NOTES.md rule 3).
@@ -289,6 +404,23 @@ module Cybertrain
     def load_row(row) = nil
     def read_association(name) = nil
     def call_view_method(name) = nil
+    # Declared associations (has_many / has_one / belongs_to): the
+    # `dependent:` children, the caches {#reload} clears, and counter_cache.
+    # counter_cache_created / _destroyed / _was / _moved have no stub: only
+    # the generated callback blocks call them, and a block's record is typed
+    # Cybertrain::Model, so a stub here would be the method they call.
+    def destroy_dependents = nil
+    def reset_association_caches = nil
+    # Validations (spec section 9): the generated model answers uniqueness
+    # with a query, if: / unless: through a `case` over the names the model
+    # file gives, and `validate :method` lines by calling each method. A
+    # hand-written model has no uniqueness conflicts, every condition true
+    # and no custom validations.
+    def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive) = false
+    def validation_condition?(name) = true
+    def run_custom_validations(context) = nil
+    def counter_cached? = false
+    def counter_cache_columns = Array.new(0) { "" }
 
     # --- concrete ----------------------------------------------------------
 
@@ -350,13 +482,17 @@ module Cybertrain
     end
 
     # Clears {#errors}, runs the {.before_validation} callbacks, then every
-    # rule declared with {.validates}.
+    # rule declared with {.validates}, then the {.validate} methods. The
+    # context is `:create` for a new record and `:update` for a persisted
+    # one (rules with `on:` run in theirs only).
     # @return [Boolean] true when no errors were added
     # @api public
     def valid?
       errors.clear
       run_callbacks("before_validation")
-      Model.validators_for(model_name).each { |v| v.validate(self) }
+      context = new_record? ? :create : :update
+      Model.validators_for(model_name).each { |v| v.validate(self, context) }
+      run_custom_validations(context)
       errors.empty?
     end
 
@@ -385,13 +521,27 @@ module Cybertrain
 
       run_callbacks("before_save")
       if @persisted
-        run_callbacks("before_update")
-        update_row
-        run_callbacks("after_update")
+        # A counter_cache child reads its persisted key (before_update),
+        # writes the row and moves the counts (after_update) in one
+        # transaction, so a raise leaves the counters as they were.
+        if counter_cached? && !Cybertrain::DB.in_transaction?
+          Cybertrain::DB.transaction { |_c| update_with_callbacks }
+        else
+          update_with_callbacks
+        end
+      elsif counter_cached? && !Cybertrain::DB.in_transaction?
+        # A counter_cache child writes the row and increments the parent's
+        # count (after_create) in one transaction too.
+        begin
+          Cybertrain::DB.transaction { |_c| create_with_callbacks }
+        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+          # Rolled back: the record is new again.
+          @persisted = false
+          @id = 0
+          raise e
+        end
       else
-        run_callbacks("before_create")
-        insert_row
-        run_callbacks("after_create")
+        create_with_callbacks
       end
       run_callbacks("after_save")
       true
@@ -419,7 +569,56 @@ module Cybertrain
       save
     end
 
-    # Runs {.before_destroy}, deletes the row, runs {.after_destroy}. The
+    # Writes the given columns straight to the row with one UPDATE of
+    # exactly those columns, then keeps the new values on the record: no
+    # validation, no callback, `updated_at` left alone. Each value is cast
+    # as the attribute writer casts it and stored as {#save} would store it
+    # (a decimal rounded to its scale, a Hash as JSON text). Keys are SQL
+    # column names.
+    # @example
+    #   article.update_columns(views: article.views + 1)
+    # @param attrs [Hash{Symbol => Object}] column => value
+    # @return [true]
+    # @raise [ArgumentError] on an empty Hash, a key that is not a column
+    #   of the model (or is `id`), or a record that was never saved
+    # @api public
+    def update_columns(attrs)
+      raise ArgumentError, "update_columns: no attributes" if attrs.empty?
+      raise ArgumentError, "update_columns: #{model_name} is not saved (a new record has no row)" unless @persisted
+
+      names = Array.new(0) { "" }
+      attrs.each do |key, _value|
+        name = key.to_s
+        unless name != "id" && column?(name)
+          raise ArgumentError, "update_columns: #{name.inspect} is not a column of #{model_name}"
+        end
+
+        names << name
+      end
+      attrs.each { |key, value| write_attribute(key.to_s.to_sym, value) }
+      # to_row's expressions for those columns: the generated casts and
+      # scale rounding, read off the values just written.
+      row = to_row
+      sets = Array.new(0) { "" }
+      binds = [nil, 0, 0.0, "", DB::Blob.new("")]
+      binds.clear
+      names.each do |name|
+        sets << "#{Relation.quote_ident(name)} = ?"
+        binds << row[name]
+      end
+      binds << @id
+      table = Relation.quote_ident(self.class.table_name)
+      id_column = Relation.quote_ident("id")
+      set_list = sets.join(", ")
+      sql = "UPDATE #{table} SET #{set_list} WHERE #{id_column} = ?"
+      Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      true
+    end
+
+    # Runs {.before_destroy}, removes the `dependent:` children of
+    # {.has_many} / {.has_one}, deletes the row, runs {.after_destroy}, all
+    # in one transaction (joining one already open): a raise anywhere rolls
+    # every step back and the record stays {#persisted?}. Afterwards the
     # record keeps its attributes and id but is no longer {#persisted?}.
     #
     # A record that was never saved has no row: destroy then runs no
@@ -429,16 +628,21 @@ module Cybertrain
     def destroy
       return false unless @persisted
 
-      run_callbacks("before_destroy")
-      sql = "DELETE FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
-      id = @id
-      Cybertrain::DB.with { |c| c.execute(sql, [id]) }
-      @persisted = false
-      run_callbacks("after_destroy")
+      begin
+        if Cybertrain::DB.in_transaction?
+          destroy_with_callbacks
+        else
+          Cybertrain::DB.transaction { |_c| destroy_with_callbacks }
+        end
+      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        @persisted = true
+        raise e
+      end
       true
     end
 
-    # Re-reads every column from the database.
+    # Re-reads every column from the database and forgets every
+    # association it had read (a belongs_to parent, a preload).
     # @return [self]
     # @raise [RecordNotFound] when the row is gone
     # @api public
@@ -448,6 +652,7 @@ module Cybertrain
       found = Cybertrain::DB.with { |c| c.execute_models(sql, [id]) }
       raise RecordNotFound, "Couldn't find #{model_name} with id=#{id}" if found.empty?
       load_row(found[0])
+      reset_association_caches
       self
     end
 
@@ -475,7 +680,7 @@ module Cybertrain
     end
 
     # {#attributes}, ready for JSON: a Time becomes its ISO 8601 String
-    # (`"2026-10-05T09:00:00Z"`); booleans, numbers, Strings and nil
+    # (`"2026-10-05T09:00:00.000Z"`); booleans, numbers, Strings and nil
     # stay as they are (Cast.to_sql would turn booleans into 1/0).
     # @return [Hash{String => Object}]
     # @api public
@@ -509,6 +714,31 @@ module Cybertrain
       self.class.column_names.include?(name)
     end
 
+    def create_with_callbacks
+      run_callbacks("before_create")
+      insert_row
+      run_callbacks("after_create")
+      nil
+    end
+
+    def update_with_callbacks
+      run_callbacks("before_update")
+      update_row
+      run_callbacks("after_update")
+      nil
+    end
+
+    def destroy_with_callbacks
+      run_callbacks("before_destroy")
+      destroy_dependents
+      sql = "DELETE FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
+      id = @id
+      Cybertrain::DB.with { |c| c.execute(sql, [id]) }
+      @persisted = false
+      run_callbacks("after_destroy")
+      nil
+    end
+
     # created_at/updated_at are filled in when the table has them and the
     # record does not already carry a value (as ActiveRecord does).
     def insert_row
@@ -532,12 +762,24 @@ module Cybertrain
     def update_row
       write_attribute(:updated_at, Model.now_string) if column?("updated_at")
       row = to_row
-      sets = row.keys.map { |k| "#{Relation.quote_ident(k)} = ?" }
-      sql = "UPDATE #{Relation.quote_ident(self.class.table_name)} SET #{sets.join(", ")} WHERE #{Relation.quote_ident("id")} = ?"
+      # A counter_cache column is the children's to change (Rails'
+      # attr_readonly): this record's copy may be stale.
+      skipped = counter_cache_columns
+      sets = Array.new(0) { "" }
       binds = row.values
+      binds.clear
+      row.each do |k, v|
+        next if skipped.include?(k)
+
+        sets << "#{Relation.quote_ident(k)} = ?"
+        binds << v
+      end
+      sql = "UPDATE #{Relation.quote_ident(self.class.table_name)} SET #{sets.join(", ")} WHERE #{Relation.quote_ident("id")} = ?"
       binds << @id
       Cybertrain::DB.with { |c| c.execute(sql, binds) }
       nil
     end
   end
 end
+
+require "cybertrain/model/bulk_writes"

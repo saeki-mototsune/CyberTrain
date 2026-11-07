@@ -50,7 +50,10 @@ module Cybertrain
           end
           models = models.sort
           names = Array.new(0) { "" }
-          schema.tables.each { |t| names << ModelsEmitter.model_class_name(t.name) }
+          ModelsEmitter.modelled_tables(schema).each { |t| names << ModelsEmitter.model_class_name(t.name) }
+          schema.tables.each do |t|
+            puts "skipped #{t.name}: no id column, so no model (reach it with Cybertrain::DB.with)" if t.without_id?
+          end
           outputs << ["gen/console.rb", ConsoleEmitter.emit(names.sort)]
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
           # A gen/models file whose table is gone from the schema.

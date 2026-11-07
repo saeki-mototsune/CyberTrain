@@ -1,0 +1,7 @@
+ok   minimum, maximum and average over a column
+ok   an empty relation answers nil, never 0
+ok   grouped forms: a Hash keyed by the group's cell
+ok   expression forms take trusted SQL
+ok   having_sql narrows a grouped reader
+ok   distinct puts DISTINCT inside the function
+6 tests, 60 assertions, 0 failures

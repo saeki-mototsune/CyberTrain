@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: a0fe78f06a9b4553bbbfb31ceac28f9973806efcac17684819ec9c073e830347
+source_sha256: a0cc156edb80c185423767f6324221c44932e9e0416bedd926cddbb16a9a6d8c
 ---
 # 工作原理
 
@@ -74,8 +74,8 @@ source_sha256: a0fe78f06a9b4553bbbfb31ceac28f9973806efcac17684819ec9c073e830347
 | 会话可以保存任何序列化的对象 | 会话的值只能是 String，存放在 HMAC 签名的 cookie 中 |
 | 多种数据库适配器 | 只有 SQLite，通过 FFI |
 | `Article.transaction { ... }` 返回块的值；`raise ActiveRecord::Rollback`；`requires_new: true` 保存点 | `Article.transaction { \|c\| ... }` 把连接传给块并返回 nil；通过抛出异常退出；嵌套调用加入外层事务，没有保存点（[事务](models.md#transactions)） |
-| `has_many :through`、`includes`、`dependent:`、枚举、STI、多态关联 | 未实现；关联只来自 schema 中的外键 |
-| `pluck(:a)`、`sum(:a)`、`group(:a).count`、`upsert`、`update_counters`、`where("title LIKE ?", "%#{q}%")` | 带类型的版本，因为 Spinel 的方法只有一种返回类型：`pluck_int` 及其同类方法、`sum_int`、`count_by`、`upsert`、`increment(:col, by: n)`、`where_like`（[`where` 之外的查询](models.md#querying-beyond-where)） |
+| `has_many :through`、枚举、STI、多态关联 | 未实现；`has_many`、`has_one` 和 `belongs_to` 来自外键或一行声明，支持 `dependent:`、`counter_cache:` 和一层 `includes`（[关联](models.md#associations)） |
+| `pluck(:a)`、`maximum(:a)`、`group(:a).sum(:b)`、`upsert`、`update_counters`、`where(created_at: t1..t2)` | 带类型的版本，因为 Spinel 的方法只有一种返回类型：`pluck_int` 及其同类方法、`maximum_int`、`sum_float_by`、`upsert`、`increment(:col, by: n)`；Time 的范围写作 `where_between`（[超出 `where` 的查询](models.md#querying-beyond-where)） |
 | 任意列名；关联可以遮蔽 `errors` | 只允许 ASCII 标识符；与框架方法或 Ruby 关键字同名的列会以 `<column>_column` 的名字生成，名称冲突的关联则以后备名称生成（[列名](models.md#column-names)） |
 | `namespace`、format/`respond_to`、`constraints`、`mount` | 未实现——扁平的名称，只有 `render json:` |
 | `rescue StandardError` 能捕获出错的 `JSON.parse` | 在 Spinel 下 `JSON::ParserError` 不是 `StandardError`：应用代码必须写 `rescue JSON::ParserError, StandardError`。服务器会作为最后手段捕获它并返回 500 |

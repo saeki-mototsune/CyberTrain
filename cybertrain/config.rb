@@ -71,6 +71,26 @@ module Cybertrain
     # @api public
     attr_accessor :secret_key_base
 
+    # The key encrypted columns (`encrypts :api_key` in a model) are
+    # encrypted with: 64 hex characters (32 bytes) from
+    # `CYBERTRAIN_ENCRYPTION_KEY`, "" when unset. `cybertrain secret --hex`
+    # makes one. It is not derived from {#secret_key_base}, so rotating the
+    # session secret leaves stored data readable. Boot fails on a malformed
+    # key, and on an empty one when a model declares `encrypts`
+    # ({#encryption_error}).
+    # @return [String]
+    # @api public
+    attr_accessor :encryption_key
+
+    # Earlier encryption keys, tried in order after {#encryption_key} when a
+    # stored value does not decrypt with it, and never used to encrypt:
+    # `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS`, a comma-separated list of 64-hex
+    # keys. To rotate, make a new key, move the old one here, and re-save
+    # the records (each save encrypts with the current key).
+    # @return [Array<String>]
+    # @api public
+    attr_accessor :encryption_keys_previous
+
     # Where templates are read from in development and test, `"app/views"`. A
     # production binary uses the templates embedded by `cybertrain build`.
     # @return [String]
@@ -548,6 +568,14 @@ attr_accessor :trusted_proxies
       @port = (ENV["PORT"] || "3000").to_i
       @database_path = Config.default_database_path(@env)
       @secret_key_base = ENV["CYBERTRAIN_SECRET_KEY_BASE"] || ""
+      # Stripped, like the previous keys: a .env line's newline is not part of it.
+      @encryption_key = (ENV["CYBERTRAIN_ENCRYPTION_KEY"] || "").strip
+      # Typed seed (rule 9); empty entries of the comma list are dropped.
+      @encryption_keys_previous = Array.new(0) { "" }
+      (ENV["CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS"] || "").split(",").each do |entry|
+        previous_key = entry.strip
+        @encryption_keys_previous << previous_key unless previous_key.empty?
+      end
       @secret_key_path = "tmp/secret_key"
       @views_root = "app/views"
       # Renders open at once (the page and its partials; the layout renders after
@@ -1161,6 +1189,64 @@ def trusted_proxies_error
   end
   ""
 end
+
+    # Whether boot requires {#encryption_key}: gen/app.rb sets it when a
+    # model declares `encrypts` (it is the application's, not one Config's,
+    # so a test that replaces Cybertrain.config keeps it).
+    @encryption_required = false
+
+    # @return [Boolean] whether a model declares `encrypts`
+    def self.encryption_required
+      @encryption_required
+    end
+
+    # Set by gen/app.rb (true when a model declares `encrypts`).
+    # @param value [Boolean]
+    def self.encryption_required=(value)
+      @encryption_required = value
+    end
+
+    # Whether `text` is 64 hex digits, either case: an encryption key.
+    def self.encryption_key_text?(text)
+      s = text.to_s
+      return false unless s.bytesize == 64
+
+      i = 0
+      while i < 64
+        b = s.getbyte(i).to_i
+        hex = (b >= 48 && b <= 57) || (b >= 97 && b <= 102) || (b >= 65 && b <= 70)
+        return false unless hex
+
+        i += 1
+      end
+      true
+    end
+
+    # The error Application#boot reports (and exits 1 on) when the
+    # encryption keys are unusable; "" when they are fine. A set key must be
+    # 64 hex characters, and so must each previous one; an unset key is an
+    # error only when a model declares `encrypts`
+    # ({Config.encryption_required}). String checks only: the encryption
+    # itself (and openssl) is cybertrain/encryptor.rb's.
+    def encryption_error
+      key = @encryption_key
+      hint = "make one with `cybertrain secret --hex`"
+      if key.empty?
+        return "CYBERTRAIN_ENCRYPTION_KEY is not set; #{hint}" if Config.encryption_required
+      elsif !Config.encryption_key_text?(key)
+        return "CYBERTRAIN_ENCRYPTION_KEY must be 64 hex characters; #{hint}"
+      end
+      previous = @encryption_keys_previous
+      i = 0
+      while i < previous.size
+        unless Config.encryption_key_text?(previous[i])
+          return "CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS entry #{i + 1} must be 64 hex characters"
+        end
+
+        i += 1
+      end
+      ""
+    end
 
     # The error Application#boot reports (and exits 1 on) when
     # session_same_site is not a value browsers accept; "" when it is one.

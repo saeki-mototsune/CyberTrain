@@ -1,0 +1,2 @@
+ok   each model's callback blocks reach its own counter_cache hooks
+1 tests, 10 assertions, 0 failures

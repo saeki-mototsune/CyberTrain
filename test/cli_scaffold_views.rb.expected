@@ -1,5 +1,6 @@
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb

@@ -251,7 +251,7 @@ test "Cast.binds casts each value the way a relation binds it" do
   assert_equal 1, list[0]
   assert_equal "x", list[1]
   assert_nil list[2]
-  assert_equal "2026-10-25T09:00:00Z", list[3]
+  assert_equal "2026-10-25 09:00:00.000000", list[3]
   assert_equal 1, list[4]
   assert_equal 0, list[5]
   assert_equal 1.5, list[6]
@@ -446,7 +446,7 @@ test "pluck_str, pluck_int and pluck_float read one column in the relation's ord
   assert_equal [1, 1], Stat.where(project_id: 1).pluck_int("project_id")
   assert_equal [4, 5], Stat.all.order("calls").offset(1).limit(2).pluck_int(:calls)
   assert_equal 0, Stat.where(project_id: 99).pluck_str(:key).size
-  assert_equal "2026-10-25T09:10:00Z", Stat.all.order("id").limit(1).pluck_str(:seen_at)[0]
+  assert_equal "2026-10-25 09:10:00.000000", Stat.all.order("id").limit(1).pluck_str(:seen_at)[0]
 end
 
 test "pluck refuses a name that is not a column" do

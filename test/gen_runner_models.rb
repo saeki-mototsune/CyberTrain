@@ -13,6 +13,7 @@ require_relative "fixtures/gen_app/db/schema"
 FIXTURE = "test/fixtures/gen_app"
 ROOT = Dir.mktmpdir("cybertrain-gen-models")
 APP_FILES = [
+  "app/models/comment.rb",
   "app/models/post.rb",
   "app/controllers/application_controller.rb",
   "app/controllers/comments_controller.rb",
@@ -52,12 +53,21 @@ def load_fixture_schema
       t.string "commenter", null: false
       t.text "body", null: false
       t.boolean "approved", default: "false"
+      t.json "extras", null: false
+      t.date "seen_on", null: false
+      t.date "due_on", null: false, default: "'2026-01-01'"
       t.timestamps
     end
     s.create_table "posts" do |t|
       t.string "title", null: false
       t.text "body"
       t.integer "views", null: false, default: "0"
+      t.decimal "price", precision: 10, scale: 2
+      t.integer "comments_count", null: false, default: "0"
+      t.json "meta"
+      t.date "published_on"
+      t.text "secret_note"
+      t.binary "thumbnail"
       t.timestamps
     end
   end
@@ -85,12 +95,21 @@ test "a table added to the schema makes both its model and the manifest stale" d
       t.string "commenter", null: false
       t.text "body", null: false
       t.boolean "approved", default: "false"
+      t.json "extras", null: false
+      t.date "seen_on", null: false
+      t.date "due_on", null: false, default: "'2026-01-01'"
       t.timestamps
     end
     s.create_table "posts" do |t|
       t.string "title", null: false
       t.text "body"
       t.integer "views", null: false, default: "0"
+      t.decimal "price", precision: 10, scale: 2
+      t.integer "comments_count", null: false, default: "0"
+      t.json "meta"
+      t.date "published_on"
+      t.text "secret_note"
+      t.binary "thumbnail"
       t.timestamps
     end
     s.create_table "tags" do |t|

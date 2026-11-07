@@ -1,5 +1,5 @@
 ---
-source_sha256: 8c5fb31e9029aee83c444a7a42144a867952901bfc224f91835abbbf79439213
+source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
 ---
 # Установка
 
@@ -46,7 +46,7 @@ Spinel; если чего-то обязательного не хватает, �
   разработки Ruby, `ruby-dev` в Debian/Ubuntu). `cybertrain doctor` это
   проверяет.
 - Заголовки OpenSSL (`libssl-dev`) необязательны: без них Spinel собирается
-  без своего пакета `openssl`, который CyberTrain не использует. На macOS
+  без своего пакета `openssl`, который приложению нужен только для TLS (`require "cybertrain/net/tls"`) или зашифрованных столбцов (`encrypts`). На macOS
   приложению, которому нужен `openssl`, требуется OpenSSL из Homebrew (keg-only)
   в путях компилятора: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`.

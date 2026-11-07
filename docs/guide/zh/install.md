@@ -1,5 +1,5 @@
 ---
-source_sha256: 8c5fb31e9029aee83c444a7a42144a867952901bfc224f91835abbbf79439213
+source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
 ---
 # 安装
 
@@ -21,7 +21,7 @@ source_sha256: 8c5fb31e9029aee83c444a7a42144a867952901bfc224f91835abbbf79439213
 <details><summary>更多软件包 — Ruby 3.2 上的 prism；OpenSSL 和 jemalloc，均为可选</summary>
 
 - 构建 Spinel 需要 Ruby 的 `prism` gem，Ruby 3.3 及以上已内置；Ruby 3.2 请运行 `gem install prism`（需要 Ruby 的开发头文件，Debian/Ubuntu 上为 `ruby-dev`）。`cybertrain doctor` 会检查它。
-- OpenSSL 头文件（`libssl-dev`）是可选的：没有它们时，Spinel 构建时会不带其 `openssl` 包，而 CyberTrain 并不使用这个包。在 macOS 上，require `openssl` 的应用需要让编译器的路径包含 Homebrew 的（keg-only）OpenSSL：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+- OpenSSL 头文件（`libssl-dev`）是可选的：没有它们时，Spinel 构建时会不带其 `openssl` 包，应用只有在使用 TLS（`require "cybertrain/net/tls"`）或加密列（`encrypts`）时才需要这个包。在 macOS 上，require `openssl` 的应用需要让编译器的路径包含 Homebrew 的（keg-only）OpenSSL：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`。
 - jemalloc 的开发包（`libjemalloc-dev`；`brew install jemalloc`）是可选的：只有当应用的 `spin.toml` 写明 `allocator = "jemalloc"` 时才需要它，`cybertrain new` 会把这一行写成注释。在生产环境中值得开启：在 examples/blog 上每秒请求数可达 1.1 到 1.4 倍（[docs/benchmark.md](../benchmark.md)）。
 

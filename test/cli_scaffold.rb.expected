@@ -1,5 +1,6 @@
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -119,6 +120,7 @@ error: only `generate scaffold`, `generate attachment`, `generate authentication
 ok   bad input is rejected before anything is written
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb

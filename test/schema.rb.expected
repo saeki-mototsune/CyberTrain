@@ -12,4 +12,17 @@ ok   the dumped form of an index round-trips through Definition#add_index
 ok   add_index accepts Symbol columns
 ok   add_index raises ArgumentError for an unknown table
 ok   add_foreign_key raises ArgumentError for an unknown table
-14 tests, 50 assertions, 0 failures
+ok   decimal, json and bigint columns record their type, precision, scale and limit
+ok   datetime accepts precision: and ignores it
+ok   references takes on_delete: and index:
+ok   a foreign key defaults to on_delete :no_action
+ok   add_index takes an expression String and a where: predicate
+ok   an expression index without name: raises ArgumentError
+ok   SqliteDDL writes DECIMAL, JSON, BIGINT and ON DELETE
+ok   SqliteDDL writes ON DELETE RESTRICT and nothing for :no_action
+ok   SqliteDDL index_sql writes expression and partial indexes
+ok   Dumper.to_ruby writes decimal, json, bigint, on_delete, expression and partial indexes
+ok   decimal raises ArgumentError for a scale without a precision
+ok   references raises ArgumentError for on_delete: :nullify on a NOT NULL column
+ok   an unknown on_delete raises ArgumentError
+27 tests, 106 assertions, 0 failures

@@ -68,7 +68,7 @@ test "the database layer opens a pooled in-memory SQLite connection" do
     assert_equal "hello", rows[0]["body"]
   end
   Cybertrain::DB.disconnect
-  assert_equal "2026-01-02T03:04:05Z", Cybertrain::Cast.iso8601(Time.utc(2026, 1, 2, 3, 4, 5))
+  assert_equal "2026-01-02T03:04:05.000Z", Cybertrain::Cast.iso8601(Time.utc(2026, 1, 2, 3, 4, 5))
 end
 
 # A controller wired the way gen/routes.rb will wire it, behind the session

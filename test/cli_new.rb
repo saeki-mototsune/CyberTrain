@@ -24,7 +24,7 @@ at_exit do
 end
 
 EXPECTED_FILES = [
-  "spin.toml", ".gitignore", "README.md",
+  "spin.toml", ".gitignore", ".env.example", "README.md",
   "config/app.rb", "config/routes.rb",
   "db/schema.rb", "db/migrate/.keep",
   "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep",
@@ -305,6 +305,25 @@ test "CLI version, help and unknown commands" do
   assert_equal 0, Cybertrain::CLI.run(["help"])
   assert_equal 1, Cybertrain::CLI.run(["frobnicate"])
   assert_equal 1, Cybertrain::CLI.run([])
+end
+
+test ".env.example lists the secrets, commented, with how to make each" do
+  text = read("blog/.env.example")
+  assert_includes text, "# CYBERTRAIN_SECRET_KEY_BASE=\n"
+  assert_includes text, "# CYBERTRAIN_ENCRYPTION_KEY=  # cybertrain secret --hex\n"
+  print text
+end
+
+test "CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)" do
+  [[], ["--hex"]].each do |args|
+    secret = Cybertrain::CLI.secret_text(args)
+    assert_equal 64, secret.size
+    secret.each_char { |ch| assert("0123456789abcdef".include?(ch)) }
+    refute secret == Cybertrain::CLI.secret_text(args)
+  end
+  assert_equal 1, Cybertrain::CLI.run(["secret", "--bin"])
+  assert_equal 1, Cybertrain::CLI.run(["secret", "--hex", "32"])
+  assert_includes Cybertrain::CLI::USAGE, "cybertrain secret [--hex]"
 end
 
 Cybertrain::Test.run!

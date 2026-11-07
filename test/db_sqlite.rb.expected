@@ -1,6 +1,6 @@
 ok   creates a table
 ok   binds Integer, Float, String, nil, true and Time and reads back Ruby types
-ok   a Time bind in another zone is stored as the UTC ISO string
+ok   a Time bind in another zone is stored in UTC in the storage format
 ok   round-trips unicode text
 ok   changes counts the rows touched by the last UPDATE
 ok   last_insert_id returns the new row id
@@ -22,5 +22,6 @@ ok   DB.connect(":memory:") shares one database across DB.with calls
 ok   pool: 8 threads x 100 inserts through DB.with
 ok   DB.connect, DB.with and DB.disconnect
 ok   remembered column names follow a changed schema
-ok   execute_models reads DATETIME columns as epoch seconds and leaves other values alone
-25 tests, 108 assertions, 0 failures
+ok   execute_models reads DATETIME columns as UTC Times and leaves other values alone
+ok   execute_models reads a precision-qualified datetime(6) column as a Time
+26 tests, 110 assertions, 0 failures

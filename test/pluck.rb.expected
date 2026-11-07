@@ -1,0 +1,7 @@
+ok   pluck: a Time and a Float per row, in the relation's order
+ok   pluck: every column type cast, NULL as nil
+ok   pluck: honours where, limit, offset and String column names
+ok   pluck: one column or none raises, naming the typed readers
+ok   distinct.pluck dedupes the rows
+ok   pick: the first row's cells, nil when nothing matches
+6 tests, 36 assertions, 0 failures

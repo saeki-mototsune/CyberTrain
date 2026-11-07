@@ -1,5 +1,5 @@
 ---
-source_sha256: 840774b1782d6a4c5d4e5c2f880f39aa1960df5563f27409553fccbfbb117fd8
+source_sha256: 775aa69e329dfcff568767e9bda00af1ebe2ef8afc85e3cd32da8d53be31892d
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -214,14 +214,17 @@ end
 # presence validation; add anything past that yourself.
 class Article
   validates :title, presence: true
+  validates :title, uniqueness: true
   validates :body, presence: true, length: { minimum: 10 }
 end
 ```
 
 У `class Article` суперкласс не указан: суперкласс `Cybertrain::Model`,
 столбцы и finder-методы берутся из `gen/models/article.rb`. Неудачное
-сохранение выдаёт сообщения вроде «Title can't be blank» и «Body is too short
-(minimum is 10 characters)».
+сохранение выдаёт сообщения вроде «Title can't be blank», «Title has already
+been taken» и «Body is too short (minimum is 10 characters)». Остальные
+валидаторы (`format`, `inclusion`, `numericality`, ...) описаны в
+[Валидациях](models.md#validations).
 
 <!-- step 06 #articles-controller stage: Вы пишете · `app/controllers/` -->
 ## ArticlesController
@@ -352,8 +355,8 @@ cybertrain db migrate    # скаффолд создал миграцию для
 ```
 
 `article:references` добавляет столбец `article_id`, индекс и внешний ключ —
-этого достаточно, чтобы `Article`/`Comment` получили ассоциацию; писать
-`has_many`/`belongs_to` не нужно, `spin run gen` выводит её из внешнего ключа.
+этого достаточно, чтобы `Article`/`Comment` получили ассоциацию:
+`spin run gen` выводит `Article#comments` и `Comment#article` из внешнего ключа.
 Получившаяся схема:
 
 ```ruby db/schema.rb (фрагмент)
@@ -376,13 +379,13 @@ cybertrain db migrate    # скаффолд создал миграцию для
 > [!EXAMPLE] Удаление статьи с комментариями
 > ### Удаление статьи с комментариями
 >
-> Ассоциации выводятся только из внешних ключей, а `dependent:` не реализован.
-> Пример добавляет колбэк `before_destroy`, который получает запись явно:
+> Внешний ключ не даёт удалить статью, у которой ещё есть комментарии.
+> Объявите ассоциацию, как в Rails, и `destroy` сначала удалит их в своей
+> транзакции:
 >
 > ```ruby app/models/article.rb (фрагмент)
->   # Rails' `has_many :comments, dependent: :destroy`: the foreign key
->   # would refuse to delete an article that still has comments.
->   before_destroy { |article| Comment.where(article_id: article.id).delete_all }
+>   # each comment's own destroy runs, callbacks included
+>   has_many :comments, dependent: :destroy
 > ```
 
 <!-- step 09 #nested-routes stage: Вы пишете · `config/routes.rb` -->
@@ -433,7 +436,7 @@ class CommentsController < ApplicationController
   end
 
   def destroy
-    @comment = Comment.where(article_id: @article.id).find(params[:id])
+    @comment = @article.comments.find(params[:id])
     @comment.destroy
     flash[:notice] = "Comment was successfully destroyed."
     redirect_to article_path(@article), status: :see_other
@@ -457,14 +460,18 @@ end
 class Comment
   validates :commenter, presence: true
   validates :body, presence: true
+
+  belongs_to :article
 end
 ```
 
+Объявленный `belongs_to` к тому же делает комментарий без статьи
+невалидным («Article id can't be blank») раньше, чем его отвергнет база.
+
 > [!NOTE]
-> `Article#comments` здесь — это Array, поэтому рельсовый
-> `@article.comments.find(params[:id])` превращается в
-> `Comment.where(article_id: @article.id).find(params[:id])`. Комментарий под
-> чужой статьёй возвращает 404.
+> `Article#comments` — это relation комментариев, поэтому рельсовый
+> `@article.comments.find(params[:id])` работает в `destroy` как есть, а
+> комментарий под чужой статьёй возвращает 404.
 
 <!-- step 11 #views stage: Запуск · `app/views/`, при разработке читаются с диска, встраиваются командой `cybertrain build` -->
 ## Представления и партиалы
@@ -535,6 +542,30 @@ end
 > `<%# locals: (comment:) %>` не допускает значений по умолчанию. Партиал
 > получает копию окружения вызывающего кода, поэтому `@article` виден в
 > `comments/_form`.
+
+> [!EXAMPLE] Список с числом комментариев и фильтром по дате
+> ### Список с числом комментариев и фильтром по дате
+>
+> examples/blog выводит сначала новые статьи с числом комментариев — двумя
+> запросами при любом числе статей — и фильтрует их по дате:
+>
+> ```ruby app/models/article.rb (фрагмент) · app/controllers/articles_controller.rb (фрагмент)
+>   scope :recent, -> { order(created_at: :desc) }
+>
+>   def index
+>     articles = Article.recent.includes(:comments)
+>     from = Cybertrain::Cast.date_or_nil(params[:from])
+>     unless from.nil?
+>       articles = articles.where_between(:created_at, Time.utc(from.year, from.month, from.day), nil)
+>     end
+>     @articles = articles.to_a
+>   end
+> ```
+>
+> В представлении `article.comments.size` отвечает по предзагруженным
+> комментариям. Рельсовый `where(created_at: from..)` здесь пишется как
+> `where_between`, потому что Spinel не строит Range из Time ([Условия и
+> поиск](models.md#conditions-and-finders)).
 
 <!-- step 12 #test stage: Сборка · `cybertrain spin test` -->
 ## Тестирование
@@ -1151,9 +1182,9 @@ kamal deploy   # каждое следующее развёртывание
   имя/строку шаблона.
 - Атрибут с опечаткой в представлении выводится пустым вместо исключения; это
   известный пробел.
-- Ассоциации выводятся только из внешних ключей схемы; нет
-  `has_many :through`, `includes`, `pluck`, `dependent:`, enum, STI и
-  полиморфных ассоциаций.
+- Ассоциации выводятся из внешних ключей или однострочных объявлений; нет
+  `has_many :through`, вложенного `includes`, enum, STI и полиморфных
+  ассоциаций.
 - Нет `namespace`, `respond_to`/форматов, `constraints` и `mount`;
   `render json:` минимален.
 - В модели, созданной скаффолдом, валидацию присутствия по умолчанию получает

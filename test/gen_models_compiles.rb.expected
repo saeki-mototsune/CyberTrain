@@ -1,10 +1,41 @@
 ok   the checked-in gen/models files match the emitter (fixture stale otherwise)
-ok   scan_dir finds Post and its summary view method
+ok   scan_dir finds Comment and Post, Post's summary view method and both declarations
 ok   write_all writes every model file under gen/models
 ok   create and find through the generated classes
 ok   column defaults become initial values and reach the database
 ok   validations from app/models/post.rb apply to the generated class
+ok   uniqueness from app/models/post.rb: a taken title fails on create and on update, not the record's own
+ok   the generated unique_value_taken?: case_sensitive false compares LOWER(), scope narrows, the own id is excluded
+ok   validation_condition? raises for a name app/models never declared, so a missed condition is loud
+ok   numericality and the custom validation with its if: from app/models/post.rb
 ok   belongs_to and has_many associations
 ok   call_view_method reaches the scanned summary
 ok   to_json of a generated model
-9 tests, 34 assertions, 0 failures
+ok   decimal, json and date attributes round-trip as Float, Hash and Date
+ok   a nullable decimal, json and date left unset load back as nil and are stored as NULL
+ok   a NOT NULL json column starts as {} and round-trips a Hash
+ok   column_type and decimal_scale answer per column from the schema
+ok   the generated query methods: where.not, where with a String and a Range, where_between on a date, or, order by Hash
+ok   update_columns writes through the generated to_row: decimal rounded to its scale, json as text
+ok   a NOT NULL date: invalid assigned text stays nil and the save fails validation; a valid date round-trips
+ok   a NOT NULL date with a default: a fresh record holds the default, invalid text fails validation
+ok   update_all rounds a decimal to its scale as save does, and nil stores NULL
+ok   scopes from app/models/post.rb run as class methods and chain on a relation
+ok   the typed readers, where_sql and increment are class methods too
+ok   post.comments is the comments' Relation: it chains, counts and orders
+ok   comment.post is read once per foreign key, again when the key changes, and after reload
+ok   belongs_to :post without optional: validates post_id
+ok   post.destroy destroys each of its comments (their callbacks run), then the post
+ok   a destroy that raises rolls back the post and every comment and keeps the record persisted
+ok   comments_count follows create, destroy and a moved comment; the post's own save leaves it alone
+ok   a create whose counter increment raises leaves neither the child nor a changed count
+ok   two loaded copies of one comment moved to different posts leave every count right
+ok   destroy decrements the post the row points to, not a stale or unsaved in-memory key
+ok   a move whose save raises inside the transaction leaves the counts and the row as they were
+ok   an encrypted column is stored as a payload and read back as the text; nil stays NULL
+ok   where, update_all and the bulk writes refuse an encrypted column
+ok   upsert and increment refuse an encrypted column; upsert casts by column type
+ok   a nullable binary column stores the bytes of a Blob or a String, and nil as NULL
+ok   a stored payload made with another key raises Encryptor::Error on read
+ok   unique_value_taken? on an encrypted column raises, case-sensitive or not
+40 tests, 315 assertions, 0 failures

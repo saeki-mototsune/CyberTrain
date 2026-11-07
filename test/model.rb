@@ -139,11 +139,11 @@ class Post < Cybertrain::Model
     rec
   end
 
-  def comments = CommentRelation.new("comments").where(post_id: @id).to_a
+  def comments = CommentRelation.new("comments").where(post_id: @id)
 
   def read_association(name)
     case name
-    when :comments then comments
+    when :comments then comments.to_a
     else nil
     end
   end
@@ -525,13 +525,13 @@ end
 test "Cast.time_or_nil parses both SQLite datetime formats" do
   t = Cybertrain::Cast.time_or_nil("2026-09-24T12:30:05Z")
   assert !t.nil?
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.iso8601(t)
+  assert_equal "2026-09-24T12:30:05.000Z", Cybertrain::Cast.iso8601(t)
   t2 = Cybertrain::Cast.time_or_nil("2026-09-24 12:30:05")
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.iso8601(t2)
+  assert_equal "2026-09-24T12:30:05.000Z", Cybertrain::Cast.iso8601(t2)
   t3 = Cybertrain::Cast.time_or_nil(fixed_time)
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.iso8601(t3)
+  assert_equal "2026-09-24T12:30:05.000Z", Cybertrain::Cast.iso8601(t3)
   t4 = Cybertrain::Cast.time_or_nil(0)
-  assert_equal "1970-01-01T00:00:00Z", Cybertrain::Cast.iso8601(t4)
+  assert_equal "1970-01-01T00:00:00.000Z", Cybertrain::Cast.iso8601(t4)
   assert_nil Cybertrain::Cast.time_or_nil(nil)
   assert_nil Cybertrain::Cast.time_or_nil("")
   assert_nil Cybertrain::Cast.time_or_nil("yesterday")
@@ -547,14 +547,14 @@ test "Cast.time_or_nil returns nil for well-formed but out-of-range values" do
   assert_nil Cybertrain::Cast.time_or_nil("2026-01-01 24:00:00")
   assert_nil Cybertrain::Cast.time_or_nil("2026-01-01 23:60:00")
   assert_nil Cybertrain::Cast.time_or_nil("2026-01-01T23:59:60Z")
-  assert_equal "2024-02-29T23:59:59Z", Cybertrain::Cast.iso8601(Cybertrain::Cast.time_or_nil("2024-02-29 23:59:59"))
-  assert_equal "2026-12-31T00:00:00Z", Cybertrain::Cast.iso8601(Cybertrain::Cast.time_or_nil("2026-12-31T00:00:00Z"))
+  assert_equal "2024-02-29T23:59:59.000Z", Cybertrain::Cast.iso8601(Cybertrain::Cast.time_or_nil("2024-02-29 23:59:59"))
+  assert_equal "2026-12-31T00:00:00.000Z", Cybertrain::Cast.iso8601(Cybertrain::Cast.time_or_nil("2026-12-31T00:00:00.000Z"))
   post = Post.new(title: "Bad date", created_at: "2026-13-01 00:00:00")
   assert_nil post.created_at
 end
 
 test "Cast.to_sql turns Time and booleans into SQLite values" do
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.to_sql(fixed_time)
+  assert_equal "2026-09-24 12:30:05.000000", Cybertrain::Cast.to_sql(fixed_time)
   assert_equal 1, Cybertrain::Cast.to_sql(true)
   assert_equal 0, Cybertrain::Cast.to_sql(false)
   assert_equal 7, Cybertrain::Cast.to_sql(7)
@@ -595,7 +595,7 @@ test "Relation builds SQL from where, order, limit and offset" do
   assert_equal 'SELECT * FROM `posts` WHERE `title` = ? AND `body` IS NULL ORDER BY `id` DESC LIMIT 2 OFFSET 4', rel.to_sql
   assert_equal 1, rel.binds.size
   assert_equal 'SELECT * FROM `posts` WHERE `id` IN (?, ?)', Post.where(id: [3, 4]).to_sql
-  assert_equal 'SELECT * FROM `posts` WHERE views > ?', Post.all.where_sql("views > ?", [3]).to_sql
+  assert_equal 'SELECT * FROM `posts` WHERE (views > ?)', Post.all.where_sql("views > ?", [3]).to_sql
   assert_equal 'SELECT * FROM `posts`', Post.all.to_sql
   assert_equal 'SELECT * FROM `flags` WHERE `group` = ?', Flag.where(group: "x").to_sql
   assert_equal '`a``b`', Cybertrain::Relation.quote_ident('a`b')
@@ -913,7 +913,7 @@ test "comments association through comments.post_id" do
   Comment.create(post_id: post.id, body: "first", author: "alice")
   Comment.create(post_id: other.id, body: "elsewhere")
   Comment.create(post_id: post.id, body: "second", author: "bob")
-  bodies = post.comments.map { |c| c.body }
+  bodies = post.comments.to_a.map { |c| c.body }
   assert_equal ["first", "second"], bodies
   assert_equal 2, Comment.where(post_id: post.id).count
   comment = Comment.find_by(body: "second")
@@ -945,7 +945,7 @@ test "to_json exact string" do
   reset_tables
   post = Post.create(title: "JSON \"quoted\"", created_at: fixed_time, updated_at: fixed_time)
   expected = "{\"id\":#{post.id},\"title\":\"JSON \\\"quoted\\\"\",\"body\":null," \
-             "\"created_at\":\"2026-09-24T12:30:05Z\",\"updated_at\":\"2026-09-24T12:30:05Z\"}"
+             "\"created_at\":\"2026-09-24T12:30:05.000Z\",\"updated_at\":\"2026-09-24T12:30:05.000Z\"}"
   assert_equal expected, post.to_json
   attrs = post.attributes
   assert_equal ["id", "title", "body", "created_at", "updated_at"], attrs.keys
@@ -1018,7 +1018,7 @@ test "created_at is a Time after reload" do
   created = post.created_at
   assert_equal "Time", created.class.name
   assert_equal 2026, created.year
-  assert_equal "2026-09-24T12:30:05Z", Cybertrain::Cast.iso8601(created)
+  assert_equal "2026-09-24T12:30:05.000Z", Cybertrain::Cast.iso8601(created)
   refute post.updated_at.nil?
   assert post.updated_at.year >= 2026
 end

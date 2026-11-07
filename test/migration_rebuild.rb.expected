@@ -1,0 +1,200 @@
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 ChangeViewsToString: migrating
+done
+== 20260301000100 ChangeViewsToString: reverting
+done
+ok   change_column rebuilds the column with its new type, null and default, keeping rows and indexes
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 ChangeViewsInChange: migrating
+done
+ok   change_column in change is irreversible
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 ChangeViewsDefault: migrating
+done
+== 20260301000100 ChangeViewsDefault: reverting
+done
+ok   change_column_default with from: and to: changes the default and rolls back
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 ChangeViewsDefaultBlind: migrating
+done
+ok   change_column_default without from: is irreversible
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 TitleNotNull: migrating
+done
+== 20260301000100 TitleNotNull: reverting
+done
+ok   change_column_null false with a default backfills the NULL cells and writes no DEFAULT
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 TitleNotNullPlain: migrating
+ok   change_column_null false over a NULL cell without a default fails and leaves the table as it was
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 CommentBodyNullable: migrating
+done
+ok   change_column_null true has no inverse without a default for the NULL cells
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 RemovePostReference: migrating
+done
+ok   remove_reference drops the column, its index and its foreign key, keeping the rows
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 RemovePostForeignKey: migrating
+done
+ok   remove_foreign_key drops the constraint and keeps the column and its index
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 RenamePosts: migrating
+done
+== 20260301000100 RenamePosts: reverting
+done
+ok   rename_table renames the table, its children follow, and rollback renames it back
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 ChangeViewsDefault: migrating
+done
+ok   a trigger on the rebuilt table is recreated and still fires
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 ChangeViewsDefault: migrating
+done
+ok   a deleted row's id is not reused after a rebuild
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 RemovePostForeignKey: migrating
+done
+ok   an emptied table keeps its high-water mark through a rebuild
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 FillSlugs: migrating
+done
+== 20260301000100 FillSlugs: reverting
+done
+ok   reversible runs the up block forward and the down block on rollback
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 TitleNotNullPlain: migrating
+done
+ok   rebuilding a parent keeps the children an ON DELETE CASCADE points at
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 OrphanAndRebuild: migrating
+ok   a foreign key violation found before the commit rolls the version back
+== 20260301000100 TitleNotNull: migrating
+done
+ok   a table Rails created rebuilds with its expression and partial indexes
+== 20260301000100 TagNoteNotNull: migrating
+done
+ok   a table without id rebuilds without copying an id
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 OrderedSteps: migrating
+done
+== 20260301000100 OrderedSteps: reverting
+done
+ok   reversible keeps the written order of each block's statements, both ways
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 DropViewsDefault: migrating
+done
+== 20260301000100 DropViewsDefault: reverting
+done
+ok   change_column_default from: a default to: nil drops it, and the rollback puts it back
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 AddViewsDefault: migrating
+done
+== 20260301000100 AddViewsDefault: reverting
+done
+ok   change_column_default from: nil adds a default, and the rollback drops it
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 RemoveAuthorForeignKey: migrating
+done
+ok   remove_foreign_key with column: drops that foreign key only
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000100 ChangeViewsDefault: migrating
+done
+ok   a view over the rebuilt table and a trigger on another table naming it survive the rebuild
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+ok   a rebuild refuses a table with constructs the schema does not model
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+done
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+done
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+done
+ok   a rebuild ignores those words where they are quoted, and takes a REFERENCES to id
+25 tests, 153 assertions, 0 failures

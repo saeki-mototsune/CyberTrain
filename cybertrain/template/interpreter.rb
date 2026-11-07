@@ -961,7 +961,7 @@ module Cybertrain
           extreme(a, a, 1, node)
         when :sort
           no_args(args, node, name)
-          pick(a, sorted_indices(a, node))
+          pick_indices(a, sorted_indices(a, node))
         when :uniq
           no_args(args, node, name)
           uniq_values(a)
@@ -1034,7 +1034,7 @@ module Cybertrain
         when :none? then block_find(block, env, a, true, name, node) < 0
         when :count then pick_truthy(a, block_values(block, env, a, name, node), true).size
         when :sum then sum_values(block_values(block, env, a, name, node), node)
-        when :sort_by then pick(a, sorted_indices(block_values(block, env, a, name, node), node))
+        when :sort_by then pick_indices(a, sorted_indices(block_values(block, env, a, name, node), node))
         when :min_by then extreme(a, block_values(block, env, a, name, node), -1, node)
         when :max_by then extreme(a, block_values(block, env, a, name, node), 1, node)
         when :group_by then group_values(a, block_values(block, env, a, name, node))
@@ -1180,7 +1180,7 @@ module Cybertrain
         out
       end
 
-      def pick(items, indices)
+      def pick_indices(items, indices)
         out = []
         i = 0
         while i < indices.size

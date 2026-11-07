@@ -86,6 +86,27 @@ module Cybertrain
         TEXT
       end
 
+      # The secrets the application reads from its environment, commented:
+      # a template to copy from, committed, so it never holds a value.
+      def self.env_example
+        <<~TEXT
+          # The secrets this application reads from its environment. This file
+          # is committed: copy a line into the environment (or your deploy's
+          # secrets) with a value, never write the value here.
+
+          # Signs the session cookie; changing it signs everyone out. Required in
+          # production; development and test keep one in tmp/secret_key.
+          # Make one with `cybertrain secret`.
+          # CYBERTRAIN_SECRET_KEY_BASE=
+
+          # Encrypts the columns a model declares with `encrypts`; boot fails
+          # without it once one does. Keep it safe: encrypted data cannot be
+          # read without it. To rotate, move the old key to
+          # CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS (comma-separated) and re-save.
+          # CYBERTRAIN_ENCRYPTION_KEY=  # cybertrain secret --hex
+        TEXT
+      end
+
       def self.readme(title, package)
         <<~MARKDOWN
           # #{title}

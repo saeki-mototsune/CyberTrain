@@ -183,4 +183,53 @@ test "the dumped schema loads back into an identical dump" do
   connection.close
 end
 
+class CreateTrades < Cybertrain::Migration::Base
+  version "20260101000200"
+
+  def change
+    create_table "trades" do |t|
+      t.decimal "price", precision: 18, scale: 8, null: false, default: "0"
+      t.json "meta"
+      t.bigint "views", null: false, default: "0"
+      t.references :post, on_delete: :cascade
+      t.datetime "settled_at", precision: 6
+    end
+    add_column "trades", "fee", :decimal, precision: 10, scale: 2
+    add_index "trades", ["views"], where: "views > 0"
+    add_reference "trades", "comment", null: true, on_delete: :nullify
+  end
+end
+
+test "migrated decimal, json, bigint, on_delete and partial indexes dump back" do
+  connection = migrated_connection
+  Cybertrain::DB::Migrator.new(connection).migrate([["20260101000000", CreatePosts.new],
+                                                    ["20260101000100", CreateComments.new],
+                                                    ["20260101000200", CreateTrades.new]])
+  ruby = Cybertrain::DB::SchemaDumper.dump_to_ruby(connection)
+  assert_includes ruby, "  s.create_table \"trades\" do |t|\n" \
+                        "    t.decimal \"price\", precision: 18, scale: 8, null: false, default: \"0\"\n" \
+                        "    t.json \"meta\"\n" \
+                        "    t.bigint \"views\", null: false, default: \"0\"\n" \
+                        "    t.integer \"post_id\", null: false\n" \
+                        "    t.datetime \"settled_at\"\n" \
+                        "    t.decimal \"fee\", precision: 10, scale: 2\n" \
+                        "    t.integer \"comment_id\"\n" \
+                        "  end\n"
+  assert_includes ruby, "  s.add_index \"trades\", [\"views\"], name: \"index_trades_on_views\", where: \"views > 0\"\n"
+  assert_includes ruby, "  s.add_foreign_key \"trades\", \"comments\", column: \"comment_id\", on_delete: :nullify\n"
+  assert_includes ruby, "  s.add_foreign_key \"trades\", \"posts\", column: \"post_id\", on_delete: :cascade\n"
+  connection.close
+end
+
+test "default_sql wraps an expression in parentheses and leaves a plain literal alone" do
+  plain = ["0", "-1", "+2", "1.5", "-0.25", "1e3", ".5", "'x'", "'a''b'", "''", "NULL", "null", "TRUE", "false",
+           "CURRENT_TIMESTAMP", "current_date", "CURRENT_TIME", "X'00ff'", "x''"]
+  plain.each { |text| assert_equal text, Cybertrain::DB::SchemaDumper.default_sql(text) }
+  assert_equal "(datetime('now'))", Cybertrain::DB::SchemaDumper.default_sql("datetime('now')")
+  assert_equal "(1 + 2)", Cybertrain::DB::SchemaDumper.default_sql("1 + 2")
+  assert_equal "('a' || 'b')", Cybertrain::DB::SchemaDumper.default_sql("'a' || 'b'")
+  assert_equal "(-x)", Cybertrain::DB::SchemaDumper.default_sql("-x")
+  assert_equal "(1-2)", Cybertrain::DB::SchemaDumper.default_sql("1-2")
+end
+
 Cybertrain::Test.run!

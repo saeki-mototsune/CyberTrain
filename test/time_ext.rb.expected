@@ -1,0 +1,4 @@
+ok   Time.iso8601 and rfc2822
+ok   Time.strptime directives
+ok   Time.strptime names, zones and malformed input
+3 tests, 33 assertions, 0 failures

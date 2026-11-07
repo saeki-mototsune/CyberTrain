@@ -29,4 +29,12 @@ done
 == 20260101000100 CreateComments: migrating
 done
 ok   the dumped schema loads back into an identical dump
-7 tests, 32 assertions, 0 failures
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+== 20260101000200 CreateTrades: migrating
+done
+ok   migrated decimal, json, bigint, on_delete and partial indexes dump back
+ok   default_sql wraps an expression in parentheses and leaves a plain literal alone
+9 tests, 60 assertions, 0 failures

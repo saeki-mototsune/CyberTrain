@@ -877,6 +877,29 @@ lines (1-3, 5-3) stay as they are. On the server, run `cybertrain setup` as
 the `notes` user after the `gem install` (3-4), and the deploy does not have
 to wait for the build.
 
+Upgrading from a 0.4 release also rewrites the database's datetimes once:
+0.4 stored `2026-10-05T09:00:00Z`, later releases store Rails' format,
+`2026-10-05 09:00:00.000000`, and a column that mixes the two sorts by format
+([the models guide](guide/models.md#datetimes-and-db-normalize)). For that one
+deploy, add two lines after `dist/notes migrate` in `~/deploy.sh`:
+
+```sh
+echo "==> Rewriting 0.4 datetimes"
+dist/notes db normalize
+```
+
+and stop the app first, so the old release writes nothing in between (as the
+user who can sudo, `sudo systemctl stop notes`; the deploy's restart starts
+the new release). `db normalize` prints one line per datetime column and is
+safe to run twice. It exits 1 when a table it cannot rewrite (a `WITHOUT
+ROWID` table, or one with a column named `_rowid_`) still holds old values,
+which stops the deploy before the switch. The app stays stopped until then:
+update those rows by hand and deploy again, or bring the old release back
+with `sudo systemctl start notes` in the meantime. It also exits 1 before
+reading anything when the server's SQLite is older than 3.37.0
+(`sqlite3 --version`). Afterwards the two lines
+can stay; they find nothing to rewrite.
+
 ### Changing the secret
 
 Change `CYBERTRAIN_SECRET_KEY_BASE` in `/etc/notes/notes.env` to a new value

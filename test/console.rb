@@ -386,7 +386,7 @@ test "a stored relation keeps its conditions; offset, where_sql, page, save, err
   expected << BANNER
   expected << ">> #<Article id: 3, title: \"p1\", body: nil>\n"
   expected << ">> #<Article id: 4, title: \"p2\", body: nil>\n"
-  expected << ">> #<ArticleRelation SELECT * FROM `articles` WHERE title LIKE ? binds: [\"p%\"]>\n2 records\n"
+  expected << ">> #<ArticleRelation SELECT * FROM `articles` WHERE (title LIKE ?) binds: [\"p%\"]>\n2 records\n"
   expected << ">> \"p1\"\n"
   expected << ">> 4\n"
   expected << ">> 4\n"

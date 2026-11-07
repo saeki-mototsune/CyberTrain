@@ -1,6 +1,6 @@
 ---
 description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: a0fe78f06a9b4553bbbfb31ceac28f9973806efcac17684819ec9c073e830347
+source_sha256: a0cc156edb80c185423767f6324221c44932e9e0416bedd926cddbb16a9a6d8c
 ---
 
 # Как это работает
@@ -122,8 +122,8 @@ Spinel нет `eval`, поэтому это замкнутая граммати�
 | Сессия хранит любой сериализуемый через Marshal объект | Значения сессии — только строки (String), cookie с подписью HMAC |
 | Множество адаптеров баз данных | Только SQLite, через FFI |
 | `Article.transaction { ... }` возвращает значение блока; `raise ActiveRecord::Rollback`; точки сохранения `requires_new: true` | `Article.transaction { \|c\| ... }` передаёт в блок соединение и возвращает nil; выходят из неё, возбуждая исключение; вложенные вызовы присоединяются к внешней транзакции, точек сохранения нет ([Транзакции](models.md#transactions)) |
-| `has_many :through`, `includes`, `dependent:`, enum, STI, полиморфные ассоциации | Не реализовано; ассоциации выводятся только из внешних ключей схемы |
-| `pluck(:a)`, `sum(:a)`, `group(:a).count`, `upsert`, `update_counters`, `where("title LIKE ?", "%#{q}%")` | Типизированные варианты, потому что у метода Spinel один тип возвращаемого значения: `pluck_int` и ему подобные, `sum_int`, `count_by`, `upsert`, `increment(:col, by: n)`, `where_like` ([Запросы помимо `where`](models.md#querying-beyond-where)) |
+| `has_many :through`, enum, STI, полиморфные ассоциации | Не реализовано; `has_many`, `has_one` и `belongs_to` выводятся из внешних ключей или однострочных объявлений, с `dependent:`, `counter_cache:` и одним уровнем `includes` ([Ассоциации](models.md#associations)) |
+| `pluck(:a)`, `maximum(:a)`, `group(:a).sum(:b)`, `upsert`, `update_counters`, `where(created_at: t1..t2)` | Типизированные варианты, потому что у метода Spinel один тип возвращаемого значения: `pluck_int` и ему подобные, `maximum_int`, `sum_float_by`, `upsert`, `increment(:col, by: n)`; диапазон Time — это `where_between` ([Запросы помимо `where`](models.md#querying-beyond-where)) |
 | Любое имя столбца; ассоциация может затенить `errors` | Только идентификаторы ASCII; столбец, названный как метод фреймворка или ключевое слово Ruby, генерируется как `<column>_column`, конфликтующая ассоциация — под запасным именем ([Имена столбцов](models.md#column-names)) |
 | `namespace`, форматы/`respond_to`, `constraints`, `mount` | Не реализовано — плоские имена, только `render json:` |
 | `rescue StandardError` перехватывает неудачный `JSON.parse` | Под Spinel `JSON::ParserError` не является `StandardError`: коду приложения нужно `rescue JSON::ParserError, StandardError`. Сервер перехватывает его в крайнем случае и отвечает 500 |

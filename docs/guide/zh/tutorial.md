@@ -1,5 +1,5 @@
 ---
-source_sha256: 840774b1782d6a4c5d4e5c2f880f39aa1960df5563f27409553fccbfbb117fd8
+source_sha256: 775aa69e329dfcff568767e9bda00af1ebe2ef8afc85e3cd32da8d53be31892d
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -158,11 +158,12 @@ end
 # presence validation; add anything past that yourself.
 class Article
   validates :title, presence: true
+  validates :title, uniqueness: true
   validates :body, presence: true, length: { minimum: 10 }
 end
 ```
 
-`class Article` 没有写超类：`Cybertrain::Model` 超类、列和查找方法都来自 `gen/models/article.rb`。保存失败时会报告诸如 “Title can't be blank” 和 “Body is too short (minimum is 10 characters)” 这样的消息。
+`class Article` 没有写超类：`Cybertrain::Model` 超类、列和查找方法都来自 `gen/models/article.rb`。保存失败时会报告诸如 “Title can't be blank”、“Title has already been taken” 和 “Body is too short (minimum is 10 characters)” 这样的消息。其他校验器（`format`、`inclusion`、`numericality` 等）见[校验](models.md#validations)。
 
 <!-- step 06 #articles-controller stage: 你编写 · `app/controllers/` -->
 ## ArticlesController
@@ -261,7 +262,7 @@ cybertrain generate scaffold comment commenter:string body:text article:referenc
 cybertrain db migrate    # 脚手架已为 comments 表写好了迁移
 ```
 
-`article:references` 会添加 `article_id` 列、索引和外键——这足以让 `Article`/`Comment` 获得关联；不需要写 `has_many`/`belongs_to`，`spin run gen` 会从外键中读出关联。生成的 schema：
+`article:references` 会添加 `article_id` 列、索引和外键——这足以让 `Article`/`Comment` 获得关联：`spin run gen` 会从外键中读出 `Article#comments` 和 `Comment#article`。生成的 schema：
 
 ```ruby db/schema.rb（节选）
   s.create_table "comments" do |t|
@@ -282,12 +283,11 @@ cybertrain db migrate    # 脚手架已为 comments 表写好了迁移
 > [!EXAMPLE] 删除带评论的文章
 > ### 删除带评论的文章
 >
-> 关联只来自外键，并且 `dependent:` 尚未实现。示例添加了一个显式接收记录的 `before_destroy` 回调：
+> 外键会拒绝删除仍有评论的文章。像 Rails 一样声明关联，`destroy` 就会在它的事务中先删除这些评论：
 >
 > ```ruby app/models/article.rb（节选）
->   # Rails' `has_many :comments, dependent: :destroy`: the foreign key
->   # would refuse to delete an article that still has comments.
->   before_destroy { |article| Comment.where(article_id: article.id).delete_all }
+>   # each comment's own destroy runs, callbacks included
+>   has_many :comments, dependent: :destroy
 > ```
 
 <!-- step 09 #nested-routes stage: 你编写 · `config/routes.rb` -->
@@ -335,7 +335,7 @@ class CommentsController < ApplicationController
   end
 
   def destroy
-    @comment = Comment.where(article_id: @article.id).find(params[:id])
+    @comment = @article.comments.find(params[:id])
     @comment.destroy
     flash[:notice] = "Comment was successfully destroyed."
     redirect_to article_path(@article), status: :see_other
@@ -359,11 +359,15 @@ end
 class Comment
   validates :commenter, presence: true
   validates :body, presence: true
+
+  belongs_to :article
 end
 ```
 
+声明的 `belongs_to` 还会让没有文章的评论在数据库拒绝之前就无效（“Article id can't be blank”）。
+
 > [!NOTE]
-> 这里的 `Article#comments` 是一个 Array，所以 Rails 的 `@article.comments.find(params[:id])` 要写成 `Comment.where(article_id: @article.id).find(params[:id])`。不属于该文章的评论会返回 404。
+> `Article#comments` 是评论的 relation，所以 Rails 的 `@article.comments.find(params[:id])` 在 `destroy` 中可以原样使用，不属于该文章的评论会返回 404。
 
 <!-- step 11 #views stage: 运行时 · `app/views/`，开发时从磁盘读取，由 `cybertrain build` 嵌入 -->
 ## 视图与局部视图
@@ -421,6 +425,26 @@ end
 > ### 视图是一套封闭的语法，而不是 Ruby
 >
 > Spinel 没有 `eval`，所以模板按照一套固定的语法来解释执行。`link_to` 没有 `method:` 选项；请使用 `button_to`。`each` 接受一个或两个块参数。像 `<%# locals: (comment:) %>` 这样的严格局部变量注释不能带默认值。局部视图会得到调用方环境的一份副本，所以在 `comments/_form` 中可以看到 `@article`。
+
+> [!EXAMPLE] 带评论数和日期筛选的列表
+> ### 带评论数和日期筛选的列表
+>
+> examples/blog 先列出最新的文章及其评论数（无论有多少文章都只需两次查询），并按日期筛选：
+>
+> ```ruby app/models/article.rb（节选） · app/controllers/articles_controller.rb（节选）
+>   scope :recent, -> { order(created_at: :desc) }
+>
+>   def index
+>     articles = Article.recent.includes(:comments)
+>     from = Cybertrain::Cast.date_or_nil(params[:from])
+>     unless from.nil?
+>       articles = articles.where_between(:created_at, Time.utc(from.year, from.month, from.day), nil)
+>     end
+>     @articles = articles.to_a
+>   end
+> ```
+>
+> 在视图中，`article.comments.size` 直接从预加载的评论作答。Rails 的 `where(created_at: from..)` 在这里写作 `where_between`，因为 Spinel 无法构造 Time 的 Range（[条件与查找](models.md#conditions-and-finders)）。
 
 <!-- step 12 #test stage: 构建时 · `cybertrain spin test` -->
 ## 测试
@@ -768,7 +792,7 @@ kamal deploy   # 之后的每次部署
 - 仅支持 SQLite，通过 Spinel 的 FFI 访问。
 - 没有回溯（backtrace）：错误只显示类、消息、请求行以及模板名/行号。
 - 视图中拼错的属性会渲染为空白，而不会抛出异常；这是一个已知的不足。
-- 关联只来自 schema 中的外键；不支持 `has_many :through`、`includes`、`pluck`、`dependent:`、枚举、STI 或多态关联。
+- 关联来自外键或一行声明；不支持 `has_many :through`、嵌套的 `includes`、枚举、STI 或多态关联。
 - 不支持 `namespace`、`respond_to`/格式、`constraints` 或 `mount`；`render json:` 只有最基本的功能。
 - 在脚手架生成的模型中，只有第一个字符串字段会获得默认的存在性验证。
 - 生成器对 `app/controllers` 和 `app/models` 使用词法扫描（正则表达式），而不是解析器。

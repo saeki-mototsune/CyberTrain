@@ -1,5 +1,6 @@
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -68,6 +69,7 @@ next:
 ok   running the generator again writes and edits nothing
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -119,6 +121,7 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 ok   the generator runs after a scaffold, with migration versions that follow
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -195,6 +198,7 @@ next:
 ok   --invite-only run again writes and edits nothing
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -230,6 +234,7 @@ error: usage: cybertrain generate authentication [--invite-only]
 error: only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper` and `generate component` are supported
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb

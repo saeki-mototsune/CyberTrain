@@ -241,7 +241,10 @@ that allocates. The code each item names was checked against dade561.
     article page runs 2 queries, not one per comment, so examples/blog does
     not have the N+1 this would remove. It is a feature for applications
     that do. Reopen it when one does, with its query count; generated models
-    would need a typed place to keep the preloaded records.
+    would need a typed place to keep the preloaded records. Done
+    2026-11-06 as a feature, not for examples/blog: `includes` / `preload`
+    on the generated Relation (phase 2 data layer spec, section 8), the
+    records kept in the per-model Relation and the readers' cache ivars.
 13. **Several processes on one port (not objects): done 2026-11-05.**
     `SPINEL_WORKERS=2` adds nothing to the pages (candidate 10), and processes
     do. `CYBERTRAIN_REUSE_PORT` lets N processes share a port on Linux

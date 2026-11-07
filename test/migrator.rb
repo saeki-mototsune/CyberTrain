@@ -429,4 +429,25 @@ test "rollback raises when the newest applied version has no migration" do
   connection.close
 end
 
+# --- Taking over a database Rails created: its versions have no file here.
+
+test "an applied version with no file is never pending or run, and status lists it as applied (no file)" do
+  connection = Cybertrain::DB::Connection.new(":memory:")
+  migrator = Cybertrain::DB::Migrator.new(connection)
+  connection.execute("INSERT INTO schema_migrations (version) VALUES (?)", ["20250101000000"])
+  assert_equal 0, migrator.pending(Cybertrain::Migration.empty_entries).size
+  assert_equal 0, migrator.migrate(Cybertrain::Migration.empty_entries)
+  migrations = fresh_migrations
+  assert_equal ["20260101000000", "20260101000100"], migrator.pending(migrations).map { |e| e[0] }
+  assert_equal 2, migrator.migrate(migrations)
+  assert_equal 0, migrator.pending(migrations).size
+  assert_equal [["up", "20250101000000", "applied (no file)"], ["up", "20260101000000", "CreatePosts"],
+                ["up", "20260101000100", "CreateComments"]], migrator.status(migrations)
+  no_files = migrator.status(Cybertrain::Migration.empty_entries)
+  assert_equal ["20250101000000", "20260101000000", "20260101000100"], no_files.map { |row| row[1] }
+  assert_equal ["applied (no file)"], no_files.map { |row| row[2] }.uniq
+  assert_equal ["20250101000000", "20260101000000", "20260101000100"], migrator.applied_versions
+  connection.close
+end
+
 Cybertrain::Test.run!

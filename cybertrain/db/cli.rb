@@ -2,6 +2,7 @@ require "cybertrain/db/error"
 require "cybertrain/db/connection"
 require "cybertrain/db/migrator"
 require "cybertrain/db/schema_dumper"
+require "cybertrain/db/normalizer"
 require "cybertrain/migration"
 require "cybertrain/config"
 require "cybertrain/cast"
@@ -50,6 +51,8 @@ module Cybertrain
           status(root)
         when "schema:dump"
           schema_dump(root)
+        when "schema"
+          schema(root)
         when "create"
           create(root)
         when "backup"
@@ -57,6 +60,9 @@ module Cybertrain
         when "vacuum"
           return usage if argv.size > 1
           vacuum(root)
+        when "normalize"
+          return usage if argv.size > 1
+          normalize(root)
         else
           puts "unknown command: #{argv[0]}"
           usage
@@ -65,7 +71,7 @@ module Cybertrain
       end
 
       def self.usage
-        puts "usage: db (migrate|rollback [N]|status|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum)"
+        puts "usage: db (migrate|rollback [N]|status|schema|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum|normalize)"
         1
       end
 
@@ -165,7 +171,47 @@ module Cybertrain
         written ? 0 : 1
       end
 
-      # rollback/status/schema:dump never create a database file by
+      # `db schema`: db/schema.rb from the database as it is (one Rails or
+      # another tool created, say), without migrating; prints both paths.
+      def self.schema(root)
+        return 1 if schema_dump(root) != 0
+        puts "wrote #{root}/db/schema.rb from #{resolved_path(root)}"
+        0
+      end
+
+      # Rewrites 0.4's "...T...Z" datetime cells into the stored format
+      # (Normalizer); one line per DATETIME column. Exits 1 when a skipped
+      # table still holds cells that need normalization, so a deploy does not
+      # start the new binaries on old-format rows.
+      # Needs SQLite 3.37.0 or newer (PRAGMA table_list); an older linked
+      # SQLite is refused with "db normalize failed: ..." and exit 1 before
+      # anything is read or written.
+      def self.normalize(root)
+        connection = open_existing(root)
+        status = 0
+        begin
+          Normalizer.run(connection).each do |row|
+            if row[2].to_i < 0
+              why = row[3].to_i == Normalizer::WITHOUT_ROWID ? "without rowid" : "declares _rowid_"
+              left = row[4].to_i
+              if left > 0
+                puts "skipped #{row[0]}.#{row[1]}: #{why} (#{left} rows still need normalization)"
+                status = 1
+              else
+                puts "skipped #{row[0]}.#{row[1]}: #{why}"
+              end
+            else
+              puts "normalized #{row[0]}.#{row[1]}: #{row[2]} rows (#{row[3]} unreadable left alone)"
+            end
+          end
+        ensure
+          connection.close
+        end
+        puts "done"
+        status
+      end
+
+      # rollback/status/schema/schema:dump never create a database file by
       # accident: a plain path is checked here for a clear message, and the
       # connection is opened without OPEN_CREATE so that SQLite refuses a
       # missing file named any other way (a "file:" URI) as well. An

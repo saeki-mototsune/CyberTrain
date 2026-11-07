@@ -155,7 +155,7 @@ class Image < Cybertrain::Model
   def self.find(id) = all.find(id)
 end
 
-# docs.body is a nullable binary column: str_or_nil, and nil binds NULL
+# docs.body is a nullable binary column: binary_or_nil, and nil binds NULL
 # through Blob.wrap.
 class DocRelation < Cybertrain::Relation
   def where(h) = (add_where(h); self)
@@ -189,7 +189,7 @@ class Doc < Cybertrain::Model
 
   def load_row(row)
     set_id(Cybertrain::Cast.int(row["id"]))
-    @body = Cybertrain::Cast.str_or_nil(row["body"])
+    @body = Cybertrain::Cast.binary_or_nil(row["body"])
     @note = Cybertrain::Cast.str_or_nil(row["note"])
     mark_persisted!
     nil
@@ -206,7 +206,7 @@ class Doc < Cybertrain::Model
 
   def write_attribute(name, value)
     case name
-    when :body then @body = Cybertrain::Cast.str_or_nil(value)
+    when :body then @body = Cybertrain::Cast.binary_or_nil(value)
     when :note then @note = Cybertrain::Cast.str_or_nil(value)
     end
     nil
@@ -299,20 +299,26 @@ end
 test "the generator types a binary column as a String and binds it as a Blob" do
   definition = docs_schema
   none = Array.new(0) { "" }
-  docs = Cybertrain::Gen::ModelsEmitter.emit(definition.table("docs"), definition, none)
-  assert_includes docs, "    @body = Cybertrain::Cast.str_or_nil(row[\"body\"])\n"
+  no_scopes = Array.new(0) { Cybertrain::Gen::ScopeInfo.new("", "", "", "", 0) }
+  docs = Cybertrain::Gen::ModelsEmitter.emit(definition.table("docs"), definition, none, no_scopes)
+  assert_includes docs, "    @body = Cybertrain::Cast.binary_or_nil(row[\"body\"])\n"
+  assert_includes docs, "    when :body then @body = Cybertrain::Cast.binary_or_nil(value)\n"
   assert_includes docs, "      \"body\" => Cybertrain::DB::Blob.wrap(@body),\n"
   assert_includes docs, "      \"note\" => Cybertrain::Cast.to_sql(@note)\n"
-  images = Cybertrain::Gen::ModelsEmitter.emit(definition.table("images"), definition, none)
+  images = Cybertrain::Gen::ModelsEmitter.emit(definition.table("images"), definition, none, no_scopes)
   assert_includes images, "    @data = \"\"\n"
   assert_includes images, "    @data = Cybertrain::Cast.binary(row[\"data\"])\n"
   assert_includes images, "    when :data then @data = Cybertrain::Cast.binary(value)\n"
   assert_includes images, "      \"data\" => Cybertrain::DB::Blob.wrap(@data),\n"
-  # ImageRelation answers binary_column? for data, so where(data: bytes) binds a Blob.
-  assert_includes images, "class ImageRelation < Cybertrain::Relation\n  def binary_column?(name)\n    case name\n    when \"data\" then true\n    else false\n    end\n  end\n"
-  assert_includes docs, "  def binary_column?(name)\n    case name\n    when \"body\" then true\n"
+  # ImageRelation answers binary_column? for data (through column_type), so
+  # where(data: bytes) binds a Blob.
+  assert_includes images, "    @preloaded = Array.new(0) { Image.new }\n  end\n\n  def column_type(name)\n    case name\n" \
+                          "    when \"id\" then :integer\n    when \"data\" then :binary\n"
+  assert_includes images, "  def binary_column?(name) = column_type(name) == :binary\n"
+  assert_includes docs, "    when \"body\" then :binary\n"
+  assert_includes docs, "  def binary_column?(name) = column_type(name) == :binary\n"
   articles = Cybertrain::Schema.define(version: "1") { |s| s.create_table("articles") { |t| t.string "title" } }
-  assert_nil Cybertrain::Gen::ModelsEmitter.emit(articles.table("articles"), articles, none).index("binary_column?")
+  assert_nil Cybertrain::Gen::ModelsEmitter.emit(articles.table("articles"), articles, none, no_scopes).index("binary_column?")
 end
 
 test "a binary column with a default is refused by the generator" do
@@ -323,10 +329,11 @@ test "a binary column with a default is refused by the generator" do
     end
   end
   none = Array.new(0) { "" }
-  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ModelsEmitter.emit(with_default.table("thumbs"), with_default, none) }
+  no_scopes = Array.new(0) { Cybertrain::Gen::ScopeInfo.new("", "", "", "", 0) }
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ModelsEmitter.emit(with_default.table("thumbs"), with_default, none, no_scopes) }
   assert_equal "table thumbs: column \"bytes_column\" is a binary column with a default (x'4142'); a BLOB column takes no default, set the bytes in the model instead", msg
   only_null = Cybertrain::Schema.define(version: "1") { |s| s.create_table("thumbs") { |t| t.binary "other", default: "NULL" } }
-  assert_includes Cybertrain::Gen::ModelsEmitter.emit(only_null.table("thumbs"), only_null, none), "@other = nil"
+  assert_includes Cybertrain::Gen::ModelsEmitter.emit(only_null.table("thumbs"), only_null, none, no_scopes), "@other = nil"
 end
 
 test "a model with a binary attribute saves and reloads its bytes" do

@@ -157,6 +157,12 @@ test "schema:dump rewrites db/schema.rb from the database" do
   assert_includes File.read("#{ROOT}/db/schema.rb"), "s.create_table \"posts\" do |t|"
 end
 
+test "schema writes db/schema.rb from the existing database and prints both paths" do
+  File.delete("#{ROOT}/db/schema.rb")
+  assert_equal 0, run_db("schema")
+  assert_includes File.read("#{ROOT}/db/schema.rb"), "s.create_table \"posts\" do |t|"
+end
+
 test "rollback 2 after re-migrating returns to an empty schema" do
   assert_equal 0, run_db("migrate")
   assert_equal 0, run_db("rollback", "2")
@@ -174,6 +180,11 @@ end
 
 test "an explicit schema:dump where there is no db/ directory returns 1" do
   assert_equal 1, Cybertrain::DB::CLI.run(["schema:dump"], NODB_ROOT)
+  refute Dir.exist?("#{NODB_ROOT}/db")
+end
+
+test "schema where there is no db/ directory returns 1" do
+  assert_equal 1, Cybertrain::DB::CLI.run(["schema"], NODB_ROOT)
   refute Dir.exist?("#{NODB_ROOT}/db")
 end
 
@@ -201,6 +212,21 @@ test "rollback fails with exit code 1 when an applied version has no migration" 
   connection.close
   assert_equal 1, run_db("rollback")
   assert_equal 0, run_db("status")
+end
+
+test "normalize exits 1 while a skipped table still holds cells to normalize" do
+  connection = Cybertrain::DB::Connection.new(Cybertrain::DB::CLI.resolved_path(ROOT))
+  connection.exec_script("CREATE TABLE stamps (k TEXT PRIMARY KEY, at DATETIME) WITHOUT ROWID")
+  connection.execute("INSERT INTO stamps VALUES ('a', '2026-10-05T09:00:00Z')")
+  connection.close
+  assert_equal 1, run_db("normalize")
+  connection = Cybertrain::DB::Connection.new(Cybertrain::DB::CLI.resolved_path(ROOT))
+  connection.execute("UPDATE stamps SET at = '2026-10-05 09:00:00.000000'")
+  connection.close
+  assert_equal 0, run_db("normalize")
+  connection = Cybertrain::DB::Connection.new(Cybertrain::DB::CLI.resolved_path(ROOT))
+  connection.exec_script("DROP TABLE stamps")
+  connection.close
 end
 
 Cybertrain::Test.run!

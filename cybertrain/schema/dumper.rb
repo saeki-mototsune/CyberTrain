@@ -19,13 +19,13 @@ module Cybertrain
 
         indexes = collect_indexes(definition)
         indexes.each do |index|
-          buf << "  s.add_index \"#{index.table}\", #{array_literal(index.columns)}#{index_options(index)}\n"
+          buf << "  s.add_index \"#{index.table}\", #{index_key(index)}#{index_options(index)}\n"
         end
         buf << "\n" unless indexes.empty?
 
         foreign_keys = collect_foreign_keys(definition)
         foreign_keys.each do |fk|
-          buf << "  s.add_foreign_key \"#{fk.from_table}\", \"#{fk.to_table}\", column: \"#{fk.column}\"\n"
+          buf << "  s.add_foreign_key \"#{fk.from_table}\", \"#{fk.to_table}\", column: \"#{fk.column}\"#{on_delete_option(fk)}\n"
         end
 
         buf << "end\n"
@@ -34,19 +34,33 @@ module Cybertrain
 
       def self.table_block(table)
         buf = +""
-        buf << "  s.create_table \"#{table.name}\" do |t|\n"
+        id_option = table.without_id? ? ", id: false" : ""
+        buf << "  s.create_table \"#{table.name}\"#{id_option} do |t|\n"
         table.columns.each do |c|
-          buf << "    t.#{c.type} \"#{c.name}\"#{column_options(c)}\n"
+          buf << "    t.#{column_method(c)} \"#{c.name}\"#{column_options(c)}\n"
         end
         buf << "  end\n\n"
         buf
       end
 
+      # The TableDef method a column is declared with: its type, except
+      # `bigint` for an integer with limit 8.
+      def self.column_method(c)
+        return "bigint" if bigint?(c)
+        c.type.to_s
+      end
+
+      def self.bigint?(c)
+        c.type == :integer && c.limit == 8
+      end
+
       def self.column_options(c)
         opts = +""
+        opts << ", precision: #{c.precision}" if c.precision > 0
+        opts << ", scale: #{c.scale}" if c.precision > 0 && c.scale >= 0
         opts << ", null: false" unless c.null
         opts << ", default: \"#{escape_string_literal(c.default)}\"" unless c.default.nil?
-        opts << ", limit: #{c.limit}" if c.limit != 0
+        opts << ", limit: #{c.limit}" if c.limit != 0 && !bigint?(c)
         opts
       end
 
@@ -75,7 +89,20 @@ module Cybertrain
         opts = +""
         opts << ", unique: true" if i.unique
         opts << ", name: \"#{i.name}\""
+        opts << ", where: \"#{escape_string_literal(i.where)}\"" if i.where != ""
         opts
+      end
+
+      # An index's columns as an Array literal, or an expression index's
+      # key as a String literal.
+      def self.index_key(i)
+        return "\"#{escape_string_literal(i.expression)}\"" if i.expression != ""
+        array_literal(i.columns)
+      end
+
+      def self.on_delete_option(fk)
+        return "" if fk.on_delete == :no_action
+        ", on_delete: :#{fk.on_delete}"
       end
 
       def self.array_literal(strings)

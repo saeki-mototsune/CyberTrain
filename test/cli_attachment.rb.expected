@@ -1,5 +1,6 @@
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -123,6 +124,7 @@ next:
 ok   with two fields, running the generator for either again changes nothing
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -223,6 +225,7 @@ create test/attachment_tag_cover.rb
 ok   the schema check looks at the owner's table, and a re-run after db migrate is identical
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -278,6 +281,7 @@ next:
 ok   --any allows any file: no accept, no type check, a link instead of an image
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -341,6 +345,7 @@ create test/attachment_post_cover.rb
 ok   with authentication the generated test signs in first
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -416,6 +421,7 @@ identical test/attachment_article_cover.rb
 ok   where show is public the download joins it, and the test's values meet the length rules
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -479,6 +485,7 @@ create test/attachment_memo_scan.rb
 ok   a download stays private where show is, and a maximum length cuts the value
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -541,6 +548,7 @@ identical test/support/app_test.rb
 create test/attachment_plan_photo.rb
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -591,6 +599,7 @@ route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -641,6 +650,7 @@ route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -691,6 +701,7 @@ route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -741,6 +752,7 @@ route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -791,6 +803,7 @@ route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -842,6 +855,7 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 ok   show restrictions are preserved or attachment generation is refused
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -905,6 +919,7 @@ create test/attachment_plan_photo.rb
 ok   a show-only policy is refused for authenticated users too
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -969,6 +984,7 @@ create test/attachment_plan_photo.rb
 ok   inherited show-only authorization cannot be bypassed by a public download
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -997,6 +1013,7 @@ create test/.keep
 ok   unknown inherited policies and asymmetric skips refuse attachment scaffolds before writing
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -1078,6 +1095,7 @@ identical test/attachment_product_photo.rb (signs in already)
 ok   authentication generated after the attachment adds the sign-in to its test
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -1143,6 +1161,7 @@ create test/attachment_tray_logo.rb
 ok   update gets the assignment only where the record is loaded
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -1186,6 +1205,7 @@ error: only `generate scaffold`, `generate attachment`, `generate authentication
 ok   the command line: usage, --any, and the unknown generator message
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -1235,6 +1255,7 @@ ok   the scaffold type edits the model, controller and routes the way the genera
 ok   the scaffold type's views are multipart, show the file and parse
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -1300,6 +1321,7 @@ note: uploaded files live in storage/uploads/; back it up (and mount it as a vol
 ok   the scaffold with --any and with nothing but a file
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
@@ -1382,6 +1404,7 @@ note: uploaded files live in storage/uploads/; back it up (and mount it as a vol
 ok   a scaffold with two attachments run twice has each assignment once per action
 create spin.toml
 create .gitignore
+create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb

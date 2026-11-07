@@ -15,7 +15,7 @@ end
 
 class ArticlesController < ApplicationController
   def view_assigns
-    { "articles" => @articles, "comment" => @comment, "article" => @article }
+    { "from" => @from, "to" => @to, "articles" => @articles, "comment" => @comment, "article" => @article }
   end
 
   def run_callback(name)

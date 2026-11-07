@@ -9,7 +9,17 @@ ok   def post (belongs_to) and def comments (has_many)
 ok   read_association case covers belongs_to and has_many
 ok   call_view_method with a scanned summary
 ok   integer, float, boolean, date and datetime casts
+ok   decimal reads as Float, json as Hash and date as Date
+ok   to_row rounds a decimal to its scale, writes json as text and a date through to_sql
+ok   initial values: decimal as a float, NOT NULL json as an empty Hash, dates nil
+ok   column_type answers every column's type, decimal_scale the scales, binary_column? the BLOBs
+ok   bulk writes: COLUMN_TYPES, DECIMAL_SCALES and ENCRYPTED_COLUMNS, and three methods calling insert_all_into
+ok   a table without decimals or BLOBs keeps the base decimal_scale and binary_column?
 ok   attributes stay attr_accessors (no def writers: NOTES rule 43) and order_sql is emitted
+ok   the relation emits where (Hash, String or none), not, where_between, or, order by Hash, distinct and none
+ok   the relation emits find_by!, find_or_create_by, find_or_initialize_by, destroy_all and find_each
+ok   a table without id (id: false) gets no model, and the table it points to no has_many for it
+ok   the model class delegates every DELEGATED query method to all, and has create!
 ok   emit rejects column names that are invalid; reserved ones and keywords are renamed, not refused
 ok   a reserved column name generates under <column>_column with a note; read_attribute and write_attribute take either spelling
 ok   a column named like a hook Ruby calls with an argument reads as <column>_column
@@ -36,4 +46,55 @@ ok   scan_source skips class << self, nested classes and later classes
 ok   scan_source inside a module stops at the class's own end
 ok   view_methods_for picks the scanned methods of one model
 ok   outputs maps gen/models paths to sources for every table
-38 tests, 286 assertions, 0 failures
+ok   scan_source reads one-line scope lambdas: name, parameter text, body and line
+ok   a scope becomes a Relation method and a class method delegating to all
+ok   a scope body with ; or `or` stays inside the parenthesized endless method
+ok   every NOT NULL date column gets a presence validation; a defaulted one starts at its default
+ok   scopes_for picks the scopes of one model
+ok   a scope that is not a one-line lambda raises
+ok   a scope named like a Relation method raises
+ok   every class delegation and generated Relation method is a name a scope may not take
+ok   a scope local or call inside a method body, or not followed by a Symbol, is plain code
+ok   def_opens_body? tells a method with a body from endless and one-line ones
+ok   a repeated scope raises
+ok   a scope named like a column raises
+ok   scan_source reads has_many, has_one and belongs_to lines with their literal options
+ok   an association macro inside a method body, or not followed by a Symbol, is plain code
+ok   an association line that is not one line of literal options raises with the file and line
+ok   an unknown option, a wrong value or a repeated association raises with the file and line
+ok   code in a class_name, a foreign_key or an association name is refused
+ok   a declared has_many returns the model's Relation; read_association turns it into an Array
+ok   a declared belongs_to caches its parent keyed by the foreign key; a nullable key answers nil without a query
+ok   a declared has_one reads the preload cache, else queries by the owner's id
+ok   includes checks each name by a case over the associations; preload is the same; the class delegates both
+ok   to_a, first, last, size and empty? answer from the preloaded records; to_a preloads each included name
+ok   a has_many reader is created preloaded from its cache; includes fills the cache grouped by key, chunked
+ok   includes of a has_one indexes the lowest-id child per key; every record gets its child or nil
+ok   includes of a belongs_to queries the distinct non-nil keys; a missing parent is cached as nil
+ok   reset_association_caches clears every cache; reload calls it
+ok   dependent: destroy, delete_all and nullify become destroy_dependents
+ok   a declared belongs_to validates its foreign key unless optional: true; undeclared ones add nothing
+ok   counter_cache: callbacks in the class body and the four counter_cache methods
+ok   the parent of a counter_cache leaves the counter column out of its own UPDATE
+ok   a nullable counter_cache key is read with int_or_nil and a nil one counts nothing on destroy
+ok   the counter column follows the parent's has_many name
+ok   a declaration whose model, foreign key column or counter column does not exist fails with the file and line
+ok   a declared belongs_to replaces the reader the same foreign key would give
+ok   a column named like an association cache ivar fails
+ok   scan_source reads validate lines and the if:/unless: Symbols of validates lines
+ok   a lambda or anything but a Symbol in if: or unless: raises with the file and line
+ok   a validate line of any other shape raises
+ok   an open bracket in a validates Regexp does not swallow the lines after it
+ok   validate and validates as plain code are not the macros
+ok   validation_condition? is a case over the validates names, run_custom_validations calls each method
+ok   unique_value_taken? goes through where, where.not and exists?, with LOWER() when not case-sensitive
+ok   a model without conditions still gets a validation_condition? that raises; no run_custom_validations
+ok   the :if => and "if": spellings are refused, so no condition is missed silently
+ok   a condition or validate method the model file does not define raises with the file and line
+ok   scan_source reads encrypts lines: the names in order, each once, with its line
+ok   an encrypted column is decrypted by load_row and encrypted by to_row, nil kept nil
+ok   a model without encrypts keeps the plain casts and the base encrypted_column?
+ok   encrypts of a missing or non-text column, an option or another shape raises with the file and line
+ok   uniqueness on a column the model encrypts is refused at generation, with the file and line
+ok   unique_value_taken? of a model with encrypted columns raises on one before either branch
+99 tests, 939 assertions, 0 failures

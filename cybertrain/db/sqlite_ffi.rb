@@ -98,17 +98,22 @@ module Cybertrain
       ffi_func :cybertrain_sqlite_busy_report, [:ptr, :int], :void
       ffi_func :cybertrain_sqlite_busy_asked, [:ptr], :int
 
-      # A DATETIME column read straight into UTC epoch seconds, with no Ruby
-      # String in between: the text SQLite already holds is parsed in place.
-      # -1 means "not this shape" ("YYYY-MM-DD[T ]HH:MM:SS" and anything after
-      # it, a year from 1970 on, valid month, day, hour, minute and second,
-      # the same shape and ranges as Cast.parse_time), and the caller reads
-      # the column as text, as it always did. Called only after
-      # sqlite3_column_type said TEXT. sqlite3_column_text is declared here
-      # too: Spinel after 2026.09.12 declares ffi_func functions under names
-      # of its own, and without this the call compiled as an implicit `int`
-      # function and cut the pointer in half (a SIGSEGV). The declaration is
-      # the one 2026.09.12 emits (NOTES rule 59), so it builds on both.
+      # A DATETIME column read straight into UTC epoch microseconds, with no
+      # Ruby String in between: the text SQLite already holds is parsed in
+      # place. The shapes are Cast.parse_time's ISO 8601 ones:
+      # "YYYY-MM-DD[T ]HH:MM:SS", then an optional "." and 1 to 9 fraction
+      # digits (the first six kept), then an optional "Z", "+HH:MM",
+      # "-HH:MM", "+HHMM" or "-HHMM" (applied, so the answer is the UTC
+      # instant), and nothing after it; a year from 1970 on, valid month,
+      # day, hour, minute and second. The answer is seconds * 1000000 +
+      # microseconds. -1 means "not this shape" (or before the epoch once
+      # the offset is applied), and the caller reads the column as text, as
+      # it always did. Called only after sqlite3_column_type said TEXT.
+      # sqlite3_column_text is declared here too: Spinel after 2026.09.12
+      # declares ffi_func functions under names of its own, and without this
+      # the call compiled as an implicit `int` function and cut the pointer
+      # in half (a SIGSEGV). The declaration is the one 2026.09.12 emits
+      # (NOTES rule 59), so it builds on both.
       ffi_source <<~C
         extern int sqlite3_column_bytes(void *, int);
         extern const char *sqlite3_column_text(void *, int);
@@ -123,7 +128,8 @@ module Cybertrain
         }
         long cybertrain_sqlite_column_epoch(void *stmt, int col) {
           const unsigned char *s = (const unsigned char *)sqlite3_column_text(stmt, col);
-          if (!s || sqlite3_column_bytes(stmt, col) < 19) return -1;
+          int n = sqlite3_column_bytes(stmt, col);
+          if (!s || n < 19) return -1;
           if (s[4] != '-' || s[7] != '-' || s[13] != ':' || s[16] != ':') return -1;
           if (s[10] != 'T' && s[10] != ' ') return -1;
           int y = cybertrain_digits(s, 0, 4), mo = cybertrain_digits(s, 5, 2), d = cybertrain_digits(s, 8, 2);
@@ -132,11 +138,44 @@ module Cybertrain
           static const int dim[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
           int leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
           if (d > dim[mo - 1] + (mo == 2 && leap)) return -1;
+          int i = 19;
+          long long usec = 0;
+          if (i < n && s[i] == '.') {
+            int digits = 0;
+            i++;
+            while (i < n && s[i] >= '0' && s[i] <= '9') {
+              if (digits < 6) usec = usec * 10 + (s[i] - '0');
+              digits++;
+              i++;
+            }
+            if (digits == 0 || digits > 9) return -1;
+            for (; digits < 6; digits++) usec *= 10;
+          }
+          long long offset = 0;
+          if (i < n) {
+            int rest = n - i, oh, om;
+            if (s[i] == 'Z') {
+              if (rest != 1) return -1;
+            } else if (s[i] == '+' || s[i] == '-') {
+              if (rest != 5 && rest != 6) return -1;
+              oh = cybertrain_digits(s, i + 1, 2);
+              if (rest == 6 && s[i + 3] == ':') om = cybertrain_digits(s, i + 4, 2);
+              else if (rest == 5) om = cybertrain_digits(s, i + 3, 2);
+              else return -1;
+              if (oh < 0 || oh > 23 || om < 0 || om > 59) return -1;
+              offset = (long long)(oh * 3600 + om * 60);
+              if (s[i] == '-') offset = -offset;
+            } else {
+              return -1;
+            }
+          }
           long long yy = y - (mo <= 2);
           long long era = yy / 400, yoe = yy - era * 400;
           long long doy = (153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5 + d - 1;
           long long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-          return (era * 146097 + doe - 719468) * 86400 + h * 3600 + mi * 60 + se;
+          long long secs = (era * 146097 + doe - 719468) * 86400 + h * 3600 + mi * 60 + se - offset;
+          if (secs < 0) return -1;
+          return (long)(secs * 1000000 + usec);
         }
       C
       ffi_func :cybertrain_sqlite_column_epoch, [:ptr, :int], :long
@@ -178,11 +217,17 @@ module Cybertrain
       ffi_const :BLOB, 4
       ffi_const :NULL_TYPE, 5
 
+      # sqlite3_limit categories.
+      ffi_const :LIMIT_VARIABLE_NUMBER, 9
+
       ffi_func :sqlite3_open_v2, [:str, :ptr, :int, :ptr], :int
       ffi_func :sqlite3_close, [:ptr], :int
       ffi_func :sqlite3_exec, [:ptr, :str, :ptr, :ptr, :ptr], :int, blocking: true
       ffi_func :sqlite3_errmsg, [:ptr], :str
       ffi_func :sqlite3_get_autocommit, [:ptr], :int
+      # sqlite3_limit(db, id, -1) reads a limit without changing it
+      # (Connection#variable_limit asks SQLITE_LIMIT_VARIABLE_NUMBER, 9).
+      ffi_func :sqlite3_limit, [:ptr, :int, :int], :int
 
       ffi_func :sqlite3_prepare_v2, [:ptr, :str, :int, :ptr, :ptr], :int, blocking: true
       ffi_func :sqlite3_bind_int64, [:ptr, :int, :long], :int

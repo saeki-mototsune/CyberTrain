@@ -16,4 +16,23 @@ ok   down resets operations, so calling it twice does not duplicate them
 ok   down raises IrreversibleMigration when change recorded a non-invertible operation
 ok   add_index accepts Symbol columns
 ok   add_index name: overrides the derived name, for symmetry with Definition#add_index
-18 tests, 58 assertions, 0 failures
+ok   add_column takes precision: and scale: for a decimal
+ok   add_index takes where: for a partial index
+ok   add_reference and add_foreign_key take on_delete:
+ok   a create_table recorded by a migration writes DECIMAL(p,s) and ON DELETE RESTRICT
+ok   add_column raises ArgumentError for a scale without a precision
+ok   add_reference raises ArgumentError for on_delete: :nullify on a NOT NULL column
+ok   add_reference with Symbol arguments folds its foreign key into the ADD COLUMN
+ok   the new kinds record one Operation each, with the fields they reuse
+ok   change_column_default without from: is recorded as not knowing the previous default
+ok   change_column_null without a default backfills nothing
+ok   inverse of rename_table swaps the names
+ok   inverse of change_column_default with from: and to: swaps them
+ok   inverse of change_column_null flips null when the previous state can be restored
+ok   change_column, remove_reference and remove_foreign_key have no automatic inverse
+ok   reversible records the up block as :reversible_up and the down block as :reversible_down
+ok   a rollback runs each reversible block's statements in the order written
+ok   reversible's blocks take only execute
+ok   rebuild_table copies the common columns through <table>_new and restores indexes, triggers and the sequence
+ok   table_after applies each rebuild kind to a copy of the table
+37 tests, 160 assertions, 0 failures

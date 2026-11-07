@@ -44,7 +44,8 @@ platform.
   on Ruby 3.2, `gem install prism` (with Ruby's development headers,
   `ruby-dev` on Debian/Ubuntu). `cybertrain doctor` checks it.
 - OpenSSL's headers (`libssl-dev`) are optional: without them Spinel builds
-  without its `openssl` package, which CyberTrain does not use. On macOS an
+  without its `openssl` package, which an application needs only for TLS
+  (`require "cybertrain/net/tls"`) or encrypted columns (`encrypts`). On macOS an
   application that requires `openssl` needs Homebrew's (keg-only) OpenSSL on
   the compiler's paths: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`.

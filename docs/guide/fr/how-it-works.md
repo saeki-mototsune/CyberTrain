@@ -1,5 +1,5 @@
 ---
-source_sha256: a0fe78f06a9b4553bbbfb31ceac28f9973806efcac17684819ec9c073e830347
+source_sha256: a0cc156edb80c185423767f6324221c44932e9e0416bedd926cddbb16a9a6d8c
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -74,8 +74,8 @@ Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` exte
 | La session contient n’importe quel objet sérialisé (marshal) | Valeurs de session de type String uniquement, cookie signé HMAC |
 | De nombreux adaptateurs de base de données | SQLite uniquement, via FFI |
 | `Article.transaction { ... }` renvoie la valeur du bloc&nbsp;; `raise ActiveRecord::Rollback`&nbsp;; savepoints avec `requires_new: true` | `Article.transaction { \|c\| ... }` passe la connexion au bloc et renvoie nil&nbsp;; on en sort en levant une exception&nbsp;; les appels imbriqués rejoignent la transaction externe, pas de savepoints ([Transactions](models.md#transactions)) |
-| `has_many :through`, `includes`, `dependent:`, enums, STI, associations polymorphes | Non implémenté&nbsp;; les associations viennent uniquement des clés étrangères du schéma |
-| `pluck(:a)`, `sum(:a)`, `group(:a).count`, `upsert`, `update_counters`, `where("title LIKE ?", "%#{q}%")` | Des variantes typées, car une méthode Spinel a un seul type de retour&nbsp;: `pluck_int` et ses semblables, `sum_int`, `count_by`, `upsert`, `increment(:col, by: n)`, `where_like` ([Requêtes au-delà de `where`](models.md#querying-beyond-where)) |
+| `has_many :through`, enums, STI, associations polymorphes | Non implémenté&nbsp;; `has_many`, `has_one` et `belongs_to` viennent des clés étrangères ou de déclarations d’une ligne, avec `dependent:`, `counter_cache:` et un niveau d’`includes` ([Associations](models.md#associations)) |
+| `pluck(:a)`, `maximum(:a)`, `group(:a).sum(:b)`, `upsert`, `update_counters`, `where(created_at: t1..t2)` | Des variantes typées, car une méthode Spinel a un seul type de retour&nbsp;: `pluck_int` et ses semblables, `maximum_int`, `sum_float_by`, `upsert`, `increment(:col, by: n)`&nbsp;; un intervalle de Time s’écrit `where_between` ([Requêtes au-delà de `where`](models.md#querying-beyond-where)) |
 | N’importe quel nom de colonne&nbsp;; une association peut masquer `errors` | Des identifiants ASCII uniquement&nbsp;; une colonne nommée comme une méthode du framework ou un mot-clé Ruby est générée sous `<column>_column`, une association qui entre en conflit sous un nom de repli ([Noms de colonnes](models.md#column-names)) |
 | `namespace`, format/`respond_to`, `constraints`, `mount` | Non implémenté — noms plats, `render json:` uniquement |
 | `rescue StandardError` attrape un `JSON.parse` qui échoue | Sous Spinel, `JSON::ParserError` n’est pas une `StandardError`&nbsp;: le code de l’application doit faire `rescue JSON::ParserError, StandardError`. Le serveur l’attrape en dernier recours et répond 500 |

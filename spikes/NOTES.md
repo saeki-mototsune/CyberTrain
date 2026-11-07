@@ -80,18 +80,19 @@ written up for upstream.
 | 82 | **Still there**: found on this build (its reduced program, a lambda literal in a module-body ivar called with an argument, prints garbage for the argument). |
 | 83 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
 | 85 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
+| 88 | **Still there**: found on this build (its reduced program, a block registered in a subclass calling a method the base class stubs, runs the stub). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
 
 The rules are numbered in the order they were found. By topic:
 
-- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82
+- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
-  43, 51, 62, 66 (second paragraph)
+  43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
-  37, 46 (Hash literals), 56, 63, 71, 73
-- Polymorphic values and narrowing: 8, 14, 29, 35
+  37, 46 (Hash literals), 56, 63, 71, 73, 86
+- Polymorphic values and narrowing: 8, 14, 29, 35, 86
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
   79, 81
@@ -951,6 +952,38 @@ The rules are numbered in the order they were found. By topic:
     ConditionVariable. A nil element would be indistinguishable from the
     timeout: push a sentinel object instead and look at a flag after the
     pop (Subscriber#stream_offer on a dropped subscriber).
+
+86. A Range under Spinel 2026.11.04.7026 carries Integer ends only.
+    `t1..t2` or `Range.new(t1, t2)` with Time or Date ends raises
+    `TypeError: no implicit conversion of Time into Integer` when the Range
+    is built; a Float or String Range reads back directly
+    (`(1.5..2.5).begin`) but once held in a Hash value or passed through a
+    boxed parameter it is not matched by `when Range`. So
+    `where(col: a..b)` (phase 2, relation.rb) accepts Integer ends only and
+    other bounds go through `where_between(col, from, to)`; the validator
+    options `inclusion: { in: }` and `exclusion: { in: }` take an Integer
+    Range or an Array (validator.rb; docs/spinel-feedback.md Q).
+
+87. Class methods added to a core class from Ruby source compile and
+    dispatch: `class Time; def self.iso8601(text) ...` is reached by
+    `Time.iso8601(s)`, including a method literally named `strptime`, whose
+    earlier compile-time refusal was of the missing method, not of the name
+    (cybertrain/time_ext.rb). Instance methods are a different matter
+    (rule 62).
+
+88. A stored block called with a base-class receiver calls the base
+    class's method, not the subclass's override, under Spinel
+    2026.11.04.7026. With `Base#run` doing `cb.call(self)` over blocks
+    registered as `add { |r| r.hook }` in `class Sub < Base`, and `hook`
+    defined on both (a nil stub on Base, the real one on Sub),
+    `Sub.new.run` runs Base#hook; CRuby runs Sub#hook. Without the Base
+    stub the call reaches Sub#hook (the shape of every `before_save { |r|
+    r.title = ... }`). A call on implicit self inside a Base method
+    (`destroy_dependents` from Model#destroy) dispatches to the override as
+    expected. So a method that only callback blocks call has no stub on
+    Cybertrain::Model: the generated `counter_cache_created` / `_destroyed`
+    / `_was` / `_moved` (test/gen_models_compiles.rb covers them). Found
+    while writing declared associations (2026-11-06).
 
 ## Numbers worth remembering
 

@@ -52,6 +52,10 @@ module Cybertrain
         @path = path
         @closed = false
         @transaction_depth = 0
+        # SQLITE_LIMIT_VARIABLE_NUMBER, read on the first #variable_limit.
+        @variable_limit = -1
+        # Statements run so far (#statements_run).
+        @statements_run = 0
         # True once SQLite rolled back a transaction on its own while a
         # statement failed, until the application ends it with COMMIT, END
         # or ROLLBACK (#note_lost_transaction, #refuse_if_transaction_gone).
@@ -128,9 +132,9 @@ module Cybertrain
         run_statement(sql, binds, false)
       end
 
-      # execute for the ORM: a DATETIME column comes back as UTC epoch seconds
-      # (an Integer, which Cast.time_or_nil turns into a Time) instead of its
-      # text, parsed in C without a Ruby String; a value that is not a
+      # execute for the ORM: a DATETIME column comes back as a UTC Time (with
+      # microseconds; Cast.time_or_nil takes it as is) instead of its text,
+      # parsed in C without a Ruby String; a value that is not a
       # timestamp stays text. Relation reads its rows through this; execute
       # keeps returning the text SQLite stores.
       def execute_models(sql, binds = [])
@@ -144,6 +148,7 @@ module Cybertrain
         # left to do (see #exec_script).
         return rows if refuse_if_transaction_gone(sql)
 
+        @statements_run += 1
         stmt = @statements[sql]
         cached = !stmt.nil?
         unless cached
@@ -245,6 +250,43 @@ module Cybertrain
       def last_insert_id
         raise Error, "connection closed (last_insert_id)" if @closed
         SQLite3.sqlite3_last_insert_rowid(@db)
+      end
+
+      # The most `?` binds one statement may carry
+      # (SQLITE_LIMIT_VARIABLE_NUMBER: 32766 by default since SQLite 3.32,
+      # 999 before, 250000 in the bundled build), asked of the library once
+      # and then cached. Model.insert_all_into sizes its chunks by it.
+      # @return [Integer]
+      # @raise [Cybertrain::DB::Error] when the connection is closed
+      # @api public
+      def variable_limit
+        raise Error, "connection closed (variable_limit)" if @closed
+        @variable_limit = SQLite3.sqlite3_limit(@db, SQLite3::LIMIT_VARIABLE_NUMBER, -1) if @variable_limit < 0
+        @variable_limit
+      end
+
+      # How many statements #execute and #execute_models have run on this
+      # connection (exec_script's are not counted), for a test that asserts
+      # how many queries something costs:
+      #
+      #     before = Cybertrain::DB.with { |c| c.statements_run }
+      #     Article.includes(:comments).to_a.each { |a| a.comments.size }
+      #     Cybertrain::DB.with { |c| c.statements_run } - before  # => 2
+      # @return [Integer]
+      # @api public
+      def statements_run
+        @statements_run
+      end
+
+      # Whether a transaction is open on this connection, however it was
+      # opened ({#begin!}, a `transaction` block or a BEGIN run as SQL):
+      # SQLite is out of autocommit mode.
+      # @return [Boolean]
+      # @raise [Cybertrain::DB::Error] when the connection is closed
+      # @api public
+      def in_transaction?
+        raise Error, "connection closed (in_transaction?)" if @closed
+        SQLite3.sqlite3_get_autocommit(@db) == 0
       end
 
       # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises
@@ -455,11 +497,12 @@ module Cybertrain
       end
 
       # sqlite3_column_decltype is nil for an expression; a table column
-      # answers the type its CREATE TABLE gave (DATETIME for t.datetime).
+      # answers the type its CREATE TABLE gave (DATETIME for t.datetime;
+      # Rails writes datetime(6)): any type that starts with DATETIME.
       def self.datetime_decl?(decl)
         return false if decl.nil?
 
-        decl.upcase == "DATETIME"
+        decl.upcase.start_with?("DATETIME")
       end
 
       private
@@ -509,7 +552,8 @@ module Cybertrain
         when false then SQLite3.sqlite3_bind_int64(stmt, index, 0)
         when Integer then SQLite3.sqlite3_bind_int64(stmt, index, value)
         when Float then SQLite3.sqlite3_bind_double(stmt, index, value)
-        when Time then SQLite3.sqlite3_bind_text(stmt, index, Cast.iso8601(value), -1, -1)
+        when Time then SQLite3.sqlite3_bind_text(stmt, index, Cast.sql_datetime(value), -1, -1)
+        when Date then SQLite3.sqlite3_bind_text(stmt, index, value.to_s, -1, -1)
         # Its byte length, not -1 (which makes SQLite stop at the first NUL,
         # as it does for bind_text): every byte is stored.
         when Blob
@@ -537,9 +581,11 @@ module Cybertrain
           # path would stop at the first NUL). A String like a TEXT cell.
           when SQLite3::BLOB then row[name] = SQLite3.cybertrain_sqlite_column_blob(stmt, column)
           else
-            seconds = epoch && datetimes[column] == 1 ? SQLite3.cybertrain_sqlite_column_epoch(stmt, column) : -1
-            if seconds >= 0
-              row[name] = seconds
+            # Epoch microseconds (sqlite_ffi.rb), -1 for text that is not a
+            # datetime. A Time in the row: Cast.time_or_nil takes it as is.
+            us = epoch && datetimes[column] == 1 ? SQLite3.cybertrain_sqlite_column_epoch(stmt, column) : -1
+            if us >= 0
+              row[name] = Time.at(us / 1_000_000, us % 1_000_000).utc
             else
               text = SQLite3.sqlite3_column_text(stmt, column)
               row[name] = text.nil? ? "" : text
