@@ -54,7 +54,7 @@ per method name across the program (rules 10, 34, 41).
 | Q5 | Jobs page | `jobs_page "/admin/jobs", before_action: :require_admin` in routes mounts a framework controller that inherits `ApplicationController`; counts, failed / discarded / running lists, retry / discard buttons; `./<app> jobs list \| retry ID \| retry --all \| discard ID` |
 | Q6 | Cache | `Cybertrain::Cache` over `cybertrain_cache` in the application database; String values, `fetch_hash` / `fetch_array` / `fetch_int` for JSON; `race_condition_ttl`, `unless_exist`; expired rows pruned by a built-in task |
 | Q7 | HTTP client | gzip through the opt-in `GzipFFI`; `get(url) { \|chunk\| }` and `get_to_file`; `Sse::Parser`; `redirects:`; `request(verb, …)` for PUT / PATCH / DELETE; `Response#json_hash` / `#json_array` |
-| Q8 | Feeds | `on_tick(seconds) { \|conn\| }` on the feed's own thread; a `Background` supervisor restarts a dead feed thread with backoff; `/up` reports `feed stale` |
+| Q8 | Feeds | `on_tick(seconds) { \|conn\| }` on the feed's own thread; a `Background` supervisor restarts a dead feed thread with backoff and exits the `feeds` process after repeated deaths (Docker restarts it); status rows in `cybertrain_feeds`; `/up` reports `feed stale` from them |
 | Q9 | Mail | `deliver(html:)` builds `multipart/alternative`; bodies from `Views.render_partial`; `deliver_later` is a built-in job that stores the finished message |
 | Q10 | Test helpers | `assert_enqueued_jobs`, `assert_enqueued_with`, `perform_enqueued_jobs`, `assert_no_enqueued_jobs`, `clear_enqueued_jobs`; `Klass.perform_now(args)` |
 | Q11 | Concurrency | `limits_concurrency to: n, key: "arg name"`; a `concurrency_key` column; the claim excludes (kind, key) pairs at their limit |
@@ -128,18 +128,24 @@ end
   `Cybertrain::Job.register("WelcomeJob", concurrency: 1,
   concurrency_key: "user_id") { |run| WelcomeJob.run_job(run) }`. `run_job`
   is the policy table of section 3, written out as literal `rescue` arms.
-- `gen/app.rb` requires `../app/jobs/*.rb` before `jobs` (the class bodies
+- `gen/app.rb` emits a literal require for each Ruby file under `app/jobs/`,
+  nested directories included (`Admin::ReportJob` in
+  `app/jobs/admin/report_job.rb`), before requiring `jobs` (the class bodies
   first, then the generated reopenings), as it does for components.
 - `cybertrain generate job Name [--retry Klass:wait:attempts]` writes the
   class file and a test, as `generate component` does.
-- `Job.register(kind, concurrency:, concurrency_key:) { |run| }` is the new
-  registration form the generated code uses: the block receives a
-  `Job::Run` (`run_id`, `run_kind`, `run_payload`, `run_attempts`,
-  `run_args` (the parsed Hash, computed once)), so a policy can read the
-  attempt number. `Job.handle(kind, concurrency:) { |payload| }` stays as it
-  is for hand-written handlers (it registers a `Run`-taking wrapper that
-  passes `run_payload`). Both land in the same `HANDLERS` list; a kind
-  registered twice raises, as today.
+- `Job.register(kind, concurrency:, concurrency_key:, max_attempts:) { |run| }`
+  is the new registration form the generated code uses: the block receives
+  a `Job::Run` (`run_id`, `run_kind`, `run_payload`, `run_attempts`,
+  `run_claimed_by`, `run_args` (the parsed Hash, computed once)), so a
+  policy can read the attempt number and write its own outcome (section 3).
+  `max_attempts:` is the most attempts any of the class's policies allows
+  (the largest `retry_on … attempts:`, or `Config#job_max_attempts` when
+  none is larger); stale-heartbeat recovery uses it (section 3).
+  `Job.handle(kind, concurrency:) { |payload| }` stays as it is for
+  hand-written handlers (it registers a `Run`-taking wrapper that passes
+  `run_payload`, with the default `max_attempts`). Both land in the same
+  `HANDLERS` list; a kind registered twice raises, as today.
 
 ## 3. Retry policies (J-4)
 
@@ -160,26 +166,41 @@ end
     begin
       job.perform(run.run_args)
     rescue Cybertrain::Mailer::TimeoutError => e
-      raise Cybertrain::Job::RetryLater.new(e, 60, false, 5, run.run_attempts, job)
+      # The fenced outcome write happens here, inside the generated code,
+      # so the exhaustion hook can run with the live exception only when
+      # this attempt's row really became `failed`.
+      if Cybertrain::Job.retry_later(run, e, 60, false, 5) == Cybertrain::Job::OUTCOME_FAILED
+        job.retries_exhausted(e)
+      end
     rescue ArgumentError => e
-      raise Cybertrain::Job::Discard.new(e)
+      Cybertrain::Job.discard(run, e)
     end
     nil
   end
   ```
 
-  `Job::RetryLater` (`error_text`, `wait_base`, `polynomial`, `attempts_limit`)
-  and `Job::Discard` (`error_text`) are the two control exceptions
-  `Job.finish` understands beside a plain `StandardError`: a `RetryLater`
-  whose `run_attempts` has reached `attempts_limit` calls
-  `job.retries_exhausted(e)` **inside `run_job`** (the constructor does it,
-  so the hook runs on the job instance, which only the generated code holds)
-  and the row becomes `failed`; otherwise `run_at` moves by the computed
-  wait and the row returns to `queued`. A `Discard` writes `discarded`. The
-  outcome writes keep phase 1's fence (`claimed_by`, `attempts`).
+  `Job.retry_later(run, error, wait_base, polynomial, attempts_limit) ->
+  Symbol` writes the outcome with phase 1's fence (`WHERE id = ? AND state =
+  'running' AND claimed_by = ? AND attempts = ?`): `queued` with `run_at`
+  moved by the computed wait when `run_attempts < attempts_limit`, else
+  `failed` with `last_error`; it answers `OUTCOME_REQUEUED`,
+  `OUTCOME_FAILED` or `OUTCOME_STALE` (the fence rejected the write because
+  another worker reclaimed the row, logged at warn as today). The hook
+  therefore runs **only after** the fenced transition to `failed`
+  succeeded, never for a stale attempt whose replacement may yet succeed.
+  `Job.discard(run, error)` writes `discarded` the same way. Both mark the
+  `Run` as written (`run.run_outcome_written?`), so `Job.finish` writes
+  nothing more for it; a `StandardError` that escapes `run_job` (no arm
+  matched) keeps the default policy in `Job.finish`, as today.
 - `retries_exhausted(error)` replaces Rails' `retry_on … do |job, error|`
-  block (a stored block, rule 88). An exception raised by the hook is logged
-  and the row still becomes `failed`.
+  block (a stored block, rule 88). An exception raised by the hook is logged;
+  the row is already `failed`.
+- Stale-heartbeat recovery (`Job.recover!`, D28 revised) fails a stale row
+  only when its `attempts` has reached the **kind's** `max_attempts`
+  (section 2.2's registry field), not `Config#job_max_attempts` for every
+  kind: a job with `retry_on … attempts: 20` that loses its worker on
+  attempt 5 is requeued, not failed. `fail_exhausted` reads the limit per
+  kind from the registry; a kind no longer registered keeps the default.
 - The default policy is unchanged for `Job.handle` blocks and for job classes
   without macros. `Config#job_max_attempts` still caps the default policy
   only; a `retry_on` with `attempts: 20` is honoured.
@@ -207,6 +228,19 @@ end
 - `install!` adds `concurrency_key TEXT NOT NULL DEFAULT ''` with `ALTER TABLE
   … ADD COLUMN` when `PRAGMA table_info` lacks it (the phase 1 upgrade path),
   and an index on `(state, kind, concurrency_key)`.
+- Upgrading rows already in the table: a `queued` row enqueued before its
+  kind became keyed carries `""`, and would run beside a new row of the same
+  key. So `Job.start!` (every process that runs jobs, after `recover!`)
+  **backfills** the key of every `queued` row of a keyed kind whose
+  `concurrency_key` is `""` from its payload — `UPDATE cybertrain_jobs SET
+  concurrency_key = COALESCE(json_extract(payload, '$.' || ?), '') WHERE kind
+  = ? AND state = 'queued' AND concurrency_key = ''`, one statement per keyed
+  kind, idempotent, so every later start is a no-op. A row the backfill
+  cannot key (a payload without the field) stays `""` and is listed at warn.
+  `running` rows need no backfill because the deploy order of D39 ("stop
+  every old process before the first new one starts") leaves none, and a
+  stale one is recovered to `queued` first and then backfilled by the same
+  start. The guide's upgrade notes state the order (section 16).
 - Rails' `duration:` (a slot that expires) is not built: a stale heartbeat
   frees the slot (D28 revised), which is the same guarantee.
 
@@ -391,12 +425,33 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   restarts)` seconds, with a `[WARN]` line, and `feed_status(name)` gains
   `restarts` and `thread_alive?`. `stop!` stops the supervisor before the
   feeds so a stopping feed is not restarted.
-- Health: `GET /up` answers `503 feed stale` when a subscription has been
-  silent (no message, no successful ping) for longer than its `stale_after`
-  plus one reconnect cycle (`Config#health_feed_stale`, default 180 s) in a
-  process that runs feeds, so Kamal's health check restarts a container
-  whose feed cannot come back; `CYBERTRAIN_HEALTH_FEEDS=0` turns the check
-  off (a feed that is legitimately quiet).
+- Health across roles: a `feeds` process serves no HTTP (D39), so its status
+  is **published through the database**. Every process that runs feeds
+  writes one row per subscription into `cybertrain_feeds (name TEXT PRIMARY
+  KEY, process TEXT, connected INTEGER, last_message_at INTEGER, restarts
+  INTEGER, updated_at INTEGER)` every `Config#feed_status_interval` (10 s)
+  from the supervisor thread (created on first use, left out of
+  `db/schema.rb`, as the leases table). `GET /up` in a `server` process
+  reads the table when `Config#health_feeds` is on and answers `503 feed
+  stale` when a row's `last_message_at` and `updated_at` are both older than
+  `Config#health_feed_stale` (180 s) — a feed silent beyond its
+  `stale_after` plus a reconnect cycle, or a feeds process that stopped
+  publishing. `./<app> feeds status` prints the table for an operator;
+  `CYBERTRAIN_HEALTH_FEEDS=0` turns the `/up` check off (a feed that is
+  legitimately quiet).
+- Restarting the process: `/up` alone restarts nothing in a feeds container
+  (Kamal 2 polls the health endpoint only during a deploy and only for the
+  proxied web role; Docker's restart policy acts when the process exits).
+  So the supervisor is the first line and **exit is the second**: when one
+  subscription's thread has died `Config#feed_restart_limit` (10) times
+  within `Config#feed_restart_window` (600 s), the supervisor logs `[FATAL]
+  feed NAME restarted 10 times in 600 s; exiting` and the process exits with
+  status 1 after `WebSocket.stop!`, so Docker's `restart: unless-stopped`
+  (which `cybertrain new` writes into `config/deploy.yml` for the `feeds`
+  and `worker` roles, and docs/deploy.md's systemd unit already has as
+  `Restart=always`) starts a fresh container. A `server` process that runs
+  feeds does not exit (it serves requests); there the supervisor keeps
+  retrying with the 30 s cap and `/up` reports `feed stale`.
 
 ## 10. Mail (ML-1, phase 1's deferral)
 
@@ -455,7 +510,10 @@ when it uses jobs, as `test/client` is):
 | `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300` | seconds between prunes of expired cache rows |
 | `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50` | rows per list on the jobs page |
 | `CYBERTRAIN_HEALTH_FEEDS` | `health_feeds` | `true` | whether `/up` reports a stale feed |
-| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180` | seconds of feed silence before `503 feed stale` |
+| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180` | seconds of feed silence (or of a feeds process not publishing) before `503 feed stale` |
+| `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10` | seconds between writes of a feed's status row |
+| `CYBERTRAIN_FEED_RESTART_LIMIT` | `feed_restart_limit` | `10` | feed thread deaths within the window before a `feeds` process exits |
+| `CYBERTRAIN_FEED_RESTART_WINDOW` | `feed_restart_window` | `600` | the window, in seconds |
 | `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"` | the default `tz:` of `cron` tasks |
 
 Each is validated at boot with the existing `scheduler_error` /
@@ -548,12 +606,18 @@ The spike (the plan's first task) checks on Spinel 2026.11.04.7026:
    `script/check-reserved-names` sees the new names.
 
 Each has a fallback: (1) a UTC-only `cron` with `tz:` refused at boot; (2)
-`retry_on` limited to framework exception classes plus `StandardError`, with
-application classes matched by name string in a `case e.class.name` table;
-(3) the supervisor replaced by `/up` returning 503 so the container is
-restarted from outside; (4) gzip left out of phase 3 and recorded; (5) a
-single-part HTML message (`text/html` only, with `text:` dropped); (6) the
-prefixed names above.
+`retry_on` arms for framework exception classes plus `StandardError` only,
+with application classes matched by walking `e.class.ancestors` names
+against the declared names in declaration order (so a subclass still meets
+its parent's policy; `Class#ancestors` is checked in the same spike, and if
+it is unavailable too, application classes are refused by the generator with
+a message naming the limit); (3) no supervisor thread: a feed loop that
+dies logs `[FATAL]` and the process exits with status 1 so Docker's restart
+policy starts a fresh container (the exit rule above, applied at the first
+death; a `server` process that runs feeds logs and keeps serving, and the
+guide tells such deployments to use the `feeds` role); (4) gzip left out of
+phase 3 and recorded; (5) a single-part HTML message (`text/html` only, with
+`text:` dropped); (6) the prefixed names above.
 
 ## 15. Out of scope for phase 3 (recorded so nothing is lost)
 
@@ -583,9 +647,14 @@ cover the cases).
    the database.
 3. `Job.handle` blocks are unchanged. The default retry policy is unchanged.
 4. `WebSocket.feed_status` gains `restarts` and `thread_alive?`; a dead feed
-   thread is restarted automatically; `/up` may answer `503 feed stale` in a
-   process that runs feeds (`CYBERTRAIN_HEALTH_FEEDS=0` restores the old
-   behaviour).
+   thread is restarted automatically; a `feeds` process exits with status 1
+   after repeated deaths of one feed (run it under a restart policy, as the
+   generated `config/deploy.yml` now does); `/up` in a `server` may answer
+   `503 feed stale` from the new `cybertrain_feeds` table
+   (`CYBERTRAIN_HEALTH_FEEDS=0` restores the old behaviour).
+9. Upgrading a running deployment with keyed jobs: stop every old process
+   before the first new one starts (D39's rule); the first `Job.start!`
+   backfills `concurrency_key` for `queued` rows of keyed kinds.
 5. `Mailer.deliver` gains `html:` (optional; existing calls unchanged).
 6. `HttpClient` gains `redirects:`, `request`, `get_to_file` and the block
    form; existing calls unchanged. With `cybertrain/http/gzip_ffi` required,
@@ -602,10 +671,13 @@ cover the cases).
    run on the fixture app; a misspelled macro stops generation with a
    one-line message.
 2. `retry_on` with an Integer wait and with `:polynomially_longer`,
-   `discard_on`, `retries_exhausted`, the default policy and the fence are
-   covered in compiled tests on a temporary database; `limits_concurrency`
-   with a key keeps two rows of the same key from running at once across two
-   `claimed_by` labels.
+   `discard_on`, `retries_exhausted` (run only after a successful fenced
+   write; not run for a stale attempt whose row was reclaimed), the default
+   policy and the fence are covered in compiled tests on a temporary
+   database; `limits_concurrency` with a key keeps two rows of the same key
+   from running at once across two `claimed_by` labels; a `queued` row
+   enqueued without a key is backfilled at `Job.start!`; a stale row of a
+   kind with `attempts: 20` recovered on attempt 5 is requeued, not failed.
 3. `Cron.next_after` is tested over DST transitions in two zones; a cron
    task runs at its minute and not before; the timetable survives a
    simulated restart (`Scheduler.start!` twice on one database); `catch_up`
@@ -624,8 +696,12 @@ cover the cases).
    cases.
 7. `on_tick` fires while disconnected and connected; a feed thread that
    raises past its rescues is restarted by the supervisor within the backoff
-   and `restarts` counts it; `/up` answers `503 feed stale` on silence and
-   `200` with `CYBERTRAIN_HEALTH_FEEDS=0`.
+   and `restarts` counts it; the status row is written and `./<app> feeds
+   status` prints it; a `server` process's `/up` answers `503 feed stale`
+   from a stale row (a feeds process that stopped publishing, simulated by
+   an old `updated_at`) and `200` with `CYBERTRAIN_HEALTH_FEEDS=0`; a feeds
+   process whose feed dies past `feed_restart_limit` within the window exits
+   with status 1 (tested as a child process, the boot_encryption pattern).
 8. `deliver(html:)` produces a `multipart/alternative` message the SMTP
    receiver parses back to the same text and HTML; `deliver_later` enqueues
    `"cybertrain mail"` and `perform_enqueued_jobs` delivers it; a
