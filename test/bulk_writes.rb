@@ -24,6 +24,8 @@ class ItemRelation < Cybertrain::Relation
     when "meta" then :json
     when "code" then :string
     when "body" then :text
+    when "ok" then :boolean
+    when "data" then :binary
     else :unknown
     end
   end
@@ -58,7 +60,7 @@ end
 
 class Item < Cybertrain::Model
   def self.table_name = "items"
-  def self.column_names = ["id", "code", "qty", "body", "price", "meta", "on", "at", "created_at", "updated_at"]
+  def self.column_names = ["id", "code", "qty", "body", "price", "meta", "on", "at", "ok", "data", "created_at", "updated_at"]
   def model_name = "Item"
 
   def self.all = ItemRelation.new("items")
@@ -68,9 +70,11 @@ class Item < Cybertrain::Model
   def self.pluck(...) = all.pluck(...)
   def self.pick(...) = all.pick(...)
   def self.pluck_str(...) = all.pluck_str(...)
+  def self.update_all(...) = all.update_all(...)
 
   COLUMN_TYPES = { "id" => :integer, "code" => :string, "qty" => :integer, "body" => :text, "price" => :decimal,
-                   "meta" => :json, "on" => :date, "at" => :datetime, "created_at" => :datetime,
+                   "meta" => :json, "on" => :date, "at" => :datetime, "ok" => :boolean, "data" => :binary,
+                   "created_at" => :datetime,
                    "updated_at" => :datetime }
   DECIMAL_SCALES = { "price" => 2 }
   ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
@@ -123,7 +127,7 @@ Cybertrain::DB.with do |c|
   c.exec_script(
     "CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE, " \
     "qty INTEGER NOT NULL DEFAULT 0, body TEXT, price decimal(10,2), meta json, `on` date, " \
-    "`at` datetime(6), created_at datetime(6), updated_at datetime(6));" \
+    "`at` datetime(6), ok boolean, data blob, created_at datetime(6), updated_at datetime(6));" \
     "CREATE TABLE secrets (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT);"
   )
 end
@@ -342,6 +346,74 @@ test "decimal rounding, json text, Date text and Time format in bulk rows" do
   cells = Item.where(code: "a").pick(:price, :on)
   assert_equal 2.35, cells[0]
   assert_equal Date.new(2026, 11, 6), cells[1]
+end
+
+# update_all binds each value through the cast a save applies
+# (Relation.typed_bind, the bulk writes' table): a form's "false" is 0, not
+# the text "false" that where(ok: false) would no longer find.
+test "update_all casts every value by its column's type, as save and the bulk writes do" do
+  reset_items
+  Item.insert_all([{ code: "a", qty: 1, ok: true }, { code: "b", qty: 2, ok: true }], record_timestamps: false)
+  assert_equal 1, Item.where(code: "a").update_all(ok: "false", meta: "garbage", on: "2026-1-5",
+                                                 at: "2026-10-05T09:00:00Z", price: 2.345, qty: "7",
+                                                 body: 12, data: "raw")
+  assert_equal "0", stored("ok", "a")
+  assert_equal "integer", stored_type("ok", "a")
+  assert_equal 1, Item.where(ok: false).count
+  assert_equal "a", Item.where(ok: false).pluck_str(:code)[0]
+  assert_equal "{}", stored("meta", "a")
+  assert_equal "null", stored_type("on", "a")
+  assert_equal "2026-10-05 09:00:00.000000", stored("at", "a")
+  assert_equal "2.35", stored("price", "a")
+  assert_equal "integer", stored_type("qty", "a")
+  assert_equal "7", stored("qty", "a")
+  assert_equal "text", stored_type("body", "a")
+  assert_equal "12", stored("body", "a")
+  assert_equal "blob", stored_type("data", "a")
+  # Typed values, and the stored shapes they take.
+  at = Time.utc(2026, 10, 5, 9, 0, 0)
+  Item.where(code: "b").update_all(ok: false, meta: { "x" => 1 }, on: Date.new(2026, 1, 5), at: at,
+                                   data: Cybertrain::DB::Blob.new("b"))
+  assert_equal "0", stored("ok", "b")
+  assert_equal "{\"x\":1}", stored("meta", "b")
+  assert_equal "2026-01-05", stored("on", "b")
+  assert_equal "2026-10-05 09:00:00.000000", stored("at", "b")
+  assert_equal "blob", stored_type("data", "b")
+  assert_equal 2, Item.where(ok: false).count
+  Item.where(code: "b").update_all(meta: "{\"y\":[2]}", on: "2026-02-03", ok: "1")
+  assert_equal "{\"y\":[2]}", stored("meta", "b")
+  assert_equal "2026-02-03", stored("on", "b")
+  assert_equal "1", stored("ok", "b")
+  assert_equal 1, Item.where(ok: true).count
+  # nil stays NULL for every type.
+  Item.where(code: "b").update_all(ok: nil, meta: nil, on: nil, at: nil, price: nil, body: nil, data: nil)
+  assert_equal "null", stored_type("ok", "b")
+  assert_equal "null", stored_type("meta", "b")
+  assert_equal "null", stored_type("on", "b")
+  assert_equal "null", stored_type("at", "b")
+  assert_equal "null", stored_type("price", "b")
+  assert_equal "null", stored_type("body", "b")
+  assert_equal "null", stored_type("data", "b")
+  # Text reads as save reads it: "abc" is 0 in an integer column (it used
+  # to store the text "abc" there), and "" (an empty form field) binds
+  # NULL, which the NOT NULL column refuses.
+  Item.where(code: "a").update_all(qty: "abc")
+  assert_equal "integer", stored_type("qty", "a")
+  assert_equal "0", stored("qty", "a")
+  message = assert_raises("Error") { Item.where(code: "a").update_all(qty: "") }
+  assert_includes message, "NOT NULL constraint failed"
+  assert_equal "0", stored("qty", "a")
+end
+
+test "bulk rows bind a boolean as 1/0 and a binary value as a BLOB" do
+  reset_items
+  Item.insert_all([{ code: "a", ok: "false", data: "raw" }, { code: "b", ok: true, data: nil }])
+  assert_equal "0", stored("ok", "a")
+  assert_equal "integer", stored_type("ok", "a")
+  assert_equal "blob", stored_type("data", "a")
+  assert_equal "1", stored("ok", "b")
+  assert_equal "null", stored_type("data", "b")
+  assert_equal "a", Item.where(ok: false).pluck_str(:code)[0]
 end
 
 Cybertrain::Test.run!

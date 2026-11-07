@@ -207,7 +207,7 @@ module Cybertrain
         end
         j = 0
         while j < supplied
-          binds << Model.bulk_bind(types[j], column_scales[j], cells[columns[j]])
+          binds << Relation.typed_bind(types[j], column_scales[j], cells[columns[j]])
           j += 1
         end
         binds << now if fill_created
@@ -314,23 +314,6 @@ module Cybertrain
       cells.delete("")
       row.each { |k, v| cells[k.to_s] = v }
       cells
-    end
-
-    # The value a bulk row binds for a column of type `type`: the cast a
-    # save applies (the generated write_attribute's, then to_row's).
-    def self.bulk_bind(type, scale, v)
-      case type
-      when :integer then Cast.int_or_nil(v)
-      when :float then Cast.float_or_nil(v)
-      when :decimal then Cast.round_scale_or_nil(v, scale)
-      when :boolean then Cast.to_sql(Cast.bool_or_nil(v))
-      when :datetime then Cast.to_sql(Cast.time_or_nil(v))
-      when :date then Cast.to_sql(Cast.date_or_nil(v))
-      when :json then Cast.json_text(Cast.hash_or_nil(v))
-      when :binary then Cybertrain::DB::Blob.wrap(Cast.str_or_nil(v))
-      when :string, :text then Cast.str_or_nil(v)
-      else Cast.to_sql(v)
-      end
     end
 
     # The ON CONFLICT clause of a bulk statement ("" for insert_all!).

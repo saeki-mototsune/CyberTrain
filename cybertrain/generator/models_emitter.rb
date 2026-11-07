@@ -930,7 +930,9 @@ module Cybertrain
       # rule 7: Time ivars always go through time_or_nil, nullable ones
       # through a helper that can return nil). A decimal is a Float; a json
       # column a Hash (json_hash parses the stored text; hash_or_nil too,
-      # and keeps NULL nil); a date a Date.
+      # and keeps NULL nil); a date a Date. Relation.typed_bind
+      # (cybertrain/relation.rb) is the same casts at run time, for
+      # update_all and the bulk writes: keep the two in step.
       def self.cast_for(column)
         null = column.null
         case column.type
@@ -983,6 +985,7 @@ module Cybertrain
       # to it (round_scale_or_nil keeps a nullable one's nil, so it is
       # stored as NULL, not 0.0); a json column its JSON text (nil for
       # nil); every other column (a date included) its Cast.to_sql value.
+      # Relation.typed_bind binds the same at run time: keep them in step.
       def self.bind_expression(column)
         ivar = ivar_name(column.name)
         case column.type

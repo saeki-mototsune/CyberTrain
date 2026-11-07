@@ -323,6 +323,37 @@ module Cybertrain
       end
     end
 
+    # The value a write binds for a column of type `type` (column_type) and
+    # decimal scale `scale`: the cast a save applies (the generated
+    # write_attribute's, then to_row's; models_emitter.rb's cast_for and
+    # bind_expression, kept in step with this table). update_all and the
+    # bulk writes (Model.insert_all_into, Model.upsert_into) bind through
+    # it. A boolean is 1/0, a json value its JSON text, a date
+    # `YYYY-MM-DD`, a datetime the storage format ({Cast.sql_datetime}), a
+    # decimal rounded to its scale, a binary value a {DB::Blob}; the
+    # `_or_nil` casts throughout, so nil and `""` (an empty form field)
+    # bind NULL, as do a date or datetime text that does not parse and a
+    # value the type cannot hold (an Array for an integer). `:unknown`
+    # binds {Cast.to_sql}'s value.
+    # @param type [Symbol]
+    # @param scale [Integer] -1 for none
+    # @param v [Object]
+    # @return [Object]
+    def self.typed_bind(type, scale, v)
+      case type
+      when :integer then Cast.int_or_nil(v)
+      when :float then Cast.float_or_nil(v)
+      when :decimal then Cast.round_scale_or_nil(v, scale)
+      when :boolean then Cast.to_sql(Cast.bool_or_nil(v))
+      when :datetime then Cast.to_sql(Cast.time_or_nil(v))
+      when :date then Cast.to_sql(Cast.date_or_nil(v))
+      when :json then Cast.json_text(Cast.hash_or_nil(v))
+      when :binary then DB::Blob.wrap(Cast.str_or_nil(v))
+      when :string, :text then Cast.str_or_nil(v)
+      else Cast.to_sql(v)
+      end
+    end
+
     # A raw SQL fragment with its own `?` binds: where_sql("views > ?", [10]).
     # The fragment is stored in parentheses, as Rails does, so an `OR`
     # inside it cannot take the ANDed terms around it
@@ -700,9 +731,15 @@ module Cybertrain
     end
 
     # Sets each column to its value in every matching row with one
-    # `UPDATE ... SET a = ?, b = ?`, each value bound as Cast.to_sql writes
-    # it (a Time as its stored text, a Hash as JSON; a decimal with a scale
-    # rounded to it, as save stores it): no model is loaded, no
+    # `UPDATE ... SET a = ?, b = ?`, each value cast by its column's type as
+    # save stores it ({Relation.typed_bind}): a boolean as 1/0 (a form's
+    # `"false"` too), a Hash or JSON text as JSON (invalid text as `{}`), a
+    # Date or `YYYY-MM-DD` text as that date, a Time or time text in the
+    # storage format, a decimal rounded to its scale, binary bytes as a
+    # BLOB, other text as save reads it (`"abc"` is 0 in an integer
+    # column); nil and `""` store NULL, as does date or time text that does
+    # not parse, so a NOT NULL column refuses them rather than store the
+    # text. No model is loaded, no
     # callback or validation runs, `updated_at` is left alone. A limit or
     # offset picks the rows by an `id` subselect, as {#delete_all} does.
     # @example
@@ -724,12 +761,13 @@ module Cybertrain
         sets << "#{quoted} = ?"
         name = key.to_s
         check_not_encrypted("update_all", name)
-        scale = decimal_scale(name)
-        # A decimal with a scale is rounded as save stores it (nil stays NULL).
-        if scale >= 0
-          binds << Cast.round_scale_or_nil(value, scale)
-        else
+        type = column_type(name)
+        # A hand-written relation that knows no types binds as where does
+        # (its binary_column? included).
+        if type == :unknown
           binds << bind_for(name, value)
+        else
+          binds << Relation.typed_bind(type, decimal_scale(name), value)
         end
       end
       table = Relation.quote_ident(@table)
