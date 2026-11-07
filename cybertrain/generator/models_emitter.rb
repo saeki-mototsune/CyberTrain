@@ -73,11 +73,19 @@ module Cybertrain
         out
       end
 
-      # { "gen/models/post.rb" => source, ... } for every table, by table name.
+      # The tables that get a model: every table but an `id: false` one (a
+      # join table, or a table a dump found without an id primary key),
+      # which is reached with DB.with.
+      def self.modelled_tables(definition)
+        definition.tables.reject { |t| t.without_id? }
+      end
+
+      # { "gen/models/post.rb" => source, ... } for every modelled table, by
+      # table name.
       def self.outputs(definition, infos)
         out = { "" => "" }
         out.delete("")
-        definition.tables.each do |table|
+        modelled_tables(definition).each do |table|
           model = model_class_name(table.name)
           methods = view_methods_for(model, infos)
           out["gen/models/" + file_name(table.name)] = emit_model(table, definition, methods, scopes_for(model, infos), infos)

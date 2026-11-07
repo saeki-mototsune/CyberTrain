@@ -117,6 +117,20 @@ module Cybertrain
         @columns = Array.new(0) { Column.new("", :string, true, nil, 0) }
         @indexes = Array.new(0) { Index.new("", [], false) }
         @foreign_keys = Array.new(0) { ForeignKey.new("", "", "") }
+        @without_id = false
+      end
+
+      # True for a table declared `create_table "x", id: false` (a join
+      # table, or one a dump found with no `id INTEGER PRIMARY KEY`): its
+      # DDL has no implicit id, and the generator makes no model of it.
+      def without_id?
+        @without_id
+      end
+
+      # Package-internal: Definition#create_table's `id: false`.
+      def mark_without_id
+        @without_id = true
+        nil
       end
 
       def column(name)

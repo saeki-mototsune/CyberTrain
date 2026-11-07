@@ -186,6 +186,52 @@ test "after the dump, a migrator with no migrations finds nothing to do" do
   connection.close
 end
 
+test "a Rails join table without id dumps as id: false, loads and dumps back the same" do
+  connection = Cybertrain::DB::Connection.new(":memory:")
+  connection.exec_script(<<~SQL)
+    CREATE TABLE "articles" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "title" varchar);
+    CREATE TABLE "articles_tags" ("article_id" integer NOT NULL, "tag_id" integer NOT NULL);
+    CREATE INDEX "index_articles_tags_on_article_id" ON "articles_tags" ("article_id");
+    CREATE TABLE "plain_ids" ("id" INTEGER PRIMARY KEY, "note" text);
+  SQL
+  dumped = Cybertrain::DB::SchemaDumper.dump(connection)
+  join = dumped.table("articles_tags")
+  assert join.without_id?
+  refute dumped.table("articles").without_id?
+  refute dumped.table("plain_ids").without_id?
+  assert_equal ["article_id", "tag_id"], join.columns.map { |c| c.name }
+  ruby = Cybertrain::Schema::Dumper.to_ruby(dumped)
+  assert_includes ruby, "  s.create_table \"articles_tags\", id: false do |t|\n    t.integer \"article_id\", null: false\n" \
+                        "    t.integer \"tag_id\", null: false\n  end\n"
+  assert_includes ruby, "  s.create_table \"articles\" do |t|\n"
+  written = Cybertrain::Schema.define(version: "0") do |s|
+    s.create_table "articles" do |t|
+      t.string "title"
+    end
+    s.create_table "articles_tags", id: false do |t|
+      t.integer "article_id", null: false
+      t.integer "tag_id", null: false
+    end
+    s.create_table "plain_ids" do |t|
+      t.text "note"
+    end
+    s.add_index "articles_tags", ["article_id"], name: "index_articles_tags_on_article_id"
+  end
+  assert_equal ruby, Cybertrain::Schema::Dumper.to_ruby(written)
+  assert_equal "CREATE TABLE articles_tags (article_id INTEGER NOT NULL, tag_id INTEGER NOT NULL)",
+               Cybertrain::DB::SqliteDDL.create_table(written.table("articles_tags"))
+  loaded = Cybertrain::DB::Connection.new(":memory:")
+  written.tables.each do |table|
+    loaded.exec_script(Cybertrain::DB::SqliteDDL.create_table(table))
+    table.indexes.each do |i|
+      loaded.exec_script(Cybertrain::DB::SqliteDDL.index_sql(i.table, i.columns, i.unique, i.name, i.where, i.expression))
+    end
+  end
+  assert_equal ruby, Cybertrain::Schema::Dumper.to_ruby(Cybertrain::DB::SchemaDumper.dump(loaded))
+  loaded.close
+  connection.close
+end
+
 class StampNoteNotNull < Cybertrain::Migration::Base
   version "20260301000000"
 

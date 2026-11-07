@@ -17,17 +17,21 @@ module Cybertrain
     # model generator types attributes from it.
     module SqliteDDL
       # Schema::Table -> the full CREATE TABLE statement, implicit "id"
-      # primary key first, then declared columns, then foreign keys. `name`
+      # primary key first (none for an `id: false` table), then declared
+      # columns, then foreign keys. `name`
       # replaces the table's own name (rebuild_table's "<table>_new").
       def self.create_table(table, name = "")
         table_name = name == "" ? table.name : name
-        buf = +"CREATE TABLE #{table_name} (id INTEGER PRIMARY KEY AUTOINCREMENT"
+        parts = Array.new(0) { "" }
+        parts << "id INTEGER PRIMARY KEY AUTOINCREMENT" unless table.without_id?
         table.columns.each do |c|
-          buf << ", " << column_def(c.name, c.type, c.null, c.default, c.limit, c.precision, c.scale)
+          parts << column_def(c.name, c.type, c.null, c.default, c.limit, c.precision, c.scale)
         end
         table.foreign_keys.each do |fk|
-          buf << ", FOREIGN KEY (#{fk.column}) REFERENCES #{fk.to_table}(id)" << on_delete_clause(fk.on_delete)
+          parts << "FOREIGN KEY (#{fk.column}) REFERENCES #{fk.to_table}(id)" + on_delete_clause(fk.on_delete)
         end
+        buf = +"CREATE TABLE #{table_name} ("
+        buf << parts.join(", ")
         buf << ")"
         buf
       end

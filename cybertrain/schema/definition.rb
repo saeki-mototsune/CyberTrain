@@ -15,8 +15,11 @@ module Cybertrain
         @tables = Array.new(0) { Table.new("") }
       end
 
-      def create_table(name)
+      # `id: false` declares a table with no implicit `id` primary key (a
+      # join table): SqliteDDL writes none, and the generator makes no model.
+      def create_table(name, id: true)
         table = Table.new(name)
+        table.mark_without_id unless id
         yield TableDef.new(table)
         @tables << table
         resort_tables!

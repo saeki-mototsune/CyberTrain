@@ -5,7 +5,8 @@ ok   a numeric column without precision and a quoted expression read back
 ok   the dump describes the same schema as the DSL written from it
 ok   the schema the DDL writes for the new types dumps back unchanged
 ok   after the dump, a migrator with no migrations finds nothing to do
+ok   a Rails join table without id dumps as id: false, loads and dumps back the same
 == 20260301000000 StampNoteNotNull: migrating
 done
 ok   an expression default keeps its parentheses: it dumps, loads and rebuilds
-8 tests, 60 assertions, 0 failures
+9 tests, 69 assertions, 0 failures

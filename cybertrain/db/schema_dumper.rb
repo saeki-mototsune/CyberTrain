@@ -20,7 +20,8 @@ module Cybertrain
         definition = Cybertrain::Schema::Definition.new(max_version(connection))
         names = table_names(connection)
         names.each do |name|
-          definition.create_table(name) { |t| add_columns(t, connection, name) }
+          with_id = id_primary_key?(connection, name)
+          definition.create_table(name, id: with_id) { |t| add_columns(t, connection, name, with_id) }
         end
         names.each do |name|
           add_indexes(definition, connection, name)
@@ -62,10 +63,24 @@ module Cybertrain
         rows.empty? ? "0" : rows[0]["version"].to_s
       end
 
-      def self.add_columns(t, connection, table_name)
+      # Whether the table's primary key is a column named id (any case), as
+      # every table the framework (or Rails, by default) creates has. A
+      # table without one (a Rails join table, `id: false`) is dumped as
+      # `create_table "x", id: false`, with every column.
+      def self.id_primary_key?(connection, table_name)
         rows = connection.execute("PRAGMA table_info(#{table_name})")
         rows.each do |r|
-          next if Cybertrain::Cast.int(r["pk"]) != 0
+          return true if Cybertrain::Cast.int(r["pk"]) != 0 && r["name"].to_s.downcase == "id"
+        end
+        false
+      end
+
+      # The declared columns; the primary key is left out when it is the
+      # implicit id (with_id), and kept as a plain column otherwise.
+      def self.add_columns(t, connection, table_name, with_id = true)
+        rows = connection.execute("PRAGMA table_info(#{table_name})")
+        rows.each do |r|
+          next if with_id && Cybertrain::Cast.int(r["pk"]) != 0
           name = r["name"].to_s
           null = Cybertrain::Cast.int(r["notnull"]) == 0
           default = Cybertrain::Cast.str_or_nil(r["dflt_value"])

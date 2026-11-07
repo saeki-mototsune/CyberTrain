@@ -135,6 +135,7 @@ module Cybertrain
         # comments_as_article).
         definition.tables.each do |other|
           next if other.name == table.name
+          next if other.without_id? # no model to read (ModelsEmitter.modelled_tables)
 
           pointing = other.foreign_keys.select { |fk| fk.to_table == table.name }
           pointing.each do |fk|
@@ -182,7 +183,7 @@ module Cybertrain
 
       # The table whose generated model is `class_name`, or nil.
       def self.table_for_model(definition, class_name)
-        definition.tables.each { |t| return t if model_class_name(t.name) == class_name }
+        definition.tables.each { |t| return t if !t.without_id? && model_class_name(t.name) == class_name }
         nil
       end
 

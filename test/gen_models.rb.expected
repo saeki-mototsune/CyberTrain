@@ -18,6 +18,7 @@ ok   a table without decimals or BLOBs keeps the base decimal_scale and binary_c
 ok   attributes stay attr_accessors (no def writers: NOTES rule 43) and order_sql is emitted
 ok   the relation emits where (Hash, String or none), not, where_between, or, order by Hash, distinct and none
 ok   the relation emits find_by!, find_or_create_by, find_or_initialize_by, destroy_all and find_each
+ok   a table without id (id: false) gets no model, and the table it points to no has_many for it
 ok   the model class delegates every DELEGATED query method to all, and has create!
 ok   emit rejects column names that are invalid; reserved ones and keywords are renamed, not refused
 ok   a reserved column name generates under <column>_column with a note; read_attribute and write_attribute take either spelling
@@ -96,4 +97,4 @@ ok   a model without encrypts keeps the plain casts and the base encrypted_colum
 ok   encrypts of a missing or non-text column, an option or another shape raises with the file and line
 ok   uniqueness on a column the model encrypts is refused at generation, with the file and line
 ok   unique_value_taken? of a model with encrypted columns raises on one before either branch
-98 tests, 929 assertions, 0 failures
+99 tests, 933 assertions, 0 failures

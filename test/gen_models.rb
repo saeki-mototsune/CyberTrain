@@ -1588,6 +1588,28 @@ test "the relation emits find_by!, find_or_create_by, find_or_initialize_by, des
                          "rec = Comment.from_row(found[i])", "blk.call(rec)", "break if found.size < batch"])
 end
 
+def join_table_schema
+  Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "articles" do |t|
+      t.string "title"
+    end
+    s.create_table "articles_tags", id: false do |t|
+      t.references :article
+      t.integer "tag_id", null: false
+    end
+  end
+end
+
+test "a table without id (id: false) gets no model, and the table it points to no has_many for it" do
+  definition = join_table_schema
+  outputs = Cybertrain::Gen::ModelsEmitter.outputs(definition, Array.new(0) { Cybertrain::Gen::ModelInfo.empty("", "", Array.new(0) { "" }) })
+  assert_equal ["gen/models/article.rb"], outputs.keys
+  article = outputs["gen/models/article.rb"]
+  refute article.include?("articles_tags")
+  refute article.include?("ArticlesTag")
+  assert_equal ["articles"], Cybertrain::Gen::ModelsEmitter.modelled_tables(definition).map { |t| t.name }
+end
+
 test "the model class delegates every DELEGATED query method to all, and has create!" do
   flag = emit_for("flags")
   names = Cybertrain::Gen::ModelsEmitter::DELEGATED

@@ -34,7 +34,8 @@ module Cybertrain
 
       def self.table_block(table)
         buf = +""
-        buf << "  s.create_table \"#{table.name}\" do |t|\n"
+        id_option = table.without_id? ? ", id: false" : ""
+        buf << "  s.create_table \"#{table.name}\"#{id_option} do |t|\n"
         table.columns.each do |c|
           buf << "    t.#{column_method(c)} \"#{c.name}\"#{column_options(c)}\n"
         end
