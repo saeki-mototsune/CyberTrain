@@ -123,7 +123,8 @@ helpers_missing = helper_names - Cybertrain::Gen::HelperScan::RESERVED_HELPER_NA
 # name every instance method of cybertrain/relation.rb (public or private),
 # every `def` the model generator writes into the Relation and the model
 # class (models_emitter.rb's emitted `def` and `def self.` lines and its
-# DELEGATED list), and every class method of cybertrain/model.rb.
+# DELEGATED list, and the Relation methods association_emitter.rb writes),
+# and every class method of cybertrain/model.rb.
 require "cybertrain/generator/models_emitter"
 # relation.rb and the file it requires at its end that reopens Relation.
 relation_source = %w[relation.rb relation/aggregates.rb].map { |f| File.read(File.expand_path("../cybertrain/#{f}", __dir__)) }.join("\n")
@@ -133,6 +134,14 @@ scope_names.concat(relation_source.scan(/^\s*attr_reader\s+((?::\w+\s*,?\s*)+)/)
 emitted_relation = emitter_source[/def self\.emit_relation\(.*?\n      end\n/m].to_s
 scope_names.concat(emitted_relation.scan(/src << "  def ([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten)
 scope_names.concat(emitter_source.scan(/src << "  def self\.([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten)
+# association_emitter.rb writes Relation methods too: emit_includes
+# (includes, preload, preloaded) and emit_preload_association.
+association_source = File.read(File.expand_path("../cybertrain/generator/association_emitter.rb", __dir__))
+%w[emit_includes emit_preload_association].each do |m|
+  body = association_source[/def self\.#{m}\(.*?\n      end\n/m].to_s
+  abort "check-reserved-names: association_emitter.rb has no #{m}" if body.empty?
+  scope_names.concat(body.scan(/"(?:\\n)?  def ([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten)
+end
 scope_names.concat(Cybertrain::Gen::ModelsEmitter::DELEGATED)
 scope_names.concat(source.scan(/^\s*def\s+self\.([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten)
 scope_names = scope_names.uniq.sort

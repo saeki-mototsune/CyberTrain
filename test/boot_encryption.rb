@@ -35,8 +35,22 @@ at_exit do
   Dir.rmdir(OUT_DIR)
 end
 
+# Puts back a variable boot_child set: the developer's own value, or none.
+def restore_env(name, value)
+  if value.nil?
+    ENV.delete(name)
+  else
+    ENV[name] = value
+  end
+  nil
+end
+
 # Runs the child with this key and requirement; [exit status, stdout].
+# The two variables it sets are restored afterwards, so a developer's own
+# CYBERTRAIN_ENCRYPTION_KEY survives the run.
 def boot_child(key, required)
+  saved_key = ENV["CYBERTRAIN_ENCRYPTION_KEY"]
+  saved_required = ENV["CT_TEST_REQUIRED"]
   ENV[CHILD_FLAG] = "1"
   ENV["CYBERTRAIN_ENCRYPTION_KEY"] = key
   ENV["CT_TEST_REQUIRED"] = required ? "1" : "0"
@@ -47,8 +61,8 @@ def boot_child(key, required)
     pid = Process.spawn(File.expand_path($0), out: OUT_PATH)
   end
   ENV.delete(CHILD_FLAG)
-  ENV.delete("CYBERTRAIN_ENCRYPTION_KEY")
-  ENV.delete("CT_TEST_REQUIRED")
+  restore_env("CYBERTRAIN_ENCRYPTION_KEY", saved_key)
+  restore_env("CT_TEST_REQUIRED", saved_required)
   status = Process.waitpid2(pid)[1].exitstatus.to_i
   [status.to_s, File.read(OUT_PATH)]
 end
@@ -68,6 +82,17 @@ test "a valid key boots; no key boots when nothing is encrypted" do
   assert_equal ["0", "booted\n"], boot_child(VALID_KEY, true)
   assert_equal ["0", "booted\n"], boot_child("", false)
   refute Cybertrain::Config.encryption_required
+end
+
+test "boot_child restores the parent's own CYBERTRAIN_ENCRYPTION_KEY" do
+  own = ENV["CYBERTRAIN_ENCRYPTION_KEY"]
+  ENV["CYBERTRAIN_ENCRYPTION_KEY"] = VALID_KEY
+  boot_child("abc", false)
+  assert_equal VALID_KEY, ENV["CYBERTRAIN_ENCRYPTION_KEY"]
+  ENV.delete("CYBERTRAIN_ENCRYPTION_KEY")
+  boot_child("abc", false)
+  assert_nil ENV["CYBERTRAIN_ENCRYPTION_KEY"]
+  restore_env("CYBERTRAIN_ENCRYPTION_KEY", own)
 end
 
 Cybertrain::Test.run!

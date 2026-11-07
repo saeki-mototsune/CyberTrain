@@ -1,4 +1,5 @@
 ok   encryption required and no key: boot fails with the configuration message
 ok   a malformed key fails boot whether or not encryption is required
 ok   a valid key boots; no key boots when nothing is encrypted
-3 tests, 6 assertions, 0 failures
+ok   boot_child restores the parent's own CYBERTRAIN_ENCRYPTION_KEY
+4 tests, 8 assertions, 0 failures
