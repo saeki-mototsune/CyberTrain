@@ -265,8 +265,9 @@ class Article < Cybertrain::Model
   #   Article.insert_all([{ title: "One" }, { title: "Two" }]).size  # => 2
   #   Article.insert_all(rows, returning: [:id, :title]).first  # => {"id" => 3, "title" => "One"}
   # @param rows [Array<Hash{Symbol, String => Object}>]
-  # @param returning [Array<Symbol>, nil] columns of the inserted rows to
-  #   return, cast by type; `[]` or nil returns `[]`
+  # @param returning [Array<Symbol>, Symbol, false, nil] columns of the
+  #   inserted rows to return, cast by type (one Symbol is one column);
+  #   `[]`, false or nil returns `[]`; any other value raises ArgumentError
   # @param record_timestamps [Boolean]
   # @return [Array<Hash{String => Object}>] one Hash per row inserted
   # @raise [ArgumentError] on rows with different keys, an unknown column,
@@ -282,7 +283,7 @@ class Article < Cybertrain::Model
   # {.insert_all} without `ON CONFLICT DO NOTHING`: a duplicate raises,
   # and nothing of the call is written.
   # @param rows [Array<Hash{Symbol, String => Object}>]
-  # @param returning [Array<Symbol>, nil]
+  # @param returning [Array<Symbol>, Symbol, false, nil] as {.insert_all}
   # @param record_timestamps [Boolean]
   # @return [Array<Hash{String => Object}>] one Hash per row inserted
   # @raise [ArgumentError] as {.insert_all}
@@ -304,9 +305,10 @@ class Article < Cybertrain::Model
   #   Article.upsert_all([{ id: 1, title: "Renamed" }])            # body unchanged
   #   Article.upsert_all(rows, unique_by: [:title], update_only: [:body])
   # @param rows [Array<Hash{Symbol, String => Object}>]
-  # @param unique_by [Array<Symbol>] the conflict target
-  # @param update_only [Array<Symbol>, nil] the columns a conflict may update
-  # @param returning [Array<Symbol>, nil]
+  # @param unique_by [Array<Symbol>, Symbol] the conflict target
+  # @param update_only [Array<Symbol>, Symbol, false, nil] the columns a
+  #   conflict may update (false: none, as `[]`)
+  # @param returning [Array<Symbol>, Symbol, false, nil] as {.insert_all}
   # @param record_timestamps [Boolean]
   # @return [Array<Hash{String => Object}>] one Hash per row inserted or updated
   # @raise [ArgumentError] as {.insert_all}, or without `unique_by`

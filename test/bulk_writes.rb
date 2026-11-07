@@ -416,4 +416,47 @@ test "bulk rows bind a boolean as 1/0 and a binary value as a BLOB" do
   assert_equal "a", Item.where(ok: false).pluck_str(:code)[0]
 end
 
+# Rails accepts one Symbol for returning:, unique_by: and update_only:;
+# update_only: :qty used to answer no columns, so the upsert set nothing.
+test "returning:, unique_by: and update_only: take one Symbol or String as one column" do
+  reset_items
+  rows = Item.insert_all([{ code: "a", qty: 1 }], returning: :id)
+  assert_equal 1, rows.size
+  assert_equal 1, rows[0]["id"]
+  assert_equal "b", Item.insert_all([{ code: "b" }], returning: "code")[0]["code"]
+  upserted = Item.upsert_all([{ code: "a", qty: 5, body: "no" }], unique_by: :code, update_only: :qty,
+                             returning: :qty)
+  assert_equal 5, upserted[0]["qty"]
+  assert_equal "5", stored("qty", "a")
+  assert_equal "null", stored_type("body", "a")
+  Item.upsert_all([{ code: "a", qty: 6 }], unique_by: "code", update_only: "qty")
+  assert_equal "6", stored("qty", "a")
+  # An unknown or encrypted single name is refused as in an Array.
+  assert_includes assert_raises("ArgumentError") { Item.insert_all([{ code: "c" }], returning: :nope) }, "nope"
+  assert_equal "insert_all: returning: token is an encrypted column",
+               assert_raises("ArgumentError") { Secret.insert_all([{ id: 1 }], returning: :token) }
+  assert_equal 2, Item.count
+end
+
+test "false is no columns; any other value for returning:, unique_by: or update_only: raises" do
+  reset_items
+  assert_equal 0, Item.insert_all([{ code: "a", qty: 1 }], returning: false).size
+  assert_equal 1, Item.count
+  # update_only: false updates nothing (as update_only: []): the row is skipped.
+  assert_equal 0, Item.upsert_all([{ code: "a", qty: 9 }], unique_by: [:code], update_only: false,
+                                  record_timestamps: false).size
+  assert_equal "1", stored("qty", "a")
+  assert_equal "upsert_all: unique_by names no column",
+               assert_raises("ArgumentError") { Item.upsert_all([{ code: "a" }], unique_by: false) }
+  assert_equal "upsert_all: unique_by names no column",
+               assert_raises("ArgumentError") { Item.upsert_all([{ code: "a" }], unique_by: []) }
+  assert_equal "insert_all: returning: takes an Array of column names, e.g. returning: [:id]",
+               assert_raises("ArgumentError") { Item.insert_all([{ code: "b" }], returning: 1) }
+  assert_equal "upsert_all: unique_by: takes an Array of column names, e.g. unique_by: [:id]",
+               assert_raises("ArgumentError") { Item.upsert_all([{ code: "b" }], unique_by: 1) }
+  assert_equal "upsert_all: update_only: takes an Array of column names, e.g. update_only: [:name]",
+               assert_raises("ArgumentError") { Item.upsert_all([{ code: "b" }], unique_by: [:code], update_only: true) }
+  assert_equal 1, Item.count
+end
+
 Cybertrain::Test.run!

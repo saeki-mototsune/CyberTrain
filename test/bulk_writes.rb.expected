@@ -10,4 +10,6 @@ ok   a call with more binds than the variable limit is chunked inside one transa
 ok   decimal rounding, json text, Date text and Time format in bulk rows
 ok   update_all casts every value by its column's type, as save and the bulk writes do
 ok   bulk rows bind a boolean as 1/0 and a binary value as a BLOB
-12 tests, 137 assertions, 0 failures
+ok   returning:, unique_by: and update_only: take one Symbol or String as one column
+ok   false is no columns; any other value for returning:, unique_by: or update_only: raises
+14 tests, 164 assertions, 0 failures

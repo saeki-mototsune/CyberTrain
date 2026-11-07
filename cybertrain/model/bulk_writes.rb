@@ -164,15 +164,19 @@ module Cybertrain
     # @param column_types [Hash{String => Symbol}] every column, `id` included
     # @param scales [Hash{String => Integer}] decimal column => scale
     # @param encrypted [Array<String>] the encrypted columns
-    # @param returning [Array<Symbol, String>, nil]
+    # @param returning [Array<Symbol, String>, Symbol, String, false, nil]
+    #   an Array of names, or one name; false or nil is none
     # @param record_timestamps [Boolean]
     # @param on_conflict [Symbol] `:nothing`, `:raise` or `:update`
-    # @param unique_by [Array<Symbol, String>, nil] the conflict target (`:update`)
-    # @param update_only [Array<Symbol, String>, nil] the columns an upsert may set
+    # @param unique_by [Array<Symbol, String>, Symbol, String, nil] the
+    #   conflict target (`:update`)
+    # @param update_only [Array<Symbol, String>, Symbol, String, false, nil]
+    #   the columns an upsert may set; false (as `[]`) sets none
     # @return [Array<Hash{String => Object}>]
     # @raise [ArgumentError] on rows with different key sets, a name that is
-    #   not a column of the table, an encrypted column, or an upsert without
-    #   `unique_by`
+    #   not a column of the table, an encrypted column, an upsert without
+    #   `unique_by`, or a `returning`, `unique_by` or `update_only` that is
+    #   neither an Array, a Symbol or String, false nor nil
     # @raise [Cybertrain::DB::Error] when SQLite refuses a statement
     #   (a constraint, a duplicate under insert_all!); nothing is written
     def self.insert_all_into(table, rows, column_types, scales, encrypted, returning, record_timestamps, on_conflict,
@@ -181,10 +185,10 @@ module Cybertrain
       out = [Model.bulk_empty_row]
       out.clear
 
-      returned = Model.bulk_columns(caller_name, returning, column_types)
-      targets = Model.bulk_columns(caller_name, unique_by, column_types)
+      returned = Model.bulk_columns(caller_name, "returning", returning, column_types)
+      targets = Model.bulk_columns(caller_name, "unique_by", unique_by, column_types)
       restricted = !update_only.nil?
-      only = Model.bulk_columns(caller_name, update_only, column_types)
+      only = Model.bulk_columns(caller_name, "update_only", update_only, column_types)
       # An encrypted column holds payloads: returned, it would be the
       # ciphertext; as a conflict target or an update it would compare or
       # copy ciphertext. Refused wherever it is named.
@@ -327,12 +331,21 @@ module Cybertrain
       name
     end
 
-    # `list`'s names as checked column Strings; nil is none.
-    def self.bulk_columns(caller_name, list, column_types)
+    # `list`'s names as checked column Strings (the value of the keyword
+    # `option`): an Array of names, or one Symbol or String as one name
+    # (Rails accepts `returning: :id`); nil and false are none (Rails'
+    # `returning: false`). Anything else raises rather than answer no
+    # columns, which would make an upsert update nothing.
+    def self.bulk_columns(caller_name, option, list, column_types)
       out = Array.new(0) { "" }
       case list
-      when nil then nil
+      when nil, false then nil
       when Array then list.each { |k| out << Model.bulk_column(caller_name, k.to_s, column_types) }
+      when Symbol, String then out << Model.bulk_column(caller_name, list.to_s, column_types)
+      else
+        example = option == "update_only" ? "[:name]" : "[:id]"
+        message = "#{caller_name}: #{option}: takes an Array of column names, e.g. #{option}: #{example}"
+        raise ArgumentError, message
       end
       out
     end
