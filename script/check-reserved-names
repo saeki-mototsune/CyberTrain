@@ -123,7 +123,8 @@ helpers_missing = helper_names - Cybertrain::Gen::HelperScan::RESERVED_HELPER_NA
 # class (models_emitter.rb's emitted `def` and `def self.` lines and its
 # DELEGATED list), and every class method of cybertrain/model.rb.
 require "cybertrain/generator/models_emitter"
-relation_source = File.read(File.expand_path("../cybertrain/relation.rb", __dir__))
+# relation.rb and the file it requires at its end that reopens Relation.
+relation_source = %w[relation.rb relation/aggregates.rb].map { |f| File.read(File.expand_path("../cybertrain/#{f}", __dir__)) }.join("\n")
 emitter_source = File.read(File.expand_path("../cybertrain/generator/models_emitter.rb", __dir__))
 scope_names = relation_source.scan(/^\s*def\s+(?!self\.)([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten
 scope_names.concat(relation_source.scan(/^\s*attr_reader\s+((?::\w+\s*,?\s*)+)/).flatten.join(" ").scan(/:(\w+)/).flatten)
@@ -140,7 +141,7 @@ if missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.emp
 else
   unless scopes_missing.empty?
     warn "check-reserved-names: a model's Relation or class already has #{scopes_missing.map(&:inspect).join(", ")} " \
-         "(cybertrain/relation.rb, cybertrain/model.rb or what models_emitter.rb generates) but " \
+         "(cybertrain/relation.rb, relation/aggregates.rb, cybertrain/model.rb or what models_emitter.rb generates) but " \
          "Cybertrain::Gen::ModelScan::RESERVED_SCOPE_NAMES (cybertrain/generator/model_scan.rb) does not refuse it as a scope name; add it"
   end
   unless helpers_missing.empty?
