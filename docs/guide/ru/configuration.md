@@ -1,5 +1,5 @@
 ---
-source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
+source_sha256: b0f8f7ce8f29151195c929b5aa6f2cf9769a7d0b96b72d53cdddc87a88d32c9e
 ---
 # Конфигурация
 
@@ -21,6 +21,8 @@ end
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | обязательна в production; в dev/test генерируется автоматически в `tmp/secret_key` |
+| `CYBERTRAIN_ENCRYPTION_KEY` | `encryption_key` | `""`; 64 шестнадцатеричных символа (`cybertrain secret --hex`), ключ столбцов, которые модель шифрует через `encrypts`. Запуск завершается ошибкой, если ключ неверного вида или пуст, когда модель объявляет `encrypts` (см. [Зашифрованные столбцы](models.md#encrypted-columns)) |
+| `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`; прежние ключи через запятую, пробуются только для расшифровки, так что ключ меняют, пересохраняя записи; неверная запись останавливает запуск |
 | `SPINEL_WORKERS` | `workers` | `1`; сервер разработки игнорирует это значение и всегда работает с одним воркером ([почему](template-language.md#file-resolution-enginerb)) |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`; `0.0.0.0` слушает на всех интерфейсах (контейнеры) |
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Режим разработки принимает `localhost`, `127.0.0.1`, `[::1]`; разделённые запятыми точные имена хостов расширяют этот список (без схемы, порта и подстановочных знаков). Другие хосты получают 403 до статических файлов, сессий, маршрутизации и диагностики. Это не связано с адресом прослушивания; production и test не применяют эту защиту режима разработки |

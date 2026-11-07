@@ -1,5 +1,5 @@
 ---
-source_sha256: 840774b1782d6a4c5d4e5c2f880f39aa1960df5563f27409553fccbfbb117fd8
+source_sha256: 775aa69e329dfcff568767e9bda00af1ebe2ef8afc85e3cd32da8d53be31892d
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -224,6 +224,7 @@ end
 # presence validation; add anything past that yourself.
 class Article
   validates :title, presence: true
+  validates :title, uniqueness: true
   validates :body, presence: true, length: { minimum: 10 }
 end
 ```
@@ -231,8 +232,10 @@ end
 `class Article` n’a pas de superclasse écrite&nbsp;: la superclasse
 `Cybertrain::Model`, les colonnes et les finders viennent de
 `gen/models/article.rb`. Un enregistrement qui échoue signale des messages
-tels que «&nbsp;Title can't be blank&nbsp;» et «&nbsp;Body is too short
-(minimum is 10 characters)&nbsp;».
+tels que «&nbsp;Title can't be blank&nbsp;», «&nbsp;Title has already been
+taken&nbsp;» et «&nbsp;Body is too short (minimum is 10 characters)&nbsp;».
+Les autres validateurs (`format`, `inclusion`, `numericality`, ...) sont dans
+[Validations](models.md#validations).
 
 <!-- step 06 #articles-controller stage: Vous écrivez · `app/controllers/` -->
 ## Le contrôleur ArticlesController
@@ -366,9 +369,9 @@ cybertrain db migrate    # le scaffold a écrit une migration pour la table comm
 ```
 
 `article:references` ajoute une colonne `article_id`, un index et une clé
-étrangère — de quoi donner à `Article`/`Comment` leur association&nbsp;; il
-n’y a pas de `has_many`/`belongs_to` à écrire, `spin run gen` la lit dans la
-clé étrangère. Le schéma obtenu&nbsp;:
+étrangère — de quoi donner à `Article`/`Comment` leur association&nbsp;:
+`spin run gen` lit `Article#comments` et `Comment#article` dans la clé
+étrangère. Le schéma obtenu&nbsp;:
 
 ```ruby db/schema.rb (extrait)
   s.create_table "comments" do |t|
@@ -390,14 +393,13 @@ suivante remplace.
 > [!EXAMPLE] Supprimer un article qui a des commentaires
 > ### Supprimer un article qui a des commentaires
 >
-> Les associations viennent uniquement des clés étrangères, et `dependent:`
-> n’est pas implémenté. L’exemple ajoute un callback `before_destroy` qui reçoit
-> l’enregistrement explicitement&nbsp;:
+> La clé étrangère refuse de supprimer un article qui a encore des
+> commentaires. Déclarez l’association, comme dans Rails, et `destroy` les
+> supprime d’abord, dans sa transaction&nbsp;:
 >
 > ```ruby app/models/article.rb (extrait)
->   # Rails' `has_many :comments, dependent: :destroy`: the foreign key
->   # would refuse to delete an article that still has comments.
->   before_destroy { |article| Comment.where(article_id: article.id).delete_all }
+>   # each comment's own destroy runs, callbacks included
+>   has_many :comments, dependent: :destroy
 > ```
 
 <!-- step 09 #nested-routes stage: Vous écrivez · `config/routes.rb` -->
@@ -448,7 +450,7 @@ class CommentsController < ApplicationController
   end
 
   def destroy
-    @comment = Comment.where(article_id: @article.id).find(params[:id])
+    @comment = @article.comments.find(params[:id])
     @comment.destroy
     flash[:notice] = "Comment was successfully destroyed."
     redirect_to article_path(@article), status: :see_other
@@ -472,14 +474,18 @@ Ajoutez ensuite des validations au modèle de commentaire&nbsp;:
 class Comment
   validates :commenter, presence: true
   validates :body, presence: true
+
+  belongs_to :article
 end
 ```
 
+La déclaration `belongs_to` rend aussi invalide un commentaire sans article
+(«&nbsp;Article id can't be blank&nbsp;»), avant que la base ne le refuse.
+
 > [!NOTE]
-> `Article#comments` est ici un Array&nbsp;: le
-> `@article.comments.find(params[:id])` de Rails devient donc
-> `Comment.where(article_id: @article.id).find(params[:id])`. Un commentaire
-> placé sous le mauvais article renvoie une 404.
+> `Article#comments` est la relation des commentaires&nbsp;: le
+> `@article.comments.find(params[:id])` de Rails fonctionne donc tel quel dans
+> `destroy`, et un commentaire placé sous le mauvais article renvoie une 404.
 
 <!-- step 11 #views stage: Exécution · `app/views/`, lues depuis le disque en développement, intégrées par `cybertrain build` -->
 ## Vues et partiels
@@ -551,6 +557,31 @@ bloc `resources` imbriqué ci-dessus.
 > locals stricts comme `<%# locals: (comment:) %>` n’accepte pas de valeurs par
 > défaut. Un partiel reçoit une copie de l’environnement de l’appelant, donc
 > `@article` est visible dans `comments/_form`.
+
+> [!EXAMPLE] L’index avec le nombre de commentaires et un filtre par date
+> ### L’index avec le nombre de commentaires et un filtre par date
+>
+> examples/blog liste les articles les plus récents d’abord avec leur nombre
+> de commentaires, en deux requêtes quel que soit le nombre d’articles, et les
+> filtre par date&nbsp;:
+>
+> ```ruby app/models/article.rb (extrait) · app/controllers/articles_controller.rb (extrait)
+>   scope :recent, -> { order(created_at: :desc) }
+>
+>   def index
+>     articles = Article.recent.includes(:comments)
+>     from = Cybertrain::Cast.date_or_nil(params[:from])
+>     unless from.nil?
+>       articles = articles.where_between(:created_at, Time.utc(from.year, from.month, from.day), nil)
+>     end
+>     @articles = articles.to_a
+>   end
+> ```
+>
+> Dans la vue, `article.comments.size` répond à partir des commentaires
+> préchargés. Le `where(created_at: from..)` de Rails s’écrit ici
+> `where_between`, car Spinel ne construit pas de Range de Time ([Conditions
+> et recherches](models.md#conditions-and-finders)).
 
 <!-- step 12 #test stage: Compilation · `cybertrain spin test` -->
 ## Tester
@@ -1184,8 +1215,8 @@ et charge `config/deploy.yml` avec Kamal.
   ligne de requête et le nom/la ligne du template.
 - Un attribut mal orthographié dans une vue s’affiche vide au lieu de lever
   une erreur&nbsp;; c’est une lacune connue.
-- Les associations viennent uniquement des clés étrangères du schéma&nbsp;;
-  pas de `has_many :through`, `includes`, `pluck`, `dependent:`, d’enums, de
+- Les associations viennent des clés étrangères ou de déclarations d’une
+  ligne&nbsp;; pas de `has_many :through`, d’`includes` imbriqué, d’enums, de
   STI ni d’associations polymorphes.
 - Pas de `namespace`, de `respond_to`/formats, de `constraints` ni de
   `mount`&nbsp;; `render json:` est minimal.

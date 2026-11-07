@@ -1,5 +1,5 @@
 ---
-source_sha256: a0fe78f06a9b4553bbbfb31ceac28f9973806efcac17684819ec9c073e830347
+source_sha256: a0cc156edb80c185423767f6324221c44932e9e0416bedd926cddbb16a9a6d8c
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -74,8 +74,8 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | セッションはマーシャルされた任意のオブジェクトを保持する | セッションの値は String だけで、HMAC 署名付きの cookie |
 | 多くのデータベースアダプター | FFI による SQLite のみ |
 | `Article.transaction { ... }` はブロックの値を返す。`raise ActiveRecord::Rollback`。`requires_new: true` のセーブポイント | `Article.transaction { \|c\| ... }` は接続を渡して nil を返す。抜けるには例外を出す。ネストした呼び出しは外側のトランザクションに合流し、セーブポイントはない（[トランザクション](models.md#transactions)） |
-| `has_many :through`、`includes`、`dependent:`、enum、STI、ポリモーフィック関連 | 実装されていない。関連付けはスキーマの外部キーからのみ作られる |
-| `pluck(:a)`、`sum(:a)`、`group(:a).count`、`upsert`、`update_counters`、`where("title LIKE ?", "%#{q}%")` | Spinel のメソッドは戻り値の型がひとつなので、型付きの版になる：`pluck_int` とその仲間、`sum_int`、`count_by`、`upsert`、`increment(:col, by: n)`、`where_like`（[`where` を超えるクエリ](models.md#querying-beyond-where)） |
+| `has_many :through`、enum、STI、ポリモーフィック関連 | 実装されていない。`has_many`、`has_one`、`belongs_to` は外部キーか一行の宣言から作られ、`dependent:`、`counter_cache:`、一段の `includes` がある（[関連付け](models.md#associations)） |
+| `pluck(:a)`、`maximum(:a)`、`group(:a).sum(:b)`、`upsert`、`update_counters`、`where(created_at: t1..t2)` | Spinel のメソッドは戻り値の型がひとつなので、型付きの版になる：`pluck_int` とその仲間、`maximum_int`、`sum_float_by`、`upsert`、`increment(:col, by: n)`。Time の範囲は `where_between`（[`where` を超えるクエリ](models.md#querying-beyond-where)） |
 | 任意のカラム名。関連付けが `errors` を覆い隠せる | ASCII の識別子のみ。フレームワークのメソッドや Ruby のキーワードと同じ名前のカラムは `<column>_column` として生成され、衝突する関連付けは代わりの名前で生成される（[カラム名](models.md#column-names)） |
 | `namespace`、format/`respond_to`、`constraints`、`mount` | 実装されていない — 名前はフラットで、`render json:` のみ |
 | `rescue StandardError` が不正な `JSON.parse` を捕まえる | Spinel では `JSON::ParserError` は `StandardError` ではない：アプリのコードは `rescue JSON::ParserError, StandardError` と書く必要がある。サーバーは最後の手段としてこれを捕まえ、500 を返す |

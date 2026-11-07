@@ -1,5 +1,5 @@
 ---
-source_sha256: 8c5fb31e9029aee83c444a7a42144a867952901bfc224f91835abbbf79439213
+source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
 ---
 # Installer cybertrain
 
@@ -46,7 +46,7 @@ d’installation pour votre plateforme.
   de développement de Ruby, `ruby-dev` sous Debian/Ubuntu). `cybertrain doctor`
   le vérifie.
 - Les en-têtes OpenSSL (`libssl-dev`) sont facultatifs&nbsp;: sans eux, Spinel
-  est compilé sans son paquet `openssl`, que CyberTrain n’utilise pas. Sous
+  est compilé sans son paquet `openssl`, dont une application n’a besoin que pour TLS (`require "cybertrain/net/tls"`) ou les colonnes chiffrées (`encrypts`). Sous
   macOS, une application qui requiert `openssl` a besoin de l’OpenSSL de
   Homebrew (keg-only) dans les chemins du compilateur&nbsp;: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`.

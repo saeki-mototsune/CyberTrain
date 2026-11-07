@@ -1,5 +1,5 @@
 ---
-source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
+source_sha256: b0f8f7ce8f29151195c929b5aa6f2cf9769a7d0b96b72d53cdddc87a88d32c9e
 ---
 # 配置
 
@@ -21,6 +21,8 @@ end
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | 生产环境中必需；开发和测试环境会自动生成一个，写入 `tmp/secret_key` |
+| `CYBERTRAIN_ENCRYPTION_KEY` | `encryption_key` | `""`；64 个十六进制字符（`cybertrain secret --hex`），模型用 `encrypts` 加密的列的密钥。格式不对，或模型声明了 `encrypts` 而它为空时，启动失败（见[加密列](models.md#encrypted-columns)） |
+| `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`；以逗号分隔的旧密钥，只用于解密，因此重新保存记录即可轮换密钥；格式错误的条目会让启动停止 |
 | `SPINEL_WORKERS` | `workers` | `1`；开发服务器忽略此值，总是只用一个 worker（[原因](template-language.md#file-resolution-enginerb)） |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`；`0.0.0.0` 在所有网络接口上监听（容器） |
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | 开发环境接受 `localhost`、`127.0.0.1`、`[::1]`；以逗号分隔的精确主机名会扩展这个列表（不带协议、端口或通配符）。其他主机会在静态文件、会话、路由或诊断之前得到 403。这与监听地址无关；生产和测试环境不应用这项开发时的防护 |

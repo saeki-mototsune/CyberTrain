@@ -1,5 +1,5 @@
 ---
-source_sha256: 7cea1c79bd719e66ce34eb6f6a311131d3732cfc23aa4bfcc891343cac064853
+source_sha256: b0f8f7ce8f29151195c929b5aa6f2cf9769a7d0b96b72d53cdddc87a88d32c9e
 ---
 # 設定
 
@@ -21,6 +21,8 @@ end
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | 本番環境では必須。開発環境とテスト環境では `tmp/secret_key` に自動生成される |
+| `CYBERTRAIN_ENCRYPTION_KEY` | `encryption_key` | `""`。64 文字の 16 進数（`cybertrain secret --hex`）で、モデルが `encrypts` で暗号化するカラムの鍵。形式が正しくないとき、またはモデルが `encrypts` を宣言しているのに空のとき、起動は失敗する（[暗号化されたカラム](models.md#encrypted-columns)を参照） |
+| `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`。カンマ区切りの以前の鍵で、復号にだけ試される。レコードを保存し直せば鍵を入れ替えられる。形式の正しくない項目があると起動は止まる |
 | `SPINEL_WORKERS` | `workers` | `1`。開発サーバーはこの値を無視して常に 1 ワーカーで動きます（[理由](template-language.md#file-resolution-enginerb)） |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`。`0.0.0.0` はすべてのインターフェースで待ち受ける（コンテナー向け） |
 | `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | 開発環境は `localhost`、`127.0.0.1`、`[::1]` を受け付ける。カンマ区切りの完全なホスト名でこのリストを拡張できる（スキーム、ポート、ワイルドカードは不可）。その他のホストには、静的ファイル、セッション、ルーティング、診断の前に 403 を返す。これは待ち受けアドレスとは別のもので、本番環境とテスト環境はこの開発用のガードを適用しない |

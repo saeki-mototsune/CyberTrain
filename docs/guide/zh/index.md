@@ -1,5 +1,5 @@
 ---
-source_sha256: 02b6af743ad823cd90594a88e40d3594e25244a063e7be2d82f628582e136fc7
+source_sha256: 9c21efcdbdced1757e31585563b298892946ce1cbfd3db80a538718959a375f4
 title: 指南
 ---
 # 指南
@@ -10,7 +10,7 @@ CyberTrain 文档中 API 参考之外的全部内容：一步步构建博客的�
 - [**教程**](tutorial.md) — 一步步构建博客：脚手架、评论、登录、上传、部署
 - [**安装**](install.md) — 环境要求、`cybertrain` 命令、Spinel 与框架的安装方式
 - [**工作原理**](how-it-works.md) — 构建时代码生成、解释执行的视图、服务器、开发循环，以及与 Rails 的差异表
-- [**模型与数据库**](models.md) — 迁移、`where` 之外的查询、分页、事务、列名、排序
+- [**模型与数据库**](models.md) — 迁移、列类型、查询、关联、校验、加密列、事务、接管 Rails 数据库
 - [**请求**](requests.md) — 限流、客户端地址、参数化的请求头、查询字符串与请求体
 - [**配置**](configuration.md) — `config/app.rb`、环境变量、时区
 - [**后台任务与运维**](background-and-operations.md) — 多线程运行的作业、定时任务、`worker` 与 `feeds` 进程角色、控制台、备份、健康检查

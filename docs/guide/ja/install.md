@@ -1,5 +1,5 @@
 ---
-source_sha256: 8c5fb31e9029aee83c444a7a42144a867952901bfc224f91835abbbf79439213
+source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
 ---
 # インストール
 
@@ -21,7 +21,7 @@ CyberTrain が手元のマシンに必要とするもの、`cybertrain` コマ�
 <details><summary>その他のパッケージ — Ruby 3.2 での prism、どちらも任意の OpenSSL と jemalloc</summary>
 
 - Spinel のビルドには Ruby の `prism` gem が必要で、Ruby 3.3 以上には同梱されています。Ruby 3.2 では `gem install prism` を実行します（Ruby の開発用ヘッダーが必要です。Debian/Ubuntu なら `ruby-dev`）。`cybertrain doctor` が確認します。
-- OpenSSL のヘッダー（`libssl-dev`）は任意です：ない場合、Spinel は `openssl` パッケージなしでビルドされますが、CyberTrain はこのパッケージを使いません。macOS で `openssl` を require するアプリケーションには、コンパイラのパス上に Homebrew の（keg-only の）OpenSSL が必要です：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+- OpenSSL のヘッダー（`libssl-dev`）は任意です：ない場合、Spinel は `openssl` パッケージなしでビルドされますが、このパッケージをアプリケーションが必要とするのは TLS（`require "cybertrain/net/tls"`）か暗号化されたカラム（`encrypts`）のときだけです。macOS で `openssl` を require するアプリケーションには、コンパイラのパス上に Homebrew の（keg-only の）OpenSSL が必要です：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`。
 - jemalloc の開発用パッケージ（`libjemalloc-dev`、`brew install jemalloc`）は任意です：アプリがこれを必要とするのは、その `spin.toml` に `allocator = "jemalloc"` と書いたときだけで、`cybertrain new` はこの行をコメントアウトして書き出します。本番環境では有効にする価値があります：examples/blog で毎秒のリクエスト数が 1.1〜1.4 倍になります（[docs/benchmark.md](../benchmark.md)）。
 

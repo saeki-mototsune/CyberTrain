@@ -1,5 +1,5 @@
 ---
-source_sha256: 840774b1782d6a4c5d4e5c2f880f39aa1960df5563f27409553fccbfbb117fd8
+source_sha256: 775aa69e329dfcff568767e9bda00af1ebe2ef8afc85e3cd32da8d53be31892d
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -158,11 +158,12 @@ end
 # presence validation; add anything past that yourself.
 class Article
   validates :title, presence: true
+  validates :title, uniqueness: true
   validates :body, presence: true, length: { minimum: 10 }
 end
 ```
 
-`class Article` にはスーパークラスを書きません：スーパークラスの `Cybertrain::Model`、カラム、ファインダーは `gen/models/article.rb` から来ます。保存に失敗すると、「Title can't be blank」（タイトルは空にできません）や「Body is too short (minimum is 10 characters)」（本文が短すぎます。最小 10 文字）のようなメッセージが報告されます。
+`class Article` にはスーパークラスを書きません：スーパークラスの `Cybertrain::Model`、カラム、ファインダーは `gen/models/article.rb` から来ます。保存に失敗すると、「Title can't be blank」（タイトルは空にできません）、「Title has already been taken」（タイトルはすでに使われています）、「Body is too short (minimum is 10 characters)」（本文が短すぎます。最小 10 文字）のようなメッセージが報告されます。ほかのバリデーター（`format`、`inclusion`、`numericality` など）は[バリデーション](models.md#validations)にあります。
 
 <!-- step 06 #articles-controller stage: 自分で書く · `app/controllers/` -->
 ## ArticlesController
@@ -261,7 +262,7 @@ cybertrain generate scaffold comment commenter:string body:text article:referenc
 cybertrain db migrate    # スキャフォールドが comments テーブルのマイグレーションを書き出している
 ```
 
-`article:references` は `article_id` カラム、インデックス、外部キーを追加します — `Article`/`Comment` の関連付けにはこれで十分です。`has_many`/`belongs_to` を書く必要はなく、`spin run gen` が外部キーから読み取ります。生成されるスキーマ：
+`article:references` は `article_id` カラム、インデックス、外部キーを追加します — `Article`/`Comment` の関連付けにはこれで十分です。`spin run gen` が外部キーから `Article#comments` と `Comment#article` を読み取ります。生成されるスキーマ：
 
 ```ruby db/schema.rb（抜粋）
   s.create_table "comments" do |t|
@@ -282,12 +283,11 @@ cybertrain db migrate    # スキャフォールドが comments テーブルの�
 > [!EXAMPLE] コメントのある記事を削除する
 > ### コメントのある記事を削除する
 >
-> 関連付けは外部キーからしか作られず、`dependent:` は実装されていません。サンプルでは、レコードを明示的に受け取る `before_destroy` コールバックを追加しています：
+> 外部キーは、まだコメントのある記事の削除を拒みます。Rails と同じく関連付けを宣言すれば、`destroy` が自分のトランザクションの中で先にコメントを削除します：
 >
 > ```ruby app/models/article.rb（抜粋）
->   # Rails' `has_many :comments, dependent: :destroy`: the foreign key
->   # would refuse to delete an article that still has comments.
->   before_destroy { |article| Comment.where(article_id: article.id).delete_all }
+>   # each comment's own destroy runs, callbacks included
+>   has_many :comments, dependent: :destroy
 > ```
 
 <!-- step 09 #nested-routes stage: 自分で書く · `config/routes.rb` -->
@@ -335,7 +335,7 @@ class CommentsController < ApplicationController
   end
 
   def destroy
-    @comment = Comment.where(article_id: @article.id).find(params[:id])
+    @comment = @article.comments.find(params[:id])
     @comment.destroy
     flash[:notice] = "Comment was successfully destroyed."
     redirect_to article_path(@article), status: :see_other
@@ -359,11 +359,15 @@ end
 class Comment
   validates :commenter, presence: true
   validates :body, presence: true
+
+  belongs_to :article
 end
 ```
 
+宣言した `belongs_to` は、記事のないコメントも、データベースが拒む前に無効にします（「Article id can't be blank」）。
+
 > [!NOTE]
-> ここでの `Article#comments` は Array なので、Rails の `@article.comments.find(params[:id])` は `Comment.where(article_id: @article.id).find(params[:id])` になります。別の記事に属するコメントを指定すると 404 が返ります。
+> `Article#comments` はコメントのリレーションなので、Rails の `@article.comments.find(params[:id])` が `destroy` でそのまま使えます。別の記事に属するコメントを指定すると 404 が返ります。
 
 <!-- step 11 #views stage: 実行時 · `app/views/`（開発環境ではディスクから読み込み、`cybertrain build` で埋め込み） -->
 ## ビューとパーシャル
@@ -421,6 +425,26 @@ end
 > ### ビューは Ruby ではなく、閉じた文法
 >
 > Spinel には `eval` がないため、テンプレートは固定の文法に従って解釈されます。`link_to` には `method:` オプションがないので、`button_to` を使ってください。`each` が受け取るブロック引数は 1 つか 2 つです。`<%# locals: (comment:) %>` のような strict locals コメントではデフォルト値を指定できません。パーシャルは呼び出し元の環境のコピーを受け取るので、`@article` は `comments/_form` の中からも見えます。
+
+> [!EXAMPLE] コメント数と日付フィルターのある一覧
+> ### コメント数と日付フィルターのある一覧
+>
+> examples/blog は新しい記事から順にコメント数とともに一覧し（記事がいくつあってもクエリは 2 回）、日付で絞り込みます：
+>
+> ```ruby app/models/article.rb（抜粋） · app/controllers/articles_controller.rb（抜粋）
+>   scope :recent, -> { order(created_at: :desc) }
+>
+>   def index
+>     articles = Article.recent.includes(:comments)
+>     from = Cybertrain::Cast.date_or_nil(params[:from])
+>     unless from.nil?
+>       articles = articles.where_between(:created_at, Time.utc(from.year, from.month, from.day), nil)
+>     end
+>     @articles = articles.to_a
+>   end
+> ```
+>
+> ビューの `article.comments.size` は先読みしたコメントから答えます。Rails の `where(created_at: from..)` はここでは `where_between` です。Spinel は Time の Range を作れないからです（[条件と検索](models.md#conditions-and-finders)）。
 
 <!-- step 12 #test stage: ビルド時 · `cybertrain spin test` -->
 ## テストする
@@ -768,7 +792,7 @@ kamal deploy   # 以降のデプロイ
 - データベースは SQLite のみで、Spinel の FFI を経由します。
 - バックトレースはありません：エラーにはクラス、メッセージ、リクエスト行、テンプレート名と行番号が表示されます。
 - ビュー内で属性名を書き間違えると、例外にならず空としてレンダリングされます。これは既知の課題です。
-- 関連付けはスキーマの外部キーからのみ作られます。`has_many :through`、`includes`、`pluck`、`dependent:`、enum、STI、ポリモーフィック関連付けはありません。
+- 関連付けは外部キーか一行の宣言から作られます。`has_many :through`、入れ子の `includes`、enum、STI、ポリモーフィック関連付けはありません。
 - `namespace`、`respond_to`/フォーマット、`constraints`、`mount` はありません。`render json:` は最小限です。
 - スキャフォールドで生成したモデルでは、最初の string フィールドにだけデフォルトで presence バリデーションが付きます。
 - ジェネレーターは `app/controllers` と `app/models` に対して、パーサーではなく字句スキャン（正規表現）を使います。
