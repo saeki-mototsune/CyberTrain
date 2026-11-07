@@ -1,5 +1,5 @@
 ---
-source_sha256: 2e61a5d003a8cdf4e505fa9aa88b96424b88abb33047c541a8ddecaca5b1f59b
+source_sha256: 4d303742a866d81fb204cf10d6797d582398283dd581c2a9ae7274e86046fa65
 ---
 # モデルとデータベース
 
@@ -174,7 +174,7 @@ done
 - `a.or(b)` は `((a) OR (b))` です。二つは並び順、limit、offset、`distinct` がそろっている必要があります。
 - json か暗号化されたカラムへの `where` は `ArgumentError` を出します。
 - `distinct` にすると、カラムを読むメソッドは各値を一度だけ返し、集計は重複のない入力を読みます（`SUM(DISTINCT x)`）。`count` と `to_a` は変わりません。どの行にもそれぞれの id があるからです。
-- `update_all(hash)` は `save` が保存するのと同じく変換と丸めを行い、`updated_at` には触れず、コールバックも実行しません。`destroy_all` は各レコードを、コールバックと `dependent:` も含めて destroy します。
+- `update_all(hash)` は `save` が保存するのと同じく変換と丸めを行い（ただし数値、真偽値、日付、json のカラムでは `""` は NULL になります。`save` なら 0 / false / `{}` を保存します）、`updated_at` には触れず、コールバックも実行しません。`destroy_all` は各レコードを、コールバックと `dependent:` も含めて destroy します。
 - `find_each` は id の順に一括で読み進め、Rails と同じく、リレーションの並び順、limit、offset は使いません。
 - 絞り込んだリレーションの `find_or_create_by` は、渡された Hash だけからレコードを作ります。Rails はリレーションの等値条件も使います。新しいレコードに要る属性はすべて渡してください。
 - `update_columns` は値を代入してから、そのカラムだけの UPDATE を一回実行します：バリデーションもコールバックもなく、`updated_at` も変わりません。

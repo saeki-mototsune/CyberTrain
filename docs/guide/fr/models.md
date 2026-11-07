@@ -1,5 +1,5 @@
 ---
-source_sha256: 2e61a5d003a8cdf4e505fa9aa88b96424b88abb33047c541a8ddecaca5b1f59b
+source_sha256: 4d303742a866d81fb204cf10d6797d582398283dd581c2a9ae7274e86046fa65
 ---
 # Modèles et base de données
 
@@ -317,8 +317,9 @@ Rails fonctionne telle quelle&nbsp;: `Article.where.not(body: nil)`,
   colonnes et fait lire des entrées distinctes aux agrégats
   (`SUM(DISTINCT x)`)&nbsp;; `count` et `to_a` ne changent pas, puisque chaque
   ligne a son propre id.
-- `update_all(hash)` convertit et arrondit comme `save` stocke, laisse
-  `updated_at` tranquille et n’exécute aucun callback&nbsp;; `destroy_all`
+- `update_all(hash)` convertit et arrondit comme `save` stocke, sauf que `""`
+  se lie à NULL dans une colonne numérique, booléenne, de date ou json (là
+  où `save` stockerait 0 / false / `{}`), laisse `updated_at` tranquille et n’exécute aucun callback&nbsp;; `destroy_all`
   détruit chaque enregistrement, callbacks et `dependent:` compris.
 - `find_each` parcourt par id en lots et ignore l’ordre, la limite et
   l’offset de la relation, comme Rails.

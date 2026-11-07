@@ -1,5 +1,5 @@
 ---
-source_sha256: 2e61a5d003a8cdf4e505fa9aa88b96424b88abb33047c541a8ddecaca5b1f59b
+source_sha256: 4d303742a866d81fb204cf10d6797d582398283dd581c2a9ae7274e86046fa65
 ---
 # 模型与数据库
 
@@ -174,7 +174,7 @@ done
 - `a.or(b)` 是 `((a) OR (b))`；两者的排序、limit、offset 和 `distinct` 必须一致。
 - 对 json 列或加密列用 `where` 会抛出 `ArgumentError`。
 - `distinct` 让读取列的方法对每个值只返回一次，并让聚合读取去重后的输入（`SUM(DISTINCT x)`）；`count` 和 `to_a` 不变，因为每行都有自己的 id。
-- `update_all(hash)` 像 `save` 存储时那样转换和舍入，不改 `updated_at`，也不运行回调；`destroy_all` 逐条销毁记录，包括回调和 `dependent:`。
+- `update_all(hash)` 像 `save` 存储时那样转换和舍入（只是在数值、布尔、日期或 json 列中 `""` 绑定为 NULL，而 `save` 会存 0 / false / `{}`），不改 `updated_at`，也不运行回调；`destroy_all` 逐条销毁记录，包括回调和 `dependent:`。
 - `find_each` 按 id 分批遍历，并像 Rails 一样忽略 relation 的排序、limit 和 offset。
 - 在收窄过的 relation 上，`find_or_create_by` 只用传给它的 Hash 创建记录；Rails 还会带上 relation 的相等条件。请传入新记录所需的全部属性。
 - `update_columns` 先赋值，再对这些列执行一次 UPDATE：不校验、不回调，`updated_at` 不变。

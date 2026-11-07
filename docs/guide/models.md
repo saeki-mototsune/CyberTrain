@@ -293,8 +293,9 @@ nil)`, `Article.find_each { }`, `Article.pluck(:id, :title)`,
 - `distinct` makes the column readers return each value once and the
   aggregates read distinct inputs (`SUM(DISTINCT x)`); `count` and `to_a` are
   unchanged, since every row has its own id.
-- `update_all(hash)` casts and rounds as `save` stores, leaves `updated_at`
-  alone and runs no callback; `destroy_all` destroys each record, callbacks
+- `update_all(hash)` casts and rounds as `save` stores, except that `""`
+  binds NULL in a numeric, boolean, date or json column (where `save` would
+  store 0 / false / `{}`), leaves `updated_at` alone and runs no callback; `destroy_all` destroys each record, callbacks
   and `dependent:` included.
 - `find_each` walks by id in batches and ignores the relation's order,
   limit and offset, as Rails does.

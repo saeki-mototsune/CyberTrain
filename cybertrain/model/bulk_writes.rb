@@ -61,7 +61,10 @@ module Cybertrain
       attrs.each do |key, value|
         columns << Relation.checked_column("upsert", key)
         name = key.to_s
-        raise ArgumentError, "upsert: #{name} is an encrypted column" if encrypted.include?(name)
+        if encrypted.include?(name)
+          message = "upsert: #{name} is an encrypted column"
+          raise ArgumentError, message
+        end
 
         type = column_types.key?(name) ? column_types[name] : :unknown
         scale = scales.key?(name) ? scales[name].to_i : -1
@@ -71,13 +74,19 @@ module Cybertrain
       conflict.each do |key|
         target << Relation.checked_column("upsert", key)
         name = key.to_s
-        raise ArgumentError, "upsert: conflict: #{name} is an encrypted column" if encrypted.include?(name)
+        if encrypted.include?(name)
+          message = "upsert: conflict: #{name} is an encrypted column"
+          raise ArgumentError, message
+        end
       end
       sets = Array.new(0) { "" }
       update.each do |key, expr|
         quoted = Relation.checked_column("upsert", key)
         name = key.to_s
-        raise ArgumentError, "upsert: update: #{name} is an encrypted column" if encrypted.include?(name)
+        if encrypted.include?(name)
+          message = "upsert: update: #{name} is an encrypted column"
+          raise ArgumentError, message
+        end
 
         sets << "#{quoted} = #{expr}"
       end
@@ -215,7 +224,10 @@ module Cybertrain
       supplied = columns.size
       # Rails: "Empty list of attributes passed" (and no column would divide
       # the bind limit by zero below).
-      raise ArgumentError, "#{caller_name}: rows have no columns" if supplied == 0
+      if supplied == 0
+        message = "#{caller_name}: rows have no columns"
+        raise ArgumentError, message
+      end
 
       now = Model.now_string
       fill_created = record_timestamps && column_types.key?("created_at") && !columns.include?("created_at")

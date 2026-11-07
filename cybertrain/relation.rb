@@ -330,10 +330,14 @@ module Cybertrain
     # bulk writes (Model.insert_all_into, Model.upsert_into) bind through
     # it. A boolean is 1/0, a json value its JSON text, a date
     # `YYYY-MM-DD`, a datetime the storage format ({Cast.sql_datetime}), a
-    # decimal rounded to its scale, a binary value a {DB::Blob}; the
-    # `_or_nil` casts throughout, so nil and `""` (an empty form field)
-    # bind NULL, as do a date or datetime text that does not parse and a
-    # value the type cannot hold (an Array for an integer). `:unknown`
+    # decimal rounded to its scale, a binary value a {DB::Blob} of its
+    # bytes (a Blob given unwrapped first); the `_or_nil` casts
+    # throughout, so nil binds NULL for every type, and `""` (an empty form
+    # field) binds NULL for an integer, float, decimal, boolean, date,
+    # datetime or json column (where save would store 0 / false / `{}` in
+    # a NOT NULL one) but stays `""` for a string, text or binary one; a
+    # date or datetime text that does not parse, and a value the type
+    # cannot hold (an Array for an integer), bind NULL too. `:unknown`
     # binds {Cast.to_sql}'s value.
     # @param type [Symbol]
     # @param scale [Integer] -1 for none
@@ -740,9 +744,11 @@ module Cybertrain
     # Date or `YYYY-MM-DD` text as that date, a Time or time text in the
     # storage format, a decimal rounded to its scale, binary bytes as a
     # BLOB, other text as save reads it (`"abc"` is 0 in an integer
-    # column); nil and `""` store NULL, as does date or time text that does
-    # not parse, so a NOT NULL column refuses them rather than store the
-    # text. No model is loaded, no
+    # column). nil stores NULL in every column; `""` stores NULL in an
+    # integer, float, decimal, boolean, date, datetime or json column (so a
+    # NOT NULL one refuses it, where save would store 0 / false / `{}`) and
+    # `""` in a string, text or binary one; date or time text that does not
+    # parse stores NULL too. No model is loaded, no
     # callback or validation runs, `updated_at` is left alone. A limit or
     # offset picks the rows by an `id` subselect, as {#delete_all} does.
     # @example
