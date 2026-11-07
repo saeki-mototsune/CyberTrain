@@ -228,26 +228,38 @@ end
 - `install!` adds `concurrency_key TEXT NOT NULL DEFAULT ''` with `ALTER TABLE
   … ADD COLUMN` when `PRAGMA table_info` lacks it (the phase 1 upgrade path),
   and an index on `(state, kind, concurrency_key)`.
+- One key derivation everywhere: `Job.concurrency_key_for(kind, payload) ->
+  String` is `Cast.str(Cast.json_hash(payload)[key_name])` — the registry's
+  key name for the kind, the payload parsed as a json column is (an object
+  root; anything else, including a legacy non-JSON payload, is `{}`), and
+  the value through `Cast.str` (so `true` is `"true"`, `7` is `"7"`, a
+  missing or `null` field is `""`). `perform_later` calls it at enqueue time
+  (and raises `ArgumentError` when the field is missing, section 4's first
+  item); the backfill and the recovery below call the same method in Ruby
+  and bind the result, never `json_extract` in SQL, so the three paths
+  cannot disagree. A row the derivation cannot key (`""`: the field missing
+  or the payload not an object) is keyed `""`, which is its own bucket under
+  the per-kind limit, and is listed at warn with its id.
 - Upgrading rows already in the table: a `queued` row enqueued before its
   kind became keyed carries `""`, and would run beside a new row of the same
   key. So `Job.start!` (every process that runs jobs, after `recover!`)
-  **backfills** the key of every `queued` row of a keyed kind whose
-  `concurrency_key` is `""` from its payload — `UPDATE cybertrain_jobs SET
-  concurrency_key = COALESCE(json_extract(payload, '$.' || ?), '') WHERE kind
-  = ? AND state = 'queued' AND concurrency_key = ''`, one statement per keyed
-  kind, idempotent, so every later start is a no-op. A row the backfill
-  cannot key (a payload without the field) stays `""` and is listed at warn.
-  `running` rows left by the old processes (D39's deploy order stops them
-  first, but a row whose heartbeat is still fresh stays `running` until it
-  goes stale, which can be minutes after the new workers started) are keyed
-  **by the recovery itself**: `Job.recover!`'s requeue becomes one statement
-  per keyed kind that sets `state = 'queued'` and `concurrency_key =
-  COALESCE(json_extract(payload, '$.' || ?), '')` in the same UPDATE
-  (atomic, so no claim can see a requeued row with `""`), and the unkeyed
-  kinds keep today's single statement. Recovery runs at start and from
-  every scheduler tick at most once a minute, so a row that goes stale
-  after the startup backfill is still keyed the moment it is requeued. The
-  guide's upgrade notes state the order (section 16).
+  **backfills** them: `SELECT id, payload FROM cybertrain_jobs WHERE kind = ?
+  AND state = 'queued' AND concurrency_key = ''` per keyed kind, then
+  `UPDATE cybertrain_jobs SET concurrency_key = ? WHERE id = ? AND
+  concurrency_key = ''` per row with the derived key, in batches of 1000;
+  idempotent, so every later start is a no-op (a row the derivation leaves
+  `""` is listed once and not revisited). `running` rows left by the old
+  processes (D39's deploy order stops them first, but a row whose heartbeat
+  is still fresh stays `running` until it goes stale, which can be minutes
+  after the new workers started) are keyed **by the recovery itself**:
+  `Job.recover!` reads the stale rows (`id, kind, payload, attempts`), and
+  for a keyed kind requeues each with `UPDATE … SET state = 'queued',
+  concurrency_key = ? WHERE id = ? AND state = 'running' AND heartbeat_at <
+  ?` — one statement per row, so no claim can see a requeued row with the
+  wrong key; unkeyed kinds keep today's single statement. Recovery runs at
+  start and from every scheduler tick at most once a minute, so a row that
+  goes stale after the startup backfill is keyed the moment it is requeued.
+  The guide's upgrade notes state the order (section 16).
 - Rails' `duration:` (a slot that expires) is not built: a stale heartbeat
   frees the slot (D28 revised), which is the same guarantee.
 
@@ -696,8 +708,12 @@ cover the cases).
    enqueued without a key is backfilled at `Job.start!`; a `running` row
    with `""` whose heartbeat goes stale after the new worker started is
    requeued with its key set in the same statement (an old worker's row
-   simulated by a fresh then aged heartbeat); a stale row of a kind with
-   `attempts: 20` recovered on attempt 5 is requeued, not failed.
+   simulated by a fresh then aged heartbeat); the key an enqueue, a
+   backfill and a recovery derive is identical for a String, an Integer, a
+   Float and a boolean field (`true` → `"true"`), and a payload without the
+   field or a legacy non-JSON payload is keyed `""` and listed at warn, not
+   raised; a stale row of a kind with `attempts: 20` recovered on attempt 5
+   is requeued, not failed.
 3. `Cron.next_after` is tested over DST transitions in two zones; a cron
    task runs at its minute and not before; the timetable survives a
    simulated restart (`Scheduler.start!` twice on one database); `catch_up`
