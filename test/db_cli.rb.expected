@@ -67,7 +67,7 @@ usage: db (migrate|rollback [N]|status|schema|schema:dump|create|backup PATH [--
 db rollback: N must be a positive integer, got "-1"
 usage: db (migrate|rollback [N]|status|schema|schema:dump|create|backup PATH [--force]|backup DIR/ [--keep N]|vacuum|normalize)
 ok   rollback N accepts only a positive integer
-db rollback failed: no migration for applied version 4 (was its file in db/migrate deleted or renamed?)
+db rollback failed: no migration for applied version 4 (was its file in db/migrate deleted or renamed, or was it applied by Rails before the takeover?)
 Status  Migration ID    Migration Name
   down  20260101000000  CreatePosts
   down  20260101000100  CreateComments

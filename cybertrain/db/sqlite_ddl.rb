@@ -74,10 +74,10 @@ module Cybertrain
       # statements that rebuild `table_name` as `definition_after` declares
       # it. `<table>_new` is created from the new definition, the columns it
       # shares with the old table (all of its own: a rebuild only changes or
-      # drops columns) are copied with their ids, the old table is dropped
-      # and the new one renamed, then the table's indexes and `triggers_sql`
-      # (its CREATE TRIGGER statements, read before the drop, which drops
-      # them) are recreated. `sequence` is the table's sqlite_sequence value
+      # drops columns) are copied with their ids (a table without id has
+      # none), the old table is dropped and the new one renamed, then the
+      # table's indexes and `triggers_sql` (its CREATE TRIGGER statements,
+      # read before the drop, which drops them) are recreated. `sequence` is the table's sqlite_sequence value
       # before the drop (-1 for no row): it is put back when it is above the
       # copied rows' highest id, so AUTOINCREMENT never hands out the id of
       # a deleted row again. Run with foreign key enforcement off (the
@@ -91,7 +91,8 @@ module Cybertrain
         end
         temp = "#{table_name}_new"
         names = Array.new(0) { "" }
-        names << "id"
+        # A table without id (`id: false`, a join table) has none to copy.
+        names << "id" unless table.without_id?
         table.columns.each { |c| names << c.name }
         columns = names.join(", ")
         stmts << create_table(table, temp)
@@ -124,7 +125,8 @@ module Cybertrain
       # schema (and so the rebuilt table) does not model it: "a CHECK
       # constraint", "a UNIQUE constraint" (a UNIQUE INDEX is kept), "a
       # COLLATE clause", "a generated column", "an ON UPDATE action", "an ON
-      # DELETE SET DEFAULT action", "a DEFERRABLE foreign key", "a foreign
+      # DELETE SET DEFAULT action", "a DEFERRABLE foreign key", "an ON
+      # CONFLICT clause", "a MATCH clause", "a foreign
       # key to <table>(<column>)" (a column other than id), "the untyped
       # column <name>" (the copy would turn its integers into text), "a
       # primary key on <name>" (one other than id), "a non-integer primary
@@ -141,6 +143,10 @@ module Cybertrain
           when "COLLATE" then return "a COLLATE clause"
           when "GENERATED" then return "a generated column"
           when "DEFERRABLE" then return "a DEFERRABLE foreign key"
+          # A conflict clause (`NOT NULL ON CONFLICT REPLACE`, ...) and a
+          # foreign key's MATCH: Rails writes neither.
+          when "CONFLICT" then return "an ON CONFLICT clause"
+          when "MATCH" then return "a MATCH clause"
           when "ON"
             return "an ON UPDATE action" if i + 1 < tokens.size && tokens[i + 1].upcase == "UPDATE"
             if i + 3 < tokens.size && tokens[i + 1].upcase == "DELETE" && tokens[i + 2].upcase == "SET" &&
@@ -293,6 +299,7 @@ module Cybertrain
       # ArgumentError when the column or the foreign key does not exist.
       def self.table_after(table, op)
         result = Cybertrain::Schema::Table.new(table.name)
+        result.mark_without_id if table.without_id?
         found = false
         table.columns.each do |c|
           if c.name != op.name

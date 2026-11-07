@@ -457,6 +457,33 @@ test "a table Rails created rebuilds with its expression and partial indexes" do
   connection.close
 end
 
+class TagNoteNotNull < Cybertrain::Migration::Base
+  version "20260301000100"
+
+  def change
+    change_column_null :posts_tags, :note, false, "none"
+  end
+end
+
+# A join table (no id, `create_table ..., id: false` in the dump): the
+# rebuild copies its own columns only; it used to name an id it has not.
+test "a table without id rebuilds without copying an id" do
+  connection = Cybertrain::DB::Connection.new(":memory:")
+  connection.exec_script(<<~SQL)
+    CREATE TABLE "schema_migrations" ("version" varchar NOT NULL PRIMARY KEY);
+    CREATE TABLE "posts_tags" ("post_id" integer NOT NULL, "tag_id" integer NOT NULL, "note" varchar);
+    CREATE INDEX "index_posts_tags_on_post_id" ON "posts_tags" ("post_id");
+    INSERT INTO posts_tags VALUES (1, 2, NULL), (1, 3, 'kept');
+  SQL
+  assert_equal 1, Cybertrain::DB::Migrator.new(connection).migrate([["20260301000100", TagNoteNotNull.new]])
+  assert_equal "note VARCHAR 1 nil", column_info(connection, "posts_tags", "note")
+  assert_equal "", column_info(connection, "posts_tags", "id")
+  assert_equal ["none", "kept"], column_values(connection, "SELECT note AS v FROM posts_tags ORDER BY tag_id")
+  assert_equal ["index_posts_tags_on_post_id"], index_names(connection, "posts_tags")
+  assert Cybertrain::DB::SchemaDumper.dump(connection).table("posts_tags").without_id?
+  connection.close
+end
+
 test "reversible keeps the written order of each block's statements, both ways" do
   connection = blog
   migrate_blog(connection, OrderedSteps.new)
@@ -571,6 +598,10 @@ test "a rebuild refuses a table with constructs the schema does not model" do
                refusal("CREATE TABLE things (id TEXT PRIMARY KEY, note TEXT)")
   assert_equal "#{prefix}the table option WITHOUT#{suffix}",
                refusal("CREATE TABLE things (id INTEGER PRIMARY KEY, note TEXT) WITHOUT ROWID")
+  assert_equal "#{prefix}an ON CONFLICT clause#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, code TEXT NOT NULL ON CONFLICT REPLACE DEFAULT '')")
+  assert_equal "#{prefix}a MATCH clause#{suffix}",
+               refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, post_id INTEGER REFERENCES posts(id) MATCH FULL)")
   assert_equal "#{prefix}a DEFERRABLE foreign key#{suffix}",
                refusal("CREATE TABLE things (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, post_id INTEGER REFERENCES posts(id) DEFERRABLE INITIALLY DEFERRED)")
 end

@@ -57,8 +57,9 @@ module Cybertrain
       # migration that overrides `down` directly is honored the same way).
       # Returns the number reverted. Raises DB::Error before reverting
       # anything when one of those versions has no entry in `migrations`
-      # (its file was deleted or renamed), as Rails'
-      # UnknownMigrationVersionError does, instead of silently skipping it.
+      # (its file was deleted or renamed, or Rails applied it before the
+      # takeover), as Rails' UnknownMigrationVersionError does, instead of
+      # silently skipping it.
       # Raises Migration::IrreversibleMigration ("version N is irreversible:
       # ..."), also before reverting anything, when one of them cannot be
       # rolled back: a `change` that recorded an operation with no automatic
@@ -71,7 +72,9 @@ module Cybertrain
         end
         targets.each do |version|
           if find_migration(migrations, version).nil?
-            raise Error, "no migration for applied version #{version} (was its file in db/migrate deleted or renamed?)"
+            message = "no migration for applied version #{version} (was its file in db/migrate deleted or renamed, " \
+                      "or was it applied by Rails before the takeover?)"
+            raise Error, message
           end
         end
         targets.each do |version|

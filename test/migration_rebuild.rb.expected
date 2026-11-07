@@ -89,6 +89,9 @@ ok   a foreign key violation found before the commit rolls the version back
 == 20260301000100 TitleNotNull: migrating
 done
 ok   a table Rails created rebuilds with its expression and partial indexes
+== 20260301000100 TagNoteNotNull: migrating
+done
+ok   a table without id rebuilds without copying an id
 == 20260301000000 CreateBlog: migrating
 done
 == 20260301000100 OrderedSteps: migrating
@@ -174,6 +177,12 @@ done
 == 20260301000000 CreateBlog: migrating
 done
 == 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
+== 20260301000000 CreateBlog: migrating
+done
+== 20260301000200 RebuildThings: migrating
 ok   a rebuild refuses a table with constructs the schema does not model
 == 20260301000000 CreateBlog: migrating
 done
@@ -188,4 +197,4 @@ done
 == 20260301000200 RebuildThings: migrating
 done
 ok   a rebuild ignores those words where they are quoted, and takes a REFERENCES to id
-24 tests, 141 assertions, 0 failures
+25 tests, 153 assertions, 0 failures
