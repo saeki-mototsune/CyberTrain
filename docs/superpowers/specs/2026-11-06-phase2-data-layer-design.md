@@ -546,18 +546,21 @@ validates :email, uniqueness: { scope: :account_id, case_sensitive: false }, on:
   authenticated encryption of a column wants), a fresh 12-byte random nonce
   per call, the payload `"1:" + Base64(nonce ‖ ciphertext ‖ tag)` (the
   leading `1` is the payload format version). A wrong key, a changed byte or
-  an unknown version raises `Cybertrain::Encryptor::Error`. The framework
-  already links openssl for outbound TLS (cybertrain/net/tls.rb), so D8's
-  reservation about openssl is not reopened.
+  an unknown version raises `Cybertrain::Encryptor::Error`. (Amended after
+  implementation, section 18: openssl stays opt-in. `require "cybertrain"`
+  does not link it; cybertrain/encryptor.rb is required by gen/app.rb when a
+  model declares `encrypts`, and by hand for `Crypto.encrypt`, as
+  cybertrain/net/tls.rb is for outbound TLS.)
 - `Cybertrain::Crypto.encrypt(text)` / `decrypt(text)` use the configured key.
 - Keys: `CYBERTRAIN_ENCRYPTION_KEY`, 64 hex characters (32 bytes), read into
   `Config#encryption_key`. It is **not derived from `secret_key_base`**:
   rotating the session secret must not make stored data unreadable (Rails
   keeps them apart for the same reason). `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS`
   (comma-separated hex keys) is tried for decryption only, so a key can be
-  rotated by re-saving. An application that declares `encrypts` or calls
-  `Crypto.encrypt` without a key fails at boot with the configuration check
-  (`cybertrain/config.rb`'s existing validation), naming the variable and how
+  rotated by re-saving. An application that declares `encrypts` without a
+  key fails at boot with the configuration check (one that only calls
+  `Crypto.encrypt` raises `Encryptor::Error` at the call instead; amended,
+  section 18), `cybertrain/config.rb`'s existing validation, naming the variable and how
   to make one: `cybertrain secret` prints a hex key (the existing command
   prints a session secret; it gains `--hex 32`, or the guide shows `openssl
   rand -hex 32`). `cybertrain new` writes the variable, commented, into

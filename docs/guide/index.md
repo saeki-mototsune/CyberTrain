@@ -9,7 +9,7 @@ Everything CyberTrain's documentation covers beyond the API reference: the tutor
 - [**Tutorial**](tutorial.md) — Build the blog step by step: scaffold, comments, authentication, uploads, deployment
 - [**Installing**](install.md) — Requirements, the `cybertrain` command, how Spinel and the framework are installed
 - [**How it works**](how-it-works.md) — Build-time code generation, interpreted views, the server, the development loop, and a table of the differences from Rails
-- [**Models and the database**](models.md) — Migrations, queries beyond `where`, pagination, transactions, column names, ordering
+- [**Models and the database**](models.md) — Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database
 - [**Requests**](requests.md) — Rate limiting, the client address, parameterised headers, query strings and request bodies
 - [**Configuration**](configuration.md) — `config/app.rb`, environment variables, time zones
 - [**Background work and operations**](background-and-operations.md) — Jobs on several threads, scheduled tasks, the `worker` and `feeds` process roles, the console, backups, the health check

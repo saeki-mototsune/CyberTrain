@@ -207,14 +207,17 @@ end
 # presence validation; add anything past that yourself.
 class Article
   validates :title, presence: true
+  validates :title, uniqueness: true
   validates :body, presence: true, length: { minimum: 10 }
 end
 ```
 
 `class Article` has no superclass written: the `Cybertrain::Model` superclass,
 columns and finders come from `gen/models/article.rb`. A failed save reports
-messages such as "Title can't be blank" and "Body is too short (minimum is 10
-characters)".
+messages such as "Title can't be blank", "Title has already been taken" and
+"Body is too short (minimum is 10 characters)". The other validators
+(`format`, `inclusion`, `numericality`, ...) are in
+[Validations](models.md#validations).
 
 <!-- step 06 #articles-controller stage: You write · `app/controllers/` -->
 ## The ArticlesController
@@ -342,9 +345,9 @@ cybertrain db migrate    # the scaffold wrote a migration for the comments table
 ```
 
 `article:references` adds an `article_id` column, index and foreign key —
-enough for `Article`/`Comment` to get their association; there's no
-`has_many`/`belongs_to` to write, `spin run gen` reads it off the foreign key.
-The resulting schema:
+enough for `Article`/`Comment` to get their association: `spin run gen` reads
+`Article#comments` and `Comment#article` off the foreign key. The resulting
+schema:
 
 ```ruby db/schema.rb (excerpt)
   s.create_table "comments" do |t|
@@ -366,13 +369,13 @@ step replaces.
 > [!EXAMPLE] Deleting an article with comments
 > ### Deleting an article with comments
 >
-> Associations come from foreign keys only, and `dependent:` is not implemented.
-> The example adds a `before_destroy` callback that takes the record explicitly:
+> The foreign key refuses to delete an article that still has comments.
+> Declare the association, as in Rails, and `destroy` removes them first, in
+> its transaction:
 >
 > ```ruby app/models/article.rb (excerpt)
->   # Rails' `has_many :comments, dependent: :destroy`: the foreign key
->   # would refuse to delete an article that still has comments.
->   before_destroy { |article| Comment.where(article_id: article.id).delete_all }
+>   # each comment's own destroy runs, callbacks included
+>   has_many :comments, dependent: :destroy
 > ```
 
 <!-- step 09 #nested-routes stage: You write · `config/routes.rb` -->
@@ -423,7 +426,7 @@ class CommentsController < ApplicationController
   end
 
   def destroy
-    @comment = Comment.where(article_id: @article.id).find(params[:id])
+    @comment = @article.comments.find(params[:id])
     @comment.destroy
     flash[:notice] = "Comment was successfully destroyed."
     redirect_to article_path(@article), status: :see_other
@@ -447,14 +450,18 @@ Then add validations to the comment model:
 class Comment
   validates :commenter, presence: true
   validates :body, presence: true
+
+  belongs_to :article
 end
 ```
 
+The declared `belongs_to` also makes a comment without an article invalid
+("Article id can't be blank"), before the database would refuse it.
+
 > [!NOTE]
-> `Article#comments` is an Array here, so Rails'
-> `@article.comments.find(params[:id])` becomes
-> `Comment.where(article_id: @article.id).find(params[:id])`. A comment under
-> the wrong article returns 404.
+> `Article#comments` is the comments' relation, so Rails'
+> `@article.comments.find(params[:id])` works as written in `destroy`, and
+> a comment under the wrong article returns 404.
 
 <!-- step 11 #views stage: Run time · `app/views/`, read from disk in development, embedded by `cybertrain build` -->
 ## Views and partials
@@ -523,6 +530,29 @@ Both `button_to ... [@article, comment]` and
 > block parameters. A strict-locals comment such as `<%# locals: (comment:) %>`
 > takes no default values. A partial gets a copy of the caller's environment, so
 > `@article` is visible in `comments/_form`.
+
+> [!EXAMPLE] The index with comment counts and a date filter
+> ### The index with comment counts and a date filter
+>
+> examples/blog lists the newest articles first with their comment counts,
+> in two queries however many articles there are, and filters them by date:
+>
+> ```ruby app/models/article.rb (excerpt) · app/controllers/articles_controller.rb (excerpt)
+>   scope :recent, -> { order(created_at: :desc) }
+>
+>   def index
+>     articles = Article.recent.includes(:comments)
+>     from = Cybertrain::Cast.date_or_nil(params[:from])
+>     unless from.nil?
+>       articles = articles.where_between(:created_at, Time.utc(from.year, from.month, from.day), nil)
+>     end
+>     @articles = articles.to_a
+>   end
+> ```
+>
+> In the view, `article.comments.size` answers from the preloaded comments.
+> Rails' `where(created_at: from..)` is `where_between` here, because Spinel
+> builds no Range of Times ([Conditions and finders](models.md#conditions-and-finders)).
 
 <!-- step 12 #test stage: Build time · `cybertrain spin test` -->
 ## Test it
@@ -1115,8 +1145,9 @@ a clean stop and the database kept on its volume, and loads
   name/line.
 - A misspelled attribute in a view renders blank instead of raising; this is a
   known gap.
-- Associations come from schema foreign keys only; no `has_many :through`,
-  `includes`, `pluck`, `dependent:`, enums, STI or polymorphic associations.
+- Associations come from foreign keys or one-line declarations; no
+  `has_many :through`, nested `includes`, enums, STI or polymorphic
+  associations.
 - No `namespace`, `respond_to`/formats, `constraints` or `mount`;
   `render json:` is minimal.
 - Only the first string field gets a default presence validation in a

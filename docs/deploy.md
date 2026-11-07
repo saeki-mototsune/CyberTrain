@@ -803,6 +803,24 @@ git push
 サーバーでは `gem install` のあとに `notes` ユーザーで `cybertrain setup` を実行しておくと（3-4）、
 デプロイの途中でビルドを待たずに済みます。
 
+0.4 のリリースから更新するときは、データベースの日時も一度だけ書き換えます。0.4 は
+`2026-10-05T09:00:00Z` の形で保存していましたが、その後のリリースは Rails と同じ
+`2026-10-05 09:00:00.000000` の形で保存し、二つの形が混ざったカラムは形の順に並んでしまいます
+（[モデルのガイド](guide/models.md#datetimes-and-db-normalize)）。その一回のデプロイでは
+`~/deploy.sh` の `dist/notes migrate` のあとに二行足します:
+
+```sh
+echo "==> Rewriting 0.4 datetimes"
+dist/notes db normalize
+```
+
+そして先にアプリを止めておきます。古いリリースがその間に書き込まないようにするためです（sudo できる
+ユーザーで `sudo systemctl stop notes`。新しいリリースはデプロイの再起動が起動します）。
+`db normalize` は日時のカラムごとに一行を表示し、二回実行しても問題ありません。書き換えられない
+テーブル（`WITHOUT ROWID` のテーブル）に古い値が残っていると終了コード 1 で終わり、切り替えの前に
+デプロイが止まります。その行を手で直してからもう一度デプロイしてください。二行はそのあと残しておいても
+構いません。書き換えるものが見つからないだけです。
+
 ### 秘密鍵を変える
 
 `/etc/notes/notes.env` の `CYBERTRAIN_SECRET_KEY_BASE` を新しい値（`openssl rand -hex 32`）に
