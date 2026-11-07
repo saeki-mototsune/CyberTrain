@@ -414,6 +414,23 @@ test "scopes from app/models/post.rb run as class methods and chain on a relatio
   assert_equal 0, Post.min_views(6).count
 end
 
+test "the typed readers, where_sql and increment are class methods too" do
+  reset_tables
+  a = Post.create(title: "A", views: 3)
+  b = Post.create(title: "B", views: 4)
+  assert_equal [a.id, b.id], Post.pluck_int(:id)
+  assert_equal ["A", "B"], Post.pluck_str(:title)
+  assert_equal [3.0, 4.0], Post.pluck_float(:views)
+  assert_equal "B", Post.where_sql("views > ?", [3]).first.title
+  assert_equal "A", Post.where_sql("title = ?", ["A"]).first.title
+  assert_equal 7, Post.sum_int(:views)
+  assert_equal 7.0, Post.sum_float(:views)
+  assert_equal({ "3" => 1, "4" => 1 }, Post.count_by(:views))
+  assert_equal({ "A" => 1, "B" => 1 }, Post.count_by_sql("title"))
+  assert_equal 2, Post.increment(:views)
+  assert_equal 9, Post.sum_int(:views)
+end
+
 # ---- declared associations (app/models/post.rb and comment.rb) ----------
 
 DESTROYED_COMMENT_IDS = Array.new(0) { 0 }

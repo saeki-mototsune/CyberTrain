@@ -21,6 +21,7 @@ ok   a NOT NULL date: invalid assigned text stays nil and the save fails validat
 ok   a NOT NULL date with a default: a fresh record holds the default, invalid text fails validation
 ok   update_all rounds a decimal to its scale as save does, and nil stores NULL
 ok   scopes from app/models/post.rb run as class methods and chain on a relation
+ok   the typed readers, where_sql and increment are class methods too
 ok   post.comments is the comments' Relation: it chains, counts and orders
 ok   comment.post is read once per foreign key, again when the key changes, and after reload
 ok   belongs_to :post without optional: validates post_id
@@ -34,4 +35,4 @@ ok   an encrypted column is stored as a payload and read back as the text; nil s
 ok   where, update_all and the bulk writes refuse an encrypted column
 ok   a stored payload made with another key raises Encryptor::Error on read
 ok   unique_value_taken? on an encrypted column raises, case-sensitive or not
-36 tests, 263 assertions, 0 failures
+37 tests, 274 assertions, 0 failures

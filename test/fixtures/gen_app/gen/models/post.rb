@@ -370,6 +370,15 @@ class Post < Cybertrain::Model
   def self.having_sql(...) = all.having_sql(...)
   def self.includes(...) = all.includes(...)
   def self.preload(...) = all.preload(...)
+  def self.where_sql(...) = all.where_sql(...)
+  def self.pluck_str(...) = all.pluck_str(...)
+  def self.pluck_int(...) = all.pluck_int(...)
+  def self.pluck_float(...) = all.pluck_float(...)
+  def self.count_by(...) = all.count_by(...)
+  def self.count_by_sql(...) = all.count_by_sql(...)
+  def self.sum_int(...) = all.sum_int(...)
+  def self.sum_float(...) = all.sum_float(...)
+  def self.increment(...) = all.increment(...)
   def self.recent = all.recent
   def self.min_views(n) = all.min_views(n)
 

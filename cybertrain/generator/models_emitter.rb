@@ -742,14 +742,19 @@ module Cybertrain
       end
 
       # The query methods the model class answers by delegating to `all`:
-      # each is emitted as `def self.x(...) = all.x(...)`. Later work adds
-      # its names here.
+      # each is emitted as `def self.x(...) = all.x(...)`, so `Article.x`
+      # reads as in Rails. Every chain, finder, reader and aggregate of the
+      # Relation is here; left out are `or` and `not` (they take or follow
+      # a relation), `page` (a Relation's pager), and the Array-like readers
+      # `to_a`, `each`, `size`, `empty?`, which Rails' model class does not
+      # answer either.
       DELEGATED = %w[where where_like where_between order order_sql limit offset distinct none ids find find_by find_by!
                      find_or_create_by find_or_initialize_by first last count exists? update_all delete_all
                      destroy_all find_each pluck pick minimum_int minimum_float minimum_time maximum_int
                      maximum_float maximum_time average minimum_int_by minimum_float_by minimum_time_by
                      maximum_int_by maximum_float_by maximum_time_by average_by sum_int_by sum_float_by
-                     sum_float_sql minimum_float_sql maximum_float_sql average_sql having_sql includes preload]
+                     sum_float_sql minimum_float_sql maximum_float_sql average_sql having_sql includes preload
+                     where_sql pluck_str pluck_int pluck_float count_by count_by_sql sum_int sum_float increment]
 
       def self.emit_persistence(model, table, scopes, encrypted)
         src = +""

@@ -379,6 +379,15 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       def self.having_sql(...) = all.having_sql(...)
       def self.includes(...) = all.includes(...)
       def self.preload(...) = all.preload(...)
+      def self.where_sql(...) = all.where_sql(...)
+      def self.pluck_str(...) = all.pluck_str(...)
+      def self.pluck_int(...) = all.pluck_int(...)
+      def self.pluck_float(...) = all.pluck_float(...)
+      def self.count_by(...) = all.count_by(...)
+      def self.count_by_sql(...) = all.count_by_sql(...)
+      def self.sum_int(...) = all.sum_int(...)
+      def self.sum_float(...) = all.sum_float(...)
+      def self.increment(...) = all.increment(...)
 
       def self.create(attrs = {})
         rec = Post.new(attrs)
@@ -805,6 +814,15 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       def self.having_sql(...) = all.having_sql(...)
       def self.includes(...) = all.includes(...)
       def self.preload(...) = all.preload(...)
+      def self.where_sql(...) = all.where_sql(...)
+      def self.pluck_str(...) = all.pluck_str(...)
+      def self.pluck_int(...) = all.pluck_int(...)
+      def self.pluck_float(...) = all.pluck_float(...)
+      def self.count_by(...) = all.count_by(...)
+      def self.count_by_sql(...) = all.count_by_sql(...)
+      def self.sum_int(...) = all.sum_int(...)
+      def self.sum_float(...) = all.sum_float(...)
+      def self.increment(...) = all.increment(...)
 
       def self.create(attrs = {})
         rec = Comment.new(attrs)
@@ -1170,6 +1188,15 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def self.having_sql(...) = all.having_sql(...)
       def self.includes(...) = all.includes(...)
       def self.preload(...) = all.preload(...)
+      def self.where_sql(...) = all.where_sql(...)
+      def self.pluck_str(...) = all.pluck_str(...)
+      def self.pluck_int(...) = all.pluck_int(...)
+      def self.pluck_float(...) = all.pluck_float(...)
+      def self.count_by(...) = all.count_by(...)
+      def self.count_by_sql(...) = all.count_by_sql(...)
+      def self.sum_int(...) = all.sum_int(...)
+      def self.sum_float(...) = all.sum_float(...)
+      def self.increment(...) = all.increment(...)
 
       def self.create(attrs = {})
         rec = Flag.new(attrs)
@@ -1569,7 +1596,8 @@ test "the model class delegates every DELEGATED query method to all, and has cre
                   destroy_all find_each pluck pick minimum_int minimum_float minimum_time maximum_int
                   maximum_float maximum_time average minimum_int_by minimum_float_by minimum_time_by
                   maximum_int_by maximum_float_by maximum_time_by average_by sum_int_by sum_float_by
-                  sum_float_sql minimum_float_sql maximum_float_sql average_sql having_sql includes preload], names
+                  sum_float_sql minimum_float_sql maximum_float_sql average_sql having_sql includes preload
+                  where_sql pluck_str pluck_int pluck_float count_by count_by_sql sum_int sum_float increment], names
   assert_lines(flag, ["def having_sql(s, b = []) = (set_having_sql(s, b); self)"])
   names.each { |name| assert_lines(flag, ["def self.#{name}(...) = all.#{name}(...)"]) }
   assert_includes flag, "  def self.create!(attrs = {})\n    rec = Flag.new(attrs)\n    rec.save!\n    rec\n  end\n"
@@ -2250,7 +2278,7 @@ test "a scope becomes a Relation method and a class method delegating to all" do
   assert_includes relation, "    nil\n  end\n\n  def recent = (order(created_at: :desc))\n"
   assert_includes relation, "  def titled(t) = (where(title: t))\nend\n"
   model = post[post.index("class Post < Cybertrain::Model"), post.size]
-  assert_includes model, "  def self.preload(...) = all.preload(...)\n  def self.recent = all.recent\n"
+  assert_includes model, "  def self.increment(...) = all.increment(...)\n  def self.recent = all.recent\n"
   # No scopes: the generated files do not change.
   assert_equal EXPECTED_POST, emit_for("posts", ["summary"])
 end

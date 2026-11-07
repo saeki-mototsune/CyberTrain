@@ -100,8 +100,12 @@ class Article < Cybertrain::Model
   # `pick`, `minimum_int`, `minimum_float`, `minimum_time`, `maximum_int`,
   # `maximum_float`, `maximum_time`, `average`, their `_by` forms,
   # `sum_int_by`, `sum_float_by`, `sum_float_sql`, `minimum_float_sql`,
-  # `maximum_float_sql`, `average_sql`, `having_sql`, `includes` and
-  # `preload`. The ones documented here are the common ones.
+  # `maximum_float_sql`, `average_sql`, `having_sql`, `includes`,
+  # `preload`, `where_sql`, `pluck_str`, `pluck_int`, `pluck_float`,
+  # `count_by`, `count_by_sql`, `sum_int`, `sum_float` and `increment`. Not
+  # delegated: `or` and `not` (they take or follow a relation), `page`, and
+  # `to_a`, `each`, `size`, `empty?`. The ones documented here are the
+  # common ones.
   # @see ArticleRelation#where
   # @example
   #   Article.where(title: "Hello").first
