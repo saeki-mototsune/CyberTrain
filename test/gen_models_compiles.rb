@@ -227,7 +227,7 @@ test "to_json of a generated model" do
   at = Time.utc(2026, 9, 25, 8, 0, 0)
   post = Post.create(title: "JSON", created_at: at, updated_at: at)
   expected = "{\"id\":#{post.id},\"title\":\"JSON\",\"body\":null,\"views\":0," \
-             "\"price\":null,\"comments_count\":0,\"meta\":null,\"published_on\":null,\"secret_note\":null," \
+             "\"price\":null,\"comments_count\":0,\"meta\":null,\"published_on\":null,\"secret_note\":null,\"thumbnail\":null," \
              "\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
   assert_equal expected, post.to_json
   comment = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "b", created_at: at, updated_at: at)
@@ -728,6 +728,32 @@ test "upsert and increment refuse an encrypted column; upsert casts by column ty
                               update: { title: "excluded.title" })
   assert_equal "Up2", Post.find(900).title
   assert_equal 2.35, Post.find(900).price
+end
+
+# posts.thumbnail is a nullable binary column: its writer keeps nil and
+# unwraps an assigned DB::Blob (it used to store the Blob's inspect text).
+test "a nullable binary column stores the bytes of a Blob or a String, and nil as NULL" do
+  reset_tables
+  wrapped = Post.create(title: "Wrapped", thumbnail: Cybertrain::DB::Blob.new("png-bytes"))
+  plain = Post.create(title: "Plain", thumbnail: "raw-bytes")
+  empty = Post.create(title: "Empty")
+  sql = "SELECT thumbnail AS v, typeof(thumbnail) AS t FROM posts WHERE id = ?"
+  raw = Cybertrain::DB.with { |c| c.execute(sql, [wrapped.id]) }
+  assert_equal "png-bytes", Cybertrain::Cast.str(raw[0]["v"])
+  assert_equal "blob", Cybertrain::Cast.str(raw[0]["t"])
+  assert_equal "png-bytes", Post.find(wrapped.id).thumbnail
+  raw = Cybertrain::DB.with { |c| c.execute(sql, [plain.id]) }
+  assert_equal "raw-bytes", Cybertrain::Cast.str(raw[0]["v"])
+  assert_equal "blob", Cybertrain::Cast.str(raw[0]["t"])
+  raw = Cybertrain::DB.with { |c| c.execute(sql, [empty.id]) }
+  assert_equal "null", Cybertrain::Cast.str(raw[0]["t"])
+  assert_nil Post.find(empty.id).thumbnail
+  # update_all and assignment take a Blob the same way.
+  Post.where(id: plain.id).update_all(thumbnail: Cybertrain::DB::Blob.new("swapped"))
+  assert_equal "swapped", Post.find(plain.id).thumbnail
+  found = Post.find(empty.id)
+  assert found.update(thumbnail: Cybertrain::DB::Blob.new("later"))
+  assert_equal "later", Post.find(empty.id).thumbnail
 end
 
 test "a stored payload made with another key raises Encryptor::Error on read" do

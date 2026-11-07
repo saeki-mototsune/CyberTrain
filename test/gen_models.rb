@@ -1437,7 +1437,10 @@ test "decimal reads as Float, json as Hash and date as Date" do
     'when :meta then @meta = Cybertrain::Cast.hash_or_nil(value)',
     'when :extras then @extras = Cybertrain::Cast.json_hash(value)',
     'when :day then @day = Cybertrain::Cast.date_or_nil(value)',
-    'when :due_on then @due_on = Cybertrain::Cast.date_or_nil(value)'
+    'when :due_on then @due_on = Cybertrain::Cast.date_or_nil(value)',
+    # A nullable binary column keeps nil and unwraps an assigned DB::Blob.
+    '@data = Cybertrain::Cast.binary_or_nil(row["data"])',
+    'when :data then @data = Cybertrain::Cast.binary_or_nil(value)'
   ])
   # A NOT NULL date: Cast.date reads a stored cell (a corrupt one is the
   # epoch), date_or_nil casts an assignment (invalid input stays nil, so

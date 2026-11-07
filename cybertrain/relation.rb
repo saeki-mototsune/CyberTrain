@@ -348,7 +348,7 @@ module Cybertrain
       when :datetime then Cast.to_sql(Cast.time_or_nil(v))
       when :date then Cast.to_sql(Cast.date_or_nil(v))
       when :json then Cast.json_text(Cast.hash_or_nil(v))
-      when :binary then DB::Blob.wrap(Cast.str_or_nil(v))
+      when :binary then DB::Blob.wrap(Cast.binary_or_nil(v))
       when :string, :text then Cast.str_or_nil(v)
       else Cast.to_sql(v)
       end

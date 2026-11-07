@@ -949,9 +949,9 @@ module Cybertrain
         when :datetime then "time_or_nil"
         when :date then null ? "date_or_nil" : "date"
         when :json then null ? "hash_or_nil" : "json_hash"
-        # A String of raw bytes, like a text column (Cast.binary is for
-        # raw-SQL callers; it reads nil as "", which a nullable one must not).
-        when :binary then null ? "str_or_nil" : "binary"
+        # A String of raw bytes; binary_or_nil keeps a nullable one's nil
+        # (Cast.binary reads nil as ""), and both unwrap an assigned DB::Blob.
+        when :binary then null ? "binary_or_nil" : "binary"
         else null ? "str_or_nil" : "str"
         end
       end

@@ -4,7 +4,8 @@
 # phase-2 types: a nullable decimal with a scale, a nullable json and a
 # nullable date on posts, and a NOT NULL json, a NOT NULL date and a NOT
 # NULL date with a default on comments; posts.comments_count is the counter
-# of Comment's `belongs_to :post, counter_cache: true`.
+# of Comment's `belongs_to :post, counter_cache: true`; posts.thumbnail is a
+# nullable binary column.
 Cybertrain::Schema.define(version: "20260924120000") do |s|
   s.create_table "comments" do |t|
     t.references :post
@@ -26,6 +27,7 @@ Cybertrain::Schema.define(version: "20260924120000") do |s|
     t.json "meta"
     t.date "published_on"
     t.text "secret_note"
+    t.binary "thumbnail"
     t.timestamps
   end
 end

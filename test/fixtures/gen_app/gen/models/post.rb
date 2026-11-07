@@ -12,6 +12,7 @@ class PostRelation < Cybertrain::Relation
     when "created_at", "updated_at" then :datetime
     when "published_on" then :date
     when "meta" then :json
+    when "thumbnail" then :binary
     when "title" then :string
     when "body", "secret_note" then :text
     else :unknown
@@ -24,6 +25,8 @@ class PostRelation < Cybertrain::Relation
     else -1
     end
   end
+
+  def binary_column?(name) = column_type(name) == :binary
 
   def encrypted_column?(name) = name == "secret_note"
 
@@ -225,10 +228,10 @@ end
 
 class Post < Cybertrain::Model
   def self.table_name = "posts"
-  def self.column_names = ["id", "title", "body", "views", "price", "comments_count", "meta", "published_on", "secret_note", "created_at", "updated_at"]
+  def self.column_names = ["id", "title", "body", "views", "price", "comments_count", "meta", "published_on", "secret_note", "thumbnail", "created_at", "updated_at"]
   def model_name = "Post"
 
-  attr_accessor :title, :body, :views, :price, :comments_count, :meta, :published_on, :secret_note, :created_at, :updated_at
+  attr_accessor :title, :body, :views, :price, :comments_count, :meta, :published_on, :secret_note, :thumbnail, :created_at, :updated_at
 
   def initialize(attrs = {})
     super()
@@ -240,6 +243,7 @@ class Post < Cybertrain::Model
     @meta = nil
     @published_on = nil
     @secret_note = nil
+    @thumbnail = nil
     @created_at = nil
     @updated_at = nil
     @comments_preloaded = nil
@@ -262,6 +266,7 @@ class Post < Cybertrain::Model
     @meta = Cybertrain::Cast.hash_or_nil(row["meta"])
     @published_on = Cybertrain::Cast.date_or_nil(row["published_on"])
     @secret_note = Cybertrain::Crypto.decrypt_or_nil(Cybertrain::Cast.str_or_nil(row["secret_note"]))
+    @thumbnail = Cybertrain::Cast.binary_or_nil(row["thumbnail"])
     @created_at = Cybertrain::Cast.time_or_nil(row["created_at"])
     @updated_at = Cybertrain::Cast.time_or_nil(row["updated_at"])
     mark_persisted!
@@ -279,6 +284,7 @@ class Post < Cybertrain::Model
     when :meta then @meta
     when :published_on then @published_on
     when :secret_note then @secret_note
+    when :thumbnail then @thumbnail
     when :created_at then @created_at
     when :updated_at then @updated_at
     else nil
@@ -295,6 +301,7 @@ class Post < Cybertrain::Model
     when :meta then @meta = Cybertrain::Cast.hash_or_nil(value)
     when :published_on then @published_on = Cybertrain::Cast.date_or_nil(value)
     when :secret_note then @secret_note = Cybertrain::Cast.str_or_nil(value)
+    when :thumbnail then @thumbnail = Cybertrain::Cast.binary_or_nil(value)
     when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
     when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
     end
@@ -316,6 +323,7 @@ class Post < Cybertrain::Model
       "meta" => Cybertrain::Cast.json_text(@meta),
       "published_on" => Cybertrain::Cast.to_sql(@published_on),
       "secret_note" => Cybertrain::Crypto.encrypt_or_nil(@secret_note),
+      "thumbnail" => Cybertrain::DB::Blob.wrap(@thumbnail),
       "created_at" => Cybertrain::Cast.to_sql(@created_at),
       "updated_at" => Cybertrain::Cast.to_sql(@updated_at)
     }
@@ -404,6 +412,7 @@ class Post < Cybertrain::Model
     "meta" => :json,
     "published_on" => :date,
     "secret_note" => :text,
+    "thumbnail" => :binary,
     "created_at" => :datetime,
     "updated_at" => :datetime
   }

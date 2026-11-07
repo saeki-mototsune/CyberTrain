@@ -67,6 +67,21 @@ module Cybertrain
       end
     end
 
+    # {Cast.binary} for a nullable binary column: nil stays nil (NULL); a
+    # String is its bytes, a {DB::Blob} its blob_bytes (so an assigned Blob
+    # binds its bytes, never its inspect text), anything else `to_s`.
+    # @param v [String, DB::Blob, nil]
+    # @return [String, nil]
+    # @api public
+    def self.binary_or_nil(v)
+      case v
+      when nil then nil
+      when String then v
+      when DB::Blob then v.blob_bytes
+      else v.to_s
+      end
+    end
+
     def self.float(v)
       case v
       when Float then v

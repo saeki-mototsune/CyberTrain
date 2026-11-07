@@ -47,6 +47,8 @@ class ItemRelation < Cybertrain::Relation
     self
   end
 
+  def where_between(c, from, to, exclude_end: false) = (add_where_between(c, from, to, exclude_end); self)
+
   def order(o)
     case o
     when Hash then set_order_hash(o)
@@ -370,6 +372,7 @@ test "update_all casts every value by its column's type, as save and the bulk wr
   assert_equal "text", stored_type("body", "a")
   assert_equal "12", stored("body", "a")
   assert_equal "blob", stored_type("data", "a")
+  assert_equal "raw", stored("data", "a")
   # Typed values, and the stored shapes they take.
   at = Time.utc(2026, 10, 5, 9, 0, 0)
   Item.where(code: "b").update_all(ok: false, meta: { "x" => 1 }, on: Date.new(2026, 1, 5), at: at,
@@ -379,7 +382,15 @@ test "update_all casts every value by its column's type, as save and the bulk wr
   assert_equal "2026-01-05", stored("on", "b")
   assert_equal "2026-10-05 09:00:00.000000", stored("at", "b")
   assert_equal "blob", stored_type("data", "b")
+  # A Blob binds its bytes (it used to bind its inspect text).
+  assert_equal "b", stored("data", "b")
   assert_equal 2, Item.where(ok: false).count
+  # The stored date and datetime text is what where and where_between
+  # compare against: the "T...Z" text update_all used to store sorted after
+  # every " " time of that day and fell out of this window.
+  assert_equal "b", Item.where(on: Date.new(2026, 1, 5)).pluck_str(:code)[0]
+  window = Item.all.where_between(:at, Time.utc(2026, 10, 5, 8, 0, 0), Time.utc(2026, 10, 5, 10, 0, 0))
+  assert_equal ["a", "b"], window.order("code").pluck_str(:code)
   Item.where(code: "b").update_all(meta: "{\"y\":[2]}", on: "2026-02-03", ok: "1")
   assert_equal "{\"y\":[2]}", stored("meta", "b")
   assert_equal "2026-02-03", stored("on", "b")
@@ -407,10 +418,14 @@ end
 
 test "bulk rows bind a boolean as 1/0 and a binary value as a BLOB" do
   reset_items
-  Item.insert_all([{ code: "a", ok: "false", data: "raw" }, { code: "b", ok: true, data: nil }])
+  Item.insert_all([{ code: "a", ok: "false", data: "raw" }, { code: "b", ok: true, data: nil },
+                   { code: "c", ok: false, data: Cybertrain::DB::Blob.new("wrapped") }])
   assert_equal "0", stored("ok", "a")
   assert_equal "integer", stored_type("ok", "a")
   assert_equal "blob", stored_type("data", "a")
+  assert_equal "raw", stored("data", "a")
+  assert_equal "blob", stored_type("data", "c")
+  assert_equal "wrapped", stored("data", "c")
   assert_equal "1", stored("ok", "b")
   assert_equal "null", stored_type("data", "b")
   assert_equal "a", Item.where(ok: false).pluck_str(:code)[0]
