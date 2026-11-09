@@ -696,7 +696,9 @@ spikes/NOTES.md):**
    The generated C has no `sp_raise_nomethod(sp_nomethod_msg("getbyte"` or
    `("each_byte"` (nor any `byte…` name); a control program with a
    user-defined `getbyte` and a boxed String receiver has none either and
-   prints 97 (rule 62's status on this build). A gzip body served plain
+   prints 97: on this build the grep is silent for the control too, so it
+   is a regression check against rule 62 coming back, not a live detector
+   of it. A gzip body served plain
    and chunked by `Test::HttpReceiver` comes through `HttpClient#get` and
    inflates with `GzipFFI.gunzip`; garbage and an over-limit body raise
    `BodyUndecodable` / `BodyTooLarge`.
