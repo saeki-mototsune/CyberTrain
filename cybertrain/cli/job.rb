@@ -54,8 +54,13 @@ module Cybertrain
       def self.generate(root, name, retries, force = false)
         GeneratedFiles.require_app!(root)
 
-        segments = GeneratedFiles.name_segments(name.delete_suffix("_job"), "job")
-        segments[segments.size - 1] = "#{segments.last}_job"
+        # Underscored first, so "SendDigestJob" and "send_digest_job" are
+        # both send_digest_job.rb.
+        segments = GeneratedFiles.name_segments(name, "job")
+        stem = segments.last.delete_suffix("_job")
+        raise InvalidArgument, "bad job name '#{name}'" if stem.empty?
+
+        segments[segments.size - 1] = "#{stem}_job"
         modules = segments.map { |s| Inflector.camelize(s) }
         full = modules.join("::")
         rel = segments.join("/")

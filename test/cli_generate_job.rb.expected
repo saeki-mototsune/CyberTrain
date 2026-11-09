@@ -33,6 +33,13 @@ next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
   cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
 ok   generate job send_digest writes a Job::Base subclass with an empty perform and a test
+identical app/jobs/send_digest_job.rb
+identical test/send_digest_job.rb
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+ok   a name given as the class name is not doubled: SendDigestJob is send_digest_job.rb
 create app/jobs/admin/report_job.rb
 create test/admin_report_job.rb
 
@@ -65,4 +72,4 @@ error: bad --retry 'TimeoutError:60:0': use Klass:wait:attempts (wait in seconds
 error: bad --retry 'timeout:60:3': use Klass:wait:attempts (wait in seconds or polynomially_longer, attempts 1 or more)
 error: ./config/routes.rb not found: run this inside a cybertrain app
 ok   bad names, bad --retry values and usage are rejected
-4 tests, 28 assertions, 0 failures
+5 tests, 31 assertions, 0 failures

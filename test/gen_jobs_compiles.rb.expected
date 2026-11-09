@@ -5,6 +5,7 @@ ok   retry_on requeues with the declared wait and attempts; retries_exhausted ru
 ok   retries_exhausted does not run for a stale attempt
 ok   discard_on writes discarded without a retry
 ok   the first declared policy wins
+ok   a grandchild enqueues under its own kind and runs its parent's perform and arms after its own
 ok   limits_concurrency key: refuses a payload without the field and keys the row
 ok   a stale row of Admin::ReportJob at attempt 5 is requeued (max_attempts 20)
-9 tests, 73 assertions, 0 failures
+10 tests, 80 assertions, 0 failures

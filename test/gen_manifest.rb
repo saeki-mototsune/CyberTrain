@@ -86,6 +86,7 @@ test "manifest for the fixture app, whose Post encrypts a column and whose Welco
     require_relative "../app/models/comment"
     require_relative "../app/models/post"
     require_relative "../app/jobs/admin/report_job"
+    require_relative "../app/jobs/digest_job"
     require_relative "../app/jobs/welcome_job"
     require_relative "jobs"
     require_relative "../app/controllers/application_controller"

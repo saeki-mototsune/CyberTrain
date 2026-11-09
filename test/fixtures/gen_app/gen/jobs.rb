@@ -43,15 +43,70 @@ module Admin
       job = new
       begin
         job.perform(run.run_args)
-      rescue StandardError => e
+      rescue ::StandardError => e
         if Cybertrain::Job.retry_later(run, e, 0, true, 20) == Cybertrain::Job::OUTCOME_FAILED
           job.retries_exhausted(e)
         end
-      rescue ArgumentError => e
+      rescue ::ArgumentError => e
         Cybertrain::Job.discard(run, e)
       end
       nil
     end
+  end
+end
+
+class DigestJob < Admin::ReportJob
+  def self.job_kind
+    "DigestJob"
+  end
+
+  def self.perform_later(args = {})
+    unless args.is_a?(Hash)
+      message = "DigestJob.perform_later: args must be a Hash (a JSON object), not #{args.class.name}"
+      raise ArgumentError, message
+    end
+    Cybertrain::Job.enqueue(job_kind, JSON.generate(args))
+  end
+
+  def self.perform_at(time, args = {})
+    unless args.is_a?(Hash)
+      message = "DigestJob.perform_at: args must be a Hash (a JSON object), not #{args.class.name}"
+      raise ArgumentError, message
+    end
+    Cybertrain::Job.enqueue(job_kind, JSON.generate(args), run_at: time)
+  end
+
+  def self.perform_in(seconds, args = {})
+    unless args.is_a?(Hash)
+      message = "DigestJob.perform_in: args must be a Hash (a JSON object), not #{args.class.name}"
+      raise ArgumentError, message
+    end
+    Cybertrain::Job.enqueue(job_kind, JSON.generate(args), run_at: Time.now + seconds)
+  end
+
+  def self.perform_now(args = {})
+    unless args.is_a?(Hash)
+      message = "DigestJob.perform_now: args must be a Hash (a JSON object), not #{args.class.name}"
+      raise ArgumentError, message
+    end
+    new.perform(Cybertrain::Cast.hash(args))
+    nil
+  end
+
+  def self.run_job(run)
+    job = new
+    begin
+      job.perform(run.run_args)
+    rescue ::KeyError => e
+      Cybertrain::Job.discard(run, e)
+    rescue ::StandardError => e
+      if Cybertrain::Job.retry_later(run, e, 0, true, 20) == Cybertrain::Job::OUTCOME_FAILED
+        job.retries_exhausted(e)
+      end
+    rescue ::ArgumentError => e
+      Cybertrain::Job.discard(run, e)
+    end
+    nil
   end
 end
 
@@ -97,11 +152,11 @@ class WelcomeJob < Cybertrain::Job::Base
     job = new
     begin
       job.perform(run.run_args)
-    rescue Cybertrain::Mailer::TimeoutError => e
+    rescue ::Cybertrain::Mailer::TimeoutError => e
       if Cybertrain::Job.retry_later(run, e, 60, false, 5) == Cybertrain::Job::OUTCOME_FAILED
         job.retries_exhausted(e)
       end
-    rescue ArgumentError => e
+    rescue ::ArgumentError => e
       Cybertrain::Job.discard(run, e)
     end
     nil
@@ -109,4 +164,5 @@ class WelcomeJob < Cybertrain::Job::Base
 end
 
 Cybertrain::Job.register("Admin::ReportJob", concurrency: 0, concurrency_key: "", max_attempts: 20) { |run| Admin::ReportJob.run_job(run) }
+Cybertrain::Job.register("DigestJob", concurrency: 0, concurrency_key: "", max_attempts: 20) { |run| DigestJob.run_job(run) }
 Cybertrain::Job.register("WelcomeJob", concurrency: 1, concurrency_key: "user_id", max_attempts: 5) { |run| WelcomeJob.run_job(run) }

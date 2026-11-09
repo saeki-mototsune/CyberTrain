@@ -12,6 +12,7 @@ require "cybertrain/generator/jobs_emitter"
 # in-memory database. SQLite is FFI, so the snapshot comes from the
 # compiled binary (spikes/NOTES.md rule 23).
 require_relative "fixtures/gen_app/app/jobs/admin/report_job"
+require_relative "fixtures/gen_app/app/jobs/digest_job"
 require_relative "fixtures/gen_app/app/jobs/welcome_job"
 require_relative "fixtures/gen_app/gen/jobs"
 
@@ -143,6 +144,20 @@ test "the first declared policy wins" do
   # Polynomially longer: 1 ** 4 + 2 seconds after the first attempt.
   assert_equal 1003, job_run_at(id)
   assert_equal "ArgumentError: bad report q3", Cybertrain::Cast.str(job_value(id, "last_error"))
+end
+
+test "a grandchild enqueues under its own kind and runs its parent's perform and arms after its own" do
+  fresh_db
+  assert_equal "DigestJob", DigestJob.job_kind
+  id = DigestJob.perform_at(Time.at(1000), { "fail" => "argument", "name" => "weekly" })
+  assert_equal "DigestJob", Cybertrain::Cast.str(job_value(id, "kind"))
+  assert Job.work_one(1000)
+  # Admin::ReportJob#perform raised ArgumentError; DigestJob's own KeyError
+  # arm did not match, the parent's retry_on StandardError did.
+  assert_equal "queued", job_state(id)
+  assert_equal 1003, job_run_at(id)
+  assert_equal "ArgumentError: bad report weekly", Cybertrain::Cast.str(job_value(id, "last_error"))
+  assert_equal 20, Job.recovery_limit("DigestJob")
 end
 
 test "limits_concurrency key: refuses a payload without the field and keys the row" do

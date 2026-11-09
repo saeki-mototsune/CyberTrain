@@ -23,6 +23,7 @@ APP_FILES = [
   "app/components/card_component.rb",
   "app/components/card_component.html.erb",
   "app/jobs/welcome_job.rb",
+  "app/jobs/digest_job.rb",
   "app/jobs/admin/report_job.rb"
 ]
 GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]

@@ -74,8 +74,9 @@ end
 
 test "the fixture's jobs: WelcomeJob and Admin::ReportJob with their policies in declaration order" do
   infos = scan(FIXTURE)
-  assert_equal ["Admin::ReportJob", "WelcomeJob"], infos.map { |i| i.class_name }
-  welcome = infos[1]
+  assert_equal ["Admin::ReportJob", "DigestJob", "WelcomeJob"], infos.map { |i| i.class_name }
+  assert_equal "Admin::ReportJob", infos[1].superclass_name
+  welcome = infos[2]
   assert_equal "#{FIXTURE}/app/jobs/welcome_job.rb", welcome.file
   assert_equal "Cybertrain::Job::Base", welcome.superclass_name
   assert_equal ["retry", "discard"], welcome.policies.map { |p| p.policy_kind }
@@ -104,11 +105,11 @@ test "WelcomeJob's run_job: the retry arm with the hook behind OUTCOME_FAILED, t
     "    job = new\n" \
     "    begin\n" \
     "      job.perform(run.run_args)\n" \
-    "    rescue Cybertrain::Mailer::TimeoutError => e\n" \
+    "    rescue ::Cybertrain::Mailer::TimeoutError => e\n" \
     "      if Cybertrain::Job.retry_later(run, e, 60, false, 5) == Cybertrain::Job::OUTCOME_FAILED\n" \
     "        job.retries_exhausted(e)\n" \
     "      end\n" \
-    "    rescue ArgumentError => e\n" \
+    "    rescue ::ArgumentError => e\n" \
     "      Cybertrain::Job.discard(run, e)\n" \
     "    end\n" \
     "    nil\n" \
@@ -125,9 +126,9 @@ test "Admin::ReportJob is reopened in its module, polynomially longer with 20 at
   assert_in_order(out, [
     "module Admin\n  class ReportJob < ::Cybertrain::Job::Base\n",
     "    def self.job_kind\n      \"Admin::ReportJob\"\n    end\n",
-    "      rescue StandardError => e\n" \
+    "      rescue ::StandardError => e\n" \
     "        if Cybertrain::Job.retry_later(run, e, 0, true, 20) == Cybertrain::Job::OUTCOME_FAILED\n",
-    "      rescue ArgumentError => e\n        Cybertrain::Job.discard(run, e)\n"
+    "      rescue ::ArgumentError => e\n        Cybertrain::Job.discard(run, e)\n"
   ])
   assert_includes out, "Cybertrain::Job.register(\"Admin::ReportJob\", concurrency: 0, concurrency_key: \"\", max_attempts: 20) " \
                        "{ |run| Admin::ReportJob.run_job(run) }\n"
@@ -159,8 +160,8 @@ test "the arms keep declaration order: discard_on written before retry_on comes 
   root = app_tree("app/jobs/sweep_job.rb" => job_source("SweepJob", "discard_on ArgumentError", "retry_on StandardError, attempts: 3"))
   out = emit(root)
   assert_in_order(out, [
-    "    rescue ArgumentError => e\n      Cybertrain::Job.discard(run, e)\n",
-    "    rescue StandardError => e\n      if Cybertrain::Job.retry_later(run, e, 3, false, 3) == Cybertrain::Job::OUTCOME_FAILED\n"
+    "    rescue ::ArgumentError => e\n      Cybertrain::Job.discard(run, e)\n",
+    "    rescue ::StandardError => e\n      if Cybertrain::Job.retry_later(run, e, 3, false, 3) == Cybertrain::Job::OUTCOME_FAILED\n"
   ])
   # Unlimited, no key; the default wait is 3 seconds; no concurrency.
   assert_includes out, "Cybertrain::Job.register(\"SweepJob\", concurrency: 0, concurrency_key: \"\", max_attempts: 3)"
@@ -276,7 +277,7 @@ test "ApplicationJob is not a job; its policies and limit follow its subclasses'
   out = emit(root)
   refute out.include?("class ApplicationJob")
   refute out.include?("\"ApplicationJob\"")
-  assert_in_order(out, ["class OwnJob < ApplicationJob\n", "rescue IOError => e\n", "rescue KeyError => e\n"])
+  assert_in_order(out, ["class OwnJob < ApplicationJob\n", "rescue ::IOError => e\n", "rescue ::KeyError => e\n"])
   assert_includes out, "register(\"OwnJob\", concurrency: 2, concurrency_key: \"\", max_attempts: 7)"
   # Not a subclass of ApplicationJob: none of it.
   assert_includes out, "register(\"BareJob\", concurrency: 0, concurrency_key: \"\", max_attempts: 0)"
@@ -297,6 +298,7 @@ test "the manifest requires the mailer, then the job files, application_job firs
     "require \"cybertrain/mailer\"\n",
     "require_relative \"../app/models/post\"\n",
     "require_relative \"../app/jobs/admin/report_job\"\n",
+    "require_relative \"../app/jobs/digest_job\"\n",
     "require_relative \"../app/jobs/welcome_job\"\n",
     "require_relative \"jobs\"\n",
     "require_relative \"../app/controllers/application_controller\"\n"
@@ -307,6 +309,82 @@ test "the manifest requires the mailer, then the job files, application_job firs
   assert_in_order(app, ["require \"cybertrain/net/socket\"\n", "require_relative \"../app/jobs/application_job\"\n",
                         "require_relative \"../app/jobs/admin/sync_job\"\n", "require_relative \"jobs\"\n"])
   refute app.include?("cybertrain/mailer")
+end
+
+test "every job class is scanned: two in one file, one nested in a class, and a grandchild" do
+  root = app_tree(
+    "app/jobs/application_job.rb" => "class ApplicationJob < Cybertrain::Job::Base\n  discard_on KeyError\nend\n",
+    "app/jobs/a_mid_job.rb" => "class MidJob < ApplicationJob\n  retry_on IOError, attempts: 4\n  limits_concurrency to: 2, key: \"site\"\n\n" \
+                               "  def perform(args) = nil\nend\n",
+    "app/jobs/pair_jobs.rb" => job_source("FirstJob") + "\n" + job_source("SecondJob", "retry_on IOError, attempts: 2"),
+    "app/jobs/outer.rb" => "class Outer\n  def helper = 1\n\n  class InnerJob < Cybertrain::Job::Base\n    discard_on ArgumentError\n\n" \
+                           "    def perform(args) = nil\n  end\nend\n",
+    "app/jobs/z_leaf_job.rb" => "class LeafJob < MidJob\n  discard_on ArgumentError\nend\n"
+  )
+  infos = scan(root)
+  assert_equal ["ApplicationJob", "MidJob", "Outer::InnerJob", "FirstJob", "SecondJob", "LeafJob"], infos.map { |i| i.class_name }
+  assert_equal ["ApplicationJob", "MidJob"], infos.map { |i| i.superclass_name }.values_at(1, 5)
+  assert_equal ["class"], infos[2].scope_keywords
+  out = Cybertrain::Gen::JobsEmitter.emit(infos)
+  assert_includes out, "class SecondJob < Cybertrain::Job::Base\n"
+  assert_includes out, "register(\"SecondJob\", concurrency: 0, concurrency_key: \"\", max_attempts: 2)"
+  # Outer is a class: reopened as one, the arm anchored at the top level.
+  assert_in_order(out, ["class Outer\n  class InnerJob < ::Cybertrain::Job::Base\n", "      rescue ::ArgumentError => e\n"])
+  assert_includes out, "register(\"Outer::InnerJob\", concurrency: 0"
+  # The grandchild: its own arm, then MidJob's, then ApplicationJob's; MidJob's limit.
+  leaf = out[out.index("class LeafJob < MidJob\n"), out.size].to_s
+  assert_in_order(leaf, ["rescue ::ArgumentError => e\n", "rescue ::IOError => e\n", "rescue ::KeyError => e\n"])
+  assert_includes out, "Cybertrain::Job.register(\"LeafJob\", concurrency: 2, concurrency_key: \"site\", max_attempts: 4) { |run| LeafJob.run_job(run) }\n"
+end
+
+test "a job's superclass must load before it; < ApplicationJob needs application_job.rb" do
+  root = app_tree("app/jobs/a_leaf_job.rb" => "class LeafJob < MidJob\nend\n",
+                  "app/jobs/b_mid_job.rb" => job_source("MidJob"))
+  assert_equal "#{root}/app/jobs/a_leaf_job.rb:1: MidJob is defined in #{root}/app/jobs/b_mid_job.rb, which does not load " \
+               "before this job -- define it in app/jobs/application_job.rb, above it in this file, or in a file that sorts before this one",
+               refusal(root)
+  root = app_tree("app/jobs/x_job.rb" => "class XJob < ApplicationJob\n  def perform(args) = nil\nend\n")
+  assert_equal "#{root}/app/jobs/x_job.rb:1: XJob inherits ApplicationJob, which app/jobs/application_job.rb does not define", refusal(root)
+  # A class whose superclass is no job class is still not a job.
+  root = app_tree("app/jobs/x.rb" => "class Thing < Struct\n  retry_on Whatever, wait: 5.minutes\nend\n")
+  assert_equal 0, scan(root).size
+end
+
+test "framework errors: those require \"cybertrain\" loads need no require line, the mailer's do" do
+  root = app_tree("app/jobs/db_job.rb" => job_source("DbJob", "retry_on Cybertrain::DB::Error, attempts: 3",
+                                                     "discard_on Cybertrain::Template::SyntaxError"))
+  assert_equal [], Cybertrain::Gen::JobScan.framework_files(scan(root))
+  refute Cybertrain::Gen::Manifest.emit(root).include?("require \"cybertrain/")
+  assert_includes emit(root), "rescue ::Cybertrain::DB::Error => e\n"
+  assert_equal ["mailer"], Cybertrain::Gen::JobScan.framework_files(scan(FIXTURE))
+end
+
+test "FRAMEWORK_ERRORS names every Error class under cybertrain/, and the preloaded files are loaded by cybertrain.rb" do
+  found = []
+  Dir.glob("cybertrain/**/*.rb").sort.each do |path|
+    next if path.start_with?("cybertrain/generator/") || path.start_with?("cybertrain/cli/")
+
+    stack = []
+    File.read(path, encoding: "UTF-8").each_line do |raw|
+      indent = raw[/\A */].size
+      stack.pop while !stack.empty? && raw.strip.start_with?("end") && indent <= stack.last[1] && (raw.strip == "end" || raw.strip.start_with?("end "))
+      if (m = raw.chomp.match(/\A\s*(module|class)\s+([A-Z]\w*)(.*)\z/))
+        one_line = m[3].include?("; end")
+        if m[1] == "class" && (m[2] == "Error" || m[2].end_with?("Error")) && m[3].include?("<")
+          found << [(stack.map(&:first) + [m[2]]).join("::"), path.delete_prefix("cybertrain/").delete_suffix(".rb")]
+        end
+        stack << [m[2], indent] unless one_line
+      end
+    end
+  end
+  assert_equal found.sort, Cybertrain::Gen::JobScan::FRAMEWORK_ERRORS.sort
+  top = File.read("cybertrain.rb")
+  Cybertrain::Gen::JobScan::PRELOADED_FILES.each do |file|
+    direct = top.include?("require \"cybertrain/#{file}\"\n")
+    parent = file.split("/").first
+    through = top.include?("require \"cybertrain/#{parent}\"\n") && File.read("cybertrain/#{parent}.rb").include?("require \"cybertrain/#{file}\"\n")
+    assert(direct || through, "#{file} is not loaded by cybertrain.rb")
+  end
 end
 
 Cybertrain::Test.run!

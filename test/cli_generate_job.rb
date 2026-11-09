@@ -53,6 +53,12 @@ test "generate job send_digest writes a Job::Base subclass with an empty perform
   assert_includes test_source, "Cybertrain::Test.run!\n"
 end
 
+test "a name given as the class name is not doubled: SendDigestJob is send_digest_job.rb" do
+  assert_equal 0, generate(["SendDigestJob"])
+  refute File.exist?("shop/app/jobs/send_digest_job_job.rb")
+  assert File.read("shop/app/jobs/send_digest_job.rb").start_with?("class SendDigestJob < Cybertrain::Job::Base\n")
+end
+
 test "--retry writes a retry_on line each, and spin run gen's scan reads them" do
   assert_equal 0, generate(["Admin::Report", "--retry", "Cybertrain::Mailer::TimeoutError:60:5",
                             "--retry", "StandardError:polynomially_longer:20"])

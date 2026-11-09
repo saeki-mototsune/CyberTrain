@@ -885,7 +885,10 @@ class WelcomeJob < Cybertrain::Job::Base
   def self.perform_in(seconds, args = {}); end
 
   # Runs {Cybertrain::Job::Base#perform perform} at once on the calling thread: no row, no retry policy,
-  # no rescue (an exception propagates), the shape a test wants.
+  # no rescue (an exception propagates), the shape a test wants. The args
+  # are copied with {Cybertrain::Cast.hash} (keys as Strings), which is
+  # shallow: nested values stay the objects given, where a worker sees
+  # them parsed back from JSON.
   # @param args [Hash{String => Object}]
   # @return [nil]
   # @raise [ArgumentError] when args is not a Hash

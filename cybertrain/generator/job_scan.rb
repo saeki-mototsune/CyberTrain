@@ -23,17 +23,20 @@ module Cybertrain
       end
     end
 
-    # What the scan found in one app/jobs file: the job class, its
-    # superclass as written ("Cybertrain::Job::Base" or "ApplicationJob"),
-    # its policies in declaration order (retry and discard interleaved),
-    # its `limits_concurrency` (`to:`, 0 without the line; `key:`, ""
-    # without one), and whether it defines `perform` and
-    # `retries_exhausted`.
+    # What the scan found for one job class: the class (full name), its
+    # superclass's full name ("Cybertrain::Job::Base", "ApplicationJob" or
+    # another job class: `LeafJob < MidJob`), its policies in declaration
+    # order (retry and discard interleaved), its `limits_concurrency`
+    # (`to:`, 0 without the line; `key:`, "" without one), whether it
+    # defines `perform` and `retries_exhausted`, and the keyword ("module"
+    # or "class") of each enclosing name segment, outermost first
+    # (["module"] for Admin::ReportJob), which the emitter reopens.
     class JobInfo
       attr_reader :file, :class_name, :superclass_name, :policies, :concurrency_to, :concurrency_key,
-                  :has_perform, :has_exhausted_hook
+                  :has_perform, :has_exhausted_hook, :scope_keywords
 
-      def initialize(file, class_name, superclass_name, policies, concurrency_to, concurrency_key, has_perform, has_exhausted_hook)
+      def initialize(file, class_name, superclass_name, policies, concurrency_to, concurrency_key, has_perform,
+                     has_exhausted_hook, scope_keywords)
         @file = file
         @class_name = class_name
         @superclass_name = superclass_name
@@ -42,33 +45,41 @@ module Cybertrain
         @concurrency_key = concurrency_key
         @has_perform = has_perform
         @has_exhausted_hook = has_exhausted_hook
-      end
-
-      # Whether it inherits from ApplicationJob (and so its policies too).
-      def application_job_child?
-        @superclass_name == "ApplicationJob" || @superclass_name == "::ApplicationJob"
+        @scope_keywords = scope_keywords
       end
     end
 
-    # A `class X` line somewhere under app/: its full name, file and line.
+    # A `class X` line somewhere under app/: its full name, file and line,
+    # its superclass as written ("" without one), its indent, whether the
+    # class is one line (`class X < Y; end`), and the keyword of each
+    # enclosing name segment (JobInfo#scope_keywords).
     class DefinedClass
-      attr_reader :defined_name, :defined_file, :defined_line
+      attr_reader :defined_name, :defined_file, :defined_line, :defined_super, :defined_indent,
+                  :defined_one_line, :defined_scopes
 
-      def initialize(defined_name, defined_file, defined_line)
+      def initialize(defined_name, defined_file, defined_line, defined_super, defined_indent, defined_one_line, defined_scopes)
         @defined_name = defined_name
         @defined_file = defined_file
         @defined_line = defined_line
+        @defined_super = defined_super
+        @defined_indent = defined_indent
+        @defined_one_line = defined_one_line
+        @defined_scopes = defined_scopes
       end
     end
 
     # Reads app/jobs/**/*.rb as text (spec section 2.2), as ComponentScan
-    # reads app/components: the `class X < Cybertrain::Job::Base` (or
-    # `< ApplicationJob`) line, one `retry_on` / `discard_on` /
-    # `limits_concurrency` macro per line with literal values, and the
-    # `def perform` / `def retries_exhausted` lines. A class that inherits
-    # from neither base is skipped (a helper may live there). ApplicationJob
-    # itself is scanned (its macros apply to its subclasses) but is not a
-    # job: JobsEmitter writes nothing for it.
+    # reads app/components: every class that descends from
+    # Cybertrain::Job::Base (directly, through ApplicationJob, or through
+    # another job class: `LeafJob < MidJob`), wherever it sits in a file
+    # (several per file, nested in a module or a class), with one
+    # `retry_on` / `discard_on` / `limits_concurrency` macro per line with
+    # literal values, and the `def perform` / `def retries_exhausted`
+    # lines. A class that descends from none of these is skipped (a helper
+    # may live there). A job inherits its ancestors' policies (its own
+    # arms first, then each ancestor's outward) and the nearest limit; a
+    # superclass must load before its subclass. ApplicationJob itself is
+    # scanned but is not a job: JobsEmitter writes nothing for it.
     #
     # Every exception class a macro names must be defined in the program
     # before the job's class body evaluates it (spikes/NOTES.md rule 89: a
@@ -82,7 +93,7 @@ module Cybertrain
       class Error < StandardError
       end
 
-      BASES = ["Cybertrain::Job::Base", "::Cybertrain::Job::Base", "ApplicationJob", "::ApplicationJob"]
+      BASE = "Cybertrain::Job::Base"
       CLASS_LINE = /\A\s*class\s+([A-Z][\w:]*)\s*(?:<\s*([A-Z:][\w:]*))?/
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/
       MACROS = ["retry_on", "discard_on", "limits_concurrency"]
@@ -97,18 +108,13 @@ module Cybertrain
                      "IndexError", "IOError", "KeyError", "NameError", "NoMethodError", "RangeError", "RegexpError",
                      "RuntimeError", "StopIteration", "ThreadError", "TypeError", "ZeroDivisionError"]
 
-      # The framework's exception classes, each with the file under
-      # cybertrain/ that defines it: `require "cybertrain"` loads none of
-      # these files, so gen/app.rb requires the ones the jobs name
-      # (Manifest).
+      # The framework's exception classes (every `class <Name>Error < ...`
+      # under cybertrain/ outside the generator and the CLI), each with the
+      # file under cybertrain/ that defines it. test/gen_jobs.rb checks the
+      # list against the source.
       FRAMEWORK_ERRORS = [
-        ["Cybertrain::Mailer::Error", "mailer"],
-        ["Cybertrain::Mailer::TimeoutError", "mailer"],
-        ["Cybertrain::Mailer::ConnectError", "mailer"],
-        ["Cybertrain::Mailer::TLSError", "mailer"],
-        ["Cybertrain::Mailer::ProtocolError", "mailer"],
-        ["Cybertrain::Mailer::InsecureError", "mailer"],
-        ["Cybertrain::Mailer::RejectedError", "mailer"],
+        ["Cybertrain::DB::Error", "db/error"],
+        ["Cybertrain::Encryptor::Error", "encryptor"],
         ["Cybertrain::HttpClient::Error", "http_client"],
         ["Cybertrain::HttpClient::TimeoutError", "http_client"],
         ["Cybertrain::HttpClient::RefusedError", "http_client"],
@@ -116,14 +122,40 @@ module Cybertrain
         ["Cybertrain::HttpClient::BlockedAddressError", "http_client"],
         ["Cybertrain::HttpClient::TooLargeError", "http_client"],
         ["Cybertrain::HttpClient::BadResponseError", "http_client"],
+        ["Cybertrain::HttpParser::ParseError", "http/parser"],
+        ["Cybertrain::Mailer::Error", "mailer"],
+        ["Cybertrain::Mailer::TimeoutError", "mailer"],
+        ["Cybertrain::Mailer::ConnectError", "mailer"],
+        ["Cybertrain::Mailer::TLSError", "mailer"],
+        ["Cybertrain::Mailer::ProtocolError", "mailer"],
+        ["Cybertrain::Mailer::InsecureError", "mailer"],
+        ["Cybertrain::Mailer::RejectedError", "mailer"],
         ["Cybertrain::Net::Error", "net/socket"],
         ["Cybertrain::Net::TimeoutError", "net/socket"],
         ["Cybertrain::Net::ConnectError", "net/socket"],
         ["Cybertrain::Net::TlsError", "net/socket"],
         ["Cybertrain::Net::BlockedError", "net/socket"],
         ["Cybertrain::Net::LimitError", "net/socket"],
-        ["Cybertrain::Net::ProtocolError", "net/socket"]
+        ["Cybertrain::Net::ProtocolError", "net/socket"],
+        ["Cybertrain::Template::SyntaxError", "template/ast"],
+        ["Cybertrain::Template::RuntimeError", "template/ast"],
+        ["Cybertrain::Template::CallSyntaxError", "template/ast"],
+        ["Cybertrain::WebSocket::Error", "websocket/frame"],
+        ["Cybertrain::WebSocket::TimeoutError", "websocket/frame"],
+        ["Cybertrain::WebSocket::RefusedError", "websocket/frame"],
+        ["Cybertrain::WebSocket::TLSError", "websocket/frame"],
+        ["Cybertrain::WebSocket::BlockedAddressError", "websocket/frame"],
+        ["Cybertrain::WebSocket::HandshakeError", "websocket/frame"],
+        ["Cybertrain::WebSocket::ProtocolError", "websocket/frame"],
+        ["Cybertrain::WebSocket::TooLargeError", "websocket/frame"],
+        ["Cybertrain::WebSocket::ClosedError", "websocket/frame"]
       ]
+
+      # The files of FRAMEWORK_ERRORS that `require "cybertrain"` already
+      # loads (cybertrain.rb requires cybertrain/db, which requires
+      # db/error; http/parser; cybertrain/template, which requires
+      # template/ast): gen/app.rb writes no require for them.
+      PRELOADED_FILES = ["db/error", "http/parser", "template/ast"]
 
       # The file (under cybertrain/, without .rb) defining a framework
       # exception class; "" for any other name.
@@ -132,13 +164,16 @@ module Cybertrain
         ""
       end
 
-      # The framework files the jobs' policies need, each once, sorted.
+      # The framework files gen/app.rb must require for the jobs'
+      # policies (PRELOADED_FILES left out), each once, sorted.
       def self.framework_files(infos)
         files = Array.new(0) { "" }
         infos.each do |info|
           info.policies.each do |policy|
             file = framework_file(policy.exception_class)
-            files << file unless file == "" || files.include?(file)
+            next if file == "" || files.include?(file) || PRELOADED_FILES.include?(file)
+
+            files << file
           end
         end
         files.sort
@@ -146,11 +181,12 @@ module Cybertrain
 
       # A JobInfo with nothing in it (class_name ""): a typed placeholder.
       def self.empty_info
-        JobInfo.new("", "", "", Array.new(0) { PolicyInfo.new("", "", 0, false, 0, 0) }, 0, "", false, false)
+        JobInfo.new("", "", "", Array.new(0) { PolicyInfo.new("", "", 0, false, 0, 0) }, 0, "", false, false, Array.new(0) { "" })
       end
 
-      # Every job class under dir (app/jobs), application_job.rb first,
-      # then the other files in path order.
+      # Every job class under dir (app/jobs), in load order:
+      # application_job.rb first, then the other files in path order, each
+      # file's classes in line order.
       def self.scan_dir(dir)
         infos = Array.new(0) { empty_info }
         jobs = ControllerScan.ruby_files(dir)
@@ -159,39 +195,158 @@ module Cybertrain
         app = File.dirname(dir)
         base_file = "#{dir}/application_job.rb"
         models = ControllerScan.ruby_files("#{app}/models")
-        defined = Array.new(0) { DefinedClass.new("", "", 0) }
+        defined = Array.new(0) { empty_class }
         ControllerScan.ruby_files(app).each do |path|
           class_definitions(path, File.read(path)).each { |d| defined << d }
         end
         ordered = Array.new(0) { "" }
         ordered << base_file if jobs.include?(base_file)
         jobs.each { |path| ordered << path unless path == base_file }
-        base_perform = false
-        ordered.each do |path|
-          info = scan_source(path, File.read(path), defined, models, base_file)
-          next if info.nil?
+        spans = Array.new(0) { empty_class }
+        ordered.each { |path| defined.each { |d| spans << d if d.defined_file == path } }
+        parents = job_parents(spans)
+        spans.each_with_index do |d, i|
+          check_parent(d, spans, parents[i], ordered)
+          next if parents[i] == ""
 
-          if info.class_name == "ApplicationJob"
-            base_perform = info.has_perform
-          elsif !info.has_perform && !(base_perform && info.application_job_child?)
-            message = "#{path}: #{info.class_name} defines no perform(args); a job class needs one " \
-                      "(Cybertrain::Job::Base#perform raises NotImplementedError)"
-            raise Error, message
-          end
-          infos << info
+          lines = File.read(d.defined_file).lines
+          infos << scan_body(d, lines, parents[i], defined, models, base_file)
+        end
+        infos.each do |info|
+          next if info.class_name == "ApplicationJob" || inherits_perform?(info, infos)
+
+          message = "#{info.file}: #{info.class_name} defines no perform(args); a job class needs one " \
+                    "(Cybertrain::Job::Base#perform raises NotImplementedError)"
+          raise Error, message
         end
         infos
       end
 
-      # The job class of one file, or nil when the file has none. `defined`
-      # are the class lines under app/, `models` the app/models files,
-      # `base_file` the path of app/jobs/application_job.rb.
-      def self.scan_source(file, source, defined, models, base_file)
-        modules = Array.new(0) { "" }
-        module_indents = Array.new(0) { 0 }
-        class_name = ""
-        superclass = ""
-        class_indent = -1
+      # Whether the job or one of its ancestors defines perform.
+      def self.inherits_perform?(info, infos)
+        return true if info.has_perform
+
+        ancestors(info, infos).each { |a| return true if a.has_perform }
+        false
+      end
+
+      # A DefinedClass with nothing in it: a typed placeholder.
+      def self.empty_class
+        DefinedClass.new("", "", 0, "", 0, false, Array.new(0) { "" })
+      end
+
+      # The job classes `info` inherits from, nearest first (ApplicationJob
+      # included); Cybertrain::Job::Base is not in the list.
+      def self.ancestors(info, infos)
+        out = Array.new(0) { empty_info }
+        name = info.superclass_name
+        while name != BASE && out.size < infos.size
+          found = false
+          infos.each do |other|
+            next unless other.class_name == name
+
+            out << other
+            name = other.superclass_name
+            found = true
+            break
+          end
+          break unless found
+        end
+        out
+      end
+
+      # Per span, the full name of its superclass when it is a job class
+      # (BASE, or another span that is one), else "": repeated until
+      # nothing changes, so a grandchild is found whatever the order.
+      def self.job_parents(spans)
+        parents = Array.new(0) { "" }
+        spans.each { parents << "" }
+        changed = true
+        while changed
+          changed = false
+          spans.each_with_index do |d, i|
+            next unless parents[i] == ""
+
+            parent = job_parent(d, spans, parents)
+            next if parent == ""
+
+            parents[i] = parent
+            changed = true
+          end
+        end
+        parents
+      end
+
+      # The superclass of span `d` as a job class's full name, or "": the
+      # name as written, looked up from d's innermost namespace out.
+      def self.job_parent(d, spans, parents)
+        written = d.defined_super
+        return "" if written == ""
+
+        name = written.start_with?("::") ? written[2, written.size - 2].to_s : written
+        return BASE if name == BASE
+
+        lexical_candidates(written, d.defined_name).each do |candidate|
+          spans.each_with_index do |other, j|
+            next unless other.defined_name == candidate
+
+            return parents[j] == "" ? "" : candidate
+          end
+        end
+        ""
+      end
+
+      # The full names `written` may mean inside class `class_name`,
+      # innermost first (`Stuck` in Admin::ReportJob: Admin::ReportJob::Stuck,
+      # Admin::Stuck, Stuck); only itself when it starts with `::`.
+      def self.lexical_candidates(written, class_name)
+        top = written.start_with?("::")
+        name = top ? written[2, written.size - 2].to_s : written
+        candidates = Array.new(0) { "" }
+        unless top
+          scopes = class_name.split("::")
+          scopes.pop
+          while scopes.size > 0
+            candidates << "#{scopes.join("::")}::#{name}"
+            scopes.pop
+          end
+        end
+        candidates << name
+        candidates
+      end
+
+      # Refuses a class written `< ApplicationJob` when no ApplicationJob
+      # is defined, and a job whose job superclass loads after it.
+      def self.check_parent(d, spans, parent, ordered)
+        written = d.defined_super
+        if parent == "" && (written == "ApplicationJob" || written == "::ApplicationJob")
+          spans.each { |other| return nil if other.defined_name == "ApplicationJob" }
+          message = "#{d.defined_file}:#{d.defined_line}: #{d.defined_name} inherits ApplicationJob, " \
+                    "which app/jobs/application_job.rb does not define"
+          raise Error, message
+        end
+        return nil if parent == "" || parent == BASE
+
+        spans.each do |p|
+          next unless p.defined_name == parent
+          return nil if p.defined_file == d.defined_file && p.defined_line < d.defined_line
+          return nil if p.defined_file != d.defined_file && ordered.index(p.defined_file).to_i < ordered.index(d.defined_file).to_i
+
+          message = "#{d.defined_file}:#{d.defined_line}: #{written} is defined in #{p.defined_file}, which does not load " \
+                    "before this job -- define it in app/jobs/application_job.rb, above it in this file, " \
+                    "or in a file that sorts before this one"
+          raise Error, message
+        end
+        nil
+      end
+
+      # The body of job class `d` (its file's `lines`): its macros, perform
+      # and retries_exhausted, with nested classes, modules and method
+      # bodies skipped (a nested job class is a span of its own).
+      def self.scan_body(d, lines, parent, defined, models, base_file)
+        file = d.defined_file
+        class_name = d.defined_name
+        class_indent = d.defined_indent
         skip_indent = -1
         def_indent = -1
         policies = Array.new(0) { PolicyInfo.new("", "", 0, false, 0, 0) }
@@ -200,8 +355,9 @@ module Cybertrain
         concurrency_line = 0
         has_perform = false
         has_hook = false
-        lineno = 0
-        source.each_line do |raw|
+        lineno = d.defined_line
+        while !d.defined_one_line && lineno < lines.size
+          raw = lines[lineno]
           lineno += 1
           line = raw.strip
           next if line == "" || line.start_with?("#")
@@ -209,31 +365,6 @@ module Cybertrain
           indent = ModelScan.indent_of(raw)
           if skip_indent >= 0
             skip_indent = -1 if indent == skip_indent && ModelScan.closing_end?(line)
-            next
-          end
-          if class_name == ""
-            if !module_indents.empty? && indent <= module_indents.last && ModelScan.closing_end?(line)
-              modules.pop
-              module_indents.pop
-              next
-            end
-            mm = raw.match(MODULE_LINE)
-            if mm && !ModelScan.one_line_block?(line)
-              modules << mm[1].to_s
-              module_indents << indent
-              next
-            end
-            cm = raw.match(CLASS_LINE)
-            next if cm.nil?
-
-            if BASES.include?(cm[2].to_s)
-              class_name = (modules + [cm[1].to_s]).join("::")
-              superclass = cm[2].to_s
-              class_indent = indent
-            elsif !ModelScan.one_line_block?(line)
-              # Another class (an error class above the job): skip its body.
-              skip_indent = indent
-            end
             next
           end
           break if indent <= class_indent && ModelScan.closing_end?(line)
@@ -276,9 +407,7 @@ module Cybertrain
           end
           def_indent = indent if ModelScan.def_opens_body?(line)
         end
-        return nil if class_name == ""
-
-        JobInfo.new(file, class_name, superclass, policies, concurrency_to, concurrency_key, has_perform, has_hook)
+        JobInfo.new(file, class_name, parent, policies, concurrency_to, concurrency_key, has_perform, has_hook, d.defined_scopes)
       end
 
       # "retry_on", "discard_on" or "limits_concurrency" when the line calls
@@ -444,17 +573,8 @@ module Cybertrain
       # NestedJob::Stuck when that is defined), accepting only a class that
       # loads before the job's body (see the module comment).
       def self.resolve_class(file, lineno, written, class_name, defined, models, base_file)
-        top = written.start_with?("::")
-        name = top ? written[2, written.size - 2].to_s : written
-        candidates = Array.new(0) { "" }
-        unless top
-          scopes = class_name.split("::")
-          while scopes.size > 0
-            candidates << "#{scopes.join("::")}::#{name}"
-            scopes.pop
-          end
-        end
-        candidates << name
+        name = written.start_with?("::") ? written[2, written.size - 2].to_s : written
+        candidates = lexical_candidates(written, "#{class_name}::_")
         candidates.each do |candidate|
           return candidate if candidate == name && (CORE_ERRORS.include?(name) || framework_file(name) != "")
 
@@ -487,11 +607,13 @@ module Cybertrain
       end
 
       # Every `class X` line of a file with its full name (the enclosing
-      # `module` / `class` lines by indentation), skipping those inside a
+      # `module` / `class` lines by indentation), its superclass as written
+      # and the keyword of each enclosing segment, skipping those inside a
       # `class << self`.
       def self.class_definitions(file, source)
-        out = Array.new(0) { DefinedClass.new("", "", 0) }
+        out = Array.new(0) { empty_class }
         names = Array.new(0) { "" }
+        keywords = Array.new(0) { "" }
         indents = Array.new(0) { 0 }
         lineno = 0
         source.each_line do |raw|
@@ -502,6 +624,7 @@ module Cybertrain
           indent = ModelScan.indent_of(raw)
           if !indents.empty? && indent <= indents.last && ModelScan.closing_end?(line)
             names.pop
+            keywords.pop
             indents.pop
             next
           end
@@ -509,6 +632,7 @@ module Cybertrain
           if line.start_with?("class <<") || line.start_with?("class<<")
             unless one_line
               names << "<<"
+              keywords << "class"
               indents << indent
             end
             next
@@ -518,11 +642,23 @@ module Cybertrain
           next if mm.nil? && cm.nil?
 
           own = mm.nil? ? cm[1].to_s : mm[1].to_s
-          full = (names + [own]).join("::")
-          out << DefinedClass.new(full, file, lineno) if mm.nil? && !names.include?("<<")
+          if mm.nil? && !names.include?("<<")
+            scopes = Array.new(0) { "" }
+            (names + [own]).each_with_index do |n, k|
+              segs = n.split("::")
+              segs.each_with_index do |_seg, m|
+                last_of_entry = m == segs.size - 1
+                next if k == names.size && last_of_entry
+
+                scopes << (last_of_entry ? keywords[k].to_s : "module")
+              end
+            end
+            out << DefinedClass.new((names + [own]).join("::"), file, lineno, cm[2].to_s, indent, one_line, scopes)
+          end
           next if one_line
 
           names << own
+          keywords << (mm.nil? ? "class" : "module")
           indents << indent
         end
         out
