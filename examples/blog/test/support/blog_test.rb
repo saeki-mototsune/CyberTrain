@@ -11,6 +11,8 @@ ENV["CYBERTRAIN_ENV"] = "test"
 
 require "cybertrain"
 require "cybertrain/test/client"
+require "cybertrain/test/jobs"
+require "cybertrain/cache"
 require_relative "../../config/app"
 require_relative "../../gen/app"
 require_relative "../../gen/migrations"
@@ -36,10 +38,16 @@ module BlogTest
     app.boot
   end
 
-  # Every test starts from empty tables and a new browser (no cookies).
+  # Every test starts from empty tables, an empty cache, no jobs (every
+  # row, not only the queued ones clear_enqueued_jobs removes), no
+  # BLOG_ADMIN_TOKEN and a new browser (no cookies).
   def self.reset
     Comment.all.delete_all
     Article.all.delete_all
+    Cybertrain::Cache.clear
+    clear_enqueued_jobs
+    Cybertrain::DB.with { |c| c.execute("DELETE FROM cybertrain_jobs") }
+    ENV.delete("BLOG_ADMIN_TOKEN")
     nil
   end
 
@@ -68,6 +76,29 @@ module BlogTest
 
   def self.article_path(article)
     "/articles/#{article.id}"
+  end
+
+  # A NotifyCommentJob row that has used its attempts: `failed`, which the
+  # jobs page offers to retry, discard or delete.
+  def self.failed_job
+    id = Cybertrain::Job.enqueue("NotifyCommentJob", "{\"comment_id\":1,\"article_id\":1}")
+    Cybertrain::DB.with do |c|
+      c.execute("UPDATE cybertrain_jobs SET state = 'failed', attempts = 3, last_error = 'boom' WHERE id = ?", [id])
+    end
+    id
+  end
+
+  # The state of the job row `id`; "(gone)" when there is no such row.
+  def self.job_state(id)
+    rows = Cybertrain::DB.with { |c| c.execute("SELECT state FROM cybertrain_jobs WHERE id = ?", [id]) }
+    return "(gone)" if rows.empty?
+
+    Cybertrain::Cast.str(rows[0]["state"])
+  end
+
+  # The session the client's cookie carries, read as the server reads it.
+  def self.session_of(client)
+    Cybertrain::Session.load(client.cookies[Cybertrain.config.session_cookie_name], Cybertrain.config.secret_key_base)
   end
 end
 

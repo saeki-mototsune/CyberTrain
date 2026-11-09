@@ -47,11 +47,58 @@ cybertrain spin test   # test/articles.rb, test/comments.rb against storage/test
 ```
 
 Run `cybertrain spin run gen` after changing the schema, the routes or a
-controller's instance variables and callbacks, and commit `gen/`
+controller's instance variables and callbacks, or a job class, and commit `gen/`
 (`cybertrain spin run gen -- --check` reports stale files). Views under
 `app/views/` are read at run time: edit them without rebuilding. A
 production binary (`cybertrain build`, or `CYBERTRAIN_ENV=production`)
 renders only the views embedded at build time.
+
+## Jobs, a scheduled task, a cache and the jobs page
+
+- **A job class.** `app/jobs/notify_comment_job.rb` is a
+  `Cybertrain::Job::Base` subclass; `CommentsController#create` calls
+  `NotifyCommentJob.perform_later("comment_id" => @comment.id, "article_id"
+  => @article.id)` once the comment is saved, and the process that runs jobs
+  logs `new comment <id> on article <id>`. Its `retry_on StandardError, wait:
+  30, attempts: 3` queues a failed run again 30 seconds later, three
+  attempts in all. `spin run gen` writes the class's other half
+  (`perform_later`, the retry as a `rescue` arm) into `gen/jobs.rb`.
+- **A cron task.** `config/app.rb` registers `Cybertrain::Scheduler.cron("0
+  4 * * *", "prune sessions")`: every day at 04:00 (`CYBERTRAIN_SCHEDULER_TZ`,
+  UTC by default) it deletes the rows of a `sessions` table not updated for
+  30 days. The blog keeps its sessions in the cookie, so the task first
+  checks that the table exists and does nothing here.
+- **A cache.** The index shows how many articles there are, from
+  `Cybertrain::Cache.fetch("articles/count", expires_in: 60) {
+  Article.count.to_s }`: a row in the `cybertrain_cache` table, so the count
+  can lag a new article by up to a minute (the list itself does not).
+- **The jobs page** at `/admin/jobs` (`jobs_page "/admin/jobs",
+  before_action: :require_admin` in `config/routes.rb`) lists the jobs by
+  state and retries, discards or deletes failed ones. The blog has no user
+  accounts, so `ApplicationController#require_admin` guards it with one
+  shared secret, the environment variable `BLOG_ADMIN_TOKEN`:
+
+  ```sh
+  export BLOG_ADMIN_TOKEN="$(openssl rand -hex 32)"
+  cybertrain server
+  curl -H "x-admin-token: $BLOG_ADMIN_TOKEN" http://127.0.0.1:3000/admin/jobs
+  ```
+
+  A browser signs in at `/admin/login` with the token; the session then
+  holds an HMAC of it (never the token itself), so setting a new token signs
+  out every browser signed in with the old one. A request with neither the
+  header nor that session gets 404, as if the page did not exist, and so
+  does every request while `BLOG_ADMIN_TOKEN` is unset or empty, which is
+  the default: the page stays closed until you choose a token. On Kamal,
+  add `BLOG_ADMIN_TOKEN` to `env.secret` in `config/deploy.yml` and to
+  `.kamal/secrets`.
+
+`test/comments.rb` checks the enqueue with `assert_enqueued_with` and runs
+the job with `perform_enqueued_jobs` (`require "cybertrain/test/jobs"` in
+`test/support/blog_test.rb`, which also empties the cache and the jobs
+table before each test); `test/articles.rb` covers the cached count, the
+gate and the login. [Background work](../../docs/guide/background-and-operations.md)
+in the guide covers jobs and scheduled tasks in full.
 
 ## Deploying with Kamal
 
@@ -81,7 +128,7 @@ one starts (`kamal app stop`, then `kamal deploy`): a new worker would
 otherwise take an old worker's running job for abandoned and run it a
 second time.
 
-`bin/blog.rb` registers one job, `touch`, to see the roles at work:
+`bin/blog.rb` registers a job by hand, `touch`, to see the roles at work:
 `./blog touch 1` enqueues it, and the process that runs jobs (`./blog
 worker`, or `./blog server` unless `CYBERTRAIN_WORKER=0`) logs
 `touch: article 1: <title>`. On Kamal: `kamal app exec --reuse "./blog touch 1"`,

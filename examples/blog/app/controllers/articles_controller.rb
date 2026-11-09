@@ -1,10 +1,13 @@
+require "cybertrain/cache"
+
 class ArticlesController < ApplicationController
   before_action :set_article, only: [:show, :edit, :update, :destroy]
 
   # GET /articles (?from=YYYY-MM-DD&to=YYYY-MM-DD, either end optional)
   # Newest first, each article's comments preloaded for the Comments
-  # column (two queries, however many articles). A date that does not
-  # parse is ignored; `to` takes in the whole of its day.
+  # column (two queries, however many articles), and the number of
+  # articles above them from the cache. A date that does not parse is
+  # ignored; `to` takes in the whole of its day.
   def index
     from_date = Cybertrain::Cast.date_or_nil(params[:from])
     to_date = Cybertrain::Cast.date_or_nil(params[:to])
@@ -17,6 +20,9 @@ class ArticlesController < ApplicationController
       articles = articles.where_between(:created_at, from_time, to_time, exclude_end: true)
     end
     @articles = articles.to_a
+    # Kept in cybertrain_cache for a minute: an article created meanwhile
+    # shows up in the list at once and in the count within the minute.
+    @article_count = Cybertrain::Cast.int(Cybertrain::Cache.fetch("articles/count", expires_in: 60) { Article.count.to_s })
   end
 
   # GET /articles/1

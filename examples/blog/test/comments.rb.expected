@@ -14,4 +14,6 @@ ok   the article page renders each comment with CommentComponent and subscribes 
 ok   a new comment is broadcast as a Turbo Stream append to the article's stream
 ok   a destroyed comment is broadcast as a Turbo Stream remove of its element
 ok   a comment that is not saved broadcasts nothing
-12 tests, 61 assertions, 0 failures
+ok   a new comment enqueues a NotifyCommentJob, which logs it when performed
+ok   a comment that is not saved enqueues no job
+14 tests, 69 assertions, 0 failures

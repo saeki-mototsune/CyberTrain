@@ -1,5 +1,6 @@
 # Integration tests for comments: nested under articles, created from the
 # form on the article page and destroyed from the list beside it.
+require "stringio"
 require_relative "support/blog_test"
 
 def new_client
@@ -211,6 +212,39 @@ test "a comment that is not saved broadcasts nothing" do
                                         "comment[commenter]" => "",
                                         "comment[body]" => "Anonymous words" })
   assert_equal before, Cybertrain::Stream.max_id
+end
+
+test "a new comment enqueues a NotifyCommentJob, which logs it when performed" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  client.get(BlogTest.article_path(article))
+  assert_no_enqueued_jobs
+  client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                        "comment[commenter]" => "Dave",
+                                        "comment[body]" => "First!" })
+  comment = Comment.last
+  refute comment.nil?, "expected the comment to be saved"
+  assert_enqueued_jobs 1, "NotifyCommentJob"
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => comment.id, "article_id" => article.id }
+
+  log = StringIO.new
+  saved = Cybertrain.logger
+  Cybertrain.logger = Cybertrain::Logger.new(log)
+  ran = perform_enqueued_jobs
+  Cybertrain.logger = saved
+  assert_equal 1, ran
+  assert_no_enqueued_jobs
+  assert_includes log.string, "new comment #{comment.id} on article #{article.id}"
+end
+
+test "a comment that is not saved enqueues no job" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  client.get(BlogTest.article_path(article))
+  client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                        "comment[commenter]" => "",
+                                        "comment[body]" => "Anonymous words" })
+  assert_no_enqueued_jobs
 end
 
 Cybertrain::Test.run!
