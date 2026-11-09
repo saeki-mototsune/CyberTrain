@@ -121,7 +121,16 @@ end
   inherit from `Job::Base` is ignored (a helper module may live there); a
   macro it cannot read (a block, a lambda, a hashrocket spelling, a trailing
   comment) stops generation with the one-line message the model macros use
-  (phase 2, section 3.4).
+  (phase 2, section 3.4). Inheritance among job classes follows Rails'
+  order: `ApplicationJob` (and any other ancestor between a class and
+  `Job::Base`) is not registered as a kind of its own; its `retry_on` /
+  `discard_on` arms are emitted into each descendant's `run_job` after the
+  descendant's own arms, and its `limits_concurrency` applies to a
+  descendant that sets none. Every `Job::Base` descendant the scan meets is
+  generated, whether it is the second class in a file, nested inside
+  another class, or a grandchild; a class whose superclass is none of
+  `Job::Base`, `ApplicationJob` or a scanned job class is the ignored
+  helper of the previous sentence.
 - `gen/jobs.rb` carries, per class: the reopened class with
   `self.job_kind`, `perform_later`, `perform_at`, `perform_in`,
   `perform_now`, and `self.run_job(run)`; and one registration
