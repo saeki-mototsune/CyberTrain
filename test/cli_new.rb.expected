@@ -9,6 +9,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -49,6 +50,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -78,6 +80,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -113,6 +116,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -142,6 +146,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -170,6 +175,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -203,6 +209,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -233,6 +240,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -523,8 +531,15 @@ ok   CLI version, help and unknown commands
 # read without it. To rotate, move the old key to
 # CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS (comma-separated) and re-save.
 # CYBERTRAIN_ENCRYPTION_KEY=  # cybertrain secret --hex
+
+# Settings, not secrets. When set to 1, /up answers 503 "feed stale"
+# once a WebSocket feed has stopped reporting.
+# CYBERTRAIN_HEALTH_FEEDS=1
+
+# The IANA zone cron expressions are read in; UTC when unset.
+# CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo
 ok   .env.example lists the secrets, commented, with how to make each
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-26 tests, 305 assertions, 0 failures
+26 tests, 306 assertions, 0 failures

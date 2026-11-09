@@ -27,7 +27,8 @@ templates with components and application helpers, SQLite models
 (decimal, json, date and datetime columns; declared associations with
 `includes`; Rails' validators; encrypted columns; bulk inserts and typed
 aggregates), migrations, authentication and file-upload
-generators, background jobs, Turbo Streams over Server-Sent Events or
+generators, background jobs (job classes, cron scheduling, a jobs page), a
+cache store, HTML mail, gzip and streaming responses, Turbo Streams over Server-Sent Events or
 WebSocket, outbound HTTP, SMTP and WebSocket clients all work end to end;
 [examples/blog](examples/blog) is the Rails "Getting Started" blog built on
 it. Since 2026-11-05 porting an existing Rails application is a goal, in

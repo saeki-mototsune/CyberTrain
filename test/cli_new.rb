@@ -27,7 +27,7 @@ EXPECTED_FILES = [
   "spin.toml", ".gitignore", ".env.example", "README.md",
   "config/app.rb", "config/routes.rb",
   "db/schema.rb", "db/migrate/.keep",
-  "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep",
+  "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep", "app/jobs/.keep",
   "app/views/layouts/application.html.erb",
   "public/404.html", "public/500.html", "public/style.css", "public/up.html",
   "bin/blog.rb", "bin/gen.rb", "bin/db.rb",

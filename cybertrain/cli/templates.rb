@@ -104,6 +104,13 @@ module Cybertrain
           # read without it. To rotate, move the old key to
           # CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS (comma-separated) and re-save.
           # CYBERTRAIN_ENCRYPTION_KEY=  # cybertrain secret --hex
+
+          # Settings, not secrets. When set to 1, /up answers 503 "feed stale"
+          # once a WebSocket feed has stopped reporting.
+          # CYBERTRAIN_HEALTH_FEEDS=1
+
+          # The IANA zone cron expressions are read in; UTC when unset.
+          # CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo
         TEXT
       end
 
@@ -162,6 +169,11 @@ module Cybertrain
             # off only if production is really served over plain http://.
             # c.session_secure = false
           end
+
+          # A scheduled task: a cron expression (read in CYBERTRAIN_SCHEDULER_TZ,
+          # UTC by default), a unique name and a block. One process at a time
+          # leads the schedule; the web and worker roles both run it.
+          # Cybertrain::Scheduler.cron("0 4 * * *", "prune sessions") { }
         RUBY
       end
 
@@ -415,6 +427,10 @@ module Cybertrain
               hosts:
                 - 192.168.0.1
               cmd: ./#{package} worker
+              # The process exits non-zero on a fatal error: the container
+              # runtime must start it again.
+              options:
+                restart: unless-stopped
             # One container per WebSocket feed (Cybertrain::WebSocket.subscribe
             # names). If you use it, give web `env: clear: CYBERTRAIN_WORKER: 0`
             # so that the web role does not open the same feeds too.
@@ -422,6 +438,11 @@ module Cybertrain
             #   hosts:
             #     - 192.168.0.1
             #   cmd: ./#{package} feeds trades
+            #   # The process exits with status 1 when a feed keeps failing
+            #   # past its restart limit: the container runtime must start it
+            #   # again.
+            #   options:
+            #     restart: unless-stopped
 
           # kamal-proxy terminates TLS (a Let's Encrypt certificate for host)
           # and forwards to the app on port 3000. Keep ssl on: in production the
