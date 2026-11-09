@@ -237,7 +237,7 @@ test "corrupt or truncated gzip is a BadResponseError, buffered and streamed" do
   gz = big_gzip
   truncated = gz.byteslice(0, gz.bytesize - 8)
   cut_early = gz.byteslice(0, 300)
-  rx = receiver(7)
+  rx = receiver(6)
   rx.start
   rx.respond_with(status: 200, body: truncated, headers: gzip_headers("gzip"))
   kept_truncated = outcome { gzip_client.get(rx.url("/")) }
@@ -249,8 +249,6 @@ test "corrupt or truncated gzip is a BadResponseError, buffered and streamed" do
   streamed_cut = streamed_outcome(gzip_client, rx.url("/"))
   rx.respond_with(status: 200, body: "not gzip at all", headers: gzip_headers("gzip"))
   streamed_garbage = streamed_outcome(gzip_client, rx.url("/"))
-  rx.respond_with(status: 200, body: "", headers: gzip_headers("gzip"))
-  streamed_empty = streamed_outcome(gzip_client, rx.url("/"))
   path = "#{TMP}/cut.txt"
   rx.respond_with(status: 200, body: truncated, headers: gzip_headers("gzip"))
   to_file = outcome { gzip_client.get_to_file(rx.url("/"), path) }
@@ -262,10 +260,73 @@ test "corrupt or truncated gzip is a BadResponseError, buffered and streamed" do
   assert_includes streamed_truncated.text, "gzip"
   assert_equal "bad response", streamed_cut.kind
   assert_equal "bad response", streamed_garbage.kind
-  assert_equal "bad response", streamed_empty.kind
   assert_equal "bad response", to_file.kind
   refute File.exist?(path)
   refute File.exist?("#{path}.part")
+end
+
+test "a gzip response with no body bytes is an empty body, kept and streamed" do
+  rx = receiver(2)
+  rx.respond_with(status: 200, body: "", headers: gzip_headers("gzip"))
+  rx.start
+  kept = outcome { gzip_client.get(rx.url("/")) }
+  streamed = streamed_outcome(gzip_client, rx.url("/"))
+  rx.stop
+  assert_equal "ok 200", kept.kind
+  assert_equal "", kept.text
+  assert_equal "ok 200", streamed.kind
+  assert_equal "0", streamed.text
+end
+
+class StreamStop < StandardError
+end
+
+# How a streamed gzip GET whose block raises on the first piece ended. The
+# rescue is in a method of its own (rule 32).
+def stopped_stream(client, url)
+  client.get(url) do |chunk|
+    raise StreamStop, "stopped at #{chunk.bytesize} bytes" if chunk.bytesize > 0
+    nil
+  end
+  Outcome.new("none", "")
+rescue StreamStop => e
+  Outcome.new(e.class.name.to_s, e.message)
+rescue Cybertrain::HttpClient::Error => e
+  Outcome.new("client error", e.message)
+end
+
+test "an exception raised in the streamed block passes through the gzip sink unchanged" do
+  rx = receiver
+  rx.respond_with(status: 200, body: big_gzip, headers: gzip_headers("gzip"))
+  rx.start
+  stopped = stopped_stream(gzip_client, rx.url("/stream"))
+  rx.stop
+  assert_includes stopped.kind, "StreamStop"
+  assert_equal "stopped at 65536 bytes", stopped.text
+  # The client is usable afterwards (the decoder was closed by read_body's
+  # ensure, the stream by exchange's).
+  rx2 = receiver
+  rx2.respond_with(status: 200, body: big_gzip, headers: gzip_headers("gzip"))
+  rx2.start
+  after = gzip_client.get(rx2.url("/"))
+  rx2.stop
+  assert after.body == big_text
+end
+
+test "HttpClient.gzip= replaces the gzip support" do
+  installed = Cybertrain::HttpClient.gzip_decoder
+  Cybertrain::HttpClient.gzip = Cybertrain::GzipDecoder.new
+  rx = receiver
+  rx.respond_with(status: 200, body: "hello", gzip: true)
+  rx.start
+  refused = outcome { gzip_client.get(rx.url("/")) }
+  req = rx.received_request
+  rx.stop
+  Cybertrain::HttpClient.gzip = installed
+  assert_equal "bad response", refused.kind
+  assert_includes refused.text, "gzip_ffi"
+  assert_equal "", req.http_header("Accept-Encoding")
+  assert Cybertrain::HttpClient.gzip_decoder.gzip_ready?
 end
 
 test "a multi-member gzip body inflates to every member, buffered and streamed" do

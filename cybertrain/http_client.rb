@@ -351,12 +351,12 @@ module Cybertrain
       GzipDecoder.installed
     end
 
-    # Replaces the gzip support (cybertrain/http/gzip_ffi calls this when it
-    # is required).
+    # Replaces the gzip support (cybertrain/http/gzip_ffi installs its
+    # decoder when it is required). The reader is {.gzip_decoder}.
     # @param decoder [GzipDecoder]
     # @return [GzipDecoder]
     # @api public
-    def self.gzip_decoder=(decoder)
+    def self.gzip=(decoder)
       GzipDecoder.installed = decoder
     end
 
@@ -1183,16 +1183,19 @@ module Cybertrain
     # A gzip body: a kept one read whole (the bytes on the wire under
     # `max_body`) and inflated under `max_body`; a streamed one fed through
     # a GzipChunkSink, and refused when the bytes end inside the gzip
-    # stream.
+    # stream. No bytes at all (Content-Length: 0) is an empty body.
     def self.read_gzip(reader, headers, label, max_body, sink, decoder)
       unless sink.sink_streaming?
         wire = HttpClient.read_framed(reader, headers, label, max_body, sink)
+        return "" if wire.empty?
+
         text = decoder.gzip_whole(wire, max_body)
         HttpClient.check_gzip(decoder, label, max_body)
         return text
       end
-      HttpClient.read_framed(reader, headers, label, max_body, GzipChunkSink.new(sink, decoder, label))
-      unless decoder.gzip_done?
+      gz = GzipChunkSink.new(sink, decoder, label)
+      HttpClient.read_framed(reader, headers, label, max_body, gz)
+      if gz.sink_bytes > 0 && !decoder.gzip_done?
         message = "#{label}: the gzip response body ended before its gzip stream did"
         raise Net::ProtocolError, message
       end

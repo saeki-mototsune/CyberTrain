@@ -18,7 +18,7 @@
 # and wants gzip bodies requires this file and calls GzipFFI.install!.
 #
 # It also installs {GzipFFIDecoder} as the HTTP client's gzip support
-# ({HttpClient.gzip_decoder}) through cybertrain/http/gzip_decoder.rb, a
+# ({HttpClient.gzip=} / {HttpClient.gzip_decoder}) through cybertrain/http/gzip_decoder.rb, a
 # file the client requires too: neither this file nor the client pulls the
 # other into a program. A response kept whole is inflated with {.gunzip}; a
 # streamed one through the incremental inflater below, a piece of at most
@@ -161,6 +161,9 @@ module Cybertrain
           st->zs.avail_out = (uInt)((size_t)max_out - got);
           int rc = inflate(&st->zs, Z_NO_FLUSH);
           got = (size_t)max_out - st->zs.avail_out;
+          /* A member that ends exactly as the buffer fills leaves ended = 1 with
+             input left; the next pull resets for the next member, so the caller
+             must pull until it gets 0 (GzipChunkSink#sink_take does). */
           if (rc == Z_STREAM_END) { st->ended = 1; continue; }
           if (rc == Z_BUF_ERROR) break;
           if (rc == Z_MEM_ERROR) return -3;

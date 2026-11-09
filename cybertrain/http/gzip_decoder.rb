@@ -7,8 +7,9 @@
 # carries no client. This base has no gzip: {#gzip_ready?} is false, so
 # the client sends no `Accept-Encoding` and refuses a gzip response.
 # Requiring cybertrain/http/gzip_ffi installs its subclass as
-# {GzipDecoder.installed} ({HttpClient.gzip_decoder}), the way
-# cybertrain/net/tls installs the TLS connector.
+# {GzipDecoder.installed} (what {HttpClient.gzip=} sets and
+# {HttpClient.gzip_decoder} reads), the way cybertrain/net/tls installs the
+# TLS connector.
 #
 # One decoder object inflates one body: the installed one is a factory
 # ({#gzip_open}). A failure is a status ({#gzip_status}), never an
