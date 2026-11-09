@@ -67,12 +67,13 @@ end
 
 test "dump excludes schema_migrations, sqlite_* and the framework's tables and never lists the id column" do
   connection = migrated_connection
-  # Job, Lease, Stream and Scheduler::Timetable create these at run time; in db/schema.rb the
+  # Job, Lease, Stream, Scheduler::Timetable and Cache create these at run time; in db/schema.rb the
   # generator would make models of them.
   connection.execute("CREATE TABLE cybertrain_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT)", [])
   connection.execute("CREATE TABLE cybertrain_leases (name TEXT PRIMARY KEY, holder TEXT)", [])
   connection.execute("CREATE TABLE cybertrain_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, stream TEXT)", [])
   connection.execute("CREATE TABLE cybertrain_schedules (name TEXT PRIMARY KEY, next_run_at INTEGER)", [])
+  connection.execute("CREATE TABLE cybertrain_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL)", [])
   definition = Cybertrain::DB::SchemaDumper.dump(connection)
   assert_nil definition.table("schema_migrations")
   assert_nil definition.table("sqlite_sequence")
@@ -80,6 +81,7 @@ test "dump excludes schema_migrations, sqlite_* and the framework's tables and n
   assert_nil definition.table("cybertrain_leases")
   assert_nil definition.table("cybertrain_messages")
   assert_nil definition.table("cybertrain_schedules")
+  assert_nil definition.table("cybertrain_cache")
   assert_equal 2, definition.tables.size
   assert_nil definition.table("comments").column("id")
   connection.close
