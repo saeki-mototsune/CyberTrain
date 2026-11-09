@@ -133,15 +133,19 @@ test "only the lease holder runs due tasks; another takes over once the lease ex
   # Another process takes it once it has expired.
   assert Lease.acquire("scheduler", "other:1:1", 2000, ttl: 30)
   before = runs_text
-  # Every task is overdue, but this process does not lead: it runs none,
-  # and keeps the timetable (ten next at 2011, boom 2026, thirty 2031).
+  # Every task is overdue, but this process does not lead: it runs none.
   assert_equal 0, S.run_due(2001)
   refute S.leader?
   assert_equal 0, S.run_due(2030)
   assert_equal before, runs_text
   assert_equal 2030, S.last_tick
-  # The other's lease ran out at 2030: the next tick leads and runs what
-  # is due by the timetable, not every task the other led through.
+  # What the other leader recorded in the timetable as it ran the tasks.
+  Cybertrain::Scheduler::Timetable.write("tick ten", 2030, 2040, 2030)
+  Cybertrain::Scheduler::Timetable.write("boom", 2026, 2051, 2026)
+  Cybertrain::Scheduler::Timetable.write("thirty", 2001, 2031, 2001)
+  # The other's lease ran out at 2030: the next tick leads, re-reads the
+  # timetable and runs what is due by it, not every task the other led
+  # through.
   assert_equal 1, S.run_due(2031)
   assert S.leader?
   assert_equal S.holder, Lease.lease_holder("scheduler")

@@ -54,7 +54,10 @@ module Cybertrain
       attr_reader :task_name, :task_interval, :task_block, :task_zone, :task_catch_up, :task_job_kind, :task_job_args
       # The parsed expression of a `cron` task; nil for an `every` task.
       attr_reader :task_cron
-      # Epoch seconds of the next run; 0 until the scheduler first sees it.
+      # Epoch seconds of the next run; 0 until the scheduler first sees it;
+      # -1 when none could be computed (a `cron` expression with no match
+      # within five years): the task is then skipped on every later tick
+      # until restart.
       attr_accessor :task_next_run
       # Epoch seconds of the last run; 0 for none known.
       attr_accessor :task_last_run
@@ -283,6 +286,8 @@ module Cybertrain
 
       prune_safely
       schedule_all(Time.now.to_i)
+      # The thread's first tick that leads re-reads the table (run_due).
+      @leader = false
       @lease_ttl = config.scheduler_lease_ttl
       @running = true
       @generation += 1
@@ -349,8 +354,12 @@ module Cybertrain
     # next one is computed from it: the run plus the interval, or the
     # expression's next match after the run in the task's zone. A `cron`
     # task whose next match cannot be computed (none within five years) is
-    # logged as a failed task and skipped in this tick; the others run. A
-    # tick that cannot reach the database logs the error, runs nothing and
+    # logged once as a failed task: a due one still runs this once, and it
+    # is then skipped on every later tick until restart; the others run. A
+    # tick that takes the lease after one that did not (a change of
+    # leader, or the first tick after start!) first schedules every task
+    # with a timetable row from that row, as {Scheduler.schedule_all}
+    # does. A tick that cannot reach the database logs the error, runs nothing and
     # counts as not leading; the next one tries again. The thread calls it
     # with the current time; tests call it with chosen times instead of
     # sleeping.
@@ -359,16 +368,23 @@ module Cybertrain
     # @api public
     def self.run_due(now)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      was_leader = @leader
       leader = acquire_safely(now)
       @leader = leader
+      # Taking over (this tick leads, the last one did not, or it is the
+      # first since start!): the table the leader wrote is the timetable.
+      reload_timetable(now) if leader && !was_leader
       ran = 0
       i = 0
       while i < TASKS.size
         task = TASKS[i]
         due = task.task_next_run
-        if due == 0
+        if due < 0
+          # Disabled: no next run could be computed (logged once).
+          nil
+        elsif due == 0
           first = schedule_next(task, now)
-          task.task_next_run = first if first > 0
+          task.task_next_run = first > 0 ? first : -1
         elsif due <= now
           if leader
             # Renewed before each task (the tick's own `now` plus the time
@@ -380,26 +396,25 @@ module Cybertrain
           end
           if leader
             # The next run is computed from this one (its last run), before
-            # the task runs, so a raising task keeps its schedule.
+            # the task runs, so a raising task keeps its schedule. A due
+            # task with no next run still runs this once; it is then
+            # disabled (-1) and its row keeps the slot it ran as next.
             following = schedule_next(task, now)
-            if following > 0
-              task.task_last_run = now
-              task.task_next_run = following
-              run_task(task)
-              record_safely(task, now)
-              ran += 1
-            end
+            task.task_last_run = now
+            task.task_next_run = following > 0 ? following : -1
+            run_task(task)
+            record_safely(task, following > 0 ? following : due, now)
+            ran += 1
           else
-            # A process that does not lead keeps the timetable too, as if
-            # the leader had run the task when it was due (a `cron` task) or
-            # now (an `every` task), so that it does not run every overdue
-            # task at once when it takes over.
+            # A process that does not lead keeps a timetable of its own, as
+            # if the leader had run the task when it was due (a `cron` task)
+            # or now (an `every` task). It re-reads the table when it takes
+            # over (reload_timetable), so this guess only stands for a task
+            # the table has no row of.
             presumed = task.task_cron.nil? ? now : due
             following = schedule_next(task, presumed)
-            if following > 0
-              task.task_last_run = presumed
-              task.task_next_run = following
-            end
+            task.task_last_run = presumed
+            task.task_next_run = following > 0 ? following : -1
           end
         end
         i += 1
@@ -423,10 +438,10 @@ module Cybertrain
       -1
     end
 
-    # Timetable.write of the task's last and next run; the error logged
+    # Timetable.write of the task's last run and next_run; the error logged
     # when the database cannot be reached.
-    def self.record_safely(task, now)
-      Timetable.write(task.task_name, task.task_last_run, task.task_next_run, now)
+    def self.record_safely(task, next_run, now)
+      Timetable.write(task.task_name, task.task_last_run, next_run, now)
       nil
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       Cybertrain.logger.error("Scheduler timetable: #{e.class.name}: #{e.message}")
@@ -520,8 +535,26 @@ module Cybertrain
         else
           task.task_last_run = 0
           first = schedule_next(task, now)
-          task.task_next_run = first > 0 ? first : 0
-          record_safely(task, now) if first > 0
+          task.task_next_run = first > 0 ? first : -1
+          record_safely(task, first, now) if first > 0
+        end
+        i += 1
+      end
+      nil
+    end
+
+    # On taking the lease: every task the table has a row of is scheduled
+    # from it, as schedule_all does; a task with no row (or every task,
+    # when the table cannot be read) keeps the time this process had.
+    def self.reload_timetable(now)
+      rows = timetable_safely
+      i = 0
+      while i < TASKS.size
+        task = TASKS[i]
+        name = task.task_name
+        if rows.key?(name)
+          pair = rows[name]
+          schedule_from_row(task, pair[0], pair[1], now)
         end
         i += 1
       end
@@ -534,14 +567,14 @@ module Cybertrain
       task.task_last_run = last
       slot = last > 0 ? schedule_next(task, last) : stored_next
       if slot < 0
-        task.task_next_run = 0
+        task.task_next_run = -1
       elsif slot >= now || task.task_cron.nil?
         task.task_next_run = slot
       elsif task.task_catch_up
         task.task_next_run = now
       else
         following = schedule_next(task, now)
-        task.task_next_run = following > 0 ? following : 0
+        task.task_next_run = following > 0 ? following : -1
       end
       nil
     end
@@ -578,9 +611,9 @@ module Cybertrain
       out
     end
 
-    # "2026-11-09T10:12Z" of an epoch; "-" for 0 (not scheduled).
+    # "2026-11-09T10:12Z" of an epoch; "-" for 0 or -1 (not scheduled).
     def self.summary_stamp(epoch)
-      return "-" if epoch == 0
+      return "-" if epoch <= 0
 
       f = TimeZone.epoch_to_civil(epoch)
       "#{f[0]}-#{Cron.two_digits(f[1])}-#{Cron.two_digits(f[2])}T#{Cron.two_digits(f[3])}:#{Cron.two_digits(f[4])}Z"

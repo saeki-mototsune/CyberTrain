@@ -45,6 +45,16 @@ def fresh
   nil
 end
 
+def count_of(text, needle)
+  n = 0
+  at = text.index(needle)
+  until at.nil?
+    n += 1
+    at = text.index(needle, at + needle.size)
+  end
+  n
+end
+
 def ran_text
   RAN.join(",")
 end
@@ -140,6 +150,30 @@ test "the timetable survives a restart and a leader change" do
   assert_equal t0 + 5600, next_run_of("x")
 end
 
+test "a process that takes the lease over schedules from the table, not from its own guess" do
+  fresh
+  t0 = utc(2026, 11, 9, 10, 0)
+  S.every(600, "x") { RAN << "x" }
+  S.schedule_all(t0 - 595)
+  # Another process leads until t0 + 690.
+  assert Cybertrain::Lease.acquire("scheduler", "other:1:1:000000", t0, ttl: 690)
+  # Not leading, this process guesses the leader ran x when it ticked:
+  # next at t0 + 605, then t0 + 1250.
+  assert_equal 0, S.run_due(t0 + 5)
+  assert_equal 0, S.run_due(t0 + 650)
+  refute S.leader?
+  assert_equal t0 + 1250, next_run_of("x")
+  # The leader really ran it at t0 and t0 + 600.
+  Timetable.write("x", t0 + 600, t0 + 1200, t0 + 600)
+  # Taking over at t0 + 700, it continues from the table: no run now,
+  # the next at t0 + 1200.
+  assert_equal 0, S.run_due(t0 + 700)
+  assert S.leader?
+  assert_equal t0 + 1200, next_run_of("x")
+  assert_equal 1, S.run_due(t0 + 1200)
+  assert_equal "x", ran_text
+end
+
 test "a missed cron slot is skipped unless catch_up" do
   fresh
   register_nightly
@@ -205,7 +239,7 @@ test "task_summary names cron tasks with their next run in UTC" do
                "report (cron \"0 9 * * *\" UTC) next 2026-11-10T09:00Z", S.task_summary
 end
 
-test "a cron task with no next run is reported and skipped; the others run" do
+test "a cron task with no next run runs its due slot once, is reported once, then is skipped" do
   fresh
   # After 2096-02-29 the next 29 February falls on a Thursday in 2104,
   # beyond Cron.next_after's five years.
@@ -213,9 +247,18 @@ test "a cron task with no next run is reported and skipped; the others run" do
   S.every(60, "minutely") { RAN << "minutely" }
   S.schedule_all(utc(2096, 2, 28, 23, 59))
   assert_equal utc(2096, 2, 29, 0, 0), next_run_of("leap day")
-  assert_equal 1, S.run_due(utc(2096, 2, 29, 0, 0))
-  assert_equal "minutely", ran_text
-  assert_includes LOG.string, "[ERROR] Scheduled task \"leap day\" failed: ArgumentError: cron \"0 0 29 2 *\": no run in the 5 years after 2096-02-29 00:00 UTC"
+  assert_equal 2, S.run_due(utc(2096, 2, 29, 0, 0))
+  assert_equal "leap,minutely", ran_text
+  error = "[ERROR] Scheduled task \"leap day\" failed: ArgumentError: cron \"0 0 29 2 *\": no run in the 5 years after 2096-02-29 00:00 UTC"
+  assert_includes LOG.string, error
+  assert_equal(-1, next_run_of("leap day"))
+  # The row keeps the slot it ran; no negative next_run_at is written.
+  assert_equal [utc(2096, 2, 29, 0, 0), utc(2096, 2, 29, 0, 0)], Timetable.read_all["leap day"]
+  # Disabled: later ticks skip it without another error; the others run.
+  assert_equal 1, S.run_due(utc(2096, 2, 29, 0, 1))
+  assert_equal 1, S.run_due(utc(2096, 2, 29, 0, 2))
+  assert_equal "leap,minutely,minutely,minutely", ran_text
+  assert_equal 1, count_of(LOG.string, "Scheduled task \"leap day\" failed")
 end
 
 test "the timetable: rows read back as [last, next], 0 for a run that never happened" do
