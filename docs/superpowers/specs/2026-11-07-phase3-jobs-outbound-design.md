@@ -282,9 +282,14 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 - `tz:` names a zone of `Cybertrain::TimeZone` (D19; the system zoneinfo
   database, DST included); the default is `"UTC"`. The next run is the first
   wall-clock minute after the last run that matches the expression in that
-  zone; across a DST gap a wall time that does not exist is skipped and
-  across a fold it runs once (cron's behaviour). `Cron.next_after(expr,
-  epoch, zone) -> Integer` is a pure function with its own tests.
+  zone; across a DST gap a wall time that does not exist is skipped. Across
+  a fold Vixie cron's rule applies: an expression whose hour field starts
+  with `*` (`30 * * * *`, `0 */2 * * *`) runs at both occurrences of the
+  repeated hour, so an hourly entry keeps its hourly cadence in real time;
+  an expression with a fixed hour (`30 1 * * *`) runs once, at the first
+  occurrence. `Cron.next_after(expr, epoch, zone) -> Integer` is a pure
+  function with its own tests; `epoch` is the task's last run (the fold
+  rule is defined against it).
 - A `cron` task takes either a block (run on the scheduler thread, as
   `every` tasks are) or `job: "KindOrClassName", args: {}` — then the task
   only enqueues (`Job.enqueue(kind, JSON.generate(args))`), which is what
@@ -660,10 +665,12 @@ spikes/NOTES.md):**
    the missing 01:30 of the 29th and runs 2026-03-30 00:30 UTC; on
    2026-10-25 it runs once, at the first 01:30 (00:30 UTC, BST), and next
    on the 26th at 01:30 UTC; Asia/Tokyo gives 2026-03-29 16:30 UTC. For
-   `30 * * * *` across the fold this rule also skips the second 01:30
-   (00:30 then 02:30 UTC): the wall minute runs once, as section 5.1 says,
-   so an hourly entry has a two-hour gap in real time there; the cron
-   task's tests pin the reading it implements.
+   `30 * * * *` across the fold the spike's "wall minute runs once" rule
+   skipped the second 01:30 (00:30 then 02:30 UTC), a two-hour gap in real
+   time. The implementation (Task 2) does not keep that reading: it follows
+   Vixie cron, as section 5.1 now says — a wildcard-hour expression runs at
+   both occurrences (00:30 and 01:30 UTC, pinned by test/cron.rb), a
+   fixed-hour one once.
 2. Rescue arms for application classes: passes (rescue_arms.rb, with
    `require "cybertrain"`). `rescue Sub` before `rescue AppError` catches
    a `Sub` and a grandchild in the first arm and an `AppError` in the
