@@ -39,13 +39,14 @@ module BlogTest
   end
 
   # Every test starts from empty tables, an empty cache, no jobs (every
-  # row, not only the queued ones clear_enqueued_jobs removes), no
-  # BLOG_ADMIN_TOKEN and a new browser (no cookies).
+  # row, not only the queued ones clear_enqueued_jobs removes; install!
+  # creates the table the first time), no BLOG_ADMIN_TOKEN and a new
+  # browser (no cookies).
   def self.reset
     Comment.all.delete_all
     Article.all.delete_all
     Cybertrain::Cache.clear
-    clear_enqueued_jobs
+    Cybertrain::Job.install!
     Cybertrain::DB.with { |c| c.execute("DELETE FROM cybertrain_jobs") }
     ENV.delete("BLOG_ADMIN_TOKEN")
     nil

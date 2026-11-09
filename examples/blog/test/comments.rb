@@ -214,6 +214,17 @@ test "a comment that is not saved broadcasts nothing" do
   assert_equal before, Cybertrain::Stream.max_id
 end
 
+# perform_enqueued_jobs with Cybertrain.logger writing to `io`, restored
+# afterwards even if a job raises (a method that does not yield: NOTES
+# rules 32/45).
+def perform_jobs_logging_to(io)
+  saved = Cybertrain.logger
+  Cybertrain.logger = Cybertrain::Logger.new(io)
+  perform_enqueued_jobs
+ensure
+  Cybertrain.logger = saved
+end
+
 test "a new comment enqueues a NotifyCommentJob, which logs it when performed" do
   client = new_client
   article = BlogTest.article("Hello Rails")
@@ -228,10 +239,7 @@ test "a new comment enqueues a NotifyCommentJob, which logs it when performed" d
   assert_enqueued_with "NotifyCommentJob", { "comment_id" => comment.id, "article_id" => article.id }
 
   log = StringIO.new
-  saved = Cybertrain.logger
-  Cybertrain.logger = Cybertrain::Logger.new(log)
-  ran = perform_enqueued_jobs
-  Cybertrain.logger = saved
+  ran = perform_jobs_logging_to(log)
   assert_equal 1, ran
   assert_no_enqueued_jobs
   assert_includes log.string, "new comment #{comment.id} on article #{article.id}"

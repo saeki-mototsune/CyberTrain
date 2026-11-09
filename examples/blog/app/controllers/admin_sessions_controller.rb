@@ -3,9 +3,11 @@
 # x-admin-token header, so it carries the admin session instead
 # (ApplicationController#require_admin).
 class AdminSessionsController < ApplicationController
-  # GET /admin/login
+  # GET /admin/login: the form; 404 while BLOG_ADMIN_TOKEN is unset or empty
   # (named new_action: a `new` method would shadow AdminSessionsController.new)
   def new_action
+    render plain: "Not Found", status: :not_found if admin_token.empty?
+    nil
   end
 
   # POST /admin/login

@@ -311,9 +311,11 @@ def admin_header(token)
   { "x-admin-token" => token }
 end
 
-# Loads the login form and posts `token` with the form's CSRF token.
+# Posts `token` to /admin/login with the session's CSRF token, taken from
+# the new-article form (the login form is 404 while BLOG_ADMIN_TOKEN is
+# unset or empty).
 def admin_login(client, token)
-  client.get("/admin/login")
+  client.get("/articles/new")
   client.post("/admin/login", { "authenticity_token" => BlogTest.form_token(client), "token" => token })
 end
 
@@ -335,10 +337,14 @@ end
 
 test "retry, discard and delete are 404 without a token and without the session" do
   client = new_client
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
   failed = BlogTest.failed_job
   client.get("/articles/new")
   csrf = BlogTest.form_token(client)
+  ["retry", "discard", "delete"].each do |action|
+    res = client.post("/admin/jobs/#{failed}/#{action}", { "authenticity_token" => csrf }, admin_header(""))
+    assert_response res, :not_found
+  end
+  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
   ["retry", "discard", "delete"].each do |action|
     res = client.post("/admin/jobs/#{failed}/#{action}", { "authenticity_token" => csrf })
     assert_response res, :not_found
@@ -400,12 +406,14 @@ end
 
 test "with BLOG_ADMIN_TOKEN unset or empty nothing opens the jobs page" do
   client = new_client
+  assert_response client.get("/admin/login"), :not_found
   assert_response client.get("/admin/jobs", admin_header("")), :not_found
   res = admin_login(client, "")
   assert_response res, :not_found
   refute BlogTest.session_of(client).key?("admin"), "no admin session"
 
   ENV["BLOG_ADMIN_TOKEN"] = ""
+  assert_response client.get("/admin/login"), :not_found
   assert_response client.get("/admin/jobs", admin_header("")), :not_found
   assert_response client.get("/admin/jobs"), :not_found
   res = admin_login(client, "")
@@ -427,9 +435,29 @@ test "an admin session is 404 once BLOG_ADMIN_TOKEN changes" do
   assert_response client.get("/admin/jobs"), :ok
 end
 
-test "config/app.rb schedules the session prune" do
-  names = Cybertrain::Scheduler::TASKS.map { |t| t.task_name }
-  assert_includes names, "prune sessions"
+# A NotifyCommentJob row that has run (`done`), last updated `days_ago`
+# days ago.
+def done_job(days_ago)
+  id = Cybertrain::Job.enqueue("NotifyCommentJob", "{\"comment_id\":1,\"article_id\":1}")
+  Cybertrain::DB.with do |c|
+    c.execute("UPDATE cybertrain_jobs SET state = 'done', updated_at = ? WHERE id = ?",
+              Cybertrain::Cast.binds(Time.now.to_i - days_ago * 86_400, id))
+  end
+  id
+end
+
+test "config/app.rb schedules the prune of done jobs, which keeps the last 7 days" do
+  BlogTest.reset
+  index = Cybertrain::Scheduler.task_index("prune done jobs")
+  assert index >= 0, "expected the task \"prune done jobs\""
+  old = done_job(8)
+  recent = done_job(6)
+  failed = BlogTest.failed_job
+  Cybertrain::DB.with { |c| c.execute("UPDATE cybertrain_jobs SET updated_at = 0 WHERE id = ?", [failed]) }
+  assert Cybertrain::Scheduler.run_task(Cybertrain::Scheduler::TASKS[index]), "the task ran without raising"
+  assert_equal "(gone)", BlogTest.job_state(old)
+  assert_equal "done", BlogTest.job_state(recent)
+  assert_equal "failed", BlogTest.job_state(failed)
 end
 
 Cybertrain::Test.run!

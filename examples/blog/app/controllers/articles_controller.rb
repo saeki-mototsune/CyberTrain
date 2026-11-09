@@ -22,7 +22,7 @@ class ArticlesController < ApplicationController
     @articles = articles.to_a
     # Kept in cybertrain_cache for a minute: an article created meanwhile
     # shows up in the list at once and in the count within the minute.
-    @article_count = Cybertrain::Cast.int(Cybertrain::Cache.fetch("articles/count", expires_in: 60) { Article.count.to_s })
+    @article_count = Cybertrain::Cache.fetch_int("articles/count", expires_in: 60) { Article.count }
   end
 
   # GET /articles/1

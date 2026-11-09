@@ -12,15 +12,11 @@ Cybertrain.configure do |c|
 end
 
 # Every day at 04:00 (CYBERTRAIN_SCHEDULER_TZ, UTC by default), on the
-# scheduler thread of the process that runs jobs, the usual prune of a
-# `sessions` table. The blog keeps its sessions in the cookie and has no
-# such table, so the task checks for it first: an app with one (what
-# `cybertrain generate authentication` writes) keeps the DELETE alone.
-Cybertrain::Scheduler.cron("0 4 * * *", "prune sessions") do
-  Cybertrain::DB.with do |c|
-    tables = c.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sessions'")
-    c.execute("DELETE FROM sessions WHERE updated_at < datetime('now', '-30 days')") unless tables.empty?
-    nil
-  end
+# scheduler thread of the process that runs jobs: every comment leaves a
+# `done` NotifyCommentJob row in cybertrain_jobs, so the rows done more than
+# 7 days ago are deleted. Failed and discarded rows stay for the jobs page
+# (`./blog jobs prune` removes those).
+Cybertrain::Scheduler.cron("0 4 * * *", "prune done jobs") do
+  Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)
   nil
 end

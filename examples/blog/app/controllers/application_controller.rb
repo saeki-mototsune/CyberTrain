@@ -18,7 +18,10 @@ class ApplicationController < Cybertrain::Controller
     token = admin_token
     unless token.empty?
       return nil if Cybertrain::Crypto.secure_compare(session["admin"].to_s, admin_session_value(token))
-      return nil if Cybertrain::Crypto.secure_compare(request.header("x-admin-token").to_s, token)
+      # Compared as HMACs, of one length, so the time taken does not give
+      # away the token's length.
+      header = request.header("x-admin-token").to_s
+      return nil if Cybertrain::Crypto.secure_compare(admin_session_value(header), admin_session_value(token))
     end
     render plain: "Not Found", status: :not_found
     nil
