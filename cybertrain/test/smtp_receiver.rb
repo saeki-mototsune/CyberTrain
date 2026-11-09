@@ -5,6 +5,7 @@
 # handling of a rejected delivery can be tested too. See
 # cybertrain/test/receiver.rb for how every wait is bounded.
 require "cybertrain/test/receiver"
+require "cybertrain/mailer"
 
 module Cybertrain
   module Test
@@ -87,6 +88,19 @@ module Cybertrain
           end
         end
         value
+      end
+
+      # The message read back by {Cybertrain::Mailer::Message.parse}:
+      # `"subject"` decoded, `"text"` and `"html"` decoded from base64 (or
+      # as sent), CRLF line endings kept; `"html"` is "" for a plain-text
+      # message.
+      # @example
+      #   parts = smtp.received_message.message_parts
+      #   assert_includes parts["html"], "<p>Welcome"
+      # @return [Hash{String => String}]
+      # @api public
+      def message_parts
+        Mailer::Message.parse(@message_data)
       end
     end
 

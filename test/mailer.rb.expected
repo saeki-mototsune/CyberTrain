@@ -22,4 +22,9 @@ ok   settings Mailer.new refuses, and the ports the modes default to
 ok   subjects: plain ASCII as it is, anything else as RFC 2047 encoded words
 ok   the message: headers, line endings, encodings, folding
 ok   Config reads the CYBERTRAIN_SMTP_* variables
-24 tests, 113 assertions, 0 failures
+ok   deliver with html: sends multipart/alternative whose parts decode to the text and the html
+ok   Message.build: text part first, then html, base64 in lines of 76, the closing boundary
+ok   Message.build refuses header injection, a bad boundary and invalid bodies
+ok   deliver without html: is the plain message of today
+ok   a UTF-8 body with a lone dot line survives base64
+29 tests, 162 assertions, 0 failures

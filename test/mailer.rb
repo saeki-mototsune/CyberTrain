@@ -6,14 +6,18 @@
 # timings are never printed.
 #
 # The TLS layer is in the program (cybertrain/net/tls requires Spinel's
-# openssl package), so the snapshot comes from the compiled binary
-# (spikes/NOTES.md rule 23). There is no TLS server to talk to (the package
+# openssl package), and cybertrain/mailer requires cybertrain/job (SQLite
+# through FFI) for deliver_later, so the snapshot comes from the compiled
+# binary (spikes/NOTES.md rule 23). HTML mail (multipart/alternative) is
+# delivered to Cybertrain::Test::SmtpReceiver and parsed back with
+# ReceivedMessage#message_parts; test/mailer_job.rb has deliver_later. There is no TLS server to talk to (the package
 # has no X509 to make a certificate), so STARTTLS and implicit TLS are
 # tested up to the handshake, against servers that answer it in plain text.
 require "socket"
 require "cybertrain/mailer"
 require "cybertrain/net/tls"
 require "cybertrain/test"
+require "cybertrain/test/smtp_receiver"
 
 # A server that plays `steps` on one connection:
 #   "> text"  sends text and CRLF (text may hold more CRLF-separated lines)
@@ -502,6 +506,118 @@ test "Config reads the CYBERTRAIN_SMTP_* variables" do
   assert_equal "", defaults.smtp_password
   assert_equal "starttls", defaults.smtp_tls
   assert_equal "", defaults.settings_summary
+end
+
+# ---- HTML mail: multipart/alternative ----------------------------------------
+
+test "deliver with html: sends multipart/alternative whose parts decode to the text and the html" do
+  smtp = Cybertrain::Test::SmtpReceiver.new
+  port = smtp.start
+  got = outcome do
+    plain_mailer(port).deliver(to: "bob@example.org, carol@example.org", subject: "Café au lait",
+                               body: "Hello Bob,\nsee you.\n", html: "<p>Hello <b>Bob</b>,</p>\n<p>see you.</p>\n")
+  end
+  mail = smtp.received_message
+  smtp.stop
+  assert_equal "ok", got.kind
+  # base64 parts are 7-bit: no BODY=8BITMIME though the receiver offers it.
+  assert_equal "MAIL FROM:<app@example.com>", mail.transcript[1]
+  assert mail.message_data.start_with?("Date: ")
+  assert_equal "app@example.com", mail.message_header("From")
+  assert_equal "bob@example.org, carol@example.org", mail.message_header("To")
+  assert_equal "=?UTF-8?B?Q2Fmw6kgYXUgbGFpdA==?=", mail.message_header("Subject")
+  assert_equal "1.0", mail.message_header("MIME-Version")
+  ctype = mail.message_header("Content-Type")
+  assert ctype.start_with?("multipart/alternative; boundary=\"=_cybertrain_")
+  # 16 random bytes as 32 hex digits, quoted.
+  assert_equal "multipart/alternative; boundary=\"=_cybertrain_".bytesize + 33, ctype.bytesize
+  parts = mail.message_parts
+  assert_equal "Café au lait", parts["subject"]
+  assert_equal "Hello Bob,\r\nsee you.\r\n", parts["text"]
+  assert_equal "<p>Hello <b>Bob</b>,</p>\r\n<p>see you.</p>\r\n", parts["html"]
+  body = mail.message_body
+  assert body.index("Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n") <
+         body.index("Content-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n")
+end
+
+test "Message.build: text part first, then html, base64 in lines of 76, the closing boundary" do
+  text = "#{"a" * 100}\n"
+  message = Cybertrain::Mailer::Message.build("app@example.com", "bob@example.org", "Hi", text, "<p>x</p>", "=_b")
+  b64 = Base64.strict_encode64("#{"a" * 100}\r\n")
+  expected = "From: app@example.com\r\nTo: bob@example.org\r\nSubject: Hi\r\nMIME-Version: 1.0\r\n" \
+             "Content-Type: multipart/alternative; boundary=\"=_b\"\r\n\r\n" \
+             "--=_b\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" \
+             "#{b64.byteslice(0, 76)}\r\n#{b64.byteslice(76, b64.bytesize - 76)}\r\n" \
+             "--=_b\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" \
+             "#{Base64.strict_encode64("<p>x</p>\r\n")}\r\n" \
+             "--=_b--\r\n"
+  assert_equal expected, message
+  parsed = Cybertrain::Mailer::Message.parse(message)
+  assert_equal "Hi", parsed["subject"]
+  assert_equal "#{"a" * 100}\r\n", parsed["text"]
+  assert_equal "<p>x</p>\r\n", parsed["html"]
+end
+
+# "ok", or "argument: <message>" when Message.build refuses its input.
+def build_kind(from, to, subject, html, boundary)
+  Cybertrain::Mailer::Message.build(from, to, subject, "t", html, boundary)
+  "ok"
+rescue ArgumentError => e
+  "argument: #{e.message}"
+end
+
+test "Message.build refuses header injection, a bad boundary and invalid bodies" do
+  assert_equal "ok", build_kind("a@example.com", "b@example.org", "s", "<p>h</p>", "=_x")
+  assert build_kind("a@example.com", "b@example.org", "s\r\nBcc: evil@example.net", "h", "=_x").start_with?("argument")
+  assert build_kind("a@example.com\r\nBcc: evil@example.net", "b@example.org", "s", "h", "=_x").start_with?("argument")
+  assert build_kind("a@example.com", "b@example.org\nBcc: evil@example.net", "s", "h", "=_x").start_with?("argument")
+  assert build_kind("a@example.com", "b@example.org", "s", "h", "x\"\r\nBcc: evil@example.net").start_with?("argument")
+  assert build_kind("a@example.com", "b@example.org", "s", "h", "").start_with?("argument")
+  assert build_kind("a@example.com", "b@example.org", "s", "h", "x" * 71).start_with?("argument")
+  assert build_kind("a@example.com", "b@example.org", "s", "caf\xC3", "=_x").start_with?("argument")
+  assert build_kind("a@example.com", "b@example.org", "s", "a\u0000b", "=_x").start_with?("argument")
+  m = plain_mailer(closed_port)
+  assert_equal "argument", outcome { m.deliver(to: "bob@example.org", subject: "Hi\r\nBcc: e@example.net", body: "b", html: "<p>h</p>") }.kind
+  assert_equal "argument", outcome { m.deliver(to: "bob@example.org", subject: "s", body: "b", html: "caf\xC3") }.kind
+end
+
+test "deliver without html: is the plain message of today" do
+  smtp = Cybertrain::Test::SmtpReceiver.new
+  port = smtp.start
+  got = outcome { plain_mailer(port).deliver(to: "bob@example.org", subject: "Hello", body: "Hi Bob,\nend", html: "") }
+  mail = smtp.received_message
+  smtp.stop
+  assert_equal "ok", got.kind
+  assert_equal "From: app@example.com\r\nTo: bob@example.org\r\nSubject: Hello\r\nMIME-Version: 1.0\r\n" \
+               "Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\n" \
+               "Hi Bob,\r\nend\r\n", after_date(mail.message_data)
+  parts = mail.message_parts
+  assert_equal "Hello", parts["subject"]
+  assert_equal "Hi Bob,\r\nend\r\n", parts["text"]
+  assert_equal "", parts["html"]
+end
+
+test "a UTF-8 body with a lone dot line survives base64" do
+  smtp = Cybertrain::Test::SmtpReceiver.new
+  port = smtp.start
+  text = "Café — 3 €\n.\n..\nこんにちは\n"
+  html = "<p>Café</p>\n.\n<p>こんにちは</p>"
+  got = outcome { plain_mailer(port).deliver(to: "bob@example.org", subject: "こんにちは", body: text, html: html) }
+  mail = smtp.received_message
+  smtp.stop
+  assert_equal "ok", got.kind
+  parts = mail.message_parts
+  assert_equal "こんにちは", parts["subject"]
+  assert_equal Cybertrain::Mailer.normalize_body(text).bytes, parts["text"].bytes
+  assert_equal Cybertrain::Mailer.normalize_body(html).bytes, parts["html"].bytes
+  assert Cybertrain::Mailer.utf8?(parts["text"])
+  # Every body line is base64 or MIME structure, at most 76 characters.
+  lines = mail.message_body.split("\r\n")
+  i = 0
+  while i < lines.size
+    assert lines[i].bytesize <= 76
+    i += 1
+  end
 end
 
 Cybertrain::Test.run!

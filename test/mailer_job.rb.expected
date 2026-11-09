@@ -1,0 +1,6 @@
+ok   the mail job is registered when cybertrain/mailer is required
+ok   deliver_later enqueues cybertrain mail and work_one delivers it
+ok   deliver_later with from: and no html sends the plain message
+ok   deliver_later refuses what deliver would refuse, before anything is enqueued
+ok   a rejected address discards; a connection failure requeues
+5 tests, 41 assertions, 0 failures
