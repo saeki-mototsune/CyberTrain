@@ -281,8 +281,11 @@ test "config: CYBERTRAIN_JOB_THREADS sets job_threads; a word is the default, 0 
 end
 
 test "every continues from last_run_at after schedule_all" do
-  # The table says "thirty" last ran at 6000: schedule_all (a restart)
-  # continues from there, not an interval after its own now.
+  # The table says "thirty" last ran at 6000 (its row from the ticks
+  # above, which is later, is removed first: a write never moves a row
+  # back): schedule_all (a restart) continues from there, not an interval
+  # after its own now.
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
   Cybertrain::Scheduler::Timetable.write("thirty", 6000, 6030, 6000)
   S.schedule_all(6010)
   assert_equal 6030, S::TASKS[S.task_index("thirty")].task_next_run

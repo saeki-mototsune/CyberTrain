@@ -51,7 +51,12 @@ module Cybertrain
     # Distinctive accessor names and no #call (spikes/NOTES.md rules
     # 10/34/40).
     class Task
-      attr_reader :task_name, :task_interval, :task_block, :task_zone, :task_catch_up, :task_job_kind, :task_job_args
+      attr_reader :task_name, :task_interval, :task_block, :task_catch_up, :task_job_kind, :task_job_args
+      # The `tz:` a `cron` task named; "" for the default
+      # ({Config#scheduler_tz}, resolved by Scheduler.schedule_all).
+      attr_reader :task_tz_name
+      # The zone a `cron` task's expression is read in.
+      attr_accessor :task_zone
       # The parsed expression of a `cron` task; nil for an `every` task.
       attr_reader :task_cron
       # Epoch seconds of the next run; 0 until the scheduler first sees it;
@@ -62,10 +67,11 @@ module Cybertrain
       # Epoch seconds of the last run; 0 for none known.
       attr_accessor :task_last_run
 
-      def initialize(task_name, task_interval, task_block, task_zone, task_cron, task_catch_up, task_job_kind, task_job_args)
+      def initialize(task_name, task_interval, task_block, task_tz_name, task_zone, task_cron, task_catch_up, task_job_kind, task_job_args)
         @task_name = task_name
         @task_interval = task_interval
         @task_block = task_block
+        @task_tz_name = task_tz_name
         @task_zone = task_zone
         @task_cron = task_cron
         @task_catch_up = task_catch_up
@@ -78,7 +84,7 @@ module Cybertrain
 
     # The registry: a constant, which Spinel roots for the collector (a
     # class variable it does not: NOTES rule 64), seeded and emptied (rule 9).
-    TASKS = Array.new(0) { Task.new("", 0, nil, TimeZone::UTC, nil, false, "", "{}") }
+    TASKS = Array.new(0) { Task.new("", 0, nil, "", TimeZone::UTC, nil, false, "", "{}") }
 
     # Guards @last_tick, which the scheduler thread writes and a request
     # thread (a health check) reads.
@@ -91,6 +97,8 @@ module Cybertrain
     @generation = 0
     # Whether the last tick held the lease.
     @leader = false
+    # True from schedule_all to the next tick (run_due's takeover rule).
+    @after_start = false
     # Config#scheduler_lease_ttl, copied by start! (the default until then).
     @lease_ttl = 30
     # The `now` of the last tick that ran Job.recover!; 0 for none.
@@ -135,7 +143,7 @@ module Cybertrain
       raise ArgumentError, "Scheduler.every: the name is empty" if name.empty?
       raise ArgumentError, "Scheduler.every #{name.inspect}: already registered" if task_index(name) >= 0
 
-      TASKS << Task.new(name, seconds, block, TimeZone::UTC, nil, false, "", "{}")
+      TASKS << Task.new(name, seconds, block, "", TimeZone::UTC, nil, false, "", "{}")
       nil
     end
 
@@ -158,17 +166,18 @@ module Cybertrain
     #                              job: "morning_report", args: { "scope" => "all" })
     # @param expr [String] such as `"*/5 * * * *"`
     # @param name [String] for the log; unique
-    # @param tz [String] an IANA zone name; {Config#scheduler_tz} by default
+    # @param tz [String] an IANA zone name; "" (the default) for
+    #   {Config#scheduler_tz} as it is when the scheduler starts
     # @param catch_up [Boolean] whether a missed run happens once at start
     # @param job [String] a job kind to enqueue instead of running a block;
     #   "" for a block task
     # @param args [Hash] the job's payload, as JSON
     # @return [nil]
-    # @raise [ArgumentError] for an expression {Cron.parse} refuses, an
-    #   unknown zone, an empty name or one taken, or a block and `job:`
+    # @raise [ArgumentError] for an expression {Cron.parse} refuses, a
+    #   `tz:` given and unknown, an empty name or one taken, or a block and `job:`
     #   together or neither
     # @api public
-    def self.cron(expr, name, tz: Cybertrain.config.scheduler_tz, catch_up: false, job: "", args: {}, &block)
+    def self.cron(expr, name, tz: "", catch_up: false, job: "", args: {}, &block)
       raise ArgumentError, "Scheduler.cron: the name is empty" if name.empty?
       raise ArgumentError, "Scheduler.cron #{name.inspect}: already registered" if task_index(name) >= 0
 
@@ -181,13 +190,18 @@ module Cybertrain
         raise ArgumentError, message
       end
       parsed = schedule_parse(expr, name)
-      zone = TimeZone.find(tz)
-      unless zone.found?
-        message = "Scheduler.cron #{name.inspect}: tz #{tz.inspect} is not a known time zone"
-        raise ArgumentError, message
+      # The default zone is resolved by schedule_all: Config#scheduler_tz
+      # may still change, and boot reports a bad one (scheduler_error).
+      zone = TimeZone::UTC
+      unless tz.empty?
+        zone = TimeZone.find(tz)
+        unless zone.found?
+          message = "Scheduler.cron #{name.inspect}: tz #{tz.inspect} is not a known time zone"
+          raise ArgumentError, message
+        end
       end
       payload = JSON.generate(args)
-      TASKS << Task.new(name, 0, block, zone, parsed, catch_up, job, payload)
+      TASKS << Task.new(name, 0, block, tz, zone, parsed, catch_up, job, payload)
       nil
     end
 
@@ -285,7 +299,7 @@ module Cybertrain
       return false if TASKS.empty? && !Job.handlers?
 
       prune_safely
-      schedule_all(Time.now.to_i)
+      schedule_all(Time.now.to_i, config.scheduler_tz)
       # The thread's first tick that leads re-reads the table (run_due).
       @leader = false
       @lease_ttl = config.scheduler_lease_ttl
@@ -371,9 +385,14 @@ module Cybertrain
       was_leader = @leader
       leader = acquire_safely(now)
       @leader = leader
-      # Taking over (this tick leads, the last one did not, or it is the
-      # first since start!): the table the leader wrote is the timetable.
-      reload_timetable(now) if leader && !was_leader
+      # Taking over (this tick leads, the last one did not): the table the
+      # leader wrote is the timetable, and a cron slot it records as due
+      # runs once. Not on the first tick after schedule_all (a start),
+      # which keeps the start's rule (a slot that passed while no process
+      # ran is skipped unless catch_up).
+      after_start = @after_start
+      @after_start = false
+      reload_timetable(now, !after_start) if leader && !was_leader
       ran = 0
       i = 0
       while i < TASKS.size
@@ -448,6 +467,16 @@ module Cybertrain
       nil
     end
 
+    # Timetable.write_missing of the task's row (a new task); the error
+    # logged when the database cannot be reached.
+    def self.record_missing_safely(task, now)
+      Timetable.write_missing(task.task_name, task.task_next_run, now)
+      nil
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      Cybertrain.logger.error("Scheduler timetable: #{e.class.name}: #{e.message}")
+      nil
+    end
+
     # Timetable.read_all, or no rows (the error logged) when the database
     # cannot be reached.
     def self.timetable_safely
@@ -513,40 +542,50 @@ module Cybertrain
       false
     end
 
-    # Schedules every task from the timetable, as start! does. An `every`
-    # task continues from its last run (an overdue one runs at the first
-    # tick); a `cron` task takes its next match after its last run, and
-    # when that has passed, the next match after `now` -- or, with
-    # `catch_up: true`, runs once at the first tick. A task with no row is
-    # scheduled from `now` (an interval after it, or the next match) and
-    # gets its row.
+    # Schedules every task from the timetable, as start! does at a start.
+    # A `cron` task given no `tz:` first takes the zone `default_tz`. An
+    # `every` task continues from its last run (an overdue one runs at the
+    # first tick); a `cron` task takes its next match after its last run,
+    # and when that has passed while no process ran, the next match after
+    # `now` -- or, with `catch_up: true`, runs once at the first tick. A
+    # task with no row is scheduled from `now` (an interval after it, or
+    # the next match) and gets its row, unless another process wrote one
+    # meanwhile.
     # @param now [Integer] epoch seconds
+    # @param default_tz [String] the zone of `cron` tasks registered
+    #   without `tz:` ({Config#scheduler_tz}); one TimeZone cannot load
+    #   behaves as UTC (boot reports it)
     # @return [nil]
     # @api public
-    def self.schedule_all(now)
+    def self.schedule_all(now, default_tz = Cybertrain.config.scheduler_tz)
+      default_zone = TimeZone.find(default_tz)
       rows = timetable_safely
       i = 0
       while i < TASKS.size
         task = TASKS[i]
+        task.task_zone = default_zone if task.task_tz_name.empty?
         name = task.task_name
         if rows.key?(name)
           pair = rows[name]
-          schedule_from_row(task, pair[0], pair[1], now)
+          schedule_from_row(task, pair[0], pair[1], now, false)
         else
           task.task_last_run = 0
           first = schedule_next(task, now)
           task.task_next_run = first > 0 ? first : -1
-          record_safely(task, first, now) if first > 0
+          record_missing_safely(task, now) if first > 0
         end
         i += 1
       end
+      @after_start = true
       nil
     end
 
     # On taking the lease: every task the table has a row of is scheduled
-    # from it, as schedule_all does; a task with no row (or every task,
-    # when the table cannot be read) keeps the time this process had.
-    def self.reload_timetable(now)
+    # from it, as schedule_all does, except that with `takeover` a `cron`
+    # slot the row records as passed runs once (a process ran, but no
+    # leader ran the slot); a task with no row (or every task, when the
+    # table cannot be read) keeps the time this process had.
+    def self.reload_timetable(now, takeover)
       rows = timetable_safely
       i = 0
       while i < TASKS.size
@@ -554,7 +593,7 @@ module Cybertrain
         name = task.task_name
         if rows.key?(name)
           pair = rows[name]
-          schedule_from_row(task, pair[0], pair[1], now)
+          schedule_from_row(task, pair[0], pair[1], now, takeover)
         end
         i += 1
       end
@@ -562,15 +601,16 @@ module Cybertrain
     end
 
     # One task's next run from its row: last (0 for none) and the stored
-    # next run.
-    def self.schedule_from_row(task, last, stored_next, now)
+    # next run. A `cron` slot that has passed is skipped, unless catch_up
+    # or takeover, when it runs once at the next tick.
+    def self.schedule_from_row(task, last, stored_next, now, takeover)
       task.task_last_run = last
       slot = last > 0 ? schedule_next(task, last) : stored_next
       if slot < 0
         task.task_next_run = -1
       elsif slot >= now || task.task_cron.nil?
         task.task_next_run = slot
-      elsif task.task_catch_up
+      elsif task.task_catch_up || takeover
         task.task_next_run = now
       else
         following = schedule_next(task, now)

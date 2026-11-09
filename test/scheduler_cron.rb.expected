@@ -3,13 +3,17 @@ ok   tz: evaluates the expression in that zone; the default is config.scheduler_
 ok   cron refuses a bad expression, an unknown zone, an empty or taken name
 ok   the timetable survives a restart and a leader change
 ok   a process that takes the lease over schedules from the table, not from its own guess
+ok   a process that takes the lease over runs a cron slot the table records as due, once
+ok   one process that misses the lease at a cron slot runs the slot at its next tick
 ok   a missed cron slot is skipped unless catch_up
 ok   a job: task enqueues and does not run the job on the scheduler thread
 ok   a job: task needs a registered kind, and a block or job: but not both
 ok   task_summary names cron tasks with their next run in UTC
 ok   a cron task with no next run runs its due slot once, is reported once, then is skipped
 ok   the timetable: rows read back as [last, next], 0 for a run that never happened
+ok   the timetable never moves a row back; a new task's row never replaces one
+ok   a cron task without tz: takes config.scheduler_tz as it is when the scheduler starts
 ok   prune_schedules deletes the rows of names no longer registered
 ok   config: scheduler_tz is UTC, from CYBERTRAIN_SCHEDULER_TZ, and boot refuses an unknown zone
 ok   start! prunes the rows of names no longer registered
-14 tests, 102 assertions, 0 failures
+18 tests, 130 assertions, 0 failures

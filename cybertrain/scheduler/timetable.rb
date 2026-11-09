@@ -20,11 +20,21 @@ module Cybertrain
                   "next_run_at INTEGER NOT NULL, " \
                   "updated_at INTEGER NOT NULL);"
 
-      # A last run of 0 is stored as NULL (never ran).
+      # A last run of 0 is stored as NULL (never ran). A row is never moved
+      # backwards: an update needs a later last run, or the same one and a
+      # next run no earlier (a leader that lost the lease while a task ran
+      # writes after the new leader).
       WRITE_SQL = "INSERT INTO cybertrain_schedules (name, last_run_at, next_run_at, updated_at) " \
                   "VALUES (?, NULLIF(?, 0), ?, ?) " \
                   "ON CONFLICT(name) DO UPDATE SET last_run_at = excluded.last_run_at, " \
-                  "next_run_at = excluded.next_run_at, updated_at = excluded.updated_at"
+                  "next_run_at = excluded.next_run_at, updated_at = excluded.updated_at " \
+                  "WHERE COALESCE(excluded.last_run_at, 0) > COALESCE(cybertrain_schedules.last_run_at, 0) " \
+                  "OR (COALESCE(excluded.last_run_at, 0) = COALESCE(cybertrain_schedules.last_run_at, 0) " \
+                  "AND excluded.next_run_at >= cybertrain_schedules.next_run_at)"
+
+      # A new task's row, left alone when one exists.
+      MISSING_SQL = "INSERT INTO cybertrain_schedules (name, last_run_at, next_run_at, updated_at) " \
+                    "VALUES (?, NULL, ?, ?) ON CONFLICT(name) DO NOTHING"
 
       # The DB.generation the table was last ensured for; -1 for never (as
       # Job's and Lease's).
@@ -69,7 +79,9 @@ module Cybertrain
       end
 
       # Records a task's last and next run (inserting its row or replacing
-      # it).
+      # it). A row is never moved backwards: a write whose last run is
+      # earlier than the row's, or the same with an earlier next run, is
+      # ignored.
       # @param name [String] the task's name
       # @param last_run_at [Integer] epoch seconds; 0 when it has not run
       # @param next_run_at [Integer] epoch seconds
@@ -81,6 +93,21 @@ module Cybertrain
         ensure_installed
         binds = Cast.binds(name, last_run_at, next_run_at, now)
         DB.with { |c| c.execute(WRITE_SQL, binds) }
+        nil
+      end
+
+      # Inserts a row for a task that has none (never run, next run
+      # `next_run_at`); an existing row is left as it is.
+      # @param name [String] the task's name
+      # @param next_run_at [Integer] epoch seconds
+      # @param now [Integer] epoch seconds, stored as updated_at
+      # @return [nil]
+      # @raise [Cybertrain::DB::Error] when the database is not reachable
+      # @api public
+      def self.write_missing(name, next_run_at, now)
+        ensure_installed
+        binds = Cast.binds(name, next_run_at, now)
+        DB.with { |c| c.execute(MISSING_SQL, binds) }
         nil
       end
 

@@ -174,6 +174,47 @@ test "a process that takes the lease over schedules from the table, not from its
   assert_equal "x", ran_text
 end
 
+test "a process that takes the lease over runs a cron slot the table records as due, once" do
+  fresh
+  register_nightly
+  # Scheduled at 02:00: both rows say 03:00. Another process leads until
+  # 03:04:59 and dies before running the slot.
+  S.schedule_all(utc(2026, 11, 9, 2, 0))
+  assert Cybertrain::Lease.acquire("scheduler", "other:1:1:000000", utc(2026, 11, 9, 2, 0), ttl: 3899)
+  assert_equal 0, S.run_due(utc(2026, 11, 9, 2, 30))
+  assert_equal 0, S.run_due(utc(2026, 11, 9, 3, 0))
+  refute S.leader?
+  # This process takes over at 03:05: each slot runs once, then the next
+  # is 03:00 the next day.
+  assert_equal 2, S.run_due(utc(2026, 11, 9, 3, 5))
+  assert S.leader?
+  assert_equal "nightly,caught", ran_text
+  assert_equal utc(2026, 11, 10, 3, 0), next_run_of("nightly")
+  assert_equal utc(2026, 11, 10, 3, 0), next_run_of("nightly catch up")
+  assert_equal 0, S.run_due(utc(2026, 11, 9, 3, 6))
+  assert_equal [utc(2026, 11, 9, 3, 5), utc(2026, 11, 10, 3, 0)], Timetable.read_all["nightly"]
+end
+
+test "one process that misses the lease at a cron slot runs the slot at its next tick" do
+  fresh
+  S.cron("0 3 * * *", "nightly") { RAN << "nightly" }
+  S.schedule_all(utc(2026, 11, 9, 2, 0))
+  assert_equal 0, S.run_due(utc(2026, 11, 9, 2, 59))
+  assert S.leader?
+  # At 03:00 the tick cannot take the lease (another holder has it until
+  # then); the next one does, and runs the slot once.
+  binds = Cybertrain::Cast.binds(utc(2026, 11, 9, 3, 0))
+  DB.with { |c| c.execute("UPDATE cybertrain_leases SET holder = 'thief:1:1:000000', expires_at = ? WHERE name = 'scheduler'", binds) }
+  assert_equal 0, S.run_due(utc(2026, 11, 9, 3, 0))
+  refute S.leader?
+  assert_equal 1, S.run_due(utc(2026, 11, 9, 3, 0) + 1)
+  assert S.leader?
+  assert_equal "nightly", ran_text
+  assert_equal utc(2026, 11, 10, 3, 0), next_run_of("nightly")
+  assert_equal 0, S.run_due(utc(2026, 11, 9, 3, 1))
+  assert_equal "nightly", ran_text
+end
+
 test "a missed cron slot is skipped unless catch_up" do
   fresh
   register_nightly
@@ -276,6 +317,37 @@ test "the timetable: rows read back as [last, next], 0 for a run that never happ
   names << "b"
   assert_equal 2, Timetable.prune(names)
   assert_equal 1, Timetable.read_all.size
+end
+
+test "the timetable never moves a row back; a new task's row never replaces one" do
+  fresh
+  # The new leader's row, then the old leader's late write: ignored.
+  Timetable.write("x", 1000, 1600, 1000)
+  Timetable.write("x", 400, 1000, 1200)
+  assert_equal [1000, 1600], Timetable.read_all["x"]
+  # The same last run with an earlier next run: ignored too.
+  Timetable.write("x", 1000, 1500, 1300)
+  assert_equal [1000, 1600], Timetable.read_all["x"]
+  Timetable.write_missing("x", 50, 1300)
+  assert_equal [1000, 1600], Timetable.read_all["x"]
+  Timetable.write_missing("y", 700, 1300)
+  assert_equal [0, 700], Timetable.read_all["y"]
+  # A later run moves it on.
+  Timetable.write("x", 1600, 2200, 1600)
+  assert_equal [1600, 2200], Timetable.read_all["x"]
+end
+
+test "a cron task without tz: takes config.scheduler_tz as it is when the scheduler starts" do
+  fresh
+  saved = Cybertrain.config.scheduler_tz
+  # A bad default does not raise at registration (boot reports it).
+  Cybertrain.config.scheduler_tz = "Mars/Base"
+  S.cron("0 9 * * *", "later zone") { RAN << "later" }
+  Cybertrain.config.scheduler_tz = "Asia/Tokyo"
+  S.schedule_all(utc(2026, 11, 9, 1, 0))
+  assert_equal "Asia/Tokyo", S::TASKS[0].task_zone.zone_name
+  assert_equal utc(2026, 11, 10, 0, 0), next_run_of("later zone")
+  Cybertrain.config.scheduler_tz = saved
 end
 
 test "prune_schedules deletes the rows of names no longer registered" do
