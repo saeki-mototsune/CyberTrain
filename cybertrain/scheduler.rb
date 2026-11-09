@@ -605,9 +605,13 @@ module Cybertrain
     end
 
     # One task's next run from its row: last (0 for none) and the stored
-    # next run. A `cron` slot that has passed is skipped, unless catch_up
-    # or it came due at or after `since`, when it runs once at the next
-    # tick (schedule_all passes `now`: no passed slot qualifies).
+    # next run. A `cron` slot that has passed runs once at the next tick
+    # when catch_up is set or it came due at or after `since` (the start).
+    # Otherwise the slots before `since` are skipped and the first match
+    # at or after `since` is taken: one that has passed too (it came due
+    # while this process ran and no leader ran it) runs once at the next
+    # tick, a later one is the next run. schedule_all passes `now`, so at
+    # a start only a slot exactly at `now` runs.
     def self.schedule_from_row(task, last, stored_next, now, since)
       task.task_last_run = last
       slot = last > 0 ? schedule_next(task, last) : stored_next
@@ -618,8 +622,15 @@ module Cybertrain
       elsif task.task_catch_up || slot >= since
         task.task_next_run = now
       else
-        following = schedule_next(task, now)
-        task.task_next_run = following > 0 ? following : -1
+        # Cron.next_after is strictly after: from a second before since.
+        first = schedule_next(task, since - 1)
+        if first < 0
+          task.task_next_run = -1
+        elsif first <= now
+          task.task_next_run = now
+        else
+          task.task_next_run = first
+        end
       end
       nil
     end

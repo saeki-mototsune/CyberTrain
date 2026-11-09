@@ -235,6 +235,39 @@ test "a cold start whose first tick misses the lease still skips a slot that pas
   assert_equal utc(2026, 11, 10, 3, 0), next_run_of("nightly")
 end
 
+# A row from last week, a start at 02:00 under a dead predecessor's
+# lease that lasts until just before `takeover`; true when the takeover
+# tick ran the task.
+def old_row_takeover(takeover)
+  S.cron("0 3 * * *", "nightly") { RAN << "nightly" }
+  Timetable.write("nightly", utc(2026, 11, 1, 3, 0), utc(2026, 11, 2, 3, 0), utc(2026, 11, 1, 3, 0))
+  start = utc(2026, 11, 9, 2, 0)
+  Cybertrain::Lease.acquire("scheduler", "gone:1:1:000000", start, ttl: takeover - start - 1)
+  S.schedule_all(start)
+  S.run_due(start)
+  S.run_due(takeover - 300) if takeover - 300 > start
+  S.leader? ? false : S.run_due(takeover) == 1
+end
+
+test "a takeover runs a slot that came due since the start although the row is old" do
+  fresh
+  # Ticks fail from 02:00 until 03:05, across the 03:00 slot.
+  assert old_row_takeover(utc(2026, 11, 9, 3, 5))
+  assert S.leader?
+  assert_equal "nightly", ran_text
+  assert_equal utc(2026, 11, 10, 3, 0), next_run_of("nightly")
+end
+
+test "a takeover before any slot came due since the start runs nothing" do
+  fresh
+  refute old_row_takeover(utc(2026, 11, 9, 2, 30))
+  assert S.leader?
+  assert_equal "", ran_text
+  assert_equal utc(2026, 11, 9, 3, 0), next_run_of("nightly")
+  assert_equal 1, S.run_due(utc(2026, 11, 9, 3, 0))
+  assert_equal "nightly", ran_text
+end
+
 test "a missed cron slot is skipped unless catch_up" do
   fresh
   register_nightly
