@@ -87,6 +87,44 @@ module Cybertrain
       def service_problem
         ""
       end
+
+      # The names of the parts {#service_start} started whose thread has
+      # ended (a feed whose loop raised past its rescues), for the
+      # supervisor ({Background.supervise!}) to start again. The default
+      # has none.
+      # @return [Array<String>]
+      # @api public
+      def service_dead_feeds
+        Background::NO_NAMES
+      end
+
+      # How many times {#service_restart_feed} started the part `name`
+      # again: the supervisor waits min(30, 2 ** that) seconds before the
+      # next restart.
+      # @param name [String]
+      # @return [Integer]
+      # @api public
+      def service_feed_restarts(name)
+        0
+      end
+
+      # Starts the dead part `name` again (a new thread).
+      # @param name [String]
+      # @return [Boolean] true when it started one
+      # @api public
+      def service_restart_feed(name)
+        false
+      end
+
+      # Writes the parts' status where other processes can read it (the
+      # feeds' `cybertrain_feeds` rows), called by the supervisor every
+      # {Config#feed_status_interval} seconds.
+      # @param now [Integer] epoch seconds
+      # @return [Integer] how many rows it wrote
+      # @api public
+      def service_publish_status(now)
+        0
+      end
     end
 
     # A typed empty list of names (NOTES rule 9), shared and never added to.
@@ -143,7 +181,8 @@ module Cybertrain
 
     # Starts every registered service, in registration order, unless
     # {Config#worker} is off (`CYBERTRAIN_WORKER=0`: the process that runs
-    # the background work is another one).
+    # the background work is another one), and the feed supervisor
+    # ({Background.supervise!}) when a service with feeds started.
     # @param config [Config]
     # @return [Integer] how many services' service_start returned true
     # @api public
@@ -156,11 +195,13 @@ module Cybertrain
         started += 1 if SERVICES[i].service_start(config)
         i += 1
       end
+      supervise!(config) if started > 0 && !feed_names.empty?
       started
     end
 
     # Starts every registered service with {Service#service_start_only}, in
-    # registration order: what `./<app> feeds [NAME...]` runs. Unlike
+    # registration order, and the feed supervisor as {Background.start_all}
+    # does: what `./<app> feeds [NAME...]` runs. Unlike
     # {Background.start_all} it ignores {Config#worker}: the role was asked
     # for by name.
     # @param config [Config]
@@ -174,6 +215,7 @@ module Cybertrain
         started += 1 if SERVICES[i].service_start_only(config, names)
         i += 1
       end
+      supervise!(config) if started > 0 && !feed_names.empty?
       started
     end
 
@@ -219,10 +261,12 @@ module Cybertrain
       ""
     end
 
-    # Asks every registered service to end, in registration order.
+    # Asks every registered service to end, in registration order, after
+    # stopping the feed supervisor (so a stopping feed is not restarted).
     # @return [nil]
     # @api public
     def self.stop_all
+      stop_supervisor!
       i = 0
       while i < SERVICES.size
         SERVICES[i].service_stop
@@ -232,3 +276,5 @@ module Cybertrain
     end
   end
 end
+
+require "cybertrain/background/supervisor"

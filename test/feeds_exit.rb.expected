@@ -1,0 +1,2 @@
+ok   a feed that keeps dying makes a feeds process exit 1 with the FATAL line
+1 tests, 6 assertions, 0 failures

@@ -2,7 +2,7 @@
 # process-wide default every framework component logs through.
 module Cybertrain
   class Logger
-    LEVELS = { debug: 0, info: 1, warn: 2, error: 3 }
+    LEVELS = { debug: 0, info: 1, warn: 2, error: 3, fatal: 4 }
 
     attr_reader :level
 
@@ -40,6 +40,12 @@ module Cybertrain
 
     def error(msg)
       log(:error, msg)
+    end
+
+    # The line before the process gives up (a feeds process whose feed
+    # keeps dying: cybertrain/background/supervisor.rb).
+    def fatal(msg)
+      log(:fatal, msg)
     end
 
     private

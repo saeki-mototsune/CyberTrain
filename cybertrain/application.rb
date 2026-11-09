@@ -148,6 +148,8 @@ module Cybertrain
       fail_boot(proxies_error) unless proxies_error.empty?
       health_error = c.health_error
       fail_boot(health_error) unless health_error.empty?
+      feeds_error = c.feeds_error
+      fail_boot(feeds_error) unless feeds_error.empty?
       stream_error = c.stream_error
       fail_boot(stream_error) unless stream_error.empty?
       # A string check, no openssl: a malformed key always, an unset one when
@@ -352,16 +354,29 @@ module Cybertrain
     # The feeds' lifetime, the counterpart of run_worker_threads: the named
     # subscriptions until the stop, then their shutdown, and the TERM and
     # INT handlers restored whatever happens.
+    #
+    # In this role a feed whose thread keeps dying ends the process
+    # (Background.exit_on_feed_death, spec section 9): the supervisor logs
+    # the FATAL line and sets Background.feeds_failed?, which ends the wait
+    # as a stop does; the feeds are stopped and the role answers 1, the
+    # exit status Main.run's caller exits with. (The supervisor thread
+    # cannot exit itself: under Spinel `exit` on a thread other than the
+    # main one ends only that thread.)
     # @param names [Array<String>] the feeds to run; empty for all
     # @param previous_term [Object] what trap("TERM") answered
     # @param previous_int [Object] what trap("INT") answered
-    # @return [Integer] 0
+    # @return [Integer] 0, or 1 after a feed died too often
     def run_feeds_threads(names, previous_term, previous_int)
+      Background.exit_on_feed_death = true
       Background.start_only(@config, names)
       Application.wait_roles_stop
       Background.stop_all
-      0
+      Background.feeds_failed? ? 1 : 0
     ensure
+      # The flags are the role's: an in-process caller (a test) that runs
+      # another role afterwards starts clean.
+      Background.exit_on_feed_death = false
+      Background.reset_supervisor!
       trap("TERM", previous_term)
       trap("INT", previous_int)
     end
@@ -388,8 +403,10 @@ module Cybertrain
       RoleStop.resume_roles!
     end
 
+    # Waits for a stop, or for a feeds process's supervisor giving up on a
+    # feed (Background.feeds_failed?).
     def self.wait_roles_stop
-      sleep 0.1 until RoleStop.roles_stopped?
+      sleep 0.1 until RoleStop.roles_stopped? || Background.feeds_failed?
       nil
     end
 

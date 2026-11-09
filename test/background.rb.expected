@@ -4,4 +4,11 @@ ok   start_all does nothing when the worker is off
 ok   boot_problem names the first service that would refuse to start
 ok   boot_problem is empty when the worker is off
 ok   a name registered twice is refused
-6 tests, 9 assertions, 0 failures
+ok   restart_backoff is min(30, 2 ** restarts) seconds
+ok   the feed settings: 10, 10 and 600, from the environment, each at least 1
+ok   start_all starts the supervisor with the feeds; stop_all stops it before them
+ok   a feed thread that dies is restarted after the backoff and restarts counts it
+ok   status rows are written with started_at, last_activity_at and restarts
+ok   after stop! nothing is restarted
+ok   a feeds process gives up after feed_restart_limit deaths in the window
+13 tests, 68 assertions, 0 failures

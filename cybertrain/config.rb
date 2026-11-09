@@ -446,6 +446,29 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :cache_prune_interval
 
+    # Seconds between the writes of the feeds' status rows
+    # (`cybertrain_feeds`, {WebSocket.publish_status}) by the supervisor
+    # of a process that runs feeds, `10`, from
+    # `CYBERTRAIN_FEED_STATUS_INTERVAL`. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :feed_status_interval
+
+    # How many times one feed's thread may die within
+    # {#feed_restart_window} before a `feeds` process exits with status 1
+    # (`[FATAL] feed NAME restarted N times in W s; exiting`), `10`, from
+    # `CYBERTRAIN_FEED_RESTART_LIMIT`. A `server` process that runs feeds
+    # keeps restarting them. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :feed_restart_limit
+
+    # The window {#feed_restart_limit} counts in, in seconds, `600`, from
+    # `CYBERTRAIN_FEED_RESTART_WINDOW`. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :feed_restart_window
+
     # How many attempts a {Job} gets before it is left `failed`, `5` (the
     # first run and four retries, 1, 5, 15 and 60 minutes apart).
     # @return [Integer]
@@ -545,6 +568,14 @@ attr_accessor :trusted_proxies
     # kept for boot to refuse (scheduler_error).
     def self.default_cache_prune_interval
       Params.parse_int(env_or("CYBERTRAIN_CACHE_PRUNE_INTERVAL", ""), 300)
+    end
+
+    # CYBERTRAIN_FEED_STATUS_INTERVAL, CYBERTRAIN_FEED_RESTART_LIMIT and
+    # CYBERTRAIN_FEED_RESTART_WINDOW as default_job_threads reads its
+    # variable: the default when unset or not a number, a number below 1
+    # kept for boot to refuse (feeds_error).
+    def self.default_feed_setting(name, default)
+      Params.parse_int(env_or(name, ""), default)
     end
 
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
@@ -714,6 +745,9 @@ end
       @job_drain_timeout = 10
       @jobs_page_per_page = Config.default_jobs_page_per_page
       @cache_prune_interval = Config.default_cache_prune_interval
+      @feed_status_interval = Config.default_feed_setting("CYBERTRAIN_FEED_STATUS_INTERVAL", 10)
+      @feed_restart_limit = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_LIMIT", 10)
+      @feed_restart_window = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_WINDOW", 600)
       @scheduler_lease_ttl = 30
       @scheduler_tz = Config.env_or("CYBERTRAIN_SCHEDULER_TZ", "UTC")
       # ParameterFilter.names' list; Application#boot installs it there.
@@ -1126,6 +1160,17 @@ end
         return "scheduler_lease_ttl (#{@scheduler_lease_ttl}) must be at least twice scheduler_interval (#{@scheduler_interval})"
       end
       return "scheduler_tz #{@scheduler_tz.inspect} is not a known time zone" unless TimeZone.find(@scheduler_tz).found?
+
+      ""
+    end
+
+    # The error Application#boot reports when feed_status_interval,
+    # feed_restart_limit or feed_restart_window is below 1; "" when all
+    # are fine.
+    def feeds_error
+      return "feed_status_interval must be at least 1 (got #{@feed_status_interval})" if @feed_status_interval < 1
+      return "feed_restart_limit must be at least 1 (got #{@feed_restart_limit})" if @feed_restart_limit < 1
+      return "feed_restart_window must be at least 1 (got #{@feed_restart_window})" if @feed_restart_window < 1
 
       ""
     end

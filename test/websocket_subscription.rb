@@ -31,6 +31,9 @@ WS.random_source = -> { 0.5 }
 TICKS = Array.new(0) { "" }
 FLAKY = Array.new(0) { "" }
 OPENS = Array.new(0) { "" }
+TICKS_OFF = Array.new(0) { "" }
+TICKS_ON = Array.new(0) { "" }
+TICKS_BAD = Array.new(0) { "" }
 
 # Registered at top level, as an application's config/app.rb does, and
 # without on_message (the start! test gives it one). It keeps the default
@@ -173,6 +176,49 @@ def subscribe_deaf(name, url)
     .on_message { |conn, data| conn.send_text(data) }
 end
 
+# on_tick blocks: each records whether it was given a Connection (the
+# parameter is nil while the feed is disconnected).
+def subscribe_tick_off(url)
+  WS.subscribe("tick_off", url, allow_private: true)
+    .on_message { |conn, data| conn.send_text(data) }
+    .on_tick(1) { |conn| TICKS_OFF << (conn.nil? ? "nil" : "conn") }
+end
+
+def subscribe_tick_on(url)
+  WS.subscribe("tick_on", url, allow_private: true)
+    .on_message { |conn, data| TICKS_ON << data }
+    .on_tick(1) do |conn|
+      if conn.nil?
+        TICKS_ON << "nil"
+      else
+        TICKS_ON << "conn"
+        conn.send_text("tick #{TICKS_ON.size}")
+      end
+    end
+end
+
+def subscribe_tick_bad(url)
+  WS.subscribe("tick_bad", url, allow_private: true)
+    .on_message { |conn, data| conn.send_text(data) }
+    .on_tick(1) do |conn|
+      TICKS_BAD << "tick"
+      raise "tick failed #{TICKS_BAD.size}" if TICKS_BAD.size == 1
+    end
+end
+
+def subscribe_pongy(url)
+  WS.subscribe("pongy", url, timeout: 2, ping_interval: 1, stale_after: 4, allow_private: true)
+    .on_message { |conn, data| conn.send_text(data) }
+end
+
+# A port nothing listens on any more.
+def dead_url(path)
+  rx = Cybertrain::Test::WebSocketReceiver.new(max: 1, accept_window: 1.0, read_timeout: 1.0)
+  rx.start
+  rx.stop
+  rx.url(path)
+end
+
 # ---- without threads --------------------------------------------------------
 
 test "retry_delay doubles up to 60 seconds" do
@@ -225,6 +271,36 @@ test "feed_status of an unknown name is an ArgumentError" do
   refute status.connected?
   assert_equal 0, status.last_message_at
   assert_equal 0, status.reconnects
+end
+
+test "on_tick takes whole seconds, at least 1, once per subscription" do
+  sub = WS.subscribe("tick_args", "ws://127.0.0.1:9/").on_message { |conn, data| conn.send_text(data) }
+  assert_includes assert_raises("ArgumentError") { sub.on_tick(0) { |conn| conn } }, "at least 1"
+  assert_includes assert_raises("ArgumentError") { sub.on_tick(-1) { |conn| conn } }, "at least 1"
+  assert_equal "tick_args", sub.on_tick(2) { |conn| conn }.sub_name
+  assert_equal 2, sub.sub_tick_seconds
+  assert_includes assert_raises("ArgumentError") { sub.on_tick(3) { |conn| conn } }, "already has on_tick"
+end
+
+test "sub_tick_due? counts from the start of the feed" do
+  sub = WS.subscribe("tick_due", "ws://127.0.0.1:9/").on_message { |conn, data| conn.send_text(data) }
+  refute sub.sub_tick_due?(100.0)
+  sub.on_tick(5) { |conn| conn }
+  sub.sub_tick_start!(100.0)
+  refute sub.sub_tick_due?(104.9)
+  assert sub.sub_tick_due?(105.0)
+  sub.sub_ticked!(105.5)
+  refute sub.sub_tick_due?(110.0)
+  assert sub.sub_tick_due?(110.5)
+end
+
+test "feed_status has restarts and thread_alive? before the feeds run" do
+  status = WS.feed_status("bare")
+  assert_equal 0, status.restarts
+  refute status.thread_alive?
+  refute WS.thread_alive?("bare")
+  refute WS.restart_feed("bare")
+  assert_equal 0, WS.feed_status("bare").restarts
 end
 
 test "the service is registered with Background" do
@@ -344,6 +420,57 @@ test "stop! is bounded when servers ignore the close" do
   refute WS.feed_status("deaf2").connected?
   rx1.stop
   rx2.stop
+end
+
+test "on_tick fires every second while disconnected, with no connection" do
+  subscribe_tick_off(dead_url("/tick_off"))
+  assert WS.start!(Cybertrain::Config.new)
+  assert await_size(TICKS_OFF, 2, 5.0)
+  assert_equal ["nil", "nil"], [TICKS_OFF[0], TICKS_OFF[1]]
+  assert WS.thread_alive?("tick_off")
+  assert WS.feed_status("tick_off").thread_alive?
+  WS.stop!
+  refute WS.feed_status("tick_off").connected?
+end
+
+test "on_tick fires every second while connected, with the connection" do
+  rx = receiver_for(1, [[step("accept"), step("echo_until_close")]])
+  subscribe_tick_on(rx.url("/tick_on"))
+  assert WS.start!(Cybertrain::Config.new)
+  # Each tick sends "tick N"; the receiver echoes it back to on_message.
+  assert await_frames(rx, 1, 2, 6.0)
+  sent = frames_of(rx, 1)
+  assert_equal "tick 1", sent[0]
+  assert_equal "conn", TICKS_ON[0]
+  refute TICKS_ON.include?("nil")
+  WS.stop!
+  rx.stop
+end
+
+test "an exception in on_tick is logged and the loop continues" do
+  subscribe_tick_bad(dead_url("/tick_bad"))
+  assert WS.start!(Cybertrain::Config.new)
+  assert await_size(TICKS_BAD, 3, 6.0)
+  assert_includes LOG.string, "[ERROR] WebSocket \"tick_bad\" on_tick failed: RuntimeError: tick failed 1"
+  assert_equal 1, count_of(LOG.string, "on_tick failed")
+  assert WS.thread_alive?("tick_bad")
+  WS.stop!
+end
+
+test "a pong refreshes the feed's activity, not its last message" do
+  rx = receiver_for(1, [[step("accept"), step("echo_until_close")]])
+  sub = subscribe_pongy(rx.url("/pongy"))
+  assert_equal 0, sub.sub_last_activity_at
+  before = Time.now.to_i
+  assert WS.start!(Cybertrain::Config.new)
+  # The ping goes out after 1 s of quiet; the receiver answers with a pong.
+  assert await_frames(rx, 9, 1, 5.0)
+  ends_at = mono_now + 3.0
+  sleep(0.05) while sub.sub_last_activity_at == 0 && mono_now < ends_at
+  assert sub.sub_last_activity_at >= before
+  assert_equal 0, WS.feed_status("pongy").last_message_at
+  WS.stop!
+  rx.stop
 end
 
 Cybertrain::Test.run!

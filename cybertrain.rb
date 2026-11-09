@@ -55,6 +55,7 @@ require "cybertrain/job"
 require "cybertrain/mailer/later"
 require "cybertrain/lease"
 require "cybertrain/scheduler"
+require "cybertrain/websocket/feed_table"
 require "cybertrain/application"
 require "cybertrain/main"
 
