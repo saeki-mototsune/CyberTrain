@@ -28,5 +28,11 @@ ok   discard writes discarded and prune_finished removes it with failed rows; pr
 ok   a handler that writes its own outcome is not written again by finish
 ok   fail_exhausted uses the larger of the default and the kind's max_attempts
 ok   Job.handle still receives the payload String
+ok   the key derivation is the same for a String, an Integer, a Float and a boolean
+ok   enqueue stores the key and refuses a payload without the field
+ok   two rows of the same key never run at once across two claimed_by labels; different keys do
+ok   backfill_keys keys queued rows of a keyed kind and lists the unkeyable ones
+ok   recovery requeues a stale running row with its key in the same statement
+ok   an upgrade adds the column and the index to an existing table
 ok   schema dumps leave the jobs table out
-31 tests, 250 assertions, 0 failures
+37 tests, 304 assertions, 0 failures

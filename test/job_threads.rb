@@ -8,7 +8,8 @@ require "cybertrain/test"
 # (the fast one is not held up by the slow one), the heartbeat thread
 # moves a running job's heartbeat_at, stop! waits at most
 # job_drain_timeout and leaves an unfinished job `running` for staleness
-# recovery, and the scheduler no longer runs jobs as a task. Assertions
+# recovery, the scheduler no longer runs jobs as a task, and a keyed
+# limit runs two keys at once but never two rows of one key. Assertions
 # are on order and bounds; no time is printed. Compiled with the whole
 # framework (NOTES rule 41); it links SQLite through FFI, so its snapshot
 # comes from the compiled binary (rule 23).
@@ -43,6 +44,30 @@ def clear_events
   nil
 end
 
+# The event at `index`, "" past the end.
+def event_at(index)
+  text = ""
+  EVENTS_LOCK.synchronize { text = EVENTS[index] if index < EVENTS.size }
+  text
+end
+
+# Where `text` is among the events; the event count when it is missing.
+def event_position(text)
+  at = 0
+  EVENTS_LOCK.synchronize do
+    at = EVENTS.size
+    i = 0
+    while i < EVENTS.size
+      if EVENTS[i] == text
+        at = i
+        break
+      end
+      i += 1
+    end
+  end
+  at
+end
+
 # The heartbeat of the running `beat` row less its claim time.
 def beat_lag
   rows = DB.with { |c| c.execute("SELECT heartbeat_at - updated_at AS d FROM cybertrain_jobs WHERE kind = 'beat' AND state = 'running'") }
@@ -60,6 +85,13 @@ Job.handle("fast") { |payload| record_event("fast") }
 Job.handle("beat") do |payload|
   sleep 2
   record_event(beat_lag >= 1 ? "beat moved" : "beat still")
+end
+# One at a time per "exchange": records its start and end.
+Job.register("per key", concurrency: 1, concurrency_key: "exchange") do |run|
+  name = Cybertrain::Cast.str(run.run_args["name"])
+  record_event("start #{name}")
+  sleep 1
+  record_event("end #{name}")
 end
 Job.handle("long") do |payload|
   sleep 3
@@ -170,6 +202,22 @@ test "the scheduler no longer runs jobs as a task" do
   assert_equal(-1, Cybertrain::Scheduler.task_index("cybertrain jobs"))
   assert_includes LOG.string, "[INFO] Scheduler started: no scheduled tasks (job recovery only)"
   Cybertrain::Scheduler.stop!
+end
+
+test "a keyed limit: two keys run at once, the same key does not" do
+  fresh_db
+  enqueue_now("per key", "{\"exchange\":\"a\",\"name\":\"a1\"}")
+  enqueue_now("per key", "{\"exchange\":\"a\",\"name\":\"a2\"}")
+  enqueue_now("per key", "{\"exchange\":\"b\",\"name\":\"b1\"}")
+  assert Job.start!(pool_config(3))
+  # a1 and b1 run together; a2 waits for a1 although a thread is free.
+  assert wait_until(0.5) { Job.running_count("per key") == 2 }
+  assert_equal 1, Job.state_count("queued")
+  assert wait_until(5.0) { Job.state_count("done") == 3 }
+  Job.stop!
+  assert_equal "start a1,start b1", [event_at(0), event_at(1)].sort.join(",")
+  assert event_position("end a1") < event_position("start a2")
+  assert event_position("start b1") < event_position("end a1")
 end
 
 test "request_stop (the TERM trap) starts the drain: stop! waits only what is left of it" do
