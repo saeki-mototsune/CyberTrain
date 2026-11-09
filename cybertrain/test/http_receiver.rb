@@ -80,7 +80,8 @@ module Cybertrain
     class HttpReceiver < Receiver
       REASONS = {
         200 => "OK", 201 => "Created", 202 => "Accepted", 204 => "No Content",
-        301 => "Moved Permanently", 302 => "Found", 304 => "Not Modified",
+        301 => "Moved Permanently", 302 => "Found", 303 => "See Other", 304 => "Not Modified",
+        307 => "Temporary Redirect", 308 => "Permanent Redirect",
         400 => "Bad Request", 401 => "Unauthorized", 403 => "Forbidden", 404 => "Not Found",
         409 => "Conflict", 422 => "Unprocessable Content", 429 => "Too Many Requests",
         500 => "Internal Server Error", 502 => "Bad Gateway", 503 => "Service Unavailable"
@@ -88,6 +89,14 @@ module Cybertrain
 
       # The largest body the receiver reads.
       MAX_BODY_BYTES = 10_485_760
+
+      # Seconds between the chunked frames of a `chunks:` body.
+      CHUNK_PAUSE = 0.05
+
+      # A typed empty Array of Strings for the `chunks:` default (rule 9).
+      def self.no_chunks
+        Array.new(0) { "" }
+      end
 
       # A typed empty Hash for the `headers:` default (spikes/NOTES.md rule 9).
       def self.no_headers
@@ -112,6 +121,7 @@ module Cybertrain
         @reply_headers = HttpReceiver.no_headers
         @reply_body = ""
         @reply_chunked = false
+        @reply_chunks = HttpReceiver.no_chunks
         @requests = Array.new(0) { ReceivedRequest.new("", "", HttpReceiver.no_headers, "") }
         @lock = Mutex.new
         @body_failed = false
@@ -119,19 +129,33 @@ module Cybertrain
       end
 
       # Changes the canned response for the requests still to come.
+      # @example a redirect, then a body served in three chunked frames
+      #   hook.respond_with(status: 302, redirect_to: "/next")
+      #   hook.respond_with(status: 200, chunks: ["one", "two", "three"])
       # @param status [Integer]
       # @param headers [Hash{String => String}]
       # @param body [String]
       # @param chunked [Boolean]
+      # @param redirect_to [String] when not empty, sent as the `Location`
+      #   header (give the 3xx `status` with it)
+      # @param chunks [Array<String>] when not empty, the body instead of
+      #   `body:`: each String is one chunked frame, written and flushed with
+      #   a short pause before the next
       # @return [nil]
       # @api public
-      def respond_with(status: 200, headers: HttpReceiver.no_headers, body: "ok", chunked: false)
+      def respond_with(status: 200, headers: HttpReceiver.no_headers, body: "ok", chunked: false,
+                       redirect_to: "", chunks: HttpReceiver.no_chunks)
         @reply_status = status.to_i
         copy = HttpReceiver.no_headers
         headers.each_key { |k| copy[k.to_s] = headers[k].to_s }
+        location = redirect_to.to_s
+        copy["Location"] = location unless location.empty?
         @reply_headers = copy
         @reply_body = body.to_s
         @reply_chunked = chunked ? true : false
+        frames = HttpReceiver.no_chunks
+        chunks.each { |c| frames << c.to_s }
+        @reply_chunks = frames
         nil
       end
 
@@ -202,10 +226,58 @@ module Cybertrain
         # The reply is built before the request is published: a test thread
         # woken by the append may call respond_with for the NEXT request
         # before this one is answered.
-        response = canned_response(verb == "HEAD")
+        head_only = verb == "HEAD"
+        response = canned_response(head_only)
+        frames = @reply_chunks
         @lock.synchronize { @requests << received }
-        sock.write(response)
+        if frames.empty? || head_only
+          sock.write(response)
+        else
+          rx_write_frames(sock, response, frames)
+        end
         nil
+      end
+
+      # A `chunks:` body: the head, then each frame written whole with a
+      # pause before the next, then the last chunk. Bounded writes
+      # (rx_write_all), so a client that stops reading cannot hold the
+      # thread.
+      def rx_write_frames(sock, head, frames)
+        return nil unless rx_write_all(sock, head)
+
+        i = 0
+        while i < frames.size
+          sleep(CHUNK_PAUSE) if i > 0
+          frame = String.new
+          data = frames[i]
+          frame << HttpReceiver.rx_hex(data.bytesize) << "\r\n" << data << "\r\n"
+          return nil unless rx_write_all(sock, frame)
+
+          i += 1
+        end
+        rx_write_all(sock, "0\r\n\r\n")
+        nil
+      end
+
+      # Writes all of `data` in pieces of at most 64 KiB, waiting at most
+      # `read_timeout` for the socket to take each. False when it does not.
+      def rx_write_all(sock, data)
+        s = data.to_s
+        n = s.bytesize
+        off = 0
+        while off < n
+          take = n - off
+          take = 65_536 if take > 65_536
+          piece = s.byteslice(off, take)
+          wrote = sock.write_nonblock(piece, exception: false)
+          case wrote
+          when Integer
+            off += wrote
+          else
+            return false if sock.wait_writable(@read_timeout).nil?
+          end
+        end
+        true
       end
 
       # The header lines after the request line: names lowercased, values
@@ -350,6 +422,10 @@ module Cybertrain
 
         body = @reply_body
         total = body.bytesize
+        unless @reply_chunks.empty?
+          out << "Transfer-Encoding: chunked\r\n\r\n"
+          return out
+        end
         if @reply_chunked
           out << "Transfer-Encoding: chunked\r\n\r\n"
           return out if head_only

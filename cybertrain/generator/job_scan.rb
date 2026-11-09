@@ -121,6 +121,7 @@ module Cybertrain
         ["Cybertrain::HttpClient::TLSError", "http_client"],
         ["Cybertrain::HttpClient::BlockedAddressError", "http_client"],
         ["Cybertrain::HttpClient::TooLargeError", "http_client"],
+        ["Cybertrain::HttpClient::TooManyRedirectsError", "http_client"],
         ["Cybertrain::HttpClient::BadResponseError", "http_client"],
         ["Cybertrain::HttpParser::ParseError", "http/parser"],
         ["Cybertrain::Mailer::Error", "mailer"],

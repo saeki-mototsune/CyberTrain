@@ -8,18 +8,21 @@
 # connect, each TLS step, each read and each write waits at most `timeout`
 # seconds and the whole request at most `deadline` seconds.
 #
-# Deliberately small, a notification client and not a browser: HTTP/1.1
-# with `Connection: close` (one connection per request, no keep-alive), no
-# redirects (a 3xx is returned as it is), no proxy, no cookies, no
-# compression. https needs `require "cybertrain/net/tls"` as well (see that
-# file: it links libssl, which a plain-http program need not).
+# Deliberately small, a notification and API client and not a browser:
+# HTTP/1.1 with `Connection: close` (one connection per request, no
+# keep-alive), redirects only when asked for (`redirects:`; otherwise a 3xx
+# is returned as it is), no proxy, no cookies, no compression. A body can be
+# streamed to a block or into a file instead of being held in memory.
+# https needs `require "cybertrain/net/tls"` as well (see that file: it
+# links libssl, which a plain-http program need not).
 #
 # Destinations that are not public (loopback, private, link-local, ...;
 # Net::Address) are refused unless Config#http_allow_private is on. The host
 # name is resolved once and the addresses it resolved to are checked and
 # dialled (in order, the next when one refuses), never looked up again, so a
 # name that resolves to a private address is refused like the literal.
-# Resolution itself
+# Every redirect hop is checked the same way, and a hop from https to http
+# is refused. Resolution itself
 # (getaddrinfo) blocks the calling thread: the runtime has no asynchronous
 # resolver; the deadline is checked after it.
 #
@@ -27,10 +30,12 @@
 # URL carries its secret there.
 require "cybertrain/version"
 require "cybertrain/config"
+require "cybertrain/cast"
 require "cybertrain/net/socket"
 
 module Cybertrain
-  # Sends GET and POST requests to other servers, with bounded waits.
+  # Sends HTTP requests (GET, POST, PUT, PATCH, DELETE, HEAD) to other
+  # servers, with bounded waits.
   # @example A Slack incoming webhook
   #   require "cybertrain/http_client"
   #   require "cybertrain/net/tls"
@@ -43,6 +48,10 @@ module Cybertrain
   #   rescue Cybertrain::HttpClient::Error => e
   #     Cybertrain.logger.warn("slack: #{e.message}") # host and port only
   #   end
+  # @example A large download, streamed into a file
+  #   client = Cybertrain::HttpClient.new(deadline: 600, redirects: 3)
+  #   res = client.get_to_file("https://example.com/dump.csv", "tmp/dump.csv")
+  #   Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
   # @api public
   class HttpClient
     # The base of every error a request raises. The message names the host
@@ -82,12 +91,22 @@ module Cybertrain
     end
 
     # The response is not well-formed HTTP/1.1, or the connection closed
-    # before it was complete.
+    # before it was complete, or a redirect named a URL the client does not
+    # take.
     # @api public
     class BadResponseError < Error
     end
 
+    # A response redirected again after the `redirects:` the client allows
+    # had been followed. The message names the hop count and the host and
+    # port of the last URL requested.
+    # @api public
+    class TooManyRedirectsError < Error
+    end
+
     # A response: the status, the headers (names in lowercase) and the body.
+    # A streamed response (a block, {HttpClient#get_to_file}) has an empty
+    # body.
     # @api public
     class Response
       # @return [Integer] e.g. 200
@@ -106,10 +125,36 @@ module Cybertrain
       # @api public
       attr_reader :body
 
-      def initialize(status, headers, body)
+      # The bytes {HttpClient#get_to_file} wrote to the file; 0 for every
+      # other form.
+      # @return [Integer]
+      # @api public
+      attr_reader :bytes_written
+
+      def initialize(status, headers, body, bytes_written = 0)
         @status = status
         @headers = headers
         @body = body
+        @bytes_written = bytes_written
+      end
+
+      # The body parsed as a JSON object.
+      # @example
+      #   name = client.get(url).json_hash["name"]
+      # @return [Hash{String => Object}] `{}` when the body is not a JSON
+      #   object (an array, a scalar, not JSON, empty)
+      # @api public
+      def json_hash
+        Cast.json_hash(@body)
+      end
+
+      # The body parsed as a JSON array.
+      # @return [Array<Object>] `[]` when the body is not a JSON array
+      # @api public
+      def json_array
+        text = @body
+        parsed = Cast.parse_json(text)
+        Cast.array(parsed)
       end
 
       # @param name [String] any case
@@ -144,6 +189,88 @@ module Cybertrain
       end
     end
 
+    # Where a streamed body goes, one piece at a time as it arrives. This
+    # base takes nothing and is not streaming: a request without a block
+    # buffers its body. The readers call #sink_feed; the subclasses
+    # override #sink_take (a stub here, spikes/NOTES.md rule 3) and
+    # #sink_streaming?. A Proc is stored and called from a plain method,
+    # never yielded through the reader's frames (rules 32, 45, 69, 90).
+    # Internal.
+    class ChunkSink
+      # The bytes fed so far.
+      attr_reader :sink_bytes
+
+      def initialize
+        @sink_bytes = 0
+      end
+
+      def sink_streaming?
+        false
+      end
+
+      def sink_feed(data)
+        @sink_bytes += data.bytesize
+        sink_take(data)
+        nil
+      end
+
+      def sink_take(data)
+        nil
+      end
+    end
+
+    # The block of `request(...) { |chunk| }`.
+    class BlockChunkSink < ChunkSink
+      def initialize(chunk_block)
+        super()
+        @chunk_block = chunk_block
+      end
+
+      def sink_streaming?
+        true
+      end
+
+      def sink_take(data)
+        @chunk_block.call(data)
+        nil
+      end
+    end
+
+    # The open `.part` file of {HttpClient#get_to_file}.
+    class FileChunkSink < ChunkSink
+      def initialize(chunk_file)
+        super()
+        @chunk_file = chunk_file
+      end
+
+      def sink_streaming?
+        true
+      end
+
+      def sink_take(data)
+        @chunk_file.write(data)
+        nil
+      end
+    end
+
+    # The verbs {#request} sends.
+    VERBS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
+
+    # Verbs whose request always carries a body and its Content-Length
+    # (empty is a body too). DELETE carries one when it is given.
+    BODY_VERBS = ["POST", "PUT", "PATCH"]
+
+    # The statuses a client with `redirects:` follows when they come with
+    # a Location.
+    REDIRECT_STATUSES = [301, 302, 303, 307, 308]
+
+    # Request headers a caller's redirect does not take to another origin.
+    CREDENTIAL_HEADERS = ["authorization", "cookie", "proxy-authorization"]
+
+    # A streamed chunked frame larger than this is handed on in pieces of
+    # this size: no one frame is held whole.
+    STREAM_PIECE_BYTES = 1_048_576
+
     # Request headers a caller may not set: the client owns the framing.
     RESERVED_HEADERS = ["host", "connection", "content-length", "transfer-encoding", "te", "upgrade", "trailer", "keep-alive", "proxy-connection"]
 
@@ -171,6 +298,9 @@ module Cybertrain
     # @return [Boolean] whether non-public destinations are allowed
     # @api public
     attr_reader :allow_private
+    # @return [Integer] how many redirects a request follows (0: none)
+    # @api public
+    attr_reader :redirects
 
     # @param timeout [Numeric] seconds for each wait: connecting, each TLS
     #   step, each read, each write. Default 5.
@@ -180,47 +310,182 @@ module Cybertrain
     #   (larger raises TooLargeError). Default 1 MiB.
     # @param allow_private [Boolean] allow loopback, private and other
     #   non-public destinations. Default Config#http_allow_private.
+    # @param redirects [Integer] how many 301 / 302 / 303 / 307 / 308
+    #   responses with a Location a request follows; past that it raises
+    #   TooManyRedirectsError. Default 0: a 3xx is returned as it is.
     # @api public
-    def initialize(timeout: 5, deadline: 15, max_body: 1_048_576, allow_private: Cybertrain.config.http_allow_private)
+    def initialize(timeout: 5, deadline: 15, max_body: 1_048_576, allow_private: Cybertrain.config.http_allow_private,
+                   redirects: 0)
       @timeout = timeout.to_f
       @deadline = deadline.to_f
       @max_body = max_body.to_i
       @allow_private = allow_private == true
+      @redirects = redirects.to_i
       raise ArgumentError, "timeout must be positive" unless @timeout > 0.0
       raise ArgumentError, "deadline must be positive" unless @deadline > 0.0
       raise ArgumentError, "max_body must be at least 0" if @max_body < 0
+      raise ArgumentError, "redirects must be at least 0" if @redirects < 0
     end
 
-    # GET `url`.
+    # GET `url`; with a block, the body is streamed to it (see {#request}).
     # @param url [String] http:// or https://
     # @param headers [Hash{String => String}] extra request headers
+    # @yield [chunk] each piece of the body as it arrives, when a block is given
+    # @yieldparam chunk [String] bytes of the body
     # @return [Response]
     # @raise [Error] a subclass; ArgumentError for a URL or header the client refuses
     # @api public
-    def get(url, headers: NO_HEADERS)
-      perform("GET", url, "", "", headers)
+    def get(url, headers: NO_HEADERS, &block)
+      request("GET", url, headers: headers, &block)
     end
 
-    # POST `body` to `url`.
+    # POST `body` to `url`; with a block, the response body is streamed to
+    # it (see {#request}).
     # @param url [String] http:// or https://
     # @param body [String]
     # @param content_type [String] the Content-Type header
     # @param headers [Hash{String => String}] extra request headers
+    # @yield [chunk] each piece of the body as it arrives, when a block is given
+    # @yieldparam chunk [String] bytes of the body
     # @return [Response]
     # @raise [Error] a subclass; ArgumentError for a URL or header the client refuses
     # @api public
-    def post(url, body, content_type: "application/json", headers: NO_HEADERS)
-      perform("POST", url, body.to_s, content_type.to_s, headers)
+    def post(url, body, content_type: "application/json", headers: NO_HEADERS, &block)
+      request("POST", url, body: body, content_type: content_type, headers: headers, &block)
+    end
+
+    # Sends `verb` to `url`. POST, PUT and PATCH always carry `body` (and
+    # its Content-Length, and `content_type` unless empty); DELETE carries
+    # one when it is not empty; GET and HEAD carry none. A HEAD response
+    # has no body.
+    #
+    # With a block, the response body is not kept: each piece is yielded as
+    # it arrives (a chunked frame, up to 1 MiB at a time, or what each read
+    # delivered) and the Response's body is `""`. `max_body` does not apply
+    # then; `timeout` and `deadline` do, so give a long stream a long
+    # `deadline:`. The body of a redirect that is followed is never yielded.
+    # @example Server-Sent Events from an API
+    #   client = Cybertrain::HttpClient.new(deadline: 180)
+    #   client.request("POST", url, body: payload, content_type: "application/json") do |chunk|
+    #     parser.feed(chunk) { |event| handle(event) }
+    #   end
+    # @param verb [String] "GET", "POST", "PUT", "PATCH", "DELETE" or "HEAD"
+    # @param url [String] http:// or https://
+    # @param body [String]
+    # @param content_type [String] the Content-Type header of the body
+    # @param headers [Hash{String => String}] extra request headers
+    # @yield [chunk] each piece of the body as it arrives, when a block is given
+    # @yieldparam chunk [String] bytes of the body
+    # @return [Response]
+    # @raise [Error] a subclass; ArgumentError for an unknown verb, a body on
+    #   GET or HEAD, or a URL or header the client refuses
+    # @api public
+    def request(verb, url, body: "", content_type: "", headers: NO_HEADERS, &block)
+      name = verb.to_s
+      unless VERBS.include?(name)
+        message = "unknown HTTP verb #{name.inspect}: GET, POST, PUT, PATCH, DELETE or HEAD"
+        raise ArgumentError, message
+      end
+      data = body.to_s
+      if !data.empty? && (name == "GET" || name == "HEAD")
+        message = "a #{name} request carries no body"
+        raise ArgumentError, message
+      end
+      if block.nil?
+        perform(name, url.to_s, data, content_type.to_s, headers, ChunkSink.new)
+      else
+        perform(name, url.to_s, data, content_type.to_s, headers, BlockChunkSink.new(block))
+      end
+    end
+
+    # GETs `url` into the file `path`: the body is written to
+    # `path + ".part"` as it arrives (never held in memory, `max_body` does
+    # not apply) and renamed onto `path` when the response is complete. On
+    # any error the `.part` file is removed and `path` is left as it was.
+    # The body of any final status is written: check {Response#success?}.
+    # @param url [String] http:// or https://
+    # @param path [String] the file to write; its directory must exist
+    # @param headers [Hash{String => String}] extra request headers
+    # @return [Response] with an empty body and {Response#bytes_written}
+    # @raise [Error] a subclass; SystemCallError when the file cannot be
+    #   written; ArgumentError for a URL or header the client refuses
+    # @api public
+    def get_to_file(url, path, headers: NO_HEADERS)
+      final = path.to_s
+      part = "#{final}.part"
+      file = File.open(part, "wb")
+      sink = FileChunkSink.new(file)
+      res = fetch_into(url.to_s, final, part, file, sink, headers)
+      Response.new(res.status, res.headers, "", sink.sink_bytes)
+    end
+
+    # get_to_file's request, close and rename; on any error the `.part` is
+    # closed and removed and the error raised again. No block here (rule
+    # 32).
+    def fetch_into(url, final, part, file, sink, headers)
+      res = perform("GET", url, "", "", headers, sink)
+      file.close
+      File.rename(part, final)
+      res
+    rescue StandardError => e
+      file.close unless file.closed?
+      File.delete(part) if File.exist?(part)
+      raise e
+    end
+
+    # A request and the redirects it is allowed to follow. Each hop is a
+    # whole request of its own (perform_once: name resolution, the address
+    # policy, a new connection), so the private-address check runs on
+    # every hop. The deadline covers all the hops together: a later hop
+    # gets what is left of it.
+    def perform(verb, url, body, content_type, headers, sink)
+      ends_at = Net::Timer.now + @deadline
+      current = url
+      hop_verb = verb
+      hop_body = body
+      hop_type = content_type
+      hop_headers = headers
+      hops = 0
+      while true
+        target = HttpClient.parse_url(current)
+        budget = hops == 0 ? @deadline : ends_at - Net::Timer.now
+        if budget <= 0.0
+          message = "#{target.target_label}: the #{Net::Timer.seconds(@deadline)} deadline passed while following redirects"
+          raise TimeoutError, message
+        end
+        res = perform_once(hop_verb, target, hop_body, hop_type, hop_headers, sink, budget)
+        return res unless @redirects > 0 && REDIRECT_STATUSES.include?(res.status)
+
+        location = HttpClient.location_of(res)
+        return res if location.empty?
+
+        if hops >= @redirects
+          message = "#{target.target_label}: redirected again after #{hops} #{hops == 1 ? "redirect" : "redirects"}, the limit"
+          raise TooManyRedirectsError, message
+        end
+        next_url = HttpClient.next_hop(current, location)
+        status = res.status
+        if (status == 303 && hop_verb != "HEAD") || ((status == 301 || status == 302) && hop_verb == "POST")
+          hop_verb = "GET"
+          hop_body = ""
+          hop_type = ""
+        end
+        next_target = HttpClient.parse_url(next_url)
+        hop_headers = HttpClient.cross_origin_headers(hop_headers) unless HttpClient.same_origin?(target, next_target)
+        current = next_url
+        hops += 1
+      end
+      Response.new(0, NO_HEADERS, "")
     end
 
     # One request, its Net errors translated into HttpClient's. The rescue
     # ladder is here, in a method that takes no block (NOTES rules 32, 45),
     # and tells the classes apart by rescue clause (rule 47).
-    def perform(verb, url, body, content_type, headers)
-      target = HttpClient.parse_url(url)
+    def perform_once(verb, target, body, content_type, headers, sink, budget)
       head = HttpClient.request_head(verb, target, body, content_type, headers)
+      with_body = HttpClient.body_sent?(verb, body)
       begin
-        exchange(target, head, body, verb == "POST")
+        exchange(target, head, body, with_body, sink, verb == "HEAD", budget)
       rescue Net::TimeoutError => e
         raise TimeoutError, e.message
       rescue Net::BlockedError => e
@@ -236,16 +501,18 @@ module Cybertrain
       end
     end
 
-    def exchange(target, head, body, with_body)
+    # One connection: `budget` seconds for all of it.
+    def exchange(target, head, body, with_body, sink, head_only, budget)
       label = target.target_label
-      timer = Net::Timer.new(label, @timeout, @deadline)
+      timer = Net::Timer.new(label, @timeout, budget)
       stream = HttpClient.dial(target, timer, @allow_private)
       begin
         wire = String.new
         wire << head
         wire << body if with_body
         stream.stream_write(wire, timer)
-        HttpClient.read_response(Net::Reader.new(stream, timer), label, @max_body)
+        reader = Net::Reader.new(stream, timer)
+        HttpClient.read_response(reader, label, @max_body, sink, head_only, @redirects > 0)
       ensure
         stream.stream_close
       end
@@ -302,7 +569,190 @@ module Cybertrain
       Net.tls_connector.tls_wrap(tcp, target.target_host, timer)
     end
 
+    # ---- redirects ----------------------------------------------------------
+
+    # The Location of a response, "" when it has none.
+    def self.location_of(res)
+      value = res.headers["location"]
+      value.nil? ? "" : value.to_s
+    end
+
+    # The URL a redirect from `current` to `location` goes to:
+    # {resolve_location}, checked. Raises BlockedAddressError for a hop from
+    # https to http and BadResponseError for a URL the client does not
+    # take; the messages name a host and port only.
+    # @return [String]
+    def self.next_hop(current, location)
+      from = HttpClient.parse_url(current)
+      resolved = HttpClient.resolve_location(current, location)
+      to = HttpClient.redirect_target(resolved, from.target_label)
+      if from.target_tls && !to.target_tls
+        message = "#{to.target_label}: refusing to follow a redirect from https to http"
+        raise BlockedAddressError, message
+      end
+      resolved
+    end
+
+    # parse_url of a redirect's URL, its ArgumentError a BadResponseError
+    # naming the host and port that redirected.
+    def self.redirect_target(url, label)
+      HttpClient.parse_url(url)
+    rescue ArgumentError
+      message = "#{label}: redirected to a URL the client does not take"
+      raise BadResponseError, message
+    end
+
+    def self.same_origin?(a, b)
+      a.target_tls == b.target_tls && a.target_host == b.target_host && a.target_port == b.target_port
+    end
+
+    # `headers` without the credentials (CREDENTIAL_HEADERS), for a hop to
+    # another origin.
+    def self.cross_origin_headers(headers)
+      kept = { "" => "" }
+      kept.delete("")
+      headers.each_key do |key|
+        name = key.to_s
+        kept[name] = headers[key].to_s unless CREDENTIAL_HEADERS.include?(name.downcase)
+      end
+      kept
+    end
+
+    # Resolves a redirect's Location against the URL that answered it
+    # (RFC 3986 section 5.2): an absolute URL as it is, `//host/path` with
+    # the current scheme, `/path` on the current origin, `?query` on the
+    # current path, a relative path against the current path's directory,
+    # dot segments removed. The fragment is dropped.
+    # @example
+    #   Cybertrain::HttpClient.resolve_location("https://a.example/x/y?q=1", "../z")
+    #   # => "https://a.example/z"
+    # @param current [String] an absolute http:// or https:// URL
+    # @param location [String] the Location header's value
+    # @return [String] an absolute URL (not checked: a scheme the client
+    #   does not take is returned as it is)
+    # @api public
+    def self.resolve_location(current, location)
+      base = current.to_s # NOTES rule 62
+      loc = HttpClient.without_fragment(location.to_s)
+      return loc if HttpClient.scheme_prefix?(loc)
+
+      base = HttpClient.without_fragment(base)
+      n = base.bytesize
+      mark = base.index("://")
+      raise ArgumentError, "the current URL has no scheme" if mark.nil?
+
+      if loc.start_with?("//")
+        out = String.new
+        out << base.byteslice(0, mark) << ":" << loc
+        return out
+      end
+      stop = mark + 3
+      while stop < n
+        b = base.getbyte(stop)
+        break if b == 47 || b == 63 # / ?
+        stop += 1
+      end
+      origin = base.byteslice(0, stop)
+      rest = base.byteslice(stop, n - stop)
+      query_at = rest.index("?")
+      path = query_at.nil? ? rest : rest.byteslice(0, query_at)
+      path = "/" if path.empty?
+      out = String.new
+      out << origin
+      if loc.empty?
+        out << path
+        out << rest.byteslice(query_at, rest.bytesize - query_at) unless query_at.nil?
+        return out
+      end
+      if loc.start_with?("?")
+        out << path << loc
+        return out
+      end
+      loc_query_at = loc.index("?")
+      loc_path = loc_query_at.nil? ? loc : loc.byteslice(0, loc_query_at)
+      merged = String.new
+      if loc.start_with?("/")
+        merged << loc_path
+      else
+        slash = path.rindex("/")
+        merged << path.byteslice(0, slash + 1) unless slash.nil?
+        merged << loc_path
+      end
+      out << HttpClient.remove_dot_segments(merged)
+      out << loc.byteslice(loc_query_at, loc.bytesize - loc_query_at) unless loc_query_at.nil?
+      out
+    end
+
+    # `url` up to its "#", if any.
+    def self.without_fragment(url)
+      s = url.to_s # NOTES rule 62
+      hash = s.index("#")
+      hash.nil? ? s : s.byteslice(0, hash)
+    end
+
+    # Whether `text` starts with a URI scheme and ":" ("https:", "ftp:"),
+    # so it is an absolute URL.
+    def self.scheme_prefix?(text)
+      s = text.to_s # NOTES rule 62
+      n = s.bytesize
+      return false if n == 0
+
+      first = s.getbyte(0)
+      return false unless (first >= 65 && first <= 90) || (first >= 97 && first <= 122)
+
+      i = 1
+      while i < n
+        b = s.getbyte(i)
+        return true if b == 58 # :
+
+        ok = (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 43 || b == 45 || b == 46
+        return false unless ok
+
+        i += 1
+      end
+      false
+    end
+
+    # An absolute path without "." and ".." segments (RFC 3986 section
+    # 5.2.4); a final "." or ".." leaves a trailing "/".
+    def self.remove_dot_segments(path)
+      s = path.to_s # NOTES rule 62
+      n = s.bytesize
+      segments = Array.new(0) { "" }
+      from = s.start_with?("/") ? 1 : 0
+      i = from
+      while i <= n
+        if i == n || s.getbyte(i) == 47
+          segments << s.byteslice(from, i - from)
+          from = i + 1
+        end
+        i += 1
+      end
+      kept = Array.new(0) { "" }
+      k = 0
+      while k < segments.size
+        segment = segments[k]
+        last = k == segments.size - 1
+        if segment == "." || segment == ".."
+          kept.pop if segment == ".." && kept.size > 0
+          kept << "" if last
+        else
+          kept << segment
+        end
+        k += 1
+      end
+      out = String.new
+      out << "/" << kept.join("/")
+      out
+    end
+
     # ---- the request --------------------------------------------------------
+
+    # Whether a `verb` request with `body` sends a body (and its
+    # Content-Length and Content-Type).
+    def self.body_sent?(verb, body)
+      BODY_VERBS.include?(verb) || (verb == "DELETE" && !body.empty?)
+    end
 
     # The request line and headers. Raises ArgumentError for a header name
     # that is not a token, a value with CR, LF or NUL, or a header the client
@@ -312,17 +762,21 @@ module Cybertrain
       head << verb << " " << target.request_target << " HTTP/1.1\r\n"
       head << "Host: " << target.host_header << "\r\n"
       user_agent = false
+      with_body = HttpClient.body_sent?(verb, body)
       headers.each_key do |key|
         name = key.to_s
         value = headers[key].to_s
         HttpClient.check_header(name, value)
         lower = name.downcase
-        raise ArgumentError, "set the Content-Type of a POST with content_type:" if lower == "content-type" && verb == "POST"
+        if lower == "content-type" && with_body
+          message = "set the Content-Type of a #{verb} with content_type:"
+          raise ArgumentError, message
+        end
         user_agent = true if lower == "user-agent"
         head << name << ": " << value << "\r\n"
       end
       head << "User-Agent: cybertrain/" << VERSION << "\r\n" unless user_agent
-      if verb == "POST"
+      if with_body
         HttpClient.check_header("Content-Type", content_type)
         head << "Content-Type: " << content_type << "\r\n" unless content_type.empty?
         head << "Content-Length: " << body.bytesize.to_s << "\r\n"
@@ -515,7 +969,11 @@ module Cybertrain
 
     # ---- the response -------------------------------------------------------
 
-    def self.read_response(reader, label, max_body)
+    # The final response. `sink` takes the body when it is streaming;
+    # `head_only` (a HEAD request) reads no body; `follow` (redirects are
+    # on) leaves the body of a redirect with a Location unread: the
+    # connection is closed and the next hop made.
+    def self.read_response(reader, label, max_body, sink, head_only, follow)
       interim = 0
       while true
         status = HttpClient.status_code(reader.read_line(MAX_LINE_BYTES), label)
@@ -528,7 +986,12 @@ module Cybertrain
 
           next
         end
-        body = HttpClient.read_body(reader, headers, status, label, max_body)
+        return Response.new(status, headers, "") if head_only
+        if follow && REDIRECT_STATUSES.include?(status)
+          location = headers["location"]
+          return Response.new(status, headers, "") if !location.nil? && !location.empty?
+        end
+        body = HttpClient.read_body(reader, headers, status, label, max_body, sink)
         return Response.new(status, headers, body)
       end
       Response.new(0, NO_HEADERS, "")
@@ -609,20 +1072,34 @@ module Cybertrain
 
     # The body, framed the way RFC 9112 section 6.3 says: none for 204 and
     # 304, chunked when that is the last transfer coding, Content-Length
-    # when given, else everything to the end of the connection.
-    def self.read_body(reader, headers, status, label, max_body)
+    # when given, else everything to the end of the connection. A
+    # streaming `sink` is fed the body and "" is returned; `max_body`
+    # applies only to a body that is kept.
+    def self.read_body(reader, headers, status, label, max_body, sink)
       return "" if status == 204 || status == 304
 
+      streaming = sink.sink_streaming?
       coding = headers["transfer-encoding"]
       unless coding.nil?
-        return HttpClient.read_chunked(reader, label, max_body) if HttpClient.last_coding_chunked?(coding)
+        if HttpClient.last_coding_chunked?(coding)
+          return HttpClient.stream_chunked(reader, label, sink) if streaming
+
+          return HttpClient.read_chunked(reader, label, max_body)
+        end
+        return HttpClient.stream_rest(reader, sink) if streaming
 
         return reader.read_rest(max_body)
       end
       length_text = headers["content-length"]
-      return reader.read_rest(max_body) if length_text.nil?
+      if length_text.nil?
+        return HttpClient.stream_rest(reader, sink) if streaming
+
+        return reader.read_rest(max_body)
+      end
 
       length = HttpClient.content_length(length_text, label)
+      return HttpClient.stream_exact(reader, length, label, sink) if streaming
+
       raise Net::LimitError, "#{label}: the response body is #{length} bytes, more than #{max_body}" if length > max_body
 
       reader.read_exact(length)
@@ -680,6 +1157,57 @@ module Cybertrain
         raise Net::LimitError, "#{label}: more than #{MAX_HEADER_COUNT} trailer lines" if trailers > MAX_HEADER_COUNT
       end
       body
+    end
+
+    # A chunked body fed to `sink`: each frame whole when it is at most
+    # STREAM_PIECE_BYTES, else in pieces of that size. Returns "".
+    def self.stream_chunked(reader, label, sink)
+      while true
+        size = HttpClient.chunk_size(reader.read_line(MAX_LINE_BYTES), label)
+        break if size == 0
+
+        left = size
+        while left > 0
+          take = left > STREAM_PIECE_BYTES ? STREAM_PIECE_BYTES : left
+          piece = reader.read_exact(take)
+          sink.sink_feed(piece)
+          left -= take
+        end
+        raise Net::ProtocolError, "#{label}: a chunk not followed by CRLF" unless reader.read_line(MAX_LINE_BYTES).empty?
+      end
+      trailers = 0
+      until reader.read_line(MAX_LINE_BYTES).empty?
+        trailers += 1
+        raise Net::LimitError, "#{label}: more than #{MAX_HEADER_COUNT} trailer lines" if trailers > MAX_HEADER_COUNT
+      end
+      ""
+    end
+
+    # `count` bytes fed to `sink` as the reads deliver them. Returns "".
+    def self.stream_exact(reader, count, label, sink)
+      left = count
+      while left > 0
+        if reader.buffered == 0 && !reader.fill_more
+          raise Net::ProtocolError, "#{label}: the connection closed before the body was complete"
+        end
+
+        take = reader.buffered
+        take = left if take > left
+        piece = reader.read_exact(take)
+        sink.sink_feed(piece)
+        left -= take
+      end
+      ""
+    end
+
+    # Everything to the end of the connection, fed to `sink` as the reads
+    # deliver it. Returns "".
+    def self.stream_rest(reader, sink)
+      while reader.buffered > 0 || reader.fill_more
+        piece = reader.read_exact(reader.buffered)
+        sink.sink_feed(piece)
+      end
+      ""
     end
 
     # The hex size at the start of a chunk-size line, up to ";" or the end.
