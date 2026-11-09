@@ -1123,4 +1123,36 @@ test "json_hash and json_array parse the body and answer {} / [] otherwise" do
   assert_equal 0, text.json_array.size
 end
 
+test "without cybertrain/http/gzip_ffi no Accept-Encoding is sent and a gzip body is refused" do
+  refute Cybertrain::HttpClient.gzip_decoder.gzip_ready?
+  rx = receiver(4)
+  rx.respond_with(status: 200, body: "hello", gzip: true)
+  rx.start
+  gz = outcome { private_client.get(rx.url("/")) }
+  streamed = outcome { private_client.get(rx.url("/")) { |chunk| chunk } }
+  rx.respond_with(status: 200, body: "compressed?", headers: { "Content-Encoding" => "br" })
+  br = outcome { private_client.get(rx.url("/")) }
+  rx.respond_with(status: 200, body: "plain", headers: { "Content-Encoding" => "identity" })
+  identity = outcome { private_client.get(rx.url("/")) }
+  reqs = rx.received_requests(4)
+  rx.stop
+  assert_equal 4, reqs.size
+  assert_equal "", reqs[0].http_header("Accept-Encoding")
+  assert_equal "bad response", gz.kind
+  assert_includes gz.text, "require \"cybertrain/http/gzip_ffi\""
+  assert_includes gz.text, "127.0.0.1"
+  assert_equal "bad response", streamed.kind
+  assert_equal "bad response", br.kind
+  assert_includes br.text, "br"
+  assert_equal "ok 200", identity.kind
+  assert_equal "plain", identity.text
+  # A HEAD response's Content-Encoding describes no body here.
+  rx2 = receiver
+  rx2.respond_with(status: 200, body: "hello", gzip: true)
+  rx2.start
+  head = outcome { private_client.request("HEAD", rx2.url("/")) }
+  rx2.stop
+  assert_equal "ok 200", head.kind
+end
+
 Cybertrain::Test.run!

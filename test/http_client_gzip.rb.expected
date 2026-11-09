@@ -1,0 +1,12 @@
+ok   the gzip decoder is installed by requiring cybertrain/http/gzip_ffi
+ok   Accept-Encoding: gzip is sent and a gzip body is inflated under max_body
+ok   a caller's Accept-Encoding is sent as written, not doubled
+ok   a streamed gzip body yields inflated chunks
+ok   get_to_file of a gzip body writes the inflated bytes
+ok   an inflated body past max_body raises TooLargeError
+ok   Content-Encoding: br is a BadResponseError
+ok   corrupt or truncated gzip is a BadResponseError, buffered and streamed
+ok   a multi-member gzip body inflates to every member, buffered and streamed
+ok   HEAD, 204 and a redirect's body are not inflated
+ok   cleanup
+11 tests, 56 assertions, 0 failures

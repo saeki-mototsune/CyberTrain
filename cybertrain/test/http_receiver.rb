@@ -109,12 +109,13 @@ module Cybertrain
       # @param headers [Hash{String => String}] extra response headers
       # @param body [String] the canned response's body
       # @param chunked [Boolean] send the body with Transfer-Encoding: chunked
+      # @param gzip [Boolean] send the body gzip-encoded (see {#respond_with})
       # @param max [Integer] how many connections (one request each) to accept
       # @param accept_window [Numeric] seconds to wait for each connection
       #   before the receiver gives up and closes its port
       # @param read_timeout [Numeric] seconds of silence that end a connection
       # @api public
-      def initialize(status: 200, headers: HttpReceiver.no_headers, body: "ok", chunked: false, max: 1,
+      def initialize(status: 200, headers: HttpReceiver.no_headers, body: "ok", chunked: false, gzip: false, max: 1,
                      accept_window: 10.0, read_timeout: 5.0)
         super(max, accept_window, read_timeout)
         @reply_status = 200
@@ -125,7 +126,7 @@ module Cybertrain
         @requests = Array.new(0) { ReceivedRequest.new("", "", HttpReceiver.no_headers, "") }
         @lock = Mutex.new
         @body_failed = false
-        respond_with(status: status, headers: headers, body: body, chunked: chunked)
+        respond_with(status: status, headers: headers, body: body, chunked: chunked, gzip: gzip)
       end
 
       # Changes the canned response for the requests still to come.
@@ -141,17 +142,25 @@ module Cybertrain
       # @param chunks [Array<String>] when not empty, the body instead of
       #   `body:`: each String is one chunked frame, written and flushed with
       #   a short pause before the next
+      # @param gzip [Boolean] send `body:` gzip-encoded, with
+      #   `Content-Encoding: gzip`. The receiver has no deflate of its own
+      #   (no zlib in a test program that does not ask for it): the gzip
+      #   stream carries the body in stored (uncompressed) blocks, which any
+      #   gzip reader inflates. To test a compressed body, pass gzip bytes
+      #   as `body:` with a Content-Encoding header instead.
       # @return [nil]
       # @api public
       def respond_with(status: 200, headers: HttpReceiver.no_headers, body: "ok", chunked: false,
-                       redirect_to: "", chunks: HttpReceiver.no_chunks)
+                       redirect_to: "", chunks: HttpReceiver.no_chunks, gzip: false)
         @reply_status = status.to_i
         copy = HttpReceiver.no_headers
         headers.each_key { |k| copy[k.to_s] = headers[k].to_s }
         location = redirect_to.to_s
         copy["Location"] = location unless location.empty?
+        copy["Content-Encoding"] = "gzip" if gzip
         @reply_headers = copy
-        @reply_body = body.to_s
+        text = body.to_s
+        @reply_body = gzip ? HttpReceiver.rx_gzip(text) : text
         @reply_chunked = chunked ? true : false
         frames = HttpReceiver.no_chunks
         chunks.each { |c| frames << c.to_s }
@@ -402,6 +411,57 @@ module Cybertrain
           i -= 1
         end
         out
+      end
+
+      # `text` as a gzip stream (RFC 1952) of stored deflate blocks
+      # (RFC 1951 section 3.2.4), at most 65,535 bytes each, with the CRC-32
+      # and size trailer. Every piece is appended here, directly (rule 66).
+      def self.rx_gzip(text)
+        s = text.to_s.b # NOTES rule 62; binary like the header bytes
+        n = s.bytesize
+        out = String.new
+        out << HttpReceiver.rx_bytes([0x1F, 0x8B, 8, 0, 0, 0, 0, 0, 0, 0xFF])
+        off = 0
+        while true
+          take = n - off
+          take = 65_535 if take > 65_535
+          last = off + take >= n
+          out << HttpReceiver.rx_bytes([last ? 1 : 0, take & 0xFF, take >> 8, (take ^ 0xFFFF) & 0xFF, (take ^ 0xFFFF) >> 8])
+          out << s.byteslice(off, take) if take > 0
+          off += take
+          break if last
+        end
+        crc = HttpReceiver.rx_crc32(s)
+        out << HttpReceiver.rx_bytes([crc & 0xFF, (crc >> 8) & 0xFF, (crc >> 16) & 0xFF, (crc >> 24) & 0xFF])
+        size = n & 0xFFFFFFFF
+        out << HttpReceiver.rx_bytes([size & 0xFF, (size >> 8) & 0xFF, (size >> 16) & 0xFF, (size >> 24) & 0xFF])
+        out
+      end
+
+      # The bytes of `values` (each 0..255) as a String.
+      def self.rx_bytes(values)
+        out = String.new
+        values.each { |v| out << v.chr }
+        out
+      end
+
+      # The CRC-32 of gzip (the reflected 0xEDB88320 polynomial), a bit at a
+      # time: the receiver's bodies are small.
+      def self.rx_crc32(text)
+        s = text.to_s # NOTES rule 62
+        crc = 0xFFFFFFFF
+        i = 0
+        n = s.bytesize
+        while i < n
+          crc ^= s.getbyte(i)
+          k = 0
+          while k < 8
+            crc = (crc & 1) == 1 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1
+            k += 1
+          end
+          i += 1
+        end
+        crc ^ 0xFFFFFFFF
       end
 
       # The canned response, Connection: close. A chunked body goes in two

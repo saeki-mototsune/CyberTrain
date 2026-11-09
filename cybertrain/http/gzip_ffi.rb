@@ -17,9 +17,17 @@
 # installs it into Request.inflater; a program that lifts the HTTP layer out
 # and wants gzip bodies requires this file and calls GzipFFI.install!.
 #
+# It also installs {GzipFFIDecoder} as the HTTP client's gzip support
+# ({HttpClient.gzip_decoder}) through cybertrain/http/gzip_decoder.rb, a
+# file the client requires too: neither this file nor the client pulls the
+# other into a program. A response kept whole is inflated with {.gunzip}; a
+# streamed one through the incremental inflater below, a piece of at most
+# PIECE_BYTES at a time whatever the compression ratio.
+#
 # The FFI rules of spikes/NOTES.md (6, 15) apply: the out-parameter is a
 # fresh malloc(8) scratch slot per call, never a static ffi_buffer.
 require "cybertrain/http/request"
+require "cybertrain/http/gzip_decoder"
 
 module Cybertrain
   # The gzip inflater {Request#decoded_body} uses: `require "cybertrain"`
@@ -40,6 +48,22 @@ module Cybertrain
     # counts), -2 the inflated size exceeds max_out, -3 out of memory, -4
     # zlib could not be initialised. Nothing is allocated for the caller on
     # a negative return.
+    #
+    # The incremental inflater, for a streamed body. A handle is the address
+    # of a malloc'd cybertrain_inflate (a long, 0 for none), one per body:
+    # cybertrain_inflate_open() makes it (0: out of memory or zlib would
+    # not initialise); cybertrain_inflate_push(h, in, len) copies `len`
+    # input bytes into it, after whatever input the last pulls left (-1 for
+    # a bad length, -3 out of memory); cybertrain_inflate_pull(h, max)
+    # inflates into the handle's own output buffer and returns how many
+    # bytes it holds, at most `max` (and at most 64 KiB), 0 once the input
+    # is used up, -1 for data that is not gzip (a bad header or block, a
+    # wrong CRC, bytes after a member that do not start another), -3 out of
+    # memory; cybertrain_inflate_piece(h, n) hands those `n` bytes to Ruby
+    # (the :binstr bridge below); cybertrain_inflate_done(h) is 1 when the
+    # input so far ends exactly at the end of a gzip member;
+    # cybertrain_inflate_close(h) frees it all. Members follow one another
+    # as in cybertrain_gunzip_bounded.
     #
     # cybertrain_bytes_at(ptr, len) is the :binstr bridge: it publishes len
     # in sp_ffi_bin_len (the TLS int the codegen declares for any module with
@@ -94,6 +118,72 @@ module Cybertrain
         *(char **)out_slot = out;
         return (long)len;
       }
+      #define CYBERTRAIN_INFLATE_OUT 65536
+      struct cybertrain_inflate {
+        z_stream zs;
+        int ended;
+        char *in;
+        char out[CYBERTRAIN_INFLATE_OUT];
+      };
+      long cybertrain_inflate_open(void) {
+        struct cybertrain_inflate *st = (struct cybertrain_inflate *)calloc(1, sizeof(struct cybertrain_inflate));
+        if (!st) return 0;
+        if (inflateInit2(&st->zs, 15 + 16) != Z_OK) { free(st); return 0; }
+        return (long)st;
+      }
+      long cybertrain_inflate_push(long h, const char *in, long in_len) {
+        struct cybertrain_inflate *st = (struct cybertrain_inflate *)h;
+        if (in_len < 0) return -1;
+        size_t left = st->zs.avail_in;
+        if ((unsigned long)in_len + left > (unsigned long)UINT_MAX) return -1;
+        char *buf = (char *)malloc(left + (size_t)in_len + 1);
+        if (!buf) return -3;
+        if (left > 0) memcpy(buf, st->zs.next_in, left);
+        memcpy(buf + left, in, (size_t)in_len);
+        free(st->in);
+        st->in = buf;
+        st->zs.next_in = (Bytef *)buf;
+        st->zs.avail_in = (uInt)(left + (size_t)in_len);
+        return 0;
+      }
+      long cybertrain_inflate_pull(long h, long max_out) {
+        struct cybertrain_inflate *st = (struct cybertrain_inflate *)h;
+        if (max_out <= 0) return 0;
+        if (max_out > CYBERTRAIN_INFLATE_OUT) max_out = CYBERTRAIN_INFLATE_OUT;
+        size_t got = 0;
+        while (got < (size_t)max_out) {
+          if (st->ended) {
+            if (st->zs.avail_in == 0) break;
+            if (inflateReset(&st->zs) != Z_OK) return -1;
+            st->ended = 0;
+          }
+          st->zs.next_out = (Bytef *)(st->out + got);
+          st->zs.avail_out = (uInt)((size_t)max_out - got);
+          int rc = inflate(&st->zs, Z_NO_FLUSH);
+          got = (size_t)max_out - st->zs.avail_out;
+          if (rc == Z_STREAM_END) { st->ended = 1; continue; }
+          if (rc == Z_BUF_ERROR) break;
+          if (rc == Z_MEM_ERROR) return -3;
+          if (rc != Z_OK) return -1;
+        }
+        return (long)got;
+      }
+      const char *cybertrain_inflate_piece(long h, long len) {
+        struct cybertrain_inflate *st = (struct cybertrain_inflate *)h;
+        sp_ffi_bin_len = (int)len;
+        return st->out;
+      }
+      long cybertrain_inflate_done(long h) {
+        struct cybertrain_inflate *st = (struct cybertrain_inflate *)h;
+        return (st->ended && st->zs.avail_in == 0) ? 1 : 0;
+      }
+      void cybertrain_inflate_close(long h) {
+        struct cybertrain_inflate *st = (struct cybertrain_inflate *)h;
+        if (!st) return;
+        inflateEnd(&st->zs);
+        free(st->in);
+        free(st);
+      }
       const char *cybertrain_bytes_at(void *ptr, long len) {
         sp_ffi_bin_len = (int)len;
         return (const char *)ptr;
@@ -101,12 +191,22 @@ module Cybertrain
     C
     ffi_func :cybertrain_gunzip_bounded, [:str, :long, :long, :ptr], :long
     ffi_func :cybertrain_bytes_at, [:ptr, :long], :binstr
+    ffi_func :cybertrain_inflate_open, [], :long
+    ffi_func :cybertrain_inflate_push, [:long, :str, :long], :long
+    ffi_func :cybertrain_inflate_pull, [:long, :long], :long
+    ffi_func :cybertrain_inflate_piece, [:long, :long], :binstr
+    ffi_func :cybertrain_inflate_done, [:long], :long
+    ffi_func :cybertrain_inflate_close, [:long], :void
     ffi_func :malloc, [:size_t], :ptr
     ffi_func :free, [:ptr], :void
     ffi_read_ptr :read_ptr, 0
 
     # sp_ffi_bin_len is a C int: the largest body this bridge can hand back.
     MAX_LIMIT = 2_147_483_647
+
+    # The most a streamed body's inflater hands back at a time (the size of
+    # its C output buffer).
+    PIECE_BYTES = 65_536
 
     # Inflates `data` (a gzip body) under `limit` bytes of output. Raises
     # BodyUndecodable for anything that is not one or more valid gzip members
@@ -151,4 +251,82 @@ module Cybertrain
       nil
     end
   end
+
+  # The HTTP client's gzip support, installed as {HttpClient.gzip_decoder}
+  # by requiring this file. Each response body gets its own (#gzip_open);
+  # a streamed one holds a z_stream, made at its first push and freed by
+  # #gzip_close. Internal.
+  class GzipFFIDecoder < GzipDecoder
+    def initialize
+      super()
+      @handle = 0
+    end
+
+    def gzip_ready?
+      true
+    end
+
+    def gzip_open
+      GzipFFIDecoder.new
+    end
+
+    # GzipFFI.gunzip, its two errors turned into a status. A limit past
+    # what the bridge hands back is clamped to it.
+    def gzip_whole(data, limit)
+      ceiling = limit > GzipFFI::MAX_LIMIT ? GzipFFI::MAX_LIMIT : limit
+      text = GzipFFI.gunzip(data, ceiling)
+      @gzip_status = GzipDecoder::GZIP_OK
+      text
+    rescue Cybertrain::BodyTooLarge
+      @gzip_status = GzipDecoder::GZIP_TOO_LARGE
+      ""
+    rescue Cybertrain::BodyUndecodable
+      @gzip_status = GzipDecoder::GZIP_UNDECODABLE
+      ""
+    end
+
+    def gzip_push(data)
+      return nil if @gzip_status != GzipDecoder::GZIP_OK
+
+      if @handle == 0
+        @handle = GzipFFI.cybertrain_inflate_open
+        if @handle == 0
+          @gzip_status = GzipDecoder::GZIP_UNDECODABLE
+          return nil
+        end
+      end
+      rc = GzipFFI.cybertrain_inflate_push(@handle, data, data.bytesize)
+      @gzip_status = GzipDecoder::GZIP_UNDECODABLE if rc < 0
+      nil
+    end
+
+    # Tagged UTF-8 like GzipFFI.gunzip's result and a chunk read plain.
+    def gzip_pull
+      return "" if @handle == 0 || @gzip_status != GzipDecoder::GZIP_OK
+
+      n = GzipFFI.cybertrain_inflate_pull(@handle, GzipFFI::PIECE_BYTES)
+      if n < 0
+        @gzip_status = GzipDecoder::GZIP_UNDECODABLE
+        return ""
+      end
+      return "" if n == 0
+
+      piece = GzipFFI.cybertrain_inflate_piece(@handle, n)
+      piece.force_encoding("UTF-8")
+    end
+
+    def gzip_done?
+      return false if @handle == 0 || @gzip_status != GzipDecoder::GZIP_OK
+
+      GzipFFI.cybertrain_inflate_done(@handle) == 1
+    end
+
+    def gzip_close
+      GzipFFI.cybertrain_inflate_close(@handle) if @handle != 0
+      @handle = 0
+      nil
+    end
+  end
+
+  GzipDecoder.installed = GzipFFIDecoder.new
 end

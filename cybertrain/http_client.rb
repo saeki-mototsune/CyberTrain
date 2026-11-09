@@ -11,10 +11,12 @@
 # Deliberately small, a notification and API client and not a browser:
 # HTTP/1.1 with `Connection: close` (one connection per request, no
 # keep-alive), redirects only when asked for (`redirects:`; otherwise a 3xx
-# is returned as it is), no proxy, no cookies, no compression. A body can be
-# streamed to a block or into a file instead of being held in memory.
-# https needs `require "cybertrain/net/tls"` as well (see that file: it
-# links libssl, which a plain-http program need not).
+# is returned as it is), no proxy, no cookies. A body can be streamed to a
+# block or into a file instead of being held in memory. https needs
+# `require "cybertrain/net/tls"` as well (see that file: it links libssl,
+# which a plain-http program need not), and gzip responses
+# `require "cybertrain/http/gzip_ffi"` (it links zlib; see
+# {HttpClient.gzip_decoder}).
 #
 # Destinations that are not public (loopback, private, link-local, ...;
 # Net::Address) are refused unless Config#http_allow_private is on. The host
@@ -32,6 +34,7 @@ require "cybertrain/version"
 require "cybertrain/config"
 require "cybertrain/cast"
 require "cybertrain/net/socket"
+require "cybertrain/http/gzip_decoder"
 
 module Cybertrain
   # Sends HTTP requests (GET, POST, PUT, PATCH, DELETE, HEAD) to other
@@ -265,6 +268,35 @@ module Cybertrain
       end
     end
 
+    # A gzip body on its way to another sink: each piece read is pushed
+    # into the decoder and the inflated pieces (at most 64 KiB each) are fed
+    # on, so the inner sink counts inflated bytes. read_body closes the
+    # decoder on every exit.
+    class GzipChunkSink < ChunkSink
+      def initialize(inner, decoder, label)
+        super()
+        @gz_inner = inner
+        @gz_decoder = decoder
+        @gz_label = label
+      end
+
+      def sink_streaming?
+        true
+      end
+
+      def sink_take(data)
+        @gz_decoder.gzip_push(data)
+        while true
+          piece = @gz_decoder.gzip_pull
+          HttpClient.check_gzip(@gz_decoder, @gz_label, 0)
+          break if piece.empty?
+
+          @gz_inner.sink_feed(piece)
+        end
+        nil
+      end
+    end
+
     # The verbs {#request} sends.
     VERBS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
 
@@ -297,6 +329,36 @@ module Cybertrain
     # default for `headers:`.
     NO_HEADERS = { "" => "" }
     NO_HEADERS.delete("")
+
+    # The gzip support requests use: {GzipDecoder}'s base (no gzip) until
+    # `require "cybertrain/http/gzip_ffi"` installs the zlib one. With it,
+    # every request says `Accept-Encoding: gzip` (unless the caller sent an
+    # Accept-Encoding of its own) and a `Content-Encoding: gzip` (or
+    # `x-gzip`) body is inflated: a kept body under `max_body` (the bytes on
+    # the wire and the inflated bytes alike), a streamed one piece by piece,
+    # at most 64 KiB at a time. Without it, a gzip response is a
+    # BadResponseError naming the file to require; a Content-Encoding other
+    # than gzip or identity is one either way. The Response's headers are
+    # the ones received (Content-Encoding included).
+    # @example
+    #   require "cybertrain/http_client"
+    #   require "cybertrain/http/gzip_ffi"
+    #
+    #   Cybertrain::HttpClient.gzip_decoder.gzip_ready? # => true
+    # @return [GzipDecoder]
+    # @api public
+    def self.gzip_decoder
+      GzipDecoder.installed
+    end
+
+    # Replaces the gzip support (cybertrain/http/gzip_ffi calls this when it
+    # is required).
+    # @param decoder [GzipDecoder]
+    # @return [GzipDecoder]
+    # @api public
+    def self.gzip_decoder=(decoder)
+      GzipDecoder.installed = decoder
+    end
 
     # @return [Float] seconds any one wait may take
     # @api public
@@ -787,6 +849,7 @@ module Cybertrain
       head << verb << " " << target.request_target << " HTTP/1.1\r\n"
       head << "Host: " << target.host_header << "\r\n"
       user_agent = false
+      accept_encoding = false
       with_body = HttpClient.body_sent?(verb, body)
       headers.each_key do |key|
         name = key.to_s
@@ -798,9 +861,11 @@ module Cybertrain
           raise ArgumentError, message
         end
         user_agent = true if lower == "user-agent"
+        accept_encoding = true if lower == "accept-encoding"
         head << name << ": " << value << "\r\n"
       end
       head << "User-Agent: cybertrain/" << VERSION << "\r\n" unless user_agent
+      head << "Accept-Encoding: gzip\r\n" if !accept_encoding && HttpClient.gzip_decoder.gzip_ready?
       if with_body
         HttpClient.check_header("Content-Type", content_type)
         head << "Content-Type: " << content_type << "\r\n" unless content_type.empty?
@@ -1096,14 +1161,84 @@ module Cybertrain
       s.byteslice(from, upto - from)
     end
 
-    # The body, framed the way RFC 9112 section 6.3 says: none for 204 and
-    # 304, chunked when that is the last transfer coding, Content-Length
-    # when given, else everything to the end of the connection. A
-    # streaming `sink` is fed the body and "" is returned; `max_body`
-    # applies only to a body that is kept.
+    # The body: none for 204 and 304, else framed (read_framed) and, for a
+    # `Content-Encoding: gzip` body, inflated (read_gzip). The decoder is
+    # closed here on every exit (no block in this method: rules 32, 45).
     def self.read_body(reader, headers, status, label, max_body, sink)
       return "" if status == 204 || status == 304
 
+      gzip = HttpClient.gzip_coded?(headers["content-encoding"], label)
+      return HttpClient.read_framed(reader, headers, label, max_body, sink) unless gzip
+
+      decoder = HttpClient.gzip_decoder.gzip_open
+      body = ""
+      begin
+        body = HttpClient.read_gzip(reader, headers, label, max_body, sink, decoder)
+      ensure
+        decoder.gzip_close
+      end
+      body
+    end
+
+    # A gzip body: a kept one read whole (the bytes on the wire under
+    # `max_body`) and inflated under `max_body`; a streamed one fed through
+    # a GzipChunkSink, and refused when the bytes end inside the gzip
+    # stream.
+    def self.read_gzip(reader, headers, label, max_body, sink, decoder)
+      unless sink.sink_streaming?
+        wire = HttpClient.read_framed(reader, headers, label, max_body, sink)
+        text = decoder.gzip_whole(wire, max_body)
+        HttpClient.check_gzip(decoder, label, max_body)
+        return text
+      end
+      HttpClient.read_framed(reader, headers, label, max_body, GzipChunkSink.new(sink, decoder, label))
+      unless decoder.gzip_done?
+        message = "#{label}: the gzip response body ended before its gzip stream did"
+        raise Net::ProtocolError, message
+      end
+      ""
+    end
+
+    # Whether a Content-Encoding (nil: none) is gzip: "gzip" or "x-gzip",
+    # any case, spaces around it ignored. "identity" and none are not; any
+    # other coding, or gzip without the gzip support loaded, is a
+    # Net::ProtocolError.
+    def self.gzip_coded?(coding, label)
+      return false if coding.nil?
+
+      name = HttpClient.trim(coding).downcase
+      return false if name.empty? || name == "identity"
+
+      if name == "gzip" || name == "x-gzip"
+        return true if HttpClient.gzip_decoder.gzip_ready?
+
+        message = "#{label}: the response body is gzip-encoded and gzip support is not loaded: require \"cybertrain/http/gzip_ffi\""
+        raise Net::ProtocolError, message
+      end
+      message = "#{label}: the response body has a Content-Encoding the client does not decode (#{name})"
+      raise Net::ProtocolError, message
+    end
+
+    # Raises for a decoder whose last step failed: past `max_body` is a
+    # Net::LimitError, anything else not valid gzip.
+    def self.check_gzip(decoder, label, max_body)
+      status = decoder.gzip_status
+      return nil if status == GzipDecoder::GZIP_OK
+
+      if status == GzipDecoder::GZIP_TOO_LARGE
+        message = "#{label}: the response body inflates to more than #{max_body} bytes"
+        raise Net::LimitError, message
+      end
+      message = "#{label}: the response body is not valid gzip data"
+      raise Net::ProtocolError, message
+    end
+
+    # The body, framed the way RFC 9112 section 6.3 says: chunked when that
+    # is the last transfer coding, Content-Length when given, else
+    # everything to the end of the connection. A streaming `sink` is fed
+    # the body and "" is returned; `max_body` applies only to a body that
+    # is kept.
+    def self.read_framed(reader, headers, label, max_body, sink)
       streaming = sink.sink_streaming?
       coding = headers["transfer-encoding"]
       unless coding.nil?

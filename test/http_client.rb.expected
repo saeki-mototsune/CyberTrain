@@ -41,4 +41,5 @@ ok   redirects: follows 302 then 301 to GET, keeps 307 as POST with the body, an
 ok   redirects: relative Location and a loop
 ok   a redirect from https to http is refused
 ok   json_hash and json_array parse the body and answer {} / [] otherwise
-43 tests, 300 assertions, 0 failures
+ok   without cybertrain/http/gzip_ffi no Accept-Encoding is sent and a gzip body is refused
+44 tests, 312 assertions, 0 failures
