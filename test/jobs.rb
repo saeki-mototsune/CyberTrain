@@ -8,8 +8,10 @@ require "cybertrain/test"
 # state, an unknown kind, a bounded last_error, recovery of rows left
 # `running`, claimed_by and heartbeats, recovery by staleness only (two
 # processes' labels in one database), the in-place column upgrade,
-# and per-kind concurrency limits (test/job_threads.rb starts the real
-# threads). Jobs are worked
+# per-kind concurrency limits (test/job_threads.rb starts the real
+# threads), and Job.register: the Job::Run its block receives, the
+# outcomes Job.retry_later and Job.discard write under the fence, the
+# `discarded` state, and per-kind max_attempts in recovery. Jobs are worked
 # with chosen epoch times through Job.work_one, so nothing sleeps. It
 # links SQLite through FFI, so its snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23).
@@ -69,9 +71,61 @@ Job.handle("flaky") do |payload|
   raise "not yet" if SEEN.size < 3
 end
 
+# What Job.retry_later and Job.discard answered (seeded, NOTES rule 9).
+OUTCOMES = Array.new(0) { Job::OUTCOME_STALE }
+
+# Job.register: the block receives a Job::Run.
+Job.register("run kind") { |run| SEEN << "#{run.run_kind}:#{run.run_attempts}:#{Cybertrain::Cast.int(run.run_args["n"])}" }
+Job.register("plain") { |run| raise "bad" unless run.run_args.empty? }
+
+# Policies written as the generated run_job(run) writes them: the rescue
+# in a method body, the outcome written from it.
+def retrying_job(run)
+  begin
+    raise ArgumentError, "try #{run.run_attempts}"
+  rescue ArgumentError => e
+    OUTCOMES << Job.retry_later(run, e, 60, run.run_payload == "poly", 3)
+  end
+  nil
+end
+
+def discarding_job(run)
+  begin
+    raise ArgumentError, "unusable #{run.run_payload}"
+  rescue ArgumentError => e
+    OUTCOMES << Job.discard(run, e)
+  end
+  raise "after the discard" if run.run_payload == "raise"
+  nil
+end
+
+# Another process takes the row over while the policy runs: its write is
+# fenced off.
+def stolen_job(run)
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET claimed_by = 'thief:1:1:abcdef' WHERE id = ?", [run.run_id]) }
+  begin
+    raise ArgumentError, "stolen"
+  rescue ArgumentError => e
+    OUTCOMES << (run.run_payload == "discard" ? Job.discard(run, e) : Job.retry_later(run, e, 60, false, 3))
+  end
+  nil
+end
+
+Job.register("retrying") { |run| retrying_job(run) }
+Job.register("discarding") { |run| discarding_job(run) }
+Job.register("stolen") { |run| stolen_job(run) }
+Job.register("long policy", max_attempts: 20) { |run| SEEN << run.run_payload }
+Job.register("short policy", max_attempts: 2) { |run| SEEN << run.run_payload }
+
 def fresh_db
   DB.connect(":memory:")
   SEEN.pop until SEEN.empty?
+  OUTCOMES.pop until OUTCOMES.empty?
+  nil
+end
+
+def set_attempts(id, attempts)
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET attempts = ? WHERE id = ?", Cybertrain::Cast.binds(attempts, id)) }
   nil
 end
 
@@ -464,6 +518,147 @@ test "prune_done deletes old done rows and keeps failed ones" do
   assert_equal 1, Job.prune_done(2000)
   assert_equal 0, Job.state_count("done")
   assert_equal 1, Job.state_count("failed")
+end
+
+test "register gives the handler a Run with the parsed args and the attempt" do
+  fresh_db
+  id = Job.enqueue("run kind", "{\"n\":7}", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal "run kind:1:7", SEEN.join(",")
+  assert_equal "done", job_state(id)
+end
+
+test "a non-object payload gives a Run whose run_args is {}" do
+  fresh_db
+  ["plain text", "[1,2]", "", "{\"broken\""].each { |payload| Job.enqueue("plain", payload, run_at: Time.at(1000)) }
+  assert_equal 4, Job.work_due(1000)
+  assert_equal 4, Job.state_count("done")
+end
+
+test "register refuses an empty kind, a taken one and a negative max_attempts; the fields are kept" do
+  assert_includes assert_raises("ArgumentError") { Job.register("") { |run| SEEN << run.run_payload } }, "empty"
+  assert_includes assert_raises("ArgumentError") { Job.register("record") { |run| SEEN << run.run_payload } }, "already registered"
+  assert_includes assert_raises("ArgumentError") { Job.register("negative", max_attempts: -1) { |run| SEEN << run.run_payload } }, "max_attempts must be 0"
+  assert_includes assert_raises("ArgumentError") { Job.register("negative", concurrency: -1) { |run| SEEN << run.run_payload } }, "concurrency must be 0"
+  assert_equal(-1, Job.handler_index("negative"))
+  assert_equal 20, Job::HANDLERS[Job.handler_index("long policy")].handler_max_attempts
+  assert_equal 0, Job::HANDLERS[Job.handler_index("record")].handler_max_attempts
+  assert_equal "", Job::HANDLERS[Job.handler_index("record")].handler_concurrency_key
+end
+
+test "retry_later requeues with the wait, fails at the limit, and answers the outcome" do
+  fresh_db
+  id = Job.enqueue("retrying", "fixed", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal Job::OUTCOME_REQUEUED, OUTCOMES[0]
+  assert_equal "queued", job_state(id)
+  assert_equal 1060, job_run_at(id)
+  assert_equal "ArgumentError: try 1", job_error(id)
+  assert_includes LOG.string, "[ERROR] job #{id} (retrying) attempt 1 of 3 failed: ArgumentError: try 1; retrying in 60 s"
+  refute Job.work_one(1059)
+  assert Job.work_one(1060)
+  assert_equal 1120, job_run_at(id)
+  assert Job.work_one(1120)
+  assert_equal Job::OUTCOME_FAILED, OUTCOMES[2]
+  assert_equal "failed", job_state(id)
+  assert_equal 3, job_attempts(id)
+  assert_equal "ArgumentError: try 3", job_error(id)
+  assert_includes LOG.string, "[ERROR] job #{id} (retrying) failed after 3 attempts: ArgumentError: try 3"
+  # Polynomially longer: attempts ** 4 + 2 seconds.
+  poly = Job.enqueue("retrying", "poly", run_at: Time.at(2000))
+  assert Job.work_one(2000)
+  assert_equal 2003, job_run_at(poly)
+  assert Job.work_one(2003)
+  assert_equal 2021, job_run_at(poly)
+  assert_equal "requeued,requeued,failed,requeued,requeued", OUTCOMES.map { |o| o.to_s }.join(",")
+end
+
+test "retry_later and discard answer OUTCOME_STALE when the row was reclaimed" do
+  ["retry", "discard"].each do |mode|
+    fresh_db
+    id = Job.enqueue("stolen", mode, run_at: Time.at(1000))
+    assert Job.work_one(1000)
+    assert_equal Job::OUTCOME_STALE, OUTCOMES[0]
+    # Untouched: still the thief's running claim, and finish wrote nothing.
+    assert_equal "running", job_state(id)
+    assert_equal "thief:1:1:abcdef", job_claimed_by(id)
+    assert_equal "", job_error(id)
+    assert_equal 1000, job_run_at(id)
+    assert_includes LOG.string, "[WARN] job #{id} (stolen) finished after it was reclaimed; outcome discarded"
+  end
+end
+
+test "discard writes discarded and prune_finished removes it with failed rows; prune_done does not" do
+  fresh_db
+  id = Job.enqueue("discarding", "x", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal Job::OUTCOME_FAILED, OUTCOMES[0]
+  assert_equal "discarded", job_state(id)
+  assert_equal 1, job_attempts(id)
+  assert_equal "ArgumentError: unusable x", job_error(id)
+  assert_includes LOG.string, "[ERROR] job #{id} (discarding) discarded: ArgumentError: unusable x"
+  refute Job.work_one(999_999)
+  assert_equal 1, Job.state_count("discarded")
+  insert_raw("record", "done")
+  insert_raw("record", "failed")
+  assert_equal 1, Job.prune_done(2000)
+  assert_equal 1, Job.state_count("discarded")
+  assert_equal 0, Job.prune_finished(1000)
+  assert_equal 2, Job.prune_finished(1001)
+  assert_equal 0, Job.state_count("discarded")
+  assert_equal 0, Job.state_count("failed")
+end
+
+test "a handler that writes its own outcome is not written again by finish" do
+  fresh_db
+  # It returns normally after retry_later: queued, not done.
+  id = Job.enqueue("retrying", "fixed", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal "queued", job_state(id)
+  assert_equal 1060, job_run_at(id)
+  # It raises after discard: discarded, not queued by the default policy.
+  raised = Job.enqueue("discarding", "raise", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal "discarded", job_state(raised)
+  assert_equal "ArgumentError: unusable raise", job_error(raised)
+  assert_includes LOG.string, "[ERROR] job #{raised} (discarding) raised after its outcome was written: RuntimeError: after the discard"
+end
+
+test "fail_exhausted uses the larger of the default and the kind's max_attempts" do
+  fresh_db
+  Job.install!
+  assert_equal 5, Cybertrain.config.job_max_attempts
+  assert_equal 20, Job.recovery_limit("long policy")
+  assert_equal 5, Job.recovery_limit("short policy")
+  assert_equal 5, Job.recovery_limit("record")
+  assert_equal 5, Job.recovery_limit("gone")
+  long = insert_raw("long policy", "running")
+  long_last = insert_raw("long policy", "running")
+  plain = insert_raw("record", "running")
+  short = insert_raw("short policy", "running")
+  short_last = insert_raw("short policy", "running")
+  set_attempts(long, 5)
+  set_attempts(long_last, 20)
+  set_attempts(plain, 5)
+  set_attempts(short, 3)
+  set_attempts(short_last, 5)
+  assert_equal 2, Job.recover!(1301)
+  assert_equal "queued", job_state(long)
+  assert_equal "failed", job_state(long_last)
+  assert_equal "process stopped (heartbeat stale) during attempt 20 of 20", job_error(long_last)
+  assert_equal "failed", job_state(plain)
+  assert_equal "process stopped (heartbeat stale) during attempt 5 of 5", job_error(plain)
+  assert_equal "queued", job_state(short)
+  assert_equal "failed", job_state(short_last)
+  assert_equal "process stopped (heartbeat stale) during attempt 5 of 5", job_error(short_last)
+end
+
+test "Job.handle still receives the payload String" do
+  fresh_db
+  id = Job.enqueue("record", "{\"n\":7}", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal "{\"n\":7}", SEEN.join(",")
+  assert_equal "done", job_state(id)
 end
 
 test "schema dumps leave the jobs table out" do

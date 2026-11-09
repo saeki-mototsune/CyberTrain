@@ -19,5 +19,14 @@ ok   concurrency: two kinds at their limits at once are both left out
 ok   concurrency must not be negative
 ok   a job enqueued in a transaction that rolls back is gone with it
 ok   prune_done deletes old done rows and keeps failed ones
+ok   register gives the handler a Run with the parsed args and the attempt
+ok   a non-object payload gives a Run whose run_args is {}
+ok   register refuses an empty kind, a taken one and a negative max_attempts; the fields are kept
+ok   retry_later requeues with the wait, fails at the limit, and answers the outcome
+ok   retry_later and discard answer OUTCOME_STALE when the row was reclaimed
+ok   discard writes discarded and prune_finished removes it with failed rows; prune_done does not
+ok   a handler that writes its own outcome is not written again by finish
+ok   fail_exhausted uses the larger of the default and the kind's max_attempts
+ok   Job.handle still receives the payload String
 ok   schema dumps leave the jobs table out
-22 tests, 161 assertions, 0 failures
+31 tests, 250 assertions, 0 failures

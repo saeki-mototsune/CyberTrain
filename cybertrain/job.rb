@@ -32,27 +32,126 @@ module Cybertrain
   # A heartbeat thread marks the process's running rows alive every
   # {Config#job_heartbeat_interval} seconds, and {Job.recover!} queues again
   # the rows of a process that stopped beating ({Config#job_heartbeat_stale}),
-  # so several worker processes can share one database.
+  # so several worker processes can share one database. A block given to
+  # {Job.register} may write its own outcome instead ({Job.retry_later},
+  # or {Job.discard}, which leaves the row `discarded`).
   # @api public
   module Job
     # One registered handler. Distinctive accessor names and no #call
     # (spikes/NOTES.md rules 10/34/40), like Main::Command.
     class Handler
+      # handler_run_block: the Proc that runs a job, given its {Job::Run}
+      # ({Job.handle}'s payload block is wrapped in one).
       # handler_concurrency: the most jobs of this kind that may be
       # `running` at once across every process sharing the database; 0 for
-      # no limit.
-      attr_reader :handler_kind, :handler_block, :handler_concurrency
+      # no limit. handler_concurrency_key: the args key a concurrency limit
+      # is counted per; "" for the whole kind. handler_max_attempts: the
+      # most attempts any of the kind's retry policies allows; 0 for
+      # {Config#job_max_attempts} ({Job.recovery_limit}).
+      attr_reader :handler_kind, :handler_run_block, :handler_concurrency,
+                  :handler_concurrency_key, :handler_max_attempts
 
-      def initialize(handler_kind, handler_block, handler_concurrency)
+      def initialize(handler_kind, handler_run_block, handler_concurrency, handler_concurrency_key, handler_max_attempts)
         @handler_kind = handler_kind
-        @handler_block = handler_block
+        @handler_run_block = handler_run_block
         @handler_concurrency = handler_concurrency
+        @handler_concurrency_key = handler_concurrency_key
+        @handler_max_attempts = handler_max_attempts
+      end
+    end
+
+    # One claimed attempt of a job, as the block given to {Job.register}
+    # receives it: the row's id, kind and payload, the attempt number (1
+    # for the first; the claim counted it), and the claim's label, which
+    # with the attempt number fences the outcome write. A policy hands it
+    # to {Job.retry_later} or {Job.discard}, which write the outcome and
+    # mark it written, so the worker writes nothing more for it.
+    # @api public
+    class Run
+      # @return [Integer] the job's id
+      # @api public
+      attr_reader :run_id
+      # @return [String] the kind the job was enqueued under
+      # @api public
+      attr_reader :run_kind
+      # @return [String] the payload given to {Job.enqueue}, as it is
+      # @api public
+      attr_reader :run_payload
+      # @return [Integer] this attempt's number, 1 for the first
+      # @api public
+      attr_reader :run_attempts
+      # @return [String] the claiming process's {Job.process_label}
+      # @api public
+      attr_reader :run_claimed_by
+      # @return [Integer] the epoch seconds the attempt was claimed at (the
+      #   `now` of {Job.work_one}); its outcome writes are timed from it
+      # @api public
+      attr_reader :run_now
+
+      # @param run_id [Integer]
+      # @param run_kind [String]
+      # @param run_payload [String]
+      # @param run_attempts [Integer]
+      # @param run_claimed_by [String]
+      # @param run_now [Integer] epoch seconds
+      # @api public
+      def initialize(run_id, run_kind, run_payload, run_attempts, run_claimed_by, run_now)
+        @run_id = run_id
+        @run_kind = run_kind
+        @run_payload = run_payload
+        @run_attempts = run_attempts
+        @run_claimed_by = run_claimed_by
+        @run_now = run_now
+        @run_args = Cast.empty_hash
+        @run_args_parsed = false
+        @run_written = false
+      end
+
+      # The payload parsed as a JSON object, computed once. A payload that
+      # is not a JSON object (plain text, an Array, invalid JSON, "") gives
+      # an empty Hash; it never raises.
+      # @return [Hash{String => Object}]
+      # @api public
+      def run_args
+        unless @run_args_parsed
+          @run_args = Cast.json_hash(@run_payload)
+          @run_args_parsed = true
+        end
+        @run_args
+      end
+
+      # @return [Boolean] true once {Job.retry_later} or {Job.discard}
+      #   wrote, or tried to write, this attempt's outcome
+      # @api public
+      def run_outcome_written?
+        @run_written
+      end
+
+      # Marks the outcome written: the worker then writes nothing for this
+      # attempt when the block returns or raises.
+      # @return [nil]
+      # @api public
+      def run_outcome_written!
+        @run_written = true
+        nil
       end
     end
 
     # The registry: a constant (class variables are not GC roots, NOTES
     # rule 64), seeded with its element type and emptied (rule 9).
-    HANDLERS = Array.new(0) { Handler.new("", nil, 0) }
+    HANDLERS = Array.new(0) { Handler.new("", nil, 0, "", 0) }
+
+    # What {Job.retry_later} and {Job.discard} answer: the row was queued
+    # again.
+    # @api public
+    OUTCOME_REQUEUED = :requeued
+    # The row became `failed` (or, for {Job.discard}, `discarded`).
+    # @api public
+    OUTCOME_FAILED = :failed
+    # Nothing was written: another claim owns the row, or the write failed
+    # every try.
+    # @api public
+    OUTCOME_STALE = :stale
 
     # Seconds to wait before the retry after the 1st, 2nd, 3rd and every
     # later failed attempt.
@@ -167,6 +266,9 @@ module Cybertrain
     # @example
     #   Cybertrain::Job.handle("notify") { |payload| Notifier.post(payload) }
     #   Cybertrain::Job.handle("quote", concurrency: 1) { |payload| PaidApi.fetch(payload) }
+    #
+    # It is {Job.register} with a block that passes {Run#run_payload}, and
+    # the default max_attempts.
     # @param kind [String] the name jobs are enqueued under
     # @param concurrency [Integer] the most running at once; 0 for no limit
     # @yieldparam payload [String]
@@ -175,13 +277,58 @@ module Cybertrain
     #   negative concurrency
     # @api public
     def self.handle(kind, concurrency: 0, &block)
-      raise ArgumentError, "Job.handle: the kind is empty" if kind.empty?
-      raise ArgumentError, "Job.handle #{kind.inspect}: already registered" if handler_index(kind) >= 0
-      if concurrency < 0
-        raise ArgumentError, "Job.handle #{kind.inspect}: concurrency must be 0 (no limit) or more (got #{concurrency})"
-      end
+      check_registration("Job.handle", kind, concurrency, 0)
+      HANDLERS << Handler.new(kind, proc { |run| block.call(run.run_payload) }, concurrency, "", 0)
+      nil
+    end
 
-      HANDLERS << Handler.new(kind, block, concurrency)
+    # Registers the code that runs jobs of `kind`, as {Job.handle} does,
+    # with a block that receives the attempt as a {Job::Run}: its parsed
+    # args, its attempt number, and what {Job.retry_later} and
+    # {Job.discard} need to write its outcome themselves (the code
+    # generated for `app/jobs` classes uses it). A block that returns
+    # without writing an outcome ends the job `done`; one that raises
+    # without writing one follows the default retry policy.
+    # @example
+    #   Cybertrain::Job.register("ReportJob", max_attempts: 10) { |run| ReportJob.run_job(run) }
+    # @param kind [String] the name jobs are enqueued under
+    # @param concurrency [Integer] the most running at once; 0 for no limit
+    # @param concurrency_key [String] the args key the limit is counted
+    #   per; "" for the whole kind
+    # @param max_attempts [Integer] the most attempts any of the kind's
+    #   policies allows; 0 for {Config#job_max_attempts}. Stale-heartbeat
+    #   recovery fails a row only once it reached {Job.recovery_limit}.
+    # @yieldparam run [Job::Run]
+    # @return [nil]
+    # @raise [ArgumentError] for an empty kind, one already registered, or a
+    #   negative concurrency or max_attempts
+    # @api public
+    def self.register(kind, concurrency: 0, concurrency_key: "", max_attempts: 0, &block)
+      check_registration("Job.register", kind, concurrency, max_attempts)
+      HANDLERS << Handler.new(kind, block, concurrency, concurrency_key, max_attempts)
+      nil
+    end
+
+    # Raises the ArgumentError of an invalid registration (`name` is the
+    # method the message names), each message in a local first (NOTES
+    # rule 58).
+    def self.check_registration(name, kind, concurrency, max_attempts)
+      if kind.empty?
+        message = "#{name}: the kind is empty"
+        raise ArgumentError, message
+      end
+      if handler_index(kind) >= 0
+        message = "#{name} #{kind.inspect}: already registered"
+        raise ArgumentError, message
+      end
+      if concurrency < 0
+        message = "#{name} #{kind.inspect}: concurrency must be 0 (no limit) or more (got #{concurrency})"
+        raise ArgumentError, message
+      end
+      if max_attempts < 0
+        message = "#{name} #{kind.inspect}: max_attempts must be 0 (the default) or more (got #{max_attempts})"
+        raise ArgumentError, message
+      end
       nil
     end
 
@@ -517,7 +664,7 @@ module Cybertrain
     # touched, so every process that runs jobs may call it; the scheduler
     # does at start and once a minute. The attempt was already counted
     # when the row was claimed, so a row whose stopped attempt was its
-    # last ({Config#job_max_attempts}) is left `failed` instead
+    # last (its kind's {Job.recovery_limit}) is left `failed` instead
     # ({Job.fail_exhausted}): a payload that kills its process is not
     # requeued for ever.
     # @param now [Integer] epoch seconds
@@ -539,14 +686,16 @@ module Cybertrain
     end
 
     # The part of recover! for rows whose stopped attempt was their last
-    # ({Config#job_max_attempts}; the claim counted it): they become
+    # (the kind's {Job.recovery_limit}; the claim counted it): they become
     # `failed` with last_error "process stopped (heartbeat stale) during
     # attempt N of MAX", logged as a handler's last failure is, rather than
     # queued again, so a payload that kills its process is not retried for
     # ever. Each row is updated only while it is still stale and running
-    # (another process may have recovered it in between).
+    # (another process may have recovered it in between). No kind's limit
+    # is below Config#job_max_attempts, so the SELECT reads only rows at
+    # that many attempts and each row is checked against its kind's limit.
     def self.fail_exhausted(now, stale)
-      max = Cybertrain.config.job_max_attempts
+      default = Cybertrain.config.job_max_attempts
       cutoff = now - stale
       ids = Array.new(0) { 0 }
       kinds = Array.new(0) { "" }
@@ -554,17 +703,22 @@ module Cybertrain
       DB.with do |c|
         rows = c.execute("SELECT id, kind, attempts FROM cybertrain_jobs WHERE state = 'running' " \
                          "AND (heartbeat_at IS NULL OR heartbeat_at < ?) AND attempts >= ? ORDER BY id",
-                         Cast.binds(cutoff, max))
+                         Cast.binds(cutoff, default))
         rows.each do |row|
+          kind = Cast.str(row["kind"])
+          attempts = Cast.int(row["attempts"])
+          max = recovery_limit(kind)
+          next if attempts < max
+
           id = Cast.int(row["id"])
-          message = "process stopped (heartbeat stale) during attempt #{Cast.int(row["attempts"])} of #{max}"
+          message = "process stopped (heartbeat stale) during attempt #{attempts} of #{max}"
           c.execute("UPDATE cybertrain_jobs SET state = 'failed', last_error = ?, updated_at = ? WHERE id = ? " \
                     "AND state = 'running' AND (heartbeat_at IS NULL OR heartbeat_at < ?)",
                     Cast.binds(message, now, id, cutoff))
           next unless c.changes > 0
 
           ids << id
-          kinds << Cast.str(row["kind"])
+          kinds << kind
           messages << message
         end
       end
@@ -574,6 +728,24 @@ module Cybertrain
         i += 1
       end
       nil
+    end
+
+    # The attempt count at which stale-heartbeat recovery ({Job.recover!})
+    # fails a row of `kind` instead of queueing it again: the larger of
+    # {Config#job_max_attempts} and the kind's `max_attempts:`
+    # ({Job.register}), so a policy that allows more attempts is honoured
+    # and one that allows fewer does not fail a row the default policy may
+    # still retry. A kind no longer registered gets the config value.
+    # @param kind [String]
+    # @return [Integer]
+    # @api public
+    def self.recovery_limit(kind)
+      default = Cybertrain.config.job_max_attempts
+      index = handler_index(kind)
+      return default if index < 0
+
+      own = HANDLERS[index].handler_max_attempts
+      own > default ? own : default
     end
 
     # The stale default of recover!.
@@ -784,8 +956,8 @@ module Cybertrain
       count
     end
 
-    # How many rows are in `state` ("queued", "running", "done" or
-    # "failed"), e.g. for a health or admin page.
+    # How many rows are in `state` ("queued", "running", "done", "failed"
+    # or "discarded"), e.g. for a health or admin page.
     # @param state [String]
     # @return [Integer]
     # @api public
@@ -796,8 +968,9 @@ module Cybertrain
     end
 
     # Deletes `done` rows last updated before `before` (epoch seconds), for
-    # a scheduled task that keeps the table small. `failed` rows are kept
-    # for a person to look at.
+    # a scheduled task that keeps the table small. `failed` and `discarded`
+    # rows are kept for a person to look at ({Job.prune_finished} removes
+    # them).
     # @param before [Integer] epoch seconds
     # @return [Integer] how many rows were deleted
     # @api public
@@ -806,6 +979,21 @@ module Cybertrain
       count = 0
       DB.with do |c|
         c.execute("DELETE FROM cybertrain_jobs WHERE state = 'done' AND updated_at < ?", [before])
+        count = c.changes
+      end
+      count
+    end
+
+    # Deletes `failed` and `discarded` rows whose outcome was written
+    # before `before` (epoch seconds), once a person no longer needs them.
+    # @param before [Integer] epoch seconds
+    # @return [Integer] how many rows were deleted
+    # @api public
+    def self.prune_finished(before)
+      ensure_installed
+      count = 0
+      DB.with do |c|
+        c.execute("DELETE FROM cybertrain_jobs WHERE state IN ('failed', 'discarded') AND updated_at < ?", [before])
         count = c.changes
       end
       count
@@ -826,7 +1014,8 @@ module Cybertrain
     # recovered and claimed again while the handler ran (its heartbeat went
     # stale), the outcome is discarded and the row is left to its new
     # claimer. Delivery is therefore at least once: write handlers so that
-    # running twice is harmless.
+    # running twice is harmless. Nothing is written for a Run whose block
+    # wrote its own outcome ({Job.retry_later}, {Job.discard}).
     def self.finish(id, kind, payload, attempts, now, label)
       logger = Cybertrain.logger
       index = handler_index(kind)
@@ -837,7 +1026,12 @@ module Cybertrain
         logger.error("job #{id} (#{kind}) failed: #{message}")
         return nil
       end
-      error = run_handler(HANDLERS[index], payload)
+      run = Run.new(id, kind, payload, attempts, label, now)
+      error = run_handler(HANDLERS[index], run)
+      if run.run_outcome_written?
+        logger.error("job #{id} (#{kind}) raised after its outcome was written: #{error}") unless error.empty?
+        return nil
+      end
       if error.empty?
         return nil unless outcome_written?(id, kind, record_outcome(id, "done", now, "", now, label, attempts))
 
@@ -875,11 +1069,76 @@ module Cybertrain
     # The handler call with its rescue in a plain method that receives the
     # Proc as a parameter (NOTES rules 32/45/69); JSON::NestingError named
     # first (rule 61). "" when the handler returned, else the bounded error.
-    def self.run_handler(handler, payload)
-      handler.handler_block.call(payload)
+    def self.run_handler(handler, run)
+      handler.handler_run_block.call(run)
       ""
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       bounded_error("#{e.class.name}: #{e.message}")
+    end
+
+    # Writes the outcome of a failed attempt for a retry policy (the code
+    # generated for `retry_on`): `queued` again with `run_at` moved by the
+    # wait while `run.run_attempts < attempts_limit`, else `failed`;
+    # `last_error` is the error's class and message either way. The wait
+    # is `wait_base` seconds, or with `polynomial` `attempts ** 4 + 2`
+    # (3, 18, 83, ...). The write is fenced by the claim, as the worker's
+    # own: when another worker reclaimed the row, nothing is written
+    # (logged at warn) and the answer is OUTCOME_STALE, as it is when the
+    # write failed every try (the row is left to heartbeat recovery). The
+    # Run is marked written in every case, so the worker writes nothing
+    # more for it. Answering OUTCOME_FAILED only once the row really
+    # became `failed` lets the caller run an exhaustion hook safely.
+    # @param run [Job::Run] the attempt
+    # @param error [StandardError] what it raised
+    # @param wait_base [Integer] seconds before the retry
+    # @param polynomial [Boolean] wait `attempts ** 4 + 2` seconds instead
+    # @param attempts_limit [Integer] the most attempts, the first included
+    # @return [Symbol] OUTCOME_REQUEUED, OUTCOME_FAILED or OUTCOME_STALE
+    # @api public
+    def self.retry_later(run, error, wait_base, polynomial, attempts_limit)
+      attempts = run.run_attempts
+      # attempts ** 4 + 2, in Integer multiplications.
+      wait = polynomial ? attempts * attempts * attempts * attempts + 2 : wait_base
+      message = bounded_error("#{error.class.name}: #{error.message}")
+      now = run.run_now
+      id = run.run_id
+      kind = run.run_kind
+      run.run_outcome_written!
+      if attempts < attempts_limit
+        code = record_outcome(id, "queued", now + wait, message, now, run.run_claimed_by, attempts)
+        return OUTCOME_STALE unless outcome_written?(id, kind, code)
+
+        Cybertrain.logger.error("job #{id} (#{kind}) attempt #{attempts} of #{attempts_limit} failed: #{message}; retrying in #{wait} s")
+        return OUTCOME_REQUEUED
+      end
+      code = record_outcome(id, "failed", now, message, now, run.run_claimed_by, attempts)
+      return OUTCOME_STALE unless outcome_written?(id, kind, code)
+
+      Cybertrain.logger.error("job #{id} (#{kind}) failed after #{attempts} attempts: #{message}")
+      OUTCOME_FAILED
+    end
+
+    # Writes the outcome of an attempt a discard policy stopped (the code
+    # generated for `discard_on`): the row becomes `discarded`, with the
+    # error's class and message in `last_error`, and is never retried.
+    # Fenced and marked written as {Job.retry_later} is. It answers
+    # OUTCOME_FAILED when the row became `discarded` (it is terminal, as a
+    # failed row is) and OUTCOME_STALE when nothing was written.
+    # @param run [Job::Run] the attempt
+    # @param error [StandardError] what it raised
+    # @return [Symbol] OUTCOME_FAILED or OUTCOME_STALE
+    # @api public
+    def self.discard(run, error)
+      message = bounded_error("#{error.class.name}: #{error.message}")
+      now = run.run_now
+      id = run.run_id
+      kind = run.run_kind
+      run.run_outcome_written!
+      code = record_outcome(id, "discarded", now, message, now, run.run_claimed_by, run.run_attempts)
+      return OUTCOME_STALE unless outcome_written?(id, kind, code)
+
+      Cybertrain.logger.error("job #{id} (#{kind}) discarded: #{message}")
+      OUTCOME_FAILED
     end
 
     # text cut to MAX_ERROR_LENGTH characters.
