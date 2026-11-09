@@ -36,8 +36,9 @@ module Cybertrain
 
       # Every user table, excluding schema_migrations and Rails'
       # ar_internal_metadata, the framework's own
-      # cybertrain_jobs, cybertrain_leases and cybertrain_messages (Job, Lease
-      # and Stream create them at run time; in db/schema.rb the generator
+      # cybertrain_jobs, cybertrain_leases, cybertrain_messages and
+      # cybertrain_schedules (Job, Lease, Stream and Scheduler::Timetable
+      # create them at run time; in db/schema.rb the generator
       # would make models of them) and SQLite's bookkeeping tables
       # (sqlite_sequence, sqlite_stat*, ...).
       def self.table_names(connection)
@@ -47,6 +48,7 @@ module Cybertrain
           name = r["name"].to_s
           next if name == "schema_migrations" || name == "ar_internal_metadata" || name.start_with?("sqlite_")
           next if name == "cybertrain_jobs" || name == "cybertrain_leases" || name == "cybertrain_messages"
+          next if name == "cybertrain_schedules"
           names << name
         end
         names

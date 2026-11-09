@@ -9,7 +9,8 @@ require "cybertrain/test"
 # a tick recovers stale jobs at most once a minute while job threads run.
 # The ticks are driven with chosen epoch times through Scheduler.run_due,
 # so nothing sleeps; the job threads of the recovery test and the last
-# test's scheduler thread are real. It requires the job queue (and so
+# test's scheduler thread are real. Runs are recorded in the timetable
+# (test/scheduler_cron.rb covers it). It requires the job queue (and so
 # SQLite through FFI) with the scheduler, so its snapshot comes from the
 # compiled binary (spikes/NOTES.md rule 23).
 
@@ -275,10 +276,24 @@ test "config: CYBERTRAIN_JOB_THREADS sets job_threads; a word is the default, 0 
   assert_equal 3, Cybertrain::Config.new.job_threads
 end
 
-# Last: the thread it starts keeps running until the program exits. start!
-# schedules every task an interval after the real time, so the thread's
-# first tick runs nothing.
+test "every continues from last_run_at after schedule_all" do
+  # The table says "thirty" last ran at 6000: schedule_all (a restart)
+  # continues from there, not an interval after its own now.
+  Cybertrain::Scheduler::Timetable.write("thirty", 6000, 6030, 6000)
+  S.schedule_all(6010)
+  assert_equal 6030, S::TASKS[S.task_index("thirty")].task_next_run
+  # One the table has never seen starts an interval after now.
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
+  S.schedule_all(6010)
+  assert_equal 6040, S::TASKS[S.task_index("thirty")].task_next_run
+  assert_equal [0, 6040], Cybertrain::Scheduler::Timetable.read_all["thirty"]
+end
+
+# Last: the thread it starts keeps running until the program exits. With
+# the timetable emptied, start! schedules every task an interval after the
+# real time, so the thread's first tick runs nothing.
 test "start! starts the thread once; stop! asks it to end" do
+  Cybertrain::Scheduler::Timetable.prune(Array.new(0) { "" })
   config = Cybertrain::Config.new
   started = Time.now.to_i
   assert S.start!(config)

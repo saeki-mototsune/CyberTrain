@@ -138,6 +138,10 @@ module Cybertrain
       fail_boot(upload_error) unless upload_error.empty?
       scheduler_error = c.scheduler_error
       fail_boot(scheduler_error) unless scheduler_error.empty?
+      # A cron task's job: kind no Job.handle registered (Scheduler.start!
+      # raises the same message; here it is a boot error before the banner).
+      job_kinds_error = Scheduler.job_kinds_error
+      fail_boot(job_kinds_error) unless job_kinds_error.empty?
       max_page_error = c.max_page_error
       fail_boot(max_page_error) unless max_page_error.empty?
       proxies_error = c.trusted_proxies_error

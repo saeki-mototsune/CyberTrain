@@ -3,6 +3,7 @@ require "cybertrain/logger"
 require "cybertrain/params"
 require "cybertrain/http/ip_address"
 require "cybertrain/template/limits"
+require "cybertrain/time_zone"
 
 module Cybertrain
   # The application's settings. Defaults come from the environment
@@ -420,6 +421,14 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :scheduler_lease_ttl
 
+    # The zone a `Scheduler.cron` task's expression is read in when it
+    # names none (`tz:`), `"UTC"`, from `CYBERTRAIN_SCHEDULER_TZ`: an IANA
+    # name such as `"Asia/Tokyo"` ({TimeZone.find}). Boot refuses a name
+    # the system zoneinfo does not have.
+    # @return [String]
+    # @api public
+    attr_accessor :scheduler_tz
+
     # How many attempts a {Job} gets before it is left `failed`, `5` (the
     # first run and four retries, 1, 5, 15 and 60 minutes apart).
     # @return [Integer]
@@ -673,6 +682,7 @@ end
       @job_heartbeat_stale = 300
       @job_drain_timeout = 10
       @scheduler_lease_ttl = 30
+      @scheduler_tz = Config.env_or("CYBERTRAIN_SCHEDULER_TZ", "UTC")
       # ParameterFilter.names' list; Application#boot installs it there.
       @filter_parameters = Config.default_filter_parameters
       # The health check (HealthCheck). An empty variable turns it off,
@@ -1060,7 +1070,8 @@ end
     # scheduler_lease_ttl is below 1, job_heartbeat_stale is not more
     # than job_heartbeat_interval (every live job would look abandoned), or
     # scheduler_lease_ttl is less than twice scheduler_interval (the lease
-    # would lapse between two ticks of its holder);
+    # would lapse between two ticks of its holder), or scheduler_tz is not
+    # a zone TimeZone can load;
     # "" when all are fine (a sleep of 0 would spin a thread; 0 attempts
     # would fail every job unrun).
     def scheduler_error
@@ -1078,6 +1089,7 @@ end
       if @scheduler_lease_ttl < 2 * @scheduler_interval
         return "scheduler_lease_ttl (#{@scheduler_lease_ttl}) must be at least twice scheduler_interval (#{@scheduler_interval})"
       end
+      return "scheduler_tz #{@scheduler_tz.inspect} is not a known time zone" unless TimeZone.find(@scheduler_tz).found?
 
       ""
     end

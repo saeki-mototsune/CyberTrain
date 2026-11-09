@@ -37,4 +37,4 @@ done
 done
 ok   migrated decimal, json, bigint, on_delete and partial indexes dump back
 ok   default_sql wraps an expression in parentheses and leaves a plain literal alone
-9 tests, 60 assertions, 0 failures
+9 tests, 61 assertions, 0 failures

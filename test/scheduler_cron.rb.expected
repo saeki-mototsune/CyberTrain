@@ -1,0 +1,14 @@
+ok   a cron task runs at its minute and not before
+ok   tz: evaluates the expression in that zone; the default is config.scheduler_tz
+ok   cron refuses a bad expression, an unknown zone, an empty or taken name
+ok   the timetable survives a restart and a leader change
+ok   a missed cron slot is skipped unless catch_up
+ok   a job: task enqueues and does not run the job on the scheduler thread
+ok   a job: task needs a registered kind, and a block or job: but not both
+ok   task_summary names cron tasks with their next run in UTC
+ok   a cron task with no next run is reported and skipped; the others run
+ok   the timetable: rows read back as [last, next], 0 for a run that never happened
+ok   prune_schedules deletes the rows of names no longer registered
+ok   config: scheduler_tz is UTC, from CYBERTRAIN_SCHEDULER_TZ, and boot refuses an unknown zone
+ok   start! prunes the rows of names no longer registered
+13 tests, 86 assertions, 0 failures
