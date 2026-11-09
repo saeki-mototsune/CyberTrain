@@ -108,6 +108,8 @@ module Cybertrain
           # Settings, not secrets. /up answers 503 "feed stale" once a
           # WebSocket feed has stopped reporting; 0 turns that check off.
           # CYBERTRAIN_HEALTH_FEEDS=0
+          # Seconds of silence after which a feed counts as stale (180).
+          # CYBERTRAIN_HEALTH_FEED_STALE=180
 
           # The IANA zone cron expressions are read in; UTC when unset.
           # CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo

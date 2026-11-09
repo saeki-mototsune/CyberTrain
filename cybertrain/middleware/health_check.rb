@@ -98,12 +98,22 @@ module Cybertrain
       false
     end
 
-    # The rescue sits in a plain method that does not yield (NOTES rules
-    # 32/45).
+    # The rows of the status table; none (not stale: the database was just
+    # proven reachable, and a flapping /up over an optional signal is worse)
+    # when it cannot be read, with one WARN line until it can again. The
+    # empty fallback is seeded with a row of read_feeds' shape, so both
+    # paths are one type (NOTES rules 10/34/41). The rescue sits in a plain
+    # method that does not yield (rules 32/45).
     def self.feed_rows
-      WebSocket::FeedTable.read_feeds
+      rows = WebSocket::FeedTable.read_feeds
+      @feed_read_warned = false
+      rows
     rescue Cybertrain::DB::Error, StandardError
-      Array.new(0) { { "name" => "" } }
+      unless @feed_read_warned
+        @feed_read_warned = true
+        Cybertrain.logger.warn("health: the feed status table cannot be read; feeds are not checked")
+      end
+      Array.new(0) { { "name" => "", "started_at" => 0, "updated_at" => 0 } }
     end
   end
 end

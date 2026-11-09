@@ -262,6 +262,22 @@ test "health_feeds false gives 200 with a stale row; CYBERTRAIN_HEALTH_FEEDS=0 s
   clear_feeds
 end
 
+test "an unreadable status table fails open: 200, one WARN line until it reads again" do
+  clear_feeds
+  Cybertrain::DB.with { |c| c.execute("DROP TABLE cybertrain_feeds") }
+  before = LOG.string.size
+  assert_equal 200, CLIENT.get("/up").status
+  assert_equal 200, CLIENT.get("/up").status
+  logged = LOG.string
+  text = logged[before, logged.size - before].to_s
+  assert_includes text, "health: the feed status table cannot be read"
+  assert_equal 1, text.scan("the feed status table cannot be read").size
+  Cybertrain::WebSocket::FeedTable.install!
+  plant_feed("trades", 1000, 500, 500)
+  assert_equal "feed stale", CLIENT.get("/up").body
+  clear_feeds
+end
+
 test "boot refuses a health_feed_stale below 1" do
   c = build_config("/up")
   c.health_feed_stale = 0

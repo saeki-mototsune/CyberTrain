@@ -9,6 +9,7 @@ ok   an integer setting parses digits and an optional minus within its bounds
 [WARN] CT_TEST_BAD_BOOL="yes" is not a boolean (1/true or 0/false); using the default true
 ok   an unparsable or out-of-range value falls back to the default with a warning
 ok   a usable value logs nothing
+ok   CYBERTRAIN_HEALTH_FEED_STALE sets health_feed_stale; unset or bad is 180; below 1 is refused
 ok   a bad declaration is an ArgumentError
 ok   reading an undeclared or differently typed setting is an ArgumentError
 ok   tests can reassign a setting through the writers
@@ -41,4 +42,4 @@ Settings (environment variables):
 ok   help lists every declared setting with its variable and default
 ok   the encryption keys are read from their variables, the previous ones as a comma list
 ok   encryption_error: a malformed key fails, an unset one only when encryption is required
-13 tests, 71 assertions, 0 failures
+14 tests, 75 assertions, 0 failures

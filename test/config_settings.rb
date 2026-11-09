@@ -113,6 +113,18 @@ test "a usable value logs nothing" do
   assert_equal "", silence
 end
 
+test "CYBERTRAIN_HEALTH_FEED_STALE sets health_feed_stale; unset or bad is 180; below 1 is refused" do
+  ENV.delete("CYBERTRAIN_HEALTH_FEED_STALE")
+  assert_equal 180, Cybertrain::Config.new.health_feed_stale
+  ENV["CYBERTRAIN_HEALTH_FEED_STALE"] = "60"
+  assert_equal 60, Cybertrain::Config.new.health_feed_stale
+  ENV["CYBERTRAIN_HEALTH_FEED_STALE"] = "soon"
+  assert_equal 180, Cybertrain::Config.new.health_feed_stale
+  ENV["CYBERTRAIN_HEALTH_FEED_STALE"] = "0"
+  assert_includes Cybertrain::Config.new.health_error, "health_feed_stale must be at least 1"
+  ENV.delete("CYBERTRAIN_HEALTH_FEED_STALE")
+end
+
 test "a bad declaration is an ArgumentError" do
   wrong = Cybertrain::Config.new
   wrong.setting_string :taken, env: "CT_TEST_TAKEN", default: ""

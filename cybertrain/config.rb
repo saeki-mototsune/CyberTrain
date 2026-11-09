@@ -509,7 +509,9 @@ attr_accessor :trusted_proxies
 
     # Seconds after which a feed row's `updated_at` (the publishing
     # process) or `COALESCE(last_activity_at, started_at)` (the feed)
-    # makes the health check answer `503 feed stale`, `180`. At least 1.
+    # makes the health check answer `503 feed stale`, `180`, from
+    # `CYBERTRAIN_HEALTH_FEED_STALE` (a bad value is the default, one below
+    # 1 is refused at boot). At least 1.
     # @return [Integer]
     # @api public
     attr_accessor :health_feed_stale
@@ -588,8 +590,8 @@ attr_accessor :trusted_proxies
       Params.parse_int(env_or("CYBERTRAIN_CACHE_PRUNE_INTERVAL", ""), 300)
     end
 
-    # CYBERTRAIN_FEED_STATUS_INTERVAL, CYBERTRAIN_FEED_RESTART_LIMIT and
-    # CYBERTRAIN_FEED_RESTART_WINDOW as default_job_threads reads its
+    # CYBERTRAIN_FEED_STATUS_INTERVAL, CYBERTRAIN_FEED_RESTART_LIMIT,
+    # CYBERTRAIN_FEED_RESTART_WINDOW and CYBERTRAIN_HEALTH_FEED_STALE as default_job_threads reads its
     # variable: the default when unset or not a number, a number below 1
     # kept for boot to refuse (feeds_error).
     def self.default_feed_setting(name, default)
@@ -783,7 +785,7 @@ end
       @health_path = ENV["CYBERTRAIN_HEALTH_PATH"] || "/up"
       @health_worker_stale = 300
       @health_feeds = Config.default_health_feeds
-      @health_feed_stale = 180
+      @health_feed_stale = Config.default_feed_setting("CYBERTRAIN_HEALTH_FEED_STALE", 180)
       # The realtime endpoint (Stream, Stream::Endpoint); an empty variable
       # turns it off, as for health_path.
       @stream_path = ENV["CYBERTRAIN_STREAM_PATH"] || "/cybertrain/stream"
