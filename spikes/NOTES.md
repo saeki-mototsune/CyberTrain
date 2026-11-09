@@ -82,13 +82,15 @@ written up for upstream.
 | 85 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
 | 88 | **Still there**: found on this build (its reduced program, a block registered in a subclass calling a method the base class stubs, runs the stub). |
 | 89 | **Still there**: found on this build (its reduced programs, `rescue Outer::Missing` beside a top-level `Missing`, and `rescue Outer::Gone::TimeoutError` beside another `TimeoutError`, differ from CRuby). |
+| 90 | **Still there**: found on this build (its reduced program, `C.str(yield)` with a String block at one call site and an Integer block at another, runs the first block twice). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
 
 The rules are numbered in the order they were found. By topic:
 
-- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88
+- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88,
+  90
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
@@ -1014,6 +1016,27 @@ The rules are numbered in the order they were found. By topic:
     (`run_job`'s `retry_on` / `discard_on`) name only classes the program
     is known to define, and Spinel's "uninitialized constant" warning on a
     `rescue` line is treated as an error.
+
+90. A `yield` passed straight as a method's argument runs the block twice
+    when the block returns different types at different call sites
+    (Spinel 2026.11.04.7026): with `C.str(v)` a `case v when nil ...
+    when String then v else v.to_s end`, `def self.f = C.str(yield)`
+    called once with a block answering a String and once with a block
+    answering an Integer, the String block's side effects happen twice;
+    with the same type at every call site it runs once. Reduced program
+    (CRuby prints `one 42 a`, the compiled program `one 42 a,a`):
+    `module C; def self.str(v); case v; when nil then ""; when String
+    then v; else v.to_s; end; end; end`, `module M; def self.f;
+    C.str(yield); end; end`, `N = Array.new(0) { "" }`, `a = M.f do; N
+    << "a"; "one"; end`, `b = M.f { 42 }`, `puts "#{a} #{b}
+    #{N.join(",")}"`. The `&block` form (`C.str(block.call)` in a method
+    taking `&block`) ran the block once in the same program. Found in
+    phase 3 (2026-11-09): cybertrain/cache.rb's `fetch` stored
+    `Cast.str(yield)` and its test saw a block that records its call run
+    twice (`fetch` is called with String blocks and an Integer one). So
+    assign a yield's value to a local before passing it to a method
+    (`computed = yield; value = Cast.str(computed)`), as Cache.fetch,
+    fetch_hash, fetch_array and fetch_int do (docs/spinel-feedback.md S).
 
 ## Numbers worth remembering
 

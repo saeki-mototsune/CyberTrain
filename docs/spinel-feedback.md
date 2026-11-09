@@ -139,6 +139,7 @@ has a workaround in CyberTrain or an open bug:
 | P | none (`HttpClient` stays for the deadline and the address policy); the header comment of cybertrain/http_client.rb and the guides describe the pinned behaviour | Nothing: fixed on matz/spinel master dcc46945c (2026-11-05). Needs a fork tag that carries it, then a `SPINEL_TAG` move and the comment revised (see P) |
 | Q | `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through `where_between(col, from, to)`, and the validator options `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an Array | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float and String `when Range` miss are separate defects. Not reported upstream yet |
 | R | none needed: the generator of `run_job` names only classes the program defines (phase 3, spikes/NOTES.md rule 89) | **Ready to report**: the reduced programs in R (CRuby raises NameError; the compiled programs match by the last segment or swallow the exception). Not reported upstream yet |
+| S | `computed = yield` before `Cast.str(computed)` in cybertrain/cache.rb's fetch family (spikes/NOTES.md rule 90) | **Ready to report**: the reduced program in S (CRuby runs the block once; the compiled program runs it twice). No fix written. Not reported upstream yet |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026; some of their
@@ -180,6 +181,7 @@ that it is fixed.
 | P. Net::HTTP against a TLS peer that never answers does not return at the timeout | yes, as "the handshake and the reads are blocking C calls" (D24) | not checked | not checked | not checked | not checked | yes: returns at the timeout, but other threads stop meanwhile (the report) | not checked | **yes**: does not return at all (the report, 40 s; here it returns only when the peer closes, 30 s, the same on 2026.11.03.7025); **fixed** on matz/spinel master dcc46945c (2026-11-05), in no fork tag yet |
 | Q. A Range of Time or Date raises at construction; a Float or String Range is not a Range once boxed | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 2 spike, 2026-11-06; phase 2 routes non-Integer bounds through `where_between`) |
 | R. A `rescue` arm naming an undefined qualified class matches by its last segment, or swallows every exception | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3 spike, 2026-11-09; rule 89) |
+| S. A `yield` passed as an argument runs the block twice when blocks differ in type | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3, 2026-11-09; rule 90) |
 
 ## What CyberTrain still works around
 
@@ -1937,4 +1939,45 @@ B::TimeoutError` side by side each catch their own).
   scan, and framework classes whose files the application requires;
   `require "cybertrain"` does not load cybertrain/mailer), and treats the
   warning on a `rescue` line as an error (spikes/NOTES.md rule 89).
+- Not reported upstream yet.
+
+### S. A `yield` passed as an argument runs the block twice when blocks differ in type
+
+A method that passes `yield` straight to another method whose parameter
+goes through a `case` runs the block twice under Spinel 2026.11.04.7026
+when the method is called with blocks of different value types:
+
+```ruby
+module C
+  def self.str(v)
+    case v
+    when nil then ""
+    when String then v
+    else v.to_s
+    end
+  end
+end
+module M
+  def self.f
+    C.str(yield)
+  end
+end
+N = Array.new(0) { "" }
+a = M.f do
+  N << "a"
+  "one"
+end
+b = M.f { 42 }
+puts "#{a} #{b} #{N.join(",")}"
+```
+
+CRuby prints `one 42 a`; the compiled program prints `one 42 a,a`. With
+`{ "s" }` in place of `{ 42 }` (one value type at every call site) the
+block runs once. The `&block` form, `def self.g(&block) =
+C.str(block.call)`, called the same way, runs it once.
+
+- What CyberTrain does with it (phase 3): Cybertrain::Cache's `fetch`,
+  `fetch_hash`, `fetch_array` and `fetch_int` assign the block's value to
+  a local before casting it (`computed = yield; value =
+  Cast.str(computed)`; spikes/NOTES.md rule 90).
 - Not reported upstream yet.
