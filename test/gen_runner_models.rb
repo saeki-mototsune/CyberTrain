@@ -21,15 +21,19 @@ APP_FILES = [
   "app/controllers/posts_controller.rb",
   "app/helpers/prices_helper.rb",
   "app/components/card_component.rb",
-  "app/components/card_component.html.erb"
+  "app/components/card_component.html.erb",
+  "app/jobs/welcome_job.rb",
+  "app/jobs/admin/report_job.rb"
 ]
-GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/console.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
-DIRS = ["app", "app/models", "app/controllers", "app/helpers", "app/components", "gen", "gen/models"]
+GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
+DIRS = ["app", "app/models", "app/controllers", "app/helpers", "app/components", "app/jobs", "app/jobs/admin", "gen", "gen/models"]
 Dir.mkdir("#{ROOT}/app")
 Dir.mkdir("#{ROOT}/app/models")
 Dir.mkdir("#{ROOT}/app/controllers")
 Dir.mkdir("#{ROOT}/app/helpers")
 Dir.mkdir("#{ROOT}/app/components")
+Dir.mkdir("#{ROOT}/app/jobs")
+Dir.mkdir("#{ROOT}/app/jobs/admin")
 APP_FILES.each { |f| File.write("#{ROOT}/#{f}", File.read("#{FIXTURE}/#{f}")) }
 
 at_exit do

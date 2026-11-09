@@ -5,8 +5,9 @@
 # see it. This file describes that code for the API docs, using the classes
 # examples/blog generates (compare examples/blog/gen/models/article.rb and
 # examples/blog/gen/routes.rb). Every table gets the same surface under its
-# own names. Keep the signatures in step with
-# cybertrain/generator/models_emitter.rb and routes_emitter.rb.
+# own names, and every job class the same class methods. Keep the signatures
+# in step with cybertrain/generator/models_emitter.rb, routes_emitter.rb and
+# jobs_emitter.rb.
 
 # What `spin run gen` writes into `gen/models/article.rb` for this table in
 # `db/schema.rb` (the {file:docs/api/README.md overview} has the rules for
@@ -825,6 +826,84 @@ end
 # The relation for {Comment}; the same methods as {ArticleRelation}.
 # @api public
 class CommentRelation < Cybertrain::Relation
+end
+
+# What `spin run gen` writes into `gen/jobs.rb` for a job class in
+# app/jobs, here the spec's example:
+#
+#     class WelcomeJob < Cybertrain::Job::Base
+#       retry_on Cybertrain::Mailer::TimeoutError, wait: 60, attempts: 5
+#       discard_on ArgumentError
+#       limits_concurrency to: 1, key: "user_id"
+#
+#       def perform(args)
+#         user = User.find(Cybertrain::Cast.int(args["user_id"]))
+#         Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Hello!\n")
+#       end
+#     end
+#
+# The generated file reopens the class with the class methods below and
+# registers it, `Cybertrain::Job.register("WelcomeJob", concurrency: 1,
+# concurrency_key: "user_id", max_attempts: 5) { |run| WelcomeJob.run_job(run) }`
+# ({Cybertrain::Job.register}); gen/app.rb loads it after the job files.
+# Every job class gets the same methods under its own name; a namespaced
+# one (`Admin::ReportJob` in app/jobs/admin/report_job.rb) is reopened in
+# its modules and keeps its full name as its kind. See
+# {Cybertrain::Job::Base} for the macros.
+# @api public
+class WelcomeJob < Cybertrain::Job::Base
+  # The kind its rows carry in `cybertrain_jobs.kind`: the class name.
+  # @return [String] `"WelcomeJob"`
+  # @api public
+  def self.job_kind = "WelcomeJob"
+
+  # Queues the job to run as soon as a worker is free: the row's payload is
+  # `JSON.generate(args)`, which {Cybertrain::Job::Base#perform perform} receives parsed back.
+  # @example
+  #   WelcomeJob.perform_later("user_id" => user.id)
+  # @param args [Hash{String => Object}] the job's arguments (a JSON object)
+  # @return [Integer] the job's id
+  # @raise [ArgumentError] when args is not a Hash, or the class's
+  #   `limits_concurrency key:` field is missing from it ({Cybertrain::Job.enqueue})
+  # @api public
+  def self.perform_later(args = {}); end
+
+  # {.perform_later}, run no earlier than `time`.
+  # @param time [Time]
+  # @param args [Hash{String => Object}]
+  # @return [Integer] the job's id
+  # @raise [ArgumentError] as {.perform_later}
+  # @api public
+  def self.perform_at(time, args = {}); end
+
+  # {.perform_later}, run no earlier than `seconds` from now.
+  # @param seconds [Integer, Float]
+  # @param args [Hash{String => Object}]
+  # @return [Integer] the job's id
+  # @raise [ArgumentError] as {.perform_later}
+  # @api public
+  def self.perform_in(seconds, args = {}); end
+
+  # Runs {Cybertrain::Job::Base#perform perform} at once on the calling thread: no row, no retry policy,
+  # no rescue (an exception propagates), the shape a test wants.
+  # @param args [Hash{String => Object}]
+  # @return [nil]
+  # @raise [ArgumentError] when args is not a Hash
+  # @api public
+  def self.perform_now(args = {}); end
+
+  # What the worker runs for each attempt (the block given to
+  # {Cybertrain::Job.register}): `perform(run.run_args)` inside one
+  # `rescue` arm per `retry_on` / `discard_on` line, in declaration order,
+  # so the first matching line wins. A `retry_on` arm calls
+  # {Cybertrain::Job.retry_later} and runs {Cybertrain::Job::Base#retries_exhausted}
+  # only when that answered {Cybertrain::Job::OUTCOME_FAILED}; a
+  # `discard_on` arm calls {Cybertrain::Job.discard}. An exception no line
+  # matches follows the default retry policy.
+  # @param run [Cybertrain::Job::Run]
+  # @return [nil]
+  # @api public
+  def self.run_job(run); end
 end
 
 module Gen

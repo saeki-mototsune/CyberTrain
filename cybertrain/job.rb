@@ -1408,3 +1408,6 @@ module Cybertrain
     end
   end
 end
+
+# Job::Base, the superclass of the app/jobs classes.
+require "cybertrain/job/base"

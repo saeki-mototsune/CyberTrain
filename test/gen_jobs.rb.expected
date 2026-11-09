@@ -1,0 +1,18 @@
+ok   the fixture's jobs: WelcomeJob and Admin::ReportJob with their policies in declaration order
+ok   WelcomeJob's run_job: the retry arm with the hook behind OUTCOME_FAILED, then the discard arm
+ok   Admin::ReportJob is reopened in its module, polynomially longer with 20 attempts, no key
+ok   perform_later raises for a non-Hash, then enqueues the class's kind with the JSON args
+ok   the arms keep declaration order: discard_on written before retry_on comes first
+ok   a job without policies runs perform with no rescue; max_attempts 0
+ok   max_attempts is the largest attempts: of the retry lines
+ok   no job class: gen/jobs.rb is the header alone
+ok   a class in app/jobs that does not inherit Job::Base is skipped
+ok   a macro it cannot read stops generation with the one-line message
+ok   a macro inside a method is code, not a declaration
+ok   rule 89: a class the program does not define is refused
+ok   rule 89: application classes from app/models, application_job.rb and above the macro are accepted
+ok   rule 89: a class defined where it does not load before the job is refused, naming the file
+ok   ApplicationJob is not a job; its policies and limit follow its subclasses' own
+ok   a job class without perform, or redefining a generated class method, is refused
+ok   the manifest requires the mailer, then the job files, application_job first, then gen/jobs, before the controllers
+17 tests, 110 assertions, 0 failures

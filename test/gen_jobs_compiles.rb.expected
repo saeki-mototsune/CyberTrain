@@ -1,0 +1,10 @@
+ok   the checked-in gen/jobs.rb matches the emitter (fixture stale otherwise)
+ok   perform_later enqueues the class kind with the JSON args and perform runs it
+ok   perform_at and perform_in set run_at; perform_now runs synchronously and propagates
+ok   retry_on requeues with the declared wait and attempts; retries_exhausted runs once after the failed write
+ok   retries_exhausted does not run for a stale attempt
+ok   discard_on writes discarded without a retry
+ok   the first declared policy wins
+ok   limits_concurrency key: refuses a payload without the field and keys the row
+ok   a stale row of Admin::ReportJob at attempt 5 is requeued (max_attempts 20)
+9 tests, 73 assertions, 0 failures

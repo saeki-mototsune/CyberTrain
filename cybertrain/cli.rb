@@ -6,6 +6,7 @@
 #   cybertrain generate attachment MODEL FIELD [--any]
 #   cybertrain generate authentication [--invite-only]
 #   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
+#   cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
 #   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
 #   cybertrain secret [--hex] | setup [--force] | doctor | version | help
 #
@@ -20,6 +21,7 @@ require "cybertrain/cli/authentication"
 require "cybertrain/cli/attachment"
 require "cybertrain/cli/helper"
 require "cybertrain/cli/component"
+require "cybertrain/cli/job"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
 
@@ -70,6 +72,12 @@ module Cybertrain
             (default string). Templates render it with
             <%= render component: "NAME", attr: value %>.
             --force overwrites files that already exist.
+        cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
+            Add a background job: app/jobs/NAME_job.rb (a Cybertrain::Job::Base
+            with an empty perform(args) and a retry_on line per --retry: wait
+            in seconds or polynomially_longer, then the attempts) and a test
+            running it. Queue it with NameJob.perform_later("id" => 1) once
+            `spin run gen` has written gen/jobs.rb.
         cybertrain db migrate
             Generate, apply pending migrations, generate again
             (spin run gen; spin run db -- migrate; spin run gen).
@@ -356,8 +364,18 @@ module Cybertrain
         puts "next:"
         puts "  spin run gen           # writes gen/components.rb"
         puts "  cybertrain spin test   # test/#{args[0].tr("/", "_").delete_suffix("_component")}_component.rb; snapshot it from the binary"
+      when "job"
+        rest = argv[2, argv.size - 2]
+        args = Job.positional(rest)
+        raise InvalidArgument, Job::USAGE unless args.size == 1
+
+        Job.generate(".", args[0], Job.retry_specs(rest), argv.include?("--force"))
+        puts ""
+        puts "next:"
+        puts "  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)"
+        puts "  cybertrain spin test   # test/#{Inflector.underscore(args[0]).tr("/", "_").delete_suffix("_job")}_job.rb; snapshot it from the binary"
       else
-        raise InvalidArgument, "only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper` and `generate component` are supported"
+        raise InvalidArgument, "only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported"
       end
       0
     end

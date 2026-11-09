@@ -3,6 +3,7 @@
 # openssl package) and make boot require CYBERTRAIN_ENCRYPTION_KEY.
 require "cybertrain/encryptor"
 Cybertrain::Config.encryption_required = true
+require "cybertrain/mailer"
 require_relative "models/comment"
 require_relative "models/post"
 require_relative "routes"
@@ -14,6 +15,9 @@ require_relative "console"
 require_relative "controllers"
 require_relative "../app/models/comment"
 require_relative "../app/models/post"
+require_relative "../app/jobs/admin/report_job"
+require_relative "../app/jobs/welcome_job"
+require_relative "jobs"
 require_relative "../app/controllers/application_controller"
 require_relative "../app/controllers/comments_controller"
 require_relative "../app/controllers/pages_controller"

@@ -23,6 +23,7 @@ def fixture_outputs
     "gen/helpers.rb" => Cybertrain::Gen::HelpersEmitter.emit(Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),
     "gen/components.rb" => Cybertrain::Gen::ComponentsEmitter.emit(Cybertrain::Gen::ComponentScan.scan_dir("#{FIXTURE}/app/components")),
     "gen/console.rb" => Cybertrain::Gen::ConsoleEmitter.emit(Array.new(0) { "" }),
+    "gen/jobs.rb" => Cybertrain::Gen::JobsEmitter.emit(Cybertrain::Gen::JobScan.scan_dir("#{FIXTURE}/app/jobs")),
     "gen/app.rb" => Cybertrain::Gen::Manifest.emit(FIXTURE)
   }
 end
