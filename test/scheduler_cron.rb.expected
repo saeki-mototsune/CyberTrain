@@ -5,6 +5,7 @@ ok   the timetable survives a restart and a leader change
 ok   a process that takes the lease over schedules from the table, not from its own guess
 ok   a process that takes the lease over runs a cron slot the table records as due, once
 ok   one process that misses the lease at a cron slot runs the slot at its next tick
+ok   a cold start whose first tick misses the lease still skips a slot that passed while no process ran
 ok   a missed cron slot is skipped unless catch_up
 ok   a job: task enqueues and does not run the job on the scheduler thread
 ok   a job: task needs a registered kind, and a block or job: but not both
@@ -16,4 +17,4 @@ ok   a cron task without tz: takes config.scheduler_tz as it is when the schedul
 ok   prune_schedules deletes the rows of names no longer registered
 ok   config: scheduler_tz is UTC, from CYBERTRAIN_SCHEDULER_TZ, and boot refuses an unknown zone
 ok   start! prunes the rows of names no longer registered
-18 tests, 130 assertions, 0 failures
+19 tests, 137 assertions, 0 failures

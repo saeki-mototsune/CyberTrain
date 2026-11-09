@@ -215,6 +215,26 @@ test "one process that misses the lease at a cron slot runs the slot at its next
   assert_equal "nightly", ran_text
 end
 
+test "a cold start whose first tick misses the lease still skips a slot that passed while no process ran" do
+  fresh
+  S.cron("0 3 * * *", "nightly") { RAN << "nightly" }
+  S.schedule_all(utc(2026, 11, 9, 2, 0))
+  # Down from before 03:00 until 04:00; the dead process's lease runs to
+  # 04:00, so the first tick after the start cannot take it.
+  S::TASKS.clear
+  S.cron("0 3 * * *", "nightly") { RAN << "nightly" }
+  assert Cybertrain::Lease.acquire("scheduler", "gone:1:1:000000", utc(2026, 11, 9, 2, 30), ttl: 5400)
+  S.schedule_all(utc(2026, 11, 9, 4, 0))
+  assert_equal 0, S.run_due(utc(2026, 11, 9, 4, 0))
+  refute S.leader?
+  # The second tick takes the lease: still the cold start, so 03:00 does
+  # not run, and the next run is 03:00 tomorrow.
+  assert_equal 0, S.run_due(utc(2026, 11, 9, 4, 0) + 1)
+  assert S.leader?
+  assert_equal "", ran_text
+  assert_equal utc(2026, 11, 10, 3, 0), next_run_of("nightly")
+end
+
 test "a missed cron slot is skipped unless catch_up" do
   fresh
   register_nightly

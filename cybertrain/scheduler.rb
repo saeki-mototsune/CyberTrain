@@ -97,8 +97,9 @@ module Cybertrain
     @generation = 0
     # Whether the last tick held the lease.
     @leader = false
-    # True from schedule_all to the next tick (run_due's takeover rule).
-    @after_start = false
+    # The `now` of the last schedule_all (a start); 0 for none. A takeover
+    # runs a passed cron slot only when it came due at or after it.
+    @started_at = 0
     # Config#scheduler_lease_ttl, copied by start! (the default until then).
     @lease_ttl = 30
     # The `now` of the last tick that ran Job.recover!; 0 for none.
@@ -371,10 +372,15 @@ module Cybertrain
     # logged once as a failed task: a due one still runs this once, and it
     # is then skipped on every later tick until restart; the others run. A
     # tick that takes the lease after one that did not (a change of
-    # leader, or the first tick after start!) first schedules every task
-    # with a timetable row from that row, as {Scheduler.schedule_all}
-    # does. A tick that cannot reach the database logs the error, runs nothing and
-    # counts as not leading; the next one tries again. The thread calls it
+    # leader, or the first leading tick after start!) first re-reads the
+    # timetable: every task with a row is scheduled from it, and a `cron`
+    # slot the row records as due (passed, not run) that came due since
+    # this process started runs once at that tick. A slot that passed
+    # before the start (while no process ran) keeps
+    # {Scheduler.schedule_all}'s rule however many ticks failed to take
+    # the lease: it is skipped unless `catch_up`. A tick that cannot reach
+    # the database logs the error, runs nothing and counts as not leading;
+    # the next one tries again. The thread calls it
     # with the current time; tests call it with chosen times instead of
     # sleeping.
     # @param now [Integer] epoch seconds
@@ -387,12 +393,9 @@ module Cybertrain
       @leader = leader
       # Taking over (this tick leads, the last one did not): the table the
       # leader wrote is the timetable, and a cron slot it records as due
-      # runs once. Not on the first tick after schedule_all (a start),
-      # which keeps the start's rule (a slot that passed while no process
-      # ran is skipped unless catch_up).
-      after_start = @after_start
-      @after_start = false
-      reload_timetable(now, !after_start) if leader && !was_leader
+      # runs once if it came due since the start (one that passed before
+      # the start, while no process ran, is skipped unless catch_up).
+      reload_timetable(now, @started_at) if leader && !was_leader
       ran = 0
       i = 0
       while i < TASKS.size
@@ -567,7 +570,7 @@ module Cybertrain
         name = task.task_name
         if rows.key?(name)
           pair = rows[name]
-          schedule_from_row(task, pair[0], pair[1], now, false)
+          schedule_from_row(task, pair[0], pair[1], now, now)
         else
           task.task_last_run = 0
           first = schedule_next(task, now)
@@ -576,16 +579,17 @@ module Cybertrain
         end
         i += 1
       end
-      @after_start = true
+      @started_at = now
       nil
     end
 
     # On taking the lease: every task the table has a row of is scheduled
-    # from it, as schedule_all does, except that with `takeover` a `cron`
-    # slot the row records as passed runs once (a process ran, but no
-    # leader ran the slot); a task with no row (or every task, when the
-    # table cannot be read) keeps the time this process had.
-    def self.reload_timetable(now, takeover)
+    # from it, as schedule_all does, except that a `cron` slot the row
+    # records as passed runs once when it came due at or after `since`
+    # (the start: a process ran, but no leader ran the slot); a task with
+    # no row (or every task, when the table cannot be read) keeps the time
+    # this process had.
+    def self.reload_timetable(now, since)
       rows = timetable_safely
       i = 0
       while i < TASKS.size
@@ -593,7 +597,7 @@ module Cybertrain
         name = task.task_name
         if rows.key?(name)
           pair = rows[name]
-          schedule_from_row(task, pair[0], pair[1], now, takeover)
+          schedule_from_row(task, pair[0], pair[1], now, since)
         end
         i += 1
       end
@@ -602,15 +606,16 @@ module Cybertrain
 
     # One task's next run from its row: last (0 for none) and the stored
     # next run. A `cron` slot that has passed is skipped, unless catch_up
-    # or takeover, when it runs once at the next tick.
-    def self.schedule_from_row(task, last, stored_next, now, takeover)
+    # or it came due at or after `since`, when it runs once at the next
+    # tick (schedule_all passes `now`: no passed slot qualifies).
+    def self.schedule_from_row(task, last, stored_next, now, since)
       task.task_last_run = last
       slot = last > 0 ? schedule_next(task, last) : stored_next
       if slot < 0
         task.task_next_run = -1
       elsif slot >= now || task.task_cron.nil?
         task.task_next_run = slot
-      elsif task.task_catch_up || takeover
+      elsif task.task_catch_up || slot >= since
         task.task_next_run = now
       else
         following = schedule_next(task, now)
