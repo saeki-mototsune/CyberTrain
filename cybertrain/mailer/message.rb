@@ -61,7 +61,9 @@ module Cybertrain
         out << to_header
         out << subject_header
         out << "MIME-Version: 1.0\r\n"
-        out << "Content-Type: multipart/alternative; boundary=\"" << mark << "\"\r\n"
+        # Folded before the parameter: no header line past 78 characters
+        # (RFC 5322 2.1.1) with the mailer's 45-character boundary.
+        out << "Content-Type: multipart/alternative;\r\n boundary=\"" << mark << "\"\r\n"
         out << "\r\n"
         Message.append_part(out, mark, "text/plain", plain)
         Message.append_part(out, mark, "text/html", markup)

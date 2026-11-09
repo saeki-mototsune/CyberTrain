@@ -3,4 +3,7 @@ ok   deliver_later enqueues cybertrain mail and work_one delivers it
 ok   deliver_later with from: and no html sends the plain message
 ok   deliver_later refuses what deliver would refuse, before anything is enqueued
 ok   a rejected address discards; a connection failure requeues
-5 tests, 41 assertions, 0 failures
+ok   a 4xx reply (greylisting) requeues; a 5xx one still discards
+ok   a timeout requeues after 60 s
+ok   a payload that fails the checks when the job runs is discarded, nothing sent
+8 tests, 56 assertions, 0 failures

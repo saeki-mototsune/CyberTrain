@@ -24,7 +24,8 @@ ok   the message: headers, line endings, encodings, folding
 ok   Config reads the CYBERTRAIN_SMTP_* variables
 ok   deliver with html: sends multipart/alternative whose parts decode to the text and the html
 ok   Message.build: text part first, then html, base64 in lines of 76, the closing boundary
+ok   the boundary text inside both bodies: still two parts, each read back whole
 ok   Message.build refuses header injection, a bad boundary and invalid bodies
 ok   deliver without html: is the plain message of today
 ok   a UTF-8 body with a lone dot line survives base64
-29 tests, 162 assertions, 0 failures
+30 tests, 172 assertions, 0 failures

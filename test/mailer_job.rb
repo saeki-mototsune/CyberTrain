@@ -67,9 +67,13 @@ rescue ArgumentError => e
   "argument: #{e.message}"
 end
 
+# The mail job with a short timeout: the same arms, reached in 0.3 s.
+Cybertrain::Job.register("quick mail", max_attempts: 5) { |run| Cybertrain::Mailer.mail_job_with_timeout(run, 0.3) }
+
 test "the mail job is registered when cybertrain/mailer/later is required" do
-  assert Cybertrain::Job.handler_index("cybertrain mail") >= 0
-  assert Cybertrain::Job.recovery_limit("cybertrain mail") >= 5
+  index = Cybertrain::Job.handler_index("cybertrain mail")
+  assert index >= 0
+  assert_equal 5, Cybertrain::Job::HANDLERS[index].handler_max_attempts
 end
 
 test "deliver_later enqueues cybertrain mail and work_one delivers it" do
@@ -152,6 +156,60 @@ test "a rejected address discards; a connection failure requeues" do
   assert_equal "failed", job_column(refused, "state")
   assert_equal 5, job_number(refused, "attempts")
   smtp_reset
+end
+
+test "a 4xx reply (greylisting) requeues; a 5xx one still discards" do
+  fresh_db
+  smtp = Cybertrain::Test::SmtpReceiver.new(reject: { rcpt: "451 4.7.1 greylisted, try again later" })
+  smtp_to(smtp.start)
+  greylisted = Cybertrain::Mailer.deliver_later(to: "bob@example.org", subject: "s", body: "b")
+  t = Time.now.to_i + 100
+  assert Cybertrain::Job.work_one(t)
+  smtp.received_message
+  smtp.stop
+  assert_equal "queued", job_column(greylisted, "state")
+  assert_equal t + 60, job_number(greylisted, "run_at")
+  assert_includes job_column(greylisted, "last_error"), "451 4.7.1 greylisted"
+
+  refusing = Cybertrain::Test::SmtpReceiver.new(reject: { greeting: "554 5.3.2 no service here" })
+  smtp_to(refusing.start)
+  assert Cybertrain::Job.work_one(t + 60)
+  refusing.received_message
+  refusing.stop
+  smtp_reset
+  assert_equal "discarded", job_column(greylisted, "state")
+  assert_includes job_column(greylisted, "last_error"), "554 5.3.2 no service here"
+end
+
+test "a timeout requeues after 60 s" do
+  fresh_db
+  # Listening, never accepting: the connect succeeds, the greeting never comes.
+  silent = TCPServer.new("127.0.0.1", 0)
+  smtp_to(silent.addr[1])
+  id = Cybertrain::Job.enqueue("quick mail", JSON.generate({ "to" => "bob@example.org", "subject" => "s", "body" => "b",
+                                                             "html" => "", "from" => "" }))
+  t = Time.now.to_i + 100
+  assert Cybertrain::Job.work_one(t)
+  silent.close
+  smtp_reset
+  assert_equal "queued", job_column(id, "state")
+  assert_equal t + 60, job_number(id, "run_at")
+  assert_includes job_column(id, "last_error"), "TimeoutError: "
+end
+
+test "a payload that fails the checks when the job runs is discarded, nothing sent" do
+  fresh_db
+  smtp = Cybertrain::Test::SmtpReceiver.new(accept_window: 1.0)
+  smtp_to(smtp.start)
+  # As if the row had been changed in the database after deliver_later.
+  id = Cybertrain::Job.enqueue("cybertrain mail", JSON.generate({ "to" => "bob@example.org", "subject" => "s\r\nBcc: evil@example.net",
+                                                                  "body" => "b", "html" => "", "from" => "" }))
+  assert Cybertrain::Job.work_one(Time.now.to_i + 100)
+  assert_nil smtp.received_message(0.5)
+  smtp.stop
+  smtp_reset
+  assert_equal "discarded", job_column(id, "state")
+  assert_includes job_column(id, "last_error"), "ArgumentError: the subject contains CR, LF or NUL"
 end
 
 Cybertrain::Test.run!

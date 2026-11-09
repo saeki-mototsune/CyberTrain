@@ -534,6 +534,14 @@ test "deliver with html: sends multipart/alternative whose parts decode to the t
   assert_equal "Café au lait", parts["subject"]
   assert_equal "Hello Bob,\r\nsee you.\r\n", parts["text"]
   assert_equal "<p>Hello <b>Bob</b>,</p>\r\n<p>see you.</p>\r\n", parts["html"]
+  # No header line is longer than 78 characters (the Content-Type is folded).
+  head = mail.message_data.byteslice(0, mail.message_data.byteindex("\r\n\r\n"))
+  head_lines = head.split("\r\n")
+  k = 0
+  while k < head_lines.size
+    assert head_lines[k].bytesize <= 78
+    k += 1
+  end
   body = mail.message_body
   assert body.index("Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n") <
          body.index("Content-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n")
@@ -544,7 +552,7 @@ test "Message.build: text part first, then html, base64 in lines of 76, the clos
   message = Cybertrain::Mailer::Message.build("app@example.com", "bob@example.org", "Hi", text, "<p>x</p>", "=_b")
   b64 = Base64.strict_encode64("#{"a" * 100}\r\n")
   expected = "From: app@example.com\r\nTo: bob@example.org\r\nSubject: Hi\r\nMIME-Version: 1.0\r\n" \
-             "Content-Type: multipart/alternative; boundary=\"=_b\"\r\n\r\n" \
+             "Content-Type: multipart/alternative;\r\n boundary=\"=_b\"\r\n\r\n" \
              "--=_b\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" \
              "#{b64.byteslice(0, 76)}\r\n#{b64.byteslice(76, b64.bytesize - 76)}\r\n" \
              "--=_b\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" \
@@ -555,6 +563,24 @@ test "Message.build: text part first, then html, base64 in lines of 76, the clos
   assert_equal "Hi", parsed["subject"]
   assert_equal "#{"a" * 100}\r\n", parsed["text"]
   assert_equal "<p>x</p>\r\n", parsed["html"]
+end
+
+test "the boundary text inside both bodies: still two parts, each read back whole" do
+  text = "--=_b\nbefore\n--=_b--\nafter --=_b\n"
+  html = "<pre>\n--=_b\r\nContent-Type: text/html\r\n\r\n--=_b--\n</pre>"
+  message = Cybertrain::Mailer::Message.build("app@example.com", "bob@example.org", "s", text, html, "=_b")
+  # The delimiter lines: two part openers and the closer, nothing else.
+  lines = message.split("\r\n")
+  delimiters = 0
+  i = 0
+  while i < lines.size
+    delimiters += 1 if lines[i].start_with?("--=_b")
+    i += 1
+  end
+  assert_equal 3, delimiters
+  parsed = Cybertrain::Mailer::Message.parse(message)
+  assert_equal Cybertrain::Mailer.normalize_body(text), parsed["text"]
+  assert_equal Cybertrain::Mailer.normalize_body(html), parsed["html"]
 end
 
 # "ok", or "argument: <message>" when Message.build refuses its input.
