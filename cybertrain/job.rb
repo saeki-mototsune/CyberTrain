@@ -597,8 +597,9 @@ module Cybertrain
     # @param run_at [Time] the earliest time to run it (now by default)
     # @return [Integer] the job's id
     # @raise [ArgumentError] when no handler is registered for kind, or the
-    #   kind has a concurrency key and the payload (a JSON object) has no
-    #   such field, or it is null
+    #   kind has a concurrency key and the payload cannot be keyed: the
+    #   field is missing, its value is an empty String or null, or the
+    #   payload is not a JSON object
     # @raise [Cybertrain::DB::Error] when the database is not connected or
     #   the insert fails
     # @api public
@@ -814,22 +815,33 @@ module Cybertrain
 
     # The part of recover! for the `keyed` kinds: each stale running row
     # is requeued by its own UPDATE that writes its key, while it is still
-    # running and stale. Returns how many it requeued.
+    # running and stale. A row the derivation cannot key is requeued with
+    # "" (its own bucket under the kind's limit), and those rows are listed
+    # in one warn line with their ids. Returns how many it requeued.
     def self.recover_keyed(now, cutoff, keyed)
       binds = Cast.binds(cutoff)
       sql = +"SELECT id, kind, payload FROM cybertrain_jobs WHERE state = 'running' AND (heartbeat_at IS NULL OR heartbeat_at < ?)"
       append_kind_list(sql, binds, " AND kind IN (", keyed)
       sql << " ORDER BY id"
       count = 0
+      left = Array.new(0) { "" }
       DB.with do |c|
         rows = c.execute(sql, binds)
         rows.each do |row|
-          key = concurrency_key_for(Cast.str(row["kind"]), Cast.str(row["payload"]))
+          id = Cast.int(row["id"])
+          kind = Cast.str(row["kind"])
+          key = concurrency_key_for(kind, Cast.str(row["payload"]))
           c.execute("UPDATE cybertrain_jobs SET state = 'queued', concurrency_key = ?, updated_at = ? WHERE id = ? " \
                     "AND state = 'running' AND (heartbeat_at IS NULL OR heartbeat_at < ?)",
-                    Cast.binds(key, now, Cast.int(row["id"]), cutoff))
-          count += c.changes
+                    Cast.binds(key, now, id, cutoff))
+          changed = c.changes
+          count += changed
+          left << "#{id} (#{kind})" if changed > 0 && key.empty?
         end
+      end
+      unless left.empty?
+        Cybertrain.logger.warn("#{left.size} requeued job(s) have no concurrency key field to key them by; " \
+                               "left in the \"\" bucket: ids #{left.join(", ")}")
       end
       count
     end

@@ -205,7 +205,7 @@ def job_indexes
   names.sort.join(",")
 end
 
-def index_columns(name)
+def index_column_list(name)
   rows = DB.with { |c| c.execute("PRAGMA index_info('#{name}')") }
   names = Array.new(0) { "" }
   rows.each { |r| names << Cybertrain::Cast.str(r["name"]) }
@@ -786,16 +786,22 @@ test "recovery requeues a stale running row with its key in the same statement" 
   Job.install!
   keyed = insert_payload("keyed", "running", "{\"exchange\":\"X\"}", 1000)
   plain = insert_payload("record", "running", "{\"exchange\":\"X\"}", 1000)
+  unkeyable = insert_payload("keyed", "running", "not json", 1000)
   # Fresh heartbeats: untouched.
   assert_equal 0, Job.recover!(1300)
   assert_equal "running", job_state(keyed)
   assert_equal "", job_key(keyed)
-  # Stale: both requeued, the keyed one with its key.
-  assert_equal 2, Job.recover!(1301)
+  # Stale: all requeued, the keyed one with its key; the unkeyable one in
+  # the "" bucket, listed at warn.
+  assert_equal 3, Job.recover!(1301)
   assert_equal "queued", job_state(keyed)
   assert_equal "X", job_key(keyed)
   assert_equal "queued", job_state(plain)
   assert_equal "", job_key(plain)
+  assert_equal "queued", job_state(unkeyable)
+  assert_equal "", job_key(unkeyable)
+  assert_includes LOG.string, "[WARN] 1 requeued job(s) have no concurrency key field to key them by; " \
+                              "left in the \"\" bucket: ids #{unkeyable} (keyed)"
   assert_equal 0, Job.recover!(1301)
 end
 
@@ -814,7 +820,7 @@ test "an upgrade adds the column and the index to an existing table" do
   Job.install!
   assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key", job_columns
   assert_equal "cybertrain_jobs_state_kind_key,index_cybertrain_jobs_on_state_and_run_at", job_indexes
-  assert_equal "state,kind,concurrency_key", index_columns("cybertrain_jobs_state_kind_key")
+  assert_equal "state,kind,concurrency_key", index_column_list("cybertrain_jobs_state_kind_key")
   # The old row carries "" until the backfill keys it.
   assert_equal "", job_key(1)
   Job.install!

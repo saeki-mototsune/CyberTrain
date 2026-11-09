@@ -35,4 +35,4 @@ ok   backfill_keys keys queued rows of a keyed kind and lists the unkeyable ones
 ok   recovery requeues a stale running row with its key in the same statement
 ok   an upgrade adds the column and the index to an existing table
 ok   schema dumps leave the jobs table out
-37 tests, 304 assertions, 0 failures
+37 tests, 307 assertions, 0 failures
