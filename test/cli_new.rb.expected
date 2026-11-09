@@ -532,9 +532,9 @@ ok   CLI version, help and unknown commands
 # CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS (comma-separated) and re-save.
 # CYBERTRAIN_ENCRYPTION_KEY=  # cybertrain secret --hex
 
-# Settings, not secrets. When set to 1, /up answers 503 "feed stale"
-# once a WebSocket feed has stopped reporting.
-# CYBERTRAIN_HEALTH_FEEDS=1
+# Settings, not secrets. /up answers 503 "feed stale" once a
+# WebSocket feed has stopped reporting; 0 turns that check off.
+# CYBERTRAIN_HEALTH_FEEDS=0
 
 # The IANA zone cron expressions are read in; UTC when unset.
 # CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo
