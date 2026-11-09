@@ -785,6 +785,15 @@ test "request sends PUT, PATCH, DELETE and HEAD" do
   head = c.request("HEAD", rx.url("/items/1"))
   reqs = rx.received_requests(4)
   rx.stop
+  # Content-Type accompanies a body only.
+  bodiless = receiver
+  bodiless.start
+  c.request("DELETE", bodiless.url("/items/2"), content_type: "application/json")
+  gone = bodiless.received_request
+  bodiless.stop
+  assert_equal "DELETE", gone.http_method
+  assert_equal "", gone.http_header("Content-Type")
+  assert_equal "", gone.http_header("Content-Length")
   assert_equal 4, reqs.size
   assert_equal "PUT", reqs[0].http_method
   assert_equal "{\"a\":1}", reqs[0].http_body
@@ -834,6 +843,43 @@ test "the block form yields chunks and leaves body empty; max_body does not appl
   assert_equal 5000, total.sum
 end
 
+class StreamStop < StandardError
+end
+
+# How a streamed GET whose block raises on the first chunk ended: the
+# exception's class name and message. The rescue is in a method of its own
+# (rule 32).
+def stopped_stream(client, url)
+  client.get(url) do |chunk|
+    raise StreamStop, "stopped at #{chunk.bytesize} bytes" if chunk.bytesize > 0
+    nil
+  end
+  Outcome.new("none", "")
+rescue StreamStop => e
+  Outcome.new(e.class.name.to_s, e.message)
+rescue Cybertrain::HttpClient::Error => e
+  Outcome.new("client error", e.message)
+end
+
+test "an exception raised in the streamed block propagates unchanged" do
+  piece = "s" * 65_536
+  rx = receiver
+  rx.respond_with(status: 200, chunks: [piece, piece, piece, piece])
+  rx.start
+  stopped = stopped_stream(private_client, rx.url("/stream"))
+  rx.stop
+  assert_includes stopped.kind, "StreamStop"
+  assert_equal "stopped at 65536 bytes", stopped.text
+  # The client is usable afterwards (the stream was closed by exchange's
+  # ensure; the receiver's API cannot show its side of the close).
+  rx2 = receiver
+  rx2.respond_with(status: 200, body: "after")
+  rx2.start
+  after = private_client.get(rx2.url("/"))
+  rx2.stop
+  assert_equal "after", after.body
+end
+
 test "get_to_file writes the body through a .part file" do
   path = "#{TMP}/download.bin"
   rx = receiver
@@ -861,6 +907,18 @@ test "get_to_file writes the body through a .part file" do
   got = outcome { private_client.get_to_file(srv.url("/"), path) }
   srv.finish
   assert_equal "bad response", got.kind
+  refute File.exist?("#{path}.part")
+  assert_equal "abcdef", File.read(path)
+  # A 404 page never reaches the disk: counted, not written, and the file
+  # already at `path` is untouched.
+  rx3 = receiver
+  rx3.respond_with(status: 404, body: "Not Found here")
+  rx3.start
+  missing = private_client.get_to_file(rx3.url("/gone"), path)
+  rx3.stop
+  assert_equal 404, missing.status
+  assert_equal "", missing.body
+  assert_equal 14, missing.bytes_written
   refute File.exist?("#{path}.part")
   assert_equal "abcdef", File.read(path)
 end

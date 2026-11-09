@@ -217,6 +217,11 @@ module Cybertrain
       def sink_take(data)
         nil
       end
+
+      # Called with the final status before its body is read.
+      def sink_begin(status)
+        nil
+      end
     end
 
     # The block of `request(...) { |chunk| }`.
@@ -236,19 +241,26 @@ module Cybertrain
       end
     end
 
-    # The open `.part` file of {HttpClient#get_to_file}.
+    # The open `.part` file of {HttpClient#get_to_file}. Only a 2xx body
+    # is written; any other is counted and dropped.
     class FileChunkSink < ChunkSink
       def initialize(chunk_file)
         super()
         @chunk_file = chunk_file
+        @chunk_keep = false
       end
 
       def sink_streaming?
         true
       end
 
+      def sink_begin(status)
+        @chunk_keep = status >= 200 && status <= 299
+        nil
+      end
+
       def sink_take(data)
-        @chunk_file.write(data)
+        @chunk_file.write(data) if @chunk_keep
         nil
       end
     end
@@ -312,7 +324,8 @@ module Cybertrain
     #   non-public destinations. Default Config#http_allow_private.
     # @param redirects [Integer] how many 301 / 302 / 303 / 307 / 308
     #   responses with a Location a request follows; past that it raises
-    #   TooManyRedirectsError. Default 0: a 3xx is returned as it is.
+    #   TooManyRedirectsError. Default 0: a 3xx is returned as it is. A
+    #   Location that is not a plain-ASCII http(s) URL is a BadResponseError.
     # @api public
     def initialize(timeout: 5, deadline: 15, max_body: 1_048_576, allow_private: Cybertrain.config.http_allow_private,
                    redirects: 0)
@@ -356,8 +369,10 @@ module Cybertrain
 
     # Sends `verb` to `url`. POST, PUT and PATCH always carry `body` (and
     # its Content-Length, and `content_type` unless empty); DELETE carries
-    # one when it is not empty; GET and HEAD carry none. A HEAD response
-    # has no body.
+    # one when it is not empty; GET and HEAD carry none. Content-Type
+    # accompanies a body only: a `content_type:` given to a request that
+    # sends none (GET, HEAD, a DELETE with an empty body) is not sent. A
+    # HEAD response has no body.
     #
     # With a block, the response body is not kept: each piece is yielded as
     # it arrives (a chunked frame, up to 1 MiB at a time, or what each read
@@ -398,15 +413,18 @@ module Cybertrain
       end
     end
 
-    # GETs `url` into the file `path`: the body is written to
+    # GETs `url` into the file `path`: a 2xx body is written to
     # `path + ".part"` as it arrives (never held in memory, `max_body` does
-    # not apply) and renamed onto `path` when the response is complete. On
-    # any error the `.part` file is removed and `path` is left as it was.
-    # The body of any final status is written: check {Response#success?}.
+    # not apply) and renamed onto `path` when the response is complete. The
+    # body of any other final status (a 404 page, a 503) never reaches the
+    # disk: it is read and counted, the `.part` is removed and `path` is
+    # left as it was; check {Response#success?}. On any error (or an
+    # interrupt) the `.part` file is removed and `path` is left as it was.
     # @param url [String] http:// or https://
     # @param path [String] the file to write; its directory must exist
     # @param headers [Hash{String => String}] extra request headers
     # @return [Response] with an empty body and {Response#bytes_written}
+    #   (the bytes of the body read, written or not)
     # @raise [Error] a subclass; SystemCallError when the file cannot be
     #   written; ArgumentError for a URL or header the client refuses
     # @api public
@@ -419,18 +437,25 @@ module Cybertrain
       Response.new(res.status, res.headers, "", sink.sink_bytes)
     end
 
-    # get_to_file's request, close and rename; on any error the `.part` is
-    # closed and removed and the error raised again. No block here (rule
-    # 32).
+    # get_to_file's request, close and rename (a 2xx only). On every other
+    # exit (a non-2xx status, an error, an interrupt) the `.part` is closed
+    # and removed. No block here (rule 32).
     def fetch_into(url, final, part, file, sink, headers)
-      res = perform("GET", url, "", "", headers, sink)
-      file.close
-      File.rename(part, final)
-      res
-    rescue StandardError => e
-      file.close unless file.closed?
-      File.delete(part) if File.exist?(part)
-      raise e
+      renamed = false
+      begin
+        res = perform("GET", url, "", "", headers, sink)
+        file.close
+        if res.success?
+          File.rename(part, final)
+          renamed = true
+        end
+        res
+      ensure
+        unless renamed
+          file.close unless file.closed?
+          File.delete(part) if File.exist?(part)
+        end
+      end
     end
 
     # A request and the redirects it is allowed to follow. Each hop is a
@@ -991,6 +1016,7 @@ module Cybertrain
           location = headers["location"]
           return Response.new(status, headers, "") if !location.nil? && !location.empty?
         end
+        sink.sink_begin(status)
         body = HttpClient.read_body(reader, headers, status, label, max_body, sink)
         return Response.new(status, headers, body)
       end
@@ -1173,12 +1199,18 @@ module Cybertrain
           sink.sink_feed(piece)
           left -= take
         end
-        raise Net::ProtocolError, "#{label}: a chunk not followed by CRLF" unless reader.read_line(MAX_LINE_BYTES).empty?
+        unless reader.read_line(MAX_LINE_BYTES).empty?
+          message = "#{label}: a chunk not followed by CRLF"
+          raise Net::ProtocolError, message
+        end
       end
       trailers = 0
       until reader.read_line(MAX_LINE_BYTES).empty?
         trailers += 1
-        raise Net::LimitError, "#{label}: more than #{MAX_HEADER_COUNT} trailer lines" if trailers > MAX_HEADER_COUNT
+        if trailers > MAX_HEADER_COUNT
+          message = "#{label}: more than #{MAX_HEADER_COUNT} trailer lines"
+          raise Net::LimitError, message
+        end
       end
       ""
     end
@@ -1188,7 +1220,8 @@ module Cybertrain
       left = count
       while left > 0
         if reader.buffered == 0 && !reader.fill_more
-          raise Net::ProtocolError, "#{label}: the connection closed before the body was complete"
+          message = "#{label}: the connection closed before the body was complete"
+          raise Net::ProtocolError, message
         end
 
         take = reader.buffered

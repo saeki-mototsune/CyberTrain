@@ -35,9 +35,10 @@ ok   the TLS connector is installed by requiring cybertrain/net/tls
 ok   without cybertrain/net/tls, https says what to require
 ok   request sends PUT, PATCH, DELETE and HEAD
 ok   the block form yields chunks and leaves body empty; max_body does not apply
+ok   an exception raised in the streamed block propagates unchanged
 ok   get_to_file writes the body through a .part file
 ok   redirects: follows 302 then 301 to GET, keeps 307 as POST with the body, and stops at the limit
 ok   redirects: relative Location and a loop
 ok   a redirect from https to http is refused
 ok   json_hash and json_array parse the body and answer {} / [] otherwise
-42 tests, 289 assertions, 0 failures
+43 tests, 300 assertions, 0 failures
