@@ -138,6 +138,7 @@ has a workaround in CyberTrain or an open bug:
 | O | the non-blocking connect of cybertrain/net/socket.rb (rule 72), kept anyway for the deadline; a sentence in socket.rb's header and the guides | **Ready to report**: a nine-line program, and the cause named to the line: `sp_net_connect_timeout` has been in lib/sp_net.c since 59c06d979 and nothing emits a call to it (see O). Not reported upstream yet |
 | P | none (`HttpClient` stays for the deadline and the address policy); the header comment of cybertrain/http_client.rb and the guides describe the pinned behaviour | Nothing: fixed on matz/spinel master dcc46945c (2026-11-05). Needs a fork tag that carries it, then a `SPINEL_TAG` move and the comment revised (see P) |
 | Q | `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through `where_between(col, from, to)`, and the validator options `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an Array | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float and String `when Range` miss are separate defects. Not reported upstream yet |
+| R | none needed: the generator of `run_job` names only classes the program defines (phase 3, spikes/NOTES.md rule 89) | **Ready to report**: the reduced programs in R (CRuby raises NameError; the compiled programs match by the last segment or swallow the exception). Not reported upstream yet |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026; some of their
@@ -178,6 +179,7 @@ that it is fixed.
 | O. `TCPSocket.new` ignores `connect_timeout:` | yes (docs/design.md D24: "60 seconds or more against an unreachable address") | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report; re-checked here, and the same on 2026.11.03.7025; still on master 60381c464 per the report) |
 | P. Net::HTTP against a TLS peer that never answers does not return at the timeout | yes, as "the handshake and the reads are blocking C calls" (D24) | not checked | not checked | not checked | not checked | yes: returns at the timeout, but other threads stop meanwhile (the report) | not checked | **yes**: does not return at all (the report, 40 s; here it returns only when the peer closes, 30 s, the same on 2026.11.03.7025); **fixed** on matz/spinel master dcc46945c (2026-11-05), in no fork tag yet |
 | Q. A Range of Time or Date raises at construction; a Float or String Range is not a Range once boxed | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 2 spike, 2026-11-06; phase 2 routes non-Integer bounds through `where_between`) |
+| R. A `rescue` arm naming an undefined qualified class matches by its last segment, or swallows every exception | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3 spike, 2026-11-09; rule 89) |
 
 ## What CyberTrain still works around
 
@@ -1856,4 +1858,83 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
   `where_between(col, from, to)`, and the validator options
   `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an
   Array (cybertrain/validator.rb; spikes/NOTES.md rule 86).
+- Not reported upstream yet.
+
+## Found in phase 3 of the Rails-gap programme (2026-11-09)
+
+The jobs-and-outbound design (docs/superpowers/specs/2026-11-07-phase3-jobs-outbound-design.md,
+section 14) ran six checks against 2026.11.04.7026 before any code was
+written; all six passed, and this was found while writing the second.
+
+### R. A `rescue` arm naming a qualified class the program does not define
+
+CRuby evaluates a `rescue` arm's class when the arm is tried, so an arm
+naming a constant that does not exist raises NameError, which the caller
+sees. Spinel 2026.11.04.7026 resolves the arm by its last segment instead.
+With `Outer` defined and `Missing` defined only at top level:
+
+```ruby
+module Outer; end
+class Missing < StandardError; end
+
+begin
+  raise Missing, "m"
+rescue Outer::Missing => e
+  puts "rescued by Outer::Missing"
+rescue NameError => e
+  puts "NameError in arm"
+end
+```
+
+CRuby raises `NameError: uninitialized constant Outer::Missing` from the
+arm; the compiled program prints "rescued by Outer::Missing", with no
+warning at compile time (`p Outer::Missing` in an expression does raise
+NameError). With no `Missing` anywhere the arm never matches and the next
+arm is tried.
+
+When a middle segment is missing and the last one names a class defined
+elsewhere, the whole `begin` / `rescue` swallows every exception and runs
+no arm:
+
+```ruby
+module Outer
+  module Net
+    class TimeoutError < StandardError; end
+  end
+end
+class AppError < StandardError; end
+
+def inner(log)
+  begin
+    raise AppError, "boom"
+  rescue Outer::Mailer::TimeoutError => e
+    log << "arm Mailer"
+  rescue AppError => e
+    log << "arm AppError"
+  end
+  nil
+end
+
+log = []
+begin
+  inner(log)
+rescue StandardError => e
+  log << e.class.name
+end
+p log
+```
+
+CRuby prints `["NameError"]`; the compiled program prints `[]` (the
+generated C catches everything and only evaluates the missing class). The
+compiler warns "uninitialized constant Outer::Mailer: defined nowhere in
+the program (raises NameError when reached)". Without a `TimeoutError`
+elsewhere the program raises NameError as CRuby does, and classes that
+exist resolve by their full name (`rescue A::TimeoutError` and `rescue
+B::TimeoutError` side by side each catch their own).
+
+- What CyberTrain does with it (phase 3): the generated `run_job` names only
+  classes the program defines (the application's classes found by the job
+  scan, and framework classes whose files the application requires;
+  `require "cybertrain"` does not load cybertrain/mailer), and treats the
+  warning on a `rescue` line as an error (spikes/NOTES.md rule 89).
 - Not reported upstream yet.

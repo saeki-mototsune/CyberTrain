@@ -81,6 +81,7 @@ written up for upstream.
 | 83 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
 | 85 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
 | 88 | **Still there**: found on this build (its reduced program, a block registered in a subclass calling a method the base class stubs, runs the stub). |
+| 89 | **Still there**: found on this build (its reduced programs, `rescue Outer::Missing` beside a top-level `Missing`, and `rescue Outer::Gone::TimeoutError` beside another `TimeoutError`, differ from CRuby). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -95,7 +96,7 @@ The rules are numbered in the order they were found. By topic:
 - Polymorphic values and narrowing: 8, 14, 29, 35, 86
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
-  79, 81
+  79, 81, 89
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
@@ -984,6 +985,35 @@ The rules are numbered in the order they were found. By topic:
     Cybertrain::Model: the generated `counter_cache_created` / `_destroyed`
     / `_was` / `_moved` (test/gen_models_compiles.rb covers them). Found
     while writing declared associations (2026-11-06).
+
+89. A `rescue` arm naming a qualified class the program does not define
+    does not raise NameError when the arm is tried, as CRuby does: Spinel
+    2026.11.04.7026 resolves the arm by its last segment. With `module
+    Outer` defined, `rescue Outer::Missing => e` catches a top-level
+    `Missing` if there is one and otherwise never matches, with no compile
+    warning (an `Outer::Missing` in an expression does raise NameError).
+    With `Outer::Gone` undefined and a class whose name is the last segment
+    defined anywhere in the program, `rescue Outer::Gone::TimeoutError => e`
+    turns the whole `begin`/`rescue` into a catch-all that runs no arm and
+    swallows every exception (the only sign is the warning "uninitialized
+    constant Outer::Gone: defined nowhere in the program"); with no such
+    class anywhere it raises NameError as CRuby does. Classes that are
+    defined resolve by their full name: `rescue A::TimeoutError` and
+    `rescue B::TimeoutError` side by side each catch their own. Found in the
+    phase 3 spike (2026-11-09): `require "cybertrain"` does not load
+    cybertrain/mailer, so an arm naming `Cybertrain::Mailer::TimeoutError`
+    in such a program swallowed every exception its method raised, another
+    framework `TimeoutError` supplying the last segment
+    (spikes/phase3/rescue_arms.rb). Reduced repro: `module Outer; module
+    Net; class TimeoutError < StandardError; end; end; end`, `class AppError
+    < StandardError; end`, a method with `begin; raise AppError, "boom";
+    rescue Outer::Mailer::TimeoutError => e; ...; rescue AppError => e; log
+    << "arm"; end` called inside `begin ... rescue StandardError => e; log
+    << e.class.name; end`: CRuby logs NameError, the compiled program logs
+    nothing. So generated `rescue` arms
+    (`run_job`'s `retry_on` / `discard_on`) name only classes the program
+    is known to define, and Spinel's "uninitialized constant" warning on a
+    `rescue` line is treated as an error.
 
 ## Numbers worth remembering
 

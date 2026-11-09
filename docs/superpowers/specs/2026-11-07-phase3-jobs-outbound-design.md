@@ -648,6 +648,86 @@ guide tells such deployments to use the `feeds` role); (4) gzip left out of
 phase 3 and recorded; (5) a single-part HTML message (`text/html` only, with
 `text:` dropped); (6) the prefixed names above.
 
+**Results (2026-11-09, Spinel 2026.11.04.7026, programs kept in
+spikes/phase3/ with their output in each header, rule 89 recorded in
+spikes/NOTES.md):**
+
+1. Cron over DST: passes, compiled and under CRuby alike
+   (cron_dst.rb). Stepping the zone's wall clock a minute at a time and
+   converting each matching minute back with `local_to_utc`, keeping it
+   only when `utc_to_local` reads the same wall minute and it is after the
+   last run: `30 1 * * *` in Europe/London after 2026-03-28 23:00 UTC skips
+   the missing 01:30 of the 29th and runs 2026-03-30 00:30 UTC; on
+   2026-10-25 it runs once, at the first 01:30 (00:30 UTC, BST), and next
+   on the 26th at 01:30 UTC; Asia/Tokyo gives 2026-03-29 16:30 UTC. For
+   `30 * * * *` across the fold this rule also skips the second 01:30
+   (00:30 then 02:30 UTC): the wall minute runs once, as section 5.1 says,
+   so an hourly entry has a two-hour gap in real time there; the cron
+   task's tests pin the reading it implements.
+2. Rescue arms for application classes: passes (rescue_arms.rb, with
+   `require "cybertrain"`). `rescue Sub` before `rescue AppError` catches
+   a `Sub` and a grandchild in the first arm and an `AppError` in the
+   second; parent first catches both in the first; a framework exception
+   arm and `ArgumentError` beside them match; an unmatched class reaches
+   the caller; `raise Cybertrain::RecordNotFound` from inside an arm
+   reaches the caller's `rescue`; `e.class.ancestors` lists `Leaf Sub
+   AppError StandardError Exception Object Kernel BasicObject` (the
+   fallback's `Class#ancestors` is available, not needed). Found on the
+   way (**rule 89**, docs/spinel-feedback.md R): an arm naming a qualified
+   class the program does not define does not raise NameError; it matches
+   by its last segment or, when a middle segment is missing and a class of
+   the last segment's name exists elsewhere, turns the whole
+   `begin`/`rescue` into a silent catch-all. `require "cybertrain"` does
+   not load cybertrain/mailer, so `retry_on Cybertrain::Mailer::TimeoutError`
+   in an application that never requires it would swallow every error of
+   that job. So the job generator (section 2.2) must check every
+   `retry_on` / `discard_on` class against the classes the scan found and
+   the framework classes of files the application requires, and stop with
+   a one-line message otherwise.
+3. Thread respawn: passes, compiled and under CRuby alike
+   (thread_respawn.rb, with a WebSocket feed connected to the test
+   receiver and receiving meanwhile). A thread that raised reads
+   `alive? == false` from another thread; the replacement started from a
+   supervisor thread through a method runs to the end; `join` on the dead
+   thread re-raises its exception; the feed thread reads `alive?` true
+   while running and false after `WebSocket.stop!`. Spinel prints the
+   thread's exception on stderr as CRuby does (`report_on_exception`).
+4. HTTP client with GzipFFI and the TLS layer: passes (gzip_client.rb).
+   The generated C has no `sp_raise_nomethod(sp_nomethod_msg("getbyte"` or
+   `("each_byte"` (nor any `byte…` name); a control program with a
+   user-defined `getbyte` and a boxed String receiver has none either and
+   prints 97 (rule 62's status on this build). A gzip body served plain
+   and chunked by `Test::HttpReceiver` comes through `HttpClient#get` and
+   inflates with `GzipFFI.gunzip`; garbage and an over-limit body raise
+   `BodyUndecodable` / `BodyTooLarge`.
+5. `multipart/alternative` mail: passes, compiled and under CRuby alike
+   (multipart.rb). A message with an encoded-word subject, a boundary,
+   and `text/plain` / `text/html` parts in base64 (`Mailer.base64_lines`,
+   `Mailer.dot_stuff`) goes through `Test::SmtpReceiver`;
+   `message_header("Content-Type")` gives the boundary back and both parts
+   decode (`unpack1("m")` and `Base64.decode64`) to the same UTF-8 text.
+6. Name pairs: passes (names.rb). With the whole framework, the
+   application stack, the mailer, the HTTP client and the receivers in one
+   program, stand-ins with the spec's names and return types compile and
+   run beside the existing definitions, each of which the program also
+   reaches: `Cache.read` (String or nil) / `write` (Boolean) / `delete` /
+   `exist?` / `clear` / `increment` / `prune` / `fetch` / `fetch_hash` over
+   `cybertrain_cache` next to `BlobStore`, `Session#delete` / `#clear`,
+   `Errors#clear`, `Stream.prune` and `Test::Client#delete` / `#request`;
+   `Job::Base#perform(args)` next to `Mailer#perform` and
+   `HttpClient#perform`; `Job.register` next to the four other
+   `register`s; `HttpClient#request` (an `HttpClient::Response`) next to
+   `Test::Client#request` (its own Response class); `Response#json_hash`
+   next to `Cast.json_hash`; `Sse::Event#data` and `#event_id` (Strings)
+   next to `Test::Upload#data` and `Stream::Endpoint.event_id` (an
+   Integer). No prefixed fallback is needed. `script/check-reserved-names`
+   guards Model, Controller and the helper names; it has nothing to see
+   until the job and cache files exist and runs in the gate from then on.
+
+No fallback is taken. Rule 89 adds that one check to the job generator
+and nothing else; `Relation#increment` was compiled beside `Cache.increment`
+but not reached (that needs a model and its table).
+
 ## 15. Out of scope for phase 3 (recorded so nothing is lost)
 
 fin_dash's AI job base (J-6: `perform_later` overrides and batch rows are
