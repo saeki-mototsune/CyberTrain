@@ -17,8 +17,8 @@ ok   help lists worker and feeds
 error: unknown feed "nosuch" (registered: none)
 ok   feeds before any subscription: nothing to run is 0, any name is unknown
 => test environment
-=> worker: no job handler, 0 scheduled tasks
-ok   worker with no job handler and no task boots, waits for the stop and returns 0
+=> worker: 3 job threads, 0 scheduled tasks
+ok   worker with only the built-in mail job and no task boots, waits for the stop and returns 0
 error: worker takes no arguments (got 3000)
 ok   worker takes no arguments
 => test environment

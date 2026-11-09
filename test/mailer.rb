@@ -6,9 +6,8 @@
 # timings are never printed.
 #
 # The TLS layer is in the program (cybertrain/net/tls requires Spinel's
-# openssl package), and cybertrain/mailer requires cybertrain/job (SQLite
-# through FFI) for deliver_later, so the snapshot comes from the compiled
-# binary (spikes/NOTES.md rule 23). HTML mail (multipart/alternative) is
+# openssl package), so the snapshot comes from the compiled binary
+# (spikes/NOTES.md rule 23). HTML mail (multipart/alternative) is
 # delivered to Cybertrain::Test::SmtpReceiver and parsed back with
 # ReceivedMessage#message_parts; test/mailer_job.rb has deliver_later. There is no TLS server to talk to (the package
 # has no X509 to make a certificate), so STARTTLS and implicit TLS are

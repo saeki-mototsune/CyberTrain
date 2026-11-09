@@ -1,12 +1,12 @@
 require "socket"
 require "stringio"
 require "cybertrain"
-require "cybertrain/mailer"
+require "cybertrain/mailer/later"
 require "cybertrain/test"
 require "cybertrain/test/smtp_receiver"
 
 # Mailer.deliver_later: the built-in "cybertrain mail" job, registered when
-# cybertrain/mailer is required, worked through Job.work_one against
+# cybertrain/mailer/later is required (cybertrain.rb requires it), worked through Job.work_one against
 # Cybertrain::Test::SmtpReceiver. Its policy is the generated-style arm
 # table of Mailer.run_mail_job: a TimeoutError or ConnectError is retried
 # after 60 s up to 5 attempts, a RejectedError discards the row, anything
@@ -67,7 +67,7 @@ rescue ArgumentError => e
   "argument: #{e.message}"
 end
 
-test "the mail job is registered when cybertrain/mailer is required" do
+test "the mail job is registered when cybertrain/mailer/later is required" do
   assert Cybertrain::Job.handler_index("cybertrain mail") >= 0
   assert Cybertrain::Job.recovery_limit("cybertrain mail") >= 5
 end

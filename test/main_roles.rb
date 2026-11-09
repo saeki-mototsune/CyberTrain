@@ -91,7 +91,7 @@ test "feeds before any subscription: nothing to run is 0, any name is unknown" d
   assert_equal 1, run(["feeds", "nosuch"])
 end
 
-test "worker with no job handler and no task boots, waits for the stop and returns 0" do
+test "worker with only the built-in mail job and no task boots, waits for the stop and returns 0" do
   spawn_stopper(0.3)
   assert_equal 0, run(["worker"])
   refute Cybertrain::Job.running?
