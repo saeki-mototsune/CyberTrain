@@ -998,6 +998,7 @@ module Cybertrain
 
           require "cybertrain"
           require "cybertrain/test/client"
+          require "cybertrain/test/jobs"
           require_relative "../../config/app"
           require_relative "../../gen/app"
           require_relative "../../gen/migrations"
