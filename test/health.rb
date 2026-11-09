@@ -203,6 +203,71 @@ test "not stale while the scheduler is not running, whatever its last tick" do
   assert_equal "ok", CLIENT.get("/up").body
 end
 
+def plant_feed(name, started_ago, activity_ago, updated_ago)
+  now = Time.now.to_i
+  activity = activity_ago < 0 ? 0 : now - activity_ago
+  Cybertrain::WebSocket::FeedTable.upsert_feed(name, "host:1", true, now - started_ago, activity, 0, now - updated_ago)
+end
+
+def clear_feeds
+  Cybertrain::WebSocket::FeedTable.ensure_installed
+  Cybertrain::DB.with { |c| c.execute("DELETE FROM cybertrain_feeds") }
+  nil
+end
+
+test "a fresh feed row gives 200; no rows gives 200" do
+  clear_feeds
+  assert_equal "ok", CLIENT.get("/up").body
+  plant_feed("trades", 1000, 5, 5)
+  assert_equal "ok", CLIENT.get("/up").body
+end
+
+test "a stale publisher row gives 503 feed stale" do
+  clear_feeds
+  plant_feed("trades", 1000, 5, 200)
+  res = CLIENT.get("/up")
+  assert_equal 503, res.status
+  assert_equal "feed stale", res.body
+end
+
+test "a silent feed under a fresh publisher gives 503" do
+  clear_feeds
+  plant_feed("trades", 1000, 200, 5)
+  assert_equal "feed stale", CLIENT.get("/up").body
+end
+
+test "a never-active feed past the threshold (NULL last_activity_at, old started_at) gives 503" do
+  clear_feeds
+  plant_feed("trades", 200, -1, 5)
+  assert_equal "feed stale", CLIENT.get("/up").body
+  clear_feeds
+  plant_feed("trades", 100, -1, 5)
+  assert_equal "ok", CLIENT.get("/up").body
+end
+
+test "health_feeds false gives 200 with a stale row; CYBERTRAIN_HEALTH_FEEDS=0 sets it" do
+  clear_feeds
+  plant_feed("trades", 1000, 500, 500)
+  c = build_config("/up")
+  c.health_feeds = false
+  off = Cybertrain::Test::Client.new(build_app(c))
+  assert_equal "ok", off.get("/up").body
+  assert_equal "feed stale", CLIENT.get("/up").body
+  ENV["CYBERTRAIN_HEALTH_FEEDS"] = "0"
+  disabled = Cybertrain::Config.new
+  ENV.delete("CYBERTRAIN_HEALTH_FEEDS")
+  assert_equal false, disabled.health_feeds
+  assert_equal true, Cybertrain::Config.new.health_feeds
+  assert_equal 180, Cybertrain::Config.new.health_feed_stale
+  clear_feeds
+end
+
+test "boot refuses a health_feed_stale below 1" do
+  c = build_config("/up")
+  c.health_feed_stale = 0
+  assert_includes c.health_error, "health_feed_stale must be at least 1"
+end
+
 # Last: the scheduler thread keeps running until the program exits (it
 # sleeps a scheduler_interval of an hour between ticks).
 test "503 worker stale when the running scheduler's last tick is older than health_worker_stale" do

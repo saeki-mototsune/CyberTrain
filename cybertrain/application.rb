@@ -329,6 +329,8 @@ module Cybertrain
     # @return [Integer] the exit status
     # @api public
     def run_feeds(names)
+      return run_feeds_status if !names.empty? && names[0] == "status"
+
       Application.reset_roles_stop
       @config.worker = true
       boot
@@ -349,6 +351,36 @@ module Cybertrain
       previous_term = trap("TERM") { Application.request_stop_roles }
       previous_int = trap("INT") { Application.request_stop_roles }
       run_feeds_threads(names, previous_term, previous_int)
+    end
+
+    # `./<app> feeds status`: boots (the database), prints one line per
+    # feed status row (WebSocket::FeedTable) and returns 0; it starts no
+    # feed. The line:
+    #
+    #   NAME  connected|disconnected  process  last activity Ns ago  restarts N  updated Ns ago
+    #
+    # "last activity never" until the feed's first message. Times are
+    # relative to now, so a stale row stands out. With no rows it says so.
+    # @return [Integer] 0
+    # @api public
+    def run_feeds_status
+      @config.worker = true
+      boot
+      now = Application.status_now > 0 ? Application.status_now : Time.now.to_i
+      rows = WebSocket::FeedTable.read_feeds
+      puts "no feed has reported status" if rows.empty?
+      rows.each { |row| puts Application.feed_status_line(row, now) }
+      STDOUT.flush
+      0
+    end
+
+    # One `feeds status` line for a FeedTable row.
+    def self.feed_status_line(row, now)
+      active = row["last_activity_at"]
+      activity = active.nil? ? "never" : "#{now - Cast.int(active)}s ago"
+      state = Cast.int(row["connected"]) == 1 ? "connected" : "disconnected"
+      "#{Cast.str(row["name"])}  #{state}  #{Cast.str(row["process"])}  last activity #{activity}  " \
+        "restarts #{Cast.int(row["restarts"])}  updated #{now - Cast.int(row["updated_at"])}s ago"
     end
 
     # The feeds' lifetime, the counterpart of run_worker_threads: the named
@@ -397,6 +429,19 @@ module Cybertrain
     # @api public
     def self.request_stop_roles
       RoleStop.stop_roles!
+    end
+
+    # The "now" (epoch seconds) `feeds status` measures ages from; 0, the
+    # default, is the clock. A test sets it to make the output repeatable.
+    # @api public
+    def self.status_now = @status_now.to_i
+
+    # @param value [Integer] epoch seconds; 0 for the clock
+    # @return [nil]
+    # @api public
+    def self.status_now=(value)
+      @status_now = value
+      nil
     end
 
     def self.reset_roles_stop
@@ -663,7 +708,7 @@ module Cybertrain
       app = Static.new(app, c.public_root) if c.static_files
       # Before Static and the session: no public/ file shadows it, and it
       # sets no cookie. Inside RequestLogger, so polls are logged as usual.
-      app = HealthCheck.new(app, c.health_path, c.health_worker_stale) unless c.health_path.empty?
+      app = HealthCheck.new(app, c.health_path, c.health_worker_stale, c.health_feeds, c.health_feed_stale) unless c.health_path.empty?
       # The realtime endpoint (Stream::Endpoint), also before the session:
       # its authorisation is the signed token, and it sets no cookie.
       app = Stream::Endpoint.new(app, c) unless c.stream_path.empty?

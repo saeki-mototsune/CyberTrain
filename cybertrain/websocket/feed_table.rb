@@ -76,7 +76,7 @@ module Cybertrain
       # @return [Array<Hash{String => Object}>]
       # @raise [Cybertrain::DB::Error] when the database is not reachable
       # @api public
-      def self.read_all
+      def self.read_feeds
         ensure_installed
         DB.with do |c|
           c.execute("SELECT name, process, connected, started_at, last_activity_at, restarts, updated_at " \

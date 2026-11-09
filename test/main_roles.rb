@@ -207,4 +207,25 @@ test "a role hands back the INT and TERM handlers it replaced" do
   assert_equal "DEFAULT", trap("TERM", "DEFAULT").to_s
 end
 
+test "feeds status prints one line per status row and returns 0; with none it says so" do
+  Cybertrain::DB.connect("roles.sqlite3")
+  Cybertrain::WebSocket::FeedTable.ensure_installed
+  Cybertrain::DB.with { |c| c.execute("DELETE FROM cybertrain_feeds") }
+  now = 2_000_000_000
+  Cybertrain::Application.status_now = now
+  assert_equal 0, run(["feeds", "status"])
+  Cybertrain::WebSocket::FeedTable.upsert_feed("quotes", "host:42", false, now - 100, 0, 2, now - 5)
+  Cybertrain::WebSocket::FeedTable.upsert_feed("trades", "host:42", true, now - 100, now - 7, 0, now - 5)
+  assert_equal 0, run(["feeds", "status"])
+  rows = Cybertrain::WebSocket::FeedTable.read_feeds
+  assert_equal 2, rows.size
+  quotes = Cybertrain::Application.feed_status_line(rows[0], now)
+  trades = Cybertrain::Application.feed_status_line(rows[1], now)
+  assert_equal "quotes  disconnected  host:42  last activity never  restarts 2  updated 5s ago", quotes
+  assert_equal "trades  connected  host:42  last activity 7s ago  restarts 0  updated 5s ago", trades
+  Cybertrain::Application.status_now = 0
+  # status starts nothing.
+  refute Cybertrain::WebSocket.running?
+end
+
 Cybertrain::Test.run!

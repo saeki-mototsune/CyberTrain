@@ -3,6 +3,7 @@ Usage:
   ./blog [server [PORT]]   start the server
   ./blog worker            run jobs and scheduled tasks, without HTTP
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
+  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
@@ -44,4 +45,8 @@ ok   worker stops on SIGINT and feeds on SIGTERM, as the traps ask
 => test environment
 => worker: 3 job threads, 1 scheduled task
 ok   a role hands back the INT and TERM handlers it replaced
-11 tests, 47 assertions, 0 failures
+no feed has reported status
+quotes  disconnected  host:42  last activity never  restarts 2  updated 5s ago
+trades  connected  host:42  last activity 7s ago  restarts 0  updated 5s ago
+ok   feeds status prints one line per status row and returns 0; with none it says so
+12 tests, 53 assertions, 0 failures

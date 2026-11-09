@@ -496,6 +496,23 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :health_worker_stale
 
+    # Whether the health check also reads the feed status rows
+    # (WebSocket::FeedTable) and answers `503 feed stale` when a feed's
+    # publisher or the feed itself has been silent for {#health_feed_stale}
+    # seconds. `true`; `CYBERTRAIN_HEALTH_FEEDS=0` (or `false`) turns it off,
+    # for a `server` whose feeds run in another process that is watched on
+    # its own.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :health_feeds
+
+    # Seconds after which a feed row's `updated_at` (the publishing
+    # process) or `COALESCE(last_activity_at, started_at)` (the feed)
+    # makes the health check answer `503 feed stale`, `180`. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :health_feed_stale
+
     # The path of the realtime endpoint (Stream::Endpoint: Server-Sent
     # Events and WebSocket), `"/cybertrain/stream"`, from
     # `CYBERTRAIN_STREAM_PATH` (an empty value, or `c.stream_path = ""`,
@@ -576,6 +593,13 @@ attr_accessor :trusted_proxies
     # kept for boot to refuse (feeds_error).
     def self.default_feed_setting(name, default)
       Params.parse_int(env_or(name, ""), default)
+    end
+
+    # False only for CYBERTRAIN_HEALTH_FEEDS=0 or =false; anything else
+    # (unset, empty, "1") is true.
+    def self.default_health_feeds
+      configured = ENV["CYBERTRAIN_HEALTH_FEEDS"] || ""
+      !(configured == "0" || configured == "false")
     end
 
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
@@ -757,6 +781,8 @@ end
       # way to switch off a default-on path from the environment.
       @health_path = ENV["CYBERTRAIN_HEALTH_PATH"] || "/up"
       @health_worker_stale = 300
+      @health_feeds = Config.default_health_feeds
+      @health_feed_stale = 180
       # The realtime endpoint (Stream, Stream::Endpoint); an empty variable
       # turns it off, as for health_path.
       @stream_path = ENV["CYBERTRAIN_STREAM_PATH"] || "/cybertrain/stream"
@@ -1184,6 +1210,7 @@ end
         return "health_path must start with \"/\" (or be \"\" to turn the health check off), got #{path.inspect}"
       end
       return "health_worker_stale must be at least 1 (got #{@health_worker_stale})" if @health_worker_stale < 1
+      return "health_feed_stale must be at least 1 (got #{@health_feed_stale})" if @health_feed_stale < 1
 
       ""
     end

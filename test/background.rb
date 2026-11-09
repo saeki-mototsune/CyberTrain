@@ -109,7 +109,7 @@ end
 
 # The cybertrain_feeds row of `name`, or nil.
 def feed_row_hash(name)
-  rows = WS::FeedTable.read_all
+  rows = WS::FeedTable.read_feeds
   i = 0
   while i < rows.size
     return rows[i] if Cybertrain::Cast.str(rows[i]["name"]) == name

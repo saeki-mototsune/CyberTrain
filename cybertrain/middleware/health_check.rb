@@ -1,6 +1,8 @@
 require "cybertrain/middleware"
 require "cybertrain/db"
 require "cybertrain/scheduler"
+require "cybertrain/cast"
+require "cybertrain/websocket/feed_table"
 
 module Cybertrain
   # The built-in health check (Config#health_path, "/up" by default): a GET
@@ -15,6 +17,11 @@ module Cybertrain
   #   503 worker stale          the Scheduler runs, and its last tick is
   #                             older than Config#health_worker_stale seconds
   #
+  #   503 feed stale            Config#health_feeds, and a feed status row
+  #                             (WebSocket::FeedTable) whose updated_at, or
+  #                             COALESCE(last_activity_at, started_at), is
+  #                             older than Config#health_feed_stale seconds
+  #
   # always text/plain with Cache-Control: no-store. It sits inside
   # RequestLogger, so each poll is the normal two log lines and nothing more.
   # Any other method on the path, and every other path, go on down the stack.
@@ -24,17 +31,19 @@ module Cybertrain
     # rather than its newer alias sqlite_schema (SQLite 3.33+).
     QUERY = "SELECT count(*) AS n FROM sqlite_master"
 
-    def initialize(app, path, worker_stale)
+    def initialize(app, path, worker_stale, feeds, feed_stale)
       super(app)
       @health_path = path
       @worker_stale = worker_stale
+      @health_feeds = feeds
+      @feed_stale = feed_stale
     end
 
     def call(ctx)
       request = ctx.request
       return super unless request.path == @health_path && (request.get? || request.head?)
 
-      body = HealthCheck.problem(Time.now.to_i, @worker_stale)
+      body = HealthCheck.problem(Time.now.to_i, @worker_stale, @health_feeds, @feed_stale)
       response = ctx.response
       response.status = body.empty? ? 200 : 503
       response.content_type = "text/plain; charset=utf-8"
@@ -45,9 +54,10 @@ module Cybertrain
 
     # "" when healthy, else the 503's text. The database first: a worker
     # that cannot reach it is stale for that reason.
-    def self.problem(now, worker_stale)
+    def self.problem(now, worker_stale, feeds, feed_stale)
       return "database unavailable" unless database_ok?
       return "worker stale" if worker_stale?(now, worker_stale)
+      return "feed stale" if feeds && feed_stale?(now, feed_stale)
 
       ""
     end
@@ -69,6 +79,31 @@ module Cybertrain
 
       tick = Scheduler.last_tick
       tick > 0 && now - tick > worker_stale
+    end
+
+    # Spec section 9's two independent conditions over every status row:
+    # the publishing process stopped writing (updated_at old), or the feed
+    # is silent under a live publisher (COALESCE(last_activity_at,
+    # started_at) old: a feed never active counts from its start). No rows,
+    # or an unreadable table, is not stale; the database check says so.
+    def self.feed_stale?(now, feed_stale)
+      limit = now - feed_stale
+      rows = feed_rows
+      rows.each do |row|
+        return true if Cast.int(row["updated_at"]) < limit
+        active = row["last_activity_at"]
+        seen = active.nil? ? Cast.int(row["started_at"]) : Cast.int(active)
+        return true if seen < limit
+      end
+      false
+    end
+
+    # The rescue sits in a plain method that does not yield (NOTES rules
+    # 32/45).
+    def self.feed_rows
+      WebSocket::FeedTable.read_feeds
+    rescue Cybertrain::DB::Error, StandardError
+      Array.new(0) { { "name" => "" } }
     end
   end
 end

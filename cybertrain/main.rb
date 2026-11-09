@@ -18,6 +18,7 @@ module Cybertrain
   #   ./blog jobs list    any Job::CLI command: list [STATE], retry ID|--all, discard ID,
   #                       delete ID, prune [--before DAYS]
   #   ./blog feeds [NAME...]  the WebSocket subscriptions (all, or the named ones)
+  #   ./blog feeds status     each feed's health, from the status rows
   #   ./blog console      the expression console over the models (Console.run)
   #   ./blog dbconsole    the sqlite3 shell on the configured database
   #   ./blog user a@b.c   a command the application registered with Main.command
@@ -309,6 +310,7 @@ module Cybertrain
       text << "  ./#{name} [server [PORT]]   start the server\n"
       text << "  ./#{name} worker            run jobs and scheduled tasks, without HTTP\n"
       text << "  ./#{name} feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)\n"
+      text << "  ./#{name} feeds status      print each feed's health from the status rows\n"
       text << "  ./#{name} migrate           apply pending migrations\n"
       text << "  ./#{name} db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create\n"
       # The continuation lines up under "migrate" whatever the name.
