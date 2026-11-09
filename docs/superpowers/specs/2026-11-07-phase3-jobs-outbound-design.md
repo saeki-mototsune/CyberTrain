@@ -122,11 +122,12 @@ end
   macro it cannot read (a block, a lambda, a hashrocket spelling, a trailing
   comment) stops generation with the one-line message the model macros use
   (phase 2, section 3.4). Inheritance among job classes follows Rails'
-  order: `ApplicationJob` (and any other ancestor between a class and
-  `Job::Base`) is not registered as a kind of its own; its `retry_on` /
-  `discard_on` arms are emitted into each descendant's `run_job` after the
-  descendant's own arms, and its `limits_concurrency` applies to a
-  descendant that sets none. Every `Job::Base` descendant the scan meets is
+  order: `ApplicationJob` is not registered as a kind of its own; every
+  other job class is (a parent such as `Admin::ReportJob` is enqueued in
+  its own right, so a middle class must define or inherit `perform`); an
+  ancestor's `retry_on` / `discard_on` arms are emitted into each
+  descendant's `run_job` after the descendant's own arms, and the nearest
+  ancestor's `limits_concurrency` applies to a descendant that sets none. Every `Job::Base` descendant the scan meets is
   generated, whether it is the second class in a file, nested inside
   another class, or a grandchild; a class whose superclass is none of
   `Job::Base`, `ApplicationJob` or a scanned job class is the ignored
