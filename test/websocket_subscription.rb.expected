@@ -17,5 +17,6 @@ ok   stop! is bounded when servers ignore the close
 ok   on_tick fires every second while disconnected, with no connection
 ok   on_tick fires every second while connected, with the connection
 ok   an exception in on_tick is logged and the loop continues
+ok   an exception in on_tick while connected is logged and keeps the connection
 ok   a pong refreshes the feed's activity, not its last message
-20 tests, 124 assertions, 0 failures
+21 tests, 131 assertions, 0 failures

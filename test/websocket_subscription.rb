@@ -206,6 +206,21 @@ def subscribe_tick_bad(url)
     end
 end
 
+TICKS_CONN_BAD = Array.new(0) { "" }
+
+def subscribe_tick_conn_bad(url)
+  WS.subscribe("tick_conn_bad", url, allow_private: true)
+    .on_message { |conn, data| TICKS_CONN_BAD << data }
+    .on_tick(1) do |conn|
+      unless conn.nil?
+        TICKS_CONN_BAD << "tick"
+        raise "tick failed while connected" if TICKS_CONN_BAD.size == 1
+
+        conn.send_text("after the error") if TICKS_CONN_BAD.size == 2
+      end
+    end
+end
+
 def subscribe_pongy(url)
   WS.subscribe("pongy", url, timeout: 2, ping_interval: 1, stale_after: 4, allow_private: true)
     .on_message { |conn, data| conn.send_text(data) }
@@ -455,6 +470,22 @@ test "an exception in on_tick is logged and the loop continues" do
   assert_equal 1, count_of(LOG.string, "on_tick failed")
   assert WS.thread_alive?("tick_bad")
   WS.stop!
+end
+
+test "an exception in on_tick while connected is logged and keeps the connection" do
+  rx = receiver_for(1, [[step("accept"), step("echo_until_close")]])
+  subscribe_tick_conn_bad(rx.url("/tick_conn_bad"))
+  assert WS.start!(Cybertrain::Config.new)
+  # The first tick raises; the second still has the same connection and
+  # sends through it.
+  assert await_frames(rx, 1, 1, 6.0)
+  assert_equal "after the error", frames_of(rx, 1)[0]
+  assert_includes LOG.string, "[ERROR] WebSocket \"tick_conn_bad\" on_tick failed: RuntimeError: tick failed while connected"
+  assert_equal 0, WS.feed_status("tick_conn_bad").reconnects
+  assert WS.feed_status("tick_conn_bad").connected?
+  assert_equal 1, count_of(LOG.string, "WebSocket \"tick_conn_bad\" connected to")
+  WS.stop!
+  rx.stop
 end
 
 test "a pong refreshes the feed's activity, not its last message" do

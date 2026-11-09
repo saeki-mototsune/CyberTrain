@@ -134,6 +134,101 @@ def feeds_config
   config
 end
 
+# What FailingWriter does: "" nothing, "error" raises a RuntimeError,
+# "crash" an Exception that is not a StandardError (a constant: NOTES
+# rule 64).
+WRITER_MODE = Array.new(0) { "" }
+
+class WriterCrash < Exception
+end
+
+# A status writer that fails on demand, next to the FeedTable one.
+class FailingWriter < Cybertrain::WebSocket::StatusWriter
+  def status_write(name, process, connected, started_at, last_activity_at, restarts, now)
+    mode = WRITER_MODE.empty? ? "" : WRITER_MODE[0]
+    raise "status write failed" if mode == "error"
+    raise WriterCrash, "status write crashed" if mode == "crash"
+
+    false
+  end
+end
+
+WS::STATUS_WRITERS << FailingWriter.new
+
+def writer_mode(mode)
+  WRITER_MODE.clear
+  WRITER_MODE << mode
+  nil
+end
+
+def count_of(text, needle)
+  n = 0
+  at = text.index(needle)
+  until at.nil?
+    n += 1
+    at = text.index(needle, at + needle.size)
+  end
+  n
+end
+
+def await_log(needle, count, wait)
+  ends_at = mono_now + wait
+  while mono_now < ends_at
+    return true if count_of(LOG.string, needle) >= count
+
+    sleep(0.05)
+  end
+  count_of(LOG.string, needle) >= count
+end
+
+# Each feed test starts from here, whatever the tests before it left: the
+# feeds and the supervisor stopped, the supervisor's state and clock
+# reset, not a feeds process, the writers quiet, and the feeds it needs
+# registered (start! starts every registered feed).
+def fresh_feeds(names)
+  B.stop_all
+  B.reset_supervisor!
+  B.supervisor_clock = B.system_clock
+  B.exit_on_feed_death = false
+  writer_mode("")
+  subscribe_steady(dead_url("/steady")) if names.include?("steady") && WS.subscription_index("steady") < 0
+  subscribe_crashy(dead_url("/crashy")) if names.include?("crashy") && WS.subscription_index("crashy") < 0
+  nil
+end
+
+def restarts_of(name)
+  WS.feed_status(name).restarts
+end
+
+def step(kind)
+  Cybertrain::Test::WsStep.new(kind, "")
+end
+
+# The close frames the receiver got from the client.
+def closes_seen(rx)
+  frames = rx.ws_received(0.0)
+  n = 0
+  frames.each { |f| n += 1 if f.rec_opcode == 8 }
+  n
+end
+
+def await_closes(rx, count, wait)
+  ends_at = mono_now + wait
+  while mono_now < ends_at
+    return true if closes_seen(rx) >= count
+
+    sleep(0.05)
+  end
+  closes_seen(rx) >= count
+end
+
+# Dies (a non-StandardError) at its first tick while connected.
+def subscribe_leaky(url)
+  WS.subscribe("leaky", url, allow_private: true)
+    .on_message { |conn, data| conn.send_text(data) }
+    .on_tick(1) { |conn| raise FeedCrash, "leaky died" unless conn.nil? }
+end
+
 test "start_all starts every registered service" do
   assert_equal 1, B.start_all(Cybertrain::Config.new)
   assert_equal ["start"], CALLS
@@ -201,16 +296,16 @@ test "the feed settings: 10, 10 and 600, from the environment, each at least 1" 
 end
 
 test "start_all starts the supervisor with the feeds; stop_all stops it before them" do
-  subscribe_steady(dead_url("/steady"))
+  fresh_feeds(["steady"])
   refute B.supervising?
-  # The supervisor thread reads the injected clock.
+  # The supervisor thread reads the injected clock for the rows.
   B.supervisor_clock = -> { 5000 }
-  assert_equal 2, B.start_all(feeds_config)
+  assert B.start_all(feeds_config) >= 1
   assert B.supervising?
   assert WS.running?
   # Its first pass publishes the rows at once.
   ends_at = mono_now + 3.0
-  sleep(0.05) while feed_row("steady").empty? && mono_now < ends_at
+  sleep(0.05) while feed_row("steady") != "0/0/5000" && mono_now < ends_at
   assert_equal "0/0/5000", feed_row("steady")
   row = feed_row_hash("steady")
   refute row.nil?
@@ -222,49 +317,84 @@ test "start_all starts the supervisor with the feeds; stop_all stops it before t
   refute WS.running?
   # A second stop_all does nothing.
   assert_nil B.stop_all
+  B.supervisor_clock = B.system_clock
 end
 
 test "a feed thread that dies is restarted after the backoff and restarts counts it" do
-  subscribe_crashy(dead_url("/crashy"))
+  fresh_feeds(["crashy"])
   config = feeds_config
-  B.reset_supervisor!
+  base = restarts_of("crashy")
+  first = B.restart_backoff(base)
+  second = B.restart_backoff(base + 1)
   assert WS.start!(config)
   assert await_alive("crashy", false, 4.0)
-  # The first pass sees it dead: a warning, the restart in 2 ** 0 s.
-  B.supervise_pass(config, 1000)
+  # The first pass sees it dead: a warning, the restart after the backoff.
+  B.supervise_pass(config, 1000, 1000)
   assert_includes LOG.string, "[ERROR] WebSocket \"crashy\" thread ended: FeedCrash: crashy died"
-  assert_includes LOG.string, "[WARN] feed crashy: its thread ended; restarting in 1s"
+  assert_includes LOG.string, "[WARN] feed crashy: its thread ended; restarting in #{first}s"
+  B.supervise_pass(config, 1000, 1000 + first - 1)
   refute WS.thread_alive?("crashy")
-  B.supervise_pass(config, 1000)
-  refute WS.thread_alive?("crashy")
-  assert_equal 0, WS.feed_status("crashy").restarts
-  B.supervise_pass(config, 1001)
-  assert_equal 1, WS.feed_status("crashy").restarts
-  # It dies again (at its first tick): now 2 ** 1 s.
+  assert_equal base, restarts_of("crashy")
+  B.supervise_pass(config, 1000, 1000 + first)
+  assert_equal base + 1, restarts_of("crashy")
+  # It dies again (at its first tick): the next backoff doubles.
   assert await_alive("crashy", false, 4.0)
-  B.supervise_pass(config, 1002)
-  assert_includes LOG.string, "[WARN] feed crashy: its thread ended; restarting in 2s"
-  B.supervise_pass(config, 1003)
-  assert_equal 1, WS.feed_status("crashy").restarts
-  B.supervise_pass(config, 1004)
-  assert_equal 2, WS.feed_status("crashy").restarts
+  m = 1000 + first + 1
+  B.supervise_pass(config, 1000, m)
+  assert_includes LOG.string, "[WARN] feed crashy: its thread ended; restarting in #{second}s"
+  B.supervise_pass(config, 1000, m + second - 1)
+  assert_equal base + 1, restarts_of("crashy")
+  B.supervise_pass(config, 1000, m + second)
+  assert_equal base + 2, restarts_of("crashy")
   # Not a feeds process (exit_on_feed_death is off): it never gives up.
   refute B.feeds_failed?
   WS.stop!
 end
 
-test "status rows are written with started_at, last_activity_at and restarts" do
+test "a feed that dies while connected closes its connection; restarts leave no socket open" do
+  fresh_feeds([])
+  rx = Cybertrain::Test::WebSocketReceiver.new(max: 3, accept_window: 20.0, read_timeout: 10.0)
+  rx.ws_script([step("accept"), step("echo_until_close")])
+  rx.ws_script([step("accept"), step("echo_until_close")])
+  rx.ws_script([step("accept"), step("echo_until_close")])
+  rx.start
+  subscribe_leaky(rx.url("/leaky")) if WS.subscription_index("leaky") < 0
   config = feeds_config
-  # A supervisor's first pass publishes; the next after 10 s.
-  B.reset_supervisor!
   assert WS.start!(config)
-  B.supervise_pass(config, 2000)
+  m = 10_000
+  deaths = 0
+  while deaths < 3
+    assert await_alive("leaky", false, 6.0)
+    deaths += 1
+    # The dying thread closed its client: the server got close 1000.
+    assert await_closes(rx, deaths, 3.0)
+    break if deaths == 3
+
+    B.supervise_pass(config, m, m)
+    m += 40
+    B.supervise_pass(config, m, m)
+    assert WS.thread_alive?("leaky")
+  end
+  assert_equal 2, restarts_of("leaky")
+  assert_equal 3, closes_seen(rx)
+  assert_equal 3, count_of(LOG.string, "[ERROR] WebSocket \"leaky\" thread ended: FeedCrash: leaky died")
+  WS.stop!
+  rx.stop
+end
+
+test "status rows are written with started_at, last_activity_at and restarts" do
+  fresh_feeds(["steady", "crashy"])
+  config = feeds_config
+  restarts = restarts_of("crashy")
+  assert WS.start!(config)
+  # A supervisor's first pass publishes; the next after 10 s.
+  B.supervise_pass(config, 2000, 2000)
   assert_equal "0/0/2000", feed_row("steady")
-  assert_equal "0/2/2000", feed_row("crashy")
-  B.supervise_pass(config, 2005)
-  assert_equal "0/2/2000", feed_row("crashy")
-  B.supervise_pass(config, 2010)
-  assert_equal "0/2/2010", feed_row("crashy")
+  assert_equal "0/#{restarts}/2000", feed_row("crashy")
+  B.supervise_pass(config, 2005, 2005)
+  assert_equal "0/#{restarts}/2000", feed_row("crashy")
+  B.supervise_pass(config, 2010, 2010)
+  assert_equal "0/#{restarts}/2010", feed_row("crashy")
   row = feed_row_hash("crashy")
   refute row.nil?
   started = Cybertrain::Cast.int(row["started_at"])
@@ -275,26 +405,73 @@ test "status rows are written with started_at, last_activity_at and restarts" do
 end
 
 test "after stop! nothing is restarted" do
+  fresh_feeds(["crashy"])
   config = feeds_config
-  restarts = WS.feed_status("crashy").restarts
-  B.supervise_pass(config, 3000)
-  B.supervise_pass(config, 3100)
-  assert_equal restarts, WS.feed_status("crashy").restarts
+  assert WS.start!(config)
+  assert await_alive("crashy", false, 4.0)
+  B.supervise_pass(config, 3000, 3000)
+  WS.stop!
+  restarts = restarts_of("crashy")
+  B.supervise_pass(config, 3100, 3100)
+  B.supervise_pass(config, 3200, 3200)
+  assert_equal restarts, restarts_of("crashy")
   refute WS.thread_alive?("crashy")
 end
 
-test "a feeds process gives up after feed_restart_limit deaths in the window" do
+test "a pass of a stopped supervisor restarts nothing" do
+  fresh_feeds(["crashy"])
+  config = feeds_config
+  assert WS.start!(config)
+  assert await_alive("crashy", false, 4.0)
+  B.supervise_pass(config, 3500, 3500)
+  restarts = restarts_of("crashy")
+  # Generation 7 is not the running supervisor's (none runs): a pass of a
+  # supervisor that outlived stop_supervisor!'s wait.
+  B.supervise_pass(config, 3600, 3600, 7)
+  assert_equal restarts, restarts_of("crashy")
+  refute WS.thread_alive?("crashy")
+  # A direct pass while no supervisor runs still restarts it.
+  B.supervise_pass(config, 3600, 3600)
+  assert_equal restarts + 1, restarts_of("crashy")
+  WS.stop!
+end
+
+test "a failing status write leaves the supervisor and the feeds running" do
+  fresh_feeds(["steady"])
+  config = feeds_config
+  config.feed_status_interval = 1
+  writer_mode("error")
+  assert B.start_all(config) >= 1
+  # One error a second: the supervisor goes on after each.
+  assert await_log("[ERROR] feed supervisor: RuntimeError: status write failed", 2, 5.0)
+  assert B.supervising?
+  assert WS.thread_alive?("steady")
+  # Nor does an exception that is not a StandardError stop it.
+  writer_mode("crash")
+  assert await_log("[ERROR] feed supervisor: WriterCrash: status write crashed", 2, 5.0)
+  assert B.supervising?
+  assert WS.thread_alive?("steady")
+  writer_mode("")
+  assert_nil B.stop_all
+  refute B.supervising?
+end
+
+test "a feeds process gives up when a feed dies after feed_restart_limit restarts in the window" do
+  fresh_feeds(["crashy"])
   config = feeds_config
   config.feed_restart_limit = 2
-  B.reset_supervisor!
   B.exit_on_feed_death = true
   assert WS.start!(config)
   assert await_alive("crashy", false, 4.0)
-  B.supervise_pass(config, 4000)
-  B.supervise_pass(config, 4100)
+  B.supervise_pass(config, 4000, 4000)
+  B.supervise_pass(config, 4100, 4100)
+  assert await_alive("crashy", false, 4.0)
+  B.supervise_pass(config, 4200, 4200)
+  B.supervise_pass(config, 4300, 4300)
   refute B.feeds_failed?
   assert await_alive("crashy", false, 4.0)
-  B.supervise_pass(config, 4200)
+  # The third death, after two restarts within 600 s.
+  B.supervise_pass(config, 4400, 4400)
   assert B.feeds_failed?
   assert_includes LOG.string, "[FATAL] feed crashy restarted 2 times in 600 s; exiting"
   B.exit_on_feed_death = false

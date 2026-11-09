@@ -454,9 +454,10 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :feed_status_interval
 
-    # How many times one feed's thread may die within
-    # {#feed_restart_window} before a `feeds` process exits with status 1
-    # (`[FATAL] feed NAME restarted N times in W s; exiting`), `10`, from
+    # How many times the supervisor may restart one feed's thread within
+    # {#feed_restart_window}: a feed that dies again after that many
+    # restarts makes a `feeds` process exit with status 1 (`[FATAL] feed
+    # NAME restarted N times in W s; exiting`), `10`, from
     # `CYBERTRAIN_FEED_RESTART_LIMIT`. A `server` process that runs feeds
     # keeps restarting them. At least 1.
     # @return [Integer]

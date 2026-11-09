@@ -8,7 +8,10 @@ ok   restart_backoff is min(30, 2 ** restarts) seconds
 ok   the feed settings: 10, 10 and 600, from the environment, each at least 1
 ok   start_all starts the supervisor with the feeds; stop_all stops it before them
 ok   a feed thread that dies is restarted after the backoff and restarts counts it
+ok   a feed that dies while connected closes its connection; restarts leave no socket open
 ok   status rows are written with started_at, last_activity_at and restarts
 ok   after stop! nothing is restarted
-ok   a feeds process gives up after feed_restart_limit deaths in the window
-13 tests, 68 assertions, 0 failures
+ok   a pass of a stopped supervisor restarts nothing
+ok   a failing status write leaves the supervisor and the feeds running
+ok   a feeds process gives up when a feed dies after feed_restart_limit restarts in the window
+16 tests, 96 assertions, 0 failures

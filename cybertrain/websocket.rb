@@ -177,6 +177,10 @@ module Cybertrain
         @sub_open_block = nil
         @sub_message_block = nil
         @sub_thread = nil
+        # The connection the feed thread has open, nil between connections:
+        # only the feed thread touches it (closed on its way out if the
+        # thread dies, so a restart never leaves the old socket open).
+        @sub_client = nil
         @sub_tick_block = nil
         @sub_tick_seconds = 0
         # When on_tick is next due (Net::Timer.now): only the feed thread
@@ -274,6 +278,20 @@ module Cybertrain
 
       def sub_thread!(thread)
         @sub_thread = thread
+        nil
+      end
+
+      def sub_client!(client)
+        @sub_client = client
+        nil
+      end
+
+      # Closes the connection the feed thread had open, if any (close
+      # never raises, and a second close does nothing), and forgets it.
+      def sub_drop_client
+        client = @sub_client
+        @sub_client = nil
+        client.ws_close_within(STOP_CLOSE_SECONDS) unless client.nil?
         nil
       end
 
@@ -737,10 +755,13 @@ module Cybertrain
     # a StandardError, from a callback or the loop itself) logged: the
     # thread then ends and the supervisor starts it again. The rescue names
     # Exception, in a method that takes no block (NOTES rules 32/45).
+    # The connection the thread had open is closed before the thread ends,
+    # so the restart does not leave a second subscriber on the server.
     def self.run_feed_logged(sub, generation)
       run_feed(sub, generation)
     rescue Exception => e
       Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} thread ended: #{e.class.name}: #{e.message}")
+      sub.sub_drop_client
       nil
     end
 
@@ -749,6 +770,8 @@ module Cybertrain
       attempt = 0
       while feed_live?(generation)
         failure = feed_session(sub, generation)
+        # Every way out of feed_session but a raise closes the connection.
+        sub.sub_client!(nil)
         # After a stop! the state is marked disconnected, but a thread
         # left from before a stop! and a new start! leaves it to the new
         # generation's thread.
@@ -802,6 +825,7 @@ module Cybertrain
     def self.feed_session(sub, generation)
       client = Client.connect(sub.sub_url, headers: sub.sub_headers, timeout: sub.sub_timeout,
                                            max_message: sub.sub_max_message, allow_private: sub.sub_allow_private)
+      sub.sub_client!(client)
       feed_connected(sub, client, generation)
     rescue Cybertrain::WebSocket::ClosedError => e
       "Cybertrain::WebSocket::ClosedError: #{e.message}"

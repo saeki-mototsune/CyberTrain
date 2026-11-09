@@ -5,7 +5,7 @@ require "cybertrain/test/websocket_receiver"
 require "cybertrain/test"
 
 # The exit rule of a `feeds` process (spec section 9): when one feed's
-# thread has died Config#feed_restart_limit times within
+# thread dies again after Config#feed_restart_limit restarts within
 # Config#feed_restart_window, the supervisor logs `[FATAL] feed NAME
 # restarted N times in W s; exiting` and the process exits with status 1
 # once the feeds are stopped, so the container's restart policy starts a
