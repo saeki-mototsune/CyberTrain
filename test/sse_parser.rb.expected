@@ -11,9 +11,10 @@ ok   an id with a NUL is ignored
 ok   the last event id persists to later events
 ok   the event name resets after each event
 ok   a blank line with no data dispatches nothing
+ok   a blank line with no data resets the event name but keeps a pending retry
 ok   a field line with no colon is a field with an empty value
 ok   a BOM at the very start is ignored
 ok   finish flushes a trailing event
 ok   a multi-byte character split across chunks survives
 ok   a very long line fed in many small chunks
-18 tests, 47 assertions, 0 failures
+19 tests, 50 assertions, 0 failures

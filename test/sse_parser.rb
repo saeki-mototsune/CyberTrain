@@ -101,6 +101,14 @@ test "a blank line with no data dispatches nothing" do
   assert_equal(0, collect("\n\n: c\n\nevent: x\n\n").size)
 end
 
+test "a blank line with no data resets the event name but keeps a pending retry" do
+  evs = collect("event: x\n\ndata: a\n\n")
+  assert_equal(1, evs.size)
+  assert_equal("message", evs[0].event_name)
+  evs = collect("retry: 5\n\ndata: a\n\n")
+  assert_equal(5, evs[0].event_retry_ms)
+end
+
 test "a field line with no colon is a field with an empty value" do
   evs = collect("data\n\n")
   assert_equal(1, evs.size)

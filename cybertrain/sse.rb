@@ -52,8 +52,12 @@ module Cybertrain
     # dispatches the event unless no `data` line was seen.
     #
     # `feed` and `finish` yield, so they hold no rescue or ensure
-    # (spikes/NOTES.md rules 32/45): an exception in the block leaves the
-    # parser as it was when the block was called.
+    # (spikes/NOTES.md rules 32/45): when the block raises, the event it
+    # was given is already consumed and the rest of that chunk is not parsed.
+    #
+    # The parser sets no limit on a line or on an event's data; the
+    # request's deadline bounds the stream in time, not in memory. With
+    # binary chunks `event_data` is binary: the caller sets the encoding.
     # @api public
     class Parser
       # @api private
@@ -161,7 +165,13 @@ module Cybertrain
             line = line.byteslice(3, line.bytesize - 3)
           end
         end
-        return @has_data if line.bytesize == 0
+        if line.bytesize == 0
+          return true if @has_data
+          # WHATWG dispatch: no data, so the event type buffer is cleared
+          # (a pending retry is kept).
+          @name = +""
+          return false
+        end
         return false if line.getbyte(0) == 58
 
         colon = line.byteindex(":")
