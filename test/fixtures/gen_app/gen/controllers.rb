@@ -39,3 +39,48 @@ class PostsController < ApplicationController
     end
   end
 end
+
+require "cybertrain/jobs_page"
+
+# The jobs page (`jobs_page "/admin/jobs"` in config/routes.rb): the
+# rows in Cybertrain::JobsPage, in the application's layout, behind its
+# before_action and CSRF protection.
+class CybertrainJobsController < ApplicationController
+  before_action :require_admin
+
+  def run_callback(name)
+    case name
+    when :require_admin then require_admin
+    else super
+    end
+  end
+
+  def index
+    render html: Cybertrain::JobsPage.page_html(self, "/admin/jobs")
+  end
+
+  def retry_all_action
+    flash[:notice] = Cybertrain::JobsPage.retry_all_notice
+    redirect_to "/admin/jobs", status: :see_other
+  end
+
+  def discard_all_failed_action
+    flash[:notice] = Cybertrain::JobsPage.discard_all_failed_notice
+    redirect_to "/admin/jobs", status: :see_other
+  end
+
+  def retry_action
+    flash[:notice] = Cybertrain::JobsPage.retry_notice(params[:id])
+    redirect_to "/admin/jobs", status: :see_other
+  end
+
+  def discard_action
+    flash[:notice] = Cybertrain::JobsPage.discard_notice(params[:id])
+    redirect_to "/admin/jobs", status: :see_other
+  end
+
+  def delete_action
+    flash[:notice] = Cybertrain::JobsPage.delete_notice(params[:id])
+    redirect_to "/admin/jobs", status: :see_other
+  end
+end

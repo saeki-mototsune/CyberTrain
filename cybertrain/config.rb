@@ -429,6 +429,14 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :scheduler_tz
 
+    # How many rows each list of the jobs page (`jobs_page` in
+    # config/routes.rb, {JobsPage}) shows on one page, `50`, from
+    # `CYBERTRAIN_JOBS_PAGE_PER_PAGE`; `?page=N` reaches the others. At
+    # least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :jobs_page_per_page
+
     # How many attempts a {Job} gets before it is left `failed`, `5` (the
     # first run and four retries, 1, 5, 15 and 60 minutes apart).
     # @return [Integer]
@@ -514,6 +522,13 @@ attr_accessor :trusted_proxies
     # a different count than asked for.
     def self.default_job_threads
       Params.parse_int(env_or("CYBERTRAIN_JOB_THREADS", ""), 3)
+    end
+
+    # CYBERTRAIN_JOBS_PAGE_PER_PAGE as default_job_threads reads its
+    # variable: 50 when it is unset or not a number, a number below 1 kept
+    # for boot to refuse (scheduler_error).
+    def self.default_jobs_page_per_page
+      Params.parse_int(env_or("CYBERTRAIN_JOBS_PAGE_PER_PAGE", ""), 50)
     end
 
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
@@ -681,6 +696,7 @@ end
       @job_heartbeat_interval = 30
       @job_heartbeat_stale = 300
       @job_drain_timeout = 10
+      @jobs_page_per_page = Config.default_jobs_page_per_page
       @scheduler_lease_ttl = 30
       @scheduler_tz = Config.env_or("CYBERTRAIN_SCHEDULER_TZ", "UTC")
       # ParameterFilter.names' list; Application#boot installs it there.
@@ -1066,8 +1082,8 @@ end
 
     # The error Application#boot reports when scheduler_interval,
     # job_poll_interval, job_max_attempts, job_threads,
-    # job_heartbeat_interval, job_heartbeat_stale, job_drain_timeout or
-    # scheduler_lease_ttl is below 1, job_heartbeat_stale is not more
+    # job_heartbeat_interval, job_heartbeat_stale, job_drain_timeout,
+    # jobs_page_per_page or scheduler_lease_ttl is below 1, job_heartbeat_stale is not more
     # than job_heartbeat_interval (every live job would look abandoned), or
     # scheduler_lease_ttl is less than twice scheduler_interval (the lease
     # would lapse between two ticks of its holder), or scheduler_tz is not
@@ -1085,6 +1101,7 @@ end
         return "job_heartbeat_stale (#{@job_heartbeat_stale}) must be more than job_heartbeat_interval (#{@job_heartbeat_interval})"
       end
       return "job_drain_timeout must be at least 1 (got #{@job_drain_timeout})" if @job_drain_timeout < 1
+      return "jobs_page_per_page must be at least 1 (got #{@jobs_page_per_page})" if @jobs_page_per_page < 1
       return "scheduler_lease_ttl must be at least 1 (got #{@scheduler_lease_ttl})" if @scheduler_lease_ttl < 1
       if @scheduler_lease_ttl < 2 * @scheduler_interval
         return "scheduler_lease_ttl (#{@scheduler_lease_ttl}) must be at least twice scheduler_interval (#{@scheduler_interval})"

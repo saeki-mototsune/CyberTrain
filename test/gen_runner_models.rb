@@ -139,4 +139,29 @@ test "a dropped table's gen/models file is reported stale, then removed" do
   assert_equal 0, Cybertrain::Gen::Runner.run(ROOT, ["--check"])
 end
 
+test "a jobs page drawn without before_action: makes the runner print a warning" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    jobs_page "/admin/jobs"
+  end
+  assert_equal 1, Cybertrain::Gen::Runner.run(ROOT, ["--check"])
+  redraw_fixture_routes
+  assert_equal 0, Cybertrain::Gen::Runner.run(ROOT, ["--check"])
+end
+
+# The fixture's config/routes.rb, restated (require_relative runs it only once).
+def redraw_fixture_routes
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    root "posts#index"
+    resources :posts do |posts|
+      posts.collection { |c| c.get "search" }
+      posts.member { |m| m.get "preview" }
+      posts.resources :comments, only: [:create, :destroy]
+    end
+    get "/about", to: "pages#about"
+    jobs_page "/admin/jobs", before_action: :require_admin
+  end
+end
+
 Cybertrain::Test.run!

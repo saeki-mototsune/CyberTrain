@@ -18,6 +18,12 @@ module Gen
       router.add("PUT", "/posts/:id", "") { |ctx| PostsController.new(ctx).process(:update) { |c| c.update } }
       router.add("DELETE", "/posts/:id", "") { |ctx| PostsController.new(ctx).process(:destroy) { |c| c.destroy } }
       router.add("GET", "/about", "about") { |ctx| PagesController.new(ctx).process(:about) { |c| c.about } }
+      router.add("GET", "/admin/jobs", "") { |ctx| CybertrainJobsController.new(ctx).process(:index) { |c| c.index } }
+      router.add("POST", "/admin/jobs/retry_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:retry_all) { |c| c.retry_all_action } }
+      router.add("POST", "/admin/jobs/discard_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:discard_all_failed) { |c| c.discard_all_failed_action } }
+      router.add("POST", "/admin/jobs/:id/retry", "") { |ctx| CybertrainJobsController.new(ctx).process(:retry) { |c| c.retry_action } }
+      router.add("POST", "/admin/jobs/:id/discard", "") { |ctx| CybertrainJobsController.new(ctx).process(:discard) { |c| c.discard_action } }
+      router.add("POST", "/admin/jobs/:id/delete", "") { |ctx| CybertrainJobsController.new(ctx).process(:delete) { |c| c.delete_action } }
       router
     end
 

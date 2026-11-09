@@ -211,6 +211,7 @@ test "routes are inserted once, even when the scaffold runs twice" do
       resources :products
       resources :comments
       resources :posts
+      # jobs_page "/admin/jobs", before_action: :require_admin
     end
   RUBY
 end

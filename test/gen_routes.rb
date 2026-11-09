@@ -452,4 +452,90 @@ test "Gen.param and Gen.segment turn helper arguments into path segments" do
   assert_equal "missing route parameter", assert_raises("ArgumentError") { Cybertrain::Gen.segment(nil) }
 end
 
+# --- jobs_page -----------------------------------------------------------
+
+test "jobs_page draws the six jobs routes to CybertrainJobsController" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    root "posts#index"
+    jobs_page "/admin/jobs", before_action: :require_admin
+  end
+  expected = [
+    "GET / posts#index root",
+    "GET /admin/jobs cybertrain_jobs#index",
+    "POST /admin/jobs/retry_all cybertrain_jobs#retry_all",
+    "POST /admin/jobs/discard_all cybertrain_jobs#discard_all_failed",
+    "POST /admin/jobs/:id/retry cybertrain_jobs#retry",
+    "POST /admin/jobs/:id/discard cybertrain_jobs#discard",
+    "POST /admin/jobs/:id/delete cybertrain_jobs#delete"
+  ]
+  assert_equal expected, route_lines(Cybertrain::Routes.specs)
+  handlers = Cybertrain::Routes.specs.map { |s| s.handler_source }
+  assert_equal "CybertrainJobsController.new(ctx).process(:index) { |c| c.index }", handlers[1]
+  assert_equal "CybertrainJobsController.new(ctx).process(:retry_all) { |c| c.retry_all_action }", handlers[2]
+  assert_equal "CybertrainJobsController.new(ctx).process(:discard_all_failed) { |c| c.discard_all_failed_action }", handlers[3]
+  assert_equal "CybertrainJobsController.new(ctx).process(:retry) { |c| c.retry_action }", handlers[4]
+  assert_equal "CybertrainJobsController.new(ctx).process(:discard) { |c| c.discard_action }", handlers[5]
+  assert_equal "CybertrainJobsController.new(ctx).process(:delete) { |c| c.delete_action }", handlers[6]
+  page = Cybertrain::Routes.jobs_page_spec
+  assert_equal "/admin/jobs", page.jobs_path
+  assert_equal "require_admin", page.jobs_before_action
+  source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
+  assert_includes source, "      router.add(\"POST\", \"/admin/jobs/:id/retry\", \"\") { |ctx| CybertrainJobsController.new(ctx).process(:retry) { |c| c.retry_action } }\n"
+  refute source.include?("admin_jobs"), "the jobs routes are unnamed: no helpers"
+end
+
+test "jobs_page without before_action: records an open page" do
+  Cybertrain::Routes.reset!
+  assert_equal "", Cybertrain::Routes.jobs_page_spec.jobs_path
+  Cybertrain::Routes.draw do
+    jobs_page "/ops/queue"
+  end
+  page = Cybertrain::Routes.jobs_page_spec
+  assert_equal "/ops/queue", page.jobs_path
+  assert_equal "", page.jobs_before_action
+  assert_equal 6, Cybertrain::Routes.specs.size
+  assert_equal "/ops/queue/:id/delete", Cybertrain::Routes.specs.last.pattern
+  Cybertrain::Routes.reset!
+  assert_equal "", Cybertrain::Routes.jobs_page_spec.jobs_path
+end
+
+test "a second jobs_page raises naming the first path" do
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      jobs_page "/admin/jobs"
+      jobs_page "/ops/jobs"
+    end
+  end
+  assert_equal "jobs_page \"/ops/jobs\": the jobs page is already drawn at \"/admin/jobs\" (one per application)", message
+end
+
+test "jobs_page refuses a path it cannot route and a before_action that is not a method name" do
+  Cybertrain::Routes.reset!
+  ["admin/jobs", "/", "/admin/jobs/", "/admin/:id", "/admin jobs"].each do |path|
+    message = assert_raises("ArgumentError") do
+      Cybertrain::Routes.draw do |r|
+        r.jobs_page path
+      end
+    end
+    assert_equal "jobs_page #{path.inspect}: the path must start with \"/\" and be literal segments of letters, digits, _ and -", message
+  end
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      jobs_page "/admin/jobs", before_action: "require admin"
+    end
+  end
+  assert_equal "jobs_page \"/admin/jobs\": before_action: \"require admin\" is not a method name", message
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      resources :posts do |posts|
+        posts.jobs_page "/admin/jobs"
+      end
+    end
+  end
+  assert_equal "jobs_page must be used at the top of the routes, not inside resources", message
+  Cybertrain::Routes.reset!
+end
+
 Cybertrain::Test.run!

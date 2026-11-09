@@ -10,6 +10,12 @@ class ApplicationController < Cybertrain::Controller
     @viewer = request.header("x-viewer") || "guest"
   end
 
+  # The jobs page's guard (jobs_page ..., before_action: :require_admin in
+  # config/routes.rb): a stand-in for a real sign-in check.
+  def require_admin
+    redirect_to "/" unless params[:admin] == "1"
+  end
+
   def not_found
     render plain: "not found: #{rescued_exception.message}", status: :not_found
   end

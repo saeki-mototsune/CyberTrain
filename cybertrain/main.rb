@@ -1,6 +1,7 @@
 require "cybertrain/application"
 require "cybertrain/db/cli"
 require "cybertrain/console"
+require "cybertrain/job/cli"
 
 module Cybertrain
   # Cybertrain::Main -- what bin/<name>.rb runs, the one binary an app
@@ -14,6 +15,8 @@ module Cybertrain
   #   ./blog db status    any DB::CLI command: status, rollback N, schema, schema:dump, create,
   #                       backup PATH, vacuum
   #   ./blog worker       jobs and scheduled tasks, no HTTP (several may share a database)
+  #   ./blog jobs list    any Job::CLI command: list [STATE], retry ID|--all, discard ID,
+  #                       delete ID, prune [--before DAYS]
   #   ./blog feeds [NAME...]  the WebSocket subscriptions (all, or the named ones)
   #   ./blog console      the expression console over the models (Console.run)
   #   ./blog dbconsole    the sqlite3 shell on the configured database
@@ -42,7 +45,7 @@ module Cybertrain
 
     # The words Main itself answers to; an application command may not take
     # one (it would never run, or would hide the built-in).
-    BUILTIN_WORDS = ["server", "worker", "feeds", "migrate", "db", "console", "dbconsole", "help", "--help", "-h"].freeze
+    BUILTIN_WORDS = ["server", "worker", "feeds", "migrate", "db", "jobs", "console", "dbconsole", "help", "--help", "-h"].freeze
 
     # Registers an operational command for the application's binary:
     # `./<name> NAME ARGS...` runs the block instead of the server, and
@@ -73,7 +76,7 @@ module Cybertrain
     #     0
     #   end
     # @param name [String] the first command-line word; not a built-in one
-    #   (`server`, `migrate`, `db`, `console`, `dbconsole`, `help`), not a
+    #   (`server`, `worker`, `feeds`, `migrate`, `db`, `jobs`, `console`, `dbconsole`, `help`), not a
     #   port number, not taken
     # @param description [String] the line `help` prints next to it
     # @yieldparam argv [Array<String>] the arguments after `name`
@@ -126,6 +129,8 @@ module Cybertrain
         DB::CLI.run(["migrate"], ".", name)
       when "db"
         DB::CLI.run(argv[1, argv.size - 1], ".", name)
+      when "jobs"
+        run_jobs(argv[1, argv.size - 1])
       when "console"
         run_console
       when "dbconsole"
@@ -158,6 +163,24 @@ module Cybertrain
       ensure
         DB.disconnect
       end
+    end
+
+    # `./<name> jobs ...`: Job::CLI.run with the database connected as for
+    # a registered command (a pool of one; no server, scheduler or job
+    # thread). Returns its exit status, or 1 when the database cannot be
+    # opened. The rescue sits in this plain method (NOTES rules 32/45).
+    def self.run_jobs(args)
+      status = 0
+      begin
+        DB.connect(Cybertrain.config.database_path, size: 1)
+        status = Job::CLI.run(args)
+      rescue DB::Error => e
+        puts "jobs failed: #{e.message}"
+        status = 1
+      ensure
+        DB.disconnect
+      end
+      status
     end
 
     # `./<name> console`: Console.run on the terminal, with the database
@@ -291,6 +314,8 @@ module Cybertrain
       # The continuation lines up under "migrate" whatever the name.
       indent = "".ljust(name.size + 23)
       text << "#{indent}backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize\n"
+      text << "  ./#{name} #{"jobs COMMAND".ljust(17)} list [STATE] | retry ID | retry --all | discard ID | delete ID\n"
+      text << "#{indent}prune [--before DAYS]\n"
       text << "  ./#{name} #{"console".ljust(17)} evaluate expressions over the models (help inside)\n"
       text << "  ./#{name} #{"dbconsole".ljust(17)} open the sqlite3 shell on the database\n"
       COMMANDS.each do |command|

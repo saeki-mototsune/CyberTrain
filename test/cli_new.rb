@@ -61,8 +61,8 @@ test "spin.toml names the package and references the framework" do
   TOML
 end
 
-test "config/routes.rb and db/schema.rb are empty DSL blocks" do
-  assert_equal "Cybertrain::Routes.draw do\nend\n", read("blog/config/routes.rb")
+test "config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jobs page commented out)" do
+  assert_equal "Cybertrain::Routes.draw do\n  # jobs_page \"/admin/jobs\", before_action: :require_admin\nend\n", read("blog/config/routes.rb")
   assert_equal "Cybertrain::Schema.define(version: \"0\") do |s|\nend\n", read("blog/db/schema.rb")
 end
 

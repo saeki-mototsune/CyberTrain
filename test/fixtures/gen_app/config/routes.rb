@@ -6,4 +6,5 @@ Cybertrain::Routes.draw do
     posts.resources :comments, only: [:create, :destroy]
   end
   get "/about", to: "pages#about"
+  jobs_page "/admin/jobs", before_action: :require_admin
 end

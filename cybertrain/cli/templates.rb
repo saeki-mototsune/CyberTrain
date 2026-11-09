@@ -165,8 +165,10 @@ module Cybertrain
         RUBY
       end
 
+      # The jobs page line is a comment: uncomment it once
+      # ApplicationController has a require_admin that refuses everyone else.
       def self.routes
-        "Cybertrain::Routes.draw do\nend\n"
+        "Cybertrain::Routes.draw do\n  # jobs_page \"/admin/jobs\", before_action: :require_admin\nend\n"
       end
 
       def self.schema

@@ -157,6 +157,7 @@ test "the routes and the layout's nav are inserted" do
       resource :session, only: [:new, :create, :destroy]
       get "/sign_up", to: "registrations#new", as: "sign_up"
       post "/sign_up", to: "registrations#create"
+      # jobs_page "/admin/jobs", before_action: :require_admin
     end
   RUBY
   layout = read("shop/app/views/layouts/application.html.erb")
@@ -201,6 +202,7 @@ test "the generator runs after a scaffold, with migration versions that follow" 
       get "/sign_up", to: "registrations#new", as: "sign_up"
       post "/sign_up", to: "registrations#create"
       resources :products
+      # jobs_page "/admin/jobs", before_action: :require_admin
     end
   RUBY
 end
@@ -236,6 +238,7 @@ test "--invite-only writes the user command and /setup instead of the sign-up pa
       resource :session, only: [:new, :create, :destroy]
       get "/setup", to: "setup#new", as: "setup"
       post "/setup", to: "setup#create"
+      # jobs_page "/admin/jobs", before_action: :require_admin
     end
   RUBY
 end
@@ -345,7 +348,7 @@ test "a tree that is not an app, or whose ApplicationController was rewritten, i
   assert_equal 1, status
   refute File.exist?("broken/app/models/user.rb")
   assert_equal ["db/migrate/.keep"].size, Dir.children("broken/db/migrate").size
-  assert_equal "Cybertrain::Routes.draw do\nend\n", read("broken/config/routes.rb")
+  assert_equal "Cybertrain::Routes.draw do\n  # jobs_page \"/admin/jobs\", before_action: :require_admin\nend\n", read("broken/config/routes.rb")
 end
 
 Cybertrain::Test.run!

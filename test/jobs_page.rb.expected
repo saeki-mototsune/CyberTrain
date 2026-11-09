@@ -1,0 +1,8 @@
+ok   the page lists counts and failed rows, and the before_action applies
+ok   running rows show who claimed them; the queued line shows the next due time
+ok   retry resets attempts and requeues; discard and delete act only on failed or discarded rows
+ok   retry keys a legacy failed row of a keyed kind in the same statement
+ok   retry_all and discard_all_failed count the rows
+ok   each list shows jobs_page_per_page rows, with page links
+ok   jobs_page_per_page: 50, CYBERTRAIN_JOBS_PAGE_PER_PAGE, at least 1
+7 tests, 82 assertions, 0 failures

@@ -28,7 +28,7 @@ create tmp/.keep
 create test/.keep
 ok   new writes the app skeleton and returns the created paths
 ok   spin.toml names the package and references the framework
-ok   config/routes.rb and db/schema.rb are empty DSL blocks
+ok   config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jobs page commented out)
 ok   bin/blog.rb is the app's one binary: server, migrate, db
 ok   bin/gen.rb drives the generator
 ok   bin/db.rb runs migrations in development without the app's models

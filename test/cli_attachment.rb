@@ -150,6 +150,7 @@ test "the route is added before the resource" do
     Cybertrain::Routes.draw do
       get "/posts/:id/cover", to: "posts#cover", as: "post_cover"
       resources :posts
+      # jobs_page "/admin/jobs", before_action: :require_admin
     end
   RUBY
 end
@@ -636,6 +637,7 @@ test "the scaffold type edits the model, controller and routes the way the gener
     Cybertrain::Routes.draw do
       get "/photos/:id/image", to: "photos#image", as: "photo_image"
       resources :photos
+      # jobs_page "/admin/jobs", before_action: :require_admin
     end
   RUBY
 end
