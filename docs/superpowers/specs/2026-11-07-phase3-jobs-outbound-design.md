@@ -314,9 +314,15 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
   process ran executes once at start, as it would have; a `cron` task whose
   slot passed does **not** (cron's and Solid Queue's rule) unless
   `catch_up: true`, in which case it runs once at start and then continues
-  on its schedule. A task name that disappears from the registration keeps
-  its row until `Scheduler.prune_schedules` (called at start) removes names
-  that are no longer registered.
+  on its schedule. When a process takes the lease over from another (or
+  regains it after a tick in which it could not acquire it), it reloads
+  the table first; a `cron` task whose row says its slot passed while no
+  leader ran it runs that one slot once, whatever `catch_up` says, because
+  processes were up and the table recorded the slot as due — only the
+  "nothing ran" gap of a cold start is skipped. A task name that
+  disappears from the registration keeps its row until
+  `Scheduler.prune_schedules` (called at start) removes names that are no
+  longer registered.
 - `Scheduler.run_due(now)` keeps its test entry point; `Scheduler.task_summary`
   lists cron tasks with their next run in UTC.
 
