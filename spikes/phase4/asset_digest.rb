@@ -17,7 +17,7 @@
 #   routes: 9
 # The benchmark file is created with File::CREAT | File::EXCL under
 # Dir.tmpdir (pid plus a random token in the name; both compile and run
-# under Spinel) and deleted in an ensure; timings vary run to run.
+# under Spinel) and deleted in an ensure only if this run created it; timings vary run to run.
 # CRuby 3.3.6 prints the same digest lines, with
 #   binread 0.6 ms, digest 6.38 ms
 #   binread + digest, mean of 10: 5.04 ms
@@ -35,7 +35,7 @@ end
 ASSET_PATH = File.join(Dir.tmpdir, "phase4_asset_digest_#{Process.pid}_#{rand(1 << 48).to_s(16)}.bin")
 SIZE = 1024 * 1024
 
-def write_asset
+def asset_data
   chunk = +""
   i = 0
   while i < 4096
@@ -44,8 +44,7 @@ def write_asset
   end
   data = +""
   data << chunk while data.bytesize < SIZE
-  File.open(ASSET_PATH, File::CREAT | File::EXCL | File::WRONLY, 0o600) { |f| f.write(data) }
-  nil
+  data
 end
 
 def hex(bytes, count)
@@ -63,8 +62,16 @@ if ARGV[0] == "--gen"
   exit(Cybertrain::Gen::Runner.run(".", ARGV.drop(1)))
 end
 
+created = false
 begin
-  write_asset
+  data = asset_data
+  f = File.open(ASSET_PATH, File::CREAT | File::EXCL | File::WRONLY, 0o600)
+  created = true
+  begin
+    f.write(data)
+  ensure
+    f.close
+  end
   t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
   bytes = File.binread(ASSET_PATH)
   t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -85,5 +92,5 @@ begin
   puts "binread + digest, mean of #{runs}: #{((t4 - t3) * 1000 / runs).round(2)} ms"
   puts "routes: #{Cybertrain::Routes.specs.size}"
 ensure
-  File.delete(ASSET_PATH) if File.exist?(ASSET_PATH)
+  File.delete(ASSET_PATH) if created
 end
