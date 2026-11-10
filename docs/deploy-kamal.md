@@ -175,7 +175,7 @@ to check.
 | Follow the logs | `kamal app logs -f` |
 | See the migration status | `kamal db_status` (the `aliases` in `config/deploy.yml`) |
 | Open a shell in the container | `kamal shell` |
-| List the failed jobs, retry one | `kamal app exec --reuse "./notes jobs list"`, then `"./notes jobs retry 42"` |
+| List the failed jobs, retry one | `kamal app exec --reuse --roles=web "./notes jobs list"`, then `"./notes jobs retry 42"` |
 | See the feeds' last reported status | `kamal app exec --reuse "./notes feeds status"` |
 | Go back to an earlier version | `kamal rollback VERSION` (`kamal app containers` lists them) |
 

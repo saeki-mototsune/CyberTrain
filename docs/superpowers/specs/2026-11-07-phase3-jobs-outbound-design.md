@@ -411,14 +411,17 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
 
 ## 8. The HTTP client (H-1, H-2, H-4, H-5)
 
-- **gzip** (H-2): when `cybertrain/http/gzip_ffi` is required (the same
-  opt-in as `net/tls`: it links zlib), the client sends `Accept-Encoding:
+- **gzip** (H-2): when `cybertrain/http/gzip_ffi` is loaded (it links zlib;
+  `require "cybertrain"` loads it, so it is on in every application, and
+  only a program that requires the client alone opts in: section 18), the
+  client sends `Accept-Encoding:
   gzip` and inflates a `Content-Encoding: gzip` body through
   `GzipFFI.gunzip` with `max_body` as the inflated limit. `HttpClient.gzip=`
   is the substitution point the gzip file sets, read back as
   `HttpClient.gzip_decoder` (a reader named `gzip` would share its name
-  with Spinel's `Zlib.gzip`, rule 34; section 18); without it nothing
-  changes.
+  with Spinel's `Zlib.gzip`, rule 34; section 18); without the gzip file
+  no `Accept-Encoding` is sent, and a response that is gzip all the same
+  is a `BadResponseError`.
   A streamed response (next item) is inflated chunk by chunk through the
   bounded inflater; `Content-Encoding` other than `gzip` or identity is a
   `BadResponseError`.
@@ -1022,7 +1025,7 @@ section's own text above has been amended to the name in the code.
   as a job re-enqueues itself due at once.
 - Templates (section 13): the generated `config/deploy.yml` gives the
   `worker` role (and the commented `feeds` one) `restart: unless-stopped`;
-  `.env.example` lists the new variables, `CYBERTRAIN_HEALTH_FEEDS=0` as the
+  `.env.example` lists the feed-health and scheduler-zone variables, `CYBERTRAIN_HEALTH_FEEDS=0` as the
   commented example since the check is on by default.
 - examples/blog (section 17, item 10): the `cron` task is "prune done jobs"
   (`Job.prune_done`), not the plan's "prune sessions": the blog keeps its

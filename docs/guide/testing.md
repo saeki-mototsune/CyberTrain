@@ -160,7 +160,7 @@ end
 
 ## Testing jobs
 
-`require "cybertrain/test/jobs"` adds five assertions over the job queue of
+`require "cybertrain/test/jobs"` adds five helpers over the job queue of
 the test database. The support file `cybertrain generate authentication`
 writes (`test/support/app_test.rb`) requires it; an application without one
 adds the line to its own support file, as examples/blog's does.

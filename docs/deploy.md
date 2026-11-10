@@ -1137,7 +1137,7 @@ https://notes.example.com を開いて確かめます。
 | ログを見る | `kamal app logs -f` |
 | マイグレーションの状態 | `kamal db_status`（`config/deploy.yml` の `aliases`） |
 | コンテナでシェルを開く | `kamal shell` |
-| 失敗したジョブを見て、1 つ再試行する | `kamal app exec --reuse "./notes jobs list"`、続けて `"./notes jobs retry 42"` |
+| 失敗したジョブを見て、1 つ再試行する | `kamal app exec --reuse --roles=web "./notes jobs list"`、続けて `"./notes jobs retry 42"` |
 | フィードが最後に報告した状態を見る | `kamal app exec --reuse "./notes feeds status"` |
 | 前のバージョンに戻す | `kamal rollback VERSION`（`kamal app containers` で一覧） |
 
