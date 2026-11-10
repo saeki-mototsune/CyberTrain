@@ -176,18 +176,26 @@ test "increment creates and adds, with an expiry" do
   assert_equal "4", Cache.read("hits")
   assert_equal 1, Cache.increment("rate", expires_in: 60)
   CLOCK[0] = 4050
-  # Without expires_in the expiry stays; with it, it is refreshed.
+  # Without expires_in the expiry stays.
   assert_equal 2, Cache.increment("rate")
   CLOCK[0] = 4061
   assert_nil Cache.read("rate")
-  # An expired counter starts again from by.
+  # An expired counter starts again from by, with a new expiry.
   assert_equal 3, Cache.increment("rate", by: 3, expires_in: 60)
+  # With expires_in a live counter keeps its expiry: the window is fixed
+  # from the counter's start (4061 + 60), not moved by each call.
   CLOCK[0] = 4100
   assert_equal 4, Cache.increment("rate", expires_in: 60)
-  CLOCK[0] = 4160
+  CLOCK[0] = 4121
   assert_equal "4", Cache.read("rate")
-  CLOCK[0] = 4161
+  CLOCK[0] = 4122
   refute Cache.exist?("rate")
+  # A live counter with no expiry takes the one given.
+  assert_equal 6, Cache.increment("hits", by: 2, expires_in: 10)
+  CLOCK[0] = 4132
+  assert_equal "6", Cache.read("hits")
+  CLOCK[0] = 4133
+  refute Cache.exist?("hits")
   # A value that is not a number counts as 0.
   assert Cache.write("word", "abc")
   assert_equal 2, Cache.increment("word", by: 2)

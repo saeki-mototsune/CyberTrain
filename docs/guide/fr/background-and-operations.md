@@ -1,5 +1,5 @@
 ---
-source_sha256: a1cb71a49571518d60f95ae5bd45c4f49db95abdf9d8ff2e4b096271d5c95c7c
+source_sha256: dd5d7eebef29220e2e57c95a61ce59c4a8e72ca3ba539128e77f832bc46ef65b
 ---
 # Tâches de fond et exploitation
 
@@ -418,7 +418,9 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   une méthode renvoie un seul type). `read(key)` (une String, ou nil),
   `write(key, value, expires_in:, unless_exist:)`, `delete`, `exist?`,
   `increment(key, by: 1, expires_in:)` (une seule instruction&nbsp;; un
-  compteur expiré repart de `by`) et `clear` complètent l’ensemble.
+  compteur expiré repart de `by`, et `expires_in:` ne fixe l’expiration
+  qu’au départ du compteur, si bien qu’un compteur d’une minute compte cette
+  minute) et `clear` complètent l’ensemble.
 - **Expiration.** `expires_in:` est en secondes&nbsp;; `0`, la valeur par
   défaut, n’expire jamais (une valeur négative non plus).
   `race_condition_ttl: n`&nbsp;: quand une ligne a expiré, le premier

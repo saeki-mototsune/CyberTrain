@@ -78,8 +78,9 @@ module Cybertrain
                     "ON CONFLICT(key) DO UPDATE SET " \
                     "value = CASE WHEN cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?4 " \
                     "THEN ?2 ELSE CAST(cybertrain_cache.value AS INTEGER) + ?2 END, " \
-                    "expires_at = CASE WHEN ?3 > 0 THEN ?3 " \
-                    "WHEN cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?4 THEN NULL " \
+                    "expires_at = CASE WHEN cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?4 " \
+                    "THEN NULLIF(?3, 0) " \
+                    "WHEN cybertrain_cache.expires_at IS NULL AND ?3 > 0 THEN ?3 " \
                     "ELSE cybertrain_cache.expires_at END, " \
                     "updated_at = ?4 " \
                     "RETURNING CAST(value AS INTEGER) AS n"
@@ -338,14 +339,16 @@ module Cybertrain
     # Adds `by` to the Integer stored under `key` in one statement, and
     # answers the sum. A missing or expired row starts at `by`; a value
     # that is not a number counts as 0. `expires_in` sets the expiry of a
-    # new row and replaces an existing row's; without it a live row keeps
-    # its own.
+    # new or expired row, and of a live row that has none; a live row that
+    # has one keeps it, so the counter's window is fixed from its first
+    # increment (as Rails' stores do) and does not slide with every call.
     # @example A counter for the current minute
     #   Cybertrain::Cache.increment("hits/#{ip}", expires_in: 60)
     # @param key [String]
     # @param by [Integer] may be negative
-    # @param expires_in [Integer] seconds the value stays live; 0 (the
-    #   default) leaves the expiry as it is (a new row never expires)
+    # @param expires_in [Integer] seconds the value stays live from the
+    #   counter's start; 0 (the default) leaves the expiry as it is (a new
+    #   row never expires)
     # @return [Integer] the new value
     # @raise [Cybertrain::DB::Error] when the database is not reachable
     # @api public

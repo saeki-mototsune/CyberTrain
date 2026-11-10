@@ -371,7 +371,9 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   one method answers one type). `read(key)` (a String, or nil),
   `write(key, value, expires_in:, unless_exist:)`, `delete`, `exist?`,
   `increment(key, by: 1, expires_in:)` (one statement; an expired counter
-  starts again from `by`) and `clear` are the rest.
+  starts again from `by`, and `expires_in:` sets the expiry only when the
+  counter starts, so a counter for a minute counts that minute) and `clear`
+  are the rest.
 - **Expiry.** `expires_in:` is seconds; `0`, the default, never expires
   (so does a negative value). `race_condition_ttl: n`: when a row has
   expired, the first caller extends it by `n` seconds and computes the new

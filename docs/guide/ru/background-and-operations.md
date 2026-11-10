@@ -1,5 +1,5 @@
 ---
-source_sha256: a1cb71a49571518d60f95ae5bd45c4f49db95abdf9d8ff2e4b096271d5c95c7c
+source_sha256: dd5d7eebef29220e2e57c95a61ce59c4a8e72ca3ba539128e77f832bc46ef65b
 ---
 # Фоновая работа и эксплуатация
 
@@ -398,7 +398,9 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   Spinel нет `Marshal`, а один метод возвращает один тип). Остальное —
   `read(key)` (String или nil), `write(key, value, expires_in:,
   unless_exist:)`, `delete`, `exist?`, `increment(key, by: 1, expires_in:)`
-  (одна инструкция; истёкший счётчик начинается заново с `by`) и `clear`.
+  (одна инструкция; истёкший счётчик начинается заново с `by`, а
+  `expires_in:` задаёт срок только при запуске счётчика, так что счётчик на
+  минуту считает именно эту минуту) и `clear`.
 - **Срок жизни.** `expires_in:` задаётся в секундах; `0`, значение по
   умолчанию, никогда не истекает (отрицательное значение тоже).
   `race_condition_ttl: n`: когда строка истекла, первый вызывающий продлевает

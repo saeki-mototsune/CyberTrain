@@ -1,5 +1,5 @@
 ---
-source_sha256: a1cb71a49571518d60f95ae5bd45c4f49db95abdf9d8ff2e4b096271d5c95c7c
+source_sha256: dd5d7eebef29220e2e57c95a61ce59c4a8e72ca3ba539128e77f832bc46ef65b
 ---
 # 后台任务与运维
 
@@ -159,7 +159,7 @@ count = Cybertrain::Cache.fetch_int("articles/count", expires_in: 60) { Article.
 Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)   # 写入时为 true
 ```
 
-- **值是 String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` 返回仍然有效的值，或者运行块并保存它的返回值；`fetch_hash`、`fetch_array` 和 `fetch_int` 保存 JSON 或 Integer 文本，并在取出时解析，所以损坏的单元格会读作 `{}`、`[]` 或 `0`，直到它过期、块再次运行（Spinel 没有 `Marshal`，而且一个方法只返回一种类型）。其余的是 `read(key)`（String 或 nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（一条语句；过期的计数器从 `by` 重新开始）和 `clear`。
+- **值是 String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` 返回仍然有效的值，或者运行块并保存它的返回值；`fetch_hash`、`fetch_array` 和 `fetch_int` 保存 JSON 或 Integer 文本，并在取出时解析，所以损坏的单元格会读作 `{}`、`[]` 或 `0`，直到它过期、块再次运行（Spinel 没有 `Marshal`，而且一个方法只返回一种类型）。其余的是 `read(key)`（String 或 nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（一条语句；过期的计数器从 `by` 重新开始，`expires_in:` 只在计数器开始时设定期限，所以一分钟的计数器统计的就是那一分钟）和 `clear`。
 - **过期。** `expires_in:` 以秒计；默认值 `0` 永不过期（负值也一样）。`race_condition_ttl: n`：当某一行已过期时，第一个调用者把它延长 `n` 秒并计算新值，其他调用者在此期间继续读取旧值，与 Rails 一样；没有它时，过期键的每个调用者都会计算。抛出异常的块什么也不写入。
 - **存储。** 这些行位于 `cybertrain_cache` 中，这张表由框架在首次使用时创建，并且不写入 `db/schema.rb`。内存中什么也不保留：每次读取都是一条 SELECT，由 SQLite 从它的页缓存中作答。每次写入都会获取数据库的写锁，写入自己行的请求要等待它：请缓存作业产生的结果，或者读取远多于变化的值，而不要在繁忙的请求路径中写入。
 - **清理。** require 这个文件会注册定时任务 `"cybertrain cache prune"`，它每隔 `cache_prune_interval` 秒（300，`CYBERTRAIN_CACHE_PRUNE_INTERVAL`）删除过期的行，每条语句一千行。这个间隔在 require 文件时读取：请设置该环境变量，或者在 require 之前运行的 `Cybertrain.configure` 块中设置 `c.cache_prune_interval`。`Cache.prune(now)` 是测试的入口。

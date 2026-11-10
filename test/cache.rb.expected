@@ -7,4 +7,4 @@ ok   fetch_hash / fetch_array / fetch_int parse what they stored and recover fro
 ok   prune removes only expired rows; the scheduler task is registered once
 ok   the table is created on first use and left out of the schema dump
 ok   cache_prune_interval: 300, CYBERTRAIN_CACHE_PRUNE_INTERVAL, at least 1
-9 tests, 101 assertions, 0 failures
+9 tests, 104 assertions, 0 failures

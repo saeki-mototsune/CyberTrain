@@ -1,5 +1,5 @@
 ---
-source_sha256: a1cb71a49571518d60f95ae5bd45c4f49db95abdf9d8ff2e4b096271d5c95c7c
+source_sha256: dd5d7eebef29220e2e57c95a61ce59c4a8e72ca3ba539128e77f832bc46ef65b
 ---
 # バックグラウンド処理と運用
 
@@ -159,7 +159,7 @@ count = Cybertrain::Cache.fetch_int("articles/count", expires_in: 60) { Article.
 Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)   # 書いたときに true
 ```
 
-- **値は String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` は有効な値を返すか、ブロックを実行してその戻り値を保存します。`fetch_hash`、`fetch_array`、`fetch_int` は JSON か Integer のテキストを保存し、取り出すときに解釈するので、壊れたセルは期限が切れてブロックがもう一度実行されるまで `{}`、`[]`、`0` として読まれます（Spinel には `Marshal` がなく、1 つのメソッドは 1 つの型しか返せません）。残りは `read(key)`（String か nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（1 つの文。期限の切れたカウンターは `by` からやり直します）、`clear` です。
+- **値は String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` は有効な値を返すか、ブロックを実行してその戻り値を保存します。`fetch_hash`、`fetch_array`、`fetch_int` は JSON か Integer のテキストを保存し、取り出すときに解釈するので、壊れたセルは期限が切れてブロックがもう一度実行されるまで `{}`、`[]`、`0` として読まれます（Spinel には `Marshal` がなく、1 つのメソッドは 1 つの型しか返せません）。残りは `read(key)`（String か nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（1 つの文。期限の切れたカウンターは `by` からやり直します。`expires_in:` はカウンターの開始時にだけ期限を決めるので、1 分間のカウンターはその 1 分を数えます）、`clear` です。
 - **期限。** `expires_in:` は秒数です。デフォルトの `0` は期限切れになりません（負の値も同じです）。`race_condition_ttl: n`：行の期限が切れていると、最初の呼び出し元がそれを `n` 秒延ばして新しい値を計算し、その間ほかの呼び出し元は古い値を読み続けます。Rails と同じです。これがなければ、期限の切れたキーの呼び出し元が全員計算します。例外を出したブロックは何も書きません。
 - **保存先。** 行は `cybertrain_cache` にあります。このテーブルはフレームワークが最初の使用時に作り、`db/schema.rb` には含めません。メモリには何も保持しません。読み出しはどれも SELECT で、SQLite はそのページキャッシュから答えます。書き込みはどれもデータベースの書き込みロックを取り、自分の行を書くリクエストはそれを待ちます。忙しいリクエストの経路で書くのではなく、ジョブが作るものや、変わるよりはるかに頻繁に読まれる値をキャッシュしてください。
 - **掃除。** このファイルを require すると、定期タスク `"cybertrain cache prune"` が登録されます。これは `cache_prune_interval` 秒（300、`CYBERTRAIN_CACHE_PRUNE_INTERVAL`）ごとに、期限の切れた行を 1 文あたり 1000 行ずつ消します。間隔はファイルを require したときに読まれます。環境変数を設定するか、require より前に実行される `Cybertrain.configure` のブロックで `c.cache_prune_interval` を設定してください。`Cache.prune(now)` はテスト用の入り口です。
