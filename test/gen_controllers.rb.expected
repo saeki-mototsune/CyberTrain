@@ -20,4 +20,8 @@ ok   gen/concerns.rb: the class methods on the concern, a forwarder and the spli
 ok   an unknown concern is refused with the include's line
 ok   around_action in an included block is refused
 ok   a class_methods name that is also an instance method is refused, naming both places
-22 tests, 73 assertions, 0 failures
+ok   scan_source reads helper_method lines and each def's parameters
+ok   emit writes helper_method? and call_helper_method for the declared names
+ok   a helper_method declared in a concern's included block dispatches from the includer
+ok   a helper_method named like a framework helper, an app helper, or an undefined method is refused with its message
+26 tests, 90 assertions, 0 failures

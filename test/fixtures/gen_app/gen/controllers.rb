@@ -35,6 +35,23 @@ class GatedController < ApplicationController
     else super
     end
   end
+
+  def helper_method?(name)
+    case name
+    when "admin?" then true
+    else super
+    end
+  end
+
+  def call_helper_method(name, args, kwargs)
+    case name
+    when "admin?"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+      Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+      admin?
+    else super
+    end
+  end
 end
 
 class PagesController < ApplicationController
@@ -52,6 +69,29 @@ class PostsController < ApplicationController
     case name
     when :set_post then set_post
     when :stamp then stamp
+    else super
+    end
+  end
+
+  def helper_method?(name)
+    case name
+    when "viewer_name", "price_label" then true
+    else super
+    end
+  end
+
+  def call_helper_method(name, args, kwargs)
+    case name
+    when "viewer_name"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+      Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+      viewer_name
+    when "price_label"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 1, 1)
+      Cybertrain::Template::Helpers.helper_keywords!(name, kwargs, ["currency"], 0)
+      if kwargs.key?("currency") then price_label(args[0], currency: kwargs["currency"])
+      else price_label(args[0])
+      end
     else super
     end
   end

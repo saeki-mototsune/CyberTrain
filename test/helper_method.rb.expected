@@ -1,0 +1,6 @@
+ok   the checked-in gen/controllers.rb, gen/components.rb and gen/app.rb are fresh
+ok   a template calls a helper_method with positional and keyword arguments
+ok   a component rendered by the template reaches it too
+ok   a helper_method declared in a concern's included block works
+ok   a template outside a request (Views.render_partial) raises undefined helper for it
+5 tests, 13 assertions, 0 failures

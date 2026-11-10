@@ -79,9 +79,11 @@ module Cybertrain
       # gen/controllers.rb and gen/concerns.rb, each from its own scan of
       # app/controllers: with the two scans' results held in locals of run
       # and handed to both emitters, Spinel 2026.11.04.7026 warns that type
-      # inference did not converge when it compiles bin/gen.rb.
+      # inference did not converge when it compiles bin/gen.rb. The app's
+      # helper modules come too: a helper_method may not shadow one.
       def self.controllers_source(root, jobs_page)
-        ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), jobs_page, ConcernScan.scan_dir("#{root}/app/controllers"))
+        ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), jobs_page, ConcernScan.scan_dir("#{root}/app/controllers"),
+                                HelperScan.scan_dir("#{root}/app/helpers"))
       end
 
       def self.concerns_source(root)

@@ -1,6 +1,7 @@
 class PostsController < ApplicationController
   before_action :set_post, only: [:show, :edit, :update, :destroy, :preview]
   after_action :stamp
+  helper_method :viewer_name, :price_label
 
   def index
     @posts = ["first", "second"]
@@ -48,5 +49,14 @@ class PostsController < ApplicationController
 
   def stamp
     response.set_header("X-Action", action_name)
+  end
+
+  # Helper methods (spec 4.3): test/helper_method.rb renders templates
+  # that call them.
+  def viewer_name = "ann"
+
+  def price_label(cents, currency: "USD")
+    whole = Cybertrain::Cast.int(cents)
+    "#{currency} #{whole / 100}.#{(whole % 100).to_s.rjust(2, "0")}"
   end
 end

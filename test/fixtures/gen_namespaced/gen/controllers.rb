@@ -25,6 +25,23 @@ module Admin
       else super
       end
     end
+
+    def helper_method?(name)
+      case name
+      when "admin?" then true
+      else super
+      end
+    end
+
+    def call_helper_method(name, args, kwargs)
+      case name
+      when "admin?"
+        Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+        Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+        admin?
+      else super
+      end
+    end
   end
 end
 

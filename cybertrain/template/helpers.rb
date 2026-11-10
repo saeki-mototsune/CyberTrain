@@ -129,6 +129,12 @@ module Cybertrain
             component = @components[depth - 1]
             return component.call_view_method(name.to_sym) if component.view_method?(name)
           end
+          # The controller's helper methods (`helper_method :x`, spec 4.3),
+          # in its templates and the components they render. Outside a
+          # request there is no controller, so the name is undefined.
+          controller = @controller
+          return controller.call_helper_method(name, args, kwargs) if !controller.nil? && controller.helper_method?(name)
+
           request_bound!(name) if name.end_with?("_url")
           return route(name, args, kwargs) if name.end_with?("_path") || name.end_with?("_url")
 
@@ -147,6 +153,23 @@ module Cybertrain
 
       # The positional-argument check of a generated helper arm.
       def helper_arity!(name, args, min, max)
+        Helpers.helper_arity!(name, args, min, max)
+      end
+
+      # A helper that takes no keywords was given some.
+      def helper_no_keywords!(name, kwargs)
+        Helpers.helper_no_keywords!(name, kwargs)
+      end
+
+      # known: the helper's keywords, its `required` required ones first.
+      def helper_keywords!(name, kwargs, known, required)
+        Helpers.helper_keywords!(name, kwargs, known, required)
+      end
+
+      # The three checks as class methods too: a controller's generated
+      # call_helper_method (helper_method, spec 4.3) runs them outside
+      # these helpers.
+      def self.helper_arity!(name, args, min, max)
         n = args.size
         return nil if n >= min && n <= max
 
@@ -154,15 +177,13 @@ module Cybertrain
         raise ArgumentError, "wrong number of arguments for '#{name}' (given #{n}, expected #{expected})"
       end
 
-      # A helper that takes no keywords was given some.
-      def helper_no_keywords!(name, kwargs)
+      def self.helper_no_keywords!(name, kwargs)
         return nil if kwargs.empty?
 
         raise ArgumentError, "'#{name}' takes no keyword arguments (given #{kwargs.keys.join(", ")})"
       end
 
-      # known: the helper's keywords, its `required` required ones first.
-      def helper_keywords!(name, kwargs, known, required)
+      def self.helper_keywords!(name, kwargs, known, required)
         i = 0
         while i < required
           raise ArgumentError, "missing keyword '#{known[i]}' for '#{name}'" unless kwargs.key?(known[i])

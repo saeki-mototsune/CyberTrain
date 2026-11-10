@@ -26,6 +26,8 @@ APP_FILES = [
   "app/helpers/prices_helper.rb",
   "app/components/card_component.rb",
   "app/components/card_component.html.erb",
+  "app/components/receipt_component.rb",
+  "app/components/receipt_component.html.erb",
   "app/jobs/welcome_job.rb",
   "app/jobs/digest_job.rb",
   "app/jobs/admin/report_job.rb"

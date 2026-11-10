@@ -1,4 +1,5 @@
 require "cybertrain/generator/inflector"
+require "cybertrain/generator/helper_scan"
 
 module Cybertrain
   module Gen
@@ -6,7 +7,7 @@ module Cybertrain
     class ControllerInfo
       attr_reader :file, :class_name, :superclass_name, :ivars, :callbacks,
                   :includes, :include_positions, :rescue_positions, :include_lines,
-                  :method_names, :method_lines, :module_prefix
+                  :method_names, :method_lines, :module_prefix, :helper_methods, :defs
 
       # includes: the module names of the class's `include` lines, in order.
       # include_positions / rescue_positions: per include, the count of
@@ -15,6 +16,10 @@ module Cybertrain
       # include_lines: per include, its line number. method_names /
       # method_lines: the class's instance `def`s. module_prefix: the
       # modules around the class line ("Admin"; "" at the top level).
+      # helper_methods: the names of the class's `helper_method` lines
+      # (spec 4.3), in order; defs: a HelperDef per instance `def` (its
+      # parameters when HelperScan.parse_def reads them, else the name and
+      # line).
       def initialize(file, class_name, superclass_name, ivars, callbacks,
                      includes = Array.new(0) { "" }, include_positions = Array.new(0) { 0 },
                      rescue_positions = Array.new(0) { 0 }, include_lines = Array.new(0) { 0 },
@@ -31,6 +36,8 @@ module Cybertrain
         @method_names = method_names
         @method_lines = method_lines
         @module_prefix = module_prefix
+        @helper_methods = Array.new(0) { "" }
+        @defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
       end
 
       # A superclass written bare inside a module, once every controller is
@@ -53,7 +60,8 @@ module Cybertrain
     # `end` at its own indentation, so `module Admin` around `class
     # ArticlesController < ApplicationController` is Admin::ArticlesController
     # (the compact `class Admin::ArticlesController` too), and reads the
-    # class's `include` lines (concerns, spec 4.1) and instance `def`s.
+    # class's `include` lines (concerns, spec 4.1), its `helper_method`
+    # lines (spec 4.3) and instance `def`s.
     module ControllerScan
       CLASS_LINE = /\A\s*class\s+([A-Z][\w:]*)\s*<\s*([A-Z][\w:]*)/
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:#.*)?\z/
@@ -70,6 +78,7 @@ module Cybertrain
       CALLBACK_CALL = /\A\s*(?:before_action|after_action|around_action)\b\s*\(?\s*/
       SYMBOL_ARG = /\A:(\w+[?!]?)\s*,?\s*/
       RESCUE_WITH = /\A\s*rescue_from\b.*\bwith:\s*:(\w+[?!]?)/
+      HELPER_METHOD_CALL = /\A\s*helper_method\b\s*\(?\s*/
 
       # nil when the source has no `class X < Y` line. When a file defines
       # several classes, the one named after the file wins
@@ -87,6 +96,9 @@ module Cybertrain
         include_lines = Array.new(0) { 0 }
         method_names = Array.new(0) { "" }
         method_lines = Array.new(0) { 0 }
+        helper_methods = Array.new(0) { "" }
+        defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        lines = source.lines
         # The open modules (full names) and their indentation.
         modules = Array.new(0) { "" }
         module_indents = Array.new(0) { 0 }
@@ -131,6 +143,8 @@ module Cybertrain
               include_lines = Array.new(0) { 0 }
               method_names = Array.new(0) { "" }
               method_lines = Array.new(0) { 0 }
+              helper_methods = Array.new(0) { "" }
+              defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
               callbacks_above = 0
               rescues_above = 0
               class_indent = indent unless stripped.include?(";")
@@ -151,15 +165,55 @@ module Cybertrain
             if dm
               method_names << dm[1].to_s
               method_lines << number
+              defs << def_at(file, lines, number)
             end
+            helper_method_names(line).each { |n| helper_methods << n unless helper_methods.include?(n) }
           end
           ivar_names(line).each { |n| ivars << n unless ivars.include?(n) }
           callback_names(line).each { |n| callbacks << n unless callbacks.include?(n) }
         end
         return nil if class_name == ""
 
-        ControllerInfo.new(file, class_name, superclass_name, ivars, callbacks, includes, include_positions,
-                           rescue_positions, include_lines, method_names, method_lines, prefix)
+        info = ControllerInfo.new(file, class_name, superclass_name, ivars, callbacks, includes, include_positions,
+                                  rescue_positions, include_lines, method_names, method_lines, prefix)
+        helper_methods.each { |n| info.helper_methods << n }
+        defs.each { |d| info.defs << d }
+        info
+      end
+
+      # The HelperDef of the `def` on line `number` (1-based) of `lines`,
+      # its parameter list joined over the lines it runs on: the parameters
+      # when HelperScan.parse_def reads them, else the name and line alone
+      # (a `*rest` or `...` parameter).
+      def self.def_at(file, lines, number)
+        text = lines[number - 1].to_s.strip
+        j = number
+        while HelperScan.open_parens(text) > 0 && j < lines.size
+          text = "#{text} #{lines[j].to_s.strip}"
+          j += 1
+        end
+        name = HelperScan.def_name(file, number, text)
+        parsed = HelperDef.new(name, number, [], [], [], [], "")
+        begin
+          parsed = HelperScan.parse_def(file, number, text)
+        rescue HelperScan::Error
+          parsed = HelperDef.new(name, number, [], [], [], [], "")
+        end
+        parsed
+      end
+
+      # The names a `helper_method :a, :b` line declares ([] for any other line).
+      def self.helper_method_names(line)
+        names = Array.new(0) { "" }
+        m = line.match(HELPER_METHOD_CALL)
+        return names unless m
+
+        rest = line[m.end(0), line.size - m.end(0)].to_s
+        while (s = rest.match(SYMBOL_ARG))
+          names << s[1].to_s
+          rest = rest[s.end(0), rest.size - s.end(0)].to_s
+        end
+        names
       end
 
       # Every controller under dir (recursively), sorted by file path. The

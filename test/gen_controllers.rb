@@ -445,4 +445,120 @@ test "a class_methods name that is also an instance method is refused, naming bo
                "Spinel compiles a def inside class_methods as an instance method too (spikes/NOTES.md rule 93), so rename one", msg
 end
 
+
+# --- helper_method (spec 4.3) ----------------------------------------------
+
+HELPERS_SOURCE = <<~'RUBY'
+  class ArticlesController < ApplicationController
+    helper_method :viewer_name, :price_label
+    helper_method(:signed_in?)
+
+    def show
+    end
+
+    private
+
+    def viewer_name = "ann"
+
+    def price_label(cents,
+                    currency: "USD")
+      "#{currency} #{cents}"
+    end
+  end
+RUBY
+
+def prices_helpers
+  Cybertrain::Gen::HelperScan.scan_source("app/helpers/prices_helper.rb", "module PricesHelper\n  def price(value) = value\nend\n")
+end
+
+def no_concerns
+  Array.new(0) { concern("app/controllers/concerns/a.rb", "module A\nend\n") }
+end
+
+def app_controller
+  Cybertrain::Gen::ControllerScan.scan_source("app/controllers/application_controller.rb",
+                                              "class ApplicationController < Cybertrain::Controller\n  def signed_in? = true\nend\n")
+end
+
+test "scan_source reads helper_method lines and each def's parameters" do
+  info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", HELPERS_SOURCE)
+  assert_equal ["viewer_name", "price_label", "signed_in?"], info.helper_methods
+  assert_equal ["show", "viewer_name", "price_label"], info.defs.map { |d| d.name }
+  label = info.defs[2]
+  assert_equal 12, label.line
+  assert_equal ["cents"], label.required
+  assert_equal ["currency"], label.keywords_optional
+end
+
+test "emit writes helper_method? and call_helper_method for the declared names" do
+  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", HELPERS_SOURCE)
+  expected = <<~'RUBY'
+    class ArticlesController < ApplicationController
+      def view_assigns
+        {}
+      end
+
+      def helper_method?(name)
+        case name
+        when "viewer_name", "price_label", "signed_in?" then true
+        else super
+        end
+      end
+
+      def call_helper_method(name, args, kwargs)
+        case name
+        when "viewer_name"
+          Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+          Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+          viewer_name
+        when "price_label"
+          Cybertrain::Template::Helpers.helper_arity!(name, args, 1, 1)
+          Cybertrain::Template::Helpers.helper_keywords!(name, kwargs, ["currency"], 0)
+          if kwargs.key?("currency") then price_label(args[0], currency: kwargs["currency"])
+          else price_label(args[0])
+          end
+        when "signed_in?"
+          Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+          Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+          signed_in?
+        else super
+        end
+      end
+    end
+  RUBY
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, articles], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
+  assert_includes out, expected
+  # ApplicationController declares none: no table of its own.
+  refute out.include?("class ApplicationController < Cybertrain::Controller\n  def view_assigns\n    {}\n  end\n\n  def helper_method?"), "no table for ApplicationController"
+end
+
+test "a helper_method declared in a concern's included block dispatches from the includer" do
+  gate = concern("app/controllers/concerns/admin_gate.rb", GATE_SOURCE)
+  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", "class ArticlesController < ApplicationController\n  include AdminGate\nend\n")
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, articles], Cybertrain::Gen::JobsPageSpec.new("", ""), [gate], prices_helpers)
+  assert_includes out, "  def helper_method?(name)\n    case name\n    when \"admin?\" then true\n    else super\n    end\n  end\n"
+  assert_includes out, "    when \"admin?\"\n      Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)\n" \
+                       "      Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)\n      admin?\n"
+end
+
+test "a helper_method named like a framework helper, an app helper, or an undefined method is refused with its message" do
+  jobs = Cybertrain::Gen::JobsPageSpec.new("", "")
+  undefined = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/admin/articles_controller.rb",
+                                                          "module Admin\n  class ArticlesController < ApplicationController\n    helper_method :admin?\n  end\nend\n")
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllersEmitter.emit([app_controller, undefined], jobs, no_concerns, prices_helpers) }
+  assert_equal "helper_method :admin? in Admin::ArticlesController: no def admin? in the controller, its parents or its concerns", msg
+  framework = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
+                                                          "class ArticlesController < ApplicationController\n  helper_method :link_to\n\n  def link_to = \"x\"\nend\n")
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllersEmitter.emit([app_controller, framework], jobs, no_concerns, prices_helpers) }
+  assert_equal "helper_method :link_to: link_to is a framework helper", msg
+  route = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
+                                                      "class ArticlesController < ApplicationController\n  helper_method :home_url\n\n  def home_url = \"x\"\nend\n")
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllersEmitter.emit([app_controller, route], jobs, no_concerns, prices_helpers) }
+  assert_equal "helper_method :home_url: home_url is a framework helper", msg
+  app = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
+                                                    "class ArticlesController < ApplicationController\n  helper_method :price\n\n  def price = 1\nend\n")
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllersEmitter.emit([app_controller, app], jobs, no_concerns, prices_helpers) }
+  assert_equal "helper_method :price: price is defined in PricesHelper", msg
+end
+
 Cybertrain::Test.run!

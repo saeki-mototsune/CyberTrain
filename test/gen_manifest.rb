@@ -92,6 +92,7 @@ test "manifest for the fixture app, whose Post encrypts a column and whose Welco
     require_relative "../app/helpers/prices_helper"
     require_relative "helpers"
     require_relative "../app/components/card_component"
+    require_relative "../app/components/receipt_component"
     require_relative "components"
     require_relative "console"
     require_relative "controllers"

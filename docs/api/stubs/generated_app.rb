@@ -7,7 +7,7 @@
 # examples/blog/gen/routes.rb). Every table gets the same surface under its
 # own names, and every job class the same class methods. Keep the signatures
 # in step with cybertrain/generator/models_emitter.rb, routes_emitter.rb,
-# controllers_emitter.rb (the jobs page's controller), concerns_emitter.rb
+# controllers_emitter.rb (the jobs page's controller, helper methods), concerns_emitter.rb
 # and jobs_emitter.rb.
 
 # What `spin run gen` writes into `gen/models/article.rb` for this table in
@@ -992,11 +992,14 @@ end
 #
 #       included do
 #         before_action :require_admin
+#         helper_method :admin?
 #       end
 #
 #       class_methods do
 #         def per_page = 20
 #       end
+#
+#       def admin? = Current.user&.admin?
 #     end
 #
 # Each `def` of the `class_methods` block becomes a method of the concern,
@@ -1027,19 +1030,53 @@ module Admin
   #         # AdminGate (include AdminGate at app/controllers/admin/articles_controller.rb:4)
   #         concern_insert_at(1, 0)
   #         before_action :require_admin
+  #         helper_method :admin?
   #         concern_insert_done
   #       end
   #     end
   #
   # gen/controllers.rb adds the concern's callback methods to the class's
   # `run_callback` table and the ivars its methods assign to
-  # `view_assigns`.
+  # `view_assigns`; for the `helper_method` names of the class and of the
+  # concerns it includes, it writes {#helper_method?} and
+  # {#call_helper_method}.
   # @api public
   class ArticlesController < ApplicationController
     # Forwards to {AdminGate.per_page}: `self.class.per_page` in an action.
     # @return [Integer]
     # @api public
     def self.per_page(...) = AdminGate.per_page(...)
+
+    # Whether a template's receiverless call `name` is one of this
+    # controller's helper methods (`helper_method :admin?`, spec 4.3);
+    # a name it does not declare goes to the parent's table.
+    # @param name [String]
+    # @return [Boolean]
+    # @api private
+    def helper_method?(name)
+      case name
+      when "admin?" then true
+      else super
+      end
+    end
+
+    # Calls the helper method with the template's arguments, checked as an
+    # application helper's are (a wrong count or an unknown keyword raises
+    # ArgumentError).
+    # @param name [String]
+    # @param args [Array]
+    # @param kwargs [Hash{String => Object}]
+    # @return [Object]
+    # @api private
+    def call_helper_method(name, args, kwargs)
+      case name
+      when "admin?"
+        Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+        Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+        admin?
+      else super
+      end
+    end
   end
 end
 

@@ -519,6 +519,29 @@ module Cybertrain
       raise UnknownCallback, "unknown callback :#{name} in #{self.class.name} (run `spin run gen`)"
     end
 
+    # Whether `name` is one of this controller's helper methods (spec 4.3):
+    # gen/controllers.rb overrides it with a `case` over the names of the
+    # controller's `helper_method` lines and its concerns', then `super`.
+    # Called on self, never through a stored block.
+    # @param name [String]
+    # @return [Boolean]
+    # @api private
+    def helper_method?(name)
+      false
+    end
+
+    # Calls the helper method `name` with a template's arguments (args by
+    # position, kwargs by keyword name); gen/controllers.rb overrides it.
+    # Template::Helpers#helper_call asks {#helper_method?} first.
+    # @param name [String]
+    # @param args [Array]
+    # @param kwargs [Hash{String => Object}]
+    # @return [Object]
+    # @api private
+    def call_helper_method(name, args, kwargs)
+      nil
+    end
+
     # The implicit render after an action that rendered nothing:
     # app/views/<controller_path>/<action>.html.erb inside the layout.
     def default_render(action)
