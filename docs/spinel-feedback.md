@@ -141,6 +141,7 @@ has a workaround in CyberTrain or an open bug:
 | R | none needed: the generator of `run_job` names only classes the program defines (phase 3, spikes/NOTES.md rule 89) | **Ready to report**: the reduced programs in R (CRuby raises NameError; the compiled programs match by the last segment or swallow the exception). Not reported upstream yet |
 | S | `computed = yield` before `Cast.str(computed)` in cybertrain/cache.rb's fetch family (spikes/NOTES.md rule 90) | **Ready to report**: the reduced program in S (CRuby runs the block once; the compiled program runs it twice). No fix written. Not reported upstream yet |
 | T | the feed supervisor sets `Background.feeds_failed?` and the `feeds` role's main thread returns the exit status (spikes/NOTES.md rule 91) | **Ready to report**: the six-line program in T (CRuby exits 1; the compiled program goes on and exits 0). Not reported upstream yet |
+| U | gen writes a concern's `class_methods` as `def self.x` on the concern plus a forwarder, and refuses a `class_methods` name an instance method of the concern or an including class has (phase 4a, spikes/NOTES.md rule 93) | **Ready to report**: the reduced program in U (CRuby prints `false false`; the compiled program `true false`). No fix written. Not reported upstream yet |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026; some of their
@@ -184,6 +185,7 @@ that it is fixed.
 | R. A `rescue` arm naming an undefined qualified class matches by its last segment, or swallows every exception | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3 spike, 2026-11-09; rule 89) |
 | S. A `yield` passed as an argument runs the block twice when blocks differ in type | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3, 2026-11-09; rule 90) |
 | T. `exit` on a thread other than the main one ends only that thread | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3, 2026-11-09; rule 91) |
+| U. A `def` inside a block that never runs defines the method anyway | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4a spike, 2026-11-10; rule 93) |
 
 ## What CyberTrain still works around
 
@@ -2007,3 +2009,54 @@ ended (checked again on 2026-11-10 with `spinel exit_thread.rb`).
   (Application#run_feeds_threads) stops the feeds and returns 1, the
   status `Main.run`'s caller exits with (spikes/NOTES.md rule 91).
 - Not reported upstream yet.
+
+## Found in phase 4a of the Rails-gap programme (2026-11-10)
+
+The web-layer design (docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md,
+section 12) ran five checks against 2026.11.04.7026 before any code was
+written (spikes/phase4/); all five passed, one with a stub, and these were
+found while writing the third.
+
+### U. A `def` inside a block that never runs defines the method anyway
+
+```ruby
+module Concern
+  def class_methods(&block) = nil
+end
+module Gate
+  extend Concern
+  class_methods do
+    def per_page = 50
+  end
+end
+class C
+  include Gate
+end
+puts "#{C.new.respond_to?(:per_page)} #{Gate.respond_to?(:per_page)}"
+```
+
+CRuby prints `false false`: the block never runs, so `per_page` is never
+defined. Compiled with Spinel 2026.11.04.7026 the program prints `true
+false`: the `def` was compiled as an instance method of `Gate`, the code
+around the block, and `C` has it through the include.
+
+- What CyberTrain does with it (phase 4a): a concern's `class_methods do
+  def x ... end end` is written by gen as `def self.x` on the concern and
+  a forwarding `def self.x(...)` in each including class (plan decision
+  12); since `x` is also an instance method of every including class
+  under Spinel, gen refuses a `class_methods` name that an instance method
+  of the concern or of an including class has (spikes/NOTES.md rule 93).
+- Not reported upstream yet.
+
+### A refusal inside a block that never runs (by design)
+
+`ActiveSupport::Concern#included(&block)` in CyberTrain does nothing, so
+a concern's `included do before_action :x end` never runs under CRuby. Spinel
+2026.11.04.7026 compiles the block anyway, resolves `before_action` on the
+block's `self`, the concern module, and refuses the program ("unsupported
+call: ... (CallNode `before_action`)", 1 refusal, nothing written), though
+Cybertrain::Controller defines `before_action`. This is the ahead-of-time
+NoMethodError of "A refusal of a never-reached class-method call" above,
+met from a receiver Spinel knows; CyberTrain asks for nothing:
+`ActiveSupport::Concern` defines a no-op for each declaration an
+`included` block may make (spikes/NOTES.md rule 92).

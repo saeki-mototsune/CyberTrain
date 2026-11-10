@@ -24,7 +24,9 @@
 # against Cybertrain::Controller growing (see below), and the helper
 # generator's HelperScan::RESERVED_HELPER_NAMES against Template::Helpers
 # and HelperBase growing (see below), and the job generator's
-# JobScan::RESERVED_CLASS_METHODS against jobs_emitter.rb (see below). Run by CI.
+# JobScan::RESERVED_CLASS_METHODS against jobs_emitter.rb (see below), and
+# keeps each method name of NAME_HOMES defined only in the files its row
+# lists (see below). Run by CI.
 #
 # usage: ruby script/check-reserved-names
 require File.expand_path("../cybertrain/ident", __dir__)
@@ -157,10 +159,84 @@ job_names = jobs_emitter_source.scan(/out << "  def self\.([a-z_][A-Za-z0-9_]*[?
 abort "check-reserved-names: jobs_emitter.rb emits no `def self.` line" if job_names.empty?
 jobs_missing = job_names - Cybertrain::Gen::JobScan::RESERVED_CLASS_METHODS
 
+# One return type per method name across the program (spikes/NOTES.md
+# rules 10, 34 and 41): a name that more than one class defines, or that a
+# later phase gives a new home, has a row here naming every file allowed to
+# `def` it (instance or `def self.`), today's definers and the homes the
+# phase 4a plan gives it (seeded once, so tasks running in parallel never
+# edit the table; a name the plan did not foresee is added by its task). A
+# `def` of a listed name in any other file under cybertrain/ fails the
+# check, as does an emitted `def` line (a String in
+# cybertrain/generator/*_emitter.rb), which counts as its emitter's. A name
+# with no row is not checked: a brand-new name with no other definer needs
+# none. Rows may name files that do not exist yet. An empty row (t, l)
+# means no file may define the name yet.
+NAME_HOMES = {
+  "format" => %w[cybertrain/console/printer.rb cybertrain/http/request.rb],
+  # time_zone.rb's private parser method is renamed expect_byte in Task 11.
+  "expect" => %w[cybertrain/mailer.rb cybertrain/params.rb cybertrain/time_zone.rb],
+  "select" => %w[cybertrain/template/form_builder.rb],
+  # cli/templates.rb's is `def self.layout` (the generated layout's text).
+  "layout" => %w[cybertrain/cli/templates.rb cybertrain/controller.rb],
+  "cookies" => %w[cybertrain/controller.rb],
+  "signed" => %w[cybertrain/cookie_jar.rb],
+  "encrypted" => %w[cybertrain/cookie_jar.rb],
+  "permanent" => %w[cybertrain/cookie_jar.rb],
+  "html" => %w[cybertrain/format_collector.rb],
+  # schema/table.rb's are the `t.json` and `t.text` column types.
+  "json" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb],
+  "turbo_stream" => %w[cybertrain/format_collector.rb cybertrain/controller.rb],
+  "csv" => %w[cybertrain/format_collector.rb],
+  "xml" => %w[cybertrain/format_collector.rb],
+  "text" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb],
+  "any" => %w[cybertrain/format_collector.rb],
+  "permit" => %w[cybertrain/params.rb],
+  # i18n's translate and localize helpers come in phase 4b.
+  "t" => %w[],
+  "l" => %w[]
+}.freeze
+# The names the phase 4a plan lists as the first candidates for a clash
+# must keep a row (Global Constraints of the plan).
+NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted permanent html json turbo_stream
+                     csv xml text any permit t l].freeze
+root = File.expand_path("..", __dir__)
+home_rows_missing = NAME_CANDIDATES - NAME_HOMES.keys
+homeless = []
+def_line = /^\s*def\s+(?:self\.)?([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=])/
+emitted_def = /(?:"|\\n)\s*def\s+(?:self\.)?([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=])/
+Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
+  rel = file.delete_prefix("#{root}/")
+  emitter = rel.match?(%r{\Acybertrain/generator/[^/]+_emitter\.rb\z})
+  File.foreach(file, encoding: "UTF-8").with_index(1) do |line, number|
+    next if line.lstrip.start_with?("#")
+
+    found = []
+    m = line.match(def_line)
+    found << m[1] unless m.nil?
+    line.scan(emitted_def) { |(name)| found << name } if emitter
+    found.uniq.each do |name|
+      homes = NAME_HOMES[name]
+      next if homes.nil? || homes.include?(rel)
+
+      homeless << [rel, number, name, homes]
+    end
+  end
+end
+
 if missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty? && helpers_missing.empty? && scopes_missing.empty? &&
-   jobs_missing.empty?
-  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names; #{scope_names.size} Relation and model class methods refused as scope names; #{job_names.size} generated job class methods refused as job class methods"
+   jobs_missing.empty? && homeless.empty? && home_rows_missing.empty?
+  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names; #{scope_names.size} Relation and model class methods refused as scope names; #{job_names.size} generated job class methods refused as job class methods; #{NAME_HOMES.size} shared method names defined only in their homes"
 else
+  homeless.each do |rel, number, name, homes|
+    where = homes.empty? ? "no file may define it yet" : "its homes are #{homes.join(", ")}"
+    warn "check-reserved-names: #{rel}:#{number} defines `#{name}`, but #{where} (NAME_HOMES in script/check-reserved-names): " \
+         "one return type per method name across the program (spikes/NOTES.md rules 10, 34, 41); rename the method, " \
+         "or add the file to the row if it returns the same type"
+  end
+  unless home_rows_missing.empty?
+    warn "check-reserved-names: NAME_HOMES has no row for #{home_rows_missing.map(&:inspect).join(", ")} " \
+         "(a candidate name of the phase 4a plan); add one"
+  end
   unless jobs_missing.empty?
     warn "check-reserved-names: gen/jobs.rb defines #{jobs_missing.map(&:inspect).join(", ")} on every job class " \
          "(cybertrain/generator/jobs_emitter.rb) but Cybertrain::Gen::JobScan::RESERVED_CLASS_METHODS " \

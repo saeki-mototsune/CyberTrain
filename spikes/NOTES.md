@@ -84,6 +84,8 @@ written up for upstream.
 | 89 | **Still there**: found on this build (its reduced programs, `rescue Outer::Missing` beside a top-level `Missing`, and `rescue Outer::Gone::TimeoutError` beside another `TimeoutError`, differ from CRuby). |
 | 90 | **Still there**: found on this build (its reduced program, `C.str(yield)` with a String block at one call site and an Integer block at another, runs the first block twice). |
 | 91 | **Still there**: found on this build (its reduced program, `exit(1)` on a thread spawned through a method while the main thread sleeps, prints the main thread's line and exits 0). |
+| 92 | **Still there**: found on this build (the refusal is by design, as rule 84's is). |
+| 93 | **Still there**: found on this build (its reduced program prints `true false`; CRuby prints `false false`). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -91,13 +93,13 @@ written up for upstream.
 The rules are numbered in the order they were found. By topic:
 
 - Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88,
-  90
+  90, 92, 93
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
   37, 46 (Hash literals), 56, 63, 71, 73, 86
 - Polymorphic values and narrowing: 8, 14, 29, 35, 86
-- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81
+- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
   79, 81, 89
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
@@ -106,7 +108,7 @@ The rules are numbered in the order they were found. By topic:
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
   91
 - FFI: 15, 59
-- Tests and tools: 23, 24, 36, 41, 63, 84
+- Tests and tools: 23, 24, 36, 41, 63, 84, 92
 
 ## Rules every framework file must follow (derived from the spikes)
 
@@ -1056,6 +1058,42 @@ The rules are numbered in the order they were found. By topic:
     so the framework joins feed and supervisor threads in plain methods
     that rescue `Exception` (rules 32 / 45).
 
+92. A block that never runs is still compiled, and an implicit-self call
+    in it is resolved against the `self` of the code around the block:
+    in a module body, the module. Spinel 2026.11.04.7026 refuses such a
+    call when that module has no method of the name, even though another
+    class defines it (`before_action` is a class method of
+    Cybertrain::Controller) and CRuby, never running the block, never
+    looks: `module AdminGate; extend ActiveSupport::Concern; included do
+    before_action :require_admin, only: [:index]; end; end`, with
+    `ActiveSupport::Concern#included(base = nil, &block)` doing nothing,
+    is refused with "unsupported call: ... (CallNode `before_action`)
+    recv=-/ty-1", 1 refusal, nothing written (the ahead-of-time
+    NoMethodError of rule 84, met from a receiver Spinel knows). So
+    `ActiveSupport::Concern` defines a no-op instance method (a singleton
+    method of every concern that extends it) for every declaration a
+    concern's `included` block may make, with the framework declaration's
+    parameters; with `before_action`, `helper_method` and `rescue_from`
+    stubbed the program builds and the declarations gen splices into the
+    including class work. Found in the phase 4a spike (2026-11-10,
+    spikes/phase4/concern_class_methods.rb).
+
+93. A `def` inside a block is compiled as a method of the code around the
+    block whether or not the block ever runs (Spinel 2026.11.04.7026):
+    CRuby defines it only when the block runs, and then on the block's
+    `def` target. Reduced program (CRuby prints `false false`, the
+    compiled program `true false`): `module Concern; def
+    class_methods(&block) = nil; end`, `module Gate; extend Concern;
+    class_methods do; def per_page = 50; end; end`, `class C; include
+    Gate; end`, `puts "#{C.new.respond_to?(:per_page)}
+    #{Gate.respond_to?(:per_page)}"`. So a concern's `class_methods do
+    def x ... end end` also gives every including class an instance method
+    `x` under Spinel: a `class_methods` name must not be the name of an
+    instance method of the concern or of an including class (gen refuses
+    it), and the class method itself comes from gen's `def self.x` on the
+    concern and forwarder in the class (plan decision 12). Found in the
+    phase 4a spike (2026-11-10; docs/spinel-feedback.md U).
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.
@@ -1064,3 +1102,4 @@ The rules are numbered in the order they were found. By topic:
 - SQLite: 1.5 M inserts/s inside one transaction, ~70 K/s autocommit; pool of 4 serving 8 threads: ~55 K statements/s.
 - HMAC-SHA256 via `OpenSSL::HMAC.hexdigest("SHA256", key, data)`; `Digest::SHA256.digest` is vendored in the runtime (no OpenSSL link needed), so the framework implements HMAC in Ruby on top of it.
 - PBKDF2-HMAC-SHA256 in Ruby over that digest (`Cybertrain::Password`, two `Digest::SHA256.digest` calls and two concatenations per iteration; the runtime has no incremental digest API): 100,000 iterations 197 ms compiled, 660 ms under CRuby 3.3; 600,000 iterations 1.09 s compiled (2026-10-22, one cloud vCPU). `String#crypt` exists but is libc crypt(3), so bcrypt only where libxcrypt is (not macOS). The `while` loop's back-edges are safepoints, so a hash in progress is preempted like any other thread (Spinel's docs/thread.md, "The execution model").
+- Asset digests (phase 4a spike, 2026-11-10, one cloud vCPU): `File.binread` of 1 MB 1.4 ms, `Digest::SHA256.digest` of it 0.8 ms compiled (CRuby 3.3.6: 5.0 ms for both); a generated 200-arm `case` of String literals compiles in 1.3 s, adds 44 KB to the binary and answers in 293 ns a lookup (arms tried in order; CRuby hashes them, 183 ns).

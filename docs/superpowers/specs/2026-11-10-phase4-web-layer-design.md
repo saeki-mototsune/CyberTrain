@@ -591,6 +591,78 @@ The spike (each plan's first task) checks on the pinned Spinel:
 6. **4b** The YAML subset parser on rails-i18n's `ja.yml` and `en.yml`
    (taken as fixtures) and a 2,000-key generated lookup, compiled.
 
+**Results (2026-11-10, Spinel 2026.11.04.7026, programs kept in
+spikes/phase4/ with their commands and output in each header):**
+
+1. **PASS** (spikes/phase4/respond_to.rb). The immediate
+   `Cybertrain::FormatCollector` (each arm runs its block as it is
+   declared when it matches and no arm matched before) works from two
+   controllers whose `json` blocks render different instance variables;
+   the blockless `html` arm leaves the implicit render to draw the
+   template; `any` matches an unlisted format and no match answers 406. The
+   per-controller storing collector works too. `turbo_stream` defined on
+   three receivers with three return types (the collector's arm, nil; a
+   controller's builder, a TurboStreams; a template builder's, another
+   object), the controller's called inside the collector's block, builds
+   and answers correctly: **PASS**. Fallback taken: none; the framework
+   collector is used (plan decision 6), and the controller keeps
+   `turbo_stream` for its builder. (Had the three-receiver `turbo_stream`
+   failed: FormatCollector keeps `turbo_stream`, the controller's builder
+   is reached as `turbo_stream_actions`, and the template's as
+   `turbo_stream` only inside templates, through the interpreter's
+   dispatch with no Ruby method.)
+2. **PASS** (spikes/phase4/admin_controllers.rb). `module Admin; class
+   ArticlesController < ApplicationController` and `class
+   Admin::ReportsController < ApplicationController` (after `module Admin`
+   exists) both run from route handlers written as gen/routes.rb writes
+   them, inherit ApplicationController's callbacks, and answer
+   `Admin::ArticlesController` / `admin/articles` for their name and
+   `controller_path`. `def admin_article_path(article, options = {})`
+   called as `admin_article_path(a, page: 2, format: :json)` builds
+   `/admin/articles/3.json?page=2`. Fallback taken: none; gen accepts both
+   spellings (the compact form is not refused).
+3. **PASS, with a stub** (spikes/phase4/concern_class_methods.rb).
+   `self.class.per_page` in an action answers 50 through what gen writes
+   (`module AdminGate; def self.per_page = 50; end` and `def
+   self.per_page(...) = AdminGate.per_page(...)` in the including class),
+   and the spliced `before_action` / `helper_method` / `rescue_from` take
+   effect. The `included do ... end` body did **not** compile as written:
+   it never runs, but Spinel compiles its implicit-self calls against the
+   concern module and refuses `before_action` there (the by-design
+   ahead-of-time NoMethodError of spikes/NOTES.md rule 84; rule 92).
+   Fallback taken: `ActiveSupport::Concern` gains no-op stubs, instance
+   methods of the module and so singleton methods of every concern that
+   extends it, for every declaration Task 5 splices (the spike's three,
+   `before_action`, `helper_method` and `rescue_from`, compiled with stubs
+   taking the framework declaration's parameters and returning nil).
+   `ModuleName.per_page` is not needed as the documented spelling, and gen
+   does not refuse `class_methods do`. Also found (rule 93): a `def` inside
+   the never-called `class_methods` block is compiled as an instance
+   method of the concern, so of every including class, which CRuby never
+   defines; so a `class_methods` method must not share its name with an
+   instance method of the concern or of an including class (for Task 5's
+   gen to refuse).
+4. **PASS** (spikes/phase4/openssl_session.rb). With `require
+   "cybertrain"` and `cybertrain/encryptor` in one program, a session
+   written by one request is read by the next through `Application#call`
+   and `Response#to_http` (a tampered cookie reads as empty), and the C
+   has no `getbyte` or `each_byte` NoMethodError switch (both greps print
+   0). In the same program `format` answering a Symbol (Request#format)
+   beside Console::Printer.format's String, and `expect` answering a Hash
+   (Params#expect) beside Mailer.expect's nil, build and answer
+   correctly: **PASS**. Fallback taken: none; `Request#format` and
+   `Params#expect` keep the Rails names and Mailer's `expect` keeps its
+   name. (Had they failed: `Request#format` → `request_format`, and
+   Mailer's private `expect` renamed `expect_reply`, `Params#expect`
+   keeping Rails' name.)
+5. **PASS** (spikes/phase4/asset_digest.rb, asset_case.rb). In a program
+   shaped like bin/gen.rb, `File.binread` of a 1 MB file takes 1.4 ms and
+   `Digest::SHA256.digest` of it 0.8 ms (1.1 ms for both, mean of 10;
+   CRuby 3.3.6: 5.0 ms), and the digest matches CRuby's. A generated
+   200-arm `case` from logical to digested path compiles in 1.3 s to a
+   429 KB binary (a 1-arm one: 1.2 s, 385 KB) and answers in 293 ns a
+   lookup (the arms are tried in order). Fallback taken: none.
+
 ## 13. Out of scope (recorded so nothing is lost)
 
 AU-1 bcrypt; R-6 `mount`; A-3 / A-4 bundled JavaScript libraries; A-6
