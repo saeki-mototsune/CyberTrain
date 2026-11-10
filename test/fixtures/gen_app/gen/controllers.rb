@@ -36,8 +36,8 @@ class GatedController < ApplicationController
     end
   end
 
-  def controller_layout(action)
-    if action != "show"
+  def controller_layout(layout_action__)
+    if layout_action__ != "show"
       return "layouts/audit"
     end
     super

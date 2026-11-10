@@ -632,7 +632,7 @@ module Cybertrain
     #
     #     layout "admin", only: [:index]   # "layouts/admin" for index
     #     layout false                     # "" (no layout)
-    #     layout :choose_layout            # its value: a name, or false
+    #     layout :choose_layout            # its value: a name, false, or nil (inherited)
     #
     # A concern's `included` block may declare one too; it counts at its
     # `include` line.

@@ -93,6 +93,8 @@ module Cybertrain
       CLASS_LINE = /\A\s*class\s+([A-Z][\w:]*)\s*<\s*([A-Z][\w:]*)/
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:#.*)?\z/
       INCLUDE_LINE = /\A\s*include\s+([A-Z][\w:]*(?:\s*,\s*[A-Z][\w:]*)*)\s*(?:#.*)?\z/
+      # A line opening a method, `private def x` too.
+      DEF_OPEN = /\A(?:(?:private|protected|public)\s+)?def\s/
       DEF_NAME = /\A\s*def\s+(?!self\.)([a-z_]\w*[?!]?)/
       # The declarations that add one entry to the class's callback list.
       CALLBACK_DECLARATION = /\A\s*(?:before_action|after_action|rate_limit|prepend_before_action)\b/
@@ -106,7 +108,11 @@ module Cybertrain
       SYMBOL_ARG = /\A:(\w+[?!]?)\s*,?\s*/
       RESCUE_WITH = /\A\s*rescue_from\b.*\bwith:\s*:(\w+[?!]?)/
       HELPER_METHOD_CALL = /\A\s*helper_method\b\s*\(?\s*/
-      LAYOUT_CALL = /\A\s*layout(?![\w?!:.])(?!\s*[-+*\/|&]?=[^=~>])\s*\(?\s*/
+      # `layout` followed by the start of an argument: `(`, a quote, `:`,
+      # `false` or `nil`, or one gen refuses (a lambda, a constant). A local
+      # named layout (`layout ||= x`, `layout if x`, `layout, b = x`) is no
+      # declaration.
+      LAYOUT_CALL = /\A\s*layout(?:\s*\(|\s+(?=["':A-Z]|->|false\b|nil\b|lambda\b|proc\b))\s*/
       # What follows `layout`: "admin" / 'admin', false, or :choose_layout.
       LAYOUT_ARG = /\A(?:"([^"'\#\\]*)"|'([^"'\#\\]*)'|(false)|:([a-z_]\w*[?!]?))\s*/
       # `only: [:a, :b]`, `except: %i[a b]`, `only: :a`.
@@ -139,6 +145,8 @@ module Cybertrain
         module_indents = Array.new(0) { 0 }
         # The chosen class's body: its indentation while open, -1 otherwise.
         class_indent = -1
+        # The open multi-line `def`'s indentation inside the class, -1 outside one.
+        def_indent = -1
         callbacks_above = 0
         rescues_above = 0
         number = 0
@@ -150,6 +158,7 @@ module Cybertrain
           indent = indent_of(line)
           if class_indent >= 0 && indent <= class_indent && closing_end?(stripped)
             class_indent = -1
+            def_indent = -1
             next
           end
           if class_indent < 0 && !module_indents.empty? && indent <= module_indents.last && closing_end?(stripped)
@@ -185,6 +194,7 @@ module Cybertrain
               callbacks_above = 0
               rescues_above = 0
               class_indent = indent unless stripped.include?(";")
+              def_indent = -1
             end
           elsif class_indent >= 0
             callbacks_above += 1 if line.match?(CALLBACK_DECLARATION)
@@ -205,8 +215,16 @@ module Cybertrain
               defs << def_at(file, lines, number, def_errors)
             end
             helper_method_names(line).each { |n| helper_methods << n unless helper_methods.include?(n) }
-            decl = layout_decl(file, number, line)
-            layouts << decl unless decl.nil?
+            # Declarations are class-body lines: not a method's (a local
+            # named layout is no declaration).
+            if def_indent >= 0
+              def_indent = -1 if indent <= def_indent && closing_end?(stripped)
+            elsif stripped.match?(DEF_OPEN)
+              def_indent = indent unless one_line_def?(lines, number)
+            else
+              decl = layout_decl(file, number, line)
+              layouts << decl unless decl.nil?
+            end
           end
           ivar_names(line).each { |n| ivars << n unless ivars.include?(n) }
           callback_names(line).each { |n| callbacks << n unless callbacks.include?(n) }
@@ -247,6 +265,19 @@ module Cybertrain
         parsed
       end
 
+      # Whether the `def` on line `number` (1-based) of `lines` has no body
+      # lines of its own: an endless def or `def x; ...; end`, its
+      # parameter list joined over the lines it runs on.
+      def self.one_line_def?(lines, number)
+        text = lines[number - 1].to_s.strip.sub(/\A(?:private|protected|public)\s+/, "")
+        j = number
+        while HelperScan.open_parens(text) > 0 && j < lines.size
+          text = "#{text} #{lines[j].to_s.strip}"
+          j += 1
+        end
+        HelperScan.endless?(text) || (text.include?(";") && (text.end_with?(" end") || text.end_with?(";end")))
+      end
+
       # The names a `helper_method :a, :b` line declares ([] for any other line).
       def self.helper_method_names(line)
         names = Array.new(0) { "" }
@@ -270,8 +301,7 @@ module Cybertrain
 
         msg = "#{app_path(file)}:#{number}: #{LAYOUT_UNREADABLE}"
         rest = line[m.end(0), line.size - m.end(0)].to_s.strip
-        rest = rest.sub(/\s*#[^"']*\z/, "")
-        rest = rest[0, rest.size - 1].to_s.strip if line.match?(/\A\s*layout\s*\(/) && rest.end_with?(")")
+        parens = line.match?(/\A\s*layout\s*\(/)
         a = rest.match(LAYOUT_ARG)
         raise ArgumentError, msg unless a
 
@@ -292,7 +322,9 @@ module Cybertrain
           end
           rest = rest[o.end(0), rest.size - o.end(0)].to_s
         end
-        raise ArgumentError, msg unless rest.strip.empty?
+        # Then `)` for the parenthesised form, and a comment, quotes and all.
+        tail = parens ? /\A\s*\)\s*(?:#.*)?\z/ : /\A\s*(?:#.*)?\z/
+        raise ArgumentError, msg unless rest.match?(tail)
 
         LayoutDecl.new(name, method, only, except, number)
       end

@@ -9,7 +9,8 @@ ok   no layout is applied when the layout file does not exist
 ok   controller_path and view_env
 ok   layout by name
 ok   layout :method returning false renders bare, returning "frame" uses it
+ok   layout :method returning nil uses the inherited layout
 ok   layout "admin", only: [:index] applies to index only
 ok   render layout: "frame" per call wins; render layout: false is bare
 ok   a Turbo-Frame request picks the frame layout through a two-line method
-14 tests, 39 assertions, 0 failures
+15 tests, 41 assertions, 0 failures

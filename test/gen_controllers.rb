@@ -617,15 +617,16 @@ test "emit writes controller_layout: the declarations in order, the first that a
         {}
       end
 
-      def controller_layout(action)
-        if action == "index" || action == "show"
+      def controller_layout(layout_action__)
+        if layout_action__ == "index" || layout_action__ == "show"
           return "layouts/admin"
         end
-        if action != "edit"
+        if layout_action__ != "edit"
           return ""
         end
-        chosen = frame_or_application
-        chosen == false ? "" : "layouts/#{chosen}"
+        layout_chosen__ = frame_or_application
+        return super if layout_chosen__.nil?
+        layout_chosen__ == false ? "" : "layouts/#{layout_chosen__}"
       end
     end
   RUBY
@@ -638,8 +639,9 @@ test "emit writes controller_layout: the declarations in order, the first that a
   only = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
                                                      "class ArticlesController < ApplicationController\n  layout :pick, only: [:new]\nend\n")
   out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, only], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
-  assert_includes out, "  def controller_layout(action)\n    if action == \"new\"\n      chosen = pick\n" \
-                       "      return chosen == false ? \"\" : \"layouts/\#{chosen}\"\n    end\n    super\n  end\n"
+  assert_includes out, "  def controller_layout(layout_action__)\n    if layout_action__ == \"new\"\n      layout_chosen__ = pick\n" \
+                       "      return super if layout_chosen__.nil?\n" \
+                       "      return layout_chosen__ == false ? \"\" : \"layouts/\#{layout_chosen__}\"\n    end\n    super\n  end\n"
 end
 
 test "a layout declared in a concern applies, at the include's position" do
@@ -650,7 +652,7 @@ test "a layout declared in a concern applies, at the include's position" do
   source = "class ArticlesController < ApplicationController\n  layout \"admin\", only: [:index]\n  include Framed\n  layout false\nend\n"
   articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", source)
   out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, articles], Cybertrain::Gen::JobsPageSpec.new("", ""), [framed], prices_helpers)
-  assert_includes out, "  def controller_layout(action)\n    if action == \"index\"\n      return \"layouts/admin\"\n    end\n" \
+  assert_includes out, "  def controller_layout(layout_action__)\n    if layout_action__ == \"index\"\n      return \"layouts/admin\"\n    end\n" \
                        "    \"layouts/frame\"\n  end\n"
   # A concern an ancestor includes is the ancestor's: reached through super.
   base = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/application_controller.rb",
@@ -659,19 +661,77 @@ test "a layout declared in a concern applies, at the include's position" do
                                                       "class ArticlesController < ApplicationController\n  include Framed\nend\n")
   out = Cybertrain::Gen::ControllersEmitter.emit([base, child], Cybertrain::Gen::JobsPageSpec.new("", ""), [framed], prices_helpers)
   assert_includes out, "class ApplicationController < Cybertrain::Controller\n  def view_assigns\n    {}\n  end\n\n" \
-                       "  def controller_layout(action)\n    \"layouts/frame\"\n  end\nend\n"
+                       "  def controller_layout(layout_action__)\n    \"layouts/frame\"\n  end\nend\n"
   assert_includes out, "class ArticlesController < ApplicationController\n  def view_assigns\n    {}\n  end\nend\n"
 end
 
 test "a layout line gen cannot read is refused with its place" do
-  source = "class ArticlesController < ApplicationController\n  layout -> { \"x\" }\nend\n"
-  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", source) }
-  assert_equal "app/controllers/articles_controller.rb:2: layout takes a name (layout \"admin\"), false, or a method's name " \
-               "(layout :choose_layout), then only: or except:", msg
+  ["layout -> { \"x\" }", "layout(-> { \"x\" })", "layout ADMIN_LAYOUT", "layout \"admin\", if: :x", "layout(\"admin\" + x)"].each do |bad|
+    source = "class ArticlesController < ApplicationController\n  #{bad}\nend\n"
+    msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", source) }
+    assert_equal "app/controllers/articles_controller.rb:2: layout takes a name (layout \"admin\"), false, or a method's name " \
+                 "(layout :choose_layout), then only: or except:", msg
+  end
   inside = "module Framed\n  extend ActiveSupport::Concern\n\n  included do\n    layout nil\n  end\nend\n"
   msg = assert_raises("ArgumentError") { concern("app/controllers/concerns/framed.rb", inside) }
   assert_equal "app/controllers/concerns/framed.rb:5: layout takes a name (layout \"admin\"), false, or a method's name " \
                "(layout :choose_layout), then only: or except:", msg
+end
+
+LOCAL_LAYOUT_SOURCE = <<~'RUBY'
+  class ArticlesController < ApplicationController
+    layout "admin" # the admin's layout, "quoted"
+    layout('print', only: %i[print export]) # it's printable
+
+    def choose_layout
+      layout = request.header("Turbo-Frame") ? "frame" : "application"
+      layout ||= "a"
+      layout if layout
+      layout, b = layout.split("/")
+      layout += b.to_s
+      layout
+    end
+
+    private def pick(
+      layout = "x"
+    )
+      layout
+    end
+
+    def one = layout_for(1)
+  end
+RUBY
+
+test "a local named layout in a method is no declaration; a layout line's comment may hold quotes" do
+  info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", LOCAL_LAYOUT_SOURCE)
+  assert_equal ["admin", "print"], info.layouts.map { |d| d.layout_name }
+  assert_equal [[], ["print", "export"]], info.layouts.map { |d| d.layout_only }
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, info], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
+  assert_includes out, "  def controller_layout(layout_action__)\n    \"layouts/admin\"\n  end\n"
+  # Outside a def too, the line needs an argument after `layout`.
+  ["layout", "layout ||= \"a\"", "layout if x", "layout, b = x", "layout = x", "layout += b", "layout.strip"].each do |local|
+    assert_nil Cybertrain::Gen::ControllerScan.layout_decl("app/controllers/a.rb", 1, "    #{local}\n")
+  end
+  # The same lines in a concern's included block are read the same way.
+  framed = concern("app/controllers/concerns/framed.rb",
+                   "module Framed\n  extend ActiveSupport::Concern\n\n  included do\n    layout \"frame\" # frame's\n  end\nend\n")
+  assert_equal ["frame"], framed.concern_layouts.map { |d| d.layout_name }
+end
+
+test "the method form's locals shadow no method: layout :chosen and layout :action call the method" do
+  source = "class ArticlesController < ApplicationController\n  layout :action, only: [:show]\n  layout :chosen\nend\n"
+  info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", source)
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, info], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
+  assert_includes out, "  def controller_layout(layout_action__)\n" \
+                       "    if layout_action__ == \"show\"\n" \
+                       "      layout_chosen__ = action\n" \
+                       "      return super if layout_chosen__.nil?\n" \
+                       "      return layout_chosen__ == false ? \"\" : \"layouts/\#{layout_chosen__}\"\n" \
+                       "    end\n" \
+                       "    layout_chosen2__ = chosen\n" \
+                       "    return super if layout_chosen2__.nil?\n" \
+                       "    layout_chosen2__ == false ? \"\" : \"layouts/\#{layout_chosen2__}\"\n" \
+                       "  end\n"
 end
 
 Cybertrain::Test.run!

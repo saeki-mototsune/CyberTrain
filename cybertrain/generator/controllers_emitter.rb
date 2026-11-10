@@ -127,22 +127,28 @@ module Cybertrain
       # a conditional one (`only:` / `except:`) behind its `if`, up to the
       # first that applies to every action (what follows it is never
       # reached), else `super`. `layout "x"` is "layouts/x", `layout false`
-      # "", and `layout :m` m's value: a name, or false for none.
+      # "", and `layout :m` m's value: a name, false for none, or nil for
+      # the inherited layout.
+      # controller_layout's parameter and the method form's locals: names
+      # no application method has, so `layout :action` or `layout :chosen`
+      # calls the method.
+      LAYOUT_ACTION = "layout_action__"
+
       def self.layout_source(info, infos, concerns)
         decls = layout_decls(info, infos, concerns)
         return "" if decls.empty?
 
         out = +""
         out << "\n"
-        out << "  def controller_layout(action)\n"
+        out << "  def controller_layout(#{LAYOUT_ACTION})\n"
         always = false
-        # One local per method declaration: chosen, chosen2, ...
+        # One local per method declaration: layout_chosen__, layout_chosen2__, ...
         methods = 0
         decls.each do |d|
           next if always
 
           methods += 1 unless d.layout_method.empty?
-          local = methods < 2 ? "chosen" : "chosen#{methods}"
+          local = methods < 2 ? "layout_chosen__" : "layout_chosen#{methods}__"
           lines = layout_value_lines(d, local)
           if d.unconditional?
             lines.each { |line| out << "    #{line}\n" }
@@ -189,19 +195,21 @@ module Cybertrain
       # for except: (only: wins when a line has both, as in Rails).
       def self.layout_condition(decl)
         unless decl.layout_only.empty?
-          return decl.layout_only.map { |a| "action == #{HelpersEmitter.literal(a)}" }.join(" || ")
+          return decl.layout_only.map { |a| "#{LAYOUT_ACTION} == #{HelpersEmitter.literal(a)}" }.join(" || ")
         end
 
-        decl.layout_except.map { |a| "action != #{HelpersEmitter.literal(a)}" }.join(" && ")
+        decl.layout_except.map { |a| "#{LAYOUT_ACTION} != #{HelpersEmitter.literal(a)}" }.join(" && ")
       end
 
-      # The lines computing a declaration's layout, the value last.
+      # The lines computing a declaration's layout, the value last. A
+      # layout method's nil is the inherited layout (`super`), as in Rails.
       def self.layout_value_lines(decl, local)
         lines = Array.new(0) { "" }
         if decl.layout_method.empty?
           lines << (decl.layout_name.empty? ? "\"\"" : HelpersEmitter.literal("layouts/#{decl.layout_name}"))
         else
           lines << "#{local} = #{decl.layout_method}"
+          lines << "return super if #{local}.nil?"
           lines << "#{local} == false ? \"\" : \"layouts/\#{#{local}}\""
         end
         lines

@@ -80,7 +80,7 @@ end
 class FramedController < PostsController
   def controller_path = "posts"
 
-  def controller_layout(action)
+  def controller_layout(layout_action__)
     "layouts/frame"
   end
 end
@@ -96,12 +96,14 @@ class PickedController < PostsController
 
   def pick
     return false if action_name == "bare_show"
+    return nil if action_name == "index"
     "frame"
   end
 
-  def controller_layout(action)
-    chosen = pick
-    chosen == false ? "" : "layouts/#{chosen}"
+  def controller_layout(layout_action__)
+    layout_chosen__ = pick
+    return super if layout_chosen__.nil?
+    layout_chosen__ == false ? "" : "layouts/#{layout_chosen__}"
   end
 end
 
@@ -119,8 +121,8 @@ class AdminPostsController < PostsController
     render :show, layout: false
   end
 
-  def controller_layout(action)
-    if action == "index"
+  def controller_layout(layout_action__)
+    if layout_action__ == "index"
       return "layouts/admin"
     end
     super
@@ -136,9 +138,10 @@ class TurboPostsController < PostsController
     "application"
   end
 
-  def controller_layout(action)
-    chosen = frame_or_application
-    chosen == false ? "" : "layouts/#{chosen}"
+  def controller_layout(layout_action__)
+    layout_chosen__ = frame_or_application
+    return super if layout_chosen__.nil?
+    layout_chosen__ == false ? "" : "layouts/#{layout_chosen__}"
   end
 end
 
@@ -270,6 +273,13 @@ test "layout :method returning false renders bare, returning \"frame\" uses it" 
   framed = PickedController.new(build_ctx)
   framed.process(:show) { |x| x.show }
   assert_equal FRAMED_SHOW, framed.response.body
+end
+
+test "layout :method returning nil uses the inherited layout" do
+  c = PickedController.new(build_ctx)
+  c.process(:index) { |x| x.index }
+  assert c.response.body.start_with?("<!DOCTYPE html>\n"), c.response.body
+  assert_equal "layouts/application", c.controller_layout("index")
 end
 
 test "layout \"admin\", only: [:index] applies to index only" do

@@ -1056,6 +1056,7 @@ module Admin
   #         concern_insert_at(1, 0)
   #         before_action :require_admin
   #         helper_method :admin?
+  #         layout "admin", except: [:show]
   #         concern_insert_done
   #       end
   #     end
@@ -1065,8 +1066,10 @@ module Admin
   # `view_assigns`; for the `helper_method` names of the class and of the
   # concerns it includes, it writes {#helper_method?} and
   # {#call_helper_method}; for the `layout` lines of the class and of its
-  # concerns' `included` blocks (here `layout "admin", except: [:show]`
-  # and `layout :choose_layout`), it writes {#controller_layout}.
+  # concerns' `included` blocks, it writes {#controller_layout} (here
+  # AdminGate's `layout "admin", except: [:show]`, then the class's own
+  # `layout :choose_layout` below the `include`, `choose_layout` being a
+  # method of the controller that returns a layout name, false or nil).
   # @api public
   class ArticlesController < ApplicationController
     # Forwards to {AdminGate.per_page}: `self.class.per_page` in an action.
@@ -1078,16 +1081,18 @@ module Admin
     # concern's at its `include` line), the first that applies to the
     # action winning, else the parent's (`super`). `layout "x"` is
     # `"layouts/x"`, `layout false` `""` (none), and `layout :m` m's value
-    # (a name, or false for none).
-    # @param action [String] the action's name
+    # (a name; false for none; nil for the parent's). The parameter and
+    # locals have names no application method has.
+    # @param layout_action__ [String] the action's name
     # @return [String] the layout's name, `""` for none
     # @api public
-    def controller_layout(action)
-      if action != "show"
+    def controller_layout(layout_action__)
+      if layout_action__ != "show"
         return "layouts/admin"
       end
-      chosen = choose_layout
-      chosen == false ? "" : "layouts/#{chosen}"
+      layout_chosen__ = choose_layout
+      return super if layout_chosen__.nil?
+      layout_chosen__ == false ? "" : "layouts/#{layout_chosen__}"
     end
 
     # Whether a template's receiverless call `name` is one of this
