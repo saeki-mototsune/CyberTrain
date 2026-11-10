@@ -7,6 +7,7 @@ module Auditing
 
 
 
+
   def audit
     @audited_at = "now"
   end

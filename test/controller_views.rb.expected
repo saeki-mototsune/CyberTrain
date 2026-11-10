@@ -7,4 +7,9 @@ ok   render locals: override view_assigns
 ok   a missing template propagates as Cybertrain::Template::MissingTemplate
 ok   no layout is applied when the layout file does not exist
 ok   controller_path and view_env
-9 tests, 26 assertions, 0 failures
+ok   layout by name
+ok   layout :method returning false renders bare, returning "frame" uses it
+ok   layout "admin", only: [:index] applies to index only
+ok   render layout: "frame" per call wins; render layout: false is bare
+ok   a Turbo-Frame request picks the frame layout through a two-line method
+14 tests, 39 assertions, 0 failures

@@ -1064,13 +1064,31 @@ module Admin
   # `run_callback` table and the ivars its methods assign to
   # `view_assigns`; for the `helper_method` names of the class and of the
   # concerns it includes, it writes {#helper_method?} and
-  # {#call_helper_method}.
+  # {#call_helper_method}; for the `layout` lines of the class and of its
+  # concerns' `included` blocks (here `layout "admin", except: [:show]`
+  # and `layout :choose_layout`), it writes {#controller_layout}.
   # @api public
   class ArticlesController < ApplicationController
     # Forwards to {AdminGate.per_page}: `self.class.per_page` in an action.
     # @return [Integer]
     # @api public
     def self.per_page(...) = AdminGate.per_page(...)
+
+    # The layout the action renders in: the `layout` lines in order (a
+    # concern's at its `include` line), the first that applies to the
+    # action winning, else the parent's (`super`). `layout "x"` is
+    # `"layouts/x"`, `layout false` `""` (none), and `layout :m` m's value
+    # (a name, or false for none).
+    # @param action [String] the action's name
+    # @return [String] the layout's name, `""` for none
+    # @api public
+    def controller_layout(action)
+      if action != "show"
+        return "layouts/admin"
+      end
+      chosen = choose_layout
+      chosen == false ? "" : "layouts/#{chosen}"
+    end
 
     # Whether a template's receiverless call `name` is one of this
     # controller's helper methods (`helper_method :admin?`, spec 4.3);

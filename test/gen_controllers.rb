@@ -582,4 +582,96 @@ test "a helper_method whose def a template cannot fill (*rest, ...) is refused w
                "templates pass values by position or keyword", msg
 end
 
+# --- layouts (V-9) -----------------------------------------------------------
+
+LAYOUTS_SOURCE = <<~'RUBY'
+  class ArticlesController < ApplicationController
+    layout "admin", only: [:index, :show]
+    layout(false, except: :edit)
+    # layout "commented"
+    layout :frame_or_application
+    layout "never"
+
+    def frame_or_application
+      return "frame" if request.header("Turbo-Frame")
+      "application"
+    end
+  end
+RUBY
+
+test "scan_source reads layout lines: a name, false, a method, only: and except:" do
+  info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", LAYOUTS_SOURCE)
+  assert_equal ["admin", "", "", "never"], info.layouts.map { |d| d.layout_name }
+  assert_equal ["", "", "frame_or_application", ""], info.layouts.map { |d| d.layout_method }
+  assert_equal [["index", "show"], [], [], []], info.layouts.map { |d| d.layout_only }
+  assert_equal [[], ["edit"], [], []], info.layouts.map { |d| d.layout_except }
+  assert_equal [2, 3, 5, 6], info.layouts.map { |d| d.layout_line }
+  assert_equal [], app_controller.layouts
+end
+
+test "emit writes controller_layout: the declarations in order, the first that applies wins" do
+  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", LAYOUTS_SOURCE)
+  expected = <<~'RUBY'
+    class ArticlesController < ApplicationController
+      def view_assigns
+        {}
+      end
+
+      def controller_layout(action)
+        if action == "index" || action == "show"
+          return "layouts/admin"
+        end
+        if action != "edit"
+          return ""
+        end
+        chosen = frame_or_application
+        chosen == false ? "" : "layouts/#{chosen}"
+      end
+    end
+  RUBY
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, articles], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
+  assert_includes out, expected
+  refute out.include?("never"), "a declaration after one that always applies is never reached"
+  refute out.include?("class ApplicationController < Cybertrain::Controller\n  def view_assigns\n    {}\n  end\n\n  def controller_layout"),
+         "no layout, no method"
+  # Conditions only: the parent's layout for the other actions.
+  only = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
+                                                     "class ArticlesController < ApplicationController\n  layout :pick, only: [:new]\nend\n")
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, only], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
+  assert_includes out, "  def controller_layout(action)\n    if action == \"new\"\n      chosen = pick\n" \
+                       "      return chosen == false ? \"\" : \"layouts/\#{chosen}\"\n    end\n    super\n  end\n"
+end
+
+test "a layout declared in a concern applies, at the include's position" do
+  framed = concern("app/controllers/concerns/framed.rb",
+                   "module Framed\n  extend ActiveSupport::Concern\n\n  included do\n    layout \"frame\"\n  end\nend\n")
+  assert_equal ["frame"], framed.concern_layouts.map { |d| d.layout_name }
+  assert_equal [5], framed.concern_layouts.map { |d| d.layout_line }
+  source = "class ArticlesController < ApplicationController\n  layout \"admin\", only: [:index]\n  include Framed\n  layout false\nend\n"
+  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", source)
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, articles], Cybertrain::Gen::JobsPageSpec.new("", ""), [framed], prices_helpers)
+  assert_includes out, "  def controller_layout(action)\n    if action == \"index\"\n      return \"layouts/admin\"\n    end\n" \
+                       "    \"layouts/frame\"\n  end\n"
+  # A concern an ancestor includes is the ancestor's: reached through super.
+  base = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/application_controller.rb",
+                                                     "class ApplicationController < Cybertrain::Controller\n  include Framed\nend\n")
+  child = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
+                                                      "class ArticlesController < ApplicationController\n  include Framed\nend\n")
+  out = Cybertrain::Gen::ControllersEmitter.emit([base, child], Cybertrain::Gen::JobsPageSpec.new("", ""), [framed], prices_helpers)
+  assert_includes out, "class ApplicationController < Cybertrain::Controller\n  def view_assigns\n    {}\n  end\n\n" \
+                       "  def controller_layout(action)\n    \"layouts/frame\"\n  end\nend\n"
+  assert_includes out, "class ArticlesController < ApplicationController\n  def view_assigns\n    {}\n  end\nend\n"
+end
+
+test "a layout line gen cannot read is refused with its place" do
+  source = "class ArticlesController < ApplicationController\n  layout -> { \"x\" }\nend\n"
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", source) }
+  assert_equal "app/controllers/articles_controller.rb:2: layout takes a name (layout \"admin\"), false, or a method's name " \
+               "(layout :choose_layout), then only: or except:", msg
+  inside = "module Framed\n  extend ActiveSupport::Concern\n\n  included do\n    layout nil\n  end\nend\n"
+  msg = assert_raises("ArgumentError") { concern("app/controllers/concerns/framed.rb", inside) }
+  assert_equal "app/controllers/concerns/framed.rb:5: layout takes a name (layout \"admin\"), false, or a method's name " \
+               "(layout :choose_layout), then only: or except:", msg
+end
+
 Cybertrain::Test.run!

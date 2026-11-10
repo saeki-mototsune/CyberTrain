@@ -25,4 +25,8 @@ ok   emit writes helper_method? and call_helper_method for the declared names
 ok   a helper_method declared in a concern's included block dispatches from the includer
 ok   a helper_method named like a framework helper, an app helper, or an undefined method is refused with its message
 ok   a helper_method whose def a template cannot fill (*rest, ...) is refused with the def's place
-27 tests, 95 assertions, 0 failures
+ok   scan_source reads layout lines: a name, false, a method, only: and except:
+ok   emit writes controller_layout: the declarations in order, the first that applies wins
+ok   a layout declared in a concern applies, at the include's position
+ok   a layout line gen cannot read is refused with its place
+31 tests, 114 assertions, 0 failures

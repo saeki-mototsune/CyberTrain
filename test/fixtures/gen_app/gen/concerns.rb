@@ -30,6 +30,7 @@ class GatedController
   # Auditing (include Auditing at app/controllers/gated_controller.rb:6)
   concern_insert_at(3, 0)
   before_action :audit
+  layout "audit", except: [:show]
   concern_insert_done
 end
 

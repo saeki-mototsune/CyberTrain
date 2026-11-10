@@ -122,6 +122,10 @@ module Cybertrain
     # mix is. (test/controller_status.rb)
     DEFAULT_STATUS = [200, :ok][0]
     DEFAULT_REDIRECT_STATUS = [302, :found][0]
+    # render's `layout:` default, `true` (the controller's layout), boxed
+    # the same way: one call site passing `false` and another a String must
+    # both reach a parameter that can hold either.
+    DEFAULT_LAYOUT = [true, ""][0]
     # What run_before_callbacks consults when no controller declared a skip:
     # seeded with the element type and emptied (spikes/NOTES.md rule 9).
     NO_SKIPS = Array.new(0) { Callback.new(:skip, nil, nil, [], [], -1) }
@@ -620,6 +624,25 @@ module Cybertrain
       path
     end
 
+    # The layout an action's HTML renders in: `"layouts/application"` (the
+    # configured {Views.layout_name}) here, and in a controller with
+    # `layout` lines the one they choose for the action. gen/controllers.rb
+    # writes the override from them, in order, the first that applies
+    # winning, else `super`:
+    #
+    #     layout "admin", only: [:index]   # "layouts/admin" for index
+    #     layout false                     # "" (no layout)
+    #     layout :choose_layout            # its value: a name, or false
+    #
+    # A concern's `included` block may declare one too; it counts at its
+    # `include` line.
+    # @param action [String] the action's name
+    # @return [String] the layout's name, `""` for none
+    # @api public
+    def controller_layout(action)
+      Views.layout_name
+    end
+
     # Renders <controller_path>/<name> with the process-wide Views engine.
     #
     # For `format: :html` (the default) the template is <name>.html.erb,
@@ -629,12 +652,13 @@ module Cybertrain
     # (layouts are HTML), sent as {Request.mime_type}(format).
     # @param name [String] the template's name in this controller's directory
     # @param locals [Hash{Symbol => Object}] extra template variables
-    # @param layout [String] the layout's name, `""` for none
+    # @param layout [String] the layout's name, `""` for none; by default
+    #   the action's ({#controller_layout})
     # @param format [Symbol] the template's format
     # @return [nil]
     # @raise [Template::MissingTemplate] when the template does not exist
     # @api private
-    def render_template(name, locals = {}, layout: Views.layout_name, format: :html)
+    def render_template(name, locals = {}, layout: controller_layout(@action_name), format: :html)
       engine = Views.engine
       if engine.nil?
         message = "no template #{name} for #{self.class.name}"
@@ -710,9 +734,11 @@ module Cybertrain
     # {#respond_to} to answer each format differently.
     #
     # - `template`: `app/views/<controller_path>/<template>.html.erb`, always
-    #   this controller's directory, inside the layout
-    #   (`app/views/layouts/application.html.erb`, when it exists) unless
-    #   `layout: false`.
+    #   this controller's directory, inside the controller's layout
+    #   ({#controller_layout}: `app/views/layouts/application.html.erb`
+    #   unless a `layout` line chooses another), when it exists. `layout:
+    #   "admin"` uses `app/views/layouts/admin.html.erb` instead, `layout:
+    #   false` none.
     # - `plain:` the String as `text/plain`.
     # - `html:` as `text/html`; a plain String is escaped, a
     #   {SafeString} is sent as it is.
@@ -727,6 +753,7 @@ module Cybertrain
     # @example
     #   render :new, status: :unprocessable_entity
     #   render plain: "Not Found", status: :not_found
+    #   render :show, layout: "print"
     #   render json: { ok: true }, status: :created
     #   render json: @article.to_json
     # @param template [Symbol, String, nil] an action's template, `:new`
@@ -737,14 +764,15 @@ module Cybertrain
     # @param status [Integer, Symbol] see {STATUS_SYMBOLS}; 200 by default
     # @param content_type [String, nil] replaces the content type
     # @param locals [Hash{Symbol => Object}] extra template variables
-    # @param layout [Boolean] false renders a template without the layout
+    # @param layout [Boolean, String] `true` (the default): the
+    #   controller's layout; `false`: none; `"x"`: `layouts/x`
     # @return [nil]
     # @raise [ArgumentError] when not exactly one of template, `plain:`,
     #   `html:`, `json:`, `partial:` is given, or the status is unknown
     # @raise [Template::MissingTemplate] when the template does not exist
     # @api public
     def render(template = nil, plain: nil, html: nil, json: nil, status: DEFAULT_STATUS, content_type: nil,
-               partial: nil, locals: {}, layout: true)
+               partial: nil, locals: {}, layout: DEFAULT_LAYOUT)
       given = 0
       given += 1 unless template.nil?
       given += 1 unless plain.nil?
@@ -766,7 +794,13 @@ module Cybertrain
       elsif !partial.nil?
         render_partial(partial.to_s, locals)
       else
-        render_template(template.to_s, locals, layout: layout ? Views.layout_name : "")
+        chosen = ""
+        if layout == true
+          chosen = controller_layout(@action_name)
+        elsif layout != false
+          chosen = "layouts/#{layout}"
+        end
+        render_template(template.to_s, locals, layout: chosen)
       end
       @response.content_type = content_type unless content_type.nil?
       @response.performed!

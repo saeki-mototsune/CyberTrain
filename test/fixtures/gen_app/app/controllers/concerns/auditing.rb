@@ -5,6 +5,7 @@ module Auditing
 
   included do
     before_action :audit
+    layout "audit", except: [:show]
   end
 
   def audit

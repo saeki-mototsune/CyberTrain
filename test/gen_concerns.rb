@@ -100,6 +100,16 @@ test "a concern's method overrides the superclass's of the same name" do
   assert_response client.get("/gated/1"), :not_found
 end
 
+test "a layout declared in a concern's included block applies to the including controller" do
+  # Auditing's `layout "audit", except: [:show]`, through gen/controllers.rb's
+  # GatedController#controller_layout; PostsController keeps the default.
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/gated/1", { "host" => "example.test" }, ""))
+  gated = GatedController.new(ctx)
+  assert_equal "layouts/audit", gated.controller_layout("index")
+  assert_equal "layouts/application", gated.controller_layout("show")
+  assert_equal "layouts/application", PostsController.new(ctx).controller_layout("index")
+end
+
 test "class_methods are callable through self.class" do
   assert_equal 50, GatedController.per_page
   assert_equal 50, AdminGate.per_page

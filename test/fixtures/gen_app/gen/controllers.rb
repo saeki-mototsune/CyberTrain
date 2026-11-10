@@ -36,6 +36,13 @@ class GatedController < ApplicationController
     end
   end
 
+  def controller_layout(action)
+    if action != "show"
+      return "layouts/audit"
+    end
+    super
+  end
+
   def helper_method?(name)
     case name
     when "admin?" then true

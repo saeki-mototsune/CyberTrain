@@ -72,6 +72,76 @@ class PostsController < Cybertrain::Controller
   end
 end
 
+# Per-controller layouts (V-9), each controller_layout written in the shape
+# gen/controllers.rb emits for its `layout` line; their templates are
+# PostsController's.
+
+# layout "frame"
+class FramedController < PostsController
+  def controller_path = "posts"
+
+  def controller_layout(action)
+    "layouts/frame"
+  end
+end
+
+# layout :pick
+class PickedController < PostsController
+  def controller_path = "posts"
+
+  def bare_show
+    @post = Post.new(7, "Picked")
+    render :show
+  end
+
+  def pick
+    return false if action_name == "bare_show"
+    "frame"
+  end
+
+  def controller_layout(action)
+    chosen = pick
+    chosen == false ? "" : "layouts/#{chosen}"
+  end
+end
+
+# layout "admin", only: [:index]
+class AdminPostsController < PostsController
+  def controller_path = "posts"
+
+  def framed_show
+    @post = Post.new(7, "Per call")
+    render :show, layout: "frame"
+  end
+
+  def bare_show
+    @post = Post.new(7, "Bare")
+    render :show, layout: false
+  end
+
+  def controller_layout(action)
+    if action == "index"
+      return "layouts/admin"
+    end
+    super
+  end
+end
+
+# layout :frame_or_application
+class TurboPostsController < PostsController
+  def controller_path = "posts"
+
+  def frame_or_application
+    return "frame" if request.header("Turbo-Frame")
+    "application"
+  end
+
+  def controller_layout(action)
+    chosen = frame_or_application
+    chosen == false ? "" : "layouts/#{chosen}"
+  end
+end
+
 Cybertrain::Views.configure("test/fixtures/views", cache: true)
 Cybertrain::Views.url_resolver = lambda do |name, args, options|
   case name
@@ -85,8 +155,8 @@ Cybertrain::Views.url_resolver = lambda do |name, args, options|
   end
 end
 
-def build_ctx
-  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/posts/7", { "host" => "example.test" }, ""))
+def build_ctx(headers = { "host" => "example.test" })
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/posts/7", headers, ""))
   flash = Cybertrain::Flash.new
   flash.set_now("notice", "Post <saved>")
   ctx.flash = flash
@@ -181,6 +251,57 @@ test "controller_path and view_env" do
   assert_equal 1, env["x"]
   assert env.key?("post")
   assert_equal 0, Cybertrain::Controller.new(build_ctx).view_assigns.size
+end
+
+FRAMED_SHOW = "<div class=\"frame\">\n#{SHOW_BODY}</div>\n"
+
+test "layout by name" do
+  c = FramedController.new(build_ctx)
+  c.process(:show) { |x| x.show }
+  assert_equal FRAMED_SHOW, c.response.body
+  assert_equal "layouts/frame", c.controller_layout("show")
+  assert_equal "layouts/application", PostsController.new(build_ctx).controller_layout("show")
+end
+
+test "layout :method returning false renders bare, returning \"frame\" uses it" do
+  bare = PickedController.new(build_ctx)
+  bare.process(:bare_show) { |x| x.bare_show }
+  assert_equal "\n<p class=\"notice\">Post &lt;saved&gt;</p>\n<h1>Picked</h1>\n<a href=\"/posts/7/edit\">Edit</a>\n", bare.response.body
+  framed = PickedController.new(build_ctx)
+  framed.process(:show) { |x| x.show }
+  assert_equal FRAMED_SHOW, framed.response.body
+end
+
+test "layout \"admin\", only: [:index] applies to index only" do
+  index = AdminPostsController.new(build_ctx)
+  index.process(:index) { |x| x.index }
+  assert index.response.body.start_with?("<main class=\"admin\">\n<h1>Posts</h1>"), index.response.body
+  show = AdminPostsController.new(build_ctx)
+  show.process(:show) { |x| x.show }
+  assert show.response.body.start_with?("<!DOCTYPE html>"), show.response.body
+end
+
+test "render layout: \"frame\" per call wins; render layout: false is bare" do
+  framed = AdminPostsController.new(build_ctx)
+  framed.process(:index) { |x| x.framed_show }
+  assert framed.response.body.start_with?("<div class=\"frame\">\n"), framed.response.body
+  assert_includes framed.response.body, "<h1>Per call</h1>"
+  bare = AdminPostsController.new(build_ctx)
+  bare.process(:index) { |x| x.bare_show }
+  assert_equal "\n<p class=\"notice\">Post &lt;saved&gt;</p>\n<h1>Bare</h1>\n<a href=\"/posts/7/edit\">Edit</a>\n", bare.response.body
+  # layout: true (the default) is the controller's own layout.
+  own = AdminPostsController.new(build_ctx)
+  own.process(:index) { |x| x.new_action }
+  assert own.response.body.start_with?("<main class=\"admin\">\n<h1>New post</h1>"), own.response.body
+end
+
+test "a Turbo-Frame request picks the frame layout through a two-line method" do
+  framed = TurboPostsController.new(build_ctx({ "host" => "example.test", "turbo-frame" => "post_7" }))
+  framed.process(:show) { |x| x.show }
+  assert_equal FRAMED_SHOW, framed.response.body
+  page = TurboPostsController.new(build_ctx)
+  page.process(:show) { |x| x.show }
+  assert page.response.body.start_with?("<!DOCTYPE html>"), page.response.body
 end
 
 Cybertrain::Test.run!

@@ -3,11 +3,33 @@ require "cybertrain/generator/helper_scan"
 
 module Cybertrain
   module Gen
+    # One `layout` line of a controller or of a concern's `included` block:
+    # layout_name is the name (`layout "admin"`: "admin"; `layout false`
+    # and the method form: ""), layout_method the method of `layout
+    # :choose_layout` ("" otherwise), layout_only / layout_except the
+    # action names of `only:` / `except:`, layout_line its line number.
+    class LayoutDecl
+      attr_reader :layout_name, :layout_method, :layout_only, :layout_except, :layout_line
+
+      def initialize(layout_name, layout_method, layout_only, layout_except, layout_line)
+        @layout_name = layout_name
+        @layout_method = layout_method
+        @layout_only = layout_only
+        @layout_except = layout_except
+        @layout_line = layout_line
+      end
+
+      # Whether it applies to every action.
+      def unconditional?
+        @layout_only.empty? && @layout_except.empty?
+      end
+    end
+
     # What the lexical scan found in one controller file.
     class ControllerInfo
       attr_reader :file, :class_name, :superclass_name, :ivars, :callbacks,
                   :includes, :include_positions, :rescue_positions, :include_lines,
-                  :method_names, :method_lines, :module_prefix, :helper_methods, :defs, :def_errors
+                  :method_names, :method_lines, :module_prefix, :helper_methods, :defs, :def_errors, :layouts
 
       # includes: the module names of the class's `include` lines, in order.
       # include_positions / rescue_positions: per include, the count of
@@ -21,7 +43,8 @@ module Cybertrain
       # parameters when HelperScan.parse_def reads them, else the name and
       # line); def_errors: per def, HelperScan's message when it could not
       # read the parameters ("" when it could), so a helper_method naming
-      # that def is refused with it.
+      # that def is refused with it. layouts: a LayoutDecl per `layout`
+      # line of the class, in order.
       def initialize(file, class_name, superclass_name, ivars, callbacks,
                      includes = Array.new(0) { "" }, include_positions = Array.new(0) { 0 },
                      rescue_positions = Array.new(0) { 0 }, include_lines = Array.new(0) { 0 },
@@ -41,6 +64,7 @@ module Cybertrain
         @helper_methods = Array.new(0) { "" }
         @defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
         @def_errors = Array.new(0) { "" }
+        @layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
       end
 
       # A superclass written bare inside a module, once every controller is
@@ -82,6 +106,12 @@ module Cybertrain
       SYMBOL_ARG = /\A:(\w+[?!]?)\s*,?\s*/
       RESCUE_WITH = /\A\s*rescue_from\b.*\bwith:\s*:(\w+[?!]?)/
       HELPER_METHOD_CALL = /\A\s*helper_method\b\s*\(?\s*/
+      LAYOUT_CALL = /\A\s*layout(?![\w?!:.])(?!\s*[-+*\/|&]?=[^=~>])\s*\(?\s*/
+      # What follows `layout`: "admin" / 'admin', false, or :choose_layout.
+      LAYOUT_ARG = /\A(?:"([^"'\#\\]*)"|'([^"'\#\\]*)'|(false)|:([a-z_]\w*[?!]?))\s*/
+      # `only: [:a, :b]`, `except: %i[a b]`, `only: :a`.
+      LAYOUT_OPTION = /\A,\s*(only|except):\s*(\[[^\]]*\]|%i\[[^\]]*\]|:\w+[?!]?)\s*/
+      LAYOUT_UNREADABLE = "layout takes a name (layout \"admin\"), false, or a method's name (layout :choose_layout), then only: or except:"
 
       # nil when the source has no `class X < Y` line. When a file defines
       # several classes, the one named after the file wins
@@ -102,6 +132,7 @@ module Cybertrain
         helper_methods = Array.new(0) { "" }
         defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
         def_errors = Array.new(0) { "" }
+        layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
         lines = source.lines
         # The open modules (full names) and their indentation.
         modules = Array.new(0) { "" }
@@ -150,6 +181,7 @@ module Cybertrain
               helper_methods = Array.new(0) { "" }
               defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
               def_errors = Array.new(0) { "" }
+              layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
               callbacks_above = 0
               rescues_above = 0
               class_indent = indent unless stripped.include?(";")
@@ -173,6 +205,8 @@ module Cybertrain
               defs << def_at(file, lines, number, def_errors)
             end
             helper_method_names(line).each { |n| helper_methods << n unless helper_methods.include?(n) }
+            decl = layout_decl(file, number, line)
+            layouts << decl unless decl.nil?
           end
           ivar_names(line).each { |n| ivars << n unless ivars.include?(n) }
           callback_names(line).each { |n| callbacks << n unless callbacks.include?(n) }
@@ -184,6 +218,7 @@ module Cybertrain
         helper_methods.each { |n| info.helper_methods << n }
         defs.each { |d| info.defs << d }
         def_errors.each { |e| info.def_errors << e }
+        layouts.each { |d| info.layouts << d }
         info
       end
 
@@ -224,6 +259,42 @@ module Cybertrain
           rest = rest[s.end(0), rest.size - s.end(0)].to_s
         end
         names
+      end
+
+      # The LayoutDecl of a `layout` line (line `number` of `file`); nil for
+      # any other line. Raises ArgumentError, naming the line, for a
+      # `layout` call gen cannot read (`layout nil`, a lambda, a constant).
+      def self.layout_decl(file, number, line)
+        m = line.match(LAYOUT_CALL)
+        return nil unless m
+
+        msg = "#{app_path(file)}:#{number}: #{LAYOUT_UNREADABLE}"
+        rest = line[m.end(0), line.size - m.end(0)].to_s.strip
+        rest = rest.sub(/\s*#[^"']*\z/, "")
+        rest = rest[0, rest.size - 1].to_s.strip if line.match?(/\A\s*layout\s*\(/) && rest.end_with?(")")
+        a = rest.match(LAYOUT_ARG)
+        raise ArgumentError, msg unless a
+
+        name = a[1].to_s
+        name = a[2].to_s if a[1].nil?
+        method = a[4].to_s
+        only = Array.new(0) { "" }
+        except = Array.new(0) { "" }
+        rest = rest[a.end(0), rest.size - a.end(0)].to_s
+        while (o = rest.match(LAYOUT_OPTION))
+          list = o[2].to_s
+          names = list.scan(/[a-z_]\w*[?!]?/)
+          names.shift if list.start_with?("%i")
+          if o[1].to_s == "only"
+            names.each { |n| only << n.to_s }
+          else
+            names.each { |n| except << n.to_s }
+          end
+          rest = rest[o.end(0), rest.size - o.end(0)].to_s
+        end
+        raise ArgumentError, msg unless rest.strip.empty?
+
+        LayoutDecl.new(name, method, only, except, number)
       end
 
       # Every controller under dir (recursively), sorted by file path. The
