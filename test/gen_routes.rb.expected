@@ -36,6 +36,7 @@ ok   on: :collection and on: :member inside resources
 ok   format: false on a route, resources, resource and root
 ok   redirect routes
 ok   redirect refuses a status that is not 3xx and a %{name} the pattern lacks
+ok   a route path's :param name must be a lowercase name
 ok   RouteSpec takes a format by default
 ok   misuse is refused with a message
-40 tests, 165 assertions, 0 failures
+41 tests, 176 assertions, 0 failures

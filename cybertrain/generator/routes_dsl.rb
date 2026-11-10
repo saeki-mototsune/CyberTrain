@@ -600,6 +600,7 @@ module Cybertrain
 
       # namespace and scope: the prefixes for the routes the block draws.
       def within_scope(path, mod, as, block)
+        check_param_names(path)
         saved = save_scope
         trimmed = trim_slashes(path)
         unless trimmed.empty?
@@ -640,6 +641,7 @@ module Cybertrain
       # once the DSL calls came only through instance_eval (NOTES rule 10).
       def add_custom_route(verb, path, to, as, on, format)
         text = "#{path}"
+        check_param_names(text)
         segment = text.start_with?("/") ? text[1, text.size - 1] : text
         case to
         when RedirectSpec
@@ -805,6 +807,21 @@ module Cybertrain
           end
         end
         names.join(",")
+      end
+
+      # Each `:name` segment of a path as written must name a param
+      # (PARAM_PATTERN, as for `resources param:`): an empty or capitalised
+      # one would give an empty helper argument or a helper that does not
+      # parse in gen/routes.rb.
+      def check_param_names(path)
+        path.split("/").each do |seg|
+          next unless seg.start_with?(":")
+          next if seg[1, seg.size - 1].to_s.match?(PARAM_PATTERN)
+
+          message = "route path #{path.inspect}: #{seg.inspect} is not a valid param name (lowercase letters, digits and _)"
+          raise ArgumentError, message
+        end
+        nil
       end
 
       # A repeated helper name gets its position as a suffix

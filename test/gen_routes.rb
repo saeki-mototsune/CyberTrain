@@ -766,6 +766,42 @@ test "redirect refuses a status that is not 3xx and a %{name} the pattern lacks"
   Cybertrain::Routes.reset!
 end
 
+test "a route path's :param name must be a lowercase name" do
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/users/:", to: "users#show" }
+  end
+  assert_equal "route path \"/users/:\": \":\" is not a valid param name (lowercase letters, digits and _)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/:Key", to: "users#show", as: "key" }
+  end
+  assert_equal "route path \"/:Key\": \":Key\" is not a valid param name (lowercase letters, digits and _)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { scope("/:") { |s| s.get "/about", to: "pages#about" } }
+  end
+  assert_equal "route path \"/:\": \":\" is not a valid param name (lowercase letters, digits and _)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/old/:Id", to: redirect("/new") }
+  end
+  assert_equal "route path \"/old/:Id\": \":Id\" is not a valid param name (lowercase letters, digits and _)", message
+  # Valid names pass, and the optional format extension is matched at run
+  # time, never written into the pattern, so it cannot trip the check.
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    scope "/:locale" do |s|
+      s.get "/users/:user_id/posts/:id2", to: "posts#show", as: "user_post"
+    end
+  end
+  spec = Cybertrain::Routes.specs[0]
+  assert_equal "/:locale/users/:user_id/posts/:id2", spec.pattern
+  assert spec.takes_format
+  assert_equal ["locale", "user", "id2"], spec.helper_args
+  Cybertrain::Routes.reset!
+end
+
 test "RouteSpec takes a format by default" do
   Cybertrain::Routes.reset!
   Cybertrain::Routes.draw { get "/about", to: "pages#about" }
