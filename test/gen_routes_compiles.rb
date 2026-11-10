@@ -140,6 +140,41 @@ test "path_for resolves helpers by name" do
   assert_equal "missing route parameter", assert_raises("ArgumentError") { Gen::Routes.path_for("post_path", []) }
 end
 
+# The generated helpers, called the way a controller calls them (plan
+# decisions 13 and 14, spec 2.6).
+class HelperProbe
+  include ::Gen::UrlHelpers
+end
+H = HelperProbe.new
+
+test "unused keywords become the query string, in order, escaped" do
+  assert_equal "/posts/3?page=2", H.post_path(3, page: 2)
+  assert_equal "/posts?q=a+b&sort=new", H.posts_path(q: "a b", sort: :new)
+  assert_equal "/posts", H.posts_path(q: nil)
+  assert_equal "/posts?tag%5B%5D=a&tag%5B%5D=b", H.posts_path(tag: ["a", "b"])
+  assert_equal "/posts/1/comments/2?x=1", H.post_comment_path(1, 2, x: 1)
+  assert_equal "http://localhost:3000/posts/3?page=2", H.post_url(3, page: 2)
+  assert_equal "/posts/3", H.post_path(3)
+end
+
+test "format: and anchor:" do
+  assert_equal "/posts/3.json", H.post_path(3, format: :json)
+  assert_equal "/posts/3.json?page=2#comments", H.post_path(3, page: 2, format: "json", anchor: "comments")
+  assert_equal "/?a=1#top", H.root_path(anchor: "top", a: 1)
+  assert_equal "http://localhost:3000/posts.csv", H.posts_url(format: :csv)
+end
+
+test "a Hash value is refused" do
+  msg = assert_raises("ArgumentError") { H.posts_path(q: { "a" => "b" }) }
+  assert_equal "path helper option :q must be a String, Symbol, number, boolean or Array (got Hash)", msg
+end
+
+test "path_for takes the template's keywords" do
+  assert_equal "/posts/7.json?page=2#c", Gen::Routes.path_for("post_path", ["7"], { "page" => 2, "format" => "json", "anchor" => "c" })
+  assert_equal "http://localhost:3000/posts?q=a+b", Gen::Routes.path_for("posts_url", [], { "q" => "a b" })
+  assert_equal "/posts/7?page=3", Gen::Routes.url_resolver.call("post_path", ["7"], { "page" => 3 })
+end
+
 test "the router knows the route names" do
   router = Gen::Routes.build(Cybertrain::Router.new)
   assert_equal 25, router.routes.size
@@ -173,6 +208,7 @@ end
 
 test "the generated ApplicationHelpers dispatches to the fixture's helpers" do
   Cybertrain::Views.url_resolver = Gen::Routes.url_resolver
+  assert_equal "/posts/0?page=2|/x.csv|/posts/0#c", render_inline("<%= post_path(post, page: 2) %>|<%= url_for('/x', format: :csv) %>|<%= url_for(post, anchor: 'c') %>")
   assert_equal "3.14 USD|3.1 EUR", render_inline("<%= price 3.14159 %>|<%= price 3.14159, unit: 'EUR', precision: 1 %>")
   # The block arrives as a SafeString; interpolated into a plain String it
   # is text again, and link_to_path escapes it.

@@ -3,7 +3,7 @@
 # that path helpers (`post_path(post)`) call.
 #
 #   Cybertrain::Views.configure("app/views", cache: false)
-#   Cybertrain::Views.url_resolver = ->(name, args) { Gen::Routes.path_for(name, args) }
+#   Cybertrain::Views.url_resolver = ->(name, args, options) { Gen::Routes.path_for(name, args, options) }
 #
 # Module-level instance variables rather than @@class_variables: the latter
 # miscompile once an earlier file has opened `module Cybertrain`
@@ -22,7 +22,7 @@ module Cybertrain
     # base MissingTemplate errors.
     @engine = nil
     @layout_name = "layouts/application"
-    @url_resolver = ->(name, args) { raise NoRoutes, "no routes" }
+    @url_resolver = ->(name, args, options) { raise NoRoutes, "no routes" }
     # Template::Helpers is defined by cybertrain/template/helpers.rb, which
     # requires this file; the lambda only names it when called. Returned by
     # a method, not written here as a literal: a lambda literal assigned to
@@ -74,8 +74,10 @@ module Cybertrain
       @layout_name = name
     end
 
-    # ->(name String, args Array) { String }; installed by the app from the
-    # generated Gen::Routes.path_for.
+    # ->(name String, args Array, options Hash{String => Object}) { String };
+    # installed by the app from the generated Gen::Routes.path_for. options
+    # are the template's keywords (`post_path(post, page: 2)`), which
+    # Gen.with_options turns into the format, query string and anchor.
     def self.url_resolver
       @url_resolver
     end

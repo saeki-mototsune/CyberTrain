@@ -404,7 +404,7 @@ router.post("/api/upload", "api_upload") { |ctx| PagesController.new(ctx).proces
 # Integer default and read garbage when the template helpers call it (`name`
 # arrives as 0). This resolver ignores its arguments; see the path-helper
 # test below for the working shape.
-APP = Cybertrain::Application.new(router: router, url_resolver: ->(n, a) { "/" })
+APP = Cybertrain::Application.new(router: router, url_resolver: ->(n, a, o) { "/" })
 APP.boot
 CLIENT = Cybertrain::Test::Client.new(APP)
 
@@ -429,7 +429,7 @@ test "log_level :none, static_files and csrf switch their middleware off" do
   c.static_files = false
   c.csrf = false
   c.secret_key_base = "bare-secret"
-  bare = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/bare/#{name}" }, config: c)
+  bare = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/bare/#{name}" }, config: c)
   assert_equal ["Cybertrain::HostAuthorization", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
                 "Cybertrain::Router"], stack_names(bare)
 end
@@ -442,7 +442,7 @@ test "the stack's session cookie follows session_same_site and session_partition
   c.secret_key_base = "framed-secret"
   c.session_same_site = "None"
   c.session_partitioned = true
-  framed = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/framed/#{name}" }, config: c)
+  framed = Cybertrain::Application.new(router: router, url_resolver: ->(name, args, options) { "/framed/#{name}" }, config: c)
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/visit", { "host" => "localhost" }, ""))
   framed.call(ctx)
   assert ctx.response.cookies[0].end_with?("; SameSite=None; Max-Age=1209600; Secure; Partitioned")
@@ -455,7 +455,7 @@ test "development rejects hostile hosts before pages, static files, sessions and
   c.log_level = :none
   c.secret_key_base = "host-test-secret"
   c.public_root = "#{ROOT}/public"
-  app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
+  app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args, options) { "/" }, config: c)
   client = Cybertrain::Test::Client.new(app)
   page = client.get("/", { "host" => "localhost:3000" })
   token = page_token(page.body)
@@ -484,7 +484,7 @@ test "production puts ErrorPages outermost" do
   c.static_files = false
   c.csrf = false
   c.secret_key_base = "production-secret"
-  prod = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/prod/#{name}" }, config: c)
+  prod = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/prod/#{name}" }, config: c)
   assert_equal ["Cybertrain::ErrorPages", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
                 "Cybertrain::Router"], stack_names(prod)
   # Run it once too (spikes/NOTES.md rule 36). There is no public/404.html
@@ -500,7 +500,7 @@ end
 # predicate `cybertrain build` applies to spin.toml's name (the refusals are
 # tested in test/dev_error_page.rb).
 def application_named(name)
-  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(n, a) { "/" }, name: name)
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(n, a, o) { "/" }, name: name)
 end
 
 test "Application.new accepts any name; only the Rebuilder refuses one" do
@@ -554,7 +554,7 @@ test "production boots on the embedded table, development on app/views" do
   c.secret_key_base = "production-secret"
   c.log_level = :none
   some = { "pages/index.html.erb" => "<p>embedded</p>\n" }
-  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/" }, views: some, config: c).boot
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: some, config: c).boot
   assert Cybertrain::Views.engine.exists?("pages/index")
   refute Cybertrain::Views.engine.exists?("layouts/application")
   d = Cybertrain::Config.new
@@ -563,7 +563,7 @@ test "production boots on the embedded table, development on app/views" do
   d.secret_key_base = "dev-secret"
   d.log_level = :none
   d.views_root = "test/fixtures/views"
-  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/" }, views: some, config: d).boot
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: some, config: d).boot
   assert Cybertrain::Views.engine.exists?("layouts/application")
   refute Cybertrain::Views.engine.exists?("pages/index")
   APP.boot # Views/logger are process-wide (spikes/NOTES.md rule 18); restore APP's own config for the tests below.
@@ -602,7 +602,7 @@ test "a POST under csrf_exempt_prefixes passes without a token; the rest of the 
   c.csrf_exempt_prefixes = ["/api/"]
   c.allowed_hosts << "www.example.com" # Test::Client's explicit test hostname.
   c.secret_key_base = "api-secret"
-  api_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
+  api_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args, options) { "/" }, config: c)
   client = Cybertrain::Test::Client.new(api_app)
   res = client.request("POST", "/api/notes?title=gz", "{}", { "content-type" => "application/json" })
   assert_response res, :created
@@ -617,7 +617,7 @@ test "a gzip body under the exempt prefix is inflated by the installed inflater;
   c.csrf_exempt_prefixes = ["/api/"]
   c.allowed_hosts << "www.example.com" # Test::Client's explicit test hostname.
   c.secret_key_base = "api-secret"
-  api_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
+  api_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args, options) { "/" }, config: c)
   client = Cybertrain::Test::Client.new(api_app)
   small = Zlib.gzip("a" * 100)
   res = client.request("POST", "/api/upload", small, { "content-type" => "application/json", "content-encoding" => "gzip" })
@@ -661,7 +661,7 @@ ROUTE_NAMES = []
 # should pass until the keyword-lambda issue above is fixed) reaches the
 # templates' path helpers with its arguments intact.
 def notes_resolver
-  lambda do |name, args|
+  lambda do |name, args, options|
     ROUTE_NAMES << name
     case name
     when "notes_path" then "/notes"
@@ -683,12 +683,12 @@ end
 module FakeGenRoutes
   NAMES = []
 
-  def self.path_for(name, args)
+  def self.path_for(name, args, options = {})
     NAMES << name
     name == "notes_path" ? "/gen/notes" : "/gen/unknown"
   end
 
-  def self.url_resolver = ->(name, args) { path_for(name, args) }
+  def self.url_resolver = ->(name, args, options) { path_for(name, args, options) }
 end
 
 test "a method-returned Gen::Routes-style url_resolver keeps its route names" do
@@ -704,7 +704,7 @@ test "max_body_bytes reaches the server: a longer Content-Length is 413 before t
   c.log_level = :none
   c.max_body_bytes = 16
   c.secret_key_base = "small-secret"
-  small_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args) { "/" }, config: c)
+  small_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args, options) { "/" }, config: c)
   server = small_app.server
   server.start
   sock = TCPSocket.new("127.0.0.1", server.port)
@@ -729,7 +729,7 @@ def reuse_port_app(env)
   c.env = env
   c.reuse_port = true
   c.secret_key_base = "reuse-port-secret"
-  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/" }, config: c)
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, config: c)
 end
 
 test "reuse_port reaches the server outside development" do

@@ -69,7 +69,7 @@ config.max_upload_bytes = 65_536
 config.max_multipart_parts = 16
 config.upload_root = UPLOAD_ROOT
 
-APP = Cybertrain::Application.new(router: router, url_resolver: ->(n, a) { "/" }, views: embedded_views, config: config)
+APP = Cybertrain::Application.new(router: router, url_resolver: ->(n, a, o) { "/" }, views: embedded_views, config: config)
 APP.boot
 
 # The token csrf_meta_tags rendered into the last page.

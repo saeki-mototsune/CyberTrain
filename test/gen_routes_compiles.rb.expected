@@ -12,10 +12,14 @@ ok   a scope's routes and a singular resource's block route dispatch
 ok   a redirect route and a route drawn with format: false
 ok   unknown paths are 404
 ok   path_for resolves helpers by name
+ok   unused keywords become the query string, in order, escaped
+ok   format: and anchor:
+ok   a Hash value is refused
+ok   path_for takes the template's keywords
 ok   the router knows the route names
 ok   gen/app.rb loads the generated models next to the controllers
 ok   view_assigns exposes the scanned ivars
 ok   the generated ApplicationHelpers dispatches to the fixture's helpers
 ok   the generated Gen::Components builds and renders the fixture's component
 ok   the generated Gen::Console tables
-20 tests, 56 assertions, 0 failures
+24 tests, 73 assertions, 0 failures

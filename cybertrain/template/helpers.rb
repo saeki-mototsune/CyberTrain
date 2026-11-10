@@ -22,6 +22,7 @@ require "cybertrain/stream"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
 require "cybertrain/generator/inflector"
+require "cybertrain/generator/url_support"
 
 module Cybertrain
   module Template
@@ -51,6 +52,11 @@ module Cybertrain
         # helpers then raise Views::OutsideRequest. A plain nil controller
         # (unit tests) keeps answering "" and empty values.
         @outside_request = false
+        # The options of a url_for or route call that has none (link_to's
+        # href, a form's action): a template's keywords Hash, typed empty
+        # (rule 9). Never mutated.
+        @no_url_options = { "" => [nil, 0, 0.0, "", true][0] }
+        @no_url_options.delete("")
       end
 
       # Marks these helpers as rendering with no request (Views.render_partial).
@@ -101,7 +107,7 @@ module Cybertrain
         when "flash" then flash_messages
         when "params" then params
         when "request_path" then request_path
-        when "url_for" then url_for(arg(args, 0, name))
+        when "url_for" then url_for(arg(args, 0, name), kwargs)
         when "paginate" then paginate(args)
         when "tag" then Html::TAG_BUILDER
         when "content_tag" then content_tag(args, kwargs, block, interp, env)
@@ -124,7 +130,7 @@ module Cybertrain
             return component.call_view_method(name.to_sym) if component.view_method?(name)
           end
           request_bound!(name) if name.end_with?("_url")
-          return route(name, args) if name.end_with?("_path") || name.end_with?("_url")
+          return route(name, args, kwargs) if name.end_with?("_path") || name.end_with?("_url")
 
           app_helper_call(name, args, kwargs, block, interp, env)
         end
@@ -311,7 +317,7 @@ module Cybertrain
       # refused rather than faked with JavaScript.
       def link_to(args, kwargs)
         text = html_arg(args, 0, "link_to")
-        href = url_for(arg(args, 1, "link_to"))
+        href = url_for(arg(args, 1, "link_to"), @no_url_options)
         unless kwargs["method"].nil?
           raise ArgumentError, "link_to does not support method: (use button_to '#{text}', path, method: :#{FormBuilder.value_text(kwargs["method"])})"
         end
@@ -329,7 +335,7 @@ module Cybertrain
       # plus the CSRF token, or a plain GET form.
       def button_to(args, kwargs)
         text = html_arg(args, 0, "button_to")
-        action = url_for(arg(args, 1, "button_to"))
+        action = url_for(arg(args, 1, "button_to"), @no_url_options)
         verb = kwargs["method"].nil? ? "post" : lower_text(kwargs["method"])
         # One interpolation, allocated once at its final size: a `+""`
         # buffer costs a copy of the literal, a String object, and a copy
@@ -350,7 +356,7 @@ module Cybertrain
 
         model = kwargs["model"]
         record = form_record(model)
-        action = kwargs["url"].nil? ? form_action(model) : url_for(kwargs["url"])
+        action = kwargs["url"].nil? ? form_action(model) : url_for(kwargs["url"], @no_url_options)
         verb = "post"
         if !kwargs["method"].nil?
           verb = lower_text(kwargs["method"])
@@ -404,11 +410,11 @@ module Cybertrain
       def form_action(model)
         case model
         when Cybertrain::Model
-          return url_for(model) if model.persisted?
+          return url_for(model, @no_url_options) if model.persisted?
 
           # Bound step by step (see FormBuilder.humanize).
-          route("#{route_key_of(model_key(model))}_path", [])
-        when Array then url_for(model)
+          route("#{route_key_of(model_key(model))}_path", [], @no_url_options)
+        when Array then url_for(model, @no_url_options)
         else raise ArgumentError, "form_with needs model: or url:"
         end
       end
@@ -452,21 +458,25 @@ module Cybertrain
 
       # --- routes ------------------------------------------------------------
 
-      # to_s, not an interpolation: a String typed without a copy (see
+      # The template's keywords go along as the helper's options
+      # (`post_path(post, page: 2)`: Gen.with_options). to_s, not an
+      # interpolation: a String typed without a copy (see
       # FormBuilder.value_text).
-      def route(name, args)
-        Views.url_resolver.call(name, args).to_s
+      def route(name, args, options)
+        Views.url_resolver.call(name, args, options).to_s
       end
 
       # A String is already a URL; a record maps to its member route
       # ("post_path"), a [parent, child] pair to the nested one
       # ("post_comment_path", or "post_comments_path" for a new child).
-      def url_for(target)
+      # options (`format:`, `anchor:`, query keys) are appended as a path
+      # helper appends them (`url_for("/x", format: :csv)` is "/x.csv").
+      def url_for(target, options)
         case target
-        when SafeString then "#{target.to_s}"
-        when String then "#{target}"
-        when Cybertrain::Model then route("#{model_key(target)}_path", [target])
-        when Array then nested_url(target)
+        when SafeString then options.empty? ? "#{target.to_s}" : Cybertrain::Gen.with_options(target.to_s, options)
+        when String then options.empty? ? "#{target}" : Cybertrain::Gen.with_options(target, options)
+        when Cybertrain::Model then route("#{model_key(target)}_path", [target], options)
+        when Array then nested_url(target, options)
         else raise ArgumentError, "url_for cannot build a URL from #{FormBuilder.value_text(target)}"
         end
       end
@@ -476,7 +486,7 @@ module Cybertrain
       # record that is new names the collection route instead
       # ("post_comments_path") and is left out of the arguments. Raises
       # ArgumentError when an item of the general case is not a record.
-      def nested_url(items)
+      def nested_url(items, options)
         # [parent, child], the usual shape, in one interpolation.
         if items.size == 2
           parent = items[0]
@@ -486,9 +496,9 @@ module Cybertrain
             case child
             when Cybertrain::Model
               parent_key = model_key(parent)
-              return route("#{parent_key}_#{route_key_of(model_key(child))}_path", [parent]) if child.new_record?
+              return route("#{parent_key}_#{route_key_of(model_key(child))}_path", [parent], options) if child.new_record?
 
-              return route("#{parent_key}_#{model_key(child)}_path", [parent, child])
+              return route("#{parent_key}_#{model_key(child)}_path", [parent, child], options)
             end
           end
         end
@@ -514,7 +524,7 @@ module Cybertrain
           end
           i += 1
         end
-        route("#{name}_path", route_args)
+        route("#{name}_path", route_args, options)
       end
 
       def model_key(record)
@@ -568,7 +578,7 @@ module Cybertrain
       # Query.without_key).
       def paginate(args)
         page = arg(args, 0, "paginate")
-        path = url_for(arg(args, 1, "paginate"))
+        path = url_for(arg(args, 1, "paginate"), @no_url_options)
         case page
         when Cybertrain::Page then pager_html(page, path)
         else raise ArgumentError, "paginate expects a Page (from Relation#page), got #{FormBuilder.value_text(page)}"

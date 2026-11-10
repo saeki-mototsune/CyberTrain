@@ -59,7 +59,7 @@ def route_param(v)
   end
 end
 
-Cybertrain::Views.url_resolver = lambda do |name, args|
+Cybertrain::Views.url_resolver = lambda do |name, args, options|
   case name
   when "posts_path" then "/posts"
   when "post_path" then "/posts/#{route_param(args[0])}"

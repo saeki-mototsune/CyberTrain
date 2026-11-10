@@ -157,8 +157,8 @@ test "names derived from a path become method-name prefixes" do
   ]
   assert_equal expected, route_lines(Cybertrain::Routes.specs)
   source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
-  assert_includes source, "    def about_us_path\n"
-  assert_includes source, "    def robots_txt_url\n"
+  assert_includes source, "    def about_us_path(options = {})\n"
+  assert_includes source, "    def robots_txt_url(options = {})\n"
 end
 
 test "a name that is not a method-name prefix raises" do
@@ -360,19 +360,19 @@ end
 
 test "emitted source defines path and url helpers" do
   source = Cybertrain::Gen::RoutesEmitter.emit(draw_blog)
-  assert_includes source, "    def posts_path\n      \"/posts\"\n    end\n"
-  assert_includes source, "    def edit_post_path(post)\n      \"/posts/\#{Cybertrain::Gen.segment(post)}/edit\"\n    end\n"
-  assert_includes source, "    def post_comments_path(post)\n      \"/posts/\#{Cybertrain::Gen.segment(post)}/comments\"\n    end\n"
-  assert_includes source, "    def post_comment_path(post, comment)\n"
-  assert_includes source, "    def post_url(post)\n      Cybertrain.url_root + post_path(post)\n    end\n"
-  assert_includes source, "    def root_path\n      \"/\"\n    end\n"
+  assert_includes source, "    def posts_path(options = {})\n      Cybertrain::Gen.with_options(\"/posts\", options)\n    end\n"
+  assert_includes source, "    def edit_post_path(post, options = {})\n      Cybertrain::Gen.with_options(\"/posts/\#{Cybertrain::Gen.segment(post)}/edit\", options)\n    end\n"
+  assert_includes source, "    def post_comments_path(post, options = {})\n      Cybertrain::Gen.with_options(\"/posts/\#{Cybertrain::Gen.segment(post)}/comments\", options)\n    end\n"
+  assert_includes source, "    def post_comment_path(post, comment, options = {})\n"
+  assert_includes source, "    def post_url(post, options = {})\n      Cybertrain.url_root + post_path(post, options)\n    end\n"
+  assert_includes source, "    def root_path(options = {})\n      Cybertrain::Gen.with_options(\"/\", options)\n    end\n"
   assert_includes source, "class Cybertrain::Controller\n  include ::Gen::UrlHelpers\nend\n"
 end
 
 test "emitted path_for resolves helper names with positional args" do
   source = Cybertrain::Gen::RoutesEmitter.emit(draw_blog)
-  assert_includes source, "      when \"post_path\" then \"/posts/\#{Cybertrain::Gen.segment(args[0])}\"\n"
-  assert_includes source, "      when \"post_comment_url\" then Cybertrain.url_root + \"/posts/\#{Cybertrain::Gen.segment(args[0])}/comments/\#{Cybertrain::Gen.segment(args[1])}\"\n"
+  assert_includes source, "      when \"post_path\" then Cybertrain::Gen.with_options(\"/posts/\#{Cybertrain::Gen.segment(args[0])}\", options)\n"
+  assert_includes source, "      when \"post_comment_url\" then Cybertrain.url_root + Cybertrain::Gen.with_options(\"/posts/\#{Cybertrain::Gen.segment(args[0])}/comments/\#{Cybertrain::Gen.segment(args[1])}\", options)\n"
   assert_includes source, "      else raise ArgumentError, \"unknown route helper '\#{name}'\"\n"
 end
 
@@ -394,38 +394,38 @@ test "emitted source for a small route set" do
           router
         end
 
-        # The helper named by a String, for templates: path_for("user_path", [user]).
-        def self.path_for(name, args)
+        # The helper named by a String, for templates: path_for("user_path", [user], { "page" => 2 }).
+        def self.path_for(name, args, options = {})
           case name
-          when "root_path" then "/"
-          when "root_url" then Cybertrain.url_root + "/"
-          when "user_path" then "/users/#{Cybertrain::Gen.segment(args[0])}"
-          when "user_url" then Cybertrain.url_root + "/users/#{Cybertrain::Gen.segment(args[0])}"
+          when "root_path" then Cybertrain::Gen.with_options("/", options)
+          when "root_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/", options)
+          when "user_path" then Cybertrain::Gen.with_options("/users/#{Cybertrain::Gen.segment(args[0])}", options)
+          when "user_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/users/#{Cybertrain::Gen.segment(args[0])}", options)
           else raise ArgumentError, "unknown route helper '#{name}'"
           end
         end
 
         # Pass this to Cybertrain::Application.new(url_resolver: Gen::Routes.url_resolver).
         def self.url_resolver
-          ->(name, args) { path_for(name, args) }
+          ->(name, args, options) { path_for(name, args, options) }
         end
       end
 
       module UrlHelpers
-        def root_path
-          "/"
+        def root_path(options = {})
+          Cybertrain::Gen.with_options("/", options)
         end
 
-        def root_url
-          Cybertrain.url_root + root_path
+        def root_url(options = {})
+          Cybertrain.url_root + root_path(options)
         end
 
-        def user_path(user)
-          "/users/#{Cybertrain::Gen.segment(user)}"
+        def user_path(user, options = {})
+          Cybertrain::Gen.with_options("/users/#{Cybertrain::Gen.segment(user)}", options)
         end
 
-        def user_url(user)
-          Cybertrain.url_root + user_path(user)
+        def user_url(user, options = {})
+          Cybertrain.url_root + user_path(user, options)
         end
       end
     end
@@ -441,7 +441,7 @@ test "emitted source with no named routes still parses" do
   Cybertrain::Routes.reset!
   source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
   assert_includes source, "    def self.build(router)\n      router\n    end\n"
-  assert_includes source, "    def self.path_for(name, args)\n      raise ArgumentError, \"unknown route helper '\#{name}'\"\n    end\n"
+  assert_includes source, "    def self.path_for(name, args, options = {})\n      raise ArgumentError, \"unknown route helper '\#{name}'\"\n    end\n"
 end
 
 test "Gen.param and Gen.segment turn helper arguments into path segments" do
@@ -450,6 +450,29 @@ test "Gen.param and Gen.segment turn helper arguments into path segments" do
   assert_equal "a%20b%2Fc", Cybertrain::Gen.segment("a b/c")
   assert_equal "12", Cybertrain::Gen.segment(12)
   assert_equal "missing route parameter", assert_raises("ArgumentError") { Cybertrain::Gen.segment(nil) }
+end
+
+test "a segment named options leaves the helper's options Hash another name" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw { get "/prefs/:options", to: "prefs#show", as: "prefs" }
+  source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
+  assert_includes source, "    def prefs_path(options, _options = {})\n      Cybertrain::Gen.with_options(\"/prefs/\#{Cybertrain::Gen.segment(options)}\", _options)\n    end\n"
+  assert_includes source, "    def prefs_url(options, _options = {})\n      Cybertrain.url_root + prefs_path(options, _options)\n    end\n"
+  Cybertrain::Routes.reset!
+end
+
+test "Gen.with_options appends format, query and anchor (spec 2.6, plan decision 14)" do
+  assert_equal "/p", Cybertrain::Gen.with_options("/p", {})
+  assert_equal "/p.json?page=2&q=a+b%26c#x%20y", Cybertrain::Gen.with_options("/p", { anchor: "x y", page: 2, format: :json, q: "a b&c" })
+  assert_equal "/p?b=1&a=2", Cybertrain::Gen.with_options("/p", { b: 1, a: 2 })
+  assert_equal "/p?x=", Cybertrain::Gen.with_options("/p", { x: "", y: nil, format: nil, anchor: nil })
+  assert_equal "/p?on=true&off=false&f=1.5", Cybertrain::Gen.with_options("/p", { on: true, off: false, f: 1.5 })
+  assert_equal "/p?ids%5B%5D=1&ids%5B%5D=2", Cybertrain::Gen.with_options("/p", { ids: [1, 2] })
+  assert_equal "/p.csv?page=3#top", Cybertrain::Gen.with_options("/p", { "page" => 3, "format" => "csv", "anchor" => "top" })
+  assert_equal "/p#", Cybertrain::Gen.with_options("/p", { anchor: "" })
+  msg = "path helper option :q must be a String, Symbol, number, boolean or Array (got Hash)"
+  assert_equal msg, assert_raises("ArgumentError") { Cybertrain::Gen.with_options("/p", { q: { "a" => "b" } }) }
+  assert_equal msg, assert_raises("ArgumentError") { Cybertrain::Gen.with_options("/p", { q: [{ "a" => "b" }] }) }
 end
 
 # --- jobs_page -----------------------------------------------------------
@@ -562,8 +585,8 @@ test "namespace prefixes path, helper and controller, and nests" do
   assert_equal ["article"], Cybertrain::Routes.specs[1].helper_args
   source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
   assert_includes source, %(      router.add("DELETE", "/admin/articles/:id", "admin_article") { |ctx| Admin::ArticlesController.new(ctx).process(:destroy) { |c| c.destroy } }\n)
-  assert_includes source, "    def admin_article_path(article)\n      \"/admin/articles/\#{Cybertrain::Gen.segment(article)}\"\n    end\n"
-  assert_includes source, "    def admin_reports_daily_path\n"
+  assert_includes source, "    def admin_article_path(article, options = {})\n      Cybertrain::Gen.with_options(\"/admin/articles/\#{Cybertrain::Gen.segment(article)}\", options)\n    end\n"
+  assert_includes source, "    def admin_reports_daily_path(options = {})\n"
 end
 
 test "namespace draws root and a nested resource under its prefix" do
@@ -618,7 +641,7 @@ test "a scope path with a dynamic segment gives the helpers an argument" do
   assert_equal ["GET /:locale/posts/:id posts#show post"], route_lines(Cybertrain::Routes.specs)
   assert_equal ["locale", "post"], Cybertrain::Routes.specs[0].helper_args
   source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
-  assert_includes source, "    def post_path(locale, post)\n"
+  assert_includes source, "    def post_path(locale, post, options = {})\n"
 end
 
 test "resource takes controller: and a block with member routes and nested resources" do
@@ -647,8 +670,8 @@ test "resource takes controller: and a block with member routes and nested resou
   assert_equal expected, route_lines(Cybertrain::Routes.specs)
   assert_equal "Auth::SessionsController", Cybertrain::Routes.specs[0].controller_class
   source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
-  assert_includes source, "    def edit_session_settings_path\n      \"/session/settings/edit\"\n    end\n"
-  assert_includes source, "    def session_devices_path\n"
+  assert_includes source, "    def edit_session_settings_path(options = {})\n      Cybertrain::Gen.with_options(\"/session/settings/edit\", options)\n    end\n"
+  assert_includes source, "    def session_devices_path(options = {})\n"
 end
 
 test "resources controller: and param:" do
@@ -675,9 +698,9 @@ test "resources controller: and param:" do
   assert_equal ["indicator"], specs[5].helper_args
   assert_equal "MetricsController", specs[5].controller_class
   source = Cybertrain::Gen::RoutesEmitter.emit(specs)
-  assert_includes source, "    def indicator_points_path(indicator)\n      \"/indicators/\#{Cybertrain::Gen.segment(indicator)}/points\"\n    end\n"
-  assert_includes source, "    def indicator_path(indicator)\n      \"/indicators/\#{Cybertrain::Gen.segment(indicator)}\"\n    end\n"
-  assert_includes source, "      when \"edit_indicator_path\" then \"/indicators/\#{Cybertrain::Gen.segment(args[0])}/edit\"\n"
+  assert_includes source, "    def indicator_points_path(indicator, options = {})\n      Cybertrain::Gen.with_options(\"/indicators/\#{Cybertrain::Gen.segment(indicator)}/points\", options)\n    end\n"
+  assert_includes source, "    def indicator_path(indicator, options = {})\n      Cybertrain::Gen.with_options(\"/indicators/\#{Cybertrain::Gen.segment(indicator)}\", options)\n    end\n"
+  assert_includes source, "      when \"edit_indicator_path\" then Cybertrain::Gen.with_options(\"/indicators/\#{Cybertrain::Gen.segment(args[0])}/edit\", options)\n"
 end
 
 test "on: :collection and on: :member inside resources" do
@@ -744,7 +767,7 @@ test "redirect routes" do
   Cybertrain::Routes.reset!
   Cybertrain::Routes.draw { get "/old", to: redirect("/new"), as: "old" }
   assert_equal "old", Cybertrain::Routes.specs[0].name
-  assert_includes Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs), "def old_path\n"
+  assert_includes Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs), "def old_path(options = {})\n"
   Cybertrain::Routes.reset!
 end
 

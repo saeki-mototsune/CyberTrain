@@ -33,7 +33,7 @@ def no_views
   none
 end
 
-def resolver = ->(name, args) { "/#{name}" }
+def resolver = ->(name, args, options) { "/#{name}" }
 
 def run(argv)
   Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)

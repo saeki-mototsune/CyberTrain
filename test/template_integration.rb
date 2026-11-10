@@ -163,7 +163,7 @@ def note_id(v)
 end
 
 Cybertrain::Views.configure("test/fixtures/views", cache: true)
-Cybertrain::Views.url_resolver = lambda do |name, args|
+Cybertrain::Views.url_resolver = lambda do |name, args, options|
   ROUTE_CALLS << name
   case name
   when "notes_path" then "/notes"

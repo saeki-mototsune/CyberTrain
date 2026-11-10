@@ -9,38 +9,38 @@ module Gen
       router
     end
 
-    # The helper named by a String, for templates: path_for("admin_user_path", [user]).
-    def self.path_for(name, args)
+    # The helper named by a String, for templates: path_for("admin_user_path", [user], { "page" => 2 }).
+    def self.path_for(name, args, options = {})
       case name
-      when "admin_users_path" then "/admin/users"
-      when "admin_users_url" then Cybertrain.url_root + "/admin/users"
-      when "admin_user_path" then "/admin/users/#{Cybertrain::Gen.segment(args[0])}"
-      when "admin_user_url" then Cybertrain.url_root + "/admin/users/#{Cybertrain::Gen.segment(args[0])}"
+      when "admin_users_path" then Cybertrain::Gen.with_options("/admin/users", options)
+      when "admin_users_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/users", options)
+      when "admin_user_path" then Cybertrain::Gen.with_options("/admin/users/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "admin_user_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/users/#{Cybertrain::Gen.segment(args[0])}", options)
       else raise ArgumentError, "unknown route helper '#{name}'"
       end
     end
 
     # Pass this to Cybertrain::Application.new(url_resolver: Gen::Routes.url_resolver).
     def self.url_resolver
-      ->(name, args) { path_for(name, args) }
+      ->(name, args, options) { path_for(name, args, options) }
     end
   end
 
   module UrlHelpers
-    def admin_users_path
-      "/admin/users"
+    def admin_users_path(options = {})
+      Cybertrain::Gen.with_options("/admin/users", options)
     end
 
-    def admin_users_url
-      Cybertrain.url_root + admin_users_path
+    def admin_users_url(options = {})
+      Cybertrain.url_root + admin_users_path(options)
     end
 
-    def admin_user_path(user)
-      "/admin/users/#{Cybertrain::Gen.segment(user)}"
+    def admin_user_path(user, options = {})
+      Cybertrain::Gen.with_options("/admin/users/#{Cybertrain::Gen.segment(user)}", options)
     end
 
-    def admin_user_url(user)
-      Cybertrain.url_root + admin_user_path(user)
+    def admin_user_url(user, options = {})
+      Cybertrain.url_root + admin_user_path(user, options)
     end
   end
 end

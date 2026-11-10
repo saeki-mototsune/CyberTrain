@@ -52,7 +52,7 @@ module Cybertrain
       def self.path_for_source(named)
         out = +""
         if named.empty?
-          out << "    def self.path_for(name, args)\n"
+          out << "    def self.path_for(name, args, options = {})\n"
           out << "      raise ArgumentError, \"unknown route helper '\#{name}'\"\n"
           out << "    end\n"
           out << url_resolver_source
@@ -60,13 +60,13 @@ module Cybertrain
         end
 
         example = named.last
-        out << "    # The helper named by a String, for templates: path_for(\"#{example.helper_name}_path\", [#{arg_names(example).join(", ")}]).\n"
-        out << "    def self.path_for(name, args)\n"
+        out << "    # The helper named by a String, for templates: path_for(\"#{example.helper_name}_path\", [#{arg_names(example).join(", ")}], { \"page\" => 2 }).\n"
+        out << "    def self.path_for(name, args, options = {})\n"
         out << "      case name\n"
         named.each do |s|
           args = []
           arg_names(s).each_with_index { |_, i| args << "args[#{i}]" }
-          path = path_expr(s.pattern, args)
+          path = "Cybertrain::Gen.with_options(#{path_expr(s.pattern, args)}, options)"
           out << "      when \"#{s.helper_name}_path\" then #{path}\n"
           out << "      when \"#{s.helper_name}_url\" then Cybertrain.url_root + #{path}\n"
         end
@@ -87,7 +87,7 @@ module Cybertrain
         out << "\n"
         out << "    # Pass this to Cybertrain::Application.new(url_resolver: Gen::Routes.url_resolver).\n"
         out << "    def self.url_resolver\n"
-        out << "      ->(name, args) { path_for(name, args) }\n"
+        out << "      ->(name, args, options) { path_for(name, args, options) }\n"
         out << "    end\n"
         out
       end
@@ -95,13 +95,19 @@ module Cybertrain
       def self.helpers_source(spec)
         out = +""
         names = arg_names(spec)
-        params = names.empty? ? "" : "(#{names.join(", ")})"
+        # Plan decision 13: braceless keywords at the call (`page: 2`,
+        # `format: :json`) arrive as the trailing options Hash, renamed when
+        # a segment already took the name (`get "/x/:options"`).
+        opts = "options"
+        opts = "_#{opts}" while names.include?(opts)
+        params = "(#{(names + ["#{opts} = {}"]).join(", ")})"
+        call = "(#{(names + [opts]).join(", ")})"
         out << "    def #{spec.helper_name}_path#{params}\n"
-        out << "      #{path_expr(spec.pattern, names)}\n"
+        out << "      Cybertrain::Gen.with_options(#{path_expr(spec.pattern, names)}, #{opts})\n"
         out << "    end\n"
         out << "\n"
         out << "    def #{spec.helper_name}_url#{params}\n"
-        out << "      Cybertrain.url_root + #{spec.helper_name}_path#{params}\n"
+        out << "      Cybertrain.url_root + #{spec.helper_name}_path#{call}\n"
         out << "    end\n"
         out
       end

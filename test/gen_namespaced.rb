@@ -60,7 +60,8 @@ test "namespace :admin with param: :login routes the member by login" do
   assert_response res, :ok
   assert_equal "admin user ann (admin) /admin/users/ann", res.body
   assert_equal "/admin/users/ann", Gen::Routes.path_for("admin_user_path", ["ann"])
-  assert_includes File.read("#{FIXTURE}/gen/routes.rb"), "    def admin_user_path(user)\n"
+  assert_equal "/admin/users/ann.json?tab=keys", Gen::Routes.path_for("admin_user_path", ["ann"], { "tab" => "keys", "format" => "json" })
+  assert_includes File.read("#{FIXTURE}/gen/routes.rb"), "    def admin_user_path(user, options = {})\n"
 end
 
 Cybertrain::Test.run!

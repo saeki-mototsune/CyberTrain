@@ -22,7 +22,7 @@ if ENV[CHILD_FLAG] == "1"
   conf.views_root = "test/fixtures/views"
   views = { "" => "" }
   views.delete("")
-  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/" }, views: views,
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: views,
                               config: conf).boot
   puts "booted"
   exit(0)

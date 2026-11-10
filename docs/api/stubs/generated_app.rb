@@ -998,51 +998,70 @@ module Gen
   # Arguments are positional, one per `:param` in the path: a record (its
   # {Cybertrain::Model#to_param to_param}, the id), an Integer or a String,
   # percent-encoded as one segment. nil raises `ArgumentError "missing route
-  # parameter"`. There is no hash form and no query-string option; append
-  # `"?page=2"` yourself. `*_url` prepends {Cybertrain.url_root}.
+  # parameter"`. `*_url` prepends {Cybertrain.url_root}.
+  #
+  # Keywords after them land in the trailing `options` Hash (spec 2.6):
+  # `format:` adds an extension, `anchor:` a fragment, and every other key
+  # becomes a query parameter, in the order given, escaped. A nil value
+  # leaves its key out, an Array gives `key[]=v` per element, a Hash raises
+  # ArgumentError. The same keywords work on a path helper in a template.
+  #
+  #     article_path(@article, page: 2)                 # => "/articles/3?page=2"
+  #     article_path(@article, format: :json)           # => "/articles/3.json"
+  #     articles_path(q: "a b", tag: ["x", "y"])        # => "/articles?q=a+b&tag%5B%5D=x&tag%5B%5D=y"
+  #     article_path(@article, page: 2, anchor: "c")    # => "/articles/3?page=2#c"
   #
   # See {Cybertrain::Routes.draw} for the names each route gets.
   # @api public
   module UrlHelpers
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/"`
     # @api public
-    def root_path = "/"
+    def root_path(options = {}) = Cybertrain::Gen.with_options("/", options)
 
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles"`
     # @api public
-    def articles_path = "/articles"
+    def articles_path(options = {}) = Cybertrain::Gen.with_options("/articles", options)
 
+    # @param options [Hash{Symbol => Object}] as for articles_path
     # @return [String] {Cybertrain.url_root} + `"/articles"`
     # @api public
-    def articles_url = Cybertrain.url_root + articles_path
+    def articles_url(options = {}) = Cybertrain.url_root + articles_path(options)
 
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/new"`
     # @api public
-    def new_article_path = "/articles/new"
+    def new_article_path(options = {}) = Cybertrain::Gen.with_options("/articles/new", options)
 
     # @example
     #   redirect_to article_path(@article), status: :see_other
+    #   article_path(@article, format: :json) # => "/articles/3.json"
     # @param article [Cybertrain::Model, Integer, String]
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/1"`
     # @api public
-    def article_path(article); end
+    def article_path(article, options = {}); end
 
     # @param article [Cybertrain::Model, Integer, String]
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/1/edit"`
     # @api public
-    def edit_article_path(article); end
+    def edit_article_path(article, options = {}); end
 
     # The nested collection: one argument per level.
     # @param article [Cybertrain::Model, Integer, String]
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/1/comments"`
     # @api public
-    def article_comments_path(article); end
+    def article_comments_path(article, options = {}); end
 
     # The nested member.
     # @param article [Cybertrain::Model, Integer, String]
     # @param comment [Cybertrain::Model, Integer, String]
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/1/comments/2"`
     # @api public
-    def article_comment_path(article, comment); end
+    def article_comment_path(article, comment, options = {}); end
   end
 end

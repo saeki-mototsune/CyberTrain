@@ -42,16 +42,17 @@ def route_param(v)
 end
 
 def install_routes
-  Views.url_resolver = lambda do |name, args|
+  Views.url_resolver = lambda do |name, args, options|
     ROUTE_CALLS << "#{name}(#{args.map { |a| route_param(a) }.join(", ")})"
-    case name
-    when "posts_path" then "/posts"
-    when "new_post_path" then "/posts/new"
-    when "post_path" then "/posts/#{route_param(args[0])}"
-    when "edit_post_path" then "/posts/#{route_param(args[0])}/edit"
-    when "post_url" then "http://example.test/posts/#{route_param(args[0])}"
-    else raise "no route #{name}"
-    end
+    path = case name
+           when "posts_path" then "/posts"
+           when "new_post_path" then "/posts/new"
+           when "post_path" then "/posts/#{route_param(args[0])}"
+           when "edit_post_path" then "/posts/#{route_param(args[0])}/edit"
+           when "post_url" then "http://example.test/posts/#{route_param(args[0])}"
+           else raise "no route #{name}"
+           end
+    Cybertrain::Gen.with_options(path, options)
   end
   ROUTE_CALLS.clear
   nil
@@ -205,6 +206,21 @@ test "url helpers go through the url_resolver with name and args" do
   html = render_inline("<%= post_path(post) %> <%= edit_post_path(post) %> <%= posts_path %> <%= post_url(post) %>")
   assert_equal "/posts/7 /posts/7/edit /posts http://example.test/posts/7", html
   assert_equal ["post_path(7)", "edit_post_path(7)", "posts_path()", "post_url(7)"], ROUTE_CALLS
+end
+
+test "a path helper's keywords reach the url_resolver as its options" do
+  install_routes
+  assert_equal "/posts/7?page=2", render_inline("<%= post_path(post, page: 2) %>")
+  assert_equal "/posts.json?q=a+b#top", render_inline("<%= posts_path(q: 'a b', format: :json, anchor: 'top') %>")
+  assert_equal ["post_path(7)", "posts_path()"], ROUTE_CALLS
+end
+
+test "url_for appends format:, a query and anchor: to a String or a record's route" do
+  install_routes
+  assert_equal "/x.csv", render_inline("<%= url_for('/x', format: :csv) %>")
+  assert_equal "/x?a=1#b", render_inline("<%= url_for('/x', a: 1, anchor: 'b') %>")
+  assert_equal "/posts/7.json", render_inline("<%= url_for(post, format: :json) %>")
+  assert_equal "/x", render_inline("<%= url_for('/x') %>")
 end
 
 test "url_for derives the route name from the model" do

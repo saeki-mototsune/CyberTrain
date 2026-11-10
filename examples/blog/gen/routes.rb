@@ -26,98 +26,98 @@ module Gen
       router
     end
 
-    # The helper named by a String, for templates: path_for("admin_login_path", []).
-    def self.path_for(name, args)
+    # The helper named by a String, for templates: path_for("admin_login_path", [], { "page" => 2 }).
+    def self.path_for(name, args, options = {})
       case name
-      when "root_path" then "/"
-      when "root_url" then Cybertrain.url_root + "/"
-      when "article_comments_path" then "/articles/#{Cybertrain::Gen.segment(args[0])}/comments"
-      when "article_comments_url" then Cybertrain.url_root + "/articles/#{Cybertrain::Gen.segment(args[0])}/comments"
-      when "article_comment_path" then "/articles/#{Cybertrain::Gen.segment(args[0])}/comments/#{Cybertrain::Gen.segment(args[1])}"
-      when "article_comment_url" then Cybertrain.url_root + "/articles/#{Cybertrain::Gen.segment(args[0])}/comments/#{Cybertrain::Gen.segment(args[1])}"
-      when "articles_path" then "/articles"
-      when "articles_url" then Cybertrain.url_root + "/articles"
-      when "new_article_path" then "/articles/new"
-      when "new_article_url" then Cybertrain.url_root + "/articles/new"
-      when "edit_article_path" then "/articles/#{Cybertrain::Gen.segment(args[0])}/edit"
-      when "edit_article_url" then Cybertrain.url_root + "/articles/#{Cybertrain::Gen.segment(args[0])}/edit"
-      when "article_path" then "/articles/#{Cybertrain::Gen.segment(args[0])}"
-      when "article_url" then Cybertrain.url_root + "/articles/#{Cybertrain::Gen.segment(args[0])}"
-      when "admin_login_path" then "/admin/login"
-      when "admin_login_url" then Cybertrain.url_root + "/admin/login"
+      when "root_path" then Cybertrain::Gen.with_options("/", options)
+      when "root_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/", options)
+      when "article_comments_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/comments", options)
+      when "article_comments_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/comments", options)
+      when "article_comment_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/comments/#{Cybertrain::Gen.segment(args[1])}", options)
+      when "article_comment_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/comments/#{Cybertrain::Gen.segment(args[1])}", options)
+      when "articles_path" then Cybertrain::Gen.with_options("/articles", options)
+      when "articles_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles", options)
+      when "new_article_path" then Cybertrain::Gen.with_options("/articles/new", options)
+      when "new_article_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/new", options)
+      when "edit_article_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/edit", options)
+      when "edit_article_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/edit", options)
+      when "article_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "article_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "admin_login_path" then Cybertrain::Gen.with_options("/admin/login", options)
+      when "admin_login_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/login", options)
       else raise ArgumentError, "unknown route helper '#{name}'"
       end
     end
 
     # Pass this to Cybertrain::Application.new(url_resolver: Gen::Routes.url_resolver).
     def self.url_resolver
-      ->(name, args) { path_for(name, args) }
+      ->(name, args, options) { path_for(name, args, options) }
     end
   end
 
   module UrlHelpers
-    def root_path
-      "/"
+    def root_path(options = {})
+      Cybertrain::Gen.with_options("/", options)
     end
 
-    def root_url
-      Cybertrain.url_root + root_path
+    def root_url(options = {})
+      Cybertrain.url_root + root_path(options)
     end
 
-    def article_comments_path(article)
-      "/articles/#{Cybertrain::Gen.segment(article)}/comments"
+    def article_comments_path(article, options = {})
+      Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(article)}/comments", options)
     end
 
-    def article_comments_url(article)
-      Cybertrain.url_root + article_comments_path(article)
+    def article_comments_url(article, options = {})
+      Cybertrain.url_root + article_comments_path(article, options)
     end
 
-    def article_comment_path(article, comment)
-      "/articles/#{Cybertrain::Gen.segment(article)}/comments/#{Cybertrain::Gen.segment(comment)}"
+    def article_comment_path(article, comment, options = {})
+      Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(article)}/comments/#{Cybertrain::Gen.segment(comment)}", options)
     end
 
-    def article_comment_url(article, comment)
-      Cybertrain.url_root + article_comment_path(article, comment)
+    def article_comment_url(article, comment, options = {})
+      Cybertrain.url_root + article_comment_path(article, comment, options)
     end
 
-    def articles_path
-      "/articles"
+    def articles_path(options = {})
+      Cybertrain::Gen.with_options("/articles", options)
     end
 
-    def articles_url
-      Cybertrain.url_root + articles_path
+    def articles_url(options = {})
+      Cybertrain.url_root + articles_path(options)
     end
 
-    def new_article_path
-      "/articles/new"
+    def new_article_path(options = {})
+      Cybertrain::Gen.with_options("/articles/new", options)
     end
 
-    def new_article_url
-      Cybertrain.url_root + new_article_path
+    def new_article_url(options = {})
+      Cybertrain.url_root + new_article_path(options)
     end
 
-    def edit_article_path(article)
-      "/articles/#{Cybertrain::Gen.segment(article)}/edit"
+    def edit_article_path(article, options = {})
+      Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(article)}/edit", options)
     end
 
-    def edit_article_url(article)
-      Cybertrain.url_root + edit_article_path(article)
+    def edit_article_url(article, options = {})
+      Cybertrain.url_root + edit_article_path(article, options)
     end
 
-    def article_path(article)
-      "/articles/#{Cybertrain::Gen.segment(article)}"
+    def article_path(article, options = {})
+      Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(article)}", options)
     end
 
-    def article_url(article)
-      Cybertrain.url_root + article_path(article)
+    def article_url(article, options = {})
+      Cybertrain.url_root + article_path(article, options)
     end
 
-    def admin_login_path
-      "/admin/login"
+    def admin_login_path(options = {})
+      Cybertrain::Gen.with_options("/admin/login", options)
     end
 
-    def admin_login_url
-      Cybertrain.url_root + admin_login_path
+    def admin_login_url(options = {})
+      Cybertrain.url_root + admin_login_path(options)
     end
   end
 end

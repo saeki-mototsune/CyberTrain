@@ -73,7 +73,7 @@ class PostsController < Cybertrain::Controller
 end
 
 Cybertrain::Views.configure("test/fixtures/views", cache: true)
-Cybertrain::Views.url_resolver = lambda do |name, args|
+Cybertrain::Views.url_resolver = lambda do |name, args, options|
   case name
   when "edit_post_path"
     id = ""
