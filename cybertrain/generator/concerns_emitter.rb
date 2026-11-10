@@ -154,6 +154,18 @@ module Cybertrain
                       "an instance method #{name} (#{ControllerScan.app_path(parent.file)}:#{parent.method_lines[j]}); #{ConcernScan::RULE_93}"
                 raise ArgumentError, msg
               end
+              # The concerns the ancestor brings in: under Spinel the
+              # concern's spurious instance method would shadow theirs.
+              ConcernScan.own_concerns(parent, infos, concerns).each do |pc|
+                pc.concern_defs.each do |d|
+                  next unless d.name == name
+
+                  msg = "#{place}#{pc.concern_name} (included by #{parent.class_name}, an ancestor of #{info.class_name}, which includes " \
+                        "#{c.concern_name}) defines an instance method #{name} (#{ControllerScan.app_path(pc.concern_file)}:#{d.line}); " \
+                        "#{ConcernScan::RULE_93}"
+                  raise ArgumentError, msg
+                end
+              end
               parent = ConcernScan.controller_named(infos, parent.superclass_name)
             end
             own.each do |other|

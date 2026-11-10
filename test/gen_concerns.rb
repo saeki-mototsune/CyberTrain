@@ -104,6 +104,25 @@ test "a concern included by an ancestor and again is expanded once" do
   assert_equal "1", client.get("/posts/5").header("X-Stamped")
 end
 
+test "a class_methods name that an ancestor's concern defines as an instance method is refused" do
+  # ApplicationController includes Paging (instance per_page); GatedController
+  # includes AdminGate (class_methods per_page): compiled, AdminGate's
+  # spurious instance per_page would shadow Paging's (spikes/NOTES.md rule 93).
+  paging = Cybertrain::Gen::ConcernScan.scan_source("app/controllers/concerns/paging.rb",
+                                                    "module Paging\n  extend ActiveSupport::Concern\n\n  def per_page = 10\nend\n")
+  gate = Cybertrain::Gen::ConcernScan.scan_source("app/controllers/concerns/admin_gate.rb",
+                                                  "module AdminGate\n  extend ActiveSupport::Concern\n\n  class_methods do\n    def per_page = 50\n  end\nend\n")
+  app = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/application_controller.rb",
+                                                    "class ApplicationController < Cybertrain::Controller\n  include Paging\nend\n")
+  gated = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/gated_controller.rb",
+                                                      "class GatedController < ApplicationController\n  include AdminGate\nend\n")
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ConcernsEmitter.emit([app, gated], [paging, gate]) }
+  assert_equal "app/controllers/concerns/admin_gate.rb:5: class_methods def per_page: Paging (included by ApplicationController, " \
+               "an ancestor of GatedController, which includes AdminGate) defines an instance method per_page " \
+               "(app/controllers/concerns/paging.rb:4); Spinel compiles a def inside class_methods as an instance method too " \
+               "(spikes/NOTES.md rule 93), so rename one", msg
+end
+
 test "@x in a concern method is a view assign of the includer" do
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/gated/1", {}, ""))
   assert_equal ["viewer", "post", "audited_at"], GatedController.new(ctx).view_assigns.keys
