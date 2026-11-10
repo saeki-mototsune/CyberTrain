@@ -1040,5 +1040,5 @@ section's own text above has been amended to the name in the code.
   `script/test-shard 0 1`) has 161 programs, 13 of them new in this phase;
   the integration runs recorded by the tasks passed in full (157 of 157
   after Tasks 10 and 14, 159 of 159 in Task 15's tree). `cd examples/blog &&
-  spin test` passes its 2 programs, `articles.rb` 26 tests / 153 assertions
-  and `comments.rb` 14 / 69, as Task 17 left them.
+  spin test` passes its 2 programs, `articles.rb` 26 tests / 162 assertions
+  and `comments.rb` 14 / 69, as Task 17 left them after its fix round.
