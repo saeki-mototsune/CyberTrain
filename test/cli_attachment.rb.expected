@@ -9,6 +9,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -133,6 +134,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -234,6 +236,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -290,6 +293,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -354,6 +358,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -430,6 +435,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -494,6 +500,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -557,6 +564,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -608,6 +616,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -659,6 +668,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -710,6 +720,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -761,6 +772,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -812,6 +824,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -864,6 +877,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -928,6 +942,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -993,6 +1008,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -1022,6 +1038,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -1104,6 +1121,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -1170,6 +1188,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -1214,6 +1233,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -1264,6 +1284,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -1330,6 +1351,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -1413,6 +1435,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
