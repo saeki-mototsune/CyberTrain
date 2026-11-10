@@ -296,6 +296,23 @@ test "every continues from last_run_at after schedule_all" do
   assert_equal [0, 6040], Cybertrain::Scheduler::Timetable.read_all["thirty"]
 end
 
+test "a task that never ran takes its current schedule when that is earlier than the stored next run" do
+  # An earlier release registered "thirty" weekly and never ran it: its
+  # row says next 6010 + 7 days. Now it is every 30 s, so it runs 30 s
+  # after the start, not six days later.
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
+  Cybertrain::Scheduler::Timetable.write("thirty", 0, 6010 + 7 * 86_400, 6010)
+  S.schedule_all(6010)
+  assert_equal 6040, S::TASKS[S.task_index("thirty")].task_next_run
+  # A stored next run earlier than the schedule gives is kept: it runs
+  # once then, and follows the schedule after that.
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
+  Cybertrain::Scheduler::Timetable.write("thirty", 0, 6020, 6010)
+  S.schedule_all(6010)
+  assert_equal 6020, S::TASKS[S.task_index("thirty")].task_next_run
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
+end
+
 # Last: the thread it starts keeps running until the program exits. With
 # the timetable emptied, start! schedules every task an interval after the
 # real time, so the thread's first tick runs nothing.

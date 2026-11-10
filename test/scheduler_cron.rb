@@ -150,6 +150,18 @@ test "the timetable survives a restart and a leader change" do
   assert_equal t0 + 5600, next_run_of("x")
 end
 
+test "a cron task changed before its first run follows the new expression, not the stored slot" do
+  fresh
+  # The release before registered "digest" weekly ("0 3 * * 1") and never
+  # ran it; its row says next Monday 2026-11-16 03:00. Now it is hourly.
+  Timetable.write("digest", 0, utc(2026, 11, 16, 3, 0), utc(2026, 11, 10, 9, 0))
+  S.cron("0 * * * *", "digest") { RAN << "digest" }
+  S.schedule_all(utc(2026, 11, 10, 9, 30))
+  assert_equal utc(2026, 11, 10, 10, 0), next_run_of("digest")
+  assert_equal 1, S.run_due(utc(2026, 11, 10, 10, 0))
+  assert_equal "digest", ran_text
+end
+
 test "a process that takes the lease over schedules from the table, not from its own guess" do
   fresh
   t0 = utc(2026, 11, 9, 10, 0)

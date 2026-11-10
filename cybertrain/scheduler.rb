@@ -613,9 +613,16 @@ module Cybertrain
     # while this process ran and no leader ran it) runs once at the next
     # tick, a later one is the next run. schedule_all passes `now`, so at
     # a start only a slot exactly at `now` runs.
+    #
+    # A task that has never run (last 0) takes the earlier of the stored
+    # next run and the next run its current schedule gives from `now`: the
+    # stored one was computed from the schedule of the release that wrote
+    # the row, and a schedule made shorter since then must not wait for it
+    # (a schedule made longer runs once at the stored time, then follows
+    # the new one).
     def self.schedule_from_row(task, last, stored_next, now, since)
       task.task_last_run = last
-      slot = last > 0 ? schedule_next(task, last) : stored_next
+      slot = last > 0 ? schedule_next(task, last) : first_slot(task, stored_next, now)
       if slot < 0
         task.task_next_run = -1
       elsif slot >= now || task.task_cron.nil?
@@ -634,6 +641,14 @@ module Cybertrain
         end
       end
       nil
+    end
+
+    # The first run of a task with a row but no run yet: the stored next
+    # run, or the one the current schedule gives from `now` when that is
+    # earlier.
+    def self.first_slot(task, stored_next, now)
+      fresh = schedule_next(task, now)
+      fresh > 0 && fresh < stored_next ? fresh : stored_next
     end
 
     # "name every Ns, name (cron "expr" zone) next 2026-11-09T10:12Z, ..."

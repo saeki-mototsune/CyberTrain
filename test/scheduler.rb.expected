@@ -12,5 +12,6 @@ ok   config: the worker switch and the intervals have their defaults, and boot c
 ok   config: each job and lease setting must be at least 1, and stale more than the interval
 ok   config: CYBERTRAIN_JOB_THREADS sets job_threads; a word is the default, 0 is kept for boot to refuse
 ok   every continues from last_run_at after schedule_all
+ok   a task that never ran takes its current schedule when that is earlier than the stored next run
 ok   start! starts the thread once; stop! asks it to end
-15 tests, 109 assertions, 0 failures
+16 tests, 111 assertions, 0 failures
