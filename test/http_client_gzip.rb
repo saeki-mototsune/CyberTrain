@@ -13,6 +13,7 @@
 #   spinel test/http_client_gzip.rb -c -o /tmp/x.c
 #   grep -c 'sp_nomethod_msg("getbyte"' /tmp/x.c      -> 0
 require "tmpdir"
+require "socket"
 require "cybertrain/http_client"
 require "cybertrain/http/gzip_ffi"
 require "cybertrain/test"
@@ -293,6 +294,68 @@ rescue StreamStop => e
   Outcome.new(e.class.name.to_s, e.message)
 rescue Cybertrain::HttpClient::Error => e
   Outcome.new("client error", e.message)
+end
+
+# A server that answers one connection with a gzip body framed by the
+# connection's end alone (no Content-Length, no Transfer-Encoding), which
+# Test::HttpReceiver never sends: it reads the request head, writes the
+# head and `body`, and closes.
+class CloseFramedServer
+  def initialize(body)
+    @listener = TCPServer.new("127.0.0.1", 0)
+    @close_port = @listener.addr[1]
+    @close_body = body
+  end
+
+  def start
+    listener = @listener
+    @thread = Thread.new { serve_one(listener) }
+    self
+  end
+
+  def url(path)
+    "http://127.0.0.1:#{@close_port}#{path}"
+  end
+
+  def serve_one(listener)
+    sock = listener.accept
+    head = +""
+    while head.index("\r\n\r\n").nil?
+      break if sock.wait_readable(5).nil?
+
+      head << sock.readpartial(16_384)
+    end
+    out = +""
+    out << "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nConnection: close\r\n\r\n"
+    out << @close_body
+    sock.write(out)
+    sock.close
+    listener.close
+    nil
+  rescue IOError, SystemCallError
+    nil
+  end
+
+  def finish
+    @thread.join(5)
+    nil
+  end
+end
+
+test "a gzip body framed by the connection's end streams inflated, and a cut one is refused" do
+  whole = CloseFramedServer.new(big_gzip).start
+  pieces = Array.new(0) { "" }
+  res = gzip_client(100).get(whole.url("/close")) { |chunk| pieces << chunk }
+  whole.finish
+  assert_equal 200, res.status
+  assert pieces.size >= 5
+  assert pieces.join == big_text
+  gz = big_gzip
+  cut = CloseFramedServer.new(gz.byteslice(0, gz.bytesize - 8)).start
+  refused = streamed_outcome(gzip_client, cut.url("/close"))
+  cut.finish
+  assert_equal "bad response", refused.kind
+  assert_includes refused.text, "the gzip response body ended before its gzip stream did"
 end
 
 test "an exception raised in the streamed block passes through the gzip sink unchanged" do

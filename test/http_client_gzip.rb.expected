@@ -7,9 +7,10 @@ ok   an inflated body past max_body raises TooLargeError
 ok   Content-Encoding: br is a BadResponseError
 ok   corrupt or truncated gzip is a BadResponseError, buffered and streamed
 ok   a gzip response with no body bytes is an empty body, kept and streamed
+ok   a gzip body framed by the connection's end streams inflated, and a cut one is refused
 ok   an exception raised in the streamed block passes through the gzip sink unchanged
 ok   HttpClient.gzip= replaces the gzip support
 ok   a multi-member gzip body inflates to every member, buffered and streamed
 ok   HEAD, 204 and a redirect's body are not inflated
 ok   cleanup
-14 tests, 66 assertions, 0 failures
+15 tests, 71 assertions, 0 failures
