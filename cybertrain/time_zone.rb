@@ -164,16 +164,16 @@ module Cybertrain
           return PosixTz.new(true, true, std_off, dst_off, std_abbr, dst_abbr, starts, ends)
         end
 
-        expect(44)
+        expect_byte(44)
         starts = rule_date
-        expect(44)
+        expect_byte(44)
         ends = rule_date
         return PosixTz.none unless @ok && @pos == s.bytesize
 
         PosixTz.new(true, true, std_off, dst_off, std_abbr, dst_abbr, starts, ends)
       end
 
-      def expect(byte)
+      def expect_byte(byte)
         s = @src
         if @pos < s.bytesize && s.getbyte(@pos) == byte
           @pos += 1
@@ -292,9 +292,9 @@ module Cybertrain
           @pos += 1
           kind = 2
           month = number(2)
-          expect(46)
+          expect_byte(46)
           week = number(1)
-          expect(46)
+          expect_byte(46)
           wday = number(1)
           @ok = false if month < 1 || month > 12 || week < 1 || week > 5 || wday > 6
         else

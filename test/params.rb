@@ -1,4 +1,5 @@
 require "cybertrain/params"
+require "cybertrain/http/query"
 require "cybertrain/test"
 
 test "set_value stores and reads a scalar" do
@@ -91,6 +92,56 @@ test "permit returns only listed scalar keys that are present" do
   p.child!("author").set_value("name", "matz")
   permitted = p.permit("title", "tags", "author", "missing")
   assert_equal({ "title" => "hi" }, permitted)
+end
+
+def params_from(text)
+  Cybertrain::Query.parse(text)
+end
+
+test "expect returns the permitted shape" do
+  p = params_from("article[title]=Hi&article[tags][]=a&article[tags][]=b&article[meta][source]=rss&article[admin]=1")
+  h = p.expect(article: [:title, tags: [], meta: [:source]])
+  assert_equal "Hi", h["title"]
+  assert_equal ["a", "b"], h["tags"]
+  assert_equal({ "source" => "rss" }, h["meta"])
+  refute h.key?("admin")
+end
+
+test "expect raises 400's ParameterMissing for a missing key or a wrong shape" do
+  assert_raises("ParameterMissing") { params_from("x=1").expect(article: [:title]) }
+  assert_raises("ParameterMissing") { params_from("article=flat").expect(article: [:title]) }
+  assert_raises("ParameterMissing") { params_from("article[title][]=x").expect(article: [meta: [:source]]) }
+  msg = assert_raises("ParameterMissing") { params_from("").expect(article: [:title]) }
+  assert_equal "param is missing or the value is empty or invalid: article", msg
+end
+
+test "expect raises when a nested Hash is sent where a list is expected" do
+  msg = assert_raises("ParameterMissing") { params_from("article[tags][x]=1").expect(article: [tags: []]) }
+  assert_equal "param is missing or the value is empty or invalid: article", msg
+end
+
+test "expect with a bare key answers a one-entry Hash, raising for a missing or non-String value" do
+  assert_equal({ "id" => "3" }, params_from("id=3").expect(:id))
+  msg = assert_raises("ParameterMissing") { params_from("x=1").expect(:id) }
+  assert_equal "param is missing or the value is empty or invalid: id", msg
+  assert_raises("ParameterMissing") { params_from("id[]=3").expect(:id) }
+  assert_raises("ParameterMissing") { params_from("id[a]=3").expect(:id) }
+end
+
+test "expect with a list spec answers the list in a one-entry Hash" do
+  assert_equal({ "tags" => ["a", "b"] }, params_from("tags[]=a&tags[]=b").expect(tags: []))
+  msg = assert_raises("ParameterMissing") { params_from("tags[x]=a").expect(tags: []) }
+  assert_equal "param is missing or the value is empty or invalid: tags", msg
+  assert_raises("ParameterMissing") { params_from("tags=a").expect(tags: []) }
+end
+
+test "require(...).permit gains the nested and array forms" do
+  h = params_from("post[title]=T&post[ids][]=1").require(:post).permit(:title, ids: [])
+  assert_equal ["1"], h["ids"]
+end
+
+test "a list sent where a scalar is permitted is dropped, not coerced" do
+  assert_equal({}, params_from("post[title][]=x").require(:post).permit(:title))
 end
 
 test "merge! lets the other Params win on conflicts" do

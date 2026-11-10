@@ -7,6 +7,13 @@ ok   set_path assembles nested params from a Query.split_key-shaped path
 ok   require returns the nested Params when present and non-empty
 ok   require raises ParameterMissing when absent or empty
 ok   permit returns only listed scalar keys that are present
+ok   expect returns the permitted shape
+ok   expect raises 400's ParameterMissing for a missing key or a wrong shape
+ok   expect raises when a nested Hash is sent where a list is expected
+ok   expect with a bare key answers a one-entry Hash, raising for a missing or non-String value
+ok   expect with a list spec answers the list in a one-entry Hash
+ok   require(...).permit gains the nested and array forms
+ok   a list sent where a scalar is permitted is dropped, not coerced
 ok   merge! lets the other Params win on conflicts
 ok   merge! deep-merges nested Params, keeping receiver-only keys
 ok   merge! does not alias other's lists or nested params
@@ -29,4 +36,4 @@ ok   a file's bytes survive the Params unchanged (NUL and high bytes)
 ok   int reads a bounded decimal and never raises
 ok   parse_int accepts an optional minus and at most 18 digits
 ok   page_number is 1-based and clamped to Params.max_page
-31 tests, 151 assertions, 0 failures
+38 tests, 173 assertions, 0 failures
