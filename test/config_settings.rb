@@ -125,6 +125,22 @@ test "CYBERTRAIN_HEALTH_FEED_STALE sets health_feed_stale; unset or bad is 180; 
   ENV.delete("CYBERTRAIN_HEALTH_FEED_STALE")
 end
 
+test "boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on" do
+  c = Cybertrain::Config.new
+  c.feed_status_interval = 300
+  c.health_feed_stale = 180
+  assert_equal "health_feed_stale (180) must be more than feed_status_interval (300) while health_feeds is on",
+               c.health_error
+  c.health_feed_stale = 300
+  assert_includes c.health_error, "health_feed_stale (300) must be more than feed_status_interval (300)"
+  c.health_feed_stale = 301
+  assert_equal "", c.health_error
+  # With the feed check off the two are unrelated.
+  c.health_feed_stale = 180
+  c.health_feeds = false
+  assert_equal "", c.health_error
+end
+
 test "a bad declaration is an ArgumentError" do
   wrong = Cybertrain::Config.new
   wrong.setting_string :taken, env: "CT_TEST_TAKEN", default: ""

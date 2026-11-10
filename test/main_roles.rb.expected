@@ -48,5 +48,11 @@ ok   a role hands back the INT and TERM handlers it replaced
 no feed has reported status
 quotes  disconnected  host:42  last activity never  restarts 2  updated 5s ago
 trades  connected  host:42  last activity 7s ago  restarts 0  updated 5s ago
+gone  disconnected  host:41  last activity never  restarts 0  updated 800s ago  (not registered)
+quotes  disconnected  host:42  last activity never  restarts 2  updated 5s ago
+trades  connected  host:42  last activity 7s ago  restarts 0  updated 5s ago
 ok   feeds status prints one line per status row and returns 0; with none it says so
-12 tests, 53 assertions, 0 failures
+=> test environment
+=> feeds: trades
+ok   a feeds process stopped cleanly deletes its own status rows, not another process's
+13 tests, 59 assertions, 0 failures

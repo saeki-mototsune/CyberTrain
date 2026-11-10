@@ -19,4 +19,5 @@ ok   on_tick fires every second while connected, with the connection
 ok   an exception in on_tick is logged and the loop continues
 ok   an exception in on_tick while connected is logged and keeps the connection
 ok   a pong refreshes the feed's activity, not its last message
-21 tests, 131 assertions, 0 failures
+ok   an error inside a feed session closes the connection it had open
+22 tests, 138 assertions, 0 failures

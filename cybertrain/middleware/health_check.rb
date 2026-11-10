@@ -3,6 +3,7 @@ require "cybertrain/db"
 require "cybertrain/scheduler"
 require "cybertrain/cast"
 require "cybertrain/websocket/feed_table"
+require "cybertrain/background"
 
 module Cybertrain
   # The built-in health check (Config#health_path, "/up" by default): a GET
@@ -20,7 +21,10 @@ module Cybertrain
   #   503 feed stale            Config#health_feeds, and a feed status row
   #                             (WebSocket::FeedTable) whose updated_at, or
   #                             COALESCE(last_activity_at, started_at), is
-  #                             older than Config#health_feed_stale seconds
+  #                             older than Config#health_feed_stale seconds;
+  #                             a row whose name is not a subscription this
+  #                             binary registers (a feed renamed or removed
+  #                             since) is not counted
   #
   # always text/plain with Cache-Control: no-store. It sits inside
   # RequestLogger, so each poll is the normal two log lines and nothing more.
@@ -30,6 +34,10 @@ module Cybertrain
     # file, so it would answer for a database that is gone. sqlite_master
     # rather than its newer alias sqlite_schema (SQLite 3.33+).
     QUERY = "SELECT count(*) AS n FROM sqlite_master"
+
+    # Whether feed_rows has logged that the table cannot be read, until it
+    # reads again (a typed initial value: NOTES rule 7).
+    @feed_read_warned = false
 
     def initialize(app, path, worker_stale, feeds, feed_stale)
       super(app)
@@ -85,11 +93,17 @@ module Cybertrain
     # the publishing process stopped writing (updated_at old), or the feed
     # is silent under a live publisher (COALESCE(last_activity_at,
     # started_at) old: a feed never active counts from its start). No rows,
-    # or an unreadable table, is not stale; the database check says so.
+    # or an unreadable table, is not stale; the database check says so. A
+    # row whose name no registered subscription has is skipped: every role
+    # runs the same binary, so this process knows the current feeds, and a
+    # feed renamed or removed by a release must not fail every later web
+    # deploy with its old row.
     def self.feed_stale?(now, feed_stale)
       limit = now - feed_stale
       rows = feed_rows
+      known = Background.feed_names
       rows.each do |row|
+        next unless known.include?(Cast.str(row["name"]))
         return true if Cast.int(row["updated_at"]) < limit
         active = row["last_activity_at"]
         seen = active.nil? ? Cast.int(row["started_at"]) : Cast.int(active)

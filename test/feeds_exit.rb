@@ -77,6 +77,7 @@ def feeds_child
   ENV["CYBERTRAIN_DATABASE"] = "feeds.sqlite3"
   ENV["CYBERTRAIN_FEED_RESTART_LIMIT"] = "2"
   ENV["CYBERTRAIN_FEED_RESTART_WINDOW"] = "600"
+  ENV["CYBERTRAIN_FEED_STATUS_INTERVAL"] = "1"
   pid = 0
   if RUBY_ENGINE == "ruby"
     pid = Process.spawn("ruby", "-I", File.expand_path("..", __dir__), $0, out: OUT_PATH, err: ERR_PATH)
@@ -86,6 +87,7 @@ def feeds_child
   ENV.delete(CHILD_FLAG)
   ENV.delete("CYBERTRAIN_FEED_RESTART_LIMIT")
   ENV.delete("CYBERTRAIN_FEED_RESTART_WINDOW")
+  ENV.delete("CYBERTRAIN_FEED_STATUS_INTERVAL")
   status = Process.waitpid2(pid)[1].exitstatus.to_i
   [status.to_s, File.read(OUT_PATH)]
 end
@@ -100,6 +102,13 @@ test "a feed that keeps dying makes a feeds process exit 1 with the FATAL line" 
   assert_includes out, "[FATAL] feed crashy restarted 2 times in 600 s; exiting"
   # The FATAL line comes before the feeds are stopped and the role returns.
   assert out.index("[FATAL]") < out.index("returned 1")
+  # A process that gave up keeps its status row, so `/up` reports the feed
+  # once the row is stale (a clean stop deletes it: test/main_roles.rb).
+  Cybertrain::DB.connect("#{TMP}/feeds.sqlite3")
+  rows = Cybertrain::WebSocket::FeedTable.read_feeds
+  assert_equal 1, rows.size
+  assert_equal "crashy", Cybertrain::Cast.str(rows[0]["name"])
+  Cybertrain::DB.disconnect
 end
 
 Cybertrain::Test.run!

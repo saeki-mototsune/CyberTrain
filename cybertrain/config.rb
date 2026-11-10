@@ -511,7 +511,10 @@ attr_accessor :trusted_proxies
     # process) or `COALESCE(last_activity_at, started_at)` (the feed)
     # makes the health check answer `503 feed stale`, `180`, from
     # `CYBERTRAIN_HEALTH_FEED_STALE` (a bad value is the default, one below
-    # 1 is refused at boot). At least 1.
+    # 1 is refused at boot). At least 1, and while {#health_feeds} is on
+    # more than {#feed_status_interval} (boot refuses it otherwise: every
+    # row would be stale between two writes). A row whose feed no
+    # registered subscription names is not counted.
     # @return [Integer]
     # @api public
     attr_accessor :health_feed_stale
@@ -1205,8 +1208,10 @@ end
     end
 
     # The error Application#boot reports when health_path is neither ""
-    # nor a path starting with "/", or health_worker_stale is below 1; ""
-    # when both are fine.
+    # nor a path starting with "/", health_worker_stale or
+    # health_feed_stale is below 1, or health_feeds is on and
+    # health_feed_stale is not more than feed_status_interval; "" when all
+    # are fine.
     def health_error
       path = @health_path
       unless path.empty? || path.start_with?("/")
@@ -1214,6 +1219,12 @@ end
       end
       return "health_worker_stale must be at least 1 (got #{@health_worker_stale})" if @health_worker_stale < 1
       return "health_feed_stale must be at least 1 (got #{@health_feed_stale})" if @health_feed_stale < 1
+      # Rows are written every feed_status_interval seconds: a limit no
+      # longer than that makes every row stale between two writes.
+      if @health_feeds && @health_feed_stale <= @feed_status_interval
+        return "health_feed_stale (#{@health_feed_stale}) must be more than feed_status_interval " \
+               "(#{@feed_status_interval}) while health_feeds is on"
+      end
 
       ""
     end

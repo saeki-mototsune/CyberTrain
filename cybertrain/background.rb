@@ -125,6 +125,15 @@ module Cybertrain
       def service_publish_status(now)
         0
       end
+
+      # Deletes the status rows {#service_publish_status} wrote for this
+      # process, after a clean stop of the `feeds` role. It should not
+      # raise.
+      # @return [Integer] how many rows it deleted
+      # @api public
+      def service_withdraw_status
+        0
+      end
     end
 
     # A typed empty list of names (NOTES rule 9), shared and never added to.
@@ -259,6 +268,20 @@ module Cybertrain
         i += 1
       end
       ""
+    end
+
+    # Every registered service's {Service#service_withdraw_status}, in
+    # order: what a `feeds` process does after a clean stop.
+    # @return [Integer] how many rows were deleted
+    # @api public
+    def self.withdraw_status_all
+      removed = 0
+      i = 0
+      while i < SERVICES.size
+        removed += SERVICES[i].service_withdraw_status
+        i += 1
+      end
+      removed
     end
 
     # Asks every registered service to end, in registration order, after

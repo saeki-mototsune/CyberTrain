@@ -1,5 +1,6 @@
 require "cybertrain/cast"
 require "cybertrain/db"
+require "cybertrain/logger"
 require "cybertrain/websocket/status_writer"
 
 module Cybertrain
@@ -102,6 +103,22 @@ module Cybertrain
         DB.with { |c| c.execute(WRITE_SQL, binds) }
         nil
       end
+
+      # Deletes the rows `process` published: a `feeds` process does it
+      # after a clean stop, so `/up` no longer counts feeds nobody runs.
+      # @param process [String] "<hostname>:<pid>"
+      # @return [Integer] how many rows were deleted
+      # @raise [Cybertrain::DB::Error] when the database is not reachable
+      # @api public
+      def self.delete_process_feeds(process)
+        ensure_installed
+        removed = 0
+        DB.with do |c|
+          c.execute("DELETE FROM cybertrain_feeds WHERE process = ?", [process])
+          removed = c.changes
+        end
+        removed
+      end
     end
 
     # The {StatusWriter} that writes `cybertrain_feeds` rows, when a
@@ -116,6 +133,19 @@ module Cybertrain
 
         FeedTable.upsert_feed(name, process, connected, started_at, last_activity_at, restarts, now)
         true
+      end
+
+      # (see StatusWriter#status_withdraw)
+      # A database error is logged and counts as nothing deleted: the rows
+      # then go stale as a crashed process's would.
+      # @api public
+      def status_withdraw(process)
+        return 0 unless DB.connected?
+
+        FeedTable.delete_process_feeds(process)
+      rescue Cybertrain::DB::Error, StandardError => e
+        Cybertrain.logger.warn("feeds: could not delete this process's status rows: #{e.class.name}: #{e.message}")
+        0
       end
     end
   end

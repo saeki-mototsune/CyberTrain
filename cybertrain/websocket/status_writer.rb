@@ -23,6 +23,14 @@ module Cybertrain
       def status_write(name, process, connected, started_at, last_activity_at, restarts, now)
         false
       end
+
+      # Deletes the rows `process` wrote (its feeds were stopped cleanly).
+      # @param process [String] "<hostname>:<pid>"
+      # @return [Integer] how many rows it deleted
+      # @api public
+      def status_withdraw(process)
+        0
+      end
     end
 
     # The registered writers: a constant, rooted for the collector (NOTES

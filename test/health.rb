@@ -40,6 +40,23 @@ ENV["CYBERTRAIN_ENV"] = "test"
 LOG = StringIO.new
 Cybertrain.logger = Cybertrain::Logger.new(LOG)
 
+# The feeds this binary registers, as the WebSocket service lists them in
+# an application (this program does not link the WebSocket client): only
+# rows of these names count in the feed check.
+FEED_NAMES = ["trades"]
+
+class ListedFeeds < Cybertrain::Background::Service
+  def service_name
+    "listed feeds"
+  end
+
+  def service_feed_names
+    FEED_NAMES
+  end
+end
+
+Cybertrain::Background.register(ListedFeeds.new)
+
 # What the login filter saw, read back by the tests (a constant: NOTES
 # rule 64).
 TRAIL = Array.new(0) { "" }
@@ -243,6 +260,15 @@ test "a never-active feed past the threshold (NULL last_activity_at, old started
   clear_feeds
   plant_feed("trades", 100, -1, 5)
   assert_equal "ok", CLIENT.get("/up").body
+end
+
+test "a stale row of a feed no subscription registers (renamed or removed) does not count" do
+  clear_feeds
+  plant_feed("gone", 1000, 500, 500)
+  assert_equal "ok", CLIENT.get("/up").body
+  plant_feed("trades", 1000, 500, 500)
+  assert_equal "feed stale", CLIENT.get("/up").body
+  clear_feeds
 end
 
 test "health_feeds false gives 200 with a stale row; CYBERTRAIN_HEALTH_FEEDS=0 sets it" do

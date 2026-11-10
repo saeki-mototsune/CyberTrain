@@ -21,7 +21,19 @@ require "cybertrain/test"
 WS = Cybertrain::WebSocket
 
 LOG = StringIO.new
-Cybertrain.logger = Cybertrain::Logger.new(LOG)
+
+# The framework's logger, except that the "connected" line of the feed
+# named "dropper" raises: an error inside a feed session while its
+# connection is open, which feed_session's rescue arms catch.
+class DropperLogger < Cybertrain::Logger
+  def info(msg)
+    raise IOError, "the log refused the line" if msg.include?("\"dropper\" connected to")
+
+    super
+  end
+end
+
+Cybertrain.logger = DropperLogger.new(LOG)
 
 # No jitter: every retry delay is exactly 1, 2, 4, ... seconds.
 WS.random_source = -> { 0.5 }
@@ -221,6 +233,11 @@ def subscribe_tick_conn_bad(url)
     end
 end
 
+def subscribe_dropper(url)
+  WS.subscribe("dropper", url, allow_private: true)
+    .on_message { |conn, data| conn.send_text(data) }
+end
+
 def subscribe_pongy(url)
   WS.subscribe("pongy", url, timeout: 2, ping_interval: 1, stale_after: 4, allow_private: true)
     .on_message { |conn, data| conn.send_text(data) }
@@ -252,6 +269,10 @@ test "subscribe refuses bad arguments" do
   assert_includes assert_raises("ArgumentError") { WS.subscribe("zero", "ws://127.0.0.1:9/", ping_interval: 0) }, "ping_interval"
   assert_includes assert_raises("ArgumentError") { WS.subscribe("same", "ws://127.0.0.1:9/", stale_after: 15, ping_interval: 15) }, "stale_after"
   assert_includes assert_raises("ArgumentError") { WS.subscribe("header", "ws://127.0.0.1:9/", headers: { "Upgrade" => "h2c" }) }, "Upgrade"
+  # `./<app> feeds status` is a command, so no feed takes that name.
+  assert_equal "WebSocket.subscribe: the name \"status\" is reserved (./<app> feeds status)",
+               assert_raises("ArgumentError") { WS.subscribe("status", "ws://127.0.0.1:9/") }
+  assert_equal(-1, WS.subscription_index("status"))
 end
 
 test "start! refuses a subscription without on_message" do
@@ -500,6 +521,20 @@ test "a pong refreshes the feed's activity, not its last message" do
   sleep(0.05) while sub.sub_last_activity_at == 0 && mono_now < ends_at
   assert sub.sub_last_activity_at >= before
   assert_equal 0, WS.feed_status("pongy").last_message_at
+  WS.stop!
+  rx.stop
+end
+
+test "an error inside a feed session closes the connection it had open" do
+  rx = receiver_for(1, [[step("accept"), step("echo_until_close")]])
+  subscribe_dropper(rx.url("/dropper"))
+  assert WS.start!(Cybertrain::Config.new)
+  assert await_log("WebSocket \"dropper\" disconnected: IOError: the log refused the line", 1, 5.0)
+  # The client sent its close (1000) before the reconnect wait, rather
+  # than forgetting a connection that stays open.
+  assert await_frames(rx, 8, 1, 3.0)
+  closes = frames_of(rx, 8)
+  assert_equal 1000, (closes[0].getbyte(0) << 8) | closes[0].getbyte(1)
   WS.stop!
   rx.stop
 end

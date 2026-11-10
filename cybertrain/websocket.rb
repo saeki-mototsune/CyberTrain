@@ -444,7 +444,7 @@ module Cybertrain
     #   more than ping_interval
     # @param allow_private [Boolean] allow non-public destinations
     # @return [Subscription]
-    # @raise [ArgumentError] an empty or taken name, a URL that is not ws://
+    # @raise [ArgumentError] an empty, reserved ("status") or taken name, a URL that is not ws://
     #   or wss://, a header the client refuses, a bad interval
     # @api public
     def self.subscribe(name, url, headers: Client::NO_HEADERS, timeout: 5, max_message: 1_048_576,
@@ -452,6 +452,9 @@ module Cybertrain
                        allow_private: Cybertrain.config.http_allow_private)
       label = name.to_s
       raise ArgumentError, "WebSocket.subscribe: the name is empty" if label.empty?
+      # `./<app> feeds status` is the status command, so no feed can be
+      # started by that name.
+      raise ArgumentError, "WebSocket.subscribe: the name \"status\" is reserved (./<app> feeds status)" if label == "status"
       raise ArgumentError, "WebSocket.subscribe #{label.inspect}: already registered" if subscription_index(label) >= 0
 
       target = HttpClient.parse_url_for(url, "ws://", "wss://")
@@ -560,8 +563,7 @@ module Cybertrain
     def self.publish_status(now)
       return 0 unless @running
 
-      @process_label = "#{Socket.gethostname}:#{Process.pid}" if @process_label.empty?
-      process = @process_label
+      process = status_process
       written = 0
       i = 0
       while i < SUBSCRIPTIONS.size
@@ -582,6 +584,35 @@ module Cybertrain
         i += 1
       end
       written
+    end
+
+    # "<hostname>:<pid>", the `process` this process writes in its status
+    # rows.
+    # @return [String]
+    # @api public
+    def self.status_process
+      @process_label = "#{Socket.gethostname}:#{Process.pid}" if @process_label.empty?
+      @process_label
+    end
+
+    # Deletes the status rows this process wrote, through the registered
+    # {StatusWriter}s: a `feeds` process does it after a clean stop
+    # (Application#run_feeds_threads), so the health check stops counting
+    # feeds nobody runs. A crashed process deletes nothing, and its rows go
+    # stale. Does nothing while the feeds run.
+    # @return [Integer] how many rows were deleted
+    # @api public
+    def self.withdraw_status
+      return 0 if @running
+
+      process = status_process
+      removed = 0
+      i = 0
+      while i < STATUS_WRITERS.size
+        removed += STATUS_WRITERS[i].status_withdraw(process)
+        i += 1
+      end
+      removed
     end
 
     # Why {WebSocket.start!} would refuse to start: the first subscription
@@ -770,8 +801,12 @@ module Cybertrain
       attempt = 0
       while feed_live?(generation)
         failure = feed_session(sub, generation)
-        # Every way out of feed_session but a raise closes the connection.
-        sub.sub_client!(nil)
+        # Closed and forgotten: the normal ways out of feed_session closed
+        # it already (a second close does nothing); an error its rescue
+        # arms caught may have left it open. A thread left from before a
+        # stop! and a new start! leaves the reference alone: it may be the
+        # new generation's connection.
+        sub.sub_drop_client if @generation == generation
         # After a stop! the state is marked disconnected, but a thread
         # left from before a stop! and a new start! leaves it to the new
         # generation's thread.
@@ -969,6 +1004,10 @@ module Cybertrain
 
       def service_publish_status(now)
         WebSocket.publish_status(now)
+      end
+
+      def service_withdraw_status
+        WebSocket.withdraw_status
       end
     end
   end

@@ -360,7 +360,10 @@ module Cybertrain
     #   NAME  connected|disconnected  process  last activity Ns ago  restarts N  updated Ns ago
     #
     # "last activity never" until the feed's first message. Times are
-    # relative to now, so a stale row stands out. With no rows it says so.
+    # relative to now, so a stale row stands out. A row whose name no
+    # registered subscription has (a feed renamed or removed since; `/up`
+    # does not count it) ends with "  (not registered)". With no rows it
+    # says so.
     # @return [Integer] 0
     # @api public
     def run_feeds_status
@@ -379,8 +382,10 @@ module Cybertrain
       active = row["last_activity_at"]
       activity = active.nil? ? "never" : "#{now - Cast.int(active)}s ago"
       state = Cast.int(row["connected"]) == 1 ? "connected" : "disconnected"
-      "#{Cast.str(row["name"])}  #{state}  #{Cast.str(row["process"])}  last activity #{activity}  " \
-        "restarts #{Cast.int(row["restarts"])}  updated #{now - Cast.int(row["updated_at"])}s ago"
+      name = Cast.str(row["name"])
+      note = Background.feed_names.include?(name) ? "" : "  (not registered)"
+      "#{name}  #{state}  #{Cast.str(row["process"])}  last activity #{activity}  " \
+        "restarts #{Cast.int(row["restarts"])}  updated #{now - Cast.int(row["updated_at"])}s ago#{note}"
     end
 
     # The feeds' lifetime, the counterpart of run_worker_threads: the named
@@ -397,13 +402,23 @@ module Cybertrain
     # @param names [Array<String>] the feeds to run; empty for all
     # @param previous_term [Object] what trap("TERM") answered
     # @param previous_int [Object] what trap("INT") answered
+    # On a clean stop the feeds' status rows this process wrote are
+    # deleted (Background.withdraw_status_all), so a role stopped on
+    # purpose no longer counts in `/up`; after a feed died too often they
+    # are kept.
     # @return [Integer] 0, or 1 after a feed died too often
     def run_feeds_threads(names, previous_term, previous_int)
       Background.exit_on_feed_death = true
       Background.start_only(@config, names)
       Application.wait_roles_stop
       Background.stop_all
-      Background.feeds_failed? ? 1 : 0
+      return 1 if Background.feeds_failed?
+
+      # A clean stop (TERM, INT, a scale-down) takes this process's status
+      # rows away, so `/up` stops counting feeds nobody runs any more; a
+      # process that crashed, or gave up on a feed, leaves them to go stale.
+      Background.withdraw_status_all
+      0
     ensure
       # The flags are the role's: an in-process caller (a test) that runs
       # another role afterwards starts clean.
