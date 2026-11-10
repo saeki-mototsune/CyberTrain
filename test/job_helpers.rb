@@ -22,6 +22,8 @@ SEEN = Array.new(0) { "" }
 Job.register("welcome") { |run| SEEN << "welcome #{Cybertrain::Cast.str(run.run_args["user_id"])}" }
 Job.register("digest") { |run| SEEN << "digest" }
 Job.register("flaky") { |run| raise "not yet" }
+# Enqueues itself again, due at once.
+Job.register("again") { |run| Job.enqueue("again", "{}", run_at: Time.at(1000)) }
 
 def fresh_db
   DB.connect(":memory:")
@@ -97,6 +99,24 @@ test "perform_enqueued_jobs runs the due rows, returns the count and leaves futu
   assert_equal 1, perform_enqueued_jobs(later + 1)
   assert_equal "welcome 9", SEEN[2]
   assert_no_enqueued_jobs
+end
+
+test "assert_enqueued_with reads Symbol keys as their names" do
+  fresh_db
+  Job.enqueue("welcome", "{\"user_id\":1,\"mode\":\"ok\"}")
+  assert_enqueued_with "welcome", user_id: 1
+  assert_enqueued_with "welcome", { user_id: "1", mode: "ok" }
+  message = assert_raises("AssertionFailed") { assert_enqueued_with "welcome", user_id: 2 }
+  assert_includes message, "expected an enqueued \"welcome\" job with {:user_id => 2}"
+end
+
+test "perform_enqueued_jobs fails after 10,000 jobs instead of running for ever" do
+  fresh_db
+  Job.enqueue("again", "{}", run_at: Time.at(1000))
+  message = assert_raises("AssertionFailed") { perform_enqueued_jobs(Time.at(2000)) }
+  assert_equal "perform_enqueued_jobs ran 10000 jobs; a job re-enqueues itself due at once", message
+  assert_enqueued_jobs 1, "again"
+  assert_equal 10_000, Job.state_count("done")
 end
 
 test "perform_enqueued_jobs leaves a retry scheduled into the future" do

@@ -174,8 +174,13 @@ module Cybertrain
 
           # A scheduled task: a cron expression (read in CYBERTRAIN_SCHEDULER_TZ,
           # UTC by default), a unique name and a block. One process at a time
-          # leads the schedule; the web and worker roles both run it.
-          # Cybertrain::Scheduler.cron("0 4 * * *", "prune sessions") { }
+          # leads the schedule; the web and worker roles both run it. Finished
+          # jobs stay in cybertrain_jobs until something deletes them: this one
+          # deletes the done ones a week old (failed ones are kept for
+          # the jobs command).
+          # Cybertrain::Scheduler.cron("0 4 * * *", "prune done jobs") do
+          #   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)
+          # end
         RUBY
       end
 

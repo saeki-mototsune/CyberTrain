@@ -97,6 +97,12 @@ Job.handle("long") do |payload|
   sleep 3
   record_event("long")
 end
+# Exceptions outside StandardError: one run_handler takes the default
+# policy for, and one that only the job thread's own rescue survives.
+class JobAbort < Exception
+end
+Job.handle("unwritten") { |payload| raise NotImplementedError, "notify is not written yet" }
+Job.handle("abort") { |payload| raise JobAbort, "abandon ship" }
 
 def monotonic
   Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -183,6 +189,26 @@ test "an idle job thread picks up a job enqueued after it started within the pol
   assert wait_until(1.5) { Job.state_count("done") == 1 }
   assert_equal "fast", events_text
   Job.stop!
+end
+
+test "a job raising NotImplementedError or another Exception does not end its job thread" do
+  fresh_db
+  unwritten = enqueue_now("unwritten", "")
+  aborted = enqueue_now("abort", "")
+  assert Job.start!(pool_config(1))
+  assert wait_until(3.0) { LOG.string.include?("JobAbort: abandon ship") }
+  assert_equal "queued", job_state(unwritten)
+  assert_includes LOG.string, "(unwritten) attempt 1 of 5 failed: NotImplementedError: notify is not written yet"
+  assert_includes LOG.string, "[ERROR] Job thread 0: JobAbort: abandon ship"
+  # Left running for heartbeat recovery.
+  assert_equal "running", job_state(aborted)
+  # The one job thread is still there and runs the next job.
+  assert_equal 1, Job.live_loops
+  enqueue_now("fast", "")
+  assert wait_until(3.0) { events_text == "fast" }
+  assert_equal 1, Job.live_loops
+  Job.stop!
+  assert_equal 0, Job.live_loops
 end
 
 test "the heartbeat thread moves a running job's heartbeat_at" do

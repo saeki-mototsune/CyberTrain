@@ -144,4 +144,17 @@ test "jobs with no or an unknown subcommand prints the usage" do
   assert_equal 1, run(["jobs", "frobnicate"])
 end
 
+test "jobs list prints at most the newest 1000 rows and says how many there are" do
+  assert_equal 1000, Cybertrain::Job::CLI::LIST_LIMIT
+  make_job("Mailer", "{}", "done", "", 10)
+  make_job("Mailer", "{}", "done", "", 10)
+  newest = make_job("Mailer", "{}", "done", "", 10)
+  # A limit of 2 stands for 1000: the two newest rows, then the count.
+  with_db do
+    assert_equal 0, Cybertrain::Job::CLI.list("done", 2)
+    assert_equal 0, Cybertrain::Job::CLI.list("done", 3)
+  end
+  assert_equal "done", job_field(newest, "state")
+end
+
 Cybertrain::Test.run!

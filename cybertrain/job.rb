@@ -544,9 +544,17 @@ module Cybertrain
     # work_one with its rescue in a plain method (NOTES rules 32/45): a
     # database error (locked past the busy timeout, a disk error) is logged
     # and the thread waits a poll interval instead of dying. False then.
+    #
+    # Anything else that reaches here (an Exception subclass that
+    # run_handler does not survive, raised by a job) is logged too, so a
+    # job thread never ends while the pool is live: the row is left
+    # `running` for heartbeat recovery, which fails it at recovery_limit.
     def self.claim_safely(now, index)
       work_one(now)
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      Cybertrain.logger.error("Job thread #{index}: #{e.class.name}: #{e.message}")
+      false
+    rescue Exception => e
       Cybertrain.logger.error("Job thread #{index}: #{e.class.name}: #{e.message}")
       false
     end
@@ -696,7 +704,7 @@ module Cybertrain
       name = job_key_name(kind)
       keyed = 0
       after = 0
-      left = Array.new(0) { 0 }
+      left = Array.new(0) { "" }
       loop do
         rows = DB.with do |c|
           c.execute("SELECT id, payload FROM cybertrain_jobs WHERE kind = ? AND state = 'queued' " \
@@ -710,7 +718,7 @@ module Cybertrain
             after = id
             key = concurrency_key_for(kind, Cast.str(row["payload"]))
             if key.empty?
-              left << id
+              left << id.to_s
             else
               c.execute("UPDATE cybertrain_jobs SET concurrency_key = ? WHERE id = ? AND concurrency_key = ''",
                         Cast.binds(key, id))
@@ -722,9 +730,22 @@ module Cybertrain
       end
       unless left.empty?
         Cybertrain.logger.warn("#{left.size} queued job(s) of #{kind} have no #{name.inspect} field to key them by; " \
-                               "left in the \"\" bucket: ids #{left.join(", ")}")
+                               "left in the \"\" bucket: ids #{capped_list(left)}")
       end
       keyed
+    end
+
+    # The most ids an unkeyable-row warning lists (a legacy table can hold
+    # thousands of them, and the warning comes at every start).
+    LISTED_IDS = 20
+
+    # The first LISTED_IDS of items joined with ", ", and "... and N more"
+    # when there are more.
+    def self.capped_list(items)
+      return items.join(", ") if items.size <= LISTED_IDS
+
+      shown = items[0, LISTED_IDS].join(", ")
+      "#{shown} ... and #{items.size - LISTED_IDS} more"
     end
 
     # Creates the table and its indexes if they are missing, and adds the
@@ -854,7 +875,7 @@ module Cybertrain
       end
       unless left.empty?
         Cybertrain.logger.warn("#{left.size} requeued job(s) have no concurrency key field to key them by; " \
-                               "left in the \"\" bucket: ids #{left.join(", ")}")
+                               "left in the \"\" bucket: ids #{capped_list(left)}")
       end
       count
     end
@@ -1295,10 +1316,16 @@ module Cybertrain
     # The handler call with its rescue in a plain method that receives the
     # Proc as a parameter (NOTES rules 32/45/69); JSON::NestingError named
     # first (rule 61). "" when the handler returned, else the bounded error.
+    # The exceptions outside StandardError that a job's own code raises
+    # (`raise NotImplementedError` in a helper not yet written, a recursion
+    # too deep, a `require` that fails) take the default policy as a
+    # StandardError does, instead of ending the job thread.
     def self.run_handler(handler, run)
       handler.handler_run_block.call(run)
       ""
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      bounded_error("#{e.class.name}: #{e.message}")
+    rescue NotImplementedError, SystemStackError, ScriptError => e
       bounded_error("#{e.class.name}: #{e.message}")
     end
 

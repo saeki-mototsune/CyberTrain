@@ -8,7 +8,7 @@ module Cybertrain
     # Cybertrain::Job::CLI -- `./<app> jobs ...` (Cybertrain::Main), on the
     # database Main connected; it starts no thread:
     #
-    #   jobs list [STATE]       a table of the rows in STATE (failed by default), newest first
+    #   jobs list [STATE]       a table of the rows in STATE (failed by default), newest first (at most 1000)
     #   jobs retry ID | --all   queue a failed or discarded job again (--all: every failed one)
     #   jobs discard ID         mark a failed job discarded
     #   jobs delete ID          delete a failed or discarded job
@@ -18,6 +18,9 @@ module Cybertrain
     # discarded rows.
     module CLI
       USAGE = "usage: jobs (list [queued|running|done|failed|discarded]|retry ID|retry --all|discard ID|delete ID|prune [--before DAYS])"
+
+      # The most rows `list` prints: the newest ones.
+      LIST_LIMIT = 1000
 
       # The longest error excerpt `list` prints, in characters.
       ERROR_EXCERPT = 60
@@ -70,14 +73,23 @@ module Cybertrain
         1
       end
 
-      # Every row in state as a table: id, kind, state, attempts, run_at
-      # (UTC) and the first line of the error, cut to ERROR_EXCERPT.
-      def self.list(state)
-        rows = JobsPage.jobs_rows(state, 1, Job.state_count(state))
+      # The newest rows in state, at most `limit` (LIST_LIMIT), as a table:
+      # id, kind, state, attempts, run_at (UTC) and the first line of the
+      # error, cut to ERROR_EXCERPT; then "showing the newest N of M STATE
+      # jobs" when there are more.
+      def self.list(state, limit = LIST_LIMIT)
+        total = Job.state_count(state)
+        rows = JobsPage.jobs_rows(state, 1, limit)
         if rows.empty?
           puts "no #{state} jobs"
           return 0
         end
+        print_table(rows)
+        puts "showing the newest #{rows.size} of #{total} #{state} jobs" if total > rows.size
+        0
+      end
+
+      def self.print_table(rows)
         table = Array.new(0) { Array.new(0) { "" } }
         table << ["ID", "KIND", "STATE", "ATTEMPTS", "RUN AT", "ERROR"]
         rows.each do |row|
@@ -98,7 +110,7 @@ module Cybertrain
           end
           puts text.rstrip
         end
-        0
+        nil
       end
 
       def self.error_excerpt(text)

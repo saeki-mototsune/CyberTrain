@@ -31,6 +31,9 @@ Cybertrain.logger = Cybertrain::Logger.new(LOG)
 Job.handle("record") { |payload| SEEN << payload }
 Job.handle("boom") { |payload| raise "boom #{payload}" }
 Job.handle("long") { |payload| raise "x" * 5000 }
+# Exceptions outside StandardError that a job's own code raises.
+Job.handle("unwritten") { |payload| raise NotImplementedError, "notify is not written yet" }
+Job.handle("too deep") { |payload| raise SystemStackError, "stack level too deep" }
 Job.handle("paid", concurrency: 1) { |payload| SEEN << "paid #{payload}" }
 Job.handle("other") { |payload| SEEN << "other #{payload}" }
 Job.handle("api", concurrency: 2) { |payload| SEEN << "api #{payload}" }
@@ -281,6 +284,23 @@ test "a failing job is retried with the backoff, counting attempts, until it is 
   assert_includes LOG.string, "[ERROR] job #{id} (boom) failed after 3 attempts: RuntimeError: boom x"
   refute Job.work_one(999_999)
   assert_equal 1, Job.state_count("failed")
+  Cybertrain.config.job_max_attempts = 5
+end
+
+test "NotImplementedError and SystemStackError from a job take the default retry, as a StandardError does" do
+  fresh_db
+  Cybertrain.config.job_max_attempts = 3
+  id = Job.enqueue("unwritten", "x", run_at: Time.at(1000))
+  deep = Job.enqueue("too deep", "x", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert Job.work_one(1000)
+  assert_equal "queued", job_state(id)
+  assert_equal 1, job_attempts(id)
+  assert_equal 1060, job_run_at(id)
+  assert_equal "NotImplementedError: notify is not written yet", job_error(id)
+  assert_equal "queued", job_state(deep)
+  assert_equal "SystemStackError: stack level too deep", job_error(deep)
+  assert_includes LOG.string, "[ERROR] job #{id} (unwritten) attempt 1 of 3 failed: NotImplementedError: notify is not written yet"
   Cybertrain.config.job_max_attempts = 5
 end
 
@@ -779,6 +799,26 @@ test "backfill_keys keys queued rows of a keyed kind and lists the unkeyable one
   assert_includes LOG.string, "[WARN] 2 queued job(s) of keyed have no \"exchange\" field to key them by; " \
                               "left in the \"\" bucket: ids #{unkeyable}, #{missing}"
   assert_equal 0, Job.backfill_keys(2000)
+end
+
+test "the unkeyable-row warnings list at most 20 ids and count the rest" do
+  fresh_db
+  Job.install!
+  ids = Array.new(0) { 0 }
+  25.times { ids << insert_payload("keyed", "queued", "not json", 1000) }
+  assert_equal 0, Job.backfill_keys(2000)
+  listed = ids[0, 20].join(", ")
+  assert_includes LOG.string, "[WARN] 25 queued job(s) of keyed have no \"exchange\" field to key them by; " \
+                              "left in the \"\" bucket: ids #{listed} ... and 5 more\n"
+  fresh_db
+  Job.install!
+  running = Array.new(0) { 0 }
+  21.times { running << insert_payload("keyed", "running", "not json", 1000) }
+  assert_equal 21, Job.recover!(1301)
+  shown = Array.new(0) { "" }
+  running[0, 20].each { |id| shown << "#{id} (keyed)" }
+  assert_includes LOG.string, "[WARN] 21 requeued job(s) have no concurrency key field to key them by; " \
+                              "left in the \"\" bucket: ids #{shown.join(", ")} ... and 1 more\n"
 end
 
 test "recovery requeues a stale running row with its key in the same statement" do

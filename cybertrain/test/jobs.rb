@@ -29,15 +29,20 @@ module Cybertrain
       end
 
       # Whether the parsed payload holds every key of `args` with an equal
-      # value, compared as Cast.str of both sides.
+      # value, compared as Cast.str of both sides. A Symbol key is read as
+      # its name (the payload's keys are JSON strings).
       def self.args_match?(payload, args)
         have = Cast.json_hash(payload)
         args.each do |k, v|
-          return false unless have.key?(k)
-          return false unless Cast.str(have[k]) == Cast.str(v)
+          name = k.to_s
+          return false unless have.key?(name)
+          return false unless Cast.str(have[name]) == Cast.str(v)
         end
         true
       end
+
+      # The most jobs {perform_enqueued_jobs} runs in one call.
+      PERFORM_LIMIT = 10_000
 
       # `{"user_id" => 1}` as the failure message shows the wanted args.
       def self.describe_args(args)
@@ -84,11 +89,13 @@ end
 
 # Passes when at least one job of `kind` is queued whose args contain every
 # given key with an equal value. Both sides are compared as `Cast.str`, so
-# `"user_id" => 1` matches a JSON 1 (and "1").
+# `"user_id" => 1` matches a JSON 1 (and "1"). A Symbol key is read as its
+# name, so `user_id: 1` works too.
 # @example
 #   assert_enqueued_with "WelcomeJob", { "user_id" => user.id }
+#   assert_enqueued_with "WelcomeJob", user_id: user.id
 # @param kind [String] the job's kind (the class name for a Job::Base subclass)
-# @param args [Hash{String => Object}] the keys that must match (none: any job of the kind)
+# @param args [Hash{String, Symbol => Object}] the keys that must match (none: any job of the kind)
 # @return [void]
 # @api public
 def assert_enqueued_with(kind, args = Cybertrain::Cast.empty_hash)
@@ -105,17 +112,25 @@ end
 
 # Runs every job due at `now` on the calling thread, until none is due
 # (`Job.work_one`), and returns how many it ran. A retry the job scheduled
-# for later is left queued; pass a later `now` to run it.
+# for later is left queued; pass a later `now` to run it. It fails the test
+# after 10,000 jobs: a job that enqueues itself due at once would otherwise
+# never let the test end.
 # @example
 #   post "/signup", ...
 #   assert_equal 1, perform_enqueued_jobs
 # @param now [Time]
 # @return [Integer]
+# @raise [Cybertrain::Test::AssertionFailed] after 10,000 jobs in one call
 # @api public
 def perform_enqueued_jobs(now = Time.now)
   count = 0
   at = now.to_i
-  count += 1 while Cybertrain::Job.work_one(at)
+  while Cybertrain::Job.work_one(at)
+    count += 1
+    if count >= Cybertrain::Test::Jobs::PERFORM_LIMIT
+      flunk("perform_enqueued_jobs ran 10000 jobs; a job re-enqueues itself due at once")
+    end
+  end
   count
 end
 
