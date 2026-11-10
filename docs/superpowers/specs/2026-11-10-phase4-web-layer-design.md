@@ -287,9 +287,18 @@ that is also a framework or application helper is refused by gen.
 - **C-11 Defaults and transport.** `Permissions-Policy` joins the default
   headers (`camera=(), microphone=(), geolocation=()` unless configured);
   `config.force_ssl` redirects http to https (by `X-Forwarded-Proto` behind
-  a proxy) and writes `Strict-Transport-Security`; `config.hosts` (empty =
-  no check, the default) answers 403 to another `Host`, with the health
-  path exempt.
+  a proxy) and writes `Strict-Transport-Security`. Host checks extend the
+  existing development guard (`HostAuthorization` over
+  `Config#allowed_hosts`, today in development only) rather than adding a
+  second list: `CYBERTRAIN_HOSTS` (comma-separated) is appended to
+  `allowed_hosts` in every environment; development keeps checking as now
+  (its loopback names plus those entries); production and test check only
+  when `CYBERTRAIN_HOSTS` is set (empty, the default, means no check, as
+  Rails' production default). The health path is exempt in every
+  environment (Rails' `host_authorization exclude:`), so a load balancer
+  probing by IP still reaches `HealthCheck`; the exemption is the path
+  alone, so development's protection of every other path is unchanged.
+  A refused host answers 403.
 
 ### 5.1 The encrypted session cookie (Q13)
 
@@ -365,8 +374,15 @@ that is also a framework or application helper is refused by gen.
   `controllers/hello_controller.js`).
 - `spin run gen` digests each file (SHA-256, the first 8 bytes in hex, as
   Propshaft's short digest) and writes `public/assets/<logical
-  name>-<digest>.<ext>`; old digests are deleted when no longer in the
-  manifest. CSS `url(...)` references to other assets are rewritten to
+  name>-<digest>.<ext>`. Old digests are kept so that a page loaded before
+  a deploy, or an old process still running during a rolling deploy, can
+  fetch what its HTML names: for each logical file gen keeps the current
+  digest and the two before it, and deletes older ones (Propshaft's
+  `assets:clean` keeps three versions likewise). A deploy that builds a
+  fresh image (Kamal, Docker) carries only the current digests in the
+  image, so the deploy notes add Kamal's `asset_path: /app/public/assets`,
+  which bridges the previous release's files into the new container for
+  the switch-over. CSS `url(...)` references to other assets are rewritten to
   their digested paths (Propshaft's compiler); an unknown reference is left
   as written with a warning.
 - `gen/assets.rb` holds the manifest as a generated `case` from logical to
@@ -404,9 +420,12 @@ pin_all_from "app/javascript/controllers", under: "controllers"
 
 ### 7.4 Serving
 
-`Static` serves `/assets/` with `Cache-Control: public, max-age=31536000,
-immutable` and everything else in `public/` as today (`max-age=3600`). A
-digested file is never rewritten in place, so no ETag is needed.
+`Static` serves a file under `/assets/` whose name carries a digest gen
+wrote (it is in the manifest, current or kept) with `Cache-Control: public,
+max-age=31536000, immutable`; everything else in `public/`, including an
+undigested file an application keeps under `public/assets/`, as today
+(`max-age=3600`). A digested file is never rewritten in place, so no ETag
+is needed.
 
 # Part 4b
 
@@ -477,11 +496,17 @@ pieces (tokens, mail, the cache-backed counters).
   password change; the current password is required for either),
   `update`, and `destroy` (requires the password; deletes the user and
   their sessions).
-- **Remember me (AU-5).** A "keep me signed in" box: checked gives a
-  persistent cookie of `c.auth_remember_for` (30 days), unchecked a browser
-  session cookie; either way a session unused for `c.auth_idle_timeout` (7
-  days) ends (the sessions table's `last_active_at`, updated at most once a
-  minute).
+- **Remember me (AU-5).** A "keep me signed in" box. The session row
+  gains `remember` (boolean) and `last_active_at`. Checked: the cookie
+  persists for `c.auth_remember_for` (30 days) and the row's absolute limit
+  is `auth_remember_for` instead of `Config#session_max_age` (two weeks,
+  D25), so a remembered user is not signed out on day 14. Unchecked: a
+  browser-session cookie (no `Expires`) and the absolute limit stays
+  `session_max_age`. Either way a session unused for
+  `c.auth_idle_timeout` (7 days) ends (`last_active_at`, updated at most
+  once a minute). The framework's cookie-level `session_max_age` check
+  reads the per-session limit the generated code stamps, so the two limits
+  do not disagree.
 - **Admin (AU-6).** `users.admin` (boolean, default false), `user.admin?`,
   and a generated `require_admin` before_action in `Authentication` that
   answers 404 unless the current user is an admin; the jobs page
@@ -498,7 +523,7 @@ pieces (tokens, mail, the cache-backed counters).
 | Variable | `Config` field | Default | Meaning |
 | --- | --- | --- | --- |
 | `CYBERTRAIN_FORCE_SSL` | `force_ssl` | `false` | redirect to https and send HSTS |
-| `CYBERTRAIN_HOSTS` | `hosts` | `""` (no check) | comma-separated allowed `Host` values |
+| `CYBERTRAIN_HOSTS` | `allowed_hosts` (appended) | `""` | comma-separated allowed `Host` values; outside development, set means checked (section 5) |
 | — | `content_security_policy` (block), `content_security_policy_report_only`, `content_security_policy_nonce_directives` | off | section 5 |
 | — | `permissions_policy` | camera, microphone, geolocation off | section 5 |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `en` | 4b |
@@ -583,9 +608,17 @@ OAuth and two-factor authentication.
   and the guide shows how.
 - `rate_limit` counts move to the cache (`store: :memory` for the old
   behaviour).
-- 4b: the authentication generator writes new migrations (columns on
-  `users` and `sessions`); re-running it on an application generated
-  earlier adds only what is missing.
+- 4b: the authentication generator keeps its rule of never overwriting an
+  application's files. Re-run on an application generated earlier, it
+  writes the new files that are missing (the passwords and accounts
+  controllers, mailer, views, the migration adding `admin`,
+  `failed_attempts`, `locked_until`, `remember`, `last_active_at`) and
+  prints, for each existing file it would have changed
+  (`sessions_controller.rb`, `authentication.rb`, `user.rb`,
+  `sessions/new.html.erb`), the lines to add by hand; the guide's upgrade
+  section shows the same diff. `cybertrain generate authentication
+  --force` overwrites them instead, for an application that never edited
+  them.
 - 4b: English validation messages now come from the bundled dictionary;
   their text is unchanged.
 
@@ -636,7 +669,12 @@ OAuth and two-factor authentication.
 10. Authentication: reset (token expiry, single use after a password
     change, same answer for unknown addresses, mail through the SMTP
     receiver), `--confirmable`, lockout and its reset, account pages,
-    remember me and the idle timeout, `require_admin`.
+    remember me (a remembered session alive on day 15 and ended after day
+    30, an unremembered one ended after day 14, both ended after 7 idle
+    days), `require_admin`; the upgrade path of section 14: re-running the
+    generator on an application generated by 0.4 adds the missing files and
+    prints the manual changes, and with them applied the 0.4 application
+    passes the same tests.
 11. The blog: English and Japanese (`?locale=ja`, else `Accept-Language`),
     translated validation errors; users from the authentication generator,
     with `BLOG_ADMIN_TOKEN` replaced by an admin user guarding `/admin`.
