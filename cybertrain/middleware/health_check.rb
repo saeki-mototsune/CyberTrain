@@ -39,6 +39,14 @@ module Cybertrain
     # reads again (a typed initial value: NOTES rule 7).
     @feed_read_warned = false
 
+    # Whether the WARN about an unreadable status table has been logged and
+    # the table not read since: false before the first poll.
+    # @return [Boolean]
+    # @api private
+    def self.feed_read_warned?
+      @feed_read_warned
+    end
+
     def initialize(app, path, worker_stale, feeds, feed_stale)
       super(app)
       @health_path = path

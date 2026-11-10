@@ -118,6 +118,9 @@ def trail_text
 end
 
 test "the check sits inside RequestLogger and before Static" do
+  # Before any poll the unreadable-table flag is a false, not a nil (NOTES
+  # rule 7's typed initial value).
+  assert_equal false, Cybertrain::HealthCheck.feed_read_warned?
   assert_equal ["Cybertrain::RequestLogger", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static", "Cybertrain::MethodOverride",
                 "Cybertrain::SessionStore", "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(APP)
 end
