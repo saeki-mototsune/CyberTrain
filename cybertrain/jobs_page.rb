@@ -133,7 +133,10 @@ module Cybertrain
       Job.ensure_installed
       changed = 0
       DB.with do |c|
-        c.execute("UPDATE cybertrain_jobs SET state = 'discarded', updated_at = ? " \
+        # A row already discarded keeps its updated_at, so discarding it
+        # again does not put off its pruning.
+        c.execute("UPDATE cybertrain_jobs SET state = 'discarded', " \
+                  "updated_at = CASE WHEN state = 'discarded' THEN updated_at ELSE ? END " \
                   "WHERE id = ? AND state IN ('failed', 'discarded')", Cast.binds(Time.now.to_i, id))
         changed = c.changes
       end

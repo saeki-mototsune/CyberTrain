@@ -126,6 +126,13 @@ test "jobs discard and delete act only on failed or discarded rows" do
   assert_equal 1, run(["jobs", "delete"])
 end
 
+test "jobs discard on a discarded row keeps its updated_at, so pruning is not put off" do
+  old = make_job("Mailer", "{}", "discarded", "e", 10)
+  assert_equal 0, run(["jobs", "discard", old.to_s])
+  assert_equal "discarded", job_field(old, "state")
+  assert_equal "10", job_field(old, "updated_at")
+end
+
 test "jobs prune deletes failed and discarded rows older than DAYS (7 by default)" do
   recent = make_job("Mailer", "{}", "failed", "e", Time.now.to_i - 3600)
   assert_equal 0, run(["jobs", "prune"])

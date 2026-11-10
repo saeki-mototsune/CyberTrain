@@ -43,4 +43,4 @@ Settings (environment variables):
 ok   help lists every declared setting with its variable and default
 ok   the encryption keys are read from their variables, the previous ones as a comma list
 ok   encryption_error: a malformed key fails, an unset one only when encryption is required
-15 tests, 79 assertions, 0 failures
+15 tests, 80 assertions, 0 failures

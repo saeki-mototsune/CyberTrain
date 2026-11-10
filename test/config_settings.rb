@@ -139,6 +139,10 @@ test "boot refuses a health_feed_stale not above feed_status_interval while heal
   c.health_feed_stale = 180
   c.health_feeds = false
   assert_equal "", c.health_error
+  # With the health check off (no path) nothing reads health_feed_stale.
+  c.health_feeds = true
+  c.health_path = ""
+  assert_equal "", c.health_error
 end
 
 test "a bad declaration is an ArgumentError" do

@@ -1209,8 +1209,9 @@ end
 
     # The error Application#boot reports when health_path is neither ""
     # nor a path starting with "/", health_worker_stale or
-    # health_feed_stale is below 1, or health_feeds is on and
-    # health_feed_stale is not more than feed_status_interval; "" when all
+    # health_feed_stale is below 1, or the health check is on (a path),
+    # health_feeds is on and health_feed_stale is not more than
+    # feed_status_interval; "" when all
     # are fine.
     def health_error
       path = @health_path
@@ -1220,8 +1221,9 @@ end
       return "health_worker_stale must be at least 1 (got #{@health_worker_stale})" if @health_worker_stale < 1
       return "health_feed_stale must be at least 1 (got #{@health_feed_stale})" if @health_feed_stale < 1
       # Rows are written every feed_status_interval seconds: a limit no
-      # longer than that makes every row stale between two writes.
-      if @health_feeds && @health_feed_stale <= @feed_status_interval
+      # longer than that makes every row stale between two writes. With
+      # the health check off (path "") nothing reads the limit.
+      if !path.empty? && @health_feeds && @health_feed_stale <= @feed_status_interval
         return "health_feed_stale (#{@health_feed_stale}) must be more than feed_status_interval " \
                "(#{@feed_status_interval}) while health_feeds is on"
       end

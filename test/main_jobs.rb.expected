@@ -22,7 +22,9 @@ job 1: no failed or discarded job with this id
 job 5 deleted
 usage: jobs (list [queued|running|done|failed|discarded]|retry ID|retry --all|discard ID|delete ID|prune [--before DAYS])
 ok   jobs discard and delete act only on failed or discarded rows
-pruned 1 failed or discarded job(s) last updated more than 7 day(s) ago
+job 6 discarded
+ok   jobs discard on a discarded row keeps its updated_at, so pruning is not put off
+pruned 2 failed or discarded job(s) last updated more than 7 day(s) ago
 pruned 1 failed or discarded job(s) last updated more than 0 day(s) ago
 usage: jobs (list [queued|running|done|failed|discarded]|retry ID|retry --all|discard ID|delete ID|prune [--before DAYS])
 usage: jobs (list [queued|running|done|failed|discarded]|retry ID|retry --all|discard ID|delete ID|prune [--before DAYS])
@@ -33,12 +35,12 @@ unknown command: jobs frobnicate
 usage: jobs (list [queued|running|done|failed|discarded]|retry ID|retry --all|discard ID|delete ID|prune [--before DAYS])
 ok   jobs with no or an unknown subcommand prints the usage
 ID  KIND    STATE  ATTEMPTS  RUN AT                   ERROR
+10  Mailer  done   3         2023-11-14 22:13:30 UTC
 9   Mailer  done   3         2023-11-14 22:13:29 UTC
-8   Mailer  done   3         2023-11-14 22:13:28 UTC
 showing the newest 2 of 3 done jobs
 ID  KIND    STATE  ATTEMPTS  RUN AT                   ERROR
+10  Mailer  done   3         2023-11-14 22:13:30 UTC
 9   Mailer  done   3         2023-11-14 22:13:29 UTC
 8   Mailer  done   3         2023-11-14 22:13:28 UTC
-7   Mailer  done   3         2023-11-14 22:13:27 UTC
 ok   jobs list prints at most the newest 1000 rows and says how many there are
-7 tests, 45 assertions, 0 failures
+8 tests, 48 assertions, 0 failures
