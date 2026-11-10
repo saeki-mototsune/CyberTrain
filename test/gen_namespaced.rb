@@ -54,4 +54,13 @@ test "a namespaced controller dispatches with its callbacks and ivars" do
   assert_equal "Admin::UsersController", controller.class.name
 end
 
+test "namespace :admin with param: :login routes the member by login" do
+  client = Cybertrain::Test::Client.new(Gen::Routes.build(Cybertrain::Router.new))
+  res = client.get("/admin/users/ann")
+  assert_response res, :ok
+  assert_equal "admin user ann (admin) /admin/users/ann", res.body
+  assert_equal "/admin/users/ann", Gen::Routes.path_for("admin_user_path", ["ann"])
+  assert_includes File.read("#{FIXTURE}/gen/routes.rb"), "    def admin_user_path(user)\n"
+end
+
 Cybertrain::Test.run!

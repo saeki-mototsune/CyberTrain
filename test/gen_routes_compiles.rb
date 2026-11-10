@@ -106,6 +106,15 @@ test "custom get route and Cybertrain.url_root" do
   Cybertrain.url_root = "http://localhost:3000"
 end
 
+test "a scope's routes and a singular resource's block route dispatch" do
+  c = client
+  assert_equal "about / http://localhost:3000/about", c.get("/v1/about").body
+  assert_equal "refresh /v1/about", c.get("/profile/refresh").body
+  assert_equal "profile /profile /profile/refresh", c.get("/profile").body
+  assert_equal "/v1/about", Gen::Routes.path_for("v1_about_path", [])
+  assert_equal "/profile/refresh", Gen::Routes.path_for("refresh_profile_path", [])
+end
+
 test "unknown paths are 404" do
   assert_response client.get("/nope"), :not_found
   assert_response client.get("/posts/5/comments"), :not_found
@@ -122,7 +131,7 @@ end
 
 test "the router knows the route names" do
   router = Gen::Routes.build(Cybertrain::Router.new)
-  assert_equal 20, router.routes.size
+  assert_equal 23, router.routes.size
   assert_equal "/posts/3/edit", router.path_for("edit_post", { "id" => "3" })
 end
 

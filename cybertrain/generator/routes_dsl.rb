@@ -10,18 +10,29 @@ module Cybertrain
       # action is written `def new_action` in controllers.
       ACTION_METHODS = { "new" => "new_action" }
 
-      attr_reader :verb, :pattern, :controller, :action, :name
+      # helper_args: the *_path helper's parameter names, one per dynamic
+      # segment in order (`["indicator"]` for `/indicators/:key`); empty
+      # when the pattern has none, or for a spec built outside the Mapper,
+      # whose names RoutesEmitter derives from the pattern.
+      attr_reader :verb, :pattern, :controller, :action, :name, :helper_args
+      # Whether the route matches an optional `.:format` suffix (true unless
+      # the route says otherwise).
+      attr_accessor :takes_format
 
       # method_override: the controller method when it is not the action's
       # own name ("" for that), as for the jobs page, whose `retry` action
-      # (a Ruby keyword) is `retry_action`.
-      def initialize(verb, pattern, controller, action, name, method_override = "")
+      # (a Ruby keyword) is `retry_action`. helper_args: the helper's
+      # parameter names joined with "," ("" for none): a String, so the
+      # default needs no typed empty Array.
+      def initialize(verb, pattern, controller, action, name, method_override = "", helper_args = "")
         @verb = verb
         @pattern = pattern
         @controller = controller
         @action = action
         @name = name
         @method_override = method_override
+        @helper_args = helper_args.split(",")
+        @takes_format = true
       end
 
       # The controller method that implements the action.
@@ -59,10 +70,10 @@ module Cybertrain
     end
 
     # The receiver of the routes DSL. Routes.draw evaluates its block with
-    # the mapper as self; blocks nested inside it (resources, member,
-    # collection) take the mapper as their argument instead
-    # (`resources :posts do |posts| posts.resources :comments end`), see
-    # Routes.draw for why.
+    # the mapper as self; blocks nested inside it (namespace, scope,
+    # resources, resource, member, collection) take the mapper as their
+    # argument instead (`resources :posts do |posts| posts.resources
+    # :comments end`), see Routes.draw for why.
     #
     # The methods available in `config/routes.rb`. They run when
     # `spin run gen` generates `gen/routes.rb`, not in the server, so a
@@ -71,9 +82,9 @@ module Cybertrain
     # `404 Not Found`.
     #
     # Each named route gets a `<name>_path` and a `<name>_url` helper (see
-    # {::Gen::UrlHelpers}). Not available: `match`, `namespace`, `scope`,
-    # `constraints`, `mount`, formats, globs, optional segments and
-    # nesting under a singular `resource`.
+    # {::Gen::UrlHelpers}). Not available: `match`, `constraints`, `mount`,
+    # `shallow`, `concerns`, globs and optional segments; `namespace` and
+    # `scope` are drawn outside `resources` blocks only.
     # @api public
     class Mapper
       STANDARD_ACTIONS = [:index, :create, :new, :edit, :show, :update, :destroy]
@@ -87,91 +98,175 @@ module Cybertrain
       CONTROLLER_PATTERN = /\A[a-z_][a-z0-9_]*(?:\/[a-z_][a-z0-9_]*)*\z/
       # One segment of a jobs_page path.
       JOBS_SEGMENT_PATTERN = /\A[A-Za-z0-9_\-]+\z/
+      # resources' param: names a path segment and a params key.
+      PARAM_PATTERN = /\A[a-z_][a-z0-9_]*\z/
 
       def initialize(specs)
         @specs = specs
-        @mode = "top"            # "top", "resources", "member" or "collection"
-        @path_prefix = ""        # "/posts/:post_id" inside `resources :posts do`
-        @name_prefix = ""        # "post_"
-        @controller = ""         # "posts"
+        # "top" (also inside namespace / scope), "resources", "resource",
+        # "member" or "collection"
+        @mode = "top"
+        @path_prefix = ""        # "/posts/:post_id" inside `resources :posts do`, "/admin" in a namespace
+        @name_prefix = ""        # "post_", "admin_"
+        @module_prefix = ""      # "admin/" inside `namespace :admin`, prefixed to every controller
+        @controller = ""         # "posts", "admin/posts"
         @member_path = ""        # "/posts/:id"
         @member_name = ""        # "post"
-        @collection_path = ""    # "/posts"
+        @collection_path = ""    # "/posts" ("" inside a singular resource)
         @collection_name = ""    # "posts"
+        # The helper parameter names of the dynamic segments of
+        # @path_prefix, @member_path and @collection_path, joined with ","
+        # (Strings, like the rest of the saved scope).
+        @prefix_args = ""        # "post"
+        @member_args = ""        # "post" for /posts/:id
+        @collection_args = ""    # ""
       end
 
-      # root "posts#index" -> GET / named "root".
+      # root "posts#index" -> GET / named "root". Inside a namespace or a
+      # scope it takes the prefixes (`namespace :admin do |admin|
+      # admin.root "dashboard#index" end`: GET /admin, `admin_root_path`,
+      # Admin::DashboardController).
       # @param to [String] `"controller#action"`
       # @return [nil]
       # @api public
       def root(to)
         target = split_to(to)
-        add_spec("GET", "/", target[0], target[1], "root")
+        path = @path_prefix.empty? ? "/" : @path_prefix
+        add_spec("GET", path, @module_prefix + target[0], target[1], "#{@name_prefix}root", @prefix_args)
       end
 
       # A GET route. At the top level `to:` is required; inside a
-      # `resources` block (or its `member` / `collection`) the controller is
-      # the resource's and the action defaults to the path.
+      # `resources` or `resource` block (or a `member` / `collection`) the
+      # controller is the resource's and the action defaults to the path.
       #
       # The name is `as:`, or the path with every character outside
       # `[a-z0-9_]` turned into `_` (`"about-us"` → `about_us`). Inside a
-      # `member` block it gets the resource's singular as a suffix
-      # (`preview_post`), inside `collection` the plural (`search_posts`),
-      # inside `resources` its prefix (`post_...`). A derived name that an
-      # earlier route already took leaves the route unnamed, as in Rails
-      # (`get "/sign_up"` then `post "/sign_up"`: one `sign_up_path`); a
-      # duplicate `as:` is an error.
+      # `member` block (or with `on: :member`) it gets the resource's
+      # singular as a suffix (`preview_post`), inside `collection` (or with
+      # `on: :collection`) the plural (`search_posts`), inside `resources`
+      # its prefix (`post_...`); a namespace or `scope as:` prefixes it too
+      # (`admin_stats`). A derived name that an earlier route already took
+      # leaves the route unnamed, as in Rails (`get "/sign_up"` then `post
+      # "/sign_up"`: one `sign_up_path`); a duplicate `as:` is an error.
+      #
+      # Inside a namespace or `scope module:` the controller of `to:` gets
+      # the module (`to: "stats#index"` → `admin/stats`).
       # @example
       #   get "/about", to: "pages#about"               # GET /about, about_path
       #   get "/feed", to: "articles#index", as: "feed"   # feed_path
-      # @param path [String] `:name` segments become params (`"/users/:id"`)
+      #   resources :posts do |posts|
+      #     posts.get :search, on: :collection          # GET /posts/search, search_posts_path
+      #     posts.post :publish, on: :member            # POST /posts/:id/publish, publish_post_path
+      #   end
+      # @param path [String, Symbol] `:name` segments become params (`"/users/:id"`)
       # @param to [String] `"controller#action"`, or just `"action"`
       # @param as [String] the route name
+      # @param on [Symbol, nil] `:member` (inside `resources` or `resource`)
+      #   or `:collection` (inside `resources`): as in a `member` /
+      #   `collection` block
       # @return [nil]
-      # @raise [ArgumentError] with no controller, an invalid or duplicate name
+      # @raise [ArgumentError] with no controller, an invalid or duplicate
+      #   name, or an `on:` that does not fit where the route is drawn
       # @api public
-      def get(path, to: "", as: "")
-        add_custom_route("GET", path, to, as)
+      def get(path, to: "", as: "", on: nil)
+        add_custom_route("GET", path, to, as, on)
       end
 
       # A POST route; see {#get}.
-      # @param path [String]
+      # @param path [String, Symbol]
       # @param to [String]
       # @param as [String]
+      # @param on [Symbol, nil]
       # @return [nil]
       # @api public
-      def post(path, to: "", as: "")
-        add_custom_route("POST", path, to, as)
+      def post(path, to: "", as: "", on: nil)
+        add_custom_route("POST", path, to, as, on)
       end
 
       # A PATCH route; see {#get}.
-      # @param path [String]
+      # @param path [String, Symbol]
       # @param to [String]
       # @param as [String]
+      # @param on [Symbol, nil]
       # @return [nil]
       # @api public
-      def patch(path, to: "", as: "")
-        add_custom_route("PATCH", path, to, as)
+      def patch(path, to: "", as: "", on: nil)
+        add_custom_route("PATCH", path, to, as, on)
       end
 
       # A PUT route; see {#get}.
-      # @param path [String]
+      # @param path [String, Symbol]
       # @param to [String]
       # @param as [String]
+      # @param on [Symbol, nil]
       # @return [nil]
       # @api public
-      def put(path, to: "", as: "")
-        add_custom_route("PUT", path, to, as)
+      def put(path, to: "", as: "", on: nil)
+        add_custom_route("PUT", path, to, as, on)
       end
 
       # A DELETE route; see {#get}.
-      # @param path [String]
+      # @param path [String, Symbol]
       # @param to [String]
       # @param as [String]
+      # @param on [Symbol, nil]
       # @return [nil]
       # @api public
-      def delete(path, to: "", as: "")
-        add_custom_route("DELETE", path, to, as)
+      def delete(path, to: "", as: "", on: nil)
+        add_custom_route("DELETE", path, to, as, on)
+      end
+
+      # Routes whose paths, helper names and controllers sit under `name`:
+      # `scope "/admin", module: "admin", as: "admin"`, as in Rails.
+      # Namespaces nest.
+      #
+      # `namespace :admin do |admin| admin.resources :articles end` draws
+      # `/admin/articles` to `Admin::ArticlesController`
+      # (`app/controllers/admin/articles_controller.rb`, written `module
+      # Admin; class ArticlesController` or `class Admin::ArticlesController`),
+      # with `admin_articles_path` and `admin_article_path(article)`; its
+      # views are in `app/views/admin/articles/`.
+      # @example
+      #   namespace :admin do |admin|
+      #     admin.resources :articles, only: [:index, :destroy]
+      #     admin.jobs_page "/jobs", before_action: :require_admin   # /admin/jobs
+      #   end
+      # @param name [Symbol] the namespace (`:admin`)
+      # @yieldparam mapper [Mapper] the mapper, to call with an explicit
+      #   receiver inside the block (`admin.resources`)
+      # @return [nil]
+      # @raise [ArgumentError] inside `resources` or `resource`
+      # @api public
+      def namespace(name, &block)
+        raise ArgumentError, "namespace must be used outside resources" unless @mode == "top"
+
+        word = "#{name}"
+        within_scope(word, word, word, block)
+      end
+
+      # Routes under a path prefix, a controller module and a helper-name
+      # prefix, each optional, as in Rails: `scope "dashboard"` changes the
+      # paths only (`/dashboard/stats`), `scope module: "admin"` the
+      # controllers only (`admin/users`, Admin::UsersController), `scope as:
+      # "admin"` the helper names only (`admin_stats_path`). They combine
+      # (`scope "/x", module: "y", as: "z"`). A `:name` segment in the path
+      # becomes a param and a helper argument (`scope "/:locale"`).
+      # @example
+      #   scope "/v1", as: "v1" do |v|
+      #     v.get "/about", to: "pages#about"   # GET /v1/about, v1_about_path
+      #   end
+      # @param path [String] the path prefix (`"dashboard"` or `"/dashboard"`)
+      # @param module [String] the controller module (`"admin"`)
+      # @param as [String] the helper-name prefix (`"admin"`)
+      # @yieldparam mapper [Mapper]
+      # @return [nil]
+      # @raise [ArgumentError] inside `resources` or `resource`
+      # @api public
+      def scope(path = "", module: "", as: "", &block)
+        raise ArgumentError, "scope must be used outside resources" unless @mode == "top"
+
+        mod = "#{binding.local_variable_get(:module)}"
+        within_scope("#{path}", mod, "#{as}", block)
       end
 
       # The jobs page ({Cybertrain::JobsPage}): failed, discarded, running
@@ -190,9 +285,11 @@ module Cybertrain
       # | POST | `path/:id/delete` | `delete` |
       #
       # The routes are unnamed (no `*_path` helpers). One jobs page per
-      # application, drawn at the top level. Without `before_action:` the
-      # page is open to anyone who can reach it, and `spin run gen` prints
-      # a warning saying so.
+      # application, drawn at the top level or inside a namespace or a
+      # scope, whose path prefix it takes (`admin.jobs_page "/jobs"` is
+      # `/admin/jobs`; the controller stays CybertrainJobsController).
+      # Without `before_action:` the page is open to anyone who can reach
+      # it, and `spin run gen` prints a warning saying so.
       # @example
       #   jobs_page "/admin/jobs", before_action: :require_admin
       # @param path [String] literal segments (`"/admin/jobs"`)
@@ -207,22 +304,25 @@ module Cybertrain
         raise ArgumentError, "jobs_page must be used at the top of the routes, not inside resources" unless @mode == "top"
 
         guard = "#{before_action}"
-        unless jobs_page_path?(path)
-          message = "jobs_page #{path.inspect}: the path must start with \"/\" and be literal segments of letters, digits, _ and -"
+        full = "#{@path_prefix}#{path}"
+        [path, full].each do |candidate|
+          next if jobs_page_path?(candidate)
+
+          message = "jobs_page #{candidate.inspect}: the path must start with \"/\" and be literal segments of letters, digits, _ and -"
           raise ArgumentError, message
         end
         unless guard.empty? || guard.match?(ACTION_PATTERN)
           message = "jobs_page #{path.inspect}: before_action: #{guard.inspect} is not a method name"
           raise ArgumentError, message
         end
-        Cybertrain::Routes.record_jobs_page(path, guard)
+        Cybertrain::Routes.record_jobs_page(full, guard)
         controller = "cybertrain_jobs"
-        add_jobs_route("GET", path, controller, "index", "index")
-        add_jobs_route("POST", "#{path}/retry_all", controller, "retry_all", "retry_all_action")
-        add_jobs_route("POST", "#{path}/discard_all", controller, "discard_all_failed", "discard_all_failed_action")
-        add_jobs_route("POST", "#{path}/:id/retry", controller, "retry", "retry_action")
-        add_jobs_route("POST", "#{path}/:id/discard", controller, "discard", "discard_action")
-        add_jobs_route("POST", "#{path}/:id/delete", controller, "delete", "delete_action")
+        add_jobs_route("GET", full, controller, "index", "index")
+        add_jobs_route("POST", "#{full}/retry_all", controller, "retry_all", "retry_all_action")
+        add_jobs_route("POST", "#{full}/discard_all", controller, "discard_all_failed", "discard_all_failed_action")
+        add_jobs_route("POST", "#{full}/:id/retry", controller, "retry", "retry_action")
+        add_jobs_route("POST", "#{full}/:id/discard", controller, "discard", "discard_action")
+        add_jobs_route("POST", "#{full}/:id/delete", controller, "delete", "delete_action")
         nil
       end
 
@@ -247,6 +347,11 @@ module Cybertrain
       # `:<singular>_id` and its singular as a name prefix:
       # `article_comments_path(article)`, `article_comment_path(article,
       # comment)`. Their controller is the child's (`CommentsController`).
+      # `controller:` names another controller; `param:` another segment
+      # than `:id` (`resources :indicators, param: :key`: `/indicators/:key`,
+      # `params[:key]`, nested resources under `:indicator_key`); the
+      # helpers still take the record (`indicator_path(indicator)`, which
+      # reads `indicator.to_param`).
       # @example
       #   resources :articles do |articles|
       #     articles.resources :comments, only: [:create, :destroy]
@@ -256,20 +361,33 @@ module Cybertrain
       # @param name [Symbol] the plural (`:articles`)
       # @param only [Array<Symbol>, nil] draw only these actions
       # @param except [Array<Symbol>, nil] draw all but these
+      # @param controller [String] the controller (`"metrics"`), under the
+      #   enclosing namespace's module; default the plural
+      # @param param [Symbol] the member segment's name (`:key`)
       # @yieldparam mapper [Mapper] the mapper, to call with an explicit
       #   receiver inside the block (`articles.resources`): Spinel gives a
       #   nested block no implicit self
       # @return [nil]
+      # @raise [ArgumentError] for a `param:` that is not a lowercase name
       # @api public
-      def resources(name, only: nil, except: nil, &block)
+      def resources(name, only: nil, except: nil, controller: "", param: :id, &block)
         # Interpolated, not name.to_s: in a program that also loads the model
         # runtime, name.to_s came out boxed and widened @controller, which
         # broke the C build of save_scope/restore_scope.
         plural = "#{name}"
         singular = Inflector.singularize(plural)
+        key = "#{param}"
+        unless key.match?(PARAM_PATTERN)
+          message = "param: must be a lowercase name (got #{key.inspect})"
+          raise ArgumentError, message
+        end
+        given = "#{controller}"
+        target = @module_prefix + (given.empty? ? plural : given)
         collection_path = "#{@path_prefix}/#{plural}"
-        member_path = "#{collection_path}/:id"
+        member_path = "#{collection_path}/:#{key}"
         member_name = @name_prefix + singular
+        member_args = join_args(@prefix_args, singular)
+        collection_args = @prefix_args
         # A word whose singular is itself (sheep, news) would give index and
         # show the same name; Rails names the collection news_index.
         collection_name = @name_prefix + plural + (singular == plural ? "_index" : "")
@@ -277,13 +395,16 @@ module Cybertrain
         unless block.nil?
           saved = save_scope
           @mode = "resources"
-          @path_prefix = "#{collection_path}/:#{singular}_id"
+          @path_prefix = "#{collection_path}/:#{singular}_#{key}"
+          @prefix_args = member_args
           @name_prefix = member_name + "_"
-          @controller = plural
+          @controller = target
           @member_path = member_path
           @member_name = member_name
+          @member_args = member_args
           @collection_path = collection_path
           @collection_name = collection_name
+          @collection_args = collection_args
           block.call(self)
           restore_scope(saved)
         end
@@ -294,15 +415,15 @@ module Cybertrain
           next if !except.nil? && except.include?(action)
 
           case action
-          when :index then add_standard(used, "GET", collection_path, plural, "index", collection_name)
-          when :create then add_standard(used, "POST", collection_path, plural, "create", collection_name)
-          when :new then add_standard(used, "GET", "#{collection_path}/new", plural, "new", "new_#{member_name}")
-          when :edit then add_standard(used, "GET", "#{member_path}/edit", plural, "edit", "edit_#{member_name}")
-          when :show then add_standard(used, "GET", member_path, plural, "show", member_name)
+          when :index then add_standard(used, "GET", collection_path, target, "index", collection_name, collection_args)
+          when :create then add_standard(used, "POST", collection_path, target, "create", collection_name, collection_args)
+          when :new then add_standard(used, "GET", "#{collection_path}/new", target, "new", "new_#{member_name}", collection_args)
+          when :edit then add_standard(used, "GET", "#{member_path}/edit", target, "edit", "edit_#{member_name}", member_args)
+          when :show then add_standard(used, "GET", member_path, target, "show", member_name, member_args)
           when :update
-            add_standard(used, "PATCH", member_path, plural, "update", member_name)
-            add_standard(used, "PUT", member_path, plural, "update", member_name)
-          when :destroy then add_standard(used, "DELETE", member_path, plural, "destroy", member_name)
+            add_standard(used, "PATCH", member_path, target, "update", member_name, member_args)
+            add_standard(used, "PUT", member_path, target, "update", member_name, member_args)
+          when :destroy then add_standard(used, "DELETE", member_path, target, "destroy", member_name, member_args)
           end
         end
         nil
@@ -324,42 +445,72 @@ module Cybertrain
       # | DELETE | `/session` | `destroy` | |
       #
       # The order is Rails' (`new` before `show`, so `/session/new` is not
-      # read as a member). There is no nesting under a singular resource.
+      # read as a member). `controller:` names another controller. A block
+      # draws member routes (`get :refresh, on: :member` or a `member`
+      # block: `/session/refresh`, `refresh_session_path`) and nested
+      # singular or plural resources (`/session/settings/edit`,
+      # `edit_session_settings_path`), before the resource's own.
       # @example
-      #   resource :session, only: [:new, :create, :destroy]
+      #   resource :session, controller: "auth/sessions" do |session|
+      #     session.get :refresh, on: :member
+      #     session.resource :settings, only: [:edit, :update]
+      #   end
       # @param name [Symbol] the singular (`:session`)
       # @param only [Array<Symbol>, nil] draw only these actions
       # @param except [Array<Symbol>, nil] draw all but these
+      # @param controller [String] the controller (`"auth/sessions"`), under
+      #   the enclosing namespace's module; default the plural
+      # @yieldparam mapper [Mapper]
       # @return [nil]
       # @api public
-      def resource(name, only: nil, except: nil)
+      def resource(name, only: nil, except: nil, controller: "", &block)
         singular = "#{name}"
-        controller = Inflector.pluralize(singular)
+        given = "#{controller}"
+        target = @module_prefix + (given.empty? ? Inflector.pluralize(singular) : given)
         path = "#{@path_prefix}/#{singular}"
         route_name = @name_prefix + singular
+        args = @prefix_args
+
+        unless block.nil?
+          saved = save_scope
+          @mode = "resource"
+          @path_prefix = path
+          @name_prefix = route_name + "_"
+          @controller = target
+          @member_path = path
+          @member_name = route_name
+          @member_args = args
+          @collection_path = ""
+          @collection_name = ""
+          @collection_args = ""
+          block.call(self)
+          restore_scope(saved)
+        end
+
         used = []
         SINGULAR_ACTIONS.each do |action|
           next unless only.nil? || only.include?(action)
           next if !except.nil? && except.include?(action)
 
           case action
-          when :create then add_standard(used, "POST", path, controller, "create", route_name)
-          when :new then add_standard(used, "GET", "#{path}/new", controller, "new", "new_#{route_name}")
-          when :edit then add_standard(used, "GET", "#{path}/edit", controller, "edit", "edit_#{route_name}")
-          when :show then add_standard(used, "GET", path, controller, "show", route_name)
+          when :create then add_standard(used, "POST", path, target, "create", route_name, args)
+          when :new then add_standard(used, "GET", "#{path}/new", target, "new", "new_#{route_name}", args)
+          when :edit then add_standard(used, "GET", "#{path}/edit", target, "edit", "edit_#{route_name}", args)
+          when :show then add_standard(used, "GET", path, target, "show", route_name, args)
           when :update
-            add_standard(used, "PATCH", path, controller, "update", route_name)
-            add_standard(used, "PUT", path, controller, "update", route_name)
-          when :destroy then add_standard(used, "DELETE", path, controller, "destroy", route_name)
+            add_standard(used, "PATCH", path, target, "update", route_name, args)
+            add_standard(used, "PUT", path, target, "update", route_name, args)
+          when :destroy then add_standard(used, "DELETE", path, target, "destroy", route_name, args)
           end
         end
         nil
       end
 
-      # Inside resources: get "preview" -> GET /posts/:id/preview as preview_post.
+      # Inside resources or resource: get "preview" -> GET /posts/:id/preview
+      # as preview_post.
       # @yieldparam mapper [Mapper]
       # @return [nil]
-      # @raise [ArgumentError] outside a `resources` block
+      # @raise [ArgumentError] outside a `resources` or `resource` block
       # @api public
       def member(&block)
         within("member", block)
@@ -377,7 +528,7 @@ module Cybertrain
       private
 
       def within(mode, block)
-        raise ArgumentError, "#{mode} must be used inside resources" if @mode == "top"
+        raise ArgumentError, "#{mode} must be used inside resources" if @mode == "top" || (mode == "collection" && @collection_path.empty?)
 
         saved = save_scope
         @mode = mode
@@ -386,28 +537,67 @@ module Cybertrain
         nil
       end
 
+      # namespace and scope: the prefixes for the routes the block draws.
+      def within_scope(path, mod, as, block)
+        saved = save_scope
+        trimmed = trim_slashes(path)
+        unless trimmed.empty?
+          @prefix_args = join_args(@prefix_args, path_args(trimmed, last_literal(@path_prefix)))
+          @path_prefix = "#{@path_prefix}/#{trimmed}"
+        end
+        module_name = trim_slashes(mod)
+        @module_prefix = "#{@module_prefix}#{module_name}/" unless module_name.empty?
+        @name_prefix = "#{@name_prefix}#{as}_" unless as.empty?
+        block.call(self) unless block.nil?
+        restore_scope(saved)
+        nil
+      end
+
+      # The mode a custom route is drawn in: the block's, or the one its
+      # `on:` names.
+      def route_mode(on)
+        where = "#{on}"
+        return @mode if where.empty?
+
+        if where == "member"
+          raise ArgumentError, "on: :member must be used inside resources or resource" if @mode == "top"
+
+          return "member"
+        end
+        if where == "collection"
+          raise ArgumentError, "on: :collection must be used inside resources" if @mode == "top" || @collection_path.empty?
+
+          return "collection"
+        end
+        message = "on: must be :member or :collection (got :#{where})"
+        raise ArgumentError, message
+      end
+
       # One custom route; its path, controller and name depend on the scope.
       # Not named `match`: Router#match(verb, path_segments) exists, and a
       # shared name made Spinel type `path` here as an Array of segments
       # once the DSL calls came only through instance_eval (NOTES rule 10).
-      def add_custom_route(verb, path, to, as)
-        segment = path.start_with?("/") ? path[1, path.size - 1] : path
+      def add_custom_route(verb, path, to, as, on)
+        text = "#{path}"
+        segment = text.start_with?("/") ? text[1, text.size - 1] : text
         target = to == "" ? ["", segment] : split_to(to)
-        controller = target[0] == "" ? @controller : target[0]
+        controller = target[0] == "" ? @controller : @module_prefix + target[0]
         action = target[1]
         word = as == "" ? derive_name(segment) : as
 
-        case @mode
+        case route_mode(on)
         when "member"
-          add_spec(verb, "#{@member_path}/#{segment}", controller, action, custom_name("#{word}_#{@member_name}", as))
+          args = join_args(@member_args, path_args(segment, last_literal(@member_path)))
+          add_spec(verb, "#{@member_path}/#{segment}", controller, action, custom_name("#{word}_#{@member_name}", as), args)
         when "collection"
-          add_spec(verb, "#{@collection_path}/#{segment}", controller, action, custom_name("#{word}_#{@collection_name}", as))
-        when "resources"
-          add_spec(verb, "#{@path_prefix}/#{segment}", controller, action, custom_name(@name_prefix + word, as))
+          args = join_args(@collection_args, path_args(segment, last_literal(@collection_path)))
+          add_spec(verb, "#{@collection_path}/#{segment}", controller, action, custom_name("#{word}_#{@collection_name}", as), args)
         else
-          raise ArgumentError, "#{verb} /#{segment} needs to: \"controller#action\"" if controller == ""
+          pattern = "#{@path_prefix}/#{segment}"
+          raise ArgumentError, "#{verb} #{pattern} needs to: \"controller#action\"" if controller == ""
 
-          add_spec(verb, "/#{segment}", controller, action, custom_name(word, as))
+          args = join_args(@prefix_args, path_args(segment, last_literal(@path_prefix)))
+          add_spec(verb, pattern, controller, action, custom_name(@name_prefix + word, as), args)
         end
       end
 
@@ -424,16 +614,16 @@ module Cybertrain
 
       # A standard resource route; its name goes to the first route that
       # claims it (POST /posts is unnamed next to GET /posts).
-      def add_standard(used, verb, pattern, controller, action, name)
+      def add_standard(used, verb, pattern, controller, action, name, args)
         if used.include?(name)
-          add_spec(verb, pattern, controller, action, "")
+          add_spec(verb, pattern, controller, action, "", args)
         else
           used << name
-          add_spec(verb, pattern, controller, action, name)
+          add_spec(verb, pattern, controller, action, name, args)
         end
       end
 
-      def add_spec(verb, pattern, controller, action, name)
+      def add_spec(verb, pattern, controller, action, name, args)
         unless controller.match?(CONTROLLER_PATTERN)
           raise ArgumentError, "controller '#{controller}' is not a valid controller path (#{verb} #{pattern})"
         end
@@ -449,8 +639,69 @@ module Cybertrain
             raise ArgumentError, "route name '#{name}' is already in use (#{verb} #{pattern})" if spec.name == name
           end
         end
-        @specs << RouteSpec.new(verb, pattern, controller, action, name)
+        @specs << RouteSpec.new(verb, pattern, controller, action, name, "", distinct_args(args))
         nil
+      end
+
+      # "a,b" and "c" -> "a,b,c"; either may be "".
+      def join_args(first, second)
+        return second if first.empty?
+        return first if second.empty?
+
+        "#{first},#{second}"
+      end
+
+      # The helper names of the dynamic segments of a path drawn as written
+      # (a custom route's, a scope's): ":post_id" -> "post", ":id" after
+      # "comments" -> "comment" (`previous`, the literal segment before the
+      # path, counts for a leading ":id"), ":slug" -> "slug". Joined with ",".
+      def path_args(path, previous)
+        names = []
+        last = previous
+        path.split("/").each do |seg|
+          next if seg.empty?
+
+          if seg.start_with?(":")
+            key = seg[1, seg.size - 1]
+            names << if key.end_with?("_id") && key.size > 3
+                       key[0, key.size - 3]
+                     elsif key == "id" && last != ""
+                       Inflector.singularize(last)
+                     else
+                       key
+                     end
+          else
+            last = seg
+          end
+        end
+        names.join(",")
+      end
+
+      # A repeated helper name gets its position as a suffix
+      # ("post,post" -> "post,post2"), so the helper's parameters differ.
+      def distinct_args(args)
+        names = []
+        args.split(",").each do |name|
+          names << (names.include?(name) ? "#{name}#{names.size + 1}" : name)
+        end
+        names.join(",")
+      end
+
+      # The last literal segment of a path ("" for none).
+      def last_literal(path)
+        last = ""
+        path.split("/").each do |seg|
+          last = seg unless seg.empty? || seg.start_with?(":")
+        end
+        last
+      end
+
+      # "/dashboard/" -> "dashboard".
+      def trim_slashes(path)
+        out = path
+        out = out[1, out.size - 1] while out.start_with?("/")
+        out = out[0, out.size - 1] while out.end_with?("/")
+        out
       end
 
       # "/admin/jobs": "/" then segments of [A-Za-z0-9_-], no empty one.
@@ -501,7 +752,8 @@ module Cybertrain
 
       def save_scope
         [@mode, @path_prefix, @name_prefix, @controller, @member_path, @member_name,
-         @collection_path, @collection_name]
+         @collection_path, @collection_name, @module_prefix, @prefix_args, @member_args,
+         @collection_args]
       end
 
       def restore_scope(saved)
@@ -513,6 +765,10 @@ module Cybertrain
         @member_name = saved[5]
         @collection_path = saved[6]
         @collection_name = saved[7]
+        @module_prefix = saved[8]
+        @prefix_args = saved[9]
+        @member_args = saved[10]
+        @collection_args = saved[11]
       end
     end
   end

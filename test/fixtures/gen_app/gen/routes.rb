@@ -18,6 +18,9 @@ module Gen
       router.add("PUT", "/posts/:id", "") { |ctx| PostsController.new(ctx).process(:update) { |c| c.update } }
       router.add("DELETE", "/posts/:id", "") { |ctx| PostsController.new(ctx).process(:destroy) { |c| c.destroy } }
       router.add("GET", "/about", "about") { |ctx| PagesController.new(ctx).process(:about) { |c| c.about } }
+      router.add("GET", "/v1/about", "v1_about") { |ctx| PagesController.new(ctx).process(:about) { |c| c.about } }
+      router.add("GET", "/profile/refresh", "refresh_profile") { |ctx| PagesController.new(ctx).process(:refresh) { |c| c.refresh } }
+      router.add("GET", "/profile", "profile") { |ctx| PagesController.new(ctx).process(:show) { |c| c.show } }
       router.add("GET", "/admin/jobs", "") { |ctx| CybertrainJobsController.new(ctx).process(:index) { |c| c.index } }
       router.add("POST", "/admin/jobs/retry_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:retry_all) { |c| c.retry_all_action } }
       router.add("POST", "/admin/jobs/discard_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:discard_all_failed) { |c| c.discard_all_failed_action } }
@@ -27,7 +30,7 @@ module Gen
       router
     end
 
-    # The helper named by a String, for templates: path_for("about_path", []).
+    # The helper named by a String, for templates: path_for("profile_path", []).
     def self.path_for(name, args)
       case name
       when "root_path" then "/"
@@ -50,6 +53,12 @@ module Gen
       when "post_url" then Cybertrain.url_root + "/posts/#{Cybertrain::Gen.segment(args[0])}"
       when "about_path" then "/about"
       when "about_url" then Cybertrain.url_root + "/about"
+      when "v1_about_path" then "/v1/about"
+      when "v1_about_url" then Cybertrain.url_root + "/v1/about"
+      when "refresh_profile_path" then "/profile/refresh"
+      when "refresh_profile_url" then Cybertrain.url_root + "/profile/refresh"
+      when "profile_path" then "/profile"
+      when "profile_url" then Cybertrain.url_root + "/profile"
       else raise ArgumentError, "unknown route helper '#{name}'"
       end
     end
@@ -139,6 +148,30 @@ module Gen
 
     def about_url
       Cybertrain.url_root + about_path
+    end
+
+    def v1_about_path
+      "/v1/about"
+    end
+
+    def v1_about_url
+      Cybertrain.url_root + v1_about_path
+    end
+
+    def refresh_profile_path
+      "/profile/refresh"
+    end
+
+    def refresh_profile_url
+      Cybertrain.url_root + refresh_profile_path
+    end
+
+    def profile_path
+      "/profile"
+    end
+
+    def profile_url
+      Cybertrain.url_root + profile_path
     end
   end
 end

@@ -26,4 +26,13 @@ ok   jobs_page draws the six jobs routes to CybertrainJobsController
 ok   jobs_page without before_action: records an open page
 ok   a second jobs_page raises naming the first path
 ok   jobs_page refuses a path it cannot route and a before_action that is not a method name
-28 tests, 99 assertions, 0 failures
+ok   namespace prefixes path, helper and controller, and nests
+ok   namespace draws root and a nested resource under its prefix
+ok   scope path, module and as each change one thing and combine
+ok   a scope path with a dynamic segment gives the helpers an argument
+ok   resource takes controller: and a block with member routes and nested resources
+ok   resources controller: and param:
+ok   on: :collection and on: :member inside resources
+ok   RouteSpec takes a format by default
+ok   misuse is refused with a message
+37 tests, 145 assertions, 0 failures

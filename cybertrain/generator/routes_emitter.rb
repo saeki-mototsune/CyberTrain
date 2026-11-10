@@ -53,12 +53,12 @@ module Cybertrain
         end
 
         example = named.last
-        out << "    # The helper named by a String, for templates: path_for(\"#{example.helper_name}_path\", [#{arg_names(example.pattern).join(", ")}]).\n"
+        out << "    # The helper named by a String, for templates: path_for(\"#{example.helper_name}_path\", [#{arg_names(example).join(", ")}]).\n"
         out << "    def self.path_for(name, args)\n"
         out << "      case name\n"
         named.each do |s|
           args = []
-          arg_names(s.pattern).each_with_index { |_, i| args << "args[#{i}]" }
+          arg_names(s).each_with_index { |_, i| args << "args[#{i}]" }
           path = path_expr(s.pattern, args)
           out << "      when \"#{s.helper_name}_path\" then #{path}\n"
           out << "      when \"#{s.helper_name}_url\" then Cybertrain.url_root + #{path}\n"
@@ -87,7 +87,7 @@ module Cybertrain
 
       def self.helpers_source(spec)
         out = +""
-        names = arg_names(spec.pattern)
+        names = arg_names(spec)
         params = names.empty? ? "" : "(#{names.join(", ")})"
         out << "    def #{spec.helper_name}_path#{params}\n"
         out << "      #{path_expr(spec.pattern, names)}\n"
@@ -99,9 +99,16 @@ module Cybertrain
         out
       end
 
-      # Helper parameter names for a pattern's dynamic segments:
+      # Helper parameter names for a route's dynamic segments: the names the
+      # Mapper recorded (RouteSpec#helper_args), else the pattern's.
+      def self.arg_names(spec)
+        return spec.helper_args unless spec.helper_args.empty?
+
+        pattern_arg_names(spec.pattern)
+      end
+
       # ":post_id" -> "post", ":id" after "comments" -> "comment", ":slug" -> "slug".
-      def self.arg_names(pattern)
+      def self.pattern_arg_names(pattern)
         names = []
         previous = ""
         pattern.split("/").each do |seg|
