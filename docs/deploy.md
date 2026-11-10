@@ -946,7 +946,42 @@ sudo systemctl enable --now notes-worker
 - 購読ごとにプロセスを分けるときは、`ExecStart` を `/srv/notes/current/dist/notes feeds %i` に
   した `notes-feeds@.service` を作り、`sudo systemctl enable --now notes-feeds@trades` のように
   購読の名前で起動します（Web 側は `CYBERTRAIN_WORKER=0` にして、同じ購読を二重に開かないように
-  します）。
+  します）。そのユニットの `Restart=always` は残してください。feeds プロセスはスレッドが死んだ
+  フィードを再起動しますが、同じフィードが死に続けると（600 秒のうちに 10 回の再起動、
+  `CYBERTRAIN_FEED_RESTART_LIMIT` と `CYBERTRAIN_FEED_RESTART_WINDOW`）`[FATAL]` の行を出して
+  終了ステータス 1 で終わるので、systemd が新しいプロセスを起動します。
+- フィードを別のプロセスで動かしても、Web プロセスの `/up` はそれを見ています。各 feeds
+  プロセスが 10 秒ごとにフィードの状態をデータベースに書き、フィードかそのプロセスが 180 秒
+  （`CYBERTRAIN_HEALTH_FEED_STALE`）黙っていると `/up` が `503 feed stale` を返します。デプロイ
+  スクリプトの確認は `/up.html` を見るのでデプロイは止まりませんが、`/up` を見ている監視は
+  気づきます。`/etc/notes/notes.env` に `CYBERTRAIN_HEALTH_FEEDS=0` を書くと、この部分の確認を
+  止められます。
+
+### シェルからジョブとフィードを見る
+
+バイナリには、設定されたデータベースのジョブキューとフィードを見るコマンドもあります
+（スレッドを起動しないので、動いているサービスの横で実行できます）。
+
+```sh
+sudo -iu notes
+cd ~/current
+set -a; . /etc/notes/notes.env; set +a
+dist/notes jobs list                          # 失敗したジョブを新しい順に
+dist/notes jobs retry 42                      # ほかに retry --all、discard 42、delete 42
+dist/notes jobs prune --before 30             # 30 日より古い failed と discarded のジョブを消す
+dist/notes feeds status                       # 各フィードが最後に報告した状態
+```
+
+- `jobs list [STATE]` は既定で `failed` の行を、指定すれば `queued`・`running`・`done`・
+  `discarded` の行を表示します。`retry` は failed か discarded のジョブを試行回数を戻して
+  キューに戻し、`discard` と `delete` は 1 行に作用し、`prune` は 7 日（または `--before DAYS`）
+  より古い failed と discarded の行を消します。ジョブページ（`config/routes.rb` の `jobs_page`）を
+  載せたアプリなら、同じことがブラウザからできます。
+- `deliver_later` で送るメールは、SMTP の設定が間違っていると（`CYBERTRAIN_SMTP_HOST` がない、
+  ログインを拒否された）再試行されずに discarded になります。`/etc/notes/notes.env` を直したら
+  `jobs list discarded` を見て、メールのジョブを `jobs retry` してください。
+- `feeds status` は各フィードが最後に報告した状態（つながっているか、プロセス、最後に何かを
+  受け取ってからの時間、再起動の回数、行の古さ）を表示します。
 
 ---
 
@@ -1001,6 +1036,8 @@ servers:
     hosts:
       - 203.0.113.10
     cmd: ./notes worker
+    options:
+      restart: unless-stopped
 
 proxy:
   ssl: true
@@ -1032,6 +1069,17 @@ registry:
 `env: clear: CYBERTRAIN_WORKER: 0` を足します。ハートビートのない古い cybertrain のリリースから
 上げる 1 回目は、`kamal app stop` で古いコンテナをすべて止めてから `kamal deploy` してください
 （古いワーカーの実行中のジョブを新しいワーカーが二重に実行しないように）。
+
+`worker` の役割（とコメントになっている `feeds`）には `options: restart: unless-stopped` が
+付いています。kamal-proxy がヘルスチェックを見るのは `web` の役割だけで、それもデプロイ中だけ
+なので、これらのコンテナを再起動するものはほかにありません。プロセスが終了したときに Docker が
+再起動します。ワーカーは起動できないときに 0 以外で終了し、feeds プロセスはスレッドが死んだ
+フィードを再起動しますが、同じフィードが死に続けると（600 秒のうちに 10 回の再起動）終了
+ステータス 1 で終わり、Docker が新しいコンテナを起動します。フィードを自分のコンテナで動かすと、
+フィードかそのプロセスが 180 秒黙っているとき `web` の `/up` が `503 feed stale` を返します
+（フィードは状態をデータベースに書きます）。プロキシのヘルスチェックを `/up` に向けていて、
+静かなフィードでデプロイを止めたくないときは、`env.clear` に `CYBERTRAIN_HEALTH_FEEDS: 0` を
+足してください。
 
 組み込みのヘルスチェック（`GET /up`、README の「Operations」）があるフレームワークで作ったアプリなら、
 `healthcheck` の `path` を `/up.html` から `/up` に変えられます。`/up` はデータベースのスキーマを
@@ -1089,6 +1137,8 @@ https://notes.example.com を開いて確かめます。
 | ログを見る | `kamal app logs -f` |
 | マイグレーションの状態 | `kamal db_status`（`config/deploy.yml` の `aliases`） |
 | コンテナでシェルを開く | `kamal shell` |
+| 失敗したジョブを見て、1 つ再試行する | `kamal app exec --reuse "./notes jobs list"`、続けて `"./notes jobs retry 42"` |
+| フィードが最後に報告した状態を見る | `kamal app exec --reuse "./notes feeds status"` |
 | 前のバージョンに戻す | `kamal rollback VERSION`（`kamal app containers` で一覧） |
 
 - DB はサーバーの Docker ボリューム `notes_storage`（サーバー上の

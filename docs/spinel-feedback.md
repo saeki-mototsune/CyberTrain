@@ -140,6 +140,7 @@ has a workaround in CyberTrain or an open bug:
 | Q | `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through `where_between(col, from, to)`, and the validator options `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an Array | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float and String `when Range` miss are separate defects. Not reported upstream yet |
 | R | none needed: the generator of `run_job` names only classes the program defines (phase 3, spikes/NOTES.md rule 89) | **Ready to report**: the reduced programs in R (CRuby raises NameError; the compiled programs match by the last segment or swallow the exception). Not reported upstream yet |
 | S | `computed = yield` before `Cast.str(computed)` in cybertrain/cache.rb's fetch family (spikes/NOTES.md rule 90) | **Ready to report**: the reduced program in S (CRuby runs the block once; the compiled program runs it twice). No fix written. Not reported upstream yet |
+| T | the feed supervisor sets `Background.feeds_failed?` and the `feeds` role's main thread returns the exit status (spikes/NOTES.md rule 91) | **Ready to report**: the six-line program in T (CRuby exits 1; the compiled program goes on and exits 0). Not reported upstream yet |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026; some of their
@@ -182,6 +183,7 @@ that it is fixed.
 | Q. A Range of Time or Date raises at construction; a Float or String Range is not a Range once boxed | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 2 spike, 2026-11-06; phase 2 routes non-Integer bounds through `where_between`) |
 | R. A `rescue` arm naming an undefined qualified class matches by its last segment, or swallows every exception | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3 spike, 2026-11-09; rule 89) |
 | S. A `yield` passed as an argument runs the block twice when blocks differ in type | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3, 2026-11-09; rule 90) |
+| T. `exit` on a thread other than the main one ends only that thread | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3, 2026-11-09; rule 91) |
 
 ## What CyberTrain still works around
 
@@ -1980,4 +1982,28 @@ C.str(block.call)`, called the same way, runs it once.
   `fetch_hash`, `fetch_array` and `fetch_int` assign the block's value to
   a local before casting it (`computed = yield; value =
   Cast.str(computed)`; spikes/NOTES.md rule 90).
+- Not reported upstream yet.
+
+### T. `exit` on a thread other than the main one ends only that thread
+
+```ruby
+def die_later(code)
+  Thread.new { sleep(0.2); exit(code) }
+end
+die_later(1)
+sleep(1.0)
+puts "main still alive"
+```
+
+CRuby exits with status 1 and prints nothing: `exit` raises `SystemExit`,
+which ends the process. Compiled with Spinel 2026.11.04.7026 the program
+prints `main still alive` and exits 0: only the thread that called `exit`
+ended (checked again on 2026-11-10 with `spinel exit_thread.rb`).
+
+- What CyberTrain does with it (phase 3): the feed supervisor
+  (cybertrain/background/supervisor.rb) never calls `exit`; after a feed's
+  repeated deaths it logs the FATAL line and sets
+  `Background.feeds_failed?`, and the `feeds` role's main thread
+  (Application#run_feeds_threads) stops the feeds and returns 1, the
+  status `Main.run`'s caller exits with (spikes/NOTES.md rule 91).
 - Not reported upstream yet.

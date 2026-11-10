@@ -63,6 +63,8 @@ servers:
     hosts:
       - 203.0.113.10
     cmd: ./notes worker
+    options:
+      restart: unless-stopped
 
 proxy:
   ssl: true
@@ -98,6 +100,18 @@ give `web` `env: clear: CYBERTRAIN_WORKER: 0`. The first time you upgrade from
 a cybertrain release without heartbeats, stop every old container with `kamal
 app stop` before `kamal deploy`, so that a new worker does not run an old
 worker's running job a second time.
+
+The `worker` role (and the commented `feeds` one) carries `options: restart:
+unless-stopped`. kamal-proxy polls the health check of the `web` role only,
+and only during a deploy, so nothing else restarts these containers: Docker
+does when their process exits. A worker exits non-zero when it cannot boot;
+a feeds process restarts a feed whose thread died, and exits with status 1
+when one feed keeps dying (10 restarts within 600 seconds), so that Docker
+starts a fresh container. With the feeds in their own container, the web
+role's `/up` reports `503 feed stale` when a feed or its process has been
+silent for 180 seconds (the feeds write their status into the database);
+set `CYBERTRAIN_HEALTH_FEEDS: 0` under `env.clear` if the proxy's health
+check points at `/up` and a quiet feed should not hold up a deploy.
 
 With a framework that has the built-in health check (`GET /up`, README
 "Operations"), you can change the `healthcheck` `path` from `/up.html` to
@@ -161,6 +175,8 @@ to check.
 | Follow the logs | `kamal app logs -f` |
 | See the migration status | `kamal db_status` (the `aliases` in `config/deploy.yml`) |
 | Open a shell in the container | `kamal shell` |
+| List the failed jobs, retry one | `kamal app exec --reuse "./notes jobs list"`, then `"./notes jobs retry 42"` |
+| See the feeds' last reported status | `kamal app exec --reuse "./notes feeds status"` |
 | Go back to an earlier version | `kamal rollback VERSION` (`kamal app containers` lists them) |
 
 - The database is on the server's Docker volume `notes_storage`

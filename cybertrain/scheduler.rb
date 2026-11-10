@@ -26,8 +26,9 @@ module Cybertrain
   #
   # Application#serve starts the thread ({Scheduler.start!}) once the
   # database is connected, the port is bound and `SPINEL_WORKERS` is set
-  # (spikes/NOTES.md rule 22), and only when the process serves: `./<app>
-  # migrate`, `db ...` and {Main.command} commands never start it. Each run
+  # (spikes/NOTES.md rule 22), and only in a process that serves or runs
+  # as `./<app> worker`: `./<app> migrate`, `db ...`, `jobs ...` and
+  # {Main.command} commands never start it. Each run
   # is wrapped in a rescue that logs `[ERROR]`, so a failing task does not
   # end the loop. Jobs do not run here: {Job.start!} runs them on threads of
   # their own, so a long job never delays a task (a long task still delays

@@ -1,5 +1,5 @@
 ---
-source_sha256: 9c21efcdbdced1757e31585563b298892946ce1cbfd3db80a538718959a375f4
+source_sha256: 2fbeb86c43b9789aa21bda936feff3fd39b4035b81a06ea7f92080110e3c4ec3
 title: Guides
 ---
 # Guides
@@ -13,8 +13,8 @@ Tout ce que la documentation de CyberTrain couvre au-delà de la référence de 
 - [**Modèles et base de données**](models.md) — Migrations, types de colonnes, requêtes, associations, validations, colonnes chiffrées, transactions, reprise d’une base Rails
 - [**Requêtes**](requests.md) — Limitation du débit, l’adresse du client, en-têtes paramétrés, chaînes de requête et corps de requête
 - [**Configuration**](configuration.md) — `config/app.rb`, variables d’environnement, fuseaux horaires
-- [**Tâches de fond et exploitation**](background-and-operations.md) — Jobs sur plusieurs threads, tâches planifiées, les rôles de processus `worker` et `feeds`, la console, sauvegardes, le contrôle de santé
-- [**Temps réel**](realtime.md) — Turbo Streams sur Server-Sent Events ou WebSocket, diffusions depuis les actions, les jobs et les flux, noms de flux signés
-- [**HTTP sortant, flux WebSocket et e-mail**](external-services.md) — `HttpClient`, `WebSocket.subscribe`, `Mailer`
-- [**Tests**](testing.md) — Écrire les tests d’une application, appels sortants, CI
+- [**Tâches de fond et exploitation**](background-and-operations.md) — Classes de job, nouvelles tentatives, tâches `every` et `cron`, la page des jobs, les rôles de processus `worker` et `feeds`, le cache, la console, sauvegardes, le contrôle de santé
+- [**Temps réel**](realtime.md) — Turbo Streams sur Server-Sent Events ou WebSocket, diffusions depuis les actions, les jobs et les flux, noms de flux signés, santé des flux
+- [**HTTP sortant, flux WebSocket et e-mail**](external-services.md) — `HttpClient` avec flux, gzip et Server-Sent Events, `WebSocket.subscribe` avec minuteries et redémarrages, `Mailer` avec mail HTML et `deliver_later`
+- [**Tests**](testing.md) — Écrire les tests d’une application, appels sortants, jobs, CI
 - [**Le langage de templates**](template-language.md) — Les helpers, les composants, le constructeur de formulaires et ce qu’un template peut appeler dans `app/views/**/*.html.erb`

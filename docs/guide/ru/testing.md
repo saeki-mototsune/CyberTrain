@@ -1,5 +1,5 @@
 ---
-source_sha256: c5ef44e9a88b3fbef4099d33b8ea7e47c5b10fb95eeef6e39fae0a8151f22a9e
+source_sha256: de544db2b20bdb0c4b31815af6113fb1421c9db0fc09f11d8783d0f78a7ca31c
 ---
 # Тестирование приложения
 
@@ -67,8 +67,8 @@ test/<name>.rb.expected 2>&1` (`cybertrain spin test` завершается с 
 письмо ([Отправка электронной почты](external-services.md#sending-e-mail)), тест получает его
 внутри процесса: `Cybertrain::Test::HttpReceiver` и `Cybertrain::Test::SmtpReceiver`
 слушают на `127.0.0.1`, записывают то, что приходит, и отвечают заготовленным
-ответом. Файл начинается с того же хелпера, что и выше, `support/blog_test`,
-и сам подключает `cybertrain/mailer`: `require "cybertrain"` его не загружает.
+ответом. Файл начинается с того же хелпера, что и выше, `support/blog_test`;
+`require "cybertrain"` загружает мейлер, и явный require ниже не мешает.
 
 ```ruby
 require_relative "support/blog_test"   # приложение, BLOG и Cybertrain::Test
@@ -113,7 +113,9 @@ chunked-телом). `SmtpReceiver` разыгрывает 220, EHLO (с 8BITMIM
 DATA и QUIT; `reject:` проваливает любой из шагов `:greeting`, `:ehlo`, `:mail`,
 `:rcpt`, `:data` или `:message` с заданным ответом. У `ReceivedMessage` есть
 `envelope_from`, `envelope_recipients`, `message_data` (с отменённым
-dot-stuffing), `message_header(name)`, `message_body` и `transcript` команд.
+dot-stuffing), `message_header(name)`, `message_body` и `transcript` команд;
+для HTML-письма `message_parts` раскладывает его на `"subject"`, `"text"` и
+`"html"`.
 Оба принимают одно соединение, если `max:` не говорит, что больше
 (`received_requests` / `received_messages` возвращают их все). Каждое ожидание
 ограничено: приёмник сдаётся после `accept_window:` (10 с) без соединения,
@@ -159,6 +161,57 @@ end
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` делает задержки повторов точными.
 `test/websocket_integration.rb` в этом репозитории показывает полный тест.
+
+## Тестирование задач
+
+`require "cybertrain/test/jobs"` добавляет пять утверждений об очереди задач
+тестовой базы данных. Файл поддержки, который пишет `cybertrain generate
+authentication` (`test/support/app_test.rb`), его подключает; приложение без
+такого файла добавляет эту строку в свой файл поддержки, как это сделано в
+examples/blog.
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/jobs"
+
+test "a notification is enqueued, then runs" do
+  clear_enqueued_jobs
+  NotifyCommentJob.perform_later("comment_id" => 7, "article_id" => 1)
+  assert_enqueued_jobs 1, "NotifyCommentJob"
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => 7 }
+  assert_equal 1, perform_enqueued_jobs
+  assert_no_enqueued_jobs
+end
+
+test "the job itself" do
+  assert_nil NotifyCommentJob.perform_now("comment_id" => 1, "article_id" => 1)
+end
+```
+
+<!-- list: points -->
+- `assert_enqueued_jobs(count, kind = "")` считает строки `queued` (одного
+  вида, если он задан); `assert_no_enqueued_jobs(kind = "")` требует, чтобы
+  их не было.
+- `assert_enqueued_with(kind, args)` требует строку этого вида в очереди,
+  аргументы которой содержат каждый заданный ключ с равным значением; обе
+  стороны сравниваются через `Cast.str`, так что `"comment_id" => 7`
+  совпадает с `7` из JSON.
+- `perform_enqueued_jobs(now = Time.now)` выполняет каждую наступившую задачу
+  в вызывающем потоке, по одной (`Job.work_one`), пока наступивших не
+  останется, и возвращает, сколько выполнено. Повтор, запланированный на
+  потом, остаётся в очереди: передайте более поздний `now`, чтобы выполнить
+  его. Задача, которая снова ставит себя в очередь с немедленным сроком,
+  заставит его работать бесконечно.
+- `clear_enqueued_jobs` удаляет все строки `queued`; строки `failed` и
+  `discarded` остаются, так что тест, который их создаёт, удаляет их сам.
+- `WelcomeJob.perform_now(args)` выполняет одну задачу напрямую, без очереди
+  и без rescue: исключение доходит до теста.
+- Письмо, отправленное через `deliver_later`, — это задача
+  `"cybertrain mail"`: `perform_enqueued_jobs` отправляет его в
+  `SmtpReceiver` (если `smtp_host` и `smtp_port` указывают на него).
+- Задачи по расписанию выполняются по одному такту через
+  `Cybertrain::Scheduler.run_due(now)`, а `Cybertrain::Cache.prune(now)`
+  очищает кэш на выбранный вами момент.
 
 ## Тестирование потоков и компонентов
 

@@ -63,8 +63,9 @@ When the code under test sends a webhook ([Outbound HTTP](external-services.md#o
 an e-mail ([Sending e-mail](external-services.md#sending-e-mail)), the test receives it
 in-process: `Cybertrain::Test::HttpReceiver` and `Cybertrain::Test::SmtpReceiver`
 listen on `127.0.0.1`, record what arrives and answer with a canned reply.
-The file starts from the same helper as above, `support/blog_test`, and
-requires `cybertrain/mailer` itself: `require "cybertrain"` does not load it.
+The file starts from the same helper as above, `support/blog_test`;
+`require "cybertrain"` loads the mailer, and the explicit require below does
+no harm.
 
 ```ruby
 require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
@@ -110,7 +111,8 @@ QUIT; `reject:` fails any of `:greeting`, `:ehlo`, `:mail`, `:rcpt`, `:data`
 or `:message` with the reply given. A `ReceivedMessage` has the
 `envelope_from`, `envelope_recipients`, the `message_data` (dot-stuffing
 undone), `message_header(name)`, `message_body` and the `transcript` of
-commands. Both accept one connection unless `max:` says more
+commands; for an HTML message, `message_parts` decodes it into
+`"subject"`, `"text"` and `"html"`. Both accept one connection unless `max:` says more
 (`received_requests` / `received_messages` return them all). Every wait is
 bounded: a receiver gives up after `accept_window:` (10 s) without a
 connection, a silent client after `read_timeout:` (5 s), and `stop` (safe
@@ -155,6 +157,51 @@ end
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` makes the retry delays exact.
 `test/websocket_integration.rb` in this repository shows a complete test.
+
+## Testing jobs
+
+`require "cybertrain/test/jobs"` adds five assertions over the job queue of
+the test database. The support file `cybertrain generate authentication`
+writes (`test/support/app_test.rb`) requires it; an application without one
+adds the line to its own support file, as examples/blog's does.
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/jobs"
+
+test "a notification is enqueued, then runs" do
+  clear_enqueued_jobs
+  NotifyCommentJob.perform_later("comment_id" => 7, "article_id" => 1)
+  assert_enqueued_jobs 1, "NotifyCommentJob"
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => 7 }
+  assert_equal 1, perform_enqueued_jobs
+  assert_no_enqueued_jobs
+end
+
+test "the job itself" do
+  assert_nil NotifyCommentJob.perform_now("comment_id" => 1, "article_id" => 1)
+end
+```
+
+<!-- list: points -->
+- `assert_enqueued_jobs(count, kind = "")` counts the `queued` rows (of one
+  kind when given); `assert_no_enqueued_jobs(kind = "")` wants none.
+- `assert_enqueued_with(kind, args)` wants a queued row of that kind whose
+  args hold every given key with an equal value, both sides compared as
+  `Cast.str`, so `"comment_id" => 7` matches a JSON `7`.
+- `perform_enqueued_jobs(now = Time.now)` runs every due job on the calling
+  thread, one by one (`Job.work_one`), until none is due, and returns how
+  many ran. A retry scheduled for later stays queued: pass a later `now` to
+  run it. A job that enqueues itself again, due at once, keeps it running.
+- `clear_enqueued_jobs` deletes every `queued` row; `failed` and
+  `discarded` rows stay, so a test that makes them deletes them itself.
+- `WelcomeJob.perform_now(args)` runs one job directly, with no queue and
+  no rescue: an exception reaches the test.
+- A mail sent with `deliver_later` is a `"cybertrain mail"` job:
+  `perform_enqueued_jobs` sends it to a `SmtpReceiver` (with
+  `smtp_host` and `smtp_port` pointing at it).
+- Scheduled tasks run one tick at a time with `Cybertrain::Scheduler.run_due(now)`,
+  and `Cybertrain::Cache.prune(now)` prunes the cache at a time you choose.
 
 ## Testing streams and components
 

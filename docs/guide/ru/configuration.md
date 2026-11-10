@@ -1,5 +1,5 @@
 ---
-source_sha256: b0f8f7ce8f29151195c929b5aa6f2cf9769a7d0b96b72d53cdddc87a88d32c9e
+source_sha256: d8efa4bb552b1bed71637775e72a99725329edb302854d400a62dfcc94c5bfb2
 ---
 # Конфигурация
 
@@ -34,9 +34,17 @@ end
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; разделённые запятыми имена заменяют список. Значение параметра, имя которого содержит одно из них (без учёта регистра ASCII: `password` совпадает и с `user[password]`), записывается как `[FILTERED]` в лог запросов и на страницу ошибок режима разработки; `[]` в `config/app.rb` это отключает |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` или `false` не даёт процессу `server` выполнять задачи по расписанию, фоновые задачи и фиды WebSocket (см. [Роли процессов](background-and-operations.md#process-roles)); `./<app> worker` и `feeds` его игнорируют |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`: сколько задач один процесс выполняет одновременно (см. [Фоновая работа](background-and-operations.md#background-work)); не меньше 1 |
+| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"`: пояс, в котором читается задача `Scheduler.cron` без `tz:`, имя IANA вроде `Asia/Tokyo` (см. [Часовые пояса](#time-zones)); пояс, которого нет в zoneinfo системы, останавливает запуск |
+| `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`: строк в списке на [странице задач](background-and-operations.md#the-jobs-page-and-the-jobs-command); не меньше 1 |
+| `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`: секунд между очистками истёкших строк [кэша](background-and-operations.md#the-cache-store), читается при подключении `cybertrain/cache`; не меньше 1 |
+| `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`: секунд между записями строки состояния каждого фида WebSocket (см. [Состояние фидов](realtime.md#feed-health)); не меньше 1 |
+| `CYBERTRAIN_FEED_RESTART_LIMIT` | `feed_restart_limit` | `10`: перезапусков потока одного фида за окно, после которых процесс `feeds` завершается со статусом 1, когда фид снова умирает (см. [Потребление потоков WebSocket](external-services.md#consuming-websocket-feeds)); не меньше 1 |
+| `CYBERTRAIN_FEED_RESTART_WINDOW` | `feed_restart_window` | `600`: это окно в секундах; не меньше 1 |
 | `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`: точка входа реального времени (см. [Реальное время](realtime.md#limits-and-settings)); пустое значение выключает потоки; путь должен начинаться с `/` и отличаться от `health_path` |
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`; `1` или `true` выполняет bind с `SO_REUSEPORT`, так что несколько процессов могут слушать один порт, а в Linux ядро распределяет между ними соединения (в разработке игнорируется; см. [Running several processes](../deploy.en.md#running-several-processes)). Задайте `CYBERTRAIN_WORKER=0` во всех процессах, кроме одного |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`; путь встроенной проверки работоспособности (см. [Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check)); пустое значение её отключает; значение без ведущего `/` останавливает сервер при запуске. `health_worker_stale` (300 с) задаётся в `config/app.rb` |
+| `CYBERTRAIN_HEALTH_FEEDS` | `health_feeds` | `true`: проверка работоспособности отвечает `503 feed stale` и для фида WebSocket, который перестал сообщать состояние или замолчал (см. [Состояние фидов](realtime.md#feed-health)); `0` или `false` отключает эту часть |
+| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`: секунд молчания фида или его процесса, не пишущего состояние, до `503 feed stale`; не меньше 1 |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` или `true` позволяет `Cybertrain::HttpClient` подключаться к loopback, частным и другим непубличным адресам (см. [Исходящий HTTP](external-services.md#outbound-http)) |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; SMTP-сервер, через который отправляет `Cybertrain::Mailer` (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`: порт режима — 587 для `starttls`, 465 для `tls`, 25 для `none`; всё, кроме значений от 1 до 65535, считается 0 |

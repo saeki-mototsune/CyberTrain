@@ -13,6 +13,11 @@ module Cybertrain
   # itself (`CREATE TABLE IF NOT EXISTS`, on the first enqueue or when the
   # worker starts) and leaves out of `db/schema.rb`.
   #
+  # An application writes job classes in app/jobs ({Job::Base}: `perform`,
+  # `retry_on`, `discard_on`, `limits_concurrency`); `spin run gen` writes
+  # their `perform_later` and the {Job.register} call into gen/jobs.rb. A
+  # block registered under a String kind is the short form:
+  #
   #   # bin/<app>.rb (or a file it requires), before Cybertrain::Main.run:
   #   Cybertrain::Job.handle("welcome_mail") do |payload|
   #     data = JSON.parse(payload)
@@ -21,6 +26,14 @@ module Cybertrain
   #
   #   # in an action, after saving the user:
   #   Cybertrain::Job.enqueue("welcome_mail", JSON.generate({ "email" => user.email }))
+  #   WelcomeJob.perform_later("user_id" => user.id)   # a job class
+  #
+  # A row is `queued`, `running`, `done`, `failed` or `discarded`. A kind
+  # registered with a `concurrency_key:` stores {Job.concurrency_key_for}
+  # in the row's `concurrency_key` column, and its limit counts per key.
+  # The framework registers one kind itself, "cybertrain mail"
+  # (Mailer.deliver_later, cybertrain/mailer/later.rb), so every
+  # application that requires "cybertrain" has a handler.
   #
   # A process that runs jobs (`./<app> server` unless {Config#worker} is
   # off, and `./<app> worker`) starts {Config#job_threads} job threads

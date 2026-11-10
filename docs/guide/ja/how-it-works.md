@@ -1,5 +1,5 @@
 ---
-source_sha256: a0cc156edb80c185423767f6324221c44932e9e0416bedd926cddbb16a9a6d8c
+source_sha256: f411ad8886352765ab1934561dfee0742bdeb3da63a413f36d317b7769eff275
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -91,12 +91,13 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | `resource :session` | `SessionsController` への同じ 6 つのルート。その下へのネストはない |
 | `get "/x"` の後に `post "/x"` | どちらも問題ない：2 つ目のルートから導かれる名前は使用済みなので、Rails と同じく名前なしになる。`as:` の重複は引き続きエラー |
 | `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport に同梱のタイムゾーンデータ | `Cybertrain::TimeZone.find("Asia/Tokyo")` はシステムの TZif ファイル（`/usr/share/zoneinfo`、または `TZDIR`）を読み、Integer のエポック秒を変換する（`utc_offset_at`、`utc_to_local`、`local_to_utc`）。リクエストごとの `Time.zone` や `l(time, zone:)` はまだない（[タイムゾーン](configuration.md#time-zones)） |
-| `Net::HTTP`、Faraday | Webhook や API には `Cybertrain::HttpClient`：すべての待ちに上限があり、公開されていない宛先はデフォルトで拒否され、リダイレクトや keep-alive はない（[外向きの HTTP](external-services.md#outbound-http) を参照）。Spinel の `Net::HTTP` は、相手が止まるとサーバー全体を止めてしまう |
-| Action Mailer（`deliver_later`、メーラークラス、ビュー） | `Cybertrain::Mailer.deliver(to:, subject:, body:)` はプレーンテキストを SMTP で送る（STARTTLS、暗黙の TLS、またはループバックへの平文。AUTH PLAIN。すべての待ちに上限がある）。テンプレート、HTML、添付ファイル、キューはない（[メールを送る](external-services.md#sending-e-mail)を参照） |
-| Active Job、`perform_later`、`solid_queue`、定期タスク | `Cybertrain::Job.handle(kind)` と `Job.enqueue(kind, payload, run_at:)`（String のペイロードで、バックオフ付きで再試行される）、`Cybertrain::Scheduler.every(seconds, name)`。サーバーか `./<app> worker` のプロセスで、プロセスあたり `job_threads` 本のスレッド。少なくとも 1 回の配信（[バックグラウンド処理](background-and-operations.md#background-work)） |
+| `Net::HTTP`、Faraday | Webhook や API には `Cybertrain::HttpClient`：すべての待ちに上限があり、公開されていない宛先はデフォルトで拒否され、リダイレクトは求められたときだけ、ストリーミングと gzip のレスポンス、Server-Sent Events のパーサーがあり、keep-alive はない（[外向きの HTTP](external-services.md#outbound-http) を参照）。Spinel の `Net::HTTP` は、相手が止まるとサーバー全体を止めてしまう |
+| Action Mailer（`deliver_later`、メーラークラス、ビュー） | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` はプレーンテキスト、またはパーシャルからレンダーした HTML の部分（`Views.render_mail`）を持つ `multipart/alternative` を SMTP で送る（STARTTLS、暗黙の TLS、またはループバックへの平文。AUTH PLAIN。すべての待ちに上限がある）。`Mailer.deliver_later` は組み込みのジョブから送る。メーラークラスと添付ファイルはない（[メールを送る](external-services.md#sending-e-mail)を参照） |
+| Active Job、`perform_later`、`solid_queue`、定期タスク、Mission Control | `app/jobs` のジョブクラス（`< Cybertrain::Job::Base`、JSON の値の Hash を受け取る `perform(args)`、`perform_later`、`retry_on`、`discard_on`、キー付きの `limits_concurrency`）、短い形の `Job.handle(kind)`。タイムゾーンとデータベースに保存される時刻表を持つ `Scheduler.every` と `Scheduler.cron`。ジョブページ（ルートの `jobs_page`）と `./<app> jobs`。サーバーか `./<app> worker` のプロセスで、プロセスあたり `job_threads` 本のスレッド。少なくとも 1 回の配信（[バックグラウンド処理](background-and-operations.md#background-work)） |
+| `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | アプリケーションの SQLite データベースの `Cybertrain::Cache.fetch`。オプションは同じ。値は String で、それ以外は `fetch_hash`、`fetch_array`、`fetch_int`。メモリや Redis のストアはない（[キャッシュストア](background-and-operations.md#the-cache-store)） |
 | ActionCable クライアント、faye-websocket、websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` はサーバーの動作中、フィードを接続したまま保つ（再接続、ping、無音の検出）。同期的な 1 本の接続には `WebSocket::Client`。外向きのみ（[WebSocket フィードを購読する](external-services.md#consuming-websocket-feeds)） |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` は String の Array で、大文字小文字を区別せず部分文字列で照合される（Regexp やラムダは使えない）。リクエストログと開発環境のエラーページに適用される（[フィルターされるパラメーター](configuration.md#configuration-and-environment-variables)） |
-| `get "up" => "rails/health#show"`（コントローラーへのルート） | `GET /up` は組み込みで、静的ファイル、セッション、ルーターより前に応答するので、`before_action` は実行されない。データベースとワーカーを確認し、`200 ok` または `503` を返す（[運用](background-and-operations.md#operations-backups-vacuum-health-check)） |
+| `get "up" => "rails/health#show"`（コントローラーへのルート） | `GET /up` は組み込みで、静的ファイル、セッション、ルーターより前に応答するので、`before_action` は実行されない。データベース、ワーカー、WebSocket のフィードを確認し、`200 ok` または `503` を返す（[運用](background-and-operations.md#operations-backups-vacuum-health-check)） |
 | バックアップ用の `bin/rails db:...` タスク（組み込みはない） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`、モード 0600、所定の場所にリネーム）と `./<app> db vacuum` |
 | Action Cable、`turbo_stream_from`、`broadcast_append_to` | 同じヘルパー名で、1 つの SQLite テーブルから Server-Sent Events か WebSocket で配信される署名付きストリーム。チャンネルのクラスはない（[リアルタイム](realtime.md)） |
 | アセットパイプライン、i18n | まだ作られていない（後のフェーズ。`docs/design.md` D1） |

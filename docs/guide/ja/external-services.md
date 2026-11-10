@@ -1,5 +1,5 @@
 ---
-source_sha256: 55cb8796599b6e9b68995c0bcfae429599010685c795da99ca191458d5507df2
+source_sha256: cbd431aac3ca2ef8bf0e14cfaf9a22c24f968b66143a02d4efc5b482d085184b
 ---
 # 外向きの HTTP、WebSocket フィード、メール
 
@@ -36,11 +36,63 @@ res.body                # バイト列。チャンク形式は取り除かれて
 - **解決されたすべてのアドレスを試す。** リゾルバーが返した順に、IPv6 も IPv4 も同じように試します：あるアドレスが拒否する、到達できない、リセットする、`timeout` 以内に応答しない場合は次のアドレスに接続し、そのすべてを `deadline` 以内に行います。すべてが失敗すると、最後のアドレスのエラーを出します。これによって macOS の `localhost` が動きます。macOS では `localhost` はまず `::1` に解決され、`127.0.0.1` で待ち受けているサーバーはそれを拒否するからです。`Cybertrain::Mailer` も同じ方法で接続します。
 - **TLS** は openssl パッケージのものです：オペレーティングシステムの信頼ストアに対する `VERIFY_PEER`（`SSL_CERT_FILE` / `SSL_CERT_DIR` で別の場所を指せます。パッケージにはカスタムのストアのための `X509::Store` がありません）、ホスト名の検査、SNI、TLS 1.2 以降。https の URL にはホスト名が必要です：IP アドレスは証明書の名前に一致しません。`require
   "cybertrain/net/tls"` がないと、https のリクエストはその旨を伝える `HttpClient::TLSError` を出します。`cybertrain/http_client` だけでは libssl をリンクすることはありません。
-- **ブラウザーではなく、通知用のクライアント：** `Connection:
-  close` 付きの HTTP/1.1 で、リクエストごとに接続は 1 つ、keep-alive なし、リダイレクトなし（3xx はそのまま返されます）、プロキシなし、cookie なし、圧縮なしです。レスポンスは `Content-Length`、チャンク形式、または接続が閉じるまでの読み取りのいずれでもかまいません。ヘッダーは 64 KiB かつ 100 行、ボディは `max_body`（デフォルトは 1 MiB）が上限で、それを超えると `HttpClient::TooLargeError` です。HTTP/1.x でない、または途中で終わるレスポンスは `HttpClient::BadResponseError`、拒否された・リセットされた接続や、解決できない名前は `HttpClient::RefusedError` です。TLS ハンドシェイク中にリセットされた・閉じられた接続（TLS を話さないサーバー）は、OpenSSL が拒否したハンドシェイクと同じく、どのプラットフォームでも `HttpClient::TLSError`（「TLS handshake failed」）です。これらはすべて `HttpClient::Error` です。
+- **ブラウザーではなく、通知と API のためのクライアント：** `Connection:
+  close` 付きの HTTP/1.1 で、リクエストごとに接続は 1 つ、keep-alive なし、リダイレクトは求められたときだけ（下記）、プロキシなし、cookie なしです。レスポンスは `Content-Length`、チャンク形式、または接続が閉じるまでの読み取りのいずれでもかまいません。ヘッダーは 64 KiB かつ 100 行、ボディは `max_body`（デフォルトは 1 MiB）が上限で、それを超えると `HttpClient::TooLargeError` です。HTTP/1.x でない、または途中で終わるレスポンスは `HttpClient::BadResponseError`、拒否された・リセットされた接続や、解決できない名前は `HttpClient::RefusedError` です。TLS ハンドシェイク中にリセットされた・閉じられた接続（TLS を話さないサーバー）は、OpenSSL が拒否したハンドシェイクと同じく、どのプラットフォームでも `HttpClient::TLSError`（「TLS handshake failed」）です。これらはすべて `HttpClient::Error` です。
 - **エラーにパスやクエリが含まれることはない。** Webhook の URL はそこに秘密を持っているからです：メッセージが示すのはホストとポートだけです。形式の壊れた URL や CR/LF を含むヘッダーは `ArgumentError` で、これもその内容を繰り返しません。`Host`、`Connection`、`Content-Length`、`Transfer-Encoding` はクライアントが管理し、`User-Agent` のデフォルトは `cybertrain/<version>` です。
 
-リクエストは呼び出したスレッドで実行されます。これは配信中のリクエストと同じくグリーンスレッドなので、待っている間も他の接続は配信され続けます。ソケットの層（`cybertrain/net/socket.rb`：上限付きの connect、バッファー付きの読み取り、上限付きの書き込み）は HTTP の層から分かれているので、他のプロトコルからも使えます。設計：[docs/design.md](../design.md) D24。
+リクエストは呼び出したスレッドで実行されます。これは配信中のリクエストと同じくグリーンスレッドなので、待っている間も他の接続は配信され続けます。ソケットの層（`cybertrain/net/socket.rb`：上限付きの connect、バッファー付きの読み取り、上限付きの書き込み）は HTTP の層から分かれているので、他のプロトコルからも使えます。設計：[docs/design.md](../design.md) D24 と D55。
+
+### メソッド、JSON、リダイレクト
+
+```ruby
+client = Cybertrain::HttpClient.new(timeout: 5, deadline: 15, redirects: 3)
+res = client.request("PATCH", "https://api.example.com/v1/items/7",
+                     body: JSON.generate({ "done" => true }), content_type: "application/json")
+res = client.request("DELETE", "https://api.example.com/v1/items/7")
+item = client.get("https://api.example.com/v1/items/7").json_hash   # 本文が JSON オブジェクトでなければ {}
+list = client.get("https://api.example.com/v1/items").json_array    # JSON 配列でなければ []
+```
+
+- **`request(verb, url, body:, content_type:, headers:)`** は GET、POST、PUT、PATCH、DELETE、HEAD を送ります。`get` と `post` はよく使う形として残ります。POST、PUT、PATCH は常に本文を運び、DELETE は空でないときだけ、GET と HEAD は運びません（そこに本文を渡すと `ArgumentError`）。HEAD のレスポンスには本文がありません。`Response#json_hash` と `#json_array` は本文を解釈し、それ以外のものには `{}` や `[]` を返します。
+- **リダイレクト** は求められたときだけたどります。`redirects: 3` は `Location` 付きの `301`、`302`、`303`、`307`、`308` を 3 回までたどり（相対の `Location` は今の URL を基準に解決します）、その次は `HttpClient::TooManyRedirectsError` を出します。デフォルトの `0` では、3xx をそのまま返します。どのホップも最初と同じく確かめられ（公開されていないアドレスは拒否）、https から http へのホップは `BlockedAddressError` になり、`303`（と POST への `301`・`302`）は本文のない GET に変わり、`deadline` はすべてのホップをまとめて数えます。ブラウザや curl と同じく、`Authorization`、`Cookie`、`Proxy-Authorization` ヘッダーは別のオリジン（スキーム、ホスト、ポート）には送りません。プレーンな ASCII の http(s) URL でない `Location` は `BadResponseError` です。
+
+### ストリーミングと大きなレスポンス
+
+ブロックを渡すと本文は保持されません。各部分は届いたときにブロックに渡され（チャンクのフレーム 1 つ、一度に最大 1 MiB、または 1 回の読み取りで届いたもの）、`Response` は空の本文で返ります。このとき `max_body` は効きませんが、`timeout` と `deadline` は効くので、長いストリームには長い `deadline:` を与えてください。`get_to_file` はファイルにストリーミングします：
+
+```ruby
+client = Cybertrain::HttpClient.new(deadline: 600, redirects: 3)
+client.get("https://example.com/export.ndjson") { |chunk| Importer.feed(chunk) }
+
+res = client.get_to_file("https://example.com/dump.csv", "tmp/dump.csv")
+Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
+```
+
+- 2xx の本文は届くそばから `path.part` に書かれ、そろったところで `path` に名前を変えます。78 MB のダウンロードがメモリに載ることはなく、読む側が半分のファイルを見ることもありません。それ以外の最終ステータス（404 のページ、503）はディスクに届きません。`res.success?` を確かめてください。`path` は元のままです。エラーのときは `.part` が消されます。空の 2xx の本文（`204`）は、ファイルを空のファイルで置き換えます。
+- ブロックが出した例外は、そのまま呼び出し元に届きます。
+
+### gzip
+
+gzip のサポートが読み込まれていれば、クライアントは gzip の本文を求め、展開します。`require "cybertrain"` がそれを読み込むので、アプリケーションではどのリクエストも `Accept-Encoding: gzip` を送り（自分で `Accept-Encoding` ヘッダーを送った場合を除く）、`Content-Encoding: gzip` の本文は展開されて返ります。`cybertrain/http_client` だけを require するプログラムは `require "cybertrain/http/gzip_ffi"` を足します（zlib をリンクします）。それがなければ、gzip のレスポンスはそのファイルを挙げる `BadResponseError` になります。保持する本文は、通信路の上でも展開後も `max_body` で制限されます（超えれば `TooLargeError`）。ストリーミングの本文は 1 回に最大 64 KiB ずつ展開され、圧縮していないストリーミングの本文と同じく全体の上限はありません。`Response` のヘッダーは受け取ったままです。`body` は展開したテキストでも、`Content-Encoding: gzip` と通信路の `Content-Length` は残ります。ほかの `Content-Encoding`（`br`、`deflate`）は `BadResponseError` で、途中で切れた gzip や壊れた gzip の本文もそうです。
+
+### Server-Sent Events
+
+`Cybertrain::Sse::Parser` は、ストリーミングされる `text/event-stream` のレスポンスの各部分をイベントに変えます（`require "cybertrain"` には含まれません）：
+
+```ruby
+require "cybertrain/sse"
+
+parser = Cybertrain::Sse::Parser.new
+client = Cybertrain::HttpClient.new(deadline: 180)   # ストリーム全体が deadline に収まること
+client.request("POST", "https://api.example.com/v1/chat", body: payload, content_type: "application/json") do |chunk|
+  parser.feed(chunk) { |event| Answer.append(event.event_data) unless event.event_data == "[DONE]" }
+end
+parser.finish { |event| Answer.append(event.event_data) }   # ストリームが空行で終えなかった最後のイベント
+```
+
+- 各 `Sse::Event` には `event_name`（ストリームが送らなければ `"message"`）、`event_data`（`data:` の行を改行でつないだもの）、`event_id`（ストリームが最後に送った `id:`。後のイベントにも引き継がれます）、`event_retry_ms`（前のイベント以降に与えられた `retry:`。なければ 0）があります。
+- パーサーは WHATWG の規則に従います。行は CR、LF、CRLF で終わり、2 つの部分の間のどこで切れていても構いません。`:` で始まる行はコメントです。空行は、データがあればイベントを送り出します。`finish` は、ストリームの終わりで閉じられずに残ったイベントを渡します。
+- 行やイベントの大きさに上限はありません。リクエストの `deadline` はストリームを時間で区切りますが、メモリでは区切りません。バイナリの部分からはバイナリの `event_data` ができます。エンコーディングは自分で設定してください。
 
 ## WebSocket フィードを購読する
 
@@ -66,6 +118,16 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
 - **待機と再接続。** 失敗のたびに、スレッドは `min(60, 2 ** (attempt - 1))` 秒、前後 20 % のジッター付きで待ちます：1、2、4、... 60。60 秒続いた接続は、再び 1 から始まります。すべての待ちに上限があります。`WebSocket.stop!` は、サーバーが何をしても約 2 秒以内に戻ります：すべてのスレッドを合わせて最大 2 秒待ち、接続中のフィードはクローズ（1000）を送ってサーバーの応答を最大 1 秒待ち、戻った時点ですべてのフィードの `connected?` は false です（まだ閉じている途中のスレッドは自分で終わります）。
 - **無音。** フィードは接続を閉じないまま静かになることがあるので、スレッドはフレームが何もないまま `ping_interval` 秒たつと ping を送り（その後は間隔ごとに 1 回）、pong も含めてフレームが `stale_after` 秒まったく届かなければ、接続を閉じて再接続します。`stale_after` は `ping_interval` より大きくなければならず、`ping_interval` は 1 以上でなければなりません（`subscribe` からの `ArgumentError`）。
 - **ブロック内のエラー。** `on_message` での例外はログに記録され、接続はそのままです。`on_open` での例外はログに記録され、接続は閉じられて再試行されます。購読していないフィードは役に立たないためです。
+- **タイマー。** `.on_tick(seconds) { |conn| ... }` は、フィードが接続していてもいなくても、フィード自身のスレッドで 1 秒ごとの待ちの合間に、`seconds`（Integer、1 以上）ごとにブロックを実行します。`conn` は接続中は `Connection`、そうでなければ `nil` なので、確かめてください。最初の呼び出しはフィードの開始から `seconds` 後です。例外はログに出て、フィードは続きます。フィードに属する作業（`on_message` がメモリにためたものを 1 秒ごとに書く、1 分足を閉じる）はここに書きます。ロックもスケジューラーのタスクも要りません。`on_tick` は購読ごとに 1 つです。
+
+  ```ruby
+  BUFFER = Array.new(0) { "" }   # 定数：ブロックからはローカル変数が見えない
+
+  Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"])
+    .on_message { |conn, text| BUFFER << text }
+    .on_tick(1) { |conn| Trades.flush(BUFFER) }   # アプリのコード：まとめて 1 回 INSERT し、BUFFER.clear
+  ```
+- **再起動。** 監視スレッドが、各フィードのスレッドが生きているかを毎秒確かめます。それでも終わってしまったスレッド（`StandardError` でない例外、またはランタイムが殺したもの）はログに出され（`[ERROR] WebSocket "trades" thread ended: ...`）、`min(30, 2 ** restarts)` 秒後に `[WARN]` の行とともに再起動されます。開いていた接続は先に閉じられます。再起動の回数は決してリセットされないので、5 回再起動した後は待ちが 30 秒のままです。`feeds` のプロセスでは、`feed_restart_window` 秒（600、`CYBERTRAIN_FEED_RESTART_WINDOW`）のうちに `feed_restart_limit` 回（10、`CYBERTRAIN_FEED_RESTART_LIMIT`）再起動した後でまた死んだフィードは、プロセスを終わらせます。`[FATAL] feed trades restarted 10 times in 600 s; exiting` を出し、すべてのフィードを止めてから、終了ステータス 1 で終わります。Docker の `restart: unless-stopped` や systemd の `Restart=always` が新しいプロセスを起動するためです。フィードを動かす `server` は、フィードのために終了することはありません。再起動を続け、`/up` が `feed stale` を報告します。監視スレッド自身のエラー（状態の行を書いている間にデータベースがなくなった）はログに出され、監視は続きます。
 - **ログに出るもの。**
 
   | いつ | レベル | 行 |
@@ -78,7 +140,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
 
   パスとクエリがログやエラーメッセージに出ることは決してありません：トークンを含んでいることが多いからです。
 - **エラー。** すべて `Cybertrain::WebSocket::Error` で、メッセージにはホストとポートだけが含まれます。ハンドシェイクが済んだ後は、失われた接続やサーバーによるクローズは `ClosedError`（`close_code`、`close_reason`。リセットやクローズフレームなしの終了は 1006）です。タイムアウトした書き込みや TLS で失敗した書き込みは、引き続き `TimeoutError` や `TLSError` です。接続中は `RefusedError`、`TimeoutError`、`TLSError`、`BlockedAddressError`（公開されていないアドレスで、[外向きの HTTP](#outbound-http) とまったく同じくデフォルトで拒否され、同じ `allow_private:` と `http_allow_private` の設定を持ちます）、または `HandshakeError`（101 でない、`Sec-WebSocket-Accept` が誤っている、またはサーバーが拡張やサブプロトコルで応答した）です。`ProtocolError`（サーバーがフレーミングを壊した。クライアントは 1002 を送ります）と `TooLargeError` はいつでも起こりえます。
-- **ヘルス。** `Cybertrain::WebSocket.feed_status("trades")` は `Status` を返します：`connected?`、`last_message_at`（エポック秒。最初のメッセージの前は 0）、`reconnects`。これは `GET /up` には含まれません。自前のチェックで使ってください。3 つは 1 つのスナップショットとしてではなく順に読まれ、`connected?` は接続ができた時点、`on_open` の実行前に true になります。
+- **ヘルス。** `Cybertrain::WebSocket.feed_status("trades")` は `Status` を返します：`connected?`、`last_message_at`（エポック秒。最初のメッセージの前は 0）、`reconnects`、`restarts`（監視スレッドによるもの）、`thread_alive?`。これらは 1 つのスナップショットとしてではなく順に読まれ、`connected?` は接続ができた時点、`on_open` の実行前に true になります。監視スレッドは各フィードの状態を `feed_status_interval` 秒（10）ごとにデータベースにも書き、それをこのプロセスやほかのプロセスの `GET /up` と `./<app> feeds status` が読みます：[フィードのヘルス](realtime.md#feed-health)。
 - **`on_message` は短く保つ。** スレッドは `wait_readable` か `sleep` で待つので、止まったフィードが待っている間 OS のワーカーを占有することはありません。占有するものは 2 つあります：各接続の試行はブロッキングする `getaddrinfo` でホスト名を解決します（[外向きの
   HTTP](#outbound-http) の「名前解決はブロックする」を参照。`SPINEL_WORKERS=1` では、死んだリゾルバーがフィードごと・試行ごとに 1 回、リゾルバーのタイムアウトの間すべてのリクエストを止めます。URL に IP アドレスを書けば問い合わせを避けられます）。そして `on_message` の中の SQLite の呼び出しは、定期タスクと同じく戻るまで占有します（[バックグラウンド処理](background-and-operations.md#background-work)）：`SPINEL_WORKERS=1` では、長い書き込みがすべてのリクエストを止めます。忙しいフィードでは小さな行を 1 つ挿入するか、メッセージをメモリーに集めて `Scheduler.every` のタスクからまとめて書き込んでください。
 - **作られていないもの。** 拡張（`permessage-deflate`）とサブプロトコルはネゴシエートされません。プロキシ、リダイレクト、cookie のサポートも、メッセージの自動保存もありません（ブラウザーには専用のエンドポイントがあります：[リアルタイム](realtime.md)）。テキストフレームが有効な UTF-8 かは検査されません（RFC 6455 の 8.1 節からの逸脱）：バイト列は届いたまま渡されます。`Connection` が有効なのはコールバックの間だけです。リクエストやタスクから送信することはサポートされていません。
@@ -97,11 +159,11 @@ msg.ws_data                   # バイト列
 client.close
 ```
 
-設計：[docs/design.md](../design.md) D33。
+設計：[docs/design.md](../design.md) D33 と D56。
 
 ## メールを送る
 
-`Cybertrain::Mailer` は、SMTP サーバー（プロバイダーのサブミッションサーバー、またはローカルのリレー）を通じてプレーンテキストのメールを送ります。HTTP クライアントと同じく `require "cybertrain"` には含まれておらず、TLS は別に require します：
+`Cybertrain::Mailer` は、SMTP サーバー（プロバイダーのサブミッションサーバー、またはローカルのリレー）を通じて、プレーンテキストか HTML の部分を持つメールを、すぐに（`deliver`）またはジョブから（`deliver_later`、下記）送ります。`require "cybertrain"` がこれを読み込みます。フレームワークを使わないプログラムは `cybertrain/mailer` を require します（データベースは要りません。`deliver_later` は `cybertrain/mailer/later` にあります）。TLS は別に require します：
 
 ```ruby
 require "cybertrain/mailer"
@@ -135,9 +197,33 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 - **すべての待ちに上限がある。** [外向きの HTTP](#outbound-http) と同じく：接続、TLS の各手順、各応答は最大 `timeout` 秒（デフォルトは 10）待ち、配信全体では最大 `deadline` 秒（デフォルトは 60）待ちます。それを超えると `Mailer::TimeoutError` です。名前解決は呼び出したスレッドをブロックします。
 - **やり取り：** 220 の挨拶、`EHLO`（名前は `helo:`。デフォルトは `localhost`）、`STARTTLS` と再度の `EHLO`、ユーザーが設定されていれば `AUTH PLAIN`（サーバーが PLAIN を提供する必要があります）、`MAIL FROM`、受信者ごとに 1 つの `RCPT TO`、`DATA`、`QUIT`。それ以外のコードの応答は `Mailer::RejectedError` で、その `smtp_code` はサーバーのもの（421、535、550 など）、メッセージには手順とサーバーのテキストが含まれます。戻り値は、メッセージに対するサーバーの応答です（`"250 2.0.0 Ok: queued
   as ..."`）。
-- **メッセージ：** `Date`、`From`、`To`、`Subject`、`MIME-Version: 1.0`、`Content-Type: text/plain; charset=UTF-8`。ASCII 以外を含む件名は RFC 2047 でエンコードされます（`=?UTF-8?B?...?=`。文字の境界で分割されます）。本文の改行は CRLF になり、`.` で始まる行はドットスタッフィングされます。`Content-Transfer-Encoding` は、ASCII なら `7bit`、UTF-8 でサーバーが 8BITMIME を広告していれば `8bit`（`MAIL FROM
+- **メッセージ：** `Date`、`From`、`To`、`Subject`、`MIME-Version: 1.0`、`Content-Type: text/plain; charset=UTF-8`（HTML のメッセージは下記）。ASCII 以外を含む件名は RFC 2047 でエンコードされます（`=?UTF-8?B?...?=`。文字の境界で分割されます）。本文の改行は CRLF になり、`.` で始まる行はドットスタッフィングされます。`Content-Transfer-Encoding` は、ASCII なら `7bit`、UTF-8 でサーバーが 8BITMIME を広告していれば `8bit`（`MAIL FROM
   ... BODY=8BITMIME` 付き）、それ以外や 998 バイトより長い行がある場合は `base64` です。`Message-ID` は追加しません（サブミッションサーバーが追加します）。
 - **拒否されるもの。** 接続する前に `ArgumentError` で：素の ASCII の `local@domain` でないアドレス（表示名、`<>`、空白、カンマ、引用符、CR、LF は不可。最大 254 バイト）、CR、LF、NUL を含む（ヘッダーインジェクション）または 998 バイトを超える件名、有効な UTF-8 でない、または NUL を含む本文、100 を超える受信者。`to:` は 1 つのアドレス、またはカンマで区切った複数のアドレスを受け取ります。
-- **まだないもの：** HTML とマルチパートのメッセージ、添付ファイル、テンプレート、表示名、`Cc`/`Bcc` ヘッダー（代わりに複数の受信者に送ってください）、AUTH LOGIN/CRAM-MD5、SMTPUTF8 のアドレス、パイプライン、配信キュー（配信は呼び出したスレッド、つまりリクエストと同じくグリーンスレッドで実行されます）。`cybertrain generate authentication` は今もパスワードのリセットを書き出しません。
+- **まだないもの：** 添付ファイルとインライン画像、メーラークラス（`UserMailer.welcome(user).deliver_later`。メールは `deliver` か `deliver_later` を呼ぶアプリケーションのメソッドです）、表示名、`Cc`/`Bcc` ヘッダー（代わりに複数の受信者に送ってください）、AUTH LOGIN/CRAM-MD5、SMTPUTF8 のアドレス、パイプライン。`deliver` は呼び出したスレッドで実行されます。これはリクエストと同じくグリーンスレッドです。`cybertrain generate authentication` は、いまもパスワードのリセットを書きません。
 
-設計：[docs/design.md](../design.md) D27。
+### HTML メール
+
+```ruby
+html = Cybertrain::Views.render_mail("mail/welcome", user: user)   # app/views/mail/_welcome.html.erb
+Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #{user.name}!\n", html: html)
+```
+
+- `html:` があると、メッセージは `multipart/alternative` になります。まずプレーンテキストの部分（`body:`）、次に HTML の部分で、どちらも `charset=UTF-8` の base64（なので行の長さやドットスタッフィングの規則は関係ありません）、間にはランダムな区切りが入ります。メールソフトは HTML を表示し、表示できなければテキストに戻ります。`html:` がなければ、メッセージはこれまでどおり上のプレーンテキストです。
+- `Views.render_mail(name, locals)` は、リクエストの外でパーシャル（`app/views/mail/_welcome.html.erb`）をレンダーします。`app/views/layouts/mail.html.erb` があればそのレイアウトの中で、なければパーシャルだけです。`Views.render_partial` はレイアウトなしでレンダーします。値はページと同じく HTML エスケープされます。プレーンテキストの部分もパーシャルから作れます。自分でレンダーして `body:` に渡してください（`<%= %>` はエスケープするので、値は `<%== %>` で出力します）。
+
+### 後で送る
+
+```ruby
+Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
+```
+
+`deliver_later` は `deliver` と同じ引数を取ってその場で確かめ（拒否されるアドレスや件名はここで例外になり、何もキューに入りません）、組み込みのジョブ `"cybertrain mail"` を、できあがったメッセージとともにキューに入れます。ジョブスレッド（[バックグラウンド処理](background-and-operations.md#background-work)）が、その時点の SMTP の設定で送ります。本文は呼び出す前にレンダーしてください。ジョブにはビューのコンテキストがありません。戻り値はジョブの id です。
+
+- **再試行。** タイムアウト、拒否された接続、`4xx` の応答（グレイリスティング、`421`、`452`）は 60 秒後に再試行され、5 回の試行の後、行は `failed` になります。`5xx` の応答（存在しないアドレス、拒否されたログイン）は、行をすぐに破棄します。再試行しても答えは変わらないからです。
+- **間違いも破棄されます。** ジョブの実行時の `ArgumentError` は、何も送らずに破棄されます。これは、データベースで書き換えられたペイロードだけでなく、設定の間違い（`CYBERTRAIN_SMTP_HOST` がない、送信者がない）も含みます。そうしたメールは、誰かがジョブページか `./<app> jobs list discarded` を見るまで失われたままです。設定を直してから `./<app> jobs retry ID` でキューに戻してください（破棄された `535` のログイン失敗も同じです）。
+- **1 つのメッセージ、すべての受信者。** 複数の受信者へのメッセージは 1 つの SMTP のトランザクションです。サーバーがそのうち 1 人を `5xx` で拒否すると、ジョブ全体が破棄され、ほかの受信者にも届きません。受信者どうしが互いに左右されてはならないときは、受信者ごとに 1 つのメッセージをキューに入れてください。
+- **メッセージはデータベースに残ります**（ジョブの行のペイロード。ジョブページに表示されます）。ジョブが実行されるまで、そして終わった行を残している間ずっとです。
+- このジョブが登録されるので、ジョブを実行するプロセスはどれも、自分のジョブクラスがないアプリケーションでもジョブスレッドを起動します。
+
+設計：[docs/design.md](../design.md) D27 と D57。

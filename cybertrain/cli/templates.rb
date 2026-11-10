@@ -429,7 +429,7 @@ module Cybertrain
               hosts:
                 - 192.168.0.1
               cmd: ./#{package} worker
-              # The process exits non-zero on a fatal error: the container
+              # The process exits non-zero when it cannot boot: the container
               # runtime must start it again.
               options:
                 restart: unless-stopped

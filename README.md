@@ -26,15 +26,18 @@ of runtime metaprogramming.
 templates with components and application helpers, SQLite models
 (decimal, json, date and datetime columns; declared associations with
 `includes`; Rails' validators; encrypted columns; bulk inserts and typed
-aggregates), migrations, authentication and file-upload
-generators, background jobs (job classes, cron scheduling, a jobs page), a
-cache store, HTML mail, gzip and streaming responses, Turbo Streams over Server-Sent Events or
-WebSocket, outbound HTTP, SMTP and WebSocket clients all work end to end;
-[examples/blog](examples/blog) is the Rails "Getting Started" blog built on
-it. Since 2026-11-05 porting an existing Rails application is a goal, in
-five phases ([design record](docs/design.md), D1); a SQLite database that a
-Rails application created can be taken over as it is. Not built: an asset
-pipeline, i18n, mailer classes, HTTP/2
+aggregates), migrations, and the authentication and file-upload generators
+all work end to end. So do background jobs (job classes with retry
+policies, cron schedules, a jobs page), a cache store, Turbo Streams over
+Server-Sent Events or WebSocket, and the outbound clients: HTTP (streamed,
+gzip and Server-Sent Events responses), SMTP (plain or HTML mail, sent now
+or from a job) and WebSocket feeds. [examples/blog](examples/blog) is the
+Rails "Getting Started" blog built on it. Since 2026-11-05 porting an
+existing Rails application is a goal, in five phases
+([design record](docs/design.md), D1); a SQLite database that a Rails
+application created can be taken over as it is. Not built: an asset
+pipeline, i18n, mailer classes (a mail is a method that calls
+`Mailer.deliver` or `deliver_later`), mail attachments, HTTP/2
 ([what differs from Rails](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html#differences-from-rails)).
 
 ## Quick start
@@ -78,10 +81,10 @@ the same app in Rails 8.1, in about a tenth of the memory
 | [Models and the database](https://saeki-mototsune.github.io/CyberTrain/guide/models.html) | Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database |
 | [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Rate limiting, the client address, parameterised headers, query strings and request bodies |
 | [Configuration](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
-| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Jobs (on `job_threads` threads; delivered at least once, so make handlers idempotent), scheduled tasks, the `worker` and `feeds` process roles, the console, backups, the health check |
-| [Realtime](https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names |
-| [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html) | `HttpClient`, `WebSocket.subscribe`, `Mailer` |
-| [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Writing tests for an app, outbound calls, CI |
+| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check |
+| [Realtime](https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health |
+| [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html) | `HttpClient` (streaming, gzip, redirects, Server-Sent Events), `WebSocket.subscribe` (timers, restarts), `Mailer` (HTML mail, `deliver_later`) |
+| [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Writing tests for an app, outbound calls, jobs, CI |
 | [Deploying](https://saeki-mototsune.github.io/CyberTrain/deploy.html) | To a server with systemd, or with Kamal |
 | [API reference](https://saeki-mototsune.github.io/CyberTrain/api/) | Every class and method an application uses; also [the template language](https://saeki-mototsune.github.io/CyberTrain/guide/template-language.html) |
 | [Design record](docs/design.md) · [benchmark](docs/benchmark.md) · [spikes](spikes/NOTES.md) | Why it is built this way, and the Spinel constraints behind it |

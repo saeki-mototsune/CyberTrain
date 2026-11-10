@@ -3,105 +3,301 @@
 ## Background work
 
 An application that has to do something outside a request (send a
-notification after the response went out, sweep old rows every hour, retry a
-call that failed) registers it with the framework, which runs it on
-background threads of the served process, or of a separate worker process:
+notification after the response went out, sweep old rows every night, retry
+a call that failed) hands it to the framework, which runs it on background
+threads of the served process, or of a separate worker process. A job is a
+class in `app/jobs/`, as in Rails:
 
 ```ruby
-# config/app.rb (or a file bin/<app>.rb requires before Cybertrain::Main.run)
-Cybertrain::Scheduler.every(3600, "prune sessions") do
-  Cybertrain::DB.with { |c| c.execute("DELETE FROM sessions WHERE updated_at < datetime('now', '-30 days')") }
-end
+# app/jobs/welcome_job.rb
+class WelcomeJob < Cybertrain::Job::Base
+  retry_on Cybertrain::Mailer::TimeoutError, wait: 60, attempts: 5
+  discard_on ArgumentError
 
-Cybertrain::Job.handle("welcome_mail") do |payload|
-  data = Cybertrain::Cast.hash(JSON.parse(payload))
-  WelcomeMail.deliver(data["email"].to_s)   # raise to have it retried
+  def perform(args)
+    user = User.find(Cybertrain::Cast.int(args["user_id"]))
+    Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Hello!\n")
+  end
 end
 ```
 
 ```ruby
 # in an action, after saving the user
-Cybertrain::Job.enqueue("welcome_mail", JSON.generate({ "email" => @user.email }))
-Cybertrain::Job.enqueue("reminder", @order.id.to_s, run_at: Time.now + 600)
+WelcomeJob.perform_later("user_id" => @user.id)
+WelcomeJob.perform_in(600, "user_id" => @user.id)   # or perform_at(time, args)
 ```
 
-- **Where it runs.** Scheduled tasks run on one scheduler thread; jobs run
-  on `job_threads` job threads of their own (3, `CYBERTRAIN_JOB_THREADS`),
-  so a long job never holds up a task. Both start when the binary serves
-  (`./<app>`, `./<app> server`) or runs as a worker (`./<app> worker`, see
-  [Process roles](#process-roles)), after boot has connected the database
-  and set `SPINEL_WORKERS`; `migrate`, `db ...`, `console` and `Main.command`
-  commands never start them, and neither does `Cybertrain::Test::Client`. A
-  task runs first `seconds` after the start, then `seconds` after the start
-  of each run. Each run is wrapped in a rescue that logs `[ERROR] Scheduled
-  task "name" failed: ...` and the loop goes on. The block takes no
-  arguments (Spinel has no `instance_eval`). `Cybertrain::Scheduler.last_tick`
+```ruby
+# config/app.rb (or a file bin/<app>.rb requires before Cybertrain::Main.run)
+Cybertrain::Scheduler.cron("0 4 * * *", "nightly digest", job: "DigestJob")
+Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
+```
+
+- **Where it runs.** Jobs run on `job_threads` job threads (3,
+  `CYBERTRAIN_JOB_THREADS`); scheduled tasks run on one scheduler thread of
+  their own, so a long job never holds up a task. Both start when the
+  binary serves (`./<app>`, `./<app> server`) or runs as a worker
+  (`./<app> worker`, see [Process roles](#process-roles)), after boot has
+  connected the database and set `SPINEL_WORKERS`; `migrate`, `db ...`,
+  `jobs ...`, `console` and `Main.command` commands never start them, and
+  neither does `Cybertrain::Test::Client`. The job threads start in every
+  such process, even in an application with no job class: the framework
+  registers its own mail job (`Mailer.deliver_later`,
+  [Sending e-mail](external-services.md#sending-e-mail)).
+- **The table.** Jobs are rows of `cybertrain_jobs`, which the framework
+  creates itself (`CREATE TABLE IF NOT EXISTS`, on first use) and leaves out
+  of `db/schema.rb`. Inside a `DB.transaction` the row commits or rolls back
+  with the rest. Each job thread claims the oldest due row in a short
+  `BEGIN IMMEDIATE` transaction, runs it outside the transaction and looks
+  for the next; with nothing due it waits `job_poll_interval` seconds (1),
+  so a job enqueued by a request starts within about a second. A row is
+  `queued`, `running`, `done`, `failed` (its retries ran out; it stays for
+  you to look at) or `discarded` (a `discard_on` stopped it).
+
+### Job classes
+
+`spin run gen` reads every file under `app/jobs/` (nested directories too:
+`Admin::ReportJob` in `app/jobs/admin/report_job.rb`) and writes the other
+half of each class `Cybertrain::Job::Base` is an ancestor of into
+`gen/jobs.rb`: `perform_later`, `perform_at`, `perform_in`, `perform_now`,
+`job_kind` and the code that runs it, and registers the class. `cybertrain
+generate job send_digest --retry Cybertrain::Mailer::TimeoutError:60:5`
+writes a class file and a test for it.
+
+- **`args`** is the Hash given to `perform_later`, stored as JSON and read
+  back as a `Hash<String, Object>`: narrow its values with
+  `Cybertrain::Cast.int(args["user_id"])`, `Cast.str`, `Cast.hash`,
+  `Cast.array`. A job takes this one Hash; pass ids, not records (Rails'
+  advice too). `perform_later` raises `ArgumentError` for anything that is
+  not a Hash, and with no argument sends `{}`.
+- **Enqueueing.** `perform_later(args)`, `perform_at(time, args)` and
+  `perform_in(seconds, args)` return the row's id; the row's kind is the
+  class name (`"WelcomeJob"`, `"Admin::ReportJob"`).
+  `perform_now(args)` runs `perform` on the calling thread, with no queue,
+  no retry policy and no rescue, and returns `nil`: a test's shape.
+- **The class body.** Every job class defines `perform(args)` (the generator
+  refuses one that neither defines nor inherits it). `retry_on`,
+  `discard_on` and `limits_concurrency` are read as text, one per line with
+  literal values (an Integer or `:polynomially_longer` for `wait:`, an
+  Integer for `attempts:` and `to:`, a quoted String for `key:`); a block,
+  a lambda, `5.minutes`, a hashrocket or a trailing comment stops `spin run
+  gen` with the file, the line and what to write instead.
+- **Which exception classes.** A `retry_on` or `discard_on` names a class
+  the program defines before the job: a core class (`ArgumentError`,
+  `KeyError`, ...), one of the framework's `...Error` classes (the
+  generator adds the require it needs), or an application class defined in
+  `app/models/`, in `app/jobs/application_job.rb` or above the line in the
+  job's own file. Anything else stops `spin run gen`: under Spinel a
+  `rescue` naming a class the program does not define can swallow every
+  exception (spikes/NOTES.md rule 89).
+- **`ApplicationJob`.** A class `ApplicationJob < Cybertrain::Job::Base` in
+  `app/jobs/application_job.rb` is not a job of its own: its `retry_on` and
+  `discard_on` lines apply to every job inheriting it, after the job's own,
+  and its `limits_concurrency` to a job that sets none. Any other job class
+  can be a parent; it is then a job in its own right.
+- **`Job.handle`, the short form.** A block registered under a String kind
+  needs no class and no generator; it gets the payload String and the
+  default policy below:
+
+  ```ruby
+  # config/app.rb
+  Cybertrain::Job.handle("notify", concurrency: 1) { |payload| Notifier.post(payload) }
+
+  # anywhere, later
+  Cybertrain::Job.enqueue("notify", JSON.generate({ "text" => "Deployed" }), run_at: Time.now + 60)
+  ```
+
+  Job classes and `Job.handle` kinds share one namespace, so
+  `Job.enqueue("WelcomeJob", json)` adds the same row as `perform_later`.
+  `Job.enqueue` refuses an unregistered kind.
+
+### Retries and discards
+
+- **The default policy.** An exception that no line of the class matches
+  (and any exception of a `Job.handle` block) is retried 1, 5, 15 and then 60
+  minutes later, with `Class: message` (up to 1000 characters) in
+  `last_error`, until `job_max_attempts` (5) attempts have failed; the row is
+  then `failed`.
+- **`retry_on Klass, wait: 60, attempts: 5`.** `wait:` is seconds (3 when
+  left out, Rails' default) or `:polynomially_longer` (`attempts ** 4 + 2`
+  seconds: 3, 18, 83, 258, ...); `attempts:` (5 when left out) counts every
+  attempt, the first included. Several lines may be given: the first whose
+  class matches the exception (a subclass matches) wins, so write the
+  narrower class first. `retry_on StandardError` before `discard_on
+  ArgumentError` retries the `ArgumentError`.
+- **`discard_on Klass`** stops at once: the row is `discarded`, with the
+  error in `last_error`, and is never retried.
+- **`def retries_exhausted(error)`** runs when a `retry_on` line's attempts
+  ran out, once the row is really `failed` (never for an attempt another
+  worker took over, whose own run may still succeed). It is Rails' `retry_on
+  ... do |job, error|` block; an exception it raises is logged.
+- **Recovery** (below) follows the class too: a row of a class with
+  `attempts: 20` whose process died on attempt 5 is queued again, not
+  failed.
+
+### Concurrency per kind and per key
+
+`limits_concurrency to: 1, key: "account_id"` lets at most `to:` jobs of the
+class run at once across every process sharing the database, counted per
+value of `args["account_id"]` (`to:` alone counts for the whole class;
+`Job.handle(kind, concurrency: n)` is the same for a block). Other kinds,
+and other keys, go on running meanwhile. Enqueueing a keyed job whose args
+lack the key raises `ArgumentError`. The limit counts `running` rows, so it
+holds as long as heartbeats do: a job still running after its heartbeat went
+stale is overlapped by the recovered row's next run (below); work that must
+never overlap needs a guard of its own.
+
+### Scheduled tasks
+
+`Scheduler.every(seconds, name) { ... }` runs a block every `seconds`;
+`Scheduler.cron(expr, name, ...)` runs at the minutes a five-field cron
+expression matches:
+
+```ruby
+Cybertrain::Scheduler.cron("12 * * * *", "collect prices") { Prices.collect }
+Cybertrain::Scheduler.cron("0 9 * * 1-5", "morning report", tz: "Asia/Tokyo",
+                           job: "MorningReportJob", args: { "scope" => "all" })
+Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.poll }
+```
+
+- **The expression.** Minute, hour, day of month, month, day of week, with
+  `*`, `*/n`, `a-b`, `a,b`, `a-b/n` and the names `jan`-`dec` and
+  `sun`-`sat` (day of week `0` and `7` are Sunday); `@hourly` and its kin
+  are not accepted. An expression that cannot be parsed, or never matches,
+  raises `ArgumentError` naming the task when `config/app.rb` loads, so the
+  boot stops.
+- **Time zones.** `tz:` names an IANA zone ([Time zones](configuration.md#time-zones));
+  without it the task reads `scheduler_tz` (`CYBERTRAIN_SCHEDULER_TZ`,
+  `UTC`). A wall time that a daylight-saving jump skips does not run that
+  day. In the repeated hour of the autumn change, an expression whose hour
+  field starts with `*` runs at both occurrences and one with a fixed hour
+  runs once, as Vixie cron does.
+- **`job:`** names a job kind (a class name as a String, or a `Job.handle`
+  kind) and `args:` its args: the task then only enqueues it, which is what
+  a task with real work should do. An unknown kind stops the boot with the
+  list of registered ones.
+- **The timetable** is kept in the database (`cybertrain_schedules`, out
+  of `db/schema.rb`): when each task last ran and runs next. A restart, or
+  another process taking the lead, continues from it. An `every` task whose
+  time passed while nothing ran runs once at start; a `cron` slot missed
+  while nothing ran is skipped (cron's rule) unless the task says `catch_up:
+  true`, which runs it once at start. A slot that came due while processes
+  were up but no leader ran it (a lease changing hands) runs once on the
+  takeover. A task you rename or remove keeps its row until the next start.
+- **How a task runs.** A block runs on the scheduler thread, one task at a
+  time; each run is wrapped in a rescue that logs `[ERROR] Scheduled task
+  "name" failed: ...` and the loop goes on. The block takes no arguments
+  (Spinel has no `instance_eval`). A SQLite call holds its OS worker until it
+  returns: with `SPINEL_WORKERS=1` (the default) a long query stalls every
+  request, and every other thread, for as long. Give a task with real work a
+  job (`job:`, or `Job.enqueue` from the block), and batch big work (a
+  thousand rows per run, one job per item). `Cybertrain::Scheduler.last_tick`
   is the epoch second of the last tick, for a health check of your own.
-- **Jobs.** `Job.enqueue` adds a row to the `cybertrain_jobs` table, which
-  the framework creates itself (`CREATE TABLE IF NOT EXISTS`, on first use)
-  and leaves out of `db/schema.rb`. The payload is a String: JSON-encode
-  structured data. Inside a `DB.transaction` the row commits or rolls back
-  with the rest. Each job thread claims the oldest due job in a short
-  `BEGIN IMMEDIATE` transaction, runs its handler outside it, marks it
-  `done` and looks for the next; with nothing due it waits
-  `job_poll_interval` seconds (1), so a job enqueued by a request starts
-  within about a second. A handler that raises is retried 1, 5, 15 and then
-  60 minutes later, with `Class: message` (up to 1000 characters) in
-  `last_error`, until `job_max_attempts` (5) attempts have failed: the row is
-  then `failed` and stays for you to look at. A job whose kind has no
-  handler is `failed` at once; `Job.enqueue` refuses an unregistered kind.
-  `Job.state_count("failed")` and `Job.prune_done(before_epoch)` help with a
-  health page and housekeeping.
-- **At least once.** A job can run twice: a process that is killed, or that
-  stalls for longer than `job_heartbeat_stale` (300 s), may still be running
-  a job when another process takes the row back (below). Only the outcome
-  of the claim that holds the row counts (an earlier claimer's result,
-  finishing late, is discarded), but the handler's side effects happened twice, so
-  write handlers that can safely run again (check whether the mail was
-  already sent, upsert rather than insert), as with any job queue.
-- **Concurrency per kind.** `Job.handle("sync_account", concurrency: 1) {
-  ... }` lets at most that many jobs of the kind run at once, across every
-  process sharing the database (for a rate-limited API, or work that must
-  not overlap); the default, 0, is no limit. Other kinds go on running
-  meanwhile. The limit counts `running` rows, so it holds as long as
-  heartbeats do: a handler still running after its heartbeat went stale is
-  overlapped by the recovered row's next run (below); work that must never
-  overlap needs a guard of its own.
+
+### The jobs page and the `jobs` command
+
+```ruby
+# config/routes.rb
+Cybertrain::Routes.draw do
+  jobs_page "/admin/jobs", before_action: :require_admin
+end
+```
+
+`jobs_page` mounts a page that lists the count of rows per state, the queued
+count and the next due time, the `failed` and `discarded` rows (kind,
+arguments, error, attempts, times) and the `running` ones (who claimed them,
+how old their heartbeat is), `jobs_page_per_page` (50,
+`CYBERTRAIN_JOBS_PAGE_PER_PAGE`) rows per list. A failed row can be retried
+(queued again at once, attempts reset), discarded or deleted, a discarded
+one retried or deleted, and every failed row retried or discarded at once;
+each action touches only `failed` and `discarded` rows, so a row a worker
+has just claimed is left alone.
+
+- The generated controller inherits `ApplicationController`, so the
+  application's layout, helpers and CSRF protection apply, and
+  `before_action:` names one of its methods: it must render or redirect to
+  refuse (the application's login check, or a token check as examples/blog's
+  `require_admin` does). Without `before_action:` the page is open to every
+  visitor, and `spin run gen` prints a warning saying so.
+- Its buttons are forms with the CSRF token. Keep the page's path out of
+  `csrf_exempt_prefixes`: under an exempt prefix those forms would be
+  accepted from any site.
+
+From a shell, `./<app> jobs` does the same on the configured database
+(it starts no thread):
+
+```sh
+./blog jobs list               # failed rows, newest first; or: list queued|running|done|discarded
+./blog jobs retry 42           # or: retry --all (every failed row)
+./blog jobs discard 42
+./blog jobs delete 42
+./blog jobs prune --before 30  # delete failed and discarded rows older than 30 days (7 by default)
+```
+
+`done` rows stay until something deletes them: `Job.prune_done(before_epoch)`
+from a task (`Cybertrain::Scheduler.cron("0 3 * * *", "prune done jobs") {
+Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400) }`).
+`Job.state_count("failed")` serves a health page of your own.
+
+### Several workers, at least once, shutting down
+
 - **Several workers per database.** Every process that runs jobs writes a
   heartbeat for the jobs it is running every `job_heartbeat_interval` (30 s).
   A `running` row whose heartbeat is older than `job_heartbeat_stale` (a
   process that crashed or was stopped mid-job) is queued again by whichever
   process looks next, at its start and then once a minute, unless that
-  attempt was its last (`job_max_attempts`, as claiming counts an attempt):
+  attempt was its last (the larger of `job_max_attempts` and the class's
+  largest `attempts:`):
   then the row is left `failed`, with `process stopped (heartbeat stale)` in
   `last_error`, so a job that kills its process is not retried for ever.
-  Scheduled tasks
-  run in one process at a time: the processes share a lease in the
-  database (`cybertrain_leases`, renewed every tick, `scheduler_lease_ttl`
-  30 s), and only its holder runs due tasks; another takes over when it
-  stops renewing. The lease is renewed before each task, not while one
-  runs, so a task longer than the ttl can overlap with the next holder's:
-  keep tasks short (`Job.enqueue` the real work) and safe to repeat. So two `worker` processes, or a server and a worker, can
-  share one SQLite file; `CYBERTRAIN_WORKER=0` turns jobs, tasks and feeds
-  off in a `server` process that should only serve HTTP.
+  Scheduled tasks run in one process at a time: the processes share a lease
+  in the database (`cybertrain_leases`, renewed every tick,
+  `scheduler_lease_ttl` 30 s), and only its holder runs due tasks; another
+  takes over when it stops renewing. The lease is renewed before each task,
+  not while one runs, so a task longer than the ttl can overlap with the
+  next holder's: keep tasks short and safe to repeat. So two `worker`
+  processes, or a server and a worker, can share one SQLite file;
+  `CYBERTRAIN_WORKER=0` turns jobs, tasks and feeds off in a `server` process
+  that should only serve HTTP.
+- **At least once.** A job can run twice: a process that is killed, or that
+  stalls for longer than `job_heartbeat_stale` (300 s), may still be running
+  a job when another process takes the row back. Only the outcome of the
+  claim that holds the row counts (an earlier claimer's result, finishing
+  late, is discarded), but the job's side effects happened twice, so write
+  jobs that can safely run again (check whether the mail was already sent,
+  upsert rather than insert), as with any job queue. A scheduled task can
+  run twice around a change of leader for the same reason.
 - **Shutting down.** On `SIGTERM` the job threads stop claiming new jobs, and
   the process waits up to `job_drain_timeout` (10 s) for the jobs in flight.
   A job still running then keeps its row `running`; its heartbeat has
   stopped, so another process runs it again once it is stale.
-- **Keep tasks short.** Tasks run one at a time on the scheduler thread, and
-  a SQLite call holds its OS worker until it returns: with `SPINEL_WORKERS=1`
-  (the default) a long query stalls every request, and every other thread,
-  for as long. Give a task with real work a job (`Job.enqueue` from the
-  task), and batch big work (delete a thousand rows per run, enqueue one job
-  per item) rather than doing it in one go.
-- **Testing.** `Cybertrain::Scheduler.run_due(now)` runs one tick and
-  `Cybertrain::Job.work_one(now)` one job, with an epoch time you choose, so
-  a test never sleeps.
+- **Testing.** `WelcomeJob.perform_now(args)` runs a job,
+  `Cybertrain::Scheduler.run_due(now)` runs one tick and
+  `Cybertrain::Job.work_one(now)` one queued job, with an epoch time you
+  choose, so a test never sleeps; [Testing jobs](testing.md#testing-jobs)
+  has the assertions.
 
-There is no cron syntax, no priority or uniqueness for jobs and no
-`deliver_later`: a job that sends mail calls `Cybertrain::Mailer` itself
-([Sending e-mail](external-services.md#sending-e-mail)). This covers "send
-later" and "run every N seconds" (`docs/design.md` D28).
+### Upgrading from 0.4
+
+- `cybertrain_jobs` gains the column `concurrency_key` and the state
+  `discarded`; the first process that touches the table adds the column.
+  Code that lists states (a dashboard over `Job.state_count`) adds
+  `discarded`. `Job.prune_done` still prunes `done` rows only.
+- `every` tasks continue from the timetable after a restart instead of
+  starting afresh: an interval that passed while the process was down runs
+  once at start.
+- Giving an existing kind a key (`limits_concurrency ... key:`): stop every
+  old process before the first new one starts, as for any upgrade
+  ([Process roles](#process-roles)). The first new process keys the `queued`
+  rows enqueued before (it logs the ids of rows whose payload has no such
+  field), and a `running` row left by an old process gets its key when it is
+  recovered.
+- `jobs` is now a built-in command: an application command named `jobs`
+  must be renamed.
+
+Not built: job priority, queue names and uniqueness, an inline job mode for
+tests (`perform_now` and `perform_enqueued_jobs` cover tests). The design:
+`docs/design.md` D28 and D51 to D53.
 
 ## Process roles
 
@@ -124,6 +320,13 @@ image and the same database:
   and an unknown name stops the boot with the list of registered ones. With
   feeds in their own process, set `CYBERTRAIN_WORKER=0` on the servers, or
   every process would receive every feed.
+- A `feeds` process restarts a feed whose thread died, and exits with status
+  1 when one feed keeps dying (`feed_restart_limit` restarts within
+  `feed_restart_window`), so run it under a restart policy (Docker's
+  `restart: unless-stopped`, systemd's `Restart=always`);
+  [Consuming WebSocket feeds](external-services.md#consuming-websocket-feeds)
+  has the details. `./<app> feeds status` prints each feed's last reported
+  status.
 - A typical split: `server` with `CYBERTRAIN_WORKER=0` behind the proxy, one
   or more `worker`s, and `feeds` if there are subscriptions. `cybertrain new`
   writes a `web` and a `worker` role into `config/deploy.yml` (and a
@@ -135,6 +338,54 @@ image and the same database:
   heartbeat.
 - `Cybertrain::Main.worker?(ARGV)` and `Main.feeds?(ARGV)`, like
   `Main.server?(ARGV)`, tell `bin/<app>.rb` which role it is starting.
+
+## The cache store
+
+`Cybertrain::Cache` keeps answers for a while in the application's own
+database, so the next request does not ask the slow API again. It is not in
+`require "cybertrain"`; require it where it is used:
+
+```ruby
+require "cybertrain/cache"
+
+text = Cybertrain::Cache.fetch("defillama/tvl", expires_in: 21_600, race_condition_ttl: 30) do
+  client.get("https://api.llama.fi/tvl").body
+end
+data = Cybertrain::Cache.fetch_hash("prices/#{sym}", expires_in: 60) { { "usd" => price } }
+count = Cybertrain::Cache.fetch_int("articles/count", expires_in: 60) { Article.count }
+Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)   # true when written
+```
+
+- **Values are Strings.** `fetch(key, expires_in:, race_condition_ttl:) {
+  String }` answers the live value or runs the block and stores what it
+  returns; `fetch_hash`, `fetch_array` and `fetch_int` store JSON or Integer
+  text and parse it on the way out, so a corrupt cell reads as `{}`, `[]` or
+  `0` until it expires and the block runs again (Spinel has no `Marshal`, and
+  one method answers one type). `read(key)` (a String, or nil),
+  `write(key, value, expires_in:, unless_exist:)`, `delete`, `exist?`,
+  `increment(key, by: 1, expires_in:)` (one statement; an expired counter
+  starts again from `by`) and `clear` are the rest.
+- **Expiry.** `expires_in:` is seconds; `0`, the default, never expires
+  (so does a negative value). `race_condition_ttl: n`: when a row has
+  expired, the first caller extends it by `n` seconds and computes the new
+  value while the others keep reading the old one, as in Rails; without it
+  every caller of an expired key computes. A block that raises writes
+  nothing.
+- **Storage.** The rows live in `cybertrain_cache`, which the framework
+  creates on first use and leaves out of `db/schema.rb`. Nothing is kept in
+  memory: every read is a SELECT, which SQLite answers from its page cache.
+  Every write takes the database's writer lock, which requests writing their
+  own rows wait for: cache what jobs produce, or values read far more often
+  than they change, rather than writing in a busy request path.
+- **Pruning.** Requiring the file registers the scheduled task `"cybertrain
+  cache prune"`, which deletes expired rows every `cache_prune_interval`
+  seconds (300, `CYBERTRAIN_CACHE_PRUNE_INTERVAL`), a thousand per statement.
+  The interval is read when the file is required: set the variable, or
+  `c.cache_prune_interval` in a `Cybertrain.configure` block that runs before
+  the require. `Cache.prune(now)` is the test entry point.
+
+Not built: a separate cache database file, a size cap, an in-memory store.
+The design: `docs/design.md` D54.
 
 ## The console
 
@@ -256,6 +507,7 @@ in `text/plain` with `Cache-Control: no-store`:
 | 200 | `ok` | the query succeeded |
 | 503 | `database unavailable` | it raised `Cybertrain::DB::Error` (the file is missing or unreadable, the pool is closed) |
 | 503 | `worker stale` | the background `Scheduler` runs and its last tick is older than `health_worker_stale` seconds (300): a task is stuck, or runs far too long |
+| 503 | `feed stale` | a [WebSocket feed](external-services.md#consuming-websocket-feeds), in this process or another, has not reported its status, or has received nothing (not even a pong), for `health_feed_stale` seconds (180); see [Feed health](realtime.md#feed-health) |
 
 A poll is logged like any request (two lines). The path is
 `config.health_path` (`CYBERTRAIN_HEALTH_PATH`, default `/up`; an empty

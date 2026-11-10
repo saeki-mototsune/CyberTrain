@@ -1,5 +1,5 @@
 ---
-source_sha256: a7d344c625b8a0bdb65077dff896e07c8a6258a00ef38ebe3d533d3b20335e34
+source_sha256: 378c380bd86a043bfdd256bb49608526e657c62c86a8ef0c691c0288e5b5bcb2
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -322,3 +322,57 @@ transmettre `Upgrade` et `Connection` (Caddy et kamal-proxy le font).
 Tester le flux d’une page&nbsp;: [Tester les flux et les
 composants](testing.md#testing-streams-and-components). La
 conception&nbsp;: [docs/design.md](../design.md) D36 et D37.
+
+## Santé des flux
+
+Un [flux WebSocket](external-services.md#consuming-websocket-feeds) tourne
+souvent dans un processus `feeds`, qui ne sert pas de HTTP&nbsp;; sa santé
+passe donc par la base&nbsp;: le superviseur de chaque processus qui exécute
+des flux écrit une ligne par abonnement dans `cybertrain_feeds` toutes les
+`feed_status_interval` secondes (10). La table appartient au framework (créée
+à la première utilisation, laissée hors de `db/schema.rb`). `GET /up` dans un
+processus `server` la lit et répond `503 feed stale` quand, pour une ligne
+quelconque&nbsp;:
+
+<!-- list: points -->
+- l’éditeur est périmé&nbsp;: la ligne a été écrite pour la dernière fois il
+  y a plus de `health_feed_stale` secondes (180,
+  `CYBERTRAIN_HEALTH_FEED_STALE`), donc le processus qui exécute le flux est
+  mort, bloqué ou a perdu sa base&nbsp;; ou
+- le flux est silencieux&nbsp;: la ligne est récente, mais le flux n’a ni livré
+  de message ni répondu à un ping depuis aussi longtemps (un flux qui n’a
+  jamais rien reçu compte depuis son démarrage).
+
+Les deux sont vérifiés séparément, si bien qu’un éditeur vivant ne cache
+jamais un flux silencieux. `CYBERTRAIN_HEALTH_FEEDS=0` (ou `false`) désactive
+ce contrôle, pour un flux légitimement calme plus longtemps que le seuil ou
+un déploiement qui surveille ses flux autrement. Une table illisible laisse
+`/up` à 200 et journalise une seule ligne `[WARN]` jusqu’à ce qu’elle soit de
+nouveau lisible.
+
+`./<app> feeds status` affiche les lignes pour un opérateur, une ligne par
+flux&nbsp;:
+
+```console
+$ ./blog feeds status
+trades  connected  web-1:4242  last activity 3s ago  restarts 0  updated 4s ago
+```
+
+<!-- list: points -->
+- Une ligne a pour clé le seul nom du flux&nbsp;: deux processus qui exécutent
+  le même flux écrasent mutuellement leur ligne, raison de plus pour
+  exécuter chaque flux dans un seul processus.
+- Un flux que vous supprimez ou renommez laisse sa ligne, et `/up` la
+  signale périmée une fois qu’elle est vieille&nbsp;: supprimez la ligne
+  (`./<app> dbconsole`, puis `DELETE FROM cybertrain_feeds WHERE name =
+  'trades';`).
+- Un flux nommé `status` ne peut pas être démarré seul avec
+  `./<app> feeds status`, qui affiche la table à la place&nbsp;;
+  `./<app> feeds` (tous les flux) l’exécute quand même.
+- `/up` ne redémarre rien. Kamal ne l’interroge que pour le rôle web
+  pendant un déploiement, et Docker redémarre un conteneur quand son
+  processus se termine, ce que fait un processus `feeds` après des morts
+  répétées d’un flux&nbsp;; donnez au rôle une politique de redémarrage
+  ([Rôles des processus](background-and-operations.md#process-roles)).
+
+La conception&nbsp;: [docs/design.md](../design.md) D56.
