@@ -73,9 +73,9 @@ evaluated by gen; the router itself only gains the format (section 3).
 ### 2.1 `namespace`
 
 ```ruby
-namespace :admin do
-  resources :articles, only: [:index, :destroy]
-  jobs_page "/jobs", before_action: :require_admin
+namespace :admin do |admin|
+  admin.resources :articles, only: [:index, :destroy]
+  admin.jobs_page "/jobs", before_action: :require_admin
 end
 ```
 
@@ -102,9 +102,9 @@ end
 ### 2.3 Singular `resource` with a block and `controller:`
 
 ```ruby
-resource :session, controller: "auth/sessions" do
-  get :refresh, on: :member
-  resource :settings, only: [:edit, :update]
+resource :session, controller: "auth/sessions" do |session|
+  session.get :refresh, on: :member
+  session.resource :settings, only: [:edit, :update]
 end
 ```
 
@@ -609,7 +609,7 @@ OAuth and two-factor authentication.
   `libssl3t64` (runtime stage) added.
 - `params.permit(...)` returns `Hash{String => Object}` (values String,
   Array of String or a nested Hash) instead of `Hash{String => String}`;
-  code that called String methods on its values without `Cast.str` or
+  code that called String methods on its values without `Cybertrain::Cast.str` or
   `.to_s` needs one.
 - Nested route blocks keep the explicit receiver the DSL already uses
   (`namespace :admin do |admin| admin.resources :articles end`): Spinel

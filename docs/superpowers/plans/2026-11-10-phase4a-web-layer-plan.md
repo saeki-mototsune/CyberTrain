@@ -121,10 +121,10 @@ test "namespace prefixes path, helper and controller, and nests" do
   assert_equal "Admin::ArticlesController", Cybertrain::Routes.specs[0].controller_class
 end
 test "scope path, module and as each change one thing and combine" do
-  # scope "dashboard" { get "/stats", to: "stats#index" } -> GET /dashboard/stats stats#index stats
-  # scope module: "admin" { resources :users, only: [:index] } -> GET /users admin/users#index users
-  # scope as: "admin" { get "/stats", to: "stats#index" } -> GET /stats stats#index admin_stats
-  # scope "/x", module: "y", as: "z" { get "/a", to: "p#a" } -> GET /x/a y/p#a z_a
+  # scope("dashboard") { |s| s.get "/stats", to: "stats#index" } -> GET /dashboard/stats stats#index stats
+  # scope(module: "admin") { |s| s.resources :users, only: [:index] } -> GET /users admin/users#index users
+  # scope(as: "admin") { |s| s.get "/stats", to: "stats#index" } -> GET /stats stats#index admin_stats
+  # scope("/x", module: "y", as: "z") { |s| s.get "/a", to: "p#a" } -> GET /x/a y/p#a z_a
 end
 test "resource takes controller: and a block with member routes and nested resources" do
   # resource :session, controller: "auth/sessions" do |s|
@@ -794,6 +794,9 @@ test "the import map, preloads and the emitted case" do
   # preload_paths excludes a pin with preload: false; a non-pin line and an unknown to: are refused with their line
 end
 test "gen --check compares gen/assets.rb only" do
+  # gen once; snapshot public/assets/.manifest and every public/assets path with its bytes
+  # --check on the fresh tree exits 0; change an asset source, --check exits 1
+  # after each run both snapshots are unchanged (--check writes nothing)
 end
 ```
 
