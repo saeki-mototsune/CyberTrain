@@ -12,7 +12,11 @@ module Cybertrain
     # (application_job first) with their generated half (gen/jobs.rb), and
     # controllers (application_controller first), and last gen/concerns.rb.
     # The concerns (app/models/concerns, app/controllers/concerns) come
-    # before the models and the controllers that include them. When a job's retry_on /
+    # before the models and the controllers that include them, loaded from
+    # gen/concerns/<path under app/> (ConcernsEmitter.module_files: their
+    # `included` and `class_methods` blocks blanked, spikes/NOTES.md rule
+    # 92); a file of a concerns directory that opens no module is loaded
+    # from app/ after them. When a job's retry_on /
     # discard_on names a framework exception class, the file defining it
     # is required first (the job's class body evaluates the constant, and
     # `require "cybertrain"` does not load the mailer or the HTTP client).
@@ -47,8 +51,10 @@ module Cybertrain
         lines << "console"
         lines << "controllers"
         model_concerns = concern_files(root, "app/models")
-        model_concerns.each { |f| lines << "../#{f}" }
-        rb_files(root, "app/models").each { |f| lines << "../#{f}" unless model_concerns.include?(f) }
+        model_concerns.each { |f| lines << "concerns/#{f.delete_prefix("app/")}" }
+        loose = loose_files(root, "app/models", model_concerns)
+        loose.each { |f| lines << "../#{f}" }
+        rb_files(root, "app/models").each { |f| lines << "../#{f}" unless model_concerns.include?(f) || loose.include?(f) }
         jobs = rb_files(root, "app/jobs")
         job_base = "app/jobs/application_job"
         lines << "../#{job_base}" if jobs.include?(job_base)
@@ -57,11 +63,13 @@ module Cybertrain
         # The concerns before the classes that include them, each after
         # the concerns it includes.
         concerns = concern_files(root, "app/controllers")
-        concerns.each { |f| lines << "../#{f}" }
+        concerns.each { |f| lines << "concerns/#{f.delete_prefix("app/")}" }
+        loose_controllers = loose_files(root, "app/controllers", concerns)
+        loose_controllers.each { |f| lines << "../#{f}" }
         controllers = rb_files(root, "app/controllers")
         first = "app/controllers/application_controller"
         lines << "../#{first}" if controllers.include?(first)
-        controllers.each { |f| lines << "../#{f}" unless f == first || concerns.include?(f) }
+        controllers.each { |f| lines << "../#{f}" unless f == first || concerns.include?(f) || loose_controllers.include?(f) }
         # Last: it reopens the application's classes (concerns, plan
         # decision 8).
         lines << "concerns"
@@ -99,8 +107,7 @@ module Cybertrain
 
       # The concern files of root/dir (dir/concerns/**, and the module-only
       # files elsewhere under dir): each after the concerns it includes
-      # (ConcernScan.expand, depth first), then any file of dir/concerns
-      # that opens no module, sorted.
+      # (ConcernScan.expand, depth first).
       def self.concern_files(root, dir)
         infos = ConcernScan.scan_dir("#{root}/#{dir}")
         names = Array.new(0) { "" }
@@ -110,7 +117,14 @@ module Cybertrain
           rel = relative(root, c.concern_file)
           files << rel unless files.include?(rel)
         end
-        rb_files(root, "#{dir}/concerns").each { |f| files << f unless files.include?(f) }
+        files
+      end
+
+      # The files of root/dir/concerns that are not concerns (they open no
+      # module), sorted.
+      def self.loose_files(root, dir, concerns)
+        files = Array.new(0) { "" }
+        rb_files(root, "#{dir}/concerns").each { |f| files << f unless concerns.include?(f) }
         files
       end
     end

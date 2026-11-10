@@ -1,8 +1,9 @@
-# ActiveSupport::Concern, as far as a controller concern needs it to
-# compile (spec section 4.1, plan decision 11). `ActiveSupport` as a whole
+# ActiveSupport::Concern, as far as a controller or model concern needs
+# it to compile (spec sections 4.1 and 4.2, plan decision 11). `ActiveSupport` as a whole
 # does not exist.
 module ActiveSupport
-  # Lets a module of `app/controllers/concerns` be written the Rails way:
+  # Lets a module of `app/controllers/concerns` (or `app/models/concerns`)
+  # be written the Rails way:
   #
   #     module AdminGate
   #       extend ActiveSupport::Concern
@@ -31,6 +32,18 @@ module ActiveSupport
   # `self.class.per_page` works in an action. A concern may include
   # concerns (expanded depth first, each once; a cycle is refused), and a
   # concern an ancestor already includes is not expanded again.
+  #
+  # A model concern's `included` body may hold any of a model's
+  # declarations (`validates`, `validate`, `scope`, associations,
+  # `encrypts`, callbacks); they count as written in the model at the
+  # `include` (its `validates` rules run there among the model's own;
+  # callbacks run after the model's own). Its instance methods are the
+  # model's, and templates may call those without parameters.
+  #
+  # The application loads each concern from `gen/concerns/<path under
+  # app/>`, its file with the `included` and `class_methods` blocks
+  # blanked, so a block there may call the including class's methods
+  # without a receiver (`scope :visible, -> { where(hidden: 0) }`).
   #
   # Differences from Rails: `around_action` in an `included` block is
   # refused (there are no around callbacks), and a `class_methods` method

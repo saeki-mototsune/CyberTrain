@@ -5,6 +5,10 @@ wrote gen/views.rb
 wrote gen/helpers.rb
 wrote gen/components.rb
 wrote gen/jobs.rb
+wrote gen/concerns/controllers/concerns/admin_gate.rb
+wrote gen/concerns/controllers/concerns/auditing.rb
+wrote gen/concerns/controllers/concerns/stamped.rb
+wrote gen/concerns/models/concerns/visible.rb
 wrote gen/models/comment.rb
 wrote gen/models/post.rb
 wrote gen/console.rb
@@ -21,6 +25,10 @@ identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
 identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
 identical gen/models/comment.rb
 identical gen/models/post.rb
 wrote gen/models/tag.rb
@@ -37,6 +45,10 @@ identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
 identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
 identical gen/models/comment.rb
 identical gen/models/post.rb
 wrote gen/console.rb
@@ -47,4 +59,4 @@ warning: jobs_page "/admin/jobs" has no before_action:, so anyone who can reach 
 stale: gen/routes.rb
 stale: gen/controllers.rb
 ok   a jobs page drawn without before_action: makes the runner print a warning
-5 tests, 28 assertions, 0 failures
+5 tests, 32 assertions, 0 failures

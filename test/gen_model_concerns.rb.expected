@@ -1,0 +1,8 @@
+ok   validates from a model concern runs at the include's position
+ok   scope from a model concern
+ok   a concern's instance method is a view method
+ok   a model concern included twice is expanded once
+ok   an unknown model concern is refused with file and line
+ok   a scope a concern defines again is refused, naming both places
+ok   the concern's own file is loaded as gen/concerns/models/concerns/visible.rb, its included block blanked
+7 tests, 27 assertions, 0 failures

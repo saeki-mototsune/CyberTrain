@@ -15,6 +15,7 @@ require "cybertrain/generator/models_emitter"
 require_relative "fixtures/gen_app/db/schema"
 require_relative "fixtures/gen_app/gen/models/comment"
 require_relative "fixtures/gen_app/gen/models/post"
+require_relative "fixtures/gen_app/gen/concerns/models/concerns/visible"
 require_relative "fixtures/gen_app/app/models/comment"
 require_relative "fixtures/gen_app/app/models/post"
 
@@ -72,10 +73,12 @@ test "scan_dir finds Comment and Post, Post's summary view method and both decla
   infos = Cybertrain::Gen::ModelScan.scan_dir(FIXTURE + "/app/models")
   assert_equal ["Comment", "Post"], infos.map { |info| info.class_name }
   assert_equal FIXTURE + "/app/models/post.rb", infos[1].file
-  assert_equal ["summary", "published?"], infos[1].view_methods
+  # Post includes Visible (app/models/concerns/visible.rb) after its first
+  # validates line: Visible's scope and view method come first.
+  assert_equal ["visible?", "summary", "published?"], infos[1].view_methods
   assert_equal ["title_not_reserved"], infos[1].custom_validations.map { |v| v.name }
   assert_equal ["published?"], infos[1].custom_validations.map { |v| v.condition_if }
-  assert_equal ["recent", "min_views"], infos[1].scopes.map { |sc| sc.name }
+  assert_equal ["visible", "recent", "min_views"], infos[1].scopes.map { |sc| sc.name }
   assert_equal ["comments"], infos[1].associations.map { |a| a.name }
   assert_equal [:destroy], infos[1].associations.map { |a| a.dependent }
   assert_equal ["post"], infos[0].associations.map { |a| a.name }
@@ -227,7 +230,7 @@ test "to_json of a generated model" do
   at = Time.utc(2026, 9, 25, 8, 0, 0)
   post = Post.create(title: "JSON", created_at: at, updated_at: at)
   expected = "{\"id\":#{post.id},\"title\":\"JSON\",\"body\":null,\"views\":0," \
-             "\"price\":null,\"comments_count\":0,\"meta\":null,\"published_on\":null,\"secret_note\":null,\"thumbnail\":null," \
+             "\"price\":null,\"comments_count\":0,\"meta\":null,\"published_on\":null,\"secret_note\":null,\"thumbnail\":null,\"hidden\":0," \
              "\"created_at\":\"2026-09-25T08:00:00.000Z\",\"updated_at\":\"2026-09-25T08:00:00.000Z\"}"
   assert_equal expected, post.to_json
   comment = Comment.create(post_id: post.id, seen_on: "2026-10-05", commenter: "ann", body: "b", created_at: at, updated_at: at)

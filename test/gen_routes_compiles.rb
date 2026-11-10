@@ -22,16 +22,19 @@ FIXTURE = "test/fixtures/gen_app"
 def fixture_outputs
   controllers = Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers")
   concerns = Cybertrain::Gen::ConcernScan.scan_dir("#{FIXTURE}/app/controllers")
-  {
+  out = {
     "gen/routes.rb" => Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs),
     "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(controllers, Cybertrain::Routes.jobs_page_spec, concerns, Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),
-    "gen/concerns.rb" => Cybertrain::Gen::ConcernsEmitter.emit(controllers, concerns),
+    "gen/concerns.rb" => Cybertrain::Gen::Runner.concerns_source(FIXTURE),
     "gen/helpers.rb" => Cybertrain::Gen::HelpersEmitter.emit(Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),
     "gen/components.rb" => Cybertrain::Gen::ComponentsEmitter.emit(Cybertrain::Gen::ComponentScan.scan_dir("#{FIXTURE}/app/components")),
     "gen/console.rb" => Cybertrain::Gen::ConsoleEmitter.emit(["Comment", "Post"]),
     "gen/jobs.rb" => Cybertrain::Gen::JobsEmitter.emit(Cybertrain::Gen::JobScan.scan_dir("#{FIXTURE}/app/jobs")),
     "gen/app.rb" => Cybertrain::Gen::Manifest.emit(FIXTURE)
   }
+  # The concerns, loaded from gen/concerns/** (their included blocks blanked).
+  Cybertrain::Gen::Runner.concern_modules(FIXTURE).each { |rel, source| out[rel] = source }
+  out
 end
 
 def client

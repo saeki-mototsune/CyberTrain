@@ -187,6 +187,10 @@ NAME_HOMES = {
   "rate_limit" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "rescue_from" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "helper_method" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
+  # What gen/concerns.rb calls around a model concern's spliced `included`
+  # body (spec 4.2); both return nil.
+  "model_concern_insert_at" => %w[cybertrain/model.rb],
+  "model_concern_insert_done" => %w[cybertrain/model.rb],
   "cookies" => %w[cybertrain/controller.rb],
   "signed" => %w[cybertrain/cookie_jar.rb],
   "encrypted" => %w[cybertrain/cookie_jar.rb],

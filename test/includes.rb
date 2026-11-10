@@ -13,6 +13,7 @@ require "cybertrain/encryptor"
 require_relative "fixtures/gen_app/db/schema"
 require_relative "fixtures/gen_app/gen/models/comment"
 require_relative "fixtures/gen_app/gen/models/post"
+require_relative "fixtures/gen_app/gen/concerns/models/concerns/visible"
 require_relative "fixtures/gen_app/app/models/comment"
 require_relative "fixtures/gen_app/app/models/post"
 

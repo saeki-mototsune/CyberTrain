@@ -7,6 +7,10 @@ class ApplicationController < Cybertrain::Controller
   rescue_from NotFound, with: :not_found
   include Stamped
 
+  # Read without a receiver by AdminGate's after_action block, which
+  # gen/concerns.rb runs in the including class.
+  def self.gate_header(name) = "X-#{name}"
+
   def load_viewer
     @viewer = request.header("x-viewer") || "guest"
   end

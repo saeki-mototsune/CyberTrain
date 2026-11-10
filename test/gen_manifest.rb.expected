@@ -7,9 +7,14 @@ wrote gen/views.rb
 wrote gen/helpers.rb
 wrote gen/components.rb
 wrote gen/jobs.rb
+wrote gen/concerns/controllers/concerns/audited.rb
+wrote gen/concerns/controllers/concerns/trackable.rb
+wrote gen/concerns/models/concerns/sluggable.rb
 wrote gen/console.rb
 wrote gen/app.rb
 ok   runner writes the gen files
+stale: gen/concerns/models/concerns/gone.rb
+removed gen/concerns/models/concerns/gone.rb
 identical gen/routes.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
@@ -17,6 +22,22 @@ identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
 identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/audited.rb
+identical gen/concerns/controllers/concerns/trackable.rb
+identical gen/concerns/models/concerns/sluggable.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   a gen/concerns file whose concern is gone is removed (reported stale by --check)
+identical gen/routes.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/audited.rb
+identical gen/concerns/controllers/concerns/trackable.rb
+identical gen/concerns/models/concerns/sluggable.rb
 identical gen/console.rb
 identical gen/app.rb
 ok   runner leaves unchanged files alone
@@ -30,7 +51,10 @@ identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
 identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/audited.rb
+identical gen/concerns/controllers/concerns/trackable.rb
+identical gen/concerns/models/concerns/sluggable.rb
 identical gen/console.rb
 wrote gen/app.rb
 ok   runner --check reports stale files and writes nothing
-6 tests, 18 assertions, 0 failures
+7 tests, 24 assertions, 0 failures

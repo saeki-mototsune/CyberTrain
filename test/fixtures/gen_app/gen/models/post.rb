@@ -7,7 +7,7 @@ class PostRelation < Cybertrain::Relation
 
   def column_type(name)
     case name
-    when "id", "views", "comments_count" then :integer
+    when "id", "views", "comments_count", "hidden" then :integer
     when "price" then :decimal
     when "created_at", "updated_at" then :datetime
     when "published_on" then :date
@@ -222,16 +222,17 @@ class PostRelation < Cybertrain::Relation
     nil
   end
 
+  def visible = (where(hidden: 0))
   def recent = (order(created_at: :desc))
   def min_views(n) = (where("views >= ?", n))
 end
 
 class Post < Cybertrain::Model
   def self.table_name = "posts"
-  def self.column_names = ["id", "title", "body", "views", "price", "comments_count", "meta", "published_on", "secret_note", "thumbnail", "created_at", "updated_at"]
+  def self.column_names = ["id", "title", "body", "views", "price", "comments_count", "meta", "published_on", "secret_note", "thumbnail", "hidden", "created_at", "updated_at"]
   def model_name = "Post"
 
-  attr_accessor :title, :body, :views, :price, :comments_count, :meta, :published_on, :secret_note, :thumbnail, :created_at, :updated_at
+  attr_accessor :title, :body, :views, :price, :comments_count, :meta, :published_on, :secret_note, :thumbnail, :hidden, :created_at, :updated_at
 
   def initialize(attrs = {})
     super()
@@ -244,6 +245,7 @@ class Post < Cybertrain::Model
     @published_on = nil
     @secret_note = nil
     @thumbnail = nil
+    @hidden = 0
     @created_at = nil
     @updated_at = nil
     @comments_preloaded = nil
@@ -267,6 +269,7 @@ class Post < Cybertrain::Model
     @published_on = Cybertrain::Cast.date_or_nil(row["published_on"])
     @secret_note = Cybertrain::Crypto.decrypt_or_nil(Cybertrain::Cast.str_or_nil(row["secret_note"]))
     @thumbnail = Cybertrain::Cast.binary_or_nil(row["thumbnail"])
+    @hidden = Cybertrain::Cast.int(row["hidden"])
     @created_at = Cybertrain::Cast.time_or_nil(row["created_at"])
     @updated_at = Cybertrain::Cast.time_or_nil(row["updated_at"])
     mark_persisted!
@@ -285,6 +288,7 @@ class Post < Cybertrain::Model
     when :published_on then @published_on
     when :secret_note then @secret_note
     when :thumbnail then @thumbnail
+    when :hidden then @hidden
     when :created_at then @created_at
     when :updated_at then @updated_at
     else nil
@@ -302,6 +306,7 @@ class Post < Cybertrain::Model
     when :published_on then @published_on = Cybertrain::Cast.date_or_nil(value)
     when :secret_note then @secret_note = Cybertrain::Cast.str_or_nil(value)
     when :thumbnail then @thumbnail = Cybertrain::Cast.binary_or_nil(value)
+    when :hidden then @hidden = Cybertrain::Cast.int(value)
     when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
     when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
     end
@@ -324,6 +329,7 @@ class Post < Cybertrain::Model
       "published_on" => Cybertrain::Cast.to_sql(@published_on),
       "secret_note" => Cybertrain::Crypto.encrypt_or_nil(@secret_note),
       "thumbnail" => Cybertrain::DB::Blob.wrap(@thumbnail),
+      "hidden" => Cybertrain::Cast.to_sql(@hidden),
       "created_at" => Cybertrain::Cast.to_sql(@created_at),
       "updated_at" => Cybertrain::Cast.to_sql(@updated_at)
     }
@@ -387,6 +393,7 @@ class Post < Cybertrain::Model
   def self.sum_int(...) = all.sum_int(...)
   def self.sum_float(...) = all.sum_float(...)
   def self.increment(...) = all.increment(...)
+  def self.visible = all.visible
   def self.recent = all.recent
   def self.min_views(n) = all.min_views(n)
 
@@ -413,6 +420,7 @@ class Post < Cybertrain::Model
     "published_on" => :date,
     "secret_note" => :text,
     "thumbnail" => :binary,
+    "hidden" => :integer,
     "created_at" => :datetime,
     "updated_at" => :datetime
   }
@@ -472,6 +480,7 @@ class Post < Cybertrain::Model
 
   def call_view_method(name)
     case name
+    when :visible? then self.visible?
     when :summary then self.summary
     when :published? then self.published?
     else nil

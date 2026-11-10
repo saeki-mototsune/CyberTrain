@@ -33,11 +33,15 @@ module Cybertrain
     # concern_def_errors: per def, HelperScan's message when it could not
     # read the parameters ("" when it could);
     # callback_count / rescue_count: the declarations of the `included`
-    # body that add a callback / a rescue handler.
+    # body that add a callback / a rescue handler; block_starts /
+    # block_ends: the first and last line numbers of each `included do ...
+    # end` and `class_methods do ... end` block (the lines gen/concerns/**
+    # leaves blank).
     class ConcernInfo
       attr_reader :concern_file, :concern_name, :concern_line, :included_body, :class_method_lines,
                   :class_method_names, :class_method_line_numbers, :concern_includes, :include_line_numbers,
-                  :concern_ivars, :concern_callbacks, :concern_defs, :concern_def_errors, :callback_count, :rescue_count
+                  :concern_ivars, :concern_callbacks, :concern_defs, :concern_def_errors, :callback_count, :rescue_count,
+                  :block_starts, :block_ends
 
       def initialize(concern_file, concern_name, concern_line)
         @concern_file = concern_file
@@ -55,6 +59,8 @@ module Cybertrain
         @concern_def_errors = Array.new(0) { "" }
         @callback_count = 0
         @rescue_count = 0
+        @block_starts = Array.new(0) { 0 }
+        @block_ends = Array.new(0) { 0 }
       end
 
       def count_callback
@@ -155,11 +161,15 @@ module Cybertrain
             next
           end
           if raw.match?(INCLUDED_OPEN)
+            info.block_starts << i
             i = read_included(file, info, lines, i, indent)
+            info.block_ends << i
             next
           end
           if raw.match?(CLASS_METHODS_OPEN)
+            info.block_starts << i
             i = read_class_methods(info, lines, i, indent)
+            info.block_ends << i
             next
           end
           im = raw.match(ControllerScan::INCLUDE_LINE)

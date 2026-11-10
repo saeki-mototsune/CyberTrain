@@ -22,7 +22,9 @@ module Cybertrain
     # With --check nothing is written; each out-of-date file is reported as
     # "stale: <path>" and the exit code is 1.
     # `--embed-views` writes gen/views.rb with the app/views tree instead
-    # of an empty table. A jobs page drawn without before_action: prints a
+    # of an empty table. gen/concerns/** holds one file per concern of
+    # app/controllers and app/models (ConcernsEmitter.module_files); a file
+    # there whose concern is gone is removed. A jobs page drawn without before_action: prints a
     # warning line first.
     module Runner
       def self.run(root, argv)
@@ -40,12 +42,21 @@ module Cybertrain
           ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))],
           ["gen/jobs.rb", JobsEmitter.emit(JobScan.scan_dir("#{root}/app/jobs"))]
         ]
+        concern_files = Array.new(0) { "" }
+        concern_modules(root).each do |rel, source|
+          outputs << [rel, source]
+          concern_files << rel
+        end
         # gen/migrations.rb only once an app has a db/migrate directory (a
         # fixture or test tree with no db/ at all skips it entirely).
         outputs << ["gen/migrations.rb", MigrationsEmitter.emit(root)] if File.directory?("#{root}/db/migrate")
         # gen/models/<model>.rb per table once db/schema.rb has been loaded.
         schema = Cybertrain::Schema.current
         stale = 0
+        # A gen/concerns file whose concern is gone.
+        Manifest.rb_files(root, "gen/concerns").each do |f|
+          stale += remove_file(root, f + ".rb", check) unless concern_files.include?(f + ".rb")
+        end
         if schema.nil?
           outputs << ["gen/console.rb", ConsoleEmitter.emit(Array.new(0) { "" })]
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
@@ -87,7 +98,16 @@ module Cybertrain
       end
 
       def self.concerns_source(root)
-        ConcernsEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), ConcernScan.scan_dir("#{root}/app/controllers"))
+        ConcernsEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), ConcernScan.scan_dir("#{root}/app/controllers"),
+                             ModelScan.scan_dir("#{root}/app/models"), ConcernScan.scan_dir("#{root}/app/models"))
+      end
+
+      # gen/concerns/<path under app/> => source, for the concerns of
+      # app/controllers then those of app/models.
+      def self.concern_modules(root)
+        out = ConcernsEmitter.module_files(ConcernScan.scan_dir("#{root}/app/controllers"))
+        ConcernsEmitter.module_files(ConcernScan.scan_dir("#{root}/app/models")).each { |rel, source| out[rel] = source }
+        out
       end
 
       # Deletes a generated file that should no longer exist (with `check`,
@@ -103,6 +123,15 @@ module Cybertrain
         end
       end
 
+      # Creates dir and any missing parent.
+      def self.make_dirs(dir)
+        return nil if File.directory?(dir)
+
+        make_dirs(File.dirname(dir))
+        Dir.mkdir(dir)
+        nil
+      end
+
       # Writes (or with `check`, compares) one generated file; returns 1 when stale.
       def self.sync_file(root, rel, source, check)
         path = "#{root}/#{rel}"
@@ -114,9 +143,7 @@ module Cybertrain
           puts "stale: #{rel}"
           1
         else
-          Dir.mkdir("#{root}/gen") unless File.directory?("#{root}/gen")
-          dir = File.dirname(path)
-          Dir.mkdir(dir) unless File.directory?(dir)
+          make_dirs(File.dirname(path))
           File.write(path, source)
           puts "wrote #{rel}"
           0

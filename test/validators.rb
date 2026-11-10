@@ -419,4 +419,32 @@ test "an unknown option, a lambda condition and an on: other than :create or :up
   assert_equal ["can't be blank", "is too short (minimum is 2 characters)"], messages_for(:name, { name: "" })
 end
 
+# Last: it adds rules to Thing. What gen/concerns.rb writes for a model
+# concern (spec 4.2): the index counts the model's own `validates` calls
+# above the `include`, however many rules each call made.
+def thing_rules
+  Cybertrain::Model.validators_for("Thing").map { |v| "#{v.attr}:#{v.kind}" }
+end
+
+test "model_concern_insert_at puts a concern's validates calls after the model's own call of that index" do
+  own = thing_rules
+  Thing.model_concern_insert_at(1)
+  Thing.validates :motto, presence: true, length: { maximum: 5 }
+  Thing.validates :token, presence: true
+  Thing.model_concern_insert_done
+  # A second concern, included after the model's second call (code).
+  Thing.model_concern_insert_at(2)
+  Thing.validates :age, presence: true
+  Thing.model_concern_insert_done
+  # One included below every call of the model.
+  Thing.model_concern_insert_at(23)
+  Thing.validates :level, presence: true
+  Thing.model_concern_insert_done
+  Thing.validates :ratio, presence: true
+  assert_equal ["name:presence", "name:length", "motto:presence", "motto:length", "token:presence", "code:length", "age:presence",
+                "state:inclusion"], thing_rules[0, 8]
+  assert_equal own.size + 6, thing_rules.size
+  assert_equal ["token:format", "level:presence", "ratio:presence"], thing_rules[own.size + 3, 3]
+end
+
 Cybertrain::Test.run!

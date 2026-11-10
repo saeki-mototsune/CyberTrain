@@ -5,7 +5,8 @@
 # nullable date on posts, and a NOT NULL json, a NOT NULL date and a NOT
 # NULL date with a default on comments; posts.comments_count is the counter
 # of Comment's `belongs_to :post, counter_cache: true`; posts.thumbnail is a
-# nullable binary column.
+# nullable binary column; posts.hidden is the flag of the Visible model
+# concern's scope.
 Cybertrain::Schema.define(version: "20260924120000") do |s|
   s.create_table "comments" do |t|
     t.references :post
@@ -28,6 +29,7 @@ Cybertrain::Schema.define(version: "20260924120000") do |s|
     t.date "published_on"
     t.text "secret_note"
     t.binary "thumbnail"
+    t.integer "hidden", null: false, default: "0"
     t.timestamps
   end
 end

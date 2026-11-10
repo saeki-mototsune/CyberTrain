@@ -1,9 +1,10 @@
-ok   the checked-in gen/concerns.rb is fresh
+ok   the checked-in gen/concerns.rb and gen/concerns/** are fresh
 ok   before_action from a concern runs at the include's position
+ok   a block in a concern's included body calls the including class's methods without a receiver
 ok   a concern's method overrides the superclass's of the same name
 ok   class_methods are callable through self.class
 ok   nested concerns expand depth first; a cycle is refused by name
 ok   a concern included by an ancestor and again is expanded once
 ok   a class_methods name that an ancestor's concern defines as an instance method is refused
 ok   @x in a concern method is a view assign of the includer
-8 tests, 25 assertions, 0 failures
+9 tests, 35 assertions, 0 failures

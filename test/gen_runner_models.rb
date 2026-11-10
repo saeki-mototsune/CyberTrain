@@ -15,6 +15,7 @@ ROOT = Dir.mktmpdir("cybertrain-gen-models")
 APP_FILES = [
   "app/models/comment.rb",
   "app/models/post.rb",
+  "app/models/concerns/visible.rb",
   "app/controllers/application_controller.rb",
   "app/controllers/comments_controller.rb",
   "app/controllers/pages_controller.rb",
@@ -32,10 +33,16 @@ APP_FILES = [
   "app/jobs/digest_job.rb",
   "app/jobs/admin/report_job.rb"
 ]
-GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
-DIRS = ["app", "app/models", "app/controllers", "app/controllers/concerns", "app/helpers", "app/components", "app/jobs", "app/jobs/admin", "gen", "gen/models"]
+GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb",
+             "gen/concerns/controllers/concerns/admin_gate.rb", "gen/concerns/controllers/concerns/auditing.rb",
+             "gen/concerns/controllers/concerns/stamped.rb", "gen/concerns/models/concerns/visible.rb",
+             "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
+DIRS = ["app", "app/models", "app/models/concerns", "app/controllers", "app/controllers/concerns", "app/helpers", "app/components", "app/jobs",
+        "app/jobs/admin", "gen", "gen/models", "gen/concerns", "gen/concerns/controllers", "gen/concerns/controllers/concerns",
+        "gen/concerns/models", "gen/concerns/models/concerns"]
 Dir.mkdir("#{ROOT}/app")
 Dir.mkdir("#{ROOT}/app/models")
+Dir.mkdir("#{ROOT}/app/models/concerns")
 Dir.mkdir("#{ROOT}/app/controllers")
 Dir.mkdir("#{ROOT}/app/controllers/concerns")
 Dir.mkdir("#{ROOT}/app/helpers")
@@ -80,6 +87,7 @@ def load_fixture_schema
       t.date "published_on"
       t.text "secret_note"
       t.binary "thumbnail"
+      t.integer "hidden", null: false, default: "0"
       t.timestamps
     end
   end
@@ -122,6 +130,7 @@ test "a table added to the schema makes both its model and the manifest stale" d
       t.date "published_on"
       t.text "secret_note"
       t.binary "thumbnail"
+      t.integer "hidden", null: false, default: "0"
       t.timestamps
     end
     s.create_table "tags" do |t|

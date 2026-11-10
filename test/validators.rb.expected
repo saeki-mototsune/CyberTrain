@@ -18,4 +18,5 @@ ok   if: and unless: go through validation_condition?
 ok   one validates line for two attributes, under if:
 ok   run_custom_validations runs after the declared rules with the context
 ok   an unknown option, a lambda condition and an on: other than :create or :update raise ArgumentError
-20 tests, 96 assertions, 0 failures
+ok   model_concern_insert_at puts a concern's validates calls after the model's own call of that index
+21 tests, 99 assertions, 0 failures

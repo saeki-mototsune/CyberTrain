@@ -1004,6 +1004,31 @@ end
 #
 # Each `def` of the `class_methods` block becomes a method of the concern,
 # with the same parameters and body.
+#
+# The application loads the concern itself from
+# `gen/concerns/controllers/concerns/admin_gate.rb` (a model concern from
+# `gen/concerns/models/concerns/<name>.rb`): the file as written, line for
+# line, with the lines of its `included do ... end` and `class_methods do
+# ... end` blocks left empty and a comment naming it as generated at the
+# end. Those blocks take effect only where gen/concerns.rb splices them,
+# so a block in them may call the including class's methods without a
+# receiver (`scope :visible, -> { where(hidden: 0) }`).
+#
+# A model concern's `included` body is spliced the same way into each
+# model that includes it, between
+# {Cybertrain::Model.model_concern_insert_at model_concern_insert_at}
+# (the count of the model's own `validates` calls above the `include`)
+# and {Cybertrain::Model.model_concern_insert_done model_concern_insert_done};
+# its scopes, associations, `validate` and `encrypts` lines and its
+# instance methods count, for gen/models, as written at the `include`:
+#
+#     class Post
+#       # Visible (include Visible at app/models/post.rb:4)
+#       model_concern_insert_at(1)
+#       validates :body, length: { maximum: 10000 }
+#       scope :visible, -> { where(hidden: 0) }
+#       model_concern_insert_done
+#     end
 # @api public
 module AdminGate
   # `def per_page = 20` from the `class_methods` block.
