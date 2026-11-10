@@ -528,9 +528,10 @@ module Cybertrain
 
     # One job thread: claim and run a due job, or wait a poll interval,
     # until stop!. A job that is running when stop! comes is finished first.
-    # (loop_ended in an `ensure`, so a thread that dies of an exception
-    # claim_safely does not rescue still leaves the live-loop count right;
-    # otherwise every stop! would wait the whole job_drain_timeout for it.)
+    # (claim_safely rescues every Exception, so nothing a job raises ends
+    # the thread; loop_ended is in an `ensure` all the same, so the
+    # live-loop count stays right whatever happens, and no stop! waits the
+    # whole job_drain_timeout for a thread that is gone.)
     def self.run_job_loop(index, generation)
       while pool_live?(generation)
         idle_wait(@poll_interval, generation) unless claim_safely(Time.now.to_i, index)
@@ -1170,10 +1171,10 @@ module Cybertrain
 
     # finish between in_flight_add and in_flight_remove, in a plain method
     # with an `ensure` (NOTES rules 32/45): the id leaves IN_FLIGHT whatever
-    # the handler raised. run_handler rescues StandardError; anything else
-    # (a NotImplementedError, a SystemStackError) ends the job thread, and
-    # without this the row would be heartbeated for the life of the process
-    # and never recovered.
+    # the handler raised. run_handler rescues StandardError and the
+    # NotImplementedError / SystemStackError / ScriptError arm; anything
+    # else reaches claim_safely, which logs it, and without this the row
+    # would be heartbeated for the life of the process and never recovered.
     def self.finish_in_flight(id, kind, payload, attempts, now, label)
       in_flight_add(id)
       finish(id, kind, payload, attempts, now, label)
