@@ -88,7 +88,7 @@ module Cybertrain
         partial_file plural_words pluralize raw render
         render_component_helper render_helper request_bound! request_path
         request_query_string route route_key_of safe_join session_csrf_token
-        signed_stream_name stream_source_path string_keys_of tag text_arg
+        signed_stream_name stream_source_path string_keys_of string_url tag text_arg
         time_ago_in_words time_arg to_html truncate turbo_stream_from
         url_for yield
       ]

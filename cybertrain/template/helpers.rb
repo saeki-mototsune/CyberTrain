@@ -494,12 +494,24 @@ module Cybertrain
       # helper appends them (`url_for("/x", format: :csv)` is "/x.csv").
       def url_for(target, options)
         case target
-        when SafeString then options.empty? ? "#{target.to_s}" : Cybertrain::Gen.with_options(target.to_s, options)
-        when String then options.empty? ? "#{target}" : Cybertrain::Gen.with_options(target, options)
+        when SafeString then string_url(target.to_s, options)
+        when String then string_url(target, options)
         when Cybertrain::Model then route("#{model_key(target)}_path", [target], options)
         when Array then nested_url(target, options)
         else raise ArgumentError, "url_for cannot build a URL from #{FormBuilder.value_text(target)}"
         end
+      end
+
+      # url_for's String case: options (format:, a query, anchor:) are appended
+      # to the path, so a URL that already has a query or fragment is refused.
+      def string_url(url, options)
+        return "#{url}" if options.empty?
+
+        if url.include?("?") || url.include?("#")
+          msg = "url_for #{url.inspect}: options cannot be added to a URL that already has a query or fragment"
+          raise ArgumentError, msg
+        end
+        Cybertrain::Gen.with_options(url, options)
       end
 
       # url_for's Array case: the route named after the records in items,

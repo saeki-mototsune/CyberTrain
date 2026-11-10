@@ -77,7 +77,9 @@ module Cybertrain
     # ->(name String, args Array, options Hash{String => Object}) { String };
     # installed by the app from the generated Gen::Routes.path_for. options
     # are the template's keywords (`post_path(post, page: 2)`), which
-    # Gen.with_options turns into the format, query string and anchor.
+    # Gen.with_options turns into the format, query string and anchor. An
+    # application that hand-writes a resolver must accept the options Hash;
+    # one using `Gen::Routes.url_resolver` needs no change.
     def self.url_resolver
       @url_resolver
     end

@@ -223,6 +223,24 @@ test "url_for appends format:, a query and anchor: to a String or a record's rou
   assert_equal "/x", render_inline("<%= url_for('/x') %>")
 end
 
+test "url_for refuses options on a String that already has a query" do
+  install_routes
+  msg = assert_raises("RuntimeError") { render_inline("<%= url_for('/search?q=x', page: 2) %>") }
+  assert_includes msg, "url_for \"/search?q=x\": options cannot be added to a URL that already has a query or fragment"
+  assert_equal "/search?q=x", render_inline("<%= url_for('/search?q=x') %>")
+end
+
+test "url_for refuses options on a String that already has a fragment" do
+  install_routes
+  msg = assert_raises("RuntimeError") { render_inline("<%= url_for('/x#top', format: :csv) %>") }
+  assert_includes msg, "options cannot be added to a URL that already has a query or fragment"
+end
+
+test "url_for still takes options on a plain String" do
+  install_routes
+  assert_equal "/search?page=2", render_inline("<%= url_for('/search', page: 2) %>")
+end
+
 test "url_for derives the route name from the model" do
   install_routes
   assert_equal "/posts/7|/x", render_inline("<%= url_for(post) %>|<%= url_for('/x') %>")

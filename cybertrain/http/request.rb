@@ -30,7 +30,7 @@ module Cybertrain
   # {Controller#params}; the request holds the raw parts. The client's
   # address is {#client_ip} (Rails' `remote_ip`, with one trusted proxy hop
   # at most, see {Request.trusted_proxy} and {Request.trusted_proxies}).
-  # There is no `xhr?`, `format` or `url`.
+  # There is no `xhr?` or `url`.
   # @example
   #   request.header("user-agent")
   #   JSON.parse(request.body) if request.json?   # JSON bodies are not parsed into params

@@ -13,6 +13,9 @@ ok   content_for and yield :title
 ok   url helpers go through the url_resolver with name and args
 ok   a path helper's keywords reach the url_resolver as its options
 ok   url_for appends format:, a query and anchor: to a String or a record's route
+ok   url_for refuses options on a String that already has a query
+ok   url_for refuses options on a String that already has a fragment
+ok   url_for still takes options on a plain String
 ok   url_for derives the route name from the model
 ok   url_for names the route of an Array of one or three records
 ok   an unknown helper is a RuntimeError
@@ -20,4 +23,4 @@ ok   paginate renders Newer / Older around Page N, keeping the query minus page
 ok   paginate leaves out a link to a page that does not exist
 ok   paginate escapes what it is given and takes a path's own query string
 ok   a template reads the Page
-22 tests, 90 assertions, 0 failures
+25 tests, 96 assertions, 0 failures

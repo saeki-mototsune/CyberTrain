@@ -50,7 +50,7 @@ module Cybertrain
   # hands it Cybertrain::Main's argv:
   #
   #   module Gen::Routes
-  #     def self.url_resolver = ->(name, args) { path_for(name, args) }
+  #     def self.url_resolver = ->(name, args, options) { path_for(name, args, options) }
   #   end
   #
   #   app = Cybertrain::Application.new(
@@ -67,7 +67,7 @@ module Cybertrain
   # binary (build/bin/<name>) the development loop rebuilds and execs.
   #
   # Do NOT write the resolver as a lambda literal in the keyword position
-  # (`url_resolver: ->(name, args) { ... }`), nor pass a local holding one:
+  # (`url_resolver: ->(name, args, options) { ... }`), nor pass a local holding one:
   # Spinel 2026.09.12 does not mark a lambda passed as a keyword argument as
   # escaping, so its parameters keep the Integer default and every path
   # helper receives a garbage route name (e.g. 4295868465 instead of
