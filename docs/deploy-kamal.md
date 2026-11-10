@@ -109,8 +109,11 @@ a feeds process restarts a feed whose thread died, and exits with status 1
 when one feed keeps dying (10 restarts within 600 seconds), so that Docker
 starts a fresh container. With the feeds in their own container, the web
 role's `/up` reports `503 feed stale` when a feed or its process has been
-silent for 180 seconds (the feeds write their status into the database);
-set `CYBERTRAIN_HEALTH_FEEDS: 0` under `env.clear` if the proxy's health
+silent for 180 seconds (the feeds write their status into the database).
+A feed a release removed or renamed does not count, and a feeds container
+stopped cleanly (`kamal app stop -r feeds`, a scale-down) deletes its rows,
+so neither holds up the next web deploy; a crashed one leaves them to go
+stale. Set `CYBERTRAIN_HEALTH_FEEDS: 0` under `env.clear` if the proxy's health
 check points at `/up` and a quiet feed should not hold up a deploy.
 
 With a framework that has the built-in health check (`GET /up`, README

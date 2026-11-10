@@ -1,5 +1,5 @@
 ---
-source_sha256: 300995804ebd9eabe5d3b6492b1c3b4808154b53626a1be6bbdb958818ef94ad
+source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
 ---
 # アプリをテストする
 
@@ -137,8 +137,8 @@ end
 
 <!-- list: points -->
 - `assert_enqueued_jobs(count, kind = "")` は `queued` の行を数えます（種類を与えればその種類だけ）。`assert_no_enqueued_jobs(kind = "")` は 1 つもないことを求めます。
-- `assert_enqueued_with(kind, args)` は、その種類のキューにある行で、与えたすべてのキーを等しい値で持つものを求めます。両側は `Cast.str` で比べるので、`"comment_id" => 7` は JSON の `7` に一致します。
-- `perform_enqueued_jobs(now = Time.now)` は、期限の来たジョブを呼び出したスレッドで 1 つずつ（`Job.work_one`）、期限の来たものがなくなるまで実行し、実行した数を返します。後に予定された再試行はキューに残ります。実行するには後の `now` を渡してください。すぐに期限の来る形で自分をもう一度キューに入れるジョブは、実行し続けることになります。
+- `assert_enqueued_with(kind, args)` は、その種類のキューにある行で、与えたすべてのキーを等しい値で持つものを求めます。両側は `Cast.str` で比べるので、`"comment_id" => 7` は JSON の `7` に一致します。Symbol のキーはその名前として読まれるので、`assert_enqueued_with "NotifyCommentJob", comment_id: 7` とも書けます。
+- `perform_enqueued_jobs(now = Time.now)` は、期限の来たジョブを呼び出したスレッドで 1 つずつ（`Job.work_one`）、期限の来たものがなくなるまで実行し、実行した数を返します。後に予定された再試行はキューに残ります。実行するには後の `now` を渡してください。すぐに期限の来る形で自分をもう一度キューに入れるジョブは、これを実行し続けさせてしまうので、10,000 個のジョブの後でテストを失敗させます。
 - `clear_enqueued_jobs` は `queued` の行をすべて消します。`failed` と `discarded` の行は残るので、それを作るテストは自分で消してください。
 - `WelcomeJob.perform_now(args)` は、キューも rescue もなしにジョブを 1 つ直接実行します。例外はテストに届きます。
 - `deliver_later` で送るメールは `"cybertrain mail"` のジョブです。`perform_enqueued_jobs` はそれを `SmtpReceiver` に送ります（`smtp_host` と `smtp_port` をそこに向けておきます）。

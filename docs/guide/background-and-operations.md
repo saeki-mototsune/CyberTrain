@@ -117,7 +117,11 @@ writes a class file and a test for it.
   (and any exception of a `Job.handle` block) is retried 1, 5, 15 and then 60
   minutes later, with `Class: message` (up to 1000 characters) in
   `last_error`, until `job_max_attempts` (5) attempts have failed; the row is
-  then `failed`.
+  then `failed`. A `NotImplementedError` (a helper not written yet), a
+  `SystemStackError` or another `ScriptError` from the job's code takes this
+  policy too, although none is a `StandardError`; any other exception outside
+  `StandardError` is logged (`[ERROR] Job thread N: ...`), the job thread
+  carries on, and the row stays `running` until recovery (below) takes it.
 - **`retry_on Klass, wait: 60, attempts: 5`.** `wait:` is seconds (3 when
   left out, Rails' default) or `:polynomially_longer` (`attempts ** 4 + 2`
   seconds: 3, 18, 83, 258, ...); `attempts:` (5 when left out) counts every
@@ -184,6 +188,9 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
   true`, which runs it once at start. A slot that came due while processes
   were up but no leader ran it (a lease changing hands) runs once on the
   takeover. A task you rename or remove keeps its row until the next start.
+  A task that has not run yet follows its current schedule when that comes
+  sooner than the next run an earlier release stored (a weekly task made
+  hourly before its first run runs within the hour).
 - **How a task runs.** A block runs on the scheduler thread, one task at a
   time; each run is wrapped in a rescue that logs `[ERROR] Scheduled task
   "name" failed: ...` and the loop goes on. The block takes no arguments
@@ -227,7 +234,7 @@ From a shell, `./<app> jobs` does the same on the configured database
 (it starts no thread):
 
 ```sh
-./blog jobs list               # failed rows, newest first; or: list queued|running|done|discarded
+./blog jobs list               # failed rows, newest first (the newest 1000); or: list queued|running|done|discarded
 ./blog jobs retry 42           # or: retry --all (every failed row)
 ./blog jobs discard 42
 ./blog jobs delete 42

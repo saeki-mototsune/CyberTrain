@@ -1,5 +1,5 @@
 ---
-source_sha256: d8efa4bb552b1bed71637775e72a99725329edb302854d400a62dfcc94c5bfb2
+source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
 ---
 # 設定
 
@@ -44,7 +44,7 @@ end
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`。`1` または `true` にすると `SO_REUSEPORT` で bind し、複数のプロセスが 1 つのポートで listen でき、Linux ではカーネルが接続を振り分ける（開発環境では無視される。[Running several processes](../deploy.en.md#running-several-processes)を参照）。1 つを除くすべてのプロセスで `CYBERTRAIN_WORKER=0` にする |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`。組み込みのヘルスチェックのパス（[運用](background-and-operations.md#operations-backups-vacuum-health-check)を参照）。空の値で無効になり、先頭に `/` のない値ではサーバーが起動時に停止する。`health_worker_stale`（300 秒）は `config/app.rb` で設定する |
 | `CYBERTRAIN_HEALTH_FEEDS` | `health_feeds` | `true`：ヘルスチェックは、状態を報告しなくなった、または黙った WebSocket フィードについても `503 feed stale` を返す（[フィードのヘルス](realtime.md#feed-health)を参照）。`0` か `false` でこの部分が無効になる |
-| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`：`503 feed stale` になるまでの、フィードが黙っている、またはそのプロセスが状態を書かない秒数。1 以上 |
+| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`：`503 feed stale` になるまでの、フィードが黙っている、またはそのプロセスが状態を書かない秒数。1 以上で、`health_feeds` が有効な間は `feed_status_interval` より大きいこと（そうでなければ起動時に拒否されます） |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`。`1` または `true` にすると、`Cybertrain::HttpClient` がループバック、プライベート、その他の公開されていないアドレスに接続できる（[外向きの HTTP](external-services.md#outbound-http) を参照） |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`。`Cybertrain::Mailer` が送信に使う SMTP サーバー（[メールを送る](external-services.md#sending-e-mail)を参照） |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`：モードのポート。`starttls` なら 587、`tls` なら 465、`none` なら 25。1〜65535 以外は 0 になる |

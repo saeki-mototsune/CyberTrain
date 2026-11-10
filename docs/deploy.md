@@ -954,8 +954,9 @@ sudo systemctl enable --now notes-worker
   プロセスが 10 秒ごとにフィードの状態をデータベースに書き、フィードかそのプロセスが 180 秒
   （`CYBERTRAIN_HEALTH_FEED_STALE`）黙っていると `/up` が `503 feed stale` を返します。デプロイ
   スクリプトの確認は `/up.html` を見るのでデプロイは止まりませんが、`/up` を見ている監視は
-  気づきます。`/etc/notes/notes.env` に `CYBERTRAIN_HEALTH_FEEDS=0` を書くと、この部分の確認を
-  止められます。
+  気づきます。リリースで消したり名前を変えたりしたフィードは数えられず、きれいに止めた feeds
+  プロセス（`systemctl stop`）は自分の行を消します。クラッシュしたプロセスの行は残り、古くなります。
+  `/etc/notes/notes.env` に `CYBERTRAIN_HEALTH_FEEDS=0` を書くと、この部分の確認を止められます。
 
 ### シェルからジョブとフィードを見る
 
@@ -973,7 +974,8 @@ dist/notes feeds status                       # 各フィードが最後に報�
 ```
 
 - `jobs list [STATE]` は既定で `failed` の行を、指定すれば `queued`・`running`・`done`・
-  `discarded` の行を表示します。`retry` は failed か discarded のジョブを試行回数を戻して
+  `discarded` の行を、新しいものから最大 1000 行表示します（それより多いときは全体の数も
+  表示します）。`retry` は failed か discarded のジョブを試行回数を戻して
   キューに戻し、`discard` と `delete` は 1 行に作用し、`prune` は 7 日（または `--before DAYS`）
   より古い failed と discarded の行を消します。ジョブページ（`config/routes.rb` の `jobs_page`）を
   載せたアプリなら、同じことがブラウザからできます。
@@ -1077,7 +1079,10 @@ registry:
 フィードを再起動しますが、同じフィードが死に続けると（600 秒のうちに 10 回の再起動）終了
 ステータス 1 で終わり、Docker が新しいコンテナを起動します。フィードを自分のコンテナで動かすと、
 フィードかそのプロセスが 180 秒黙っているとき `web` の `/up` が `503 feed stale` を返します
-（フィードは状態をデータベースに書きます）。プロキシのヘルスチェックを `/up` に向けていて、
+（フィードは状態をデータベースに書きます）。リリースで消したり名前を変えたりしたフィードは
+数えられず、きれいに止めた feeds コンテナ（`kamal app stop -r feeds`、台数の削減）は自分の行を
+消すので、どちらも次の web のデプロイを止めません。クラッシュしたコンテナの行は残り、古く
+なります。プロキシのヘルスチェックを `/up` に向けていて、
 静かなフィードでデプロイを止めたくないときは、`env.clear` に `CYBERTRAIN_HEALTH_FEEDS: 0` を
 足してください。
 

@@ -1058,8 +1058,11 @@ sudo systemctl enable --now notes-worker
   10 seconds, and `/up` answers `503 feed stale` when a feed or its process
   has been silent for 180 seconds (`CYBERTRAIN_HEALTH_FEED_STALE`). The deploy
   script's check polls `/up.html`, so this does not stop a deploy; a monitor
-  pointed at `/up` sees it. `CYBERTRAIN_HEALTH_FEEDS=0` in
-  `/etc/notes/notes.env` turns that part of the check off.
+  pointed at `/up` sees it. A feed a release removed or renamed no longer
+  counts, and a feeds process stopped cleanly (`systemctl stop`) deletes its
+  rows; one that crashed leaves them, and they go stale.
+  `CYBERTRAIN_HEALTH_FEEDS=0` in `/etc/notes/notes.env` turns that part of
+  the check off.
 
 ### Jobs and feeds from the shell
 
@@ -1078,7 +1081,8 @@ dist/notes feeds status                       # each feed's last reported status
 ```
 
 - `jobs list [STATE]` shows the `failed` rows by default, or the `queued`,
-  `running`, `done` or `discarded` ones; `retry` queues a failed or
+  `running`, `done` or `discarded` ones, the newest 1000 at most (it says
+  how many there are when there are more); `retry` queues a failed or
   discarded job again with its attempts reset, `discard` and `delete` act on
   one row, and `prune` deletes failed and discarded rows older than 7 days
   (or `--before DAYS`). An app that mounts the jobs page

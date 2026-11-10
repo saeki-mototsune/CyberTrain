@@ -1,5 +1,5 @@
 ---
-source_sha256: 6db83f916e307de76c36b53d079f5cadc99e547985a61fc833572a2b9d043747
+source_sha256: a1cb71a49571518d60f95ae5bd45c4f49db95abdf9d8ff2e4b096271d5c95c7c
 ---
 # Tâches de fond et exploitation
 
@@ -132,7 +132,13 @@ de classe et un test pour elle.
   reconnaît (et toute exception d’un bloc `Job.handle`) est réessayée 1, 5,
   15 puis 60 minutes plus tard, avec `Class: message` (jusqu’à 1000
   caractères) dans `last_error`, jusqu’à ce que `job_max_attempts` (5)
-  tentatives aient échoué&nbsp;; la ligne passe alors à `failed`.
+  tentatives aient échoué&nbsp;; la ligne passe alors à `failed`. Un
+  `NotImplementedError` (un helper pas encore écrit), un `SystemStackError`
+  ou un autre `ScriptError` levé par le code du job suit cette politique
+  aussi, bien qu’aucun ne soit un `StandardError`&nbsp;; toute autre
+  exception hors de `StandardError` est journalisée (`[ERROR] Job thread N:
+  ...`), le thread de jobs continue, et la ligne reste `running` jusqu’à ce
+  que la reprise (ci-dessous) la prenne.
 - **`retry_on Klass, wait: 60, attempts: 5`.** `wait:` est un nombre de
   secondes (3 s’il est omis, la valeur par défaut de Rails) ou
   `:polynomially_longer` (`attempts ** 4 + 2` secondes&nbsp;: 3, 18, 83, 258,
@@ -206,7 +212,11 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
   l’exécute une fois au démarrage. Un créneau échu pendant que des processus
   tournaient sans qu’aucun leader l’exécute (un bail qui change de mains)
   s’exécute une fois lors de la reprise. Une tâche que vous renommez ou
-  supprimez garde sa ligne jusqu’au démarrage suivant.
+  supprimez garde sa ligne jusqu’au démarrage suivant. Une tâche qui n’a
+  pas encore tourné suit son horaire actuel quand celui-ci tombe plus tôt
+  que la prochaine exécution qu’une version précédente a enregistrée (une
+  tâche hebdomadaire rendue horaire avant sa première exécution tourne dans
+  l’heure).
 - **Comment une tâche s’exécute.** Un bloc s’exécute sur le thread du
   scheduler, une tâche à la fois&nbsp;; chaque exécution est enveloppée dans
   un rescue qui journalise `[ERROR] Scheduled task "name" failed: ...`, et
@@ -256,7 +266,7 @@ Depuis un shell, `./<app> jobs` fait de même sur la base configurée (il ne
 démarre aucun thread)&nbsp;:
 
 ```sh
-./blog jobs list               # lignes en échec, les plus récentes d’abord ; ou : list queued|running|done|discarded
+./blog jobs list               # lignes en échec, les plus récentes d’abord (les 1000 plus récentes) ; ou : list queued|running|done|discarded
 ./blog jobs retry 42           # ou : retry --all (toutes les lignes en échec)
 ./blog jobs discard 42
 ./blog jobs delete 42

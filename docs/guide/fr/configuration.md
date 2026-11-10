@@ -1,5 +1,5 @@
 ---
-source_sha256: d8efa4bb552b1bed71637775e72a99725329edb302854d400a62dfcc94c5bfb2
+source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
 ---
 # Configuration
 
@@ -45,7 +45,7 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`&nbsp;; `1` ou `true` lie le port avec `SO_REUSEPORT`, de sorte que plusieurs processus peuvent écouter sur un même port et que, sous Linux, le noyau répartit les connexions entre eux (ignoré en développement&nbsp;; voir [Running several processes](../deploy.en.md#running-several-processes)). Mettez `CYBERTRAIN_WORKER=0` dans tous les processus sauf un |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`&nbsp;; le chemin du contrôle de santé intégré (voir [Exploitation](background-and-operations.md#operations-backups-vacuum-health-check))&nbsp;; une valeur vide le désactive&nbsp;; une valeur sans `/` initial arrête le serveur au démarrage. `health_worker_stale` (300&nbsp;s) se règle dans `config/app.rb` |
 | `CYBERTRAIN_HEALTH_FEEDS` | `health_feeds` | `true`&nbsp;: le contrôle de santé répond aussi `503 feed stale` pour un flux WebSocket qui a cessé de signaler son état ou s’est tu (voir [Santé des flux](realtime.md#feed-health))&nbsp;; `0` ou `false` désactive cette partie |
-| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`&nbsp;: secondes de silence d’un flux, ou de son processus qui n’écrit plus son état, avant `503 feed stale`&nbsp;; au moins 1 |
+| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`&nbsp;: secondes de silence d’un flux, ou de son processus qui n’écrit plus son état, avant `503 feed stale`&nbsp;; au moins 1, et plus que `feed_status_interval` tant que `health_feeds` est actif (le démarrage le refuse sinon) |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`&nbsp;; `1` ou `true` permet à `Cybertrain::HttpClient` de se connecter au loopback, aux adresses privées et aux autres adresses non publiques (voir [HTTP sortant](external-services.md#outbound-http)) |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`&nbsp;; le serveur SMTP par lequel envoie `Cybertrain::Mailer` (voir [Envoyer des e-mails](external-services.md#sending-e-mail)) |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`&nbsp;: le port du mode, 587 pour `starttls`, 465 pour `tls`, 25 pour `none`&nbsp;; toute valeur hors de 1 à 65535 vaut 0 |

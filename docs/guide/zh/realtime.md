@@ -1,5 +1,5 @@
 ---
-source_sha256: 378c380bd86a043bfdd256bb49608526e657c62c86a8ef0c691c0288e5b5bcb2
+source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
 ---
 # 实时：推送到浏览器的流
 
@@ -200,7 +200,7 @@ end
 - 发布者过期：这一行最后一次写入是在 `health_feed_stale` 秒（180，`CYBERTRAIN_HEALTH_FEED_STALE`）之前，说明运行该订阅的进程已死掉、卡住或失去了数据库；或者
 - 订阅陷入沉默：这一行是新的，但订阅在这么长的时间里既没有送来消息，也没有回应 ping（从未收到过任何东西的订阅从它启动时算起）。
 
-两者分别检查，所以活着的发布者永远不会掩盖一个沉默的订阅。`CYBERTRAIN_HEALTH_FEEDS=0`（或 `false`）会关闭这项检查，适用于合理地安静超过阈值的订阅，或用其他方式监视订阅的部署。无法读取这张表时，`/up` 仍返回 200，并只记录一条 `[WARN]`，直到它再次可读。
+两者分别检查，所以活着的发布者永远不会掩盖一个沉默的订阅。只有应用仍在订阅的数据订阅的行才计入：每个角色运行同一个二进制文件，所以名称没有被任何 `subscribe` 注册的行（你删除或改名的订阅）会被忽略。`health_feed_stale` 必须大于 `feed_status_interval`，否则每一行在两次写入之间都会过期，启动时会拒绝这样的设置。`CYBERTRAIN_HEALTH_FEEDS=0`（或 `false`）会关闭这项检查，适用于合理地安静超过阈值的订阅，或用其他方式监视订阅的部署。无法读取这张表时，`/up` 仍返回 200，并只记录一条 `[WARN]`，直到它再次可读。
 
 `./<app> feeds status` 为运维人员打印这些行，每个订阅一行：
 
@@ -211,8 +211,9 @@ trades  connected  web-1:4242  last activity 3s ago  restarts 0  updated 4s ago
 
 <!-- list: points -->
 - 每一行只以订阅的名称为键：运行同一个订阅的两个进程会互相覆盖对方的行，这也是让每个订阅只在一个进程中运行的又一个理由。
-- 你删除或改名的订阅会留下它的行，一旦它变旧，`/up` 就会报告它过期：请删除这一行（`./<app> dbconsole`，然后 `DELETE FROM cybertrain_feeds WHERE name = 'trades';`）。
-- 名为 `status` 的订阅无法用 `./<app> feeds status` 单独启动，因为这条命令会打印这张表；`./<app> feeds`（全部订阅）仍然会运行它。
+- 被干净地停止的 `feeds` 进程（TERM 或 INT：一次部署、一次缩容）会删除它写入的行，所以你有意停止的角色不再被计入。崩溃的进程，或在订阅反复死掉之后退出的进程，会留下这些行让它们过期，而这正是 `/up` 要报告的。
+- 你删除或改名的订阅会留下它的行，`/up` 会忽略它，`feeds status` 会把它标记为 `(not registered)`；你可以随时删除它（`./<app> dbconsole`，然后 `DELETE FROM cybertrain_feeds WHERE name = 'trades';`）。
+- `status` 不能用作订阅名称：`subscribe("status", ...)` 会抛出 ArgumentError，因为 `./<app> feeds status` 会打印这张表。
 - `/up` 不会重启任何东西。Kamal 只在部署期间为 web 角色轮询它，而 Docker 在进程退出时重启容器，`feeds` 进程在订阅反复死掉之后就会退出；请给这个角色设置重启策略（[进程角色](background-and-operations.md#process-roles)）。
 
 设计说明：[docs/design.md](../design.md) D56。

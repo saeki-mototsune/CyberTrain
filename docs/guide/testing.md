@@ -188,11 +188,14 @@ end
   kind when given); `assert_no_enqueued_jobs(kind = "")` wants none.
 - `assert_enqueued_with(kind, args)` wants a queued row of that kind whose
   args hold every given key with an equal value, both sides compared as
-  `Cast.str`, so `"comment_id" => 7` matches a JSON `7`.
+  `Cast.str`, so `"comment_id" => 7` matches a JSON `7`. A Symbol key is
+  read as its name: `assert_enqueued_with "NotifyCommentJob", comment_id: 7`
+  works too.
 - `perform_enqueued_jobs(now = Time.now)` runs every due job on the calling
   thread, one by one (`Job.work_one`), until none is due, and returns how
   many ran. A retry scheduled for later stays queued: pass a later `now` to
-  run it. A job that enqueues itself again, due at once, keeps it running.
+  run it. A job that enqueues itself again, due at once, would keep it
+  running: it fails the test after 10,000 jobs instead.
 - `clear_enqueued_jobs` deletes every `queued` row; `failed` and
   `discarded` rows stay, so a test that makes them deletes them itself.
 - `WelcomeJob.perform_now(args)` runs one job directly, with no queue and

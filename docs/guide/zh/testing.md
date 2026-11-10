@@ -1,5 +1,5 @@
 ---
-source_sha256: 300995804ebd9eabe5d3b6492b1c3b4808154b53626a1be6bbdb958818ef94ad
+source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
 ---
 # 测试应用
 
@@ -137,8 +137,8 @@ end
 
 <!-- list: points -->
 - `assert_enqueued_jobs(count, kind = "")` 统计 `queued` 的行（给出种类时只统计该种类）；`assert_no_enqueued_jobs(kind = "")` 要求一个也没有。
-- `assert_enqueued_with(kind, args)` 要求有一个该种类的排队行，其参数包含每个给定的键且值相等，两边都以 `Cast.str` 比较，所以 `"comment_id" => 7` 与 JSON 的 `7` 匹配。
-- `perform_enqueued_jobs(now = Time.now)` 在调用它的线程上逐个运行每个到期的作业（`Job.work_one`），直到没有到期的作业，并返回运行的个数。安排在之后的重试仍留在队列中：传入更晚的 `now` 来运行它。一个立即到期地把自己重新入队的作业会让它一直运行下去。
+- `assert_enqueued_with(kind, args)` 要求有一个该种类的排队行，其参数包含每个给定的键且值相等，两边都以 `Cast.str` 比较，所以 `"comment_id" => 7` 与 JSON 的 `7` 匹配。Symbol 键按其名称读取，所以也可以写 `assert_enqueued_with "NotifyCommentJob", comment_id: 7`。
+- `perform_enqueued_jobs(now = Time.now)` 在调用它的线程上逐个运行每个到期的作业（`Job.work_one`），直到没有到期的作业，并返回运行的个数。安排在之后的重试仍留在队列中：传入更晚的 `now` 来运行它。一个立即到期地把自己重新入队的作业本会让它一直运行下去，因此它在运行 10,000 个作业之后让测试失败。
 - `clear_enqueued_jobs` 删除所有 `queued` 的行；`failed` 和 `discarded` 的行会保留，所以产生它们的测试要自己删除。
 - `WelcomeJob.perform_now(args)` 直接运行一个作业，没有队列，也没有 rescue：异常会到达测试。
 - 用 `deliver_later` 发送的邮件是一个 `"cybertrain mail"` 作业：`perform_enqueued_jobs` 会把它发送到 `SmtpReceiver`（`smtp_host` 和 `smtp_port` 指向它）。

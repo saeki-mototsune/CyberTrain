@@ -1,5 +1,5 @@
 ---
-source_sha256: 378c380bd86a043bfdd256bb49608526e657c62c86a8ef0c691c0288e5b5bcb2
+source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -344,7 +344,13 @@ quelconque&nbsp;:
   jamais rien reçu compte depuis son démarrage).
 
 Les deux sont vérifiés séparément, si bien qu’un éditeur vivant ne cache
-jamais un flux silencieux. `CYBERTRAIN_HEALTH_FEEDS=0` (ou `false`) désactive
+jamais un flux silencieux. Seules comptent les lignes des flux auxquels
+l’application est encore abonnée&nbsp;: tous les rôles exécutent le même
+binaire, donc une ligne dont aucun `subscribe` n’enregistre le nom (un flux
+que vous avez supprimé ou renommé) est ignorée. `health_feed_stale` doit
+être supérieur à `feed_status_interval`, sans quoi chaque ligne serait
+périmée entre deux écritures&nbsp;; le démarrage le refuse sinon.
+`CYBERTRAIN_HEALTH_FEEDS=0` (ou `false`) désactive
 ce contrôle, pour un flux légitimement calme plus longtemps que le seuil ou
 un déploiement qui surveille ses flux autrement. Une table illisible laisse
 `/up` à 200 et journalise une seule ligne `[WARN]` jusqu’à ce qu’elle soit de
@@ -362,13 +368,17 @@ trades  connected  web-1:4242  last activity 3s ago  restarts 0  updated 4s ago
 - Une ligne a pour clé le seul nom du flux&nbsp;: deux processus qui exécutent
   le même flux écrasent mutuellement leur ligne, raison de plus pour
   exécuter chaque flux dans un seul processus.
-- Un flux que vous supprimez ou renommez laisse sa ligne, et `/up` la
-  signale périmée une fois qu’elle est vieille&nbsp;: supprimez la ligne
-  (`./<app> dbconsole`, puis `DELETE FROM cybertrain_feeds WHERE name =
-  'trades';`).
-- Un flux nommé `status` ne peut pas être démarré seul avec
-  `./<app> feeds status`, qui affiche la table à la place&nbsp;;
-  `./<app> feeds` (tous les flux) l’exécute quand même.
+- Un processus `feeds` arrêté proprement (TERM ou INT&nbsp;: un
+  déploiement, une réduction du nombre d’instances) supprime les lignes
+  qu’il a écrites, si bien qu’un rôle arrêté exprès ne compte plus. Un
+  processus qui a planté, ou qui s’est terminé après des morts répétées
+  d’un flux, les laisse se périmer, et c’est ce que `/up` doit signaler.
+- Un flux que vous supprimez ou renommez laisse sa ligne, que `/up` ignore
+  et que `feeds status` marque `(not registered)`&nbsp;; supprimez-la quand
+  vous voulez (`./<app> dbconsole`, puis `DELETE FROM cybertrain_feeds WHERE
+  name = 'trades';`).
+- `status` n’est pas un nom de flux&nbsp;: `subscribe("status", ...)` lève
+  ArgumentError, puisque `./<app> feeds status` affiche la table.
 - `/up` ne redémarre rien. Kamal ne l’interroge que pour le rôle web
   pendant un déploiement, et Docker redémarre un conteneur quand son
   processus se termine, ce que fait un processus `feeds` après des morts

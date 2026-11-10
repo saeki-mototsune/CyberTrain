@@ -1,5 +1,5 @@
 ---
-source_sha256: d8efa4bb552b1bed71637775e72a99725329edb302854d400a62dfcc94c5bfb2
+source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
 ---
 # 配置
 
@@ -44,7 +44,7 @@ end
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`；`1` 或 `true` 会以 `SO_REUSEPORT` 绑定，让多个进程监听同一端口，在 Linux 上由内核在它们之间分配连接（开发环境中会被忽略；参见 [Running several processes](../deploy.en.md#running-several-processes)）。除一个进程外，其余都设置 `CYBERTRAIN_WORKER=0` |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`；内置健康检查的路径（参见[运维](background-and-operations.md#operations-backups-vacuum-health-check)）；空值会关闭它；不以 `/` 开头的值会让服务器在启动时停止。`health_worker_stale`（300 秒）在 `config/app.rb` 中设置 |
 | `CYBERTRAIN_HEALTH_FEEDS` | `health_feeds` | `true`：对于停止报告状态或陷入沉默的 WebSocket 数据订阅，健康检查也返回 `503 feed stale`（参见[数据订阅的健康状况](realtime.md#feed-health)）；`0` 或 `false` 关闭这一部分 |
-| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`：数据订阅沉默，或其进程不再写入状态，多少秒之后返回 `503 feed stale`；至少为 1 |
+| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`：数据订阅沉默，或其进程不再写入状态，多少秒之后返回 `503 feed stale`；至少为 1，且在 `health_feeds` 开启时必须大于 `feed_status_interval`（否则启动时拒绝） |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`；`1` 或 `true` 允许 `Cybertrain::HttpClient` 连接环回地址、私有地址和其他非公网地址（参见[出站 HTTP](external-services.md#outbound-http)） |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`；`Cybertrain::Mailer` 用来发送邮件的 SMTP 服务器（参见[发送电子邮件](external-services.md#sending-e-mail)） |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`：使用所选模式的端口，`starttls` 为 587，`tls` 为 465，`none` 为 25；1 到 65535 以外的任何值都视为 0 |

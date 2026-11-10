@@ -892,7 +892,8 @@ section's own text above has been amended to the name in the code.
   `perform` always receives `Hash<String, Object>`. Three refusals beyond the
   spec stop `spin run gen`: a job class that neither defines nor inherits
   `perform` (`Job::Base#perform`'s `NotImplementedError` is not a
-  `StandardError` and would end the worker thread), a `def self.` of a
+  `StandardError`; it would have ended the worker thread, and since the
+  final review it takes the default policy, see "Final review fixes"), a `def self.` of a
   generated method name, and `limits_concurrency` twice. The rule-89 check
   accepts core classes, every framework `...Error` class (its file's require
   is written into `gen/app.rb` before the jobs), and application classes
@@ -994,8 +995,9 @@ section's own text above has been amended to the name in the code.
   before the restart; the backoff and window run on the monotonic clock; the
   restart count never resets. `Logger#fatal` was added. Status rows are
   keyed by name only, so two processes running the same feed overwrite each
-  other's row, and a removed feed's row stays until deleted. A feed named
-  `status` is shadowed by `./<app> feeds status`.
+  other's row, and a removed feed's row stays until deleted (ignored by
+  `/up` since the final review). `WebSocket.subscribe` refuses the name
+  `status`, which `./<app> feeds status` would shadow.
 - Feed health (section 9, 12): `CYBERTRAIN_HEALTH_FEEDS` is on unless `0` or
   `false`; `CYBERTRAIN_HEALTH_FEED_STALE` defaults to 180 and is refused below
   1 at boot. A status table that cannot be read leaves `/up` at 200 and logs
@@ -1021,8 +1023,9 @@ section's own text above has been amended to the name in the code.
   `cybertrain/test/jobs` is the one `cybertrain generate authentication`
   (and `generate attachment`) writes (`cybertrain/cli/authentication.rb`);
   `cybertrain new` writes none, so an application without it adds the
-  require to its own support file. `perform_enqueued_jobs` loops for as long
-  as a job re-enqueues itself due at once.
+  require to its own support file. `perform_enqueued_jobs` fails the test
+  after 10,000 jobs (a job that re-enqueues itself due at once), and
+  `assert_enqueued_with` reads a Symbol key as its name.
 - Templates (section 13): the generated `config/deploy.yml` gives the
   `worker` role (and the commented `feeds` one) `restart: unless-stopped`;
   `.env.example` lists the feed-health and scheduler-zone variables, `CYBERTRAIN_HEALTH_FEEDS=0` as the
@@ -1039,6 +1042,28 @@ section's own text above has been amended to the name in the code.
   and the feed health check in the realtime guide ("Feed health"), so no new
   page needs four translations and navigation entries. The configuration
   guide lists all eight variables of section 12 (section 13 said five).
+- Final review fixes (2026-11-10): (I1) `/up`'s feed check skips a status
+  row whose name no subscription of this binary registers (every role runs
+  the same binary), and `feeds status` marks such a row `(not registered)`;
+  a `feeds` process stopped cleanly deletes the rows it wrote
+  (`Background.withdraw_status_all`, `StatusWriter#status_withdraw`,
+  `FeedTable.delete_process_feeds`), while one that crashed or gave up on a
+  feed leaves them to go stale, so removing or scaling down a feed no
+  longer fails the next web deploy. (I2) A task whose timetable row has no
+  run yet takes the earlier of the stored next run and the next run its
+  current schedule gives from now: a schedule shortened by a release before
+  the first run no longer waits for the old slot; one made longer runs once
+  at the stored slot, then follows the new schedule (no `spec` column was
+  added). (I3) `Job.run_handler` gives `NotImplementedError`,
+  `SystemStackError` and `ScriptError` the default retry policy, and
+  `claim_safely` logs any other `Exception` and keeps the job thread alive
+  (the row stays `running` for heartbeat recovery). (M4) Boot refuses
+  `health_feed_stale <= feed_status_interval` while `health_feeds` is on.
+  (M5) `jobs list STATE` prints the newest 1000 rows and "showing the newest
+  N of M STATE jobs" when there are more. Also: the unkeyable-id warnings
+  list at most 20 ids and "... and N more"; `run_feed` closes the
+  connection after a session its rescue arms ended; the `cybertrain new`
+  cron example prunes done jobs.
 - Test counts (2026-11-09, Spinel 2026.11.04.7026): `spin test` (the full
   `script/test-shard 0 1`) has 161 programs, 13 of them new in this phase;
   the integration runs recorded by the tasks passed in full (157 of 157

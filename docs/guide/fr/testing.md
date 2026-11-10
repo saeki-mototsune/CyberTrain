@@ -1,5 +1,5 @@
 ---
-source_sha256: 300995804ebd9eabe5d3b6492b1c3b4808154b53626a1be6bbdb958818ef94ad
+source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
 ---
 # Tester une application
 
@@ -199,13 +199,14 @@ end
 - `assert_enqueued_with(kind, args)` veut une ligne en file de ce kind dont
   les args contiennent chaque clé donnée avec une valeur égale, les deux
   côtés comparés en `Cast.str`, si bien que `"comment_id" => 7` correspond à
-  un `7` JSON.
+  un `7` JSON. Une clé Symbol est lue comme son nom&nbsp;:
+  `assert_enqueued_with "NotifyCommentJob", comment_id: 7` fonctionne aussi.
 - `perform_enqueued_jobs(now = Time.now)` exécute chaque job échu sur le
   thread appelant, un par un (`Job.work_one`), jusqu’à ce qu’aucun ne soit
   échu, et renvoie combien ont tourné. Une nouvelle tentative prévue plus
   tard reste en file&nbsp;: passez un `now` plus tardif pour l’exécuter. Un
-  job qui se remet lui-même en file, échu tout de suite, la fait tourner
-  sans fin.
+  job qui se remet lui-même en file, échu tout de suite, la ferait tourner
+  sans fin&nbsp;: elle fait échouer le test après 10&nbsp;000 jobs.
 - `clear_enqueued_jobs` supprime toutes les lignes `queued`&nbsp;; les lignes
   `failed` et `discarded` restent, donc un test qui en crée les supprime
   lui-même.

@@ -1,5 +1,5 @@
 ---
-source_sha256: 6db83f916e307de76c36b53d079f5cadc99e547985a61fc833572a2b9d043747
+source_sha256: a1cb71a49571518d60f95ae5bd45c4f49db95abdf9d8ff2e4b096271d5c95c7c
 ---
 # 后台任务与运维
 
@@ -58,7 +58,7 @@ Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
 
 ### 重试与丢弃
 
-- **默认策略。** 类中没有任何一行匹配的异常（以及 `Job.handle` 块中的任何异常）会依次在 1、5、15 分钟之后，然后在 60 分钟之后重试，并把 `Class: message`（最多 1000 个字符）写入 `last_error`，直到失败次数达到 `job_max_attempts`（5）次；此时这一行变为 `failed`。
+- **默认策略。** 类中没有任何一行匹配的异常（以及 `Job.handle` 块中的任何异常）会依次在 1、5、15 分钟之后，然后在 60 分钟之后重试，并把 `Class: message`（最多 1000 个字符）写入 `last_error`，直到失败次数达到 `job_max_attempts`（5）次；此时这一行变为 `failed`。作业代码抛出的 `NotImplementedError`（尚未编写的辅助方法）、`SystemStackError` 或其他 `ScriptError` 虽然都不是 `StandardError`，也遵循这一策略；`StandardError` 之外的其他异常会被记录（`[ERROR] Job thread N: ...`），作业线程继续运行，这一行保持 `running`，直到恢复（见下文）接手。
 - **`retry_on Klass, wait: 60, attempts: 5`。** `wait:` 是秒数（省略时为 3，即 Rails 的默认值）或 `:polynomially_longer`（`attempts ** 4 + 2` 秒：3、18、83、258……）；`attempts:`（省略时为 5）计算每一次尝试，包括第一次。可以写多行：第一个其类与异常匹配（子类也算匹配）的行胜出，所以请先写范围较窄的类。在 `discard_on ArgumentError` 之前写 `retry_on StandardError`，会让 `ArgumentError` 被重试。
 - **`discard_on Klass`** 立即停止：这一行变为 `discarded`，错误写入 `last_error`，并且永不重试。
 - **`def retries_exhausted(error)`** 在某个 `retry_on` 行的尝试次数用尽、这一行真正变为 `failed` 之后运行（对于另一个 worker 接手的尝试永远不会运行，因为那次运行仍可能成功）。它对应 Rails 的 `retry_on ... do |job, error|` 块；它抛出的异常会被记录。
@@ -82,7 +82,7 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 - **表达式。** 分、时、日、月、星期，支持 `*`、`*/n`、`a-b`、`a,b`、`a-b/n` 以及名称 `jan`–`dec` 和 `sun`–`sat`（星期中的 `0` 和 `7` 都是星期日）；不接受 `@hourly` 之类的写法。无法解析或永远不会匹配的表达式，会在加载 `config/app.rb` 时抛出指明任务名的 `ArgumentError`，从而让启动停止。
 - **时区。** `tz:` 指定一个 IANA 时区（[时区](configuration.md#time-zones)）；没有它时，任务按 `scheduler_tz`（`CYBERTRAIN_SCHEDULER_TZ`，`UTC`）读取。夏令时跳过的墙上时间当天不会运行。在秋季切换时重复的那一小时里，时字段以 `*` 开头的表达式在两次出现时都会运行，固定小时的表达式只运行一次，与 Vixie cron 一样。
 - **`job:`** 指定一个作业种类（String 形式的类名，或 `Job.handle` 的种类），`args:` 指定它的参数：此时任务只负责把它入队，有实际工作的任务就应该这样做。未知的种类会让启动停止，并列出已注册的种类。
-- **时间表**保存在数据库中（`cybertrain_schedules`，不写入 `db/schema.rb`）：每个任务上次运行和下次运行的时间。重启，或者另一个进程接过领导权，都会从它继续。一个 `every` 任务的时间如果在没有任何进程运行时过去了，会在启动时运行一次；在没有任何进程运行时错过的 `cron` 时段会被跳过（cron 的规则），除非任务写了 `catch_up: true`，这时它会在启动时运行一次。在进程都在运行、但没有领导者运行它的期间到期的时段（租约易手时），会在接手时运行一次。你改名或删除的任务会保留它的行，直到下次启动。
+- **时间表**保存在数据库中（`cybertrain_schedules`，不写入 `db/schema.rb`）：每个任务上次运行和下次运行的时间。重启，或者另一个进程接过领导权，都会从它继续。一个 `every` 任务的时间如果在没有任何进程运行时过去了，会在启动时运行一次；在没有任何进程运行时错过的 `cron` 时段会被跳过（cron 的规则），除非任务写了 `catch_up: true`，这时它会在启动时运行一次。在进程都在运行、但没有领导者运行它的期间到期的时段（租约易手时），会在接手时运行一次。你改名或删除的任务会保留它的行，直到下次启动。一个还没有运行过的任务，如果它当前的计划比之前的版本保存的下次运行时间更早，就按当前的计划运行（在第一次运行之前从每周改为每小时的任务，会在一小时之内运行）。
 - **任务如何运行。** 块在调度器线程上运行，一次一个任务；每次运行都包在一个 rescue 中，它会记录 `[ERROR] Scheduled task "name" failed: ...`，然后循环继续。块不接收参数（Spinel 没有 `instance_eval`）。一次 SQLite 调用会占用它的操作系统工作线程直到返回：在 `SPINEL_WORKERS=1`（默认值）时，一个耗时的查询会让所有请求和所有其他线程停顿同样长的时间。把有实际工作的任务交给作业（`job:`，或在块中 `Job.enqueue`），并把大量工作分批进行（每次运行一千行，每个条目一个作业）。`Cybertrain::Scheduler.last_tick` 是最后一次心跳的纪元秒数，可用于你自己的健康检查。
 
 ### 作业页面和 `jobs` 命令
@@ -102,7 +102,7 @@ end
 在 shell 中，`./<app> jobs` 对配置的数据库做同样的事（它不启动任何线程）：
 
 ```sh
-./blog jobs list               # 失败的行，最新的在前；或者：list queued|running|done|discarded
+./blog jobs list               # 失败的行，最新的在前（最新的 1000 行）；或者：list queued|running|done|discarded
 ./blog jobs retry 42           # 或者：retry --all（所有失败的行）
 ./blog jobs discard 42
 ./blog jobs delete 42

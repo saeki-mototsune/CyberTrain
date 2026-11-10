@@ -1,5 +1,5 @@
 ---
-source_sha256: d8efa4bb552b1bed71637775e72a99725329edb302854d400a62dfcc94c5bfb2
+source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
 ---
 # Конфигурация
 
@@ -44,7 +44,7 @@ end
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`; `1` или `true` выполняет bind с `SO_REUSEPORT`, так что несколько процессов могут слушать один порт, а в Linux ядро распределяет между ними соединения (в разработке игнорируется; см. [Running several processes](../deploy.en.md#running-several-processes)). Задайте `CYBERTRAIN_WORKER=0` во всех процессах, кроме одного |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`; путь встроенной проверки работоспособности (см. [Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check)); пустое значение её отключает; значение без ведущего `/` останавливает сервер при запуске. `health_worker_stale` (300 с) задаётся в `config/app.rb` |
 | `CYBERTRAIN_HEALTH_FEEDS` | `health_feeds` | `true`: проверка работоспособности отвечает `503 feed stale` и для фида WebSocket, который перестал сообщать состояние или замолчал (см. [Состояние фидов](realtime.md#feed-health)); `0` или `false` отключает эту часть |
-| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`: секунд молчания фида или его процесса, не пишущего состояние, до `503 feed stale`; не меньше 1 |
+| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`: секунд молчания фида или его процесса, не пишущего состояние, до `503 feed stale`; не меньше 1 и, пока включён `health_feeds`, больше `feed_status_interval` (иначе загрузка отклоняет значение) |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`; `1` или `true` позволяет `Cybertrain::HttpClient` подключаться к loopback, частным и другим непубличным адресам (см. [Исходящий HTTP](external-services.md#outbound-http)) |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`; SMTP-сервер, через который отправляет `Cybertrain::Mailer` (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`: порт режима — 587 для `starttls`, 465 для `tls`, 25 для `none`; всё, кроме значений от 1 до 65535, считается 0 |
