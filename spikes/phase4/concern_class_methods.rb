@@ -10,12 +10,14 @@
 # Run (Spinel 2026.11.04.7026, from spikes/phase4/; cybertrain/controller
 # links SQLite through FFI, so compiled only):
 #   spinel $(spin flags) concern_class_methods.rb -o /tmp/concern_class_methods && /tmp/concern_class_methods
-# Output (68 s to compile; what Rails answers for the same controller):
+# Output (68 s to compile):
 #   index without admin: 403
 #   index as admin: 200 index per_page=50 admin?=true
 #   show raises: 422 bad: no such page
 #   ArticlesController.per_page: 50
-#   AdminGate.per_page: 50
+#   AdminGate.per_page: 50   (this spike's generated `def self.per_page` on
+#                              the concern, line ~115; Rails' class_methods
+#                              gives only the including class a class method)
 #   included: true
 #
 # Without the three declaration stubs in ActiveSupport::Concern below, the
