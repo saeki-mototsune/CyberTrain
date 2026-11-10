@@ -45,7 +45,7 @@ module Cybertrain
         dynamic = seg.start_with?(":")
         if @takes_format && i == last
           dot = Route.extension_at(given)
-          head = dot < 0 ? given : given[0, dot].to_s
+          head = dot < 0 ? given : given.byteslice(0, dot).to_s
           if dynamic
             return nil unless head.index(".").nil?
 
@@ -75,29 +75,31 @@ module Cybertrain
       dot = Route.extension_at(given)
       return "" if dot < 0
 
-      given[dot + 1, given.size - dot - 1].to_s
+      given.byteslice(dot + 1, given.bytesize - dot - 1).to_s
     end
 
-    # The index of the "." that starts segment's extension, -1 for none: the
-    # last ".", with a non-empty part before it and 1 to
-    # MAX_EXTENSION_BYTES of [A-Za-z0-9_] after it.
+    # The BYTE offset of the "." that starts segment's extension, -1 for
+    # none: the last ".", with a non-empty part before it and 1 to
+    # MAX_EXTENSION_BYTES of [A-Za-z0-9_] after it. Bytes throughout (read
+    # back with byteslice): a character index would be off by the extra
+    # bytes of a multibyte character before the dot (`日本.json`), and
+    # Spinel and CRuby agree on bytes (NOTES rule 27). The extension is
+    # ASCII, so scanning back from the end never splits a character.
     def self.extension_at(segment)
       s = segment.to_s # a fresh String for the byte reads (NOTES rule 62)
-      dot = s.rindex(".")
-      return -1 if dot.nil? || dot == 0
+      i = s.bytesize - 1
+      while i >= 0
+        b = s.getbyte(i)
+        break unless (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 95
 
-      size = s.bytesize - dot - 1
+        i -= 1
+      end
+      return -1 if i <= 0 || s.getbyte(i) != 46
+
+      size = s.bytesize - i - 1
       return -1 if size < 1 || size > MAX_EXTENSION_BYTES
 
-      i = dot + 1
-      while i < s.bytesize
-        b = s.getbyte(i)
-        word = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 95
-        return -1 unless word
-
-        i += 1
-      end
-      dot
+      i
     end
 
     # Fills the ":name" segments from params: path({ "id" => "1" }) -> "/posts/1/edit".

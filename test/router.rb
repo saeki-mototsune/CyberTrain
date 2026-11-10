@@ -267,6 +267,26 @@ test "a dotted segment that is not a registered format" do
   assert_equal 404, dispatch(sample_router, "GET", "/posts/3.json/edit").response.status
 end
 
+test "a multibyte segment before the extension" do
+  router = Cybertrain::Router.new
+  router.get("/articles/:id") { |c| c.response.body = "#{c.params[:id]} #{c.request.format}" }
+  router.get("/日本") { |c| c.response.body = "literal #{c.request.format}" }
+  ctx = dispatch(router, "GET", "/articles/%E6%97%A5%E6%9C%AC.json")
+  assert_equal "日本 json", ctx.response.body
+  assert_equal "json", ctx.request.format_extension
+  assert_equal({ "id" => "日本" }, ctx.route_params)
+  ctx = dispatch(sample_router, "GET", "/posts/caf%C3%A9.json")
+  assert_equal "show café", ctx.response.body
+  assert_equal :json, ctx.request.format
+  assert_equal "literal csv", dispatch(router, "GET", "/%E6%97%A5%E6%9C%AC.csv").response.body
+  assert_equal "日本 html", dispatch(router, "GET", "/articles/%E6%97%A5%E6%9C%AC").response.body
+  assert_equal "show café", dispatch(sample_router, "GET", "/posts/café.json").response.body
+  assert_equal 404, dispatch(router, "GET", "/articles/%E6%97%A5.%E6%9C%AC").response.status
+  route = Cybertrain::Route.new("get", "/posts/:id", "post", ->(c) { c.response.body = "x" })
+  assert_equal "json", route.matched_extension(["posts", "日本.json"])
+  assert_equal 2 * 3, Cybertrain::Route.extension_at("日本.json")
+end
+
 test "a literal last segment with a dot matches whole first" do
   router = Cybertrain::Router.new
   router.get("/robots.txt", "robots") { |c| c.response.body = "robots #{c.request.format}" }

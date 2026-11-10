@@ -18,6 +18,7 @@ ok   Route#path raises ArgumentError when a segment is missing
 ok   an extension on the last segment is the format
 ok   a route with format: false keeps the dot
 ok   a dotted segment that is not a registered format
+ok   a multibyte segment before the extension
 ok   a literal last segment with a dot matches whole first
 ok   redirect_to fills and escapes segments
 ok   Route#match returns captures or nil
@@ -30,4 +31,4 @@ ok   later sources still win when each is parsed straight into ctx.params
 ok   the Query limits apply per parse call: the query string and the form body each get MAX_PAIRS
 ok   form body is ignored unless the request is a form
 ok   route params and escaped output work in one program
-32 tests, 160 assertions, 0 failures
+33 tests, 171 assertions, 0 failures

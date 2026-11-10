@@ -230,13 +230,17 @@ module Cybertrain
     end
 
     # Raises ArgumentError (leaving the response untouched) when location
-    # contains CR or LF, e.g. a percent-decoded return_to param.
+    # contains CR or LF, e.g. a percent-decoded return_to param. Returns nil:
+    # `redirect` is also the routes DSL's Mapper#redirect, and one name keeps
+    # one return type across the program (NAME_HOMES in
+    # script/check-reserved-names; spikes/NOTES.md rules 10, 34).
     def redirect(location, status = 302)
       set_header("Location", location) # raises on CR/LF: the stream stays
       @body_writer = nil
       @upgrade = false
       @status = status
       @performed = true
+      nil
     end
 
     def performed?

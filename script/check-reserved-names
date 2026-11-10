@@ -191,6 +191,10 @@ NAME_HOMES = {
   "text" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb],
   "any" => %w[cybertrain/format_collector.rb],
   "permit" => %w[cybertrain/params.rb],
+  # Response#redirect returns nil next to the routes DSL's Mapper#redirect
+  # (a RedirectSpec, run only by `spin run gen`); both redirect_to return nil.
+  "redirect" => %w[cybertrain/http/response.rb cybertrain/generator/routes_dsl.rb],
+  "redirect_to" => %w[cybertrain/controller.rb cybertrain/router.rb],
   # The routes DSL's `scope "/v1" do` (nil), the model macro `scope :x,
   # -> { }` (nil) and the generated Gen::Console.scope(name) (a Relation).
   "scope" => %w[cybertrain/generator/routes_dsl.rb cybertrain/model.rb cybertrain/generator/console_emitter.rb],
