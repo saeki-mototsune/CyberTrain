@@ -39,6 +39,29 @@ test "to_http writes the standard reason phrase for 202 and 429" do
   assert_equal "Service Unavailable", Response.status_text(503)
 end
 
+test "reason phrases follow RFC 9110" do
+  assert_equal "Continue", Response.status_text(100)
+  assert_equal "Early Hints", Response.status_text(103)
+  assert_equal "Non-Authoritative Information", Response.status_text(203)
+  assert_equal "Multi-Status", Response.status_text(207)
+  assert_equal "IM Used", Response.status_text(226)
+  assert_equal "Use Proxy", Response.status_text(305)
+  assert_equal "Proxy Authentication Required", Response.status_text(407)
+  assert_equal "Content Too Large", Response.status_text(413)
+  assert_equal "URI Too Long", Response.status_text(414)
+  assert_equal "Misdirected Request", Response.status_text(421)
+  assert_equal "Unprocessable Content", Response.status_text(422)
+  assert_equal "Too Early", Response.status_text(425)
+  assert_equal "Unavailable For Legal Reasons", Response.status_text(451)
+  assert_equal "HTTP Version Not Supported", Response.status_text(505)
+  assert_equal "Network Authentication Required", Response.status_text(511)
+  res = Response.new
+  res.status = 413
+  assert_includes res.to_http, "HTTP/1.1 413 Content Too Large\r\n"
+  res.status = 418
+  assert_equal "Unknown", res.status_text
+end
+
 test "header lookup is case-insensitive" do
   res = Response.new
   res.set_header("X-Frame-Options", "DENY")

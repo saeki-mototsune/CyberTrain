@@ -1,0 +1,11 @@
+etag W/"3bfc269594ef649228e9a74bab00f042"
+ok   fresh_when answers 304 to a matching If-None-Match
+ok   etag: a record is keyed by table, id and updated_at
+ok   If-None-Match takes a list, a strong form and *
+ok   only GET and HEAD are answered 304
+last-modified Tue, 14 Nov 2023 22:13:20 GMT
+ok   If-Modified-Since and stale?
+ok   with both validators both must match
+ok   Cache-Control from fresh_when and expires_in
+ok   http_date and parse_http_date
+8 tests, 46 assertions, 0 failures

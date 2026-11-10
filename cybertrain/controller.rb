@@ -1,4 +1,5 @@
 require "json"
+require "digest"
 require "cybertrain/context"
 require "cybertrain/html"
 require "cybertrain/http/client_error"
@@ -92,22 +93,33 @@ module Cybertrain
 
     # The Symbols `status:` accepts in {#render}, {#head} and
     # {#redirect_to}: the Rails names of the codes in
-    # `Response::STATUS_TEXT`, one Symbol per code there. Any other status
-    # must be given as an Integer.
+    # `Response::STATUS_TEXT`, one Symbol per code there (Rack 3's names,
+    # `:content_too_large` and `:unprocessable_content` among them), plus the
+    # older names `:payload_too_large`, `:request_entity_too_large`,
+    # `:unprocessable_entity`, `:request_uri_too_long` and
+    # `:requested_range_not_satisfiable`. Any other status must be given as
+    # an Integer.
     # @api public
     STATUS_SYMBOLS = {
-      ok: 200, created: 201, accepted: 202, no_content: 204,
-      reset_content: 205, partial_content: 206,
-      multiple_choices: 300, moved_permanently: 301, found: 302, see_other: 303,
-      not_modified: 304, temporary_redirect: 307, permanent_redirect: 308,
+      continue: 100, switching_protocols: 101, processing: 102, early_hints: 103, ok: 200,
+      created: 201, accepted: 202, non_authoritative_information: 203, no_content: 204,
+      reset_content: 205, partial_content: 206, multi_status: 207, already_reported: 208,
+      im_used: 226, multiple_choices: 300, moved_permanently: 301, found: 302, see_other: 303,
+      not_modified: 304, use_proxy: 305, temporary_redirect: 307, permanent_redirect: 308,
       bad_request: 400, unauthorized: 401, payment_required: 402, forbidden: 403,
       not_found: 404, method_not_allowed: 405, not_acceptable: 406,
-      request_timeout: 408, conflict: 409, gone: 410, length_required: 411,
-      precondition_failed: 412, payload_too_large: 413, unsupported_media_type: 415,
-      range_not_satisfiable: 416, expectation_failed: 417, unprocessable_entity: 422,
-      too_many_requests: 429, request_header_fields_too_large: 431,
+      proxy_authentication_required: 407, request_timeout: 408, conflict: 409, gone: 410,
+      length_required: 411, precondition_failed: 412, content_too_large: 413, uri_too_long: 414,
+      unsupported_media_type: 415, range_not_satisfiable: 416, expectation_failed: 417,
+      misdirected_request: 421, unprocessable_content: 422, locked: 423, failed_dependency: 424,
+      too_early: 425, upgrade_required: 426, precondition_required: 428, too_many_requests: 429,
+      request_header_fields_too_large: 431, unavailable_for_legal_reasons: 451,
       internal_server_error: 500, not_implemented: 501, bad_gateway: 502,
-      service_unavailable: 503, gateway_timeout: 504
+      service_unavailable: 503, gateway_timeout: 504, http_version_not_supported: 505,
+      variant_also_negotiates: 506, insufficient_storage: 507, loop_detected: 508,
+      not_extended: 510, network_authentication_required: 511, payload_too_large: 413,
+      request_entity_too_large: 413, unprocessable_entity: 422, request_uri_too_long: 414,
+      requested_range_not_satisfiable: 416
     }
 
     # Default statuses for render/head and redirect_to. They are 200 and 302
@@ -122,6 +134,12 @@ module Cybertrain
     # mix is. (test/controller_status.rb)
     DEFAULT_STATUS = [200, :ok][0]
     DEFAULT_REDIRECT_STATUS = [302, :found][0]
+    # The `etag:` and `last_modified:` default of {#fresh_when} and {#stale?},
+    # nil, boxed like DEFAULT_STATUS: the validators are a String, a Model
+    # or a Time, and one call site passing a Model and another a String
+    # must both reach a parameter that can hold either. The seed Model is
+    # never read.
+    DEFAULT_VALIDATOR = [nil, "", Model.new, Time.at(0)][0]
     # render's `layout:` default, `true` (the controller's layout), boxed
     # the same way: one call site passing `false` and another a String must
     # both reach a parameter that can hold either.
@@ -978,6 +996,105 @@ module Cybertrain
       nil
     end
 
+    # Sends `data` as a download (Rails' `send_data`): the body is `data`,
+    # the Content-Type is `type`, and the Content-Disposition is
+    # `attachment` (or `inline`) with the file name in both the quoted
+    # fallback form and RFC 5987's `filename*`
+    # ({UploadedFile.content_disposition_utf8}), so a name with accents or a
+    # quote survives. With no `filename:` the header is the bare disposition.
+    # Marks the response performed.
+    #
+    # The bytes are served under whatever `type` says, so this is for data
+    # the application made (a CSV export, a generated PDF); bytes a user
+    # uploaded go through {#send_blob}, which never lets a browser run them.
+    # @example
+    #   send_data report.to_csv, filename: "report.csv", type: "text/csv"
+    # @param data [String] the bytes
+    # @param filename [String] the name the browser saves it under; none
+    #   when empty
+    # @param type [String] the Content-Type
+    # @param disposition [String] "attachment" or "inline"
+    # @param status [Integer, Symbol] see {STATUS_SYMBOLS}
+    # @return [nil]
+    # @api public
+    def send_data(data, filename: "", type: "application/octet-stream", disposition: "attachment", status: DEFAULT_STATUS)
+      r = @response
+      r.status = Controller.status_code(status)
+      r.content_type = type
+      r.set_header("Content-Disposition", UploadedFile.content_disposition_utf8(disposition, filename))
+      r.body = data
+      r.performed!
+      nil
+    end
+
+    # Sets the response's validators and answers `304 Not Modified` (no
+    # body) when the request's `If-None-Match` / `If-Modified-Since` show
+    # the client already has the current version; otherwise the action goes
+    # on and renders as usual. Rails' `fresh_when`.
+    #
+    # `etag:` is a String or a record. A String is hashed as it is; a record
+    # is keyed by `"<table>/<to_param>-<updated_at epoch>"`, so it changes
+    # when the record is saved. The header is a weak ETag,
+    # `W/"<first 32 hex digits of the SHA-256>"`; `If-None-Match` matches it
+    # in a list, in weak or strong form, or as `*`. `last_modified:` is a
+    # Time, sent as `Last-Modified`; an unparseable `If-Modified-Since` is
+    # ignored. When both validators are given and the request sends both,
+    # both must match. Only GET and HEAD are answered `304`.
+    #
+    # Cache-Control is `max-age=0, private, must-revalidate` (`public` when
+    # `public: true`) unless {#expires_in} already set one.
+    # @example
+    #   def show
+    #     @post = Post.find(params[:id])
+    #     fresh_when etag: @post, last_modified: @post.updated_at
+    #   end
+    # @param etag [String, Model, nil]
+    # @param last_modified [Time, nil]
+    # @param public [Boolean] let shared caches store it
+    # @return [nil]
+    # @api public
+    def fresh_when(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
+      apply_validators(etag, last_modified, public)
+      head :not_modified if request_fresh?
+      nil
+    end
+
+    # {#fresh_when}, for an action that renders only when the client's copy
+    # is out of date: sets the validators, answers `304` and returns false
+    # when the request is fresh, returns true otherwise. Rails' `stale?`.
+    # @example
+    #   def show
+    #     @post = Post.find(params[:id])
+    #     return unless stale?(etag: @post)
+    #   end
+    # @param etag [String, Model, nil]
+    # @param last_modified [Time, nil]
+    # @param public [Boolean] let shared caches store it
+    # @return [Boolean] true when the action should render
+    # @api public
+    def stale?(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
+      apply_validators(etag, last_modified, public)
+      return true unless request_fresh?
+
+      head :not_modified
+      false
+    end
+
+    # Lets the browser reuse the response for `seconds` without asking:
+    # `Cache-Control: max-age=<seconds>, private` (`public` with
+    # `public: true`). Rails' `expires_in`; a later {#fresh_when} keeps this
+    # header.
+    # @example
+    #   expires_in 300
+    # @param seconds [Integer]
+    # @param public [Boolean] let shared caches store it
+    # @return [nil]
+    # @api public
+    def expires_in(seconds, public: false)
+      @response.set_header("Cache-Control", "max-age=#{seconds.to_i}, #{public ? "public" : "private"}")
+      nil
+    end
+
     # @return [Boolean] true once this request has been rendered,
     #   redirected or answered with {#head}
     # @api public
@@ -986,6 +1103,80 @@ module Cybertrain
     end
 
     private
+
+    # The ETag, Last-Modified and (unless expires_in set one) Cache-Control
+    # headers of fresh_when and stale?.
+    def apply_validators(etag, last_modified, public)
+      key = validator_key(etag)
+      @response.set_header("ETag", "W/\"#{Digest::SHA256.hexdigest(key).byteslice(0, 32)}\"") unless key.empty?
+      stamp = validator_time(last_modified)
+      @response.set_header("Last-Modified", Request.http_date(Time.at(stamp).utc)) if stamp >= 0
+      if @response.header("Cache-Control").nil?
+        @response.set_header("Cache-Control", public ? "max-age=0, public, must-revalidate" : "max-age=0, private, must-revalidate")
+      end
+      nil
+    end
+
+    # The text an ETag is made from: a String as given, a record as
+    # "posts/1-<updated_at epoch>", "" for nil or anything else.
+    def validator_key(value)
+      case value
+      when String then value.to_s
+      when Model
+        name = Inflector.pluralize(Inflector.underscore(value.model_name))
+        at = Cast.time_or_nil(value.read_attribute(:updated_at))
+        at.nil? ? "#{name}/#{value.to_param}" : "#{name}/#{value.to_param}-#{at.to_i}"
+      else ""
+      end
+    end
+
+    # A Last-Modified value as epoch seconds, -1 for none. `when Time`
+    # first (NOTES rule 8).
+    def validator_time(value)
+      case value
+      when Time then value.to_i
+      else -1
+      end
+    end
+
+    # Whether the request's validators say the client's copy is current:
+    # RFC 9110 section 13.2.2 for GET and HEAD, both validators needing to
+    # match when the request sends both (Rails' Request#fresh?).
+    def request_fresh?
+      return false unless @request.get? || @request.head?
+
+      since = Request.parse_http_date(@request.header("If-Modified-Since").to_s)
+      none_match = @request.header("If-None-Match").to_s
+      return false if since < 0 && none_match.empty?
+
+      if since >= 0
+        stamp = Request.parse_http_date(@response.header("Last-Modified").to_s)
+        return false if stamp < 0 || stamp > since
+      end
+      unless none_match.empty?
+        tag = @response.header("ETag").to_s
+        return false unless etag_listed?(none_match, tag)
+      end
+      true
+    end
+
+    # Whether the If-None-Match list names `tag` (weak comparison: a W/
+    # prefix is ignored) or is `*`.
+    def etag_listed?(list, tag)
+      return false if tag.empty?
+
+      want = strip_weak(tag)
+      list.split(",").each do |item|
+        entry = item.strip
+        return true if entry == "*"
+        return true if strip_weak(entry) == want
+      end
+      false
+    end
+
+    def strip_weak(tag)
+      tag.start_with?("W/") ? tag.byteslice(2, tag.bytesize - 2).to_s : tag
+    end
 
     def run_action(action, body)
       @action_name = action.to_s

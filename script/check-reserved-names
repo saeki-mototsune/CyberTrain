@@ -212,6 +212,9 @@ NAME_HOMES = {
   # -> { }` (nil) and the generated Gen::Console.scope(name) (a Relation).
   "scope" => %w[cybertrain/generator/routes_dsl.rb cybertrain/model.rb cybertrain/generator/console_emitter.rb],
   # i18n's translate and localize helpers come in phase 4b.
+  # Controller#send_data(data, filename:, ...) answers a download; the
+  # Mailer's SMTP connection writes raw bytes with its own send_data(data).
+  "send_data" => %w[cybertrain/controller.rb cybertrain/mailer.rb],
   "t" => %w[],
   "l" => %w[]
 }.freeze

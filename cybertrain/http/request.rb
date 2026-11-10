@@ -583,6 +583,79 @@ module Cybertrain
       text
     end
 
+    # An HTTP date (RFC 9110 section 5.6.7, IMF-fixdate), what
+    # Last-Modified and Expires carry: `Sun, 06 Nov 1994 08:49:37 GMT`.
+    # @example
+    #   Request.http_date(Time.at(784111777)) # => "Sun, 06 Nov 1994 08:49:37 GMT"
+    # @param time [Time]
+    # @return [String]
+    # @api public
+    def self.http_date(time)
+      time.getutc.strftime("%a, %d %b %Y %H:%M:%S GMT")
+    end
+
+    # The epoch seconds of an HTTP date as {.http_date} writes it (a
+    # conditional request's If-Modified-Since), -1 when the text is not one.
+    # An Integer sentinel, not nil, so the result has one type.
+    # @example
+    #   Request.parse_http_date("Sun, 06 Nov 1994 08:49:37 GMT") # => 784111777
+    #   Request.parse_http_date("yesterday")                      # => -1
+    # @param text [String]
+    # @return [Integer]
+    # @api public
+    def self.parse_http_date(text)
+      s = text.to_s # NOTES rule 62: the byte scans read a fresh local
+      return -1 unless s.bytesize == 29 && s.getbyte(3) == 44 && s.getbyte(4) == 32 && s.getbyte(7) == 32 &&
+                       s.getbyte(11) == 32 && s.getbyte(16) == 32 && s.getbyte(19) == 58 && s.getbyte(22) == 58 &&
+                       s.getbyte(25) == 32 && s.byteslice(25, 4) == " GMT"
+      return -1 unless HTTP_DAYS.include?(s.byteslice(0, 3))
+
+      month = 0
+      name = s.byteslice(8, 3)
+      m = 0
+      while m < 12
+        month = m + 1 if HTTP_MONTHS[m] == name
+        m += 1
+      end
+      return -1 if month == 0
+
+      day = http_digits(s, 5, 2)
+      year = http_digits(s, 12, 4)
+      hour = http_digits(s, 17, 2)
+      minute = http_digits(s, 20, 2)
+      second = http_digits(s, 23, 2)
+      return -1 if day < 1 || day > 31 || year < 1970 || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 60
+
+      # Days from the civil date (Howard Hinnant's algorithm), then seconds.
+      y = month <= 2 ? year - 1 : year
+      era = y / 400
+      yoe = y - era * 400
+      shifted = month > 2 ? month - 3 : month + 9
+      doy = (153 * shifted + 2) / 5 + day - 1
+      doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+      days = era * 146_097 + doe - 719_468
+      days * 86_400 + hour * 3600 + minute * 60 + second
+    end
+
+    HTTP_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    HTTP_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    # The `len` ASCII digits of `s` from byte `from` as an Integer, -1 when
+    # one is not a digit.
+    # @api private
+    def self.http_digits(s, from, len)
+      n = 0
+      i = 0
+      while i < len
+        b = s.getbyte(from + i)
+        return -1 if b < 48 || b > 57
+
+        n = n * 10 + (b - 48)
+        i += 1
+      end
+      n
+    end
+
     # Inflates one gzip body under a size limit through the installed
     # inflater. The gzip magic (1f 8b, method 8) is checked here, so a body
     # that is not gzip at all is undecodable before the inflater is asked.

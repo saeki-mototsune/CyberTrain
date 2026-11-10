@@ -627,10 +627,10 @@ module Cybertrain
         index show new new_action edit create update destroy
         ctx request response params action_name rescued_exception session flash
         initialize process run_callback call_helper_method default_render view_assigns view_env
-        controller_path controller_layout render_template render redirect_to head send_blob stream
+        controller_path controller_layout render_template render redirect_to head send_blob send_data fresh_when expires_in stream
         run_action run_before_callbacks run_after_callbacks run_one
         rescue_with_handler render_partial send_html string_keys json_body
-        safe_redirect_path
+        safe_redirect_path apply_validators validator_key validator_time strip_weak
         respond_to head_not_acceptable send_rendered format_template_path
 
         apply_rate_limit
