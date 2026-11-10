@@ -8,6 +8,10 @@ ok   keep_alive? for HTTP/1.1
 ok   keep_alive? for HTTP/1.0
 ok   keep_alive? matches Connection tokens exactly, not substrings
 ok   content_length of an overlong all-digit value is Int64 max, not a RangeError
+ok   Accept decides the format when there is no extension
+ok   Accept with q-values and wildcards
+ok   the extension wins over Accept, and setting it again forgets the memo
+ok   extensions map to Rails' registered formats
 ok   method predicates
 ok   override_method! upper-cases the new method
 ok   cookie_header returns the Cookie header or empty string
@@ -43,4 +47,4 @@ ok   header_params skips junk, keeps bare names as empty values and trims blanks
 ok   header_scheme reads Bearer; the credential is a bare parameter
 ok   header_params is empty for a missing header and one over 8 KiB
 ok   header_params tolerates any bytes in values
-45 tests, 231 assertions, 0 failures
+49 tests, 268 assertions, 0 failures

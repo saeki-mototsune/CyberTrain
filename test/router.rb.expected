@@ -15,6 +15,11 @@ ok   the Router reads the request's cached path_segments; an invalid decoded seg
 ok   a large non-ASCII path segment with an escape splits without a quadratic library call
 ok   path_for builds paths from route names
 ok   Route#path raises ArgumentError when a segment is missing
+ok   an extension on the last segment is the format
+ok   a route with format: false keeps the dot
+ok   a dotted segment that is not a registered format
+ok   a literal last segment with a dot matches whole first
+ok   redirect_to fills and escapes segments
 ok   Route#match returns captures or nil
 ok   unmatched request gets a plain-text 404
 ok   params assembly order is query < form < route
@@ -25,4 +30,4 @@ ok   later sources still win when each is parsed straight into ctx.params
 ok   the Query limits apply per parse call: the query string and the form body each get MAX_PAIRS
 ok   form body is ignored unless the request is a form
 ok   route params and escaped output work in one program
-27 tests, 121 assertions, 0 failures
+32 tests, 160 assertions, 0 failures

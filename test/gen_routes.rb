@@ -698,6 +698,74 @@ test "on: :collection and on: :member inside resources" do
   assert_equal 0, Cybertrain::Routes.specs[0].helper_args.size
 end
 
+test "format: false on a route, resources, resource and root" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    root "pages#home", format: false
+    get "/files/:name", to: "pages#file", format: false
+    post "/files", to: "pages#upload", format: false
+    patch "/files/:name", to: "pages#rename", format: false
+    put "/files/:name", to: "pages#replace", format: false
+    delete "/files/:name", to: "pages#remove", format: false
+    resources :reports, only: [:index, :show], format: false
+    resource :profile, only: [:show], format: false
+    get "/about", to: "pages#about"
+    resources :posts, only: [:show]
+  end
+  specs = Cybertrain::Routes.specs
+  assert_equal [false, false, false, false, false, false, false, false, false, true, true], specs.map { |s| s.takes_format }
+  source = Cybertrain::Gen::RoutesEmitter.emit(specs)
+  assert_includes source, "router.add(\"GET\", \"/\", \"root\", false) { |ctx| PagesController.new(ctx)"
+  assert_includes source, "router.add(\"GET\", \"/files/:name\", \"files_name\", false) { |ctx| PagesController.new(ctx).process(:file) { |c| c.file } }"
+  assert_includes source, "router.add(\"GET\", \"/about\", \"about\") { |ctx| PagesController.new(ctx)"
+  assert_includes source, "router.add(\"GET\", \"/posts/:id\", \"post\") { |ctx| PostsController.new(ctx)"
+end
+
+test "redirect routes" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    get "/old", to: redirect("/new")
+    get "/posts/:id/show", to: redirect("/posts/%{id}", status: 302)
+    get "/legacy/:slug", to: redirect("/articles/%{slug}"), format: false
+    resources :posts, only: [:show] do |posts|
+      posts.get :permalink, on: :member, to: posts.redirect("/p/%{id}", status: 308)
+    end
+  end
+  spec = Cybertrain::Routes.specs[0]
+  assert_equal "/new", spec.redirect_location
+  assert_equal 301, spec.redirect_code
+  assert_equal "", spec.name
+  source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
+  assert_includes source, "      router.add(\"GET\", \"/old\", \"\") { |ctx| Cybertrain::Router.redirect_to(ctx, \"/new\", 301) }\n"
+  assert_includes source, "      router.add(\"GET\", \"/posts/:id/show\", \"\") { |ctx| Cybertrain::Router.redirect_to(ctx, \"/posts/%{id}\", 302) }\n"
+  assert_includes source, "      router.add(\"GET\", \"/legacy/:slug\", \"\", false) { |ctx| Cybertrain::Router.redirect_to(ctx, \"/articles/%{slug}\", 301) }\n"
+  assert_includes source, "      router.add(\"GET\", \"/posts/:id/permalink\", \"\") { |ctx| Cybertrain::Router.redirect_to(ctx, \"/p/%{id}\", 308) }\n"
+  # A redirect route with as: is named like any other.
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw { get "/old", to: redirect("/new"), as: "old" }
+  assert_equal "old", Cybertrain::Routes.specs[0].name
+  assert_includes Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs), "def old_path\n"
+  Cybertrain::Routes.reset!
+end
+
+test "redirect refuses a status that is not 3xx and a %{name} the pattern lacks" do
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/old", to: redirect("/new", status: 200) }
+  end
+  assert_equal "redirect status: must be a 3xx code (got 200)", message
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/old", to: redirect("/new", status: 309) }
+  end
+  assert_equal "redirect status: must be a 3xx code (got 309)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/posts/:id/show", to: redirect("/posts/%{slug}") }
+  end
+  assert_equal "redirect(\"/posts/%{slug}\"): %{slug} is not a segment of /posts/:id/show", message
+  Cybertrain::Routes.reset!
+end
+
 test "RouteSpec takes a format by default" do
   Cybertrain::Routes.reset!
   Cybertrain::Routes.draw { get "/about", to: "pages#about" }

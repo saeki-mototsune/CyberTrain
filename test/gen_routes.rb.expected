@@ -33,6 +33,9 @@ ok   a scope path with a dynamic segment gives the helpers an argument
 ok   resource takes controller: and a block with member routes and nested resources
 ok   resources controller: and param:
 ok   on: :collection and on: :member inside resources
+ok   format: false on a route, resources, resource and root
+ok   redirect routes
+ok   redirect refuses a status that is not 3xx and a %{name} the pattern lacks
 ok   RouteSpec takes a format by default
 ok   misuse is refused with a message
-37 tests, 145 assertions, 0 failures
+40 tests, 165 assertions, 0 failures

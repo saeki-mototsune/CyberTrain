@@ -115,6 +115,17 @@ test "a scope's routes and a singular resource's block route dispatch" do
   assert_equal "/profile/refresh", Gen::Routes.path_for("refresh_profile_path", [])
 end
 
+test "a redirect route and a route drawn with format: false" do
+  c = client
+  res = c.get("/old-posts/a%20b")
+  assert_equal 301, res.status
+  assert_equal "/posts/a%20b", res.header("Location")
+  assert_equal "", res.body
+  assert_equal "file report.v2 html", c.get("/files/report.v2").body
+  assert_equal "file report.json html", c.get("/files/report.json").body
+  assert_equal "show 3 /posts/3/edit /posts/3/comments /posts/3/preview", c.get("/posts/3.json").body
+end
+
 test "unknown paths are 404" do
   assert_response client.get("/nope"), :not_found
   assert_response client.get("/posts/5/comments"), :not_found
@@ -131,7 +142,7 @@ end
 
 test "the router knows the route names" do
   router = Gen::Routes.build(Cybertrain::Router.new)
-  assert_equal 23, router.routes.size
+  assert_equal 25, router.routes.size
   assert_equal "/posts/3/edit", router.path_for("edit_post", { "id" => "3" })
 end
 

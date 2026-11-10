@@ -224,6 +224,75 @@ test "Route#path raises ArgumentError when a segment is missing" do
   assert_includes message, ":id"
 end
 
+test "an extension on the last segment is the format" do
+  ctx = dispatch(sample_router, "GET", "/posts/3.json")
+  assert_equal "show 3", ctx.response.body
+  assert_equal :json, ctx.request.format
+  assert_equal "json", ctx.request.format_extension
+  assert_equal({ "id" => "3" }, ctx.route_params)
+  ctx = dispatch(sample_router, "GET", "/posts.json")
+  assert_equal "index", ctx.response.body
+  assert_equal "json", ctx.request.format_extension
+  ctx = dispatch(sample_router, "GET", "/posts/3/edit.html")
+  assert_equal "edit 3", ctx.response.body
+  assert_equal :html, ctx.request.format
+  ctx = dispatch(sample_router, "GET", "/posts/3")
+  assert_equal "", ctx.request.format_extension
+  assert_equal :html, ctx.request.format
+end
+
+test "a route with format: false keeps the dot" do
+  router = Cybertrain::Router.new
+  router.add("GET", "/files/:name", "file", false) { |c| c.response.body = c.params[:name].to_s }
+  assert_equal "report.v2", dispatch(router, "GET", "/files/report.v2").response.body
+  ctx = dispatch(router, "GET", "/files/report.json")
+  assert_equal "report.json", ctx.response.body
+  assert_equal "", ctx.request.format_extension
+  assert_equal :html, ctx.request.format
+  assert_equal false, router.routes[0].takes_format
+  assert_equal true, sample_router.routes[0].takes_format
+end
+
+test "a dotted segment that is not a registered format" do
+  router = Cybertrain::Router.new
+  router.get("/files/:name", "file") { |c| c.response.body = "#{c.params[:name]} #{c.request.format}" }
+  assert_equal "report unknown", dispatch(router, "GET", "/files/report.v2").response.body
+  assert_equal 404, dispatch(sample_router, "GET", "/posts/3.json.bak").response.status
+  assert_equal 404, dispatch(sample_router, "GET", "/posts/.json").response.status
+  # The tail is [A-Za-z0-9_]{1,20}: a longer or punctuated one is no
+  # extension, and a dynamic segment never captures the dot.
+  assert_equal 404, dispatch(router, "GET", "/files/report.#{"x" * 21}").response.status
+  assert_equal "report unknown", dispatch(router, "GET", "/files/report.#{"x" * 20}").response.body
+  assert_equal 404, dispatch(router, "GET", "/files/report.v-2").response.status
+  assert_equal 404, dispatch(sample_router, "GET", "/posts/3.json/edit").response.status
+end
+
+test "a literal last segment with a dot matches whole first" do
+  router = Cybertrain::Router.new
+  router.get("/robots.txt", "robots") { |c| c.response.body = "robots #{c.request.format}" }
+  router.get("/feed", "feed") { |c| c.response.body = "feed #{c.request.format}" }
+  ctx = dispatch(router, "GET", "/robots.txt")
+  assert_equal 200, ctx.response.status
+  assert_equal "robots text", ctx.response.body
+  assert_equal "txt", ctx.request.format_extension
+  assert_equal "feed rss", dispatch(router, "GET", "/feed.rss").response.body
+  assert_equal 404, dispatch(router, "GET", "/robots").response.status
+end
+
+test "redirect_to fills and escapes segments" do
+  router = Cybertrain::Router.new
+  router.get("/posts/:id/show") { |c| Cybertrain::Router.redirect_to(c, "/posts/%{id}", 301) }
+  router.get("/old/:id") { |c| Cybertrain::Router.redirect_to(c, "/new/%{id}/x?from=%{id}", 302) }
+  ctx = dispatch(router, "GET", "/posts/a%20b/show")
+  assert_equal 301, ctx.response.status
+  assert_equal "/posts/a%20b", ctx.response.header("Location")
+  assert_equal "", ctx.response.body
+  ctx = dispatch(router, "GET", "/old/7")
+  assert_equal 302, ctx.response.status
+  assert_equal "/new/7/x?from=7", ctx.response.header("Location")
+  assert_equal "", ctx.response.body
+end
+
 test "Route#match returns captures or nil" do
   route = Cybertrain::Route.new("get", "/posts/:id", "post", ->(c) { c.response.body = "x" })
   assert_equal "GET", route.verb
@@ -232,6 +301,12 @@ test "Route#match returns captures or nil" do
   assert_nil route.match("POST", ["posts", "1"])
   assert_nil route.match("GET", ["posts"])
   assert_nil route.match("GET", ["users", "1"])
+  assert_equal({ "id" => "1" }, route.match("GET", ["posts", "1.json"]))
+  assert_equal "json", route.matched_extension(["posts", "1.json"])
+  assert_equal "", route.matched_extension(["posts", "1"])
+  plain = Cybertrain::Route.new("get", "/posts/:id", "post", ->(c) { c.response.body = "x" }, false)
+  assert_equal({ "id" => "1.json" }, plain.match("GET", ["posts", "1.json"]))
+  assert_equal "", plain.matched_extension(["posts", "1.json"])
 end
 
 test "unmatched request gets a plain-text 404" do

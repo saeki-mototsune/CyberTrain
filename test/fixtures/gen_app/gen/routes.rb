@@ -21,6 +21,8 @@ module Gen
       router.add("GET", "/v1/about", "v1_about") { |ctx| PagesController.new(ctx).process(:about) { |c| c.about } }
       router.add("GET", "/profile/refresh", "refresh_profile") { |ctx| PagesController.new(ctx).process(:refresh) { |c| c.refresh } }
       router.add("GET", "/profile", "profile") { |ctx| PagesController.new(ctx).process(:show) { |c| c.show } }
+      router.add("GET", "/old-posts/:id", "") { |ctx| Cybertrain::Router.redirect_to(ctx, "/posts/%{id}", 301) }
+      router.add("GET", "/files/:name", "files_name", false) { |ctx| PagesController.new(ctx).process(:file) { |c| c.file } }
       router.add("GET", "/admin/jobs", "") { |ctx| CybertrainJobsController.new(ctx).process(:index) { |c| c.index } }
       router.add("POST", "/admin/jobs/retry_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:retry_all) { |c| c.retry_all_action } }
       router.add("POST", "/admin/jobs/discard_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:discard_all_failed) { |c| c.discard_all_failed_action } }
@@ -30,7 +32,7 @@ module Gen
       router
     end
 
-    # The helper named by a String, for templates: path_for("profile_path", []).
+    # The helper named by a String, for templates: path_for("files_name_path", [name]).
     def self.path_for(name, args)
       case name
       when "root_path" then "/"
@@ -59,6 +61,8 @@ module Gen
       when "refresh_profile_url" then Cybertrain.url_root + "/profile/refresh"
       when "profile_path" then "/profile"
       when "profile_url" then Cybertrain.url_root + "/profile"
+      when "files_name_path" then "/files/#{Cybertrain::Gen.segment(args[0])}"
+      when "files_name_url" then Cybertrain.url_root + "/files/#{Cybertrain::Gen.segment(args[0])}"
       else raise ArgumentError, "unknown route helper '#{name}'"
       end
     end
@@ -172,6 +176,14 @@ module Gen
 
     def profile_url
       Cybertrain.url_root + profile_path
+    end
+
+    def files_name_path(name)
+      "/files/#{Cybertrain::Gen.segment(name)}"
+    end
+
+    def files_name_url(name)
+      Cybertrain.url_root + files_name_path(name)
     end
   end
 end

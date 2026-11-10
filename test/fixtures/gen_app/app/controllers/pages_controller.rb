@@ -13,4 +13,9 @@ class PagesController < ApplicationController
   def refresh
     render plain: "refresh #{v1_about_path}"
   end
+
+  # get "/files/:name", format: false: the dot stays in the segment.
+  def file
+    render plain: "file #{params[:name]} #{request.format}"
+  end
 end

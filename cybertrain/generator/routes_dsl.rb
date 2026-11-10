@@ -18,6 +18,9 @@ module Cybertrain
       # Whether the route matches an optional `.:format` suffix (true unless
       # the route says otherwise).
       attr_accessor :takes_format
+      # A redirect route's target (`"/posts/%{id}"`, "" for a route to a
+      # controller) and status.
+      attr_accessor :redirect_location, :redirect_code
 
       # method_override: the controller method when it is not the action's
       # own name ("" for that), as for the jobs page, whose `retry` action
@@ -33,6 +36,8 @@ module Cybertrain
         @method_override = method_override
         @helper_args = helper_args.split(",")
         @takes_format = true
+        @redirect_location = ""
+        @redirect_code = 0
       end
 
       # The controller method that implements the action.
@@ -54,6 +59,23 @@ module Cybertrain
       # The *_path/*_url helper prefix ("" when the route is unnamed).
       def helper_name
         @name
+      end
+    end
+
+    # What {Mapper#redirect} returns, for `to:`: the target (`"/posts/%{id}"`)
+    # and the status. The accessors have distinctive names (NOTES rule 10).
+    # @api public
+    class RedirectSpec
+      # @return [String]
+      # @api public
+      attr_reader :redirect_target
+      # @return [Integer]
+      # @api public
+      attr_reader :redirect_status
+
+      def initialize(redirect_target, redirect_status)
+        @redirect_target = redirect_target
+        @redirect_status = redirect_status
       end
     end
 
@@ -127,12 +149,13 @@ module Cybertrain
       # admin.root "dashboard#index" end`: GET /admin, `admin_root_path`,
       # Admin::DashboardController).
       # @param to [String] `"controller#action"`
+      # @param format [Boolean] false: match no `.:format` extension
       # @return [nil]
       # @api public
-      def root(to)
+      def root(to, format: true)
         target = split_to(to)
         path = @path_prefix.empty? ? "/" : @path_prefix
-        add_spec("GET", path, @module_prefix + target[0], target[1], "#{@name_prefix}root", @prefix_args)
+        add_spec("GET", path, @module_prefix + target[0], target[1], "#{@name_prefix}root", @prefix_args, format)
       end
 
       # A GET route. At the top level `to:` is required; inside a
@@ -158,62 +181,96 @@ module Cybertrain
       #     posts.get :search, on: :collection          # GET /posts/search, search_posts_path
       #     posts.post :publish, on: :member            # POST /posts/:id/publish, publish_post_path
       #   end
+      #   get "/old", to: redirect("/new")                # 301 to /new
       # @param path [String, Symbol] `:name` segments become params (`"/users/:id"`)
-      # @param to [String] `"controller#action"`, or just `"action"`
+      # @param to [String, RedirectSpec] `"controller#action"`, just
+      #   `"action"`, or a {#redirect}
       # @param as [String] the route name
       # @param on [Symbol, nil] `:member` (inside `resources` or `resource`)
       #   or `:collection` (inside `resources`): as in a `member` /
       #   `collection` block
+      # @param format [Boolean] false: the route matches no `.:format`
+      #   extension, so a dot in the last segment is part of it
+      #   (`get "/files/:name", to: "files#show", format: false` gives
+      #   `params[:name] == "report.v2"`)
       # @return [nil]
       # @raise [ArgumentError] with no controller, an invalid or duplicate
-      #   name, or an `on:` that does not fit where the route is drawn
+      #   name, an `on:` that does not fit where the route is drawn, or a
+      #   redirect whose `%{name}` is not a segment of the path
       # @api public
-      def get(path, to: "", as: "", on: nil)
-        add_custom_route("GET", path, to, as, on)
+      def get(path, to: "", as: "", on: nil, format: true)
+        add_custom_route("GET", path, to, as, on, format)
       end
 
       # A POST route; see {#get}.
       # @param path [String, Symbol]
-      # @param to [String]
+      # @param to [String, RedirectSpec]
       # @param as [String]
       # @param on [Symbol, nil]
+      # @param format [Boolean]
       # @return [nil]
       # @api public
-      def post(path, to: "", as: "", on: nil)
-        add_custom_route("POST", path, to, as, on)
+      def post(path, to: "", as: "", on: nil, format: true)
+        add_custom_route("POST", path, to, as, on, format)
       end
 
       # A PATCH route; see {#get}.
       # @param path [String, Symbol]
-      # @param to [String]
+      # @param to [String, RedirectSpec]
       # @param as [String]
       # @param on [Symbol, nil]
+      # @param format [Boolean]
       # @return [nil]
       # @api public
-      def patch(path, to: "", as: "", on: nil)
-        add_custom_route("PATCH", path, to, as, on)
+      def patch(path, to: "", as: "", on: nil, format: true)
+        add_custom_route("PATCH", path, to, as, on, format)
       end
 
       # A PUT route; see {#get}.
       # @param path [String, Symbol]
-      # @param to [String]
+      # @param to [String, RedirectSpec]
       # @param as [String]
       # @param on [Symbol, nil]
+      # @param format [Boolean]
       # @return [nil]
       # @api public
-      def put(path, to: "", as: "", on: nil)
-        add_custom_route("PUT", path, to, as, on)
+      def put(path, to: "", as: "", on: nil, format: true)
+        add_custom_route("PUT", path, to, as, on, format)
       end
 
       # A DELETE route; see {#get}.
       # @param path [String, Symbol]
-      # @param to [String]
+      # @param to [String, RedirectSpec]
       # @param as [String]
       # @param on [Symbol, nil]
+      # @param format [Boolean]
       # @return [nil]
       # @api public
-      def delete(path, to: "", as: "", on: nil)
-        add_custom_route("DELETE", path, to, as, on)
+      def delete(path, to: "", as: "", on: nil, format: true)
+        add_custom_route("DELETE", path, to, as, on, format)
+      end
+
+      # A redirect, for `to:`: the route answers `status` with `Location:
+      # path`, each `%{name}` in `path` replaced by the route's `:name`
+      # segment, escaped, and an empty body. A redirect route is unnamed
+      # unless given `as:`. The block form that computes the target is not
+      # available (a controller action does that).
+      # @example
+      #   get "/old", to: redirect("/new")                                   # 301
+      #   get "/posts/:id/show", to: redirect("/posts/%{id}", status: 302)
+      # @param path [String] the target, a path or URL
+      # @param status [Integer] 300 to 308
+      # @return [RedirectSpec]
+      # @raise [ArgumentError] for a status outside 300-308 (the route
+      #   raises for a `%{name}` its path lacks)
+      # @api public
+      def redirect(path, status: 301)
+        code = status.to_i
+        unless code >= 300 && code <= 308
+          message = "redirect status: must be a 3xx code (got #{code})"
+          raise ArgumentError, message
+        end
+        RedirectSpec.new("#{path}", code)
       end
 
       # Routes whose paths, helper names and controllers sit under `name`:
@@ -364,13 +421,15 @@ module Cybertrain
       # @param controller [String] the controller (`"metrics"`), under the
       #   enclosing namespace's module; default the plural
       # @param param [Symbol] the member segment's name (`:key`)
+      # @param format [Boolean] false: the seven routes match no
+      #   `.:format` extension (the block's routes keep their own)
       # @yieldparam mapper [Mapper] the mapper, to call with an explicit
       #   receiver inside the block (`articles.resources`): Spinel gives a
       #   nested block no implicit self
       # @return [nil]
       # @raise [ArgumentError] for a `param:` that is not a lowercase name
       # @api public
-      def resources(name, only: nil, except: nil, controller: "", param: :id, &block)
+      def resources(name, only: nil, except: nil, controller: "", param: :id, format: true, &block)
         # Interpolated, not name.to_s: in a program that also loads the model
         # runtime, name.to_s came out boxed and widened @controller, which
         # broke the C build of save_scope/restore_scope.
@@ -415,15 +474,15 @@ module Cybertrain
           next if !except.nil? && except.include?(action)
 
           case action
-          when :index then add_standard(used, "GET", collection_path, target, "index", collection_name, collection_args)
-          when :create then add_standard(used, "POST", collection_path, target, "create", collection_name, collection_args)
-          when :new then add_standard(used, "GET", "#{collection_path}/new", target, "new", "new_#{member_name}", collection_args)
-          when :edit then add_standard(used, "GET", "#{member_path}/edit", target, "edit", "edit_#{member_name}", member_args)
-          when :show then add_standard(used, "GET", member_path, target, "show", member_name, member_args)
+          when :index then add_standard(used, "GET", collection_path, target, "index", collection_name, collection_args, format)
+          when :create then add_standard(used, "POST", collection_path, target, "create", collection_name, collection_args, format)
+          when :new then add_standard(used, "GET", "#{collection_path}/new", target, "new", "new_#{member_name}", collection_args, format)
+          when :edit then add_standard(used, "GET", "#{member_path}/edit", target, "edit", "edit_#{member_name}", member_args, format)
+          when :show then add_standard(used, "GET", member_path, target, "show", member_name, member_args, format)
           when :update
-            add_standard(used, "PATCH", member_path, target, "update", member_name, member_args)
-            add_standard(used, "PUT", member_path, target, "update", member_name, member_args)
-          when :destroy then add_standard(used, "DELETE", member_path, target, "destroy", member_name, member_args)
+            add_standard(used, "PATCH", member_path, target, "update", member_name, member_args, format)
+            add_standard(used, "PUT", member_path, target, "update", member_name, member_args, format)
+          when :destroy then add_standard(used, "DELETE", member_path, target, "destroy", member_name, member_args, format)
           end
         end
         nil
@@ -460,10 +519,12 @@ module Cybertrain
       # @param except [Array<Symbol>, nil] draw all but these
       # @param controller [String] the controller (`"auth/sessions"`), under
       #   the enclosing namespace's module; default the plural
+      # @param format [Boolean] false: the resource's routes match no
+      #   `.:format` extension (the block's routes keep their own)
       # @yieldparam mapper [Mapper]
       # @return [nil]
       # @api public
-      def resource(name, only: nil, except: nil, controller: "", &block)
+      def resource(name, only: nil, except: nil, controller: "", format: true, &block)
         singular = "#{name}"
         given = "#{controller}"
         target = @module_prefix + (given.empty? ? Inflector.pluralize(singular) : given)
@@ -493,14 +554,14 @@ module Cybertrain
           next if !except.nil? && except.include?(action)
 
           case action
-          when :create then add_standard(used, "POST", path, target, "create", route_name, args)
-          when :new then add_standard(used, "GET", "#{path}/new", target, "new", "new_#{route_name}", args)
-          when :edit then add_standard(used, "GET", "#{path}/edit", target, "edit", "edit_#{route_name}", args)
-          when :show then add_standard(used, "GET", path, target, "show", route_name, args)
+          when :create then add_standard(used, "POST", path, target, "create", route_name, args, format)
+          when :new then add_standard(used, "GET", "#{path}/new", target, "new", "new_#{route_name}", args, format)
+          when :edit then add_standard(used, "GET", "#{path}/edit", target, "edit", "edit_#{route_name}", args, format)
+          when :show then add_standard(used, "GET", path, target, "show", route_name, args, format)
           when :update
-            add_standard(used, "PATCH", path, target, "update", route_name, args)
-            add_standard(used, "PUT", path, target, "update", route_name, args)
-          when :destroy then add_standard(used, "DELETE", path, target, "destroy", route_name, args)
+            add_standard(used, "PATCH", path, target, "update", route_name, args, format)
+            add_standard(used, "PUT", path, target, "update", route_name, args, format)
+          when :destroy then add_standard(used, "DELETE", path, target, "destroy", route_name, args, format)
           end
         end
         nil
@@ -577,10 +638,16 @@ module Cybertrain
       # Not named `match`: Router#match(verb, path_segments) exists, and a
       # shared name made Spinel type `path` here as an Array of segments
       # once the DSL calls came only through instance_eval (NOTES rule 10).
-      def add_custom_route(verb, path, to, as, on)
+      def add_custom_route(verb, path, to, as, on, format)
         text = "#{path}"
         segment = text.start_with?("/") ? text[1, text.size - 1] : text
-        target = to == "" ? ["", segment] : split_to(to)
+        case to
+        when RedirectSpec
+          add_redirect_route(verb, segment, to, "#{as}", on, format)
+          return nil
+        end
+        given = "#{to}"
+        target = given == "" ? ["", segment] : split_to(given)
         controller = target[0] == "" ? @controller : @module_prefix + target[0]
         action = target[1]
         word = as == "" ? derive_name(segment) : as
@@ -588,17 +655,72 @@ module Cybertrain
         case route_mode(on)
         when "member"
           args = join_args(@member_args, path_args(segment, last_literal(@member_path)))
-          add_spec(verb, "#{@member_path}/#{segment}", controller, action, custom_name("#{word}_#{@member_name}", as), args)
+          add_spec(verb, "#{@member_path}/#{segment}", controller, action, custom_name("#{word}_#{@member_name}", as), args, format)
         when "collection"
           args = join_args(@collection_args, path_args(segment, last_literal(@collection_path)))
-          add_spec(verb, "#{@collection_path}/#{segment}", controller, action, custom_name("#{word}_#{@collection_name}", as), args)
+          add_spec(verb, "#{@collection_path}/#{segment}", controller, action, custom_name("#{word}_#{@collection_name}", as), args, format)
         else
           pattern = "#{@path_prefix}/#{segment}"
           raise ArgumentError, "#{verb} #{pattern} needs to: \"controller#action\"" if controller == ""
 
           args = join_args(@prefix_args, path_args(segment, last_literal(@path_prefix)))
-          add_spec(verb, pattern, controller, action, custom_name(@name_prefix + word, as), args)
+          add_spec(verb, pattern, controller, action, custom_name(@name_prefix + word, as), args, format)
         end
+      end
+
+      # A custom route whose `to:` is a {#redirect}: its path is drawn as a
+      # custom route's, it is unnamed unless `as:` names it (Rails would
+      # derive one), and every `%{name}` of the target must be a segment of
+      # the path.
+      def add_redirect_route(verb, segment, redirect, as, on, format)
+        mode = route_mode(on)
+        if mode == "member"
+          pattern = "#{@member_path}/#{segment}"
+          args = join_args(@member_args, path_args(segment, last_literal(@member_path)))
+          name = as == "" ? "" : "#{as}_#{@member_name}"
+        elsif mode == "collection"
+          pattern = "#{@collection_path}/#{segment}"
+          args = join_args(@collection_args, path_args(segment, last_literal(@collection_path)))
+          name = as == "" ? "" : "#{as}_#{@collection_name}"
+        else
+          pattern = "#{@path_prefix}/#{segment}"
+          args = join_args(@prefix_args, path_args(segment, last_literal(@path_prefix)))
+          name = as == "" ? "" : @name_prefix + as
+        end
+        location = redirect.redirect_target
+        missing = missing_redirect_key(location, pattern)
+        unless missing.empty?
+          message = "redirect(#{location.inspect}): %{#{missing}} is not a segment of #{pattern}"
+          raise ArgumentError, message
+        end
+        check_name(verb, pattern, name)
+        spec = RouteSpec.new(verb, pattern, "", "", name, "", distinct_args(args))
+        spec.takes_format = format
+        spec.redirect_location = location
+        spec.redirect_code = redirect.redirect_status
+        @specs << spec
+        nil
+      end
+
+      # The first `%{name}` of a redirect target that is not a `:name`
+      # segment of pattern, "" when all are.
+      def missing_redirect_key(location, pattern)
+        keys = []
+        pattern.split("/").each { |seg| keys << seg[1, seg.size - 1] if seg.start_with?(":") }
+        i = 0
+        while i < location.size
+          open = location.index("%{", i)
+          break if open.nil?
+
+          close = location.index("}", open + 2)
+          break if close.nil?
+
+          key = location[open + 2, close - open - 2].to_s
+          return key unless keys.include?(key)
+
+          i = close + 1
+        end
+        ""
       end
 
       # The name a custom route gets: `name` as derived, unless no `as:` was
@@ -614,32 +736,40 @@ module Cybertrain
 
       # A standard resource route; its name goes to the first route that
       # claims it (POST /posts is unnamed next to GET /posts).
-      def add_standard(used, verb, pattern, controller, action, name, args)
+      def add_standard(used, verb, pattern, controller, action, name, args, format)
         if used.include?(name)
-          add_spec(verb, pattern, controller, action, "", args)
+          add_spec(verb, pattern, controller, action, "", args, format)
         else
           used << name
-          add_spec(verb, pattern, controller, action, name, args)
+          add_spec(verb, pattern, controller, action, name, args, format)
         end
       end
 
-      def add_spec(verb, pattern, controller, action, name, args)
+      def add_spec(verb, pattern, controller, action, name, args, format)
         unless controller.match?(CONTROLLER_PATTERN)
           raise ArgumentError, "controller '#{controller}' is not a valid controller path (#{verb} #{pattern})"
         end
         unless action.match?(ACTION_PATTERN)
           raise ArgumentError, "action '#{action}' is not a valid method name (#{verb} #{pattern})"
         end
-        if name != ""
-          unless name.match?(NAME_PATTERN)
-            raise ArgumentError, "route name '#{name}' is not a valid method name prefix (#{verb} #{pattern}); " \
-                                 "pass as: with lowercase letters, digits and _"
-          end
-          @specs.each do |spec|
-            raise ArgumentError, "route name '#{name}' is already in use (#{verb} #{pattern})" if spec.name == name
-          end
+        check_name(verb, pattern, name)
+        spec = RouteSpec.new(verb, pattern, controller, action, name, "", distinct_args(args))
+        spec.takes_format = format
+        @specs << spec
+        nil
+      end
+
+      # A route name must be a method-name prefix no earlier route has.
+      def check_name(verb, pattern, name)
+        return nil if name == ""
+
+        unless name.match?(NAME_PATTERN)
+          raise ArgumentError, "route name '#{name}' is not a valid method name prefix (#{verb} #{pattern}); " \
+                               "pass as: with lowercase letters, digits and _"
         end
-        @specs << RouteSpec.new(verb, pattern, controller, action, name, "", distinct_args(args))
+        @specs.each do |spec|
+          raise ArgumentError, "route name '#{name}' is already in use (#{verb} #{pattern})" if spec.name == name
+        end
         nil
       end
 

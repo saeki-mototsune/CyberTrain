@@ -166,6 +166,8 @@ def redraw_fixture_routes
     resource :profile, controller: "pages", only: [:show] do |r|
       r.get :refresh, on: :member
     end
+    get "/old-posts/:id", to: redirect("/posts/%{id}")
+    get "/files/:name", to: "pages#file", format: false
     jobs_page "/admin/jobs", before_action: :require_admin
   end
 end

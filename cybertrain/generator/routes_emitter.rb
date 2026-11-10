@@ -18,7 +18,14 @@ module Cybertrain
         out << "  module Routes\n"
         out << "    def self.build(router)\n"
         specs.each do |s|
-          out << "      router.add(\"#{s.verb}\", #{quote(s.pattern)}, \"#{s.name}\") { |ctx| #{s.handler_source} }\n"
+          # The format argument only when false (Router#add defaults to true).
+          takes = s.takes_format ? "" : ", false"
+          handler = if s.redirect_location.empty?
+                      s.handler_source
+                    else
+                      "Cybertrain::Router.redirect_to(ctx, #{quote(s.redirect_location)}, #{s.redirect_code})"
+                    end
+          out << "      router.add(\"#{s.verb}\", #{quote(s.pattern)}, \"#{s.name}\"#{takes}) { |ctx| #{handler} }\n"
         end
         out << "      router\n"
         out << "    end\n"
