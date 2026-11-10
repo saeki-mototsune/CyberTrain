@@ -299,3 +299,60 @@ turns buffering off; for WebSocket the proxy must pass `Upgrade` and
 Testing a page's stream: [Testing streams and
 components](testing.md#testing-streams-and-components). The design:
 [docs/design.md](../design.md) D36 and D37.
+
+## Feed health
+
+A [WebSocket feed](external-services.md#consuming-websocket-feeds) often runs
+in a `feeds` process, which serves no HTTP, so its health travels through
+the database: the supervisor of every process that runs feeds writes one row
+per subscription into `cybertrain_feeds` every `feed_status_interval`
+seconds (10). The table is the framework's own (created on first use, left
+out of `db/schema.rb`). `GET /up` in a `server` process reads it and answers
+`503 feed stale` when, for any row:
+
+<!-- list: points -->
+- the publisher is stale: the row was last written more than
+  `health_feed_stale` seconds ago (180, `CYBERTRAIN_HEALTH_FEED_STALE`), so
+  the process that runs the feed died, hangs or lost its database; or
+- the feed is silent: the row is fresh, but the feed has neither delivered a
+  message nor answered a ping for that long (a feed that never received
+  anything counts from its start).
+
+The two are checked separately, so a live publisher never hides a silent
+feed. Only rows of feeds this application still subscribes count: every
+role runs the same binary, so a row whose name no `subscribe` registers (a
+feed you removed or renamed) is ignored. `health_feed_stale` must be more
+than `feed_status_interval`, or every row would be stale between two writes;
+boot refuses it otherwise. `CYBERTRAIN_HEALTH_FEEDS=0` (or `false`) turns
+the check off, for a feed that is legitimately quiet for longer than the
+threshold or a deployment that watches its feeds some other way. A table
+that cannot be read leaves `/up` at 200 and logs one `[WARN]` line until it
+can be read again.
+
+`./<app> feeds status` prints the rows for an operator, one line per feed:
+
+```console
+$ ./blog feeds status
+trades  connected  web-1:4242  last activity 3s ago  restarts 0  updated 4s ago
+```
+
+<!-- list: points -->
+- A row is keyed by the feed's name only: two processes that run the same
+  feed overwrite each other's row, which is one more reason to run each
+  feed in one process.
+- A `feeds` process stopped cleanly (TERM or INT: a deploy, a scale-down)
+  deletes the rows it wrote, so a role you stop on purpose stops counting.
+  One that crashed, or exited after repeated feed deaths, leaves them to go
+  stale, which is what `/up` is there to report.
+- A feed you remove or rename leaves its row, which `/up` ignores and
+  `feeds status` marks `(not registered)`; delete it when you like
+  (`./<app> dbconsole`, then `DELETE FROM cybertrain_feeds WHERE name =
+  'trades';`).
+- `status` is not a feed name: `subscribe("status", ...)` raises
+  ArgumentError, since `./<app> feeds status` prints the table.
+- `/up` restarts nothing. Kamal polls it only for the web role during a
+  deploy, and Docker restarts a container when its process exits, which a
+  `feeds` process does after repeated feed deaths; give the role a restart
+  policy ([Process roles](background-and-operations.md#process-roles)).
+
+The design: [docs/design.md](../design.md) D56.

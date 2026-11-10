@@ -27,7 +27,7 @@ EXPECTED_FILES = [
   "spin.toml", ".gitignore", ".env.example", "README.md",
   "config/app.rb", "config/routes.rb",
   "db/schema.rb", "db/migrate/.keep",
-  "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep",
+  "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep", "app/jobs/.keep",
   "app/views/layouts/application.html.erb",
   "public/404.html", "public/500.html", "public/style.css", "public/up.html",
   "bin/blog.rb", "bin/gen.rb", "bin/db.rb",
@@ -61,8 +61,8 @@ test "spin.toml names the package and references the framework" do
   TOML
 end
 
-test "config/routes.rb and db/schema.rb are empty DSL blocks" do
-  assert_equal "Cybertrain::Routes.draw do\nend\n", read("blog/config/routes.rb")
+test "config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jobs page commented out)" do
+  assert_equal "Cybertrain::Routes.draw do\n  # jobs_page \"/admin/jobs\", before_action: :require_admin\nend\n", read("blog/config/routes.rb")
   assert_equal "Cybertrain::Schema.define(version: \"0\") do |s|\nend\n", read("blog/db/schema.rb")
 end
 
@@ -127,6 +127,10 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes controller, "rescue_from Cybertrain::RecordNotFound, with: :record_not_found"
   assert_includes read("blog/config/app.rb"), "Cybertrain.configure do |c|"
   assert_includes read("blog/config/app.rb"), 'c.allowed_hosts << "my-preview.example.com"'
+  # The commented cron example prunes the done jobs every app now leaves.
+  assert_includes read("blog/config/app.rb"),
+                  "# Cybertrain::Scheduler.cron(\"0 4 * * *\", \"prune done jobs\") do\n" \
+                  "#   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)\n# end\n"
   assert_includes read("blog/.gitignore"), "/build/"
   assert_includes read("blog/.gitignore"), "/storage/*.sqlite3*"
   assert_includes read("blog/.gitignore"), "/storage/uploads/\n"

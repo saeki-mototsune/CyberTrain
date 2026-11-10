@@ -1,5 +1,7 @@
 <h1>Articles</h1>
 
+<p class="article-count"><%= pluralize(@article_count, "article") %></p>
+
 <%= form_with url: articles_path, method: :get do |f| %>
   <%= f.label :from, "From" %>
   <%= f.date_field :from, value: @from %>

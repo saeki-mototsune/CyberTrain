@@ -1,0 +1,16 @@
+ok   parse accepts the five-field forms
+ok   parse: steps, lists, names in any case, and the original text
+ok   parse refuses what it cannot run
+ok   parse says what is wrong, after the expression
+ok   parse accepts what can match, if rarely
+ok   next_after in UTC
+ok   next_after: seconds, the year end, and day of month OR day of week
+ok   next_after searches five years and no further
+ok   next_after over the Europe/London transitions
+ok   a fixed hour does not run again in the repeated hour, wherever the search starts
+ok   an hourly expression runs at both occurrences of the repeated hour
+ok   an hourly expression over the spring gap skips the hour that does not exist
+ok   a day jump does not cross a transition blindly
+ok   Asia/Tokyo weekday mornings
+ok   a yearly expression walks ten years quickly
+15 tests, 86 assertions, 0 failures

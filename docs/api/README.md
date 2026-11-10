@@ -77,6 +77,12 @@ Top-level methods for `test/*.rb` (see {Cybertrain::Test}):
 `require "cybertrain/test/client"`. Each is documented on the
 [Top Level Namespace](top-level-namespace.html) page.
 
+The job helpers come with `require "cybertrain/test/jobs"`:
+`assert_enqueued_jobs(count, kind = "")`, `assert_no_enqueued_jobs(kind = "")`,
+`assert_enqueued_with(kind, args = {})` (args compared as strings, so
+`"user_id" => 1` matches a JSON 1), `perform_enqueued_jobs(now = Time.now)`
+(runs the due jobs, returns how many) and `clear_enqueued_jobs`.
+
 Webhooks and e-mail the code under test sends are received in-process by
 {Cybertrain::Test::HttpReceiver} (`require "cybertrain/test/http_receiver"`)
 and {Cybertrain::Test::SmtpReceiver} (`require "cybertrain/test/smtp_receiver"`);

@@ -1,5 +1,5 @@
 ---
-source_sha256: c5ef44e9a88b3fbef4099d33b8ea7e47c5b10fb95eeef6e39fae0a8151f22a9e
+source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
 ---
 # Tester une application
 
@@ -70,8 +70,8 @@ ou un e-mail ([Envoyer des e-mails](external-services.md#sending-e-mail)), le
 test le reçoit dans le même processus&nbsp;: `Cybertrain::Test::HttpReceiver` et
 `Cybertrain::Test::SmtpReceiver` écoutent sur `127.0.0.1`, enregistrent ce qui
 arrive et répondent par une réponse préparée. Le fichier part du même
-helper que plus haut, `support/blog_test`, et requiert lui-même
-`cybertrain/mailer`&nbsp;: `require "cybertrain"` ne le charge pas.
+helper que plus haut, `support/blog_test`&nbsp;; `require "cybertrain"`
+charge le mailer, et le require explicite ci-dessous ne fait pas de mal.
 
 ```ruby
 require_relative "support/blog_test"   # l’application, BLOG et Cybertrain::Test
@@ -117,7 +117,8 @@ RCPT, DATA et QUIT&nbsp;; `reject:` fait échouer l’une des étapes `:greeting
 `:ehlo`, `:mail`, `:rcpt`, `:data` ou `:message` avec la réponse donnée. Un
 `ReceivedMessage` contient l’`envelope_from`, les `envelope_recipients`, le
 `message_data` (dot-stuffing défait), `message_header(name)`, `message_body` et
-le `transcript` des commandes. Tous deux acceptent une seule connexion, sauf si
+le `transcript` des commandes&nbsp;; pour un message HTML, `message_parts` le
+décode en `"subject"`, `"text"` et `"html"`. Tous deux acceptent une seule connexion, sauf si
 `max:` en indique davantage (`received_requests` / `received_messages` les
 renvoient toutes). Chaque attente est bornée&nbsp;: un récepteur abandonne après
 `accept_window:` (10&nbsp;s) sans connexion, un client silencieux après
@@ -164,6 +165,59 @@ end
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` rend les délais de nouvelle
 tentative exacts. `test/websocket_integration.rb`, dans ce dépôt, montre un test
 complet.
+
+## Tester les jobs
+
+`require "cybertrain/test/jobs"` ajoute cinq helpers sur la file de jobs
+de la base de test. Le fichier de support qu’écrit `cybertrain generate
+authentication` (`test/support/app_test.rb`) le requiert&nbsp;; une
+application qui n’en a pas ajoute la ligne à son propre fichier de support,
+comme le fait celui d’examples/blog.
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/jobs"
+
+test "a notification is enqueued, then runs" do
+  clear_enqueued_jobs
+  NotifyCommentJob.perform_later("comment_id" => 7, "article_id" => 1)
+  assert_enqueued_jobs 1, "NotifyCommentJob"
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => 7 }
+  assert_equal 1, perform_enqueued_jobs
+  assert_no_enqueued_jobs
+end
+
+test "the job itself" do
+  assert_nil NotifyCommentJob.perform_now("comment_id" => 1, "article_id" => 1)
+end
+```
+
+<!-- list: points -->
+- `assert_enqueued_jobs(count, kind = "")` compte les lignes `queued` (d’un
+  seul kind s’il est donné)&nbsp;; `assert_no_enqueued_jobs(kind = "")` n’en
+  veut aucune.
+- `assert_enqueued_with(kind, args)` veut une ligne en file de ce kind dont
+  les args contiennent chaque clé donnée avec une valeur égale, les deux
+  côtés comparés en `Cast.str`, si bien que `"comment_id" => 7` correspond à
+  un `7` JSON. Une clé Symbol est lue comme son nom&nbsp;:
+  `assert_enqueued_with "NotifyCommentJob", comment_id: 7` fonctionne aussi.
+- `perform_enqueued_jobs(now = Time.now)` exécute chaque job échu sur le
+  thread appelant, un par un (`Job.work_one`), jusqu’à ce qu’aucun ne soit
+  échu, et renvoie combien ont tourné. Une nouvelle tentative prévue plus
+  tard reste en file&nbsp;: passez un `now` plus tardif pour l’exécuter. Un
+  job qui se remet lui-même en file, échu tout de suite, la ferait tourner
+  sans fin&nbsp;: elle fait échouer le test après 10&nbsp;000 jobs.
+- `clear_enqueued_jobs` supprime toutes les lignes `queued`&nbsp;; les lignes
+  `failed` et `discarded` restent, donc un test qui en crée les supprime
+  lui-même.
+- `WelcomeJob.perform_now(args)` exécute un job directement, sans file ni
+  rescue&nbsp;: une exception parvient au test.
+- Un mail envoyé avec `deliver_later` est un job `"cybertrain mail"`&nbsp;:
+  `perform_enqueued_jobs` l’envoie à un `SmtpReceiver` (avec `smtp_host` et
+  `smtp_port` pointés sur lui).
+- Les tâches planifiées s’exécutent un tick à la fois avec
+  `Cybertrain::Scheduler.run_due(now)`, et `Cybertrain::Cache.prune(now)`
+  purge le cache à l’instant que vous choisissez.
 
 ## Tester les flux et les composants
 

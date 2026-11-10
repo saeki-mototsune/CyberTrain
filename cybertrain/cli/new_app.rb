@@ -33,6 +33,7 @@ module Cybertrain
           ["app/controllers/application_controller.rb", Templates.application_controller],
           ["app/models/.keep", ""],
           ["app/helpers/.keep", ""],
+          ["app/jobs/.keep", ""],
           ["app/views/layouts/application.html.erb", Templates.layout(title)],
           ["public/404.html", Templates.error_page("404", "Not Found")],
           ["public/500.html", Templates.error_page("500", "Internal Server Error")],

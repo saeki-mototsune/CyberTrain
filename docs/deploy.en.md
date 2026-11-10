@@ -1048,7 +1048,52 @@ sudo systemctl enable --now notes-worker
   `ExecStart` is `/srv/notes/current/dist/notes feeds %i` and start it by the
   subscription's name, as in `sudo systemctl enable --now notes-feeds@trades`
   (and set `CYBERTRAIN_WORKER=0` on the web side, so that it does not open
-  the same subscriptions too).
+  the same subscriptions too). Keep `Restart=always` in that unit: a feeds
+  process restarts a feed whose thread died, but when one feed keeps dying
+  (10 restarts within 600 seconds, `CYBERTRAIN_FEED_RESTART_LIMIT` and
+  `CYBERTRAIN_FEED_RESTART_WINDOW`) it logs a `[FATAL]` line and exits with
+  status 1, so that systemd starts a fresh one.
+- With feeds in their own process, the web process's `/up` still watches
+  them: each feeds process writes its feeds' status into the database every
+  10 seconds, and `/up` answers `503 feed stale` when a feed or its process
+  has been silent for 180 seconds (`CYBERTRAIN_HEALTH_FEED_STALE`). The deploy
+  script's check polls `/up.html`, so this does not stop a deploy; a monitor
+  pointed at `/up` sees it. A feed a release removed or renamed no longer
+  counts, and a feeds process stopped cleanly (`systemctl stop`) deletes its
+  rows; one that crashed leaves them, and they go stale.
+  `CYBERTRAIN_HEALTH_FEEDS=0` in `/etc/notes/notes.env` turns that part of
+  the check off.
+
+### Jobs and feeds from the shell
+
+The binary also carries the commands to look at the job queue and the feeds,
+on the configured database (they start no thread, so run them beside the
+running service):
+
+```sh
+sudo -iu notes
+cd ~/current
+set -a; . /etc/notes/notes.env; set +a
+dist/notes jobs list                          # failed jobs, newest first
+dist/notes jobs retry 42                      # or: retry --all, discard 42, delete 42
+dist/notes jobs prune --before 30             # failed and discarded jobs older than 30 days
+dist/notes feeds status                       # each feed's last reported status
+```
+
+- `jobs list [STATE]` shows the `failed` rows by default, or the `queued`,
+  `running`, `done` or `discarded` ones, the newest 1000 at most (it says
+  how many there are when there are more); `retry` queues a failed or
+  discarded job again with its attempts reset, `discard` and `delete` act on
+  one row, and `prune` deletes failed and discarded rows older than 7 days
+  (or `--before DAYS`). An app that mounts the jobs page
+  (`jobs_page` in `config/routes.rb`) does the same from the browser.
+- A mail sent with `deliver_later` is discarded, not retried, when the SMTP
+  settings are wrong (no `CYBERTRAIN_SMTP_HOST`, a refused login): after
+  fixing `/etc/notes/notes.env`, look at `jobs list discarded` and `jobs
+  retry` the mail jobs.
+- `feeds status` prints each feed's last reported status: connected or not,
+  the process, how long ago it last received something, its restarts and
+  how old the row is.
 
 ---
 

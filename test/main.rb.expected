@@ -4,9 +4,12 @@ Usage:
   ./blog [server [PORT]]   start the server
   ./blog worker            run jobs and scheduled tasks, without HTTP
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
+  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
+  ./blog jobs COMMAND      list [STATE] | retry ID | retry --all | discard ID | delete ID
+                           prune [--before DAYS]
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
@@ -14,9 +17,12 @@ Usage:
   ./blog [server [PORT]]   start the server
   ./blog worker            run jobs and scheduled tasks, without HTTP
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
+  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
+  ./blog jobs COMMAND      list [STATE] | retry ID | retry --all | discard ID | delete ID
+                           prune [--before DAYS]
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
@@ -24,9 +30,12 @@ Usage:
   ./blog [server [PORT]]   start the server
   ./blog worker            run jobs and scheduled tasks, without HTTP
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
+  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
+  ./blog jobs COMMAND      list [STATE] | retry ID | retry --all | discard ID | delete ID
+                           prune [--before DAYS]
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
@@ -36,9 +45,12 @@ Usage:
   ./blog [server [PORT]]   start the server
   ./blog worker            run jobs and scheduled tasks, without HTTP
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
+  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
+  ./blog jobs COMMAND      list [STATE] | retry ID | retry --all | discard ID | delete ID
+                           prune [--before DAYS]
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help

@@ -12,11 +12,13 @@
 # server (the handshake fails) and against a silent one (it times out).
 require "socket"
 require "stringio"
+require "tmpdir"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/http_client"
 require "cybertrain/net/tls"
 require "cybertrain/test"
+require "cybertrain/test/http_receiver"
 
 class ClientTestApp < Cybertrain::Middleware
   def call(ctx)
@@ -75,6 +77,8 @@ def outcome(&action)
   begin
     res = action.call
     return Outcome.new("ok #{res.status}", res.body)
+  rescue Cybertrain::HttpClient::TooManyRedirectsError => e
+    return Outcome.new("too many redirects", e.message)
   rescue Cybertrain::HttpClient::TimeoutError => e
     return Outcome.new("timeout", e.message)
   rescue Cybertrain::HttpClient::RefusedError => e
@@ -751,6 +755,404 @@ test "without cybertrain/net/tls, https says what to require" do
   end
   assert_includes message, "require \"cybertrain/net/tls\""
   assert tcp.tcp_socket.closed?
+end
+
+# ---- every verb, streamed bodies, files, redirects, JSON -------------------
+
+TMP = Dir.mktmpdir("cybertrain-http-client")
+
+at_exit do
+  Dir.children(TMP).each { |child| File.delete("#{TMP}/#{child}") }
+  Dir.rmdir(TMP)
+end
+
+def receiver(max = 1)
+  Cybertrain::Test::HttpReceiver.new(max: max)
+end
+
+def redirecting_client(redirects)
+  Cybertrain::HttpClient.new(timeout: 2, deadline: 5, allow_private: true, redirects: redirects)
+end
+
+test "request sends PUT, PATCH, DELETE and HEAD" do
+  rx = receiver(4)
+  rx.respond_with(status: 200, body: "answer")
+  rx.start
+  c = private_client
+  put = c.request("PUT", rx.url("/items/1"), body: "{\"a\":1}", content_type: "application/json")
+  patch = c.request("PATCH", rx.url("/items/1?x=2"), body: "p")
+  deleted = c.request("DELETE", rx.url("/items/1"))
+  head = c.request("HEAD", rx.url("/items/1"))
+  reqs = rx.received_requests(4)
+  rx.stop
+  # Content-Type accompanies a body only.
+  bodiless = receiver
+  bodiless.start
+  c.request("DELETE", bodiless.url("/items/2"), content_type: "application/json")
+  gone = bodiless.received_request
+  bodiless.stop
+  assert_equal "DELETE", gone.http_method
+  assert_equal "", gone.http_header("Content-Type")
+  assert_equal "", gone.http_header("Content-Length")
+  assert_equal 4, reqs.size
+  assert_equal "PUT", reqs[0].http_method
+  assert_equal "{\"a\":1}", reqs[0].http_body
+  assert_equal "application/json", reqs[0].http_header("Content-Type")
+  assert_equal "7", reqs[0].http_header("Content-Length")
+  assert_equal "PATCH", reqs[1].http_method
+  assert_equal "/items/1?x=2", reqs[1].http_target
+  assert_equal "p", reqs[1].http_body
+  assert_equal "", reqs[1].http_header("Content-Type")
+  assert_equal "DELETE", reqs[2].http_method
+  assert_equal "", reqs[2].http_body
+  assert_equal "HEAD", reqs[3].http_method
+  assert_equal "answer", put.body
+  assert_equal "answer", patch.body
+  assert_equal 200, deleted.status
+  assert_equal 200, head.status
+  assert_equal "", head.body
+  assert_equal "6", head.header("content-length")
+  assert_equal 0, put.bytes_written
+  trace = outcome { c.request("TRACE", "http://example.com/") }
+  assert_equal "argument", trace.kind
+  assert_includes trace.text, "TRACE"
+  assert_equal "argument", outcome { c.request("GET", "http://example.com/", body: "x") }.kind
+end
+
+test "the block form yields chunks and leaves body empty; max_body does not apply" do
+  mib = "z" * 1_048_576
+  rx = receiver
+  rx.respond_with(status: 200, chunks: [mib, mib, mib])
+  rx.start
+  sizes = Array.new(0) { 0 }
+  res = private_client(2, 10, 1_048_576).get(rx.url("/stream")) { |chunk| sizes << chunk.bytesize }
+  rx.stop
+  assert_equal 200, res.status
+  assert_equal "", res.body
+  assert_equal 3, sizes.size
+  assert_equal 3 * 1_048_576, sizes.sum
+  assert_equal 0, res.bytes_written
+  # By length, past max_body as well, through request.
+  rx2 = receiver
+  rx2.respond_with(status: 200, body: "q" * 5000)
+  rx2.start
+  total = Array.new(0) { 0 }
+  res2 = private_client(2, 5, 100).request("GET", rx2.url("/len")) { |chunk| total << chunk.bytesize }
+  rx2.stop
+  assert_equal "", res2.body
+  assert_equal 5000, total.sum
+end
+
+class StreamStop < StandardError
+end
+
+# How a streamed GET whose block raises on the first chunk ended: the
+# exception's class name and message. The rescue is in a method of its own
+# (rule 32).
+def stopped_stream(client, url)
+  client.get(url) do |chunk|
+    raise StreamStop, "stopped at #{chunk.bytesize} bytes" if chunk.bytesize > 0
+    nil
+  end
+  Outcome.new("none", "")
+rescue StreamStop => e
+  Outcome.new(e.class.name.to_s, e.message)
+rescue Cybertrain::HttpClient::Error => e
+  Outcome.new("client error", e.message)
+end
+
+test "an exception raised in the streamed block propagates unchanged" do
+  piece = "s" * 65_536
+  rx = receiver
+  rx.respond_with(status: 200, chunks: [piece, piece, piece, piece])
+  rx.start
+  stopped = stopped_stream(private_client, rx.url("/stream"))
+  rx.stop
+  assert_includes stopped.kind, "StreamStop"
+  assert_equal "stopped at 65536 bytes", stopped.text
+  # The client is usable afterwards (the stream was closed by exchange's
+  # ensure; the receiver's API cannot show its side of the close).
+  rx2 = receiver
+  rx2.respond_with(status: 200, body: "after")
+  rx2.start
+  after = private_client.get(rx2.url("/"))
+  rx2.stop
+  assert_equal "after", after.body
+end
+
+test "get_to_file writes the body through a .part file" do
+  path = "#{TMP}/download.bin"
+  rx = receiver
+  rx.respond_with(status: 200, body: "w" * 5000)
+  rx.start
+  res = private_client(2, 5, 100).get_to_file(rx.url("/file"), path, headers: { "X-Token" => "t" })
+  req = rx.received_request
+  rx.stop
+  assert_equal 200, res.status
+  assert_equal "", res.body
+  assert_equal 5000, res.bytes_written
+  assert_equal 5000, File.size(path)
+  refute File.exist?("#{path}.part")
+  assert_equal "t", req.http_header("X-Token")
+  rx2 = receiver
+  rx2.respond_with(status: 200, chunks: ["ab", "cd", "ef"])
+  rx2.start
+  res2 = private_client.get_to_file(rx2.url("/file"), path)
+  rx2.stop
+  assert_equal 6, res2.bytes_written
+  assert_equal "abcdef", File.read(path)
+  # A body cut short: the error is raised, the .part is gone and the file
+  # already at `path` is untouched.
+  srv = canned("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nshort")
+  got = outcome { private_client.get_to_file(srv.url("/"), path) }
+  srv.finish
+  assert_equal "bad response", got.kind
+  refute File.exist?("#{path}.part")
+  assert_equal "abcdef", File.read(path)
+  # A 404 page never reaches the disk: counted, not written, and the file
+  # already at `path` is untouched.
+  rx3 = receiver
+  rx3.respond_with(status: 404, body: "Not Found here")
+  rx3.start
+  missing = private_client.get_to_file(rx3.url("/gone"), path)
+  rx3.stop
+  assert_equal 404, missing.status
+  assert_equal "", missing.body
+  assert_equal 14, missing.bytes_written
+  refute File.exist?("#{path}.part")
+  assert_equal "abcdef", File.read(path)
+end
+
+test "redirects: follows 302 then 301 to GET, keeps 307 as POST with the body, and stops at the limit" do
+  c3 = receiver
+  c3.respond_with(status: 200, body: "landed")
+  c3.start
+  b2 = receiver
+  b2.respond_with(status: 301, redirect_to: c3.url("/c"))
+  b2.start
+  a1 = receiver
+  a1.respond_with(status: 302, redirect_to: b2.url("/b?k=1"))
+  a1.start
+  res = redirecting_client(3).post(a1.url("/a"), "{\"n\":1}", headers: { "X-Token" => "t", "Authorization" => "Bearer s" })
+  first = a1.received_request
+  second = b2.received_request
+  third = c3.received_request
+  a1.stop
+  b2.stop
+  c3.stop
+  assert_equal 200, res.status
+  assert_equal "landed", res.body
+  assert_equal "POST", first.http_method
+  assert_equal "{\"n\":1}", first.http_body
+  assert_equal "GET", second.http_method
+  assert_equal "/b?k=1", second.http_target
+  assert_equal "", second.http_body
+  assert_equal "", second.http_header("Content-Type")
+  assert_equal "", second.http_header("Content-Length")
+  assert_equal "t", second.http_header("X-Token")
+  # Another origin (another port): the credentials stay behind.
+  assert_equal "Bearer s", first.http_header("Authorization")
+  assert_equal "", second.http_header("Authorization")
+  assert_equal "GET", third.http_method
+  assert_equal "/c", third.http_target
+
+  e5 = receiver
+  e5.respond_with(status: 201, body: "kept")
+  e5.start
+  d4 = receiver
+  d4.respond_with(status: 307, redirect_to: e5.url("/e"))
+  d4.start
+  kept = redirecting_client(1).post(d4.url("/d"), "{\"n\":2}")
+  fifth = e5.received_request
+  d4.stop
+  e5.stop
+  assert_equal 201, kept.status
+  assert_equal "POST", fifth.http_method
+  assert_equal "{\"n\":2}", fifth.http_body
+  assert_equal "application/json", fifth.http_header("Content-Type")
+
+  s7 = receiver
+  s7.respond_with(status: 200, body: "seen")
+  s7.start
+  s6 = receiver
+  s6.respond_with(status: 303, redirect_to: s7.url("/s"))
+  s6.start
+  seen = redirecting_client(1).request("PUT", s6.url("/p"), body: "data", content_type: "text/plain")
+  seventh = s7.received_request
+  s6.stop
+  s7.stop
+  assert_equal "seen", seen.body
+  assert_equal "GET", seventh.http_method
+  assert_equal "", seventh.http_body
+
+  f8 = receiver
+  f8.start
+  g9 = receiver
+  g9.respond_with(status: 302, redirect_to: f8.url("/f"))
+  g9.start
+  h10 = receiver
+  h10.respond_with(status: 302, redirect_to: g9.url("/g"))
+  h10.start
+  limited = outcome { redirecting_client(1).get(h10.url("/h/secret")) }
+  h10.stop
+  g9.stop
+  f8.stop
+  assert_equal "too many redirects", limited.kind
+  assert_includes limited.text, "1 redirect"
+  assert_includes limited.text, "127.0.0.1:#{g9.port}"
+  assert_nil limited.text.index("secret")
+  assert_equal 0, f8.received_requests(0, 0.1).size
+
+  # redirects: 0 (the default) returns the 3xx; a 3xx without Location is
+  # returned as is.
+  r11 = receiver(2)
+  r11.respond_with(status: 302, redirect_to: "/elsewhere")
+  r11.start
+  plain = private_client.get(r11.url("/"))
+  assert_equal 302, plain.status
+  assert_equal "/elsewhere", plain.header("location")
+  r11.respond_with(status: 302, body: "no location")
+  bare = redirecting_client(2).get(r11.url("/"))
+  r11.stop
+  assert_equal 302, bare.status
+  assert_equal "no location", bare.body
+end
+
+test "redirects: relative Location and a loop" do
+  rel = receiver(2)
+  rel.respond_with(status: 302, redirect_to: "/other?q=1")
+  rel.start
+  looped = outcome { redirecting_client(1).get(rel.url("/start/here")) }
+  reqs = rel.received_requests(2)
+  rel.stop
+  assert_equal "too many redirects", looped.kind
+  assert_equal 2, reqs.size
+  assert_equal "/start/here", reqs[0].http_target
+  assert_equal "/other?q=1", reqs[1].http_target
+
+  ping = receiver(2)
+  pong = receiver(2)
+  ping.start
+  pong.start
+  ping.respond_with(status: 301, redirect_to: pong.url("/pong"))
+  pong.respond_with(status: 308, redirect_to: ping.url("/ping"))
+  both = outcome { redirecting_client(3).get(ping.url("/ping")) }
+  pings = ping.received_requests(2)
+  pongs = pong.received_requests(2)
+  ping.stop
+  pong.stop
+  assert_equal "too many redirects", both.kind
+  assert_includes both.text, "3 redirects"
+  assert_equal 2, pings.size
+  assert_equal 2, pongs.size
+
+  # The deadline covers every hop: a first hop that takes 0.6 s leaves 0.4 s
+  # of a 1 s deadline to a second that never answers.
+  holder = HoldingServer.new.start
+  slow = CannedServer.new(["HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:#{holder.holding_port}/x\r\n",
+                           "Content-Length: 0\r\n\r\n"], 0.6).start
+  started = now
+  late = outcome { Cybertrain::HttpClient.new(timeout: 2, deadline: 1, allow_private: true, redirects: 2).get(slow.url("/")) }
+  waited = elapsed_since(started)
+  slow.finish
+  holder.release
+  assert_equal "timeout", late.kind
+  assert_includes late.text, "deadline passed"
+  assert waited < 1.4, "the second hop had a deadline of its own"
+
+  h = Cybertrain::HttpClient
+  assert_equal "http://h:1/c", h.resolve_location("http://h:1/a/b?x=1#f", "/c")
+  assert_equal "http://h/a/c", h.resolve_location("http://h/a/b", "c")
+  assert_equal "http://h/c", h.resolve_location("http://h/a/b", "../c")
+  assert_equal "http://h/a/d", h.resolve_location("http://h/a/b", "./c/../d")
+  assert_equal "http://h/a/b?y=2", h.resolve_location("http://h/a/b?x", "?y=2")
+  assert_equal "https://o/p", h.resolve_location("http://h/a", "https://o/p#frag")
+  assert_equal "https://o/p", h.resolve_location("https://h/a", "//o/p")
+  assert_equal "http://h/c", h.resolve_location("http://h", "c")
+  assert_equal "http://h/c", h.resolve_location("http://h?x=1", "c")
+  assert_equal "http://h/x/", h.resolve_location("http://h/x/y", ".")
+end
+
+# How following `location` from `current` ended: the next URL, or the
+# error's kind and message. The rescue is in a method of its own (rule 32).
+def hop_outcome(current, location)
+  Outcome.new("ok", Cybertrain::HttpClient.next_hop(current, location))
+rescue Cybertrain::HttpClient::BlockedAddressError => e
+  Outcome.new("blocked", e.message)
+rescue Cybertrain::HttpClient::BadResponseError => e
+  Outcome.new("bad response", e.message)
+end
+
+test "a redirect from https to http is refused" do
+  down = hop_outcome("https://secure.example.com/a/secret", "http://plain.example.com:8080/b?token=s3cr3t")
+  assert_equal "blocked", down.kind
+  assert_includes down.text, "plain.example.com:8080"
+  assert_includes down.text, "https to http"
+  assert_nil down.text.index("secret")
+  assert_nil down.text.index("token")
+  up = hop_outcome("http://plain.example.com/a", "https://secure.example.com/b")
+  assert_equal "ok", up.kind
+  assert_equal "https://secure.example.com/b", up.text
+  same = hop_outcome("https://secure.example.com/a", "/b")
+  assert_equal "https://secure.example.com/b", same.text
+  odd = hop_outcome("https://secure.example.com/a", "ftp://files.example.com/secret")
+  assert_equal "bad response", odd.kind
+  assert_nil odd.text.index("secret")
+end
+
+test "json_hash and json_array parse the body and answer {} / [] otherwise" do
+  rx = receiver(3)
+  rx.respond_with(status: 200, body: "{\"a\":1,\"b\":[1,2],\"c\":\"x\"}")
+  rx.start
+  obj = private_client.get(rx.url("/obj"))
+  rx.respond_with(status: 200, body: "[1,\"two\",{\"k\":3}]")
+  arr = private_client.get(rx.url("/arr"))
+  rx.respond_with(status: 200, body: "not json")
+  text = private_client.get(rx.url("/text"))
+  rx.stop
+  doc = obj.json_hash
+  assert_equal 3, doc.size
+  assert_equal 1, doc["a"]
+  assert_equal "x", doc["c"]
+  assert_equal 0, obj.json_array.size
+  list = arr.json_array
+  assert_equal 3, list.size
+  assert_equal "two", list[1]
+  assert_equal 0, arr.json_hash.size
+  assert_equal 0, text.json_hash.size
+  assert_equal 0, text.json_array.size
+end
+
+test "without cybertrain/http/gzip_ffi no Accept-Encoding is sent and a gzip body is refused" do
+  refute Cybertrain::HttpClient.gzip_decoder.gzip_ready?
+  rx = receiver(4)
+  rx.respond_with(status: 200, body: "hello", gzip: true)
+  rx.start
+  gz = outcome { private_client.get(rx.url("/")) }
+  streamed = outcome { private_client.get(rx.url("/")) { |chunk| chunk } }
+  rx.respond_with(status: 200, body: "compressed?", headers: { "Content-Encoding" => "br" })
+  br = outcome { private_client.get(rx.url("/")) }
+  rx.respond_with(status: 200, body: "plain", headers: { "Content-Encoding" => "identity" })
+  identity = outcome { private_client.get(rx.url("/")) }
+  reqs = rx.received_requests(4)
+  rx.stop
+  assert_equal 4, reqs.size
+  assert_equal "", reqs[0].http_header("Accept-Encoding")
+  assert_equal "bad response", gz.kind
+  assert_includes gz.text, "require \"cybertrain/http/gzip_ffi\""
+  assert_includes gz.text, "127.0.0.1"
+  assert_equal "bad response", streamed.kind
+  assert_equal "bad response", br.kind
+  assert_includes br.text, "br"
+  assert_equal "ok 200", identity.kind
+  assert_equal "plain", identity.text
+  # A HEAD response's Content-Encoding describes no body here.
+  rx2 = receiver
+  rx2.respond_with(status: 200, body: "hello", gzip: true)
+  rx2.start
+  head = outcome { private_client.request("HEAD", rx2.url("/")) }
+  rx2.stop
+  assert_equal "ok 200", head.kind
 end
 
 Cybertrain::Test.run!

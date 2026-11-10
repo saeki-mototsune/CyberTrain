@@ -1,5 +1,5 @@
 ---
-source_sha256: b0f8f7ce8f29151195c929b5aa6f2cf9769a7d0b96b72d53cdddc87a88d32c9e
+source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
 ---
 # Configuration
 
@@ -35,9 +35,17 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`&nbsp;; des noms séparés par des virgules remplacent la liste. Un paramètre dont le nom contient l’un d’eux (sans tenir compte de la casse ASCII&nbsp;: `password` correspond aussi à `user[password]`) voit sa valeur écrite `[FILTERED]` dans le journal des requêtes et sur la page d’erreur de développement&nbsp;; `[]` dans `config/app.rb` désactive ce filtrage |
 | `CYBERTRAIN_WORKER` | `worker` | `true`&nbsp;; `0` ou `false` empêche un processus `server` d’exécuter les tâches planifiées, les jobs et les flux WebSocket (voir [Rôles des processus](background-and-operations.md#process-roles))&nbsp;; `./<app> worker` et `feeds` l’ignorent |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`&nbsp;: le nombre de jobs qu’un processus exécute en même temps (voir [Tâches de fond](background-and-operations.md#background-work))&nbsp;; au moins 1 |
+| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"`&nbsp;: le fuseau dans lequel se lit une tâche `Scheduler.cron` sans `tz:`, un nom IANA comme `Asia/Tokyo` (voir [Fuseaux horaires](#time-zones))&nbsp;; un fuseau absent du zoneinfo du système arrête le démarrage |
+| `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`&nbsp;: lignes par liste sur la [page des jobs](background-and-operations.md#the-jobs-page-and-the-jobs-command)&nbsp;; au moins 1 |
+| `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`&nbsp;: secondes entre deux purges des lignes expirées du [cache](background-and-operations.md#the-cache-store), lu quand `cybertrain/cache` est requis&nbsp;; au moins 1 |
+| `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`&nbsp;: secondes entre deux écritures de la ligne d’état de chaque flux WebSocket (voir [Santé des flux](realtime.md#feed-health))&nbsp;; au moins 1 |
+| `CYBERTRAIN_FEED_RESTART_LIMIT` | `feed_restart_limit` | `10`&nbsp;: redémarrages du thread d’un flux dans la fenêtre au-delà desquels un processus `feeds` se termine avec le statut 1 quand le flux meurt encore (voir [Consommer des flux WebSocket](external-services.md#consuming-websocket-feeds))&nbsp;; au moins 1 |
+| `CYBERTRAIN_FEED_RESTART_WINDOW` | `feed_restart_window` | `600`&nbsp;: cette fenêtre, en secondes&nbsp;; au moins 1 |
 | `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`&nbsp;: le point d’entrée temps réel (voir [Temps réel](realtime.md#limits-and-settings))&nbsp;; une valeur vide désactive les flux&nbsp;; il doit commencer par `/` et différer de `health_path` |
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`&nbsp;; `1` ou `true` lie le port avec `SO_REUSEPORT`, de sorte que plusieurs processus peuvent écouter sur un même port et que, sous Linux, le noyau répartit les connexions entre eux (ignoré en développement&nbsp;; voir [Running several processes](../deploy.en.md#running-several-processes)). Mettez `CYBERTRAIN_WORKER=0` dans tous les processus sauf un |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`&nbsp;; le chemin du contrôle de santé intégré (voir [Exploitation](background-and-operations.md#operations-backups-vacuum-health-check))&nbsp;; une valeur vide le désactive&nbsp;; une valeur sans `/` initial arrête le serveur au démarrage. `health_worker_stale` (300&nbsp;s) se règle dans `config/app.rb` |
+| `CYBERTRAIN_HEALTH_FEEDS` | `health_feeds` | `true`&nbsp;: le contrôle de santé répond aussi `503 feed stale` pour un flux WebSocket qui a cessé de signaler son état ou s’est tu (voir [Santé des flux](realtime.md#feed-health))&nbsp;; `0` ou `false` désactive cette partie |
+| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`&nbsp;: secondes de silence d’un flux, ou de son processus qui n’écrit plus son état, avant `503 feed stale`&nbsp;; au moins 1, et plus que `feed_status_interval` tant que `health_feeds` est actif (le démarrage le refuse sinon) |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`&nbsp;; `1` ou `true` permet à `Cybertrain::HttpClient` de se connecter au loopback, aux adresses privées et aux autres adresses non publiques (voir [HTTP sortant](external-services.md#outbound-http)) |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`&nbsp;; le serveur SMTP par lequel envoie `Cybertrain::Mailer` (voir [Envoyer des e-mails](external-services.md#sending-e-mail)) |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`&nbsp;: le port du mode, 587 pour `starttls`, 465 pour `tls`, 25 pour `none`&nbsp;; toute valeur hors de 1 à 65535 vaut 0 |

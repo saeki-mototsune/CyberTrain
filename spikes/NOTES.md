@@ -81,13 +81,17 @@ written up for upstream.
 | 83 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
 | 85 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
 | 88 | **Still there**: found on this build (its reduced program, a block registered in a subclass calling a method the base class stubs, runs the stub). |
+| 89 | **Still there**: found on this build (its reduced programs, `rescue Outer::Missing` beside a top-level `Missing`, and `rescue Outer::Gone::TimeoutError` beside another `TimeoutError`, differ from CRuby). |
+| 90 | **Still there**: found on this build (its reduced program, `C.str(yield)` with a String block at one call site and an Integer block at another, runs the first block twice). |
+| 91 | **Still there**: found on this build (its reduced program, `exit(1)` on a thread spawned through a method while the main thread sleeps, prints the main thread's line and exits 0). |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
 
 The rules are numbered in the order they were found. By topic:
 
-- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88
+- Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88,
+  90
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
@@ -95,11 +99,12 @@ The rules are numbered in the order they were found. By topic:
 - Polymorphic values and narrowing: 8, 14, 29, 35, 86
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
-  79, 81
+  79, 81, 89
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
-- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85
+- I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
+  91
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63, 84
 
@@ -984,6 +989,72 @@ The rules are numbered in the order they were found. By topic:
     Cybertrain::Model: the generated `counter_cache_created` / `_destroyed`
     / `_was` / `_moved` (test/gen_models_compiles.rb covers them). Found
     while writing declared associations (2026-11-06).
+
+89. A `rescue` arm naming a qualified class the program does not define
+    does not raise NameError when the arm is tried, as CRuby does: Spinel
+    2026.11.04.7026 resolves the arm by its last segment. With `module
+    Outer` defined, `rescue Outer::Missing => e` catches a top-level
+    `Missing` if there is one and otherwise never matches, with no compile
+    warning (an `Outer::Missing` in an expression does raise NameError).
+    With `Outer::Gone` undefined and a class whose name is the last segment
+    defined anywhere in the program, `rescue Outer::Gone::TimeoutError => e`
+    turns the whole `begin`/`rescue` into a catch-all that runs no arm and
+    swallows every exception (the only sign is the warning "uninitialized
+    constant Outer::Gone: defined nowhere in the program"); with no such
+    class anywhere it raises NameError as CRuby does. Classes that are
+    defined resolve by their full name: `rescue A::TimeoutError` and
+    `rescue B::TimeoutError` side by side each catch their own. Found in the
+    phase 3 spike (2026-11-09): `require "cybertrain"` does not load
+    cybertrain/mailer, so an arm naming `Cybertrain::Mailer::TimeoutError`
+    in such a program swallowed every exception its method raised, another
+    framework `TimeoutError` supplying the last segment
+    (spikes/phase3/rescue_arms.rb). Reduced repro: `module Outer; module
+    Net; class TimeoutError < StandardError; end; end; end`, `class AppError
+    < StandardError; end`, a method with `begin; raise AppError, "boom";
+    rescue Outer::Mailer::TimeoutError => e; ...; rescue AppError => e; log
+    << "arm"; end` called inside `begin ... rescue StandardError => e; log
+    << e.class.name; end`: CRuby logs NameError, the compiled program logs
+    nothing. So generated `rescue` arms
+    (`run_job`'s `retry_on` / `discard_on`) name only classes the program
+    is known to define, and Spinel's "uninitialized constant" warning on a
+    `rescue` line is treated as an error.
+
+90. A `yield` passed straight as a method's argument runs the block twice
+    when the block returns different types at different call sites
+    (Spinel 2026.11.04.7026): with `C.str(v)` a `case v when nil ...
+    when String then v else v.to_s end`, `def self.f = C.str(yield)`
+    called once with a block answering a String and once with a block
+    answering an Integer, the String block's side effects happen twice;
+    with the same type at every call site it runs once. Reduced program
+    (CRuby prints `one 42 a`, the compiled program `one 42 a,a`):
+    `module C; def self.str(v); case v; when nil then ""; when String
+    then v; else v.to_s; end; end; end`, `module M; def self.f;
+    C.str(yield); end; end`, `N = Array.new(0) { "" }`, `a = M.f do; N
+    << "a"; "one"; end`, `b = M.f { 42 }`, `puts "#{a} #{b}
+    #{N.join(",")}"`. The `&block` form (`C.str(block.call)` in a method
+    taking `&block`) ran the block once in the same program. Found in
+    phase 3 (2026-11-09): cybertrain/cache.rb's `fetch` stored
+    `Cast.str(yield)` and its test saw a block that records its call run
+    twice (`fetch` is called with String blocks and an Integer one). So
+    assign a yield's value to a local before passing it to a method
+    (`computed = yield; value = Cast.str(computed)`), as Cache.fetch,
+    fetch_hash, fetch_array and fetch_int do (docs/spinel-feedback.md S).
+
+91. `exit` called on a thread other than the main one ends only that
+    thread under Spinel 2026.11.04.7026; CRuby raises `SystemExit` there,
+    which ends the process with the status. Reduced program (CRuby exits
+    1 with no output, the compiled program prints `main still alive` and
+    exits 0): `def die_later(code); Thread.new { sleep(0.2); exit(code) };
+    end`, `die_later(1)`, `sleep(1.0)`, `puts "main still alive"`. Found in
+    phase 3 (2026-11-09), when the feed supervisor was to exit a `feeds`
+    process after repeated feed deaths: a background thread that must end
+    the process signals the main thread instead
+    (`Background.feeds_failed?`), and the main thread stops the feeds and
+    returns the status (Application#run_feeds_threads,
+    cybertrain/background/supervisor.rb). `Thread#join` on a thread that
+    died of an exception re-raises it, as under CRuby (spike 3 of phase 3),
+    so the framework joins feed and supervisor threads in plain methods
+    that rescue `Exception` (rules 32 / 45).
 
 ## Numbers worth remembering
 

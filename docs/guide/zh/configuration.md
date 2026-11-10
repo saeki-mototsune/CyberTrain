@@ -1,5 +1,5 @@
 ---
-source_sha256: b0f8f7ce8f29151195c929b5aa6f2cf9769a7d0b96b72d53cdddc87a88d32c9e
+source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
 ---
 # 配置
 
@@ -34,9 +34,17 @@ end
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`；以逗号分隔的名称会替换这个列表。名称中包含其中任一项的参数（按 ASCII 不区分大小写：`password` 也匹配 `user[password]`），其值在请求日志和开发时的错误页面上会写成 `[FILTERED]`；在 `config/app.rb` 中设为 `[]` 可关闭此功能 |
 | `CYBERTRAIN_WORKER` | `worker` | `true`；`0` 或 `false` 会让 `server` 进程不运行定时任务、作业和 WebSocket 数据订阅（参见[进程角色](background-and-operations.md#process-roles)）；`./<app> worker` 和 `feeds` 会忽略它 |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`：一个进程同时运行的作业数（参见[后台任务](background-and-operations.md#background-work)）；至少为 1 |
+| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"`：没有 `tz:` 的 `Scheduler.cron` 任务读取所用的时区，一个 IANA 名称，例如 `Asia/Tokyo`（参见[时区](#time-zones)）；系统 zoneinfo 中没有的时区会让启动停止 |
+| `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`：[作业页面](background-and-operations.md#the-jobs-page-and-the-jobs-command)每个列表的行数；至少为 1 |
+| `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`：两次清理过期[缓存](background-and-operations.md#the-cache-store)行之间的秒数，在 require `cybertrain/cache` 时读取；至少为 1 |
+| `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`：两次写入每个 WebSocket 数据订阅状态行之间的秒数（参见[数据订阅的健康状况](realtime.md#feed-health)）；至少为 1 |
+| `CYBERTRAIN_FEED_RESTART_LIMIT` | `feed_restart_limit` | `10`：在时间窗口内一个数据订阅线程的重启次数，超过之后它再死掉时 `feeds` 进程会以状态 1 退出（参见[订阅 WebSocket 数据流](external-services.md#consuming-websocket-feeds)）；至少为 1 |
+| `CYBERTRAIN_FEED_RESTART_WINDOW` | `feed_restart_window` | `600`：这个时间窗口，以秒计；至少为 1 |
 | `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`：实时端点（参见[实时](realtime.md#limits-and-settings)）；空值会关闭流；它必须以 `/` 开头，并且不同于 `health_path` |
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`；`1` 或 `true` 会以 `SO_REUSEPORT` 绑定，让多个进程监听同一端口，在 Linux 上由内核在它们之间分配连接（开发环境中会被忽略；参见 [Running several processes](../deploy.en.md#running-several-processes)）。除一个进程外，其余都设置 `CYBERTRAIN_WORKER=0` |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`；内置健康检查的路径（参见[运维](background-and-operations.md#operations-backups-vacuum-health-check)）；空值会关闭它；不以 `/` 开头的值会让服务器在启动时停止。`health_worker_stale`（300 秒）在 `config/app.rb` 中设置 |
+| `CYBERTRAIN_HEALTH_FEEDS` | `health_feeds` | `true`：对于停止报告状态或陷入沉默的 WebSocket 数据订阅，健康检查也返回 `503 feed stale`（参见[数据订阅的健康状况](realtime.md#feed-health)）；`0` 或 `false` 关闭这一部分 |
+| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`：数据订阅沉默，或其进程不再写入状态，多少秒之后返回 `503 feed stale`；至少为 1，且在 `health_feeds` 开启时必须大于 `feed_status_interval`（否则启动时拒绝） |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`；`1` 或 `true` 允许 `Cybertrain::HttpClient` 连接环回地址、私有地址和其他非公网地址（参见[出站 HTTP](external-services.md#outbound-http)） |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`；`Cybertrain::Mailer` 用来发送邮件的 SMTP 服务器（参见[发送电子邮件](external-services.md#sending-e-mail)） |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`：使用所选模式的端口，`starttls` 为 587，`tls` 为 465，`none` 为 25；1 到 65535 以外的任何值都视为 0 |

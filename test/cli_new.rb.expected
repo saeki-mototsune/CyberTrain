@@ -9,6 +9,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -28,7 +29,7 @@ create tmp/.keep
 create test/.keep
 ok   new writes the app skeleton and returns the created paths
 ok   spin.toml names the package and references the framework
-ok   config/routes.rb and db/schema.rb are empty DSL blocks
+ok   config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jobs page commented out)
 ok   bin/blog.rb is the app's one binary: server, migrate, db
 ok   bin/gen.rb drives the generator
 ok   bin/db.rb runs migrations in development without the app's models
@@ -49,6 +50,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -78,6 +80,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -113,6 +116,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -142,6 +146,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -170,6 +175,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -203,6 +209,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -233,6 +240,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -305,6 +313,12 @@ Usage:
       (default string). Templates render it with
       <%= render component: "NAME", attr: value %>.
       --force overwrites files that already exist.
+  cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
+      Add a background job: app/jobs/NAME_job.rb (a Cybertrain::Job::Base
+      with an empty perform(args) and a retry_on line per --retry: wait
+      in seconds or polynomially_longer, then the attempts) and a test
+      running it. Queue it with NameJob.perform_later("id" => 1) once
+      `spin run gen` has written gen/jobs.rb.
   cybertrain db migrate
       Generate, apply pending migrations, generate again
       (spin run gen; spin run db -- migrate; spin run gen).
@@ -382,6 +396,12 @@ Usage:
       (default string). Templates render it with
       <%= render component: "NAME", attr: value %>.
       --force overwrites files that already exist.
+  cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
+      Add a background job: app/jobs/NAME_job.rb (a Cybertrain::Job::Base
+      with an empty perform(args) and a retry_on line per --retry: wait
+      in seconds or polynomially_longer, then the attempts) and a test
+      running it. Queue it with NameJob.perform_later("id" => 1) once
+      `spin run gen` has written gen/jobs.rb.
   cybertrain db migrate
       Generate, apply pending migrations, generate again
       (spin run gen; spin run db -- migrate; spin run gen).
@@ -458,6 +478,12 @@ Usage:
       (default string). Templates render it with
       <%= render component: "NAME", attr: value %>.
       --force overwrites files that already exist.
+  cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
+      Add a background job: app/jobs/NAME_job.rb (a Cybertrain::Job::Base
+      with an empty perform(args) and a retry_on line per --retry: wait
+      in seconds or polynomially_longer, then the attempts) and a test
+      running it. Queue it with NameJob.perform_later("id" => 1) once
+      `spin run gen` has written gen/jobs.rb.
   cybertrain db migrate
       Generate, apply pending migrations, generate again
       (spin run gen; spin run db -- migrate; spin run gen).
@@ -505,8 +531,17 @@ ok   CLI version, help and unknown commands
 # read without it. To rotate, move the old key to
 # CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS (comma-separated) and re-save.
 # CYBERTRAIN_ENCRYPTION_KEY=  # cybertrain secret --hex
+
+# Settings, not secrets. /up answers 503 "feed stale" once a
+# WebSocket feed has stopped reporting; 0 turns that check off.
+# CYBERTRAIN_HEALTH_FEEDS=0
+# Seconds of silence after which a feed counts as stale (180).
+# CYBERTRAIN_HEALTH_FEED_STALE=180
+
+# The IANA zone cron expressions are read in; UTC when unset.
+# CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo
 ok   .env.example lists the secrets, commented, with how to make each
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-26 tests, 305 assertions, 0 failures
+26 tests, 307 assertions, 0 failures

@@ -1,5 +1,6 @@
-# Cybertrain::Mailer -- plain-text e-mail through an SMTP server, with every
-# wait bounded.
+# Cybertrain::Mailer -- e-mail through an SMTP server, plain text or
+# multipart/alternative with an HTML part, with every wait bounded, sent
+# now (deliver) or by a job (deliver_later).
 #
 # Built on the same socket layer as the outbound HTTP client
 # (cybertrain/net/socket.rb): a non-blocking connect, reads through a byte
@@ -22,12 +23,20 @@
 # The password is never part of an error message, a log line or the boot
 # banner; the only place it travels is the AUTH PLAIN command, over TLS
 # (or to a loopback address).
+#
+# Mailer.deliver_later and the built-in "cybertrain mail" job are in
+# cybertrain/mailer/later.rb (which cybertrain.rb requires), so this file
+# needs no database: a program that only sends mail links no SQLite and
+# loads under CRuby.
 require "base64"
 require "cybertrain/config"
+require "cybertrain/crypto"
 require "cybertrain/net/socket"
 
 module Cybertrain
-  # Sends plain-text e-mail through an SMTP server.
+  # Sends e-mail through an SMTP server: plain text, or with `html:` a
+  # multipart/alternative message, now ({.deliver}) or from a job
+  # ({.deliver_later}).
   # @example config from the environment (CYBERTRAIN_SMTP_HOST, ...)
   #   require "cybertrain/mailer"
   #   require "cybertrain/net/tls"
@@ -41,6 +50,9 @@ module Cybertrain
   #   mailer = Cybertrain::Mailer.new(host: "smtp.example.com", user: "app", password: ENV["SMTP_PASSWORD"].to_s,
   #                                   from: "noreply@example.com")
   #   mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: text)
+  # @example HTML from a partial, sent by a job
+  #   html = Cybertrain::Views.render_mail("mail/welcome", user: user)
+  #   Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: "Welcome!\n", html: html)
   # @api public
   class Mailer
     # The base of every error a delivery raises. Messages name the server
@@ -289,24 +301,30 @@ module Cybertrain
     # @param to [String] one address, or several separated by commas
     # @param subject [String] UTF-8; non-ASCII is RFC 2047-encoded
     # @param body [String] UTF-8 plain text, any line endings
+    # @param html [String] UTF-8 HTML; when not empty the message is
+    #   multipart/alternative, `body` its text part and this its HTML part
+    #   ({Message.build})
     # @param from [String] the sender; "" for Config#smtp_from
     # @return [String] the server's reply to the message ("250 2.0.0 Ok:
     #   queued as ...")
     # @raise [Error] a subclass; ArgumentError for an address, subject or body refused
     # @api public
-    def self.deliver(to:, subject:, body:, from: "")
-      Mailer.new.deliver(to: to, subject: subject, body: body, from: from)
+    def self.deliver(to:, subject:, body:, html: "", from: "")
+      Mailer.new.deliver(to: to, subject: subject, body: body, html: html, from: from)
     end
 
     # Sends one message.
     # @param to [String] one address, or several separated by commas
     # @param subject [String] UTF-8; non-ASCII is RFC 2047-encoded
     # @param body [String] UTF-8 plain text, any line endings
+    # @param html [String] UTF-8 HTML; when not empty the message is
+    #   multipart/alternative (the text part, then the HTML part, both
+    #   base64, {Message.build}) with a random boundary
     # @param from [String] the sender; "" for the mailer's `from:`
     # @return [String] the server's reply to the message
     # @raise [Error] a subclass; ArgumentError for an address, subject or body refused
     # @api public
-    def deliver(to:, subject:, body:, from: "")
+    def deliver(to:, subject:, body:, html: "", from: "")
       given = from.to_s
       sender = given.empty? ? @mail_from : given
       Mailer.check_address(sender, "from")
@@ -314,14 +332,23 @@ module Cybertrain
       title = subject.to_s
       Mailer.check_subject(title)
       text = Mailer.normalize_body(body.to_s)
-      perform(sender, recipients, title, text)
+      markup = html.to_s
+      built = ""
+      unless markup.empty?
+        boundary = String.new
+        boundary << "=_cybertrain_" << Crypto.random_token(16)
+        built = Message.build(sender, to.to_s, title, text, markup, boundary)
+      end
+      perform(sender, recipients, title, text, built)
     end
 
     # The Net errors translated into the Mailer's, in a method that takes no
     # block (NOTES rules 32, 45), told apart by rescue clause (rule 47).
-    def perform(sender, recipients, title, text)
+    # `built` is the multipart message ({Message.build}), "" for plain text
+    # (built during the dialogue, its encoding depending on 8BITMIME).
+    def perform(sender, recipients, title, text, built)
       begin
-        exchange(sender, recipients, title, text)
+        exchange(sender, recipients, title, text, built)
       rescue Net::TimeoutError => e
         raise TimeoutError, e.message
       rescue Net::TlsError => e
@@ -340,7 +367,7 @@ module Cybertrain
       @mail_host.include?(":") ? "[#{@mail_host}]:#{@mail_port}" : "#{@mail_host}:#{@mail_port}"
     end
 
-    def exchange(sender, recipients, title, text)
+    def exchange(sender, recipients, title, text, built)
       label = mail_label
       if @mail_tls != "none" && !Net.tls_connector.tls_ready?
         raise Net::TlsError, "#{label}: tls \"#{@mail_tls}\" needs the TLS layer: require \"cybertrain/net/tls\" (Spinel's openssl package)"
@@ -357,7 +384,7 @@ module Cybertrain
       first_stream = Mailer.open_stream(tcp, @mail_host, timer, @mail_tls == "tls")
       session = SmtpSession.new(first_stream, timer, label)
       begin
-        converse(session, tcp, timer, sender, recipients, title, text)
+        converse(session, tcp, timer, sender, recipients, title, text, built)
       ensure
         session.close_session
       end
@@ -389,7 +416,7 @@ module Cybertrain
       Net.tls_connector.tls_wrap(tcp, host, timer)
     end
 
-    def converse(session, tcp, timer, sender, recipients, title, text)
+    def converse(session, tcp, timer, sender, recipients, title, text, built)
       Mailer.expect(session, session.read_reply, 220, "the greeting")
       caps = ehlo(session)
       if @mail_tls == "starttls"
@@ -411,7 +438,8 @@ module Cybertrain
       end
       authenticate(session, caps) unless @mail_user.empty?
       eight_bit = Mailer.capability?(caps, "8BITMIME")
-      encoding = Mailer.body_encoding(text, eight_bit)
+      # A multipart message is 7-bit: its parts are base64.
+      encoding = built.empty? ? Mailer.body_encoding(text, eight_bit) : "7bit"
       mail_from = String.new
       mail_from << "MAIL FROM:<" << sender << ">"
       mail_from << " BODY=8BITMIME" if encoding == "8bit"
@@ -428,7 +456,7 @@ module Cybertrain
       end
       session.send_command("DATA")
       Mailer.expect(session, session.read_reply, 354, "DATA")
-      message = Mailer.build_message(sender, recipients, title, text, Mailer.date_header(Time.now), encoding)
+      message = Mailer.message_for(sender, recipients, title, text, built, encoding)
       session.send_data(Mailer.dot_stuff(message))
       accepted = session.read_reply
       Mailer.expect(session, accepted, 250, "the message")
@@ -734,6 +762,18 @@ module Cybertrain
       out
     end
 
+    # What goes after DATA (before dot-stuffing): the plain message, or the
+    # multipart one `built` with the Date header in front.
+    def self.message_for(sender, recipients, title, text, built, encoding)
+      date = Mailer.date_header(Time.now)
+      return Mailer.build_message(sender, recipients, title, text, date, encoding) if built.empty?
+
+      out = String.new
+      out << "Date: " << date << "\r\n"
+      out << built
+      out
+    end
+
     # "To: a@x, b@y\r\n", folded before an address that would take the
     # line past 78 characters.
     def self.to_header(recipients)
@@ -866,3 +906,5 @@ module Cybertrain
     end
   end
 end
+
+require "cybertrain/mailer/message"

@@ -1,5 +1,5 @@
 ---
-source_sha256: a7d344c625b8a0bdb65077dff896e07c8a6258a00ef38ebe3d533d3b20335e34
+source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
 ---
 # リアルタイム：ブラウザーへのストリーム
 
@@ -191,3 +191,29 @@ end
 - 1 つのデータベースを共有する複数のサーバーは、それぞれ自分のブラウザーにすべてのメッセージを、同じ順序・同じ id で配信します。
 
 ページのストリームのテスト：[ストリームとコンポーネントのテスト](testing.md#testing-streams-and-components)。設計：[docs/design.md](../design.md) D36 と D37。
+
+## フィードのヘルス
+
+[WebSocket のフィード](external-services.md#consuming-websocket-feeds)は、HTTP を提供しない `feeds` のプロセスで動くことが多いので、そのヘルスはデータベースを通じて伝わります。フィードを動かす各プロセスの監視スレッドが、`feed_status_interval` 秒（10）ごとに、購読ごとに 1 行を `cybertrain_feeds` に書きます。このテーブルはフレームワークのものです（最初の使用時に作られ、`db/schema.rb` には含めません）。`server` のプロセスの `GET /up` はこれを読み、どれかの行について次のどちらかが成り立つと `503 feed stale` を返します：
+
+<!-- list: points -->
+- 書き手が古い：行が最後に書かれてから `health_feed_stale` 秒（180、`CYBERTRAIN_HEALTH_FEED_STALE`）より長くたっている。つまり、フィードを動かすプロセスが死んだか、止まったか、データベースを失った。または、
+- フィードが黙っている：行は新しいが、フィードがその間メッセージを届けず、ping にも答えていない（何も受け取ったことのないフィードは開始時から数えます）。
+
+2 つは別々に確かめられるので、生きている書き手が黙ったフィードを隠すことはありません。数えるのは、アプリケーションがいまも購読しているフィードの行だけです。どの役割も同じバイナリを動かすので、どの `subscribe` も登録していない名前の行（消したり名前を変えたりしたフィード）は無視されます。`health_feed_stale` は `feed_status_interval` より大きくなければなりません。そうでないと、2 回の書き込みの間にすべての行が古くなるからです。起動時にそれ以外は拒否されます。`CYBERTRAIN_HEALTH_FEEDS=0`（または `false`）はこの確認を止めます。しきい値より長く静かなのが正常なフィードや、別の方法でフィードを見ているデプロイのためです。テーブルが読めないとき、`/up` は 200 のままで、読めるようになるまで `[WARN]` の行を 1 つだけ出します。
+
+`./<app> feeds status` は、運用する人のために行をフィードごとに 1 行で表示します：
+
+```console
+$ ./blog feeds status
+trades  connected  web-1:4242  last activity 3s ago  restarts 0  updated 4s ago
+```
+
+<!-- list: points -->
+- 行のキーはフィードの名前だけです。同じフィードを動かす 2 つのプロセスは互いの行を上書きします。各フィードを 1 つのプロセスで動かす理由がまた 1 つ増えます。
+- きれいに止められた `feeds` のプロセス（TERM か INT：デプロイ、台数の削減）は、自分が書いた行を消します。わざと止めた役割は数えられなくなります。クラッシュしたプロセスや、フィードが何度も死んだ後で終了したプロセスは行を残し、それが古くなります。`/up` が報告するのはまさにそれです。
+- 消したり名前を変えたりしたフィードの行は残りますが、`/up` はそれを無視し、`feeds status` は `(not registered)` と印を付けます。好きなときに消してください（`./<app> dbconsole` で `DELETE FROM cybertrain_feeds WHERE name = 'trades';`）。
+- `status` はフィードの名前に使えません。`./<app> feeds status` がテーブルを表示するので、`subscribe("status", ...)` は ArgumentError を投げます。
+- `/up` は何も再起動しません。Kamal がそれを見るのはデプロイ中の web の役割だけで、Docker はプロセスが終了したときにコンテナを再起動します。`feeds` のプロセスは、フィードが何度も死んだ後で終了します。その役割に再起動ポリシーを与えてください（[プロセスの役割](background-and-operations.md#process-roles)）。
+
+設計：[docs/design.md](../design.md) D56。

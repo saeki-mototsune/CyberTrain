@@ -1,0 +1,9 @@
+ok   assert_enqueued_jobs counts queued rows, of a kind when given
+ok   assert_no_enqueued_jobs passes on an empty queue and names what is queued
+ok   assert_enqueued_with matches a kind and args by Cast.str, so 1 matches a JSON 1
+ok   perform_enqueued_jobs runs the due rows, returns the count and leaves future rows
+ok   assert_enqueued_with reads Symbol keys as their names
+ok   perform_enqueued_jobs fails after 10,000 jobs instead of running for ever
+ok   perform_enqueued_jobs leaves a retry scheduled into the future
+ok   clear_enqueued_jobs deletes the queued rows and returns how many
+8 tests, 58 assertions, 0 failures

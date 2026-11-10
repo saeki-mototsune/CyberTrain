@@ -10,6 +10,7 @@ wrote gen/controllers.rb
 wrote gen/views.rb
 wrote gen/helpers.rb
 wrote gen/components.rb
+wrote gen/jobs.rb
 wrote gen/console.rb
 wrote gen/app.rb
 identical gen/routes.rb
@@ -17,6 +18,7 @@ identical gen/controllers.rb
 wrote gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
+identical gen/jobs.rb
 identical gen/console.rb
 identical gen/app.rb
 identical gen/routes.rb
@@ -24,6 +26,7 @@ identical gen/controllers.rb
 wrote gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
+identical gen/jobs.rb
 identical gen/console.rb
 identical gen/app.rb
 ok   the runner writes gen/views.rb, empty by default and full with --embed-views

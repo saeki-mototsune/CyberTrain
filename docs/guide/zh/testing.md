@@ -1,5 +1,5 @@
 ---
-source_sha256: c5ef44e9a88b3fbef4099d33b8ea7e47c5b10fb95eeef6e39fae0a8151f22a9e
+source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
 ---
 # 测试应用
 
@@ -42,7 +42,7 @@ test/<name>.rb.expected 2>&1`（快照过时时 `cybertrain spin test` 以非零
 
 ## 测试出站调用
 
-当被测代码发送 webhook（[出站 HTTP](external-services.md#outbound-http)）或电子邮件（[发送电子邮件](external-services.md#sending-e-mail)）时，测试在进程内接收它：`Cybertrain::Test::HttpReceiver` 和 `Cybertrain::Test::SmtpReceiver` 在 `127.0.0.1` 上监听，记录收到的内容，并以预设的应答作答。文件以上面同一个辅助文件 `support/blog_test` 开头，并自行 require `cybertrain/mailer`：`require "cybertrain"` 不会加载它。
+当被测代码发送 webhook（[出站 HTTP](external-services.md#outbound-http)）或电子邮件（[发送电子邮件](external-services.md#sending-e-mail)）时，测试在进程内接收它：`Cybertrain::Test::HttpReceiver` 和 `Cybertrain::Test::SmtpReceiver` 在 `127.0.0.1` 上监听，记录收到的内容，并以预设的应答作答。文件以上面同一个辅助文件 `support/blog_test` 开头；`require "cybertrain"` 会加载邮件程序，下面显式的 require 也无妨。
 
 ```ruby
 require_relative "support/blog_test"   # 应用、BLOG 和 Cybertrain::Test
@@ -78,7 +78,7 @@ end
 Cybertrain::Test.run!
 ```
 
-`HttpReceiver.new` 接收预设的 `status:`、`headers:`、`body:` 和 `chunked:`（`respond_with` 可以在请求之间修改它们）；请求以 `ReceivedRequest` 的形式返回（`http_method`、`http_target`、`http_path`、名称为小写的 `http_headers`、`http_header(name)`、已解码分块请求体的 `http_body`）。`SmtpReceiver` 依次扮演 220、EHLO（带 8BITMIME，除非 `eight_bit_mime: false`；`auth: true` 时带 AUTH PLAIN）、MAIL、RCPT、DATA 和 QUIT；`reject:` 会让 `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data` 或 `:message` 中的任意一步以给定的应答失败。`ReceivedMessage` 带有 `envelope_from`、`envelope_recipients`、`message_data`（已还原点填充）、`message_header(name)`、`message_body` 以及命令的 `transcript`。两者都只接受一个连接，除非 `max:` 指定了更多（`received_requests` / `received_messages` 会返回全部）。每次等待都有上限：接收器在 `accept_window:`（10 秒）内没有连接就会放弃，客户端静默超过 `read_timeout:`（5 秒）也会放弃，`stop`（可以安全地调用两次）会结束并 join 接收器的线程、关闭其端口，所以接收器永远不会接走后续测试的连接。它们只需要 Ruby 的 socket 库，不需要 openssl。
+`HttpReceiver.new` 接收预设的 `status:`、`headers:`、`body:` 和 `chunked:`（`respond_with` 可以在请求之间修改它们）；请求以 `ReceivedRequest` 的形式返回（`http_method`、`http_target`、`http_path`、名称为小写的 `http_headers`、`http_header(name)`、已解码分块请求体的 `http_body`）。`SmtpReceiver` 依次扮演 220、EHLO（带 8BITMIME，除非 `eight_bit_mime: false`；`auth: true` 时带 AUTH PLAIN）、MAIL、RCPT、DATA 和 QUIT；`reject:` 会让 `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data` 或 `:message` 中的任意一步以给定的应答失败。`ReceivedMessage` 带有 `envelope_from`、`envelope_recipients`、`message_data`（已还原点填充）、`message_header(name)`、`message_body` 以及命令的 `transcript`；对于 HTML 邮件，`message_parts` 会把它解码为 `"subject"`、`"text"` 和 `"html"`。两者都只接受一个连接，除非 `max:` 指定了更多（`received_requests` / `received_messages` 会返回全部）。每次等待都有上限：接收器在 `accept_window:`（10 秒）内没有连接就会放弃，客户端静默超过 `read_timeout:`（5 秒）也会放弃，`stop`（可以安全地调用两次）会结束并 join 接收器的线程、关闭其端口，所以接收器永远不会接走后续测试的连接。它们只需要 Ruby 的 socket 库，不需要 openssl。
 
 数据流也以同样的方式测试，使用 `Cybertrain::Test::WebSocketReceiver`，它是 `127.0.0.1` 上一个按脚本运行的 WebSocket 服务器：每个连接依次执行一组 `Cybertrain::Test::WsStep`（`"accept"`、`"send_text"`、`"expect"`、`"silent"`、`"close"`、`"drop"`、`"echo_until_close"` 等），客户端发送的帧会以去掉掩码的形式从 `ws_received` 返回。
 
@@ -112,6 +112,37 @@ end
 ```
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` 让重试延迟变得精确。本仓库中的 `test/websocket_integration.rb` 展示了一个完整的测试。
+
+## 测试作业
+
+`require "cybertrain/test/jobs"` 为测试数据库的作业队列添加五个辅助方法。`cybertrain generate authentication` 写出的支持文件（`test/support/app_test.rb`）会 require 它；没有这个文件的应用，请像 examples/blog 那样把这一行加到自己的支持文件中。
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/jobs"
+
+test "a notification is enqueued, then runs" do
+  clear_enqueued_jobs
+  NotifyCommentJob.perform_later("comment_id" => 7, "article_id" => 1)
+  assert_enqueued_jobs 1, "NotifyCommentJob"
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => 7 }
+  assert_equal 1, perform_enqueued_jobs
+  assert_no_enqueued_jobs
+end
+
+test "the job itself" do
+  assert_nil NotifyCommentJob.perform_now("comment_id" => 1, "article_id" => 1)
+end
+```
+
+<!-- list: points -->
+- `assert_enqueued_jobs(count, kind = "")` 统计 `queued` 的行（给出种类时只统计该种类）；`assert_no_enqueued_jobs(kind = "")` 要求一个也没有。
+- `assert_enqueued_with(kind, args)` 要求有一个该种类的排队行，其参数包含每个给定的键且值相等，两边都以 `Cast.str` 比较，所以 `"comment_id" => 7` 与 JSON 的 `7` 匹配。Symbol 键按其名称读取，所以也可以写 `assert_enqueued_with "NotifyCommentJob", comment_id: 7`。
+- `perform_enqueued_jobs(now = Time.now)` 在调用它的线程上逐个运行每个到期的作业（`Job.work_one`），直到没有到期的作业，并返回运行的个数。安排在之后的重试仍留在队列中：传入更晚的 `now` 来运行它。一个立即到期地把自己重新入队的作业本会让它一直运行下去，因此它在运行 10,000 个作业之后让测试失败。
+- `clear_enqueued_jobs` 删除所有 `queued` 的行；`failed` 和 `discarded` 的行会保留，所以产生它们的测试要自己删除。
+- `WelcomeJob.perform_now(args)` 直接运行一个作业，没有队列，也没有 rescue：异常会到达测试。
+- 用 `deliver_later` 发送的邮件是一个 `"cybertrain mail"` 作业：`perform_enqueued_jobs` 会把它发送到 `SmtpReceiver`（`smtp_host` 和 `smtp_port` 指向它）。
+- 定时任务用 `Cybertrain::Scheduler.run_due(now)` 一次运行一次心跳，`Cybertrain::Cache.prune(now)` 在你选定的时间清理缓存。
 
 ## 测试流和组件
 

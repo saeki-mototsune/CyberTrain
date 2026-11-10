@@ -98,9 +98,10 @@ FILES = {
   "app/views/_top.html.erb" => "top <%= n %>",
   "app/views/_where.html.erb" => "<%= where_am_i %>",
   "app/views/_token.html.erb" => "<%= token_of_form %>",
+  "app/views/mail/_welcome.html.erb" => "<%# locals: (name:) %>\n<p>Welcome, <%= name %></p>",
   "app/components/card_component.html.erb" => "<h3><%= title %></h3><%= content %>"
 }
-DIRS = ["app", "app/views", "app/views/articles", "app/components"]
+DIRS = ["app", "app/views", "app/views/articles", "app/views/mail", "app/views/layouts", "app/components"]
 DIRS.each { |d| Dir.mkdir("#{ROOT}/#{d}") }
 FILES.each_key { |f| File.write("#{ROOT}/#{f}", FILES[f]) }
 at_exit do
@@ -173,6 +174,24 @@ end
 test "Cybertrain::Test wraps both" do
   assert_equal "<h3>t</h3><i>i</i>", Cybertrain::Test.render_component(CardComponent.new(title: "t"), content: "<i>i</i>")
   assert_equal "top 4", Cybertrain::Test.render_partial("top", n: 4)
+end
+
+test "render_mail wraps in layouts/mail when present" do
+  # No layout yet: the partial alone.
+  assert_equal "<p>Welcome, A &amp; B</p>", Cybertrain::Views.render_mail("mail/welcome", name: "A & B")
+  layout = "#{ROOT}/app/views/layouts/mail.html.erb"
+  File.write(layout, "<html><body><%= yield %></body></html>")
+  wrapped = Cybertrain::Views.render_mail("mail/welcome", name: "A & B")
+  # Strict locals are checked with the layout too.
+  msg = ""
+  begin
+    Cybertrain::Views.render_mail("mail/welcome", user: 1)
+  rescue ArgumentError => e
+    msg = e.message
+  end
+  File.delete(layout)
+  assert_equal "<html><body><p>Welcome, A &amp; B</p></body></html>", wrapped
+  assert_equal "missing local 'name' for mail/_welcome.html.erb", msg
 end
 
 Cybertrain::Test.run!

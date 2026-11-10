@@ -121,7 +121,17 @@ end
   inherit from `Job::Base` is ignored (a helper module may live there); a
   macro it cannot read (a block, a lambda, a hashrocket spelling, a trailing
   comment) stops generation with the one-line message the model macros use
-  (phase 2, section 3.4).
+  (phase 2, section 3.4). Inheritance among job classes follows Rails'
+  order: `ApplicationJob` is not registered as a kind of its own; every
+  other job class is (a parent such as `Admin::ReportJob` is enqueued in
+  its own right, so a middle class must define or inherit `perform`); an
+  ancestor's `retry_on` / `discard_on` arms are emitted into each
+  descendant's `run_job` after the descendant's own arms, and the nearest
+  ancestor's `limits_concurrency` applies to a descendant that sets none. Every `Job::Base` descendant the scan meets is
+  generated, whether it is the second class in a file, nested inside
+  another class, or a grandchild; a class whose superclass is none of
+  `Job::Base`, `ApplicationJob` or a scanned job class is the ignored
+  helper of the previous sentence.
 - `gen/jobs.rb` carries, per class: the reopened class with
   `self.job_kind`, `perform_later`, `perform_at`, `perform_in`,
   `perform_now`, and `self.run_job(run)`; and one registration
@@ -282,9 +292,14 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 - `tz:` names a zone of `Cybertrain::TimeZone` (D19; the system zoneinfo
   database, DST included); the default is `"UTC"`. The next run is the first
   wall-clock minute after the last run that matches the expression in that
-  zone; across a DST gap a wall time that does not exist is skipped and
-  across a fold it runs once (cron's behaviour). `Cron.next_after(expr,
-  epoch, zone) -> Integer` is a pure function with its own tests.
+  zone; across a DST gap a wall time that does not exist is skipped. Across
+  a fold Vixie cron's rule applies: an expression whose hour field starts
+  with `*` (`30 * * * *`, `0 */2 * * *`) runs at both occurrences of the
+  repeated hour, so an hourly entry keeps its hourly cadence in real time;
+  an expression with a fixed hour (`30 1 * * *`) runs once, at the first
+  occurrence. `Cron.next_after(expr, epoch, zone) -> Integer` is a pure
+  function with its own tests; `epoch` is the task's last run (the fold
+  rule is defined against it).
 - A `cron` task takes either a block (run on the scheduler thread, as
   `every` tasks are) or `job: "KindOrClassName", args: {}` — then the task
   only enqueues (`Job.enqueue(kind, JSON.generate(args))`), which is what
@@ -309,9 +324,15 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
   process ran executes once at start, as it would have; a `cron` task whose
   slot passed does **not** (cron's and Solid Queue's rule) unless
   `catch_up: true`, in which case it runs once at start and then continues
-  on its schedule. A task name that disappears from the registration keeps
-  its row until `Scheduler.prune_schedules` (called at start) removes names
-  that are no longer registered.
+  on its schedule. When a process takes the lease over from another (or
+  regains it after a tick in which it could not acquire it), it reloads
+  the table first; a `cron` task whose row says its slot passed while no
+  leader ran it runs that one slot once, whatever `catch_up` says, because
+  processes were up and the table recorded the slot as due — only the
+  "nothing ran" gap of a cold start is skipped. A task name that
+  disappears from the registration keeps its row until
+  `Scheduler.prune_schedules` (called at start) removes names that are no
+  longer registered.
 - `Scheduler.run_due(now)` keeps its test entry point; `Scheduler.task_summary`
   lists cron tasks with their next run in UTC.
 
@@ -365,16 +386,17 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   caching in the jobs that produce the data, not in request paths that
   write often). A separate database file (survey D-9) and a size cap are
   not in phase 3.
-- API: `fetch(key, expires_in: nil, race_condition_ttl: 0) { String }`,
-  `read(key) -> String | nil`, `write(key, value, expires_in: nil,
+- API: `fetch(key, expires_in: 0, race_condition_ttl: 0) { String }`,
+  `read(key) -> String | nil`, `write(key, value, expires_in: 0,
   unless_exist: false) -> Boolean` (false only when `unless_exist` found a
   live row), `delete(key) -> Boolean`, `exist?(key)`, `increment(key, by: 1,
-  expires_in: nil) -> Integer` (one `INSERT … ON CONFLICT DO UPDATE SET value
+  expires_in: 0) -> Integer` (one `INSERT … ON CONFLICT DO UPDATE SET value
   = CAST(value AS INTEGER) + ?`), `clear`. Values are Strings (Spinel has no
   Marshal, and `fetch` must answer one type); `fetch_hash`, `fetch_array` and
   `fetch_int` store JSON / Integer text and parse on read with `Cast`, so a
   corrupt cell reads as `{}` / `[]` / `0` and is recomputed on the next
-  miss. `expires_in: nil` never expires.
+  miss. `expires_in: 0` (the default; an Integer keyword cannot default to
+  `nil`) never expires, as Rails' `nil` does; section 18.
 - `race_condition_ttl: n`: when a row is expired and the caller has a block,
   `UPDATE cybertrain_cache SET expires_at = ? WHERE key = ? AND expires_at <
   ?` extends the stale row by `n` seconds; the caller whose UPDATE changed a
@@ -389,11 +411,17 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
 
 ## 8. The HTTP client (H-1, H-2, H-4, H-5)
 
-- **gzip** (H-2): when `cybertrain/http/gzip_ffi` is required (the same
-  opt-in as `net/tls`: it links zlib), the client sends `Accept-Encoding:
+- **gzip** (H-2): when `cybertrain/http/gzip_ffi` is loaded (it links zlib;
+  `require "cybertrain"` loads it, so it is on in every application, and
+  only a program that requires the client alone opts in: section 18), the
+  client sends `Accept-Encoding:
   gzip` and inflates a `Content-Encoding: gzip` body through
   `GzipFFI.gunzip` with `max_body` as the inflated limit. `HttpClient.gzip=`
-  is the substitution point the gzip file sets; without it nothing changes.
+  is the substitution point the gzip file sets, read back as
+  `HttpClient.gzip_decoder` (a reader named `gzip` would share its name
+  with Spinel's `Zlib.gzip`, rule 34; section 18); without the gzip file
+  no `Accept-Encoding` is sent, and a response that is gzip all the same
+  is a `BadResponseError`.
   A streamed response (next item) is inflated chunk by chunk through the
   bounded inflater; `Content-Encoding` other than `gzip` or identity is a
   `BadResponseError`.
@@ -406,7 +434,8 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   `bytes_written`. A 78 MB body therefore never sits in memory.
 - **Server-Sent Events** (H-5): `Cybertrain::Sse::Parser.new.feed(chunk) {
   |event| }` turns the chunks of a streamed `text/event-stream` response
-  into `Sse::Event`s (`event_name`, `data`, `event_id`, `retry_ms`), with the
+  into `Sse::Event`s (`event_name`, `event_data`, `event_id`,
+  `event_retry_ms`: prefixed, rules 10 / 34 / 41; section 18), with the
   spec's line rules (CR / LF / CRLF, `data:` joining with LF, comments
   ignored). It is a pure parser with its own tests; the client knows nothing
   of it. The request's `deadline:` must cover the whole stream (the guide
@@ -500,9 +529,11 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
 - `Mailer.deliver_later(to:, subject:, body:, html: "", from:)` enqueues the
   built-in job kind `"cybertrain mail"` with the finished message as the
   payload (`{"to", "subject", "body", "html", "from"}`), registered when
-  `cybertrain/mailer` is required: `retry_on Mailer::TimeoutError,
-  Mailer::ConnectError` with `wait: 60, attempts: 5`, `discard_on
-  Mailer::RejectedError` (a refused address will not become deliverable),
+  `cybertrain/mailer/later` is required (`cybertrain.rb` requires it;
+  section 18): `retry_on Mailer::TimeoutError, Mailer::ConnectError` and a
+  `RejectedError` with a 4xx reply, with `wait: 60, attempts: 5`; a
+  `RejectedError` with a 5xx reply discarded (a refused address will not
+  become deliverable), and an `ArgumentError` at run time discarded too;
   everything else the default policy. The body is rendered at enqueue time,
   not in the job, so the job needs no view context and the payload is
   inspectable on the jobs page. Parameterised mailer classes
@@ -648,6 +679,90 @@ guide tells such deployments to use the `feeds` role); (4) gzip left out of
 phase 3 and recorded; (5) a single-part HTML message (`text/html` only, with
 `text:` dropped); (6) the prefixed names above.
 
+**Results (2026-11-09, Spinel 2026.11.04.7026, programs kept in
+spikes/phase3/ with their output in each header, rule 89 recorded in
+spikes/NOTES.md):**
+
+1. Cron over DST: passes, compiled and under CRuby alike
+   (cron_dst.rb). Stepping the zone's wall clock a minute at a time and
+   converting each matching minute back with `local_to_utc`, keeping it
+   only when `utc_to_local` reads the same wall minute and it is after the
+   last run: `30 1 * * *` in Europe/London after 2026-03-28 23:00 UTC skips
+   the missing 01:30 of the 29th and runs 2026-03-30 00:30 UTC; on
+   2026-10-25 it runs once, at the first 01:30 (00:30 UTC, BST), and next
+   on the 26th at 01:30 UTC; Asia/Tokyo gives 2026-03-29 16:30 UTC. For
+   `30 * * * *` across the fold the spike's "wall minute runs once" rule
+   skipped the second 01:30 (00:30 then 02:30 UTC), a two-hour gap in real
+   time. The implementation (Task 2) does not keep that reading: it follows
+   Vixie cron, as section 5.1 now says — a wildcard-hour expression runs at
+   both occurrences (00:30 and 01:30 UTC, pinned by test/cron.rb), a
+   fixed-hour one once.
+2. Rescue arms for application classes: passes (rescue_arms.rb, with
+   `require "cybertrain"`). `rescue Sub` before `rescue AppError` catches
+   a `Sub` and a grandchild in the first arm and an `AppError` in the
+   second; parent first catches both in the first; a framework exception
+   arm and `ArgumentError` beside them match; an unmatched class reaches
+   the caller; `raise Cybertrain::RecordNotFound` from inside an arm
+   reaches the caller's `rescue`; `e.class.ancestors` lists `Leaf Sub
+   AppError StandardError Exception Object Kernel BasicObject` (the
+   fallback's `Class#ancestors` is available, not needed). Found on the
+   way (**rule 89**, docs/spinel-feedback.md R): an arm naming a qualified
+   class the program does not define does not raise NameError; it matches
+   by its last segment or, when a middle segment is missing and a class of
+   the last segment's name exists elsewhere, turns the whole
+   `begin`/`rescue` into a silent catch-all. `require "cybertrain"` does
+   not load cybertrain/mailer, so `retry_on Cybertrain::Mailer::TimeoutError`
+   in an application that never requires it would swallow every error of
+   that job. So the job generator (section 2.2) must check every
+   `retry_on` / `discard_on` class against the classes the scan found and
+   the framework classes of files the application requires, and stop with
+   a one-line message otherwise.
+3. Thread respawn: passes, compiled and under CRuby alike
+   (thread_respawn.rb, with a WebSocket feed connected to the test
+   receiver and receiving meanwhile). A thread that raised reads
+   `alive? == false` from another thread; the replacement started from a
+   supervisor thread through a method runs to the end; `join` on the dead
+   thread re-raises its exception; the feed thread reads `alive?` true
+   while running and false after `WebSocket.stop!`. Spinel prints the
+   thread's exception on stderr as CRuby does (`report_on_exception`).
+4. HTTP client with GzipFFI and the TLS layer: passes (gzip_client.rb).
+   The generated C has no `sp_raise_nomethod(sp_nomethod_msg("getbyte"` or
+   `("each_byte"` (nor any `byte…` name); a control program with a
+   user-defined `getbyte` and a boxed String receiver has none either and
+   prints 97: on this build the grep is silent for the control too, so it
+   is a regression check against rule 62 coming back, not a live detector
+   of it. A gzip body served plain
+   and chunked by `Test::HttpReceiver` comes through `HttpClient#get` and
+   inflates with `GzipFFI.gunzip`; garbage and an over-limit body raise
+   `BodyUndecodable` / `BodyTooLarge`.
+5. `multipart/alternative` mail: passes, compiled and under CRuby alike
+   (multipart.rb). A message with an encoded-word subject, a boundary,
+   and `text/plain` / `text/html` parts in base64 (`Mailer.base64_lines`,
+   `Mailer.dot_stuff`) goes through `Test::SmtpReceiver`;
+   `message_header("Content-Type")` gives the boundary back and both parts
+   decode (`unpack1("m")` and `Base64.decode64`) to the same UTF-8 text.
+6. Name pairs: passes (names.rb). With the whole framework, the
+   application stack, the mailer, the HTTP client and the receivers in one
+   program, stand-ins with the spec's names and return types compile and
+   run beside the existing definitions, each of which the program also
+   reaches: `Cache.read` (String or nil) / `write` (Boolean) / `delete` /
+   `exist?` / `clear` / `increment` / `prune` / `fetch` / `fetch_hash` over
+   `cybertrain_cache` next to `BlobStore`, `Session#delete` / `#clear`,
+   `Errors#clear`, `Stream.prune` and `Test::Client#delete` / `#request`;
+   `Job::Base#perform(args)` next to `Mailer#perform` and
+   `HttpClient#perform`; `Job.register` next to the four other
+   `register`s; `HttpClient#request` (an `HttpClient::Response`) next to
+   `Test::Client#request` (its own Response class); `Response#json_hash`
+   next to `Cast.json_hash`; `Sse::Event#data` and `#event_id` (Strings)
+   next to `Test::Upload#data` and `Stream::Endpoint.event_id` (an
+   Integer). No prefixed fallback is needed. `script/check-reserved-names`
+   guards Model, Controller and the helper names; it has nothing to see
+   until the job and cache files exist and runs in the gate from then on.
+
+No fallback is taken. Rule 89 adds that one check to the job generator
+and nothing else; `Relation#increment` was compiled beside `Cache.increment`
+but not reached (that needs a model and its table).
+
 ## 15. Out of scope for phase 3 (recorded so nothing is lost)
 
 fin_dash's AI job base (J-6: `perform_later` overrides and batch rows are
@@ -753,3 +868,205 @@ cover the cases).
     output includes `app/jobs/` and the commented lines; the guides, their
     four translations, design.md D51–D57 and the deploy notes are updated and
     `script/gate` passes.
+
+## 18. Implementation notes (2026-11-09, after Tasks 1 to 17 landed)
+
+What differed from the plan or from this document, and why; each is recorded
+in the code and in docs/design.md D51 to D57 too. Where a name changed, the
+section's own text above has been amended to the name in the code.
+
+- Spike (section 14): no fallback was taken. Rule 89 (an undefined qualified
+  class in a `rescue` arm) is the one new rule it found, and it added the
+  class check to the job generator (section 2.2). Two more rules came later:
+  rule 90 (Task 8: a `yield` passed straight as a method's argument ran the
+  block twice when blocks of two return types reached it, so `Cache.fetch`
+  and its siblings assign the block's value to a local first; docs/spinel-feedback.md
+  S) and rule 91 (Task 12: `exit` on a thread other than the main one ends
+  only that thread, so the feeds process exits from its main thread, below).
+  Spike item 4's NOTES 62 grep is silent for the control program too on this
+  build: it is a regression check, not a live detector. Spike item 6 named
+  `Sse::Event#data`; the parser's readers are prefixed instead (below).
+- Job classes (section 2): `wait:` left out is 3 seconds and `attempts:` 5
+  (Rails' defaults); `limits_concurrency` without `to:` is 1 and `key:` must
+  be a quoted String. `perform_now` passes its args through `Cast.hash`, so
+  `perform` always receives `Hash<String, Object>`. Three refusals beyond the
+  spec stop `spin run gen`: a job class that neither defines nor inherits
+  `perform` (`Job::Base#perform`'s `NotImplementedError` is not a
+  `StandardError`; it would have ended the worker thread, and since the
+  final review it takes the default policy, see "Final review fixes"), a `def self.` of a
+  generated method name, and `limits_concurrency` twice. The rule-89 check
+  accepts core classes, every framework `...Error` class (its file's require
+  is written into `gen/app.rb` before the jobs), and application classes
+  defined in `app/models/**`, in `app/jobs/application_job.rb` or above the
+  macro in the job's own file; a non-`Error` framework exception
+  (`RecordNotFound`) is refused, while a `retry_on` naming a defined class
+  that is not an exception is accepted (its arm can never match). `ApplicationJob` is scanned but not
+  registered (section 2.2 was amended). `Job.register`'s `max_attempts:` is
+  0 for "no policy of the class's own"; `Job.recovery_limit(kind)` is the
+  larger of `Config#job_max_attempts` and the kind's limit, so a class with a
+  small `attempts:` still gets the default's attempts before a stale row is
+  failed. `JobInfo` keeps one `policies` list in declaration order.
+  `gen/jobs.rb` is written on every generator run, even with no job class.
+  Because `cybertrain.rb` now loads the mailer (section 10 below), the
+  `require "cybertrain/mailer"` the generator writes for a job naming a
+  mailer error is redundant; it is kept, harmless. An exception raised by
+  `retries_exhausted` propagates out of `run_job` and `Job.finish` logs it
+  ("raised after its outcome was written"); the row is already `failed`.
+- Concurrency keys (section 4): a present but empty or `null` key field is
+  refused at enqueue like a missing one. The backfill and the keyed recovery
+  warn the unkeyable ids once per call. `Job.enqueue` of a keyed kind
+  computes the key from a hand-written payload as `perform_later` does.
+- Schedules (section 5): a bad expression raises `ArgumentError` naming the
+  task when `config/app.rb` loads (registration happens before the
+  application exists), which stops the boot as the spec asks. `tz: ""`
+  reads `Config#scheduler_tz` when the scheduler starts, not at
+  registration. The timetable never moves a row backwards and writes
+  conditionally, so a process that lost the lease cannot overwrite the new
+  leader's row. On a takeover a passed `cron` slot runs once only when it
+  came due at or after this process started (section 5.2 was amended); a
+  cold start landing on a slot's minute runs it. An expression with no match
+  within five years from a run (a 29 February past 2096) is logged once and
+  its task disabled until restart (`task_next_run = -1`) instead of raising
+  in the loop. Delivery of a `cron` task around a change of leader is at
+  least once, as the timetable row is written after the run.
+- The jobs page (section 6): the row actions are `JobsPage.retry_job`,
+  `discard_job` and `delete_job` and the list `jobs_rows` (rules 10 / 34:
+  `retry`, `discard`, `delete` exist elsewhere with other types); the
+  controller's methods are `retry_action` and the like (`retry` is a
+  keyword), the route actions keep the spec's names. The page renders inside
+  the layout through `JobsPage.page_html` (`render html:` skips the layout);
+  `index_html` takes the request's helpers for the CSRF token. A retry sets
+  `last_error = ''` (the column is NOT NULL) and writes the row's derived
+  concurrency key in the same UPDATE. The Discard button is shown on
+  `failed` rows only. `jobs prune` defaults to 7 days and calls
+  `Job.prune_finished`, which deletes `failed` and `discarded` rows (not
+  `done`: `prune_done` does that). A `csrf_exempt_prefixes` entry covering
+  the page's path would take CSRF protection off its forms; the guide warns
+  against it.
+- The cache (section 7): `expires_in: 0` means "never" (a keyword typed
+  Integer cannot default to `nil`); a negative value never expires either.
+  `increment` on an expired row restarts at `by`. `fetch_int` reads its cell
+  with `Params.parse_int` (a 20-digit cell would raise in `to_i` under
+  Spinel, NOTES rule 25). A row with `expires_at` E is live through second E.
+  `cache_prune_interval` is read when `cybertrain/cache` is required, since
+  the prune task is registered then; the guide says to set the variable, or
+  configure before the require. `cybertrain.rb` does not require the cache.
+- The HTTP client (section 8): the gzip setter is `HttpClient.gzip=` as
+  specified; the reader is `HttpClient.gzip_decoder`, and the decoder's base
+  class lives in `cybertrain/http/gzip_decoder.rb`, required by both the
+  client and `gzip_ffi`, because rule 84 would otherwise force one file to
+  require the other. `cybertrain.rb` already requires
+  `cybertrain/http/gzip_ffi` (for gzip request bodies), so in an application
+  the support is on and every request sends `Accept-Encoding: gzip` unless
+  the caller sent its own; only a program that loads the client alone needs
+  the require. `x-gzip` counts as gzip; gzip without the support loaded is a
+  `BadResponseError` naming the file, never the compressed bytes; a
+  zero-byte gzip body is an empty body. The Response keeps the received
+  headers (`Content-Encoding`, the wire `Content-Length`) while the body is
+  inflated, and a streamed gzip body has no total limit, as a plain streamed
+  one. `get_to_file` renames onto the target only for a 2xx: another final
+  status is read and counted but never written, and the `.part` is removed;
+  an empty 2xx (a 204) does replace the file with an empty one. Redirects:
+  one `deadline` covers every hop; `Authorization`, `Cookie` and
+  `Proxy-Authorization` are dropped on a cross-origin hop; a `Location` that
+  is not plain-ASCII http(s) is a `BadResponseError`;
+  `TooManyRedirectsError` names host and port only (not the URL).
+  `Sse::Event`'s readers are `event_data` and `event_retry_ms` (not `data`
+  and `retry_ms`; rules 10 / 34 / 41), `event_id` persists across events as
+  WHATWG's last event id does, and a blank line without data resets the
+  event name while a pending `retry` survives it. The parser sets no limit
+  on a line or an event, `finish` yields an unterminated last event, and
+  binary chunks give binary `event_data`.
+- Feeds (section 9): the process exits through its main thread: the
+  supervisor logs the FATAL line and sets `Background.feeds_failed?`, and the
+  `feeds` role stops every feed and returns 1 (rule 91). The give-up comes at
+  the death after the `feed_restart_limit`-th restart in the window (limit +
+  1 deaths), so the line "restarted 10 times in 600 s" is literally true. A
+  non-`StandardError` in the supervisor's own loop is logged and supervision
+  goes on (exit is tied to feed deaths only; a database outage would
+  otherwise become a crash loop). `Background.stop_all` stops the
+  supervisor, not `WebSocket.stop!`. The supervisor reaches the feeds through
+  four `Background::Service` methods and writes rows through a
+  `WebSocket::StatusWriter` registry that `cybertrain.rb` fills (the
+  WebSocket files keep loading under CRuby); the row writer is
+  `FeedTable.upsert_feed` (generated models have an `upsert`) and the reader
+  `FeedTable.read_feeds` (`Timetable.read_all` answers a Hash). A thread
+  that ends is logged as `thread ended` and its open connection closed
+  before the restart; the backoff and window run on the monotonic clock; the
+  restart count never resets. `Logger#fatal` was added. Status rows are
+  keyed by name only, so two processes running the same feed overwrite each
+  other's row, and a removed feed's row stays until deleted (ignored by
+  `/up` since the final review). `WebSocket.subscribe` refuses the name
+  `status`, which `./<app> feeds status` would shadow.
+- Feed health (section 9, 12): `CYBERTRAIN_HEALTH_FEEDS` is on unless `0` or
+  `false`; `CYBERTRAIN_HEALTH_FEED_STALE` defaults to 180 and is refused below
+  1 at boot. A status table that cannot be read leaves `/up` at 200 and logs
+  one WARN until it reads again.
+- Mail (section 10): `deliver_later`, `Mailer::JOB_KIND` and the job's
+  registration are in `cybertrain/mailer/later.rb`, which `cybertrain.rb`
+  requires, not in `cybertrain/mailer.rb`, so a program that only sends mail
+  links no SQLite and loads under CRuby. Every application therefore has a
+  registered kind, and every process that runs jobs starts its job threads
+  (the worker banner's "no job handler" branch cannot be reached from a
+  program that requires `cybertrain`). The job retries a 4xx
+  `RejectedError` (greylisting, 421, 452) and discards only a 5xx one; it
+  also discards an `ArgumentError` at run time, which covers configuration
+  mistakes (no `smtp_host`, no sender) as well as an edited payload, and a
+  535 login failure is a 5xx: such mail is lost until someone reads the jobs
+  page, and `jobs retry ID` re-queues it. A 5xx for one of several
+  recipients discards the message for all of them. `Message.build` is a
+  module in `cybertrain/mailer/message.rb` with a folded `Content-Type` and
+  no Date header (the dialogue adds it); a multipart message is sent
+  `7bit`. `Message.parse` and `Test::ReceivedMessage#message_parts` read one
+  back.
+- Test helpers (section 11): the generated test support file that requires
+  `cybertrain/test/jobs` is the one `cybertrain generate authentication`
+  (and `generate attachment`) writes (`cybertrain/cli/authentication.rb`);
+  `cybertrain new` writes none, so an application without it adds the
+  require to its own support file. `perform_enqueued_jobs` fails the test
+  after 10,000 jobs (a job that re-enqueues itself due at once), and
+  `assert_enqueued_with` reads a Symbol key as its name.
+- Templates (section 13): the generated `config/deploy.yml` gives the
+  `worker` role (and the commented `feeds` one) `restart: unless-stopped`;
+  `.env.example` lists the feed-health and scheduler-zone variables, `CYBERTRAIN_HEALTH_FEEDS=0` as the
+  commented example since the check is on by default.
+- examples/blog (section 17, item 10): the `cron` task is "prune done jobs"
+  (`Job.prune_done`), not the plan's "prune sessions": the blog keeps its
+  sessions in cookies and has no sessions table, while the new job leaves
+  `done` rows behind. Its jobs page is gated by `require_admin`, which
+  compares an `x-admin-token` header with `BLOG_ADMIN_TOKEN`, or reads a
+  session holding an HMAC of the token (set at `/admin/login`, so rotating
+  the token revokes it); without the variable every admin path is 404.
+- Documentation (section 13): the cache is documented in the background
+  and operations guide ("The cache store") rather than a page of its own,
+  and the feed health check in the realtime guide ("Feed health"), so no new
+  page needs four translations and navigation entries. The configuration
+  guide lists all eight variables of section 12 (section 13 said five).
+- Final review fixes (2026-11-10): (I1) `/up`'s feed check skips a status
+  row whose name no subscription of this binary registers (every role runs
+  the same binary), and `feeds status` marks such a row `(not registered)`;
+  a `feeds` process stopped cleanly deletes the rows it wrote
+  (`Background.withdraw_status_all`, `StatusWriter#status_withdraw`,
+  `FeedTable.delete_process_feeds`), while one that crashed or gave up on a
+  feed leaves them to go stale, so removing or scaling down a feed no
+  longer fails the next web deploy. (I2) A task whose timetable row has no
+  run yet takes the earlier of the stored next run and the next run its
+  current schedule gives from now: a schedule shortened by a release before
+  the first run no longer waits for the old slot; one made longer runs once
+  at the stored slot, then follows the new schedule (no `spec` column was
+  added). (I3) `Job.run_handler` gives `NotImplementedError`,
+  `SystemStackError` and `ScriptError` the default retry policy, and
+  `claim_safely` logs any other `Exception` and keeps the job thread alive
+  (the row stays `running` for heartbeat recovery). (M4) Boot refuses
+  `health_feed_stale <= feed_status_interval` while `health_feeds` is on.
+  (M5) `jobs list STATE` prints the newest 1000 rows and "showing the newest
+  N of M STATE jobs" when there are more. Also: the unkeyable-id warnings
+  list at most 20 ids and "... and N more"; `run_feed` closes the
+  connection after a session its rescue arms ended; the `cybertrain new`
+  cron example prunes done jobs.
+- Test counts (2026-11-09, Spinel 2026.11.04.7026): `spin test` (the full
+  `script/test-shard 0 1`) has 161 programs, 13 of them new in this phase;
+  the integration runs recorded by the tasks passed in full (157 of 157
+  after Tasks 10 and 14, 159 of 159 in Task 15's tree). `cd examples/blog &&
+  spin test` passes its 2 programs, `articles.rb` 26 tests / 162 assertions
+  and `comments.rb` 14 / 69, as Task 17 left them after its fix round.

@@ -33,4 +33,13 @@ ok   https to a server that does not speak TLS fails the handshake
 ok   a TLS handshake that gets no answer times out
 ok   the TLS connector is installed by requiring cybertrain/net/tls
 ok   without cybertrain/net/tls, https says what to require
-35 tests, 179 assertions, 0 failures
+ok   request sends PUT, PATCH, DELETE and HEAD
+ok   the block form yields chunks and leaves body empty; max_body does not apply
+ok   an exception raised in the streamed block propagates unchanged
+ok   get_to_file writes the body through a .part file
+ok   redirects: follows 302 then 301 to GET, keeps 307 as POST with the body, and stops at the limit
+ok   redirects: relative Location and a loop
+ok   a redirect from https to http is refused
+ok   json_hash and json_array parse the body and answer {} / [] otherwise
+ok   without cybertrain/http/gzip_ffi no Accept-Encoding is sent and a gzip body is refused
+44 tests, 312 assertions, 0 failures

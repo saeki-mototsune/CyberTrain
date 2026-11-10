@@ -27,7 +27,18 @@
 #    and reconnects;
 # 5. after any error logs it and waits {WebSocket.retry_delay} seconds (1,
 #    2, 4, ... up to 60, +-20 %; back to 1 after a connection that lasted
-#    60 s), looking at stop! every second, then goes back to 1.
+#    60 s), looking at stop! every second, then goes back to 1;
+# 6. between those one-second waits, connected or not, calls `on_tick`
+#    every N seconds when the subscription has one
+#    ({Subscription#on_tick}; `conn` is nil while disconnected).
+#
+# A feed's thread that ends anyway (an exception that is not a
+# StandardError, or the runtime killing it) is started again by the
+# supervisor (cybertrain/background/supervisor.rb), which also writes each
+# feed's status into `cybertrain_feeds` (WebSocket::FeedTable, which the
+# framework entry point requires) every
+# Config#feed_status_interval seconds; a `feeds` process whose feed keeps
+# dying exits with status 1.
 #
 # Every wait is bounded and is a wait_readable or a sleep, except one: each
 # connect attempt resolves the host name with a blocking getaddrinfo
@@ -48,6 +59,7 @@ require "cybertrain/background"
 require "cybertrain/http_client"
 require "cybertrain/websocket/frame"
 require "cybertrain/websocket/client"
+require "cybertrain/websocket/status_writer"
 
 module Cybertrain
   module WebSocket
@@ -101,10 +113,12 @@ module Cybertrain
     # A snapshot of a subscription's state, from {WebSocket.feed_status}.
     # @api public
     class Status
-      def initialize(connected, last_message_at, reconnects)
+      def initialize(connected, last_message_at, reconnects, restarts, thread_alive)
         @connected = connected
         @last_message_at = last_message_at
         @reconnects = reconnects
+        @restarts = restarts
+        @thread_alive = thread_alive
       end
 
       # @return [Boolean] whether the feed is connected now
@@ -125,6 +139,21 @@ module Cybertrain
       def reconnects
         @reconnects
       end
+
+      # @return [Integer] how many times the supervisor started the feed's
+      #   thread again after it ended
+      # @api public
+      def restarts
+        @restarts
+      end
+
+      # @return [Boolean] whether the feed's thread is running (false
+      #   before {WebSocket.start!}, after {WebSocket.stop!}, and between
+      #   the thread's death and its restart)
+      # @api public
+      def thread_alive?
+        @thread_alive
+      end
     end
 
     # One registered feed, from {WebSocket.subscribe}. Distinctive accessor
@@ -133,7 +162,7 @@ module Cybertrain
     class Subscription
       attr_reader :sub_url, :sub_target, :sub_headers, :sub_timeout, :sub_max_message,
                   :sub_ping_interval, :sub_stale_after, :sub_allow_private,
-                  :sub_open_block, :sub_message_block, :sub_thread
+                  :sub_open_block, :sub_message_block, :sub_thread, :sub_tick_block, :sub_tick_seconds
 
       def initialize(name, url, target, headers, timeout, max_message, ping_interval, stale_after, allow_private)
         @sub_name = name
@@ -148,12 +177,27 @@ module Cybertrain
         @sub_open_block = nil
         @sub_message_block = nil
         @sub_thread = nil
+        # The connection the feed thread has open, nil between connections:
+        # only the feed thread touches it (closed on its way out if the
+        # thread dies, so a restart never leaves the old socket open).
+        @sub_client = nil
+        @sub_tick_block = nil
+        @sub_tick_seconds = 0
+        # When on_tick is next due (Net::Timer.now): only the feed thread
+        # touches it.
+        @sub_tick_next = 0.0
         # Guarded by WebSocket::LOCK: the feed thread writes them, a request
         # thread reads them through WebSocket.feed_status.
         @connected = false
         @last_message_at = 0
         @reconnects = 0
         @sessions = 0
+        # Epoch seconds of the last message or pong, 0 for none; when
+        # start! started the feed, 0 when it did not; how many times the
+        # supervisor started its thread again.
+        @last_activity_at = 0
+        @started_at = 0
+        @restarts = 0
         # When the current connection opened (Net::Timer.now), -1.0 when
         # none is open: only the feed thread touches it.
         @connected_since = -1.0
@@ -184,8 +228,70 @@ module Cybertrain
         self
       end
 
+      # Sets the block called every `seconds` on the feed's own thread,
+      # between its one-second waits, whether or not the feed is connected:
+      # `|conn|`, a {Connection} while connected and nil while not (test
+      # it). The first call is `seconds` after the feed starts. An
+      # exception is logged and the feed goes on, as for on_message. Work
+      # that belongs to the feed's thread (flushing what on_message
+      # collected, closing a time bucket) goes here, with no lock and no
+      # scheduler task.
+      # @param seconds [Integer] at least 1 (the granularity is the
+      #   one-second receive timeout)
+      # @return [Subscription] self
+      # @raise [ArgumentError] seconds is not an Integer of at least 1, or
+      #   the subscription already has an on_tick
+      # @api public
+      def on_tick(seconds, &block)
+        unless seconds.is_a?(Integer) && seconds >= 1
+          message = "WebSocket subscription #{@sub_name.inspect}: on_tick needs whole seconds, at least 1 (got #{seconds.inspect})"
+          raise ArgumentError, message
+        end
+        unless @sub_tick_block.nil?
+          message = "WebSocket subscription #{@sub_name.inspect} already has on_tick"
+          raise ArgumentError, message
+        end
+        @sub_tick_block = block
+        @sub_tick_seconds = seconds
+        self
+      end
+
+      # Whether on_tick is due at `now` (Net::Timer.now); false without one.
+      # @param now [Float]
+      # @return [Boolean]
+      def sub_tick_due?(now)
+        !@sub_tick_block.nil? && now >= @sub_tick_next
+      end
+
+      # The feed's thread started at `now`: the first tick is due
+      # sub_tick_seconds later.
+      def sub_tick_start!(now)
+        @sub_tick_next = now + @sub_tick_seconds
+        nil
+      end
+
+      # on_tick ran at `now`: the next one is due sub_tick_seconds later.
+      def sub_ticked!(now)
+        @sub_tick_next = now + @sub_tick_seconds
+        nil
+      end
+
       def sub_thread!(thread)
         @sub_thread = thread
+        nil
+      end
+
+      def sub_client!(client)
+        @sub_client = client
+        nil
+      end
+
+      # Closes the connection the feed thread had open, if any (close
+      # never raises, and a second close does nothing), and forgets it.
+      def sub_drop_client
+        client = @sub_client
+        @sub_client = nil
+        client.ws_close_within(STOP_CLOSE_SECONDS) unless client.nil?
         nil
       end
 
@@ -217,6 +323,42 @@ module Cybertrain
         count
       end
 
+      # Epoch seconds of the last message or pong, 0 for none yet.
+      def sub_last_activity_at
+        last = 0
+        LOCK.synchronize { last = @last_activity_at }
+        last
+      end
+
+      # Epoch seconds of when start! started this feed, 0 when the feeds
+      # that run (or ran last) do not include it.
+      def sub_started_at
+        at = 0
+        LOCK.synchronize { at = @started_at }
+        at
+      end
+
+      def sub_started!(epoch)
+        LOCK.synchronize { @started_at = epoch }
+        nil
+      end
+
+      def sub_restarts
+        count = 0
+        LOCK.synchronize { count = @restarts }
+        count
+      end
+
+      # The supervisor started the thread again; answers the new count.
+      def sub_restarted!
+        count = 0
+        LOCK.synchronize do
+          @restarts = @restarts + 1
+          count = @restarts
+        end
+        count
+      end
+
       # A connection opened: a reconnect unless it is the first.
       def sub_connected!(now)
         LOCK.synchronize do
@@ -234,7 +376,16 @@ module Cybertrain
       end
 
       def sub_message!(epoch)
-        LOCK.synchronize { @last_message_at = epoch }
+        LOCK.synchronize do
+          @last_message_at = epoch
+          @last_activity_at = epoch
+        end
+        nil
+      end
+
+      # A pong arrived: the feed is alive though it sent no message.
+      def sub_activity!(epoch)
+        LOCK.synchronize { @last_activity_at = epoch }
         nil
       end
 
@@ -272,6 +423,9 @@ module Cybertrain
     # sees a newer number and ends instead of running beside the new one.
     @generation = 0
     @random_source = -> { rand }
+    # "<hostname>:<pid>", the `process` of the status rows; "" until the
+    # first publish_status.
+    @process_label = ""
 
     # Registers a feed to keep connected while the server runs. Register
     # before the server starts; give it {Subscription#on_message} (and
@@ -290,7 +444,7 @@ module Cybertrain
     #   more than ping_interval
     # @param allow_private [Boolean] allow non-public destinations
     # @return [Subscription]
-    # @raise [ArgumentError] an empty or taken name, a URL that is not ws://
+    # @raise [ArgumentError] an empty, reserved ("status") or taken name, a URL that is not ws://
     #   or wss://, a header the client refuses, a bad interval
     # @api public
     def self.subscribe(name, url, headers: Client::NO_HEADERS, timeout: 5, max_message: 1_048_576,
@@ -298,6 +452,9 @@ module Cybertrain
                        allow_private: Cybertrain.config.http_allow_private)
       label = name.to_s
       raise ArgumentError, "WebSocket.subscribe: the name is empty" if label.empty?
+      # `./<app> feeds status` is the status command, so no feed can be
+      # started by that name.
+      raise ArgumentError, "WebSocket.subscribe: the name \"status\" is reserved (./<app> feeds status)" if label == "status"
       raise ArgumentError, "WebSocket.subscribe #{label.inspect}: already registered" if subscription_index(label) >= 0
 
       target = HttpClient.parse_url_for(url, "ws://", "wss://")
@@ -337,7 +494,125 @@ module Cybertrain
       raise ArgumentError, "WebSocket.feed_status: no subscription named #{name.to_s.inspect}" if i < 0
 
       sub = SUBSCRIPTIONS[i]
-      Status.new(sub.sub_connected?, sub.sub_last_message_at, sub.sub_reconnects)
+      Status.new(sub.sub_connected?, sub.sub_last_message_at, sub.sub_reconnects, sub.sub_restarts, sub_alive?(sub))
+    end
+
+    # Whether the thread of the feed named `name` is running.
+    # @param name [String]
+    # @return [Boolean]
+    # @raise [ArgumentError] when no feed has that name
+    # @api public
+    def self.thread_alive?(name)
+      i = subscription_index(name.to_s)
+      raise ArgumentError, "WebSocket.thread_alive?: no subscription named #{name.to_s.inspect}" if i < 0
+
+      sub_alive?(SUBSCRIPTIONS[i])
+    end
+
+    def self.sub_alive?(sub)
+      thread = sub.sub_thread
+      !thread.nil? && thread.alive?
+    end
+
+    # The names of the feeds {WebSocket.start!} started whose thread has
+    # ended while the feeds run, for the supervisor to restart.
+    # @return [Array<String>]
+    # @api public
+    def self.dead_feeds
+      out = Array.new(0) { "" }
+      return out unless @running
+
+      i = 0
+      while i < SUBSCRIPTIONS.size
+        sub = SUBSCRIPTIONS[i]
+        out << sub.sub_name if sub.sub_started_at > 0 && !sub_alive?(sub)
+        i += 1
+      end
+      out
+    end
+
+    # Starts the feed named `name` again on a new thread, when the feeds
+    # run, it is one of those {WebSocket.start!} started and its thread
+    # has ended; counts it in {Status#restarts}. The supervisor calls it.
+    # @param name [String]
+    # @return [Boolean] true when it started a thread
+    # @api public
+    def self.restart_feed(name)
+      i = subscription_index(name.to_s)
+      return false if i < 0 || !@running
+
+      sub = SUBSCRIPTIONS[i]
+      return false if sub.sub_started_at == 0 || sub_alive?(sub)
+
+      sub.sub_disconnected!
+      count = sub.sub_restarted!
+      Cybertrain.logger.info("WebSocket restarted: #{sub.sub_name} (restart #{count})")
+      sub.sub_thread!(spawn_feed(sub, @generation))
+      true
+    end
+
+    # Writes one status row per feed {WebSocket.start!} started, with
+    # `updated_at` = `now`, through the registered {StatusWriter}s (in an
+    # application, the `cybertrain_feeds` row of {FeedTable}, when a
+    # database is connected); nothing when the feeds do not run. The
+    # supervisor calls it every Config#feed_status_interval seconds.
+    # @param now [Integer] epoch seconds
+    # @return [Integer] how many rows were written
+    # @raise [Cybertrain::DB::Error] when the database is not reachable
+    # @api public
+    def self.publish_status(now)
+      return 0 unless @running
+
+      process = status_process
+      written = 0
+      i = 0
+      while i < SUBSCRIPTIONS.size
+        sub = SUBSCRIPTIONS[i]
+        started_at = sub.sub_started_at
+        if started_at > 0
+          connected = sub_alive?(sub) && sub.sub_connected?
+          last_activity_at = sub.sub_last_activity_at
+          restarts = sub.sub_restarts
+          j = 0
+          while j < STATUS_WRITERS.size
+            wrote = STATUS_WRITERS[j].status_write(sub.sub_name, process, connected, started_at, last_activity_at,
+                                                   restarts, now)
+            written += 1 if wrote
+            j += 1
+          end
+        end
+        i += 1
+      end
+      written
+    end
+
+    # "<hostname>:<pid>", the `process` this process writes in its status
+    # rows.
+    # @return [String]
+    # @api public
+    def self.status_process
+      @process_label = "#{Socket.gethostname}:#{Process.pid}" if @process_label.empty?
+      @process_label
+    end
+
+    # Deletes the status rows this process wrote, through the registered
+    # {StatusWriter}s: a `feeds` process does it after a clean stop
+    # (Application#run_feeds_threads), so the health check stops counting
+    # feeds nobody runs. A crashed process deletes nothing, and its rows go
+    # stale. Does nothing while the feeds run.
+    # @return [Integer] how many rows were deleted
+    # @api public
+    def self.withdraw_status
+      return 0 if @running
+
+      process = status_process
+      removed = 0
+      i = 0
+      while i < STATUS_WRITERS.size
+        removed += STATUS_WRITERS[i].status_withdraw(process)
+        i += 1
+      end
+      removed
     end
 
     # Why {WebSocket.start!} would refuse to start: the first subscription
@@ -404,12 +679,16 @@ module Cybertrain
       @running = true
       @generation += 1
       generation = @generation
+      started_at = Time.now.to_i
       i = 0
       while i < SUBSCRIPTIONS.size
         sub = SUBSCRIPTIONS[i]
         if only.empty? || only.include?(sub.sub_name)
           Cybertrain.logger.info("WebSocket started: #{sub.sub_name} (#{sub.sub_origin})")
+          sub.sub_started!(started_at)
           sub.sub_thread!(spawn_feed(sub, generation))
+        else
+          sub.sub_started!(0)
         end
         i += 1
       end
@@ -432,7 +711,7 @@ module Cybertrain
       while i < SUBSCRIPTIONS.size
         thread = SUBSCRIPTIONS[i].sub_thread
         left = ends_at - Net::Timer.now
-        thread.join(left) if !thread.nil? && left > 0.0
+        join_feed(thread, left) if !thread.nil? && left > 0.0
         i += 1
       end
       i = 0
@@ -440,6 +719,18 @@ module Cybertrain
         SUBSCRIPTIONS[i].sub_disconnected!
         i += 1
       end
+      nil
+    end
+
+    # Waits at most `wait` seconds for a feed thread. Thread#join raises
+    # the exception a thread died of (one that is not a StandardError ends
+    # a feed's thread: the supervisor restarts it); stop! must not, so the
+    # rescue names Exception, in a method that takes no block (NOTES rules
+    # 32/45).
+    def self.join_feed(thread, wait)
+      thread.join(wait)
+      nil
+    rescue Exception
       nil
     end
 
@@ -488,13 +779,34 @@ module Cybertrain
     # Through a method, as Scheduler.spawn_loop does: the closure captures
     # the parameters (NOTES rule 21).
     def self.spawn_feed(sub, generation)
-      Thread.new { run_feed(sub, generation) }
+      Thread.new { run_feed_logged(sub, generation) }
+    end
+
+    # run_feed, with what ends the thread anyway (an exception that is not
+    # a StandardError, from a callback or the loop itself) logged: the
+    # thread then ends and the supervisor starts it again. The rescue names
+    # Exception, in a method that takes no block (NOTES rules 32/45).
+    # The connection the thread had open is closed before the thread ends,
+    # so the restart does not leave a second subscriber on the server.
+    def self.run_feed_logged(sub, generation)
+      run_feed(sub, generation)
+    rescue Exception => e
+      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} thread ended: #{e.class.name}: #{e.message}")
+      sub.sub_drop_client
+      nil
     end
 
     def self.run_feed(sub, generation)
+      sub.sub_tick_start!(Net::Timer.now)
       attempt = 0
       while feed_live?(generation)
         failure = feed_session(sub, generation)
+        # Closed and forgotten: the normal ways out of feed_session closed
+        # it already (a second close does nothing); an error its rescue
+        # arms caught may have left it open. A thread left from before a
+        # stop! and a new start! leaves the reference alone: it may be the
+        # new generation's connection.
+        sub.sub_drop_client if @generation == generation
         # After a stop! the state is marked disconnected, but a thread
         # left from before a stop! and a new start! leaves it to the new
         # generation's thread.
@@ -511,20 +823,32 @@ module Cybertrain
         unless failure.empty?
           Cybertrain.logger.warn("WebSocket #{sub.sub_name.inspect} disconnected: #{failure} (retry in #{delay.round}s)")
         end
-        feed_wait(delay, generation)
+        feed_wait(sub, delay, generation)
       end
       nil
     end
 
-    # Sleeps `seconds`, a second at a time, ending early on stop!.
-    def self.feed_wait(seconds, generation)
+    # Sleeps `seconds`, a second at a time, ending early on stop!, and
+    # calls on_tick (with no connection) when it is due.
+    def self.feed_wait(sub, seconds, generation)
       ends_at = Net::Timer.now + seconds
       while feed_live?(generation)
+        tick_if_due(sub, nil)
         left = ends_at - Net::Timer.now
         return nil if left <= 0.0
 
         sleep(left < 1.0 ? left : 1.0)
       end
+      nil
+    end
+
+    # Calls on_tick when it is due.
+    def self.tick_if_due(sub, conn)
+      now = Net::Timer.now
+      return nil unless sub.sub_tick_due?(now)
+
+      sub.sub_ticked!(now)
+      run_tick(sub, conn)
       nil
     end
 
@@ -536,6 +860,7 @@ module Cybertrain
     def self.feed_session(sub, generation)
       client = Client.connect(sub.sub_url, headers: sub.sub_headers, timeout: sub.sub_timeout,
                                            max_message: sub.sub_max_message, allow_private: sub.sub_allow_private)
+      sub.sub_client!(client)
       feed_connected(sub, client, generation)
     rescue Cybertrain::WebSocket::ClosedError => e
       "Cybertrain::WebSocket::ClosedError: #{e.message}"
@@ -575,6 +900,7 @@ module Cybertrain
       ping_every = sub.sub_ping_interval.to_f
       stale = sub.sub_stale_after.to_f
       pinged_at = client.last_activity_at
+      pongs = client.ws_pongs
       while feed_live?(generation)
         msg = client.receive(1)
         unless msg.nil?
@@ -582,6 +908,11 @@ module Cybertrain
           sub.sub_message!(Time.now.to_i)
           run_message(sub, conn, msg.ws_data)
         end
+        if client.ws_pongs != pongs
+          pongs = client.ws_pongs
+          sub.sub_activity!(Time.now.to_i)
+        end
+        tick_if_due(sub, conn)
         now = Net::Timer.now
         activity = client.last_activity_at
         if now - activity >= stale
@@ -620,6 +951,18 @@ module Cybertrain
       false
     end
 
+    # Calls on_tick; false (logged) when it raised a StandardError. `conn`
+    # is nil while the feed is disconnected. Anything else ends the feed's
+    # thread, which the supervisor starts again.
+    def self.run_tick(sub, conn)
+      block = sub.sub_tick_block
+      block.call(conn) unless block.nil?
+      true
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_tick failed: #{e.class.name}: #{e.message}")
+      false
+    end
+
     # Starts and stops the feeds from Application#serve
     # (cybertrain/background.rb).
     class WebSocketService < Background::Service
@@ -645,6 +988,26 @@ module Cybertrain
 
       def service_problem
         WebSocket.subscriptions_problem
+      end
+
+      def service_dead_feeds
+        WebSocket.dead_feeds
+      end
+
+      def service_feed_restarts(name)
+        WebSocket.feed_status(name).restarts
+      end
+
+      def service_restart_feed(name)
+        WebSocket.restart_feed(name)
+      end
+
+      def service_publish_status(now)
+        WebSocket.publish_status(now)
+      end
+
+      def service_withdraw_status
+        WebSocket.withdraw_status
       end
     end
   end

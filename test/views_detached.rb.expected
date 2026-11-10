@@ -7,4 +7,5 @@ ok   outside render_partial a nil controller keeps the readers lenient
 ok   a form renders without the authenticity token
 ok   render_component returns the HTML with the content unescaped
 ok   Cybertrain::Test wraps both
-9 tests, 17 assertions, 0 failures
+ok   render_mail wraps in layouts/mail when present
+10 tests, 20 assertions, 0 failures

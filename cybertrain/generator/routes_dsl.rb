@@ -12,16 +12,22 @@ module Cybertrain
 
       attr_reader :verb, :pattern, :controller, :action, :name
 
-      def initialize(verb, pattern, controller, action, name)
+      # method_override: the controller method when it is not the action's
+      # own name ("" for that), as for the jobs page, whose `retry` action
+      # (a Ruby keyword) is `retry_action`.
+      def initialize(verb, pattern, controller, action, name, method_override = "")
         @verb = verb
         @pattern = pattern
         @controller = controller
         @action = action
         @name = name
+        @method_override = method_override
       end
 
       # The controller method that implements the action.
       def method_name
+        return @method_override unless @method_override.empty?
+
         ACTION_METHODS.fetch(@action, @action)
       end
 
@@ -37,6 +43,18 @@ module Cybertrain
       # The *_path/*_url helper prefix ("" when the route is unnamed).
       def helper_name
         @name
+      end
+    end
+
+    # The jobs page config/routes.rb asked for with {Mapper#jobs_page}: its
+    # path ("" when none was drawn) and the before_action method guarding
+    # it ("" for none). The accessors have distinctive names (NOTES rule 10).
+    class JobsPageSpec
+      attr_reader :jobs_path, :jobs_before_action
+
+      def initialize(jobs_path, jobs_before_action)
+        @jobs_path = jobs_path
+        @jobs_before_action = jobs_before_action
       end
     end
 
@@ -67,6 +85,8 @@ module Cybertrain
       ACTION_PATTERN = /\A[a-z_][a-z0-9_]*\z/
       # "posts", "admin/users" (camelized to Admin::UsersController).
       CONTROLLER_PATTERN = /\A[a-z_][a-z0-9_]*(?:\/[a-z_][a-z0-9_]*)*\z/
+      # One segment of a jobs_page path.
+      JOBS_SEGMENT_PATTERN = /\A[A-Za-z0-9_\-]+\z/
 
       def initialize(specs)
         @specs = specs
@@ -152,6 +172,58 @@ module Cybertrain
       # @api public
       def delete(path, to: "", as: "")
         add_custom_route("DELETE", path, to, as)
+      end
+
+      # The jobs page ({Cybertrain::JobsPage}): failed, discarded, running
+      # and queued jobs, with retry / discard / delete buttons, served by a
+      # generated `CybertrainJobsController < ApplicationController`, so the
+      # application's layout, CSRF protection and `before_action:` apply.
+      # Draws, to that controller:
+      #
+      # | Verb | Path | Action |
+      # | --- | --- | --- |
+      # | GET | `path` | `index` (`?page=N`) |
+      # | POST | `path/retry_all` | `retry_all` (every failed job) |
+      # | POST | `path/discard_all` | `discard_all_failed` |
+      # | POST | `path/:id/retry` | `retry` |
+      # | POST | `path/:id/discard` | `discard` |
+      # | POST | `path/:id/delete` | `delete` |
+      #
+      # The routes are unnamed (no `*_path` helpers). One jobs page per
+      # application, drawn at the top level. Without `before_action:` the
+      # page is open to anyone who can reach it, and `spin run gen` prints
+      # a warning saying so.
+      # @example
+      #   jobs_page "/admin/jobs", before_action: :require_admin
+      # @param path [String] literal segments (`"/admin/jobs"`)
+      # @param before_action [Symbol, String] a method of ApplicationController
+      #   that renders or redirects to refuse the visitor (`:require_admin`)
+      # @return [nil]
+      # @raise [ArgumentError] for a second jobs page, one inside
+      #   `resources`, a path with dynamic or empty segments, or a
+      #   before_action that is not a method name
+      # @api public
+      def jobs_page(path, before_action: "")
+        raise ArgumentError, "jobs_page must be used at the top of the routes, not inside resources" unless @mode == "top"
+
+        guard = "#{before_action}"
+        unless jobs_page_path?(path)
+          message = "jobs_page #{path.inspect}: the path must start with \"/\" and be literal segments of letters, digits, _ and -"
+          raise ArgumentError, message
+        end
+        unless guard.empty? || guard.match?(ACTION_PATTERN)
+          message = "jobs_page #{path.inspect}: before_action: #{guard.inspect} is not a method name"
+          raise ArgumentError, message
+        end
+        Cybertrain::Routes.record_jobs_page(path, guard)
+        controller = "cybertrain_jobs"
+        add_jobs_route("GET", path, controller, "index", "index")
+        add_jobs_route("POST", "#{path}/retry_all", controller, "retry_all", "retry_all_action")
+        add_jobs_route("POST", "#{path}/discard_all", controller, "discard_all_failed", "discard_all_failed_action")
+        add_jobs_route("POST", "#{path}/:id/retry", controller, "retry", "retry_action")
+        add_jobs_route("POST", "#{path}/:id/discard", controller, "discard", "discard_action")
+        add_jobs_route("POST", "#{path}/:id/delete", controller, "delete", "delete_action")
+        nil
       end
 
       # The seven standard actions (only:/except: pick some). Routes drawn
@@ -381,6 +453,24 @@ module Cybertrain
         nil
       end
 
+      # "/admin/jobs": "/" then segments of [A-Za-z0-9_-], no empty one.
+      def jobs_page_path?(path)
+        return false unless path.start_with?("/") && path.size > 1 && !path.end_with?("/")
+
+        segments = path[1, path.size - 1].split("/")
+        segments.each do |seg|
+          return false if seg.empty?
+          return false unless seg.match?(JOBS_SEGMENT_PATTERN)
+        end
+        true
+      end
+
+      # One unnamed jobs-page route whose action and controller method differ.
+      def add_jobs_route(verb, pattern, controller, action, method)
+        @specs << RouteSpec.new(verb, pattern, controller, action, "", method)
+        nil
+      end
+
       # The route name a path implies: ":" dropped, lowercased, and "/", "-"
       # (as in Rails) and every other character outside [a-z0-9_] turned
       # into "_" ("about-us" -> "about_us", "users/:id/avatar" ->
@@ -450,6 +540,8 @@ module Cybertrain
   # @api public
   module Routes
     @specs = Array.new(0) { Gen::RouteSpec.new("", "", "", "", "") }
+    # The page {Gen::Mapper#jobs_page} drew; a path of "" for none.
+    @jobs_page = Gen::JobsPageSpec.new("", "")
 
     # Declares the application's routes; the block's methods are those of
     # {Gen::Mapper}. `spin run gen` runs `config/routes.rb` and writes
@@ -468,8 +560,26 @@ module Cybertrain
       @specs
     end
 
+    # The jobs page drawn (`jobs_path` "" when none).
+    # @return [Gen::JobsPageSpec]
+    def self.jobs_page_spec
+      @jobs_page
+    end
+
+    # Called by {Gen::Mapper#jobs_page}: one jobs page per application.
+    def self.record_jobs_page(path, before_action)
+      first = @jobs_page.jobs_path
+      unless first.empty?
+        message = "jobs_page #{path.inspect}: the jobs page is already drawn at #{first.inspect} (one per application)"
+        raise ArgumentError, message
+      end
+      @jobs_page = Gen::JobsPageSpec.new(path, before_action)
+      nil
+    end
+
     def self.reset!
       @specs.clear
+      @jobs_page = Gen::JobsPageSpec.new("", "")
       nil
     end
   end

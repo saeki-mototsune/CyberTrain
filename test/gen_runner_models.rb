@@ -21,15 +21,20 @@ APP_FILES = [
   "app/controllers/posts_controller.rb",
   "app/helpers/prices_helper.rb",
   "app/components/card_component.rb",
-  "app/components/card_component.html.erb"
+  "app/components/card_component.html.erb",
+  "app/jobs/welcome_job.rb",
+  "app/jobs/digest_job.rb",
+  "app/jobs/admin/report_job.rb"
 ]
-GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/console.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
-DIRS = ["app", "app/models", "app/controllers", "app/helpers", "app/components", "gen", "gen/models"]
+GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
+DIRS = ["app", "app/models", "app/controllers", "app/helpers", "app/components", "app/jobs", "app/jobs/admin", "gen", "gen/models"]
 Dir.mkdir("#{ROOT}/app")
 Dir.mkdir("#{ROOT}/app/models")
 Dir.mkdir("#{ROOT}/app/controllers")
 Dir.mkdir("#{ROOT}/app/helpers")
 Dir.mkdir("#{ROOT}/app/components")
+Dir.mkdir("#{ROOT}/app/jobs")
+Dir.mkdir("#{ROOT}/app/jobs/admin")
 APP_FILES.each { |f| File.write("#{ROOT}/#{f}", File.read("#{FIXTURE}/#{f}")) }
 
 at_exit do
@@ -132,6 +137,31 @@ test "a dropped table's gen/models file is reported stale, then removed" do
   refute File.exist?("#{ROOT}/gen/models/tag.rb")
   assert_equal File.read("#{FIXTURE}/gen/app.rb"), File.read("#{ROOT}/gen/app.rb")
   assert_equal 0, Cybertrain::Gen::Runner.run(ROOT, ["--check"])
+end
+
+test "a jobs page drawn without before_action: makes the runner print a warning" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    jobs_page "/admin/jobs"
+  end
+  assert_equal 1, Cybertrain::Gen::Runner.run(ROOT, ["--check"])
+  redraw_fixture_routes
+  assert_equal 0, Cybertrain::Gen::Runner.run(ROOT, ["--check"])
+end
+
+# The fixture's config/routes.rb, restated (require_relative runs it only once).
+def redraw_fixture_routes
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    root "posts#index"
+    resources :posts do |posts|
+      posts.collection { |c| c.get "search" }
+      posts.member { |m| m.get "preview" }
+      posts.resources :comments, only: [:create, :destroy]
+    end
+    get "/about", to: "pages#about"
+    jobs_page "/admin/jobs", before_action: :require_admin
+  end
 end
 
 Cybertrain::Test.run!

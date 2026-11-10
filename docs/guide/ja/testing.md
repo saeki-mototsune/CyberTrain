@@ -1,5 +1,5 @@
 ---
-source_sha256: c5ef44e9a88b3fbef4099d33b8ea7e47c5b10fb95eeef6e39fae0a8151f22a9e
+source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
 ---
 # アプリをテストする
 
@@ -42,7 +42,7 @@ test/<name>.rb.expected 2>&1`（スナップショットが古い間は `cybertr
 
 ## 外向きの呼び出しをテストする
 
-テスト対象のコードが Webhook（[外向きの HTTP](external-services.md#outbound-http)）やメール（[メールを送る](external-services.md#sending-e-mail)）を送る場合、テストはそれをプロセス内で受け取ります：`Cybertrain::Test::HttpReceiver` と `Cybertrain::Test::SmtpReceiver` は `127.0.0.1` で待ち受け、届いたものを記録して、決まった応答を返します。ファイルは上と同じヘルパー `support/blog_test` から始め、`cybertrain/mailer` は自分で require します：`require "cybertrain"` はこれを読み込みません。
+テスト対象のコードが Webhook（[外向きの HTTP](external-services.md#outbound-http)）やメール（[メールを送る](external-services.md#sending-e-mail)）を送る場合、テストはそれをプロセス内で受け取ります：`Cybertrain::Test::HttpReceiver` と `Cybertrain::Test::SmtpReceiver` は `127.0.0.1` で待ち受け、届いたものを記録して、決まった応答を返します。ファイルは上と同じヘルパー `support/blog_test` から始めます。`require "cybertrain"` がメーラーを読み込むので、下の明示的な require は害になりません。
 
 ```ruby
 require_relative "support/blog_test"   # アプリ、BLOG、Cybertrain::Test
@@ -78,7 +78,7 @@ end
 Cybertrain::Test.run!
 ```
 
-`HttpReceiver.new` は決まった応答の `status:`、`headers:`、`body:`、`chunked:` を受け取ります（`respond_with` でリクエストの間に変更できます）。リクエストは `ReceivedRequest` として返ってきます（`http_method`、`http_target`、`http_path`、名前を小文字にした `http_headers`、`http_header(name)`、チャンク形式のボディをデコードした `http_body`）。`SmtpReceiver` は 220、EHLO（`eight_bit_mime: false` でなければ 8BITMIME 付き、`auth: true` なら AUTH PLAIN 付き）、MAIL、RCPT、DATA、QUIT を演じます。`reject:` は `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data`、`:message` のいずれかを、指定した応答で失敗させます。`ReceivedMessage` には、`envelope_from`、`envelope_recipients`、`message_data`（ドットスタッフィングは元に戻されています）、`message_header(name)`、`message_body`、そしてコマンドの `transcript` があります。どちらも、`max:` でそれ以上を指定しない限り、接続を 1 つだけ受け付けます（`received_requests` / `received_messages` がそのすべてを返します）。すべての待ちに上限があります：レシーバーは接続がないまま `accept_window:`（10 秒）たつと諦め、黙っているクライアントは `read_timeout:`（5 秒）で諦めます。`stop`（二度呼んでも安全）はレシーバーのスレッドを終わらせて join し、ポートを閉じるので、レシーバーが後のテストの接続を横取りすることはありません。必要なのは Ruby の socket ライブラリだけで、openssl は不要です。
+`HttpReceiver.new` は決まった応答の `status:`、`headers:`、`body:`、`chunked:` を受け取ります（`respond_with` でリクエストの間に変更できます）。リクエストは `ReceivedRequest` として返ってきます（`http_method`、`http_target`、`http_path`、名前を小文字にした `http_headers`、`http_header(name)`、チャンク形式のボディをデコードした `http_body`）。`SmtpReceiver` は 220、EHLO（`eight_bit_mime: false` でなければ 8BITMIME 付き、`auth: true` なら AUTH PLAIN 付き）、MAIL、RCPT、DATA、QUIT を演じます。`reject:` は `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data`、`:message` のいずれかを、指定した応答で失敗させます。`ReceivedMessage` には、`envelope_from`、`envelope_recipients`、`message_data`（ドットスタッフィングは元に戻されています）、`message_header(name)`、`message_body`、そしてコマンドの `transcript` があります。HTML のメッセージなら、`message_parts` がそれを `"subject"`、`"text"`、`"html"` にデコードします。どちらも、`max:` でそれ以上を指定しない限り、接続を 1 つだけ受け付けます（`received_requests` / `received_messages` がそのすべてを返します）。すべての待ちに上限があります：レシーバーは接続がないまま `accept_window:`（10 秒）たつと諦め、黙っているクライアントは `read_timeout:`（5 秒）で諦めます。`stop`（二度呼んでも安全）はレシーバーのスレッドを終わらせて join し、ポートを閉じるので、レシーバーが後のテストの接続を横取りすることはありません。必要なのは Ruby の socket ライブラリだけで、openssl は不要です。
 
 フィードも同じ方法で、`127.0.0.1` 上のスクリプト化された WebSocket サーバーである `Cybertrain::Test::WebSocketReceiver` を使ってテストします：各接続は `Cybertrain::Test::WsStep` のリスト（`"accept"`、`"send_text"`、`"expect"`、`"silent"`、`"close"`、`"drop"`、`"echo_until_close"` など）を演じ、クライアントが送ったフレームはマスクを外して `ws_received` から返ってきます。
 
@@ -112,6 +112,37 @@ end
 ```
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` にすると、再試行の遅延が正確な値になります。このリポジトリの `test/websocket_integration.rb` に、完全なテストがあります。
+
+## ジョブのテスト
+
+`require "cybertrain/test/jobs"` は、テスト用データベースのジョブキューについての 5 つのヘルパーを足します。`cybertrain generate authentication` が書くサポートファイル（`test/support/app_test.rb`）はこれを require します。それがないアプリケーションは、examples/blog のサポートファイルのように、自分のサポートファイルにこの行を足してください。
+
+```ruby
+require_relative "support/blog_test"
+require "cybertrain/test/jobs"
+
+test "a notification is enqueued, then runs" do
+  clear_enqueued_jobs
+  NotifyCommentJob.perform_later("comment_id" => 7, "article_id" => 1)
+  assert_enqueued_jobs 1, "NotifyCommentJob"
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => 7 }
+  assert_equal 1, perform_enqueued_jobs
+  assert_no_enqueued_jobs
+end
+
+test "the job itself" do
+  assert_nil NotifyCommentJob.perform_now("comment_id" => 1, "article_id" => 1)
+end
+```
+
+<!-- list: points -->
+- `assert_enqueued_jobs(count, kind = "")` は `queued` の行を数えます（種類を与えればその種類だけ）。`assert_no_enqueued_jobs(kind = "")` は 1 つもないことを求めます。
+- `assert_enqueued_with(kind, args)` は、その種類のキューにある行で、与えたすべてのキーを等しい値で持つものを求めます。両側は `Cast.str` で比べるので、`"comment_id" => 7` は JSON の `7` に一致します。Symbol のキーはその名前として読まれるので、`assert_enqueued_with "NotifyCommentJob", comment_id: 7` とも書けます。
+- `perform_enqueued_jobs(now = Time.now)` は、期限の来たジョブを呼び出したスレッドで 1 つずつ（`Job.work_one`）、期限の来たものがなくなるまで実行し、実行した数を返します。後に予定された再試行はキューに残ります。実行するには後の `now` を渡してください。すぐに期限の来る形で自分をもう一度キューに入れるジョブは、これを実行し続けさせてしまうので、10,000 個のジョブの後でテストを失敗させます。
+- `clear_enqueued_jobs` は `queued` の行をすべて消します。`failed` と `discarded` の行は残るので、それを作るテストは自分で消してください。
+- `WelcomeJob.perform_now(args)` は、キューも rescue もなしにジョブを 1 つ直接実行します。例外はテストに届きます。
+- `deliver_later` で送るメールは `"cybertrain mail"` のジョブです。`perform_enqueued_jobs` はそれを `SmtpReceiver` に送ります（`smtp_host` と `smtp_port` をそこに向けておきます）。
+- 定期タスクは `Cybertrain::Scheduler.run_due(now)` で 1 ティックずつ実行され、`Cybertrain::Cache.prune(now)` は選んだ時刻でキャッシュを掃除します。
 
 ## ストリームとコンポーネントのテスト
 

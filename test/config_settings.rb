@@ -113,6 +113,38 @@ test "a usable value logs nothing" do
   assert_equal "", silence
 end
 
+test "CYBERTRAIN_HEALTH_FEED_STALE sets health_feed_stale; unset or bad is 180; below 1 is refused" do
+  ENV.delete("CYBERTRAIN_HEALTH_FEED_STALE")
+  assert_equal 180, Cybertrain::Config.new.health_feed_stale
+  ENV["CYBERTRAIN_HEALTH_FEED_STALE"] = "60"
+  assert_equal 60, Cybertrain::Config.new.health_feed_stale
+  ENV["CYBERTRAIN_HEALTH_FEED_STALE"] = "soon"
+  assert_equal 180, Cybertrain::Config.new.health_feed_stale
+  ENV["CYBERTRAIN_HEALTH_FEED_STALE"] = "0"
+  assert_includes Cybertrain::Config.new.health_error, "health_feed_stale must be at least 1"
+  ENV.delete("CYBERTRAIN_HEALTH_FEED_STALE")
+end
+
+test "boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on" do
+  c = Cybertrain::Config.new
+  c.feed_status_interval = 300
+  c.health_feed_stale = 180
+  assert_equal "health_feed_stale (180) must be more than feed_status_interval (300) while health_feeds is on",
+               c.health_error
+  c.health_feed_stale = 300
+  assert_includes c.health_error, "health_feed_stale (300) must be more than feed_status_interval (300)"
+  c.health_feed_stale = 301
+  assert_equal "", c.health_error
+  # With the feed check off the two are unrelated.
+  c.health_feed_stale = 180
+  c.health_feeds = false
+  assert_equal "", c.health_error
+  # With the health check off (no path) nothing reads health_feed_stale.
+  c.health_feeds = true
+  c.health_path = ""
+  assert_equal "", c.health_error
+end
+
 test "a bad declaration is an ArgumentError" do
   wrong = Cybertrain::Config.new
   wrong.setting_string :taken, env: "CT_TEST_TAKEN", default: ""

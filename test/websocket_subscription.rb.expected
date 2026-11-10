@@ -4,6 +4,9 @@ ok   start! refuses a subscription without on_message
 ok   start! does nothing when the worker is off
 ok   stop! when not running does nothing
 ok   feed_status of an unknown name is an ArgumentError
+ok   on_tick takes whole seconds, at least 1, once per subscription
+ok   sub_tick_due? counts from the start of the feed
+ok   feed_status has restarts and thread_alive? before the feeds run
 ok   the service is registered with Background
 ok   messages reach on_message and status follows
 ok   on_open runs again after every reconnect
@@ -11,4 +14,10 @@ ok   an exception in on_message keeps the connection
 ok   a silent feed is pinged, then reconnected
 ok   stop! ends a thread waiting to reconnect
 ok   stop! is bounded when servers ignore the close
-13 tests, 85 assertions, 0 failures
+ok   on_tick fires every second while disconnected, with no connection
+ok   on_tick fires every second while connected, with the connection
+ok   an exception in on_tick is logged and the loop continues
+ok   an exception in on_tick while connected is logged and keeps the connection
+ok   a pong refreshes the feed's activity, not its last message
+ok   an error inside a feed session closes the connection it had open
+22 tests, 138 assertions, 0 failures

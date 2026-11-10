@@ -1,5 +1,5 @@
 ---
-source_sha256: 55cb8796599b6e9b68995c0bcfae429599010685c795da99ca191458d5507df2
+source_sha256: cbd431aac3ca2ef8bf0e14cfaf9a22c24f968b66143a02d4efc5b482d085184b
 ---
 # HTTP sortant, flux WebSocket et e-mail
 
@@ -83,10 +83,9 @@ répond plus. `HttpClient` ne bloque jamais un worker sur le réseau&nbsp;:
   IP ne correspond pas au nom d’un certificat. Sans `require
   "cybertrain/net/tls"`, une requête https lève `HttpClient::TLSError` qui le
   signale&nbsp;; `cybertrain/http_client` seul ne lie jamais libssl.
-- **Un client de notification, pas un navigateur&nbsp;:** HTTP/1.1 avec
-  `Connection:
-  close`, une connexion par requête, ni keep-alive, ni redirections (une 3xx
-  est renvoyée telle quelle), ni proxy, ni cookies, ni compression. Les réponses
+- **Un client de notification et d’API, pas un navigateur&nbsp;:** HTTP/1.1
+  avec `Connection: close`, une connexion par requête, ni keep-alive, des
+  redirections seulement sur demande (ci-dessous), ni proxy, ni cookies. Les réponses
   peuvent être en `Content-Length`, en chunked ou lues jusqu’à la fermeture&nbsp;;
   les en-têtes sont plafonnés à 64&nbsp;Kio et 100 lignes, le corps à
   `max_body` (1&nbsp;Mio par défaut), au-delà de quoi
@@ -110,7 +109,113 @@ en cours de service, donc les autres connexions continuent d’être servies
 pendant qu’elle attend. La couche socket (`cybertrain/net/socket.rb`&nbsp;:
 connect borné, lectures tamponnées, écritures bornées) est séparée de la couche
 HTTP pour que d’autres protocoles puissent l’utiliser. La
-conception&nbsp;: [docs/design.md](../design.md) D24.
+conception&nbsp;: [docs/design.md](../design.md) D24 et D55.
+
+### Verbes, JSON et redirections
+
+```ruby
+client = Cybertrain::HttpClient.new(timeout: 5, deadline: 15, redirects: 3)
+res = client.request("PATCH", "https://api.example.com/v1/items/7",
+                     body: JSON.generate({ "done" => true }), content_type: "application/json")
+res = client.request("DELETE", "https://api.example.com/v1/items/7")
+item = client.get("https://api.example.com/v1/items/7").json_hash   # {} quand le corps n’est pas un objet JSON
+list = client.get("https://api.example.com/v1/items").json_array    # [] quand ce n’est pas un tableau JSON
+```
+
+- **`request(verb, url, body:, content_type:, headers:)`** envoie GET,
+  POST, PUT, PATCH, DELETE ou HEAD&nbsp;; `get` et `post` restent les formes
+  courantes. POST, PUT et PATCH portent toujours leur corps, DELETE seulement
+  s’il n’est pas vide, GET et HEAD aucun (un corps y est une
+  `ArgumentError`)&nbsp;; une réponse à HEAD n’a pas de corps.
+  `Response#json_hash` et `#json_array` analysent le corps et renvoient `{}`
+  ou `[]` pour tout autre contenu.
+- **Les redirections** ne sont suivies que sur demande&nbsp;: `redirects: 3`
+  suit jusqu’à trois `301`, `302`, `303`, `307` ou `308` munies d’un
+  `Location` (un `Location` relatif se résout par rapport à l’URL courante),
+  et la suivante lève `HttpClient::TooManyRedirectsError`. La valeur par
+  défaut, `0`, renvoie une 3xx telle quelle. Chaque saut est vérifié comme le
+  premier (adresses non publiques refusées), un saut de https vers http est
+  une `BlockedAddressError`, une `303` (et une `301` ou `302` qui répond à un
+  POST) devient un GET sans corps, et le `deadline` couvre tous les sauts
+  ensemble. Les en-têtes `Authorization`, `Cookie` et `Proxy-Authorization`
+  ne sont pas envoyés à une autre origine (schéma, hôte ou port), comme le
+  font les navigateurs et curl. Un `Location` qui n’est pas une URL http(s)
+  en ASCII simple est une `BadResponseError`.
+
+### Réponses en flux et volumineuses
+
+Avec un bloc, le corps n’est pas conservé&nbsp;: chaque morceau est passé au
+bloc dès son arrivée (une trame chunked, jusqu’à 1&nbsp;Mio à la fois, ou ce
+qu’a livré une lecture) et la `Response` revient avec un corps vide.
+`max_body` ne s’applique pas alors&nbsp;; `timeout` et `deadline`, si, donc
+donnez un long `deadline:` à un long flux. `get_to_file` écrit le flux dans
+un fichier&nbsp;:
+
+```ruby
+client = Cybertrain::HttpClient.new(deadline: 600, redirects: 3)
+client.get("https://example.com/export.ndjson") { |chunk| Importer.feed(chunk) }
+
+res = client.get_to_file("https://example.com/dump.csv", "tmp/dump.csv")
+Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
+```
+
+- Un corps 2xx est écrit dans `path.part` au fil de son arrivée et renommé
+  en `path` une fois complet, si bien qu’un téléchargement de 78&nbsp;Mo ne
+  séjourne jamais en mémoire et qu’un lecteur ne voit jamais un demi-fichier.
+  Tout autre statut final (une page 404, une 503) n’atteint jamais le
+  disque&nbsp;: vérifiez `res.success?`, `path` reste tel quel. En cas d’erreur,
+  le `.part` est supprimé. Un corps 2xx vide (un `204`) remplace bien le
+  fichier par un fichier vide.
+- Une exception levée par le bloc parvient telle quelle à l’appelant.
+
+### gzip
+
+Le client demande et décompresse les corps gzip quand le support gzip est
+chargé&nbsp;: `require "cybertrain"` le charge, donc dans une application
+chaque requête envoie `Accept-Encoding: gzip` (sauf si vous envoyez votre
+propre en-tête `Accept-Encoding`) et un corps `Content-Encoding: gzip`
+revient décompressé. Un programme qui ne requiert que
+`cybertrain/http_client` ajoute `require "cybertrain/http/gzip_ffi"` (il lie
+zlib)&nbsp;; sans lui, une réponse gzip est une `BadResponseError` qui nomme ce
+fichier. Un corps conservé est limité par `max_body` sur le fil et une fois
+décompressé (`TooLargeError` au-delà)&nbsp;; un corps en flux est décompressé
+morceau par morceau, 64&nbsp;Kio au plus chacun, sans limite totale, comme un
+corps en flux non compressé. Les en-têtes de la `Response` sont ceux reçus&nbsp;:
+`Content-Encoding: gzip` et le `Content-Length` du fil restent alors que
+`body` est le texte décompressé. Tout autre `Content-Encoding` (`br`,
+`deflate`) est une `BadResponseError`&nbsp;; un corps gzip tronqué ou corrompu
+en est une aussi.
+
+### Server-Sent Events
+
+`Cybertrain::Sse::Parser` transforme les morceaux d’une réponse
+`text/event-stream` en flux en événements (il n’est pas dans
+`require "cybertrain"`)&nbsp;:
+
+```ruby
+require "cybertrain/sse"
+
+parser = Cybertrain::Sse::Parser.new
+client = Cybertrain::HttpClient.new(deadline: 180)   # tout le flux doit tenir dans le deadline
+client.request("POST", "https://api.example.com/v1/chat", body: payload, content_type: "application/json") do |chunk|
+  parser.feed(chunk) { |event| Answer.append(event.event_data) unless event.event_data == "[DONE]" }
+end
+parser.finish { |event| Answer.append(event.event_data) }   # un dernier événement que le flux n’a pas terminé par une ligne vide
+```
+
+- Chaque `Sse::Event` a `event_name` (`"message"` quand le flux n’en envoie
+  pas), `event_data` (les lignes `data:` jointes par un saut de ligne),
+  `event_id` (le dernier `id:` envoyé par le flux, qui se reporte sur les
+  événements suivants) et `event_retry_ms` (un `retry:` donné depuis
+  l’événement précédent, 0 sinon).
+- Le parseur suit les règles du WHATWG&nbsp;: les lignes se terminent par CR,
+  LF ou CRLF, coupées n’importe où entre deux morceaux&nbsp;; une ligne qui
+  commence par `:` est un commentaire&nbsp;; une ligne vide distribue
+  l’événement s’il avait des données. `finish` passe au bloc un événement
+  resté inachevé à la fin du flux.
+- Il ne fixe aucune limite à une ligne ou à un événement&nbsp;: le `deadline`
+  de la requête borne le flux dans le temps, pas en mémoire. Des morceaux
+  binaires donnent un `event_data` binaire&nbsp;; fixez l’encodage vous-même.
 
 ## Consommer des flux WebSocket
 
@@ -184,6 +289,42 @@ d’`instance_eval`).
   et la connexion reste ouverte. Une exception dans `on_open` est journalisée,
   et la connexion est fermée puis retentée, puisqu’un flux qui ne s’est pas
   abonné ne sert à rien.
+- **Minuteries.** `.on_tick(seconds) { |conn| ... }` exécute un bloc toutes
+  les `seconds` (un Integer, au moins 1) sur le thread du flux, entre ses
+  attentes d’une seconde, que le flux soit connecté ou non&nbsp;: `conn` est la
+  `Connection` tant qu’il est connecté et `nil` sinon, donc testez-le. Le
+  premier appel a lieu `seconds` après le démarrage du flux&nbsp;; une
+  exception est journalisée et le flux continue. Le travail qui appartient
+  au flux (écrire chaque seconde ce que `on_message` a accumulé en mémoire,
+  clore une bougie d’une minute) va ici, sans verrou ni tâche planifiée. Un
+  seul `on_tick` par abonnement.
+
+  ```ruby
+  BUFFER = Array.new(0) { "" }   # une constante : les blocs ne voient pas les variables locales
+
+  Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"])
+    .on_message { |conn, text| BUFFER << text }
+    .on_tick(1) { |conn| Trades.flush(BUFFER) }   # le code de l’app : un INSERT du lot, puis BUFFER.clear
+  ```
+- **Redémarrages.** Un thread superviseur vérifie chaque seconde que le
+  thread de chaque flux est vivant. Un thread qui s’est terminé malgré tout
+  (une exception qui n’est pas une `StandardError`, ou le runtime qui l’a
+  tué) est journalisé (`[ERROR] WebSocket "trades" thread ended: ...`) et
+  redémarré après `min(30, 2 ** restarts)` secondes, avec une ligne
+  `[WARN]`&nbsp;; sa connexion ouverte est d’abord fermée. Le compteur de
+  redémarrages ne se remet jamais à zéro, si bien qu’après cinq redémarrages
+  l’attente reste de 30 secondes. Dans un processus `feeds`, un flux qui
+  meurt encore après `feed_restart_limit` redémarrages (10,
+  `CYBERTRAIN_FEED_RESTART_LIMIT`) en `feed_restart_window` secondes (600,
+  `CYBERTRAIN_FEED_RESTART_WINDOW`) met fin au processus&nbsp;: `[FATAL] feed
+  trades restarted 10 times in 600 s; exiting`, puis tous les flux sont
+  arrêtés et le processus se termine avec le statut 1, pour que le
+  `restart: unless-stopped` de Docker ou le `Restart=always` de systemd en
+  démarre un nouveau. Un `server` qui exécute des flux ne se termine jamais à
+  cause d’eux&nbsp;: il continue de les redémarrer, et `/up` signale
+  `feed stale`. Une erreur dans le superviseur lui-même (une base disparue
+  pendant qu’il écrivait les lignes d’état) est journalisée et la
+  supervision continue.
 - **Ce qui est journalisé.**
 
   | Quand | Niveau | Ligne |
@@ -212,10 +353,13 @@ d’`instance_eval`).
   tout moment.
 - **Santé.** `Cybertrain::WebSocket.feed_status("trades")` renvoie un
   `Status`&nbsp;: `connected?`, `last_message_at` (secondes epoch, 0 avant le
-  premier message) et `reconnects`. Il ne fait pas partie de `GET /up`&nbsp;;
-  utilisez-le dans votre propre contrôle. Les trois valeurs sont lues l’une
-  après l’autre, pas comme un seul instantané, et `connected?` devient vrai
-  quand la connexion est établie, avant que `on_open` ne se soit exécuté.
+  premier message), `reconnects`, `restarts` (par le superviseur) et
+  `thread_alive?`, lus l’un après l’autre, pas comme un seul
+  instantané&nbsp;; `connected?` devient vrai quand la connexion est établie,
+  avant que `on_open` ne se soit exécuté. Le superviseur écrit aussi l’état
+  de chaque flux dans la base toutes les `feed_status_interval` secondes
+  (10), ce que lisent `GET /up` et `./<app> feeds status`, dans ce processus
+  ou dans un autre&nbsp;: [Santé des flux](realtime.md#feed-health).
 - **Gardez `on_message` court.** Le thread attend avec `wait_readable` ou
   `sleep`, donc un flux muet n’occupe pas de worker OS pendant qu’il attend.
   Deux choses en occupent un&nbsp;: chaque tentative de connexion résout le nom
@@ -254,14 +398,17 @@ msg.ws_data                   # les octets
 client.close
 ```
 
-La conception&nbsp;: [docs/design.md](../design.md) D33.
+La conception&nbsp;: [docs/design.md](../design.md) D33 et D56.
 
 ## Envoyer des e-mails
 
-`Cybertrain::Mailer` envoie des e-mails en texte brut via un serveur SMTP (le
-serveur de soumission de votre fournisseur, ou un relais local). Comme le
-client HTTP, il n’est pas inclus dans `require "cybertrain"`, et le TLS se
-requiert séparément&nbsp;:
+`Cybertrain::Mailer` envoie des e-mails, en texte brut ou avec une partie
+HTML, via un serveur SMTP (le serveur de soumission de votre fournisseur, ou
+un relais local), tout de suite (`deliver`) ou depuis un job
+(`deliver_later`, ci-dessous). `require "cybertrain"` le charge&nbsp;; un
+programme sans le framework requiert `cybertrain/mailer` (qui n’a pas besoin
+de base de données&nbsp;: `deliver_later` est dans `cybertrain/mailer/later`).
+Le TLS se requiert séparément&nbsp;:
 
 ```ruby
 require "cybertrain/mailer"
@@ -322,7 +469,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   du serveur au message (`"250 2.0.0 Ok: queued
   as ..."`).
 - **Le message&nbsp;:** `Date`, `From`, `To`, `Subject`, `MIME-Version: 1.0`,
-  `Content-Type: text/plain; charset=UTF-8`. Un sujet non ASCII est encodé selon
+  `Content-Type: text/plain; charset=UTF-8` (pour un message HTML, voir
+  plus bas). Un sujet non ASCII est encodé selon
   la RFC 2047 (`=?UTF-8?B?...?=`, découpé entre les caractères). Les fins de
   ligne du corps deviennent CRLF et les lignes qui commencent par `.` sont
   protégées par dot-stuffing. Son `Content-Transfer-Encoding` est `7bit` pour
@@ -337,11 +485,72 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   de plus de 998 octets, un corps qui n’est pas de l’UTF-8 valide ou contient un
   NUL, plus de 100 destinataires. `to:` prend une adresse ou plusieurs séparées
   par des virgules.
-- **Pas encore&nbsp;:** les messages HTML et multipart, les pièces jointes, les
-  templates, les noms affichés, les en-têtes `Cc`/`Bcc` (envoyez plutôt à
-  plusieurs destinataires), AUTH LOGIN/CRAM-MD5, les adresses SMTPUTF8, le
-  pipelining, et une file de remise (une remise s’exécute sur le thread
-  appelant, un green thread comme une requête). `cybertrain generate
-  authentication` n’écrit toujours pas de réinitialisation du mot de passe.
+- **Pas encore&nbsp;:** les pièces jointes et les images en ligne, les
+  classes de mailer (`UserMailer.welcome(user).deliver_later`&nbsp;: un mail
+  est une méthode de l’application qui appelle `deliver` ou
+  `deliver_later`), les noms affichés, les en-têtes `Cc`/`Bcc` (envoyez
+  plutôt à plusieurs destinataires), AUTH LOGIN/CRAM-MD5, les adresses
+  SMTPUTF8, le pipelining. `deliver` s’exécute sur le thread appelant, un
+  green thread comme une requête. `cybertrain generate authentication`
+  n’écrit toujours pas de réinitialisation du mot de passe.
 
-La conception&nbsp;: [docs/design.md](../design.md) D27.
+### Mail HTML
+
+```ruby
+html = Cybertrain::Views.render_mail("mail/welcome", user: user)   # app/views/mail/_welcome.html.erb
+Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #{user.name}!\n", html: html)
+```
+
+- Avec `html:`, le message est `multipart/alternative`&nbsp;: la partie texte
+  (`body:`) d’abord, puis la partie HTML, chacune en `charset=UTF-8` et en
+  base64 (si bien qu’aucune règle de longueur de ligne ni de dot-stuffing ne
+  s’applique), entre des délimiteurs aléatoires. Les logiciels de messagerie
+  affichent le HTML et se rabattent sur le texte. Sans `html:`, le message
+  est le texte brut décrit plus haut, inchangé.
+- `Views.render_mail(name, locals)` rend le partiel
+  (`app/views/mail/_welcome.html.erb`) hors d’une requête, à l’intérieur de
+  `app/views/layouts/mail.html.erb` quand ce layout existe et seul sinon&nbsp;;
+  `Views.render_partial` le rend sans layout. Les valeurs sont échappées en
+  HTML comme dans une page. Une partie texte peut aussi venir d’un
+  partiel&nbsp;: rendez-le vous-même et passez-le comme `body:` (il affiche
+  ses valeurs avec `<%== %>`, puisque `<%= %>` échappe).
+
+### Envoyer plus tard
+
+```ruby
+Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
+```
+
+`deliver_later` prend les arguments de `deliver`, les vérifie tout de suite
+(une adresse ou un sujet refusé lève une exception ici et rien n’est mis en
+file) et met en file le job intégré `"cybertrain mail"` avec le message
+terminé&nbsp;; un thread de jobs
+([Tâches de fond](background-and-operations.md#background-work)) l’envoie
+avec les réglages SMTP en vigueur à ce moment-là. Rendez les corps avant
+l’appel&nbsp;: le job n’a pas de contexte de vue. Il renvoie l’id du job.
+
+- **Nouvelles tentatives.** Un délai dépassé, une connexion refusée ou une
+  réponse `4xx` (greylisting, `421`, `452`) est réessayé 60 secondes plus
+  tard, jusqu’à 5 tentatives, puis la ligne passe à `failed`. Une réponse
+  `5xx` (une adresse qui n’existe pas, une connexion refusée) abandonne la
+  ligne tout de suite&nbsp;: réessayer ne changerait pas la réponse.
+- **Les erreurs aussi sont abandonnées.** Une `ArgumentError` à l’exécution
+  du job est abandonnée sans rien envoyer&nbsp;: cela couvre une erreur de
+  configuration (pas de `CYBERTRAIN_SMTP_HOST`, pas d’expéditeur) comme une
+  charge utile modifiée dans la base. Un tel mail est perdu jusqu’à ce que
+  quelqu’un lise la page des jobs ou `./<app> jobs list discarded`&nbsp;;
+  corrigez la configuration, puis `./<app> jobs retry ID` le remet en file
+  (il en va de même pour un échec d’authentification `535` abandonné).
+- **Un message, tous les destinataires.** Un message à plusieurs
+  destinataires est une seule transaction SMTP&nbsp;: quand le serveur refuse
+  l’un d’eux avec une `5xx`, tout le job est abandonné et les autres ne le
+  reçoivent pas non plus. Mettez en file un message par destinataire quand
+  ils ne doivent pas dépendre les uns des autres.
+- **Le message reste dans la base** (la charge utile de la ligne du job,
+  affichée sur la page des jobs) jusqu’à ce que le job ait tourné, et aussi
+  longtemps que la ligne terminée est conservée.
+- Enregistrer ce job signifie que chaque processus qui exécute des jobs
+  démarre ses threads de jobs, même dans une application sans classe de job
+  à elle.
+
+La conception&nbsp;: [docs/design.md](../design.md) D27 et D57.

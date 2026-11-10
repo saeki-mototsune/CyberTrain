@@ -11,6 +11,7 @@ require "cybertrain/generator/views_emitter"
 require "cybertrain/generator/helpers_emitter"
 require "cybertrain/generator/components_emitter"
 require "cybertrain/generator/console_emitter"
+require "cybertrain/generator/jobs_emitter"
 
 module Cybertrain
   module Gen
@@ -19,17 +20,22 @@ module Cybertrain
     # With --check nothing is written; each out-of-date file is reported as
     # "stale: <path>" and the exit code is 1.
     # `--embed-views` writes gen/views.rb with the app/views tree instead
-    # of an empty table.
+    # of an empty table. A jobs page drawn without before_action: prints a
+    # warning line first.
     module Runner
       def self.run(root, argv)
         check = argv.include?("--check")
         embed = argv.include?("--embed-views")
+        jobs_page = Cybertrain::Routes.jobs_page_spec
+        warning = ControllersEmitter.jobs_page_warning(jobs_page)
+        puts warning unless warning.empty?
         outputs = [
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
-          ["gen/controllers.rb", ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"))],
+          ["gen/controllers.rb", ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), jobs_page)],
           ["gen/views.rb", ViewsEmitter.emit(root, embed)],
           ["gen/helpers.rb", HelpersEmitter.emit(HelperScan.scan_dir("#{root}/app/helpers"))],
-          ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))]
+          ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))],
+          ["gen/jobs.rb", JobsEmitter.emit(JobScan.scan_dir("#{root}/app/jobs"))]
         ]
         # gen/migrations.rb only once an app has a db/migrate directory (a
         # fixture or test tree with no db/ at all skips it entirely).

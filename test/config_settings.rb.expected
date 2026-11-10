@@ -9,6 +9,8 @@ ok   an integer setting parses digits and an optional minus within its bounds
 [WARN] CT_TEST_BAD_BOOL="yes" is not a boolean (1/true or 0/false); using the default true
 ok   an unparsable or out-of-range value falls back to the default with a warning
 ok   a usable value logs nothing
+ok   CYBERTRAIN_HEALTH_FEED_STALE sets health_feed_stale; unset or bad is 180; below 1 is refused
+ok   boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on
 ok   a bad declaration is an ArgumentError
 ok   reading an undeclared or differently typed setting is an ArgumentError
 ok   tests can reassign a setting through the writers
@@ -22,9 +24,12 @@ Usage:
   ./blog [server [PORT]]   start the server
   ./blog worker            run jobs and scheduled tasks, without HTTP
   ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
+  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
+  ./blog jobs COMMAND      list [STATE] | retry ID | retry --all | discard ID | delete ID
+                           prune [--before DAYS]
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
@@ -38,4 +43,4 @@ Settings (environment variables):
 ok   help lists every declared setting with its variable and default
 ok   the encryption keys are read from their variables, the previous ones as a comma list
 ok   encryption_error: a malformed key fails, an unset one only when encryption is required
-13 tests, 71 assertions, 0 failures
+15 tests, 80 assertions, 0 failures

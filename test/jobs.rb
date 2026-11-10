@@ -8,8 +8,13 @@ require "cybertrain/test"
 # state, an unknown kind, a bounded last_error, recovery of rows left
 # `running`, claimed_by and heartbeats, recovery by staleness only (two
 # processes' labels in one database), the in-place column upgrade,
-# and per-kind concurrency limits (test/job_threads.rb starts the real
-# threads). Jobs are worked
+# per-kind concurrency limits (test/job_threads.rb starts the real
+# threads), and Job.register: the Job::Run its block receives, the
+# outcomes Job.retry_later and Job.discard write under the fence, the
+# `discarded` state, per-kind max_attempts in recovery, and limits per
+# concurrency key: the one key derivation, enqueue's key, the claim's
+# (kind, key) pairs, the start backfill, keyed recovery and the upgrade
+# that adds the column and its index. Jobs are worked
 # with chosen epoch times through Job.work_one, so nothing sleeps. It
 # links SQLite through FFI, so its snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23).
@@ -26,6 +31,9 @@ Cybertrain.logger = Cybertrain::Logger.new(LOG)
 Job.handle("record") { |payload| SEEN << payload }
 Job.handle("boom") { |payload| raise "boom #{payload}" }
 Job.handle("long") { |payload| raise "x" * 5000 }
+# Exceptions outside StandardError that a job's own code raises.
+Job.handle("unwritten") { |payload| raise NotImplementedError, "notify is not written yet" }
+Job.handle("too deep") { |payload| raise SystemStackError, "stack level too deep" }
 Job.handle("paid", concurrency: 1) { |payload| SEEN << "paid #{payload}" }
 Job.handle("other") { |payload| SEEN << "other #{payload}" }
 Job.handle("api", concurrency: 2) { |payload| SEEN << "api #{payload}" }
@@ -69,9 +77,63 @@ Job.handle("flaky") do |payload|
   raise "not yet" if SEEN.size < 3
 end
 
+# What Job.retry_later and Job.discard answered (seeded, NOTES rule 9).
+OUTCOMES = Array.new(0) { Job::OUTCOME_STALE }
+
+# Job.register: the block receives a Job::Run.
+Job.register("run kind") { |run| SEEN << "#{run.run_kind}:#{run.run_attempts}:#{Cybertrain::Cast.int(run.run_args["n"])}" }
+Job.register("plain") { |run| raise "bad" unless run.run_args.empty? }
+
+# Policies written as the generated run_job(run) writes them: the rescue
+# in a method body, the outcome written from it.
+def retrying_job(run)
+  begin
+    raise ArgumentError, "try #{run.run_attempts}"
+  rescue ArgumentError => e
+    OUTCOMES << Job.retry_later(run, e, 60, run.run_payload == "poly", 3)
+  end
+  nil
+end
+
+def discarding_job(run)
+  begin
+    raise ArgumentError, "unusable #{run.run_payload}"
+  rescue ArgumentError => e
+    OUTCOMES << Job.discard(run, e)
+  end
+  raise "after the discard" if run.run_payload == "raise"
+  nil
+end
+
+# Another process takes the row over while the policy runs: its write is
+# fenced off.
+def stolen_job(run)
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET claimed_by = 'thief:1:1:abcdef' WHERE id = ?", [run.run_id]) }
+  begin
+    raise ArgumentError, "stolen"
+  rescue ArgumentError => e
+    OUTCOMES << (run.run_payload == "discard" ? Job.discard(run, e) : Job.retry_later(run, e, 60, false, 3))
+  end
+  nil
+end
+
+Job.register("retrying") { |run| retrying_job(run) }
+Job.register("discarding") { |run| discarding_job(run) }
+Job.register("stolen") { |run| stolen_job(run) }
+Job.register("long policy", max_attempts: 20) { |run| SEEN << run.run_payload }
+Job.register("short policy", max_attempts: 2) { |run| SEEN << run.run_payload }
+# One running at a time per "exchange".
+Job.register("keyed", concurrency: 1, concurrency_key: "exchange") { |run| SEEN << "keyed #{Cybertrain::Cast.str(run.run_args["exchange"])}" }
+
 def fresh_db
   DB.connect(":memory:")
   SEEN.pop until SEEN.empty?
+  OUTCOMES.pop until OUTCOMES.empty?
+  nil
+end
+
+def set_attempts(id, attempts)
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET attempts = ? WHERE id = ?", Cybertrain::Cast.binds(attempts, id)) }
   nil
 end
 
@@ -119,6 +181,38 @@ end
 def job_heartbeat(id)
   rows = DB.with { |c| c.execute("SELECT heartbeat_at FROM cybertrain_jobs WHERE id = ?", [id]) }
   Cybertrain::Cast.int(rows[0]["heartbeat_at"])
+end
+
+def job_key(id)
+  rows = DB.with { |c| c.execute("SELECT concurrency_key FROM cybertrain_jobs WHERE id = ?", [id]) }
+  Cybertrain::Cast.str(rows[0]["concurrency_key"])
+end
+
+# A row written as an older release (or another process's claim) left it,
+# with concurrency_key ''.
+def insert_payload(kind, state, payload, heartbeat)
+  binds = Cybertrain::Cast.binds(kind, payload, state, heartbeat)
+  id = 0
+  DB.with do |c|
+    c.execute("INSERT INTO cybertrain_jobs (kind, payload, run_at, state, created_at, updated_at, claimed_by, heartbeat_at) " \
+              "VALUES (?, ?, 1000, ?, 1000, 1000, 'host-a:10:1:aaaaaa', ?)", binds)
+    id = c.last_insert_id
+  end
+  id
+end
+
+def job_indexes
+  rows = DB.with { |c| c.execute("PRAGMA index_list('cybertrain_jobs')") }
+  names = Array.new(0) { "" }
+  rows.each { |r| names << Cybertrain::Cast.str(r["name"]) }
+  names.sort.join(",")
+end
+
+def index_column_list(name)
+  rows = DB.with { |c| c.execute("PRAGMA index_info('#{name}')") }
+  names = Array.new(0) { "" }
+  rows.each { |r| names << Cybertrain::Cast.str(r["name"]) }
+  names.join(",")
 end
 
 def job_columns
@@ -190,6 +284,23 @@ test "a failing job is retried with the backoff, counting attempts, until it is 
   assert_includes LOG.string, "[ERROR] job #{id} (boom) failed after 3 attempts: RuntimeError: boom x"
   refute Job.work_one(999_999)
   assert_equal 1, Job.state_count("failed")
+  Cybertrain.config.job_max_attempts = 5
+end
+
+test "NotImplementedError and SystemStackError from a job take the default retry, as a StandardError does" do
+  fresh_db
+  Cybertrain.config.job_max_attempts = 3
+  id = Job.enqueue("unwritten", "x", run_at: Time.at(1000))
+  deep = Job.enqueue("too deep", "x", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert Job.work_one(1000)
+  assert_equal "queued", job_state(id)
+  assert_equal 1, job_attempts(id)
+  assert_equal 1060, job_run_at(id)
+  assert_equal "NotImplementedError: notify is not written yet", job_error(id)
+  assert_equal "queued", job_state(deep)
+  assert_equal "SystemStackError: stack level too deep", job_error(deep)
+  assert_includes LOG.string, "[ERROR] job #{id} (unwritten) attempt 1 of 3 failed: NotImplementedError: notify is not written yet"
   Cybertrain.config.job_max_attempts = 5
 end
 
@@ -366,7 +477,7 @@ test "install! adds claimed_by and heartbeat_at to a table made before them" do
   # here one of the two columns is already there.
   DB.with { |c| c.execute("ALTER TABLE cybertrain_jobs ADD COLUMN claimed_by TEXT") }
   Job.install!
-  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at", job_columns
+  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key", job_columns
   Job.install!
   # A probe job, claimed by work_one at 2000, calls recover!(2001) from its
   # handler: the old release's running row (no heartbeat) is requeued at
@@ -464,6 +575,302 @@ test "prune_done deletes old done rows and keeps failed ones" do
   assert_equal 1, Job.prune_done(2000)
   assert_equal 0, Job.state_count("done")
   assert_equal 1, Job.state_count("failed")
+end
+
+test "register gives the handler a Run with the parsed args and the attempt" do
+  fresh_db
+  id = Job.enqueue("run kind", "{\"n\":7}", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal "run kind:1:7", SEEN.join(",")
+  assert_equal "done", job_state(id)
+end
+
+test "a non-object payload gives a Run whose run_args is {}" do
+  fresh_db
+  ["plain text", "[1,2]", "", "{\"broken\""].each { |payload| Job.enqueue("plain", payload, run_at: Time.at(1000)) }
+  assert_equal 4, Job.work_due(1000)
+  assert_equal 4, Job.state_count("done")
+end
+
+test "register refuses an empty kind, a taken one and a negative max_attempts; the fields are kept" do
+  assert_includes assert_raises("ArgumentError") { Job.register("") { |run| SEEN << run.run_payload } }, "empty"
+  assert_includes assert_raises("ArgumentError") { Job.register("record") { |run| SEEN << run.run_payload } }, "already registered"
+  assert_includes assert_raises("ArgumentError") { Job.register("negative", max_attempts: -1) { |run| SEEN << run.run_payload } }, "max_attempts must be 0"
+  assert_includes assert_raises("ArgumentError") { Job.register("negative", concurrency: -1) { |run| SEEN << run.run_payload } }, "concurrency must be 0"
+  assert_equal(-1, Job.handler_index("negative"))
+  assert_equal 20, Job::HANDLERS[Job.handler_index("long policy")].handler_max_attempts
+  assert_equal 0, Job::HANDLERS[Job.handler_index("record")].handler_max_attempts
+  assert_equal "", Job::HANDLERS[Job.handler_index("record")].handler_concurrency_key
+end
+
+test "retry_later requeues with the wait, fails at the limit, and answers the outcome" do
+  fresh_db
+  id = Job.enqueue("retrying", "fixed", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal Job::OUTCOME_REQUEUED, OUTCOMES[0]
+  assert_equal "queued", job_state(id)
+  assert_equal 1060, job_run_at(id)
+  assert_equal "ArgumentError: try 1", job_error(id)
+  assert_includes LOG.string, "[ERROR] job #{id} (retrying) attempt 1 of 3 failed: ArgumentError: try 1; retrying in 60 s"
+  refute Job.work_one(1059)
+  assert Job.work_one(1060)
+  assert_equal 1120, job_run_at(id)
+  assert Job.work_one(1120)
+  assert_equal Job::OUTCOME_FAILED, OUTCOMES[2]
+  assert_equal "failed", job_state(id)
+  assert_equal 3, job_attempts(id)
+  assert_equal "ArgumentError: try 3", job_error(id)
+  assert_includes LOG.string, "[ERROR] job #{id} (retrying) failed after 3 attempts: ArgumentError: try 3"
+  # Polynomially longer: attempts ** 4 + 2 seconds.
+  poly = Job.enqueue("retrying", "poly", run_at: Time.at(2000))
+  assert Job.work_one(2000)
+  assert_equal 2003, job_run_at(poly)
+  assert Job.work_one(2003)
+  assert_equal 2021, job_run_at(poly)
+  assert_equal "requeued,requeued,failed,requeued,requeued", OUTCOMES.map { |o| o.to_s }.join(",")
+end
+
+test "retry_later and discard answer OUTCOME_STALE when the row was reclaimed" do
+  ["retry", "discard"].each do |mode|
+    fresh_db
+    id = Job.enqueue("stolen", mode, run_at: Time.at(1000))
+    assert Job.work_one(1000)
+    assert_equal Job::OUTCOME_STALE, OUTCOMES[0]
+    # Untouched: still the thief's running claim, and finish wrote nothing.
+    assert_equal "running", job_state(id)
+    assert_equal "thief:1:1:abcdef", job_claimed_by(id)
+    assert_equal "", job_error(id)
+    assert_equal 1000, job_run_at(id)
+    assert_includes LOG.string, "[WARN] job #{id} (stolen) finished after it was reclaimed; outcome discarded"
+  end
+end
+
+test "discard writes discarded and prune_finished removes it with failed rows; prune_done does not" do
+  fresh_db
+  id = Job.enqueue("discarding", "x", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal Job::OUTCOME_FAILED, OUTCOMES[0]
+  assert_equal "discarded", job_state(id)
+  assert_equal 1, job_attempts(id)
+  assert_equal "ArgumentError: unusable x", job_error(id)
+  assert_includes LOG.string, "[ERROR] job #{id} (discarding) discarded: ArgumentError: unusable x"
+  refute Job.work_one(999_999)
+  assert_equal 1, Job.state_count("discarded")
+  insert_raw("record", "done")
+  insert_raw("record", "failed")
+  assert_equal 1, Job.prune_done(2000)
+  assert_equal 1, Job.state_count("discarded")
+  assert_equal 0, Job.prune_finished(1000)
+  assert_equal 2, Job.prune_finished(1001)
+  assert_equal 0, Job.state_count("discarded")
+  assert_equal 0, Job.state_count("failed")
+end
+
+test "a handler that writes its own outcome is not written again by finish" do
+  fresh_db
+  # It returns normally after retry_later: queued, not done.
+  id = Job.enqueue("retrying", "fixed", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal "queued", job_state(id)
+  assert_equal 1060, job_run_at(id)
+  # It raises after discard: discarded, not queued by the default policy.
+  raised = Job.enqueue("discarding", "raise", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal "discarded", job_state(raised)
+  assert_equal "ArgumentError: unusable raise", job_error(raised)
+  assert_includes LOG.string, "[ERROR] job #{raised} (discarding) raised after its outcome was written: RuntimeError: after the discard"
+end
+
+test "fail_exhausted uses the larger of the default and the kind's max_attempts" do
+  fresh_db
+  Job.install!
+  assert_equal 5, Cybertrain.config.job_max_attempts
+  assert_equal 20, Job.recovery_limit("long policy")
+  assert_equal 5, Job.recovery_limit("short policy")
+  assert_equal 5, Job.recovery_limit("record")
+  assert_equal 5, Job.recovery_limit("gone")
+  long = insert_raw("long policy", "running")
+  long_last = insert_raw("long policy", "running")
+  plain = insert_raw("record", "running")
+  short = insert_raw("short policy", "running")
+  short_last = insert_raw("short policy", "running")
+  set_attempts(long, 5)
+  set_attempts(long_last, 20)
+  set_attempts(plain, 5)
+  set_attempts(short, 3)
+  set_attempts(short_last, 5)
+  assert_equal 2, Job.recover!(1301)
+  assert_equal "queued", job_state(long)
+  assert_equal "failed", job_state(long_last)
+  assert_equal "process stopped (heartbeat stale) during attempt 20 of 20", job_error(long_last)
+  assert_equal "failed", job_state(plain)
+  assert_equal "process stopped (heartbeat stale) during attempt 5 of 5", job_error(plain)
+  assert_equal "queued", job_state(short)
+  assert_equal "failed", job_state(short_last)
+  assert_equal "process stopped (heartbeat stale) during attempt 5 of 5", job_error(short_last)
+end
+
+test "Job.handle still receives the payload String" do
+  fresh_db
+  id = Job.enqueue("record", "{\"n\":7}", run_at: Time.at(1000))
+  assert Job.work_one(1000)
+  assert_equal "{\"n\":7}", SEEN.join(",")
+  assert_equal "done", job_state(id)
+end
+
+test "the key derivation is the same for a String, an Integer, a Float and a boolean" do
+  assert_equal "X",    Job.concurrency_key_for("keyed", "{\"exchange\":\"X\"}")
+  assert_equal "true", Job.concurrency_key_for("keyed", "{\"exchange\":true}")
+  assert_equal "7",    Job.concurrency_key_for("keyed", "{\"exchange\":7}")
+  assert_equal "7.5",  Job.concurrency_key_for("keyed", "{\"exchange\":7.5}")
+  assert_equal "",     Job.concurrency_key_for("keyed", "{\"exchange\":null}")
+  assert_equal "",     Job.concurrency_key_for("keyed", "{\"other\":1}")
+  assert_equal "",     Job.concurrency_key_for("keyed", "not json")
+  assert_equal "",     Job.concurrency_key_for("keyed", "[\"X\"]")
+  # A kind with no key, and one not registered, have no key.
+  assert_equal "",     Job.concurrency_key_for("record", "{\"exchange\":\"X\"}")
+  assert_equal "",     Job.concurrency_key_for("nobody", "{\"exchange\":\"X\"}")
+end
+
+test "enqueue stores the key and refuses a payload without the field" do
+  fresh_db
+  keyed = Job.enqueue("keyed", "{\"exchange\":\"X\"}", run_at: Time.at(1000))
+  plain = Job.enqueue("record", "{\"exchange\":\"X\"}", run_at: Time.at(1000))
+  assert_equal "X", job_key(keyed)
+  assert_equal "", job_key(plain)
+  assert_equal "Job.enqueue \"keyed\": the payload has no \"exchange\" field for limits_concurrency",
+               assert_raises("ArgumentError") { Job.enqueue("keyed", "{\"other\":1}") }
+  assert_equal "Job.enqueue \"keyed\": the payload has no \"exchange\" field for limits_concurrency",
+               assert_raises("ArgumentError") { Job.enqueue("keyed", "not json") }
+  assert_equal 2, Job.state_count("queued")
+end
+
+test "two rows of the same key never run at once across two claimed_by labels; different keys do" do
+  fresh_db
+  Job.install!
+  # host-a runs an "a" row (the older release's claim, keyed by enqueue
+  # here through the column).
+  running = Job.enqueue("keyed", "{\"exchange\":\"a\"}", run_at: Time.at(1000))
+  Job.override_process_label("host-a:10:1:aaaaaa")
+  assert Job.work_one(1000)
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET state = 'running' WHERE id = ?", [running]) }
+  waiting = Job.enqueue("keyed", "{\"exchange\":\"a\"}", run_at: Time.at(1000))
+  other = Job.enqueue("keyed", "{\"exchange\":\"b\"}", run_at: Time.at(1001))
+  # host-b: the older "a" row is skipped, the "b" row is claimed.
+  Job.override_process_label("host-b:20:1:bbbbbb")
+  assert Job.work_one(2000)
+  assert_equal "done", job_state(other)
+  assert_equal "queued", job_state(waiting)
+  refute Job.work_one(2000)
+  assert_equal 1, Job.running_count("keyed")
+  # The running "a" row ends: the key's slot is free again.
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET state = 'done' WHERE id = ?", [running]) }
+  assert Job.work_one(2000)
+  assert_equal "done", job_state(waiting)
+  assert_equal "keyed a,keyed b,keyed a", SEEN.join(",")
+  Job.override_process_label("")
+end
+
+test "backfill_keys keys queued rows of a keyed kind and lists the unkeyable ones" do
+  fresh_db
+  Job.install!
+  keyable = insert_payload("keyed", "queued", "{\"exchange\":\"X\"}", 1000)
+  unkeyable = insert_payload("keyed", "queued", "not json", 1000)
+  missing = insert_payload("keyed", "queued", "{\"other\":1}", 1000)
+  plain = insert_payload("record", "queued", "{\"exchange\":\"X\"}", 1000)
+  running = insert_payload("keyed", "running", "{\"exchange\":\"X\"}", 1000)
+  # More than one batch of 1000.
+  DB.transaction do |c|
+    i = 0
+    while i < 1000
+      c.execute("INSERT INTO cybertrain_jobs (kind, payload, run_at, created_at, updated_at) VALUES ('keyed', ?, 1000, 1000, 1000)",
+                ["{\"exchange\":\"n#{i % 3}\"}"])
+      i += 1
+    end
+  end
+  assert_equal 1001, Job.backfill_keys(2000)
+  assert_equal "X", job_key(keyable)
+  assert_equal "", job_key(unkeyable)
+  assert_equal "", job_key(missing)
+  assert_equal "", job_key(plain)
+  assert_equal "", job_key(running)
+  rows = DB.with { |c| c.execute("SELECT COUNT(*) AS n FROM cybertrain_jobs WHERE concurrency_key IN ('n0', 'n1', 'n2')") }
+  assert_equal 1000, Cybertrain::Cast.int(rows[0]["n"])
+  assert_includes LOG.string, "[WARN] 2 queued job(s) of keyed have no \"exchange\" field to key them by; " \
+                              "left in the \"\" bucket: ids #{unkeyable}, #{missing}"
+  assert_equal 0, Job.backfill_keys(2000)
+end
+
+test "the unkeyable-row warnings list at most 20 ids and count the rest" do
+  fresh_db
+  Job.install!
+  ids = Array.new(0) { 0 }
+  25.times { ids << insert_payload("keyed", "queued", "not json", 1000) }
+  assert_equal 0, Job.backfill_keys(2000)
+  listed = ids[0, 20].join(", ")
+  assert_includes LOG.string, "[WARN] 25 queued job(s) of keyed have no \"exchange\" field to key them by; " \
+                              "left in the \"\" bucket: ids #{listed} ... and 5 more\n"
+  fresh_db
+  Job.install!
+  running = Array.new(0) { 0 }
+  21.times { running << insert_payload("keyed", "running", "not json", 1000) }
+  assert_equal 21, Job.recover!(1301)
+  shown = Array.new(0) { "" }
+  running[0, 20].each { |id| shown << "#{id} (keyed)" }
+  assert_includes LOG.string, "[WARN] 21 requeued job(s) have no concurrency key field to key them by; " \
+                              "left in the \"\" bucket: ids #{shown.join(", ")} ... and 1 more\n"
+end
+
+test "recovery requeues a stale running row with its key in the same statement" do
+  fresh_db
+  Job.install!
+  keyed = insert_payload("keyed", "running", "{\"exchange\":\"X\"}", 1000)
+  plain = insert_payload("record", "running", "{\"exchange\":\"X\"}", 1000)
+  unkeyable = insert_payload("keyed", "running", "not json", 1000)
+  # Fresh heartbeats: untouched.
+  assert_equal 0, Job.recover!(1300)
+  assert_equal "running", job_state(keyed)
+  assert_equal "", job_key(keyed)
+  # Stale: all requeued, the keyed one with its key; the unkeyable one in
+  # the "" bucket, listed at warn.
+  assert_equal 3, Job.recover!(1301)
+  assert_equal "queued", job_state(keyed)
+  assert_equal "X", job_key(keyed)
+  assert_equal "queued", job_state(plain)
+  assert_equal "", job_key(plain)
+  assert_equal "queued", job_state(unkeyable)
+  assert_equal "", job_key(unkeyable)
+  assert_includes LOG.string, "[WARN] 1 requeued job(s) have no concurrency key field to key them by; " \
+                              "left in the \"\" bucket: ids #{unkeyable} (keyed)"
+  assert_equal 0, Job.recover!(1301)
+end
+
+test "an upgrade adds the column and the index to an existing table" do
+  fresh_db
+  DB.with do |c|
+    c.exec_script("CREATE TABLE cybertrain_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, " \
+                  "payload TEXT NOT NULL DEFAULT '', run_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, " \
+                  "last_error TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'queued', " \
+                  "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, claimed_by TEXT, heartbeat_at INTEGER); " \
+                  "CREATE INDEX index_cybertrain_jobs_on_state_and_run_at ON cybertrain_jobs (state, run_at);")
+    c.execute("INSERT INTO cybertrain_jobs (kind, payload, run_at, created_at, updated_at) VALUES ('keyed', '{\"exchange\":\"X\"}', 1000, 1000, 1000)")
+  end
+  refute job_columns.include?("concurrency_key")
+  assert_equal "index_cybertrain_jobs_on_state_and_run_at", job_indexes
+  Job.install!
+  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key", job_columns
+  assert_equal "cybertrain_jobs_state_kind_key,index_cybertrain_jobs_on_state_and_run_at", job_indexes
+  assert_equal "state,kind,concurrency_key", index_column_list("cybertrain_jobs_state_kind_key")
+  # The old row carries "" until the backfill keys it.
+  assert_equal "", job_key(1)
+  Job.install!
+  assert_equal 1, Job.backfill_keys(2000)
+  assert_equal "X", job_key(1)
+  # A table made now has the same columns and indexes.
+  fresh_db
+  Job.install!
+  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key", job_columns
+  assert_equal "cybertrain_jobs_state_kind_key,index_cybertrain_jobs_on_state_and_run_at", job_indexes
 end
 
 test "schema dumps leave the jobs table out" do

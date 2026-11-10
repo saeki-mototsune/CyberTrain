@@ -1,13 +1,19 @@
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/model_scan"
+require "cybertrain/generator/job_scan"
 
 module Cybertrain
   module Gen
     # Writes gen/app.rb, the one file an app's binaries require to load
     # everything: generated models and routes, the app's helpers and
     # components with their generated tables, the console tables, the
-    # generated controllers, then the app's own models and controllers
-    # (application_controller first). When a model declares `encrypts`, it
+    # generated controllers, then the app's own models, jobs
+    # (application_job first) with their generated half (gen/jobs.rb), and
+    # controllers (application_controller first). When a job's retry_on /
+    # discard_on names a framework exception class, the file defining it
+    # is required first (the job's class body evaluates the constant, and
+    # `require "cybertrain"` does not load the mailer or the HTTP client).
+    # When a model declares `encrypts`, it
     # first requires cybertrain/encryptor (which links openssl, so an app
     # without encrypted columns does not) and sets
     # Config.encryption_required, so boot fails without
@@ -38,6 +44,11 @@ module Cybertrain
         lines << "console"
         lines << "controllers"
         rb_files(root, "app/models").each { |f| lines << "../#{f}" }
+        jobs = rb_files(root, "app/jobs")
+        job_base = "app/jobs/application_job"
+        lines << "../#{job_base}" if jobs.include?(job_base)
+        jobs.each { |f| lines << "../#{f}" unless f == job_base }
+        lines << "jobs"
         controllers = rb_files(root, "app/controllers")
         first = "app/controllers/application_controller"
         lines << "../#{first}" if controllers.include?(first)
@@ -49,6 +60,9 @@ module Cybertrain
           out << "# openssl package) and make boot require CYBERTRAIN_ENCRYPTION_KEY.\n"
           out << "require \"cybertrain/encryptor\"\n"
           out << "Cybertrain::Config.encryption_required = true\n"
+        end
+        JobScan.framework_files(JobScan.scan_dir("#{root}/app/jobs")).each do |file|
+          out << "require \"cybertrain/#{file}\"\n"
         end
         lines.each { |l| out << "require_relative \"#{l}\"\n" }
         out

@@ -9,6 +9,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -78,6 +79,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -130,6 +132,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -207,6 +210,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
@@ -231,7 +235,7 @@ ok   insert_before_line inserts at the start of the line
 ok   insert_after_line keeps the rest of the file
 error: ./config/routes.rb not found: run this inside a cybertrain app
 error: usage: cybertrain generate authentication [--invite-only]
-error: only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper` and `generate component` are supported
+error: only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported
 create spin.toml
 create .gitignore
 create .env.example
@@ -243,6 +247,7 @@ create db/migrate/.keep
 create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
+create app/jobs/.keep
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html

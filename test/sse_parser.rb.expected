@@ -1,0 +1,20 @@
+ok   two events in one chunk
+ok   an event split across three chunks mid-line
+ok   CRLF and CR line ends
+ok   a CRLF split between CR and LF makes no extra blank line
+ok   data lines are joined with LF and one space after the colon is dropped
+ok   comments and unknown fields are ignored
+ok   event: and id: and retry: are read
+ok   retry: with anything but digits is ignored
+ok   a very long retry is bounded, not an overflow
+ok   an id with a NUL is ignored
+ok   the last event id persists to later events
+ok   the event name resets after each event
+ok   a blank line with no data dispatches nothing
+ok   a blank line with no data resets the event name but keeps a pending retry
+ok   a field line with no colon is a field with an empty value
+ok   a BOM at the very start is ignored
+ok   finish flushes a trailing event
+ok   a multi-byte character split across chunks survives
+ok   a very long line fed in many small chunks
+19 tests, 50 assertions, 0 failures

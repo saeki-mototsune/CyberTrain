@@ -91,7 +91,7 @@ test "feeds before any subscription: nothing to run is 0, any name is unknown" d
   assert_equal 1, run(["feeds", "nosuch"])
 end
 
-test "worker with no job handler and no task boots, waits for the stop and returns 0" do
+test "worker with only the built-in mail job and no task boots, waits for the stop and returns 0" do
   spawn_stopper(0.3)
   assert_equal 0, run(["worker"])
   refute Cybertrain::Job.running?
@@ -205,6 +205,50 @@ test "a role hands back the INT and TERM handlers it replaced" do
   assert_includes DONE, "caller's INT handler"
   # TERM was the default before any role ran here, and is again.
   assert_equal "DEFAULT", trap("TERM", "DEFAULT").to_s
+end
+
+test "feeds status prints one line per status row and returns 0; with none it says so" do
+  Cybertrain::DB.connect("roles.sqlite3")
+  Cybertrain::WebSocket::FeedTable.ensure_installed
+  Cybertrain::DB.with { |c| c.execute("DELETE FROM cybertrain_feeds") }
+  now = 2_000_000_000
+  Cybertrain::Application.status_now = now
+  assert_equal 0, run(["feeds", "status"])
+  Cybertrain::WebSocket::FeedTable.upsert_feed("quotes", "host:42", false, now - 100, 0, 2, now - 5)
+  Cybertrain::WebSocket::FeedTable.upsert_feed("trades", "host:42", true, now - 100, now - 7, 0, now - 5)
+  assert_equal 0, run(["feeds", "status"])
+  rows = Cybertrain::WebSocket::FeedTable.read_feeds
+  assert_equal 2, rows.size
+  quotes = Cybertrain::Application.feed_status_line(rows[0], now)
+  trades = Cybertrain::Application.feed_status_line(rows[1], now)
+  assert_equal "quotes  disconnected  host:42  last activity never  restarts 2  updated 5s ago", quotes
+  assert_equal "trades  connected  host:42  last activity 7s ago  restarts 0  updated 5s ago", trades
+  # A row no subscription of this binary names is marked.
+  Cybertrain::WebSocket::FeedTable.upsert_feed("gone", "host:41", false, now - 900, 0, 0, now - 800)
+  assert_equal 0, run(["feeds", "status"])
+  gone = Cybertrain::WebSocket::FeedTable.read_feeds[0]
+  assert_equal "gone  disconnected  host:41  last activity never  restarts 0  updated 800s ago  (not registered)",
+               Cybertrain::Application.feed_status_line(gone, now)
+  Cybertrain::Application.status_now = 0
+  # status starts nothing.
+  refute Cybertrain::WebSocket.running?
+end
+
+test "a feeds process stopped cleanly deletes its own status rows, not another process's" do
+  Cybertrain::DB.connect("roles.sqlite3")
+  Cybertrain::WebSocket::FeedTable.ensure_installed
+  Cybertrain::DB.with { |c| c.execute("DELETE FROM cybertrain_feeds") }
+  now = Time.now.to_i
+  mine = Cybertrain::WebSocket.status_process
+  assert_equal "#{Socket.gethostname}:#{Process.pid}", mine
+  Cybertrain::WebSocket::FeedTable.upsert_feed("trades", mine, true, now - 100, now - 1, 0, now - 1)
+  Cybertrain::WebSocket::FeedTable.upsert_feed("quotes", "elsewhere:7", true, now - 100, now - 1, 0, now - 1)
+  spawn_stopper(0.3)
+  assert_equal 0, run(["feeds", "trades"])
+  Cybertrain::DB.connect("roles.sqlite3")
+  rows = Cybertrain::WebSocket::FeedTable.read_feeds
+  assert_equal 1, rows.size
+  assert_equal "quotes", Cybertrain::Cast.str(rows[0]["name"])
 end
 
 Cybertrain::Test.run!

@@ -1,0 +1,76 @@
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/style.css
+create public/up.html
+create bin/shop.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create app/jobs/send_digest_job.rb
+create test/send_digest_job.rb
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+ok   generate job send_digest writes a Job::Base subclass with an empty perform and a test
+identical app/jobs/send_digest_job.rb
+identical test/send_digest_job.rb
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+ok   a name given as the class name is not doubled: SendDigestJob is send_digest_job.rb
+create app/jobs/admin/report_job.rb
+create test/admin_report_job.rb
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain spin test   # test/admin_report_job.rb; snapshot it from the binary
+ok   --retry writes a retry_on line each, and spin run gen's scan reads them
+error: app/jobs/send_digest_job.rb already exists (pass --force to overwrite it)
+force app/jobs/send_digest_job.rb
+identical test/send_digest_job.rb
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+identical app/jobs/send_digest_job.rb
+identical test/send_digest_job.rb
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+ok   an existing, different file is refused unless --force
+error: bad job name '9lives'
+error: usage: cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
+error: usage: cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
+error: usage: cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
+error: usage: cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
+error: bad --retry 'TimeoutError:60': use Klass:wait:attempts (wait in seconds or polynomially_longer, attempts 1 or more)
+error: bad --retry 'TimeoutError:5.minutes:3': use Klass:wait:attempts (wait in seconds or polynomially_longer, attempts 1 or more)
+error: bad --retry 'TimeoutError:60:0': use Klass:wait:attempts (wait in seconds or polynomially_longer, attempts 1 or more)
+error: bad --retry 'timeout:60:3': use Klass:wait:attempts (wait in seconds or polynomially_longer, attempts 1 or more)
+error: ./config/routes.rb not found: run this inside a cybertrain app
+ok   bad names, bad --retry values and usage are rejected
+5 tests, 31 assertions, 0 failures

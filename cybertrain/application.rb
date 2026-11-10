@@ -138,12 +138,18 @@ module Cybertrain
       fail_boot(upload_error) unless upload_error.empty?
       scheduler_error = c.scheduler_error
       fail_boot(scheduler_error) unless scheduler_error.empty?
+      # A cron task's job: kind no Job.handle registered (Scheduler.start!
+      # raises the same message; here it is a boot error before the banner).
+      job_kinds_error = Scheduler.job_kinds_error
+      fail_boot(job_kinds_error) unless job_kinds_error.empty?
       max_page_error = c.max_page_error
       fail_boot(max_page_error) unless max_page_error.empty?
       proxies_error = c.trusted_proxies_error
       fail_boot(proxies_error) unless proxies_error.empty?
       health_error = c.health_error
       fail_boot(health_error) unless health_error.empty?
+      feeds_error = c.feeds_error
+      fail_boot(feeds_error) unless feeds_error.empty?
       stream_error = c.stream_error
       fail_boot(stream_error) unless stream_error.empty?
       # A string check, no openssl: a malformed key always, an unset one when
@@ -323,6 +329,8 @@ module Cybertrain
     # @return [Integer] the exit status
     # @api public
     def run_feeds(names)
+      return run_feeds_status if !names.empty? && names[0] == "status"
+
       Application.reset_roles_stop
       @config.worker = true
       boot
@@ -345,19 +353,77 @@ module Cybertrain
       run_feeds_threads(names, previous_term, previous_int)
     end
 
+    # `./<app> feeds status`: boots (the database), prints one line per
+    # feed status row (WebSocket::FeedTable) and returns 0; it starts no
+    # feed. The line:
+    #
+    #   NAME  connected|disconnected  process  last activity Ns ago  restarts N  updated Ns ago
+    #
+    # "last activity never" until the feed's first message. Times are
+    # relative to now, so a stale row stands out. A row whose name no
+    # registered subscription has (a feed renamed or removed since; `/up`
+    # does not count it) ends with "  (not registered)". With no rows it
+    # says so.
+    # @return [Integer] 0
+    # @api public
+    def run_feeds_status
+      @config.worker = true
+      boot
+      now = Application.status_now > 0 ? Application.status_now : Time.now.to_i
+      rows = WebSocket::FeedTable.read_feeds
+      puts "no feed has reported status" if rows.empty?
+      rows.each { |row| puts Application.feed_status_line(row, now) }
+      STDOUT.flush
+      0
+    end
+
+    # One `feeds status` line for a FeedTable row.
+    def self.feed_status_line(row, now)
+      active = row["last_activity_at"]
+      activity = active.nil? ? "never" : "#{now - Cast.int(active)}s ago"
+      state = Cast.int(row["connected"]) == 1 ? "connected" : "disconnected"
+      name = Cast.str(row["name"])
+      note = Background.feed_names.include?(name) ? "" : "  (not registered)"
+      "#{name}  #{state}  #{Cast.str(row["process"])}  last activity #{activity}  " \
+        "restarts #{Cast.int(row["restarts"])}  updated #{now - Cast.int(row["updated_at"])}s ago#{note}"
+    end
+
     # The feeds' lifetime, the counterpart of run_worker_threads: the named
     # subscriptions until the stop, then their shutdown, and the TERM and
     # INT handlers restored whatever happens.
+    #
+    # In this role a feed whose thread keeps dying ends the process
+    # (Background.exit_on_feed_death, spec section 9): the supervisor logs
+    # the FATAL line and sets Background.feeds_failed?, which ends the wait
+    # as a stop does; the feeds are stopped and the role answers 1, the
+    # exit status Main.run's caller exits with. (The supervisor thread
+    # cannot exit itself: under Spinel `exit` on a thread other than the
+    # main one ends only that thread.)
     # @param names [Array<String>] the feeds to run; empty for all
     # @param previous_term [Object] what trap("TERM") answered
     # @param previous_int [Object] what trap("INT") answered
-    # @return [Integer] 0
+    # On a clean stop the feeds' status rows this process wrote are
+    # deleted (Background.withdraw_status_all), so a role stopped on
+    # purpose no longer counts in `/up`; after a feed died too often they
+    # are kept.
+    # @return [Integer] 0, or 1 after a feed died too often
     def run_feeds_threads(names, previous_term, previous_int)
+      Background.exit_on_feed_death = true
       Background.start_only(@config, names)
       Application.wait_roles_stop
       Background.stop_all
+      return 1 if Background.feeds_failed?
+
+      # A clean stop (TERM, INT, a scale-down) takes this process's status
+      # rows away, so `/up` stops counting feeds nobody runs any more; a
+      # process that crashed, or gave up on a feed, leaves them to go stale.
+      Background.withdraw_status_all
       0
     ensure
+      # The flags are the role's: an in-process caller (a test) that runs
+      # another role afterwards starts clean.
+      Background.exit_on_feed_death = false
+      Background.reset_supervisor!
       trap("TERM", previous_term)
       trap("INT", previous_int)
     end
@@ -380,12 +446,27 @@ module Cybertrain
       RoleStop.stop_roles!
     end
 
+    # The "now" (epoch seconds) `feeds status` measures ages from; 0, the
+    # default, is the clock. A test sets it to make the output repeatable.
+    # @api public
+    def self.status_now = @status_now.to_i
+
+    # @param value [Integer] epoch seconds; 0 for the clock
+    # @return [nil]
+    # @api public
+    def self.status_now=(value)
+      @status_now = value
+      nil
+    end
+
     def self.reset_roles_stop
       RoleStop.resume_roles!
     end
 
+    # Waits for a stop, or for a feeds process's supervisor giving up on a
+    # feed (Background.feeds_failed?).
     def self.wait_roles_stop
-      sleep 0.1 until RoleStop.roles_stopped?
+      sleep 0.1 until RoleStop.roles_stopped? || Background.feeds_failed?
       nil
     end
 
@@ -642,7 +723,7 @@ module Cybertrain
       app = Static.new(app, c.public_root) if c.static_files
       # Before Static and the session: no public/ file shadows it, and it
       # sets no cookie. Inside RequestLogger, so polls are logged as usual.
-      app = HealthCheck.new(app, c.health_path, c.health_worker_stale) unless c.health_path.empty?
+      app = HealthCheck.new(app, c.health_path, c.health_worker_stale, c.health_feeds, c.health_feed_stale) unless c.health_path.empty?
       # The realtime endpoint (Stream::Endpoint), also before the session:
       # its authorisation is the signed token, and it sets no cookie.
       app = Stream::Endpoint.new(app, c) unless c.stream_path.empty?

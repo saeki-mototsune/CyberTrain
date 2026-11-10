@@ -8,7 +8,8 @@ require "cybertrain/test"
 # (the fast one is not held up by the slow one), the heartbeat thread
 # moves a running job's heartbeat_at, stop! waits at most
 # job_drain_timeout and leaves an unfinished job `running` for staleness
-# recovery, and the scheduler no longer runs jobs as a task. Assertions
+# recovery, the scheduler no longer runs jobs as a task, and a keyed
+# limit runs two keys at once but never two rows of one key. Assertions
 # are on order and bounds; no time is printed. Compiled with the whole
 # framework (NOTES rule 41); it links SQLite through FFI, so its snapshot
 # comes from the compiled binary (rule 23).
@@ -43,6 +44,30 @@ def clear_events
   nil
 end
 
+# The event at `index`, "" past the end.
+def event_at(index)
+  text = ""
+  EVENTS_LOCK.synchronize { text = EVENTS[index] if index < EVENTS.size }
+  text
+end
+
+# Where `text` is among the events; the event count when it is missing.
+def event_position(text)
+  at = 0
+  EVENTS_LOCK.synchronize do
+    at = EVENTS.size
+    i = 0
+    while i < EVENTS.size
+      if EVENTS[i] == text
+        at = i
+        break
+      end
+      i += 1
+    end
+  end
+  at
+end
+
 # The heartbeat of the running `beat` row less its claim time.
 def beat_lag
   rows = DB.with { |c| c.execute("SELECT heartbeat_at - updated_at AS d FROM cybertrain_jobs WHERE kind = 'beat' AND state = 'running'") }
@@ -61,10 +86,23 @@ Job.handle("beat") do |payload|
   sleep 2
   record_event(beat_lag >= 1 ? "beat moved" : "beat still")
 end
+# One at a time per "exchange": records its start and end.
+Job.register("per key", concurrency: 1, concurrency_key: "exchange") do |run|
+  name = Cybertrain::Cast.str(run.run_args["name"])
+  record_event("start #{name}")
+  sleep 1
+  record_event("end #{name}")
+end
 Job.handle("long") do |payload|
   sleep 3
   record_event("long")
 end
+# Exceptions outside StandardError: one run_handler takes the default
+# policy for, and one that only the job thread's own rescue survives.
+class JobAbort < Exception
+end
+Job.handle("unwritten") { |payload| raise NotImplementedError, "notify is not written yet" }
+Job.handle("abort") { |payload| raise JobAbort, "abandon ship" }
 
 def monotonic
   Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -153,6 +191,26 @@ test "an idle job thread picks up a job enqueued after it started within the pol
   Job.stop!
 end
 
+test "a job raising NotImplementedError or another Exception does not end its job thread" do
+  fresh_db
+  unwritten = enqueue_now("unwritten", "")
+  aborted = enqueue_now("abort", "")
+  assert Job.start!(pool_config(1))
+  assert wait_until(3.0) { LOG.string.include?("JobAbort: abandon ship") }
+  assert_equal "queued", job_state(unwritten)
+  assert_includes LOG.string, "(unwritten) attempt 1 of 5 failed: NotImplementedError: notify is not written yet"
+  assert_includes LOG.string, "[ERROR] Job thread 0: JobAbort: abandon ship"
+  # Left running for heartbeat recovery.
+  assert_equal "running", job_state(aborted)
+  # The one job thread is still there and runs the next job.
+  assert_equal 1, Job.live_loops
+  enqueue_now("fast", "")
+  assert wait_until(3.0) { events_text == "fast" }
+  assert_equal 1, Job.live_loops
+  Job.stop!
+  assert_equal 0, Job.live_loops
+end
+
 test "the heartbeat thread moves a running job's heartbeat_at" do
   fresh_db
   enqueue_now("beat", "")
@@ -170,6 +228,22 @@ test "the scheduler no longer runs jobs as a task" do
   assert_equal(-1, Cybertrain::Scheduler.task_index("cybertrain jobs"))
   assert_includes LOG.string, "[INFO] Scheduler started: no scheduled tasks (job recovery only)"
   Cybertrain::Scheduler.stop!
+end
+
+test "a keyed limit: two keys run at once, the same key does not" do
+  fresh_db
+  enqueue_now("per key", "{\"exchange\":\"a\",\"name\":\"a1\"}")
+  enqueue_now("per key", "{\"exchange\":\"a\",\"name\":\"a2\"}")
+  enqueue_now("per key", "{\"exchange\":\"b\",\"name\":\"b1\"}")
+  assert Job.start!(pool_config(3))
+  # a1 and b1 run together; a2 waits for a1 although a thread is free.
+  assert wait_until(0.5) { Job.running_count("per key") == 2 }
+  assert_equal 1, Job.state_count("queued")
+  assert wait_until(5.0) { Job.state_count("done") == 3 }
+  Job.stop!
+  assert_equal "start a1,start b1", [event_at(0), event_at(1)].sort.join(",")
+  assert event_position("end a1") < event_position("start a2")
+  assert event_position("start b1") < event_position("end a1")
 end
 
 test "request_stop (the TERM trap) starts the drain: stop! waits only what is left of it" do

@@ -3,6 +3,7 @@ wrote gen/controllers.rb
 wrote gen/views.rb
 wrote gen/helpers.rb
 wrote gen/components.rb
+wrote gen/jobs.rb
 wrote gen/models/comment.rb
 wrote gen/models/post.rb
 wrote gen/console.rb
@@ -17,6 +18,7 @@ identical gen/controllers.rb
 identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
+identical gen/jobs.rb
 identical gen/models/comment.rb
 identical gen/models/post.rb
 wrote gen/models/tag.rb
@@ -31,10 +33,15 @@ identical gen/controllers.rb
 identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
+identical gen/jobs.rb
 identical gen/models/comment.rb
 identical gen/models/post.rb
 wrote gen/console.rb
 removed gen/models/tag.rb
 wrote gen/app.rb
 ok   a dropped table's gen/models file is reported stale, then removed
-4 tests, 24 assertions, 0 failures
+warning: jobs_page "/admin/jobs" has no before_action:, so anyone who can reach it can see, retry, discard and delete jobs (add one: jobs_page "/admin/jobs", before_action: :require_admin)
+stale: gen/routes.rb
+stale: gen/controllers.rb
+ok   a jobs page drawn without before_action: makes the runner print a warning
+5 tests, 27 assertions, 0 failures

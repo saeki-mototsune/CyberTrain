@@ -3,6 +3,7 @@ require "cybertrain/logger"
 require "cybertrain/params"
 require "cybertrain/http/ip_address"
 require "cybertrain/template/limits"
+require "cybertrain/time_zone"
 
 module Cybertrain
   # The application's settings. Defaults come from the environment
@@ -420,6 +421,55 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :scheduler_lease_ttl
 
+    # The zone a `Scheduler.cron` task's expression is read in when it
+    # names none (`tz:`), `"UTC"`, from `CYBERTRAIN_SCHEDULER_TZ`: an IANA
+    # name such as `"Asia/Tokyo"` ({TimeZone.find}). Boot refuses a name
+    # the system zoneinfo does not have.
+    # @return [String]
+    # @api public
+    attr_accessor :scheduler_tz
+
+    # How many rows each list of the jobs page (`jobs_page` in
+    # config/routes.rb, {JobsPage}) shows on one page, `50`, from
+    # `CYBERTRAIN_JOBS_PAGE_PER_PAGE`; `?page=N` reaches the others. At
+    # least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :jobs_page_per_page
+
+    # Seconds between the runs of the scheduled task `"cybertrain cache
+    # prune"`, which deletes expired {Cache} rows, `300`, from
+    # `CYBERTRAIN_CACHE_PRUNE_INTERVAL`. Read once, when
+    # `cybertrain/cache` is required (the task is registered then). At
+    # least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :cache_prune_interval
+
+    # Seconds between the writes of the feeds' status rows
+    # (`cybertrain_feeds`, {WebSocket.publish_status}) by the supervisor
+    # of a process that runs feeds, `10`, from
+    # `CYBERTRAIN_FEED_STATUS_INTERVAL`. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :feed_status_interval
+
+    # How many times the supervisor may restart one feed's thread within
+    # {#feed_restart_window}: a feed that dies again after that many
+    # restarts makes a `feeds` process exit with status 1 (`[FATAL] feed
+    # NAME restarted N times in W s; exiting`), `10`, from
+    # `CYBERTRAIN_FEED_RESTART_LIMIT`. A `server` process that runs feeds
+    # keeps restarting them. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :feed_restart_limit
+
+    # The window {#feed_restart_limit} counts in, in seconds, `600`, from
+    # `CYBERTRAIN_FEED_RESTART_WINDOW`. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :feed_restart_window
+
     # How many attempts a {Job} gets before it is left `failed`, `5` (the
     # first run and four retries, 1, 5, 15 and 60 minutes apart).
     # @return [Integer]
@@ -446,6 +496,28 @@ attr_accessor :trusted_proxies
     # @return [Integer]
     # @api public
     attr_accessor :health_worker_stale
+
+    # Whether the health check also reads the feed status rows
+    # (WebSocket::FeedTable) and answers `503 feed stale` when a feed's
+    # publisher or the feed itself has been silent for {#health_feed_stale}
+    # seconds. `true`; `CYBERTRAIN_HEALTH_FEEDS=0` (or `false`) turns it off,
+    # for a `server` whose feeds run in another process that is watched on
+    # its own.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :health_feeds
+
+    # Seconds after which a feed row's `updated_at` (the publishing
+    # process) or `COALESCE(last_activity_at, started_at)` (the feed)
+    # makes the health check answer `503 feed stale`, `180`, from
+    # `CYBERTRAIN_HEALTH_FEED_STALE` (a bad value is the default, one below
+    # 1 is refused at boot). At least 1, and while {#health_feeds} is on
+    # more than {#feed_status_interval} (boot refuses it otherwise: every
+    # row would be stale between two writes). A row whose feed no
+    # registered subscription names is not counted.
+    # @return [Integer]
+    # @api public
+    attr_accessor :health_feed_stale
 
     # The path of the realtime endpoint (Stream::Endpoint: Server-Sent
     # Events and WebSocket), `"/cybertrain/stream"`, from
@@ -505,6 +577,35 @@ attr_accessor :trusted_proxies
     # a different count than asked for.
     def self.default_job_threads
       Params.parse_int(env_or("CYBERTRAIN_JOB_THREADS", ""), 3)
+    end
+
+    # CYBERTRAIN_JOBS_PAGE_PER_PAGE as default_job_threads reads its
+    # variable: 50 when it is unset or not a number, a number below 1 kept
+    # for boot to refuse (scheduler_error).
+    def self.default_jobs_page_per_page
+      Params.parse_int(env_or("CYBERTRAIN_JOBS_PAGE_PER_PAGE", ""), 50)
+    end
+
+    # CYBERTRAIN_CACHE_PRUNE_INTERVAL as default_job_threads reads its
+    # variable: 300 when it is unset or not a number, a number below 1
+    # kept for boot to refuse (scheduler_error).
+    def self.default_cache_prune_interval
+      Params.parse_int(env_or("CYBERTRAIN_CACHE_PRUNE_INTERVAL", ""), 300)
+    end
+
+    # CYBERTRAIN_FEED_STATUS_INTERVAL, CYBERTRAIN_FEED_RESTART_LIMIT,
+    # CYBERTRAIN_FEED_RESTART_WINDOW and CYBERTRAIN_HEALTH_FEED_STALE as default_job_threads reads its
+    # variable: the default when unset or not a number, a number below 1
+    # kept for boot to refuse (feeds_error).
+    def self.default_feed_setting(name, default)
+      Params.parse_int(env_or(name, ""), default)
+    end
+
+    # False only for CYBERTRAIN_HEALTH_FEEDS=0 or =false; anything else
+    # (unset, empty, "1") is true.
+    def self.default_health_feeds
+      configured = ENV["CYBERTRAIN_HEALTH_FEEDS"] || ""
+      !(configured == "0" || configured == "false")
     end
 
     # "storage/<env>.sqlite3" unless CYBERTRAIN_DATABASE names a path (an
@@ -672,7 +773,13 @@ end
       @job_heartbeat_interval = 30
       @job_heartbeat_stale = 300
       @job_drain_timeout = 10
+      @jobs_page_per_page = Config.default_jobs_page_per_page
+      @cache_prune_interval = Config.default_cache_prune_interval
+      @feed_status_interval = Config.default_feed_setting("CYBERTRAIN_FEED_STATUS_INTERVAL", 10)
+      @feed_restart_limit = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_LIMIT", 10)
+      @feed_restart_window = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_WINDOW", 600)
       @scheduler_lease_ttl = 30
+      @scheduler_tz = Config.env_or("CYBERTRAIN_SCHEDULER_TZ", "UTC")
       # ParameterFilter.names' list; Application#boot installs it there.
       @filter_parameters = Config.default_filter_parameters
       # The health check (HealthCheck). An empty variable turns it off,
@@ -680,6 +787,8 @@ end
       # way to switch off a default-on path from the environment.
       @health_path = ENV["CYBERTRAIN_HEALTH_PATH"] || "/up"
       @health_worker_stale = 300
+      @health_feeds = Config.default_health_feeds
+      @health_feed_stale = Config.default_feed_setting("CYBERTRAIN_HEALTH_FEED_STALE", 180)
       # The realtime endpoint (Stream, Stream::Endpoint); an empty variable
       # turns it off, as for health_path.
       @stream_path = ENV["CYBERTRAIN_STREAM_PATH"] || "/cybertrain/stream"
@@ -1056,11 +1165,13 @@ end
 
     # The error Application#boot reports when scheduler_interval,
     # job_poll_interval, job_max_attempts, job_threads,
-    # job_heartbeat_interval, job_heartbeat_stale, job_drain_timeout or
-    # scheduler_lease_ttl is below 1, job_heartbeat_stale is not more
+    # job_heartbeat_interval, job_heartbeat_stale, job_drain_timeout,
+    # jobs_page_per_page, cache_prune_interval or scheduler_lease_ttl is
+    # below 1, job_heartbeat_stale is not more
     # than job_heartbeat_interval (every live job would look abandoned), or
     # scheduler_lease_ttl is less than twice scheduler_interval (the lease
-    # would lapse between two ticks of its holder);
+    # would lapse between two ticks of its holder), or scheduler_tz is not
+    # a zone TimeZone can load;
     # "" when all are fine (a sleep of 0 would spin a thread; 0 attempts
     # would fail every job unrun).
     def scheduler_error
@@ -1074,23 +1185,48 @@ end
         return "job_heartbeat_stale (#{@job_heartbeat_stale}) must be more than job_heartbeat_interval (#{@job_heartbeat_interval})"
       end
       return "job_drain_timeout must be at least 1 (got #{@job_drain_timeout})" if @job_drain_timeout < 1
+      return "jobs_page_per_page must be at least 1 (got #{@jobs_page_per_page})" if @jobs_page_per_page < 1
+      return "cache_prune_interval must be at least 1 (got #{@cache_prune_interval})" if @cache_prune_interval < 1
       return "scheduler_lease_ttl must be at least 1 (got #{@scheduler_lease_ttl})" if @scheduler_lease_ttl < 1
       if @scheduler_lease_ttl < 2 * @scheduler_interval
         return "scheduler_lease_ttl (#{@scheduler_lease_ttl}) must be at least twice scheduler_interval (#{@scheduler_interval})"
       end
+      return "scheduler_tz #{@scheduler_tz.inspect} is not a known time zone" unless TimeZone.find(@scheduler_tz).found?
+
+      ""
+    end
+
+    # The error Application#boot reports when feed_status_interval,
+    # feed_restart_limit or feed_restart_window is below 1; "" when all
+    # are fine.
+    def feeds_error
+      return "feed_status_interval must be at least 1 (got #{@feed_status_interval})" if @feed_status_interval < 1
+      return "feed_restart_limit must be at least 1 (got #{@feed_restart_limit})" if @feed_restart_limit < 1
+      return "feed_restart_window must be at least 1 (got #{@feed_restart_window})" if @feed_restart_window < 1
 
       ""
     end
 
     # The error Application#boot reports when health_path is neither ""
-    # nor a path starting with "/", or health_worker_stale is below 1; ""
-    # when both are fine.
+    # nor a path starting with "/", health_worker_stale or
+    # health_feed_stale is below 1, or the health check is on (a path),
+    # health_feeds is on and health_feed_stale is not more than
+    # feed_status_interval; "" when all
+    # are fine.
     def health_error
       path = @health_path
       unless path.empty? || path.start_with?("/")
         return "health_path must start with \"/\" (or be \"\" to turn the health check off), got #{path.inspect}"
       end
       return "health_worker_stale must be at least 1 (got #{@health_worker_stale})" if @health_worker_stale < 1
+      return "health_feed_stale must be at least 1 (got #{@health_feed_stale})" if @health_feed_stale < 1
+      # Rows are written every feed_status_interval seconds: a limit no
+      # longer than that makes every row stale between two writes. With
+      # the health check off (path "") nothing reads the limit.
+      if !path.empty? && @health_feeds && @health_feed_stale <= @feed_status_interval
+        return "health_feed_stale (#{@health_feed_stale}) must be more than feed_status_interval " \
+               "(#{@feed_status_interval}) while health_feeds is on"
+      end
 
       ""
     end

@@ -1,5 +1,5 @@
 ---
-source_sha256: b0f8f7ce8f29151195c929b5aa6f2cf9769a7d0b96b72d53cdddc87a88d32c9e
+source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
 ---
 # 設定
 
@@ -34,9 +34,17 @@ end
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`。カンマ区切りの名前でリストを置き換える。名前にこれらのいずれかを含むパラメーター（ASCII の大文字小文字を区別しない：`password` は `user[password]` にも一致する）は、リクエストログと開発環境のエラーページで値が `[FILTERED]` と書かれる。`config/app.rb` で `[]` にすると無効になる |
 | `CYBERTRAIN_WORKER` | `worker` | `true`。`0` または `false` にすると、`server` プロセスは定期タスク、ジョブ、WebSocket のフィードを実行しない（[プロセスの役割](background-and-operations.md#process-roles)を参照）。`./<app> worker` と `feeds` はこれを無視する |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`：1 つのプロセスが同時に実行するジョブの数（[バックグラウンド処理](background-and-operations.md#background-work)を参照）。1 以上 |
+| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"`：`tz:` のない `Scheduler.cron` のタスクを読むゾーン。`Asia/Tokyo` のような IANA の名前（[タイムゾーン](#time-zones)を参照）。システムの zoneinfo にないゾーンでは起動が止まる |
+| `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`：[ジョブページ](background-and-operations.md#the-jobs-page-and-the-jobs-command)のリストごとの行数。1 以上 |
+| `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`：[キャッシュ](background-and-operations.md#the-cache-store)の期限切れの行を掃除する間隔の秒数。`cybertrain/cache` を require したときに読まれる。1 以上 |
+| `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`：各 WebSocket フィードの状態の行を書く間隔の秒数（[フィードのヘルス](realtime.md#feed-health)を参照）。1 以上 |
+| `CYBERTRAIN_FEED_RESTART_LIMIT` | `feed_restart_limit` | `10`：期間内のフィードのスレッドの再起動の回数。これを超えてまた死ぬと、`feeds` のプロセスは終了ステータス 1 で終わる（[WebSocket フィードを購読する](external-services.md#consuming-websocket-feeds)を参照）。1 以上 |
+| `CYBERTRAIN_FEED_RESTART_WINDOW` | `feed_restart_window` | `600`：その期間の秒数。1 以上 |
 | `CYBERTRAIN_STREAM_PATH` | `stream_path` | `"/cybertrain/stream"`：リアルタイムのエンドポイント（[リアルタイム](realtime.md#limits-and-settings)を参照）。空の値でストリームが無効になる。`/` で始まり、`health_path` と異なっていなければならない |
 | `CYBERTRAIN_REUSE_PORT` | `reuse_port` | `false`。`1` または `true` にすると `SO_REUSEPORT` で bind し、複数のプロセスが 1 つのポートで listen でき、Linux ではカーネルが接続を振り分ける（開発環境では無視される。[Running several processes](../deploy.en.md#running-several-processes)を参照）。1 つを除くすべてのプロセスで `CYBERTRAIN_WORKER=0` にする |
 | `CYBERTRAIN_HEALTH_PATH` | `health_path` | `"/up"`。組み込みのヘルスチェックのパス（[運用](background-and-operations.md#operations-backups-vacuum-health-check)を参照）。空の値で無効になり、先頭に `/` のない値ではサーバーが起動時に停止する。`health_worker_stale`（300 秒）は `config/app.rb` で設定する |
+| `CYBERTRAIN_HEALTH_FEEDS` | `health_feeds` | `true`：ヘルスチェックは、状態を報告しなくなった、または黙った WebSocket フィードについても `503 feed stale` を返す（[フィードのヘルス](realtime.md#feed-health)を参照）。`0` か `false` でこの部分が無効になる |
+| `CYBERTRAIN_HEALTH_FEED_STALE` | `health_feed_stale` | `180`：`503 feed stale` になるまでの、フィードが黙っている、またはそのプロセスが状態を書かない秒数。1 以上で、`health_feeds` が有効な間は `feed_status_interval` より大きいこと（そうでなければ起動時に拒否されます） |
 | `CYBERTRAIN_HTTP_ALLOW_PRIVATE` | `http_allow_private` | `false`。`1` または `true` にすると、`Cybertrain::HttpClient` がループバック、プライベート、その他の公開されていないアドレスに接続できる（[外向きの HTTP](external-services.md#outbound-http) を参照） |
 | `CYBERTRAIN_SMTP_HOST` | `smtp_host` | `""`。`Cybertrain::Mailer` が送信に使う SMTP サーバー（[メールを送る](external-services.md#sending-e-mail)を参照） |
 | `CYBERTRAIN_SMTP_PORT` | `smtp_port` | `0`：モードのポート。`starttls` なら 587、`tls` なら 465、`none` なら 25。1〜65535 以外は 0 になる |

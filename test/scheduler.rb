@@ -9,7 +9,8 @@ require "cybertrain/test"
 # a tick recovers stale jobs at most once a minute while job threads run.
 # The ticks are driven with chosen epoch times through Scheduler.run_due,
 # so nothing sleeps; the job threads of the recovery test and the last
-# test's scheduler thread are real. It requires the job queue (and so
+# test's scheduler thread are real. Runs are recorded in the timetable
+# (test/scheduler_cron.rb covers it). It requires the job queue (and so
 # SQLite through FFI) with the scheduler, so its snapshot comes from the
 # compiled binary (spikes/NOTES.md rule 23).
 
@@ -132,15 +133,19 @@ test "only the lease holder runs due tasks; another takes over once the lease ex
   # Another process takes it once it has expired.
   assert Lease.acquire("scheduler", "other:1:1", 2000, ttl: 30)
   before = runs_text
-  # Every task is overdue, but this process does not lead: it runs none,
-  # and keeps the timetable (ten next at 2011, boom 2026, thirty 2031).
+  # Every task is overdue, but this process does not lead: it runs none.
   assert_equal 0, S.run_due(2001)
   refute S.leader?
   assert_equal 0, S.run_due(2030)
   assert_equal before, runs_text
   assert_equal 2030, S.last_tick
-  # The other's lease ran out at 2030: the next tick leads and runs what
-  # is due by the timetable, not every task the other led through.
+  # What the other leader recorded in the timetable as it ran the tasks.
+  Cybertrain::Scheduler::Timetable.write("tick ten", 2030, 2040, 2030)
+  Cybertrain::Scheduler::Timetable.write("boom", 2026, 2051, 2026)
+  Cybertrain::Scheduler::Timetable.write("thirty", 2001, 2031, 2001)
+  # The other's lease ran out at 2030: the next tick leads, re-reads the
+  # timetable and runs what is due by it, not every task the other led
+  # through.
   assert_equal 1, S.run_due(2031)
   assert S.leader?
   assert_equal S.holder, Lease.lease_holder("scheduler")
@@ -275,10 +280,44 @@ test "config: CYBERTRAIN_JOB_THREADS sets job_threads; a word is the default, 0 
   assert_equal 3, Cybertrain::Config.new.job_threads
 end
 
-# Last: the thread it starts keeps running until the program exits. start!
-# schedules every task an interval after the real time, so the thread's
-# first tick runs nothing.
+test "every continues from last_run_at after schedule_all" do
+  # The table says "thirty" last ran at 6000 (its row from the ticks
+  # above, which is later, is removed first: a write never moves a row
+  # back): schedule_all (a restart) continues from there, not an interval
+  # after its own now.
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
+  Cybertrain::Scheduler::Timetable.write("thirty", 6000, 6030, 6000)
+  S.schedule_all(6010)
+  assert_equal 6030, S::TASKS[S.task_index("thirty")].task_next_run
+  # One the table has never seen starts an interval after now.
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
+  S.schedule_all(6010)
+  assert_equal 6040, S::TASKS[S.task_index("thirty")].task_next_run
+  assert_equal [0, 6040], Cybertrain::Scheduler::Timetable.read_all["thirty"]
+end
+
+test "a task that never ran takes its current schedule when that is earlier than the stored next run" do
+  # An earlier release registered "thirty" weekly and never ran it: its
+  # row says next 6010 + 7 days. Now it is every 30 s, so it runs 30 s
+  # after the start, not six days later.
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
+  Cybertrain::Scheduler::Timetable.write("thirty", 0, 6010 + 7 * 86_400, 6010)
+  S.schedule_all(6010)
+  assert_equal 6040, S::TASKS[S.task_index("thirty")].task_next_run
+  # A stored next run earlier than the schedule gives is kept: it runs
+  # once then, and follows the schedule after that.
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
+  Cybertrain::Scheduler::Timetable.write("thirty", 0, 6020, 6010)
+  S.schedule_all(6010)
+  assert_equal 6020, S::TASKS[S.task_index("thirty")].task_next_run
+  Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
+end
+
+# Last: the thread it starts keeps running until the program exits. With
+# the timetable emptied, start! schedules every task an interval after the
+# real time, so the thread's first tick runs nothing.
 test "start! starts the thread once; stop! asks it to end" do
+  Cybertrain::Scheduler::Timetable.prune(Array.new(0) { "" })
   config = Cybertrain::Config.new
   started = Time.now.to_i
   assert S.start!(config)

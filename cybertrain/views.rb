@@ -121,6 +121,11 @@ module Cybertrain
     # @return [String]
     # @api public
     def self.render_partial(name, locals = {})
+      render_detached(name, locals, "")
+    end
+
+    # render_partial, inside `layout` unless it is "".
+    def self.render_detached(name, locals, layout)
       engine = configured_engine
       helpers = detached_helpers
       slash = name.rindex("/")
@@ -138,7 +143,30 @@ module Cybertrain
         i += 1
       end
       Template::Helpers.check_locals(engine.template(path), given)
-      engine.render(path, env, helpers).to_s
+      return engine.render(path, env, helpers).to_s if layout.empty?
+
+      engine.render_with_layout(path, layout, env, helpers).to_s
+    end
+
+    # The layout {.render_mail} wraps a mail partial in, when it exists.
+    MAIL_LAYOUT = "layouts/mail"
+
+    # A mail body rendered with no request: the partial as
+    # {.render_partial} renders it, wrapped in
+    # `app/views/layouts/mail.html.erb` (its `<%= yield %>`) when the views
+    # have that layout, else the partial alone.
+    #
+    #   html = Cybertrain::Views.render_mail("mail/welcome", user: user)
+    #   Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
+    #
+    # "mail/welcome" is app/views/mail/_welcome.html.erb.
+    # @param name [String] the partial, as for {.render_partial}
+    # @param locals [Hash] its locals
+    # @return [String]
+    # @api public
+    def self.render_mail(name, locals = {})
+      layout = configured_engine.exists?(MAIL_LAYOUT) ? MAIL_LAYOUT : ""
+      render_detached(name, locals, layout)
     end
 
     # A component rendered with no request, `content` (HTML, not escaped)

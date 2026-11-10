@@ -1,0 +1,11 @@
+<h1>Sign in to the jobs page</h1>
+
+<p>The token is the value of BLOG_ADMIN_TOKEN on the server.</p>
+
+<%= form_with url: "/admin/login" do |f| %>
+  <%= f.label :token, "Token" %>
+  <%= f.password_field :token %>
+  <%= f.submit "Sign in" %>
+<% end %>
+
+<p><%= link_to "Back to articles", articles_path %></p>

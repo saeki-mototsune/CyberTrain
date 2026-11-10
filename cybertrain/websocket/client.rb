@@ -176,6 +176,8 @@ module Cybertrain
         @close_code = 1006
         @close_reason = ""
         @last_activity_at = Net::Timer.now
+        # How many pongs arrived (the feed loop notes each as activity).
+        @pongs = 0
         # The payload of the frame ws_read_frame read last.
         @frame_payload = ""
         # When the current receive's wait ends (Net::Timer.now).
@@ -195,6 +197,13 @@ module Cybertrain
       # @api public
       def last_activity_at
         @last_activity_at
+      end
+
+      # How many pongs (answers to {#send_ping}) have arrived.
+      # @return [Integer]
+      # @api public
+      def ws_pongs
+        @pongs
       end
 
       # "host:port", what error messages name.
@@ -357,6 +366,7 @@ module Cybertrain
           op = header.frame_opcode
           payload = @frame_payload
           @last_activity_at = Net::Timer.now
+          @pongs += 1 if op == Frame::OP_PONG
           if op == Frame::OP_PING
             ws_write(Frame.encode(Frame::OP_PONG, payload, Client.mask_key))
           elsif op == Frame::OP_CLOSE

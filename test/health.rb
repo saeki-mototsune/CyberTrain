@@ -40,6 +40,23 @@ ENV["CYBERTRAIN_ENV"] = "test"
 LOG = StringIO.new
 Cybertrain.logger = Cybertrain::Logger.new(LOG)
 
+# The feeds this binary registers, as the WebSocket service lists them in
+# an application (this program does not link the WebSocket client): only
+# rows of these names count in the feed check.
+FEED_NAMES = ["trades"]
+
+class ListedFeeds < Cybertrain::Background::Service
+  def service_name
+    "listed feeds"
+  end
+
+  def service_feed_names
+    FEED_NAMES
+  end
+end
+
+Cybertrain::Background.register(ListedFeeds.new)
+
 # What the login filter saw, read back by the tests (a constant: NOTES
 # rule 64).
 TRAIL = Array.new(0) { "" }
@@ -101,6 +118,9 @@ def trail_text
 end
 
 test "the check sits inside RequestLogger and before Static" do
+  # Before any poll the unreadable-table flag is a false, not a nil (NOTES
+  # rule 7's typed initial value).
+  assert_equal false, Cybertrain::HealthCheck.feed_read_warned?
   assert_equal ["Cybertrain::RequestLogger", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static", "Cybertrain::MethodOverride",
                 "Cybertrain::SessionStore", "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(APP)
 end
@@ -201,6 +221,96 @@ test "not stale while the scheduler is not running, whatever its last tick" do
   Cybertrain::Scheduler.run_due(1000)
   refute Cybertrain::Scheduler.running?
   assert_equal "ok", CLIENT.get("/up").body
+end
+
+def plant_feed(name, started_ago, activity_ago, updated_ago)
+  now = Time.now.to_i
+  activity = activity_ago < 0 ? 0 : now - activity_ago
+  Cybertrain::WebSocket::FeedTable.upsert_feed(name, "host:1", true, now - started_ago, activity, 0, now - updated_ago)
+end
+
+def clear_feeds
+  Cybertrain::WebSocket::FeedTable.ensure_installed
+  Cybertrain::DB.with { |c| c.execute("DELETE FROM cybertrain_feeds") }
+  nil
+end
+
+test "a fresh feed row gives 200; no rows gives 200" do
+  clear_feeds
+  assert_equal "ok", CLIENT.get("/up").body
+  plant_feed("trades", 1000, 5, 5)
+  assert_equal "ok", CLIENT.get("/up").body
+end
+
+test "a stale publisher row gives 503 feed stale" do
+  clear_feeds
+  plant_feed("trades", 1000, 5, 200)
+  res = CLIENT.get("/up")
+  assert_equal 503, res.status
+  assert_equal "feed stale", res.body
+end
+
+test "a silent feed under a fresh publisher gives 503" do
+  clear_feeds
+  plant_feed("trades", 1000, 200, 5)
+  assert_equal "feed stale", CLIENT.get("/up").body
+end
+
+test "a never-active feed past the threshold (NULL last_activity_at, old started_at) gives 503" do
+  clear_feeds
+  plant_feed("trades", 200, -1, 5)
+  assert_equal "feed stale", CLIENT.get("/up").body
+  clear_feeds
+  plant_feed("trades", 100, -1, 5)
+  assert_equal "ok", CLIENT.get("/up").body
+end
+
+test "a stale row of a feed no subscription registers (renamed or removed) does not count" do
+  clear_feeds
+  plant_feed("gone", 1000, 500, 500)
+  assert_equal "ok", CLIENT.get("/up").body
+  plant_feed("trades", 1000, 500, 500)
+  assert_equal "feed stale", CLIENT.get("/up").body
+  clear_feeds
+end
+
+test "health_feeds false gives 200 with a stale row; CYBERTRAIN_HEALTH_FEEDS=0 sets it" do
+  clear_feeds
+  plant_feed("trades", 1000, 500, 500)
+  c = build_config("/up")
+  c.health_feeds = false
+  off = Cybertrain::Test::Client.new(build_app(c))
+  assert_equal "ok", off.get("/up").body
+  assert_equal "feed stale", CLIENT.get("/up").body
+  ENV["CYBERTRAIN_HEALTH_FEEDS"] = "0"
+  disabled = Cybertrain::Config.new
+  ENV.delete("CYBERTRAIN_HEALTH_FEEDS")
+  assert_equal false, disabled.health_feeds
+  assert_equal true, Cybertrain::Config.new.health_feeds
+  assert_equal 180, Cybertrain::Config.new.health_feed_stale
+  clear_feeds
+end
+
+test "an unreadable status table fails open: 200, one WARN line until it reads again" do
+  clear_feeds
+  Cybertrain::DB.with { |c| c.execute("DROP TABLE cybertrain_feeds") }
+  before = LOG.string.size
+  assert_equal 200, CLIENT.get("/up").status
+  assert_equal 200, CLIENT.get("/up").status
+  logged = LOG.string
+  text = logged[before, logged.size - before].to_s
+  assert_includes text, "health: the feed status table cannot be read"
+  assert_equal 1, text.scan("the feed status table cannot be read").size
+  Cybertrain::WebSocket::FeedTable.install!
+  plant_feed("trades", 1000, 500, 500)
+  assert_equal "feed stale", CLIENT.get("/up").body
+  clear_feeds
+end
+
+test "boot refuses a health_feed_stale below 1" do
+  c = build_config("/up")
+  c.health_feed_stale = 0
+  assert_includes c.health_error, "health_feed_stale must be at least 1"
 end
 
 # Last: the scheduler thread keeps running until the program exits (it

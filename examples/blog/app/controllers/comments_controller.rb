@@ -6,6 +6,8 @@ class CommentsController < ApplicationController
     @comment = Comment.new(comment_params)
     @comment.article_id = @article.id
     if @comment.save
+      # Logged by a job thread, after the response went out.
+      NotifyCommentJob.perform_later("comment_id" => @comment.id, "article_id" => @article.id)
       # Every page subscribed with `turbo_stream_from @article` (stream
       # "articles:<id>") appends the new comment to its #comments list.
       Cybertrain::Stream.broadcast_append_to(@article, target: "comments",

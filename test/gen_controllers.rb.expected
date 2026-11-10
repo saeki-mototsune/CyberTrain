@@ -9,4 +9,7 @@ ok   scan_dir reads every controller sorted by file
 ok   emit writes view_assigns and run_callback per controller
 ok   emit puts parents first and inherits their ivars
 ok   a namespaced controller is emitted inside its modules
-11 tests, 21 assertions, 0 failures
+ok   emit writes CybertrainJobsController after the scanned controllers when a jobs page is drawn
+ok   without before_action: the jobs controller has no callback and the generator warns
+ok   no jobs page, no jobs controller
+14 tests, 30 assertions, 0 failures

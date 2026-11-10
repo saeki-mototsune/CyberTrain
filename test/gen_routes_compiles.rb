@@ -3,13 +3,15 @@ require "cybertrain/test/client"
 require "cybertrain/router"
 require "cybertrain/controller"
 require "cybertrain/model"
+require "cybertrain/job"
 require "cybertrain/generator"
 require_relative "fixtures/gen_app/config/routes"
 # The checked-in generator output for the fixture app, loaded the way an
 # app's binary loads it: gen/models, routes, controllers, then app/models
 # and app/controllers. The fixture is shared with the model generator
 # (Task 11b), so gen/app.rb pulls in the generated models and this program
-# needs the model runtime. That runtime links SQLite through FFI, which
+# needs the model runtime; it also loads the fixture's jobs and gen/jobs.rb
+# (Job.register), so the job runtime too. That runtime links SQLite through FFI, which
 # CRuby cannot load: the snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23), not from `spin test --regen`.
 require_relative "fixtures/gen_app/gen/app"
@@ -20,10 +22,12 @@ FIXTURE = "test/fixtures/gen_app"
 def fixture_outputs
   {
     "gen/routes.rb" => Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs),
-    "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers")),
+    "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers"),
+                                                                     Cybertrain::Routes.jobs_page_spec),
     "gen/helpers.rb" => Cybertrain::Gen::HelpersEmitter.emit(Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),
     "gen/components.rb" => Cybertrain::Gen::ComponentsEmitter.emit(Cybertrain::Gen::ComponentScan.scan_dir("#{FIXTURE}/app/components")),
     "gen/console.rb" => Cybertrain::Gen::ConsoleEmitter.emit(["Comment", "Post"]),
+    "gen/jobs.rb" => Cybertrain::Gen::JobsEmitter.emit(Cybertrain::Gen::JobScan.scan_dir("#{FIXTURE}/app/jobs")),
     "gen/app.rb" => Cybertrain::Gen::Manifest.emit(FIXTURE)
   }
 end
@@ -118,7 +122,7 @@ end
 
 test "the router knows the route names" do
   router = Gen::Routes.build(Cybertrain::Router.new)
-  assert_equal 14, router.routes.size
+  assert_equal 20, router.routes.size
   assert_equal "/posts/3/edit", router.path_for("edit_post", { "id" => "3" })
 end
 

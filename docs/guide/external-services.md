@@ -75,9 +75,9 @@ network:
   address does not match a certificate's name. Without `require
   "cybertrain/net/tls"`, an https request raises `HttpClient::TLSError`
   saying so; `cybertrain/http_client` alone never links libssl.
-- **A notification client, not a browser:** HTTP/1.1 with `Connection:
-  close`, one connection per request, no keep-alive, no redirects (a 3xx is
-  returned as it is), no proxy, no cookies, no compression. Responses may be
+- **A notification and API client, not a browser:** HTTP/1.1 with
+  `Connection: close`, one connection per request, no keep-alive, redirects
+  only when asked for (below), no proxy, no cookies. Responses may be
   `Content-Length`, chunked or read to the close; the headers are capped at
   64 KiB and 100 lines, the body at `max_body` (default 1 MiB), past which
   `HttpClient::TooLargeError`. A response that is not HTTP/1.x, or ends
@@ -97,7 +97,104 @@ The request runs on the calling thread, a green thread like the request
 being served, so other connections keep being served while it waits. The
 socket layer (`cybertrain/net/socket.rb`: bounded connect, buffered reads,
 bounded writes) is separate from the HTTP layer so that other protocols can
-use it. The design: [docs/design.md](../design.md) D24.
+use it. The design: [docs/design.md](../design.md) D24 and D55.
+
+### Verbs, JSON and redirects
+
+```ruby
+client = Cybertrain::HttpClient.new(timeout: 5, deadline: 15, redirects: 3)
+res = client.request("PATCH", "https://api.example.com/v1/items/7",
+                     body: JSON.generate({ "done" => true }), content_type: "application/json")
+res = client.request("DELETE", "https://api.example.com/v1/items/7")
+item = client.get("https://api.example.com/v1/items/7").json_hash   # {} when the body is not a JSON object
+list = client.get("https://api.example.com/v1/items").json_array    # [] when it is not a JSON array
+```
+
+- **`request(verb, url, body:, content_type:, headers:)`** sends GET, POST,
+  PUT, PATCH, DELETE or HEAD; `get` and `post` stay as the common forms.
+  POST, PUT and PATCH always carry their body, DELETE one when it is not
+  empty, GET and HEAD none (a body there is an `ArgumentError`); a HEAD
+  response has no body. `Response#json_hash` and `#json_array` parse the
+  body, answering `{}` or `[]` for anything else.
+- **Redirects** are followed only when asked for: `redirects: 3` follows up
+  to three `301`, `302`, `303`, `307` or `308` with a `Location` (a relative
+  one resolves against the current URL), and the next one raises
+  `HttpClient::TooManyRedirectsError`. The default, `0`, returns a 3xx as it
+  is. Every hop is checked like the first (non-public addresses refused),
+  a hop from https to http is a `BlockedAddressError`, a `303` (and a `301`
+  or `302` answering a POST) turns into a GET without a body, and the
+  `deadline` covers all the hops together. `Authorization`, `Cookie` and
+  `Proxy-Authorization` headers are not sent to another origin (scheme,
+  host or port), as browsers and curl do. A `Location` that is not a
+  plain-ASCII http(s) URL is a `BadResponseError`.
+
+### Streaming and large responses
+
+With a block, the body is not kept: each piece is yielded as it arrives (a
+chunked frame, up to 1 MiB at a time, or what a read delivered) and the
+`Response` comes back with an empty body. `max_body` does not apply then;
+`timeout` and `deadline` do, so give a long stream a long `deadline:`.
+`get_to_file` streams into a file:
+
+```ruby
+client = Cybertrain::HttpClient.new(deadline: 600, redirects: 3)
+client.get("https://example.com/export.ndjson") { |chunk| Importer.feed(chunk) }
+
+res = client.get_to_file("https://example.com/dump.csv", "tmp/dump.csv")
+Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
+```
+
+- A 2xx body is written to `path.part` as it arrives and renamed onto `path`
+  when it is complete, so a 78 MB download never sits in memory and a reader
+  never sees half a file. Any other final status (a 404 page, a 503) never
+  reaches the disk: check `res.success?`, `path` is left as it was. On an
+  error the `.part` is removed. An empty 2xx body (a `204`) does replace
+  the file with an empty one.
+- An exception the block raises reaches the caller unchanged.
+
+### gzip
+
+The client asks for and inflates gzip bodies when the gzip support is
+loaded: `require "cybertrain"` loads it, so in an application every request
+sends `Accept-Encoding: gzip` (unless you send an `Accept-Encoding` header of
+your own) and a `Content-Encoding: gzip` body comes back inflated. A program
+that requires only `cybertrain/http_client` adds `require
+"cybertrain/http/gzip_ffi"` (it links zlib); without it a gzip response is a
+`BadResponseError` naming that file. A kept body is limited by `max_body` on
+the wire and once inflated (`TooLargeError` past it); a streamed one is
+inflated piece by piece, 64 KiB at most each, with no total limit, as a
+streamed plain body. The `Response`'s headers are the ones received:
+`Content-Encoding: gzip` and the wire `Content-Length` stay while `body` is
+the inflated text. Any other `Content-Encoding` (`br`, `deflate`) is a
+`BadResponseError`; a truncated or corrupt gzip body is one too.
+
+### Server-Sent Events
+
+`Cybertrain::Sse::Parser` turns the pieces of a streamed `text/event-stream`
+response into events (it is not in `require "cybertrain"`):
+
+```ruby
+require "cybertrain/sse"
+
+parser = Cybertrain::Sse::Parser.new
+client = Cybertrain::HttpClient.new(deadline: 180)   # the whole stream must fit in the deadline
+client.request("POST", "https://api.example.com/v1/chat", body: payload, content_type: "application/json") do |chunk|
+  parser.feed(chunk) { |event| Answer.append(event.event_data) unless event.event_data == "[DONE]" }
+end
+parser.finish { |event| Answer.append(event.event_data) }   # a last event the stream did not end with a blank line
+```
+
+- Each `Sse::Event` has `event_name` (`"message"` when the stream sends
+  none), `event_data` (the `data:` lines joined with a newline), `event_id`
+  (the last `id:` the stream sent, which carries over to later events) and
+  `event_retry_ms` (a `retry:` given since the previous event, 0 if none).
+- The parser follows the WHATWG rules: lines end at CR, LF or CRLF, cut
+  anywhere between two chunks; a line starting with `:` is a comment; a
+  blank line dispatches the event when it had data. `finish` yields an
+  event left unterminated at the end of the stream.
+- It sets no limit on a line or an event: the request's `deadline` bounds
+  the stream in time, not in memory. Binary chunks give binary
+  `event_data`; set the encoding yourself.
 
 ## Consuming WebSocket feeds
 
@@ -165,6 +262,38 @@ blocks take their arguments and cannot use `self` (Spinel has no
 - **Errors in your blocks.** An exception in `on_message` is logged and the
   connection stays. An exception in `on_open` is logged and the connection is
   closed and retried, since a feed that did not subscribe is of no use.
+- **Timers.** `.on_tick(seconds) { |conn| ... }` runs a block every
+  `seconds` (an Integer, at least 1) on the feed's own thread, between its
+  one-second waits, whether or not the feed is connected: `conn` is the
+  `Connection` while connected and `nil` while not, so test it. The first
+  call comes `seconds` after the feed starts; an exception is logged and the
+  feed goes on. Work that belongs to the feed (writing what `on_message`
+  collected in memory once a second, closing a minute candle) goes here,
+  with no lock and no scheduler task. One `on_tick` per subscription.
+
+  ```ruby
+  BUFFER = Array.new(0) { "" }   # a constant: the blocks cannot see locals
+
+  Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"])
+    .on_message { |conn, text| BUFFER << text }
+    .on_tick(1) { |conn| Trades.flush(BUFFER) }   # the app's code: one INSERT of the batch, then BUFFER.clear
+  ```
+- **Restarts.** A supervisor thread checks every second that each feed's
+  thread is alive. A thread that ended anyway (an exception that is not a
+  `StandardError`, or the runtime killing it) is logged (`[ERROR] WebSocket
+  "trades" thread ended: ...`) and started again after `min(30, 2 **
+  restarts)` seconds, with a `[WARN]` line; its open connection is closed
+  first. The restart count never resets, so after five restarts the wait
+  stays at 30 seconds. In a `feeds` process, a feed that dies again after
+  `feed_restart_limit` restarts (10, `CYBERTRAIN_FEED_RESTART_LIMIT`) within
+  `feed_restart_window` seconds (600, `CYBERTRAIN_FEED_RESTART_WINDOW`) ends
+  the process: `[FATAL] feed trades restarted 10 times in 600 s; exiting`,
+  then every feed is stopped and the process exits with status 1, for
+  Docker's `restart: unless-stopped` or systemd's `Restart=always` to start
+  a fresh one. A `server` that runs feeds never exits for them: it keeps
+  restarting, and `/up` reports `feed stale`. An error in the supervisor
+  itself (a database that went away while it wrote the status rows) is
+  logged and supervision goes on.
 - **What is logged.**
 
   | When | Level | Line |
@@ -191,10 +320,13 @@ blocks take their arguments and cannot use `self` (Spinel has no
   `TooLargeError` can come at any time.
 - **Health.** `Cybertrain::WebSocket.feed_status("trades")` answers a
   `Status`: `connected?`, `last_message_at` (epoch seconds, 0 before the
-  first message) and `reconnects`. It is not part of `GET /up`; use it in
-  your own check. The three are read one after the other, not as one
-  snapshot, and `connected?` turns true when the connection is made, before
-  `on_open` has run.
+  first message), `reconnects`, `restarts` (by the supervisor) and
+  `thread_alive?`, read one after the other, not as one snapshot;
+  `connected?` turns true when the connection is made, before `on_open` has
+  run. The supervisor also writes each feed's status into the database
+  every `feed_status_interval` seconds (10), which `GET /up` and `./<app>
+  feeds status` read, in this process or any other: [Feed
+  health](realtime.md#feed-health).
 - **Keep `on_message` short.** The thread waits with `wait_readable` or
   `sleep`, so a stalled feed does not hold an OS worker while it waits. Two
   things do hold one: each connect attempt resolves the host name with a
@@ -229,13 +361,16 @@ msg.ws_data                   # the bytes
 client.close
 ```
 
-The design: [docs/design.md](../design.md) D33.
+The design: [docs/design.md](../design.md) D33 and D56.
 
 ## Sending e-mail
 
-`Cybertrain::Mailer` sends plain-text e-mail through an SMTP server (your
-provider's submission server, or a local relay). Like the HTTP client it is
-not in `require "cybertrain"`, and TLS is a separate require:
+`Cybertrain::Mailer` sends e-mail, plain text or with an HTML part, through
+an SMTP server (your provider's submission server, or a local relay), now
+(`deliver`) or from a job (`deliver_later`, below). `require "cybertrain"`
+loads it; a program without the framework requires `cybertrain/mailer`
+(which needs no database: `deliver_later` is in `cybertrain/mailer/later`).
+TLS is a separate require:
 
 ```ruby
 require "cybertrain/mailer"
@@ -292,7 +427,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   return value is the server's reply to the message (`"250 2.0.0 Ok: queued
   as ..."`).
 - **The message:** `Date`, `From`, `To`, `Subject`, `MIME-Version: 1.0`,
-  `Content-Type: text/plain; charset=UTF-8`. A non-ASCII subject is RFC 2047
+  `Content-Type: text/plain; charset=UTF-8` (for an HTML message, see
+  below). A non-ASCII subject is RFC 2047
   encoded (`=?UTF-8?B?...?=`, split between characters). The body's line
   endings become CRLF and lines starting with `.` are dot-stuffed. Its
   `Content-Transfer-Encoding` is `7bit` for ASCII, `8bit` (with `MAIL FROM
@@ -305,10 +441,66 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   CR, LF or NUL (header injection) or over 998 bytes, a body that is not
   valid UTF-8 or holds a NUL, more than 100 recipients. `to:` takes one
   address or several separated by commas.
-- **Not yet:** HTML and multipart messages, attachments, templates, display
-  names, `Cc`/`Bcc` headers (send to several recipients instead), AUTH
-  LOGIN/CRAM-MD5, SMTPUTF8 addresses, pipelining, and a delivery queue (a
-  delivery runs on the calling thread, a green thread like a request).
-  `cybertrain generate authentication` still writes no password reset.
+- **Not yet:** attachments and inline images, mailer classes
+  (`UserMailer.welcome(user).deliver_later`: a mail is a method of the
+  application's that calls `deliver` or `deliver_later`), display names,
+  `Cc`/`Bcc` headers (send to several recipients instead), AUTH
+  LOGIN/CRAM-MD5, SMTPUTF8 addresses, pipelining. `deliver` runs on the
+  calling thread, a green thread like a request. `cybertrain generate
+  authentication` still writes no password reset.
 
-The design: [docs/design.md](../design.md) D27.
+### HTML mail
+
+```ruby
+html = Cybertrain::Views.render_mail("mail/welcome", user: user)   # app/views/mail/_welcome.html.erb
+Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #{user.name}!\n", html: html)
+```
+
+- With `html:`, the message is `multipart/alternative`: the plain-text part
+  (`body:`) first, then the HTML part, each `charset=UTF-8` in base64 (so no
+  line-length or dot-stuffing rule applies), between a random boundary.
+  Mail programs show the HTML and fall back to the text. Without `html:`
+  the message is the plain text above, unchanged.
+- `Views.render_mail(name, locals)` renders the partial
+  (`app/views/mail/_welcome.html.erb`) outside a request, inside
+  `app/views/layouts/mail.html.erb` when that layout exists and alone
+  otherwise; `Views.render_partial` renders it without a layout. Values are
+  HTML-escaped as on a page. A plain-text part can come from a partial too:
+  render it yourself and pass it as `body:` (it prints its values with
+  `<%== %>`, since `<%= %>` escapes).
+
+### Sending later
+
+```ruby
+Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
+```
+
+`deliver_later` takes `deliver`'s arguments, checks them at once (a refused
+address or subject raises here and nothing is enqueued) and enqueues the
+built-in job `"cybertrain mail"` with the finished message; a job thread
+([Background work](background-and-operations.md#background-work)) sends it
+with the SMTP settings in force then. Render the bodies before the call:
+the job has no view context. It returns the job's id.
+
+- **Retries.** A timeout, a refused connection or a `4xx` reply
+  (greylisting, `421`, `452`) is retried 60 seconds later, up to 5
+  attempts, then the row is `failed`. A `5xx` reply (an address that does
+  not exist, a refused login) discards the row at once: retrying would not
+  change the answer.
+- **Mistakes are discarded too.** An `ArgumentError` when the job runs is
+  discarded with nothing sent: that covers a configuration mistake (no
+  `CYBERTRAIN_SMTP_HOST`, no sender) as well as a payload edited in the
+  database. Such mail is lost until someone reads the jobs page or `./<app>
+  jobs list discarded`; fix the configuration, then `./<app> jobs retry ID`
+  queues it again (the same goes for a discarded `535` login failure).
+- **One message, every recipient.** A message to several recipients is one
+  SMTP transaction: when the server refuses one of them with a `5xx`, the
+  whole job is discarded and the others do not get it either. Enqueue one
+  message per recipient when they should not depend on each other.
+- **The message sits in the database** (the job row's payload, shown on the
+  jobs page) until the job has run, and for as long as the finished row is
+  kept.
+- Registering the job means every process that runs jobs starts its job
+  threads, also in an application with no job class of its own.
+
+The design: [docs/design.md](../design.md) D27 and D57.

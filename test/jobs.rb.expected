@@ -1,6 +1,7 @@
 ok   handle refuses an empty kind and a taken one; enqueue refuses an unknown kind
 ok   enqueue creates the table; a job runs when due, oldest first, and ends done
 ok   a failing job is retried with the backoff, counting attempts, until it is failed
+ok   NotImplementedError and SystemStackError from a job take the default retry, as a StandardError does
 ok   a job that fails and then succeeds ends done
 ok   the backoff list is 1, 5, 15 and then 60 minutes
 ok   a job of a kind with no handler is failed at once, with last_error
@@ -19,5 +20,21 @@ ok   concurrency: two kinds at their limits at once are both left out
 ok   concurrency must not be negative
 ok   a job enqueued in a transaction that rolls back is gone with it
 ok   prune_done deletes old done rows and keeps failed ones
+ok   register gives the handler a Run with the parsed args and the attempt
+ok   a non-object payload gives a Run whose run_args is {}
+ok   register refuses an empty kind, a taken one and a negative max_attempts; the fields are kept
+ok   retry_later requeues with the wait, fails at the limit, and answers the outcome
+ok   retry_later and discard answer OUTCOME_STALE when the row was reclaimed
+ok   discard writes discarded and prune_finished removes it with failed rows; prune_done does not
+ok   a handler that writes its own outcome is not written again by finish
+ok   fail_exhausted uses the larger of the default and the kind's max_attempts
+ok   Job.handle still receives the payload String
+ok   the key derivation is the same for a String, an Integer, a Float and a boolean
+ok   enqueue stores the key and refuses a payload without the field
+ok   two rows of the same key never run at once across two claimed_by labels; different keys do
+ok   backfill_keys keys queued rows of a keyed kind and lists the unkeyable ones
+ok   the unkeyable-row warnings list at most 20 ids and count the rest
+ok   recovery requeues a stale running row with its key in the same statement
+ok   an upgrade adds the column and the index to an existing table
 ok   schema dumps leave the jobs table out
-22 tests, 161 assertions, 0 failures
+39 tests, 320 assertions, 0 failures
