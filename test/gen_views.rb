@@ -96,7 +96,7 @@ Dir.mkdir("#{RUNNER_ROOT}/app/views/components")
 File.write("#{RUNNER_ROOT}/app/views/components/b_component.html.erb", "<p>view b</p>\n")
 
 at_exit do
-  ["gen/views.rb", "gen/routes.rb", "gen/controllers.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/app.rb", "app/views/a.html.erb", "app/views/components/b_component.html.erb", "app/components/b_component.html.erb"].each do |f|
+  ["gen/views.rb", "gen/routes.rb", "gen/controllers.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb", "gen/app.rb", "app/views/a.html.erb", "app/views/components/b_component.html.erb", "app/components/b_component.html.erb"].each do |f|
     File.delete("#{RUNNER_ROOT}/#{f}") if File.exist?("#{RUNNER_ROOT}/#{f}")
   end
   ["gen", "app/views/components", "app/views", "app/components", "app/controllers", "app"].each do |d|

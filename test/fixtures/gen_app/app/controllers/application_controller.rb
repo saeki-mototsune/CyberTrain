@@ -5,6 +5,7 @@ end
 class ApplicationController < Cybertrain::Controller
   before_action :load_viewer
   rescue_from NotFound, with: :not_found
+  include Stamped
 
   def load_viewer
     @viewer = request.header("x-viewer") || "guest"

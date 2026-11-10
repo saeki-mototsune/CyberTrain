@@ -6,16 +6,19 @@ module Gen
     def self.build(router)
       router.add("GET", "/admin/users", "admin_users") { |ctx| Admin::UsersController.new(ctx).process(:index) { |c| c.index } }
       router.add("GET", "/admin/users/:login", "admin_user") { |ctx| Admin::UsersController.new(ctx).process(:show) { |c| c.show } }
+      router.add("GET", "/admin/reports", "admin_reports") { |ctx| Admin::ReportsController.new(ctx).process(:index) { |c| c.index } }
       router
     end
 
-    # The helper named by a String, for templates: path_for("admin_user_path", [user], { "page" => 2 }).
+    # The helper named by a String, for templates: path_for("admin_reports_path", [], { "page" => 2 }).
     def self.path_for(name, args, options = {})
       case name
       when "admin_users_path" then Cybertrain::Gen.with_options("/admin/users", options)
       when "admin_users_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/users", options)
       when "admin_user_path" then Cybertrain::Gen.with_options("/admin/users/#{Cybertrain::Gen.segment(args[0])}", options)
       when "admin_user_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/users/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "admin_reports_path" then Cybertrain::Gen.with_options("/admin/reports", options)
+      when "admin_reports_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/reports", options)
       else raise ArgumentError, "unknown route helper '#{name}'"
       end
     end
@@ -41,6 +44,14 @@ module Gen
 
     def admin_user_url(user, options = {})
       Cybertrain.url_root + admin_user_path(user, options)
+    end
+
+    def admin_reports_path(options = {})
+      Cybertrain::Gen.with_options("/admin/reports", options)
+    end
+
+    def admin_reports_url(options = {})
+      Cybertrain.url_root + admin_reports_path(options)
     end
   end
 end

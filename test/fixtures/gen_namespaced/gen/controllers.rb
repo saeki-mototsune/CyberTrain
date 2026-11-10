@@ -14,6 +14,21 @@ class ApplicationController < Cybertrain::Controller
 end
 
 module Admin
+  class ReportsController < ::ApplicationController
+    def view_assigns
+      { "viewer" => @viewer }
+    end
+
+    def run_callback(name)
+      case name
+      when :require_admin then require_admin
+      else super
+      end
+    end
+  end
+end
+
+module Admin
   class UsersController < ::ApplicationController
     def view_assigns
       { "viewer" => @viewer, "role" => @role }

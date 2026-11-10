@@ -2,6 +2,7 @@ ok   manifest lists gen models and routes, helpers, components and console, then
 ok   manifest for the fixture app, whose Post encrypts a column and whose WelcomeJob names the mailer's TimeoutError
 wrote gen/routes.rb
 wrote gen/controllers.rb
+wrote gen/concerns.rb
 wrote gen/views.rb
 wrote gen/helpers.rb
 wrote gen/components.rb
@@ -11,6 +12,7 @@ wrote gen/app.rb
 ok   runner writes the gen files
 identical gen/routes.rb
 identical gen/controllers.rb
+identical gen/concerns.rb
 identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
@@ -23,6 +25,7 @@ stale: gen/routes.rb
 stale: gen/app.rb
 wrote gen/routes.rb
 identical gen/controllers.rb
+identical gen/concerns.rb
 identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
@@ -30,4 +33,4 @@ identical gen/jobs.rb
 identical gen/console.rb
 wrote gen/app.rb
 ok   runner --check reports stale files and writes nothing
-6 tests, 17 assertions, 0 failures
+6 tests, 18 assertions, 0 failures

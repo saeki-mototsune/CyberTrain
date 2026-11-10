@@ -7,7 +7,8 @@
 # examples/blog/gen/routes.rb). Every table gets the same surface under its
 # own names, and every job class the same class methods. Keep the signatures
 # in step with cybertrain/generator/models_emitter.rb, routes_emitter.rb,
-# controllers_emitter.rb (the jobs page's controller) and jobs_emitter.rb.
+# controllers_emitter.rb (the jobs page's controller), concerns_emitter.rb
+# and jobs_emitter.rb.
 
 # What `spin run gen` writes into `gen/models/article.rb` for this table in
 # `db/schema.rb` (the {file:docs/api/README.md overview} has the rules for
@@ -979,6 +980,66 @@ class CybertrainJobsController < ApplicationController
   def delete_action
     flash[:notice] = Cybertrain::JobsPage.delete_notice(params[:id])
     redirect_to "/admin/jobs", status: :see_other
+  end
+end
+
+# What `spin run gen` writes into `gen/concerns.rb` for a controller concern
+# ({ActiveSupport::Concern}) with `class_methods`:
+#
+#     # app/controllers/concerns/admin_gate.rb
+#     module AdminGate
+#       extend ActiveSupport::Concern
+#
+#       included do
+#         before_action :require_admin
+#       end
+#
+#       class_methods do
+#         def per_page = 20
+#       end
+#     end
+#
+# Each `def` of the `class_methods` block becomes a method of the concern,
+# with the same parameters and body.
+# @api public
+module AdminGate
+  # `def per_page = 20` from the `class_methods` block.
+  # @return [Integer]
+  # @api public
+  def self.per_page = 20
+end
+
+module Admin
+  # What `spin run gen` writes into `gen/concerns.rb` for a controller that
+  # includes a concern (here `include AdminGate` in `module Admin; class
+  # ArticlesController < ApplicationController`, below one `before_action`
+  # of its own). The class is reopened (inside its modules) with a
+  # forwarder per `class_methods` method, then the concern's `included`
+  # body, as written, between
+  # {Cybertrain::Controller.concern_insert_at concern_insert_at} and
+  # {Cybertrain::Controller.concern_insert_done concern_insert_done}, so its
+  # callbacks run where the `include` line is:
+  #
+  #     module Admin
+  #       class ArticlesController
+  #         def self.per_page(...) = AdminGate.per_page(...)
+  #
+  #         # AdminGate (include AdminGate at app/controllers/admin/articles_controller.rb:4)
+  #         concern_insert_at(1, 0)
+  #         before_action :require_admin
+  #         concern_insert_done
+  #       end
+  #     end
+  #
+  # gen/controllers.rb adds the concern's callback methods to the class's
+  # `run_callback` table and the ivars its methods assign to
+  # `view_assigns`.
+  # @api public
+  class ArticlesController < ApplicationController
+    # Forwards to {AdminGate.per_page}: `self.class.per_page` in an action.
+    # @return [Integer]
+    # @api public
+    def self.per_page(...) = AdminGate.per_page(...)
   end
 end
 

@@ -17,9 +17,12 @@ require_relative "fixtures/gen_namespaced/gen/app"
 FIXTURE = "test/fixtures/gen_namespaced"
 
 def fixture_outputs
+  controllers = Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers")
+  concerns = Cybertrain::Gen::ConcernScan.scan_dir("#{FIXTURE}/app/controllers")
   {
     "gen/routes.rb" => Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs),
-    "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers")),
+    "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(controllers, Cybertrain::Gen::JobsPageSpec.new("", ""), concerns),
+    "gen/concerns.rb" => Cybertrain::Gen::ConcernsEmitter.emit(controllers, concerns),
     "gen/helpers.rb" => Cybertrain::Gen::HelpersEmitter.emit(Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),
     "gen/components.rb" => Cybertrain::Gen::ComponentsEmitter.emit(Cybertrain::Gen::ComponentScan.scan_dir("#{FIXTURE}/app/components")),
     "gen/console.rb" => Cybertrain::Gen::ConsoleEmitter.emit(Array.new(0) { "" }),
@@ -32,7 +35,7 @@ end
 test "the checked-in fixture output is fresh" do
   fixture_outputs.each do |rel, source|
     path = "#{FIXTURE}/#{rel}"
-    next if File.read(path) == source
+    next if File.exist?(path) && File.read(path) == source
 
     File.write(path, source)
     flunk("fixture stale: #{path} (rewritten; rebuild and rerun)")
@@ -62,6 +65,28 @@ test "namespace :admin with param: :login routes the member by login" do
   assert_equal "/admin/users/ann", Gen::Routes.path_for("admin_user_path", ["ann"])
   assert_equal "/admin/users/ann.json?tab=keys", Gen::Routes.path_for("admin_user_path", ["ann"], { "tab" => "keys", "format" => "json" })
   assert_includes File.read("#{FIXTURE}/gen/routes.rb"), "    def admin_user_path(user, options = {})\n"
+end
+
+test "a nested module Admin controller is scanned as Admin::ReportsController and dispatches" do
+  infos = Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers")
+  reports = infos.select { |i| i.file.end_with?("admin/reports_controller.rb") }.first
+  assert_equal "Admin::ReportsController", reports.class_name
+  assert_equal "ApplicationController", reports.superclass_name
+  assert_equal ["AdminGate"], reports.includes
+  client = Cybertrain::Test::Client.new(Gen::Routes.build(Cybertrain::Router.new))
+  res = client.get("/admin/reports", { "x-viewer" => "root", "x-admin" => "1" })
+  assert_response res, :ok
+  assert_equal "admin reports for root per_page=25 /admin/reports", res.body
+  assert_equal "Not Found", client.get("/admin/reports").body
+  # It includes AdminGate: gen/concerns.rb reopens it inside module Admin,
+  # and its require_admin runs once, after the inherited load_viewer.
+  generated = File.read("#{FIXTURE}/gen/concerns.rb")
+  assert_includes generated, "module Admin\n  class ReportsController\n"
+  assert_includes generated, "    def self.per_page(...) = AdminGate.per_page(...)\n"
+  names = Cybertrain::Controller.chain_for(Admin::ReportsController).map { |cb| cb.name.to_s }
+  assert_equal ["load_viewer", "require_admin"], names
+  assert_equal 25, Admin::ReportsController.per_page
+  assert_includes File.read("#{FIXTURE}/gen/controllers.rb"), "module Admin\n  class ReportsController < ::ApplicationController\n"
 end
 
 Cybertrain::Test.run!

@@ -176,8 +176,17 @@ NAME_HOMES = {
   # time_zone.rb's private parser method is renamed expect_byte in Task 11.
   "expect" => %w[cybertrain/mailer.rb cybertrain/params.rb cybertrain/time_zone.rb],
   "select" => %w[cybertrain/template/form_builder.rb],
-  # cli/templates.rb's is `def self.layout` (the generated layout's text).
-  "layout" => %w[cybertrain/cli/templates.rb cybertrain/controller.rb],
+  # cli/templates.rb's is `def self.layout` (the generated layout's text);
+  # active_support.rb's, like the other declarations below, is the no-op
+  # that lets a concern's never-run `included` block compile
+  # (spikes/NOTES.md rule 92), returning nil as Controller's does.
+  "layout" => %w[cybertrain/cli/templates.rb cybertrain/controller.rb cybertrain/active_support.rb],
+  "before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
+  "after_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
+  "skip_before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
+  "rate_limit" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
+  "rescue_from" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
+  "helper_method" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "cookies" => %w[cybertrain/controller.rb],
   "signed" => %w[cybertrain/cookie_jar.rb],
   "encrypted" => %w[cybertrain/cookie_jar.rb],

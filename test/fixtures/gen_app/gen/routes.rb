@@ -23,6 +23,7 @@ module Gen
       router.add("GET", "/profile", "profile") { |ctx| PagesController.new(ctx).process(:show) { |c| c.show } }
       router.add("GET", "/old-posts/:id", "") { |ctx| Cybertrain::Router.redirect_to(ctx, "/posts/%{id}", 301) }
       router.add("GET", "/files/:name", "files_name", false) { |ctx| PagesController.new(ctx).process(:file) { |c| c.file } }
+      router.add("GET", "/gated/:id", "gated_id") { |ctx| GatedController.new(ctx).process(:show) { |c| c.show } }
       router.add("GET", "/admin/jobs", "") { |ctx| CybertrainJobsController.new(ctx).process(:index) { |c| c.index } }
       router.add("POST", "/admin/jobs/retry_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:retry_all) { |c| c.retry_all_action } }
       router.add("POST", "/admin/jobs/discard_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:discard_all_failed) { |c| c.discard_all_failed_action } }
@@ -32,7 +33,7 @@ module Gen
       router
     end
 
-    # The helper named by a String, for templates: path_for("files_name_path", [name], { "page" => 2 }).
+    # The helper named by a String, for templates: path_for("gated_id_path", [gated], { "page" => 2 }).
     def self.path_for(name, args, options = {})
       case name
       when "root_path" then Cybertrain::Gen.with_options("/", options)
@@ -63,6 +64,8 @@ module Gen
       when "profile_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/profile", options)
       when "files_name_path" then Cybertrain::Gen.with_options("/files/#{Cybertrain::Gen.segment(args[0])}", options)
       when "files_name_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/files/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "gated_id_path" then Cybertrain::Gen.with_options("/gated/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "gated_id_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/gated/#{Cybertrain::Gen.segment(args[0])}", options)
       else raise ArgumentError, "unknown route helper '#{name}'"
       end
     end
@@ -184,6 +187,14 @@ module Gen
 
     def files_name_url(name, options = {})
       Cybertrain.url_root + files_name_path(name, options)
+    end
+
+    def gated_id_path(gated, options = {})
+      Cybertrain::Gen.with_options("/gated/#{Cybertrain::Gen.segment(gated)}", options)
+    end
+
+    def gated_id_url(gated, options = {})
+      Cybertrain.url_root + gated_id_path(gated, options)
     end
   end
 end

@@ -4,7 +4,8 @@ require "cybertrain/generator"
 
 # A throwaway app tree with every kind of file the manifest lists.
 ROOT = Dir.mktmpdir("cybertrain-gen")
-TREE_DIRS = ["gen", "gen/models", "app", "app/models", "app/controllers", "app/controllers/admin", "app/helpers", "app/components", "app/jobs", "app/jobs/admin"]
+TREE_DIRS = ["gen", "gen/models", "app", "app/models", "app/models/concerns", "app/controllers", "app/controllers/admin", "app/controllers/concerns",
+             "app/helpers", "app/components", "app/jobs", "app/jobs/admin"]
 TREE_FILES = [
   "gen/models/post.rb", "gen/models/comment.rb",
   "app/models/post.rb", "app/models/comment.rb",
@@ -13,16 +14,23 @@ TREE_FILES = [
   "app/controllers/README.md",
   "app/helpers/posts_helper.rb", "app/helpers/application_helper.rb",
   "app/components/card_component.rb", "app/components/application_component.rb",
-  "app/jobs/welcome_job.rb", "app/jobs/application_job.rb", "app/jobs/admin/report_job.rb"
+  "app/jobs/welcome_job.rb", "app/jobs/application_job.rb", "app/jobs/admin/report_job.rb",
+  "app/controllers/concerns/audited.rb", "app/controllers/concerns/trackable.rb", "app/models/concerns/sluggable.rb"
 ]
+# Concerns are modules; Audited includes Trackable, so Trackable loads first.
+CONCERN_SOURCES = {
+  "app/controllers/concerns/audited.rb" => "module Audited\n  extend ActiveSupport::Concern\n  include Trackable\nend\n",
+  "app/controllers/concerns/trackable.rb" => "module Trackable\n  extend ActiveSupport::Concern\nend\n",
+  "app/models/concerns/sluggable.rb" => "module Sluggable\n  extend ActiveSupport::Concern\nend\n"
+}
 TREE_DIRS.each { |d| Dir.mkdir("#{ROOT}/#{d}") }
 TREE_FILES.each do |f|
   name = Cybertrain::Inflector.camelize(f.delete_prefix("app/controllers/").delete_suffix(".rb"))
   parent = name == "ApplicationController" ? "Cybertrain::Controller" : "ApplicationController"
-  File.write("#{ROOT}/#{f}", "class #{name} < #{parent}\nend\n")
+  File.write("#{ROOT}/#{f}", CONCERN_SOURCES[f] || "class #{name} < #{parent}\nend\n")
 end
 
-GENERATED = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/app.rb"]
+GENERATED = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb", "gen/app.rb"]
 
 # Test.run! exits the process, so the tree is removed at exit.
 at_exit do
@@ -52,16 +60,20 @@ test "manifest lists gen models and routes, helpers, components and console, the
     require_relative "components"
     require_relative "console"
     require_relative "controllers"
+    require_relative "../app/models/concerns/sluggable"
     require_relative "../app/models/comment"
     require_relative "../app/models/post"
     require_relative "../app/jobs/application_job"
     require_relative "../app/jobs/admin/report_job"
     require_relative "../app/jobs/welcome_job"
     require_relative "jobs"
+    require_relative "../app/controllers/concerns/trackable"
+    require_relative "../app/controllers/concerns/audited"
     require_relative "../app/controllers/application_controller"
     require_relative "../app/controllers/admin/users_controller"
     require_relative "../app/controllers/comments_controller"
     require_relative "../app/controllers/posts_controller"
+    require_relative "concerns"
   RUBY
   assert_equal expected, Cybertrain::Gen::Manifest.emit(ROOT)
 end
@@ -89,10 +101,15 @@ test "manifest for the fixture app, whose Post encrypts a column and whose Welco
     require_relative "../app/jobs/digest_job"
     require_relative "../app/jobs/welcome_job"
     require_relative "jobs"
+    require_relative "../app/controllers/concerns/admin_gate"
+    require_relative "../app/controllers/concerns/stamped"
+    require_relative "../app/controllers/concerns/auditing"
     require_relative "../app/controllers/application_controller"
     require_relative "../app/controllers/comments_controller"
+    require_relative "../app/controllers/gated_controller"
     require_relative "../app/controllers/pages_controller"
     require_relative "../app/controllers/posts_controller"
+    require_relative "concerns"
   RUBY
   assert_equal expected, Cybertrain::Gen::Manifest.emit("test/fixtures/gen_app")
 end
@@ -112,6 +129,9 @@ test "runner writes the gen files" do
   assert_equal Cybertrain::Gen::ComponentsEmitter.emit([]), File.read("#{ROOT}/gen/components.rb")
   assert_equal Cybertrain::Gen::JobsEmitter.emit([]), File.read("#{ROOT}/gen/jobs.rb")
   assert_equal Cybertrain::Gen::ConsoleEmitter.emit([]), File.read("#{ROOT}/gen/console.rb")
+  # Concerns that nothing includes and that have no class methods: the
+  # header alone.
+  assert_equal Cybertrain::Gen::ConcernsEmitter.emit([], []), File.read("#{ROOT}/gen/concerns.rb")
 end
 
 test "runner leaves unchanged files alone" do

@@ -14,5 +14,6 @@ Cybertrain::Routes.draw do
   end
   get "/old-posts/:id", to: redirect("/posts/%{id}")
   get "/files/:name", to: "pages#file", format: false
+  get "/gated/:id", to: "gated#show"
   jobs_page "/admin/jobs", before_action: :require_admin
 end

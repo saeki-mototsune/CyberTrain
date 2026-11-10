@@ -20,10 +20,12 @@ FIXTURE = "test/fixtures/gen_app"
 
 # The emitters' current output for the fixture, keyed by gen/ path.
 def fixture_outputs
+  controllers = Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers")
+  concerns = Cybertrain::Gen::ConcernScan.scan_dir("#{FIXTURE}/app/controllers")
   {
     "gen/routes.rb" => Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs),
-    "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(Cybertrain::Gen::ControllerScan.scan_dir("#{FIXTURE}/app/controllers"),
-                                                                     Cybertrain::Routes.jobs_page_spec),
+    "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(controllers, Cybertrain::Routes.jobs_page_spec, concerns),
+    "gen/concerns.rb" => Cybertrain::Gen::ConcernsEmitter.emit(controllers, concerns),
     "gen/helpers.rb" => Cybertrain::Gen::HelpersEmitter.emit(Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),
     "gen/components.rb" => Cybertrain::Gen::ComponentsEmitter.emit(Cybertrain::Gen::ComponentScan.scan_dir("#{FIXTURE}/app/components")),
     "gen/console.rb" => Cybertrain::Gen::ConsoleEmitter.emit(["Comment", "Post"]),
@@ -40,7 +42,7 @@ end
 test "the checked-in fixture output is fresh" do
   fixture_outputs.each do |rel, source|
     path = "#{FIXTURE}/#{rel}"
-    next if File.read(path) == source
+    next if File.exist?(path) && File.read(path) == source
 
     File.write(path, source)
     flunk("fixture stale: #{path} (rewritten; rebuild and rerun)")
@@ -177,7 +179,7 @@ end
 
 test "the router knows the route names" do
   router = Gen::Routes.build(Cybertrain::Router.new)
-  assert_equal 25, router.routes.size
+  assert_equal 26, router.routes.size
   assert_equal "/posts/3/edit", router.path_for("edit_post", { "id" => "3" })
 end
 

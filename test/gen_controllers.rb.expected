@@ -12,4 +12,12 @@ ok   a namespaced controller is emitted inside its modules
 ok   emit writes CybertrainJobsController after the scanned controllers when a jobs page is drawn
 ok   without before_action: the jobs controller has no callback and the generator warns
 ok   no jobs page, no jobs controller
-14 tests, 30 assertions, 0 failures
+ok   includes, and each include's position among the callbacks and rescues above it
+ok   the nested module form names the class after its modules
+ok   a superclass written bare inside a module resolves to the module's class when gen found one
+ok   a concern's scan: included body, class methods, includes, ivars, callbacks, defs
+ok   gen/concerns.rb: the class methods on the concern, a forwarder and the splice at the include
+ok   an unknown concern is refused with the include's line
+ok   around_action in an included block is refused
+ok   a class_methods name that is also an instance method is refused, naming both places
+22 tests, 73 assertions, 0 failures

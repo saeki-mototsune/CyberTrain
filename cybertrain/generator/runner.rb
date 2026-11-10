@@ -2,6 +2,8 @@ require "cybertrain/generator/routes_dsl"
 require "cybertrain/generator/routes_emitter"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/controllers_emitter"
+require "cybertrain/generator/concern_scan"
+require "cybertrain/generator/concerns_emitter"
 require "cybertrain/generator/manifest"
 require "cybertrain/schema"
 require "cybertrain/generator/model_scan"
@@ -31,7 +33,8 @@ module Cybertrain
         puts warning unless warning.empty?
         outputs = [
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
-          ["gen/controllers.rb", ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), jobs_page)],
+          ["gen/controllers.rb", controllers_source(root, jobs_page)],
+          ["gen/concerns.rb", concerns_source(root)],
           ["gen/views.rb", ViewsEmitter.emit(root, embed)],
           ["gen/helpers.rb", HelpersEmitter.emit(HelperScan.scan_dir("#{root}/app/helpers"))],
           ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))],
@@ -71,6 +74,18 @@ module Cybertrain
           stale += sync_file(root, "gen/app.rb", Manifest.emit_with_models(root, models), check)
         end
         stale > 0 ? 1 : 0
+      end
+
+      # gen/controllers.rb and gen/concerns.rb, each from its own scan of
+      # app/controllers: with the two scans' results held in locals of run
+      # and handed to both emitters, Spinel 2026.11.04.7026 warns that type
+      # inference did not converge when it compiles bin/gen.rb.
+      def self.controllers_source(root, jobs_page)
+        ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), jobs_page, ConcernScan.scan_dir("#{root}/app/controllers"))
+      end
+
+      def self.concerns_source(root)
+        ConcernsEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), ConcernScan.scan_dir("#{root}/app/controllers"))
       end
 
       # Deletes a generated file that should no longer exist (with `check`,

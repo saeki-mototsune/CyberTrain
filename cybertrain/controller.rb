@@ -9,6 +9,7 @@ require "cybertrain/rate_limit"
 require "cybertrain/views"
 require "cybertrain/template/helpers"
 require "cybertrain/generator/inflector"
+require "cybertrain/active_support"
 
 module Cybertrain
   class MissingTemplate < StandardError
@@ -83,6 +84,10 @@ module Cybertrain
     CALLBACKS = {}   # class name => Array<Callback>
     SKIPS = {}       # class name => Array<Callback> (kind :skip, by name)
     RESCUES = {}     # class name => Array<RescueHandler>
+    # While gen/concerns.rb splices a concern's `included` body into a
+    # class: class name => the index its next callback / rescue goes to.
+    CONCERN_CALLBACK_AT = {}
+    CONCERN_RESCUE_AT = {}
 
     # The Symbols `status:` accepts in {#render}, {#head} and
     # {#redirect_to}: the Rails names of the codes in
@@ -213,7 +218,66 @@ module Cybertrain
     end
 
     def self.add_callback(callback)
-      (CALLBACKS[self.name] ||= []) << callback
+      list = (CALLBACKS[self.name] ||= [])
+      if CONCERN_CALLBACK_AT.key?(self.name)
+        at = CONCERN_CALLBACK_AT[self.name]
+        at = list.size if at > list.size
+        list.insert(at, callback)
+        CONCERN_CALLBACK_AT[self.name] = at + 1
+      else
+        list << callback
+      end
+      nil
+    end
+
+    # Written by gen/concerns.rb (`spin run gen`) around the `included`
+    # body of a concern it splices into this class: until
+    # {.concern_insert_done}, the callbacks and `rescue_from` handlers the
+    # body declares go to these positions of the class's own lists (the
+    # count of declarations above the `include` line), not to the end, so
+    # they run where the `include` was written. Not for application code.
+    # @param callbacks_index [Integer]
+    # @param rescues_index [Integer]
+    # @return [nil]
+    # @api public
+    def self.concern_insert_at(callbacks_index, rescues_index)
+      CONCERN_CALLBACK_AT[self.name] = callbacks_index
+      CONCERN_RESCUE_AT[self.name] = rescues_index
+      nil
+    end
+
+    # Ends a {.concern_insert_at} splice: declarations append again.
+    # @return [nil]
+    # @api public
+    def self.concern_insert_done
+      CONCERN_CALLBACK_AT.delete(self.name)
+      CONCERN_RESCUE_AT.delete(self.name)
+      nil
+    end
+
+    # Makes controller methods callable from this controller's templates
+    # (spec 4.3). A declaration only: `spin run gen` reads the names.
+    # @example
+    #   helper_method :current_user, :admin?
+    # @param names [Array<Symbol>]
+    # @return [nil]
+    # @api public
+    def self.helper_method(*names)
+      nil
+    end
+
+    # Names this controller's layout. A declaration only: `spin run gen`
+    # reads it.
+    # @example
+    #   layout "admin"
+    #   layout false
+    # @param name [String, Symbol, false, nil] a layout name, `false` for
+    #   none, or a method choosing one
+    # @param only [Array<Symbol>]
+    # @param except [Array<Symbol>]
+    # @return [nil]
+    # @api public
+    def self.layout(name = nil, only: [], except: [])
       nil
     end
 
@@ -302,7 +366,16 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.rescue_from(klass, with: nil, &block)
-      (RESCUES[self.name] ||= []) << RescueHandler.new(klass.name, with, block)
+      list = (RESCUES[self.name] ||= [])
+      handler = RescueHandler.new(klass.name, with, block)
+      if CONCERN_RESCUE_AT.key?(self.name)
+        at = CONCERN_RESCUE_AT[self.name]
+        at = list.size if at > list.size
+        list.insert(at, handler)
+        CONCERN_RESCUE_AT[self.name] = at + 1
+      else
+        list << handler
+      end
       nil
     end
 

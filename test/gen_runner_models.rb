@@ -19,6 +19,10 @@ APP_FILES = [
   "app/controllers/comments_controller.rb",
   "app/controllers/pages_controller.rb",
   "app/controllers/posts_controller.rb",
+  "app/controllers/gated_controller.rb",
+  "app/controllers/concerns/admin_gate.rb",
+  "app/controllers/concerns/auditing.rb",
+  "app/controllers/concerns/stamped.rb",
   "app/helpers/prices_helper.rb",
   "app/components/card_component.rb",
   "app/components/card_component.html.erb",
@@ -26,11 +30,12 @@ APP_FILES = [
   "app/jobs/digest_job.rb",
   "app/jobs/admin/report_job.rb"
 ]
-GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
-DIRS = ["app", "app/models", "app/controllers", "app/helpers", "app/components", "app/jobs", "app/jobs/admin", "gen", "gen/models"]
+GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
+DIRS = ["app", "app/models", "app/controllers", "app/controllers/concerns", "app/helpers", "app/components", "app/jobs", "app/jobs/admin", "gen", "gen/models"]
 Dir.mkdir("#{ROOT}/app")
 Dir.mkdir("#{ROOT}/app/models")
 Dir.mkdir("#{ROOT}/app/controllers")
+Dir.mkdir("#{ROOT}/app/controllers/concerns")
 Dir.mkdir("#{ROOT}/app/helpers")
 Dir.mkdir("#{ROOT}/app/components")
 Dir.mkdir("#{ROOT}/app/jobs")
@@ -168,6 +173,7 @@ def redraw_fixture_routes
     end
     get "/old-posts/:id", to: redirect("/posts/%{id}")
     get "/files/:name", to: "pages#file", format: false
+    get "/gated/:id", to: "gated#show"
     jobs_page "/admin/jobs", before_action: :require_admin
   end
 end

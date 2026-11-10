@@ -9,6 +9,7 @@ class ApplicationController < Cybertrain::Controller
     case name
     when :load_viewer then load_viewer
     when :not_found then not_found
+    when :stamp_response then stamp_response
     else super
     end
   end
@@ -17,6 +18,22 @@ end
 class CommentsController < ApplicationController
   def view_assigns
     { "viewer" => @viewer, "comment" => @comment }
+  end
+end
+
+class GatedController < ApplicationController
+  def view_assigns
+    { "viewer" => @viewer, "post" => @post, "audited_at" => @audited_at }
+  end
+
+  def run_callback(name)
+    case name
+    when :set_post then set_post
+    when :log_visit then log_visit
+    when :require_admin then require_admin
+    when :audit then audit
+    else super
+    end
   end
 end
 

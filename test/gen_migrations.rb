@@ -47,7 +47,7 @@ ROOT = Dir.mktmpdir("cybertrain-gen-migrations")
 
 at_exit do
   files = [
-    "gen/migrations.rb", "gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/app.rb",
+    "gen/migrations.rb", "gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb", "gen/app.rb",
     "db/migrate/20260101000000_create_posts.rb", "db/migrate/20260101000100_create_comments.rb"
   ]
   files.each { |f| File.delete("#{ROOT}/#{f}") if File.exist?("#{ROOT}/#{f}") }
