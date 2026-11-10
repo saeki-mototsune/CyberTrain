@@ -7,6 +7,7 @@ require "cybertrain/logger"
 require "cybertrain/callback"
 require "cybertrain/rate_limit"
 require "cybertrain/views"
+require "cybertrain/format_collector"
 require "cybertrain/template/helpers"
 require "cybertrain/generator/inflector"
 require "cybertrain/active_support"
@@ -542,12 +543,32 @@ module Cybertrain
       nil
     end
 
-    # The implicit render after an action that rendered nothing:
-    # app/views/<controller_path>/<action>.html.erb inside the layout.
+    # The implicit render after an action that rendered nothing, by the
+    # request's format ({Request#format}): for `:html`,
+    # app/views/<controller_path>/<action>.html.erb inside the layout; for
+    # any other format, <action>.<format>.erb (`create.turbo_stream.erb`,
+    # `index.csv.erb`) without a layout when it exists, else `406 Not
+    # Acceptable` (a `:json` request with no template and no `render`
+    # included). A Turbo request that also accepts HTML gets the html
+    # template when there is no turbo_stream one (see #html_fallback?).
     def default_render(action)
-      raise MissingTemplate, "no template for #{self.class.name}##{action}" if Views.engine.nil?
+      engine = Views.engine
+      if engine.nil?
+        message = "no template for #{self.class.name}##{action}"
+        raise MissingTemplate, message
+      end
 
-      render_template(action.to_s)
+      wanted = @request.format
+      name = action.to_s
+      if wanted == :html
+        render_template(name)
+      elsif wanted != :unknown && engine.exists?(format_template_path(name, wanted))
+        render_template(name, format: wanted)
+      elsif html_fallback?
+        render_template(name)
+      else
+        head_not_acceptable
+      end
     end
 
     # The instance variables templates can read, as { "post" => @post };
@@ -599,28 +620,94 @@ module Cybertrain
       path
     end
 
-    # Renders <controller_path>/<name> with the process-wide Views engine,
-    # inside Views.layout_name when that layout exists and layout is true.
-    def render_template(name, locals = {}, layout: true)
+    # Renders <controller_path>/<name> with the process-wide Views engine.
+    #
+    # For `format: :html` (the default) the template is <name>.html.erb,
+    # inside `layout` (a layout name such as `"layouts/application"`; `""`
+    # for none) when that layout exists. For any other format it is
+    # <name>.<format>.erb (`create.turbo_stream.erb`), never in a layout
+    # (layouts are HTML), sent as {Request.mime_type}(format).
+    # @param name [String] the template's name in this controller's directory
+    # @param locals [Hash{Symbol => Object}] extra template variables
+    # @param layout [String] the layout's name, `""` for none
+    # @param format [Symbol] the template's format
+    # @return [nil]
+    # @raise [Template::MissingTemplate] when the template does not exist
+    # @api private
+    def render_template(name, locals = {}, layout: Views.layout_name, format: :html)
       engine = Views.engine
-      raise MissingTemplate, "no template #{name} for #{self.class.name}" if engine.nil?
+      if engine.nil?
+        message = "no template #{name} for #{self.class.name}"
+        raise MissingTemplate, message
+      end
 
-      path = "#{controller_path}/#{name}"
       env = view_env(string_keys(locals))
       helpers = Views.helpers_builder.call(self)
-      frame = Views.layout_name
-      if layout && !frame.empty? && engine.exists?(frame)
-        send_html(engine.render_with_layout(path, frame, env, helpers))
+      if format == :html
+        path = "#{controller_path}/#{name}"
+        if !layout.empty? && engine.exists?(layout)
+          send_html(engine.render_with_layout(path, layout, env, helpers))
+        else
+          send_html(engine.render(path, env, helpers))
+        end
       else
-        send_html(engine.render(path, env, helpers))
+        send_rendered(engine.render(format_template_path(name, format), env, helpers), Request.mime_type(format))
       end
+    end
+
+    # Answers by the request's format ({Request#format}): the block gets a
+    # {FormatCollector}, and the first of its declarations that matches the
+    # format runs its block at once (the blocks see the action's instance
+    # variables and call {#render} as the action would). A matching
+    # declaration without a block renders the action's template for that
+    # format (`show.html.erb` in the layout, `show.turbo_stream.erb`
+    # without one). When no declaration matches, the answer is `406 Not
+    # Acceptable` (`text/plain`, body `Not Acceptable`).
+    #
+    # Turbo submits a form asking for `text/vnd.turbo-stream.html,
+    # text/html`: its format is `:turbo_stream`, and an action with no
+    # `format.turbo_stream` answers through its `format.html` declaration,
+    # as in Rails (a `.turbo_stream` extension asks for that format only).
+    # @example
+    #   def show
+    #     @article = Article.find(params[:id])
+    #     respond_to do |format|
+    #       format.html
+    #       format.json { render json: @article.as_json }
+    #       format.turbo_stream
+    #     end
+    #   end
+    # @yieldparam format [FormatCollector]
+    # @return [nil]
+    # @raise [Template::MissingTemplate] when a declaration without a block
+    #   matches and the action has no template for that format
+    # @api public
+    def respond_to(&block)
+      collector = FormatCollector.new(@request.format)
+      block.call(collector)
+      if collector.matched_format == :none && html_fallback?
+        # Nothing ran in the first pass, so running the block again for
+        # :html runs at most one declaration's block.
+        collector = FormatCollector.new(:html)
+        block.call(collector)
+      end
+      matched = collector.matched_format
+      if matched == :none
+        head_not_acceptable
+      elsif collector.matched_without_block?
+        render_template(@action_name, format: matched)
+      end
+      nil
     end
 
     # Renders the response from a template, text, HTML or JSON: exactly
     # one of template, plain:, html:, json: or partial:.
     #
     # An action that renders nothing renders its own template
-    # (`app/views/<controller_path>/<action>.html.erb`) in the layout.
+    # (`app/views/<controller_path>/<action>.html.erb`) in the layout, or
+    # for another request format `<action>.<format>.erb` without one
+    # (`create.turbo_stream.erb`), else answers `406 Not Acceptable`; see
+    # {#respond_to} to answer each format differently.
     #
     # - `template`: `app/views/<controller_path>/<template>.html.erb`, always
     #   this controller's directory, inside the layout
@@ -679,7 +766,7 @@ module Cybertrain
       elsif !partial.nil?
         render_partial(partial.to_s, locals)
       else
-        render_template(template.to_s, locals, layout: layout)
+        render_template(template.to_s, locals, layout: layout ? Views.layout_name : "")
       end
       @response.content_type = content_type unless content_type.nil?
       @response.performed!
@@ -1010,9 +1097,42 @@ module Cybertrain
     end
 
     def send_html(body)
+      send_rendered(body, "text/html; charset=utf-8")
+    end
+
+    def send_rendered(body, content_type)
       @response.body = body
-      @response.content_type = "text/html; charset=utf-8"
+      @response.content_type = content_type
       @response.performed!
+      nil
+    end
+
+    # "articles/index.csv.erb": the template of a format other than html.
+    def format_template_path(name, format)
+      "#{controller_path}/#{name}.#{format}.erb"
+    end
+
+    # Whether a :turbo_stream request also takes HTML: its Accept (Turbo's
+    # "text/vnd.turbo-stream.html, text/html, application/xhtml+xml") lists
+    # text/html or */*, and no `.turbo_stream` extension asked for the
+    # stream alone. Rails lists both formats for such a request and answers
+    # in the first one the action has.
+    def html_fallback?
+      req = @request
+      return false unless req.format == :turbo_stream && req.format_extension.empty?
+
+      accept = req.header("Accept").to_s
+      accept.include?("text/html") || accept.include?("*/*")
+    end
+
+    # 406 for a format the action does not answer (respond_to with no
+    # matching declaration, or an implicit render with no template).
+    def head_not_acceptable
+      r = @response
+      r.status = 406
+      r.content_type = "text/plain; charset=utf-8"
+      r.body = "Not Acceptable"
+      r.performed!
       nil
     end
 

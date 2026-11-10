@@ -40,7 +40,7 @@ end
 # The template <controller_path>/<name> rendered by the controller, as an
 # action's `render :name, layout: false` would.
 def rendered(controller, name)
-  controller.render_template(name, {}, layout: false)
+  controller.render_template(name, {}, layout: "")
   controller.response.body
 end
 
