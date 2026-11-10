@@ -1,0 +1,9 @@
+ok   number_with_precision
+ok   number_with_delimiter
+ok   number_to_human
+ok   number_to_percentage
+ok   number_to_currency
+ok   number_to_human_size
+ok   rounding edges on the digits
+ok   a non-number raises ArgumentError
+8 tests, 58 assertions, 0 failures

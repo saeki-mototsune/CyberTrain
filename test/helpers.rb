@@ -157,6 +157,24 @@ test "number_with_delimiter groups thousands" do
   assert_equal "1,234,567|999|-1,000|1,234.5", render_inline("<%= number_with_delimiter(n) %>|<%= number_with_delimiter(999) %>|<%= number_with_delimiter(-1000) %>|<%= number_with_delimiter(1234.5) %>")
 end
 
+test "number helpers from a template" do
+  assert_equal "12.345.678|98 765 432,98", render_inline("<%= number_with_delimiter(12345678, delimiter: '.') %>|<%= number_with_delimiter(98765432.98, delimiter: ' ', separator: ',') %>")
+  assert_equal "111.235|111.23|13|1.111,23", render_inline("<%= number_with_precision(111.2345) %>|<%= number_with_precision(111.2345, precision: 2) %>|<%= number_with_precision(13, precision: 5, strip_insignificant_zeros: true) %>|<%= number_with_precision(1111.2345, precision: 2, separator: ',', delimiter: '.') %>")
+  assert_equal "1.23 Thousand|490 Thousand|500 lt", render_inline("<%= number_to_human(1234) %>|<%= number_to_human(489939, precision: 2) %>|<%= number_to_human(500000, units: { unit: 'ml', thousand: 'lt' }) %>")
+  assert_equal "100.000%|100%", render_inline("<%= number_to_percentage(100) %>|<%= number_to_percentage(100, precision: 0) %>")
+  assert_equal "$1,234,567,890.51|-$1,234,567,890.50|1,234,567,890.50 €", render_inline("<%= number_to_currency(1234567890.506) %>|<%= number_to_currency(-1234567890.50) %>|<%= number_to_currency(1234567890.50, unit: '€', format: '%n %u') %>")
+  assert_equal "1 Byte|1.21 KB|1.07 EB", render_inline("<%= number_to_human_size(1) %>|<%= number_to_human_size(1234) %>|<%= number_to_human_size(1234567890123456789) %>")
+end
+
+test "number helpers check their arguments" do
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { render_inline("<%= number_to_currency('abc') %>") }
+  assert_equal "posts/inline:1: number_to_currency: \"abc\" is not a number", msg
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { render_inline("<%= number_to_percentage(1, scale: 2) %>") }
+  assert_equal "posts/inline:1: unknown keyword 'scale' for 'number_to_percentage' (known: precision)", msg
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { render_inline("<%= number_to_human_size(1, precision: 2) %>") }
+  assert_equal "posts/inline:1: 'number_to_human_size' takes no keyword arguments (given precision)", msg
+end
+
 test "time_ago_in_words buckets" do
   h = Cybertrain::Template::Helpers.new(nil)
   now = Time.at(1_700_000_000)

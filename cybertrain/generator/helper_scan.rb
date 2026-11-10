@@ -83,7 +83,9 @@ module Cybertrain
         flash_messages form_action form_record form_with h helper_arity!
         helper_call helper_keywords! helper_no_keywords! hidden_fields
         html_arg initialize int_text kwarg_attr link_to link_to_path
-        lower_text model_key nested_url number_with_delimiter
+        lower_text model_key nested_url number_to_currency number_to_human
+        number_to_human_size number_to_percentage number_with_delimiter
+        number_with_precision
         outside_request! page_method pager_href pager_html paginate params
         partial_file plural_words pluralize raw render
         render_component_helper render_helper request_bound! request_path

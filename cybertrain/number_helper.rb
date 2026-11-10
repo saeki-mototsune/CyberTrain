@@ -1,0 +1,345 @@
+# Cybertrain::NumberHelper -- Rails' number helpers as module functions, for
+# Ruby code; the same six are template helpers (Template::Helpers).
+#
+# A number is an Integer, a Float or a numeric String (decimal columns are
+# Floats). Every result is built from the digits of Integer#to_s or
+# Float#to_s, rounded half up on those digits (what Rails gets from
+# BigDecimal(value.to_s)); Float#round is never used, so the output is the
+# same under CRuby and Spinel.
+module Cybertrain
+  module NumberHelper
+    UNIT_KEYS = [:unit, :thousand, :million, :billion, :trillion, :quadrillion]
+    UNIT_NAMES = ["", "Thousand", "Million", "Billion", "Trillion", "Quadrillion"]
+    SIZE_UNITS = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB"]
+
+    # A number as 0.<digits> * 10**point: digits has no leading or trailing
+    # zeros ("" for zero), point is the count of digits before the decimal
+    # point (0 or negative for 0.00ddd). places is how many fractional
+    # digits the source text had.
+    class Decimal
+      attr_reader :negative, :digits, :point, :places
+
+      def initialize(negative, digits, point, places)
+        @negative = negative
+        @digits = digits
+        @point = point
+        @places = places
+      end
+    end
+
+    # 111.2345 -> "111.235"
+    # @api public
+    def self.number_with_precision(number, precision: 3, delimiter: "", separator: ".", strip_insignificant_zeros: false)
+      d = NumberHelper.parse_number(number, "number_with_precision")
+      places = precision < 0 ? 0 : precision
+      r = NumberHelper.round_places(d, places)
+      NumberHelper.render_fixed(r, places, delimiter, separator, strip_insignificant_zeros)
+    end
+
+    # 12345678 -> "12,345,678"; the fraction is kept as given.
+    # @api public
+    def self.number_with_delimiter(number, delimiter: ",", separator: ".")
+      d = NumberHelper.parse_number(number, "number_with_delimiter")
+      NumberHelper.render_fixed(d, d.places, delimiter, separator, false)
+    end
+
+    # 1234 -> "1.23 Thousand": `precision` significant digits, insignificant
+    # zeros stripped; units: { unit:, thousand:, million:, billion:,
+    # trillion:, quadrillion: } replaces the names.
+    # @api public
+    def self.number_to_human(number, precision: 3, units: {})
+      names = UNIT_NAMES.dup
+      i = 0
+      while i < UNIT_KEYS.length
+        custom = units[UNIT_KEYS[i]]
+        names[i] = custom.to_s unless custom.nil?
+        i += 1
+      end
+      NumberHelper.human_text(number, precision, names)
+    end
+
+    # number_to_human over the six unit names (unit, thousand .. quadrillion);
+    # the template helper builds them from its own Hash.
+    def self.human_text(number, precision, names)
+      d = NumberHelper.parse_number(number, "number_to_human")
+      sig = precision < 1 ? 1 : precision
+      r = NumberHelper.round_to_k(d, sig)
+      return "0" if r.digits.empty?
+
+      idx = r.point <= 0 ? 0 : (r.point - 1) / 3
+      idx = 5 if idx > 5
+      shifted = Decimal.new(r.negative, r.digits, r.point - 3 * idx, 0)
+      frac = r.digits.length - shifted.point
+      frac = 0 if frac < 0
+      text = NumberHelper.render_fixed(shifted, frac, "", ".", false)
+      name = names[idx]
+      name.empty? ? text : "#{text} #{name}"
+    end
+
+    # 100 -> "100.000%"
+    # @api public
+    def self.number_to_percentage(number, precision: 3)
+      d = NumberHelper.parse_number(number, "number_to_percentage")
+      places = precision < 0 ? 0 : precision
+      r = NumberHelper.round_places(d, places)
+      "#{NumberHelper.render_fixed(r, places, "", ".", false)}%"
+    end
+
+    # 1234.5 -> "$1,234.50"; a negative number takes "-" before the format.
+    # @api public
+    def self.number_to_currency(number, unit: "$", precision: 2, format: "%u%n")
+      d = NumberHelper.parse_number(number, "number_to_currency")
+      places = precision < 0 ? 0 : precision
+      r = NumberHelper.round_places(d, places)
+      shown = Decimal.new(false, r.digits, r.point, 0)
+      amount = NumberHelper.render_fixed(shown, places, ",", ".", false)
+      pattern = r.negative ? "-#{format}" : format
+      NumberHelper.fill_currency(pattern, unit, amount)
+    end
+
+    # 1234 -> "1.21 KB" (base 1024, 3 significant digits).
+    # @api public
+    def self.number_to_human_size(number)
+      d = NumberHelper.parse_number(number, "number_to_human_size")
+      sign = d.negative ? "-" : ""
+      value = NumberHelper.float_of(number)
+      value = -value if value < 0.0
+      if value < 1024.0
+        whole = NumberHelper.round_places(Decimal.new(false, d.digits, d.point, 0), 0)
+        text = NumberHelper.render_fixed(whole, 0, "", ".", false)
+        return "#{sign}#{text} #{text == "1" ? "Byte" : "Bytes"}"
+      end
+      idx = 0
+      while value >= 1024.0 && idx < 6
+        value = value / 1024.0
+        idx += 1
+      end
+      scaled = NumberHelper.parse_number(value, "number_to_human_size")
+      r = NumberHelper.round_to_k(scaled, 3)
+      frac = r.digits.length - r.point
+      frac = 0 if frac < 0
+      text = NumberHelper.render_fixed(r, frac, "", ".", false)
+      "#{sign}#{text} #{SIZE_UNITS[idx]}"
+    end
+
+    # --- internals ---------------------------------------------------------
+
+    def self.float_of(number)
+      case number
+      when Integer then number.to_f
+      when Float then number
+      else number.to_s.to_f
+      end
+    end
+
+    # A number's Decimal; anything but an Integer, a Float or a numeric
+    # String raises, naming the helper.
+    def self.parse_number(number, fname)
+      text = nil
+      case number
+      when Integer then text = number.to_s
+      when Float then text = number.to_s
+      when String then text = number
+      end
+      parsed = text.nil? ? nil : NumberHelper.parse_text(text)
+      if parsed.nil?
+        shown = number.is_a?(String) ? "\"#{number}\"" : number.to_s
+        shown = "nil" if number.nil?
+        msg = "#{fname}: #{shown} is not a number"
+        raise ArgumentError, msg
+      end
+      parsed
+    end
+
+    def self.digit?(c)
+      c >= "0" && c <= "9"
+    end
+
+    # "-12.50", "7", "1.0e+20" -> a Decimal, nil for anything else.
+    def self.parse_text(text)
+      s = text.to_s
+      n = s.length
+      i = 0
+      negative = false
+      if i < n && (s[i] == "-" || s[i] == "+")
+        negative = s[i] == "-"
+        i += 1
+      end
+      digits = +""
+      point = 0
+      frac = 0
+      seen_dot = false
+      while i < n
+        c = s[i]
+        if c == "."
+          return nil if seen_dot
+
+          seen_dot = true
+        elsif NumberHelper.digit?(c)
+          digits << c
+          if seen_dot
+            frac += 1
+          else
+            point += 1
+          end
+        else
+          break
+        end
+        i += 1
+      end
+      return nil if digits.empty?
+
+      exp = 0
+      if i < n && (s[i] == "e" || s[i] == "E")
+        i += 1
+        esign = 1
+        if i < n && (s[i] == "-" || s[i] == "+")
+          esign = -1 if s[i] == "-"
+          i += 1
+        end
+        start = i
+        e = 0
+        while i < n && NumberHelper.digit?(s[i])
+          e = e * 10 + s[i].to_i
+          i += 1
+        end
+        return nil if i == start
+
+        exp = esign * e
+      end
+      return nil if i != n
+
+      lead = 0
+      while lead < digits.length && digits[lead] == "0"
+        lead += 1
+      end
+      digits = digits[lead, digits.length - lead]
+      point -= lead
+      digits = NumberHelper.strip_trailing_zeros(digits)
+      places = frac - exp
+      places = 0 if places < 0
+      return Decimal.new(false, "", 1, places) if digits.empty?
+
+      Decimal.new(negative, digits, point + exp, places)
+    end
+
+    def self.strip_trailing_zeros(digits)
+      n = digits.length
+      n -= 1 while n > 0 && digits[n - 1] == "0"
+      digits[0, n]
+    end
+
+    # "1299" -> "1300", "99" -> "100"
+    def self.increment_digits(digits)
+      chars = digits.chars
+      i = chars.length - 1
+      done = false
+      while i >= 0 && !done
+        if chars[i] == "9"
+          chars[i] = "0"
+          i -= 1
+        else
+          chars[i] = (chars[i].ord + 1).chr
+          done = true
+        end
+      end
+      text = chars.join
+      done ? text : "1#{text}"
+    end
+
+    # Round half up to `places` fractional digits.
+    def self.round_places(d, places)
+      NumberHelper.round_to_k(d, d.point + places)
+    end
+
+    # Keep the first k digits of d, rounding half up on the next one.
+    def self.round_to_k(d, k)
+      digits = d.digits
+      return d if k >= digits.length
+      return Decimal.new(false, "", 1, 0) if k < 0
+
+      point = d.point
+      kept = digits[0, k]
+      if digits[k] >= "5"
+        if kept.empty?
+          kept = "1"
+          point += 1
+        else
+          kept = NumberHelper.increment_digits(kept)
+          point += 1 if kept.length > k
+        end
+      end
+      kept = NumberHelper.strip_trailing_zeros(kept)
+      return Decimal.new(false, "", 1, 0) if kept.empty?
+
+      Decimal.new(d.negative, kept, point, 0)
+    end
+
+    # The digits with exactly `places` fractional digits (zero padded), the
+    # integer part grouped by delimiter, a "-" in front of a negative.
+    def self.render_fixed(d, places, delimiter, separator, strip)
+      digits = d.digits
+      point = d.point
+      whole = +""
+      if point <= 0
+        whole << "0"
+      else
+        j = 0
+        while j < point
+          whole << (j < digits.length ? digits[j] : "0")
+          j += 1
+        end
+      end
+      frac = +""
+      j = 0
+      while j < places
+        idx = point + j
+        frac << (idx >= 0 && idx < digits.length ? digits[idx] : "0")
+        j += 1
+      end
+      frac = NumberHelper.strip_trailing_zeros(frac) if strip
+      out = +""
+      out << "-" if d.negative
+      out << NumberHelper.group_digits(whole, delimiter)
+      unless frac.empty?
+        out << separator
+        out << frac
+      end
+      out
+    end
+
+    def self.group_digits(whole, delimiter)
+      return whole if delimiter.empty?
+
+      out = +""
+      i = 0
+      while i < whole.length
+        out << delimiter if i > 0 && (whole.length - i) % 3 == 0
+        out << whole[i]
+        i += 1
+      end
+      out
+    end
+
+    # "%u%n" -> unit and amount substituted; any other text as it is.
+    def self.fill_currency(pattern, unit, amount)
+      out = +""
+      i = 0
+      while i < pattern.length
+        c = pattern[i]
+        nxt = i + 1 < pattern.length ? pattern[i + 1] : ""
+        if c == "%" && nxt == "u"
+          out << unit
+          i += 2
+        elsif c == "%" && nxt == "n"
+          out << amount
+          i += 2
+        else
+          out << c
+          i += 1
+        end
+      end
+      out
+    end
+  end
+end

@@ -13,6 +13,7 @@
 require "cybertrain/html"
 require "cybertrain/http/header_name"
 require "cybertrain/http/query"
+require "cybertrain/number_helper"
 require "cybertrain/model"
 require "cybertrain/pagination"
 require "cybertrain/params"
@@ -98,7 +99,12 @@ module Cybertrain
         when "raw" then SafeString.of(text_arg(args, 0, name))
         when "pluralize" then pluralize(args)
         when "truncate" then truncate(args, kwargs)
-        when "number_with_delimiter" then number_with_delimiter(args)
+        when "number_with_delimiter" then number_with_delimiter(args, kwargs)
+        when "number_with_precision" then number_with_precision(args, kwargs)
+        when "number_to_human" then number_to_human(args, kwargs)
+        when "number_to_percentage" then number_to_percentage(args, kwargs)
+        when "number_to_currency" then number_to_currency(args, kwargs)
+        when "number_to_human_size" then number_to_human_size(args, kwargs)
         when "time_ago_in_words" then distance_of_time_in_words(time_arg(args, 0, name), Time.now)
         when "content_for" then content_for(args, block, interp, env)
         when "content_for?" then !env["__content_#{text_arg(args, 0, name)}"].nil?
@@ -856,22 +862,67 @@ module Cybertrain
         "#{text[0, keep]}#{omission}"
       end
 
-      # 1234567 -> "1,234,567"; 1234.5 -> "1,234.5".
-      def number_with_delimiter(args)
-        text = FormBuilder.value_text(arg(args, 0, "number_with_delimiter"))
-        sign = text.start_with?("-") ? "-" : ""
-        digits = sign.empty? ? text : text[1, text.length - 1]
-        dot = digits.index(".")
-        whole = dot.nil? ? digits : digits[0, dot]
-        fraction = dot.nil? ? "" : digits[dot, digits.length - dot]
-        out = +""
-        i = 0
-        while i < whole.length
-          out << "," if i > 0 && (whole.length - i) % 3 == 0
-          out << whole[i]
-          i += 1
+      # The number helpers are Cybertrain::NumberHelper's, with Rails'
+      # keywords: 1234567 -> "1,234,567"; 1234.5 -> "1,234.5".
+      def number_with_delimiter(args, kwargs)
+        helper_arity!("number_with_delimiter", args, 1, 1)
+        helper_keywords!("number_with_delimiter", kwargs, ["delimiter", "separator"], 0)
+        delimiter = kwargs["delimiter"].nil? ? "," : FormBuilder.value_text(kwargs["delimiter"])
+        separator = kwargs["separator"].nil? ? "." : FormBuilder.value_text(kwargs["separator"])
+        NumberHelper.number_with_delimiter(args[0], delimiter: delimiter, separator: separator)
+      end
+
+      def number_with_precision(args, kwargs)
+        helper_arity!("number_with_precision", args, 1, 1)
+        helper_keywords!("number_with_precision", kwargs, ["precision", "delimiter", "separator", "strip_insignificant_zeros"], 0)
+        precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
+        delimiter = kwargs["delimiter"].nil? ? "" : FormBuilder.value_text(kwargs["delimiter"])
+        separator = kwargs["separator"].nil? ? "." : FormBuilder.value_text(kwargs["separator"])
+        strip = kwargs["strip_insignificant_zeros"] == true
+        NumberHelper.number_with_precision(args[0], precision: precision, delimiter: delimiter, separator: separator, strip_insignificant_zeros: strip)
+      end
+
+      # units: { thousand: "lt" } is a template Hash (String keys).
+      def number_to_human(args, kwargs)
+        helper_arity!("number_to_human", args, 1, 1)
+        helper_keywords!("number_to_human", kwargs, ["precision", "units"], 0)
+        precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
+        names = NumberHelper::UNIT_NAMES.dup
+        given = kwargs["units"]
+        case given
+        when Hash
+          i = 0
+          while i < NumberHelper::UNIT_KEYS.length
+            key = NumberHelper::UNIT_KEYS[i].to_s
+            names[i] = FormBuilder.value_text(given[key]) if given.key?(key)
+            i += 1
+          end
+        when nil then nil
+        else raise ArgumentError, "number_to_human units: must be a Hash"
         end
-        "#{sign}#{out}#{fraction}"
+        NumberHelper.human_text(args[0], precision, names)
+      end
+
+      def number_to_percentage(args, kwargs)
+        helper_arity!("number_to_percentage", args, 1, 1)
+        helper_keywords!("number_to_percentage", kwargs, ["precision"], 0)
+        precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
+        NumberHelper.number_to_percentage(args[0], precision: precision)
+      end
+
+      def number_to_currency(args, kwargs)
+        helper_arity!("number_to_currency", args, 1, 1)
+        helper_keywords!("number_to_currency", kwargs, ["unit", "precision", "format"], 0)
+        unit = kwargs["unit"].nil? ? "$" : FormBuilder.value_text(kwargs["unit"])
+        precision = kwargs["precision"].nil? ? 2 : int_text(kwargs["precision"])
+        fmt = kwargs["format"].nil? ? "%u%n" : FormBuilder.value_text(kwargs["format"])
+        NumberHelper.number_to_currency(args[0], unit: unit, precision: precision, format: fmt)
+      end
+
+      def number_to_human_size(args, kwargs)
+        helper_arity!("number_to_human_size", args, 1, 1)
+        helper_no_keywords!("number_to_human_size", kwargs)
+        NumberHelper.number_to_human_size(args[0])
       end
 
       # A value for HTML: SafeString as is, anything else escaped.

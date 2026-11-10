@@ -7,6 +7,8 @@ ok   flash, params and request_path come from the controller
 ok   pluralize picks singular or plural
 ok   truncate shortens long text with an ellipsis
 ok   number_with_delimiter groups thousands
+ok   number helpers from a template
+ok   number helpers check their arguments
 ok   time_ago_in_words buckets
 ok   render a partial with strict locals
 ok   content_for and yield :title
@@ -23,4 +25,4 @@ ok   paginate renders Newer / Older around Page N, keeping the query minus page
 ok   paginate leaves out a link to a page that does not exist
 ok   paginate escapes what it is given and takes a path's own query string
 ok   a template reads the Page
-25 tests, 96 assertions, 0 failures
+27 tests, 108 assertions, 0 failures
