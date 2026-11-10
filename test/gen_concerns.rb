@@ -1,3 +1,4 @@
+require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/test/client"
 require "cybertrain/router"
@@ -151,6 +152,17 @@ end
 test "@x in a concern method is a view assign of the includer" do
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/gated/1", {}, ""))
   assert_equal ["viewer", "post", "audited_at"], GatedController.new(ctx).view_assigns.keys
+end
+
+test "a project root with an app/ directory in its path still keys gen/concerns and the manifest by the path under it" do
+  base = Dir.mktmpdir("cybertrain-gen-concerns")
+  root = "#{base}/app/proj"
+  Cybertrain::Gen::Runner.make_dirs("#{root}/app/controllers/concerns")
+  File.write("#{root}/app/controllers/concerns/same.rb",
+             "module Same\n  extend ActiveSupport::Concern\n\n  def ==(other)\n    true\n  end\n\n  def <=>(other) = 0\n\n  def tag\n    1\n  end\nend\n")
+  assert_equal ["gen/concerns/controllers/concerns/same.rb"], Cybertrain::Gen::Runner.concern_modules(root).keys
+  assert_equal "app/controllers/concerns/same.rb", Cybertrain::Gen::ControllerScan.app_path("#{root}/app/controllers/concerns/same.rb")
+  assert Cybertrain::Gen::Manifest.emit(root).include?("controllers/concerns/same")
 end
 
 Cybertrain::Test.run!

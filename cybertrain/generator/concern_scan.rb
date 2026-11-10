@@ -190,7 +190,7 @@ module Cybertrain
             one_line = HelperScan.endless?(text) || (line.include?(";") && (line.end_with?(" end") || line.end_with?(";end")))
             i = skip_block(lines, i, indent) unless one_line
             add_ivars(info, lines, start - 1, i)
-            info.concern_defs << def_of(file, start, text, info.concern_def_errors) unless line.start_with?("def self.") || HelperScan.setter?(text)
+            info.concern_defs << def_of(file, start, text, info.concern_def_errors) unless line.start_with?("def self.") || HelperScan.setter?(text) || text.match(HelperScan::DEF_LINE).nil?
             next
           end
           ControllerScan.ivar_names(raw).each { |n| info.concern_ivars << n unless info.concern_ivars.include?(n) }

@@ -47,4 +47,4 @@ ok   header_params skips junk, keeps bare names as empty values and trims blanks
 ok   header_scheme reads Bearer; the credential is a bare parameter
 ok   header_params is empty for a missing header and one over 8 KiB
 ok   header_params tolerates any bytes in values
-49 tests, 268 assertions, 0 failures
+49 tests, 269 assertions, 0 failures

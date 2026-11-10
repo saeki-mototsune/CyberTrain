@@ -257,6 +257,7 @@ module Cybertrain
       when :xml then "application/xml; charset=utf-8"
       when :text then "text/plain; charset=utf-8"
       when :js then "text/javascript; charset=utf-8"
+      when :css then "text/css; charset=utf-8"
       else "application/octet-stream"
       end
     end

@@ -300,10 +300,22 @@ module Cybertrain
         nxt == " " || nxt == "#" || nxt == ";" || nxt == "."
       end
 
-      # "app/controllers/x.rb" for any path that has an app/ directory in it
-      # (messages name files as the application sees them).
+      # "app/controllers/x.rb" for a path under the project root (messages
+      # name files as the application sees them, and gen/concerns/** and the
+      # manifest are keyed by it). The root is the one Runner is working on
+      # (use_root): the path after it, never after an "/app/" that is part
+      # of the root itself.
+      @root = ""
+
+      def self.use_root(root)
+        @root = root
+      end
+
       def self.app_path(file)
         return file if file.start_with?("app/")
+
+        base = "#{@root}/"
+        return file[base.size, file.size - base.size].to_s if @root != "" && file.start_with?(base)
 
         i = file.index("/app/")
         i.nil? ? file : file[i + 1, file.size - i - 1].to_s

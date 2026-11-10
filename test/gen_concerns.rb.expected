@@ -7,4 +7,5 @@ ok   nested concerns expand depth first; a cycle is refused by name
 ok   a concern included by an ancestor and again is expanded once
 ok   a class_methods name that an ancestor's concern defines as an instance method is refused
 ok   @x in a concern method is a view assign of the includer
-9 tests, 35 assertions, 0 failures
+ok   a project root with an app/ directory in its path still keys gen/concerns and the manifest by the path under it
+10 tests, 38 assertions, 0 failures

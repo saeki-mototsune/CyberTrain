@@ -28,6 +28,7 @@ module Cybertrain
     # warning line first.
     module Runner
       def self.run(root, argv)
+        ControllerScan.use_root(root)
         check = argv.include?("--check")
         embed = argv.include?("--embed-views")
         jobs_page = Cybertrain::Routes.jobs_page_spec
@@ -93,11 +94,13 @@ module Cybertrain
       # inference did not converge when it compiles bin/gen.rb. The app's
       # helper modules come too: a helper_method may not shadow one.
       def self.controllers_source(root, jobs_page)
+        ControllerScan.use_root(root)
         ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), jobs_page, ConcernScan.scan_dir("#{root}/app/controllers"),
                                 HelperScan.scan_dir("#{root}/app/helpers"))
       end
 
       def self.concerns_source(root)
+        ControllerScan.use_root(root)
         ConcernsEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), ConcernScan.scan_dir("#{root}/app/controllers"),
                              ModelScan.scan_dir("#{root}/app/models"), ConcernScan.scan_dir("#{root}/app/models"))
       end
@@ -105,6 +108,7 @@ module Cybertrain
       # gen/concerns/<path under app/> => source, for the concerns of
       # app/controllers then those of app/models.
       def self.concern_modules(root)
+        ControllerScan.use_root(root)
         out = ConcernsEmitter.module_files(ConcernScan.scan_dir("#{root}/app/controllers"))
         ConcernsEmitter.module_files(ConcernScan.scan_dir("#{root}/app/models")).each { |rel, source| out[rel] = source }
         out

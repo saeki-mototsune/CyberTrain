@@ -139,6 +139,7 @@ test "extensions map to Rails' registered formats" do
   assert_equal "application/xml; charset=utf-8", Cybertrain::Request.mime_type(:xml)
   assert_equal "text/plain; charset=utf-8", Cybertrain::Request.mime_type(:text)
   assert_equal "text/javascript; charset=utf-8", Cybertrain::Request.mime_type(:js)
+  assert_equal "text/css; charset=utf-8", Cybertrain::Request.mime_type(:css)
   assert_equal "application/octet-stream", Cybertrain::Request.mime_type(:pdf)
   assert_equal "application/octet-stream", Cybertrain::Request.mime_type(:unknown)
 end
