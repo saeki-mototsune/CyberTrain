@@ -1036,10 +1036,11 @@ module Cybertrain
     # is keyed by `"<table>/<to_param>-<updated_at epoch>"`, so it changes
     # when the record is saved. The header is a weak ETag,
     # `W/"<first 32 hex digits of the SHA-256>"`; `If-None-Match` matches it
-    # in a list, in weak or strong form, or as `*`. `last_modified:` is a
-    # Time, sent as `Last-Modified`; an unparseable `If-Modified-Since` is
-    # ignored. When both validators are given and the request sends both,
-    # both must match. Only GET and HEAD are answered `304`.
+    # in a list, in weak or strong form, or as `*`; any other `etag:` is an
+    # ArgumentError. `last_modified:` is a Time, sent as `Last-Modified`; an
+    # unparseable `If-Modified-Since` is ignored. When the request sends an
+    # `If-None-Match`, it alone decides and `If-Modified-Since` is ignored
+    # (RFC 9110 13.1.3). Only GET and HEAD are answered `304`.
     #
     # Cache-Control is `max-age=0, private, must-revalidate` (`public` when
     # `public: true`) unless {#expires_in} already set one.
@@ -1118,15 +1119,19 @@ module Cybertrain
     end
 
     # The text an ETag is made from: a String as given, a record as
-    # "posts/1-<updated_at epoch>", "" for nil or anything else.
+    # "posts/1-<updated_at epoch>", "" for nil; anything else is an
+    # ArgumentError.
     def validator_key(value)
       case value
       when String then value.to_s
+      when nil then ""
       when Model
         name = Inflector.pluralize(Inflector.underscore(value.model_name))
         at = Cast.time_or_nil(value.read_attribute(:updated_at))
         at.nil? ? "#{name}/#{value.to_param}" : "#{name}/#{value.to_param}-#{at.to_i}"
-      else ""
+      else
+        message = "etag: must be a String or a record, got #{value.class}"
+        raise ArgumentError, message
       end
     end
 
@@ -1140,24 +1145,19 @@ module Cybertrain
     end
 
     # Whether the request's validators say the client's copy is current:
-    # RFC 9110 section 13.2.2 for GET and HEAD, both validators needing to
-    # match when the request sends both (Rails' Request#fresh?).
+    # RFC 9110 section 13.1.3 and 13.1.4 for GET and HEAD: a non-empty
+    # If-None-Match decides alone and If-Modified-Since is ignored; without
+    # one, a parseable If-Modified-Since decides.
     def request_fresh?
       return false unless @request.get? || @request.head?
 
       since = Request.parse_http_date(@request.header("If-Modified-Since").to_s)
       none_match = @request.header("If-None-Match").to_s
-      return false if since < 0 && none_match.empty?
+      return etag_listed?(none_match, @response.header("ETag").to_s) unless none_match.empty?
+      return false if since < 0
 
-      if since >= 0
-        stamp = Request.parse_http_date(@response.header("Last-Modified").to_s)
-        return false if stamp < 0 || stamp > since
-      end
-      unless none_match.empty?
-        tag = @response.header("ETag").to_s
-        return false unless etag_listed?(none_match, tag)
-      end
-      true
+      stamp = Request.parse_http_date(@response.header("Last-Modified").to_s)
+      stamp >= 0 && stamp <= since
     end
 
     # Whether the If-None-Match list names `tag` (weak comparison: a W/

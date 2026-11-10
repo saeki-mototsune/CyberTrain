@@ -27,8 +27,9 @@ module Cybertrain
     # (`HTTP/1.1 202 Unknown`). The phrases are RFC 9110's (413 "Content Too
     # Large", 422 "Unprocessable Content"). A new code goes here and, as a
     # Symbol, into Controller::STATUS_SYMBOLS; the two tables list the same
-    # codes (the old names `:payload_too_large` and `:unprocessable_entity`
-    # are extra Symbols for 413 and 422).
+    # codes, plus five older names that are extra Symbols (`:payload_too_large`,
+    # `:request_entity_too_large`, `:unprocessable_entity`,
+    # `:request_uri_too_long`, `:requested_range_not_satisfiable`).
     STATUS_TEXT = {
       100 => "Continue", 101 => "Switching Protocols", 102 => "Processing", 103 => "Early Hints",
       200 => "OK", 201 => "Created", 202 => "Accepted", 203 => "Non-Authoritative Information",
@@ -59,8 +60,8 @@ module Cybertrain
     DEFAULT_FRAME_OPTIONS = "SAMEORIGIN"
 
     # The status code, 200 until set. The status line carries the reason
-    # phrase STATUS_TEXT gives the code; a code the table lacks (418, 451,
-    # a non-standard code) is sent with the phrase "Unknown".
+    # phrase STATUS_TEXT gives the code; a code the table lacks (418, a
+    # non-standard code) is sent with the phrase "Unknown".
     # @return [Integer]
     # @api public
     attr_accessor :status
@@ -278,15 +279,19 @@ module Cybertrain
     # section 8.6 forbids Content-Length in a 204.
     def to_http(head_only = false)
       out = +"HTTP/1.1 #{@status} #{status_text}\r\n"
-      out << "Content-Type: #{DEFAULT_CONTENT_TYPE}\r\n" if header_key("content-type").nil?
+      # A 304 describes no body: no Content-Type and no Content-Length
+      # (RFC 9110 15.4.5), as Rails sends it.
+      not_modified = @status == 304
+      out << "Content-Type: #{DEFAULT_CONTENT_TYPE}\r\n" if !not_modified && header_key("content-type").nil?
       @headers.each do |name, value|
         next if HeaderName.same?(name, "content-length")
+        next if not_modified && HeaderName.same?(name, "content-type")
 
         out << name << ": " << value << "\r\n"
       end
       out << "X-Content-Type-Options: #{DEFAULT_NOSNIFF}\r\n" if header_key("x-content-type-options").nil?
       out << "X-Frame-Options: #{DEFAULT_FRAME_OPTIONS}\r\n" if header_key("x-frame-options").nil?
-      out << "Content-Length: #{@body.bytesize}\r\n"
+      out << "Content-Length: #{@body.bytesize}\r\n" unless not_modified
       @cookies.each do |cookie|
         out << "Set-Cookie: " << cookie << "\r\n"
       end

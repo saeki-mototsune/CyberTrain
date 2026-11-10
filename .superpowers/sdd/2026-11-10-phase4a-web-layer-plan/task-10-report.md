@@ -28,3 +28,11 @@ Status: DONE
 - Green under `spin test`: controller_status, http_response, send_data, http_caching, send_blob, client, error_pages, http_request, server.
 - `ruby script/check-reserved-names` green; `script/api-docs` 98.73% documented, no new undocumented items; `ruby script/gate` green (before the last test-only edit; re-run noted in the final message).
 - Whole suite not run, as instructed. No generator emitter changed, so no fixtures regenerated.
+
+## Fix round 1
+
+- Freshness: a non-empty If-None-Match now decides alone (If-Modified-Since ignored, RFC 9110 13.1.3); without it a parseable If-Modified-Since decides. Test rewritten: matching ETag with an older date gives 304, mismatching ETag with a matching date gives 200, date alone gives 304. Comments corrected.
+- `Request.http_digits` reads its argument through a fresh local (rule 62).
+- response.rb comments: dropped 451 from the "Unknown" example, alias note now lists all five.
+- `etag:` that is neither nil, a String nor a Model raises ArgumentError ("etag: must be a String or a record, got Integer"), message built into a local first; test added.
+- `Response#to_http` omits Content-Type (default and explicit) and Content-Length for status 304; 204 and all other statuses unchanged. Test added; no existing snapshot changed.

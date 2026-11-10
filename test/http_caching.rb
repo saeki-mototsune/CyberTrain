@@ -60,6 +60,10 @@ class PagesController < Cybertrain::Controller
     render plain: "body" unless performed?
   end
 
+  def badetag
+    fresh_when etag: 42
+  end
+
   def check
     render plain: "rendered" if stale?(last_modified: Time.at(STAMP).utc)
   end
@@ -157,10 +161,28 @@ test "If-Modified-Since and stale?" do
   assert_equal 200, CLIENT.get("/check").status
 end
 
-test "with both validators both must match" do
+test "If-None-Match decides alone when the request sends both validators" do
   assert_equal 304, CLIENT.get("/both", { "If-None-Match" => tag_of("v1"), "If-Modified-Since" => stamp_date(0) }).status
   assert_equal 200, CLIENT.get("/both", { "If-None-Match" => tag_of("v0"), "If-Modified-Since" => stamp_date(0) }).status
-  assert_equal 200, CLIENT.get("/both", { "If-None-Match" => tag_of("v1"), "If-Modified-Since" => stamp_date(-5) }).status
+  assert_equal 304, CLIENT.get("/both", { "If-None-Match" => tag_of("v1"), "If-Modified-Since" => stamp_date(-5) }).status
+  assert_equal 304, CLIENT.get("/both", { "If-Modified-Since" => stamp_date(0) }).status
+end
+
+test "a 304 carries no Content-Type and no Content-Length" do
+  raw = CLIENT.get("/text", { "If-None-Match" => tag_of("v1") }).to_http
+  assert_includes raw, "HTTP/1.1 304 Not Modified\r\n"
+  assert_includes raw, "ETag: "
+  refute raw.downcase.include?("content-type:")
+  refute raw.downcase.include?("content-length:")
+  ok = CLIENT.get("/text").to_http
+  assert_includes ok.downcase, "content-type:"
+  assert_includes ok, "Content-Length: 4\r\n"
+end
+
+test "an etag that is neither a String nor a record is an ArgumentError" do
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/badetag", { "host" => "example.test" }, ""))
+  msg = assert_raises("ArgumentError") { PagesController.new(ctx).process(:badetag) { |c| c.badetag } }
+  assert_includes msg, "etag: must be a String or a record"
 end
 
 test "Cache-Control from fresh_when and expires_in" do

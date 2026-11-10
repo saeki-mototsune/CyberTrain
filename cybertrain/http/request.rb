@@ -643,7 +643,8 @@ module Cybertrain
     # The `len` ASCII digits of `s` from byte `from` as an Integer, -1 when
     # one is not a digit.
     # @api private
-    def self.http_digits(s, from, len)
+    def self.http_digits(text, from, len)
+      s = text.to_s # NOTES rule 62
       n = 0
       i = 0
       while i < len
