@@ -561,4 +561,24 @@ test "a helper_method named like a framework helper, an app helper, or an undefi
   assert_equal "helper_method :price: price is defined in PricesHelper", msg
 end
 
+test "a helper_method whose def a template cannot fill (*rest, ...) is refused with the def's place" do
+  jobs = Cybertrain::Gen::JobsPageSpec.new("", "")
+  rest = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
+                                                     "class ArticlesController < ApplicationController\n  helper_method :f\n\n  def f(*rest) = rest.size\nend\n")
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllersEmitter.emit([app_controller, rest], jobs, no_concerns, prices_helpers) }
+  assert_equal "helper_method :f in ArticlesController: app/controllers/articles_controller.rb:4: helper parameters must be named; " \
+               "templates pass values by position or keyword", msg
+  # Not named by a helper_method, the same def is no error.
+  quiet = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
+                                                      "class ArticlesController < ApplicationController\n  def f(*rest) = rest.size\nend\n")
+  refute Cybertrain::Gen::ControllersEmitter.emit([app_controller, quiet], jobs, no_concerns, prices_helpers).include?("call_helper_method"), "no table"
+  # A concern's def, through its included block's helper_method.
+  forward = concern("app/controllers/concerns/forwarding.rb",
+                    "module Forwarding\n  extend ActiveSupport::Concern\n\n  included do\n    helper_method :g\n  end\n\n  def g(...) = 1\nend\n")
+  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", "class ArticlesController < ApplicationController\n  include Forwarding\nend\n")
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllersEmitter.emit([app_controller, articles], jobs, [forward], prices_helpers) }
+  assert_equal "helper_method :g in ArticlesController: app/controllers/concerns/forwarding.rb:8: helper parameters must be named; " \
+               "templates pass values by position or keyword", msg
+end
+
 Cybertrain::Test.run!

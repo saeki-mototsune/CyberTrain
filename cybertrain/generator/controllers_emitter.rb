@@ -130,9 +130,16 @@ module Cybertrain
         defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
         names.each do |name|
           check_helper_method(name, helper_modules)
-          found = helper_def(info, infos, concerns, name)
+          error = Array.new(0) { "" }
+          found = helper_def(info, infos, concerns, name, error)
           if found.nil?
             msg = "helper_method :#{name} in #{info.class_name}: no def #{name} in the controller, its parents or its concerns"
+            raise ArgumentError, msg
+          end
+          # A def whose parameters a template cannot fill (`*rest`, `...`)
+          # is refused, as the same def in app/helpers is.
+          unless error.empty? || error[0].empty?
+            msg = "helper_method :#{name} in #{info.class_name}: #{error[0]}"
             raise ArgumentError, msg
           end
           # A template passes no block to a helper method: the call has none.
@@ -193,16 +200,27 @@ module Cybertrain
       # The `def name` a call on the controller reaches, as Ruby looks it
       # up: the class's own, then its concerns' (the last include first),
       # then the same for each scanned parent; nil when none has one.
-      def self.helper_def(info, infos, concerns, name)
+      # error receives the found def's parse error ("" when it has none).
+      def self.helper_def(info, infos, concerns, name, error = Array.new(0) { "" })
         seen = Array.new(0) { "" }
         current = info
         until current.nil? || seen.include?(current.class_name)
           seen << current.class_name
-          current.defs.each { |d| return d if d.name == name }
+          current.defs.each_with_index do |d, k|
+            next unless d.name == name
+
+            error << current.def_errors[k]
+            return d
+          end
           places = Array.new(0) { "" }
           current.include_lines.each { |n| places << "#{ControllerScan.app_path(current.file)}:#{n}" }
           ConcernScan.expand(current.includes, concerns, places).reverse.each do |c|
-            c.concern_defs.each { |d| return d if d.name == name }
+            c.concern_defs.each_with_index do |d, k|
+              next unless d.name == name
+
+              error << c.concern_def_errors[k]
+              return d
+            end
           end
           current = find(infos, current.superclass_name)
         end

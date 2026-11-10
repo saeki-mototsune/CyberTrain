@@ -24,4 +24,5 @@ ok   scan_source reads helper_method lines and each def's parameters
 ok   emit writes helper_method? and call_helper_method for the declared names
 ok   a helper_method declared in a concern's included block dispatches from the includer
 ok   a helper_method named like a framework helper, an app helper, or an undefined method is refused with its message
-26 tests, 90 assertions, 0 failures
+ok   a helper_method whose def a template cannot fill (*rest, ...) is refused with the def's place
+27 tests, 95 assertions, 0 failures

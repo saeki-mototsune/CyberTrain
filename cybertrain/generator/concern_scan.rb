@@ -30,12 +30,14 @@ module Cybertrain
     # method names its `included` body hands to callbacks and rescue_from;
     # concern_defs: its instance methods (a HelperDef each: the parameters
     # when HelperScan.parse_def reads them, else the name and line);
+    # concern_def_errors: per def, HelperScan's message when it could not
+    # read the parameters ("" when it could);
     # callback_count / rescue_count: the declarations of the `included`
     # body that add a callback / a rescue handler.
     class ConcernInfo
       attr_reader :concern_file, :concern_name, :concern_line, :included_body, :class_method_lines,
                   :class_method_names, :class_method_line_numbers, :concern_includes, :include_line_numbers,
-                  :concern_ivars, :concern_callbacks, :concern_defs, :callback_count, :rescue_count
+                  :concern_ivars, :concern_callbacks, :concern_defs, :concern_def_errors, :callback_count, :rescue_count
 
       def initialize(concern_file, concern_name, concern_line)
         @concern_file = concern_file
@@ -50,6 +52,7 @@ module Cybertrain
         @concern_ivars = Array.new(0) { "" }
         @concern_callbacks = Array.new(0) { "" }
         @concern_defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        @concern_def_errors = Array.new(0) { "" }
         @callback_count = 0
         @rescue_count = 0
       end
@@ -177,7 +180,7 @@ module Cybertrain
             one_line = HelperScan.endless?(text) || (line.include?(";") && (line.end_with?(" end") || line.end_with?(";end")))
             i = skip_block(lines, i, indent) unless one_line
             add_ivars(info, lines, start - 1, i)
-            info.concern_defs << def_of(file, start, text) unless line.start_with?("def self.") || HelperScan.setter?(text)
+            info.concern_defs << def_of(file, start, text, info.concern_def_errors) unless line.start_with?("def self.") || HelperScan.setter?(text)
             next
           end
           ControllerScan.ivar_names(raw).each { |n| info.concern_ivars << n unless info.concern_ivars.include?(n) }
@@ -217,15 +220,19 @@ module Cybertrain
       end
 
       # A HelperDef with its parameters when HelperScan reads them, else
-      # with the name and line alone (a `*rest` or `...` parameter).
-      def self.def_of(file, line_no, text)
+      # with the name and line alone (a `*rest` or `...` parameter), and
+      # HelperScan's message appended to errors ("" when it read them).
+      def self.def_of(file, line_no, text, errors)
         name = HelperScan.def_name(file, line_no, text)
         parsed = HelperDef.new(name, line_no, [], [], [], [], "")
+        error = ""
         begin
-          parsed = HelperScan.parse_def(file, line_no, text)
-        rescue HelperScan::Error
+          parsed = HelperScan.parse_def(ControllerScan.app_path(file), line_no, text)
+        rescue HelperScan::Error => e
           parsed = HelperDef.new(name, line_no, [], [], [], [], "")
+          error = e.message
         end
+        errors << error
         parsed
       end
 

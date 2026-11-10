@@ -7,7 +7,7 @@ module Cybertrain
     class ControllerInfo
       attr_reader :file, :class_name, :superclass_name, :ivars, :callbacks,
                   :includes, :include_positions, :rescue_positions, :include_lines,
-                  :method_names, :method_lines, :module_prefix, :helper_methods, :defs
+                  :method_names, :method_lines, :module_prefix, :helper_methods, :defs, :def_errors
 
       # includes: the module names of the class's `include` lines, in order.
       # include_positions / rescue_positions: per include, the count of
@@ -19,7 +19,9 @@ module Cybertrain
       # helper_methods: the names of the class's `helper_method` lines
       # (spec 4.3), in order; defs: a HelperDef per instance `def` (its
       # parameters when HelperScan.parse_def reads them, else the name and
-      # line).
+      # line); def_errors: per def, HelperScan's message when it could not
+      # read the parameters ("" when it could), so a helper_method naming
+      # that def is refused with it.
       def initialize(file, class_name, superclass_name, ivars, callbacks,
                      includes = Array.new(0) { "" }, include_positions = Array.new(0) { 0 },
                      rescue_positions = Array.new(0) { 0 }, include_lines = Array.new(0) { 0 },
@@ -38,6 +40,7 @@ module Cybertrain
         @module_prefix = module_prefix
         @helper_methods = Array.new(0) { "" }
         @defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        @def_errors = Array.new(0) { "" }
       end
 
       # A superclass written bare inside a module, once every controller is
@@ -98,6 +101,7 @@ module Cybertrain
         method_lines = Array.new(0) { 0 }
         helper_methods = Array.new(0) { "" }
         defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        def_errors = Array.new(0) { "" }
         lines = source.lines
         # The open modules (full names) and their indentation.
         modules = Array.new(0) { "" }
@@ -145,6 +149,7 @@ module Cybertrain
               method_lines = Array.new(0) { 0 }
               helper_methods = Array.new(0) { "" }
               defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+              def_errors = Array.new(0) { "" }
               callbacks_above = 0
               rescues_above = 0
               class_indent = indent unless stripped.include?(";")
@@ -165,7 +170,7 @@ module Cybertrain
             if dm
               method_names << dm[1].to_s
               method_lines << number
-              defs << def_at(file, lines, number)
+              defs << def_at(file, lines, number, def_errors)
             end
             helper_method_names(line).each { |n| helper_methods << n unless helper_methods.include?(n) }
           end
@@ -178,14 +183,16 @@ module Cybertrain
                                   rescue_positions, include_lines, method_names, method_lines, prefix)
         helper_methods.each { |n| info.helper_methods << n }
         defs.each { |d| info.defs << d }
+        def_errors.each { |e| info.def_errors << e }
         info
       end
 
       # The HelperDef of the `def` on line `number` (1-based) of `lines`,
       # its parameter list joined over the lines it runs on: the parameters
       # when HelperScan.parse_def reads them, else the name and line alone
-      # (a `*rest` or `...` parameter).
-      def self.def_at(file, lines, number)
+      # (a `*rest` or `...` parameter), and HelperScan's message appended to
+      # errors ("" when it read them).
+      def self.def_at(file, lines, number, errors)
         text = lines[number - 1].to_s.strip
         j = number
         while HelperScan.open_parens(text) > 0 && j < lines.size
@@ -194,11 +201,14 @@ module Cybertrain
         end
         name = HelperScan.def_name(file, number, text)
         parsed = HelperDef.new(name, number, [], [], [], [], "")
+        error = ""
         begin
-          parsed = HelperScan.parse_def(file, number, text)
-        rescue HelperScan::Error
+          parsed = HelperScan.parse_def(app_path(file), number, text)
+        rescue HelperScan::Error => e
           parsed = HelperDef.new(name, number, [], [], [], [], "")
+          error = e.message
         end
+        errors << error
         parsed
       end
 
