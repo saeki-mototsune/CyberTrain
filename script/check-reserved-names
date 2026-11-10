@@ -191,6 +191,9 @@ NAME_HOMES = {
   "text" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb],
   "any" => %w[cybertrain/format_collector.rb],
   "permit" => %w[cybertrain/params.rb],
+  # The routes DSL's `scope "/v1" do` (nil), the model macro `scope :x,
+  # -> { }` (nil) and the generated Gen::Console.scope(name) (a Relation).
+  "scope" => %w[cybertrain/generator/routes_dsl.rb cybertrain/model.rb cybertrain/generator/console_emitter.rb],
   # i18n's translate and localize helpers come in phase 4b.
   "t" => %w[],
   "l" => %w[]
@@ -198,7 +201,7 @@ NAME_HOMES = {
 # The names the phase 4a plan lists as the first candidates for a clash
 # must keep a row (Global Constraints of the plan).
 NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted permanent html json turbo_stream
-                     csv xml text any permit t l].freeze
+                     csv xml text any permit scope t l].freeze
 root = File.expand_path("..", __dir__)
 home_rows_missing = NAME_CANDIDATES - NAME_HOMES.keys
 homeless = []
