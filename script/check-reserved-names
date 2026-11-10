@@ -173,8 +173,7 @@ jobs_missing = job_names - Cybertrain::Gen::JobScan::RESERVED_CLASS_METHODS
 # means no file may define the name yet.
 NAME_HOMES = {
   "format" => %w[cybertrain/console/printer.rb cybertrain/http/request.rb],
-  # time_zone.rb's private parser method is renamed expect_byte in Task 11.
-  "expect" => %w[cybertrain/mailer.rb cybertrain/params.rb cybertrain/time_zone.rb],
+  "expect" => %w[cybertrain/mailer.rb cybertrain/params.rb],
   "select" => %w[cybertrain/template/form_builder.rb],
   # cli/templates.rb's is `def self.layout` (the generated layout's text);
   # active_support.rb's, like the other declarations below, is the no-op
