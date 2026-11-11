@@ -158,17 +158,58 @@ module Cybertrain
 
     # Whether a request whose format is not :html also takes HTML: its
     # format came from Accept (no extension asked for that format alone)
-    # and Accept lists text/html or */* (Turbo's
-    # "text/vnd.turbo-stream.html, text/html, application/xhtml+xml",
-    # axios' "application/json, text/plain, */*"). Rails lists every format
-    # of such a request and answers in the first one the action has.
+    # and Accept offers HTML ({.accept_takes_html?}). Rails lists every
+    # format of such a request and answers in the first one the action has.
     # @param request [Request]
     # @return [Boolean]
     def self.accepts_html?(request)
       return false if request.format == :html || !request.format_extension.empty?
 
-      accept = request.header("Accept").to_s
-      accept.include?("text/html") || accept.include?("*/*")
+      accept_takes_html?(request.header("Accept").to_s)
+    end
+
+    # Whether an Accept value offers HTML: it lists text/html, or `*/*`
+    # and no text/html entry of its own (Turbo's
+    # "text/vnd.turbo-stream.html, text/html, application/xhtml+xml",
+    # axios' "application/json, text/plain, */*"). An entry with q=0
+    # refuses its type (RFC 9110 12.4.2), and the text/html entry is the
+    # more specific one, so "application/json, text/html;q=0, */*" does
+    # not offer HTML and "application/json, */*;q=0, text/html" does.
+    # Media types and the q parameter are read in any case, as
+    # {Request.format_for_accept} reads them; other q-values do not rank.
+    # @param value [String] the Accept header
+    # @return [Boolean]
+    def self.accept_takes_html?(value)
+      accept = value.to_s # a fresh String for the scan (NOTES rule 62)
+      # 0 not listed, 1 offered, 2 refused; the first entry of each decides.
+      html = 0
+      any = 0
+      accept.split(",").each do |entry|
+        parts = entry.split(";")
+        next if parts.empty?
+
+        media = parts[0].to_s.strip.downcase
+        next unless media == "text/html" || media == "*/*"
+
+        refused = false
+        parts.each_with_index do |param, i|
+          next if i == 0
+
+          pair = param.split("=", 2)
+          next unless pair.size == 2 && pair[0].to_s.strip.downcase == "q"
+
+          refused = Request.zero_quality?(pair[1].to_s.strip)
+        end
+        state = refused ? 2 : 1
+        if media == "text/html"
+          html = state if html == 0
+        elsif any == 0
+          any = state
+        end
+      end
+      return html == 1 if html != 0
+
+      any == 1
     end
 
     # "articles/index.csv.erb": the template of a format other than html.
