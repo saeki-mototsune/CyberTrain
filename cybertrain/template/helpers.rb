@@ -1648,9 +1648,10 @@ module Cybertrain
       # --- assets (spec 7.2, 7.3) -------------------------------------------
 
       # asset_path("logo.svg") -> "/assets/logo-1a2b3c4d.svg" (Assets.path:
-      # an unknown name raises in development and test).
+      # an unknown name raises in development and test). A URL or a path
+      # starting with `/` comes back as given, as from the tag helpers.
       def asset_path(name)
-        Assets.path(name)
+        asset_source(name, "")
       end
 
       # A source as a tag helper writes it: a URL with a scheme (or `//`)
@@ -1734,7 +1735,8 @@ module Cybertrain
       # image_tag("logo.svg", alt: "Logo", size: "16x16", class: "x"):
       # `<img src="/assets/logo-1a2b3c4d.svg" alt="Logo" width="16"
       # height="16" class="x">`. A source starting with `/` or a scheme is
-      # used as written; no alt is made up; size: is "WxH" or "N" (another
+      # used as written; no alt is made up, but alt: "" is written as
+      # `alt=""`; size: is "WxH" or "N" (another
       # shape is ignored, as in Rails).
       def image_tag(args, kwargs)
         helper_arity!("image_tag", args, 1, 1)
@@ -1742,8 +1744,8 @@ module Cybertrain
         src = asset_source(text_arg(args, 0, "image_tag"), "")
         out = +"<img"
         out << FormBuilder.attr_html("src", src)
-        alt = FormBuilder.value_text(kwargs["alt"])
-        out << FormBuilder.attr_html("alt", alt) unless alt.empty?
+        # alt: "" is written (a decorative image); an absent or nil alt: is not.
+        out << FormBuilder.attr_html("alt", FormBuilder.value_text(kwargs["alt"])) unless kwargs["alt"].nil?
         size = FormBuilder.value_text(kwargs["size"])
         x = size.index("x")
         width = x.nil? ? size : size[0, x].to_s
@@ -1784,6 +1786,7 @@ module Cybertrain
       # modulepreload link per preloaded pin and the entry point's import,
       # each with this request's nonce when a policy applies (spec C-5).
       def javascript_importmap_tags(entry)
+        request_bound!("javascript_importmap_tags")
         nonce = nonce_attr(true)
         out = +"<script type=\"importmap\" data-turbo-track=\"reload\""
         out << nonce << ">" << Assets.importmap_json << "</script>"

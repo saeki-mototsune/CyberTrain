@@ -55,6 +55,10 @@ module Cybertrain
     def initialize(app, root = "public")
       super(app)
       @root = root
+      # The root's realpath with a trailing "/", found on the first file
+      # served (the root may not exist yet when the stack is built). Two
+      # workers finding it at once write the same String.
+      @real_root = ""
     end
 
     def call(ctx)
@@ -94,11 +98,24 @@ module Cybertrain
     # Whether file, after its symlinks, is still under the root: a symlink
     # in public/ that leads elsewhere is not served (one inside it is).
     def inside_root?(file)
-      root = File.realpath(@root)
-      real = File.realpath(file)
-      real.start_with?(root.end_with?("/") ? root : "#{root}/")
+      root = real_root
+      return false if root.empty?
+
+      File.realpath(file).start_with?(root)
     rescue SystemCallError
       false
+    end
+
+    def real_root
+      known = @real_root
+      return known unless known.empty?
+
+      found = File.realpath(@root)
+      found = "#{found}/" unless found.end_with?("/")
+      @real_root = found
+      found
+    rescue SystemCallError
+      ""
     end
 
     # A digested file under /assets: the segments after "assets" name it.

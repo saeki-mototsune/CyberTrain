@@ -1,5 +1,6 @@
 ok   asset_path and the tag helpers
 ok   javascript_importmap_tags with and without a nonce
 ok   an unknown asset raises in test and logs once in production, then emits the undigested path
+ok   javascript_importmap_tags outside a request names itself
 ok   boot reads public/assets/.manifest: current and kept digests are served immutable
-4 tests, 28 assertions, 0 failures
+5 tests, 35 assertions, 0 failures

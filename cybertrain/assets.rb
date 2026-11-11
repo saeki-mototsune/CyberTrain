@@ -9,6 +9,7 @@
 # every name is unknown, the import map has no imports and nothing is
 # preloaded. Module-level instance variables rather than @@class_variables
 # (spikes/NOTES.md rule 18).
+require "cybertrain/asset_manifest"
 require "cybertrain/logger"
 
 module Cybertrain
@@ -43,10 +44,13 @@ module Cybertrain
     # false in production (Application#boot): an unknown name is logged
     # once and written undigested instead of raising.
     @raise_on_unknown = true
-    # The unknown names production has logged, name => true.
+    # The unknown names production has logged, name => true: at most
+    # MAX_LOGGED_UNKNOWN (names can come from requests), then no new name
+    # is logged.
     @logged = { "" => true }
     @logged.delete("")
     UNKNOWN_LOCK = Mutex.new
+    MAX_LOGGED_UNKNOWN = 1000
 
     # Installs gen/assets.rb's tables; gen/assets.rb calls it when the
     # application loads.
@@ -87,20 +91,24 @@ module Cybertrain
       digested = @resolver.call(name)
       return digested unless digested.empty?
 
-      message = "asset \"#{name}\" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)"
-      raise UnknownAsset, message if @raise_on_unknown
+      if @raise_on_unknown
+        message = "asset \"#{name}\" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)"
+        raise UnknownAsset, message
+      end
 
-      log_unknown(name, message)
+      # name.inspect: a name from a request cannot write a line of its own.
+      log_unknown(name, "asset #{name.inspect} is not in app/assets, app/javascript or vendor/javascript (run spin run gen)")
       "/assets/#{name}"
     end
 
-    # Logs message once per name (requests on several workers may ask at
-    # once; Spinel has no GVL, so the set is guarded).
+    # Logs message once per name, for the first MAX_LOGGED_UNKNOWN names
+    # (requests on several workers may ask at once; Spinel has no GVL, so
+    # the set is guarded).
     # @api private
     def self.log_unknown(name, message)
       first = false
       UNKNOWN_LOCK.synchronize do
-        unless @logged.key?(name)
+        if !@logged.key?(name) && @logged.size < MAX_LOGGED_UNKNOWN
           @logged[name] = true
           first = true
         end
@@ -120,28 +128,19 @@ module Cybertrain
     # Reads public_root/assets/.manifest (written by `spin run gen`): the
     # digests it keeps for each logical path, so that a page served before
     # a deploy still fetches its files as immutable. Application#boot calls
-    # it once; a missing file keeps none. A line naming a path that could
-    # leave public/assets, or a digest that is not 8 hex characters, is
-    # skipped.
+    # it once; a missing file keeps none. A malformed line is skipped
+    # whole, as gen skips it (AssetManifest.read_kept).
     # @param public_root [String]
     # @return [nil]
     # @api public
     def self.load_kept(public_root)
       kept = { "" => true }
       kept.delete("")
-      file = "#{public_root}/assets/.manifest"
+      file = "#{public_root}/assets/#{AssetManifest::FILE}"
       if File.file?(file)
-        File.read(file).each_line do |line|
-          parts = line.strip.split(" ")
-          next if parts.size < 2
-
-          logical = parts[0].to_s
-          next unless safe_logical?(logical)
-
-          parts.each_with_index do |d, i|
-            digest = d.to_s
-            kept[digested_name(logical, digest)] = true if i > 0 && digest?(digest)
-          end
+        lines = AssetManifest.read_kept(File.read(file))
+        lines.each_key do |logical|
+          lines[logical].each { |digest| kept[AssetManifest.digested_name(logical, digest)] = true }
         end
       end
       @kept = kept
@@ -160,77 +159,10 @@ module Cybertrain
       name = file_name.to_s
       return true if @kept.key?(name)
 
-      logical = logical_of(name)
+      logical = AssetManifest.logical_of(name)
       return false if logical.empty?
 
       @resolver.call(logical) == "/assets/#{name}"
-    end
-
-    # "logo-1a2b3c4d.svg" -> "logo.svg", the inverse of digested_name; ""
-    # for a name with no digest where gen puts one.
-    # @api private
-    def self.logical_of(name)
-      slash = name.rindex("/")
-      dir = slash.nil? ? "" : name[0, slash + 1].to_s
-      base = slash.nil? ? name : name[slash + 1, name.size - slash - 1].to_s
-      dot = base.index(".")
-      stop = dot.nil? || dot == 0 ? base.size : dot
-      return "" if stop < 10
-
-      digest = base[stop - 8, 8].to_s
-      return "" unless base[stop - 9] == "-" && digest?(digest)
-
-      "#{dir}#{base[0, stop - 9]}#{base[stop, base.size - stop]}"
-    end
-
-    # "logo.svg" + digest -> "logo-<digest>.svg", as gen names the file
-    # (Gen::AssetScan.digested_name): before the file name's first dot, at
-    # the end of a name with none or that starts with one.
-    # @api private
-    def self.digested_name(logical, digest)
-      slash = logical.rindex("/")
-      dir = slash.nil? ? "" : logical[0, slash + 1].to_s
-      base = slash.nil? ? logical : logical[slash + 1, logical.size - slash - 1].to_s
-      dot = base.index(".")
-      named = dot.nil? || dot == 0 ? "#{base}-#{digest}" : "#{base[0, dot]}-#{digest}#{base[dot, base.size - dot]}"
-      "#{dir}#{named}"
-    end
-
-    # 8 lowercase hex characters.
-    # @api private
-    def self.digest?(text)
-      s = text.to_s
-      return false unless s.bytesize == 8
-
-      i = 0
-      while i < 8
-        b = s.getbyte(i)
-        return false unless (b >= 48 && b <= 57) || (b >= 97 && b <= 102)
-
-        i += 1
-      end
-      true
-    end
-
-    # A .manifest path that stays below public/assets: relative, no empty
-    # or dot-led segment, no backslash, space or control character.
-    # @api private
-    def self.safe_logical?(logical)
-      s = logical.to_s
-      return false if s.empty? || s.start_with?("/")
-
-      i = 0
-      n = s.bytesize
-      while i < n
-        b = s.getbyte(i)
-        return false if b == 92 || b == 32 || b < 32 || b == 127
-
-        i += 1
-      end
-      s.split("/", -1).each do |part|
-        return false if part.empty? || part.start_with?(".")
-      end
-      true
     end
 
     # @return [String] the import map of config/importmap.rb as compact

@@ -91,11 +91,11 @@ test "files are digested with the first 8 hex of their SHA-256" do
 end
 
 test "digested names keep every extension and a directory" do
-  assert_equal "logo-1a2b3c4d.svg", Cybertrain::Gen::AssetScan.digested_name("logo.svg", "1a2b3c4d")
-  assert_equal "app-1a2b3c4d.js.map", Cybertrain::Gen::AssetScan.digested_name("app.js.map", "1a2b3c4d")
-  assert_equal "LICENSE-1a2b3c4d", Cybertrain::Gen::AssetScan.digested_name("LICENSE", "1a2b3c4d")
+  assert_equal "logo-1a2b3c4d.svg", Cybertrain::AssetManifest.digested_name("logo.svg", "1a2b3c4d")
+  assert_equal "app-1a2b3c4d.js.map", Cybertrain::AssetManifest.digested_name("app.js.map", "1a2b3c4d")
+  assert_equal "LICENSE-1a2b3c4d", Cybertrain::AssetManifest.digested_name("LICENSE", "1a2b3c4d")
   assert_equal "controllers/hello_controller-1a2b3c4d.js",
-               Cybertrain::Gen::AssetScan.digested_name("controllers/hello_controller.js", "1a2b3c4d")
+               Cybertrain::AssetManifest.digested_name("controllers/hello_controller.js", "1a2b3c4d")
 end
 
 test "a logical path under two roots is refused" do
@@ -244,6 +244,26 @@ test "a manifest line naming a path outside public/assets deletes nothing" do
   assert_equal "keep me\n", File.read("#{TMP}/outside.txt")
   assert_equal manifest, File.read("#{TMP}/public/assets/.manifest")
   File.delete("#{TMP}/outside.txt")
+end
+
+test "boot and gen read a malformed manifest line alike: the whole line is dropped" do
+  Cybertrain::Gen::AssetsEmitter.sync_public(TMP, scan_now).each { |line| puts line }
+  manifest = File.read("#{TMP}/public/assets/.manifest")
+  File.write("#{TMP}/public/assets/.manifest", "#{manifest}gone.css 1a2b3c4d 2b3c4d5e\nbad.css 1a2b3c4d ZZZZZZZZ\nshort.css 1a2b3c\n")
+  Cybertrain::Assets.load_kept("#{TMP}/public")
+  # a well-formed line whose asset is gone: gen keeps it, boot serves it
+  assert Cybertrain::Assets.kept_file?("gone-2b3c4d5e.css")
+  # one bad digest drops the line's good one too, for both
+  refute Cybertrain::Assets.kept_file?("bad-1a2b3c4d.css")
+  refute Cybertrain::Assets.kept_file?("short-1a2b3c.css")
+  Cybertrain::Gen::AssetsEmitter.sync_public(TMP, scan_now).each { |line| puts line }
+  rewritten = File.read("#{TMP}/public/assets/.manifest")
+  assert_includes rewritten, "gone.css 1a2b3c4d 2b3c4d5e\n"
+  refute rewritten.include?("bad.css")
+  refute rewritten.include?("short.css")
+  assert_equal ["bad.css", "gone.css"], Cybertrain::AssetManifest.read_kept("bad.css 1a2b3c4d\ngone.css 2b3c4d5e\nx.css 1a2b3c4d Q\n").keys.sort
+  File.write("#{TMP}/public/assets/.manifest", manifest)
+  Cybertrain::Assets.load_kept("#{TMP}/public")
 end
 
 test "the import map, preloads and the emitted case" do

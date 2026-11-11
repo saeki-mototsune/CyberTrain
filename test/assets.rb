@@ -140,6 +140,8 @@ end
 def tags_html(nonce)
   n = nonce.empty? ? "" : " nonce=\"#{nonce}\""
   "/assets/logo-3c4d5e6f.svg\n" \
+    "/icons/a.png\n" \
+    "https://cdn.example/x.js\n" \
     "<link rel=\"stylesheet\" href=\"/assets/application-1a2b3c4d.css\">\n" \
     "<link rel=\"stylesheet\" href=\"/assets/application-1a2b3c4d.css\" media=\"print\">\n" \
     "<link rel=\"stylesheet\" href=\"/assets/application-1a2b3c4d.css\"#{n}>\n" \
@@ -150,7 +152,7 @@ def tags_html(nonce)
     "<img src=\"/assets/logo-3c4d5e6f.svg\" width=\"16\" height=\"16\">\n" \
     "<img src=\"/icons/a.png\">\n" \
     "<img src=\"https://example.com/a.png\" alt=\"A &amp; B\">\n" \
-    "<img src=\"data:image/gif;base64,R0lGOD\">\n"
+    "<img src=\"data:image/gif;base64,R0lGOD\" alt=\"\">\n"
 end
 
 def importmap_html(nonce, entry)
@@ -211,8 +213,25 @@ test "an unknown asset raises in test and logs once in production, then emits th
   # a javascript: name is not a URL to write as given, but an asset name
   js = CLIENT.get("/unknown?name=javascript%3Aalert(1)")
   assert_equal "/assets/javascript:alert(1)\n<img src=\"/assets/javascript:alert(1)\">\n", js.body
+  # the logged name is inspected: a newline in it cannot start a line
+  assert_equal "/assets/a\nb.png", Cybertrain::Assets.path("a\nb.png")
+  assert_includes LOG.string, "asset \"a\\nb.png\" is not in app/assets"
+  refute LOG.string.include?("\nb.png")
+  # at most 1000 names are logged; a later new name is not
+  i = 0
+  while i < 1100
+    Cybertrain::Assets.path("n#{i}.png")
+    i += 1
+  end
+  assert_equal 1000, LOG.string.scan("is not in app/assets").size
+  refute LOG.string.include?("n1099.png")
   Cybertrain::Assets.raise_on_unknown = true
   assert_equal "asset \"logo.png\" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)", path_error("logo.png")
+end
+
+test "javascript_importmap_tags outside a request names itself" do
+  message = assert_raises("Cybertrain::Views::OutsideRequest") { Cybertrain::Views.render_partial("assets/importmap_partial") }
+  assert_includes message, "javascript_importmap_tags needs a request"
 end
 
 test "boot reads public/assets/.manifest: current and kept digests are served immutable" do

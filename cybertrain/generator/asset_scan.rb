@@ -1,4 +1,5 @@
 require "digest"
+require "cybertrain/asset_manifest"
 
 module Cybertrain
   module Gen
@@ -27,7 +28,7 @@ module Cybertrain
       def assign_body(body)
         @asset_body = body
         @asset_digest = AssetScan.short_digest(body)
-        @digested_path = AssetScan.digested_name(@logical_path, @asset_digest)
+        @digested_path = AssetManifest.digested_name(@logical_path, @asset_digest)
         nil
       end
     end
@@ -104,7 +105,7 @@ module Cybertrain
 
       def self.add_file(root, source, logical, files)
         check_link(root, source)
-        unless safe_logical?(logical)
+        unless AssetManifest.safe_logical?(logical)
           message = "asset #{source}: a name with a space or a control character cannot be served; rename it"
           raise ArgumentError, message
         end
@@ -140,36 +141,8 @@ module Cybertrain
         nil
       end
 
-      # Whether a logical path stays below public/assets and fits a
-      # .manifest line: relative, no empty, ".", ".." or dot-led segment,
-      # no backslash, whitespace or control character.
-      def self.safe_logical?(logical)
-        s = logical.to_s
-        return false if s.empty? || s.start_with?("/")
-
-        s.each_char do |c|
-          return false if c == "\\" || c == " " || c.ord < 0x20 || c.ord == 0x7f
-        end
-        s.split("/", -1).each do |part|
-          return false if part.empty? || part.start_with?(".")
-        end
-        true
-      end
-
       def self.short_digest(body)
         Digest::SHA256.hexdigest(body)[0, 8].to_s
-      end
-
-      # "logo.svg" -> "logo-<digest>.svg"; the digest goes before the first
-      # dot of the file name ("app.js.map" -> "app-<digest>.js.map"), at
-      # the end of a name with none ("LICENSE-<digest>").
-      def self.digested_name(logical, digest)
-        slash = logical.rindex("/")
-        dir = slash.nil? ? "" : logical[0, slash + 1].to_s
-        base = slash.nil? ? logical : logical[slash + 1, logical.size - slash - 1].to_s
-        dot = base.index(".")
-        named = dot.nil? || dot == 0 ? "#{base}-#{digest}" : "#{base[0, dot]}-#{digest}#{base[dot, base.size - dot]}"
-        "#{dir}#{named}"
       end
 
       # Rewrites stylesheet css (logical path css_logical) after the
